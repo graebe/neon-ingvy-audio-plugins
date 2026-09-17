@@ -108,6 +108,9 @@ fn notes_round_trip_across_the_midi_range() {
 #[case("Cmmaj7", ChordQuality::MinorMajor7)]
 #[case("Cm7b5", ChordQuality::HalfDiminished7)]
 #[case("Cdim7", ChordQuality::Diminished7)]
+#[case("C5", ChordQuality::Fifth)]
+#[case("C7sus4", ChordQuality::Dominant7Sus4)]
+#[case("C7sus", ChordQuality::Dominant7Sus4)]
 fn chords_parse(#[case] input: &str, #[case] quality: ChordQuality) {
     assert_eq!(
         input.parse::<Chord>().unwrap(),
@@ -240,6 +243,7 @@ fn display_buffers_are_wide_enough() {
     assert_eq!(rendered.matches("C#-128").count(), 16);
 
     assert_eq!(Chord::min_maj7(Pitch::C_SHARP).to_string(), "C#mmaj7");
+    assert_eq!(Chord::dom7_sus4(Pitch::C_SHARP).to_string(), "C#7sus4");
     assert_eq!(Pitch::C.at(-128).to_string(), "C-128");
     assert_eq!(Pitch::B.at(127).to_string(), "B127");
 }
@@ -253,4 +257,21 @@ fn the_constructors_agree_with_the_parser() {
     assert_eq!(Chord::half_dim7(Pitch::B), "Bm7b5".parse().unwrap());
     assert_eq!(Chord::dim7(Pitch::F_SHARP), "F#dim7".parse().unwrap());
     assert_eq!(Chord::sus4(Pitch::A), "Asus4".parse().unwrap());
+    assert_eq!(Chord::fifth(Pitch::E), "E5".parse().unwrap());
+    assert_eq!(Chord::dom7_sus4(Pitch::G), "G7sus4".parse().unwrap());
+    assert_eq!(Chord::dom7_sus4(Pitch::G), "G7sus".parse().unwrap());
+}
+
+#[test]
+fn a_power_chord_and_a_note_name_read_the_same_text() {
+    // "C5" is a chord symbol and a note name at once, and both readings are
+    // real. `FromStr` is per type, so the caller has already said which one it
+    // wants by the time the text is parsed. Deliberate, not an oversight: the
+    // same was already true of "G9" before the power chord arrived.
+    let chord: Chord = "C5".parse().unwrap();
+    let note: Note = "C5".parse().unwrap();
+
+    assert_eq!(chord, Chord::fifth(Pitch::C));
+    assert_eq!(note, Pitch::C.at(5));
+    assert_eq!(chord.size(), 2);
 }

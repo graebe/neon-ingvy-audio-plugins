@@ -18,69 +18,135 @@ use crate::{DisplayBuffer, Harmony, ParseError, padded};
 #[repr(u8)]
 pub enum ChordQuality {
     /// Root, major third, perfect fifth.
+    ///
+    /// Bright and settled; the sound of arrival.
     #[default]
     Major,
     /// Root, minor third, perfect fifth.
+    ///
+    /// Darker, and just as stable; the other half of common practice.
     Minor,
     /// Root, minor third, diminished fifth.
+    ///
+    /// Tense and unstable; it wants to resolve inward.
     Diminished,
     /// Root, major third, augmented fifth.
+    ///
+    /// Weightless; it divides the octave evenly, so it points nowhere.
     Augmented,
     /// Root, major second, perfect fifth.
+    ///
+    /// Open and airy; no third, so neither major nor minor.
     Sus2,
     /// Root, perfect fourth, perfect fifth.
+    ///
+    /// Leaning; the fourth wants to fall to the third.
     Sus4,
     /// Major triad plus a major seventh.
+    ///
+    /// Soft and luminous; bossa nova and lounge.
     Major7,
     /// Major triad plus a minor seventh.
+    ///
+    /// Restless; the blues chord, and the engine of the cadence.
     Dominant7,
     /// Minor triad plus a minor seventh.
+    ///
+    /// Cool and unhurried; the default minor of jazz and soul.
     Minor7,
     /// Minor triad plus a major seventh.
+    ///
+    /// Uneasy and cinematic; the James Bond chord.
     MinorMajor7,
     /// Diminished triad plus a minor seventh.
+    ///
+    /// Aching; the ii of a minor key, and the Tristan chord.
     HalfDiminished7,
     /// Diminished triad plus a diminished seventh.
+    ///
+    /// Maximum tension and no home; symmetric, so it pivots anywhere.
     Diminished7,
     /// Major triad plus a major sixth.
+    ///
+    /// Sweet and old-fashioned; a major triad that stopped needing to resolve.
     Sixth,
     /// Minor triad plus a major sixth.
+    ///
+    /// Wistful, slightly noir; minor without the weight of a seventh.
     MinorSixth,
     /// Major triad plus a ninth, with no seventh.
+    ///
+    /// Bright and open; colour without implying a seventh.
     Add9,
     /// Minor triad plus a ninth, with no seventh.
+    ///
+    /// Cold and glassy; a second rubbing against the minor third.
     MinorAdd9,
     /// Major triad with both a sixth and a ninth.
+    ///
+    /// Lush and final; an ending that never resolves anywhere.
     SixNine,
     /// Dominant seventh plus a ninth.
+    ///
+    /// Funk's dominant; the seventh with a sheen on top.
     Dominant9,
     /// Major seventh plus a ninth.
+    ///
+    /// Wide and gentle; the major seventh opened out.
     Major9,
     /// Minor seventh plus a ninth.
+    ///
+    /// Warm and deep; the classic dub techno chord.
     Minor9,
     /// Dominant ninth plus an eleventh.
+    ///
+    /// Blurred; the eleventh sits on the third, so the third usually goes.
     Dominant11,
     /// Minor ninth plus an eleventh.
+    ///
+    /// Spacious and modal; a fourth stacked on a minor ninth.
     Minor11,
     /// Dominant ninth plus a thirteenth.
+    ///
+    /// Full and brassy; big-band dominant harmony.
     Dominant13,
     /// Major ninth plus a thirteenth.
+    ///
+    /// The widest consonance here; everything diatonic that fits.
     Major13,
     /// Dominant seventh with a flattened fifth.
+    ///
+    /// Whole-tone and unmoored; the same four notes read two ways.
     SevenFlatFive,
     /// Dominant seventh with a raised fifth.
+    ///
+    /// Straining upward; a dominant pushing past its own fifth.
     SevenSharpFive,
     /// Dominant seventh with a flattened ninth.
+    ///
+    /// Sharp and dramatic; the standard dominant into a minor key.
     SevenFlatNine,
     /// Dominant seventh with a raised ninth.
+    ///
+    /// The Hendrix chord; a major and a minor third at once.
     SevenSharpNine,
     /// Dominant seventh with a raised eleventh.
+    ///
+    /// Bright and acid; the Lydian dominant.
     SevenSharpEleven,
+    /// Root and perfect fifth, with no third at all.
+    ///
+    /// Bare and loud; no third, so no key. The power chord.
+    Fifth,
+    /// Dominant seventh with the third suspended to a fourth.
+    ///
+    /// Hanging and unresolved; the gospel and house vamp chord.
+    Dominant7Sus4,
 }
 
 impl ChordQuality {
     /// Every quality, in declaration order.
-    pub const ALL: [ChordQuality; 29] = [
+    pub const ALL: [ChordQuality; 31] = [
         ChordQuality::Major,
         ChordQuality::Minor,
         ChordQuality::Diminished,
@@ -110,6 +176,8 @@ impl ChordQuality {
         ChordQuality::SevenFlatNine,
         ChordQuality::SevenSharpNine,
         ChordQuality::SevenSharpEleven,
+        ChordQuality::Fifth,
+        ChordQuality::Dominant7Sus4,
     ];
 
     /// The semitone offsets from the root, ascending.
@@ -146,6 +214,75 @@ impl ChordQuality {
             ChordQuality::SevenFlatNine => &[0, 1, 4, 7, 10],
             ChordQuality::SevenSharpNine => &[0, 3, 4, 7, 10],
             ChordQuality::SevenSharpEleven => &[0, 4, 6, 7, 10],
+            ChordQuality::Fifth => &[0, 7],
+            ChordQuality::Dominant7Sus4 => &[0, 5, 7, 10],
+        }
+    }
+
+    /// The semitone offsets in canonical register, ascending from the root,
+    /// with extensions stacked above the octave.
+    ///
+    /// Where [`ChordQuality::intervals`] answers "which pitch classes", this
+    /// answers "at what height". A ninth is fourteen semitones up, not two, so
+    /// these are the numbers to hand a synthesizer or type into a chord effect.
+    ///
+    /// Reduced modulo twelve this is exactly [`ChordQuality::interval_set`],
+    /// and it always has the same length as `intervals()`. A test asserts both.
+    ///
+    /// ```
+    /// use music_core::ChordQuality;
+    ///
+    /// // Close together as pitch classes, spread out as a voicing.
+    /// assert_eq!(ChordQuality::Major9.intervals(), &[0, 2, 4, 7, 11]);
+    /// assert_eq!(ChordQuality::Major9.stacking(), &[0, 4, 7, 11, 14]);
+    ///
+    /// // A triad has nothing above the octave, so the two agree.
+    /// assert_eq!(ChordQuality::Minor.stacking(), ChordQuality::Minor.intervals());
+    /// ```
+    ///
+    /// This is a re-registration, not an arrangement: the same notes, once
+    /// each, in the order they are written. Two consequences worth knowing.
+    /// [`ChordQuality::Dominant11`] keeps its third, a semitone under the
+    /// eleventh, where a player would drop it. [`ChordQuality::Fifth`] stays a
+    /// bare dyad, where a played power chord doubles the root an octave up.
+    /// Doublings and omissions are [`crate::Voicing`]'s business, not this
+    /// method's.
+    #[inline]
+    #[must_use]
+    pub const fn stacking(self) -> &'static [u8] {
+        match self {
+            // Nothing reaches past the octave, so the offsets stand as they are.
+            ChordQuality::Major
+            | ChordQuality::Minor
+            | ChordQuality::Diminished
+            | ChordQuality::Augmented
+            | ChordQuality::Sus2
+            | ChordQuality::Sus4
+            | ChordQuality::Major7
+            | ChordQuality::Dominant7
+            | ChordQuality::Minor7
+            | ChordQuality::MinorMajor7
+            | ChordQuality::HalfDiminished7
+            | ChordQuality::Diminished7
+            | ChordQuality::Sixth
+            | ChordQuality::MinorSixth
+            | ChordQuality::SevenFlatFive
+            | ChordQuality::SevenSharpFive
+            | ChordQuality::Fifth
+            | ChordQuality::Dominant7Sus4 => self.intervals(),
+            ChordQuality::Add9 => &[0, 4, 7, 14],
+            ChordQuality::MinorAdd9 => &[0, 3, 7, 14],
+            ChordQuality::SixNine => &[0, 4, 7, 9, 14],
+            ChordQuality::Dominant9 => &[0, 4, 7, 10, 14],
+            ChordQuality::Major9 => &[0, 4, 7, 11, 14],
+            ChordQuality::Minor9 => &[0, 3, 7, 10, 14],
+            ChordQuality::Dominant11 => &[0, 4, 7, 10, 14, 17],
+            ChordQuality::Minor11 => &[0, 3, 7, 10, 14, 17],
+            ChordQuality::Dominant13 => &[0, 4, 7, 10, 14, 21],
+            ChordQuality::Major13 => &[0, 4, 7, 11, 14, 21],
+            ChordQuality::SevenFlatNine => &[0, 4, 7, 10, 13],
+            ChordQuality::SevenSharpNine => &[0, 4, 7, 10, 15],
+            ChordQuality::SevenSharpEleven => &[0, 4, 7, 10, 18],
         }
     }
 
@@ -166,7 +303,7 @@ impl ChordQuality {
         PitchSet::from_bits_truncating(bits)
     }
 
-    /// How many notes this quality has, three to six.
+    /// How many notes this quality has, two to six.
     #[inline]
     #[must_use]
     pub const fn size(self) -> usize {
@@ -179,19 +316,25 @@ impl ChordQuality {
     /// then sevenths, sixths, added notes, extensions and finally the altered
     /// dominants. This is a heuristic, not a fact of music: see
     /// [`PitchSet::identify`].
+    ///
+    /// Not every rank is observable. A quality only competes when some set of
+    /// pitches has two readings, and several qualities currently have none, so
+    /// their rank states intent for when the table next grows rather than
+    /// deciding anything today.
     #[inline]
     #[must_use]
     pub const fn rank(self) -> u8 {
         match self {
             ChordQuality::Major | ChordQuality::Minor => 0,
             ChordQuality::Diminished | ChordQuality::Augmented => 1,
-            ChordQuality::Sus2 | ChordQuality::Sus4 => 2,
+            ChordQuality::Sus2 | ChordQuality::Sus4 | ChordQuality::Fifth => 2,
             ChordQuality::Major7
             | ChordQuality::Dominant7
             | ChordQuality::Minor7
             | ChordQuality::MinorMajor7
             | ChordQuality::HalfDiminished7
-            | ChordQuality::Diminished7 => 3,
+            | ChordQuality::Diminished7
+            | ChordQuality::Dominant7Sus4 => 3,
             ChordQuality::Sixth | ChordQuality::MinorSixth => 4,
             ChordQuality::Add9 | ChordQuality::MinorAdd9 => 5,
             ChordQuality::SixNine
@@ -244,6 +387,8 @@ impl ChordQuality {
             ChordQuality::SevenFlatNine => "7b9",
             ChordQuality::SevenSharpNine => "7#9",
             ChordQuality::SevenSharpEleven => "7#11",
+            ChordQuality::Fifth => "5",
+            ChordQuality::Dominant7Sus4 => "7sus4",
         }
     }
 
@@ -264,7 +409,7 @@ impl ChordQuality {
 }
 
 /// Spellings accepted when parsing, checked against the whole suffix.
-const SPELLINGS: [(&str, ChordQuality); 38] = [
+const SPELLINGS: [(&str, ChordQuality); 41] = [
     ("", ChordQuality::Major),
     ("maj", ChordQuality::Major),
     ("M", ChordQuality::Major),
@@ -303,6 +448,9 @@ const SPELLINGS: [(&str, ChordQuality); 38] = [
     ("7b5", ChordQuality::SevenFlatFive),
     ("7#5", ChordQuality::SevenSharpFive),
     ("7b9", ChordQuality::SevenFlatNine),
+    ("5", ChordQuality::Fifth),
+    ("7sus4", ChordQuality::Dominant7Sus4),
+    ("7sus", ChordQuality::Dominant7Sus4),
 ];
 
 /// Extra spellings that do not fit the fixed-size table above.
@@ -310,6 +458,60 @@ const EXTRA_SPELLINGS: [(&str, ChordQuality); 2] = [
     ("7#9", ChordQuality::SevenSharpNine),
     ("7#11", ChordQuality::SevenSharpEleven),
 ];
+
+/// How a chord is spread out when it is given a register.
+///
+/// A chord is a set of pitch classes, so it says nothing about octaves. This
+/// says what to do about that. Only [`Voicing::Rootless`] changes which pitches
+/// sound; the rest only choose where they sound.
+///
+/// ```
+/// use music_core::{Chord, Pitch, Voicing};
+///
+/// let c = Chord::maj9(Pitch::C);
+///
+/// assert_eq!(c.voice_as(4, Voicing::Close).to_string(), "[C4 D4 E4 G4 B4]");
+/// assert_eq!(c.voice_as(4, Voicing::Stacked).to_string(), "[C4 E4 G4 B4 D5]");
+/// assert_eq!(c.voice_as(4, Voicing::Rootless).to_string(), "[E4 G4 B4 D5]");
+/// ```
+///
+/// There is no shell voicing here, tempting as it is. Root, third and seventh
+/// is undefined for a third of the vocabulary: [`ChordQuality::Fifth`],
+/// [`ChordQuality::Sus2`] and [`ChordQuality::Sus4`] have no third, no triad or
+/// sixth has a seventh, and [`ChordQuality::SevenSharpNine`] has two thirds.
+/// For a chord with no name it cannot be worked out at all, since three
+/// semitones above the root is a minor third or a raised ninth and the pitches
+/// do not say which. A variant that quietly did nothing most of the time would
+/// be worse than its absence. If it is ever wanted, the honest form is a
+/// hand-written table on [`ChordQuality`], not a case here.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+#[repr(u8)]
+pub enum Voicing {
+    /// Every note inside one octave above the root.
+    ///
+    /// The least assuming answer, and what [`Chord::voice`] does on its own.
+    #[default]
+    Close,
+    /// The chord as it is written, extensions above the octave.
+    ///
+    /// Reads its heights from [`ChordQuality::stacking`], so a ninth sounds a
+    /// ninth up rather than a second up. A chord with no name has no canonical
+    /// stack to read, and falls back to [`Voicing::Close`].
+    Stacked,
+    /// The stacked voicing with the second note from the top dropped an octave.
+    ///
+    /// The standard way to open out a close chord: it puts air between the
+    /// bass and the rest without changing a single pitch.
+    Drop2,
+    /// The stacked voicing with the root left out.
+    ///
+    /// The one arrangement here that changes which pitches sound, and the only
+    /// way to say it: [`Chord::without`] refuses to drop a root, because a
+    /// chord contains its root by definition. Not playing a note is a different
+    /// claim from the chord not having one, and this is that claim. A chord of
+    /// nothing but its root voices to an empty list.
+    Rootless,
+}
 
 /// A chord: a root, plus any set of pitches.
 ///
@@ -438,6 +640,10 @@ impl Chord {
         dom7_sharp9 => SevenSharpNine,
         /// A dominant seventh with a raised eleventh.
         dom7_sharp11 => SevenSharpEleven,
+        /// A bare fifth on `root`: the power chord.
+        fifth => Fifth,
+        /// A dominant seventh with the third suspended to a fourth.
+        dom7_sus4 => Dominant7Sus4,
     }
 
     /// The root.
@@ -545,6 +751,82 @@ impl Chord {
         }
         out
     }
+
+    /// Gives the chord a register in a chosen arrangement.
+    ///
+    /// [`Chord::voice`] is this with [`Voicing::Close`], which is why it needs
+    /// no argument.
+    ///
+    /// ```
+    /// use music_core::{Chord, Pitch, Voicing};
+    ///
+    /// let cm9 = Chord::min9(Pitch::C);
+    ///
+    /// // Close packs it into an octave; stacked spells it as written.
+    /// assert_eq!(cm9.voice_as(3, Voicing::Close).len(), 5);
+    /// assert_eq!(cm9.voice_as(3, Voicing::Stacked).len(), 5);
+    ///
+    /// // Rootless drops one note and keeps the rest where they were.
+    /// let rootless = cm9.voice_as(3, Voicing::Rootless);
+    /// assert_eq!(rootless.len(), 4);
+    /// assert!(!rootless.pitch_set().contains(Pitch::C));
+    /// ```
+    #[must_use]
+    pub fn voice_as(self, octave: i16, voicing: Voicing) -> Notes {
+        match voicing {
+            Voicing::Close => self.voice(octave),
+            Voicing::Stacked => stacked_notes(self, octave),
+            Voicing::Drop2 => dropped_second(stacked_notes(self, octave)),
+            Voicing::Rootless => without_root(stacked_notes(self, octave), self.root),
+        }
+    }
+}
+
+/// The chord at its canonical heights, or close position if it has no name.
+fn stacked_notes(chord: Chord, octave: i16) -> Notes {
+    let Some(quality) = chord.quality() else {
+        return chord.voice(octave);
+    };
+
+    let mut out = Notes::EMPTY;
+    let root_midi = chord.root.at(octave).midi();
+    for offset in quality.stacking() {
+        let _ = out.push(crate::voiced::Note::from_midi(
+            root_midi + i16::from(*offset),
+        ));
+    }
+    out
+}
+
+/// The notes with the second from the top lowered an octave, lowest first.
+fn dropped_second(notes: Notes) -> Notes {
+    let sorted = notes.sorted();
+    let len = sorted.len();
+    if len < 2 {
+        return sorted;
+    }
+
+    let mut out = Notes::EMPTY;
+    for (index, note) in sorted.as_slice().iter().enumerate() {
+        let dropped = if index == len - 2 {
+            *note - Interval::OCTAVE
+        } else {
+            *note
+        };
+        let _ = out.push(dropped);
+    }
+    out.sorted()
+}
+
+/// The notes with every sounding root removed.
+fn without_root(notes: Notes, root: Pitch) -> Notes {
+    let mut out = Notes::EMPTY;
+    for note in notes.as_slice() {
+        if note.pitch() != root {
+            let _ = out.push(*note);
+        }
+    }
+    out
 }
 
 impl Harmony for Chord {

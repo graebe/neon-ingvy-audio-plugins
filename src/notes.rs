@@ -9,6 +9,10 @@ use crate::voiced::Note;
 
 /// An ordered list of notes with no structural claims.
 ///
+/// In the OPTIC vocabulary this type is equivalent under nothing at all. It
+/// keeps the octave, the order you built it in, and any repeats, which is what
+/// separates it from [`crate::PitchSet`] and [`crate::Voiced`].
+///
 /// This is where doublings, spacings and arbitrary output live. Unlike
 /// [`crate::VoicedTriad`] it makes no promise about what the notes spell, so it
 /// carries no harmony and supports no transformations. It is the bag you hand
@@ -75,6 +79,12 @@ impl Notes {
         &self.notes[..self.len as usize]
     }
 
+    /// The notes, mutably, in the order they were added.
+    #[inline]
+    fn as_mut_slice(&mut self) -> &mut [Note] {
+        &mut self.notes[..self.len as usize]
+    }
+
     /// How many notes the list holds.
     #[inline]
     #[must_use]
@@ -102,6 +112,56 @@ impl Notes {
         let len = out.len as usize;
         out.notes[..len].sort_unstable();
         out
+    }
+
+    /// Moves the lowest note up an octave, returning the notes in order.
+    ///
+    /// This is what turning a chord over does: the bass climbs above the rest
+    /// and the next note up becomes the new bass. Applied once per note it
+    /// walks every inversion and arrives back where it started, an octave
+    /// higher.
+    ///
+    /// It is not called `invert`, because that already means mirroring pitch
+    /// classes about an axis, on [`crate::Pitch`], [`PitchSet`] and
+    /// [`crate::Triad`]. This changes register, not intervals.
+    ///
+    /// Unlike the rest of this type, it sorts: it takes the notes from lowest
+    /// to highest and hands them back the same way. An inversion is a claim
+    /// about register order, so there is nothing else for it to mean. An empty
+    /// list comes back empty.
+    ///
+    /// ```
+    /// use music_core::{Chord, Pitch};
+    ///
+    /// let root_position = Chord::major(Pitch::C).voice(4);
+    /// assert_eq!(root_position.to_string(), "[C4 E4 G4]");
+    ///
+    /// let first_inversion = root_position.rotate_up();
+    /// assert_eq!(first_inversion.to_string(), "[E4 G4 C5]");
+    ///
+    /// // The same three pitch classes throughout.
+    /// assert_eq!(first_inversion.pitch_set(), root_position.pitch_set());
+    /// ```
+    #[must_use]
+    pub fn rotate_up(&self) -> Self {
+        let mut out = self.sorted();
+        if let Some(lowest) = out.as_mut_slice().first_mut() {
+            *lowest = *lowest + Interval::OCTAVE;
+        }
+        out.sorted()
+    }
+
+    /// Moves the highest note down an octave, returning the notes in order.
+    ///
+    /// The other direction of [`Notes::rotate_up`], and its inverse. Sorts for
+    /// the same reason. An empty list comes back empty.
+    #[must_use]
+    pub fn rotate_down(&self) -> Self {
+        let mut out = self.sorted();
+        if let Some(highest) = out.as_mut_slice().last_mut() {
+            *highest = *highest - Interval::OCTAVE;
+        }
+        out.sorted()
     }
 
     /// Moves every note by the same interval.

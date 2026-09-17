@@ -129,10 +129,54 @@ assert_eq!(cluster.quality(), None);
 assert_eq!(cluster.to_string(), "C[0,1,4,7]");
 ```
 
-Twenty-nine qualities are recognised, from triads through sixths, sevenths,
-added notes and extensions to the altered dominants. Each has a constructor, so
-nothing needs to reach for the parser: `major`, `min7`, `maj9`, `dom13`,
-`six_nine`, `dom7_sharp11` and the rest.
+Thirty-one qualities are recognised, from the bare fifth through triads,
+sixths, sevenths, added notes and extensions to the altered dominants. Each has
+a constructor, so nothing needs to reach for the parser: `major`, `min7`,
+`maj9`, `dom13`, `six_nine`, `dom7_sharp11`, `fifth`, `dom7_sus4` and the rest.
+
+### The vocabulary
+
+Two columns of numbers, because a chord is two things. `intervals()` gives the
+pitch classes, which is what identification compares. `stacking()` gives the
+heights they are written at, which is what you play, and what you type into a
+chord effect. They differ only where a chord reaches past the octave.
+
+| Symbol | Constructor | `intervals()` | `stacking()` | Character |
+|---|---|---|---|---|
+| *(none)* | `major` | 0 4 7 | 0 4 7 | Bright and settled; the sound of arrival |
+| `m` | `minor` | 0 3 7 | 0 3 7 | Darker, and just as stable |
+| `dim` | `dim` | 0 3 6 | 0 3 6 | Tense and unstable; resolves inward |
+| `aug` | `aug` | 0 4 8 | 0 4 8 | Weightless; divides the octave evenly |
+| `sus2` | `sus2` | 0 2 7 | 0 2 7 | Open and airy; neither major nor minor |
+| `sus4` | `sus4` | 0 5 7 | 0 5 7 | Leaning; the fourth wants to fall |
+| `maj7` | `maj7` | 0 4 7 11 | 0 4 7 11 | Soft and luminous |
+| `7` | `dom7` | 0 4 7 10 | 0 4 7 10 | Restless; the engine of the cadence |
+| `m7` | `min7` | 0 3 7 10 | 0 3 7 10 | Cool and unhurried |
+| `mmaj7` | `min_maj7` | 0 3 7 11 | 0 3 7 11 | Uneasy and cinematic |
+| `m7b5` | `half_dim7` | 0 3 6 10 | 0 3 6 10 | Aching; the Tristan chord |
+| `dim7` | `dim7` | 0 3 6 9 | 0 3 6 9 | Maximum tension, no home |
+| `6` | `sixth` | 0 4 7 9 | 0 4 7 9 | Sweet and old-fashioned |
+| `m6` | `min6` | 0 3 7 9 | 0 3 7 9 | Wistful, slightly noir |
+| `add9` | `add9` | 0 2 4 7 | 0 4 7 14 | Bright and open |
+| `madd9` | `min_add9` | 0 2 3 7 | 0 3 7 14 | Cold and glassy |
+| `6/9` | `six_nine` | 0 2 4 7 9 | 0 4 7 9 14 | Lush and final |
+| `9` | `dom9` | 0 2 4 7 10 | 0 4 7 10 14 | Funk's dominant |
+| `maj9` | `maj9` | 0 2 4 7 11 | 0 4 7 11 14 | Wide and gentle |
+| `m9` | `min9` | 0 2 3 7 10 | 0 3 7 10 14 | Warm and deep; the dub techno chord |
+| `11` | `dom11` | 0 2 4 5 7 10 | 0 4 7 10 14 17 | Blurred; the third usually goes |
+| `m11` | `min11` | 0 2 3 5 7 10 | 0 3 7 10 14 17 | Spacious and modal |
+| `13` | `dom13` | 0 2 4 7 9 10 | 0 4 7 10 14 21 | Full and brassy |
+| `maj13` | `maj13` | 0 2 4 7 9 11 | 0 4 7 11 14 21 | The widest consonance here |
+| `7b5` | `dom7_flat5` | 0 4 6 10 | 0 4 6 10 | Whole-tone and unmoored |
+| `7#5` | `dom7_sharp5` | 0 4 8 10 | 0 4 8 10 | Straining upward |
+| `7b9` | `dom7_flat9` | 0 1 4 7 10 | 0 4 7 10 13 | Sharp and dramatic |
+| `7#9` | `dom7_sharp9` | 0 3 4 7 10 | 0 4 7 10 15 | The Hendrix chord |
+| `7#11` | `dom7_sharp11` | 0 4 6 7 10 | 0 4 7 10 18 | Bright and acid; Lydian dominant |
+| `5` | `fifth` | 0 7 | 0 7 | Bare and loud; no third, so no key |
+| `7sus4` | `dom7_sus4` | 0 5 7 10 | 0 5 7 10 | Hanging; the gospel and house vamp |
+
+That is declaration order, which is also `ChordQuality::ALL` order and the order
+`completions` yields in.
 
 ## Naming a chord you were handed
 
@@ -155,6 +199,51 @@ assert_eq!(Chord::dim7(Pitch::C).pitches().interpretations().count(), 4);
 
 `identify` is a heuristic wearing a definite-sounding name. When the answer
 matters, read `interpretations` and choose with the context you have.
+
+## Arranging a chord
+
+A chord is a set of pitch classes, so it says nothing about octaves on its own.
+`voice` gives it a register in close position; `voice_as` chooses something
+else. Only a rootless voicing changes which pitches sound.
+
+```rust
+use music_core::{Chord, Pitch, Voicing};
+
+let c = Chord::maj9(Pitch::C);
+
+// Close packs everything into an octave. Stacked spells it as written.
+assert_eq!(c.voice(4).to_string(), "[C4 D4 E4 G4 B4]");
+assert_eq!(c.voice_as(4, Voicing::Stacked).to_string(), "[C4 E4 G4 B4 D5]");
+
+// Drop 2 opens it out; rootless leaves the bass to someone else.
+assert_eq!(c.voice_as(4, Voicing::Drop2).to_string(), "[B3 C4 E4 G4 D5]");
+assert_eq!(c.voice_as(4, Voicing::Rootless).to_string(), "[E4 G4 B4 D5]");
+
+// Turning a chord over is `rotate_up`, not `invert`: it moves the bass up an
+// octave. `invert` already means mirroring pitch classes about an axis.
+assert_eq!(Chord::major(Pitch::C).voice(4).rotate_up().to_string(), "[E4 G4 C5]");
+```
+
+## Finishing a fragment
+
+Real voicings leave notes out, and a set that is missing one is not the chord it
+happens to spell. `interpretations` asks what these notes *are*; `completions`
+asks what they could be *part of*, and its root need not be among them.
+
+```rust
+use music_core::{Chord, Pitch, PitchSet};
+
+// A C minor 9 as it would actually be played, with the root left to the bass.
+let played = PitchSet::from_pitches(&[
+    Pitch::E_FLAT, Pitch::G, Pitch::B_FLAT, Pitch::D,
+]);
+
+// Read as it stands it is an E flat major 7, and that is not wrong.
+assert_eq!(played.identify(), Some(Chord::maj7(Pitch::E_FLAT)));
+
+// It is also four fifths of a C minor 9, which nothing else would tell you.
+assert!(played.completions().any(|c| c == Chord::min9(Pitch::C)));
+```
 
 ## Sets
 
@@ -193,6 +282,7 @@ assert!((Pitch::A.at(4).frequency_hz_at(432.0) - 432.0).abs() < 1e-9);
 | `IntervalClass` | an interval folded to 0 through 6 | 1 byte |
 | `PitchSet` | any subset of the twelve | 2 bytes |
 | `Chord` | a root plus any set of pitches | 4 bytes |
+| `Voicing` | how a chord is spread out | 1 byte |
 | `Triad` | major or minor, root plus quality | 2 bytes |
 | `Note` | a pitch with a register | 4 bytes |
 | `Notes` | a free list, doublings allowed | 66 bytes |

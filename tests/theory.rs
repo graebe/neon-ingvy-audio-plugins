@@ -172,4 +172,10 @@ fn the_core_types_stay_small() {
     // trip. Notes are never on a hot path here.
     assert_eq!(size_of::<Note>(), 4);
     assert_eq!(size_of::<music_core::Notes>(), 66);
+
+    // A quality and an arrangement are each one plain byte, and the iterator
+    // that scans every chord for a fragment is a set plus two counters.
+    assert_eq!(size_of::<music_core::ChordQuality>(), 1);
+    assert_eq!(size_of::<music_core::Voicing>(), 1);
+    assert_eq!(size_of::<music_core::Completions>(), 4);
 }

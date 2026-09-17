@@ -53,11 +53,80 @@ fn every_quality_is_named_back() {
 }
 
 #[test]
-fn quality_sizes_run_from_three_to_six() {
+fn quality_sizes_run_from_two_to_six() {
+    // Two, not three: the power chord has no third, and a bare fifth is the
+    // only quality in the table with fewer than three notes.
     for quality in ChordQuality::ALL {
         let size = quality.size();
-        assert!((3..=6).contains(&size), "{quality:?} has {size} notes");
+        assert!((2..=6).contains(&size), "{quality:?} has {size} notes");
     }
+}
+
+#[test]
+fn a_bare_fifth_is_the_only_two_note_quality() {
+    let two_note: Vec<ChordQuality> = ChordQuality::ALL
+        .into_iter()
+        .filter(|q| q.size() == 2)
+        .collect();
+    assert_eq!(two_note, vec![ChordQuality::Fifth]);
+}
+
+#[test]
+fn a_bare_fifth_identifies_as_a_power_chord() {
+    let pitches = PitchSet::from_pitches(&[Pitch::C, Pitch::G]);
+
+    assert_eq!(pitches.identify(), Some(Chord::fifth(Pitch::C)));
+    // Only one way round: C over G is a fifth, G over C is a fourth, and a
+    // bare fourth has no name here.
+    assert_eq!(pitches.interpretations().count(), 1);
+}
+
+#[test]
+fn only_dyads_a_fifth_apart_have_a_name() {
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        if set.len() != 2 {
+            continue;
+        }
+        let mut notes = set.iter();
+        let (low, high) = (notes.next().unwrap(), notes.next().unwrap());
+        let a_fifth_apart = low.distance_to(high).value() == 5;
+
+        assert_eq!(
+            set.identify().is_some(),
+            a_fifth_apart,
+            "{set} was read wrongly"
+        );
+    }
+}
+
+#[test]
+fn a_seventh_with_a_suspended_fourth_has_one_reading() {
+    let pitches = Chord::dom7_sus4(Pitch::C).pitches();
+
+    assert_eq!(pitches.identify(), Some(Chord::dom7_sus4(Pitch::C)));
+    assert_eq!(pitches.interpretations().count(), 1);
+    assert_eq!(Chord::dom7_sus4(Pitch::C).to_string(), "C7sus4");
+}
+
+#[test]
+fn the_new_qualities_only_named_what_had_no_name() {
+    // Adding a two-note quality could in principle have stolen readings from
+    // bigger chords. It cannot: `quality` compares whole sets, so a two-note
+    // shape only ever matches a two-note set. Check the consequence directly.
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        for reading in set.interpretations() {
+            if reading.quality() == Some(ChordQuality::Fifth) {
+                assert_eq!(set.len(), 2, "{set} read as a power chord");
+            }
+        }
+    }
+
+    // And the answers that were already pinned have not moved.
+    let sixth = Chord::sixth(Pitch::C).pitches();
+    assert_eq!(sixth.identify(), Some(Chord::min7(Pitch::A)));
+    assert_eq!(Chord::dom7(Pitch::G).pitches().interpretations().count(), 1);
 }
 
 // --- the chord type -------------------------------------------------------
@@ -260,6 +329,95 @@ fn interpretations_only_yield_roots_from_the_set() {
             assert_eq!(reading.pitches(), set, "reading changed the pitches");
         }
     }
+}
+
+// --- completions ----------------------------------------------------------
+
+#[test]
+fn a_fragment_completes_to_the_chords_that_contain_it() {
+    // A minor 9 as it is actually played, with the root left to the bass.
+    let played = PitchSet::from_pitches(&[Pitch::E_FLAT, Pitch::G, Pitch::B_FLAT, Pitch::D]);
+
+    let found: Vec<Chord> = played.completions().collect();
+    assert_eq!(
+        found,
+        vec![
+            Chord::min9(Pitch::C),
+            Chord::min11(Pitch::C),
+            Chord::maj7(Pitch::E_FLAT),
+            Chord::maj9(Pitch::E_FLAT),
+            Chord::maj13(Pitch::E_FLAT),
+        ]
+    );
+}
+
+#[test]
+fn a_completions_root_need_not_be_in_the_set() {
+    // The difference that makes this worth having: `interpretations` can only
+    // offer roots it can see.
+    let played = PitchSet::from_pitches(&[Pitch::E_FLAT, Pitch::G, Pitch::B_FLAT, Pitch::D]);
+
+    assert!(!played.contains(Pitch::C));
+    assert!(played.completions().any(|c| c.root() == Pitch::C));
+    assert!(played.interpretations().all(|c| c.root() != Pitch::C));
+}
+
+#[test]
+fn a_complete_match_is_a_completion() {
+    let ebmaj7 = Chord::maj7(Pitch::E_FLAT);
+    assert!(ebmaj7.pitches().completions().any(|c| c == ebmaj7));
+}
+
+#[test]
+fn every_interpretation_is_also_a_completion() {
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        let completions: Vec<Chord> = set.completions().collect();
+        for reading in set.interpretations() {
+            assert!(completions.contains(&reading), "{reading} went missing");
+        }
+    }
+}
+
+#[test]
+fn every_completion_really_contains_the_set() {
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        for completion in set.completions() {
+            assert!(
+                completion.pitches().is_superset(set),
+                "{completion} does not contain {set}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_empty_set_completes_to_every_named_chord() {
+    // Nothing is contained in everything, so every root takes every quality.
+    let all = 12 * ChordQuality::ALL.len();
+    assert_eq!(PitchSet::EMPTY.completions().count(), all);
+    assert_eq!(all, 372);
+}
+
+#[test]
+fn completions_are_yielded_by_root_then_by_quality() {
+    // The documented order, which callers may reasonably lean on.
+    let fifth = PitchSet::from_pitches(&[Pitch::C, Pitch::G]);
+    let found: Vec<Chord> = fifth.completions().collect();
+
+    assert_eq!(found.first(), Some(&Chord::major(Pitch::C)));
+    let roots: Vec<u8> = found.iter().map(|c| c.root().value()).collect();
+    let mut sorted = roots.clone();
+    sorted.sort_unstable();
+    assert_eq!(roots, sorted, "roots came out of order");
+}
+
+#[test]
+fn a_chord_nobody_named_completes_to_nothing() {
+    // Three semitones in a row are in no named chord at all.
+    let cluster = PitchSet::from_pitches(&[Pitch::C, Pitch::C_SHARP, Pitch::D]);
+    assert_eq!(cluster.completions().count(), 0);
 }
 
 // --- triads ---------------------------------------------------------------

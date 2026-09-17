@@ -7,11 +7,11 @@
 //! ```
 //!
 //! A chord is a root plus a set of pitches. It is not limited to a list of
-//! known chord types, so it can hold three notes or nine, named or not.
+//! known chord types, so it can hold two notes or nine, named or not.
 //!
 //! For the notes a chord is made of, see the `pitch` and `note` examples.
 
-use music_core::{Chord, ChordQuality, Interval, Pitch, PitchSet, Triad};
+use music_core::{Chord, ChordQuality, Interval, Pitch, PitchSet, Triad, Voicing};
 
 fn main() {
     what_a_chord_is();
@@ -26,6 +26,9 @@ fn main() {
     symmetric_chords();
     triads_are_a_special_case();
     playing_a_chord();
+    arranging_a_chord();
+    turning_a_chord_over();
+    finishing_a_chord_someone_started();
 }
 
 fn what_a_chord_is() {
@@ -78,8 +81,16 @@ fn making_a_chord() {
     println!("  Chord::dom9(Pitch::G)   gives {}", Chord::dom9(Pitch::G));
     println!("  Chord::min11(Pitch::D)  gives {}", Chord::min11(Pitch::D));
     println!("  Chord::maj13(Pitch::C)  gives {}", Chord::maj13(Pitch::C));
+    println!("  Chord::fifth(Pitch::E)  gives {}", Chord::fifth(Pitch::E));
     println!();
-    println!("There are twenty-nine of these kinds in all, from plain triads up");
+    println!("Longer names read better with a name of their own:");
+    println!();
+
+    let vamp = Chord::dom7_sus4(Pitch::G);
+
+    println!("  Chord::dom7_sus4(Pitch::G) gives {vamp}");
+    println!();
+    println!("There are thirty-one of these kinds in all, from a bare fifth up");
     println!("to thirteenths and altered chords.");
     println!();
     println!("You can also build a chord from a root and whatever pitches you");
@@ -455,5 +466,112 @@ fn playing_a_chord() {
         Chord::maj13(Pitch::C),
         Chord::maj13(Pitch::C).voice(3)
     );
+    println!();
+}
+
+fn arranging_a_chord() {
+    println!();
+    println!("ARRANGING A CHORD");
+    println!("-----------------");
+    println!();
+    println!("Stacking upward from the root is only one way to play a chord.");
+    println!("A ninth is really fourteen semitones up, not two, and a player");
+    println!("might drop a voice an octave or leave the root to the bass.");
+    println!();
+
+    let chord = Chord::maj9(Pitch::C);
+
+    let close = chord.voice_as(4, Voicing::Close);
+    let stacked = chord.voice_as(4, Voicing::Stacked);
+    let drop_two = chord.voice_as(4, Voicing::Drop2);
+    let rootless = chord.voice_as(4, Voicing::Rootless);
+
+    println!("  The chord is {chord}");
+    println!();
+    println!("  Close:    {close}");
+    println!("  Stacked:  {stacked}");
+    println!("  Drop 2:   {drop_two}");
+    println!("  Rootless: {rootless}");
+    println!();
+    println!("Close is what `voice` does on its own, so those two agree.");
+    println!("Only the rootless one changes which pitches sound at all.");
+    println!();
+    println!("The heights come from the quality, so a chord with no name has");
+    println!("no stack to read and falls back to close position.");
+    println!();
+
+    let no_name = Chord::new(
+        Pitch::C,
+        PitchSet::from_pitches(&[Pitch::C, Pitch::C_SHARP, Pitch::E, Pitch::F_SHARP]),
+    );
+
+    let no_name_stacked = no_name.voice_as(4, Voicing::Stacked);
+    let no_name_close = no_name.voice_as(4, Voicing::Close);
+
+    println!("  The chord is {no_name}");
+    println!("  Stacked:  {no_name_stacked}");
+    println!("  Close:    {no_name_close}");
+    println!();
+}
+
+fn turning_a_chord_over() {
+    println!();
+    println!("TURNING A CHORD OVER");
+    println!("--------------------");
+    println!();
+    println!("Move the lowest note up an octave and the chord is inverted.");
+    println!("Do it once per note and you arrive back where you started, an");
+    println!("octave higher.");
+    println!();
+
+    let root_position = Chord::major(Pitch::C).voice(4);
+    let first_inversion = root_position.rotate_up();
+    let second_inversion = first_inversion.rotate_up();
+    let back_to_the_start = second_inversion.rotate_up();
+
+    println!("  Root position:    {root_position}");
+    println!("  First inversion:  {first_inversion}");
+    println!("  Second inversion: {second_inversion}");
+    println!("  Back to start:    {back_to_the_start}");
+    println!();
+    println!("It is called `rotate_up` and not `invert` on purpose. In this");
+    println!("crate `invert` already means mirroring pitch classes about an");
+    println!("axis, which is a different idea entirely: it changes the notes.");
+    println!("This only changes which octave they are in.");
+    println!();
+}
+
+fn finishing_a_chord_someone_started() {
+    println!();
+    println!("FINISHING A CHORD SOMEONE STARTED");
+    println!("---------------------------------");
+    println!();
+    println!("Players leave notes out. The root is the first to go, because");
+    println!("the bass has it. A set that is missing a note is not the chord");
+    println!("it happens to spell, so there are two questions to ask.");
+    println!();
+
+    let played = PitchSet::from_pitches(&[Pitch::E_FLAT, Pitch::G, Pitch::B_FLAT, Pitch::D]);
+
+    println!("  Someone played {played}");
+    println!();
+    println!("Asked what it is, the answer is honest and probably not what");
+    println!("the player meant:");
+    println!();
+    println!("  It is {}", played.identify().unwrap());
+    println!();
+    println!("Asked what it could be part of, the chord they meant shows up:");
+    println!();
+
+    let mut could_be = played.completions();
+
+    println!("  It could be part of {}", could_be.next().unwrap());
+    println!("  It could be part of {}", could_be.next().unwrap());
+    println!("  It could be part of {}", could_be.next().unwrap());
+    println!("  It could be part of {}", could_be.next().unwrap());
+    println!("  It could be part of {}", could_be.next().unwrap());
+    println!();
+    println!("The first one has no C in it anywhere, and that is the point.");
+    println!("A completion's root does not have to be a note you played.");
     println!();
 }

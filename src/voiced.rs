@@ -43,7 +43,7 @@ pub(crate) const fn midi_of(pitch: Pitch, octave: i16) -> i16 {
 /// nothing.
 ///
 /// [`crate::Chord`] deliberately does not implement this: its cardinality
-/// varies between three and four notes, so it has no fixed voice count. Chords
+/// varies between two and six notes, so it has no fixed voice count. Chords
 /// are voiced into [`crate::Notes`] instead.
 pub trait Voiceable: Copy + PartialEq + Eq + Hash {
     /// One octave per voice.
@@ -76,6 +76,16 @@ impl Voiceable for Pitch {
 /// An abstract harmony plus one register choice per voice.
 ///
 /// See [`Note`] for the single-voice instantiation.
+///
+/// In the OPTIC vocabulary this sits between the other two collection types. It
+/// keeps the **O**ctave, unlike [`crate::PitchSet`], so a voicing knows how high
+/// it sounds. It is still equivalent under **P**ermutation, because the voices
+/// are ordered by chord function rather than by who plays them: index 1 always
+/// means "the third". [`crate::Notes`] keeps both.
+///
+/// That permutation equivalence is why moving a voicing changes which voice
+/// holds which note, and why measuring the movement has to search for the
+/// cheapest pairing rather than compare index to index.
 ///
 /// Doublings are not expressible here, because the voice count is fixed by the
 /// harmony's cardinality. Inversions and spacing are, since those are only

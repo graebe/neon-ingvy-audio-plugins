@@ -4,8 +4,8 @@ use core::fmt::{self, Write as _};
 use core::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 
 use crate::Harmony;
-use crate::chord::Chord;
-use crate::pitch::{Interval, Pitch, Spelling};
+use crate::chord::{Chord, ChordQuality};
+use crate::pitch::{EDO, Interval, Pitch, Spelling};
 
 const MASK: u16 = 0x0FFF;
 
@@ -14,6 +14,12 @@ const MASK: u16 = 0x0FFF;
 /// This is the generic harmony of the crate: any collection of pitch classes
 /// at all, with union, intersection, transposition and inversion costing a
 /// handful of instructions and no allocation.
+///
+/// In the OPTIC vocabulary of Callender, Quinn and Tymoczko, this type is
+/// equivalent under **O**ctave and **P**ermutation: it forgets which register
+/// each note sounds in and what order they were given in. It keeps
+/// transposition and inversion, so moving or reflecting a set gives a different
+/// set. [`crate::Voiced`] restores the octave; [`crate::Notes`] restores both.
 ///
 /// ```
 /// use music_core::{Pitch, PitchSet};
@@ -275,6 +281,49 @@ impl PitchSet {
         best
     }
 
+    /// Every named chord that contains these pitches.
+    ///
+    /// Where [`PitchSet::interpretations`] asks what these notes *are*, this
+    /// asks what they could be *part of*. Real voicings leave notes out — the
+    /// root and the fifth first — and a set that is missing one is not the
+    /// chord it happens to spell.
+    ///
+    /// The root need not be one of the pitches, which is the whole point: a C
+    /// minor 9 with no C in it is still a C minor 9 to everyone playing it.
+    ///
+    /// Yielded by root, C upward, and within a root in `ChordQuality::ALL`
+    /// order. A chord whose pitches are exactly this set counts too, so every
+    /// interpretation is also a completion. Lazy and allocation-free.
+    ///
+    /// ```
+    /// use music_core::{Chord, Pitch, PitchSet};
+    ///
+    /// // A minor 9 with the root left out, as it would actually be played.
+    /// let played = PitchSet::from_pitches(&[
+    ///     Pitch::E_FLAT, Pitch::G, Pitch::B_FLAT, Pitch::D,
+    /// ]);
+    ///
+    /// // Read as it stands, it is an E flat major 7. That is not wrong.
+    /// assert_eq!(played.identify(), Some(Chord::maj7(Pitch::E_FLAT)));
+    ///
+    /// // But it is also four fifths of a C minor 9, which nothing else says.
+    /// assert!(played.completions().any(|c| c == Chord::min9(Pitch::C)));
+    /// assert_eq!(played.completions().count(), 5);
+    /// ```
+    ///
+    /// The empty set is contained in everything, so it yields all 372 named
+    /// chords. That is the honest reading of "contains", and cheaper to
+    /// remember than an exception.
+    #[inline]
+    #[must_use]
+    pub const fn completions(self) -> Completions {
+        Completions {
+            pitches: self,
+            root: 0,
+            quality: 0,
+        }
+    }
+
     /// Iterates the pitch classes in ascending order from C. Allocation-free.
     #[inline]
     #[must_use]
@@ -315,6 +364,53 @@ impl Iterator for PitchSetIter {
 }
 
 impl ExactSizeIterator for PitchSetIter {}
+
+/// Iterator over the named chords that contain a [`PitchSet`].
+///
+/// Built by [`PitchSet::completions`]. Walks all twelve roots and every
+/// quality, and yields the chords whose pitches include the whole set.
+#[derive(Clone, Copy, Debug)]
+pub struct Completions {
+    pitches: PitchSet,
+    root: u8,
+    quality: u8,
+}
+
+impl Iterator for Completions {
+    type Item = Chord;
+
+    fn next(&mut self) -> Option<Chord> {
+        while self.root < EDO {
+            let quality = ChordQuality::ALL[self.quality as usize];
+            let root = Pitch::new(self.root as i32);
+
+            // Step the odometer before deciding, so every path advances.
+            self.quality += 1;
+            if self.quality as usize >= ChordQuality::ALL.len() {
+                self.quality = 0;
+                self.root += 1;
+            }
+
+            // Compare shapes rather than building a chord for every candidate.
+            let shape = self
+                .pitches
+                .transpose(Interval::new(-(root.value() as i16)));
+            if quality.interval_set().is_superset(shape) {
+                return Some(Chord::from_quality(root, quality));
+            }
+        }
+        None
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let total = EDO as usize * ChordQuality::ALL.len();
+        let seen = self.root as usize * ChordQuality::ALL.len() + self.quality as usize;
+        (0, Some(total.saturating_sub(seen)))
+    }
+}
+
+impl core::iter::FusedIterator for Completions {}
 
 /// Iterator over the ways a [`PitchSet`] can be read as a chord.
 ///
