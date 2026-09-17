@@ -200,8 +200,9 @@ assert!((Pitch::A.at(4).frequency_hz_at(432.0) - 432.0).abs() < 1e-9);
 ## Try it
 
 ```sh
-cargo run -p music-core --example pitch
-cargo run -p music-core --example note
+cargo run -p music-core --example pitch    # the twelve, and moving between them
+cargo run -p music-core --example note     # the same pitch, given a register
+cargo run -p music-core --example chord    # roots, sets, and naming them
 ```
 
 ## License
