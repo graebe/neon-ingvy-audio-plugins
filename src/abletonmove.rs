@@ -62,6 +62,18 @@ const MAJOR: [u8; 7] = [0, 2, 4, 5, 7, 9, 11];
 /// above the last — the same interval the chromatic layout uses.
 pub const DEFAULT_ROW_OFFSET: u8 = 3;
 
+/// How the pads are laid out.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+pub enum Layout {
+    /// Only the notes of the key, so nothing played can be out of it. Pads are
+    /// numbered by scale degree.
+    #[default]
+    InKey,
+    /// Every semitone. Wider to reach around, but it can show any note at all —
+    /// which an in-key grid cannot, since a chord may borrow from outside.
+    Chromatic,
+}
+
 /// Which part of a chord a pad is sounding.
 ///
 /// Says what the note *is*, not what colour to make it — the palette belongs to
@@ -97,6 +109,7 @@ pub struct PadGrid {
     tonic: Pitch,
     octave: i16,
     row_offset: u8,
+    layout: Layout,
 }
 
 impl PadGrid {
@@ -107,7 +120,24 @@ impl PadGrid {
             tonic,
             octave,
             row_offset: DEFAULT_ROW_OFFSET,
+            layout: Layout::InKey,
         }
+    }
+
+    /// The same grid laid out chromatically, every semitone to a pad.
+    ///
+    /// Rows stay a fourth apart, as they are in key; here that is five
+    /// semitones rather than three degrees.
+    pub const fn chromatic(self) -> Self {
+        Self {
+            layout: Layout::Chromatic,
+            ..self
+        }
+    }
+
+    /// How this grid is laid out.
+    pub const fn layout(self) -> Layout {
+        self.layout
     }
 
     /// The same grid with rows a different number of scale degrees apart.
@@ -142,14 +172,24 @@ impl PadGrid {
     /// Rows are numbered from the bottom, matching how the pads are played
     /// rather than how they are usually drawn.
     const fn steps_at(self, row: usize, column: usize) -> usize {
-        column + (self.row_offset as usize) * row
+        let offset = match self.layout {
+            // A fourth either way: three degrees in key, five semitones out.
+            Layout::InKey => self.row_offset as usize,
+            Layout::Chromatic => 5,
+        };
+        column + offset * row
     }
 
-    /// The degree this pad plays, 1 through 7.
+    /// The degree this pad plays, 1 through 7 in key.
     ///
-    /// This is the number the pad is usually labelled with.
+    /// This is the number the pad is usually labelled with. A chromatic grid
+    /// has no degrees, so it reports the semitone above the tonic instead,
+    /// 1 through 12.
     pub const fn degree_at(self, row: usize, column: usize) -> u8 {
-        (self.steps_at(row, column) % 7) as u8 + 1
+        match self.layout {
+            Layout::InKey => (self.steps_at(row, column) % 7) as u8 + 1,
+            Layout::Chromatic => (self.steps_at(row, column) % 12) as u8 + 1,
+        }
     }
 
     /// The note this pad sounds.
@@ -159,7 +199,10 @@ impl PadGrid {
     /// question with a sensible answer.
     pub const fn note_at(self, row: usize, column: usize) -> Note {
         let steps = self.steps_at(row, column);
-        let semitones = MAJOR[steps % 7] as i16 + 12 * (steps / 7) as i16;
+        let semitones = match self.layout {
+            Layout::InKey => MAJOR[steps % 7] as i16 + 12 * (steps / 7) as i16,
+            Layout::Chromatic => steps as i16,
+        };
         // Work in absolute MIDI rather than octave-plus-pitch: a scale step can
         // carry past the octave boundary, and `from_midi` settles that in one
         // place instead of every caller having to.

@@ -1,6 +1,6 @@
 //! The Move pad layout: what each pad sounds, and what it is doing in a chord.
 
-use music_core::abletonmove::{COLUMNS, DEFAULT_ROW_OFFSET, PADS, PadGrid, PadRole, ROWS};
+use music_core::abletonmove::{COLUMNS, DEFAULT_ROW_OFFSET, Layout, PADS, PadGrid, PadRole, ROWS};
 use music_core::{Pitch, Triad};
 use rstest::rstest;
 
@@ -18,9 +18,10 @@ fn the_grid_is_four_rows_of_eight() {
 
 #[test]
 fn a_grid_is_small_and_copy() {
-    // Four bytes, like everything else in the crate. If this grows, the docs
-    // have started lying about what it costs to pass one around.
-    assert_eq!(size_of::<PadGrid>(), 4);
+    // Six bytes: a tonic, an octave, a row offset and a layout. Still small
+    // enough to pass by value without thinking; if it grows much past this, the
+    // docs have started lying about what it costs.
+    assert_eq!(size_of::<PadGrid>(), 6);
     let grid = c_major_grid();
     let copy = grid;
     assert_eq!(grid, copy);
@@ -215,4 +216,66 @@ fn a_grid_reports_what_it_was_built_from() {
     assert_eq!(grid.tonic(), Pitch::F_SHARP);
     assert_eq!(grid.octave(), 2);
     assert_eq!(grid.row_offset(), 5);
+}
+
+/* --- the chromatic layout -------------------------------------------------- */
+
+#[test]
+fn a_chromatic_row_climbs_by_semitones() {
+    let grid = c_major_grid().chromatic();
+    for column in 1..COLUMNS {
+        assert_eq!(
+            grid.note_at(0, column).midi() - grid.note_at(0, column - 1).midi(),
+            1,
+        );
+    }
+}
+
+#[test]
+fn chromatic_rows_are_a_fourth_apart() {
+    let grid = c_major_grid().chromatic();
+    for row in 1..ROWS {
+        assert_eq!(
+            grid.note_at(row, 0).midi() - grid.note_at(row - 1, 0).midi(),
+            5,
+        );
+    }
+}
+
+#[test]
+fn a_chromatic_grid_can_show_any_note() {
+    // The reason it exists: a chord may borrow a note from outside the key, and
+    // an in-key grid has no pad to put it on.
+    let in_key = c_major_grid();
+    let chromatic = c_major_grid().chromatic();
+    let e_flat = Pitch::new(3);
+
+    assert!(!in_key.notes().iter().any(|n| n.pitch() == e_flat));
+    assert!(chromatic.notes().iter().any(|n| n.pitch() == e_flat));
+}
+
+#[test]
+fn every_triad_lights_three_functions_on_a_chromatic_grid() {
+    let grid = c_major_grid().chromatic();
+    for triad in Triad::ALL {
+        let mut seen = [false; 3];
+        for row in 0..ROWS {
+            for column in 0..COLUMNS {
+                if let Some(role) = grid.role_at(row, column, triad) {
+                    seen[role.index() as usize] = true;
+                }
+            }
+        }
+        assert_eq!(seen, [true; 3], "{triad} is not fully shown");
+    }
+}
+
+#[test]
+fn a_chromatic_grid_reports_semitones_rather_than_degrees() {
+    let grid = c_major_grid().chromatic();
+    assert_eq!(grid.degree_at(0, 0), 1);
+    assert_eq!(grid.degree_at(0, 1), 2);
+    assert_eq!(grid.degree_at(0, 11 % COLUMNS), grid.degree_at(0, 3));
+    assert_eq!(grid.layout(), Layout::Chromatic);
+    assert_eq!(c_major_grid().layout(), Layout::InKey);
 }
