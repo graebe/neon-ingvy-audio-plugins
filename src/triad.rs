@@ -471,29 +471,40 @@ impl Voiced<Triad> {
 // --- Conversions with the general chord type -------------------------------
 
 impl From<Triad> for Chord {
+    /// Every consonant triad is a chord; the conversion never fails.
     #[inline]
     fn from(triad: Triad) -> Chord {
-        Chord {
-            root: triad.root,
-            quality: match triad.quality {
+        Chord::from_quality(
+            triad.root,
+            match triad.quality {
                 TriadQuality::Major => ChordQuality::Major,
                 TriadQuality::Minor => ChordQuality::Minor,
             },
-        }
+        )
     }
 }
 
 impl TryFrom<Chord> for Triad {
     type Error = Chord;
 
-    /// Succeeds only for major and minor chords, the two the PLR group acts on.
-    /// The rejected chord is handed back as the error.
+    /// Succeeds for any chord whose pitches spell a major or minor triad on its
+    /// own root. Everything else is outside the consonant 24, and the rejected
+    /// chord comes back as the error.
+    ///
+    /// ```
+    /// use music_core::{Chord, Pitch, Triad};
+    ///
+    /// let c = Chord::major(Pitch::C);
+    /// assert_eq!(Triad::try_from(c), Ok(Triad::major(Pitch::C)));
+    /// assert_eq!(Chord::from(Triad::major(Pitch::C)), c);
+    ///
+    /// // A seventh chord is not a triad.
+    /// assert!(Triad::try_from(Chord::maj7(Pitch::C)).is_err());
+    /// ```
     fn try_from(chord: Chord) -> Result<Triad, Chord> {
-        // Only the two consonant qualities have a Triad; everything else in
-        // the general vocabulary is outside the PLR group's domain.
-        match chord.quality {
-            ChordQuality::Major => Ok(Triad::major(chord.root)),
-            ChordQuality::Minor => Ok(Triad::minor(chord.root)),
+        match chord.quality() {
+            Some(ChordQuality::Major) => Ok(Triad::major(chord.root())),
+            Some(ChordQuality::Minor) => Ok(Triad::minor(chord.root())),
             _ => Err(chord),
         }
     }

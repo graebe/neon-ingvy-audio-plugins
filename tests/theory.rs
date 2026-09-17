@@ -150,8 +150,8 @@ fn both_consonant_triads_share_an_interval_vector() {
     // major and a minor triad are indistinguishable by it, which is exactly
     // why the neo-Riemannian transformations can move between them so
     // smoothly.
-    let major = Chord::major(Pitch::C).pitch_set().interval_vector();
-    let minor = Chord::minor(Pitch::A).pitch_set().interval_vector();
+    let major = Chord::major(Pitch::C).pitches().interval_vector();
+    let minor = Chord::minor(Pitch::A).pitches().interval_vector();
     assert_eq!(major, [0, 0, 1, 1, 1, 0]);
     assert_eq!(major, minor);
 }
@@ -164,7 +164,9 @@ fn the_core_types_stay_small() {
     assert_eq!(size_of::<Pitch>(), 1);
     assert_eq!(size_of::<Interval>(), 2);
     assert_eq!(size_of::<PitchSet>(), 2);
-    assert_eq!(size_of::<Chord>(), 2);
+    // A chord is a root plus a twelve-bit set, so it holds any number of
+    // notes for one byte more than the fixed-quality version cost.
+    assert_eq!(size_of::<Chord>(), 4);
 
     // A note carries a 16-bit octave, which is what buys the total MIDI round
     // trip. Notes are never on a hot path here.

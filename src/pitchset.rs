@@ -4,6 +4,7 @@ use core::fmt::{self, Write as _};
 use core::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 
 use crate::Harmony;
+use crate::chord::Chord;
 use crate::pitch::{Interval, Pitch, Spelling};
 
 const MASK: u16 = 0x0FFF;
@@ -205,6 +206,75 @@ impl PitchSet {
         v
     }
 
+    /// Every reading of this set as a chord, one per pitch that works as a root.
+    ///
+    /// A set of pitches has no root of its own, so it usually has more than one
+    /// honest reading. The same four notes are a C6 and an A minor 7, and which
+    /// one they are depends on musical context this type cannot see. So this
+    /// yields all of them and lets you choose.
+    ///
+    /// Lazy and allocation-free. Only readings that match a named quality are
+    /// yielded; see [`Chord::quality`].
+    ///
+    /// ```
+    /// use music_core::{Chord, Pitch, PitchSet};
+    ///
+    /// let pitches = Chord::sixth(Pitch::C).pitches();
+    /// let readings: usize = pitches.interpretations().count();
+    /// assert_eq!(readings, 2);          // C6 and Am7
+    ///
+    /// // A diminished seventh is symmetric, so all four roots work.
+    /// let dim = Chord::dim7(Pitch::C).pitches();
+    /// assert_eq!(dim.interpretations().count(), 4);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn interpretations(self) -> Interpretations {
+        Interpretations {
+            roots: self.iter(),
+            pitches: self,
+        }
+    }
+
+    /// The single most likely reading of this set as a chord.
+    ///
+    /// A convenience over [`PitchSet::interpretations`] for when you want one
+    /// answer. **This is a heuristic, not a fact.** It prefers the reading with
+    /// the lowest [`crate::ChordQuality::rank`], which puts plain triads ahead
+    /// of sevenths, sevenths ahead of sixths, and named chords ahead of altered
+    /// ones. Ties go to the lower root.
+    ///
+    /// When the answer matters, read [`PitchSet::interpretations`] instead and
+    /// decide with the context you have.
+    ///
+    /// ```
+    /// use music_core::{Chord, ChordQuality, Pitch};
+    ///
+    /// // C, E, G, A is both a C6 and an A minor 7. The seventh wins.
+    /// let pitches = Chord::sixth(Pitch::C).pitches();
+    /// let best = pitches.identify().unwrap();
+    ///
+    /// assert_eq!(best.root(), Pitch::A);
+    /// assert_eq!(best.quality(), Some(ChordQuality::Minor7));
+    /// ```
+    #[must_use]
+    pub fn identify(self) -> Option<Chord> {
+        let mut best: Option<Chord> = None;
+        for candidate in self.interpretations() {
+            let better = match best {
+                None => true,
+                Some(current) => {
+                    let (a, b) = (candidate.quality()?, current.quality()?);
+                    (a.rank(), candidate.root().value()) < (b.rank(), current.root().value())
+                }
+            };
+            if better {
+                best = Some(candidate);
+            }
+        }
+        best
+    }
+
     /// Iterates the pitch classes in ascending order from C. Allocation-free.
     #[inline]
     #[must_use]
@@ -245,6 +315,36 @@ impl Iterator for PitchSetIter {
 }
 
 impl ExactSizeIterator for PitchSetIter {}
+
+/// Iterator over the ways a [`PitchSet`] can be read as a chord.
+///
+/// Built by [`PitchSet::interpretations`]. Walks the set's own pitches, trying
+/// each as a root, and yields the ones that name a known quality.
+#[derive(Clone, Copy, Debug)]
+pub struct Interpretations {
+    roots: PitchSetIter,
+    pitches: PitchSet,
+}
+
+impl Iterator for Interpretations {
+    type Item = Chord;
+
+    fn next(&mut self) -> Option<Chord> {
+        for root in self.roots.by_ref() {
+            let candidate = Chord::new(root, self.pitches);
+            if candidate.quality().is_some() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.roots.len()))
+    }
+}
+
+impl core::iter::FusedIterator for Interpretations {}
 
 impl core::iter::FusedIterator for PitchSetIter {}
 

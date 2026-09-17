@@ -12,8 +12,8 @@ use music_core::{Chord, ChordQuality, Interval, Pitch, PitchSet};
 fn all_triad_sets() -> Vec<PitchSet> {
     let mut out = Vec::with_capacity(24);
     for pitch in Pitch::ALL {
-        out.push(Chord::new(pitch, ChordQuality::Major).pitch_set());
-        out.push(Chord::new(pitch, ChordQuality::Minor).pitch_set());
+        out.push(Chord::from_quality(pitch, ChordQuality::Major).pitches());
+        out.push(Chord::from_quality(pitch, ChordQuality::Minor).pitches());
     }
     out
 }
@@ -33,7 +33,7 @@ fn sets(c: &mut Criterion) {
     });
 
     group.bench_function("transpose over 12 steps", |b| {
-        let set = Chord::major(Pitch::C).pitch_set();
+        let set = Chord::major(Pitch::C).pitches();
         b.iter(|| {
             let mut acc = 0u16;
             for n in 0..12 {

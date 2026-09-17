@@ -111,7 +111,7 @@ fn notes_round_trip_across_the_midi_range() {
 fn chords_parse(#[case] input: &str, #[case] quality: ChordQuality) {
     assert_eq!(
         input.parse::<Chord>().unwrap(),
-        Chord::new(Pitch::C, quality)
+        Chord::from_quality(Pitch::C, quality)
     );
 }
 
@@ -119,7 +119,7 @@ fn chords_parse(#[case] input: &str, #[case] quality: ChordQuality) {
 fn every_chord_round_trips() {
     for root in Pitch::ALL {
         for quality in ChordQuality::ALL {
-            let chord = Chord::new(root, quality);
+            let chord = Chord::from_quality(root, quality);
             let text = chord.to_string();
             assert_eq!(text.parse::<Chord>().unwrap(), chord, "{text}");
         }
@@ -130,8 +130,8 @@ fn every_chord_round_trips() {
 fn chord_sizes_and_sets_agree() {
     for root in Pitch::ALL {
         for quality in ChordQuality::ALL {
-            let chord = Chord::new(root, quality);
-            assert_eq!(chord.pitch_set().len() as usize, chord.size(), "{chord}");
+            let chord = Chord::from_quality(root, quality);
+            assert_eq!(chord.pitches().len() as usize, chord.size(), "{chord}");
             assert!(chord.contains(root), "{chord} lost its root");
             assert_eq!(chord.voice(4).len(), chord.size(), "{chord}");
         }

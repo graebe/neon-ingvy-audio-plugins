@@ -6,9 +6,9 @@ chords and pitch-class sets.
 No dependencies, `no_std` by default, and nothing here allocates. Every type is
 `Copy` and small enough to pass around without thinking about it.
 
-This is the layer underneath [`neo-riemann`](../neo-riemann), which adds
-consonant triads and the PLR transformation group. Nothing here knows about
-that theory, which is the point of the separation.
+This is the layer underneath [`neo-riemann`](../neo-riemann), which adds the
+PLR transformation group on top. Nothing here knows about that theory, which is
+the point of the separation.
 
 ## Two levels
 
@@ -106,24 +106,66 @@ assert_eq!(Note::from_midi(5000).midi(), 5000);
 assert_eq!(Note::from_midi(i16::MIN).midi(), i16::MIN);
 ```
 
-## Chords and sets
+## Chords
+
+A chord is a root plus any set of pitches, so it is not limited to a fixed
+vocabulary. A thirteenth, a cluster, or a chord nobody has named is as
+representable as a triad.
 
 ```rust
-use music_core::{Chord, Harmony, Pitch, PitchSet};
+use music_core::{Chord, ChordQuality, Pitch};
 
 let dm7 = Chord::min7(Pitch::D);
 assert_eq!(dm7.to_string(), "Dm7");
-assert_eq!(dm7.pitch_set().len(), 4);
+assert_eq!(dm7.quality(), Some(ChordQuality::Minor7));
+
+// Add a note and the name follows.
+let c = Chord::major(Pitch::C);
+assert_eq!(c.with(Pitch::B).quality(), Some(ChordQuality::Major7));
+
+// A chord with no name is still a chord, and still prints and parses.
+let cluster = c.with(Pitch::C_SHARP);
+assert_eq!(cluster.quality(), None);
+assert_eq!(cluster.to_string(), "C[0,1,4,7]");
+```
+
+Twenty-nine qualities are recognised, from triads through sixths, sevenths,
+added notes and extensions to the altered dominants. Each has a constructor, so
+nothing needs to reach for the parser: `major`, `min7`, `maj9`, `dom13`,
+`six_nine`, `dom7_sharp11` and the rest.
+
+## Naming a chord you were handed
+
+With a root known the answer is unique. Without one, a set of pitches usually
+has several honest readings, so both are available.
+
+```rust
+use music_core::{Chord, ChordQuality, Pitch};
+
+// C, E, G and A are a C6 and an A minor 7. Both readings are real.
+let pitches = Chord::sixth(Pitch::C).pitches();
+assert_eq!(pitches.interpretations().count(), 2);
+
+// `identify` picks one under a documented heuristic: sevenths beat sixths.
+assert_eq!(pitches.identify().unwrap().quality(), Some(ChordQuality::Minor7));
+
+// A diminished seventh divides the octave evenly, so all four roots work.
+assert_eq!(Chord::dim7(Pitch::C).pitches().interpretations().count(), 4);
+```
+
+`identify` is a heuristic wearing a definite-sounding name. When the answer
+matters, read `interpretations` and choose with the context you have.
+
+## Sets
+
+```rust
+use music_core::{Pitch, PitchSet};
 
 // A pitch set is a 12-bit mask, so set operations are single instructions.
 let major = PitchSet::from_pitches(&[Pitch::C, Pitch::E, Pitch::G]);
 let minor = PitchSet::from_pitches(&[Pitch::A, Pitch::C, Pitch::E]);
 assert_eq!((major & minor).len(), 2);
 ```
-
-There is one constructor per chord quality, so nothing has to reach for the
-parser: `major`, `minor`, `dim`, `aug`, `sus2`, `sus4`, `maj7`, `dom7`, `min7`,
-`min_maj7`, `half_dim7` and `dim7`. `FromStr` exists for real user input.
 
 ## Frequency
 
@@ -150,7 +192,8 @@ assert!((Pitch::A.at(4).frequency_hz_at(432.0) - 432.0).abs() < 1e-9);
 | `Interval` | a signed semitone count | 2 bytes |
 | `IntervalClass` | an interval folded to 0 through 6 | 1 byte |
 | `PitchSet` | any subset of the twelve | 2 bytes |
-| `Chord` | a named symbol like `Cmaj7` | 2 bytes |
+| `Chord` | a root plus any set of pitches | 4 bytes |
+| `Triad` | major or minor, root plus quality | 2 bytes |
 | `Note` | a pitch with a register | 4 bytes |
 | `Notes` | a free list, doublings allowed | 66 bytes |
 
