@@ -178,6 +178,29 @@ chord effect. They differ only where a chord reaches past the octave.
 That is declaration order, which is also `ChordQuality::ALL` order and the order
 `completions` yields in.
 
+## Inversions and slash chords
+
+A chord carries a bass as well as a root. They are the same note until you say
+otherwise, and when they differ the chord is written with a slash.
+
+```rust
+use music_core::{Chord, Pitch};
+
+let c = Chord::maj7(Pitch::C);
+
+assert_eq!(c.to_string(), "Cmaj7");
+assert_eq!(c.over(Pitch::E).to_string(), "Cmaj7/E");
+assert_eq!(c.over(Pitch::E).inversion(), 1);
+assert_eq!(c.over(Pitch::B).inversion(), 3);
+
+// The root never moves; only what is underneath it does.
+assert_eq!(c.over(Pitch::G).root(), Pitch::C);
+```
+
+Setting a bass is not a pure relabelling. The bass is a note that sounds, so a
+bass from outside the chord joins it, which is what makes `Am/F#` sayable at
+all.
+
 ## Naming a chord you were handed
 
 With a root known the answer is unique. Without one, a set of pitches usually
@@ -199,6 +222,29 @@ assert_eq!(Chord::dim7(Pitch::C).pitches().interpretations().count(), 4);
 
 `identify` is a heuristic wearing a definite-sounding name. When the answer
 matters, read `interpretations` and choose with the context you have.
+
+**A voicing knows more than a set does.** `Notes` holds real notes with octaves,
+so it has a lowest one, and the bass is what decides between a chord and its
+inversion. Naming a voicing uses it:
+
+```rust
+use music_core::{Chord, Notes, Pitch};
+
+// The same four pitch classes, and the bass decides which chord they are.
+let on_a = Notes::from_slice(&[
+    Pitch::A.at(3), Pitch::C.at(4), Pitch::E.at(4), Pitch::G.at(4),
+]).unwrap();
+let on_c = Notes::from_slice(&[
+    Pitch::C.at(3), Pitch::E.at(3), Pitch::G.at(3), Pitch::A.at(4),
+]).unwrap();
+
+assert_eq!(on_a.pitch_set(), on_c.pitch_set());
+assert_eq!(on_a.identify(), Some(Chord::min7(Pitch::A)));
+assert_eq!(on_c.identify(), Some(Chord::sixth(Pitch::C)));
+```
+
+Calling `pitch_set().identify()` on either gives A minor 7, because throwing the
+register away throws away the evidence.
 
 ## Arranging a chord
 
@@ -243,6 +289,26 @@ assert_eq!(played.identify(), Some(Chord::maj7(Pitch::E_FLAT)));
 
 // It is also four fifths of a C minor 9, which nothing else would tell you.
 assert!(played.completions().any(|c| c == Chord::min9(Pitch::C)));
+```
+
+## How open a voicing is
+
+`Voicing::Open` spreads a chord past an octave by lifting every second note, and
+any voicing can report how far it actually reaches.
+
+```rust
+use music_core::{Chord, Interval, Pitch, Voicing};
+
+let chord = Chord::maj7(Pitch::C);
+let close = chord.voice_as(3, Voicing::Close);   // C3 E3 G3 B3
+let open = chord.voice_as(3, Voicing::Open);     // C3 G3 E4 B4
+
+assert!(close.is_close());
+assert!(!open.is_close());
+assert!(open.spread().unwrap() > Interval::OCTAVE);
+
+// Spreading changes register, never which notes sound.
+assert_eq!(open.pitch_set(), close.pitch_set());
 ```
 
 ## Sets

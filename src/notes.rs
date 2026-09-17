@@ -3,6 +3,7 @@
 use core::fmt::{self, Write as _};
 
 use crate::Harmony;
+use crate::chord::Chord;
 use crate::pitch::Interval;
 use crate::pitchset::PitchSet;
 use crate::voiced::Note;
@@ -172,6 +173,81 @@ impl Notes {
             *note = *note + by;
         }
         out
+    }
+
+    /// How far this voicing reaches, from its lowest note to its highest.
+    ///
+    /// `None` when empty. Works on any voicing however it was built, so it is
+    /// the way to ask how open something actually is rather than how it was
+    /// asked for.
+    ///
+    /// ```
+    /// use music_core::{Chord, Interval, Pitch, Voicing};
+    ///
+    /// let close = Chord::maj7(Pitch::C).voice_as(3, Voicing::Close);
+    /// let open = Chord::maj7(Pitch::C).voice_as(3, Voicing::Open);
+    ///
+    /// assert!(close.spread().unwrap() < Interval::OCTAVE);
+    /// assert!(open.spread().unwrap() > Interval::OCTAVE);
+    /// ```
+    #[must_use]
+    pub fn spread(&self) -> Option<Interval> {
+        let sorted = self.sorted();
+        let low = sorted.as_slice().first()?;
+        let high = sorted.as_slice().last()?;
+        Some(*high - *low)
+    }
+
+    /// Whether every note fits inside one octave.
+    ///
+    /// An empty list and a single note are both close, having nothing to
+    /// spread.
+    #[must_use]
+    pub fn is_close(&self) -> bool {
+        match self.spread() {
+            Some(spread) => spread.semitones() < 12,
+            None => true,
+        }
+    }
+
+    /// Names this voicing, using the bass.
+    ///
+    /// Strictly better informed than `self.pitch_set().identify()`, which has
+    /// to throw the register away and with it the one thing that decides
+    /// between an inversion and a chord in root position. The lowest sounding
+    /// note is real evidence, so this prefers the reading rooted there and
+    /// falls back to the pitch-class heuristic only when the bass will not
+    /// serve as a root, recording it as a slash in that case.
+    ///
+    /// ```
+    /// use music_core::{Chord, Notes, Pitch};
+    ///
+    /// // The same four pitches, read by what is underneath them.
+    /// let rooted_on_a = Notes::from_slice(&[
+    ///     Pitch::A.at(3), Pitch::C.at(4), Pitch::E.at(4), Pitch::G.at(4),
+    /// ]).unwrap();
+    /// let rooted_on_c = Notes::from_slice(&[
+    ///     Pitch::C.at(3), Pitch::E.at(3), Pitch::G.at(3), Pitch::A.at(4),
+    /// ]).unwrap();
+    ///
+    /// assert_eq!(rooted_on_a.identify(), Some(Chord::min7(Pitch::A)));
+    /// assert_eq!(rooted_on_c.identify(), Some(Chord::sixth(Pitch::C)));
+    /// ```
+    #[must_use]
+    pub fn identify(&self) -> Option<Chord> {
+        let pitches = self.pitch_set();
+        let bass = self.bass()?.pitch();
+
+        // The bass as root is the reading the ear reaches for first.
+        for reading in pitches.interpretations() {
+            if reading.root().value() == bass.value() {
+                return Some(reading);
+            }
+        }
+
+        // Otherwise name it however the pitch classes fall, and record what is
+        // actually underneath.
+        pitches.identify().map(|chord| chord.over(bass))
     }
 
     /// The pitch classes present, with octaves and doublings collapsed away.

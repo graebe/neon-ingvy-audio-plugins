@@ -6,7 +6,7 @@ use core::str::FromStr;
 use crate::notes::Notes;
 use crate::pitch::{Interval, Pitch, Spelling, parse_pitch_prefix};
 use crate::pitchset::PitchSet;
-use crate::{DisplayBuffer, Harmony, ParseError, padded};
+use crate::{DisplayBuffer, Harmony, ParseError};
 
 /// A named chord quality: a recognisable pattern of intervals above a root.
 ///
@@ -503,6 +503,15 @@ pub enum Voicing {
     /// The standard way to open out a close chord: it puts air between the
     /// bass and the rest without changing a single pitch.
     Drop2,
+    /// The stacked voicing opened out, every second note lifted an octave.
+    ///
+    /// Open position, the classic counterpart to [`Voicing::Close`]: the same
+    /// pitches spread over more than an octave, so the chord breathes. A triad
+    /// becomes root, fifth, third; a seventh chord root, fifth, third, seventh.
+    ///
+    /// Unlike [`Voicing::Drop2`] this does not single out one note, so it opens
+    /// chords of any size the same way.
+    Open,
     /// The stacked voicing with the root left out.
     ///
     /// The one arrangement here that changes which pitches sound, and the only
@@ -540,6 +549,7 @@ pub enum Voicing {
 pub struct Chord {
     root: Pitch,
     pitches: PitchSet,
+    bass: Pitch,
 }
 
 macro_rules! chord_constructors {
@@ -566,6 +576,7 @@ impl Chord {
         Self {
             root,
             pitches: pitches.insert(root),
+            bass: root,
         }
     }
 
@@ -578,6 +589,7 @@ impl Chord {
             pitches: quality
                 .interval_set()
                 .transpose(Interval::new(root.value() as i16)),
+            bass: root,
         }
     }
 
@@ -705,6 +717,90 @@ impl Chord {
         self.pitches.contains(pitch)
     }
 
+    /// Puts a pitch in the bass, giving a slash chord.
+    ///
+    /// **Not a pure relabelling.** The bass is a note that sounds, so it is
+    /// inserted into the pitches if the chord did not already contain it. That
+    /// is what makes `Am/F#` expressible, and it means the result has a
+    /// different pitch set from the chord you started with.
+    ///
+    /// ```
+    /// use music_core::{Chord, Pitch};
+    ///
+    /// let first_inversion = Chord::major(Pitch::C).over(Pitch::E);
+    /// assert_eq!(first_inversion.to_string(), "C/E");
+    /// assert_eq!(first_inversion.root(), Pitch::C);
+    /// assert_eq!(first_inversion.inversion(), 1);
+    ///
+    /// // The bass need not have been in the chord.
+    /// let with_new_note = Chord::minor(Pitch::A).over(Pitch::F_SHARP);
+    /// assert_eq!(with_new_note.size(), 4);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn over(self, bass: Pitch) -> Self {
+        Self {
+            root: self.root,
+            pitches: self.pitches.insert(bass),
+            bass,
+        }
+    }
+
+    /// Puts the root back in the bass.
+    ///
+    /// Note this does not undo [`Chord::over`]: a bass that was not already one
+    /// of the pitches stays in the chord, because it sounded.
+    #[inline]
+    #[must_use]
+    pub const fn in_root_position(self) -> Self {
+        Self {
+            root: self.root,
+            pitches: self.pitches,
+            bass: self.root,
+        }
+    }
+
+    /// The lowest sounding pitch class. Equal to the root unless the chord is
+    /// inverted or a slash chord.
+    #[inline]
+    #[must_use]
+    pub const fn bass(self) -> Pitch {
+        self.bass
+    }
+
+    /// Whether the bass is something other than the root.
+    #[inline]
+    #[must_use]
+    pub const fn is_inverted(self) -> bool {
+        self.bass.value() != self.root.value()
+    }
+
+    /// Which inversion this is, counting upward from the root.
+    ///
+    /// Root position is 0, first inversion 1, and so on. Defined as the bass's
+    /// position in the chord's ascending-from-root order, so it works for
+    /// chords with no name as readily as for triads.
+    ///
+    /// ```
+    /// use music_core::{Chord, Pitch};
+    ///
+    /// let c = Chord::maj7(Pitch::C);              // C E G B
+    /// assert_eq!(c.inversion(), 0);
+    /// assert_eq!(c.over(Pitch::E).inversion(), 1);
+    /// assert_eq!(c.over(Pitch::G).inversion(), 2);
+    /// assert_eq!(c.over(Pitch::B).inversion(), 3);
+    /// ```
+    #[must_use]
+    pub fn inversion(self) -> u8 {
+        let from_root = self.bass.value().wrapping_sub(self.root.value()) % 12;
+        for (index, offset) in self.intervals().iter().enumerate() {
+            if offset.value() == from_root {
+                return index as u8;
+            }
+        }
+        0
+    }
+
     /// Moves the chord by an interval, keeping its shape.
     #[inline]
     #[must_use]
@@ -712,6 +808,7 @@ impl Chord {
         Self {
             root: self.root.transpose(by),
             pitches: self.pitches.transpose(by),
+            bass: self.bass.transpose(by),
         }
     }
 
@@ -722,20 +819,22 @@ impl Chord {
         Self {
             root: self.root,
             pitches: self.pitches.insert(pitch),
+            bass: self.bass,
         }
     }
 
-    /// Removes a pitch. Removing the root is refused, since a chord contains
-    /// its root by definition.
+    /// Removes a pitch. Removing the root or the bass is refused, since a chord
+    /// contains its root by definition and its bass is a note that sounds.
     #[inline]
     #[must_use]
     pub const fn without(self, pitch: Pitch) -> Self {
-        if pitch.value() == self.root.value() {
+        if pitch.value() == self.root.value() || pitch.value() == self.bass.value() {
             return self;
         }
         Self {
             root: self.root,
             pitches: self.pitches.remove(pitch),
+            bass: self.bass,
         }
     }
 
@@ -773,11 +872,21 @@ impl Chord {
     /// ```
     #[must_use]
     pub fn voice_as(self, octave: i16, voicing: Voicing) -> Notes {
-        match voicing {
+        let arranged = match voicing {
             Voicing::Close => self.voice(octave),
             Voicing::Stacked => stacked_notes(self, octave),
             Voicing::Drop2 => dropped_second(stacked_notes(self, octave)),
+            Voicing::Open => opened(stacked_notes(self, octave)),
             Voicing::Rootless => without_root(stacked_notes(self, octave), self.root),
+        };
+
+        // Only a chord that is actually inverted forces its bass. A chord in
+        // root position lets the arrangement choose what sits lowest, which is
+        // the whole point of Drop2 putting the fifth underneath.
+        if self.is_inverted() {
+            rebass(arranged, self.bass)
+        } else {
+            arranged
         }
     }
 }
@@ -799,6 +908,59 @@ fn stacked_notes(chord: Chord, octave: i16) -> Notes {
 }
 
 /// The notes with the second from the top lowered an octave, lowest first.
+/// Lifts every second note an octave, opening a close voicing out.
+fn opened(notes: Notes) -> Notes {
+    let sorted = notes.sorted();
+    let mut out = Notes::EMPTY;
+    for (index, note) in sorted.as_slice().iter().enumerate() {
+        let lifted = if index % 2 == 1 {
+            *note + Interval::OCTAVE
+        } else {
+            *note
+        };
+        let _ = out.push(lifted);
+    }
+    out.sorted()
+}
+
+/// Drops the bass note below the rest of the voicing.
+///
+/// A slash chord that does not sound its own bass is not worth having, so every
+/// arrangement passes through here. It works by lowering the instance of the
+/// bass pitch class already in the voicing, rather than by raising everything
+/// else: raising fails whenever the bass sits high in the arrangement, with
+/// other notes stranded between the floor and it.
+///
+/// Every pitch class survives, only its register changes. The voicing can end
+/// up to an octave below the one asked for, which is the cost of guaranteeing
+/// that the bass is actually at the bottom.
+fn rebass(notes: Notes, bass: Pitch) -> Notes {
+    let sorted = notes.sorted();
+    let Some(lowest) = sorted.bass() else {
+        return sorted;
+    };
+    if lowest.pitch().value() == bass.value() {
+        return sorted;
+    }
+
+    let floor = lowest.midi();
+    let mut out = Notes::EMPTY;
+    let mut moved = false;
+    for note in sorted.as_slice() {
+        if !moved && note.pitch().value() == bass.value() {
+            let mut lowered = *note;
+            while lowered.midi() >= floor {
+                lowered = lowered - Interval::OCTAVE;
+            }
+            let _ = out.push(lowered);
+            moved = true;
+        } else {
+            let _ = out.push(*note);
+        }
+    }
+    out.sorted()
+}
+
 fn dropped_second(notes: Notes) -> Notes {
     let sorted = notes.sorted();
     let len = sorted.len();
@@ -838,25 +1000,33 @@ impl Harmony for Chord {
 
 impl fmt::Display for Chord {
     /// A named chord prints its symbol, `Cmaj7`. Anything else prints the root
-    /// and its semitone offsets, `C[0,1,4,6]`. Both forms parse back.
+    /// and its semitone offsets, `C[0,1,4,6]`. A chord whose bass is not its
+    /// root adds the bass after a slash, `C/E`. Every form parses back.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(quality) = self.quality() {
-            return padded!(
-                f,
-                16,
-                "{}{}",
-                self.root.name(Spelling::Sharps),
-                quality.symbol()
-            );
+        let mut buffer = DisplayBuffer::<80>::new();
+
+        match self.quality() {
+            Some(quality) => {
+                let _ = write!(
+                    buffer,
+                    "{}{}",
+                    self.root.name(Spelling::Sharps),
+                    quality.symbol()
+                );
+            }
+            None => {
+                let _ = write!(buffer, "{}[", self.root.name(Spelling::Sharps));
+                for (index, offset) in self.intervals().iter().enumerate() {
+                    let separator = if index > 0 { "," } else { "" };
+                    let _ = write!(buffer, "{}{}", separator, offset.value());
+                }
+                let _ = write!(buffer, "]");
+            }
         }
 
-        let mut buffer = DisplayBuffer::<64>::new();
-        let _ = write!(buffer, "{}[", self.root.name(Spelling::Sharps));
-        for (index, offset) in self.intervals().iter().enumerate() {
-            let separator = if index > 0 { "," } else { "" };
-            let _ = write!(buffer, "{}{}", separator, offset.value());
+        if self.is_inverted() {
+            let _ = write!(buffer, "/{}", self.bass.name(Spelling::Sharps));
         }
-        let _ = write!(buffer, "]");
         f.pad(buffer.as_str())
     }
 }
@@ -871,6 +1041,27 @@ impl FromStr for Chord {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // A slash separates the chord from its bass. Split on the last one, so
+        // that a quality containing a slash, like `6/9`, is not mistaken for
+        // one: `C6/9` is a six-nine chord, `C6/9/E` is one over E.
+        let (body, bass) = match s.rsplit_once('/') {
+            Some((body, tail)) if tail.parse::<Pitch>().is_ok() => {
+                (body, Some(tail.parse::<Pitch>()?))
+            }
+            _ => (s, None),
+        };
+
+        let chord = Self::parse_without_bass(body)?;
+        Ok(match bass {
+            Some(bass) => chord.over(bass),
+            None => chord,
+        })
+    }
+}
+
+impl Chord {
+    /// The parsing above, minus the slash handling.
+    fn parse_without_bass(s: &str) -> Result<Self, ParseError> {
         let (root, used) = parse_pitch_prefix(s.as_bytes())?;
         let suffix = &s[used..];
 
