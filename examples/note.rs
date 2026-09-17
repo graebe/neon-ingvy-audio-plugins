@@ -1,4 +1,4 @@
-//! Everything `Note` can do: a pitch that knows its register.
+//! A tour of `Note`, written to be read rather than to be clever.
 //!
 //! Run it with:
 //!
@@ -6,472 +6,434 @@
 //! cargo run -p music-core --example note
 //! ```
 //!
-//! A `Note` is a `Pitch` given an octave. That is the definition rather than an
-//! analogy: `Note` is a type alias for `Voiced<Pitch>`, the same generic that
-//! produces `VoicedTriad` as `Voiced<Triad>`. Giving something a register is one
-//! act that applies at both levels.
+//! A `Note` is a `Pitch` that knows which octave it is in. A pitch is just "C";
+//! a note is "the C in the middle of the piano".
 //!
 //! For the octave-free level, see the `pitch` example.
 
-use std::collections::{HashMap, HashSet};
-
-use music_core::{Harmony, Interval, Note, Notes, Pitch};
-
-fn heading(title: &str) {
-    println!("\n\x1b[1m{title}\x1b[0m");
-    println!("{}", "-".repeat(title.len()));
-}
+use music_core::{Interval, Note, Notes, Pitch};
 
 fn main() {
-    building_one();
-    reading_one();
-    the_relationship_to_pitch();
-    printing();
-    arithmetic();
-    the_octave_is_real();
-    comparing();
-    sorting_and_collections();
-    the_midi_range();
-    the_range_limit();
-    #[cfg(feature = "std")]
+    what_a_note_is();
+    making_a_note();
+    reading_a_note();
+    octave_numbers();
+    printing_a_note();
+    moving_a_note();
+    the_octave_matters_here();
+    the_gap_between_two_notes();
+    comparing_notes();
+    how_high_does_it_sound();
     frequencies();
-    as_a_voicing();
-    lists_of_notes();
+    a_handful_of_notes();
 }
 
-/// Four ways in.
-fn building_one() {
-    heading("Building a note");
+fn what_a_note_is() {
+    println!();
+    println!("WHAT A NOTE IS");
+    println!("--------------");
+    println!();
+    println!("A pitch is a note name with no octave: just \"C\". There are twelve.");
+    println!();
+    println!("A note is a pitch that knows its octave: \"C in octave 4\", the C in");
+    println!("the middle of a piano. Give a pitch an octave and you have a note.");
+    println!();
 
-    println!("  From a pitch plus an octave, which reads best:");
-    println!("    Pitch::C.at(4)   = {}", Pitch::C.at(4));
-    println!("    Pitch::A.at(4)   = {}", Pitch::A.at(4));
-    println!("    Pitch::E_FLAT.at(3) = {}", Pitch::E_FLAT.at(3));
+    let pitch = Pitch::C;
+    let note = pitch.at(4);
 
-    println!("\n  From a MIDI number, where 60 is middle C:");
-    for midi in [0i16, 60, 69, 127] {
-        println!("    Note::from_midi({midi:>3}) = {}", Note::from_midi(midi));
-    }
-
-    println!("\n  From its parts, for const contexts:");
-    const MIDDLE_C: Note = Note::from_parts(Pitch::C, 4);
-    println!("    Note::from_parts(Pitch::C, 4) = {MIDDLE_C}");
-
-    println!("\n  From text. Unlike a pitch, the octave is required:");
-    for text in ["C4", "Eb3", "A4", "C-1", "G9"] {
-        let note: Note = text.parse().unwrap();
-        println!("    {text:<5} -> {note:<5} (midi {})", note.midi());
-    }
-
-    println!("\n  Text without an octave is a pitch, not a note, and is rejected:");
-    for text in ["C", "C4x", "", "4"] {
-        println!(
-            "    {:<6} -> {:?}",
-            format!("{text:?}"),
-            text.parse::<Note>()
-        );
-    }
+    println!("  The pitch is {pitch}");
+    println!("  The note is  {note}");
+    println!();
+    println!("Going the other way throws the octave away again.");
+    println!();
+    println!("  The note {note} has pitch {}", note.pitch());
 }
 
-/// Three accessors, no surprises.
-fn reading_one() {
-    heading("Reading a note");
+fn making_a_note() {
+    println!();
+    println!("MAKING A NOTE");
+    println!("-------------");
+    println!();
+    println!("The clearest way is to take a pitch and give it an octave.");
+    println!();
+
+    let middle_c = Pitch::C.at(4);
+    let concert_a = Pitch::A.at(4);
+    let low_e = Pitch::E.at(2);
+
+    println!("  Pitch::C.at(4) gives {middle_c}");
+    println!("  Pitch::A.at(4) gives {concert_a}");
+    println!("  Pitch::E.at(2) gives {low_e}");
+    println!();
+    println!("You can also build one from a MIDI number, which is how computers");
+    println!("usually name notes. Middle C is 60.");
+    println!();
+
+    println!("  Note::from_midi(60) gives {}", Note::from_midi(60));
+    println!("  Note::from_midi(69) gives {}", Note::from_midi(69));
+    println!("  Note::from_midi(0)  gives {}", Note::from_midi(0));
+    println!();
+    println!("Or read one from text. Unlike a pitch, the octave is required.");
+    println!();
+
+    let parsed: Note = "C4".parse().unwrap();
+    let parsed_flat: Note = "Eb3".parse().unwrap();
+
+    println!("  \"C4\"  reads as {parsed}");
+    println!("  \"Eb3\" reads as {parsed_flat}");
+    println!();
+    println!("Text without an octave is a pitch, not a note, so it is refused.");
+    println!();
+    println!("  \"C\" reads as {:?}", "C".parse::<Note>());
+}
+
+fn reading_a_note() {
+    println!();
+    println!("READING A NOTE");
+    println!("--------------");
+    println!();
+    println!("A note answers three questions.");
+    println!();
 
     let note = Pitch::E_FLAT.at(3);
-    println!("    note      = {note}");
-    println!("    .pitch()  = {}", note.pitch());
-    println!("    .octave() = {}", note.octave());
-    println!("    .midi()   = {}", note.midi());
 
-    println!("\n  Octaves are scientific pitch notation, so middle C is C4 and");
-    println!("  the bottom of MIDI is C in octave -1:\n");
-    for octave in -1..=9 {
-        let c = Pitch::C.at(octave);
-        println!("    {:<6} midi {:>4}", c.to_string(), c.midi());
-    }
+    println!("  The note is        {note}");
+    println!("  Its pitch is       {}", note.pitch());
+    println!("  Its octave is      {}", note.octave());
+    println!("  Its MIDI number is {}", note.midi());
 }
 
-/// Projecting down and lifting back up.
-fn the_relationship_to_pitch() {
-    heading("How a note relates to its pitch");
+fn octave_numbers() {
+    println!();
+    println!("HOW OCTAVES ARE NUMBERED");
+    println!("------------------------");
+    println!();
+    println!("Middle C is called C4. Each C above adds one to the octave, and");
+    println!("each C below subtracts one. The lowest C in MIDI is C-1.");
+    println!();
 
-    println!("  Lifting adds a register, projecting discards it:\n");
-    println!("    Pitch::C.at(4)          = {}   (lift)", Pitch::C.at(4));
+    println!("  {} is MIDI {}", Pitch::C.at(-1), Pitch::C.at(-1).midi());
+    println!("  {}  is MIDI {}", Pitch::C.at(1), Pitch::C.at(1).midi());
+    println!("  {}  is MIDI {}", Pitch::C.at(2), Pitch::C.at(2).midi());
+    println!("  {}  is MIDI {}", Pitch::C.at(3), Pitch::C.at(3).midi());
     println!(
-        "    Pitch::C.at(4).pitch()  = {}    (project)",
-        Pitch::C.at(4).pitch()
+        "  {}  is MIDI {}  <- middle C",
+        Pitch::C.at(4),
+        Pitch::C.at(4).midi()
     );
-
-    println!("\n  Every C has the same pitch but they are different notes:");
-    let cs = [Pitch::C.at(3), Pitch::C.at(4), Pitch::C.at(5)];
-    println!(
-        "    {} {} {}  all have pitch {}",
-        cs[0],
-        cs[1],
-        cs[2],
-        cs[0].pitch()
-    );
-    println!("    C3 == C4  ->  {}", cs[0] == cs[1]);
-
-    println!("\n  Enharmonics still collapse, because the pitch inside them does:");
-    println!(
-        "    D#4 == Eb4  ->  {}",
-        Pitch::D_SHARP.at(4) == Pitch::E_FLAT.at(4)
-    );
+    println!("  {}  is MIDI {}", Pitch::C.at(5), Pitch::C.at(5).midi());
+    println!("  {}  is MIDI {}", Pitch::C.at(6), Pitch::C.at(6).midi());
+    println!();
+    println!("Every octave adds 12, because there are twelve pitches in one.");
 }
 
-/// Display honours the usual format flags.
-fn printing() {
-    heading("Printing");
+fn printing_a_note() {
+    println!();
+    println!("PRINTING A NOTE");
+    println!("---------------");
+    println!();
+    println!("A note prints as its pitch followed by its octave.");
+    println!();
 
-    println!("    Display: {}", Pitch::E_FLAT.at(3));
-    println!("    Debug:   {:?}", Pitch::E_FLAT.at(3));
-
-    println!("\n  Width, fill and alignment work, so tables line up:\n");
-    for note in [Pitch::C.at(4), Pitch::C_SHARP.at(10), Pitch::B.at(-1)] {
-        println!("    |{note:>7}|{note:<7}|{note:^7}|");
-    }
+    println!("  {}", Pitch::C.at(4));
+    println!("  {}", Pitch::E_FLAT.at(3));
+    println!("  {}", Pitch::B.at(-1));
+    println!();
+    println!("Printing uses sharps, so E flat shows as D sharp.");
+    println!();
+    println!("Notes line up in columns too.");
+    println!();
+    println!("  |{:>6}|", Pitch::C.at(4));
+    println!("  |{:>6}|", Pitch::C_SHARP.at(10));
+    println!("  |{:<6}|", Pitch::C.at(4));
 }
 
-/// Adding intervals, and subtracting notes.
-fn arithmetic() {
-    heading("Arithmetic");
+fn moving_a_note() {
+    println!();
+    println!("MOVING A NOTE");
+    println!("-------------");
+    println!();
+    println!("Adding an interval moves a note, exactly as it moves a pitch.");
+    println!();
 
     let middle_c = Pitch::C.at(4);
 
-    println!("  Adding and subtracting an interval moves the note in register:\n");
-    println!("    C4 + a fifth  = {}", middle_c + Interval::PERFECT_FIFTH);
-    println!("    C4 - a fifth  = {}", middle_c - Interval::PERFECT_FIFTH);
-    println!("    C4 + an octave = {}", middle_c + Interval::OCTAVE);
-    println!("    C4 - an octave = {}", middle_c - Interval::OCTAVE);
-
-    println!("\n  Walking a C major scale from middle C:\n");
-    print!("    ");
-    for step in [0, 2, 4, 5, 7, 9, 11, 12] {
-        print!("{} ", middle_c + Interval::new(step));
-    }
+    println!(
+        "  C4 plus a major third   is {}",
+        middle_c + Interval::MAJOR_THIRD
+    );
+    println!(
+        "  C4 plus a perfect fifth is {}",
+        middle_c + Interval::PERFECT_FIFTH
+    );
+    println!(
+        "  C4 minus a major third  is {}",
+        middle_c - Interval::MAJOR_THIRD
+    );
+    println!();
+    println!("Walking up a C major scale, one step at a time:");
     println!();
 
-    println!("\n  Subtracting two notes gives the interval between them. Unlike");
-    println!("  the pitch level this is signed and can exceed an octave:\n");
-    for (a, b) in [
-        (Pitch::C.at(4), Pitch::G.at(4)),
-        (Pitch::G.at(4), Pitch::C.at(4)),
-        (Pitch::C.at(4), Pitch::C.at(6)),
-        (Pitch::C.at(6), Pitch::C.at(4)),
-    ] {
-        println!("    {b} - {a} = {:>4} semitones", (b - a).semitones());
-    }
+    println!("  {}", middle_c);
+    println!("  {}", middle_c + Interval::new(2));
+    println!("  {}", middle_c + Interval::new(4));
+    println!("  {}", middle_c + Interval::new(5));
+    println!("  {}", middle_c + Interval::new(7));
+    println!("  {}", middle_c + Interval::new(9));
+    println!("  {}", middle_c + Interval::new(11));
+    println!("  {}", middle_c + Interval::new(12));
+    println!();
+    println!("Notice the last one is C again, one octave higher.");
+}
 
-    println!("\n  Note that `a - b` is exactly `-(b - a)` here, which is not true");
-    println!("  of the pitch-level `interval_to`, since that one always reports");
-    println!("  the ascending distance.");
+fn the_octave_matters_here() {
+    println!();
+    println!("THE OCTAVE ACTUALLY MATTERS HERE");
+    println!("--------------------------------");
+    println!();
+    println!("This is the one big difference between a pitch and a note.");
+    println!();
+    println!("Adding an octave to a pitch changes nothing, because a pitch has");
+    println!("no octave to change.");
+    println!();
+
+    let c_pitch = Pitch::C;
+
     println!(
-        "    C.interval_to(G) = {}, G.interval_to(C) = {}",
-        Pitch::C.interval_to(Pitch::G),
-        Pitch::G.interval_to(Pitch::C)
+        "  The pitch C plus an octave is still {}",
+        c_pitch + Interval::OCTAVE
+    );
+    println!();
+    println!("Adding an octave to a note moves it somewhere new.");
+    println!();
+
+    let c_note = Pitch::C.at(4);
+    let higher = c_note + Interval::OCTAVE;
+
+    println!("  The note {c_note} plus an octave is {higher}");
+    println!("  MIDI {} becomes MIDI {}", c_note.midi(), higher.midi());
+    println!();
+    println!("A pitch wraps around like a clock. A note keeps climbing.");
+    println!();
+    println!(
+        "  Pitch C plus 24 semitones: {}",
+        c_pitch + Interval::new(24)
+    );
+    println!(
+        "  Note C4 plus 24 semitones: {}",
+        c_note + Interval::new(24)
     );
 }
 
-/// The one behaviour that most separates a note from a pitch.
-fn the_octave_is_real() {
-    heading("The octave is real here");
+fn the_gap_between_two_notes() {
+    println!();
+    println!("THE GAP BETWEEN TWO NOTES");
+    println!("-------------------------");
+    println!();
+    println!("Subtracting two notes tells you the distance between them. Unlike");
+    println!("the pitch version this can be bigger than an octave, and it is");
+    println!("negative when you go down.");
+    println!();
 
-    println!("  At the pitch level an octave is a no-op, because an octave is");
-    println!("  exactly what a pitch throws away. At the note level it moves:\n");
+    let c4 = Pitch::C.at(4);
+    let g4 = Pitch::G.at(4);
+    let c6 = Pitch::C.at(6);
 
     println!(
-        "    pitch:  C + an octave = {}   (unchanged)",
-        Pitch::C.transpose(Interval::OCTAVE)
+        "  From {c4} up to {g4} is {} semitones",
+        (g4 - c4).semitones()
     );
     println!(
-        "    note:   C4 + an octave = {}  (midi {} -> {})",
-        Pitch::C.at(4) + Interval::OCTAVE,
-        Pitch::C.at(4).midi(),
-        (Pitch::C.at(4) + Interval::OCTAVE).midi()
+        "  From {g4} down to {c4} is {} semitones",
+        (c4 - g4).semitones()
     );
-
-    println!("\n  Same for large intervals. The pitch wraps, the note climbs:\n");
-    for semitones in [12i16, 24, 36, 120] {
-        let interval = Interval::new(semitones);
-        println!(
-            "    {semitones:>4} semitones: pitch {} , note {}",
-            Pitch::C.transpose(interval),
-            Pitch::C.at(4) + interval
-        );
-    }
+    println!(
+        "  From {c4} up to {c6} is {} semitones",
+        (c6 - c4).semitones()
+    );
+    println!();
+    println!("Those first two are exact opposites, which is what a minus sign");
+    println!("should do.");
 }
 
-/// Ordering follows what you hear.
-fn comparing() {
-    heading("Comparing");
+fn comparing_notes() {
+    println!();
+    println!("COMPARING NOTES");
+    println!("---------------");
+    println!();
+    println!("Two notes are equal only if the pitch AND the octave match.");
+    println!();
 
-    println!("  Equality needs both the pitch and the octave to match:\n");
-    println!("    C4 == C4  ->  {}", Pitch::C.at(4) == Pitch::C.at(4));
-    println!("    C4 == C5  ->  {}", Pitch::C.at(4) == Pitch::C.at(5));
+    let middle_c = Pitch::C.at(4);
+    let same_note = Note::from_midi(60);
+    let octave_up = Pitch::C.at(5);
+
+    println!("  Is C4 equal to C4? {}", middle_c == same_note);
+    println!("  Is C4 equal to C5? {}", middle_c == octave_up);
+    println!();
+    println!("Sharps and flats still tie, because the pitch inside them ties.");
+    println!();
     println!(
-        "    D#4 == Eb4 ->  {}   (enharmonics tie)",
+        "  Is D#4 equal to Eb4? {}",
         Pitch::D_SHARP.at(4) == Pitch::E_FLAT.at(4)
     );
+}
 
-    println!("\n  Ordering follows sounding pitch height, unlike the pitch level");
-    println!("  which orders by class number:\n");
-    println!("    C4 <  G4  ->  {}", Pitch::C.at(4) < Pitch::G.at(4));
-    println!("    B3 <  C4  ->  {}", Pitch::B.at(3) < Pitch::C.at(4));
-    println!("    but as pitches, B > C  ->  {}", Pitch::B > Pitch::C);
+fn how_high_does_it_sound() {
+    println!();
+    println!("WHICH NOTE SOUNDS HIGHER");
+    println!("------------------------");
+    println!();
+    println!("This is where notes are more useful than pitches. A note knows how");
+    println!("high it sounds, so comparing them means what you expect.");
+    println!();
 
-    println!("\n  That is the useful difference: a note knows how high it sounds,");
-    println!("  a pitch has no height to know.\n");
+    let b3 = Pitch::B.at(3);
+    let c4 = Pitch::C.at(4);
+
+    println!("  Does {b3} sound lower than {c4}? {}", b3 < c4);
+    println!();
+    println!("Compare that with the pitches alone, where the answer flips:");
+    println!();
     println!(
-        "    C4.cmp(&G4) = {:?}",
-        Pitch::C.at(4).cmp(&Pitch::G.at(4))
+        "  Is the pitch B less than the pitch C? {}",
+        Pitch::B < Pitch::C
     );
-    println!("    min(G4, C5) = {}", Pitch::G.at(4).min(Pitch::C.at(5)));
-    println!("    max(G4, C5) = {}", Pitch::G.at(4).max(Pitch::C.at(5)));
+    println!();
+    println!("Both answers are right. The pitches compare their numbers, 11 and");
+    println!("0. The notes compare how they sound. When you mean sound, use a");
+    println!("note.");
+    println!();
+    println!("Picking the lower or higher of two notes works as you would hope.");
+    println!();
 
-    println!("\n  Equality and ordering agree, because a MIDI number determines");
-    println!("  the pitch and the octave uniquely:");
-    let mismatches = (0i16..2000)
-        .filter(|m| {
-            let a = Note::from_midi(*m);
-            let b = Note::from_midi(*m);
-            (a == b) != (a.cmp(&b) == std::cmp::Ordering::Equal)
-        })
-        .count();
-    println!("    disagreements found: {mismatches}");
+    let g4 = Pitch::G.at(4);
+    let c5 = Pitch::C.at(5);
+
+    println!("  The lower of {g4} and {c5} is {}", g4.min(c5));
+    println!("  The higher of {g4} and {c5} is {}", g4.max(c5));
 }
 
-/// Sorting and using notes as keys.
-fn sorting_and_collections() {
-    heading("Sorting and collections");
-
-    let mut notes = [
-        Pitch::G.at(4),
-        Pitch::C.at(4),
-        Pitch::E.at(3),
-        Pitch::C.at(5),
-        Pitch::A.at(4),
-    ];
-    let before: Vec<String> = notes.iter().map(|n| n.to_string()).collect();
-    notes.sort();
-    let after: Vec<String> = notes.iter().map(|n| n.to_string()).collect();
-    println!("    before: {}", before.join(" "));
-    println!("    sorted: {}", after.join(" "));
-    println!(
-        "    lowest {}, highest {}",
-        notes[0],
-        notes[notes.len() - 1]
-    );
-
-    println!("\n  Note is Hash and Eq, so it keys a map directly:");
-    let mut velocity: HashMap<Note, u8> = HashMap::new();
-    velocity.insert(Pitch::C.at(4), 100);
-    velocity.insert(Pitch::E.at(4), 80);
-    let mut keys: Vec<_> = velocity.keys().copied().collect();
-    keys.sort();
-    for key in keys {
-        println!("    {key:<5} velocity {}", velocity[&key]);
-    }
-
-    println!("\n  Enharmonics collapse in a set, octaves do not:");
-    let set: HashSet<Note> = [
-        Pitch::D_SHARP.at(4),
-        Pitch::E_FLAT.at(4),
-        Pitch::E_FLAT.at(5),
-    ]
-    .into_iter()
-    .collect();
-    println!("    {{D#4, Eb4, Eb5}} has {} distinct members", set.len());
-}
-
-/// Where the standard MIDI numbers land.
-fn the_midi_range() {
-    heading("The MIDI range");
-
-    for (midi, label) in [
-        (0i16, "bottom of MIDI"),
-        (21, "lowest key on a piano"),
-        (60, "middle C"),
-        (69, "concert A, 440 Hz"),
-        (108, "top key on a piano"),
-        (127, "top of MIDI"),
-    ] {
-        println!(
-            "    midi {midi:>3} = {:<5} {label}",
-            Note::from_midi(midi).to_string()
-        );
-    }
-
-    println!("\n  `midi()` is not clamped, so a note outside the range still");
-    println!("  answers. Validate before writing a MIDI file:\n");
-    for note in [Pitch::C.at(4), Pitch::C.at(-5), Pitch::C.at(40)] {
-        let midi = note.midi();
-        println!(
-            "    {:<7} midi {:>6}  in range? {}",
-            note.to_string(),
-            midi,
-            (0..=127).contains(&midi)
-        );
-    }
-}
-
-/// The range, which is now total.
-fn the_range_limit() {
-    heading("The range");
-
-    println!("  The octave is a signed 16-bit value, so every MIDI number a");
-    println!("  signed 16-bit integer can hold round-trips exactly. There is no");
-    println!("  boundary to remember and nothing truncates.\n");
-
-    for midi in [i16::MIN, -1000, 0, 60, 127, 5000, i16::MAX] {
-        let back = Note::from_midi(midi).midi();
-        let verdict = if back == midi {
-            "round-trips"
-        } else {
-            "BROKEN"
-        };
-        println!(
-            "    midi {midi:>6} -> {:<9} -> midi {back:>6}   {verdict}",
-            Note::from_midi(midi).to_string()
-        );
-    }
-
-    let broken = (i16::MIN..=i16::MAX)
-        .filter(|m| Note::from_midi(*m).midi() != *m)
-        .count();
-    println!("\n  Checked across all 65,536 values. Failures: {broken}.");
-
-    println!("\n  An earlier version stored the octave in a single byte and");
-    println!("  corrupted silently outside roughly -1524 to 1547, which is why");
-    println!(
-        "  it was widened. The cost was {} bytes per note instead of 2.",
-        size_of::<Note>()
-    );
-}
-
-/// Hertz, the one place a register becomes a physical quantity.
-///
-/// Behind the `std` feature, because computing it needs floating-point maths
-/// that `core` does not provide.
 #[cfg(feature = "std")]
 fn frequencies() {
-    heading("Frequency");
+    println!();
+    println!("HOW MANY TIMES A SECOND IT VIBRATES");
+    println!("-----------------------------------");
+    println!();
+    println!("Only a note has a frequency, because only a note has an octave. A");
+    println!("pitch has no such method, and that is the point of the two types.");
+    println!();
 
-    println!("  Only a note has a frequency, because only a note has a register.");
-    println!("  A pitch class has no such method, and that is the point.\n");
+    let concert_a = Pitch::A.at(4);
 
-    for note in [
-        Pitch::A.at(4),
-        Pitch::C.at(4),
+    println!(
+        "  {} vibrates {} times a second",
+        concert_a,
+        concert_a.frequency_hz()
+    );
+    println!();
+    println!("Going up an octave doubles it. Going down halves it.");
+    println!();
+
+    println!(
+        "  {} is {:.2} Hz",
+        Pitch::A.at(2),
+        Pitch::A.at(2).frequency_hz()
+    );
+    println!(
+        "  {} is {:.2} Hz",
         Pitch::A.at(3),
+        Pitch::A.at(3).frequency_hz()
+    );
+    println!(
+        "  {} is {:.2} Hz",
+        Pitch::A.at(4),
+        Pitch::A.at(4).frequency_hz()
+    );
+    println!(
+        "  {} is {:.2} Hz",
         Pitch::A.at(5),
-        Pitch::C.at(-1),
-    ] {
-        println!(
-            "    {:<6} midi {:>4}  {:>12.4} Hz",
-            note.to_string(),
-            note.midi(),
-            note.frequency_hz()
-        );
-    }
-
-    println!("\n  Every octave doubles the frequency:");
-    for octave in 0..=8 {
-        let a = Pitch::A.at(octave);
-        println!("    {:<5} {:>10.3} Hz", a.to_string(), a.frequency_hz());
-    }
-
-    println!("\n  Other tuning references, for anyone not at 440:");
-    for reference in [440.0, 432.0, 415.0] {
-        println!(
-            "    A4 at {reference:>5.0} -> middle C is {:>8.3} Hz",
-            Pitch::C.at(4).frequency_hz_at(reference)
-        );
-    }
+        Pitch::A.at(5).frequency_hz()
+    );
+    println!(
+        "  {} is {:.2} Hz",
+        Pitch::A.at(6),
+        Pitch::A.at(6).frequency_hz()
+    );
+    println!();
+    println!("Middle C is not a round number.");
+    println!();
+    println!(
+        "  {} is {:.4} Hz",
+        Pitch::C.at(4),
+        Pitch::C.at(4).frequency_hz()
+    );
+    println!();
+    println!("Orchestras have not always tuned A to 440. You can ask for another");
+    println!("reference.");
+    println!();
+    println!(
+        "  Tuned to 440: {} is {:.2} Hz",
+        Pitch::C.at(4),
+        Pitch::C.at(4).frequency_hz_at(440.0)
+    );
+    println!(
+        "  Tuned to 432: {} is {:.2} Hz",
+        Pitch::C.at(4),
+        Pitch::C.at(4).frequency_hz_at(432.0)
+    );
+    println!(
+        "  Tuned to 415: {} is {:.2} Hz",
+        Pitch::C.at(4),
+        Pitch::C.at(4).frequency_hz_at(415.0)
+    );
 }
 
-/// A note is a voicing, so the generic methods apply.
-fn as_a_voicing() {
-    heading("A note is a voicing of one voice");
-
-    let note = Pitch::G.at(4);
-
-    println!("  `Note` is `Voiced<Pitch>`, so the generic voicing methods work:\n");
-    println!("    .harmony() = {}   (the abstract half)", note.harmony());
-    println!(
-        "    .octaves() = {:?}  (one register per voice)",
-        note.octaves()
-    );
-    println!("    .voices()  = {}", note.voices());
-    println!("    .bass()    = {}", note.bass());
-    println!("    .note_at(0) = {}", note.note_at(0));
-    println!("    .midi_at(0) = {}", note.midi_at(0));
-    println!("    .pitch_set() = {}", note.pitch_set());
-
-    println!("\n  `displacement` measures total movement between two voicings:");
-    for target in [Pitch::G.at(4), Pitch::A_FLAT.at(4), Pitch::G.at(5)] {
-        println!(
-            "    {} to {:<5} = {} semitones",
-            note,
-            target.to_string(),
-            note.displacement(target)
-        );
-    }
-
-    println!("\n  The same method on a VoicedTriad solves a three-voice");
-    println!("  assignment. One idea, two arities.");
+#[cfg(not(feature = "std"))]
+fn frequencies() {
+    println!();
+    println!("(Frequency needs the `std` feature, which is off in this build.)");
 }
 
-/// The free-form list, for when structure is not wanted.
-fn lists_of_notes() {
-    heading("Notes: a free-form list");
+fn a_handful_of_notes() {
+    println!();
+    println!("A HANDFUL OF NOTES");
+    println!("------------------");
+    println!();
+    println!("`Notes` holds several notes in the order you add them, and lets");
+    println!("you repeat one. That is how a real chord is played: the same note");
+    println!("can appear twice, in different octaves.");
+    println!();
 
+    let mut chord = Notes::EMPTY;
+    let _ = chord.push(Pitch::C.at(3));
+    let _ = chord.push(Pitch::G.at(3));
+    let _ = chord.push(Pitch::E.at(4));
+    let _ = chord.push(Pitch::C.at(5));
+
+    println!("  The chord is {chord}");
+    println!("  It has {} notes", chord.len());
+    println!();
+    println!("Ask which is lowest, or sort them from low to high.");
+    println!();
+    println!("  The lowest note is {}", chord.bass().unwrap());
+    println!("  Sorted low to high: {}", chord.sorted());
+    println!();
+    println!("Move the whole chord at once.");
+    println!();
     println!(
-        "  `Notes` holds up to {} notes in whatever order you build",
-        Notes::CAPACITY
+        "  Up a perfect fifth: {}",
+        chord.transpose(Interval::PERFECT_FIFTH)
     );
-    println!("  them, with doublings allowed. It makes no claim about what the");
-    println!("  notes spell, so it carries no harmony and supports no");
-    println!("  transformations. It is the bag you hand to a synthesizer.\n");
-
-    let spread = Notes::from_slice(&[
-        Pitch::C.at(3),
-        Pitch::G.at(3),
-        Pitch::E.at(4),
-        Pitch::C.at(5),
-    ])
-    .unwrap();
-
-    println!("    notes:       {spread}");
-    println!("    len:         {}", spread.len());
-    println!("    bass:        {:?}", spread.bass());
     println!(
-        "    pitch set:   {}   (doubling collapses)",
-        spread.pitch_set()
+        "  Down an octave:     {}",
+        chord.transpose(-Interval::OCTAVE)
     );
-    println!("    sorted:      {}", spread.sorted());
-    println!(
-        "    up a fifth:  {}",
-        spread.transpose(Interval::PERFECT_FIFTH)
-    );
-
-    println!("\n  Unlike a Voiced, this keeps the order you gave it, so its");
-    println!("  `displacement` pairs voice by voice rather than searching:");
-    let moved = spread.transpose(Interval::MINOR_SECOND);
-    println!(
-        "    displacement to the same list up a semitone: {:?}",
-        spread.displacement(&moved)
-    );
-
-    println!("\n  Capacity is fixed, so pushing past it reports failure rather");
-    println!("  than allocating:");
-    let mut full = Notes::EMPTY;
-    let mut accepted = 0;
-    for _ in 0..20 {
-        if full.push(Pitch::C.at(4)) {
-            accepted += 1;
-        }
-    }
-    println!("    pushed 20, accepted {accepted}, len {}", full.len());
+    println!();
+    println!("Throw the octaves away and you are left with the pitches. The C");
+    println!("appears twice above but only once here.");
+    println!();
+    println!("  The pitches are {}", chord.pitch_set());
     println!();
 }
