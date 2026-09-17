@@ -42,12 +42,14 @@ mod chord;
 mod notes;
 mod pitch;
 mod pitchset;
+mod triad;
 mod voiced;
 
 pub use chord::{Chord, ChordQuality};
 pub use notes::Notes;
 pub use pitch::{EDO, Interval, IntervalClass, Pitch, Spelling, parse_pitch_prefix};
 pub use pitchset::{PitchSet, PitchSetIter};
+pub use triad::{Triad, TriadQuality, VoiceMap, VoicedTriad};
 pub use voiced::{Note, Transposable, Voiceable, Voiced};
 
 use core::fmt;
