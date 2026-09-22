@@ -13,13 +13,35 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdint.h>
 #include "trance_gate_core.h"
 
 #define SR    44100.0
 #define BLOCK 128
 
+/*
+ * FNV-1a over the rendered bytes, so the A/B can be a REGISTERED TEST rather
+ * than a pipe into md5 that somebody has to remember to type. The expected
+ * value is the Move module's own reference render -- the same 4 seconds
+ * tests/render_ref.c in the engine repo produces, whose md5 is
+ * b208becc62657c9748247b9daa7b0362.
+ *
+ * If this fires, the port changed the sound. Pipe both renderers to files and
+ * `cmp` them: the first differing byte says which step.
+ */
+#define GOLDEN_FNV1A 0x37792113E4834F69ULL
+
+static uint64_t fnv = 0xcbf29ce484222325ULL;
+static void fnv_add(const void *p, size_t n) {
+    const unsigned char *b = (const unsigned char *)p;
+    for (size_t i = 0; i < n; i++) { fnv ^= b[i]; fnv *= 0x100000001b3ULL; }
+}
+
 int main(int argc, char **argv) {
-    double seconds = (argc > 1) ? atof(argv[1]) : 4.0;
+    /* --verify hashes instead of writing, so the test needs no golden file
+     * and no shell. Without it this still streams raw s16le for a listen. */
+    int verify = (argc > 1 && strcmp(argv[1], "--verify") == 0);
+    double seconds = (argc > 1 && !verify) ? atof(argv[1]) : 4.0;
 
     tg_core_t *c = tg_core_create(SR);
 
@@ -71,9 +93,20 @@ int main(int argc, char **argv) {
             out[i * 2]     = (int16_t)(l > 32767.0f ? 32767.0f : (l < -32768.0f ? -32768.0f : l));
             out[i * 2 + 1] = (int16_t)(r > 32767.0f ? 32767.0f : (r < -32768.0f ? -32768.0f : r));
         }
-        fwrite(out, sizeof(int16_t), (size_t)n * 2, stdout);
+        if (verify) fnv_add(out, (size_t)n * 2 * sizeof(int16_t));
+        else        fwrite(out, sizeof(int16_t), (size_t)n * 2, stdout);
         t.beats += (n / SR) * (t.bpm / 60.0);
     }
     tg_core_destroy(c);
+
+    if (verify) {
+        if (fnv == GOLDEN_FNV1A) {
+            printf("  4s through the plugin path matches the Move render    ok\n");
+            return 0;
+        }
+        printf("  RENDER CHANGED: got 0x%016llX want 0x%016llX\n",
+               (unsigned long long)fnv, (unsigned long long)GOLDEN_FNV1A);
+        return 1;
+    }
     return 0;
 }

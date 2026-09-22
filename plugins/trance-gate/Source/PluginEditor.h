@@ -11,6 +11,17 @@
  * not two. The playhead is extrapolated between reads exactly as ui_chain.js
  * does -- the readout is a snapshot, and differencing it per frame would show
  * the rotation's stutter rather than the music.
+ *
+ * THE CONTROLS ARE ATTACHED TO PARAMETERS, NOT TO THE ENGINE. They used to
+ * call engineSet directly, which worked and was invisible to the host: a knob
+ * turned here moved the sound and left Live's automation lane untouched, so
+ * writing automation meant finding the same control twice. Everything that is
+ * a parameter now goes through the APVTS, and the engine is written by the
+ * processor's listener -- one path in, whoever turns the knob.
+ *
+ * The PATTERN is not a parameter (128 steps x 8 slots is not an automation
+ * lane anyone wants), so the grid still talks to the engine directly. That
+ * asymmetry is the design, not an oversight.
  */
 class TranceGateEditor : public juce::AudioProcessorEditor,
                          private juce::Timer
@@ -24,24 +35,84 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
 
+    /* 128 steps do not fit a machine word any more. Same shape as the
+     * engine's tg_mask_t, and for the same reason it is a struct there: a
+     * bare uint32_t still compiles with `>> 40` and quietly drops the steps
+     * past 31. */
+    struct Mask
+    {
+        uint32_t w[4] {};
+        bool get (int i) const
+        {
+            return i >= 0 && i < 128 && ((w[i >> 5] >> (i & 31)) & 1u) != 0u;
+        }
+        /*
+         * The engine writes the HIGHEST non-zero word first, unpadded, then
+         * each lower word as exactly 8 digits -- so a <=32-step pattern is
+         * still the same 8-digit string it always was. Parsing therefore runs
+         * from the RIGHT in 8-digit chunks; reading left to right would put
+         * word 0 in the wrong place for every pattern longer than 32 steps,
+         * and leave short ones looking perfectly correct.
+         */
+        static Mask fromHex (const juce::String& hex)
+        {
+            Mask m;
+            int end = hex.length();
+            for (int k = 0; k < 4 && end > 0; ++k)
+            {
+                const int start = juce::jmax (0, end - 8);
+                m.w[k] = (uint32_t) hex.substring (start, end).getHexValue64();
+                end = start;
+            }
+            return m;
+        }
+    };
+
 private:
+    /*
+     * The envelope panel. The SHAPE comes from TgEnvelopeShape, which renders
+     * it through the engine; this class only draws, and decides when the
+     * shape is stale.
+     *
+     * The x-axis is ONE STEP at the current rate and tempo, which is the whole
+     * point of drawing it at all. Attack, Decay and Release are absolute
+     * milliseconds while the step is not: the same ADSR is a gentle swell at
+     * 1/4 and is never finished at 1/32. A curve on a normalised axis would
+     * hide exactly that; this one runs off the right-hand edge, which is the
+     * truth and is the thing worth seeing.
+     */
+    class EnvelopeCurve : public juce::Component
+    {
+    public:
+        explicit EnvelopeCurve (TranceGateProcessor&);
+        void paint (juce::Graphics&) override;
+        /* Cheap to call every frame: it re-renders only when the macros that
+         * shape the curve have actually moved. */
+        void refresh (double msStep);
+
+    private:
+        TranceGateProcessor& proc;
+        juce::String stamp;                 /* the macros this curve was built from */
+        TgEnvelopeShape shape;
+    };
+
     struct Ui
     {
-        bool     valid   = false;
-        uint32_t steps   = 0;
-        uint32_t ties    = 0;
-        int      length  = 16;
-        double   phase   = 0.0;
-        double   msStep  = 0.0;
-        bool     moving  = false;
-        int      cursor  = 0;
-        float    depth[32] {};
+        bool   valid   = false;
+        Mask   steps, ties;
+        int    length  = 16;
+        double phase   = 0.0;
+        double msStep  = 0.0;
+        bool   moving  = false;
+        int    cursor  = 0;
+        float  depth[128] {};
     };
 
     void timerCallback() override;
     void refreshUi();
     double livePhase() const;
     int    stepAt (juce::Point<int>) const;
+    int    gridRows() const;
     juce::Rectangle<int> stepBounds (int i) const;
     void   drawRing (juce::Graphics&, juce::Rectangle<float>) const;
     void   drawSteps (juce::Graphics&) const;
@@ -57,11 +128,19 @@ private:
     juce::Slider rate, length, amount, gate, attack, decay, sustain, release;
     juce::Label  rateL, lengthL, amountL, gateL, attackL, decayL, sustainL, releaseL;
     juce::TextButton copyPatch { "Copy patch" }, pastePatch { "Paste patch" };
+    juce::ToggleButton legato { "Legato" };
     juce::ComboBox slot;
+    EnvelopeCurve envelope { proc };
+
+    using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using ComboAtt  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using ButtonAtt = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    std::vector<std::unique_ptr<SliderAtt>> sliderAtts;
+    std::unique_ptr<ComboAtt>  slotAtt;
+    std::unique_ptr<ButtonAtt> legatoAtt;
 
     void wireKnob (juce::Slider&, juce::Label&, const juce::String& text,
-                   const juce::String& key, double lo, double hi, double step,
-                   const juce::String& suffix);
+                   const juce::String& paramId, const juce::String& suffix);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TranceGateEditor)
 };

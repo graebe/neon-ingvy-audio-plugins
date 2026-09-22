@@ -26,10 +26,11 @@ target_compile_definitions(TranceGate PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    # No parameters in v1: the pattern, the slots and the macros all live in
-    # the saved state and are edited in the plugin's own editor, exactly as
-    # they do on Move. Automation is an additive change once the editor
-    # exists; guessing at it on paper is how the 520-parameter design died.
+    # The MACROS are host parameters; the PATTERN is not. Rate, Length,
+    # Amount, Gate, the envelope, Slot and Legato automate; the 128 steps and
+    # their per-step amounts stay in the saved state, because exposing them is
+    # 128 x 8 = 1024 parameters -- or 256 that get silently rewritten every
+    # time Slot moves, which is worse than not having them.
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 target_link_libraries(TranceGate
