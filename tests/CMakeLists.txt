@@ -62,3 +62,12 @@ target_compile_definitions(tg_vst3_tests PRIVATE
 target_link_libraries(tg_vst3_tests PRIVATE juce::juce_audio_utils)
 target_include_directories(tg_vst3_tests PRIVATE ${TG_ENGINE}/src/dsp)
 add_test(NAME tg_vst3 COMMAND tg_vst3_tests)
+
+# Not a test: a way to LOOK at the editor. The grid grows rows with the
+# pattern while the window does not, and a layout that collides at 128 steps
+# is not something a build failure or an assertion is going to tell you about.
+juce_add_console_app(tg_shot PRODUCT_NAME "tg_shot")
+target_sources(tg_shot PRIVATE shot_editor.cpp)
+target_link_libraries(tg_shot PRIVATE TranceGate juce::juce_audio_utils)
+target_include_directories(tg_shot PRIVATE ${TG_ENGINE}/src/dsp)
+target_compile_definitions(tg_shot PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)

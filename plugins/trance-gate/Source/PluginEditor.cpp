@@ -111,13 +111,13 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
 TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     : AudioProcessorEditor (&p), proc (p)
 {
-    wireKnob (amount,  amountL,  "Amount",  "amount",  "");
-    wireKnob (gate,    gateL,    "Gate",    "hold",    "");
-    wireKnob (attack,  attackL,  "Attack",  "attack",  " ms");
-    wireKnob (decay,   decayL,   "Decay",   "decay",   " ms");
-    wireKnob (sustain, sustainL, "Sustain", "sustain", "");
-    wireKnob (release, releaseL, "Release", "release", " ms");
-    wireKnob (length,  lengthL,  "Length",  "length",  "");
+    wireKnob (amount,  amountL,  "Amount",  "amount");
+    wireKnob (gate,    gateL,    "Gate",    "hold");
+    wireKnob (attack,  attackL,  "Attack",  "attack");
+    wireKnob (decay,   decayL,   "Decay",   "decay");
+    wireKnob (sustain, sustainL, "Sustain", "sustain");
+    wireKnob (release, releaseL, "Release", "release");
+    wireKnob (length,  lengthL,  "Length",  "length");
 
     /* Rate shows its LABEL, not its index -- the number would be meaningless.
      * The attachment still owns the value; this only follows it. */
@@ -169,11 +169,11 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
 TranceGateEditor::~TranceGateEditor() { stopTimer(); }
 
 void TranceGateEditor::wireKnob (juce::Slider& s, juce::Label& l, const juce::String& text,
-                                 const juce::String& paramId, const juce::String& suffix)
+                                 const juce::String& paramId)
 {
     s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 64, 18);
-    s.setTextValueSuffix (suffix);
+    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 68, 18);
+
     addAndMakeVisible (s);
     l.setText (text, juce::dontSendNotification);
     l.setJustificationType (juce::Justification::centred);
@@ -261,10 +261,16 @@ int TranceGateEditor::gridRows() const
 juce::Rectangle<int> TranceGateEditor::stepBounds (int i) const
 {
     const int rows  = gridRows();
-    const int cellH = juce::jlimit (14, 48, (kGridBot - kGridTop) / rows);
+    const int avail = kGridBot - kGridTop;
+    /* Short patterns get TALLER cells rather than a tall empty band -- the
+     * cell height is what carries each step's amount, so a 16-step pattern
+     * showing it over 110 pixels is more legible than the same bar drawn in
+     * 48 with 200 pixels of nothing underneath. */
+    const int cellH = juce::jlimit (14, 110, avail / rows);
+    const int top   = kGridTop + (avail - rows * cellH) / 2;
     const int w     = (kW - 2 * kPad) / kCols;
     const int row = i / kCols, col = i % kCols;
-    return { kPad + col * w, kGridTop + row * cellH, w - 3, cellH - 4 };
+    return { kPad + col * w, top + row * cellH, w - 3, cellH - 4 };
 }
 
 int TranceGateEditor::stepAt (juce::Point<int> pt) const

@@ -230,8 +230,8 @@ int main (void)
      * comparison below is comparing two things that were configured alike;
      * if they do not, the render difference would be measuring my test setup.
      */
-    const char *shownWant[] = { "1/16", "16", "1", "Off", "0.9", "0.75",
-                                "3.5", "40", "0.6", "25" };
+    const char *shownWant[] = { "1/16", "16", "1", "Off", "90%", "75%",
+                                "3.5 ms", "40.0 ms", "60%", "25.0 ms" };
     int allAgree = 1;
     for (size_t i = 0; i < sizeof (patch) / sizeof (patch[0]); i++) {
         AudioUnitParameterID pid = param_id (au, patch[i].name);
@@ -248,11 +248,10 @@ int main (void)
             CFRelease (sfv.outString);
         }
 
-        /* Rate and Legato print words; the rest print numbers, and JUCE pads
-         * them with zeros this test has no business caring about. */
-        int agree = (strcmp (shown, "1/16") == 0 || strcmp (shown, "Off") == 0)
-                        ? strcmp (shown, shownWant[i]) == 0
-                        : fabs (atof (shown) - atof (shownWant[i])) < 0.005;
+        /* An exact string compare, because the string IS the product here:
+         * it is what a host shows in its automation lane, and "0.9000000"
+         * where "90%" belongs is a defect even though the value is right. */
+        int agree = strcmp (shown, shownWant[i]) == 0;
         if (!agree) {
             printf ("      %-8s shows \"%s\", wanted \"%s\"\n",
                     patch[i].name, shown, shownWant[i]);

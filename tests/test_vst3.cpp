@@ -128,8 +128,10 @@ int main()
         { "Sustain", 0.0f,   1.0f,   0.6f },
         { "Release", 0.0f, 500.0f,  25.0f },
     };
-    const char* shows[] = { "1/16", "16", "1", "Off", "0.9", "0.75",
-                            "3.5", "40", "0.6", "25" };
+    /* The text a HOST displays, which is the parameter's own formatter --
+     * the same strings Live puts in its automation lane. */
+    const char* shows[] = { "1/16", "16", "1", "Off", "90%", "75%",
+                            "3.5 ms", "40.0 ms", "60%", "25.0 ms" };
 
     bool allSet = true, allShow = true;
     for (size_t i = 0; i < std::size (patch); ++i)
@@ -140,10 +142,7 @@ int main()
                                     / (patch[i].hi - patch[i].lo));
 
         const auto shown = p->getCurrentValueAsText();
-        const bool word = shown == "1/16" || shown == "Off";
-        const bool agree = word ? shown == shows[i]
-                                : std::abs (shown.getFloatValue()
-                                            - juce::String (shows[i]).getFloatValue()) < 0.005f;
+        const bool agree = shown == juce::String (shows[i]);
         if (! agree)
         {
             std::printf ("      %-8s shows \"%s\", wanted \"%s\"\n",

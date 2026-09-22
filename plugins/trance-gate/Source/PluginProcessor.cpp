@@ -67,18 +67,41 @@ juce::AudioProcessorValueTreeState::ParameterLayout TranceGateProcessor::makeLay
                                                    juce::StringArray { "1","2","3","4",
                                                                        "5","6","7","8" }, 0));
     l.add (std::make_unique<AudioParameterBool>   (ParameterID{pLegato,1}, "Legato", false));
+    /*
+     * HOW A VALUE PRINTS BELONGS TO THE PARAMETER, NOT TO THE KNOB.
+     *
+     * The obvious place to format these is the editor's Slider -- and it does
+     * not work: SliderAttachment installs its OWN textFromValueFunction,
+     * taken from the parameter, so anything set on the slider is overwritten
+     * the moment it is attached. Which is the right design, because the same
+     * text is what Live puts in its automation lane and what the AU returns
+     * for kAudioUnitProperty_ParameterStringFromValue. Formatting here fixes
+     * all three at once; formatting on the knob would have fixed none of them
+     * and looked like it fixed one.
+     *
+     * The percentages are 0..1 in the parameter and 0..100 on the face, so
+     * the inverse has to exist too -- otherwise typing "50" sets 50, clamps
+     * to 1, and reads back as 100%.
+     */
+    const auto pct = AudioParameterFloatAttributes()
+        .withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + "%"; })
+        .withValueFromStringFunction ([] (const String& t) { return t.getFloatValue() * 0.01f; });
+    const auto ms = AudioParameterFloatAttributes()
+        .withStringFromValueFunction ([] (float v, int) { return String (v, 1) + " ms"; })
+        .withValueFromStringFunction ([] (const String& t) { return t.getFloatValue(); });
+
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pAmount,1}, "Amount",
-                                                   NormalisableRange<float>(0.0f,1.0f), 1.0f));
+                                                   NormalisableRange<float>(0.0f,1.0f), 1.0f, pct));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pGate,1}, "Gate",
-                                                   NormalisableRange<float>(0.05f,1.0f), 1.0f));
+                                                   NormalisableRange<float>(0.05f,1.0f), 1.0f, pct));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pAttack,1}, "Attack",
-                                                   NormalisableRange<float>(0.0f,500.0f), 2.0f));
+                                                   NormalisableRange<float>(0.0f,500.0f), 2.0f, ms));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pDecay,1}, "Decay",
-                                                   NormalisableRange<float>(0.0f,500.0f), 20.0f));
+                                                   NormalisableRange<float>(0.0f,500.0f), 20.0f, ms));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pSustain,1}, "Sustain",
-                                                   NormalisableRange<float>(0.0f,1.0f), 1.0f));
+                                                   NormalisableRange<float>(0.0f,1.0f), 1.0f, pct));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pRelease,1}, "Release",
-                                                   NormalisableRange<float>(0.0f,500.0f), 20.0f));
+                                                   NormalisableRange<float>(0.0f,500.0f), 20.0f, ms));
     return l;
 }
 

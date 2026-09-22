@@ -139,8 +139,11 @@ private:
     std::unique_ptr<ComboAtt>  slotAtt;
     std::unique_ptr<ButtonAtt> legatoAtt;
 
+    /* The knob's value TEXT comes from the parameter (SliderAttachment
+     * installs the parameter's own formatter), so there is nothing to pass
+     * here about how it prints -- see makeLayout. */
     void wireKnob (juce::Slider&, juce::Label&, const juce::String& text,
-                   const juce::String& paramId, const juce::String& suffix);
+                   const juce::String& paramId);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TranceGateEditor)
 };
