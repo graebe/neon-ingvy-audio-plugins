@@ -357,7 +357,7 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     wireKnob (gatePanel, rate,    rateL,    "rate");
     wireKnob (gatePanel, length,  lengthL,  "length");
     wireKnob (gatePanel, amount,  amountL,  "amount");
-    wireKnob (gatePanel, gate,    gateL,    "hold");
+    wireKnob (gatePanel, width,   widthL,   "hold");
     wireKnob (envPanel,  attack,  attackL,  "attack");
     wireKnob (envPanel,  decay,   decayL,   "decay");
     wireKnob (envPanel,  sustain, sustainL, "sustain");
@@ -386,6 +386,18 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     addAndMakeVisible (timeModeL);
     timeModeAtt = std::make_unique<ComboAtt> (proc.state(), "time_mode", timeMode);
     timeMode.onChange = [this] { refreshStageText(); };
+
+    /* The envelope's SHAPE, beside its unit -- both say how the envelope is
+     * measured or drawn rather than what its values are, and the envelope
+     * panel's four knobs leave no room for either. */
+    curve.addItemList ({ "Linear", "Exponential", "S-Curve" }, 1);
+    addAndMakeVisible (curve);
+    addAndMakeVisible (curveL);
+    curveAtt = std::make_unique<ComboAtt> (proc.state(), "curve", curve);
+    /* A shape change redraws both plots: the envelope's path is different and
+     * the pattern's gain follows it. Neither value moved, so nothing else
+     * would have told them. */
+    curve.onChange = [this] { refreshStageText(); };
 
     legato.setButtonText ("Join Neighbors");
     addAndMakeVisible (legato);
@@ -695,7 +707,7 @@ void TranceGateEditor::resized()
         }
     };
     placeRow (gatePanel, { { &rate, &rateL }, { &length, &lengthL },
-                           { &amount, &amountL }, { &gate, &gateL } });
+                           { &amount, &amountL }, { &width, &widthL } });
     placeRow (envPanel,  { { &attack, &attackL }, { &decay, &decayL },
                            { &sustain, &sustainL }, { &release, &releaseL } });
 
@@ -703,6 +715,12 @@ void TranceGateEditor::resized()
     legato.setBounds (kLeftX + kActionsW + space::s4, kSelectY, 172, size::controlH);
     /* The envelope's unit, in the row's spare width on the right -- it
      * belongs with the envelope, and the envelope panel has no room. */
+    /* CURVE in the row's free middle, between the Legato toggle and the Env
+     * Time pair on the right. */
+    curveL  .setBounds (kLeftX + kActionsW + space::s4 + 172 + space::s6,
+                        kSelectY, 60, size::controlH);
+    curve   .setBounds (kLeftX + kActionsW + space::s4 + 172 + space::s6 + 60 + space::s2,
+                        kSelectY, 124, size::controlH);
     timeModeL.setBounds (kActionsX - 108 - space::s2, kSelectY, 100, size::controlH);
     timeMode .setBounds (kActionsX, kSelectY, kActionsW, size::controlH);
 

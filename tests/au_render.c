@@ -192,7 +192,7 @@ int main (void)
         { "Slot",    0.0f,   7.0f,   0.0f },      /* discrete: a choice, pattern 1 */
         { "Join Neighbors", 0.0f, 1.0f, 0.0f },
         { "Amount",  0.0f,   1.0f,   0.9f },
-        { "Gate",    0.05f,  1.0f,   0.75f },
+        { "Width",   0.05f,  1.0f,   0.75f },
         { "Attack",  0.0f, 500.0f,   3.5f },
         { "Decay",   0.0f, 500.0f,  40.0f },
         { "Sustain", 0.0f,   1.0f,   0.6f },

@@ -219,8 +219,11 @@ void axis (juce::Graphics&, juce::Rectangle<float> plot, double spanMs,
  * costs one more vector and cannot drop a feature however narrow.
  *
  * Fewer samples than columns is interpolation rather than decimation, and it
- * is exact: the engine's envelope is piecewise linear in time, so a polyline
- * through the samples IS the curve. lo == hi throughout in that case.
+ * is close, and was once exact: the envelope was piecewise linear in time, so
+ * a polyline through the samples WAS the curve. With a curved stage it is an
+ * approximation instead -- accurate in practice only because a render is
+ * ~44,100 samples against ~228 columns, so this decimates and essentially
+ * never interpolates. lo == hi throughout in the interpolating case.
  */
 void decimate (const float* v, int n, int cols,
                std::vector<float>& lo, std::vector<float>& hi);

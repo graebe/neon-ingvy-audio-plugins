@@ -92,7 +92,7 @@ int main()
      */
     juce::StringArray names;
     for (auto* q : plugin->getParameters()) names.add (q->getName (32));
-    check (names.size() == 12, "it publishes eleven macros and a bypass",
+    check (names.size() == 13, "it publishes twelve macros and a bypass",
            names.joinIntoString (", "));
     check (names.contains ("Bypass"), "...the bypass VST3 requires");
 
@@ -122,7 +122,7 @@ int main()
         { "Slot",    0.0f,   7.0f,   0.0f },
         { "Join Neighbors", 0.0f,   1.0f,   0.0f },
         { "Amount",  0.0f,   1.0f,   0.9f },
-        { "Gate",    0.05f,  1.0f,   0.75f },
+        { "Width",   0.05f,  1.0f,   0.75f },
         { "Attack",  0.0f, 500.0f,   3.5f },
         { "Decay",   0.0f, 500.0f,  40.0f },
         { "Sustain", 0.0f,   1.0f,   0.6f },

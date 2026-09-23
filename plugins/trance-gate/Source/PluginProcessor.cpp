@@ -37,11 +37,15 @@ struct DiscreteInt : juce::AudioParameterInt
 const juce::String pRate{"rate"}, pLength{"length"}, pAmount{"amount"},
                    pGate{"hold"}, pAttack{"attack"}, pDecay{"decay"},
                    pSustain{"sustain"}, pRelease{"release"},
-                   pSlot{"slot"}, pLegato{"legato"}, pTimeMode{"time_mode"};
+                   pSlot{"slot"}, pLegato{"legato"}, pTimeMode{"time_mode"},
+                   pCurve{"curve"};
 
 /* The two units an envelope stage can be written in; the engine's enum in the
  * order the choice publishes them. */
 const juce::StringArray kTimeModes { "ms", "% Step" };
+/* The engine's TG_CURVE_* in the order the choice publishes them, so the
+ * index IS the wire value. */
+const juce::StringArray kCurves { "Linear", "Exponential", "S-Curve" };
 /* The shared top of both scales: 500 reads as "500.0 ms" or as "100 %", so
  * switching modes never moves a knob. See stage_samples in the engine. */
 constexpr float kStageMax = 500.0f;
@@ -85,6 +89,14 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
      */
     l.add (std::make_unique<AudioParameterChoice> (ParameterID{pTimeMode,1}, "Env Time",
                                                    kTimeModes, 0));
+    /*
+     * THE PATH EACH STAGE TAKES between its endpoints. A stage still starts
+     * and ends where it did and still lasts as long -- see env_shape in the
+     * engine -- so this changes the feel of the gate without changing any
+     * time on any knob.
+     */
+    l.add (std::make_unique<AudioParameterChoice> (ParameterID{pCurve,1}, "Env Curve",
+                                                   kCurves, 0));
     /*
      * HOW A VALUE PRINTS BELONGS TO THE PARAMETER, NOT TO THE KNOB.
      *
@@ -143,7 +155,7 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
 
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pAmount,1}, "Amount",
                                                    NormalisableRange<float>(0.0f,1.0f), 1.0f, pct));
-    l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pGate,1}, "Gate",
+    l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pGate,1}, "Width",
                                                    NormalisableRange<float>(0.05f,1.0f), 1.0f, pct));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pAttack,1}, "Attack",
                                                    NormalisableRange<float>(0.0f,500.0f), 2.0f, ms));
@@ -215,6 +227,8 @@ void TranceGateProcessor::pullParam (const juce::String& id)
         if (timeMode) timeMode->store (m);
         engineSet (id, juce::String (m));
     }
+    else if (id == pCurve)
+        engineSet (id, juce::String (juce::jlimit (0, 2, juce::roundToInt (v))));
     else if (id == pSlot)
         engineSet (id, juce::String (juce::roundToInt (v)));       /* a choice: already the index */
     else if (id == pLength)
@@ -268,6 +282,7 @@ void TranceGateProcessor::syncParamsFromEngine()
         if (timeMode) timeMode->store (m);
         setIf (pTimeMode, (float) m);
     }
+    setIf (pCurve, (float) juce::jlimit (0, 2, engineGet (pCurve).getIntValue()));
     for (auto& id : { pAmount, pGate, pAttack, pDecay, pSustain, pRelease })
         setIf (id, (float) engineGet (id).getDoubleValue());
 

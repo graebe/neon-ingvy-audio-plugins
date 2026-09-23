@@ -195,14 +195,18 @@ private:
     double anchorMs    = 0.0;
     int    lastRows    = 0;
 
-    PhosphorKnob rate, length, amount, gate, attack, decay, sustain, release;
+    /* `width` is the engine's `hold` -- how much of the step the gate stays
+     * open for. Three names for one control is two too many, so the member
+     * follows the label; only the WIRE key stays `hold`, because it is in
+     * every saved patch and is the automation parameter id. */
+    PhosphorKnob rate, length, amount, width, attack, decay, sustain, release;
     TrackedLabel rateL { "Rate" }, lengthL { "Length" }, amountL { "Amount" },
-                 gateL { "Gate" }, attackL { "Attack" }, decayL { "Decay" },
+                 widthL { "Width" }, attackL { "Attack" }, decayL { "Decay" },
                  sustainL { "Sustain" }, releaseL { "Release" };
     juce::TextButton copyPatch { "Copy patch" }, pastePatch { "Paste patch" };
     juce::ToggleButton legato { "Join Neighbors" };
-    juce::ComboBox slot, timeMode;
-    TrackedLabel timeModeL { "Env Time" };
+    juce::ComboBox slot, timeMode, curve;
+    TrackedLabel timeModeL { "Env Time" }, curveL { "Curve" };
 
     PanelBox gatePanel { "Gate" }, envPanel { "Envelope" };
     RingDisplay  ring;
@@ -215,7 +219,7 @@ private:
     using ComboAtt  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using ButtonAtt = juce::AudioProcessorValueTreeState::ButtonAttachment;
     std::vector<std::unique_ptr<SliderAtt>> sliderAtts;
-    std::unique_ptr<ComboAtt>  slotAtt, timeModeAtt;
+    std::unique_ptr<ComboAtt>  slotAtt, timeModeAtt, curveAtt;
     std::unique_ptr<ButtonAtt> legatoAtt;
 
     /* Knobs are children of their PANEL, not of the editor. Parented to the

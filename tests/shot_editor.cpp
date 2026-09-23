@@ -37,14 +37,14 @@ int main (int argc, char** argv)
      */
     struct Shot { const char* name; int length; int rate;
                   float hold, release, decay, sustain, attack; bool ends, playing;
-                  bool legato, dense; };
+                  bool legato, dense; int curve; };
     const Shot shots[] = {
-        { "tg_16",   16,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false },
-        { "tg_64",   64,  9,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false },
-        { "tg_128", 128, 12,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false },
-        { "tg_cut",  32,  9,  0.5f, 500.0f,  20.0f, 1.0f, 2.0f, false, false, false, false },
-        { "tg_ends", 16,  0,  0.05f, 0.0f,   20.0f, 1.0f, 2.0f, true,  false, false, false },
-        { "tg_play", 32,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, true, false, false },
+        { "tg_16",   16,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0 },
+        { "tg_64",   64,  9,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0 },
+        { "tg_128", 128, 12,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0 },
+        { "tg_cut",  32,  9,  0.5f, 500.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0 },
+        { "tg_ends", 16,  0,  0.05f, 0.0f,   20.0f, 1.0f, 2.0f, true,  false, false, false, 0 },
+        { "tg_play", 32,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, true, false, false, 0 },
         /*
          * THE CASE THE ENVELOPE AXIS WAS CHANGED FOR: a 442 ms decay on a
          * 1/64 step, which is 15.6 ms at 120 BPM. On the old one-step axis
@@ -53,7 +53,7 @@ int main (int argc, char** argv)
          * 1000 BPM, drew it on a time base that was silently 120 BPM, so the
          * gate never closed in the picture at all.
          */
-        { "tg_slow", 32, 11,  1.0f,  20.0f, 442.0f, 0.0f, 2.0f, false, false, false, false },
+        { "tg_slow", 32, 11,  1.0f,  20.0f, 442.0f, 0.0f, 2.0f, false, false, false, false, 0 },
         /*
          * LEGATO AGAINST A RUN OF ON STEPS, which is the picture of what it
          * does: with Gate at half the pattern plot is a row of separate
@@ -62,14 +62,24 @@ int main (int argc, char** argv)
          */
         /* ATTACK 0 opens the gate on the very first sample, which is the
          * case that exposed a fill closing to the wrong corner. */
-        { "tg_legato", 16, 7, 0.5f, 20.0f, 20.0f, 1.0f, 0.0f, false, false, true, true },
+        { "tg_legato", 16, 7, 0.5f, 20.0f, 20.0f, 1.0f, 0.0f, false, false, true, true, 0 },
         /*
          * THE SMALL END OF THE AXIS LADDER. A 1/128 step is 15.6 ms at
          * 120 BPM, and with short stages the whole span is about 20 -- where
          * a fixed interval collapses to one tick and the ladder has to reach
          * for 2 or 5 ms. The other shots all exercise its top end.
          */
-        { "tg_fast", 32, 12,  0.6f,  4.0f,   3.0f, 0.5f, 1.0f, false, false, false, false },
+        { "tg_fast", 32, 12,  0.6f,  4.0f,   3.0f, 0.5f, 1.0f, false, false, false, false, 0 },
+        /*
+         * THE THREE CURVES, FROM IDENTICAL NUMBERS. Same ADSR, same rate,
+         * same width -- only the shape differs, so anything that moves
+         * between these three shots moved because of the curve and nothing
+         * else. The sustain is deliberately below full: at 100% the decay has
+         * nowhere to travel and all three shapes draw the same flat top.
+         */
+        { "tg_lin", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 0 },
+        { "tg_exp", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 1 },
+        { "tg_scv", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 2 },
     };
 
     for (auto& s : shots)
@@ -140,6 +150,11 @@ int main (int argc, char** argv)
             for (int k = 0; k < 8; ++k) { buf.clear(); proc.processBlock (buf, midi); }
         }
 
+        {
+            auto* q = proc.state().getParameter ("curve");
+            q->setValueNotifyingHost (q->convertTo0to1 ((float) s.curve));
+        }
+
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
         ed->setSize (ed->getWidth(), ed->getHeight());
         /* The editor fills its picture from the `ui` readout on a timer; one
@@ -159,13 +174,18 @@ int main (int argc, char** argv)
                              || juce::String (s.name) == "tg_ends"
                              || juce::String (s.name) == "tg_fast"
                              || juce::String (s.name) == "tg_cut"
+                             || s.curve != 0
+                             || juce::String (s.name) == "tg_lin"
                              || s.playing;
         if (wantDetail)
         {
             /* The playhead is a ring fact; the millisecond axis is an
              * envelope-plot fact, and at 10px its labels are unreadable in a
              * full-window shot. */
-            const auto crop = (juce::String (s.name) == "tg_fast"
+            const auto crop = (juce::String (s.name).startsWith ("tg_lin")
+                            || juce::String (s.name).startsWith ("tg_exp")
+                            || juce::String (s.name).startsWith ("tg_scv")
+                            || juce::String (s.name) == "tg_fast"
                             || juce::String (s.name) == "tg_cut")
                                 ? juce::Rectangle<int> { 24, 280, 260, 116 }  /* the envelope plot */
                             : s.playing
