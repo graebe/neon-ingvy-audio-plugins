@@ -195,7 +195,7 @@ private:
     double anchorMs    = 0.0;
     int    lastRows    = 0;
 
-    juce::Slider rate, length, amount, gate, attack, decay, sustain, release;
+    PhosphorKnob rate, length, amount, gate, attack, decay, sustain, release;
     TrackedLabel rateL { "Rate" }, lengthL { "Length" }, amountL { "Amount" },
                  gateL { "Gate" }, attackL { "Attack" }, decayL { "Decay" },
                  sustainL { "Sustain" }, releaseL { "Release" };

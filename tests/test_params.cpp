@@ -653,7 +653,7 @@ int main()
 
         mode->setValueNotifyingHost (mode->convertTo0to1 (1.0f));
         eq (p.engineGet ("time_mode"), "1", "  the mode reaches the engine");
-        eq (attack->getCurrentValueAsText(), "50 %", "  % mode prints half a step");
+        eq (attack->getCurrentValueAsText(), "50.00 %", "  % mode prints half a step");
         eq (p.engineGet ("attack"), "250.0",
             "  ...and the stored value did not move");
 

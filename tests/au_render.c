@@ -230,8 +230,8 @@ int main (void)
      * comparison below is comparing two things that were configured alike;
      * if they do not, the render difference would be measuring my test setup.
      */
-    const char *shownWant[] = { "1/16", "16", "1", "Off", "90 %", "75 %",
-                                "3.5 ms", "40.0 ms", "60 %", "25.0 ms" };
+    const char *shownWant[] = { "1/16", "16", "1", "Off", "90.00 %", "75.00 %",
+                                "3.5 ms", "40.0 ms", "60.00 %", "25.0 ms" };
     int allAgree = 1;
     for (size_t i = 0; i < sizeof (patch) / sizeof (patch[0]); i++) {
         AudioUnitParameterID pid = param_id (au, patch[i].name);

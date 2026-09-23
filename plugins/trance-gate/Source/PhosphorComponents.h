@@ -116,6 +116,31 @@ private:
     std::vector<std::pair<juce::String, juce::String>> clauses;
 };
 
+/*
+ * A KNOB THAT CAN BE DRAGGED FINELY.
+ *
+ * "Knobs and sliders: drag vertically, SHIFT-DRAG FOR FINE, double-click to
+ * reset, click the readout to type" is the system's own interaction note, and
+ * shift-fine was the half of it JUCE does not do for free.
+ *
+ * It matters most where one scale serves two units: attack/decay/release run
+ * 0..500, so JUCE's default 250px-for-the-whole-range is 0.4% of a step per
+ * pixel -- enough to land between percents, but not to land ON one.
+ *
+ * The sensitivity is chosen at mouseDown and not re-read during the drag:
+ * JUCE measures the whole delta from the press position, so changing it
+ * halfway rescales everything since the press and the value jumps. Shift is
+ * therefore held BEFORE the press, which is what "shift-drag" means anyway.
+ */
+class PhosphorKnob : public juce::Slider
+{
+public:
+    void mouseDown (const juce::MouseEvent&) override;
+
+    static constexpr int coarse = 250;   /* JUCE's default, and the system's feel */
+    static constexpr int fine   = 2500;  /* ten times the travel for the same range */
+};
+
 /* A label in the system's `label` style: 11px, uppercase, tracked, ink-muted,
  * centred over its control. Its own component so that tracking (which
  * juce::Label cannot do) is not re-implemented per call site. */

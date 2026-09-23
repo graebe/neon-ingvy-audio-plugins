@@ -281,6 +281,14 @@ void HintBar::paint (juce::Graphics& g)
     }
 }
 
+/* ================================================================ knob == */
+
+void PhosphorKnob::mouseDown (const juce::MouseEvent& e)
+{
+    setMouseDragSensitivity (e.mods.isShiftDown() ? fine : coarse);
+    juce::Slider::mouseDown (e);
+}
+
 /* =============================================================== label == */
 
 TrackedLabel::TrackedLabel (juce::String t, bool asTitle)

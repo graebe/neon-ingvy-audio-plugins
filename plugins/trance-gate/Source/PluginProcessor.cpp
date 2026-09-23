@@ -105,7 +105,16 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
         /* "Values carry their unit in ink-muted after the number: 32 ms, 1/64,
          * 54 %" -- the space is what lets the readout split the two and colour
          * them differently, so it is structure, not typography. */
-        .withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })
+        /*
+         * TWO DECIMALS, which is a DEPARTURE from the system's type note --
+         * its sample for a percentage is "54 %". The note assumes a percent
+         * is a fine enough step; these knobs are continuous, so an integer
+         * reading made every one of them look like it moved in jumps, and
+         * the value between two percents was both reachable and invisible.
+         * The system's own rule that a readout must not jitter while a knob
+         * turns is the same rule pointing the other way.
+         */
+        .withStringFromValueFunction ([] (float v, int) { return String (v * 100.0f, 2) + " %"; })
         .withValueFromStringFunction ([] (const String& t) { return t.getFloatValue() * 0.01f; });
     /*
      * ONE NUMBER, TWO READINGS. The stage value is 0..500 in both modes; the
@@ -116,8 +125,14 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
     const auto ms = AudioParameterFloatAttributes()
         .withStringFromValueFunction ([mode] (float v, int)
         {
+            /* TWO DECIMALS, because one number serves a 500 ms range and a
+             * 100% one: a whole percent is five milliseconds, so rounding to
+             * it made a continuous knob look like it stepped -- drag a little
+             * and the reading jumped 50 to 51 with everything between it
+             * unreachable. The value was always continuous; only the text
+             * was not. */
             if (mode && mode->load() == 1)
-                return String (roundToInt (v * (100.0f / kStageMax))) + " %";
+                return String (v * (100.0f / kStageMax), 2) + " %";
             return String (v, 1) + " ms";
         })
         .withValueFromStringFunction ([mode] (const String& t)

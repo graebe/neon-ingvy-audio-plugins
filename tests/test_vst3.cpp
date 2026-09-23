@@ -130,8 +130,8 @@ int main()
     };
     /* The text a HOST displays, which is the parameter's own formatter --
      * the same strings Live puts in its automation lane. */
-    const char* shows[] = { "1/16", "16", "1", "Off", "90 %", "75 %",
-                            "3.5 ms", "40.0 ms", "60 %", "25.0 ms" };
+    const char* shows[] = { "1/16", "16", "1", "Off", "90.00 %", "75.00 %",
+                            "3.5 ms", "40.0 ms", "60.00 %", "25.0 ms" };
 
     bool allSet = true, allShow = true;
     for (size_t i = 0; i < std::size (patch); ++i)
