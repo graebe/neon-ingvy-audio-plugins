@@ -74,18 +74,27 @@ public:
     static constexpr int windowWidth = phosphor::space::s8 * 2 + StepGridView::width;
     static int heightFor (int length);
 
+    /* Where the pattern plot sits. Exposed so a screenshot can frame it
+     * without a second copy of the layout's arithmetic going stale. */
+    static int plotStripTop();
+    static int plotStripHeight();
+
 private:
     /*
-     * The envelope panel. The SHAPE comes from TgEnvelopeShape, which renders
-     * it through the engine; this class only draws, and decides when the
-     * shape is stale.
+     * The envelope panel: ONE step's envelope, on the envelope's own axis.
+     * The SHAPE comes from TgEnvelopeShape, which renders it through the
+     * engine; this class only draws, and decides when the shape is stale.
      *
-     * The x-axis is ONE STEP at the current rate and tempo, which is the whole
-     * point of drawing it at all. Attack, Decay and Release are absolute
-     * milliseconds while the step is not: the same ADSR is a gentle swell at
-     * 1/4 and is never finished at 1/32. A curve on a normalised axis would
-     * hide exactly that; this one runs off the right-hand edge, which is the
-     * truth and is the thing worth seeing.
+     * THE X-AXIS IS THE WHOLE ENVELOPE -- attack, decay and release as
+     * dialled -- with the step edge and the gate drawn on it as rules. It
+     * used to be one step wide, on the argument that A, D and R are absolute
+     * milliseconds while a step is not, so the same ADSR is a swell at 1/4
+     * and is never finished at 1/32. That fact is still the thing worth
+     * seeing; clipping the curve at the step was simply the wrong way to show
+     * it, because a 442 ms decay on a 29.5 ms step became 6% of a decay and
+     * told you nothing about the knob you were turning. The step is now a
+     * mark near the left-hand edge instead, which says the same thing and
+     * leaves the shape legible.
      */
     class EnvelopeCurve : public juce::Component
     {
@@ -97,9 +106,62 @@ private:
         void refresh (double msStep);
 
     private:
+        void rebuild (int cols);
+
         TranceGateProcessor& proc;
         juce::String stamp;                 /* the macros this curve was built from */
         TgEnvelopeShape shape;
+        phosphor::plot::Curve curve;        /* the real gated envelope */
+        phosphor::plot::Curve ghost;        /* the shape as dialled, behind it */
+        std::vector<float> lo, hi;
+        int builtFor = 0;                   /* the width `curve` was built for */
+    };
+
+    /*
+     * The pattern panel: the gate across EVERY step, which is the thing a
+     * one-step preview cannot show -- the retrigger that cuts a long decay at
+     * the next step's attack, the tie that suppresses it, legato, and each
+     * step's own amount.
+     *
+     * It draws the engine's real output gain, so the only way for it to
+     * disagree with what you hear is for the engine to disagree with itself.
+     * The global Amount is the exception, and deliberately so: it is an
+     * affine floor applied in the paint transform, so dragging it repaints
+     * without re-rendering.
+     */
+    class PatternCurve : public juce::Component
+    {
+    public:
+        explicit PatternCurve (TranceGateProcessor&);
+        void paint (juce::Graphics&) override;
+        /* `uiRaw` is the engine's readout with the volatile fields still in
+         * it; refresh drops them, so a moving playhead is not a re-render. */
+        void refresh (const juce::String& uiRaw, double msStep);
+        void setPlayhead (double stepPhase, bool moving);
+        /*
+         * AMOUNT REPAINTS BUT NEVER RE-RENDERS.
+         *
+         * It is an affine floor applied in the paint transform, so it is
+         * deliberately absent from the stamp -- but that left nothing at all
+         * to trigger a repaint, and the floor simply did not move until
+         * something else did. With the transport running the playhead
+         * repainted every frame and hid it, which is what made it look
+         * intermittent rather than broken.
+         */
+        void setAmount (float a);
+
+    private:
+        void rebuild (int cols);
+
+        TranceGateProcessor& proc;
+        juce::String stamp;
+        TgPatternShape shape;
+        phosphor::plot::Curve curve;
+        std::vector<float> lo, hi;
+        int    builtFor = 0;
+        double phase    = 0.0;
+        bool   moving   = false;
+        float  amount   = 1.0f;
     };
 
     struct Ui
@@ -143,6 +205,7 @@ private:
     StepGridView grid;
     HintBar      hint;
     EnvelopeCurve envelope { proc };
+    PatternCurve  pattern  { proc };
 
     using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAtt  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;

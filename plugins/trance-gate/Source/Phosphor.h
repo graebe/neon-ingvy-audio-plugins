@@ -48,6 +48,8 @@ constexpr int knob     = 48;   /* knob disc diameter */
 constexpr int knobLg   = 64;   /* at most one per window */
 constexpr int step     = 40;   /* sequencer step, square */
 constexpr int controlH = 28;   /* buttons, selects, readouts */
+constexpr int readout  = 64;   /* a readout's MINIMUM width -- the Knob card's
+                                * floor, below which a value clips */
 constexpr int rail     = 2;    /* knob arc and slider track stroke */
 constexpr int hairline = 1;    /* every border */
 }

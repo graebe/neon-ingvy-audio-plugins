@@ -64,13 +64,33 @@ void RingDisplay::paint (juce::Graphics& g)
         const bool on = model.stepOn && model.stepOn (i);
         const bool at = model.moving && i == model.playhead;
 
-        const float a0 = -juce::MathConstants<float>::halfPi
-                       + (float) i * slot + (slot - fill) * 0.5f;
+        /*
+         * NO -halfPi HERE. addCentredArc's fromRadians is documented as
+         * "the angle (clockwise) ... where 0 is the top-centre", so the
+         * convention is ALREADY a step sequencer's reading order. Subtracting
+         * a quarter turn on top of it -- which is what you need when you are
+         * converting raw trigonometry, where 0 is three o'clock -- turned the
+         * whole ring counter-clockwise by 90 degrees: step 0 sat at nine
+         * o'clock and the step drawn at the top was n/4. The pattern was
+         * right, the playhead was right, and both were in the wrong place.
+         *
+         * ui_chain.js:523 is the same formula on the same convention and has
+         * never had the offset.
+         */
+        const float a0 = (float) i * slot + (slot - fill) * 0.5f;
 
         juce::Path p;
         p.addCentredArc (c.x, c.y, rSeg, rSeg, 0.0f, a0, a0 + fill, true);
-        /* unlit ink-dim, active phosphor, the current step ink */
-        g.setColour (at ? colour::ink : on ? colour::phosphor : colour::inkDim);
+        /*
+         * WHETHER A STEP IS ON DECIDES THE COLOUR; THE PLAYHEAD ONLY PICKS
+         * THE SHADE. Testing `at` first let the playhead paint an OFF step in
+         * ink -- brighter than a lit step's phosphor -- so for one segment
+         * per revolution the ring reported a step that is not in the pattern.
+         * StepGridView already resolves it this way round (a gap under the
+         * playhead gets a glow wash, never phosphor).
+         */
+        g.setColour (on ? (at ? colour::ink       : colour::phosphor)
+                        : (at ? colour::phosphorGlow : colour::inkDim));
         g.strokePath (p, juce::PathStrokeType (seg, juce::PathStrokeType::curved,
                                                juce::PathStrokeType::butt));
     }
@@ -263,4 +283,177 @@ void TrackedLabel::paint (juce::Graphics& g)
     drawTracked (g, up, f, colour::inkMuted,
                  { (float) getWidth() * 0.5f - w * 0.5f, f.getHeight() },
                  tracking);
+}
+
+
+/* ================================================================ plot == */
+
+namespace phosphor::plot
+{
+
+juce::Rectangle<float> well (juce::Graphics& g, juce::Rectangle<float> bounds,
+                             const juce::String& caption)
+{
+    const auto r = bounds.reduced (0.5f);
+    g.setColour (colour::bg000);
+    g.fillRect (r);
+    g.setColour (colour::line100);
+    g.drawRect (r, stroke::hair);
+
+    if (caption.isNotEmpty())
+        drawTracked (g, caption, font::hint(), colour::inkMuted,
+                     { r.getX() + (float) inset, r.getY() + 12.0f }, font::trackHint);
+
+    return r.reduced ((float) inset).withTrimmedTop ((float) captionH);
+}
+
+void empty (juce::Graphics& g, juce::Rectangle<int> bounds)
+{
+    g.setColour (colour::inkDim);
+    g.setFont (font::hint());
+    g.drawText ("...", bounds, juce::Justification::centred);
+}
+
+void rule (juce::Graphics& g, juce::Rectangle<float> plot, double xFrac,
+           juce::Colour c, float thickness)
+{
+    const float x = plot.getX() + plot.getWidth() * (float) juce::jlimit (0.0, 1.0, xFrac);
+    g.setColour (c);
+    g.drawLine (x, plot.getY(), x, plot.getBottom(), thickness);
+}
+
+void decimate (const float* v, int n, int cols,
+               std::vector<float>& lo, std::vector<float>& hi)
+{
+    lo.assign ((size_t) juce::jmax (0, cols), 0.0f);
+    hi.assign ((size_t) juce::jmax (0, cols), 0.0f);
+    if (v == nullptr || n <= 0 || cols <= 0) return;
+
+    if (n < cols)
+    {
+        /* Interpolation, not decimation -- exact, because the envelope is
+         * piecewise linear in time. */
+        for (int c = 0; c < cols; ++c)
+        {
+            const double t = cols > 1 ? (double) c / (double) (cols - 1) : 0.0;
+            const double x = t * (double) (n - 1);
+            const int    i = juce::jlimit (0, n - 1, (int) x);
+            const int    j = juce::jmin (n - 1, i + 1);
+            const auto   f = (float) (x - (double) i);
+            const float  y = v[i] + (v[j] - v[i]) * f;
+            lo[(size_t) c] = hi[(size_t) c] = y;
+        }
+        return;
+    }
+
+    for (int c = 0; c < cols; ++c)
+    {
+        const int a = (int) ((double) c       * (double) n / (double) cols);
+        const int b = (int) ((double) (c + 1) * (double) n / (double) cols);
+        const int e = juce::jmax (a + 1, juce::jmin (n, b));
+
+        float mn = v[a], mx = v[a];
+        for (int i = a + 1; i < e; ++i)
+        {
+            mn = juce::jmin (mn, v[i]);
+            mx = juce::jmax (mx, v[i]);
+        }
+        lo[(size_t) c] = mn;
+        hi[(size_t) c] = mx;
+    }
+}
+
+void Curve::build (const std::vector<float>& lo, const std::vector<float>& hi)
+{
+    under.clear();
+    band .clear();
+    hull .clear();
+
+    const int n = (int) juce::jmin (lo.size(), hi.size());
+    if (n <= 0) return;
+
+    /* Unit space: x across 0..1, y DOWNWARDS from 0 at the top so that a
+     * level of 1 is y = 0 and the transform in draw() is a plain scale. */
+    auto ux = [n] (int i) { return n > 1 ? (float) i / (float) (n - 1) : 0.0f; };
+    auto uy = [] (float level) { return 1.0f - juce::jlimit (0.0f, 1.0f, level); };
+
+    hull.startNewSubPath (ux (0), uy (hi[0]));
+    for (int i = 1; i < n; ++i) hull.lineTo (ux (i), uy (hi[(size_t) i]));
+    for (int i = n - 1; i >= 0; --i) hull.lineTo (ux (i), uy (lo[(size_t) i]));
+
+    /*
+     * THE FILL IS BUILT FROM THE TOP EDGE ALONE, not from the hull.
+     *
+     * It used to be `under = hull` plus a close along the bottom -- but the
+     * hull ends where its BACKWARD walk along `lo` finishes, at the LEFT
+     * edge, so closing it to the bottom-RIGHT drew a diagonal across the
+     * whole plot. Whenever the curve starts at zero that diagonal lies flat
+     * along the baseline and is invisible, which is why it survived: set
+     * Attack to 0, the envelope opens at 1.0 on its first sample, and the
+     * same line becomes a triangle from the top-left corner.
+     */
+    under.startNewSubPath (ux (0), uy (hi[0]));
+    for (int i = 1; i < n; ++i) under.lineTo (ux (i), uy (hi[(size_t) i]));
+    under.lineTo (ux (n - 1), 1.0f);
+    under.lineTo (ux (0), 1.0f);
+    under.closeSubPath();
+
+    /* Only where decimation actually kept a range is there a band to fill;
+     * where lo == hi this stays empty and the drawing is a plain line, which
+     * is what makes a one-step envelope look exactly as it always did. */
+    bool spread = false;
+    for (int i = 0; i < n && ! spread; ++i)
+        spread = (hi[(size_t) i] - lo[(size_t) i]) > 1.0e-4f;
+
+    if (spread)
+    {
+        band = hull;
+        band.closeSubPath();
+    }
+}
+
+void Curve::drawOutline (juce::Graphics& g, juce::Rectangle<float> plot, float floorLevel,
+                         juce::Colour c, float thickness) const
+{
+    if (hull.isEmpty()) return;
+    const float f = juce::jlimit (0.0f, 1.0f, floorLevel);
+    const auto t = juce::AffineTransform::scale (plot.getWidth(), plot.getHeight() * (1.0f - f))
+                     .translated (plot.getX(), plot.getY());
+    g.setColour (c);
+    g.strokePath (hull, juce::PathStrokeType (thickness), t);
+}
+
+void Curve::draw (juce::Graphics& g, juce::Rectangle<float> plot, float floorLevel) const
+{
+    if (hull.isEmpty()) return;
+
+    const float f = juce::jlimit (0.0f, 1.0f, floorLevel);
+    const float h = plot.getHeight() * (1.0f - f);
+
+    /* m = floor + (1 - floor)*g is affine in g, so the floor is a squash of
+     * the unit box onto the part of the plot above it -- exact, and it costs
+     * no rebuild when Amount moves. */
+    const auto t = juce::AffineTransform::scale (plot.getWidth(), h)
+                     .translated (plot.getX(), plot.getY());
+
+    if (f > 0.0f)
+    {
+        /* Everything below the floor is lit whatever the gate does. */
+        g.setColour (colour::phosphorGlow);
+        g.fillRect (plot.withTop (plot.getY() + h));
+    }
+
+    g.setColour (colour::phosphorGlow);
+    g.fillPath (under, t);
+
+    if (! band.isEmpty())
+    {
+        g.setColour (colour::phosphor);
+        g.fillPath (band, t);
+    }
+
+    g.setColour (colour::phosphor);
+    g.strokePath (hull, juce::PathStrokeType (stroke::rail), t);
+}
+
 }

@@ -36,14 +36,33 @@ int main (int argc, char** argv)
      * tabbing through the plugin in a host.
      */
     struct Shot { const char* name; int length; int rate;
-                  float hold, release; bool ends, playing; };
+                  float hold, release, decay, sustain, attack; bool ends, playing;
+                  bool legato, dense; };
     const Shot shots[] = {
-        { "tg_16",   16,  7,  1.0f,  20.0f, false, false },
-        { "tg_64",   64,  9,  1.0f,  20.0f, false, false },
-        { "tg_128", 128, 12,  1.0f,  20.0f, false, false },
-        { "tg_cut",  32,  9,  0.5f, 500.0f, false, false },
-        { "tg_ends", 16,  0,  0.05f, 0.0f,  true,  false },
-        { "tg_play", 32,  7,  1.0f,  20.0f, false, true  },
+        { "tg_16",   16,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false },
+        { "tg_64",   64,  9,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false },
+        { "tg_128", 128, 12,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false },
+        { "tg_cut",  32,  9,  0.5f, 500.0f,  20.0f, 1.0f, 2.0f, false, false, false, false },
+        { "tg_ends", 16,  0,  0.05f, 0.0f,   20.0f, 1.0f, 2.0f, true,  false, false, false },
+        { "tg_play", 32,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, true, false, false },
+        /*
+         * THE CASE THE ENVELOPE AXIS WAS CHANGED FOR: a 442 ms decay on a
+         * 1/64 step, which is 15.6 ms at 120 BPM. On the old one-step axis
+         * this drew the first 3% of the decay as a near-flat line -- and,
+         * because the preview asked the engine for a tempo it refuses above
+         * 1000 BPM, drew it on a time base that was silently 120 BPM, so the
+         * gate never closed in the picture at all.
+         */
+        { "tg_slow", 32, 11,  1.0f,  20.0f, 442.0f, 0.0f, 2.0f, false, false, false, false },
+        /*
+         * LEGATO AGAINST A RUN OF ON STEPS, which is the picture of what it
+         * does: with Gate at half the pattern plot is a row of separate
+         * pulses, and legato joins them into one long gate. Nothing else in
+         * this set has adjacent ON steps, so nothing else could show it.
+         */
+        /* ATTACK 0 opens the gate on the very first sample, which is the
+         * case that exposed a fill closing to the wrong corner. */
+        { "tg_legato", 16, 7, 0.5f, 20.0f, 20.0f, 1.0f, 0.0f, false, false, true, true },
     };
 
     for (auto& s : shots)
@@ -53,7 +72,12 @@ int main (int argc, char** argv)
         lenP->setValueNotifyingHost (lenP->convertTo0to1 ((float) s.length));
         auto* rateP = proc.state().getParameter ("rate");
         rateP->setValueNotifyingHost (rateP->convertTo0to1 ((float) s.rate));
-        for (auto pair : { std::make_pair ("hold", s.hold), std::make_pair ("release", s.release) })
+        for (auto pair : { std::make_pair ("hold", s.hold),
+                           std::make_pair ("release", s.release),
+                           std::make_pair ("decay", s.decay),
+                           std::make_pair ("sustain", s.sustain),
+                           std::make_pair ("legato", s.legato ? 1.0f : 0.0f),
+                           std::make_pair ("attack", s.attack) })
         {
             auto* q = proc.state().getParameter (pair.first);
             q->setValueNotifyingHost (q->convertTo0to1 (pair.second));
@@ -77,7 +101,9 @@ int main (int argc, char** argv)
         for (int i = 0; i < s.length; ++i)
         {
             proc.engineSet ("cursor", juce::String (i));
-            proc.engineSet ("step", (i % 3 == 0) ? ((i % 12 == 0) ? "Tie" : "On") : "Off");
+            proc.engineSet ("step", s.dense ? "On"
+                                            : (i % 3 == 0) ? ((i % 12 == 0) ? "Tie" : "On")
+                                                           : "Off");
             proc.engineSet ("step_amount",
                             juce::String (0.35f + 0.6f * (float) i / (float) s.length, 3));
         }
@@ -136,6 +162,26 @@ int main (int argc, char** argv)
             df.deleteFile();
             std::unique_ptr<juce::FileOutputStream> dos (df.createOutputStream());
             if (dos != nullptr) juce::PNGImageFormat().writeImageToStream (detail, *dos);
+        }
+
+        /*
+         * THE TWO PLOTS, CLOSE UP. The envelope's marks are a hairline and a
+         * 2px rule a few pixels apart at a fast rate, and the pattern's step
+         * gridlines are 6px apart at 128 -- neither survives a full-window
+         * shot. The bounds come from the editor rather than from a literal,
+         * so moving the layout moves the crop with it.
+         */
+        const juce::String nm (s.name);
+        if (nm == "tg_16" || nm == "tg_128" || nm == "tg_slow" || nm == "tg_legato")
+        {
+            auto box = ed->getLocalBounds()
+                         .withTop (TranceGateEditor::plotStripTop())
+                         .withHeight (TranceGateEditor::plotStripHeight());
+            const auto strip = ed->createComponentSnapshot (box, true, 2.0f);
+            const auto sf = out.getChildFile (nm + "_plot.png");
+            sf.deleteFile();
+            std::unique_ptr<juce::FileOutputStream> sos (sf.createOutputStream());
+            if (sos != nullptr) juce::PNGImageFormat().writeImageToStream (strip, *sos);
         }
         juce::PNGImageFormat png;
         const auto file = out.getChildFile (juce::String (s.name) + ".png");

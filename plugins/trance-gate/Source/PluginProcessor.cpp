@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
 
 namespace {
 /* The rate table, in the engine's order. These ARE the wire values -- the
@@ -346,48 +347,135 @@ juce::AudioProcessorEditor* TranceGateProcessor::createEditor()
     return new TranceGateEditor (*this);
 }
 
+/* ============================================== the preview time base == */
+
+namespace {
+
 /*
- * One step, rendered at the duration that step actually lasts.
+ * WHAT A SCRATCH ENGINE HAS TO BE TOLD, AND WHY THE OLD ANSWER WAS WRONG.
  *
- * The rate is expressed through the TRANSPORT rather than by copying the rate
- * parameter: a step of `msStep` is the same shape whatever subdivision
- * produced that duration, so a nominal 1/4 at a tempo where one beat IS one
- * step keeps this independent of the rate table's order -- one fewer thing to
- * keep in step with the engine.
+ * A preview needs two things true at once: one engine step must last exactly
+ * T ms, and one rendered sample must stand for T/N ms -- otherwise attack_ms,
+ * which the engine converts using the SAMPLE RATE, lands on the wrong number
+ * of samples. The second requirement pins sr = N*1000/T. The first then pins
+ *
+ *     bpm = 60000 * B / T          B = beats per step, from the rate table
+ *
+ * and tg_block_setup accepts a tempo only inside (1, 1000):
+ *
+ *     if (t && t->bpm > 1.0f && t->bpm < 1000.0f) bpm = t->bpm;   // else 120
+ *
+ * The old code nailed the rate to 1/4 (B = 1) and derived bpm = 60000/T, so
+ * every step shorter than 60.06 ms -- 1/64 and 1/128 at any normal tempo,
+ * 1/32 above 125 BPM -- silently fell back to 120. The scratch engine then
+ * believed a step lasted 500 ms while one step's worth of samples was
+ * rendered: `frac` never reached `hold`, the gate never closed, and the
+ * picture showed an attack and a decay that ran on forever. It was not a
+ * drawing that needed more room; it was the wrong answer, drawn accurately.
+ *
+ * B is the free variable. Pick the rung of the rate ladder that puts bpm
+ * nearest 120 and the tempo is always in range.
  */
-TgEnvelopeShape TgEnvelopeShape::render (const TranceGateProcessor& src, double msStep)
+struct TimeBase
 {
-    TgEnvelopeShape out;
-    out.msStep   = msStep;
-    out.holdFrac = juce::jlimit (0.0, 1.0, src.engineGet ("hold").getDoubleValue());
-    if (msStep <= 0.0) return out;
+    juce::String rate = "1/4";
+    double beats   = 1.0;
+    double bpm     = 120.0;
+    bool   clamped = false;
+};
 
-    constexpr double sr = 44100.0;
-    tg_core_t* scratch = tg_core_create (sr);
-    if (scratch == nullptr) return out;
-    const struct Guard { tg_core_t* c; ~Guard() { tg_core_destroy (c); } } guard { scratch };
+/*
+ * B PER RATE, MEASURED FROM THE ENGINE RATHER THAN COPIED OUT OF IT.
+ *
+ * tg_rates is private to the C file and its comment says as much; a second
+ * copy here is a table that drifts. On a core that has not yet processed a
+ * block last_bpm is 120, and set_param("rate") calls recalc_ms_per_step, so
+ * the ui readout's ms_step field is 60000*B/120 -- that is, B = ms_step/500.
+ */
+const std::vector<double>& rateBeats()
+{
+    static const std::vector<double> beats = []
+    {
+        std::vector<double> v ((size_t) kRateNames.size(), 1.0);
+        if (tg_core_t* c = tg_core_create (44100.0))
+        {
+            std::vector<char> buf (TG_STATE_MAX, 0);
+            for (int i = 0; i < kRateNames.size(); ++i)
+            {
+                tg_core_set_param (c, "rate", kRateNames[i].toRawUTF8());
+                if (tg_core_get_param (c, "ui", buf.data(), (int) buf.size()) < 0) continue;
 
-    for (auto* k : { "attack", "decay", "sustain", "release", "hold" })
-        tg_core_set_param (scratch, k, src.engineGet (k).toRawUTF8());
+                const auto parts = juce::StringArray::fromTokens (
+                                       juce::String::fromUTF8 (buf.data()), ":", "");
+                if (parts.size() > 4)
+                    if (const double ms = parts[4].getDoubleValue(); ms > 0.0)
+                        v[(size_t) i] = ms / 500.0;
+            }
+            tg_core_destroy (c);
+        }
+        return v;
+    }();
+    return beats;
+}
 
-    /* A single always-on step at full depth and full amount. */
-    tg_core_set_param (scratch, "length", "0");        /* option index: 1 step */
-    tg_core_set_param (scratch, "cursor", "0");
-    tg_core_set_param (scratch, "step",   "On");
-    tg_core_set_param (scratch, "amount", "1.0");
-    tg_core_set_param (scratch, "step_amount", "1.0");
-    tg_core_set_param (scratch, "rate",   "1/4");      /* one beat per step */
+TimeBase chooseTimeBase (double stepMs)
+{
+    TimeBase tb;
+    const double t = juce::jlimit (2.0, 8000.0, stepMs);
+    tb.clamped = (stepMs < 2.0 || stepMs > 8000.0);
 
-    const int frames = (int) juce::jlimit (16.0, sr * 2.0, sr * msStep / 1000.0);
-    out.env.assign ((size_t) frames, 0.0f);
+    const auto& beats = rateBeats();
+    double best = -1.0;
+
+    for (int i = 0; i < kRateNames.size(); ++i)
+    {
+        const double b   = beats[(size_t) i];
+        const double bpm = 60000.0 * b / t;
+        if (bpm < 20.0 || bpm > 950.0) continue;      /* well inside the engine's guard */
+
+        const double d = std::abs (std::log (bpm / 120.0));
+        if (best < 0.0 || d < best)
+        {
+            best = d;
+            tb.rate = kRateNames[i];
+            tb.beats = b;
+            tb.bpm = bpm;
+        }
+    }
+
+    /* The ladder spans 85x in 13 rungs of ratio <= 2 and the window is 47x
+     * wide, so a rung always lands inside it for t in [2, 8000]. If that ever
+     * stops being true, SAY SO -- reverting quietly to a 120 BPM fallback is
+     * the bug this function exists to remove. */
+    if (best < 0.0) tb.clamped = true;
+    return tb;
+}
+
+/* Creates and destroys a preview engine. A reused instance carries envelope
+ * state between calls -- env, env_t, the stage, the playhead -- so a curve
+ * would start wherever the previous render happened to stop: plausible every
+ * time, and a different picture depending on what you touched last. */
+struct Scratch
+{
+    explicit Scratch (double sr) : core (tg_core_create (sr)) {}
+    ~Scratch() { if (core != nullptr) tg_core_destroy (core); }
+    Scratch (const Scratch&) = delete;
+    Scratch& operator= (const Scratch&) = delete;
+    tg_core_t* core;
+};
+
+/* DC 1.0 through the engine, which with amount and depth at 1 is the gain
+ * itself. The transport position is COMPUTED, never accumulated: the engine
+ * derives its own increment from bpm and sample rate, so handing it a
+ * position that agrees to the sample leaves its PLL nothing to correct. */
+void runDc (tg_core_t* core, const TimeBase& tb, double samplesPerStep,
+            int frames, std::vector<float>& out)
+{
+    out.assign ((size_t) juce::jmax (0, frames), 0.0f);
+    if (core == nullptr || frames <= 0 || samplesPerStep <= 0.0) return;
 
     constexpr int kBlock = 64;
     float bl[kBlock], br[kBlock];
-    double beats = 0.0;
-    /* One beat across the whole render, which is one step. The engine derives
-     * the same increment from bpm and sample rate, so its PLL finds the
-     * transport already where it expected it. */
-    const double beatsPerSample = 1.0 / (double) frames;
 
     for (int i = 0; i < frames; i += kBlock)
     {
@@ -396,17 +484,188 @@ TgEnvelopeShape TgEnvelopeShape::render (const TranceGateProcessor& src, double 
 
         tg_transport_t t {};
         t.running = 1;
-        t.beats   = beats;
-        t.bpm     = (float) (60.0 / (msStep / 1000.0));
-        tg_core_process_f32_split (scratch, bl, br, n, &t);
+        t.beats   = (double) i * tb.beats / samplesPerStep;
+        t.bpm     = (float) tb.bpm;
+        tg_core_process_f32_split (core, bl, br, n, &t);
 
-        for (int k = 0; k < n; ++k) out.env[(size_t) (i + k)] = bl[k];
-        beats += beatsPerSample * n;
+        for (int k = 0; k < n; ++k) out[(size_t) (i + k)] = bl[k];
     }
+}
 
-    /* Did the release still have somewhere to go when the step ended? That is
-     * the fact the drawing exists to make visible. */
-    out.truncated = ! out.env.empty() && out.env.back() > 0.02f && out.holdFrac < 1.0;
+}  // namespace
+
+/* ================================================= the envelope shape == */
+
+float TgEnvelopeShape::levelAt (double frac) const
+{
+    if (env.empty()) return 0.0f;
+    const int n = (int) env.size();
+    const int i = juce::jlimit (0, n - 1, (int) std::lround (frac * (double) (n - 1)));
+    return env[(size_t) i];
+}
+
+/*
+ * THE WHOLE ENVELOPE, NOT THE PART THAT FITS.
+ *
+ * The x-axis used to be one step, which meant a 442 ms decay on a 29.5 ms
+ * step showed its first 6.7% -- a picture of a knob you could not read by
+ * turning it. The axis is now the envelope's own length, with the step edge
+ * marked on it, so a decay that overruns reads as exactly that.
+ *
+ *     gateMs      = hold * msStep              where the gate really closes
+ *     releaseAtMs = max(gateMs, A + D)         where the DRAWN release begins
+ *     spanMs      = releaseAtMs + R            where the drawn envelope ends
+ *
+ * The max is the whole point, and it is why the drawn release is not simply
+ * the gate. A long decay under a short gate is the case this picture exists
+ * for -- 442 ms of decay on a 29.5 ms step -- and letting the gate cut the
+ * render there would kill the curve at 3% of the axis and leave the rest
+ * blank: the same unreadable picture as before, merely on a wider canvas. So
+ * the curve completes the decay it was DIALLED with, and the gate is drawn as
+ * a rule across it, saying "this is where it really stops". Shape on the
+ * curve, truth on the marks.
+ *
+ * When the gate closes after the decay has finished -- the ordinary case --
+ * the two coincide and the curve is literally what the engine does.
+ *
+ * The 4% of air at the end also guarantees releaseAtMs/spanMs < 1, which is
+ * what makes the engine's own gate rule fire at all.
+ */
+TgEnvelopeShape TgEnvelopeShape::render (const TranceGateProcessor& src, double msStep)
+{
+    TgEnvelopeShape out;
+    out.msStep    = msStep;
+    out.holdFrac  = juce::jlimit (0.0, 1.0, src.engineGet ("hold").getDoubleValue());
+    out.attackMs  = src.engineGet ("attack").getDoubleValue();
+    out.decayMs   = src.engineGet ("decay").getDoubleValue();
+    out.releaseMs = src.engineGet ("release").getDoubleValue();
+    out.sustainLevel = juce::jlimit (0.0, 1.0, src.engineGet ("sustain").getDoubleValue());
+    if (msStep <= 0.0) return out;
+
+    out.gateMs      = out.holdFrac * msStep;
+    out.releaseAtMs = juce::jmax (out.gateMs, out.attackMs + out.decayMs);
+
+    double span = juce::jmax (out.releaseAtMs + out.releaseMs, msStep, 2.0) * 1.04;
+    out.spanMs = span;
+
+    /* The render is no longer at the audio rate, so a three-second span costs
+     * a few thousand samples rather than a hundred thousand. 1024 keeps at
+     * least four samples per column of the narrowest plot; 32768 caps a
+     * render at a fraction of a millisecond of message-thread work. */
+    const int    frames   = (int) juce::jlimit (1024.0, 32768.0, std::round (span * 8.0));
+    const double renderSr = (double) frames * 1000.0 / span;
+
+    const auto tb = chooseTimeBase (span);
+    out.clamped = tb.clamped;
+
+    /*
+     * ONE RENDER PER TRACE, identical but for the scaled `hold`.
+     *
+     * `releaseAt` is where the DIALLED shape lets go -- after the decay has
+     * run its course -- and `gateMs` is where the gate really lets go. When
+     * the gate closes later than the decay ends the two are the same number
+     * and the second render is skipped.
+     */
+    auto renderAt = [&] (double releaseMsIn, std::vector<float>& dst)
+    {
+        Scratch sc (renderSr);
+        if (sc.core == nullptr) return;
+
+        tg_core_set_param (sc.core, "state", src.engineGet ("state").toRawUTF8());
+
+        /* One always-on, untied step at full depth and full amount, so the
+         * engine's output gain reduces to `env` exactly.
+         *
+         * THE `ties` AND `legato` LINES ARE LOAD-BEARING, not tidiness. Both
+         * suppress the gate's early release, and this is a ONE-STEP pattern
+         * whose "next step" is itself -- so either one left set would stop the
+         * curve ever coming down. */
+        tg_core_set_param (sc.core, "length", "0");        /* option index: 1 step */
+        tg_core_set_param (sc.core, "cursor", "0");
+        tg_core_set_param (sc.core, "ties",   "0");
+        tg_core_set_param (sc.core, "step",   "On");
+        tg_core_set_param (sc.core, "step_amount", "1.0");
+        tg_core_set_param (sc.core, "amount", "1.0");
+        tg_core_set_param (sc.core, "legato", "0");
+
+        /*
+         * THE RENDER'S STEP IS THE WHOLE SPAN, and the release is placed
+         * inside it by rescaling one dimensionless fraction. `hold` is the
+         * engine's only in-step release trigger, so this borrows the engine's
+         * gate rule instead of writing a second one; A, D, S and R go in as
+         * the patch's real milliseconds and never come near the 0..500 clamp.
+         */
+        tg_core_set_param (sc.core, "hold",
+                           juce::String (releaseMsIn / span, 6).toRawUTF8());
+        tg_core_set_param (sc.core, "rate", tb.rate.toRawUTF8());
+
+        runDc (sc.core, tb, (double) frames, frames, dst);
+    };
+
+    renderAt (out.gateMs, out.env);
+    if (out.releaseAtMs > out.gateMs + 1.0e-6)
+        renderAt (out.releaseAtMs, out.envDialled);
+
+    /* Computed, not sniffed off the last sample: you asked the gate to close
+     * inside the step and the release has nowhere to finish. At Gate 100% the
+     * release starts AT the boundary, and running past it is not a fault. */
+    out.truncated = out.holdFrac < 1.0 && out.gateMs + out.releaseMs > msStep;
+    return out;
+}
+
+/* ================================================== the pattern shape == */
+
+TgPatternShape TgPatternShape::render (const TranceGateProcessor& src, double msStep, int columns)
+{
+    TgPatternShape out;
+    out.msStep = msStep;
+    if (msStep <= 0.0 || columns <= 0) return out;
+
+    /* get_param("length") answers with the OPTION INDEX, as set_param takes
+     * it -- so the step count is one more. */
+    const int length = juce::jlimit (1, kMaxSteps, src.engineGet ("length").getIntValue() + 1);
+
+    /* Enough samples per step that every column has something to reduce, few
+     * enough that a whole 128-step pattern stays a fraction of a millisecond.
+     * perStep is an INTEGER, so a step boundary falls on an exact sample and
+     * the gridlines and the playhead cannot drift off it. */
+    const int perStepWant = (int) std::lround (msStep * 8.0);
+    const int perStepMin  = (int) std::ceil (4.0 * (double) columns / (double) length);
+    const int perStepCap  = juce::jmax (perStepMin, juce::jmax (8, 32768 / length));
+
+    out.length  = length;
+    out.perStep = juce::jlimit (perStepMin, perStepCap, perStepWant);
+
+    const int    frames   = out.perStep * length;
+    const double renderSr = (double) out.perStep * 1000.0 / msStep;
+
+    Scratch sc (renderSr);
+    if (sc.core == nullptr) { out.length = 0; out.perStep = 0; return out; }
+
+    /* The REAL patch: steps, ties, depths, length, rate, legato, hold, ADSR. */
+    tg_core_set_param (sc.core, "state", src.engineGet ("state").toRawUTF8());
+
+    /*
+     * AMOUNT IS THE ONE OVERRIDE, AND LEAVING IT OUT IS WHAT MAKES THIS CHEAP.
+     *
+     *     m = 1 - amount*(1 - env*level) = floor + (1 - floor)*g,  floor = 1 - amount
+     *
+     * is affine in g, so Amount belongs in the paint transform rather than in
+     * the render. The picture still matches the audio sample for sample, and
+     * dragging Amount never invalidates the cached curve. It also steps
+     * around the amount <= 0 short circuit, which leaves the buffer untouched
+     * and would therefore store the input DC -- a solid open gate -- for a
+     * setting that is in fact a true bypass.
+     */
+    tg_core_set_param (sc.core, "amount", "1.0");
+
+    /* An equivalent (rate, bpm) pair for the step duration the patch really
+     * has. The engine's behaviour depends only on samples_per_step and the
+     * sample rate, and both are matched exactly. */
+    const auto tb = chooseTimeBase (msStep);
+    out.clamped = tb.clamped;
+
+    runDc (sc.core, tb, (double) out.perStep, frames, out.gain);
     return out;
 }
 

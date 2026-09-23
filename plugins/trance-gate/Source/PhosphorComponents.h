@@ -130,3 +130,80 @@ private:
     juce::String text;
     bool title;
 };
+
+
+/*
+ * ------------------------------------------------------------- plots --
+ *
+ * NOT FROM THE SYSTEM'S CARD SET. There is no plot card, and two plots in one
+ * window with two copies of the same drawing is exactly how a design system
+ * starts to drift -- so the shared parts live here, in the file that already
+ * holds the components the system does not have, and each departure from the
+ * cards is a token used the way a card uses it.
+ *
+ * A plot is a bg-000 well with a hairline, a hint-style caption, and a curve
+ * drawn in phosphor over a phosphor-glow fill.
+ */
+namespace phosphor::plot
+{
+/* The padding inside the well, and the room the caption takes above the
+ * curve. Both on the 4px grid, bar the caption's 14 which is the hint
+ * style's line height. */
+constexpr int inset    = 6;
+constexpr int captionH = 14;
+
+/* Fills the well, hairlines it, draws the caption, and returns the rectangle
+ * the curve belongs in. */
+juce::Rectangle<float> well (juce::Graphics&, juce::Rectangle<float> bounds,
+                             const juce::String& caption);
+
+/* The "nothing to draw yet" state, so it reads the same in both plots. */
+void empty (juce::Graphics&, juce::Rectangle<int> bounds);
+
+/* A vertical rule at a fraction of the plot's width -- a position, not a
+ * value, which is why it is never phosphor. */
+void rule (juce::Graphics&, juce::Rectangle<float> plot, double xFrac,
+           juce::Colour, float thickness);
+
+/*
+ * n samples down to exactly `cols` (min, max) pairs.
+ *
+ * MIN AND MAX, NOT A MEAN OR A PICK. At 128 steps a Gate of 5% is a third of
+ * a pixel wide, and averaging or sampling loses it entirely -- the plot would
+ * quietly report a pattern that is not the one playing. Keeping both bounds
+ * costs one more vector and cannot drop a feature however narrow.
+ *
+ * Fewer samples than columns is interpolation rather than decimation, and it
+ * is exact: the engine's envelope is piecewise linear in time, so a polyline
+ * through the samples IS the curve. lo == hi throughout in that case.
+ */
+void decimate (const float* v, int n, int cols,
+               std::vector<float>& lo, std::vector<float>& hi);
+
+/*
+ * The curve itself, built once per refresh in UNIT SPACE (x and y both 0..1,
+ * y measured downwards) and mapped at paint time.
+ *
+ * Unit space is what lets the global Amount be a transform rather than a
+ * rebuild: the engine's gain is
+ *
+ *     m = 1 - amount*(1 - g) = floor + (1 - floor)*g,   floor = 1 - amount
+ *
+ * which is affine in g, so raising the floor is an AffineTransform and never
+ * a re-render. Dragging Amount therefore costs a repaint and nothing else.
+ */
+struct Curve
+{
+    juce::Path under;    /* the glow fill, closed to the baseline */
+    juce::Path band;     /* min..max, where decimation kept a range */
+    juce::Path hull;     /* the stroked line: max going out, min coming back */
+
+    void build (const std::vector<float>& lo, const std::vector<float>& hi);
+    void draw (juce::Graphics&, juce::Rectangle<float> plot, float floorLevel) const;
+    /* The line alone, in a colour of your choosing and with no fill under it
+     * -- for a trace that is context rather than the subject. */
+    void drawOutline (juce::Graphics&, juce::Rectangle<float> plot, float floorLevel,
+                      juce::Colour, float thickness) const;
+    bool empty() const { return hull.isEmpty(); }
+};
+}

@@ -27,8 +27,9 @@ class TranceGateProcessor;
  * THE ENVELOPE, RENDERED BY THE ENGINE ITSELF.
  *
  * Not a second implementation of the ADSR maths: this feeds DC through a
- * private engine instance for exactly one step at the patch's real rate and
- * tempo, and keeps what comes out. With amount 1 and a full-depth step the
+ * private engine instance for the WHOLE envelope -- attack, decay and release
+ * as dialled, however far past the end of a step they run -- and keeps what
+ * comes out. With amount 1 and a full-depth step the
  * engine's output gain reduces to `env` exactly, so the samples ARE the
  * envelope -- a picture derived independently is a picture that can drift
  * from the sound.
@@ -39,10 +40,40 @@ class TranceGateProcessor;
  */
 struct TgEnvelopeShape
 {
-    std::vector<float> env;          /* one value per sample of one step */
-    double msStep   = 0.0;
-    double holdFrac = 1.0;           /* where in the step the gate closes */
+    std::vector<float> env;          /* the REAL gated envelope, per sample */
+    /*
+     * THE SHAPE AS DIALLED, IGNORING THE GATE -- drawn as a dim ghost behind
+     * the real one.
+     *
+     * Without it the plot could not show Gate at all. The axis is
+     * max(gateMs, A+D) + R, so whenever attack and decay outlast the gate
+     * point the axis does not move with Gate -- and if the curve is the
+     * dialled shape too, then NOTHING moves and the knob looks dead. Drawing
+     * both puts the answer on the screen: the solid line is what you hear and
+     * follows the knob, the ghost is the decay you set and stays put.
+     *
+     * Empty when the two coincide, which is whenever the gate closes after
+     * the decay has finished -- the ordinary case, and one render not two.
+     */
+    std::vector<float> envDialled;
+    double msStep    = 0.0;          /* what one step lasts */
+    double spanMs    = 0.0;          /* what the x-axis covers */
+    double gateMs      = 0.0;        /* where the gate REALLY closes */
+    double releaseAtMs = 0.0;        /* where the DRAWN release begins */
+    double attackMs  = 0.0;
+    double decayMs   = 0.0;
+    double releaseMs = 0.0;
+    double sustainLevel = 1.0;       /* where decay lands, for its marker */
+    double holdFrac  = 1.0;          /* where in the STEP the gate closes */
     bool   truncated = false;        /* the release ran past the step's end */
+    bool   clamped   = false;        /* the time base could not be honoured */
+
+    /* Positions on the axis, 0..1, which is what a plot needs and what a test
+     * can assert without knowing how many samples were rendered. */
+    double gateFrac() const { return spanMs > 0.0 ? gateMs / spanMs : 0.0; }
+    double releaseFrac() const { return spanMs > 0.0 ? releaseAtMs / spanMs : 0.0; }
+    double stepFrac() const { return spanMs > 0.0 ? juce::jmin (1.0, msStep / spanMs) : 0.0; }
+    float  levelAt (double frac) const;
 
     /*
      * RENDERS THROUGH AN ENGINE OF ITS OWN, created and destroyed here.
@@ -55,6 +86,30 @@ struct TgEnvelopeShape
      * actually moves, never per frame and never on the audio thread.
      */
     static TgEnvelopeShape render (const TranceGateProcessor& src, double msStep);
+};
+
+/*
+ * THE WHOLE PATTERN, AS THE GATE ACTUALLY OPENS AND CLOSES.
+ *
+ * TgEnvelopeShape shows one envelope in isolation -- the shape you dialled.
+ * This shows what the engine does with it across every step: the retrigger
+ * that cuts a long decay at the next step's attack, the tie that suppresses
+ * that retrigger and lets it run on, legato, and each step's own amount.
+ * Rendered from the REAL patch, so the only way for it to disagree with the
+ * audio is for the engine to disagree with itself.
+ *
+ * `gain` is env * the per-step level. The GLOBAL amount is deliberately not
+ * applied -- see the note on the override in render().
+ */
+struct TgPatternShape
+{
+    std::vector<float> gain;
+    int    length  = 0;
+    int    perStep = 0;              /* gain.size() == length * perStep */
+    double msStep  = 0.0;
+    bool   clamped = false;
+
+    static TgPatternShape render (const TranceGateProcessor& src, double msStep, int columns);
 };
 
 class TranceGateProcessor : public juce::AudioProcessor,

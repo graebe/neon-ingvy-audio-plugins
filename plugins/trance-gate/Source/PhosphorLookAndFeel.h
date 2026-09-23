@@ -24,6 +24,7 @@ public:
                            float pos, float startAngle, float endAngle,
                            juce::Slider&) override;
     juce::Label* createSliderTextBox (juce::Slider&) override;
+    juce::Slider::SliderLayout getSliderLayout (juce::Slider&) override;
 
     /* ---- buttons ---- */
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&,

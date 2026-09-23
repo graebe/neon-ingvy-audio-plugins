@@ -248,9 +248,11 @@ int main()
 
     {
         /*
-         * THE ENVELOPE CURVE. Two facts are worth pinning, and both are about
-         * the axis being ONE STEP rather than abstract time -- which is the
-         * only reason to draw it at all.
+         * THE ENVELOPE CURVE. The axis is the ENVELOPE's own length -- the
+         * whole attack, decay and release as dialled -- with the step edge
+         * and the gate marked on it. Assertions are therefore in AXIS
+         * FRACTIONS rather than array indices, which is what lets them
+         * survive the axis changing again.
          */
         std::puts ("\nthe envelope curve:");
         TranceGateProcessor p;
@@ -262,10 +264,10 @@ int main()
         setParam (p, "decay",   0.0f);
         setParam (p, "sustain", 1.0f);
         setParam (p, "hold",    0.5f);
-        setParam (p, "release", 250.0f);
+        setParam (p, "release", 200.0f);
 
-        /* A 1/4 step at 120 BPM is 500 ms. Gate 50% gives the release the
-         * second half -- 250 ms, which a 250 ms release fills exactly. */
+        /* A 1/4 step at 120 BPM is 500 ms. Gate 50% opens the release at
+         * 250 ms, and 200 ms of release finishes well inside the step. */
         auto slow = TgEnvelopeShape::render (p, 500.0);
         check (! slow.env.empty(), "  a slow step renders",
                juce::String ((int) slow.env.size()) + " samples");
@@ -274,48 +276,123 @@ int main()
         check (! slow.truncated, "  ...and is not reported as cut off");
 
         /* A 1/32 step at 174 BPM is ~43 ms. The same release cannot even
-         * start to finish, and the curve must say so rather than quietly
-         * rescaling -- which is the entire argument for a real time axis. */
+         * begin to finish inside the step. The curve now shows the whole
+         * release, so the fact being pinned is no longer "where the curve
+         * ends" but "how far it had got when the step ran out". */
         setParam (p, "release", 500.0f);
         auto fast = TgEnvelopeShape::render (p, 43.0);
-        check (fast.truncated, "  a 500 ms release on a 43 ms step is cut off",
-               juce::String (fast.env.back(), 3));
-        check (fast.env.back() > 0.8f, "  ...with most of the release still to go",
-               juce::String (fast.env.back(), 3));
+        check (fast.truncated, "  a 500 ms release on a 43 ms step is cut off");
+        check (fast.levelAt (fast.stepFrac()) > 0.8f,
+               "  ...with most of the release still to go at the step edge",
+               juce::String (fast.levelAt (fast.stepFrac()), 3));
 
-        /* THE SAME PATCH AT TWO RATES IS TWO PICTURES. On a normalised axis
-         * these would be identical, which is the lie this avoids. */
+        /* THE SAME PATCH AT TWO RATES IS TWO PICTURES -- now because the step
+         * edge falls somewhere different on the axis, which is the fact the
+         * drawing exists to show. */
         auto sameSlow = TgEnvelopeShape::render (p, 500.0);
-        check (sameSlow.env.back() < fast.env.back() - 0.3f,
+        check (fast.stepFrac() < 0.2 && sameSlow.stepFrac() > 0.6,
                "  one patch, two rates, two shapes",
-               juce::String (sameSlow.env.back(), 3) + " vs " + juce::String (fast.env.back(), 3));
+               juce::String (fast.stepFrac(), 3) + " vs " + juce::String (sameSlow.stepFrac(), 3));
 
-        /* Gate positions where release BEGINS. */
+        /* Where the release BEGINS. With sustain 1 and no attack or decay the
+         * plateau is exactly 1.0f, so the first sample under 0.999 is the
+         * first sample of the release. */
         auto kneeAt = [] (const TgEnvelopeShape& sh)
         {
             for (size_t i = 0; i < sh.env.size(); ++i)
-                if (sh.env[i] < 0.95f) return (double) i / (double) sh.env.size();
+                if (sh.env[i] < 0.999f) return (double) i / (double) sh.env.size();
             return 1.0;
         };
         setParam (p, "release", 200.0f);
         setParam (p, "hold", 0.25f);
-        const double kneeEarly = kneeAt (TgEnvelopeShape::render (p, 500.0));
+        const auto early = TgEnvelopeShape::render (p, 500.0);
         setParam (p, "hold", 0.75f);
-        const double kneeLate  = kneeAt (TgEnvelopeShape::render (p, 500.0));
+        const auto late  = TgEnvelopeShape::render (p, 500.0);
 
-        check (std::abs (kneeEarly - 0.25) < 0.04, "  gate 25% puts the knee a quarter in",
-               juce::String (kneeEarly, 3));
-        check (std::abs (kneeLate  - 0.75) < 0.04, "  gate 75% puts it three quarters in",
-               juce::String (kneeLate, 3));
-        check (kneeLate > kneeEarly, "  ...so moving Gate moves the knee");
+        /* Axis-independent, and stronger than the old "a quarter of the way
+         * in": the knee must land where the shape SAYS the release starts,
+         * and the gate must be where the patch says it is. With no attack or
+         * decay the drawn release and the real gate coincide. */
+        check (std::abs (kneeAt (early) - early.releaseFrac()) < 0.01,
+               "  the knee is where releaseFrac says it is (gate 25%)",
+               juce::String (kneeAt (early), 3) + " vs " + juce::String (early.releaseFrac(), 3));
+        check (std::abs (early.gateMs - 0.25 * 500.0) < 0.01,
+               "  ...and gate 25% of a 500 ms step is 125 ms",
+               juce::String (early.gateMs, 2));
+        check (std::abs (kneeAt (late) - late.releaseFrac()) < 0.01,
+               "  the knee is where releaseFrac says it is (gate 75%)",
+               juce::String (kneeAt (late), 3) + " vs " + juce::String (late.releaseFrac(), 3));
+        check (std::abs (late.gateMs - 0.75 * 500.0) < 0.01,
+               "  ...and gate 75% of a 500 ms step is 375 ms",
+               juce::String (late.gateMs, 2));
+        check (kneeAt (late) > kneeAt (early), "  ...so moving Gate moves the knee");
+
+        /*
+         * THE CASE THE WHOLE CHANGE EXISTS FOR: a decay fifteen times longer
+         * than the step. The axis must be the decay's, the step must be a
+         * mark near the left-hand edge, and the curve must actually come down
+         * on screen rather than being cut off by a gate at 3%.
+         */
+        setParam (p, "attack",  10.0f);
+        setParam (p, "decay",   442.0f);
+        setParam (p, "sustain", 0.0f);
+        setParam (p, "release", 20.0f);
+        setParam (p, "hold",    0.53f);
+        const auto wide = TgEnvelopeShape::render (p, 29.53);
+        check (std::abs (wide.spanMs - (10.0 + 442.0 + 20.0) * 1.04) < 1.0,
+               "  a 442 ms decay on a 29.5 ms step spans the decay, not the step",
+               juce::String (wide.spanMs, 1));
+        check (wide.stepFrac() < 0.07,
+               "  ...with the step edge a mark near the left",
+               juce::String (wide.stepFrac(), 4));
+        check (wide.gateFrac() < wide.releaseFrac(),
+               "  ...the gate closes before the dialled decay ends",
+               juce::String (wide.gateFrac(), 4) + " vs " + juce::String (wide.releaseFrac(), 4));
+        check (! wide.envDialled.empty(),
+               "  ...so the dialled shape is drawn as a second trace");
+        const float ghostMid = wide.envDialled.empty() ? 0.0f
+                             : wide.envDialled[wide.envDialled.size() / 2];
+        check (ghostMid > 0.4f && ghostMid < 0.6f,
+               "  ...whose decay is HALF WAY DOWN at mid-axis, not long gone",
+               juce::String (ghostMid, 3));
+        /* The SOLID trace is the gated one, so with the gate at 53% of a
+         * 29.5 ms step it is long over by mid-axis. That is the difference
+         * between the two traces, and the reason there are two. */
+        check (wide.levelAt (0.5) < 0.01f,
+               "  ...while the gated trace is already shut there",
+               juce::String (wide.levelAt (0.5), 3));
+        check (wide.env.back() < 0.01f, "  ...reaching zero on screen",
+               juce::String (wide.env.back(), 4));
+
+        /*
+         * GATE MUST MOVE THE PICTURE.
+         *
+         * When attack + decay outlast the gate point the axis cannot move
+         * with Gate -- so if the curve is the dialled shape too, the knob
+         * looks dead. It WAS dead: every Gate value from 5% to 100% rendered
+         * a byte-identical curve. The solid trace must differ; the ghost,
+         * which is the dialled shape, must not.
+         */
+        setParam (p, "hold", 0.25f);
+        const auto g25 = TgEnvelopeShape::render (p, 29.53);
+        setParam (p, "hold", 0.75f);
+        const auto g75 = TgEnvelopeShape::render (p, 29.53);
+        check (g25.env != g75.env, "  turning Gate moves the gated trace");
+        check (g25.envDialled == g75.envDialled,
+               "  ...and leaves the dialled one where it was");
+        check (g25.gateFrac() < g75.gateFrac(), "  ...in the direction it was turned",
+               juce::String (g25.gateFrac(), 4) + " -> " + juce::String (g75.gateFrac(), 4));
 
         /* The curve IS the engine, not a second formula -- so a sustain of
-         * 0.5 must actually plateau at 0.5. */
-        setParam (p, "decay", 10.0f);
+         * 0.5 must actually plateau at 0.5. Sampled mid-STEP deliberately:
+         * mid-axis is now somewhere in the release. */
+        setParam (p, "attack",  0.0f);
+        setParam (p, "decay",   10.0f);
         setParam (p, "sustain", 0.5f);
-        setParam (p, "hold", 1.0f);
+        setParam (p, "release", 200.0f);
+        setParam (p, "hold",    1.0f);
         auto half = TgEnvelopeShape::render (p, 500.0);
-        const float mid = half.env[half.env.size() / 2];
+        const float mid = half.levelAt (0.5 * half.stepFrac());
         check (std::abs (mid - 0.5f) < 0.02f, "  sustain 50% plateaus at 0.5",
                juce::String (mid, 3));
 
@@ -350,6 +427,208 @@ int main()
                "  an unpadded leading word still aligns from the right");
 
         check (! Mask::fromHex ("").get (0), "  an empty read is empty, not full");
+    }
+
+    {
+        /*
+         * THE TIME BASE, ACROSS THE WHOLE RATE LADDER.
+         *
+         * tg_block_setup ignores a transport tempo outside (1, 1000) and
+         * falls back to 120 BPM. The preview used to express every step
+         * duration as a 1/4 at 60000/msStep BPM, so every step shorter than
+         * 60 ms asked for a tempo the engine refused: the scratch core then
+         * believed a step lasted 500 ms while one step's worth of samples was
+         * rendered, `frac` never reached `hold`, and THE GATE NEVER CLOSED.
+         * The drawing was not cramped, it was wrong.
+         *
+         * Every entry below 60 ms in this list fails on that code.
+         */
+        std::puts ("\nthe preview's time base:");
+        TranceGateProcessor p;
+        setParam (p, "attack",  0.0f);
+        setParam (p, "decay",   0.0f);
+        setParam (p, "sustain", 1.0f);
+        setParam (p, "hold",    0.5f);
+
+        auto kneeAt = [] (const TgEnvelopeShape& sh)
+        {
+            for (size_t i = 0; i < sh.env.size(); ++i)
+                if (sh.env[i] < 0.999f) return (double) i / (double) sh.env.size();
+            return 1.0;
+        };
+
+        for (double ms : { 1.9, 15.6, 29.5, 62.5, 125.0, 500.0, 2000.0 })
+        {
+            setParam (p, "release", (float) juce::jmin (500.0, ms));
+            const auto sh = TgEnvelopeShape::render (p, ms);
+
+            check (std::abs (sh.gateMs - 0.5 * ms) < 0.01,
+                   "  gate 50% of a " + juce::String (ms, 1) + " ms step is half of it",
+                   juce::String (sh.gateMs, 3));
+            check (std::abs (kneeAt (sh) - sh.releaseFrac()) < 0.01,
+                   "  ...and the gate actually closes there",
+                   juce::String (kneeAt (sh), 3) + " vs " + juce::String (sh.releaseFrac(), 3));
+            check (! sh.clamped, "  ...on a rate the engine accepts");
+        }
+    }
+
+    {
+        /*
+         * THE PATTERN SHAPE -- the plot above the pads. Everything here is
+         * about the engine's behaviour ACROSS steps, which is exactly what a
+         * one-step preview cannot show.
+         */
+        std::puts ("\nthe pattern shape:");
+        TranceGateProcessor p;
+        setParam (p, "attack",  0.0f);
+        setParam (p, "decay",   0.0f);
+        setParam (p, "sustain", 1.0f);
+        setParam (p, "release", 0.0f);
+        setParam (p, "hold",    1.0f);
+        setParam (p, "length",  4.0f);
+        p.engineSet ("pattern", "5");        /* steps 0 and 2 on */
+        p.engineSet ("ties", "0");
+
+        auto sh = TgPatternShape::render (p, 125.0, 747);
+        check (sh.length == 4 && sh.perStep > 0, "  a 4-step pattern renders",
+               juce::String (sh.length) + " x " + juce::String (sh.perStep));
+        check ((int) sh.gain.size() == sh.length * sh.perStep,
+               "  gain is exactly length x perStep");
+        check ((int) sh.gain.size() >= 4 * 747,
+               "  ...and at least four samples per column",
+               juce::String ((int) sh.gain.size()));
+
+        auto midOf = [&sh] (int step) { return sh.gain[(size_t) (step * sh.perStep + sh.perStep / 2)]; };
+        check (midOf (0) > 0.99f && midOf (2) > 0.99f, "  the lit steps are open",
+               juce::String (midOf (0), 3));
+        check (midOf (1) < 0.01f && midOf (3) < 0.01f, "  the gaps are shut",
+               juce::String (midOf (1), 3));
+
+        /* A TIE HOLDS THROUGH -- the headline reason this plot exists. Gate
+         * 50% would close step 0 half way, and the tie must override that. */
+        setParam (p, "hold", 0.5f);
+        p.engineSet ("pattern", "3");        /* steps 0 and 1 on */
+        p.engineSet ("ties", "1");           /* step 0 ties into step 1 */
+        /* Stated, not assumed: legato would hold these two together as well,
+         * and then the untied case below would prove nothing. */
+        setParam (p, "legato", 0.0f);
+        auto tied = TgPatternShape::render (p, 125.0, 747);
+        const float atThreeQuarters = tied.gain[(size_t) (tied.perStep * 3 / 4)];
+        check (atThreeQuarters > 0.99f, "  a tied step is not cut short by Gate",
+               juce::String (atThreeQuarters, 3));
+
+        p.engineSet ("ties", "0");
+        auto untied = TgPatternShape::render (p, 125.0, 747);
+        check (untied.gain[(size_t) (untied.perStep * 3 / 4)] < 0.01f,
+               "  ...and without the tie the same sample is shut",
+               juce::String (untied.gain[(size_t) (untied.perStep * 3 / 4)], 3));
+
+        /* Per-step accents survive the state round trip and scale the curve. */
+        setParam (p, "hold", 1.0f);
+        p.engineSet ("cursor", "0");
+        p.engineSet ("step_amount", "0.5");
+        auto accent = TgPatternShape::render (p, 125.0, 747);
+        check (std::abs (accent.gain[(size_t) (accent.perStep / 2)] - 0.502f) < 0.01f,
+               "  a step at amount 0.5 opens half way",
+               juce::String (accent.gain[(size_t) (accent.perStep / 2)], 3));
+
+        /* AMOUNT IS NOT BAKED IN -- it is an affine map applied at paint, so
+         * moving it must not change a single rendered sample. */
+        setParam (p, "amount", 1.0f);
+        auto full = TgPatternShape::render (p, 125.0, 747);
+        setParam (p, "amount", 0.4f);
+        auto quiet = TgPatternShape::render (p, 125.0, 747);
+        check (full.gain == quiet.gain, "  Amount does not change the render");
+
+        auto twice = TgPatternShape::render (p, 125.0, 747);
+        check (twice.gain == quiet.gain, "  two renders of one pattern are identical");
+    }
+
+    {
+        /*
+         * LEGATO THROUGH THE PLOT'S OWN PATH.
+         *
+         * The engine tests pin the behaviour; this pins that the picture
+         * follows it, because TgPatternShape deliberately does NOT override
+         * legato -- it renders the patch as it stands, which is the only
+         * reason the plot can be trusted to match what you hear.
+         */
+        std::puts ("\nlegato in the pattern plot:");
+        TranceGateProcessor p;
+        setParam (p, "attack",  0.0f);
+        setParam (p, "decay",   0.0f);
+        setParam (p, "sustain", 1.0f);
+        setParam (p, "release", 0.0f);
+        setParam (p, "hold",    0.5f);
+        setParam (p, "length",  4.0f);
+        p.engineSet ("pattern", "f");        /* all four steps on */
+        p.engineSet ("ties", "0");
+
+        setParam (p, "legato", 0.0f);
+        const auto apart = TgPatternShape::render (p, 125.0, 747);
+        setParam (p, "legato", 1.0f);
+        const auto joined = TgPatternShape::render (p, 125.0, 747);
+
+        /* Three quarters through step 1: past the gate point, so it is shut
+         * without legato and held open with it. */
+        const auto at = [] (const TgPatternShape& sh)
+        { return sh.gain[(size_t) (sh.perStep + sh.perStep * 3 / 4)]; };
+
+        check (at (apart) < 0.01f, "  legato off, the gate has closed mid-step",
+               juce::String (at (apart), 3));
+        check (at (joined) > 0.99f, "  legato on, adjacent ON steps hold through",
+               juce::String (at (joined), 3));
+        check (apart.gain != joined.gain, "  ...so the plot actually changes");
+    }
+
+    {
+        /*
+         * A SLOT IS A WHOLE SOUND NOW, and the parameters have to follow it
+         * out of the engine -- otherwise Live's automation lane keeps showing
+         * the previous slot's envelope while the audio runs on the new one.
+         */
+        std::puts ("\na slot carries its own sound:");
+        TranceGateProcessor p;
+        setParam (p, "slot", 0.0f);
+        setParam (p, "rate", 5.0f);          /* 1/8 */
+        setParam (p, "attack", 11.0f);
+        setParam (p, "slot", 1.0f);
+        setParam (p, "rate", 9.0f);          /* 1/32 */
+        setParam (p, "attack", 222.0f);
+
+        setParam (p, "slot", 0.0f);
+        p.syncParamsFromEngine();
+        check (std::abs (getParam (p, "attack") - 11.0f) < 1.0f,
+               "  slot 0's attack comes back to the parameter",
+               juce::String (getParam (p, "attack"), 1));
+        eq (p.engineGet ("rate"), "1/8", "  ...and its rate");
+
+        setParam (p, "slot", 1.0f);
+        p.syncParamsFromEngine();
+        check (std::abs (getParam (p, "attack") - 222.0f) < 1.0f,
+               "  slot 1's differ, and follow the switch",
+               juce::String (getParam (p, "attack"), 1));
+        eq (p.engineGet ("rate"), "1/32", "  ...with its own rate");
+
+        /* And across a host save, which is the engine's blob verbatim. */
+        juce::MemoryBlock saved;
+        p.getStateInformation (saved);
+        TranceGateProcessor q;
+        q.setStateInformation (saved.getData(), (int) saved.getSize());
+        setParam (q, "slot", 0.0f);
+        q.syncParamsFromEngine();
+        check (std::abs (getParam (q, "attack") - 11.0f) < 1.0f,
+               "  both slots survive a host save",
+               juce::String (getParam (q, "attack"), 1));
+    }
+
+    {
+        /* The window has to stay on a screen. heightFor is a pure static, so
+         * this costs nothing and catches a layout constant that grew. */
+        std::puts ("\nthe editor's size:");
+        check (TranceGateEditor::heightFor (128) <= 1000,
+               "  128 steps still fits a 1080p screen",
+               juce::String (TranceGateEditor::heightFor (128)) + " px");
     }
 
     std::printf ("\n%s (%d checks, %d failures)\n",

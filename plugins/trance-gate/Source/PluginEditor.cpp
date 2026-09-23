@@ -32,7 +32,17 @@ constexpr int kPanelW     = kBlockW - kActionsW - space::s4;     /* 376 */
 constexpr int kActionsX   = kBlockX + kPanelW + space::s4;
 
 constexpr int kSelectY    = kPad + kTopBlockH + space::s6;       /* 412 */
-constexpr int kGridY      = kSelectY + size::controlH + space::s2;
+
+/*
+ * The pattern plot spans the grid exactly -- same x, same width -- because it
+ * is the same 128 steps drawn as time instead of as pads, and anything else
+ * would read as a coincidence. Its height is the envelope plot's, so the
+ * window has ONE plot height rather than two nearly-equal ones; that is also
+ * why kPlotH is 92 and not a rounder number (see above).
+ */
+constexpr int kPatternH   = kPlotH;                              /* 92 */
+constexpr int kPatternY   = kSelectY + size::controlH + space::s2;   /* 448 */
+constexpr int kGridY      = kPatternY + kPatternH + space::s4;   /* 556 */
 }
 
 /* ====================================================== envelope curve == */
@@ -45,81 +55,266 @@ void TranceGateEditor::EnvelopeCurve::refresh (double stepMs)
      * playhead moves 30 times a second and must not cause a re-render. */
     const juce::String now = proc.engineGet ("attack") + "/" + proc.engineGet ("decay")
                            + "/" + proc.engineGet ("sustain") + "/" + proc.engineGet ("release")
-                           + "/" + proc.engineGet ("hold") + "/" + juce::String (stepMs, 2);
+                           + "/" + proc.engineGet ("hold") + "/" + juce::String (stepMs, 2)
+                           + "/" + proc.engineGet ("slot");
     if (now == stamp) return;
     stamp = now;
     shape = TgEnvelopeShape::render (proc, stepMs);
+    builtFor = 0;
     repaint();
+}
+
+void TranceGateEditor::EnvelopeCurve::rebuild (int cols)
+{
+    builtFor = cols;
+    plot::decimate (shape.env.data(), (int) shape.env.size(), cols, lo, hi);
+    curve.build (lo, hi);
+
+    ghost = {};
+    if (! shape.envDialled.empty())
+    {
+        plot::decimate (shape.envDialled.data(), (int) shape.envDialled.size(), cols, lo, hi);
+        ghost.build (lo, hi);
+    }
 }
 
 void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
 {
-    const auto r = getLocalBounds().toFloat().reduced (0.5f);
-    g.setColour (colour::bg000);
-    g.fillRect (r);
-    g.setColour (colour::line100);
-    g.drawRect (r, stroke::hair);
+    /* The caption is the two durations the picture is about: what the axis
+     * covers, and what one step of it lasts. `hint` style, because it is a
+     * note about the drawing rather than a value. */
+    juce::String caption;
+    if (shape.spanMs > 0.0)
+        caption = "ENVELOPE " + juce::String (juce::roundToInt (shape.spanMs)) + " MS"
+                + "   STEP " + juce::String (shape.msStep, 1) + " MS";
 
-    /* The caption is the step's real duration, which is the fact that makes
-     * the whole picture mean something. `hint` style, because it is a note
-     * about the drawing rather than a value. */
-    const auto fh = font::hint();
-    if (shape.msStep > 0.0)
-        drawTracked (g, "ONE STEP " + juce::String (shape.msStep, 1) + " MS", fh,
-                     colour::inkMuted, { r.getX() + 6.0f, r.getY() + 12.0f },
-                     font::trackHint);
-
-    const auto plot = r.reduced (6.0f).withTrimmedTop (14.0f);
+    const auto area = plot::well (g, getLocalBounds().toFloat(), caption);
 
     if (shape.env.empty())
     {
-        g.setColour (colour::inkDim);
-        g.setFont (fh);
-        g.drawText ("...", getLocalBounds(), juce::Justification::centred);
+        plot::empty (g, getLocalBounds());
         return;
     }
 
-    /* Where the gate closes: a rail-coloured rule, since it marks a position
-     * rather than a value. */
+    const int cols = juce::jmax (2, (int) area.getWidth());
+    if (cols != builtFor) rebuild (cols);
+
+    /* A strip along the bottom for the phase letters, so they never sit on
+     * top of the curve. Everything else is drawn into what is left. */
+    const float labelH = (float) font::hint().getHeight() + 2.0f;
+    const auto  box    = area.withTrimmedBottom (labelH);
+
+    /* Where the gate really closes: a rail-coloured hairline, since it marks
+     * a position rather than a value. */
     if (shape.holdFrac < 1.0)
-    {
-        const float x = plot.getX() + plot.getWidth() * (float) shape.holdFrac;
-        g.setColour (colour::line200);
-        g.drawLine (x, plot.getY(), x, plot.getBottom(), stroke::hair);
-    }
-
-    juce::Path p;
-    const int n = (int) shape.env.size();
-    for (int i = 0; i < n; ++i)
-    {
-        const float x = plot.getX() + plot.getWidth() * ((float) i / (float) (n - 1));
-        const float y = plot.getBottom()
-                      - plot.getHeight() * juce::jlimit (0.0f, 1.0f, shape.env[(size_t) i]);
-        if (i == 0) p.startNewSubPath (x, y);
-        else        p.lineTo (x, y);
-    }
-
-    auto fill = p;
-    fill.lineTo (plot.getRight(), plot.getBottom());
-    fill.lineTo (plot.getX(), plot.getBottom());
-    fill.closeSubPath();
-    g.setColour (colour::phosphorGlow);
-    g.fillPath (fill);
-
-    g.setColour (colour::phosphor);
-    g.strokePath (p, juce::PathStrokeType (stroke::rail));
+        plot::rule (g, box, shape.gateFrac(), colour::line200, stroke::hair);
 
     /*
-     * A release that cannot finish inside the step is CUT OFF at the edge.
-     * Amber, which the system reserves for "armed / about to clip / not
-     * right" -- a release with nowhere to go is exactly that, and it is the
-     * one amber mark in the window, which is the limit the system sets.
+     * THE GHOST FIRST, UNDERNEATH: the envelope as DIALLED, ignoring the gate.
+     *
+     * Only present when the gate closes before the decay has finished, which
+     * is the case where the solid curve alone would be a puzzle -- you set a
+     * 442 ms decay and the plot shows a spike. The dim line is the decay you
+     * asked for; the solid one is what the gate leaves of it.
      */
-    if (shape.truncated)
+    if (! ghost.empty())
+        ghost.drawOutline (g, box, 0.0f, colour::inkDim, stroke::hair);
+
+    curve.draw (g, box, 0.0f);
+
+    /*
+     * THE PHASE POINTS.
+     *
+     * Levels are SAMPLED FROM THE RENDERED CURVE rather than computed from
+     * the millisecond values, so a dot cannot drift off the line it is
+     * marking even if this file's idea of the envelope and the engine's ever
+     * part company. ink, not phosphor: a phosphor dot on a phosphor curve is
+     * invisible, and these are landmarks rather than something lit.
+     */
+    const double aEnd = shape.attackMs;
+    const double dEnd = shape.attackMs + shape.decayMs;
+    const double gate = shape.gateMs;
+    const double rEnd = shape.gateMs + shape.releaseMs;
+
+    auto dotAt = [&] (double ms)
     {
-        g.setColour (colour::amber);
-        g.drawLine (plot.getRight(), plot.getY(), plot.getRight(), plot.getBottom(), stroke::rail);
+        const double f = juce::jlimit (0.0, 1.0, ms / shape.spanMs);
+        const float  x = box.getX() + box.getWidth() * (float) f;
+        const float  y = box.getBottom() - box.getHeight() * shape.levelAt (f);
+        g.setColour (colour::ink);
+        g.fillEllipse (x - 2.0f, y - 2.0f, 4.0f, 4.0f);
+    };
+
+    /* A stage the gate never reached did not happen, so it gets no marker --
+     * and env_enter walks zero-length stages without emitting a sample, so a
+     * zero-length one has no point to mark either. */
+    dotAt (0.0);
+    if (aEnd > 0.0 && aEnd <= gate)             dotAt (aEnd);
+    if (shape.decayMs > 0.0 && dEnd <= gate)    dotAt (dEnd);
+    dotAt (gate);
+    if (shape.releaseMs > 0.0 && rEnd <= shape.spanMs) dotAt (rEnd);
+
+    /*
+     * A / D / S / R under the segment each names, dropped when its segment is
+     * narrower than the letter. At 227px a fast attack is a couple of pixels
+     * wide and four letters would simply overprint each other.
+     */
+    const auto fh = font::hint();
+    const std::pair<const char*, std::pair<double, double>> segs[] = {
+        { "A", { 0.0,  aEnd } }, { "D", { aEnd, dEnd } },
+        { "S", { dEnd, gate } }, { "R", { gate, rEnd } },
+    };
+    for (const auto& seg : segs)
+    {
+        const double from = juce::jlimit (0.0, shape.spanMs, seg.second.first);
+        const double to   = juce::jlimit (0.0, shape.spanMs, seg.second.second);
+        if (to <= from) continue;
+
+        const float x0 = box.getX() + box.getWidth() * (float) (from / shape.spanMs);
+        const float x1 = box.getX() + box.getWidth() * (float) (to   / shape.spanMs);
+        const float w  = trackedWidth (seg.first, fh, font::trackHint);
+        if (x1 - x0 < w + 4.0f) continue;
+
+        drawTracked (g, seg.first, fh, colour::inkMuted,
+                     { (x0 + x1) * 0.5f - w * 0.5f, area.getBottom() - 1.0f },
+                     font::trackHint);
     }
+
+    /*
+     * THE STEP EDGE, drawn last so it is not buried, and thicker than the
+     * gate because it is the hard boundary: past here the engine has moved on
+     * to the next step whatever the envelope was doing.
+     *
+     * Amber when the release cannot finish inside the step. The system
+     * reserves amber for "armed / about to clip / not right", and a release
+     * with nowhere to go is exactly that -- and it is the one amber mark in
+     * the window, which is the limit the system sets.
+     */
+    plot::rule (g, box, shape.stepFrac(),
+                shape.truncated ? colour::amber : colour::line200, stroke::rail);
+}
+
+/* ======================================================= pattern curve == */
+
+TranceGateEditor::PatternCurve::PatternCurve (TranceGateProcessor& p) : proc (p) {}
+
+void TranceGateEditor::PatternCurve::refresh (const juce::String& uiRaw, double stepMs)
+{
+    /*
+     * THE STAMP IS THE READOUT WITH THE VOLATILE FIELDS TAKEN OUT.
+     *
+     * ui is steps:ties:length:phase:ms_step:advancing:cursor:depths. Fields 3,
+     * 5 and 6 change constantly while the transport runs, and re-rendering a
+     * 32k-sample pattern at 30 Hz to draw the same curve would be absurd, so
+     * the pattern's shape is fields 0, 1, 2 and 7 only.
+     *
+     * ms_step goes in as a number rather than the rate label because a TEMPO
+     * change also changes the picture, and is quantised to 0.1 ms so a host
+     * automating tempo does not re-render every frame. Amount is deliberately
+     * absent: it is applied in the paint transform.
+     */
+    const auto parts = juce::StringArray::fromTokens (uiRaw, ":", "");
+    juce::String now;
+    for (int i : { 0, 1, 2, 7 })
+        now += (i < parts.size() ? parts[i] : juce::String()) + ":";
+
+    /* THE SLOT IS IN THE STAMP EXPLICITLY, not left to the fields above.
+     * They cover it only by accident -- two slots holding the same pattern
+     * and differing in their sound would render once and stay wrong. */
+    now += proc.engineGet ("slot") + "|"
+         + juce::String (stepMs, 1) + "|" + proc.engineGet ("legato")
+         + "|" + proc.engineGet ("attack")  + "|" + proc.engineGet ("decay")
+         + "|" + proc.engineGet ("sustain") + "|" + proc.engineGet ("release")
+         + "|" + proc.engineGet ("hold");
+
+    if (now == stamp) return;
+    stamp = now;
+    shape = TgPatternShape::render (proc, stepMs, juce::jmax (2, getWidth() - 2 * plot::inset - 1));
+    builtFor = 0;
+    repaint();
+}
+
+void TranceGateEditor::PatternCurve::setPlayhead (double stepPhase, bool isMoving)
+{
+    if (juce::approximatelyEqual (stepPhase, phase) && isMoving == moving) return;
+    phase  = stepPhase;
+    moving = isMoving;
+    repaint();
+}
+
+void TranceGateEditor::PatternCurve::setAmount (float a)
+{
+    if (juce::approximatelyEqual (a, amount)) return;
+    amount = a;
+    repaint();          /* the floor is a transform -- no rebuild, no render */
+}
+
+void TranceGateEditor::PatternCurve::rebuild (int cols)
+{
+    builtFor = cols;
+    plot::decimate (shape.gain.data(), (int) shape.gain.size(), cols, lo, hi);
+    curve.build (lo, hi);
+}
+
+void TranceGateEditor::PatternCurve::paint (juce::Graphics& g)
+{
+    juce::String caption;
+    if (shape.length > 0)
+        caption = "PATTERN " + juce::String (shape.length) + " STEPS"
+                + "   x " + juce::String (shape.msStep, 1) + " MS";
+
+    const auto area = plot::well (g, getLocalBounds().toFloat(), caption);
+
+    if (shape.gain.empty() || shape.length <= 0)
+    {
+        plot::empty (g, getLocalBounds());
+        return;
+    }
+
+    const int cols = juce::jmax (2, (int) area.getWidth());
+    if (cols != builtFor) rebuild (cols);
+
+    /*
+     * BARS AND BEATS, NOT 128 RULES.
+     *
+     * At 128 steps a rule per step is one every 5.8 px and the plot turns
+     * into a comb. Every 16th in rail and every 4th in hairline is a rule
+     * every 23 px at that length, and it is the same reading StepGridView
+     * offers by bordering every fourth step. Below 8 steps there is room for
+     * all of them.
+     */
+    const int n = shape.length;
+    for (int i = 1; i < n; ++i)
+    {
+        const bool bar  = (i % 16) == 0;
+        const bool beat = (i % 4) == 0;
+        if (! bar && ! beat && n >= 8) continue;
+
+        plot::rule (g, area, (double) i / (double) n,
+                    bar ? colour::line200 : colour::line100, stroke::hair);
+    }
+
+    /*
+     * THE AMOUNT FLOOR. Amount is a dry/wet, so at 40% a shut gate still
+     * passes 60% of the signal -- the gate never closes below this line. Drawn
+     * as the rule it is rather than with a number, because the Amount knob
+     * already prints one.
+     */
+    const float floorLevel = juce::jlimit (0.0f, 1.0f, 1.0f - amount);
+
+    curve.draw (g, area, floorLevel);
+
+    if (floorLevel > 0.001f)
+    {
+        const float y = area.getBottom() - area.getHeight() * floorLevel;
+        g.setColour (colour::line200);
+        g.drawLine (area.getX(), y, area.getRight(), y, stroke::hair);
+    }
+
+    /* The playhead is "here", not "on" -- ink, like the ring's, and never
+     * phosphor, which the system spends only on what is lit. */
+    if (moving)
+        plot::rule (g, area, phase / (double) n, colour::ink, stroke::hair);
 }
 
 /* ================================================================ editor == */
@@ -128,6 +323,9 @@ int TranceGateEditor::heightFor (int length)
 {
     return kGridY + StepGridView::heightFor (length) + space::s6 + HintBar::height;
 }
+
+int TranceGateEditor::plotStripTop()    { return kPatternY - space::s2; }
+int TranceGateEditor::plotStripHeight() { return kPatternH + 2 * space::s2; }
 
 TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     : AudioProcessorEditor (&p), proc (p)
@@ -147,6 +345,7 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     wireKnob (envPanel,  release, releaseL, "release");
     addAndMakeVisible (ring);
     addAndMakeVisible (envelope);
+    addAndMakeVisible (pattern);
     addAndMakeVisible (grid);
     addAndMakeVisible (hint);
 
@@ -236,13 +435,39 @@ void TranceGateEditor::wireKnob (PanelBox& panel, juce::Slider& s, TrackedLabel&
     panel.addAndMakeVisible (l);
 
     s.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+
+    /*
+     * 270 DEGREES, WHICH IS THE SYSTEM'S SWEEP AND NOT JUCE'S.
+     *
+     * JUCE's default is 1.2pi -> 2.8pi, which is 288, and nothing here ever
+     * said otherwise -- so every knob drew a rail 18 degrees too long with
+     * its gap 9 degrees off on each side. The Knob card's own SVG,
+     *
+     *     <path class="rail" d="M9.86 38.14 A20.0 20.0 0 1 1 38.14 38.14"/>
+     *
+     * starts at (9.86, 38.14), which about a centre of (24, 24) is 225
+     * degrees, and sweeps 270 to 495. drawRotarySlider already draws the
+     * angles it is handed, so this is the only place that has to know them.
+     */
+    s.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
+                           juce::MathConstants<float>::pi * 2.75f, true);
+
     /* "Never draw a knob without its readout: the arc shows position, the
      * readout shows the number." The box is a PhosphorReadout, supplied by
-     * the LookAndFeel, so it prints the unit in ink-muted. */
-    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 74, size::controlH);
-    s.setDoubleClickReturnValue (true, s.getDoubleClickReturnValue());
-    /* The attachment sets the range, the value and the two-way link. Setting
-     * a range by hand here would be a second opinion about the parameter. */
+     * the LookAndFeel, so it prints the unit in ink-muted.
+     *
+     * The width passed here is the card's MINIMUM, not the column's:
+     * getSliderLayout widens the box to the slider it is given, so a number
+     * clips only when the column is narrower than a readout is allowed to
+     * be. It used to be a bare 74 -- the column width from resized() copied
+     * out by hand, two numbers that had to agree with nothing to notice when
+     * they stopped. */
+    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, size::readout, size::controlH);
+
+    /* The attachment sets the range, the value, the double-click default and
+     * the two-way link. Setting any of those by hand here would be a second
+     * opinion about the parameter -- and would be overwritten on the next
+     * line regardless. */
     sliderAtts.push_back (std::make_unique<SliderAtt> (proc.state(), paramId, s));
 }
 
@@ -299,7 +524,19 @@ double TranceGateEditor::livePhase() const
 
 void TranceGateEditor::pushModels()
 {
-    const int head = (int) std::floor (livePhase());
+    const double ph   = livePhase();
+    const int    head = (int) std::floor (ph);
+
+    /* Here rather than in timerCallback because the two grid-edit callbacks
+     * also come through pushModels: a toggled pad redraws the curve in the
+     * same pass instead of a frame later. refresh() is a string compare
+     * unless something that shapes the pattern actually moved. */
+    pattern.refresh (lastRaw, ui.msStep);
+    pattern.setPlayhead (ph, ui.moving);
+    /* An atomic read, not engineGet: engineGet takes the engine lock and
+     * allocates TG_STATE_MAX bytes, which is not what a 30 Hz poll should
+     * cost for one float. */
+    pattern.setAmount (proc.state().getRawParameterValue ("amount")->load());
 
     RingDisplay::Model rm;
     rm.length   = ui.length;
@@ -404,6 +641,8 @@ void TranceGateEditor::resized()
 
     slot  .setBounds (kLeftX, kSelectY, kActionsW, size::controlH);
     legato.setBounds (kLeftX + kActionsW + space::s4, kSelectY, 140, size::controlH);
+
+    pattern.setBounds (kLeftX, kPatternY, StepGridView::width, kPatternH);
 
     grid.setBounds (kLeftX, kGridY, StepGridView::width,
                     StepGridView::heightFor (juce::jmax (1, ui.length)));

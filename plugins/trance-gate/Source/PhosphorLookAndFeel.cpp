@@ -123,6 +123,39 @@ juce::Label* PhosphorLookAndFeel::createSliderTextBox (juce::Slider&)
     return new PhosphorReadout();
 }
 
+/*
+ * THE 8px BETWEEN A KNOB AND ITS READOUT, WHICH WAS 4.
+ *
+ * The Knob card stacks label, knob, readout with space-2 between them, and
+ * resized() sizes the column for exactly that: 48 + 8 + 28 = 84. But
+ * LookAndFeel_V2::getSliderLayout takes the readout off the bottom and gives
+ * the WHOLE remainder to the rotary -- 74x56 -- and drawRotarySlider then
+ * clamps the disc to 48 and centres it in the 56, spending the 8 as 4 above
+ * and 4 below. The gap the card asks for never appeared anywhere.
+ *
+ * So take the readout off WITH the gap attached, and what is left is the
+ * knob's own box.
+ */
+juce::Slider::SliderLayout PhosphorLookAndFeel::getSliderLayout (juce::Slider& s)
+{
+    if (s.getTextBoxPosition() != juce::Slider::TextBoxBelow)
+        return juce::LookAndFeel_V2::getSliderLayout (s);
+
+    const auto b = s.getLocalBounds();
+    const int  h = s.getTextBoxHeight();
+
+    /* The box spans the slider, floored at the card's minimum: a column too
+     * narrow for a readout should overflow where it can be seen rather than
+     * clip in silence. */
+    const int w = juce::jmax (s.getTextBoxWidth(), b.getWidth());
+
+    juce::Slider::SliderLayout layout;
+    layout.textBoxBounds = juce::Rectangle<int> (w, h)
+                             .withCentre ({ b.getCentreX(), b.getBottom() - h / 2 });
+    layout.sliderBounds  = b.withTrimmedBottom (h + space::s2);
+    return layout;
+}
+
 /* ============================================================ readout == */
 
 PhosphorReadout::PhosphorReadout()
