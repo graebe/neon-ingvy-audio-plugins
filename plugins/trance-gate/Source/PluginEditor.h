@@ -1,6 +1,8 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
+#include "PhosphorLookAndFeel.h"
+#include "PhosphorComponents.h"
 
 /*
  * The editor draws from the SAME `ui` readout the Move display uses:
@@ -12,16 +14,17 @@
  * does -- the readout is a snapshot, and differencing it per frame would show
  * the rotation's stutter rather than the music.
  *
- * THE CONTROLS ARE ATTACHED TO PARAMETERS, NOT TO THE ENGINE. They used to
- * call engineSet directly, which worked and was invisible to the host: a knob
- * turned here moved the sound and left Live's automation lane untouched, so
- * writing automation meant finding the same control twice. Everything that is
- * a parameter now goes through the APVTS, and the engine is written by the
- * processor's listener -- one path in, whoever turns the knob.
+ * THE CONTROLS ARE ATTACHED TO PARAMETERS, NOT TO THE ENGINE. Everything that
+ * is a parameter goes through the APVTS and the engine is written by the
+ * processor's listener, so a knob turned here shows up in Live's automation
+ * lane. The PATTERN is not a parameter (128 steps x 8 slots is not an
+ * automation lane anyone wants), so the grid still talks to the engine
+ * directly. That asymmetry is the design, not an oversight.
  *
- * The PATTERN is not a parameter (128 steps x 8 slots is not an automation
- * lane anyone wants), so the grid still talks to the engine directly. That
- * asymmetry is the design, not an oversight.
+ * THE LOOK IS THE PHOSPHOR DESIGN SYSTEM, and this file holds none of it:
+ * colours and metrics live in Phosphor.h, control drawing in
+ * PhosphorLookAndFeel, and the ring, grid, panels and hint bar in
+ * PhosphorComponents. What is left here is layout and wiring.
  */
 class TranceGateEditor : public juce::AudioProcessorEditor,
                          private juce::Timer
@@ -32,8 +35,6 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
-    void mouseDown (const juce::MouseEvent&) override;
-    void mouseDrag (const juce::MouseEvent&) override;
 
     /* 128 steps do not fit a machine word any more. Same shape as the
      * engine's tg_mask_t, and for the same reason it is a struct there: a
@@ -67,6 +68,11 @@ public:
             return m;
         }
     };
+
+    /* The window is 824 wide: space-8 either side of the system's 760px
+     * 16-step grid. Its height follows the pattern -- see heightFor. */
+    static constexpr int windowWidth = phosphor::space::s8 * 2 + StepGridView::width;
+    static int heightFor (int length);
 
 private:
     /*
@@ -110,26 +116,32 @@ private:
 
     void timerCallback() override;
     void refreshUi();
+    void pushModels();
     double livePhase() const;
-    int    stepAt (juce::Point<int>) const;
-    int    gridRows() const;
-    juce::Rectangle<int> stepBounds (int i) const;
-    void   drawRing (juce::Graphics&, juce::Rectangle<float>) const;
-    void   drawSteps (juce::Graphics&) const;
 
     TranceGateProcessor& proc;
     Ui ui;
+
+    PhosphorLookAndFeel phosphorLook;
 
     /* The local clock the playhead is advanced on between readouts. */
     juce::String lastRaw;
     double anchorPhase = 0.0;
     double anchorMs    = 0.0;
+    int    lastRows    = 0;
 
     juce::Slider rate, length, amount, gate, attack, decay, sustain, release;
-    juce::Label  rateL, lengthL, amountL, gateL, attackL, decayL, sustainL, releaseL;
+    TrackedLabel rateL { "Rate" }, lengthL { "Length" }, amountL { "Amount" },
+                 gateL { "Gate" }, attackL { "Attack" }, decayL { "Decay" },
+                 sustainL { "Sustain" }, releaseL { "Release" };
     juce::TextButton copyPatch { "Copy patch" }, pastePatch { "Paste patch" };
     juce::ToggleButton legato { "Legato" };
     juce::ComboBox slot;
+
+    PanelBox gatePanel { "Gate" }, envPanel { "Envelope" };
+    RingDisplay  ring;
+    StepGridView grid;
+    HintBar      hint;
     EnvelopeCurve envelope { proc };
 
     using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -139,11 +151,11 @@ private:
     std::unique_ptr<ComboAtt>  slotAtt;
     std::unique_ptr<ButtonAtt> legatoAtt;
 
-    /* The knob's value TEXT comes from the parameter (SliderAttachment
-     * installs the parameter's own formatter), so there is nothing to pass
-     * here about how it prints -- see makeLayout. */
-    void wireKnob (juce::Slider&, juce::Label&, const juce::String& text,
-                   const juce::String& paramId);
+    /* Knobs are children of their PANEL, not of the editor. Parented to the
+     * editor they were painted first and the panel's ground covered them --
+     * and the hierarchy would have been lying about which controls belong to
+     * which function anyway. */
+    void wireKnob (PanelBox&, juce::Slider&, TrackedLabel&, const juce::String& paramId);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TranceGateEditor)
 };

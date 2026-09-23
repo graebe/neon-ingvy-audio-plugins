@@ -1,24 +1,41 @@
 #include "PluginEditor.h"
 
+using namespace phosphor;
+
 namespace {
-constexpr int kW = 820, kH = 520;
-constexpr int kPad = 16;
-constexpr int kGridTop = 228, kGridBot = kH - 34;
-constexpr int kCols = 16;           /* one row is one bar at 1/16 */
 constexpr int kMaxSteps = 128;
 
-const char* kRates[] = { "1/1T","1/2","1/2T","1/4","1/4T","1/8","1/8T",
-                         "1/16","1/16T","1/32","1/32T","1/64","1/128" };
-constexpr int kNumRates = 13;
+/*
+ * THE LAYOUT, on the system's 4px grid.
+ *
+ * Window padding space-8; the content column is exactly the 760px the 16-step
+ * grid takes, which is what fixes the window width. The left column is the
+ * window's face (ring, then the envelope plot); the control block sits to its
+ * right, two panels grouped by function with the actions stacked on the right
+ * edge -- "never among the knobs".
+ *
+ * Ring 240 + space-6 + plot 92 comes to 356, which is also two 166px panels
+ * with space-6 between them, so the two columns end level. That is the only
+ * reason the plot is 92 and not a rounder number.
+ */
+constexpr int kPad        = space::s8;
+constexpr int kRing       = 240;
+constexpr int kPlotH      = 92;
+constexpr int kActionsW   = 96;
+constexpr int kTopBlockH  = kRing + space::s6 + kPlotH;          /* 356 */
+constexpr int kPanelH     = (kTopBlockH - space::s6) / 2;        /* 166 */
 
-const juce::Colour kBg    { 0xff121215 };
-const juce::Colour kCell  { 0xff1b1b1f };
-const juce::Colour kOn    { 0xff35d07f };
-const juce::Colour kOff   { 0xff4a2530 };
-const juce::Colour kPanel { 0xff17171c };
+constexpr int kLeftX      = kPad;
+constexpr int kBlockX     = kPad + kRing + space::s8;            /* 304 */
+constexpr int kBlockW     = StepGridView::width - kRing - space::s8;  /* 488 */
+constexpr int kPanelW     = kBlockW - kActionsW - space::s4;     /* 376 */
+constexpr int kActionsX   = kBlockX + kPanelW + space::s4;
+
+constexpr int kSelectY    = kPad + kTopBlockH + space::s6;       /* 412 */
+constexpr int kGridY      = kSelectY + size::controlH + space::s2;
 }
 
-/* ======================================================== envelope curve == */
+/* ====================================================== envelope curve == */
 
 TranceGateEditor::EnvelopeCurve::EnvelopeCurve (TranceGateProcessor& p) : proc (p) {}
 
@@ -37,41 +54,38 @@ void TranceGateEditor::EnvelopeCurve::refresh (double stepMs)
 
 void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds().toFloat();
-    g.setColour (kPanel);
-    g.fillRoundedRectangle (r, 4.0f);
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+    g.setColour (colour::bg000);
+    g.fillRect (r);
+    g.setColour (colour::line100);
+    g.drawRect (r, stroke::hair);
 
-    auto plot = r.reduced (10.0f, 12.0f).withTrimmedTop (12.0f);
+    /* The caption is the step's real duration, which is the fact that makes
+     * the whole picture mean something. `hint` style, because it is a note
+     * about the drawing rather than a value. */
+    const auto fh = font::hint();
+    if (shape.msStep > 0.0)
+        drawTracked (g, "ONE STEP " + juce::String (shape.msStep, 1) + " MS", fh,
+                     colour::inkMuted, { r.getX() + 6.0f, r.getY() + 12.0f },
+                     font::trackHint);
 
-    g.setColour (juce::Colours::white.withAlpha (0.5f));
-    g.setFont (juce::FontOptions (11.0f));
-    g.drawText (shape.msStep > 0.0 ? "Envelope  -  one step = " + juce::String (shape.msStep, 1) + " ms"
-                             : "Envelope",
-                (int) r.getX() + 10, (int) r.getY() + 5, (int) r.getWidth() - 20, 14,
-                juce::Justification::centredLeft);
-
-    /* The baseline and the top, so the curve has something to be read against. */
-    g.setColour (juce::Colours::white.withAlpha (0.10f));
-    g.drawHorizontalLine ((int) plot.getBottom(), plot.getX(), plot.getRight());
-    g.drawHorizontalLine ((int) plot.getY(),      plot.getX(), plot.getRight());
+    const auto plot = r.reduced (6.0f).withTrimmedTop (14.0f);
 
     if (shape.env.empty())
     {
-        g.setColour (juce::Colours::grey);
+        g.setColour (colour::inkDim);
+        g.setFont (fh);
         g.drawText ("...", getLocalBounds(), juce::Justification::centred);
         return;
     }
 
-    /* Where the gate closes. Drawn BEFORE the curve so the curve sits on top,
-     * and labelled, because "Gate" is otherwise a number you learn by ear. */
+    /* Where the gate closes: a rail-coloured rule, since it marks a position
+     * rather than a value. */
     if (shape.holdFrac < 1.0)
     {
         const float x = plot.getX() + plot.getWidth() * (float) shape.holdFrac;
-        g.setColour (juce::Colours::white.withAlpha (0.28f));
-        g.drawVerticalLine ((int) x, plot.getY(), plot.getBottom());
-        g.setFont (juce::FontOptions (10.0f));
-        g.drawText ("gate", (int) x + 3, (int) plot.getY(), 34, 12,
-                    juce::Justification::centredLeft);
+        g.setColour (colour::line200);
+        g.drawLine (x, plot.getY(), x, plot.getBottom(), stroke::hair);
     }
 
     juce::Path p;
@@ -79,7 +93,8 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
     for (int i = 0; i < n; ++i)
     {
         const float x = plot.getX() + plot.getWidth() * ((float) i / (float) (n - 1));
-        const float y = plot.getBottom() - plot.getHeight() * juce::jlimit (0.0f, 1.0f, shape.env[(size_t) i]);
+        const float y = plot.getBottom()
+                      - plot.getHeight() * juce::jlimit (0.0f, 1.0f, shape.env[(size_t) i]);
         if (i == 0) p.startNewSubPath (x, y);
         else        p.lineTo (x, y);
     }
@@ -88,57 +103,61 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
     fill.lineTo (plot.getRight(), plot.getBottom());
     fill.lineTo (plot.getX(), plot.getBottom());
     fill.closeSubPath();
-    g.setColour (kOn.withAlpha (0.16f));
+    g.setColour (colour::phosphorGlow);
     g.fillPath (fill);
 
-    g.setColour (kOn);
-    g.strokePath (p, juce::PathStrokeType (1.8f));
+    g.setColour (colour::phosphor);
+    g.strokePath (p, juce::PathStrokeType (stroke::rail));
 
-    /* A release that cannot finish inside the step is CUT OFF at the edge --
-     * say so, rather than leaving it to look like a drawing bug. */
+    /*
+     * A release that cannot finish inside the step is CUT OFF at the edge.
+     * Amber, which the system reserves for "armed / about to clip / not
+     * right" -- a release with nowhere to go is exactly that, and it is the
+     * one amber mark in the window, which is the limit the system sets.
+     */
     if (shape.truncated)
     {
-        g.setColour (juce::Colours::orange.withAlpha (0.9f));
-        g.drawVerticalLine ((int) plot.getRight() - 1, plot.getY(), plot.getBottom());
-        g.setFont (juce::FontOptions (10.0f));
-        g.drawText ("cut off", (int) plot.getRight() - 52, (int) plot.getBottom() - 13, 50, 12,
-                    juce::Justification::centredRight);
+        g.setColour (colour::amber);
+        g.drawLine (plot.getRight(), plot.getY(), plot.getRight(), plot.getBottom(), stroke::rail);
     }
 }
 
 /* ================================================================ editor == */
 
+int TranceGateEditor::heightFor (int length)
+{
+    return kGridY + StepGridView::heightFor (length) + space::s6 + HintBar::height;
+}
+
 TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     : AudioProcessorEditor (&p), proc (p)
 {
-    wireKnob (amount,  amountL,  "Amount",  "amount");
-    wireKnob (gate,    gateL,    "Gate",    "hold");
-    wireKnob (attack,  attackL,  "Attack",  "attack");
-    wireKnob (decay,   decayL,   "Decay",   "decay");
-    wireKnob (sustain, sustainL, "Sustain", "sustain");
-    wireKnob (release, releaseL, "Release", "release");
-    wireKnob (length,  lengthL,  "Length",  "length");
+    setLookAndFeel (&phosphorLook);
 
-    /* Rate shows its LABEL, not its index -- the number would be meaningless.
-     * The attachment still owns the value; this only follows it. */
-    rate.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    rate.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    rate.onValueChange = [this]
-    {
-        const int i = juce::jlimit (0, kNumRates - 1, (int) rate.getValue());
-        rateL.setText (juce::String ("Rate  ") + kRates[i], juce::dontSendNotification);
-    };
-    addAndMakeVisible (rate);
-    rateL.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (rateL);
-    sliderAtts.push_back (std::make_unique<SliderAtt> (proc.state(), "rate", rate));
-    rate.onValueChange();
+    addAndMakeVisible (gatePanel);
+    addAndMakeVisible (envPanel);
 
+    wireKnob (gatePanel, rate,    rateL,    "rate");
+    wireKnob (gatePanel, length,  lengthL,  "length");
+    wireKnob (gatePanel, amount,  amountL,  "amount");
+    wireKnob (gatePanel, gate,    gateL,    "hold");
+    wireKnob (envPanel,  attack,  attackL,  "attack");
+    wireKnob (envPanel,  decay,   decayL,   "decay");
+    wireKnob (envPanel,  sustain, sustainL, "sustain");
+    wireKnob (envPanel,  release, releaseL, "release");
+    addAndMakeVisible (ring);
+    addAndMakeVisible (envelope);
+    addAndMakeVisible (grid);
+    addAndMakeVisible (hint);
+
+    /* The pattern Select, which the StepGrid card puts above-left of the
+     * grid. On Move this is the slot; here it is the same thing named the way
+     * the system names it. */
     slot.addItemList ({ "1","2","3","4","5","6","7","8" }, 1);
     addAndMakeVisible (slot);
     slotAtt = std::make_unique<ComboAtt> (proc.state(), "slot", slot);
 
-    legato.setTooltip ("Adjacent open steps hold as one gate instead of re-articulating");
+    legato.setButtonText ("Legato");
     addAndMakeVisible (legato);
     legatoAtt = std::make_unique<ButtonAtt> (proc.state(), "legato", legato);
 
@@ -159,25 +178,69 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     };
     addAndMakeVisible (copyPatch);
     addAndMakeVisible (pastePatch);
-    addAndMakeVisible (envelope);
+
+    /* Three clauses, verb first: the card's maximum and its pattern. */
+    hint.setClauses ({ { "click",       "a step to toggle" },
+                       { "shift-click", "for a tie" },
+                       { "drag",        "up or down for its amount" } });
+
+    grid.onToggle = [this] (int i, bool shift)
+    {
+        proc.engineSet ("cursor", juce::String (i));
+        const bool on  = ui.steps.get (i);
+        const bool tie = ui.ties .get (i);
+        /* Plain click is on/off; shift is the tie -- the same split the pads
+         * use, and for the same reason: drawing a pattern is the frequent
+         * gesture and must not cycle through a third state to get back to
+         * off. */
+        if (shift) proc.engineSet ("step", on ? (tie ? "On" : "Tie") : "On");
+        else       proc.engineSet ("step", on ? "Off" : "On");
+        refreshUi();
+        pushModels();
+    };
+    grid.onAmount = [this] (int i, float v)
+    {
+        proc.engineSet ("cursor", juce::String (i));
+        proc.engineSet ("step_amount", juce::String (v, 3));
+        refreshUi();
+        pushModels();
+    };
 
     refreshUi();
-    setSize (kW, kH);
+    lastRows = StepGridView::rowsFor (ui.length);
+    setSize (windowWidth, heightFor (ui.length));
     startTimerHz (30);
 }
 
-TranceGateEditor::~TranceGateEditor() { stopTimer(); }
+TranceGateEditor::~TranceGateEditor()
+{
+    stopTimer();
+    setLookAndFeel (nullptr);
+}
 
-void TranceGateEditor::wireKnob (juce::Slider& s, juce::Label& l, const juce::String& text,
+void TranceGateEditor::wireKnob (PanelBox& panel, juce::Slider& s, TrackedLabel& l,
                                  const juce::String& paramId)
 {
-    s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 68, 18);
+    /*
+     * PARENT FIRST, THEN THE TEXT BOX -- the order is load-bearing.
+     *
+     * setTextBoxStyle builds the box through whatever LookAndFeel the slider
+     * has at that moment, and a slider with no parent has JUCE's default.
+     * Nothing rebuilds it when the slider is later added to a parent that
+     * does have one (Slider rebuilds on lookAndFeelChanged, which reparenting
+     * does not send), so the knob came out styled and its readout came out a
+     * plain white JUCE label -- the one control in the window that ignored
+     * the design system.
+     */
+    panel.addAndMakeVisible (s);
+    panel.addAndMakeVisible (l);
 
-    addAndMakeVisible (s);
-    l.setText (text, juce::dontSendNotification);
-    l.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (l);
+    s.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+    /* "Never draw a knob without its readout: the arc shows position, the
+     * readout shows the number." The box is a PhosphorReadout, supplied by
+     * the LookAndFeel, so it prints the unit in ink-muted. */
+    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 74, size::controlH);
+    s.setDoubleClickReturnValue (true, s.getDoubleClickReturnValue());
     /* The attachment sets the range, the value and the two-way link. Setting
      * a range by hand here would be a second opinion about the parameter. */
     sliderAtts.push_back (std::make_unique<SliderAtt> (proc.state(), paramId, s));
@@ -234,214 +297,118 @@ double TranceGateEditor::livePhase() const
     return ph < 0.0 ? ph + ui.length : ph;
 }
 
+void TranceGateEditor::pushModels()
+{
+    const int head = (int) std::floor (livePhase());
+
+    RingDisplay::Model rm;
+    rm.length   = ui.length;
+    rm.playhead = head;
+    rm.moving   = ui.moving;
+    rm.stepOn   = [this] (int i) { return ui.steps.get (i); };
+    /* The window's one readout-size number. The Ring card has the count in
+     * the middle and the knob that changes it elsewhere -- which is exactly
+     * this arrangement, not a duplication to avoid. */
+    rm.centre = juce::String (ui.length);
+    rm.label  = "STEPS";
+    ring.setModel (std::move (rm));
+
+    StepGridView::Model gm;
+    gm.length     = ui.length;
+    gm.cursor     = ui.cursor;
+    gm.playhead   = head;
+    gm.moving     = ui.moving;
+    gm.stepOn     = [this] (int i) { return ui.steps.get (i); };
+    gm.stepTied   = [this] (int i) { return ui.ties .get (i); };
+    gm.stepAmount = [this] (int i) { return ui.depth[juce::jlimit (0, kMaxSteps - 1, i)]; };
+    grid.setModel (std::move (gm));
+}
+
 void TranceGateEditor::timerCallback()
 {
-    const int rowsBefore = gridRows();
     refreshUi();
     envelope.refresh (ui.msStep);
-    if (gridRows() != rowsBefore) resized();
-    repaint();
-}
+    pushModels();
 
-int TranceGateEditor::gridRows() const
-{
-    return juce::jmax (1, (ui.length + kCols - 1) / kCols);
-}
-
-/*
- * THE GRID GROWS ROWS, IT DOES NOT SCROLL.
- *
- * 16 columns is not an arbitrary fit: at 1/16 one row is one bar, so a
- * 64-step pattern reads as four bars stacked. A 16-step pattern keeps tall
- * cells and the full 128 shrinks them rather than hiding any -- the pattern
- * is the thing being edited, and a step you cannot see is a step you cannot
- * fix. (Move pages 32 at a time because it has 32 pads; this surface has no
- * such limit and should not invent one.)
- */
-juce::Rectangle<int> TranceGateEditor::stepBounds (int i) const
-{
-    const int rows  = gridRows();
-    const int avail = kGridBot - kGridTop;
-    /* Short patterns get TALLER cells rather than a tall empty band -- the
-     * cell height is what carries each step's amount, so a 16-step pattern
-     * showing it over 110 pixels is more legible than the same bar drawn in
-     * 48 with 200 pixels of nothing underneath. */
-    const int cellH = juce::jlimit (14, 110, avail / rows);
-    const int top   = kGridTop + (avail - rows * cellH) / 2;
-    const int w     = (kW - 2 * kPad) / kCols;
-    const int row = i / kCols, col = i % kCols;
-    return { kPad + col * w, top + row * cellH, w - 3, cellH - 4 };
-}
-
-int TranceGateEditor::stepAt (juce::Point<int> pt) const
-{
-    for (int i = 0; i < ui.length; ++i)
-        if (stepBounds (i).contains (pt)) return i;
-    return -1;
-}
-
-void TranceGateEditor::mouseDown (const juce::MouseEvent& e)
-{
-    const int i = stepAt (e.getPosition());
-    if (i < 0) return;
-
-    proc.engineSet ("cursor", juce::String (i));
-    const bool on  = ui.steps.get (i);
-    const bool tie = ui.ties .get (i);
-
-    /* Plain click is on/off; shift is the tie -- the same split the pads use,
-     * and for the same reason: drawing a pattern is the frequent gesture and
-     * must not cycle through a third state to get back to off. */
-    if (e.mods.isShiftDown()) proc.engineSet ("step", on ? (tie ? "On" : "Tie") : "On");
-    else                      proc.engineSet ("step", on ? "Off" : "On");
-
-    refreshUi();
-    repaint();
-}
-
-void TranceGateEditor::mouseDrag (const juce::MouseEvent& e)
-{
-    /* Vertical drag on a step sets that step's amount -- the accent. */
-    const int i = stepAt (e.getMouseDownPosition());
-    if (i < 0) return;
-    const auto b = stepBounds (i);
-    const float v = juce::jlimit (0.0f, 1.0f,
-        1.0f - (e.position.y - (float) b.getY()) / (float) b.getHeight());
-    proc.engineSet ("cursor", juce::String (i));
-    proc.engineSet ("step_amount", juce::String (v, 3));
-    refreshUi();
-    repaint();
-}
-
-void TranceGateEditor::drawRing (juce::Graphics& g, juce::Rectangle<float> r) const
-{
-    const auto c = r.getCentre();
-    const float outer = juce::jmin (r.getWidth(), r.getHeight()) * 0.5f - 4.0f;
-    const int n = ui.length;
-    const float sweep = juce::MathConstants<float>::twoPi / (float) n;
-    /* The gap between segments is a FRACTION of the sweep, so 128 steps do
-     * not close up into a solid disc. */
-    const float gap = juce::jmin (0.16f, 0.08f + 2.0f / (float) n);
-
-    for (int i = 0; i < n; ++i)
+    /*
+     * THE WINDOW GROWS, THE STEP DOES NOT.
+     *
+     * The design system would have a pattern over 32 steps become pages
+     * rather than smaller steps, precisely so a control is never scaled to
+     * fit. This build keeps every step on screen and honours that rule the
+     * other way round: the step stays 40px and the editor gets taller. It
+     * happens on the eight occasions the ROW COUNT changes, not on every
+     * turn of the Length knob, so it is eight discrete jumps across the
+     * parameter's whole range rather than a continuous reflow.
+     */
+    const int rows = StepGridView::rowsFor (ui.length);
+    if (rows != lastRows)
     {
-        const bool on = ui.steps.get (i);
-        const float a0 = -juce::MathConstants<float>::halfPi + (float) i * sweep + sweep * gap * 0.5f;
-        const float a1 = a0 + sweep * (1.0f - gap);
-        /* Thickness is the step's amount, as on the hardware ring -- scaled
-         * down when the segments get thin, or they overlap. */
-        const float maxT = juce::jmin (13.0f, 4.0f + 160.0f / (float) n);
-        const float thick = on ? juce::jmap (ui.depth[i], 0.0f, 1.0f, 3.0f, maxT) : 2.0f;
-
-        juce::Path p;
-        p.addCentredArc (c.x, c.y, outer - thick * 0.5f, outer - thick * 0.5f,
-                         0.0f, a0, a1, true);
-        g.setColour (on ? kOn : kOff);
-        g.strokePath (p, juce::PathStrokeType (thick, juce::PathStrokeType::curved,
-                                               juce::PathStrokeType::butt));
-    }
-
-    const int head = (int) std::floor (livePhase());
-    if (ui.moving && head >= 0 && head < n)
-    {
-        const float a = -juce::MathConstants<float>::halfPi + ((float) head + 0.5f) * sweep;
-        g.setColour (juce::Colours::white);
-        g.fillEllipse (c.x + std::cos (a) * (outer - 22.0f) - 4.0f,
-                       c.y + std::sin (a) * (outer - 22.0f) - 4.0f, 8.0f, 8.0f);
-    }
-
-    g.setColour (juce::Colours::white.withAlpha (0.85f));
-    g.setFont (juce::FontOptions (22.0f));
-    g.drawText (juce::String (ui.cursor + 1), r, juce::Justification::centred);
-}
-
-void TranceGateEditor::drawSteps (juce::Graphics& g) const
-{
-    const int head = (int) std::floor (livePhase());
-
-    for (int i = 0; i < ui.length; ++i)
-    {
-        const auto b = stepBounds (i).toFloat();
-        const bool on  = ui.steps.get (i);
-        const bool tie = ui.ties .get (i);
-
-        /* Every fourth step a shade lighter: at 1/16 that is the beat, and
-         * without it a 128-step row is 16 identical boxes to count along. */
-        g.setColour (i % 4 == 0 ? kCell.brighter (0.22f) : kCell);
-        g.fillRoundedRectangle (b, 3.0f);
-
-        if (on)
-        {
-            /* Height is the step's amount: the same fact the pad brightness
-             * carries on Move, in the dimension this surface actually has. */
-            const float h = juce::jmax (3.0f, b.getHeight() * ui.depth[i]);
-            g.setColour (kOn);
-            g.fillRoundedRectangle (b.withTop (b.getBottom() - h), 3.0f);
-            if (tie)
-            {
-                g.setColour (juce::Colours::white.withAlpha (0.6f));
-                g.fillRect (b.getRight() - 2.0f, b.getY() + 2.0f, 4.0f, b.getHeight() - 4.0f);
-            }
-        }
-
-        if (i == ui.cursor)
-        {
-            g.setColour (juce::Colours::white.withAlpha (0.9f));
-            g.drawRoundedRectangle (b, 3.0f, 1.5f);
-        }
-
-        if (ui.moving && i == head)
-        {
-            g.setColour (juce::Colours::white.withAlpha (0.35f));
-            g.fillRoundedRectangle (b, 3.0f);
-        }
+        lastRows = rows;
+        setSize (windowWidth, heightFor (ui.length));
     }
 }
 
 void TranceGateEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (kBg);
+    g.fillAll (colour::bg000);
 
     if (! ui.valid)
     {
-        g.setColour (juce::Colours::grey);
-        g.setFont (juce::FontOptions (16.0f));
+        g.setColour (colour::inkDim);
+        g.setFont (font::value());
         g.drawText ("...", getLocalBounds(), juce::Justification::centred);
-        return;
     }
-
-    drawRing (g, juce::Rectangle<float> (kPad, 10.0f, 170.0f, 170.0f));
-    drawSteps (g);
-
-    g.setColour (juce::Colours::white.withAlpha (0.45f));
-    g.setFont (juce::FontOptions (12.0f));
-    g.drawText ("click a step to toggle  -  shift-click for a tie  -  drag up/down for its amount",
-                0, kH - 26, kW, 20, juce::Justification::centred);
 }
 
 void TranceGateEditor::resized()
 {
-    int x = 200, y = 16;
-    auto place = [&] (juce::Slider& s, juce::Label& l)
+    ring    .setBounds (kLeftX, kPad, kRing, kRing);
+    envelope.setBounds (kLeftX, kPad + kRing + space::s6, kRing, kPlotH);
+
+    gatePanel.setBounds (kBlockX, kPad, kPanelW, kPanelH);
+    envPanel .setBounds (kBlockX, kPad + kPanelH + space::s6, kPanelW, kPanelH);
+
+    copyPatch .setBounds (kActionsX, kPad, kActionsW, size::controlH);
+    pastePatch.setBounds (kActionsX, kPad + size::controlH + space::s2,
+                          kActionsW, size::controlH);
+
+    /* Four knobs to a panel: label space-2 above, knob, readout space-2
+     * below -- the stack the Knob card describes, on the 4px grid. */
+    auto placeRow = [] (PanelBox& panel,
+                        std::initializer_list<std::pair<juce::Slider*, TrackedLabel*>> knobs)
     {
-        l.setBounds (x, y, 74, 16);
-        s.setBounds (x, y + 16, 74, 74);
-        x += 80;
+        const auto area = panel.contentArea().getTopLeft();
+        const int usable = panel.getWidth() - 2 * space::s4;
+        const int n      = (int) knobs.size();
+        const int colW   = (usable - (n - 1) * space::s4) / n;
+
+        int i = 0;
+        for (auto& k : knobs)
+        {
+            const int x = area.x + i * (colW + space::s4);
+            k.second->setBounds (x, area.y, colW, 14);
+            /* The slider spans the whole column so its readout box can be the
+             * column's width -- the card's min-width is 64 and a 48px box
+             * clips "20.0 ms". The knob itself stays 48 and centres inside
+             * it; see drawRotarySlider. */
+            k.first ->setBounds (x, area.y + 14 + space::s2,
+                                 colW, size::knob + space::s2 + size::controlH);
+            ++i;
+        }
     };
-    place (rate, rateL);
-    place (length, lengthL);
-    place (amount, amountL);
-    place (gate, gateL);
-    x = 200; y = 110;
-    place (attack, attackL);
-    place (decay, decayL);
-    place (sustain, sustainL);
-    place (release, releaseL);
+    placeRow (gatePanel, { { &rate, &rateL }, { &length, &lengthL },
+                           { &amount, &amountL }, { &gate, &gateL } });
+    placeRow (envPanel,  { { &attack, &attackL }, { &decay, &decayL },
+                           { &sustain, &sustainL }, { &release, &releaseL } });
 
-    envelope.setBounds (536, 12, kW - 536 - kPad, 172);
+    slot  .setBounds (kLeftX, kSelectY, kActionsW, size::controlH);
+    legato.setBounds (kLeftX + kActionsW + space::s4, kSelectY, 140, size::controlH);
 
-    slot      .setBounds (kPad, 192, 80, 24);
-    legato    .setBounds (108, 192, 96, 24);
-    copyPatch .setBounds (kW - 212, 192, 96, 24);
-    pastePatch.setBounds (kW - 108, 192, 96, 24);
+    grid.setBounds (kLeftX, kGridY, StepGridView::width,
+                    StepGridView::heightFor (juce::jmax (1, ui.length)));
+
+    /* "The Hint bar pinned to the bottom edge" -- flush, not inside the
+     * window padding, with its rule along the top. */
+    hint.setBounds (0, getHeight() - HintBar::height, getWidth(), HintBar::height);
 }

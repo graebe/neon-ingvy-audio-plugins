@@ -54,3 +54,8 @@ The plugin is **GPLv3** — JUCE and the VST3 SDK are GPLv3-or-commercial, and
 this satisfies both. The shared engine
 ([schwung-trance-gate](https://github.com/graebe/schwung-trance-gate)) stays
 **MIT**: the GPL flows to the plugin binary, not back into the engine.
+
+The bundled typeface is **JetBrains Mono**, © 2020 The JetBrains Mono Project
+Authors, under the **SIL Open Font License 1.1** — the licence text ships
+beside the font files in `plugins/trance-gate/Resources/OFL.txt`, which is
+what the OFL requires of anything that redistributes them.

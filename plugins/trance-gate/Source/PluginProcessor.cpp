@@ -84,7 +84,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout TranceGateProcessor::makeLay
      * to 1, and reads back as 100%.
      */
     const auto pct = AudioParameterFloatAttributes()
-        .withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + "%"; })
+        /* "Values carry their unit in ink-muted after the number: 32 ms, 1/64,
+         * 54 %" -- the space is what lets the readout split the two and colour
+         * them differently, so it is structure, not typography. */
+        .withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })
         .withValueFromStringFunction ([] (const String& t) { return t.getFloatValue() * 0.01f; });
     const auto ms = AudioParameterFloatAttributes()
         .withStringFromValueFunction ([] (float v, int) { return String (v, 1) + " ms"; })

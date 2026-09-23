@@ -71,3 +71,9 @@ target_sources(tg_shot PRIVATE shot_editor.cpp)
 target_link_libraries(tg_shot PRIVATE TranceGate juce::juce_audio_utils)
 target_include_directories(tg_shot PRIVATE ${TG_ENGINE}/src/dsp)
 target_compile_definitions(tg_shot PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+
+# Not a runtime test: a guard that the design system's colours stay in one
+# file. See the note at the top of the script.
+add_test(NAME tg_tokens COMMAND ${CMAKE_COMMAND}
+         -DSRC=${CMAKE_SOURCE_DIR}/plugins/trance-gate/Source
+         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_tokens.cmake)

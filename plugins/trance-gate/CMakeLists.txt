@@ -15,9 +15,21 @@ juce_add_plugin(TranceGate
     IS_MIDI_EFFECT            FALSE
     COPY_PLUGIN_AFTER_BUILD   TRUE)
 
+# JetBrains Mono, the design system's one family, bundled so the plugin looks
+# the same on a machine that has never heard of it. SIL Open Font License 1.1
+# (Resources/OFL.txt) -- the OFL permits bundling in any software, GPLv3
+# included, provided the licence ships with it.
+juce_add_binary_data(TranceGateResources SOURCES
+    Resources/JetBrainsMono-Regular.ttf
+    Resources/JetBrainsMono-Medium.ttf)
+set_target_properties(TranceGateResources PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
 target_sources(TranceGate PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/Phosphor.cpp
+    Source/PhosphorLookAndFeel.cpp
+    Source/PhosphorComponents.cpp
     ${TG_ENGINE}/trance_gate_core.c)
 
 target_include_directories(TranceGate PRIVATE ${TG_ENGINE})
@@ -34,6 +46,7 @@ target_compile_definitions(TranceGate PUBLIC
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 target_link_libraries(TranceGate
-    PRIVATE juce::juce_audio_utils
+    PRIVATE TranceGateResources
+            juce::juce_audio_utils
     PUBLIC  juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
