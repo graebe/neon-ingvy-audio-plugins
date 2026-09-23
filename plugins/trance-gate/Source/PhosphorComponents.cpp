@@ -281,6 +281,20 @@ void HintBar::paint (juce::Graphics& g)
     }
 }
 
+/* =============================================================== grain == */
+
+juce::Image makeGrain (int size, float maxAlpha, juce::Random& rng)
+{
+    juce::Image img (juce::Image::ARGB, size, size, true);
+    juce::Image::BitmapData px (img, juce::Image::BitmapData::writeOnly);
+
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x)
+            px.setPixelColour (x, y, colour::grain.withAlpha (rng.nextFloat() * maxAlpha));
+
+    return img;
+}
+
 /* ================================================================ knob == */
 
 void PhosphorKnob::mouseDown (const juce::MouseEvent& e)

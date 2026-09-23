@@ -117,6 +117,20 @@ private:
 };
 
 /*
+ * FILM GRAIN OVER THE WINDOW'S GROUND.
+ *
+ * A tile of random greys, built once and tiled -- STATIC, never animated.
+ * The system forbids scanlines and glitch, and an animated grain is both;
+ * it would also repaint the whole window every frame for a texture nobody
+ * would look at twice.
+ *
+ * `maxAlpha` is the ceiling on any one speck. At 0.10 the ground reads as
+ * textured rather than flat and no speck is bright enough to be mistaken for
+ * a mark.
+ */
+juce::Image makeGrain (int size, float maxAlpha, juce::Random&);
+
+/*
  * A KNOB THAT CAN BE DRAGGED FINELY.
  *
  * "Knobs and sliders: drag vertically, SHIFT-DRAG FOR FINE, double-click to

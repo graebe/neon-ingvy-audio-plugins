@@ -626,7 +626,20 @@ int main()
         /* The window has to stay on a screen. heightFor is a pure static, so
          * this costs nothing and catches a layout constant that grew. */
         std::puts ("\nthe editor's size:");
-        check (TranceGateEditor::heightFor (128) <= 1000,
+        /*
+         * 1060 IS 1080 LESS A HOST'S WINDOW CHROME, and it is a real ceiling
+         * rather than a round number -- the limit was 1000 until the config
+         * actions needed a second settings row, and 128 steps now lands at
+         * 1035.
+         *
+         * THE NEXT THING THAT NEEDS HEIGHT CANNOT HAVE IT. The top block is
+         * already at its floor (two panels need 166 each and have 172), the
+         * grid is 376 of the total and cannot shrink without scaling a step,
+         * and the plots are as short as their captions and axis allow. The
+         * answer after this is structural -- paging the grid, or folding a
+         * section away -- not another bump.
+         */
+        check (TranceGateEditor::heightFor (128) <= 1060,
                "  128 steps still fits a 1080p screen",
                juce::String (TranceGateEditor::heightFor (128)) + " px");
     }
@@ -665,6 +678,86 @@ int main()
         mode->setValueNotifyingHost (mode->convertTo0to1 (1.0f));
         attack->setValueNotifyingHost (attack->getValueForText ("20 %"));
         eq (p.engineGet ("attack"), "100.0", "  typing \"20 %\" stores a fifth of the scale");
+    }
+
+    {
+        /*
+         * EVERY SOUND PARAMETER MUST CHANGE WHAT IS DRAWN.
+         *
+         * Both plots cache their render against a stamp of the engine keys
+         * that shape the sound, and a key left out of that stamp does not
+         * fail loudly -- the picture simply stops following the control and
+         * comes right again when you touch an unrelated knob. That is what
+         * "I cannot switch back to linear" turned out to be: `curve` was in
+         * neither stamp and `time_mode` in only one.
+         *
+         * Rendering the shape either side of each parameter is the check that
+         * cannot drift: it does not ask what the stamp contains, it asks
+         * whether the drawing moved.
+         */
+        std::puts ("\nevery sound parameter reaches the plots:");
+
+        struct Move { const char* id; float from, to; bool env, pat; };
+        /*
+         * `legato` is pattern-only ON PURPOSE: the envelope plot draws ONE
+         * envelope in isolation, and legato is about whether the NEXT step
+         * retriggers. Expecting it there would be expecting the wrong plot to
+         * know about it.
+         */
+        const Move moves[] = {
+            { "attack",    10.0f,  60.0f, true,  true  },
+            { "decay",     30.0f,  90.0f, true,  true  },
+            { "sustain",    0.5f,   0.2f, true,  true  },
+            { "release",   30.0f,  90.0f, true,  true  },
+            { "hold",       0.8f,   0.4f, true,  true  },
+            { "legato",     0.0f,   1.0f, false, true  },
+            { "time_mode",  0.0f,   1.0f, true,  true  },
+            { "curve",      0.0f,   1.0f, true,  true  },
+        };
+
+        for (const auto& m : moves)
+        {
+            /*
+             * A FRESH PATCH PER PARAMETER, and one where every stage is
+             * actually reached: attack 10, decay 30, sustain 0.5 held to 80%
+             * of a 125 ms step, then release. Chaining the moves instead put
+             * attack past the gate's close, so decay and sustain never ran
+             * and "changing them does nothing" was the truth about the setup
+             * rather than about the plots.
+             */
+            TranceGateProcessor p;
+            setParam (p, "length", 4.0f);
+            p.engineSet ("pattern", "f");        /* four steps, all on */
+            p.engineSet ("ties", "0");
+            setParam (p, "attack",  10.0f);
+            setParam (p, "decay",   30.0f);
+            setParam (p, "sustain",  0.5f);
+            setParam (p, "release", 30.0f);
+            setParam (p, "hold",     0.8f);
+            setParam (p, m.id, m.from);
+
+            const auto stampBefore = TranceGateEditor::soundStamp (p);
+            const auto beforeEnv = TgEnvelopeShape::render (p, 125.0).env;
+            const auto beforePat = TgPatternShape::render (p, 125.0, 200).gain;
+            setParam (p, m.id, m.to);
+            const auto afterEnv = TgEnvelopeShape::render (p, 125.0).env;
+            const auto afterPat = TgPatternShape::render (p, 125.0, 200).gain;
+
+            /* THE STAMP IS THE ACTUAL INVARIANT. Rendering either side of a
+             * parameter proves the RENDERER responds -- which it always did,
+             * even while the plot sat stale -- because it bypasses the cache
+             * the stamp guards. Both halves are needed: the renderer must
+             * move, and the cached picture must be thrown away. */
+            check (TranceGateEditor::soundStamp (p) != stampBefore,
+                   juce::String ("  ") + m.id + " moves the plots' cache key");
+
+            if (m.env)
+                check (beforeEnv != afterEnv,
+                       juce::String ("  ") + m.id + " changes the envelope plot");
+            if (m.pat)
+                check (beforePat != afterPat,
+                       juce::String ("  ") + m.id + " changes the pattern plot");
+        }
     }
 
     std::printf ("\n%s (%d checks, %d failures)\n",

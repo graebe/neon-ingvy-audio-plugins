@@ -23,17 +23,28 @@ constexpr int kMaxSteps = 128;
 constexpr int kPad        = space::s8;
 constexpr int kRing       = 240;
 constexpr int kPlotH      = 104;
-constexpr int kActionsW   = 96;
+constexpr int kActionsW   = 96;   /* the pattern Select and the Env Time box */
 constexpr int kTopBlockH  = kRing + space::s6 + kPlotH;          /* 368 */
 constexpr int kPanelH     = (kTopBlockH - space::s6) / 2;        /* 172 */
 
 constexpr int kLeftX      = kPad;
 constexpr int kBlockX     = kPad + kRing + space::s8;            /* 304 */
 constexpr int kBlockW     = StepGridView::width - kRing - space::s8;  /* 488 */
-constexpr int kPanelW     = kBlockW - kActionsW - space::s4;     /* 376 */
-constexpr int kActionsX   = kBlockX + kPanelW + space::s4;
+/*
+ * THE PANELS TAKE THE WHOLE CONTROL BLOCK.
+ *
+ * Copy and Paste used to stack in a 96px column down the right-hand edge --
+ * where the design system puts actions, and where two 28px buttons left ~300
+ * vertical pixels of nothing beside them. They moved to the settings rows
+ * below, which is also where they are actually reached for, and the knobs
+ * took the width back: a column goes from 86px to 102.
+ */
+constexpr int kPanelW     = kBlockW;                             /* 488 */
 
 constexpr int kSelectY    = kPad + kTopBlockH + space::s6;       /* 424 */
+/* Two rows, because the six controls do not fit one: slot, join and curve
+ * above; the envelope's unit and the two config actions below. */
+constexpr int kSelectY2   = kSelectY + size::controlH + space::s2;
 
 /*
  * The pattern plot spans the grid exactly -- same x, same width -- because it
@@ -48,8 +59,28 @@ constexpr int kSelectY    = kPad + kTopBlockH + space::s6;       /* 424 */
  * 1000px the size test allows.
  */
 constexpr int kPatternH   = 92;
-constexpr int kPatternY   = kSelectY + size::controlH + space::s2;   /* 460 */
+constexpr int kPatternY   = kSelectY2 + size::controlH + space::s2;
 constexpr int kGridY      = kPatternY + kPatternH + space::s4;   /* 568 */
+}
+
+/*
+ * The stamp both plots cache against; declared in the header, where the note
+ * about why it is one list lives.
+ *
+ * The symptom of a missing key is not a crash or a wrong number -- it is a
+ * picture that quietly stops following its control and comes right again the
+ * moment you touch an unrelated knob, which reads from the outside as
+ * "I cannot switch back to linear".
+ */
+juce::String TranceGateEditor::soundStamp (const TranceGateProcessor& p)
+{
+    static const char* keys[] = {
+        "attack", "decay", "sustain", "release", "hold",
+        "legato", "time_mode", "curve", "slot",
+    };
+    juce::String s;
+    for (auto* k : keys) s += p.engineGet (k) + "/";
+    return s;
 }
 
 /* ====================================================== envelope curve == */
@@ -60,15 +91,7 @@ void TranceGateEditor::EnvelopeCurve::refresh (double stepMs)
 {
     /* Everything that changes the shape, and nothing that does not: the
      * playhead moves 30 times a second and must not cause a re-render. */
-    const juce::String now = proc.engineGet ("attack") + "/" + proc.engineGet ("decay")
-                           + "/" + proc.engineGet ("sustain") + "/" + proc.engineGet ("release")
-                           + "/" + proc.engineGet ("hold") + "/" + juce::String (stepMs, 2)
-                           + "/" + proc.engineGet ("slot")
-                           /* The mode changes what the three stage numbers
-                            * MEAN without changing one of them, so without it
-                            * in the stamp the curve would keep the old
-                            * shape. */
-                           + "/" + proc.engineGet ("time_mode");
+    const juce::String now = TranceGateEditor::soundStamp (proc) + juce::String (stepMs, 2);
     if (now == stamp) return;
     stamp = now;
     shape = TgEnvelopeShape::render (proc, stepMs);
@@ -237,14 +260,10 @@ void TranceGateEditor::PatternCurve::refresh (const juce::String& uiRaw, double 
     for (int i : { 0, 1, 2, 7 })
         now += (i < parts.size() ? parts[i] : juce::String()) + ":";
 
-    /* THE SLOT IS IN THE STAMP EXPLICITLY, not left to the fields above.
-     * They cover it only by accident -- two slots holding the same pattern
-     * and differing in their sound would render once and stay wrong. */
-    now += proc.engineGet ("slot") + "|"
-         + juce::String (stepMs, 1) + "|" + proc.engineGet ("legato")
-         + "|" + proc.engineGet ("attack")  + "|" + proc.engineGet ("decay")
-         + "|" + proc.engineGet ("sustain") + "|" + proc.engineGet ("release")
-         + "|" + proc.engineGet ("hold");
+    /* THE SLOT IS IN soundStamp, not left to the pattern fields above. They
+     * cover it only by accident -- two slots holding the same pattern and
+     * differing in their sound would render once and stay wrong. */
+    now += TranceGateEditor::soundStamp (proc) + "|" + juce::String (stepMs, 1);
 
     if (now == stamp) return;
     stamp = now;
@@ -350,6 +369,14 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     : AudioProcessorEditor (&p), proc (p)
 {
     setLookAndFeel (&phosphorLook);
+
+    /* A fixed seed, so the grain is the same texture every time the window
+     * opens -- a plugin whose background reshuffles on each load would be
+     * noticed, and not fondly. Decimal because the token guard bans hex
+     * literals of colour length, and it is right to: it cannot tell a seed
+     * from a stray grey, and a seed has no reason to be hex. */
+    juce::Random rng (1919251310);
+    grainTile = makeGrain (128, 0.10f, rng);
 
     addAndMakeVisible (gatePanel);
     addAndMakeVisible (envPanel);
@@ -662,6 +689,15 @@ void TranceGateEditor::paint (juce::Graphics& g)
 {
     g.fillAll (colour::bg000);
 
+    /* The grain sits on the ground and under everything else: panels, plots
+     * and wells all paint their own backgrounds over it, so it shows in the
+     * window's margins rather than through its controls. */
+    if (grainTile.isValid())
+    {
+        g.setTiledImageFill (grainTile, 0, 0, 1.0f);
+        g.fillRect (getLocalBounds());
+    }
+
     if (! ui.valid)
     {
         g.setColour (colour::inkDim);
@@ -678,9 +714,6 @@ void TranceGateEditor::resized()
     gatePanel.setBounds (kBlockX, kPad, kPanelW, kPanelH);
     envPanel .setBounds (kBlockX, kPad + kPanelH + space::s6, kPanelW, kPanelH);
 
-    copyPatch .setBounds (kActionsX, kPad, kActionsW, size::controlH);
-    pastePatch.setBounds (kActionsX, kPad + size::controlH + space::s2,
-                          kActionsW, size::controlH);
 
     /* Four knobs to a panel: label space-2 above, knob, readout space-2
      * below -- the stack the Knob card describes, on the 4px grid. */
@@ -715,14 +748,20 @@ void TranceGateEditor::resized()
     legato.setBounds (kLeftX + kActionsW + space::s4, kSelectY, 172, size::controlH);
     /* The envelope's unit, in the row's spare width on the right -- it
      * belongs with the envelope, and the envelope panel has no room. */
-    /* CURVE in the row's free middle, between the Legato toggle and the Env
-     * Time pair on the right. */
-    curveL  .setBounds (kLeftX + kActionsW + space::s4 + 172 + space::s6,
-                        kSelectY, 60, size::controlH);
-    curve   .setBounds (kLeftX + kActionsW + space::s4 + 172 + space::s6 + 60 + space::s2,
-                        kSelectY, 124, size::controlH);
-    timeModeL.setBounds (kActionsX - 108 - space::s2, kSelectY, 100, size::controlH);
-    timeMode .setBounds (kActionsX, kSelectY, kActionsW, size::controlH);
+    /* Row one: which pattern, whether runs join, and the envelope's shape. */
+    const int curveX = kLeftX + kActionsW + space::s4 + 172 + space::s6;
+    curveL  .setBounds (curveX, kSelectY, 60, size::controlH);
+    curve   .setBounds (curveX + 60 + space::s2, kSelectY, 124, size::controlH);
+
+    /* Row two: the envelope's unit, then the two config actions. They sit
+     * with the settings because that is where they are reached for -- and
+     * because the 96px column they used to stack in was mostly empty. */
+    timeModeL.setBounds (kLeftX, kSelectY2, 100, size::controlH);
+    timeMode .setBounds (kLeftX + 100 + space::s2, kSelectY2, kActionsW, size::controlH);
+    copyPatch .setBounds (kLeftX + 100 + space::s2 + kActionsW + space::s6,
+                          kSelectY2, 152, size::controlH);
+    pastePatch.setBounds (kLeftX + 100 + space::s2 + kActionsW + space::s6 + 152 + space::s2,
+                          kSelectY2, 152, size::controlH);
 
     pattern.setBounds (kLeftX, kPatternY, StepGridView::width, kPatternH);
 

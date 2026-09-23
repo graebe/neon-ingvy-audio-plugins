@@ -71,6 +71,18 @@ public:
 
     /* The window is 824 wide: space-8 either side of the system's 760px
      * 16-step grid. Its height follows the pattern -- see heightFor. */
+    /*
+     * EVERY ENGINE KEY THAT CHANGES THE SOUND'S SHAPE, IN ONE LIST.
+     *
+     * Both plots cache their render against this, and both used to hand-list
+     * the keys they cared about -- so a new engine parameter had to be
+     * remembered twice, and twice it was not. Public because the only useful
+     * test of a cache key is that it MOVES: rendering either side of a
+     * parameter proves the renderer responds, which it always did, and says
+     * nothing about whether the cached picture is thrown away.
+     */
+    static juce::String soundStamp (const TranceGateProcessor&);
+
     static constexpr int windowWidth = phosphor::space::s8 * 2 + StepGridView::width;
     static int heightFor (int length);
 
@@ -188,6 +200,10 @@ private:
     Ui ui;
 
     PhosphorLookAndFeel phosphorLook;
+    /* Built once in the constructor and tiled in paint. Held on the editor
+     * rather than in a file-scope static: a juce::Image released after JUCE
+     * has shut down is the same teardown crash the bundled typefaces had. */
+    juce::Image grainTile;
 
     /* The local clock the playhead is advanced on between readouts. */
     juce::String lastRaw;
@@ -203,7 +219,7 @@ private:
     TrackedLabel rateL { "Rate" }, lengthL { "Length" }, amountL { "Amount" },
                  widthL { "Width" }, attackL { "Attack" }, decayL { "Decay" },
                  sustainL { "Sustain" }, releaseL { "Release" };
-    juce::TextButton copyPatch { "Copy patch" }, pastePatch { "Paste patch" };
+    juce::TextButton copyPatch { "Copy gate config" }, pastePatch { "Paste gate config" };
     juce::ToggleButton legato { "Join Neighbors" };
     juce::ComboBox slot, timeMode, curve;
     TrackedLabel timeModeL { "Env Time" }, curveL { "Curve" };

@@ -37,6 +37,17 @@ const juce::Colour phosphorGlow{ 0x3300ff41 };  /* bloom only -- never a fill */
 const juce::Colour onPhosphor  { 0xff050705 };  /* text on a phosphor fill */
 const juce::Colour amber       { 0xffffb000 };  /* armed / about to clip / unsaved */
 const juce::Colour red         { 0xffff4d4d };  /* clipping, a failed action */
+/*
+ * THE ONE ACHROMATIC VALUE IN A ONE-HUE SYSTEM.
+ *
+ * Not from tokens.json. The system is deliberately monochrome -- "one hue,
+ * one monospace face" -- and this is a neutral grey, added on request for the
+ * background's grain. It appears at a few percent alpha over bg-000 and
+ * nowhere else; at that strength it reads as texture in the ground rather
+ * than as a second colour, which is the only reason it does not break the
+ * rule it is an exception to.
+ */
+const juce::Colour grain       { 0xff9a9a9a };
 }
 
 /* -------------------------------------------------------------- sizes --
