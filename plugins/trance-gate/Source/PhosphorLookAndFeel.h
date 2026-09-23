@@ -70,6 +70,29 @@ private:
  *
  * Returned from createSliderTextBox, so every knob gets one without asking.
  */
+/*
+ * A COPY/PASTE BUTTON DRAWN AS A GLYPH.
+ *
+ * A DEPARTURE FROM THE SYSTEM, and a named one: "Iconography: None... Do not
+ * add icons for play, copy or settings; write the word." The words are what
+ * pushed the settings onto a second row, and a second row is 36px of a height
+ * budget a 128-step window has nearly spent -- so these two became glyphs on
+ * request, and only these two.
+ *
+ * Drawn in the system's idiom regardless: 1px hairline strokes in `ink`, the
+ * same weight as the select caret, which is the only other glyph it allows.
+ */
+class PhosphorGlyphButton : public juce::Button
+{
+public:
+    enum class Glyph { copy, paste };
+    PhosphorGlyphButton (const juce::String& name, Glyph);
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    Glyph glyph;
+};
+
 class PhosphorReadout : public juce::Label
 {
 public:

@@ -32,7 +32,10 @@
 /* Re-recorded 2026-09-23 with the per-step level latched at gate-open; the
  * Move reference moved with it, for the same reason and by the same bytes.
  * Previous: 0x37792113E4834F69 (md5 8e4892aa8e3947594e91cf966f7ddc98). */
-#define GOLDEN_FNV1A 0xF8D52B9F5E7FE171ULL
+/* Re-recorded with the Width-relative stage units; the Move reference moved
+ * with it, by the same 4-LSB conversion rounding and no more.
+ * Previous: 0xF8D52B9F5E7FE171 */
+#define GOLDEN_FNV1A 0xA55438688E6363E5ULL
 
 static uint64_t fnv = 0xcbf29ce484222325ULL;
 static void fnv_add(const void *p, size_t n) {
@@ -53,10 +56,10 @@ int main(int argc, char **argv) {
     tg_core_set_param(c, "length",  "15");
     tg_core_set_param(c, "pattern", "BEEF");
     tg_core_set_param(c, "ties",    "0022");
-    tg_core_set_param(c, "attack",  "3.5");
-    tg_core_set_param(c, "decay",   "40");
+    tg_core_set_param(c, "attack",  "3.8267");
+    tg_core_set_param(c, "decay",   "43.7333");
     tg_core_set_param(c, "sustain", "0.6");
-    tg_core_set_param(c, "release", "25");
+    tg_core_set_param(c, "release", "27.3333");
     tg_core_set_param(c, "hold",    "0.75");
     tg_core_set_param(c, "amount",  "0.9");
     for (int s = 0; s < 16; s++) {

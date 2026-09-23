@@ -156,6 +156,50 @@ juce::Slider::SliderLayout PhosphorLookAndFeel::getSliderLayout (juce::Slider& s
     return layout;
 }
 
+/* ======================================================= glyph button == */
+
+PhosphorGlyphButton::PhosphorGlyphButton (const juce::String& name, Glyph gl)
+    : juce::Button (name), glyph (gl)
+{
+    setTooltip (name);
+}
+
+void PhosphorGlyphButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    const auto r = getLocalBounds().toFloat().reduced (0.5f);
+
+    auto fill   = colour::bg200;
+    auto border = colour::line200;
+    auto mark   = colour::ink;
+    if (! isEnabled())    { fill = colour::bg100;    border = colour::line100; mark = colour::inkDim; }
+    else if (down)        { fill = colour::phosphor; border = colour::phosphor; mark = colour::onPhosphor; }
+    else if (highlighted) { fill = colour::bg300;    border = colour::inkDim; }
+
+    g.setColour (fill);
+    g.fillRect (r);
+    g.setColour (border);
+    g.drawRect (r, stroke::hair);
+
+    /* A 12px glyph centred in the button: two offset rectangles for copy, and
+     * a sheet under a clipboard's tab for paste. Hairlines, like the caret. */
+    const auto c = r.getCentre();
+    g.setColour (mark);
+    if (glyph == Glyph::copy)
+    {
+        g.drawRect (juce::Rectangle<float> (c.x - 5.5f, c.y - 5.5f, 8.0f, 8.0f), stroke::hair);
+        g.drawRect (juce::Rectangle<float> (c.x - 2.5f, c.y - 2.5f, 8.0f, 8.0f), stroke::hair);
+    }
+    else
+    {
+        const juce::Rectangle<float> sheet (c.x - 5.0f, c.y - 4.0f, 10.0f, 9.0f);
+        g.drawRect (sheet, stroke::hair);
+        /* The tab, which is what makes it a clipboard rather than a box. */
+        g.drawRect (juce::Rectangle<float> (c.x - 2.0f, c.y - 6.5f, 4.0f, 3.0f), stroke::hair);
+    }
+
+    if (hasKeyboardFocus (false)) glowFocus (g, r);
+}
+
 /* ============================================================ readout == */
 
 PhosphorReadout::PhosphorReadout()

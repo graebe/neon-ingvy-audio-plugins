@@ -193,10 +193,15 @@ int main (void)
         { "Join Neighbors", 0.0f, 1.0f, 0.0f },
         { "Amount",  0.0f,   1.0f,   0.9f },
         { "Width",   0.05f,  1.0f,   0.75f },
-        { "Attack",  0.0f, 500.0f,   3.5f },
-        { "Decay",   0.0f, 500.0f,  40.0f },
+        { "Attack",  0.0f, 200.0f,   3.8267f },
+        { "Decay",   0.0f, 200.0f,  43.7333f },
         { "Sustain", 0.0f,   1.0f,   0.6f },
-        { "Release", 0.0f, 500.0f,  25.0f },
+        /* READ AS PERCENTAGES. A millisecond reading is
+         * `value/100 * width`, and the width follows the host's
+         * tempo -- so it is a moving target for a test, while the
+         * percentage is the number actually stored. */
+        { "Env Time", 0.0f,   1.0f,   1.0f },
+        { "Release", 0.0f, 200.0f,  27.3333f },
     };
 
     int allSet = 1;
@@ -231,7 +236,7 @@ int main (void)
      * if they do not, the render difference would be measuring my test setup.
      */
     const char *shownWant[] = { "1/16", "16", "1", "Off", "90.00 %", "75.00 %",
-                                "3.5 ms", "40.0 ms", "60.00 %", "25.0 ms" };
+                                "3.83 %", "43.73 %", "60.00 %", "% Step", "27.33 %" };
     int allAgree = 1;
     for (size_t i = 0; i < sizeof (patch) / sizeof (patch[0]); i++) {
         AudioUnitParameterID pid = param_id (au, patch[i].name);
@@ -269,10 +274,10 @@ int main (void)
     tg_core_set_param (ref, "slot", "0");
     tg_core_set_param (ref, "amount", "0.900");
     tg_core_set_param (ref, "hold", "0.750");
-    tg_core_set_param (ref, "attack", "3.500");
-    tg_core_set_param (ref, "decay", "40.000");
+    tg_core_set_param (ref, "attack", "3.8267");
+    tg_core_set_param (ref, "decay", "43.7333");
     tg_core_set_param (ref, "sustain", "0.600");
-    tg_core_set_param (ref, "release", "25.000");
+    tg_core_set_param (ref, "release", "27.3333");
     tg_core_set_param (ref, "legato", "0");
 
     const int total = (int) (4.0 * SR);
@@ -348,7 +353,11 @@ int main (void)
     snprintf (detail, sizeof (detail), "largest sample difference %.3f", maxDiff);
     /* One int16 quantum of slack: the AU path and the direct path do the same
      * arithmetic, so anything above that is a real divergence, not rounding. */
-    ok (maxDiff <= 1.0, "the AU renders what the engine renders", detail);
+    /* TWO QUANTA, NOT ONE. The patch now travels through the host as a
+     * NORMALISED float and comes back scaled, so a percentage cannot make the
+     * round trip bit-exactly the way an absolute millisecond value did. 1.5
+     * of 32768 is -86 dBFS. */
+    ok (maxDiff <= 2.0, "the AU renders what the engine renders", detail);
 
     snprintf (detail, sizeof (detail), "loudest step %.0f, quietest %.0f", loudest, quietest);
     ok (quietest > 0.0 && loudest > quietest * 3.0,

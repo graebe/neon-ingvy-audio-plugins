@@ -281,6 +281,82 @@ void HintBar::paint (juce::Graphics& g)
     }
 }
 
+/* =============================================================== scope == */
+
+void ScopeView::paint (juce::Graphics& g)
+{
+    const auto area = plot::well (g, getLocalBounds().toFloat(), model.caption);
+
+    if (model.columns <= 0 || model.dryLo == nullptr)
+    {
+        plot::empty (g, getLocalBounds());
+        return;
+    }
+
+    const float mid = area.getCentreY();
+    const float half = area.getHeight() * 0.5f;
+
+    /* The zero line, so a silent stretch reads as silence rather than as a
+     * gap in the drawing. */
+    g.setColour (colour::line100);
+    g.drawHorizontalLine ((int) mid, area.getX(), area.getRight());
+
+    /*
+     * A COLUMN OF THE CAPTURE IS NOT A COLUMN OF THE PLOT. The capture is a
+     * fixed 512 and the plot is however wide the window made it, so each
+     * pixel takes the union of the capture columns behind it -- the same
+     * min/max union decimate does, and for the same reason: a peak that falls
+     * between two pixels is still a peak that happened.
+     */
+    auto band = [&] (const std::atomic<float>* lo, const std::atomic<float>* hi,
+                     juce::Colour c)
+    {
+        juce::Path p;
+        const int w = juce::jmax (1, (int) area.getWidth());
+        bool started = false;
+        /* Out along the maxima... */
+        for (int x = 0; x < w; ++x)
+        {
+            const int c0 = x * model.columns / w;
+            const int c1 = juce::jmax (c0 + 1, (x + 1) * model.columns / w);
+            if (c0 >= model.filled) break;
+            float v = -2.0f;
+            for (int i = c0; i < c1 && i < model.filled; ++i)
+                v = juce::jmax (v, hi[i].load (std::memory_order_relaxed));
+            const float px = area.getX() + (float) x;
+            const float py = mid - half * juce::jlimit (-1.0f, 1.0f, v);
+            if (! started) { p.startNewSubPath (px, py); started = true; }
+            else           p.lineTo (px, py);
+        }
+        if (! started) return;
+        /* ...and back along the minima, closing the band. */
+        for (int x = juce::jmin (w, model.filled * w / model.columns) - 1; x >= 0; --x)
+        {
+            const int c0 = x * model.columns / w;
+            const int c1 = juce::jmax (c0 + 1, (x + 1) * model.columns / w);
+            float v = 2.0f;
+            for (int i = c0; i < c1 && i < model.filled; ++i)
+                v = juce::jmin (v, lo[i].load (std::memory_order_relaxed));
+            p.lineTo (area.getX() + (float) x,
+                      mid - half * juce::jlimit (-1.0f, 1.0f, v));
+        }
+        p.closeSubPath();
+        g.setColour (c);
+        g.fillPath (p);
+    };
+
+    /*
+     * THE DRY IS CONTEXT, NOT THE SUBJECT, so it is drawn back at partial
+     * alpha. A sustained input fills every column edge to edge -- min and max
+     * ARE the full amplitude when a column spans a cycle -- so at full
+     * strength it is a solid slab of ink-dim with the gated trace fighting to
+     * be seen through it. The system's own rule applies: phosphor is the
+     * signal, and everything else is quieter than it.
+     */
+    band (model.dryLo, model.dryHi, colour::inkDim.withAlpha (0.45f));
+    band (model.wetLo, model.wetHi, colour::phosphor);
+}
+
 /* =============================================================== grain == */
 
 juce::Image makeGrain (int size, float maxAlpha, juce::Random& rng)

@@ -150,7 +150,41 @@ public:
     /* Called after the engine's state changes underneath the parameters --
      * a patch paste, or a slot switch that brings a different pattern. */
     void syncParamsFromEngine();
+    /* Re-reads the gate's width from the engine, which is what every stage's
+     * millisecond reading is scaled by. Cheap, and called from the editor's
+     * timer so the readouts follow a host tempo change. */
+    void refreshWidth();
     juce::String engineGet (const juce::String& key) const;
+
+    /*
+     * THE SCOPE'S CAPTURE, written on the audio thread and read on the
+     * message thread.
+     *
+     * One sweep is one pattern cycle, filling left to right and restarting
+     * when the pattern wraps -- so its x-axis is the pattern plot's and the
+     * two can be compared by switching between them.
+     *
+     * MIN AND MAX PER COLUMN, never a mean or a pick. The same argument
+     * plot::decimate already makes: a narrow gate is a fraction of a pixel at
+     * 128 steps, and averaging loses it, so the scope would quietly report a
+     * signal that is not the one playing.
+     *
+     * Lock-free by construction rather than by a lock the audio thread would
+     * have to take: one writer, one reader, and the reader only looks below
+     * `filled`, which the writer publishes after the column is complete. A
+     * torn read of the single column being written lasts one frame and is the
+     * left-hand edge of a sweep that is still arriving.
+     */
+    struct Capture
+    {
+        static constexpr int columns = 512;
+        std::atomic<float> dryLo[columns], dryHi[columns];
+        std::atomic<float> wetLo[columns], wetHi[columns];
+        std::atomic<int>   filled { 0 };   /* columns complete, 0..columns */
+        std::atomic<int>   sweep  { 0 };   /* bumped on each wrap, so a reader
+                                            * can tell a new pass from a stall */
+    };
+    const Capture& capture() const { return cap; }
 
     /* The patch, as the Move module writes it. This is the interchange
      * format -- paste one in, or copy one out. */
@@ -170,10 +204,20 @@ private:
      * a dangling read there is a crash in someone else's stack.
      */
     std::shared_ptr<std::atomic<int>> timeMode { std::make_shared<std::atomic<int>> (0) };
+    /*
+     * HOW LONG THE GATE IS OPEN FOR, in ms -- the unit a stage's percentage
+     * is a percentage OF, and therefore what the ms readout multiplies by.
+     *
+     * Shared with the value formatters for the same reason the mode is, and
+     * refreshed rather than computed by them: it moves with the rate, with
+     * Width AND with the host's tempo, and a formatter has no engine to ask.
+     */
+    std::shared_ptr<std::atomic<float>> widthMs { std::make_shared<std::atomic<float>> (125.0f) };
 
     juce::AudioProcessorValueTreeState apvts;
     static juce::AudioProcessorValueTreeState::ParameterLayout
-        makeLayout (std::shared_ptr<std::atomic<int>> mode);
+        makeLayout (std::shared_ptr<std::atomic<int>> mode,
+                    std::shared_ptr<std::atomic<float>> width);
     /* Set while pushing engine values INTO the parameters, so the listener
      * that normally writes them back to the engine stands down. Without it a
      * patch load ping-pongs between the two. */
@@ -184,6 +228,17 @@ private:
     void handleAsyncUpdate() override;
 
     tg_core_t* core = nullptr;
+
+    Capture cap;
+    /* The column being accumulated, and its running bounds. Audio thread
+     * only -- never read by anyone else, so plain floats. */
+    int   capCol = -1;
+    float capDryLo = 0.0f, capDryHi = 0.0f, capWetLo = 0.0f, capWetHi = 0.0f;
+    void captureBlock (const float* dry, const float* wet, int frames);
+    /* The dry signal is copied out before the engine overwrites the buffer.
+     * Fixed size because an audio callback does not allocate; 4096 covers
+     * every block size a host realistically asks for. */
+    float dryScratch[4096];
     /* set_param on the audio thread is what Schwung does too, but there the
      * caller IS the audio thread. Here the editor is not, so writes are
      * serialised against the block. */

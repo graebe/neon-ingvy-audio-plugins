@@ -37,14 +37,14 @@ int main (int argc, char** argv)
      */
     struct Shot { const char* name; int length; int rate;
                   float hold, release, decay, sustain, attack; bool ends, playing;
-                  bool legato, dense; int curve; };
+                  bool legato, dense; int curve; bool signal; };
     const Shot shots[] = {
-        { "tg_16",   16,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0 },
-        { "tg_64",   64,  9,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0 },
-        { "tg_128", 128, 12,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0 },
-        { "tg_cut",  32,  9,  0.5f, 500.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0 },
-        { "tg_ends", 16,  0,  0.05f, 0.0f,   20.0f, 1.0f, 2.0f, true,  false, false, false, 0 },
-        { "tg_play", 32,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, true, false, false, 0 },
+        { "tg_16",   16,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0, false },
+        { "tg_64",   64,  9,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0, false },
+        { "tg_128", 128, 12,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0, false },
+        { "tg_cut",  32,  9,  0.5f, 500.0f,  20.0f, 1.0f, 2.0f, false, false, false, false, 0, false },
+        { "tg_ends", 16,  0,  0.05f, 0.0f,   20.0f, 1.0f, 2.0f, true,  false, false, false, 0, false },
+        { "tg_play", 32,  7,  1.0f,  20.0f,  20.0f, 1.0f, 2.0f, false, true, false, false, 0, false },
         /*
          * THE CASE THE ENVELOPE AXIS WAS CHANGED FOR: a 442 ms decay on a
          * 1/64 step, which is 15.6 ms at 120 BPM. On the old one-step axis
@@ -53,7 +53,7 @@ int main (int argc, char** argv)
          * 1000 BPM, drew it on a time base that was silently 120 BPM, so the
          * gate never closed in the picture at all.
          */
-        { "tg_slow", 32, 11,  1.0f,  20.0f, 442.0f, 0.0f, 2.0f, false, false, false, false, 0 },
+        { "tg_slow", 32, 11,  1.0f,  20.0f, 442.0f, 0.0f, 2.0f, false, false, false, false, 0, false },
         /*
          * LEGATO AGAINST A RUN OF ON STEPS, which is the picture of what it
          * does: with Gate at half the pattern plot is a row of separate
@@ -62,14 +62,14 @@ int main (int argc, char** argv)
          */
         /* ATTACK 0 opens the gate on the very first sample, which is the
          * case that exposed a fill closing to the wrong corner. */
-        { "tg_legato", 16, 7, 0.5f, 20.0f, 20.0f, 1.0f, 0.0f, false, false, true, true, 0 },
+        { "tg_legato", 16, 7, 0.5f, 20.0f, 20.0f, 1.0f, 0.0f, false, false, true, true, 0, false },
         /*
          * THE SMALL END OF THE AXIS LADDER. A 1/128 step is 15.6 ms at
          * 120 BPM, and with short stages the whole span is about 20 -- where
          * a fixed interval collapses to one tick and the ladder has to reach
          * for 2 or 5 ms. The other shots all exercise its top end.
          */
-        { "tg_fast", 32, 12,  0.6f,  4.0f,   3.0f, 0.5f, 1.0f, false, false, false, false, 0 },
+        { "tg_fast", 32, 12,  0.6f,  4.0f,   3.0f, 0.5f, 1.0f, false, false, false, false, 0, false },
         /*
          * THE THREE CURVES, FROM IDENTICAL NUMBERS. Same ADSR, same rate,
          * same width -- only the shape differs, so anything that moves
@@ -77,9 +77,12 @@ int main (int argc, char** argv)
          * else. The sustain is deliberately below full: at 100% the decay has
          * nowhere to travel and all three shapes draw the same flat top.
          */
-        { "tg_lin", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 0 },
-        { "tg_exp", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 1 },
-        { "tg_scv", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 2 },
+        { "tg_lin", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 0, false },
+        { "tg_exp", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 1, false },
+        { "tg_scv", 16, 7,  0.7f, 120.0f, 120.0f, 0.4f, 60.0f, false, false, false, false, 2, false },
+        /* The scope, with two seconds of a 220 Hz sine actually pushed
+         * through the processor first -- dry behind, gated in front. */
+        { "tg_scope", 16, 7, 0.5f, 40.0f, 40.0f, 0.6f, 10.0f, false, false, false, false, 0, true },
     };
 
     for (auto& s : shots)
@@ -131,12 +134,18 @@ int main (int argc, char** argv)
          * reports "stopped" and there is nothing to photograph. */
         struct Moving : juce::AudioPlayHead
         {
+            /* Advanced by the scope's capture loop; the playhead shot leaves
+             * it at zero and relies on the fixed offset below. */
+            double samples = -1.0;
             juce::Optional<PositionInfo> getPosition() const override
             {
                 PositionInfo p;
                 p.setIsPlaying (true);
                 p.setBpm (120.0);
-                p.setPpqPosition (1.25);       /* a quarter into the second beat */
+                /* A quarter into the second beat when parked, or wherever the
+                 * capture loop has got to. */
+                p.setPpqPosition (samples < 0.0 ? 1.25
+                                                : samples / 44100.0 * 2.0);
                 return p;
             }
         } playHead;
@@ -155,7 +164,37 @@ int main (int argc, char** argv)
             q->setValueNotifyingHost (q->convertTo0to1 ((float) s.curve));
         }
 
+        /*
+         * THE SCOPE NEEDS AUDIO TO HAVE HAPPENED. Its capture is filled from
+         * processBlock, so a shot of it taken from a processor that has never
+         * run shows an empty band -- which would photograph as "the scope is
+         * broken" rather than "nothing was played".
+         */
+        if (s.signal)
+        {
+            proc.setPlayHead (&playHead);
+            proc.prepareToPlay (44100.0, 128);
+            juce::AudioBuffer<float> buf (2, 128);
+            juce::MidiBuffer midi;
+            double phase = 0.0;
+            const int blocks = (int) (44100.0 * 2.0 / 128.0);
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < 128; ++i)
+                {
+                    const float v = (float) std::sin (phase) * 0.8f;
+                    phase += 2.0 * juce::MathConstants<double>::pi * 220.0 / 44100.0;
+                    buf.setSample (0, i, v);
+                    buf.setSample (1, i, v);
+                }
+                playHead.samples = (double) (b * 128);
+                proc.processBlock (buf, midi);
+            }
+        }
+
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
+        if (auto* tg = dynamic_cast<TranceGateEditor*> (ed.get()))
+            tg->showSignalPlot (s.signal);
         ed->setSize (ed->getWidth(), ed->getHeight());
         /* The editor fills its picture from the `ui` readout on a timer; one
          * dispatch pass is enough for the first frame. */

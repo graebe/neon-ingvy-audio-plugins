@@ -46,9 +46,10 @@ const juce::StringArray kTimeModes { "ms", "% Step" };
 /* The engine's TG_CURVE_* in the order the choice publishes them, so the
  * index IS the wire value. */
 const juce::StringArray kCurves { "Linear", "Exponential", "S-Curve" };
-/* The shared top of both scales: 500 reads as "500.0 ms" or as "100 %", so
- * switching modes never moves a knob. See stage_samples in the engine. */
-constexpr float kStageMax = 500.0f;
+/* A stage runs from 0 to twice the gate's WIDTH. The stored number IS the
+ * percentage, so % is a straight readout and ms is `value/100 * width_ms` --
+ * two readings of one number rather than two modes. See stage_samples. */
+constexpr float kStageMax = 200.0f;
 }
 
 /*
@@ -58,7 +59,8 @@ constexpr float kStageMax = 500.0f;
  * "resolution" on one side and drift.
  */
 juce::AudioProcessorValueTreeState::ParameterLayout
-TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
+TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode,
+                                 std::shared_ptr<std::atomic<float>> width)
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout l;
@@ -135,7 +137,7 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
      * the mode re-reads every stage's text without touching a stored value.
      */
     const auto ms = AudioParameterFloatAttributes()
-        .withStringFromValueFunction ([mode] (float v, int)
+        .withStringFromValueFunction ([mode, width] (float v, int)
         {
             /* TWO DECIMALS, because one number serves a 500 ms range and a
              * 100% one: a whole percent is five milliseconds, so rounding to
@@ -143,14 +145,19 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
              * and the reading jumped 50 to 51 with everything between it
              * unreachable. The value was always continuous; only the text
              * was not. */
-            if (mode && mode->load() == 1)
-                return String (v * (100.0f / kStageMax), 2) + " %";
-            return String (v, 1) + " ms";
+            /* % is the stored number. ms is what that percentage is WORTH
+             * right now -- so it moves when the rate or Width does, while the
+             * percentage stays put, which is the point of measuring against
+             * the gate. */
+            if (mode && mode->load() == 1) return String (v, 2) + " %";
+            return String (v * 0.01f * (width ? width->load() : 0.0f), 1) + " ms";
         })
-        .withValueFromStringFunction ([mode] (const String& t)
+        .withValueFromStringFunction ([mode, width] (const String& t)
         {
             const float n = t.getFloatValue();
-            return (mode && mode->load() == 1) ? n * (kStageMax / 100.0f) : n;
+            if (mode && mode->load() == 1) return n;
+            const float w = width ? width->load() : 0.0f;
+            return (w > 0.0f) ? n / w * 100.0f : n;
         });
 
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pAmount,1}, "Amount",
@@ -158,13 +165,13 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pGate,1}, "Width",
                                                    NormalisableRange<float>(0.05f,1.0f), 1.0f, pct));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pAttack,1}, "Attack",
-                                                   NormalisableRange<float>(0.0f,500.0f), 2.0f, ms));
+                                                   NormalisableRange<float>(0.0f,kStageMax), 1.6f, ms));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pDecay,1}, "Decay",
-                                                   NormalisableRange<float>(0.0f,500.0f), 20.0f, ms));
+                                                   NormalisableRange<float>(0.0f,kStageMax), 16.0f, ms));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pSustain,1}, "Sustain",
                                                    NormalisableRange<float>(0.0f,1.0f), 1.0f, pct));
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pRelease,1}, "Release",
-                                                   NormalisableRange<float>(0.0f,500.0f), 20.0f, ms));
+                                                   NormalisableRange<float>(0.0f,kStageMax), 16.0f, ms));
     return l;
 }
 
@@ -180,7 +187,7 @@ TranceGateProcessor::TranceGateProcessor()
     : AudioProcessor (BusesProperties()
           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "TranceGate", makeLayout (timeMode))
+      apvts (*this, nullptr, "TranceGate", makeLayout (timeMode, widthMs))
 {
     core = tg_core_create (44100.0);
     bridge = std::make_unique<ParamBridge> (*this);
@@ -250,6 +257,10 @@ void TranceGateProcessor::pullParam (const juce::String& id)
      * thread. The engine is already correct; this is only the display
      * catching up, so a frame of lag costs nothing.
      */
+    /* Rate and Width both move what a stage's percentage is worth in
+     * milliseconds, so the readouts have to be told. */
+    if (id == pRate || id == pGate) refreshWidth();
+
     if (id == pSlot) triggerAsyncUpdate();
 }
 
@@ -262,8 +273,14 @@ void TranceGateProcessor::handleAsyncUpdate() { syncParamsFromEngine(); }
  * pushed in here fires the listener, which writes the engine, which is at
  * best redundant and at worst rounds a value on every load.
  */
+void TranceGateProcessor::refreshWidth()
+{
+    if (widthMs) widthMs->store ((float) engineGet ("width_ms").getDoubleValue());
+}
+
 void TranceGateProcessor::syncParamsFromEngine()
 {
+    refreshWidth();
     suppressParamWrite.store (true);
 
     auto setIf = [this] (const juce::String& id, float value)
@@ -358,11 +375,72 @@ void TranceGateProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     const juce::ScopedLock sl (engineLock);
 
+    /* THE DRY SIGNAL, before the engine overwrites it in place. Copied rather
+     * than referenced for exactly that reason, and into a fixed buffer
+     * because an allocation here is the one thing an audio callback must
+     * never do. A block longer than the buffer simply captures its first
+     * part; the scope is a picture, not a measurement. */
+    const int capN = juce::jmin (frames, (int) std::size (dryScratch));
+    std::memcpy (dryScratch, buffer.getReadPointer (0), sizeof (float) * (size_t) capN);
+
     /* Non-interleaved is what JUCE hands us, and the engine has a path for it
      * that is bit-identical to the interleaved one. */
     auto* L = buffer.getWritePointer (0);
     auto* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : L;
     tg_core_process_f32_split (core, L, R, frames, &t);
+
+    captureBlock (dryScratch, L, capN);
+}
+
+/*
+ * One block into the sweep. The column comes from the engine's own pattern
+ * phase, so the sweep is locked to the pattern rather than to wall time --
+ * a scope triggered by the music.
+ */
+void TranceGateProcessor::captureBlock (const float* dry, const float* wet, int frames)
+{
+    if (frames <= 0) return;
+
+    const double phase = tg_core_phase01 (core);
+    const int col = juce::jlimit (0, Capture::columns - 1,
+                                  (int) (phase * (double) Capture::columns));
+
+    /* A column that went BACKWARDS is the pattern wrapping: publish the sweep
+     * and start again from the left. Forwards by more than one is a block
+     * that spanned several columns, which at 512 columns and a fast rate is
+     * normal -- the skipped ones keep the previous pass's bounds rather than
+     * being blanked, so the picture does not strobe. */
+    if (col < capCol)
+    {
+        cap.filled.store (Capture::columns, std::memory_order_release);
+        cap.sweep.fetch_add (1, std::memory_order_relaxed);
+        capCol = -1;
+    }
+
+    if (col != capCol)
+    {
+        if (capCol >= 0)
+        {
+            cap.dryLo[capCol].store (capDryLo, std::memory_order_relaxed);
+            cap.dryHi[capCol].store (capDryHi, std::memory_order_relaxed);
+            cap.wetLo[capCol].store (capWetLo, std::memory_order_relaxed);
+            cap.wetHi[capCol].store (capWetHi, std::memory_order_relaxed);
+            /* Publish AFTER the column is written, so a reader below `filled`
+             * never sees half of one. */
+            cap.filled.store (capCol + 1, std::memory_order_release);
+        }
+        capCol = col;
+        capDryLo = capDryHi = dry[0];
+        capWetLo = capWetHi = wet[0];
+    }
+
+    for (int i = 0; i < frames; ++i)
+    {
+        capDryLo = juce::jmin (capDryLo, dry[i]);
+        capDryHi = juce::jmax (capDryHi, dry[i]);
+        capWetLo = juce::jmin (capWetLo, wet[i]);
+        capWetHi = juce::jmax (capWetHi, wet[i]);
+    }
 }
 
 void TranceGateProcessor::engineSet (const juce::String& key, const juce::String& value)
@@ -609,9 +687,24 @@ TgEnvelopeShape TgEnvelopeShape::render (const TranceGateProcessor& src, double 
     TgEnvelopeShape out;
     out.msStep    = msStep;
     out.holdFrac  = juce::jlimit (0.0, 1.0, src.engineGet ("hold").getDoubleValue());
-    out.attackMs  = src.engineGet ("attack").getDoubleValue();
-    out.decayMs   = src.engineGet ("decay").getDoubleValue();
-    out.releaseMs = src.engineGet ("release").getDoubleValue();
+    /*
+     * THE STAGES ARE PERCENTAGES OF THE GATE'S WIDTH, so the drawing has to
+     * convert before it can lay them on a millisecond axis. Reading them as
+     * milliseconds made a 200%% decay draw as 200 ms: at a 15 ms gate the
+     * axis came out twenty-five times too long and the curve a flat line
+     * against the left edge.
+     *
+     * Width is taken from THIS patch's hold and the step being drawn, not
+     * from the engine's width_ms, because the plot is asked to draw a step
+     * duration that may not be the one currently playing.
+     */
+    const double holdFrac = juce::jlimit (0.0, 1.0,
+                                          src.engineGet ("hold").getDoubleValue());
+    const double widthMs  = holdFrac * msStep;
+    const double pctToMs  = widthMs * 0.01;
+    out.attackMs  = src.engineGet ("attack").getDoubleValue()  * pctToMs;
+    out.decayMs   = src.engineGet ("decay").getDoubleValue()   * pctToMs;
+    out.releaseMs = src.engineGet ("release").getDoubleValue() * pctToMs;
     out.sustainLevel = juce::jlimit (0.0, 1.0, src.engineGet ("sustain").getDoubleValue());
     if (msStep <= 0.0) return out;
 

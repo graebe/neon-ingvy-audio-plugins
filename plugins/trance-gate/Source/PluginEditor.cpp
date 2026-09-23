@@ -42,9 +42,7 @@ constexpr int kBlockW     = StepGridView::width - kRing - space::s8;  /* 488 */
 constexpr int kPanelW     = kBlockW;                             /* 488 */
 
 constexpr int kSelectY    = kPad + kTopBlockH + space::s6;       /* 424 */
-/* Two rows, because the six controls do not fit one: slot, join and curve
- * above; the envelope's unit and the two config actions below. */
-constexpr int kSelectY2   = kSelectY + size::controlH + space::s2;
+
 
 /*
  * The pattern plot spans the grid exactly -- same x, same width -- because it
@@ -59,7 +57,7 @@ constexpr int kSelectY2   = kSelectY + size::controlH + space::s2;
  * 1000px the size test allows.
  */
 constexpr int kPatternH   = 92;
-constexpr int kPatternY   = kSelectY2 + size::controlH + space::s2;
+constexpr int kPatternY   = kSelectY + size::controlH + space::s2;
 constexpr int kGridY      = kPatternY + kPatternH + space::s4;   /* 568 */
 }
 
@@ -448,6 +446,16 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     addAndMakeVisible (copyPatch);
     addAndMakeVisible (pastePatch);
 
+    /* The band below shows one plot or the other. */
+    addChildComponent (scope);
+    showSignal.onClick = [this]
+    {
+        const bool sig = showSignal.getToggleState();
+        scope.setVisible (sig);
+        pattern.setVisible (! sig);
+    };
+    addAndMakeVisible (showSignal);
+
     /* Three clauses, verb first: the card's maximum and its pattern. */
     hint.setClauses ({ { "click",       "a step to toggle" },
                        { "shift-click", "for a tie" },
@@ -483,6 +491,27 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     {
         proc.engineSet ("cursor", juce::String (i));
         proc.engineSet ("step_amount", juce::String (v, 3));
+
+        /*
+         * ZERO MEANS OFF, live while you drag.
+         *
+         * A step's amount and its on/off state are independent in the engine,
+         * so pulling a pad to the bottom left it ON at an amount of nothing --
+         * silent, but drawn and counted as a live step. Dragging past the
+         * bottom now switches it off and dragging back up switches it on,
+         * which is what the gesture already looked like it was doing.
+         *
+         * The threshold is the amount's own WIRE resolution -- step_amount is
+         * written with three decimals -- and not a bare `> 0`: a value that
+         * rounds to "0.000" on the way to the engine while testing as
+         * positive here would leave exactly the state this removes.
+         *
+         * It must NOT reset the amount to full the way a click does. That
+         * reset belongs to onToggle and would fight the drag.
+         */
+        const bool live = v >= 0.0005f;
+        if (live != ui.steps.get (i))
+            proc.engineSet ("step", live ? "On" : "Off");
         refreshUi();
         pushModels();
     };
@@ -656,8 +685,35 @@ void TranceGateEditor::refreshStageText()
     release.updateText();
     /* The envelope's SHAPE changes too: in % the stages are a share of the
      * step, so the same numbers draw a different curve. */
+    /* The gate's width follows the host's tempo, and every millisecond
+     * readout is scaled by it. */
+    proc.refreshWidth();
     envelope.refresh (ui.msStep);
+    if (showSignal.getToggleState()) pushScope();
     repaint();
+}
+
+void TranceGateEditor::showSignalPlot (bool sig)
+{
+    showSignal.setToggleState (sig, juce::dontSendNotification);
+    scope  .setVisible (sig);
+    pattern.setVisible (! sig);
+    if (sig) pushScope();
+    repaint();
+}
+
+void TranceGateEditor::pushScope()
+{
+    const auto& cap = proc.capture();
+    ScopeView::Model m;
+    m.dryLo   = cap.dryLo;
+    m.dryHi   = cap.dryHi;
+    m.wetLo   = cap.wetLo;
+    m.wetHi   = cap.wetHi;
+    m.columns = TranceGateProcessor::Capture::columns;
+    m.filled  = cap.filled.load (std::memory_order_acquire);
+    m.caption = "SIGNAL   DRY BEHIND, GATED IN FRONT";
+    scope.setModel (std::move (m));
 }
 
 void TranceGateEditor::timerCallback()
@@ -745,25 +801,29 @@ void TranceGateEditor::resized()
                            { &sustain, &sustainL }, { &release, &releaseL } });
 
     slot  .setBounds (kLeftX, kSelectY, kActionsW, size::controlH);
-    legato.setBounds (kLeftX + kActionsW + space::s4, kSelectY, 172, size::controlH);
     /* The envelope's unit, in the row's spare width on the right -- it
      * belongs with the envelope, and the envelope panel has no room. */
-    /* Row one: which pattern, whether runs join, and the envelope's shape. */
-    const int curveX = kLeftX + kActionsW + space::s4 + 172 + space::s6;
-    curveL  .setBounds (curveX, kSelectY, 60, size::controlH);
-    curve   .setBounds (curveX + 60 + space::s2, kSelectY, 124, size::controlH);
+    /*
+     * ONE ROW, laid out left to right. It fits because the two config actions
+     * are glyphs rather than the words that needed a second row -- see
+     * PhosphorGlyphButton, which says what that costs.
+     */
+    int x = kLeftX + kActionsW + space::s4;          /* after the Slot select */
+    legato   .setBounds (x, kSelectY, 150, size::controlH);   x += 150 + space::s6;
+    curveL   .setBounds (x, kSelectY, 44, size::controlH);    x += 44 + space::s2;
+    curve    .setBounds (x, kSelectY, 124, size::controlH);   x += 124 + space::s6;
+    timeModeL.setBounds (x, kSelectY, 36, size::controlH);    x += 36 + space::s2;
+    timeMode .setBounds (x, kSelectY, 88, size::controlH);    x += 88 + space::s6;
+    copyPatch .setBounds (x, kSelectY, 40, size::controlH);   x += 40 + space::s2;
+    pastePatch.setBounds (x, kSelectY, 40, size::controlH);
 
-    /* Row two: the envelope's unit, then the two config actions. They sit
-     * with the settings because that is where they are reached for -- and
-     * because the 96px column they used to stack in was mostly empty. */
-    timeModeL.setBounds (kLeftX, kSelectY2, 100, size::controlH);
-    timeMode .setBounds (kLeftX + 100 + space::s2, kSelectY2, kActionsW, size::controlH);
-    copyPatch .setBounds (kLeftX + 100 + space::s2 + kActionsW + space::s6,
-                          kSelectY2, 152, size::controlH);
-    pastePatch.setBounds (kLeftX + 100 + space::s2 + kActionsW + space::s6 + 152 + space::s2,
-                          kSelectY2, 152, size::controlH);
-
-    pattern.setBounds (kLeftX, kPatternY, StepGridView::width, kPatternH);
+    /* The two plots occupy the SAME band -- only one is visible at a time.
+     * The switch sits in the band's caption strip, where the system's 28x14
+     * switch fits the 14px line exactly and costs the settings row nothing. */
+    const juce::Rectangle<int> band (kLeftX, kPatternY, StepGridView::width, kPatternH);
+    pattern.setBounds (band);
+    scope  .setBounds (band);
+    showSignal.setBounds (band.getRight() - 110, band.getY() + 4, 110, 14);
 
     grid.setBounds (kLeftX, kGridY, StepGridView::width,
                     StepGridView::heightFor (juce::jmax (1, ui.length)));

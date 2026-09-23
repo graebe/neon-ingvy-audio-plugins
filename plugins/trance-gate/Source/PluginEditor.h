@@ -86,6 +86,10 @@ public:
     static constexpr int windowWidth = phosphor::space::s8 * 2 + StepGridView::width;
     static int heightFor (int length);
 
+    /* Which of the two full-width plots the band shows. Public for the
+     * snapshot tool, which has no way to click a switch. */
+    void showSignalPlot (bool);
+
     /* Where the pattern plot sits. Exposed so a screenshot can frame it
      * without a second copy of the layout's arithmetic going stale. */
     static int plotStripTop();
@@ -194,6 +198,9 @@ private:
     void refreshStageText();
     void refreshUi();
     void pushModels();
+    /* Only while the scope is the visible plot: it reads 512 atomics and
+     * rebuilds a path, which is wasted on a band showing the other one. */
+    void pushScope();
     double livePhase() const;
 
     TranceGateProcessor& proc;
@@ -219,10 +226,16 @@ private:
     TrackedLabel rateL { "Rate" }, lengthL { "Length" }, amountL { "Amount" },
                  widthL { "Width" }, attackL { "Attack" }, decayL { "Decay" },
                  sustainL { "Sustain" }, releaseL { "Release" };
-    juce::TextButton copyPatch { "Copy gate config" }, pastePatch { "Paste gate config" };
+    PhosphorGlyphButton copyPatch  { "Copy gate config",  PhosphorGlyphButton::Glyph::copy };
+    PhosphorGlyphButton pastePatch { "Paste gate config", PhosphorGlyphButton::Glyph::paste };
     juce::ToggleButton legato { "Join Neighbors" };
     juce::ComboBox slot, timeMode, curve;
-    TrackedLabel timeModeL { "Env Time" }, curveL { "Curve" };
+    TrackedLabel timeModeL { "Time" }, curveL { "Curve" };
+    /* Which of the two full-width plots the band below shows. A switch and
+     * not a third combo: the row has no room for one, and it lives in the
+     * plot's own caption strip where the system's 28x14 switch fits exactly. */
+    juce::ToggleButton showSignal { "Signal" };
+    ScopeView scope;
 
     PanelBox gatePanel { "Gate" }, envPanel { "Envelope" };
     RingDisplay  ring;

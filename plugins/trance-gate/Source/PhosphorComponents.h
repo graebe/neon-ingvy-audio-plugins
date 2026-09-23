@@ -117,6 +117,42 @@ private:
 };
 
 /*
+ * THE SIGNAL ITSELF: dry behind, gated in front.
+ *
+ * Nothing else in the window shows the audio -- the pattern plot draws the
+ * gate's programmed shape and the envelope plot one stage set, and neither
+ * says what the gate DID. One sweep is one pattern cycle, filling left to
+ * right and restarting on the wrap.
+ *
+ * Dry in ink-dim, the system's colour for inactive marks; gated in phosphor,
+ * which the system defines as "the signal" and which is here being used for
+ * literally that. Both as filled min/max bands, the dry drawn first so the
+ * gated sits in front of it.
+ */
+class ScopeView : public juce::Component
+{
+public:
+    /* Pointers into the processor's capture, plus how many columns of it are
+     * complete. Set every frame; the component owns none of it. */
+    struct Model
+    {
+        const std::atomic<float>* dryLo = nullptr;
+        const std::atomic<float>* dryHi = nullptr;
+        const std::atomic<float>* wetLo = nullptr;
+        const std::atomic<float>* wetHi = nullptr;
+        int columns = 0;
+        int filled  = 0;
+        juce::String caption;
+    };
+
+    void setModel (Model m) { model = std::move (m); repaint(); }
+    void paint (juce::Graphics&) override;
+
+private:
+    Model model;
+};
+
+/*
  * FILM GRAIN OVER THE WINDOW'S GROUND.
  *
  * A tile of random greys, built once and tiled -- STATIC, never animated.

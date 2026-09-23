@@ -80,8 +80,11 @@ int main()
         TranceGateProcessor p;
 
         setParam (p, "attack",  123.0f);  eq (p.engineGet ("attack"),  "123.0", "  attack");
-        setParam (p, "decay",   250.0f);  eq (p.engineGet ("decay"),   "250.0", "  decay");
-        setParam (p, "release", 500.0f);  eq (p.engineGet ("release"), "500.0", "  release");
+        /* A stage runs 0..200 -- a percentage of the gate's width, not
+         * milliseconds. 200 is the top of the range and means "twice the
+         * gate", a stage that cannot finish inside it. */
+        setParam (p, "decay",   120.0f);  eq (p.engineGet ("decay"),   "120.0", "  decay");
+        setParam (p, "release", 200.0f);  eq (p.engineGet ("release"), "200.0", "  release");
         setParam (p, "sustain",   0.25f); eq (p.engineGet ("sustain"),  "0.25", "  sustain");
         setParam (p, "hold",      0.50f); eq (p.engineGet ("hold"),     "0.50", "  gate");
         setParam (p, "amount",    0.75f); eq (p.engineGet ("amount"),   "0.75", "  amount");
@@ -264,10 +267,18 @@ int main()
         setParam (p, "decay",   0.0f);
         setParam (p, "sustain", 1.0f);
         setParam (p, "hold",    0.5f);
-        setParam (p, "release", 200.0f);
+        setParam (p, "release", 80.0f);
 
-        /* A 1/4 step at 120 BPM is 500 ms. Gate 50% opens the release at
-         * 250 ms, and 200 ms of release finishes well inside the step. */
+        /*
+         * A 1/4 step at 120 BPM is 500 ms. Width 50% makes the gate 250 ms,
+         * so a release of 80% of that is 200 ms -- and it starts at 250 ms
+         * with 250 ms of step left, so it finishes with room to spare.
+         *
+         * The arithmetic is spelled out because a stage is a percentage of
+         * the WIDTH now: whether a release fits depends on Width twice over,
+         * once for the length of the release and once for how much step is
+         * left when it starts.
+         */
         auto slow = TgEnvelopeShape::render (p, 500.0);
         check (! slow.env.empty(), "  a slow step renders",
                juce::String ((int) slow.env.size()) + " samples");
@@ -279,19 +290,35 @@ int main()
          * begin to finish inside the step. The curve now shows the whole
          * release, so the fact being pinned is no longer "where the curve
          * ends" but "how far it had got when the step ran out". */
-        setParam (p, "release", 500.0f);
+        /*
+         * CUT OFF NEEDS THE RELEASE TO OUTLAST WHAT IS LEFT OF THE STEP, and
+         * in these units that is a condition on Width: a 200% release lasts
+         * 2*hold*step while the step has (1-hold)*step remaining, so it only
+         * overruns when hold > 1/3. At Width 80% the release is 1.6 steps
+         * against 0.2 of a step remaining, so it is barely begun at the edge.
+         */
+        setParam (p, "hold",    0.8f);
+        setParam (p, "release", 200.0f);
         auto fast = TgEnvelopeShape::render (p, 43.0);
-        check (fast.truncated, "  a 500 ms release on a 43 ms step is cut off");
+        check (fast.truncated, "  a release twice the gate is cut off by the step");
         check (fast.levelAt (fast.stepFrac()) > 0.8f,
                "  ...with most of the release still to go at the step edge",
                juce::String (fast.levelAt (fast.stepFrac()), 3));
 
-        /* THE SAME PATCH AT TWO RATES IS TWO PICTURES -- now because the step
-         * edge falls somewhere different on the axis, which is the fact the
-         * drawing exists to show. */
+        /*
+         * THE SAME PATCH AT TWO RATES IS NOW THE SAME PICTURE, and this test
+         * used to assert the opposite -- correctly, when a stage was absolute
+         * milliseconds and a change of rate moved the step edge across a
+         * fixed envelope.
+         *
+         * Measured against Width, every duration in the drawing scales with
+         * the step together, so the shape is rate-invariant. That is the
+         * entire claim of the change, so it is asserted rather than quietly
+         * deleted.
+         */
         auto sameSlow = TgEnvelopeShape::render (p, 500.0);
-        check (fast.stepFrac() < 0.2 && sameSlow.stepFrac() > 0.6,
-               "  one patch, two rates, two shapes",
+        check (std::abs (fast.stepFrac() - sameSlow.stepFrac()) < 0.001,
+               "  one patch, two rates, ONE shape",
                juce::String (fast.stepFrac(), 3) + " vs " + juce::String (sameSlow.stepFrac(), 3));
 
         /* Where the release BEGINS. With sustain 1 and no attack or decay the
@@ -303,7 +330,7 @@ int main()
                 if (sh.env[i] < 0.999f) return (double) i / (double) sh.env.size();
             return 1.0;
         };
-        setParam (p, "release", 200.0f);
+        setParam (p, "release", 50.0f);
         setParam (p, "hold", 0.25f);
         const auto early = TgEnvelopeShape::render (p, 500.0);
         setParam (p, "hold", 0.75f);
@@ -328,39 +355,42 @@ int main()
         check (kneeAt (late) > kneeAt (early), "  ...so moving Gate moves the knee");
 
         /*
-         * THE CASE THE WHOLE CHANGE EXISTS FOR: a decay fifteen times longer
-         * than the step. The axis must be the decay's, the step must be a
-         * mark near the left-hand edge, and the curve must actually come down
-         * on screen rather than being cut off by a gate at 3%.
+         * A DIALLED DECAY THE GATE CUTS SHORT, which is what the second,
+         * dimmer trace exists to show.
+         *
+         * This block used to pin a decay FIFTEEN TIMES the step. That case no
+         * longer exists: a stage tops out at 200% -- twice the gate -- so the
+         * extreme it guarded against is unreachable by construction, which is
+         * a better guarantee than a test. What remains true, and is worth
+         * keeping, is that a decay outlasting the gate is drawn twice: solid
+         * for what the gate allows, dim for what was asked for.
          */
         setParam (p, "attack",  10.0f);
-        setParam (p, "decay",   442.0f);
+        setParam (p, "decay",   200.0f);
         setParam (p, "sustain", 0.0f);
         setParam (p, "release", 20.0f);
-        setParam (p, "hold",    0.53f);
-        const auto wide = TgEnvelopeShape::render (p, 29.53);
-        check (std::abs (wide.spanMs - (10.0 + 442.0 + 20.0) * 1.04) < 1.0,
-               "  a 442 ms decay on a 29.5 ms step spans the decay, not the step",
+        setParam (p, "hold",    0.80f);
+        const auto wide = TgEnvelopeShape::render (p, 125.0);
+        /* Width 80% of a 125 ms step is a 100 ms gate, so the stages come to
+         * 5 + 200 + 20 = 225 ms -- comfortably longer than the step, which is
+         * what makes the axis the STAGES' and not the step's. */
+        const double gate = 0.80 * 125.0;
+        check (std::abs (wide.spanMs - (0.10 + 2.00 + 0.20) * gate * 1.04) < 1.0,
+               "  the axis spans the stages, not the step",
                juce::String (wide.spanMs, 1));
-        check (wide.stepFrac() < 0.07,
-               "  ...with the step edge a mark near the left",
-               juce::String (wide.stepFrac(), 4));
         check (wide.gateFrac() < wide.releaseFrac(),
-               "  ...the gate closes before the dialled decay ends",
+               "  the gate closes before the dialled decay ends",
                juce::String (wide.gateFrac(), 4) + " vs " + juce::String (wide.releaseFrac(), 4));
         check (! wide.envDialled.empty(),
                "  ...so the dialled shape is drawn as a second trace");
+        /* The two traces must actually differ, which is the only reason to
+         * draw both -- and the solid one must be the LOWER, being the one the
+         * gate cut short. */
         const float ghostMid = wide.envDialled.empty() ? 0.0f
                              : wide.envDialled[wide.envDialled.size() / 2];
-        check (ghostMid > 0.4f && ghostMid < 0.6f,
-               "  ...whose decay is HALF WAY DOWN at mid-axis, not long gone",
-               juce::String (ghostMid, 3));
-        /* The SOLID trace is the gated one, so with the gate at 53% of a
-         * 29.5 ms step it is long over by mid-axis. That is the difference
-         * between the two traces, and the reason there are two. */
-        check (wide.levelAt (0.5) < 0.01f,
-               "  ...while the gated trace is already shut there",
-               juce::String (wide.levelAt (0.5), 3));
+        check (ghostMid > wide.levelAt (0.5) + 0.05f,
+               "  ...and the dialled decay is still above the gated one at mid-axis",
+               juce::String (ghostMid, 3) + " vs " + juce::String (wide.levelAt (0.5), 3));
         check (wide.env.back() < 0.01f, "  ...reaching zero on screen",
                juce::String (wide.env.back(), 4));
 
@@ -377,9 +407,20 @@ int main()
         const auto g25 = TgEnvelopeShape::render (p, 29.53);
         setParam (p, "hold", 0.75f);
         const auto g75 = TgEnvelopeShape::render (p, 29.53);
-        check (g25.env != g75.env, "  turning Gate moves the gated trace");
-        check (g25.envDialled == g75.envDialled,
-               "  ...and leaves the dialled one where it was");
+        check (g25.env != g75.env, "  turning Width moves the gated trace");
+        /*
+         * AND THE DIALLED ONE TOO, which is new and is the consequence worth
+         * pinning. This asserted the opposite while a stage was absolute
+         * milliseconds: Width decided only where the gate shut, so the shape
+         * you dialled was none of its business.
+         *
+         * A stage is a percentage OF Width now, so Width is the unit the
+         * whole envelope is written in and turning it rescales every stage.
+         * That is the surprising half of "one width is 100%" and belongs in a
+         * test rather than only in a commit message.
+         */
+        check (g25.envDialled != g75.envDialled,
+               "  ...and the dialled one, Width being the unit it is drawn in");
         check (g25.gateFrac() < g75.gateFrac(), "  ...in the direction it was turned",
                juce::String (g25.gateFrac(), 4) + " -> " + juce::String (g75.gateFrac(), 4));
 
@@ -594,7 +635,9 @@ int main()
         setParam (p, "attack", 11.0f);
         setParam (p, "slot", 1.0f);
         setParam (p, "rate", 9.0f);          /* 1/32 */
-        setParam (p, "attack", 222.0f);
+        /* In range: a stage tops out at 200 now, and two slots whose values
+         * both clamp to the ceiling are not two slots that differ. */
+        setParam (p, "attack", 150.0f);
 
         setParam (p, "slot", 0.0f);
         p.syncParamsFromEngine();
@@ -605,7 +648,7 @@ int main()
 
         setParam (p, "slot", 1.0f);
         p.syncParamsFromEngine();
-        check (std::abs (getParam (p, "attack") - 222.0f) < 1.0f,
+        check (std::abs (getParam (p, "attack") - 150.0f) < 1.0f,
                "  slot 1's differ, and follow the switch",
                juce::String (getParam (p, "attack"), 1));
         eq (p.engineGet ("rate"), "1/32", "  ...with its own rate");
@@ -660,24 +703,26 @@ int main()
         check (mode != nullptr, "  the mode is a parameter");
         if (mode == nullptr) { std::puts ("\nFAIL"); return 1; }
 
-        setParam (p, "attack", 250.0f);
-        eq (attack->getCurrentValueAsText(), "250.0 ms", "  ms mode prints milliseconds");
-        eq (p.engineGet ("attack"), "250.0", "  ...and the engine holds 250");
+        /* A stage is a percentage of the gate's width. At the default rate
+         * and a full Width the gate is 125 ms, so 40% of it is 50 ms. */
+        setParam (p, "attack", 40.0f);
+        eq (attack->getCurrentValueAsText(), "50.0 ms", "  ms mode prints milliseconds");
+        eq (p.engineGet ("attack"), "40.0", "  ...and the engine holds the percentage");
 
         mode->setValueNotifyingHost (mode->convertTo0to1 (1.0f));
         eq (p.engineGet ("time_mode"), "1", "  the mode reaches the engine");
-        eq (attack->getCurrentValueAsText(), "50.00 %", "  % mode prints half a step");
-        eq (p.engineGet ("attack"), "250.0",
+        eq (attack->getCurrentValueAsText(), "40.00 %", "  % mode prints the percentage");
+        eq (p.engineGet ("attack"), "40.0",
             "  ...and the stored value did not move");
 
         /* Back again, with nothing left behind. */
         mode->setValueNotifyingHost (mode->convertTo0to1 (0.0f));
-        eq (attack->getCurrentValueAsText(), "250.0 ms", "  and back to milliseconds");
+        eq (attack->getCurrentValueAsText(), "50.0 ms", "  and back to milliseconds");
 
         /* Typing into a % readout is read as a share of the step, not as ms. */
         mode->setValueNotifyingHost (mode->convertTo0to1 (1.0f));
         attack->setValueNotifyingHost (attack->getValueForText ("20 %"));
-        eq (p.engineGet ("attack"), "100.0", "  typing \"20 %\" stores a fifth of the scale");
+        eq (p.engineGet ("attack"), "20.0", "  typing \"20 %\" stores twenty percent");
     }
 
     {
@@ -711,7 +756,13 @@ int main()
             { "release",   30.0f,  90.0f, true,  true  },
             { "hold",       0.8f,   0.4f, true,  true  },
             { "legato",     0.0f,   1.0f, false, true  },
-            { "time_mode",  0.0f,   1.0f, true,  true  },
+            /*
+             * `time_mode` is NOT here any more. It used to change the sound --
+             * it chose whether a stage was milliseconds or a share of the
+             * step -- and now it chooses only how that stage is PRINTED, so a
+             * plot that redrew for it would be redrawing for nothing. Its
+             * effect on the text is tested where the text is.
+             */
             { "curve",      0.0f,   1.0f, true,  true  },
         };
 

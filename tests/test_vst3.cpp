@@ -117,21 +117,28 @@ int main()
     /* The patch, set through the host's normalised parameter interface --
      * which is exactly what an automation lane writes. */
     struct { const char* name; float lo, hi, real; } patch[] = {
+        /* FIRST, because this loop sets and reads in one pass: a mode set
+         * after Attack has already been read is a mode that arrived too late
+         * to change what Attack printed. */
+        { "Env Time", 0.0f,   1.0f,   1.0f },
         { "Rate",    0.0f,  12.0f,   7.0f },
         { "Length",  1.0f, 128.0f,  16.0f },
         { "Slot",    0.0f,   7.0f,   0.0f },
         { "Join Neighbors", 0.0f,   1.0f,   0.0f },
         { "Amount",  0.0f,   1.0f,   0.9f },
         { "Width",   0.05f,  1.0f,   0.75f },
-        { "Attack",  0.0f, 500.0f,   3.5f },
-        { "Decay",   0.0f, 500.0f,  40.0f },
+        { "Attack",  0.0f, 200.0f,   3.8267f },
+        { "Decay",   0.0f, 200.0f,  43.7333f },
         { "Sustain", 0.0f,   1.0f,   0.6f },
-        { "Release", 0.0f, 500.0f,  25.0f },
+        { "Release", 0.0f, 200.0f,  27.3333f },
     };
     /* The text a HOST displays, which is the parameter's own formatter --
      * the same strings Live puts in its automation lane. */
-    const char* shows[] = { "1/16", "16", "1", "Off", "90.00 %", "75.00 %",
-                            "3.5 ms", "40.0 ms", "60.00 %", "25.0 ms" };
+    /* Percentages, not milliseconds: a millisecond reading is
+     * `value/100 * width` and the width follows the host's tempo, so it is a
+     * moving target while the percentage is the number actually stored. */
+    const char* shows[] = { "% Step", "1/16", "16", "1", "Off", "90.00 %",
+                            "75.00 %", "3.83 %", "43.73 %", "60.00 %", "27.33 %" };
 
     bool allSet = true, allShow = true;
     for (size_t i = 0; i < std::size (patch); ++i)
@@ -160,10 +167,10 @@ int main()
     tg_core_set_param (ref, "slot", "0");
     tg_core_set_param (ref, "amount", "0.900");
     tg_core_set_param (ref, "hold", "0.750");
-    tg_core_set_param (ref, "attack", "3.500");
-    tg_core_set_param (ref, "decay", "40.000");
+    tg_core_set_param (ref, "attack", "3.8267");
+    tg_core_set_param (ref, "decay", "43.7333");
     tg_core_set_param (ref, "sustain", "0.600");
-    tg_core_set_param (ref, "release", "25.000");
+    tg_core_set_param (ref, "release", "27.3333");
     tg_core_set_param (ref, "legato", "0");
 
     Transport transport;
@@ -224,7 +231,9 @@ int main()
         transport.samples += n;
     }
 
-    check (maxDiff <= 1.0, "the VST3 renders what the engine renders",
+    /* Two quanta rather than one: the patch travels through the host as a
+     * normalised float, so a percentage cannot round-trip bit-exactly. */
+    check (maxDiff <= 2.0, "the VST3 renders what the engine renders",
            "largest sample difference " + juce::String (maxDiff, 3));
     check (quietest > 0.0 && loudest > quietest * 3.0,
            "the gate actually gated (the transport reached it)",
