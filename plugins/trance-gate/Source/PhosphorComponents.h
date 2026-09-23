@@ -166,6 +166,26 @@ void rule (juce::Graphics&, juce::Rectangle<float> plot, double xFrac,
            juce::Colour, float thickness);
 
 /*
+ * A TIME AXIS ALONG THE BOTTOM OF A PLOT: ticks in `line-200`, labels in the
+ * hint style, and the unit on the last one only, as the system prints every
+ * other value.
+ *
+ * `spanMs` is what the full width covers. `markMs`, when positive, is a
+ * landmark that ALWAYS gets its exact value -- the step edge, which is the
+ * number that decides whether a release fits, and therefore the one that must
+ * not be rounded away. A ladder tick landing within a label's width of it is
+ * dropped rather than overprinted.
+ *
+ * The interval comes off a ladder (1, 2, 5, 10, 20, 25, 50, 100 ... ms)
+ * rather than being a fraction of the span, because the span is whatever the
+ * rate makes it: a 1/128 step is ~16 ms and a 1/1T one is ~2 s, and fifths of
+ * either are numbers nobody can read. `axisHeight` is what to reserve.
+ */
+constexpr int axisHeight = 12;
+void axis (juce::Graphics&, juce::Rectangle<float> plot, double spanMs,
+           double markMs);
+
+/*
  * n samples down to exactly `cols` (min, max) pairs.
  *
  * MIN AND MAX, NOT A MEAN OR A PICK. At 128 steps a Gate of 5% is a third of

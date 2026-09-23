@@ -24,12 +24,15 @@
  * than a pipe into md5 that somebody has to remember to type. The expected
  * value is the Move module's own reference render -- the same 4 seconds
  * tests/render_ref.c in the engine repo produces, whose md5 is
- * b208becc62657c9748247b9daa7b0362.
+ * 8e4892aa8e3947594e91cf966f7ddc98.
  *
  * If this fires, the port changed the sound. Pipe both renderers to files and
  * `cmp` them: the first differing byte says which step.
  */
-#define GOLDEN_FNV1A 0x37792113E4834F69ULL
+/* Re-recorded 2026-09-23 with the per-step level latched at gate-open; the
+ * Move reference moved with it, for the same reason and by the same bytes.
+ * Previous: 0x37792113E4834F69 (md5 8e4892aa8e3947594e91cf966f7ddc98). */
+#define GOLDEN_FNV1A 0xF8D52B9F5E7FE171ULL
 
 static uint64_t fnv = 0xcbf29ce484222325ULL;
 static void fnv_add(const void *p, size_t n) {

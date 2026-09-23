@@ -14,16 +14,18 @@ constexpr int kMaxSteps = 128;
  * right, two panels grouped by function with the actions stacked on the right
  * edge -- "never among the knobs".
  *
- * Ring 240 + space-6 + plot 92 comes to 356, which is also two 166px panels
+ * Ring 240 + space-6 + plot 104 comes to 368, which is also two 172px panels
  * with space-6 between them, so the two columns end level. That is the only
- * reason the plot is 92 and not a rounder number.
+ * reason the plot is 104 and not a rounder number -- it was 92 until the
+ * envelope gained a millisecond axis, which needed its own strip and was not
+ * going to take it from the curve.
  */
 constexpr int kPad        = space::s8;
 constexpr int kRing       = 240;
-constexpr int kPlotH      = 92;
+constexpr int kPlotH      = 104;
 constexpr int kActionsW   = 96;
-constexpr int kTopBlockH  = kRing + space::s6 + kPlotH;          /* 356 */
-constexpr int kPanelH     = (kTopBlockH - space::s6) / 2;        /* 166 */
+constexpr int kTopBlockH  = kRing + space::s6 + kPlotH;          /* 368 */
+constexpr int kPanelH     = (kTopBlockH - space::s6) / 2;        /* 172 */
 
 constexpr int kLeftX      = kPad;
 constexpr int kBlockX     = kPad + kRing + space::s8;            /* 304 */
@@ -31,18 +33,23 @@ constexpr int kBlockW     = StepGridView::width - kRing - space::s8;  /* 488 */
 constexpr int kPanelW     = kBlockW - kActionsW - space::s4;     /* 376 */
 constexpr int kActionsX   = kBlockX + kPanelW + space::s4;
 
-constexpr int kSelectY    = kPad + kTopBlockH + space::s6;       /* 412 */
+constexpr int kSelectY    = kPad + kTopBlockH + space::s6;       /* 424 */
 
 /*
  * The pattern plot spans the grid exactly -- same x, same width -- because it
  * is the same 128 steps drawn as time instead of as pads, and anything else
  * would read as a coincidence. Its height is the envelope plot's, so the
  * window has ONE plot height rather than two nearly-equal ones; that is also
- * why kPlotH is 92 and not a rounder number (see above).
+ * Its HEIGHT used to be the envelope plot's, so the window had one plot
+ * height rather than two nearly-equal ones. They differ now because one of
+ * them has a millisecond axis and the other does not -- a reason, rather than
+ * the drift that rule existed to prevent. Handing the pattern plot 12px it
+ * has nothing to draw in would also have pushed a 128-step window past the
+ * 1000px the size test allows.
  */
-constexpr int kPatternH   = kPlotH;                              /* 92 */
-constexpr int kPatternY   = kSelectY + size::controlH + space::s2;   /* 448 */
-constexpr int kGridY      = kPatternY + kPatternH + space::s4;   /* 556 */
+constexpr int kPatternH   = 92;
+constexpr int kPatternY   = kSelectY + size::controlH + space::s2;   /* 460 */
+constexpr int kGridY      = kPatternY + kPatternH + space::s4;   /* 568 */
 }
 
 /* ====================================================== envelope curve == */
@@ -56,7 +63,12 @@ void TranceGateEditor::EnvelopeCurve::refresh (double stepMs)
     const juce::String now = proc.engineGet ("attack") + "/" + proc.engineGet ("decay")
                            + "/" + proc.engineGet ("sustain") + "/" + proc.engineGet ("release")
                            + "/" + proc.engineGet ("hold") + "/" + juce::String (stepMs, 2)
-                           + "/" + proc.engineGet ("slot");
+                           + "/" + proc.engineGet ("slot")
+                           /* The mode changes what the three stage numbers
+                            * MEAN without changing one of them, so without it
+                            * in the stamp the curve would keep the old
+                            * shape. */
+                           + "/" + proc.engineGet ("time_mode");
     if (now == stamp) return;
     stamp = now;
     shape = TgEnvelopeShape::render (proc, stepMs);
@@ -99,10 +111,11 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
     const int cols = juce::jmax (2, (int) area.getWidth());
     if (cols != builtFor) rebuild (cols);
 
-    /* A strip along the bottom for the phase letters, so they never sit on
-     * top of the curve. Everything else is drawn into what is left. */
+    /* Two strips along the bottom -- the millisecond axis under the phase
+     * letters -- so neither ever sits on top of the curve. Everything else is
+     * drawn into what is left. */
     const float labelH = (float) font::hint().getHeight() + 2.0f;
-    const auto  box    = area.withTrimmedBottom (labelH);
+    const auto  box    = area.withTrimmedBottom (labelH + (float) plot::axisHeight);
 
     /* Where the gate really closes: a rail-coloured hairline, since it marks
      * a position rather than a value. */
@@ -176,7 +189,8 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
         if (x1 - x0 < w + 4.0f) continue;
 
         drawTracked (g, seg.first, fh, colour::inkMuted,
-                     { (x0 + x1) * 0.5f - w * 0.5f, area.getBottom() - 1.0f },
+                     { (x0 + x1) * 0.5f - w * 0.5f,
+                       area.getBottom() - (float) plot::axisHeight - 1.0f },
                      font::trackHint);
     }
 
@@ -192,6 +206,11 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
      */
     plot::rule (g, box, shape.stepFrac(),
                 shape.truncated ? colour::amber : colour::line200, stroke::rail);
+
+    /* The axis last, in the strip below the letters. The step edge is handed
+     * over as the landmark that must keep its exact value -- it is the number
+     * that says whether a release fits. */
+    plot::axis (g, area, shape.spanMs, shape.msStep);
 }
 
 /* ======================================================= pattern curve == */
@@ -356,7 +375,19 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     addAndMakeVisible (slot);
     slotAtt = std::make_unique<ComboAtt> (proc.state(), "slot", slot);
 
-    legato.setButtonText ("Legato");
+    /*
+     * ms OR % OF THE STEP, beside the envelope it governs.
+     *
+     * A ComboBox and not a toggle: the two readings are named things, and a
+     * switch labelled "%" leaves you guessing what the other position means.
+     */
+    timeMode.addItemList ({ "ms", "% Step" }, 1);
+    addAndMakeVisible (timeMode);
+    addAndMakeVisible (timeModeL);
+    timeModeAtt = std::make_unique<ComboAtt> (proc.state(), "time_mode", timeMode);
+    timeMode.onChange = [this] { refreshStageText(); };
+
+    legato.setButtonText ("Join Neighbors");
     addAndMakeVisible (legato);
     legatoAtt = std::make_unique<ButtonAtt> (proc.state(), "legato", legato);
 
@@ -394,6 +425,18 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
          * off. */
         if (shift) proc.engineSet ("step", on ? (tie ? "On" : "Tie") : "On");
         else       proc.engineSet ("step", on ? "Off" : "On");
+
+        /*
+         * ACTIVATING A DEAD PAD GIVES IT ITS FULL AMOUNT.
+         *
+         * The amount is independent of the on/off mask, so a pad dragged down
+         * to 20% once came back at 20% every time it was switched on again --
+         * which reads as the click having half-worked. Only on OFF -> ON:
+         * On<->Tie changes what a live step does rather than activating a
+         * dead one, and switching off must not discard an amount that was set
+         * on purpose.
+         */
+        if (! on) proc.engineSet ("step_amount", "1.000");
         refreshUi();
         pushModels();
     };
@@ -561,6 +604,23 @@ void TranceGateEditor::pushModels()
     grid.setModel (std::move (gm));
 }
 
+/*
+ * A mode change alters what every stage's number MEANS without altering the
+ * number, so no parameter value changes and nothing tells the sliders their
+ * text is stale. Slider::updateText re-asks the parameter, which is exactly
+ * what is wanted and is why the formatting lives there.
+ */
+void TranceGateEditor::refreshStageText()
+{
+    attack.updateText();
+    decay.updateText();
+    release.updateText();
+    /* The envelope's SHAPE changes too: in % the stages are a share of the
+     * step, so the same numbers draw a different curve. */
+    envelope.refresh (ui.msStep);
+    repaint();
+}
+
 void TranceGateEditor::timerCallback()
 {
     refreshUi();
@@ -640,7 +700,11 @@ void TranceGateEditor::resized()
                            { &sustain, &sustainL }, { &release, &releaseL } });
 
     slot  .setBounds (kLeftX, kSelectY, kActionsW, size::controlH);
-    legato.setBounds (kLeftX + kActionsW + space::s4, kSelectY, 140, size::controlH);
+    legato.setBounds (kLeftX + kActionsW + space::s4, kSelectY, 172, size::controlH);
+    /* The envelope's unit, in the row's spare width on the right -- it
+     * belongs with the envelope, and the envelope panel has no room. */
+    timeModeL.setBounds (kActionsX - 108 - space::s2, kSelectY, 100, size::controlH);
+    timeMode .setBounds (kActionsX, kSelectY, kActionsW, size::controlH);
 
     pattern.setBounds (kLeftX, kPatternY, StepGridView::width, kPatternH);
 

@@ -63,6 +63,13 @@ int main (int argc, char** argv)
         /* ATTACK 0 opens the gate on the very first sample, which is the
          * case that exposed a fill closing to the wrong corner. */
         { "tg_legato", 16, 7, 0.5f, 20.0f, 20.0f, 1.0f, 0.0f, false, false, true, true },
+        /*
+         * THE SMALL END OF THE AXIS LADDER. A 1/128 step is 15.6 ms at
+         * 120 BPM, and with short stages the whole span is about 20 -- where
+         * a fixed interval collapses to one tick and the ladder has to reach
+         * for 2 or 5 ms. The other shots all exercise its top end.
+         */
+        { "tg_fast", 32, 12,  0.6f,  4.0f,   3.0f, 0.5f, 1.0f, false, false, false, false },
     };
 
     for (auto& s : shots)
@@ -150,11 +157,18 @@ int main (int argc, char** argv)
          * resolve, so the playing state is photographed close up. */
         const bool wantDetail = juce::String (s.name) == "tg_16"
                              || juce::String (s.name) == "tg_ends"
+                             || juce::String (s.name) == "tg_fast"
+                             || juce::String (s.name) == "tg_cut"
                              || s.playing;
         if (wantDetail)
         {
-            /* The playhead is a ring fact; glow-focus is a knob fact. */
-            const auto crop = s.playing
+            /* The playhead is a ring fact; the millisecond axis is an
+             * envelope-plot fact, and at 10px its labels are unreadable in a
+             * full-window shot. */
+            const auto crop = (juce::String (s.name) == "tg_fast"
+                            || juce::String (s.name) == "tg_cut")
+                                ? juce::Rectangle<int> { 24, 280, 260, 116 }  /* the envelope plot */
+                            : s.playing
                                 ? juce::Rectangle<int> { 24, 24, 260, 260 }   /* the ring */
                                 : juce::Rectangle<int> { 296, 24, 400, 180 }; /* the panel */
             const auto detail = ed->createComponentSnapshot (crop, true, 3.0f);

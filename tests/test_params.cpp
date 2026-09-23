@@ -631,6 +631,42 @@ int main()
                juce::String (TranceGateEditor::heightFor (128)) + " px");
     }
 
+    {
+        /*
+         * % MODE IS ONE NUMBER READ TWO WAYS.
+         *
+         * The value must not move when the mode flips -- that is the whole
+         * reason the two scales share a top -- while the TEXT must, because
+         * the text is what a host puts in its automation lane and what the
+         * user reads off the knob.
+         */
+        std::puts ("\nenvelope times in ms or % of the step:");
+        TranceGateProcessor p;
+        auto* attack = p.state().getParameter ("attack");
+        auto* mode   = p.state().getParameter ("time_mode");
+        check (mode != nullptr, "  the mode is a parameter");
+        if (mode == nullptr) { std::puts ("\nFAIL"); return 1; }
+
+        setParam (p, "attack", 250.0f);
+        eq (attack->getCurrentValueAsText(), "250.0 ms", "  ms mode prints milliseconds");
+        eq (p.engineGet ("attack"), "250.0", "  ...and the engine holds 250");
+
+        mode->setValueNotifyingHost (mode->convertTo0to1 (1.0f));
+        eq (p.engineGet ("time_mode"), "1", "  the mode reaches the engine");
+        eq (attack->getCurrentValueAsText(), "50 %", "  % mode prints half a step");
+        eq (p.engineGet ("attack"), "250.0",
+            "  ...and the stored value did not move");
+
+        /* Back again, with nothing left behind. */
+        mode->setValueNotifyingHost (mode->convertTo0to1 (0.0f));
+        eq (attack->getCurrentValueAsText(), "250.0 ms", "  and back to milliseconds");
+
+        /* Typing into a % readout is read as a share of the step, not as ms. */
+        mode->setValueNotifyingHost (mode->convertTo0to1 (1.0f));
+        attack->setValueNotifyingHost (attack->getValueForText ("20 %"));
+        eq (p.engineGet ("attack"), "100.0", "  typing \"20 %\" stores a fifth of the scale");
+    }
+
     std::printf ("\n%s (%d checks, %d failures)\n",
                  failures ? "FAIL" : "PASS", checks, failures);
     return failures ? 1 : 0;

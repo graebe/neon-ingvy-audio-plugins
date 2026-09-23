@@ -37,7 +37,14 @@ struct DiscreteInt : juce::AudioParameterInt
 const juce::String pRate{"rate"}, pLength{"length"}, pAmount{"amount"},
                    pGate{"hold"}, pAttack{"attack"}, pDecay{"decay"},
                    pSustain{"sustain"}, pRelease{"release"},
-                   pSlot{"slot"}, pLegato{"legato"};
+                   pSlot{"slot"}, pLegato{"legato"}, pTimeMode{"time_mode"};
+
+/* The two units an envelope stage can be written in; the engine's enum in the
+ * order the choice publishes them. */
+const juce::StringArray kTimeModes { "ms", "% Step" };
+/* The shared top of both scales: 500 reads as "500.0 ms" or as "100 %", so
+ * switching modes never moves a knob. See stage_samples in the engine. */
+constexpr float kStageMax = 500.0f;
 }
 
 /*
@@ -46,7 +53,8 @@ const juce::String pRate{"rate"}, pLength{"length"}, pAmount{"amount"},
  * translation table -- and a translation table is a place for Rate to become
  * "resolution" on one side and drift.
  */
-juce::AudioProcessorValueTreeState::ParameterLayout TranceGateProcessor::makeLayout()
+juce::AudioProcessorValueTreeState::ParameterLayout
+TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode)
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout l;
@@ -67,7 +75,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout TranceGateProcessor::makeLay
     l.add (std::make_unique<AudioParameterChoice> (ParameterID{pSlot,1}, "Slot",
                                                    juce::StringArray { "1","2","3","4",
                                                                        "5","6","7","8" }, 0));
-    l.add (std::make_unique<AudioParameterBool>   (ParameterID{pLegato,1}, "Legato", false));
+    l.add (std::make_unique<AudioParameterBool>   (ParameterID{pLegato,1}, "Join Neighbors", false));
+    /*
+     * WHAT THE ENVELOPE'S TIMES MEAN. In "% Step" a stage is a share of the
+     * step rather than of a second, so the shape survives a change of rate --
+     * a patch built at 1/16 sounds like itself at 1/128 instead of being cut
+     * off. The number on the knob does not move when this changes; only what
+     * it is read as does.
+     */
+    l.add (std::make_unique<AudioParameterChoice> (ParameterID{pTimeMode,1}, "Env Time",
+                                                   kTimeModes, 0));
     /*
      * HOW A VALUE PRINTS BELONGS TO THE PARAMETER, NOT TO THE KNOB.
      *
@@ -90,9 +107,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout TranceGateProcessor::makeLay
          * them differently, so it is structure, not typography. */
         .withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })
         .withValueFromStringFunction ([] (const String& t) { return t.getFloatValue() * 0.01f; });
+    /*
+     * ONE NUMBER, TWO READINGS. The stage value is 0..500 in both modes; the
+     * mode decides whether that is milliseconds or hundredths of a step. The
+     * lambdas capture the shared flag rather than a copy of it, so flipping
+     * the mode re-reads every stage's text without touching a stored value.
+     */
     const auto ms = AudioParameterFloatAttributes()
-        .withStringFromValueFunction ([] (float v, int) { return String (v, 1) + " ms"; })
-        .withValueFromStringFunction ([] (const String& t) { return t.getFloatValue(); });
+        .withStringFromValueFunction ([mode] (float v, int)
+        {
+            if (mode && mode->load() == 1)
+                return String (roundToInt (v * (100.0f / kStageMax))) + " %";
+            return String (v, 1) + " ms";
+        })
+        .withValueFromStringFunction ([mode] (const String& t)
+        {
+            const float n = t.getFloatValue();
+            return (mode && mode->load() == 1) ? n * (kStageMax / 100.0f) : n;
+        });
 
     l.add (std::make_unique<AudioParameterFloat>  (ParameterID{pAmount,1}, "Amount",
                                                    NormalisableRange<float>(0.0f,1.0f), 1.0f, pct));
@@ -121,7 +153,7 @@ TranceGateProcessor::TranceGateProcessor()
     : AudioProcessor (BusesProperties()
           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "TranceGate", makeLayout())
+      apvts (*this, nullptr, "TranceGate", makeLayout (timeMode))
 {
     core = tg_core_create (44100.0);
     bridge = std::make_unique<ParamBridge> (*this);
@@ -162,6 +194,12 @@ void TranceGateProcessor::pullParam (const juce::String& id)
      */
     if (id == pRate)
         engineSet (id, kRateNames[juce::jlimit (0, kRateNames.size() - 1, juce::roundToInt (v))]);
+    else if (id == pTimeMode)
+    {
+        const int m = juce::jlimit (0, 1, juce::roundToInt (v));
+        if (timeMode) timeMode->store (m);
+        engineSet (id, juce::String (m));
+    }
     else if (id == pSlot)
         engineSet (id, juce::String (juce::roundToInt (v)));       /* a choice: already the index */
     else if (id == pLength)
@@ -210,6 +248,11 @@ void TranceGateProcessor::syncParamsFromEngine()
     setIf (pLength,  (float) (engineGet (pLength).getIntValue() + 1));
     setIf (pSlot,    (float)  engineGet (pSlot).getIntValue());
     setIf (pLegato,  engineGet (pLegato).getIntValue() ? 1.0f : 0.0f);
+    {
+        const int m = juce::jlimit (0, 1, engineGet (pTimeMode).getIntValue());
+        if (timeMode) timeMode->store (m);
+        setIf (pTimeMode, (float) m);
+    }
     for (auto& id : { pAmount, pGate, pAttack, pDecay, pSustain, pRelease })
         setIf (id, (float) engineGet (id).getDoubleValue());
 

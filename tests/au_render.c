@@ -190,7 +190,7 @@ int main (void)
         { "Rate",    0.0f,  12.0f,   7.0f },      /* discrete: the index of 1/16 */
         { "Length",  1.0f, 128.0f,  16.0f },      /* discrete: 16 steps */
         { "Slot",    0.0f,   7.0f,   0.0f },      /* discrete: a choice, pattern 1 */
-        { "Legato",  0.0f,   1.0f,   0.0f },
+        { "Join Neighbors", 0.0f, 1.0f, 0.0f },
         { "Amount",  0.0f,   1.0f,   0.9f },
         { "Gate",    0.05f,  1.0f,   0.75f },
         { "Attack",  0.0f, 500.0f,   3.5f },

@@ -210,6 +210,18 @@ void StepGridView::mouseDown (const juce::MouseEvent& e)
 
 void StepGridView::mouseDrag (const juce::MouseEvent& e)
 {
+    /*
+     * A CLICK IS NOT A DRAG, however much the hand shakes.
+     *
+     * JUCE sends mouseDrag after a click with a pixel of jitter, and this
+     * sets the step's amount straight from the pointer's y -- so clicking
+     * near the bottom of a cell brought the step on at 10% and looked like
+     * the pad had half-failed to light. mouseWasDraggedSinceMouseDown is
+     * JUCE's own threshold for exactly this question, which is better than a
+     * number invented here.
+     */
+    if (! e.mouseWasDraggedSinceMouseDown()) return;
+
     const int i = stepAt (e.getMouseDownPosition());
     if (i < 0 || ! onAmount) return;
     const auto b = stepBounds (i);
@@ -320,6 +332,77 @@ void rule (juce::Graphics& g, juce::Rectangle<float> plot, double xFrac,
     const float x = plot.getX() + plot.getWidth() * (float) juce::jlimit (0.0, 1.0, xFrac);
     g.setColour (c);
     g.drawLine (x, plot.getY(), x, plot.getBottom(), thickness);
+}
+
+void axis (juce::Graphics& g, juce::Rectangle<float> plot, double spanMs,
+           double markMs)
+{
+    if (spanMs <= 0.0 || plot.getWidth() < 8.0f) return;
+
+    const auto f = font::hint();
+    const float y = plot.getBottom() - (float) axisHeight;
+
+    g.setColour (colour::line200);
+    g.drawLine (plot.getX(), y, plot.getRight(), y, stroke::hair);
+
+    /*
+     * PRECISION PER LABEL, NOT PER VALUE.
+     *
+     * Deciding decimals from each number's own magnitude gave one axis
+     * reading "0.0  5.0  10" -- three ticks of the same series printed two
+     * ways. The ladder's ticks are round by construction so they take none;
+     * the landmark is a measured duration and keeps its tenth, because
+     * rounding 15.6 to "16" contradicts the caption three lines above it.
+     */
+    auto labelAt = [&] (double ms, bool withUnit, int decimals)
+    {
+        const auto txt = juce::String (ms, decimals) + (withUnit ? " ms" : "");
+        const float x = plot.getX() + plot.getWidth() * (float) (ms / spanMs);
+        const float w = trackedWidth (txt, f, font::trackHint);
+        /* Nudged in at the ends so a label never hangs outside the well. */
+        const float lx = juce::jlimit (plot.getX(), plot.getRight() - w, x - w * 0.5f);
+        g.setColour (colour::line200);
+        g.drawLine (x, y, x, y + 3.0f, stroke::hair);
+        drawTracked (g, txt, f, colour::inkMuted,
+                     { lx, plot.getBottom() - 1.0f }, font::trackHint);
+        return juce::Range<float> (lx, lx + w);
+    };
+
+    /* The landmark first: it is exact, and everything else gives way to it. */
+    juce::Range<float> taken;
+    if (markMs > 0.0 && markMs <= spanMs)
+    {
+        const bool whole = std::abs (markMs - std::round (markMs)) < 0.05;
+        taken = labelAt (markMs, true, whole ? 0 : 1);
+    }
+
+    static const double ladder[] = { 1, 2, 5, 10, 20, 25, 50, 100, 200, 250,
+                                     500, 1000, 2000, 5000 };
+    /* The smallest interval whose ticks stay ~44px apart -- about five across
+     * a 228px plot, which is what the labels fit in. */
+    double interval = ladder[std::size (ladder) - 1];
+    for (double cand : ladder)
+    {
+        if (plot.getWidth() * (float) (cand / spanMs) >= 38.0f) { interval = cand; break; }
+    }
+
+    for (double ms = 0.0; ms <= spanMs + 1e-6; ms += interval)
+    {
+        /* The unit rides the landmark when there is one, so it appears once. */
+        const bool withUnit = (taken.isEmpty() && ms + interval > spanMs);
+        const auto txt = juce::String (ms, 0) + (withUnit ? " ms" : "");
+        const float x = plot.getX() + plot.getWidth() * (float) (ms / spanMs);
+        const float w = trackedWidth (txt, f, font::trackHint);
+        const float lx = juce::jlimit (plot.getX(), plot.getRight() - w, x - w * 0.5f);
+        /* A LADDER TICK GIVES WAY TO THE LANDMARK, and with room to spare:
+         * at 4px of margin "0" and a step edge at 11% of the span rendered as
+         * one run -- "0", a tick, then "62 ms" -- which reads as "0.062 ms"
+         * and is worse than either label alone. */
+        if (! taken.isEmpty()
+            && juce::Range<float> (lx - 10.0f, lx + w + 10.0f).intersects (taken))
+            continue;
+        labelAt (ms, withUnit, 0);
+    }
 }
 
 void decimate (const float* v, int n, int cols,

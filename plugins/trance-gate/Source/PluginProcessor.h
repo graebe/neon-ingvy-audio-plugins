@@ -158,8 +158,22 @@ public:
     bool         patchFromString (const juce::String& s);
 
 private:
+    /*
+     * WHAT ATTACK/DECAY/RELEASE MEAN, shared with the parameters that print
+     * them.
+     *
+     * Declared BEFORE apvts so it is alive when makeLayout runs -- member
+     * initialisation follows declaration order, and the value formatters the
+     * layout installs capture this. A shared_ptr and not a raw one because
+     * those formatters outlive nothing in particular: a host may hold a
+     * parameter's text function past the processor if it is mid-teardown, and
+     * a dangling read there is a crash in someone else's stack.
+     */
+    std::shared_ptr<std::atomic<int>> timeMode { std::make_shared<std::atomic<int>> (0) };
+
     juce::AudioProcessorValueTreeState apvts;
-    static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
+    static juce::AudioProcessorValueTreeState::ParameterLayout
+        makeLayout (std::shared_ptr<std::atomic<int>> mode);
     /* Set while pushing engine values INTO the parameters, so the listener
      * that normally writes them back to the engine stands down. Without it a
      * patch load ping-pongs between the two. */

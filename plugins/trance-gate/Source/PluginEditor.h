@@ -177,6 +177,9 @@ private:
     };
 
     void timerCallback() override;
+    /* The three stage readouts print through the PARAMETER, so a mode change
+     * moves no value and JUCE has nothing to notify. They are pushed. */
+    void refreshStageText();
     void refreshUi();
     void pushModels();
     double livePhase() const;
@@ -197,8 +200,9 @@ private:
                  gateL { "Gate" }, attackL { "Attack" }, decayL { "Decay" },
                  sustainL { "Sustain" }, releaseL { "Release" };
     juce::TextButton copyPatch { "Copy patch" }, pastePatch { "Paste patch" };
-    juce::ToggleButton legato { "Legato" };
-    juce::ComboBox slot;
+    juce::ToggleButton legato { "Join Neighbors" };
+    juce::ComboBox slot, timeMode;
+    TrackedLabel timeModeL { "Env Time" };
 
     PanelBox gatePanel { "Gate" }, envPanel { "Envelope" };
     RingDisplay  ring;
@@ -211,7 +215,7 @@ private:
     using ComboAtt  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using ButtonAtt = juce::AudioProcessorValueTreeState::ButtonAttachment;
     std::vector<std::unique_ptr<SliderAtt>> sliderAtts;
-    std::unique_ptr<ComboAtt>  slotAtt;
+    std::unique_ptr<ComboAtt>  slotAtt, timeModeAtt;
     std::unique_ptr<ButtonAtt> legatoAtt;
 
     /* Knobs are children of their PANEL, not of the editor. Parented to the
