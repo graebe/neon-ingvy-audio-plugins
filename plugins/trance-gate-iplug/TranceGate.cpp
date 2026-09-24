@@ -22,6 +22,22 @@ static constexpr int kNumRates = int(sizeof(kRateLabels) / sizeof(kRateLabels[0]
 static constexpr int kRateDefault = 7;          /* 1/16 -- tg-core rates.rs */
 static constexpr double kStageMaxPct = 200.0;   /* tg-core STAGE_MAX_PCT    */
 
+/*
+ * The percentage format, spelled out rather than left to the `label`
+ * argument.
+ *
+ * iPlug2's AU wrapper prints a parameter with GetDisplay(value, false, str) --
+ * the overload that does NOT append the label -- so a unit passed as `label`
+ * reaches a VST3 host and never reaches an AU one. A host showing "3.83"
+ * where it should show "3.83 %" is the sort of thing only a test that
+ * compares displayed strings would catch.
+ *
+ * Two decimals everywhere, for the same reason: the step decides the
+ * precision, and 0.1 rendered Sustain as "60.0" against the engine's "60.00".
+ */
+static const IParam::DisplayFunc kPctDisplay =
+  [](double v, WDL_String& s) { s.SetFormatted(32, "%.2f %%", v); };
+
 TranceGate::TranceGate(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
@@ -40,19 +56,25 @@ TranceGate::TranceGate(const InstanceInfo& info)
     kRateLabels[1], kRateLabels[2], kRateLabels[3], kRateLabels[4], kRateLabels[5],
     kRateLabels[6], kRateLabels[7], kRateLabels[8], kRateLabels[9], kRateLabels[10],
     kRateLabels[11], kRateLabels[12]);
-  GetParam(kLegato)->InitBool("Join Neighbors", false);
+  /* "Off"/"On", capitalised: iPlug2 defaults to lower case and the engine
+   * prints "Off". */
+  GetParam(kLegato)->InitBool("Join Neighbors", false, "", 0, "", "Off", "On");
   GetParam(kTimeMode)->InitEnum("Env Time", 0, {"ms", "% Step"});
   GetParam(kCurve)->InitEnum("Env Curve", 0, {"Linear", "Exponential", "S-Curve"});
 
   /* Shown as percentages because that is what they are; the engine takes
    * Amount, Width and Sustain as 0..1 and the three envelope stages as the
    * percent value itself, so only the first three are scaled in PushParams. */
-  GetParam(kAmount)->InitDouble("Amount", 100.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kWidth)->InitDouble("Width", 100.0, 5.0, 100.0, 0.1, "%");
-  GetParam(kAttack)->InitDouble("Attack", 1.6, 0.0, kStageMaxPct, 0.01, "%");
-  GetParam(kDecay)->InitDouble("Decay", 16.0, 0.0, kStageMaxPct, 0.01, "%");
-  GetParam(kSustain)->InitDouble("Sustain", 100.0, 0.0, 100.0, 0.1, "%");
-  GetParam(kRelease)->InitDouble("Release", 16.0, 0.0, kStageMaxPct, 0.01, "%");
+  const auto pct = [](IParam* p, const char* name, double def, double lo, double hi) {
+    p->InitDouble(name, def, lo, hi, 0.01, "%", 0, "",
+                  IParam::ShapeLinear(), IParam::kUnitPercentage, kPctDisplay);
+  };
+  pct(GetParam(kAmount), "Amount", 100.0, 0.0, 100.0);
+  pct(GetParam(kWidth), "Width", 100.0, 5.0, 100.0);
+  pct(GetParam(kAttack), "Attack", 1.6, 0.0, kStageMaxPct);
+  pct(GetParam(kDecay), "Decay", 16.0, 0.0, kStageMaxPct);
+  pct(GetParam(kSustain), "Sustain", 100.0, 0.0, 100.0);
+  pct(GetParam(kRelease), "Release", 16.0, 0.0, kStageMaxPct);
 
   MakeDefaultPreset("Default", kNumPresets);
 
