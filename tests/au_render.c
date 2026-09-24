@@ -217,11 +217,23 @@ int main (void)
             continue;
         }
 
-        /* Normalise in the plugin's units, then scale into the AU's. For a
-         * discrete parameter the published maximum IS steps-1, so the index
-         * survives the round trip unchanged. */
+        /*
+         * SCALE INTO THE RANGE THE AU ITSELF PUBLISHES, not into one this
+         * test believes in.
+         *
+         * It used to be `norm * info.maxValue`, which is only correct when a
+         * parameter's minimum is zero. JUCE's AU wrapper published everything
+         * that way -- continuous over 0..1, discrete over 0..steps-1 -- so
+         * the shortcut held for as long as JUCE was the wrapper. iPlug2
+         * publishes the real range, and Length's is 1..128: the same
+         * arithmetic asked for 16 steps and set 15.
+         *
+         * Reading minValue too costs one line and makes this test a test of
+         * the ENGINE reached through an AU, rather than of one framework's
+         * habits.
+         */
         const float norm = (patch[i].real - patch[i].lo) / (patch[i].hi - patch[i].lo);
-        const float raw  = norm * info.maxValue;
+        const float raw  = info.minValue + norm * (info.maxValue - info.minValue);
         if (AudioUnitSetParameter (au, pid, kAudioUnitScope_Global, 0, raw, 0) != noErr)
             allSet = 0;
     }

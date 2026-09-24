@@ -3,10 +3,9 @@
 Copyright © 2026 Torben Gräber. What follows are the notices this project's
 dependencies require.
 
-**The licence is not yet uniform, and this file says why.** The iPlug2 build
-(`plugins/trance-gate-iplug`) and everything it links are permissive; the JUCE
-build (`plugins/trance-gate`) is not, and while it exists the artefact it
-produces is AGPLv3. See [LICENSE](LICENSE) and the README.
+**The licence is uniform: MIT throughout.** Every dependency below is
+permissive, and nothing in the chain is copyleft. See [LICENSE](LICENSE) and
+the README for how that came to be true.
 
 ## The plugin framework — permissive
 
@@ -22,6 +21,14 @@ iPlug2 carries is plain MIT. That is what makes an MIT VST3 possible at all.
 
 ## Removed, and recorded so nobody re-adds them looking for a notice
 
+**JUCE 8** — **AGPLv3**-or-commercial, and AGPLv3 is a *stronger* obligation
+than GPLv3 rather than an equal one: while that target shipped, the artefact
+had to be conveyed under AGPLv3. It was the last copyleft dependency here and
+the only reason this repository was not MIT. Removing it meant removing the
+2,586-line editor it drew, which is the real cost and is recorded in the
+commit before the removal.
+
+
 `vst3-sys`, `vst3-com`, `vst3-com-macros`, `vst3-com-macros-support`
 (**GPL-3.0-or-later**) and `nih_plug`, `nih_plug_derive`, `nih_plug_xtask`,
 `nih_log` (**ISC**, © 2022-2024 Robbert van der Helm) were dependencies until
@@ -31,9 +38,12 @@ crate making the Rust plugin GPL, reached only through `nih_export_vst3!()`.
 
 ## Bundled assets
 
-**JetBrains Mono**, © 2020 The JetBrains Mono Project Authors, under the **SIL
-Open Font License 1.1**. The OFL requires its text to travel with the font;
-it ships as `plugins/trance-gate/Resources/OFL.txt`.
+**None at present.** JetBrains Mono (© 2020 The JetBrains Mono Project
+Authors, **SIL Open Font License 1.1**) shipped with the JUCE editor and went
+with it. The OFL requires its text to travel beside the font, so whatever
+draws the UI next has to bring `OFL.txt` back along with the `.ttf` files --
+it is permissive and GPL-compatible, and this note exists so re-adding the
+font does not quietly drop the notice.
 
 ## The engine
 
@@ -42,20 +52,9 @@ it ships as `plugins/trance-gate/Resources/OFL.txt`.
 © 2026 Torben Gräber. They have no dependencies of their own.
 
 They were relicensed from MIT to GPL-3.0-or-later when this build moved to
-nih-plug. That reason is gone: nothing copyleft links them any more, and the
-same crates ship inside the MIT Piano Practice module on the Move. **Taking
-them back to MIT is the remaining step**, and it is a decision for the engine
-repository rather than this one.
-
-## JUCE — while `plugins/trance-gate` still builds
-
-The JUCE 8 modules are **AGPLv3**-or-commercial. AGPLv3 is a *stronger*
-obligation than this project's GPL-3.0-or-later: any artefact built from the
-JUCE target must be conveyed under AGPLv3, not GPLv3. The JUCE target is being
-retired for exactly this reason. JUCE's own bundled dependencies (AudioUnit
-SDK and Oboe under Apache-2.0, the VST3 SDK under **MIT** © 2025 Steinberg
-Media Technologies GmbH, ASIO under Steinberg's proprietary terms) are listed
-in `LICENSE.md` in the JUCE checkout.
+nih-plug, and back to **MIT** once the premise behind that turned out to be
+false. Released as v1.0.0 with the notice inside the module tarball, which is
+what MIT asks of a copy that reaches a device without a repository near it.
 
 ## Every other dependency
 

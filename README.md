@@ -50,30 +50,36 @@ and are copied to `~/Library/Audio/Plug-Ins/`.
 
 ## Licence
 
-Copyright © 2026 Torben Gräber.
+**MIT**, © 2026 Torben Gräber — every part of it, with nothing copyleft in the
+chain.
 
-**The iPlug2 build is permissive; the JUCE one is not, and that is the only
-thing left.** `plugins/trance-gate-iplug` links iPlug2 (**zlib**), the VST3
-SDK iPlug2 vendors (**MIT**, © 2026 Steinberg — the GPL-or-commercial dual
-licence was withdrawn) and the shared engine. Nothing in that chain is
-copyleft.
+| | |
+|---|---|
+| this repository | **MIT** |
+| [iPlug2](https://github.com/iPlug2/iPlug2) | **zlib**, with WDL/NanoVG/NanoSVG (Zlib) and MetalNanoVG/RTAudio (MIT) |
+| VST3 SDK | **MIT**, © 2026 Steinberg Media Technologies GmbH |
+| CLAP | **MIT** |
+| [the engine](https://github.com/graebe/schwung-trance-gate) | **MIT**, and it has no external crates at all |
 
-`plugins/trance-gate` links **JUCE 8**, which is **AGPLv3**-or-commercial, and
-that is a *stronger* obligation than GPL rather than an equal one: while that
-target ships in a build, the artefact must be conveyed under AGPLv3.
+Two things had to go to get here, and neither was a licensing decision on its
+own.
 
-So the remaining work to make this repository MIT is not a licensing decision,
-it is a product one — **retiring the JUCE target means retiring its 2,586-line
-editor**, and the iPlug2 build currently draws nothing. See
-[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+**JUCE 8 is AGPLv3-or-commercial** — a *stronger* obligation than GPL, not an
+equal one: while that target shipped, the artefact had to be conveyed under
+AGPLv3. It is gone, and so is the 2,586-line editor it drew. That editor is
+not lost, it is the last commit before the removal, and whatever draws the UI
+next is a translation of it rather than a fresh design.
 
-### What is already gone
+**nih-plug is ISC, but `nih_export_vst3!()` is not.** It pulled in
+[`vst3-sys`](https://github.com/RustAudio/vst3-sys), GPL-3.0-or-later — a
+third-party reimplementation of interfaces Steinberg now publishes under MIT
+themselves. One crate, and it made the whole build copyleft.
 
-The Rust plugin (`crates/tg-plugin`) and its `xtask` bundler have been removed.
-nih-plug itself is ISC, but `nih_export_vst3!()` pulled in
-[`vst3-sys`](https://github.com/RustAudio/vst3-sys), which is
-GPL-3.0-or-later — the single crate that made that build copyleft. iPlug2
-reaches VST3 through Steinberg's own MIT SDK instead, so the format now costs
-nothing. The engine crates were relicensed from MIT to GPL when this build
-moved to nih-plug; nothing copyleft links them any more, so taking them back
-to MIT is the last loose end.
+The premise behind both was that a VST3 plugin cannot be permissive. It can:
+Steinberg withdrew the GPL-or-proprietary dual licence and the SDK is MIT.
+That was worth checking rather than assuming, and checking it is what made
+this repository MIT.
+
+See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for the notices those
+dependencies require.
+
