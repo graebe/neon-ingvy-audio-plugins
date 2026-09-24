@@ -1,8 +1,8 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
-#include "PhosphorLookAndFeel.h"
-#include "PhosphorComponents.h"
+#include "UvLookAndFeel.h"
+#include "UvComponents.h"
 
 /*
  * The editor draws from the SAME `ui` readout the Move display uses:
@@ -21,10 +21,10 @@
  * automation lane anyone wants), so the grid still talks to the engine
  * directly. That asymmetry is the design, not an oversight.
  *
- * THE LOOK IS THE PHOSPHOR DESIGN SYSTEM, and this file holds none of it:
- * colours and metrics live in Phosphor.h, control drawing in
- * PhosphorLookAndFeel, and the ring, grid, panels and hint bar in
- * PhosphorComponents. What is left here is layout and wiring.
+ * THE LOOK IS THE ULTRAVIOLET DESIGN SYSTEM, and this file holds none of it:
+ * colours and metrics live in Uv.h, control drawing in
+ * UvLookAndFeel, and the ring, grid, panels and hint bar in
+ * UvComponents. What is left here is layout and wiring.
  */
 class TranceGateEditor : public juce::AudioProcessorEditor,
                          private juce::Timer
@@ -81,9 +81,13 @@ public:
      * parameter proves the renderer responds, which it always did, and says
      * nothing about whether the cached picture is thrown away.
      */
-    static juce::String soundStamp (const TranceGateProcessor&);
+    /* Both built from ONE `params` read, which the timer takes once a frame
+     * and hands to everything that needs it. */
+    static juce::String soundStamp   (const juce::String& params);
+    static juce::String patternStamp (const juce::String& params);
+    static float        widthFrom  (const juce::String& params);
 
-    static constexpr int windowWidth = phosphor::space::s8 * 2 + StepGridView::width;
+    static constexpr int windowWidth = uv::space::s8 * 2 + StepGridView::width;
     static int heightFor (int length);
 
     /* Which of the two full-width plots the band shows. Public for the
@@ -119,7 +123,7 @@ private:
         void paint (juce::Graphics&) override;
         /* Cheap to call every frame: it re-renders only when the macros that
          * shape the curve have actually moved. */
-        void refresh (double msStep);
+        void refresh (const juce::String& params, double msStep);
 
     private:
         void rebuild (int cols);
@@ -127,8 +131,8 @@ private:
         TranceGateProcessor& proc;
         juce::String stamp;                 /* the macros this curve was built from */
         TgEnvelopeShape shape;
-        phosphor::plot::Curve curve;        /* the real gated envelope */
-        phosphor::plot::Curve ghost;        /* the shape as dialled, behind it */
+        uv::plot::Curve curve;        /* the real gated envelope */
+        uv::plot::Curve ghost;        /* the shape as dialled, behind it */
         std::vector<float> lo, hi;
         int builtFor = 0;                   /* the width `curve` was built for */
     };
@@ -152,7 +156,7 @@ private:
         void paint (juce::Graphics&) override;
         /* `uiRaw` is the engine's readout with the volatile fields still in
          * it; refresh drops them, so a moving playhead is not a re-render. */
-        void refresh (const juce::String& uiRaw, double msStep);
+        void refresh (const juce::String& uiRaw, const juce::String& params, double msStep);
         void setPlayhead (double stepPhase, bool moving);
         /*
          * AMOUNT REPAINTS BUT NEVER RE-RENDERS.
@@ -169,10 +173,18 @@ private:
     private:
         void rebuild (int cols);
 
+    public:
+        /* The decimated gate, for the scope to draw over the audio. Built in
+         * refresh rather than in paint, so it is current even while this plot
+         * is the hidden one of the pair. */
+        const std::vector<float>& gate() const { return hi; }
+        int stepCount() const { return shape.length; }
+
+    private:
         TranceGateProcessor& proc;
         juce::String stamp;
         TgPatternShape shape;
-        phosphor::plot::Curve curve;
+        uv::plot::Curve curve;
         std::vector<float> lo, hi;
         int    builtFor = 0;
         double phase    = 0.0;
@@ -206,7 +218,7 @@ private:
     TranceGateProcessor& proc;
     Ui ui;
 
-    PhosphorLookAndFeel phosphorLook;
+    UvLookAndFeel uvLook;
     /* Built once in the constructor and tiled in paint. Held on the editor
      * rather than in a file-scope static: a juce::Image released after JUCE
      * has shut down is the same teardown crash the bundled typefaces had. */
@@ -214,6 +226,14 @@ private:
 
     /* The local clock the playhead is advanced on between readouts. */
     juce::String lastRaw;
+    /* The engine's whole sound, read once a frame -- see timerCallback. */
+    juce::String liveParams;
+    /* Length's magnets follow the Rate, so they are recomputed when it moves
+     * and not every frame. */
+    juce::String lastRate;
+    void pushLengthMagnets (const juce::String& rateLabel);
+    /* Whether Join Neighbors could change the sound as things stand. */
+    bool legatoCanAct() const;
     double anchorPhase = 0.0;
     double anchorMs    = 0.0;
     int    lastRows    = 0;
@@ -222,19 +242,20 @@ private:
      * open for. Three names for one control is two too many, so the member
      * follows the label; only the WIRE key stays `hold`, because it is in
      * every saved patch and is the automation parameter id. */
-    PhosphorKnob rate, length, amount, width, attack, decay, sustain, release;
+    UvKnob rate, length, amount, width, attack, decay, sustain, release;
     TrackedLabel rateL { "Rate" }, lengthL { "Length" }, amountL { "Amount" },
                  widthL { "Width" }, attackL { "Attack" }, decayL { "Decay" },
                  sustainL { "Sustain" }, releaseL { "Release" };
-    PhosphorGlyphButton copyPatch  { "Copy gate config",  PhosphorGlyphButton::Glyph::copy };
-    PhosphorGlyphButton pastePatch { "Paste gate config", PhosphorGlyphButton::Glyph::paste };
+    UvGlyphButton copyPatch  { "Copy gate config",  UvGlyphButton::Glyph::copy };
+    UvGlyphButton pastePatch { "Paste gate config", UvGlyphButton::Glyph::paste };
     juce::ToggleButton legato { "Join Neighbors" };
     juce::ComboBox slot, timeMode, curve;
     TrackedLabel timeModeL { "Time" }, curveL { "Curve" };
     /* Which of the two full-width plots the band below shows. A switch and
      * not a third combo: the row has no room for one, and it lives in the
      * plot's own caption strip where the system's 28x14 switch fits exactly. */
-    juce::ToggleButton showSignal { "Signal" };
+    /* The band shows one plot or the other; these pick which. */
+    UvTabs viewTabs;
     ScopeView scope;
 
     PanelBox gatePanel { "Gate" }, envPanel { "Envelope" };

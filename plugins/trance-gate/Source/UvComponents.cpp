@@ -1,6 +1,6 @@
-#include "PhosphorComponents.h"
+#include "UvComponents.h"
 
-using namespace phosphor;
+using namespace uv;
 
 /* =============================================================== panel == */
 
@@ -33,15 +33,21 @@ void RingDisplay::paint (juce::Graphics& g)
     const float d  = juce::jmin (box.getWidth(), box.getHeight());
     const auto c   = box.getCentre();
 
-    /* The preview's radii as fractions of 240, so the 120px variant is the
-     * same drawing at half size. */
-    const float rTrack = d * (99.0f  / 240.0f);
-    const float rSeg   = d * (108.0f / 240.0f);
+    /*
+     * ANNULAR SECTORS, NOT STROKED ARCS.
+     *
+     * The outer edge is where it always was -- 114 of 240, the stroked band's
+     * outer limit -- and the inner edge has come in a long way, so a segment
+     * is a wedge you can read at a glance rather than a tick. Radii are
+     * fractions of 240 so the 120px variant is the same drawing at half size.
+     *
+     * The decorative hairline that used to sit at 99 is gone: the sectors now
+     * cover it at low step counts and would have shown THROUGH the band at
+     * high ones, and the unlit sectors already mark the ring's full extent,
+     * which is all it was there for.
+     */
+    const float rOuter = d * (114.0f / 240.0f);
     const int   n      = juce::jmax (1, model.length);
-
-    g.setColour (colour::line100);
-    g.drawEllipse (juce::Rectangle<float> (rTrack * 2.0f, rTrack * 2.0f).withCentre (c),
-                   stroke::hair);
 
     /*
      * STROKE FALLS AWAY AS THE COUNT RISES.
@@ -55,14 +61,25 @@ void RingDisplay::paint (juce::Graphics& g)
      * CONTROLS having one size; the ring is a display whose segment count is
      * the pattern's, not a size anyone chose.
      */
-    const float seg = juce::jlimit (2.0f, 12.0f, 300.0f / (float) n);
+    /*
+     * THE BAND NARROWS AS THE COUNT RISES, FROM THE INSIDE.
+     *
+     * A fat wedge is the point at 16 steps. At 128 the slot is 2.8 degrees
+     * and the gap between wedges is about a pixel, so a 34px-deep band would
+     * read as one solid annulus and the pattern -- the only thing the ring is
+     * for -- would be gone. Pulling the INNER edge back out keeps the outer
+     * circle fixed, so the ring does not appear to change size with Length.
+     */
+    const float depth = juce::jlimit (8.0f, 34.0f, 900.0f / (float) n) * (d / 240.0f);
+    const float inner = juce::jmax (0.0f, (rOuter - depth) / rOuter);
     const float slot = juce::MathConstants<float>::twoPi / (float) n;
     const float fill = slot * 0.8f;             /* 12 degrees of 15 in the preview */
 
     for (int i = 0; i < n; ++i)
     {
+        /* The wedge says on or off only -- the playhead is its own mark,
+         * drawn after this loop. */
         const bool on = model.stepOn && model.stepOn (i);
-        const bool at = model.moving && i == model.playhead;
 
         /*
          * NO -halfPi HERE. addCentredArc's fromRadians is documented as
@@ -79,20 +96,60 @@ void RingDisplay::paint (juce::Graphics& g)
          */
         const float a0 = (float) i * slot + (slot - fill) * 0.5f;
 
+        /* addPieSegment takes the same top-centre clockwise angles
+         * addCentredArc did, so the reading order above still holds. */
         juce::Path p;
-        p.addCentredArc (c.x, c.y, rSeg, rSeg, 0.0f, a0, a0 + fill, true);
+        p.addPieSegment (juce::Rectangle<float> (rOuter * 2.0f, rOuter * 2.0f).withCentre (c),
+                         a0, a0 + fill, inner);
         /*
-         * WHETHER A STEP IS ON DECIDES THE COLOUR; THE PLAYHEAD ONLY PICKS
-         * THE SHADE. Testing `at` first let the playhead paint an OFF step in
-         * ink -- brighter than a lit step's phosphor -- so for one segment
-         * per revolution the ring reported a step that is not in the pattern.
-         * StepGridView already resolves it this way round (a gap under the
-         * playhead gets a glow wash, never phosphor).
+         * THE WEDGE SAYS ON OR OFF, AND NOTHING ELSE.
+         *
+         * It used to carry the playhead too, by shading: ink over a lit step,
+         * a glow wash over a gap. That worked only while the signal was dim
+         * enough for ink to be visibly brighter. It is not any more -- uv and
+         * ink are 1.34:1 -- so the playhead is a separate mark below, which
+         * is how ui_chain.js has always drawn it on the Move and is sturdier
+         * than any hue difference.
+         *
+         * AN UNLIT SECTOR IS THE RAIL, NOT DIM TEXT. It was inkDim, which the
+         * system reserves for disabled text and which sat close enough to the
+         * signal that on and off read as two brightnesses of one thing.
+         * line-200 is the token for "the unlit part of an arc" -- exactly what
+         * this is.
          */
-        g.setColour (on ? (at ? colour::ink       : colour::phosphor)
-                        : (at ? colour::phosphorGlow : colour::inkDim));
-        g.strokePath (p, juce::PathStrokeType (seg, juce::PathStrokeType::curved,
-                                               juce::PathStrokeType::butt));
+        /*
+         * NO RIM. This carried a uvDeep stroke as the "fill drop-shadow" the
+         * system asks for, but a constant-alpha 5px stroke has a hard edge
+         * and reads as a BORDER around every lit wedge rather than as light
+         * coming off one.
+         *
+         * The wedges therefore carry no violet of their own, the cast living
+         * entirely in the halo elsewhere. If it is wanted back here, the
+         * answer is a falloff -- halo() in Uv.cpp fades with distance -- and
+         * not a stroke at one alpha.
+         */
+        g.setColour (on ? colour::uv : colour::line200);
+        g.fillPath (p);
+    }
+
+    /*
+     * THE PLAYHEAD, AS ITS OWN MARK. A dot on the ring's inner edge at the
+     * step being played -- ink, because it is "here" rather than "on", and
+     * the one place the ring spends the brightest token. It reads against a
+     * lit wedge and an unlit one alike, which is the whole point of taking it
+     * out of the wedge's colour.
+     */
+    if (model.moving && model.playhead >= 0)
+    {
+        const float a = ((float) model.playhead + 0.5f) * slot
+                      - juce::MathConstants<float>::halfPi;   /* raw trig: 0 is 3 o'clock */
+        const float rDot = rOuter * inner - d * (7.0f / 240.0f);
+        const auto  dot  = juce::Rectangle<float> (d * (7.0f / 240.0f), d * (7.0f / 240.0f))
+                             .withCentre ({ c.x + std::cos (a) * rDot,
+                                            c.y + std::sin (a) * rDot });
+        glowLed (g, dot, dot.getWidth() * 0.5f);
+        g.setColour (colour::ink);
+        g.fillEllipse (dot);
     }
 
     /* The window's one readout-size number, with a label under it. */
@@ -140,15 +197,18 @@ void StepGridView::paint (juce::Graphics& g)
         const bool at  = model.moving && i == model.playhead;
         const float amt = model.stepAmount ? model.stepAmount (i) : 1.0f;
 
-        if (at) glowLed (g, r);
+        /* `.ph-step.on` and `.ph-step.play` both carry glow-led in the
+         * system's stylesheet: the halo is how a near-white fill keeps its
+         * violet, so a lit step needs it as much as the playhead does. */
+        if (on || at) glowLed (g, r);
 
         if (tie)
         {
-            /* A hollow phosphor outline with a bar across it -- the tie says
+            /* A hollow uv outline with a bar across it -- the tie says
              * "this step holds through", so it is not a fill. */
             g.setColour (colour::bg200);
             g.fillRect (r);
-            g.setColour (colour::phosphor);
+            g.setColour (colour::uv);
             g.drawRect (r, stroke::hair);
             g.drawRect (r.reduced (1.0f), stroke::hair);
             g.fillRect (r.getX(), r.getCentreY() - 1.0f, r.getWidth(), 2.0f);
@@ -168,31 +228,57 @@ void StepGridView::paint (juce::Graphics& g)
             g.setColour (colour::bg200);
             g.fillRect (r);
             const float h = juce::jmax (2.0f, r.getHeight() * juce::jlimit (0.0f, 1.0f, amt));
-            g.setColour (colour::phosphor);
-            g.fillRect (r.withTop (r.getBottom() - h));
-            g.setColour (colour::phosphor);
+            const auto lit = r.withTop (r.getBottom() - h);
+            g.setColour (colour::uv);
+            g.fillRect (lit);
+
+            /*
+             * THE PLAYHEAD, ON A PAD THAT IS ALREADY LIT.
+             *
+             * Nothing here used to read `at`. The only thing separating a
+             * playing lit pad from any other was the halo -- and once every
+             * lit pad gained one (the system gives `.ph-step.on` glow-led)
+             * that distinction went with it, so the playhead became invisible
+             * on exactly the pads it most needs to be seen on.
+             *
+             * Darkening the LIT PART is the cheapest honest answer: the pad
+             * is still on, still the same height, and the one that is
+             * sounding is the one that dips. onUv is the token for "what goes
+             * on top of a uv fill", and at a quarter alpha it reads as a
+             * shadow crossing the row rather than as a different state.
+             *
+             * NOT uvDeep: the system says it is never a fill, and spending it
+             * here would collapse the two-tone it exists to protect.
+             */
+            if (at)
+            {
+                g.setColour (colour::onUv.withAlpha (0.25f));
+                g.fillRect (lit);
+            }
+
+            g.setColour (colour::uv);
             g.drawRect (r, stroke::hair);
         }
         else
         {
             g.setColour (at ? colour::bg300 : colour::bg200);
             g.fillRect (r);
-            /* The playhead on an OFF step is a phosphor-glow wash: the step
-             * is not on, so it must not be phosphor. */
+            /* The playhead on an OFF step is a uv-glow wash: the step
+             * is not on, so it must not be uv. */
             if (at)
             {
-                g.setColour (colour::phosphorGlow);
+                g.setColour (colour::uvGlow);
                 g.fillRect (r);
             }
             /* Every fourth step carries a rail-coloured border, so bars read
              * without numbers. */
-            g.setColour (at ? colour::phosphor : (i % 4 == 0 ? colour::line200 : colour::line100));
+            g.setColour (at ? colour::uv : (i % 4 == 0 ? colour::line200 : colour::line100));
             g.drawRect (r, stroke::hair);
         }
 
         /* The cursor -- the step the knobs edit. Not a system state (its five
          * are off/on/hover/active/disabled), so it is drawn as the system
-         * draws selection everywhere else: in phosphor, here as a mark
+         * draws selection everywhere else: in uv, here as a mark
          * outside the well so it cannot be confused with a lit step. */
         if (i == model.cursor)
         {
@@ -283,6 +369,57 @@ void HintBar::paint (juce::Graphics& g)
 
 /* =============================================================== scope == */
 
+/*
+ * THE GATE OVER THE AUDIO.
+ *
+ * The bands say what came out; this says what the gate was doing while it
+ * did. Mirrored about the centre line, so it reads as the envelope the
+ * waveform is sitting inside rather than as another signal -- and drawn last,
+ * over everything, because it is the explanation and not the subject.
+ *
+ * The values are the pattern plot's, already rendered for this patch at this
+ * width. Two renders of one thing could disagree; one cannot.
+ */
+static void drawGate (juce::Graphics& g, juce::Rectangle<float> area,
+                      const std::vector<float>& gate)
+{
+    const int n = (int) gate.size();
+    if (n < 2) return;
+
+    const float mid = area.getCentreY();
+    /* Short of the full half-height on purpose: a fully open gate drawn at
+     * 1.0 lands exactly on the well's frame and reads as the border rather
+     * than as a value. */
+    const float half = area.getHeight() * 0.5f * 0.94f;
+
+    juce::Path up, down;
+    for (int i = 0; i < n; ++i)
+    {
+        const float x = area.getX() + area.getWidth() * (float) i / (float) (n - 1);
+        const float v = juce::jlimit (0.0f, 1.0f, gate[(size_t) i]);
+        if (i == 0) { up.startNewSubPath (x, mid - half * v); down.startNewSubPath (x, mid + half * v); }
+        else        { up.lineTo          (x, mid - half * v); down.lineTo          (x, mid + half * v); }
+    }
+
+    /*
+     * A KEYLINE FIRST, THEN THE LINE.
+     *
+     * The dry band fills most of the well at close to full height, so there
+     * is no brightness left to separate a gate at 1.0 from the audio it is
+     * drawn over -- at hair weight it simply vanished into the band's top
+     * edge. Cutting the well's own ground in behind the stroke gives the
+     * gate its own edge against whatever it happens to cross, which is the
+     * only thing that works when the background is a waveform.
+     */
+    g.setColour (colour::bg000);
+    g.strokePath (up,   juce::PathStrokeType (stroke::rail + 2.0f));
+    g.strokePath (down, juce::PathStrokeType (stroke::rail + 2.0f));
+
+    g.setColour (colour::uv.withAlpha (0.85f));
+    g.strokePath (up,   juce::PathStrokeType (stroke::rail));
+    g.strokePath (down, juce::PathStrokeType (stroke::rail));
+}
+
 void ScopeView::paint (juce::Graphics& g)
 {
     const auto area = plot::well (g, getLocalBounds().toFloat(), model.caption);
@@ -295,6 +432,10 @@ void ScopeView::paint (juce::Graphics& g)
 
     const float mid = area.getCentreY();
     const float half = area.getHeight() * 0.5f;
+
+    /* The step grid sits UNDER the audio, so a transient is never hidden by
+     * a rule. Numbers and per-step rules thin out as the columns narrow. */
+    plot::steps (g, area, model.steps, plot::Layer::rules);
 
     /* The zero line, so a silent stretch reads as silence rather than as a
      * gap in the drawing. */
@@ -350,30 +491,211 @@ void ScopeView::paint (juce::Graphics& g)
      * alpha. A sustained input fills every column edge to edge -- min and max
      * ARE the full amplitude when a column spans a cycle -- so at full
      * strength it is a solid slab of ink-dim with the gated trace fighting to
-     * be seen through it. The system's own rule applies: phosphor is the
+     * be seen through it. The system's own rule applies: uv is the
      * signal, and everything else is quieter than it.
      */
     band (model.dryLo, model.dryHi, colour::inkDim.withAlpha (0.45f));
-    band (model.wetLo, model.wetHi, colour::phosphor);
+    band (model.wetLo, model.wetHi, colour::uv);
+
+    if (model.gate != nullptr) drawGate (g, area, *model.gate);
+
+    /* Last of all, so a number is never swallowed by the audio. */
+    plot::steps (g, area, model.steps, plot::Layer::numbers);
 }
 
 /* =============================================================== grain == */
 
+/*
+ * THE GROUND: DOT PAPER UNDER NOISE, both from the system.
+ *
+ * "1px dots at a 12px (space-3) pitch, under a 5% uvDeep noise." The dots are
+ * the structure and the noise is the texture; the noise is TINTED now rather
+ * than the neutral grey it used to be, so the ground carries the same violet
+ * cast as everything standing on it.
+ *
+ * The tile must be a whole number of pitches across or the pattern steps at
+ * every tile seam -- 12 divides 120 and 132, not 128, so the caller's size is
+ * rounded to the nearest multiple here rather than trusted.
+ */
 juce::Image makeGrain (int size, float maxAlpha, juce::Random& rng)
 {
-    juce::Image img (juce::Image::ARGB, size, size, true);
+    const int pitch = space::s3;
+    const int side  = juce::jmax (pitch, (size / pitch) * pitch);
+
+    juce::Image img (juce::Image::ARGB, side, side, true);
     juce::Image::BitmapData px (img, juce::Image::BitmapData::writeOnly);
 
-    for (int y = 0; y < size; ++y)
-        for (int x = 0; x < size; ++x)
-            px.setPixelColour (x, y, colour::grain.withAlpha (rng.nextFloat() * maxAlpha));
+    for (int y = 0; y < side; ++y)
+        for (int x = 0; x < side; ++x)
+            px.setPixelColour (x, y, colour::uvDeep.withAlpha (rng.nextFloat() * maxAlpha));
+
+    /* The dots sit on top of the noise, at full strength: they are structure,
+     * not texture, and at 1px on a 12px pitch they are sparse enough to read
+     * as paper rather than as a grid.
+     *
+     * OFFSET HALF A PITCH, as the system's own `background-position: 6px 6px`
+     * has it. It matters at the window's edge: on the zero offset a dot lands
+     * in the very corner and on the frame, which reads as a stray pixel
+     * rather than as paper. */
+    for (int y = pitch / 2; y < side; y += pitch)
+        for (int x = pitch / 2; x < side; x += pitch)
+            px.setPixelColour (x, y, colour::bgDot);
 
     return img;
 }
 
 /* ================================================================ knob == */
 
-void PhosphorKnob::mouseDown (const juce::MouseEvent& e)
+/* =============================================================== tabs == */
+
+void UvTabs::setTabs (juce::StringArray labels)
+{
+    tabs = std::move (labels);
+    current = juce::jlimit (0, juce::jmax (0, tabs.size() - 1), current);
+    repaint();
+}
+
+void UvTabs::setActive (int index, juce::NotificationType note)
+{
+    const int i = juce::jlimit (0, juce::jmax (0, tabs.size() - 1), index);
+    if (i == current) return;
+    current = i;
+    repaint();
+    if (note != juce::dontSendNotification && onChange) onChange (current);
+}
+
+juce::Rectangle<int> UvTabs::tabBounds (int i) const
+{
+    const int n = juce::jmax (1, tabs.size());
+    const int h = getHeight() / n;
+    /* The last tab takes the remainder, so N tabs always fill the strip
+     * exactly however the height divides. */
+    return { 0, i * h, getWidth(), (i == n - 1) ? getHeight() - i * h : h };
+}
+
+int UvTabs::indexAt (juce::Point<int> p) const
+{
+    for (int i = 0; i < tabs.size(); ++i)
+        if (tabBounds (i).contains (p)) return i;
+    return -1;
+}
+
+void UvTabs::paint (juce::Graphics& g)
+{
+    const auto f = font::hint();
+
+    for (int i = 0; i < tabs.size(); ++i)
+    {
+        const auto r  = tabBounds (i).toFloat().reduced (0.5f);
+        const bool on = (i == current);
+
+        if (on) glowLed (g, r);
+        g.setColour (on ? colour::uv : (i == hovered ? colour::bg300 : colour::bg200));
+        g.fillRect (r);
+        g.setColour (on ? colour::uv : colour::line200);
+        g.drawRect (r, stroke::hair);
+
+        /* Rotated a quarter turn so it reads bottom-to-top, which is the way
+         * a tab on a RIGHT edge is read. */
+        const auto txt = tabs[i].toUpperCase();
+        const float w  = trackedWidth (txt, f, font::trackHint);
+
+        juce::Graphics::ScopedSaveState ss (g);
+        g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi,
+                                                         r.getCentreX(), r.getCentreY()));
+        drawTracked (g, txt, f, on ? colour::onUv : colour::inkMuted,
+                     { r.getCentreX() - w * 0.5f, r.getCentreY() + f.getHeight() * 0.35f },
+                     font::trackHint);
+    }
+}
+
+void UvTabs::mouseDown (const juce::MouseEvent& e)
+{
+    const int i = indexAt (e.getPosition());
+    if (i >= 0) setActive (i, juce::sendNotification);
+}
+
+void UvTabs::mouseMove (const juce::MouseEvent& e)
+{
+    const int i = indexAt (e.getPosition());
+    if (i != hovered) { hovered = i; repaint(); }
+}
+
+void UvTabs::mouseExit (const juce::MouseEvent&)
+{
+    if (hovered != -1) { hovered = -1; repaint(); }
+}
+
+/* =============================================================== knob == */
+
+void UvKnob::setMagnets (double beatSteps, double barSteps)
+{
+    beatMag = juce::jmax (0.0, beatSteps);
+    barMag  = juce::jmax (0.0, barSteps);
+}
+
+/*
+ * A RUBBER BAND, NOT A DEAD ZONE -- and the difference is the whole feel.
+ *
+ * The obvious version is "within R of a magnet, return the magnet". It is
+ * wrong twice: the values inside R stop being reachable at all, and leaving
+ * the zone makes the number JUMP from the magnet to the far edge. A wall,
+ * then a lurch.
+ *
+ * This warps instead:  d' = d * |d| / R.  It is monotonic (slope 2|d|/R) and
+ * maps (-R, R) onto itself, so every value in the window is still reachable
+ * -- but the slope goes to ZERO at the magnet, so the closer you get the more
+ * travel it takes to move, and leaving is a smooth release. Because the
+ * parameter is an integer, the practical effect is that a bar value occupies
+ * several times the mouse travel its neighbours do: it sticks, and 15 is
+ * still there if you want it. Odd lengths are a real trance-gate idiom, so
+ * making them unreachable would have been a worse bug than the twitchiness.
+ */
+double UvKnob::magnetise (double attempted, double valuePerPixel) const
+{
+    const auto range = getRange();
+    if (range.getLength() <= 0.0 || valuePerPixel <= 0.0) return attempted;
+
+    /* Strong tier first: a bar boundary is usually also a beat boundary, and
+     * where they coincide the firmer pull is the one that should be felt. */
+    const double period[2] = { barMag,          beatMag };
+    const double pullPx[2] = { barPullPx,       beatPullPx };
+
+    for (int t = 0; t < 2; ++t)
+    {
+        if (period[t] <= 0.0) continue;
+
+        const double m = std::round (attempted / period[t]) * period[t];
+        /* A multiple outside the range is not a magnet -- without this, the
+         * bar tier would invent one at the range's start, where the nearest
+         * multiple happens to be zero. */
+        if (m < range.getStart() || m > range.getEnd()) continue;
+
+        const double R = pullPx[t] * valuePerPixel;
+        const double d = attempted - m;
+        if (R > 0.0 && std::abs (d) < R) return m + d * std::abs (d) / R;
+    }
+    return attempted;
+}
+
+double UvKnob::snapValue (double attempted, DragMode mode)
+{
+    /* A magnet is something you FEEL, so it exists only while a hand is on
+     * the knob. Automation, a typed value and a preset load land exactly
+     * where they were told. */
+    if (mode == notDragging) return attempted;
+
+    /* Shift already means `fine` here, which means "I want exactly this".
+     * Read it LIVE rather than from mouseDown, so pressing or releasing it
+     * part way through a drag takes effect at once -- which
+     * setMouseDragSensitivity, set once on mouseDown, cannot do. */
+    if (juce::ModifierKeys::getCurrentModifiers().isShiftDown()) return attempted;
+
+    const int px = juce::jmax (1, getMouseDragSensitivity());
+    return magnetise (attempted, getRange().getLength() / (double) px);
+}
+
+void UvKnob::mouseDown (const juce::MouseEvent& e)
 {
     setMouseDragSensitivity (e.mods.isShiftDown() ? fine : coarse);
     juce::Slider::mouseDown (e);
@@ -398,7 +720,7 @@ void TrackedLabel::paint (juce::Graphics& g)
 
 /* ================================================================ plot == */
 
-namespace phosphor::plot
+namespace uv::plot
 {
 
 juce::Rectangle<float> well (juce::Graphics& g, juce::Rectangle<float> bounds,
@@ -544,6 +866,51 @@ void decimate (const float* v, int n, int cols,
     }
 }
 
+void steps (juce::Graphics& g, juce::Rectangle<float> plot, int count, Layer layer)
+{
+    if (count < 1 || plot.getWidth() <= 0.0f) return;
+
+    constexpr float ruleMin   = 6.0f;    /* below this a rule per step is a comb */
+    constexpr float numberMin = 14.0f;   /* below this the numbers touch         */
+
+    const float w       = plot.getWidth() / (float) count;
+    const bool  perStep = w >= ruleMin;
+    const auto  f       = font::hint();
+
+    if (layer == Layer::rules)
+    for (int i = 1; i < count; ++i)
+    {
+        const bool bar  = (i % 16) == 0;
+        const bool beat = (i % 4)  == 0;
+        /* Bars and beats survive at any density -- they are what keeps a
+         * 128-step picture readable once the per-step rules have gone. */
+        if (! perStep && ! bar && ! beat) continue;
+
+        const float x = plot.getX() + w * (float) i;
+        g.setColour (bar ? colour::line200 : colour::line100);
+        g.drawLine (x, plot.getY(), x, plot.getBottom(), stroke::hair);
+    }
+
+    if (layer == Layer::rules || w < numberMin) return;
+
+    /*
+     * Just right of each line and hard against the top, so a number reads as
+     * belonging to the step that starts there.
+     *
+     * A FLAT `inkDim`, and not a translucent near-white. A step at full depth
+     * puts its white hull line straight through this band, so the number is
+     * as often on near-white as on the ground -- and anything translucent and
+     * pale lifts INTO the hull and disappears. A dark violet is the one
+     * colour that holds against both: faint on the ground, and still legible
+     * where it crosses the curve.
+     */
+    for (int i = 0; i < count; ++i)
+        drawTracked (g, juce::String (i + 1), f, colour::inkDim,
+                     { plot.getX() + w * (float) i + 2.0f,
+                       plot.getY() + f.getHeight() },
+                     font::trackHint);
+}
+
 void Curve::build (const std::vector<float>& lo, const std::vector<float>& hi)
 {
     under.clear();
@@ -620,20 +987,20 @@ void Curve::draw (juce::Graphics& g, juce::Rectangle<float> plot, float floorLev
     if (f > 0.0f)
     {
         /* Everything below the floor is lit whatever the gate does. */
-        g.setColour (colour::phosphorGlow);
+        g.setColour (colour::uvGlow);
         g.fillRect (plot.withTop (plot.getY() + h));
     }
 
-    g.setColour (colour::phosphorGlow);
+    g.setColour (colour::uvGlow);
     g.fillPath (under, t);
 
     if (! band.isEmpty())
     {
-        g.setColour (colour::phosphor);
+        g.setColour (colour::uv);
         g.fillPath (band, t);
     }
 
-    g.setColour (colour::phosphor);
+    g.setColour (colour::uv);
     g.strokePath (hull, juce::PathStrokeType (stroke::rail), t);
 }
 

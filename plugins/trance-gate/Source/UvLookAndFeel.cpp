@@ -1,11 +1,11 @@
-#include "PhosphorLookAndFeel.h"
+#include "UvLookAndFeel.h"
 #include "BinaryData.h"
 
-using namespace phosphor;
+using namespace uv;
 
 /* ============================================================== fonts == */
 
-namespace phosphor::font
+namespace uv::font
 {
 Faces::Faces()
 {
@@ -19,7 +19,7 @@ Faces::Faces()
 Faces::~Faces() { faces = nullptr; }
 }
 
-PhosphorLookAndFeel::PhosphorLookAndFeel()
+UvLookAndFeel::UvLookAndFeel()
 {
     /* The colours JUCE reaches for on its own -- a popup's ground, a text
      * editor's caret -- so nothing falls back to the default blue-grey. */
@@ -29,11 +29,11 @@ PhosphorLookAndFeel::PhosphorLookAndFeel()
     setColour (juce::PopupMenu::highlightedTextColourId,     colour::ink);
     setColour (juce::TextEditor::backgroundColourId,         colour::bg000);
     setColour (juce::TextEditor::textColourId,               colour::ink);
-    setColour (juce::TextEditor::highlightColourId,          colour::phosphor.withAlpha (0.3f));
+    setColour (juce::TextEditor::highlightColourId,          colour::uv.withAlpha (0.3f));
     setColour (juce::TextEditor::highlightedTextColourId,    colour::ink);
     setColour (juce::TextEditor::outlineColourId,            colour::line200);
-    setColour (juce::TextEditor::focusedOutlineColourId,     colour::phosphor);
-    setColour (juce::CaretComponent::caretColourId,          colour::phosphor);
+    setColour (juce::TextEditor::focusedOutlineColourId,     colour::uv);
+    setColour (juce::CaretComponent::caretColourId,          colour::uv);
     setColour (juce::Label::textColourId,                    colour::ink);
     setColour (juce::ComboBox::textColourId,                 colour::ink);
 }
@@ -45,7 +45,7 @@ PhosphorLookAndFeel::PhosphorLookAndFeel()
  *
  *   <circle class="disc" cx="24" cy="24" r="16"/>            bg-200
  *   <path class="rail" d="M9.86 38.14 A20 20 0 1 1 38.14 38.14"/>   line-200
- *   <path class="arc"  ... same radius, from the rail's start/>     phosphor
+ *   <path class="arc"  ... same radius, from the rail's start/>     uv
  *   <line class="ptr" .../>                        r 6 -> r 14, 2px
  *
  * So: disc radius 1/3 of the box, rail radius 5/12, pointer from 1/8 to 7/24.
@@ -57,7 +57,7 @@ PhosphorLookAndFeel::PhosphorLookAndFeel()
  * that by the caller, and we use them rather than re-deriving, so a bipolar
  * knob added later only has to change where the arc STARTS.
  */
-void PhosphorLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h,
+void UvLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h,
                                             float pos, float startAngle, float endAngle,
                                             juce::Slider& s)
 {
@@ -83,16 +83,40 @@ void PhosphorLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const float thick = size::rail * (d / (float) size::knob);
 
     const bool on = s.isEnabled();
-    const auto live = on ? colour::phosphor : colour::inkDim;
+    const auto live = on ? colour::uv : colour::inkDim;
 
     /* The well. */
     g.setColour (colour::bg200);
     g.fillEllipse (juce::Rectangle<float> (rDisc * 2.0f, rDisc * 2.0f).withCentre (c));
 
-    auto arc = [&] (float from, float to, juce::Colour col)
+    auto arc = [&] (float from, float to, juce::Colour col, bool glow = false)
     {
         juce::Path p;
         p.addCentredArc (c.x, c.y, rRail, rRail, 0.0f, from, to, true);
+
+        /*
+         * THE ARC'S DROP SHADOW, which is where its colour comes from.
+         *
+         * The value arc is near-white now; drawn alone it is a white line on
+         * a dark disc and the knob has no cast at all. uvDeep underneath it,
+         * wider and soft, is what makes it read as violet -- the same trade
+         * glowLed makes for an LED, and what the system means by "arc and
+         * fill drop-shadows".
+         */
+        if (glow)
+        {
+            /* drop-shadow(0 0 3px uv-deep), as the Knob card's `.arc` has it:
+             * three pixels of falloff either side of the stroke, no more. */
+            for (float w = 3.0f; w >= 1.0f; w -= 1.0f)
+            {
+                const float t = 1.0f - (w - 1.0f) / 3.0f;
+                g.setColour (colour::uvDeep.withAlpha (0.45f * t * t));
+                g.strokePath (p, juce::PathStrokeType (thick + w * 2.0f,
+                                                       juce::PathStrokeType::curved,
+                                                       juce::PathStrokeType::butt));
+            }
+        }
+
         g.setColour (col);
         /* Butt caps: the system's arcs are `stroke-linecap: butt`, and a
          * rounded cap on a 2px stroke reads as a value slightly past where it
@@ -104,7 +128,7 @@ void PhosphorLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const float angle = startAngle + pos * (endAngle - startAngle);
 
     arc (startAngle, endAngle, colour::line200);            /* the rail */
-    if (pos > 0.0001f) arc (startAngle, angle, live);       /* the value */
+    if (pos > 0.0001f) arc (startAngle, angle, live, on);   /* the value */
 
     /* The pointer, inside the disc. */
     juce::Path ptr;
@@ -118,9 +142,9 @@ void PhosphorLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
                    rRail);
 }
 
-juce::Label* PhosphorLookAndFeel::createSliderTextBox (juce::Slider&)
+juce::Label* UvLookAndFeel::createSliderTextBox (juce::Slider&)
 {
-    return new PhosphorReadout();
+    return new UvReadout();
 }
 
 /*
@@ -136,7 +160,7 @@ juce::Label* PhosphorLookAndFeel::createSliderTextBox (juce::Slider&)
  * So take the readout off WITH the gap attached, and what is left is the
  * knob's own box.
  */
-juce::Slider::SliderLayout PhosphorLookAndFeel::getSliderLayout (juce::Slider& s)
+juce::Slider::SliderLayout UvLookAndFeel::getSliderLayout (juce::Slider& s)
 {
     if (s.getTextBoxPosition() != juce::Slider::TextBoxBelow)
         return juce::LookAndFeel_V2::getSliderLayout (s);
@@ -158,13 +182,13 @@ juce::Slider::SliderLayout PhosphorLookAndFeel::getSliderLayout (juce::Slider& s
 
 /* ======================================================= glyph button == */
 
-PhosphorGlyphButton::PhosphorGlyphButton (const juce::String& name, Glyph gl)
+UvGlyphButton::UvGlyphButton (const juce::String& name, Glyph gl)
     : juce::Button (name), glyph (gl)
 {
     setTooltip (name);
 }
 
-void PhosphorGlyphButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
+void UvGlyphButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     const auto r = getLocalBounds().toFloat().reduced (0.5f);
 
@@ -172,7 +196,7 @@ void PhosphorGlyphButton::paintButton (juce::Graphics& g, bool highlighted, bool
     auto border = colour::line200;
     auto mark   = colour::ink;
     if (! isEnabled())    { fill = colour::bg100;    border = colour::line100; mark = colour::inkDim; }
-    else if (down)        { fill = colour::phosphor; border = colour::phosphor; mark = colour::onPhosphor; }
+    else if (down)        { fill = colour::uv; border = colour::uv; mark = colour::onUv; }
     else if (highlighted) { fill = colour::bg300;    border = colour::inkDim; }
 
     g.setColour (fill);
@@ -202,7 +226,7 @@ void PhosphorGlyphButton::paintButton (juce::Graphics& g, bool highlighted, bool
 
 /* ============================================================ readout == */
 
-PhosphorReadout::PhosphorReadout()
+UvReadout::UvReadout()
 {
     setJustificationType (juce::Justification::centred);
     setColour (juce::Label::textColourId,            colour::ink);
@@ -214,14 +238,14 @@ PhosphorReadout::PhosphorReadout()
     setEditable (false, true, false);   /* double-click to type, as the card says */
 }
 
-void PhosphorReadout::paint (juce::Graphics& g)
+void UvReadout::paint (juce::Graphics& g)
 {
     const auto r = getLocalBounds().toFloat().reduced (0.5f);
     const bool editing = isBeingEdited();
 
     g.setColour (colour::bg000);
     g.fillRect (r);
-    g.setColour (editing ? colour::phosphor : colour::line200);
+    g.setColour (editing ? colour::uv : colour::line200);
     g.drawRect (r, stroke::hair);
 
     if (editing)
@@ -265,9 +289,9 @@ void PhosphorReadout::paint (juce::Graphics& g)
 
 /* ============================================================ buttons == */
 
-juce::Font PhosphorLookAndFeel::getTextButtonFont (juce::TextButton&, int) { return font::button(); }
+juce::Font UvLookAndFeel::getTextButtonFont (juce::TextButton&, int) { return font::button(); }
 
-void PhosphorLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b,
+void UvLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b,
                                                 const juce::Colour&, bool highlighted, bool down)
 {
     const auto r = b.getLocalBounds().toFloat().reduced (0.5f);
@@ -275,7 +299,7 @@ void PhosphorLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     auto fill   = colour::bg200;
     auto border = colour::line200;
     if (! b.isEnabled())   { fill = colour::bg100;     border = colour::line100; }
-    else if (down)         { fill = colour::phosphor;  border = colour::phosphor; }
+    else if (down)         { fill = colour::uv;  border = colour::uv; }
     else if (highlighted)  { fill = colour::bg300;     border = colour::inkDim; }
 
     g.setColour (fill);
@@ -286,10 +310,10 @@ void PhosphorLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     if (b.hasKeyboardFocus (false)) glowFocus (g, r);
 }
 
-void PhosphorLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool down)
+void UvLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool down)
 {
     const auto c = ! b.isEnabled() ? colour::inkDim
-                 : down            ? colour::onPhosphor
+                 : down            ? colour::onUv
                                    : colour::ink;
     /* .04em of tracking, which at 12px is half a pixel per glyph -- small,
      * but it is the difference between the button text and the value text
@@ -311,29 +335,34 @@ void PhosphorLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
  * is explicit about which is which, and getting it backwards would say the
  * plugin is telling you something when in fact it is asking.
  */
-void PhosphorLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b,
+void UvLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b,
                                             bool highlighted, bool)
 {
-    const bool on = b.getToggleState();
+    const bool on  = b.getToggleState();
+    const bool live = b.isEnabled();
     const auto bounds = b.getLocalBounds().toFloat();
 
     const juce::Rectangle<float> sw (bounds.getX() + 0.5f,
                                      bounds.getCentreY() - 7.0f, 28.0f, 14.0f);
 
-    g.setColour (highlighted ? colour::bg300 : colour::bg200);
+    /* Disabled is the system's own: "everything drops to ink-dim / line-100,
+     * no fill". A switch that cannot do anything has to say so -- the
+     * alternative is a control that silently ignores you. */
+    g.setColour (! live ? colour::bg100 : (highlighted ? colour::bg300 : colour::bg200));
     g.fillRect (sw);
-    g.setColour (on ? colour::phosphor : colour::line200);
+    g.setColour (! live ? colour::line100 : (on ? colour::uv : colour::line200));
     g.drawRect (sw, stroke::hair);
 
     const juce::Rectangle<float> knobSq (sw.getX() + (on ? 16.0f : 2.0f),
                                          sw.getY() + 2.0f, 8.0f, 8.0f);
-    if (on) glowLed (g, knobSq);
-    g.setColour (on ? colour::phosphor : colour::inkDim);
+    if (on && live) glowLed (g, knobSq);
+    g.setColour (! live ? colour::inkDim : (on ? colour::uv : colour::inkDim));
     g.fillRect (knobSq);
 
     /* Label to the right, space-2 away, in the label style. */
     const auto f = font::label();
-    drawTracked (g, b.getButtonText().toUpperCase(), f, colour::inkMuted,
+    drawTracked (g, b.getButtonText().toUpperCase(), f,
+                 live ? colour::inkMuted : colour::inkDim,
                  { sw.getRight() + (float) space::s2, bounds.getCentreY() + f.getHeight() * 0.35f },
                  font::trackLabel);
 
@@ -342,10 +371,10 @@ void PhosphorLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
 
 /* ============================================================= select == */
 
-juce::Font PhosphorLookAndFeel::getComboBoxFont (juce::ComboBox&) { return font::value(); }
-juce::Font PhosphorLookAndFeel::getPopupMenuFont()                { return font::value(); }
+juce::Font UvLookAndFeel::getComboBoxFont (juce::ComboBox&) { return font::value(); }
+juce::Font UvLookAndFeel::getPopupMenuFont()                { return font::value(); }
 
-void PhosphorLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
+void UvLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
                                         int, int, int, int, juce::ComboBox& box)
 {
     const auto r = juce::Rectangle<int> (0, 0, w, h).toFloat().reduced (0.5f);
@@ -353,7 +382,7 @@ void PhosphorLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
 
     g.setColour (box.isMouseOver() ? colour::bg300 : colour::bg200);
     g.fillRect (r);
-    g.setColour (open ? colour::phosphor : colour::line200);
+    g.setColour (open ? colour::uv : colour::line200);
     g.drawRect (r, stroke::hair);
 
     /* The caret: a 6x6 square rotated 45 degrees with only its right and
@@ -372,7 +401,7 @@ void PhosphorLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
     if (box.hasKeyboardFocus (false)) glowFocus (g, r);
 }
 
-void PhosphorLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& l)
+void UvLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& l)
 {
     /* padding: 0 28px 0 12px */
     l.setBounds (space::s3, 0, box.getWidth() - 28 - space::s3, box.getHeight());
@@ -380,14 +409,14 @@ void PhosphorLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label
     l.setColour (juce::Label::textColourId, colour::ink);
 }
 
-void PhosphorLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int w, int h)
+void UvLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int w, int h)
 {
     g.fillAll (colour::bg100);
-    g.setColour (colour::phosphor);
+    g.setColour (colour::uv);
     g.drawRect (0, 0, w, h, (int) stroke::hair);
 }
 
-void PhosphorLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area,
+void UvLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area,
                                              bool isSeparator, bool isActive, bool isHighlighted,
                                              bool isTicked, bool, const juce::String& text,
                                              const juce::String&, const juce::Drawable*,
@@ -406,15 +435,15 @@ void PhosphorLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rect
         g.fillRect (area);
     }
 
-    /* "There is no separate selected colour: selected is phosphor." */
-    g.setColour (! isActive ? colour::inkDim : isTicked ? colour::phosphor : colour::ink);
+    /* "There is no separate selected colour: selected is uv." */
+    g.setColour (! isActive ? colour::inkDim : isTicked ? colour::uv : colour::ink);
     g.setFont (font::value());
     g.drawText (text, area.reduced (space::s3, 0), juce::Justification::centredLeft, true);
 }
 
 /* ============================================================== label == */
 
-void PhosphorLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& l)
+void UvLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& l)
 {
     if (l.isBeingEdited()) return;      /* the editor draws itself */
 

@@ -1,6 +1,6 @@
-#include "Phosphor.h"
+#include "Uv.h"
 
-namespace phosphor
+namespace uv
 {
 
 namespace font
@@ -93,18 +93,30 @@ static void halo (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour c,
     }
 }
 
+/*
+ * glow-led: 0 0 10px uvDeep, 0 0 2px uv.
+ *
+ * TWO HALOES, AND THE ORDER IS THE POINT. The wide one is the SATURATED
+ * violet -- that is where the hue lives now that the fill is near white --
+ * and the tight one is the core colour, which keeps the element's own edge
+ * from being eaten by the violet. One halo in `uv` alone, which is what this
+ * used to be, leaves a white element with a white glow: no cast at all.
+ */
 void glowLed (juce::Graphics& g, juce::Rectangle<float> r, float cornerRadius)
 {
-    halo (g, r, colour::phosphor, 6.0f, cornerRadius, 0.55f);
+    halo (g, r, colour::uvDeep, 10.0f, cornerRadius, 0.55f);
+    halo (g, r, colour::uv,      2.0f, cornerRadius, 0.55f);
 }
 
+/* glow-focus: 0 0 0 1px uv, 0 0 8px uvGlow -- a hard core ring, then a
+ * violet bloom. uvGlow is uvDeep at half alpha, so the halo is drawn in the
+ * deep tone and the ring in the bright one, as with glow-led. */
 void glowFocus (juce::Graphics& g, juce::Rectangle<float> r, float cornerRadius)
 {
-    /* 0 0 0 1px phosphor -- a hard ring, then the soft one. */
-    g.setColour (colour::phosphor);
+    g.setColour (colour::uv);
     if (cornerRadius > 0.0f) g.drawRoundedRectangle (r.expanded (0.5f), cornerRadius, 1.0f);
     else                     g.drawRect (r.expanded (0.5f), 1.0f);
-    halo (g, r, colour::phosphor, 6.0f, cornerRadius, 0.20f);
+    halo (g, r, colour::uvDeep, 8.0f, cornerRadius, 0.50f);
 }
 
 }

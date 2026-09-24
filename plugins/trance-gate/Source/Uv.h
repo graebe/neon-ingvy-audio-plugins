@@ -2,7 +2,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 /*
- * PHOSPHOR — the design system's tokens, transcribed once.
+ * ULTRAVIOLET — the design system's tokens, transcribed once.
  *
  * Every colour, size, spacing step and text style in this plugin comes from
  * here, and every value here comes from the design system's tokens.json. The
@@ -11,43 +11,72 @@
  * that got typed in by hand. A ctest target fails the build if a colour
  * literal appears in any other source file.
  *
- * The system in one line: green light on black glass. `phosphor` is spent
- * ONLY where something is on or IS the current value -- a lit step, a knob's
- * value arc, the playhead, focus. Everything at rest is a shade of
- * green-black. If a screen has more phosphor than black, something is wrong.
+ * The system in one line: ultraviolet light on black glass. `uv` is THE
+ * SIGNAL -- spent ONLY where something is on or IS the current value: a lit
+ * step, a knob's value arc, the playhead, focus. Everything at rest is a
+ * shade of violet-black. If a screen has more signal than black, something is
+ * wrong.
+ *
+ * Ultraviolet is the older Phosphor system with its hue swapped and nothing
+ * else: every size, space, stroke and text style is identical, and the move
+ * was fourteen colour values. That is worth knowing when re-syncing -- a
+ * diff against this header should be colours or it is not the same kind of
+ * change.
  */
-namespace phosphor
+namespace uv
 {
 
 /* ------------------------------------------------------------- colour --
- * One theme, "matrix". Usage notes are the system's own, abbreviated. */
+ * One theme, "ultraviolet". Usage notes are the system's own, abbreviated.
+ * amber and red are unchanged from the previous hue: a warning and an error
+ * are not brand colours, and they have to read as foreign to the palette. */
 namespace colour
 {
-const juce::Colour bg000       { 0xff050705 };  /* window ground */
-const juce::Colour bg100       { 0xff0b100b };  /* panel */
-const juce::Colour bg200       { 0xff121b12 };  /* control well */
-const juce::Colour bg300       { 0xff1a261a };  /* raised well: hover, pressed */
-const juce::Colour line100     { 0xff1a261a };  /* hairline: dividers, well borders */
-const juce::Colour line200     { 0xff2d5a37 };  /* rail: the unlit part of an arc */
-const juce::Colour ink         { 0xff9dffb0 };  /* values, readouts, titles */
-const juce::Colour inkMuted    { 0xff5fb571 };  /* labels, units, the hint bar */
-const juce::Colour inkDim      { 0xff3d7a4b };  /* disabled text, inactive marks */
-const juce::Colour phosphor    { 0xff00ff41 };  /* THE SIGNAL. On, and only on. */
-const juce::Colour phosphorGlow{ 0x3300ff41 };  /* bloom only -- never a fill */
-const juce::Colour onPhosphor  { 0xff050705 };  /* text on a phosphor fill */
+const juce::Colour bg000       { 0xff060410 };  /* window ground */
+const juce::Colour bg100       { 0xff0c0818 };  /* panel */
+const juce::Colour bg200       { 0xff140e24 };  /* control well */
+const juce::Colour bg300       { 0xff1d1533 };  /* raised well: hover, pressed */
+const juce::Colour line100     { 0xff1d1533 };  /* hairline: dividers, well borders */
+const juce::Colour line200     { 0xff3a2a66 };  /* rail: the unlit part of an arc */
+const juce::Colour ink         { 0xfff3ecff };  /* values, readouts, titles */
+const juce::Colour inkMuted    { 0xffb9a3e6 };  /* labels, units, the hint bar */
+const juce::Colour inkDim      { 0xff7a5fb5 };  /* disabled text, inactive marks */
+/*
+ * THE SIGNAL IS TWO TOKENS, AND THAT IS THE WHOLE IDEA.
+ *
+ * A near-white signal was tried here once and looked grey: with the fill at
+ * the top of the lightness range there was no violet left anywhere, and the
+ * window lost its cast. The system's answer is to split the job -- `uv` is
+ * the bright CORE of anything lit, and `uvDeep` is the saturated violet that
+ * surrounds it. The colour lives in the halo.
+ *
+ * So `uvDeep` is NEVER a fill on its own. It is the glow around a lit
+ * element (see glowLed / glowFocus) and the tint of the ground's noise, and
+ * nothing else. Reaching for it as a fill is how the two-tone collapses back
+ * into one flat hue.
+ *
+ * `uv` and `ink` are close in lightness by construction now, so nothing may
+ * tell them apart by colour: the ring's playhead is a separate mark and the
+ * envelope's phase points are drawn in onUv for that reason.
+ */
+const juce::Colour uv          { 0xffefe3ff };  /* THE SIGNAL's bright core. */
+const juce::Colour uvDeep      { 0xffa259ff };  /* its halo -- NEVER a fill */
+const juce::Colour uvGlow      { 0x80a259ff };  /* bloom only -- never a fill */
+const juce::Colour onUv        { 0xff060410 };  /* text on a signal fill */
 const juce::Colour amber       { 0xffffb000 };  /* armed / about to clip / unsaved */
 const juce::Colour red         { 0xffff4d4d };  /* clipping, a failed action */
 /*
- * THE ONE ACHROMATIC VALUE IN A ONE-HUE SYSTEM.
+ * THE GROUND'S TEXTURE, WHICH IS NOW THE SYSTEM'S OWN AND NOT AN EXCEPTION.
  *
- * Not from tokens.json. The system is deliberately monochrome -- "one hue,
- * one monospace face" -- and this is a neutral grey, added on request for the
- * background's grain. It appears at a few percent alpha over bg-000 and
- * nowhere else; at that strength it reads as texture in the ground rather
- * than as a second colour, which is the only reason it does not break the
- * rule it is an exception to.
+ * It used to be a neutral grey added here by hand, with a note apologising
+ * for being the one achromatic value in a one-hue system. The system has
+ * since specified the ground itself: 1px dots of `bgDot` on a space-3 pitch,
+ * under noise tinted with `uvDeep` at 5%. Both are real tokens now, the
+ * apology is gone, and the ground has the same cast as everything on it.
+ *
+ * Window ground only -- never inside a panel or a well.
  */
-const juce::Colour grain       { 0xff9a9a9a };
+const juce::Colour bgDot       { 0xff2a1e4a };
 }
 
 /* -------------------------------------------------------------- sizes --
@@ -140,8 +169,8 @@ float trackedWidth (const juce::String&, const juce::Font&, float tracking);
 
 /* The two shadows the system allows, and nothing else.
  *
- *   glow-led    0 0 6px phosphor, 0 0 2px phosphor  -- a lit LED, the playhead
- *   glow-focus  0 0 0 1px phosphor, 0 0 6px phosphor-glow -- keyboard focus
+ *   glow-led    0 0 6px uv, 0 0 2px uv  -- a lit LED, the playhead
+ *   glow-focus  0 0 0 1px uv, 0 0 6px uv-glow -- keyboard focus
  *
  * Drawn as concentric strokes of falling alpha: a blur would need a render
  * pass per control and this is a halo six pixels wide. */

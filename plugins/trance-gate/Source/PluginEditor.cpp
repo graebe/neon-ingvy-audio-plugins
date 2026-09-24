@@ -1,6 +1,6 @@
 #include "PluginEditor.h"
 
-using namespace phosphor;
+using namespace uv;
 
 namespace {
 constexpr int kMaxSteps = 128;
@@ -70,26 +70,74 @@ constexpr int kGridY      = kPatternY + kPatternH + space::s4;   /* 568 */
  * moment you touch an unrelated knob, which reads from the outside as
  * "I cannot switch back to linear".
  */
-juce::String TranceGateEditor::soundStamp (const TranceGateProcessor& p)
+juce::String TranceGateEditor::soundStamp (const juce::String& params)
 {
-    static const char* keys[] = {
-        "attack", "decay", "sustain", "release", "hold",
-        "legato", "time_mode", "curve", "slot",
-    };
+    /*
+     * The fields of `params` that change a PICTURE, by index:
+     *
+     *   0 slot  1 legato  2 time_mode  3 curve  4 rate  5 length
+     *   6 amount  7 hold  8 attack  9 decay  10 sustain  11 release
+     *   12 width_ms
+     *
+     * AMOUNT IS ABSENT ON PURPOSE. It is an affine floor applied in the paint
+     * transform, so it must repaint without re-rendering -- stamping the raw
+     * line instead of picking fields would re-render a 32k-sample pattern on
+     * every point of an Amount lane. Rate and Length are absent because they
+     * reach the plots through the `ui` readout's ms_step and length, and
+     * width_ms because it is hold * ms_step, both already here.
+     *
+     * TIME_MODE IS ABSENT TOO, and that one was costing real work. The engine
+     * never consults it -- stage_samples ignores it, and its own comment
+     * calls it "a display preference the shells read" -- so every flip of Env
+     * Time threw away both caches and re-rendered up to 32768 samples to draw
+     * a byte-identical picture. The text it does change is refreshed where
+     * the text is.
+     *
+     * LEGATO IS NOT HERE EITHER: see patternStamp. It matters to the pattern
+     * plot and cannot matter to the envelope plot, which renders one step in
+     * isolation with legato forced off.
+     *
+     * This used to be nine separate engineGet calls -- nine locks and nine
+     * 4 KB allocations -- and both plots called it, thirty times a second.
+     */
+    static const int shape[] = { 8, 9, 10, 11, 7, 3, 0 };
+
+    const auto parts = juce::StringArray::fromTokens (params, ":", "");
+    if (parts.size() < 13) return {};      /* an engine older than the readout */
+
     juce::String s;
-    for (auto* k : keys) s += p.engineGet (k) + "/";
+    for (int i : shape) s += parts[i] + "/";
     return s;
+}
+
+/*
+ * The pattern plot's key: everything that shapes a single envelope, plus
+ * legato, which decides whether the NEXT step retriggers. The envelope plot
+ * draws one step alone and forces legato off in its own render, so paying a
+ * 32k-sample re-render there for a picture that cannot change was waste.
+ */
+juce::String TranceGateEditor::patternStamp (const juce::String& params)
+{
+    const auto parts = juce::StringArray::fromTokens (params, ":", "");
+    if (parts.size() < 13) return {};
+    return soundStamp (params) + parts[1] + "/";
+}
+
+float TranceGateEditor::widthFrom (const juce::String& params)
+{
+    const auto parts = juce::StringArray::fromTokens (params, ":", "");
+    return parts.size() < 13 ? 0.0f : parts[12].getFloatValue();
 }
 
 /* ====================================================== envelope curve == */
 
 TranceGateEditor::EnvelopeCurve::EnvelopeCurve (TranceGateProcessor& p) : proc (p) {}
 
-void TranceGateEditor::EnvelopeCurve::refresh (double stepMs)
+void TranceGateEditor::EnvelopeCurve::refresh (const juce::String& params, double stepMs)
 {
     /* Everything that changes the shape, and nothing that does not: the
      * playhead moves 30 times a second and must not cause a re-render. */
-    const juce::String now = TranceGateEditor::soundStamp (proc) + juce::String (stepMs, 2);
+    const juce::String now = TranceGateEditor::soundStamp (params) + juce::String (stepMs, 2);
     if (now == stamp) return;
     stamp = now;
     shape = TgEnvelopeShape::render (proc, stepMs);
@@ -162,8 +210,10 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
      * Levels are SAMPLED FROM THE RENDERED CURVE rather than computed from
      * the millisecond values, so a dot cannot drift off the line it is
      * marking even if this file's idea of the envelope and the engine's ever
-     * part company. ink, not phosphor: a phosphor dot on a phosphor curve is
-     * invisible, and these are landmarks rather than something lit.
+     * part company. onUv, not ink: ink and uv are now 1.34:1, so a light dot
+     * on a light curve would disappear. A DARK dot on a bright curve cannot,
+     * whatever the palette does next -- and these are landmarks rather than
+     * something lit, so the system's "on a uv fill" token is the right one.
      */
     const double aEnd = shape.attackMs;
     const double dEnd = shape.attackMs + shape.decayMs;
@@ -175,8 +225,8 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
         const double f = juce::jlimit (0.0, 1.0, ms / shape.spanMs);
         const float  x = box.getX() + box.getWidth() * (float) f;
         const float  y = box.getBottom() - box.getHeight() * shape.levelAt (f);
-        g.setColour (colour::ink);
-        g.fillEllipse (x - 2.0f, y - 2.0f, 4.0f, 4.0f);
+        g.setColour (colour::onUv);
+        g.fillEllipse (x - 2.5f, y - 2.5f, 5.0f, 5.0f);
     };
 
     /* A stage the gate never reached did not happen, so it gets no marker --
@@ -238,7 +288,8 @@ void TranceGateEditor::EnvelopeCurve::paint (juce::Graphics& g)
 
 TranceGateEditor::PatternCurve::PatternCurve (TranceGateProcessor& p) : proc (p) {}
 
-void TranceGateEditor::PatternCurve::refresh (const juce::String& uiRaw, double stepMs)
+void TranceGateEditor::PatternCurve::refresh (const juce::String& uiRaw,
+                                              const juce::String& params, double stepMs)
 {
     /*
      * THE STAMP IS THE READOUT WITH THE VOLATILE FIELDS TAKEN OUT.
@@ -261,12 +312,15 @@ void TranceGateEditor::PatternCurve::refresh (const juce::String& uiRaw, double 
     /* THE SLOT IS IN soundStamp, not left to the pattern fields above. They
      * cover it only by accident -- two slots holding the same pattern and
      * differing in their sound would render once and stay wrong. */
-    now += TranceGateEditor::soundStamp (proc) + "|" + juce::String (stepMs, 1);
+    now += TranceGateEditor::patternStamp (params) + "|" + juce::String (stepMs, 1);
 
     if (now == stamp) return;
     stamp = now;
     shape = TgPatternShape::render (proc, stepMs, juce::jmax (2, getWidth() - 2 * plot::inset - 1));
-    builtFor = 0;
+    /* Rebuilt HERE and not left to paint: the scope borrows these values, and
+     * whenever the scope is showing, this plot is the hidden one and never
+     * paints at all. */
+    rebuild (juce::jmax (2, getWidth() - 2 * plot::inset - 1));
     repaint();
 }
 
@@ -310,25 +364,9 @@ void TranceGateEditor::PatternCurve::paint (juce::Graphics& g)
     const int cols = juce::jmax (2, (int) area.getWidth());
     if (cols != builtFor) rebuild (cols);
 
-    /*
-     * BARS AND BEATS, NOT 128 RULES.
-     *
-     * At 128 steps a rule per step is one every 5.8 px and the plot turns
-     * into a comb. Every 16th in rail and every 4th in hairline is a rule
-     * every 23 px at that length, and it is the same reading StepGridView
-     * offers by bordering every fourth step. Below 8 steps there is room for
-     * all of them.
-     */
-    const int n = shape.length;
-    for (int i = 1; i < n; ++i)
-    {
-        const bool bar  = (i % 16) == 0;
-        const bool beat = (i % 4) == 0;
-        if (! bar && ! beat && n >= 8) continue;
-
-        plot::rule (g, area, (double) i / (double) n,
-                    bar ? colour::line200 : colour::line100, stroke::hair);
-    }
+    /* The step grid, the rules and the numbers, at whatever density the
+     * current Length leaves room for -- see uv::plot::steps. */
+    plot::steps (g, area, shape.length, plot::Layer::rules);
 
     /*
      * THE AMOUNT FLOOR. Amount is a dry/wet, so at 40% a shut gate still
@@ -348,9 +386,12 @@ void TranceGateEditor::PatternCurve::paint (juce::Graphics& g)
     }
 
     /* The playhead is "here", not "on" -- ink, like the ring's, and never
-     * phosphor, which the system spends only on what is lit. */
+     * uv, which the system spends only on what is lit. */
     if (moving)
-        plot::rule (g, area, phase / (double) n, colour::ink, stroke::hair);
+        plot::rule (g, area, phase / (double) shape.length, colour::ink, stroke::hair);
+
+    /* Last of all -- see the note on plot::Layer. */
+    plot::steps (g, area, shape.length, plot::Layer::numbers);
 }
 
 /* ================================================================ editor == */
@@ -366,7 +407,7 @@ int TranceGateEditor::plotStripHeight() { return kPatternH + 2 * space::s2; }
 TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
     : AudioProcessorEditor (&p), proc (p)
 {
-    setLookAndFeel (&phosphorLook);
+    setLookAndFeel (&uvLook);
 
     /* A fixed seed, so the grain is the same texture every time the window
      * opens -- a plugin whose background reshuffles on each load would be
@@ -374,7 +415,7 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
      * literals of colour length, and it is right to: it cannot tell a seed
      * from a stray grey, and a seed has no reason to be hex. */
     juce::Random rng (1919251310);
-    grainTile = makeGrain (128, 0.10f, rng);
+    grainTile = makeGrain (128, 0.05f, rng);
 
     addAndMakeVisible (gatePanel);
     addAndMakeVisible (envPanel);
@@ -448,13 +489,21 @@ TranceGateEditor::TranceGateEditor (TranceGateProcessor& p)
 
     /* The band below shows one plot or the other. */
     addChildComponent (scope);
-    showSignal.onClick = [this]
-    {
-        const bool sig = showSignal.getToggleState();
-        scope.setVisible (sig);
-        pattern.setVisible (! sig);
-    };
-    addAndMakeVisible (showSignal);
+    /*
+     * The view switch was a 110x14 toggle tucked into the band's caption
+     * strip, which is where a thing goes when nobody has decided where it
+     * belongs -- easy to miss, and it read as a label rather than a control.
+     * Tabs down the band's right edge say "these are two views of one thing"
+     * in a way a checkbox cannot.
+     *
+     * Through showSignalPlot, not past it: the old handler flipped the two
+     * visibilities itself and skipped the part that gives the scope something
+     * to draw, so clicking Signal showed an empty band. Two paths for one job
+     * is how they drift.
+     */
+    viewTabs.setTabs ({ "Pattern", "Signal" });
+    viewTabs.onChange = [this] (int i) { showSignalPlot (i == 1); };
+    addAndMakeVisible (viewTabs);
 
     /* Three clauses, verb first: the card's maximum and its pattern. */
     hint.setClauses ({ { "click",       "a step to toggle" },
@@ -564,7 +613,7 @@ void TranceGateEditor::wireKnob (PanelBox& panel, juce::Slider& s, TrackedLabel&
                            juce::MathConstants<float>::pi * 2.75f, true);
 
     /* "Never draw a knob without its readout: the arc shows position, the
-     * readout shows the number." The box is a PhosphorReadout, supplied by
+     * readout shows the number." The box is a UvReadout, supplied by
      * the LookAndFeel, so it prints the unit in ink-muted.
      *
      * The width passed here is the card's MINIMUM, not the column's:
@@ -642,12 +691,13 @@ void TranceGateEditor::pushModels()
      * also come through pushModels: a toggled pad redraws the curve in the
      * same pass instead of a frame later. refresh() is a string compare
      * unless something that shapes the pattern actually moved. */
-    pattern.refresh (lastRaw, ui.msStep);
+    pattern.refresh (lastRaw, liveParams, ui.msStep);
     pattern.setPlayhead (ph, ui.moving);
     /* An atomic read, not engineGet: engineGet takes the engine lock and
      * allocates TG_STATE_MAX bytes, which is not what a 30 Hz poll should
      * cost for one float. */
     pattern.setAmount (proc.state().getRawParameterValue ("amount")->load());
+    legato.setEnabled (legatoCanAct());
 
     RingDisplay::Model rm;
     rm.length   = ui.length;
@@ -678,6 +728,86 @@ void TranceGateEditor::pushModels()
  * text is stale. Slider::updateText re-asks the parameter, which is exactly
  * what is wanted and is why the formatting lives there.
  */
+/*
+ * LENGTH'S MAGNETS ARE THE RATE'S MUSICAL DIVISIONS.
+ *
+ * A bar of 4/4 is 4/beatsPerStep steps and a beat is 1/beatsPerStep, so at
+ * 1/16 the bar catches at 16, 32, 48 ... and the beat at 4, 8, 12 ... Both
+ * are tempo-independent, which is why this follows Rate and not the tempo.
+ *
+ * Two rates need care. 1/1T puts a bar at 1.5 steps, which is not a length --
+ * doubling until it is whole gives 3, i.e. two bars, and that is the smallest
+ * honest magnet. And wherever a beat is shorter than a step the beat tier is
+ * meaningless, so it is switched off rather than rounded into agreeing with
+ * the bar.
+ */
+void TranceGateEditor::pushLengthMagnets (const juce::String& rateLabel)
+{
+    const double beats = proc.beatsPerStepOf (rateLabel);
+    if (beats <= 0.0) { length.setMagnets (0.0, 0.0); return; }
+
+    double perBeat = 1.0 / beats;
+    double perBar  = 4.0 / beats;
+
+    for (int i = 0; i < 4 && std::abs (perBar - std::round (perBar)) > 0.01; ++i)
+        perBar *= 2.0;
+    perBar = std::round (perBar);
+
+    if (perBeat < 1.0 || std::abs (perBeat - std::round (perBeat)) > 0.01) perBeat = 0.0;
+    else                                                                   perBeat = std::round (perBeat);
+
+    length.setMagnets (perBeat, perBar);
+}
+
+/*
+ * CAN JOIN NEIGHBORS DO ANYTHING RIGHT NOW?
+ *
+ * It was reported as "the audio does not change", and it does not: at the
+ * FACTORY DEFAULTS the control is arithmetically incapable of acting. The
+ * gate rule is guarded by `hold < 1.0` and Width defaults to 100%, so it
+ * never runs; and at Sustain 100% the retrigger cancels exactly -- decay
+ * holds env at 1.0, so attack ramps from 1.0 to 1.0 and every sample is
+ * identical. Both defaults are 1.0.
+ *
+ * A control that silently ignores you teaches nothing. This decides whether
+ * it is drawn live, and it is deliberately BIASED TOWARDS ENABLED: greying
+ * out something that could act is the worse error, so anything unknown, and
+ * every case the audit found to be audible, keeps it on.
+ */
+bool TranceGateEditor::legatoCanAct() const
+{
+    const auto f = juce::StringArray::fromTokens (liveParams, ":", "");
+    if (f.size() < 13 || ! ui.valid) return true;      /* unknown: never disable */
+
+    const int n = juce::jmax (1, ui.length);
+
+    /* It joins NEIGHBOURS. Without two ON steps in a row there is nothing to
+     * join, whatever else is set. */
+    bool adjacent = false;
+    for (int i = 0; i < n && ! adjacent; ++i)
+        if (ui.steps.get (i) && ui.steps.get ((i + 1) % n)) adjacent = true;
+    if (! adjacent) return false;
+
+    /* A join across steps of DIFFERENT depth is audible at any Width and any
+     * Sustain: legato skips the level latch, so the earlier step's depth
+     * carries through the later one. This is the case nothing documented. */
+    for (int i = 0; i < n; ++i)
+    {
+        const int j = (i + 1) % n;
+        if (ui.steps.get (i) && ui.steps.get (j)
+            && std::abs (ui.depth[i] - ui.depth[j]) > 0.001f)
+            return true;
+    }
+
+    /* Otherwise it can only act by stopping a release or a re-articulation:
+     * the gate has to close early, or the envelope has to be somewhere other
+     * than fully open when the next step arrives. An attack longer than the
+     * gate is the third way -- it has not reached 1.0 by the boundary. */
+    return f[7].getFloatValue()  < 1.0f        /* Width below 100%   */
+        || f[10].getFloatValue() < 1.0f        /* Sustain below 100% */
+        || f[8].getFloatValue()  > 100.0f;     /* attack outlasts the gate */
+}
+
 void TranceGateEditor::refreshStageText()
 {
     attack.updateText();
@@ -686,16 +816,17 @@ void TranceGateEditor::refreshStageText()
     /* The envelope's SHAPE changes too: in % the stages are a share of the
      * step, so the same numbers draw a different curve. */
     /* The gate's width follows the host's tempo, and every millisecond
-     * readout is scaled by it. */
-    proc.refreshWidth();
-    envelope.refresh (ui.msStep);
-    if (showSignal.getToggleState()) pushScope();
+     * readout is scaled by it. One read serves both that and the curve. */
+    liveParams = proc.engineGet ("params");
+    proc.setWidthMs (widthFrom (liveParams));
+    envelope.refresh (liveParams, ui.msStep);
+    if (scope.isVisible()) pushScope();
     repaint();
 }
 
 void TranceGateEditor::showSignalPlot (bool sig)
 {
-    showSignal.setToggleState (sig, juce::dontSendNotification);
+    viewTabs.setActive (sig ? 1 : 0);      /* no notification: we ARE the handler */
     scope  .setVisible (sig);
     pattern.setVisible (! sig);
     if (sig) pushScope();
@@ -712,6 +843,8 @@ void TranceGateEditor::pushScope()
     m.wetHi   = cap.wetHi;
     m.columns = TranceGateProcessor::Capture::columns;
     m.filled  = cap.filled.load (std::memory_order_acquire);
+    m.gate    = &pattern.gate();
+    m.steps   = pattern.stepCount();
     m.caption = "SIGNAL   DRY BEHIND, GATED IN FRONT";
     scope.setModel (std::move (m));
 }
@@ -719,8 +852,36 @@ void TranceGateEditor::pushScope()
 void TranceGateEditor::timerCallback()
 {
     refreshUi();
-    envelope.refresh (ui.msStep);
+
+    /*
+     * ONE ENGINE READ A FRAME FOR THE WHOLE SOUND, handed to everything that
+     * needs it. It was nineteen -- one `ui`, plus nine per plot for a stamp
+     * whose only job is to answer "did anything move".
+     */
+    liveParams = proc.engineGet ("params");
+    proc.setWidthMs (widthFrom (liveParams));
+
+    /* Field 4 of `params` is the rate label. A string compare a frame is the
+     * whole cost of keeping Length's magnets on the current subdivision. */
+    {
+        const auto f = juce::StringArray::fromTokens (liveParams, ":", "");
+        const auto r = f.size() > 4 ? f[4] : juce::String();
+        if (r != lastRate) { lastRate = r; pushLengthMagnets (r); }
+    }
+
+    envelope.refresh (liveParams, ui.msStep);
     pushModels();
+
+    /*
+     * THE SCOPE IS FED HERE, AND ONLY HERE, WHILE IT IS VISIBLE.
+     *
+     * pushScope was reachable from a mode change and from showSignalPlot and
+     * from nowhere else -- so the signal view opened empty and then stayed
+     * empty, because nothing on the timer ever handed it the next capture. A
+     * scope that does not move is not a scope. The capture side was always
+     * fine: the audio thread fills it every block.
+     */
+    if (scope.isVisible()) pushScope();
 
     /*
      * THE WINDOW GROWS, THE STEP DOES NOT.
@@ -806,7 +967,7 @@ void TranceGateEditor::resized()
     /*
      * ONE ROW, laid out left to right. It fits because the two config actions
      * are glyphs rather than the words that needed a second row -- see
-     * PhosphorGlyphButton, which says what that costs.
+     * UvGlyphButton, which says what that costs.
      */
     int x = kLeftX + kActionsW + space::s4;          /* after the Slot select */
     legato   .setBounds (x, kSelectY, 150, size::controlH);   x += 150 + space::s6;
@@ -817,13 +978,22 @@ void TranceGateEditor::resized()
     copyPatch .setBounds (x, kSelectY, 40, size::controlH);   x += 40 + space::s2;
     pastePatch.setBounds (x, kSelectY, 40, size::controlH);
 
-    /* The two plots occupy the SAME band -- only one is visible at a time.
-     * The switch sits in the band's caption strip, where the system's 28x14
-     * switch fits the 14px line exactly and costs the settings row nothing. */
-    const juce::Rectangle<int> band (kLeftX, kPatternY, StepGridView::width, kPatternH);
+    /*
+     * The two plots occupy the SAME band -- only one is visible at a time --
+     * and the tabs that choose between them take a strip off its right edge.
+     *
+     * THE PLOT NO LONGER SPANS THE GRID EXACTLY, and the note that used to be
+     * here said that mattered: same 128 steps, drawn as time instead of as
+     * pads, so any other width "would read as a coincidence". Only the outer
+     * width ever matched, though -- the columns never did, at 46.7px against
+     * the grid's 48px pitch, and the grid wraps at 32 steps and above. A
+     * rhyme that thin is worth less than a view switch you can find.
+     */
+    juce::Rectangle<int> band (kLeftX, kPatternY, StepGridView::width, kPatternH);
+    viewTabs.setBounds (band.removeFromRight (UvTabs::width));
+    band.removeFromRight (space::s2);
     pattern.setBounds (band);
     scope  .setBounds (band);
-    showSignal.setBounds (band.getRight() - 110, band.getY() + 4, 110, 14);
 
     grid.setBounds (kLeftX, kGridY, StepGridView::width,
                     StepGridView::heightFor (juce::jmax (1, ui.length)));

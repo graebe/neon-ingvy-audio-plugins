@@ -1,5 +1,5 @@
 #pragma once
-#include "Phosphor.h"
+#include "Uv.h"
 
 /*
  * The design system's components that are not a LookAndFeel override: a
@@ -86,7 +86,7 @@ public:
     void setModel (Model m) { model = std::move (m); repaint(); }
     static int rowsFor (int length) { return juce::jmax (1, (length + cols - 1) / cols); }
     static int heightFor (int length);
-    static constexpr int width = cols * phosphor::size::step + (cols - 1) * phosphor::space::s2;
+    static constexpr int width = cols * uv::size::step + (cols - 1) * uv::space::s2;
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -124,7 +124,7 @@ private:
  * says what the gate DID. One sweep is one pattern cycle, filling left to
  * right and restarting on the wrap.
  *
- * Dry in ink-dim, the system's colour for inactive marks; gated in phosphor,
+ * Dry in ink-dim, the system's colour for inactive marks; gated in uv,
  * which the system defines as "the signal" and which is here being used for
  * literally that. Both as filled min/max bands, the dry drawn first so the
  * gated sits in front of it.
@@ -142,6 +142,11 @@ public:
         const std::atomic<float>* wetHi = nullptr;
         int columns = 0;
         int filled  = 0;
+        /* The gate's own curve, one value per plot column, so the scope can
+         * draw what the gate DID over what it did it to. Borrowed from the
+         * pattern plot, which has already rendered exactly this. */
+        const std::vector<float>* gate = nullptr;
+        int steps = 0;                 /* for the step grid behind it */
         juce::String caption;
     };
 
@@ -182,13 +187,73 @@ juce::Image makeGrain (int size, float maxAlpha, juce::Random&);
  * halfway rescales everything since the press and the value jumps. Shift is
  * therefore held BEFORE the press, which is what "shift-drag" means anyway.
  */
-class PhosphorKnob : public juce::Slider
+/*
+ * A VERTICAL TAB STRIP -- index cards down the right edge of a band, one lit.
+ *
+ * NOT A SYSTEM COMPONENT. Ultraviolet has no Tab card and its component list
+ * does not name one, so nothing here is invented: the states are BUTTON's,
+ * exactly -- rest bg-200 inside a line-200 hairline, hover bg-300, active a
+ * uv fill with on-uv text and glow-led. A tab is a button that happens to be
+ * exclusive and turned on its side. If the system ever gains a Tab card, this
+ * is the thing to replace rather than to reconcile.
+ *
+ * Text is `hint` (10px) and not `label` (11px) for a plain reason: rotated
+ * into a 46px tab, "PATTERN" measures about 43px at 10px and about 49px at
+ * 11px. A third view would need a taller band, not a smaller font.
+ */
+class UvTabs : public juce::Component
+{
+public:
+    void setTabs (juce::StringArray labels);
+    void setActive (int index, juce::NotificationType = juce::dontSendNotification);
+    int  active() const noexcept { return current; }
+    std::function<void (int)> onChange;
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+
+    static constexpr int width = 24;
+
+private:
+    juce::Rectangle<int> tabBounds (int i) const;
+    int indexAt (juce::Point<int>) const;
+
+    juce::StringArray tabs;
+    int current = 0, hovered = -1;
+};
+
+class UvKnob : public juce::Slider
 {
 public:
     void mouseDown (const juce::MouseEvent&) override;
 
+    /*
+     * MAGNETS, IN VALUE UNITS, TWO TIERS. Pass 0 to disable a tier.
+     *
+     * For Length these are the musical divisions of the current Rate -- a
+     * beat and a bar -- so at 1/16 the bar catches at 16, 32, 48 ... and the
+     * beat, more lightly, at 4, 8, 12 ... A knob nobody sets magnets on
+     * behaves exactly as it did.
+     */
+    void setMagnets (double beatSteps, double barSteps);
+    double snapValue (double attempted, DragMode) override;
+
+    /* Exposed so the behaviour can be tested without a window: it is a pure
+     * function of the value, the magnets and the two radii. */
+    double magnetise (double attempted, double valuePerPixel) const;
+
     static constexpr int coarse = 250;   /* JUCE's default, and the system's feel */
     static constexpr int fine   = 2500;  /* ten times the travel for the same range */
+
+    /* The pull, in PIXELS of drag rather than in value units, so the feel is
+     * the same on any range. A bar holds about three times as hard as a beat. */
+    static constexpr double barPullPx  = 6.0;
+    static constexpr double beatPullPx = 3.0;
+
+private:
+    double beatMag = 0.0, barMag = 0.0;
 };
 
 /* A label in the system's `label` style: 11px, uppercase, tracked, ink-muted,
@@ -217,9 +282,9 @@ private:
  * cards is a token used the way a card uses it.
  *
  * A plot is a bg-000 well with a hairline, a hint-style caption, and a curve
- * drawn in phosphor over a phosphor-glow fill.
+ * drawn in uv over a uv-glow fill.
  */
-namespace phosphor::plot
+namespace uv::plot
 {
 /* The padding inside the well, and the room the caption takes above the
  * curve. Both on the 4px grid, bar the caption's 14 which is the hint
@@ -236,7 +301,7 @@ juce::Rectangle<float> well (juce::Graphics&, juce::Rectangle<float> bounds,
 void empty (juce::Graphics&, juce::Rectangle<int> bounds);
 
 /* A vertical rule at a fraction of the plot's width -- a position, not a
- * value, which is why it is never phosphor. */
+ * value, which is why it is never uv. */
 void rule (juce::Graphics&, juce::Rectangle<float> plot, double xFrac,
            juce::Colour, float thickness);
 
@@ -277,6 +342,27 @@ void axis (juce::Graphics&, juce::Rectangle<float> plot, double spanMs,
  */
 void decimate (const float* v, int n, int cols,
                std::vector<float>& lo, std::vector<float>& hi);
+
+/*
+ * THE STEP GRID BEHIND A PLOT: a faint rule at every pad transition, with
+ * that pad's number beside it.
+ *
+ * BOTH DROP OUT AS THE COLUMNS NARROW, which is the part that matters. At 128
+ * steps a column is under six pixels, so a rule per step is a comb and a
+ * number per step is a smear -- so rules stop below `ruleMin` and numbers
+ * below `numberMin`, and the bar and beat rules carry on alone, which is what
+ * a dense pattern actually needs. The same rule the envelope plot's A/D/S/R
+ * labels already use.
+ *
+ * TWO LAYERS, BECAUSE THE CURVE GOES BETWEEN THEM. Rules belong UNDER the
+ * plot -- a rule drawn over it cuts the shape in half -- but a number drawn
+ * under it is swallowed whole by any step that is loud at its left edge,
+ * which is exactly the step you most want labelled. So the caller draws
+ * `rules`, then its curve, then `numbers`, and the density rule stays in one
+ * place instead of being decided twice.
+ */
+enum class Layer { rules, numbers };
+void steps (juce::Graphics&, juce::Rectangle<float> plot, int count, Layer);
 
 /*
  * The curve itself, built once per refresh in UNIT SPACE (x and y both 0..1,

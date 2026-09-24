@@ -120,7 +120,7 @@ public:
     ~TranceGateProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
-    void releaseResources() override {}
+    void releaseResources() override;
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
@@ -153,7 +153,19 @@ public:
     /* Re-reads the gate's width from the engine, which is what every stage's
      * millisecond reading is scaled by. Cheap, and called from the editor's
      * timer so the readouts follow a host tempo change. */
-    void refreshWidth();
+    /* The same number, handed in by a caller that has already read it, so the
+     * editor's per-frame `params` read serves this too. */
+    void setWidthMs (float ms);
+
+    /*
+     * Beats per step for a rate LABEL, which is what the readouts carry.
+     * Measured from the engine rather than copied from its table -- see
+     * rateBeats() -- so the two cannot drift. 0 if the label is unknown.
+     *
+     * The editor turns this into Length's magnets: a beat is 1/this steps and
+     * a bar is 4/this.
+     */
+    double beatsPerStepOf (const juce::String& rateLabel) const;
     juce::String engineGet (const juce::String& key) const;
 
     /*
@@ -218,11 +230,42 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout
         makeLayout (std::shared_ptr<std::atomic<int>> mode,
                     std::shared_ptr<std::atomic<float>> width);
-    /* Set while pushing engine values INTO the parameters, so the listener
-     * that normally writes them back to the engine stands down. Without it a
-     * patch load ping-pongs between the two. */
-    std::atomic<bool> suppressParamWrite { false };
-    void pullParam (const juce::String& id);
+    /*
+     * THE PARAMETERS, BY INDEX, IN makeLayout's DECLARATION ORDER.
+     *
+     * Host automation arrives as an INT INDEX -- that is what
+     * AudioProcessorParameter::Listener hands us -- so nothing on the audio
+     * thread has to hash or compare a string. The constructor asserts this
+     * enum against the real paramIDs, so reordering makeLayout fails loudly
+     * instead of silently mis-wiring every knob.
+     */
+    enum Pid { pidRate = 0, pidLength, pidSlot, pidLegato, pidTimeMode, pidCurve,
+               pidAmount, pidHold, pidAttack, pidDecay, pidSustain, pidRelease,
+               pidCount };
+
+    /*
+     * STAGE, THEN DRAIN. parameterValueChanged runs on the AUDIO THREAD for
+     * every automation point while a VST3 transport rolls -- that is the only
+     * route a lane has -- so it may not allocate, may not format a string and
+     * may not wait on a lock. It stores a number and sets a bit; processBlock
+     * applies them under the lock it already takes.
+     *
+     * The bit is what makes this lossless. The old code gated the whole
+     * callback on a flag and RETURNED, so every automation point that landed
+     * while the parameters were being refreshed was discarded outright.
+     */
+    void stageParam (int index, float normalised);
+    void drainLocked();                 /* engineLock must already be held */
+    double toWire (int index, float denormalised) const;
+
+    juce::RangedAudioParameter* paramAt[pidCount] {};
+    std::atomic<float>    staged[pidCount] {};
+    std::atomic<uint32_t> dirtyMask { 0 };
+    /* True while the host has an audio stream, i.e. while processBlock will
+     * come round to drain. When it is false there is no block to wait for and
+     * the change is posted to the message thread instead. */
+    std::atomic<bool> rolling { false };
+    std::atomic<bool> slotRecallPending { false };
     /* A slot change makes every other parameter stale; the refresh has to
      * reach the message thread to touch the host's automation lanes. */
     void handleAsyncUpdate() override;
@@ -234,7 +277,11 @@ private:
      * only -- never read by anyone else, so plain floats. */
     int   capCol = -1;
     float capDryLo = 0.0f, capDryHi = 0.0f, capWetLo = 0.0f, capWetHi = 0.0f;
-    void captureBlock (const float* dry, const float* wet, int frames);
+    /* `phase0`/`phase1` bracket the block: the engine's pattern phase before
+     * and after it ran. Both, because a block is not a point in time and
+     * filing all of it at one end of itself is what made the scope lag. */
+    void captureBlock (const float* dry, const float* wet, int frames,
+                       int totalFrames, double phase0, double phase1);
     /* The dry signal is copied out before the engine overwrites the buffer.
      * Fixed size because an audio callback does not allocate; 4096 covers
      * every block size a host realistically asks for. */

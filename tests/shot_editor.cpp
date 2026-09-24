@@ -142,9 +142,14 @@ int main (int argc, char** argv)
                 PositionInfo p;
                 p.setIsPlaying (true);
                 p.setBpm (120.0);
-                /* A quarter into the second beat when parked, or wherever the
-                 * capture loop has got to. */
-                p.setPpqPosition (samples < 0.0 ? 1.25
+                /*
+                 * 1.5 beats when parked, which at 1/16 is step SIX -- and six
+                 * is lit in the pattern below, where 1.25 (step five) was
+                 * not. The playhead over a LIT pad is the case that broke
+                 * when every lit pad gained a halo, so the shot that exists
+                 * to photograph the playhead has to land on one.
+                 */
+                p.setPpqPosition (samples < 0.0 ? 1.5
                                                 : samples / 44100.0 * 2.0);
                 return p;
             }
@@ -207,7 +212,7 @@ int main (int argc, char** argv)
          * can be compared against the design system's own previews rather
          * than squinted at in a full-window shot. */
         /* The ring's playhead is one segment in `ink` among segments in
-         * phosphor -- a real difference that a full-window shot cannot
+         * uv -- a real difference that a full-window shot cannot
          * resolve, so the playing state is photographed close up. */
         const bool wantDetail = juce::String (s.name) == "tg_16"
                              || juce::String (s.name) == "tg_ends"

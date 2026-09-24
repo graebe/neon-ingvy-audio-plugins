@@ -1,8 +1,8 @@
-# The engine, compiled from the submodule. NOT copied in: this is the same
-# translation unit Schwung builds for the Move module.
-set(TG_ENGINE ${CMAKE_SOURCE_DIR}/external/schwung-trance-gate/src/dsp)
-
 juce_add_plugin(TranceGate
+    # ITS OWN VERSION, not the repository's. project(vst_library VERSION 0.1.0)
+    # names the repo, which is built to hold more than one plugin; this is what
+    # the AU and the VST3 report to a host.
+    VERSION                   1.0.0
     PLUGIN_MANUFACTURER_CODE  Grbe
     PLUGIN_CODE               TrGt
     COMPANY_NAME              "graebe"
@@ -27,12 +27,9 @@ set_target_properties(TranceGateResources PROPERTIES POSITION_INDEPENDENT_CODE T
 target_sources(TranceGate PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
-    Source/Phosphor.cpp
-    Source/PhosphorLookAndFeel.cpp
-    Source/PhosphorComponents.cpp
-    ${TG_ENGINE}/trance_gate_core.c)
-
-target_include_directories(TranceGate PRIVATE ${TG_ENGINE})
+    Source/Uv.cpp
+    Source/UvLookAndFeel.cpp
+    Source/UvComponents.cpp)
 
 target_compile_definitions(TranceGate PUBLIC
     JUCE_WEB_BROWSER=0
@@ -46,7 +43,11 @@ target_compile_definitions(TranceGate PUBLIC
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 target_link_libraries(TranceGate
-    PRIVATE TranceGateResources
+    # tg_engine is the submodule's Rust crate, built once at the top level and
+    # linked by the plugin and every test target -- see cmake/TgEngine.cmake.
+    # It carries the include directory for trance_gate_core.h with it.
+    PRIVATE tg_engine
+            TranceGateResources
             juce::juce_audio_utils
     PUBLIC  juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)

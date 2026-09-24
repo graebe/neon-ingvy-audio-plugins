@@ -131,8 +131,9 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode,
         .withStringFromValueFunction ([] (float v, int) { return String (v * 100.0f, 2) + " %"; })
         .withValueFromStringFunction ([] (const String& t) { return t.getFloatValue() * 0.01f; });
     /*
-     * ONE NUMBER, TWO READINGS. The stage value is 0..500 in both modes; the
-     * mode decides whether that is milliseconds or hundredths of a step. The
+     * ONE NUMBER, TWO READINGS. The stage value is 0..200 in both modes -- a
+     * percentage of the gate's WIDTH, which is what the engine stores -- and
+     * the mode decides only how that number is PRINTED. The
      * lambdas capture the shared flag rather than a copy of it, so flipping
      * the mode re-reads every stage's text without touching a stored value.
      */
@@ -176,10 +177,25 @@ TranceGateProcessor::makeLayout (std::shared_ptr<std::atomic<int>> mode,
 }
 
 /* One listener for every parameter: on a change, write the engine. */
-struct TranceGateProcessor::ParamBridge : juce::AudioProcessorValueTreeState::Listener
+/*
+ * THE RAW PARAMETER LISTENER, NOT THE APVTS ONE.
+ *
+ * APVTS::Listener hands a juce::String id; AudioProcessorParameter::Listener
+ * hands an int INDEX. On the audio thread that difference is the whole
+ * argument: an index is a switch, a string is a comparison chain against
+ * twelve heap-allocated names. It also hands the new value directly, which
+ * JUCE documents as the only value safe to read inside the callback -- the
+ * old code re-read the shared atomic instead, so a concurrent write could
+ * substitute its value for the host's.
+ */
+struct TranceGateProcessor::ParamBridge : juce::AudioProcessorParameter::Listener
 {
     explicit ParamBridge (TranceGateProcessor& p) : proc (p) {}
-    void parameterChanged (const juce::String& id, float) override { proc.pullParam (id); }
+    void parameterValueChanged (int index, float newValue) override
+    {
+        proc.stageParam (index, newValue);
+    }
+    void parameterGestureChanged (int, bool) override {}
     TranceGateProcessor& proc;
 };
 
@@ -191,119 +207,225 @@ TranceGateProcessor::TranceGateProcessor()
 {
     core = tg_core_create (44100.0);
     bridge = std::make_unique<ParamBridge> (*this);
-    for (auto* p : getParameters())
-        if (auto* wp = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
-            apvts.addParameterListener (wp->paramID, bridge.get());
+
+    /*
+     * THE ENUM IS THE DECLARATION ORDER, AND THIS IS WHERE THAT IS PROVED.
+     * Reorder makeLayout without reordering Pid and every automated value
+     * goes to the wrong engine key -- silently, and only for a host, because
+     * the editor talks through attachments that carry their own id.
+     */
+    static const char* const order[] = { "rate", "length", "slot", "legato",
+                                         "time_mode", "curve", "amount", "hold",
+                                         "attack", "decay", "sustain", "release" };
+    static_assert ((int) std::size (order) == (int) pidCount, "Pid and the id table disagree");
+
+    const auto& all = getParameters();
+    jassert (all.size() >= pidCount);
+    for (int i = 0; i < pidCount; ++i)
+    {
+        paramAt[i] = dynamic_cast<juce::RangedAudioParameter*> (all[i]);
+        jassert (paramAt[i] != nullptr && paramAt[i]->paramID == order[i]);
+        all[i]->addListener (bridge.get());
+    }
+
     /* Push the defaults down so the engine and the parameters agree before a
      * single block runs -- otherwise the first automation write is what
      * reconciles them, and until then they silently differ. */
-    for (auto* p : getParameters())
-        if (auto* wp = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
-            pullParam (wp->paramID);
-}
-
-/* PARAMETER -> ENGINE. The engine speaks strings and expects the same wire
- * conventions the Move module uses: Length and Slot are option INDICES (so
- * they go out one lower than they display), Rate is its LABEL. */
-void TranceGateProcessor::pullParam (const juce::String& id)
-{
-    if (suppressParamWrite.load()) return;
-    auto* raw = apvts.getRawParameterValue (id);
-    if (raw == nullptr) return;
-    const float v = raw->load();
-
-    /*
-     * ROUND, DO NOT TRUNCATE.
-     *
-     * getRawParameterValue hands back `convertFrom0to1(normalised)` -- a
-     * FLOAT, even for an AudioParameterInt. Today it is exactly integral,
-     * because AudioParameterInt installs a snapToLegalValue that rounds; but
-     * that is JUCE's implementation detail, not a promise its interface
-     * makes, and the parameter's own rounding lives in `get()`, which this
-     * path does not call. Truncating would turn a value one ulp low into a
-     * step-off-by-one everywhere except the two exactly representable ends of
-     * the range -- silent, and wrong in the middle only. The test asserts the
-     * value IS integral, so if the assumption ever stops holding it is a
-     * failing test rather than a drifting pattern.
-     */
-    if (id == pRate)
-        engineSet (id, kRateNames[juce::jlimit (0, kRateNames.size() - 1, juce::roundToInt (v))]);
-    else if (id == pTimeMode)
+    for (int i = 0; i < pidCount; ++i)
+        if (paramAt[i] != nullptr)
+            stageParam (i, paramAt[i]->getValue());
     {
-        const int m = juce::jlimit (0, 1, juce::roundToInt (v));
-        if (timeMode) timeMode->store (m);
-        engineSet (id, juce::String (m));
+        const juce::ScopedLock sl (engineLock);
+        drainLocked();
     }
-    else if (id == pCurve)
-        engineSet (id, juce::String (juce::jlimit (0, 2, juce::roundToInt (v))));
-    else if (id == pSlot)
-        engineSet (id, juce::String (juce::roundToInt (v)));       /* a choice: already the index */
-    else if (id == pLength)
-        engineSet (id, juce::String (juce::roundToInt (v) - 1));   /* display -> index */
-    else if (id == pLegato)
-        engineSet (id, v > 0.5f ? "1" : "0");
-    else
-        engineSet (id, juce::String (v, 3));
-
-    /*
-     * SLOT IS NOT LIKE THE OTHERS: it does not set a value, it swaps which
-     * pattern every other value describes. The new slot carries its own
-     * Length, so leaving the parameters alone would show the previous slot's
-     * -- and the first touch of the Length knob would then snap the pattern
-     * to a number the user never chose.
-     *
-     * Asynchronously, because this arrives on whatever thread the host
-     * automates from and setValueNotifyingHost belongs to the message
-     * thread. The engine is already correct; this is only the display
-     * catching up, so a frame of lag costs nothing.
-     */
-    /* Rate and Width both move what a stage's percentage is worth in
-     * milliseconds, so the readouts have to be told. */
-    if (id == pRate || id == pGate) refreshWidth();
-
-    if (id == pSlot) triggerAsyncUpdate();
+    slotRecallPending.store (false);
 }
-
-void TranceGateProcessor::handleAsyncUpdate() { syncParamsFromEngine(); }
 
 /*
- * ENGINE -> PARAMETERS, after a patch has been loaded underneath them.
+ * PARAMETER -> ENGINE, in the two halves a real-time thread needs.
  *
- * suppressParamWrite is what stops this ping-ponging: without it every value
- * pushed in here fires the listener, which writes the engine, which is at
- * best redundant and at worst rounds a value on every load.
+ * `toWire` is the only place the twelve wire conventions live: Length and
+ * Slot are option INDICES (so they go out one lower than they display), Rate
+ * is its table index, the enums are 0-based, the rest are their own units.
+ *
+ * ROUND, DO NOT TRUNCATE. convertFrom0to1 hands back a FLOAT even for an
+ * AudioParameterInt. Today it is exactly integral, because AudioParameterInt
+ * installs a snapToLegalValue that rounds; but that is JUCE's implementation
+ * detail, not a promise its interface makes. Truncating would turn a value
+ * one ulp low into a step-off-by-one everywhere except the two exactly
+ * representable ends of the range -- silent, and wrong in the middle only.
  */
-void TranceGateProcessor::refreshWidth()
+double TranceGateProcessor::toWire (int index, float denorm) const
 {
-    if (widthMs) widthMs->store ((float) engineGet ("width_ms").getDoubleValue());
+    switch (index)
+    {
+        case pidRate:     return (double) juce::roundToInt (denorm);
+        case pidLength:   return (double) (juce::roundToInt (denorm) - 1);
+        case pidSlot:     return (double) juce::roundToInt (denorm);
+        case pidLegato:   return denorm > 0.5f ? 1.0 : 0.0;
+        case pidTimeMode: return (double) juce::jlimit (0, 1, juce::roundToInt (denorm));
+        case pidCurve:    return (double) juce::jlimit (0, 2, juce::roundToInt (denorm));
+        default:          return (double) denorm;
+    }
 }
+
+void TranceGateProcessor::stageParam (int index, float normalised)
+{
+    if (index < 0 || index >= pidCount) return;
+    auto* p = paramAt[index];
+    if (p == nullptr) return;
+
+    /* Arithmetic on a NormalisableRange -- no allocation, no lock. */
+    staged[index].store ((float) toWire (index, p->convertFrom0to1 (normalised)),
+                         std::memory_order_relaxed);
+    dirtyMask.fetch_or (1u << index, std::memory_order_release);
+
+    if (juce::MessageManager::existsAndIsCurrentThread())
+    {
+        /* The editor, a patch load, a test: apply it now, so the engine is
+         * correct by the time the caller's next line runs.
+         *
+         * THE LOCK IS RELEASED BEFORE THE RECALL, and the braces are the only
+         * thing enforcing it. syncParamsFromEngine writes parameters, which
+         * takes JUCE's listener lock -- the reverse of the order the audio
+         * thread acquires the two in. Holding engineLock across it is an ABBA
+         * inversion and a hang. */
+        {
+            const juce::ScopedLock sl (engineLock);
+            drainLocked();
+        }
+        if (slotRecallPending.exchange (false)) syncParamsFromEngine();
+        return;
+    }
+
+    /* Otherwise the audio thread drains it at the top of the next block --
+     * unless there is no audio stream to wait for, in which case the message
+     * thread has to be asked. Never posted while rolling: a post takes a lock
+     * and may reallocate, which is exactly what this path exists to avoid. */
+    if (! rolling.load (std::memory_order_relaxed))
+        triggerAsyncUpdate();
+}
+
+void TranceGateProcessor::drainLocked()
+{
+    const uint32_t bits = dirtyMask.exchange (0, std::memory_order_acquire);
+    if (bits == 0) return;
+
+    static const tg_param_t wire[pidCount] = {
+        TG_P_RATE, TG_P_LENGTH, TG_P_SLOT, TG_P_LEGATO, TG_P_TIME_MODE,
+        TG_P_CURVE, TG_P_AMOUNT, TG_P_HOLD, TG_P_ATTACK, TG_P_DECAY,
+        TG_P_SUSTAIN, TG_P_RELEASE,
+    };
+
+    /*
+     * SLOT FIRST. Length is per-slot, so a Length written before the Slot it
+     * belongs to lands on the outgoing pattern and is then thrown away with
+     * it. Applying the selector before anything it selects costs one branch
+     * and removes the whole class of ordering bug -- the host's queue order
+     * is not ours to choose, but the order we APPLY in is.
+     */
+    if (bits & (1u << pidSlot))
+    {
+        tg_core_set_num (core, TG_P_SLOT,
+                         (double) staged[pidSlot].load (std::memory_order_relaxed));
+        slotRecallPending.store (true, std::memory_order_relaxed);
+    }
+
+    for (int i = 0; i < pidCount; ++i)
+        if (i != pidSlot && (bits & (1u << i)))
+            tg_core_set_num (core, wire[i],
+                             (double) staged[i].load (std::memory_order_relaxed));
+
+    /* Env Time has no engine consequence -- it picks the unit a readout
+     * prints -- but the formatters have no engine handle, so the atomic they
+     * do read has to be kept level with it. */
+    if ((bits & (1u << pidTimeMode)) && timeMode)
+        timeMode->store ((int) staged[pidTimeMode].load (std::memory_order_relaxed));
+}
+
+void TranceGateProcessor::handleAsyncUpdate()
+{
+    {
+        const juce::ScopedLock sl (engineLock);
+        drainLocked();          /* belt and braces: a block may have beaten us */
+    }
+    if (slotRecallPending.exchange (false)) syncParamsFromEngine();
+}
+
+/*
+ * There is no suppression flag any more, and its absence is deliberate.
+ *
+ * It existed to stop syncParamsFromEngine's writes echoing back into the
+ * engine -- and it did that by making the listener RETURN, which also threw
+ * away every genuine automation point that happened to arrive in the same
+ * window. Two things replace it: the sync now writes only when a value truly
+ * changed, so there is usually no echo at all; and the `params` readout is
+ * %.9g, so an echo that does happen writes back a bit-identical float rather
+ * than a rounded one. A flag that can drop real input is not a fix.
+ */
+void TranceGateProcessor::setWidthMs (float ms)
+{
+    if (widthMs) widthMs->store (ms);
+}
+
 
 void TranceGateProcessor::syncParamsFromEngine()
 {
-    refreshWidth();
-    suppressParamWrite.store (true);
+    /*
+     * ENGINE -> PARAMETERS, AND THE RULE THAT GOVERNS IT.
+     *
+     * User input overrides automation. That is the host's model -- in Live a
+     * write to an automated parameter suspends its lane and lights "Back to
+     * Arrangement" -- and we keep it, because it is what a user expects when
+     * they grab a knob mid-playback.
+     *
+     * The consequence is the part that was wrong. A host cannot tell OUR
+     * write from the user's: both arrive as performEdit. So this function
+     * must write a parameter ONLY when its value genuinely changed, never as
+     * an echo of a value the host itself just sent. It used to write all
+     * twelve unconditionally on every slot change -- including Slot back at
+     * itself -- so automating Slot overrode its own lane on the first point,
+     * and eleven others with it. The comparison is the fix; the gesture only
+     * makes the writes that remain well formed for undo and lane recording.
+     *
+     * LOCK ORDER -- THE ENGINE READ RELEASES BEFORE ANY PARAMETER IS WRITTEN.
+     * The audio thread runs listenerLock -> APVTS mutex -> engineLock. This
+     * runs the reverse pair, and is safe only because engineGet has let go by
+     * the time setValueNotifyingHost is called. Reading the engine and
+     * writing parameters inside one lock is an ABBA inversion and a real hang
+     * in a real host. It reads as a tidy-up; it is not.
+     */
+    const auto line = engineGet ("params");
+    const auto f = juce::StringArray::fromTokens (line, ":", "");
+    if (f.size() < 13) return;              /* an engine older than the readout */
 
-    auto setIf = [this] (const juce::String& id, float value)
+    setWidthMs (f[12].getFloatValue());
+    const int mode = juce::jlimit (0, 1, f[2].getIntValue());
+    if (timeMode) timeMode->store (mode);
+
+    auto set = [] (juce::RangedAudioParameter* p, float value)
     {
-        if (auto* p = apvts.getParameter (id))
-            p->setValueNotifyingHost (p->convertTo0to1 (value));
+        if (p == nullptr) return;
+        const float norm = p->convertTo0to1 (value);
+        if (juce::approximatelyEqual (p->getValue(), norm)) return;   /* the name, honoured */
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (norm);
+        p->endChangeGesture();
     };
 
-    const int rateIdx = kRateNames.indexOf (engineGet (pRate));
-    if (rateIdx >= 0) setIf (pRate, (float) rateIdx);
-    setIf (pLength,  (float) (engineGet (pLength).getIntValue() + 1));
-    setIf (pSlot,    (float)  engineGet (pSlot).getIntValue());
-    setIf (pLegato,  engineGet (pLegato).getIntValue() ? 1.0f : 0.0f);
-    {
-        const int m = juce::jlimit (0, 1, engineGet (pTimeMode).getIntValue());
-        if (timeMode) timeMode->store (m);
-        setIf (pTimeMode, (float) m);
-    }
-    setIf (pCurve, (float) juce::jlimit (0, 2, engineGet (pCurve).getIntValue()));
-    for (auto& id : { pAmount, pGate, pAttack, pDecay, pSustain, pRelease })
-        setIf (id, (float) engineGet (id).getDoubleValue());
-
-    suppressParamWrite.store (false);
+    const int rateIdx = kRateNames.indexOf (f[4]);
+    if (rateIdx >= 0) set (paramAt[pidRate], (float) rateIdx);
+    set (paramAt[pidLength],   (float) (f[5].getIntValue() + 1));
+    set (paramAt[pidSlot],     (float)  f[0].getIntValue());
+    set (paramAt[pidLegato],   f[1].getIntValue() ? 1.0f : 0.0f);
+    set (paramAt[pidTimeMode], (float) mode);
+    set (paramAt[pidCurve],    (float) juce::jlimit (0, 2, f[3].getIntValue()));
+    set (paramAt[pidAmount],   f[6].getFloatValue());
+    set (paramAt[pidHold],     f[7].getFloatValue());
+    set (paramAt[pidAttack],   f[8].getFloatValue());
+    set (paramAt[pidDecay],    f[9].getFloatValue());
+    set (paramAt[pidSustain],  f[10].getFloatValue());
+    set (paramAt[pidRelease],  f[11].getFloatValue());
 }
 
 TranceGateProcessor::~TranceGateProcessor()
@@ -314,8 +436,35 @@ TranceGateProcessor::~TranceGateProcessor()
 
 void TranceGateProcessor::prepareToPlay (double sampleRate, int)
 {
+    /* From here until releaseResources there is a block coming, so a staged
+     * parameter has something to drain it and nothing needs posting to the
+     * message thread. */
+    rolling.store (true);
     const juce::ScopedLock sl (engineLock);
     tg_core_set_sample_rate (core, sampleRate);
+}
+
+void TranceGateProcessor::releaseResources()
+{
+    /* No more blocks: the message thread has to apply what arrives now. */
+    rolling.store (false);
+
+    /*
+     * AND ANYTHING ALREADY STAGED IS APPLIED ON THE WAY OUT.
+     *
+     * `rolling` means "a block is coming, let processBlock take it", and the
+     * flag is only cleared here -- so a host that stops calling processBlock
+     * without deactivating (VST3 setProcessing(false) reaches neither this
+     * nor prepareToPlay) leaves it true with no block ever coming. A value
+     * staged in that window is not posted to the message thread and not
+     * drained: it sits with its dirty bit set.
+     *
+     * It was never lost -- the next drain would take it -- but until then the
+     * engine holds the old value, so a getStateInformation() in that window
+     * saves a patch MISSING the change. One drain on the way out closes it.
+     */
+    const juce::ScopedLock sl (engineLock);
+    drainLocked();
 }
 
 bool TranceGateProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -375,6 +524,15 @@ void TranceGateProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     const juce::ScopedLock sl (engineLock);
 
+    /*
+     * EVERY PARAMETER THE HOST MOVED SINCE THE LAST BLOCK, applied here,
+     * under the lock this block was going to take anyway. While a VST3
+     * transport rolls this is the ONLY route a lane has into the engine --
+     * the wrapper stages its points before process() and disables the
+     * edit-controller path -- so this line is what makes automation work.
+     */
+    drainLocked();
+
     /* THE DRY SIGNAL, before the engine overwrites it in place. Copied rather
      * than referenced for exactly that reason, and into a fixed buffer
      * because an allocation here is the one thing an audio callback must
@@ -387,55 +545,96 @@ void TranceGateProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
      * that is bit-identical to the interleaved one. */
     auto* L = buffer.getWritePointer (0);
     auto* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : L;
-    tg_core_process_f32_split (core, L, R, frames, &t);
 
-    captureBlock (dryScratch, L, capN);
+    /* The pattern phase on BOTH sides of the block. The scope needs the pair
+     * to place a sample in time; see captureBlock. */
+    const double phase0 = tg_core_phase01 (core);
+    tg_core_process_f32_split (core, L, R, frames, &t);
+    const double phase1 = tg_core_phase01 (core);
+
+    captureBlock (dryScratch, L, capN, frames, phase0, phase1);
 }
 
 /*
  * One block into the sweep. The column comes from the engine's own pattern
  * phase, so the sweep is locked to the pattern rather than to wall time --
  * a scope triggered by the music.
+ *
+ * A BLOCK IS NOT A POINT IN TIME, and treating it as one is what made the
+ * scope lag the gate it was drawn over.
+ *
+ * It used to read the phase once, AFTER the engine ran, and file the whole
+ * block's min/max under that single column. So 128 samples spanning roughly
+ * three quarters of a column were all attributed to the column the LAST of
+ * them fell in -- every value reported about three milliseconds late. On a
+ * rising edge a late reading is a lower one, so the gated band climbed
+ * visibly slower than the curve drawn on top of it; on the decay it fell
+ * slower, for the same reason in the other direction. Measured against the
+ * engine's own per-sample gain at attack 25%, the peak error was 0.114 of
+ * full scale, and the rise was the half you noticed.
+ *
+ * Now each sample is placed where it actually happened. The phase is linear
+ * in time across a block -- the engine advances it by a fixed step per frame
+ * -- so interpolating between the two ends is exact, not an approximation.
+ * The same change fixes the skipped-column case for free: a block that spans
+ * several columns now writes all of them instead of leaving the ones it
+ * jumped over holding the previous sweep's bounds.
+ *
+ * `frames` is what was captured; `totalFrames` is what the engine actually
+ * ran, and they differ when a block is longer than dryScratch. The phase span
+ * belongs to the latter, so the captured part gets its proportion of it.
  */
-void TranceGateProcessor::captureBlock (const float* dry, const float* wet, int frames)
+void TranceGateProcessor::captureBlock (const float* dry, const float* wet, int frames,
+                                        int totalFrames, double phase0, double phase1)
 {
-    if (frames <= 0) return;
+    if (frames <= 0 || totalFrames <= 0) return;
 
-    const double phase = tg_core_phase01 (core);
-    const int col = juce::jlimit (0, Capture::columns - 1,
-                                  (int) (phase * (double) Capture::columns));
+    /* Backwards means the pattern wrapped inside the block. Once; a block
+     * long enough to wrap twice cannot be drawn as a sweep anyway, and the
+     * clamp below keeps that case from running off the end of the picture
+     * rather than pretending to resolve it. */
+    double span = phase1 - phase0;
+    if (span < 0.0) span += 1.0;
+    span = juce::jlimit (0.0, 1.0, span);
 
-    /* A column that went BACKWARDS is the pattern wrapping: publish the sweep
-     * and start again from the left. Forwards by more than one is a block
-     * that spanned several columns, which at 512 columns and a fast rate is
-     * normal -- the skipped ones keep the previous pass's bounds rather than
-     * being blanked, so the picture does not strobe. */
-    if (col < capCol)
-    {
-        cap.filled.store (Capture::columns, std::memory_order_release);
-        cap.sweep.fetch_add (1, std::memory_order_relaxed);
-        capCol = -1;
-    }
-
-    if (col != capCol)
-    {
-        if (capCol >= 0)
-        {
-            cap.dryLo[capCol].store (capDryLo, std::memory_order_relaxed);
-            cap.dryHi[capCol].store (capDryHi, std::memory_order_relaxed);
-            cap.wetLo[capCol].store (capWetLo, std::memory_order_relaxed);
-            cap.wetHi[capCol].store (capWetHi, std::memory_order_relaxed);
-            /* Publish AFTER the column is written, so a reader below `filled`
-             * never sees half of one. */
-            cap.filled.store (capCol + 1, std::memory_order_release);
-        }
-        capCol = col;
-        capDryLo = capDryHi = dry[0];
-        capWetLo = capWetHi = wet[0];
-    }
+    const double step = span / (double) totalFrames;
 
     for (int i = 0; i < frames; ++i)
     {
+        double p = phase0 + step * (double) i;
+        if (p >= 1.0) p -= 1.0;
+        const int col = juce::jlimit (0, Capture::columns - 1,
+                                      (int) (p * (double) Capture::columns));
+
+        if (col != capCol)
+        {
+            /* Finish the column being accumulated before leaving it -- on a
+             * wrap too, which used to drop it and leave the sweep's last
+             * column showing the previous pass. */
+            if (capCol >= 0)
+            {
+                cap.dryLo[capCol].store (capDryLo, std::memory_order_relaxed);
+                cap.dryHi[capCol].store (capDryHi, std::memory_order_relaxed);
+                cap.wetLo[capCol].store (capWetLo, std::memory_order_relaxed);
+                cap.wetHi[capCol].store (capWetHi, std::memory_order_relaxed);
+                /* Publish AFTER the column is written, so a reader below
+                 * `filled` never sees half of one. */
+                cap.filled.store (capCol + 1, std::memory_order_release);
+            }
+
+            /* A column that went BACKWARDS is the wrap: show the whole sweep
+             * and start again from the left. */
+            if (col < capCol)
+            {
+                cap.filled.store (Capture::columns, std::memory_order_release);
+                cap.sweep.fetch_add (1, std::memory_order_relaxed);
+            }
+
+            capCol = col;
+            capDryLo = capDryHi = dry[i];
+            capWetLo = capWetHi = wet[i];
+        }
+
         capDryLo = juce::jmin (capDryLo, dry[i]);
         capDryHi = juce::jmax (capDryHi, dry[i]);
         capWetLo = juce::jmin (capWetLo, wet[i]);
@@ -451,17 +650,36 @@ void TranceGateProcessor::engineSet (const juce::String& key, const juce::String
 
 juce::String TranceGateProcessor::engineGet (const juce::String& key) const
 {
-    const juce::ScopedLock sl (engineLock);
+    /*
+     * MESSAGE THREAD ONLY, and the assertion is the documentation.
+     *
+     * This allocates a juce::String and can block on a lock the audio thread
+     * holds for a whole block. It was reachable from the audio thread once --
+     * stageParam reached this through refreshWidth once -- a 4 KB
+     * allocation plus a priority-inverting wait, per automation point.
+     */
+    JUCE_ASSERT_MESSAGE_THREAD
+
     /* TG_STATE_MAX, NOT A NUMBER OF MY OWN. The longest thing the engine
      * emits is the state blob, and it grew by an order of magnitude when the
      * patterns went to 128 steps -- past the 2048 that used to be written
      * here. get_param snprintfs, so a short buffer does not fail: it returns
      * a truncated patch, which getStateInformation would then hand the host
-     * as the project's saved state. */
-    std::vector<char> buf (TG_STATE_MAX, 0);
-    const int n = tg_core_get_param (core, key.toRawUTF8(), buf.data(), (int) buf.size());
+     * as the project's saved state.
+     *
+     * ON THE STACK, AND THE LOCK SPANS THE snprintf AND NOTHING ELSE. It used
+     * to heap-allocate and zero 4096 bytes INSIDE the critical section, and
+     * the editor did that nineteen times a frame -- nineteen chances per
+     * frame to make the audio thread wait on malloc. */
+    char buf[TG_STATE_MAX];
+    int n;
+    {
+        const juce::ScopedLock sl (engineLock);
+        n = tg_core_get_param (core, key.toRawUTF8(), buf, (int) sizeof (buf));
+    }
     if (n < 0) return {};
-    return juce::String::fromUTF8 (buf.data());
+    buf[juce::jlimit (0, (int) sizeof (buf) - 1, n)] = '\0';
+    return juce::String::fromUTF8 (buf);
 }
 
 bool TranceGateProcessor::patchFromString (const juce::String& s)
@@ -645,6 +863,13 @@ void runDc (tg_core_t* core, const TimeBase& tb, double samplesPerStep,
 
 }  // namespace
 
+double TranceGateProcessor::beatsPerStepOf (const juce::String& rateLabel) const
+{
+    const int i = kRateNames.indexOf (rateLabel);
+    const auto& b = rateBeats();
+    return (i >= 0 && i < (int) b.size()) ? b[(size_t) i] : 0.0;
+}
+
 /* ================================================= the envelope shape == */
 
 float TgEnvelopeShape::levelAt (double frac) const
@@ -758,11 +983,39 @@ TgEnvelopeShape TgEnvelopeShape::render (const TranceGateProcessor& src, double 
          * THE RENDER'S STEP IS THE WHOLE SPAN, and the release is placed
          * inside it by rescaling one dimensionless fraction. `hold` is the
          * engine's only in-step release trigger, so this borrows the engine's
-         * gate rule instead of writing a second one; A, D, S and R go in as
-         * the patch's real milliseconds and never come near the 0..500 clamp.
+         * gate rule instead of writing a second one.
          */
         tg_core_set_param (sc.core, "hold",
                            juce::String (releaseMsIn / span, 6).toRawUTF8());
+
+        /*
+         * AND THE STAGES ARE RESTATED IN THIS RENDER'S OWN WIDTH, which is
+         * the part that cannot be skipped.
+         *
+         * `hold` does not only move the release: a stage is a PERCENTAGE OF
+         * WIDTH and width_ms = hold * ms_per_step, so handing the two traces
+         * different holds scaled every stage as well. The ghost -- which is
+         * drawn only when its release is LATER, so its width is always the
+         * larger -- came out stretched by exactly releaseAt/gate, every time
+         * it was visible. The two traces have to be one curve until the gate;
+         * they were not.
+         *
+         * So the render is told the absolute durations it must produce rather
+         * than being left to infer them. Here ms_per_step IS the span, so
+         * this render's width is `releaseMsIn` and a stage of `ms` is
+         * 100*ms/releaseMsIn percent of it. For the solid trace that is
+         * arithmetically the patch's own percentage and nothing moves; for
+         * the ghost it scales down by just enough to cancel the stretch.
+         * Neither can reach the engine's 0..200 clamp: the solid is the
+         * stored value and the ghost is smaller.
+         */
+        const double pct = 100.0 / juce::jmax (1.0e-6, releaseMsIn);
+        tg_core_set_param (sc.core, "attack",
+                           juce::String (out.attackMs  * pct, 6).toRawUTF8());
+        tg_core_set_param (sc.core, "decay",
+                           juce::String (out.decayMs   * pct, 6).toRawUTF8());
+        tg_core_set_param (sc.core, "release",
+                           juce::String (out.releaseMs * pct, 6).toRawUTF8());
         tg_core_set_param (sc.core, "rate", tb.rate.toRawUTF8());
 
         runDc (sc.core, tb, (double) frames, frames, dst);

@@ -1,10 +1,13 @@
-# The engine's own tests, built against the SUBMODULE -- the same sources the
+# The engine's own tests, built against the SUBMODULE -- the same library the
 # plugin links. If these pass here and fail on Move, the submodule pin moved.
+#
+# tg_engine is the submodule's Rust crate, built once at the top level; see
+# cmake/TgEngine.cmake. Every target below used to compile
+# src/dsp/trance_gate_core.c, which the Rust port removed.
 set(TG_ENGINE ${CMAKE_SOURCE_DIR}/external/schwung-trance-gate)
 
-add_executable(tg_core_tests ${TG_ENGINE}/tests/test_core.c
-                             ${TG_ENGINE}/src/dsp/trance_gate_core.c)
-target_include_directories(tg_core_tests PRIVATE ${TG_ENGINE}/src/dsp)
+add_executable(tg_core_tests ${TG_ENGINE}/tests/test_core.c)
+target_link_libraries(tg_core_tests PRIVATE tg_engine)
 if (NOT WIN32)
     target_link_libraries(tg_core_tests PRIVATE m)
 endif()
@@ -13,8 +16,8 @@ add_test(NAME tg_core COMMAND tg_core_tests)
 # Renders through the PLUGIN's audio path (float, split channels, a DAW-shaped
 # transport) and compares against the Move module's reference render. This is
 # the check that the port did not change the sound.
-add_executable(tg_render_plugin render_plugin.c ${TG_ENGINE}/src/dsp/trance_gate_core.c)
-target_include_directories(tg_render_plugin PRIVATE ${TG_ENGINE}/src/dsp)
+add_executable(tg_render_plugin render_plugin.c)
+target_link_libraries(tg_render_plugin PRIVATE tg_engine)
 if (NOT WIN32)
     target_link_libraries(tg_render_plugin PRIVATE m)
 endif()
@@ -29,8 +32,7 @@ add_test(NAME tg_render_ab COMMAND tg_render_plugin --verify)
 # of it compiled with different flags.
 juce_add_console_app(tg_param_tests PRODUCT_NAME "tg_param_tests")
 target_sources(tg_param_tests PRIVATE test_params.cpp)
-target_link_libraries(tg_param_tests PRIVATE TranceGate juce::juce_audio_utils)
-target_include_directories(tg_param_tests PRIVATE ${TG_ENGINE}/src/dsp)
+target_link_libraries(tg_param_tests PRIVATE TranceGate juce::juce_audio_utils tg_engine)
 # The slot refresh is deliberately asynchronous (it touches the host's
 # automation lanes, which belong to the message thread), so the test has to be
 # able to PUMP that thread to see the result. Console-app only -- a plugin
@@ -44,9 +46,8 @@ add_test(NAME tg_params COMMAND tg_param_tests)
 # the host callbacks JUCE's AU wrapper reads, drives the macros through the AU
 # parameter API, and compares against the engine directly.
 if (APPLE)
-    add_executable(tg_au_render au_render.c ${TG_ENGINE}/src/dsp/trance_gate_core.c)
-    target_include_directories(tg_au_render PRIVATE ${TG_ENGINE}/src/dsp)
-    target_link_libraries(tg_au_render PRIVATE m
+    add_executable(tg_au_render au_render.c)
+    target_link_libraries(tg_au_render PRIVATE tg_engine m
         "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
     add_test(NAME tg_au COMMAND tg_au_render)
 endif()
@@ -56,11 +57,10 @@ endif()
 # a published maximum, so a discrete/continuous mistake surfaces differently
 # in each. JUCE bundles the VST3 interfaces it needs to host.
 juce_add_console_app(tg_vst3_tests PRODUCT_NAME "tg_vst3_tests")
-target_sources(tg_vst3_tests PRIVATE test_vst3.cpp ${TG_ENGINE}/src/dsp/trance_gate_core.c)
+target_sources(tg_vst3_tests PRIVATE test_vst3.cpp)
 target_compile_definitions(tg_vst3_tests PRIVATE
     JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=0 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-target_link_libraries(tg_vst3_tests PRIVATE juce::juce_audio_utils)
-target_include_directories(tg_vst3_tests PRIVATE ${TG_ENGINE}/src/dsp)
+target_link_libraries(tg_vst3_tests PRIVATE juce::juce_audio_utils tg_engine)
 add_test(NAME tg_vst3 COMMAND tg_vst3_tests)
 
 # Not a test: a way to LOOK at the editor. The grid grows rows with the
@@ -68,8 +68,7 @@ add_test(NAME tg_vst3 COMMAND tg_vst3_tests)
 # is not something a build failure or an assertion is going to tell you about.
 juce_add_console_app(tg_shot PRODUCT_NAME "tg_shot")
 target_sources(tg_shot PRIVATE shot_editor.cpp)
-target_link_libraries(tg_shot PRIVATE TranceGate juce::juce_audio_utils)
-target_include_directories(tg_shot PRIVATE ${TG_ENGINE}/src/dsp)
+target_link_libraries(tg_shot PRIVATE TranceGate juce::juce_audio_utils tg_engine)
 target_compile_definitions(tg_shot PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
 
 # Not a runtime test: a guard that the design system's colours stay in one

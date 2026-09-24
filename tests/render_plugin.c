@@ -22,9 +22,10 @@
 /*
  * FNV-1a over the rendered bytes, so the A/B can be a REGISTERED TEST rather
  * than a pipe into md5 that somebody has to remember to type. The expected
- * value is the Move module's own reference render -- the same 4 seconds
- * tests/render_ref.c in the engine repo produces, whose md5 is
- * 8e4892aa8e3947594e91cf966f7ddc98.
+ * value is the Move module's own reference render -- the same four seconds of
+ * the same patch that tests/render_ref.c in the engine repo produces, whose
+ * md5 is 3992810c52d7962b4d25b3a30494ee2e. The hashes differ because the two
+ * render through different paths: int16 interleaved there, float split here.
  *
  * If this fires, the port changed the sound. Pipe both renderers to files and
  * `cmp` them: the first differing byte says which step.
@@ -35,7 +36,32 @@
 /* Re-recorded with the Width-relative stage units; the Move reference moved
  * with it, by the same 4-LSB conversion rounding and no more.
  * Previous: 0xF8D52B9F5E7FE171 */
-#define GOLDEN_FNV1A 0xA55438688E6363E5ULL
+/*
+ * Re-recorded 2026-09-24 with the Rust engine, and THIS ONE IS NOT A SOUND
+ * CHANGE -- it is the compiler flag leaving.
+ *
+ * The previous value was recorded from a clang build with FMA contraction on,
+ * clang's default: `a - b*c` fused into one instruction that does not round in
+ * the middle. Rust does not contract, so the same algorithm lands one LSB
+ * apart in a few hundred samples of the four seconds.
+ *
+ * Verified rather than assumed, because "the flag did it" is exactly what a
+ * real regression would like you to believe. Compiling the OLD C engine with
+ * -ffp-contract=off produces this hash exactly, and with contraction left on
+ * it produces the previous one:
+ *
+ *     C, clang default            0xA55438688E6363E5   <- was pinned here
+ *     C, -ffp-contract=off        0x13190E03DAB19715
+ *     Rust                        0x13190E03DAB19715
+ *
+ * The same thing happened to the engine repo's own golden render, which moved
+ * from 4264807b9e7da87844309fa48d0cc8a3 to 3992810c52d7962b4d25b3a30494ee2e
+ * for this reason and was re-measured on the Move itself. This reference's
+ * whole claim is "the plugin renders what the Move module renders", and the
+ * Move module is now the uncontracted build -- so the number HAD to move to
+ * go on being true.
+ * Previous: 0xA55438688E6363E5 */
+#define GOLDEN_FNV1A 0x13190E03DAB19715ULL
 
 static uint64_t fnv = 0xcbf29ce484222325ULL;
 static void fnv_add(const void *p, size_t n) {

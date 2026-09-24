@@ -1,5 +1,5 @@
 #pragma once
-#include "Phosphor.h"
+#include "Uv.h"
 
 /*
  * The design system as a JUCE LookAndFeel.
@@ -14,10 +14,10 @@
  * numbers out is the difference between a plugin that matches the system and
  * one that looks like it was drawn from a description of the system.
  */
-class PhosphorLookAndFeel : public juce::LookAndFeel_V4
+class UvLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    PhosphorLookAndFeel();
+    UvLookAndFeel();
 
     /* ---- knobs ---- */
     void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h,
@@ -56,7 +56,7 @@ public:
 
 private:
     /* Keeps the bundled faces alive exactly as long as an editor is open. */
-    juce::SharedResourcePointer<phosphor::font::Faces> faces;
+    juce::SharedResourcePointer<uv::font::Faces> faces;
 };
 
 /*
@@ -82,20 +82,20 @@ private:
  * Drawn in the system's idiom regardless: 1px hairline strokes in `ink`, the
  * same weight as the select caret, which is the only other glyph it allows.
  */
-class PhosphorGlyphButton : public juce::Button
+class UvGlyphButton : public juce::Button
 {
 public:
     enum class Glyph { copy, paste };
-    PhosphorGlyphButton (const juce::String& name, Glyph);
+    UvGlyphButton (const juce::String& name, Glyph);
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
 private:
     Glyph glyph;
 };
 
-class PhosphorReadout : public juce::Label
+class UvReadout : public juce::Label
 {
 public:
-    PhosphorReadout();
+    UvReadout();
     void paint (juce::Graphics&) override;
 };
