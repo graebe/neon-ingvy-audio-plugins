@@ -1,0 +1,22 @@
+# The Rust plugin, replacing the JUCE one.
+#
+# `external/` is EXCLUDED rather than a member: the engine submodule carries
+# its own workspace (tg-core, tg-capi, tg-move) with its own release profile
+# and its own aarch64 tuning in .cargo/config.toml. Pulling its crates in here
+# as members would silently apply this workspace's settings to the code that
+# ships on the Move, which is the one place it must not be built differently.
+[workspace]
+resolver = "2"
+members = ["crates/tg-plugin", "xtask"]
+exclude = ["external"]
+
+[profile.release]
+# A panic must not unwind out of the plugin into the host, for the same reason
+# it must not on the Move: it is undefined behaviour across the ABI, and an
+# abort is at least a crash the OS reports rather than a corrupted host stack.
+panic = "abort"
+lto = "thin"
+opt-level = 3
+
+[profile.dev]
+panic = "abort"

@@ -1,0 +1,5 @@
+# `cargo xtask bundle tg-plugin --release` builds the VST3 and CLAP bundles.
+# nih-plug ships its bundler as a library rather than a binary, because cargo
+# still cannot run a dependency's binary directly.
+[alias]
+xtask = "run --package xtask --release --"

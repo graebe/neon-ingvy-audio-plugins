@@ -1,0 +1,5 @@
+# What `cargo xtask bundle` calls the result. Without this the bundle would be
+# named after the crate -- "tg_plugin.vst3" -- and that is the name a user sees
+# in their plugin folder.
+[tg-plugin]
+name = "Trance Gate (Rust)"
