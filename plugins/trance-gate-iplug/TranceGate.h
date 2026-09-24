@@ -16,6 +16,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <atomic>
 
 const int kNumPresets = 1;
 
@@ -57,6 +58,59 @@ public:
   TranceGate(const InstanceInfo& info);
   ~TranceGate();
 
+/*
+ * THE MESSAGE TAGS, both directions.
+ *
+ * 0..kNumParams-1 are reserved for a parameter's DISPLAY STRING, tagged with
+ * the parameter's own index, so the UI needs no routing table for them.
+ * Everything else starts past that.
+ */
+enum EMsgTags
+{
+  kMsgUiState = 64,   /* -> UI: the engine's `ui` readout, once per frame   */
+  kMsgParams,         /* -> UI: the `params` readout (12 values + width_ms) */
+  kMsgScope,          /* -> UI: the signal capture, base64 floats           */
+  kMsgPatch,          /* <-> :  the state blob, for copy and paste          */
+
+  kMsgSetStep = 96,   /* <- UI: "<index>:<0 off|1 on|2 tie>"                */
+  kMsgSetDepth,       /* <- UI: "<index>:<0..1>"                            */
+  kMsgSetCursor,      /* <- UI: "<index>"                                   */
+  kMsgRequestPatch,   /* <- UI: send me the blob (Copy gate config)         */
+};
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* The UI holds normalised values and nothing else, so it cannot format a
+   * readout. This pushes the plugin's own display text for one parameter,
+   * tagged with that parameter's index -- which is why the UI never has to
+   * know a unit, a precision or an enum's labels. */
+  void SendDisplay(int paramIdx);
+  void OnParamChangeUI(int paramIdx, EParamSource source) override;
+  void OnUIOpen() override;
+
+  /* Once per frame while the editor is open: the pattern, the playhead, the
+   * step duration and the capture. Everything the plots and the ring draw
+   * that is not a host parameter. */
+  void OnIdle() override;
+  bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
+#endif
+
+  /*
+   * THE SCOPE'S CAPTURE, written on the audio thread and read on the message
+   * thread. One sweep is one pattern cycle, filling left to right and
+   * restarting on the wrap, so its x-axis is the pattern plot's.
+   *
+   * MIN AND MAX PER COLUMN, never a mean: a narrow gate is a fraction of a
+   * pixel at 128 steps and averaging would quietly report a signal that is
+   * not the one playing.
+   */
+  static constexpr int kScopeCols = 256;
+  struct Capture
+  {
+    std::atomic<float> dryLo[kScopeCols], dryHi[kScopeCols];
+    std::atomic<float> wetLo[kScopeCols], wetHi[kScopeCols];
+    std::atomic<int> filled{0};
+  };
+
   /* The pattern is not a parameter and never will be -- 128 steps across 8
    * slots is 1024 of them. It travels as the engine's own state blob, which
    * is the same text the Move module writes. */
@@ -77,6 +131,13 @@ private:
 #endif
 
   tg_core_t* mCore = nullptr;
+  Capture mCap;
+  /* The column being accumulated and its running bounds. Audio thread only. */
+  int mCapCol = -1;
+  float mCapDryLo = 0.f, mCapDryHi = 0.f, mCapWetLo = 0.f, mCapWetHi = 0.f;
+  std::vector<float> mDry;          /* the input, before the engine overwrites it */
+  void CaptureBlock(const float* dry, const float* wet, int frames,
+                    int totalFrames, double phase0, double phase1);
   /* iPlug2's `sample` is double and the engine's float path is the one the
    * golden render pins, so the block is converted rather than the engine
    * widened. Sized in OnReset; never resized on the audio thread. */

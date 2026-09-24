@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
 
 /*
  * The rate labels are the engine's, read from its own table rather than
@@ -76,6 +77,20 @@ TranceGate::TranceGate(const InstanceInfo& info)
   pct(GetParam(kSustain), "Sustain", 100.0, 0.0, 100.0);
   pct(GetParam(kRelease), "Release", 16.0, 0.0, kStageMaxPct);
 
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * A CUSTOM SCHEME, NOT file://. A WKWebView loading from file:// treats
+   * every asset as cross-origin and refuses the module script, so the editor
+   * comes up blank with the reason only in Safari's inspector.
+   */
+  SetCustomUrlScheme("tgate");
+  SetEnableDevTools(true);
+  mEditorInitFunc = [&]() {
+    LoadIndexHtml(__FILE__, GetBundleID());
+    EnableScroll(false);
+  };
+#endif
+
   MakeDefaultPreset("Default", kNumPresets);
 
 #if IPLUG_DSP
@@ -142,6 +157,7 @@ void TranceGate::OnReset()
   const size_t n = size_t(std::max(GetBlockSize(), 1));
   mL.assign(n, 0.0f);
   mR.assign(n, 0.0f);
+  mDry.assign(n, 0.0f);
 }
 
 void TranceGate::OnParamChange(int)
@@ -214,7 +230,18 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       mR[size_t(i)] = float(stereo ? inputs[1][off + i] : inputs[0][off + i]);
     }
 
-    tg_core_process_f32_split(mCore, mL.data(), mR.data(), n, &t);
+    /* The dry signal, before the engine overwrites it in place, and the pattern
+   * phase on BOTH sides of the block -- a block is not a point in time, and
+   * filing all of it at one end of itself makes the scope lag the gate it is
+   * drawn under. */
+  if ((int) mDry.size() >= n)
+    std::memcpy(mDry.data(), mL.data(), sizeof(float) * size_t(n));
+  const double phase0 = tg_core_phase01(mCore);
+
+  tg_core_process_f32_split(mCore, mL.data(), mR.data(), n, &t);
+
+  if ((int) mDry.size() >= n)
+    CaptureBlock(mDry.data(), mL.data(), n, n, phase0, tg_core_phase01(mCore));
 
     for (int i = 0; i < n; i++)
     {
@@ -231,3 +258,178 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 }
 
 #endif /* IPLUG_DSP */
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+
+void TranceGate::SendDisplay(int paramIdx)
+{
+  if (paramIdx < 0 || paramIdx >= kNumParams) return;
+  WDL_String str;
+  GetParam(paramIdx)->GetDisplay(str);
+  /* The tag IS the parameter index, so the UI needs no table to route it. */
+  SendArbitraryMsgFromDelegate(paramIdx, str.GetLength(), str.Get());
+}
+
+void TranceGate::OnParamChangeUI(int paramIdx, EParamSource source)
+{
+  SendDisplay(paramIdx);
+}
+
+/*
+ * ONE FRAME'S WORTH OF EVERYTHING THE UI DRAWS THAT IS NOT A PARAMETER.
+ *
+ * `ui` is the engine's own single read -- steps, ties, length, phase, step
+ * duration, whether the playhead is advancing, the cursor, and the per-step
+ * depths -- and `params` is the twelve automatable values plus width_ms at
+ * nine significant digits. Both exist precisely so a shell does not take one
+ * lock per fact, thirty times a second.
+ */
+void TranceGate::OnIdle()
+{
+  if (!mCore) return;
+
+  char buf[TG_STATE_MAX];
+  if (tg_core_get_param(mCore, "ui", buf, int(sizeof buf)) > 0)
+    SendArbitraryMsgFromDelegate(kMsgUiState, int(strlen(buf)), buf);
+  if (tg_core_get_param(mCore, "params", buf, int(sizeof buf)) > 0)
+    SendArbitraryMsgFromDelegate(kMsgParams, int(strlen(buf)), buf);
+
+  /*
+   * THE SCOPE, AS TEXT. Four bands of 256 columns is 1024 floats; sent as a
+   * compact decimal string rather than base64 because the JS side then needs
+   * no decoder, and at 30 frames a second the difference is not measurable
+   * against the WebView's own message overhead.
+   */
+  const int filled = mCap.filled.load(std::memory_order_acquire);
+  if (filled > 0)
+  {
+    WDL_String scope;
+    scope.SetFormatted(16, "%d", filled);
+    for (int i = 0; i < filled && i < kScopeCols; i++)
+      scope.AppendFormatted(64, ":%.3f,%.3f,%.3f,%.3f",
+                            mCap.dryLo[i].load(std::memory_order_relaxed),
+                            mCap.dryHi[i].load(std::memory_order_relaxed),
+                            mCap.wetLo[i].load(std::memory_order_relaxed),
+                            mCap.wetHi[i].load(std::memory_order_relaxed));
+    SendArbitraryMsgFromDelegate(kMsgScope, scope.GetLength(), scope.Get());
+  }
+}
+
+/*
+ * Pad edits, and the patch. None of these is a host parameter -- the pattern
+ * is 128 steps across 8 slots and exposing it would be 1024 of them -- so
+ * they arrive here instead and go straight into the engine's string door.
+ */
+bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
+{
+  if (!mCore) return false;
+  std::string arg(static_cast<const char*>(pData), size_t(dataSize > 0 ? dataSize : 0));
+
+  switch (msgTag)
+  {
+    case kMsgSetCursor:
+      tg_core_set_param(mCore, "cursor", arg.c_str());
+      return true;
+
+    /* "<index>:<mode>" -- the cursor moves first because `step` edits
+     * whatever the cursor is on. Off/On/Tie is three-state rather than two
+     * because a tie is not a separate property of a step, it is the third
+     * thing a step can be. */
+    case kMsgSetStep:
+    case kMsgSetDepth:
+    {
+      const auto colon = arg.find(':');
+      if (colon == std::string::npos) return true;
+      const std::string idx = arg.substr(0, colon);
+      const std::string val = arg.substr(colon + 1);
+      tg_core_set_param(mCore, "cursor", idx.c_str());
+      tg_core_set_param(mCore, msgTag == kMsgSetStep ? "step" : "step_amount",
+                        val.c_str());
+      return true;
+    }
+
+    case kMsgPatch:               /* paste */
+      if (!arg.empty()) tg_core_set_param(mCore, "state", arg.c_str());
+      return true;
+
+    case kMsgRequestPatch:        /* copy */
+    {
+      char blob[TG_STATE_MAX];
+      if (tg_core_get_param(mCore, "state", blob, int(sizeof blob)) > 0)
+        SendArbitraryMsgFromDelegate(kMsgPatch, int(strlen(blob)), blob);
+      return true;
+    }
+    default: return false;   /* not ours -- let the base class see it */
+  }
+}
+
+void TranceGate::OnUIOpen()
+{
+  /*
+   * PUSH EVERYTHING ONCE WHEN THE EDITOR OPENS.
+   *
+   * iPlug2 sends the twelve VALUES on open by itself, but not the twelve
+   * STRINGS -- so without this the knobs would come up at the right angles
+   * with empty readouts, and stay that way until each one was touched.
+   */
+  /* QUALIFIED for the same reason the constructor is: under the CLAP target
+   * an unqualified `Plugin` is clap::helpers::Plugin, which has no OnUIOpen. */
+  iplug::Plugin::OnUIOpen();
+  for (int i = 0; i < kNumParams; i++)
+    SendDisplay(i);
+}
+
+#endif
+
+/*
+ * One block into the sweep. The column comes from the engine's own pattern
+ * phase, so the sweep is locked to the music rather than to wall time -- a
+ * scope triggered by the pattern.
+ *
+ * EACH SAMPLE IS PLACED WHERE IT HAPPENED. The phase is linear in time across
+ * a block, so interpolating between the two ends is exact. Filing the whole
+ * block under one column instead made every value arrive a block late, and on
+ * a rising edge a late reading is a lower one -- the band climbed visibly
+ * slower than the gate curve drawn over it, by 0.4 of full scale at a 512
+ * sample buffer.
+ */
+void TranceGate::CaptureBlock(const float* dry, const float* wet, int frames,
+                              int totalFrames, double phase0, double phase1)
+{
+  if (frames <= 0 || totalFrames <= 0) return;
+
+  double span = phase1 - phase0;
+  if (span < 0.0) span += 1.0;              /* the pattern wrapped */
+  if (span < 0.0 || span > 1.0) span = 0.0;
+  const double step = span / double(totalFrames);
+
+  for (int i = 0; i < frames; i++)
+  {
+    double p = phase0 + step * double(i);
+    if (p >= 1.0) p -= 1.0;
+    int col = int(p * double(kScopeCols));
+    if (col < 0) col = 0;
+    if (col >= kScopeCols) col = kScopeCols - 1;
+
+    if (col != mCapCol)
+    {
+      if (mCapCol >= 0)
+      {
+        mCap.dryLo[mCapCol].store(mCapDryLo, std::memory_order_relaxed);
+        mCap.dryHi[mCapCol].store(mCapDryHi, std::memory_order_relaxed);
+        mCap.wetLo[mCapCol].store(mCapWetLo, std::memory_order_relaxed);
+        mCap.wetHi[mCapCol].store(mCapWetHi, std::memory_order_relaxed);
+        mCap.filled.store(mCapCol + 1, std::memory_order_release);
+      }
+      if (col < mCapCol)                    /* a new sweep: show the whole one */
+        mCap.filled.store(kScopeCols, std::memory_order_release);
+      mCapCol = col;
+      mCapDryLo = mCapDryHi = dry[i];
+      mCapWetLo = mCapWetHi = wet[i];
+    }
+    if (dry[i] < mCapDryLo) mCapDryLo = dry[i];
+    if (dry[i] > mCapDryHi) mCapDryHi = dry[i];
+    if (wet[i] < mCapWetLo) mCapWetLo = wet[i];
+    if (wet[i] > mCapWetHi) mCapWetHi = wet[i];
+  }
+}

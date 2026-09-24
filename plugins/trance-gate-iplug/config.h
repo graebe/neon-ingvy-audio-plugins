@@ -29,7 +29,18 @@
 #define PLUG_COPYRIGHT_STR "Copyright 2026 Torben Gräber"
 #define PLUG_CLASS_NAME TranceGate
 
-#define BUNDLE_NAME "Trance Gate"
+/*
+ * BUNDLE_NAME MUST BE THE BUNDLE'S ACTUAL NAME, not the plugin's display
+ * name. iPlug2 builds the bundle identifier from DOMAIN.MFR.type.NAME and
+ * looks the bundle up by it to find the Cocoa view; the CMake target is
+ * TranceGateIP, so the bundle is com.graebe.audiounit.TranceGateIP. With
+ * "Trance Gate" here the lookup returned NULL and CFBundleCopyBundleURL
+ * segfaulted the host the moment anything asked for the editor -- auval died
+ * with SIGSEGV at "VERIFYING CUSTOM UI" and Logic would have too.
+ *
+ * PLUG_NAME above is what a user sees; this is what the filesystem sees.
+ */
+#define BUNDLE_NAME "TranceGateIP"
 #define BUNDLE_MFR "graebe"
 #define BUNDLE_DOMAIN "com"
 
@@ -51,12 +62,13 @@
  * what makes a patch portable between the two. */
 #define PLUG_DOES_STATE_CHUNKS 1
 
-/* NO EDITOR YET. The processor lands first so that every format can be built
- * and validated before a single pixel is drawn; the old editor is 2,600 lines
- * of juce::Graphics and its replacement is a separate decision. */
-#define PLUG_HAS_UI 0
-#define PLUG_WIDTH 1000
-#define PLUG_HEIGHT 700
+/* A WEBVIEW EDITOR. The UI is a Solid app in ui/, built by Vite into
+ * resources/web and copied into the bundle. It is not a stylistic choice:
+ * the same markup is what a browser build would run, which is the direction
+ * the rest of this project is pointed. */
+#define PLUG_HAS_UI 1
+#define PLUG_WIDTH 900
+#define PLUG_HEIGHT 560
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 0

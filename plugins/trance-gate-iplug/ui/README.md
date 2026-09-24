@@ -1,0 +1,40 @@
+# The editor
+
+A [Solid](https://solidjs.com) app built by Vite into `../resources/web`,
+loaded by iPlug2's WebView editor over a custom URL scheme. MIT, like
+everything else here.
+
+```
+npm install
+npm run build        # -> ../resources/web, which CMake globs into the bundle
+npm run dev          # live-reload; point mEditorInitFunc at localhost:5173
+```
+
+**It is a port of the JUCE editor, not a redesign.** Every colour, space and
+size in `src/uv.css` is carried over from `Uv.h` in the last JUCE commit
+(`7711ba2`), including the comments that say what a token is *for* — which a
+hex triplet cannot.
+
+## What talks to what
+
+The UI holds **normalised values and nothing else**. The plugin owns every
+real range, every unit and every display string, and pushes them:
+
+| tag | direction | carries |
+|---|---|---|
+| `0..11` | → UI | one parameter's display text, tagged with its own index |
+| `64` | → UI | the engine's `ui` readout: steps, ties, length, phase, ms/step, cursor, depths |
+| `65` | → UI | the `params` readout: the twelve values and `width_ms` |
+| `66` | → UI | the scope capture, four bands of 256 columns |
+| `67` | ↔ | the patch blob, for Copy and Paste gate config |
+| `96..98` | → plugin | a step's mode, a step's amount, the cursor |
+| `99` | → plugin | send me the patch |
+
+A parameter goes back through `SPVFUI`, bracketed by `BPCFUI`/`EPCFUI` so a
+drag is **one** gesture and the host records one undo step rather than a
+hundred.
+
+The pattern is deliberately **not** a parameter: 128 steps across 8 slots
+would be 1024 of them. It travels as the engine's own state blob, which is the
+same text the Move module writes — which is what makes a patch portable
+between the two.

@@ -10,11 +10,15 @@ set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/external/iPlug2 CACHE PATH "iPlug2 root")
 include(${IPLUG2_DIR}/iPlug2.cmake)
 find_package(iPlug2 REQUIRED)
 
-# UI NONE, for now, and it is a placeholder rather than a decision. The old
-# editor is ~2,600 lines of juce::Graphics; its replacement is either iPlug2's
-# own IGraphics or a web UI in a WebView (the macro takes UI WEBVIEW and
-# WEB_RESOURCES for exactly that). Landing the processor first means every
-# format can be built and validated before a pixel is drawn.
+# The editor is a Solid + Vite app in ui/, built into resources/web. Run
+# `npm --prefix ui run build` after changing it; the glob below is what iPlug2
+# copies into the bundle, and a file that is not globbed simply does not
+# arrive -- a blank editor with no error anywhere.
+file(GLOB TG_WEB
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/*.html"
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/fonts/*")
+
 iplug_add_plugin(TranceGateIP
   SOURCES
     TranceGate.cpp
@@ -27,12 +31,7 @@ iplug_add_plugin(TranceGateIP
   # loads, and CLAP costs nothing now the SDK is in place.
   FORMATS
     VST3 CLAP AU
-  UI NONE
-  # UI NONE drops the graphics LIBRARY but not the HEADER selection:
-  # IPlugDelegate_select.h still reaches for IGraphicsEditorDelegate.h unless
-  # NO_IGRAPHICS is defined, and the error names neither the macro nor the UI
-  # argument.
-  DEFINES
-    NO_IGRAPHICS
+  UI WEBVIEW
+  WEB_RESOURCES ${TG_WEB}
   LINK
     tg_engine)
