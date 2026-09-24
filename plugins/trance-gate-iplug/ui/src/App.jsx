@@ -13,7 +13,7 @@
  * Absolutely positioned rather than flexed, because those numbers ARE the
  * design -- a flex layout that happens to look close is a different drawing.
  */
-import { createSignal, onMount } from 'solid-js';
+import { createSignal, createEffect, onMount } from 'solid-js';
 import { onParam, onMessage, sendMessage, MSG } from './lib/iplug.js';
 import Knob from './lib/Knob.jsx';
 import Ring from './lib/Ring.jsx';
@@ -88,9 +88,19 @@ export default function App() {
 
   const playStep = () => Math.floor(ui().phase) % Math.max(1, ui().length);
 
-  /* The ring's centre is the window's one readout-size number: the step
-   * duration, which is what the whole pattern is measured in. */
-  const centre = () => ui().msStep ? ui().msStep.toFixed(0) : '—';
+  /* The grid wraps at 16, so 128 steps is eight rows. The UI reports the
+   * count because it is the side that lays the grid out; the plugin turns it
+   * into a window height. */
+  let lastRows = 0;
+  createEffect(() => {
+    const rows = Math.max(1, Math.ceil(ui().length / 16));
+    if (rows !== lastRows) { lastRows = rows; sendMessage(MSG.rows, String(rows)); }
+  });
+
+  /* The window's one readout-size number. The Ring card has the COUNT in the
+   * middle and the knob that changes it elsewhere -- which is exactly this
+   * arrangement, not a duplication to avoid. */
+  const centre = () => String(ui().length);
 
   const stageText = (i) => {
     const p = params();
@@ -101,28 +111,26 @@ export default function App() {
 
   return (
     <main>
-      <div class="ring-col">
+      {/* LEFT COLUMN: the ring, and the envelope plot ALWAYS under it. The
+        * envelope is not tabbed and never was -- the tabs choose between
+        * Pattern and Signal in the band further down. */}
+      <div class="ring-slot">
         <Ring size={240} length={ui().length} steps={ui().steps}
               playhead={playStep()} moving={ui().moving}
-              centre={centre()} label="MS / STEP" />
-        <Tabs tabs={['ENVELOPE', 'PATTERN', 'SIGNAL']} active={tab()} onSelect={setTab} />
+              centre={centre()} label="STEPS" />
+      </div>
+      <div class="env-plot-slot">
+        <EnvelopePlot params={params()} steps={ui().length} />
       </div>
 
-      <div class="plot-slot">
-        {tab() === 0 && <EnvelopePlot params={params()} steps={ui().length} />}
-        {tab() === 1 && <PatternPlot length={ui().length} steps={ui().steps}
-                                     ties={ui().ties} depths={ui().depths}
-                                     playhead={playStep()} moving={ui().moving} />}
-        {tab() === 2 && <Scope scope={scope()} length={ui().length} />}
-      </div>
-
+      {/* Rate, Length, Amount, Width -- the panel's own order. */}
       <section class="panel gate-panel">
         <h2 class="t-title">GATE</h2>
         <div class="knob-row">
+          <Knob idx={P.rate}   label="Rate"   value={vals()[P.rate]}   display={text()[P.rate]} />
+          <Knob idx={P.length} label="Length" value={vals()[P.length]} display={text()[P.length]} />
           <Knob idx={P.amount} label="Amount" value={vals()[P.amount]} display={text()[P.amount]} />
           <Knob idx={P.width}  label="Width"  value={vals()[P.width]}  display={text()[P.width]} />
-          <Knob idx={P.length} label="Length" value={vals()[P.length]} display={text()[P.length]} />
-          <Knob idx={P.rate}   label="Rate"   value={vals()[P.rate]}   display={text()[P.rate]} />
         </div>
       </section>
 
@@ -136,14 +144,15 @@ export default function App() {
         </div>
       </section>
 
-      {/* ALL OF IT IN ONE ROW: these were spread over the window and wasted
-        * the space; together they read as what they are, the settings that
-        * are not knobs. */}
+      {/* ONE ROW, left to right. It fits because the two config actions are
+        * glyphs rather than the words that needed a second row. */}
       <div class="settings-row">
-        <Select idx={P.slot} options={SLOTS} width={96} label="Slot" />
+        <Select idx={P.slot} options={SLOTS} width={96} />
         <Switch idx={P.legato} label="Join Neighbors" value={vals()[P.legato]} />
-        <Select idx={P.curve} options={CURVES} width={124} label="Curve" />
-        <Select idx={P.timeMode} options={TIME_MODES} width={88} label="Env" />
+        <Select idx={P.curve} options={CURVES} label="Curve" labelWidth={44} width={124}
+                value={vals()[P.curve]} />
+        <Select idx={P.timeMode} options={TIME_MODES} label="Time" labelWidth={36} width={88}
+                value={vals()[P.timeMode]} />
         <span class="spacer" />
         <GlyphButton glyph="copy" title="Copy gate config"
                      onClick={() => sendMessage(MSG.requestPatch)} />
@@ -154,6 +163,19 @@ export default function App() {
                      }} />
       </div>
 
+      {/* THE TWO PLOTS OCCUPY THE SAME BAND -- only one is visible at a time
+        * -- and the tabs that choose between them take a 24px strip off its
+        * right edge. */}
+      <div class="band">
+        <div class="band-plot">
+          {tab() === 0 && <PatternPlot length={ui().length} steps={ui().steps}
+                                       ties={ui().ties} depths={ui().depths}
+                                       playhead={playStep()} moving={ui().moving} />}
+          {tab() === 1 && <Scope scope={scope()} length={ui().length} />}
+        </div>
+        <Tabs tabs={['Pattern', 'Signal']} active={tab()} onSelect={setTab} />
+      </div>
+
       <div class="grid-slot">
         <StepGrid length={ui().length} steps={ui().steps} ties={ui().ties}
                   depths={ui().depths} cursor={ui().cursor}
@@ -161,9 +183,9 @@ export default function App() {
       </div>
 
       <HintBar clauses={[
-        ['click', 'toggles a step'],
-        ['shift-click', 'ties it'],
-        ['drag', 'its amount — all the way down turns it off'],
+        ['click', 'a step to toggle'],
+        ['shift-click', 'for a tie'],
+        ['drag', 'up or down for its amount'],
       ]} />
     </main>
   );

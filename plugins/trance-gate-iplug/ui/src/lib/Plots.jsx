@@ -27,6 +27,39 @@ function Well(props) {
   );
 }
 
+
+/*
+ * THE GATE, MIRRORED ABOUT THE CENTRELINE -- not a line rising from the
+ * floor. `half` is 0.94 of the half-height on purpose: a fully open gate
+ * drawn at 1.0 lands exactly on the well's frame and reads as the border
+ * rather than as a value.
+ *
+ * A KEYLINE FIRST, THEN THE LINE. Over the scope's dry band there is no
+ * brightness left to separate a gate at 1.0 from the audio it crosses -- at
+ * hair weight it simply vanishes into the band's top edge. Cutting the well's
+ * own ground in behind the stroke gives the gate its own edge against
+ * whatever it happens to cross.
+ */
+function Gate(props) {
+  const path = (sign) => {
+    const v = props.values;
+    if (!v || v.length < 2) return '';
+    const mid = H / 2, half = (H - 2 * INSET) * 0.5 * 0.94;
+    return v.map((y, i) => {
+      const x = INSET + (W - 2 * INSET) * (i / (v.length - 1));
+      return `${i ? 'L' : 'M'} ${x.toFixed(2)} ${(mid - sign * half * Math.min(1, Math.max(0, y))).toFixed(2)}`;
+    }).join(' ');
+  };
+  return (
+    <>
+      <path d={path(1)} fill="none" stroke="var(--bg-000)" stroke-width="4" />
+      <path d={path(-1)} fill="none" stroke="var(--bg-000)" stroke-width="4" />
+      <path d={path(1)} fill="none" stroke="var(--uv)" stroke-opacity="0.85" stroke-width="2" />
+      <path d={path(-1)} fill="none" stroke="var(--uv)" stroke-opacity="0.85" stroke-width="2" />
+    </>
+  );
+}
+
 /*
  * THE ENVELOPE, one gate's worth.
  *
@@ -35,48 +68,40 @@ function Well(props) {
  * survives a change of rate instead of being cut off by it.
  */
 export function EnvelopePlot(props) {
-  const path = createMemo(() => {
+  const values = createMemo(() => {
     const p = props.params;
-    if (!p) return '';
+    if (!p) return [];
     const { attack, decay, sustain, release, width, curve } = p;
-    /* Each stage as a fraction of the whole step; width is how much of the
-     * step the gate is open at all. */
     const a = Math.max(0, attack) / 100 * width;
     const d = Math.max(0, decay) / 100 * width;
     const r = Math.max(0, release) / 100 * width;
-    const x = (t) => PAD + (W - 2 * PAD) * Math.min(1, Math.max(0, t));
-    const y = (v) => H - PAD - (H - 2 * PAD) * Math.min(1, Math.max(0, v));
-
-    /* The curve's warp, matching env_shape in the engine: linear, exponential,
-     * and an s-curve built from two exponentials. */
+    /* env_shape in the engine: linear, exponential, and an s-curve built
+     * from two exponentials. */
     const K = 3.0, DEN = 1 - Math.exp(-K);
     const shape = (t) =>
       curve === 1 ? (1 - Math.exp(-K * t)) / DEN
-      : curve === 2 ? (t < 0.5
-          ? 0.5 * (1 - Math.exp(-K * 2 * t)) / DEN
-          : 1 - 0.5 * (1 - Math.exp(-K * 2 * (1 - t))) / DEN)
+      : curve === 2 ? (t < 0.5 ? 0.5 * (1 - Math.exp(-K * 2 * t)) / DEN
+                               : 1 - 0.5 * (1 - Math.exp(-K * 2 * (1 - t))) / DEN)
       : t;
-
-    const pts = [];
-    const seg = (t0, t1, v0, v1, n = 24) => {
-      for (let i = 0; i <= n; i++) {
-        const u = i / n;
-        pts.push([x(t0 + (t1 - t0) * u), y(v0 + (v1 - v0) * shape(u))]);
-      }
-    };
-    let t = 0;
-    seg(t, t + a, 0, 1); t += a;
-    seg(t, t + d, 1, sustain); t += d;
-    const holdTo = Math.max(t, width);
-    pts.push([x(holdTo), y(sustain)]);
-    seg(holdTo, holdTo + r, sustain, 0);
-    pts.push([x(1), y(0)]);
-    return pts.map(([px, py], i) => `${i ? 'L' : 'M'} ${px.toFixed(2)} ${py.toFixed(2)}`).join(' ');
+    const N = 240, out = [];
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1);
+      let v;
+      if (t < a)                 v = shape(a > 0 ? t / a : 1);
+      else if (t < a + d)        v = 1 - (1 - sustain) * shape(d > 0 ? (t - a) / d : 1);
+      else if (t < Math.max(a + d, width)) v = sustain;
+      else if (t < Math.max(a + d, width) + r) {
+        const s0 = Math.max(a + d, width);
+        v = sustain * (1 - shape(r > 0 ? (t - s0) / r : 1));
+      } else v = 0;
+      out.push(v);
+    }
+    return out;
   });
 
   return (
     <Well steps={props.steps} caption="ENVELOPE   ONE GATE">
-      <path d={path()} fill="none" stroke="var(--uv)" stroke-width="2" />
+      <Gate values={values()} />
     </Well>
   );
 }

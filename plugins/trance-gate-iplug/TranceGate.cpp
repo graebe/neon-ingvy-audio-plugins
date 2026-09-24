@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <cstdlib>
+#include <algorithm>
 
 /*
  * The rate labels are the engine's, read from its own table rather than
@@ -351,6 +353,44 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
     case kMsgPatch:               /* paste */
       if (!arg.empty()) tg_core_set_param(mCore, "state", arg.c_str());
       return true;
+
+    /*
+     * TYPING IN A READOUT. The UI holds normalised values and no units, so it
+     * cannot parse "40 ms" -- the plugin owns the format in both directions
+     * and is the only side that can. StringToValue is the same parser the
+     * host uses for a typed automation value.
+     */
+    case kMsgSetText:
+    {
+      const auto colon = arg.find(':');
+      if (colon == std::string::npos) return true;
+      const int idx = std::atoi(arg.substr(0, colon).c_str());
+      if (idx < 0 || idx >= kNumParams) return true;
+      const double v = GetParam(idx)->StringToValue(arg.substr(colon + 1).c_str());
+      /* Through the host, not straight into the parameter: a typed value is
+       * an edit like any other and belongs in the undo history and the
+       * automation lane. */
+      BeginInformHostOfParamChangeFromUI(idx);
+      SendParameterValueFromUI(idx, GetParam(idx)->ToNormalized(v));
+      EndInformHostOfParamChangeFromUI(idx);
+      SendDisplay(idx);
+      return true;
+    }
+
+    /*
+     * THE WINDOW GROWS WITH LENGTH. The grid wraps at 16, so 128 steps is
+     * eight rows; without this, seven of them are below the bottom edge.
+     * The UI reports the row count because it is the side that lays the grid
+     * out, and the arithmetic here is the JUCE editor's heightFor().
+     */
+    case kMsgRows:
+    {
+      const int rows = std::max(1, std::atoi(arg.c_str()));
+      const int h = 568 + rows * 40 + (rows - 1) * 8 + 24 + 28;
+      if (h != GetEditorHeight())
+        EditorResizeFromUI(GetEditorWidth(), h, true);
+      return true;
+    }
 
     case kMsgRequestPatch:        /* copy */
     {

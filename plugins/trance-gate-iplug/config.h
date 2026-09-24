@@ -80,7 +80,8 @@
 #define PLUG_HEIGHT 660
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
-#define PLUG_HOST_RESIZE 0
+/* The window grows with Length -- see kMsgRows. */
+#define PLUG_HOST_RESIZE 1
 
 #define AUV2_ENTRY TranceGate_Entry
 #define AUV2_ENTRY_STR "TranceGate_Entry"

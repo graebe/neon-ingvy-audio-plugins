@@ -28,6 +28,20 @@ export default function StepGrid(props) {
      * looked like the pad had half-failed. Shift cycles into Tie. */
     if (e.shiftKey) setStep(i, on && !tie ? 2 : 1);
     else setStep(i, on ? 0 : 1);
+
+    /*
+     * ACTIVATING A DEAD PAD GIVES IT ITS FULL AMOUNT.
+     *
+     * The amount is independent of the on/off mask, so a pad dragged down to
+     * 20% once came back at 20% every time it was switched on again -- which
+     * reads as the click having half-worked.
+     *
+     * Only on OFF -> ON: On<->Tie changes what a live step does rather than
+     * activating a dead one, and switching OFF must not discard an amount
+     * that was set on purpose.
+     */
+    if (!on) setDepth(i, 1);
+
     setDrag({ i, el: e.currentTarget, moved: false });
   };
 

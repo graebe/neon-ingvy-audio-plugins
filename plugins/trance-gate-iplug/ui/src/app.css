@@ -18,14 +18,16 @@ main {
 }
 
 /* ring column: (32, 32, 240, 240), tabs under it */
-.ring-col { position: absolute; left: 32px; top: 32px; width: 240px; }
+.ring-slot { position: absolute; left: 32px; top: 32px; width: 240px; height: 240px; }
+/* The envelope plot is ALWAYS here, under the ring. It is not tabbed. */
+.env-plot-slot { position: absolute; left: 32px; top: 296px; width: 240px; height: 104px; }
 .ring { display: block; }
 .ring-centre { fill: var(--ink); }
 .ring-label  { fill: var(--ink-muted); }
 
 /* envelope/pattern/signal plot: (32, 296, 240, 104) -- but the strip is the
  * full left column, so the plot spans it. */
-.plot-slot { position: absolute; left: 32px; top: 296px; width: 240px; }
+
 .plot { width: 100%; height: 104px; display: block; }
 .plot-caption { fill: var(--ink-muted); }
 
@@ -62,15 +64,27 @@ main {
   box-shadow: 0 0 0 1px var(--uv), 0 0 8px var(--uv-glow);
 }
 
+/*
+ * THE BAND: the two plots occupy it, one at a time, and the tabs take a 24px
+ * strip off its RIGHT edge with space-2 between.
+ */
+.band {
+  position: absolute; left: 32px; top: 460px;
+  width: 760px; height: 92px;
+  display: flex; gap: var(--s2);
+}
+.band-plot { flex: 1; min-width: 0; }
+.band-plot .plot { width: 100%; height: 92px; }
+
 /* settings row: y 424, h 28 */
 .settings-row {
   position: absolute; left: 32px; top: 424px; width: 760px;
   height: var(--control-h);
-  display: flex; align-items: flex-end; gap: var(--s6);
+  display: flex; align-items: center; gap: var(--s6);
 }
 .spacer { flex: 1; }
-.select-card { display: flex; flex-direction: column; gap: var(--s1); }
-.select-label { color: var(--ink-muted); }
+.select-group { display: flex; align-items: center; gap: var(--s2); }
+.select-label { color: var(--ink-muted); white-space: nowrap; }
 .select {
   position: relative; height: var(--control-h);
   background: var(--bg-200); border: 1px solid var(--line-200);
@@ -114,16 +128,25 @@ main {
 .glyph:hover { background: var(--bg-300); border-color: var(--ink-dim); }
 .glyph:active { background: var(--uv); border-color: var(--uv); color: var(--on-uv); }
 
-/* tabs, 24px tall, under the ring */
-.tabs { display: flex; margin-top: var(--s2); }
+/*
+ * TABS: a vertical strip, 24 wide, each tab an equal share of the height.
+ * The text is rotated a quarter turn so it reads bottom-to-top, which is how
+ * a tab on a right edge is read.
+ */
+.tabs { display: flex; flex-direction: column; width: 24px; }
 .tab {
-  flex: 1; height: 24px;
-  background: var(--bg-200); border: 1px solid var(--line-100);
-  color: var(--ink-dim); font-family: inherit; cursor: pointer;
+  flex: 1; width: 24px; padding: 0;
+  background: var(--bg-200); border: 1px solid var(--line-200);
+  color: var(--ink-muted); font-family: inherit; cursor: pointer;
   border-radius: var(--radius);
+  display: grid; place-items: center;
 }
-.tab:hover { background: var(--bg-300); color: var(--ink-muted); }
-.tab.on { background: var(--bg-300); color: var(--ink); border-color: var(--line-200); }
+.tab:hover { background: var(--bg-300); }
+.tab.on { background: var(--uv); border-color: var(--uv); color: var(--on-uv); }
+.tab-text {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  text-transform: uppercase; white-space: nowrap;
+}
 
 /* ------------------------------------------------------------ pads -- */
 .grid-slot { margin-left: 32px; }
@@ -159,8 +182,10 @@ main {
 .pad.cursor { outline: 1px solid var(--ink); outline-offset: 2px; }
 
 /* -------------------------------------------------------- hint bar -- */
+/* "The Hint bar pinned to the bottom edge" -- flush, not inside the window
+ * padding, with its rule along the top. */
 .hint-bar {
-  margin: var(--s6) 32px 0; width: 760px; height: 28px;
+  margin-top: var(--s6); width: 100%; height: 28px;
   display: flex; justify-content: center; align-items: baseline;
   border-top: 1px solid var(--line-100); padding-top: var(--s3);
   color: var(--ink-muted);

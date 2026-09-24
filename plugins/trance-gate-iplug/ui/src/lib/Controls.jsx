@@ -38,9 +38,17 @@ export function Select(props) {
   const n = () => props.options.length;
   const idx = () => Math.round((props.value ?? 0) * (n() - 1));
   return (
-    <label class="select-card" style={props.width ? { width: `${props.width}px` } : undefined}>
-      <Show when={props.label}><span class="select-label t-label">{props.label}</span></Show>
-      <div class="select" classList={{ open: open() }}>
+    /* The label is BESIDE the select, on the same 28px row -- these say how
+     * the envelope is measured or drawn rather than what its values are, and
+     * the envelope panel's four knobs leave no room for either. */
+    <div class="select-group">
+      <Show when={props.label}>
+        <span class="select-label t-label" style={{ width: `${props.labelWidth ?? 44}px` }}>
+          {props.label}
+        </span>
+      </Show>
+      <div class="select" classList={{ open: open() }}
+           style={{ width: `${props.width ?? 124}px` }}>
         <span class="select-value t-value">{props.options[idx()]}</span>
         <svg class="chevron" width="8" height="6" viewBox="0 0 8 6">
           <path d="M1 1 L4 4 L7 1" fill="none" stroke="var(--ink-muted)" stroke-width="1" />
@@ -53,7 +61,7 @@ export function Select(props) {
           <For each={props.options}>{(o, i) => <option value={i()}>{o}</option>}</For>
         </select>
       </div>
-    </label>
+    </div>
   );
 }
 
@@ -79,12 +87,22 @@ export function GlyphButton(props) {
   );
 }
 
+/*
+ * A VERTICAL STRIP ON THE BAND'S RIGHT EDGE, 24px wide, each tab a block of
+ * the height divided evenly -- `band.removeFromRight(UvTabs::width)`.
+ *
+ * The text is rotated a quarter turn so it reads BOTTOM-TO-TOP, which is the
+ * way a tab on a right edge is read. The lit one is a uv fill with onUv text
+ * and glow-led, like every other lit thing in the system.
+ */
 export function Tabs(props) {
   return (
     <div class="tabs">
       <For each={props.tabs}>{(t, i) => (
-        <button class="tab t-hint" classList={{ on: props.active === i() }}
-                onClick={() => props.onSelect(i())}>{t}</button>
+        <button class="tab" classList={{ on: props.active === i(), 'glow-led': props.active === i() }}
+                onClick={() => props.onSelect(i())}>
+          <span class="tab-text t-hint">{t}</span>
+        </button>
       )}</For>
     </div>
   );

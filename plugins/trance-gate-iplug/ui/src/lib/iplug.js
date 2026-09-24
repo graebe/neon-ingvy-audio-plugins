@@ -37,6 +37,7 @@ export const endGesture = (paramIdx) =>
 export const MSG = {
   uiState: 64, params: 65, scope: 66, patch: 67,
   setStep: 96, setDepth: 97, setCursor: 98, requestPatch: 99,
+  setText: 100, rows: 101,
 };
 
 /* SAMFUI carries its payload base64-encoded; the plugin decodes before it

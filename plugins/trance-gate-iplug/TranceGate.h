@@ -76,6 +76,8 @@ enum EMsgTags
   kMsgSetDepth,       /* <- UI: "<index>:<0..1>"                            */
   kMsgSetCursor,      /* <- UI: "<index>"                                   */
   kMsgRequestPatch,   /* <- UI: send me the blob (Copy gate config)         */
+  kMsgSetText,        /* <- UI: "<paramIdx>:<typed text>"                   */
+  kMsgRows,           /* <- UI: the grid's row count, for the window height */
 };
 
 #ifdef WEBVIEW_EDITOR_DELEGATE

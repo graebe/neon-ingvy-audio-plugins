@@ -9,7 +9,7 @@
  * drawing at 64. The rail runs 270 degrees with the gap at the bottom.
  */
 import { createSignal } from 'solid-js';
-import { setParam, beginGesture, endGesture } from './iplug.js';
+import { setParam, beginGesture, endGesture, sendMessage, MSG } from './iplug.js';
 
 const BOX = 48;
 const START = 135, SWEEP = 270;          /* degrees, gap at the bottom */
@@ -19,6 +19,11 @@ export default function Knob(props) {
   let el;
   const [editing, setEditing] = createSignal(false);
   const norm = () => Math.min(1, Math.max(0, props.value ?? 0));
+
+  /* THE PLUGIN PARSES IT, not the UI. "40 ms" needs the unit, the range and
+   * the width the stage is measured against, and the UI holds none of them --
+   * it would have to guess, and a guess here silently moves the patch. */
+  const commitText = (text) => sendMessage(MSG.setText, `${props.idx}:${text}`);
 
   const onPointerDown = (e) => {
     if (e.detail === 2) {                /* double-click resets */
@@ -105,9 +110,9 @@ export default function Knob(props) {
         <input
           class="readout editing t-value" autofocus
           value={props.display ?? ''}
-          onBlur={(e) => { setEditing(false); props.onText?.(e.currentTarget.value); }}
+          onBlur={(e) => { setEditing(false); commitText(e.currentTarget.value); }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { setEditing(false); props.onText?.(e.currentTarget.value); }
+            if (e.key === 'Enter') { setEditing(false); commitText(e.currentTarget.value); }
             if (e.key === 'Escape') setEditing(false);
           }}
         />
