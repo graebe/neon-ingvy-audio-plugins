@@ -363,11 +363,4 @@ cargo run -p music-core --example chord    # roots, sets, and naming them
 
 ## License
 
-Copyright © 2026 Torben Gräber.
-
-Licensed under the GNU General Public License, version 3 or later. See
-[LICENSE](../LICENSE) for the full text, or <https://www.gnu.org/licenses/gpl-3.0>.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE.
+Copyright © 2026 Torben Gräber. Released under the [MIT License](../LICENSE).
