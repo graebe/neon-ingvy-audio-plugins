@@ -86,15 +86,53 @@ export default function App() {
     });
   });
 
+  /* The stage percentages come from `params` and the step duration from
+   * `ui`; the plots need both, so they are merged once here. */
+  const plotParams = () => {
+    const p = params();
+    return p ? { ...p, msStep: ui().msStep } : null;
+  };
+
   const playStep = () => Math.floor(ui().phase) % Math.max(1, ui().length);
 
+  /*
+   * THE DESIGN IS 824 WIDE AND IS SCALED TO WHATEVER VIEWPORT IT GETS.
+   *
+   * It is a fixed layout -- the JUCE window was 824 and grew only in height
+   * -- and the WebView does not necessarily hand us 824 CSS pixels. In Live
+   * it hands us fewer, and the page simply overflowed: the GATE panel cut off
+   * after Length, the settings row after Time, and six of the sixteen pads
+   * were past the right edge. Reproduced at a 560px viewport in a browser,
+   * which is how the cause was found rather than guessed.
+   *
+   * Scaling keeps every proportion and every one of the original's numbers
+   * intact, which laying the design out fluidly would not.
+   */
+  const DESIGN_W = 824;
+  const fit = () => {
+    const el = document.querySelector('main');
+    if (!el) return;
+    const k = Math.max(0.1, (window.innerWidth || DESIGN_W) / DESIGN_W);
+    el.style.transformOrigin = 'top left';
+    el.style.transform = `scale(${k})`;
+    return k;
+  };
+
   /* The grid wraps at 16, so 128 steps is eight rows. The UI reports the
-   * count because it is the side that lays the grid out; the plugin turns it
-   * into a window height. */
-  let lastRows = 0;
+   * height it needs -- in the viewport's own pixels, so the scale above is
+   * already accounted for -- and the plugin resizes the window to it. */
+  let lastSent = '';
   createEffect(() => {
     const rows = Math.max(1, Math.ceil(ui().length / 16));
-    if (rows !== lastRows) { lastRows = rows; sendMessage(MSG.rows, String(rows)); }
+    const k = fit() ?? 1;
+    const designH = 568 + rows * 40 + (rows - 1) * 8 + 24 + 28;
+    const msg = String(Math.ceil(designH * k));
+    if (msg !== lastSent) { lastSent = msg; sendMessage(MSG.rows, msg); }
+  });
+
+  onMount(() => {
+    fit();
+    window.addEventListener('resize', fit);
   });
 
   /* The window's one readout-size number. The Ring card has the COUNT in the
@@ -120,7 +158,7 @@ export default function App() {
               centre={centre()} label="STEPS" />
       </div>
       <div class="env-plot-slot">
-        <EnvelopePlot params={params()} steps={ui().length} />
+        <EnvelopePlot params={plotParams()} w={240} h={104} />
       </div>
 
       {/* Rate, Length, Amount, Width -- the panel's own order. */}
@@ -170,8 +208,9 @@ export default function App() {
         <div class="band-plot">
           {tab() === 0 && <PatternPlot length={ui().length} steps={ui().steps}
                                        ties={ui().ties} depths={ui().depths}
+                                       params={plotParams()} w={728} h={92}
                                        playhead={playStep()} moving={ui().moving} />}
-          {tab() === 1 && <Scope scope={scope()} length={ui().length} />}
+          {tab() === 1 && <Scope scope={scope()} length={ui().length} w={728} h={92} />}
         </div>
         <Tabs tabs={['Pattern', 'Signal']} active={tab()} onSelect={setTab} />
       </div>

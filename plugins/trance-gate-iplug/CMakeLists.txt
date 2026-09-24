@@ -14,20 +14,32 @@ find_package(iPlug2 REQUIRED)
 # `npm --prefix ui run build` after changing it; the glob below is what iPlug2
 # copies into the bundle, and a file that is not globbed simply does not
 # arrive -- a blank editor with no error anywhere.
-# BUILD THE UI BEFORE GLOBBING IT. Without this the glob picks up whatever
-# resources/web happened to contain, so an edit to ui/src reached the plugin
-# only if somebody remembered to run vite -- and a stale editor looks exactly
-# like a broken one.
+# BUILD THE UI BEFORE GLOBBING IT.
+#
+# execute_process runs at CONFIGURE time, which is not the same as build time
+# -- `cmake --build` then never re-ran vite, and the plugin shipped whatever
+# resources/web last contained. An edit to ui/src reached the bundle only if
+# somebody also re-ran cmake, and a stale editor looks exactly like a broken
+# one. That cost an hour: the scale fix was in the source and not in the
+# bundle, and the rendered page disproved a change that had never been built.
+#
+# So: configure-time once (so the glob below has something to find), and a
+# build-time target that every format depends on.
 find_program(TG_NPM npm)
 if (TG_NPM)
   execute_process(
     COMMAND ${TG_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
-    RESULT_VARIABLE TG_UI_RESULT
-    OUTPUT_QUIET ERROR_QUIET)
+    RESULT_VARIABLE TG_UI_RESULT OUTPUT_QUIET ERROR_QUIET)
   if (NOT TG_UI_RESULT EQUAL 0)
-    message(WARNING "The editor did not build; resources/web may be stale. "
-                    "Run: npm --prefix plugins/trance-gate-iplug/ui install")
+    message(WARNING "The editor did not build; run: "
+                    "npm --prefix plugins/trance-gate-iplug/ui install")
   endif()
+
+  add_custom_target(TranceGateUI ALL
+    COMMAND ${TG_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Building the editor (vite)"
+    VERBATIM)
 else()
   message(WARNING "npm not found -- using whatever is already in resources/web")
 endif()
@@ -53,3 +65,13 @@ iplug_add_plugin(TranceGateIP
   WEB_RESOURCES ${TG_WEB}
   LINK
     tg_engine)
+
+# The bundle's web resources are copied by each format target, so each of them
+# must wait for vite rather than race it.
+if (TARGET TranceGateUI)
+  foreach(fmt vst3 clap au)
+    if (TARGET TranceGateIP-${fmt})
+      add_dependencies(TranceGateIP-${fmt} TranceGateUI)
+    endif()
+  endforeach()
+endif()

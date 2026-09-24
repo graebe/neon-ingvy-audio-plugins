@@ -385,9 +385,11 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
      */
     case kMsgRows:
     {
-      const int rows = std::max(1, std::atoi(arg.c_str()));
-      const int h = 568 + rows * 40 + (rows - 1) * 8 + 24 + 28;
-      if (h != GetEditorHeight())
+      /* The UI sends the height it needs, already in the viewport's own
+       * pixels -- it is the side that knows both the row count and the scale
+       * it had to apply to fit the width it was given. */
+      const int h = std::atoi(arg.c_str());
+      if (h > 100 && h < 4000 && h != GetEditorHeight())
         EditorResizeFromUI(GetEditorWidth(), h, true);
       return true;
     }
