@@ -2,7 +2,7 @@
 name = "tg-plugin"
 version = "1.0.0"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "Trance Gate -- a tempo-locked step gate with a per-step ADSR"
 authors = ["graebe"]
 

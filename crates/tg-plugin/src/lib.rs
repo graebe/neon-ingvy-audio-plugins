@@ -1,6 +1,15 @@
 /*!
 Trance Gate — the Ableton Live plugin.
 
+Copyright (C) 2026 Torben Graeber. **GPL-3.0-or-later**: this program is free
+software, redistributable and modifiable under the GNU General Public License
+as published by the Free Software Foundation, either version 3 or (at your
+option) any later version, and distributed WITHOUT ANY WARRANTY. See `LICENSE`
+at the repository root.
+
+The licence is not a preference. nih-plug's VST3 bindings are GPLv3, so the
+binary this crate produces has to be.
+
 The DSP is [`tg_core`], the same crate the Schwung module on the Move builds
 into its `.so`, pinned here by submodule commit. This crate is the host side of
 it: twelve automatable parameters, the transport, and the patch.

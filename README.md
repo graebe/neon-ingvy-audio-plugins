@@ -50,10 +50,16 @@ and are copied to `~/Library/Audio/Plug-Ins/`.
 
 ## Licence
 
-The plugin is **GPLv3** — JUCE and the VST3 SDK are GPLv3-or-commercial, and
-this satisfies both. The shared engine
-([schwung-trance-gate](https://github.com/graebe/schwung-trance-gate)) stays
-**MIT**: the GPL flows to the plugin binary, not back into the engine.
+Everything here is **GPL-3.0-or-later**: the plugin, `crates/tg-plugin`, the
+`xtask` bundler, and the shared engine
+([schwung-trance-gate](https://github.com/graebe/schwung-trance-gate)), which
+was MIT until this build moved to nih-plug.
+
+Three separate things require it and any one would be enough. JUCE and the
+VST3 SDK are GPLv3-or-commercial. **nih-plug's VST3 bindings are GPLv3**, and
+`tg-core` is linked into that binary. The engine could have stayed MIT and
+still been compatible — permissive code may be taken into a GPL work — but one
+licence across the project beats a rule about which crate may be used where.
 
 The bundled typeface is **JetBrains Mono**, © 2020 The JetBrains Mono Project
 Authors, under the **SIL Open Font License 1.1** — the licence text ships
