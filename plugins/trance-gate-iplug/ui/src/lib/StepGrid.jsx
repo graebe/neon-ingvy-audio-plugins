@@ -6,13 +6,13 @@
  * GROWS ROWS rather than the window -- a 128-step pattern wraps instead of
  * shrinking each pad to a sliver.
  */
-import { For, createSignal } from 'solid-js';
+import { For } from 'solid-js';
 import { sendMessage, MSG } from './iplug.js';
+import { startDrag } from './drag.js';
 
 const COLS = 16, STEP = 40, GAP = 8;
 
 export default function StepGrid(props) {
-  const [drag, setDrag] = createSignal(null);
   const n = () => Math.max(1, props.length ?? 16);
   const rows = () => Math.max(1, Math.ceil(n() / COLS));
 
@@ -30,35 +30,30 @@ export default function StepGrid(props) {
     else setStep(i, on ? 0 : 1);
 
     /*
-     * ACTIVATING A DEAD PAD GIVES IT ITS FULL AMOUNT.
-     *
-     * The amount is independent of the on/off mask, so a pad dragged down to
-     * 20% once came back at 20% every time it was switched on again -- which
-     * reads as the click having half-worked.
-     *
-     * Only on OFF -> ON: On<->Tie changes what a live step does rather than
-     * activating a dead one, and switching OFF must not discard an amount
-     * that was set on purpose.
+     * ACTIVATING A DEAD PAD GIVES IT ITS FULL AMOUNT. The amount is
+     * independent of the on/off mask, so a pad dragged down to 20% came back
+     * at 20% every time it was switched on again -- which reads as the click
+     * having half-worked. OFF -> ON only: On<->Tie changes what a live step
+     * does, and switching off must not discard an amount set on purpose.
      */
     if (!on) setDepth(i, 1);
 
-    setDrag({ i, el: e.currentTarget, moved: false });
-  };
-
-  const onMove = (e) => {
-    const dg = drag();
-    if (!dg) return;
-    const b = dg.el.getBoundingClientRect();
-    /* A CLICK IS NOT A DRAG, however much the hand shakes. */
-    if (!dg.moved) {
-      if (Math.abs(e.clientY - (b.top + b.height / 2)) < 4) return;
-      setDrag({ ...dg, moved: true });
-    }
-    const amt = 1 - (e.clientY - b.top) / b.height;
-    /* ZERO MEANS OFF: dragging a pad to the floor deactivates it rather than
-     * leaving a step that is on and silent. */
-    if (amt <= 0.02) setStep(dg.i, 0);
-    else { if (!props.steps?.[dg.i]) setStep(dg.i, 1); setDepth(dg.i, amt); }
+    const box = e.currentTarget.getBoundingClientRect();
+    let moved = false;
+    /* On the window, so the amount keeps following the pointer once it
+     * leaves the 40px pad -- which a vertical drag does almost at once. */
+    startDrag((ev) => {
+      /* A CLICK IS NOT A DRAG, however much the hand shakes. */
+      if (!moved) {
+        if (Math.abs(ev.clientY - (box.top + box.height / 2)) < 4) return;
+        moved = true;
+      }
+      const amt = 1 - (ev.clientY - box.top) / box.height;
+      /* ZERO MEANS OFF: dragging a pad to the floor deactivates it rather
+       * than leaving a step that is on and silent. */
+      if (amt <= 0.02) setStep(i, 0);
+      else { if (!props.steps?.[i]) setStep(i, 1); setDepth(i, amt); }
+    });
   };
 
   const cls = (i) => {
@@ -74,9 +69,7 @@ export default function StepGrid(props) {
   };
 
   return (
-    <div class="grid" onPointerMove={onMove}
-         onPointerUp={() => setDrag(null)} onPointerLeave={() => setDrag(null)}
-         style={{ width: `${COLS * STEP + (COLS - 1) * GAP}px` }}>
+    <div class="grid" style={{ width: `${COLS * STEP + (COLS - 1) * GAP}px` }}>
       <For each={Array.from({ length: rows() }, (_, r) => r)}>{(r) => (
         <div class="grid-row">
           <For each={Array.from({ length: Math.min(COLS, n() - r * COLS) },

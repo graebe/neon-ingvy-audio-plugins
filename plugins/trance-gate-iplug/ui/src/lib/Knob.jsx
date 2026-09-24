@@ -10,6 +10,7 @@
  */
 import { createSignal } from 'solid-js';
 import { setParam, beginGesture, endGesture, sendMessage, MSG } from './iplug.js';
+import { startDrag } from './drag.js';
 
 const BOX = 48;
 const START = 135, SWEEP = 270;          /* degrees, gap at the bottom */
@@ -36,17 +37,12 @@ export default function Knob(props) {
     const divisor = e.shiftKey ? TRAVEL * FINE : TRAVEL;
     const startY = e.clientY, startV = norm();
     beginGesture(props.idx);
-    el.setPointerCapture(e.pointerId);
-    const move = (ev) =>
-      setParam(props.idx, Math.min(1, Math.max(0, startV + (startY - ev.clientY) / divisor)));
-    const up = (ev) => {
-      el.releasePointerCapture(ev.pointerId);
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      endGesture(props.idx);
-    };
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
+    /* Tracked on the window, so the value keeps following the pointer once it
+     * leaves the knob -- which is most of a real drag. */
+    startDrag(
+      (ev) => setParam(props.idx,
+                       Math.min(1, Math.max(0, startV + (startY - ev.clientY) / divisor))),
+      () => endGesture(props.idx));
   };
 
   const pt = (r, deg) => {

@@ -106,6 +106,11 @@ enum EMsgTags
    * not the one playing.
    */
   static constexpr int kScopeCols = 256;
+  /* The transport TRUNCATES rather than fails past this, so every push has to
+   * fit under it with base64's extra third accounted for. Raised from
+   * iPlug2's 8192 default and asserted against at the one call that can
+   * approach it. */
+  static constexpr int kMaxJSString = 65536;
   struct Capture
   {
     std::atomic<float> dryLo[kScopeCols], dryHi[kScopeCols];

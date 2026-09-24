@@ -18,7 +18,7 @@ import { onParam, onMessage, sendMessage, MSG } from './lib/iplug.js';
 import Knob from './lib/Knob.jsx';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
-import { EnvelopePlot, PatternPlot, Scope } from './lib/Plots.jsx';
+import { EnvelopePlot, PatternPlot, Scope, gateAt } from './lib/Plots.jsx';
 import { Switch, Select, GlyphButton, Tabs, HintBar } from './lib/Controls.jsx';
 
 const P = { slot: 0, length: 1, rate: 2, legato: 3, timeMode: 4, curve: 5,
@@ -79,8 +79,22 @@ export default function App() {
                            release: +f[11], widthMs: +f[12] });
       }
       if (tag === MSG.scope) {
-        const f = msg.split(':');
-        return setScope(f.slice(1).map((c) => c.split(',').map(Number)));
+        /* "<filled>:<4 hex pairs per column>" -- a byte per bound, which is
+         * finer than the plot can draw and seven times smaller than the
+         * "%.3f" text it replaced. That text was ~9.6 KB base64 against an
+         * 8192-byte transport that truncates rather than fails, so the sweep
+         * lost its tail every frame. */
+        const c = msg.indexOf(':');
+        if (c < 0) return;
+        const filled = Math.max(0, Math.min(256, parseInt(msg.slice(0, c), 10) || 0));
+        const hex = msg.slice(c + 1);
+        const out = new Array(filled);
+        for (let i = 0; i < filled; i++) {
+          const o = i * 8;
+          const v = (k) => (parseInt(hex.substr(o + k * 2, 2), 16) || 0) / 127.5 - 1;
+          out[i] = [v(0), v(1), v(2), v(3)];
+        }
+        return setScope(out);
       }
       if (tag === MSG.patch) navigator.clipboard?.writeText(msg);
     });
@@ -91,6 +105,23 @@ export default function App() {
   const plotParams = () => {
     const p = params();
     return p ? { ...p, msStep: ui().msStep } : null;
+  };
+
+  /* The gate the scope draws over the audio: the same quantity the pattern
+   * plot shows, so switching between the two compares like with like. */
+  const patternGate = () => {
+    const p = plotParams();
+    if (!p) return [];
+    const n = Math.max(1, ui().length);
+    const out = [];
+    for (let s = 0; s < n; s++) {
+      const on = !!ui().steps?.[s];
+      const amt = on ? (ui().depths?.[s] ?? 1) : 0;
+      const held = on && !!ui().ties?.[s];
+      for (let k = 0; k < 16; k++)
+        out.push(on ? (held ? amt : amt * gateAt(p, k / 16)) : 0);
+    }
+    return out;
   };
 
   const playStep = () => Math.floor(ui().phase) % Math.max(1, ui().length);
@@ -210,7 +241,8 @@ export default function App() {
                                        ties={ui().ties} depths={ui().depths}
                                        params={plotParams()} w={728} h={92}
                                        playhead={playStep()} moving={ui().moving} />}
-          {tab() === 1 && <Scope scope={scope()} length={ui().length} w={728} h={92} />}
+          {tab() === 1 && <Scope scope={scope()} length={ui().length} w={728} h={92}
+                                 gate={patternGate()} />}
         </div>
         <Tabs tabs={['Pattern', 'Signal']} active={tab()} onSelect={setTab} />
       </div>

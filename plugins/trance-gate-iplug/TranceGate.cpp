@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cassert>
+#include <cmath>
 #include <string>
 #include <cstdlib>
 #include <algorithm>
@@ -85,6 +87,7 @@ TranceGate::TranceGate(const InstanceInfo& info)
    * every asset as cross-origin and refuses the module script, so the editor
    * comes up blank with the reason only in Safari's inspector.
    */
+  SetMaxJSStringLength(kMaxJSString);
   SetCustomUrlScheme("tgate");
   SetEnableDevTools(true);
   mEditorInitFunc = [&]() {
@@ -297,23 +300,52 @@ void TranceGate::OnIdle()
     SendArbitraryMsgFromDelegate(kMsgParams, int(strlen(buf)), buf);
 
   /*
-   * THE SCOPE, AS TEXT. Four bands of 256 columns is 1024 floats; sent as a
-   * compact decimal string rather than base64 because the JS side then needs
-   * no decoder, and at 30 frames a second the difference is not measurable
-   * against the WebView's own message overhead.
+   * THE SCOPE, AS HEX BYTES — AND THE SIZE IS THE WHOLE POINT.
+   *
+   * SendArbitraryMsgFromDelegate formats through
+   * WDL_String::SetFormatted(mMaxJSStringLength, ...), which TRUNCATES at
+   * 8192 by default. Four floats per column at "%.3f" is ~28 bytes, so 256
+   * columns is ~7.2 KB of text and ~9.6 KB once base64 has inflated it by a
+   * third -- every frame was silently cut off part way through the sweep, and
+   * the symptom was a signal plot that never reached its right-hand edge.
+   *
+   * Three decimals of float is absurd for a +/-1 waveform sampled at one
+   * pixel per column. A byte per bound is finer than the plot can draw:
+   * 4 bytes a column, 1 KB for the sweep, ~1.4 KB base64. Bounded by
+   * construction rather than by a limit somebody has to remember.
    */
   const int filled = mCap.filled.load(std::memory_order_acquire);
   if (filled > 0)
   {
-    WDL_String scope;
-    scope.SetFormatted(16, "%d", filled);
+    static const char* kHex = "0123456789ABCDEF";
+    /* 4 hex pairs per column, plus the count and a separator. */
+    char scope[kScopeCols * 8 + 16];
+    int n = snprintf(scope, sizeof scope, "%d:", filled);
+
+    auto put = [&](float v) {
+      /* -1..1 -> 0..255, clamped: the plot cannot draw past the well edge
+       * anyway, and a NaN from an uninitialised column must not become a
+       * random byte. */
+      const float c = std::isfinite(v) ? std::fmin(1.f, std::fmax(-1.f, v)) : 0.f;
+      const int b = int((c + 1.f) * 127.5f + 0.5f);
+      scope[n++] = kHex[(b >> 4) & 0xF];
+      scope[n++] = kHex[b & 0xF];
+    };
+
     for (int i = 0; i < filled && i < kScopeCols; i++)
-      scope.AppendFormatted(64, ":%.3f,%.3f,%.3f,%.3f",
-                            mCap.dryLo[i].load(std::memory_order_relaxed),
-                            mCap.dryHi[i].load(std::memory_order_relaxed),
-                            mCap.wetLo[i].load(std::memory_order_relaxed),
-                            mCap.wetHi[i].load(std::memory_order_relaxed));
-    SendArbitraryMsgFromDelegate(kMsgScope, scope.GetLength(), scope.Get());
+    {
+      put(mCap.dryLo[i].load(std::memory_order_relaxed));
+      put(mCap.dryHi[i].load(std::memory_order_relaxed));
+      put(mCap.wetLo[i].load(std::memory_order_relaxed));
+      put(mCap.wetHi[i].load(std::memory_order_relaxed));
+    }
+    scope[n] = '\0';
+
+    /* The guard the old code lacked. Base64 costs a third on top, and the
+     * transport truncates rather than fails -- so a payload that outgrows the
+     * cap would go back to losing its tail in silence. */
+    assert(n * 4 / 3 + 32 < kMaxJSString);
+    SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
 }
 

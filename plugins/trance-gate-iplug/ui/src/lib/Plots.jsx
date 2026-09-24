@@ -9,23 +9,20 @@
  */
 import { For, createMemo } from 'solid-js';
 
+
+/*
+ * plot::inset and plot::captionH, named here as they are named there.
+ */
 const INSET = 6, CAPTION = 14;
 
-/* The well: bg-000 ground, a line-100 hairline, and the caption in hint style
- * at (inset, 12). The content area is inset all round with CAPTION off the
- * top. */
+/* plot::well -- bg-000 ground, a line-100 hairline, and the caption in hint
+ * style. The content area is inset all round with CAPTION off the top. */
 function Well(props) {
-  const w = () => props.w, h = () => props.h;
   return (
-    <svg class="plot" width={w()} height={h()} viewBox={`0 0 ${w()} ${h()}`}>
-      <rect x="0.5" y="0.5" width={w() - 1} height={h() - 1}
+    <svg class="plot" width={props.w} height={props.h}
+         viewBox={`0 0 ${props.w} ${props.h}`}>
+      <rect x="0.5" y="0.5" width={props.w - 1} height={props.h - 1}
             fill="var(--bg-000)" stroke="var(--line-100)" />
-      {/* Step rules, thinning out as the count rises so they never crowd. */}
-      <For each={Array.from({ length: Math.min(props.steps ?? 16, 64) }, (_, i) => i)}>{(i) => {
-        const x = INSET + (w() - 2 * INSET) * (i / Math.max(1, props.steps ?? 16));
-        return <line x1={x} y1={CAPTION} x2={x} y2={h() - INSET}
-                     stroke="var(--line-100)" />;
-      }}</For>
       {props.children}
       {props.caption &&
         <text class="plot-caption t-hint" x={INSET} y="11">{props.caption}</text>}
@@ -34,21 +31,151 @@ function Well(props) {
 }
 
 /*
- * THE GATE, MIRRORED ABOUT THE CENTRELINE -- not a line rising from the
- * floor. `half` is 0.94 of the half-height on purpose: a gate drawn at 1.0
- * lands exactly on the well's frame and reads as the border rather than as a
- * value.
+ * plot::steps, BOTH LAYERS, and they are separate because they are painted at
+ * different times: the rules sit UNDER the audio so a transient is never
+ * hidden by a rule, and the numbers go over it "so a number is never
+ * swallowed by the audio".
  *
- * A KEYLINE FIRST, THEN THE LINE. Over the scope's dry band there is no
- * brightness left to separate a gate at 1.0 from the audio it crosses -- at
- * hair weight it vanishes into the band's top edge.
+ * A rule marks the BOUNDARY between steps -- x = left + w*i for i = 1..n-1 --
+ * which is why dividing the whole well by the step count put them in the
+ * wrong place.
+ */
+const RULE_MIN = 6;      /* below this a rule per step is a comb */
+const NUMBER_MIN = 14;   /* below this the numbers touch */
+
+function StepRules(props) {
+  const cells = () => {
+    const n = props.count;
+    if (!(n >= 1) || props.w <= 0) return [];
+    const w = (props.w - 2 * INSET) / n;
+    const perStep = w >= RULE_MIN;
+    const out = [];
+    for (let i = 1; i < n; i++) {
+      const bar = i % 16 === 0, beat = i % 4 === 0;
+      /* Bars and beats survive at any density -- they are what keeps a long
+       * pattern readable. */
+      if (!perStep && !bar && !beat) continue;
+      out.push({ x: INSET + w * i, bar });
+    }
+    return out;
+  };
+  return (
+    <For each={cells()}>{(c) => (
+      <line x1={c.x} x2={c.x} y1={props.top} y2={props.bottom}
+            stroke={c.bar ? 'var(--line-200)' : 'var(--line-100)'} />
+    )}</For>
+  );
+}
+
+function StepNumbers(props) {
+  const cells = () => {
+    const n = props.count;
+    if (!(n >= 1) || props.w <= 0) return [];
+    const w = (props.w - 2 * INSET) / n;
+    if (w < NUMBER_MIN) return [];
+    return Array.from({ length: n }, (_, i) => ({ i, x: INSET + w * i + 2 }));
+  };
+  return (
+    <For each={cells()}>{(c) => (
+      <text class="t-hint step-number" x={c.x} y={props.top + 10}>{c.i + 1}</text>
+    )}</For>
+  );
+}
+
+/*
+ * MIN/MAX PER SCREEN PIXEL, never a mean or a pick.
+ *
+ * A narrow gate is a fraction of a pixel at 128 steps, so sampling one value
+ * per column would quietly report a signal that is not the one playing. This
+ * is plot::decimate: every source value inside a pixel contributes, and what
+ * survives is the pair that bounds them.
+ */
+function decimate(values, cols) {
+  const n = values.length;
+  if (n === 0 || cols <= 0) return [];
+  const out = new Array(cols);
+  for (let x = 0; x < cols; x++) {
+    const a = Math.floor((x * n) / cols);
+    const b = Math.max(a + 1, Math.floor(((x + 1) * n) / cols));
+    let lo = Infinity, hi = -Infinity;
+    for (let i = a; i < b && i < n; i++) {
+      const v = values[i];
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    out[x] = lo === Infinity ? [0, 0] : [lo, hi];
+  }
+  return out;
+}
+
+/*
+ * TWO RENDERERS, AND THE DIFFERENCE IS DELIBERATE.
+ *
+ * `Curve` is the envelope's: ONE-SIDED, a filled region rising from the
+ * floor. `Gate` is the scope's: MIRRORED about the centreline with a keyline
+ * behind it, because there it is drawn OVER a waveform and needs its own edge
+ * against whatever it crosses.
+ *
+ * Using the mirrored one for both is what made the envelope plot look like a
+ * waveform rather than an envelope.
+ */
+
+/*
+ * plot Curve: `under` filled in uv-glow, the `hull` stroked in uv at rail
+ * weight, and below `floor` everything is lit whatever the gate does --
+ * because the gate never closes past Amount, and an envelope drawn as though
+ * it reached zero would be lying about what you hear.
+ */
+function Curve(props) {
+  const geom = () => {
+    const v = props.values;
+    if (!v || v.length < 2) return null;
+    const top = props.top, bot = props.bottom;
+    const floor = Math.min(1, Math.max(0, props.floor ?? 0));
+    /* m = floor + (1 - floor)*g is affine in g, so the floor is a squash of
+     * the unit box onto the part of the plot above it. */
+    const h = (bot - top) * (1 - floor);
+    const x = (i) => INSET + (props.w - 2 * INSET) * (i / (v.length - 1));
+    const y = (g) => top + h * (1 - Math.min(1, Math.max(0, g)));
+    const hull = v.map((g, i) => `${i ? 'L' : 'M'} ${x(i).toFixed(2)} ${y(g).toFixed(2)}`).join(' ');
+    return {
+      hull,
+      under: `${hull} L ${x(v.length - 1).toFixed(2)} ${(top + h).toFixed(2)} L ${x(0).toFixed(2)} ${(top + h).toFixed(2)} Z`,
+      floorY: top + h,
+      hasFloor: floor > 0,
+    };
+  };
+  return (
+    <>
+      {geom() && (
+        <>
+          {geom().hasFloor && (
+            <rect x={INSET} y={geom().floorY} width={props.w - 2 * INSET}
+                  height={Math.max(0, props.bottom - geom().floorY)}
+                  fill="var(--uv-glow)" />
+          )}
+          <path d={geom().under} fill="var(--uv-glow)" stroke="none" />
+          <path d={geom().hull} fill="none" stroke="var(--uv)" stroke-width="2" />
+        </>
+      )}
+    </>
+  );
+}
+
+/*
+ * plot drawGate: mirrored about the centreline at 0.94 of the half-height --
+ * a gate drawn at 1.0 lands exactly on the well's frame and reads as the
+ * border rather than as a value. A bg-000 keyline first, then the line, since
+ * over the dry band there is no brightness left to separate them.
+ *
+ * The SCOPE only.
  */
 function Gate(props) {
   const path = (sign) => {
     const v = props.values;
     if (!v || v.length < 2) return '';
-    const top = CAPTION, bot = props.h - INSET;
-    const mid = (top + bot) / 2, half = (bot - top) * 0.5 * 0.94;
+    const mid = (props.top + props.bottom) / 2;
+    const half = (props.bottom - props.top) * 0.5 * 0.94;
     return v.map((y, i) => {
       const x = INSET + (props.w - 2 * INSET) * (i / (v.length - 1));
       return `${i ? 'L' : 'M'} ${x.toFixed(2)} ${(mid - sign * half * Math.min(1, Math.max(0, y))).toFixed(2)}`;
@@ -77,7 +204,7 @@ const shape = (curve, t) => {
 
 /* One gate's gain over one STEP, 0..1 of the step. The stages are
  * percentages of the gate's WIDTH, which is how the engine stores them. */
-function gateAt(p, t) {
+export function gateAt(p, t) {
   const a = Math.max(0, p.attack) / 100 * p.width;
   const d = Math.max(0, p.decay) / 100 * p.width;
   const r = Math.max(0, p.release) / 100 * p.width;
@@ -124,6 +251,7 @@ export function EnvelopePlot(props) {
     return {
       msStep, hold, attackMs, decayMs, releaseMs, gateMs, releaseAtMs, spanMs,
       sustain: Math.min(1, Math.max(0, p.sustain)), curve: p.curve,
+      amount: Math.min(1, Math.max(0, p.amount ?? 1)),
       /* The release ran past the step's end -- the next gate will cut it. */
       truncated: releaseAtMs + releaseMs > msStep + 1e-6,
       /* The gate closed before the decay finished, so the solid curve alone
@@ -170,11 +298,14 @@ export function EnvelopePlot(props) {
       {env() && (() => {
         const sh = env();
         const top = CAPTION, bot = boxBottom();
-        const mid = (top + bot) / 2, half = (bot - top) * 0.5 * 0.94;
-        const yAt = (v) => mid - half * Math.min(1, Math.max(0, v));
+        /* One mapping for the curve, the ghost and the dots alike: they must
+         * agree, or the markers float off the line they mark. */
+        const yAt = (v) => top + hFloor * (1 - Math.min(1, Math.max(0, v)));
         const path = (vals, sign) => vals.map((v, i) =>
           `${i ? 'L' : 'M'} ${xAt(i / (vals.length - 1)).toFixed(2)} ${(mid - sign * half * Math.min(1, Math.max(0, v))).toFixed(2)}`).join(' ');
 
+        const floor = 1 - Math.min(1, Math.max(0, sh.amount ?? 1));
+        const hFloor = (bot - top) * (1 - floor);
         const aEnd = sh.attackMs, dEnd = sh.attackMs + sh.decayMs;
         const rEnd = sh.gateMs + sh.releaseMs;
         /* A stage the gate never reached did not happen, so it gets no
@@ -188,6 +319,8 @@ export function EnvelopePlot(props) {
         const segs = [['A', 0, aEnd], ['D', aEnd, dEnd],
                       ['S', dEnd, sh.gateMs], ['R', sh.gateMs, rEnd]];
         const g = samples(true), gh = samples(false);
+        const ghPath = () => gh.map((v, i) =>
+          `${i ? 'L' : 'M'} ${(INSET + (props.w - 2 * INSET) * (i / (gh.length - 1))).toFixed(2)} ${(top + hFloor * (1 - Math.min(1, Math.max(0, v)))).toFixed(2)}`).join(' ');
 
         return (
           <>
@@ -201,12 +334,14 @@ export function EnvelopePlot(props) {
               * line is the decay you asked for; the solid one is what the
               * gate leaves of it. */}
             {sh.early && (
-              <path d={path(gh, 1)} fill="none" stroke="var(--ink-dim)" stroke-width="1" />
+              <path d={ghPath()} fill="none" stroke="var(--ink-dim)" stroke-width="1" />
             )}
-            <path d={path(g, 1)}  fill="none" stroke="var(--bg-000)" stroke-width="4" />
-            <path d={path(g, -1)} fill="none" stroke="var(--bg-000)" stroke-width="4" />
-            <path d={path(g, 1)}  fill="none" stroke="var(--uv)" stroke-opacity="0.85" stroke-width="2" />
-            <path d={path(g, -1)} fill="none" stroke="var(--uv)" stroke-opacity="0.85" stroke-width="2" />
+            {/* ONE-SIDED, with the Amount floor: the gate never closes past
+              * Amount, so everything below 1 - amount is lit whatever it
+              * does. An envelope drawn as though it reached zero would be
+              * lying about what you hear. */}
+            <Curve values={g} w={props.w} top={top} bottom={bot}
+                   floor={floor} />
 
             <For each={dots}>{(ms) => (
               <circle cx={xAt(ms / sh.spanMs)} cy={yAt(levelAt(sh, ms))} r="2.5"
@@ -287,12 +422,12 @@ function Axis(props) {
  * shows and reading them against each other is the point of the two views.
  */
 export function PatternPlot(props) {
+  const n = () => Math.max(1, props.length ?? 16);
   const values = createMemo(() => {
     const p = props.params;
-    const n = Math.max(1, props.length ?? 16);
     if (!p) return [];
     const perStep = 24, out = [];
-    for (let s = 0; s < n; s++) {
+    for (let s = 0; s < n(); s++) {
       const on = !!props.steps?.[s];
       const amt = on ? (props.depths?.[s] ?? 1) : 0;
       /* A tie holds through: the gate does not close at the step's edge. */
@@ -302,16 +437,21 @@ export function PatternPlot(props) {
     }
     return out;
   });
-  const n = () => Math.max(1, props.length ?? 16);
+  const top = CAPTION, bot = () => props.h - INSET;
   return (
-    <Well w={props.w} h={props.h} steps={n()} caption="PATTERN   ONE CYCLE">
-      <Gate values={values()} w={props.w} h={props.h} />
+    <Well w={props.w} h={props.h} caption="PATTERN   ONE CYCLE">
+      {/* Rules UNDER the curve, so nothing is hidden by a rule. */}
+      <StepRules count={n()} w={props.w} top={top} bottom={bot()} />
+      <Curve values={values()} w={props.w} top={top} bottom={bot()}
+             floor={1 - Math.min(1, Math.max(0, props.params?.amount ?? 1))} />
       {props.moving && (props.playhead ?? -1) >= 0 && (
         <line stroke="var(--ink)"
               x1={INSET + (props.w - 2 * INSET) * ((props.playhead + 0.5) / n())}
               x2={INSET + (props.w - 2 * INSET) * ((props.playhead + 0.5) / n())}
-              y1={CAPTION} y2={props.h - INSET} />
+              y1={top} y2={bot()} />
       )}
+      {/* Numbers LAST, so a number is never swallowed by what it labels. */}
+      <StepNumbers count={n()} w={props.w} top={top} />
     </Well>
   );
 }
@@ -325,47 +465,66 @@ export function PatternPlot(props) {
  */
 export function Scope(props) {
   /*
-   * THE AXIS IS FIXED, AND THAT IS THE WHOLE POINT OF A SWEEP.
-   *
-   * It used to divide by cols.length, so a half-filled sweep was stretched
-   * across the whole plot and the picture RESCALED as it filled -- the
-   * x-axis moved under the audio, which is the one thing a scope triggered
-   * by the pattern must not do.
-   *
-   * The span is always the capture's full width; only as much of it as has
-   * arrived is drawn, so the trace fills left to right against a still axis.
+   * THE AXIS IS FIXED, AND THAT IS THE WHOLE POINT OF A SWEEP. It used to
+   * divide by cols.length, so a half-filled sweep was stretched across the
+   * whole plot and the picture rescaled as it filled -- the axis moved under
+   * the audio, which is the one thing a scope triggered by the pattern must
+   * not do.
    */
   const TOTAL = 256;                 /* kScopeCols in TranceGate.h */
+  const top = CAPTION, bot = () => props.h - INSET;
+  const mid = () => (top + bot()) / 2;
 
-  const band = (which) => {
+  /* One screen pixel per column of output, min/max over every capture column
+   * behind it -- plot::decimate's argument, and the reason a narrow gate
+   * survives at 128 steps. */
+  const band = (loIdx, hiIdx) => {
     const cols = props.scope;
     if (!cols || cols.length < 2) return '';
-    const top = CAPTION, bot = props.h - INSET;
-    const mid = (top + bot) / 2, half = (bot - top) * 0.5;
-    const x = (i) => INSET + (props.w - 2 * INSET) * (i / (TOTAL - 1));
-    const y = (v) => mid - half * Math.max(-1, Math.min(1, v));
-    const n = Math.min(cols.length, TOTAL);
-    const hi = [];
-    for (let i = 0; i < n; i++)
-      hi.push(`${i ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(cols[i][which * 2 + 1]).toFixed(1)}`);
-    const lo = [];
-    for (let i = n - 1; i >= 0; i--)
-      lo.push(`L ${x(i).toFixed(1)} ${y(cols[i][which * 2]).toFixed(1)}`);
-    return hi.join(' ') + ' ' + lo.join(' ') + ' Z';
+    const w = Math.max(1, Math.round(props.w - 2 * INSET));
+    const half = (bot() - top) * 0.5;
+    const y = (v) => mid() - half * Math.max(-1, Math.min(1, v));
+    const filled = Math.min(cols.length, TOTAL);
+    const hi = [], lo = [];
+    for (let x = 0; x < w; x++) {
+      const a = Math.floor((x * TOTAL) / w);
+      const b = Math.max(a + 1, Math.floor(((x + 1) * TOTAL) / w));
+      if (a >= filled) break;            /* stop where the sweep has reached */
+      let mn = Infinity, mx = -Infinity;
+      for (let i = a; i < b && i < filled; i++) {
+        if (cols[i][loIdx] < mn) mn = cols[i][loIdx];
+        if (cols[i][hiIdx] > mx) mx = cols[i][hiIdx];
+      }
+      if (mn === Infinity) break;
+      const px = INSET + x;
+      hi.push(`${hi.length ? 'L' : 'M'} ${px} ${y(mx).toFixed(1)}`);
+      lo.push([px, y(mn)]);
+    }
+    if (!hi.length) return '';
+    const back = lo.reverse().map(([px, py]) => `L ${px} ${py.toFixed(1)}`);
+    return hi.join(' ') + ' ' + back.join(' ') + ' Z';
   };
 
   return (
-    <Well w={props.w} h={props.h} steps={props.length}
-          caption="SIGNAL   DRY BEHIND, GATED IN FRONT">
-      <line x1={INSET} x2={props.w - INSET}
-            y1={(CAPTION + props.h - INSET) / 2} y2={(CAPTION + props.h - INSET) / 2}
-            stroke="var(--line-100)" />
+    <Well w={props.w} h={props.h} caption="SIGNAL   DRY BEHIND, GATED IN FRONT">
+      {/* The step grid sits UNDER the audio, so a transient is never hidden
+        * by a rule. */}
+      <StepRules count={props.length ?? 16} w={props.w} top={top} bottom={bot()} />
+      {/* The zero line, so a silent stretch reads as silence rather than as a
+        * gap in the drawing. */}
+      <line x1={INSET} x2={props.w - INSET} y1={mid()} y2={mid()} stroke="var(--line-100)" />
       {/* The dry is CONTEXT, NOT THE SUBJECT, so it is drawn back at partial
-        * alpha: a sustained input fills every column edge to edge, and at full
-        * strength it is a solid slab with the gated trace fighting to be seen
+        * alpha: a sustained input fills every column edge to edge, and at
+        * full strength it is a slab with the gated trace fighting to be seen
         * through it. */}
-      <path d={band(0)} fill="var(--ink-dim)" opacity="0.45" />
-      <path d={band(1)} fill="var(--uv)" />
+      <path d={band(0, 1)} fill="var(--ink-dim)" opacity="0.45" />
+      <path d={band(2, 3)} fill="var(--uv)" />
+      {/* The gate over the audio -- mirrored, with its keyline. */}
+      {props.gate && props.gate.length > 1 && (
+        <Gate values={props.gate} w={props.w} top={top} bottom={bot()} />
+      )}
+      {/* Last of all, so a number is never swallowed by the audio. */}
+      <StepNumbers count={props.length ?? 16} w={props.w} top={top} />
     </Well>
   );
 }
