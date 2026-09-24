@@ -1,24 +1,27 @@
 /*
- * The Uv design system, as CSS custom properties.
+ * ULTRAVIOLET — the design system's tokens, transcribed once.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
- * Every value here is carried over from the JUCE editor's Uv.h rather than
- * re-picked, so the plugin looks like itself across a change of framework.
- * The comments are the ones that were attached to the tokens there, because
+ * Every value here comes from Uv.h in the JUCE editor, which in turn came
+ * from the system's tokens.json. The comments are the system's own, because
  * they say what a token is FOR, which a hex triplet cannot.
+ *
+ * The system in one line: ultraviolet light on black glass. `uv` is THE
+ * SIGNAL -- spent ONLY where something is on or IS the current value: a lit
+ * step, a knob's value arc, the playhead, focus. Everything at rest is a
+ * shade of violet-black. If a screen has more signal than black, something
+ * is wrong.
  */
 
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-display: block;
+  src: url('../fonts/JetBrainsMono-Regular.ttf') format('truetype');
+  font-weight: 400; font-display: block;
 }
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-Medium.ttf') format('truetype');
-  font-weight: 500;
-  font-display: block;
+  src: url('../fonts/JetBrainsMono-Medium.ttf') format('truetype');
+  font-weight: 500; font-display: block;
 }
 
 :root {
@@ -33,45 +36,102 @@
   --ink-muted: #b9a3e6; /* labels, units, the hint bar */
   --ink-dim: #7a5fb5;   /* disabled text, inactive marks */
 
-  --uv: #efe3ff;        /* THE SIGNAL's bright core */
-  --uv-deep: #a259ff;   /* its halo -- NEVER a fill */
-  --uv-glow: #a259ff80; /* bloom only -- never a fill */
+  /*
+   * THE SIGNAL IS TWO TOKENS, AND THAT IS THE WHOLE IDEA.
+   *
+   * `uv` is the bright CORE of anything lit; `uvDeep` is the saturated violet
+   * that surrounds it. The colour lives in the halo.
+   *
+   * So --uv-deep IS NEVER A FILL. It is the glow around a lit element and the
+   * tint of the ground's noise, and nothing else. Reaching for it as a fill
+   * is how the two-tone collapses back into one flat hue.
+   */
+  --uv: #efe3ff;
+  --uv-deep: #a259ff;
+  --uv-glow: rgba(162, 89, 255, 0.5);
   --on-uv: #060410;     /* text on a signal fill */
-  --amber: #ffb000;     /* armed / about to clip / unsaved */
-  --red: #ff4d4d;       /* clipping, a failed action */
-  --bg-dot: #2a1e4a;    /* the ground's 1px dots */
+  --amber: #ffb000;
+  --red: #ff4d4d;
+  --bg-dot: #2a1e4a;
 
-  /* "Leave space instead." */
+  /* Everything sits on a 4px grid. */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
 
+  /* "Controls have one size each. Do not scale controls to fill a window;
+   * leave space instead." */
   --knob: 48px;
+  --knob-lg: 64px;
+  --step: 40px;
   --control-h: 28px;
-  --readout: 64px;
+  --readout-w: 64px;
   --rail: 2px;
+  --hair: 1px;
 
   /* radius-0 everywhere; radius-full only on what physically turns. */
   --radius: 0;
 }
 
+/*
+ * THE TWO GLOWS, and nothing else.
+ *
+ *   glow-led    0 0 10px uv-deep, 0 0 2px uv   -- a lit LED, the playhead
+ *   glow-focus  0 0 0 1px uv, 0 0 8px uv-glow  -- keyboard focus
+ *
+ * TWO HALOES, AND THE ORDER IS THE POINT. The wide one is the SATURATED
+ * violet -- that is where the hue lives now the fill is near white -- and the
+ * tight one is the core colour, which keeps the element's own edge from being
+ * eaten by the violet. One halo in `uv` alone leaves a white element with a
+ * white glow: no cast at all.
+ */
+.glow-led {
+  filter: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55))
+          drop-shadow(0 0 2px rgba(239, 227, 255, 0.55));
+}
+.glow-focus {
+  box-shadow: 0 0 0 1px var(--uv), 0 0 8px var(--uv-glow);
+}
+
+/*
+ * THE SIX TEXT STYLES. One family, JetBrains Mono. Monospace by construction
+ * means tabular digits, so a readout does not jitter while a knob turns.
+ *
+ * Three of the six are tracked, and it is doing real work: 11px uppercase
+ * mono at .1em is legible as a label, and the same text untracked reads as a
+ * word someone forgot to lowercase.
+ */
+.t-readout { font-size: 28px; font-weight: 500; letter-spacing: 0; }
+.t-title   { font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+.t-label   { font-size: 11px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; }
+.t-value   { font-size: 13px; font-weight: 400; letter-spacing: 0; }
+.t-button  { font-size: 12px; font-weight: 500; letter-spacing: 0.04em; }
+.t-hint    { font-size: 10px; font-weight: 400; letter-spacing: 0.02em; }
+
 * { box-sizing: border-box; }
 
 html, body {
-  margin: 0;
-  height: 100%;
+  margin: 0; height: 100%;
   background: var(--bg-000);
   color: var(--ink);
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  /* A plugin window is not a document: nothing here scrolls, and a stray
-   * selection highlight on a drag looks like a bug. */
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  /* A plugin window is not a document: nothing scrolls, and a stray selection
+   * highlight on a drag looks like a bug. */
   overflow: hidden;
-  user-select: none;
-  -webkit-user-select: none;
+  user-select: none; -webkit-user-select: none;
 }
 
-/* DOT PAPER UNDER THE WHOLE WINDOW. 1px dots of --bg-dot on a space-3 pitch,
- * which is the ground the system specifies rather than a flat fill. */
+/*
+ * THE GROUND: DOT PAPER UNDER NOISE, both from the system.
+ *
+ * 1px dots of --bg-dot on a space-3 pitch, under noise TINTED with --uv-deep
+ * at 5% -- so the ground has the same cast as everything on it rather than
+ * being the one achromatic surface in a one-hue system.
+ *
+ * The noise is a fixed SVG turbulence rather than a random tile: a background
+ * that reshuffled on each load would be noticed, and not fondly.
+ */
 body {
-  background-image: radial-gradient(var(--bg-dot) 1px, transparent 1px);
-  background-size: var(--s3) var(--s3);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' seed='7'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.635 0 0 0 0 0.349 0 0 0 0 1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(var(--bg-dot) 1px, transparent 1px);
+  background-size: 120px 120px, var(--s3) var(--s3);
 }

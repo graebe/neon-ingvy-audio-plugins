@@ -1,58 +1,80 @@
-/* Selects, glyph buttons, tabs and the hint bar.
- * Copyright (c) 2026 Torben Gräber. MIT. */
-import { For } from 'solid-js';
+/*
+ * Switch, select, glyph buttons, tabs and the hint bar.
+ * Copyright (c) 2026 Torben Gräber. MIT.
+ * Ported from UvLookAndFeel and UvComponents.
+ */
+import { For, createSignal, Show } from 'solid-js';
 import { setParam, beginGesture, endGesture } from './iplug.js';
 
-/* A CHOICE, NOT A QUANTITY. Rate, Slot, Env Time and Env Curve are ladders;
- * a host that interpolates towards "Slot 4.5" is offering nothing. */
+const commit = (idx, v) => { beginGesture(idx); setParam(idx, v); endGesture(idx); };
+
+/*
+ * THE SWITCH FORM: a 28x14 bg-200 housing with an 8x8 square at 2px that
+ * moves to 16px and lights.
+ *
+ * The LED form (a round lens) is for state the plugin REPORTS; a
+ * user-settable boolean like Join Neighbors is a switch. Getting it backwards
+ * would say the plugin is telling you something when in fact it is asking.
+ */
+export function Switch(props) {
+  const on = () => (props.value ?? 0) > 0.5;
+  return (
+    <div class="switch-row" onClick={() => commit(props.idx, on() ? 0 : 1)}>
+      <div class="switch" classList={{ on: on() }}>
+        <div class="switch-knob" classList={{ 'glow-led': on() }} />
+      </div>
+      <span class="switch-label t-label">{props.label}</span>
+    </div>
+  );
+}
+
+/*
+ * A CHOICE, NOT A QUANTITY. The chevron is two 1px strokes rather than an
+ * icon: the system uses no icon set, and this and the tie bar are its only
+ * glyphs.
+ */
 export function Select(props) {
+  const [open, setOpen] = createSignal(false);
   const n = () => props.options.length;
   const idx = () => Math.round((props.value ?? 0) * (n() - 1));
-  const pick = (i) => {
-    beginGesture(props.idx);
-    setParam(props.idx, n() > 1 ? i / (n() - 1) : 0);
-    endGesture(props.idx);
-  };
   return (
-    <label class="select">
-      <span class="select-label">{props.label}</span>
-      <select value={idx()} onChange={(e) => pick(+e.currentTarget.value)}>
-        <For each={props.options}>{(o, i) => <option value={i()}>{o}</option>}</For>
-      </select>
+    <label class="select-card" style={props.width ? { width: `${props.width}px` } : undefined}>
+      <Show when={props.label}><span class="select-label t-label">{props.label}</span></Show>
+      <div class="select" classList={{ open: open() }}>
+        <span class="select-value t-value">{props.options[idx()]}</span>
+        <svg class="chevron" width="8" height="6" viewBox="0 0 8 6">
+          <path d="M1 1 L4 4 L7 1" fill="none" stroke="var(--ink-muted)" stroke-width="1" />
+        </svg>
+        <select
+          value={idx()}
+          onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
+          onChange={(e) => { commit(props.idx, n() > 1 ? +e.currentTarget.value / (n() - 1) : 0); setOpen(false); }}
+        >
+          <For each={props.options}>{(o, i) => <option value={i()}>{o}</option>}</For>
+        </select>
+      </div>
     </label>
   );
 }
 
-export function Toggle(props) {
-  const on = () => (props.value ?? 0) > 0.5;
-  return (
-    <button
-      class="toggle" classList={{ on: on() }}
-      onClick={() => {
-        beginGesture(props.idx);
-        setParam(props.idx, on() ? 0 : 1);
-        endGesture(props.idx);
-      }}
-    >{props.label}</button>
-  );
-}
-
-/* Copy and paste as glyphs: the row was mostly words before, and two icons
- * say the same thing in a fifth of the width. */
+/* A 12px glyph centred in the button: two offset rectangles for copy, and a
+ * sheet under a clipboard's tab for paste. Hairlines, like the caret. */
 export function GlyphButton(props) {
   return (
     <button class="glyph" title={props.title} onClick={props.onClick}>
-      {props.glyph === 'copy' ? (
+      <Show
+        when={props.glyph === 'copy'}
+        fallback={
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <rect x="2" y="3" width="10" height="9" fill="none" stroke="currentColor" stroke-width="1" />
+            <rect x="5" y="0.5" width="4" height="3" fill="none" stroke="currentColor" stroke-width="1" />
+          </svg>
+        }>
         <svg width="14" height="14" viewBox="0 0 14 14">
-          <rect x="4.5" y="1.5" width="8" height="8" fill="none" stroke="currentColor" />
-          <rect x="1.5" y="4.5" width="8" height="8" fill="none" stroke="currentColor" />
+          <rect x="1.5" y="1.5" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1" />
+          <rect x="4.5" y="4.5" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1" />
         </svg>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 14 14">
-          <rect x="2.5" y="3.5" width="9" height="9" fill="none" stroke="currentColor" />
-          <path d="M5 3.5 V1.5 h4 v2" fill="none" stroke="currentColor" />
-        </svg>
-      )}
+      </Show>
     </button>
   );
 }
@@ -61,10 +83,8 @@ export function Tabs(props) {
   return (
     <div class="tabs">
       <For each={props.tabs}>{(t, i) => (
-        <button
-          class="tab" classList={{ on: props.active === i() }}
-          onClick={() => props.onSelect(i())}
-        >{t}</button>
+        <button class="tab t-hint" classList={{ on: props.active === i() }}
+                onClick={() => props.onSelect(i())}>{t}</button>
       )}</For>
     </div>
   );
@@ -75,10 +95,10 @@ export function Tabs(props) {
  * smaller font. */
 export function HintBar(props) {
   return (
-    <div class="hint-bar">
+    <div class="hint-bar t-hint">
       <For each={props.clauses.slice(0, 3)}>{(c, i) => (
         <>
-          {i() > 0 && <span class="sep">–</span>}
+          <Show when={i() > 0}><span class="sep">–</span></Show>
           <span class="hint-key">{c[0]}</span>
           <span class="hint-val">{c[1]}</span>
         </>

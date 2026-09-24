@@ -67,8 +67,17 @@
  * the same markup is what a browser build would run, which is the direction
  * the rest of this project is pointed. */
 #define PLUG_HAS_UI 1
-#define PLUG_WIDTH 900
-#define PLUG_HEIGHT 560
+/*
+ * THE JUCE EDITOR'S OWN SIZE: space-8 * 2 + StepGridView::width (760) = 824,
+ * and 568 (kGridY) + one row of pads + space-6 + the hint bar = 660 at the
+ * default 16 steps.
+ *
+ * The JUCE window grew with Length. This one does not yet -- PLUG_HOST_RESIZE
+ * and a resize on the `ui` push are the follow-up; at 128 steps the grid is
+ * eight rows and the last seven are below the fold.
+ */
+#define PLUG_WIDTH 824
+#define PLUG_HEIGHT 660
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 0

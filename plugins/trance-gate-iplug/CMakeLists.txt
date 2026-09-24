@@ -14,6 +14,24 @@ find_package(iPlug2 REQUIRED)
 # `npm --prefix ui run build` after changing it; the glob below is what iPlug2
 # copies into the bundle, and a file that is not globbed simply does not
 # arrive -- a blank editor with no error anywhere.
+# BUILD THE UI BEFORE GLOBBING IT. Without this the glob picks up whatever
+# resources/web happened to contain, so an edit to ui/src reached the plugin
+# only if somebody remembered to run vite -- and a stale editor looks exactly
+# like a broken one.
+find_program(TG_NPM npm)
+if (TG_NPM)
+  execute_process(
+    COMMAND ${TG_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
+    RESULT_VARIABLE TG_UI_RESULT
+    OUTPUT_QUIET ERROR_QUIET)
+  if (NOT TG_UI_RESULT EQUAL 0)
+    message(WARNING "The editor did not build; resources/web may be stale. "
+                    "Run: npm --prefix plugins/trance-gate-iplug/ui install")
+  endif()
+else()
+  message(WARNING "npm not found -- using whatever is already in resources/web")
+endif()
+
 file(GLOB TG_WEB
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/*.html"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"

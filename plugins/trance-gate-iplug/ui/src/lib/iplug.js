@@ -66,8 +66,37 @@ export const onMessage = (fn) => { messageListeners.add(fn); return () => messag
 globalThis.SPVFD = (paramIdx, value) => {
   for (const fn of paramListeners) fn(paramIdx | 0, value);
 };
+/*
+ * DECODE. SendArbitraryMsgFromDelegate BASE64-ENCODES on the way out, and
+ * nothing says so at the call site -- the payload simply arrives as
+ * "MTAwLjAwICU=" instead of "100.00 %".
+ *
+ * Handing that straight to the UI put base64 in every readout, and it was the
+ * quieter half that mattered: the `ui`, `params` and `scope` messages are
+ * encoded too, so every split(':') found no fields, every parse bailed, and
+ * the ring, the pads and the plots drew nothing at all. One missing atob read
+ * as five missing components.
+ *
+ * TextDecoder rather than String.fromCharCode over the bytes, because the
+ * strings carry "%" and "µ" and a byte-wise read mangles anything past ASCII.
+ */
+const decode = (msg) => {
+  if (typeof msg !== 'string' || msg === '') return '';
+  try {
+    const bin = atob(msg);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  } catch {
+    /* Not base64 after all -- a future iPlug2 that stops encoding, or a
+     * message sent from somewhere else. Pass it through rather than lose it. */
+    return msg;
+  }
+};
+
 globalThis.SAMFD = (msgTag, dataSize, msg) => {
-  for (const fn of messageListeners) fn(msgTag | 0, msg);
+  const text = decode(msg);
+  for (const fn of messageListeners) fn(msgTag | 0, text);
 };
 /* Declared even though nothing uses them yet: iPlug2 calls all four, and an
  * undefined global is a TypeError inside the WebView that no one sees. */

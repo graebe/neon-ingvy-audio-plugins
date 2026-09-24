@@ -7,21 +7,22 @@
  */
 import { For, createMemo } from 'solid-js';
 
-const W = 560, H = 150, PAD = 10;
+const W = 560, H = 104, INSET = 6, CAPTION = 14;
+const PAD = INSET;
 
 /* The well every plot sits in: a panel, a hairline, and the zero line that
  * makes a silent stretch read as silence rather than as a gap. */
 function Well(props) {
   return (
     <svg class="plot" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-      <rect x="0" y="0" width={W} height={H} fill="var(--bg-200)" stroke="var(--line-100)" />
+      <rect x="0.5" y="0.5" width={W - 1} height={H - 1} fill="var(--bg-000)" stroke="var(--line-100)" />
       {/* step rules, thinning out as the count rises so they never crowd */}
       <For each={Array.from({ length: Math.min(props.steps ?? 16, 64) }, (_, i) => i)}>{(i) => {
         const x = PAD + (W - 2 * PAD) * (i / Math.max(1, props.steps ?? 16));
         return <line x1={x} y1="0" x2={x} y2={H} stroke="var(--line-100)" />;
       }}</For>
       {props.children}
-      {props.caption && <text x={PAD} y="14" class="plot-caption">{props.caption}</text>}
+      {props.caption && <text x={INSET} y="12" class="plot-caption t-hint">{props.caption}</text>}
     </svg>
   );
 }
@@ -101,7 +102,10 @@ export function PatternPlot(props) {
           x={PAD + b.i * bw() + 1} width={Math.max(1, bw() - 2)}
           y={H - PAD - (H - 2 * PAD) * b.amt}
           height={(H - 2 * PAD) * b.amt}
-          fill={b.tie ? 'var(--uv-deep)' : 'var(--uv)'}
+          /* A tie is not a different colour: uv-deep is never a fill, and
+           * uv IS the signal whether the step is struck or held. */
+          fill="var(--uv)"
+          opacity={b.tie ? 0.55 : 1}
         />
       )}</For>
       {props.moving && (props.playhead ?? -1) >= 0 && (
