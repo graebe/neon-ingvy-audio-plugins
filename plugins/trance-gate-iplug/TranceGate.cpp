@@ -187,8 +187,40 @@ void TranceGate::ApplyPendingPatch()
 
 void TranceGate::PushParams()
 {
-  tg_core_set_num(mCore, TG_P_SLOT, GetParam(kSlot)->Value() - 1.0);
-  tg_core_set_num(mCore, TG_P_LENGTH, GetParam(kLength)->Value() - 1.0);
+  const int slot = int(GetParam(kSlot)->Value()) - 1;
+  tg_core_set_num(mCore, TG_P_SLOT, double(slot));
+
+  /*
+   * LENGTH IS PER SLOT, SO IT IS NOT ALWAYS OURS TO PUSH.
+   *
+   * pat[slot].length belongs to the slot we just switched to, and the host's
+   * Length parameter still holds the slot we left. Pushing it here overwrote
+   * the new slot's length with the old one's -- the pattern's own length,
+   * destroyed by changing slot and looking at it.
+   *
+   * So on the block the slot moves, the engine's length wins and the host is
+   * told to catch up (SyncSlotParams, from OnIdle). Until it has, Length is
+   * not pushed at all.
+   */
+  bool pushLength = true;
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * GUARDED, BECAUSE THE OTHER HALF OF THE HANDSHAKE IS. SyncSlotParams is
+   * driven from OnIdle, which is compiled only with an editor delegate -- so
+   * in a build without one there would be nothing to clear the flag, and
+   * Length would become permanently unpushable. Suppressing only where the
+   * release exists means the worst a future no-UI target can do is behave as
+   * this did before the fix, rather than lock a parameter.
+   */
+  if (slot != mSlotPushed)
+  {
+    mSlotPushed = slot;
+    mSlotSync.store(1, std::memory_order_release);
+  }
+  pushLength = mSlotSync.load(std::memory_order_acquire) == 0;
+#endif
+  if (pushLength)
+    tg_core_set_num(mCore, TG_P_LENGTH, GetParam(kLength)->Value() - 1.0);
   tg_core_set_num(mCore, TG_P_RATE, GetParam(kRate)->Value());
   tg_core_set_num(mCore, TG_P_LEGATO, GetParam(kLegato)->Value());
   tg_core_set_num(mCore, TG_P_TIME_MODE, GetParam(kTimeMode)->Value());
@@ -292,6 +324,10 @@ void TranceGate::OnParamChangeUI(int paramIdx, EParamSource source)
 void TranceGate::OnIdle()
 {
   if (!mCore) return;
+
+  /* Before the readouts below, so the `params` push carries the length the
+   * parameter has just been given rather than the one it is replacing. */
+  SyncSlotParams();
 
   char buf[TG_STATE_MAX];
   if (tg_core_get_param(mCore, "ui", buf, int(sizeof buf)) > 0)
@@ -426,6 +462,14 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
       return true;
     }
 
+    /*
+     * THE PAGE IS LIVE. Everything OnUIOpen tried to send before the module
+     * script existed, sent again now that there is something to receive it.
+     */
+    case kMsgReady:
+      SendFullState();
+      return true;
+
     case kMsgRequestPatch:        /* copy */
     {
       char blob[TG_STATE_MAX];
@@ -437,20 +481,79 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
   }
 }
 
+/*
+ * EVERY VALUE AND EVERY STRING. The values because the UI holds nothing but
+ * normalised numbers, and the strings because it cannot format one -- it does
+ * not know a unit, a precision or an enum's labels, by design.
+ */
+void TranceGate::SendFullState()
+{
+  SendCurrentParamValuesFromDelegate();
+  for (int i = 0; i < kNumParams; i++)
+    SendDisplay(i);
+}
+
 void TranceGate::OnUIOpen()
 {
-  /*
-   * PUSH EVERYTHING ONCE WHEN THE EDITOR OPENS.
-   *
-   * iPlug2 sends the twelve VALUES on open by itself, but not the twelve
-   * STRINGS -- so without this the knobs would come up at the right angles
-   * with empty readouts, and stay that way until each one was touched.
-   */
   /* QUALIFIED for the same reason the constructor is: under the CLAP target
    * an unqualified `Plugin` is clap::helpers::Plugin, which has no OnUIOpen. */
   iplug::Plugin::OnUIOpen();
-  for (int i = 0; i < kNumParams; i++)
-    SendDisplay(i);
+
+  /*
+   * SENT HERE TOO, THOUGH IT IS USUALLY TOO EARLY TO BE HEARD.
+   *
+   * This fires from didFinishNavigation, and the editor's module script has
+   * not evaluated yet, so globalThis.SPVFD does not exist and these go
+   * nowhere. kMsgReady is what actually delivers them. It stays because it
+   * costs twenty-four small messages and covers the case where the page is
+   * already live -- a reload, or a host that reopens the same WebView.
+   */
+  SendFullState();
+}
+
+/*
+ * THE OTHER HALF OF THE SLOT HANDSHAKE, on the main thread.
+ *
+ * The engine's "length" readout is the OPTION INDEX (pat[slot].length - 1),
+ * which is the same convention PushParams pushes back, so the parameter's
+ * value is that plus one.
+ *
+ * Through the host rather than straight into the parameter: switching slot
+ * genuinely changes Length, and a host that is automating or recording it has
+ * to see that happen.
+ */
+void TranceGate::SyncSlotParams()
+{
+  if (mSlotSync.load(std::memory_order_acquire) == 0) return;
+
+  char buf[64];
+  if (tg_core_get_param(mCore, "length", buf, int(sizeof buf)) > 0)
+  {
+    const double want = double(std::atoi(buf)) + 1.0;
+    if (GetParam(kLength)->Value() != want)
+    {
+      /* TO THE HOST. SendParameterValueFromUI also does the SetNormalized on
+       * our own parameter, which is what actually lets PushParams resume. */
+      BeginInformHostOfParamChangeFromUI(kLength);
+      SendParameterValueFromUI(kLength, GetParam(kLength)->ToNormalized(want));
+      EndInformHostOfParamChangeFromUI(kLength);
+
+      /*
+       * AND TO THE EDITOR, which is not optional.
+       *
+       * "FromUI" means the UI is where the change came from, so iPlug2 sends
+       * it onward to the host and no further -- the UI is assumed to know
+       * already. Here the change came from the ENGINE, so the editor knows
+       * nothing about it: without this the host and the DSP would agree on
+       * the new slot's length while the Length knob still showed the old
+       * slot's, which is a worse confusion than the bug this fixes.
+       */
+      SendParameterValueFromDelegate(kLength, want, false);
+    }
+  }
+  /* Cleared even if the read failed: a stuck flag would leave Length
+   * permanently unpushable, which is a worse fault than the one it guards. */
+  mSlotSync.store(0, std::memory_order_release);
 }
 
 #endif

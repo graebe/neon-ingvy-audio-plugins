@@ -7,7 +7,19 @@
  */
 main {
   position: relative;
-  width: 824px;     /* space-8 * 2 + StepGridView::width (760) */
+  /*
+   * 856 = space-8 * 2 + the BAND's 792, where the band is the plot's 760 plus
+   * 8 of gap plus the 24px tab strip.
+   *
+   * It was 824 -- space-8 * 2 + the grid's 760 -- which made the band 760 too,
+   * and the tabs ate 32 off the plot's right: the plot drew at 728 against a
+   * 760 grid of pads and the two edges never lined up. The extra 32 buys that
+   * alignment, and the tab strip now sits in what used to be padding.
+   *
+   * Mirrored by PLUG_WIDTH in config.h and DESIGN_W in App.jsx -- all three
+   * have to agree or the page is scaled against a width it does not have.
+   */
+  width: 856px;
   margin: 0 auto;
   /* The absolutely positioned block above the grid is 568 tall (kGridY), and
    * absolute children contribute no height -- so it is reserved here and the
@@ -61,7 +73,9 @@ main {
 .readout.editing {
   font-family: inherit; text-align: center; outline: none;
   border-color: var(--uv);
-  box-shadow: 0 0 0 1px var(--uv), 0 0 8px var(--uv-glow);
+  /* The focus ring, from the token -- it was retyped here, which is how it
+   * came to sit at a different alpha from every other focused thing. */
+  box-shadow: var(--glow-focus);
 }
 
 /*
@@ -70,9 +84,44 @@ main {
  */
 .band {
   position: absolute; left: 32px; top: 460px;
-  width: 760px; height: 92px;
+  /* The WIDTH is set inline from BAND_W in App.jsx: the plot's own width is a
+   * JSX prop, so the arithmetic that keeps the two in step has to live on that
+   * side or the two files drift. */
+  height: 92px;
   display: flex; gap: var(--s2);
 }
+
+/*
+ * THE CORNER MARK, and the field that pretends to be nothing.
+ *
+ * `tag` is pinned to the window's own padding rather than to a panel, so it
+ * does not belong to any of them.
+ */
+.tag {
+  position: absolute; right: 32px;
+  /*
+   * ABOVE THE PANELS, NOT BESIDE THEM.
+   *
+   * At top:32 this collided with the GATE panel: the panel spans 304..792 and
+   * the mark 768..824, so the panel -- later in the DOM -- painted over the
+   * first 24px and the corner read "inga". Everything in the layout starts at
+   * y=32, so the strip above it is the one place at this end of the window
+   * that is free by construction.
+   */
+  top: 11px;
+  color: var(--ink-dim); letter-spacing: 0.02em;
+  pointer-events: none;                  /* a mark, not a control */
+}
+
+/* Only ever visible for the moment it takes to press the shortcut, so it is
+ * sized to the hint it carries rather than to the row. */
+.paste-field {
+  width: 132px; height: var(--control-h);
+  background: var(--bg-000); border: 1px solid var(--uv);
+  box-shadow: var(--glow-focus);
+  color: var(--ink); font: inherit; text-align: center; outline: none;
+}
+.paste-field::placeholder { color: var(--ink-muted); }
 .band-plot { flex: 1; min-width: 0; }
 .band-plot .plot { width: 100%; height: 92px; }
 
@@ -105,7 +154,14 @@ main {
  * and lights. Not a button -- a user-settable boolean is a switch; an LED is
  * for state the plugin REPORTS.
  */
-.switch-row { display: flex; align-items: center; gap: var(--s2); cursor: pointer; height: var(--control-h); }
+/* A <button>, so the browser's own chrome is stripped back to the div it
+ * replaces -- it became one to be focusable; see uv.css. */
+.switch-row {
+  display: flex; align-items: center; gap: var(--s2);
+  cursor: pointer; height: var(--control-h);
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: inherit; text-align: left;
+}
 .switch {
   position: relative; width: 28px; height: 14px;
   background: var(--bg-200); border: 1px solid var(--line-200);
@@ -160,9 +216,19 @@ main {
 /* Every fourth step carries a rail-coloured border, so bars read without
  * numbers -- which is why there are no numbers. */
 .pad.bar { border-color: var(--line-200); }
-.pad.on  { border-color: var(--uv); filter: drop-shadow(0 0 10px rgba(162,89,255,0.55)) drop-shadow(0 0 2px rgba(239,227,255,0.55)); }
+/*
+ * THE HALO GOES ON A LIT PAD **AND** ON THE PLAYHEAD, which is what the
+ * original did -- `if (on || at) glowLed (g, r)`. Only `.on` carried it here,
+ * so the playhead crossing an off step was a flat wash with no light coming
+ * off it, and the one mark that moves was the dimmest thing on the grid.
+ *
+ * And it was the glow RETYPED BY HAND, which is how it came to differ from
+ * uv.css at all. --glow-led is the token; see the note there.
+ */
+.pad.on,
+.pad.at { border-color: var(--uv); filter: var(--glow-led); }
 .pad-lit { position: absolute; left: 0; right: 0; bottom: 0; background: var(--uv); }
-.pad-dip { position: absolute; inset: 0; background: rgba(6, 4, 16, 0.25); }
+.pad-dip { position: absolute; inset: 0; background: var(--dip); }
 
 /* A tie is a hollow uv outline with a bar across it: the step holds through,
  * so it is not a fill. */

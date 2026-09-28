@@ -13,7 +13,7 @@
  * Absolutely positioned rather than flexed, because those numbers ARE the
  * design -- a flex layout that happens to look close is a different drawing.
  */
-import { createSignal, createEffect, onMount } from 'solid-js';
+import { createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js';
 import { onParam, onMessage, sendMessage, MSG } from './lib/iplug.js';
 import Knob from './lib/Knob.jsx';
 import Ring from './lib/Ring.jsx';
@@ -29,6 +29,20 @@ const SLOTS = ['1','2','3','4','5','6','7','8'];
 const TIME_MODES = ['ms', '% Step'];
 const CURVES = ['Linear', 'Exponential', 'S-Curve'];
 
+/*
+ * THE PLOT AND THE PADS ARE THE SAME WIDTH, and that is why the window is 856
+ * rather than the original's 824.
+ *
+ * Sixteen 40px pads with 8px between them is 760, and the band used to be 760
+ * too -- but the tab strip takes 24 off its right with 8 of gap, so the plot
+ * itself drew at 728 against a 760 grid. The JUCE editor accepted that ("a
+ * rhyme that thin is worth less than a view switch you can find"); aligning it
+ * costs 32px of window and nothing else, and every other number in the layout
+ * is untouched.
+ */
+const PLOT_W = 760;
+const BAND_W = PLOT_W + 8 + 24;          /* plot, gap, tab strip */
+
 const hexToBits = (hex, n) => {
   const bits = new Array(n).fill(false);
   if (!hex) return bits;
@@ -41,6 +55,41 @@ const hexToBits = (hex, n) => {
   return bits;
 };
 
+/*
+ * COPY, THE WAY A PLUGIN'S WEBVIEW ALLOWS IT.
+ *
+ * navigator.clipboard.writeText needs a secure context and a user-gesture the
+ * WKWebView inside a plugin does not reliably grant -- it resolves, or it
+ * rejects, or it silently does nothing, depending on the host. The textarea
+ * and execCommand('copy') route is deprecated everywhere and works here, so it
+ * is the fallback rather than the other way round.
+ *
+ * PASTE HAS NO EQUIVALENT: readText() is gated behind a permission prompt the
+ * WebView cannot show, and there is no legacy escape hatch -- a page simply
+ * cannot read the clipboard unaided. So paste is a field the user pastes INTO;
+ * see the Paste button.
+ */
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch { /* fall through */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    /* Off-screen but NOT display:none or visibility:hidden -- the selection
+     * has to be real for execCommand to have anything to copy. */
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch { return false; }
+}
+
 export default function App() {
   const [vals, setVals] = createSignal(new Array(12).fill(0));
   const [text, setText] = createSignal(new Array(12).fill(''));
@@ -49,6 +98,30 @@ export default function App() {
   const [params, setParams] = createSignal(null);
   const [scope, setScope] = createSignal([]);
   const [tab, setTab] = createSignal(0);
+  /*
+   * THE CLOCK. `at` is performance.now() when this phase was received, which
+   * is what turns a sampled position into a running one -- see playPhase().
+   */
+  const [anchor, setAnchor] = createSignal({ phase: 0, msStep: 0, length: 16,
+                                             moving: false, at: 0 });
+  const [frame, setFrame] = createSignal(0);
+  const [pasting, setPasting] = createSignal(false);
+  let pasteEl;
+
+  /* ⌘ on a Mac, Ctrl elsewhere -- the hint has to name the key the user will
+   * actually press, and this plugin runs on both. */
+  const modKey = () => (/Mac|iP(hone|ad)/.test(navigator.platform ?? '') ? '\u2318' : 'Ctrl-');
+
+  const startPaste = async () => {
+    try {
+      const t = await navigator.clipboard.readText();
+      if (t) { sendMessage(MSG.patch, t); return; }
+    } catch { /* no permission -- the field below is the answer */ }
+    setPasting(true);
+    /* Focused on the next frame: the element does not exist until the signal
+     * above has been rendered. */
+    requestAnimationFrame(() => pasteEl?.focus());
+  };
 
   onMount(() => {
     onParam((i, v) => i >= 0 && i < 12 &&
@@ -65,10 +138,16 @@ export default function App() {
         const depths = [];
         for (let i = 0; i < length; i++)
           depths.push((parseInt((f[7] || '').substr(i * 2, 2), 16) || 0) / 255);
+        const phase = parseFloat(f[3]) || 0;
+        const msStep = parseFloat(f[4]) || 0;
+        const moving = f[5] === '1';
+        /* RE-ANCHORED ON EVERY PUSH, so the interpolation below can never
+         * drift further than one idle tick from the engine. */
+        setAnchor({ phase, msStep, length, moving, at: performance.now() });
         return setUi({
           steps: hexToBits(f[0], length), ties: hexToBits(f[1], length),
-          length, phase: parseFloat(f[3]) || 0, msStep: parseFloat(f[4]) || 0,
-          moving: f[5] === '1', cursor: parseInt(f[6], 10) || 0, depths,
+          length, phase, msStep, moving,
+          cursor: parseInt(f[6], 10) || 0, depths,
         });
       }
       if (tag === MSG.params) {
@@ -96,8 +175,26 @@ export default function App() {
         }
         return setScope(out);
       }
-      if (tag === MSG.patch) navigator.clipboard?.writeText(msg);
+      if (tag === MSG.patch) copyToClipboard(msg);
     });
+
+    /*
+     * LAST, AND ONLY AFTER THE LISTENERS ARE REGISTERED.
+     *
+     * The plugin pushes all twelve values from OnUIOpen, which fires on
+     * didFinishNavigation -- but this editor is a <script type="module"> and
+     * module scripts are DEFERRED, so they evaluate after the document is
+     * done. Every one of those pushes landed before globalThis.SPVFD existed
+     * and was dropped, and the UI sat on twelve zeroes until something was
+     * touched. That single fact produced four separate reported faults: a knob
+     * whose first drag jumped to zero and only behaved on the second, a switch
+     * drawn off whatever the engine held, and two dropdowns stuck on their
+     * first entry.
+     *
+     * Asking is the fix. A push that races page load cannot be made to win;
+     * a request sent from onMount cannot lose.
+     */
+    sendMessage(MSG.ready);
   });
 
   /* The stage percentages come from `params` and the step duration from
@@ -124,7 +221,61 @@ export default function App() {
     return out;
   };
 
-  const playStep = () => Math.floor(ui().phase) % Math.max(1, ui().length);
+  /*
+   * THE VISUALISATION'S CLOCK IS THE ENGINE'S, NOT THE TIMER'S.
+   *
+   * It used to be Math.floor(ui().phase) -- the phase as of whenever OnIdle
+   * last fired. OnIdle runs on a main-thread timer at IDLE_TIMER_RATE 20, so
+   * 50 Hz at best: at 125 ms a step, a step boundary could be drawn up to
+   * 20 ms late even with a punctual timer, and under Live's UI load the timer
+   * is not punctual. The result stuttered and drifted against the sound.
+   *
+   * So the push is treated as an ANCHOR rather than as the answer -- the
+   * engine's own step position and step duration -- and the phase is carried
+   * forward from it:
+   *
+   *     phase = phase0 + (now - t0) / msStep      wrapped by length
+   *
+   * One timing source, read at the display's rate instead of resampled at the
+   * timer's. `moving` gates it, so a stopped transport holds still.
+   *
+   * A RESIDUAL LEAD REMAINS, and it is worth naming rather than chasing: the
+   * phase at idle is where the audio thread has RENDERED to, which is one
+   * output buffer plus device latency ahead of what you hear. That is a
+   * constant offset rather than drift, and correcting it needs a latency
+   * figure hosts report inconsistently.
+   */
+  const playPhase = () => {
+    const a = anchor();
+    const n = Math.max(1, a.length);
+    if (!a.moving || !(a.msStep > 0)) return a.phase % n;
+    frame();                             /* the dependency that makes this tick */
+    const p = a.phase + (performance.now() - a.at) / a.msStep;
+    return ((p % n) + n) % n;
+  };
+
+  /*
+   * Two readings of the one clock, because the marks are different shapes.
+   * The pattern plot's playhead is a LINE and glides; a lit wedge and a lit pad
+   * are discrete and must snap at the boundary and not before. createMemo so
+   * the discrete half only notifies when the integer actually changes, rather
+   * than sixty times a second.
+   */
+  const playStep = createMemo(() => Math.floor(playPhase()) % Math.max(1, ui().length));
+
+  /* rAF rather than setInterval: it is the display's own cadence, and it stops
+   * when the window is hidden, which is the whole plugin window in a host tab
+   * that is not showing. */
+  onMount(() => {
+    let live = true;
+    const tick = () => {
+      if (!live) return;
+      if (anchor().moving) setFrame((n) => n + 1);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    onCleanup(() => { live = false; });
+  });
 
   /*
    * THE DESIGN IS 824 WIDE AND IS SCALED TO WHATEVER VIEWPORT IT GETS.
@@ -139,7 +290,7 @@ export default function App() {
    * Scaling keeps every proportion and every one of the original's numbers
    * intact, which laying the design out fluidly would not.
    */
-  const DESIGN_W = 824;
+  const DESIGN_W = 856;
   const fit = () => {
     const el = document.querySelector('main');
     if (!el) return;
@@ -180,11 +331,18 @@ export default function App() {
 
   return (
     <main>
+      {/* The corner mark. Hint style -- the smallest thing the system has, so
+        * it sits in the window without competing with anything in it. */}
+      <div class="tag t-hint">neon inga</div>
       {/* LEFT COLUMN: the ring, and the envelope plot ALWAYS under it. The
         * envelope is not tabbed and never was -- the tabs choose between
         * Pattern and Signal in the band further down. */}
       <div class="ring-slot">
+        {/* THE RING EDITS NOW, so it needs everything the grid has: a tie must
+          * read as a tie and an amount as an amount, or the two views of the
+          * same sixteen steps would contradict each other. */}
         <Ring size={240} length={ui().length} steps={ui().steps}
+              ties={ui().ties} depths={ui().depths} cursor={ui().cursor}
               playhead={playStep()} moving={ui().moving}
               centre={centre()} label="STEPS" />
       </div>
@@ -216,7 +374,14 @@ export default function App() {
       {/* ONE ROW, left to right. It fits because the two config actions are
         * glyphs rather than the words that needed a second row. */}
       <div class="settings-row">
-        <Select idx={P.slot} options={SLOTS} width={96} />
+        {/* `value` was missing entirely, so this always read "1" however the
+          * engine's slot moved -- and since Length and the whole pattern are
+          * PER SLOT, it was the one control whose reading mattered most.
+          *
+          * No label, as the original had none: `slot.setBounds (kLeftX, ...)`
+          * with no slotL beside it. The StepGrid card puts this above-left of
+          * the grid, where its position says what it is. */}
+        <Select idx={P.slot} options={SLOTS} width={96} value={vals()[P.slot]} />
         <Switch idx={P.legato} label="Join Neighbors" value={vals()[P.legato]} />
         <Select idx={P.curve} options={CURVES} label="Curve" labelWidth={44} width={124}
                 value={vals()[P.curve]} />
@@ -225,23 +390,51 @@ export default function App() {
         <span class="spacer" />
         <GlyphButton glyph="copy" title="Copy gate config"
                      onClick={() => sendMessage(MSG.requestPatch)} />
-        <GlyphButton glyph="paste" title="Paste gate config"
-                     onClick={async () => {
-                       const t = await navigator.clipboard?.readText();
-                       if (t) sendMessage(MSG.patch, t);
-                     }} />
+        <GlyphButton glyph="paste" title="Paste gate config" onClick={startPaste} />
+        {/*
+          * THE PASTE FIELD, and it exists because a page cannot read the
+          * clipboard.
+          *
+          * readText() is behind a permission prompt a plugin's WKWebView
+          * cannot show, and unlike copy there is no legacy fallback. But the
+          * PASTE EVENT carries the data with no permission at all -- that is
+          * the whole trick. So Paste focuses a field, the user presses the
+          * shortcut they were already going to press, and onPaste reads
+          * clipboardData directly.
+          *
+          * Tried programmatically first, so on a host that does grant it the
+          * field never appears.
+          */}
+        {pasting() && (
+          <input ref={pasteEl} class="paste-field t-hint"
+                 placeholder={`${modKey()}V to paste`}
+                 onPaste={(e) => {
+                   const t = e.clipboardData?.getData('text');
+                   if (t) sendMessage(MSG.patch, t);
+                   setPasting(false);
+                   e.preventDefault();
+                 }}
+                 onBlur={() => setPasting(false)}
+                 onKeyDown={(e) => { if (e.key === 'Escape') setPasting(false); }} />
+        )}
       </div>
 
       {/* THE TWO PLOTS OCCUPY THE SAME BAND -- only one is visible at a time
         * -- and the tabs that choose between them take a 24px strip off its
         * right edge. */}
-      <div class="band">
+      <div class="band" style={{ width: `${BAND_W}px` }}>
         <div class="band-plot">
+          {/* The FRACTIONAL phase here and the integer step everywhere else:
+            * this playhead is a line and glides, a lit pad is discrete and
+            * snaps. Both read the one clock, so they cannot disagree. */}
           {tab() === 0 && <PatternPlot length={ui().length} steps={ui().steps}
                                        ties={ui().ties} depths={ui().depths}
-                                       params={plotParams()} w={728} h={92}
-                                       playhead={playStep()} moving={ui().moving} />}
-          {tab() === 1 && <Scope scope={scope()} length={ui().length} w={728} h={92}
+                                       params={plotParams()} w={PLOT_W} h={92}
+                                       phase={playPhase()} moving={ui().moving} />}
+          {/* The Scope takes no playhead: its sweep FILLS to where the engine
+            * has reached, so the leading edge of the trace is the playhead,
+            * and a line on top of it would be the same mark drawn twice. */}
+          {tab() === 1 && <Scope scope={scope()} length={ui().length} w={PLOT_W} h={92}
                                  gate={patternGate()} />}
         </div>
         <Tabs tabs={['Pattern', 'Signal']} active={tab()} onSelect={setTab} />

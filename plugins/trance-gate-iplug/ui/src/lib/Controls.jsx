@@ -18,13 +18,24 @@ const commit = (idx, v) => { beginGesture(idx); setParam(idx, v); endGesture(idx
  */
 export function Switch(props) {
   const on = () => (props.value ?? 0) > 0.5;
+  /*
+   * A BUTTON, NOT A DIV WITH AN onClick.
+   *
+   * It was the latter, which cannot be focused or reached from the keyboard at
+   * all -- so the focus ring the design system specifies for a switch had
+   * nowhere to land, and `tab` skipped straight over it. A button is the thing
+   * this already was; it brings focus, Space and Enter with it and costs a
+   * style reset.
+   */
   return (
-    <div class="switch-row" onClick={() => commit(props.idx, on() ? 0 : 1)}>
+    <button type="button" class="switch-row"
+            role="switch" aria-checked={on()}
+            onClick={() => commit(props.idx, on() ? 0 : 1)}>
       <div class="switch" classList={{ on: on() }}>
         <div class="switch-knob" classList={{ 'glow-led': on() }} />
       </div>
       <span class="switch-label t-label">{props.label}</span>
-    </div>
+    </button>
   );
 }
 

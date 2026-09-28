@@ -54,6 +54,28 @@
   --red: #ff4d4d;
   --bg-dot: #2a1e4a;
 
+  /*
+   * THE SCOPE'S DRY TRACE, and the one deliberately achromatic value here.
+   *
+   * It was --ink-dim, which is a VIOLET and which the system reserves for
+   * disabled text. Two consequences: the dry input read as a dim version of
+   * the signal rather than as something else entirely, and it carried the same
+   * hue as the gated trace in front of it, so the two blurred into one
+   * picture.
+   *
+   * Grey is the point. The dry is the input, the violet is what the plugin
+   * DID to it, and the difference between those two should not need a legend.
+   */
+  --scope-dry: #6b6b78;
+
+  /*
+   * THE PLAYHEAD CROSSING A PAD THAT IS ALREADY LIT: on-uv at a quarter alpha,
+   * so it reads as a shadow moving across the row. NOT --uv-deep, which is
+   * never a fill. A token because the alternative is an rgba() in app.css, and
+   * an rgba() in app.css is precisely what the token guard exists to stop.
+   */
+  --dip: rgba(6, 4, 16, 0.25);
+
   /* Everything sits on a 4px grid. */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
 
@@ -83,13 +105,70 @@
  * eaten by the violet. One halo in `uv` alone leaves a white element with a
  * white glow: no cast at all.
  */
-.glow-led {
-  filter: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55))
-          drop-shadow(0 0 2px rgba(239, 227, 255, 0.55));
+/*
+ * DEFINED AS VALUES, NOT ONLY AS CLASSES, because a filter cannot always be a
+ * class: an SVG group takes one, a pseudo-element takes one, and a rule that
+ * already sets `filter` for another reason has to spell this one out.
+ *
+ * Every hand-retyped copy of these three lines was a token that had quietly
+ * stopped tracking the system -- .pad.on had the led glow inline, and
+ * .readout.editing had the focus ring inline at a different alpha. The JUCE
+ * build had a ctest that failed if a colour literal appeared outside Uv.h;
+ * `ctest -R tg_tokens` is that check, restored.
+ */
+:root {
+  --glow-led: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55))
+              drop-shadow(0 0 2px rgba(239, 227, 255, 0.55));
+  /*
+   * THE ARC GLOW: `0 0 3px uv-deep`, three pixels of falloff and no more.
+   *
+   * For a near-white stroke that needs to read as violet without a halo wide
+   * enough to bloom -- the knob's value arc, the scope's gated trace. A
+   * 10px led halo on a full-width waveform is mud.
+   */
+  --glow-arc: drop-shadow(0 0 3px rgba(162, 89, 255, 0.45));
+  --glow-focus: 0 0 0 1px var(--uv), 0 0 8px var(--uv-glow);
 }
-.glow-focus {
-  box-shadow: 0 0 0 1px var(--uv), 0 0 8px var(--uv-glow);
+.glow-led { filter: var(--glow-led); }
+.glow-arc { filter: var(--glow-arc); }
+.glow-focus { box-shadow: var(--glow-focus); }
+
+/*
+ * KEYBOARD FOCUS, which had no rule at all.
+ *
+ * .glow-focus was defined here and used nowhere, while the JUCE original
+ * called glowFocus() from five places -- slider, readout, button, switch and
+ * combo box. So the web port was simply not focusable-looking: tab through it
+ * and nothing moved.
+ *
+ * :focus-visible rather than :focus, so a click does not leave a ring behind
+ * it; and `outline: none` only because the ring below replaces it.
+ */
+.knob:focus-visible,
+.switch-row:focus-visible,
+.glyph:focus-visible,
+.tab:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-focus);
 }
+/*
+ * THE SELECT WEARS ITS RING ON THE HOUSING, NOT ON THE CONTROL.
+ *
+ * A Select is a styled div with a real, invisible <select> stretched over it:
+ * that inner element is what the browser focuses, and it has no border of its
+ * own to ring. `:has()` puts the ring on the housing while still keying it to
+ * the thing actually focused.
+ *
+ * NOT `.select.open`, which was the first attempt. `open` is set from the inner
+ * select's onFocus, so it is true after a MOUSE click as well -- and the system
+ * reserves this glow for keyboard focus. The uv border below is the open-state
+ * mark and stays exactly as it was.
+ */
+.select:has(select:focus-visible) { box-shadow: var(--glow-focus); }
+
+/* An SVG takes a filter, not a box-shadow, so the knob's ring is a shadow on
+ * the disc rather than on a box that is 48px of mostly nothing. */
+.knob:focus-visible { box-shadow: none; filter: var(--glow-arc); }
 
 /*
  * THE SIX TEXT STYLES. One family, JetBrains Mono. Monospace by construction

@@ -68,15 +68,23 @@
  * the rest of this project is pointed. */
 #define PLUG_HAS_UI 1
 /*
- * THE JUCE EDITOR'S OWN SIZE: space-8 * 2 + StepGridView::width (760) = 824,
- * and 568 (kGridY) + one row of pads + space-6 + the hint bar = 660 at the
- * default 16 steps.
+ * 856, WHICH IS 32 MORE THAN THE JUCE EDITOR'S 824.
  *
- * The JUCE window grew with Length. This one does not yet -- PLUG_HOST_RESIZE
- * and a resize on the `ui` push are the follow-up; at 128 steps the grid is
- * eight rows and the last seven are below the fold.
+ * The original was space-8 * 2 + StepGridView::width (760) = 824, and the band
+ * holding the plots was 760 as well -- but the tab strip takes 24 off the
+ * band's right edge with 8 of gap, so the PLOT drew at 728 against a 760 grid
+ * of pads. The JUCE editor accepted that ("a rhyme that thin is worth less
+ * than a view switch you can find").
+ *
+ * Aligning them costs those 32 pixels and nothing else: the band is 792, the
+ * plot is 760, the tab strip survives, and every other number in the layout is
+ * the original's. See PLOT_W / BAND_W in ui/src/App.jsx, which own the
+ * arithmetic.
+ *
+ * The height is 568 (kGridY) + one row of pads + space-6 + the hint bar at the
+ * default 16 steps, and grows with Length -- see kMsgRows.
  */
-#define PLUG_WIDTH 824
+#define PLUG_WIDTH 856
 #define PLUG_HEIGHT 660
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0

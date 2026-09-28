@@ -7,8 +7,10 @@
  * shrinking each pad to a sliver.
  */
 import { For } from 'solid-js';
-import { sendMessage, MSG } from './iplug.js';
-import { startDrag } from './drag.js';
+/* The gesture itself lives in steps.js, shared with the ring -- those rules
+ * are each a fix for something that read as the click half-failing, and a
+ * second copy of them would have drifted. */
+import { padGesture } from './steps.js';
 
 const COLS = 16, STEP = 40, GAP = 8;
 
@@ -16,45 +18,7 @@ export default function StepGrid(props) {
   const n = () => Math.max(1, props.length ?? 16);
   const rows = () => Math.max(1, Math.ceil(n() / COLS));
 
-  const setStep = (i, mode) => sendMessage(MSG.setStep, `${i}:${mode}`);
-  const setDepth = (i, a) =>
-    sendMessage(MSG.setDepth, `${i}:${Math.max(0, Math.min(1, a)).toFixed(4)}`);
-
-  const onDown = (i, e) => {
-    e.preventDefault();
-    const on = !!props.steps?.[i], tie = !!props.ties?.[i];
-    /* A CLICK ACTIVATES FULLY, wherever in the pad it lands: setting the
-     * amount from the pointer's y on mousedown brought a step on at 10% and
-     * looked like the pad had half-failed. Shift cycles into Tie. */
-    if (e.shiftKey) setStep(i, on && !tie ? 2 : 1);
-    else setStep(i, on ? 0 : 1);
-
-    /*
-     * ACTIVATING A DEAD PAD GIVES IT ITS FULL AMOUNT. The amount is
-     * independent of the on/off mask, so a pad dragged down to 20% came back
-     * at 20% every time it was switched on again -- which reads as the click
-     * having half-worked. OFF -> ON only: On<->Tie changes what a live step
-     * does, and switching off must not discard an amount set on purpose.
-     */
-    if (!on) setDepth(i, 1);
-
-    const box = e.currentTarget.getBoundingClientRect();
-    let moved = false;
-    /* On the window, so the amount keeps following the pointer once it
-     * leaves the 40px pad -- which a vertical drag does almost at once. */
-    startDrag((ev) => {
-      /* A CLICK IS NOT A DRAG, however much the hand shakes. */
-      if (!moved) {
-        if (Math.abs(ev.clientY - (box.top + box.height / 2)) < 4) return;
-        moved = true;
-      }
-      const amt = 1 - (ev.clientY - box.top) / box.height;
-      /* ZERO MEANS OFF: dragging a pad to the floor deactivates it rather
-       * than leaving a step that is on and silent. */
-      if (amt <= 0.02) setStep(i, 0);
-      else { if (!props.steps?.[i]) setStep(i, 1); setDepth(i, amt); }
-    });
-  };
+  const onDown = (i, e) => padGesture(i, e, props);
 
   const cls = (i) => {
     const on = !!props.steps?.[i], tie = !!props.ties?.[i];

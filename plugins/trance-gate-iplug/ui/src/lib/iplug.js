@@ -38,6 +38,22 @@ export const MSG = {
   uiState: 64, params: 65, scope: 66, patch: 67,
   setStep: 96, setDepth: 97, setCursor: 98, requestPatch: 99,
   setText: 100, rows: 101,
+  /*
+   * "I AM LISTENING", and it has to exist because the plugin's push on open
+   * CANNOT be heard.
+   *
+   * OnUIOpen fires from didFinishNavigation and calls SPVFD() twelve times.
+   * But this editor is a <script type="module">, module scripts are DEFERRED,
+   * and so they evaluate AFTER the document is done -- globalThis.SPVFD does
+   * not exist yet and all twelve values are dropped. The UI then sat on
+   * twelve zeroes until something was touched, which showed up as four
+   * separate faults: a knob whose first drag jumped to zero, a switch drawn
+   * off whatever the engine held, and two dropdowns stuck on their first
+   * entry.
+   *
+   * Sent from onMount, so it cannot be early.
+   */
+  ready: 102,
 };
 
 /* SAMFUI carries its payload base64-encoded; the plugin decodes before it

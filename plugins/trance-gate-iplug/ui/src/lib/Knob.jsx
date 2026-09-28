@@ -45,6 +45,37 @@ export default function Knob(props) {
       () => endGesture(props.idx));
   };
 
+  /*
+   * THE KEYBOARD, because a focus ring on a control you cannot operate is
+   * decoration. JUCE's Slider handled arrows itself, so the original had this
+   * for free and the port quietly lost it along with the focus ring.
+   *
+   * Every keystroke is its own gesture: the host then records one automation
+   * write per press rather than a touch that never ends.
+   */
+  const nudge = (delta) => {
+    beginGesture(props.idx);
+    setParam(props.idx, Math.min(1, Math.max(0, norm() + delta)));
+    endGesture(props.idx);
+  };
+
+  const onKeyDown = (e) => {
+    /* Shift is FINE here as it is in a drag, and the ratio is the same 5. */
+    const step = (e.shiftKey ? 0.002 : 0.01);
+    switch (e.key) {
+      case 'ArrowUp': case 'ArrowRight': nudge(step); break;
+      case 'ArrowDown': case 'ArrowLeft': nudge(-step); break;
+      case 'PageUp': nudge(step * 10); break;
+      case 'PageDown': nudge(-step * 10); break;
+      case 'Home': nudge(-1); break;
+      case 'End': nudge(1); break;
+      /* The card says double-click to type; Enter is the keyboard's way in. */
+      case 'Enter': setEditing(true); break;
+      default: return;                     /* not ours -- let tab through */
+    }
+    e.preventDefault();
+  };
+
   const pt = (r, deg) => {
     const a = deg * Math.PI / 180;
     return [24 + r * Math.cos(a), 24 + r * Math.sin(a)];
@@ -82,7 +113,10 @@ export default function Knob(props) {
     <div class="knob-card">
       <div class="knob-label t-label">{props.label}</div>
       <svg ref={el} class="knob" width={BOX} height={BOX} viewBox={`0 0 ${BOX} ${BOX}`}
-           onPointerDown={onPointerDown}>
+           tabindex="0" role="slider" aria-label={props.label}
+           aria-valuetext={props.display ?? ''}
+           aria-valuenow={norm()} aria-valuemin="0" aria-valuemax="1"
+           onPointerDown={onPointerDown} onKeyDown={onKeyDown}>
         {/* the well */}
         <circle cx="24" cy="24" r={BOX * (16 / 48)} fill="var(--bg-200)" />
         {/* the rail */}
@@ -94,7 +128,10 @@ export default function Knob(props) {
           * and soft, is what makes it read as violet.
           */}
         {norm() > 0.0001 && (
-          <g style={{ filter: 'drop-shadow(0 0 3px rgba(162, 89, 255, 0.75))' }}>
+          /* --glow-arc, not a hand-typed rgba: this had drifted to alpha 0.75
+           * against the system's 0.45, and a literal here is exactly what the
+           * token guard now fails on. */
+          <g class="glow-arc">
             <path d={arc(0, norm())} fill="none" stroke="var(--uv)" stroke-width="2" stroke-linecap="butt" />
           </g>
         )}

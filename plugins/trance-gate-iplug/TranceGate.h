@@ -78,6 +78,21 @@ enum EMsgTags
   kMsgRequestPatch,   /* <- UI: send me the blob (Copy gate config)         */
   kMsgSetText,        /* <- UI: "<paramIdx>:<typed text>"                   */
   kMsgRows,           /* <- UI: the grid's row count, for the window height */
+  /*
+   * "I AM LISTENING." The reply to this is the whole of the UI's initial
+   * state, and it exists because the push on open CANNOT be heard.
+   *
+   * OnUIOpen fires from didFinishNavigation, but the editor is a
+   * <script type="module"> and module scripts are DEFERRED -- they evaluate
+   * after the document is done. So every SPVFD() from OnUIOpen lands before
+   * globalThis.SPVFD exists and is dropped on the floor, and the UI sits on
+   * twelve zeroes until the user touches something. That is one bug wearing
+   * four hats: a knob whose first drag jumps to zero, a switch drawn off
+   * whatever the engine holds, and two dropdowns stuck on their first entry.
+   *
+   * A push that races page load, replaced by a request that cannot.
+   */
+  kMsgReady,          /* <- UI: mounted -- send me everything                */
 };
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
@@ -86,6 +101,10 @@ enum EMsgTags
    * tagged with that parameter's index -- which is why the UI never has to
    * know a unit, a precision or an enum's labels. */
   void SendDisplay(int paramIdx);
+  /* Every value and every display string, in one go. Sent on open AND on
+   * kMsgReady: the first is too early to be heard but costs nothing, and the
+   * second is the one that actually arrives. */
+  void SendFullState();
   void OnParamChangeUI(int paramIdx, EParamSource source) override;
   void OnUIOpen() override;
 
@@ -138,6 +157,28 @@ private:
 #endif
 
   tg_core_t* mCore = nullptr;
+
+  /*
+   * THE SLOT SWITCH, AND WHY IT NEEDS A HANDSHAKE.
+   *
+   * `length` is PER SLOT in the engine -- pat[slot].length -- but it is also
+   * a host parameter, and PushParams writes all twelve every block. So the
+   * order slot-then-length meant that switching slots pushed the OLD slot's
+   * length straight over the new slot's: not a stale readout, the pattern's
+   * length actually destroyed, and silently.
+   *
+   * mSlotPushed is the audio thread's own record of the slot it last set.
+   * When it moves, mSlotSync goes up and the Length push is SUPPRESSED -- the
+   * engine's length is the authority until the host has caught up. OnIdle
+   * sees the flag, reads the engine's length into the parameter, and clears
+   * it, which is one tick at 50Hz. OnIdle runs off a timer created in the
+   * API wrapper's constructor, not with the editor, so this completes whether
+   * or not a window is open.
+   */
+  int mSlotPushed = -1;                 /* audio thread only */
+  std::atomic<int> mSlotSync{0};
+  void SyncSlotParams();                /* main thread only */
+
   Capture mCap;
   /* The column being accumulated and its running bounds. Audio thread only. */
   int mCapCol = -1;
