@@ -73,28 +73,98 @@ export function shapeInv(curve, w) {
 }
 
 /*
- * ONE GATE'S LEVEL AT TIME t, t being a fraction of the STEP.
+ * THE STAGE MACHINE, ONCE.
  *
- * The stage machine's three expressions (envelope.rs, Env::advance) with the
- * plot's own starting conditions: an isolated gate, so attack rises from
- * silence (att_from = 0) and release falls from sustain (rel_from = sustain).
- * The engine carries both forward between adjacent steps, which is what stops
- * the click at a step boundary -- a single gate drawn on its own has neither.
+ * This existed twice in the UI and the copies disagreed: EnvelopePlot had one
+ * in milliseconds that was right, and gateAt had one in step-fractions that
+ * was wrong in two ways at once. Both now call these.
  *
- *   ATTACK   att_from + (1 - att_from) * w
- *   DECAY    1        - (1 - sustain)  * w
- *   RELEASE  rel_from * (1 - w)
+ * `e` carries every length in ONE unit, whichever the caller finds convenient
+ * -- milliseconds for the envelope plot, fractions of a step for the pattern
+ * plot -- because the machine does not care which, only that they agree:
  *
- * Stage lengths are percentages OF THE GATE'S WIDTH, not of the step.
+ *     { curve, sustain, attack, decay, release, gate }
+ *
+ * Verified against the ENGINE ITSELF, not against a reading of it: see
+ * tests/envelope_table.c, which drives the real DSP with a DC input at
+ * amount 1 so the output sample IS the envelope, and ui/test/envelope.test.mjs,
+ * which holds this to it over sixty parameter combinations.
  */
-export function gateAt(p, t) {
-  const a = Math.max(0, p.attack) / 100 * p.width;
-  const d = Math.max(0, p.decay) / 100 * p.width;
-  const r = Math.max(0, p.release) / 100 * p.width;
-  const shut = Math.max(a + d, p.width);
-  if (t < a)        return shape(p.curve, a > 0 ? t / a : 1);
-  if (t < a + d)    return 1 - (1 - p.sustain) * shape(p.curve, d > 0 ? (t - a) / d : 1);
-  if (t < shut)     return p.sustain;
-  if (t < shut + r) return p.sustain * (1 - shape(p.curve, r > 0 ? (t - shut) / r : 1));
-  return 0;
+
+/**
+ * Attack, decay, sustain — the envelope AS DIALLED, with no gate close.
+ *
+ * `e.from` is the engine's `att_from`: the level the envelope was ALREADY at
+ * when this gate opened, which the attack ramps away from rather than jumping
+ * over. It is 0 for a gate that starts from silence, and that is the common
+ * case — but not the only one. When the release is long enough to outlive its
+ * step, the previous gate is still sounding when the next one strikes, and the
+ * engine picks up from there:
+ *
+ *     level = att_from + (1 - att_from) * w
+ *
+ * which is what stops a step boundary being a click. The envelope oracle found
+ * this: five of sixty measured cases started at up to 0.1 of full scale while
+ * the model insisted on 0, and every one of them had Release at 200%.
+ *
+ * The attack still REACHES 1 and still takes the time it was given; only where
+ * it starts moves. (att_from can exceed 1 in the engine, after a loud step
+ * followed by a quiet one — the lerp then ramps DOWN to the new level, which
+ * this expresses without a special case.)
+ */
+export function stageLevel(e, x) {
+  const a = Math.max(0, e.attack), d = Math.max(0, e.decay);
+  const s = Math.min(1, Math.max(0, e.sustain));
+  const from = e.from ?? 0;
+  if (x < a) return from + (1 - from) * shape(e.curve, a > 0 ? x / a : 1);
+  if (x < a + d) return 1 - (1 - s) * shape(e.curve, d > 0 ? (x - a) / d : 1);
+  return s;
+}
+
+/**
+ * The same machine with the gate closing over it — the gain you actually hear.
+ *
+ * THE GATE SHUTS AT `gate`, WHATEVER STAGE IS RUNNING. That is the engine's
+ * rule (`if r.frac >= self.hold { env.enter(Release) }` in next_gain), and it
+ * has no interest in whether the attack or the decay has finished. The old
+ * model waited for attack+decay first — so with a long attack against a narrow
+ * Width, which the knobs reach easily because a stage runs to 200% of the
+ * width, the picture held the gate open past where the engine shut it.
+ *
+ * AND THE RELEASE FALLS FROM WHEREVER THE MACHINE HAD GOT TO, not from
+ * sustain: `enter(Stage::Release)` latches `rel_from = self.level`. Shut the
+ * gate half way up a long attack and the release starts from half way up.
+ * The old model always released from sustain, so it drew a jump.
+ *
+ * At Width 100% the engine's in-step release never runs at all and the close
+ * happens at the step boundary instead — which is this function with
+ * `gate = 1`, needing no special case.
+ */
+export function envLevel(e, x) {
+  const g = e.gate, r = Math.max(0, e.release);
+  if (x < g) return stageLevel(e, x);
+  const from = stageLevel(e, g);
+  if (!(r > 0)) return 0;                  /* a zero-length release is a cut */
+  return x < g + r ? from * (1 - shape(e.curve, (x - g) / r)) : 0;
+}
+
+/**
+ * One gate's level at time `t`, `t` being a fraction of the STEP.
+ *
+ * The stage percentages are OF THE GATE'S WIDTH, not of the step — the
+ * engine's `stage_samples` is `pct * 0.01 * width_ms * ...` — and the width is
+ * itself a fraction of the step, so both divisions land here.
+ */
+export function gateAt(p, t, from = 0) {
+  const w = Math.min(1, Math.max(0, p.width));
+  const k = w / 100;
+  return envLevel({
+    curve: p.curve,
+    sustain: p.sustain,
+    attack: Math.max(0, p.attack) * k,
+    decay: Math.max(0, p.decay) * k,
+    release: Math.max(0, p.release) * k,
+    gate: w,
+    from,
+  }, t);
 }

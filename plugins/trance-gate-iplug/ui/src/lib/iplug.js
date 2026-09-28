@@ -16,9 +16,37 @@ const send = (m) => {
   if (typeof globalThis.IPlugSendMsg === 'function') globalThis.IPlugSendMsg(m);
 };
 
-/** Set a parameter. `value` is normalised 0..1. */
-export const setParam = (paramIdx, value) =>
+/**
+ * Set a parameter. `value` is normalised 0..1.
+ *
+ * APPLIED LOCALLY AS WELL AS SENT, AND THAT IS NOT AN OPTIMISATION.
+ *
+ * iPlug2's inbound handler is, in full:
+ *
+ *     if (json["msg"] == "SPVFUI")
+ *       SendParameterValueFromUI(json["paramIdx"], json["value"]);
+ *
+ * and that does SetNormalized() plus OnParamChangeUI(). NOTHING comes back to
+ * the page. So a control that renders from the value it was last TOLD never
+ * sees its own writes, and only moves if the host happens to echo the change
+ * back -- which Live does for continuous parameters and does not reliably do
+ * for a bool or an enum.
+ *
+ * That was two reported faults. Join Neighbors sent `1` on every click
+ * forever, because it computed the next state from a value that never
+ * changed, so it toggled on once and then "did nothing". The Curve select
+ * moved its native element and left the label reading "Linear", because the
+ * label is derived from the value too.
+ *
+ * The UI is the author of this change, so it may act on it. A later SPVFD
+ * from the plugin still overwrites it -- the plugin remains authoritative,
+ * including for the quantisation an int parameter applies -- and every
+ * readout's TEXT already comes from the plugin regardless.
+ */
+export const setParam = (paramIdx, value) => {
   send({ msg: 'SPVFUI', paramIdx: paramIdx | 0, value });
+  notifyParam(paramIdx | 0, value);
+};
 
 /*
  * A DRAG IS ONE GESTURE, NOT A HUNDRED EDITS. Begin/end bracket it so the
@@ -80,9 +108,13 @@ const messageListeners = new Set();
 export const onParam = (fn) => { paramListeners.add(fn); return () => paramListeners.delete(fn); };
 export const onMessage = (fn) => { messageListeners.add(fn); return () => messageListeners.delete(fn); };
 
-globalThis.SPVFD = (paramIdx, value) => {
-  for (const fn of paramListeners) fn(paramIdx | 0, value);
-};
+/* The one place a parameter value reaches the components, whether it came from
+ * the plugin or from the control the user is holding. */
+function notifyParam(paramIdx, value) {
+  for (const fn of paramListeners) fn(paramIdx, value);
+}
+
+globalThis.SPVFD = (paramIdx, value) => notifyParam(paramIdx | 0, value);
 /*
  * DECODE. SendArbitraryMsgFromDelegate BASE64-ENCODES on the way out, and
  * nothing says so at the call site -- the payload simply arrives as

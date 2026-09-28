@@ -18,7 +18,7 @@ import { onParam, onMessage, sendMessage, MSG } from './lib/iplug.js';
 import Knob from './lib/Knob.jsx';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
-import { EnvelopePlot, PatternPlot, Scope, gateAt } from './lib/Plots.jsx';
+import { EnvelopePlot, PatternPlot, Scope } from './lib/Plots.jsx';
 import { Switch, Select, GlyphButton, Tabs, HintBar } from './lib/Controls.jsx';
 
 const P = { slot: 0, length: 1, rate: 2, legato: 3, timeMode: 4, curve: 5,
@@ -97,6 +97,7 @@ export default function App() {
                                      phase: 0, msStep: 0, moving: false, cursor: 0 });
   const [params, setParams] = createSignal(null);
   const [scope, setScope] = createSignal([]);
+  const [scopeWindow, setScopeWindow] = createSignal(1000);
   const [tab, setTab] = createSignal(0);
   /*
    * THE CLOCK. `at` is performance.now() when this phase was received, which
@@ -158,21 +159,29 @@ export default function App() {
                            release: +f[11], widthMs: +f[12] });
       }
       if (tag === MSG.scope) {
-        /* "<filled>:<4 hex pairs per column>" -- a byte per bound, which is
-         * finer than the plot can draw and seven times smaller than the
-         * "%.3f" text it replaced. That text was ~9.6 KB base64 against an
+        /*
+         * "<cols>:<windowMs>:<4 hex pairs per column>" -- a byte per bound,
+         * which is finer than the plot can draw and seven times smaller than
+         * the "%.3f" text it replaced. That text was ~9.6 KB base64 against an
          * 8192-byte transport that truncates rather than fails, so the sweep
-         * lost its tail every frame. */
-        const c = msg.indexOf(':');
-        if (c < 0) return;
-        const filled = Math.max(0, Math.min(256, parseInt(msg.slice(0, c), 10) || 0));
-        const hex = msg.slice(c + 1);
-        const out = new Array(filled);
-        for (let i = 0; i < filled; i++) {
+         * lost its tail every frame.
+         *
+         * ALREADY ROTATED: the plugin walks its ring from `head`, so column 0
+         * here is the oldest sample in the window and the last is the newest.
+         * The UI does not need to know where the write cursor is.
+         */
+        const f = msg.split(':');
+        if (f.length < 3) return;
+        const cols = Math.max(0, Math.min(1024, parseInt(f[0], 10) || 0));
+        const windowMs = parseFloat(f[1]) || 0;
+        const hex = f[2];
+        const out = new Array(cols);
+        for (let i = 0; i < cols; i++) {
           const o = i * 8;
           const v = (k) => (parseInt(hex.substr(o + k * 2, 2), 16) || 0) / 127.5 - 1;
           out[i] = [v(0), v(1), v(2), v(3)];
         }
+        setScopeWindow(windowMs);
         return setScope(out);
       }
       if (tag === MSG.patch) copyToClipboard(msg);
@@ -204,22 +213,19 @@ export default function App() {
     return p ? { ...p, msStep: ui().msStep } : null;
   };
 
-  /* The gate the scope draws over the audio: the same quantity the pattern
-   * plot shows, so switching between the two compares like with like. */
-  const patternGate = () => {
-    const p = plotParams();
-    if (!p) return [];
-    const n = Math.max(1, ui().length);
-    const out = [];
-    for (let s = 0; s < n; s++) {
-      const on = !!ui().steps?.[s];
-      const amt = on ? (ui().depths?.[s] ?? 1) : 0;
-      const held = on && !!ui().ties?.[s];
-      for (let k = 0; k < 16; k++)
-        out.push(on ? (held ? amt : amt * gateAt(p, k / 16)) : 0);
-    }
-    return out;
-  };
+  /*
+   * THE GATE OVERLAY IS GONE, and removing it is the better half of the
+   * change rather than a casualty of it.
+   *
+   * It drew the pattern's gate across the scope, which only meant anything
+   * while the scope's x-axis WAS the pattern. The axis is wall time now, so
+   * the overlay would have been the right shape against the wrong axis.
+   *
+   * It was also the UI re-deriving the gate from the parameters -- a second
+   * implementation of DSP, of exactly the kind that has already cost this
+   * editor an S-curve and a stage machine. The wet trace is the gating, drawn
+   * by the engine that actually applies it.
+   */
 
   /*
    * THE VISUALISATION'S CLOCK IS THE ENGINE'S, NOT THE TIMER'S.
@@ -431,11 +437,11 @@ export default function App() {
                                        ties={ui().ties} depths={ui().depths}
                                        params={plotParams()} w={PLOT_W} h={92}
                                        phase={playPhase()} moving={ui().moving} />}
-          {/* The Scope takes no playhead: its sweep FILLS to where the engine
-            * has reached, so the leading edge of the trace is the playhead,
-            * and a line on top of it would be the same mark drawn twice. */}
-          {tab() === 1 && <Scope scope={scope()} length={ui().length} w={PLOT_W} h={92}
-                                 gate={patternGate()} />}
+          {/* The Scope takes no playhead and no pattern: it is a rolling
+            * window of wall time, so "now" is always its right-hand edge and
+            * there is no step for a mark to sit on. */}
+          {tab() === 1 && <Scope scope={scope()} w={PLOT_W} h={92}
+                                 windowMs={scopeWindow()} />}
         </div>
         <Tabs tabs={['Pattern', 'Signal']} active={tab()} onSelect={setTab} />
       </div>

@@ -43,30 +43,45 @@ const UI_STATE = `5555:0044:16:5.400:125.00:1:5:${DEPTHS}`;
 const Q = new URLSearchParams(location.search);
 const CURVE = Q.get('curve') ?? '0';
 const [A, D, S, R] = (Q.get('adsr') ?? '1.6,16,1,16').split(',');
-const PARAMS = `0:0:0:${CURVE}:1/16:15:0.9:0.75:${A}:${D}:${S}:${R}:93.75`;
+/* ?width= is the gate's open time as a fraction of the step (`hold`), and
+ * width_ms is derived from it so the plot's axis is not a lie. */
+const HOLD = Number(Q.get('width') ?? 0.75);
+const PARAMS = `0:0:0:${CURVE}:1/16:15:0.9:${HOLD}:${A}:${D}:${S}:${R}:${(HOLD * 125).toFixed(2)}`;
 
-/* The scope as the plugin sends it: a byte per bound, hex, four per column. */
-const scope = () => {
+/*
+ * The scope as the plugin sends it: "<cols>:<windowMs>:<4 hex bytes a column>",
+ * already rotated so column 0 is the oldest sample in the window.
+ *
+ * `roll` shifts the phase so successive pushes are genuinely different data --
+ * which is what makes "the window is live" testable rather than a claim.
+ */
+const COLS = 256, WINDOW_MS = 1000;
+const scope = (roll = 0) => {
   const H = (x) => Math.max(0, Math.min(255,
     Math.round((Math.max(-1, Math.min(1, x)) + 1) * 127.5)))
     .toString(16).toUpperCase().padStart(2, '0');
-  const FILLED = Number(new URLSearchParams(location.search).get('filled') ?? 256);
   let hex = '';
-  for (let i = 0; i < FILLED; i++) {
-    const a = 0.85 * Math.sin(i * 0.31) * (0.6 + 0.4 * Math.sin(i * 0.05));
-    const open = Math.floor(i / 16) % 2 === 0 ? 1 : 0.12;   /* gated */
+  for (let i = 0; i < COLS; i++) {
+    const j = i + roll;
+    const a = 0.85 * Math.sin(j * 0.31) * (0.6 + 0.4 * Math.sin(j * 0.05));
+    const open = Math.floor(j / 16) % 2 === 0 ? 1 : 0.12;   /* gated */
     hex += H(-Math.abs(a)) + H(Math.abs(a)) + H(-Math.abs(a * open)) + H(Math.abs(a * open));
   }
-  return `${FILLED}:${hex}`;
+  return `${COLS}:${WINDOW_MS}:${hex}`;
 };
 
+let roll = 0;
 const pushAll = () => {
   VALUES.forEach((x, i) => globalThis.SPVFD?.(i, x));
   DISPLAY.forEach((d, i) => globalThis.SAMFD?.(i, d.length, b64(d)));
   globalThis.SAMFD?.(64, 0, b64(UI_STATE));
   globalThis.SAMFD?.(65, 0, b64(PARAMS));
-  globalThis.SAMFD?.(66, 0, b64(scope()));
+  globalThis.SAMFD?.(66, 0, b64(scope(roll)));
 };
+
+/* The plugin pushes the window every idle tick; so does this, or the scope
+ * would look live only because nothing had asked it to change. */
+setInterval(() => { roll += 7; globalThis.SAMFD?.(66, 0, b64(scope(roll))); }, 50);
 
 /* THE RACE, REPRODUCED: this runs now, before the editor exists, and every one
  * of these calls goes nowhere. It is here to be dropped. */
@@ -89,9 +104,19 @@ window.IPlugSendMsg = (m) => {
   }
   if (m?.msg === 'SAMFUI' && m.msgTag === MSG_REQUEST_PATCH)
     globalThis.SAMFD?.(67, 0, b64('tg1:slot=0:len=16:steps=5555'));
-  /* A real plugin echoes a parameter write back; without that the knobs do not
-   * track their own drags here. */
-  if (m?.msg === 'SPVFUI') globalThis.SPVFD?.(m.paramIdx, m.value);
+  /*
+   * NO ECHO, DELIBERATELY, AND THIS IS LOAD-BEARING.
+   *
+   * iPlug2's SPVFUI handler does SetNormalized() plus OnParamChangeUI() and
+   * sends NOTHING back to the page. An earlier version of this mock echoed
+   * writes -- which made every control look fine here while Join Neighbors
+   * did nothing in Live and the Curve label stuck on its first entry, because
+   * both were waiting on a value the plugin never returns.
+   *
+   * So this mock behaves like the plugin: it stays silent. Anything that
+   * depends on hearing its own write back is broken, and will look broken
+   * here, which is the whole point of a harness.
+   */
 };
 
 /* Click through to the SIGNAL tab so the scope can be reviewed headlessly. */

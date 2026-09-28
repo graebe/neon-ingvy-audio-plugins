@@ -8,7 +8,7 @@
  * font problem and was a geometry one.
  */
 import { For, createMemo } from 'solid-js';
-import { shape, gateAt } from './curves.js';
+import { gateAt, envLevel, stageLevel } from './curves.js';
 
 
 /*
@@ -83,42 +83,18 @@ function StepNumbers(props) {
   );
 }
 
-/*
- * MIN/MAX PER SCREEN PIXEL, never a mean or a pick.
- *
- * A narrow gate is a fraction of a pixel at 128 steps, so sampling one value
- * per column would quietly report a signal that is not the one playing. This
- * is plot::decimate: every source value inside a pixel contributes, and what
- * survives is the pair that bounds them.
- */
-function decimate(values, cols) {
-  const n = values.length;
-  if (n === 0 || cols <= 0) return [];
-  const out = new Array(cols);
-  for (let x = 0; x < cols; x++) {
-    const a = Math.floor((x * n) / cols);
-    const b = Math.max(a + 1, Math.floor(((x + 1) * n) / cols));
-    let lo = Infinity, hi = -Infinity;
-    for (let i = a; i < b && i < n; i++) {
-      const v = values[i];
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-    }
-    out[x] = lo === Infinity ? [0, 0] : [lo, hi];
-  }
-  return out;
-}
 
 /*
- * TWO RENDERERS, AND THE DIFFERENCE IS DELIBERATE.
+ * ONE-SIDED, A FILLED REGION RISING FROM THE FLOOR.
  *
- * `Curve` is the envelope's: ONE-SIDED, a filled region rising from the
- * floor. `Gate` is the scope's: MIRRORED about the centreline with a keyline
- * behind it, because there it is drawn OVER a waveform and needs its own edge
- * against whatever it crosses.
+ * There were two renderers here: this one, and a MIRRORED `Gate` for drawing
+ * the pattern's gate over the scope's waveform. The scope is a rolling window
+ * of wall time now and carries no gate overlay, so the mirrored one is gone
+ * with it.
  *
- * Using the mirrored one for both is what made the envelope plot look like a
- * waveform rather than an envelope.
+ * The distinction is worth keeping in mind if an overlay is ever wanted back:
+ * using the mirrored renderer for the envelope is what once made the envelope
+ * plot look like a waveform rather than an envelope.
  */
 
 /*
@@ -163,34 +139,6 @@ function Curve(props) {
   );
 }
 
-/*
- * plot drawGate: mirrored about the centreline at 0.94 of the half-height --
- * a gate drawn at 1.0 lands exactly on the well's frame and reads as the
- * border rather than as a value. A bg-000 keyline first, then the line, since
- * over the dry band there is no brightness left to separate them.
- *
- * The SCOPE only.
- */
-function Gate(props) {
-  const path = (sign) => {
-    const v = props.values;
-    if (!v || v.length < 2) return '';
-    const mid = (props.top + props.bottom) / 2;
-    const half = (props.bottom - props.top) * 0.5 * 0.94;
-    return v.map((y, i) => {
-      const x = INSET + (props.w - 2 * INSET) * (i / (v.length - 1));
-      return `${i ? 'L' : 'M'} ${x.toFixed(2)} ${(mid - sign * half * Math.min(1, Math.max(0, y))).toFixed(2)}`;
-    }).join(' ');
-  };
-  return (
-    <>
-      <path d={path(1)}  fill="none" stroke="var(--bg-000)" stroke-width="4" />
-      <path d={path(-1)} fill="none" stroke="var(--bg-000)" stroke-width="4" />
-      <path d={path(1)}  fill="none" stroke="var(--uv)" stroke-opacity="0.85" stroke-width="2" />
-      <path d={path(-1)} fill="none" stroke="var(--uv)" stroke-opacity="0.85" stroke-width="2" />
-    </>
-  );
-}
 
 /*
  * THE CURVE MATHS IS NOT HERE ANY MORE -- see lib/curves.js.
@@ -218,11 +166,14 @@ export { gateAt };
  * derivable here: the scratch engine the JUCE editor ran was only ever needed
  * for the curve's samples, and env_shape is ported above.
  *
- *   widthMs     = hold * msStep          the gate's open time
- *   stageMs     = pct * widthMs / 100    a stage is a % OF THE WIDTH
- *   gateMs      = widthMs                where the gate closes
- *   releaseAtMs = max(gateMs, a + d)
- *   spanMs      = max(releaseAt + r, msStep, 2) * 1.04
+ *   widthMs = hold * msStep              the gate's open time
+ *   stageMs = pct * widthMs / 100        a stage is a % OF THE WIDTH
+ *   gateMs  = widthMs                    where the gate closes, always
+ *   spanMs  = max(gate + r, a + d, msStep, 2) * 1.04
+ *
+ * The span holds BOTH curves: the gated one ends at gate + release, the ghost
+ * runs on to attack + decay. It used to be `max(gate, a+d) + r`, which waits
+ * for a release the real envelope never waits for.
  *
  * The 4% of air at the end guarantees the release always lands inside the
  * well rather than on its frame.
@@ -239,34 +190,52 @@ export function EnvelopePlot(props) {
     const decayMs = Math.max(0, p.decay) * k;
     const releaseMs = Math.max(0, p.release) * k;
     const gateMs = widthMs;
-    const releaseAtMs = Math.max(gateMs, attackMs + decayMs);
-    const spanMs = Math.max(releaseAtMs + releaseMs, msStep, 2) * 1.04;
+    /*
+     * THE AXIS HAS TO HOLD BOTH CURVES, and they end at different places.
+     *
+     * The gated one ends at gate + release -- the gate shuts at `gate`
+     * whatever stage is running, so the release starts THERE and not after
+     * attack+decay. The ghost, which is the envelope as dialled, runs on to
+     * attack + decay.
+     *
+     * This was `max(gate, attack+decay) + release`, which is neither: it
+     * stretched the axis by a release the real envelope never waits for, so
+     * with a long attack against a narrow Width the whole picture shrank into
+     * the left of a well that was mostly empty.
+     */
+    const spanMs = Math.max(gateMs + releaseMs, attackMs + decayMs,
+                            msStep, 2) * 1.04;
     return {
-      msStep, hold, attackMs, decayMs, releaseMs, gateMs, releaseAtMs, spanMs,
+      msStep, hold, attackMs, decayMs, releaseMs, gateMs, spanMs,
       sustain: Math.min(1, Math.max(0, p.sustain)), curve: p.curve,
       amount: Math.min(1, Math.max(0, p.amount ?? 1)),
       /* The release ran past the step's end -- the next gate will cut it. */
-      truncated: releaseAtMs + releaseMs > msStep + 1e-6,
+      truncated: gateMs + releaseMs > msStep + 1e-6,
       /* The gate closed before the decay finished, so the solid curve alone
        * would be a puzzle: you set a long decay and see a spike. */
       early: gateMs < attackMs + decayMs - 1e-6,
     };
   });
 
-  /* The envelope's level at a time in ms. `gated` false is the ghost: the
-   * envelope AS DIALLED, with no gate close. */
-  const levelAt = (sh, ms, gated = true) => {
-    const { attackMs: a, decayMs: d, releaseMs: r, gateMs: g, sustain, curve } = sh;
-    const atGate = ms >= g;
-    if (gated && atGate) {
-      const lvl = levelAt(sh, g, false);
-      if (r <= 0) return 0;
-      return ms < g + r ? lvl * (1 - shape(curve, (ms - g) / r)) : 0;
-    }
-    if (ms < a) return a > 0 ? shape(curve, ms / a) : 1;
-    if (ms < a + d) return 1 - (1 - sustain) * (d > 0 ? shape(curve, (ms - a) / d) : 1);
-    return sustain;
-  };
+  /*
+   * THE STAGE MACHINE IS curves.js's, NOT A SECOND ONE HERE.
+   *
+   * This file had its own copy, in milliseconds. It was the better of the two
+   * -- it already released from the level actually reached -- but having two
+   * at all is why the pattern plot and this one drew different shapes from the
+   * same settings for as long as they did. There is one now, and it is held to
+   * the engine's measured output by ui/test/envelope.test.mjs.
+   *
+   * The lengths here are milliseconds; the machine only asks that they agree
+   * with each other.
+   */
+  const machine = (sh) => ({
+    curve: sh.curve, sustain: sh.sustain, attack: sh.attackMs,
+    decay: sh.decayMs, release: sh.releaseMs, gate: sh.gateMs,
+  });
+  /* `gated` false is the ghost: the envelope AS DIALLED, with no gate over it. */
+  const levelAt = (sh, ms, gated = true) =>
+    (gated ? envLevel : stageLevel)(machine(sh), ms);
 
   const samples = (gated) => {
     const sh = env();
@@ -302,15 +271,33 @@ export function EnvelopePlot(props) {
         const aEnd = sh.attackMs, dEnd = sh.attackMs + sh.decayMs;
         const rEnd = sh.gateMs + sh.releaseMs;
         /* A stage the gate never reached did not happen, so it gets no
-         * marker. */
-        const dots = [0, aEnd <= sh.gateMs ? aEnd : null,
-                      sh.decayMs > 0 && dEnd <= sh.gateMs ? dEnd : null,
-                      sh.gateMs,
-                      sh.releaseMs > 0 && rEnd <= sh.spanMs ? rEnd : null]
-                     .filter((m) => m !== null);
+         * marker -- and two markers landing on the same millisecond are one
+         * mark, not two drawn on top of each other. */
+        const dots = [...new Set(
+          [0, aEnd <= sh.gateMs ? aEnd : null,
+           sh.decayMs > 0 && dEnd <= sh.gateMs ? dEnd : null,
+           sh.gateMs,
+           sh.releaseMs > 0 && rEnd <= sh.spanMs ? rEnd : null]
+          .filter((m) => m !== null))];
 
-        const segs = [['A', 0, aEnd], ['D', aEnd, dEnd],
-                      ['S', dEnd, sh.gateMs], ['R', sh.gateMs, rEnd]];
+        /*
+         * THE LETTERS LABEL WHAT RAN, NOT WHAT WAS DIALLED.
+         *
+         * Each stage is clamped to the gate, because the gate shuts whatever
+         * stage is running. Unclamped, a long attack against a narrow Width
+         * printed "D" across the stretch AFTER the release had already taken
+         * the envelope to zero -- a decay that never happened, labelled over a
+         * curve that was doing the opposite. And "S" came out as a negative
+         * span, which is the sustain fault as it actually appeared.
+         *
+         * Clamped, a stage the gate cut short collapses to zero width and the
+         * skip below drops it, so the letters left are the stages you can hear.
+         */
+        const clamp = (ms) => Math.min(ms, sh.gateMs);
+        const segs = [['A', 0, clamp(aEnd)],
+                      ['D', clamp(aEnd), clamp(dEnd)],
+                      ['S', clamp(dEnd), sh.gateMs],
+                      ['R', sh.gateMs, rEnd]];
         const g = samples(true), gh = samples(false);
         const ghPath = () => gh.map((v, i) =>
           `${i ? 'L' : 'M'} ${(INSET + (props.w - 2 * INSET) * (i / (gh.length - 1))).toFixed(2)} ${(top + hFloor * (1 - Math.min(1, Math.max(0, v)))).toFixed(2)}`).join(' ');
@@ -420,13 +407,36 @@ export function PatternPlot(props) {
     const p = props.params;
     if (!p) return [];
     const perStep = 24, out = [];
-    for (let s = 0; s < n(); s++) {
-      const on = !!props.steps?.[s];
-      const amt = on ? (props.depths?.[s] ?? 1) : 0;
-      /* A tie holds through: the gate does not close at the step's edge. */
-      const held = on && !!props.ties?.[s];
-      for (let k = 0; k < perStep; k++)
-        out.push(on ? (held ? amt : amt * gateAt(p, k / perStep)) : 0);
+    /*
+     * THE CARRY-IN, THREADED ACROSS STEPS.
+     *
+     * The engine's attack starts from wherever the envelope already was
+     * (`att_from`), not from silence -- which matters whenever a release
+     * outlives its step and is still sounding when the next gate strikes. A
+     * single step cannot know that; this loop can, because it walks the
+     * pattern in order, so it is the right place to carry it.
+     *
+     * TWO CYCLES ARE WALKED AND THE FIRST IS DISCARDED. The pattern repeats,
+     * so step 0's carry-in comes from the LAST step -- a value the first pass
+     * does not have yet. One warm-up lap settles it, which is the same trick
+     * the envelope oracle plays by measuring a settled cycle rather than the
+     * first one.
+     */
+    let from = 0;
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 1) out.length = 0;
+      for (let s = 0; s < n(); s++) {
+        const on = !!props.steps?.[s];
+        const amt = on ? (props.depths?.[s] ?? 1) : 0;
+        /* A tie holds through: the gate does not close at the step's edge. */
+        const held = on && !!props.ties?.[s];
+        for (let k = 0; k < perStep; k++)
+          out.push(on ? (held ? amt : amt * gateAt(p, k / perStep, from)) : 0);
+        /* What this step leaves behind at its edge is what the next one
+         * starts from. A held step is still at its full level; an OFF step
+         * has nothing to hand on. */
+        from = on ? (held ? 1 : gateAt(p, 1, from)) : 0;
+      }
     }
     return out;
   });
@@ -454,7 +464,7 @@ export function PatternPlot(props) {
 }
 
 /*
- * THE SIGNAL. Dry behind in ink-dim, gated in front in uv.
+ * THE SIGNAL. Dry behind in grey, gated in front in uv.
  *
  * The dry is CONTEXT, NOT THE SUBJECT, so it is drawn back at partial alpha:
  * a sustained input fills every column edge to edge, and at full strength it
@@ -462,15 +472,25 @@ export function PatternPlot(props) {
  */
 export function Scope(props) {
   /*
-   * THE AXIS IS FIXED, AND THAT IS THE WHOLE POINT OF A SWEEP. It used to
-   * divide by cols.length, so a half-filled sweep was stretched across the
-   * whole plot and the picture rescaled as it filled -- the axis moved under
-   * the audio, which is the one thing a scope triggered by the pattern must
-   * not do.
+   * A ROLLING WINDOW OF WALL TIME, and "now" is the right-hand edge.
+   *
+   * IT USED TO BE A SWEEP OF THE PATTERN -- one column written per cycle, so
+   * the x-axis was the pattern plot's. That was the point of it, and it also
+   * meant a column was refreshed once every few SECONDS: turn the input up and
+   * the picture crept up after it, left to right, which reads as a filtered
+   * meter. Nothing was ever being smoothed; the display was simply that old.
+   *
+   * The plugin sends the whole ring every frame, already rotated so column 0
+   * is the oldest sample in the window -- see the note by Capture in
+   * TranceGate.h. There is no fill state left for this to track.
+   *
+   * WHAT IT COST: the columns are no longer steps, so the step numbers and the
+   * gate overlay came off the plot. The gated trace IS the gating.
    */
-  const TOTAL = 256;                 /* kScopeCols in TranceGate.h */
-  const top = CAPTION, bot = () => props.h - INSET;
+  const AXIS_H = 14;
+  const top = CAPTION, bot = () => props.h - INSET - AXIS_H;
   const mid = () => (top + bot()) / 2;
+  const windowMs = () => props.windowMs ?? 1000;
 
   /* One screen pixel per column of output, min/max over every capture column
    * behind it -- plot::decimate's argument, and the reason a narrow gate
@@ -481,14 +501,15 @@ export function Scope(props) {
     const w = Math.max(1, Math.round(props.w - 2 * INSET));
     const half = (bot() - top) * 0.5;
     const y = (v) => mid() - half * Math.max(-1, Math.min(1, v));
-    const filled = Math.min(cols.length, TOTAL);
+    /* The window is always complete, so the span IS the column count -- no
+     * fill state, and nothing to stop short at. */
+    const total = cols.length;
     const hi = [], lo = [];
     for (let x = 0; x < w; x++) {
-      const a = Math.floor((x * TOTAL) / w);
-      const b = Math.max(a + 1, Math.floor(((x + 1) * TOTAL) / w));
-      if (a >= filled) break;            /* stop where the sweep has reached */
+      const a = Math.floor((x * total) / w);
+      const b = Math.max(a + 1, Math.floor(((x + 1) * total) / w));
       let mn = Infinity, mx = -Infinity;
-      for (let i = a; i < b && i < filled; i++) {
+      for (let i = a; i < b && i < total; i++) {
         if (cols[i][loIdx] < mn) mn = cols[i][loIdx];
         if (cols[i][hiIdx] > mx) mx = cols[i][hiIdx];
       }
@@ -503,10 +524,8 @@ export function Scope(props) {
   };
 
   return (
-    <Well w={props.w} h={props.h} caption="SIGNAL   DRY IN GREY, GATED IN FRONT">
-      {/* The step grid sits UNDER the audio, so a transient is never hidden
-        * by a rule. */}
-      <StepRules count={props.length ?? 16} w={props.w} top={top} bottom={bot()} />
+    <Well w={props.w} h={props.h}
+          caption={`SIGNAL   LAST ${Math.round(windowMs())} MS   DRY IN GREY, GATED IN FRONT`}>
       {/* The zero line, so a silent stretch reads as silence rather than as a
         * gap in the drawing. */}
       <line x1={INSET} x2={props.w - INSET} y1={mid()} y2={mid()} stroke="var(--line-100)" />
@@ -523,12 +542,9 @@ export function Scope(props) {
         * blooms into mud.
         */}
       <g class="glow-arc"><path d={band(2, 3)} fill="var(--uv)" /></g>
-      {/* The gate over the audio -- mirrored, with its keyline. */}
-      {props.gate && props.gate.length > 1 && (
-        <Gate values={props.gate} w={props.w} top={top} bottom={bot()} />
-      )}
-      {/* Last of all, so a number is never swallowed by the audio. */}
-      <StepNumbers count={props.length ?? 16} w={props.w} top={top} />
+      {/* Milliseconds ago, since the columns are time and not steps. The
+        * same axis the envelope plot uses, so the two read alike. */}
+      <Axis w={props.w} y={props.h - INSET - AXIS_H} spanMs={windowMs()} markMs={0} />
     </Well>
   );
 }

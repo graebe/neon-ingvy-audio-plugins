@@ -117,14 +117,34 @@ enum EMsgTags
 
   /*
    * THE SCOPE'S CAPTURE, written on the audio thread and read on the message
-   * thread. One sweep is one pattern cycle, filling left to right and
-   * restarting on the wrap, so its x-axis is the pattern plot's.
+   * thread.
    *
-   * MIN AND MAX PER COLUMN, never a mean: a narrow gate is a fraction of a
-   * pixel at 128 steps and averaging would quietly report a signal that is
-   * not the one playing.
+   * A ROLLING WINDOW OF WALL TIME, NOT A SWEEP OF THE PATTERN.
+   *
+   * It used to map each sample to a column by PATTERN PHASE, so a column was
+   * written once per cycle -- seconds apart at sixteen steps. Change the
+   * input level and the picture only caught up as the sweep passed each
+   * column, which read as a slow, filtered rise and fall. Nothing was being
+   * smoothed; the display was simply that old.
+   *
+   * Now the columns advance with TIME: one window's worth of audio, always
+   * completely full, every column refreshed within a window. `head` is the
+   * column being written -- which is also the OLDEST data, since it is about
+   * to be overwritten -- so the reader walks head, head+1, ... head+255 to get
+   * oldest to newest, left to right.
+   *
+   * The cost is the pattern alignment: a given step is no longer always at the
+   * same x, so the step numbers and the gate overlay came off the plot. The
+   * wet trace shows the gating, which is what they were explaining.
+   *
+   * MIN AND MAX PER COLUMN, never a mean: a transient is a fraction of a
+   * column and averaging would quietly report a signal that is not the one
+   * playing.
    */
   static constexpr int kScopeCols = 256;
+  /* One second of audio across the well. Long enough to see a bar of a slow
+   * pattern, short enough that a level change is visible at once. */
+  static constexpr double kScopeWindowMs = 1000.0;
   /* The transport TRUNCATES rather than fails past this, so every push has to
    * fit under it with base64's extra third accounted for. Raised from
    * iPlug2's 8192 default and asserted against at the one call that can
@@ -134,7 +154,9 @@ enum EMsgTags
   {
     std::atomic<float> dryLo[kScopeCols], dryHi[kScopeCols];
     std::atomic<float> wetLo[kScopeCols], wetHi[kScopeCols];
-    std::atomic<int> filled{0};
+    /* The column currently being accumulated: the write cursor, and the
+     * oldest data in the ring. */
+    std::atomic<int> head{0};
   };
 
   /* The pattern is not a parameter and never will be -- 128 steps across 8
@@ -180,12 +202,14 @@ private:
   void SyncSlotParams();                /* main thread only */
 
   Capture mCap;
-  /* The column being accumulated and its running bounds. Audio thread only. */
-  int mCapCol = -1;
+  /* The column being accumulated, its running bounds, and how much of it has
+   * been filled. Audio thread only. */
+  int mCapCol = 0;
+  int mCapCount = 0;                /* samples into the current column */
+  double mCapPerCol = 1.0;          /* samples a column spans, from the rate */
   float mCapDryLo = 0.f, mCapDryHi = 0.f, mCapWetLo = 0.f, mCapWetHi = 0.f;
   std::vector<float> mDry;          /* the input, before the engine overwrites it */
-  void CaptureBlock(const float* dry, const float* wet, int frames,
-                    int totalFrames, double phase0, double phase1);
+  void CaptureBlock(const float* dry, const float* wet, int frames);
   /* iPlug2's `sample` is double and the engine's float path is the one the
    * golden render pins, so the block is converted rather than the engine
    * widened. Sized in OnReset; never resized on the audio thread. */

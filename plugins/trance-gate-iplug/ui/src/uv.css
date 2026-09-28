@@ -144,6 +144,31 @@
  * :focus-visible rather than :focus, so a click does not leave a ring behind
  * it; and `outline: none` only because the ring below replaces it.
  */
+/*
+ * THE UA RING COMES OFF FIRST, AND ON :focus RATHER THAN :focus-visible.
+ *
+ * Clearing it only under :focus-visible was not enough: a MOUSE click matches
+ * :focus and NOT :focus-visible, so a clicked knob fell through to the
+ * browser's own ring -- a blue box, drawn over a design with no blue in it.
+ * It only appeared once the knob became focusable, which is what gave the
+ * focus glow somewhere to land.
+ *
+ * So: no ring on :focus, the system's glow on :focus-visible. A click shows
+ * nothing, the keyboard shows the halo. The tap highlight is the same story on
+ * a touch device.
+ */
+.knob:focus,
+.switch-row:focus,
+.glyph:focus,
+.tab:focus,
+.select select:focus,
+.paste-field:focus {
+  outline: none;
+}
+.knob, .switch-row, .glyph, .tab, .pad, .ring {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .knob:focus-visible,
 .switch-row:focus-visible,
 .glyph:focus-visible,

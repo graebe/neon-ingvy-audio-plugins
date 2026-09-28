@@ -163,6 +163,26 @@ void TranceGate::OnReset()
   mL.assign(n, 0.0f);
   mR.assign(n, 0.0f);
   mDry.assign(n, 0.0f);
+
+  /*
+   * THE SCOPE'S COLUMN RATE, which is the only thing about it that depends on
+   * the host. One window of audio spread over kScopeCols, so a column is
+   * kScopeWindowMs / kScopeCols of wall time whatever the sample rate.
+   */
+  mCapPerCol = GetSampleRate() * (kScopeWindowMs / 1000.0) / double(kScopeCols);
+  if (!(mCapPerCol > 0.0)) mCapPerCol = 1.0;
+  mCapCol = 0;
+  mCapCount = 0;
+  /* Cleared, or the first window drawn after a rate change or a re-open is
+   * whatever the last session left in the ring. */
+  for (int i = 0; i < kScopeCols; i++)
+  {
+    mCap.dryLo[i].store(0.f, std::memory_order_relaxed);
+    mCap.dryHi[i].store(0.f, std::memory_order_relaxed);
+    mCap.wetLo[i].store(0.f, std::memory_order_relaxed);
+    mCap.wetHi[i].store(0.f, std::memory_order_relaxed);
+  }
+  mCap.head.store(0, std::memory_order_release);
 }
 
 void TranceGate::OnParamChange(int)
@@ -267,18 +287,16 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       mR[size_t(i)] = float(stereo ? inputs[1][off + i] : inputs[0][off + i]);
     }
 
-    /* The dry signal, before the engine overwrites it in place, and the pattern
-   * phase on BOTH sides of the block -- a block is not a point in time, and
-   * filing all of it at one end of itself makes the scope lag the gate it is
-   * drawn under. */
+    /* The dry signal, kept before the engine overwrites it in place. The
+   * capture rolls on wall time now, so the block needs no phase either side
+   * of it -- a sample's column is simply where the clock had got to. */
   if ((int) mDry.size() >= n)
     std::memcpy(mDry.data(), mL.data(), sizeof(float) * size_t(n));
-  const double phase0 = tg_core_phase01(mCore);
 
   tg_core_process_f32_split(mCore, mL.data(), mR.data(), n, &t);
 
   if ((int) mDry.size() >= n)
-    CaptureBlock(mDry.data(), mL.data(), n, n, phase0, tg_core_phase01(mCore));
+    CaptureBlock(mDry.data(), mL.data(), n);
 
     for (int i = 0; i < n; i++)
     {
@@ -350,13 +368,21 @@ void TranceGate::OnIdle()
    * 4 bytes a column, 1 KB for the sweep, ~1.4 KB base64. Bounded by
    * construction rather than by a limit somebody has to remember.
    */
-  const int filled = mCap.filled.load(std::memory_order_acquire);
-  if (filled > 0)
   {
+    /*
+     * THE WHOLE RING, EVERY FRAME, AND THE HEAD THAT ORIENTS IT.
+     *
+     * There is no `filled` any more: the window is always complete, because
+     * every column holds real audio from within the last kScopeWindowMs. The
+     * reader rotates by `head` -- the column about to be overwritten, so the
+     * oldest -- to lay the window out oldest-left, newest-right.
+     */
+    const int head = mCap.head.load(std::memory_order_acquire);
     static const char* kHex = "0123456789ABCDEF";
-    /* 4 hex pairs per column, plus the count and a separator. */
-    char scope[kScopeCols * 8 + 16];
-    int n = snprintf(scope, sizeof scope, "%d:", filled);
+    /* 4 hex pairs per column, plus the head, the window and separators. */
+    char scope[kScopeCols * 8 + 32];
+    int n = snprintf(scope, sizeof scope, "%d:%d:", kScopeCols,
+                     int(kScopeWindowMs));
 
     auto put = [&](float v) {
       /* -1..1 -> 0..255, clamped: the plot cannot draw past the well edge
@@ -368,8 +394,9 @@ void TranceGate::OnIdle()
       scope[n++] = kHex[b & 0xF];
     };
 
-    for (int i = 0; i < filled && i < kScopeCols; i++)
+    for (int k = 0; k < kScopeCols; k++)
     {
+      const int i = (head + k) % kScopeCols;   /* oldest first */
       put(mCap.dryLo[i].load(std::memory_order_relaxed));
       put(mCap.dryHi[i].load(std::memory_order_relaxed));
       put(mCap.wetLo[i].load(std::memory_order_relaxed));
@@ -570,43 +597,44 @@ void TranceGate::SyncSlotParams()
  * slower than the gate curve drawn over it, by 0.4 of full scale at a 512
  * sample buffer.
  */
-void TranceGate::CaptureBlock(const float* dry, const float* wet, int frames,
-                              int totalFrames, double phase0, double phase1)
+void TranceGate::CaptureBlock(const float* dry, const float* wet, int frames)
 {
-  if (frames <= 0 || totalFrames <= 0) return;
-
-  double span = phase1 - phase0;
-  if (span < 0.0) span += 1.0;              /* the pattern wrapped */
-  if (span < 0.0 || span > 1.0) span = 0.0;
-  const double step = span / double(totalFrames);
+  if (frames <= 0 || !(mCapPerCol > 0.0)) return;
 
   for (int i = 0; i < frames; i++)
   {
-    double p = phase0 + step * double(i);
-    if (p >= 1.0) p -= 1.0;
-    int col = int(p * double(kScopeCols));
-    if (col < 0) col = 0;
-    if (col >= kScopeCols) col = kScopeCols - 1;
-
-    if (col != mCapCol)
+    if (mCapCount == 0)
     {
-      if (mCapCol >= 0)
-      {
-        mCap.dryLo[mCapCol].store(mCapDryLo, std::memory_order_relaxed);
-        mCap.dryHi[mCapCol].store(mCapDryHi, std::memory_order_relaxed);
-        mCap.wetLo[mCapCol].store(mCapWetLo, std::memory_order_relaxed);
-        mCap.wetHi[mCapCol].store(mCapWetHi, std::memory_order_relaxed);
-        mCap.filled.store(mCapCol + 1, std::memory_order_release);
-      }
-      if (col < mCapCol)                    /* a new sweep: show the whole one */
-        mCap.filled.store(kScopeCols, std::memory_order_release);
-      mCapCol = col;
       mCapDryLo = mCapDryHi = dry[i];
       mCapWetLo = mCapWetHi = wet[i];
     }
-    if (dry[i] < mCapDryLo) mCapDryLo = dry[i];
-    if (dry[i] > mCapDryHi) mCapDryHi = dry[i];
-    if (wet[i] < mCapWetLo) mCapWetLo = wet[i];
-    if (wet[i] > mCapWetHi) mCapWetHi = wet[i];
+    else
+    {
+      if (dry[i] < mCapDryLo) mCapDryLo = dry[i];
+      if (dry[i] > mCapDryHi) mCapDryHi = dry[i];
+      if (wet[i] < mCapWetLo) mCapWetLo = wet[i];
+      if (wet[i] > mCapWetHi) mCapWetHi = wet[i];
+    }
+    mCapCount++;
+
+    /*
+     * A COLUMN IS A FIXED SLICE OF TIME, and mCapPerCol is fractional -- at
+     * 48k over a one-second window it is 187.5 samples. Comparing a counter
+     * against it and subtracting keeps the columns on the window rather than
+     * letting a rounded-down integer drift the whole picture slow.
+     */
+    if (double(mCapCount) >= mCapPerCol)
+    {
+      mCap.dryLo[mCapCol].store(mCapDryLo, std::memory_order_relaxed);
+      mCap.dryHi[mCapCol].store(mCapDryHi, std::memory_order_relaxed);
+      mCap.wetLo[mCapCol].store(mCapWetLo, std::memory_order_relaxed);
+      mCap.wetHi[mCapCol].store(mCapWetHi, std::memory_order_relaxed);
+
+      mCapCol = (mCapCol + 1) % kScopeCols;
+      mCapCount = 0;
+      /* Published AFTER the column is written and AFTER the cursor moves, so
+       * a reader never sees the half-built column as the newest one. */
+      mCap.head.store(mCapCol, std::memory_order_release);
+    }
   }
 }

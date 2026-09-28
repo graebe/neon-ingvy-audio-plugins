@@ -55,6 +55,26 @@ if (NOT WIN32)
 endif()
 add_test(NAME tg_curves COMMAND tg_shape_table --verify ${TG_SHAPE_TABLE})
 
+# THE ENVELOPE ORACLE, and it is MEASURED rather than transcribed.
+#
+# The curve table above pins shape(); this pins the whole stage machine around
+# it -- when the gate shuts, what the release falls from, what a zero-length
+# stage does, and what the attack starts from when the previous release is
+# still sounding. tg_envelope_table runs the REAL engine with a DC input at
+# amount 1, where the gain it applies IS the envelope, so the reference owes
+# nothing to anyone's reading of the Rust.
+#
+# It found two rules the UI had wrong and a third nobody had modelled at all.
+set(TG_ENVELOPE_TABLE
+    ${CMAKE_SOURCE_DIR}/plugins/trance-gate-iplug/ui/test/envelope_table.txt)
+
+add_executable(tg_envelope_table envelope_table.c)
+target_link_libraries(tg_envelope_table PRIVATE tg_engine)
+if (NOT WIN32)
+    target_link_libraries(tg_envelope_table PRIVATE m)
+endif()
+add_test(NAME tg_envelope COMMAND tg_envelope_table --verify ${TG_ENVELOPE_TABLE})
+
 # node's OWN test runner (22+), so the UI keeps a dependency tree of vite and
 # solid and nothing else -- which is the point of the licence audit, not a
 # preference. Skipped rather than failed when node is absent: a C++ developer
@@ -69,6 +89,11 @@ if (TG_NODE)
     set_tests_properties(tg_curves_js PROPERTIES
         ENVIRONMENT "TG_SHAPE_TABLE=${TG_SHAPE_TABLE}")
 
+    add_test(NAME tg_envelope_js
+             COMMAND ${TG_NODE} --test ${TG_UI_TEST}/envelope.test.mjs)
+    set_tests_properties(tg_envelope_js PROPERTIES
+        ENVIRONMENT "TG_ENVELOPE_TABLE=${TG_ENVELOPE_TABLE}")
+
     # THE TOKEN GUARD, which the JUCE build had and the web port lost. Uv.h
     # said "a ctest target fails the build if a colour literal appears in any
     # other source file"; four had crept into the UI by the time this was
@@ -77,7 +102,7 @@ if (TG_NODE)
     add_test(NAME tg_tokens
              COMMAND ${TG_NODE} --test ${TG_UI_TEST}/tokens.test.mjs)
 else()
-    message(STATUS "node not found -- skipping tg_curves_js and tg_tokens (the UI's tests)")
+    message(STATUS "node not found -- skipping the UI's tests (curves, envelope, tokens)")
 endif()
 
 # The installed AU, rendered by a host that actually supplies a transport.
