@@ -1,19 +1,75 @@
 # vst-library
 
-Plugin builds around engines kept separate from the shells that host them.
+Audio plugins and a Schwung module, built from shared Rust engines and one
+Solid UI kit. A monorepo: everything that ships from here is in here.
 
-An engine with a **second consumer is a submodule, not a copy**. The Trance
-Gate's DSP is the same Rust crate Schwung compiles into the Move module, pinned
-by commit — a second copy would drift, and the symptom would be "it sounds
-different in Live", which is the hardest kind of bug to chase. An engine with
-only one consumer so far lives in `engines/` and moves out the day it gains a
-second: the Spectrogram's analyzer is there, because the Move has no screen to
-draw a spectrogram on.
-
-| plugin | engine | what it is |
+| product | ships as | engine |
 |---|---|---|
-| [Trance Gate](#trance-gate) | `external/schwung-trance-gate` (submodule) | a tempo-locked step gate |
-| [Spectrogram](#spectrogram) | `engines/spectro` (in-repo) | a rolling analyzer |
+| [Trance Gate](#trance-gate) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
+| [Spectrogram](#spectrogram) | VST3 · AU · CLAP | `engines/spectro` |
+
+## How it is put together
+
+**One core per product, and the wrappers around it are the only thing that
+differs.** The Trance Gate's DSP is a single Rust crate; `tg-capi` wraps it in
+a C ABI for the plugin and `tg-move` wraps it in Schwung's audio_fx vtable for
+the Move. Both are members of one Cargo workspace and both reach `tg-core` by
+relative path, so they cannot drift apart — not by policy, by construction.
+That claim is also *tested*: `tests/render_plugin.c` renders four seconds
+through the plugin's own audio path and the result is byte-for-byte identical
+to the Move module's reference render.
+
+The two engines never depend on each other. A crate belongs to exactly one
+product.
+
+```
+engines/<product>/crates     the core, and its wrappers
+plugins/<product>/           the VST3/AU/CLAP shell, and its editor
+modules/<product>/           the Schwung module's shell and packaging
+ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
+design/files/                the Ultraviolet design system, vendored
+versions.json                one version per product
+```
+
+## Build
+
+```sh
+git submodule update --init --recursive   # iPlug2. The engines are subtrees.
+npm ci                                    # the kit and both editors
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build                       # the macOS plugins, universal
+ctest --test-dir build                    # 13 tests
+```
+
+The Move module is the second target, and it is a Linux cross-build in Docker:
+
+```sh
+cmake --build build --target schwung       # -> dist/trance-gate-module.tar.gz
+```
+
+Artefacts land in `build/out/` and are copied into `~/Library/Audio/Plug-Ins/`.
+
+**Needs cargo.** If it is installed and not found, the error names where it
+looked; `cmake/RustToolchain.cmake` searches every layout rustup.rs, Homebrew
+and a bare toolchain use. Homebrew's keeps its shims in
+`/opt/homebrew/opt/rustup/bin`, which is not `~/.cargo/bin`.
+
+**iPlug2's SDKs are downloaded rather than tracked.** A fresh clone needs
+`external/iPlug2/Dependencies/IPlug/download-vst3-sdk.sh` and
+`download-clap-sdks.sh` before the first configure, or CMake stops on a
+non-existent include path in `iPlug2::VST3`.
+
+## What the tests are for
+
+Most of them are not smoke tests, and the repository leans on them hard:
+
+| | |
+|---|---|
+| `tg_render_ab` | four seconds through the plugin's audio path, hashed against the Move module's reference render. **The check that a refactor did not change the sound.** |
+| `tg_curves`, `tg_envelope` | the editor's envelope maths against the engine's own *measured* output — the engine is run with a DC input at amount 1, where the gain it applies IS the envelope |
+| `ui_tokens` | no colour is spelled outside `ui-kit/src/tokens.css`, and that file agrees with the vendored design system |
+| `versions` | every spelling of a product's version agrees with `versions.json` |
+| `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
 
 ## Trance Gate
 
@@ -114,22 +170,6 @@ load; here the columns are produced by the audio clock, and the only thing UI
 jitter can do is make several arrive at once. Nothing allocates after
 `spectro_configure`, and a counting allocator in `engines/spectro` fails the
 build if that stops being true.
-
-## Build
-
-```bash
-git submodule update --init --recursive
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j8
-ctest --test-dir build
-```
-
-iPlug2's SDKs are downloaded rather than tracked; a fresh clone needs
-`external/iPlug2/Dependencies/IPlug/download-vst3-sdk.sh` and
-`download-clap-sdks.sh` before the first configure, or CMake stops on a
-non-existent include path in `iPlug2::VST3`.
-
-Artefacts land in `build/out/` and are copied to `~/Library/Audio/Plug-Ins/`.
 
 ## Licence
 
