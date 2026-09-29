@@ -133,6 +133,40 @@ int main (void)
         return 0;
     }
 
+    /*
+     * AND IT IS THE BUNDLE WE JUST BUILT, NOT A STALE ONE WEARING THE SAME IDS.
+     *
+     * This test finds the component by type/subtype/manufacturer, which is the
+     * right way to find an AU and says NOTHING about which file on disk answered.
+     * Those three values are the plugin's identity and deliberately never move --
+     * so every build the plugin has ever had claims them, and a bundle left in
+     * ~/Library/Audio/Plug-Ins/Components from an older name still answers here.
+     *
+     * That is not hypothetical. Renaming the bundle to NITranceGate left the old
+     * TranceGate.component installed beside it, macOS registered the OLD one, and
+     * this test went on passing against a binary that had none of the new work in
+     * it. A green test measuring the wrong file is worse than a red one.
+     *
+     * The version is the discriminator: EXPECTED_AU_VERSION comes from the
+     * PLUG_VERSION_HEX that this tree builds (tests/CMakeLists.txt reads it out of
+     * config.h), so a shadowing bundle from any other version fails here with the
+     * two numbers side by side instead of quietly taking over.
+     */
+    UInt32 auVersion = 0;
+    AudioComponentGetVersion (comp, &auVersion);
+#ifdef EXPECTED_AU_VERSION
+    if (auVersion != (UInt32) EXPECTED_AU_VERSION) {
+        printf ("  FAIL: the AU that answered is version 0x%08X, this tree builds "
+                "0x%08X\n", (unsigned) auVersion, (unsigned) EXPECTED_AU_VERSION);
+        printf ("        Another bundle with the same IDs is shadowing it. The\n"
+                "        rename left the old name behind; delete it:\n"
+                "          rm -rf ~/Library/Audio/Plug-Ins/Components/TranceGate.component\n");
+        return 1;
+    }
+    printf ("  %-56s ok (0x%08X)\n", "the installed AU is the one this tree builds",
+            (unsigned) auVersion);
+#endif
+
     AudioUnit au = NULL;
     if (AudioComponentInstanceNew (comp, &au) != noErr || !au) {
         printf ("  FAIL: could not instantiate the AU\n");
@@ -202,6 +236,18 @@ int main (void)
          * percentage is the number actually stored. */
         { "Env Time", 0.0f,   1.0f,   1.0f },
         { "Release", 0.0f, 200.0f,  27.3333f },
+        /*
+         * THE FADE, SET TO SOMETHING THAT ACTUALLY DOES SOMETHING.
+         *
+         * Slot 1's default pattern is every other step of sixteen, so eight
+         * arrivals -- at 50% exactly four of them sound and the other four are
+         * gaps. Leaving this at its default would prove the parameter exists and
+         * nothing else; at 50% the render comparison below carries it, which
+         * makes this the one test that drives the fade through a real host's
+         * parameter API rather than through the engine's own door.
+         */
+        { "Fade",       0.0f, 100.0f, 50.0f },
+        { "Fade Shape", 0.0f,   1.0f,  1.0f },   /* Soft */
     };
 
     int allSet = 1;
@@ -248,7 +294,8 @@ int main (void)
      * if they do not, the render difference would be measuring my test setup.
      */
     const char *shownWant[] = { "1/16", "16", "1", "Off", "90.00 %", "75.00 %",
-                                "3.83 %", "43.73 %", "60.00 %", "% Step", "27.33 %" };
+                                "3.83 %", "43.73 %", "60.00 %", "%", "27.33 %",
+                                "50.00 %", "Soft" };
     int allAgree = 1;
     for (size_t i = 0; i < sizeof (patch) / sizeof (patch[0]); i++) {
         AudioUnitParameterID pid = param_id (au, patch[i].name);
@@ -286,6 +333,8 @@ int main (void)
     tg_core_set_param (ref, "slot", "0");
     tg_core_set_param (ref, "amount", "0.900");
     tg_core_set_param (ref, "hold", "0.750");
+    tg_core_set_param (ref, "fade", "0.5");
+    tg_core_set_param (ref, "fade_soft", "1");
     tg_core_set_param (ref, "attack", "3.8267");
     tg_core_set_param (ref, "decay", "43.7333");
     tg_core_set_param (ref, "sustain", "0.600");

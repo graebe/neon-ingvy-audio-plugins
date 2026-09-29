@@ -39,7 +39,7 @@ jobs:
         id: tag
         run: |
           case "$GITHUB_REF_NAME" in
-            trance-gate-v*) PRODUCT=trance-gate; BUNDLE=TranceGate ;;
+            trance-gate-v*) PRODUCT=trance-gate; BUNDLE=NITranceGate ;;
             spectrogram-v*) PRODUCT=spectrogram; BUNDLE=Spectrogram ;;
             *) echo "ERROR: $GITHUB_REF_NAME names no product"; exit 1 ;;
           esac

@@ -5,15 +5,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
-	<string>TranceGate</string>
+	<string>NITranceGate</string>
 	<key>CFBundleGetInfoString</key>
-	<string>TranceGate v2026.09.29.1 Copyright 2026 Torben Gräber</string>
+	<string>NI Trance Gate v2026.09.29.1 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.graebe.clap.TranceGate</string>
+	<string>com.graebe.clap.NITranceGate</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>TranceGate</string>
+	<string>NITranceGate</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>

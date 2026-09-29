@@ -5,7 +5,7 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 
 | product | ships as | engine |
 |---|---|---|
-| [Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
+| [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
 | [Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
 
 ## How it is put together
@@ -131,7 +131,7 @@ Each product's manual lives with it, and this site renders those same files:
 
 | | |
 |---|---|
-| [Trance Gate](plugins/trance-gate/README.md) | a tempo-locked step gate — [in Live](plugins/trance-gate/docs/live.md), [on the Move](plugins/trance-gate/docs/schwung.md) |
+| [NI Trance Gate](plugins/trance-gate/README.md) | a tempo-locked step gate — [in Live](plugins/trance-gate/docs/live.md), [on the Move](plugins/trance-gate/docs/schwung.md) |
 | [Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
 
 Published at **https://graebe.github.io/neon-ingvy-audio-plugins/**, built from this

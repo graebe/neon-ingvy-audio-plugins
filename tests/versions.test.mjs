@@ -183,6 +183,24 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
         assert.equal(Number(au), packed(want),
           `${f}: AudioUnit Version is ${au}; ${want} packs to 0x${packed(want).toString(16).padStart(8, '0')}`);
 
+      /*
+       * AND THE AudioComponents DICT'S OWN version, WHICH IS THE ONE A HOST
+       * READS.
+       *
+       * "AudioUnit Version" above is a second spelling of the same number and
+       * only this one reaches a host's component registry -- so the two can
+       * disagree, and they did: the dict said 65536 (0x00010000) while the key
+       * above it had been kept current through three version bumps. A stale
+       * number here is a plugin that tells Logic it is version 1.0.0 whatever
+       * else it says, which is the kind of wrong that shows up as "my host will
+       * not pick up the new build".
+       */
+      const comp = /<key>AudioComponents<\/key>[\s\S]*?<key>version<\/key>\s*<integer>(\d+)<\/integer>/
+        .exec(x)?.[1];
+      if (comp !== undefined)
+        assert.equal(Number(comp), packed(want),
+          `${f}: AudioComponents version is ${comp}, wanted ${packed(want)}`);
+
       /* The human-readable one, so it carries the DISPLAY string as written --
        * a date version already begins with its own "v". */
       const info = key('CFBundleGetInfoString');
@@ -228,4 +246,66 @@ test('release.json has not published a version this tree lacks', () => {
   assert.ok(!ahead,
     `release.json publishes ${rel.version} but versions.json says ${tree} -- ` +
     'the workflow released something this tree cannot rebuild.');
+});
+
+/*
+ * THE AU's FACTORY SYMBOL, WHICH IS NOT A VERSION BUT FAILS THE SAME WAY.
+ *
+ * The AudioComponents dict names the factory function the host calls, by symbol
+ * name, and config.h's AUV2_FACTORY is what the binary exports. Nothing else
+ * checks that those two agree: the build succeeds either way, and the failure is
+ * a host that scans the component, lists it, and then cannot instantiate it.
+ *
+ * It was found by renaming the plugin -- config.h moved and the plist did not --
+ * and the only reason it did not ship is that the AU render test happened to load
+ * an older bundle still installed under the same four-character IDs. That is a
+ * warning about the test, not a defence of it, so this is checked from the source
+ * instead.
+ */
+test('the AU plist names the factory the binary exports', () => {
+  for (const [product, where] of Object.entries(PRODUCTS)) {
+    const dir = join(ROOT, dirname(where.config), 'resources');
+    const au = readdirSync(dir).filter((f) => f.endsWith('-AU-Info.plist'));
+    if (!au.length) continue;                      /* the Spectrogram has one too */
+    const h = read(where.config);
+    const factory = /#define\s+AUV2_FACTORY\s+(\w+)/.exec(h)?.[1];
+    assert.ok(factory, `${where.config}: no AUV2_FACTORY`);
+    for (const f of au) {
+      const x = readFileSync(join(dir, f), 'utf8');
+      const named = /<key>factoryFunction<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
+      assert.equal(named, factory,
+        `${f} calls ${named}, config.h exports ${factory} -- the host would list it and fail to open it`);
+    }
+  }
+});
+
+/*
+ * AND THE BUNDLE IDENTIFIERS END IN BUNDLE_NAME.
+ *
+ * iPlug2 builds the identifier as DOMAIN.MFR.<type>.BUNDLE_NAME and the AU looks
+ * its own bundle up by it to find the Cocoa view -- config.h says a mismatch
+ * returns NULL from CFBundleCopyBundleURL and segfaults the host at "VERIFYING
+ * CUSTOM UI". BUNDLE_NAME also has to equal the CMake target, because that is
+ * what names these plists. One rename, four places, and nothing was checking.
+ */
+test('every bundle identifier ends in BUNDLE_NAME', () => {
+  for (const [product, where] of Object.entries(PRODUCTS)) {
+    const h = read(where.config);
+    const bundle = /#define\s+BUNDLE_NAME\s+"([^"]+)"/.exec(h)?.[1];
+    assert.ok(bundle, `${where.config}: no BUNDLE_NAME`);
+    const dir = join(ROOT, dirname(where.config), 'resources');
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.plist'))) {
+      /* The plists are named <target>-<FORMAT>-Info.plist, and the target IS
+       * BUNDLE_NAME -- so the filename is the first thing that must agree. */
+      assert.ok(f.startsWith(`${bundle}-`),
+        `${f} is not named for BUNDLE_NAME "${bundle}"`);
+      const x = readFileSync(join(dir, f), 'utf8');
+      const id = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
+      if (id !== undefined)
+        assert.ok(id.endsWith(`.${bundle}`),
+          `${f}: CFBundleIdentifier "${id}" does not end in ".${bundle}"`);
+      const exe = /<key>CFBundleExecutable<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
+      if (exe !== undefined) assert.equal(exe, bundle, `${f}: CFBundleExecutable`);
+    }
+  }
 });
