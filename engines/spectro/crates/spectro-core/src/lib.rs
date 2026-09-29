@@ -1,0 +1,879 @@
+/*
+ * spectro-core -- a short-time Fourier analyzer that hands finished
+ * spectrogram columns to a UI.
+ * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
+ *
+ * WHERE THE FFT RUNS, WHICH IS THE ONE DECISION THIS FILE IS ABOUT.
+ *
+ * It runs on the AUDIO THREAD, as each hop completes, and the finished column
+ * -- one byte per band -- goes into a lock-free single-producer/single-consumer
+ * ring that the message thread drains in OnIdle.
+ *
+ * The alternative is to ship samples out and transform them on the message
+ * thread. That sounds safer and is worse: OnIdle is a 60 Hz timer competing
+ * with a DAW's UI, so the analysis would happen in bursts whenever the host let
+ * it, and the picture's time axis would stretch and squeeze with the host's
+ * load. Here the columns are produced by the audio clock and the only thing UI
+ * jitter can do is make several arrive at once -- which the wire format
+ * already carries.
+ *
+ * The cost is bounded and constant, which is the property an audio thread
+ * actually cares about: ONE transform per hop, and the hop is a fixed number of
+ * samples. At the defaults that is an 8192-point transform every 21 ms -- a few
+ * hundred microseconds against a callback that has milliseconds, and around 1.5%
+ * of a core.
+ *
+ * It was a 1024-point transform every 5 ms until the picture had to reach 10 Hz,
+ * which is eight times the window and a quarter of the rate. If that ever stops
+ * being affordable there are two levers before the threading changes: the
+ * real-input packing fft.rs describes (half the work), and a longer hop (fewer
+ * columns a second).
+ *
+ * NOTHING HERE ALLOCATES AFTER `configure`. `push` and `take_columns` touch
+ * preallocated buffers and two atomics, and tests/no_alloc.rs fails the build
+ * if that stops being true.
+ */
+
+mod bands;
+mod fft;
+mod window;
+
+pub use bands::{amplitude_to_byte, centres_for, Band, Bands};
+
+use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+
+use fft::Fft;
+use window::Window;
+
+/// How many columns the ring holds: ~5 s at the default hop, which is far more
+/// than the one a 60 Hz OnIdle leaves behind. It matters only when the host
+/// stops calling OnIdle at all, and then dropping is the right answer.
+pub const COLUMN_CAPACITY: usize = 256;
+
+/*
+ * THE TWO NUMBERS THE WINDOW LENGTH IS ACTUALLY ABOUT, and they are here rather
+ * than in the plugin because they are decisions about SOUND, not about a host.
+ *
+ * A spectrogram that starts at 10 Hz needs bins finer than 10 Hz, and an FFT's
+ * bins are sample_rate / fft_size apart -- so the window length is not a
+ * preference, it is arithmetic the sample rate settles. At 48 kHz, 6 Hz bins
+ * means 8192 points; at 96 kHz the same 6 Hz means 16384.
+ *
+ * The cap is 16384. Past 96 kHz the bins widen again rather than the window
+ * growing without limit: a 32768-point transform on the audio thread for a
+ * picture is not a trade worth making, and 192 kHz sessions are rare enough
+ * that 11.7 Hz bins there is the right compromise.
+ */
+pub const TARGET_BIN_HZ: f32 = 6.0;
+pub const MAX_FFT_SIZE: usize = 16384;
+
+/*
+ * COLUMNS A SECOND, HELD CONSTANT ACROSS SAMPLE RATES.
+ *
+ * The hop is derived from this rather than from the window, so the picture
+ * scrolls at the same speed and holds the same THIRTEEN SECONDS whether the
+ * session runs at 44.1 kHz or at 96 kHz. Tie the hop to the window instead and
+ * the same plugin shows half as much time in a 96 kHz session, which is the
+ * sort of difference nobody attributes to the sample rate.
+ */
+pub const TARGET_COLUMNS_PER_S: f32 = 47.0;
+
+/// The window that resolves [`TARGET_BIN_HZ`] at this rate, as a power of two,
+/// clamped to [`MAX_FFT_SIZE`]. 8192 at 44.1/48 kHz, 16384 at 88.2/96 kHz.
+pub fn pick_fft_size(sample_rate: f32) -> usize {
+    if !sample_rate.is_finite() || sample_rate <= 0.0 {
+        return 8192;
+    }
+    let wanted = (sample_rate / TARGET_BIN_HZ).ceil().max(1.0) as usize;
+    wanted.next_power_of_two().clamp(1024, MAX_FFT_SIZE)
+}
+
+/// The hop that yields [`TARGET_COLUMNS_PER_S`] at this rate, as a power of
+/// two, never longer than the window.
+pub fn pick_hop(sample_rate: f32, fft_size: usize) -> usize {
+    if !sample_rate.is_finite() || sample_rate <= 0.0 {
+        return 1024;
+    }
+    let wanted = (sample_rate / TARGET_COLUMNS_PER_S).round().max(1.0) as usize;
+    /*
+     * THE NEAREST POWER OF TWO, not the next one either way. 44.1 kHz wants a
+     * hop of 938: rounding up to 1024 scrolls at 43 columns a second, rounding
+     * DOWN to 512 scrolls at 86 -- nearly twice the target, and half the history
+     * on screen. Both neighbours are legal and one of them is wrong by a factor
+     * of two, which is exactly the case a round-in-one-direction rule gets
+     * wrong.
+     */
+    let up = wanted.next_power_of_two();
+    let down = if up > wanted { up / 2 } else { up };
+    let near = if wanted - down <= up - wanted { down } else { up };
+    near.clamp(64, fft_size.max(64))
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Config {
+    pub sample_rate: f32,
+    pub fft_size: usize,
+    pub hop: usize,
+    pub bands: usize,
+    pub f_min: f32,
+    pub f_max: f32,
+    pub db_floor: f32,
+    pub db_ceil: f32,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            sample_rate: 48_000.0,
+            /*
+             * 8192 at 48 kHz is 171 ms of window and bins 5.9 Hz apart, and the
+             * second number is why: A SPECTROGRAM THAT STARTS AT 10 Hz NEEDS
+             * BINS FINER THAN 10 Hz. At the 1024 this used to be, the bins were
+             * 46.9 Hz apart and `Bands` clamped the bottom of the axis up to
+             * meet them -- the picture began at 47 Hz however low f_min was set,
+             * and said so in the editor's hint bar without anyone reading it as
+             * a fault.
+             *
+             * It is paid for in TIME resolution: a 171 ms window smears a kick
+             * transient across a sixth of a second. That is the trade a long
+             * window is, not a defect -- the way out is a multi-resolution
+             * analysis, not a shorter window.
+             */
+            fft_size: 8192,
+            /* An eighth of the window: ~47 columns a second, which fills a
+             * 606-column view in thirteen seconds -- a whole phrase at once. */
+            hop: 1024,
+            /*
+             * 256 bands over 10 Hz .. 20 kHz is about 23 to the octave, two per
+             * semitone -- and one per pixel in the editor's 256 px well, so the
+             * picture is drawn with no vertical resampling at all.
+             */
+            bands: 256,
+            f_min: 10.0,
+            f_max: 20_000.0,
+            /* -96 dB is 16-bit silence: a floor deeper than that draws dither
+             * and room noise as a permanent violet haze. */
+            db_floor: -96.0,
+            db_ceil: 0.0,
+        }
+    }
+}
+
+impl Config {
+    /// Clamp everything into a range the analyzer can actually honour, rather
+    /// than trusting a caller across a C ABI. `fft_size` is rounded DOWN to a
+    /// power of two.
+    fn sanitised(mut self) -> Self {
+        if !self.sample_rate.is_finite() || self.sample_rate < 8_000.0 {
+            self.sample_rate = 48_000.0;
+        }
+        self.fft_size = self.fft_size.clamp(64, MAX_FFT_SIZE);
+        if !self.fft_size.is_power_of_two() {
+            self.fft_size = self.fft_size.next_power_of_two() / 2;
+        }
+        self.hop = self.hop.clamp(1, self.fft_size);
+        self.bands = self.bands.clamp(1, 1024);
+        if !self.f_min.is_finite() || self.f_min < 1.0 {
+            self.f_min = 10.0;
+        }
+        if !self.f_max.is_finite() || self.f_max <= self.f_min * 2.0 {
+            self.f_max = (self.f_min * 2.0).max(20_000.0);
+        }
+        if !self.db_floor.is_finite() || !self.db_ceil.is_finite() || self.db_ceil <= self.db_floor {
+            self.db_floor = -96.0;
+            self.db_ceil = 0.0;
+        }
+        self
+    }
+}
+
+/* ------------------------------------------------------------------ columns */
+
+/*
+ * THE HANDOVER: a bounded SPSC ring of byte columns.
+ *
+ * The writer owns `write` and the region ahead of it; the reader owns `read`
+ * and the region behind it. Neither ever forms a reference to the whole buffer,
+ * which is what keeps two threads inside one allocation from being a data race
+ * -- the copies are raw and into disjoint slots, and the two counters publish
+ * the handover with Release/Acquire.
+ *
+ * FULL MEANS DROP THE NEW COLUMN, and the count is kept rather than hidden.
+ * Overwriting the oldest would need the writer to move the reader's counter,
+ * which is exactly the kind of "small" shared write that makes a lock-free
+ * queue subtly wrong.
+ */
+struct Columns {
+    bands: usize,
+    buf: UnsafeCell<Box<[u8]>>,
+    /*
+     * THE RANGE EACH COLUMN WAS MEASURED AGAINST, one per slot.
+     *
+     * Changing the range is a request the audio thread picks up at its next
+     * frame, so for up to one hop -- 21 ms -- it is still producing columns on
+     * the OLD axis while the editor has already redrawn its scale for the new
+     * one. Those columns are not wrong, they are answers to a different
+     * question, and drawing them under the new scale puts a stripe of
+     * mislabelled data at the very moment the user is looking to see what
+     * changed.
+     *
+     * So each column carries its epoch and `take` drops the stale ones. It is a
+     * fault with no symptom until you are the one reading the picture.
+     */
+    epoch: UnsafeCell<Box<[usize]>>,
+    write: AtomicUsize,
+    read: AtomicUsize,
+    dropped: AtomicUsize,
+}
+
+impl Columns {
+    fn new(bands: usize) -> Self {
+        Self {
+            bands,
+            buf: UnsafeCell::new(vec![0u8; bands * COLUMN_CAPACITY].into_boxed_slice()),
+            epoch: UnsafeCell::new(vec![0usize; COLUMN_CAPACITY].into_boxed_slice()),
+            write: AtomicUsize::new(0),
+            read: AtomicUsize::new(0),
+            dropped: AtomicUsize::new(0),
+        }
+    }
+
+    /// Producer side. Audio thread only.
+    fn push(&self, col: &[u8], epoch: usize) {
+        debug_assert_eq!(col.len(), self.bands);
+        let w = self.write.load(Ordering::Relaxed);
+        let r = self.read.load(Ordering::Acquire);
+        if w.wrapping_sub(r) >= COLUMN_CAPACITY {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+        let slot = w % COLUMN_CAPACITY;
+        unsafe {
+            let base = (*self.buf.get()).as_mut_ptr();
+            core::ptr::copy_nonoverlapping(col.as_ptr(), base.add(slot * self.bands), self.bands);
+            (*self.epoch.get())[slot] = epoch;
+        }
+        self.write.store(w.wrapping_add(1), Ordering::Release);
+    }
+
+    /// Consumer side. Message thread only. Returns the columns written to
+    /// `out`, which must hold `max_cols * bands` bytes. Columns measured against
+    /// an earlier range are consumed and discarded rather than returned.
+    fn take(&self, out: &mut [u8], max_cols: usize, epoch: usize) -> usize {
+        let w = self.write.load(Ordering::Acquire);
+        let r = self.read.load(Ordering::Relaxed);
+        let available = w.wrapping_sub(r).min(out.len() / self.bands.max(1));
+
+        let mut kept = 0;
+        let mut seen = 0;
+        while seen < available && kept < max_cols {
+            let slot = r.wrapping_add(seen) % COLUMN_CAPACITY;
+            seen += 1;
+            unsafe {
+                if (*self.epoch.get())[slot] != epoch {
+                    continue; /* another range's answer -- see `epoch` above */
+                }
+                let base = (*self.buf.get()).as_ptr();
+                core::ptr::copy_nonoverlapping(
+                    base.add(slot * self.bands),
+                    out.as_mut_ptr().add(kept * self.bands),
+                    self.bands,
+                );
+            }
+            kept += 1;
+        }
+        if seen > 0 {
+            self.read.store(r.wrapping_add(seen), Ordering::Release);
+        }
+        kept
+    }
+}
+
+/* ---------------------------------------------------------------------- dsp */
+
+/// Audio-thread state. Everything in it is sized in `Analyzer::new`.
+struct Dsp {
+    fft: Fft,
+    window: Window,
+    bands: Bands,
+    /// The last `fft_size` samples, oldest at `pos`.
+    ring: Box<[f32]>,
+    pos: usize,
+    since_hop: usize,
+    /// Frames are not emitted until the ring has been filled once, so the first
+    /// column is a window of audio rather than a window of startup zeroes.
+    primed: usize,
+    re: Box<[f32]>,
+    im: Box<[f32]>,
+    col: Box<[u8]>,
+    /// The range epoch this band table was built for.
+    epoch: usize,
+}
+
+/// The analyzer. Build it with `new`, feed it from the audio thread with
+/// `push`, drain it from the message thread with `take_columns`.
+///
+/// SAFETY CONTRACT, and it is the whole design: `push` is called from exactly
+/// one thread, `take_columns` from exactly one other, and anything that takes
+/// `&mut self` (only `new`) from neither while they run.
+pub struct Analyzer {
+    cfg: Config,
+    /*
+     * THE RANGE, AS A REQUEST RATHER THAN AS SHARED STATE.
+     *
+     * The band table lives on the audio thread and is rebuilt BY the audio
+     * thread; all that crosses is these three atomics. That is what lets a
+     * dropdown change the picture's frequency range while audio is running with
+     * no lock, no reallocation and no pointer swap -- and why `set_range` is
+     * safe where `configure` is not.
+     *
+     * Stored as bits because there is no AtomicF32.
+     */
+    req_f_min: AtomicU32,
+    req_f_max: AtomicU32,
+    /// Bumped on every range change. Stamped onto each column, so the consumer
+    /// can tell an answer to the old question from an answer to the new one.
+    epoch: AtomicUsize,
+    dsp: UnsafeCell<Dsp>,
+    cols: Columns,
+}
+
+/* The producer and the consumer are different threads by construction; what
+ * makes that sound is the discipline above, not the absence of this impl. */
+unsafe impl Sync for Analyzer {}
+unsafe impl Send for Analyzer {}
+
+impl Analyzer {
+    pub fn new(cfg: Config) -> Self {
+        let cfg = cfg.sanitised();
+        let n = cfg.fft_size;
+        let n_bins = n / 2 + 1;
+        let bands = Bands::new(cfg.bands, n_bins, cfg.sample_rate, cfg.f_min, cfg.f_max);
+
+        Self {
+            cfg,
+            req_f_min: AtomicU32::new(cfg.f_min.to_bits()),
+            req_f_max: AtomicU32::new(cfg.f_max.to_bits()),
+            epoch: AtomicUsize::new(0),
+            dsp: UnsafeCell::new(Dsp {
+                fft: Fft::new(n),
+                window: Window::hann(n),
+                bands,
+                ring: vec![0.0; n].into_boxed_slice(),
+                pos: 0,
+                since_hop: 0,
+                primed: 0,
+                re: vec![0.0; n].into_boxed_slice(),
+                im: vec![0.0; n].into_boxed_slice(),
+                col: vec![0u8; cfg.bands].into_boxed_slice(),
+                epoch: 0,
+            }),
+            cols: Columns::new(cfg.bands),
+        }
+    }
+
+    pub fn config(&self) -> Config {
+        self.cfg
+    }
+
+    pub fn bands(&self) -> usize {
+        self.cfg.bands
+    }
+
+    /// The frequency range the picture currently covers, as requested.
+    pub fn range(&self) -> (f32, f32) {
+        (
+            f32::from_bits(self.req_f_min.load(Ordering::Relaxed)),
+            f32::from_bits(self.req_f_max.load(Ordering::Relaxed)),
+        )
+    }
+
+    /// Change the frequency range the bands are spread over. **Message thread.**
+    ///
+    /// Unlike `Analyzer::new`, this allocates nothing and is safe to call while
+    /// audio is running: it stores a request, and the audio thread rebuilds its
+    /// own band table at the next frame. Columns already queued from before the
+    /// change are dropped rather than handed out -- see `Columns::epoch`.
+    pub fn set_range(&self, f_min: f32, f_max: f32) {
+        if !f_min.is_finite() || !f_max.is_finite() || f_min < 1.0 || f_max <= f_min * 1.5 {
+            return; /* a range that cannot be drawn is not a range */
+        }
+        self.req_f_min.store(f_min.to_bits(), Ordering::Relaxed);
+        self.req_f_max.store(f_max.to_bits(), Ordering::Relaxed);
+        /* Release: the two stores above must be visible to the audio thread
+         * before the epoch that tells it to read them. */
+        self.epoch.fetch_add(1, Ordering::Release);
+    }
+
+    /// Band centre frequencies in Hz, ascending, written into `out`. Returns how
+    /// many were written. **Derived from the requested range, never read from
+    /// the audio thread's table** -- see `bands::centres_for`.
+    pub fn band_hz_into(&self, out: &mut [f32]) -> usize {
+        let (f_min, f_max) = self.range();
+        centres_for(
+            out,
+            self.cfg.bands,
+            self.cfg.fft_size / 2 + 1,
+            self.cfg.sample_rate,
+            f_min,
+            f_max,
+        )
+    }
+
+    /// Columns the ring had to throw away because nothing drained it.
+    pub fn dropped(&self) -> usize {
+        self.cols.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Feed mono samples. **Audio thread only.** Allocates nothing, locks
+    /// nothing, and takes a bounded amount of time per sample.
+    pub fn push(&self, mono: &[f32]) {
+        /* The single-producer half of the contract above. */
+        let dsp = unsafe { &mut *self.dsp.get() };
+        let n = dsp.ring.len();
+
+        for &s in mono {
+            /* A NaN in the ring would poison every frame it appears in for the
+             * next fft_size samples, not just its own column. */
+            dsp.ring[dsp.pos] = if s.is_finite() { s } else { 0.0 };
+            dsp.pos = if dsp.pos + 1 == n { 0 } else { dsp.pos + 1 };
+            if dsp.primed < n {
+                dsp.primed += 1;
+            }
+            dsp.since_hop += 1;
+            if dsp.since_hop >= self.cfg.hop {
+                dsp.since_hop = 0;
+                if dsp.primed >= n {
+                    self.frame(dsp);
+                }
+            }
+        }
+    }
+
+    /// One transform, one column. Audio thread, from `push` only.
+    fn frame(&self, dsp: &mut Dsp) {
+        let n = dsp.ring.len();
+
+        /*
+         * THE RANGE CHANGE IS ADOPTED HERE, by the thread that owns the table.
+         * Acquire pairs with the Release in `set_range`, so the two frequencies
+         * are visible before the epoch that announces them.
+         */
+        let epoch = self.epoch.load(Ordering::Acquire);
+        if epoch != dsp.epoch {
+            dsp.epoch = epoch;
+            let (f_min, f_max) = self.range();
+            dsp.bands.rebuild(
+                self.cfg.bands,
+                n / 2 + 1,
+                self.cfg.sample_rate,
+                f_min,
+                f_max,
+            );
+        }
+
+        /* Oldest sample first: the ring's write cursor is also its start, which
+         * is the whole reason a ring needs no memmove. */
+        for i in 0..n {
+            let src = dsp.pos + i;
+            let src = if src >= n { src - n } else { src };
+            dsp.re[i] = dsp.ring[src] * dsp.window.gain[i];
+            dsp.im[i] = 0.0;
+        }
+
+        dsp.fft.forward(&mut dsp.re, &mut dsp.im);
+
+        let scale = dsp.window.amplitude_scale;
+        let nyquist_bin = n / 2;
+        let mag = |k: usize| -> f32 {
+            let m = (dsp.re[k] * dsp.re[k] + dsp.im[k] * dsp.im[k]).sqrt() * scale;
+            /* Every bin but DC and Nyquist has a conjugate twin, and the
+             * amplitude scale counts both. Nyquist has none, so it would read
+             * 6 dB hot -- a permanent bright line along the top of the
+             * picture. */
+            if k == nyquist_bin {
+                m * 0.5
+            } else {
+                m
+            }
+        };
+
+        for (b, range) in dsp.bands.ranges.iter().enumerate() {
+            /* PEAK over the band's bins -- see bands.rs. */
+            let mut peak = 0.0f32;
+            for k in range.lo..range.hi {
+                let m = mag(k);
+                if m > peak {
+                    peak = m;
+                }
+            }
+            dsp.col[b] = amplitude_to_byte(peak, self.cfg.db_floor, self.cfg.db_ceil);
+        }
+
+        self.cols.push(&dsp.col, dsp.epoch);
+    }
+
+    /// Drain finished columns into `out`, `bands()` bytes each, oldest first.
+    /// **Message thread only.** Returns the number of columns written.
+    pub fn take_columns(&self, out: &mut [u8], max_cols: usize) -> usize {
+        self.cols.take(out, max_cols, self.epoch.load(Ordering::Acquire))
+    }
+}
+
+/// The axis as a Vec, for tests only. The real API writes into a caller's
+/// buffer because the C ABI does, and because a spectrogram's axis is asked for
+/// once a range change rather than once a frame.
+#[cfg(test)]
+impl Analyzer {
+    fn band_hz(&self) -> Vec<f32> {
+        let mut v = vec![0.0f32; self.bands()];
+        let n = self.band_hz_into(&mut v);
+        v.truncate(n);
+        v
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SR: f32 = 48_000.0;
+
+    fn sine(freq: f32, n: usize, amp: f32) -> Vec<f32> {
+        (0..n)
+            .map(|i| {
+                (amp as f64
+                    * (2.0 * core::f64::consts::PI * freq as f64 * i as f64 / SR as f64).sin())
+                    as f32
+            })
+            .collect()
+    }
+
+    /// The band whose centre is nearest `hz`.
+    fn nearest_band(a: &Analyzer, hz: f32) -> usize {
+        let mut best = 0;
+        for (i, &c) in a.band_hz().iter().enumerate() {
+            if (c - hz).abs() < (a.band_hz()[best] - hz).abs() {
+                best = i;
+            }
+        }
+        best
+    }
+
+    #[test]
+    fn a_1k_sine_lights_the_1k_band_and_leaves_the_rest_dark() {
+        let a = Analyzer::new(Config { sample_rate: SR, ..Default::default() });
+        a.push(&sine(1000.0, 8192, 1.0));
+
+        let mut out = vec![0u8; a.bands() * 16];
+        let cols = a.take_columns(&mut out, 16);
+        assert!(cols > 0, "no column came out of 8192 samples");
+
+        /* The last full column, so the window is entirely inside the tone. */
+        let col = &out[(cols - 1) * a.bands()..cols * a.bands()];
+        let peak_band = col.iter().enumerate().max_by_key(|(_, &v)| v).map(|(i, _)| i).unwrap();
+        let want = nearest_band(&a, 1000.0);
+        assert!(
+            (peak_band as i32 - want as i32).abs() <= 1,
+            "peak in band {peak_band} ({} Hz), expected {want} ({} Hz)",
+            a.band_hz()[peak_band], a.band_hz()[want]
+        );
+
+        /* Full scale reaches the ceiling. */
+        assert!(col[peak_band] > 250, "a full-scale sine read {}", col[peak_band]);
+
+        /* And it is a LINE, not a smear: three bands away is already 20 dB
+         * down, which on a -96..0 ramp is 53 bytes. */
+        let span = 255.0 / 96.0; /* bytes per dB */
+        for (b, &v) in col.iter().enumerate() {
+            if (b as i32 - peak_band as i32).abs() >= 3 {
+                assert!(
+                    f32::from(v) < 255.0 - 20.0 * span,
+                    "band {b} ({} Hz) read {v}: the tone smeared", a.band_hz()[b]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_picked_window_resolves_ten_hertz_at_every_ordinary_rate() {
+        /*
+         * THE TEST THE OLD DEFAULTS WOULD HAVE FAILED, and nothing caught it:
+         * at 1024 points the bins were 46.9 Hz apart, `Bands` clamped the bottom
+         * of the axis up to meet them, and the picture began at 47 Hz however
+         * low f_min was set.
+         */
+        for sr in [44_100.0f32, 48_000.0, 88_200.0, 96_000.0] {
+            let n = pick_fft_size(sr);
+            let bin_hz = sr / n as f32;
+            assert!(n.is_power_of_two(), "{sr} Hz picked {n}, not a power of two");
+            assert!(n <= MAX_FFT_SIZE);
+            assert!(bin_hz <= TARGET_BIN_HZ, "{sr} Hz: bins {bin_hz} apart");
+            /* And the whole point of that: a 10 Hz band edge survives. */
+            let a = Analyzer::new(Config {
+                sample_rate: sr, fft_size: n, hop: pick_hop(sr, n), ..Default::default()
+            });
+            let first = a.band_hz()[0];
+            assert!(
+                (first - 10.0).abs() < 1.0,
+                "{sr} Hz: the axis starts at {first}, not 10"
+            );
+        }
+
+        /* Past the cap the bins widen rather than the window growing without
+         * limit -- stated here so the compromise is visible rather than
+         * discovered. */
+        assert_eq!(pick_fft_size(192_000.0), MAX_FFT_SIZE);
+    }
+
+    #[test]
+    fn the_picture_scrolls_at_one_speed_whatever_the_sample_rate() {
+        /* Tie the hop to the window instead of to a column rate and a 96 kHz
+         * session shows half as much time in the same window -- a difference
+         * nobody would attribute to the sample rate. */
+        for sr in [44_100.0f32, 48_000.0, 88_200.0, 96_000.0, 192_000.0] {
+            let n = pick_fft_size(sr);
+            let hop = pick_hop(sr, n);
+            let cols_per_s = sr / hop as f32;
+            assert!(hop.is_power_of_two() && hop <= n, "{sr} Hz picked hop {hop}");
+            assert!(
+                (40.0..=95.0).contains(&cols_per_s),
+                "{sr} Hz scrolls at {cols_per_s} columns a second"
+            );
+        }
+        /* At the ordinary rates it is the same 47 to within rounding. */
+        for sr in [44_100.0f32, 48_000.0, 88_200.0, 96_000.0] {
+            let cols = sr / pick_hop(sr, pick_fft_size(sr)) as f32;
+            assert!((cols - TARGET_COLUMNS_PER_S).abs() < 8.0, "{sr} Hz: {cols}");
+        }
+    }
+
+    #[test]
+    fn a_thirty_hertz_sine_lands_on_a_thirty_hertz_band() {
+        /*
+         * THE CLAIM THE LONGER WINDOW EXISTS FOR. At the old 1024 points the
+         * nearest bin to 30 Hz was bin 1 at 46.9 Hz, so a bass note and a kick
+         * fundamental were the same row of pixels.
+         */
+        let a = Analyzer::new(Config { sample_rate: SR, ..Default::default() });
+        a.push(&sine(30.0, 48_000, 1.0));
+
+        let mut out = vec![0u8; a.bands() * 32];
+        let cols = a.take_columns(&mut out, 32);
+        assert!(cols > 0, "no column came out of a second of audio");
+
+        let col = &out[(cols - 1) * a.bands()..cols * a.bands()];
+        let peak = *col.iter().max().unwrap();
+        let want = nearest_band(&a, 30.0);
+        /*
+         * THE PEAK DOWN HERE IS A PLATEAU, NOT A POINT. Bands are 3% apart --
+         * under a hertz at 30 Hz -- while bins are 5.9 Hz apart, so half a dozen
+         * neighbouring bands read the same bin and carry the same byte. Which of
+         * them an argmax returns is a tie-break, not a measurement. So: the band
+         * nearest 30 Hz is AT the maximum, which no tie-break can change.
+         */
+        assert_eq!(
+            col[want], peak,
+            "the 30 Hz band ({} Hz) read {} against a peak of {peak}",
+            a.band_hz()[want], col[want]
+        );
+        /* And it is distinguishable from 60 Hz, which is the whole point: the
+         * band holding 60 Hz is well down the ramp. */
+        let sixty = nearest_band(&a, 60.0);
+        assert!(col[sixty] < peak / 2, "60 Hz read {} against {peak}", col[sixty]);
+    }
+
+    #[test]
+    fn a_range_change_moves_the_axis_at_once_and_the_table_follows() {
+        let a = Analyzer::new(Config::default());
+        assert!((a.band_hz()[0] - 10.0).abs() < 0.5, "the full axis starts at 10 Hz");
+
+        /* The editor's scale is derived from the request, so it is correct
+         * immediately -- before the audio thread has run a single frame. */
+        a.set_range(200.0, 4000.0);
+        let hz = a.band_hz();
+        assert!((hz[0] - 200.0).abs() < 4.0, "the zoomed axis starts at {}", hz[0]);
+        assert!((*hz.last().unwrap() - 4000.0).abs() < 80.0, "it ends at {}", hz.last().unwrap());
+
+        /* And the audio thread's own table follows within one hop, which is what
+         * makes the columns agree with the scale. */
+        let cfg = a.config();
+        a.push(&sine(1000.0, cfg.fft_size + cfg.hop * 8, 1.0));
+        let mut out = vec![0u8; a.bands() * 16];
+        let cols = a.take_columns(&mut out, 16);
+        assert!(cols > 0, "no column after a range change");
+
+        let col = &out[(cols - 1) * a.bands()..cols * a.bands()];
+        let peak = col.iter().enumerate().max_by_key(|(_, &v)| v).map(|(i, _)| i).unwrap();
+        let want = nearest_band(&a, 1000.0);
+        assert!(
+            (peak as i32 - want as i32).abs() <= 1,
+            "1 kHz peaked in band {peak} ({} Hz) under the Mid range, expected {want}",
+            hz[peak]
+        );
+    }
+
+    #[test]
+    fn columns_from_before_a_range_change_are_never_handed_out_after_it() {
+        /*
+         * THE FAULT WITH NO SYMPTOM UNTIL YOU ARE READING THE PICTURE.
+         *
+         * A range change is a request the audio thread adopts at its next frame,
+         * so columns measured against the OLD range can already be sitting in
+         * the ring when the editor redraws its scale for the new one. They are
+         * not wrong, they are answers to a different question -- and drawn under
+         * the new scale they are a stripe of mislabelled data at exactly the
+         * moment someone is looking to see what changed.
+         */
+        let cfg = Config::default();
+        let a = Analyzer::new(cfg);
+        a.push(&sine(1000.0, cfg.fft_size + cfg.hop * 4, 1.0));
+
+        a.set_range(200.0, 4000.0);
+
+        let mut out = vec![0u8; a.bands() * 16];
+        assert_eq!(
+            a.take_columns(&mut out, 16), 0,
+            "a column measured against the old range survived the change"
+        );
+
+        /* The ring is not stuck: new columns arrive as usual. */
+        a.push(&sine(1000.0, cfg.hop * 4, 1.0));
+        assert!(a.take_columns(&mut out, 16) > 0, "nothing came after the change");
+    }
+
+    #[test]
+    fn a_range_that_cannot_be_drawn_is_ignored() {
+        let a = Analyzer::new(Config::default());
+        let before = a.range();
+        for (lo, hi) in [(0.0, 100.0), (100.0, 100.0), (f32::NAN, 1000.0),
+                         (100.0, f32::INFINITY), (1000.0, 1100.0)] {
+            a.set_range(lo, hi);
+            assert_eq!(a.range(), before, "set_range({lo}, {hi}) was accepted");
+        }
+    }
+
+    #[test]
+    fn the_axis_matches_the_table_the_audio_thread_builds() {
+        /*
+         * The scale is derived on the message thread and the bands are built on
+         * the audio thread, from the same inputs by the same arithmetic. That is
+         * what makes sharing nothing between them safe -- and it holds only as
+         * long as the two really are the same arithmetic.
+         */
+        let cfg = Config::default();
+        for (lo, hi) in [(10.0, 20_000.0), (10.0, 200.0), (2_000.0, 20_000.0)] {
+            let a = Analyzer::new(Config { f_min: lo, f_max: hi, ..cfg });
+            let table = Bands::new(
+                cfg.bands, cfg.fft_size / 2 + 1, cfg.sample_rate, lo, hi,
+            );
+            let axis = a.band_hz();
+            assert_eq!(axis.len(), table.centres.len());
+            for (i, (&a_hz, &t_hz)) in axis.iter().zip(table.centres.iter()).enumerate() {
+                assert!((a_hz - t_hz).abs() < 1e-3, "band {i}: axis {a_hz}, table {t_hz}");
+            }
+        }
+    }
+
+    #[test]
+    fn silence_is_exactly_the_floor() {
+        let a = Analyzer::new(Config::default());
+        a.push(&vec![0.0f32; 8192]);
+        let mut out = vec![9u8; a.bands() * 8];
+        let cols = a.take_columns(&mut out, 8);
+        assert!(cols > 0);
+        for &v in &out[..cols * a.bands()] {
+            assert_eq!(v, 0, "silence drew a colour");
+        }
+    }
+
+    #[test]
+    fn the_first_column_waits_for_a_full_window() {
+        let cfg = Config::default();
+        let a = Analyzer::new(cfg);
+        /* One hop short of a full window: a column now would be mostly the
+         * startup zeroes. */
+        a.push(&sine(1000.0, cfg.fft_size - 1, 1.0));
+        let mut out = vec![0u8; a.bands() * 4];
+        assert_eq!(a.take_columns(&mut out, 4), 0, "a column escaped un-primed");
+
+        a.push(&sine(1000.0, cfg.hop + 1, 1.0));
+        assert!(a.take_columns(&mut out, 4) > 0, "no column once primed");
+    }
+
+    #[test]
+    fn columns_arrive_at_one_per_hop() {
+        let cfg = Config { hop: 256, ..Default::default() };
+        let a = Analyzer::new(cfg);
+        a.push(&sine(440.0, cfg.fft_size, 0.5)); /* primes, emits one */
+        let mut out = vec![0u8; a.bands() * 64];
+        let primed = a.take_columns(&mut out, 64);
+        a.push(&sine(440.0, cfg.hop * 10, 0.5));
+        assert_eq!(a.take_columns(&mut out, 64), 10, "primed was {primed}");
+    }
+
+    #[test]
+    fn a_nan_in_the_audio_does_not_reach_the_picture() {
+        let a = Analyzer::new(Config::default());
+        let mut buf = sine(1000.0, 8192, 0.5);
+        buf[100] = f32::NAN;
+        buf[101] = f32::INFINITY;
+        a.push(&buf);
+        let mut out = vec![0u8; a.bands() * 16];
+        let cols = a.take_columns(&mut out, 16);
+        assert!(cols > 0);
+        /* Nothing asserted about the values -- only that they are bytes at all,
+         * which they cannot be if a NaN reached amplitude_to_byte. The real
+         * claim is the absence of a panic and of a 255 stripe. */
+        let last = &out[(cols - 1) * a.bands()..cols * a.bands()];
+        assert!(last.iter().any(|&v| v > 0), "the tone vanished with the NaN");
+    }
+
+    #[test]
+    fn the_ring_drops_rather_than_blocks_when_nothing_drains_it() {
+        let cfg = Config::default();
+        let a = Analyzer::new(cfg);
+        a.push(&sine(1000.0, cfg.hop * (COLUMN_CAPACITY + 64) + cfg.fft_size, 0.5));
+        assert!(a.dropped() > 0, "the ring never filled");
+
+        let mut out = vec![0u8; a.bands() * COLUMN_CAPACITY];
+        let cols = a.take_columns(&mut out, COLUMN_CAPACITY);
+        assert_eq!(cols, COLUMN_CAPACITY, "a full ring gave back {cols}");
+        /* And it recovers: space is free again. */
+        a.push(&sine(1000.0, cfg.hop * 4, 0.5));
+        assert_eq!(a.take_columns(&mut out, COLUMN_CAPACITY), 4);
+    }
+
+    #[test]
+    fn take_columns_respects_a_short_buffer() {
+        let cfg = Config::default();
+        let a = Analyzer::new(cfg);
+        a.push(&sine(1000.0, cfg.fft_size + cfg.hop * 8, 0.5));
+        let mut out = vec![0u8; a.bands() * 3];
+        /* max_cols says 8; the buffer holds 3. The buffer wins, and the rest
+         * stay queued rather than being written past the end. */
+        assert_eq!(a.take_columns(&mut out, 8), 3);
+        let mut big = vec![0u8; a.bands() * 16];
+        assert!(a.take_columns(&mut big, 16) >= 5);
+    }
+
+    #[test]
+    fn a_wild_config_is_clamped_rather_than_trusted() {
+        let a = Analyzer::new(Config {
+            sample_rate: -1.0,
+            fft_size: 999,       /* not a power of two */
+            hop: 0,
+            bands: 0,
+            f_min: 0.0,
+            f_max: 10.0,         /* below f_min */
+            db_floor: 0.0,
+            db_ceil: -50.0,      /* inverted */
+        });
+        let c = a.config();
+        assert_eq!(c.fft_size, 512);
+        assert!(c.hop >= 1 && c.bands >= 1);
+        assert!(c.sample_rate > 0.0 && c.db_ceil > c.db_floor);
+        assert_eq!(a.band_hz().len(), c.bands);
+    }
+}

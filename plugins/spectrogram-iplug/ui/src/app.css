@@ -1,0 +1,197 @@
+/*
+ * Layout. Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * The numbers, top to bottom, and all of them on the system's 4px grid:
+ *
+ *   32   space-8, the window padding
+ *   28   the title row -- control-h now, because it holds the Pause button
+ *   16   space-4
+ *  258   the well: a 256px canvas inside a 1px frame
+ *   24   space-6
+ *   28   the hint bar
+ *   16   space-4, the bottom
+ *   ----
+ *  402   = PLUG_HEIGHT
+ *
+ * And across: 32 + 40 (the frequency scale) + 8 + 608 (the well) + 32 = 720
+ * = PLUG_WIDTH.
+ *
+ * THE WELL IS TWO PIXELS BIGGER THAN ITS CANVAS IN BOTH DIRECTIONS, and that is
+ * a fix rather than a detail. The canvas used to be exactly as tall as the well
+ * that framed it, so `overflow: hidden` ate the 1px border's worth at each edge
+ * -- the bottom two bands of every column were simply not drawn, which is why
+ * the bass sat flush against the frame and looked clipped. It was.
+ *
+ * So: a 606 x 256 canvas in a 608 x 258 well. 606 columns at ~47 a second is
+ * THIRTEEN SECONDS of history, one column per pixel, no resampling along the
+ * time axis -- and 256 bands into 256 pixels, none along the frequency axis
+ * either.
+ *
+ * DESIGN_W in App.jsx and PLUG_WIDTH in config.h have to agree with the 720
+ * here, or the page is scaled against a width it does not have.
+ */
+main {
+  width: 720px;
+  height: 402px;
+  padding: var(--s8) var(--s8) var(--s4);
+  display: flex;
+  flex-direction: column;
+  /* "Nothing is centred vertically: windows are laid out from the top, spare
+   * room stays at the bottom above the hint." */
+  justify-content: flex-start;
+}
+
+.title-row {
+  height: var(--control-h);
+  color: var(--ink-muted);
+  margin-bottom: var(--s4);
+  display: flex;
+  /* Centred, not baseline-aligned: the row is a control's height now and holds
+   * one, and a 28px button hung off a text baseline sits a few pixels low. */
+  align-items: center;
+  justify-content: space-between;
+}
+/* The one amber mark a window is allowed, and it is a state rather than a
+ * decoration: the analyzer is receiving nothing. */
+.stale { color: var(--amber); }
+
+.display {
+  display: flex;
+  align-items: stretch;
+  /* 256 of canvas plus the well's 1px frame either side. */
+  height: 258px;
+}
+
+/*
+ * THE FREQUENCY SCALE IS OUTSIDE THE WELL, not laid over the picture.
+ *
+ * Over it, a label sits on whatever the music is doing at that moment: legible
+ * against silence, invisible against a loud partial, and needing a backing plate
+ * to fix -- which would be a floating surface, and nothing in this system
+ * floats. In its own 40px gutter it is always readable and always the same.
+ */
+.scale {
+  width: 40px;
+  position: relative;
+  flex: 0 0 auto;
+  margin-right: var(--s2);
+  /* The well's 1px frame offsets its canvas by a pixel; without the same
+   * padding here every label points one pixel above the band it names. */
+  padding: var(--hair) 0;
+}
+.scale-mark {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+/* A 4px tick, so the label points at a height rather than merely sitting near
+ * one. 1px, like every border in the system. */
+.scale-tick {
+  display: block;
+  width: var(--s1);
+  height: var(--hair);
+  background: var(--line-200);
+}
+
+/*
+ * The well: bg-000 with a line-200 frame, which is what the Trance Gate's plots
+ * use. A plot is not a control well (bg-200) -- its ground has to be the
+ * picture's own zero, or silence would draw as a colour.
+ */
+.well {
+  flex: 1 1 auto;
+  background: var(--bg-000);
+  border: var(--hair) solid var(--line-200);
+  border-radius: var(--radius);
+  /* The canvas is the well's whole inside; overflow matters only while the
+   * backing store is being resized. */
+  overflow: hidden;
+  line-height: 0;
+}
+.spectro-canvas { display: block; }
+
+/*
+ * THE BUTTON, from the system's own .ph-btn. `on` is its primary state, which
+ * is also its pressed state -- "there is no separate selected colour: selected
+ * is uv".
+ */
+.btn {
+  height: var(--control-h);
+  padding: 0 var(--s3);
+  background: var(--bg-200);
+  border: var(--hair) solid var(--line-200);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+}
+.btn:hover { background: var(--bg-300); border-color: var(--ink-dim); }
+.btn.on {
+  background: var(--uv);
+  border-color: var(--uv);
+  color: var(--on-uv);
+  box-shadow: var(--glow-led);
+}
+.btn:focus-visible { outline: none; box-shadow: var(--glow-focus); }
+
+/* Pinned to the bottom edge, with the spare room above it. */
+.hint-bar {
+  margin-top: auto;
+  padding-top: var(--s3);
+  width: 100%;
+  height: var(--control-h);
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  border-top: var(--hair) solid var(--line-100);
+  color: var(--ink-muted);
+}
+.hint-key { color: var(--ink); }
+.hint-val { color: var(--ink-muted); margin-left: var(--s1); }
+.sep { margin: 0 var(--s3); color: var(--ink-dim); }
+
+/* "Actions stack on the right edge of the control block, never among the
+ * knobs" -- here the title row is the only row there is. */
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+}
+
+/*
+ * THE SELECT, from the Trance Gate's editor and from the design system's
+ * .ph-select before it. The real <select> is stretched invisibly over the
+ * styled div, so the popup is the OS's -- the only kind that behaves inside a
+ * plugin's WebView.
+ */
+.select {
+  position: relative;
+  height: var(--control-h);
+  background: var(--bg-200);
+  border: var(--hair) solid var(--line-200);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  padding: 0 28px 0 var(--s3);
+}
+.select:hover { background: var(--bg-300); }
+/* The open mark is uv, like every other "this one is active" in the system. */
+.select.open { border-color: var(--uv); }
+.select-value { color: var(--ink); }
+.chevron { position: absolute; right: 10px; top: 50%; margin-top: -3px; }
+.select select {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  font-family: inherit;
+}
+/*
+ * The ring goes on the HOUSING, not on the control: the inner <select> is what
+ * the browser focuses and it has no border of its own to ring. :has() keys it to
+ * the thing actually focused, and :focus-visible keeps a mouse click from
+ * leaving one behind.
+ */
+.select:has(select:focus-visible) { box-shadow: var(--glow-focus); }

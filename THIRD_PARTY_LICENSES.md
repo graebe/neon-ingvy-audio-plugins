@@ -38,14 +38,25 @@ crate making the Rust plugin GPL, reached only through `nih_export_vst3!()`.
 
 ## Bundled assets
 
-**None at present.** JetBrains Mono (© 2020 The JetBrains Mono Project
-Authors, **SIL Open Font License 1.1**) shipped with the JUCE editor and went
-with it. The OFL requires its text to travel beside the font, so whatever
-draws the UI next has to bring `OFL.txt` back along with the `.ttf` files --
-it is permissive and GPL-compatible, and this note exists so re-adding the
-font does not quietly drop the notice.
+**JetBrains Mono** (© 2020 The JetBrains Mono Project Authors, **SIL Open Font
+License 1.1**), `Regular` and `Medium`. It is the design system's one typeface
+and both editors bundle it:
 
-## The engine
+| bundle | path inside it |
+|---|---|
+| `TranceGateIP.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
+| `SpectrogramIP.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
+
+**The OFL requires its text to travel beside the font**, so `OFL.txt` sits in
+each `fonts/` directory and is globbed into every bundle by each plugin's
+CMakeLists -- a font copied without it is the one licence mistake this
+repository can make by forgetting a file rather than by choosing a dependency.
+It is permissive and GPL-compatible.
+
+This section previously read "none at present": the font had gone with the JUCE
+editor and came back with the WebView one without the note following it.
+
+## The engines
 
 `tg-core`, `tg-capi`, `tg-move` from
 [schwung-trance-gate](https://github.com/graebe/schwung-trance-gate),
@@ -55,6 +66,13 @@ They were relicensed from MIT to GPL-3.0-or-later when this build moved to
 nih-plug, and back to **MIT** once the premise behind that turned out to be
 false. Released as v1.0.0 with the notice inside the module tarball, which is
 what MIT asks of a copy that reaches a device without a repository near it.
+
+`spectro-core`, `spectro-capi` from `engines/spectro` in this repository,
+© 2026 Torben Gräber, **MIT**. They have no dependencies of their own either,
+and that is deliberate: the FFT is ninety lines here rather than a crate,
+because a crate that needs no attribution is cheaper than one that does. See
+the comment at the top of `cmake/SpectroEngine.cmake` for why this engine is
+in-repo while the Trance Gate's is a submodule.
 
 ## Every other dependency
 

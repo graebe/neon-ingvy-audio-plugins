@@ -1,0 +1,159 @@
+/*
+ * ULTRAVIOLET — the design system's tokens, transcribed once.
+ * Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * Every value here comes from the system's own tokens.json, and the comments
+ * are the system's own, because they say what a token is FOR, which a hex
+ * triplet cannot.
+ *
+ * The system in one line: ultraviolet light on black glass. `uv` is THE SIGNAL
+ * -- spent ONLY where something is on or IS the current value. Everything at
+ * rest is a shade of violet-black. If a screen has more signal than black,
+ * something is wrong.
+ *
+ * THIS FILE IS THE ONLY PLACE A COLOUR MAY BE SPELLED, and ui/test/tokens.test.mjs
+ * fails the build if one appears anywhere else -- including inside the canvas
+ * code, which reads the ramp below through getComputedStyle rather than carrying
+ * its own copy of it.
+ */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../fonts/JetBrainsMono-Regular.ttf') format('truetype');
+  font-weight: 400; font-display: block;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../fonts/JetBrainsMono-Medium.ttf') format('truetype');
+  font-weight: 500; font-display: block;
+}
+
+:root {
+  --bg-000: #060410;   /* window ground */
+  --bg-100: #0c0818;   /* panel */
+  --bg-200: #140e24;   /* control well */
+  --bg-300: #1d1533;   /* raised well: hover, pressed */
+  --line-100: #1d1533; /* hairline: dividers, well borders */
+  --line-200: #3a2a66; /* rail: the unlit part of an arc, a plot's frame */
+
+  --ink: #f3ecff;       /* values, readouts, titles */
+  --ink-muted: #b9a3e6; /* labels, units, the hint bar */
+  --ink-dim: #7a5fb5;   /* disabled text, inactive marks -- the axis scale */
+
+  /*
+   * THE SIGNAL IS TWO TOKENS, AND THAT IS THE WHOLE IDEA.
+   *
+   * `uv` is the bright CORE of anything lit; `uv-deep` is the saturated violet
+   * that surrounds it. The colour lives in the halo. So --uv-deep IS NEVER A
+   * FILL -- with the one documented exception below.
+   */
+  --uv: #efe3ff;
+  --uv-deep: #a259ff;
+  --uv-glow: rgba(162, 89, 255, 0.5);
+  --on-uv: #060410;     /* text on a signal fill */
+  --amber: #ffb000;
+  --red: #ff4d4d;
+  --bg-dot: #2a1e4a;
+
+  /*
+   * THE INTENSITY RAMP, AND IT IS AN EXTENSION TO THE SYSTEM -- stated here
+   * rather than smuggled in.
+   *
+   * The system's rule is that `uv-deep` is never a fill: it is the violet HALO
+   * around a near-white core. A spectrogram cannot obey that literally, because
+   * a spectrogram IS a field of light -- there is no element to put a halo
+   * around. So the rule is honoured spatially instead: quiet is the ground,
+   * loud is the near-white core, and the violet is the falloff BETWEEN them.
+   * Look at one bright partial in the picture and you are looking at exactly
+   * the system's white core in a violet halo, drawn in pixels rather than in a
+   * box-shadow.
+   *
+   * Five stops, and these five are where uv-deep may be a fill. Anything else
+   * that wants a violet fill is still wrong.
+   *
+   *   spec-0  the floor: bg-000 itself, so silence is indistinguishable from
+   *           the well it is drawn in
+   *   spec-1  bg-dot -- the ground's own dot colour, for what is barely there
+   *   spec-2  the violet body of the picture, the one value here that is not
+   *           already a system token
+   *   spec-3  uv-deep: loud
+   *   spec-4  uv: the hot core
+   *
+   * Monotone in luminance from 0 to 4, which ui/test/ramp.test.mjs asserts: a
+   * ramp that dips anywhere is a picture that lies about level.
+   */
+  --spec-0: #060410;
+  --spec-1: #2a1e4a;
+  --spec-2: #6a2fd0;
+  --spec-3: #a259ff;
+  --spec-4: #efe3ff;
+
+  /* Everything sits on a 4px grid. */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
+
+  --control-h: 28px;
+  --rail: 2px;
+  --hair: 1px;
+
+  /* radius-0 everywhere; radius-full only on what physically turns, and nothing
+   * in this window turns. */
+  --radius: 0;
+}
+
+/*
+ * THE TWO GLOWS, and nothing else.
+ *
+ *   glow-led    0 0 10px uv-deep, 0 0 2px uv   -- a lit LED, the playhead
+ *   glow-focus  0 0 0 1px uv, 0 0 8px uv-glow  -- keyboard focus
+ *
+ * Defined as values, not only as classes, because a filter cannot always be a
+ * class: an SVG group takes one, a pseudo-element takes one, and a rule that
+ * already sets `filter` has to spell this one out.
+ */
+:root {
+  --glow-led: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55))
+              drop-shadow(0 0 2px rgba(239, 227, 255, 0.55));
+  --glow-focus: 0 0 0 1px var(--uv), 0 0 8px var(--uv-glow);
+}
+.glow-led { filter: var(--glow-led); }
+.glow-focus { box-shadow: var(--glow-focus); }
+
+/*
+ * THE SIX TEXT STYLES. One family, JetBrains Mono. Monospace by construction
+ * means tabular digits, so a readout does not jitter while a value moves.
+ */
+.t-readout { font-size: 28px; font-weight: 500; letter-spacing: 0; }
+.t-title   { font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+.t-label   { font-size: 11px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; }
+.t-value   { font-size: 13px; font-weight: 400; letter-spacing: 0; }
+.t-button  { font-size: 12px; font-weight: 500; letter-spacing: 0.04em; }
+.t-hint    { font-size: 10px; font-weight: 400; letter-spacing: 0.02em; }
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; height: 100%;
+  background: var(--bg-000);
+  color: var(--ink);
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  /* A plugin window is not a document: nothing scrolls, and a stray selection
+   * highlight on a drag looks like a bug. */
+  overflow: hidden;
+  user-select: none; -webkit-user-select: none;
+}
+
+/*
+ * THE GROUND: DOT PAPER UNDER NOISE, both from the system.
+ *
+ * 1px dots of --bg-dot on a space-3 pitch, under noise TINTED with --uv-deep at
+ * 5% -- so the ground has the same cast as everything on it rather than being
+ * the one achromatic surface in a one-hue system. The noise is a fixed SVG
+ * turbulence rather than a random tile: a background that reshuffled on each
+ * load would be noticed, and not fondly.
+ */
+body {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' seed='7'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.635 0 0 0 0 0.349 0 0 0 0 1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(var(--bg-dot) 1px, transparent 1px);
+  background-size: 120px 120px, var(--s3) var(--s3);
+}

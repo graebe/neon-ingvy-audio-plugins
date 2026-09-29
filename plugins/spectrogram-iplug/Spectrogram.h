@@ -1,0 +1,144 @@
+/*
+ * Spectrogram -- a rolling analyzer for Ableton Live, on iPlug2.
+ * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
+ *
+ * Audio passes through bit for bit; the plugin's whole output is a picture.
+ *
+ * THE ANALYSIS IS NOT HERE. It is the Rust crate in engines/spectro, reached
+ * through its C ABI (spectro_core.h), and the division of labour is the one the
+ * Trance Gate uses: the engine owns everything that is a decision about sound,
+ * this file owns everything that is a decision about a host. So the FFT size,
+ * the log frequency mapping and the dB scale are the crate's, and the wire
+ * format, the message tags and the buffer lifetimes are this file's.
+ *
+ * WHAT CROSSES A THREAD, AND HOW. ProcessBlock pushes the mono sum into the
+ * analyzer, which transforms it on the audio thread and leaves finished columns
+ * -- one byte per band -- in a lock-free ring. OnIdle drains that ring and hands
+ * the columns to the WebView as hex. Nothing is shared but the ring, and the
+ * ring's rules are in spectro_core.h.
+ */
+#pragma once
+
+#include "IPlug_include_in_plug_hdr.h"
+#include "spectro_core.h"
+#include <string>
+#include <vector>
+
+const int kNumPresets = 1;
+
+/*
+ * NO PARAMETERS, and that is a statement rather than an omission.
+ *
+ * There is nothing about this plugin for a host to automate yet: it has no
+ * value that changes what comes out. When Range (the dB floor) and Speed arrive
+ * they will be ordinary host parameters in this enum -- not a dummy to keep a
+ * host happy, which is the usual reason a zero-parameter plugin grows one.
+ */
+enum EParams
+{
+  kNumParams = 0
+};
+
+using namespace iplug;
+
+/* iplug::Plugin, spelled out: the CLAP target pulls in clap-helpers, which has
+ * a `Plugin` template of its own, and `using namespace iplug` makes the
+ * unqualified name resolve to the wrong one there. */
+class Spectrogram final : public iplug::Plugin
+{
+public:
+  Spectrogram(const InstanceInfo& info);
+  ~Spectrogram();
+
+  /*
+   * THE MESSAGE TAGS, both directions. The Trance Gate reserves 0..kNumParams-1
+   * for parameter display strings; there are no parameters here, but the
+   * numbering is kept so the two plugins' tags mean the same things.
+   */
+  enum EMsgTags
+  {
+    kMsgCols = 64,      /* -> UI: "<cols>:<bands>:<hex>", oldest column first */
+    kMsgAxis,           /* -> UI: the band centre frequencies, comma separated */
+
+    kMsgRange = 96,     /* <- UI: "<f_min>:<f_max>" -- the zoom               */
+
+    /*
+     * "I AM LISTENING", and it is not optional. OnUIOpen fires from
+     * didFinishNavigation, but the editor is a <script type="module"> and module
+     * scripts are DEFERRED -- they evaluate after the document is done, so
+     * anything pushed from OnUIOpen lands before globalThis.SAMFD exists and is
+     * dropped on the floor. The Trance Gate lost twelve parameter values to
+     * this and the symptom wore four different hats.
+     *
+     * Here the loss would be the frequency scale: the picture would roll
+     * correctly with no numbers beside it.
+     */
+    kMsgReady = 102     /* <- UI: mounted -- send me the axis */
+  };
+
+  /* iPlug2's WebView transport formats through
+   * WDL_String::SetFormatted(mMaxJSStringLength, ...), which TRUNCATES rather
+   * than fails, and base64 costs a third on top. Raised from the 8192 default
+   * in the constructor and asserted against at the one call that can approach
+   * it. */
+  static constexpr int kMaxJSString = 65536;
+
+  /*
+   * The most columns one OnIdle tick will send. At the analyzer's defaults a
+   * 60 Hz tick has NONE OR ONE waiting -- the picture scrolls at ~47 columns a
+   * second -- so this is not a throttle. It is the bound that makes the payload
+   * provably fit: 32 columns x 256 bands x 2 hex characters is 16 KB, ~22 KB
+   * once base64 has inflated it, against the 64 KB cap above.
+   *
+   * It was 64 when a column was 128 bands. The bands doubled, so this halved:
+   * the product is what the cap constrains, and holding one of them constant
+   * while the other grows is how a payload quietly starts being truncated.
+   */
+  static constexpr int kMaxColsPerTick = 32;
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* Once per frame while the editor is open: every column the audio thread has
+   * finished since the last tick. */
+  void OnIdle() override;
+  void OnUIOpen() override;
+  bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
+#endif
+
+#if IPLUG_DSP
+  void ProcessBlock(sample** inputs, sample** outputs, int nFrames) override;
+  void OnReset() override;
+#endif
+
+private:
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* The frequency scale, sent on kMsgReady. The UI never computes it: the log
+   * mapping lives in the analyzer and a second copy would drift. */
+  void SendAxis();
+#endif
+
+  spectro_t* mSpectro = nullptr;
+
+  /*
+   * The mono sum, and the drain buffer. Both are sized on the main thread --
+   * OnReset for the first, the constructor for the second -- because a resize
+   * on the audio thread is a malloc on the audio thread.
+   */
+  std::vector<float> mMono;
+  std::vector<unsigned char> mCols;
+
+  /*
+   * THERE IS NO PAUSE HERE, AND THAT IS THE DESIGN.
+   *
+   * Pause holds the VIEW. The analysis runs, the columns keep being sent, and
+   * the editor keeps writing them into its history -- it simply stops
+   * repainting. So unpausing shows a picture that is already current, with the
+   * paused seconds present in it rather than cut out of it.
+   *
+   * An earlier version stopped the sending and dropped what arrived meanwhile,
+   * which left a seam in the timeline at the exact moment someone had been
+   * staring at it.
+   */
+  /* The hex payload, reused. Reserved once so OnIdle does not allocate 60 times
+   * a second for the life of the session. */
+  std::string mHex;
+};

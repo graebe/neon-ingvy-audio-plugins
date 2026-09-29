@@ -8,3 +8,5 @@ node_modules/
 # the mock and the audit are source, the copies are not.
 plugins/trance-gate-iplug/ui/test/harness/assets/
 plugins/trance-gate-iplug/ui/test/harness/fonts/
+plugins/spectrogram-iplug/ui/test/harness/assets/
+plugins/spectrogram-iplug/ui/test/harness/fonts/

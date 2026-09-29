@@ -33,8 +33,12 @@ endif()
 
 # One engine build, shared by the plugin and all four native test targets.
 include(cmake/TgEngine.cmake)
+# The Spectrogram's analyzer. In-repo rather than a submodule because it has no
+# second consumer yet -- see the comment at the top of the file.
+include(cmake/SpectroEngine.cmake)
 
 add_subdirectory(plugins/trance-gate)
+add_subdirectory(plugins/spectrogram-iplug)
 
 enable_testing()
 add_subdirectory(tests)

@@ -120,3 +120,43 @@ if (APPLE)
         "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
     add_test(NAME tg_au COMMAND tg_au_render)
 endif()
+
+# ---------------------------------------------------------------- Spectrogram
+
+# THE ANALYZER'S OWN TESTS, which are cargo's: the FFT against a naive DFT, the
+# band mapping, and a counting global allocator proving the audio path allocates
+# nothing. Run from here rather than left to be remembered.
+#
+# SPECTRO_ENV and SPECTRO_CARGO come from cmake/SpectroEngine.cmake, which found
+# the toolchain the hard way (rustup's shims are often not on PATH).
+add_test(NAME spectro_core
+         COMMAND ${SPECTRO_ENV} ${SPECTRO_CARGO} test --manifest-path
+                 ${SPECTRO_ROOT}/Cargo.toml)
+
+# The same claims through the C ABI the plugin links, because a hand-written
+# header can drift from its implementation without either side failing to
+# compile.
+add_executable(spectro_columns spectro_columns.c)
+target_link_libraries(spectro_columns PRIVATE spectro_engine)
+if (NOT WIN32)
+    target_link_libraries(spectro_columns PRIVATE m)
+endif()
+add_test(NAME spectro_columns COMMAND spectro_columns)
+
+# The editor's tests, on node's own runner (22+), so the UI keeps a dependency
+# tree of vite and solid and nothing else.
+if (TG_NODE)
+    set(SPECTRO_UI_TEST ${CMAKE_SOURCE_DIR}/plugins/spectrogram-iplug/ui/test)
+    # The colour guard. This window needs it more than the Trance Gate does: a
+    # canvas cannot use a CSS variable, so the intensity ramp is the likeliest
+    # place in either plugin for five hex triplets to be typed inline.
+    add_test(NAME spectro_tokens
+             COMMAND ${TG_NODE} --test ${SPECTRO_UI_TEST}/tokens.test.mjs)
+    # The ramp is monotone in luminance -- a ramp that dips is a picture that
+    # lies about level.
+    add_test(NAME spectro_ramp
+             COMMAND ${TG_NODE} --test ${SPECTRO_UI_TEST}/ramp.test.mjs)
+    # The wire: the hex decode, the axis, and where a label goes.
+    add_test(NAME spectro_columns_js
+             COMMAND ${TG_NODE} --test ${SPECTRO_UI_TEST}/columns.test.mjs)
+endif()

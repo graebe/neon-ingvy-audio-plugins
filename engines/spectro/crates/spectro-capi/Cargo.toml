@@ -1,0 +1,13 @@
+[package]
+name = "spectro-capi"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "The C ABI the iPlug2 shell and any Schwung module link"
+
+[lib]
+name = "spectro_capi"
+crate-type = ["staticlib"]
+
+[dependencies]
+spectro-core = { path = "../spectro-core" }
