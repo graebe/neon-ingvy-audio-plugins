@@ -122,6 +122,16 @@ int srecv_pump(srecv_t* r);
  */
 int srecv_take_columns(const srecv_t* r, int ch, unsigned char* out, int max_cols);
 
+/* Bytes in one column of any channel: the band count they all share. */
+int srecv_bands(const srecv_t* r);
+
+/*
+ * The band centre frequencies, ascending. ONE axis for every source, because
+ * they share a configuration -- which is what lets their columns be compared
+ * cell by cell in the first place.
+ */
+int srecv_band_hz(const srecv_t* r, float* out, int n);
+
 /* The range every source is measured over. Safe while audio runs. */
 void srecv_set_range(const srecv_t* r, float f_min, float f_max);
 

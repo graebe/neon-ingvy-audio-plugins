@@ -58,12 +58,12 @@ const CASES = readFileSync(TABLE, 'utf8')
 
 /* Still needed for the malformed-payload cases below, which are about what the
  * decoder REFUSES and so have no encoder side to generate them. */
-const encode = (columns, bands) => {
+const encode = (columns, bands, ch = 0) => {
   const hex = columns
     .flat()
     .map((b) => b.toString(16).toUpperCase().padStart(2, '0'))
     .join('');
-  return `${columns.length}:${bands}:${hex}`;
+  return `${ch}:${columns.length}:${bands}:${hex}`;
 };
 
 test('the fixture is the shape it claims to be', () => {
@@ -123,10 +123,24 @@ test('a truncated payload is dropped whole', () => {
 });
 
 test('nonsense is rejected rather than half-read', () => {
-  for (const bad of ['', ':', '1:', '1:4', 'x:4:00', '0:4:', '1:0:', '-1:4:0000',
-                     null, undefined, 42]) {
+  for (const bad of ['', ':', '1:', '1:4', '0:1:4', 'x:1:4:00', '0:x:4:00', '0:0:4:',
+                     '0:1:0:', '0:-1:4:0000', '-1:1:4:0000', null, undefined, 42]) {
     assert.equal(decodeColumns(bad), null, `accepted ${JSON.stringify(bad)}`);
   }
+});
+
+test('the channel is carried, because one message is one source', () => {
+  /* A receiver sends one message PER SOURCE -- the payload budget is a product,
+   * and three channels at the full catch-up budget overflows the cap. So the
+   * batch has to say which source it is; the tag alone cannot. */
+  const cols = [[1, 2, 3, 4]];
+  assert.equal(decodeColumns(encode(cols, 4, 0)).ch, 0, 'the own channel is 0');
+  assert.equal(decodeColumns(encode(cols, 4, 3)).ch, 3);
+  /* And the payload is unaffected by which channel carried it. */
+  assert.deepEqual(
+    [...decodeColumns(encode(cols, 4, 3)).data],
+    [...decodeColumns(encode(cols, 4, 0)).data],
+  );
 });
 
 test('the axis parses, and a broken one is refused', () => {

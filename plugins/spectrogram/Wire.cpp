@@ -15,16 +15,16 @@
 namespace spectro {
 namespace wire {
 
-std::string encode_columns(const unsigned char* cols, int nCols, int bands)
+std::string encode_columns(const unsigned char* cols, int nCols, int bands, int ch)
 {
-  if (!cols || nCols <= 0 || bands <= 0)
+  if (!cols || nCols <= 0 || bands <= 0 || ch < 0)
     return std::string();
 
   static const char* const kHex = "0123456789ABCDEF";
 
   std::string out;
   char head[32];
-  snprintf(head, sizeof head, "%d:%d:", nCols, bands);
+  snprintf(head, sizeof head, "%d:%d:%d:", ch, nCols, bands);
   out += head;
 
   /* Reserved rather than grown: this runs once per editor frame, and the size
@@ -95,6 +95,35 @@ bool parse_range(const std::string& arg, float& lo, float& hi)
   lo = float(atof(arg.substr(0, sep).c_str()));
   hi = float(atof(arg.substr(sep + 1).c_str()));
   return true;
+}
+
+void parse_slots(const std::string& arg, std::vector<unsigned int>& out)
+{
+  /*
+   * "<slot>,<slot>,..." -- and anything unreadable is SKIPPED rather than
+   * failing the whole list. A receiver asked for "2,x,5" should listen to 2 and
+   * 5: the alternative is a picker that silently does nothing because one field
+   * was mangled in transit, which is the harder fault to see.
+   *
+   * The engine refuses a slot outside 1..abus_max_slot() and caps the count, so
+   * nothing here needs to know either bound.
+   */
+  size_t i = 0;
+  while (i < arg.size())
+  {
+    size_t j = arg.find(',', i);
+    if (j == std::string::npos)
+      j = arg.size();
+
+    const std::string field = arg.substr(i, j - i);
+    if (!field.empty())
+    {
+      const long v = strtol(field.c_str(), nullptr, 10);
+      if (v > 0 && v < 1000)
+        out.push_back(static_cast<unsigned int>(v));
+    }
+    i = j + 1;
+  }
 }
 
 } // namespace wire

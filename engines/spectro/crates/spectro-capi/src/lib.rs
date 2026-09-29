@@ -447,3 +447,30 @@ pub unsafe extern "C" fn srecv_slots(out: *mut u8, cap: c_int) -> c_int {
     }
     bytes.len() as c_int
 }
+
+/// Bytes in one column of any channel: the band count they all share.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_bands(p: *const Receiver) -> c_int {
+    if p.is_null() {
+        return 0;
+    }
+    (*p).bands() as c_int
+}
+
+/// The band centre frequencies, ascending, into `out`. Returns how many.
+///
+/// One axis for every source, because they share a configuration -- which is
+/// what lets their columns be compared at all.
+///
+/// # Safety
+/// `out` must be writable for `n` floats.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_band_hz(p: *const Receiver, out: *mut f32, n: c_int) -> c_int {
+    if p.is_null() || out.is_null() || n <= 0 {
+        return 0;
+    }
+    (*p).band_hz_into(core::slice::from_raw_parts_mut(out, n as usize)) as c_int
+}

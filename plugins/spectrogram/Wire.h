@@ -27,13 +27,22 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace spectro {
 namespace wire {
 
 /*
- * "<cols>:<bands>:" then two upper-case hex characters per byte, column after
- * column, band 0 (lowest frequency) first within each.
+ * "<ch>:<cols>:<bands>:" then two upper-case hex characters per byte, column
+ * after column, band 0 (lowest frequency) first within each.
+ *
+ * THE CHANNEL LEADS, and it is there because a receiver sends one message PER
+ * SOURCE rather than one frame holding all of them. The budget is a product --
+ * channels x columns x bands -- and three channels at the full catch-up budget
+ * overflows the transport's cap by 32 bytes. Per channel, each source keeps its
+ * own budget and the static_assert in Spectrogram.h stays the thing that proves
+ * it; the alternative was a ragged multi-channel frame with a new failure mode
+ * and a decoder nobody had tested.
  *
  * UPPER CASE is not cosmetic. The editor's decoder is a hand-written nibble
  * map rather than parseInt, and the boundary it can get wrong is 9 -> A --
@@ -41,7 +50,7 @@ namespace wire {
  * Lower-case hex would land on a different run and decode to nonsense that
  * still draws.
  */
-std::string encode_columns(const unsigned char* cols, int nCols, int bands);
+std::string encode_columns(const unsigned char* cols, int nCols, int bands, int ch);
 
 /*
  * "20.6,41.2,..." -- one decimal, comma separated, no trailing separator.
@@ -62,6 +71,17 @@ std::string encode_axis(const float* hz, int n);
  * the implementation.
  */
 bool parse_range(const std::string& arg, float& lo, float& hi);
+
+/*
+ * "<slot>,<slot>,..." -> the slots, appended in order.
+ *
+ * An unreadable field is SKIPPED rather than failing the list: "2,x,5" should
+ * listen to 2 and 5, because the alternative is a picker that silently does
+ * nothing because one field was mangled, which is the harder fault to see.
+ * Bounds are the engine's -- it refuses a slot outside 1..abus_max_slot() and
+ * caps how many it will take.
+ */
+void parse_slots(const std::string& arg, std::vector<unsigned int>& out);
 
 /*
  * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>" -- where the host's

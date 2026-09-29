@@ -127,6 +127,14 @@ impl Receiver {
         self.cfg.bands
     }
 
+    /// The band centre frequencies every source is measured on.
+    ///
+    /// One axis, not one per source: they share a configuration, which is
+    /// exactly what lets their columns be compared cell by cell.
+    pub fn band_hz_into(&self, out: &mut [f32]) -> usize {
+        self.own.band_hz_into(out)
+    }
+
     /// Channels currently drawable: the own channel plus each open bus.
     pub fn channels(&self) -> usize {
         1 + self.buses.len()
