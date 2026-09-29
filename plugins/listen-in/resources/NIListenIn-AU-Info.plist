@@ -6,13 +6,13 @@
 	<array>
 		<dict>
 			<key>description</key>
-			<string>ListenIn</string>
+			<string>NI Listen-In</string>
 			<key>factoryFunction</key>
-			<string>ListenIn_Factory</string>
+			<string>NIListenIn_Factory</string>
 			<key>manufacturer</key>
 			<string>Grbe</string>
 			<key>name</key>
-			<string>graebe: ListenIn</string>
+			<string>Neon Ingvy: NI Listen-In</string>
 			<key>sandboxSafe</key>
 			<true/>
 			<key>subtype</key>
@@ -28,15 +28,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
-	<string>ListenIn</string>
+	<string>NIListenIn</string>
 	<key>CFBundleGetInfoString</key>
-	<string>ListenIn v0.1.0 Copyright 2026 Torben Gräber</string>
+	<string>NI Listen-In v0.1.0 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.graebe.audiounit.ListenIn</string>
+	<string>com.graebe.audiounit.NIListenIn</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>ListenIn</string>
+	<string>NIListenIn</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
@@ -50,6 +50,6 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>10.13.0</string>
 	<key>NSPrincipalClass</key>
-	<string>ListenIn_View</string>
+	<string>NIListenIn_View</string>
 </dict>
 </plist>

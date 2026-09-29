@@ -1,5 +1,5 @@
 ---
-title: Listen-In
+title: NI Listen-In
 tagline: A tap on any track — passes audio through, publishes it on a numbered bus.
 order: 3
 hosts: [live]
@@ -8,12 +8,12 @@ engine: engines/audio-bus
 crates: [bus-core, bus-capi]
 tests: [abus_core, abus_roundtrip, abus_ipc, listenin_wire, listenin_wire_js]
 notOnMove: >-
-  Listen-In is not a DSP — it is a transport between two plugins in one host,
+  NI Listen-In is not a DSP — it is a transport between two plugins in one host,
   and the Move runs one module at a time with no second plugin to read the bus.
   So there is no `bus-move` crate and `cmake/Schwung.cmake` looks for none.
 ---
 
-# Listen-In
+# NI Listen-In
 
 Drop it on a track, or into an instrument rack's chain. Audio passes through
 **bit for bit** and a copy is published on one of **sixteen numbered buses**,
@@ -30,7 +30,7 @@ would need two Spectrograms on two tracks, each drawing its own picture, and
 your eyes doing the overlay. What you want is both spectra in **one** picture,
 and that needs one analyzer able to read audio from somewhere it is not.
 
-This is that somewhere. A Listen-In on the bass and another on the pad, and a
+This is that somewhere. An NI Listen-In on the bass and another on the pad, and a
 receiver can draw both.
 
 ## Two controls
@@ -40,7 +40,7 @@ you reopen it. **Name** is not: a name is not a number, so it travels as a
 message and the plugin serialises it into the state chunk itself. Sixteen buses,
 because a number you can hold in your head beats a picker you have to read.
 
-**Two Listen-Ins cannot share a bus**, and the second one says so rather than
+**Two NI Listen-Ins cannot share a bus**, and the second one says so rather than
 quietly publishing nothing. That is the one collision this design can have and
 it is reported, never swallowed.
 

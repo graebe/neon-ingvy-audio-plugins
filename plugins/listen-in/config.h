@@ -12,19 +12,33 @@
  */
 #pragma once
 
-#define PLUG_NAME "Listen-In"
-#define PLUG_MFR "graebe"
+#define PLUG_NAME "NI Listen-In"
 
 /*
- * 0.1.0 -- and "graebe" above rather than "Neon Ingvy", deliberately.
+ * "Neon Ingvy" IS THE PUBLISHER, and BUNDLE_MFR below is still "graebe".
  *
- * AGENTS.md names the publisher as Neon Ingvy and the repository has already
- * been renamed to match. The two shipping plugins still say graebe, and
- * PLUG_MFR_ID below is what a HOST stores in a saved project -- so changing it
- * relinks nothing and breaks every session that already loaded a Trance Gate.
- * A new plugin is the wrong place to start a house rename: it would leave the
- * three of them disagreeing, which is exactly the state versions.json exists to
- * prevent. When it happens it happens to all three at once.
+ * PLUG_MFR is a display string -- what a host prints beside the plugin name in
+ * its browser. BUNDLE_MFR is a component of the bundle IDENTIFIER (iPlug2
+ * assembles DOMAIN.MFR.type.NAME, see IPlug_include_in_plug_hdr.h:94), so it
+ * could not carry the space even if it wanted to, and changing it would move
+ * every bundle ID in the house for no visible gain. The Trance Gate's rename
+ * settled this first; this follows it rather than inventing a second scheme.
+ */
+#define PLUG_MFR "Neon Ingvy"
+
+/*
+ * 0.1.0, and it has never shipped -- which is the whole reason this plugin is
+ * "NI Listen-In" while the Trance Gate and the Spectrogram are not yet.
+ *
+ * PLUG_UNIQUE_ID and PLUG_MFR_ID are what a HOST stores in a saved project, and
+ * BUNDLE_NAME is how it finds the bundle again. Renaming any of them is a
+ * breaking change for every set that already loads the plugin -- free here,
+ * because no set does, and expensive the day after the first release tag. The
+ * other two are released, so they keep their names until that migration is
+ * done deliberately rather than as a side effect of this one.
+ *
+ * PLUG_MFR_ID stays 'Grbe' even so: it is the house identifier, shared by all
+ * three, and moving it would relink nothing and break the two that shipped.
  *
  * The hex is major<<16 | minor<<8 | patch; versions.json decides both spellings
  * and `ctest -R versions` checks them here, in the crates, and in every plist.
@@ -44,19 +58,20 @@
 #define PLUG_CLASS_NAME ListenIn
 
 /*
- * BUNDLE_NAME IS "ListenIn" WHILE PLUG_NAME IS "Listen-In", and that is not an
- * oversight.
+ * BUNDLE_NAME IS "NIListenIn" WHILE PLUG_NAME IS "NI Listen-In", and that is
+ * not an oversight.
  *
  * iPlug2 builds the bundle identifier from DOMAIN.MFR.type.NAME and looks the
- * bundle up by it to find the Cocoa view; the CMake target is ListenIn, so the
- * bundle is com.graebe.audiounit.ListenIn. Get this wrong and the lookup
- * returns NULL, CFBundleCopyBundleURL segfaults the host the moment anything
- * asks for the editor, and auval dies at "VERIFYING CUSTOM UI" -- which is
- * where the Trance Gate learned it.
+ * bundle up by it to find the Cocoa view; the CMake target is NIListenIn, so
+ * the bundle is com.graebe.audiounit.NIListenIn. Get this wrong and the
+ * lookup returns NULL, CFBundleCopyBundleURL segfaults the host the moment
+ * anything asks for the editor, and auval dies at "VERIFYING CUSTOM UI" --
+ * which is where the Trance Gate learned it.
  *
- * The hyphen is fine in the DISPLAY name, which is all PLUG_NAME is.
+ * The space and the hyphen are fine in the DISPLAY name, which is all
+ * PLUG_NAME is. Neither belongs in an identifier.
  */
-#define BUNDLE_NAME "ListenIn"
+#define BUNDLE_NAME "NIListenIn"
 #define BUNDLE_MFR "graebe"
 #define BUNDLE_DOMAIN "com"
 
@@ -64,7 +79,7 @@
  * duplicated rather than left silent on the right -- the bus is always stereo,
  * so a receiver never has to ask. */
 #define PLUG_CHANNEL_IO "2-2"
-#define SHARED_RESOURCES_SUBPATH "ListenIn"
+#define SHARED_RESOURCES_SUBPATH "NIListenIn"
 
 /* ZERO LATENCY, and it has to be: this plugin is meant to sit on tracks you are
  * actually listening to. A tap that made the track it taps arrive late would be
@@ -109,15 +124,15 @@
 /* Nothing in the window grows with a value, so the host never has to resize it. */
 #define PLUG_HOST_RESIZE 0
 
-#define AUV2_ENTRY ListenIn_Entry
-#define AUV2_ENTRY_STR "ListenIn_Entry"
-#define AUV2_FACTORY ListenIn_Factory
-#define AUV2_VIEW_CLASS ListenIn_View
-#define AUV2_VIEW_CLASS_STR "ListenIn_View"
+#define AUV2_ENTRY NIListenIn_Entry
+#define AUV2_ENTRY_STR "NIListenIn_Entry"
+#define AUV2_FACTORY NIListenIn_Factory
+#define AUV2_VIEW_CLASS NIListenIn_View
+#define AUV2_VIEW_CLASS_STR "NIListenIn_View"
 
 #define AAX_TYPE_IDS 'LsI1'
-#define AAX_PLUG_MFR_STR "graebe"
-#define AAX_PLUG_NAME_STR "Listen-In\nLsnI"
+#define AAX_PLUG_MFR_STR "Neon Ingvy"
+#define AAX_PLUG_NAME_STR "NI Listen-In\nLsnI"
 #define AAX_DOES_AUDIOSUITE 0
 #define AAX_PLUG_CATEGORY_STR "Effect"
 

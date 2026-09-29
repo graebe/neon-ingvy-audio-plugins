@@ -1,5 +1,5 @@
 /*
- * Listen-In -- a tap that other plugins can read.
+ * NI Listen-In -- a tap that other plugins can read.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "ListenIn.h"

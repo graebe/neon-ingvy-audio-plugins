@@ -1,5 +1,5 @@
 /*
- * Listen-In — the editor.
+ * NI Listen-In — the editor.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Two controls and a meter. The plugin decides everything; this file shows what
@@ -110,7 +110,7 @@ export default function App() {
   return (
     <main>
       <div class="row title-row">
-        <span class="title t-value">Listen-In</span>
+        <span class="title t-value">NI Listen-In</span>
         <span
           class="status t-label"
           classList={{ 'status-warn': state().status !== STATUS.live }}

@@ -42,7 +42,7 @@ jobs:
           case "$GITHUB_REF_NAME" in
             trance-gate-v*) PRODUCT=trance-gate; BUNDLE=NITranceGate ;;
             spectrogram-v*) PRODUCT=spectrogram; BUNDLE=Spectrogram ;;
-            listen-in-v*)   PRODUCT=listen-in;   BUNDLE=ListenIn ;;
+            listen-in-v*)   PRODUCT=listen-in;   BUNDLE=NIListenIn ;;
             *) echo "ERROR: $GITHUB_REF_NAME names no product"; exit 1 ;;
           esac
           # ONLY THE PRODUCT PREFIX IS STRIPPED, not the "v" after it.

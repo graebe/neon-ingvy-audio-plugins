@@ -1,6 +1,6 @@
 ---
 section: live
-title: Listen-In in Ableton Live
+title: NI Listen-In in Ableton Live
 ---
 
 ## Where to put it
@@ -11,7 +11,7 @@ bit for bit, so it can sit in the middle of a chain without changing what comes
 out of it. **Latency is zero** — a tap that made the track arrive late would be
 a tap nobody leaves in place.
 
-Put it *after* whatever you want to hear. A Listen-In before the compressor
+Put it *after* whatever you want to hear. An NI Listen-In before the compressor
 publishes the uncompressed signal, which is sometimes what you want and is
 almost never what you meant.
 
@@ -29,7 +29,7 @@ overlaid spectra need.
 
 ## When it says something other than "listening"
 
-**`slot taken`** — another Listen-In already holds that bus. Two senders on one
+**`slot taken`** — another NI Listen-In already holds that bus. Two senders on one
 bus is the single collision this design can have, and the second one refuses
 rather than fighting over it. Pick a free number; `abus_tap` with no arguments
 lists what is in use.
@@ -54,6 +54,6 @@ at zero.
 ## What Live will not do for you
 
 The bus number lives in the **plugin**, not in the track. Duplicating a track
-duplicates the Listen-In on it, bus number and all — so the copy lands on a bus
+duplicates the NI Listen-In on it, bus number and all — so the copy lands on a bus
 that is already taken and says so. Change it, which is one click and is
 preferable to a silent second sender fighting the first.

@@ -1,5 +1,5 @@
 /*
- * Listen-In — the editor's entry point.
+ * NI Listen-In — the editor's entry point.
  * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { render } from 'solid-js/web';

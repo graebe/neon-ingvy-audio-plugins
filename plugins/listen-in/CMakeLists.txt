@@ -1,4 +1,4 @@
-# Listen-In, on iPlug2.
+# NI Listen-In, on iPlug2.
 #
 # Structurally the Spectrogram's target, and deliberately so: everything awkward
 # here was learned twice already next door. The two traps that cost real time are
@@ -25,10 +25,10 @@ if (LISTENIN_NPM)
                     "npm --prefix plugins/listen-in/ui install")
   endif()
 
-  add_custom_target(ListenInUI ALL
+  add_custom_target(NIListenInUI ALL
     COMMAND ${LISTENIN_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Building the ListenIn editor (vite)"
+    COMMENT "Building the NI Listen-In editor (vite)"
     VERBATIM)
 else()
   message(WARNING "npm not found -- using whatever is already in resources/web")
@@ -39,7 +39,7 @@ file(GLOB LISTENIN_WEB
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/fonts/*")
 
-iplug_add_plugin(ListenIn
+iplug_add_plugin(NIListenIn
   SOURCES
     ListenIn.cpp
     ListenIn.h
@@ -62,10 +62,10 @@ iplug_add_plugin(ListenIn
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.
-if (TARGET ListenInUI)
+if (TARGET NIListenInUI)
   foreach(fmt vst3 clap au)
-    if (TARGET ListenIn-${fmt})
-      add_dependencies(ListenIn-${fmt} ListenInUI)
+    if (TARGET NIListenIn-${fmt})
+      add_dependencies(NIListenIn-${fmt} NIListenInUI)
     endif()
   endforeach()
 endif()
