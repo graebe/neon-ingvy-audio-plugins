@@ -158,25 +158,6 @@ chain.
 | the audio bus (`engines/audio-bus`) | **MIT**, and it has no external crates either — it declares the six POSIX calls it needs rather than taking libc |
 | JetBrains Mono, bundled with both editors | **SIL OFL 1.1**, with `OFL.txt` beside the font in every bundle |
 
-Two things had to go to get here, and neither was a licensing decision on its
-own.
-
-**JUCE 8 is AGPLv3-or-commercial** — a *stronger* obligation than GPL, not an
-equal one: while that target shipped, the artefact had to be conveyed under
-AGPLv3. It is gone, and so is the 2,586-line editor it drew. That editor is
-not lost, it is the last commit before the removal, and whatever draws the UI
-next is a translation of it rather than a fresh design.
-
-**nih-plug is ISC, but `nih_export_vst3!()` is not.** It pulled in
-[`vst3-sys`](https://github.com/RustAudio/vst3-sys), GPL-3.0-or-later — a
-third-party reimplementation of interfaces Steinberg now publishes under MIT
-themselves. One crate, and it made the whole build copyleft.
-
-The premise behind both was that a VST3 plugin cannot be permissive. It can:
-Steinberg withdrew the GPL-or-proprietary dual licence and the SDK is MIT.
-That was worth checking rather than assuming, and checking it is what made
-this repository MIT.
-
 See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for the notices those
 dependencies require.
 

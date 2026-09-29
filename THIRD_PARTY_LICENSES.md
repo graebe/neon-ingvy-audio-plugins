@@ -21,14 +21,6 @@ iPlug2 carries is plain MIT. That is what makes an MIT VST3 possible at all.
 
 ## Removed, and recorded so nobody re-adds them looking for a notice
 
-**JUCE 8** — **AGPLv3**-or-commercial, and AGPLv3 is a *stronger* obligation
-than GPLv3 rather than an equal one: while that target shipped, the artefact
-had to be conveyed under AGPLv3. It was the last copyleft dependency here and
-the only reason this repository was not MIT. Removing it meant removing the
-2,586-line editor it drew, which is the real cost and is recorded in the
-commit before the removal.
-
-
 `vst3-sys`, `vst3-com`, `vst3-com-macros`, `vst3-com-macros-support`
 (**GPL-3.0-or-later**) and `nih_plug`, `nih_plug_derive`, `nih_plug_xtask`,
 `nih_log` (**ISC**, © 2022-2024 Robbert van der Helm) were dependencies until
@@ -82,9 +74,6 @@ dependency.
 A site that serves the font is a bundle like any other. It is listed here
 because it is easy not to think of it as one.
 It is permissive and GPL-compatible.
-
-This section previously read "none at present": the font had gone with the JUCE
-editor and came back with the WebView one without the note following it.
 
 ## The engines
 
