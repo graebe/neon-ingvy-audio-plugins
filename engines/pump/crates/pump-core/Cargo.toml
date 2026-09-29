@@ -1,0 +1,10 @@
+[package]
+name = "pump-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "MIT"
+description = "NI Pump DSP engine: a cycle-, MIDI- or sidechain-triggered ducker"
+
+[lib]
+crate-type = ["rlib"]

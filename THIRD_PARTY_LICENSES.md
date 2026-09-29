@@ -88,8 +88,9 @@ editor and came back with the WebView one without the note following it.
 
 ## The engines
 
-`tg-core`, `tg-capi`, `tg-move` and `spectro-core`, `spectro-capi`, in
-`engines/`, © 2026 Torben Gräber. They have no dependencies of their own.
+`tg-core`, `tg-capi`, `tg-move`, `spectro-core`, `spectro-capi`, `pump-core`,
+`pump-capi` and `pump-move`, in `engines/`, © 2026 Torben Gräber. They have no
+dependencies of their own.
 
 They were relicensed from MIT to GPL-3.0-or-later when this build moved to
 nih-plug, and back to **MIT** once the premise behind that turned out to be
@@ -102,6 +103,37 @@ and that is deliberate: the FFT is ninety lines here rather than a crate,
 because a crate that needs no attribution is cheaper than one that does. See
 the comment at the top of `cmake/SpectroEngine.cmake` for why this engine is
 in-repo while the Trance Gate's is a submodule.
+
+`pump-core`, `pump-capi`, `pump-move` from `engines/pump` in this repository,
+© 2026 Torben Gräber, **MIT**. No dependencies of their own either — the one
+thing it might have borrowed, a no-allocation formatter, is a copy of
+`tg-core`'s `fmt.rs` rather than a fourth shared crate, and that file's header
+says why.
+
+**It is the one engine here with a notice attached to it**, because part of it
+was ported rather than written. See the section below.
+
+## Ported source, which carries a notice even though no library does
+
+**A port is a derivative work.** Nothing below is linked, vendored or
+downloaded — the code was read and rewritten in another language — and that is
+exactly the case MIT's notice requirement covers. Recorded here rather than
+only in a source comment, because a notice nobody collects is a notice nobody
+honours.
+
+| Ported into | From | Licence |
+|---|---|---|
+| `engines/pump/crates/pump-core/src/midi.rs` and the `Pump` curve in `shape.rs` | [`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)'s `src/dsp/ducker.c` | **MIT**, © charlesvestal |
+
+What was taken: the MIDI trigger semantics — the channel filter, the note
+match, Trigger versus Gate, a note-on at velocity zero read as a note-off, and
+velocity scaling the depth — together with the `Pump` curve, which is linear
+going down and a cubic ease-out coming back up.
+
+What was not: the envelope's structure (Pump has a Delay stage and
+cycle-relative times, and its stage machine is a different one), the sample
+offsets (`ducker.c` applies a note at the top of its block), and every other
+trigger source. The files themselves say which lines they came from.
 
 ## Every other dependency
 
