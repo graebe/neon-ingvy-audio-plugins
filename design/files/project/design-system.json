@@ -1,0 +1,120 @@
+{
+ "v": 3,
+ "layout": "files",
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-09-24T07:45:19Z"
+ },
+ "title": "Ultraviolet",
+ "namespace": "Ultraviolet",
+ "libraries": [],
+ "sections": {},
+ "groups": [
+  "Icons"
+ ],
+ "assetGroups": {
+  "Icons": {
+   "name": "Icons",
+   "tile": "xs",
+   "order": [
+    "play.svg",
+    "pause.svg",
+    "stop.svg",
+    "record.svg",
+    "loop.svg",
+    "copy.svg",
+    "paste.svg",
+    "shuffle.svg",
+    "reset.svg",
+    "link.svg",
+    "chevron.svg",
+    "power.svg"
+   ],
+   "files": {
+    "play.svg": {
+     "name": "play.svg",
+     "blob": "76336be7cf23e562960c8b60d5faa295",
+     "size": 214,
+     "type": "image/svg+xml"
+    },
+    "pause.svg": {
+     "name": "pause.svg",
+     "blob": "f5fa5c3c92950bd78c496de2648484fc",
+     "size": 217,
+     "type": "image/svg+xml"
+    },
+    "stop.svg": {
+     "name": "stop.svg",
+     "blob": "83aa8eab784d07a58e92332f9af18671",
+     "size": 214,
+     "type": "image/svg+xml"
+    },
+    "record.svg": {
+     "name": "record.svg",
+     "blob": "2fc0b04f2daa82fe9305d38d8f7c6bca",
+     "size": 217,
+     "type": "image/svg+xml"
+    },
+    "loop.svg": {
+     "name": "loop.svg",
+     "blob": "5b838d84fbdd69cf75c16dc06df19d77",
+     "size": 259,
+     "type": "image/svg+xml"
+    },
+    "copy.svg": {
+     "name": "copy.svg",
+     "blob": "29566153e5fb6ede91d6ca259acfa703",
+     "size": 240,
+     "type": "image/svg+xml"
+    },
+    "paste.svg": {
+     "name": "paste.svg",
+     "blob": "d83f3d8b9f1e17b35ab0751c592c2340",
+     "size": 274,
+     "type": "image/svg+xml"
+    },
+    "shuffle.svg": {
+     "name": "shuffle.svg",
+     "blob": "b148c4a1f27c2aae4c5a61773ba33f9f",
+     "size": 270,
+     "type": "image/svg+xml"
+    },
+    "reset.svg": {
+     "name": "reset.svg",
+     "blob": "64253d6924d89c3526e7bfa6a2206ec7",
+     "size": 230,
+     "type": "image/svg+xml"
+    },
+    "link.svg": {
+     "name": "link.svg",
+     "blob": "b253d49250874b83501b01ea5bc0a35b",
+     "size": 320,
+     "type": "image/svg+xml"
+    },
+    "chevron.svg": {
+     "name": "chevron.svg",
+     "blob": "af7b40737877e4115396579537919277",
+     "size": 210,
+     "type": "image/svg+xml"
+    },
+    "power.svg": {
+     "name": "power.svg",
+     "blob": "b151ffd911b8bf664ef4f484f7667188",
+     "size": 226,
+     "type": "image/svg+xml"
+    }
+   }
+  }
+ },
+ "blobs": {},
+ "docs": {
+  "readme": "project/README.md",
+  "sections": []
+ },
+ "lastChange": {
+  "by": "Torben",
+  "at": "2026-09-29T07:16:21Z",
+  "via": "Cowork",
+  "note": "Ground: bass-triggered wave field (canvas + 20\u201380 Hz detector), uniform grain, Motion section"
+ }
+}

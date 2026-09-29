@@ -108,10 +108,29 @@
   --control-h: 28px;
   --readout-w: 64px;
   --rail: 2px;
-  --hair: 1px;
+  /* The system calls this `hairline` in its size family and `stroke-hair` in
+   * its stroke family; the stylesheets here have always said --hair. Both
+   * names, one value, so neither the system nor the CSS has to move. */
+  --hairline: 1px;
+  --hair: var(--hairline);
 
-  /* radius-0 everywhere; radius-full only on what physically turns. */
-  --radius: 0;
+  /*
+   * THREE RADII, AS THE SYSTEM DEFINES THEM -- and it really is three, even
+   * though almost everything here uses the first.
+   *
+   * This was one `--radius: 0`, which is what the UI happens to need, and the
+   * token test caught it the moment the design file arrived: the system's
+   * radius-1 and radius-full were simply absent, so nothing could have used
+   * them without spelling a number. radius-1 is a slider thumb and an LED
+   * housing; radius-full is only what physically turns.
+   *
+   * --radius stays as the name the stylesheets already say, aliased to the
+   * system's radius-0 rather than repeating its value.
+   */
+  --radius-0: 0px;
+  --radius-1: 2px;
+  --radius-full: 999px;
+  --radius: var(--radius-0);
 }
 
 /*
