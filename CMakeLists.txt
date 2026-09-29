@@ -37,6 +37,11 @@ include(cmake/TranceGateEngine.cmake)
 # second consumer yet -- see the comment at the top of the file.
 include(cmake/SpectroEngine.cmake)
 
+# The Trance Gate's OTHER shell: the Schwung module for the Move. Not a
+# subdirectory because it is an aarch64 Linux cross-build in a container --
+# see the note in the file.
+include(cmake/Schwung.cmake)
+
 add_subdirectory(plugins/trance-gate)
 add_subdirectory(plugins/spectrogram)
 

@@ -10,3 +10,6 @@ plugins/trance-gate-iplug/ui/test/harness/assets/
 plugins/trance-gate-iplug/ui/test/harness/fonts/
 plugins/spectrogram/ui/test/harness/assets/
 plugins/spectrogram/ui/test/harness/fonts/
+
+# The Schwung module build (cmake --build build --target schwung)
+dist/
