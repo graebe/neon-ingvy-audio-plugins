@@ -36,6 +36,30 @@ the nih-plug wrapper was replaced by the iPlug2 one. They are no longer linked
 into anything, so their notices no longer apply — `vst3-sys` was the single
 crate making the Rust plugin GPL, reached only through `nih_export_vst3!()`.
 
+## Test-only, and linked into nothing that ships
+
+| Component | Licence |
+|---|---|
+| [doctest](https://github.com/doctest/doctest) 2.4.12 | **MIT**, © 2016-2023 Viktor Kirilov |
+
+Vendored as a single header at `external/doctest/doctest.h` and reached only by
+the targets in `tests/cpp/`. No plugin, module or bundle links it, so it adds
+nothing to any artefact's notices — it is recorded here because a dependency
+that is not written down is one somebody has to rediscover.
+
+**It is MIT, and that was the deciding factor rather than a coincidence.**
+Catch2 (BSL-1.0) and GoogleTest (BSD-3-Clause) are both permissive and either
+would have worked; both would also have put the first exception into the
+sentence at the top of this file. doctest is additionally one header with no
+build step, which is the same argument that keeps the editors on vite and solid
+and nothing else.
+
+The coverage tooling adds no row at all: `llvm-cov`, `llvm-profdata` and
+`cargo-llvm-cov` are developer tools that run *on* the build rather than inside
+it. `lcov`/`genhtml` were not used, and their being **GPL-2.0** is why — there
+is no obligation attached to running them, but `llvm-cov` renders HTML already
+and a licence table with no exceptions in it is worth keeping.
+
 ## Bundled assets
 
 **JetBrains Mono** (© 2020 The JetBrains Mono Project Authors, **SIL Open Font

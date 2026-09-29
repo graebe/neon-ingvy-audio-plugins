@@ -40,7 +40,7 @@ git submodule update --init --recursive   # iPlug2. The engines are subtrees.
 npm ci                                    # the kit and both editors
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build                       # the macOS plugins, universal
-ctest --test-dir build                    # 14 tests
+ctest --test-dir build                    # 17 tests
 ```
 
 The Move module is the second target, and it is a Linux cross-build in Docker:
@@ -72,6 +72,57 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `ui_tokens` | no colour is spelled outside `ui-kit/src/tokens.css`, and that file agrees with the vendored design system |
 | `versions` | every spelling of a product's version agrees with `versions.json` |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
+| `spectro_wire`, `spectro_columns_js` | the wire format the editor decodes, both sides pinned to one table the plugin's own C++ generates |
+| `tg_wire` | the four pieces of plugin arithmetic where being wrong is silent — the scope quantiser, the message split, the editor height, the transport advance |
+
+### Coverage
+
+```sh
+./scripts/coverage.sh
+```
+
+One command, three languages. `build/coverage/` gets `coverage.json` for a
+machine, `summary.txt` and `html/index.html` for a person, and `lcov.info` for
+an editor's gutter. It builds into `build-coverage/` and never into `build/`:
+the instrumented build is `-O0`, one architecture and has no `NDEBUG`, so
+nothing from it can be shipped by mistake.
+
+**One engine for all three languages.** Rust compiles through LLVM, so the same
+`-fprofile-instr-generate` instrumentation and the same `llvm-cov` reader serve
+the C, the C++ and both cargo suites; node's own `--experimental-test-coverage`
+covers the editors without adding a dependency to a tree that is kept small for
+the licence audit. It needs `cargo install cargo-llvm-cov` and
+`rustup component add llvm-tools-preview` once — rustc carries its own LLVM, and
+a profile it writes is refused by Xcode's reader with an error that names
+neither. The script names both tools if they are missing rather than failing
+somewhere inside `llvm-cov`.
+
+**The figure is an upper bound, and says so.** `lcov` records only what was
+loaded, so a file no test reaches is absent from the report rather than zero —
+which means the total *rises* when untested code is added. That is a number
+worth less than none, because it is trusted. So the report walks the source
+tree, names every file no tracefile mentions, fails `coverage_floor` on them and
+puts them in a box at the top of the HTML. The first honest run read 54.4% with
+27 files invisible, including 1,315 lines of `ui_chain.js`.
+
+**Lines are the coarse metric here, and the report prints all three.** This
+code is dense with ternaries and one-line guards — `isfinite(v) ? clamp : 0.f`
+is a whole rule on one line — so deleting the test that covers the NaN case
+leaves line coverage at 100% and moves only regions and branches. That was
+measured rather than assumed: `Wire.cpp` goes 20/20 regions and 12/12 branches
+to 19/20 and 11/12, with lines unchanged at 20/20. Read the branch column when
+judging whether a file is actually exercised.
+
+`tests/coverage.floors.json` holds the floor — 80%, which is AGENTS.md's number
+— and the exemptions. An exemption must name a unit that still exists and carry
+a reason rather than a note, and a test enforces both: a stale excuse is how a
+floor quietly stops meaning anything. Floors apply to units **derived from
+paths**, so a plugin arriving in this repository is measured on arrival rather
+than being silently absent from the denominator.
+
+It is report-only for now — the plugin shells are exempt because what is left in
+them after `Wire.cpp` was lifted out is calls into iPlug2 that only `tg_au` can
+exercise. `"enforcing": true` makes a shortfall fail.
 
 ## The products
 

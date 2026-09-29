@@ -3,6 +3,7 @@
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "Spectrogram.h"
+#include "Wire.h"
 #include "IPlug_include_in_plug_src.h"
 
 #include <algorithm>
@@ -177,23 +178,12 @@ void Spectrogram::OnIdle()
   if (cols <= 0)
     return;
 
-  static const char* const kHex = "0123456789ABCDEF";
+  mHex = spectro::wire::encode_columns(mCols.data(), cols, bands);
 
-  mHex.clear();
-  char head[32];
-  snprintf(head, sizeof head, "%d:%d:", cols, bands);
-  mHex += head;
-
-  const int bytes = cols * bands;
-  for (int i = 0; i < bytes; i++)
-  {
-    const unsigned char b = mCols[size_t(i)];
-    mHex += kHex[(b >> 4) & 0xF];
-    mHex += kHex[b & 0xF];
-  }
-
-  /* The guard, at the one call that can approach the cap. */
-  assert(int(mHex.size()) * 4 / 3 + 32 < kMaxJSString);
+  /* The guard, at the one call that can approach the cap. The static_assert in
+   * Spectrogram.h is what actually holds the budget -- this one is gone under
+   * -DNDEBUG, which is how the plugin ships. */
+  assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
   SendArbitraryMsgFromDelegate(kMsgCols, int(mHex.size()), mHex.c_str());
 }
 
@@ -209,19 +199,9 @@ void Spectrogram::SendAxis()
   std::vector<float> hz(size_t(bands), 0.0f);
   const int n = spectro_band_hz(mSpectro, hz.data(), bands);
 
-  /* "20.6,21.4,..." -- one decimal is well past what a label shows, and the UI
-   * needs the whole list rather than the ends: it draws a tick wherever the
-   * scale crosses a decade. */
-  std::string axis;
-  axis.reserve(size_t(n) * 8);
-  char num[24];
-  for (int i = 0; i < n; i++)
-  {
-    snprintf(num, sizeof num, "%s%.1f", i ? "," : "", hz[size_t(i)]);
-    axis += num;
-  }
+  const std::string axis = spectro::wire::encode_axis(hz.data(), n);
 
-  assert(int(axis.size()) * 4 / 3 + 32 < kMaxJSString);
+  assert(spectro::wire::framed_size(int(axis.size())) < kMaxJSString);
   SendArbitraryMsgFromDelegate(kMsgAxis, int(axis.size()), axis.c_str());
 }
 
@@ -256,12 +236,10 @@ bool Spectrogram::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* p
        */
       const std::string arg(static_cast<const char*>(pData),
                             size_t(dataSize > 0 ? dataSize : 0));
-      const size_t sep = arg.find(':');
-      if (sep == std::string::npos)
+      float lo = 0.f, hi = 0.f;
+      if (!spectro::wire::parse_range(arg, lo, hi))
         return true;
 
-      const float lo = float(atof(arg.substr(0, sep).c_str()));
-      const float hi = float(atof(arg.substr(sep + 1).c_str()));
       spectro_set_range(mSpectro, lo, hi);
 
       /* The scale follows the range, and the engine reports it back rather than

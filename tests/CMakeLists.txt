@@ -183,4 +183,39 @@ if (TG_NODE)
     # The wire: the hex decode, the axis, and where a label goes.
     add_test(NAME spectro_columns_js
              COMMAND ${TG_NODE} --test ${SPECTRO_UI_TEST}/columns.test.mjs)
+    # The other half of the wire oracle; spectro_wire is the first. See
+    # tests/cpp/CMakeLists.txt for the pair.
+    set_tests_properties(spectro_columns_js PROPERTIES
+        ENVIRONMENT "SPECTRO_WIRE_TABLE=${SPECTRO_UI_TEST}/wire_table.txt")
 endif()
+
+# THE COVERAGE FLOOR, registered only where there is a report to check.
+#
+# It reads build/coverage/coverage.json, which scripts/coverage.sh writes --
+# running it from a plain build would fail on a missing file and teach nobody
+# anything, so it appears in the instrumented build and there only.
+if (TG_NODE AND VST_COVERAGE)
+    add_test(NAME coverage_floor
+             COMMAND ${TG_NODE} --test
+                     ${CMAKE_SOURCE_DIR}/tests/coverage_floor.test.mjs)
+    set_tests_properties(coverage_floor PROPERTIES
+        ENVIRONMENT "COVERAGE_JSON=${CMAKE_SOURCE_DIR}/build/coverage/coverage.json")
+endif()
+
+# THE TRANCE GATE'S RUST, which was the one suite nobody ran.
+#
+# spectro_core has been registered since the Spectrogram arrived, and the note
+# in cmake/SpectroEngine.cmake says why -- "run from here rather than left to be
+# remembered". The same argument applied to tg-core the whole time and the same
+# two variables were already in scope; nothing was using them. A suite that only
+# runs when somebody types `cargo test` in the right directory is, as run.sh
+# puts it, the same as not being run.
+add_test(NAME tg_core_rs
+         COMMAND ${TG_ENV} ${TG_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p tg-core -p tg-capi)
+
+# ---------------------------------------------------------------- The C++
+# In its own file so that a plugin arriving in this repository touches one line
+# here rather than a block -- see tests/cpp/CMakeLists.txt for what it builds
+# and why it links so little.
+add_subdirectory(cpp)

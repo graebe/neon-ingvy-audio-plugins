@@ -53,6 +53,8 @@ iplug_add_plugin(TranceGate
   SOURCES
     TranceGate.cpp
     TranceGate.h
+    Wire.cpp
+    Wire.h
     config.h
     resources/resource.h
   # No APP: the standalone's main() and its preferences dialog reference menu

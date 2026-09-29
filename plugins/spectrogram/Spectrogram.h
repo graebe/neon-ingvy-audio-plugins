@@ -21,6 +21,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "spectro_core.h"
+#include "Wire.h"
 #include <string>
 #include <vector>
 
@@ -95,6 +96,23 @@ public:
    * while the other grows is how a payload quietly starts being truncated.
    */
   static constexpr int kMaxColsPerTick = 32;
+
+  /*
+   * THE BUDGET, CHECKED BY THE COMPILER.
+   *
+   * The three asserts that used to be the only enforcement of this are gone
+   * under -DNDEBUG, and -DNDEBUG is what the documented Release build sets --
+   * so in the configuration that actually ships, nothing held this at all.
+   * The failure it guards is WDL_String::SetFormatted truncating rather than
+   * failing: a short payload decodes to a column of garbage that reads as a
+   * real transient.
+   *
+   * Two hex characters a byte, base64's extra third, and the frame's 32.
+   */
+  static_assert(spectro::wire::framed_size(kMaxColsPerTick * SPECTRO_BANDS * 2)
+                    < kMaxJSString,
+                "a full OnIdle tick no longer fits the WebView's string cap -- "
+                "kMaxColsPerTick and SPECTRO_BANDS are what constrain it");
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* Once per frame while the editor is open: every column the audio thread has
