@@ -11,6 +11,13 @@
 name: Pages
 
 on:
+  # A HAND CRANK, because everything else here is a consequence of something
+  # else. Pages has to be switched on in the repository's settings before this
+  # workflow can deploy at all, and the run that discovers it is not on takes
+  # the failure with it -- leaving nothing to retry once the setting is
+  # corrected except an unrelated commit, or clicking Re-run in the UI.
+  workflow_dispatch:
+
   push:
     branches: [main]
     paths:
