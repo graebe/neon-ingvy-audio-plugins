@@ -19,7 +19,7 @@
 main {
   position: relative;
   width: 760px;
-  height: 566px;
+  height: 624px;
   margin: 0 auto;
   background: var(--bg-000);
   color: var(--ink);
@@ -102,12 +102,19 @@ main {
 
 /* -------------------------------------------------------------- controls -- */
 
+/*
+ * 104 TALL, NOT 78. A Knob is a 48px disc with its label above it and its
+ * readout below, and the first version of this row reserved only the disc -- so
+ * the readouts drew straight through the selects row under them. The number is
+ * the component's, not this layout's; it is written down here because this is
+ * the only place that can be wrong about it.
+ */
 .knob-row {
   position: absolute;
   left: 32px;
-  top: 376px;
+  top: 372px;
   width: 696px;
-  height: 78px;
+  height: 104px;
   display: flex;
   align-items: flex-start;
   gap: var(--s6);
@@ -116,10 +123,16 @@ main {
   border: 0;
 }
 
+/*
+ * TWO SELECT ROWS, split by subject: the trigger above, the shape below.
+ *
+ * One row overflowed in MIDI mode -- 842px of selects against 696 -- and
+ * splitting by subject also stops the shape controls moving when the source
+ * changes, which no single-row arrangement could do.
+ */
 .selects-row {
   position: absolute;
   left: 32px;
-  top: 470px;
   width: 696px;
   height: 28px;
   display: flex;
@@ -127,16 +140,21 @@ main {
   gap: var(--s4);
 }
 
-.selects-row .spacer {
-  flex: 1 1 auto;
-}
+.selects-trigger { top: 492px; }
+.selects-shape { top: 528px; }
 
 /* ------------------------------------------------------------------ hint -- */
 
-.hint {
+/*
+ * `.hint-bar`, WHICH IS WHAT THE COMPONENT RENDERS -- not `.hint`. A positioning
+ * rule whose selector matches nothing fails silently: the bar was laid out in
+ * normal flow at the top of the window, over the title, and looked like a
+ * z-order problem rather than a typo.
+ */
+.hint-bar {
   position: absolute;
   left: 32px;
   right: 32px;
-  top: 514px;
+  top: 572px;
   height: 20px;
 }

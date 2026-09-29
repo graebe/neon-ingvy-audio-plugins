@@ -40,8 +40,8 @@ main {
 /* envelope/pattern/signal plot: (32, 296, 240, 104) -- but the strip is the
  * full left column, so the plot spans it. */
 
-.plot { width: 100%; height: 104px; display: block; }
-.plot-caption { fill: var(--ink-muted); }
+.plot { width: 100%; height: 104px; }
+/* .plot-caption moved into @ultraviolet/ui's components.css with Well. */
 
 .gate-panel { top: 32px; }
 .env-panel  { top: 228px; }

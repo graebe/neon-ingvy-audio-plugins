@@ -12,9 +12,10 @@
  *   shape    y 56   h 156
  *   signal   y 220  h 132
  *   axis            under BOTH, not inside either -- see below
- *   knobs    y 376  h 78
- *   selects  y 470  h 28
- *   hint     y 514  h 20
+ *   knobs    y 372  h 104   (label, 48px disc, readout -- not just the disc)
+ *   trigger  y 492  h 28    the source and whatever it needs
+ *   shape    y 528  h 28    curve and the time unit, which every source has
+ *   hint     y 572  h 20
  *
  * THE AXIS IS UNDER THE WELLS AND NOT LAID OVER THEM. The Spectrogram's rule
  * (app.css:77-84): a label over the picture is legible against silence and
@@ -29,7 +30,7 @@ import { ParamKnob, ParamSelect } from './lib/params.jsx';
 import { Shaper, SPAN } from './lib/Shaper.jsx';
 
 const DESIGN_W = 760;
-const DESIGN_H = 566;
+const DESIGN_H = 624;
 const PLOT_W = DESIGN_W - 64;
 
 const SOURCES = ['Cycle', 'MIDI', 'Sidechain'];
@@ -365,20 +366,43 @@ export default function App() {
                    default={defaults()[P.hold]} />
         <ParamKnob idx={P.release} label="Release" value={v(P.release)}
                    display={d(P.release)} default={defaults()[P.release]} />
-        {/* The source's own control, whichever source that is. Shown here rather
-          * than in a separate panel because it is the one knob whose relevance
-          * changes, and hiding it entirely would make the row jump. */}
-        <Show when={ui().source === 2}
-              fallback={
-                <ParamKnob idx={P.velSens} label="Vel" value={v(P.velSens)}
-                           display={d(P.velSens)} default={defaults()[P.velSens]} />
-              }>
+        {/*
+          * THE SOURCE'S OWN KNOBS, AND ONLY THE ONES THAT APPLY.
+          *
+          * Vel is MIDI's, Threshold and Lockout are the sidechain's, and Cycle
+          * has none. Showing an irrelevant control is worse than a row that
+          * changes width: a Threshold knob on a tempo-locked duck invites
+          * somebody to turn it and conclude the plugin is broken.
+          *
+          * Both of the sidechain's knobs belong HERE and not in the selects row
+          * below -- that row is 28px of select fields, and a 48px disc dropped
+          * into it overflows upward through the readouts above it.
+          */}
+        <Show when={ui().source === 1}>
+          <ParamKnob idx={P.velSens} label="Vel" value={v(P.velSens)}
+                     display={d(P.velSens)} default={defaults()[P.velSens]} />
+        </Show>
+        <Show when={ui().source === 2}>
           <ParamKnob idx={P.threshold} label="Thresh" value={v(P.threshold)}
                      display={d(P.threshold)} default={defaults()[P.threshold]} />
+          <ParamKnob idx={P.lockout} label="Lockout" value={v(P.lockout)}
+                     display={d(P.lockout)} default={defaults()[P.lockout]} />
         </Show>
       </section>
 
-      <div class="selects-row">
+      {/*
+        * TWO ROWS, AND THE SPLIT IS BY SUBJECT RATHER THAN BY FIT.
+        *
+        * The first row is the TRIGGER -- the source and whatever that source
+        * needs. The second is the SHAPE, which every source has.
+        *
+        * One row overflowed in MIDI mode, where the source brings three selects
+        * of its own: Src, Note, Ch, Mode, Curve and Time came to 842px against
+        * 696, so Curve was clipped and Time was off the edge entirely. Splitting
+        * by subject fixes that and also stops the shape controls MOVING when the
+        * source changes, which one row could not do at any width.
+        */}
+      <div class="selects-row selects-trigger">
         <ParamSelect idx={P.source} label="Src" options={SOURCES}
                      value={v(P.source)} width={104} labelWidth={30} />
         <Show when={ui().source === 0}>
@@ -393,11 +417,9 @@ export default function App() {
           <ParamSelect idx={P.midiMode} label="Mode" options={MIDI_MODES}
                        value={v(P.midiMode)} width={88} labelWidth={42} />
         </Show>
-        <Show when={ui().source === 2}>
-          <ParamKnob idx={P.lockout} label="Lockout" value={v(P.lockout)}
-                     display={d(P.lockout)} default={defaults()[P.lockout]} />
-        </Show>
-        <div class="spacer" />
+      </div>
+
+      <div class="selects-row selects-shape">
         <ParamSelect idx={P.curve} label="Curve" options={CURVES}
                      value={v(P.curve)} width={118} labelWidth={42} />
         <ParamSelect idx={P.timeMode} label="Time" options={TIME_MODES}
@@ -471,18 +493,18 @@ function noteNames() {
  * now. `Time` switches which of the two the clause names.
  */
 function hintFor(source, rate, ms, timeModeNorm) {
+  /*
+   * THREE SHORT CLAUSES. The bar is one line and does not wrap: the first
+   * version of this said what each source needed in a full sentence, and the
+   * three of them ran off the bottom of the window. The component truncates at
+   * three clauses; keeping each one short is this side's half of that bargain.
+   */
   const showMs = (timeModeNorm ?? 0) < 0.5;
   const total = ms.reduce((a, b) => a + b, 0);
-  const clauses = [['drag a handle', 'shift for fine, double-click to reset']];
-  if (source === 1) {
-    clauses.push(['midi', 'needs a MIDI track -- Live routes none to an audio track']);
-  } else if (source === 2) {
-    clauses.push(['sidechain', 'pick a source in the device header']);
-  } else {
-    clauses.push(['cycle', 'locked to the transport, no routing needed']);
-  }
-  clauses.push(showMs
-    ? ['times', `percent of the cycle -- ${Math.round(total)} ms in total`]
-    : ['times', 'percent of the cycle, so the shape follows the tempo']);
+  const clauses = [['drag', 'a handle, shift for fine']];
+  if (source === 1) clauses.push(['midi', 'needs a MIDI track']);
+  else if (source === 2) clauses.push(['key', 'route it in the header']);
+  else clauses.push(['cycle', 'follows the transport']);
+  clauses.push(['times', showMs ? `${Math.round(total)} ms total` : '% of the cycle']);
   return clauses;
 }

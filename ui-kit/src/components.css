@@ -164,6 +164,22 @@
  */
 .select:has(select:focus-visible) { box-shadow: var(--glow-focus);}
 
+/* ------------------------------------------------------------- plots -- */
+
+/*
+ * A PLOT'S CAPTION, which came here with Well.
+ *
+ * It lived in the Trance Gate's app.css, which was fine while that editor was
+ * the only one with a plot. The moment Well moved into the kit, a second editor
+ * could use it and get an SVG <text> with no fill -- black on bg-000, which
+ * reads as a caption that is not there rather than as a missing stylesheet. NI
+ * Pump's first screenshot had exactly that.
+ *
+ * `fill` and not `color`: this is SVG.
+ */
+.plot-caption { fill: var(--ink-muted); }
+.plot { display: block; }
+
 /* ------------------------------------------------------- spectrogram --
  * The canvas fills the well it is given and is sized in DEVICE pixels by
  * the component; block, so it does not sit on a text baseline and leave a
