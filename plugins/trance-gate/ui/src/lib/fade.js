@@ -43,16 +43,33 @@ export function fadeWeight(rank, n, fade, soft) {
 }
 
 /**
- * Every step's weight, indexed by step. `orders` is the `ui` readout's rank per
- * step -- 0 where the step is off -- so the count of arrivals comes out of it
- * rather than being passed in and possibly disagreeing.
+ * Every step's LEVEL FACTOR, indexed by step — which is what the engine's
+ * `fade_w` holds and what decides whether a step is a gap (`0`) at all.
+ *
+ * `steps` is the drawn mask and `orders` the `ui` readout's rank per step, each
+ * step ranked among its OWN KIND: hits among hits, holes among holes. That is
+ * what lets one array carry both orders, and it is why the mask has to be passed
+ * — the rank alone can no longer say which kind a step is.
+ *
+ *     In    lf[i] = on(i) ? w(rank(i)) : 0
+ *     Out   lf[i] = on(i) ? 1 : 1 - w(rank(i))
+ *
+ * An arriving HOLE starts as a full on-step and ramps DOWN to nothing, which is
+ * a gap — the dual of an arriving hit ramping up. Steps that are not of the
+ * arriving kind sit at their finished value and the knob never touches them.
  */
-export function fadeWeights(orders, length, fade, soft) {
+export function fadeWeights(orders, steps, length, fade, soft, out = false) {
   const n = Math.max(1, length | 0);
-  let hits = 0;
-  for (let i = 0; i < n; i++) if ((orders?.[i] ?? 0) >= 1) hits++;
+  const on = (i) => !!steps?.[i];
+  const arrivingOn = !out;
+  let count = 0;
+  for (let i = 0; i < n; i++) if (on(i) === arrivingOn) count++;
+
   const w = new Array(n).fill(0);
-  for (let i = 0; i < n; i++)
-    w[i] = fadeWeight(orders?.[i] ?? 0, hits, fade, soft);
+  for (let i = 0; i < n; i++) {
+    if (on(i) !== arrivingOn) { w[i] = on(i) ? 1 : 0; continue; }
+    const v = fadeWeight(orders?.[i] ?? 0, count, fade, soft);
+    w[i] = arrivingOn ? v : 1 - v;
+  }
   return w;
 }

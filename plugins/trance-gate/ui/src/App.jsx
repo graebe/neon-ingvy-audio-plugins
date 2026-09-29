@@ -29,10 +29,10 @@ import { randomize, setOrder } from './lib/steps.js';
  * between them to get wrong. Fade and its shape are APPENDED for that reason. */
 const P = { slot: 0, length: 1, rate: 2, legato: 3, timeMode: 4, curve: 5,
             amount: 6, width: 7, attack: 8, decay: 9, sustain: 10, release: 11,
-            fade: 12, fadeSoft: 13 };
+            fade: 12, fadeSoft: 13, fadeDir: 14 };
 /* The count, spelled once. It was a literal `12` in four places and every one
  * of them had to be found by hand when the thirteenth arrived. */
-const NPARAMS = 14;
+const NPARAMS = 15;
 
 const RATES = ['1/1T','1/2','1/2T','1/4','1/4T','1/8','1/8T','1/16','1/16T','1/32','1/32T','1/64','1/128'];
 const SLOTS = ['1','2','3','4','5','6','7','8'];
@@ -40,6 +40,10 @@ const SLOTS = ['1','2','3','4','5','6','7','8'];
  * value what the control's own name says once. */
 const TIME_MODES = ['ms', '%'];
 const CURVES = ['Linear', 'Exponential', 'S-Curve'];
+/* Which end the pattern is built up from. The knob means the same thing either
+ * way -- how much of the drawn pattern is present -- so 100% is the pattern in
+ * both, and this only chooses what the missing part looks like. */
+const FADE_DIRS = ['In', 'Out'];
 
 /*
  * ONE CONTENT WIDTH, AND EVERYTHING IN THE WINDOW IS IT.
@@ -121,6 +125,8 @@ export default function App() {
    * is only the mark that says the picture is filling left to right.
    */
   const [scopeHead, setScopeHead] = createSignal(0);
+  /* The rendered gate curve, from the plugin. Null until the first push. */
+  const [gate, setGate] = createSignal(null);
   const [tab, setTab] = createSignal(0);
   /*
    * THE CLOCK. `at` is performance.now() when this phase was received, which
@@ -190,7 +196,7 @@ export default function App() {
       }
       if (tag === MSG.params) {
         const f = msg.split(':');
-        if (f.length < 15) return;
+        if (f.length < 16) return;
         /* LEGATO IS FIELD 1 AND WAS NEVER READ, which is why the Pattern plot
          * drew three attacks for three joined neighbours: it had no way to know
          * Join Neighbors was on. */
@@ -198,7 +204,8 @@ export default function App() {
                            amount: +f[6], width: +f[7],
                            attack: +f[8], decay: +f[9], sustain: +f[10],
                            release: +f[11], widthMs: +f[12],
-                           fade: +f[13], fadeSoft: +f[14] >= 0.5 });
+                           fade: +f[13], fadeSoft: +f[14] >= 0.5,
+                           fadeOut: +f[15] >= 0.5 });
       }
       if (tag === MSG.scope) {
         /*
@@ -230,6 +237,24 @@ export default function App() {
         setScopeHead(head);
         return setScope(out);
       }
+      /*
+        * THE GATE, AS THE ENGINE APPLIES IT. "<length>:<perStep>:<hex>", a byte
+        * per sample of one cycle. This side does not model it any more -- see
+        * the note on PatternPlot.
+        */
+      if (tag === MSG.gate) {
+        const f = msg.split(':');
+        if (f.length < 3) return;
+        const len = Math.max(1, parseInt(f[0], 10) || 1);
+        const per = Math.max(1, parseInt(f[1], 10) || 1);
+        const hex = f[2];
+        const n = Math.min(len * per, hex.length >> 1);
+        const out = new Array(n);
+        for (let i = 0; i < n; i++)
+          out[i] = (parseInt(hex.substr(i * 2, 2), 16) || 0) / 255;
+        return setGate({ length: len, perStep: per, values: out });
+      }
+
       if (tag === MSG.patch) copyToClipboard(msg);
     });
 
@@ -272,17 +297,23 @@ export default function App() {
   const weights = createMemo(() => {
     const p = params();
     if (!p) return null;
-    return fadeWeights(ui().orders, ui().length, p.fade ?? 1, !!p.fadeSoft);
+    const u = ui();
+    return fadeWeights(u.orders, u.steps, u.length,
+                       p.fade ?? 1, !!p.fadeSoft, !!p.fadeOut);
   });
+  /* Which kind the fade is introducing -- the one whose numbers are worth
+   * drawing, and the one ORDER mode and SHUFFLE act on. */
+  const arriving = (i) => !!params()?.fadeOut !== !!ui().steps?.[i];
   /* Below 100% there is something to explain, so the pads show their numbers. */
   const fading = () => (params()?.fade ?? 1) < 0.999;
 
-  /* How many steps sound -- the denominator of the order, and of the ORDER
-   * button's count. */
+  /* How many steps the fade has to introduce -- the denominator of the order and
+   * of the ORDER button's count. Whichever kind is arriving, not always the
+   * hits: Fade Out sequences the holes. */
   const hits = () => {
     const u = ui();
     let n = 0;
-    for (let i = 0; i < u.length; i++) if (u.steps?.[i]) n++;
+    for (let i = 0; i < u.length; i++) if (arriving(i)) n++;
     return n;
   };
 
@@ -298,7 +329,7 @@ export default function App() {
   const shuffleOrder = () => {
     const u = ui();
     const idx = [];
-    for (let i = 0; i < u.length; i++) if (u.steps?.[i]) idx.push(i);
+    for (let i = 0; i < u.length; i++) if (arriving(i)) idx.push(i);
     for (let i = idx.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [idx[i], idx[j]] = [idx[j], idx[i]];
@@ -312,6 +343,9 @@ export default function App() {
   const orderModel = () => ({
     orderMode: orderMode(),
     orderNext: orderNext(),
+    /* Only the arriving kind can be sequenced: under Fade Out you are putting
+     * the HOLES in order, and a hit has no place in that sequence. */
+    orderTakes: arriving,
     onOrdered: (i) => setNamed((m) => ({ ...m, [i]: true })),
   });
 
@@ -504,11 +538,16 @@ export default function App() {
         * it means nothing without it.
         */}
       <section class="panel fade-panel">
-        <h2 class="t-title">FADE IN</h2>
+        <h2 class="t-title">FADE</h2>
         <div class="knob-row">
           <ParamKnob idx={P.fade} label="Fade" value={vals()[P.fade]}
                      display={text()[P.fade]} default={1} />
           <div class="fade-actions">
+            {/* THE DIRECTION IS A SETTING, NOT A SECOND KNOB. In introduces the
+              * steps you drew on and leaves silence behind; Out introduces the
+              * holes and leaves the gate open. 100% is the pattern either way. */}
+            <ParamSelect idx={P.fadeDir} options={FADE_DIRS} label="Dir"
+                         labelWidth={28} width={76} value={vals()[P.fadeDir]} />
             <ParamToggle idx={P.fadeSoft} label="Soft" value={vals()[P.fadeSoft]} />
             {/*
               * ORDER MODE. Worded, not a glyph: "the system uses no icon set --
@@ -609,7 +648,7 @@ export default function App() {
             * snaps. Both read the one clock, so they cannot disagree. */}
           {tab() === 0 && <PatternPlot length={ui().length} steps={ui().steps}
                                        ties={ui().ties} depths={ui().depths}
-                                       weights={weights()}
+                                       weights={weights()} gate={gate()}
                                        params={plotParams()} w={PLOT_W} h={92}
                                        phase={playPhase()} moving={ui().moving} />}
           {/* The Scope takes no playhead and no pattern: it is a rolling
@@ -625,6 +664,7 @@ export default function App() {
                                  length={ui().length} steps={ui().steps}
                                  ties={ui().ties} depths={ui().depths}
                                  weights={weights()} params={plotParams()}
+                                 gate={gate()}
                                  phase={playPhase()} moving={ui().moving} />}
         </div>
         <Tabs tabs={['Pattern', 'Signal']} active={tab()} onSelect={setTab} />
@@ -635,7 +675,8 @@ export default function App() {
                   depths={ui().depths} cursor={ui().cursor}
                   playhead={playStep()} moving={ui().moving}
                   orders={ui().orders} weights={weights()}
-                  fading={fading()} named={named()} {...orderModel()} />
+                  fading={fading()} named={named()} {...orderModel()}
+                  onOrder={setOrder} />
       </div>
 
       {/* THREE CLAUSES IS THE CAP, and a fourth means the window needs
@@ -643,8 +684,8 @@ export default function App() {
         * While a sequence is being typed, the three rules that apply are its
         * own. */}
       <Hint clauses={orderMode() ? [
-        ['click', 'the steps in the order they should arrive'],
-        ['an off step', 'comes on and joins the end'],
+        ['click', `the ${params()?.fadeOut ? 'gaps' : 'steps'} in the order they should arrive`],
+        ['a number', 'to type one — they swap'],
         ['ORDER', 'again to finish'],
       ] : [
         ['click', 'a step to toggle'],

@@ -22,8 +22,9 @@
  * recalc_fade; if the gain law and the weight table ever disagree, this reports
  * the gain law, which is the one a listener hears.
  *
- * THE SWEEP is every fade setting in 1% steps against four patterns, both
- * shapes. It includes 0 and 1 because those are the two the control promises
+ * THE SWEEP is every fade setting against four patterns, both shapes, and BOTH
+ * DIRECTIONS -- In introduces the steps you drew on, Out introduces the holes,
+ * and the weight this tabulates is the LEVEL FACTOR either way. It includes 0 and 1 because those are the two the control promises
  * outright, and 0.99999994 -- the float nearest 1 from beneath, which a host
  * can really send -- because that is where a missing epsilon leaves the last
  * arrival silent and nowhere else.
@@ -64,7 +65,7 @@ static const char *FADES[] = {
 #define NFADE ((int)(sizeof(FADES) / sizeof(FADES[0])))
 
 /* A gate with no envelope, so a render reads back as weights. */
-static tg_core_t *mk(const char *pattern, const char *fade, int soft)
+static tg_core_t *mk(const char *pattern, const char *fade, int soft, int out)
 {
     tg_core_t *c = tg_core_create(SR);
     tg_core_set_param(c, "rate",      "1/16");
@@ -78,6 +79,7 @@ static tg_core_t *mk(const char *pattern, const char *fade, int soft)
     tg_core_set_param(c, "ties",      "0");
     tg_core_set_param(c, "pattern",   pattern);
     tg_core_set_param(c, "fade_soft", soft ? "1" : "0");
+    tg_core_set_param(c, "fade_dir",  out ? "Out" : "In");
     tg_core_set_param(c, "fade",      fade);
     return c;
 }
@@ -101,6 +103,28 @@ static void weights(tg_core_t *c, double *out)
         out[i] = (at < frames) ? (double)l[at] : -1.0;
     }
     free(l); free(r);
+}
+
+/*
+ * The drawn mask, out of the `ui` readout's first field. Needed since every step
+ * carries a rank -- among its OWN KIND -- so the order can no longer say which
+ * kind a step is, and the JS side has to be told the same thing the engine knows.
+ */
+static void mask(tg_core_t *c, int *out)
+{
+    char buf[4096];
+    for (int i = 0; i < 16; i++) out[i] = 0;
+    if (tg_core_get_param(c, "ui", buf, (int)sizeof buf) < 0) return;
+    char *colon = strchr(buf, ':');
+    if (!colon) return;
+    *colon = '\0';
+    const size_t len = strlen(buf);
+    for (int i = 0; i < 16; i++) {
+        const size_t nib = (size_t)(i / 4);
+        if (nib >= len) break;
+        char d[2] = { buf[len - 1 - nib], 0 };
+        out[i] = ((int)strtol(d, NULL, 16) >> (i % 4)) & 1;
+    }
 }
 
 /* The arrival ranks, out of the `ui` readout's ninth field. The JS side is
@@ -134,23 +158,28 @@ int main(int argc, char **argv)
         f = fopen(verify, "r");
         if (!f) { fprintf(stderr, "fade_table: cannot open %s\n", verify); return 2; }
     } else {
-        printf("# pattern soft fade | rank0..15 | weight0..15\n");
+        printf("# pattern out soft fade | on0..15 | rank0..15 | weight0..15\n");
         printf("# The engine's measured gain at the centre of each step, with no\n");
         printf("# envelope, so the gain IS the arrival weight. See fade_table.c.\n");
     }
 
     int bad = 0, rows = 0;
     for (int pi = 0; pi < NPAT; pi++)
+    for (int out = 0; out < 2; out++)
     for (int soft = 0; soft < 2; soft++)
     for (int fi = 0; fi < NFADE; fi++) {
-        tg_core_t *c = mk(PATTERNS[pi], FADES[fi], soft);
-        double w[16]; int r[16];
+        tg_core_t *c = mk(PATTERNS[pi], FADES[fi], soft, out);
+        double w[16]; int r[16], on[16];
         weights(c, w);
         ranks(c, r);
+        mask(c, on);
         tg_core_destroy(c);
 
         char line[1024];
-        int n = snprintf(line, sizeof line, "%s %d %s", PATTERNS[pi], soft, FADES[fi]);
+        int n = snprintf(line, sizeof line, "%s %d %d %s",
+                         PATTERNS[pi], out, soft, FADES[fi]);
+        for (int i = 0; i < 16; i++)
+            n += snprintf(line + n, sizeof line - (size_t)n, " %d", on[i]);
         for (int i = 0; i < 16; i++)
             n += snprintf(line + n, sizeof line - (size_t)n, " %d", r[i]);
         for (int i = 0; i < 16; i++)
@@ -169,33 +198,41 @@ int main(int argc, char **argv)
                 return 1;
             }
         } while (got[0] == '#');
-        char pat[32]; int gsoft; char gfade[32];
-        double gw[16]; int gr[16];
+        char pat[32]; int gout, gsoft; char gfade[32];
+        double gw[16]; int gr[16], gon[16];
         char *t = got;
-        if (sscanf(t, "%31s %d %31s", pat, &gsoft, gfade) != 3) {
+        if (sscanf(t, "%31s %d %d %31s", pat, &gout, &gsoft, gfade) != 4) {
             fprintf(stderr, "fade_table: malformed fixture row %d\n", rows);
             fclose(f);
             return 1;
         }
-        /* Walk past the three heads, then the 32 numbers. */
-        for (int k = 0; k < 3; k++) { t = strchr(t, ' '); if (!t) break; t++; }
+        /* Walk past the four heads, then the 48 numbers. */
+        for (int k = 0; k < 4; k++) { t = strchr(t, ' '); if (!t) break; t++; }
+        for (int i = 0; i < 16 && t; i++) { gon[i] = atoi(t); t = strchr(t, ' '); if (t) t++; }
         for (int i = 0; i < 16 && t; i++) { gr[i] = atoi(t); t = strchr(t, ' '); if (t) t++; }
         for (int i = 0; i < 16 && t; i++) { gw[i] = atof(t); t = strchr(t, ' '); if (t) t++; }
 
-        if (strcmp(pat, PATTERNS[pi]) || gsoft != soft || strcmp(gfade, FADES[fi])) {
-            fprintf(stderr, "fade_table: row %d is a different case (%s %d %s)\n",
-                    rows, pat, gsoft, gfade);
+        if (strcmp(pat, PATTERNS[pi]) || gout != out || gsoft != soft
+            || strcmp(gfade, FADES[fi])) {
+            fprintf(stderr, "fade_table: row %d is a different case (%s %d %d %s)\n",
+                    rows, pat, gout, gsoft, gfade);
             bad++;
         }
+        for (int i = 0; i < 16; i++)
+            if (gon[i] != on[i]) {
+                fprintf(stderr, "fade_table: %s step %d: on=%d, fixture %d\n",
+                        PATTERNS[pi], i, on[i], gon[i]);
+                bad++;
+            }
         for (int i = 0; i < 16; i++) {
             if (gr[i] != r[i]) {
-                fprintf(stderr, "fade_table: %s soft=%d fade=%s step %d: rank %d, fixture %d\n",
-                        PATTERNS[pi], soft, FADES[fi], i, r[i], gr[i]);
+                fprintf(stderr, "fade_table: %s out=%d soft=%d fade=%s step %d: rank %d, fixture %d\n",
+                        PATTERNS[pi], out, soft, FADES[fi], i, r[i], gr[i]);
                 bad++;
             }
             if (fabs(gw[i] - w[i]) > TOL) {
-                fprintf(stderr, "fade_table: %s soft=%d fade=%s step %d: %.9g, fixture %.9g\n",
-                        PATTERNS[pi], soft, FADES[fi], i, w[i], gw[i]);
+                fprintf(stderr, "fade_table: %s out=%d soft=%d fade=%s step %d: %.9g, fixture %.9g\n",
+                        PATTERNS[pi], out, soft, FADES[fi], i, w[i], gw[i]);
                 bad++;
             }
         }

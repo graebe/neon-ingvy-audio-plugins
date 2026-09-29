@@ -119,6 +119,48 @@ TEST_CASE("the quantiser is monotone across its whole range")
   CHECK(last == 255);
 }
 
+/* ------------------------------------------------------------ the gate curve */
+
+TEST_CASE("a gain is encoded over the whole byte, not half of it")
+{
+  /* encode_sample spends half its range on negatives a gain never takes, which
+   * would resolve the gate to 128 levels and put silence at mid-scale. */
+  CHECK(tg::wire::encode_gain(0.f) == 0);
+  CHECK(tg::wire::encode_gain(1.f) == 255);
+  CHECK(tg::wire::encode_gain(0.5f) == 128);
+}
+
+TEST_CASE("a gain outside 0..1 is pinned, and a non-finite one is a shut gate")
+{
+  CHECK(tg::wire::encode_gain(-1.f) == 0);
+  CHECK(tg::wire::encode_gain(2.f) == 255);
+  /* ZERO, not mid-scale. For a gain, "no value" is a shut gate -- mid-scale
+   * would draw a half-open one that was never played. */
+  CHECK(tg::wire::encode_gain(std::nanf("")) == 0);
+  CHECK(tg::wire::encode_gain(INFINITY) == 0);
+}
+
+TEST_CASE("the gate's samples per step stay an integer and bound the payload")
+{
+  for (int len = 1; len <= 128; len++)
+  {
+    const int per = tg::wire::gate_per_step(len);
+    /* An INTEGER by construction, so a step boundary lands on an exact sample
+     * and the gridlines and playhead cannot drift off it. */
+    CHECK(per >= 8);
+    CHECK(per <= 64);
+    /* Two hex characters a sample, and the transport truncates rather than
+     * fails -- so the whole cycle has to fit with room to spare. */
+    CHECK(len * per * 2 < 8192);
+  }
+}
+
+TEST_CASE("a degenerate length still yields a usable render")
+{
+  CHECK(tg::wire::gate_per_step(0) == 64);
+  CHECK(tg::wire::gate_per_step(-3) == 64);
+}
+
 /* --------------------------------------------------------------- the height */
 
 TEST_CASE("a plausible editor height is passed through unchanged")

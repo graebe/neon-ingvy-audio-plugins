@@ -534,10 +534,15 @@ void TranceGate::OnIdle()
     {
       mGateState = buf;
       RenderGate(buf);
+      /* ONLY WHEN IT MOVES. The curve is ~2 KB of hex and the patch is still
+       * between two keystrokes for most of a session, so pushing it every tick
+       * would double the editor's traffic to say nothing. An editor that opens
+       * later gets it from SendFullState, which is what the kMsgReady handshake
+       * is for. */
+      if (!mGatePayload.empty())
+        SendArbitraryMsgFromDelegate(kMsgGate, int(mGatePayload.size()),
+                                     mGatePayload.c_str());
     }
-    if (!mGatePayload.empty())
-      SendArbitraryMsgFromDelegate(kMsgGate, int(mGatePayload.size()),
-                                   mGatePayload.c_str());
   }
 
   if (tg_core_get_param(mCore, "params", buf, int(sizeof buf)) > 0)
@@ -720,6 +725,30 @@ void TranceGate::SendFullState()
   SendCurrentParamValuesFromDelegate();
   for (int i = 0; i < kNumParams; i++)
     SendDisplay(i);
+
+  /*
+   * AND THE GATE CURVE, because OnIdle only pushes it when the patch moves.
+   *
+   * Without this an editor opened on a patch nobody then touches would draw an
+   * empty Pattern tab until the first edit -- which looks exactly like the plot
+   * being broken. Rendered here if the cache is cold, because there is no
+   * guarantee an idle tick has run before the editor asks.
+   */
+  if (mCore)
+  {
+    char buf[TG_STATE_MAX];
+    if (tg_core_get_param(mCore, "state", buf, int(sizeof buf)) > 0)
+    {
+      if (mGatePayload.empty() || mGateState != buf)
+      {
+        mGateState = buf;
+        RenderGate(buf);
+      }
+      if (!mGatePayload.empty())
+        SendArbitraryMsgFromDelegate(kMsgGate, int(mGatePayload.size()),
+                                     mGatePayload.c_str());
+    }
+  }
 }
 
 void TranceGate::OnUIOpen()

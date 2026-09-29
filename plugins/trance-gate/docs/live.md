@@ -40,18 +40,29 @@ sounding, so it is not a fill. The pads say the same thing the same way.
 **Envelope** holds **Attack, Decay, Sustain** and **Release**, which shape every
 step.
 
-**Fade In** introduces the steps one at a time, in the order they carry:
+**Fade** introduces the steps one at a time, in the order they carry:
 
 | | |
 |---|---|
-| **Fade** | how much of the pattern has arrived. 0% is silence, 100% is all of it, and the arrivals in between are evenly spaced. **This is the knob a build-up is drawn on** |
-| **Soft** | a step arriving ramps in on its own level rather than jumping on. Off is the jump |
+| **Fade** | how much of the drawn pattern is present. **This is the knob a build-up is drawn on** |
+| **Dir** | **In** brings the steps you drew on in, from silence. **Out** brings the *holes* in, from a gate that has none. 100% is the pattern either way |
+| **Soft** | a step arriving ramps in on its own level rather than jumping on. An arriving hole ramps the other way — from a full step down to a gap |
 | **ORDER** | tap the steps in the order the fade should introduce them. The button counts how far into the sequence you are; press it again to finish |
 | **SHUFFLE** | a random arrival order, leaving the pattern alone |
 
 The numbers on the pads are the arrival order, and they are drawn only while
 ORDER is on or the fade is part way in — the rest of the time they would be
 clutter, because the fourth-step borders already say where the bars are.
+
+**Click a number to type one.** If the number you type is already taken, the two
+steps **swap**, so nothing between them moves. The hits and the holes are ranked
+separately — a step is one or the other, never both — so Fade Out sequences the
+holes and Fade In the hits.
+
+**A pad's border is what you drew; its fill is what you hear.** A step waiting to
+arrive keeps its outline with no fill; a hole that Fade Out has not removed yet is
+lit with no outline. Neither can be mistaken for the other, or for a step you
+drew.
 
 Below those, four controls decide how the rest is read:
 
@@ -62,7 +73,7 @@ Below those, four controls decide how the rest is read:
 | **Curve** | Linear, Exponential or S-Curve, applied to the envelope stages |
 | **Time** | whether the stages are read in **ms** or as a **%** of the gate's width — the same envelope, two ways of asking for it |
 
-All fourteen are ordinary host parameters and automate normally. The pattern and
+All fifteen are ordinary host parameters and automate normally. The pattern and
 its arrival order are not among them — see
 [what the host can automate](../README.md#what-the-host-can-automate-and-what-it-cannot).
 
@@ -77,9 +88,12 @@ it is safe to press while the transport runs.
 
 Two tabs, laid over the right edge of the plot they switch between.
 
-**Pattern** plots one cycle of the gate — the envelope actually applied, step by
-step, with the playhead crossing it. A step the fade has not reached is drawn as
-a gap, because that is what the engine makes of it.
+**Pattern** plots one cycle of the gate — and it is not a drawing *of* the gate,
+it **is** the gate: the plugin renders the real patch through a spare engine with
+a steady input and sends the samples, so a release that outlives its step, a tie,
+Join Neighbors and the fade are all correct because none of them is being
+reasoned about. Amount is the one thing applied when it paints, because it is a
+floor under the curve rather than a different curve.
 
 **Signal** shows the dry input against what the plugin did to it, on the same
 axis: one cycle of the pattern, standing still, with the trace filling left to

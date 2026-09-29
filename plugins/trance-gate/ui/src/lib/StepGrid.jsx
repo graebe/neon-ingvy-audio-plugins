@@ -6,7 +6,7 @@
  * GROWS ROWS rather than the window -- a 128-step pattern wraps instead of
  * shrinking each pad to a sliver.
  */
-import { For, Show } from 'solid-js';
+import { For, Show, createSignal } from 'solid-js';
 /* The gesture itself lives in steps.js, shared with the ring -- those rules
  * are each a fix for something that read as the click half-failing, and a
  * second copy of them would have drifted. */
@@ -20,17 +20,33 @@ export default function StepGrid(props) {
 
   const onDown = (i, e) => padGesture(i, e, props);
 
-  /* The fade's weight for a step, 1 when there is no fade running. A weight of
-   * 0 is a step that is IN the pattern and not yet sounding -- which the grid
-   * draws as a lit border with no fill, a third state it never had to show. */
+  /*
+   * THE BORDER IS WHAT YOU DREW. THE FILL IS WHAT YOU HEAR.
+   *
+   * One rule covers every state the fade can put a step in, including the two
+   * the direction added. `w` is the engine's level factor, so `w == 0` is a gap
+   * whatever the mask says:
+   *
+   *   drawn on,  arrived        uv border + fill      the ordinary lit pad
+   *   drawn on,  not arrived    uv border, no fill    .pending  (Fade In)
+   *   drawn off, still sounding no border, a fill     .filled   (Fade Out)
+   *   drawn off, arrived        no border, no fill    a gap
+   *
+   * So a hole the fade has not removed yet is never mistaken for a step you
+   * drew, and .pending and .filled are each other's mirror.
+   */
   const w = (i) => props.weights?.[i] ?? 1;
-  const pending = (i) => !!props.steps?.[i] && w(i) <= 0;
+  const drawn = (i) => !!props.steps?.[i];
+  const sounds = (i) => w(i) > 0;
+  const pending = (i) => drawn(i) && !sounds(i);
+  const filled = (i) => !drawn(i) && sounds(i);
 
   const cls = (i) => {
     const on = !!props.steps?.[i], tie = !!props.ties?.[i];
     const at = props.moving && props.playhead === i;
     return {
       pad: true, on: on && !tie && !pending(i), tie: tie && !pending(i), at,
+      filled: filled(i),
       /* Every fourth step carries a rail-coloured border, so BARS READ
        * WITHOUT NUMBERS -- which is why there are no step numbers. The number
        * below is not one; see .pad-order in app.css. */
@@ -49,6 +65,26 @@ export default function StepGrid(props) {
    */
   const showN = () => !!props.orderMode || !!props.fading;
   const num = (i) => props.orders?.[i] ?? 0;
+  /* Only the kind the fade is introducing has a number worth reading: under
+   * Fade Out that is the holes. */
+  const numbered = (i) => showN() && (props.orderTakes?.(i) ?? drawn(i)) && num(i) > 0;
+
+  /*
+   * TYPING A RANK. The number is the control -- click it and it becomes a field.
+   *
+   * It is editable whenever it is DRAWN, so re-numbering needs no mode of its
+   * own: ORDER mode is for laying a sequence down by tapping, this is for
+   * changing one of them. The engine SWAPS on collision, so the step that held
+   * the number you typed takes the one this step had, and nothing between them
+   * moves.
+   */
+  const [editing, setEditing] = createSignal(-1);
+  let field;
+  const commit = (i, text) => {
+    const n = parseInt(text, 10);
+    if (Number.isFinite(n) && n >= 1) props.onOrder?.(i, n);
+    setEditing(-1);
+  };
 
   return (
     <div class="grid" style={{ width: `${COLS * STEP + (COLS - 1) * GAP}px` }}>
@@ -66,16 +102,39 @@ export default function StepGrid(props) {
                 * CHILDREN position either works, and this one is in one, but the
                 * two forms sitting side by side in one file is how the other
                 * kind gets written next. */}
-              <Show when={showN() && num(i) > 0}>
-                <span class="pad-order t-hint">{num(i)}</span>
+              <Show when={numbered(i)}>
+                <Show when={editing() === i}
+                      fallback={
+                        /* stopPropagation, or padGesture measures the drag
+                         * against this 9px box instead of the pad. */
+                        <span class="pad-order t-hint"
+                              title="Click to type a new arrival number"
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setEditing(i);
+                                requestAnimationFrame(() => field?.select());
+                              }}>{num(i)}</span>
+                      }>
+                  <input ref={field} class="pad-order-edit t-hint"
+                         value={num(i)} inputmode="numeric"
+                         onPointerDown={(e) => e.stopPropagation()}
+                         onBlur={(e) => commit(i, e.currentTarget.value)}
+                         onKeyDown={(e) => {
+                           if (e.key === 'Enter') commit(i, e.currentTarget.value);
+                           else if (e.key === 'Escape') setEditing(-1);
+                         }} />
+                </Show>
               </Show>
-              {props.steps?.[i] && !props.ties?.[i] && !pending(i) && (
+              {/* SOUNDS, not "is drawn on": a hole Fade Out has not removed
+                * yet is lit too. That is the whole of the .filled state. */}
+              {sounds(i) && !props.ties?.[i] && (
                 <div class="pad-lit" style={{
                   /* THE FADE SCALES THE LIT HEIGHT, because the engine scales
                    * the step's level by exactly this number -- so a step part
                    * way in draws part way up, which is what soft mode sounds
                    * like. */
-                  height: `${Math.max(5, 100 * (props.depths?.[i] ?? 1) * w(i))}%`
+                  height: `${Math.max(5, 100 * (drawn(i) ? (props.depths?.[i] ?? 1) : 1) * w(i))}%`
                 }}>
                   {/* THE PLAYHEAD ON A PAD THAT IS ALREADY LIT: darken the lit
                     * part. onUv is the token for "what goes on top of a uv

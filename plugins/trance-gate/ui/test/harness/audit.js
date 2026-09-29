@@ -55,7 +55,21 @@ window.__auditPromise = (async () => {
    * fade-specific fields further down, which the driver reruns with it set.
    */
   o.padsPending = qa('.pad.pending').length;
+  /*
+   * .filled is .pending's mirror and the other half of one rule -- the border is
+   * what you drew, the fill is what you hear. A hole Fade Out has not removed
+   * yet is lit WITHOUT a uv border, so it can never be read as a step you drew.
+   */
+  o.padsFilled = qa('.pad.filled').length;
+  o.filledHaveNoUvBorder = qa('.pad.filled').every(
+    (e) => !e.classList.contains('on') && !e.classList.contains('tie'));
   o.padOrderNumbers = qa('.pad-order').length;
+  /* The gate curve the plugin renders. Zero points means the editor is drawing
+   * nothing rather than drawing it wrong, which looks the same in a screenshot. */
+  o.patternCurvePoints = (() => {
+    const d = q('.band-plot path[fill]')?.getAttribute('d') ?? '';
+    return (d.match(/[ML]/g) ?? []).length;
+  })();
   o.fadePanel = !!q('.fade-panel');
   o.fadePanelTitle = q('.fade-panel h2')?.textContent ?? null;
   /* The titles run UP the left edge now, which is what pays for the third

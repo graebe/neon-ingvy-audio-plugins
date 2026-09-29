@@ -32,14 +32,31 @@ The plugin's saved state **is** the Move patch, verbatim. `Copy patch` puts it
 on the clipboard; `Paste patch` reads one back. The same string moves a pattern
 between the hardware and the DAW in either direction.
 
-## The fade-in
+## The fade
 
-**Every step that sounds carries an arrival number**, and Fade introduces them in
-that order: at 0% none of them sound, at 100% all of them do, and the arrivals in
-between are evenly spaced — the step ranked *r* of *n* arrives at exactly *r/n*.
+**Every step carries an arrival number**, and Fade introduces them in that order,
+evenly spaced — the step ranked *r* of *n* arrives at exactly *r/n*.
+
+**Dir** chooses which end the pattern is built up from. The knob means the same
+thing in both: *how much of the drawn pattern is present*. Only the missing part
+differs.
+
+| | what arrives, one at a time | an un-arrived step | at 0% | at 100% |
+|---|---|---|---|---|
+| **In** | the steps you drew ON | is a gap — silent | silence | the pattern |
+| **Out** | the steps you drew OFF, the holes | sounds, like an ordinary step | every hole filled | the pattern |
+
+So 100% is the pattern either way, which is what makes it the neutral default and
+lets the direction be switched at rest without changing a sample.
+
+**Out fills holes; it does not bypass the gate.** At Out 0% every step sounds, and
+below Width 100% the gate still pulses — a denser gate, not an open one. Amount is
+what bypasses.
 
 **Soft** ramps a step in on its own level, the same quantity a vertical drag in a
-pad sets. **Hard** jumps it on. They are one formula and a threshold:
+pad sets. **Hard** jumps it on. An arriving *hole* ramps the other way — it starts
+as a full step and fades down to nothing, which is a gap. They are one formula and
+a threshold:
 
 ```
 w(r) = clamp(f·n − (r−1), 0, 1)     soft
@@ -56,7 +73,12 @@ has not arrived must not keep its neighbour's gate open.
 
 **The order is the point.** In position order a fade can only be a left-to-right
 wipe; shuffled, it is a build-up. `Random` shuffles it along with the pattern, and
-`ORDER` in the Fade In panel lets you tap the steps into the sequence you want.
+`ORDER` in the Fade panel lets you tap the steps into the sequence you want — or
+click a number on a pad and type one. Typing a number that is taken **swaps** the
+two steps, so nothing between them moves.
+
+The hits and the holes carry **separate orders**, ranked among themselves, because
+a step is one or the other and never both. Fade Out sequences the holes.
 
 ## Random
 
@@ -70,9 +92,9 @@ It does not touch the playhead, so it is safe to press mid-bar.
 
 ## What the host can automate, and what it cannot
 
-The fourteen continuous controls — Slot, Length, Rate, Amount, Width, the four
-envelope stages, Join Neighbors, Env Time, Env Curve, and the fade's knob and its
-shape — are ordinary host parameters. Automate them, and they behave the way a
+The fifteen continuous controls — Slot, Length, Rate, Amount, Width, the four
+envelope stages, Join Neighbors, Env Time, Env Curve, and the fade's knob, shape
+and direction — are ordinary host parameters. Automate them, and they behave the way a
 DAW expects. **Fade is the one this matters most for**: a build-up is that knob
 drawn across eight bars.
 

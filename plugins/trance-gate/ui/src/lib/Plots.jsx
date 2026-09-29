@@ -408,111 +408,32 @@ function Axis(props) {
  */
 export function PatternPlot(props) {
   const n = () => Math.max(1, props.length ?? 16);
-  const values = createMemo(() => {
-    const p = props.params;
-    if (!p) return [];
-    const perStep = 24, out = [];
-    const N = n();
-    const w = Math.min(1, Math.max(0, p.width));
-    const k = w / 100;
-    const stages = {
-      curve: p.curve,
-      attack: Math.max(0, p.attack) * k,
-      decay: Math.max(0, p.decay) * k,
-      release: Math.max(0, p.release) * k,
-    };
-    const legato = !!p.legato;
-    /* The fade's weight per step, from the arrival order. A weight of 0 is a
-     * GAP here exactly as it is in the engine -- not an on step drawn flat at
-     * zero -- because that is what decides whether a tie or Join Neighbors
-     * reaches across it. */
-    const wt = props.weights;
-    const on = (i) => !!props.steps?.[i] && (wt ? wt[i] > 0 : true);
-
-    /*
-     * ONE ENVELOPE PER RUN, NOT ONE PER STEP.
-     *
-     * This used to compute a whole A/D/S/R inside every step and hand the next
-     * one its ending level. That draws ties correctly only by accident -- the
-     * attack lerps from `from` to 1, so starting it at 1 happens to be flat --
-     * and it drew JOIN NEIGHBORS completely wrong: three joined neighbours came
-     * out as three attacks where the engine produces one. The engine does not
-     * re-enter Attack at a joined boundary at all; the envelope simply keeps
-     * running.
-     *
-     * So a RUN is the unit. `elapsed` is how far into the current run this step
-     * starts, in step-fractions, and the whole run is one call to the same
-     * stage machine with x continuing across the boundary. A run ends where the
-     * gate is not held through, and that is where the release is allowed to
-     * begin -- `gate: elapsed + w` on the last step and never within the
-     * others.
-     *
-     * Two rules, both the engine's, and they are NOT the same rule:
-     *
-     *   held(s)   = on(s) and (tied(s) or (legato and on(s+1)))
-     *               -- the gate does not close at s's own edge. Asks the
-     *                  SUCCESSOR, which is what "adjacent ON pair" means.
-     *   joined(s) = on(s) and on(s-1) and (tied(s-1) or legato)
-     *               -- s does not re-articulate. Asks the PREDECESSOR.
-     *
-     * Reading one where the other belongs is how this was wrong.
-     */
-    let fromGain = 0;          /* the GAIN at the last step boundary */
-    let amt = 0;               /* the run's level, latched at gate-open */
-    let fromEnv = 0;           /* that gain in envelope units */
-    let elapsed = 0;
-
-    /*
-     * TWO CYCLES ARE WALKED AND THE FIRST IS DISCARDED. The pattern repeats,
-     * so step 0's carry-in comes from the LAST step -- a value the first pass
-     * does not have yet. One warm-up lap settles it, which is the same trick
-     * the envelope oracle plays by measuring a settled cycle rather than the
-     * first one.
-     */
-    for (let pass = 0; pass < 2; pass++) {
-      if (pass === 1) out.length = 0;
-      for (let s = 0; s < N; s++) {
-        if (!on(s)) {
-          for (let j = 0; j < perStep; j++) out.push(0);
-          fromGain = 0; elapsed = 0;
-          continue;
-        }
-        const prev = (s + N - 1) % N, next = (s + 1) % N;
-        const joined = on(prev) && (!!props.ties?.[prev] || legato);
-        const held = !!props.ties?.[s] || (legato && on(next));
-
-        if (!joined) {
-          /*
-           * THE LEVEL IS LATCHED AT GATE-OPEN and held for the whole run --
-           * the engine's `step_level`, and the reason it exists: a release
-           * outliving its step used to be scaled by the NEXT step's amount,
-           * and a tie stepped the level mid-gate, which is a click. Drawing it
-           * per step said the opposite of what the engine does.
-           */
-          const lvl = (props.depths?.[s] ?? 1) * (wt ? wt[s] : 1);
-          /*
-           * AND THE ATTACK STARTS WHERE THE GAIN IS, NOT WHERE THE ENVELOPE
-           * WAS. `env` is only half the gain; the level changes at this very
-           * boundary, so the carry-in is rescaled by the new level exactly as
-           * `on_step_boundary` rescales it.
-           */
-          fromEnv = lvl > 1e-6 ? fromGain / lvl : 0;
-          amt = lvl;
-          elapsed = 0;
-        }
-
-        const e = { ...stages, sustain: p.sustain, from: fromEnv,
-                    /* Held: the release cannot start inside this step. Unheld:
-                     * it starts `w` into it, measured from the RUN's start. */
-                    gate: held ? Infinity : elapsed + w };
-        for (let j = 0; j < perStep; j++)
-          out.push(amt * envLevel(e, elapsed + j / perStep));
-        fromGain = amt * envLevel(e, elapsed + 1);
-        elapsed += 1;
-      }
-    }
-    return out;
-  });
+  /*
+   * THE CURVE IS THE ENGINE'S, NOT A DESCRIPTION OF IT.
+   *
+   * This used to walk the pattern here and rebuild the envelope from the
+   * parameters -- a second implementation of the DSP, and the only one in this
+   * editor with no oracle behind it, which is exactly why it was wrong. An OFF
+   * step pushed hard zeros and threw the carry away, so a release outliving its
+   * step was drawn as an instant cut at the pad edge and the next step's attack
+   * started from silence instead of the tail it should have continued from.
+   * Release runs to 200% of the gate's Width; that is most settings, not an
+   * edge case.
+   *
+   * The plugin renders one cycle through a scratch engine with a DC input and
+   * pushes the samples. There is no model left here to be wrong -- ties,
+   * legato, the per-step level, the fade and a release crossing three steps all
+   * arrive correct because they are not being reasoned about.
+   *
+   * AMOUNT IS THE ONE THING STILL APPLIED HERE, because it can be:
+   *
+   *     m = 1 - amount*(1 - g) = floor + (1 - floor)*g,   floor = 1 - amount
+   *
+   * is affine in g, so it is a floor under the curve rather than a reason to
+   * ask the plugin for a new one. Dragging Amount costs a repaint and nothing
+   * else, which is why the render leaves it at 1.
+   */
+  const values = createMemo(() => props.gate?.values ?? []);
   const top = CAPTION, bot = () => props.h - INSET;
   return (
     <Well w={props.w} h={props.h} caption="PATTERN   ONE CYCLE">
@@ -618,27 +539,26 @@ export function Scope(props) {
    *
    * It needs an axis that is the pattern to mean anything, which is why it was
    * taken off when the axis was wall time and why it can come back now.
+   *
+   * AND IT IS THE SAME RENDERED CURVE THE PATTERN TAB DRAWS. It used to be a
+   * coarser re-derivation here -- `gateAt` per step with no carry-in at all --
+   * so the two tabs could disagree about the same gate. One curve, from the
+   * engine, drawn twice.
    */
   const gate = createMemo(() => {
-    const p = props.params;
-    if (!p) return null;
-    const N = n(), perStep = 8;
+    const g = props.gate;
+    if (!g || !g.values?.length) return null;
     const half = (bot() - top) * 0.5;
+    /* Amount floors the gate exactly as it does in the Pattern plot, and for
+     * the same reason: the render leaves it at 1 because it is affine. */
+    const floor = 1 - Math.min(1, Math.max(0, props.params?.amount ?? 1));
     const up = [], dn = [];
-    for (let s = 0; s < N; s++) {
-      for (let k = 0; k < perStep; k++) {
-        const t = (s + k / perStep) / N;
-        /* One shared source of truth with the Pattern plot would mean lifting
-         * its run walker out; at eight samples a step this is the same shape at a
-         * quarter of the resolution, and what it is FOR is different -- an
-         * overlay, not the subject. */
-        const on = !!props.steps?.[s] && ((props.weights?.[s] ?? 1) > 0);
-        const amt = on ? (props.depths?.[s] ?? 1) * (props.weights?.[s] ?? 1) : 0;
-        const v = on ? amt * gateAt(p, k / perStep, 0) : 0;
-        const px = x01(t);
-        up.push(`${up.length ? 'L' : 'M'} ${px.toFixed(1)} ${(mid() - half * v).toFixed(1)}`);
-        dn.push([px, mid() + half * v]);
-      }
+    const N = g.values.length;
+    for (let i = 0; i < N; i++) {
+      const v = floor + (1 - floor) * g.values[i];
+      const px = x01(i / N);
+      up.push(`${up.length ? 'L' : 'M'} ${px.toFixed(1)} ${(mid() - half * v).toFixed(1)}`);
+      dn.push([px, mid() + half * v]);
     }
     if (!up.length) return null;
     return { up: up.join(' '),
