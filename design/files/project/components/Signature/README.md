@@ -1,0 +1,3 @@
+# Signature
+
+The publisher's signature, "Neon Ingvy": a 6px square lit in `uv` with `glow-led`, then NEON INGVY in 10px mono, weight 500, tracked 0.2em, uppercase, `ink-muted`, 8px apart. Every plugin window carries it exactly once, at the right end of the `Hint` bar, level with the hint text. Consumer provides: nothing; the name is fixed. Do not enlarge it, light the letters, repeat it on panels, put it in the control area, or pair it with another logo. The 2× rendering in the preview is for inspection only. Outside a plugin (store pages, presets, docs) use `assets/Logos/neon-ingvy-signature.svg`.

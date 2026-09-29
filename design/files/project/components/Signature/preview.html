@@ -1,9 +1,9 @@
-<!-- @dsCard group="Controls" height=150 -->
+<!-- @dsCard group="Layout" height=124 -->
 <!doctype html>
 <html lang="en" data-theme="ultraviolet">
 <head>
 <meta charset="utf-8">
-<title>Knob — Ultraviolet</title>
+<title>Signature — Ultraviolet</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 html, body { margin: 0; background: var(--bg-000); }
@@ -141,13 +141,10 @@ html, body { margin: 0; background: var(--bg-000); }
 </style>
 </head>
 <body class="ph">
-
-<div class="ph-row" style="padding:16px 32px">
-<div class="ph-knob " tabindex="0"><div class="ph-label">Attack</div><svg viewBox="0 0 48 48" role="img"><circle class="disc" cx="24.0" cy="24.0" r="16.0"/><path class="rail" d="M9.86 38.14 A20.0 20.0 0 1 1 38.14 38.14"/><path class="arc" d="M9.86 38.14 A20.0 20.0 0 0 1 9.00 10.77"/><line class="ptr" x1="19.50" y1="20.03" x2="13.50" y2="14.74"/></svg><div class="ph-readout">32<span class=unit>ms</span></div></div>
-<div class="ph-knob " tabindex="0"><div class="ph-label">Decay</div><svg viewBox="0 0 48 48" role="img"><circle class="disc" cx="24.0" cy="24.0" r="16.0"/><path class="rail" d="M9.86 38.14 A20.0 20.0 0 1 1 38.14 38.14"/><line class="ptr" x1="19.76" y1="28.24" x2="14.10" y2="33.90"/></svg><div class="ph-readout">0<span class=unit>ms</span></div></div>
-<div class="ph-knob " tabindex="0"><div class="ph-label">Sustain</div><svg viewBox="0 0 48 48" role="img"><circle class="disc" cx="24.0" cy="24.0" r="16.0"/><path class="rail" d="M9.86 38.14 A20.0 20.0 0 1 1 38.14 38.14"/><path class="arc" d="M9.86 38.14 A20.0 20.0 0 1 1 38.14 38.14"/><line class="ptr" x1="28.24" y1="28.24" x2="33.90" y2="33.90"/></svg><div class="ph-readout">1.00</div></div>
-<div class="ph-knob disabled" tabindex="0"><div class="ph-label">Release</div><svg viewBox="0 0 48 48" role="img"><circle class="disc" cx="24.0" cy="24.0" r="16.0"/><path class="rail" d="M9.86 38.14 A20.0 20.0 0 1 1 38.14 38.14"/><path class="arc" d="M9.86 38.14 A20.0 20.0 0 0 1 28.67 4.55"/><line class="ptr" x1="25.40" y1="18.17" x2="27.27" y2="10.39"/></svg><div class="ph-readout">72<span class=unit>ms</span></div></div>
-<div class="ph-knob lg" tabindex="0"><div class="ph-label">Amount</div><svg viewBox="0 0 64 64" role="img"><circle class="disc" cx="32.0" cy="32.0" r="24.0"/><path class="rail" d="M12.20 51.80 A28.0 28.0 0 1 1 51.80 51.80"/><path class="arc" d="M12.20 51.80 A28.0 28.0 0 1 1 54.65 15.54"/><line class="ptr" x1="36.85" y1="28.47" x2="49.80" y2="19.07"/></svg><div class="ph-readout">0.70</div></div>
+<div style="padding:24px 32px 16px;display:flex;align-items:center;gap:48px">
+ <span class="ph-sig" aria-label="Neon Ingvy"><span class="mark"></span>Neon Ingvy</span>
+ <span style="display:inline-block;transform:scale(2);transform-origin:left center"><span class="ph-sig" aria-label="Neon Ingvy"><span class="mark"></span>Neon Ingvy</span></span>
 </div>
+<div class="ph-hint" style="margin-top:24px"><span class="tips"><b>click</b> a step to toggle<span class="sep">–</span><b>drag</b> up/down for its amount</span><span class="ph-sig" aria-label="Neon Ingvy"><span class="mark"></span>Neon Ingvy</span></div>
 </body>
 </html>

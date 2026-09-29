@@ -1,0 +1,3 @@
+# Icon
+
+A 16px machine glyph, inline SVG, 1.5px stroke with square caps, drawn in `currentColor` so it takes the colour of its control (`ink` at rest, `on-uv` on a lit button, `ink-dim` disabled). Twelve glyphs: play, pause, stop, record, loop, copy, paste, shuffle, reset, link, chevron, power; the files are under Icons. Use an icon only where it replaces a verb on a control that acts (transport, copy/paste, loop, reset) or a caret; never beside a parameter label, never as decoration, never for a state that an LED already shows. An icon-only button carries an `aria-label` with the verb. Consumer provides: the glyph name and, for icon-only use, the label.

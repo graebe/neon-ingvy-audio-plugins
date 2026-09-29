@@ -43,6 +43,9 @@ export { Button } from './components/Button.jsx';
 export { Select } from './components/Select.jsx';
 export { Tabs } from './components/Tabs.jsx';
 export { Hint } from './components/Hint.jsx';
+/* Rendered by Hint, and exported so a window that somehow has no hint bar can
+ * still carry the signature the design system requires of every window. */
+export { Signature } from './components/Signature.jsx';
 
 /* A scrolling spectrogram canvas. It takes finished columns and draws them --
  * the analysis, the wire format and what a column MEANS are the caller's, the

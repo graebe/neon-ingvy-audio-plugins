@@ -156,7 +156,17 @@ main {
 .hint-bar {
   position: absolute;
   left: 32px;
-  right: 32px;
+  /*
+   * AN EXPLICIT WIDTH, NOT A left/right PAIR.
+   *
+   * components.css gives .hint-bar `width: 100%` -- correct where the bar sits
+   * in normal flow, as it does in the other two editors. Here it is absolutely
+   * positioned, and `width` WINS over a left/right pair: the bar became 760
+   * wide starting at x=32, so it ran 32px past the window and the signature at
+   * its right end was cut in half. Nothing about that reads as a width bug in
+   * the editor's own stylesheet, which is why the number is spelled here.
+   */
+  width: 696px;
   top: 572px;
   height: 20px;
 }

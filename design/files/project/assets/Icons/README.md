@@ -1,0 +1,3 @@
+# Icons
+
+Twelve machine glyphs on a 16px grid: 1.5px stroke, square caps, mitred joins, no curves except where the object is round (record, reset, link). Single-ink: drawn in `ink` (#f3ecff); recolour by copying the file and changing `stroke`, or inline the path and set `stroke: var(--ink)`. `play` and `record` are filled; every other glyph is stroke only. Use them at 16px inside a 28px control (`ph-btn.icon`), never larger, never as decoration: an icon always replaces a word on a control that does something.

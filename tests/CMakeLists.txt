@@ -333,3 +333,26 @@ if (TG_NODE)
     add_test(NAME sc_ranges
              COMMAND ${TG_NODE} --test ${SC_UI_TEST}/ranges.test.mjs)
 endif()
+
+# The installed AU, rendered by a host that actually supplies a transport.
+#
+# THE ONLY TEST THAT EXERCISES THE WHOLE CHAIN AS A DAW DOES: the component is
+# loaded from disk by its triple, its parameters are set through the AU
+# parameter API -- the same one automation drives -- and the transport arrives
+# through the host callbacks iPlug2's wrapper reads.
+#
+# auval passes on a plugin that initialises, accepts every parameter and then
+# passes the audio through untouched; it has no idea what the plugin is FOR.
+# This checks the duck actually happened, and that the AU's output matches the
+# engine's own render sample for sample.
+#
+# It finds the plugin by the (aumf, SdCh, Grbe) triple -- `aumf` and not `aufx`
+# because PLUG_DOES_MIDI_IN makes it a MusicEffect. It SKIPS with success when
+# the component is not installed, so a checkout that has never run a build does
+# not fail the suite.
+if (APPLE)
+    add_executable(sc_au_render ${SC_ENGINE}/tests/au_render.c)
+    target_link_libraries(sc_au_render PRIVATE sc_engine m
+        "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
+    add_test(NAME sc_au COMMAND sc_au_render)
+endif()

@@ -6,7 +6,7 @@ hosts: [live, move]
 formats: [VST3, AU, CLAP]
 engine: engines/side-chain
 crates: [sc-core, sc-capi, sc-move]
-tests: [sc_core, sc_core_rs, sc_shape, sc_envelope, sc_wire, sc_ranges]
+tests: [sc_core, sc_core_rs, sc_shape, sc_envelope, sc_render_ab, sc_au, sc_wire, sc_ranges]
 harness: harness/side-chain/
 ---
 
