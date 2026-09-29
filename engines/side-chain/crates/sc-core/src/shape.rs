@@ -7,8 +7,8 @@ not a new set of formulas -- it is one function substituted into the two that
 exist:
 
 ```text
-ATTACK    duck = att_from + (scale - att_from) * shape(t, Down)
-RELEASE   duck = rel_from * (1 - shape(t, Up))
+ATTACK    duck = att_from + (scale - att_from) * shape(t)
+RELEASE   duck = rel_from * (1 - shape(t))
 ```
 
 `duck` is the ATTENUATION, not the gain: 0 is untouched, `scale` is as far
@@ -27,17 +27,17 @@ Every shape obeys `shape(0) = 0`, `shape(1) = 1` and is monotonic, so a stage
 still starts and ends exactly where it did and still takes the time it was
 given. Only the path between changes.
 
-WHY `dir` EXISTS, when tg-core's `shape` needs no such argument.
+THERE IS NO DIRECTION ARGUMENT, AND THERE WAS ONE.
 
-Three of the four curves are symmetric and ignore it. `Pump` does not: it is
-`ducker.c:134-155`, which is linear going down and a cubic ease-out coming
-back up, and that asymmetry is the whole character of the curve -- the duck
-drops on the beat and the recovery lingers. `tg-core` could keep one function
-because a gate's three stages all read the same direction; a ducker's two read
-opposite ones, and folding that into the caller would put the curve's own
-definition in two places.
+A fourth curve, `Pump`, was asymmetric -- linear going down and a cubic ease-out
+coming back up, from `ducker.c:134-155` -- so `shape` took a `Dir` saying which
+way the envelope was travelling. The other three ignored it.
 
-The invariant survives intact: it holds independently for each direction.
+That curve is gone and the argument went with it, rather than staying as
+something every caller passes and no curve reads. A parameter that no longer
+distinguishes anything is worse than no parameter: the next reader has to work
+out that it does nothing, and the one after has to work out whether that was
+deliberate.
 
 LINEAR RETURNS `t` UNTOUCHED, and the two expressions above are deliberately
 not tidied into a shared `lerp`. `rel_from * (1 - w)` and
@@ -51,7 +51,6 @@ pub enum Curve {
     Linear = 0,
     Exp = 1,
     SCurve = 2,
-    Pump = 3,
 }
 
 impl Curve {
@@ -59,25 +58,15 @@ impl Curve {
         match v {
             1 => Curve::Exp,
             2 => Curve::SCurve,
-            3 => Curve::Pump,
             _ => Curve::Linear,
         }
     }
 
-    pub const COUNT: i32 = 4;
+    pub const COUNT: i32 = 3;
 
     /// The wire labels, in enum order. The shell re-declares these for the
     /// host; this is the table it is re-declaring.
-    pub const LABELS: [&'static str; 4] = ["Linear", "Exponential", "S-Curve", "Pump"];
-}
-
-/// Which way the envelope is travelling. `Down` is the duck deepening,
-/// `Up` is the recovery.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(i32)]
-pub enum Dir {
-    Down = 0,
-    Up = 1,
+    pub const LABELS: [&'static str; 3] = ["Linear", "Exponential", "S-Curve"];
 }
 
 /// The bend. The same constant `tg-core/src/envelope.rs` uses, so an
@@ -103,7 +92,7 @@ fn curve_exp_inv(w: f64) -> f64 {
 }
 
 #[inline]
-pub fn shape(curve: Curve, t: f64, dir: Dir) -> f64 {
+pub fn shape(curve: Curve, t: f64) -> f64 {
     /* `t <= 0.0` rather than `!(t > 0.0)` would let a NaN through as 1.0 via
      * the next test. Ordered this way a NaN falls out of both comparisons and
      * lands in the match, where every arm is monotone nonsense but bounded --
@@ -133,16 +122,6 @@ pub fn shape(curve: Curve, t: f64, dir: Dir) -> f64 {
                 0.5 + 0.5 * curve_exp(2.0 * t - 1.0)
             }
         }
-        /* ducker.c:137-151. Linear on the way down so the duck lands on the
-         * beat with no softening, cubic ease-out on the way back so the
-         * recovery breathes rather than snapping shut. */
-        Curve::Pump => match dir {
-            Dir::Down => t,
-            Dir::Up => {
-                let inv = 1.0 - t;
-                1.0 - inv * inv * inv
-            }
-        },
         Curve::Linear => t,
     }
 }
@@ -151,7 +130,7 @@ pub fn shape(curve: Curve, t: f64, dir: Dir) -> f64 {
 /// the level is re-anchored through it in `set_curve`. Monotonic and analytic
 /// for all four.
 #[inline]
-pub fn shape_inv(curve: Curve, w: f64, dir: Dir) -> f64 {
+pub fn shape_inv(curve: Curve, w: f64) -> f64 {
     if !(w > 0.0) {
         return 0.0;
     }
@@ -167,11 +146,6 @@ pub fn shape_inv(curve: Curve, w: f64, dir: Dir) -> f64 {
                 0.5 + 0.5 * curve_exp_inv(2.0 * w - 1.0)
             }
         }
-        Curve::Pump => match dir {
-            Dir::Down => w,
-            /* w = 1 - (1-t)^3  =>  t = 1 - (1-w)^(1/3) */
-            Dir::Up => 1.0 - (1.0 - w).cbrt(),
-        },
         Curve::Linear => w,
     }
 }
@@ -320,7 +294,7 @@ impl Env {
                     if self.pos < s.attack {
                         let t = self.pos / s.attack;
                         self.duck =
-                            self.from + (self.scale - self.from) * shape(curve, t, Dir::Down);
+                            self.from + (self.scale - self.from) * shape(curve, t);
                         self.pos += 1.0;
                         return self.duck;
                     }
@@ -345,7 +319,7 @@ impl Env {
                 Stage::Release => {
                     if self.pos < s.release {
                         let t = self.pos / s.release;
-                        self.duck = self.from * (1.0 - shape(curve, t, Dir::Up));
+                        self.duck = self.from * (1.0 - shape(curve, t));
                         self.pos += 1.0;
                         return self.duck;
                     }

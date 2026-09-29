@@ -31,12 +31,8 @@ const curveExpInv = (w) => {
   return x <= 1e-12 ? 1 : -Math.log(x) / K;
 };
 
-/** 0 Linear, 1 Exponential, 2 S-Curve, 3 Pump -- `Curve::LABELS`' order. */
-export const CURVES = ['Linear', 'Exponential', 'S-Curve', 'Pump'];
-
-/** 0 = the duck deepening, 1 = the recovery. */
-export const DOWN = 0;
-export const UP = 1;
+/** 0 Linear, 1 Exponential, 2 S-Curve -- `Curve::LABELS`' order. */
+export const CURVES = ['Linear', 'Exponential', 'S-Curve'];
 
 /*
  * THE SHAPE IS A WARP ON TIME: every stage is f(t) with t running 0..1 across
@@ -44,12 +40,12 @@ export const UP = 1;
  * shape(0) = 0, shape(1) = 1, monotonic -- a stage starts and ends where it did
  * and takes the time it was given; only the path between changes.
  *
- * WHY `dir` EXISTS. Three curves ignore it. `Pump` does not: it is linear going
- * down and a cubic ease-out coming back up, and that asymmetry is the whole
- * character of the curve. The invariant above still holds, independently for
- * each direction.
+ * THERE IS NO DIRECTION ARGUMENT, AND THERE WAS ONE: a fourth curve, `Pump`,
+ * was asymmetric, so `shape` took one saying which way the envelope travelled
+ * and the other three ignored it. That curve is gone and the argument went with
+ * it, rather than staying as something every caller passes and no curve reads.
  */
-export function shape(curve, t, dir) {
+export function shape(curve, t) {
   /* `!(t > 0)` rather than `t <= 0` so a NaN lands here rather than falling
    * through to the `t >= 1` test and returning 1 -- the engine's guard. */
   if (!(t > 0)) return 0;
@@ -74,13 +70,6 @@ export function shape(curve, t, dir) {
       return t < 0.5
         ? 0.5 * (1 - curveExp(1 - 2 * t))
         : 0.5 + 0.5 * curveExp(2 * t - 1);
-    /* ducker.c:137-151, via shape.rs. Linear down so the duck lands on the
-     * beat with no softening; cubic ease-out up so the recovery breathes. */
-    case 3: {
-      if (dir === DOWN) return t;
-      const inv = 1 - t;
-      return 1 - inv * inv * inv;
-    }
     default:
       return t;
   }
@@ -88,7 +77,7 @@ export function shape(curve, t, dir) {
 
 /** The inverse. Monotonic and analytic for all four, which is what lets the
  * curve change mid-duck without a click -- see `set_curve` in params.rs. */
-export function shapeInv(curve, w, dir) {
+export function shapeInv(curve, w) {
   if (!(w > 0)) return 0;
   if (w >= 1) return 1;
   switch (curve) {
@@ -98,9 +87,6 @@ export function shapeInv(curve, w, dir) {
       return w < 0.5
         ? 0.5 * (1 - curveExpInv(1 - 2 * w))
         : 0.5 + 0.5 * curveExpInv(2 * w - 1);
-    case 3:
-      /* w = 1 - (1-t)^3  =>  t = 1 - cbrt(1-w) */
-      return dir === DOWN ? w : 1 - Math.cbrt(1 - w);
     default:
       return w;
   }
@@ -110,48 +96,77 @@ export function shapeInv(curve, w, dir) {
  * THE IDEALISED SINGLE SHOT, WHICH IS WHAT THE EDITOR DRAWS.
  *
  * `duckAt` is the shape one trigger makes when nothing interrupts it: from
- * zero, down to full, and back. That is the right thing for the editor,
- * because the editor is where you say what shape you WANT.
+ * zero, down to full, and back. That is right for the editor, because the
+ * editor is where you say what shape you WANT.
  *
- * IT IS NOT THE ENVELOPE THE ENGINE RUNS, and the difference is deliberate
- * rather than a simplification. The engine anchors a retrigger on the level it
- * has actually reached, so a duck that fires again mid-recovery does not
- * retrace this curve -- and no editor drawing can show that, because it depends
- * on when the next trigger arrives. What the plugin pushes instead is the
- * measured gain-reduction trace, drawn under the audio. The editor says the
- * intent; the trace says what happened.
+ * IT IS NOT THE ENVELOPE THE ENGINE RUNS, and the difference is deliberate. The
+ * engine anchors a retrigger on the level it has actually reached, so a duck
+ * that fires again mid-recovery does not retrace this curve -- and no drawing
+ * can show that, because it depends on when the next trigger arrives. What the
+ * plugin pushes instead is the measured gain, drawn beside this. The line says
+ * the intent; the measured trace says what happened.
  *
- * `p` carries the four stage lengths as PERCENTAGES OF THE CYCLE, the unit the
- * engine stores them in, and `t` is in the same unit. Depth is not applied:
- * this returns the attenuation 0..1, and what a given depth does with it is
- * one multiply that belongs where the drawing happens.
+ * THE PHASE WRAPS, WHICH IS WHAT MAKES A NEGATIVE DELAY DRAWABLE.
+ *
+ * On the Cycle source, Delay is a position in a PERIODIC cycle rather than a
+ * wait -- so -20% is 80%, and the duck that belongs to the next beat is already
+ * on screen at the right-hand end of this one. Wrapping is not a drawing trick
+ * here; it is what the engine does, which fires on `floor(phase - offset)`.
+ *
+ * `p.cycle` says which mechanism applies. MIDI and Sidechain have nothing
+ * periodic to anticipate, so there Delay is a wait and a negative one is no
+ * wait at all -- the same clamp the engine makes.
+ *
+ * Lengths are PERCENTAGES OF THE CYCLE, the unit the engine stores them in, and
+ * `t` is in the same unit. Depth is not applied: this returns the attenuation
+ * 0..1, and what a depth does with it is one multiply where the drawing happens.
  */
+
+/** Any phase into 0..100. */
+const wrap = (v) => ((v % 100) + 100) % 100;
+
+/** Where the duck begins, as a phase in 0..100. */
+function startOf(p) {
+  const d = p.delay ?? 0;
+  return p.cycle ? wrap(d) : Math.max(0, d);
+}
+
 export function duckAt(p, t) {
-  const d = Math.max(0, p.delay ?? 0);
   const a = Math.max(0, p.attack ?? 0);
   const h = Math.max(0, p.hold ?? 0);
   const r = Math.max(0, p.release ?? 0);
   const curve = p.curve | 0;
 
-  /* `t < d` and not `!(t > d)`: with no delay and no attack the engine has
-   * already reached the floor by the trigger sample, so t=0 must fall THROUGH
-   * this test rather than be caught by it. A NaN fails every comparison below
-   * and falls out of the last `return 0`, which is the same guard by a
-   * different route. */
-  if (t < d) return 0;
-  if (t < d + a) return shape(curve, (t - d) / a, DOWN);
-  if (t < d + a + h) return 1;
-  if (t < d + a + h + r) return 1 - shape(curve, (t - d - a - h) / r, UP);
+  /* Elapsed since the trigger. On Cycle this wraps, so the part of the envelope
+   * that belongs to the next beat is drawn at this one's right-hand end. */
+  const e = p.cycle ? wrap(t - startOf(p)) : t - startOf(p);
+  if (!(e >= 0)) return 0; /* NaN included */
+
+  if (e < a) return shape(curve, a > 0 ? e / a : 1);
+  if (e < a + h) return 1;
+  if (e < a + h + r) return 1 - shape(curve, (e - a - h) / r);
   return 0;
 }
 
-/** Where each stage boundary sits, in percent of the cycle. The editor's
- * handles are these, and the axis' landmarks are these, so there is one
- * arithmetic for both. */
+/**
+ * Where each stage boundary sits, as a phase in 0..100 -- the handles are these
+ * and the axis' landmark is one of them, so there is one arithmetic for both.
+ *
+ * `span` is the UNWRAPPED total, which is what says whether the shape can
+ * finish inside a cycle at all. Wrapping it would hide exactly the case the
+ * overrun mark exists to report.
+ */
 export function bounds(p) {
-  const d = Math.max(0, p.delay ?? 0);
   const a = Math.max(0, p.attack ?? 0);
   const h = Math.max(0, p.hold ?? 0);
   const r = Math.max(0, p.release ?? 0);
-  return { start: d, bottom: d + a, holdEnd: d + a + h, end: d + a + h + r };
+  const s = startOf(p);
+  const at = (v) => (p.cycle ? wrap(v) : v);
+  return {
+    start: at(s),
+    bottom: at(s + a),
+    holdEnd: at(s + a + h),
+    end: at(s + a + h + r),
+    span: a + h + r,
+  };
 }

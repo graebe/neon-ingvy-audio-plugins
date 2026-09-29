@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { shape, shapeInv, duckAt, bounds, CURVES, DOWN, UP } from '../src/lib/shape.js';
+import { shape, shapeInv, duckAt, bounds, CURVES } from '../src/lib/shape.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TOL = 1e-12;
@@ -29,36 +29,37 @@ function rows(file) {
     .map((l) => l.trim().split(/\s+/));
 }
 
-test('the fixture exists and covers every curve in both directions', () => {
+test('the fixture exists and covers every curve', () => {
   const r = rows('shape_table.txt');
-  assert.ok(r.length > 8000, `only ${r.length} rows -- was the fixture regenerated?`);
-  const seen = new Set(r.map((f) => `${f[0]}:${f[1]}`));
+  assert.ok(r.length > 3000, `only ${r.length} rows -- was the fixture regenerated?`);
+  const seen = new Set(r.map((f) => f[0]));
   for (let c = 0; c < CURVES.length; c++) {
-    for (const d of [DOWN, UP]) {
-      assert.ok(seen.has(`${c}:${d}`), `curve ${c} dir ${d} missing from the fixture`);
-    }
+    assert.ok(seen.has(String(c)), `curve ${c} missing from the fixture`);
   }
+  /* And NOTHING BEYOND them: a fourth curve in the fixture means the table was
+   * regenerated from a build that still had `Pump`. */
+  assert.equal(seen.size, CURVES.length, `fixture has ${seen.size} curves`);
 });
 
 test('shape matches the engine to 1e-12', () => {
   let n = 0;
-  for (const [c, d, t, want] of rows('shape_table.txt')) {
-    const got = shape(Number(c), Number(t), Number(d));
+  for (const [c, t, want] of rows('shape_table.txt')) {
+    const got = shape(Number(c), Number(t));
     assert.ok(
       Math.abs(got - Number(want)) < TOL,
-      `curve ${c} dir ${d} t=${t}: got ${got}, engine says ${want}`,
+      `curve ${c} t=${t}: got ${got}, engine says ${want}`,
     );
     n++;
   }
-  assert.ok(n > 8000, `only checked ${n} rows`);
+  assert.ok(n > 3000, `only checked ${n} rows`);
 });
 
 test('shapeInv matches the engine to 1e-12', () => {
-  for (const [c, d, t, , want] of rows('shape_table.txt')) {
-    const got = shapeInv(Number(c), Number(t), Number(d));
+  for (const [c, t, , want] of rows('shape_table.txt')) {
+    const got = shapeInv(Number(c), Number(t));
     assert.ok(
       Math.abs(got - Number(want)) < TOL,
-      `curve ${c} dir ${d} w=${t}: got ${got}, engine says ${want}`,
+      `curve ${c} w=${t}: got ${got}, engine says ${want}`,
     );
   }
 });
@@ -71,16 +72,14 @@ test('shapeInv matches the engine to 1e-12', () => {
 
 test('every curve starts at 0, ends at 1, and never dips', () => {
   for (let c = 0; c < CURVES.length; c++) {
-    for (const d of [DOWN, UP]) {
-      assert.equal(shape(c, 0, d), 0, `${CURVES[c]} dir ${d} at 0`);
-      assert.equal(shape(c, 1, d), 1, `${CURVES[c]} dir ${d} at 1`);
-      let prev = -1;
-      for (let k = 0; k <= 1000; k++) {
-        const v = shape(c, k / 1000, d);
-        assert.ok(v >= prev, `${CURVES[c]} dir ${d} dipped at ${k}`);
-        assert.ok(v >= 0 && v <= 1, `${CURVES[c]} dir ${d} out of range at ${k}: ${v}`);
-        prev = v;
-      }
+    assert.equal(shape(c, 0), 0, `${CURVES[c]} at 0`);
+    assert.equal(shape(c, 1), 1, `${CURVES[c]} at 1`);
+    let prev = -1;
+    for (let k = 0; k <= 1000; k++) {
+      const v = shape(c, k / 1000);
+      assert.ok(v >= prev, `${CURVES[c]} dipped at ${k}`);
+      assert.ok(v >= 0 && v <= 1, `${CURVES[c]} out of range at ${k}: ${v}`);
+      prev = v;
     }
   }
 });
@@ -89,53 +88,52 @@ test('out of range and NaN are clamped, not propagated', () => {
   /* A NaN gain silences a track permanently and cannot be recovered from, so
    * it must not survive the first guard. */
   for (let c = 0; c < CURVES.length; c++) {
-    for (const d of [DOWN, UP]) {
-      assert.equal(shape(c, NaN, d), 0);
-      assert.equal(shape(c, -1, d), 0);
-      assert.equal(shape(c, 2, d), 1);
-      assert.equal(shapeInv(c, NaN, d), 0);
-    }
+    assert.equal(shape(c, NaN), 0);
+    assert.equal(shape(c, -1), 0);
+    assert.equal(shape(c, 2), 1);
+    assert.equal(shapeInv(c, NaN), 0);
   }
 });
 
 test('the S-curve is flat at both ends and antisymmetric about the middle', () => {
   /* THE BUG THIS PINS: an unmirrored first half leaves the floor vertically. */
   const d = 1e-3;
-  const ends = shape(2, d, DOWN) / d;
-  const middle = (shape(2, 0.5 + d, DOWN) - shape(2, 0.5 - d, DOWN)) / (2 * d);
+  const ends = shape(2, d) / d;
+  const middle = (shape(2, 0.5 + d) - shape(2, 0.5 - d)) / (2 * d);
   assert.ok(ends < 0.5, `leaves the floor too fast: ${ends}`);
   assert.ok(middle > 1.5, `middle too slow: ${middle}`);
   assert.ok(middle > ends * 4, `not an S: ends=${ends} middle=${middle}`);
   for (let k = 0; k <= 500; k++) {
     const t = k / 1000;
-    assert.ok(Math.abs(shape(2, t, DOWN) + shape(2, 1 - t, DOWN) - 1) < 1e-12);
+    assert.ok(Math.abs(shape(2, t) + shape(2, 1 - t) - 1) < 1e-12);
   }
 });
 
 test('the exponential is the documented bend', () => {
   /* Halfway through, ~82% of the way. If CURVE_K moves, this says so. */
-  assert.ok(Math.abs(shape(1, 0.5, DOWN) - 0.8176) < 1e-3);
+  assert.ok(Math.abs(shape(1, 0.5) - 0.8176) < 1e-3);
 });
 
-test('Pump is the only asymmetric curve', () => {
+test('there are three curves, and an unknown index is Linear', () => {
+  /*
+   * `Pump` WAS A FOURTH, asymmetric one, and the direction argument existed
+   * only to serve it. Both are gone. This asserts the removal rather than
+   * merely not testing it: index 3 must now behave as Linear, which is the
+   * fallback, and not as a curve of its own.
+   */
+  assert.equal(CURVES.length, 3);
   for (let k = 0; k <= 100; k++) {
     const t = k / 100;
-    assert.ok(Math.abs(shape(3, t, DOWN) - t) < 1e-12, 'Pump down is linear');
-    const inv = 1 - t;
-    assert.ok(Math.abs(shape(3, t, UP) - (1 - inv * inv * inv)) < 1e-12);
-    for (const c of [0, 1, 2]) {
-      assert.equal(shape(c, t, DOWN), shape(c, t, UP), `${CURVES[c]} is symmetric`);
-    }
+    assert.equal(shape(3, t), shape(0, t), 'a removed curve must fall back to Linear');
+    assert.equal(shape(99, t), shape(0, t));
   }
 });
 
 test('shapeInv round-trips shape', () => {
   for (let c = 0; c < CURVES.length; c++) {
-    for (const d of [DOWN, UP]) {
-      for (let k = 1; k < 1000; k++) {
-        const t = k / 1000;
-        assert.ok(Math.abs(shapeInv(c, shape(c, t, d), d) - t) < 1e-9);
-      }
+    for (let k = 1; k < 1000; k++) {
+      const t = k / 1000;
+      assert.ok(Math.abs(shapeInv(c, shape(c, t)) - t) < 1e-9);
     }
   }
 });
@@ -145,7 +143,8 @@ test('shapeInv round-trips shape', () => {
 test('duckAt draws a single shot: flat, down, held, back, flat', () => {
   const p = { curve: 0, delay: 10, attack: 20, hold: 10, release: 40 };
   const b = bounds(p);
-  assert.deepEqual(b, { start: 10, bottom: 30, holdEnd: 40, end: 80 });
+  /* `span` is the UNWRAPPED total, which is what the overrun mark reads. */
+  assert.deepEqual(b, { start: 10, bottom: 30, holdEnd: 40, end: 80, span: 70 });
 
   assert.equal(duckAt(p, 0), 0, 'open before the delay expires');
   assert.equal(duckAt(p, 9.9), 0);
@@ -176,5 +175,53 @@ test('duckAt never leaves 0..1 for any settings or curve', () => {
         assert.ok(v >= 0 && v <= 1, `out of range at t=${k}: ${v}`);
       }
     }
+  }
+});
+
+/* ------------------------------------------------- the wrapped phase ---- */
+
+test('on Cycle, a negative delay wraps to the end of the view', () => {
+  /*
+   * THE WHOLE POINT OF THE SIGN, in the drawing. The engine fires on
+   * `floor(phase - offset)`, so -20% is a trigger at 80% of the cycle -- and
+   * the duck that belongs to the next beat is already on screen at the right
+   * of this one. Wrapping here is not a drawing trick; it is what the engine
+   * does.
+   */
+  const early = { cycle: true, curve: 0, delay: -20, attack: 10, hold: 5, release: 20 };
+  const b = bounds(early);
+  assert.equal(b.start, 80, 'the duck begins at 80% of the cycle');
+  assert.equal(b.bottom, 90);
+  assert.equal(b.holdEnd, 95);
+  assert.equal(b.end, 15, 'and finishes 15% into the NEXT cycle');
+  assert.equal(b.span, 35, 'the span is unwrapped, so the overrun check works');
+
+  assert.equal(duckAt(early, 79), 0, 'open before it begins');
+  assert.ok(Math.abs(duckAt(early, 85) - 0.5) < 1e-12, 'half way down at 85');
+  assert.equal(duckAt(early, 92), 1, 'held at the bottom across 90..95');
+  assert.ok(Math.abs(duckAt(early, 5) - 0.5) < 1e-12, 'half way back, past the wrap');
+  assert.equal(duckAt(early, 20), 0, 'open again');
+});
+
+test('off Cycle, a negative delay is simply no delay', () => {
+  /* MIDI has nothing periodic to anticipate, so the engine clamps it -- and the
+   * drawing has to clamp it the same way or the picture promises something the
+   * sound will not do. */
+  const midi = { cycle: false, curve: 0, delay: -20, attack: 10, hold: 5, release: 20 };
+  const none = { cycle: false, curve: 0, delay: 0, attack: 10, hold: 5, release: 20 };
+  for (let k = 0; k <= 100; k++) {
+    assert.equal(duckAt(midi, k), duckAt(none, k), `differ at ${k}`);
+  }
+  assert.equal(bounds(midi).start, 0);
+});
+
+test('a positive delay draws the same whichever mechanism it is', () => {
+  /* The engine lands a positive delay on identical samples either way, so the
+   * two drawings must agree too -- otherwise switching source would appear to
+   * move a duck that has not moved. */
+  const cyc = { cycle: true, curve: 1, delay: 15, attack: 10, hold: 5, release: 20 };
+  const wait = { ...cyc, cycle: false };
+  for (let k = 0; k <= 100; k++) {
+    assert.ok(Math.abs(duckAt(cyc, k) - duckAt(wait, k)) < 1e-12, `differ at ${k}`);
   }
 });

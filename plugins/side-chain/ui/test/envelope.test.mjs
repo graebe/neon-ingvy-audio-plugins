@@ -57,6 +57,14 @@ function cases() {
     );
     if (m) {
       cur = {
+        /*
+         * `cycle: false` BECAUSE THE FIXTURE IS RENDERED ON THE MIDI SOURCE.
+         * There Delay is a wait rather than a phase, which is the branch
+         * `duckAt` has to take to match these numbers. Stated rather than left
+         * to `undefined` being falsy, because that is an accident waiting to
+         * become a wrong picture.
+         */
+        cycle: false,
         name: m[1],
         curve: Number(m[2]),
         delay: Number(m[3]),
@@ -78,11 +86,14 @@ function cases() {
 
 test('the fixture covers every curve and both kinds of case', () => {
   const all = cases();
-  assert.ok(all.length >= 36, `only ${all.length} cases -- was it regenerated?`);
+  assert.ok(all.length >= 27, `only ${all.length} cases -- was it regenerated?`);
   const curves = new Set(all.map((c) => c.curve));
-  assert.deepEqual([...curves].sort(), [0, 1, 2, 3]);
+  /* THREE. A fourth here means the fixture was generated from a build that
+   * still had `Pump`. */
+  assert.deepEqual([...curves].sort(), [0, 1, 2]);
+  /* Two retrigger cases per curve, and three curves. */
   const retrig = all.filter((c) => c.retrigger > 0);
-  assert.ok(retrig.length >= 8, 'the retrigger cases are missing from the fixture');
+  assert.equal(retrig.length, 6, 'the retrigger cases are missing from the fixture');
   for (const c of all) assert.ok(c.rows.length > 300, `${c.name}: only ${c.rows.length} rows`);
 });
 

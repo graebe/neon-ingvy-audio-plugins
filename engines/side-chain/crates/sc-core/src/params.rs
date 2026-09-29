@@ -22,8 +22,8 @@ block, and read here.
 */
 
 use crate::fmt::{self, Buf};
-use crate::shape::{Curve, Dir, Stage};
-use crate::{rates, Instance, Source, TimeMode, DELAY_MAX_PCT, STAGE_MAX_PCT};
+use crate::shape::{Curve, Stage};
+use crate::{rates, Instance, Source, TimeMode, DELAY_RANGE_PCT, STAGE_MAX_PCT};
 use core::fmt::Write;
 
 /// The automatable parameters, in the order the shell declares them so a host
@@ -161,7 +161,7 @@ impl Instance {
                 }
             }
             TimeMode => self.time_mode = crate::TimeMode::from_i32(v as i32),
-            Delay => self.delay_pct = v.clamp(0.0, DELAY_MAX_PCT),
+            Delay => self.delay_pct = v.clamp(-DELAY_RANGE_PCT, DELAY_RANGE_PCT),
             Attack => self.attack_pct = v.clamp(0.0, STAGE_MAX_PCT),
             Hold => self.hold_pct = v.clamp(0.0, STAGE_MAX_PCT),
             Release => self.release_pct = v.clamp(0.0, STAGE_MAX_PCT),
@@ -198,7 +198,7 @@ impl Instance {
 
         /* Only the two moving stages have a position worth preserving. Delay
          * and Hold are flat, and Idle has nothing. */
-        let (len, dir, w) = match self.env.stage {
+        let (len, w) = match self.env.stage {
             Stage::Attack => {
                 let span = self.env.scale - self.env.from;
                 if !(span.abs() > 0.0) {
@@ -206,7 +206,6 @@ impl Instance {
                 }
                 (
                     self.env.pos,
-                    Dir::Down,
                     ((self.env.duck - self.env.from) / span).clamp(0.0, 1.0),
                 )
             }
@@ -216,7 +215,6 @@ impl Instance {
                 }
                 (
                     self.env.pos,
-                    Dir::Up,
                     (1.0 - self.env.duck / self.env.from).clamp(0.0, 1.0),
                 )
             }
@@ -227,12 +225,12 @@ impl Instance {
          * cancels: t_old = pos / len, and the new pos is t_new * len. Recover
          * len from the old t rather than recomputing it, because the caller is
          * not necessarily inside a block and may not know the cycle length. */
-        let t_old = crate::shape::shape_inv(old, w, dir);
+        let t_old = crate::shape::shape_inv(old, w);
         if !(t_old > 0.0) {
             return;
         }
         let stage_len = len / t_old;
-        let t_new = crate::shape::shape_inv(curve, w, dir);
+        let t_new = crate::shape::shape_inv(curve, w);
         self.env.pos = t_new * stage_len;
     }
 

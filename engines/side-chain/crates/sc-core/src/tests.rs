@@ -15,29 +15,26 @@ from the model it is supposed to be verifying.
 use crate::follower::Follower;
 use crate::midi::{Action, Midi};
 use crate::params::{amp_to_db, db_to_amp, Param, PARAM_COUNT};
-use crate::shape::{shape, shape_inv, Curve, Dir, Env, Stage, Stages};
+use crate::shape::{shape, shape_inv, Curve, Env, Stage, Stages};
 use crate::{rates, Instance, Source, Transport};
 
-const CURVES: [Curve; 4] = [Curve::Linear, Curve::Exp, Curve::SCurve, Curve::Pump];
-const DIRS: [Dir; 2] = [Dir::Down, Dir::Up];
+const CURVES: [Curve; 3] = [Curve::Linear, Curve::Exp, Curve::SCurve];
 
 /* ------------------------------------------------------------------ shapes */
 
 #[test]
 fn shape_endpoints_and_bounds() {
     for c in CURVES {
-        for d in DIRS {
-            assert_eq!(shape(c, 0.0, d), 0.0, "{c:?} {d:?} at 0");
-            assert_eq!(shape(c, 1.0, d), 1.0, "{c:?} {d:?} at 1");
-            /* Out of range and NaN are clamped, not propagated: a NaN gain
-             * silences a track permanently and cannot be recovered from. */
-            assert_eq!(shape(c, -1.0, d), 0.0);
-            assert_eq!(shape(c, 2.0, d), 1.0);
-            assert_eq!(shape(c, f64::NAN, d), 0.0);
-            for k in 0..=100 {
-                let v = shape(c, k as f64 / 100.0, d);
-                assert!((0.0..=1.0).contains(&v), "{c:?} {d:?} out of range: {v}");
-            }
+        assert_eq!(shape(c, 0.0), 0.0, "{c:?} at 0");
+        assert_eq!(shape(c, 1.0), 1.0, "{c:?} at 1");
+        /* Out of range and NaN are clamped, not propagated: a NaN gain silences
+         * a track permanently and cannot be recovered from. */
+        assert_eq!(shape(c, -1.0), 0.0);
+        assert_eq!(shape(c, 2.0), 1.0);
+        assert_eq!(shape(c, f64::NAN), 0.0);
+        for k in 0..=100 {
+            let v = shape(c, k as f64 / 100.0);
+            assert!((0.0..=1.0).contains(&v), "{c:?} out of range: {v}");
         }
     }
 }
@@ -45,13 +42,11 @@ fn shape_endpoints_and_bounds() {
 #[test]
 fn shape_is_monotonic() {
     for c in CURVES {
-        for d in DIRS {
-            let mut prev = -1.0;
-            for k in 0..=1000 {
-                let v = shape(c, k as f64 / 1000.0, d);
-                assert!(v >= prev, "{c:?} {d:?} dipped at {k}: {v} < {prev}");
-                prev = v;
-            }
+        let mut prev = -1.0;
+        for k in 0..=1000 {
+            let v = shape(c, k as f64 / 1000.0);
+            assert!(v >= prev, "{c:?} dipped at {k}: {v} < {prev}");
+            prev = v;
         }
     }
 }
@@ -59,15 +54,10 @@ fn shape_is_monotonic() {
 #[test]
 fn shape_inv_round_trips() {
     for c in CURVES {
-        for d in DIRS {
-            for k in 1..1000 {
-                let t = k as f64 / 1000.0;
-                let back = shape_inv(c, shape(c, t, d), d);
-                assert!(
-                    (back - t).abs() < 1e-9,
-                    "{c:?} {d:?} t={t} -> {back}"
-                );
-            }
+        for k in 1..1000 {
+            let t = k as f64 / 1000.0;
+            let back = shape_inv(c, shape(c, t));
+            assert!((back - t).abs() < 1e-9, "{c:?} t={t} -> {back}");
         }
     }
 }
@@ -77,7 +67,7 @@ fn exponential_is_the_documented_bend() {
     /* Halfway through an exponential stage the envelope is ~82% of the way --
      * the constant the header claims, checked so a change to CURVE_K cannot
      * pass quietly. */
-    let v = shape(Curve::Exp, 0.5, Dir::Down);
+    let v = shape(Curve::Exp, 0.5);
     assert!((v - 0.8176).abs() < 1e-3, "exp at 0.5 = {v}");
 }
 
@@ -87,42 +77,17 @@ fn scurve_is_flat_at_both_ends_and_antisymmetric() {
      * vertically, which is the opposite of an S-curve. Compare the slope near
      * the ends against the slope at the middle. */
     let d = 1e-3;
-    let ends = shape(Curve::SCurve, d, Dir::Down) / d;
-    let middle =
-        (shape(Curve::SCurve, 0.5 + d, Dir::Down) - shape(Curve::SCurve, 0.5 - d, Dir::Down))
-            / (2.0 * d);
+    let ends = shape(Curve::SCurve, d) / d;
+    let middle = (shape(Curve::SCurve, 0.5 + d) - shape(Curve::SCurve, 0.5 - d)) / (2.0 * d);
     assert!(ends < 0.5, "S-curve leaves the floor too fast: {ends}");
     assert!(middle > 1.5, "S-curve middle too slow: {middle}");
     assert!(middle > ends * 4.0, "not an S: ends={ends} middle={middle}");
 
     for k in 0..=500 {
         let t = k as f64 / 1000.0;
-        let a = shape(Curve::SCurve, t, Dir::Down);
-        let b = shape(Curve::SCurve, 1.0 - t, Dir::Down);
+        let a = shape(Curve::SCurve, t);
+        let b = shape(Curve::SCurve, 1.0 - t);
         assert!((a + b - 1.0).abs() < 1e-12, "not antisymmetric at {t}");
-    }
-}
-
-#[test]
-fn pump_is_the_asymmetric_one() {
-    for k in 0..=100 {
-        let t = k as f64 / 100.0;
-        /* Down is linear -- the duck lands on the beat with no softening. */
-        assert!((shape(Curve::Pump, t, Dir::Down) - t).abs() < 1e-12);
-        /* Up is a cubic ease-out: ducker.c:145-149. */
-        let inv = 1.0 - t;
-        let want = 1.0 - inv * inv * inv;
-        assert!((shape(Curve::Pump, t, Dir::Up) - want).abs() < 1e-12);
-    }
-    /* And the asymmetry is real, not a rounding difference. */
-    assert!(shape(Curve::Pump, 0.5, Dir::Up) > shape(Curve::Pump, 0.5, Dir::Down) + 0.3);
-
-    /* Every other curve ignores the direction. */
-    for c in [Curve::Linear, Curve::Exp, Curve::SCurve] {
-        for k in 0..=100 {
-            let t = k as f64 / 100.0;
-            assert_eq!(shape(c, t, Dir::Down), shape(c, t, Dir::Up), "{c:?} at {t}");
-        }
     }
 }
 
@@ -533,7 +498,7 @@ fn every_parameter_round_trips_through_set_num_and_num() {
         (Param::Hold, 44.0),
         (Param::Release, 111.5),
         (Param::Depth, 0.625),
-        (Param::Curve, 3.0),
+        (Param::Curve, 2.0),
         (Param::Channel, 7.0),
         (Param::Note, 60.0),
         (Param::MidiMode, 1.0),
@@ -626,7 +591,7 @@ fn out_of_range_is_clamped_and_nan_is_dropped() {
     p.set_num(Param::Attack, 9_999.0);
     assert_eq!(p.num(Param::Attack), crate::STAGE_MAX_PCT);
     p.set_num(Param::Delay, 9_999.0);
-    assert_eq!(p.num(Param::Delay), crate::DELAY_MAX_PCT);
+    assert_eq!(p.num(Param::Delay), crate::DELAY_RANGE_PCT);
 }
 
 #[test]
@@ -646,8 +611,7 @@ fn changing_the_curve_mid_duck_does_not_move_the_gain() {
     for (from, to) in [
         (Curve::Linear, Curve::Exp),
         (Curve::Exp, Curve::SCurve),
-        (Curve::SCurve, Curve::Pump),
-        (Curve::Pump, Curve::Linear),
+        (Curve::SCurve, Curve::Linear),
     ] {
         for stage_under_test in [Stage::Attack, Stage::Release] {
             let mut p = Instance::new(48000.0);
@@ -988,4 +952,161 @@ fn the_sweep_is_one_axis_for_all_three_sources() {
         p.process_f32(&mut buf, 2048, None);
     }
     assert_eq!(p.sweep01(), 1.0, "the sweep wrapped instead of parking");
+}
+
+/* ------------------------------------------------------- the early duck --- */
+
+/// Render with a running transport and report the sample index of every
+/// downward edge -- where the gain leaves 1.0.
+fn duck_starts(p: &mut Instance, sr: f64, bpm: f64, frames: usize) -> Vec<usize> {
+    const BLOCK: usize = 128;
+    let mut buf = vec![1.0f32; BLOCK * 2];
+    let samples_per_beat = 60.0 / bpm * sr;
+    let mut out = Vec::new();
+    let mut prev = 1.0f32;
+    for off in (0..frames).step_by(BLOCK) {
+        for v in buf.iter_mut() {
+            *v = 1.0;
+        }
+        let t = Transport {
+            running: true,
+            beats: off as f64 / samples_per_beat,
+            bpm: bpm as f32,
+        };
+        p.process_f32(&mut buf, BLOCK, Some(&t));
+        for i in 0..BLOCK {
+            let g = buf[i * 2];
+            if prev >= 1.0 && g < 1.0 {
+                out.push(off + i);
+            }
+            prev = g;
+        }
+    }
+    out
+}
+
+fn early_test_instance(sr: f64, delay: f64) -> Instance {
+    let mut p = Instance::new(sr);
+    p.set_param("rate", "1/4");
+    p.set_num(Param::Depth, 1.0);
+    p.set_num(Param::Attack, 0.0); /* a step, so the edge is exact */
+    p.set_num(Param::Hold, 5.0);
+    p.set_num(Param::Release, 5.0);
+    p.set_num(Param::Delay, delay);
+    p
+}
+
+#[test]
+fn a_negative_delay_ducks_before_the_beat() {
+    /*
+     * THE WHOLE POINT OF THE SIGN. At 120 bpm and 1/4 the cycle is 24 000
+     * samples, so a quarter of it is 6 000. A delay of +25% puts the duck 6 000
+     * samples AFTER the beat; -25% puts it 6 000 samples BEFORE the next one,
+     * which is 18 000 after this one.
+     *
+     * Anticipating an event is impossible; this is not that. The cycle is
+     * PERIODIC, so "early" is a position already passed.
+     */
+    let sr = 48000.0;
+
+    let mut late = early_test_instance(sr, 25.0);
+    let late_edges = duck_starts(&mut late, sr, 120.0, 48000);
+
+    let mut early = early_test_instance(sr, -25.0);
+    let early_edges = duck_starts(&mut early, sr, 120.0, 48000);
+
+    /*
+     * THE FIRST EDGE IS THE FIRST REAL DUCK, and that is worth saying out loud
+     * because it was not always. Starting the transport mid-cycle used to fire
+     * immediately AND again at the real trigger -- two ducks where the music
+     * has one. The transport here starts at beat 0, which is a quarter of a
+     * cycle from either trigger point, so a spurious start would show up as an
+     * edge at 0.
+     */
+    assert!(late_edges.len() >= 2, "late: {late_edges:?}");
+    assert!(early_edges.len() >= 2, "early: {early_edges:?}");
+    assert!(late_edges[0] > 100, "a duck fired on the transport start: {late_edges:?}");
+    assert!(early_edges[0] > 100, "a duck fired on the transport start: {early_edges:?}");
+
+    /* Two samples of slack: `inc` is 1/24000, which is not exact in binary, so
+     * accumulating it 6000 times lands a sample either side. */
+    let near = |got: usize, want: usize| (got as i64 - want as i64).abs() <= 2;
+    assert!(near(late_edges[0], 6000), "+25% should duck at 6000: {late_edges:?}");
+    assert!(near(early_edges[0], 18000), "-25% should duck at 18000: {early_edges:?}");
+
+    /* And both still fire once per cycle -- the offset moves the duck, it does
+     * not add or drop one. */
+    assert_eq!(late_edges.len(), early_edges.len(), "{late_edges:?} {early_edges:?}");
+}
+
+#[test]
+fn zero_delay_ducks_on_the_beat() {
+    let sr = 48000.0;
+    let mut p = early_test_instance(sr, 0.0);
+    let edges = duck_starts(&mut p, sr, 120.0, 48000);
+    assert!(!edges.is_empty(), "{edges:?}");
+    let near = |got: usize, want: usize| (got as i64 - want as i64).abs() <= 2;
+    /* Beat 0 IS a trigger point, so pressing play on it must duck -- which is
+     * the case the arrival rule has to keep working while it stops the
+     * spurious mid-cycle one. */
+    assert!(near(edges[0], 0), "play on the downbeat should duck: {edges:?}");
+    assert!(near(edges[1], 24000), "and again a cycle later: {edges:?}");
+}
+
+#[test]
+fn moving_the_delay_does_not_fire_an_extra_duck() {
+    /*
+     * FORWARD CROSSINGS ONLY, and this is the fault it prevents. The trigger
+     * test is `floor(phase - offset)`, so changing the offset moves the index
+     * under the phase -- and a DECREMENT would read as a crossing. Dragging the
+     * Delay knob would then put an extra duck in the bar for every pixel.
+     */
+    let sr = 48000.0;
+    const BLOCK: usize = 128;
+    let mut p = early_test_instance(sr, 0.0);
+    let mut buf = vec![1.0f32; BLOCK * 2];
+    let samples_per_beat = 60.0 / 120.0 * sr;
+
+    let before = p.fires();
+    /* Sweep the delay across its whole range inside ONE cycle, which is what a
+     * drag does. A cycle is 24 000 samples; this covers 12 800 of them. */
+    for (k, off) in (0..100).map(|k| (k, k * BLOCK)) {
+        p.set_num(Param::Delay, -100.0 + (k as f64) * 2.0);
+        for v in buf.iter_mut() {
+            *v = 1.0;
+        }
+        let t = Transport {
+            running: true,
+            beats: off as f64 / samples_per_beat,
+            bpm: 120.0,
+        };
+        p.process_f32(&mut buf, BLOCK, Some(&t));
+    }
+    let fired = p.fires() - before;
+    /* Half a cycle of audio: the transport start, and at most one boundary the
+     * sweep legitimately moved past. Anything more is the knob firing ducks. */
+    assert!(fired <= 2, "a delay sweep fired {fired} ducks");
+}
+
+#[test]
+fn a_negative_delay_is_ignored_where_it_cannot_work() {
+    /*
+     * MIDI HAS NOTHING PERIODIC TO ANTICIPATE. A note that has not arrived
+     * cannot be ducked ahead of, so a negative delay is clamped to no wait
+     * rather than refused -- an automation lane is allowed to sweep through it.
+     */
+    let sr = 48000.0;
+    let mut p = Instance::new(sr);
+    p.set_param("source", "MIDI");
+    p.set_num(Param::Depth, 1.0);
+    p.set_num(Param::Attack, 0.0);
+    p.set_num(Param::Hold, 20.0);
+    p.set_num(Param::Delay, -50.0);
+    assert_eq!(p.num(Param::Delay), -50.0, "the value is kept, not refused");
+
+    p.on_midi(&note_on(1, 36, 127), 0);
+    let mut buf = vec![1.0f32; 512];
+    p.process_f32(&mut buf, 256, None);
+    /* No wait: the duck is there on the trigger sample itself. */
+    assert!(buf[0] < 1.0, "a negative delay delayed a MIDI duck");
 }

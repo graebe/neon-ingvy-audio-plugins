@@ -141,7 +141,21 @@ public:
    * not the one playing. MINIMUM for the gain, because the deepest point of the
    * duck is the thing being looked at.
    */
-  static constexpr int kScopeCols = 256;
+  /*
+   * 512 COLUMNS, NOT 256.
+   *
+   * The plot is 696px wide inside its inset, so 256 columns is 2.7 pixels each
+   * and the waveform came out visibly stepped -- the picture was quantised by
+   * the WIRE rather than by the screen, which is the wrong place for it. At 512
+   * a column is 1.36px, so `band`'s decimation has something to decimate and
+   * the outline lands where the audio is.
+   *
+   * It costs about 5.7 KB of payload against a 65 536 transport, so this is not
+   * where the budget goes. Amplitude stays at one byte per bound: 256 levels
+   * across a well 220px tall is already finer than the plot can draw, so more
+   * bits there would buy nothing.
+   */
+  static constexpr int kScopeCols = 512;
   /* The transport TRUNCATES rather than fails past this, so every push has to
    * fit under it with base64's extra third accounted for. Raised from iPlug2's
    * 8192 default and asserted against at the one call that can approach it. */

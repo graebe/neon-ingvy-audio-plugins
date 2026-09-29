@@ -15,8 +15,8 @@
  * and ONLY when the curve maths is meant to change. A regenerated fixture that
  * nobody intended is a test that has stopped testing.
  *
- * Format: one row per sample, "curve dir t value inverse", space separated,
- * with t at 1/1000 steps. The inverse is included so a JS port cannot pass by
+ * Format: one row per sample, "curve t value inverse", space separated, with t
+ * at 1/1000 steps. The inverse is included so a JS port cannot pass by
  * implementing only the forward direction.
  */
 
@@ -51,17 +51,17 @@ static int verify(const char *path)
     int rows = 0, bad = 0;
     while (fgets(line, sizeof line, f)) {
         if (line[0] == '#' || line[0] == '\n') continue;
-        int curve, dir;
+        int curve;
         double t, want_s, want_i;
-        if (sscanf(line, "%d %d %lf %lf %lf", &curve, &dir, &t, &want_s, &want_i) != 5)
+        if (sscanf(line, "%d %lf %lf %lf", &curve, &t, &want_s, &want_i) != 4)
             continue;
-        const double got_s = sc_test_shape(curve, t, dir);
-        const double got_i = sc_test_shape_inv(curve, t, dir);
+        const double got_s = sc_test_shape(curve, t);
+        const double got_i = sc_test_shape_inv(curve, t);
         if (got_s != want_s || got_i != want_i) {
             if (bad < 10)
-                fprintf(stderr, "curve %d dir %d t=%.17g: shape %.17g vs %.17g, "
+                fprintf(stderr, "curve %d t=%.17g: shape %.17g vs %.17g, "
                         "inv %.17g vs %.17g\n",
-                        curve, dir, t, got_s, want_s, got_i, want_i);
+                        curve, t, got_s, want_s, got_i, want_i);
             bad++;
         }
         rows++;
@@ -69,7 +69,7 @@ static int verify(const char *path)
     fclose(f);
 
     /* A fixture that has quietly emptied passes every comparison in it. */
-    if (rows < 8000) {
+    if (rows < 3000) {
         fprintf(stderr, "only %d rows -- the fixture looks truncated\n", rows);
         return 1;
     }
@@ -82,19 +82,16 @@ int main(int argc, char **argv)
     if (argc >= 3 && strcmp(argv[1], "--verify") == 0)
         return verify(argv[2]);
 
-    printf("# curve dir t shape inverse\n");
-    printf("# curves: 0 Linear, 1 Exponential, 2 S-Curve, 3 Pump\n");
-    printf("# dir: 0 down (the duck deepening), 1 up (the recovery)\n");
-    for (int curve = 0; curve < 4; curve++) {
-        for (int dir = 0; dir < 2; dir++) {
-            for (int i = 0; i <= STEPS; i++) {
-                const double t = (double)i / (double)STEPS;
-                /* %.17g is the shortest decimal that round-trips a double
-                 * exactly, so the fixture cannot quantise what it is pinning. */
-                printf("%d %d %.17g %.17g %.17g\n", curve, dir, t,
-                       sc_test_shape(curve, t, dir),
-                       sc_test_shape_inv(curve, t, dir));
-            }
+    printf("# curve t shape inverse\n");
+    printf("# curves: 0 Linear, 1 Exponential, 2 S-Curve\n");
+    for (int curve = 0; curve < 3; curve++) {
+        for (int i = 0; i <= STEPS; i++) {
+            const double t = (double)i / (double)STEPS;
+            /* %.17g is the shortest decimal that round-trips a double exactly,
+             * so the fixture cannot quantise what it is pinning. */
+            printf("%d %.17g %.17g %.17g\n", curve, t,
+                   sc_test_shape(curve, t),
+                   sc_test_shape_inv(curve, t));
         }
     }
     return 0;

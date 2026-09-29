@@ -113,7 +113,7 @@ static int verify(const char *path)
     }
     fclose(f);
 
-    if (cases < 36 || rows < 8000) {
+    if (cases < 27 || rows < 6000) {
         fprintf(stderr, "only %d cases / %d rows -- the fixture looks truncated\n",
                 cases, rows);
         return 1;
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
 
     printf("# sample gain -- the OUTPUT of a DC input at depth 1, i.e. 1 - duck\n");
     printf("# sample rate %g, 120 bpm, rate 1/4 (24000 samples per cycle)\n", SR);
-    for (int curve = 0; curve < 4; curve++) {
+    for (int curve = 0; curve < 3; curve++) {
         one_case("plain",        curve,  0,  5, 10,  40, 0);
         one_case("delayed",      curve, 20,  5, 10,  40, 0);
         one_case("slow-attack",  curve,  0, 60,  5,  30, 0);

@@ -276,9 +276,15 @@ export function Shaper(props) {
 
   let hostEl;
 
-  /* A shape that cannot finish inside one cycle. Marked rather than
-   * accommodated, and in amber because it is the window's one warning. */
-  const overruns = () => b().end > SPAN + 1e-9;
+  /*
+   * A shape that cannot finish inside one cycle. Marked rather than
+   * accommodated, and in amber because it is the window's one warning.
+   *
+   * THE UNWRAPPED SPAN, not the end: with an early delay the end wraps round to
+   * a small number, and testing that would report every early duck as fitting
+   * however long it actually is.
+   */
+  const overruns = () => b().span > SPAN + 1e-9;
 
   const caption = () => (props.quiet
     ? 'ONE CYCLE   NOTHING REACHING THE PLUGIN'

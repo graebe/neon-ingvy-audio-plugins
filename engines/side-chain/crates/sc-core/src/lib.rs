@@ -62,9 +62,19 @@ pub const MAX_BLOCK: usize = 8192;
 /// reasoning.
 pub const STAGE_MAX_PCT: f64 = 200.0;
 
-/// Delay stops at one whole cycle. Past that the next trigger has already
-/// fired and the control stops describing anything a listener can hear.
-pub const DELAY_MAX_PCT: f64 = 100.0;
+/// Delay runs a whole cycle EITHER WAY: -100..+100.
+///
+/// NEGATIVE IS AN EARLY SIDECHAIN, and it is a real thing to want -- ducking
+/// slightly ahead of the beat is how a mix is made to breathe into the kick
+/// rather than after it. Past a whole cycle in either direction the next
+/// trigger has already fired and the control stops describing anything a
+/// listener can hear.
+///
+/// HOW IT IS POSSIBLE AT ALL is worth stating, because anticipating an event is
+/// not: the Cycle source is PERIODIC, so "20% early" is just "80% into the
+/// previous cycle", which is a position we have already passed. MIDI and
+/// Sidechain have no such luxury -- see `block_setup`.
+pub const DELAY_RANGE_PCT: f64 = 100.0;
 
 /// Beyond this much phase error, jump rather than glide. `tg-core`'s value.
 const RESYNC_CYCLES: f64 = 0.25;
@@ -307,8 +317,30 @@ impl Instance {
         /* The percentages become samples HERE, once per block, which is the
          * only place that knows both the cycle length and the unit. */
         let pct = |p: f64| samples_per_cycle * (p / 100.0);
+
+        /*
+         * DELAY IS TWO DIFFERENT MECHANISMS, AND THE SOURCE DECIDES WHICH.
+         *
+         * On CYCLE it is a phase offset on the trigger, not a wait: the cycle is
+         * periodic, so firing at 80% of it is the same event as firing 20% before
+         * the next beat. That is what makes a NEGATIVE delay possible at all, and
+         * the envelope needs no delay stage because the offset is already in the
+         * trigger instant. A positive delay could be done either way and lands on
+         * exactly the same samples; doing both through the phase keeps one
+         * mechanism rather than two.
+         *
+         * On MIDI and SIDECHAIN it is a wait after the trigger, because there is
+         * nothing periodic to anticipate: a note that has not arrived cannot be
+         * ducked ahead of. A negative delay there is CLAMPED TO ZERO rather than
+         * refused -- the automation lane is allowed to sweep through it, and the
+         * editor says which sources can use it.
+         */
         let stages = Stages {
-            delay: pct(self.delay_pct),
+            delay: if matches!(self.source, Source::Cycle) {
+                0.0
+            } else {
+                pct(self.delay_pct.max(0.0))
+            },
             attack: pct(self.attack_pct),
             hold: pct(self.hold_pct),
             release: pct(self.release_pct),
@@ -316,6 +348,8 @@ impl Instance {
 
         let mut inc = 1.0 / samples_per_cycle;
         let cycle = matches!(self.source, Source::Cycle);
+        /* In cycles, and signed. See the note on the stages above. */
+        let offset = self.delay_pct / 100.0;
 
         /* A stopped transport is not beat 0, it is no beat at all. */
         let beats = match t {
@@ -327,19 +361,44 @@ impl Instance {
 
         if running {
             let target = beats / beats_per_cycle;
+
+            /*
+             * ARRIVING SOMEWHERE: what the trigger should do about it.
+             *
+             * `None` means "fire on the next sample". That is right when the
+             * transport lands ON a trigger point -- pressing play on the
+             * downbeat must duck -- and wrong everywhere else: with an offset,
+             * landing mid-cycle and firing immediately puts a duck at an
+             * arbitrary phase AND then fires again at the real trigger a moment
+             * later, which is two ducks where the music has one.
+             *
+             * So: fire only if we are within a sample of the trigger, and
+             * otherwise record the boundary we have already passed so the next
+             * one is heard.
+             */
+            let arrive = |pos: f64, offset: f64, inc: f64| -> Option<i64> {
+                let shifted = pos - offset;
+                let floor = shifted.floor();
+                if shifted - floor < inc {
+                    None
+                } else {
+                    Some(floor as i64)
+                }
+            };
+
             if !self.was_running {
                 /* Transport just started: land exactly, do not glide in. */
                 self.cycle_pos = target;
-                self.last_cycle = None;
+                self.last_cycle = arrive(target, offset, inc);
             } else {
                 let err = target - self.cycle_pos;
                 if err > RESYNC_CYCLES || err < -RESYNC_CYCLES {
                     self.cycle_pos = target; /* loop, seek or tempo jump */
                     /* A jump re-evaluates the boundary even when it lands on
                      * the cycle we were already on: the test is
-                     * `index != last_cycle`, so a seek back onto the current
+                     * `index > last_cycle`, so a seek back onto the current
                      * cycle would otherwise fire nothing. */
-                    self.last_cycle = None;
+                    self.last_cycle = arrive(target, offset, inc);
                 } else {
                     inc += (err * TRACK_GAIN) / frames as f64;
                 }
@@ -362,6 +421,7 @@ impl Instance {
             stages,
             cycle,
             inc,
+            offset,
             lockout: self.lockout_ms * self.sample_rate / 1000.0,
         }
     }
@@ -384,9 +444,31 @@ impl Instance {
 
         if r.cycle {
             if self.advancing {
-                let idx = self.cycle_pos.floor() as i64;
-                if self.last_cycle != Some(idx) {
-                    self.last_cycle = Some(idx);
+                /*
+                 * THE TRIGGER SITS AT `offset` INTO THE CYCLE, and shifting the
+                 * position rather than the test is what lets the offset be
+                 * negative: at -0.2 the boundary lands at 80% of the cycle,
+                 * which is 20% before the next beat and a place we have already
+                 * been.
+                 */
+                let idx = (self.cycle_pos - r.offset).floor() as i64;
+                /*
+                 * FORWARD CROSSINGS ONLY.
+                 *
+                 * The phase advances, so a real crossing always increments. A
+                 * DECREMENT means the offset moved under us -- somebody dragged
+                 * Delay, or automation swept it -- and firing on that would put
+                 * an extra duck in the middle of a bar for every pixel of the
+                 * drag. `None` is the exception and fires: it is set by a seek
+                 * or a transport start, where the next boundary must be heard
+                 * even if the index has not changed.
+                 */
+                let fire = match self.last_cycle {
+                    None => true,
+                    Some(prev) => idx > prev,
+                };
+                self.last_cycle = Some(idx);
+                if fire {
                     self.env.trigger(1.0, &r.stages);
                     self.fires = self.fires.wrapping_add(1);
                     self.since_trigger = 0.0;
@@ -629,6 +711,9 @@ struct Run {
     /// Cycles per sample, with the phase-locked loop's correction term for
     /// this block already folded in.
     inc: f64,
+    /// Where in the cycle the trigger sits, in cycles, signed. Negative is
+    /// early -- see the note where the stages are built.
+    offset: f64,
     /// The retrigger lockout in samples.
     lockout: f64,
 }

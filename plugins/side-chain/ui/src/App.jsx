@@ -27,6 +27,7 @@ import { Hint, onParam, onMessage, sendMessage } from '@ultraviolet/ui';
 import { MSG, P, NUM_PARAMS } from './lib/msg.js';
 import { ParamKnob, ParamSelect } from './lib/params.jsx';
 import { Shaper, SPAN } from './lib/Shaper.jsx';
+import { bounds as boundsOf } from './lib/shape.js';
 
 const DESIGN_W = 760;
 const DESIGN_H = 604;
@@ -34,7 +35,7 @@ const PLOT_W = DESIGN_W - 64;
 
 const SOURCES = ['Cycle', 'MIDI', 'Sidechain'];
 const TIME_MODES = ['ms', '% of cycle'];
-const CURVES = ['Linear', 'Exponential', 'S-Curve', 'Pump'];
+const CURVES = ['Linear', 'Exponential', 'S-Curve'];
 const RATES = ['1/1', '1/1T', '1/2', '1/2T', '1/4', '1/4T',
   '1/8', '1/8T', '1/16', '1/16T', '1/32', '1/32T'];
 const CHANNELS = ['Omni', '1', '2', '3', '4', '5', '6', '7', '8',
@@ -309,6 +310,13 @@ export default function App() {
       hold: e[P.hold],
       release: e[P.release],
       depth: e[P.depth] * 100, /* the engine holds 0..1, the display a percent */
+      /*
+       * WHICH MECHANISM DELAY IS, which the drawing has to know because the two
+       * look different. On Cycle it is a phase in a periodic cycle, so it wraps
+       * and can be negative; anywhere else it is a wait, and a negative one is
+       * no wait at all. `startOf` in shape.js is the one place that branches.
+       */
+      cycle: ui().source === 0,
     };
   });
 
@@ -317,10 +325,12 @@ export default function App() {
   /* The cycle in ms is the span of BOTH wells, and the landmark is the point the
    * duck reaches its floor -- the one instant in the shape a listener can name. */
   const spanMs = () => ui().msCycle;
+  /* The landmark is the instant the duck reaches its floor -- the one moment in
+   * the shape a listener can name. It is the WRAPPED position, so with an early
+   * delay it lands where the curve actually is. */
   const markMs = () => {
-    const s = shape();
-    const end = s.delay + s.attack;
-    return end > 0 && end <= SPAN ? (end / SPAN) * spanMs() : 0;
+    const bottom = boundsOf(shape()).bottom;
+    return bottom > 0 && bottom <= SPAN ? (bottom / SPAN) * spanMs() : 0;
   };
 
   /* -------------------------------------------------------------- layout */

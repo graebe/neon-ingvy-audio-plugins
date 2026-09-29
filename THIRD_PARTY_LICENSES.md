@@ -126,17 +126,23 @@ honours.
 
 | Ported into | From | Licence |
 |---|---|---|
-| `engines/side-chain/crates/sc-core/src/midi.rs` and the `Pump` curve in `shape.rs` | [`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)'s `src/dsp/ducker.c` | **MIT**, © charlesvestal |
+| `engines/side-chain/crates/sc-core/src/midi.rs` | [`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)'s `src/dsp/ducker.c` | **MIT**, © charlesvestal |
 
 What was taken: the MIDI trigger semantics — the channel filter, the note
 match, Trigger versus Gate, a note-on at velocity zero read as a note-off, and
-velocity scaling the depth — together with the `Pump` curve, which is linear
-going down and a cubic ease-out coming back up.
+velocity scaling the depth.
 
-What was not: the envelope's structure (Pump has a Delay stage and
-cycle-relative times, and its stage machine is a different one), the sample
+What was not: the envelope's structure (this one has a Delay that goes negative
+and cycle-relative times, and its stage machine is a different one), the sample
 offsets (`ducker.c` applies a note at the top of its block), and every other
-trigger source. The files themselves say which lines they came from.
+trigger source. The file itself says which lines it came from.
+
+**A second thing WAS taken and has since been removed**, and the record says so
+rather than quietly shrinking: the `Pump` curve — linear going down, a cubic
+ease-out coming back — was ported into `shape.rs` and later dropped, along with
+the direction argument that existed only to serve it. Nothing of it remains, so
+it no longer needs a notice; it is named here because a notice that gets smaller
+with no explanation looks like an oversight.
 
 ## Every other dependency
 

@@ -94,9 +94,22 @@ SideChain::SideChain(const InstanceInfo& info)
     p->InitDouble(name, def, 0.0, hi, 0.01, "%", 0, "",
                   IParam::ShapeLinear(), IParam::kUnitPercentage, kPctDisplay);
   };
-  /* Delay stops at one whole cycle: past that the next trigger has already
-   * fired and the control stops describing anything a listener can hear. */
-  pct(GetParam(kDelay), "Delay", 0.0, 100.0);
+  /*
+   * DELAY RUNS BOTH WAYS, -100..+100, AND THE NEGATIVE HALF IS THE POINT.
+   *
+   * An early sidechain -- ducking slightly ahead of the beat so a mix breathes
+   * into the kick rather than after it -- is a real thing to want, and on the
+   * Cycle source it is possible because the cycle is PERIODIC: "20% early" is
+   * "80% into the previous cycle", a position already passed rather than an
+   * event anticipated.
+   *
+   * MIDI and Sidechain have nothing periodic to anticipate, so the engine
+   * clamps a negative delay to no wait there. The parameter still travels the
+   * whole range, because an automation lane is entitled to sweep through it.
+   */
+  GetParam(kDelay)->InitDouble("Delay", 0.0, -100.0, 100.0, 0.01, "%", 0, "",
+                               IParam::ShapeLinear(),
+                               IParam::kUnitPercentage, kPctDisplay);
   /* The other three run to twice the cycle, which is as far as a stage can go
    * and still finish before the trigger after next. */
   pct(GetParam(kAttack), "Attack", 2.0, 200.0);
@@ -104,8 +117,11 @@ SideChain::SideChain(const InstanceInfo& info)
   pct(GetParam(kRelease), "Release", 35.0, 200.0);
   pct(GetParam(kDepth), "Depth", 100.0, 100.0);
 
-  GetParam(kCurve)->InitEnum("Curve", 1, 4, "", 0, "",
-                             "Linear", "Exponential", "S-Curve", "Pump");
+  /* THREE, NOT FOUR. `Pump` was an asymmetric curve ported from ducker.c --
+   * linear down, cubic ease-out up. It is gone, and the direction argument that
+   * existed only to serve it went with it. */
+  GetParam(kCurve)->InitEnum("Curve", 1, 3, "", 0, "",
+                             "Linear", "Exponential", "S-Curve");
 
   /* Omni plus the sixteen channels. Declared as 17 enum values with the first
    * one named rather than as an int, so the host's own menu reads "Omni". */

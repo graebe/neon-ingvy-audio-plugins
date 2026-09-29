@@ -130,7 +130,11 @@ int main(void)
         sc_core_set_param(c, "attack", "99999");
         check_near("attack clamps to 200%", sc_core_get_num(c, SC_P_ATTACK), 200.0, 0.0);
         sc_core_set_param(c, "delay", "99999");
-        check_near("delay clamps to 100%", sc_core_get_num(c, SC_P_DELAY), 100.0, 0.0);
+        check_near("delay clamps to +100%", sc_core_get_num(c, SC_P_DELAY), 100.0, 0.0);
+        /* AND SYMMETRICALLY NEGATIVE: an early sidechain is a whole cycle of
+         * travel the other way. */
+        sc_core_set_param(c, "delay", "-99999");
+        check_near("delay clamps to -100%", sc_core_get_num(c, SC_P_DELAY), -100.0, 0.0);
 
         /* A label, not an index -- what a hand-written patch carries. */
         char buf[64];
@@ -265,23 +269,18 @@ int main(void)
     /* ---------------------------------------------------------------- */
     printf("\nthe curve hooks are reachable and sane from C\n");
     {
-        for (int curve = 0; curve < 4; curve++) {
-            for (int dir = 0; dir < 2; dir++) {
-                char what[80];
-                snprintf(what, sizeof what, "curve %d dir %d: 0 -> 0, 1 -> 1", curve, dir);
-                check(what, sc_test_shape(curve, 0.0, dir) == 0.0 &&
-                            sc_test_shape(curve, 1.0, dir) == 1.0);
-                snprintf(what, sizeof what, "curve %d dir %d: inverse round-trips", curve, dir);
-                const double t = 0.37;
-                check(what, fabs(sc_test_shape_inv(curve,
-                            sc_test_shape(curve, t, dir), dir) - t) < 1e-9);
-            }
+        for (int curve = 0; curve < 3; curve++) {
+            char what[80];
+            snprintf(what, sizeof what, "curve %d: 0 -> 0, 1 -> 1", curve);
+            check(what, sc_test_shape(curve, 0.0) == 0.0 &&
+                        sc_test_shape(curve, 1.0) == 1.0);
+            snprintf(what, sizeof what, "curve %d: inverse round-trips", curve);
+            const double t = 0.37;
+            check(what, fabs(sc_test_shape_inv(curve, sc_test_shape(curve, t)) - t) < 1e-9);
         }
-        /* Pump is the asymmetric one, and from C too. */
-        check("Pump's two directions differ",
-              sc_test_shape(3, 0.5, 0) != sc_test_shape(3, 0.5, 1));
-        check("Linear's do not",
-              sc_test_shape(0, 0.5, 0) == sc_test_shape(0, 0.5, 1));
+        /* An index past the table is the Linear fallback, not a read past it. */
+        check("an unknown curve falls back to Linear",
+              sc_test_shape(99, 0.37) == sc_test_shape(0, 0.37));
     }
 
     printf(failures ? "\nFAILED (%d)\n" : "\nPASS\n", failures);

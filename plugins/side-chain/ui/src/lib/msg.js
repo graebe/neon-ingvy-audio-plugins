@@ -48,7 +48,7 @@ export const COUNTS = {
   [P.source]: 3,
   [P.rate]: 12,
   [P.timeMode]: 2,
-  [P.curve]: 4,
+  [P.curve]: 3,
   [P.channel]: 17,
   [P.note]: 128,
   [P.midiMode]: 2,
@@ -67,7 +67,9 @@ export const COUNTS = {
  * a pointer position has to become a normalised value to send back.
  */
 export const RANGES = {
-  [P.delay]: [0, 100],
+  /* BOTH WAYS. Negative is an early sidechain; see SideChain.cpp, which this
+   * mirrors and which test/ranges.test.mjs parses to keep the two in step. */
+  [P.delay]: [-100, 100],
   [P.attack]: [0, 200],
   [P.hold]: [0, 200],
   [P.release]: [0, 200],

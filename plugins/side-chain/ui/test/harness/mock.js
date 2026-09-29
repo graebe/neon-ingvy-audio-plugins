@@ -44,11 +44,17 @@ const ENGINE = [
   1, 36, 0, 0, -24, 20,
 ];
 
-/* Normalised, as a host reports them -- the ranges are SideChain.cpp's. */
+/*
+ * Normalised, as a host reports them -- the ranges are SideChain.cpp's.
+ *
+ * DELAY IS SIGNED, -100..+100, so its normalised form is (v + 100) / 200 rather
+ * than v / 100. Getting that wrong puts the handle at twice its offset, which
+ * looks like a drawing bug and is an arithmetic one.
+ */
 const NORM = [
   SOURCE / 2, num('rate', 4) / 11, 0,
-  SHAPE[0] / 100, SHAPE[1] / 200, SHAPE[2] / 200, SHAPE[3] / 200,
-  DEPTH, CURVE / 3,
+  (SHAPE[0] + 100) / 200, SHAPE[1] / 200, SHAPE[2] / 200, SHAPE[3] / 200,
+  DEPTH, CURVE / 2,
   1 / 16, 36 / 127, 0, 0, (-24 + 60) / 60, 20 / 200,
 ];
 const DISPLAY = [
@@ -57,7 +63,7 @@ const DISPLAY = [
   `${SHAPE[0].toFixed(1)} %`, `${SHAPE[1].toFixed(1)} %`,
   `${SHAPE[2].toFixed(1)} %`, `${SHAPE[3].toFixed(1)} %`,
   `${(DEPTH * 100).toFixed(1)} %`,
-  ['Linear', 'Exponential', 'S-Curve', 'Pump'][CURVE],
+  ['Linear', 'Exponential', 'S-Curve'][CURVE],
   '1', 'C1', 'Trigger', '0.0 %', '-24.0 dB', '20 ms',
 ];
 
@@ -71,32 +77,38 @@ const MS_CYCLE = 500;
  * a kick-shaped transient at the top of the cycle so the dry band has something
  * in it that the wet band visibly loses.
  */
-const COLS = 256;
+/* 512, matching SideChain.h's kScopeCols: the harness has to push what the
+ * plugin pushes, or it is reviewing a different picture. */
+const COLS = 512;
 function buildScope() {
   const hex = [];
   const seen = [];
   const K = 3.0, DENOM = 0.95021293163213605;
   const cexp = (t) => (1 - Math.exp(-K * t)) / DENOM;
-  const shape = (t, dir) => {
+  const shape = (t) => {
     if (!(t > 0)) return 0;
     if (t >= 1) return 1;
     if (CURVE === 1) return cexp(t);
     if (CURVE === 2) {
       return t < 0.5 ? 0.5 * (1 - cexp(1 - 2 * t)) : 0.5 + 0.5 * cexp(2 * t - 1);
     }
-    if (CURVE === 3) {
-      if (dir === 0) return t;
-      const inv = 1 - t;
-      return 1 - inv * inv * inv;
-    }
     return t;
   };
   const [d, a, h, r] = SHAPE;
+  /*
+   * THE SAME WRAPPED PHASE THE ENGINE USES. On Cycle the trigger sits at
+   * `floor(phase - offset)`, so a negative delay puts the duck at the end of the
+   * view -- and a mock that did not wrap would draw a measured trace disagreeing
+   * with the shape for no reason but its own arithmetic.
+   */
+  const wrap = (v) => ((v % 100) + 100) % 100;
+  const start = SOURCE === 0 ? wrap(d) : Math.max(0, d);
   const duckAt = (pct) => {
-    if (pct < d) return 0;
-    if (pct < d + a) return shape((pct - d) / a, 0);
-    if (pct < d + a + h) return 1;
-    if (pct < d + a + h + r) return 1 - shape((pct - d - a - h) / r, 1);
+    const e = SOURCE === 0 ? wrap(pct - start) : pct - start;
+    if (!(e >= 0)) return 0;
+    if (e < a) return shape(a > 0 ? e / a : 1);
+    if (e < a + h) return 1;
+    if (e < a + h + r) return 1 - shape((e - a - h) / r);
     return 0;
   };
   const byte = (v) => {
@@ -176,7 +188,7 @@ globalThis.IPlugSendMsg = (m) => {
   if (m.msg === 'SPVFUI') {
     NORM[m.paramIdx] = m.value;
     /* And keep the engine values in step, since the drawing reads those. */
-    const R = [null, null, null, [0, 100], [0, 200], [0, 200], [0, 200],
+    const R = [null, null, null, [-100, 100], [0, 200], [0, 200], [0, 200],
       [0, 1], null, null, null, null, [0, 1], [-60, 0], [0, 200]][m.paramIdx];
     if (R) ENGINE[m.paramIdx] = R[0] + (R[1] - R[0]) * m.value;
     globalThis.SAMFD?.(MSG.params, 0, b64(ENGINE.join(':')));
