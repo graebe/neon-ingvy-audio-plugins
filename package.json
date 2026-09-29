@@ -1,0 +1,13 @@
+{
+  "name": "vst-library",
+  "private": true,
+  "description": "Audio plugins and a Schwung module around shared Rust engines and one Solid UI kit.",
+  "license": "MIT",
+  "workspaces": [
+    "plugins/*/ui"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "node --test plugins/*/ui/test/*.test.mjs"
+  }
+}

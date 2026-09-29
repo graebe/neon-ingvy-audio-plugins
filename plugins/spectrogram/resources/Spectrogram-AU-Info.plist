@@ -28,15 +28,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
-	<string>SpectrogramIP</string>
+	<string>Spectrogram</string>
 	<key>CFBundleGetInfoString</key>
-	<string>SpectrogramIP v1.0.0 Copyright 2026 Torben Gräber</string>
+	<string>Spectrogram v1.0.0 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.graebe.audiounit.SpectrogramIP</string>
+	<string>com.graebe.audiounit.Spectrogram</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>SpectrogramIP</string>
+	<string>Spectrogram</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
@@ -50,6 +50,6 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>10.13.0</string>
 	<key>NSPrincipalClass</key>
-	<string>SpectrogramIP_View</string>
+	<string>Spectrogram_View</string>
 </dict>
 </plist>

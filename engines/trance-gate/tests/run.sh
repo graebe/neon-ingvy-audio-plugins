@@ -9,24 +9,21 @@
 set -e
 cd "$(dirname "$0")/.."
 
-# rustup's shims may not be on PATH; the toolchain's own bin always is once
-# found, and cargo needs rustc beside it.
-if ! command -v cargo >/dev/null 2>&1; then
-    TC="$(rustup which cargo 2>/dev/null)" || true
-    [ -n "$TC" ] && PATH="$(dirname "$TC"):$PATH" && export PATH
-fi
+# cargo, wherever it is installed -- this file's own version of this searched
+# only via rustup, so a toolchain installed any other way was not found.
+. "$(cd "$(dirname "$0")/../../.." && pwd)/scripts/rust-env.sh"
 cargo build --release -p tg-move
 # ONE staticlib carries both surfaces -- the Schwung vtable and the tg_core_*
 # ABI -- because two would each bundle a copy of the Rust runtime and collide.
 ENGINE=target/release/libtg_move.a
-cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Isrc/dsp \
+cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude \
    tests/test_gate.c "$ENGINE" -o build/test_gate -lm
 ./build/test_gate || exit 1
 
 # The portable engine's own tests: sample rate, the float paths and the
 # transport struct -- three freedoms the Schwung shell cannot exercise,
 # because it is always 44100, always int16 and always has a host.
-cc -std=c11 -Wall -Wextra -Isrc/dsp \
+cc -std=c11 -Wall -Wextra -Iinclude \
    tests/test_core.c "$ENGINE" -o build/test_core -lm
 ./build/test_core || exit 1
 
@@ -72,7 +69,7 @@ cc -std=c11 -Wall -Wextra -Isrc/dsp \
 # bit-for-bit until now.
 # Previous: 4264807b9e7da87844309fa48d0cc8a3 (C, with contraction)
 GOLDEN=3992810c52d7962b4d25b3a30494ee2e
-cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Isrc/dsp \
+cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude \
    tests/render_ref.c "$ENGINE" \
    -o build/render_ref -lm
 GOT=$(./build/render_ref | md5 -q 2>/dev/null || ./build/render_ref | md5sum | cut -d" " -f1)
@@ -109,7 +106,7 @@ if [ -d "$SHARED/param_pages" ]; then
   # against the PREVIOUS build's JSON, silently, for as long as the old
   # binary kept working. A stale fixture reports the old contract as the
   # current one, which is worse than no fixture at all.
-  cc -std=c11 -Isrc/dsp tests/dump_params.c "$ENGINE" \
+  cc -std=c11 -Iinclude tests/dump_params.c "$ENGINE" \
      -o build/dump_params -lm
   ./build/dump_params > build/chain_params.json
   TG_PARAMS=build/chain_params.json node tests/smoke_ui.mjs "$SHARED" build/.smoke

@@ -31,13 +31,13 @@
 /*
  * BUNDLE_NAME MUST BE THE BUNDLE'S ACTUAL NAME, not the plugin's display name.
  * iPlug2 builds the bundle identifier from DOMAIN.MFR.type.NAME and looks the
- * bundle up by it to find the Cocoa view; the CMake target is SpectrogramIP, so
- * the bundle is com.graebe.audiounit.SpectrogramIP. Get this wrong and the
+ * bundle up by it to find the Cocoa view; the CMake target is Spectrogram, so
+ * the bundle is com.graebe.audiounit.Spectrogram. Get this wrong and the
  * lookup returns NULL, CFBundleCopyBundleURL segfaults the host the moment
  * anything asks for the editor, and auval dies at "VERIFYING CUSTOM UI" --
  * which is where the Trance Gate learned it.
  */
-#define BUNDLE_NAME "SpectrogramIP"
+#define BUNDLE_NAME "Spectrogram"
 #define BUNDLE_MFR "graebe"
 #define BUNDLE_DOMAIN "com"
 

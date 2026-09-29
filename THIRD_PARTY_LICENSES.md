@@ -44,8 +44,8 @@ and both editors bundle it:
 
 | bundle | path inside it |
 |---|---|
-| `TranceGateIP.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
-| `SpectrogramIP.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
+| `TranceGate.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
+| `Spectrogram.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
 
 **The OFL requires its text to travel beside the font**, so `OFL.txt` sits in
 each `fonts/` directory and is globbed into every bundle by each plugin's

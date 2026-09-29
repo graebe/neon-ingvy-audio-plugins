@@ -19,23 +19,16 @@
 
 set(SPECTRO_ROOT ${CMAKE_SOURCE_DIR}/engines/spectro)
 
-if (NOT EXISTS ${SPECTRO_ROOT}/Cargo.toml)
-    message(FATAL_ERROR "engines/spectro is missing its Cargo.toml.")
+# THE WORKSPACE IS THE REPOSITORY ROOT, not this engine's directory: both
+# engines' crates are members of one Cargo.toml there.
+if (NOT EXISTS ${CMAKE_SOURCE_DIR}/Cargo.toml)
+    message(FATAL_ERROR "No Cargo.toml at the repository root -- the workspace is missing.")
 endif()
 
-find_program(SPECTRO_CARGO cargo HINTS $ENV{HOME}/.cargo/bin)
-if (NOT SPECTRO_CARGO)
-    find_program(SPECTRO_RUSTUP rustup HINTS $ENV{HOME}/.cargo/bin)
-    if (SPECTRO_RUSTUP)
-        execute_process(COMMAND ${SPECTRO_RUSTUP} which cargo
-                        OUTPUT_VARIABLE SPECTRO_CARGO
-                        OUTPUT_STRIP_TRAILING_WHITESPACE
-                        ERROR_QUIET)
-    endif()
-endif()
-if (NOT SPECTRO_CARGO)
-    message(FATAL_ERROR "cargo not found -- the analyzer is Rust. https://rustup.rs")
-endif()
+# cargo, found once for the whole repository -- rustup.rs, Homebrew and a bare
+# toolchain each put it somewhere different, and this searched only one of them.
+include(${CMAKE_SOURCE_DIR}/cmake/RustToolchain.cmake)
+set(SPECTRO_CARGO ${RUST_CARGO})
 
 # CMake's Apple architecture names are not Rust's target triples.
 set(SPECTRO_TRIPLES "")
@@ -72,12 +65,9 @@ else()
     set(SPECTRO_COMBINE COMMAND ${CMAKE_COMMAND} -E copy ${SPECTRO_SLICES} ${SPECTRO_LIB}.new)
 endif()
 
-get_filename_component(SPECTRO_CARGO_DIR ${SPECTRO_CARGO} DIRECTORY)
-set(SPECTRO_ENV ${CMAKE_COMMAND} -E env --unset=MAKEFLAGS --unset=MFLAGS
-                "PATH=${SPECTRO_CARGO_DIR}:$ENV{PATH}")
-if (CMAKE_OSX_DEPLOYMENT_TARGET)
-    list(APPEND SPECTRO_ENV MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET})
-endif()
+# The environment cargo needs -- rustc beside it on PATH, no make jobserver,
+# the deployment target carried through. Built once; see RustToolchain.cmake.
+set(SPECTRO_ENV ${RUST_ENV})
 
 # CARGO IS THE DEPENDENCY SCANNER, NOT CMAKE -- so this target always runs, and
 # copy_if_different is what keeps an unchanged analyzer from relinking three
@@ -87,7 +77,7 @@ add_custom_target(spectro_engine_cargo ALL
     COMMAND ${SPECTRO_ENV} ${SPECTRO_CARGO} ${SPECTRO_CARGO_ARGS}
     ${SPECTRO_COMBINE}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SPECTRO_LIB}.new ${SPECTRO_LIB}
-    WORKING_DIRECTORY ${SPECTRO_ROOT}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building the Spectrogram analyzer (cargo, ${SPECTRO_TRIPLES})"
     VERBATIM)
 

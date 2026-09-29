@@ -1,0 +1,52 @@
+# ONE WORKSPACE, BOTH ENGINES.
+#
+# The Trance Gate's crates and the Spectrogram's were two separate workspaces
+# with two lock files and two copies of the profile below -- and the
+# Spectrogram's carried a comment admitting it: "The same settings as the
+# Trance Gate engine, for the same reasons". A shared setting that is stated
+# twice is a setting that will eventually be stated differently.
+#
+# Merging them is free, and that is worth checking rather than assuming:
+# NEITHER ENGINE HAS AN EXTERNAL DEPENDENCY. Every `[dependencies]` entry in
+# the tree is a `path` inside its own engine, so there are no third-party
+# versions for one lock file to resolve differently from two. The render A/B
+# (tests/render_plugin.c) is what proves it after the fact: it hashes four
+# seconds through the plugin's audio path against the Move module's reference
+# render, and that number did not move.
+#
+# The engines stay INDEPENDENT of each other. A crate here may depend on its
+# own engine's crates and on nothing else in this file; spectro-core knowing
+# about tg-core would be a coupling nobody asked for.
+[workspace]
+resolver = "2"
+members = [
+    # The Trance Gate: one core, two wrappers around it.
+    "engines/trance-gate/crates/tg-core",     # the DSP
+    "engines/trance-gate/crates/tg-capi",     # the C ABI -> the plugin
+    "engines/trance-gate/crates/tg-move",     # the Schwung vtable -> the module
+    # The Spectrogram: one core, one wrapper. No Move target -- the hardware
+    # has no screen to draw a spectrogram on.
+    "engines/spectro/crates/spectro-core",
+    "engines/spectro/crates/spectro-capi",
+]
+
+# THE AUDIO CALLBACK MUST NOT UNWIND.
+#
+# Every entry point in both engines runs on an audio callback, and unwinding a
+# panic out of `extern "C"` into a C or C++ host is undefined behaviour.
+# Aborting is the honest failure: it is a crash either way, and this way it is
+# one the OS reports rather than one that corrupts the host's stack on its way
+# out.
+#
+# It also removes the landing pads, which is most of the size a panicking Rust
+# cdylib carries over a C one -- and the Move module is a file on a device with
+# a fixed amount of space.
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
+
+[profile.dev]
+panic = "abort"

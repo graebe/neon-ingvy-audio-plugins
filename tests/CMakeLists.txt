@@ -9,7 +9,7 @@
 # through JUCE's plugin host, and rendered the editor -- so they could not
 # outlive it. What remains is everything that was written in plain C against
 # the engine's ABI, which is also everything that checks the SOUND.
-set(TG_ENGINE ${CMAKE_SOURCE_DIR}/engine)
+set(TG_ENGINE ${CMAKE_SOURCE_DIR}/engines/trance-gate)
 
 add_executable(tg_core_tests ${TG_ENGINE}/tests/test_core.c)
 target_link_libraries(tg_core_tests PRIVATE tg_engine)
@@ -129,9 +129,12 @@ endif()
 #
 # SPECTRO_ENV and SPECTRO_CARGO come from cmake/SpectroEngine.cmake, which found
 # the toolchain the hard way (rustup's shims are often not on PATH).
+# -p, not --manifest-path: there is ONE workspace and it is at the repository
+# root, so the crates are selected by name rather than by pointing cargo at a
+# per-engine Cargo.toml that no longer exists.
 add_test(NAME spectro_core
          COMMAND ${SPECTRO_ENV} ${SPECTRO_CARGO} test --manifest-path
-                 ${SPECTRO_ROOT}/Cargo.toml)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p spectro-core -p spectro-capi)
 
 # The same claims through the C ABI the plugin links, because a hand-written
 # header can drift from its implementation without either side failing to
@@ -146,7 +149,7 @@ add_test(NAME spectro_columns COMMAND spectro_columns)
 # The editor's tests, on node's own runner (22+), so the UI keeps a dependency
 # tree of vite and solid and nothing else.
 if (TG_NODE)
-    set(SPECTRO_UI_TEST ${CMAKE_SOURCE_DIR}/plugins/spectrogram-iplug/ui/test)
+    set(SPECTRO_UI_TEST ${CMAKE_SOURCE_DIR}/plugins/spectrogram/ui/test)
     # The colour guard. This window needs it more than the Trance Gate does: a
     # canvas cannot use a CSS variable, so the intensity ramp is the likeliest
     # place in either plugin for five hex triplets to be typed inline.

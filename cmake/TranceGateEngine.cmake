@@ -17,30 +17,20 @@
 # is Rust. The C ABI is unchanged, so every consumer still includes
 # trance_gate_core.h and calls tg_core_*.
 
-set(TG_ROOT ${CMAKE_SOURCE_DIR}/engine)
+set(TG_ROOT ${CMAKE_SOURCE_DIR}/engines/trance-gate)
 
-if (NOT EXISTS ${TG_ROOT}/Cargo.toml)
+# THE WORKSPACE IS THE REPOSITORY ROOT, not this engine's directory: both
+# engines' crates are members of one Cargo.toml there, so that is what cargo
+# must find and what .cargo/config.toml sits beside.
+if (NOT EXISTS ${CMAKE_SOURCE_DIR}/Cargo.toml)
     message(FATAL_ERROR
-        "engine/ has no Cargo.toml -- the Rust workspace is missing.\n"
-        "  It is a subtree, not a submodule: check out the repository again.")
+        "No Cargo.toml at the repository root -- the workspace is missing.")
 endif()
 
-# RUSTUP'S SHIMS ARE OFTEN NOT ON PATH when CMake is driven from an IDE or
-# Xcode, which starts a login shell without the user's profile. The toolchain's
-# own bin directory always works once found.
-find_program(TG_CARGO cargo HINTS $ENV{HOME}/.cargo/bin)
-if (NOT TG_CARGO)
-    find_program(TG_RUSTUP rustup HINTS $ENV{HOME}/.cargo/bin)
-    if (TG_RUSTUP)
-        execute_process(COMMAND ${TG_RUSTUP} which cargo
-                        OUTPUT_VARIABLE TG_CARGO
-                        OUTPUT_STRIP_TRAILING_WHITESPACE
-                        ERROR_QUIET)
-    endif()
-endif()
-if (NOT TG_CARGO)
-    message(FATAL_ERROR "cargo not found -- the engine is Rust. https://rustup.rs")
-endif()
+# cargo, found once for the whole repository -- rustup.rs, Homebrew and a bare
+# toolchain each put it somewhere different, and this searched only one of them.
+include(${CMAKE_SOURCE_DIR}/cmake/RustToolchain.cmake)
+set(TG_CARGO ${RUST_CARGO})
 
 # CMake's Apple architecture names are not Rust's target triples, and the
 # mapping is the only place this build knows about either.
@@ -76,24 +66,9 @@ else()
     set(TG_COMBINE COMMAND ${CMAKE_COMMAND} -E copy ${TG_SLICES} ${TG_LIB}.new)
 endif()
 
-# CARGO NEEDS RUSTC BESIDE IT ON PATH. When cargo was found through `rustup
-# which` rather than on PATH -- an IDE, or Xcode, or any build not started from
-# the user's login shell -- its own directory is not on PATH either, and cargo
-# fails with "could not execute process `rustc -vV`", which names neither PATH
-# nor rustup.
-#
-# --unset=MAKEFLAGS because make exports a jobserver cargo cannot attach to
-# from here, and the warning it prints looks like a real failure.
-#
-# MACOSX_DEPLOYMENT_TARGET has to reach rustc, or its objects carry a newer
-# minimum than the C++ around them and every link prints "object file was
-# built for newer macOS version".
-get_filename_component(TG_CARGO_DIR ${TG_CARGO} DIRECTORY)
-set(TG_ENV ${CMAKE_COMMAND} -E env --unset=MAKEFLAGS --unset=MFLAGS
-           "PATH=${TG_CARGO_DIR}:$ENV{PATH}")
-if (CMAKE_OSX_DEPLOYMENT_TARGET)
-    list(APPEND TG_ENV MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET})
-endif()
+# The environment cargo needs -- rustc beside it on PATH, no make jobserver,
+# the deployment target carried through. Built once; see RustToolchain.cmake.
+set(TG_ENV ${RUST_ENV})
 
 # CARGO IS THE DEPENDENCY SCANNER, NOT CMAKE. A file(GLOB) over the crates
 # would be a second, worse answer to a question cargo already answers exactly,
@@ -107,11 +82,11 @@ add_custom_target(tg_engine_cargo ALL
     COMMAND ${TG_ENV} ${TG_CARGO} ${TG_CARGO_ARGS}
     ${TG_COMBINE}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TG_LIB}.new ${TG_LIB}
-    WORKING_DIRECTORY ${TG_ROOT}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building the Trance Gate engine (cargo, ${TG_TRIPLES})"
     VERBATIM)
 
 add_library(tg_engine INTERFACE)
 target_link_libraries(tg_engine INTERFACE ${TG_LIB})
-target_include_directories(tg_engine INTERFACE ${TG_ROOT}/src/dsp)
+target_include_directories(tg_engine INTERFACE ${TG_ROOT}/include)
 add_dependencies(tg_engine tg_engine_cargo)

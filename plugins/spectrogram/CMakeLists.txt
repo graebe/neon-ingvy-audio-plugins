@@ -22,7 +22,7 @@ if (SPECTRO_NPM)
     RESULT_VARIABLE SPECTRO_UI_RESULT OUTPUT_QUIET ERROR_QUIET)
   if (NOT SPECTRO_UI_RESULT EQUAL 0)
     message(WARNING "The editor did not build; run: "
-                    "npm --prefix plugins/spectrogram-iplug/ui install")
+                    "npm --prefix plugins/spectrogram/ui install")
   endif()
 
   add_custom_target(SpectrogramUI ALL
@@ -39,7 +39,7 @@ file(GLOB SPECTRO_WEB
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/fonts/*")
 
-iplug_add_plugin(SpectrogramIP
+iplug_add_plugin(Spectrogram
   SOURCES
     Spectrogram.cpp
     Spectrogram.h
@@ -59,8 +59,8 @@ iplug_add_plugin(SpectrogramIP
 # must wait for vite rather than race it.
 if (TARGET SpectrogramUI)
   foreach(fmt vst3 clap au)
-    if (TARGET SpectrogramIP-${fmt})
-      add_dependencies(SpectrogramIP-${fmt} SpectrogramUI)
+    if (TARGET Spectrogram-${fmt})
+      add_dependencies(Spectrogram-${fmt} SpectrogramUI)
     endif()
   endforeach()
 endif()
