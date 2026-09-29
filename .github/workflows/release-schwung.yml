@@ -1,5 +1,13 @@
-# Tag v0.1.0 -> build in Docker -> attach dist/trance-gate-module.tar.gz
-# -> rewrite release.json on main, which is where the catalog reads it.
+# Tag trance-gate-v1.0.0 -> build in Docker -> attach
+# dist/trance-gate-module.tar.gz -> rewrite release.json on main, which is
+# where the Schwung catalog reads it.
+#
+# THE TAG IS trance-gate-v*, NOT v*. This repository releases more than one
+# product now, and one `v*` namespace for all of them would make a Spectrogram
+# tag publish a Trance Gate module. The module and the plugin ARE one product
+# in two shells, so the same tag releases both -- see release-plugins.yml --
+# which keeps their versions in lockstep by construction rather than by
+# remembering.
 #
 # Adapted from schwung-ducker's, which is the house pattern for a catalog
 # module. The one addition is the explicit artifact check below.
@@ -8,7 +16,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'trance-gate-v*'
 
 permissions:
   contents: write
@@ -22,11 +30,19 @@ jobs:
 
       - name: Verify version match
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          MODULE_VERSION=$(grep '"version"' src/module.json | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+          TAG_VERSION="${GITHUB_REF_NAME#trance-gate-v}"
+          MODULE_VERSION=$(grep '"version"' modules/trance-gate/module.json | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
           if [ "$TAG_VERSION" != "$MODULE_VERSION" ]; then
             echo "ERROR: Tag version ($TAG_VERSION) does not match module.json version ($MODULE_VERSION)"
-            echo "Please update src/module.json to version $TAG_VERSION before tagging."
+            echo "Please update modules/trance-gate/module.json to version $TAG_VERSION before tagging."
+            exit 1
+          fi
+          # versions.json is where a product's version is decided; module.json
+          # is one of the spellings `ctest -R versions` holds to it. Checking
+          # the tag against both means a mismatch cannot reach a release.
+          SOURCE_VERSION=$(python3 -c "import json;print(json.load(open('versions.json'))['trance-gate'])")
+          if [ "$TAG_VERSION" != "$SOURCE_VERSION" ]; then
+            echo "ERROR: Tag $TAG_VERSION does not match versions.json ($SOURCE_VERSION)"
             exit 1
           fi
           echo "Version check passed: $TAG_VERSION"
@@ -36,8 +52,8 @@ jobs:
 
       - name: Build with Docker
         run: |
-          docker build -t module-builder -f scripts/Dockerfile .
-          docker run --rm -v "$PWD:/build" -w /build module-builder ./scripts/build.sh
+          docker build -t module-builder -f modules/trance-gate/Dockerfile .
+          docker run --rm -v "$PWD:/build" -w /build module-builder ./modules/trance-gate/package.sh
 
       # A build step that can be skipped silently defeats every bisect after
       # it. softprops warns on a missing file rather than failing, so a build
@@ -75,7 +91,7 @@ jobs:
       # channels reads only those and would otherwise be pinned forever.
       - name: Commit release.json
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${GITHUB_REF_NAME#trance-gate-v}"
           URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/trance-gate-module.tar.gz"
           case "$VERSION" in
             *-beta.*) CHANNEL=beta ;;

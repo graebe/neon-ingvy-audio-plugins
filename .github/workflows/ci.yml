@@ -1,0 +1,70 @@
+# Build everything and run the suite, on every push and every pull request.
+#
+# THE SUITE IS THE ASSET HERE. It is not a smoke test: tg_render_ab renders
+# four seconds through the plugin's audio path and hashes it against the Move
+# module's reference render, and the curve and envelope oracles hold the
+# editor's maths to the engine's own measured output. Those are the checks that
+# say a refactor did not change the sound, and they are worth more run
+# automatically than run when someone remembers.
+#
+# macOS because the plugins are macOS bundles (VST3, AU, CLAP, universal) and
+# auval and the AU host test only exist there. The Schwung module is a Linux
+# cross-build in Docker and is NOT built here -- see release-schwung.yml. It
+# would double the CI time for a target whose own release workflow already
+# builds and verifies it on every tag.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive   # iPlug2; the engines are subtrees, not submodules
+
+      # Both engines are Rust. The toolchain the runner ships is fine; the
+      # targets are not installed by default and the plugins are universal.
+      - name: Rust, with both Apple targets
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo --version && rustc --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'      # node --test, which every JS suite here uses
+
+      # ONE INSTALL FOR THE WHOLE WORKSPACE: the kit and both editors. Before
+      # npm workspaces this was a per-plugin install, and forgetting one meant
+      # its editor silently shipped whatever was last in resources/web.
+      - name: Install the editors' dependencies
+        run: npm ci
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j3
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # A build that produced no bundle passes every test above and ships
+      # nothing, so the artefacts are checked for rather than assumed.
+      - name: The bundles exist, and are universal
+        run: |
+          set -e
+          for b in TranceGate Spectrogram; do
+            for f in vst3 component clap; do
+              path="build/out/$b.$f/Contents/MacOS/$b"
+              [ -f "$path" ] || { echo "missing: $path"; exit 1; }
+              lipo -archs "$path" | grep -q 'arm64' || { echo "$path is not arm64"; exit 1; }
+              lipo -archs "$path" | grep -q 'x86_64' || { echo "$path is not x86_64"; exit 1; }
+              echo "ok: $b.$f  ($(lipo -archs "$path"))"
+            done
+          done

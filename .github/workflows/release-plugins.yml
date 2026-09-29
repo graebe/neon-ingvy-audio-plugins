@@ -1,0 +1,131 @@
+# Tag trance-gate-v1.0.0 or spectrogram-v0.1.0 -> build the macOS bundles and
+# attach them to the release.
+#
+# ONE PRODUCT PER TAG, and the prefix says which. A bare `v*` namespace would
+# make a Spectrogram tag publish a Trance Gate, which is the kind of mistake
+# that is only ever noticed by whoever downloads the wrong thing.
+#
+# A trance-gate-v* tag ALSO triggers release-schwung.yml, which builds the Move
+# module from the same commit. The module and the plugin are one product in two
+# shells, so one tag ships both and their versions cannot drift apart.
+#
+# THE BUNDLES ARE UNSIGNED, and that is a decision rather than an oversight.
+# Signing needs an Apple Developer ID, four repository secrets and a notarytool
+# round trip; until those exist the release notes carry the one command that
+# gets macOS to load an unsigned plugin. Adding signing later changes this
+# workflow and nothing about the build.
+name: Release plugins
+
+on:
+  push:
+    tags:
+      - 'trance-gate-v*'
+      - 'spectrogram-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Which product this tag is for, and what version it claims.
+      - name: Read the tag
+        id: tag
+        run: |
+          case "$GITHUB_REF_NAME" in
+            trance-gate-v*) PRODUCT=trance-gate; BUNDLE=TranceGate ;;
+            spectrogram-v*) PRODUCT=spectrogram; BUNDLE=Spectrogram ;;
+            *) echo "ERROR: $GITHUB_REF_NAME names no product"; exit 1 ;;
+          esac
+          VERSION="${GITHUB_REF_NAME#${PRODUCT}-v}"
+          echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
+          echo "bundle=$BUNDLE"   >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # THE TAG MUST MATCH THE SOURCE. versions.json is where a version is
+      # decided and `ctest -R versions` holds config.h, module.json and every
+      # crate to it -- so checking the tag against versions.json checks it
+      # against all of them, and a release cannot claim a version the tree does
+      # not build.
+      - name: The tag matches versions.json
+        run: |
+          SOURCE=$(python3 -c "import json;print(json.load(open('versions.json'))['${{ steps.tag.outputs.product }}'])")
+          if [ "$SOURCE" != "${{ steps.tag.outputs.version }}" ]; then
+            echo "ERROR: tag says ${{ steps.tag.outputs.version }}, versions.json says $SOURCE"
+            exit 1
+          fi
+          echo "version check passed: $SOURCE"
+
+      - name: Rust, with both Apple targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j3
+
+      # The suite runs here too. A tag is the worst possible moment to discover
+      # that the render A/B moved, and it costs a couple of minutes.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        id: pack
+        run: |
+          set -e
+          B="${{ steps.tag.outputs.bundle }}"
+          V="${{ steps.tag.outputs.version }}"
+          OUT="${{ steps.tag.outputs.product }}-$V-macOS.zip"
+          mkdir -p stage
+          for f in vst3 component clap; do
+            [ -d "build/out/$B.$f" ] || { echo "missing build/out/$B.$f"; exit 1; }
+            lipo -archs "build/out/$B.$f/Contents/MacOS/$B" | grep -q arm64
+            lipo -archs "build/out/$B.$f/Contents/MacOS/$B" | grep -q x86_64
+            cp -R "build/out/$B.$f" stage/
+          done
+          # ditto, not zip: it preserves the bundle structure and the resource
+          # forks a macOS plug-in bundle carries.
+          ( cd stage && ditto -c -k --sequesterRsrc --keepParent . "../$OUT" )
+          echo "zip=$OUT" >> "$GITHUB_OUTPUT"
+          ls -la "$OUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ steps.pack.outputs.zip }}
+          prerelease: ${{ contains(github.ref_name, '-beta.') || startsWith(steps.tag.outputs.version, '0.') }}
+          body: |
+            ## ${{ steps.tag.outputs.bundle }} ${{ steps.tag.outputs.version }}
+
+            VST3, Audio Unit and CLAP, universal (arm64 + x86_64).
+
+            Copy the bundles to:
+
+            | format | destination |
+            |---|---|
+            | `.vst3` | `~/Library/Audio/Plug-Ins/VST3/` |
+            | `.component` | `~/Library/Audio/Plug-Ins/Components/` |
+            | `.clap` | `~/Library/Audio/Plug-Ins/CLAP/` |
+
+            **These builds are not signed or notarized**, so macOS will refuse
+            to load them until the download quarantine is removed:
+
+            ```sh
+            xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/${{ steps.tag.outputs.bundle }}.vst3
+            ```
+
+            (and likewise for the other two). A host that has already scanned
+            an older build needs to rescan.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
