@@ -202,3 +202,42 @@
  * the component; block, so it does not sit on a text baseline and leave a
  * few pixels of gap under itself. */
 .spectro-canvas { display: block; }
+
+/* The box the crosshair is positioned in. It is exactly the canvas, so a
+ * pointer coordinate measured against it needs no offset. */
+.spectro { position: relative; line-height: 0; cursor: crosshair; }
+
+/*
+ * THE CROSSHAIR: one hairline each way, in the system's own rail colour at the
+ * weight every other line here is drawn at. No glow -- it sits ON the picture,
+ * and --glow-arc over a bright partial would read as part of the music.
+ *
+ * `pointer-events: none` is not decoration: without it the lines sit under the
+ * cursor and every move re-enters through them, which on some pointers is a
+ * stream of enter/leave events and a flickering readout.
+ */
+.spectro-cross-h, .spectro-cross-v {
+  position: absolute;
+  pointer-events: none;
+  background: var(--uv-deep);
+  opacity: 0.75;
+}
+.spectro-cross-h { left: 0; right: 0; height: var(--hair); }
+.spectro-cross-v { top: 0; bottom: 0; width: var(--hair); }
+
+/*
+ * THE PLAYHEAD: where the bar-aligned sweep is currently writing.
+ *
+ * Brighter than the crosshair and in --uv rather than --uv-deep, because the
+ * two are on screen together and the reader has to tell "where the music is"
+ * from "where my pointer is" at a glance. It is the one mark here that reports
+ * rather than responds, which is the system's rule for which of them lights.
+ */
+.spectro-playhead {
+  position: absolute;
+  pointer-events: none;
+  top: 0; bottom: 0;
+  width: var(--hair);
+  background: var(--uv);
+  opacity: 0.9;
+}

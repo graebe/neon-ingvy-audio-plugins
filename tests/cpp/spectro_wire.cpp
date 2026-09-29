@@ -277,6 +277,63 @@ TEST_CASE("a range splits at the colon")
   CHECK(hi == doctest::Approx(16000.f));
 }
 
+/* ------------------------------------------------------------------- sync */
+
+TEST_CASE("the sync message carries the clock in the order the editor reads it")
+{
+  const std::string s = encode_sync(8.5, 120.0, 4, 4, true, 0.017);
+  CHECK(s == "8.500000:120.0000:4:4:1:0.01700000");
+
+  /* The running flag is the fifth field and is 0/1, not "true"/"false" -- the
+   * editor tests it against the character. */
+  CHECK(encode_sync(0.0, 120.0, 4, 4, false, 0.017).find(":0:") != std::string::npos);
+}
+
+TEST_CASE("the position keeps enough decimals to separate two columns")
+{
+  /* At 200 BPM a column is ~0.06 beats. Three decimals would land two adjacent
+   * columns on the same number and stack them on one pixel. */
+  const std::string a = encode_sync(100.000000, 200.0, 4, 4, true, 0.0568);
+  const std::string b = encode_sync(100.056800, 200.0, 4, 4, true, 0.0568);
+  CHECK(a != b);
+}
+
+TEST_CASE("a negative position survives the wire")
+{
+  /* A count-in, or the playhead dragged before the start. The editor folds it
+   * back into the window; this file's only job is not to lose the sign. */
+  const std::string s = encode_sync(-0.5, 120.0, 4, 4, true, 0.017);
+  CHECK(s.compare(0, 2, "-0") == 0);
+}
+
+TEST_CASE("an odd time signature survives the wire")
+{
+  const std::string s = encode_sync(1.0, 90.0, 6, 8, true, 0.02);
+  CHECK(s.find(":6:8:") != std::string::npos);
+}
+
+/* ----------------------------------------------------------------- beats */
+
+TEST_CASE("beats advance with the samples that carry them")
+{
+  /* 120 BPM is 2 beats a second, so a second of 48 kHz is 2 beats. */
+  CHECK(advance_beats(0.0, 48000, 120.0, 48000.0) == doctest::Approx(2.0));
+  CHECK(advance_beats(10.0, 24000, 120.0, 48000.0) == doctest::Approx(11.0));
+  /* And it accumulates from wherever it already was, including below zero. */
+  CHECK(advance_beats(-1.0, 48000, 120.0, 48000.0) == doctest::Approx(1.0));
+}
+
+TEST_CASE("beats refuse to advance on arguments that would poison the position")
+{
+  /* A NaN here would not be one bad block: the position is carried forward, so
+   * it would be every block after it for the life of the session. */
+  CHECK(advance_beats(5.0, 512, 120.0, 0.0) == doctest::Approx(5.0));
+  CHECK(advance_beats(5.0, 512, 0.0, 48000.0) == doctest::Approx(5.0));
+  CHECK(advance_beats(5.0, 512, -120.0, 48000.0) == doctest::Approx(5.0));
+  CHECK(advance_beats(5.0, 0, 120.0, 48000.0) == doctest::Approx(5.0));
+  CHECK(advance_beats(5.0, -1, 120.0, 48000.0) == doctest::Approx(5.0));
+}
+
 TEST_CASE("a full tick's payload fits the transport's cap")
 {
   /* The same arithmetic as the static_assert in Spectrogram.h, asserted here

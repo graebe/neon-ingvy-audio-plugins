@@ -22,6 +22,7 @@
 #include "IPlug_include_in_plug_hdr.h"
 #include "spectro_core.h"
 #include "Wire.h"
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -60,6 +61,20 @@ public:
   {
     kMsgCols = 64,      /* -> UI: "<cols>:<bands>:<hex>", oldest column first */
     kMsgAxis,           /* -> UI: the band centre frequencies, comma separated */
+    /*
+     * THE HOST'S CLOCK, EVERY TICK, whether or not a column went with it.
+     *
+     * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>". The editor's bar view
+     * places each column at the pixel its musical position implies, so it needs
+     * the clock even on the ticks the analyzer had nothing finished -- and
+     * especially then, because that is when the playhead is crossing a bar line
+     * with no column to announce it.
+     *
+     * NOTHING HERE SAYS HOW WIDE THE WINDOW IS. How many bars the picture spans
+     * is a layout decision and lives in the editor, which is why this plugin
+     * has no bar count to be told and no message to be told it with.
+     */
+    kMsgSync,
 
     kMsgRange = 96,     /* <- UI: "<f_min>:<f_max>" -- the zoom               */
 
@@ -132,6 +147,9 @@ private:
   /* The frequency scale, sent on kMsgReady. The UI never computes it: the log
    * mapping lives in the analyzer and a second copy would drift. */
   void SendAxis();
+  /* The transport, once a tick. Cheap by construction: a hundred-odd bytes
+   * against the 64 KB the column payload is budgeted out of. */
+  void SendSync();
 #endif
 
   spectro_t* mSpectro = nullptr;
@@ -143,6 +161,43 @@ private:
    */
   std::vector<float> mMono;
   std::vector<unsigned char> mCols;
+
+  /*
+   * THE HOST'S CLOCK, WRITTEN ON THE AUDIO THREAD AND READ ON THE MESSAGE ONE.
+   *
+   * ProcessBlock is the only place a host's transport is legible -- OnIdle runs
+   * off a timer with no block to ask about -- so the position is maintained
+   * there and published through these for OnIdle to send.
+   *
+   * Relaxed throughout: these are four independent facts for a picture, not a
+   * protocol. A tick that reads a position from one block and a tempo from the
+   * next is off by at most 20 ms of drawing, and no ordering between them would
+   * make the picture more true than that.
+   */
+  static_assert(std::atomic<double>::is_always_lock_free,
+                "a lock on the audio thread to publish a playhead is not a trade "
+                "worth making -- publish it as fixed point instead");
+  std::atomic<double> mPubPpq{0.0};
+  std::atomic<double> mPubBpm{120.0};
+  std::atomic<double> mPubPpqPerCol{0.0};
+  std::atomic<int> mPubSig{(4 << 8) | 4};   /* numerator << 8 | denominator */
+  std::atomic<bool> mPubRunning{false};
+
+  /*
+   * THE FREE-WHEELING POSITION, audio thread only.
+   *
+   * When the transport runs, this is the host's own PPQ. When it stops -- or
+   * when the host reports no beat timeline at all, which is what CLAP does
+   * without CLAP_TRANSPORT_HAS_BEATS_TIMELINE -- it keeps advancing at the last
+   * tempo that was seen, so the picture goes on filling rather than freezing on
+   * a stopped transport.
+   */
+  double mPos = 0.0;
+  double mLastBpm = 120.0;
+
+  /* What OnReset gave the analyzer. Kept because ppqPerCol is hop over the
+   * sample rate, and the editor cannot know either. */
+  int mHop = 0;
 
   /*
    * THERE IS NO PAUSE HERE, AND THAT IS THE DESIGN.

@@ -11,6 +11,15 @@
 export const MSG = {
   cols: 64,   /* <- plugin: "<cols>:<bands>:<hex>", oldest column first */
   axis: 65,   /* <- plugin: the band centre frequencies, comma separated */
+  /*
+   * THE HOST'S CLOCK, every idle tick whether or not a column came with it.
+   *
+   * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>" -- where the transport is,
+   * how fast, in what metre, and how much musical time one column covers. The
+   * plugin reports these and NOTHING about where a column should be drawn: the
+   * bar window is a layout decision and belongs on this side.
+   */
+  sync: 66,
   range: 96,  /* -> plugin: "<f_min>:<f_max>" -- the zoom */
   /*
    * "I AM LISTENING", and it has to exist because the plugin's push on open

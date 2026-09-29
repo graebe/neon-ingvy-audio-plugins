@@ -85,6 +85,10 @@ void Spectrogram::OnReset()
    */
   const int fftSize = spectro_pick_fft_size(sr);
   const int hop = spectro_pick_hop(sr, fftSize);
+  /* The editor spreads a catch-up batch across the positions it covers, and a
+   * column's length in beats is this over the sample rate. Neither number is
+   * anything the editor could derive on its own. */
+  mHop = hop;
 
   spectro_configure(mSpectro, sr, fftSize, hop,
                     SPECTRO_BANDS, SPECTRO_F_MIN, SPECTRO_F_MAX,
@@ -141,6 +145,55 @@ void Spectrogram::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     }
   }
 
+  /*
+   * THE HOST'S CLOCK, AND THE TWO WAYS A HOST LIES ABOUT IT.
+   *
+   * Both guards are the Trance Gate's, learned next door and worth spelling out
+   * again because the failure is silent in each case:
+   *
+   *   - GetTempo() can be 0 in a host that has not said. Dividing by it, or
+   *     advancing at it, parks the picture forever.
+   *   - GetPPQPos() is -1.0 until a host fills it in, and a host can report a
+   *     RUNNING transport while leaving it there -- CLAP without
+   *     CLAP_TRANSPORT_HAS_BEATS_TIMELINE does exactly that. Trusting
+   *     `running` alone would then place every column at bar -1.
+   *
+   * mLastBar is deliberately NOT used: VST3 copies it without checking its own
+   * validity flag and AU leaves it unset unless the host offers a downbeat, so
+   * bars are computed from the position instead.
+   */
+  const double hostBpm = GetTempo();
+  if (hostBpm > 1.0 && hostBpm < 1000.0)
+    mLastBpm = hostBpm;
+
+  const double ppq = GetPPQPos();
+  const bool running = GetTransportIsRunning() && ppq >= 0.0;
+
+  /*
+   * Running: take the host's position, because ALIGNMENT is what this view is
+   * for and the host's number is the only authority on it. Stopped: keep
+   * advancing at the last tempo, so the picture goes on filling instead of
+   * freezing -- which is what makes it useful while auditioning a loop with the
+   * transport parked.
+   */
+  mPos = running ? ppq
+                 : spectro::wire::advance_beats(mPos, nFrames, mLastBpm, GetSampleRate());
+
+  const double sr = GetSampleRate();
+  mPubPpq.store(mPos, std::memory_order_relaxed);
+  mPubBpm.store(mLastBpm, std::memory_order_relaxed);
+  mPubRunning.store(running, std::memory_order_relaxed);
+  mPubPpqPerCol.store(
+      (mHop > 0 && sr > 0.0) ? (double(mHop) / sr) * (mLastBpm / 60.0) : 0.0,
+      std::memory_order_relaxed);
+  {
+    int num = 4, denom = 4;
+    GetTimeSig(num, denom);
+    if (num < 1) num = 4;
+    if (denom < 1) denom = 4;
+    mPubSig.store((num << 8) | denom, std::memory_order_relaxed);
+  }
+
   /* Bit for bit: a wire with a window in it. A mono input feeding a stereo
    * output is duplicated rather than left silent on the right. */
   for (int c = 0; c < nOut; c++)
@@ -169,6 +222,20 @@ void Spectrogram::OnIdle()
 {
   if (!mSpectro)
     return;
+
+  /*
+   * THE CLOCK GOES FIRST AND IT GOES EVERY TICK.
+   *
+   * Not folded in with the columns below, and not skipped when there are none:
+   * the editor's bar view moves a playhead across the picture whether or not a
+   * column finished in the last 20 ms, and the tick where the analyzer has
+   * nothing ready is exactly the tick where the playhead is crossing a bar line
+   * with nothing else to announce it.
+   *
+   * It is also what the editor needs to place the columns that DO arrive, so it
+   * has to be in hand before them rather than after.
+   */
+  SendSync();
 
   const int bands = spectro_bands(mSpectro);
   if (bands <= 0)
@@ -203,6 +270,26 @@ void Spectrogram::SendAxis()
 
   assert(spectro::wire::framed_size(int(axis.size())) < kMaxJSString);
   SendArbitraryMsgFromDelegate(kMsgAxis, int(axis.size()), axis.c_str());
+}
+
+/*
+ * The transport, as the editor reads it. Everything here was measured on the
+ * audio thread; this only formats it.
+ */
+void Spectrogram::SendSync()
+{
+  const int sig = mPubSig.load(std::memory_order_relaxed);
+
+  const std::string s = spectro::wire::encode_sync(
+      mPubPpq.load(std::memory_order_relaxed),
+      mPubBpm.load(std::memory_order_relaxed),
+      (sig >> 8) & 0xFF,
+      sig & 0xFF,
+      mPubRunning.load(std::memory_order_relaxed),
+      mPubPpqPerCol.load(std::memory_order_relaxed));
+
+  assert(spectro::wire::framed_size(int(s.size())) < kMaxJSString);
+  SendArbitraryMsgFromDelegate(kMsgSync, int(s.size()), s.c_str());
 }
 
 void Spectrogram::OnUIOpen()

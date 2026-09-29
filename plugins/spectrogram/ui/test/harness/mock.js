@@ -21,7 +21,19 @@
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
 const BANDS = 256;
-const MSG_COLS = 64, MSG_AXIS = 65, MSG_RANGE = 96, MSG_READY = 102;
+const MSG_COLS = 64, MSG_AXIS = 65, MSG_SYNC = 66, MSG_RANGE = 96, MSG_READY = 102;
+
+/*
+ * A FAKE TRANSPORT, so the bar view can be reviewed without a host.
+ *
+ * 120 BPM in 4/4, running, with the position derived from the same clock the
+ * columns are -- which is the point: if the two disagreed, the sweep would
+ * scatter and the harness would be testing its own bookkeeping instead of the
+ * editor's. `?bpm=N` moves it, `?stopped` parks the transport to exercise the
+ * free-wheeling branch.
+ */
+const BPM = Number(/bpm=([\d.]+)/.exec(location.search)?.[1]) || 120;
+const RUNNING = !location.search.includes('stopped');
 
 /* The range the fake analyzer is currently spread over -- moved by the editor's
  * dropdown, exactly as the plugin's kMsgRange moves the real one. */
@@ -128,8 +140,19 @@ setInterval(() => {
   due -= count;
   let hex = '';
   for (let c = 0; c < count; c++) hex += column(t + c * 0.021);
+  /* The clock FIRST and every tick, exactly as OnIdle sends it -- the editor
+   * places the columns with the position it already has in hand. */
+  sendSync(t);
   globalThis.SAMFD?.(MSG_COLS, 0, b64(`${count}:${BANDS}:${hex}`));
 }, 16);
+
+/* One column is 1/47 s, which at this tempo is this many beats. */
+const ppqPerCol = (1 / 47) * (BPM / 60);
+const sendSync = (t) => {
+  const ppq = t * (BPM / 60);
+  globalThis.SAMFD?.(MSG_SYNC, 0,
+    b64(`${ppq.toFixed(6)}:${BPM.toFixed(4)}:4:4:${RUNNING ? 1 : 0}:${ppqPerCol.toFixed(8)}`));
+};
 
 /* ?freeze holds the picture after two seconds, so a screenshot catches a full
  * view rather than a quarter-filled one. */
@@ -148,15 +171,64 @@ if (location.search.includes('freeze')) {
  * behind it has moved on. Unpausing then jumps to the current view, which is the
  * behaviour being checked.
  */
-if (location.search.includes('pause')) {
+/*
+ * MATCHED AS A FLAG, NOT AS A SUBSTRING. This was `includes('pause')`, and
+ * "resume" does not contain "pause" -- so ?resume, the one invocation the
+ * comment below documents, only ever pressed the button at eight seconds and
+ * left the picture paused forever. The review it exists for was unreachable.
+ */
+const flag = (name) => new RegExp(`[?&]${name}(?:[=&]|$)`).test(location.search);
+
+if (flag('pause') || flag('resume')) {
   setTimeout(() => document.querySelector('.btn')?.click(), 2000);
 }
 /* ?resume pauses at two seconds and lets go at eight, which is the claim worth
  * looking at: the picture that comes back must contain those six seconds --
  * scrolled past, present in the history -- not resume from a seam. */
-if (location.search.includes('resume')) {
+if (flag('resume')) {
   setTimeout(() => document.querySelector('.btn')?.click(), 8000);
 }
+/*
+ * ?hover=X,Y parks the pointer over the picture at those CANVAS coordinates, so
+ * the crosshair and the three readouts can be reviewed in a screenshot. A real
+ * pointer cannot be moved from a script; the component listens for pointermove
+ * and that is what this sends, at the right client coordinates for the canvas's
+ * own box -- which is what makes the page zoom part of the test rather than
+ * something the harness works around.
+ */
+const hover = /hover=(-?[\d.]+),(-?[\d.]+)/.exec(location.search);
+if (hover) {
+  setTimeout(() => {
+    const el = document.querySelector('.spectro');
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const w = Number(hover[1]), h = Number(hover[2]);
+    el.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      clientX: r.left + (w / 606) * r.width,
+      clientY: r.top + (h / 256) * r.height,
+    }));
+  }, 3000);
+}
+
+/*
+ * ?bars=N throws the bar switch and picks the window, so the sweep, the
+ * playhead and the bar grid can be screenshotted. N is the VALUE (1/2/4/8/16),
+ * not the dropdown index -- a review flag should say what it means.
+ */
+const wantedBars = /bars=(\d+)/.exec(location.search);
+if (wantedBars) {
+  setTimeout(() => {
+    const i = [1, 2, 4, 8, 16].indexOf(Number(wantedBars[1]));
+    const sel = document.querySelectorAll('.select select')[1];
+    if (sel && i >= 0) {
+      sel.value = String(i);
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    document.querySelector('[role="switch"]')?.click();
+  }, 1200);
+}
+
 const wanted = /range=(\d)/.exec(location.search);
 if (wanted) {
   setTimeout(() => {
