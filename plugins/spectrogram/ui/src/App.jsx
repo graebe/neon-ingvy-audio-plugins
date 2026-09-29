@@ -83,22 +83,27 @@ export default function App() {
   const [barCount, setBarCount] = createSignal(2);   /* index into BARS */
   const [sync, setSync] = createSignal(null);
   /*
-   * LISTEN-IN. `sources` is what the plugin found; `chosen` is which of those
-   * buses it is reading; `shown` is which single channel is on screen.
+   * LISTEN-IN, AND TWO SEPARATE QUESTIONS ABOUT IT.
    *
-   * ONE PICTURE AT A TIME, and that is a design decision rather than a
-   * shortcut. The ramp is the system's one hue and brightness is level -- two
-   * spectrograms overlaid in two hues would make brightness ambiguous, and four
-   * would be mud whatever the palette. So the checkboxes say which buses are
-   * CAPTURED and fed to the clash test, and clicking a name says which one is
-   * drawn. Comparing is a click, which is how an A/B is done anyway.
+   * `view` is what the picture is OF: one or more channels, ADDED together --
+   * the plugin sums them in power and sends one stream, so this file never
+   * routes by channel. That is not tidiness. Routing by channel is what made a
+   * batch for an unselected source silently dropped, and a saved session come
+   * back drawing the wrong track with nothing to say so.
+   *
+   * `cmpA` / `cmpB` are what the ORANGE is measuring, and they have nothing to
+   * do with what is on screen: comparing two things you are not looking at is a
+   * legitimate thing to ask for, and tying the two together was the confusion
+   * being undone here.
+   *
+   * Channel 0 is always this track. `sources` is the plugin's probe of all
+   * sixteen slots -- what EXISTS, never what is open.
    */
   const [sources, setSources] = createSignal([]);
-  const [chosen, setChosen] = createSignal([]);
-  const [shown, setShown] = createSignal(0);
+  const [view, setView] = createSignal([0]);
+  const [cmpA, setCmpA] = createSignal(0);
+  const [cmpB, setCmpB] = createSignal(1);
   const [clashOn, setClashOn] = createSignal(false);
-  /* Which source the orange is measuring against: 0 is "all of them". */
-  const [clashAgainst, setClashAgainst] = createSignal(0);
   let lastSeen = 0;
   /* The clash mask waiting for the column batch it belongs to. */
   let pendingClash = null;
@@ -149,12 +154,10 @@ export default function App() {
            * put a third of a second of audio on one pixel.
            */
           /*
-           * ONE MESSAGE IS ONE SOURCE, so a batch for a channel nobody is
-           * looking at is dropped here rather than drawn over the one they are.
-           * The clash for it still counts -- it arrives on its own tag below.
+           * NO CHANNEL GATE. There is exactly one picture stream now -- the
+           * plugin has already added the viewed channels together -- so there
+           * is nothing here to route, and nothing to drop.
            */
-          if (decoded.ch !== shown()) return;
-
           const t = sync();
           if (t) {
             const n = BARS[barCount()] ?? 4;
@@ -183,15 +186,13 @@ export default function App() {
         setSources(decodeSources(text));
       } else if (tag === MSG.clashCols) {
         /*
-         * The clash mask, already measured by the engine against the channel on
-         * screen. It rides the NEXT column batch rather than being drawn on its
-         * own, so the orange and the picture under it can never be a frame
-         * apart -- see the pairing in the batch effect below.
+         * The mask, measured by the engine between the two channels this editor
+         * NAMED -- not against whatever is on screen. It rides the next column
+         * batch rather than being drawn on its own, so the orange and the
+         * picture under it can never be a frame apart.
          */
         const m = decodeColumns(text);
-        if (!m) return;
-        if (clashAgainst() !== 0 && m.ch !== clashAgainst()) return;
-        pendingClash = m;
+        if (m) pendingClash = m;
       }
     });
 
@@ -226,35 +227,91 @@ export default function App() {
   const togglePause = () => setPaused((p) => !p);
 
   /*
-   * THE PICKER. Choosing buses tells the plugin what to open; it answers with
-   * the list, so a slot nobody is sending on stops showing as selected rather
-   * than sitting there looking chosen.
+   * THE CHANNELS THIS WINDOW CAN TALK ABOUT: this track, then every LIVE bus,
+   * in slot order. Channel indices are positions in this list, and the plugin
+   * opens the buses in the same order, so index 1 here is index 1 there.
+   *
+   * Built from what EXISTS rather than from a separate "captured" list. That
+   * list was the third setting nobody asked for, and keeping it in step with
+   * the other two is what went wrong: it was written on every pick and read
+   * back from nothing, so a reopened session listed one channel while the
+   * plugin was sending three.
    */
-  const chooseSources = (ids) => {
-    const next = ids.slice(0, MAX_LISTEN);
-    setChosen(next);
-    /* If the picture was showing a bus that has just been dropped, fall back to
-     * the own channel rather than drawing nothing. */
-    if (shown() > next.length) setShown(0);
+  const busList = () => sources().filter((s) => s.live);
+
+  /*
+   * "input", NOT "this track". The name has to fit a 112px dropdown beside
+   * another one, and "this track" does not -- it was being cut to "this tr…",
+   * which is a worse answer than a shorter word. In a plugin the signal coming
+   * into it is the input; every other entry is a bus by name, so there is
+   * nothing for it to be confused with.
+   */
+  const channelNames = () => ['input', ...busList().map(sourceName)];
+
+  /* The sample rate every source has to agree on; a bus at another rate picks a
+   * different window and so a different group delay, and the two pictures would
+   * sit quietly offset. */
+  /*
+   * `||`, NOT `??`. A build older than the rate field, or a message that has
+   * not arrived, decodes to 0 -- and `??` treats 0 as a perfectly good answer,
+   * which would mark every bus as a rate mismatch and quietly refuse the lot.
+   */
+  const rate = () => sync()?.rate || busList()[0]?.rate || 0;
+
+  /*
+   * The names while they fit, a count when they do not. "this track, Bass" says
+   * more than "2 in" and costs nothing until it is too long to read.
+   */
+  const viewSummary = () => {
+    const names = view().map((ch) => channelNames()[ch]).filter(Boolean);
+    if (!names.length) return 'nothing';
+    const joined = names.join(', ');
+    return joined.length <= 17 ? joined : `${names[0]} +${names.length - 1}`;
+  };
+
+  /* Which buses the plugin must open: everything the view shows, plus both ends
+   * of the comparison. DERIVED -- there is nothing to keep in step. */
+  const neededSlots = () => {
+    const buses = busList();
+    const want = new Set();
+    for (const ch of view()) if (ch > 0) want.add(ch);
+    if (clashOn()) { want.add(cmpA()); want.add(cmpB()); }
+    want.delete(0);
+    return [...want]
+      .sort((x, y) => x - y)
+      .slice(0, MAX_LISTEN)
+      .map((ch) => buses[ch - 1]?.slot)
+      .filter((slot) => slot !== undefined);
+  };
+
+  /* One place, because all three settings change the same derived list. */
+  const push = () => {
+    sendMessage(MSG.select, neededSlots().join(','));
+    sendMessage(MSG.view, view().join(','));
+    sendMessage(MSG.compare, `${cmpA()}:${cmpB()}:${clashOn() ? 1 : 0}`);
+  };
+
+  const chooseView = (chans) => {
+    /* Never nothing: a spectrogram showing no channel at all is a broken
+     * plugin rather than a view, and there would be no way to say so. */
+    const next = chans.length ? chans.slice().sort((a, b) => a - b) : [0];
+    setView(next);
+    /* The ring holds thirteen seconds of the PREVIOUS mix, and splicing two
+     * different sums with no seam is exactly the confusion being fixed. */
     setGeneration((g) => g + 1);
-    sendMessage(MSG.select, next.join(','));
+    push();
+  };
+
+  const chooseCmp = (which, ch) => {
+    which === 'a' ? setCmpA(ch) : setCmpB(ch);
+    push();
   };
 
   const toggleClash = () => {
-    const on = !clashOn();
-    setClashOn(on);
-    if (on) sendMessage(MSG.clash, `${CLASH_FLOOR_DB}:${CLASH_BALANCE_DB}`);
+    setClashOn(!clashOn());
+    sendMessage(MSG.clash, `${CLASH_FLOOR_DB}:${CLASH_BALANCE_DB}`);
+    push();
   };
-
-  /* Channel 0 is the own track; a chosen bus follows in the order it was
-   * picked, which is the order the plugin opened them in. */
-  const channelNames = () => [
-    'this track',
-    ...chosen().map((slot) => {
-      const src = sources().find((x) => x.slot === slot);
-      return src ? sourceName(src) : `Bus ${slot}`;
-    }),
-  ];
 
   /*
    * The zoom. The plugin re-bands the analysis and sends the new scale back
@@ -378,47 +435,54 @@ export default function App() {
         * the split is the honest one anyway: the title row says HOW the picture
         * is drawn -- range, bars, paused -- and this one says WHAT it is of.
         */}
-      <div class="source-row">
-          {/* Which buses to read. Several, so it is a CheckList rather than a
-              Select -- see that component's header for why a native <select
-              multiple> is not an option inside a plugin WebView. */}
+      {/*
+        * TWO GROUPS, ONE STRIP, AND A RULE BETWEEN THEM.
+        *
+        * "What is the picture of" and "what is the orange measuring" are
+        * different questions, and folding them into one row of controls is what
+        * made them feel like one tangled setting. They are now captioned
+        * groups, divided -- which costs no height, so the window's vertical
+        * arithmetic in app.css is untouched.
+        */}
+      <div class="control-strip">
+        <div class="control-group">
+          <span class="group-label t-label">view</span>
+          {/*
+            * Several channels, ADDED. A CheckList rather than a Select because
+            * a native <select multiple> stops being an OS popup, which is the
+            * one thing that behaves inside a plugin WebView -- see the
+            * component's header.
+            */}
           <CheckList
-            summary={chosen().length ? `${chosen().length} in` : 'listen'}
-            width={84}
+            summary={viewSummary()}
+            width={150}
             emptyText="no Listen-In found"
-            selected={chosen()}
-            onChange={chooseSources}
-            options={sources().map((src) => ({
-              id: src.slot,
-              name: sourceName(src),
-              hint: src.live ? '' : 'idle',
+            selected={view()}
+            onChange={chooseView}
+            options={channelNames().map((name, i) => ({
+              id: i,
+              name,
+              /* A bus at another rate cannot be compared with this one, so it
+               * is shown and refused rather than hidden -- hiding it would read
+               * as the Listen-In not being there at all. */
+              hint: i > 0 && busList()[i - 1] && busList()[i - 1].rate !== rate()
+                ? `${Math.round(busList()[i - 1].rate / 1000)}k` : '',
+              disabled: i > 0 && busList()[i - 1] && busList()[i - 1].rate !== rate(),
             }))}
           />
-          {/* Which one is on screen. One picture at a time keeps brightness
-              meaning level; switching is a click. */}
-          <Select
-            options={channelNames()}
-            value={shown()}
-            onChange={setShown}
-            width={132}
-          />
-          <Button on={clashOn()} onClick={toggleClash}>Clash</Button>
-          {/*
-            * WHICH clash, and only once there is one to choose. "All" unions
-            * every source against this track, which is the mixing question --
-            * "what is fighting mine" -- and picking one isolates it when the
-            * union covers too much to read.
-            */}
-          <Show when={clashOn() && chosen().length > 1}>
-            <Select
-              label="vs"
-              labelWidth={20}
-              width={100}
-              options={['all', ...channelNames().slice(1)]}
-              value={clashAgainst()}
-              onChange={setClashAgainst}
-            />
-          </Show>
+        </div>
+
+        <i class="control-divider" />
+
+        <div class="control-group">
+          <span class="group-label t-label">compare</span>
+          <Select options={channelNames()} value={cmpA()}
+                  onChange={(i) => chooseCmp('a', i)} width={112} />
+          <span class="vs t-hint">vs</span>
+          <Select options={channelNames()} value={cmpB()}
+                  onChange={(i) => chooseCmp('b', i)} width={112} />
+          <Toggle label="clash" value={clashOn()} onChange={toggleClash} />
+        </div>
       </div>
 
       <div class="display">

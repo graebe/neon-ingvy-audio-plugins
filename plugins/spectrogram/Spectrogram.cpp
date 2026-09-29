@@ -48,9 +48,13 @@ Spectrogram::Spectrogram(const InstanceInfo& info)
    * The analyzer's band count cannot change without a configure, and configure
    * only ever restates it. */
   const int bands = SPECTRO_BANDS;
-  mCols.assign(size_t(bands) * kMaxColsPerTick, 0);
-  mOwnCols.assign(size_t(bands) * kMaxColsPerTick, 0);
-  mClash.assign(size_t(bands) * kMaxColsPerTick, 0);
+  const size_t span = size_t(bands) * kMaxColsPerTick;
+  mChanCols.assign(size_t(srecv_max_sources()), std::vector<unsigned char>(span, 0));
+  mChanCount.assign(size_t(srecv_max_sources()), 0);
+  mSum.assign(span, 0);
+  mClash.assign(span, 0);
+  /* The picture opens on this track alone. */
+  mView.assign(1, 0);
   /* Two hex characters a byte, plus "<cols>:<bands>:". */
   mHex.reserve(size_t(bands) * kMaxColsPerTick * 2 + 32);
 }
@@ -289,48 +293,69 @@ void Spectrogram::OnIdle()
   const int channels = srecv_channels(mRecv);
 
   /*
-   * ONE MESSAGE PER CHANNEL, not one frame holding all of them. The budget is a
-   * PRODUCT -- channels x columns x bands -- and three channels at the full
-   * catch-up budget overflows the transport's cap by 32 bytes. Per channel,
-   * each keeps its own budget and the static_assert in the header stays the
-   * thing that proves it.
+   * DRAIN EVERY CHANNEL FIRST, THEN DECIDE WHAT TO SAY ABOUT THEM.
+   *
+   * A drained column is gone -- `srecv_take_columns` is destructive -- and both
+   * the view (a sum) and the comparison (a pair) need several channels alive at
+   * the same instant. Taking them one at a time and sending as we went is what
+   * forced the clash to always be "this bus against channel 0" whatever the
+   * editor was actually asking for.
    */
-  int ownCols = 0;
-  for (int ch = 0; ch < channels; ch++)
+  int common = -1;
+  for (int ch = 0; ch < channels && ch < int(mChanCols.size()); ch++)
   {
-    unsigned char* into = (ch == SRECV_OWN) ? mOwnCols.data() : mCols.data();
-    const int cols = srecv_take_columns(mRecv, ch, into, kMaxColsPerTick);
-    if (cols <= 0)
-      continue;
-    if (ch == SRECV_OWN)
-      ownCols = cols;
-
-    mHex = spectro::wire::encode_columns(into, cols, bands, ch);
-
-    /* The guard, at the one call that can approach the cap. The static_assert
-     * in Spectrogram.h is what actually holds the budget -- this one is gone
-     * under -DNDEBUG, which is how the plugin ships. */
-    assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
-    SendArbitraryMsgFromDelegate(kMsgCols, int(mHex.size()), mHex.c_str());
-
-    /*
-     * THE CLASH IS THIS CHANNEL AGAINST THE OWN ONE, and it is computed from
-     * the columns just drained rather than from a second drain -- a drained
-     * column is gone, so asking twice would compare one source's present
-     * against another's future.
-     *
-     * It rides on the channel's own tag: the editor unions them, so "what is
-     * fighting my track" is answered by every source at once without a message
-     * per pair.
-     */
-    if (ch != SRECV_OWN && ownCols == cols)
-    {
-      srecv_clash(mRecv, mOwnCols.data(), into, mClash.data(), cols);
-      mHex = spectro::wire::encode_columns(mClash.data(), cols, bands, ch);
-      assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
-      SendArbitraryMsgFromDelegate(kMsgClashCols, int(mHex.size()), mHex.c_str());
-    }
+    const int cols = srecv_take_columns(mRecv, ch, mChanCols[size_t(ch)].data(),
+                                        kMaxColsPerTick);
+    mChanCount[size_t(ch)] = cols;
+    /* They are fed from one pump, so they agree -- but a channel refused for a
+     * sample-rate mismatch returns 0 forever, and must not drag the rest to 0. */
+    if (cols > 0)
+      common = (common < 0) ? cols : std::min(common, cols);
   }
+  if (common <= 0)
+    return;
+
+  /*
+   * THE VIEW IS ONE STREAM, and the editor never learns it was several. A
+   * channel that produced nothing this tick is simply left out of the sum
+   * rather than contributing silence, which would pull the picture down.
+   */
+  const unsigned char* srcs[8];
+  int nSrc = 0;
+  for (int ch : mView)
+  {
+    if (ch < 0 || ch >= channels || ch >= int(mChanCols.size()))
+      continue;
+    if (mChanCount[size_t(ch)] < common)
+      continue;
+    if (nSrc < int(sizeof srcs / sizeof srcs[0]))
+      srcs[nSrc++] = mChanCols[size_t(ch)].data();
+  }
+  if (nSrc == 0)
+    return;
+
+  srecv_sum(mRecv, srcs, nSrc, mSum.data(), common);
+  mHex = spectro::wire::encode_columns(mSum.data(), common, bands, 0);
+  assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
+  SendArbitraryMsgFromDelegate(kMsgCols, int(mHex.size()), mHex.c_str());
+
+  /*
+   * AND THE COMPARISON IS THE OTHER STREAM, between the two channels the editor
+   * named -- not between whatever happens to be on screen. That separation is
+   * the point of the pair existing.
+   */
+  if (!mClashOn || mCmpA == mCmpB)
+    return;
+  if (mCmpA < 0 || mCmpA >= channels || mCmpB < 0 || mCmpB >= channels)
+    return;
+  if (mChanCount[size_t(mCmpA)] < common || mChanCount[size_t(mCmpB)] < common)
+    return;
+
+  srecv_clash(mRecv, mChanCols[size_t(mCmpA)].data(), mChanCols[size_t(mCmpB)].data(),
+              mClash.data(), common);
+  mHex = spectro::wire::encode_columns(mClash.data(), common, bands, 0);
+  assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
+  SendArbitraryMsgFromDelegate(kMsgClashCols, int(mHex.size()), mHex.c_str());
 }
 
 /*
@@ -393,7 +418,8 @@ void Spectrogram::SendSync()
       (sig >> 8) & 0xFF,
       sig & 0xFF,
       mPubRunning.load(std::memory_order_relaxed),
-      mPubPpqPerCol.load(std::memory_order_relaxed));
+      mPubPpqPerCol.load(std::memory_order_relaxed),
+      int(GetSampleRate()));
 
   assert(spectro::wire::framed_size(int(s.size())) < kMaxJSString);
   SendArbitraryMsgFromDelegate(kMsgSync, int(s.size()), s.c_str());
@@ -427,7 +453,26 @@ bool Spectrogram::SerializeState(IByteChunk& chunk) const
 
   char clash[64];
   snprintf(clash, sizeof clash, "%.2f:%.2f", mClashFloorDb, mClashBalanceDb);
-  return chunk.PutStr(clash) > 0;
+  if (chunk.PutStr(clash) <= 0)
+    return false;
+
+  /* The view and the comparison: what the window was showing, and what it was
+   * measuring. Two separate settings, saved separately. */
+  std::string view;
+  for (size_t i = 0; i < mView.size(); i++)
+  {
+    if (i)
+      view += ',';
+    char num[16];
+    snprintf(num, sizeof num, "%d", mView[i]);
+    view += num;
+  }
+  if (chunk.PutStr(view.c_str()) <= 0)
+    return false;
+
+  char cmp[48];
+  snprintf(cmp, sizeof cmp, "%d:%d:%d", mCmpA, mCmpB, mClashOn ? 1 : 0);
+  return chunk.PutStr(cmp) > 0;
 }
 
 int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
@@ -458,6 +503,32 @@ int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
     {
       mClashFloorDb = floorDb;
       mClashBalanceDb = balanceDb;
+    }
+    pos = after;
+  }
+
+  WDL_String view;
+  after = chunk.GetStr(view, pos);
+  if (after > pos)
+  {
+    mView.clear();
+    spectro::wire::parse_channels(view.Get(), mView);
+    if (mView.empty())
+      mView.assign(1, 0);
+    pos = after;
+  }
+
+  WDL_String cmp;
+  after = chunk.GetStr(cmp, pos);
+  if (after > pos)
+  {
+    int a = 0, b = 0;
+    bool on = false;
+    if (spectro::wire::parse_compare(cmp.Get(), a, b, on))
+    {
+      mCmpA = a;
+      mCmpB = b;
+      mClashOn = on;
     }
     pos = after;
   }
@@ -535,10 +606,39 @@ bool Spectrogram::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* p
       mSources.clear();
       spectro::wire::parse_slots(arg, mSources);
       ApplySources();
-      /* Answer with what is actually open, not with what was asked for: a slot
-       * nobody is sending on does not open, and the editor must not go on
-       * showing it as selected. */
-      SendSources();
+      return true;
+    }
+
+    case kMsgView:
+    {
+      /*
+       * "<ch>,<ch>,..." -- which channels are added into the picture. Empty is
+       * refused rather than obeyed: a spectrogram showing nothing at all is a
+       * broken plugin, not a view, and the editor has no way to say so.
+       */
+      const std::string arg(static_cast<const char*>(pData),
+                            size_t(dataSize > 0 ? dataSize : 0));
+      mView.clear();
+      spectro::wire::parse_channels(arg, mView);
+      if (mView.empty())
+        mView.assign(1, 0);
+      return true;
+    }
+
+    case kMsgCompare:
+    {
+      /* "<a>:<b>:<on>" -- which two channels, and whether the mask is wanted.
+       * Independent of the view: comparing two things you are not looking at is
+       * a legitimate thing to ask for. */
+      const std::string arg(static_cast<const char*>(pData),
+                            size_t(dataSize > 0 ? dataSize : 0));
+      int a = 0, b = 0;
+      bool on = false;
+      if (!spectro::wire::parse_compare(arg, a, b, on))
+        return true;
+      mCmpA = a;
+      mCmpB = b;
+      mClashOn = on;
       return true;
     }
 

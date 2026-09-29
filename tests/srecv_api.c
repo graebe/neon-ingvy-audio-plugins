@@ -121,6 +121,37 @@ int main(void)
     ok(lit == 0, "a source against silence is not a clash");
 
     /*
+     * SUMMING, WHICH CANNOT BE DONE IN BYTE SPACE. A byte is linear in dB, so
+     * adding two bytes adds two decibels -- which multiplies amplitudes and
+     * would put two equal sources QUIETER than either. Two of the same thing
+     * must read +3 dB.
+     */
+    {
+        const int half = 128;   /* whatever level; the claim is the +3, not the level */
+        memset(a, (unsigned char) half, (size_t) bands);
+        const unsigned char* srcs[2] = { a, a };
+        srecv_sum(r, srcs, 2, out, 1);
+        /* -96..0 over 255 steps is 0.376 dB a byte, so +3 dB is ~8 bytes. */
+        const int lift = (int) out[0] - half;
+        ok(lift >= 6 && lift <= 10, "two equal sources did not sum to about +3 dB");
+
+        /* One source is itself, and none is silence. */
+        const unsigned char* one[1] = { a };
+        srecv_sum(r, one, 1, out, 1);
+        ok(abs((int) out[0] - half) <= 1, "one source was changed by summing it");
+        srecv_sum(r, NULL, 0, out, 1);
+        ok(out[0] == 0, "summing nothing was not silence");
+
+        /* And silence adds nothing to something. */
+        memset(b, 0, (size_t) bands);
+        const unsigned char* mix[2] = { a, b };
+        srecv_sum(r, mix, 2, out, 1);
+        ok(abs((int) out[0] - half) <= 1, "silence moved a source that was there");
+    }
+
+    ok(srecv_starved(r, SRECV_OWN) == 0, "the own channel cannot starve -- it sets the pace");
+
+    /*
      * The source list sizes itself. With nothing sending it is legitimately
      * empty, and asking for the size of an empty list must be 0 rather than a
      * crash -- which is exactly what a receiver opened on a quiet machine does.

@@ -39,8 +39,8 @@ mod fft;
 mod window;
 
 pub use bands::{
-    amplitude_to_byte, centres_for, clash_cell, clash_column, db_span_to_byte, db_to_byte,
-    Band, Bands,
+    amplitude_to_byte, byte_to_db, centres_for, clash_cell, clash_column, db_span_to_byte,
+    db_to_byte, sum_column, Band, Bands,
 };
 
 use core::cell::UnsafeCell;

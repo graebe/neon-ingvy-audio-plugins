@@ -17,6 +17,7 @@ import {
   decodeColumns, decodeAxis, marksFor, RANGES,
   timeMarksFor, secondsAgo, dbForLevel, DB_FLOOR, DB_CEIL,
   decodeSync, beatsPerBar, slotForPpq, posForSlot, barMarksFor,
+  decodeSources, sourceName,
 } from '../src/lib/columns.js';
 
 /*
@@ -340,9 +341,15 @@ test('a column age is its own age in seconds', () => {
  * host-shaped edge cases that break a naive version of it.
  */
 test('a sync message is taken whole or not at all', () => {
-  const s = decodeSync('8.5:120:4:4:1:0.017');
-  assert.deepEqual(s, { ppq: 8.5, bpm: 120, num: 4, denom: 4, running: true, ppqPerCol: 0.017 });
-  assert.equal(decodeSync('8.5:120:4:4:0:0.017').running, false);
+  const s = decodeSync('8.5:120:4:4:1:0.017:48000');
+  assert.deepEqual(s, {
+    ppq: 8.5, bpm: 120, num: 4, denom: 4, running: true, ppqPerCol: 0.017, rate: 48000,
+  });
+
+  /* The rate is the newest field, so a message from a build without it is still
+   * a usable clock -- everything but the rate check works without one. */
+  assert.equal(decodeSync('8.5:120:4:4:1:0.017').rate, 0);
+  assert.equal(decodeSync('8.5:120:4:4:0:0.017:48000').running, false);
 
   /* A field short, or a field unreadable, and the whole message goes: placing
    * columns from half a clock is worse than not moving the picture. */
@@ -455,4 +462,40 @@ test('the bar grid drops its beats when a bar gets too narrow', () => {
 
   assert.deepEqual(barMarksFor(0, 4, 4, COLS), []);
   assert.deepEqual(barMarksFor(4, 4, 4, 0), []);
+});
+
+
+/* ------------------------------------------------------------- the sources --
+ *
+ * What the plugin found on the sixteen buses. It is what EXISTS, never what is
+ * open -- the editor derives what to open from what it is viewing and
+ * comparing, and confusing the two is what made a reopened session list one
+ * channel while three were arriving.
+ */
+test('a source list is one line each, and a bad line is skipped not fatal', () => {
+  const got = decodeSources('1:1:48000:Bass\n4:0:44100:Pad');
+  assert.deepEqual(got, [
+    { slot: 1, live: true, rate: 48000, label: 'Bass' },
+    { slot: 4, live: false, rate: 44100, label: 'Pad' },
+  ]);
+
+  /* A label is whatever somebody typed into a Listen-In, so it is the field
+   * most likely to arrive strangely -- and a picker missing one entry is a far
+   * better outcome than a picker that is empty because of it. */
+  assert.deepEqual(decodeSources('1:1:48000:Bass\nrubbish\n4:1:48000:Pad').length, 2);
+  assert.deepEqual(decodeSources('x:1:48000:Bass'), []);
+  assert.deepEqual(decodeSources(''), []);
+  assert.deepEqual(decodeSources(null), []);
+});
+
+test('a label keeps a colon, because only the first three fields are numbers', () => {
+  const got = decodeSources('2:1:48000:Bass: DI');
+  assert.equal(got[0].label, 'Bass: DI');
+});
+
+test('a bus with no name typed into it still has a name', () => {
+  /* It is still a bus somebody inserted; a blank row in the picker would be
+   * unclickable in the sense that matters -- you could not tell what it was. */
+  assert.equal(sourceName({ slot: 3, label: '' }), 'Bus 3');
+  assert.equal(sourceName({ slot: 3, label: 'Kick' }), 'Kick');
 });

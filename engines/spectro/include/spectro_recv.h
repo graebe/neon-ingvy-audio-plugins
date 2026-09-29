@@ -158,6 +158,37 @@ void srecv_clash(const srecv_t* r, const unsigned char* a, const unsigned char* 
                  unsigned char* out, int n_cols);
 
 /*
+ * Add several channels' columns into one, in POWER. `srcs` is `n_src` pointers,
+ * each to n_cols * spectro_bands() bytes; `out` likewise.
+ *
+ * IT CANNOT BE DONE IN BYTE SPACE, and that is the whole reason this exists. A
+ * byte is linear in dB, so adding two bytes adds two DECIBELS -- which
+ * multiplies two amplitudes, and would put two -20 dB sources at -40, quieter
+ * than either. This inverts to power, adds, and re-encodes: +3 dB for two equal
+ * uncorrelated sources, which is what a bass and a pad actually measure. Not +6
+ * -- that is amplitude addition, and it assumes they are phase locked.
+ *
+ * Like srecv_clash it takes columns the caller ALREADY drained: taking them
+ * again would add one source's present to another's future.
+ */
+void srecv_sum(const srecv_t* r, const unsigned char* const* srcs, int n_src,
+               unsigned char* out, int n_cols);
+
+/*
+ * Non-zero when a channel is being zero-filled because its sender has gone
+ * quiet -- a muted Listen-In, or one whose host stopped calling it.
+ *
+ * A bus that publishes nothing used to hold every OTHER source still, because
+ * the pump waited for the slowest; the plugin's own picture stopped dead
+ * because something else went quiet, and the editor went on saying it was live.
+ * Now the own track sets the pace and a silent bus is filled with silence --
+ * which is true, and keeps column k the same moment for every source. This is
+ * how the editor knows to SAY so rather than letting a black stripe read as
+ * "that track is silent".
+ */
+int srecv_starved(const srecv_t* r, int ch);
+
+/*
  * The source list: every slot that exists, as "<slot>:<live>:<rate>:<label>",
  * one per line. Returns the bytes the text needs -- so a caller with too small
  * a buffer can ask again rather than guess. `out` is always NUL-terminated when

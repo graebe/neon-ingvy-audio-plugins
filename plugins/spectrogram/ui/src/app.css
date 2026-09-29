@@ -239,18 +239,52 @@ main {
 }
 
 /*
- * THE SOURCE ROW. The title row says HOW the picture is drawn -- range, bars,
- * paused -- and this says WHAT it is of: which buses are being read, which one
- * is on screen, and whether the clash is marked.
+ * THE CONTROL STRIP: two captioned groups with a rule between them.
  *
- * It exists because eight controls do not fit 656px, which is a layout fact
- * rather than a preference; the split just happens to be the one that reads.
+ * "What is the picture of" and "what is the orange measuring" are different
+ * questions, and one undivided row of controls is what made them read as one
+ * tangled setting. A rule and two captions separate them at a glance and cost
+ * NO height -- the window's arithmetic at the top of this file is unchanged,
+ * which is the whole reason this shape was chosen over a bordered panel.
+ *
+ * Right-aligned, like the title row's actions: "actions stack on the right edge
+ * of the control block".
  */
-.source-row {
+.control-strip {
   height: var(--control-h);
   margin-bottom: var(--s4);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--s4);
+  /* SPACE-BETWEEN, not flex-end. Right-aligning a row this full pushes the
+   * overflow off the LEFT edge, where the first caption is -- the group loses
+   * its name before it loses a control, which is the worst thing to lose. */
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* The caption names the group rather than any one control in it, so it is
+ * ink-dim like the crosshair readout's keys -- a label, not a value. */
+.group-label { color: var(--ink-dim); }
+
+/* Between the two halves of the comparison. Dimmer than either, because it is
+ * punctuation rather than a third thing to read. */
+.vs { color: var(--ink-dim); margin: 0 var(--s1); }
+
+/*
+ * The divider: the hint bar's rule turned on its side, and inset a little at
+ * top and bottom so it reads as a separator between two groups rather than as
+ * a border around either.
+ */
+.control-divider {
+  display: block;
+  width: var(--hair);
+  align-self: stretch;
+  margin: var(--s1) var(--s2);
+  background: var(--line-100);
 }

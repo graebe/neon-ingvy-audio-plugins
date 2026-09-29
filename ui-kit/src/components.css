@@ -105,7 +105,22 @@
 
 .select.open { border-color: var(--uv);}
 
-.select-value { color: var(--ink);}
+/*
+ * ONE LINE, AND CUT IF IT HAS TO BE.
+ *
+ * A Select is control-h tall and the row around it is laid out to that, so a
+ * value long enough to wrap does not overflow -- it makes the control twice as
+ * tall and shoves the window's whole vertical arithmetic down a row. Cutting
+ * with an ellipsis is the honest failure: the name is still recognisable from
+ * its head, and the layout is still the one that was designed.
+ */
+.select-value {
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 
 .chevron { position: absolute; right: 10px; top: 50%; margin-top: -3px;}
 

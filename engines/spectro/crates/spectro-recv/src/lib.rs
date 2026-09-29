@@ -40,7 +40,7 @@ mod ring;
 pub use ring::{MonoRing, CAPACITY as RING_FRAMES};
 
 use bus_core::{Reader, MAX_SLOT};
-use spectro_core::{clash_column, db_span_to_byte, db_to_byte, Analyzer, Config};
+use spectro_core::{clash_column, db_span_to_byte, db_to_byte, sum_column, Analyzer, Config};
 
 /// Sources a receiver will draw at once, the own channel included.
 ///
@@ -82,6 +82,17 @@ struct Bus {
      */
     stage: Vec<f32>,
     have: usize,
+    /*
+     * HOW LONG THIS BUS HAS HAD NOTHING TO GIVE.
+     *
+     * A Listen-In on a muted track, or one whose host has stopped calling it,
+     * publishes nothing -- and the lockstep below would then hold EVERY source
+     * still, including the plugin's own track. One idle bus froze the whole
+     * picture, which is the worst kind of failure here because the editor goes
+     * on saying it is live.
+     */
+    short: usize,
+    starved: bool,
 }
 
 pub struct Receiver {
@@ -101,6 +112,18 @@ pub struct Receiver {
 /// The most frames one `pump` will move per source. Sized so a 50 Hz idle timer
 /// keeps up with 96 kHz with room to spare, and so the scratch below is fixed.
 const PUMP_FRAMES: usize = 4096;
+
+/// How many pumps in a row a bus may come up short before it is treated as
+/// silent rather than waited for. At the editor's ~50 Hz idle timer this is
+/// about a fifth of a second: long enough that ordinary jitter -- a bus a block
+/// behind on one tick -- waits and catches up, short enough that a muted
+/// Listen-In does not stall the picture for anything a person would notice.
+///
+/// COUNTED IN PUMPS, NOT FRAMES, and that is the fix rather than a detail: a
+/// bus with nothing at all contributes no frames to count, so a frame-based
+/// clock never advances and the grace period never ends. The first version of
+/// this froze exactly as hard as the bug it replaced.
+const GRACE_PUMPS: usize = 10;
 
 impl Receiver {
     pub fn new(cfg: Config) -> Self {
@@ -206,6 +229,8 @@ impl Receiver {
                  * thread, and never resized after. */
                 stage: vec![0.0; PUMP_FRAMES * 2],
                 have: 0,
+                short: 0,
+                starved: false,
             });
         }
 
@@ -267,9 +292,46 @@ impl Receiver {
             b.have += got;
         }
 
+        /*
+         * THE OWN CHANNEL SETS THE PACE, and a bus that cannot keep up is given
+         * SILENCE rather than being waited for.
+         *
+         * Taking the minimum across everything was the obvious reading of "feed
+         * them equally" and it was wrong in the one case that matters: a
+         * Listen-In on a muted track publishes nothing, the minimum is nought,
+         * and NO source advances -- the plugin's own picture stops dead because
+         * something else went quiet. A frozen picture that still says "live" is
+         * the worst way for this to fail.
+         *
+         * So the own track decides how much everybody gets. A bus that has it
+         * keeps step exactly as before; one that does not is zero-filled for
+         * the shortfall, which is both true (nothing was published, so nothing
+         * was heard) and keeps column k the same moment for every source, which
+         * is what the comparison rests on.
+         *
+         * The grace period exists so ordinary jitter -- a bus a block behind on
+         * one tick -- waits rather than punching a hole in its own picture.
+         * Only a source that has been empty for a fifth of a second is called
+         * silent, and `starved` says so out loud.
+         */
         let mut n = self.own_ring.available().min(PUMP_FRAMES);
-        for b in &self.buses {
-            n = n.min(b.have);
+        for b in &mut self.buses {
+            if b.have >= n {
+                /* Keeping up. */
+                b.short = 0;
+                b.starved = false;
+                continue;
+            }
+            if b.short < GRACE_PUMPS {
+                /* Behind, but recently enough that it is probably just jitter:
+                 * wait for it this tick. The counter advances whether or not
+                 * anything is drawn, which is what lets the grace period end. */
+                b.short += 1;
+                n = n.min(b.have);
+            } else {
+                /* Out of grace. It is not coming; do not let it hold the others. */
+                b.starved = true;
+            }
         }
         if n == 0 {
             return 0;
@@ -279,13 +341,30 @@ impl Receiver {
         self.own.push(&self.own_take[..got]);
 
         for b in &mut self.buses {
+            let have = b.have.min(n);
+            if have < n {
+                /* Zero the shortfall in place -- the staging buffer is already
+                 * this long and nothing is allocated. Filled rather than
+                 * skipped, so column k of this source is still the same moment
+                 * as column k of every other. */
+                for slot in b.stage[have..n].iter_mut() {
+                    *slot = 0.0;
+                }
+            }
             b.analyzer.push(&b.stage[..n]);
             /* Keep what nobody was ready for. copy_within moves inside the
              * buffer that is already there; nothing is allocated. */
-            b.stage.copy_within(n..b.have, 0);
-            b.have -= n;
+            b.stage.copy_within(have..b.have, 0);
+            b.have -= have;
         }
         n
+    }
+
+    /// Whether a channel is being zero-filled because its sender has gone quiet.
+    /// The editor says so rather than drawing a black stripe and letting the
+    /// reader think the track is silent when the bus is simply absent.
+    pub fn starved(&self, ch: usize) -> bool {
+        ch != OWN && self.buses.get(ch - 1).is_some_and(|b| b.starved)
     }
 
     /// Frames a bus lost before this receiver could reach them, and whether its
@@ -331,6 +410,43 @@ impl Receiver {
             }
         }
         out
+    }
+
+    /// Add several channels' columns into one, in POWER -- see
+    /// `spectro_core::sum_column` for why it cannot be done in byte space.
+    ///
+    /// Takes columns the caller already drained, for the reason `clash_into`
+    /// does: `take_columns` is destructive, so draining again to add would be
+    /// adding one source's present to another's future.
+    pub fn sum_into(&self, srcs: &[&[u8]], out: &mut [u8]) {
+        let bands = self.cfg.bands;
+        if bands == 0 || srcs.is_empty() {
+            for slot in out.iter_mut() {
+                *slot = 0;
+            }
+            return;
+        }
+        let cols = srcs
+            .iter()
+            .map(|s| s.len() / bands)
+            .min()
+            .unwrap_or(0)
+            .min(out.len() / bands);
+
+        /* One column's worth of borrows, reused across the batch. Sized by
+         * MAX_SOURCES so nothing is allocated per column. */
+        let mut view: [&[u8]; MAX_SOURCES] = [&[]; MAX_SOURCES];
+        for c in 0..cols {
+            let r = c * bands..c * bands + bands;
+            let n = srcs.len().min(MAX_SOURCES);
+            for (i, src) in srcs.iter().take(n).enumerate() {
+                view[i] = &src[r.clone()];
+            }
+            sum_column(&view[..n], &mut out[r], self.cfg.db_floor, self.cfg.db_ceil);
+        }
+        for slot in out.iter_mut().skip(cols * bands) {
+            *slot = 0;
+        }
     }
 
     pub fn clash_settings(&self) -> (u8, u8) {

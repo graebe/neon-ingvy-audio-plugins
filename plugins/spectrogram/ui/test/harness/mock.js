@@ -22,7 +22,8 @@ const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
 const BANDS = 256;
 const MSG_COLS = 64, MSG_AXIS = 65, MSG_SYNC = 66, MSG_SOURCES = 67,
-      MSG_CLASHCOLS = 68, MSG_RANGE = 96, MSG_SELECT = 97, MSG_READY = 102;
+      MSG_CLASHCOLS = 68, MSG_RANGE = 96, MSG_SELECT = 97, MSG_VIEW = 99,
+      MSG_COMPARE = 100, MSG_READY = 102;
 
 /*
  * A FAKE TRANSPORT, so the bar view can be reviewed without a host.
@@ -108,6 +109,14 @@ window.IPlugSendMsg = (m) => {
     chosen = atob(m.data ?? '').split(',').filter(Boolean).map(Number);
     sendSources();
   }
+  if (m?.msg === 'SAMFUI' && m.msgTag === MSG_VIEW) {
+    viewing = atob(m.data ?? '').split(',').filter((x) => x !== '').map(Number);
+    if (!viewing.length) viewing = [0];
+  }
+  if (m?.msg === 'SAMFUI' && m.msgTag === MSG_COMPARE) {
+    const [a, b, on] = atob(m.data ?? '').split(':').map(Number);
+    cmpA = a; cmpB = b; clashWanted = !!on;
+  }
   /*
    * The range, the way the plugin handles it: re-band, then send the scale BACK
    * rather than letting the editor assume its request was honoured.
@@ -149,20 +158,29 @@ setInterval(() => {
   /* The clock FIRST and every tick, exactly as OnIdle sends it -- the editor
    * places the columns with the position it already has in hand. */
   sendSync(t);
-  globalThis.SAMFD?.(MSG_COLS, 0, b64(`0:${count}:${BANDS}:${hex}`));
 
-  /* Each chosen bus, on its own message -- one message is one source. The
-   * clash for it follows, tagged with the same channel. */
-  chosen.forEach((slot, i) => {
-    const ch = i + 1;
-    let bhex = '', chex = '';
+  /*
+   * ONE SUMMED STREAM, exactly as the plugin sends it: the editor never learns
+   * it was several. Channel 0 is this track's sweep; every bus is the same
+   * drawn source, so viewing two must read ~3 dB hotter than viewing one --
+   * which is the claim a probe can check.
+   */
+  let viewHex = '';
+  for (let c = 0; c < count; c++) {
+    const own = hex.slice(c * BANDS * 2, (c + 1) * BANDS * 2);
+    const parts = viewing.map((ch) => (ch === 0 ? own : busColumn()));
+    viewHex += parts.length > 1 ? sumHex(parts) : parts[0] ?? own;
+  }
+  globalThis.SAMFD?.(MSG_COLS, 0, b64(`0:${count}:${BANDS}:${viewHex}`));
+
+  /* And the mask between the two channels the editor NAMED. */
+  if (clashWanted && cmpA !== cmpB) {
+    let chex = '';
     for (let c = 0; c < count; c++) {
-      bhex += busColumn();
       chex += clashColumn(hex.slice(c * BANDS * 2, (c + 1) * BANDS * 2));
     }
-    globalThis.SAMFD?.(MSG_COLS, 0, b64(`${ch}:${count}:${BANDS}:${bhex}`));
-    globalThis.SAMFD?.(MSG_CLASHCOLS, 0, b64(`${ch}:${count}:${BANDS}:${chex}`));
-  });
+    globalThis.SAMFD?.(MSG_CLASHCOLS, 0, b64(`0:${count}:${BANDS}:${chex}`));
+  }
 }, 16);
 
 /*
@@ -176,6 +194,30 @@ const SOURCES = [
 ];
 const CLASH_LO = 80, CLASH_HI = 120;
 let chosen = [];
+/* What the editor asked to SEE and what it asked to COMPARE -- the mock has to
+ * honour the same split the plugin does, or the harness would be testing its
+ * own bookkeeping instead of the editor's. */
+let viewing = [0];
+let cmpA = 0, cmpB = 1, clashWanted = false;
+
+/* dB <-> byte, and POWER summation, the same arithmetic spectro-core does. A
+ * byte is linear in dB, so the sum has to leave byte space: two equal sources
+ * are +3 dB, not double the byte. */
+const FLOOR = -96, CEIL = 0;
+const byteToDb = (b) => (b <= 0 ? -Infinity : FLOOR + (b / 255) * (CEIL - FLOOR));
+const dbToByte = (db) => Math.max(0, Math.min(255, Math.round(((db - FLOOR) / (CEIL - FLOOR)) * 255)));
+const sumHex = (hexes) => {
+  let out = '';
+  for (let b = 0; b < BANDS; b++) {
+    let power = 0;
+    for (const h of hexes) {
+      const db = byteToDb(parseInt(h.slice(b * 2, b * 2 + 2), 16));
+      if (Number.isFinite(db)) power += 10 ** (db / 10);
+    }
+    out += H(power > 0 ? dbToByte(10 * Math.log10(power)) : 0);
+  }
+  return out;
+};
 
 const sendSources = () => globalThis.SAMFD?.(MSG_SOURCES, 0,
   b64(SOURCES.map((s) => `${s.slot}:${s.live}:${s.rate}:${s.label}`).join('\n')));
@@ -208,7 +250,7 @@ const ppqPerCol = (1 / 47) * (BPM / 60);
 const sendSync = (t) => {
   const ppq = t * (BPM / 60);
   globalThis.SAMFD?.(MSG_SYNC, 0,
-    b64(`${ppq.toFixed(6)}:${BPM.toFixed(4)}:4:4:${RUNNING ? 1 : 0}:${ppqPerCol.toFixed(8)}`));
+    b64(`${ppq.toFixed(6)}:${BPM.toFixed(4)}:4:4:${RUNNING ? 1 : 0}:${ppqPerCol.toFixed(8)}:48000`));
 };
 
 /* ?freeze holds the picture after two seconds, so a screenshot catches a full
@@ -274,26 +316,32 @@ if (hover) {
  * not the dropdown index -- a review flag should say what it means.
  */
 /*
- * ?listen selects both fake buses and turns the clash on, so the overlay can be
- * screenshotted and asserted. ?show=N picks which channel is drawn.
+ * ?listen ticks every channel in the VIEW picker (so the picture is a sum) and
+ * turns the clash on. ?view=0,1 picks an explicit set instead.
+ *
+ * ASYNC, WITH A TICK BETWEEN OPENING AND CLICKING. The panel's rows are
+ * RENDERED when it opens, not hidden by CSS, so querying them in the same turn
+ * as the click finds nothing and the whole flag silently does nothing.
  */
-if (location.search.includes('listen')) {
-  setTimeout(() => {
+if (location.search.includes('listen') || location.search.includes('view=')) {
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  setTimeout(async () => {
+    const want = /view=([\d,]+)/.exec(location.search);
     const face = document.querySelector('.checklist-face');
     face?.click();
-    /* Every row, and the panel has to be OPEN for them to exist -- the rows are
-     * rendered by a Show, not hidden by CSS. */
-    document.querySelectorAll('.checklist-row [role="switch"]').forEach((sw) => sw.click());
-    face?.click();
-    const shown = /show=(\d+)/.exec(location.search);
-    if (shown) {
-      /* The channel picker is the select in the SOURCE row, not the nth select
-       * in the window -- that ordering moved once already when the row split. */
-      const sel = document.querySelector('.source-row .select select');
-      if (sel) { sel.value = shown[1]; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+    await pause(50);
+
+    const rows = [...document.querySelectorAll('.checklist-row [role="switch"]')];
+    for (let i = 0; i < rows.length; i++) {
+      const on = rows[i].getAttribute('aria-checked') === 'true';
+      const wanted = want ? want[1].split(',').map(Number).includes(i) : true;
+      if (on !== wanted) { rows[i].click(); await pause(20); }
     }
+    face?.click();
+    await pause(50);
+
     if (!location.search.includes('noclash')) {
-      [...document.querySelectorAll('.btn')].find((b) => b.textContent === 'Clash')?.click();
+      document.querySelector('.control-group:last-child [role="switch"]')?.click();
     }
   }, 1400);
 }

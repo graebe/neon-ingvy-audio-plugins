@@ -230,3 +230,93 @@ fn probing_reports_a_live_slot_with_its_name() {
     assert_eq!(me.sample_rate, SR as u32);
     assert_eq!(me.label, "Bass");
 }
+
+#[test]
+fn a_silent_bus_does_not_stop_the_picture() {
+    /*
+     * THE FAILURE THIS EXISTS FOR: a Listen-In on a muted track publishes
+     * nothing, and taking the minimum across every source meant NO source
+     * advanced -- the plugin's own picture stopped dead because something else
+     * went quiet, while the editor went on saying it was live.
+     */
+    const SLOT: u32 = 8;
+    let _w = Writer::claim(SLOT, SR as u32).expect("slot 8 was taken");
+    /* Claimed, so it opens -- and then never pushed to. */
+
+    let mut r = Receiver::new(cfg());
+    r.set_sources(&[SLOT]);
+    assert_eq!(r.channels(), 2, "the bus did not open");
+
+    let mut out = vec![0u8; r.bands() * 64];
+    let mut ph = 0.0;
+    let mut own_cols = 0;
+    for _ in 0..80 {
+        r.push_own(&mono(2048, 440.0, 0.5, &mut ph));
+        r.pump();
+        own_cols += r.take_columns(OWN, &mut out, 64);
+    }
+
+    assert!(own_cols > 0, "a silent bus froze the plugin's own picture");
+    assert!(r.starved(1), "a bus that published nothing was not reported starved");
+    assert!(!r.starved(OWN), "the own channel cannot starve -- it is the pace");
+}
+
+#[test]
+fn a_bus_that_goes_quiet_mid_stream_is_zero_filled_rather_than_waited_for() {
+    const SLOT: u32 = 7;
+    let w = Writer::claim(SLOT, SR as u32).expect("slot 7 was taken");
+
+    let mut r = Receiver::new(cfg());
+    r.set_sources(&[SLOT]);
+
+    let mut a = vec![0u8; r.bands() * 64];
+    let mut b = vec![0u8; r.bands() * 64];
+    let (mut po, mut pb) = (0.0, 0.0);
+
+    /* Both fed, then the bus stops while the own track carries on. */
+    for i in 0..80 {
+        if i < 30 {
+            w.push(&tone(2048, 220.0, 0.5, &mut pb));
+        }
+        r.push_own(&mono(2048, 220.0, 0.5, &mut po));
+        r.pump();
+        r.take_columns(OWN, &mut a, 64);
+        r.take_columns(1, &mut b, 64);
+    }
+    assert!(r.starved(1), "the bus went quiet and nobody noticed");
+
+    /* And the two are STILL in step -- the shortfall was filled, not skipped,
+     * so column k of each is the same moment and a comparison still means
+     * something. */
+    let (mut ca, mut cb) = (0usize, 0usize);
+    for _ in 0..20 {
+        r.push_own(&mono(2048, 220.0, 0.5, &mut po));
+        r.pump();
+        ca += r.take_columns(OWN, &mut a, 64);
+        cb += r.take_columns(1, &mut b, 64);
+    }
+    assert!(ca > 0 && ca == cb, "a starved bus fell out of step: {ca} vs {cb}");
+}
+
+#[test]
+fn several_channels_add_in_power() {
+    let r = Receiver::new(cfg());
+    let bands = r.bands();
+
+    /* -20 dB in every band, twice: two uncorrelated sources of equal level
+     * measure +3 dB together. Not +6 (that assumes they are phase locked) and
+     * not double the byte (that would be adding decibels). */
+    let one = vec![spectro_core::db_to_byte(-20.0, -96.0, 0.0); bands];
+    let mut out = vec![0u8; bands];
+    r.sum_into(&[&one, &one], &mut out);
+
+    let got = spectro_core::byte_to_db(out[0], -96.0, 0.0);
+    assert!((got - -17.0).abs() < 0.6, "two -20 dB sources read {got}, wanted -17");
+
+    /* Silence adds nothing, and nothing at all is silence. */
+    let quiet = vec![0u8; bands];
+    r.sum_into(&[&one, &quiet], &mut out);
+    assert_eq!(out[0], one[0], "silence moved a source that was already there");
+    r.sum_into(&[], &mut out);
+    assert!(out.iter().all(|&v| v == 0), "no sources is not silence");
+}

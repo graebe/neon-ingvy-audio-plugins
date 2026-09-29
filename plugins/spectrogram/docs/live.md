@@ -54,44 +54,48 @@ than a wide one. It is smoothed, not invented back.
 
 ## Listening in on other tracks
 
-Put a **Listen-In** on the track you want to compare against and give it a name.
-The Spectrogram's **listen** picker then lists every bus that exists, by that
-name, and reading one costs nothing on the audio thread of either track.
+Put a **Listen-In** on the track you want and give it a name. The Spectrogram
+then lists every bus that exists, by that name, in two separate controls — and
+they are separate on purpose, because they answer different questions.
 
-Up to three buses at once, plus the track the Spectrogram itself sits on. The
-picture shows **one channel at a time** — the dropdown beside the picker says
-which — because brightness is level here, and two spectrograms overlaid in two
-colours would make brightness mean two things at once. Switching is a click, and
-nothing is lost by switching: every selected source is analysed the whole time.
+### View — what the picture is of
 
-All the sources share one analysis. They are fed the same audio, the same window
-and the same hop from a single pump, so column *k* of each is the same moment —
-which is what makes the clash below a real comparison rather than a coincidence
-between two clocks.
+Tick one or more channels. `input` is the track this plugin sits on; the rest
+are Listen-In buses.
 
-A bus running at a **different sample rate is refused rather than drawn**: a
-different rate picks a different window and so a different group delay, and the
-two pictures would sit quietly offset from each other.
+**Ticking several ADDS them.** Not overlays them in different colours — added,
+in power, the way two sources actually sum: two equal ones read **+3 dB**, not
++6 (that would be amplitude addition, which assumes they are phase locked) and
+not twice as bright (that would be adding decibels, which multiplies
+amplitudes). So the picture stays one picture, brightness still means level, and
+what you are looking at is what the two tracks do *together*.
 
-## Show clash
+Changing the view clears the history, because thirteen seconds of the previous
+mix spliced onto the new one with no seam is not a picture of anything.
 
-**Clash** marks, in orange over the picture, where the shown channel and the
-other selected sources are fighting for the same place in the spectrum. The
-intensity is how hard, and each region is outlined so a broad shallow clash and
-a narrow fierce one do not read as the same smudge.
+### Compare — what the orange is measuring
 
-A cell is a clash when **both** sources are above −60 dB **and within 12 dB of
-each other**. Both halves matter:
+Two pickers and a switch, independent of the view: comparing two channels you
+are not currently looking at is a legitimate thing to ask for, and tying the two
+together was the confusion this replaced.
 
-- `min` of the two answers *"is anything actually here from both"*.
-- The 12 dB window answers *"and is neither of them simply winning"*. Past that, the louder source masks the quieter one — that is a source being buried, which is not the same problem and would bury the real clashes in orange.
+**Clash** marks where the two chosen channels are fighting for the same place in
+the spectrum — intensity is how hard, and each region is outlined so a broad
+shallow clash and a narrow fierce one do not read as the same smudge. A cell
+counts when **both** are above −60 dB **and within 12 dB of each other**; past
+that the louder one is simply masking the quieter, which is a different problem.
 
-It is deliberately **not** the product of the two spectra. A product in amplitude
-is a sum in dB, so 0 dB against −60 dB scores exactly what −30 dB against −30 dB
-scores, and only the second is a clash.
+### What it will not do
 
-With more than one bus selected, **vs** chooses whether the orange is every
-source at once or one of them on its own.
+A bus at a **different sample rate** is listed but cannot be picked, with its
+rate as the hint: a different rate picks a different window and so a different
+group delay, and two pictures offset by an amount nobody can see is worse than
+one that says it will not draw.
+
+A Listen-In on a **muted track** publishes nothing. The picture keeps moving —
+that source is simply drawn as the silence it is sending. It used to stop
+everything, including this plugin's own track, which is the one failure worth
+naming here because the editor went on claiming it was live.
 
 ## The crosshair reads the picture
 
