@@ -2,5 +2,9 @@
   "__": "The version of each PRODUCT in this repository, and the only place it is decided. Every other spelling -- config.h, module.json, each engine's crates -- is checked against this by `ctest -R versions`. See tests/versions.test.mjs for what is checked and what is deliberately not.",
 
   "trance-gate": "1.1.0",
-  "spectrogram": "0.1.1"
+  "spectrogram": "0.1.1",
+  "listen-in": "0.1.0",
+
+  "__audio-bus": "The house transport, not a plugin -- it has crates and no config.h, no plists and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
+  "audio-bus": "0.1.0"
 }

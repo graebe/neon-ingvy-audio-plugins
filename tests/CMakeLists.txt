@@ -214,6 +214,61 @@ if (TG_NODE)
         ENVIRONMENT "SPECTRO_WIRE_TABLE=${SPECTRO_UI_TEST}/wire_table.txt")
 endif()
 
+# ------------------------------------------------------------------ Listen-In
+#
+# The transport's own tests are cargo's: the ring, the claim protocol, the
+# label seqlock, and a counting global allocator proving the audio path
+# allocates nothing.
+#
+# ABUS_ENV and ABUS_CARGO come from cmake/AudioBusEngine.cmake, which found the
+# toolchain the hard way (rustup's shims are often not on PATH).
+add_test(NAME abus_core
+         COMMAND ${ABUS_ENV} ${ABUS_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p bus-core -p bus-capi)
+
+# The same claims through the C ABI the plugins link, because a hand-written
+# header can drift from its implementation without either side failing to
+# compile.
+add_executable(abus_roundtrip abus_roundtrip.c)
+target_link_libraries(abus_roundtrip PRIVATE audio_bus_engine)
+add_test(NAME abus_roundtrip COMMAND abus_roundtrip)
+
+# THE ONE THAT JUSTIFIES SHARED MEMORY.
+#
+# Every other test here would pass over a process-local ring. This one forks,
+# writes in the child and reads in the parent -- which is the thing a static
+# table inside the library could never do, and the reason the transport is
+# shm_open rather than a `static BUSES[16]`. Without it, the day a host
+# sandboxes a plugin the failure is a receiver that is simply always empty.
+if (NOT WIN32)
+    add_executable(abus_ipc abus_ipc.c)
+    target_link_libraries(abus_ipc PRIVATE audio_bus_engine)
+    add_test(NAME abus_ipc COMMAND abus_ipc)
+    # It waits on a forked child through usleep loops; the default 1500s is
+    # generous but a hang here should be a failure, not a stuck suite.
+    set_tests_properties(abus_ipc PROPERTIES TIMEOUT 60)
+endif()
+
+# NOT A TEST, AND DELIBERATELY BUILT ANYWAY: `abus_tap <slot>` is how a person
+# confirms that Listen-In is routing real audio out of a real host, before any
+# plugin exists that reads a bus. It is also the worked example of the
+# receiving ABI. See plugins/listen-in/docs/live.md.
+add_executable(abus_tap abus_tap.c)
+target_link_libraries(abus_tap PRIVATE audio_bus_engine)
+if (NOT WIN32)
+    target_link_libraries(abus_tap PRIVATE m)
+endif()
+
+if (TG_NODE)
+    set(LISTENIN_UI_TEST ${CMAKE_SOURCE_DIR}/plugins/listen-in/ui/test)
+    # The other half of the wire oracle; listenin_wire is the first. See
+    # tests/cpp/CMakeLists.txt for the pair.
+    add_test(NAME listenin_wire_js
+             COMMAND ${TG_NODE} --test ${LISTENIN_UI_TEST}/state.test.mjs)
+    set_tests_properties(listenin_wire_js PROPERTIES
+        ENVIRONMENT "LISTENIN_WIRE_TABLE=${LISTENIN_UI_TEST}/wire_table.txt")
+endif()
+
 # THE COVERAGE FLOOR, registered only where there is a report to check.
 #
 # It reads build/coverage/coverage.json, which scripts/coverage.sh writes --

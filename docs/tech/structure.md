@@ -22,11 +22,20 @@ versions.json                one version per product
 
 ## A crate belongs to exactly one product
 
-The two engines never depend on each other. `engines/trance-gate/crates` holds
-`tg-core` and its two wrappers; `engines/spectro/crates` holds `spectro-core`
-and its one. They are all members of a single Cargo workspace rooted at the
-repository, which is what lets `.cargo/config.toml` apply one set of target
-flags to all of them.
+The *product* engines never depend on each other. `engines/trance-gate/crates`
+holds `tg-core` and its two wrappers; `engines/spectro/crates` holds
+`spectro-core` and its one. They are all members of a single Cargo workspace
+rooted at the repository, which is what lets `.cargo/config.toml` apply one set
+of target flags to all of them.
+
+`engines/audio-bus` is the exception that names the rule, and it is worth being
+explicit about rather than letting it look like drift. It is **not a product
+engine** — it is the house transport, the Rust counterpart of `ui-kit`, and it
+exists precisely so that two products can share one thing: a Listen-In publishes
+audio into a shared-memory bus and a Spectrogram reads it out. Any product may
+depend on it; **it depends on no product in return**, which is the direction that
+actually matters. `spectro-core` knowing about `tg-core` would still be a
+coupling nobody asked for.
 
 ## One version per product
 

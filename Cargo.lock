@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "bus-capi"
+version = "0.1.0"
+dependencies = [
+ "bus-core",
+]
+
+[[package]]
+name = "bus-core"
+version = "0.1.0"
+
+[[package]]
 name = "spectro-capi"
 version = "0.1.1"
 dependencies = [
