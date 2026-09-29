@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "download_url": "https://github.com/graebe/schwung-trance-gate/releases/download/v1.0.0/trance-gate-module.tar.gz",
+  "channels": {
+    "stable": {
+      "version": "1.0.0",
+      "download_url": "https://github.com/graebe/schwung-trance-gate/releases/download/v1.0.0/trance-gate-module.tar.gz"
+    }
+  }
+}
