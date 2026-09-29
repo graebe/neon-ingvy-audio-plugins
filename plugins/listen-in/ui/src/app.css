@@ -35,6 +35,12 @@ main {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  /* THE GROUND'S CANVAS NEEDS BOTH OF THESE -- see .ground in the kit's
+   * components.css. `relative` is what its `inset: 0` resolves against;
+   * `isolate` is what keeps its negative z-index inside this window instead of
+   * letting it paint behind the window's background. */
+  position: relative;
+  isolation: isolate;
 }
 
 .row {

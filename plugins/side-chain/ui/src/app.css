@@ -18,6 +18,10 @@
 
 main {
   position: relative;
+  /* The other half of what the ground's canvas needs, and it matters MOST here:
+   * this window paints an opaque background below, so a negative z-index that
+   * escaped this element would disappear behind it. See the kit's .ground. */
+  isolation: isolate;
   width: 760px;
   height: 604px;
   margin: 0 auto;

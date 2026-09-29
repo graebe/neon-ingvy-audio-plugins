@@ -7,6 +7,10 @@
  */
 main {
   position: relative;
+  /* With `relative` above, this is the other half of what the ground's canvas
+   * needs: a stacking context, so its negative z-index stays inside the window.
+   * See .ground in the kit's components.css. */
+  isolation: isolate;
   /*
    * 824 = space-8 * 2 + 760, AND EVERY ELEMENT IN THE WINDOW IS 760 WIDE OR
    * SITS INSIDE ONE THAT IS.

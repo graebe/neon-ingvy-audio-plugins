@@ -36,6 +36,11 @@ Spectrogram::Spectrogram(const InstanceInfo& info)
    * EnableScroll(false) because a plugin window is not a document: a rubber-band
    * bounce on a drag inside the picture reads as a bug.
    */
+  /* The ground's detector. Created here rather than in OnReset because OnReset
+   * may run on a real-time thread in some hosts and this allocates; the rate it
+   * is given now is corrected there. */
+  mGround = gnd_new(GetSampleRate());
+
   mEditorInitFunc = [&]() {
     LoadIndexHtml(__FILE__, GetBundleID());
     EnableScroll(false);
@@ -63,6 +68,10 @@ Spectrogram::~Spectrogram()
 {
   srecv_free(mRecv);
   mRecv = nullptr;
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  gnd_free(mGround);
+  mGround = nullptr;
+#endif
 }
 
 #if IPLUG_DSP
@@ -124,12 +133,35 @@ void Spectrogram::OnReset()
    * the old scale until it is reopened. */
   SendAxis();
 #endif
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* A rate change re-derives every coefficient; the reset stops a hump left over
+   * from before the transport stopped firing an onset the moment it starts
+   * again. Neither touches the onset COUNT -- see gnd_fires. */
+  gnd_set_sample_rate(mGround, GetSampleRate());
+  gnd_reset(mGround);
+#endif
 }
 
 void Spectrogram::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
   const int nIn = NInChansConnected();
   const int nOut = NOutChansConnected();
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * THE GROUND'S DETECTOR SEES THE INPUT, and it is fed here -- at the top,
+   * before anything writes to `outputs` -- because a host may hand over the same
+   * buffer for in and out. No scratch buffer and no conversion: gnd_push takes
+   * doubles, which is what `sample` already is.
+   */
+  {
+    const int gndIn = NInChansConnected();
+    const double* gndL = gndIn > 0 ? inputs[0] : nullptr;
+    const double* gndR = (gndIn > 1 && inputs[1] != nullptr) ? inputs[1] : gndL;
+    gnd_push(mGround, gndL, gndR, nFrames);
+  }
+#endif
 
   if (nIn < 1 || nOut < 1)
     return;
@@ -247,6 +279,23 @@ void Spectrogram::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
  * picture can draw: 128 bands is 256 characters a column, against roughly 28 for
  * the same column at "%.3f" per value.
  */
+/*
+ * One message per kick, and only when there has been one. The idiom, and why the
+ * count is compared with != rather than >, is in ground_detect.h.
+ */
+void Spectrogram::SendGround()
+{
+  if (!mGround) return;
+  const uint32_t fires = gnd_fires(mGround);
+  if (fires == mGroundFires) return;
+  mGroundFires = fires;
+
+  char b[16];
+  const int gn = snprintf(b, sizeof b, "%.3f", gnd_strength(mGround));
+  if (gn > 0)
+    SendArbitraryMsgFromDelegate(kMsgGround, gn, b);
+}
+
 void Spectrogram::OnIdle()
 {
   if (!mRecv)
@@ -356,6 +405,11 @@ void Spectrogram::OnIdle()
   mHex = spectro::wire::encode_columns(mClash.data(), common, bands, 0);
   assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
   SendArbitraryMsgFromDelegate(kMsgClashCols, int(mHex.size()), mHex.c_str());
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* One ring per kick the detector found since the last tick. */
+  SendGround();
+#endif
 }
 
 /*

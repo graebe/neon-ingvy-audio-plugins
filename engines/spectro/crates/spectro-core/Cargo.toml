@@ -1,6 +1,6 @@
 [package]
 name = "spectro-core"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 edition = "2021"
 license = "MIT"
 description = "A short-time Fourier analyzer that hands finished spectrogram columns to a UI"

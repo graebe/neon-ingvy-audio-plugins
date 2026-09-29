@@ -20,7 +20,7 @@ import {
   decodeSources, sourceName,
 } from './lib/columns.js';
 
-import { Hint, Button, Select, Toggle, CheckList, Spectrogram } from '@ultraviolet/ui';
+import { Hint, Button, Select, Toggle, CheckList, Spectrogram, Ground, createMotion } from '@ultraviolet/ui';
 
 /* Mirrored by PLUG_WIDTH in config.h and by `main` in app.css. */
 const DESIGN_W = 720;
@@ -58,6 +58,12 @@ const CLASH_BALANCE_DB = 12;
 
 export default function App() {
   const [batch, setBatch] = createSignal(null);
+  /* The Motion switch, remembered between openings. Not a host parameter -- see
+   * the kit's lib/motion.js for why a view is not something to automate. */
+  const [motion, setMotion] = createMotion('spectrogram');
+  /* The ground's handle, set by <Ground ref>. A kick arrives as a message and is
+   * handed straight to it. */
+  let ground = null;
   const [axis, setAxis] = createSignal(null);
   const [scale, setScale] = createSignal(1);
   const [paused, setPaused] = createSignal(false);
@@ -130,6 +136,14 @@ export default function App() {
     window.addEventListener('resize', fit);
 
     const off = onMessage((tag, text) => {
+
+      if (tag === MSG.ground) {
+        /* One message, one ring. A malformed payload is dropped rather than
+         * turned into a full-strength kick. */
+        const gs = Number.parseFloat(text);
+        if (Number.isFinite(gs)) ground?.trigger(gs);
+        return;
+      }
       if (tag === MSG.cols) {
         /*
          * NOT GATED ON `paused`. The freeze is a repaint gate in the canvas;
@@ -412,6 +426,11 @@ export default function App() {
 
   return (
     <main>
+      {/* FIRST CHILD OF THE WINDOW, which is the design system's contract for a
+        * Ground. The picture's well is the one box in this window -- it is framed and
+        * opaque, so rings break around it rather than crossing it. */}
+      <Ground enabled={motion()} sources=".well, [data-wave-source]" ref={(h) => { ground = h; }} />
+
       <div class="title-row">
         <span class="t-title">Spectrogram</span>
         <div class="title-actions">
@@ -540,7 +559,7 @@ export default function App() {
         </div>
       </div>
 
-      <Hint clauses={hint()} />
+      <Hint clauses={hint()} motion={motion()} onMotion={setMotion} />
     </main>
   );
 }

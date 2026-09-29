@@ -177,6 +177,11 @@ SideChain::SideChain(const InstanceInfo& info)
    * scheme instead. */
   SetCustomUrlScheme("nisidechain");
   SetEnableDevTools(true);
+  /* The ground's detector. Created here rather than in OnReset because OnReset
+   * may run on a real-time thread in some hosts and this allocates; the rate it
+   * is given now is corrected there. */
+  mGround = gnd_new(GetSampleRate());
+
   mEditorInitFunc = [&]() {
     LoadIndexHtml(__FILE__, GetBundleID());
     EnableScroll(false);
@@ -188,6 +193,10 @@ SideChain::~SideChain()
 {
   if (mCore) sc_core_destroy(mCore);
   mCore = nullptr;
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  gnd_free(mGround);
+  mGround = nullptr;
+#endif
 }
 
 #if IPLUG_DSP
@@ -242,6 +251,14 @@ void SideChain::OnReset()
     /* Zero is never a live generation: mCapGen starts at 1 and only rises. */
     mCap.seen[i].store(0u, std::memory_order_relaxed);
   }
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* A rate change re-derives every coefficient; the reset stops a hump left over
+   * from before the transport stopped firing an onset the moment it starts
+   * again. Neither touches the onset COUNT -- see gnd_fires. */
+  gnd_set_sample_rate(mGround, GetSampleRate());
+  gnd_reset(mGround);
+#endif
 }
 
 /*
@@ -303,6 +320,21 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   if (!mCore || nFrames <= 0 || nOut <= 0) return;
   const int cap = int(std::min(mL.size(), mR.size()));
   if (cap <= 0) return;
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * THE GROUND'S DETECTOR SEES THE INPUT, and it is fed here -- at the top,
+   * before anything writes to `outputs` -- because a host may hand over the same
+   * buffer for in and out. No scratch buffer and no conversion: gnd_push takes
+   * doubles, which is what `sample` already is.
+   */
+  {
+    const int gndIn = NInChansConnected();
+    const double* gndL = gndIn > 0 ? inputs[0] : nullptr;
+    const double* gndR = (gndIn > 1 && inputs[1] != nullptr) ? inputs[1] : gndL;
+    gnd_push(mGround, gndL, gndR, nFrames);
+  }
+#endif
 
   PushParams();
 
@@ -513,6 +545,23 @@ void SideChain::OnUIOpen()
  * interpolates from it on requestAnimationFrame: reading this directly stutters
  * and drifts audibly against the sound.
  */
+/*
+ * One message per kick, and only when there has been one. The idiom, and why the
+ * count is compared with != rather than >, is in ground_detect.h.
+ */
+void SideChain::SendGround()
+{
+  if (!mGround) return;
+  const uint32_t fires = gnd_fires(mGround);
+  if (fires == mGroundFires) return;
+  mGroundFires = fires;
+
+  char b[16];
+  const int gn = snprintf(b, sizeof b, "%.3f", gnd_strength(mGround));
+  if (gn > 0)
+    SendArbitraryMsgFromDelegate(kMsgGround, gn, b);
+}
+
 void SideChain::OnIdle()
 {
   if (!mCore) return;
@@ -585,6 +634,11 @@ void SideChain::OnIdle()
     assert(sc::wire::framed_size(n) < kMaxJSString);
     SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* One ring per kick the detector found since the last tick. */
+  SendGround();
+#endif
 }
 
 bool SideChain::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)

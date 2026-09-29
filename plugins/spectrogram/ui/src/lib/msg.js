@@ -27,6 +27,15 @@ export const MSG = {
   /* <- plugin: the clash mask, in the same shape as a column batch, tagged with
    * the source it was measured against the own channel. */
   clashCols: 68,
+  /*
+   * <- plugin: one kick, as a strength in 0..1.
+   *
+   * SPARSE, unlike the readouts above: it arrives only when the detector fires,
+   * and each message is exactly one ring on the ground. The detection happens in
+   * Rust on the audio thread because a WebView has no access to the host's audio
+   * -- engines/ground/include/ground_detect.h says why at length.
+   */
+  ground: 69,
   range: 96,  /* -> plugin: "<f_min>:<f_max>" -- the zoom */
   /* -> plugin: "<slot>,<slot>,..." -- which buses to open, in order.
    * DERIVED from the view and the comparison rather than being a control of

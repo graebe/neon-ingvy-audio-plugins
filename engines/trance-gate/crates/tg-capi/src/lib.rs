@@ -16,6 +16,18 @@ counts given. Null is checked because the C checked it, and callers rely on
 that; anything else is the caller's bargain, as it was before.
 */
 
+/*
+ * THE GROUND'S C ABI RIDES IN THIS ARCHIVE, and this line is what puts it there.
+ *
+ * `ground-capi` is an rlib holding the gnd_* entry points the editor's animated
+ * background needs. It is not a static library of its own on purpose: two Rust
+ * staticlibs in one binary duplicate the Rust runtime and fail to link, so this
+ * repository keeps one archive per plugin (spectro-capi's Cargo.toml states the
+ * rule). Naming the crate here is what makes rustc link it in, so the symbols
+ * are exported from this archive rather than dropped as unreachable.
+ */
+use ground_capi as _;
+
 use std::ffi::{c_char, c_int, CStr};
 use tg_core::params::Param;
 use tg_core::{Instance, Transport};

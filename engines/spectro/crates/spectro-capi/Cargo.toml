@@ -1,6 +1,6 @@
 [package]
 name = "spectro-capi"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 edition = "2021"
 license = "MIT"
 description = "The C ABI the iPlug2 shell and any Schwung module link"
@@ -14,3 +14,8 @@ spectro-core = { path = "../spectro-core" }
 # The receiver half. It brings bus-core with it, which is why libspectro_capi.a
 # is still the ONE static library the shell links -- see cmake/SpectroEngine.cmake.
 spectro-recv = { path = "../spectro-recv" }
+# The animated ground's detector. NOT a second static library -- see the note in
+# ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
+# ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
+# bus-core through spectro-recv.
+ground-capi = { path = "../../../ground/crates/ground-capi" }

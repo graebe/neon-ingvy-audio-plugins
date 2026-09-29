@@ -62,8 +62,11 @@ iplug_add_plugin(NISideChain
     VST3 CLAP AU
   UI WEBVIEW
   WEB_RESOURCES ${SC_WEB}
+  # ground_engine is a HEADER ONLY -- see cmake/GroundEngine.cmake. The detector
+  # itself rides inside libsc_capi.a.
   LINK
-    sc_engine)
+    sc_engine
+    ground_engine)
 
 # Each format target copies the web resources itself, so each must wait for vite
 # rather than race it.

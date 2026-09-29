@@ -54,8 +54,11 @@ iplug_add_plugin(NISpectrogram
     VST3 CLAP AU
   UI WEBVIEW
   WEB_RESOURCES ${SPECTRO_WEB}
+  # ground_engine is a HEADER ONLY -- see cmake/GroundEngine.cmake. The detector
+  # itself rides inside libspectro_capi.a.
   LINK
-    spectro_engine)
+    spectro_engine
+    ground_engine)
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.

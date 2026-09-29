@@ -1,0 +1,30 @@
+[package]
+name = "ground-capi"
+version = "2026.9.29+1"
+edition = "2021"
+license = "MIT"
+description = "The C ABI every plugin links to detect the kicks its ground animates to"
+
+# AN RLIB, NOT A STATICLIB, AND THAT IS THE WHOLE DESIGN OF THIS CRATE.
+#
+# A Rust staticlib carries its own copy of the Rust runtime, so linking TWO of
+# them into one binary fails on duplicate symbols -- `_rust_eh_personality` and
+# friends. That is not hypothetical: this crate was a staticlib first, and
+# NI Listen-In stopped linking the moment it had both libbus_capi.a and
+# libground_capi.a.
+#
+# So this repository keeps an invariant, and spectro-capi's Cargo.toml states it
+# outright: ONE static library per plugin. spectro_capi is the only one the
+# Spectrogram's shell links, and it reaches bus-core by DEPENDING on
+# spectro-recv rather than by linking a second archive.
+#
+# The ground follows that pattern instead of breaking it. This is an rlib; each
+# product's capi crate depends on it, so the gnd_* symbols end up inside that
+# product's single staticlib. Nothing links two archives and nothing duplicates
+# a runtime.
+[lib]
+name = "ground_capi"
+crate-type = ["rlib"]
+
+[dependencies]
+ground-core = { path = "../ground-core" }

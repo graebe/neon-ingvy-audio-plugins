@@ -36,6 +36,11 @@ const TREES = [
   join(ROOT, 'plugins', 'trance-gate', 'ui', 'src'),
   join(ROOT, 'plugins', 'spectrogram', 'ui', 'src'),
   join(ROOT, 'plugins', 'side-chain', 'ui', 'src'),
+  /* NI Listen-In was outside this list until the ground went in, which is
+   * exactly the gap the guard exists to close: the newest editor is the one most
+   * likely to spell a colour, because it was written after the habit of not
+   * doing so stopped being visible. */
+  join(ROOT, 'plugins', 'listen-in', 'ui', 'src'),
   /* The documentation site draws the same system, and is the consumer most
    * likely to reach for a #fff on a button hover. Its Markdown CONTENT is not
    * here and must not be: a product's README may quote a hex triplet in prose,

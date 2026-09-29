@@ -161,3 +161,24 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NISpectrogram.vst3
 
 The column format on the wire, and the mount-ordering bug that tag `102` exists
 to fix, are in [plugins/spectrogram/ui/README.md](../ui/README.md).
+
+## The background, and the Motion switch
+
+The window's background is not a static image: a kick drum makes it ring. Each
+hit sends one slow wave out from every panel edge and from the window border; the
+waves reflect, cross and fade out over about twenty seconds, and the dots and
+grain swell and thin as they pass. With no bass playing it is completely still.
+
+The **Motion** switch in the hint bar turns it off. That setting is remembered on
+your machine and is not a plugin parameter — it will not be automated, saved into
+a preset, or changed on somebody else who opens your project. If your system is
+set to reduce motion, it is off regardless.
+
+Only 20–80 Hz counts as a kick, so a snare or a hi-hat will not move it however
+loud it is. There is more detail, including why two very close kicks read as one,
+under **The Animated Ground**, on the Tech pages.
+
+<!-- NOT A LINK. This file is rendered in two places -- on the docs site, which
+     is served under a base path, and on GitHub, which is not -- so a path that
+     works in one is broken in the other, and `ctest -R site_links` catches the
+     site half. Naming the page works in both. -->

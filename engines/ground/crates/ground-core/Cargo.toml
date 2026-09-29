@@ -1,0 +1,12 @@
+[package]
+name = "ground-core"
+version = "2026.9.29+1"
+edition = "2021"
+license = "MIT"
+description = "The bass-onset detector behind the Ultraviolet design system's animated ground"
+
+# NO DEPENDENCIES, for the reason the other cores in this workspace state:
+# every byte in the artefact is permissive AND ACCOUNTED FOR. This crate needs
+# two Butterworth sections and four one-poles, which is arithmetic -- a DSP
+# crate would be a third-party licence to audit in exchange for sixty lines.
+[dependencies]

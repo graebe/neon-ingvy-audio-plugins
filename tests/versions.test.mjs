@@ -64,6 +64,18 @@ const PRODUCTS = {
     crates: ['bus-core', 'bus-capi'].map(
       (c) => `engines/audio-bus/crates/${c}/Cargo.toml`),
   },
+  /*
+   * The ground's kick detector. Not a plugin, and unlike audio-bus not even a
+   * static library of its own: ground-capi is an rlib that each product's capi
+   * crate absorbs, because one archive per plugin is an invariant here (see
+   * cmake/GroundEngine.cmake). It ships inside ALL FOUR products, which is the
+   * strongest version of the reason audio-bus is listed -- a crate that
+   * disagreed with itself would disagree in four places at once.
+   */
+  ground: {
+    crates: ['ground-core', 'ground-capi'].map(
+      (c) => `engines/ground/crates/${c}/Cargo.toml`),
+  },
   /* The directory is `modules/side-chain` and the module ID inside it is
    * `ni-side-chain`: charlesvestal/schwung-ducker already owns `ducker` on the
    * device. The path is what this test needs; the ID is module.json's business. */

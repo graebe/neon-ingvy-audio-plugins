@@ -29,8 +29,8 @@
  * The derivations are asserted by `ctest -R versions` rather than left to a
  * human. See plugins/trance-gate/config.h, which explains the scheme at length.
  */
-#define PLUG_VERSION_HEX 0x07EA09E9
-#define PLUG_VERSION_STR "v2026.09.29.1"
+#define PLUG_VERSION_HEX 0x07EA09EA
+#define PLUG_VERSION_STR "v2026.09.29.2"
 
 /*
  * THE FOUR-CHARACTER IDS ARE THE PLUGIN'S IDENTITY -- what a host stores in a

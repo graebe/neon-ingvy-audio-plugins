@@ -18,7 +18,7 @@
  */
 import { createSignal, onMount, onCleanup } from 'solid-js';
 import { onMessage, sendMessage, setParam, beginGesture, endGesture } from '@ultraviolet/ui';
-import { Hint, Select } from '@ultraviolet/ui';
+import { Ground, Hint, Select, createMotion } from '@ultraviolet/ui';
 import { MSG, STATUS } from './lib/msg.js';
 import { decodeState, meterFraction, SLOTS, STATUS_TEXT } from './lib/state.js';
 import Meter from './lib/Meter.jsx';
@@ -37,6 +37,12 @@ const toNorm = (slot) => (SLOTS.length > 1 ? (slot - 1) / (SLOTS.length - 1) : 0
 export default function App() {
   const [state, setState] = createSignal({ slot: 1, status: STATUS.idle, peak: 0 });
   const [label, setLabel] = createSignal('');
+  /* The Motion switch, remembered between openings. Not a host parameter -- see
+   * the kit's lib/motion.js for why a view is not something to automate. */
+  const [motion, setMotion] = createMotion('listen-in');
+  /* The ground's handle, set by <Ground ref>. A kick arrives as a message and is
+   * handed straight to it. */
+  let ground = null;
 
   /*
    * THE PAGE IS SCALED, NOT LAID OUT FLUIDLY -- the Trance Gate's approach for
@@ -60,6 +66,11 @@ export default function App() {
         if (next) setState(next);
       } else if (tag === MSG.label) {
         setLabel(text ?? '');
+      } else if (tag === MSG.ground) {
+        /* One message, one ring. A malformed payload is dropped rather than
+         * turned into a full-strength kick. */
+        const strength = Number.parseFloat(text);
+        if (Number.isFinite(strength)) ground?.trigger(strength);
       }
     });
 
@@ -94,12 +105,19 @@ export default function App() {
   const hints = () => {
     const s = state();
     switch (s.status) {
+      /*
+       * TWO CLAUSES, NOT THREE, SINCE THE MOTION SWITCH ARRIVED. This window is
+       * 360px wide: three clauses, a ~110px signature and the switch do not fit
+       * in the 296 that leaves, and the hint bar's own note says a bar that
+       * truncates is a bar whose hints are too long -- the fix is fewer clauses,
+       * not a smaller font. The dropped ones said the least: that a bus can be
+       * read from any plugin is in the documentation, and "pick a free bus" is
+       * what the status line already says.
+       */
       case STATUS.live:
-        return [['bus', String(s.slot)], ['name', label() || 'unnamed'],
-                ['read it', 'from any plugin']];
+        return [['bus', String(s.slot)], ['name', label() || 'unnamed']];
       case STATUS.taken:
-        return [['bus', `${s.slot} is taken`], ['another', 'Listen-In holds it'],
-                ['fix', 'pick a free bus']];
+        return [['bus', `${s.slot} is taken`], ['another', 'Listen-In holds it']];
       case STATUS.unavailable:
         return [['bus', 'unavailable'], ['why', 'the host may be sandboxed']];
       default:
@@ -109,6 +127,11 @@ export default function App() {
 
   return (
     <main>
+      {/* FIRST CHILD OF THE WINDOW, which is the design system's contract for a
+        * Ground. There are no panels in this window, so the only thing that
+        * emits and reflects is the window border itself. */}
+      <Ground enabled={motion()} ref={(h) => { ground = h; }} />
+
       <div class="row title-row">
         <span class="title t-value">NI Listen-In</span>
         <span
@@ -135,7 +158,7 @@ export default function App() {
         <Meter value={meterFraction(state().peak)} active={live()} />
       </div>
 
-      <Hint clauses={hints()} />
+      <Hint clauses={hints()} motion={motion()} onMotion={setMotion} />
     </main>
   );
 }

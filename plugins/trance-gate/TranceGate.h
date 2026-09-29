@@ -12,6 +12,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "trance_gate_core.h"
+#include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include <atomic>
 #include <mutex>
 #include <string>
@@ -77,6 +78,9 @@ enum EMsgTags
   kMsgParams,         /* -> UI: the `params` readout (15 values + width_ms) */
   kMsgScope,          /* -> UI: the signal capture, base64 floats           */
   kMsgPatch,          /* <-> :  the state blob, for copy and paste          */
+  /* -> UI: one kick, as a strength in 0..1. Sent only when the detector
+   * fires, not every tick -- one message is one ring on the ground. */
+  kMsgGround,
 
   kMsgSetStep = 96,   /* <- UI: "<index>:<0 off|1 on|2 tie>"                */
   kMsgSetDepth,       /* <- UI: "<index>:<0..1>"                            */
@@ -136,6 +140,10 @@ enum EMsgTags
    * step duration and the capture. Everything the plots and the ring draw
    * that is not a host parameter. */
   void OnIdle() override;
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* One message per onset, from OnIdle. */
+  void SendGround();
+#endif
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
 #endif
 
@@ -288,4 +296,21 @@ private:
   mutable std::mutex mPatchMx;
   std::string mPatch;
   std::atomic<bool> mPatchDirty{false};
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * THE ANIMATED GROUND'S KICK DETECTOR. The design system gives every window a
+   * ground that rings when a kick lands, and the editor is a WebView with no
+   * access to the host's audio -- so the detection happens here and one message
+   * per onset crosses over. engines/ground/include/ground_detect.h says why, and
+   * shows the whole idiom.
+   *
+   * mGroundFires is the last count the EDITOR was told about, so it belongs to
+   * the message thread alone and needs no atomic. Inside the editor guard, so a
+   * build with no WebView carries no detector on its audio thread.
+   */
+  gnd_t* mGround = nullptr;
+  uint32_t mGroundFires = 0;
+#endif
+
 };

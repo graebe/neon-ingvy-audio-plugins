@@ -274,6 +274,28 @@ add_executable(abus_roundtrip abus_roundtrip.c)
 target_link_libraries(abus_roundtrip PRIVATE audio_bus_engine)
 add_test(NAME abus_roundtrip COMMAND abus_roundtrip)
 
+# THE GROUND DETECTOR'S OWN TESTS, which are cargo's: the Butterworth band
+# measured against its closed form, a kick firing where a hi-hat does not, and
+# the re-arm that -- not the refractory -- sets how close two kicks may be.
+add_test(NAME gnd_core
+         COMMAND ${GND_ENV} ${GND_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ground-core -p ground-capi)
+
+# ... and the seam, for the reason abus_roundtrip states: this is the only test
+# that compiles against the hand-written header and links the real library, so
+# it is the only one that can notice the two disagreeing.
+#
+# IT LINKS audio_bus_engine, WHICH LOOKS WRONG AND IS THE POINT. ground-capi is
+# an rlib rather than a staticlib of its own (cmake/GroundEngine.cmake says why),
+# so the gnd_* symbols live inside each product's single archive. Linking one of
+# those archives is therefore the only way to reach them -- and it makes this
+# test also check the thing most likely to break quietly: that the symbols really
+# do survive into a shipped product's library instead of being dropped as
+# unreachable.
+add_executable(gnd_roundtrip gnd_roundtrip.c)
+target_link_libraries(gnd_roundtrip PRIVATE ground_engine audio_bus_engine)
+add_test(NAME gnd_roundtrip COMMAND gnd_roundtrip)
+
 # THE ONE THAT JUSTIFIES SHARED MEMORY.
 #
 # Every other test here would pass over a process-local ring. This one forks,

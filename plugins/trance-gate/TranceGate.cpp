@@ -7,6 +7,7 @@
 #include "IPlug_include_in_plug_src.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <cassert>
 #include <cmath>
@@ -114,6 +115,11 @@ TranceGate::TranceGate(const InstanceInfo& info)
   SetMaxJSStringLength(kMaxJSString);
   SetCustomUrlScheme("tgate");
   SetEnableDevTools(true);
+  /* The ground's detector. Created here rather than in OnReset because OnReset
+   * may run on a real-time thread in some hosts and this allocates; the rate it
+   * is given now is corrected there. */
+  mGround = gnd_new(GetSampleRate());
+
   mEditorInitFunc = [&]() {
     LoadIndexHtml(__FILE__, GetBundleID());
     EnableScroll(false);
@@ -132,6 +138,10 @@ TranceGate::~TranceGate()
 #if IPLUG_DSP
   if (mCore) tg_core_destroy(mCore);
   mCore = nullptr;
+#endif
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  gnd_free(mGround);
+  mGround = nullptr;
 #endif
 }
 
@@ -209,6 +219,14 @@ void TranceGate::OnReset()
     mCap.wetHi[i].store(0.f, std::memory_order_relaxed);
   }
   mCap.head.store(0, std::memory_order_release);
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* A rate change re-derives every coefficient; the reset stops a hump left over
+   * from before the transport stopped firing an onset the moment it starts
+   * again. Neither touches the onset COUNT -- see gnd_fires. */
+  gnd_set_sample_rate(mGround, GetSampleRate());
+  gnd_reset(mGround);
+#endif
 }
 
 void TranceGate::OnParamChange(int)
@@ -390,6 +408,21 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const int nOut = NOutChansConnected();
   if (!mCore || nFrames <= 0 || nOut <= 0) return;
 
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * THE GROUND'S DETECTOR SEES THE INPUT, and it is fed here -- at the top,
+   * before anything writes to `outputs` -- because a host may hand over the same
+   * buffer for in and out. No scratch buffer and no conversion: gnd_push takes
+   * doubles, which is what `sample` already is.
+   */
+  {
+    const int gndIn = NInChansConnected();
+    const double* gndL = gndIn > 0 ? inputs[0] : nullptr;
+    const double* gndR = (gndIn > 1 && inputs[1] != nullptr) ? inputs[1] : gndL;
+    gnd_push(mGround, gndL, gndR, nFrames);
+  }
+#endif
+
   /* The host may hand over a longer block than it announced. Growing the
    * vectors here would allocate on the audio thread, so the block is
    * processed in chunks of what was reserved instead. */
@@ -480,6 +513,23 @@ void TranceGate::OnParamChangeUI(int paramIdx, EParamSource source)
  * plus width_ms at nine significant digits. Both exist precisely so a shell
  * does not take one lock per fact, thirty times a second.
  */
+/*
+ * One message per kick, and only when there has been one. The idiom, and why the
+ * count is compared with != rather than >, is in ground_detect.h.
+ */
+void TranceGate::SendGround()
+{
+  if (!mGround) return;
+  const uint32_t fires = gnd_fires(mGround);
+  if (fires == mGroundFires) return;
+  mGroundFires = fires;
+
+  char b[16];
+  const int gn = snprintf(b, sizeof b, "%.3f", gnd_strength(mGround));
+  if (gn > 0)
+    SendArbitraryMsgFromDelegate(kMsgGround, gn, b);
+}
+
 void TranceGate::OnIdle()
 {
   if (!mCore) return;
@@ -601,6 +651,11 @@ void TranceGate::OnIdle()
     assert(tg::wire::framed_size(n) < kMaxJSString);
     SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* One ring per kick the detector found since the last tick. */
+  SendGround();
+#endif
 }
 
 /*

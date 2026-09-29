@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>NIListenIn</string>
 	<key>CFBundleGetInfoString</key>
-	<string>NI Listen-In v2026.09.29.1 Copyright 2026 Torben Gräber</string>
+	<string>NI Listen-In v2026.09.29.2 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.graebe.vst3.NIListenIn</string>
 	<key>CFBundleInfoDictionaryVersion</key>

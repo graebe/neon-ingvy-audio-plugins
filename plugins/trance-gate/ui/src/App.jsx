@@ -20,7 +20,7 @@ import { ParamKnob, ParamSelect, ParamToggle } from './lib/params.jsx';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
 import { EnvelopePlot, PatternPlot, Scope } from './lib/Plots.jsx';
-import { Button, Tabs, Hint } from '@ultraviolet/ui';
+import { Button, Tabs, Hint, Ground, createMotion } from '@ultraviolet/ui';
 import { fadeWeights } from './lib/fade.js';
 import { randomize, setOrder } from './lib/steps.js';
 
@@ -112,6 +112,12 @@ async function copyToClipboard(text) {
 
 export default function App() {
   const [vals, setVals] = createSignal(new Array(NPARAMS).fill(0));
+  /* The Motion switch, remembered between openings. Not a host parameter -- see
+   * the kit's lib/motion.js for why a view is not something to automate. */
+  const [motion, setMotion] = createMotion('trance-gate');
+  /* The ground's handle, set by <Ground ref>. A kick arrives as a message and is
+   * handed straight to it. */
+  let ground = null;
   const [text, setText] = createSignal(new Array(NPARAMS).fill(''));
   const [ui, setUi] = createSignal({ steps: [], ties: [], depths: [], orders: [],
                                      length: 16,
@@ -168,6 +174,14 @@ export default function App() {
       setVals((p) => { const n = p.slice(); n[i] = v; return n; }));
 
     onMessage((tag, msg) => {
+
+      if (tag === MSG.ground) {
+        /* One message, one ring. A malformed payload is dropped rather than
+         * turned into a full-strength kick. */
+        const gs = Number.parseFloat(msg);
+        if (Number.isFinite(gs)) ground?.trigger(gs);
+        return;
+      }
       if (tag >= 0 && tag < NPARAMS)
         return setText((p) => { const n = p.slice(); n[tag] = msg; return n; });
 
@@ -489,6 +503,12 @@ export default function App() {
 
   return (
     <main>
+      {/* FIRST CHILD OF THE WINDOW, which is the design system's contract for a
+        * Ground. The three panels, the ring, the step grid and the plot band all
+        * emit and reflect. These are this editor's own class spellings of the
+        * design system's .ph-panel, .ph-ring and .ph-grid. */}
+      <Ground enabled={motion()} sources=".panel, .ring-slot, .grid-slot, .band, [data-wave-source]" ref={(h) => { ground = h; }} />
+
       {/* The corner mark. Hint style -- the smallest thing the system has, so
         * it sits in the window without competing with anything in it. */}
       {/* LEFT COLUMN: the ring, and the envelope plot ALWAYS under it. The
@@ -690,7 +710,7 @@ export default function App() {
         ['click', 'a step to toggle'],
         ['shift-click', 'for a tie'],
         ['drag', 'up or down for its amount'],
-      ]} />
+      ]} motion={motion()} onMotion={setMotion} />
     </main>
   );
 }

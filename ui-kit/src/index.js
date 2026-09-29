@@ -32,6 +32,13 @@
  *                           curve is not two editors drawing the same curve.
  *   Slider                  the system names it; nothing uses one.
  *
+ * WHAT THE RULE ABOVE BROUGHT IN IMMEDIATELY: Ground. It arrived with four
+ * callers rather than one -- the design system gives EVERY window the same
+ * animated ground -- so there was never a version of it that belonged to a
+ * plugin. Its simulation is in lib/field.js, ported from the design system's own
+ * reference implementation; the detector that drives it could not come with it
+ * and lives in Rust (engines/ground), for the reason that file's header gives.
+ *
  * WHAT THE RULE ABOVE HAS ALREADY MOVED: Well, Axis and band, when NI Side-Chain
  * became a second editor that needed a framed plot, a millisecond ruler and a
  * min/max waveform band. They are in components/Plot.jsx, and that file records
@@ -46,6 +53,12 @@ export { Select } from './components/Select.jsx';
 export { CheckList } from './components/CheckList.jsx';
 export { Tabs } from './components/Tabs.jsx';
 export { Hint } from './components/Hint.jsx';
+/* The window's ground. One per window, first child of it, and the only thing in
+ * the design system that animates. */
+export { Ground } from './components/Ground.jsx';
+/* Its switch's state, remembered per editor -- see the file for why this is not
+ * a host parameter. */
+export { createMotion } from './lib/motion.js';
 /* Rendered by Hint, and exported so a window that somehow has no hint bar can
  * still carry the signature the design system requires of every window. */
 export { Signature } from './components/Signature.jsx';

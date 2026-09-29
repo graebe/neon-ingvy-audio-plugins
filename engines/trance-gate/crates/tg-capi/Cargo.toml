@@ -1,6 +1,6 @@
 [package]
 name = "tg-capi"
-version = "2026.9.29+2"
+version = "2026.9.29+3"
 edition = "2021"
 authors = ["Torben Gräber"]
 license = "MIT"
@@ -14,3 +14,8 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 tg-core = { path = "../tg-core" }
+# The animated ground's detector. NOT a second static library -- see the note in
+# ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
+# ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
+# bus-core through spectro-recv.
+ground-capi = { path = "../../../ground/crates/ground-capi" }

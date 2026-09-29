@@ -57,8 +57,16 @@ iplug_add_plugin(NIListenIn
   # audio_bus_engine, not an engine of its own: Listen-In has no DSP. The
   # transport is the whole product, and a Spectrogram will link the same
   # library to read what this one writes.
+  #
+  # ground_engine is a HEADER ONLY. The design system gives every window an
+  # animated ground and the ground needs to know when a kick lands, but the
+  # detector is compiled INTO libbus_capi.a via bus-capi's dependency on
+  # ground-capi -- one static library per plugin is an invariant here, and two
+  # Rust archives in one binary duplicate the Rust runtime.
+  # cmake/GroundEngine.cmake has the whole story.
   LINK
-    audio_bus_engine)
+    audio_bus_engine
+    ground_engine)
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.

@@ -400,3 +400,53 @@
 
 .checklist-hint { color: var(--ink-dim); }
 .checklist-empty { color: var(--ink-dim); padding: var(--s2); }
+
+/* THE ANIMATED GROUND -- the design system's Ground, as a canvas behind the
+ * window's contents.
+ *
+ * The static ground (the dot paper and its grain) is painted on `body` in
+ * tokens.css and stays there: it is the fallback, and a field at rest is
+ * pixel-identical to it. This canvas sits on top of that and is the same picture
+ * until a kick lands.
+ *
+ * WHAT EACH EDITOR MUST PROVIDE, because this rule cannot: `position: relative`
+ * AND `isolation: isolate` on the window element. Both, and the second is the
+ * one that is easy to miss.
+ *
+ * `position: relative` is what `inset: 0` resolves against; without it the canvas
+ * escapes to the viewport, which looks almost right at the design size and wrong
+ * at every other one.
+ *
+ * `isolation: isolate` is what keeps a NEGATIVE z-index inside the window. A
+ * negative child paints after its parent's own background but before the
+ * parent's content -- exactly where a ground belongs -- but only if the parent
+ * is a stacking context. A `position: relative` with `z-index: auto` is not one,
+ * so without `isolate` the canvas escapes outwards and paints BEHIND the
+ * window's background, which is opaque in at least one editor. It would then
+ * simply vanish there and nowhere else.
+ *
+ * z-index -1 AND NOT 0, which is the choice that keeps this to one rule. At 0
+ * the canvas is a positioned descendant and paints in step 8 of the painting
+ * order -- above every statically positioned thing in the window, including all
+ * of its text. Fixing that would mean giving every direct child of every window
+ * a `position` and a `z-index`, and in two of these editors those children are
+ * already absolutely positioned at hand-computed pixels. Going negative instead
+ * changes nothing about any child. */
+.ground {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  /* It carries no information and must never take a click: every control in the
+   * window sits above it, and a stray drag on the background should do nothing
+   * rather than something. */
+  pointer-events: none;
+}
+
+/* The Motion switch in the hint bar. It must not shrink -- the tips are the
+ * shrinkable child of that row (see Hint.jsx) -- and it sits on the baseline
+ * grid the rest of the bar uses. */
+.hint-bar .switch-row {
+  flex: 0 0 auto;
+  margin-left: var(--s4);
+  align-self: center;
+}
