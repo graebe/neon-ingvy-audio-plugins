@@ -275,7 +275,15 @@
  *
  * `fill` and not `color`: this is SVG.
  */
-.plot-caption { fill: var(--ink-muted); }
+/*
+ * `white-space: pre` BECAUSE SVG COLLAPSES RUNS OF SPACES.
+ *
+ * Every caption in this repository separates its clauses with three spaces --
+ * "SIGNAL   LAST 1000 MS   DRY IN GREY" -- and SVG text rendered them as one,
+ * so they came out as a single run-on sentence in all three editors. The
+ * spacing was written deliberately; this is what makes it arrive.
+ */
+.plot-caption { fill: var(--ink-muted); white-space: pre; }
 .plot { display: block; }
 
 /* ------------------------------------------------------- spectrogram --

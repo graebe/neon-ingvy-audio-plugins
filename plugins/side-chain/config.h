@@ -136,17 +136,17 @@
  * 696 of plot plus space-8 (32) on each side is 760. Every other number follows
  * from that; see DESIGN_W in ui/src/App.jsx, which owns the arithmetic.
  *
- * The height is fixed at 624 and nothing here grows with a parameter the way the
+ * The height is fixed at 604 and nothing here grows with a parameter the way the
  * Trance Gate's pad grid grows with Length. PLUG_HOST_RESIZE is still on,
  * because the editor scales itself to whatever viewport Live hands it and then
  * reports the height that scale needs.
  *
- * 760 AND 624 HAVE TO AGREE WITH DESIGN_W / DESIGN_H IN ui/src/App.jsx AND WITH
+ * 760 AND 604 HAVE TO AGREE WITH DESIGN_W / DESIGN_H IN ui/src/App.jsx AND WITH
  * `main` IN ui/src/app.css. Three spellings of one number, and the page is
  * scaled against whichever of them the editor believes.
  */
 #define PLUG_WIDTH 760
-#define PLUG_HEIGHT 624
+#define PLUG_HEIGHT 604
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 1

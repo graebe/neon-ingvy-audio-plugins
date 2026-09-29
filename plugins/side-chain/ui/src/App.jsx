@@ -23,14 +23,13 @@
  * and nothing in this system floats.
  */
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import { Hint, onParam, onMessage, sendMessage, Well, Axis, band, INSET }
-  from '@ultraviolet/ui';
+import { Hint, onParam, onMessage, sendMessage } from '@ultraviolet/ui';
 import { MSG, P, NUM_PARAMS } from './lib/msg.js';
 import { ParamKnob, ParamSelect } from './lib/params.jsx';
 import { Shaper, SPAN } from './lib/Shaper.jsx';
 
 const DESIGN_W = 760;
-const DESIGN_H = 624;
+const DESIGN_H = 604;
 const PLOT_W = DESIGN_W - 64;
 
 const SOURCES = ['Cycle', 'MIDI', 'Sidechain'];
@@ -372,21 +371,16 @@ export default function App() {
         <Show when={warning()}><span class="tag-warn">{warning()}</span></Show>
       </div>
 
-      <div class="shape-slot">
-        <Shaper w={PLOT_W} h={156}
+      <div class="plot-slot">
+        <Shaper w={PLOT_W} h={260}
                 shape={shape()}
                 scope={scope()}
                 seen={seen}
+                quiet={!hasInput()}
                 sweep={playSweep()}
                 spanMs={spanMs()}
                 markMs={markMs()}
                 defaults={defaults()} />
-      </div>
-
-      <div class="signal-slot">
-        <SignalWell w={PLOT_W} h={132} scope={scope()} seen={seen}
-                    quiet={!hasInput()}
-                    spanMs={spanMs()} markMs={markMs()} />
       </div>
 
       <section class="panel knob-row">
@@ -462,51 +456,6 @@ export default function App() {
 
       <Hint clauses={hintFor(ui().source, ui().rate, stageMs(), v(P.timeMode))} />
     </main>
-  );
-}
-
-/*
- * THE SIGNAL WELL: the input in grey behind, the output in front.
- *
- * `band` is the kit's, and it is the same primitive twice -- which is the point
- * of it being in the kit. The dry is CONTEXT, NOT THE SUBJECT, so it goes behind
- * at partial alpha: a sustained input fills every column edge to edge, and at
- * full strength it is a solid slab with the ducked trace fighting to be seen
- * through it.
- */
-function SignalWell(props) {
-  const AXIS_H = 14;
-  const geom = () => ({
-    x0: INSET,
-    w: Math.max(1, Math.round(props.w - 2 * INSET)),
-    top: 18,
-    bottom: props.h - INSET - AXIS_H,
-  });
-  const mid = () => (geom().top + geom().bottom) / 2;
-
-  return (
-    <Well w={props.w} h={props.h}
-          caption={props.quiet
-            ? 'SIGNAL   NOTHING REACHING THE PLUGIN'
-            : 'SIGNAL   ONE CYCLE, ALIGNED WITH THE SHAPE ABOVE   INPUT IN GREY'}>
-      {/* The zero line, so a silent stretch reads as silence rather than as a
-        * gap in the drawing. */}
-      <line x1={INSET} x2={props.w - INSET} y1={mid()} y2={mid()}
-            stroke="var(--line-100)" />
-      <path d={band(props.scope, 0, 1, geom(), props.seen)}
-            fill="var(--scope-dry)" opacity="0.5" />
-      {/*
-        * THE DUCKED TRACE IS THE SUBJECT, so it gets the arc halo -- the same
-        * 3px falloff the knob's value arc uses, and for the same reason: `uv` is
-        * a near-white and a near-white drawn alone has no cast at all. The 10px
-        * LED halo is too wide here; on a trace that fills the well it blooms.
-        */}
-      <g class="glow-arc">
-        <path d={band(props.scope, 2, 3, geom(), props.seen)} fill="var(--uv)" />
-      </g>
-      <Axis w={props.w} y={props.h - INSET - AXIS_H} spanMs={props.spanMs}
-            markMs={props.markMs} />
-    </Well>
   );
 }
 
