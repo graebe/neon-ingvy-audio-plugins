@@ -1,10 +1,10 @@
 {
-  "version": "1.0.0",
-  "download_url": "https://github.com/graebe/vst-library/releases/download/trance-gate-v1.0.0/trance-gate-module.tar.gz",
+  "version": "1.0.1",
+  "download_url": "https://github.com/graebe/vst-library/releases/download/trance-gate-v1.0.1/trance-gate-module.tar.gz",
   "channels": {
     "stable": {
-      "version": "1.0.0",
-      "download_url": "https://github.com/graebe/vst-library/releases/download/trance-gate-v1.0.0/trance-gate-module.tar.gz"
+      "version": "1.0.1",
+      "download_url": "https://github.com/graebe/vst-library/releases/download/trance-gate-v1.0.1/trance-gate-module.tar.gz"
     }
   }
 }
