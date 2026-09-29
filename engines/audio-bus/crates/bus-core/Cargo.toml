@@ -1,0 +1,12 @@
+[package]
+name = "bus-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "A shared-memory audio bus: one writer, many readers, across processes"
+
+# NO DEPENDENCIES, for the reason spectro-core states: every byte in the
+# artefact is permissive AND ACCOUNTED FOR. This crate needs six POSIX calls
+# and declares them itself (shm.rs) rather than pulling in libc -- which is
+# MIT/Apache-2.0 and would be fine, but is 80,000 lines to borrow `mmap` from.
+[dependencies]

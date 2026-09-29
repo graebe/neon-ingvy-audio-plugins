@@ -15,13 +15,20 @@
  * wrongly decoded readout is still a pattern.
  *
  * THE FORMAT IS THE ENGINE'S, and it is emitted by ui_readout() in
- * tg-core/src/params.rs as eight colon-separated fields:
+ * tg-core/src/params.rs as nine colon-separated fields:
  *
- *     steps : ties : length : pos : ms_per_step : advancing : cursor : depths
+ *     steps : ties : length : pos : ms_per_step : advancing : cursor
+ *           : depths : orders
  *
  * `steps` and `ties` are little-endian hex bitmaps, LAST character is the
- * LOWEST nibble. `depths` is two hex digits per step, in step order. Both
- * encodings are the engine's business and this file is where they stop.
+ * LOWEST nibble. `depths` and `orders` are two hex digits per step, in step
+ * order. Both encodings are the engine's business and this file is where
+ * they stop.
+ *
+ * THE FIELD COUNT HAS GROWN ONCE, when the fade added `orders`, and the
+ * guard below moved with it. That is the whole argument for one decoder:
+ * the WebView editor and the M4L grid both had to learn the ninth field,
+ * and with two copies only one of them would have.
  *
  * It is pinned against the engine rather than against this reading of it --
  * see ui/test/readout.test.mjs, which decodes a fixture that the engine
@@ -61,16 +68,20 @@ export const hexToBits = (hex, n) => {
 export function parseReadout(msg) {
   if (typeof msg !== 'string') return null;
   const f = msg.split(':');
-  if (f.length < 8) return null;
+  if (f.length < 9) return null;
 
   const length = Math.max(1, parseInt(f[2], 10) || 16);
 
   /* Two hex digits per step, in step order -- unlike the bitmaps above. The
-   * engine writes it forwards because it is a run of bytes rather than a
-   * number, and mixing the two up is exactly why this is one function. */
-  const depths = [];
-  for (let i = 0; i < length; i++)
+   * engine writes them forwards because they are runs of bytes rather than
+   * numbers, and mixing the two up is exactly why this is one function. */
+  const depths = [], orders = [];
+  for (let i = 0; i < length; i++) {
     depths.push((parseInt((f[7] || '').substr(i * 2, 2), 16) || 0) / 255);
+    /* The fade's arrival rank, 1..N, and 0 for a step that is off. NOT
+     * scaled the way a depth is: it is an ordinal, not a level. */
+    orders.push(parseInt((f[8] || '').substr(i * 2, 2), 16) || 0);
+  }
 
   return {
     steps: hexToBits(f[0], length),
@@ -81,5 +92,6 @@ export function parseReadout(msg) {
     moving: f[5] === '1',
     cursor: parseInt(f[6], 10) || 0,
     depths,
+    orders,
   };
 }

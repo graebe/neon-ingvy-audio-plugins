@@ -14,9 +14,16 @@
 # seconds through the plugin's audio path against the Move module's reference
 # render, and that number did not move.
 #
-# The engines stay INDEPENDENT of each other. A crate here may depend on its
-# own engine's crates and on nothing else in this file; spectro-core knowing
-# about tg-core would be a coupling nobody asked for.
+# PRODUCT engines stay INDEPENDENT of each other. A product crate may depend on
+# its own engine's crates and on the house transport, and on nothing else in
+# this file; spectro-core knowing about tg-core would be a coupling nobody asked
+# for.
+#
+# audio-bus is the exception that names the rule. It is NOT a product engine --
+# it is the house transport, the Rust counterpart of ui-kit, and it exists
+# precisely so that two products can share one thing: a Listen-In publishes
+# audio and a Spectrogram reads it. It depends on no product in return, which is
+# the direction that actually matters.
 [workspace]
 resolver = "2"
 members = [
@@ -28,6 +35,9 @@ members = [
     # has no screen to draw a spectrogram on.
     "engines/spectro/crates/spectro-core",
     "engines/spectro/crates/spectro-capi",
+    # The house transport. Not a product -- see the note above.
+    "engines/audio-bus/crates/bus-core",
+    "engines/audio-bus/crates/bus-capi",
 ]
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.

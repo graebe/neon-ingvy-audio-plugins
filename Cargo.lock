@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "bus-capi"
+version = "0.1.0"
+dependencies = [
+ "bus-core",
+]
+
+[[package]]
+name = "bus-core"
+version = "0.1.0"
+
+[[package]]
 name = "spectro-capi"
 version = "0.1.1"
 dependencies = [
@@ -15,18 +26,18 @@ version = "0.1.1"
 
 [[package]]
 name = "tg-capi"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "tg-core",
 ]
 
 [[package]]
 name = "tg-core"
-version = "1.0.1"
+version = "1.1.0"
 
 [[package]]
 name = "tg-move"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "tg-capi",
  "tg-core",

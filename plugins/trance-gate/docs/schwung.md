@@ -47,6 +47,18 @@ Attack, Decay, Sustain and Release shape every step, and **Gate** is how much of
 a step stays open before releasing. **All Amount** is the dry/wet for the whole
 effect. **Slot** picks one of 8 patterns.
 
+**Fade** introduces the steps one at a time in the order the patch carries: 0% is
+silence, 100% is the whole pattern. **Shape** chooses whether a step arriving
+ramps in (Soft) or jumps on (Hard). **Rnd** rolls a new pattern and a new arrival
+order — turn it to `Roll` and back to `Hold`; each turn to `Roll` is one roll, and
+it does not disturb the playhead.
+
+The fade is on the settings page rather than under the ring, and that is the
+eight-knob ceiling rather than a choice: a canvas page carries the level's first
+eight knobs and every one of those is already load-bearing. The ORDER itself is
+edited in the Live plugin; a patch carries it in both directions, so a build-up
+sequenced at the desk plays back on the hardware.
+
 With the transport stopped the gate holds open and the audio passes.
 
 ## Installing

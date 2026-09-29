@@ -29,8 +29,18 @@ const VERSIONS = JSON.parse(read('versions.json'));
 
 /*
  * Every product, and everything that spells its version. `crates` are that
- * product's engine -- a crate belongs to exactly one product, which is also
- * why the two engines never depend on each other.
+ * product's engine -- a crate belongs to exactly one PRODUCT engine, which is
+ * also why the two product engines never depend on each other.
+ *
+ * BOTH `config` AND `crates` ARE OPTIONAL, and the two entries at the bottom
+ * are why. Listen-In is a plugin whose engine is the house transport rather
+ * than one of its own, so it has a config.h and no crates. audio-bus is that
+ * transport: crates, and no config.h, no plists and no bundle, because it is
+ * not a plugin at all -- it ships INSIDE two of them.
+ *
+ * It is versioned here anyway. A crate whose version nothing checks is a crate
+ * that will eventually disagree with itself, which is the exact failure this
+ * whole file exists to prevent.
  */
 const PRODUCTS = {
   'trance-gate': {
@@ -43,6 +53,16 @@ const PRODUCTS = {
     config: 'plugins/spectrogram/config.h',
     crates: ['spectro-core', 'spectro-capi'].map(
       (c) => `engines/spectro/crates/${c}/Cargo.toml`),
+  },
+  'listen-in': {
+    config: 'plugins/listen-in/config.h',
+    /* No crates: its engine is audio-bus, which is versioned on its own below
+     * because a Spectrogram will link the same library. */
+  },
+  'audio-bus': {
+    /* No config: not a plugin. */
+    crates: ['bus-core', 'bus-capi'].map(
+      (c) => `engines/audio-bus/crates/${c}/Cargo.toml`),
   },
 };
 
@@ -65,6 +85,13 @@ test('versions.json names every product and nothing else', () => {
 for (const [product, where] of Object.entries(PRODUCTS)) {
   const want = VERSIONS[product];
 
+  test(`${product}: it is either a bundle or a crate, and says which`, () => {
+    assert.ok(where.config || where.crates,
+      `${product} names neither a config.h nor any crates, so nothing about ` +
+      `its version is actually checked`);
+  });
+
+  if (where.config)
   test(`${product}: config.h agrees (${want})`, () => {
     const h = read(where.config);
     const str = /#define\s+PLUG_VERSION_STR\s+"([^"]+)"/.exec(h)?.[1];
@@ -96,6 +123,7 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
    * an AU host compares -- so a stale plist is a plugin that tells the host one
    * version and the user another.
    */
+  if (where.config)
   test(`${product}: every Info.plist agrees (${want})`, () => {
     const dir = join(ROOT, dirname(where.config), 'resources');
     const plists = readdirSync(dir).filter((f) => f.endsWith('.plist'));
@@ -121,7 +149,9 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
     }
   });
 
+  if (where.crates)
   test(`${product}: every crate of its engine agrees (${want})`, () => {
+    assert.ok(where.crates.length, `${product}: an empty crate list checks nothing`);
     for (const path of where.crates) {
       assert.ok(existsSync(join(ROOT, path)), `${path} is missing`);
       const v = /^version\s*=\s*"([^"]+)"/m.exec(read(path))?.[1];

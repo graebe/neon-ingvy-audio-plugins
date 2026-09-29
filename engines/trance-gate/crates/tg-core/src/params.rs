@@ -90,6 +90,11 @@ pub enum Param {
     Decay,
     Sustain,
     Release,
+    /* APPENDED, AS EVERYTHING AFTER THE FIRST RELEASE MUST BE. The
+     * discriminants ARE the ABI -- a host stores the index in a project -- so
+     * the two below can only go on the end. */
+    Fade,
+    FadeSoft,
 }
 
 impl Param {
@@ -111,6 +116,8 @@ impl Param {
             9 => Decay,
             10 => Sustain,
             11 => Release,
+            12 => Fade,
+            13 => FadeSoft,
             _ => return None,
         })
     }
@@ -144,6 +151,9 @@ impl Instance {
                     if self.cursor >= len {
                         self.cursor = len - 1;
                     }
+                    /* A different slot is a different pattern, so a different
+                     * set of weights. */
+                    self.recalc_fade();
                 }
             }
             Param::Length => {
@@ -155,6 +165,10 @@ impl Instance {
                 if self.cursor >= self.pat[slot].length {
                     self.cursor = self.pat[slot].length - 1;
                 }
+                /* The length decides how many steps the fade counts, so both
+                 * the ranks and the weights move with it. */
+                self.pat[slot].renumber();
+                self.recalc_fade();
             }
             Param::Rate => {
                 /* OUT OF RANGE IS THE DEFAULT, NOT THE NEAREST END --
@@ -213,6 +227,28 @@ impl Instance {
             Param::Attack => self.attack = clampf(value as f32, 0.0, STAGE_MAX_PCT),
             Param::Decay => self.decay = clampf(value as f32, 0.0, STAGE_MAX_PCT),
             Param::Release => self.release = clampf(value as f32, 0.0, STAGE_MAX_PCT),
+            /*
+             * COMPARED BEFORE RECOMPUTED, AND THAT IS NOT AN OPTIMISATION.
+             *
+             * The plugin's `PushParams` writes every parameter at the top of
+             * every block, so an unconditional `recalc_fade()` here would walk
+             * the pattern twice a block for the whole life of the instance --
+             * on the audio thread, to produce the table it already had.
+             */
+            Param::Fade => {
+                let v = clampf(value as f32, 0.0, 1.0);
+                if v != self.fade {
+                    self.fade = v;
+                    self.recalc_fade();
+                }
+            }
+            Param::FadeSoft => {
+                let v = value != 0.0;
+                if v != self.fade_soft {
+                    self.fade_soft = v;
+                    self.recalc_fade();
+                }
+            }
         }
     }
 
@@ -265,8 +301,21 @@ impl Instance {
                         _ => fmt::atoi(val).clamp(0, 2),
                     };
                     let slot = self.slot;
+                    let was = self.pat[slot].on(c);
                     self.pat[slot].steps.set(c, mode != 0);
                     self.pat[slot].ties.set(c, mode == 2);
+                    /*
+                     * A STEP JOINING THE PATTERN ARRIVES LAST; one leaving it
+                     * lets the ranks close up. Off -> On only, so On <-> Tie
+                     * does not move a step's place in the order -- a tie
+                     * changes what a live step does, not when it arrives.
+                     */
+                    if mode != 0 && !was {
+                        self.pat[slot].order_append(c);
+                    } else {
+                        self.pat[slot].renumber();
+                    }
+                    self.recalc_fade();
                 }
             }
             "step_amount" => {
@@ -276,6 +325,47 @@ impl Instance {
                     let slot = self.slot;
                     self.pat[slot].depth[c] = (f * 255.0 + 0.5) as u8;
                 }
+            }
+            /*
+             * THE STEP'S PLACE IN THE ARRIVAL ORDER, 1..=N, at the cursor --
+             * the same door `step_amount` uses, for the same reason: per-step
+             * state is never a host parameter, so it comes through here.
+             */
+            "step_order" => {
+                let c = self.cursor;
+                let slot = self.slot;
+                let r = fmt::atoi(val).max(1) as usize;
+                self.pat[slot].order_set(c, r);
+                self.recalc_fade();
+            }
+            "fade" => self.set_num(Param::Fade, fmt::atof(val)),
+            "fade_soft" => {
+                let on = val == "On" || val == "on" || fmt::atoi(val) != 0;
+                self.set_num(Param::FadeSoft, on as i32 as f64);
+            }
+            /*
+             * AN ACTION, NOT A VALUE, which is why it is only here and has no
+             * `Param` of its own: a host parameter that regenerated the pattern
+             * every time the host rewrote it would be unusable.
+             *
+             * AND IT NEEDS A VALUE THAT DOES NOTHING. On the Move this is an
+             * enum knob, which writes whichever option it is turned to -- so
+             * "Hold" has to be expressible, or turning the knob back off would
+             * roll again. An empty value fires: that is the plugin's path,
+             * where a button press carries no payload at all.
+             *
+             * A POSITIVE number is a SEED and pins the roll, which is what
+             * makes the result testable. Anything else that is not a hold --
+             * "Roll", from the Move's own knob -- walks the instance's
+             * generator instead, so successive presses differ.
+             */
+            "randomize" => {
+                if matches!(val, "Hold" | "hold" | "0" | "Off" | "off") {
+                    return;
+                }
+                let n = fmt::atoi(val);
+                let slot = self.slot;
+                self.randomize(slot, if n > 0 { Some(n as u32) } else { None });
             }
             "legato" => {
                 let on = val == "On" || val == "on" || fmt::atoi(val) != 0;
@@ -303,6 +393,11 @@ impl Instance {
             "pattern" => {
                 let slot = self.slot;
                 set_pattern_hex(&mut self.pat[slot].steps, val);
+                /* A whole new mask, so the ranks it implies are new too. The
+                 * steps keep their stored keys, which is what makes a pattern
+                 * written twice land on the same order both times. */
+                self.pat[slot].renumber();
+                self.recalc_fade();
             }
             "ties" => {
                 let slot = self.slot;
@@ -330,6 +425,16 @@ impl Instance {
             "hold" => fmt::f(&mut b, self.hold as f64, 2),
             "amount" => fmt::f(&mut b, self.amount as f64, 2),
             "legato" => write!(b, "{}", self.legato as i32),
+            "fade" => fmt::f(&mut b, self.fade as f64, 2),
+            "fade_soft" => write!(b, "{}", self.fade_soft as i32),
+            /* The step's place in the arrival order, at the cursor. 0 when the
+             * step is off, which is the honest answer: an off step has no
+             * place in an order it is not part of. */
+            "step_order" => write!(
+                b,
+                "{}",
+                if p.on(self.cursor) { p.order[self.cursor] } else { 0 }
+            ),
             "time_mode" => write!(b, "{}", self.time_mode as i32),
             "curve" => write!(b, "{}", self.curve as i32),
             /* The step's length in ms, so a shell can show what a % actually
@@ -382,7 +487,12 @@ impl Instance {
              * get it.
              *
              *   slot:legato:time_mode:curve:rate:length:amount:hold:attack:
-             *   decay:sustain:release:width_ms
+             *   decay:sustain:release:width_ms:fade:fade_soft
+             *
+             * FADE AND FADE_SOFT ARE APPENDED, past `width_ms`, because every
+             * reader of this string indexes it. Adding them anywhere else --
+             * beside `amount`, where they belong by meaning -- would move ten
+             * fields under two shells and a test that counts them.
              *
              * FLOATS ARE %.9g, WHICH IS NOT COSMETIC. Nine significant digits
              * is FLT_DECIMAL_DIG -- the shortest precision for which
@@ -421,7 +531,10 @@ impl Instance {
                         fmt::g(&mut b, v as f64, 9)?;
                         b.write_char(':')?;
                     }
-                    fmt::g(&mut b, self.width_ms(), 9)
+                    fmt::g(&mut b, self.width_ms(), 9)?;
+                    b.write_char(':')?;
+                    fmt::g(&mut b, self.fade as f64, 9)?;
+                    write!(b, ":{}", self.fade_soft as i32)
                 })
             }
             "ui" => return self.ui_readout(b),
@@ -440,6 +553,12 @@ impl Instance {
      * would be six times slower than one, not merely six reads.
      *
      *   steps : ties : length : phase : ms_step : advancing : cursor : depths
+     *     : orders
+     *
+     * `orders` is APPENDED for the same reason the params readout's two are:
+     * every field here is read by index, on both shells. Two hex digits per
+     * step like `depths`, and a step that is off reads 00 -- it has no place
+     * in the arrival order.
      */
     fn ui_readout(&self, mut b: Buf) -> i32 {
         let p = self.pattern();
@@ -461,6 +580,10 @@ impl Instance {
          * rotation stop and a second read would halve the anchor rate. */
         for i in 0..length {
             let _ = write!(b, "{:02X}", p.depth[i]);
+        }
+        let _ = write!(b, ":");
+        for i in 0..length {
+            let _ = write!(b, "{:02X}", if p.on(i) { p.order[i] } else { 0 });
         }
         b.finish()
     }

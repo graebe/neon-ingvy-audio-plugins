@@ -104,6 +104,35 @@ test('per-step depths decode forwards, two hex digits each', () => {
   assert.equal(u.cursor, 3);
 });
 
+/*
+ * THE NINTH FIELD, added when the fade arrived. It is an ORDINAL, not a
+ * level -- rank 1..N for a step that is on, 0 for one that is off -- so it
+ * is the one run of hex in this string that must NOT be divided by 255.
+ * Scaling it would leave every rank at roughly zero and the fade introducing
+ * the whole pattern at once.
+ */
+test('the arrival order decodes as ranks, not as levels', () => {
+  const u = parseReadout(rows.beef16);
+  assert.ok(u);
+  assert.equal(u.orders.length, 16);
+  /* Every ON step carries a rank; every off step carries none. */
+  for (let i = 0; i < 16; i++) {
+    if (u.steps[i]) assert.ok(u.orders[i] >= 1, `step ${i} is on but unranked`);
+    else assert.equal(u.orders[i], 0, `step ${i} is off but ranked`);
+  }
+  /* The ranks of the on-steps are a permutation of 1..count, which is what
+   * "an order" means and what a wrong stride would break. */
+  const ranks = u.orders.filter((r) => r > 0).sort((a, b) => a - b);
+  assert.deepEqual(ranks, ranks.map((_, k) => k + 1));
+  /* Integers, not fractions -- the depth scaling must not have leaked here. */
+  for (const r of u.orders) assert.equal(r, Math.round(r));
+});
+
+test('the order is truncated to the length, like the depths', () => {
+  const u = parseReadout(rows.beef13);
+  assert.equal(u.orders.length, 13);
+});
+
 test('an empty pattern decodes as empty rather than as a default', () => {
   const u = parseReadout(rows.empty);
   assert.ok(u);
@@ -118,6 +147,9 @@ test('an empty pattern decodes as empty rather than as a default', () => {
  */
 test('a string that is not a readout returns null', () => {
   assert.equal(parseReadout('BEEF:22:16'), null);
+  /* Eight fields was the whole string before the fade added `orders`; a
+   * decoder that still accepted it would silently lose the arrival order. */
+  assert.equal(parseReadout('BEEF:22:16:0.0:125.0:0:0:FFFF'), null);
   assert.equal(parseReadout(''), null);
   assert.equal(parseReadout(undefined), null);
   assert.equal(parseReadout(null), null);
