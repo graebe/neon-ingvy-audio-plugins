@@ -5,23 +5,23 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
-	<string>Spectrogram</string>
+	<string>NISpectrogram</string>
 	<key>CFBundleGetInfoString</key>
-	<string>Spectrogram v0.1.1 Copyright 2026 Torben Gräber</string>
+	<string>NI Spectrogram v2026.09.29.1 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.graebe.clap.Spectrogram</string>
+	<string>com.graebe.clap.NISpectrogram</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Spectrogram</string>
+	<string>NISpectrogram</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.1</string>
+	<string>2026.9.29</string>
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>0.1.1</string>
+	<string>2026.9.29</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>

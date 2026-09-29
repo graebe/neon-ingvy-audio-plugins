@@ -41,6 +41,9 @@ export { Knob } from './components/Knob.jsx';
 export { Toggle } from './components/Toggle.jsx';
 export { Button } from './components/Button.jsx';
 export { Select } from './components/Select.jsx';
+/* Select chooses ONE and is a native <select> for the reasons in its header.
+ * This chooses several, and is the design system's own open-list shape. */
+export { CheckList } from './components/CheckList.jsx';
 export { Tabs } from './components/Tabs.jsx';
 export { Hint } from './components/Hint.jsx';
 /* Rendered by Hint, and exported so a window that somehow has no hint bar can
@@ -52,7 +55,7 @@ export { Signature } from './components/Signature.jsx';
  * same seam every control here follows. */
 export { default as Spectrogram } from './components/Spectrogram.jsx';
 export { Well, Axis, band, INSET, CAPTION } from './components/Plot.jsx';
-export { buildLut, readStops, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
+export { buildLut, readStops, readRgb, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
 
 export { startDrag } from './lib/drag.js';
 export {

@@ -110,12 +110,25 @@ function buildScope() {
    * still filling reads as unfinished rather than as a signal that stopped. */
   const filled = num('filling', COLS);
 
+  /*
+   * ?silent=1 REPRODUCES A PLUGIN THAT IS BEING HANDED NOTHING.
+   *
+   * The state the editor could not previously describe: the gain trace keeps
+   * working, because it is computed whether or not there is audio to apply it
+   * to, so the window looked alive while the waveform -- the thing being looked
+   * for -- was missing, with nothing saying which.
+   *
+   * Exact silence, not a small number: the encoder maps 0.0 to byte 128, and
+   * that is what the plugin actually sends for a silent track.
+   */
+  const silent = Q.has('silent');
+
   for (let i = 0; i < COLS; i++) {
     seen.push(i < filled ? '1' : '0');
     const pct = (i / COLS) * 100;
     /* A kick at the top of the cycle plus a steady pad under it. */
     const env = Math.exp(-pct / 6);
-    const amp = 0.28 + 0.62 * env;
+    const amp = silent ? 0 : 0.28 + 0.62 * env;
     const gain = 1 - DEPTH * duckAt(pct);
     hex.push(byte(-amp), byte(amp), byte(-amp * gain), byte(amp * gain), ubyte(gain));
   }

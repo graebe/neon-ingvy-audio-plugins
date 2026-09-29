@@ -247,10 +247,43 @@ export default function App() {
     onCleanup(() => clearInterval(t));
   });
 
+  /*
+   * IS ANYTHING COMING IN AT ALL?
+   *
+   * THE ONE THING THE WINDOW COULD NOT SAY. A ducker fed silence draws exactly
+   * what a broken one draws: a flat line where the waveform should be. The
+   * shape well keeps working either way -- the gain trace is computed whether or
+   * not there is audio to apply it to -- so the picture looks alive while the
+   * part you are actually looking for is missing, and nothing says which.
+   *
+   * THE FLOOR IS ONE ENCODING STEP, not a taste threshold. A sample crosses the
+   * wire as one byte over -1..1, so silence is 128 and the next value up is
+   * 0.0118 -- about -38 dBFS. Below that the scope genuinely cannot tell a
+   * signal from silence, so claiming to is the one thing it must not do.
+   */
+  const INPUT_FLOOR = 0.012;
+
+  const hasInput = createMemo(() => {
+    const cols = scope();
+    if (!cols) return true; /* nothing pushed yet is not a verdict */
+    for (let i = 0; i < cols.length; i++) {
+      if (!seen(i)) continue;
+      const r = cols[i];
+      if (Math.abs(r[0]) > INPUT_FLOOR || Math.abs(r[1]) > INPUT_FLOOR) return true;
+    }
+    return false;
+  });
+
   const warning = createMemo(() => {
     const u = ui();
     if (u.source === 2 && !buses().key) return 'no key routed';
     if (u.source === 2 && buses().isMain) return 'key is the input';
+    /*
+     * BEFORE the trigger warnings. A silent track is the more basic fact, and
+     * reporting "transport stopped" to somebody whose real problem is that no
+     * audio reaches the plugin sends them to the wrong place.
+     */
+    if (!hasInput()) return 'no input';
     if (!stale()) return '';
     if (u.source === 0) return u.advancing ? '' : 'transport stopped';
     if (u.source === 1) return 'no midi';
@@ -352,6 +385,7 @@ export default function App() {
 
       <div class="signal-slot">
         <SignalWell w={PLOT_W} h={132} scope={scope()} seen={seen}
+                    quiet={!hasInput()}
                     spanMs={spanMs()} markMs={markMs()} />
       </div>
 
@@ -452,7 +486,9 @@ function SignalWell(props) {
 
   return (
     <Well w={props.w} h={props.h}
-          caption="SIGNAL   ONE CYCLE, ALIGNED WITH THE SHAPE ABOVE   INPUT IN GREY">
+          caption={props.quiet
+            ? 'SIGNAL   NOTHING REACHING THE PLUGIN'
+            : 'SIGNAL   ONE CYCLE, ALIGNED WITH THE SHAPE ABOVE   INPUT IN GREY'}>
       {/* The zero line, so a silent stretch reads as silence rather than as a
         * gap in the drawing. */}
       <line x1={INSET} x2={props.w - INSET} y1={mid()} y2={mid()}

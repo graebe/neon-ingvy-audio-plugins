@@ -20,7 +20,7 @@
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
-#include "spectro_core.h"
+#include "spectro_recv.h"
 #include "Wire.h"
 #include <atomic>
 #include <string>
@@ -75,8 +75,29 @@ public:
      * has no bar count to be told and no message to be told it with.
      */
     kMsgSync,
+    /*
+     * -> UI: the source list, "<slot>:<live>:<rate>:<label>" a line.
+     *
+     * Sent on demand and on a slow timer rather than every tick: a Listen-In
+     * appears when somebody inserts one, which is a human-speed event, and
+     * probing sixteen slots fifty times a second to learn nothing would be a
+     * syscall storm in aid of a dropdown.
+     */
+    kMsgSources,
+    /*
+     * -> UI: the clash mask, in the same "<ch>:<cols>:<bands>:<hex>" shape as a
+     * column batch -- because that is exactly what it is. `ch` names the source
+     * this channel was compared AGAINST the own one, so the editor can union
+     * several or show one.
+     */
+    kMsgClashCols,
 
     kMsgRange = 96,     /* <- UI: "<f_min>:<f_max>" -- the zoom               */
+    /* <- UI: "<slot>,<slot>,..." -- which buses to listen in on, in order.
+     * Empty means the own channel alone. */
+    kMsgSelect,
+    /* <- UI: "<floor_db>:<balance_db>" -- what counts as a clash. */
+    kMsgClash,
 
     /*
      * "I AM LISTENING", and it is not optional. OnUIOpen fires from
@@ -142,6 +163,16 @@ public:
   void OnReset() override;
 #endif
 
+  /*
+   * The chosen sources and the clash settings, so a session reopens looking at
+   * what it was looking at. Read back DEFENSIVELY -- a chunk written by a
+   * future version may hold more than this one knows how to want, and this
+   * plugin's chunk was empty until now, so v1 sets will be unserialised by v2
+   * code. Listen-In's arrangement, for Listen-In's reason.
+   */
+  bool SerializeState(IByteChunk& chunk) const override;
+  int UnserializeState(const IByteChunk& chunk, int startPos) override;
+
 private:
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* The frequency scale, sent on kMsgReady. The UI never computes it: the log
@@ -150,9 +181,20 @@ private:
   /* The transport, once a tick. Cheap by construction: a hundred-odd bytes
    * against the 64 KB the column payload is budgeted out of. */
   void SendSync();
+  /* The buses that exist, for the editor's picker. Probing creates nothing. */
+  void SendSources();
+  /* Hand the receiver the current selection. Main thread: it allocates. */
+  void ApplySources();
 #endif
 
-  spectro_t* mSpectro = nullptr;
+  /*
+   * THE RECEIVER, NOT A BARE ANALYZER, and that is the whole shape of this
+   * plugin now. It holds the own channel AND every bus being listened to, and
+   * it feeds them all the same number of frames so their columns can be
+   * compared cell by cell. See spectro_recv.h for why the transforms are on the
+   * message thread.
+   */
+  srecv_t* mRecv = nullptr;
 
   /*
    * The mono sum, and the drain buffer. Both are sized on the main thread --
@@ -160,7 +202,29 @@ private:
    * on the audio thread is a malloc on the audio thread.
    */
   std::vector<float> mMono;
+  /* One drain buffer per channel, plus one for the clash. Sized in the
+   * constructor, never on the audio thread -- and never resized, because the
+   * band count cannot change without a configure. */
   std::vector<unsigned char> mCols;
+  std::vector<unsigned char> mOwnCols;
+  std::vector<unsigned char> mClash;
+
+  /*
+   * WHICH BUSES, AND WHAT COUNTS AS A CLASH.
+   *
+   * Both are saved state rather than parameters. The Trance Gate's rule is that
+   * a number a host should own belongs in the parameter set -- a Listen-In's
+   * BUS is one, because somebody will automate a switch between two sources.
+   * A receiver's VIEW is not: nobody automates which picture they are looking
+   * at, and this plugin's "NO PARAMETERS" above is a statement rather than an
+   * omission.
+   */
+  std::vector<unsigned int> mSources;
+  float mClashFloorDb = -60.0f;
+  float mClashBalanceDb = 12.0f;
+
+  /* The source list is rebuilt on a slow timer; this is the countdown. */
+  int mSourceTick = 0;
 
   /*
    * THE HOST'S CLOCK, WRITTEN ON THE AUDIO THREAD AND READ ON THE MESSAGE ONE.

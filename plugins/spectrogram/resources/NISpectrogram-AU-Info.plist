@@ -6,13 +6,13 @@
 	<array>
 		<dict>
 			<key>description</key>
-			<string>Spectrogram</string>
+			<string>NI Spectrogram</string>
 			<key>factoryFunction</key>
-			<string>Spectrogram_Factory</string>
+			<string>NISpectrogram_Factory</string>
 			<key>manufacturer</key>
 			<string>Grbe</string>
 			<key>name</key>
-			<string>graebe: Spectrogram</string>
+			<string>Neon Ingvy: NI Spectrogram</string>
 			<key>sandboxSafe</key>
 			<true/>
 			<key>subtype</key>
@@ -20,36 +20,36 @@
 			<key>type</key>
 			<string>aufx</string>
 			<key>version</key>
-			<integer>257</integer>
+			<integer>132778473</integer>
 		</dict>
 	</array>
 	<key>AudioUnit Version</key>
-	<string>0x00000101</string>
+	<string>0x07EA09E9</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
-	<string>Spectrogram</string>
+	<string>NISpectrogram</string>
 	<key>CFBundleGetInfoString</key>
-	<string>Spectrogram v0.1.1 Copyright 2026 Torben Gräber</string>
+	<string>NI Spectrogram v2026.09.29.1 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.graebe.audiounit.Spectrogram</string>
+	<string>com.graebe.audiounit.NISpectrogram</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Spectrogram</string>
+	<string>NISpectrogram</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.1</string>
+	<string>2026.9.29</string>
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>0.1.1</string>
+	<string>2026.9.29</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>10.13.0</string>
 	<key>NSPrincipalClass</key>
-	<string>Spectrogram_View</string>
+	<string>NISpectrogram_View</string>
 </dict>
 </plist>

@@ -51,7 +51,7 @@ const PRODUCTS = {
   },
   spectrogram: {
     config: 'plugins/spectrogram/config.h',
-    crates: ['spectro-core', 'spectro-capi'].map(
+    crates: ['spectro-core', 'spectro-recv', 'spectro-capi'].map(
       (c) => `engines/spectro/crates/${c}/Cargo.toml`),
   },
   'listen-in': {

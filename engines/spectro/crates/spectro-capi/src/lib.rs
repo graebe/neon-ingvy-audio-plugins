@@ -193,3 +193,284 @@ pub unsafe extern "C" fn spectro_dropped(p: *const Analyzer) -> c_int {
     }
     (*p).dropped().min(c_int::MAX as usize) as c_int
 }
+
+/* ---------------------------------------------------------------- receiver --
+ *
+ * THE LISTEN-IN HALF. Everything above analyses the track the plugin sits on;
+ * this lets one plugin also read a Listen-In bus, so two sources can be looked
+ * at in one picture and the places they fight can be marked.
+ *
+ * The thread rules are NOT the same as the analyzer's above, and the difference
+ * is the whole design:
+ *
+ *   srecv_new / free / set_sources / set_clash   the main thread
+ *   srecv_push_own                               the audio thread, and only it
+ *   srecv_pump / take_columns / clash / slots    the message thread, and only it
+ *
+ * `srecv_pump` is where the transforms happen, and it is on the MESSAGE thread
+ * on purpose -- a bus reader cannot be drained from the audio thread, and an
+ * analyzer that stutters draws a stuttering picture where one that overruns the
+ * audio thread makes a noise. The own channel reaches it through a ring, which
+ * is what lets every source be fed the same number of frames and therefore be
+ * compared cell by cell. See the header of spectro-recv.
+ */
+use spectro_recv::{Receiver, MAX_SOURCES};
+
+/// Sources one receiver will draw, the own channel included.
+#[no_mangle]
+pub extern "C" fn srecv_max_sources() -> c_int {
+    MAX_SOURCES as c_int
+}
+
+/// Allocate a receiver. Its own channel is configured exactly as
+/// `spectro_configure` would, and every bus source it later opens inherits it.
+#[no_mangle]
+pub extern "C" fn srecv_new(
+    sample_rate: f32,
+    fft_size: c_int,
+    hop: c_int,
+    bands: c_int,
+    f_min: f32,
+    f_max: f32,
+    db_floor: f32,
+    db_ceil: f32,
+) -> *mut Receiver {
+    let cfg = Config {
+        sample_rate,
+        fft_size: fft_size.max(0) as usize,
+        hop: hop.max(0) as usize,
+        bands: bands.max(0) as usize,
+        f_min,
+        f_max,
+        db_floor,
+        db_ceil,
+    };
+    Box::into_raw(Box::new(Receiver::new(cfg)))
+}
+
+/// # Safety
+/// `p` must be a pointer from `srecv_new` and must not be used afterwards.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_free(p: *mut Receiver) {
+    if !p.is_null() {
+        drop(Box::from_raw(p));
+    }
+}
+
+/// Channels currently drawable: the own channel is 0, each open bus follows in
+/// the order it was asked for.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_channels(p: *const Receiver) -> c_int {
+    if p.is_null() {
+        return 0;
+    }
+    (*p).channels() as c_int
+}
+
+/// The bus slot behind a channel, or 0 for the own channel.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_slot_of(p: *const Receiver, ch: c_int) -> c_int {
+    if p.is_null() || ch < 0 {
+        return 0;
+    }
+    (*p).slot_of(ch as usize).unwrap_or(0) as c_int
+}
+
+/// Non-zero when a channel's sender runs at another sample rate. Such a source
+/// is NOT drawn: a different rate picks a different window and therefore a
+/// different group delay, so the two pictures would be quietly offset.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_rate_mismatch(p: *const Receiver, ch: c_int) -> c_int {
+    if p.is_null() || ch < 0 {
+        return 0;
+    }
+    i32::from((*p).rate_mismatch(ch as usize))
+}
+
+/// Choose which buses to listen to: `slots[0..n]`, 1-based, in the order they
+/// should appear. **Main thread**, and it allocates.
+///
+/// # Safety
+/// `p` must be a live receiver; `slots` must point to `n` readable u32s.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_set_sources(p: *mut Receiver, slots: *const u32, n: c_int) {
+    if p.is_null() {
+        return;
+    }
+    let wanted: &[u32] = if slots.is_null() || n <= 0 {
+        &[]
+    } else {
+        core::slice::from_raw_parts(slots, n as usize)
+    };
+    (*p).set_sources(wanted)
+}
+
+/// Feed `n` mono samples from the track this plugin sits on. **Audio thread
+/// only.** Copies into a ring and returns; allocates nothing, locks nothing.
+///
+/// # Safety
+/// `mono` must point to `n` readable floats; `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_push_own(p: *const Receiver, mono: *const f32, n: c_int) {
+    if p.is_null() || mono.is_null() || n <= 0 {
+        return;
+    }
+    (*p).push_own(core::slice::from_raw_parts(mono, n as usize))
+}
+
+/// Move audio into every analyzer, in step. Returns the frames each source was
+/// given. **Message thread only.**
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_pump(p: *mut Receiver) -> c_int {
+    if p.is_null() {
+        return 0;
+    }
+    (*p).pump() as c_int
+}
+
+/// Drain one channel's finished columns, `spectro_bands()` bytes each, oldest
+/// first. **Message thread only.**
+///
+/// # Safety
+/// `out` must be writable for `max_cols * bands` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_take_columns(
+    p: *const Receiver,
+    ch: c_int,
+    out: *mut u8,
+    max_cols: c_int,
+) -> c_int {
+    if p.is_null() || out.is_null() || max_cols <= 0 || ch < 0 {
+        return 0;
+    }
+    let bands = (*p).bands();
+    let slice = core::slice::from_raw_parts_mut(out, bands * max_cols as usize);
+    (*p).take_columns(ch as usize, slice, max_cols as usize) as c_int
+}
+
+/// The range every source is measured over. Allocation-free and safe while
+/// audio runs, exactly as `spectro_set_range` is.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_set_range(p: *const Receiver, f_min: f32, f_max: f32) {
+    if p.is_null() {
+        return;
+    }
+    (*p).set_range(f_min, f_max)
+}
+
+/// What counts as a clash: a floor in dBFS that BOTH sources must clear, and a
+/// balance window in dB past which the louder one is simply winning.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_set_clash(p: *mut Receiver, floor_db: f32, balance_db: f32) {
+    if p.is_null() {
+        return;
+    }
+    (*p).set_clash(floor_db, balance_db)
+}
+
+/// Clash strength for `n_cols` columns of `a` against `b`, into `out`.
+///
+/// Takes the columns the caller ALREADY drained rather than draining again:
+/// `srecv_take_columns` is destructive, so a second drain would compare one
+/// source's present against another's future.
+///
+/// # Safety
+/// All three must be readable/writable for `n_cols * bands` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_clash(
+    p: *const Receiver,
+    a: *const u8,
+    b: *const u8,
+    out: *mut u8,
+    n_cols: c_int,
+) {
+    if p.is_null() || a.is_null() || b.is_null() || out.is_null() || n_cols <= 0 {
+        return;
+    }
+    let n = (*p).bands() * n_cols as usize;
+    (*p).clash_into(
+        core::slice::from_raw_parts(a, n),
+        core::slice::from_raw_parts(b, n),
+        core::slice::from_raw_parts_mut(out, n),
+    )
+}
+
+/// Frames a channel lost before the receiver reached them. A diagnostic: a jump
+/// means the message thread stopped running, not that the analysis broke.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_dropped(p: *const Receiver, ch: c_int) -> c_int {
+    if p.is_null() || ch < 0 {
+        return 0;
+    }
+    (*p).bus_dropped(ch as usize).min(c_int::MAX as u64) as c_int
+}
+
+/// The source list: every slot that exists, as
+/// `"<slot>:<live>:<rate>:<label>"` per line. Returns the bytes written, or the
+/// bytes it WOULD have written when `cap` is too small -- so a caller can size a
+/// buffer by asking twice. **Main thread.**
+///
+/// Probing creates nothing: walking all sixteen slots leaves the machine
+/// exactly as it found it.
+///
+/// # Safety
+/// `out` must be writable for `cap` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_slots(out: *mut u8, cap: c_int) -> c_int {
+    let text = spectro_recv::encode_slots(&Receiver::slots());
+    let bytes = text.as_bytes();
+    if !out.is_null() && cap > 0 {
+        let n = bytes.len().min(cap as usize - 1);
+        core::ptr::copy_nonoverlapping(bytes.as_ptr(), out, n);
+        *out.add(n) = 0;
+    }
+    bytes.len() as c_int
+}
+
+/// Bytes in one column of any channel: the band count they all share.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_bands(p: *const Receiver) -> c_int {
+    if p.is_null() {
+        return 0;
+    }
+    (*p).bands() as c_int
+}
+
+/// The band centre frequencies, ascending, into `out`. Returns how many.
+///
+/// One axis for every source, because they share a configuration -- which is
+/// what lets their columns be compared at all.
+///
+/// # Safety
+/// `out` must be writable for `n` floats.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_band_hz(p: *const Receiver, out: *mut f32, n: c_int) -> c_int {
+    if p.is_null() || out.is_null() || n <= 0 {
+        return 0;
+    }
+    (*p).band_hz_into(core::slice::from_raw_parts_mut(out, n as usize)) as c_int
+}

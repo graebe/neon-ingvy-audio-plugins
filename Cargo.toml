@@ -34,6 +34,7 @@ members = [
     # The Spectrogram: one core, one wrapper. No Move target -- the hardware
     # has no screen to draw a spectrogram on.
     "engines/spectro/crates/spectro-core",
+    "engines/spectro/crates/spectro-recv",   # listen-in: many sources, and the clash
     "engines/spectro/crates/spectro-capi",
     # The house transport. Not a product -- see the note above.
     "engines/audio-bus/crates/bus-core",

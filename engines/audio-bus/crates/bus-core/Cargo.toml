@@ -1,6 +1,6 @@
 [package]
 name = "bus-core"
-version = "0.1.0"
+version = "2026.9.29+1"
 edition = "2021"
 license = "MIT"
 description = "A shared-memory audio bus: one writer, many readers, across processes"

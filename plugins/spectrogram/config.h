@@ -12,22 +12,38 @@
  */
 #pragma once
 
-#define PLUG_NAME "Spectrogram"
-#define PLUG_MFR "graebe"
 /*
- * 0.1.0, AND IT USED TO SAY 1.0.0 HERE WHILE THE CRATES SAID 0.1.0.
+ * "NI Spectrogram" -- NI FOR NEON INGVY, the publisher.
  *
- * The plugin and the analyzer inside it disagreed about what they were, which
- * is the kind of thing nobody notices until a bug report names a version that
- * never existed. versions.json decides now and `ctest -R versions` checks
- * every spelling -- this one, the hex below, and both crates.
- *
- * The hex is major<<16 | minor<<8 | patch, and it is the one a HOST compares
- * when deciding whether a saved project was made by an older build, so a stale
- * one is worse than a stale string: silently wrong rather than visibly wrong.
+ * This is the name a DAW lists and a user reads. The four-character IDs below
+ * are NOT part of it and have not moved: a host stores those in a project, so
+ * renaming them would orphan every session that already loads this plugin.
  */
-#define PLUG_VERSION_HEX 0x00000101
-#define PLUG_VERSION_STR "0.1.1"
+#define PLUG_NAME "NI Spectrogram"
+/* The vendor a DAW groups the plugin under. BUNDLE_MFR below is a different
+ * thing -- it is part of the bundle IDENTIFIER, which is identity rather than
+ * branding, and it stays. */
+#define PLUG_MFR "Neon Ingvy"
+/*
+ * THE DATE SCHEME, v<YYYY.MM.DD>.<subversion>, which AGENTS.md asks for and the
+ * Trance Gate moved to first. This used to be 0.1.1 -- and before that it said
+ * 1.0.0 here while the crates said 0.1.0, so the plugin and the analyzer inside
+ * it disagreed about what they were.
+ *
+ * versions.json decides; `ctest -R versions` checks every spelling -- this one,
+ * the hex below, both crates and all four plists. Three of those consumers
+ * cannot hold the display string, so each has a derived form and the
+ * derivations are asserted rather than remembered.
+ *
+ * The hex is major<<16 | minor<<8 | patch, and THE SUBVERSION LIVES IN THE LOW
+ * BITS OF THE PATCH -- day*8+sub -- because a second release on one day has to
+ * move the packed number or a host cannot tell it from the first. It is the one
+ * a HOST compares when deciding whether a saved project was made by an older
+ * build, so a stale one is worse than a stale string: silently wrong rather
+ * than visibly wrong.
+ */
+#define PLUG_VERSION_HEX 0x07EA09E9
+#define PLUG_VERSION_STR "v2026.09.29.1"
 
 /* A NEW IDENTITY, not a variation on the Trance Gate's. A host catalogues a
  * plugin by this pair, and two plugins sharing one would fight over the same
@@ -43,20 +59,35 @@
 /*
  * BUNDLE_NAME MUST BE THE BUNDLE'S ACTUAL NAME, not the plugin's display name.
  * iPlug2 builds the bundle identifier from DOMAIN.MFR.type.NAME and looks the
- * bundle up by it to find the Cocoa view; the CMake target is Spectrogram, so
- * the bundle is com.graebe.audiounit.Spectrogram. Get this wrong and the
+ * bundle up by it to find the Cocoa view; the CMake target is NISpectrogram, so
+ * the bundle is com.graebe.audiounit.NISpectrogram. Get this wrong and the
  * lookup returns NULL, CFBundleCopyBundleURL segfaults the host the moment
  * anything asks for the editor, and auval dies at "VERIFYING CUSTOM UI" --
  * which is where the Trance Gate learned it.
+ *
+ * PLUG_NAME above is what a user sees; this is what the filesystem sees, and
+ * it carries no space because a bundle name with one is a path with one.
+ *
+ * RENAMED for the publisher's prefix, and the plugin's IDENTITY did not move --
+ * PLUG_UNIQUE_ID and PLUG_MFR_ID are what a host stores in a project, and they
+ * are untouched -- so sessions relink after a rescan.
+ *
+ * But the file on disk did move, and an old Spectrogram.component or .vst3 left
+ * beside the new one is TWO BUNDLES CLAIMING ONE ID, which hosts report in
+ * their own confusing ways. DELETE THE OLD ONE:
+ *
+ *   rm -rf ~/Library/Audio/Plug-Ins/VST3/Spectrogram.vst3 \
+ *          ~/Library/Audio/Plug-Ins/CLAP/Spectrogram.clap \
+ *          ~/Library/Audio/Plug-Ins/Components/Spectrogram.component
  */
-#define BUNDLE_NAME "Spectrogram"
+#define BUNDLE_NAME "NISpectrogram"
 #define BUNDLE_MFR "graebe"
 #define BUNDLE_DOMAIN "com"
 
 /* Stereo in, stereo out, passed through bit for bit. The analyzer reads the
  * mono sum; see ProcessBlock. */
 #define PLUG_CHANNEL_IO "2-2"
-#define SHARED_RESOURCES_SUBPATH "Spectrogram"
+#define SHARED_RESOURCES_SUBPATH "NISpectrogram"
 
 #define PLUG_LATENCY 0
 #define PLUG_TYPE 0          /* an effect, not an instrument */
@@ -89,22 +120,22 @@
  * app.css owns the arithmetic and states it in full.
  */
 #define PLUG_WIDTH 720
-#define PLUG_HEIGHT 458
+#define PLUG_HEIGHT 502
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 /* Nothing in the window grows with a value, so the host never has to resize
  * it -- unlike the Trance Gate, whose pad grid grows with Length. */
 #define PLUG_HOST_RESIZE 0
 
-#define AUV2_ENTRY Spectrogram_Entry
-#define AUV2_ENTRY_STR "Spectrogram_Entry"
-#define AUV2_FACTORY Spectrogram_Factory
-#define AUV2_VIEW_CLASS Spectrogram_View
-#define AUV2_VIEW_CLASS_STR "Spectrogram_View"
+#define AUV2_ENTRY NISpectrogram_Entry
+#define AUV2_ENTRY_STR "NISpectrogram_Entry"
+#define AUV2_FACTORY NISpectrogram_Factory
+#define AUV2_VIEW_CLASS NISpectrogram_View
+#define AUV2_VIEW_CLASS_STR "NISpectrogram_View"
 
 #define AAX_TYPE_IDS 'SpG1'
-#define AAX_PLUG_MFR_STR "graebe"
-#define AAX_PLUG_NAME_STR "Spectrogram\nSpGr"
+#define AAX_PLUG_MFR_STR "Neon Ingvy"
+#define AAX_PLUG_NAME_STR "NI Spectrogram\nSpGr"
 #define AAX_DOES_AUDIOSUITE 0
 #define AAX_PLUG_CATEGORY_STR "Effect"
 

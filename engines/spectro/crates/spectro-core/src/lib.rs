@@ -38,7 +38,10 @@ mod bands;
 mod fft;
 mod window;
 
-pub use bands::{amplitude_to_byte, centres_for, Band, Bands};
+pub use bands::{
+    amplitude_to_byte, centres_for, clash_cell, clash_column, db_span_to_byte, db_to_byte,
+    Band, Bands,
+};
 
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};

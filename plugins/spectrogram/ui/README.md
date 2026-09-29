@@ -35,7 +35,7 @@ honoured: `f_max` is clamped to Nyquist, so in a 32 kHz session "High" really is
 
 | tag | direction | carries |
 |---|---|---|
-| `64` | → UI | `"<cols>:<bands>:<hex>"` — finished columns, one byte per band, oldest first |
+| `64` | → UI | `"<ch>:<cols>:<bands>:<hex>"` — finished columns, one byte per band, oldest first. One message **per source**: the payload budget is a product, and three channels at the full catch-up budget overflows the cap |
 | `65` | → UI | the band centre frequencies in Hz, comma separated |
 | `96` | → plugin | `"<f_min>:<f_max>"` — the range dropdown's zoom |
 | `102` | → plugin | "mounted, send me the axis" |

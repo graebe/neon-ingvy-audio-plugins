@@ -83,3 +83,22 @@ export const luminance = (lut, v) =>
  */
 export const stopCss = (i, el = document.documentElement) =>
   getComputedStyle(el).getPropertyValue(`--spec-${i}`).trim();
+
+/**
+ * A custom property as three 0..255 channels, or null if it is not a hex
+ * colour. For the places a canvas needs a system colour that is NOT part of the
+ * ramp -- the clash overlay's amber.
+ *
+ * Read back rather than spelled, for the reason at the top of this file: a
+ * colour written into JavaScript is a colour outside tokens.css, and the token
+ * guard would catch it -- including one assembled at runtime.
+ */
+export function readRgb(name, el = document.documentElement) {
+  const raw = getComputedStyle(el).getPropertyValue(name).trim().replace(/^#/, '');
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return null;
+  return [
+    parseInt(raw.slice(0, 2), 16),
+    parseInt(raw.slice(2, 4), 16),
+    parseInt(raw.slice(4, 6), 16),
+  ];
+}

@@ -14,6 +14,8 @@
  *   32   space-8, the window padding
  *   28   the title row -- control-h now, because it holds the Pause button
  *   16   space-4
+ *   28   the source row: which buses, which one is drawn, and the clash
+ *   16   space-4
  *  258   the well: a 256px canvas inside a 1px frame
  *    8   space-2
  *   16   the time axis: a tick a second, labelled
@@ -23,7 +25,7 @@
  *   28   the hint bar
  *   16   space-4, the bottom
  *   ----
- *  458   = PLUG_HEIGHT
+ *  502   = PLUG_HEIGHT
  *
  * And across: 32 + 40 (the frequency scale) + 8 + 608 (the well) + 32 = 720
  * = PLUG_WIDTH.
@@ -44,7 +46,7 @@
  */
 main {
   width: 720px;
-  height: 458px;
+  height: 502px;
   padding: var(--s8) var(--s8) var(--s4);
   display: flex;
   flex-direction: column;
@@ -234,4 +236,21 @@ main {
   /* Wide enough for "< -96 dB", so the row's geometry does not depend on the
    * value currently in it. */
   min-width: 76px;
+}
+
+/*
+ * THE SOURCE ROW. The title row says HOW the picture is drawn -- range, bars,
+ * paused -- and this says WHAT it is of: which buses are being read, which one
+ * is on screen, and whether the clash is marked.
+ *
+ * It exists because eight controls do not fit 656px, which is a layout fact
+ * rather than a preference; the split just happens to be the one that reads.
+ */
+.source-row {
+  height: var(--control-h);
+  margin-bottom: var(--s4);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s4);
 }

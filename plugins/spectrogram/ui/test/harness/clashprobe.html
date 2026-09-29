@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><title>clash</title>
+<link rel="stylesheet" href="./assets/style.css"></head><body>
+<div id="root"></div>
+<pre id="out" style="position:fixed;bottom:0;color:#fff;font:12px monospace;z-index:9">pending</pre>
+<script src="./mock.js"></script>
+<script type="module" src="./assets/ui.js"></script>
+<script>
+/*
+ * DOES THE ORANGE LAND WHERE THE SOURCES ACTUALLY SHARE ENERGY?
+ *
+ * mock.js draws its fake bus loud only in bands 80..120 and silent elsewhere,
+ * so the answer is knowable: every orange pixel must fall in that window and
+ * none outside it. Run it three ways --
+ *
+ *   ?listen            clash on   -> orange, all of it inside
+ *   ?listen&noclash    clash off  -> none
+ *   (no query)         no sources -> none
+ *
+ * and read RESULT out of the dumped DOM:
+ *
+ *   chrome --headless=new --virtual-time-budget=40000 --dump-dom \
+ *          "http://localhost:<port>/clashprobe.html?listen" | grep -o 'RESULT [^<]*'
+ *
+ * IT SAMPLES SIX TIMES rather than once, and that is not belt-and-braces: the
+ * sweep only crosses the shared band for part of its cycle, so a single
+ * snapshot can legitimately catch none and read as a failure.
+ */
+/*
+ * SCOPED, because mock.js is a classic script too and they share one global:
+ * a second top-level `const BANDS` is a SyntaxError that stops this whole file
+ * from parsing, silently.
+ */
+(async () => { try {
+  const LO = 80, HI = 120, NBANDS = 256;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 400 && !document.querySelector('.checklist-face'); i++) await sleep(10);
+  await sleep(1600);
+  await sleep(2500);
+
+  const c = document.querySelector('.spectro-canvas');
+  const rows = c.height, cols = c.width;
+  let d = null, best = -1;
+  /* Sample a few times: the sweep only crosses the shared band for part of its
+     cycle, so one snapshot can legitimately catch none. */
+  for (let k = 0; k < 6; k++) {
+    const px = c.getContext('2d').getImageData(0, 0, cols, rows).data;
+    let n = 0;
+    for (let i = 0; i < px.length; i += 4) if (px[i] > px[i + 2]) n++;
+    if (n > best) { best = n; d = px; }
+    await sleep(700);
+  }
+
+  /* Orange is high red and low blue; the ramp is violet, so blue is high in
+     everything the picture itself draws. */
+  let inside = 0, outside = 0, lit = 0;
+  for (let y = 0; y < rows; y++) {
+    const band = Math.round((1 - y / rows) * (NBANDS - 1));
+    for (let x = 0; x < cols; x++) {
+      const i = (y * cols + x) * 4;
+      /* Every stop of the violet ramp has blue >= red; amber is the reverse.
+         So "red clearly ahead of blue" is orange and nothing else can be. */
+      const orange = d[i] > d[i + 2];
+      if (!orange) continue;
+      lit++;
+      if (band >= LO - 4 && band <= HI + 4) inside++; else outside++;
+    }
+  }
+  const btn = [...document.querySelectorAll('.btn')].find((b) => b.textContent === 'Clash');
+  const face = document.querySelector('.checklist-face .select-value');
+  /* What the picture is actually made of, so "no orange" can be told from
+     "no picture". */
+  let maxR = 0, maxB = 0;
+  for (let i = 0; i < d.length; i += 4) { if (d[i] > maxR) maxR = d[i]; if (d[i+2] > maxB) maxB = d[i+2]; }
+  out.textContent = `RESULT lit=${lit} inside=${inside} outside=${outside}`
+    + ` btn="${btn ? btn.className : 'none'}" sel="${face ? face.textContent : 'none'}"`
+    + ` maxR=${maxR} maxB=${maxB} size=${cols}x${rows} best=${best}`;
+  } catch (e) { out.textContent = `RESULT error ${e && e.message}`; }
+})();
+</script></body></html>

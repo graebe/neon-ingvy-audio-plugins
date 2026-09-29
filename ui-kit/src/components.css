@@ -322,3 +322,58 @@
   background: var(--uv);
   opacity: 0.9;
 }
+
+/* ---------------------------------------------------------- checklist --
+ *
+ * The open list, exactly as design/files/project/components/Select/README.md
+ * specifies it: "a bg-100 box with a uv border, one row per option, the current
+ * option in uv, the row under the pointer bg-300."
+ *
+ * ABSOLUTE INSIDE THE WINDOW, never portalled. A plugin window does not scroll
+ * and has a fixed size, so a menu that escaped its parent would be clipped by
+ * the frame with no way to reach the rest of it.
+ */
+.checklist { position: relative; display: flex; align-items: center; }
+
+/* The face borrows .select's housing so the two controls sit as one family; a
+ * button rather than a div, so it focuses and answers Space. */
+.checklist-face {
+  height: var(--control-h);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.checklist-panel {
+  position: absolute;
+  top: calc(var(--control-h) + var(--s1));
+  right: 0;
+  z-index: 10;
+  min-width: 160px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: var(--s2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  background: var(--bg-100);
+  border: var(--hair) solid var(--uv);
+  border-radius: var(--radius);
+}
+
+.checklist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s1) var(--s1);
+  white-space: nowrap;
+}
+.checklist-row:hover { background: var(--bg-300); }
+/* A bus whose sender is at another sample rate cannot be compared, so it is
+ * shown and refused rather than hidden -- hiding it would read as the Listen-In
+ * not being there at all. */
+.checklist-row.off { opacity: 0.45; }
+
+.checklist-hint { color: var(--ink-dim); }
+.checklist-empty { color: var(--ink-dim); padding: var(--s2); }

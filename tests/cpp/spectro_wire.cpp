@@ -92,7 +92,7 @@ static void emit_case(FILE* out, const unsigned char* data, int cols, int bands)
   fprintf(out, "%d %d ", cols, bands);
   for (int i = 0; i < cols * bands; i++)
     fprintf(out, "%s%d", i ? "," : "", int(data[i]));
-  fprintf(out, " %s\n", encode_columns(data, cols, bands).c_str());
+  fprintf(out, " %s\n", encode_columns(data, cols, bands, 0).c_str());
 }
 
 static void dump_table(FILE* out)
@@ -191,8 +191,11 @@ static int verify_table(const char* path)
 TEST_CASE("the header names the batch's shape")
 {
   const unsigned char c[6] = {1, 2, 3, 4, 5, 6};
-  CHECK(encode_columns(c, 2, 3).substr(0, 4) == "2:3:");
-  CHECK(encode_columns(c, 3, 2).substr(0, 4) == "3:2:");
+  CHECK(encode_columns(c, 2, 3, 0).substr(0, 6) == "0:2:3:");
+  CHECK(encode_columns(c, 3, 2, 0).substr(0, 6) == "0:3:2:");
+  /* The channel leads, and a second source says so rather than being told
+   * apart by which message tag carried it. */
+  CHECK(encode_columns(c, 2, 3, 2).substr(0, 6) == "2:2:3:");
 }
 
 TEST_CASE("every byte value survives the nibble table")
@@ -200,7 +203,7 @@ TEST_CASE("every byte value survives the nibble table")
   std::vector<unsigned char> all(256);
   for (int i = 0; i < 256; i++) all[size_t(i)] = (unsigned char) i;
 
-  const std::string s = encode_columns(all.data(), 1, 256);
+  const std::string s = encode_columns(all.data(), 1, 256, 0);
   const std::string body = s.substr(s.find_last_of(':') + 1);
 
   REQUIRE(body.size() == 512);
@@ -214,8 +217,8 @@ TEST_CASE("every byte value survives the nibble table")
 TEST_CASE("the hex is upper case, because the decoder's nibble map assumes it")
 {
   const unsigned char c[3] = {0xAB, 0xCD, 0xEF};
-  const std::string s = encode_columns(c, 1, 3);
-  CHECK(s == "1:3:ABCDEF");
+  const std::string s = encode_columns(c, 1, 3, 0);
+  CHECK(s == "0:1:3:ABCDEF");
 }
 
 TEST_CASE("columns are laid out one after another, not interleaved")
@@ -223,7 +226,8 @@ TEST_CASE("columns are laid out one after another, not interleaved")
   /* Two columns of three bands. Transposed, this reads 04 15 26 -- a picture
    * rotated by 90 degrees, which at a glance is still a spectrogram. */
   const unsigned char c[6] = {0, 1, 2, 4, 5, 6};
-  CHECK(encode_columns(c, 2, 3) == "2:3:000102040506");
+  CHECK(encode_columns(c, 2, 3, 0) == "0:2:3:000102040506");
+  CHECK(encode_columns(c, 2, 3, 1) == "1:2:3:000102040506");
 }
 
 TEST_CASE("a batch with nothing in it encodes to nothing at all")
@@ -231,9 +235,10 @@ TEST_CASE("a batch with nothing in it encodes to nothing at all")
   /* Not "0:0:", which the decoder would have to special-case. The caller
    * checks cols > 0 before sending, and this is the belt for that. */
   const unsigned char c[1] = {0};
-  CHECK(encode_columns(c, 0, 8).empty());
-  CHECK(encode_columns(c, 4, 0).empty());
-  CHECK(encode_columns(nullptr, 4, 8).empty());
+  CHECK(encode_columns(c, 0, 8, 0).empty());
+  CHECK(encode_columns(c, 4, 0, 0).empty());
+  CHECK(encode_columns(nullptr, 4, 8, 0).empty());
+  CHECK(encode_columns(c, 4, 8, -1).empty());
 }
 
 TEST_CASE("the axis is comma separated with no trailing comma")
@@ -332,6 +337,33 @@ TEST_CASE("beats refuse to advance on arguments that would poison the position")
   CHECK(advance_beats(5.0, 512, -120.0, 48000.0) == doctest::Approx(5.0));
   CHECK(advance_beats(5.0, 0, 120.0, 48000.0) == doctest::Approx(5.0));
   CHECK(advance_beats(5.0, -1, 120.0, 48000.0) == doctest::Approx(5.0));
+}
+
+TEST_CASE("a source list skips what it cannot read rather than failing whole")
+{
+  std::vector<unsigned int> got;
+  parse_slots("2,5,9", got);
+  CHECK(got == std::vector<unsigned int>{2, 5, 9});
+
+  /* "2,x,5" must listen to 2 and 5. A picker that silently does nothing
+   * because one field was mangled in transit is the harder fault to see. */
+  got.clear();
+  parse_slots("2,x,5", got);
+  CHECK(got == std::vector<unsigned int>{2, 5});
+
+  got.clear();
+  parse_slots("", got);
+  CHECK(got.empty());
+
+  /* Empty fields, and a trailing comma, are nothing rather than a zero --
+   * slot 0 is not a bus, it is a mistake. */
+  got.clear();
+  parse_slots(",,3,", got);
+  CHECK(got == std::vector<unsigned int>{3});
+
+  got.clear();
+  parse_slots("0,-4,99999", got);
+  CHECK(got.empty());
 }
 
 TEST_CASE("a full tick's payload fits the transport's cap")

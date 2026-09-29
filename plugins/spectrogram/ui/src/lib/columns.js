@@ -15,19 +15,28 @@
  */
 const nibble = (code) => (code <= 57 ? code - 48 : code - 55);
 
-/** "<cols>:<bands>:<hex>" -> { count, bands, data } or null. */
+/**
+ * "<ch>:<cols>:<bands>:<hex>" -> { ch, count, bands, data } or null.
+ *
+ * THE CHANNEL LEADS because a receiver sends one message PER SOURCE rather than
+ * one frame holding all of them -- the payload budget is a product, and three
+ * channels at the full catch-up budget overflows the transport's cap. Channel 0
+ * is always the track the plugin sits on.
+ */
 export function decodeColumns(text) {
   if (typeof text !== 'string') return null;
   const a = text.indexOf(':');
   const b = text.indexOf(':', a + 1);
-  if (a < 1 || b < a + 2) return null;
+  const c = text.indexOf(':', b + 1);
+  if (a < 1 || b < a + 2 || c < b + 2) return null;
 
-  const count = Number.parseInt(text.slice(0, a), 10);
-  const bands = Number.parseInt(text.slice(a + 1, b), 10);
-  if (!Number.isInteger(count) || !Number.isInteger(bands)) return null;
-  if (count < 1 || bands < 1) return null;
+  const ch = Number.parseInt(text.slice(0, a), 10);
+  const count = Number.parseInt(text.slice(a + 1, b), 10);
+  const bands = Number.parseInt(text.slice(b + 1, c), 10);
+  if (!Number.isInteger(ch) || !Number.isInteger(count) || !Number.isInteger(bands)) return null;
+  if (ch < 0 || count < 1 || bands < 1) return null;
 
-  const hex = text.slice(b + 1);
+  const hex = text.slice(c + 1);
   const bytes = count * bands;
   /*
    * A SHORT PAYLOAD IS DROPPED WHOLE RATHER THAN DRAWN IN PART. The transport
@@ -41,7 +50,7 @@ export function decodeColumns(text) {
   for (let i = 0; i < bytes; i++) {
     data[i] = (nibble(hex.charCodeAt(i * 2)) << 4) | nibble(hex.charCodeAt(i * 2 + 1));
   }
-  return { count, bands, data };
+  return { ch, count, bands, data };
 }
 
 /** "20.6,21.4,..." -> Float32Array of band centres, or null. */
@@ -313,3 +322,46 @@ export function barMarksFor(bars, num, denom, width) {
   }
   return out;
 }
+
+/* --------------------------------------------------------------- sources --
+ *
+ * The buses that exist, as the plugin found them. A receiver's picker is built
+ * from this and nothing else: the plugin probes, the editor lists.
+ */
+
+/**
+ * "<slot>:<live>:<rate>:<label>" per line -> `[{slot, live, rate, label}]`.
+ *
+ * A line that cannot be read is SKIPPED rather than failing the list. A label
+ * is whatever somebody typed into a Listen-In, so it is the field most likely
+ * to arrive strangely -- and a picker missing one entry is a far better outcome
+ * than a picker that is empty because of it.
+ */
+export function decodeSources(text) {
+  if (typeof text !== 'string') return [];
+  const out = [];
+  for (const line of text.split('\n')) {
+    if (!line) continue;
+    const p = line.split(':');
+    if (p.length < 4) continue;
+    const slot = Number.parseInt(p[0], 10);
+    const rate = Number.parseInt(p[2], 10);
+    if (!Number.isInteger(slot) || slot < 1) continue;
+    out.push({
+      slot,
+      live: p[1] === '1',
+      rate: Number.isInteger(rate) ? rate : 0,
+      /* The label may hold a colon only if the sender let one through; it does
+       * not, so anything after the fourth field is part of the name. */
+      label: p.slice(3).join(':'),
+    });
+  }
+  return out;
+}
+
+/**
+ * What to call a source in the picker. A Listen-In with no name typed into it
+ * is still a bus somebody inserted, so it gets its number rather than a blank.
+ */
+export const sourceName = (s) =>
+  (s && s.label ? s.label : `Bus ${s ? s.slot : '?'}`);

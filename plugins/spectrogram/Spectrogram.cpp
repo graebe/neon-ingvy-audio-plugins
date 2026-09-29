@@ -15,7 +15,9 @@
 Spectrogram::Spectrogram(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
-  mSpectro = spectro_new();
+  /* Configured for real in OnReset, once the host has named a rate. */
+  mRecv = srecv_new(48000.f, 8192, 1024, SPECTRO_BANDS,
+                    SPECTRO_F_MIN, SPECTRO_F_MAX, SPECTRO_DB_FLOOR, SPECTRO_DB_CEIL);
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* Before anything can be sent: see kMaxJSString. */
@@ -45,16 +47,18 @@ Spectrogram::Spectrogram(const InstanceInfo& info)
   /* The drain buffer, sized once for the worst tick this code will ever send.
    * The analyzer's band count cannot change without a configure, and configure
    * only ever restates it. */
-  const int bands = spectro_bands(mSpectro);
+  const int bands = SPECTRO_BANDS;
   mCols.assign(size_t(bands) * kMaxColsPerTick, 0);
+  mOwnCols.assign(size_t(bands) * kMaxColsPerTick, 0);
+  mClash.assign(size_t(bands) * kMaxColsPerTick, 0);
   /* Two hex characters a byte, plus "<cols>:<bands>:". */
   mHex.reserve(size_t(bands) * kMaxColsPerTick * 2 + 32);
 }
 
 Spectrogram::~Spectrogram()
 {
-  spectro_free(mSpectro);
-  mSpectro = nullptr;
+  srecv_free(mRecv);
+  mRecv = nullptr;
 }
 
 #if IPLUG_DSP
@@ -90,9 +94,21 @@ void Spectrogram::OnReset()
    * anything the editor could derive on its own. */
   mHop = hop;
 
-  spectro_configure(mSpectro, sr, fftSize, hop,
-                    SPECTRO_BANDS, SPECTRO_F_MIN, SPECTRO_F_MAX,
-                    SPECTRO_DB_FLOOR, SPECTRO_DB_CEIL);
+  /*
+   * A RECEIVER IS REPLACED RATHER THAN RECONFIGURED, for the reason
+   * spectro_configure gives: every buffer's size depends on the configuration,
+   * so "reconfigure" and "reallocate" are the same act. The host guarantees
+   * audio is stopped here, which is the only place that is safe.
+   *
+   * The selection survives it -- the sources are reopened against the new rate
+   * below, which is also where a bus that does NOT match it starts being
+   * refused rather than drawn.
+   */
+  srecv_free(mRecv);
+  mRecv = srecv_new(sr, fftSize, hop, SPECTRO_BANDS,
+                    SPECTRO_F_MIN, SPECTRO_F_MAX, SPECTRO_DB_FLOOR, SPECTRO_DB_CEIL);
+  srecv_set_clash(mRecv, mClashFloorDb, mClashBalanceDb);
+  ApplySources();
 
   /* Sized here, on the main thread, and never on the audio thread. iPlug2's
    * `sample` is double and the analyzer's path is float, so the block is
@@ -141,7 +157,16 @@ void Spectrogram::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
          * mastered, which looks like the analyzer is wrong about level. */
         mMono[size_t(i)] = 0.5f * (l + r);
       }
-      spectro_push_f32(mSpectro, mMono.data(), n);
+      /*
+       * A COPY INTO A RING, AND NOTHING ELSE ON THIS THREAD.
+       *
+       * The transform used to happen here. It now happens in OnIdle, with every
+       * other source, because that is the only way they can be fed the same
+       * number of frames and so be compared cell by cell -- and because an
+       * analyzer that stutters draws a stuttering picture where one that
+       * overran this thread would make a noise.
+       */
+      srecv_push_own(mRecv, mMono.data(), n);
     }
   }
 
@@ -220,7 +245,7 @@ void Spectrogram::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
  */
 void Spectrogram::OnIdle()
 {
-  if (!mSpectro)
+  if (!mRecv)
     return;
 
   /*
@@ -237,34 +262,116 @@ void Spectrogram::OnIdle()
    */
   SendSync();
 
-  const int bands = spectro_bands(mSpectro);
+  /*
+   * THE SOURCE LIST, ON A SLOW TIMER. A Listen-In appears when somebody inserts
+   * one, which is a human-speed event -- probing sixteen slots fifty times a
+   * second to learn nothing would be a syscall storm in aid of a dropdown.
+   */
+  if (--mSourceTick <= 0)
+  {
+    mSourceTick = 25;   /* twice a second at the idle timer's 20 ms */
+    SendSources();
+  }
+
+  /*
+   * AND THIS IS WHERE THE TRANSFORMS HAPPEN, for every source at once.
+   *
+   * One pump feeds them all the same number of frames, so column k of each is
+   * the same moment. That is what lets the clash below be read cell by cell
+   * rather than being a coincidence between two clocks.
+   */
+  srecv_pump(mRecv);
+
+  const int bands = srecv_bands(mRecv);
   if (bands <= 0)
     return;
 
-  const int cols = spectro_take_columns(mSpectro, mCols.data(), kMaxColsPerTick);
-  if (cols <= 0)
+  const int channels = srecv_channels(mRecv);
+
+  /*
+   * ONE MESSAGE PER CHANNEL, not one frame holding all of them. The budget is a
+   * PRODUCT -- channels x columns x bands -- and three channels at the full
+   * catch-up budget overflows the transport's cap by 32 bytes. Per channel,
+   * each keeps its own budget and the static_assert in the header stays the
+   * thing that proves it.
+   */
+  int ownCols = 0;
+  for (int ch = 0; ch < channels; ch++)
+  {
+    unsigned char* into = (ch == SRECV_OWN) ? mOwnCols.data() : mCols.data();
+    const int cols = srecv_take_columns(mRecv, ch, into, kMaxColsPerTick);
+    if (cols <= 0)
+      continue;
+    if (ch == SRECV_OWN)
+      ownCols = cols;
+
+    mHex = spectro::wire::encode_columns(into, cols, bands, ch);
+
+    /* The guard, at the one call that can approach the cap. The static_assert
+     * in Spectrogram.h is what actually holds the budget -- this one is gone
+     * under -DNDEBUG, which is how the plugin ships. */
+    assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
+    SendArbitraryMsgFromDelegate(kMsgCols, int(mHex.size()), mHex.c_str());
+
+    /*
+     * THE CLASH IS THIS CHANNEL AGAINST THE OWN ONE, and it is computed from
+     * the columns just drained rather than from a second drain -- a drained
+     * column is gone, so asking twice would compare one source's present
+     * against another's future.
+     *
+     * It rides on the channel's own tag: the editor unions them, so "what is
+     * fighting my track" is answered by every source at once without a message
+     * per pair.
+     */
+    if (ch != SRECV_OWN && ownCols == cols)
+    {
+      srecv_clash(mRecv, mOwnCols.data(), into, mClash.data(), cols);
+      mHex = spectro::wire::encode_columns(mClash.data(), cols, bands, ch);
+      assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
+      SendArbitraryMsgFromDelegate(kMsgClashCols, int(mHex.size()), mHex.c_str());
+    }
+  }
+}
+
+/*
+ * Every bus that exists, whether or not anything is sending on it -- an idle
+ * slot is worth showing, because a Listen-In that has been muted is still where
+ * the user put it. PROBING CREATES NOTHING.
+ */
+void Spectrogram::SendSources()
+{
+  char buf[kMaxJSString / 2];
+  const int n = srecv_slots(reinterpret_cast<unsigned char*>(buf), int(sizeof buf));
+  if (n < 0)
     return;
 
-  mHex = spectro::wire::encode_columns(mCols.data(), cols, bands);
+  const int len = int(strnlen(buf, sizeof buf));
+  assert(spectro::wire::framed_size(len) < kMaxJSString);
+  SendArbitraryMsgFromDelegate(kMsgSources, len, buf);
+}
 
-  /* The guard, at the one call that can approach the cap. The static_assert in
-   * Spectrogram.h is what actually holds the budget -- this one is gone under
-   * -DNDEBUG, which is how the plugin ships. */
-  assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
-  SendArbitraryMsgFromDelegate(kMsgCols, int(mHex.size()), mHex.c_str());
+/* Main thread only: it opens and closes readers, which allocates and mmaps. */
+void Spectrogram::ApplySources()
+{
+  if (!mRecv)
+    return;
+  srecv_set_sources(mRecv, mSources.empty() ? nullptr : mSources.data(),
+                    int(mSources.size()));
 }
 
 void Spectrogram::SendAxis()
 {
-  if (!mSpectro)
+  if (!mRecv)
     return;
 
-  const int bands = spectro_bands(mSpectro);
+  const int bands = srecv_bands(mRecv);
   if (bands <= 0)
     return;
 
+  /* ONE axis for every source. They share a configuration, which is exactly
+   * what lets their columns be compared cell by cell. */
   std::vector<float> hz(size_t(bands), 0.0f);
-  const int n = spectro_band_hz(mSpectro, hz.data(), bands);
+  const int n = srecv_band_hz(mRecv, hz.data(), bands);
 
   const std::string axis = spectro::wire::encode_axis(hz.data(), n);
 
@@ -292,6 +399,80 @@ void Spectrogram::SendSync()
   SendArbitraryMsgFromDelegate(kMsgSync, int(s.size()), s.c_str());
 }
 
+/*
+ * WHAT A SESSION HAS TO REMEMBER: which buses this window was looking at, and
+ * what it was calling a clash. Neither is a parameter -- nobody automates which
+ * picture they are looking at -- so the host cannot save them for us.
+ *
+ * Written as ONE STRING rather than as a count and a loop, because a reader
+ * that trusts a count it did not write is a reader that can be made to walk off
+ * the end of a chunk. parse_slots already skips anything unreadable.
+ */
+bool Spectrogram::SerializeState(IByteChunk& chunk) const
+{
+  if (!SerializeParams(chunk))
+    return false;
+
+  std::string sel;
+  for (size_t i = 0; i < mSources.size(); i++)
+  {
+    if (i)
+      sel += ',';
+    char num[16];
+    snprintf(num, sizeof num, "%u", mSources[i]);
+    sel += num;
+  }
+  if (chunk.PutStr(sel.c_str()) <= 0)
+    return false;
+
+  char clash[64];
+  snprintf(clash, sizeof clash, "%.2f:%.2f", mClashFloorDb, mClashBalanceDb);
+  return chunk.PutStr(clash) > 0;
+}
+
+int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
+{
+  int pos = UnserializeParams(chunk, startPos);
+
+  /*
+   * READ BACK DEFENSIVELY. This plugin's chunk was EMPTY until this version, so
+   * every session saved before it will arrive here with nothing after the
+   * parameters -- and a chunk written by a later version may hold more than
+   * this one knows how to want. Each field is taken only if it is there.
+   */
+  WDL_String sel;
+  int after = chunk.GetStr(sel, pos);
+  if (after > pos)
+  {
+    mSources.clear();
+    spectro::wire::parse_slots(sel.Get(), mSources);
+    pos = after;
+  }
+
+  WDL_String clash;
+  after = chunk.GetStr(clash, pos);
+  if (after > pos)
+  {
+    float floorDb = 0.f, balanceDb = 0.f;
+    if (spectro::wire::parse_range(clash.Get(), floorDb, balanceDb))
+    {
+      mClashFloorDb = floorDb;
+      mClashBalanceDb = balanceDb;
+    }
+    pos = after;
+  }
+
+#if IPLUG_DSP
+  /* The selection just changed underneath the receiver, so it has to follow. */
+  if (mRecv)
+  {
+    srecv_set_clash(mRecv, mClashFloorDb, mClashBalanceDb);
+    ApplySources();
+  }
+#endif
+  return pos;
+}
+
 void Spectrogram::OnUIOpen()
 {
   /* QUALIFIED for the same reason the constructor is: under the CLAP target an
@@ -310,6 +491,9 @@ bool Spectrogram::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* p
   {
     case kMsgReady:
       SendAxis();
+      /* And the picker's contents, so an editor that has just mounted does not
+       * show an empty source list until the slow timer comes round. */
+      SendSources();
       return true;
 
     case kMsgRange:
@@ -327,12 +511,48 @@ bool Spectrogram::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* p
       if (!spectro::wire::parse_range(arg, lo, hi))
         return true;
 
-      spectro_set_range(mSpectro, lo, hi);
+      srecv_set_range(mRecv, lo, hi);
 
       /* The scale follows the range, and the engine reports it back rather than
        * the editor assuming what it asked for was honoured -- f_max is clamped
        * to Nyquist, so at 32 kHz "2 k to 20 k" really is "2 k to 16 k". */
       SendAxis();
+      return true;
+    }
+
+    case kMsgSelect:
+    {
+      /*
+       * "<slot>,<slot>,..." -- which buses to listen in on, in the order they
+       * should appear. Empty is the own channel alone, and is the normal state
+       * rather than an error.
+       *
+       * pData IS NOT NUL-TERMINATED: it is dataSize bytes out of a base64
+       * decode, which is the trap Listen-In's label parser documents.
+       */
+      const std::string arg(static_cast<const char*>(pData),
+                            size_t(dataSize > 0 ? dataSize : 0));
+      mSources.clear();
+      spectro::wire::parse_slots(arg, mSources);
+      ApplySources();
+      /* Answer with what is actually open, not with what was asked for: a slot
+       * nobody is sending on does not open, and the editor must not go on
+       * showing it as selected. */
+      SendSources();
+      return true;
+    }
+
+    case kMsgClash:
+    {
+      /* "<floor_db>:<balance_db>" -- what counts as a clash. */
+      const std::string arg(static_cast<const char*>(pData),
+                            size_t(dataSize > 0 ? dataSize : 0));
+      float floorDb = 0.f, balanceDb = 0.f;
+      if (!spectro::wire::parse_range(arg, floorDb, balanceDb))
+        return true;
+      mClashFloorDb = floorDb;
+      mClashBalanceDb = balanceDb;
+      srecv_set_clash(mRecv, floorDb, balanceDb);
       return true;
     }
 

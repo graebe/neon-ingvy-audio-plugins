@@ -43,8 +43,8 @@
  * The hex is major<<16 | minor<<8 | patch; versions.json decides both spellings
  * and `ctest -R versions` checks them here, in the crates, and in every plist.
  */
-#define PLUG_VERSION_HEX 0x00000100
-#define PLUG_VERSION_STR "0.1.0"
+#define PLUG_VERSION_HEX 0x07EA09E9
+#define PLUG_VERSION_STR "v2026.09.29.1"
 
 /* A NEW IDENTITY, not a variation on either existing one. A host catalogues a
  * plugin by this pair, and two plugins sharing one would fight over the same

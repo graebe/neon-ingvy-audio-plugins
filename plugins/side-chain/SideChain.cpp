@@ -198,13 +198,34 @@ void SideChain::OnReset()
   mKeyL.assign(size_t(cap), 0.f);
   mKeyR.assign(size_t(cap), 0.f);
 
-  /* A rate change invalidates every column, because a column is a slice of a
+  /*
+   * A rate change invalidates every column, because a column is a slice of a
    * cycle and the cycle has just changed length in samples. Bumping the
-   * generation retires them all without touching the buffers. */
+   * generation retires them all without touching the values.
+   *
+   * THE WHOLE CAPTURE IS WRITTEN HERE, and `gain` alone is not enough.
+   * `std::atomic<float>` and `std::atomic<uint32_t>` members are DEFAULT-
+   * INITIALISED, which for these leaves them indeterminate -- reading one
+   * before it has been stored to is undefined behaviour, not "reads as zero".
+   *
+   * `seen` was the dangerous one: it is compared against the generation, so an
+   * indeterminate value that happened to match would publish a column of
+   * indeterminate audio as real. The window fills within one cycle and hides it,
+   * which is exactly the kind of bug that surfaces once, on someone else's
+   * machine, as a spike that reads as a transient.
+   */
   mCapGen.fetch_add(1, std::memory_order_relaxed);
   mCapCol = -1;
   for (int i = 0; i < kScopeCols; i++)
+  {
+    mCap.dryLo[i].store(0.f, std::memory_order_relaxed);
+    mCap.dryHi[i].store(0.f, std::memory_order_relaxed);
+    mCap.wetLo[i].store(0.f, std::memory_order_relaxed);
+    mCap.wetHi[i].store(0.f, std::memory_order_relaxed);
     mCap.gain[i].store(1.f, std::memory_order_relaxed);
+    /* Zero is never a live generation: mCapGen starts at 1 and only rises. */
+    mCap.seen[i].store(0u, std::memory_order_relaxed);
+  }
 }
 
 /*

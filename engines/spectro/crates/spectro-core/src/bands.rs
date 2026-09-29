@@ -197,6 +197,93 @@ pub fn amplitude_to_byte(amplitude: f32, db_floor: f32, db_ceil: f32) -> u8 {
 mod tests {
     use super::*;
 
+    const FLOOR: f32 = -96.0;
+    const CEIL: f32 = 0.0;
+
+    fn b(db: f32) -> u8 {
+        db_to_byte(db, FLOOR, CEIL)
+    }
+
+    #[test]
+    fn a_level_survives_the_trip_into_bytes_and_back() {
+        assert_eq!(b(0.0), 255, "full scale is not the ceiling");
+        assert_eq!(b(-96.0), 0, "the floor is not zero");
+        assert_eq!(b(-200.0), 0, "below the floor did not clamp");
+        assert_eq!(b(50.0), 255, "above the ceiling did not clamp");
+        /* Halfway up the scale, within a byte's worth of rounding. */
+        assert!((b(-48.0) as i16 - 128).abs() <= 1, "{} is not halfway", b(-48.0));
+    }
+
+    #[test]
+    fn a_clash_needs_both_sources_present() {
+        let floor = b(-60.0);
+        let bal = db_span_to_byte(12.0, FLOOR, CEIL);
+
+        /* Two sources meeting at -20 dB: the thing being looked for. */
+        assert!(clash_cell(b(-20.0), b(-20.0), floor, bal) > 0);
+
+        /* One loud, one under the floor: not a clash, whatever a product says. */
+        assert_eq!(clash_cell(b(0.0), b(-80.0), floor, bal), 0);
+        assert_eq!(clash_cell(b(-80.0), b(0.0), floor, bal), 0, "and it is symmetric");
+
+        /* Both under the floor: silence does not fight silence. */
+        assert_eq!(clash_cell(b(-70.0), b(-70.0), floor, bal), 0);
+    }
+
+    #[test]
+    fn a_source_that_simply_wins_is_not_clashing() {
+        let floor = b(-60.0);
+        let bal = db_span_to_byte(12.0, FLOOR, CEIL);
+
+        /* Both well above the floor, but 30 dB apart -- the quiet one is
+         * masked, not competing. This is the case a product conflates with a
+         * real clash, and the whole reason the balance gate exists. */
+        assert_eq!(clash_cell(b(0.0), b(-30.0), floor, bal), 0);
+
+        /* Inside the window it counts, and more the closer they are. */
+        let near = clash_cell(b(-20.0), b(-22.0), floor, bal);
+        let far = clash_cell(b(-20.0), b(-30.0), floor, bal);
+        assert!(near > 0 && far > 0);
+        assert!(near > far, "a closer match did not read stronger: {near} vs {far}");
+    }
+
+    #[test]
+    fn strength_rises_with_level() {
+        let floor = b(-60.0);
+        let bal = db_span_to_byte(12.0, FLOOR, CEIL);
+        let quiet = clash_cell(b(-50.0), b(-50.0), floor, bal);
+        let mid = clash_cell(b(-30.0), b(-30.0), floor, bal);
+        let loud = clash_cell(b(-6.0), b(-6.0), floor, bal);
+        assert!(quiet < mid && mid < loud, "{quiet} {mid} {loud}");
+        assert!(loud > 200, "two sources at -6 dB should read strongly, got {loud}");
+    }
+
+    #[test]
+    fn the_edges_of_the_settings_do_not_divide_by_zero() {
+        /* balance 0 means "only exact ties". */
+        assert!(clash_cell(200, 200, 10, 0) > 0);
+        assert_eq!(clash_cell(200, 201, 10, 0), 0);
+        /* floor 255 means "only full scale". */
+        assert!(clash_cell(255, 255, 255, 255) > 0);
+    }
+
+    #[test]
+    fn a_column_is_the_cell_applied_across_it_and_nothing_stale_is_left() {
+        let floor = b(-60.0);
+        let bal = db_span_to_byte(12.0, FLOOR, CEIL);
+        let a = [b(-20.0), b(-20.0), b(-80.0)];
+        let bb = [b(-20.0), b(0.0), b(-80.0)];
+        let mut out = [7u8; 5];
+        clash_column(&a, &bb, &mut out, floor, bal);
+
+        assert_eq!(out[0], clash_cell(a[0], bb[0], floor, bal));
+        assert_eq!(out[1], 0, "30 dB apart is not a clash");
+        assert_eq!(out[2], 0, "both under the floor");
+        /* Past the shortest input, and the 7s must be gone. */
+        assert_eq!(&out[3..], &[0, 0], "a stale tail was left to be drawn");
+    }
+
+
     const SR: f32 = 48_000.0;
     const BINS: usize = 513; /* fft_size 1024 */
 
@@ -249,4 +336,106 @@ mod tests {
         let mid = amplitude_to_byte(10f32.powf(-48.0 / 20.0), -96.0, 0.0);
         assert!((i32::from(mid) - 128).abs() <= 1, "-48 dB landed at {mid}");
     }
+}
+
+/* ------------------------------------------------------------------ clash --
+ *
+ * WHERE TWO SOURCES ARE FIGHTING, which is not the same question as where they
+ * overlap.
+ *
+ * The obvious metric is the product of the two spectra, and it is the wrong
+ * one. A product in amplitude is a SUM in dB, so 0 dB against -60 dB scores
+ * exactly what -30 dB against -30 dB scores -- and only the second is a clash.
+ * The first is one source winning outright, which is what a mix is supposed to
+ * sound like.
+ *
+ * So two conditions, and both are needed:
+ *
+ *   BOTH PRESENT      min(a, b) above a floor. `min` is high only where
+ *                     neither source is quiet, which is the actual question.
+ *   COMPARABLE        |a - b| within a window. Past about 9-12 dB the louder
+ *                     source simply masks the other; that is a source being
+ *                     buried, not two sources competing, and painting it would
+ *                     bury the real clashes in orange.
+ *
+ * IT IS ALL BYTE ARITHMETIC, and that is not a shortcut. A column byte is
+ * already linear in dB -- see `amplitude_to_byte` above -- so `min` of two
+ * bytes IS `min` of two decibels, and a byte difference IS a dB difference
+ * scaled by 255/96. Nothing needs converting back.
+ *
+ * The result is a STRENGTH, not a flag: 0 where there is no clash, rising with
+ * how far above the floor the quieter source is and how evenly the two are
+ * matched. The picture paints it as an intensity, so a cell where two sources
+ * sit at -6 dB together has to read louder than one where they meet at -50.
+ */
+
+/// Clash strength for one cell, 0 where there is none.
+///
+/// `floor` and `balance` are in the same byte units as the levels; see
+/// [`db_to_byte`] and [`db_span_to_byte`].
+#[inline]
+pub fn clash_cell(a: u8, b: u8, floor: u8, balance: u8) -> u8 {
+    let lo = a.min(b);
+    if lo < floor {
+        return 0;
+    }
+    let diff = a.abs_diff(b);
+    if diff > balance {
+        return 0;
+    }
+
+    /*
+     * Two factors, multiplied, both 0..=255:
+     *
+     *   depth    how far the QUIETER source is above the floor -- the headroom
+     *            it has to be heard in
+     *   even     how matched they are, falling to nothing at the edge of the
+     *            balance window so the region fades out rather than ending on
+     *            a hard line nobody chose
+     *
+     * `balance == 0` means "only exact ties", and then `even` is 255 rather
+     * than a divide by zero.
+     */
+    let span = 255 - floor as u16;
+    let depth = if span == 0 {
+        255u16
+    } else {
+        ((lo - floor) as u16 * 255) / span
+    };
+    let even = if balance == 0 {
+        255u16
+    } else {
+        255 - (diff as u16 * 255) / balance as u16
+    };
+    ((depth * even) / 255) as u8
+}
+
+/// A whole column. `out` is filled for `min(a.len(), b.len(), out.len())` bands
+/// and zeroed past it, so a caller never draws a stale tail.
+pub fn clash_column(a: &[u8], b: &[u8], out: &mut [u8], floor: u8, balance: u8) {
+    let n = a.len().min(b.len()).min(out.len());
+    for i in 0..n {
+        out[i] = clash_cell(a[i], b[i], floor, balance);
+    }
+    for slot in out.iter_mut().skip(n) {
+        *slot = 0;
+    }
+}
+
+/// A dBFS level as the byte the engine would have encoded it as.
+///
+/// The inverse of `amplitude_to_byte`'s scaling, and the only correct way to
+/// turn "flag anything above -60 dB" into a threshold these bytes can be
+/// compared against.
+pub fn db_to_byte(db: f32, db_floor: f32, db_ceil: f32) -> u8 {
+    let span = (db_ceil - db_floor).max(1.0);
+    let t = ((db - db_floor) / span).clamp(0.0, 1.0);
+    (t * 255.0 + 0.5) as u8
+}
+
+/// A dB DIFFERENCE in byte units -- for the balance window, which is a span
+/// rather than a level and so has no floor to subtract.
+pub fn db_span_to_byte(db: f32, db_floor: f32, db_ceil: f32) -> u8 {
+    let span = (db_ceil - db_floor).max(1.0);
+    ((db.max(0.0) / span) * 255.0 + 0.5).min(255.0) as u8
 }
