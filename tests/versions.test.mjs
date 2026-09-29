@@ -47,7 +47,11 @@ const PRODUCTS = {
   /* The directory is `modules/side-chain` and the module ID inside it is `ni-side-chain`:
    * charlesvestal/schwung-ducker already owns `ducker` on the device. The path
    * is what this test needs; the ID is module.json's business. */
-  pump: {
+  /* The KEY is the product name in versions.json. The rename pass rewrote the
+   * paths below and left this one, because it is a bare word rather than an
+   * identifier -- and the first test here is exactly the one that catches that:
+   * versions.json and this table have to name the same set. */
+  'side-chain': {
     config: 'plugins/side-chain/config.h',
     module: 'modules/side-chain/module.json',
     crates: ['sc-core', 'sc-capi', 'sc-move'].map(
