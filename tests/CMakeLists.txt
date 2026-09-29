@@ -99,6 +99,13 @@ if (TG_NODE)
     # other source file"; four had crept into the UI by the time this was
     # written, one of them an arc glow at alpha 0.75 against the system's 0.45,
     # which no eye was ever going to catch.
+    # ONE VERSION PER PRODUCT, spelled once. A product's version appears in
+    # three or four files in three languages, nothing held them together, and
+    # they had already come apart: the Spectrogram shipped PLUG_VERSION_STR
+    # "1.0.0" against crates that said 0.1.0.
+    add_test(NAME versions
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
+
     # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit and both
     # editors -- where there used to be one per plugin, each blind to the other.
     add_test(NAME ui_tokens

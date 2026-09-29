@@ -14,8 +14,20 @@
 
 #define PLUG_NAME "Spectrogram"
 #define PLUG_MFR "graebe"
-#define PLUG_VERSION_HEX 0x00010000
-#define PLUG_VERSION_STR "1.0.0"
+/*
+ * 0.1.0, AND IT USED TO SAY 1.0.0 HERE WHILE THE CRATES SAID 0.1.0.
+ *
+ * The plugin and the analyzer inside it disagreed about what they were, which
+ * is the kind of thing nobody notices until a bug report names a version that
+ * never existed. versions.json decides now and `ctest -R versions` checks
+ * every spelling -- this one, the hex below, and both crates.
+ *
+ * The hex is major<<16 | minor<<8 | patch, and it is the one a HOST compares
+ * when deciding whether a saved project was made by an older build, so a stale
+ * one is worse than a stale string: silently wrong rather than visibly wrong.
+ */
+#define PLUG_VERSION_HEX 0x00000100
+#define PLUG_VERSION_STR "0.1.0"
 
 /* A NEW IDENTITY, not a variation on the Trance Gate's. A host catalogues a
  * plugin by this pair, and two plugins sharing one would fight over the same
