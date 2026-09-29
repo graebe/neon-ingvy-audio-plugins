@@ -1,5 +1,5 @@
 ---
-title: Trance Gate
+title: NI Trance Gate
 tagline: A tempo-locked step gate, in Live and on the Move, from one Rust engine.
 order: 1
 hosts: [live, move]
@@ -11,7 +11,7 @@ still: media/trance-gate/live.png
 harness: harness/trance-gate/
 ---
 
-# Trance Gate
+# NI Trance Gate
 
 A tempo-locked step gate: rhythmic chopping locked to song position, per-step
 ADSR, ties, per-step amount, a fade-in that introduces the steps one at a time,

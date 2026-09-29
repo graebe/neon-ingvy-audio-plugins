@@ -40,12 +40,21 @@ jobs:
         id: tag
         run: |
           case "$GITHUB_REF_NAME" in
-            trance-gate-v*) PRODUCT=trance-gate; BUNDLE=TranceGate ;;
+            trance-gate-v*) PRODUCT=trance-gate; BUNDLE=NITranceGate ;;
             spectrogram-v*) PRODUCT=spectrogram; BUNDLE=Spectrogram ;;
             listen-in-v*)   PRODUCT=listen-in;   BUNDLE=ListenIn ;;
             *) echo "ERROR: $GITHUB_REF_NAME names no product"; exit 1 ;;
           esac
-          VERSION="${GITHUB_REF_NAME#${PRODUCT}-v}"
+          # ONLY THE PRODUCT PREFIX IS STRIPPED, not the "v" after it.
+          #
+          # This used to strip "${PRODUCT}-v" and compare the remainder to
+          # versions.json -- which worked while every version was a bare semver.
+          # The date scheme's versions BEGIN with a v ("v2026.09.29.1"), so that
+          # strip ate a character the version owns and a correct tag would have
+          # needed to say "-vv". The leading v is now normalised away on BOTH
+          # sides instead, in the comparison below, so a tag may spell it either
+          # way and both schemes work.
+          VERSION="${GITHUB_REF_NAME#${PRODUCT}-}"
           echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
           echo "bundle=$BUNDLE"   >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -58,8 +67,11 @@ jobs:
       - name: The tag matches versions.json
         run: |
           SOURCE=$(python3 -c "import json;print(json.load(open('versions.json'))['${{ steps.tag.outputs.product }}'])")
-          if [ "$SOURCE" != "${{ steps.tag.outputs.version }}" ]; then
-            echo "ERROR: tag says ${{ steps.tag.outputs.version }}, versions.json says $SOURCE"
+          TAGV="${{ steps.tag.outputs.version }}"
+          # A leading "v" is spelling, not version -- the date scheme carries one
+          # and semver does not, so it is removed from both before comparing.
+          if [ "${SOURCE#v}" != "${TAGV#v}" ]; then
+            echo "ERROR: tag says $TAGV, versions.json says $SOURCE"
             exit 1
           fi
           echo "version check passed: $SOURCE"

@@ -1,4 +1,11 @@
-# The Trance Gate, on iPlug2.
+# NI Trance Gate, on iPlug2.
+#
+# THE TARGET NAME IS THE BUNDLE NAME. iPlug2 builds the bundle identifier from
+# DOMAIN.MFR.type.<target> and the AU looks its own bundle up by that identifier
+# to find the Cocoa view -- so BUNDLE_NAME in config.h must be spelled exactly as
+# it is here, or CFBundleCopyBundleURL returns NULL and the host segfaults the
+# moment anything asks for the editor. It also names the four Info.plists, which
+# iPlug2 finds as resources/<target>-<FORMAT>-Info.plist.
 #
 # iPlug2 is zlib-licensed and the VST3 SDK it fetches is MIT -- Steinberg
 # withdrew the GPLv3 and proprietary options -- so this target and everything
@@ -35,7 +42,7 @@ if (TG_NPM)
                     "npm --prefix plugins/trance-gate/ui install")
   endif()
 
-  add_custom_target(TranceGateUI ALL
+  add_custom_target(NITranceGateUI ALL
     COMMAND ${TG_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Building the editor (vite)"
@@ -49,7 +56,7 @@ file(GLOB TG_WEB
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/fonts/*")
 
-iplug_add_plugin(TranceGate
+iplug_add_plugin(NITranceGate
   SOURCES
     TranceGate.cpp
     TranceGate.h
@@ -70,10 +77,10 @@ iplug_add_plugin(TranceGate
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.
-if (TARGET TranceGateUI)
+if (TARGET NITranceGateUI)
   foreach(fmt vst3 clap au)
-    if (TARGET TranceGate-${fmt})
-      add_dependencies(TranceGate-${fmt} TranceGateUI)
+    if (TARGET NITranceGate-${fmt})
+      add_dependencies(NITranceGate-${fmt} NITranceGateUI)
     endif()
   endforeach()
 endif()

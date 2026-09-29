@@ -160,10 +160,30 @@ endif()
 # parameter API, and compares against the engine directly.
 #
 # It finds the plugin by the (aufx, TrGt, Grbe) triple, which the iPlug2 build
-# carries over from the JUCE one -- so this test now covers the new AU without
-# a line changing in it.
+# carries over from the JUCE one -- so this test covers the new AU without a line
+# changing in it.
+#
+# WHICH IS ALSO ITS ONE WEAKNESS, AND WHY THE VERSION IS PASSED IN. Those three
+# values are the plugin's identity and never move, so EVERY build it has ever had
+# claims them -- including one left installed under an older bundle name. The
+# rename to NITranceGate left TranceGate.component in place, macOS registered the
+# old one, and this test went on passing against a binary with none of the new
+# work in it. PLUG_VERSION_HEX is read out of config.h here and handed to the test
+# so it can refuse a bundle that is not the one this tree builds.
 if (APPLE)
+    file(READ ${CMAKE_SOURCE_DIR}/plugins/trance-gate/config.h TG_CONFIG_H)
+    string(REGEX MATCH "#define[ \t]+PLUG_VERSION_HEX[ \t]+(0x[0-9a-fA-F]+)"
+           _tg_ver_match "${TG_CONFIG_H}")
+    set(TG_PLUG_VERSION_HEX "${CMAKE_MATCH_1}")
+    if (NOT TG_PLUG_VERSION_HEX)
+        message(FATAL_ERROR
+            "No PLUG_VERSION_HEX in plugins/trance-gate/config.h -- tg_au cannot "
+            "tell the bundle it built from one shadowing it")
+    endif()
+
     add_executable(tg_au_render au_render.c)
+    target_compile_definitions(tg_au_render
+        PRIVATE EXPECTED_AU_VERSION=${TG_PLUG_VERSION_HEX})
     target_link_libraries(tg_au_render PRIVATE tg_engine m
         "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
     add_test(NAME tg_au COMMAND tg_au_render)

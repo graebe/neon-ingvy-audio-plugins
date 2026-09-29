@@ -102,12 +102,24 @@ The release carries an unsigned universal bundle in all three formats. macOS
 will refuse to load it until the quarantine attribute is removed:
 
 ```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/TranceGate.vst3
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NITranceGate.vst3
 ```
 
 Signing needs an Apple Developer ID and a notarytool round trip; until those
 exist, that one command is the difference. It is a property of the distribution,
 not of the plugin.
+
+**The bundle is `NITranceGate` as of v2026.09.29.1**, where it used to be
+`TranceGate`. The plugin's identity did not change -- a host stores the
+four-character IDs, not the filename, so sessions relink after a rescan -- but an
+old bundle left beside the new one is two bundles claiming one ID, which hosts
+report in their own confusing ways. Delete the old ones:
+
+```sh
+rm -rf ~/Library/Audio/Plug-Ins/VST3/TranceGate.vst3 \
+       ~/Library/Audio/Plug-Ins/CLAP/TranceGate.clap \
+       ~/Library/Audio/Plug-Ins/Components/TranceGate.component
+```
 
 ## For developers
 

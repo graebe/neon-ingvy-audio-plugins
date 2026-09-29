@@ -12,10 +12,50 @@
  */
 #pragma once
 
-#define PLUG_NAME "Trance Gate"
-#define PLUG_MFR "graebe"
-#define PLUG_VERSION_HEX 0x00010100
-#define PLUG_VERSION_STR "1.1.0"
+/*
+ * THE VERSION IS A DATE, AND THREE CONSUMERS CANNOT HOLD IT LITERALLY.
+ *
+ * versions.json decides, in the scheme v<YYYY.MM.DD>.<subversion>. This string
+ * is what a DAW shows and carries it verbatim. The other three cannot:
+ *
+ *   Cargo.toml       strict semver -- no "v", no leading zeros, three
+ *                    components. So the crates say 2026.9.29+1, where the
+ *                    subversion rides as build metadata: legal, and preserved.
+ *   Info.plist       CFBundleShortVersionString is up to three integers, so
+ *                    the plists say 2026.9.29.
+ *   PLUG_VERSION_HEX major<<16 | minor<<8 | patch, and 16/8/8 bits.
+ *
+ * THE HEX IS THE ONE A HOST COMPARES to decide whether a saved project came
+ * from an older build, so it has to move on every release -- including a second
+ * release on the same day, which is the whole reason the subversion exists.
+ * There is no fourth field to put it in, so it goes in the low bits of the
+ * patch:
+ *
+ *     patch = day * 8 + subversion            2026.09.29.1 -> 29*8+1 = 233
+ *     hex   = year<<16 | month<<8 | patch     -> 0x07EA09E9
+ *
+ * That is monotonic across a day boundary (day 29 sub 7 is 239, day 30 sub 0 is
+ * 240) and the maximum -- day 31, subversion 7 -- is exactly 255, so it fits the
+ * byte without a clamp. EIGHT RELEASES A DAY IS THE CEILING, and the version
+ * test refuses a ninth rather than letting it wrap silently.
+ *
+ * The cost is readability: 0x07EA09E9 decomposes as 2026.9.233, not 2026.9.29.
+ * That is the trade for a number that actually changes when the version does.
+ */
+/*
+ * "NI Trance Gate" -- NI FOR NEON INGVY, the publisher.
+ *
+ * This is the name a DAW lists and a user reads. The four-character IDs below
+ * are NOT part of it and have not moved: a host stores those in a project, so
+ * renaming them would orphan every session that already loads this plugin.
+ */
+#define PLUG_NAME "NI Trance Gate"
+/* The vendor a DAW groups the plugin under. BUNDLE_MFR below is a different
+ * thing -- it is part of the bundle IDENTIFIER, which is identity rather than
+ * branding, and it stays. */
+#define PLUG_MFR "Neon Ingvy"
+#define PLUG_VERSION_HEX 0x07EA09E9
+#define PLUG_VERSION_STR "v2026.09.29.1"
 
 /* THE FOUR-CHARACTER IDS ARE THE PLUGIN'S IDENTITY and they are carried over
  * from the JUCE build deliberately: a host that catalogued this plugin
@@ -40,21 +80,33 @@
  *
  * PLUG_NAME above is what a user sees; this is what the filesystem sees.
  *
- * RENAMED FROM "TranceGateIP" when the plugin stopped carrying its framework
- * in its name. The plugin's IDENTITY did not move -- PLUG_UNIQUE_ID and
- * PLUG_MFR_ID below are what a host stores in a project -- so sessions relink
- * after a rescan. But the file on disk did, so an old TranceGateIP.component
- * or .vst3 left beside the new one is two bundles claiming one ID, which
- * hosts report in their own confusing ways. Delete the old one.
+ * RENAMED TWICE. First from "TranceGateIP" when the plugin stopped carrying its
+ * framework in its name, and now to "NITranceGate" for the publisher's own
+ * prefix. The plugin's IDENTITY did not move either time -- PLUG_UNIQUE_ID and
+ * PLUG_MFR_ID below are what a host stores in a project, and they are
+ * untouched -- so sessions relink after a rescan.
+ *
+ * But the file on disk did move, and an old TranceGate.component or .vst3 left
+ * beside the new one is TWO BUNDLES CLAIMING ONE ID, which hosts report in
+ * their own confusing ways. DELETE THE OLD ONE:
+ *
+ *   rm -rf ~/Library/Audio/Plug-Ins/VST3/TranceGate.vst3 \
+ *          ~/Library/Audio/Plug-Ins/CLAP/TranceGate.clap \
+ *          ~/Library/Audio/Plug-Ins/Components/TranceGate.component
+ *
+ * The bundle identifier moves with the name -- com.graebe.audiounit.TranceGate
+ * becomes com.graebe.audiounit.NITranceGate -- and that is the lookup the AU's
+ * view uses, so it MUST match the CMake target exactly. It does; see
+ * plugins/trance-gate/CMakeLists.txt.
  */
-#define BUNDLE_NAME "TranceGate"
+#define BUNDLE_NAME "NITranceGate"
 #define BUNDLE_MFR "graebe"
 #define BUNDLE_DOMAIN "com"
 
 /* Stereo in, stereo out. The engine has a split-channel path and applies one
  * gain to both, so the layout is not a DSP question. */
 #define PLUG_CHANNEL_IO "2-2"
-#define SHARED_RESOURCES_SUBPATH "TranceGate"
+#define SHARED_RESOURCES_SUBPATH "NITranceGate"
 
 #define PLUG_LATENCY 0
 #define PLUG_TYPE 0          /* an effect, not an instrument */
@@ -112,15 +164,15 @@
 /* The window grows with Length -- see kMsgRows. */
 #define PLUG_HOST_RESIZE 1
 
-#define AUV2_ENTRY TranceGate_Entry
-#define AUV2_ENTRY_STR "TranceGate_Entry"
-#define AUV2_FACTORY TranceGate_Factory
-#define AUV2_VIEW_CLASS TranceGate_View
-#define AUV2_VIEW_CLASS_STR "TranceGate_View"
+#define AUV2_ENTRY NITranceGate_Entry
+#define AUV2_ENTRY_STR "NITranceGate_Entry"
+#define AUV2_FACTORY NITranceGate_Factory
+#define AUV2_VIEW_CLASS NITranceGate_View
+#define AUV2_VIEW_CLASS_STR "NITranceGate_View"
 
 #define AAX_TYPE_IDS 'TGt1'
-#define AAX_PLUG_MFR_STR "graebe"
-#define AAX_PLUG_NAME_STR "Trance Gate\nTrGt"
+#define AAX_PLUG_MFR_STR "Neon Ingvy"
+#define AAX_PLUG_NAME_STR "NI Trance Gate\nTrGt"
 #define AAX_DOES_AUDIOSUITE 0
 #define AAX_PLUG_CATEGORY_STR "Modulation"
 

@@ -75,7 +75,7 @@ four repository secrets and a notarytool round trip. Until those exist, the
 release notes carry the one command that gets macOS to load an unsigned plugin:
 
 ```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/TranceGate.vst3
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NITranceGate.vst3
 ```
 
 Adding signing later changes that workflow and nothing about the build.
