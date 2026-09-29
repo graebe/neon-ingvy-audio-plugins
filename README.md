@@ -5,8 +5,9 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 
 | product | ships as | engine |
 |---|---|---|
-| [Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
+| [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
 | [Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
+| [NI Listen-In](plugins/listen-in/README.md) | VST3 · AU · CLAP | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/side-chain` |
 
 ## How it is put together
@@ -74,7 +75,11 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `versions` | every spelling of a product's version agrees with `versions.json` |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
 | `spectro_wire`, `spectro_columns_js` | the wire format the editor decodes, both sides pinned to one table the plugin's own C++ generates |
+| `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** |
+| `abus_core` | the ring's wrap and overrun, the claim protocol, and a writer running flat out against a slow reader with every delivered block checked for continuity — a spliced buffer looks exactly like audio |
+| `listenin_wire`, `listenin_wire_js` | the state string and the label sanitiser, both sides pinned to one table the plugin's own C++ generates |
 | `tg_wire` | the four pieces of plugin arithmetic where being wrong is silent — the scope quantiser, the message split, the editor height, the transport advance |
+| `tg_fade`, `tg_fade_js` | the fade-in's arrival weights, against the engine's own *measured* gain — DC in with no envelope, so the gain during a step IS that step's weight. The editor mirrors the formula, so the mirror is pinned |
 
 ### Coverage
 
@@ -131,8 +136,9 @@ Each product's manual lives with it, and this site renders those same files:
 
 | | |
 |---|---|
-| [Trance Gate](plugins/trance-gate/README.md) | a tempo-locked step gate — [in Live](plugins/trance-gate/docs/live.md), [on the Move](plugins/trance-gate/docs/schwung.md) |
+| [NI Trance Gate](plugins/trance-gate/README.md) | a tempo-locked step gate — [in Live](plugins/trance-gate/docs/live.md), [on the Move](plugins/trance-gate/docs/schwung.md) |
 | [Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
+| [NI Listen-In](plugins/listen-in/README.md) | a tap that publishes a track on a numbered bus — [in Live](plugins/listen-in/docs/live.md) |
 | [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input |
 
 Published at **https://graebe.github.io/neon-ingvy-audio-plugins/**, built from this
@@ -151,27 +157,9 @@ chain.
 | CLAP | **MIT** |
 | the Trance Gate engine (`engines/trance-gate`) | **MIT**, and it has no external crates at all |
 | the Spectrogram analyzer (`engines/spectro`) | **MIT**, and it has none either — the FFT is ninety lines rather than a crate |
+| the audio bus (`engines/audio-bus`) | **MIT**, and it has no external crates either — it declares the six POSIX calls it needs rather than taking libc |
 | the Side-Chain engine (`engines/side-chain`) | **MIT**, no external crates. Part of it is a PORT and carries a notice — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) |
-| JetBrains Mono, bundled with both editors | **SIL OFL 1.1**, with `OFL.txt` beside the font in every bundle |
-
-Two things had to go to get here, and neither was a licensing decision on its
-own.
-
-**JUCE 8 is AGPLv3-or-commercial** — a *stronger* obligation than GPL, not an
-equal one: while that target shipped, the artefact had to be conveyed under
-AGPLv3. It is gone, and so is the 2,586-line editor it drew. That editor is
-not lost, it is the last commit before the removal, and whatever draws the UI
-next is a translation of it rather than a fresh design.
-
-**nih-plug is ISC, but `nih_export_vst3!()` is not.** It pulled in
-[`vst3-sys`](https://github.com/RustAudio/vst3-sys), GPL-3.0-or-later — a
-third-party reimplementation of interfaces Steinberg now publishes under MIT
-themselves. One crate, and it made the whole build copyleft.
-
-The premise behind both was that a VST3 plugin cannot be permissive. It can:
-Steinberg withdrew the GPL-or-proprietary dual licence and the SDK is MIT.
-That was worth checking rather than assuming, and checking it is what made
-this repository MIT.
+| JetBrains Mono, bundled with every editor | **SIL OFL 1.1**, with `OFL.txt` beside the font in every bundle |
 
 See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for the notices those
 dependencies require.

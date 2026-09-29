@@ -39,6 +39,20 @@ export const setDepth = (i, amount) =>
   sendMessage(MSG.setDepth, `${i}:${Math.max(0, Math.min(1, amount)).toFixed(4)}`);
 
 /**
+ * A step's place in the fade's ARRIVAL ORDER, 1..N.
+ *
+ * The engine normalises the whole order after this, so a rank out of range
+ * clamps and the result is still a permutation -- the UI never has to compute
+ * what the other steps become.
+ */
+export const setOrder = (i, rank) =>
+  sendMessage(MSG.setOrder, `${i}:${Math.max(1, Math.round(rank))}`);
+
+/** Reroll the current slot. No payload: the engine walks its own generator, so
+ *  two presses differ. */
+export const randomize = () => sendMessage(MSG.randomize);
+
+/**
  * The press half of the gesture: cycle the step under the pointer.
  *
  * `model` is `{ steps, ties }` — read live rather than captured, so a gesture
@@ -57,11 +71,39 @@ export function pressStep(i, model, shiftKey) {
 }
 
 /**
+ * ORDER MODE: a click names the next arrival rather than editing the step.
+ *
+ * Tapping the pads in the order you want them to arrive is the whole gesture,
+ * and it is a MODE rather than a modifier because both modifiers a pad has are
+ * taken -- plain click cycles the step and shift makes a tie -- and because a
+ * sequence is something you type out over several clicks, which a mode says and
+ * a chord does not.
+ *
+ * `next` is how many have been named so far, so the first click is rank 1. A
+ * step that is OFF is switched on first and then named: you can lay down an
+ * arrival order and a pattern in one pass.
+ *
+ * Returns true when it handled the press, so the caller falls through to the
+ * ordinary gesture when the mode is off.
+ */
+export function orderPress(i, model) {
+  if (!model.orderMode) return false;
+  if (!model.steps?.[i]) {
+    setStep(i, MODE.on);
+    setDepth(i, 1);
+  }
+  setOrder(i, (model.orderNext ?? 0) + 1);
+  model.onOrdered?.(i);
+  return true;
+}
+
+/**
  * The pads' whole gesture: press to cycle, then drag vertically for the
  * amount, measured against the pad's own box.
  */
 export function padGesture(i, e, model) {
   e.preventDefault();
+  if (orderPress(i, model)) return;
   pressStep(i, model, e.shiftKey);
 
   const box = e.currentTarget.getBoundingClientRect();
@@ -94,6 +136,9 @@ export function padGesture(i, e, model) {
  */
 export function ringGesture(i, e, model, stepAt) {
   e.preventDefault();
+  /* The ring sequences too -- this file is the one implementation of what a
+   * click does to a step, and a second copy of the rule would have drifted. */
+  if (orderPress(i, model)) return;
   const mode = pressStep(i, model, e.shiftKey);
 
   /* Painted already, so a sweep back and forth does not flicker them. */

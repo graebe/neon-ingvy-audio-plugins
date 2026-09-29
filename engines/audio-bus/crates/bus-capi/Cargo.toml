@@ -1,0 +1,13 @@
+[package]
+name = "bus-capi"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "The C ABI that a sending plugin and a receiving plugin both link"
+
+[lib]
+name = "bus_capi"
+crate-type = ["staticlib"]
+
+[dependencies]
+bus-core = { path = "../bus-core" }

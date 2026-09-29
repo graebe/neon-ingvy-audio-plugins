@@ -21,7 +21,7 @@
 const int kNumPresets = 1;
 
 /*
- * THE TWELVE AUTOMATABLE VALUES, IN THE ENGINE'S OWN WIRE ORDER.
+ * THE FOURTEEN AUTOMATABLE VALUES, IN THE ENGINE'S OWN WIRE ORDER.
  *
  * This enum is deliberately tg_param_t's order, so the host index IS the
  * engine index and there is no mapping table between them to get wrong. The
@@ -43,6 +43,11 @@ enum EParams
   kDecay,
   kSustain,
   kRelease,
+  /* APPENDED, like the engine's own two. A host that catalogued this plugin
+   * stored these indices, so the fade's pair can only go on the end -- not
+   * beside kAmount, which is where they belong by meaning. */
+  kFade,
+  kFadeSoft,
   kNumParams
 };
 
@@ -68,7 +73,7 @@ public:
 enum EMsgTags
 {
   kMsgUiState = 64,   /* -> UI: the engine's `ui` readout, once per frame   */
-  kMsgParams,         /* -> UI: the `params` readout (12 values + width_ms) */
+  kMsgParams,         /* -> UI: the `params` readout (14 values + width_ms) */
   kMsgScope,          /* -> UI: the signal capture, base64 floats           */
   kMsgPatch,          /* <-> :  the state blob, for copy and paste          */
 
@@ -93,6 +98,15 @@ enum EMsgTags
    * A push that races page load, replaced by a request that cannot.
    */
   kMsgReady,          /* <- UI: mounted -- send me everything                */
+  kMsgSetOrder,       /* <- UI: "<index>:<rank>" -- its place in the fade    */
+  /*
+   * REGENERATE THE CURRENT SLOT. An ACTION, which is why it is a message and
+   * not a parameter: a host parameter that rerolled the pattern every time the
+   * host rewrote it would be unusable, and the pattern is not automatable in
+   * the first place. The payload is an optional seed; empty walks the engine's
+   * own generator, so successive presses differ.
+   */
+  kMsgRandomize,
 };
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
@@ -119,32 +133,43 @@ enum EMsgTags
    * THE SCOPE'S CAPTURE, written on the audio thread and read on the message
    * thread.
    *
-   * A ROLLING WINDOW OF WALL TIME, NOT A SWEEP OF THE PATTERN.
+   * A SWEEP ALIGNED TO THE PATTERN, NOT A ROLLING WINDOW OF WALL TIME.
    *
-   * It used to map each sample to a column by PATTERN PHASE, so a column was
-   * written once per cycle -- seconds apart at sixteen steps. Change the
-   * input level and the picture only caught up as the sweep passed each
-   * column, which read as a slow, filtered rise and fall. Nothing was being
-   * smoothed; the display was simply that old.
+   * The x-axis IS one cycle of the gate: column k is pattern phase
+   * k / kScopeCols, always, and the trace is written into the column the
+   * playhead is in. So the axis stands still, the picture fills left to right,
+   * and `head` is the write point rather than an origin the reader has to
+   * rotate by.
    *
-   * Now the columns advance with TIME: one window's worth of audio, always
-   * completely full, every column refreshed within a window. `head` is the
-   * column being written -- which is also the OLDEST data, since it is about
-   * to be overwritten -- so the reader walks head, head+1, ... head+255 to get
-   * oldest to newest, left to right.
+   * THIS REVERSES AN EARLIER DECISION AND THE REASONING BEHIND IT WAS REAL, so
+   * it is worth saying which half did not hold. The phase mapping was removed
+   * because a column was written ONCE PER CYCLE -- seconds apart at sixteen
+   * steps -- so changing the input level only caught up as the sweep passed
+   * each column, which read as a slow filtered rise. Wall time fixed that and
+   * cost the alignment: a given step was no longer at a fixed x, which took the
+   * step numbers and the gate overlay off the plot with it.
    *
-   * The cost is the pattern alignment: a given step is no longer always at the
-   * same x, so the step numbers and the gate overlay came off the plot. The
-   * wet trace shows the gating, which is what they were explaining.
+   * What was actually wrong was never the mapping. It was that a column was
+   * published only when it was COMPLETE. The partial column is published every
+   * block now, so the write point is live to within one buffer and a level
+   * change appears at the sweep immediately -- current audio, overwritten, at
+   * no point averaged with the cycle before it. There is nothing here that
+   * could filter: min and max of the samples that land in a column, reset when
+   * the column changes.
    *
-   * MIN AND MAX PER COLUMN, never a mean: a transient is a fraction of a
-   * column and averaging would quietly report a signal that is not the one
-   * playing.
+   * And with the axis being the pattern again, the ENVELOPE can be drawn over
+   * it, which is the whole reason to want this arrangement.
+   *
+   * MIN AND MAX PER COLUMN, never a mean: a transient is a fraction of a column
+   * and averaging would quietly report a signal that is not the one playing.
    */
   static constexpr int kScopeCols = 256;
-  /* One second of audio across the well. Long enough to see a bar of a slow
-   * pattern, short enough that a level change is visible at once. */
-  static constexpr double kScopeWindowMs = 1000.0;
+  /*
+   * The sweep's length when the pattern's own is not known yet -- before the
+   * first idle tick has measured it. One second, which is what the wall-time
+   * window used to be.
+   */
+  static constexpr double kScopeFallbackMs = 1000.0;
   /* The transport TRUNCATES rather than fails past this, so every push has to
    * fit under it with base64's extra third accounted for. Raised from
    * iPlug2's 8192 default and asserted against at the one call that can
@@ -154,8 +179,9 @@ enum EMsgTags
   {
     std::atomic<float> dryLo[kScopeCols], dryHi[kScopeCols];
     std::atomic<float> wetLo[kScopeCols], wetHi[kScopeCols];
-    /* The column currently being accumulated: the write cursor, and the
-     * oldest data in the ring. */
+    /* The column currently being written: the sweep's own position. Not an
+     * origin -- the reader draws column 0 at the left edge and always has -- so
+     * this is only what marks the fill point. */
     std::atomic<int> head{0};
   };
 
@@ -204,12 +230,30 @@ private:
   Capture mCap;
   /* The column being accumulated, its running bounds, and how much of it has
    * been filled. Audio thread only. */
-  int mCapCol = 0;
+  int mCapCol = -1;                 /* -1 = nothing accumulated yet */
   int mCapCount = 0;                /* samples into the current column */
-  double mCapPerCol = 1.0;          /* samples a column spans, from the rate */
   float mCapDryLo = 0.f, mCapDryHi = 0.f, mCapWetLo = 0.f, mCapWetHi = 0.f;
+  /*
+   * THE FREE-RUN SWEEP, for a transport that is not moving.
+   *
+   * A stopped gate has no phase -- the engine parks step_pos at 0 -- so every
+   * sample would land in column 0 and the plot would show one pixel of a signal
+   * that is passing through perfectly audibly. This sweeps the same axis at the
+   * same length instead, so the picture keeps its meaning and keeps moving.
+   */
+  double mSweep = 0.0;
+  /* One cycle in milliseconds, for the axis the editor draws. Message thread
+   * only -- it is written where it is measured and read where it is sent. */
+  double mScopeCycleMs = kScopeFallbackMs;
+  /*
+   * How many samples one cycle of the pattern is. Measured on the MESSAGE
+   * thread, where the step duration and the length can be read as strings
+   * without formatting on the audio callback, and handed over as one double.
+   */
+  std::atomic<double> mCycleSamples{0.0};
   std::vector<float> mDry;          /* the input, before the engine overwrites it */
-  void CaptureBlock(const float* dry, const float* wet, int frames);
+  void CaptureBlock(const float* dry, const float* wet, int frames,
+                    double ph0, double ph1, bool advancing);
   /* iPlug2's `sample` is double and the engine's float path is the one the
    * golden render pins, so the block is converted rather than the engine
    * widened. Sized in OnReset; never resized on the audio thread. */

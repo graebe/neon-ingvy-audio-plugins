@@ -68,6 +68,20 @@ pub struct Pattern {
     /// says "how much gating". 255 is the neutral value, which is why a v1
     /// blob without the array must fill it rather than zero it.
     pub depth: [u8; MAX_STEPS],
+    /*
+     * ARRIVAL ORDER: WHICH STEP THE FADE INTRODUCES FIRST.
+     *
+     * A 1-based rank among the ON steps inside `length`, and it is kept a
+     * PERMUTATION of 1..=N by `renumber` after every edit to the mask -- so
+     * there is no illegal state for a shell to draw and no numbering for a
+     * user to repair. An off step keeps whatever it held, which is what lets
+     * a step switched off and on again come back where it was.
+     *
+     * Position order (the leftmost on step is 1) is the neutral value, which
+     * is why a pre-fade blob without the array must fill it that way rather
+     * than zero it: zero would make every step arrive at once.
+     */
+    pub order: [u8; MAX_STEPS],
 }
 
 impl Pattern {
@@ -77,6 +91,9 @@ impl Pattern {
             ties: Mask::new(),
             length: 16,
             depth: [DEPTH_FULL; MAX_STEPS],
+            /* Overwritten by the `renumber` below; a distinct value per step
+             * rather than all-zero so the sort is not asked to break ties. */
+            order: [0; MAX_STEPS],
         };
         /* Slot 1 is every other step -- the plainest thing that is audibly a
          * gate the moment the module is loaded. The rest start fully open,
@@ -86,7 +103,119 @@ impl Pattern {
         for i in 0..16 {
             p.steps.set(i, if slot == 0 { i % 2 == 0 } else { true });
         }
+        for i in 0..MAX_STEPS {
+            p.order[i] = (i + 1) as u8;
+        }
+        p.renumber();
         p
+    }
+
+    /*
+     * THE ORDER IS NORMALISED RATHER THAN VALIDATED.
+     *
+     * Every caller that can move the mask, the length or a rank ends here, and
+     * what leaves is always a permutation of 1..=N over the ON steps inside
+     * `length`, in the same relative order they went in. So "what happens when
+     * you switch a step off" needs no rule of its own: the gap closes.
+     *
+     * Off steps and steps past `length` keep their stored rank, deliberately.
+     * They are what a step switched back on -- or a Length turned back up --
+     * returns to, and they cost nothing because nothing reads them.
+     *
+     * A COUNTING RANK, NOT A SORT. The rank of step i is "how many on steps
+     * carry a lower key", which is O(length^2) at worst -- 16k integer
+     * comparisons at 128 steps -- and needs no scratch array. `set_param` runs
+     * on the audio callback, so an allocation here would be the real cost, not
+     * the comparisons. Ties in the key break by index, which is what keeps
+     * this a total order and the result a permutation.
+     */
+    pub fn renumber(&mut self) {
+        let n = self.length.min(MAX_STEPS);
+        let mut rank = [0u8; MAX_STEPS];
+        for i in 0..n {
+            if !self.on(i) {
+                continue;
+            }
+            let mut r = 1u32;
+            for j in 0..n {
+                if j == i || !self.on(j) {
+                    continue;
+                }
+                let (a, b) = (self.order[j], self.order[i]);
+                if a < b || (a == b && j < i) {
+                    r += 1;
+                }
+            }
+            rank[i] = r.min(255) as u8;
+        }
+        for i in 0..n {
+            if self.on(i) {
+                self.order[i] = rank[i];
+            }
+        }
+    }
+
+    /// How many steps sound in one cycle -- the divisor the fade spaces its
+    /// arrivals over.
+    pub fn hits(&self) -> usize {
+        (0..self.length.min(MAX_STEPS)).filter(|&i| self.on(i)).count()
+    }
+
+    /*
+     * A STEP JOINING THE PATTERN ARRIVES LAST.
+     *
+     * `renumber` cannot infer this -- a step that has never been on has no
+     * meaningful key, and one switched off and on again has a stale one. Both
+     * want "after everything currently on", which is what a pattern being
+     * drawn in reads as: the order you click is the order they arrive.
+     *
+     * The mask bit must already be SET when this is called; a step that is off
+     * has no rank to be given.
+     */
+    pub fn order_append(&mut self, i: usize) {
+        if i >= MAX_STEPS {
+            return;
+        }
+        /* Above every rank a permutation of 1..=128 can hold, so the counting
+         * pass places it last. */
+        self.order[i] = 255;
+        self.renumber();
+    }
+
+    /*
+     * Put step `i` at rank `rank`, and let the rest close up around it -- the
+     * semantics of dragging a row in a list.
+     *
+     * SHIFTED, NOT RE-KEYED. The ranks are already 1..=N, so moving one of them
+     * is the loop below and what comes out is still exactly a permutation.
+     * Encoding the target as a key BETWEEN two existing ones and re-deriving is
+     * the other way to write this, and it needs keys above 255 at 128 steps --
+     * an overflow that would read as a step refusing to move to the end of a
+     * long pattern.
+     */
+    pub fn order_set(&mut self, i: usize, rank: usize) {
+        if i >= MAX_STEPS || !self.on(i) {
+            return;
+        }
+        self.renumber();
+        let n = self.hits();
+        let r = rank.clamp(1, n.max(1)) as u8;
+        let k = self.order[i];
+        if r == k {
+            return;
+        }
+        for j in 0..self.length.min(MAX_STEPS) {
+            if j == i || !self.on(j) {
+                continue;
+            }
+            let o = self.order[j];
+            if r < k && o >= r && o < k {
+                self.order[j] = o + 1;
+            } else if r > k && o > k && o <= r {
+                self.order[j] = o - 1;
+            }
+        }
+        self.order[i] = r;
     }
 
     #[inline]
@@ -168,6 +297,47 @@ pub struct Instance {
     pub time_mode: TimeMode,
     pub curve: Curve,
     pub sample_rate: f64,
+
+    /*
+     * THE FADE-IN: HOW MUCH OF THE PATTERN HAS ARRIVED, 0..1.
+     *
+     * 0 is "no step sounds" and 1 is "all of them do", and the N on steps
+     * arrive at equal intervals between the two -- step of rank r crosses at
+     * exactly r/N. A build-up is this parameter automated, which is the whole
+     * reason it is a host parameter and the pattern is not.
+     *
+     * 1.0 IS THE NEUTRAL VALUE and the default, so a fresh instance and every
+     * patch saved before this existed sound exactly as they did. The golden
+     * renders are what say so.
+     */
+    pub fade: f32,
+    /*
+     * Whether a step ARRIVES or APPEARS.
+     *
+     * Soft ramps the step in on its own level -- the same quantity a drag up
+     * and down in a pad sets -- over its slice of the knob's travel. Hard
+     * jumps it on at the end of that slice. They are one formula and a
+     * threshold, so the two agree at every arrival boundary and the switch
+     * reads as smoothing rather than as a second feature.
+     */
+    pub fade_soft: bool,
+    /*
+     * THE FADE'S WEIGHT PER STEP, CACHED.
+     *
+     * `next_gain` consults this twice a sample and a step's RANK costs a pass
+     * over the pattern to find, so deriving it in the sample loop would put an
+     * O(length) search inside an O(frames) one. Recomputed by `recalc_fade`
+     * whenever anything it depends on moves -- the same arrangement
+     * `ms_per_step` has, and for the same reason.
+     */
+    fade_w: [f32; MAX_STEPS],
+    /*
+     * The generator's state. A small xorshift rather than anything from a
+     * library: `set_param` runs on the audio callback, where `rand()` is not
+     * RT-safe in the strict sense, and the core has no dependencies to reach
+     * for anyway.
+     */
+    rng: u32,
 }
 
 impl Instance {
@@ -198,9 +368,182 @@ impl Instance {
             time_mode: TimeMode::Ms,
             curve: Curve::Linear,
             sample_rate: if sample_rate > 0.0 { sample_rate } else { 44100.0 },
+            /* The whole pattern, arriving as one -- which is the behaviour of
+             * every version before the fade existed. */
+            fade: 1.0,
+            fade_soft: false,
+            fade_w: [1.0; MAX_STEPS],
+            /* A FIXED SEED, ADVANCED PER CALL. There is no entropy source in
+             * here -- no clock, no I/O, by design -- so successive presses
+             * differing is what the walk provides and reproducibility is what
+             * the fixed start provides. A shell that wants a specific roll
+             * passes its own seed to `randomize`. */
+            rng: 0x9E37_79B9,
         };
         me.recalc_ms_per_step();
+        me.recalc_fade();
         me
+    }
+
+    /*
+     * THE FADE, AS ONE FORMULA WITH TWO READINGS.
+     *
+     *     w(r) = clamp(f*N - (r-1), 0, 1)        soft
+     *     w(r) = w_soft(r) >= 1 ? 1 : 0          hard
+     *
+     * N is the number of ON steps inside `length` and r is a step's arrival
+     * rank, 1..=N. Everything the control promises falls out of it: f=0 leaves
+     * every weight at 0, f=1 leaves every one at 1, and rank r crosses at
+     * f = r/N, so the arrivals are equidistant. In soft mode EXACTLY ONE step
+     * is part-way in at any moment -- a one-slot window travelling up the
+     * order -- which is the smoothest thing that is still evenly spaced.
+     *
+     * Hard is that value thresholded rather than a second rule, so the two
+     * modes agree at every arrival boundary. A switch that moved the arrivals
+     * as well as their shape would be two features wearing one name.
+     *
+     * THE EPSILON IS NOT COSMETIC. f arrives as a float from a host and the
+     * value nearest below 1.0 is a real thing to be handed; without the slack,
+     * the last step of the pattern would stay silent at the top of the knob,
+     * which is the one setting a user is certain to check.
+     */
+    pub fn recalc_fade(&mut self) {
+        let (fade, soft) = (self.fade, self.fade_soft);
+        let p = &self.pat[self.slot];
+        let n = p.hits();
+        let mut w = [0.0f32; MAX_STEPS];
+        if n > 0 {
+            let t = fade as f64 * n as f64;
+            for i in 0..p.length.min(MAX_STEPS) {
+                if !p.on(i) {
+                    continue;
+                }
+                let r = p.order[i].max(1) as f64;
+                let v = (t - (r - 1.0)).clamp(0.0, 1.0);
+                w[i] = if soft {
+                    v as f32
+                } else if v >= 1.0 - 1.0e-6 {
+                    1.0
+                } else {
+                    0.0
+                };
+            }
+        }
+        self.fade_w = w;
+    }
+
+    /*
+     * A STEP THE FADE HAS NOT REACHED IS A GAP, NOT A SILENT ON STEP.
+     *
+     * The difference is TIES and JOIN NEIGHBORS, both of which ask the mask
+     * whether a step sounds in order to decide whether to hold a gate open
+     * through it. Reading the raw mask there would let a step that has not
+     * arrived keep its neighbour's gate open -- audible, and impossible to
+     * explain from the picture. So every read of "does this step sound" on the
+     * audio path goes through here, and hard mode is then literally the
+     * pattern with the later steps removed.
+     */
+    #[inline]
+    fn sounds(&self, i: usize) -> bool {
+        i < MAX_STEPS && self.fade_w[i] > 0.0
+    }
+
+    /// One turn of xorshift32. Never returns 0 once seeded non-zero, which is
+    /// the only state this generator cannot leave.
+    #[inline]
+    fn next_rand(&mut self) -> u32 {
+        let mut x = self.rng;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.rng = x;
+        x
+    }
+
+    /*
+     * FILL A SLOT WITH A GATE WORTH HEARING.
+     *
+     * Sixteen coin flips reads as noise rather than as a trance gate, so the
+     * hits are spread EVENLY over the pattern -- the Euclidean rhythm, by the
+     * two-line test below rather than by Bjorklund's algorithm, which produces
+     * the same spacing and needs a scratch array. It puts a hit on step 0 by
+     * construction, so a random pattern always lands on the downbeat.
+     *
+     * The ARRIVAL ORDER is shuffled with it, and that is the half that makes
+     * this worth having: position order can only ever fade in as a
+     * left-to-right wipe, where a shuffled order is a build-up.
+     *
+     * TIES ARE CLEARED AND THE LEVELS GO BACK TO FULL. They are not randomised
+     * -- an accent pattern nobody chose is harder to work with than none --
+     * but they describe a pattern that no longer exists, so carrying them over
+     * would leave a gate holding through a step that is now a gap.
+     *
+     * IT DOES NOT TOUCH THE PLAYHEAD. Not `step_pos`, not `last_step`, not
+     * `env`, not `was_running`: pressing this mid-bar must change what the
+     * gate plays, not when it plays it.
+     */
+    pub fn randomize(&mut self, slot: usize, seed: Option<u32>) {
+        if slot >= SLOTS {
+            return;
+        }
+        if let Some(s) = seed {
+            /* Zero is xorshift's one dead state, so it is spelled as something
+             * else rather than silently producing the same pattern forever. */
+            self.rng = if s == 0 { 0x6C07_8965 } else { s };
+        }
+        let length = self.pat[slot].length.clamp(1, MAX_STEPS);
+
+        /* A quarter to three quarters full. Below that a gate reads as an
+         * accident and above it as no gate at all. */
+        let lo = (length / 4).max(1);
+        let hi = (length * 3 / 4).max(lo + 1);
+        let hits = lo + (self.next_rand() as usize) % (hi - lo + 1);
+
+        let p = &mut self.pat[slot];
+        p.ties.clear();
+        p.depth = [DEPTH_FULL; MAX_STEPS];
+        for i in 0..MAX_STEPS {
+            p.steps.set(i, false);
+        }
+        /*
+         * THE EUCLIDEAN TEST, AND WHICH END OF THE GROUP THE HIT SITS AT.
+         *
+         *     hit(i)  <=>  (i * hits) mod length  <  hits
+         *
+         * The other spelling of this -- comparing floor((i+1)*h/n) with
+         * floor(i*h/n) -- spreads the hits identically and puts each one at the
+         * END of its group, which leaves step 0 EMPTY at every density below
+         * full. A random gate that never lands on the downbeat is the one thing
+         * this generator is supposed to guarantee, and it reads as the
+         * randomiser being broken rather than as an off-by-one.
+         */
+        for i in 0..length {
+            p.steps.set(i, (i * hits) % length < hits);
+        }
+
+        /* Fisher-Yates over the ranks, in place over the step indices that
+         * carry them. The borrow ends before the generator is asked for the
+         * next number, which is why the ranks are collected first. */
+        let mut idx = [0usize; MAX_STEPS];
+        let mut n = 0;
+        for i in 0..length {
+            if self.pat[slot].on(i) {
+                idx[n] = i;
+                n += 1;
+            }
+        }
+        for i in 0..n {
+            self.pat[slot].order[idx[i]] = (i + 1) as u8;
+        }
+        for i in (1..n).rev() {
+            let j = (self.next_rand() as usize) % (i + 1);
+            let (a, b) = (idx[i], idx[j]);
+            let t = self.pat[slot].order[a];
+            self.pat[slot].order[a] = self.pat[slot].order[b];
+            self.pat[slot].order[b] = t;
+        }
+        self.pat[slot].renumber();
+        self.recalc_fade();
     }
 
     #[inline]
@@ -264,9 +607,13 @@ impl Instance {
      */
     fn on_step_boundary(&mut self, prev_step: Option<usize>, new_step: usize) {
         let l = self.lens();
+        /* THE FADE'S WEIGHTS ARE READ BEFORE THE PATTERN IS BORROWED, not
+         * because the borrow checker insists but because `sounds` consults
+         * `self` and `p` holds a shared borrow of it. Three reads, named. */
+        let on_now = self.sounds(new_step);
+        let on_prev = prev_step.map_or(false, |s| self.sounds(s));
+        let w_now = if new_step < MAX_STEPS { self.fade_w[new_step] } else { 0.0 };
         let p = &self.pat[self.slot];
-        let on_now = p.on(new_step);
-        let on_prev = prev_step.map_or(false, |s| p.on(s));
         let tied = prev_step.map_or(false, |s| p.tied(s));
 
         if on_now {
@@ -279,7 +626,17 @@ impl Instance {
              * BELOW 100%, which is where a retrigger actually re-articulates.
              */
             if !(on_prev && (tied || self.legato)) {
-                let lvl = p.depth[new_step] as f32 * (1.0 / 255.0);
+                /* THE FADE SCALES THE STEP'S LEVEL, AND IT SCALES IT HERE.
+                 *
+                 * This is the one place the struck step's level is read, and
+                 * it is latched for the whole gate -- so a step whose arrival
+                 * completes mid-gate does not step its own level and click.
+                 * The knob is smooth ACROSS steps rather than within one,
+                 * which is what "the fields are introduced one by one" means.
+                 *
+                 * A weight of 0 never reaches this line: `on_now` is already
+                 * false there, so the step is a gap. */
+                let lvl = p.depth[new_step] as f32 * (1.0 / 255.0) * w_now;
 
                 /*
                  * THE ATTACK STARTS WHERE THE GAIN IS, NOT WHERE `env` IS.
@@ -346,9 +703,13 @@ impl Instance {
             && self.env.stage != Stage::Release
             && self.env.stage != Stage::Idle
         {
-            let p = &self.pat[self.slot];
             let next = if r.length > 0 { (r.step + 1) % r.length } else { r.step };
-            let held = p.on(r.step) && (p.tied(r.step) || (self.legato && p.on(next)));
+            /* The FADED mask on both reads. A step the fade has not reached is
+             * a gap, and Join Neighbors must not bridge to a gap -- see
+             * `sounds`. */
+            let (here, there) = (self.sounds(r.step), self.sounds(next));
+            let p = &self.pat[self.slot];
+            let held = here && (p.tied(r.step) || (self.legato && there));
             if r.frac >= self.hold as f64 && !held {
                 let l = self.lens();
                 self.env.enter(Stage::Release, &l);

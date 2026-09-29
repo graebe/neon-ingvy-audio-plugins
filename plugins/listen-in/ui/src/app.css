@@ -1,0 +1,145 @@
+/*
+ * Listen-In's LAYOUT. Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * Only where things sit. What the controls LOOK like is
+ * @ultraviolet/ui/components.css, imported before this file.
+ *
+ * NO COLOUR IS SPELLED HERE -- every one is a var() from tokens.css, and
+ * `ctest -R ui_tokens` scans this file along with every other stylesheet in the
+ * repository. A literal typed in here fails the build, which is what it is for:
+ * the arc glow was once 0.75 against the system's 0.45 and nobody saw it by eye.
+ *
+ * The numbers, top to bottom, all on the system's 4px grid:
+ *
+ *   32   space-8, the window padding
+ *   28   the title row -- control-h, so it lines up with the row below
+ *   16   space-4
+ *   28   the controls row: the slot Select and the name field
+ *   16   space-4
+ *   12   the meter
+ *   24   space-6
+ *   28   the hint bar
+ *   16   space-4, the bottom
+ *   ----
+ *  232   = PLUG_HEIGHT
+ *
+ * And across: 32 + 296 + 32 = 360 = PLUG_WIDTH.
+ *
+ * DESIGN_W in App.jsx and PLUG_WIDTH in config.h have to agree with the 360
+ * here, or the page is scaled against a width it does not have.
+ */
+main {
+  width: 360px;
+  height: 232px;
+  padding: var(--s8) var(--s8) var(--s4);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.title-row {
+  height: 28px;
+  justify-content: space-between;
+  margin-bottom: var(--s4);
+}
+
+.title {
+  letter-spacing: 0.02em;
+}
+
+/*
+ * THE STATUS WORD IS THE WHOLE POINT OF THIS WINDOW.
+ *
+ * Everything else here is a control. This is the one piece of information --
+ * whether the tap is actually publishing -- and a person who opens the editor
+ * is almost always opening it to read exactly this. It is dimmed when live and
+ * lit when not, which is the inverse of the obvious choice and the right one:
+ * working is the expected state and should be quiet, and the case worth
+ * interrupting somebody for is the slot collision.
+ */
+.status {
+  color: var(--ink-dim);
+}
+
+.status-warn {
+  color: var(--ink-muted);
+}
+
+.controls {
+  height: 28px;
+  margin-bottom: var(--s4);
+}
+
+/*
+ * THE NAME FIELD FILLS WHAT THE SELECT LEAVES. 296 across, minus the Select's
+ * label (28) and well (64) and two space-2 gaps, is 188.
+ */
+.name-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 var(--s2);
+  background: var(--bg-200);
+  border: 1px solid var(--line-100);
+  border-radius: 2px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.name-field::placeholder {
+  color: var(--ink-dim);
+}
+
+.name-field:focus {
+  border-color: var(--line-200);
+  box-shadow: var(--glow-focus);
+}
+
+/*
+ * THE METER IS LINEAR IN dB, NOT IN AMPLITUDE -- see meterFraction in
+ * state.js. A linear-amplitude bar spends nine tenths of its length on the top
+ * 20 dB and reads as empty for a quiet part that is perfectly audible, which
+ * would make this window say "not working" about a bus that is.
+ */
+.meter {
+  flex: 1 1 auto;
+  height: 12px;
+  background: var(--bg-200);
+  border: 1px solid var(--line-100);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+/*
+ * The system's rule is that --uv-deep is never a fill: it is the halo around a
+ * near-white core. A bar cannot obey that literally, so it obeys it spatially,
+ * the way the Spectrogram's ramp does -- the violet is the falloff and the
+ * near-white is the leading edge.
+ */
+.meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--uv-deep), var(--uv));
+  box-shadow: 0 0 8px var(--uv-glow);
+  transition: width 60ms linear;
+}
+
+/* A bus that is not publishing still shows its input, greyed: the track has
+ * audio on it, it is simply not going anywhere. That distinction is the
+ * difference between "nothing is playing" and "your slot is taken". */
+.meter-fill-off {
+  background: var(--line-200);
+  box-shadow: none;
+}
+
+.hint-bar {
+  margin-top: auto;
+}

@@ -21,14 +21,6 @@ iPlug2 carries is plain MIT. That is what makes an MIT VST3 possible at all.
 
 ## Removed, and recorded so nobody re-adds them looking for a notice
 
-**JUCE 8** — **AGPLv3**-or-commercial, and AGPLv3 is a *stronger* obligation
-than GPLv3 rather than an equal one: while that target shipped, the artefact
-had to be conveyed under AGPLv3. It was the last copyleft dependency here and
-the only reason this repository was not MIT. Removing it meant removing the
-2,586-line editor it drew, which is the real cost and is recorded in the
-commit before the removal.
-
-
 `vst3-sys`, `vst3-com`, `vst3-com-macros`, `vst3-com-macros-support`
 (**GPL-3.0-or-later**) and `nih_plug`, `nih_plug_derive`, `nih_plug_xtask`,
 `nih_log` (**ISC**, © 2022-2024 Robbert van der Helm) were dependencies until
@@ -84,14 +76,11 @@ A site that serves the font is a bundle like any other. It is listed here
 because it is easy not to think of it as one.
 It is permissive and GPL-compatible.
 
-This section previously read "none at present": the font had gone with the JUCE
-editor and came back with the WebView one without the note following it.
-
 ## The engines
 
-`tg-core`, `tg-capi`, `tg-move`, `spectro-core`, `spectro-capi`, `sc-core`,
-`sc-capi` and `sc-move`, in `engines/`, © 2026 Torben Gräber. They have no
-dependencies of their own.
+`tg-core`, `tg-capi`, `tg-move`, `spectro-core`, `spectro-capi`, `bus-core`,
+`bus-capi`, `sc-core`, `sc-capi` and `sc-move`, in `engines/`, © 2026 Torben
+Gräber. They have no dependencies of their own.
 
 They were relicensed from MIT to GPL-3.0-or-later when this build moved to
 nih-plug, and back to **MIT** once the premise behind that turned out to be
@@ -104,6 +93,19 @@ and that is deliberate: the FFT is ninety lines here rather than a crate,
 because a crate that needs no attribution is cheaper than one that does. See
 the comment at the top of `cmake/SpectroEngine.cmake` for why this engine is
 in-repo while the Trance Gate's is a submodule.
+
+`bus-core`, `bus-capi` from `engines/audio-bus`, © 2026 Torben Gräber,
+**MIT**. No dependencies either, and in this case that meant declaring the six
+POSIX calls the transport needs -- `shm_open`, `ftruncate`, `mmap`, `fstat`,
+`kill`, `getpid` -- rather than depending on `libc`. That crate is
+MIT/Apache-2.0 and would have added nothing to this file, so the choice was
+about weight rather than licence: it is a large thing to borrow `mmap` from,
+and a declaration that is wrong fails at the first call rather than silently.
+
+This is also the only crate here that is shared BETWEEN products rather than
+belonging to one, so it is worth saying where it ends up: inside every plugin
+that links it, statically, with no runtime component and nothing installed
+outside the bundle.
 
 `sc-core`, `sc-capi`, `sc-move` from `engines/side-chain` in this repository,
 © 2026 Torben Gräber, **MIT**. No dependencies of their own either — the one

@@ -7,15 +7,30 @@
 # rather than rewritten -- 1,510 lines of existing assertions, unchanged,
 # saying whether the port is correct.
 set -e
-cd "$(dirname "$0")/.."
+# RESOLVED BEFORE THE cd, AND BOTH OF THEM. `$0` is relative when this is
+# invoked by a relative path, so every later use of `dirname "$0"` resolved
+# against the new directory and pointed into itself -- the script could only be
+# run from one place, and said "no such file or directory" from anywhere else.
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../../.." && pwd)
+cd "$HERE/.."
+
+# The binaries below are written here, and a fresh checkout has no build/ at all
+# -- the linker then failed with errno=2 on the OUTPUT path, which reads like a
+# missing input and sent the last person looking for the wrong thing.
+mkdir -p build
 
 # cargo, wherever it is installed -- this file's own version of this searched
 # only via rustup, so a toolchain installed any other way was not found.
-. "$(cd "$(dirname "$0")/../../.." && pwd)/scripts/rust-env.sh"
+. "$ROOT/scripts/rust-env.sh"
 cargo build --release -p tg-move
 # ONE staticlib carries both surfaces -- the Schwung vtable and the tg_core_*
 # ABI -- because two would each bundle a copy of the Rust runtime and collide.
-ENGINE=target/release/libtg_move.a
+#
+# AT THE WORKSPACE ROOT, NOT BESIDE THE ENGINE. The engine was its own
+# repository when this was written; as a subtree in the monorepo it shares one
+# Cargo workspace, so the target directory is the root's.
+ENGINE=$ROOT/target/release/libtg_move.a
 cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude \
    tests/test_gate.c "$ENGINE" -o build/test_gate -lm
 ./build/test_gate || exit 1

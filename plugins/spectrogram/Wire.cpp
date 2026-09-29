@@ -60,6 +60,23 @@ std::string encode_axis(const float* hz, int n)
   return out;
 }
 
+std::string encode_sync(double ppq, double bpm, int num, int denom, bool running,
+                        double ppqPerCol)
+{
+  char buf[128];
+  snprintf(buf, sizeof buf, "%.6f:%.4f:%d:%d:%d:%.8f",
+           ppq, bpm, num, denom, running ? 1 : 0, ppqPerCol);
+  return std::string(buf);
+}
+
+double advance_beats(double beats, int frames, double bpm, double sampleRate)
+{
+  if (frames <= 0 || !(bpm > 0.0) || !(sampleRate > 0.0))
+    return beats;
+
+  return beats + double(frames) * (bpm / 60.0) / sampleRate;
+}
+
 bool parse_range(const std::string& arg, float& lo, float& hi)
 {
   /* THE COLON IS THE WHOLE VALIDATION, and that is the pre-existing contract

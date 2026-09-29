@@ -59,6 +59,27 @@ set(SPECTRO_WIRE_TABLE
 add_test(NAME spectro_wire
          COMMAND spectro_wire --verify ${SPECTRO_WIRE_TABLE})
 
+# --------------------------------------------------------------- Listen-In
+
+add_executable(listenin_wire listenin_wire.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp)
+target_include_directories(listenin_wire PRIVATE
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in)
+
+# THE WIRE ORACLE, both halves -- the Spectrogram's arrangement, applied to the
+# state string and the label sanitiser.
+#
+#   listenin_wire      Wire.cpp still agrees with ui/test/wire_table.txt
+#   listenin_wire_js   ui/src/lib/state.js still agrees with the same file
+#
+# Regenerate with `listenin_wire --dump > ui/test/wire_table.txt`, and only when
+# the format is MEANT to change -- which means the decoder changes in the same
+# commit.
+set(LISTENIN_WIRE_TABLE
+    ${CMAKE_SOURCE_DIR}/plugins/listen-in/ui/test/wire_table.txt)
+
+add_test(NAME listenin_wire
+         COMMAND listenin_wire --verify ${LISTENIN_WIRE_TABLE})
 # ------------------------------------------------------------ NI Side-Chain
 
 add_executable(sc_wire sc_wire.cpp

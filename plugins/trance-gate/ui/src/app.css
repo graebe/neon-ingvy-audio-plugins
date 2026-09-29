@@ -8,25 +8,38 @@
 main {
   position: relative;
   /*
-   * 856 = space-8 * 2 + the BAND's 792, where the band is the plot's 760 plus
-   * 8 of gap plus the 24px tab strip.
+   * 824 = space-8 * 2 + 760, AND EVERY ELEMENT IN THE WINDOW IS 760 WIDE OR
+   * SITS INSIDE ONE THAT IS.
    *
-   * It was 824 -- space-8 * 2 + the grid's 760 -- which made the band 760 too,
-   * and the tabs ate 32 off the plot's right: the plot drew at 728 against a
-   * 760 grid of pads and the two edges never lined up. The extra 32 buys that
-   * alignment, and the tab strip now sits in what used to be padding.
+   * ONE PADDING, ALL ROUND. 32 on the left and 32 on the right, for the ring
+   * column, the three panels, the settings row, the plot band and the pads --
+   * so there is a single edge down each side of the window rather than the two
+   * it used to have.
+   *
+   * IT WENT 824 -> 856 -> 824. The tab strip took 24 off the band's right with
+   * 8 of gap, so the plot drew 32 narrower than the pad grid; widening the
+   * window to 856 bought that alignment and gave the strip its own column,
+   * which left the band ending at 824 while everything else ended at 792. Two
+   * right-hand edges. Overlaying the strip on the plot buys the same alignment
+   * for nothing, and the 32 comes back.
+   *
+   * 760 is not a free choice: it is 16 pads of --step (40) with --s2 (8)
+   * between, and --step is a design-system token on a 4px grid. The pads decide
+   * the content width and the window follows them.
    *
    * Mirrored by PLUG_WIDTH in config.h and DESIGN_W in App.jsx -- all three
    * have to agree or the page is scaled against a width it does not have.
    */
-  width: 856px;
+  width: 824px;
   margin: 0 auto;
-  /* The absolutely positioned block above the grid is 568 tall (kGridY), and
+  /* The absolutely positioned block above the grid is 644 tall (kGridY), and
    * absolute children contribute no height -- so it is reserved here and the
    * grid and hint bar follow in normal flow. That is what lets the window
    * GROW WITH LENGTH: 128 steps is eight rows, and the grid gets taller
-   * rather than the pads getting thinner. */
-  padding-top: 568px;
+   * rather than the pads getting thinner.
+   *
+   * 644 and not 568: a third panel. See App.jsx's designH, which must agree. */
+  padding-top: 644px;
 }
 
 /* ring column: (32, 32, 240, 240), tabs under it */
@@ -41,22 +54,53 @@ main {
  * full left column, so the plot spans it. */
 
 .plot { width: 100%; height: 104px; }
-/* .plot-caption moved into @ultraviolet/ui's components.css with Well. */
+/* .plot-caption moved into @ultraviolet/ui's components.css with Well -- it is
+ * the component's own, and a second editor now draws one. */
+/*
+ * THE STEP NUMBERS HAD NO RULE AT ALL, so they drew in SVG's default fill --
+ * black, on a --bg-000 well. They were invisible rather than wrong, which is why
+ * nothing reported them: a number nobody can see looks like a number nobody
+ * drew. `ink-dim` because they label the plot rather than being part of it.
+ */
+.step-number { fill: var(--ink-dim); }
+/* Where the signal sweep is writing. Not a playhead: it says "current up to
+ * here", which is the one thing a static axis cannot say by itself. */
+.sweep { stroke-width: 1; }
 
+/*
+ * THE RIGHT COLUMN, at 140 tall with 16 between -- the gutters were 24 while
+ * the panels were 172 and the column had room to breathe. Three panels and two
+ * gutters is 32..484.
+ */
 .gate-panel { top: 32px; }
-.env-panel  { top: 228px; }
+.env-panel  { top: 188px; }
+.fade-panel { top: 344px; }
 
 /*
  * THE BAND: the two plots occupy it, one at a time, and the tabs take a 24px
  * strip off its RIGHT edge with space-2 between.
  */
 .band {
-  position: absolute; left: 32px; top: 460px;
+  position: absolute; left: 32px; top: 536px;
   /* The WIDTH is set inline from BAND_W in App.jsx: the plot's own width is a
    * JSX prop, so the arithmetic that keeps the two in step has to live on that
-   * side or the two files drift. */
+   * side or the two files drift. Both are 760 now -- the band no longer makes
+   * room for the tab strip. */
   height: 92px;
-  display: flex; gap: var(--s2);
+}
+/*
+ * THE TAB STRIP, LAID OVER THE PLOT'S RIGHT EDGE.
+ *
+ * The plot spans the whole band, so the strip floats on it rather than taking a
+ * column of its own -- which is what lets the signal line up with the pads and
+ * what gave the window's 32 pixels back. It covers 24px of the trace's tail;
+ * that is the trade, and it is the right way round, because the alternative was
+ * 32px of the whole picture being out of line with everything under it.
+ */
+.band .tabs {
+  position: absolute; right: 0; top: 0; height: 100%;
+  /* Above the plot, and clear of the pointer everywhere it is not a tab. */
+  z-index: 1;
 }
 
 /*
@@ -88,16 +132,36 @@ main {
   color: var(--ink); font: inherit; text-align: center; outline: none;
 }
 .paste-field::placeholder { color: var(--ink-muted); }
-.band-plot { flex: 1; min-width: 0; }
+/* The plot IS the band now -- the tab strip floats over it rather than beside
+ * it, so there is nothing to share the width with. */
+.band-plot { position: absolute; inset: 0; }
 .band-plot .plot { width: 100%; height: 92px; }
 
-/* settings row: y 424, h 28 */
+/* settings row: y 500, h 28 -- under the three panels. */
 .settings-row {
-  position: absolute; left: 32px; top: 424px; width: 760px;
+  position: absolute; left: 32px; top: 500px; width: 760px;
   height: var(--control-h);
   display: flex; align-items: center; gap: var(--s6);
 }
 .spacer { flex: 1; }
+
+/*
+ * THE FADE PANEL'S SECOND CELL: a switch and two actions, stacked, in the space
+ * a knob-card would take.
+ *
+ * `.knob-row` is a row of equal cells and this is one of them, so the three
+ * controls stack inside it rather than widening the row -- which keeps the panel
+ * the same 140px as the two above it and the Fade knob the same size as every
+ * other knob in the window. "Controls have one size each. Do not scale controls
+ * to fill a window; leave space instead."
+ */
+.fade-actions {
+  display: flex; flex-direction: column; justify-content: center;
+  gap: var(--s2); min-width: 0;
+  /* Two cells wide, so the worded buttons have room to be words. */
+  flex: 2;
+}
+.fade-actions .btn { width: 100%; }
 
 /*
  * THE SWITCH: a 28x14 housing with an 8x8 square at 2px that moves to 16px
@@ -147,6 +211,48 @@ main {
 /* The cursor -- the step the knobs edit. Drawn OUTSIDE the well so it cannot
  * be confused with a lit step. */
 .pad.cursor { outline: 1px solid var(--ink); outline-offset: 2px; }
+
+/*
+ * THE ARRIVAL NUMBER, AND WHY THE GRID HAS NUMBERS AT ALL NOW.
+ *
+ * "Every fourth step carries a rail-coloured border, so bars read without
+ * numbers -- which is why there are no numbers." That rule stands, and this does
+ * not break it: these are not step numbers. A bar is a position and the border
+ * says it; this is a step's place in the FADE's arrival order, which nothing
+ * about the picture could otherwise say.
+ *
+ * It is drawn only when it means something -- in ORDER mode, or while the fade
+ * is part way in -- so the resting grid is exactly what it was.
+ *
+ * pointer-events: none, or the number becomes the event target and padGesture
+ * measures the drag against a 9px box instead of the pad.
+ */
+.pad-order {
+  position: absolute; top: 1px; left: 3px;
+  pointer-events: none; line-height: 1;
+  color: var(--ink);
+}
+/* Over the lit fill, the number needs the colour that goes ON a uv fill -- the
+ * same token a lit tab's text uses. A pad is lit from the bottom, so a number in
+ * the top corner is only over the fill on a tall one; --on-uv reads on both
+ * grounds, where --ink disappears into the fill. */
+.pad.on .pad-order,
+.pad.tie .pad-order { color: var(--on-uv); }
+
+/*
+ * A STEP THE FADE HAS NOT REACHED: lit border, no fill.
+ *
+ * It is an ON step that is not sounding, which is a third state the grid has
+ * never had to draw -- a gap has no border and a live step has a fill, and this
+ * is neither. Keeping the uv border says "this step is in the pattern" while the
+ * missing fill says "it is not playing yet", which is exactly the difference the
+ * knob is making.
+ */
+.pad.pending { border-color: var(--uv); filter: none; }
+/* ORDER mode: the grid is being sequenced rather than edited, so the pads say
+ * so. A step still waiting for its number is dimmed towards the ground, which
+ * makes "what is left to tap" the thing the grid is showing. */
+.pad.unnamed { background: var(--bg-100); }
 
 /* -------------------------------------------------------- hint bar -- */
 

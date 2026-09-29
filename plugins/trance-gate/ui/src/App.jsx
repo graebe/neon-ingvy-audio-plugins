@@ -21,28 +21,43 @@ import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
 import { EnvelopePlot, PatternPlot, Scope } from './lib/Plots.jsx';
 import { Button, Tabs, Hint } from '@ultraviolet/ui';
+import { fadeWeights } from './lib/fade.js';
+import { randomize, setOrder } from './lib/steps.js';
 
+/* Mirrors EParams in TranceGate.h, which mirrors the engine's own Param -- one
+ * order, so the host index IS the engine index and there is no mapping table
+ * between them to get wrong. Fade and its shape are APPENDED for that reason. */
 const P = { slot: 0, length: 1, rate: 2, legato: 3, timeMode: 4, curve: 5,
-            amount: 6, width: 7, attack: 8, decay: 9, sustain: 10, release: 11 };
+            amount: 6, width: 7, attack: 8, decay: 9, sustain: 10, release: 11,
+            fade: 12, fadeSoft: 13 };
+/* The count, spelled once. It was a literal `12` in four places and every one
+ * of them had to be found by hand when the thirteenth arrived. */
+const NPARAMS = 14;
 
 const RATES = ['1/1T','1/2','1/2T','1/4','1/4T','1/8','1/8T','1/16','1/16T','1/32','1/32T','1/64','1/128'];
 const SLOTS = ['1','2','3','4','5','6','7','8'];
-const TIME_MODES = ['ms', '% Step'];
+/* "%", not "% Step": the long form did not fit the readout and said in every
+ * value what the control's own name says once. */
+const TIME_MODES = ['ms', '%'];
 const CURVES = ['Linear', 'Exponential', 'S-Curve'];
 
 /*
- * THE PLOT AND THE PADS ARE THE SAME WIDTH, and that is why the window is 856
- * rather than the original's 824.
+ * ONE CONTENT WIDTH, AND EVERYTHING IN THE WINDOW IS IT.
  *
- * Sixteen 40px pads with 8px between them is 760, and the band used to be 760
- * too -- but the tab strip takes 24 off its right with 8 of gap, so the plot
- * itself drew at 728 against a 760 grid. The JUCE editor accepted that ("a
- * rhyme that thin is worth less than a view switch you can find"); aligning it
- * costs 32px of window and nothing else, and every other number in the layout
- * is untouched.
+ * Sixteen 40px pads with 8px between them is 760, and --step is a
+ * design-system token on a 4px grid -- so the pads decide this number and the
+ * rest of the layout follows them. The plot is 760, the band is 760, the
+ * settings row is 760, and the window is 32 + 760 + 32.
+ *
+ * THE TAB STRIP USED TO BE A COLUMN AND IS NOW AN OVERLAY. It took 24 off the
+ * band's right edge with 8 of gap, so the plot drew 32 narrower than the pads
+ * under it; widening the window to 856 bought that alignment at the cost of a
+ * second right-hand edge -- the band ended at 824 and everything else at 792.
+ * Over the plot it costs nothing, so the window is 824 again and there is one
+ * padding all round.
  */
 const PLOT_W = 760;
-const BAND_W = PLOT_W + 8 + 24;          /* plot, gap, tab strip */
+const BAND_W = PLOT_W;
 
 const hexToBits = (hex, n) => {
   const bits = new Array(n).fill(false);
@@ -92,13 +107,20 @@ async function copyToClipboard(text) {
 }
 
 export default function App() {
-  const [vals, setVals] = createSignal(new Array(12).fill(0));
-  const [text, setText] = createSignal(new Array(12).fill(''));
-  const [ui, setUi] = createSignal({ steps: [], ties: [], depths: [], length: 16,
+  const [vals, setVals] = createSignal(new Array(NPARAMS).fill(0));
+  const [text, setText] = createSignal(new Array(NPARAMS).fill(''));
+  const [ui, setUi] = createSignal({ steps: [], ties: [], depths: [], orders: [],
+                                     length: 16,
                                      phase: 0, msStep: 0, moving: false, cursor: 0 });
   const [params, setParams] = createSignal(null);
   const [scope, setScope] = createSignal([]);
   const [scopeWindow, setScopeWindow] = createSignal(1000);
+  /*
+   * WHERE THE SWEEP IS WRITING. Not an origin -- the columns are drawn in place,
+   * because the x-axis IS the pattern and standing still is the point -- so this
+   * is only the mark that says the picture is filling left to right.
+   */
+  const [scopeHead, setScopeHead] = createSignal(0);
   const [tab, setTab] = createSignal(0);
   /*
    * THE CLOCK. `at` is performance.now() when this phase was received, which
@@ -108,6 +130,16 @@ export default function App() {
                                              moving: false, at: 0 });
   const [frame, setFrame] = createSignal(0);
   const [pasting, setPasting] = createSignal(false);
+  /*
+   * ORDER MODE, and how far into the sequence you are.
+   *
+   * `named` is the steps clicked since the mode was entered, so the next click
+   * is rank count+1. UI-only state: the engine holds the order and normalises it
+   * after every rank, so this is nothing but "where am I in what I am typing".
+   */
+  const [orderMode, setOrderMode] = createSignal(false);
+  const [named, setNamed] = createSignal({});
+  const orderNext = () => Object.keys(named()).length;
   let pasteEl;
 
   /* ⌘ on a Mac, Ctrl elsewhere -- the hint has to name the key the user will
@@ -126,20 +158,24 @@ export default function App() {
   };
 
   onMount(() => {
-    onParam((i, v) => i >= 0 && i < 12 &&
+    onParam((i, v) => i >= 0 && i < NPARAMS &&
       setVals((p) => { const n = p.slice(); n[i] = v; return n; }));
 
     onMessage((tag, msg) => {
-      if (tag >= 0 && tag < 12)
+      if (tag >= 0 && tag < NPARAMS)
         return setText((p) => { const n = p.slice(); n[tag] = msg; return n; });
 
       if (tag === MSG.uiState) {
         const f = msg.split(':');
-        if (f.length < 8) return;
+        if (f.length < 9) return;
         const length = Math.max(1, parseInt(f[2], 10) || 16);
-        const depths = [];
-        for (let i = 0; i < length; i++)
+        const depths = [], orders = [];
+        for (let i = 0; i < length; i++) {
           depths.push((parseInt((f[7] || '').substr(i * 2, 2), 16) || 0) / 255);
+          /* The arrival rank, 1..N, and 0 for a step that is off. Two hex digits
+           * each, exactly like the depths beside them. */
+          orders.push(parseInt((f[8] || '').substr(i * 2, 2), 16) || 0);
+        }
         const phase = parseFloat(f[3]) || 0;
         const msStep = parseFloat(f[4]) || 0;
         const moving = f[5] === '1';
@@ -149,15 +185,20 @@ export default function App() {
         return setUi({
           steps: hexToBits(f[0], length), ties: hexToBits(f[1], length),
           length, phase, msStep, moving,
-          cursor: parseInt(f[6], 10) || 0, depths,
+          cursor: parseInt(f[6], 10) || 0, depths, orders,
         });
       }
       if (tag === MSG.params) {
         const f = msg.split(':');
-        if (f.length < 13) return;
-        return setParams({ curve: +f[3], rate: f[4], amount: +f[6], width: +f[7],
+        if (f.length < 15) return;
+        /* LEGATO IS FIELD 1 AND WAS NEVER READ, which is why the Pattern plot
+         * drew three attacks for three joined neighbours: it had no way to know
+         * Join Neighbors was on. */
+        return setParams({ legato: +f[1] >= 0.5, curve: +f[3], rate: f[4],
+                           amount: +f[6], width: +f[7],
                            attack: +f[8], decay: +f[9], sustain: +f[10],
-                           release: +f[11], widthMs: +f[12] });
+                           release: +f[11], widthMs: +f[12],
+                           fade: +f[13], fadeSoft: +f[14] >= 0.5 });
       }
       if (tag === MSG.scope) {
         /*
@@ -167,15 +208,18 @@ export default function App() {
          * 8192-byte transport that truncates rather than fails, so the sweep
          * lost its tail every frame.
          *
-         * ALREADY ROTATED: the plugin walks its ring from `head`, so column 0
-         * here is the oldest sample in the window and the last is the newest.
-         * The UI does not need to know where the write cursor is.
+         * NOT ROTATED, AND THAT IS THE CHANGE. Column k is pattern phase
+         * k/cols and is drawn at that x, so the axis stands still and the trace
+         * fills left to right. `head` is where the sweep is writing -- a mark,
+         * not an origin. The window is one CYCLE of the gate now rather than a
+         * second of wall time, which is what lets the envelope be drawn over it.
          */
         const f = msg.split(':');
-        if (f.length < 3) return;
+        if (f.length < 4) return;
         const cols = Math.max(0, Math.min(1024, parseInt(f[0], 10) || 0));
         const windowMs = parseFloat(f[1]) || 0;
-        const hex = f[2];
+        const head = Math.max(0, Math.min(cols - 1, parseInt(f[2], 10) || 0));
+        const hex = f[3];
         const out = new Array(cols);
         for (let i = 0; i < cols; i++) {
           const o = i * 8;
@@ -183,6 +227,7 @@ export default function App() {
           out[i] = [v(0), v(1), v(2), v(3)];
         }
         setScopeWindow(windowMs);
+        setScopeHead(head);
         return setScope(out);
       }
       if (tag === MSG.patch) copyToClipboard(msg);
@@ -213,6 +258,62 @@ export default function App() {
     const p = params();
     return p ? { ...p, msStep: ui().msStep } : null;
   };
+
+  /*
+   * THE FADE'S WEIGHT PER STEP, DERIVED HERE AND PASSED DOWN.
+   *
+   * Three views need it -- the pads, the ring and the Pattern plot -- so it is
+   * computed once from the arrival order the `ui` readout already carries rather
+   * than asked for as a fourth field. lib/fade.js is the engine's own formula and
+   * is pinned to a table the engine generates, which is the same arrangement
+   * curves.js has: the rule this codebase holds is not "never mirror the DSP", it
+   * is "never mirror it unpinned".
+   */
+  const weights = createMemo(() => {
+    const p = params();
+    if (!p) return null;
+    return fadeWeights(ui().orders, ui().length, p.fade ?? 1, !!p.fadeSoft);
+  });
+  /* Below 100% there is something to explain, so the pads show their numbers. */
+  const fading = () => (params()?.fade ?? 1) < 0.999;
+
+  /* How many steps sound -- the denominator of the order, and of the ORDER
+   * button's count. */
+  const hits = () => {
+    const u = ui();
+    let n = 0;
+    for (let i = 0; i < u.length; i++) if (u.steps?.[i]) n++;
+    return n;
+  };
+
+  /*
+   * SHUFFLE, AS A RUN OF RANKS RATHER THAN A NEW ENGINE KEY.
+   *
+   * Assigning rank 1, then 2, then 3 down a shuffled list of the on steps lands
+   * exactly on that permutation: each `step_order` inserts at its rank and
+   * shifts the rest, and a rank above everything already placed leaves those
+   * alone. So the engine needs nothing it does not already have for ORDER mode,
+   * and this is the same path a person clicking the pads takes.
+   */
+  const shuffleOrder = () => {
+    const u = ui();
+    const idx = [];
+    for (let i = 0; i < u.length; i++) if (u.steps?.[i]) idx.push(i);
+    for (let i = idx.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [idx[i], idx[j]] = [idx[j], idx[i]];
+    }
+    idx.forEach((step, k) => setOrder(step, k + 1));
+  };
+
+  /* What the pads need to know while a sequence is being typed: the mode, how
+   * many have been named, and which. Passed as one object because steps.js takes
+   * the model it reads live rather than a captured copy. */
+  const orderModel = () => ({
+    orderMode: orderMode(),
+    orderNext: orderNext(),
+    onOrdered: (i) => setNamed((m) => ({ ...m, [i]: true })),
+  });
 
   /*
    * THE GATE OVERLAY IS GONE, and removing it is the better half of the
@@ -287,7 +388,7 @@ export default function App() {
   /*
    * THE DESIGN IS 824 WIDE AND IS SCALED TO WHATEVER VIEWPORT IT GETS.
    *
-   * It is a fixed layout -- the JUCE window was 824 and grew only in height
+   * It is a fixed layout -- the window is 824 and grows only in height
    * -- and the WebView does not necessarily hand us 824 CSS pixels. In Live
    * it hands us fewer, and the page simply overflowed: the GATE panel cut off
    * after Length, the settings row after Time, and six of the sixteen pads
@@ -297,7 +398,7 @@ export default function App() {
    * Scaling keeps every proportion and every one of the original's numbers
    * intact, which laying the design out fluidly would not.
    */
-  const DESIGN_W = 856;
+  const DESIGN_W = 824;
   const fit = () => {
     const el = document.querySelector('main');
     if (!el) return;
@@ -314,7 +415,9 @@ export default function App() {
   createEffect(() => {
     const rows = Math.max(1, Math.ceil(ui().length / 16));
     const k = fit() ?? 1;
-    const designH = 568 + rows * 40 + (rows - 1) * 8 + 24 + 28;
+    /* 644 is main's padding-top -- the absolutely positioned block above the
+     * grid, which gained a third panel. app.css must agree. */
+    const designH = 644 + rows * 40 + (rows - 1) * 8 + 24 + 28;
     const msg = String(Math.ceil(designH * k));
     if (msg !== lastSent) { lastSent = msg; sendMessage(MSG.rows, msg); }
   });
@@ -329,9 +432,23 @@ export default function App() {
    * arrangement, not a duplication to avoid. */
   const centre = () => String(ui().length);
 
+  /*
+   * THE STAGE READOUTS, IN WHICHEVER UNIT Env Time ASKS FOR.
+   *
+   * THE TEST WAS INVERTED. TIME_MODES is ['ms', '%'] and the engine's TimeMode
+   * is Ms = 0, Pct = 1 -- so `< 0.5` is MS, and returning the plugin's own text
+   * there returned the PERCENTAGE, because a stage is stored as a percentage of
+   * the gate's width and that is what the parameter formats. Selecting ms showed
+   * percent and selecting percent showed ms, exactly swapped, for every one of
+   * the three stages.
+   *
+   * It is display-only in both directions: the engine states that it never
+   * consults time_mode -- ms and % are two readings of one number -- so nothing
+   * about the sound was ever involved.
+   */
   const stageText = (i) => {
     const p = params();
-    if (!p || vals()[P.timeMode] < 0.5) return text()[i];
+    if (!p || vals()[P.timeMode] >= 0.5) return text()[i];   /* % -- as stored */
     const pct = { [P.attack]: p.attack, [P.decay]: p.decay, [P.release]: p.release }[i];
     return pct === undefined ? text()[i] : `${(pct / 100 * p.widthMs).toFixed(1)} ms`;
   };
@@ -350,6 +467,7 @@ export default function App() {
         <Ring size={240} length={ui().length} steps={ui().steps}
               ties={ui().ties} depths={ui().depths} cursor={ui().cursor}
               playhead={playStep()} moving={ui().moving}
+              weights={weights()} {...orderModel()}
               centre={centre()} label="STEPS" />
       </div>
       <div class="env-plot-slot">
@@ -377,6 +495,38 @@ export default function App() {
         </div>
       </section>
 
+      {/*
+        * FADE IN: the knob, its shape, and the order it introduces them in.
+        *
+        * The order controls live HERE and not beside the pads, because the order
+        * is only ever about this knob -- it is what the Fade sweeps through, and
+        * it means nothing without it.
+        */}
+      <section class="panel fade-panel">
+        <h2 class="t-title">FADE IN</h2>
+        <div class="knob-row">
+          <ParamKnob idx={P.fade} label="Fade" value={vals()[P.fade]}
+                     display={text()[P.fade]} default={1} />
+          <div class="fade-actions">
+            <ParamToggle idx={P.fadeSoft} label="Soft" value={vals()[P.fadeSoft]} />
+            {/*
+              * ORDER MODE. Worded, not a glyph: "the system uses no icon set --
+              * state is shown by light and by words". The count is the whole
+              * affordance -- it says a sequence is being typed and how far in you
+              * are, which no label on a button could.
+              */}
+            <Button on={orderMode()}
+                    title="Tap the steps in the order the fade should introduce them"
+                    onClick={() => { setNamed({}); setOrderMode((v) => !v); }}>
+              {orderMode() ? `ORDER ${orderNext()}/${hits()}` : 'ORDER'}
+            </Button>
+            <Button title="Shuffle the arrival order" onClick={shuffleOrder}>
+              SHUFFLE
+            </Button>
+          </div>
+        </div>
+      </section>
+
       {/* ONE ROW, left to right. It fits because the two config actions are
         * glyphs rather than the words that needed a second row. */}
       <div class="settings-row">
@@ -394,6 +544,12 @@ export default function App() {
         <ParamSelect idx={P.timeMode} options={TIME_MODES} label="Time" labelWidth={36} width={88}
                 value={vals()[P.timeMode]} />
         <span class="spacer" />
+        {/* A whole-pattern action, which is why it sits with Copy and Paste
+          * rather than in the Fade panel: those three are the only controls here
+          * that replace the pattern instead of adjusting it. Worded, per the
+          * design system; the glyph pair beside it is the stated exception. */}
+        <Button title="Fill this slot with a new pattern and arrival order"
+                onClick={randomize}>RANDOM</Button>
         {/* THE KIT'S BUTTON TAKES CHILDREN, so the two marks live here rather
           * than as a glyph set inside it -- the design system says "the system
           * uses no icon set ... write the word", and these two are the
@@ -452,13 +608,23 @@ export default function App() {
             * snaps. Both read the one clock, so they cannot disagree. */}
           {tab() === 0 && <PatternPlot length={ui().length} steps={ui().steps}
                                        ties={ui().ties} depths={ui().depths}
+                                       weights={weights()}
                                        params={plotParams()} w={PLOT_W} h={92}
                                        phase={playPhase()} moving={ui().moving} />}
           {/* The Scope takes no playhead and no pattern: it is a rolling
             * window of wall time, so "now" is always its right-hand edge and
             * there is no step for a mark to sit on. */}
+          {/* THE SCOPE TAKES THE PATTERN NOW. Its x-axis is one cycle of the
+            * gate rather than a second of wall time, so the step rules line up
+            * with it and the envelope can be drawn over it -- which is the whole
+            * reason to want a static axis. `head` is where the sweep is writing.
+            */}
           {tab() === 1 && <Scope scope={scope()} w={PLOT_W} h={92}
-                                 windowMs={scopeWindow()} />}
+                                 windowMs={scopeWindow()} head={scopeHead()}
+                                 length={ui().length} steps={ui().steps}
+                                 ties={ui().ties} depths={ui().depths}
+                                 weights={weights()} params={plotParams()}
+                                 phase={playPhase()} moving={ui().moving} />}
         </div>
         <Tabs tabs={['Pattern', 'Signal']} active={tab()} onSelect={setTab} />
       </div>
@@ -466,10 +632,20 @@ export default function App() {
       <div class="grid-slot">
         <StepGrid length={ui().length} steps={ui().steps} ties={ui().ties}
                   depths={ui().depths} cursor={ui().cursor}
-                  playhead={playStep()} moving={ui().moving} />
+                  playhead={playStep()} moving={ui().moving}
+                  orders={ui().orders} weights={weights()}
+                  fading={fading()} named={named()} {...orderModel()} />
       </div>
 
-      <Hint clauses={[
+      {/* THREE CLAUSES IS THE CAP, and a fourth means the window needs
+        * simplifying rather than a smaller font -- so ORDER mode SWAPS them.
+        * While a sequence is being typed, the three rules that apply are its
+        * own. */}
+      <Hint clauses={orderMode() ? [
+        ['click', 'the steps in the order they should arrive'],
+        ['an off step', 'comes on and joins the end'],
+        ['ORDER', 'again to finish'],
+      ] : [
         ['click', 'a step to toggle'],
         ['shift-click', 'for a tie'],
         ['drag', 'up or down for its amount'],

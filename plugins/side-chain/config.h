@@ -5,9 +5,32 @@
 #pragma once
 
 #define PLUG_NAME "NI Side-Chain"
-#define PLUG_MFR "graebe"
-#define PLUG_VERSION_HEX 0x00000100
-#define PLUG_VERSION_STR "0.1.0"
+#define PLUG_MFR "Neon Ingvy"
+/*
+ * THE VERSION IS A DATE, AND THREE CONSUMERS CANNOT HOLD IT LITERALLY.
+ *
+ * versions.json decides, in the scheme v<YYYY.MM.DD>.<subversion>. This string
+ * is what a DAW shows and carries it verbatim. The other three cannot:
+ *
+ *   Cargo.toml       strict semver -- so the crates say 2026.9.29+1, the
+ *                    subversion riding as build metadata: legal, and preserved.
+ *   Info.plist       CFBundleShortVersionString is up to three integers, so the
+ *                    plists say 2026.9.29.
+ *   PLUG_VERSION_HEX major<<16 | minor<<8 | patch, and 16/8/8 bits.
+ *
+ * The hex is what a host compares to decide whether a saved project came from an
+ * older build, so it must move on every release -- a second release on the same
+ * day included, which is what the subversion is for. There is no fourth field,
+ * so it rides in the low bits of the patch:
+ *
+ *     patch = day * 8 + subversion            2026.09.29.1 -> 29*8+1 = 233
+ *     hex   = year<<16 | month<<8 | patch     -> 0x07EA09E9
+ *
+ * The derivations are asserted by `ctest -R versions` rather than left to a
+ * human. See plugins/trance-gate/config.h, which explains the scheme at length.
+ */
+#define PLUG_VERSION_HEX 0x07EA09E9
+#define PLUG_VERSION_STR "v2026.09.29.1"
 
 /*
  * THE FOUR-CHARACTER IDS ARE THE PLUGIN'S IDENTITY -- what a host stores in a

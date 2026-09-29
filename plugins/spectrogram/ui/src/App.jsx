@@ -13,9 +13,13 @@
 import { createSignal, onMount, onCleanup } from 'solid-js';
 import { onMessage, sendMessage } from '@ultraviolet/ui';
 import { MSG } from './lib/msg.js';
-import { decodeColumns, decodeAxis, marksFor, RANGES } from './lib/columns.js';
+import {
+  decodeColumns, decodeAxis, marksFor, RANGES,
+  timeMarksFor, secondsAgo, dbForLevel, DB_FLOOR,
+  decodeSync, slotForPpq, posForSlot, barMarksFor,
+} from './lib/columns.js';
 
-import { Hint, Button, Select, Spectrogram } from '@ultraviolet/ui';
+import { Hint, Button, Select, Toggle, Spectrogram } from '@ultraviolet/ui';
 
 /* Mirrored by PLUG_WIDTH in config.h and by `main` in app.css. */
 const DESIGN_W = 720;
@@ -29,6 +33,12 @@ const PICTURE_H = 256;
 /* ~47 columns a second, held constant across sample rates by the engine's hop
  * rule -- so this one number turns the width into a span of time. */
 const COLUMNS_PER_S = 47;
+/*
+ * The windows the bar view offers. A loop, a phrase, a section -- and 16, which
+ * at 606 pixels gives a bar 38 of them: coarse, but it is the view you reach for
+ * to see where a section's energy sits rather than where a hat lands.
+ */
+const BARS = [1, 2, 4, 8, 16];
 
 export default function App() {
   const [batch, setBatch] = createSignal(null);
@@ -43,6 +53,19 @@ export default function App() {
    * is loaded on the track at all. Saying so beats a frozen picture that looks
    * like a crash. */
   const [live, setLive] = createSignal(false);
+  /* What the crosshair is over, in the canvas's terms: a band index, a column
+   * age and a level byte. Turning those into Hz, seconds and dB is this file's
+   * job, because the axis the plugin sent lives here. */
+  const [cursor, setCursor] = createSignal(null);
+  /*
+   * THE BAR VIEW. `bars` is off/on rather than a value in the list, because the
+   * two are different questions -- whether the x-axis is the clock or the host,
+   * and how much of the host it shows -- and folding them into one dropdown
+   * made "Off" sit in a list of lengths where it is not one.
+   */
+  const [bars, setBars] = createSignal(false);
+  const [barCount, setBarCount] = createSignal(2);   /* index into BARS */
+  const [sync, setSync] = createSignal(null);
   let lastSeen = 0;
 
   /*
@@ -77,10 +100,36 @@ export default function App() {
         if (decoded) {
           lastSeen = performance.now();
           setLive(true);
+          /*
+           * WHERE EACH COLUMN BELONGS, DECIDED HERE AND NOWHERE ELSE.
+           *
+           * The canvas is handed a slot per column and draws there; it never
+           * learns what a bar is. The slots are computed even while the
+           * scrolling view is showing, because the bar picture is kept up to
+           * date the whole time -- that is what makes switching instant.
+           *
+           * BACK-DATED FROM THE NEWEST. A tick normally carries one column, but
+           * a host that stalled hands over up to 32 at once, and those cover
+           * real musical ground: stacking them on the current position would
+           * put a third of a second of audio on one pixel.
+           */
+          const t = sync();
+          if (t) {
+            const n = BARS[barCount()] ?? 4;
+            const slots = new Int32Array(decoded.count);
+            for (let c = 0; c < decoded.count; c++) {
+              const ppq = t.ppq - (decoded.count - 1 - c) * t.ppqPerCol;
+              slots[c] = slotForPpq(ppq, n, t.num, t.denom, PICTURE_W);
+            }
+            decoded.slots = slots;
+          }
           setBatch(decoded);
         }
       } else if (tag === MSG.axis) {
         setAxis(decodeAxis(text));
+      } else if (tag === MSG.sync) {
+        const t = decodeSync(text);
+        if (t) setSync(t);
       }
     });
 
@@ -136,15 +185,78 @@ export default function App() {
    * a zoomed view whose top is 200 Hz should say so in hertz. */
   const asHz = (v) => (v < 1000 ? `${Math.round(v)} Hz` : `${(v / 1000).toFixed(1)} kHz`);
 
+  /*
+   * THE THREE READOUTS. Each says "--" rather than a stale number when the
+   * pointer is away: a spectrogram's whole claim is that what you read is what
+   * was measured, and the last value the mouse happened to pass over is not.
+   */
+  const readFreq = () => {
+    const c = cursor(); const hz = axis();
+    if (!c || !hz || c.band >= hz.length) return '—';
+    return asHz(hz[c.band]);
+  };
+  const readTime = () => {
+    const c = cursor();
+    if (!c) return '—';
+    /* In the bar view "how long ago" is the wrong question -- the column under
+     * the pointer may be from this pass or the one before it. WHERE in the bar
+     * is the question that view exists to answer. */
+    if (bars()) {
+      const t = sync();
+      const p = posForSlot(c.slot, BARS[barCount()] ?? 4, t?.num ?? 4, t?.denom ?? 4, PICTURE_W);
+      /*
+       * "8:4.7", NOT "8.4.68". A dot between the bar and the beat reads as a
+       * host's bar.beat.tick and invites the last group to be counted as ticks
+       * -- which these are not. A colon says the two numbers are different
+       * kinds of thing, and one decimal is as fine as a 38px bar can resolve.
+       */
+      return `${p.bar}:${p.beat.toFixed(1)}`;
+    }
+    const t = secondsAgo(c.age, COLUMNS_PER_S);
+    return t < 0.005 ? 'now' : `−${t.toFixed(2)} s`;
+  };
+  const readLevel = () => {
+    const c = cursor();
+    if (!c) return '—';
+    const db = dbForLevel(c.level);
+    /* Byte 0 is "at or below the floor", not "exactly the floor". */
+    return db === -Infinity ? `< −${Math.abs(DB_FLOOR)} dB` : `−${Math.abs(db).toFixed(1)} dB`;
+  };
+
+  /* Static: one column is one pixel and the column rate is held constant by the
+   * engine, so the ticks are arithmetic rather than a measurement. */
+  const timeMarks = timeMarksFor(PICTURE_W, COLUMNS_PER_S, PICTURE_W);
+
+  /* The bar grid, recomputed only when the window or the metre changes. */
+  const marks = () => {
+    if (!bars()) return timeMarks;
+    const t = sync();
+    return barMarksFor(BARS[barCount()] ?? 4, t?.num ?? 4, t?.denom ?? 4, PICTURE_W);
+  };
+
   const hint = () => {
     const hz = axis();
     const range = hz && hz.length > 1
       ? `${asHz(hz[0])} – ${asHz(hz[hz.length - 1])}`
       : 'waiting for the plugin';
+    /*
+     * The third clause answers "how wide is this picture", and in the bar view
+     * that is bars and a tempo rather than seconds. `free` is not decoration:
+     * with the transport stopped the sweep keeps filling at the last tempo
+     * seen, and a picture that is aligned to a guess should say so.
+     */
+    const t = sync();
+    const n = BARS[barCount()] ?? 4;
+    const span = bars()
+      ? `${n} ${n === 1 ? 'bar' : 'bars'} · ${Math.round(t?.bpm ?? 120)} BPM${
+          t && !t.running ? ' free' : ''}`
+      : `${Math.round(PICTURE_W / COLUMNS_PER_S)} s`;
     return [
       ['log', range],
-      ['floor', '−96 dB'],
-      ['history', `${Math.round(PICTURE_W / COLUMNS_PER_S)} s`],
+      /* The minus is U+2212, and the number is the constant the decode uses --
+       * not a second spelling of it next to the first. */
+      ['floor', `−${Math.abs(DB_FLOOR)} dB`],
+      [bars() ? 'window' : 'history', span],
     ];
   };
 
@@ -158,6 +270,12 @@ export default function App() {
           {/* No label beside it: the option names the band and the hint bar
               below already prints the numbers. */}
           <Select options={RANGES.map((r) => r.name)} value={range()} onChange={chooseRange} />
+          {/* The switch says WHICH axis; the dropdown says how much of it. It
+              stays visible while off rather than disappearing, so the window
+              does not change shape when the switch is thrown. */}
+          <Toggle label="bars" value={bars()} onChange={setBars} />
+          <Select options={BARS.map((n) => String(n))} value={barCount()}
+                  onChange={setBarCount} width={64} />
           <Button on={paused()} onClick={togglePause}>Pause</Button>
         </div>
       </div>
@@ -180,7 +298,39 @@ export default function App() {
             scale={scale()}
             paused={paused()}
             generation={generation()}
+            view={bars() ? 'bars' : 'time'}
+            onHover={setCursor}
           />
+        </div>
+      </div>
+
+      {/*
+        * UNDER THE PICTURE, AND INSET TO LINE UP WITH IT. The scale gutter and
+        * the well's 1px frame are what separate the canvas's left edge from the
+        * window's, so the same offset is spelled once here rather than twice.
+        */}
+      <div class="under">
+        <div class="time-axis" classList={{ bars: bars() }}>
+          {marks().map((m) => (
+            <div class="time-mark t-hint" data-anchor={m.anchor ?? 'mid'}
+                 classList={{ beat: !!m.beat }} style={{ left: `${m.x}px` }}>
+              <i class="time-tick" />
+              <span>{m.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/*
+          * The keys are t-label (uppercase, the system's label voice) and the
+          * VALUES are t-value, which does not transform: "kHz" and "dB" are
+          * spelled the way the unit is spelled, and t-label would print them
+          * KHZ and DB. A value carries its unit -- see asHz above.
+          */}
+        <div class="crosshair-read">
+          <span class="xh-key t-label">freq</span><span class="xh-val t-value">{readFreq()}</span>
+          <span class="xh-key t-label">{bars() ? 'pos' : 'time'}</span>
+          <span class="xh-val t-value">{readTime()}</span>
+          <span class="xh-key t-label">level</span><span class="xh-val t-value">{readLevel()}</span>
         </div>
       </div>
 

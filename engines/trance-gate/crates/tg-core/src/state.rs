@@ -18,6 +18,18 @@ the effect silently on a patch that had been working.
 - **4**: attack/decay/release are PERCENTAGES OF WIDTH, not milliseconds. The
   keys did not change, so only the version can tell a v3's `"attack": 2.0`
   (2 ms) from a v4's (2% of the gate).
+- **5**: the fade-in. Patterns gained a per-step ARRIVAL ORDER as a fifth
+  `p<N>` field, and `fade` / `fsoft` joined the globals. Every one of them is
+  ABSENT-MEANS-INERT: no order field is position order, no `fade` is 1.0 and no
+  `fsoft` is hard, which together are exactly what a v4 patch did. So this
+  version number buys nothing today -- and it is here anyway, because the one
+  thing it can do is tell a later reader that an absent order field meant
+  "never reordered" rather than "written by a build that had no orders".
+
+  A v5 blob read by a v4 build stops cleanly rather than corrupting: that
+  reader splits three ways and hands the depth parser `"<depths>:<order>"`,
+  where the colon is not a hex digit and ends the run at exactly the right
+  place.
 */
 
 use crate::envelope::Curve;
@@ -26,7 +38,7 @@ use crate::params::set_pattern_hex;
 use crate::{rates, Instance, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
 use core::fmt::Write;
 
-pub const STATE_VERSION: i32 = 4;
+pub const STATE_VERSION: i32 = 5;
 
 #[inline]
 fn clampf(x: f32, lo: f32, hi: f32) -> f32 {
@@ -121,6 +133,19 @@ pub fn load(inst: &mut Instance, val: &str) {
     if let Some(n) = get_number(val, "hold") {
         inst.hold = clampf(n as f32, 0.0, 1.0);
     }
+    /*
+     * THE FADE, AND ABSENT MEANS THE WHOLE PATTERN.
+     *
+     * Every patch written before v5 has no `fade`, and 1.0 is what those
+     * patches did: all of the gate, all of the time. Loading them at 0 would
+     * open eight slots of silence -- the same class of mistake as a v1 blob's
+     * depths loading as zero, and the reason that note exists above.
+     */
+    inst.fade = match get_number(val, "fade") {
+        Some(n) => clampf(n as f32, 0.0, 1.0),
+        None => 1.0,
+    };
+    inst.fade_soft = get_number(val, "fsoft").map_or(false, |n| n >= 0.5);
 
     /*
      * THE STAGES, ONCE RATE AND WIDTH ARE BOTH KNOWN.
@@ -190,7 +215,7 @@ pub fn load(inst: &mut Instance, val: &str) {
          * LSB-aligned parser -- a %x would cap them at whatever an unsigned
          * holds and silently drop steps 32 and up. A v3 blob's 8-digit field
          * parses identically. */
-        let mut parts = field.splitn(4, ':');
+        let mut parts = field.splitn(5, ':');
         let (Some(stx), Some(tix), Some(lens)) = (parts.next(), parts.next(), parts.next())
         else {
             continue;
@@ -217,7 +242,37 @@ pub fn load(inst: &mut Instance, val: &str) {
                 inst.pat[s].depth[i] = h * 16 + l;
             }
         }
+
+        /*
+         * A PRE-v5 QUADRUPLE HAS NO ORDER, AND ABSENT MEANS POSITION ORDER.
+         *
+         * Seeded left to right and then normalised, so what an unreordered
+         * patch loads as is what it would have been written as -- and a fresh
+         * fade on an old patch sweeps left to right, which is the one
+         * behaviour nobody has to be told about. Zeroing it instead would make
+         * every step rank 1 and the whole pattern arrive at once, which looks
+         * like the fade being broken rather than absent.
+         */
+        for i in 0..MAX_STEPS {
+            inst.pat[s].order[i] = (i + 1) as u8;
+        }
+        if let Some(o) = parts.next() {
+            let b = o.as_bytes();
+            for i in 0..MAX_STEPS {
+                let (Some(&h), Some(&l)) = (b.get(i * 2), b.get(i * 2 + 1)) else { break };
+                let (Some(h), Some(l)) = (hexval(h), hexval(l)) else { break };
+                let v = h * 16 + l;
+                /* 00 is "off, no rank". Leaving the seeded position value
+                 * there keeps a step switched back on in a sensible place
+                 * rather than at the front. */
+                if v != 0 {
+                    inst.pat[s].order[i] = v;
+                }
+            }
+        }
+        inst.pat[s].renumber();
     }
+    inst.recalc_fade();
 }
 
 fn hexval(c: u8) -> Option<u8> {
@@ -249,10 +304,12 @@ pub fn save(inst: &Instance, mut b: Buf) -> i32 {
     let _ = fmt::f(&mut b, inst.hold as f64, 3);
     let _ = write!(b, ",\"amount\":");
     let _ = fmt::f(&mut b, inst.amount as f64, 3);
+    let _ = write!(b, ",\"fade\":");
+    let _ = fmt::f(&mut b, inst.fade as f64, 4);
     let _ = write!(
         b,
-        ",\"legato\":{},\"tmode\":{},\"curve\":{}",
-        inst.legato as i32, inst.time_mode as i32, inst.curve as i32
+        ",\"fsoft\":{},\"legato\":{},\"tmode\":{},\"curve\":{}",
+        inst.fade_soft as i32, inst.legato as i32, inst.time_mode as i32, inst.curve as i32
     );
 
     for s in 0..SLOTS {
@@ -282,6 +339,35 @@ pub fn save(inst: &Instance, mut b: Buf) -> i32 {
         if let Some(last) = last {
             for i in 0..=last {
                 let _ = write!(b, "{:02X}", inst.pat[s].depth[i]);
+            }
+        }
+
+        /*
+         * THE ORDER IS ONLY WRITTEN WHEN IT IS NOT POSITION ORDER.
+         *
+         * Same rule as the depths above, and here it does more work: an order
+         * nobody has touched is the overwhelmingly common case, and writing it
+         * would add up to 256 characters per slot -- 2 KB across eight -- to
+         * every patch, for a value the reader already defaults to. That is the
+         * difference between a realistic patch fitting a bus insert's
+         * 1024 bytes and not.
+         *
+         * The comparison is against the RANK a position order would give, not
+         * against the raw keys, because that is what a reader reconstructs.
+         */
+        let mut pos = 0u8;
+        let same = (0..MAX_STEPS).all(|i| {
+            if !inst.pat[s].on(i) || i >= inst.pat[s].length {
+                return true;
+            }
+            pos += 1;
+            inst.pat[s].order[i] == pos
+        });
+        if !same {
+            let _ = write!(b, ":");
+            for i in 0..inst.pat[s].length.min(MAX_STEPS) {
+                let v = if inst.pat[s].on(i) { inst.pat[s].order[i] } else { 0 };
+                let _ = write!(b, "{:02X}", v);
             }
         }
         let _ = write!(b, "\"");

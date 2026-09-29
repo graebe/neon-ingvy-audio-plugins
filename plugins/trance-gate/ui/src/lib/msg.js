@@ -6,8 +6,10 @@
  * plugin's own vocabulary and has nothing to say to any other.
  */
 /*
- * THE MESSAGE TAGS, mirroring EMsgTags in TranceGate.h. Tags 0..11 are a
- * parameter's display string, tagged with the parameter's own index.
+ * THE MESSAGE TAGS, mirroring EMsgTags in TranceGate.h. Tags 0..13 are a
+ * parameter's display string, tagged with the parameter's own index -- which is
+ * why the first real tag is 64 and not 16: the range grows with the parameter
+ * count, and it has grown once already.
  */
 export const MSG = {
   uiState: 64, params: 65, scope: 66, patch: 67,
@@ -29,4 +31,10 @@ export const MSG = {
    * Sent from onMount, so it cannot be early.
    */
   ready: 102,
+  /* "<index>:<rank>" -- a step's place in the fade's arrival order. Per-step
+   * state, so a message and not a parameter, exactly like setDepth. */
+  setOrder: 103,
+  /* Reroll the current slot. An ACTION: no payload from here, so the engine
+   * walks its own generator and two presses differ. */
+  randomize: 104,
 };

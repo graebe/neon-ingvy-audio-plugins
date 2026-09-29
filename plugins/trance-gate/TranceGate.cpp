@@ -65,7 +65,11 @@ TranceGate::TranceGate(const InstanceInfo& info)
   /* "Off"/"On", capitalised: iPlug2 defaults to lower case and the engine
    * prints "Off". */
   GetParam(kLegato)->InitBool("Join Neighbors", false, "", 0, "", "Off", "On");
-  GetParam(kTimeMode)->InitEnum("Env Time", 0, {"ms", "% Step"});
+  /* "%", NOT "% Step". The long form did not fit the readout's 64px and read
+   * as noise beside a 13-character rate label; what the percentage is OF is
+   * said once, by the control's own name, rather than in every value it can
+   * show. The engine accepts either spelling. */
+  GetParam(kTimeMode)->InitEnum("Env Time", 0, {"ms", "%"});
   GetParam(kCurve)->InitEnum("Env Curve", 0, {"Linear", "Exponential", "S-Curve"});
 
   /* Shown as percentages because that is what they are; the engine takes
@@ -81,6 +85,18 @@ TranceGate::TranceGate(const InstanceInfo& info)
   pct(GetParam(kDecay), "Decay", 16.0, 0.0, kStageMaxPct);
   pct(GetParam(kSustain), "Sustain", 100.0, 0.0, 100.0);
   pct(GetParam(kRelease), "Release", 16.0, 0.0, kStageMaxPct);
+  /*
+   * 100% IS THE DEFAULT AND IT HAS TO BE.
+   *
+   * Fade is how much of the pattern has arrived, so zero is silence -- which
+   * is exactly what a build-up wants and exactly what a fresh instance must
+   * not do. At 100 the engine's weights are all 1.0 and the gate is what it
+   * was before this existed, which is what keeps both golden renders valid.
+   */
+  pct(GetParam(kFade), "Fade", 100.0, 0.0, 100.0);
+  /* "Hard"/"Soft" rather than Off/On: the switch does not turn the fade on, it
+   * chooses whether a step arriving ramps or jumps. */
+  GetParam(kFadeSoft)->InitBool("Fade Shape", false, "", 0, "", "Hard", "Soft");
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /*
@@ -166,14 +182,16 @@ void TranceGate::OnReset()
   mDry.assign(n, 0.0f);
 
   /*
-   * THE SCOPE'S COLUMN RATE, which is the only thing about it that depends on
-   * the host. One window of audio spread over kScopeCols, so a column is
-   * kScopeWindowMs / kScopeCols of wall time whatever the sample rate.
+   * THE SWEEP'S FALLBACK LENGTH, until an idle tick has measured the pattern's
+   * own. A column is a slice of ONE CYCLE now rather than of wall time, so
+   * there is no per-column sample count to keep here: the column a sample lands
+   * in comes from the phase, and the phase comes from the engine.
    */
-  mCapPerCol = GetSampleRate() * (kScopeWindowMs / 1000.0) / double(kScopeCols);
-  if (!(mCapPerCol > 0.0)) mCapPerCol = 1.0;
-  mCapCol = 0;
+  mCycleSamples.store(GetSampleRate() * (kScopeFallbackMs / 1000.0),
+                      std::memory_order_relaxed);
+  mCapCol = -1;
   mCapCount = 0;
+  mSweep = 0.0;
   /* Cleared, or the first window drawn after a rate change or a re-open is
    * whatever the last session left in the ring. */
   for (int i = 0; i < kScopeCols; i++)
@@ -252,6 +270,11 @@ void TranceGate::PushParams()
   tg_core_set_num(mCore, TG_P_DECAY, GetParam(kDecay)->Value());
   tg_core_set_num(mCore, TG_P_SUSTAIN, GetParam(kSustain)->Value() / 100.0);
   tg_core_set_num(mCore, TG_P_RELEASE, GetParam(kRelease)->Value());
+  /* The engine compares before it recomputes its weight table, so writing
+   * these every block costs two float compares rather than two passes over
+   * the pattern. */
+  tg_core_set_num(mCore, TG_P_FADE, GetParam(kFade)->Value() / 100.0);
+  tg_core_set_num(mCore, TG_P_FADE_SOFT, GetParam(kFadeSoft)->Value());
 }
 
 void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
@@ -294,10 +317,18 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   if ((int) mDry.size() >= n)
     std::memcpy(mDry.data(), mL.data(), sizeof(float) * size_t(n));
 
-  tg_core_process_f32_split(mCore, mL.data(), mR.data(), n, &t);
+    /*
+     * THE PHASE EITHER SIDE OF THE BLOCK, because the sweep needs to know where
+     * in the pattern each sample fell. Cheap on purpose -- tg_core_phase01 is
+     * arithmetic, where the formatted readout's snprintf has no business on this
+     * thread.
+     */
+    const double ph0 = tg_core_phase01(mCore);
+    tg_core_process_f32_split(mCore, mL.data(), mR.data(), n, &t);
+    const double ph1 = tg_core_phase01(mCore);
 
-  if ((int) mDry.size() >= n)
-    CaptureBlock(mDry.data(), mL.data(), n);
+    if ((int) mDry.size() >= n)
+      CaptureBlock(mDry.data(), mL.data(), n, ph0, ph1, t.running != 0);
 
     for (int i = 0; i < n; i++)
     {
@@ -336,10 +367,10 @@ void TranceGate::OnParamChangeUI(int paramIdx, EParamSource source)
  * ONE FRAME'S WORTH OF EVERYTHING THE UI DRAWS THAT IS NOT A PARAMETER.
  *
  * `ui` is the engine's own single read -- steps, ties, length, phase, step
- * duration, whether the playhead is advancing, the cursor, and the per-step
- * depths -- and `params` is the twelve automatable values plus width_ms at
- * nine significant digits. Both exist precisely so a shell does not take one
- * lock per fact, thirty times a second.
+ * duration, whether the playhead is advancing, the cursor, the per-step depths
+ * and their arrival order -- and `params` is the fourteen automatable values
+ * plus width_ms at nine significant digits. Both exist precisely so a shell
+ * does not take one lock per fact, thirty times a second.
  */
 void TranceGate::OnIdle()
 {
@@ -351,7 +382,36 @@ void TranceGate::OnIdle()
 
   char buf[TG_STATE_MAX];
   if (tg_core_get_param(mCore, "ui", buf, int(sizeof buf)) > 0)
+  {
     SendArbitraryMsgFromDelegate(kMsgUiState, int(strlen(buf)), buf);
+
+    /*
+     * THE SWEEP'S LENGTH, MEASURED HERE AND HANDED OVER AS ONE DOUBLE.
+     *
+     * One cycle is the step duration times the length, and both are fields of
+     * the readout that has just been formatted -- so this costs a pair of
+     * atof()s on a string we already have, on the thread that can afford them.
+     * The audio thread only ever reads the number. Doing it the other way round
+     * would put an snprintf on the audio callback to recover two values the
+     * engine had already computed.
+     */
+    /* steps : ties : LENGTH : phase : MS_STEP : advancing : cursor : depths
+     *   0       1       2        3       4                                     */
+    const char* f = buf;
+    double len = 16.0, msStep = 0.0;
+    for (int i = 0; i <= 4 && f; i++)
+    {
+      if (i == 2) len = atof(f);
+      else if (i == 4) msStep = atof(f);
+      const char* colon = strchr(f, ':');
+      f = colon ? colon + 1 : nullptr;
+    }
+    if (!(len >= 1.0)) len = 1.0;
+    const double cycleMs = msStep * len;
+    mScopeCycleMs = (cycleMs > 1.0) ? cycleMs : kScopeFallbackMs;
+    mCycleSamples.store(GetSampleRate() * (mScopeCycleMs / 1000.0),
+                        std::memory_order_relaxed);
+  }
   if (tg_core_get_param(mCore, "params", buf, int(sizeof buf)) > 0)
     SendArbitraryMsgFromDelegate(kMsgParams, int(strlen(buf)), buf);
 
@@ -372,19 +432,20 @@ void TranceGate::OnIdle()
    */
   {
     /*
-     * THE WHOLE RING, EVERY FRAME, AND THE HEAD THAT ORIENTS IT.
+     * THE WHOLE SWEEP, EVERY FRAME, IN PLACE.
      *
-     * There is no `filled` any more: the window is always complete, because
-     * every column holds real audio from within the last kScopeWindowMs. The
-     * reader rotates by `head` -- the column about to be overwritten, so the
-     * oldest -- to lay the window out oldest-left, newest-right.
+     * NOT ROTATED. Column k is pattern phase k / kScopeCols and the reader draws
+     * it at that x, which is the whole point of the axis standing still. `head`
+     * is where the trace is being written -- a mark, not an origin -- so the
+     * picture reads as filling left to right and the reader can show the fill
+     * point.
      */
     const int head = mCap.head.load(std::memory_order_acquire);
     static const char* kHex = "0123456789ABCDEF";
-    /* 4 hex pairs per column, plus the head, the window and separators. */
-    char scope[kScopeCols * 8 + 32];
-    int n = snprintf(scope, sizeof scope, "%d:%d:", kScopeCols,
-                     int(kScopeWindowMs));
+    /* 4 hex pairs per column, plus the head, the cycle length and separators. */
+    char scope[kScopeCols * 8 + 48];
+    int n = snprintf(scope, sizeof scope, "%d:%d:%d:", kScopeCols,
+                     int(mScopeCycleMs), head);
 
     auto put = [&](float v) {
       const int b = tg::wire::encode_sample(v);
@@ -392,9 +453,8 @@ void TranceGate::OnIdle()
       scope[n++] = kHex[b & 0xF];
     };
 
-    for (int k = 0; k < kScopeCols; k++)
+    for (int i = 0; i < kScopeCols; i++)
     {
-      const int i = (head + k) % kScopeCols;   /* oldest first */
       put(mCap.dryLo[i].load(std::memory_order_relaxed));
       put(mCap.dryHi[i].load(std::memory_order_relaxed));
       put(mCap.wetLo[i].load(std::memory_order_relaxed));
@@ -440,6 +500,24 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
                         val.c_str());
       return true;
     }
+
+    /* "<index>:<rank>" -- the cursor first, as for a step's mode and amount.
+     * The engine normalises the whole order afterwards, so a rank out of range
+     * clamps rather than corrupting the permutation. */
+    case kMsgSetOrder:
+    {
+      std::string idx, val;
+      if (!tg::wire::split_pair(arg, idx, val)) return true;
+      tg_core_set_param(mCore, "cursor", idx.c_str());
+      tg_core_set_param(mCore, "step_order", val.c_str());
+      return true;
+    }
+
+    /* An optional seed, or nothing at all. The engine does not touch the
+     * playhead, so this is safe to press mid-bar. */
+    case kMsgRandomize:
+      tg_core_set_param(mCore, "randomize", arg.c_str());
+      return true;
 
     case kMsgPatch:               /* paste */
       if (!arg.empty()) tg_core_set_param(mCore, "state", arg.c_str());
@@ -593,12 +671,68 @@ void TranceGate::SyncSlotParams()
  * slower than the gate curve drawn over it, by 0.4 of full scale at a 512
  * sample buffer.
  */
-void TranceGate::CaptureBlock(const float* dry, const float* wet, int frames)
+void TranceGate::CaptureBlock(const float* dry, const float* wet, int frames,
+                              double ph0, double ph1, bool advancing)
 {
-  if (frames <= 0 || !(mCapPerCol > 0.0)) return;
+  if (frames <= 0) return;
+
+  /*
+   * HOW FAR THE PATTERN MOVED ACROSS THIS BLOCK, unwrapped.
+   *
+   * A cycle boundary inside the block arrives as ph1 < ph0, which is a span of
+   * span+1 and not of span-1; a SEEK arrives as a jump in either direction and
+   * must not be drawn as a sweep across the whole axis. Half a cycle is the
+   * dividing line, and past it the block is treated as a jump: the columns it
+   * would have smeared across are left holding the audio they already have.
+   */
+  double span = ph1 - ph0;
+  bool jumped = false;
+  if (span < -0.5) span += 1.0;
+  else if (span > 0.5) { span -= 1.0; jumped = true; }
+  if (span < 0.0) jumped = true;
+
+  /*
+   * A STOPPED TRANSPORT HAS NO PHASE, so the sweep runs on its own at the same
+   * length. Without this every sample lands in column 0 and the plot shows one
+   * pixel of a signal that is passing through audibly -- the gate holds open
+   * when the transport is stopped, so there is something real to look at.
+   */
+  double cyc = mCycleSamples.load(std::memory_order_relaxed);
+  if (!(cyc > 0.0)) cyc = GetSampleRate() * (kScopeFallbackMs / 1000.0);
+  if (!advancing || jumped)
+  {
+    ph0 = mSweep;
+    span = double(frames) / cyc;
+  }
+  mSweep = ph0 + span;
+  mSweep -= std::floor(mSweep);
+
+  const auto flush = [&]() {
+    if (mCapCount <= 0 || mCapCol < 0) return;
+    mCap.dryLo[mCapCol].store(mCapDryLo, std::memory_order_relaxed);
+    mCap.dryHi[mCapCol].store(mCapDryHi, std::memory_order_relaxed);
+    mCap.wetLo[mCapCol].store(mCapWetLo, std::memory_order_relaxed);
+    mCap.wetHi[mCapCol].store(mCapWetHi, std::memory_order_relaxed);
+    /* Published AFTER the column is written, so a reader never sees the write
+     * point pointing at a column that has not been filled in yet. */
+    mCap.head.store(mCapCol, std::memory_order_release);
+  };
 
   for (int i = 0; i < frames; i++)
   {
+    double ph = ph0 + span * (double(i) / double(frames));
+    ph -= std::floor(ph);
+    int col = int(ph * double(kScopeCols));
+    if (col < 0) col = 0;
+    else if (col >= kScopeCols) col = kScopeCols - 1;
+
+    if (col != mCapCol)
+    {
+      flush();
+      mCapCol = col;
+      mCapCount = 0;
+    }
+
     if (mCapCount == 0)
     {
       mCapDryLo = mCapDryHi = dry[i];
@@ -612,25 +746,17 @@ void TranceGate::CaptureBlock(const float* dry, const float* wet, int frames)
       if (wet[i] > mCapWetHi) mCapWetHi = wet[i];
     }
     mCapCount++;
-
-    /*
-     * A COLUMN IS A FIXED SLICE OF TIME, and mCapPerCol is fractional -- at
-     * 48k over a one-second window it is 187.5 samples. Comparing a counter
-     * against it and subtracting keeps the columns on the window rather than
-     * letting a rounded-down integer drift the whole picture slow.
-     */
-    if (double(mCapCount) >= mCapPerCol)
-    {
-      mCap.dryLo[mCapCol].store(mCapDryLo, std::memory_order_relaxed);
-      mCap.dryHi[mCapCol].store(mCapDryHi, std::memory_order_relaxed);
-      mCap.wetLo[mCapCol].store(mCapWetLo, std::memory_order_relaxed);
-      mCap.wetHi[mCapCol].store(mCapWetHi, std::memory_order_relaxed);
-
-      mCapCol = (mCapCol + 1) % kScopeCols;
-      mCapCount = 0;
-      /* Published AFTER the column is written and AFTER the cursor moves, so
-       * a reader never sees the half-built column as the newest one. */
-      mCap.head.store(mCapCol, std::memory_order_release);
-    }
   }
+
+  /*
+   * THE PARTIAL COLUMN IS PUBLISHED TOO, and that is the fix for the complaint
+   * the wall-time rewrite was trying to answer.
+   *
+   * Publishing only completed columns meant the write point lagged by up to a
+   * whole column, and -- far worse at sixteen steps -- that a level change was
+   * invisible until the sweep had passed. Flushing here makes the newest column
+   * current to within one buffer. It is overwritten, never blended, so there is
+   * no state in this function that could behave like a filter.
+   */
+  flush();
 }

@@ -6,7 +6,10 @@ Checkable items. Ordered roughly by what unblocks what, not by priority.
 
 ## Requested
 
-### [x] Randomise the pattern from the circle page
+### [x] Randomise the pattern from the circle page — DONE
+
+`Instance::randomize` in tg-core, `"randomize"` through the string door, a
+`RANDOM` button in the plugin and a `Roll` knob on the Move.
 
 A generator that fills the current slot with a musically plausible gate rather
 than 16 coin flips — uniform random reads as noise, not as a trance gate.
@@ -15,16 +18,33 @@ than 16 coin flips — uniform random reads as noise, not as a trance gate.
       ceiling below) and plain click opens the section picker, so this probably
       wants **Shift+Click**, or a `access: "write"` trigger param (a click fires
       it, a knob cannot edit it).
+      **An enum knob, `Hold`/`Roll`, on the settings page.** Released Schwung has
+      no write-only param type, so a value that does nothing is needed or turning
+      the knob back would roll a second pattern. It writes the LABEL rather than
+      an index deliberately: "Roll" carries no number, so the engine walks its own
+      generator and successive rolls differ, where index 1 would pin the seed to 1
+      and hand back the same pattern every time.
+      Shift+pad is still the nicer gesture and is still open — it is the tie
+      gesture on the pads today, so it needs a decision rather than a drive-by.
 - [x] Decide the algorithm. Candidates: density-weighted (a Density knob, so the
       result is steerable and repeatable-ish), Euclidean (evenly spread N hits
       over `length` — always musical, and a natural fit for a ring), or
       downbeat-biased random.
+      **Euclidean, with the hit count drawn from a quarter to three quarters of
+      the length.** And it is downbeat-biased for free:
+      `hit(i) <=> (i*hits) mod length < hits` puts a hit at i=0 by construction.
+      The other spelling of the same spacing — comparing
+      `floor((i+1)h/n)` with `floor(i h/n)` — puts each hit at the END of its
+      group and leaves step 0 empty at every density below full, which reads as
+      the randomiser being broken. A test caught it.
 - [x] Keep it inside the RT contract: `set_param` runs on the audio callback, so
       the generator must be a bounded loop over ≤32 steps with no allocation.
       `rand()` is not RT-safe in the strict sense — use a small xorshift seeded
       per instance.
 - [x] Do not disturb the playhead: regenerating mid-bar must not reset
       `step_pos`, or the gate jumps out of time on every press.
+      **Held, and asserted** — `test_core.c` renders, reads `phase01`, rolls, and
+      checks the phase to 1e-9.
 
 ### [x] Per-step depth, applied before the global Depth
 
@@ -57,6 +77,32 @@ Today the bank bar shows `Main` then `Gate`; the module lands on `Gate` via
       canvas param. The first is cleaner but reorders pages for every module
       that already ships an `as_page` canvas — check the fleet before changing
       it, and expect `tests/fixtures/movy-geom-baseline.txt` to move.
+
+### [x] The fade-in — DONE
+
+Each step that sounds carries an ARRIVAL ORDER, and a Fade knob introduces them
+one at a time in that order: 0% silent, 100% the whole pattern, the arrivals
+evenly spaced. Soft ramps a step in on its own level; hard jumps it on.
+
+- [x] One formula, two readings: `w(r) = clamp(f*n - (r-1), 0, 1)` and the same
+      value thresholded at 1. So the two shapes agree at every arrival boundary —
+      the switch changes a step's shape, never when it arrives — and soft has
+      exactly one step part way in at any moment.
+- [x] A step the fade has not reached is a GAP, not a silent ON step. Ties and
+      Join Neighbors read the faded mask, or a step that has not arrived keeps its
+      neighbour's gate open. Asserted from a render, not from the readout.
+- [x] The order is normalised rather than validated: every door that moves the
+      mask, the length or a rank ends in `renumber`, so there is no illegal state
+      for a shell to draw. A step joining arrives last.
+- [x] State version 5. Absent order means POSITION order and absent fade means
+      1.0 — an old patch loads as the left-to-right sweep and sounds unchanged.
+      `TG_STATE_MAX` 4096 -> 8192: the real worst case measures 4654 bytes.
+- [x] Two host parameters, appended. Inert at their defaults, and both golden
+      renders are bit-identical, which is the proof rather than an assertion.
+- [ ] **The fade is on the Move's SETTINGS page, not under the ring**, and that is
+      the eight-knob ceiling rather than a choice. A build-up wants the knob while
+      you are looking at the pattern. Swapping `slot` out for `fade` on the ring
+      page is the trade to make if anyone asks.
 
 ---
 

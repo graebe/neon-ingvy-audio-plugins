@@ -3,19 +3,30 @@
 version = 4
 
 [[package]]
-name = "sc-capi"
+name = "bus-capi"
 version = "0.1.0"
+dependencies = [
+ "bus-core",
+]
+
+[[package]]
+name = "bus-core"
+version = "0.1.0"
+
+[[package]]
+name = "sc-capi"
+version = "2026.9.29+1"
 dependencies = [
  "sc-core",
 ]
 
 [[package]]
 name = "sc-core"
-version = "0.1.0"
+version = "2026.9.29+1"
 
 [[package]]
 name = "sc-move"
-version = "0.1.0"
+version = "2026.9.29+1"
 dependencies = [
  "sc-capi",
  "sc-core",
@@ -34,18 +45,18 @@ version = "0.1.1"
 
 [[package]]
 name = "tg-capi"
-version = "1.0.1"
+version = "2026.9.29+1"
 dependencies = [
  "tg-core",
 ]
 
 [[package]]
 name = "tg-core"
-version = "1.0.1"
+version = "2026.9.29+1"
 
 [[package]]
 name = "tg-move"
-version = "1.0.1"
+version = "2026.9.29+1"
 dependencies = [
  "tg-capi",
  "tg-core",

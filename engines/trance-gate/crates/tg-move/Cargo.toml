@@ -1,6 +1,6 @@
 [package]
 name = "tg-move"
-version = "1.0.1"
+version = "2026.9.29+1"
 edition = "2021"
 authors = ["Torben Gräber"]
 license = "MIT"

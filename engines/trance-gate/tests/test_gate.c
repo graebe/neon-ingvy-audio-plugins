@@ -549,7 +549,7 @@ int main(void) {
     set(api, inst, "step_amount", "0.25");
     strncpy(saved, get(api, inst, "state"), sizeof(saved) - 1);
     saved[sizeof(saved) - 1] = '\0';
-    check("state reports v4", strstr(saved, "\"sv\":4") != NULL);
+    check("state reports v5", strstr(saved, "\"sv\":5") != NULL);
     api->destroy_instance(inst);
     inst = api->create_instance(NULL, NULL);
     set(api, inst, "state", saved);
