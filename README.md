@@ -74,6 +74,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
 | `spectro_wire`, `spectro_columns_js` | the wire format the editor decodes, both sides pinned to one table the plugin's own C++ generates |
 | `tg_wire` | the four pieces of plugin arithmetic where being wrong is silent — the scope quantiser, the message split, the editor height, the transport advance |
+| `tg_fade`, `tg_fade_js` | the fade-in's arrival weights, against the engine's own *measured* gain — DC in with no envelope, so the gain during a step IS that step's weight. The editor mirrors the formula, so the mirror is pinned |
 
 ### Coverage
 

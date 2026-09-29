@@ -22,16 +22,34 @@
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
 /* 12 normalised values in EParams order, and their display strings. */
-const VALUES = [0 / 7, (16 - 1) / 127, 7 / 12, 0, 0, 0, 0.9, 0.75,
-                1.6 / 200, 16 / 200, 1.0, 16 / 200];
-const DISPLAY = ['1', '16', '1/16', 'Off', 'ms', 'Linear', '90.00 %', '75.00 %',
-                 '1.60 %', '16.00 %', '100.00 %', '16.00 %'];
+const Q0 = new URLSearchParams(location.search);
+/* ?fade=0..1 and ?soft to review the fade-in at a setting. Default 1 -- the
+ * neutral value, which is what the plugin ships with. */
+const FADE = Number(Q0.get('fade') ?? 1);
+const SOFT = Q0.has('soft') ? 1 : 0;
 
-/* steps:ties:length:phase:ms_step:advancing:cursor:depths
+const VALUES = [0 / 7, (16 - 1) / 127, 7 / 12, 0, 0, 0, 0.9, 0.75,
+                1.6 / 200, 16 / 200, 1.0, 16 / 200,
+                FADE, SOFT];
+const DISPLAY = ['1', '16', '1/16', 'Off', 'ms', 'Linear', '90.00 %', '75.00 %',
+                 '1.60 %', '16.00 %', '100.00 %', '16.00 %',
+                 `${(FADE * 100).toFixed(2)} %`, SOFT ? 'Soft' : 'Hard'];
+
+/* steps:ties:length:phase:ms_step:advancing:cursor:depths:orders
  * Every other step on, two of them tied, step 4 at half amount. */
 const DEPTHS = Array.from({ length: 16 },
                           (_, i) => (i % 2 ? 'FF' : (i === 4 ? '80' : 'FF'))).join('');
-const UI_STATE = `5555:0044:16:5.400:125.00:1:5:${DEPTHS}`;
+/*
+ * THE ARRIVAL ORDER, 1..N over the ON steps and 00 for a gap -- the mask is
+ * 5555, so steps 0,2,4,...,14 sound. Deliberately NOT position order: a mock
+ * that only ever showed 1,2,3,4 would let a reviewer miss the whole point of
+ * the numbers. This one arrives 4th, 1st, 7th, 2nd, ...
+ */
+const ORDER_SEQ = [4, 1, 7, 2, 8, 3, 6, 5];
+const ORDERS = Array.from({ length: 16 }, (_, i) =>
+  (i % 2 === 0 ? ORDER_SEQ[i / 2].toString(16).padStart(2, '0').toUpperCase() : '00')
+).join('');
+const UI_STATE = `5555:0044:16:5.400:125.00:1:5:${DEPTHS}:${ORDERS}`;
 /*
  * slot:legato:time_mode:curve:rate:length:amount:hold:attack:decay:sustain:
  * release:width_ms
@@ -46,28 +64,47 @@ const [A, D, S, R] = (Q.get('adsr') ?? '1.6,16,1,16').split(',');
 /* ?width= is the gate's open time as a fraction of the step (`hold`), and
  * width_ms is derived from it so the plot's axis is not a lie. */
 const HOLD = Number(Q.get('width') ?? 0.75);
-const PARAMS = `0:0:0:${CURVE}:1/16:15:0.9:${HOLD}:${A}:${D}:${S}:${R}:${(HOLD * 125).toFixed(2)}`;
+/* ?legato to review Join Neighbors -- three adjacent ON steps must draw ONE
+ * attack, not three. That bug was invisible here because legato was hard-coded
+ * off AND the editor never read the field. */
+const LEGATO = Q0.has('legato') ? '1' : '0';
+const PARAMS = `0:${LEGATO}:0:${CURVE}:1/16:15:0.9:${HOLD}:${A}:${D}:${S}:${R}:` +
+               `${(HOLD * 125).toFixed(2)}:${FADE}:${SOFT}`;
 
 /*
- * The scope as the plugin sends it: "<cols>:<windowMs>:<4 hex bytes a column>",
- * already rotated so column 0 is the oldest sample in the window.
+ * The scope as the plugin sends it:
+ * "<cols>:<cycleMs>:<head>:<4 hex bytes a column>", IN PATTERN ORDER -- column k
+ * is phase k/cols, not rotated, because the axis is the pattern and stands still.
  *
- * `roll` shifts the phase so successive pushes are genuinely different data --
- * which is what makes "the window is live" testable rather than a claim.
+ * `head` is where the sweep is writing. `roll` advances it so successive pushes
+ * are genuinely different data, which is what makes "the sweep is live" testable
+ * rather than a claim -- and here it advances the HEAD rather than shifting the
+ * whole picture, because a picture that scrolls is the thing this stopped doing.
+ *
+ * The gate is keyed to the same 16 steps the mask says are on, so the envelope
+ * overlay has something to line up with.
  */
-const COLS = 256, WINDOW_MS = 1000;
+const COLS = 256, CYCLE_MS = 2000;
 const scope = (roll = 0) => {
   const H = (x) => Math.max(0, Math.min(255,
     Math.round((Math.max(-1, Math.min(1, x)) + 1) * 127.5)))
     .toString(16).toUpperCase().padStart(2, '0');
+  const head = roll % COLS;
   let hex = '';
   for (let i = 0; i < COLS; i++) {
-    const j = i + roll;
-    const a = 0.85 * Math.sin(j * 0.31) * (0.6 + 0.4 * Math.sin(j * 0.05));
-    const open = Math.floor(j / 16) % 2 === 0 ? 1 : 0.12;   /* gated */
-    hex += H(-Math.abs(a)) + H(Math.abs(a)) + H(-Math.abs(a * open)) + H(Math.abs(a * open));
+    /* The input, as a function of PHASE -- so a column holds the same signal
+     * every cycle, which is what a static axis shows. */
+    const a = 0.85 * Math.sin(i * 0.31) * (0.6 + 0.4 * Math.sin(i * 0.05));
+    /* Gated by the step the column falls in: 16 steps over 256 columns. */
+    const step = Math.floor(i / (COLS / 16));
+    const open = step % 2 === 0 ? 1 : 0.0;
+    /* Columns the sweep has not reached on this pass are quieter, so the
+     * "filling left to right" reading is visible in the harness at all. */
+    const fresh = i <= head ? 1 : 0.35;
+    hex += H(-Math.abs(a * fresh)) + H(Math.abs(a * fresh))
+         + H(-Math.abs(a * open * fresh)) + H(Math.abs(a * open * fresh));
   }
-  return `${COLS}:${WINDOW_MS}:${hex}`;
+  return `${COLS}:${CYCLE_MS}:${head}:${hex}`;
 };
 
 let roll = 0;
@@ -81,7 +118,7 @@ const pushAll = () => {
 
 /* The plugin pushes the window every idle tick; so does this, or the scope
  * would look live only because nothing had asked it to change. */
-setInterval(() => { roll += 7; globalThis.SAMFD?.(66, 0, b64(scope(roll))); }, 50);
+setInterval(() => { roll += 3; globalThis.SAMFD?.(66, 0, b64(scope(roll))); }, 50);
 
 /* THE RACE, REPRODUCED: this runs now, before the editor exists, and every one
  * of these calls goes nowhere. It is here to be dropped. */

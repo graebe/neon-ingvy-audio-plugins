@@ -68,12 +68,21 @@ export default function Ring(props) {
    */
   const lit = (i) => {
     const g = geom();
-    const a = Math.max(0.05, Math.min(1, props.depths?.[i] ?? 1));
+    /* THE FADE SCALES THE BAND, exactly as it scales a pad's lit height and for
+     * the same reason: the engine scales the step's level by this number, so a
+     * step part way in reads as part way in. */
+    const w = props.weights?.[i] ?? 1;
+    const a = Math.max(0.05, Math.min(1, (props.depths?.[i] ?? 1) * w));
     return sector(i, g.rInner, g.rInner + g.band * a);
   };
 
+  /* An ON step the fade has not reached yet is a HOLLOW arc: it is in the
+   * pattern (so not a gap) and it is not sounding (so not a fill). */
+  const pending = (i) => !!props.steps?.[i] && (props.weights?.[i] ?? 1) <= 0;
+
   const state = (i) => {
     const on = !!props.steps?.[i], tie = !!props.ties?.[i];
+    if (pending(i)) return { on: false, tie: false };
     return { on: on && !tie, tie };
   };
   const idx = () => Array.from({ length: n() }, (_, i) => i);

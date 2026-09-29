@@ -48,14 +48,65 @@ window.__auditPromise = (async () => {
   o.pads = qa('.pad').length;
   o.padsOn = qa('.pad.on').length;
   o.padsTie = qa('.pad.tie').length;
+  /*
+   * THE FADE-IN. At the mock's default the fade is 100%, so nothing is pending
+   * and no numbers are drawn -- which is the resting state and worth asserting
+   * as much as the other one. ?fade=0.5 is the interesting page; see the
+   * fade-specific fields further down, which the driver reruns with it set.
+   */
+  o.padsPending = qa('.pad.pending').length;
+  o.padOrderNumbers = qa('.pad-order').length;
+  o.fadePanel = !!q('.fade-panel');
+  o.fadePanelTitle = q('.fade-panel h2')?.textContent ?? null;
+  /* The titles run UP the left edge now, which is what pays for the third
+   * panel. An unrotated title means the panel arithmetic is wrong by 28px a
+   * panel and the window is the wrong height. */
+  o.panelTitlesVertical = qa('.panel h2').every(
+    (e) => getComputedStyle(e).writingMode.startsWith('vertical'));
+  o.panelHeights = qa('.panel').map((e) => Math.round(e.getBoundingClientRect().height));
+  o.orderButtons = qa('.fade-actions .btn').map((e) => e.textContent.trim());
+  o.randomButton = qa('.settings-row .btn').map((e) => e.textContent.trim())
+                     .filter((t) => t === 'RANDOM').length;
   o.knobArcGlows = qa('.knob g.glow-arc').length;
   o.knobsFocusable = qa('.knob[tabindex]').length;
 
-  /* THE ALIGNMENT: the plot and the sixteen pads must be the same width. */
+  /*
+   * THE ALIGNMENT. The plot, the band, the pads and the settings row must all be
+   * the same width, and `main` must have the SAME padding on both sides -- one
+   * edge down each side of the window, which is what it did not have while the
+   * tab strip had a column of its own.
+   */
   o.plotW = box('.band-plot svg');
   o.gridW = box('.grid');
   o.bandW = box('.band');
+  o.settingsW = box('.settings-row');
   o.plotMatchesGrid = o.plotW === o.gridW;
+  o.everythingIsOneWidth =
+    o.plotW === o.gridW && o.gridW === o.bandW && o.bandW === o.settingsW;
+  {
+    const m = q('main');
+    const r = m?.getBoundingClientRect();
+    const rect = (s2) => q(s2)?.getBoundingClientRect();
+    const lefts = ['.grid', '.band', '.settings-row', '.ring-slot', '.env-plot-slot']
+      .map((s2) => rect(s2)).filter(Boolean).map((b) => Math.round(b.left - r.left));
+    const rights = ['.grid', '.band', '.settings-row']
+      .map((s2) => rect(s2)).filter(Boolean).map((b) => Math.round(r.right - b.right));
+    /* The panels are in the right column, so only their RIGHT edge is a window
+     * padding; their left is the ring column plus a gutter. */
+    const panelRights = qa('.panel')
+      .map((e) => Math.round(r.right - e.getBoundingClientRect().right));
+    o.leftPaddings = [...new Set(lefts)];
+    o.rightPaddings = [...new Set([...rights, ...panelRights])];
+    o.paddingIsUniform = o.leftPaddings.length === 1 && o.rightPaddings.length === 1 &&
+                         o.leftPaddings[0] === o.rightPaddings[0];
+  }
+  /* The tab strip is OVER the plot, not beside it: it must overlap the band's
+   * own box rather than sit outside it. */
+  {
+    const t = q('.band .tabs')?.getBoundingClientRect();
+    const b = q('.band')?.getBoundingClientRect();
+    o.tabsOverlayTheBand = !!(t && b && t.right <= b.right + 1 && t.left >= b.left);
+  }
 
   /* The glow tokens must resolve; an undefined var() renders as nothing. */
   const cs = getComputedStyle(document.documentElement);
@@ -90,12 +141,39 @@ window.__auditPromise = (async () => {
   o.focusedFilter = fe && fe !== document.body ? getComputedStyle(fe).filter.slice(0, 30) : null;
   o.focusedShadow = fe && fe !== document.body ? getComputedStyle(fe).boxShadow.slice(0, 50) : null;
 
+  /* THE LIT TAB'S GLOW. It used to be a class toggled from Tabs.jsx beside
+   * `on`, and the halo did not keep up with the click. It is a CSS rule now, so
+   * one class toggle carries both -- this reads the computed filter rather than
+   * the class list, because the class list was never the thing that was late. */
+  o.litTabHasGlow = (() => {
+    const on = qa('.tab.on')[0];
+    return on ? /drop-shadow/.test(getComputedStyle(on).filter) : false;
+  })();
+
   /* The scope, on the SIGNAL tab: the dry must be grey and the wet must glow. */
   qa('.tab')[1]?.click();
   await wait(250);
+  o.litTabHasGlowAfterClick = (() => {
+    const on = qa('.tab.on')[0];
+    return on ? /drop-shadow/.test(getComputedStyle(on).filter) : false;
+  })();
   o.scopeFills = qa('.band-plot path[fill]').map((p) => p.getAttribute('fill'));
   o.scopeWetInGlowGroup = !!q('.band-plot g.glow-arc path');
-  o.scopeCaption = q('.band-plot .plot-caption')?.textContent ?? null;
+  /* `.well-caption`, not `.plot-caption`: the Axis's tick labels carry the
+   * latter and come earlier in document order, so this used to read "0". */
+  o.scopeCaption = q('.band-plot .well-caption')?.textContent ?? null;
+  /*
+   * THE AXIS IS THE PATTERN AGAIN, so the scope carries step rules, step numbers
+   * and the envelope over the trace -- none of which could mean anything while
+   * the axis was wall time. And the numbers must be VISIBLE: .step-number had no
+   * CSS rule at all, so they drew in SVG's default black on a dark well.
+   */
+  o.scopeHasStepNumbers = qa('.band-plot .step-number').length;
+  o.scopeStepNumberFill = q('.band-plot .step-number')
+    ? getComputedStyle(q('.band-plot .step-number')).fill : null;
+  o.scopeHasSweepMark = qa('.band-plot line.sweep').length;
+  /* Two stroked paths with no fill: the envelope outline above and below zero. */
+  o.scopeEnvelopeOutlines = qa('.band-plot path[stroke][fill="none"]').length;
 
   /* Into the DOM for a --dump-dom run, and RETURNED for the CDP driver, which
    * awaits this promise -- see cdp.mjs. Virtual time cannot be used here: the

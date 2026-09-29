@@ -14,8 +14,8 @@
 
 #define PLUG_NAME "Trance Gate"
 #define PLUG_MFR "graebe"
-#define PLUG_VERSION_HEX 0x00010001
-#define PLUG_VERSION_STR "1.0.1"
+#define PLUG_VERSION_HEX 0x00010100
+#define PLUG_VERSION_STR "1.1.0"
 
 /* THE FOUR-CHARACTER IDS ARE THE PLUGIN'S IDENTITY and they are carried over
  * from the JUCE build deliberately: a host that catalogued this plugin
@@ -62,9 +62,10 @@
 #define PLUG_DOES_MIDI_OUT 0
 #define PLUG_DOES_MPE 0
 
-/* STATE CHUNKS, BECAUSE THE PATTERN IS NOT A PARAMETER. Twelve values have
- * host parameters behind them; the pattern, the ties, the per-step depths and
- * all eight slots do not, and 128 x 8 of them never will. They travel as the
+/* STATE CHUNKS, BECAUSE THE PATTERN IS NOT A PARAMETER. Fourteen values have
+ * host parameters behind them; the pattern, the ties, the per-step depths, the
+ * fade's arrival order and all eight slots do not, and 128 x 8 of them never
+ * will. They travel as the
  * engine's own state blob -- the same text the Move module writes, which is
  * what makes a patch portable between the two. */
 #define PLUG_DOES_STATE_CHUNKS 1
@@ -75,24 +76,37 @@
  * the rest of this project is pointed. */
 #define PLUG_HAS_UI 1
 /*
- * 856, WHICH IS 32 MORE THAN THE JUCE EDITOR'S 824.
+ * 824 AND 736, AND BOTH NUMBERS ARE DECIDED BY THE PADS.
  *
- * The original was space-8 * 2 + StepGridView::width (760) = 824, and the band
- * holding the plots was 760 as well -- but the tab strip takes 24 off the
- * band's right edge with 8 of gap, so the PLOT drew at 728 against a 760 grid
- * of pads. The JUCE editor accepted that ("a rhyme that thin is worth less
- * than a view switch you can find").
+ * WIDTH. Sixteen pads of --step (40) with --s2 (8) between them is 760, and
+ * --step is a design-system token on a 4px grid -- so the pad grid decides the
+ * content width and everything else in the window is measured against it. 32 of
+ * padding each side makes 824.
  *
- * Aligning them costs those 32 pixels and nothing else: the band is 792, the
- * plot is 760, the tab strip survives, and every other number in the layout is
- * the original's. See PLOT_W / BAND_W in ui/src/App.jsx, which own the
- * arithmetic.
+ * It was 856 for a while, and that was buying one thing: the tab strip took 24
+ * off the plot band's right edge with 8 of gap, so the plot drew 32 narrower
+ * than the pads under it, and 32 more pixels of window gave the strip a column
+ * of its own. The cost was a second right-hand edge -- the band ended at 824
+ * and every other element at 792 -- so the window had one padding on the left
+ * and two different ones on the right. The strip is laid OVER the plot now,
+ * which buys the alignment for nothing and gives the 32 back.
  *
- * The height is 568 (kGridY) + one row of pads + space-6 + the hint bar at the
- * default 16 steps, and grows with Length -- see kMsgRows.
+ * HEIGHT. 644 (kGridY) + one row of pads + space-6 + the hint bar, at the
+ * default 16 steps, and it grows with Length -- see kMsgRows.
+ *
+ * 644 and not the old 568 because there are three panels in the right column
+ * now rather than two. The third one is paid for by the panels themselves: their
+ * titles run up the left edge instead of sitting above the knobs, which takes a
+ * panel from 172 to 140 -- so a third costs 76px of window where a fourth
+ * horizontal-titled one would have cost 148.
+ *
+ * Mirrored by `main`'s width and padding-top in ui/src/app.css and by DESIGN_W
+ * and designH in ui/src/App.jsx. All of them have to agree, or the page is
+ * scaled against a width it does not have and the window is the wrong height
+ * for what is in it.
  */
-#define PLUG_WIDTH 856
-#define PLUG_HEIGHT 660
+#define PLUG_WIDTH 824
+#define PLUG_HEIGHT 736
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 /* The window grows with Length -- see kMsgRows. */

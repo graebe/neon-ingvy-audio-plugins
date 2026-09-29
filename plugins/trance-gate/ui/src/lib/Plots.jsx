@@ -25,8 +25,11 @@ function Well(props) {
       <rect x="0.5" y="0.5" width={props.w - 1} height={props.h - 1}
             fill="var(--bg-000)" stroke="var(--line-100)" />
       {props.children}
+      {/* `well-caption` as well as `plot-caption`, so this one is reachable on its
+        * own: the Axis's tick labels carry plot-caption too and come EARLIER in
+        * document order, so a querySelector for the caption found a tick. */}
       {props.caption &&
-        <text class="plot-caption t-hint" x={INSET} y="11">{props.caption}</text>}
+        <text class="plot-caption well-caption t-hint" x={INSET} y="11">{props.caption}</text>}
     </svg>
   );
 }
@@ -534,7 +537,7 @@ export function PatternPlot(props) {
 }
 
 /*
- * THE SIGNAL. Dry behind in grey, gated in front in uv.
+ * THE SIGNAL. Dry behind in grey, gated in front in uv, the envelope over both.
  *
  * The dry is CONTEXT, NOT THE SUBJECT, so it is drawn back at partial alpha:
  * a sustained input fills every column edge to edge, and at full strength it
@@ -542,25 +545,34 @@ export function PatternPlot(props) {
  */
 export function Scope(props) {
   /*
-   * A ROLLING WINDOW OF WALL TIME, and "now" is the right-hand edge.
+   * A SWEEP OF THE PATTERN, ON A STATIC AXIS, FILLING LEFT TO RIGHT.
    *
-   * IT USED TO BE A SWEEP OF THE PATTERN -- one column written per cycle, so
-   * the x-axis was the pattern plot's. That was the point of it, and it also
-   * meant a column was refreshed once every few SECONDS: turn the input up and
-   * the picture crept up after it, left to right, which reads as a filtered
-   * meter. Nothing was ever being smoothed; the display was simply that old.
+   * Column k is pattern phase k/cols and is drawn at that x -- always, whatever
+   * the sweep is doing -- so the axis stands still, the step rules line up with
+   * the gate, and the ENVELOPE can be drawn over the trace it produced. `head`
+   * is where the plugin is writing, so the picture reads as filling rather than
+   * scrolling.
    *
-   * The plugin sends the whole ring every frame, already rotated so column 0
-   * is the oldest sample in the window -- see the note by Capture in
-   * TranceGate.h. There is no fill state left for this to track.
+   * THIS WENT BACK AND FORTH ONCE, so here is the part that matters. It was a
+   * pattern sweep, became a rolling window of wall time, and is a pattern sweep
+   * again. The complaint that moved it was real: a column was refreshed once per
+   * CYCLE -- seconds apart at sixteen steps -- so turning the input up made the
+   * picture creep after it, which reads as a filtered meter.
    *
-   * WHAT IT COST: the columns are no longer steps, so the step numbers and the
-   * gate overlay came off the plot. The gated trace IS the gating.
+   * But the mapping was never the cause. The plugin published a column only when
+   * it was COMPLETE, so the newest data was up to a column old and, far worse, a
+   * level change was invisible until the sweep came round. It publishes the
+   * partial column every block now: current to within one buffer, overwritten
+   * and never blended. Wall time solved the symptom and cost the alignment --
+   * step numbers and the gate overlay both came off the plot with it -- where
+   * fixing the publish keeps both.
    */
   const AXIS_H = 14;
   const top = CAPTION, bot = () => props.h - INSET - AXIS_H;
   const mid = () => (top + bot()) / 2;
-  const windowMs = () => props.windowMs ?? 1000;
+  const cycleMs = () => props.windowMs ?? 1000;
+  const n = () => Math.max(1, props.length ?? 16);
+  const x01 = (t) => INSET + (props.w - 2 * INSET) * Math.max(0, Math.min(1, t));
 
   /* One screen pixel per column of output, min/max over every capture column
    * behind it -- plot::decimate's argument, and the reason a narrow gate
@@ -571,8 +583,9 @@ export function Scope(props) {
     const w = Math.max(1, Math.round(props.w - 2 * INSET));
     const half = (bot() - top) * 0.5;
     const y = (v) => mid() - half * Math.max(-1, Math.min(1, v));
-    /* The window is always complete, so the span IS the column count -- no
-     * fill state, and nothing to stop short at. */
+    /* Every column is drawn, in place: the axis is the pattern, so there is no
+     * rotation and no fill state. A column the sweep has not reached yet holds
+     * whatever it held, which is what makes this read as filling. */
     const total = cols.length;
     const hi = [], lo = [];
     for (let x = 0; x < w; x++) {
@@ -593,9 +606,51 @@ export function Scope(props) {
     return hi.join(' ') + ' ' + back.join(' ') + ' Z';
   };
 
+  /*
+   * THE ENVELOPE OVER THE TRACE, and it is drawn as the OUTLINE the gate cuts
+   * rather than as a filled curve.
+   *
+   * The trace is already a filled band; a second fill over it is mud. So this is
+   * the gate's shape mirrored about the zero line -- the envelope above and its
+   * negative below, which is exactly the outline a symmetrical signal at full
+   * level would fill. Laid over the real trace, the gap between them IS the
+   * difference between what the gate asked for and what the audio did.
+   *
+   * It needs an axis that is the pattern to mean anything, which is why it was
+   * taken off when the axis was wall time and why it can come back now.
+   */
+  const gate = createMemo(() => {
+    const p = props.params;
+    if (!p) return null;
+    const N = n(), perStep = 8;
+    const half = (bot() - top) * 0.5;
+    const up = [], dn = [];
+    for (let s = 0; s < N; s++) {
+      for (let k = 0; k < perStep; k++) {
+        const t = (s + k / perStep) / N;
+        /* One shared source of truth with the Pattern plot would mean lifting
+         * its run walker out; at eight samples a step this is the same shape at a
+         * quarter of the resolution, and what it is FOR is different -- an
+         * overlay, not the subject. */
+        const on = !!props.steps?.[s] && ((props.weights?.[s] ?? 1) > 0);
+        const amt = on ? (props.depths?.[s] ?? 1) * (props.weights?.[s] ?? 1) : 0;
+        const v = on ? amt * gateAt(p, k / perStep, 0) : 0;
+        const px = x01(t);
+        up.push(`${up.length ? 'L' : 'M'} ${px.toFixed(1)} ${(mid() - half * v).toFixed(1)}`);
+        dn.push([px, mid() + half * v]);
+      }
+    }
+    if (!up.length) return null;
+    return { up: up.join(' '),
+             dn: 'M ' + dn.map(([px, py]) => `${px.toFixed(1)} ${py.toFixed(1)}`).join(' L ') };
+  });
+
   return (
     <Well w={props.w} h={props.h}
-          caption={`SIGNAL   LAST ${Math.round(windowMs())} MS   DRY IN GREY, GATED IN FRONT`}>
+          caption={`SIGNAL   ONE CYCLE, ${Math.round(cycleMs())} MS   DRY IN GREY, GATED IN FRONT`}>
+      {/* The step boundaries, UNDER everything: the axis is the pattern again, so
+        * a column has a step and the rules say which. */}
+      <StepRules count={n()} w={props.w} top={top} bottom={bot()} />
       {/* The zero line, so a silent stretch reads as silence rather than as a
         * gap in the drawing. */}
       <line x1={INSET} x2={props.w - INSET} y1={mid()} y2={mid()} stroke="var(--line-100)" />
@@ -612,9 +667,29 @@ export function Scope(props) {
         * blooms into mud.
         */}
       <g class="glow-arc"><path d={band(2, 3)} fill="var(--uv)" /></g>
-      {/* Milliseconds ago, since the columns are time and not steps. The
-        * same axis the envelope plot uses, so the two read alike. */}
-      <Axis w={props.w} y={props.h - INSET - AXIS_H} spanMs={windowMs()} markMs={0} />
+      {/* The envelope, as an outline above and below zero. `ink-dim` and a
+        * hairline: it is the reference the trace is measured against, so it must
+        * not compete with it. */}
+      {gate() && <>
+        <path d={gate().up} fill="none" stroke="var(--ink-dim)" stroke-width="1" />
+        <path d={gate().dn} fill="none" stroke="var(--ink-dim)" stroke-width="1" />
+      </>}
+      {/*
+        * WHERE THE SWEEP IS WRITING. Not a playhead -- it is the same position,
+        * but what it means here is "the picture is current up to here and stale
+        * after it", which is the one thing a static axis cannot say on its own.
+        */}
+      {props.moving && (props.head ?? -1) >= 0 && props.scope?.length > 1 && (
+        <line class="sweep" stroke="var(--uv)" opacity="0.7"
+              x1={x01(props.head / props.scope.length)}
+              x2={x01(props.head / props.scope.length)}
+              y1={top} y2={bot()} />
+      )}
+      {/* Milliseconds into the cycle, which is what the axis now is. The same
+        * axis the envelope plot uses, so the two read alike. */}
+      <Axis w={props.w} y={props.h - INSET - AXIS_H} spanMs={cycleMs()} markMs={0} />
+      {/* Numbers LAST, so a number is never swallowed by what it labels. */}
+      <StepNumbers count={n()} w={props.w} top={top} />
     </Well>
   );
 }
