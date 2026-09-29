@@ -4,6 +4,7 @@
   "trance-gate": "v2026.09.29.1",
   "spectrogram": "0.1.1",
   "listen-in": "0.1.0",
+  "side-chain": "v2026.09.29.1",
 
   "__audio-bus": "The house transport, not a plugin -- it has crates and no config.h, no plists and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
   "audio-bus": "0.1.0"

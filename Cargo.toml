@@ -38,6 +38,10 @@ members = [
     # The house transport. Not a product -- see the note above.
     "engines/audio-bus/crates/bus-core",
     "engines/audio-bus/crates/bus-capi",
+    # NI Side-Chain: one core, two wrappers, same shape as the Trance Gate.
+    "engines/side-chain/crates/sc-core",      # the DSP
+    "engines/side-chain/crates/sc-capi",      # the C ABI -> the plugin
+    "engines/side-chain/crates/sc-move",      # the Schwung vtable -> the module
 ]
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.

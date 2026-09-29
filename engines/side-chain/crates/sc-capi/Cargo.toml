@@ -1,0 +1,16 @@
+[package]
+name = "sc-capi"
+version = "2026.9.29+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "MIT"
+description = "The sc_core_* C ABI over the NI Side-Chain engine"
+
+[lib]
+name = "sc_capi"
+# staticlib for the plugin to link; rlib so sc-move can carry this surface
+# too without a second copy of the Rust runtime.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+sc-core = { path = "../sc-core" }

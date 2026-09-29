@@ -457,7 +457,6 @@ export default function App() {
     <main>
       {/* The corner mark. Hint style -- the smallest thing the system has, so
         * it sits in the window without competing with anything in it. */}
-      <div class="tag t-hint">neon inga</div>
       {/* LEFT COLUMN: the ring, and the envelope plot ALWAYS under it. The
         * envelope is not tabbed and never was -- the tabs choose between
         * Pattern and Signal in the band further down. */}

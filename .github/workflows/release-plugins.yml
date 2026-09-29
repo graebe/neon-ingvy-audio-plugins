@@ -1,5 +1,5 @@
-# Tag trance-gate-v1.0.0, spectrogram-v0.1.0 or listen-in-v0.1.0 -> build the
-# attach them to the release.
+# Tag trance-gate-v*, spectrogram-v*, listen-in-v* or side-chain-v* -> build the
+# macOS bundles for that ONE product and attach them to the release.
 #
 # ONE PRODUCT PER TAG, and the prefix says which. A bare `v*` namespace would
 # make a Spectrogram tag publish a Trance Gate, which is the kind of mistake
@@ -22,6 +22,7 @@ on:
       - 'trance-gate-v*'
       - 'spectrogram-v*'
       - 'listen-in-v*'
+      - 'side-chain-v*'
 
 permissions:
   contents: write
@@ -43,6 +44,7 @@ jobs:
             trance-gate-v*) PRODUCT=trance-gate; BUNDLE=NITranceGate ;;
             spectrogram-v*) PRODUCT=spectrogram; BUNDLE=Spectrogram ;;
             listen-in-v*)   PRODUCT=listen-in;   BUNDLE=NIListenIn ;;
+            side-chain-v*)  PRODUCT=side-chain;  BUNDLE=NISideChain ;;
             *) echo "ERROR: $GITHUB_REF_NAME names no product"; exit 1 ;;
           esac
           # ONLY THE PRODUCT PREFIX IS STRIPPED, not the "v" after it.

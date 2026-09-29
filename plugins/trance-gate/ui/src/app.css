@@ -53,8 +53,9 @@ main {
 /* envelope/pattern/signal plot: (32, 296, 240, 104) -- but the strip is the
  * full left column, so the plot spans it. */
 
-.plot { width: 100%; height: 104px; display: block; }
-.plot-caption { fill: var(--ink-muted); }
+.plot { width: 100%; height: 104px; }
+/* .plot-caption moved into @ultraviolet/ui's components.css with Well -- it is
+ * the component's own, and a second editor now draws one. */
 /*
  * THE STEP NUMBERS HAD NO RULE AT ALL, so they drew in SVG's default fill --
  * black, on a --bg-000 well. They were invisible rather than wrong, which is why
@@ -108,21 +109,19 @@ main {
  * `tag` is pinned to the window's own padding rather than to a panel, so it
  * does not belong to any of them.
  */
-.tag {
-  position: absolute; right: 32px;
-  /*
-   * ABOVE THE PANELS, NOT BESIDE THEM.
-   *
-   * At top:32 this collided with the GATE panel: the panel spans 304..792 and
-   * the mark 768..824, so the panel -- later in the DOM -- painted over the
-   * first 24px and the corner read "inga". Everything in the layout starts at
-   * y=32, so the strip above it is the one place at this end of the window
-   * that is free by construction.
-   */
-  top: 11px;
-  color: var(--ink-dim); letter-spacing: 0.02em;
-  pointer-events: none;                  /* a mark, not a control */
-}
+/*
+ * THE CORNER MARK IS GONE, and the Signature in the hint bar replaced it.
+ *
+ * Ultraviolet 1.0.0: "Every plugin window carries it exactly once, at the right
+ * end of the `Hint` bar" -- and, in as many words, do not "repeat it on panels".
+ * Once the kit's Hint began carrying the Signature, this window had two.
+ *
+ * It also read `neon inga`, which is not the publisher's name. The comment that
+ * used to sit here blamed a GATE panel painting over the first 24px, so the text
+ * itself appears to have been shortened at some point to match what was visible.
+ * The hint bar's Signature spells it correctly and cannot be overpainted,
+ * because it is in normal flow rather than absolutely positioned over a panel.
+ */
 
 /* Only ever visible for the moment it takes to press the shortcut, so it is
  * sized to the hint it carries rather than to the row. */
@@ -256,4 +255,20 @@ main {
 .pad.unnamed { background: var(--bg-100); }
 
 /* -------------------------------------------------------- hint bar -- */
+
+/*
+ * THE HORIZONTAL INSET, which this window needs and the Spectrogram does not.
+ *
+ * `main` here has only a padding-top -- every element above the grid is
+ * absolutely positioned at left: 32 -- so the hint bar, which is in normal flow
+ * at width 100%, spans the full 856 with nothing holding it off the edges.
+ *
+ * That was invisible while components.css centred the bar's contents. Ultraviolet
+ * 1.0.0 left-aligned the tips and put the Signature at the right end, and the
+ * two of them went flush to both window edges. The rule below puts them back on
+ * the 32px margin every other element in this editor uses.
+ *
+ * The `line-100` rule above the bar keeps spanning the whole window, as it did.
+ */
+.hint-bar { padding-left: var(--s8); padding-right: var(--s8); }
 

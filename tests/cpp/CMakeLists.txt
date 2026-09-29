@@ -80,3 +80,10 @@ set(LISTENIN_WIRE_TABLE
 
 add_test(NAME listenin_wire
          COMMAND listenin_wire --verify ${LISTENIN_WIRE_TABLE})
+# ------------------------------------------------------------ NI Side-Chain
+
+add_executable(sc_wire sc_wire.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/side-chain/Wire.cpp)
+target_include_directories(sc_wire PRIVATE
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/side-chain)
+add_test(NAME sc_wire COMMAND sc_wire)

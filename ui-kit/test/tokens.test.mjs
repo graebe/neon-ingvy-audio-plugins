@@ -35,6 +35,7 @@ const TREES = [
   join(ROOT, 'ui-kit', 'src'),
   join(ROOT, 'plugins', 'trance-gate', 'ui', 'src'),
   join(ROOT, 'plugins', 'spectrogram', 'ui', 'src'),
+  join(ROOT, 'plugins', 'side-chain', 'ui', 'src'),
   /* The documentation site draws the same system, and is the consumer most
    * likely to reach for a #fff on a button hover. Its Markdown CONTENT is not
    * here and must not be: a product's README may quote a hex triplet in prose,

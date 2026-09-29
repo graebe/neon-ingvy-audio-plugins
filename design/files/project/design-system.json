@@ -10,6 +10,7 @@
  "libraries": [],
  "sections": {},
  "groups": [
+  "Logos",
   "Icons"
  ],
  "assetGroups": {
@@ -104,6 +105,21 @@
      "type": "image/svg+xml"
     }
    }
+  },
+  "Logos": {
+   "name": "Logos",
+   "tile": "l",
+   "order": [
+    "neon-ingvy-signature.svg"
+   ],
+   "files": {
+    "neon-ingvy-signature.svg": {
+     "name": "neon-ingvy-signature.svg",
+     "blob": "271a68128177581ae125467e8a4c2957",
+     "size": 377,
+     "type": "image/svg+xml"
+    }
+   }
   }
  },
  "blobs": {},
@@ -113,8 +129,9 @@
  },
  "lastChange": {
   "by": "Torben",
-  "at": "2026-09-29T07:16:21Z",
+  "at": "2026-09-29T08:46:05Z",
   "via": "Cowork",
-  "note": "Ground: bass-triggered wave field (canvas + 20\u201380 Hz detector), uniform grain, Motion section"
+  "note": "Release 1.0.0: versioning rules and changelog",
+  "version": "1.0.0"
  }
 }

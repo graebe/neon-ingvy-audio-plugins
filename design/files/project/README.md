@@ -1,5 +1,19 @@
 A design language for Ableton Live plugins (Max for Live and VST), the sister of *Phosphor*: same machine, same rules, same components, lit in ultraviolet instead of green: every lit element is a near-white core (`uv`) with a violet halo (`uv-deep`), on a flat black ground textured with dot paper and a trace of violet noise. Every plugin built on it looks like the same machine: ultraviolet light on black glass, a fixed set of controls, nothing decorative.
 
+## Branding
+
+The publisher is **Neon Ingvy**. Every plugin window carries the publisher's `Signature` exactly once, at the right end of the `Hint` bar: a 6px square lit in `uv`, then NEON INGVY in 10px tracked capitals in `ink-muted`. The signature is the only branding inside a plugin: no logo in the control area, no name on panels, no splash. The plugin's own name is the host's (Live shows it in the device title bar), so the window does not repeat it. Outside a plugin, use the signature file under Logos.
+
+## Versioning
+
+Ultraviolet follows semantic versioning, MAJOR.MINOR.PATCH. The current release is **1.0.0**; every release is listed in the Changelog. The version is recorded in `tokens.json` (`meta.release`) and in the header of `components/bundle.css`, and exposed as `UVGround.version` by `components/ground.js`. A plugin states the Ultraviolet version it was built against in its own release notes.
+
+- **MAJOR** — a change that breaks a plugin built on the previous release: a token, class, component, icon or API member renamed or removed, a token's meaning changed (e.g. `uv` used for something other than "on"), a layout rule reversed.
+- **MINOR** — an addition that breaks nothing: a new token, component, variant, icon or API option; a new rule that existing plugins already satisfy.
+- **PATCH** — a correction that keeps every name and meaning: a value tuned (a colour, a spacing, an animation parameter within its documented role), a rendering bug fixed, documentation clarified.
+
+Every change to the system bumps the version, adds a Changelog entry dated and grouped as Added / Changed / Fixed / Removed, and updates both places the version is recorded. Nothing is changed in place under an existing version number.
+
 ## Principles
 
 1. **A machine, not a picture of one.** Every parameter is a physical control: a knob, a slider, a step, a switch. Draw the control's *function* (its range, its value, whether it is on), never its material. No bevels, no brushed metal, no drop shadows, no gradients. The only depth is a 1px hairline (`line-100`) and the only light is `uv` with its `uv-deep` halo.
@@ -35,7 +49,7 @@ Labels are the parameter's name in one word where possible (`ATTACK`, `RATE`, `A
 
 Everything sits on a 4px grid. Window padding `space-8`; panel padding `space-4`; controls in a row `space-4` apart; control groups `space-6` apart; a label sits `space-2` above its control and the readout `space-2` below; steps in a grid are `space-2` apart.
 
-A standard plugin window, top to bottom: an optional big `readout` or ring on the left; the control block (knobs in rows of up to six, grouped in panels by function); the sequencer or other wide component full-width; the `Hint` bar pinned to the bottom edge. Actions (`Copy patch`, `Paste patch`) stack on the right edge of the control block, never among the knobs. Nothing is centred vertically: windows are laid out from the top, spare room stays at the bottom above the hint.
+A standard plugin window, top to bottom: an optional big `readout` or ring on the left; the control block (knobs in rows of up to six, grouped in panels by function); the sequencer or other wide component full-width; the `Hint` bar pinned to the bottom edge. Window verbs (`Copy patch`, `Paste patch`) live in the side column right of the panels (`Actions`): at the top, flush with the panels' top edge, either as an equal-width labelled stack or as a joined icon pair; the transport and Sync LED sit at the bottom, flush with the panels' bottom edge. Never among the knobs. Nothing is centred vertically: windows are laid out from the top, spare room stays at the bottom above the hint.
 
 ## Shape, borders and light
 
@@ -49,18 +63,23 @@ Every control has the same five states and shows them the same way: **off/rest**
 
 Controls never animate: values change instantly, the playhead advances in hard steps, an LED switches without a fade, and nothing moves on preset load.
 
-The one animation is the ground (`Ground`), and it is driven by sound, not by time. A kick drum (onsets in 20–80 Hz) sends a wave out from the edges of every box in the window; the wave travels slowly through the background only, underneath panels, wells and the step grid, which occlude it. A wave is a short packet, w = s · cos(2π(d − c·t)/λ) · exp(−((d − c·t)/σ)²) · exp(−t/τ), where d is a dot's distance to the nearest box edge; overlapping waves add and are soft-clipped. On a peak the dots grow and brighten and the grain thickens; in a valley the dots shrink and dim and the grain thins. The grain itself never moves (moving grain reads as TV static), only its local density changes. With no sound the ground is perfectly still and the render loop stops.
+The one animation is the ground (`Ground`), and it is driven by sound, not by time. A kick drum (onsets in 20–80 Hz) makes every box edge and the window border emit one slow ring. The rings travel through the background only; panels, wells and the step grid are solid to them. They reflect off box edges and off the window border, cross each other and interfere, and the whole field, reflections included, rings out over about 20 seconds. On a peak the dots grow and brighten and the grain thickens; in a valley the dots shrink and dim and the grain thins. The grain itself never moves (moving grain reads as TV static), only its local density changes. With no sound the ground settles back to exactly the static design and the render loop stops.
+
+The field is the damped 2D wave equation, u_tt = c²∇²u − γ·u_t + A·s·ψ(t − t₀) at the sources, simulated on a 6 px grid (every second node is a dot) with reflecting (Neumann) edges; ψ is a Ricker wavelet, s the kick strength. Display is tanh(u).
 
 | parameter | value | why |
 | --- | --- | --- |
-| wave speed c | 100 px/s | slow, yet kicks at 127 BPM stay distinguishable |
-| packet width σ / wavelength λ | 48 px / 96 px | 4 and 8 dot pitches: a ring, not a pulse |
-| decay τ | 2.5 s | a wave fades before it crosses the window |
-| concurrent waves | 8 | the weakest fades out over 250 ms beyond that |
+| wave speed c | 100 px/s | slow |
+| source wavelet f₀ | 1.5 Hz (wavelength ≈ 67 px) | a steady kick at 90–140 BPM keeps a field of similar strength instead of cancelling itself |
+| damping | amplitude e-folding τ = 3.5 s (γ = 2/τ) | reflections run for ~20 s before the field is at rest |
+| sources | every open grid node next to a box edge, plus the window border | |
+| boundaries | box edges and window border reflect, no phase flip | |
+| source strength A | 65 | one kick peaks at u ≈ 0.9; continuous kicks hold 0.5–0.8 |
+| grid / step | 6 px, 1/60 s fixed, ≤ 6 steps per frame | Courant number 0.28, stable; ~0.1 ms per step |
 | dot radius | 1.0 ± 0.4 px | with opacity ± 30 %, so 1x displays do not flicker |
 | grain | 5 % base, 2–9 % range | uniform white noise in `uv-deep`, static tile |
-| detector | 20–80 Hz, 12 dB/oct each side, env 5 / 150 ms, onset at 1.8 × 300 ms mean, 120 ms refractory | strength √ratio, clamped 0.3–1: loud kicks are slightly more visible, never large |
-| frame rate | 30 fps, 0 at idle | |
+| detector | 20–80 Hz, 12 dB/oct each side, env 5 / 150 ms, onset at 1.8 × 300 ms mean, 120 ms refractory | strength √ratio, clamped 0.3–1 |
+| frame rate | 30 fps, 0 at rest | |
 
 Every window with a Ground has a Motion switch; `prefers-reduced-motion` disables it outright. A still frame of the ground, at any moment, must look like the static design.
 

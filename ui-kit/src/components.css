@@ -177,11 +177,76 @@
 
 /* "The Hint bar pinned to the bottom edge" -- flush, not inside the window
  * padding, with its rule along the top. */
+/*
+ * THE SIGNATURE, which Ultraviolet 1.0.0 added and the Hint bar carries.
+ *
+ * Transcribed from the component's own preview: a 6px square lit in uv with the
+ * LED glow, then the name in 10px mono at weight 500, tracked 0.2em, uppercase,
+ * ink-muted, 8px apart.
+ *
+ * `font-family` is NOT named here. The system's own stylesheet writes
+ * var(--font-mono), which is a token this kit does not define -- and the token
+ * guard would fail the build on it, correctly. `html, body` in tokens.css
+ * already sets the one typeface, so inheriting is both right and checkable.
+ */
+.signature {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.signature .mark {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: var(--uv);
+  box-shadow: var(--glow-led);
+}
+
+/*
+ * LEFT-ALIGNED, WITH THE SIGNATURE CLOSING THE BAR ON THE RIGHT.
+ *
+ * It was `justify-content: center`, which is what the Hint card said before
+ * Ultraviolet 1.0.0. The card now reads "The tips are left-aligned; the
+ * `Signature` closes the bar on the right", so the tips start at the left edge
+ * and the signature is pushed out by its own auto margin.
+ *
+ * This changes the Trance Gate's and the Spectrogram's hint bars too, which is
+ * the point of the rule being the design system's rather than one editor's.
+ */
 .hint-bar {
   margin-top: var(--s6); width: 100%; height: 28px;
-  display: flex; justify-content: center; align-items: baseline;
+  display: flex; justify-content: flex-start; align-items: baseline;
+  gap: var(--s1);
   border-top: 1px solid var(--line-100); padding-top: var(--s3);
   color: var(--ink-muted);}
+
+/*
+ * THE TIPS SHRINK, THE SIGNATURE DOES NOT.
+ *
+ * `min-width: 0` is the load-bearing half: a flex item's default minimum is its
+ * CONTENT width, so without it the tips refuse to shrink and the row overflows
+ * the window instead -- which is what a 360px editor did. `flex: 0 1 auto` lets
+ * them give way; the signature's `flex: none` and auto margin keep it whole and
+ * hard right.
+ */
+.hint-tips {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hint-bar .signature { margin-left: auto; }
 
 .hint-key { color: var(--ink);}
 
@@ -196,6 +261,22 @@
  * leaving one behind.
  */
 .select:has(select:focus-visible) { box-shadow: var(--glow-focus);}
+
+/* ------------------------------------------------------------- plots -- */
+
+/*
+ * A PLOT'S CAPTION, which came here with Well.
+ *
+ * It lived in the Trance Gate's app.css, which was fine while that editor was
+ * the only one with a plot. The moment Well moved into the kit, a second editor
+ * could use it and get an SVG <text> with no fill -- black on bg-000, which
+ * reads as a caption that is not there rather than as a missing stylesheet. NI
+ * NI Side-Chain's first screenshot had exactly that.
+ *
+ * `fill` and not `color`: this is SVG.
+ */
+.plot-caption { fill: var(--ink-muted); }
+.plot { display: block; }
 
 /* ------------------------------------------------------- spectrogram --
  * The canvas fills the well it is given and is sized in DEVICE pixels by

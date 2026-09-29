@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AudioComponents</key>
+	<array>
+		<dict>
+			<key>description</key>
+			<string>NI Side-Chain</string>
+			<key>factoryFunction</key>
+			<string>NISideChain_Factory</string>
+			<key>manufacturer</key>
+			<string>Grbe</string>
+			<key>name</key>
+			<string>Neon Ingvy: NI Side-Chain</string>
+			<key>sandboxSafe</key>
+			<true/>
+			<key>subtype</key>
+			<string>SdCh</string>
+			<key>type</key>
+			<string>aumf</string>
+			<key>version</key>
+			<integer>132778473</integer>
+		</dict>
+	</array>
+	<key>AudioUnit Version</key>
+	<string>0x07EA09E9</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>NISideChain</string>
+	<key>CFBundleGetInfoString</key>
+	<string>NI Side-Chain v2026.09.29.1 Copyright 2026 Torben Gräber</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.graebe.audiounit.NISideChain</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>NISideChain</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2026.9.29</string>
+	<key>CFBundleSignature</key>
+	<string>Ipef</string>
+	<key>CFBundleVersion</key>
+	<string>2026.9.29</string>
+	<key>CSResourcesFileMapped</key>
+	<true/>
+	<key>LSMinimumSystemVersion</key>
+	<string>10.13.0</string>
+	<key>NSPrincipalClass</key>
+	<string>NISideChain_View</string>
+</dict>
+</plist>

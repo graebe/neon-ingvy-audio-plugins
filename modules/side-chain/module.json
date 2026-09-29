@@ -1,0 +1,17 @@
+{
+  "id": "ni-side-chain",
+  "name": "NI Side-Chain",
+  "abbrev": "PM",
+  "version": "v2026.09.29.1",
+  "description": "Sidechain ducker triggered by the transport or a MIDI note",
+  "author": "neon-ingvy",
+  "license": "MIT",
+  "dsp": "ni-side-chain.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true,
+    "requires_continuous_processing": true
+  }
+}

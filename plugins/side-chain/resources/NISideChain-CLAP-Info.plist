@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>NISideChain</string>
+	<key>CFBundleGetInfoString</key>
+	<string>NI Side-Chain v2026.09.29.1 Copyright 2026 Torben Gräber</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.graebe.clap.NISideChain</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>NISideChain</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2026.9.29</string>
+	<key>CFBundleSignature</key>
+	<string>Ipef</string>
+	<key>CFBundleVersion</key>
+	<string>2026.9.29</string>
+	<key>CSResourcesFileMapped</key>
+	<true/>
+	<key>LSMinimumSystemVersion</key>
+	<string>10.13.0</string>
+</dict>
+</plist>
