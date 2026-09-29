@@ -500,15 +500,37 @@ impl Analyzer {
         };
 
         for (b, range) in dsp.bands.ranges.iter().enumerate() {
-            /* PEAK over the band's bins -- see bands.rs. */
-            let mut peak = 0.0f32;
-            for k in range.lo..range.hi {
-                let m = mag(k);
-                if m > peak {
-                    peak = m;
+            let v = match range.frac {
+                /* PEAK over the band's bins -- see bands.rs. */
+                None => {
+                    let mut peak = 0.0f32;
+                    for k in range.lo..range.hi {
+                        let m = mag(k);
+                        if m > peak {
+                            peak = m;
+                        }
+                    }
+                    peak
                 }
-            }
-            dsp.col[b] = amplitude_to_byte(peak, self.cfg.db_floor, self.cfg.db_ceil);
+                /*
+                 * NARROWER THAN A BIN: interpolated between the two either
+                 * side, geometrically -- a straight line in dB, which is the
+                 * axis the picture draws. Snapping to the nearer bin instead
+                 * gave consecutive bands identical bytes and stacked the bottom
+                 * of the picture into a staircase.
+                 *
+                 * The 1e-20 is the encoder's own floor rather than a branch on
+                 * zero: a silent neighbour must pull the result down towards
+                 * the floor, not produce a NaN out of 0/0.
+                 */
+                Some(x) => {
+                    let t = (x - range.lo as f32).clamp(0.0, 1.0);
+                    let lo = mag(range.lo).max(1e-20);
+                    let hi = mag(range.lo + 1).max(1e-20);
+                    lo * (hi / lo).powf(t)
+                }
+            };
+            dsp.col[b] = amplitude_to_byte(v, self.cfg.db_floor, self.cfg.db_ceil);
         }
 
         self.cols.push(&dsp.col, dsp.epoch);
@@ -647,6 +669,75 @@ mod tests {
             let cols = sr / pick_hop(sr, pick_fft_size(sr)) as f32;
             assert!((cols - TARGET_COLUMNS_PER_S).abs() < 8.0, "{sr} Hz: {cols}");
         }
+    }
+
+    /*
+     * THE BOTTOM OF THE PICTURE IS A GRADIENT, NOT A STAIRCASE.
+     *
+     * A band is 3% wide and a bin is 5.86 Hz at 48 kHz with N=8192, so every
+     * band below ~194 Hz -- 100 of the 256 -- is narrower than the grid it is
+     * measured on. Snapping each to its nearest bin gave four and five
+     * consecutive bands the SAME byte:
+     *
+     *     [128,128,128,128,128, 115,115,115,115,115, 130,130,130,130, ...]
+     *
+     * which drew the bottom two fifths of the picture as flat blocks with steps
+     * between them, and read as the ANALYSIS being patchy. Interpolating
+     * between the two bins either side gives the same information on the axis
+     * the picture actually draws:
+     *
+     *     [126,127,128,126,123,121,118,115,118,122,125,129,130,130,130, ...]
+     *
+     * The thresholds are loose on purpose -- the point is the shape, and the
+     * two regimes are 68 repeats apart, not two.
+     */
+    #[test]
+    fn the_bands_below_one_bin_are_interpolated_rather_than_repeated() {
+        let sr = 48_000.0f32;
+        let fft = pick_fft_size(sr);
+        let hop = pick_hop(sr, fft);
+        let a = Analyzer::new(Config {
+            sample_rate: sr,
+            fft_size: fft,
+            hop,
+            bands: 256,
+            f_min: 10.0,
+            f_max: 20_000.0,
+            db_floor: -96.0,
+            db_ceil: 0.0,
+        });
+
+        /* Deterministic white noise, so every band sits well above the floor
+         * and a repeat means the mapping repeated rather than that two bands
+         * were both silent. */
+        let mut st = 0x1234_5678u32;
+        let n = fft + hop * 4;
+        let mut buf = Vec::with_capacity(n);
+        for _ in 0..n {
+            st = st.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            buf.push(((st >> 8) as f32 / 8_388_608.0 - 1.0) * 0.25);
+        }
+        a.push(&buf);
+
+        let mut out = vec![0u8; 256 * 8];
+        assert!(a.take_columns(&mut out, 8) > 0, "the noise produced no column");
+        let col = &out[..256];
+
+        let (mut repeats, mut longest, mut run) = (0, 1, 1);
+        for b in 1..100 {
+            if col[b] == col[b - 1] {
+                repeats += 1;
+                run += 1;
+                longest = longest.max(run);
+            } else {
+                run = 1;
+            }
+            assert!(col[b] > 0, "band {b} sat on the floor; the noise was too quiet");
+        }
+
+        /* Snapping scores 68 and 13 here; interpolating scores 14 and 3. */
+        assert!(repeats <= 30, "{repeats}/99 bands repeat their neighbour -- the staircase is back");
+        assert!(longest <= 5, "a run of {longest} identical bands is a flat block");
     }
 
     #[test]

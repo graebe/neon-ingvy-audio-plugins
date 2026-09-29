@@ -18,9 +18,29 @@
  * for.
  *
  * THE BOTTOM BANDS OWN NO BIN AT ALL and that is not an error to guard against
- * later: below ~47 Hz there is no bin to own. Those bands take the single bin
- * nearest their centre, so the low end of the picture is coarse (several bands
- * showing one bin's value) rather than black.
+ * later: a band is 3% wide, a bin is 5.86 Hz at 48 kHz with N=8192, so every
+ * band below ~194 Hz is narrower than the grid it is measured on. That is 100
+ * of the 256 rows -- the bottom two fifths of the picture.
+ *
+ * THOSE BANDS ARE INTERPOLATED, NOT SNAPPED, AND THAT IS WHAT MAKES THE LOW END
+ * READ AS A GRADIENT RATHER THAN AS BLOCKS.
+ *
+ * Snapping each of them to its nearest bin gave four or five consecutive bands
+ * the SAME bin and therefore the same byte -- a flat block four pixels tall,
+ * then a step to the next bin's value. Stacked up the bottom of the picture
+ * that is a staircase, and it read as patchiness in the analysis rather than as
+ * what it was: the display asking for more resolution than the transform has.
+ *
+ * So a band with no bin of its own carries its centre in BIN UNITS and the
+ * magnitude is interpolated between the two bins either side of it.
+ * GEOMETRICALLY -- equivalently, linearly in dB -- because the picture's
+ * intensity axis is logarithmic, so that is the space in which a straight line
+ * looks straight. Interpolating linearly in amplitude leaves the loud neighbour
+ * dominating and the staircase half visible.
+ *
+ * It invents no detail the transform does not have: it is the same information,
+ * resampled onto the axis the picture actually draws, instead of being held
+ * constant across it.
  */
 
 /// A band's half-open bin range, `lo..hi`, never empty.
@@ -28,6 +48,13 @@
 pub struct Band {
     pub lo: usize,
     pub hi: usize,
+    /// `None` when the band owns bins and is reduced by PEAK.
+    ///
+    /// `Some(x)` when it is narrower than a bin and owns none: `x` is the
+    /// band's centre in bin units, `lo` is `floor(x)` and `hi` is `lo + 1`, and
+    /// the magnitude is interpolated between those two rather than taken from
+    /// the nearer of them. See the header.
+    pub frac: Option<f32>,
 }
 
 pub struct Bands {
@@ -94,11 +121,17 @@ impl Bands {
             let hi = ((e_hi / bin_hz).ceil() as usize).max(lo).min(n_bins);
 
             self.ranges.push(if hi > lo {
-                Band { lo, hi }
+                Band { lo, hi, frac: None }
             } else {
-                /* No bin of its own: take the one nearest the centre. */
-                let k = ((centre / bin_hz).round() as usize).clamp(1, n_bins - 1);
-                Band { lo: k, hi: k + 1 }
+                /*
+                 * No bin of its own, so it sits BETWEEN two. Clamped so that
+                 * `lo + 1` is still a bin: the pair is what gets interpolated,
+                 * and a centre past the last bin would otherwise index off the
+                 * end of the spectrum.
+                 */
+                let x = centre / bin_hz;
+                let k = (x.floor() as usize).clamp(1, n_bins.saturating_sub(2).max(1));
+                Band { lo: k, hi: k + 1, frac: Some(x) }
             });
         }
     }
