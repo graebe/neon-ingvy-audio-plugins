@@ -4,7 +4,7 @@
  *
  * WHY THESE ARE IN THE KIT NOW. `index.js` states the rule: "a component with
  * one caller has no API yet -- only a shape. They move the day a second editor
- * wants one." NI Pump is that second editor. All three of these were
+ * wants one." NI Side-Chain is that second editor. All three of these were
  * `plugins/trance-gate/ui/src/lib/Plots.jsx`, and what is here is that file's
  * general half -- the half that knows nothing about steps, ties or slots.
  *
@@ -98,7 +98,7 @@ export function Axis(props) {
  *
  * Walks the top edge forward and the bottom edge back, so the result is a
  * fillable region rather than two strokes. This is the primitive both the Trance
- * Gate's scope and NI Pump's signal well are built from, and the reason it is
+ * Gate's scope and NI Side-Chain's signal well are built from, and the reason it is
  * shared is that getting it wrong is invisible: a plausible waveform that is not
  * the one playing.
  *

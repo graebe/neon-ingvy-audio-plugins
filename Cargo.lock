@@ -3,22 +3,22 @@
 version = 4
 
 [[package]]
-name = "pump-capi"
+name = "sc-capi"
 version = "0.1.0"
 dependencies = [
- "pump-core",
+ "sc-core",
 ]
 
 [[package]]
-name = "pump-core"
+name = "sc-core"
 version = "0.1.0"
 
 [[package]]
-name = "pump-move"
+name = "sc-move"
 version = "0.1.0"
 dependencies = [
- "pump-capi",
- "pump-core",
+ "sc-capi",
+ "sc-core",
 ]
 
 [[package]]

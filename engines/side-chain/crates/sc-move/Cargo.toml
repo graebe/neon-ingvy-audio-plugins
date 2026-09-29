@@ -1,0 +1,18 @@
+[package]
+name = "sc-move"
+version = "0.1.0"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "MIT"
+description = "The Schwung audio_fx v2 shell for NI Side-Chain"
+
+[lib]
+name = "sc_move"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+sc-core = { path = "../sc-core" }
+# Pulled in so ONE staticlib carries both surfaces: the Schwung vtable and the
+# sc_core_* ABI the tests and the plugin link. Two staticlibs would each
+# bundle their own copy of the Rust runtime and collide.
+sc-capi = { path = "../sc-capi" }

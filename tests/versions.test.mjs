@@ -44,6 +44,15 @@ const PRODUCTS = {
     crates: ['spectro-core', 'spectro-capi'].map(
       (c) => `engines/spectro/crates/${c}/Cargo.toml`),
   },
+  /* The directory is `modules/side-chain` and the module ID inside it is `ni-side-chain`:
+   * charlesvestal/schwung-ducker already owns `ducker` on the device. The path
+   * is what this test needs; the ID is module.json's business. */
+  pump: {
+    config: 'plugins/side-chain/config.h',
+    module: 'modules/side-chain/module.json',
+    crates: ['sc-core', 'sc-capi', 'sc-move'].map(
+      (c) => `engines/side-chain/crates/${c}/Cargo.toml`),
+  },
 };
 
 /* iPlug2 packs the version as major<<16 | minor<<8 | patch. */

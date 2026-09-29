@@ -1,0 +1,162 @@
+/*
+ * NI Side-Chain's LAYOUT. Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * ONLY WHERE THINGS SIT. What a control IS lives in @ultraviolet/ui's
+ * components.css, and every colour below is a var() -- the token guard
+ * (ui-kit/test/tokens.test.mjs) fails the build on a literal, in this file as in
+ * either sibling editor's.
+ *
+ * THE PIXEL BUDGET, which has to agree in three places or the page is scaled
+ * against a width it does not have:
+ *
+ *   DESIGN_W in App.jsx      760
+ *   PLUG_WIDTH in config.h   760
+ *   `main` width below       760
+ *
+ * and the same for DESIGN_H / PLUG_HEIGHT / the reserved padding-top.
+ */
+
+main {
+  position: relative;
+  width: 760px;
+  height: 624px;
+  margin: 0 auto;
+  background: var(--bg-000);
+  color: var(--ink);
+  /* No font-family: tokens.css sets it on `html, body` and the controls all
+   * inherit. Naming it again here needs a token that does not exist, which is
+   * what the token guard caught. */
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ tag -- */
+
+.tag {
+  position: absolute;
+  left: 32px;
+  top: 32px;
+  right: 32px;
+  height: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  color: var(--ink-muted);
+  letter-spacing: 0.08em;
+}
+
+.tag-state {
+  color: var(--ink-dim);
+  text-transform: uppercase;
+}
+
+/*
+ * THE WINDOW'S ONE WARNING. The design system allows at most one amber mark per
+ * window, and this is it -- pushed to the right so it is the last thing on the
+ * line and cannot be mistaken for part of the state readout beside it.
+ */
+.tag-warn {
+  margin-left: auto;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- plots -- */
+
+/*
+ * THE TWO WELLS ARE THE SAME WIDTH AND ARE STACKED WITH space-2 BETWEEN THEM,
+ * because they are one picture: the shape above, the audio it shaped below, on
+ * one axis. Anything that changed one width and not the other would break the
+ * alignment silently -- the drawing would still look fine, it would just be
+ * about a different moment.
+ */
+.shape-slot {
+  position: absolute;
+  left: 32px;
+  top: 56px;
+  width: 696px;
+  height: 156px;
+}
+
+.signal-slot {
+  position: absolute;
+  left: 32px;
+  top: 220px;
+  width: 696px;
+  height: 132px;
+}
+
+.plot {
+  display: block;
+}
+
+/* The handles: a crosshair so it reads as grabbable before it is grabbed, and
+ * no transition, because the design system's Motion section is explicit that
+ * controls do not animate. A handle that glides to its new position is one you
+ * cannot aim at. */
+.shaper .handle {
+  cursor: ew-resize;
+}
+
+.shaper .handle:hover circle:last-child {
+  fill: var(--uv);
+  filter: var(--glow-arc);
+}
+
+/* -------------------------------------------------------------- controls -- */
+
+/*
+ * 104 TALL, NOT 78. A Knob is a 48px disc with its label above it and its
+ * readout below, and the first version of this row reserved only the disc -- so
+ * the readouts drew straight through the selects row under them. The number is
+ * the component's, not this layout's; it is written down here because this is
+ * the only place that can be wrong about it.
+ */
+.knob-row {
+  position: absolute;
+  left: 32px;
+  top: 372px;
+  width: 696px;
+  height: 104px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s6);
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+/*
+ * TWO SELECT ROWS, split by subject: the trigger above, the shape below.
+ *
+ * One row overflowed in MIDI mode -- 842px of selects against 696 -- and
+ * splitting by subject also stops the shape controls moving when the source
+ * changes, which no single-row arrangement could do.
+ */
+.selects-row {
+  position: absolute;
+  left: 32px;
+  width: 696px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+}
+
+.selects-trigger { top: 492px; }
+.selects-shape { top: 528px; }
+
+/* ------------------------------------------------------------------ hint -- */
+
+/*
+ * `.hint-bar`, WHICH IS WHAT THE COMPONENT RENDERS -- not `.hint`. A positioning
+ * rule whose selector matches nothing fails silently: the bar was laid out in
+ * normal flow at the top of the window, over the title, and looked like a
+ * z-order problem rather than a typo.
+ */
+.hint-bar {
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  top: 572px;
+  height: 20px;
+}

@@ -32,7 +32,7 @@
  *                           curve is not two editors drawing the same curve.
  *   Slider                  the system names it; nothing uses one.
  *
- * WHAT THE RULE ABOVE HAS ALREADY MOVED: Well, Axis and band, when NI Pump
+ * WHAT THE RULE ABOVE HAS ALREADY MOVED: Well, Axis and band, when NI Side-Chain
  * became a second editor that needed a framed plot, a millisecond ruler and a
  * min/max waveform band. They are in components/Plot.jsx, and that file records
  * which half of Plots.jsx stayed behind.

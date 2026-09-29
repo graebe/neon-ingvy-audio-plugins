@@ -173,7 +173,7 @@
  * the only one with a plot. The moment Well moved into the kit, a second editor
  * could use it and get an SVG <text> with no fill -- black on bg-000, which
  * reads as a caption that is not there rather than as a missing stylesheet. NI
- * Pump's first screenshot had exactly that.
+ * NI Side-Chain's first screenshot had exactly that.
  *
  * `fill` and not `color`: this is SVG.
  */

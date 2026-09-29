@@ -70,7 +70,7 @@ and everything that draws the design system bundles it:
 |---|---|
 | `TranceGate.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
 | `Spectrogram.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
-| `NIPump.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
+| `NISideChain.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
 | the documentation site | `/neon-ingvy-audio-plugins/fonts/` |
 
 **The OFL requires its text to travel beside the font**, so `OFL.txt` sits in
@@ -89,8 +89,8 @@ editor and came back with the WebView one without the note following it.
 
 ## The engines
 
-`tg-core`, `tg-capi`, `tg-move`, `spectro-core`, `spectro-capi`, `pump-core`,
-`pump-capi` and `pump-move`, in `engines/`, © 2026 Torben Gräber. They have no
+`tg-core`, `tg-capi`, `tg-move`, `spectro-core`, `spectro-capi`, `sc-core`,
+`sc-capi` and `sc-move`, in `engines/`, © 2026 Torben Gräber. They have no
 dependencies of their own.
 
 They were relicensed from MIT to GPL-3.0-or-later when this build moved to
@@ -105,7 +105,7 @@ because a crate that needs no attribution is cheaper than one that does. See
 the comment at the top of `cmake/SpectroEngine.cmake` for why this engine is
 in-repo while the Trance Gate's is a submodule.
 
-`pump-core`, `pump-capi`, `pump-move` from `engines/pump` in this repository,
+`sc-core`, `sc-capi`, `sc-move` from `engines/side-chain` in this repository,
 © 2026 Torben Gräber, **MIT**. No dependencies of their own either — the one
 thing it might have borrowed, a no-allocation formatter, is a copy of
 `tg-core`'s `fmt.rs` rather than a fourth shared crate, and that file's header
@@ -124,7 +124,7 @@ honours.
 
 | Ported into | From | Licence |
 |---|---|---|
-| `engines/pump/crates/pump-core/src/midi.rs` and the `Pump` curve in `shape.rs` | [`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)'s `src/dsp/ducker.c` | **MIT**, © charlesvestal |
+| `engines/side-chain/crates/sc-core/src/midi.rs` and the `Pump` curve in `shape.rs` | [`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)'s `src/dsp/ducker.c` | **MIT**, © charlesvestal |
 
 What was taken: the MIDI trigger semantics — the channel filter, the note
 match, Trigger versus Gate, a note-on at velocity zero read as a note-off, and

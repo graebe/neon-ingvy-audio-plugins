@@ -1,6 +1,7 @@
-# The second target: the Trance Gate as a Schwung module for the Move.
+# The Schwung modules: the Move builds of the engines that have one.
 #
-#   cmake --build build --target schwung
+#   cmake --build build --target schwung        the Trance Gate
+#   cmake --build build --target schwung-side-chain   NI Side-Chain
 #
 # WHY THIS IS A CUSTOM TARGET AND NOT A CMAKE LIBRARY. It is an aarch64 LINUX
 # cross-build, produced in a container with a pinned toolchain, and packaged as
@@ -10,13 +11,14 @@
 # script and the script stays runnable on its own -- which is what CI calls,
 # and what anyone without this build directory calls.
 #
-# THE ENGINE IS THE SAME ENGINE. This builds `tg-move` where the plugin builds
-# `tg-capi`; both are members of the one workspace at the repository root and
-# both depend on `tg-core` by relative path. That is why there is no "keep them
-# in sync" step here: there is nothing to sync.
+# THE ENGINE IS THE SAME ENGINE. Each of these builds the `*-move` crate where
+# the plugin builds the `*-capi` one; both are members of the one workspace at
+# the repository root and both depend on the same `*-core` by relative path.
+# That is why there is no "keep them in sync" step here: there is nothing to
+# sync, and the render A/B tests prove it after the fact.
 #
-# Only the Trance Gate has one. The Spectrogram draws a picture and the Move
-# has no screen to draw it on.
+# The Spectrogram has no module: it draws a picture and the Move has no screen
+# to draw it on.
 
 find_program(SCHWUNG_DOCKER docker)
 
@@ -27,10 +29,17 @@ add_custom_target(schwung
     USES_TERMINAL                 # it is slow and it has progress worth seeing
     VERBATIM)
 
+add_custom_target(schwung-side-chain
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/side-chain/package.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Side-Chain module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
 if (NOT SCHWUNG_DOCKER)
     # Not fatal: a macOS-only build has no use for it, and failing configure
     # over a target nobody asked for would be its own kind of rude.
     message(STATUS
-        "docker not found -- `--target schwung` will need it, or a cross "
+        "docker not found -- the schwung targets will need it, or a cross "
         "toolchain and CROSS_PREFIX set by hand")
 endif()

@@ -1,0 +1,10 @@
+[package]
+name = "sc-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "MIT"
+description = "NI Side-Chain DSP engine: a cycle-, MIDI- or sidechain-triggered ducker"
+
+[lib]
+crate-type = ["rlib"]

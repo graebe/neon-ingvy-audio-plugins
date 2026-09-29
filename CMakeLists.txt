@@ -40,7 +40,7 @@ include(cmake/TranceGateEngine.cmake)
 # The Spectrogram's analyzer. In-repo rather than a submodule because it has no
 # second consumer yet -- see the comment at the top of the file.
 include(cmake/SpectroEngine.cmake)
-include(cmake/PumpEngine.cmake)
+include(cmake/SideChainEngine.cmake)
 
 # The Trance Gate's OTHER shell: the Schwung module for the Move. Not a
 # subdirectory because it is an aarch64 Linux cross-build in a container --
@@ -49,7 +49,7 @@ include(cmake/Schwung.cmake)
 
 add_subdirectory(plugins/trance-gate)
 add_subdirectory(plugins/spectrogram)
-add_subdirectory(plugins/pump)
+add_subdirectory(plugins/side-chain)
 
 enable_testing()
 add_subdirectory(tests)

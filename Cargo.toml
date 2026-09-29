@@ -28,10 +28,10 @@ members = [
     # has no screen to draw a spectrogram on.
     "engines/spectro/crates/spectro-core",
     "engines/spectro/crates/spectro-capi",
-    # NI Pump: one core, two wrappers, same shape as the Trance Gate.
-    "engines/pump/crates/pump-core",      # the DSP
-    "engines/pump/crates/pump-capi",      # the C ABI -> the plugin
-    "engines/pump/crates/pump-move",      # the Schwung vtable -> the module
+    # NI Side-Chain: one core, two wrappers, same shape as the Trance Gate.
+    "engines/side-chain/crates/sc-core",      # the DSP
+    "engines/side-chain/crates/sc-capi",      # the C ABI -> the plugin
+    "engines/side-chain/crates/sc-move",      # the Schwung vtable -> the module
 ]
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.
