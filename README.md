@@ -79,7 +79,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `abus_core` | the ring's wrap and overrun, the claim protocol, and a writer running flat out against a slow reader with every delivered block checked for continuity — a spliced buffer looks exactly like audio |
 | `listenin_wire`, `listenin_wire_js` | the state string and the label sanitiser, both sides pinned to one table the plugin's own C++ generates |
 | `tg_wire` | the four pieces of plugin arithmetic where being wrong is silent — the scope quantiser, the message split, the editor height, the transport advance |
-| `tg_fade`, `tg_fade_js` | the fade-in's arrival weights, against the engine's own *measured* gain — DC in with no envelope, so the gain during a step IS that step's weight. The editor mirrors the formula, so the mirror is pinned |
+| `tg_fade`, `tg_fade_js` | the fade's per-step level factors in both directions, against the engine's own *measured* gain — DC in with no envelope, so the gain during a step IS that factor. The editor mirrors the formula for the pads and the ring, so the mirror is pinned |
 
 ### Coverage
 

@@ -21,7 +21,7 @@
 const int kNumPresets = 1;
 
 /*
- * THE FOURTEEN AUTOMATABLE VALUES, IN THE ENGINE'S OWN WIRE ORDER.
+ * THE FIFTEEN AUTOMATABLE VALUES, IN THE ENGINE'S OWN WIRE ORDER.
  *
  * This enum is deliberately tg_param_t's order, so the host index IS the
  * engine index and there is no mapping table between them to get wrong. The
@@ -48,6 +48,7 @@ enum EParams
    * beside kAmount, which is where they belong by meaning. */
   kFade,
   kFadeSoft,
+  kFadeDir,
   kNumParams
 };
 
@@ -73,7 +74,7 @@ public:
 enum EMsgTags
 {
   kMsgUiState = 64,   /* -> UI: the engine's `ui` readout, once per frame   */
-  kMsgParams,         /* -> UI: the `params` readout (14 values + width_ms) */
+  kMsgParams,         /* -> UI: the `params` readout (15 values + width_ms) */
   kMsgScope,          /* -> UI: the signal capture, base64 floats           */
   kMsgPatch,          /* <-> :  the state blob, for copy and paste          */
 
@@ -107,6 +108,15 @@ enum EMsgTags
    * own generator, so successive presses differ.
    */
   kMsgRandomize,
+  /*
+   * THE GATE ACROSS ONE CYCLE, AS THE ENGINE ACTUALLY APPLIES IT.
+   *
+   * Not a description the editor can draw from -- the samples themselves. See
+   * RenderGate: a scratch engine runs the real patch with a DC input, so the
+   * output IS the gain. The editor had been modelling this and got a release
+   * that outlives its step wrong, which is most of them.
+   */
+  kMsgGate,
 };
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
@@ -245,6 +255,19 @@ private:
   /* One cycle in milliseconds, for the axis the editor draws. Message thread
    * only -- it is written where it is measured and read where it is sent. */
   double mScopeCycleMs = kScopeFallbackMs;
+
+  /*
+   * THE PATTERN PLOT'S CURVE, RENDERED RATHER THAN DESCRIBED.
+   *
+   * `mGateState` is the patch the cached curve was rendered from; when the
+   * engine's state string stops matching it, the curve is stale. Amount is in
+   * that string, so dragging Amount re-renders -- harmless, because a render is
+   * ~1024 samples through the engine, and cheaper than parsing the blob to
+   * exclude it.
+   */
+  std::string mGateState;
+  std::string mGatePayload;
+  void RenderGate(const char* state);
   /*
    * How many samples one cycle of the pattern is. Measured on the MESSAGE
    * thread, where the step duration and the length can be read as strings

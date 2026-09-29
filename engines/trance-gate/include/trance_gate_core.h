@@ -122,7 +122,7 @@ void tg_core_process_f32_split(tg_core_t *c, float *l, float *r, int frames,
  * conversion in each direction (atof honours LC_NUMERIC, so a comma-decimal
  * host turns "0.750" into 0) and a strcmp ladder, per value, per block.
  *
- * These are the same fourteen values on the same wire conventions -- slot,
+ * These are the same fifteen values on the same wire conventions -- slot,
  * length and rate are INDICES, legato and time_mode are 0|1, the rest are the
  * units the string keys use -- with the decimal detour removed. The string
  * setter is implemented in terms of this one, so every clamp exists once.
@@ -137,7 +137,7 @@ typedef enum {
     /* APPENDED. See the note above: these values are the ABI, so the fade's
      * two can only go on the end -- not beside TG_P_AMOUNT, where they belong
      * by meaning. */
-    TG_P_FADE, TG_P_FADE_SOFT,
+    TG_P_FADE, TG_P_FADE_SOFT, TG_P_FADE_DIR,
     TG_P_COUNT
 } tg_param_t;
 

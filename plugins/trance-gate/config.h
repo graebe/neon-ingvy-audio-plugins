@@ -39,7 +39,7 @@
  * byte without a clamp. EIGHT RELEASES A DAY IS THE CEILING, and the version
  * test refuses a ninth rather than letting it wrap silently.
  *
- * The cost is readability: 0x07EA09E9 decomposes as 2026.9.233, not 2026.9.29.
+ * The cost is readability: 0x07EA09EA decomposes as 2026.9.234, not 2026.9.29.
  * That is the trade for a number that actually changes when the version does.
  */
 /*
@@ -54,8 +54,8 @@
  * thing -- it is part of the bundle IDENTIFIER, which is identity rather than
  * branding, and it stays. */
 #define PLUG_MFR "Neon Ingvy"
-#define PLUG_VERSION_HEX 0x07EA09E9
-#define PLUG_VERSION_STR "v2026.09.29.1"
+#define PLUG_VERSION_HEX 0x07EA09EA
+#define PLUG_VERSION_STR "v2026.09.29.2"
 
 /* THE FOUR-CHARACTER IDS ARE THE PLUGIN'S IDENTITY and they are carried over
  * from the JUCE build deliberately: a host that catalogued this plugin

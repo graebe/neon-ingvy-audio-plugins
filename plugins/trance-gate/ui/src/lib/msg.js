@@ -6,7 +6,7 @@
  * plugin's own vocabulary and has nothing to say to any other.
  */
 /*
- * THE MESSAGE TAGS, mirroring EMsgTags in TranceGate.h. Tags 0..13 are a
+ * THE MESSAGE TAGS, mirroring EMsgTags in TranceGate.h. Tags 0..14 are a
  * parameter's display string, tagged with the parameter's own index -- which is
  * why the first real tag is 64 and not 16: the range grows with the parameter
  * count, and it has grown once already.
@@ -37,4 +37,11 @@ export const MSG = {
   /* Reroll the current slot. An ACTION: no payload from here, so the engine
    * walks its own generator and two presses differ. */
   randomize: 104,
+  /*
+   * "<length>:<perStep>:<hex>" -- the gate across one cycle, as the ENGINE
+   * applies it. Not a description this side draws from: the samples themselves,
+   * rendered by a scratch engine with a DC input. What used to be modelled here
+   * got a release outliving its step wrong, which is most settings.
+   */
+  gate: 105,
 };

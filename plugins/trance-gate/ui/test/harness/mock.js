@@ -27,13 +27,16 @@ const Q0 = new URLSearchParams(location.search);
  * neutral value, which is what the plugin ships with. */
 const FADE = Number(Q0.get('fade') ?? 1);
 const SOFT = Q0.has('soft') ? 1 : 0;
+/* ?dir=out fades the HOLES in instead of the hits. */
+const DIR = (Q0.get('dir') ?? 'in').toLowerCase() === 'out' ? 1 : 0;
 
 const VALUES = [0 / 7, (16 - 1) / 127, 7 / 12, 0, 0, 0, 0.9, 0.75,
                 1.6 / 200, 16 / 200, 1.0, 16 / 200,
-                FADE, SOFT];
+                FADE, SOFT, DIR];
 const DISPLAY = ['1', '16', '1/16', 'Off', 'ms', 'Linear', '90.00 %', '75.00 %',
                  '1.60 %', '16.00 %', '100.00 %', '16.00 %',
-                 `${(FADE * 100).toFixed(2)} %`, SOFT ? 'Soft' : 'Hard'];
+                 `${(FADE * 100).toFixed(2)} %`, SOFT ? 'Soft' : 'Hard',
+                 DIR ? 'Out' : 'In'];
 
 /* steps:ties:length:phase:ms_step:advancing:cursor:depths:orders
  * Every other step on, two of them tied, step 4 at half amount. */
@@ -46,8 +49,15 @@ const DEPTHS = Array.from({ length: 16 },
  * the numbers. This one arrives 4th, 1st, 7th, 2nd, ...
  */
 const ORDER_SEQ = [4, 1, 7, 2, 8, 3, 6, 5];
+/*
+ * The HOLES carry a rank too, among themselves -- that is the order Fade Out
+ * introduces them in, and the reason one array can hold both. Position order
+ * here, so ?dir=out reads left to right against the scrambled hit order.
+ */
+const HOLE_SEQ = [1, 2, 3, 4, 5, 6, 7, 8];
 const ORDERS = Array.from({ length: 16 }, (_, i) =>
-  (i % 2 === 0 ? ORDER_SEQ[i / 2].toString(16).padStart(2, '0').toUpperCase() : '00')
+  (i % 2 === 0 ? ORDER_SEQ[i / 2] : HOLE_SEQ[(i - 1) / 2])
+    .toString(16).padStart(2, '0').toUpperCase()
 ).join('');
 const UI_STATE = `5555:0044:16:5.400:125.00:1:5:${DEPTHS}:${ORDERS}`;
 /*
@@ -69,7 +79,7 @@ const HOLD = Number(Q.get('width') ?? 0.75);
  * off AND the editor never read the field. */
 const LEGATO = Q0.has('legato') ? '1' : '0';
 const PARAMS = `0:${LEGATO}:0:${CURVE}:1/16:15:0.9:${HOLD}:${A}:${D}:${S}:${R}:` +
-               `${(HOLD * 125).toFixed(2)}:${FADE}:${SOFT}`;
+               `${(HOLD * 125).toFixed(2)}:${FADE}:${SOFT}:${DIR}`;
 
 /*
  * The scope as the plugin sends it:
@@ -107,6 +117,33 @@ const scope = (roll = 0) => {
   return `${COLS}:${CYCLE_MS}:${head}:${hex}`;
 };
 
+/*
+ * THE GATE CURVE, as the plugin renders it: "<length>:<perStep>:<hex>", a byte
+ * per sample of one cycle.
+ *
+ * The real one comes out of a scratch engine; this is a stand-in shaped to
+ * exercise the thing the editor used to get wrong -- the gate opens on the lit
+ * steps and its RELEASE RUNS PAST THE STEP EDGE into the next one, which the
+ * old model drew as an instant cut.
+ */
+const GATE_PER_STEP = 64;
+const gateCurve = () => {
+  const H = (x) => Math.max(0, Math.min(255, Math.round(x * 255)))
+    .toString(16).toUpperCase().padStart(2, '0');
+  let hex = '';
+  let g = 0;
+  for (let s = 0; s < 16; s++) {
+    const on = s % 2 === 0;                     /* the 5555 mask */
+    for (let k = 0; k < GATE_PER_STEP; k++) {
+      const t = k / GATE_PER_STEP;
+      if (on && t < HOLD) g = 1;                /* open for Width */
+      else g = Math.max(0, g - 1 / (GATE_PER_STEP * 1.6));   /* a long release */
+      hex += H(g);
+    }
+  }
+  return `16:${GATE_PER_STEP}:${hex}`;
+};
+
 let roll = 0;
 const pushAll = () => {
   VALUES.forEach((x, i) => globalThis.SPVFD?.(i, x));
@@ -114,6 +151,7 @@ const pushAll = () => {
   globalThis.SAMFD?.(64, 0, b64(UI_STATE));
   globalThis.SAMFD?.(65, 0, b64(PARAMS));
   globalThis.SAMFD?.(66, 0, b64(scope(roll)));
+  globalThis.SAMFD?.(105, 0, b64(gateCurve()));
 };
 
 /* The plugin pushes the window every idle tick; so does this, or the scope

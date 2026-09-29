@@ -88,7 +88,17 @@ export function pressStep(i, model, shiftKey) {
  */
 export function orderPress(i, model) {
   if (!model.orderMode) return false;
-  if (!model.steps?.[i]) {
+  /*
+   * ONLY THE ARRIVING KIND CAN BE SEQUENCED. Under Fade Out you are putting the
+   * HOLES in order, and a step you drew on has no place in that sequence -- so a
+   * click on one is ignored rather than silently switching it off to make it
+   * one. Without the callback (the ring, before it knew about directions) the
+   * old rule stands and an off step is switched on to join the order.
+   */
+  const takes = model.orderTakes;
+  if (takes) {
+    if (!takes(i)) return true;
+  } else if (!model.steps?.[i]) {
     setStep(i, MODE.on);
     setDepth(i, 1);
   }

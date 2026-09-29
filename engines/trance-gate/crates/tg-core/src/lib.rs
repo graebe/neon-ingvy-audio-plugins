@@ -44,6 +44,33 @@ pub enum TimeMode {
     Pct = 1,
 }
 
+/*
+ * WHICH WAY THE FADE BUILDS THE PATTERN UP.
+ *
+ * The knob means the same thing in both: HOW MUCH OF THE DRAWN PATTERN IS
+ * PRESENT, 0..1. Only the missing part differs -- In leaves silence where a step
+ * has not arrived, Out leaves the gate open. So 100% is the pattern either way,
+ * which is what keeps it the neutral default and lets the direction be switched
+ * at rest without changing a sample.
+ *
+ * OUT FILLS HOLES; IT DOES NOT BYPASS THE GATE. At Out 0% every step sounds, and
+ * below Width 100% the gate still pulses -- a denser gate, not an open one.
+ * Amount is what bypasses.
+ */
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FadeDir {
+    /// The steps you drew ON arrive, one at a time. 0% is silence.
+    In = 0,
+    /// The steps you drew OFF -- the holes -- arrive. 0% is every hole filled.
+    Out = 1,
+}
+
+impl FadeDir {
+    pub fn from_i32(v: i32) -> FadeDir {
+        if v >= 1 { FadeDir::Out } else { FadeDir::In }
+    }
+}
+
 /// Beyond this much error, jump rather than glide.
 const RESYNC_STEPS: f64 = 0.25;
 /// Fraction of the phase error absorbed per block.
@@ -130,15 +157,33 @@ impl Pattern {
      * this a total order and the result a permutation.
      */
     pub fn renumber(&mut self) {
+        self.renumber_kind(true);
+        self.renumber_kind(false);
+    }
+
+    /*
+     * ONE ARRAY, BOTH ORDERS, BECAUSE A STEP IS EITHER ON OR OFF.
+     *
+     * The fade runs in two directions: IN introduces the steps you drew on, OUT
+     * introduces the holes. Each needs its own arrival order -- and the two sets
+     * PARTITION the pattern, so one array holds both without a conflict. An on
+     * step's rank is its place among the on steps, an off step's among the off
+     * steps, and neither can be asked about the other.
+     *
+     * The alternative was a second 128-byte array per slot, which is a kilobyte
+     * across eight slots and another field in a blob that is already measured
+     * against a bus insert's 1024 bytes.
+     */
+    fn renumber_kind(&mut self, want_on: bool) {
         let n = self.length.min(MAX_STEPS);
         let mut rank = [0u8; MAX_STEPS];
         for i in 0..n {
-            if !self.on(i) {
+            if self.on(i) != want_on {
                 continue;
             }
             let mut r = 1u32;
             for j in 0..n {
-                if j == i || !self.on(j) {
+                if j == i || self.on(j) != want_on {
                     continue;
                 }
                 let (a, b) = (self.order[j], self.order[i]);
@@ -149,70 +194,113 @@ impl Pattern {
             rank[i] = r.min(255) as u8;
         }
         for i in 0..n {
-            if self.on(i) {
+            if self.on(i) == want_on {
                 self.order[i] = rank[i];
             }
         }
     }
 
-    /// How many steps sound in one cycle -- the divisor the fade spaces its
+    /// How many steps sound in one cycle -- the divisor Fade In spaces its
     /// arrivals over.
     pub fn hits(&self) -> usize {
         (0..self.length.min(MAX_STEPS)).filter(|&i| self.on(i)).count()
     }
 
+    /// How many holes one cycle has -- the divisor Fade Out spaces its arrivals
+    /// over. `hits() + holes() == length`, which is what makes one order array
+    /// enough for both.
+    pub fn holes(&self) -> usize {
+        self.length.min(MAX_STEPS) - self.hits()
+    }
+
+    /// How many steps of `i`'s own kind there are, which is the range its rank
+    /// lives in.
+    pub fn kin(&self, i: usize) -> usize {
+        if i < MAX_STEPS && self.on(i) { self.hits() } else { self.holes() }
+    }
+
     /*
-     * A STEP JOINING THE PATTERN ARRIVES LAST.
+     * BACK TO POSITION ORDER, FOR A MASK THAT ARRIVED WHOLE.
+     *
+     * A rank only means anything relative to the other steps of its kind, so
+     * REPLACING the mask invalidates every one of them at once: the partition
+     * moved, and the keys left behind rank steps against a pattern that no
+     * longer exists. Renumbering them anyway produces a deterministic but
+     * arbitrary order -- the same argument `randomize` makes for clearing ties.
+     *
+     * It showed up as SIZE. A wholesale write left an order that differed from
+     * position order in every slot, so the emitter wrote all 2 KB of it, and the
+     * no-accent blob went from ~310 bytes to 2358 -- past a bus insert's 1024.
+     * The arbitrary fade order was the real bug; the byte count is how it was
+     * noticed.
+     *
+     * A LENGTH change is not this: the mask is the same mask, so the ranks still
+     * mean what they meant, and steps coming into range carry the position seed
+     * `renumber` has never touched.
+     */
+    pub fn reseed_order(&mut self) {
+        for i in 0..MAX_STEPS {
+            self.order[i] = (i + 1) as u8;
+        }
+        self.renumber();
+    }
+
+    /*
+     * A STEP JOINING ITS KIND ARRIVES LAST.
      *
      * `renumber` cannot infer this -- a step that has never been on has no
      * meaningful key, and one switched off and on again has a stale one. Both
-     * want "after everything currently on", which is what a pattern being
-     * drawn in reads as: the order you click is the order they arrive.
+     * want "after everything currently of this kind", which is what a pattern
+     * being drawn in reads as: the order you click is the order they arrive.
      *
-     * The mask bit must already be SET when this is called; a step that is off
-     * has no rank to be given.
+     * Toggling a step moves it BETWEEN the two rankings: it leaves one, which
+     * compacts behind it, and joins the other at the end. The mask bit must
+     * already be set to its new value when this is called, because that is what
+     * says which kind it is joining.
      */
     pub fn order_append(&mut self, i: usize) {
         if i >= MAX_STEPS {
             return;
         }
         /* Above every rank a permutation of 1..=128 can hold, so the counting
-         * pass places it last. */
+         * pass places it last among its own kind. */
         self.order[i] = 255;
         self.renumber();
     }
 
     /*
-     * Put step `i` at rank `rank`, and let the rest close up around it -- the
-     * semantics of dragging a row in a list.
+     * Put step `i` at rank `rank` among its own kind, and give whoever held that
+     * rank `i`'s old one.
      *
-     * SHIFTED, NOT RE-KEYED. The ranks are already 1..=N, so moving one of them
-     * is the loop below and what comes out is still exactly a permutation.
-     * Encoding the target as a key BETWEEN two existing ones and re-deriving is
-     * the other way to write this, and it needs keys above 255 at 128 steps --
-     * an overflow that would read as a step refusing to move to the end of a
-     * long pattern.
+     * A SWAP, NOT AN INSERT. Typing a number into a step that already has one is
+     * an exchange -- you are naming which step arrives Nth, and the step that was
+     * Nth has to go somewhere. Shifting the whole run instead would renumber
+     * every step between the two, which is not what you asked for and is
+     * invisible until you look at the others.
+     *
+     * Tapping the pads in ORDER mode still produces the sequence you tap: each
+     * click swaps the next step into the next rank, and the steps already placed
+     * hold ranks below it, so none of them can be the one swapped out.
      */
     pub fn order_set(&mut self, i: usize, rank: usize) {
-        if i >= MAX_STEPS || !self.on(i) {
+        if i >= MAX_STEPS || i >= self.length {
             return;
         }
         self.renumber();
-        let n = self.hits();
-        let r = rank.clamp(1, n.max(1)) as u8;
+        let n = self.kin(i);
+        if n == 0 {
+            return;
+        }
+        let r = rank.clamp(1, n) as u8;
         let k = self.order[i];
         if r == k {
             return;
         }
+        let want_on = self.on(i);
         for j in 0..self.length.min(MAX_STEPS) {
-            if j == i || !self.on(j) {
-                continue;
-            }
-            let o = self.order[j];
-            if r < k && o >= r && o < k {
-                self.order[j] = o + 1;
-            } else if r > k && o > k && o <= r {
-                self.order[j] = o - 1;
+            if j != i && self.on(j) == want_on && self.order[j] == r {
+                self.order[j] = k;
+                break;
             }
         }
         self.order[i] = r;
@@ -322,6 +410,12 @@ pub struct Instance {
      */
     pub fade_soft: bool,
     /*
+     * Which end the pattern is built up from. See [`FadeDir`]. In is the
+     * default and the neutral one: it is what the gate did before the direction
+     * existed, so every patch and both golden renders are unaffected.
+     */
+    pub fade_dir: FadeDir,
+    /*
      * THE FADE'S WEIGHT PER STEP, CACHED.
      *
      * `next_gain` consults this twice a sample and a step's RANK costs a pass
@@ -372,6 +466,7 @@ impl Instance {
              * every version before the fade existed. */
             fade: 1.0,
             fade_soft: false,
+            fade_dir: FadeDir::In,
             fade_w: [1.0; MAX_STEPS],
             /* A FIXED SEED, ADVANCED PER CALL. There is no entropy source in
              * here -- no clock, no I/O, by design -- so successive presses
@@ -386,48 +481,69 @@ impl Instance {
     }
 
     /*
-     * THE FADE, AS ONE FORMULA WITH TWO READINGS.
+     * THE FADE, AS ONE FORMULA WITH FOUR READINGS.
      *
-     *     w(r) = clamp(f*N - (r-1), 0, 1)        soft
+     *     w(r) = clamp(f*n - (r-1), 0, 1)        soft
      *     w(r) = w_soft(r) >= 1 ? 1 : 0          hard
      *
-     * N is the number of ON steps inside `length` and r is a step's arrival
-     * rank, 1..=N. Everything the control promises falls out of it: f=0 leaves
-     * every weight at 0, f=1 leaves every one at 1, and rank r crosses at
-     * f = r/N, so the arrivals are equidistant. In soft mode EXACTLY ONE step
-     * is part-way in at any moment -- a one-slot window travelling up the
-     * order -- which is the smoothest thing that is still evenly spaced.
+     * n is how many steps of the ARRIVING KIND there are inside `length` and r
+     * is a step's rank among them. Everything the control promises falls out of
+     * it: f=0 leaves every weight at 0, f=1 leaves every one at 1, and rank r
+     * crosses at f = r/n, so the arrivals are equidistant. In soft mode EXACTLY
+     * ONE step is part-way in at any moment -- a one-slot window travelling up
+     * the order -- which is the smoothest thing that is still evenly spaced.
      *
-     * Hard is that value thresholded rather than a second rule, so the two
-     * modes agree at every arrival boundary. A switch that moved the arrivals
-     * as well as their shape would be two features wearing one name.
+     * Hard is that value thresholded rather than a second rule, so the two agree
+     * at every arrival boundary. A switch that moved the arrivals as well as
+     * their shape would be two features wearing one name.
+     *
+     * WHAT IS WRITTEN HERE IS A LEVEL FACTOR, NOT THE WEIGHT, and that is what
+     * makes the direction cost one line instead of a second code path.
+     * `sounds()` and the latch in `on_step_boundary` read only this array, so
+     * the whole of Fade Out is which factor it holds:
+     *
+     *     In    lf[i] = on(i) ? w(rank(i)) : 0
+     *     Out   lf[i] = on(i) ? 1 : 1 - w(rank(i))
+     *
+     * An arriving HOLE therefore starts at level 1 -- an ordinary on step at
+     * full level -- and soft ramps it DOWN to 0, which is a gap. The steps that
+     * are not of the arriving kind sit at their finished value (0 for a hole
+     * under In, 1 for a hit under Out) and the knob never touches them.
      *
      * THE EPSILON IS NOT COSMETIC. f arrives as a float from a host and the
      * value nearest below 1.0 is a real thing to be handed; without the slack,
-     * the last step of the pattern would stay silent at the top of the knob,
-     * which is the one setting a user is certain to check.
+     * the last arrival would stay put at the top of the knob, which is the one
+     * setting a user is certain to check.
      */
     pub fn recalc_fade(&mut self) {
-        let (fade, soft) = (self.fade, self.fade_soft);
+        let (fade, soft, dir) = (self.fade, self.fade_soft, self.fade_dir);
         let p = &self.pat[self.slot];
-        let n = p.hits();
+        let arriving_on = dir == FadeDir::In;
+        let n = if arriving_on { p.hits() } else { p.holes() };
         let mut w = [0.0f32; MAX_STEPS];
-        if n > 0 {
-            let t = fade as f64 * n as f64;
-            for i in 0..p.length.min(MAX_STEPS) {
-                if !p.on(i) {
-                    continue;
-                }
-                let r = p.order[i].max(1) as f64;
-                let v = (t - (r - 1.0)).clamp(0.0, 1.0);
-                w[i] = if soft {
-                    v as f32
-                } else if v >= 1.0 - 1.0e-6 {
-                    1.0
-                } else {
-                    0.0
-                };
+
+        for i in 0..p.length.min(MAX_STEPS) {
+            /* The finished value for a step the knob does not move. */
+            if p.on(i) != arriving_on {
+                w[i] = if p.on(i) { 1.0 } else { 0.0 };
+                continue;
             }
+            if n == 0 {
+                continue;
+            }
+            let t = fade as f64 * n as f64;
+            let r = p.order[i].max(1) as f64;
+            let v = (t - (r - 1.0)).clamp(0.0, 1.0);
+            let v = if soft {
+                v as f32
+            } else if v >= 1.0 - 1.0e-6 {
+                1.0
+            } else {
+                0.0
+            };
+            /* In: the hit fades UP from nothing. Out: the hole fades the step
+             * DOWN from a full one, and arriving means gone. */
+            w[i] = if arriving_on { v } else { 1.0 - v };
         }
         self.fade_w = w;
     }

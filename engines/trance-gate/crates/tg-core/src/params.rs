@@ -95,6 +95,7 @@ pub enum Param {
      * the two below can only go on the end. */
     Fade,
     FadeSoft,
+    FadeDir,
 }
 
 impl Param {
@@ -118,6 +119,7 @@ impl Param {
             11 => Release,
             12 => Fade,
             13 => FadeSoft,
+            14 => FadeDir,
             _ => return None,
         })
     }
@@ -249,6 +251,15 @@ impl Instance {
                     self.recalc_fade();
                 }
             }
+            /* Compared before recomputed, like the two above and for the same
+             * reason: PushParams writes every parameter every block. */
+            Param::FadeDir => {
+                let v = crate::FadeDir::from_i32(value as i32);
+                if v != self.fade_dir {
+                    self.fade_dir = v;
+                    self.recalc_fade();
+                }
+            }
         }
     }
 
@@ -305,12 +316,16 @@ impl Instance {
                     self.pat[slot].steps.set(c, mode != 0);
                     self.pat[slot].ties.set(c, mode == 2);
                     /*
-                     * A STEP JOINING THE PATTERN ARRIVES LAST; one leaving it
-                     * lets the ranks close up. Off -> On only, so On <-> Tie
-                     * does not move a step's place in the order -- a tie
-                     * changes what a live step does, not when it arrives.
+                     * A STEP CHANGING KIND ARRIVES LAST IN ITS NEW ONE, and the
+                     * kind it left closes up behind it. Symmetric on purpose:
+                     * a hole is as much a thing that arrives as a hit is, so
+                     * switching a step off puts it at the end of the hole order
+                     * rather than wherever its old hit rank happens to land.
+                     *
+                     * On <-> Tie does not move a step at all -- a tie changes
+                     * what a live step does, not when it arrives.
                      */
-                    if mode != 0 && !was {
+                    if (mode != 0) != was {
                         self.pat[slot].order_append(c);
                     } else {
                         self.pat[slot].renumber();
@@ -342,6 +357,12 @@ impl Instance {
             "fade_soft" => {
                 let on = val == "On" || val == "on" || fmt::atoi(val) != 0;
                 self.set_num(Param::FadeSoft, on as i32 as f64);
+            }
+            /* Names as well as the index: the Move wires this enum by index
+             * while a patch or a plugin may well say which way it means. */
+            "fade_dir" => {
+                let out = val == "Out" || val == "out" || fmt::atoi(val) != 0;
+                self.set_num(Param::FadeDir, out as i32 as f64);
             }
             /*
              * AN ACTION, NOT A VALUE, which is why it is only here and has no
@@ -393,10 +414,11 @@ impl Instance {
             "pattern" => {
                 let slot = self.slot;
                 set_pattern_hex(&mut self.pat[slot].steps, val);
-                /* A whole new mask, so the ranks it implies are new too. The
-                 * steps keep their stored keys, which is what makes a pattern
-                 * written twice land on the same order both times. */
-                self.pat[slot].renumber();
+                /* A WHOLE NEW MASK, so every rank it might have had is stale --
+                 * see `reseed_order`. Position order is what a pattern that
+                 * arrived in one piece should fade in as, and it is also what
+                 * makes the same mask written twice land on the same order. */
+                self.pat[slot].reseed_order();
                 self.recalc_fade();
             }
             "ties" => {
@@ -427,14 +449,11 @@ impl Instance {
             "legato" => write!(b, "{}", self.legato as i32),
             "fade" => fmt::f(&mut b, self.fade as f64, 2),
             "fade_soft" => write!(b, "{}", self.fade_soft as i32),
-            /* The step's place in the arrival order, at the cursor. 0 when the
-             * step is off, which is the honest answer: an off step has no
-             * place in an order it is not part of. */
-            "step_order" => write!(
-                b,
-                "{}",
-                if p.on(self.cursor) { p.order[self.cursor] } else { 0 }
-            ),
+            "fade_dir" => write!(b, "{}", self.fade_dir as i32),
+            /* The step's place in the arrival order, at the cursor -- among its
+             * OWN KIND, because that is what the fade ranks. An off step has a
+             * rank now: it is the order the holes arrive in under Fade Out. */
+            "step_order" => write!(b, "{}", p.order[self.cursor]),
             "time_mode" => write!(b, "{}", self.time_mode as i32),
             "curve" => write!(b, "{}", self.curve as i32),
             /* The step's length in ms, so a shell can show what a % actually
@@ -487,7 +506,7 @@ impl Instance {
              * get it.
              *
              *   slot:legato:time_mode:curve:rate:length:amount:hold:attack:
-             *   decay:sustain:release:width_ms:fade:fade_soft
+             *   decay:sustain:release:width_ms:fade:fade_soft:fade_dir
              *
              * FADE AND FADE_SOFT ARE APPENDED, past `width_ms`, because every
              * reader of this string indexes it. Adding them anywhere else --
@@ -534,7 +553,7 @@ impl Instance {
                     fmt::g(&mut b, self.width_ms(), 9)?;
                     b.write_char(':')?;
                     fmt::g(&mut b, self.fade as f64, 9)?;
-                    write!(b, ":{}", self.fade_soft as i32)
+                    write!(b, ":{}:{}", self.fade_soft as i32, self.fade_dir as i32)
                 })
             }
             "ui" => return self.ui_readout(b),
@@ -555,10 +574,11 @@ impl Instance {
      *   steps : ties : length : phase : ms_step : advancing : cursor : depths
      *     : orders
      *
-     * `orders` is APPENDED for the same reason the params readout's two are:
-     * every field here is read by index, on both shells. Two hex digits per
-     * step like `depths`, and a step that is off reads 00 -- it has no place
-     * in the arrival order.
+     * `orders` is APPENDED for the same reason the params readout's are: every
+     * field here is read by index, on both shells. Two hex digits per step like
+     * `depths`, and EVERY step carries one -- a rank among its own kind, because
+     * Fade Out ranks the holes. Which set a shell should draw follows from the
+     * direction, which it has from the params readout.
      */
     fn ui_readout(&self, mut b: Buf) -> i32 {
         let p = self.pattern();
@@ -583,7 +603,7 @@ impl Instance {
         }
         let _ = write!(b, ":");
         for i in 0..length {
-            let _ = write!(b, "{:02X}", if p.on(i) { p.order[i] } else { 0 });
+            let _ = write!(b, "{:02X}", p.order[i]);
         }
         b.finish()
     }

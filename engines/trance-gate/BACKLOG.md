@@ -104,6 +104,49 @@ evenly spaced. Soft ramps a step in on its own level; hard jumps it on.
       you are looking at the pattern. Swapping `slot` out for `fade` on the ring
       page is the trade to make if anyone asks.
 
+### [x] The fade runs both ways — DONE
+
+A DIRECTION setting, not a second knob. In introduces the steps you drew on and
+leaves silence behind; Out introduces the HOLES and leaves the gate open.
+
+- [x] The knob keeps one meaning — how much of the drawn pattern is present — so
+      100% is the pattern either way. That is what keeps it the neutral default,
+      lets the direction be switched at rest, and leaves both golden renders
+      bit-identical.
+- [x] One line in the DSP: `recalc_fade` already wrote a per-step LEVEL FACTOR and
+      everything downstream reads only that, so Out is
+      `lf = on ? 1 : 1 - w(rank)`. An arriving hole starts as a full step and
+      ramps DOWN to a gap — the dual of a hit ramping up.
+- [x] ONE ARRAY, BOTH ORDERS. A step is a hit or a hole and never both, so the
+      two sets partition the pattern and `order[i]` is a rank among its own kind.
+      A second array would have been a kilobyte across eight slots.
+- [x] **Out fills holes; it does not bypass the gate.** At 0% every step sounds
+      and below Width 100% the gate still pulses. Amount is what bypasses — said
+      in the docs, because "fade out" reads the other way at first glance.
+
+### [x] An arrival number can be typed — DONE
+
+Click the number on a pad and type one. Setting a rank **swaps** rather than
+inserting: the step that held it takes the one this step had, and nothing between
+them moves. Tapping a sequence in ORDER mode still yields that sequence under
+swap, which is why there is one rule rather than two.
+
+### [x] The pattern plot is the engine now — DONE
+
+It MODELLED the gate and got the common case wrong: an OFF step drew hard zeros,
+so a release outliving its step was cut at the pad edge and the next attack
+started from silence. Release runs to 200% of Width, so that is most settings.
+
+The plugin renders one cycle through a scratch engine with a DC input and pushes
+the samples — the JUCE build's own answer, recovered from `7711ba2`. Amount stays
+a paint transform because the gain law is affine in the envelope, and the time
+base is exact rather than searched: `ms_per_step` cancels the sample rate out, so
+choosing the scratch's rate makes a step exactly `perStep` samples.
+
+That deletes the editor's last UNPINNED mirror of the DSP, which is why the bug
+could exist -- `curves.js` and `fade.js` both have engine-generated oracles and
+the cycle walker never did.
+
 ---
 
 ## Blocking the above

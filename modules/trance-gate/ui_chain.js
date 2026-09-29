@@ -191,7 +191,7 @@ const HIERARCHY = JSON.stringify({
                      * `slot` out for `fade` is the trade to make if anyone asks
                      * for it. */
                     "length", "rate", "time_mode", "curve",
-                    "fade", "fade_soft", "randomize"],
+                    "fade", "fade_dir", "fade_soft", "randomize"],
             params: ["gate"]
         }
     }

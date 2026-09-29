@@ -229,8 +229,20 @@ main {
  */
 .pad-order {
   position: absolute; top: 1px; left: 3px;
-  pointer-events: none; line-height: 1;
+  line-height: 1; cursor: pointer;
   color: var(--ink);
+}
+/*
+ * TYPING ONE. The kit's own editing readout, at this size -- uv border and the
+ * focus glow, so a field in a pad reads as the same kind of thing as a field in
+ * a knob's readout.
+ */
+.pad-order-edit {
+  position: absolute; top: 0; left: 0; width: 20px;
+  background: var(--bg-000); border: 1px solid var(--uv);
+  box-shadow: var(--glow-focus);
+  color: var(--ink); font: inherit; text-align: center;
+  outline: none; padding: 0; line-height: 1;
 }
 /* Over the lit fill, the number needs the colour that goes ON a uv fill -- the
  * same token a lit tab's text uses. A pad is lit from the bottom, so a number in
@@ -249,6 +261,17 @@ main {
  * knob is making.
  */
 .pad.pending { border-color: var(--uv); filter: none; }
+/*
+ * A HOLE THE FADE HAS NOT REMOVED YET: a fill, and NO border.
+ *
+ * The mirror of .pending, and the other half of one rule -- the border is what
+ * you drew, the fill is what you hear. A step that is sounding only because
+ * Fade Out has not reached it must not be mistaken for one you drew on, so it
+ * gets the light without the outline. The bar rail on every fourth step stays,
+ * because that is position and still true.
+ */
+.pad.filled { background: var(--bg-200); }
+.pad.filled .pad-lit { opacity: 0.55; }
 /* ORDER mode: the grid is being sequenced rather than edited, so the pads say
  * so. A step still waiting for its number is dimmed towards the ground, which
  * makes "what is left to tap" the thing the grid is showing. */
