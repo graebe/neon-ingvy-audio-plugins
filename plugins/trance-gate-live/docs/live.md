@@ -80,6 +80,29 @@ Run the generator when the **parameters** change. Once Max has laid the device
 out, Max owns the pixels and saves them back into the file; re-running the
 generator would discard that.
 
+## Installing it
+
+```sh
+cmake -B build -DTG_BUILD_LIVE=ON
+cmake --build build --target ni.trancegate_tilde
+node plugins/trance-gate-live/build-device.mjs
+node plugins/trance-gate-live/install.mjs
+```
+
+That puts a Max **package** at `~/Documents/Max <n>/Packages/NI Trance Gate
+Live/` — the external in `externals/`, the grid in `javascript/` — and the
+device in Live's User Library under *Audio Effects > Max Audio Effect*.
+`--uninstall` removes both.
+
+**The grid is bundled on the way in, and that is not an optimisation.**
+`grid.js` imports `readout.js` out of the WebView editor's tree, deliberately,
+because a second decoder is the bug this repository has already paid for. That
+relative path exists only inside a checkout, so an unbundled copy would load
+and then fail on its first import — which in Max is a silent blank rectangle.
+esbuild inlines it.
+
+**Restart Live afterwards**: Max only scans `Packages` at startup.
+
 ## Still needs eyes in Max
 
 Everything above is machine-checked as far as it can be. These are not, and
