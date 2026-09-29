@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 using namespace listenin;
@@ -22,6 +23,11 @@ ListenIn::ListenIn(const InstanceInfo& info)
   mLabel.reserve(32);
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
+  /* The ground's detector. Created here rather than in OnReset because OnReset
+   * may run on a real-time thread in some hosts and this allocates; the rate it
+   * is given now is corrected there. */
+  mGround = gnd_new(GetSampleRate());
+
   mEditorInitFunc = [&]() {
     /* WITHOUT LoadIndexHtml THE WEBVIEW IS SILENTLY BLANK -- no error, no log,
      * a plain white rectangle. The Spectrogram's note, and it cost an evening
@@ -38,6 +44,10 @@ ListenIn::~ListenIn()
 {
   abus_writer_release(mBus);
   mBus = nullptr;
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  gnd_free(mGround);
+  mGround = nullptr;
+#endif
 }
 
 void ListenIn::Reclaim()
@@ -93,6 +103,15 @@ void ListenIn::OnReset()
   {
     Reclaim();
   }
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* A rate change re-derives every coefficient; the reset is what stops a hump
+   * left over from before the transport stopped firing an onset the moment it
+   * starts again. Neither touches the onset COUNT -- the editor compares that
+   * against its own last value, so rewinding it would draw a phantom ring. */
+  gnd_set_sample_rate(mGround, GetSampleRate());
+  gnd_reset(mGround);
+#endif
 }
 
 void ListenIn::OnParamChange(int paramIdx)
@@ -146,6 +165,21 @@ void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
    */
   const float prev = mPeak.load(std::memory_order_relaxed);
   mPeak.store(std::max(peak, prev * 0.85f), std::memory_order_relaxed);
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * THE GROUND'S DETECTOR SEES THE INPUT, and it has to be read before the
+   * passthrough copy below for the reason the tap is: a host may hand us the
+   * same buffer for in and out, so "the input" is only the input until that
+   * memcpy runs. Here it makes no arithmetic difference -- nothing modifies a
+   * sample -- but the ordering is the habit that keeps it true when something
+   * does.
+   *
+   * No conversion and no scratch buffer: gnd_push takes doubles, which is what
+   * `sample` already is. A mono source is passed twice, as the bus does.
+   */
+  gnd_push(mGround, inputs[0], stereoIn ? inputs[1] : inputs[0], nFrames);
+#endif
 
   /* Bit for bit: a wire with a tap on it. */
   for (int c = 0; c < nOut; c++)
@@ -210,9 +244,30 @@ void ListenIn::OnUIOpen()
   SendState();
 }
 
+/*
+ * One message per kick, and only when there has been one.
+ *
+ * The count is compared with != rather than > so that its eventual wrap is a
+ * non-event; see gnd_fires in the header. The strength is read after the count,
+ * which is the order that cannot report a kick the editor has already seen.
+ */
+void ListenIn::SendGround()
+{
+  const uint32_t fires = gnd_fires(mGround);
+  if (fires == mGroundFires)
+    return;
+  mGroundFires = fires;
+
+  char buf[16];
+  const int n = snprintf(buf, sizeof(buf), "%.3f", gnd_strength(mGround));
+  if (n > 0)
+    SendArbitraryMsgFromDelegate(kMsgGround, n, buf);
+}
+
 void ListenIn::OnIdle()
 {
   SendState();
+  SendGround();
 }
 
 bool ListenIn::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)

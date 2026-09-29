@@ -13,6 +13,15 @@
  */
 export const MSG = {
   uiState: 64, params: 65, scope: 66, patch: 67,
+  /*
+   * <- plugin: one kick, as a strength in 0..1.
+   *
+   * SPARSE, unlike the readouts above: it arrives only when the detector fires,
+   * and each message is exactly one ring on the ground. The detection happens in
+   * Rust on the audio thread because a WebView has no access to the host's audio
+   * -- engines/ground/include/ground_detect.h says why at length.
+   */
+  ground: 68,
   setStep: 96, setDepth: 97, setCursor: 98, requestPatch: 99,
   setText: 100, rows: 101,
   /*

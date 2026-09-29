@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>NISideChain</string>
 	<key>CFBundleGetInfoString</key>
-	<string>NI Side-Chain v2026.09.29.1 Copyright 2026 Torben Gräber</string>
+	<string>NI Side-Chain v2026.09.29.2 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIconFile</key>
 	<string>NISideChain.icns</string>
 	<key>CFBundleIdentifier</key>

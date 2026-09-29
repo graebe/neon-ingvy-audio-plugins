@@ -16,6 +16,18 @@ panicking -- the workspace sets `panic = "abort"` because unwinding out of
 `extern "C"` into a C++ host is undefined behaviour.
 */
 
+/*
+ * THE GROUND'S C ABI RIDES IN THIS ARCHIVE, and this line is what puts it there.
+ *
+ * `ground-capi` is an rlib holding the gnd_* entry points the editor's animated
+ * background needs. It is not a static library of its own on purpose: two Rust
+ * staticlibs in one binary duplicate the Rust runtime and fail to link, so this
+ * repository keeps one archive per plugin (spectro-capi's Cargo.toml states the
+ * rule). Naming the crate here is what makes rustc link it in, so the symbols
+ * are exported from this archive rather than dropped as unreachable.
+ */
+use ground_capi as _;
+
 use sc_core::params::Param;
 use sc_core::{Instance, Transport, MAX_BLOCK};
 use std::os::raw::{c_char, c_int, c_uchar};

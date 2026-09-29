@@ -16,6 +16,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "sc_core.h"
+#include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include <atomic>
 #include <cstdint>
 #include <vector>
@@ -71,6 +72,9 @@ enum EMsgTags
   kMsgScope,         /* -> UI: the capture -- dry, wet and the gain applied  */
   kMsgStageMs,       /* -> UI: the four stage lengths in ms, for the axis    */
   kMsgBuses,         /* -> UI: which input buses the host actually connected */
+  /* -> UI: one kick, as a strength in 0..1. Sent only when the detector
+   * fires, not every tick -- one message is one ring on the ground. */
+  kMsgGround,
 
   kMsgSetText = 96,  /* <- UI: "<paramIdx>:<typed text>"                     */
   kMsgHeight,        /* <- UI: the height it needs, in viewport pixels       */
@@ -100,6 +104,10 @@ public:
   void OnParamChangeUI(int paramIdx, iplug::EParamSource source) override;
   void OnUIOpen() override;
   void OnIdle() override;
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* One message per onset, from OnIdle. */
+  void SendGround();
+#endif
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
 #endif
 
@@ -223,4 +231,21 @@ private:
   /* Set when the aux buffers are byte-for-byte the main input -- the Logic and
    * GarageBand bug. Reported, never worked around; see Wire.h. */
   std::atomic<int> mKeyIsMain{0};
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * THE ANIMATED GROUND'S KICK DETECTOR. The design system gives every window a
+   * ground that rings when a kick lands, and the editor is a WebView with no
+   * access to the host's audio -- so the detection happens here and one message
+   * per onset crosses over. engines/ground/include/ground_detect.h says why, and
+   * shows the whole idiom.
+   *
+   * mGroundFires is the last count the EDITOR was told about, so it belongs to
+   * the message thread alone and needs no atomic. Inside the editor guard, so a
+   * build with no WebView carries no detector on its audio thread.
+   */
+  gnd_t* mGround = nullptr;
+  uint32_t mGroundFires = 0;
+#endif
+
 };

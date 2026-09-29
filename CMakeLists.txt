@@ -42,6 +42,9 @@ include(cmake/TranceGateEngine.cmake)
 include(cmake/SpectroEngine.cmake)
 include(cmake/AudioBusEngine.cmake)
 include(cmake/SideChainEngine.cmake)
+# The animated ground's kick detector. Like the bus above it belongs to no single
+# product: every editor draws the same ground, so every plugin links this.
+include(cmake/GroundEngine.cmake)
 
 # The Trance Gate's OTHER shell: the Schwung module for the Move. Not a
 # subdirectory because it is an aarch64 Linux cross-build in a container --

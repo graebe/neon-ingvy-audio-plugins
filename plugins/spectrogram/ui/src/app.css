@@ -45,6 +45,11 @@
  * here, or the page is scaled against a width it does not have.
  */
 main {
+  /* The ground's canvas is absolutely positioned against this element and paints
+   * at a negative z-index inside it; it needs both of these. See the kit's
+   * .ground rule for why neither is optional. */
+  position: relative;
+  isolation: isolate;
   width: 720px;
   height: 502px;
   padding: var(--s8) var(--s8) var(--s4);

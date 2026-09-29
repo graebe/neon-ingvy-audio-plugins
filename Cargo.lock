@@ -4,29 +4,42 @@ version = 4
 
 [[package]]
 name = "bus-capi"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 dependencies = [
  "bus-core",
+ "ground-capi",
 ]
 
 [[package]]
 name = "bus-core"
+version = "2026.9.29+2"
+
+[[package]]
+name = "ground-capi"
+version = "2026.9.29+1"
+dependencies = [
+ "ground-core",
+]
+
+[[package]]
+name = "ground-core"
 version = "2026.9.29+1"
 
 [[package]]
 name = "sc-capi"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 dependencies = [
+ "ground-capi",
  "sc-core",
 ]
 
 [[package]]
 name = "sc-core"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 
 [[package]]
 name = "sc-move"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 dependencies = [
  "sc-capi",
  "sc-core",
@@ -34,19 +47,20 @@ dependencies = [
 
 [[package]]
 name = "spectro-capi"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 dependencies = [
+ "ground-capi",
  "spectro-core",
  "spectro-recv",
 ]
 
 [[package]]
 name = "spectro-core"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 
 [[package]]
 name = "spectro-recv"
-version = "2026.9.29+1"
+version = "2026.9.29+2"
 dependencies = [
  "bus-core",
  "spectro-core",
@@ -54,18 +68,19 @@ dependencies = [
 
 [[package]]
 name = "tg-capi"
-version = "2026.9.29+2"
+version = "2026.9.29+3"
 dependencies = [
+ "ground-capi",
  "tg-core",
 ]
 
 [[package]]
 name = "tg-core"
-version = "2026.9.29+2"
+version = "2026.9.29+3"
 
 [[package]]
 name = "tg-move"
-version = "2026.9.29+2"
+version = "2026.9.29+3"
 dependencies = [
  "tg-capi",
  "tg-core",

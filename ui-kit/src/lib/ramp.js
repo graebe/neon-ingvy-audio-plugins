@@ -93,6 +93,26 @@ export const stopCss = (i, el = document.documentElement) =>
  * colour written into JavaScript is a colour outside tokens.css, and the token
  * guard would catch it -- including one assembled at runtime.
  */
+/**
+ * Three 0..255 channels as a string a canvas will accept.
+ *
+ * WHY THIS IS HERE AND NOT WHERE IT IS USED. A canvas cannot take a CSS
+ * variable, so anything drawing into one needs a colour as text -- and the
+ * moment that text is assembled where it is used, the file doing the assembling
+ * contains colour syntax and the token guard stops it. Rightly: the guard cannot
+ * tell an `rgb()` built from a token apart from one somebody typed.
+ *
+ * So the formatting lives once, in the file whose entire job is already "system
+ * colours, for a canvas, read back rather than spelled". Its callers pass
+ * channels that came out of `readRgb` -- or, for the ground's dot, channels
+ * DERIVED from those by arithmetic -- and never a value of their own.
+ *
+ * Hex rather than a functional notation, incidentally and not significantly:
+ * both work, and this one is shorter.
+ */
+export const cssHex = (channels) =>
+  `#${channels.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
+
 export function readRgb(name, el = document.documentElement) {
   const raw = getComputedStyle(el).getPropertyValue(name).trim().replace(/^#/, '');
   if (!/^[0-9a-fA-F]{6}$/.test(raw)) return null;

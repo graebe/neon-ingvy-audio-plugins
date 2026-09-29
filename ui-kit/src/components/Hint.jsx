@@ -6,6 +6,7 @@
  */
 import { For, Show } from 'solid-js';
 import { Signature } from './Signature.jsx';
+import { Toggle } from './Toggle.jsx';
 
 /*
  * Three clauses at most. Truncating rather than shrinking the text is
@@ -16,6 +17,14 @@ import { Signature } from './Signature.jsx';
  * to the WINDOW ("exactly once, at the right end of the Hint bar"), not to any
  * one editor's layout. Carrying it here is what makes that structural -- an
  * editor cannot forget it, put it elsewhere, or show two.
+ *
+ * AND THE MOTION SWITCH RIDES HERE FOR EXACTLY THE SAME REASON. The design
+ * system lists "use it in a window without a Motion switch" under Ground's
+ * Don'ts, so the switch is a property of a window that has a ground rather than
+ * of any editor's layout. An editor passes `motion` and `onMotion`; one that
+ * passes neither has no ground and gets no switch. Putting it here is what makes
+ * "every window with a Ground has one" true by construction instead of by
+ * four editors each remembering.
  */
 export function Hint(props) {
   return (
@@ -45,6 +54,11 @@ export function Hint(props) {
           </>
         )}</For>
       </span>
+      {/* Before the Signature, which keeps its margin-left: auto and so stays at
+        * the right end of the bar whether or not this is here. */}
+      <Show when={props.motion !== undefined}>
+        <Toggle label="Motion" value={props.motion} onChange={props.onMotion} />
+      </Show>
       <Signature />
     </div>
   );

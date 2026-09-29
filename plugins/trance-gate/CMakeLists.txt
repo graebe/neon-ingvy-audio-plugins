@@ -97,8 +97,12 @@ iplug_add_plugin(NITranceGate
     VST3 CLAP AU
   UI WEBVIEW
   WEB_RESOURCES ${TG_WEB}
+  # ground_engine is a HEADER ONLY -- the detector's C ABI is compiled into
+  # libtg_capi.a via tg-capi's dependency on ground-capi, because one archive per
+  # plugin is an invariant here. cmake/GroundEngine.cmake says why.
   LINK
-    tg_engine)
+    tg_engine
+    ground_engine)
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.

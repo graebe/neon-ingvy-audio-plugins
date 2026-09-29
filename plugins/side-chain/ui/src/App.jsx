@@ -23,7 +23,7 @@
  * and nothing in this system floats.
  */
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import { Hint, onParam, onMessage, sendMessage } from '@ultraviolet/ui';
+import { Hint, Ground, createMotion, onParam, onMessage, sendMessage } from '@ultraviolet/ui';
 import { MSG, P, NUM_PARAMS } from './lib/msg.js';
 import { ParamKnob, ParamSelect } from './lib/params.jsx';
 import { Shaper, SPAN } from './lib/Shaper.jsx';
@@ -54,6 +54,12 @@ for (let i = 0; i < 16; i++) NIB['0123456789ABCDEF'.charCodeAt(i)] = i;
 export default function App() {
   /* Normalised values, as the host reports them. The Knobs want these. */
   const [norm, setNorm] = createSignal(new Array(NUM_PARAMS).fill(0));
+  /* The Motion switch, remembered between openings. Not a host parameter -- see
+   * the kit's lib/motion.js for why a view is not something to automate. */
+  const [motion, setMotion] = createMotion('side-chain');
+  /* The ground's handle, set by <Ground ref>. A kick arrives as a message and is
+   * handed straight to it. */
+  let ground = null;
   /* The plugin's own display strings -- it owns every unit, precision and enum
    * label, because iPlug2's IParam already does. */
   const [display, setDisplay] = createSignal(new Array(NUM_PARAMS).fill(''));
@@ -83,6 +89,14 @@ export default function App() {
     });
 
     const offMsg = onMessage((tag, text) => {
+
+      if (tag === MSG.ground) {
+        /* One message, one ring. A malformed payload is dropped rather than
+         * turned into a full-strength kick. */
+        const gs = Number.parseFloat(text);
+        if (Number.isFinite(gs)) ground?.trigger(gs);
+        return;
+      }
       if (tag >= 0 && tag < NUM_PARAMS) {
         setDisplay((v) => {
           const next = [...v];
@@ -369,6 +383,11 @@ export default function App() {
 
   return (
     <main>
+      {/* FIRST CHILD OF THE WINDOW, which is the design system's contract for a
+        * Ground. The panels and the shaper's plot emit and reflect; both are opaque to
+        * the field on purpose. */}
+      <Ground enabled={motion()} sources=".panel, .plot-slot, [data-wave-source]" ref={(h) => { ground = h; }} />
+
       <div class="tag t-hint">
         NI SIDE-CHAIN
         <span class="tag-state">
@@ -464,7 +483,7 @@ export default function App() {
                      value={v(P.timeMode)} width={92} labelWidth={38} />
       </div>
 
-      <Hint clauses={hintFor(ui().source, ui().rate, stageMs(), v(P.timeMode))} />
+      <Hint clauses={hintFor(ui().source, ui().rate, stageMs(), v(P.timeMode))} motion={motion()} onMotion={setMotion} />
     </main>
   );
 }

@@ -43,6 +43,11 @@ members = [
     "engines/side-chain/crates/sc-core",      # the DSP
     "engines/side-chain/crates/sc-capi",      # the C ABI -> the plugin
     "engines/side-chain/crates/sc-move",      # the Schwung vtable -> the module
+    # The animated ground's bass-onset detector. Like audio-bus it is not a
+    # product: it ships inside EVERY editor, because the design system gives
+    # every window the same ground. It depends on no product in return.
+    "engines/ground/crates/ground-core",      # the detector
+    "engines/ground/crates/ground-capi",      # the C ABI -> every plugin
 ]
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.

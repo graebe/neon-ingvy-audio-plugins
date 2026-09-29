@@ -42,8 +42,8 @@
  * build, so a stale one is worse than a stale string: silently wrong rather
  * than visibly wrong.
  */
-#define PLUG_VERSION_HEX 0x07EA09E9
-#define PLUG_VERSION_STR "v2026.09.29.1"
+#define PLUG_VERSION_HEX 0x07EA09EA
+#define PLUG_VERSION_STR "v2026.09.29.2"
 
 /* A NEW IDENTITY, not a variation on the Trance Gate's. A host catalogues a
  * plugin by this pair, and two plugins sharing one would fight over the same

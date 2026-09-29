@@ -7,6 +7,7 @@
 #include "IPlug_include_in_plug_hdr.h"
 
 #include "audio_bus.h"
+#include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 
 #include <atomic>
 #include <string>
@@ -36,6 +37,9 @@ enum EParams
 enum EMsgTags
 {
   kMsgState = 64,
+  /* One kick, as a strength in 0..1. Sent only when the detector fires, not on
+   * every tick like kMsgState -- the ground draws one ring per message. */
+  kMsgGround = 65,
   kMsgLabel = 96,
   kMsgReady = 102,
 };
@@ -85,6 +89,10 @@ private:
   /* Main thread only: takes a slot, or finds out it cannot. */
   void Reclaim();
   void SendState();
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* One message per onset, from OnIdle. */
+  void SendGround();
+#endif
 
   abus_writer_t* mBus = nullptr;
   int mStatus = 0;                 /* listenin::wire::Status */
@@ -102,4 +110,23 @@ private:
    * comment promising it does not matter.
    */
   std::atomic<float> mPeak{0.f};
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /*
+   * THE ANIMATED GROUND'S KICK DETECTOR. Not part of what this plugin does --
+   * it publishes audio and nothing else -- but the design system gives every
+   * window a ground, and a ground needs to know when a kick lands. The editor
+   * is a WebView with no access to the host's audio, so the detection happens
+   * here and one message per onset crosses over. engines/ground says why.
+   *
+   * mGroundFires is the last count the EDITOR was told about, so it is the
+   * message thread's alone and needs no atomic.
+   *
+   * INSIDE THE EDITOR GUARD, so a build with no WebView -- the Move module's
+   * shell, a test harness -- does not carry a detector on its audio thread for
+   * a window that does not exist.
+   */
+  gnd_t* mGround = nullptr;
+  uint32_t mGroundFires = 0;
+#endif
 };

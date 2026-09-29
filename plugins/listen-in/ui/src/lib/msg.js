@@ -9,6 +9,15 @@
  */
 export const MSG = {
   state: 64,  /* <- plugin: "<slot>:<status>:<peak>"        */
+  /*
+   * <- plugin: one kick, as a strength in 0..1.
+   *
+   * SPARSE, unlike `state`: it arrives only when the detector fires, and each
+   * message is exactly one ring on the ground. The detection happens in Rust on
+   * the audio thread because a WebView has no access to the host's audio --
+   * engines/ground/include/ground_detect.h says why at length.
+   */
+  ground: 65,
   label: 96,  /* <-> plugin: the display name, both ways    */
   /*
    * "I AM LISTENING", and it has to exist because the plugin's push on open
