@@ -12,10 +12,40 @@
  */
 #pragma once
 
+/*
+ * THE VERSION IS A DATE, AND THREE CONSUMERS CANNOT HOLD IT LITERALLY.
+ *
+ * versions.json decides, in the scheme v<YYYY.MM.DD>.<subversion>. This string
+ * is what a DAW shows and carries it verbatim. The other three cannot:
+ *
+ *   Cargo.toml       strict semver -- no "v", no leading zeros, three
+ *                    components. So the crates say 2026.9.29+1, where the
+ *                    subversion rides as build metadata: legal, and preserved.
+ *   Info.plist       CFBundleShortVersionString is up to three integers, so
+ *                    the plists say 2026.9.29.
+ *   PLUG_VERSION_HEX major<<16 | minor<<8 | patch, and 16/8/8 bits.
+ *
+ * THE HEX IS THE ONE A HOST COMPARES to decide whether a saved project came
+ * from an older build, so it has to move on every release -- including a second
+ * release on the same day, which is the whole reason the subversion exists.
+ * There is no fourth field to put it in, so it goes in the low bits of the
+ * patch:
+ *
+ *     patch = day * 8 + subversion            2026.09.29.1 -> 29*8+1 = 233
+ *     hex   = year<<16 | month<<8 | patch     -> 0x07EA09E9
+ *
+ * That is monotonic across a day boundary (day 29 sub 7 is 239, day 30 sub 0 is
+ * 240) and the maximum -- day 31, subversion 7 -- is exactly 255, so it fits the
+ * byte without a clamp. EIGHT RELEASES A DAY IS THE CEILING, and the version
+ * test refuses a ninth rather than letting it wrap silently.
+ *
+ * The cost is readability: 0x07EA09E9 decomposes as 2026.9.233, not 2026.9.29.
+ * That is the trade for a number that actually changes when the version does.
+ */
 #define PLUG_NAME "Trance Gate"
 #define PLUG_MFR "graebe"
-#define PLUG_VERSION_HEX 0x00010100
-#define PLUG_VERSION_STR "1.1.0"
+#define PLUG_VERSION_HEX 0x07EA09E9
+#define PLUG_VERSION_STR "v2026.09.29.1"
 
 /* THE FOUR-CHARACTER IDS ARE THE PLUGIN'S IDENTITY and they are carried over
  * from the JUCE build deliberately: a host that catalogued this plugin
