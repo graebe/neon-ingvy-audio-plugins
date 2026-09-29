@@ -127,44 +127,96 @@ int main (void)
         .componentSubType = 'TrGt',
         .componentManufacturer = 'Grbe',
     };
-    AudioComponent comp = AudioComponentFindNext (NULL, &desc);
+    /*
+     * EVERY COMPONENT THAT CLAIMS THE TRIPLE, NOT JUST THE FIRST.
+     *
+     * AudioComponentFindNext is an iterator for a reason: more than one thing can
+     * answer to (aufx, TrGt, Grbe), and on a developer's machine something
+     * usually does. Those three values are the plugin's identity and deliberately
+     * never move, so every build it has ever had claims them -- and macOS's
+     * component registry outlives the files, so a bundle deleted minutes ago is
+     * still enumerated as a ghost that cannot be opened.
+     *
+     * Taking the first match meant this test ran against whatever the registry
+     * happened to list first. That is how it stayed green through the rename to
+     * NITranceGate while the OLD TranceGate.component was the one answering --
+     * passing against a binary with none of the new work in it.
+     *
+     * So the version is the discriminator. EXPECTED_AU_VERSION comes from the
+     * PLUG_VERSION_HEX this tree builds (tests/CMakeLists.txt reads it out of
+     * config.h), and the loop takes the component that actually IS this build,
+     * skipping ghosts and older installs rather than being derailed by them.
+     */
+    AudioComponent comp = NULL;
+#ifdef EXPECTED_AU_VERSION
+    int seen = 0;
+    UInt32 firstVersion = 0;
+    for (AudioComponent c = AudioComponentFindNext (NULL, &desc); c;
+         c = AudioComponentFindNext (c, &desc)) {
+        UInt32 v = 0;
+        AudioComponentGetVersion (c, &v);
+        if (!seen++) firstVersion = v;
+        if (v == (UInt32) EXPECTED_AU_VERSION) { comp = c; break; }
+    }
+    /*
+     * A GHOST IS NOT A FAILURE; A WORKING BUNDLE OF THE WRONG VERSION IS.
+     *
+     * macOS's component registry outlives the files it lists. A bundle deleted
+     * minutes ago is still enumerated, and `auval -a` says so in as many words --
+     * "Cannot open component: -1". The registrar is a launchd daemon and killing
+     * it does not clear that; the machine wants a rescan it only really does at
+     * login. So an unopenable entry says nothing about this tree and must not fail
+     * the build.
+     *
+     * A component that DOES open and is not this version is the opposite: that is
+     * a real older install answering to the same IDs, which is exactly the trap
+     * that kept this test green through the rename. So the two are told apart by
+     * trying to instantiate, and only the second is a failure.
+     */
+    if (seen && !comp) {
+        int anyOpened = 0;
+        UInt32 openedVersion = 0;
+        for (AudioComponent c = AudioComponentFindNext (NULL, &desc); c;
+             c = AudioComponentFindNext (c, &desc)) {
+            AudioUnit probe = NULL;
+            if (AudioComponentInstanceNew (c, &probe) == noErr && probe) {
+                anyOpened = 1;
+                AudioComponentGetVersion (c, &openedVersion);
+                AudioComponentInstanceDispose (probe);
+                break;
+            }
+        }
+        if (anyOpened) {
+            printf ("  FAIL: a working AU claims (aufx, TrGt, Grbe) at version "
+                    "0x%08X; this tree builds 0x%08X\n",
+                    (unsigned) openedVersion, (unsigned) EXPECTED_AU_VERSION);
+            printf ("        An older install is shadowing this build. Delete it:\n"
+                    "          rm -rf ~/Library/Audio/Plug-Ins/Components/TranceGate.component\n");
+            return 1;
+        }
+        printf ("  (skipped: %d stale registry entr%s for these IDs and no bundle "
+                "that opens.\n"
+                "   The first reports 0x%08X and cannot be instantiated -- macOS is "
+                "listing a\n"
+                "   deleted bundle. Log out and back in, or reboot, to make it "
+                "rescan.)\n",
+                seen, seen == 1 ? "y" : "ies", (unsigned) firstVersion);
+        return 0;
+    }
+    if (comp && seen > 1)
+        printf ("  note: %d components claim these IDs; using version 0x%08X\n",
+                seen, (unsigned) EXPECTED_AU_VERSION);
+#else
+    comp = AudioComponentFindNext (NULL, &desc);
+#endif
     if (!comp) {
         printf ("  (skipped: the Trance Gate AU is not installed)\n");
         return 0;
     }
 
-    /*
-     * AND IT IS THE BUNDLE WE JUST BUILT, NOT A STALE ONE WEARING THE SAME IDS.
-     *
-     * This test finds the component by type/subtype/manufacturer, which is the
-     * right way to find an AU and says NOTHING about which file on disk answered.
-     * Those three values are the plugin's identity and deliberately never move --
-     * so every build the plugin has ever had claims them, and a bundle left in
-     * ~/Library/Audio/Plug-Ins/Components from an older name still answers here.
-     *
-     * That is not hypothetical. Renaming the bundle to NITranceGate left the old
-     * TranceGate.component installed beside it, macOS registered the OLD one, and
-     * this test went on passing against a binary that had none of the new work in
-     * it. A green test measuring the wrong file is worse than a red one.
-     *
-     * The version is the discriminator: EXPECTED_AU_VERSION comes from the
-     * PLUG_VERSION_HEX that this tree builds (tests/CMakeLists.txt reads it out of
-     * config.h), so a shadowing bundle from any other version fails here with the
-     * two numbers side by side instead of quietly taking over.
-     */
-    UInt32 auVersion = 0;
-    AudioComponentGetVersion (comp, &auVersion);
 #ifdef EXPECTED_AU_VERSION
-    if (auVersion != (UInt32) EXPECTED_AU_VERSION) {
-        printf ("  FAIL: the AU that answered is version 0x%08X, this tree builds "
-                "0x%08X\n", (unsigned) auVersion, (unsigned) EXPECTED_AU_VERSION);
-        printf ("        Another bundle with the same IDs is shadowing it. The\n"
-                "        rename left the old name behind; delete it:\n"
-                "          rm -rf ~/Library/Audio/Plug-Ins/Components/TranceGate.component\n");
-        return 1;
-    }
-    printf ("  %-56s ok (0x%08X)\n", "the installed AU is the one this tree builds",
-            (unsigned) auVersion);
+    printf ("  %-56s ok (0x%08X)\n", "the AU under test is the one this tree builds",
+            (unsigned) EXPECTED_AU_VERSION);
 #endif
 
     AudioUnit au = NULL;
