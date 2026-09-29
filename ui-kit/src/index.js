@@ -32,6 +32,9 @@ export { Knob } from './components/Knob.jsx';
 export { Toggle } from './components/Toggle.jsx';
 export { Button } from './components/Button.jsx';
 export { Select } from './components/Select.jsx';
+/* Select chooses ONE and is a native <select> for the reasons in its header.
+ * This chooses several, and is the design system's own open-list shape. */
+export { CheckList } from './components/CheckList.jsx';
 export { Tabs } from './components/Tabs.jsx';
 export { Hint } from './components/Hint.jsx';
 
@@ -39,7 +42,7 @@ export { Hint } from './components/Hint.jsx';
  * the analysis, the wire format and what a column MEANS are the caller's, the
  * same seam every control here follows. */
 export { default as Spectrogram } from './components/Spectrogram.jsx';
-export { buildLut, readStops, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
+export { buildLut, readStops, readRgb, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
 
 export { startDrag } from './lib/drag.js';
 export {

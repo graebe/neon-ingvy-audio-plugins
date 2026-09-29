@@ -52,6 +52,47 @@ pixels. The gaps are interpolated rather than held flat, which keeps the picture
 smooth, but a 1-bar window at a fast tempo genuinely has less time resolution
 than a wide one. It is smoothed, not invented back.
 
+## Listening in on other tracks
+
+Put a **Listen-In** on the track you want to compare against and give it a name.
+The Spectrogram's **listen** picker then lists every bus that exists, by that
+name, and reading one costs nothing on the audio thread of either track.
+
+Up to three buses at once, plus the track the Spectrogram itself sits on. The
+picture shows **one channel at a time** — the dropdown beside the picker says
+which — because brightness is level here, and two spectrograms overlaid in two
+colours would make brightness mean two things at once. Switching is a click, and
+nothing is lost by switching: every selected source is analysed the whole time.
+
+All the sources share one analysis. They are fed the same audio, the same window
+and the same hop from a single pump, so column *k* of each is the same moment —
+which is what makes the clash below a real comparison rather than a coincidence
+between two clocks.
+
+A bus running at a **different sample rate is refused rather than drawn**: a
+different rate picks a different window and so a different group delay, and the
+two pictures would sit quietly offset from each other.
+
+## Show clash
+
+**Clash** marks, in orange over the picture, where the shown channel and the
+other selected sources are fighting for the same place in the spectrum. The
+intensity is how hard, and each region is outlined so a broad shallow clash and
+a narrow fierce one do not read as the same smudge.
+
+A cell is a clash when **both** sources are above −60 dB **and within 12 dB of
+each other**. Both halves matter:
+
+- `min` of the two answers *"is anything actually here from both"*.
+- The 12 dB window answers *"and is neither of them simply winning"*. Past that, the louder source masks the quieter one — that is a source being buried, which is not the same problem and would bury the real clashes in orange.
+
+It is deliberately **not** the product of the two spectra. A product in amplitude
+is a sum in dB, so 0 dB against −60 dB scores exactly what −30 dB against −30 dB
+scores, and only the second is a clash.
+
+With more than one bus selected, **vs** chooses whether the orange is every
+source at once or one of them on its own.
+
 ## The crosshair reads the picture
 
 Hover anywhere over it and a hairline each way follows the pointer, with the

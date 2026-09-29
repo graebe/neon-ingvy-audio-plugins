@@ -41,7 +41,7 @@
  * control in this kit follows.
  */
 import { onMount, onCleanup, createEffect, untrack, createSignal, Show } from 'solid-js';
-import { buildLut, stopCss } from '../lib/ramp.js';
+import { buildLut, readRgb, stopCss } from '../lib/ramp.js';
 
 export default function Spectrogram(props) {
   /* props: width, height (CSS px), cols (the history depth in columns),
@@ -89,6 +89,25 @@ export default function Spectrogram(props) {
   let sweep;
   let sweepCtx;
   let sweepLevels;
+  /*
+   * THE CLASH, ON ITS OWN LAYER AND IN ITS OWN COLOUR.
+   *
+   * It is not part of the picture, it is a reading OF the picture, so it is
+   * composited over rather than mixed in -- which also means the ramp
+   * underneath keeps meaning level, and the system's one-hue rule survives a
+   * second colour appearing on the canvas.
+   *
+   * Kept per view, like the picture, because the same cell is at a different x
+   * in each: the scrolling view is indexed by arrival and the sweep by slot.
+   */
+  let clashHist;
+  let clashHistCtx;
+  let clashSweep;
+  let clashSweepCtx;
+  let clashStrip;
+  /* The amber the overlay is drawn in, read back from the stylesheet exactly as
+   * the ramp's stops are -- no colour may be spelled in here. */
+  let clashRgb = [255, 176, 0];
   /* The last slot written, which is where the playhead goes, and the column
    * that was written there -- the gap filler interpolates from it. */
   let head = -1;
@@ -142,6 +161,19 @@ export default function Spectrogram(props) {
     sweep.height = bands;
     sweepCtx = sweep.getContext('2d', { alpha: false });
     sweepLevels = new Uint8Array(COLS() * bands);
+
+    clashHist = document.createElement('canvas');
+    clashHist.width = COLS();
+    clashHist.height = bands;
+    clashHistCtx = clashHist.getContext('2d');
+    clashSweep = document.createElement('canvas');
+    clashSweep.width = COLS();
+    clashSweep.height = bands;
+    clashSweepCtx = clashSweep.getContext('2d');
+    /* alpha:true on both, unlike the picture's -- a clash layer is mostly
+     * nothing, and the nothing has to let the picture through. */
+    clashStrip = clashHistCtx.createImageData(1, bands);
+
     headCol = new Uint8Array(bands);
     head = -1;
     setPlayhead(-1);
@@ -181,6 +213,49 @@ export default function Spectrogram(props) {
       px[row + 1] = lut[v + 1];
       px[row + 2] = lut[v + 2];
       px[row + 3] = 255;
+    }
+  };
+
+  /*
+   * ONE COLUMN OF CLASH, AS ORANGE OVER WHATEVER IS BEHIND IT.
+   *
+   * INTENSITY IS ALPHA, not a second ramp. The cell keeps the picture's own
+   * colour underneath and gains orange in proportion to how hard the two
+   * sources are fighting there, so a reader can still see WHAT is clashing
+   * rather than just that something is.
+   *
+   * AND THE EDGE IS DRAWN. A gradient alone has no boundary, so a broad shallow
+   * clash and a narrow fierce one look like the same smudge at a glance. A cell
+   * that is lit with a neighbour that is not gets full alpha, which gives the
+   * region an outline for free -- no second pass, no marching squares, and it
+   * costs one comparison per band.
+   */
+  const CLASH_EDGE = 12;   /* below this a cell is not "in" the region at all */
+
+  const fillClashStrip = (data, offset, prev) => {
+    const px = clashStrip.data;
+    const [r, g, b] = clashRgb;
+    for (let i = 0; i < bands; i++) {
+      const row = (bands - 1 - i) * 4;
+      const v = data[offset + i];
+      px[row] = r;
+      px[row + 1] = g;
+      px[row + 2] = b;
+
+      if (v < CLASH_EDGE) {
+        px[row + 3] = 0;
+        continue;
+      }
+      /* A neighbour outside the region -- above, below, or the column before --
+       * makes this cell an edge. */
+      const up = i + 1 < bands ? data[offset + i + 1] : 0;
+      const down = i > 0 ? data[offset + i - 1] : 0;
+      const back = prev ? prev[i] : 0;
+      const edge = up < CLASH_EDGE || down < CLASH_EDGE || back < CLASH_EDGE;
+      /* The gradient tops out short of opaque so the partial underneath stays
+       * readable through it; the outline does not, because an outline that can
+       * be seen through is not one. */
+      px[row + 3] = edge ? 255 : Math.round((v / 255) * 200);
     }
   };
 
@@ -233,6 +308,24 @@ export default function Spectrogram(props) {
     sweepLevels.set(data.subarray(offset, offset + bands), slot * bands);
     headCol.set(data.subarray(offset, offset + bands));
     head = slot;
+  };
+
+  /* The clash follows the picture: the same cursor, the same slot, so the two
+   * layers can never disagree about where a moment is. */
+  let clashPrev;
+  const writeClash = (data, offset, slot) => {
+    if (!clashHistCtx) return;
+    fillClashStrip(data, offset, clashPrev);
+    /* The scroll layer writes at the cursor the picture just left behind. */
+    const at = cursor === 0 ? COLS() - 1 : cursor - 1;
+    clashHistCtx.clearRect(at, 0, 1, bands);
+    clashHistCtx.putImageData(clashStrip, at, 0);
+    if (slot >= 0 && clashSweepCtx) {
+      clashSweepCtx.clearRect(slot, 0, 1, bands);
+      clashSweepCtx.putImageData(clashStrip, slot, 0);
+    }
+    if (!clashPrev || clashPrev.length !== bands) clashPrev = new Uint8Array(bands);
+    clashPrev.set(data.subarray(offset, offset + bands));
   };
 
   /*
@@ -367,6 +460,9 @@ export default function Spectrogram(props) {
      */
     if (isBars()) {
       viewCtx.drawImage(sweep, 0, 0, sweep.width, bands, 0, 0, w, h);
+      if (props.clash && clashSweep) {
+        viewCtx.drawImage(clashSweep, 0, 0, clashSweep.width, bands, 0, 0, w, h);
+      }
       return;
     }
     const cols = COLS();
@@ -378,10 +474,23 @@ export default function Spectrogram(props) {
       viewCtx.drawImage(hist, 0, 0, cursor, bands, (tail / cols) * w, 0,
                         (cursor / cols) * w, h);
     }
+    /* The overlay is rotated the same way, or the orange would sit over the
+     * wrong moment the instant the ring wrapped. */
+    if (props.clash && clashHist) {
+      viewCtx.drawImage(clashHist, cursor, 0, tail, bands, 0, 0, (tail / cols) * w, h);
+      if (cursor > 0) {
+        viewCtx.drawImage(clashHist, 0, 0, cursor, bands, (tail / cols) * w, 0,
+                          (cursor / cols) * w, h);
+      }
+    }
   });
 
   onMount(() => {
     lut = buildLut();
+    /* Read back rather than spelled: no colour may be written in here, and the
+     * token guard enforces it -- a runtime-built rgb() string would be caught
+     * too. stopCss's own trick, on a different custom property. */
+    clashRgb = readRgb('--amber') ?? clashRgb;
     setupHistory(props.batch?.bands || 256);
     setupView();
     window.addEventListener('resize', setupView);
@@ -425,6 +534,9 @@ export default function Spectrogram(props) {
          */
         writeColumn(batch.data, off);
         if (batch.slots) writeSweep(batch.data, off, batch.slots[c]);
+        /* The clash arrives on the same batch, already measured against the
+         * shown channel by the engine -- the editor never computes it. */
+        if (batch.clash) writeClash(batch.clash, off, batch.slots ? batch.slots[c] : -1);
       }
       /*
        * THE PLAYHEAD STOPS WITH THE PICTURE, and it has to.
@@ -496,6 +608,9 @@ export default function Spectrogram(props) {
     sweepCtx.fillRect(0, 0, sweep.width, sweep.height);
     levels.fill(0);
     sweepLevels.fill(0);
+    clashHistCtx.clearRect(0, 0, clashHist.width, clashHist.height);
+    clashSweepCtx.clearRect(0, 0, clashSweep.width, clashSweep.height);
+    clashPrev = null;
     cursor = 0;
     head = -1;
     setPlayhead(-1);

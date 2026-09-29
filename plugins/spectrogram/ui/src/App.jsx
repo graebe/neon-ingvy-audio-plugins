@@ -10,16 +10,17 @@
  * the scale below is drawn from the centre frequencies IT sends. A second copy of
  * the mapping here would look right for as long as nobody changed the first one.
  */
-import { createSignal, onMount, onCleanup } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 import { onMessage, sendMessage } from '@ultraviolet/ui';
 import { MSG } from './lib/msg.js';
 import {
   decodeColumns, decodeAxis, marksFor, RANGES,
   timeMarksFor, secondsAgo, dbForLevel, DB_FLOOR,
   decodeSync, slotForPpq, posForSlot, barMarksFor,
+  decodeSources, sourceName,
 } from './lib/columns.js';
 
-import { Hint, Button, Select, Toggle, Spectrogram } from '@ultraviolet/ui';
+import { Hint, Button, Select, Toggle, CheckList, Spectrogram } from '@ultraviolet/ui';
 
 /* Mirrored by PLUG_WIDTH in config.h and by `main` in app.css. */
 const DESIGN_W = 720;
@@ -39,6 +40,21 @@ const COLUMNS_PER_S = 47;
  * to see where a section's energy sits rather than where a hat lands.
  */
 const BARS = [1, 2, 4, 8, 16];
+/*
+ * Buses this window will read at once. Each is a whole analysis chain -- an
+ * 8192-point transform about 47 times a second -- and it is also about where a
+ * picture stops being worth switching between, so the cost and the legibility
+ * run out together. Mirrors SRECV_MAX_SOURCES - 1.
+ */
+const MAX_LISTEN = 3;
+/*
+ * WHAT COUNTS AS A CLASH: both sources above -60 dB, and within 12 dB of each
+ * other. The floor alone is not enough -- a product of two spectra is a SUM in
+ * dB, so 0 against -60 scores what -30 against -30 scores, and only the second
+ * is a clash. The window is what says "and neither of them is simply winning".
+ */
+const CLASH_FLOOR_DB = -60;
+const CLASH_BALANCE_DB = 12;
 
 export default function App() {
   const [batch, setBatch] = createSignal(null);
@@ -66,7 +82,26 @@ export default function App() {
   const [bars, setBars] = createSignal(false);
   const [barCount, setBarCount] = createSignal(2);   /* index into BARS */
   const [sync, setSync] = createSignal(null);
+  /*
+   * LISTEN-IN. `sources` is what the plugin found; `chosen` is which of those
+   * buses it is reading; `shown` is which single channel is on screen.
+   *
+   * ONE PICTURE AT A TIME, and that is a design decision rather than a
+   * shortcut. The ramp is the system's one hue and brightness is level -- two
+   * spectrograms overlaid in two hues would make brightness ambiguous, and four
+   * would be mud whatever the palette. So the checkboxes say which buses are
+   * CAPTURED and fed to the clash test, and clicking a name says which one is
+   * drawn. Comparing is a click, which is how an A/B is done anyway.
+   */
+  const [sources, setSources] = createSignal([]);
+  const [chosen, setChosen] = createSignal([]);
+  const [shown, setShown] = createSignal(0);
+  const [clashOn, setClashOn] = createSignal(false);
+  /* Which source the orange is measuring against: 0 is "all of them". */
+  const [clashAgainst, setClashAgainst] = createSignal(0);
   let lastSeen = 0;
+  /* The clash mask waiting for the column batch it belongs to. */
+  let pendingClash = null;
 
   /*
    * THE PAGE IS SCALED, NOT LAID OUT FLUIDLY, and it is the Trance Gate's
@@ -113,6 +148,13 @@ export default function App() {
            * real musical ground: stacking them on the current position would
            * put a third of a second of audio on one pixel.
            */
+          /*
+           * ONE MESSAGE IS ONE SOURCE, so a batch for a channel nobody is
+           * looking at is dropped here rather than drawn over the one they are.
+           * The clash for it still counts -- it arrives on its own tag below.
+           */
+          if (decoded.ch !== shown()) return;
+
           const t = sync();
           if (t) {
             const n = BARS[barCount()] ?? 4;
@@ -123,6 +165,13 @@ export default function App() {
             }
             decoded.slots = slots;
           }
+          /* Only if it is the same shape: a mask measured over a different
+           * number of columns belongs to a different tick. */
+          if (pendingClash && pendingClash.count === decoded.count
+              && pendingClash.bands === decoded.bands) {
+            decoded.clash = pendingClash.data;
+          }
+          pendingClash = null;
           setBatch(decoded);
         }
       } else if (tag === MSG.axis) {
@@ -130,6 +179,19 @@ export default function App() {
       } else if (tag === MSG.sync) {
         const t = decodeSync(text);
         if (t) setSync(t);
+      } else if (tag === MSG.sources) {
+        setSources(decodeSources(text));
+      } else if (tag === MSG.clashCols) {
+        /*
+         * The clash mask, already measured by the engine against the channel on
+         * screen. It rides the NEXT column batch rather than being drawn on its
+         * own, so the orange and the picture under it can never be a frame
+         * apart -- see the pairing in the batch effect below.
+         */
+        const m = decodeColumns(text);
+        if (!m) return;
+        if (clashAgainst() !== 0 && m.ch !== clashAgainst()) return;
+        pendingClash = m;
       }
     });
 
@@ -162,6 +224,37 @@ export default function App() {
    * fills. Only the repaint stops.
    */
   const togglePause = () => setPaused((p) => !p);
+
+  /*
+   * THE PICKER. Choosing buses tells the plugin what to open; it answers with
+   * the list, so a slot nobody is sending on stops showing as selected rather
+   * than sitting there looking chosen.
+   */
+  const chooseSources = (ids) => {
+    const next = ids.slice(0, MAX_LISTEN);
+    setChosen(next);
+    /* If the picture was showing a bus that has just been dropped, fall back to
+     * the own channel rather than drawing nothing. */
+    if (shown() > next.length) setShown(0);
+    setGeneration((g) => g + 1);
+    sendMessage(MSG.select, next.join(','));
+  };
+
+  const toggleClash = () => {
+    const on = !clashOn();
+    setClashOn(on);
+    if (on) sendMessage(MSG.clash, `${CLASH_FLOOR_DB}:${CLASH_BALANCE_DB}`);
+  };
+
+  /* Channel 0 is the own track; a chosen bus follows in the order it was
+   * picked, which is the order the plugin opened them in. */
+  const channelNames = () => [
+    'this track',
+    ...chosen().map((slot) => {
+      const src = sources().find((x) => x.slot === slot);
+      return src ? sourceName(src) : `Bus ${slot}`;
+    }),
+  ];
 
   /*
    * The zoom. The plugin re-bands the analysis and sends the new scale back
@@ -280,6 +373,54 @@ export default function App() {
         </div>
       </div>
 
+      {/*
+        * THE SOURCES GET THEIR OWN ROW. Eight controls do not fit 656px, and
+        * the split is the honest one anyway: the title row says HOW the picture
+        * is drawn -- range, bars, paused -- and this one says WHAT it is of.
+        */}
+      <div class="source-row">
+          {/* Which buses to read. Several, so it is a CheckList rather than a
+              Select -- see that component's header for why a native <select
+              multiple> is not an option inside a plugin WebView. */}
+          <CheckList
+            summary={chosen().length ? `${chosen().length} in` : 'listen'}
+            width={84}
+            emptyText="no Listen-In found"
+            selected={chosen()}
+            onChange={chooseSources}
+            options={sources().map((src) => ({
+              id: src.slot,
+              name: sourceName(src),
+              hint: src.live ? '' : 'idle',
+            }))}
+          />
+          {/* Which one is on screen. One picture at a time keeps brightness
+              meaning level; switching is a click. */}
+          <Select
+            options={channelNames()}
+            value={shown()}
+            onChange={setShown}
+            width={132}
+          />
+          <Button on={clashOn()} onClick={toggleClash}>Clash</Button>
+          {/*
+            * WHICH clash, and only once there is one to choose. "All" unions
+            * every source against this track, which is the mixing question --
+            * "what is fighting mine" -- and picking one isolates it when the
+            * union covers too much to read.
+            */}
+          <Show when={clashOn() && chosen().length > 1}>
+            <Select
+              label="vs"
+              labelWidth={20}
+              width={100}
+              options={['all', ...channelNames().slice(1)]}
+              value={clashAgainst()}
+              onChange={setClashAgainst}
+            />
+          </Show>
+      </div>
+
       <div class="display">
         <div class="scale">
           {marksFor(axis(), PICTURE_H).map((m) => (
@@ -299,6 +440,7 @@ export default function App() {
             paused={paused()}
             generation={generation()}
             view={bars() ? 'bars' : 'time'}
+            clash={clashOn()}
             onHover={setCursor}
           />
         </div>

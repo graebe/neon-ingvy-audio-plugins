@@ -120,7 +120,7 @@
  * app.css owns the arithmetic and states it in full.
  */
 #define PLUG_WIDTH 720
-#define PLUG_HEIGHT 458
+#define PLUG_HEIGHT 502
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 /* Nothing in the window grows with a value, so the host never has to resize

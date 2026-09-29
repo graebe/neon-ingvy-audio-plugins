@@ -21,7 +21,8 @@
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
 const BANDS = 256;
-const MSG_COLS = 64, MSG_AXIS = 65, MSG_SYNC = 66, MSG_RANGE = 96, MSG_READY = 102;
+const MSG_COLS = 64, MSG_AXIS = 65, MSG_SYNC = 66, MSG_SOURCES = 67,
+      MSG_CLASHCOLS = 68, MSG_RANGE = 96, MSG_SELECT = 97, MSG_READY = 102;
 
 /*
  * A FAKE TRANSPORT, so the bar view can be reviewed without a host.
@@ -101,6 +102,11 @@ window.IPlugSendMsg = (m) => {
    * actually delivers the axis, and the whole point of the handshake. */
   if (m?.msg === 'SAMFUI' && m.msgTag === MSG_READY) {
     globalThis.SAMFD?.(MSG_AXIS, 0, b64(axis()));
+    sendSources();
+  }
+  if (m?.msg === 'SAMFUI' && m.msgTag === MSG_SELECT) {
+    chosen = atob(m.data ?? '').split(',').filter(Boolean).map(Number);
+    sendSources();
   }
   /*
    * The range, the way the plugin handles it: re-band, then send the scale BACK
@@ -143,8 +149,59 @@ setInterval(() => {
   /* The clock FIRST and every tick, exactly as OnIdle sends it -- the editor
    * places the columns with the position it already has in hand. */
   sendSync(t);
-  globalThis.SAMFD?.(MSG_COLS, 0, b64(`${count}:${BANDS}:${hex}`));
+  globalThis.SAMFD?.(MSG_COLS, 0, b64(`0:${count}:${BANDS}:${hex}`));
+
+  /* Each chosen bus, on its own message -- one message is one source. The
+   * clash for it follows, tagged with the same channel. */
+  chosen.forEach((slot, i) => {
+    const ch = i + 1;
+    let bhex = '', chex = '';
+    for (let c = 0; c < count; c++) {
+      bhex += busColumn();
+      chex += clashColumn(hex.slice(c * BANDS * 2, (c + 1) * BANDS * 2));
+    }
+    globalThis.SAMFD?.(MSG_COLS, 0, b64(`${ch}:${count}:${BANDS}:${bhex}`));
+    globalThis.SAMFD?.(MSG_CLASHCOLS, 0, b64(`${ch}:${count}:${BANDS}:${chex}`));
+  });
 }, 16);
+
+/*
+ * TWO FAKE LISTEN-INs, and a second source drawn to overlap the first in a
+ * KNOWN band range -- bands 80..120 -- so a review (and a headless probe) can
+ * assert the orange lands there and nowhere else.
+ */
+const SOURCES = [
+  { slot: 1, live: 1, rate: 48000, label: 'Bass' },
+  { slot: 4, live: 1, rate: 48000, label: 'Pad' },
+];
+const CLASH_LO = 80, CLASH_HI = 120;
+let chosen = [];
+
+const sendSources = () => globalThis.SAMFD?.(MSG_SOURCES, 0,
+  b64(SOURCES.map((s) => `${s.slot}:${s.live}:${s.rate}:${s.label}`).join('\n')));
+
+/* A bus's column: loud only inside the overlap window, so what clashes is
+ * decided by this file rather than by whatever the sweep happens to do. */
+const busColumn = () => {
+  let hex = '';
+  for (let b = 0; b < BANDS; b++) {
+    const inside = b >= CLASH_LO && b <= CLASH_HI;
+    hex += H(inside ? 210 : 4);
+  }
+  return hex;
+};
+
+/* The mask the plugin would have measured: both loud and level across the
+ * window, nothing outside it. */
+const clashColumn = (own) => {
+  let hex = '';
+  for (let b = 0; b < BANDS; b++) {
+    const inside = b >= CLASH_LO && b <= CLASH_HI;
+    const ownByte = parseInt(own.slice(b * 2, b * 2 + 2), 16);
+    hex += H(inside && ownByte > 120 ? 230 : 0);
+  }
+  return hex;
+};
 
 /* One column is 1/47 s, which at this tempo is this many beats. */
 const ppqPerCol = (1 / 47) * (BPM / 60);
@@ -216,6 +273,31 @@ if (hover) {
  * playhead and the bar grid can be screenshotted. N is the VALUE (1/2/4/8/16),
  * not the dropdown index -- a review flag should say what it means.
  */
+/*
+ * ?listen selects both fake buses and turns the clash on, so the overlay can be
+ * screenshotted and asserted. ?show=N picks which channel is drawn.
+ */
+if (location.search.includes('listen')) {
+  setTimeout(() => {
+    const face = document.querySelector('.checklist-face');
+    face?.click();
+    /* Every row, and the panel has to be OPEN for them to exist -- the rows are
+     * rendered by a Show, not hidden by CSS. */
+    document.querySelectorAll('.checklist-row [role="switch"]').forEach((sw) => sw.click());
+    face?.click();
+    const shown = /show=(\d+)/.exec(location.search);
+    if (shown) {
+      /* The channel picker is the select in the SOURCE row, not the nth select
+       * in the window -- that ordering moved once already when the row split. */
+      const sel = document.querySelector('.source-row .select select');
+      if (sel) { sel.value = shown[1]; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+    if (!location.search.includes('noclash')) {
+      [...document.querySelectorAll('.btn')].find((b) => b.textContent === 'Clash')?.click();
+    }
+  }, 1400);
+}
+
 const wantedBars = /bars=(\d+)/.exec(location.search);
 if (wantedBars) {
   setTimeout(() => {

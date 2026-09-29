@@ -322,3 +322,46 @@ export function barMarksFor(bars, num, denom, width) {
   }
   return out;
 }
+
+/* --------------------------------------------------------------- sources --
+ *
+ * The buses that exist, as the plugin found them. A receiver's picker is built
+ * from this and nothing else: the plugin probes, the editor lists.
+ */
+
+/**
+ * "<slot>:<live>:<rate>:<label>" per line -> `[{slot, live, rate, label}]`.
+ *
+ * A line that cannot be read is SKIPPED rather than failing the list. A label
+ * is whatever somebody typed into a Listen-In, so it is the field most likely
+ * to arrive strangely -- and a picker missing one entry is a far better outcome
+ * than a picker that is empty because of it.
+ */
+export function decodeSources(text) {
+  if (typeof text !== 'string') return [];
+  const out = [];
+  for (const line of text.split('\n')) {
+    if (!line) continue;
+    const p = line.split(':');
+    if (p.length < 4) continue;
+    const slot = Number.parseInt(p[0], 10);
+    const rate = Number.parseInt(p[2], 10);
+    if (!Number.isInteger(slot) || slot < 1) continue;
+    out.push({
+      slot,
+      live: p[1] === '1',
+      rate: Number.isInteger(rate) ? rate : 0,
+      /* The label may hold a colon only if the sender let one through; it does
+       * not, so anything after the fourth field is part of the name. */
+      label: p.slice(3).join(':'),
+    });
+  }
+  return out;
+}
+
+/**
+ * What to call a source in the picker. A Listen-In with no name typed into it
+ * is still a bus somebody inserted, so it gets its number rather than a blank.
+ */
+export const sourceName = (s) =>
+  (s && s.label ? s.label : `Bus ${s ? s.slot : '?'}`);

@@ -20,7 +20,18 @@ export const MSG = {
    * bar window is a layout decision and belongs on this side.
    */
   sync: 66,
+  /* <- plugin: "<slot>:<live>:<rate>:<label>" a line -- every bus that exists.
+   * Sent on a slow timer and on ready: a Listen-In appears when somebody
+   * inserts one, which is a human-speed event. */
+  sources: 67,
+  /* <- plugin: the clash mask, in the same shape as a column batch, tagged with
+   * the source it was measured against the own channel. */
+  clashCols: 68,
   range: 96,  /* -> plugin: "<f_min>:<f_max>" -- the zoom */
+  /* -> plugin: "<slot>,<slot>,..." -- which buses to listen in on, in order. */
+  select: 97,
+  /* -> plugin: "<floor_db>:<balance_db>" -- what counts as a clash. */
+  clash: 98,
   /*
    * "I AM LISTENING", and it has to exist because the plugin's push on open
    * CANNOT be heard.
