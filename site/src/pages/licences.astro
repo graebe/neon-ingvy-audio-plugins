@@ -1,0 +1,68 @@
+---
+/*
+ * Not decoration. The OFL requires its text to travel with the font, and
+ * THIRD_PARTY_LICENSES.md states that it does in every bundle -- this site
+ * serves the font, so this site is a bundle and owes the notice.
+ */
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/paths.js';
+---
+<Base title="Licences" description="MIT throughout, and the third-party notices that travel with it.">
+  <p class="eyebrow">Licences</p>
+  <h1>MIT, with nothing copyleft in the chain</h1>
+
+  <div class="prose">
+    <p>
+      Everything in this repository is <strong>MIT</strong>, © 2026 Torben Gräber.
+      The full notices the dependencies require are in
+      <a href="https://github.com/graebe/vst-library/blob/main/THIRD_PARTY_LICENSES.md">THIRD_PARTY_LICENSES.md</a>;
+      what follows is the shape of it.
+    </p>
+
+    <table>
+      <tbody>
+        <tr><td>this repository</td><td><strong>MIT</strong></td></tr>
+        <tr><td><a href="https://github.com/iPlug2/iPlug2">iPlug2</a></td><td><strong>zlib</strong>, with WDL/NanoVG/NanoSVG (Zlib) and MetalNanoVG/RTAudio (MIT)</td></tr>
+        <tr><td>VST3 SDK</td><td><strong>MIT</strong>, © 2026 Steinberg Media Technologies GmbH</td></tr>
+        <tr><td>CLAP</td><td><strong>MIT</strong></td></tr>
+        <tr><td>the engines</td><td><strong>MIT</strong>, and they have <em>no external crates at all</em> — the FFT is ninety lines rather than a dependency</td></tr>
+        <tr><td>JetBrains Mono</td><td><strong>SIL OFL 1.1</strong> — <a href={url('fonts/OFL.txt')}>OFL.txt</a>, served beside the font as the licence asks</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Two things had to go to get here</h2>
+
+    <p>
+      Neither was a licensing decision on its own.
+    </p>
+
+    <p>
+      <strong>JUCE 8 is AGPLv3-or-commercial</strong> — a <em>stronger</em>
+      obligation than GPL, not an equal one: while that target shipped, the
+      artefact had to be conveyed under AGPLv3. It is gone, and so is the
+      2,586-line editor it drew. That editor is not lost; it is the last commit
+      before the removal, and whatever draws the UI next is a translation of it
+      rather than a fresh design.
+    </p>
+
+    <p>
+      <strong>nih-plug is ISC, but <code>nih_export_vst3!()</code> is not.</strong>
+      It pulled in <a href="https://github.com/RustAudio/vst3-sys">vst3-sys</a>,
+      GPL-3.0-or-later — a third-party reimplementation of interfaces Steinberg
+      now publishes under MIT themselves. One crate, and it made the whole build
+      copyleft.
+    </p>
+
+    <p>
+      The premise behind both was that a VST3 plugin cannot be permissive. It
+      can: Steinberg withdrew the GPL-or-proprietary dual licence and the SDK is
+      MIT. That was worth checking rather than assuming, and checking it is what
+      made this repository MIT.
+    </p>
+  </div>
+</Base>
+
+<style>
+  .eyebrow { display: block; margin-bottom: var(--s3); }
+  h1 { margin-bottom: var(--s6); }
+</style>

@@ -89,8 +89,20 @@ jobs:
       # nothing else; anything else is stable and must ALSO update the
       # top-level version/download_url, because a manager that predates
       # channels reads only those and would otherwise be pinned forever.
+      # THIS STEP RUNS AFTER THE RELEASE IS PUBLISHED, and it is the one that
+      # can leave a release the catalog cannot see: the tarball is attached but
+      # release.json still names the previous version, so Schwung Manager keeps
+      # offering the old one and nothing looks broken.
+      #
+      # It pushes to main, which the Schwung host repo learned the hard way is
+      # not always allowed -- its own release.yml carries the note "main is
+      # branch-protected; a bot push is rejected GH006 and would fail the whole
+      # release". If that ever becomes true here, this step goes red and the
+      # message below says exactly what to do by hand.
       - name: Commit release.json
         run: |
+          set -e
+          trap 'echo "::error::release.json was NOT updated. The release is published but the catalog will keep offering the previous version. Fix by hand: set version and download_url in release.json on main to ${GITHUB_REF_NAME}, commit, push. If this failed with GH006, main is branch-protected against bot pushes."' ERR
           VERSION="${GITHUB_REF_NAME#trance-gate-v}"
           URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/trance-gate-module.tar.gz"
           case "$VERSION" in

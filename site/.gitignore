@@ -1,0 +1,5 @@
+dist/
+public/fonts/
+public/media/
+public/harness/
+.astro/

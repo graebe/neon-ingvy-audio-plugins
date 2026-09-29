@@ -1,0 +1,101 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Media from '../components/Media.astro';
+import { url } from '../lib/paths.js';
+
+const plugins = (await getCollection('plugins')).sort(
+  (a, b) => a.data.order - b.data.order,
+);
+const lead = plugins[0];
+---
+<Base>
+  <section class="hero">
+    <p class="eyebrow">Audio plugins · Ableton Live and Ableton Move</p>
+    <h1>One engine per product, and two shells around it.</h1>
+    <p class="lede">
+      Every product here ships twice: as a macOS plugin for a DAW, and — where it
+      makes sense on a device with 32 pads and no screen — as a
+      <a href="https://github.com/charlesvestal/schwung">Schwung</a> module for the
+      Ableton Move. The DSP is one Rust crate either way.
+    </p>
+    <p class="lede">
+      That is not a claim about discipline. The two wrappers are members of one
+      Cargo workspace and both reach the core by relative path, so they cannot
+      drift apart — and <code>tests/render_plugin.c</code> renders four seconds
+      through the plugin's own audio path and checks it byte for byte against the
+      module's reference render.
+    </p>
+  </section>
+
+  {lead && (
+    <Media
+      still={lead.data.still}
+      alt={`The ${lead.data.title} editor`}
+      caption={`${lead.data.title} — the Live editor. The ring is the pattern, and it is the same picture the Move draws.`}
+    />
+  )}
+
+  <section class="products">
+    <h2>The products</h2>
+    <div class="grid">
+      {plugins.map((p) => (
+        <a class="card" href={url(`plugins/${p.id}/`)}>
+          <span class="name">{p.data.title}</span>
+          <span class="tag">{p.data.tagline}</span>
+          <span class="hosts">
+            {p.data.hosts.includes('live') && <em>Live</em>}
+            {p.data.hosts.includes('move') && <em>Move</em>}
+          </span>
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <section class="more">
+    <h2>How it is built</h2>
+    <p class="lede">
+      The repository structure, the Rust core and its C ABI, the iPlug2 glue, the
+      WebView editor, and both release paths are on the
+      <a href={url('tech/')}>Tech page</a>.
+    </p>
+  </section>
+</Base>
+
+<style>
+  .hero h1 { margin-bottom: var(--s4); max-width: 22ch; }
+  .hero .lede + .lede { margin-top: var(--s4); }
+  .eyebrow { display: block; margin-bottom: var(--s3); }
+  section + section,
+  :global(figure) + section { margin-top: var(--s8); }
+  h2 { margin-bottom: var(--s4); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: var(--s3);
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    padding: var(--s4);
+    background: var(--bg-100);
+    border: var(--hair) solid var(--line-100);
+    border-radius: var(--radius-1);
+  }
+  .card:hover { border-color: var(--uv-deep); box-shadow: 0 0 0 1px var(--uv-glow); }
+  .name { color: var(--ink); font-size: var(--doc-h3); font-weight: 500; }
+  .card:hover .name { color: var(--uv); }
+  .tag { color: var(--ink-muted); font-size: var(--doc-small); }
+  .hosts { display: flex; gap: var(--s2); margin-top: var(--s1); }
+  .hosts em {
+    font-style: normal;
+    color: var(--ink-dim);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    border: var(--hair) solid var(--line-200);
+    border-radius: var(--radius-1);
+    padding: 1px var(--s2);
+  }
+</style>

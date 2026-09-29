@@ -64,17 +64,23 @@ and a licence table with no exceptions in it is worth keeping.
 
 **JetBrains Mono** (© 2020 The JetBrains Mono Project Authors, **SIL Open Font
 License 1.1**), `Regular` and `Medium`. It is the design system's one typeface
-and both editors bundle it:
+and everything that draws the design system bundles it:
 
 | bundle | path inside it |
 |---|---|
 | `TranceGate.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
 | `Spectrogram.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
+| the documentation site | `/vst-library/fonts/` |
 
 **The OFL requires its text to travel beside the font**, so `OFL.txt` sits in
-each `fonts/` directory and is globbed into every bundle by each plugin's
-CMakeLists -- a font copied without it is the one licence mistake this
-repository can make by forgetting a file rather than by choosing a dependency.
+each `fonts/` directory -- globbed into every plugin bundle by each plugin's
+CMakeLists, and copied into the site's by `site/scripts/stage-assets.mjs`, which
+fails the build if it is not there. A font copied without it is the one licence
+mistake this repository can make by forgetting a file rather than by choosing a
+dependency.
+
+A site that serves the font is a bundle like any other. It is listed here
+because it is easy not to think of it as one.
 It is permissive and GPL-compatible.
 
 This section previously read "none at present": the font had gone with the JUCE
@@ -82,9 +88,8 @@ editor and came back with the WebView one without the note following it.
 
 ## The engines
 
-`tg-core`, `tg-capi`, `tg-move` from
-[schwung-trance-gate](https://github.com/graebe/schwung-trance-gate),
-© 2026 Torben Gräber. They have no dependencies of their own.
+`tg-core`, `tg-capi`, `tg-move` and `spectro-core`, `spectro-capi`, in
+`engines/`, © 2026 Torben Gräber. They have no dependencies of their own.
 
 They were relicensed from MIT to GPL-3.0-or-later when this build moved to
 nih-plug, and back to **MIT** once the premise behind that turned out to be

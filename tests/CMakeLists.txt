@@ -106,11 +106,24 @@ if (TG_NODE)
     add_test(NAME versions
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
 
-    # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit and both
-    # editors -- where there used to be one per plugin, each blind to the other.
+    # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
+    # editors and the documentation site -- where there used to be one per
+    # plugin, each blind to the other.
     add_test(NAME ui_tokens
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/ui-kit/test/tokens.test.mjs)
+
+    # THE SITE'S OWN RENDER A/B. It is served from /vst-library/, so a
+    # hand-written href="/tech/" works in every local preview -- astro applies
+    # the base there too -- and 404s only once deployed, only for whoever clicks
+    # it. This walks the built HTML instead of trusting that nobody did it.
+    #
+    # It needs site/dist, which `npm run build --workspace site` produces; with
+    # no build present it says so and skips rather than failing a C++ developer's
+    # ctest run.
+    add_test(NAME site_links
+             COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/site/scripts/check-links.mjs)
+    set_tests_properties(site_links PROPERTIES SKIP_RETURN_CODE 2)
 else()
     message(STATUS "node not found -- skipping the UI's tests (curves, envelope, tokens)")
 endif()

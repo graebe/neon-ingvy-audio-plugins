@@ -5,8 +5,8 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 
 | product | ships as | engine |
 |---|---|---|
-| [Trance Gate](#trance-gate) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
-| [Spectrogram](#spectrogram) | VST3 · AU · CLAP | `engines/spectro` |
+| [Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
+| [Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
 
 ## How it is put together
 
@@ -27,6 +27,8 @@ engines/<product>/crates     the core, and its wrappers
 plugins/<product>/           the VST3/AU/CLAP shell, and its editor
 modules/<product>/           the Schwung module's shell and packaging
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
+site/                        the documentation site, from this repo's own Markdown
+docs/tech/                   how it is built, in prose
 design/files/                the Ultraviolet design system, vendored
 versions.json                one version per product
 ```
@@ -38,7 +40,7 @@ git submodule update --init --recursive   # iPlug2. The engines are subtrees.
 npm ci                                    # the kit and both editors
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build                       # the macOS plugins, universal
-ctest --test-dir build                    # 16 tests
+ctest --test-dir build                    # 17 tests
 ```
 
 The Move module is the second target, and it is a Linux cross-build in Docker:
@@ -122,105 +124,17 @@ It is report-only for now — the plugin shells are exempt because what is left 
 them after `Wire.cpp` was lifted out is calls into iPlug2 that only `tg_au` can
 exercise. `"enforcing": true` makes a shortfall fail.
 
-## Trance Gate
+## The products
 
-A tempo-locked step gate: rhythmic chopping locked to song position, per-step
-ADSR, ties, per-step amount, 8 pattern slots. VST3 / AU / Standalone,
-universal binary.
+Each product's manual lives with it, and this site renders those same files:
 
-**It is the same engine as the Move module**, and that is asserted rather than
-claimed: `tests/render_plugin.c` renders through the plugin's own audio path —
-float, split channels, a DAW-shaped transport — and the result is
-byte-for-byte identical to the module's reference render.
+| | |
+|---|---|
+| [Trance Gate](plugins/trance-gate/README.md) | a tempo-locked step gate — [in Live](plugins/trance-gate/docs/live.md), [on the Move](plugins/trance-gate/docs/schwung.md) |
+| [Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
 
-### Patch interchange
-
-The plugin's saved state **is** the Move patch, verbatim. `Copy patch` puts it
-on the clipboard; `Paste patch` reads one back. The same string moves a
-pattern between the hardware and the DAW in either direction.
-
-### Editing
-
-Click a step to toggle it, shift-click for a tie, drag up/down on a step to set
-its amount. The ring mirrors the Move display, playhead included.
-
-### No automation in v1
-
-Pattern, slots and macros live in the saved state and are edited here, the same
-model the Move module uses. Exposing steps as host parameters means 32 × 8 =
-520 of them, or 64 that get silently rewritten on every slot change — a
-decision worth making with the thing in front of you rather than on paper.
-
-## Spectrogram
-
-A rolling spectrogram: log frequency from **10 Hz to 20 kHz** on the vertical,
-256 bands — about two per semitone — time scrolling right to left, **thirteen
-seconds** of history. Audio passes through **bit for bit**: it is an analyzer,
-and its whole output is the picture. VST3 / AU / CLAP, universal binary.
-
-**Pause holds the view, not the analysis.** The columns keep arriving and keep
-filling the history behind the frozen picture, so letting go shows a view that
-is already current — with the paused seconds *in* it, scrolled past, rather than
-cut out of it. The plugin is never told; it is a repaint gate in the editor.
-
-**A range dropdown zooms** — Full 10 Hz – 20 kHz, Sub 10 – 200 Hz, Bass
-40 – 800 Hz, Mid 200 Hz – 4 kHz, High 2 – 20 kHz, overlapping on purpose. All
-256 bands spread over whatever is chosen. It does **not** add bins: the window
-is what decides those. What it does is give the ones that exist the whole
-height — in Sub, ~33 bins crowded into the bottom 40 pixels become ~33 bins at 8
-pixels each, which is what makes 50 Hz and 60 Hz two visibly different rows.
-Higher up there are several bins to a band already and the zoom is detail in the
-ordinary sense.
-
-Changing it while audio runs takes no lock and allocates nothing:
-`spectro_set_range` stores a request, the audio thread rebuilds its own band
-table at the next frame, and columns measured against the old range are dropped
-rather than drawn under the new scale.
-
-**No parameters**, and that is a statement rather than an omission: nothing about
-it changes what comes out — Pause included, which is a property of the picture
-and not of the audio. Range and Speed will be ordinary host parameters when they
-arrive.
-
-### 10 Hz is a window length, not a setting
-
-An FFT's bins are `sample_rate / fft_size` apart, and an axis cannot start below
-its first bin — so "start at 10 Hz" fixes the window at 8192 points at 48 kHz
-(bins 5.9 Hz apart), and 16384 at 96 kHz. The engine picks it from the rate
-rather than carrying a constant; `spectro_pick_fft_size` is that rule, and the
-hop beside it is tied to a **column rate** instead of to the window, so the
-picture holds the same thirteen seconds whatever the session runs at.
-
-This was worth learning the hard way: the first version asked for 20 Hz with a
-1024-point window, and the axis was silently clamped up to **47 Hz** — a
-spectrogram starting an octave high still looks like a spectrogram. `ctest -R
-spectro_columns` now fails if the axis does not start where it was asked to.
-
-The cost is time resolution: a 171 ms window smears a transient across a sixth
-of a second. That is what a long window *is*, not a defect — the way out is a
-multi-resolution analysis, not a shorter window. And below about 35 Hz there are
-only a handful of bins, so the bottom two octaves read as bands of repeated
-value: that is what the analysis actually knows.
-
-The colour is the Ultraviolet design system's, extended in one documented place.
-The system's rule is that its saturated violet is never a fill — it is the halo
-around a near-white core — which a field of light cannot obey literally. So the
-rule is honoured spatially instead: quiet is the ground, loud is the near-white
-core, and the violet is the falloff between them. Look at one bright partial and
-you are looking at exactly the system's white core in a violet halo, drawn in
-pixels rather than in a box-shadow. The five stops are `--spec-0..4` in
-`ui/src/uv.css` and nowhere else, and `ctest -R spectro_ramp` fails if the ramp
-ever dips in luminance — a ramp that dips is a picture that lies about level.
-
-### Where the FFT runs
-
-On the **audio thread**, as each hop completes, with finished columns going into
-a lock-free ring the editor drains at 60 Hz. Transforming on the message thread
-instead would make the picture's time axis stretch and squeeze with the host's UI
-load; here the columns are produced by the audio clock, and the only thing UI
-jitter can do is make several arrive at once. Nothing allocates after
-`spectro_configure`, and a counting allocator in `engines/spectro` fails the
-build if that stops being true.
+Published at **https://graebe.github.io/vst-library/**, built from this
+repository's own Markdown — see [site/README.md](site/README.md).
 
 ## Licence
 
@@ -233,7 +147,7 @@ chain.
 | [iPlug2](https://github.com/iPlug2/iPlug2) | **zlib**, with WDL/NanoVG/NanoSVG (Zlib) and MetalNanoVG/RTAudio (MIT) |
 | VST3 SDK | **MIT**, © 2026 Steinberg Media Technologies GmbH |
 | CLAP | **MIT** |
-| [the Trance Gate engine](https://github.com/graebe/schwung-trance-gate) | **MIT**, and it has no external crates at all |
+| the Trance Gate engine (`engines/trance-gate`) | **MIT**, and it has no external crates at all |
 | the Spectrogram analyzer (`engines/spectro`) | **MIT**, and it has none either — the FFT is ninety lines rather than a crate |
 | JetBrains Mono, bundled with both editors | **SIL OFL 1.1**, with `OFL.txt` beside the font in every bundle |
 

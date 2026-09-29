@@ -1,0 +1,98 @@
+---
+title: Architecture
+order: 2
+slug: architecture
+---
+
+Four layers, and each one exists because the layer above it cannot do the job.
+
+```
+Rust core        the DSP. No dependencies at all.
+  ├── C ABI      extern "C", for the plugin
+  └── Schwung    the audio_fx vtable, for the Move
+C++ glue         iPlug2 — the VST3/AU/CLAP shell and the host plumbing
+Solid editor     a WebView, drawing the Ultraviolet design system
+```
+
+## The Rust core
+
+One Cargo workspace at the repository root, and **zero external crates** — every
+`[dependencies]` entry in it is a `path` to a sibling inside the same engine.
+That is not asceticism; it is what makes the licence audit finish in one
+sitting, and it is why both engines compile for an aarch64 Linux device and a
+universal macOS bundle without a cross-compilation story.
+
+`[profile.release]` sets `panic = "abort"`, and that one is load-bearing rather
+than a size tweak: unwinding out of an `extern "C"` function into a C or C++
+host is undefined behaviour. Aborting also removes the landing pads, which
+matters for a module that ships to a device.
+
+## The C ABI
+
+`tg-capi` exposes fourteen `extern "C"` symbols — byte for byte the surface the
+original C engine exported. That was a deliberate constraint when the DSP was
+ported to Rust: keeping the ABI identical meant 1,510 lines of existing C tests
+relinked against the new engine rather than being rewritten, so the port was
+checked by tests that had never seen Rust.
+
+The headers in `engines/*/include/` are hand-written rather than generated,
+which is a real risk — a hand-written header can drift from the Rust side
+without either one failing to compile. `tests/spectro_columns.c` exists
+specifically to exercise that boundary: argument order, the meaning of `bands`,
+and who owns the output buffer.
+
+## The C++ glue
+
+`cmake/RustToolchain.cmake` finds cargo — across every layout rustup.rs,
+Homebrew and a bare toolchain use — and the engine files
+(`cmake/TranceGateEngine.cmake`, `cmake/SpectroEngine.cmake`) do the same three
+steps for each engine:
+
+1. `cargo build --release -p <capi> --target aarch64-apple-darwin --target x86_64-apple-darwin`
+2. `lipo -create` the two static-library slices into one universal `.a`
+3. expose it as a CMake `INTERFACE` library the plugin target links
+
+The cargo step is wrapped in a target that **always runs**, deliberately: cargo
+is the dependency scanner here, not CMake. The `copy_if_different` after `lipo`
+is what stops an unchanged engine from relinking three plugin formats.
+
+`iplug_add_plugin(... FORMATS VST3 CLAP AU UI WEBVIEW ...)` produces the
+bundles. There is no Standalone target: its `main()` and preferences dialog
+reference menu and combo-box resource IDs that only exist for an IGraphics UI,
+and this editor is a WebView.
+
+## The editor
+
+Solid and Vite, built into `plugins/<product>/resources/web` and globbed into
+the bundle as web resources. Everything is inlined into a single `index.html` —
+`assetsInlineLimit` is set absurdly high on purpose — because **a WKWebView over
+a custom scheme is not a web server**, and a second request would simply not
+arrive.
+
+CMake runs vite at configure time *and* at build time. Configure-only shipped
+stale bundles, and a stale editor looks exactly like a broken one.
+
+The editor and the plugin talk over numbered message tags rather than through
+parameters, which is what lets the Trance Gate's pattern travel as the engine's
+own state blob — the same text the Move module writes.
+
+## One engine, two shells, and a test that says so
+
+`tg-capi` and `tg-move` are members of the same workspace and both reach
+`tg-core` by relative path. They cannot drift apart — not by policy, by
+construction.
+
+`tests/render_plugin.c` then proves it after the fact. It sets the identical
+patch the module's reference render uses, generates four seconds of a 220 Hz
+sine **quantised to int16 before gating** (the Move hands the module an int16
+buffer; without the quantisation the test would be measuring rounding rather
+than the port), and drives the plugin's own audio path — `tg_core_process_f32_split`
+in 128-sample blocks against a DAW-shaped transport at 123 BPM. The result is
+hashed and compared to a golden constant.
+
+The two sides hash differently on purpose — FNV-1a over float-split output here,
+md5 over int16-interleaved output there — and both goldens are re-recorded
+together whenever the sound legitimately moves. The last time it moved, the
+cause was tracked down to FMA contraction and *verified*: C with clang's default
+gave one hash, C with `-ffp-contract=off` gave another, and Rust agreed with the
+second.

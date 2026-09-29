@@ -1,7 +1,9 @@
 # Trance Gate
 
-A tempo-locked step gate for [Schwung](https://github.com/charlesvestal/schwung)
-on Ableton Move, modelled on the Kilohearts Trance Gate.
+The DSP behind the Trance Gate, in both of its shells. `tg-core` is the engine;
+`tg-capi` wraps it in a C ABI for the Ableton Live plugin and `tg-move` wraps it
+in Schwung's `audio_fx` vtable for the Ableton Move. Modelled on the Kilohearts
+Trance Gate.
 
 - 8 pattern slots, length 1–32 steps, ties between steps
 - Resolution as a musical division (1/1 … 1/64, incl. triplets)
@@ -18,23 +20,18 @@ Chain `audio_fx` component.
 
 ## Install
 
-Open the Web Manager on your Move — `http://move.local:7700` — go to
-**Modules**, and install from the GitHub URL:
-
-```
-graebe/schwung-trance-gate
-```
-
-It installs to `modules/audio_fx/trance-gate/`; add it to a chain slot as an
-Audio FX. **Nothing else is required** — it runs on released Schwung
-(1.3.0 or newer).
+Both shells are built and released from this repository — see the
+[Trance Gate documentation](../../plugins/trance-gate/README.md) for the plugin
+and the module.
 
 ## Build from source
 
+From the repository root:
+
 ```bash
-./scripts/build.sh          # cross-compiles via Docker -> dist/
-./scripts/install.sh        # scp to ableton@move.local
-./tests/run.sh              # DSP + UI tests, no device needed
+cmake --build build --target schwung    # cross-compiles via Docker -> dist/
+./modules/trance-gate/install.sh        # scp to ableton@move.local
+ctest --test-dir build -R tg_           # the engine's tests, no device needed
 ```
 
 ## Releasing
@@ -43,12 +40,14 @@ Tagging is what publishes, and the **tag picks the channel**: a version
 containing `-beta.` updates `channels.beta`, anything else updates
 `channels.stable` and the top-level fields a channels-unaware manager reads.
 
-`src/module.json` and the tag must carry the same version — the workflow fails
-the build if they disagree, before it builds anything.
+`versions.json` decides the version and `modules/trance-gate/module.json` must
+agree with it — the workflow fails the build if the tag disagrees with either,
+before it builds anything. The tag names the product, because this repository
+releases more than one.
 
 ```bash
-git tag v1.0.0        && git push origin v1.0.0          # stable, from main
-git tag v1.1.0-beta.1 && git push origin v1.1.0-beta.1   # beta, from the beta branch
+git tag trance-gate-v1.0.0        && git push origin trance-gate-v1.0.0
+git tag trance-gate-v1.1.0-beta.1 && git push origin trance-gate-v1.1.0-beta.1
 ```
 
 A beta is only offered when it is strictly newer than stable.

@@ -1,0 +1,17 @@
+---
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/paths.js';
+---
+<Base title="Not found">
+  <p class="eyebrow">404</p>
+  <h1>That page is not here.</h1>
+  <p class="lede">
+    Try <a href={url()}>the products</a>, or the
+    <a href={url('tech/')}>Tech page</a>.
+  </p>
+</Base>
+
+<style>
+  .eyebrow { display: block; margin-bottom: var(--s3); }
+  h1 { margin-bottom: var(--s4); }
+</style>

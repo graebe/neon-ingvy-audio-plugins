@@ -1,0 +1,53 @@
+---
+/*
+ * The download buttons. No version is typed here -- see src/lib/release.js.
+ */
+import { pluginDownload, moduleDownload } from '../lib/release.js';
+
+const { plugin } = Astro.props;
+const live = plugin.data.hosts.includes('live') ? pluginDownload(plugin.id) : null;
+const move = plugin.data.hosts.includes('move') ? moduleDownload() : null;
+---
+<div class="downloads">
+  {live && (
+    <a class="btn" href={live.url}>
+      <span class="t-button">Download for Live</span>
+      <span class="meta">{live.version} · macOS universal · {plugin.data.formats.join(' · ')}</span>
+    </a>
+  )}
+  {move && (
+    <a class="btn" href={move.url}>
+      <span class="t-button">Download for Move</span>
+      <span class="meta">{move.version} · Schwung module · aarch64</span>
+    </a>
+  )}
+</div>
+{live && (
+  <p class="note">
+    The bundles are <strong>unsigned</strong>. macOS will not load one until its
+    quarantine attribute is cleared — the release notes carry the command, and so
+    does the interface section below.
+  </p>
+)}
+
+<style>
+  .downloads { display: flex; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s6); }
+  .btn {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s1);
+    padding: var(--s3) var(--s4);
+    background: var(--bg-200);
+    border: var(--hair) solid var(--line-200);
+    border-radius: var(--radius-1);
+    color: var(--ink);
+  }
+  /* The system's signal: a near-white core in a violet halo, never a violet fill. */
+  .btn:hover {
+    border-color: var(--uv-deep);
+    box-shadow: 0 0 0 1px var(--uv-glow);
+    color: var(--uv);
+  }
+  .meta { color: var(--ink-dim); font-size: 10px; letter-spacing: 0.02em; }
+  .note { margin-top: var(--s3); font-size: var(--doc-small); color: var(--ink-dim); max-width: var(--doc-measure); }
+</style>
