@@ -5,4 +5,4 @@
 # derives the CMake project from the folder it is included from, mapping "~"
 # to "_tilde" on the way. A file laid out any other way builds an external
 # named after whatever directory it happened to sit in.
-add_subdirectory("tg.gate~")
+add_subdirectory("ni.trancegate~")

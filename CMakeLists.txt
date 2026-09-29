@@ -54,9 +54,9 @@ add_subdirectory(plugins/listen-in)
 # The Trance Gate's THIRD shell: a Max external, for the Max for Live device.
 # Opt-in because it needs the max-sdk-base submodule, and a checkout that only
 # wants the plugin should not have to fetch one to configure.
-option(TG_BUILD_M4L "Build tg.gate~, the Max external behind the M4L device" OFF)
-if (TG_BUILD_M4L)
-    add_subdirectory(plugins/trance-gate-m4l/external)
+option(TG_BUILD_LIVE "Build ni.trancegate~, the Max external behind the M4L device" OFF)
+if (TG_BUILD_LIVE)
+    add_subdirectory(plugins/trance-gate-live/external)
 endif()
 
 enable_testing()

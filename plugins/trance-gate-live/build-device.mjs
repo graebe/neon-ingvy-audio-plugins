@@ -1,5 +1,5 @@
 /*
- * Generate NI Trance Gate.amxd. Copyright (c) 2026 Torben Gräber. MIT.
+ * Generate NI Trance Gate Live.amxd. Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY A GENERATOR AND NOT A CHECKED-IN PATCHER. A .amxd is a binary-framed
  * blob of machine-written JSON: unreadable in a diff, unmergeable, and full
@@ -18,10 +18,10 @@
  *   a menu that listed them in a different order would silently re-point
  *   every saved patch.
  *
- * So the patcher is written down as the twelve rows below, which are
+ * So the patcher is written down as the fourteen rows below, which are
  * reviewable, and the JSON is derived. Regenerate with:
  *
- *   node plugins/trance-gate-m4l/build-device.mjs
+ *   node plugins/trance-gate-live/build-device.mjs
  *
  * WHAT THIS DOES NOT DO IS LAY THE DEVICE OUT PRETTILY. It produces a device
  * that is correct -- right parameters, right indices, right wiring -- at
@@ -48,7 +48,7 @@ if (rates.length !== 13)
     'TG_NUM_RATES and this generator disagree');
 
 /* ------------------------------------------------------------------ */
-/* The twelve, in tg_param_t order. The INDEX IS THE ARRAY POSITION.     */
+/* The fourteen, in tg_param_t order. The INDEX IS THE ARRAY POSITION.     */
 
 const DIAL = 'live.dial', MENU = 'live.menu', NUM = 'live.numbox',
       TOGGLE = 'live.text';
@@ -75,6 +75,16 @@ const params = [
   /* 9 */ { name: 'Decay',   cls: DIAL, type: 0, min: 0, max: 200, init: 16 },
   /*10 */ { name: 'Sustain', cls: DIAL, type: 0, min: 0, max: 100, init: 100 },
   /*11 */ { name: 'Release', cls: DIAL, type: 0, min: 0, max: 200, init: 16 },
+  /*
+   * APPENDED, like the engine's own two and for the engine's own reason.
+   * tg_param_t's comment says it plainly: a host that catalogued this plugin
+   * stored these indices, so the fade's pair can only go on the END -- not
+   * beside Amount, which is where they belong by meaning. The device inherits
+   * that constraint because it inherits the indices.
+   */
+  /*12 */ { name: 'Fade', cls: DIAL, type: 0, min: 0, max: 100, init: 100 },
+  /*13 */ { name: 'Fade Soft', short: 'Soft', cls: TOGGLE, type: 2,
+            range: ['Off', 'On'], init: 0 },
 ];
 
 /*
@@ -84,11 +94,33 @@ const params = [
  */
 const ABI = ['Slot', 'Length', 'Rate', 'Join Neighbors', 'Env Time',
              'Env Curve', 'Amount', 'Width', 'Attack', 'Decay',
-             'Sustain', 'Release'];
+             'Sustain', 'Release', 'Fade', 'Fade Soft'];
 params.forEach((p, i) => {
   if (p.name !== ABI[i])
     throw new Error(`parameter ${i} is "${p.name}", tg_param_t says "${ABI[i]}"`);
 });
+
+/*
+ * AND THE COUNT COMES FROM THE ENGINE, not from the length of the list above.
+ * TG_P_COUNT has grown once already -- the fade appended two -- and the
+ * failure mode of missing that is a device that works and is quietly two
+ * parameters short, which is exactly what happened between this generator's
+ * first version and its second.
+ */
+const header = readFileSync(
+  join(ROOT, 'engines/trance-gate/include/trance_gate_core.h'), 'utf8');
+/* DEDUPED, because the enum's own comment names TG_P_AMOUNT while explaining
+ * why the fade's pair had to go on the end -- and a prose mention is not a
+ * parameter. Counting it twice is how this guard first fired. */
+const abi = [...new Set(header
+  .slice(header.indexOf('TG_P_SLOT'), header.indexOf('TG_P_COUNT'))
+  .split(/[^A-Z_]+/)
+  .filter((t) => /^TG_P_[A-Z_]+$/.test(t)))];
+if (abi.length !== params.length)
+  throw new Error(
+    `the engine has ${abi.length} parameters and this generator lists `
+    + `${params.length}. tg_param_t is the ABI -- see the note in `
+    + 'trance_gate_core.h about inserting one in the middle.');
 
 /* ------------------------------------------------------------------ */
 /* Layout. A device row is 169px tall and that is the whole brief.       */
@@ -109,7 +141,7 @@ const plugin = add({ id: nextId(), maxclass: 'newobj', text: 'plugin~',
   numinlets: 1, numoutlets: 3, outlettype: ['signal', 'signal', ''],
   patching_rect: [20, 60, 53, 22] });
 
-const gate = add({ id: nextId(), maxclass: 'newobj', text: 'tg.gate~',
+const gate = add({ id: nextId(), maxclass: 'newobj', text: 'ni.trancegate~',
   numinlets: 2, numoutlets: 4,
   outlettype: ['signal', 'signal', '', ''],
   patching_rect: [20, 120, 70, 22] });
@@ -146,14 +178,14 @@ const grid = add({ id: nextId(), maxclass: 'v8ui', text: 'v8ui grid.js',
   patching_rect: [320, 120, GRID.w, GRID.h],
   presentation: 1, presentation_rect: [GRID.x, GRID.y, GRID.w, GRID.h] });
 
-/* tg.gate~'s third outlet is the readout; the grid's only outlet is the
+/* ni.trancegate~'s third outlet is the readout; the grid's only outlet is the
  * edit it just made, which goes straight back in. */
 connect(gate, 2, grid, 0);
 connect(grid, 0, gate, 0);
 connect(metro, 0, grid, 0);
 
 /* ------------------------------------------------------------------ */
-/* The twelve, each into its own `prepend num <index>`.                  */
+/* The fourteen, each into its own `prepend num <index>`.                  */
 
 const dials = params.filter((p) => p.cls === DIAL);
 const rest  = params.filter((p) => p.cls !== DIAL);
@@ -192,7 +224,7 @@ params.forEach((p, idx) => {
 
   /*
    * `prepend num <index>` turns the control's bare value into the message
-   * tg.gate~ takes. One per parameter, because the INDEX is the thing being
+   * ni.trancegate~ takes. One per parameter, because the INDEX is the thing being
    * stated and stating it here -- beside the control it belongs to -- is
    * what makes a wrong one visible in the patcher rather than only in the
    * sound.
@@ -208,10 +240,10 @@ params.forEach((p, idx) => {
 });
 
 /*
- * THE SLOT HANDSHAKE'S PATCHER HALF. tg.gate~'s fourth outlet emits
+ * THE SLOT HANDSHAKE'S PATCHER HALF. ni.trancegate~'s fourth outlet emits
  * `length <n>` on the bang after the slot moved, because Length belongs to
  * the SLOT and the dial still holds the one we left -- see the comment on
- * slot_sync in tg.gate~.c. Routed straight into the Length control, which
+ * slot_sync in ni.trancegate~.c. Routed straight into the Length control, which
  * then pushes it back as any other edit.
  */
 const lengthIdx = params.findIndex((p) => p.name === 'Length');
@@ -221,7 +253,7 @@ const route = add({ id: nextId(), maxclass: 'newobj', text: 'route length',
   patching_rect: [560, 120, 80, 22] });
 connect(gate, 3, route, 0);
 connect(route, 0, lengthObj, 0);
-if (lengthIdx < 0) throw new Error('Length is not among the twelve');
+if (lengthIdx < 0) throw new Error('Length is not among the fourteen');
 
 /* ------------------------------------------------------------------ */
 
@@ -271,7 +303,7 @@ const out = Buffer.concat([
   chunk('ptch', json),
 ]);
 
-const dest = join(here, 'NI Trance Gate.amxd');
+const dest = join(here, 'NI Trance Gate Live.amxd');
 writeFileSync(dest, out);
 console.log(`wrote ${dest}`);
 console.log(`  ${params.length} parameters, ${rates.length} rates from rates.rs`);

@@ -38,7 +38,7 @@ const TREES = [
   /* The Max for Live grid. Its tree has no src/ -- a v8ui is loaded as a
    * file by the patcher rather than bundled -- so the whole ui/ is scanned,
    * tests included. */
-  join(ROOT, 'plugins', 'trance-gate-m4l', 'ui'),
+  join(ROOT, 'plugins', 'trance-gate-live', 'ui'),
   /* The documentation site draws the same system, and is the consumer most
    * likely to reach for a #fff on a button hover. Its Markdown CONTENT is not
    * here and must not be: a product's README may quote a hex triplet in prose,

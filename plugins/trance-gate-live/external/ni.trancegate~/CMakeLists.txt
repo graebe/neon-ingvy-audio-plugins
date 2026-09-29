@@ -1,4 +1,4 @@
-# tg.gate~ -- the Trance Gate engine as a Max external.
+# ni.trancegate~ -- the Trance Gate engine as a Max external.
 #
 # THE ENGINE IS THE SAME ENGINE. This links `tg_engine`, the INTERFACE target
 # cmake/TranceGateEngine.cmake builds -- the same libtg_capi.a the VST3, the
@@ -27,13 +27,13 @@ endif()
 # the device that owns it. This keeps it with its device, which is also what a
 # Max search path has to be pointed at while authoring the patcher.
 set(C74_LIBRARY_OUTPUT_DIRECTORY
-    "${CMAKE_SOURCE_DIR}/plugins/trance-gate-m4l/externals")
+    "${CMAKE_SOURCE_DIR}/plugins/trance-gate-live/externals")
 
 # THE DIRECTORY NAME IS THE OBJECT NAME, and this include is what makes that
 # true: max-pretarget.cmake calls project() with the folder it is included
 # from, mapping "~" to "_tilde" for CMake's sake and back again for the
 # bundle's. There is no variable to override it with -- the folder IS the
-# declaration -- which is why this file sits in one called `tg.gate~` rather
+# declaration -- which is why this file sits in one called `ni.trancegate~` rather
 # than beside its siblings.
 include(${MAX_SDK_BASE}/script/max-pretarget.cmake)
 
@@ -41,7 +41,7 @@ include_directories(
     "${MAX_SDK_INCLUDES}"
     "${MAX_SDK_MSP_INCLUDES}")
 
-add_library(${PROJECT_NAME} MODULE "tg.gate~.c" "wire.c")
+add_library(${PROJECT_NAME} MODULE "ni.trancegate~.c" "wire.c")
 
 # The engine's header lives behind tg_engine's INTERFACE include directory, so
 # linking it is also how trance_gate_core.h is found. Nothing here names the

@@ -1,10 +1,10 @@
 /*
- * The M4L shell's wire arithmetic. See wire.h for why it is not in tg.gate~.c.
+ * The M4L shell's wire arithmetic. See wire.h for why it is not in ni.trancegate~.c.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "wire.h"
 
-tg_transport_t tg_m4l_transport(int running, double ticks, double bpm)
+tg_transport_t tg_live_transport(int running, double ticks, double bpm)
 {
     tg_transport_t t;
 
@@ -22,7 +22,7 @@ tg_transport_t tg_m4l_transport(int running, double ticks, double bpm)
     return t;
 }
 
-double tg_m4l_param_value(int idx, double v)
+double tg_live_param_value(int idx, double v)
 {
     switch (idx) {
     /*

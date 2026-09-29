@@ -1,5 +1,5 @@
 ---
-section: m4l
+section: live
 title: NI Trance Gate for Max for Live
 ---
 
@@ -21,13 +21,13 @@ everything else. See [the plugin's Live notes](../../trance-gate/docs/live.md).
 
 ## It is the same gate, and that is enforced rather than claimed
 
-There is one engine and it is written once. `tg.gate~`, the external this
+There is one engine and it is written once. `ni.trancegate~`, the external this
 device is built around, links **the same `libtg_capi.a`** the VST3, the AU and
 the CLAP link, and that the Schwung module for the Move wraps. There is no
 second envelope to drift.
 
 What is *not* shared is the transport: every other host hands over a beat
-position, and Max hands over ticks. `tests/render_m4l.c` renders four seconds
+position, and Max hands over ticks. `tests/render_live.c` renders four seconds
 through this shell's tick conversion and asserts the same FNV-1a hash
 `tests/render_plugin.c` gets from the beats path. A wrong divisor moves it.
 
@@ -46,11 +46,11 @@ only wants the plugin should not have to fetch:
 
 ```sh
 git submodule update --init external/max-sdk-base
-cmake -B build -DTG_BUILD_M4L=ON
-cmake --build build --target tg.gate_tilde
+cmake -B build -DTG_BUILD_LIVE=ON
+cmake --build build --target ni.trancegate_tilde
 ```
 
-`tg.gate~.mxo` lands in `plugins/trance-gate-m4l/externals/`, universal
+`ni.trancegate~.mxo` lands in `plugins/trance-gate-live/externals/`, universal
 (arm64 + x86_64). To author the patcher, add that folder to Max's file
 preferences; to ship it, **freeze the device** so the external travels inside
 the `.amxd`.
@@ -61,10 +61,10 @@ because `tg-capi` already cross-builds for the Move.
 
 ## The device itself
 
-`NI Trance Gate.amxd` is **generated**, not hand-built:
+`NI Trance Gate Live.amxd` is **generated**, not hand-built:
 
 ```sh
-node plugins/trance-gate-m4l/build-device.mjs
+node plugins/trance-gate-live/build-device.mjs
 ```
 
 A `.amxd` is a binary-framed blob of machine-written JSON — unreadable in a
@@ -86,11 +86,11 @@ Everything above is machine-checked as far as it can be. These are not, and
 cannot be — a structural test can say the file is the shape a device is, not
 that Live opens it:
 
-- [ ] Point Max's file preferences at `plugins/trance-gate-m4l/externals/`,
-      then open the device. `tg.gate~` must instantiate.
+- [ ] Point Max's file preferences at `plugins/trance-gate-live/externals/`,
+      then open the device. `ni.trancegate~` must instantiate.
 - [ ] **Null test.** The `.amxd` on one track, the VST3 on another, same
       source, one inverted. Any residue is a transport or wire bug, not taste.
-- [ ] The twelve appear in Live's own parameter list and automate.
+- [ ] All fourteen appear in Live's own parameter list and automate.
 - [ ] Click toggles, shift-click ties, drag sets the amount — the same
       gestures as the plugin and the Move.
 - [ ] Change Slot: Length must follow the slot, not overwrite it.
@@ -105,13 +105,13 @@ designed ones.
 
 ## The object, for anyone opening the patcher
 
-`tg.gate~` is two signal inlets and two signal outlets, plus two message
+`ni.trancegate~` is two signal inlets and two signal outlets, plus two message
 outlets. It takes:
 
 | message | what it does |
 |---|---|
-| `num <index> <value>` | one of the twelve, in the units a user reads. **The index is `tg_param_t`'s** |
-| `param <key> <value>` | the engine's string door, for anything that is not one of the twelve |
+| `num <index> <value>` | one of the fourteen, in the units a user reads. **The index is `tg_param_t`'s** |
+| `param <key> <value>` | the engine's string door, for anything that is not one of the fourteen |
 | `step <index> <0\|1\|2>` | off / on / tie |
 | `depth <index> <0-255>` | that step's Amount |
 | `bang` | emit the `ui` readout, and the slot's length if it just changed |

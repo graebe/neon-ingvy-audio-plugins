@@ -67,7 +67,7 @@ function height() { return box.rect[3] - box.rect[1]; }
 /* ------------------------------------------------------------------ */
 /* In                                                                   */
 
-/** `ui <blob>` from tg.gate~. The only way the pattern arrives. */
+/** `ui <blob>` from ni.trancegate~. The only way the pattern arrives. */
 function anything() {
   if (messagename !== 'ui') return;
   const decoded = parseReadout(arrayfromargs(arguments).join(' '));

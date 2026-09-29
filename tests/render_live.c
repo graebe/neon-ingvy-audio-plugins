@@ -4,7 +4,7 @@
  * WHAT THIS ADDS OVER tests/render_plugin.c, which renders the same four
  * seconds of the same patch and hashes to the same number.
  *
- * Sound parity between the shells is BY CONSTRUCTION: tg.gate~ links the same
+ * Sound parity between the shells is BY CONSTRUCTION: ni.trancegate~ links the same
  * libtg_capi.a the VST3 does, so there is no second implementation of the
  * envelope to drift. Re-rendering the engine would prove only that a static
  * library is deterministic.
@@ -18,11 +18,11 @@
  * of the host's. That reads as "the pattern drifts against the grid", which
  * is a bug report with no location in it.
  *
- * So this drives tg_m4l_transport from a TICK COUNTER -- the same call
+ * So this drives tg_live_transport from a TICK COUNTER -- the same call
  * tg_gate_perform64 makes, with the same arithmetic in front of it -- and
  * asserts the hash the beats-based path produces. A wrong divisor moves it.
  *
- * It also walks tg_m4l_param_value over all twelve, which is the other place
+ * It also walks tg_live_param_value over all fourteen, which is the other place
  * this shell can be silently wrong: three of them are one-based to a user,
  * three are percentages the engine wants as 0..1, and three MORE are
  * percentages the engine wants as percentages. That asymmetry is real and a
@@ -64,7 +64,7 @@ static void check(int ok, const char *what) {
 }
 
 /*
- * The twelve, in tg_param_t order, as a patcher sends them and as the engine
+ * The fourteen, in tg_param_t order, as a patcher sends them and as the engine
  * must receive them. Written out rather than computed: a table that derived
  * the expectation from the same switch it is testing would agree with any
  * bug in it.
@@ -72,30 +72,30 @@ static void check(int ok, const char *what) {
 static void test_param_values(void)
 {
     /* One-based to a user, zero-based to the engine. */
-    check(tg_m4l_param_value(TG_P_SLOT,   1.0)  ==  0.0, "Slot 1 -> 0");
-    check(tg_m4l_param_value(TG_P_SLOT,   8.0)  ==  7.0, "Slot 8 -> 7");
-    check(tg_m4l_param_value(TG_P_LENGTH, 16.0) == 15.0, "Length 16 -> 15");
-    check(tg_m4l_param_value(TG_P_LENGTH,  1.0) ==  0.0, "Length 1 -> 0");
+    check(tg_live_param_value(TG_P_SLOT,   1.0)  ==  0.0, "Slot 1 -> 0");
+    check(tg_live_param_value(TG_P_SLOT,   8.0)  ==  7.0, "Slot 8 -> 7");
+    check(tg_live_param_value(TG_P_LENGTH, 16.0) == 15.0, "Length 16 -> 15");
+    check(tg_live_param_value(TG_P_LENGTH,  1.0) ==  0.0, "Length 1 -> 0");
 
     /* A percentage to a user, 0..1 to the engine. */
-    check(tg_m4l_param_value(TG_P_AMOUNT,  100.0) == 1.0, "Amount 100% -> 1");
-    check(tg_m4l_param_value(TG_P_HOLD,     75.0) == 0.75, "Width 75% -> 0.75");
-    check(tg_m4l_param_value(TG_P_SUSTAIN,  60.0) == 0.6, "Sustain 60% -> 0.6");
+    check(tg_live_param_value(TG_P_AMOUNT,  100.0) == 1.0, "Amount 100% -> 1");
+    check(tg_live_param_value(TG_P_HOLD,     75.0) == 0.75, "Width 75% -> 0.75");
+    check(tg_live_param_value(TG_P_SUSTAIN,  60.0) == 0.6, "Sustain 60% -> 0.6");
 
     /*
      * A PERCENTAGE TO BOTH -- the asymmetry. These are a proportion of the
      * gate's Width, not of anything normalised, and scaling them here would
      * make every envelope a hundred times too fast.
      */
-    check(tg_m4l_param_value(TG_P_ATTACK,  3.8267) == 3.8267, "Attack passes through");
-    check(tg_m4l_param_value(TG_P_DECAY,  43.7333) == 43.7333, "Decay passes through");
-    check(tg_m4l_param_value(TG_P_RELEASE, 27.3333) == 27.3333, "Release passes through");
+    check(tg_live_param_value(TG_P_ATTACK,  3.8267) == 3.8267, "Attack passes through");
+    check(tg_live_param_value(TG_P_DECAY,  43.7333) == 43.7333, "Decay passes through");
+    check(tg_live_param_value(TG_P_RELEASE, 27.3333) == 27.3333, "Release passes through");
 
     /* Indices and flags, untouched. */
-    check(tg_m4l_param_value(TG_P_RATE,       7.0) == 7.0, "Rate passes through");
-    check(tg_m4l_param_value(TG_P_LEGATO,     1.0) == 1.0, "Legato passes through");
-    check(tg_m4l_param_value(TG_P_TIME_MODE,  1.0) == 1.0, "Time mode passes through");
-    check(tg_m4l_param_value(TG_P_CURVE,      2.0) == 2.0, "Curve passes through");
+    check(tg_live_param_value(TG_P_RATE,       7.0) == 7.0, "Rate passes through");
+    check(tg_live_param_value(TG_P_LEGATO,     1.0) == 1.0, "Legato passes through");
+    check(tg_live_param_value(TG_P_TIME_MODE,  1.0) == 1.0, "Time mode passes through");
+    check(tg_live_param_value(TG_P_CURVE,      2.0) == 2.0, "Curve passes through");
 }
 
 static void test_transport(void)
@@ -103,22 +103,22 @@ static void test_transport(void)
     tg_transport_t t;
 
     /* 480 ticks is one beat. The whole point of the file. */
-    t = tg_m4l_transport(1, 480.0, 120.0);
+    t = tg_live_transport(1, 480.0, 120.0);
     check(t.running == 1 && t.beats == 1.0, "480 ticks is beat 1");
-    t = tg_m4l_transport(1, 1920.0, 120.0);
+    t = tg_live_transport(1, 1920.0, 120.0);
     check(t.beats == 4.0, "1920 ticks is beat 4");
 
     /* A stopped transport is NO beat, not beat 0 -- otherwise the gate
      * resumes mid-pattern instead of from the top. */
-    t = tg_m4l_transport(0, 9999.0, 120.0);
+    t = tg_live_transport(0, 9999.0, 120.0);
     check(t.running == 0 && t.beats == TG_NO_BEAT, "stopped is no beat");
 
     /* Live reports a negative position during count-in. */
-    t = tg_m4l_transport(1, -480.0, 120.0);
+    t = tg_live_transport(1, -480.0, 120.0);
     check(t.running == 0 && t.beats == TG_NO_BEAT, "count-in is no beat");
 
     /* A zero tempo would put an infinity into the engine's phase. */
-    t = tg_m4l_transport(1, 0.0, 0.0);
+    t = tg_live_transport(1, 0.0, 0.0);
     check(t.bpm == 120.0f, "a zero tempo falls back to 120");
 }
 
@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
      *
      * THE 480 BELOW IS A LITERAL AND MUST STAY ONE. Writing
      * TG_TICKS_PER_BEAT here instead would make this renderer multiply by
-     * exactly what tg_m4l_transport divides by, and the error would cancel:
+     * exactly what tg_live_transport divides by, and the error would cancel:
      * the hash passed unchanged with the constant set to 960, proving only
      * that a number equals itself. The literal is Max's documented
      * resolution, stated INDEPENDENTLY of the code under test, which is the
@@ -177,7 +177,7 @@ int main(int argc, char **argv) {
     for (int done = 0; done < total; done += BLOCK) {
         int n = (total - done) < BLOCK ? (total - done) : BLOCK;
 
-        tg_transport_t t = tg_m4l_transport(1, ticks, bpm);
+        tg_transport_t t = tg_live_transport(1, ticks, bpm);
 
         for (int i = 0; i < n; i++) {
             /* Quantised to int16 BEFORE gating, because that is the buffer
@@ -215,6 +215,6 @@ int main(int argc, char **argv) {
     if (fail) return 1;
 
     printf("  4s through the M4L transport matches the plugin render   ok\n");
-    printf("  the twelve convert to the engine's units                 ok\n");
+    printf("  the fourteen convert to the engine's units                 ok\n");
     return 0;
 }

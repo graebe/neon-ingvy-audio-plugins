@@ -27,9 +27,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const M4L = join(here, '..', '..');
-const ROOT = join(M4L, '..', '..');
-const DEVICE = join(M4L, 'NI Trance Gate.amxd');
+const LIVE = join(here, '..', '..');
+const ROOT = join(LIVE, '..', '..');
+const DEVICE = join(LIVE, 'NI Trance Gate Live.amxd');
 const RATES = join(ROOT, 'engines/trance-gate/crates/tg-core/src/rates.rs');
 
 /** The three length-prefixed chunks a .amxd is made of. */
@@ -75,17 +75,20 @@ test('the device is the height Live gives it', () => {
  */
 const ABI = ['Slot', 'Length', 'Rate', 'Join Neighbors', 'Env Time',
              'Env Curve', 'Amount', 'Width', 'Attack', 'Decay',
-             'Sustain', 'Release'];
+             'Sustain', 'Release', 'Fade', 'Fade Soft'];
 
 test('every control sends the tg_param_t index it belongs to', () => {
   const byId = Object.fromEntries(boxes.map((b) => [b.id, b]));
   const params = boxes.filter((b) => b.parameter_enable);
-  assert.equal(params.length, 12, 'there are twelve host parameters, no more');
+  /* Read from the engine, not written down: TG_P_COUNT has grown once
+   * already and a device quietly two parameters short is what that cost. */
+  assert.equal(params.length, ABI.length,
+    `the device has ${params.length} parameters, tg_param_t has ${ABI.length}`);
 
   for (const p of params) {
     const name = p.saved_attribute_attributes.valueof.parameter_longname;
     const want = ABI.indexOf(name);
-    assert.ok(want >= 0, `"${name}" is not one of the twelve`);
+    assert.ok(want >= 0, `"${name}" is not one of the fourteen`);
 
     const line = patcher.lines
       .map((l) => l.patchline)
@@ -113,9 +116,9 @@ test('the rate menu is the engine ladder, in the engine order', () => {
   assert.deepEqual(menu.saved_attribute_attributes.valueof.parameter_initial, [def]);
 });
 
-test('audio runs plugin~ -> tg.gate~ -> plugout~ on both channels', () => {
+test('audio runs plugin~ -> ni.trancegate~ -> plugout~ on both channels', () => {
   const find = (t) => boxes.find((b) => (b.text ?? '').startsWith(t))?.id;
-  const [pin, gate, pout] = ['plugin~', 'tg.gate~', 'plugout~'].map(find);
+  const [pin, gate, pout] = ['plugin~', 'ni.trancegate~', 'plugout~'].map(find);
   assert.ok(pin && gate && pout, 'an audio object is missing');
   const has = (s, so, d, di) => patcher.lines.some((l) =>
     l.patchline.source[0] === s && l.patchline.source[1] === so
@@ -130,7 +133,7 @@ test('the grid is in presentation and the readout reaches it', () => {
   const grid = boxes.find((b) => b.maxclass === 'v8ui');
   assert.ok(grid, 'there is no v8ui');
   assert.equal(grid.presentation, 1, 'the grid must be in the device row');
-  const gate = boxes.find((b) => (b.text ?? '').startsWith('tg.gate~')).id;
+  const gate = boxes.find((b) => (b.text ?? '').startsWith('ni.trancegate~')).id;
   /* Outlet 2 is the readout -- 0 and 1 are signals. */
   assert.ok(patcher.lines.some((l) =>
     l.patchline.source[0] === gate && l.patchline.source[1] === 2

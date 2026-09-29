@@ -1,5 +1,5 @@
 /*
- * tg.gate~ -- the Trance Gate engine as a Max/MSP object.
+ * ni.trancegate~ -- the Trance Gate engine as a Max/MSP object.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * WHY THIS EXISTS. Ableton Live draws a third-party plugin's editor in a
@@ -13,7 +13,7 @@
  * libtg_capi.a the VST3/AU/CLAP links -- see cmake/TranceGateEngine.cmake,
  * which explains at length why there is exactly one copy of it -- and the
  * same one tg-move wraps for the Move. Three shells, one engine, and
- * tests/render_m4l.c is what keeps this one honest: it renders through the
+ * tests/render_live.c is what keeps this one honest: it renders through the
  * code below and must produce the FNV-1a hash tests/render_plugin.c does.
  *
  * WHAT THIS FILE OWES THE OTHER SHELLS. The parameter wire is
@@ -27,7 +27,7 @@
  *
  * Three of those four rules have the same shape and the fourth does not,
  * which is exactly the kind of thing a second implementation gets wrong
- * quietly. The wire test walks all twelve rather than trusting this comment.
+ * quietly. The wire test walks all fourteen rather than trusting this comment.
  */
 #include "ext.h"
 #include "ext_obex.h"
@@ -63,11 +63,11 @@ typedef struct _tg_gate
     t_itm      *itm;
 
     /*
-     * THE TWELVE, CACHED. Messages arrive on the scheduler thread and the
+     * THE FOURTEEN, CACHED. Messages arrive on the scheduler thread and the
      * engine is driven from the audio thread, so they are stored here and
      * pushed at the top of every block -- unconditionally, for the reason
      * TranceGate.cpp's OnParamChange gives: set_num owns all the clamping and
-     * the side effects, and pushing twelve doubles is cheaper than tracking
+     * the side effects, and pushing fourteen doubles is cheaper than tracking
      * which of them moved.
      *
      * These are ENGINE-SIDE values, already converted. The conversion happens
@@ -134,10 +134,10 @@ static void tg_gate_perform64(t_tg_gate *x, t_object *dsp64, double **ins,
      * TranceGate.cpp: that shell chunks a block it was handed longer than it
      * reserved, and MSP never hands over more than the vector size.
      */
-    t = x->itm ? tg_m4l_transport(itm_getstate(x->itm),
+    t = x->itm ? tg_live_transport(itm_getstate(x->itm),
                                   itm_getticks(x->itm),
                                   itm_gettempo(x->itm))
-               : tg_m4l_transport(0, 0.0, 0.0);
+               : tg_live_transport(0, 0.0, 0.0);
 
     for (i = 0; i < n; i++) {
         x->l[i] = (float) ins[0][i];
@@ -206,7 +206,7 @@ static void tg_gate_dsp64(t_tg_gate *x, t_object *dsp64, short *count,
  * THE UNIT CONVERSIONS ARE IN wire.c AND NOT IN THE PATCHER, so a live.dial
  * can be labelled in the units a user thinks in without every one of them
  * having to restate what the engine wants. They are in wire.c rather than
- * here so a test can reach them -- three of the twelve are asymmetric with
+ * here so a test can reach them -- three of the fourteen are asymmetric with
  * their neighbours, which is the kind of thing a comment cannot enforce.
  */
 static void tg_gate_num(t_tg_gate *x, t_symbol *s, long argc, t_atom *argv)
@@ -226,12 +226,12 @@ static void tg_gate_num(t_tg_gate *x, t_symbol *s, long argc, t_atom *argv)
         return;
     }
 
-    x->pval[idx] = tg_m4l_param_value((int) idx, v);
+    x->pval[idx] = tg_live_param_value((int) idx, v);
 }
 
 /*
  * `param <key> <value>` -- the engine's string door, for everything that is
- * not one of the twelve: step edits, per-step depths, ties, the cursor.
+ * not one of the fourteen: step edits, per-step depths, ties, the cursor.
  *
  * APPLIED HERE RATHER THAN DEFERRED TO THE BLOCK, which is what
  * TranceGate.cpp does with the same edits for the same reason: a drag sends
@@ -442,7 +442,7 @@ static void tg_gate_free(t_tg_gate *x)
 
 void ext_main(void *r)
 {
-    t_class *c = class_new("tg.gate~", (method) tg_gate_new,
+    t_class *c = class_new("ni.trancegate~", (method) tg_gate_new,
                            (method) tg_gate_free, sizeof(t_tg_gate), NULL,
                            A_GIMME, 0);
 
