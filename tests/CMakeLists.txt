@@ -9,7 +9,7 @@
 # through JUCE's plugin host, and rendered the editor -- so they could not
 # outlive it. What remains is everything that was written in plain C against
 # the engine's ABI, which is also everything that checks the SOUND.
-set(TG_ENGINE ${CMAKE_SOURCE_DIR}/external/schwung-trance-gate)
+set(TG_ENGINE ${CMAKE_SOURCE_DIR}/engine)
 
 add_executable(tg_core_tests ${TG_ENGINE}/tests/test_core.c)
 target_link_libraries(tg_core_tests PRIVATE tg_engine)
@@ -46,7 +46,7 @@ add_test(NAME tg_render_ab COMMAND tg_render_plugin --verify)
 # Regenerate the fixture with `tg_shape_table > ui/test/shape_table.txt`, and
 # only when the curve maths is MEANT to change.
 set(TG_SHAPE_TABLE
-    ${CMAKE_SOURCE_DIR}/plugins/trance-gate-iplug/ui/test/shape_table.txt)
+    ${CMAKE_SOURCE_DIR}/plugins/trance-gate/ui/test/shape_table.txt)
 
 add_executable(tg_shape_table shape_table.c)
 target_link_libraries(tg_shape_table PRIVATE tg_engine)
@@ -66,7 +66,7 @@ add_test(NAME tg_curves COMMAND tg_shape_table --verify ${TG_SHAPE_TABLE})
 #
 # It found two rules the UI had wrong and a third nobody had modelled at all.
 set(TG_ENVELOPE_TABLE
-    ${CMAKE_SOURCE_DIR}/plugins/trance-gate-iplug/ui/test/envelope_table.txt)
+    ${CMAKE_SOURCE_DIR}/plugins/trance-gate/ui/test/envelope_table.txt)
 
 add_executable(tg_envelope_table envelope_table.c)
 target_link_libraries(tg_envelope_table PRIVATE tg_engine)
@@ -83,7 +83,7 @@ find_program(TG_NODE node)
 if (TG_NODE)
     # The FILES, not the directory: `node --test <dir>` tries to execute the
     # directory as a module and dies with MODULE_NOT_FOUND.
-    set(TG_UI_TEST ${CMAKE_SOURCE_DIR}/plugins/trance-gate-iplug/ui/test)
+    set(TG_UI_TEST ${CMAKE_SOURCE_DIR}/plugins/trance-gate/ui/test)
     add_test(NAME tg_curves_js
              COMMAND ${TG_NODE} --test ${TG_UI_TEST}/curves.test.mjs)
     set_tests_properties(tg_curves_js PROPERTIES

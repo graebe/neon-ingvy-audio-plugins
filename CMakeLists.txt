@@ -34,7 +34,7 @@ endif()
 # One engine build, shared by the plugin and all four native test targets.
 include(cmake/TgEngine.cmake)
 
-add_subdirectory(plugins/trance-gate-iplug)
+add_subdirectory(plugins/trance-gate)
 
 enable_testing()
 add_subdirectory(tests)

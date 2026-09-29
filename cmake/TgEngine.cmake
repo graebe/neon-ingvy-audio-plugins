@@ -1,22 +1,28 @@
-# The Trance Gate engine, built from the submodule by cargo.
+# The Trance Gate engine's C ABI, built by cargo for the PLUGIN's targets.
 #
-# NOT copied in and not rebuilt per consumer: five things link this engine --
-# the plugin, the core tests, the render A/B, the AU host and the VST3 host --
-# and they must all link the SAME bytes. "It sounds different in Live" is the
-# hardest kind of bug to chase, and a second copy of the engine is how you get
-# one.
+# NOT copied and not rebuilt per consumer: five things link this -- the plugin,
+# the core tests, the render A/B, the AU host and the VST3 host -- and they
+# must all link the SAME bytes. "It sounds different in Live" is the hardest
+# kind of bug to chase, and a second copy of the engine is how you get one.
 #
-# This replaces compiling ${TG_ROOT}/src/dsp/trance_gate_core.c, which no
-# longer exists: the engine is Rust as of schwung-trance-gate 383998d. The C
-# ABI is unchanged, so every consumer below still includes trance_gate_core.h
-# and calls tg_core_*.
+# THIS IS ONE OF TWO WRAPPERS AROUND ONE CORE. `tg-capi` is the C ABI, which
+# is what a plugin format needs; `tg-move` is the Schwung audio_fx vtable, and
+# cmake/Schwung.cmake builds that one. Both depend on `tg-core` by relative
+# path inside engine/'s single Cargo workspace, so neither can drift from the
+# other -- not by policy, by construction. tests/render_plugin.c is what keeps
+# that honest: it renders through the plugin's audio path and matches the Move
+# module's reference render byte for byte.
+#
+# It replaces compiling trance_gate_core.c, which no longer exists: the engine
+# is Rust. The C ABI is unchanged, so every consumer still includes
+# trance_gate_core.h and calls tg_core_*.
 
-set(TG_ROOT ${CMAKE_SOURCE_DIR}/external/schwung-trance-gate)
+set(TG_ROOT ${CMAKE_SOURCE_DIR}/engine)
 
 if (NOT EXISTS ${TG_ROOT}/Cargo.toml)
     message(FATAL_ERROR
-        "The engine submodule is empty or predates the Rust port.\n"
-        "  git submodule update --init external/schwung-trance-gate")
+        "engine/ has no Cargo.toml -- the Rust workspace is missing.\n"
+        "  It is a subtree, not a submodule: check out the repository again.")
 endif()
 
 # RUSTUP'S SHIMS ARE OFTEN NOT ON PATH when CMake is driven from an IDE or
