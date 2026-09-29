@@ -80,6 +80,32 @@ int clamp_editor_height(int requested);
  */
 double advance_beats(double beats, int frames, double bpm, double sampleRate);
 
+/*
+ * 0..1 -> 0..255 for the gate curve, which is a GAIN and not a waveform.
+ *
+ * encode_sample above spends half its range on negative values a gain never
+ * takes, so it would resolve the gate to 128 levels and put silence at
+ * mid-scale. This is the same clamp-then-round with the range the quantity
+ * actually has, and a non-finite input becomes ZERO -- for a gain, "no value"
+ * is a shut gate, where mid-scale would draw a half-open one that was never
+ * played.
+ */
+unsigned char encode_gain(float v);
+
+/*
+ * How many samples of the gate curve to render per step, for a pattern of
+ * `length` steps.
+ *
+ * AN INTEGER, so a step boundary falls on an exact sample and the gridlines and
+ * the playhead cannot drift off it -- the JUCE build's own note, and the reason
+ * this is not simply "enough points to look smooth".
+ *
+ * The product is held near 1024 so the payload stays around a kilobyte of hex
+ * whatever the length, and floored at 8 so a 128-step pattern still shows each
+ * step's shape rather than one sample of it.
+ */
+int gate_per_step(int length);
+
 /* As the Spectrogram's: base64's extra third plus the frame's fixed 32. */
 constexpr int framed_size(int nBytes) { return nBytes * 4 / 3 + 32; }
 

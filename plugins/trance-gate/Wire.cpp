@@ -32,6 +32,24 @@ unsigned char encode_sample(float v)
   return (unsigned char) int((c + 1.f) * 127.5f + 0.5f);
 }
 
+unsigned char encode_gain(float v)
+{
+  /* isfinite FIRST, for the reason encode_sample gives: a NaN propagates
+   * through fmin/fmax rather than being pinned by them. Zero and not mid-scale,
+   * because this is a gain -- "no value" is a shut gate. */
+  const float c = std::isfinite(v) ? std::fmin(1.f, std::fmax(0.f, v)) : 0.f;
+  return (unsigned char) int(c * 255.f + 0.5f);
+}
+
+int gate_per_step(int length)
+{
+  if (length < 1) length = 1;
+  int n = (1024 + length / 2) / length;         /* round(1024 / length) */
+  if (n < 8) n = 8;
+  if (n > 64) n = 64;
+  return n;
+}
+
 int clamp_editor_height(int requested)
 {
   /* Exclusive at both ends, as it has always been: 100 is below any editor

@@ -97,6 +97,13 @@ TranceGate::TranceGate(const InstanceInfo& info)
   /* "Hard"/"Soft" rather than Off/On: the switch does not turn the fade on, it
    * chooses whether a step arriving ramps or jumps. */
   GetParam(kFadeSoft)->InitBool("Fade Shape", false, "", 0, "", "Hard", "Soft");
+  /*
+   * WHICH END THE PATTERN IS BUILT UP FROM, and In is the default because it is
+   * what the gate did before the direction existed. The knob means the same
+   * thing either way -- how much of the drawn pattern is present -- so 100% is
+   * the pattern in both and switching this at rest changes nothing.
+   */
+  GetParam(kFadeDir)->InitEnum("Fade Dir", 0, {"In", "Out"});
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /*
@@ -275,7 +282,108 @@ void TranceGate::PushParams()
    * the pattern. */
   tg_core_set_num(mCore, TG_P_FADE, GetParam(kFade)->Value() / 100.0);
   tg_core_set_num(mCore, TG_P_FADE_SOFT, GetParam(kFadeSoft)->Value());
+  tg_core_set_num(mCore, TG_P_FADE_DIR, GetParam(kFadeDir)->Value());
 }
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+/*
+ * THE GATE ACROSS ONE CYCLE, RENDERED THROUGH A SCRATCH ENGINE.
+ *
+ * The editor used to MODEL this -- walk the pattern in JavaScript and rebuild
+ * the envelope from the parameters -- and it got the case that matters wrong: a
+ * release outliving its step was drawn as an instant cut at the step edge, and
+ * the next step's attack started from silence instead of the tail it should
+ * have continued from. Release runs to 200% of the gate's Width, so a release
+ * that crosses an edge is not an edge case, it is most settings.
+ *
+ * This is the JUCE build's answer, and it is the right one: run the REAL patch
+ * through a throwaway engine with a DC input, and the output samples ARE the
+ * gate. "The only way for it to disagree with the audio is for the engine to
+ * disagree with itself." There is no model left to be wrong.
+ *
+ * AMOUNT IS OVERRIDDEN TO 1, and that is two things at once.
+ *
+ *     m = 1 - amount*(1 - g) = floor + (1 - floor)*g,   floor = 1 - amount
+ *
+ * is AFFINE in g, so Amount is a transform the editor applies when it paints
+ * and never a reason to re-render. It also steps around the `amount <= 0` short
+ * circuit, which leaves the buffer untouched -- and would therefore store the
+ * input DC, drawing a solid OPEN gate for what is in fact a true bypass.
+ *
+ * THE TIME BASE IS EXACT AND NEEDS NO SEARCH. The JUCE version hunted the rate
+ * ladder for a (rate, bpm) pair whose step duration matched, because it had
+ * only the duration. We can choose the scratch's SAMPLE RATE instead:
+ * ms_per_step cancels the sample rate out -- recalc_ms_per_step says so in as
+ * many words -- so loading the patch, reading the duration back and then
+ * setting the rate to perStep*1000/msStep makes a step exactly perStep samples
+ * at 120 BPM. Simpler than the original, and not an approximation.
+ *
+ * Two cycles are rendered and the first discarded, so step 0's carry-in comes
+ * from the last step rather than from silence -- the warm-up the envelope
+ * oracle uses, and the reason a pattern whose last step bleeds into its first
+ * draws correctly.
+ */
+void TranceGate::RenderGate(const char* state)
+{
+  mGatePayload.clear();
+  if (state == nullptr || *state == '\0') return;
+
+  tg_core_t* sc = tg_core_create(44100.0);
+  if (sc == nullptr) return;
+
+  char buf[TG_STATE_MAX];
+  tg_core_set_param(sc, "state", state);
+  /* Length is the OPTION INDEX, as every setter here takes it. */
+  int length = 16;
+  if (tg_core_get_param(sc, "length", buf, int(sizeof buf)) > 0)
+    length = std::atoi(buf) + 1;
+  if (length < 1) length = 1;
+  if (length > TG_MAX_STEPS) length = TG_MAX_STEPS;
+
+  double msStep = 0.0;
+  if (tg_core_get_param(sc, "ms_per_step", buf, int(sizeof buf)) > 0)
+    msStep = std::atof(buf);
+  if (!(msStep > 0.0)) { tg_core_destroy(sc); return; }
+
+  const int perStep = tg::wire::gate_per_step(length);
+  tg_core_set_sample_rate(sc, double(perStep) * 1000.0 / msStep);
+  tg_core_set_param(sc, "amount", "1.0");
+
+  const int frames = perStep * length;
+  /* Its own buffers: the audio path's mL/mR belong to the audio thread, and
+   * this runs on the message thread. Two cycles, DC at full scale. */
+  std::vector<float> l(size_t(frames * 2), 1.0f);
+  std::vector<float> r(size_t(frames * 2), 1.0f);
+
+  tg_transport_t t;
+  t.running = 1;
+  t.bpm = 120.0f;
+  t.beats = 0.0;
+  const double sr = double(perStep) * 1000.0 / msStep;
+  /* One block per step keeps the transport anchored where the boundaries are;
+   * the engine's own PLL then has nothing to chase. */
+  for (int i = 0; i < length * 2; i++)
+  {
+    const int off = i * perStep;
+    t.beats = tg::wire::advance_beats(0.0, off, 120.0, sr);
+    tg_core_process_f32_split(sc, l.data() + off, r.data() + off, perStep, &t);
+  }
+
+  /* The SECOND cycle: the first is the warm-up. */
+  mGatePayload.reserve(size_t(frames) * 2 + 32);
+  char head[64];
+  std::snprintf(head, sizeof head, "%d:%d:", length, perStep);
+  mGatePayload = head;
+  static const char* kHex = "0123456789ABCDEF";
+  for (int i = 0; i < frames; i++)
+  {
+    const unsigned char b = tg::wire::encode_gain(l[size_t(frames + i)]);
+    mGatePayload.push_back(kHex[(b >> 4) & 0xF]);
+    mGatePayload.push_back(kHex[b & 0xF]);
+  }
+  tg_core_destroy(sc);
+}
+#endif
 
 void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
@@ -412,6 +520,26 @@ void TranceGate::OnIdle()
     mCycleSamples.store(GetSampleRate() * (mScopeCycleMs / 1000.0),
                         std::memory_order_relaxed);
   }
+  /*
+   * THE GATE CURVE, RENDERED ONLY WHEN THE PATCH MOVES.
+   *
+   * The state string is the whole patch, so comparing it is comparing every
+   * input the render has. Amount is in it, so an Amount drag re-renders --
+   * which is harmless: a render is ~1024 samples through the engine, and the
+   * alternative is parsing the blob to exclude one field.
+   */
+  if (tg_core_get_param(mCore, "state", buf, int(sizeof buf)) > 0)
+  {
+    if (mGateState != buf)
+    {
+      mGateState = buf;
+      RenderGate(buf);
+    }
+    if (!mGatePayload.empty())
+      SendArbitraryMsgFromDelegate(kMsgGate, int(mGatePayload.size()),
+                                   mGatePayload.c_str());
+  }
+
   if (tg_core_get_param(mCore, "params", buf, int(sizeof buf)) > 0)
     SendArbitraryMsgFromDelegate(kMsgParams, int(strlen(buf)), buf);
 
