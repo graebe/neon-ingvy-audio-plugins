@@ -14,8 +14,8 @@
 
 #define PLUG_NAME "Trance Gate"
 #define PLUG_MFR "graebe"
-#define PLUG_VERSION_HEX 0x00010000
-#define PLUG_VERSION_STR "1.0.0"
+#define PLUG_VERSION_HEX 0x00010001
+#define PLUG_VERSION_STR "1.0.1"
 
 /* THE FOUR-CHARACTER IDS ARE THE PLUGIN'S IDENTITY and they are carried over
  * from the JUCE build deliberately: a host that catalogued this plugin

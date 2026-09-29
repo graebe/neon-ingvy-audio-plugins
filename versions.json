@@ -1,6 +1,6 @@
 {
   "__": "The version of each PRODUCT in this repository, and the only place it is decided. Every other spelling -- config.h, module.json, each engine's crates -- is checked against this by `ctest -R versions`. See tests/versions.test.mjs for what is checked and what is deliberately not.",
 
-  "trance-gate": "1.0.0",
-  "spectrogram": "0.1.0"
+  "trance-gate": "1.0.1",
+  "spectrogram": "0.1.1"
 }

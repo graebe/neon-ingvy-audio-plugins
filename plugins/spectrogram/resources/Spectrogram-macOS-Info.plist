@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>Spectrogram</string>
 	<key>CFBundleGetInfoString</key>
-	<string>Spectrogram v1.0.0 Copyright 2026 Torben Gräber</string>
+	<string>Spectrogram v0.1.1 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIconFile</key>
 	<string>Spectrogram.icns</string>
 	<key>CFBundleIdentifier</key>
@@ -19,11 +19,11 @@
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>0.1.1</string>
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>1.0.0</string>
+	<string>0.1.1</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSApplicationCategoryType</key>

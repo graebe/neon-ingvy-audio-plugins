@@ -19,7 +19,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -84,6 +84,42 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
       assert.equal(JSON.parse(read(where.module)).version, want);
     });
   }
+
+  /*
+   * THE Info.plists ARE A FOURTH SPELLING, and they are literal -- iPlug2
+   * substitutes nothing into them, so they stay at whatever they were
+   * generated with. They did: both products' plists still said 1.0.0 after
+   * versions.json moved, and the Spectrogram's had said 1.0.0 all along while
+   * its config.h said 0.1.0.
+   *
+   * This is what the OS and the Finder report, and `AudioUnit Version` is what
+   * an AU host compares -- so a stale plist is a plugin that tells the host one
+   * version and the user another.
+   */
+  test(`${product}: every Info.plist agrees (${want})`, () => {
+    const dir = join(ROOT, dirname(where.config), 'resources');
+    const plists = readdirSync(dir).filter((f) => f.endsWith('.plist'));
+    assert.ok(plists.length, `no plists in ${dir}`);
+
+    for (const f of plists) {
+      const x = readFileSync(join(dir, f), 'utf8');
+      const key = (k) =>
+        new RegExp(`<key>${k}</key>\\s*<string>([^<]*)</string>`).exec(x)?.[1];
+
+      for (const k of ['CFBundleShortVersionString', 'CFBundleVersion']) {
+        const got = key(k);
+        if (got !== undefined) assert.equal(got, want, `${f}: ${k}`);
+      }
+      const au = key('AudioUnit Version');
+      if (au !== undefined)
+        assert.equal(Number(au), packed(want),
+          `${f}: AudioUnit Version is ${au}; ${want} packs to 0x${packed(want).toString(16).padStart(8, '0')}`);
+
+      const info = key('CFBundleGetInfoString');
+      if (info !== undefined)
+        assert.ok(info.includes(`v${want}`), `${f}: CFBundleGetInfoString says "${info}"`);
+    }
+  });
 
   test(`${product}: every crate of its engine agrees (${want})`, () => {
     for (const path of where.crates) {
