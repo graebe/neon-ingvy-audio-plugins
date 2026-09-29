@@ -15,6 +15,11 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
 cd "$HERE/.."
 
+# The binaries below are written here, and a fresh checkout has no build/ at all
+# -- the linker then failed with errno=2 on the OUTPUT path, which reads like a
+# missing input and sent the last person looking for the wrong thing.
+mkdir -p build
+
 # cargo, wherever it is installed -- this file's own version of this searched
 # only via rustup, so a toolchain installed any other way was not found.
 . "$ROOT/scripts/rust-env.sh"
