@@ -25,7 +25,7 @@ if (SPECTRO_NPM)
                     "npm --prefix plugins/spectrogram/ui install")
   endif()
 
-  add_custom_target(SpectrogramUI ALL
+  add_custom_target(NISpectrogramUI ALL
     COMMAND ${SPECTRO_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Building the Spectrogram editor (vite)"
@@ -39,7 +39,7 @@ file(GLOB SPECTRO_WEB
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/fonts/*")
 
-iplug_add_plugin(Spectrogram
+iplug_add_plugin(NISpectrogram
   SOURCES
     Spectrogram.cpp
     Spectrogram.h
@@ -59,10 +59,10 @@ iplug_add_plugin(Spectrogram
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.
-if (TARGET SpectrogramUI)
+if (TARGET NISpectrogramUI)
   foreach(fmt vst3 clap au)
-    if (TARGET Spectrogram-${fmt})
-      add_dependencies(Spectrogram-${fmt} SpectrogramUI)
+    if (TARGET NISpectrogram-${fmt})
+      add_dependencies(NISpectrogram-${fmt} NISpectrogramUI)
     endif()
   endforeach()
 endif()

@@ -85,7 +85,7 @@ jobs:
       - name: The bundles exist, and are universal
         run: |
           set -e
-          for b in NITranceGate Spectrogram ListenIn; do
+          for b in NITranceGate NISpectrogram ListenIn; do
             for f in vst3 component clap; do
               path="build/out/$b.$f/Contents/MacOS/$b"
               [ -f "$path" ] || { echo "missing: $path"; exit 1; }

@@ -1,6 +1,6 @@
 [package]
 name = "spectro-capi"
-version = "0.1.1"
+version = "2026.9.29+1"
 edition = "2021"
 license = "MIT"
 description = "The C ABI the iPlug2 shell and any Schwung module link"
@@ -11,3 +11,6 @@ crate-type = ["staticlib"]
 
 [dependencies]
 spectro-core = { path = "../spectro-core" }
+# The receiver half. It brings bus-core with it, which is why libspectro_capi.a
+# is still the ONE static library the shell links -- see cmake/SpectroEngine.cmake.
+spectro-recv = { path = "../spectro-recv" }

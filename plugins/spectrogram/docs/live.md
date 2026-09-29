@@ -109,7 +109,7 @@ The release carries an unsigned universal bundle in all three formats. macOS
 will refuse to load it until the quarantine attribute is removed:
 
 ```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Spectrogram.vst3
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NISpectrogram.vst3
 ```
 
 ## For developers

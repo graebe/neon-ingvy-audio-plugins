@@ -1,6 +1,6 @@
 [package]
 name = "bus-capi"
-version = "0.1.0"
+version = "2026.9.29+1"
 edition = "2021"
 license = "MIT"
 description = "The C ABI that a sending plugin and a receiving plugin both link"

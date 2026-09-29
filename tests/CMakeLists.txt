@@ -214,6 +214,27 @@ if (NOT WIN32)
 endif()
 add_test(NAME spectro_columns COMMAND spectro_columns)
 
+# The RECEIVER through the same door, and against a real bus rather than a
+# stand-in. spectro-recv's cargo tests cover the behaviour; this covers the seam
+# -- spectro_recv.h is hand-written, so a wrong argument order or a missing
+# const reads perfectly well right up until it runs.
+#
+# It links BOTH engines: the receiver is in libspectro_capi.a and the transport
+# it reads is audio-bus, which is the one crate deliberately shared between two
+# products.
+add_executable(srecv_api srecv_api.c)
+# ONE Rust staticlib per binary, and that is not a preference. libspectro_capi.a
+# and libbus_capi.a each embed the Rust runtime, so a target linking both is a
+# duplicate `rust_eh_personality` at link time. It does not arise in the
+# plugins -- the Spectrogram links only spectro_engine, which already contains
+# bus-core through spectro-recv -- and it is why the end-to-end test against a
+# live sender is in Rust (crates/spectro-recv/tests/receiver.rs) rather than here.
+target_link_libraries(srecv_api PRIVATE spectro_engine)
+if (NOT WIN32)
+    target_link_libraries(srecv_api PRIVATE m)
+endif()
+add_test(NAME srecv_api COMMAND srecv_api)
+
 # The editor's tests, on node's own runner (22+), so the UI keeps a dependency
 # tree of vite and solid and nothing else.
 if (TG_NODE)
