@@ -70,6 +70,7 @@ and everything that draws the design system bundles it:
 |---|---|
 | `TranceGate.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
 | `Spectrogram.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
+| `NIPump.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
 | the documentation site | `/neon-ingvy-audio-plugins/fonts/` |
 
 **The OFL requires its text to travel beside the font**, so `OFL.txt` sits in

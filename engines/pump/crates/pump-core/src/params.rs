@@ -342,7 +342,12 @@ impl Instance {
              * when a control moves is in "params" instead. Splitting them is
              * what keeps the per-frame payload small enough not to matter.
              *
-             * source:rate:ms_cycle:phase:advancing:fires:duck:key:connected:stage
+             * source:rate:ms_cycle:sweep:advancing:fires:duck:key:connected:stage:phase
+             *
+             * `sweep` before `phase` because `sweep` is the one the drawing
+             * uses -- it is the shared axis, defined for all three sources.
+             * `phase` is the transport's own and is only meaningful on Cycle;
+             * it is carried so the editor can show a bar position.
              */
             "ui" => {
                 let r = write!(
@@ -353,7 +358,7 @@ impl Instance {
                 );
                 r.and_then(|_| fmt::f(&mut b, self.ms_per_cycle as f64, 3))
                     .and_then(|_| write!(b, ":"))
-                    .and_then(|_| fmt::f(&mut b, self.phase01(), 6))
+                    .and_then(|_| fmt::f(&mut b, self.sweep01(), 6))
                     .and_then(|_| {
                         write!(
                             b,
@@ -368,11 +373,12 @@ impl Instance {
                     .and_then(|_| {
                         write!(
                             b,
-                            ":{}:{}",
+                            ":{}:{}:",
                             self.key_connected as i32,
                             stage_index(self.env.stage)
                         )
                     })
+                    .and_then(|_| fmt::f(&mut b, self.phase01(), 6))
             }
             /*
              * EVERY AUTOMATABLE VALUE, in `Param` order, colon separated.
@@ -406,6 +412,7 @@ impl Instance {
                 .and_then(|_| fmt::f(&mut b, self.stage_ms(Param::Release), 3)),
 
             "phase" => fmt::f(&mut b, self.phase01(), 6),
+            "sweep" => fmt::f(&mut b, self.sweep01(), 6),
             "ms_per_cycle" => fmt::f(&mut b, self.ms_per_cycle as f64, 3),
             "fires" => write!(b, "{}", self.fires),
             "duck" => fmt::f(&mut b, self.duck_now as f64, 4),

@@ -82,6 +82,9 @@ int main(void)
         check("get_param(NULL) is -1", pump_core_get_param(NULL, "ui", buf, sizeof buf) == -1);
         check_near("get_sample_rate(NULL) is 0", pump_core_get_sample_rate(NULL), 0.0, 0.0);
         check_near("phase01(NULL) is 0", pump_core_phase01(NULL), 0.0, 0.0);
+        /* 1.0 and not 0.0: with no instance the sweep is parked at its right
+         * edge, which is what "nothing has fired" means. */
+        check_near("sweep01(NULL) is 1", pump_core_sweep01(NULL), 1.0, 0.0);
         check_near("duck(NULL) is 0", pump_core_duck(NULL), 0.0, 0.0);
         check("fires(NULL) is 0", pump_core_fires(NULL) == 0);
         printf("  (no crash above is the result)\n");
@@ -161,8 +164,8 @@ int main(void)
         int n = pump_core_get_param(c, "ui", buf, sizeof buf);
         check("`ui` returns a length", n > 0);
         check("`ui` is null-terminated at that length", buf[n] == '\0');
-        check_near("`ui` has ten fields (App.jsx parses by position)",
-                   count_fields(buf), 10, 0);
+        check_near("`ui` has eleven fields (App.jsx parses by position)",
+                   count_fields(buf), 11, 0);
 
         n = pump_core_get_param(c, "params", buf, sizeof buf);
         check_near("`params` has one field per parameter",

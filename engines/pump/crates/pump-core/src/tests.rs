@@ -928,7 +928,7 @@ fn the_ui_readout_has_the_shape_the_editor_parses() {
     let fields: Vec<&str> = text.split(':').collect();
     assert_eq!(
         fields.len(),
-        10,
+        11,
         "the `ui` readout is a positional contract with App.jsx: {text}"
     );
     for f in &fields {
@@ -953,4 +953,39 @@ fn a_sample_rate_change_does_not_leave_a_stage_running_at_the_wrong_speed() {
     p.set_sample_rate(96000.0);
     assert_eq!(p.stage(), Stage::Idle, "the stage survived a rate change");
     assert_eq!(p.sample_rate(), 96000.0);
+}
+
+#[test]
+fn the_sweep_is_one_axis_for_all_three_sources() {
+    /* WHAT THIS PROTECTS. The editor draws the shape across one cycle and the
+     * scope lays the audio on the same axis, so a dip sits under the curve that
+     * made it. If `sweep01` disagreed with the trigger instant, the two wells
+     * would be two pictures that happen to be stacked. */
+    let sr = 48000.0;
+
+    /* Cycle: the sweep IS the transport phase, so it starts at a trigger. */
+    let mut p = Instance::new(sr);
+    p.set_param("rate", "1/4");
+    let mut buf = vec![0.0f32; 1024];
+    let t = Transport { running: true, beats: 0.0, bpm: 120.0 };
+    p.process_f32(&mut buf, 512, Some(&t));
+    assert!(p.sweep01() < 0.05, "cycle sweep did not start at the trigger: {}", p.sweep01());
+
+    /* MIDI: no transport at all, and the sweep still restarts on the note. */
+    let mut p = Instance::new(sr);
+    p.set_param("source", "MIDI");
+    let mut buf = vec![0.0f32; 4096];
+    p.process_f32(&mut buf, 2048, None);
+    assert_eq!(p.sweep01(), 1.0, "an untriggered sweep must park at the right edge");
+    p.on_midi(&note_on(1, 36, 127), 0);
+    p.process_f32(&mut buf, 512, None);
+    let after = p.sweep01();
+    assert!(after > 0.0 && after < 0.1, "midi sweep after 512 of 24000: {after}");
+
+    /* And it SATURATES rather than wraps: a source that has not fired again
+     * must not draw a second dip that never happened. */
+    for _ in 0..20 {
+        p.process_f32(&mut buf, 2048, None);
+    }
+    assert_eq!(p.sweep01(), 1.0, "the sweep wrapped instead of parking");
 }

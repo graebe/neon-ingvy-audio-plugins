@@ -164,12 +164,23 @@ pub struct Instance {
     /// `get_param` runs on the audio callback too. Anything it reports that
     /// costs arithmetic is computed here, once, rather than there, per read.
     ms_per_cycle: f32,
+    /// The same length in samples, kept because the sweep divides by it per
+    /// sample and recomputing it from `ms_per_cycle` would be a multiply and a
+    /// divide in the inner loop to recover a number we already had.
+    samples_per_cycle: f64,
     last_bpm: f32,
     advancing: bool,
     /// Monotonic count of triggers. The UI watches it CHANGE rather than
     /// timing anything itself -- that is how "nothing has fired for 500 ms"
     /// is answered without the engine owning a clock it has no use for.
     fires: u32,
+    /// Samples since the last trigger, saturating at one cycle.
+    ///
+    /// THIS IS WHAT GIVES THE TWO WELLS ONE SHARED AXIS. The editor draws the
+    /// shape across one cycle; the scope has to lay the audio out on that same
+    /// axis or the dip in the waveform does not sit under the curve that made
+    /// it, and then the picture is two pictures. See `sweep01`.
+    since_trigger: f64,
     /// The attenuation as of the last sample rendered, for the meter.
     duck_now: f32,
     /// Whether the shell says an aux bus is actually patched. The engine does
@@ -206,9 +217,11 @@ impl Instance {
             last_cycle: None,
             was_running: false,
             ms_per_cycle: 0.0,
+            samples_per_cycle: 1.0,
             last_bpm: 120.0,
             advancing: false,
             fires: 0,
+            since_trigger: f64::INFINITY,
             duck_now: 0.0,
             key_connected: false,
         }
@@ -289,6 +302,7 @@ impl Instance {
             samples_per_cycle = 1.0;
         }
         self.ms_per_cycle = (samples_per_cycle * 1000.0 / self.sample_rate) as f32;
+        self.samples_per_cycle = samples_per_cycle;
 
         /* The percentages become samples HERE, once per block, which is the
          * only place that knows both the cycle length and the unit. */
@@ -361,6 +375,7 @@ impl Instance {
                 Action::Trigger(scale) => {
                     self.env.trigger(scale, &r.stages);
                     self.fires = self.fires.wrapping_add(1);
+                    self.since_trigger = 0.0;
                 }
                 Action::Release => self.env.release(&r.stages),
                 Action::Reset => self.env.reset(),
@@ -374,6 +389,7 @@ impl Instance {
                     self.last_cycle = Some(idx);
                     self.env.trigger(1.0, &r.stages);
                     self.fires = self.fires.wrapping_add(1);
+                    self.since_trigger = 0.0;
                 }
                 self.cycle_pos += r.inc;
             }
@@ -389,6 +405,7 @@ impl Instance {
             if self.follower.next(kl, kr, self.threshold, r.lockout) {
                 self.env.trigger(1.0, &r.stages);
                 self.fires = self.fires.wrapping_add(1);
+                self.since_trigger = 0.0;
             }
         }
 
@@ -397,6 +414,13 @@ impl Instance {
         let gated = matches!(self.source, Source::Midi) && self.midi.gate && self.midi.held > 0;
         let duck = self.env.next(self.curve, &r.stages, gated);
         self.duck_now = duck as f32;
+        /* Saturating rather than wrapping: past one cycle the sweep is parked
+         * at its right-hand edge, which is the honest picture for a source that
+         * simply has not fired again. Wrapping would draw a second dip that
+         * never happened. */
+        if self.since_trigger < self.samples_per_cycle {
+            self.since_trigger += 1.0;
+        }
 
         /* DEPTH ZERO IS A TRUE BYPASS AND NEEDS NO SPECIAL CASE: the product
          * collapses to exactly 1.0, and multiplying by exactly 1.0 is the
@@ -458,11 +482,57 @@ impl Instance {
         frames: usize,
         t: Option<&Transport>,
     ) {
+        self.process_f32_split_tap(l, rch, None, None, frames, t)
+    }
+
+    /// The split path, with the applied gain written out per sample.
+    ///
+    /// WHY THE ENGINE HANDS THIS OUT RATHER THAN THE SHELL DERIVING IT. The
+    /// editor draws what the ducker actually DID, beside what it was asked to
+    /// do, and the two differ whenever a trigger interrupts a recovery -- which
+    /// is most of the interesting cases. The shell has the dry and the wet, so
+    /// it could divide one by the other; that answer is meaningless wherever the
+    /// input is near silence, which is exactly where a duck is most visible.
+    ///
+    /// `gain` is the MULTIPLIER APPLIED, 0..1 -- not the attenuation and not the
+    /// envelope. Depth is already in it, so the trace shows the effect the
+    /// listener heard rather than the shape behind it.
+    ///
+    /// `sweep` is where each sample sits on the display axis, 0..1.
+    ///
+    /// THE SHELL CANNOT COMPUTE THIS ITSELF WITHOUT BECOMING A SECOND COPY OF
+    /// THE PHASE LOGIC. It bins its capture columns by the sweep, so it needs a
+    /// per-sample value; deriving one from the block's start and a local
+    /// increment would mean re-implementing the phase-locked loop's correction,
+    /// the saturation past one cycle, and the difference between the three
+    /// sources -- and the first time any of those changed, the picture would
+    /// stop matching the sound in a way that looks like a drawing bug.
+    ///
+    /// Either pointer may be `None`; the Move module passes neither.
+    pub fn process_f32_split_tap(
+        &mut self,
+        l: &mut [f32],
+        rch: &mut [f32],
+        mut gain: Option<&mut [f32]>,
+        mut sweep: Option<&mut [f32]>,
+        frames: usize,
+        t: Option<&Transport>,
+    ) {
         let r = self.block_setup(frames, t);
         for i in 0..frames {
             let m = self.next_gain(&r, i);
             l[i] *= m;
             rch[i] *= m;
+            if let Some(g) = gain.as_deref_mut() {
+                if i < g.len() {
+                    g[i] = m;
+                }
+            }
+            if let Some(sw) = sweep.as_deref_mut() {
+                if i < sw.len() {
+                    sw[i] = self.sweep01() as f32;
+                }
+            }
         }
         self.block_done();
     }
@@ -482,6 +552,35 @@ impl Instance {
 
     pub fn ms_per_cycle(&self) -> f32 {
         self.ms_per_cycle
+    }
+
+    /// Where we are across the DISPLAY WINDOW, 0..1 -- which is one cycle long.
+    ///
+    /// ONE DEFINITION FOR ALL THREE SOURCES, and that is the point of it being
+    /// here rather than in the shell. For Cycle it is the transport's phase. For
+    /// MIDI and Sidechain there is no transport phase at all, so it is the time
+    /// since the last trigger over one cycle -- which for the Cycle source is
+    /// the same number, and for the other two is the only meaningful answer.
+    ///
+    /// The scope indexes its columns by this, so the audio lands on the same
+    /// axis the editor draws the shape on and a dip sits under the curve that
+    /// made it.
+    ///
+    /// WHAT THAT COSTS, stated because it is a real trade: a column is written
+    /// once per cycle, so the picture refreshes at the cycle rate rather than
+    /// continuously. At 1/4 and 120 bpm that is twice a second, which is what
+    /// every sidechain plugin does and reads as a live waveform. At 1/1 and
+    /// 60 bpm it is once every four seconds, and the picture IS that old --
+    /// the alternative is a rolling window that does not line up with the
+    /// editor, which is a worse picture that merely looks fresher.
+    pub fn sweep01(&self) -> f64 {
+        if matches!(self.source, Source::Cycle) {
+            return self.phase01();
+        }
+        if !(self.samples_per_cycle > 0.0) || !self.since_trigger.is_finite() {
+            return 1.0;
+        }
+        (self.since_trigger / self.samples_per_cycle).clamp(0.0, 1.0)
     }
     pub fn advancing(&self) -> bool {
         self.advancing

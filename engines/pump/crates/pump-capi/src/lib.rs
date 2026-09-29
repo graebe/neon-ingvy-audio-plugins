@@ -164,6 +164,50 @@ pub unsafe extern "C" fn pump_core_process_f32_split(
     c.0.process_f32_split(lb, rb, n, transport(t).as_ref());
 }
 
+/// The split path, tapping the applied gain and the display sweep per sample.
+///
+/// Either out-pointer may be NULL; both NULL is the plain split path. `gain` is
+/// the MULTIPLIER APPLIED, 0..1, with Depth already in it -- so a trace drawn
+/// from it is what the listener heard, not the envelope behind it. `sweep` is
+/// where the sample sits on the editor's axis, which is what lets the shell bin
+/// its capture columns without re-implementing the phase logic.
+#[no_mangle]
+pub unsafe extern "C" fn pump_core_process_f32_split_tap(
+    c: *mut PumpCore,
+    l: *mut f32,
+    r: *mut f32,
+    gain: *mut f32,
+    sweep: *mut f32,
+    frames: c_int,
+    t: *const PumpTransport,
+) {
+    let Some(c) = c.as_mut() else { return };
+    if l.is_null() || r.is_null() || frames <= 0 {
+        return;
+    }
+    let n = frames as usize;
+    let lb = std::slice::from_raw_parts_mut(l, n);
+    let rb = std::slice::from_raw_parts_mut(r, n);
+    let mut gb = if gain.is_null() {
+        None
+    } else {
+        Some(std::slice::from_raw_parts_mut(gain, n))
+    };
+    let mut sb = if sweep.is_null() {
+        None
+    } else {
+        Some(std::slice::from_raw_parts_mut(sweep, n))
+    };
+    c.0.process_f32_split_tap(
+        lb,
+        rb,
+        gb.as_deref_mut(),
+        sb.as_deref_mut(),
+        n,
+        transport(t).as_ref(),
+    );
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn pump_core_process_f32(
     c: *mut PumpCore,
@@ -246,6 +290,14 @@ pub unsafe extern "C" fn pump_core_get_param(
 #[no_mangle]
 pub unsafe extern "C" fn pump_core_phase01(c: *const PumpCore) -> f64 {
     c.as_ref().map(|c| c.0.phase01()).unwrap_or(0.0)
+}
+
+/// Where the display window has got to, 0..1 -- one cycle long, and defined for
+/// all three sources. The scope indexes its columns by this so the audio lands
+/// on the same axis the editor draws the shape on.
+#[no_mangle]
+pub unsafe extern "C" fn pump_core_sweep01(c: *const PumpCore) -> f64 {
+    c.as_ref().map(|c| c.0.sweep01()).unwrap_or(1.0)
 }
 
 /// The attenuation as of the last sample rendered, 0..1. What the meter shows,

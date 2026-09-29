@@ -128,6 +128,30 @@ void pump_core_on_midi(pump_core_t *c, const uint8_t *msg, int len, int at);
  */
 void pump_core_process_f32_split(pump_core_t *c, float *l, float *r, int frames,
                                  const pump_transport_t *t);
+/*
+ * The split path, tapping two per-sample values the editor needs. Either
+ * out-pointer may be NULL; both NULL is the plain split path above.
+ *
+ * `gain` is the MULTIPLIER APPLIED, 0..1, with Depth already in it -- so a trace
+ * drawn from it is the effect the listener heard, not the envelope behind it.
+ *
+ * WHY THE ENGINE HANDS THAT OUT rather than the shell deriving it: the editor
+ * draws what the ducker actually DID beside what it was asked to do, and the two
+ * differ whenever a trigger interrupts a recovery. The shell has the dry and the
+ * wet and could divide one by the other, but that answer is meaningless wherever
+ * the input is near silence -- which is exactly where a duck is most visible.
+ *
+ * `sweep` is where each sample sits on the display axis, 0..1 -- see
+ * pump_core_sweep01. The shell bins its capture columns by it, and CANNOT
+ * compute it itself without becoming a second copy of the phase logic: the
+ * phase-locked loop's per-block correction, the saturation past one cycle, and
+ * the difference between the three sources all feed it. The first time any of
+ * those changed, a shell-side copy would stop matching the sound in a way that
+ * looks like a drawing bug.
+ */
+void pump_core_process_f32_split_tap(pump_core_t *c, float *l, float *r,
+                                     float *gain, float *sweep, int frames,
+                                     const pump_transport_t *t);
 void pump_core_process_f32(pump_core_t *c, float *lr, int frames,
                            const pump_transport_t *t);
 void pump_core_process_i16(pump_core_t *c, int16_t *lr, int frames,
@@ -217,9 +241,10 @@ int    pump_core_set_param(pump_core_t *c, const char *key, const char *val);
  * Keys:
  *
  *   "ui"            ONE READ FOR THE WHOLE ANIMATED PICTURE, pushed per frame:
- *                   source:rate:ms_cycle:phase:advancing:fires:duck:key:connected:stage
- *                   Ten fields, positional -- App.jsx parses it by position, so
- *                   this is a contract and not a debug dump.
+ *                   source:rate:ms_cycle:sweep:advancing:fires:duck:key:connected:stage:phase
+ *                   ELEVEN fields, positional -- App.jsx parses it by position,
+ *                   so this is a contract and not a debug dump.
+ *   "sweep"         the shared display axis, 0..1 -- see pump_core_sweep01
  *   "params"        every automatable value, in pump_param_t order, colon
  *                   separated, at full round-trip float precision
  *   "stage_ms"      delay:attack:hold:release, in milliseconds
@@ -245,6 +270,25 @@ int    pump_core_get_param(const pump_core_t *c, const char *key, char *buf,
 /* ------------------------------------------------- audio-thread reads */
 
 double pump_core_phase01(const pump_core_t *c);
+
+/*
+ * Where the display window has got to, 0..1. THE WINDOW IS ONE CYCLE LONG, and
+ * this is the axis both the shape editor and the signal scope are drawn on --
+ * which is what makes them one picture rather than two stacked ones.
+ *
+ * One definition for all three sources: on Cycle it is the transport's phase; on
+ * MIDI and Sidechain, which have no transport phase, it is the time since the
+ * last trigger over one cycle. It SATURATES at 1.0 rather than wrapping, so a
+ * source that has not fired again parks at the right-hand edge instead of
+ * drawing a dip that never happened.
+ *
+ * The shell indexes its capture columns by this. A column is therefore written
+ * once per cycle -- twice a second at 1/4 and 120 bpm, which reads as a live
+ * waveform; once every four seconds at 1/1 and 60 bpm, where the picture really
+ * is that old. The alternative is a rolling window that does not line up with
+ * the editor, which is a worse picture that merely looks fresher.
+ */
+double pump_core_sweep01(const pump_core_t *c);
 float  pump_core_duck(const pump_core_t *c);
 uint32_t pump_core_fires(const pump_core_t *c);
 
