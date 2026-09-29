@@ -18,7 +18,9 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "sc_core.h"
 
 #define SR 48000.0
@@ -27,6 +29,98 @@
  * sample of a stage hundreds of samples long describes it completely. */
 #define DECIMATE 64
 #define FRAMES   (24000 + 4096)
+
+/*
+ * TWO MODES; the second is what ctest runs.
+ *
+ *   sc_envelope_table                    print the fixture
+ *   sc_envelope_table --verify <file>    re-render and compare
+ *
+ * It RE-RENDERS rather than re-reading: the whole value of this fixture is that
+ * it was measured off the real DSP, so verifying it has to measure again.
+ *
+ * TOL is 1e-6 and not 0. The fixture carries %.9g, the shortest form that
+ * round-trips a float, so the comparison is against a value that has been
+ * through decimal -- exact equality would assert something about printf rather
+ * than about the envelope.
+ */
+#define VERIFY_TOL 1e-6
+
+/* Render one case and return the decimated gains, or the count expected. */
+static int render_case(int curve, double delay, double attack, double hold,
+                       double release, int retrigger_at, float *out, int max)
+{
+    sc_core_t *c = sc_core_create(SR);
+    sc_core_set_num(c, SC_P_SOURCE, 1);
+    sc_core_set_num(c, SC_P_DEPTH, 1.0);
+    sc_core_set_num(c, SC_P_CURVE, curve);
+    sc_core_set_num(c, SC_P_DELAY, delay);
+    sc_core_set_num(c, SC_P_ATTACK, attack);
+    sc_core_set_num(c, SC_P_HOLD, hold);
+    sc_core_set_num(c, SC_P_RELEASE, release);
+
+    const unsigned char on[3] = { 0x90, 36, 127 };
+    static float l[FRAMES], r[FRAMES];
+    for (int i = 0; i < FRAMES; i++) { l[i] = 1.0f; r[i] = 1.0f; }
+    sc_core_on_midi(c, on, 3, 0);
+    if (retrigger_at > 0 && retrigger_at < FRAMES)
+        sc_core_on_midi(c, on, 3, retrigger_at);
+    sc_core_process_f32_split(c, l, r, FRAMES, NULL);
+
+    int n = 0;
+    for (int i = 0; i < FRAMES && n < max; i += DECIMATE)
+        out[n++] = l[i];
+    sc_core_destroy(c);
+    return n;
+}
+
+static int verify(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) { fprintf(stderr, "cannot open %s\n", path); return 2; }
+
+    static float got[FRAMES / DECIMATE + 8];
+    int have = 0, idx = 0, cases = 0, rows = 0, bad = 0;
+    char line[512];
+
+    while (fgets(line, sizeof line, f)) {
+        int curve, retrig;
+        double d, a, h, rel;
+        char name[64];
+        if (sscanf(line, "# case %63s curve=%d delay=%lf attack=%lf hold=%lf "
+                   "release=%lf retrigger=%d",
+                   name, &curve, &d, &a, &h, &rel, &retrig) == 7) {
+            have = render_case(curve, d, a, h, rel, retrig, got,
+                               (int)(sizeof got / sizeof got[0]));
+            idx = 0;
+            cases++;
+            continue;
+        }
+        if (line[0] == '#' || line[0] == '\n') continue;
+
+        int sample; double want;
+        if (sscanf(line, "%d %lf", &sample, &want) != 2) continue;
+        if (idx >= have) continue;
+        const double diff = fabs((double)got[idx] - want);
+        if (diff > VERIFY_TOL) {
+            if (bad < 10)
+                fprintf(stderr, "case %d sample %d: %.9g vs %.9g\n",
+                        cases, sample, (double)got[idx], want);
+            bad++;
+        }
+        idx++;
+        rows++;
+    }
+    fclose(f);
+
+    if (cases < 36 || rows < 8000) {
+        fprintf(stderr, "only %d cases / %d rows -- the fixture looks truncated\n",
+                cases, rows);
+        return 1;
+    }
+    printf("%s: %d cases, %d rows, %d mismatched\n", path, cases, rows, bad);
+    return bad ? 1 : 0;
+}
 
 static void one_case(const char *name, int curve,
                      double delay, double attack, double hold, double release,
@@ -64,8 +158,13 @@ static void one_case(const char *name, int curve,
     sc_core_destroy(c);
 }
 
-int main(void)
+static int verify(const char *path);
+
+int main(int argc, char **argv)
 {
+    if (argc >= 3 && strcmp(argv[1], "--verify") == 0)
+        return verify(argv[2]);
+
     printf("# sample gain -- the OUTPUT of a DC input at depth 1, i.e. 1 - duck\n");
     printf("# sample rate %g, 120 bpm, rate 1/4 (24000 samples per cycle)\n", SR);
     for (int curve = 0; curve < 4; curve++) {

@@ -7,6 +7,7 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 |---|---|---|
 | [Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
 | [Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
+| [NI Side-Chain](plugins/side-chain/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/side-chain` |
 
 ## How it is put together
 
@@ -132,6 +133,7 @@ Each product's manual lives with it, and this site renders those same files:
 |---|---|
 | [Trance Gate](plugins/trance-gate/README.md) | a tempo-locked step gate — [in Live](plugins/trance-gate/docs/live.md), [on the Move](plugins/trance-gate/docs/schwung.md) |
 | [Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
+| [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input |
 
 Published at **https://graebe.github.io/neon-ingvy-audio-plugins/**, built from this
 repository's own Markdown — see [site/README.md](site/README.md).
@@ -149,6 +151,7 @@ chain.
 | CLAP | **MIT** |
 | the Trance Gate engine (`engines/trance-gate`) | **MIT**, and it has no external crates at all |
 | the Spectrogram analyzer (`engines/spectro`) | **MIT**, and it has none either — the FFT is ninety lines rather than a crate |
+| the Side-Chain engine (`engines/side-chain`) | **MIT**, no external crates. Part of it is a PORT and carries a notice — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) |
 | JetBrains Mono, bundled with both editors | **SIL OFL 1.1**, with `OFL.txt` beside the font in every bundle |
 
 Two things had to go to get here, and neither was a licensing decision on its

@@ -1,4 +1,4 @@
-# Tag trance-gate-v1.0.0 or spectrogram-v0.1.0 -> build the macOS bundles and
+# Tag trance-gate-v1.0.0, spectrogram-v0.1.0 or side-chain-v0.1.0 -> build the macOS bundles and
 # attach them to the release.
 #
 # ONE PRODUCT PER TAG, and the prefix says which. A bare `v*` namespace would
@@ -21,6 +21,7 @@ on:
     tags:
       - 'trance-gate-v*'
       - 'spectrogram-v*'
+      - 'side-chain-v*'
 
 permissions:
   contents: write
@@ -41,6 +42,7 @@ jobs:
           case "$GITHUB_REF_NAME" in
             trance-gate-v*) PRODUCT=trance-gate; BUNDLE=TranceGate ;;
             spectrogram-v*) PRODUCT=spectrogram; BUNDLE=Spectrogram ;;
+            side-chain-v*)  PRODUCT=side-chain;  BUNDLE=NISideChain ;;
             *) echo "ERROR: $GITHUB_REF_NAME names no product"; exit 1 ;;
           esac
           VERSION="${GITHUB_REF_NAME#${PRODUCT}-v}"

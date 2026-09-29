@@ -21,12 +21,67 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 #include "sc_core.h"
 
 #define STEPS 1000
 
-int main(void)
+/*
+ * TWO MODES, AND THE SECOND ONE IS THE TEST.
+ *
+ *   sc_shape_table                     print the fixture
+ *   sc_shape_table --verify <file>     check the engine still agrees with it
+ *
+ * The second is what ctest runs. Without it the fixture would only ever be
+ * checked from JavaScript, and a change to the Rust would be caught on one side
+ * of a contract that has two.
+ *
+ * TOL is 0: the generator wrote %.17g, which round-trips a double exactly, and
+ * this is the same engine computing the same expression. Anything other than
+ * equality here means the maths moved.
+ */
+static int verify(const char *path)
 {
+    FILE *f = fopen(path, "r");
+    if (!f) { fprintf(stderr, "cannot open %s\n", path); return 2; }
+
+    char line[512];
+    int rows = 0, bad = 0;
+    while (fgets(line, sizeof line, f)) {
+        if (line[0] == '#' || line[0] == '\n') continue;
+        int curve, dir;
+        double t, want_s, want_i;
+        if (sscanf(line, "%d %d %lf %lf %lf", &curve, &dir, &t, &want_s, &want_i) != 5)
+            continue;
+        const double got_s = sc_test_shape(curve, t, dir);
+        const double got_i = sc_test_shape_inv(curve, t, dir);
+        if (got_s != want_s || got_i != want_i) {
+            if (bad < 10)
+                fprintf(stderr, "curve %d dir %d t=%.17g: shape %.17g vs %.17g, "
+                        "inv %.17g vs %.17g\n",
+                        curve, dir, t, got_s, want_s, got_i, want_i);
+            bad++;
+        }
+        rows++;
+    }
+    fclose(f);
+
+    /* A fixture that has quietly emptied passes every comparison in it. */
+    if (rows < 8000) {
+        fprintf(stderr, "only %d rows -- the fixture looks truncated\n", rows);
+        return 1;
+    }
+    printf("%s: %d rows, %d mismatched\n", path, rows, bad);
+    return bad ? 1 : 0;
+}
+
+int main(int argc, char **argv)
+{
+    if (argc >= 3 && strcmp(argv[1], "--verify") == 0)
+        return verify(argv[2]);
+
     printf("# curve dir t shape inverse\n");
     printf("# curves: 0 Linear, 1 Exponential, 2 S-Curve, 3 Pump\n");
     printf("# dir: 0 down (the duck deepening), 1 up (the recovery)\n");
