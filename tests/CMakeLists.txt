@@ -75,6 +75,26 @@ if (NOT WIN32)
 endif()
 add_test(NAME tg_envelope COMMAND tg_envelope_table --verify ${TG_ENVELOPE_TABLE})
 
+# THE FADE ORACLE, measured the same way the envelope one is.
+#
+# ui/src/lib/fade.js is the fade's formula in JavaScript, because three views
+# need it -- the pads, the ring and the pattern plot -- and pushing a weight
+# table thirty times a second to save three lines of arithmetic is the wrong
+# trade. A second implementation of the DSP is only tolerable pinned, so it is.
+#
+# The reference is the engine's own GAIN: DC in, no envelope, so the gain during
+# a step IS that step's arrival weight. If the weight table and the gain law ever
+# disagree, this reports the gain law -- the one a listener hears.
+set(TG_FADE_TABLE
+    ${CMAKE_SOURCE_DIR}/plugins/trance-gate/ui/test/fade_table.txt)
+
+add_executable(tg_fade_table fade_table.c)
+target_link_libraries(tg_fade_table PRIVATE tg_engine)
+if (NOT WIN32)
+    target_link_libraries(tg_fade_table PRIVATE m)
+endif()
+add_test(NAME tg_fade COMMAND tg_fade_table --verify ${TG_FADE_TABLE})
+
 # node's OWN test runner (22+), so the UI keeps a dependency tree of vite and
 # solid and nothing else -- which is the point of the licence audit, not a
 # preference. Skipped rather than failed when node is absent: a C++ developer
@@ -93,6 +113,11 @@ if (TG_NODE)
              COMMAND ${TG_NODE} --test ${TG_UI_TEST}/envelope.test.mjs)
     set_tests_properties(tg_envelope_js PROPERTIES
         ENVIRONMENT "TG_ENVELOPE_TABLE=${TG_ENVELOPE_TABLE}")
+
+    add_test(NAME tg_fade_js
+             COMMAND ${TG_NODE} --test ${TG_UI_TEST}/fade.test.mjs)
+    set_tests_properties(tg_fade_js PROPERTIES
+        ENVIRONMENT "TG_FADE_TABLE=${TG_FADE_TABLE}")
 
     # THE TOKEN GUARD, which the JUCE build had and the web port lost. Uv.h
     # said "a ctest target fails the build if a colour literal appears in any

@@ -62,6 +62,72 @@ static float *render_dc(tg_core_t *c, int frames, float bpm) {
     return l;
 }
 
+/*
+ * WHICH STEPS SOUND, MEASURED FROM THE AUDIO RATHER THAN ASKED.
+ *
+ * The fade's whole claim is about what you hear, so the tests below read it
+ * out of a render instead of out of the readout -- a readout can agree with
+ * itself while the gain law disagrees with both. DC in, no envelope, so the
+ * gain during step i IS that step's weight and one sample in the middle of the
+ * step is enough to read it.
+ *
+ * Returns the number of steps and fills `w` with the gain at the centre of
+ * each. 44100 Hz, 120 BPM, 1/16 -- so a step is exactly 1378.125 samples and
+ * the centre of step i is at 1378.125*i + 689.
+ */
+static int step_weights(tg_core_t *c, int length, float *w) {
+    const double SPB = 44100.0 * 60.0 / 120.0 / 4.0;   /* samples per 1/16 */
+    int frames = (int)(SPB * length) + 64;
+    float *buf = render_dc(c, frames, 120.0f);
+    for (int i = 0; i < length; i++) {
+        int at = (int)(SPB * i + SPB * 0.5);
+        w[i] = (at < frames) ? buf[at] : -1.0f;
+    }
+    free(buf);
+    return length;
+}
+
+/* A gate with no envelope at all, so a render reads back as weights.
+ * `length_index` is the OPTION index, as every length setter here takes it. */
+static tg_core_t *mk_flat(int length_index, const char *pattern) {
+    char li[16];
+    snprintf(li, sizeof(li), "%d", length_index);
+    tg_core_t *c = tg_core_create(44100.0);
+    tg_core_set_param(c, "rate",    "1/16");
+    tg_core_set_param(c, "length",  li);
+    tg_core_set_param(c, "attack",  "0");
+    tg_core_set_param(c, "decay",   "0");
+    tg_core_set_param(c, "sustain", "1");
+    tg_core_set_param(c, "release", "0");
+    tg_core_set_param(c, "hold",    "1");
+    tg_core_set_param(c, "amount",  "1");
+    tg_core_set_param(c, "ties",    "0");
+    tg_core_set_param(c, "pattern", pattern);
+    return c;
+}
+
+/* One integer-valued key, read back through get_param. */
+static int atoi_param(tg_core_t *c, const char *key) {
+    char buf[64];
+    if (tg_core_get_param(c, key, buf, sizeof(buf)) < 0) return -1;
+    return atoi(buf);
+}
+
+/* The order run out of the `ui` readout: field 8, two hex digits per step. */
+static int ui_order(tg_core_t *c, int step) {
+    char buf[4096];
+    if (tg_core_get_param(c, "ui", buf, sizeof(buf)) < 0) return -1;
+    const char *p = buf;
+    for (int i = 0; i < 8; i++) {
+        p = strchr(p, ':');
+        if (!p) return -1;
+        p++;
+    }
+    char pair[3] = { p[step * 2], p[step * 2 + 1], 0 };
+    if (!pair[0] || !pair[1]) return -1;
+    return (int)strtol(pair, NULL, 16);
+}
+
 /* A gate that is fully open on step 0 and fully shut on step 1, with no
  * envelope at all -- so the first sample that drops tells us exactly where the
  * step boundary fell, in samples. */
@@ -402,7 +468,7 @@ int main(void) {
      * knowing is where the bus case stops working, not whether it does.
      */
     /*
-     * THE `params` READOUT. Twelve automatable values plus width_ms in one
+     * THE `params` READOUT. Fourteen automatable values plus width_ms in one
      * read, so a shell does not take nine locks to ask "did anything move".
      * Two properties matter and neither is obvious from looking at it: every
      * field must agree with the single-key getter for the same key, and the
@@ -430,15 +496,16 @@ int main(void) {
         int n = tg_core_get_param(c, "params", line, sizeof(line));
         check("params answers at all", n > 0);
 
-        /* Split on ':' -- 13 fields. */
-        char *f[16]; int nf = 0;
-        for (char *t = line; nf < 16; ) {
+        /* Split on ':' -- 15 fields: the twelve automatable values, width_ms,
+         * and the fade's two on the end. */
+        char *f[24]; int nf = 0;
+        for (char *t = line; nf < 24; ) {
             f[nf++] = t;
             char *colon = strchr(t, ':');
             if (!colon) break;
             *colon = '\0'; t = colon + 1;
         }
-        check("params has thirteen fields", nf == 13);
+        check("params has fifteen fields", nf == 15);
 
         char one[TG_STATE_MAX];
         #define MIRRORS(idx, key) \
@@ -450,6 +517,9 @@ int main(void) {
         check("...rate is the LABEL, as get_param answers it", MIRRORS(4, "rate"));
         check("...length is the OPTION INDEX, as get_param answers it",
               MIRRORS(5, "length"));
+        /* The fade's switch, appended past width_ms. Its knob is a float and is
+         * covered by the round trip below. */
+        check("...fade_soft mirrors get_param", MIRRORS(14, "fade_soft"));
         #undef MIRRORS
 
         /*
@@ -465,16 +535,16 @@ int main(void) {
             char back[TG_STATE_MAX];
             tg_core_get_param(c, "params", back, sizeof(back));
             /* re-split and compare just this field */
-            char *g[16]; int ng = 0;
-            for (char *t = back; ng < 16; ) {
+            char *g[24]; int ng = 0;
+            for (char *t = back; ng < 24; ) {
                 g[ng++] = t;
                 char *colon = strchr(t, ':');
                 if (!colon) break;
                 *colon = '\0'; t = colon + 1;
             }
-            if (ng != 13 || strcmp(g[6 + i], f[6 + i]) != 0) {
+            if (ng != 15 || strcmp(g[6 + i], f[6 + i]) != 0) {
                 printf("      %s: wrote %s, read %s\n", fkeys[i], f[6 + i],
-                       (ng == 13) ? g[6 + i] : "(short line)");
+                       (ng == 15) ? g[6 + i] : "(short line)");
                 exact = 0;
             }
         }
@@ -483,17 +553,28 @@ int main(void) {
         tg_core_destroy(c);
     }
     {
-        /* width_ms is the last field, and it is hold * ms_per_step -- the
-         * number a shell needs to print a stage in milliseconds. */
+        /*
+         * width_ms is field 12 -- it WAS the last one, and the fade's two are
+         * appended past it. Found by INDEX now rather than by the last colon,
+         * because "the last field" stopped being a definition of it the moment
+         * anything could follow: an strrchr here would have read fade_soft and
+         * compared an integer flag against a duration.
+         */
         tg_core_t *c = tg_core_create(48000.0);
         tg_core_set_param(c, "rate", "1/16");
         tg_core_set_param(c, "hold", "0.5");
         char line[TG_STATE_MAX], w[TG_STATE_MAX];
         tg_core_get_param(c, "params", line, sizeof(line));
         tg_core_get_param(c, "width_ms", w, sizeof(w));
-        const char *last = strrchr(line, ':');
-        check("params carries width_ms last",
-              last != NULL && fabs(atof(last + 1) - atof(w)) < 0.01);
+        char *f[24]; int nf = 0;
+        for (char *t = line; nf < 24; ) {
+            f[nf++] = t;
+            char *colon = strchr(t, ':');
+            if (!colon) break;
+            *colon = '\0'; t = colon + 1;
+        }
+        check("params carries width_ms at field 12",
+              nf == 15 && fabs(atof(f[12]) - atof(w)) < 0.01);
         tg_core_destroy(c);
     }
 
@@ -1110,6 +1191,424 @@ int main(void) {
             check(what, wrapped);
             tg_core_destroy(c);
         }
+    }
+
+    /*
+     * THE FADE-IN.
+     *
+     * Every assertion here is read out of a RENDER: the fade's claim is about
+     * what you hear, and a weight table that agrees with the readout while
+     * disagreeing with the gain law would pass a test written the other way.
+     */
+    printf("the fade-in:\n");
+    {
+        /* Four hits at steps 0, 4, 8, 12 -- "1111" LSB-aligned is steps 0-3,
+         * so the mask is spelled out instead. */
+        const char *PAT = "1111";              /* steps 0,4,8,12 */
+        float w[16];
+
+        /* 0% is silence, and it is silence rather than "quiet": every gap is a
+         * gap, so the gate is shut for the whole cycle. */
+        tg_core_t *c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade", "0");
+        step_weights(c, 16, w);
+        int any = 0;
+        for (int i = 0; i < 16; i++) if (w[i] > 0.01f) any = 1;
+        check("fade 0%: no step sounds", !any);
+        tg_core_destroy(c);
+
+        /* 100% is the pattern, untouched. */
+        c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade", "1");
+        step_weights(c, 16, w);
+        check("fade 100%: step 0 is full", w[0] > 0.99f);
+        check("fade 100%: the last hit is full", w[12] > 0.99f);
+        check("fade 100%: a gap is still a gap", w[1] < 0.01f);
+        tg_core_destroy(c);
+
+        /*
+         * EQUIDISTANT ARRIVALS. Four hits, so rank r crosses at r/4: at 50%
+         * exactly two sound, at 75% three, and never the other way round.
+         */
+        static const struct { const char *f; int want; } steps[] = {
+            { "0.24", 0 }, { "0.25", 1 }, { "0.49", 1 }, { "0.50", 2 },
+            { "0.74", 2 }, { "0.75", 3 }, { "0.99", 3 }, { "1.00", 4 },
+        };
+        for (unsigned k = 0; k < sizeof(steps) / sizeof(steps[0]); k++) {
+            c = mk_flat(15, PAT);
+            tg_core_set_param(c, "fade", steps[k].f);
+            step_weights(c, 16, w);
+            int n = 0;
+            for (int i = 0; i < 16; i++) if (w[i] > 0.99f) n++;
+            char what[96];
+            snprintf(what, sizeof(what), "hard, fade %s: %d of 4 sound",
+                     steps[k].f, steps[k].want);
+            check(what, n == steps[k].want);
+            tg_core_destroy(c);
+        }
+
+        /*
+         * THE LAST STEP ARRIVES AT THE TOP OF THE KNOB, and this is the
+         * epsilon's test. The value below is the float nearest 1.0 from
+         * beneath, which is a real thing for a host to send; without the slack
+         * in recalc_fade the fourth hit would stay silent there and the bug
+         * would only ever appear at exactly one knob position.
+         */
+        c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade", "0.99999994");
+        step_weights(c, 16, w);
+        check("hard, fade just under 1: all four still sound",
+              w[0] > 0.99f && w[4] > 0.99f && w[8] > 0.99f && w[12] > 0.99f);
+        tg_core_destroy(c);
+
+        /*
+         * SOFT: ONE STEP PART-WAY IN, NEVER TWO. The window is one arrival
+         * wide, so at any setting the weights are some 1s, one fraction and
+         * some 0s -- which is what makes the knob read as a single arriving
+         * step rather than a general dimming.
+         */
+        for (int pct = 1; pct < 100; pct++) {
+            char v[16]; snprintf(v, sizeof(v), "%.4f", pct / 100.0);
+            c = mk_flat(15, PAT);
+            tg_core_set_param(c, "fade_soft", "1");
+            tg_core_set_param(c, "fade", v);
+            step_weights(c, 16, w);
+            int partial = 0;
+            for (int i = 0; i < 16; i += 4)
+                if (w[i] > 0.02f && w[i] < 0.98f) partial++;
+            if (partial > 1) {
+                printf("      fade %s: %d steps part-way in\n", v, partial);
+                check("soft: at most one step is part-way in", 0);
+                tg_core_destroy(c);
+                break;
+            }
+            tg_core_destroy(c);
+        }
+        check("soft: at most one step is part-way in, across the travel", 1);
+
+        /*
+         * SOFT AND HARD AGREE AT EVERY ARRIVAL BOUNDARY. They are one formula
+         * and a threshold, so the switch may change a step's SHAPE and must
+         * never change WHEN it arrives. A soft mode that lagged by half a slot
+         * would be a second feature wearing one name.
+         */
+        int agree = 1;
+        static const char *bounds[] = { "0", "0.25", "0.50", "0.75", "1" };
+        for (unsigned k = 0; k < sizeof(bounds) / sizeof(bounds[0]); k++) {
+            float hard[16], soft[16];
+            c = mk_flat(15, PAT);
+            tg_core_set_param(c, "fade", bounds[k]);
+            step_weights(c, 16, hard);
+            tg_core_destroy(c);
+            c = mk_flat(15, PAT);
+            tg_core_set_param(c, "fade_soft", "1");
+            tg_core_set_param(c, "fade", bounds[k]);
+            step_weights(c, 16, soft);
+            tg_core_destroy(c);
+            for (int i = 0; i < 16; i += 4)
+                if (fabs(hard[i] - soft[i]) > 0.02) {
+                    printf("      fade %s step %d: hard %.3f soft %.3f\n",
+                           bounds[k], i, hard[i], soft[i]);
+                    agree = 0;
+                }
+        }
+        check("soft and hard agree at every arrival boundary", agree);
+
+        /*
+         * SOFT ACTUALLY RAMPS. The three assertions above would all pass if
+         * soft did nothing at all, so this is the one that says the fraction
+         * exists: halfway through the second step's slot, it is halfway in.
+         */
+        c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade_soft", "1");
+        tg_core_set_param(c, "fade", "0.375");     /* 1.5 arrivals of 4 */
+        step_weights(c, 16, w);
+        check("soft: the first step is fully in", w[0] > 0.99f);
+        check_near("soft: the second is half in", w[4], 0.5, 0.05);
+        check("soft: the third has not started", w[8] < 0.01f);
+        tg_core_destroy(c);
+    }
+
+    /*
+     * A STEP THE FADE HAS NOT REACHED IS A GAP, NOT A SILENT ON STEP.
+     *
+     * This is the difference that cannot be seen in a weight table. Both
+     * readings render step 2 silent; only the gap reading stops step 1's TIE
+     * from holding its gate open through it, and stops JOIN NEIGHBORS from
+     * bridging to it. Get this wrong and the fade goes quiet a step late,
+     * audibly, with the picture looking perfectly correct.
+     */
+    printf("a faded-out step is a gap:\n");
+    {
+        float w[16];
+        /* Steps 0,1,2 on and adjacent; sustain below full so a retrigger is
+         * audible, and Width short so a gate that is NOT held shuts early. */
+        tg_core_t *c = mk_flat(15, "7");           /* steps 0,1,2 */
+        tg_core_set_param(c, "sustain", "1");
+        tg_core_set_param(c, "hold", "0.5");
+        tg_core_set_param(c, "legato", "1");
+        /* Two of three arrived, so step 2 is a gap. */
+        tg_core_set_param(c, "fade", "0.67");
+        step_weights(c, 16, w);
+        check("the two arrived steps sound", w[0] > 0.99f && w[1] > 0.99f);
+        check("the third is silent", w[2] < 0.01f);
+        /*
+         * AND THE SECOND STEP'S GATE SHUTS INSIDE IT. With Width 0.5 and Join
+         * Neighbors on, a gate is held through only if the NEXT step sounds.
+         * Step 2 does not, so step 1 must release at half a step -- which is
+         * exactly the read that would be wrong if the fade masked the level
+         * instead of the mask.
+         */
+        {
+            const double SPB = 44100.0 * 60.0 / 120.0 / 4.0;
+            float *buf = render_dc(c, (int)(SPB * 3), 120.0f);
+            int at = (int)(SPB * 1 + SPB * 0.85);   /* late in step 1 */
+            check("join neighbors does not bridge to a faded-out step",
+                  buf[at] < 0.01f);
+            free(buf);
+        }
+        tg_core_destroy(c);
+    }
+
+    /*
+     * THE ARRIVAL ORDER IS ALWAYS A PERMUTATION OF 1..N.
+     *
+     * Nothing else in the engine has to defend against a malformed order
+     * because nothing can produce one: every door that moves the mask, the
+     * length or a rank normalises on the way out. These are the doors.
+     */
+    printf("the arrival order:\n");
+    {
+        tg_core_t *c = mk_flat(15, "1111");        /* steps 0,4,8,12 */
+        check("a fresh pattern is in position order",
+              ui_order(c, 0) == 1 && ui_order(c, 4) == 2 &&
+              ui_order(c, 8) == 3 && ui_order(c, 12) == 4);
+        check("an off step has no rank", ui_order(c, 1) == 0);
+
+        /* A step joining arrives LAST -- the order you click is the order they
+         * arrive. */
+        tg_core_set_param(c, "cursor", "2");
+        tg_core_set_param(c, "step", "On");
+        check("a step joining the pattern arrives last", ui_order(c, 2) == 5);
+        check("...and the others keep their places",
+              ui_order(c, 0) == 1 && ui_order(c, 12) == 4);
+
+        /* One leaving lets the rest close up. */
+        tg_core_set_param(c, "cursor", "0");
+        tg_core_set_param(c, "step", "Off");
+        check("a step leaving closes the gap",
+              ui_order(c, 4) == 1 && ui_order(c, 8) == 2 &&
+              ui_order(c, 12) == 3 && ui_order(c, 2) == 4);
+
+        /* A tie does not move a step's place: it changes what a live step
+         * does, not when it arrives. */
+        tg_core_set_param(c, "cursor", "8");
+        tg_core_set_param(c, "step", "Tie");
+        check("On -> Tie does not reorder", ui_order(c, 8) == 2);
+
+        /* Moving a rank shifts the rest around it, both directions. */
+        tg_core_set_param(c, "cursor", "2");        /* holds rank 4 */
+        tg_core_set_param(c, "step_order", "1");
+        check("moving a step to the front shifts the rest back",
+              ui_order(c, 2) == 1 && ui_order(c, 4) == 2 &&
+              ui_order(c, 8) == 3 && ui_order(c, 12) == 4);
+        tg_core_set_param(c, "step_order", "3");
+        check("...and moving it down shifts them forward",
+              ui_order(c, 4) == 1 && ui_order(c, 8) == 2 &&
+              ui_order(c, 2) == 3 && ui_order(c, 12) == 4);
+        check("step_order reads back", atoi_param(c, "step_order") == 3);
+
+        /* Out of range is clamped, not wrapped or dropped. */
+        tg_core_set_param(c, "step_order", "99");
+        check("a rank past the end clamps to it", ui_order(c, 2) == 4);
+        tg_core_set_param(c, "step_order", "0");
+        check("a rank below 1 clamps to 1", ui_order(c, 2) == 1);
+        tg_core_destroy(c);
+    }
+    {
+        /*
+         * A PERMUTATION AFTER A LENGTH CHANGE TOO, which is the case that
+         * cannot be reasoned about from the mask alone: shortening the pattern
+         * removes steps from the count without touching a single bit.
+         */
+        tg_core_t *c = mk_flat(15, "FFFF");        /* 16 steps, all on */
+        tg_core_set_param(c, "length", "3");       /* index -> 4 steps */
+        int seen[8] = { 0 };
+        int ok = 1;
+        for (int i = 0; i < 4; i++) {
+            int r = ui_order(c, i);
+            if (r < 1 || r > 4 || seen[r]) ok = 0;
+            seen[r] = 1;
+        }
+        check("shortening the pattern leaves a permutation of 1..4", ok);
+        tg_core_destroy(c);
+    }
+
+    /*
+     * THE PATCH BLOB CARRIES THE ORDER, AND ABSENT MEANS POSITION ORDER.
+     *
+     * The second half is the one that matters: every patch in existence was
+     * written before this field, and all of them must load as the left-to-right
+     * sweep rather than as "every step at rank 1", which would look like the
+     * fade being broken.
+     */
+    printf("the order in the state blob:\n");
+    {
+        tg_core_t *c = mk_flat(15, "1111");
+        /* An untouched order is NOT written -- that is what keeps a realistic
+         * patch inside a bus insert's 1024 bytes. */
+        char blob[TG_STATE_MAX];
+        tg_core_get_param(c, "state", blob, sizeof(blob));
+        check("an unreordered pattern writes no order field",
+              strstr(blob, "\"p0\":\"1111:0:16:\"") != NULL);
+
+        /* Reorder, save, load into a fresh instance, and read it back. */
+        tg_core_set_param(c, "cursor", "12");
+        tg_core_set_param(c, "step_order", "1");
+        tg_core_get_param(c, "state", blob, sizeof(blob));
+        /* Two colons: the depths are all full so that field is EMPTY, which
+         * the reader handles because an absent depth already means full. */
+        check("a reordered pattern does write one",
+              strstr(blob, "\"p0\":\"1111:0:16::") != NULL);
+
+        tg_core_t *d = tg_core_create(44100.0);
+        tg_core_set_param(d, "state", blob);
+        check("the order survives a round trip",
+              ui_order(d, 12) == 1 && ui_order(d, 0) == 2 &&
+              ui_order(d, 4) == 3 && ui_order(d, 8) == 4);
+        tg_core_destroy(d);
+        tg_core_destroy(c);
+
+        /* A v4 blob -- the format before the fade -- loads as position order,
+         * fade 1.0 and hard. */
+        d = tg_core_create(44100.0);
+        tg_core_set_param(d, "state",
+            "{\"sv\":4,\"slot\":0,\"rate\":\"1/16\",\"attack\":0,\"decay\":0,"
+            "\"sustain\":1,\"release\":0,\"hold\":1,\"amount\":1,"
+            "\"legato\":0,\"tmode\":0,\"curve\":0,\"p0\":\"1111:0:16\"}");
+        check("a v4 blob loads as position order",
+              ui_order(d, 0) == 1 && ui_order(d, 4) == 2 &&
+              ui_order(d, 8) == 3 && ui_order(d, 12) == 4);
+        {
+            char v[64];
+            tg_core_get_param(d, "fade", v, sizeof(v));
+            check("a v4 blob loads at fade 100%", atof(v) > 0.99);
+            tg_core_get_param(d, "fade_soft", v, sizeof(v));
+            check("a v4 blob loads hard", atoi(v) == 0);
+        }
+        tg_core_destroy(d);
+    }
+
+    /*
+     * RANDOMIZE.
+     *
+     * Sixteen coin flips reads as noise rather than as a gate, so what is
+     * asserted here is the SHAPE of the result rather than its contents: a hit
+     * on the downbeat, a plausible density, an order that is still a
+     * permutation, and -- the one that would be a real bug -- a playhead that
+     * does not move.
+     */
+    printf("randomize:\n");
+    {
+        /* Reproducible from a seed, which is the only reason any of the rest
+         * of this can be asserted at all. */
+        tg_core_t *a = mk_flat(15, "0");
+        tg_core_t *b = mk_flat(15, "0");
+        tg_core_set_param(a, "randomize", "12345");
+        tg_core_set_param(b, "randomize", "12345");
+        char pa[256], pb[256];
+        tg_core_get_param(a, "state", pa, sizeof(pa));
+        tg_core_get_param(b, "state", pb, sizeof(pb));
+        check("the same seed gives the same pattern", strcmp(pa, pb) == 0);
+        tg_core_set_param(b, "randomize", "54321");
+        tg_core_get_param(b, "state", pb, sizeof(pb));
+        check("a different seed gives a different one", strcmp(pa, pb) != 0);
+        tg_core_destroy(a);
+        tg_core_destroy(b);
+
+        /* The shape, over many seeds -- one roll proves nothing. */
+        int bad_downbeat = 0, bad_density = 0, bad_order = 0, bad_ties = 0;
+        for (unsigned seed = 1; seed <= 200; seed++) {
+            char v[16]; snprintf(v, sizeof(v), "%u", seed);
+            tg_core_t *c = mk_flat(15, "0");
+            tg_core_set_param(c, "randomize", v);
+
+            int hits = 0, seen[136] = { 0 };
+            for (int i = 0; i < 16; i++) {
+                int r = ui_order(c, i);
+                if (r > 0) hits++;
+            }
+            if (ui_order(c, 0) < 1) bad_downbeat++;
+            if (hits < 4 || hits > 12) bad_density++;
+            /* the ranks are exactly 1..hits */
+            for (int i = 0; i < 16; i++) {
+                int r = ui_order(c, i);
+                if (r == 0) continue;
+                if (r < 1 || r > hits || seen[r]) bad_order = 1;
+                seen[r] = 1;
+            }
+            char t[64];
+            tg_core_get_param(c, "ties", t, sizeof(t));
+            if (strtol(t, NULL, 16) != 0) bad_ties++;
+            tg_core_destroy(c);
+        }
+        check("always a hit on the downbeat", bad_downbeat == 0);
+        check("a quarter to three quarters full, every time", bad_density == 0);
+        check("the order is always a permutation", !bad_order);
+        check("ties are cleared", bad_ties == 0);
+
+        /*
+         * IT DOES NOT DISTURB THE PLAYHEAD. Pressing this mid-bar must change
+         * what the gate plays and not when: a generator that reset step_pos
+         * would throw the gate out of time on every press, which is the one
+         * failure a player would not forgive.
+         */
+        tg_core_t *c = mk_flat(15, "FFFF");
+        float *junk = render_dc(c, 5000, 120.0f);
+        free(junk);
+        const double before = tg_core_phase01(c);
+        tg_core_set_param(c, "randomize", "7");
+        check_near("the playhead does not move", tg_core_phase01(c), before, 1e-9);
+        tg_core_destroy(c);
+    }
+
+    /*
+     * THE ORDER'S OWN WORST CASE IN THE STATE BLOB.
+     *
+     * The size section above measures a pattern in position order, where the
+     * emitter writes no order field at all -- so it does not see this array.
+     * A SHUFFLED order in all eight slots does, and it is what moved
+     * TG_STATE_MAX from 4096 to 8192.
+     */
+    printf("state size with a shuffled order:\n");
+    {
+        tg_core_t *c = tg_core_create(44100.0);
+        char buf[16384];
+        for (int s = 0; s < 8; s++) {
+            char v[16]; snprintf(v, sizeof(v), "%d", s);
+            tg_core_set_param(c, "slot", v);
+            tg_core_set_param(c, "length", "127");
+            tg_core_set_param(c, "pattern", "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+            for (int i = 0; i < 128; i++) {
+                snprintf(v, sizeof(v), "%d", i);
+                tg_core_set_param(c, "cursor", v);
+                tg_core_set_param(c, "step_amount", "0.5");
+            }
+            snprintf(v, sizeof(v), "%d", s + 1);
+            tg_core_set_param(c, "randomize", v);
+            /* randomize resets the depths, so re-accent AFTER it to reach the
+             * real worst case: every depth off-default AND a shuffled order. */
+            for (int i = 0; i < 128; i++) {
+                snprintf(v, sizeof(v), "%d", i);
+                tg_core_set_param(c, "cursor", v);
+                tg_core_set_param(c, "step_amount", "0.5");
+            }
+        }
+        int n = tg_core_get_param(c, "state", buf, sizeof(buf));
+        printf("      8 slots x 128, accented AND shuffled : %5d bytes\n", n);
+        check("the real worst case fits TG_STATE_MAX", n > 0 && n < TG_STATE_MAX);
+        check("...and Schwung's audio FX cap", n > 0 && n <= 8192);
+        tg_core_destroy(c);
     }
 
     printf(failures ? "\nFAILED (%d)\n" : "\nPASS\n", failures);

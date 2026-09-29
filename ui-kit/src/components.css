@@ -39,16 +39,34 @@
 .btn:active,
 .btn.on { background: var(--uv); border-color: var(--uv); color: var(--on-uv); }
 
-/* panels: (304, 32, 488, 172) and (304, 228, 488, 172) */
+/*
+ * PANELS: (304, 32, 488, 140), and three of them now rather than two.
+ *
+ * THE TITLE RUNS UP THE LEFT EDGE, and that is what pays for the third panel.
+ *
+ * It was a heading ABOVE the knobs: 16px of line plus 12 of margin, so every
+ * panel carried a 28px band that said one word. A knob-card is 103 tall and
+ * fixed by the kit (11 label + 8 + 48 knob + 8 + 28 readout), so with the band
+ * gone a panel is 2 border + 32 padding + 103 = 137, and 140 keeps it on the
+ * 4px grid. Three of those fit where two used to, for 76px of window instead of
+ * the 148 a third horizontal-titled panel would have cost.
+ *
+ * Bottom-to-top, like the tab strip's labels, and for the same reason: it is the
+ * way a label on a left edge is read.
+ */
 .panel {
-  position: absolute; left: 304px; width: 488px; height: 172px;
+  position: absolute; left: 304px; width: 488px; height: 140px;
   background: var(--bg-100); border: 1px solid var(--line-100);
-  padding: var(--s4);}
+  padding: var(--s4);
+  display: flex; gap: var(--s3);}
 
-.panel h2 { margin: 0 0 var(--s3); color: var(--ink-muted);}
+.panel h2 {
+  margin: 0; color: var(--ink-muted); align-self: center;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  white-space: nowrap;}
 
 /* label, knob, readout stacked with space-2 between: 11 + 8 + 48 + 8 + 28 */
-.knob-row { display: flex; gap: var(--s4);}
+.knob-row { display: flex; gap: var(--s4); flex: 1; min-width: 0;}
 
 .knob-card {
   display: flex; flex-direction: column; align-items: center; gap: var(--s2);
@@ -125,6 +143,17 @@
  * The text is rotated a quarter turn so it reads bottom-to-top, which is how
  * a tab on a right edge is read.
  */
+/*
+ * A 24px STRIP, AND THE BAND NO LONGER MAKES ROOM FOR IT.
+ *
+ * It used to take 24 off the band's right edge with 8 of gap, so the plot drew
+ * 32px narrower than the pad grid below it -- which is the whole reason the
+ * window had grown from 824 to 856, buying an alignment the strip then spent.
+ * Laid OVER the plot's right edge instead, the plot spans the full content
+ * width, the pads and the signal line up, and the window goes back to 824 with
+ * one padding all round. Positioned by the layout that owns the band; this says
+ * only what the strip is.
+ */
 .tabs { display: flex; flex-direction: column; width: 24px;}
 
 .tab {
@@ -136,7 +165,11 @@
 
 .tab:hover { background: var(--bg-300);}
 
-.tab.on { background: var(--uv); border-color: var(--uv); color: var(--on-uv);}
+/* The glow is here rather than a class toggled from Tabs.jsx -- see the note
+ * there. Same arrangement as a lit pad. */
+.tab.on {
+  background: var(--uv); border-color: var(--uv); color: var(--on-uv);
+  filter: var(--glow-led);}
 
 .tab-text {
   writing-mode: vertical-rl; transform: rotate(180deg);

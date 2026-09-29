@@ -180,8 +180,18 @@ const HIERARCHY = JSON.stringify({
                     /* Past the ring page's first eight, so these land on the
                      * grid behind it. `time_mode` sits with Length and Rate
                      * because it is the same kind of thing -- how the
-                     * envelope's times are measured, not what they are. */
-                    "length", "rate", "time_mode", "curve"],
+                     * envelope's times are measured, not what they are.
+                     *
+                     * FADE AND ITS SHAPE SIT WITH THEM rather than on the ring
+                     * page, and that is a real cost: the fade is a PERFORMANCE
+                     * control, and a build-up wants it under a knob while you
+                     * are looking at the pattern. The eight-knob ceiling
+                     * decides it -- the ring page takes the level's first eight
+                     * and every one of those is already load-bearing. Swapping
+                     * `slot` out for `fade` is the trade to make if anyone asks
+                     * for it. */
+                    "length", "rate", "time_mode", "curve",
+                    "fade", "fade_soft", "randomize"],
             params: ["gate"]
         }
     }

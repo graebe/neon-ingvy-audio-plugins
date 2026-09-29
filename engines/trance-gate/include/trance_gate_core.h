@@ -122,7 +122,7 @@ void tg_core_process_f32_split(tg_core_t *c, float *l, float *r, int frames,
  * conversion in each direction (atof honours LC_NUMERIC, so a comma-decimal
  * host turns "0.750" into 0) and a strcmp ladder, per value, per block.
  *
- * These are the same twelve values on the same wire conventions -- slot,
+ * These are the same fourteen values on the same wire conventions -- slot,
  * length and rate are INDICES, legato and time_mode are 0|1, the rest are the
  * units the string keys use -- with the decimal detour removed. The string
  * setter is implemented in terms of this one, so every clamp exists once.
@@ -133,7 +133,12 @@ void tg_core_process_f32_split(tg_core_t *c, float *l, float *r, int frames,
 typedef enum {
     TG_P_SLOT = 0, TG_P_LENGTH, TG_P_RATE, TG_P_LEGATO, TG_P_TIME_MODE,
     TG_P_CURVE, TG_P_AMOUNT, TG_P_HOLD, TG_P_ATTACK, TG_P_DECAY,
-    TG_P_SUSTAIN, TG_P_RELEASE, TG_P_COUNT
+    TG_P_SUSTAIN, TG_P_RELEASE,
+    /* APPENDED. See the note above: these values are the ABI, so the fade's
+     * two can only go on the end -- not beside TG_P_AMOUNT, where they belong
+     * by meaning. */
+    TG_P_FADE, TG_P_FADE_SOFT,
+    TG_P_COUNT
 } tg_param_t;
 
 /* Audio-thread safe: a switch, a clamp and a store. No allocation, no
@@ -149,21 +154,31 @@ int  tg_core_get_param(tg_core_t *c, const char *key, char *buf, int buf_len);
 /*
  * SIZE YOUR get_param BUFFER FROM THIS, DO NOT PICK A NUMBER.
  *
- * The longest thing the engine emits is the "state" blob, and it grew with
- * TG_MAX_STEPS: eight slots of fully accented 128-step patterns is ~2.6 KB,
- * where 32-step ones were a few hundred bytes. A shell that had guessed 2048
- * would not fail -- get_param snprintfs, so it TRUNCATES, and a truncated
- * patch is a project that silently reloads with the wrong pattern.
+ * The longest thing the engine emits is the "state" blob, and it has grown
+ * twice. TG_MAX_STEPS took eight slots of fully accented 128-step patterns to
+ * ~2.6 KB, where 32-step ones were a few hundred bytes; the fade-in's per-step
+ * ARRIVAL ORDER is a second array of the same size, which takes the worst case
+ * to ~4.8 KB and is why this number moved from 4096 to 8192.
  *
- * The private encoding's true worst case is asserted against this number by
- * tests/test_core.c, which builds the largest patch the format can express
- * (eight slots of fully accented 128-step patterns) and measures what the
- * emitter actually writes. That was a _Static_assert over the format macros
- * while the engine was C; measuring the emitter is the stronger of the two,
- * and it is what stands between growing the format and a corrupt save
- * downstream.
+ * A shell that had guessed 2048 would not fail -- get_param snprintfs, so it
+ * TRUNCATES, and a truncated patch is a project that silently reloads with the
+ * wrong pattern.
+ *
+ * 8192 IS ALSO SCHWUNG'S AUDIO-FX CAP, so this is now the whole budget rather
+ * than a number with room above it. The next array added to a pattern does not
+ * fit, and the answer then is a denser encoding rather than a bigger buffer.
+ *
+ * REALISTIC patches are far smaller, and deliberately: neither the depths nor
+ * the orders are written while they hold their default, so a patch with no
+ * accents and no reordering still fits a bus insert's 1024 bytes. That is a
+ * property of the emitter, and tests/test_core.c measures all three cases --
+ * plain, accented, and accented with a shuffled order -- against the real
+ * emitter rather than a conservative bound over it. That was a
+ * _Static_assert over the format macros while the engine was C; measuring the
+ * emitter is the stronger of the two, and it is what stands between growing
+ * the format and a corrupt save downstream.
  */
-#define TG_STATE_MAX 4096
+#define TG_STATE_MAX 8192
 
 /* The envelope's curve shapes, and the warp each one applies to a stage's
  * 0..1 progress. Exposed for the tests: the properties every stage depends on
