@@ -25,8 +25,9 @@
  *   - ZERO MEANS OFF. Dragging to the floor deactivates rather than leaving a
  *     step that is on and silent.
  */
-import { sendMessage, MSG } from './iplug.js';
-import { startDrag } from './drag.js';
+import { sendMessage } from '@ultraviolet/ui';
+import { MSG } from './msg.js';
+import { startDrag } from '@ultraviolet/ui';
 
 export const MODE = { off: 0, on: 1, tie: 2 };
 

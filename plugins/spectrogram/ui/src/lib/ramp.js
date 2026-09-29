@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * NO COLOUR IS SPELLED HERE, and that is the point of the file existing at all.
- * The five stops live in uv.css as --spec-0..--spec-4 and are read back through
+ * The five stops live in @ultraviolet/ui's tokens.css as --spec-0..--spec-4 and are read back through
  * getComputedStyle, so a canvas -- which cannot use a CSS variable directly --
  * still gets its colours from the one place the design system is transcribed.
  *
@@ -79,7 +79,7 @@ export const luminance = (lut, v) =>
  * One stop as the stylesheet wrote it, for the places a canvas wants a CSS
  * colour string rather than three numbers (fillStyle). Reading it back beats
  * reassembling it: an rgb() built here would also be a colour spelled outside
- * uv.css, which is precisely what the token guard forbids.
+ * @ultraviolet/ui's tokens.css, which is precisely what the token guard forbids.
  */
 export const stopCss = (i, el = document.documentElement) =>
   getComputedStyle(el).getPropertyValue(`--spec-${i}`).trim();

@@ -7,16 +7,25 @@
  * From the Knob card, a 48px box: disc r 16, rail r 20, pointer r 6 -> 14,
  * 2px stroke. Expressed as fractions of 48 because knob-lg is the same
  * drawing at 64. The rail runs 270 degrees with the gap at the bottom.
+ *
+ * IT KNOWS NOTHING ABOUT PARAMETERS. It was wired straight to setParam and the
+ * gesture calls; in the kit it takes `value` (normalised 0..1) and reports
+ * through onInput / onBegin / onEnd, because a knob is a way of turning a
+ * number and what that number MEANS is the caller's business. The same rule the
+ * Select follows -- see ParamKnob in the Trance Gate's editor for the binding.
+ *
+ * `display` is the text under it, which the PLUGIN formats: this side holds no
+ * units, no precision and no enum labels, by design, so it could not format one
+ * if it wanted to.
  */
 import { createSignal } from 'solid-js';
-import { setParam, beginGesture, endGesture, sendMessage, MSG } from './iplug.js';
-import { startDrag } from './drag.js';
+import { startDrag } from '../lib/drag.js';
 
 const BOX = 48;
 const START = 135, SWEEP = 270;          /* degrees, gap at the bottom */
 const TRAVEL = 200, FINE = 5;            /* px for the whole range; shift divides */
 
-export default function Knob(props) {
+export function Knob(props) {
   let el;
   const [editing, setEditing] = createSignal(false);
   const norm = () => Math.min(1, Math.max(0, props.value ?? 0));
@@ -24,11 +33,11 @@ export default function Knob(props) {
   /* THE PLUGIN PARSES IT, not the UI. "40 ms" needs the unit, the range and
    * the width the stage is measured against, and the UI holds none of them --
    * it would have to guess, and a guess here silently moves the patch. */
-  const commitText = (text) => sendMessage(MSG.setText, `${props.idx}:${text}`);
+  const commitText = (text) => props.onText?.(text);
 
   const onPointerDown = (e) => {
     if (e.detail === 2) {                /* double-click resets */
-      beginGesture(props.idx); setParam(props.idx, props.default ?? 0); endGesture(props.idx);
+      props.onBegin?.(); props.onInput?.(props.default ?? 0); props.onEnd?.();
       return;
     }
     /* THE SENSITIVITY IS CHOSEN AT PRESS AND NOT RE-READ: the delta is
@@ -36,13 +45,13 @@ export default function Knob(props) {
      * rescales everything since the press and the value jumps. */
     const divisor = e.shiftKey ? TRAVEL * FINE : TRAVEL;
     const startY = e.clientY, startV = norm();
-    beginGesture(props.idx);
+    props.onBegin?.();
     /* Tracked on the window, so the value keeps following the pointer once it
      * leaves the knob -- which is most of a real drag. */
     startDrag(
-      (ev) => setParam(props.idx,
-                       Math.min(1, Math.max(0, startV + (startY - ev.clientY) / divisor))),
-      () => endGesture(props.idx));
+      (ev) => props.onInput?.(
+        Math.min(1, Math.max(0, startV + (startY - ev.clientY) / divisor))),
+      () => props.onEnd?.());
   };
 
   /*
@@ -54,9 +63,9 @@ export default function Knob(props) {
    * write per press rather than a touch that never ends.
    */
   const nudge = (delta) => {
-    beginGesture(props.idx);
-    setParam(props.idx, Math.min(1, Math.max(0, norm() + delta)));
-    endGesture(props.idx);
+    props.onBegin?.();
+    props.onInput?.(Math.min(1, Math.max(0, norm() + delta)));
+    props.onEnd?.();
   };
 
   const onKeyDown = (e) => {

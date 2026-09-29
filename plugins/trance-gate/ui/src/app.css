@@ -43,40 +43,8 @@ main {
 .plot { width: 100%; height: 104px; display: block; }
 .plot-caption { fill: var(--ink-muted); }
 
-/* panels: (304, 32, 488, 172) and (304, 228, 488, 172) */
-.panel {
-  position: absolute; left: 304px; width: 488px; height: 172px;
-  background: var(--bg-100); border: 1px solid var(--line-100);
-  padding: var(--s4);
-}
 .gate-panel { top: 32px; }
 .env-panel  { top: 228px; }
-.panel h2 { margin: 0 0 var(--s3); color: var(--ink-muted); }
-
-/* label, knob, readout stacked with space-2 between: 11 + 8 + 48 + 8 + 28 */
-.knob-row { display: flex; gap: var(--s4); }
-.knob-card {
-  display: flex; flex-direction: column; align-items: center; gap: var(--s2);
-  min-width: var(--readout-w); flex: 1;
-}
-.knob-label { color: var(--ink-muted); white-space: nowrap; }
-.knob { cursor: ns-resize; touch-action: none; display: block; }
-
-/* THE READOUT: bg-000 well, number in ink, unit in ink-muted 2px after it. */
-.readout {
-  width: 100%; min-width: var(--readout-w); height: var(--control-h);
-  display: flex; align-items: center; justify-content: center;
-  background: var(--bg-000); border: 1px solid var(--line-200);
-  color: var(--ink); cursor: text; padding: 0 var(--s2); white-space: nowrap;
-}
-.readout .unit { color: var(--ink-muted); margin-left: 2px; }
-.readout.editing {
-  font-family: inherit; text-align: center; outline: none;
-  border-color: var(--uv);
-  /* The focus ring, from the token -- it was retyped here, which is how it
-   * came to sit at a different alpha from every other focused thing. */
-  box-shadow: var(--glow-focus);
-}
 
 /*
  * THE BAND: the two plots occupy it, one at a time, and the tabs take a 24px
@@ -132,77 +100,12 @@ main {
   display: flex; align-items: center; gap: var(--s6);
 }
 .spacer { flex: 1; }
-.select-group { display: flex; align-items: center; gap: var(--s2); }
-.select-label { color: var(--ink-muted); white-space: nowrap; }
-.select {
-  position: relative; height: var(--control-h);
-  background: var(--bg-200); border: 1px solid var(--line-200);
-  display: flex; align-items: center; padding: 0 28px 0 12px;
-}
-.select:hover { background: var(--bg-300); }
-.select.open { border-color: var(--uv); }
-.select-value { color: var(--ink); }
-.chevron { position: absolute; right: 10px; top: 50%; margin-top: -3px; }
-/* The real <select> sits invisibly on top so the popup is the OS's. */
-.select select {
-  position: absolute; inset: 0; opacity: 0; cursor: pointer;
-  font-family: inherit;
-}
 
 /*
  * THE SWITCH: a 28x14 housing with an 8x8 square at 2px that moves to 16px
  * and lights. Not a button -- a user-settable boolean is a switch; an LED is
  * for state the plugin REPORTS.
  */
-/* A <button>, so the browser's own chrome is stripped back to the div it
- * replaces -- it became one to be focusable; see uv.css. */
-.switch-row {
-  display: flex; align-items: center; gap: var(--s2);
-  cursor: pointer; height: var(--control-h);
-  background: none; border: 0; padding: 0; margin: 0;
-  font: inherit; color: inherit; text-align: left;
-}
-.switch {
-  position: relative; width: 28px; height: 14px;
-  background: var(--bg-200); border: 1px solid var(--line-200);
-}
-.switch:hover { background: var(--bg-300); }
-.switch.on { border-color: var(--uv); }
-.switch-knob {
-  position: absolute; left: 2px; top: 2px; width: 8px; height: 8px;
-  background: var(--ink-dim);
-}
-.switch.on .switch-knob { left: 16px; background: var(--uv); }
-.switch-label { color: var(--ink-muted); white-space: nowrap; }
-
-.glyph {
-  width: 40px; height: var(--control-h);
-  display: grid; place-items: center;
-  background: var(--bg-200); border: 1px solid var(--line-200);
-  color: var(--ink); cursor: pointer; border-radius: var(--radius);
-}
-.glyph:hover { background: var(--bg-300); border-color: var(--ink-dim); }
-.glyph:active { background: var(--uv); border-color: var(--uv); color: var(--on-uv); }
-
-/*
- * TABS: a vertical strip, 24 wide, each tab an equal share of the height.
- * The text is rotated a quarter turn so it reads bottom-to-top, which is how
- * a tab on a right edge is read.
- */
-.tabs { display: flex; flex-direction: column; width: 24px; }
-.tab {
-  flex: 1; width: 24px; padding: 0;
-  background: var(--bg-200); border: 1px solid var(--line-200);
-  color: var(--ink-muted); font-family: inherit; cursor: pointer;
-  border-radius: var(--radius);
-  display: grid; place-items: center;
-}
-.tab:hover { background: var(--bg-300); }
-.tab.on { background: var(--uv); border-color: var(--uv); color: var(--on-uv); }
-.tab-text {
-  writing-mode: vertical-rl; transform: rotate(180deg);
-  text-transform: uppercase; white-space: nowrap;
-}
 
 /* ------------------------------------------------------------ pads -- */
 .grid-slot { margin-left: 32px; }
@@ -248,14 +151,4 @@ main {
 .pad.cursor { outline: 1px solid var(--ink); outline-offset: 2px; }
 
 /* -------------------------------------------------------- hint bar -- */
-/* "The Hint bar pinned to the bottom edge" -- flush, not inside the window
- * padding, with its rule along the top. */
-.hint-bar {
-  margin-top: var(--s6); width: 100%; height: 28px;
-  display: flex; justify-content: center; align-items: baseline;
-  border-top: 1px solid var(--line-100); padding-top: var(--s3);
-  color: var(--ink-muted);
-}
-.hint-key { color: var(--ink); }
-.hint-val { color: var(--ink-muted); margin-left: var(--s1); }
-.sep { margin: 0 var(--s3); color: var(--ink-dim); }
+

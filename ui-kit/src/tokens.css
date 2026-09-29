@@ -76,6 +76,27 @@
    */
   --dip: rgba(6, 4, 16, 0.25);
 
+  /*
+   * THE SPECTROGRAM'S RAMP: five stops from the window ground to the signal's
+   * brightest core, sampled between for the colour of a band's magnitude.
+   *
+   * It is a SEQUENCE and not five independent colours -- each stop only means
+   * anything as a position along it -- which is why they are numbered rather
+   * than named. bg-000 at the bottom and uv at the top are the same values the
+   * rest of the system uses, so a silent spectrogram is the window's own
+   * background and a loud one is lit in the system's own signal colour.
+   *
+   * NOT YET IN THE ULTRAVIOLET SYSTEM at design/files/project/tokens.json,
+   * which has no ramp family. Reported rather than quietly diverged: the
+   * system should gain these, and until it does the token test knows to
+   * expect them here and not there.
+   */
+  --spec-0: #060410;
+  --spec-1: #2a1e4a;
+  --spec-2: #6a2fd0;
+  --spec-3: #a259ff;
+  --spec-4: #efe3ff;
+
   /* Everything sits on a 4px grid. */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
 

@@ -11,10 +11,11 @@
  * the mapping here would look right for as long as nobody changed the first one.
  */
 import { createSignal, onMount, onCleanup } from 'solid-js';
-import { onMessage, sendMessage, MSG } from './lib/iplug.js';
+import { onMessage, sendMessage } from '@ultraviolet/ui';
+import { MSG } from './lib/msg.js';
 import { decodeColumns, decodeAxis, marksFor, RANGES } from './lib/columns.js';
 import Spectrogram from './lib/Spectrogram.jsx';
-import { HintBar, Button, Select } from './lib/Controls.jsx';
+import { Hint, Button, Select } from '@ultraviolet/ui';
 
 /* Mirrored by PLUG_WIDTH in config.h and by `main` in app.css. */
 const DESIGN_W = 720;
@@ -183,7 +184,7 @@ export default function App() {
         </div>
       </div>
 
-      <HintBar clauses={hint()} />
+      <Hint clauses={hint()} />
     </main>
   );
 }

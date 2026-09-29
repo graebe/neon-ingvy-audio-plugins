@@ -90,7 +90,7 @@ export default function Spectrogram(props) {
     /* Filled with the floor colour rather than left transparent, so an empty
      * picture is the same black as a silent one -- not a hole showing the well
      * through it. Taken from the stylesheet as written: assembling an rgb()
-     * from the LUT here would be a colour spelled outside uv.css. */
+     * from the LUT here would be a colour spelled outside @ultraviolet/ui's tokens.css. */
     histCtx.fillStyle = stopCss(0);
     histCtx.fillRect(0, 0, hist.width, hist.height);
   };

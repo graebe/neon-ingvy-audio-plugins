@@ -1,6 +1,21 @@
 /*
- * The iPlug2 bridge, both directions.
+ * The iPlug2 bridge, both directions. Shared by every editor in this repository.
  * Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * THIS IS A PROPERTY OF iPlug2, NOT OF ANY PLUGIN, which is why it lives in the
+ * kit. It existed twice -- once per editor -- and the Spectrogram's copy said
+ * so in a comment: "A COPY, AND KNOWINGLY SO ... the moment there is a third
+ * plugin, this and uv.css move into one and both editors import them." There is
+ * a workspace now, so they have.
+ *
+ * The copies had already drifted: only the Trance Gate's carried the local
+ * apply in setParam below, so the Spectrogram's Select had the same latent bug
+ * the Trance Gate's Join Neighbors was reported for. Sharing the file fixes it
+ * rather than porting the fix.
+ *
+ * THE MESSAGE TAGS ARE NOT HERE. Each plugin's EMsgTags is its own -- the
+ * Trance Gate's pattern and the Spectrogram's columns have nothing to say to
+ * each other -- so each editor defines its own MSG table and passes tags in.
  *
  * iPlug2 injects one function into the page -- IPlugSendMsg -- and calls a
  * handful of globals on it. Everything below is those two facts wrapped so
@@ -11,21 +26,42 @@
  * must not invent them, or a knob and its readout start disagreeing about
  * what the same parameter means.
  */
-/*
- * A COPY, AND KNOWINGLY SO. This file is byte-identical to the Trance Gate's
- * apart from the MSG table below: the bridge is a property of iPlug2, not of
- * either plugin. It exists twice because the two editors are two npm packages
- * with no shared workspace yet; the moment there is a third plugin, this and
- * uv.css move into one and both editors import them.
- */
 
 const send = (m) => {
   if (typeof globalThis.IPlugSendMsg === 'function') globalThis.IPlugSendMsg(m);
 };
 
-/** Set a parameter. `value` is normalised 0..1. */
-export const setParam = (paramIdx, value) =>
+/**
+ * Set a parameter. `value` is normalised 0..1.
+ *
+ * APPLIED LOCALLY AS WELL AS SENT, AND THAT IS NOT AN OPTIMISATION.
+ *
+ * iPlug2's inbound handler is, in full:
+ *
+ *     if (json["msg"] == "SPVFUI")
+ *       SendParameterValueFromUI(json["paramIdx"], json["value"]);
+ *
+ * and that does SetNormalized() plus OnParamChangeUI(). NOTHING comes back to
+ * the page. So a control that renders from the value it was last TOLD never
+ * sees its own writes, and only moves if the host happens to echo the change
+ * back -- which Live does for continuous parameters and does not reliably do
+ * for a bool or an enum.
+ *
+ * That was two reported faults. Join Neighbors sent `1` on every click
+ * forever, because it computed the next state from a value that never
+ * changed, so it toggled on once and then "did nothing". The Curve select
+ * moved its native element and left the label reading "Linear", because the
+ * label is derived from the value too.
+ *
+ * The UI is the author of this change, so it may act on it. A later SPVFD
+ * from the plugin still overwrites it -- the plugin remains authoritative,
+ * including for the quantisation an int parameter applies -- and every
+ * readout's TEXT already comes from the plugin regardless.
+ */
+export const setParam = (paramIdx, value) => {
   send({ msg: 'SPVFUI', paramIdx: paramIdx | 0, value });
+  notifyParam(paramIdx | 0, value);
+};
 
 /*
  * A DRAG IS ONE GESTURE, NOT A HUNDRED EDITS. Begin/end bracket it so the
@@ -36,28 +72,6 @@ export const beginGesture = (paramIdx) =>
   send({ msg: 'BPCFUI', paramIdx: paramIdx | 0 });
 export const endGesture = (paramIdx) =>
   send({ msg: 'EPCFUI', paramIdx: paramIdx | 0 });
-
-/*
- * THE MESSAGE TAGS, mirroring EMsgTags in Spectrogram.h.
- */
-export const MSG = {
-  cols: 64,   /* <- plugin: "<cols>:<bands>:<hex>", oldest column first */
-  axis: 65,   /* <- plugin: the band centre frequencies, comma separated */
-  range: 96,  /* -> plugin: "<f_min>:<f_max>" -- the zoom */
-  /*
-   * "I AM LISTENING", and it has to exist because the plugin's push on open
-   * CANNOT be heard.
-   *
-   * OnUIOpen fires from didFinishNavigation and sends the frequency axis. But
-   * this editor is a <script type="module">, module scripts are DEFERRED, and
-   * so they evaluate AFTER the document is done -- globalThis.SAMFD does not
-   * exist yet and the axis is dropped. The picture would then roll correctly
-   * with no numbers beside it.
-   *
-   * Sent from onMount, so it cannot be early.
-   */
-  ready: 102,
-};
 
 /* SAMFUI carries its payload base64-encoded; the plugin decodes before it
  * ever sees the bytes, so anything not encoded here arrives as nonsense. */
@@ -83,9 +97,13 @@ const messageListeners = new Set();
 export const onParam = (fn) => { paramListeners.add(fn); return () => paramListeners.delete(fn); };
 export const onMessage = (fn) => { messageListeners.add(fn); return () => messageListeners.delete(fn); };
 
-globalThis.SPVFD = (paramIdx, value) => {
-  for (const fn of paramListeners) fn(paramIdx | 0, value);
-};
+/* The one place a parameter value reaches the components, whether it came from
+ * the plugin or from the control the user is holding. */
+function notifyParam(paramIdx, value) {
+  for (const fn of paramListeners) fn(paramIdx, value);
+}
+
+globalThis.SPVFD = (paramIdx, value) => notifyParam(paramIdx | 0, value);
 /*
  * DECODE. SendArbitraryMsgFromDelegate BASE64-ENCODES on the way out, and
  * nothing says so at the call site -- the payload simply arrives as

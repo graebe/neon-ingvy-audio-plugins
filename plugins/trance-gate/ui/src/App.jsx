@@ -14,12 +14,13 @@
  * design -- a flex layout that happens to look close is a different drawing.
  */
 import { createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js';
-import { onParam, onMessage, sendMessage, MSG } from './lib/iplug.js';
-import Knob from './lib/Knob.jsx';
+import { onParam, onMessage, sendMessage } from '@ultraviolet/ui';
+import { MSG } from './lib/msg.js';
+import { ParamKnob, ParamSelect, ParamToggle } from './lib/params.jsx';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
 import { EnvelopePlot, PatternPlot, Scope } from './lib/Plots.jsx';
-import { Switch, Select, GlyphButton, Tabs, HintBar } from './lib/Controls.jsx';
+import { Button, Tabs, Hint } from '@ultraviolet/ui';
 
 const P = { slot: 0, length: 1, rate: 2, legato: 3, timeMode: 4, curve: 5,
             amount: 6, width: 7, attack: 8, decay: 9, sustain: 10, release: 11 };
@@ -360,20 +361,20 @@ export default function App() {
       <section class="panel gate-panel">
         <h2 class="t-title">GATE</h2>
         <div class="knob-row">
-          <Knob idx={P.rate}   label="Rate"   value={vals()[P.rate]}   display={text()[P.rate]} />
-          <Knob idx={P.length} label="Length" value={vals()[P.length]} display={text()[P.length]} />
-          <Knob idx={P.amount} label="Amount" value={vals()[P.amount]} display={text()[P.amount]} />
-          <Knob idx={P.width}  label="Width"  value={vals()[P.width]}  display={text()[P.width]} />
+          <ParamKnob idx={P.rate}   label="Rate"   value={vals()[P.rate]}   display={text()[P.rate]} />
+          <ParamKnob idx={P.length} label="Length" value={vals()[P.length]} display={text()[P.length]} />
+          <ParamKnob idx={P.amount} label="Amount" value={vals()[P.amount]} display={text()[P.amount]} />
+          <ParamKnob idx={P.width}  label="Width"  value={vals()[P.width]}  display={text()[P.width]} />
         </div>
       </section>
 
       <section class="panel env-panel">
         <h2 class="t-title">ENVELOPE</h2>
         <div class="knob-row">
-          <Knob idx={P.attack}  label="Attack"  value={vals()[P.attack]}  display={stageText(P.attack)} />
-          <Knob idx={P.decay}   label="Decay"   value={vals()[P.decay]}   display={stageText(P.decay)} />
-          <Knob idx={P.sustain} label="Sustain" value={vals()[P.sustain]} display={text()[P.sustain]} />
-          <Knob idx={P.release} label="Release" value={vals()[P.release]} display={stageText(P.release)} />
+          <ParamKnob idx={P.attack}  label="Attack"  value={vals()[P.attack]}  display={stageText(P.attack)} />
+          <ParamKnob idx={P.decay}   label="Decay"   value={vals()[P.decay]}   display={stageText(P.decay)} />
+          <ParamKnob idx={P.sustain} label="Sustain" value={vals()[P.sustain]} display={text()[P.sustain]} />
+          <ParamKnob idx={P.release} label="Release" value={vals()[P.release]} display={stageText(P.release)} />
         </div>
       </section>
 
@@ -387,16 +388,33 @@ export default function App() {
           * No label, as the original had none: `slot.setBounds (kLeftX, ...)`
           * with no slotL beside it. The StepGrid card puts this above-left of
           * the grid, where its position says what it is. */}
-        <Select idx={P.slot} options={SLOTS} width={96} value={vals()[P.slot]} />
-        <Switch idx={P.legato} label="Join Neighbors" value={vals()[P.legato]} />
-        <Select idx={P.curve} options={CURVES} label="Curve" labelWidth={44} width={124}
+        <ParamSelect idx={P.slot} options={SLOTS} width={96} value={vals()[P.slot]} />
+        <ParamToggle idx={P.legato} label="Join Neighbors" value={vals()[P.legato]} />
+        <ParamSelect idx={P.curve} options={CURVES} label="Curve" labelWidth={44} width={124}
                 value={vals()[P.curve]} />
-        <Select idx={P.timeMode} options={TIME_MODES} label="Time" labelWidth={36} width={88}
+        <ParamSelect idx={P.timeMode} options={TIME_MODES} label="Time" labelWidth={36} width={88}
                 value={vals()[P.timeMode]} />
         <span class="spacer" />
-        <GlyphButton glyph="copy" title="Copy gate config"
-                     onClick={() => sendMessage(MSG.requestPatch)} />
-        <GlyphButton glyph="paste" title="Paste gate config" onClick={startPaste} />
+        {/* THE KIT'S BUTTON TAKES CHILDREN, so the two marks live here rather
+          * than as a glyph set inside it -- the design system says "the system
+          * uses no icon set ... write the word", and these two are the
+          * exception that has to own itself. `icon` is the 40px square form.
+          *
+          * Hairlines, like the chevron: two offset rectangles for copy, a sheet
+          * under a clipboard's tab for paste. */}
+        <Button icon title="Copy gate config"
+                onClick={() => sendMessage(MSG.requestPatch)}>
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <rect x="1.5" y="1.5" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1" />
+            <rect x="4.5" y="4.5" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </Button>
+        <Button icon title="Paste gate config" onClick={startPaste}>
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <rect x="2" y="3" width="10" height="9" fill="none" stroke="currentColor" stroke-width="1" />
+            <rect x="5" y="0.5" width="4" height="3" fill="none" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </Button>
         {/*
           * THE PASTE FIELD, and it exists because a page cannot read the
           * clipboard.
@@ -452,7 +470,7 @@ export default function App() {
                   playhead={playStep()} moving={ui().moving} />
       </div>
 
-      <HintBar clauses={[
+      <Hint clauses={[
         ['click', 'a step to toggle'],
         ['shift-click', 'for a tie'],
         ['drag', 'up or down for its amount'],

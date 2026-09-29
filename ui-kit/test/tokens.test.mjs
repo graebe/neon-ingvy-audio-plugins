@@ -2,12 +2,6 @@
  * The token guard: no colour may be spelled outside uv.css.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
- * THE SAME GUARD THE TRANCE GATE CARRIES, and this window needs it MORE than
- * that one does: a canvas cannot use a CSS variable, so the intensity ramp is
- * the most natural place in either plugin for five hex triplets to be typed
- * inline and quietly stop tracking the system. lib/ramp.js reads them back out
- * of the stylesheet instead, and this test is what keeps it that way.
- *
  * THE JUCE BUILD HAD THIS AND THE WEB PORT LOST IT.
  *
  * Uv.h carried a note -- "a ctest target fails the build if a colour literal
@@ -27,15 +21,26 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, basename } from 'node:path';
 
-const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
+/*
+ * THE WHOLE REPOSITORY'S UI, not one editor's. This existed twice -- once per
+ * plugin -- and each copy could only see its own source, so the two editors
+ * could (and did) drift apart while both stayed green.
+ */
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const TREES = [
+  join(ROOT, 'ui-kit', 'src'),
+  join(ROOT, 'plugins', 'trance-gate', 'ui', 'src'),
+  join(ROOT, 'plugins', 'spectrogram', 'ui', 'src'),
+];
+const TOKENS = join(ROOT, 'ui-kit', 'src', 'tokens.css');
 
-/* uv.css IS the token file, so it is the one place a colour may be written.
- * index.html and the vite config carry none. */
-const ALLOWED = new Set(['uv.css']);
+/* tokens.css IS the token file, so it is the one place a colour may be
+ * written -- and it is now in the kit, where both editors read it from. */
+const ALLOWED = new Set(['tokens.css']);
 
 /* #rgb/#rrggbb/#rrggbbaa, and the functional notations. Not `#` in a URL or an
  * SVG id -- those are followed by a letter run that is not hex-only, which the
@@ -48,6 +53,7 @@ const stripComments = (text) =>
   text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 function walk(dir, out = []) {
+  if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p, out);
@@ -56,11 +62,11 @@ function walk(dir, out = []) {
   return out;
 }
 
-test('every colour is spelled in uv.css and nowhere else', () => {
+test('every colour is spelled in tokens.css and nowhere else', () => {
   const offences = [];
-  for (const file of walk(SRC)) {
-    const rel = relative(SRC, file);
-    if (ALLOWED.has(rel)) continue;
+  for (const file of TREES.flatMap((t) => walk(t))) {
+    const rel = relative(ROOT, file);
+    if (ALLOWED.has(basename(rel))) continue;
     stripComments(readFileSync(file, 'utf8')).split('\n').forEach((line, i) => {
       const m = line.match(COLOUR);
       if (m) offences.push(`${rel}:${i + 1}  ${m[0]}  --  ${line.trim().slice(0, 72)}`);
@@ -75,20 +81,20 @@ test('every colour is spelled in uv.css and nowhere else', () => {
 /* The other half: a var() that no token defines renders as nothing at all --
  * an invisible element rather than an error, which is the worst failure mode
  * a stylesheet has. */
-test('every var() the UI references is defined in uv.css', () => {
+test('every var() the UI references is defined in tokens.css', () => {
   /* NOT anchored to the line start: the spacing scale is declared six to a
    * line (`--s1: 4px; --s2: 8px; ...`) and an anchored pattern sees only the
    * first of them. A `var(--x)` reference cannot be mistaken for a declaration
    * because it is followed by `)` rather than `:`. */
   const tokens = new Set(
-    [...readFileSync(join(SRC, 'uv.css'), 'utf8').matchAll(/(--[\w-]+)\s*:/g)]
+    [...readFileSync(TOKENS, 'utf8').matchAll(/(--[\w-]+)\s*:/g)]
       .map((m) => m[1]));
 
   const missing = new Set();
-  for (const file of walk(SRC)) {
+  for (const file of TREES.flatMap((t) => walk(t))) {
     const text = stripComments(readFileSync(file, 'utf8'));
     for (const m of text.matchAll(/var\(\s*(--[\w-]+)/g))
-      if (!tokens.has(m[1])) missing.add(`${relative(SRC, file)}: ${m[1]}`);
+      if (!tokens.has(m[1])) missing.add(`${relative(ROOT, file)}: ${m[1]}`);
   }
   assert.deepEqual([...missing], [], `undefined tokens:\n  ${[...missing].join('\n  ')}`);
 });

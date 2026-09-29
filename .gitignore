@@ -5,11 +5,10 @@ target/
 
 node_modules/
 # The review harness copies the built bundle in beside its page; the page,
-# the mock and the audit are source, the copies are not.
-plugins/trance-gate-iplug/ui/test/harness/assets/
-plugins/trance-gate-iplug/ui/test/harness/fonts/
-plugins/spectrogram/ui/test/harness/assets/
-plugins/spectrogram/ui/test/harness/fonts/
+# the mock and the audit are source, the copies are not. Per-plugin paths were
+# spelled out here and went stale the moment a plugin was renamed.
+plugins/*/ui/test/harness/assets/
+plugins/*/ui/test/harness/fonts/
 
 # The Schwung module build (cmake --build build --target schwung)
 dist/

@@ -12,7 +12,7 @@
  * invisible while choosing colours and obvious once you are trying to read a
  * mix with it.
  *
- * The stops are read out of uv.css by text, because the browser's
+ * The stops are read out of tokens.css by text, because the browser's
  * getComputedStyle (which lib/ramp.js uses at runtime) has no equivalent here
  * -- and because reading THE STYLESHEET is what proves the token guard's claim
  * that the stylesheet is where they live.
@@ -25,15 +25,18 @@ import { dirname, join } from 'node:path';
 
 import { buildLut, luminance, LEVELS, STOPS } from '../src/lib/ramp.js';
 
-const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
+/* The ramp's stops live in the KIT's tokens.css now -- every editor reads its
+ * colours from one file, and this test follows them there. */
+const TOKENS = join(dirname(fileURLToPath(import.meta.url)),
+                    '..', '..', '..', '..', 'ui-kit', 'src', 'tokens.css');
 
-/** The --spec-* stops, as uv.css spells them. */
+/** The --spec-* stops, as tokens.css spells them. */
 function stopsFromStylesheet() {
-  const css = readFileSync(join(SRC, 'uv.css'), 'utf8');
+  const css = readFileSync(TOKENS, 'utf8');
   const stops = [];
   for (let i = 0; i < STOPS; i++) {
     const m = css.match(new RegExp(`--spec-${i}:\\s*#([0-9a-fA-F]{6})\\s*;`));
-    assert.ok(m, `--spec-${i} is not declared in uv.css as a 6-digit hex colour`);
+    assert.ok(m, `--spec-${i} is not declared in tokens.css as a 6-digit hex colour`);
     stops.push([
       parseInt(m[1].slice(0, 2), 16),
       parseInt(m[1].slice(2, 4), 16),
@@ -43,13 +46,13 @@ function stopsFromStylesheet() {
   return stops;
 }
 
-test('the ramp has five stops in uv.css and nowhere else', () => {
+test('the ramp has five stops in tokens.css and nowhere else', () => {
   const stops = stopsFromStylesheet();
   assert.equal(stops.length, 5);
   /* The ends are the system's own tokens: the floor IS bg-000 (so silence is the
    * well) and the top IS uv (so a hot cell is the signal colour). Asserted
-   * against uv.css's own declarations of those two, not against a literal here. */
-  const css = readFileSync(join(SRC, 'uv.css'), 'utf8');
+   * against tokens.css's own declarations of those two, not against a literal here. */
+  const css = readFileSync(TOKENS, 'utf8');
   const token = (name) => css.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})\\s*;`))[1];
   const hex = ([r, g, b]) =>
     `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;

@@ -1,4 +1,12 @@
 /*
+ * The Spectrogram's LAYOUT. Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * Only where things sit. What the controls LOOK like is
+ * @ultraviolet/ui/components.css, imported before this file -- the button, the
+ * select and the hint bar were duplicated here and in the Trance Gate's
+ * stylesheet, and had drifted.
+ */
+/*
  * Layout. Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The numbers, top to bottom, and all of them on the system's 4px grid:
@@ -115,46 +123,6 @@ main {
 }
 .spectro-canvas { display: block; }
 
-/*
- * THE BUTTON, from the system's own .ph-btn. `on` is its primary state, which
- * is also its pressed state -- "there is no separate selected colour: selected
- * is uv".
- */
-.btn {
-  height: var(--control-h);
-  padding: 0 var(--s3);
-  background: var(--bg-200);
-  border: var(--hair) solid var(--line-200);
-  border-radius: var(--radius);
-  color: var(--ink);
-  font-family: inherit;
-  cursor: pointer;
-}
-.btn:hover { background: var(--bg-300); border-color: var(--ink-dim); }
-.btn.on {
-  background: var(--uv);
-  border-color: var(--uv);
-  color: var(--on-uv);
-  box-shadow: var(--glow-led);
-}
-.btn:focus-visible { outline: none; box-shadow: var(--glow-focus); }
-
-/* Pinned to the bottom edge, with the spare room above it. */
-.hint-bar {
-  margin-top: auto;
-  padding-top: var(--s3);
-  width: 100%;
-  height: var(--control-h);
-  display: flex;
-  justify-content: center;
-  align-items: baseline;
-  border-top: var(--hair) solid var(--line-100);
-  color: var(--ink-muted);
-}
-.hint-key { color: var(--ink); }
-.hint-val { color: var(--ink-muted); margin-left: var(--s1); }
-.sep { margin: 0 var(--s3); color: var(--ink-dim); }
-
 /* "Actions stack on the right edge of the control block, never among the
  * knobs" -- here the title row is the only row there is. */
 .title-actions {
@@ -163,35 +131,3 @@ main {
   gap: var(--s4);
 }
 
-/*
- * THE SELECT, from the Trance Gate's editor and from the design system's
- * .ph-select before it. The real <select> is stretched invisibly over the
- * styled div, so the popup is the OS's -- the only kind that behaves inside a
- * plugin's WebView.
- */
-.select {
-  position: relative;
-  height: var(--control-h);
-  background: var(--bg-200);
-  border: var(--hair) solid var(--line-200);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  padding: 0 28px 0 var(--s3);
-}
-.select:hover { background: var(--bg-300); }
-/* The open mark is uv, like every other "this one is active" in the system. */
-.select.open { border-color: var(--uv); }
-.select-value { color: var(--ink); }
-.chevron { position: absolute; right: 10px; top: 50%; margin-top: -3px; }
-.select select {
-  position: absolute; inset: 0; opacity: 0; cursor: pointer;
-  font-family: inherit;
-}
-/*
- * The ring goes on the HOUSING, not on the control: the inner <select> is what
- * the browser focuses and it has no border of its own to ring. :has() keys it to
- * the thing actually focused, and :focus-visible keeps a mouse click from
- * leaving one behind.
- */
-.select:has(select:focus-visible) { box-shadow: var(--glow-focus); }

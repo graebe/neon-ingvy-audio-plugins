@@ -1,0 +1,24 @@
+/*
+ * The hint bar. Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * Byte-identical in both editors before the kit existed, which is as good a
+ * signal as any that it belonged here.
+ */
+import { For, Show } from 'solid-js';
+
+/* Three clauses at most. Truncating rather than shrinking the text is
+ * deliberate: a fourth clause means the window needs simplifying, not a
+ * smaller font. */
+export function Hint(props) {
+  return (
+    <div class="hint-bar t-hint">
+      <For each={props.clauses.slice(0, 3)}>{(c, i) => (
+        <>
+          <Show when={i() > 0}><span class="sep">–</span></Show>
+          <span class="hint-key">{c[0]}</span>
+          <span class="hint-val">{c[1]}</span>
+        </>
+      )}</For>
+    </div>
+  );
+}

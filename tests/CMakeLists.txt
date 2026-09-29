@@ -99,8 +99,11 @@ if (TG_NODE)
     # other source file"; four had crept into the UI by the time this was
     # written, one of them an arc glow at alpha 0.75 against the system's 0.45,
     # which no eye was ever going to catch.
-    add_test(NAME tg_tokens
-             COMMAND ${TG_NODE} --test ${TG_UI_TEST}/tokens.test.mjs)
+    # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit and both
+    # editors -- where there used to be one per plugin, each blind to the other.
+    add_test(NAME ui_tokens
+             COMMAND ${TG_NODE} --test
+                     ${CMAKE_SOURCE_DIR}/ui-kit/test/tokens.test.mjs)
 else()
     message(STATUS "node not found -- skipping the UI's tests (curves, envelope, tokens)")
 endif()
@@ -153,8 +156,6 @@ if (TG_NODE)
     # The colour guard. This window needs it more than the Trance Gate does: a
     # canvas cannot use a CSS variable, so the intensity ramp is the likeliest
     # place in either plugin for five hex triplets to be typed inline.
-    add_test(NAME spectro_tokens
-             COMMAND ${TG_NODE} --test ${SPECTRO_UI_TEST}/tokens.test.mjs)
     # The ramp is monotone in luminance -- a ramp that dips is a picture that
     # lies about level.
     add_test(NAME spectro_ramp
