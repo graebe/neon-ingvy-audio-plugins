@@ -30,6 +30,16 @@ the effect silently on a patch that had been working.
   reader splits three ways and hands the depth parser `"<depths>:<order>"`,
   where the colon is not a hex digit and ends the run at exactly the right
   place.
+- **6**: the fade gained a DIRECTION (`fdir`), and with it the arrival order
+  changed meaning. It used to be a rank among the ON steps, with `00` written
+  for every off step; it is now a rank among the step's OWN KIND, so the holes
+  carry one too -- that is the order Fade Out introduces them in. Same field,
+  same width, different reading, which is exactly what a version number is for.
+
+  Both directions degrade rather than break. A v5 blob's `00`s fall through to
+  the position order seeded below, so an old patch fades its holes in left to
+  right. A v6 blob in a v5 build has its off-step values loaded and then ignored,
+  because that build's `renumber` only ranks the on steps.
 */
 
 use crate::envelope::Curve;
@@ -38,7 +48,7 @@ use crate::params::set_pattern_hex;
 use crate::{rates, Instance, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
 use core::fmt::Write;
 
-pub const STATE_VERSION: i32 = 5;
+pub const STATE_VERSION: i32 = 6;
 
 #[inline]
 fn clampf(x: f32, lo: f32, hi: f32) -> f32 {
@@ -146,6 +156,11 @@ pub fn load(inst: &mut Instance, val: &str) {
         None => 1.0,
     };
     inst.fade_soft = get_number(val, "fsoft").map_or(false, |n| n >= 0.5);
+    /* Absent in a pre-v6 blob, and In is what those patches did. */
+    inst.fade_dir = match get_number(val, "fdir") {
+        Some(n) if n >= 0.5 => crate::FadeDir::Out,
+        _ => crate::FadeDir::In,
+    };
 
     /*
      * THE STAGES, ONCE RATE AND WIDTH ARE BOTH KNOWN.
@@ -244,14 +259,17 @@ pub fn load(inst: &mut Instance, val: &str) {
         }
 
         /*
-         * A PRE-v5 QUADRUPLE HAS NO ORDER, AND ABSENT MEANS POSITION ORDER.
+         * AN ABSENT OR ZERO ORDER MEANS POSITION ORDER, AND THAT COVERS TWO
+         * DIFFERENT OLD BLOBS AT ONCE.
          *
-         * Seeded left to right and then normalised, so what an unreordered
-         * patch loads as is what it would have been written as -- and a fresh
-         * fade on an old patch sweeps left to right, which is the one
-         * behaviour nobody has to be told about. Zeroing it instead would make
-         * every step rank 1 and the whole pattern arrive at once, which looks
-         * like the fade being broken rather than absent.
+         * A pre-v5 quadruple has no order field at all. A v5 one has the field
+         * but wrote `00` for every OFF step, because ranks only covered the on
+         * steps then -- so the holes arrive here with nothing to say. Both fall
+         * through to the position seed below, are normalised per kind, and come
+         * out sweeping left to right: the one behaviour nobody has to be told
+         * about. Zeroing instead would make every step rank 1 and the whole
+         * pattern arrive at once, which looks like the fade being broken rather
+         * than absent.
          */
         for i in 0..MAX_STEPS {
             inst.pat[s].order[i] = (i + 1) as u8;
@@ -262,9 +280,9 @@ pub fn load(inst: &mut Instance, val: &str) {
                 let (Some(&h), Some(&l)) = (b.get(i * 2), b.get(i * 2 + 1)) else { break };
                 let (Some(h), Some(l)) = (hexval(h), hexval(l)) else { break };
                 let v = h * 16 + l;
-                /* 00 is "off, no rank". Leaving the seeded position value
-                 * there keeps a step switched back on in a sensible place
-                 * rather than at the front. */
+                /* 00 is "this blob had no rank for this step" -- a v5 hole, or
+                 * a step past what was written. Leaving the seeded position
+                 * value there is what makes both old formats load sensibly. */
                 if v != 0 {
                     inst.pat[s].order[i] = v;
                 }
@@ -308,8 +326,12 @@ pub fn save(inst: &Instance, mut b: Buf) -> i32 {
     let _ = fmt::f(&mut b, inst.fade as f64, 4);
     let _ = write!(
         b,
-        ",\"fsoft\":{},\"legato\":{},\"tmode\":{},\"curve\":{}",
-        inst.fade_soft as i32, inst.legato as i32, inst.time_mode as i32, inst.curve as i32
+        ",\"fsoft\":{},\"fdir\":{},\"legato\":{},\"tmode\":{},\"curve\":{}",
+        inst.fade_soft as i32,
+        inst.fade_dir as i32,
+        inst.legato as i32,
+        inst.time_mode as i32,
+        inst.curve as i32
     );
 
     for s in 0..SLOTS {
@@ -355,19 +377,21 @@ pub fn save(inst: &Instance, mut b: Buf) -> i32 {
          * The comparison is against the RANK a position order would give, not
          * against the raw keys, because that is what a reader reconstructs.
          */
-        let mut pos = 0u8;
-        let same = (0..MAX_STEPS).all(|i| {
-            if !inst.pat[s].on(i) || i >= inst.pat[s].length {
-                return true;
-            }
-            pos += 1;
+        let (mut on_pos, mut off_pos) = (0u8, 0u8);
+        let same = (0..inst.pat[s].length.min(MAX_STEPS)).all(|i| {
+            let pos = if inst.pat[s].on(i) {
+                on_pos += 1;
+                on_pos
+            } else {
+                off_pos += 1;
+                off_pos
+            };
             inst.pat[s].order[i] == pos
         });
         if !same {
             let _ = write!(b, ":");
             for i in 0..inst.pat[s].length.min(MAX_STEPS) {
-                let v = if inst.pat[s].on(i) { inst.pat[s].order[i] } else { 0 };
-                let _ = write!(b, "{:02X}", v);
+                let _ = write!(b, "{:02X}", inst.pat[s].order[i]);
             }
         }
         let _ = write!(b, "\"");

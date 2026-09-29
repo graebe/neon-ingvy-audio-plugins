@@ -113,6 +113,26 @@ static int atoi_param(tg_core_t *c, const char *key) {
     return atoi(buf);
 }
 
+/*
+ * Is a step ON, from the `ui` readout's steps mask (field 0, LSB-aligned hex).
+ *
+ * Needed since the order field stopped being "0 when off": every step carries a
+ * rank now -- among its own kind -- so the order can no longer stand in for the
+ * mask the way it briefly could.
+ */
+static int ui_on(tg_core_t *c, int step) {
+    char buf[4096];
+    if (tg_core_get_param(c, "ui", buf, sizeof buf) < 0) return -1;
+    char *colon = strchr(buf, ':');
+    if (!colon) return -1;
+    *colon = '\0';
+    const size_t len = strlen(buf);
+    const int nib = step / 4;                    /* which hex digit, from the END */
+    if ((size_t) nib >= len) return 0;
+    char d[2] = { buf[len - 1 - (size_t) nib], 0 };
+    return ((int) strtol(d, NULL, 16) >> (step % 4)) & 1;
+}
+
 /* The order run out of the `ui` readout: field 8, two hex digits per step. */
 static int ui_order(tg_core_t *c, int step) {
     char buf[4096];
@@ -468,7 +488,7 @@ int main(void) {
      * knowing is where the bus case stops working, not whether it does.
      */
     /*
-     * THE `params` READOUT. Fourteen automatable values plus width_ms in one
+     * THE `params` READOUT. Fifteen automatable values plus width_ms in one
      * read, so a shell does not take nine locks to ask "did anything move".
      * Two properties matter and neither is obvious from looking at it: every
      * field must agree with the single-key getter for the same key, and the
@@ -496,8 +516,8 @@ int main(void) {
         int n = tg_core_get_param(c, "params", line, sizeof(line));
         check("params answers at all", n > 0);
 
-        /* Split on ':' -- 15 fields: the twelve automatable values, width_ms,
-         * and the fade's two on the end. */
+        /* Split on ':' -- 16 fields: the twelve automatable values, width_ms,
+         * and the fade's three on the end. */
         char *f[24]; int nf = 0;
         for (char *t = line; nf < 24; ) {
             f[nf++] = t;
@@ -505,7 +525,7 @@ int main(void) {
             if (!colon) break;
             *colon = '\0'; t = colon + 1;
         }
-        check("params has fifteen fields", nf == 15);
+        check("params has sixteen fields", nf == 16);
 
         char one[TG_STATE_MAX];
         #define MIRRORS(idx, key) \
@@ -520,6 +540,7 @@ int main(void) {
         /* The fade's switch, appended past width_ms. Its knob is a float and is
          * covered by the round trip below. */
         check("...fade_soft mirrors get_param", MIRRORS(14, "fade_soft"));
+        check("...fade_dir mirrors get_param",  MIRRORS(15, "fade_dir"));
         #undef MIRRORS
 
         /*
@@ -542,9 +563,9 @@ int main(void) {
                 if (!colon) break;
                 *colon = '\0'; t = colon + 1;
             }
-            if (ng != 15 || strcmp(g[6 + i], f[6 + i]) != 0) {
+            if (ng != 16 || strcmp(g[6 + i], f[6 + i]) != 0) {
                 printf("      %s: wrote %s, read %s\n", fkeys[i], f[6 + i],
-                       (ng == 15) ? g[6 + i] : "(short line)");
+                       (ng == 16) ? g[6 + i] : "(short line)");
                 exact = 0;
             }
         }
@@ -554,7 +575,7 @@ int main(void) {
     }
     {
         /*
-         * width_ms is field 12 -- it WAS the last one, and the fade's two are
+         * width_ms is field 12 -- it WAS the last one, and the fade's three are
          * appended past it. Found by INDEX now rather than by the last colon,
          * because "the last field" stopped being a definition of it the moment
          * anything could follow: an strrchr here would have read fade_soft and
@@ -574,7 +595,7 @@ int main(void) {
             *colon = '\0'; t = colon + 1;
         }
         check("params carries width_ms at field 12",
-              nf == 15 && fabs(atof(f[12]) - atof(w)) < 0.01);
+              nf == 16 && fabs(atof(f[12]) - atof(w)) < 0.01);
         tg_core_destroy(c);
     }
 
@@ -1330,6 +1351,140 @@ int main(void) {
     }
 
     /*
+     * FADE OUT: THE HOLES ARRIVE INSTEAD OF THE HITS.
+     *
+     * The knob means the same thing in both directions -- how much of the drawn
+     * pattern is present -- so 100% is the pattern either way and only the
+     * missing part differs. In leaves silence; Out leaves the gate open.
+     */
+    printf("the fade-out:\n");
+    {
+        const char *PAT = "1111";              /* hits 0,4,8,12; twelve holes */
+        float w[16];
+
+        /* 0% fills every hole: every step sounds, at full level. */
+        tg_core_t *c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade_dir", "Out");
+        tg_core_set_param(c, "fade", "0");
+        step_weights(c, 16, w);
+        int all = 1;
+        for (int i = 0; i < 16; i++) if (w[i] < 0.99f) all = 0;
+        check("fade out 0%: every step sounds", all);
+        tg_core_destroy(c);
+
+        /*
+         * 100% IS THE PATTERN, IN BOTH DIRECTIONS. This is what keeps 100% the
+         * neutral default: switching direction at rest cannot change a sample,
+         * which is also why the golden renders still hold.
+         */
+        float in100[16], out100[16];
+        c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade", "1");
+        step_weights(c, 16, in100);
+        tg_core_destroy(c);
+        c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade_dir", "Out");
+        tg_core_set_param(c, "fade", "1");
+        step_weights(c, 16, out100);
+        tg_core_destroy(c);
+        int agree = 1;
+        for (int i = 0; i < 16; i++) if (fabs(in100[i] - out100[i]) > 1e-4) agree = 0;
+        check("at 100% the two directions are the same pattern", agree);
+        check("...which is the one that was drawn",
+              out100[0] > 0.99f && out100[4] > 0.99f && out100[1] < 0.01f);
+
+        /*
+         * THE HOLES ARRIVE EQUIDISTANTLY, over twelve of them rather than four
+         * hits -- rank r goes at exactly r/12. The holes run 1,2,3,5,6,7,...
+         * in position order, so at 50% the first six have gone and the last six
+         * still sound.
+         */
+        c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade_dir", "Out");
+        tg_core_set_param(c, "fade", "0.5");
+        step_weights(c, 16, w);
+        check("out 50%: the first six holes are gaps",
+              w[1] < 0.01f && w[2] < 0.01f && w[3] < 0.01f &&
+              w[5] < 0.01f && w[6] < 0.01f && w[7] < 0.01f);
+        check("...the last six still sound",
+              w[9] > 0.99f && w[10] > 0.99f && w[11] > 0.99f &&
+              w[13] > 0.99f && w[14] > 0.99f && w[15] > 0.99f);
+        check("...and every hit is untouched by the knob",
+              w[0] > 0.99f && w[4] > 0.99f && w[8] > 0.99f && w[12] > 0.99f);
+        tg_core_destroy(c);
+
+        /* Counted across the travel: at r/12 exactly r holes have gone. */
+        int bad = 0;
+        for (int r = 0; r <= 12; r++) {
+            char v[32];
+            snprintf(v, sizeof v, "%.9g", (double) r / 12.0);
+            c = mk_flat(15, PAT);
+            tg_core_set_param(c, "fade_dir", "Out");
+            tg_core_set_param(c, "fade", v);
+            step_weights(c, 16, w);
+            int gone = 0;
+            for (int i = 0; i < 16; i++)
+                if (i % 4 != 0 && w[i] < 0.01f) gone++;
+            if (gone != r) {
+                printf("      fade %s: %d holes gone, wanted %d\n", v, gone, r);
+                bad++;
+            }
+            tg_core_destroy(c);
+        }
+        check("hole rank r arrives at exactly r/12", bad == 0);
+
+        /*
+         * SOFT RAMPS A HOLE'S LEVEL DOWN. That is the dual of soft fade-in: an
+         * arriving hole starts as a full on step and fades to nothing, where an
+         * arriving hit starts at nothing and fades up.
+         */
+        c = mk_flat(15, PAT);
+        tg_core_set_param(c, "fade_dir", "Out");
+        tg_core_set_param(c, "fade_soft", "1");
+        tg_core_set_param(c, "fade", "0.125");     /* 1.5 arrivals of 12 */
+        step_weights(c, 16, w);
+        check("soft out: the first hole is fully gone", w[1] < 0.01f);
+        check_near("soft out: the second is half way down", w[2], 0.5, 0.05);
+        check("soft out: the third has not started", w[3] > 0.99f);
+        tg_core_destroy(c);
+
+        /* And the two shapes still agree at every arrival boundary. */
+        int shapes = 1;
+        for (int r = 0; r <= 12; r++) {
+            char v[32];
+            float hard[16], soft[16];
+            snprintf(v, sizeof v, "%.9g", (double) r / 12.0);
+            c = mk_flat(15, PAT);
+            tg_core_set_param(c, "fade_dir", "Out");
+            tg_core_set_param(c, "fade", v);
+            step_weights(c, 16, hard);
+            tg_core_destroy(c);
+            c = mk_flat(15, PAT);
+            tg_core_set_param(c, "fade_dir", "Out");
+            tg_core_set_param(c, "fade_soft", "1");
+            tg_core_set_param(c, "fade", v);
+            step_weights(c, 16, soft);
+            tg_core_destroy(c);
+            for (int i = 0; i < 16; i++)
+                if (fabs(hard[i] - soft[i]) > 0.02) shapes = 0;
+        }
+        check("soft and hard agree at every arrival boundary, out too", shapes);
+
+        /*
+         * A PATTERN WITH NO HOLES HAS NOTHING TO FADE, and must not divide by
+         * the zero that implies -- it stays the pattern at every setting.
+         */
+        c = mk_flat(15, "FFFF");
+        tg_core_set_param(c, "fade_dir", "Out");
+        tg_core_set_param(c, "fade", "0");
+        step_weights(c, 16, w);
+        int solid = 1;
+        for (int i = 0; i < 16; i++) if (w[i] < 0.99f) solid = 0;
+        check("a pattern with no holes is unmoved by Fade Out", solid);
+        tg_core_destroy(c);
+    }
+
+    /*
      * A STEP THE FADE HAS NOT REACHED IS A GAP, NOT A SILENT ON STEP.
      *
      * This is the difference that cannot be seen in a weight table. Both
@@ -1379,68 +1534,121 @@ int main(void) {
      */
     printf("the arrival order:\n");
     {
-        tg_core_t *c = mk_flat(15, "1111");        /* steps 0,4,8,12 */
-        check("a fresh pattern is in position order",
+        tg_core_t *c = mk_flat(15, "1111");        /* steps 0,4,8,12 on */
+        check("the hits are in position order",
               ui_order(c, 0) == 1 && ui_order(c, 4) == 2 &&
               ui_order(c, 8) == 3 && ui_order(c, 12) == 4);
-        check("an off step has no rank", ui_order(c, 1) == 0);
+        /*
+         * AND SO ARE THE HOLES, IN THEIR OWN RANKING. This is the half the
+         * direction added: a step is either a hit or a hole, never both, so one
+         * array carries both orders and neither can be asked about the other.
+         * Steps 1,2,3 are the first three holes.
+         */
+        check("the holes are in position order, among themselves",
+              ui_order(c, 1) == 1 && ui_order(c, 2) == 2 && ui_order(c, 3) == 3);
+        check("a hit and a hole can share a rank without colliding",
+              ui_order(c, 0) == 1 && ui_order(c, 1) == 1 &&
+              ui_on(c, 0) == 1 && ui_on(c, 1) == 0);
 
-        /* A step joining arrives LAST -- the order you click is the order they
-         * arrive. */
+        /* A step changing kind arrives LAST in the kind it joins, and the kind
+         * it left closes up behind it. */
         tg_core_set_param(c, "cursor", "2");
         tg_core_set_param(c, "step", "On");
-        check("a step joining the pattern arrives last", ui_order(c, 2) == 5);
-        check("...and the others keep their places",
-              ui_order(c, 0) == 1 && ui_order(c, 12) == 4);
+        check("a step switched on arrives last among the hits", ui_order(c, 2) == 5);
+        check("...and the holes close up behind it",
+              ui_order(c, 1) == 1 && ui_order(c, 3) == 2);
 
-        /* One leaving lets the rest close up. */
         tg_core_set_param(c, "cursor", "0");
         tg_core_set_param(c, "step", "Off");
-        check("a step leaving closes the gap",
+        check("a step switched off arrives last among the holes",
+              ui_order(c, 0) == 12);
+        check("...and the hits close up behind it",
               ui_order(c, 4) == 1 && ui_order(c, 8) == 2 &&
               ui_order(c, 12) == 3 && ui_order(c, 2) == 4);
 
-        /* A tie does not move a step's place: it changes what a live step
-         * does, not when it arrives. */
+        /* A tie does not move a step: it changes what a live step does, not
+         * when it arrives. */
         tg_core_set_param(c, "cursor", "8");
         tg_core_set_param(c, "step", "Tie");
         check("On -> Tie does not reorder", ui_order(c, 8) == 2);
-
-        /* Moving a rank shifts the rest around it, both directions. */
-        tg_core_set_param(c, "cursor", "2");        /* holds rank 4 */
-        tg_core_set_param(c, "step_order", "1");
-        check("moving a step to the front shifts the rest back",
-              ui_order(c, 2) == 1 && ui_order(c, 4) == 2 &&
-              ui_order(c, 8) == 3 && ui_order(c, 12) == 4);
-        tg_core_set_param(c, "step_order", "3");
-        check("...and moving it down shifts them forward",
-              ui_order(c, 4) == 1 && ui_order(c, 8) == 2 &&
-              ui_order(c, 2) == 3 && ui_order(c, 12) == 4);
-        check("step_order reads back", atoi_param(c, "step_order") == 3);
-
-        /* Out of range is clamped, not wrapped or dropped. */
-        tg_core_set_param(c, "step_order", "99");
-        check("a rank past the end clamps to it", ui_order(c, 2) == 4);
-        tg_core_set_param(c, "step_order", "0");
-        check("a rank below 1 clamps to 1", ui_order(c, 2) == 1);
         tg_core_destroy(c);
     }
     {
         /*
-         * A PERMUTATION AFTER A LENGTH CHANGE TOO, which is the case that
-         * cannot be reasoned about from the mask alone: shortening the pattern
-         * removes steps from the count without touching a single bit.
+         * SETTING A RANK SWAPS, IT DOES NOT INSERT.
+         *
+         * Typing a number into a step that already has one is an exchange --
+         * you are naming which step arrives Nth, and the step that was Nth has
+         * to go somewhere. Shifting the whole run instead would renumber every
+         * step between the two, which is not what was asked for and is
+         * invisible until you look at the others.
          */
-        tg_core_t *c = mk_flat(15, "FFFF");        /* 16 steps, all on */
+        tg_core_t *c = mk_flat(15, "1111");        /* ranks 1,2,3,4 at 0,4,8,12 */
+        tg_core_set_param(c, "cursor", "12");      /* holds rank 4 */
+        tg_core_set_param(c, "step_order", "1");
+        check("the two steps exchange ranks",
+              ui_order(c, 12) == 1 && ui_order(c, 0) == 4);
+        check("...and nobody between them moved",
+              ui_order(c, 4) == 2 && ui_order(c, 8) == 3);
+        check("step_order reads back", atoi_param(c, "step_order") == 1);
+
+        /* Out of range clamps, and a no-op rank is a no-op. */
+        tg_core_set_param(c, "step_order", "99");
+        check("a rank past the end clamps to it", ui_order(c, 12) == 4);
+        tg_core_set_param(c, "step_order", "0");
+        check("a rank below 1 clamps to 1", ui_order(c, 12) == 1);
+        tg_core_set_param(c, "step_order", "1");
+        check("setting the rank it already has changes nothing",
+              ui_order(c, 12) == 1 && ui_order(c, 0) == 4);
+
+        /* A HOLE'S rank swaps within the holes, never with a hit. */
+        tg_core_set_param(c, "cursor", "3");       /* the third hole */
+        tg_core_set_param(c, "step_order", "1");
+        check("a hole swaps within the holes",
+              ui_order(c, 3) == 1 && ui_order(c, 1) == 3);
+        check("...and no hit was touched",
+              ui_order(c, 12) == 1 && ui_order(c, 0) == 4 &&
+              ui_order(c, 4) == 2 && ui_order(c, 8) == 3);
+        tg_core_destroy(c);
+    }
+    {
+        /*
+         * TAPPING A SEQUENCE STILL YIELDS THAT SEQUENCE under swap, which is
+         * what lets ORDER mode keep its one rule. Each click swaps the next step
+         * into the next rank, and the steps already placed hold ranks below it,
+         * so none of them can be the one swapped out.
+         */
+        tg_core_t *c = mk_flat(15, "1111");
+        static const int tap[] = { 8, 0, 12, 4 };  /* the order we want */
+        for (int k = 0; k < 4; k++) {
+            char v[16];
+            snprintf(v, sizeof v, "%d", tap[k]);
+            tg_core_set_param(c, "cursor", v);
+            snprintf(v, sizeof v, "%d", k + 1);
+            tg_core_set_param(c, "step_order", v);
+        }
+        check("tapping 8,0,12,4 gives exactly that arrival order",
+              ui_order(c, 8) == 1 && ui_order(c, 0) == 2 &&
+              ui_order(c, 12) == 3 && ui_order(c, 4) == 4);
+        tg_core_destroy(c);
+    }
+    {
+        /*
+         * A PERMUTATION AFTER A LENGTH CHANGE TOO, and now in BOTH kinds --
+         * shortening the pattern removes steps from both counts without
+         * touching a single bit.
+         */
+        tg_core_t *c = mk_flat(15, "5555");        /* 8 hits, 8 holes */
         tg_core_set_param(c, "length", "3");       /* index -> 4 steps */
-        int seen[8] = { 0 };
+        int on_seen[8] = { 0 }, off_seen[8] = { 0 };
         int ok = 1;
         for (int i = 0; i < 4; i++) {
-            int r = ui_order(c, i);
-            if (r < 1 || r > 4 || seen[r]) ok = 0;
+            const int r = ui_order(c, i);
+            int *seen = ui_on(c, i) ? on_seen : off_seen;
+            if (r < 1 || r > 2 || seen[r]) ok = 0;
             seen[r] = 1;
         }
-        check("shortening the pattern leaves a permutation of 1..4", ok);
+        check("shortening leaves a permutation of 1..2 in each kind", ok);
         tg_core_destroy(c);
     }
 
@@ -1471,11 +1679,22 @@ int main(void) {
         check("a reordered pattern does write one",
               strstr(blob, "\"p0\":\"1111:0:16::") != NULL);
 
+        /* Ranks SWAP, so 12 and 0 exchange and the middle two do not move. */
         tg_core_t *d = tg_core_create(44100.0);
         tg_core_set_param(d, "state", blob);
-        check("the order survives a round trip",
-              ui_order(d, 12) == 1 && ui_order(d, 0) == 2 &&
-              ui_order(d, 4) == 3 && ui_order(d, 8) == 4);
+        check("the hit order survives a round trip",
+              ui_order(d, 12) == 1 && ui_order(d, 4) == 2 &&
+              ui_order(d, 8) == 3 && ui_order(d, 0) == 4);
+        tg_core_destroy(d);
+
+        /* And so does a HOLE order, which is the half v6 added. */
+        tg_core_set_param(c, "cursor", "3");
+        tg_core_set_param(c, "step_order", "1");
+        tg_core_get_param(c, "state", blob, sizeof(blob));
+        d = tg_core_create(44100.0);
+        tg_core_set_param(d, "state", blob);
+        check("the hole order survives a round trip too",
+              ui_order(d, 3) == 1 && ui_order(d, 1) == 3);
         tg_core_destroy(d);
         tg_core_destroy(c);
 
@@ -1495,7 +1714,30 @@ int main(void) {
             check("a v4 blob loads at fade 100%", atof(v) > 0.99);
             tg_core_get_param(d, "fade_soft", v, sizeof(v));
             check("a v4 blob loads hard", atoi(v) == 0);
+            tg_core_get_param(d, "fade_dir", v, sizeof(v));
+            check("a v4 blob loads fading IN", atoi(v) == 0);
         }
+        check("a v4 blob's HOLES load in position order too",
+              ui_order(d, 1) == 1 && ui_order(d, 2) == 2 && ui_order(d, 3) == 3);
+        tg_core_destroy(d);
+
+        /*
+         * A v5 BLOB WROTE 00 FOR EVERY HOLE, because ranks only covered the hits
+         * then. Those zeroes have to fall through to the position seed, or every
+         * hole would load at rank 1 and Fade Out would arrive all at once on
+         * every patch made before it existed.
+         */
+        d = tg_core_create(44100.0);
+        tg_core_set_param(d, "state",
+            "{\"sv\":5,\"slot\":0,\"rate\":\"1/16\",\"attack\":0,\"decay\":0,"
+            "\"sustain\":1,\"release\":0,\"hold\":1,\"amount\":1,\"fade\":1.0000,"
+            "\"fsoft\":0,\"legato\":0,\"tmode\":0,\"curve\":0,"
+            "\"p0\":\"1111:0:16::04000000010000000200000003000000\"}");
+        check("a v5 blob's hit order is honoured",
+              ui_order(d, 0) == 4 && ui_order(d, 4) == 1 &&
+              ui_order(d, 8) == 2 && ui_order(d, 12) == 3);
+        check("...and its 00 holes fall back to position order",
+              ui_order(d, 1) == 1 && ui_order(d, 2) == 2 && ui_order(d, 3) == 3);
         tg_core_destroy(d);
     }
 
@@ -1533,17 +1775,17 @@ int main(void) {
             tg_core_t *c = mk_flat(15, "0");
             tg_core_set_param(c, "randomize", v);
 
+            /* FROM THE MASK, not from "order > 0" -- every step carries a rank
+             * now, among its own kind, so the order cannot stand in for the
+             * mask. */
             int hits = 0, seen[136] = { 0 };
-            for (int i = 0; i < 16; i++) {
-                int r = ui_order(c, i);
-                if (r > 0) hits++;
-            }
-            if (ui_order(c, 0) < 1) bad_downbeat++;
+            for (int i = 0; i < 16; i++) hits += ui_on(c, i) ? 1 : 0;
+            if (!ui_on(c, 0)) bad_downbeat++;
             if (hits < 4 || hits > 12) bad_density++;
-            /* the ranks are exactly 1..hits */
+            /* the hits' ranks are exactly 1..hits */
             for (int i = 0; i < 16; i++) {
+                if (!ui_on(c, i)) continue;
                 int r = ui_order(c, i);
-                if (r == 0) continue;
                 if (r < 1 || r > hits || seen[r]) bad_order = 1;
                 seen[r] = 1;
             }
