@@ -215,6 +215,97 @@ mod tests {
     }
 
     #[test]
+    fn a_byte_round_trips_through_the_decibel_it_stands_for() {
+        for db in [-80.0f32, -48.0, -12.0, 0.0] {
+            let back = byte_to_db(db_to_byte(db, FLOOR, CEIL), FLOOR, CEIL);
+            assert!((back - db).abs() < 0.5, "{db} came back as {back}");
+        }
+
+        /*
+         * THE FLOOR IS THE ONE LEVEL THAT CANNOT ROUND-TRIP, and that is the
+         * design rather than a rounding loss: byte 0 means "at or below the
+         * floor", so -96 and silence and -200 are all the same byte and there
+         * is nothing to come back to. It returns -infinity instead of
+         * pretending, which is exactly what lets sum_column add four silent
+         * channels and still get silence.
+         */
+        assert_eq!(db_to_byte(FLOOR, FLOOR, CEIL), 0);
+        assert_eq!(byte_to_db(0, FLOOR, CEIL), f32::NEG_INFINITY);
+        assert!(byte_to_db(1, FLOOR, CEIL).is_finite());
+    }
+
+    #[test]
+    fn two_equal_sources_sum_to_three_decibels_more() {
+        /*
+         * THE NUMBER THAT SAYS THE ARITHMETIC IS RIGHT. Two uncorrelated
+         * sources of equal level measure +3 dB together, not +6 (that is
+         * amplitude addition, which assumes they are phase locked) and not
+         * double the byte (that is adding decibels, which multiplies them).
+         */
+        let a = [db_to_byte(-20.0, FLOOR, CEIL); 4];
+        let mut out = [0u8; 4];
+        sum_column(&[&a, &a], &mut out, FLOOR, CEIL);
+
+        let got = byte_to_db(out[0], FLOOR, CEIL);
+        assert!((got - -17.0).abs() < 0.6, "two -20 dB sources summed to {got}, wanted -17");
+
+        /* And four of them are +6 over one. */
+        sum_column(&[&a, &a, &a, &a], &mut out, FLOOR, CEIL);
+        let four = byte_to_db(out[0], FLOOR, CEIL);
+        assert!((four - -14.0).abs() < 0.6, "four -20 dB sources summed to {four}");
+    }
+
+    #[test]
+    fn silence_adds_nothing_at_all() {
+        let quiet = [0u8; 4];
+        let loud = [db_to_byte(-24.0, FLOOR, CEIL); 4];
+        let mut out = [0u8; 4];
+
+        sum_column(&[&loud, &quiet], &mut out, FLOOR, CEIL);
+        assert_eq!(out[0], loud[0], "silence moved a source that was already there");
+
+        /*
+         * AND FOUR SILENCES ARE STILL SILENCE. This is what byte_to_db's
+         * -infinity is for: if byte 0 were treated as the floor instead, four
+         * of them would sum to 6 dB above it and the picture would lift off
+         * black for no reason.
+         */
+        sum_column(&[&quiet, &quiet, &quiet, &quiet], &mut out, FLOOR, CEIL);
+        assert_eq!(out, [0, 0, 0, 0], "silence summed to something");
+    }
+
+    #[test]
+    fn a_sum_clamps_rather_than_wrapping() {
+        let hot = [255u8; 3];
+        let mut out = [0u8; 3];
+        sum_column(&[&hot, &hot, &hot, &hot], &mut out, FLOOR, CEIL);
+        assert_eq!(out, [255, 255, 255], "a sum past the ceiling did not clamp");
+    }
+
+    #[test]
+    fn a_sum_of_one_is_that_one_and_of_none_is_silence() {
+        let a = [10u8, 90, 200];
+        let mut out = [7u8; 3];
+        sum_column(&[&a], &mut out, FLOOR, CEIL);
+        for i in 0..3 {
+            assert!((out[i] as i16 - a[i] as i16).abs() <= 1, "one source changed: {:?}", out);
+        }
+        let mut empty = [7u8; 3];
+        sum_column(&[], &mut empty, FLOOR, CEIL);
+        assert_eq!(empty, [0, 0, 0], "no sources is silence, and the tail is cleared");
+    }
+
+    #[test]
+    fn a_sum_leaves_no_stale_tail() {
+        let a = [200u8, 200];
+        let b = [200u8, 200, 200];
+        let mut out = [7u8; 5];
+        sum_column(&[&a, &b], &mut out, FLOOR, CEIL);
+        assert!(out[0] > 200 && out[1] > 200);
+        assert_eq!(&out[2..], &[0, 0, 0], "past the shortest input was left stale");
+    }
+
+    #[test]
     fn a_clash_needs_both_sources_present() {
         let floor = b(-60.0);
         let bal = db_span_to_byte(12.0, FLOOR, CEIL);
@@ -431,6 +522,75 @@ pub fn db_to_byte(db: f32, db_floor: f32, db_ceil: f32) -> u8 {
     let span = (db_ceil - db_floor).max(1.0);
     let t = ((db - db_floor) / span).clamp(0.0, 1.0);
     (t * 255.0 + 0.5) as u8
+}
+
+/// A byte back to the dBFS it stands for -- the inverse of [`db_to_byte`].
+///
+/// BYTE 0 IS NOT `db_floor`, IT IS "AT OR BELOW IT". `amplitude_to_byte`
+/// returns 0 for silence and for anything under the floor alike, so this
+/// returns [`f32::NEG_INFINITY`] rather than pretending to a level it was never
+/// told. A caller summing power needs that distinction: four silent channels
+/// must add to silence, and they will not if each contributes 10^(floor/10).
+pub fn byte_to_db(byte: u8, db_floor: f32, db_ceil: f32) -> f32 {
+    if byte == 0 {
+        return f32::NEG_INFINITY;
+    }
+    let span = (db_ceil - db_floor).max(1.0);
+    db_floor + (byte as f32 / 255.0) * span
+}
+
+/* -------------------------------------------------------------------- sum --
+ *
+ * SEVERAL SOURCES INTO ONE PICTURE, and it cannot be done in byte space.
+ *
+ * A byte here is linear in dB (see `amplitude_to_byte`), which is exactly what
+ * makes `clash_cell` above cheap -- and exactly what makes summing impossible
+ * the same way. Adding two bytes adds two DECIBELS, which is multiplying two
+ * amplitudes: -20 dB and -20 dB would come out at -40, quieter than either.
+ *
+ * So a sum has to leave byte space, add POWER, and come back:
+ *
+ *     db  = floor + (byte / 255) * (ceil - floor)
+ *     pow = 10^(db / 10)
+ *     out = db_to_byte(10 * log10(sum of pow))
+ *
+ * POWER RATHER THAN AMPLITUDE because two tracks are not phase locked. Adding
+ * amplitudes assumes they are, and would put two equal sources 6 dB up; adding
+ * power puts them at +3, which is what two uncorrelated sources of equal level
+ * actually measure. A mix of a bass and a pad is the incoherent case.
+ */
+
+/// Add several channels' columns into one, in power.
+///
+/// `out` is filled for as many bands as the shortest input has and zeroed past
+/// it, the same contract `clash_column` keeps -- a caller never draws a stale
+/// tail.
+pub fn sum_column(srcs: &[&[u8]], out: &mut [u8], db_floor: f32, db_ceil: f32) {
+    let n = srcs
+        .iter()
+        .map(|s| s.len())
+        .min()
+        .unwrap_or(0)
+        .min(out.len());
+
+    for i in 0..n {
+        let mut power = 0.0f32;
+        for s in srcs {
+            let db = byte_to_db(s[i], db_floor, db_ceil);
+            /* Silence contributes nothing at all -- see byte_to_db. */
+            if db.is_finite() {
+                power += 10.0f32.powf(db * 0.1);
+            }
+        }
+        out[i] = if power > 0.0 {
+            db_to_byte(10.0 * power.log10(), db_floor, db_ceil)
+        } else {
+            0
+        };
+    }
+    for slot in out.iter_mut().skip(n) {
+        *slot = 0;
+    }
 }
 
 /// A dB DIFFERENCE in byte units -- for the balance window, which is a span

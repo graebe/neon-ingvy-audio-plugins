@@ -84,8 +84,37 @@ bool parse_range(const std::string& arg, float& lo, float& hi);
 void parse_slots(const std::string& arg, std::vector<unsigned int>& out);
 
 /*
- * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>" -- where the host's
- * transport is, and how much musical time one column covers.
+ * "<ch>,<ch>,..." -> channel indices, appended in order.
+ *
+ * SEPARATE FROM parse_slots BECAUSE ZERO MEANS SOMETHING HERE. A bus slot is
+ * 1-based and slot 0 is a mistake, so parse_slots refuses it -- but channel 0
+ * is the track the plugin is sitting on, which is the one channel a view is
+ * most likely to contain. Reusing that parser and patching the zero back in
+ * afterwards is the kind of fix that reads fine and is wrong for "10,0".
+ */
+void parse_channels(const std::string& arg, std::vector<int>& out);
+
+/*
+ * "<a>:<b>:<on>" -> which two channels the clash is measured between, and
+ * whether to send it at all.
+ *
+ * Returns false and leaves all three untouched when the shape is wrong. A
+ * comparison is not a range -- the two halves are channel INDICES and the third
+ * is a flag -- so it gets its own parser rather than being squeezed through
+ * parse_range, which would read "0:1:1" as a very small frequency band.
+ */
+bool parse_compare(const std::string& arg, int& a, int& b, bool& on);
+
+/*
+ * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>:<sampleRate>" -- where the
+ * host's transport is, how much musical time one column covers, and what rate
+ * the session runs at.
+ *
+ * THE RATE IS HERE because it is a host fact and this is the host-facts
+ * message. The editor needs it to say which Listen-In buses cannot be compared
+ * with this one: a different rate picks a different window and so a different
+ * group delay, and two pictures offset by an amount nobody can see is worse
+ * than one that says it will not draw.
  *
  * THE PLUGIN REPORTS THE CLOCK AND NOTHING ABOUT THE PICTURE. How many bars the
  * window spans, and therefore which pixel a position lands on, is a layout
@@ -100,7 +129,7 @@ void parse_slots(const std::string& arg, std::vector<unsigned int>& out);
  * would quantise two columns onto one value.
  */
 std::string encode_sync(double ppq, double bpm, int num, int denom, bool running,
-                        double ppqPerCol);
+                        double ppqPerCol, int sampleRate);
 
 /*
  * Beats after `frames` more samples at `bpm`. A non-positive sample rate or

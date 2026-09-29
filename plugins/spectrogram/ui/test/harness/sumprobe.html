@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><title>sum</title>
+<link rel="stylesheet" href="./assets/style.css"></head><body>
+<div id="root"></div>
+<pre id="out" style="position:fixed;bottom:0;color:#fff;font:12px monospace;z-index:9">pending</pre>
+<script src="./mock.js"></script>
+<script type="module" src="./assets/ui.js"></script>
+<script>
+/*
+ * DOES VIEWING TWO SOURCES READ +3 dB?
+ *
+ * mock.js gives both fake buses the SAME column, so viewing one against viewing
+ * both is two equal uncorrelated sources -- which measure +3 dB together. Not
+ * +6 (that is amplitude addition, and assumes they are phase locked) and not
+ * double the byte (that is adding decibels, which multiplies amplitudes).
+ *
+ * It reads the answer off the crosshair's own LEVEL readout rather than off
+ * pixels, because that readout is the byte the engine encoded rather than a
+ * colour, and it is the number a user would check.
+ *
+ *   ?want=1     one bus
+ *   ?want=1,2   both, which must read 3 dB hotter
+ *
+ *   chrome --headless=new --virtual-time-budget=30000 --dump-dom \\
+ *          "http://localhost:<port>/sumprobe.html?want=1,2&noclash" | grep -o 'RESULT [^<]*'
+ *
+ * IT SAMPLES THE NEWEST EDGE (0.93 across) rather than the middle: changing the
+ * view WIPES the ring -- splicing two different sums with no seam is the defect
+ * this feature exists to fix -- so the older nine tenths are legitimately blank
+ * for thirteen seconds afterwards. Sampling the middle reads silence and looks
+ * like a failure, which it did until it did not.
+ */
+(async () => { try {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 400 && !document.querySelector('.spectro'); i++) await sleep(10);
+  await sleep(1800);
+
+  /* Do the picking here rather than trusting the harness flag, so the row
+     count at the moment of the click is observable. */
+  const want = (/want=([\d,]+)/.exec(location.search)?.[1] ?? '1').split(',').map(Number);
+  const face = document.querySelector('.checklist-face');
+  face.click();
+  await sleep(60);
+  const rowsAtClick = [...document.querySelectorAll('.checklist-row [role="switch"]')];
+  const before = rowsAtClick.map((r) => r.getAttribute('aria-checked')).join(',');
+  for (let i = 0; i < rowsAtClick.length; i++) {
+    const on = rowsAtClick[i].getAttribute('aria-checked') === 'true';
+    if (on !== want.includes(i)) { rowsAtClick[i].click(); await sleep(30); }
+  }
+  const after = [...document.querySelectorAll('.checklist-row [role="switch"]')]
+    .map((r) => r.getAttribute('aria-checked')).join(',');
+  face.click();
+  /* Changing the view WIPES the ring -- splicing two different sums with no
+     seam is the defect being fixed -- so only the newest edge has the new mix
+     in it for a while. That is what the 0.93 below is about. */
+  await sleep(2500);
+
+  /* Park the pointer inside the band both buses are loud in (80..120). */
+  const el = document.querySelector('.spectro');
+  const r = el.getBoundingClientRect();
+  const band = 100, BANDS = 256;
+  const y = (1 - band / (BANDS - 1)) * r.height;
+  el.dispatchEvent(new PointerEvent('pointermove', {
+    bubbles: true, clientX: r.left + r.width * 0.93, clientY: r.top + y,
+  }));
+  await sleep(300);
+
+  const vals = [...document.querySelectorAll('.xh-val')].map((n) => n.textContent);
+  const summary = document.querySelector('.checklist-face .select-value')?.textContent;
+  const rows = [...document.querySelectorAll('.checklist-row [role="switch"]')].length;
+  out.textContent = `RESULT level="${vals[2] ?? '?'}" freq="${vals[0] ?? '?'}"`
+    + ` view="${summary}"`;
+} catch (e) { out.textContent = `RESULT error ${e && e.message}`; } })();
+</script></body></html>

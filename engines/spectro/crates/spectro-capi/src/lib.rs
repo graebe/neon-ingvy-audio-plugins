@@ -474,3 +474,68 @@ pub unsafe extern "C" fn srecv_band_hz(p: *const Receiver, out: *mut f32, n: c_i
     }
     (*p).band_hz_into(core::slice::from_raw_parts_mut(out, n as usize)) as c_int
 }
+
+/// Add several channels' columns into one, in POWER, into `out`.
+///
+/// `srcs` is `n_src` pointers, each to `n_cols * bands` bytes; `out` likewise.
+///
+/// IT CANNOT BE DONE IN BYTE SPACE and that is the whole reason this exists: a
+/// byte is linear in dB, so adding two bytes adds two decibels, which multiplies
+/// two amplitudes. Two sources at -20 dB would come out at -40, quieter than
+/// either. This inverts to power, adds, and re-encodes -- +3 dB for two equal
+/// uncorrelated sources, which is what a bass and a pad actually measure.
+///
+/// Like `srecv_clash`, it takes columns the caller ALREADY drained: taking them
+/// again would add one source's present to another's future.
+///
+/// # Safety
+/// Every pointer must be readable/writable for `n_cols * bands` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_sum(
+    p: *const Receiver,
+    srcs: *const *const u8,
+    n_src: c_int,
+    out: *mut u8,
+    n_cols: c_int,
+) {
+    if p.is_null() || out.is_null() || n_cols <= 0 {
+        return;
+    }
+    let n = (*p).bands() * n_cols as usize;
+    let dst = core::slice::from_raw_parts_mut(out, n);
+
+    if srcs.is_null() || n_src <= 0 {
+        dst.fill(0);
+        return;
+    }
+    let ptrs = core::slice::from_raw_parts(srcs, n_src as usize);
+
+    /* Borrowed on the stack: MAX_SOURCES is the cap the receiver enforces, so
+     * nothing is allocated to call this. */
+    let mut view: [&[u8]; MAX_SOURCES] = [&[]; MAX_SOURCES];
+    let mut k = 0;
+    for &ptr in ptrs.iter().take(MAX_SOURCES) {
+        if ptr.is_null() {
+            continue;
+        }
+        view[k] = core::slice::from_raw_parts(ptr, n);
+        k += 1;
+    }
+    (*p).sum_into(&view[..k], dst)
+}
+
+/// Non-zero when a channel is being zero-filled because its sender has gone
+/// quiet -- a muted Listen-In, or one whose host stopped calling it.
+///
+/// Worth saying out loud rather than drawing: a black stripe reads as "that
+/// track is silent" when what happened is that the bus is absent.
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_starved(p: *const Receiver, ch: c_int) -> c_int {
+    if p.is_null() || ch < 0 {
+        return 0;
+    }
+    i32::from((*p).starved(ch as usize))
+}

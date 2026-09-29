@@ -28,8 +28,19 @@ export const MSG = {
    * the source it was measured against the own channel. */
   clashCols: 68,
   range: 96,  /* -> plugin: "<f_min>:<f_max>" -- the zoom */
-  /* -> plugin: "<slot>,<slot>,..." -- which buses to listen in on, in order. */
+  /* -> plugin: "<slot>,<slot>,..." -- which buses to open, in order.
+   * DERIVED from the view and the comparison rather than being a control of
+   * its own: a third list to manage is what made those two feel like one
+   * tangled setting. */
   select: 97,
+  /* -> plugin: "<ch>,<ch>,..." -- which channels are ADDED into the picture.
+   * The plugin sums them and sends one stream, so the editor never routes by
+   * channel -- which is what makes "I selected another track and still see the
+   * first" impossible rather than merely fixed. */
+  view: 99,
+  /* -> plugin: "<a>:<b>:<on>" -- the two channels the clash is measured
+   * between, and whether it is wanted. Independent of the view. */
+  compare: 100,
   /* -> plugin: "<floor_db>:<balance_db>" -- what counts as a clash. */
   clash: 98,
   /*

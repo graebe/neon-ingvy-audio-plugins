@@ -26,7 +26,7 @@
  * checkmark: "never invent a glyph outside the set. A control that has no glyph
  * in the set gets a word."
  */
-import { For, Show, createSignal, onCleanup } from 'solid-js';
+import { Index, Show, createSignal, onCleanup } from 'solid-js';
 import { Toggle } from './Toggle.jsx';
 
 export function CheckList(props) {
@@ -78,20 +78,29 @@ export function CheckList(props) {
             when={(props.options ?? []).length}
             fallback={<div class="checklist-empty t-hint">{props.emptyText ?? 'nothing to list'}</div>}
           >
-            <For each={props.options}>
+            {/*
+              * INDEX, NOT For. `For` keys by object identity, and a caller that
+              * builds its options inline -- which is the natural way to write
+              * them -- hands over a brand new array every render. Every row was
+              * then destroyed and rebuilt whenever anything changed, so a click
+              * landed on a node that no longer existed and the list flickered
+              * under the pointer. These rows are positional: a channel is its
+              * index, and Index says so.
+              */}
+            <Index each={props.options}>
               {(o) => (
-                <div class="checklist-row" classList={{ off: !!o.disabled }}>
+                <div class="checklist-row" classList={{ off: !!o().disabled }}>
                   <Toggle
-                    label={o.name}
-                    value={isOn(o.id)}
-                    onChange={(v) => !o.disabled && toggle(o.id, v)}
+                    label={o().name}
+                    value={isOn(o().id)}
+                    onChange={(v) => !o().disabled && toggle(o().id, v)}
                   />
-                  <Show when={o.hint}>
-                    <span class="checklist-hint t-hint">{o.hint}</span>
+                  <Show when={o().hint}>
+                    <span class="checklist-hint t-hint">{o().hint}</span>
                   </Show>
                 </div>
               )}
-            </For>
+            </Index>
           </Show>
         </div>
       </Show>

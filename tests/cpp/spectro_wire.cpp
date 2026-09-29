@@ -286,20 +286,20 @@ TEST_CASE("a range splits at the colon")
 
 TEST_CASE("the sync message carries the clock in the order the editor reads it")
 {
-  const std::string s = encode_sync(8.5, 120.0, 4, 4, true, 0.017);
-  CHECK(s == "8.500000:120.0000:4:4:1:0.01700000");
+  const std::string s = encode_sync(8.5, 120.0, 4, 4, true, 0.017, 48000);
+  CHECK(s == "8.500000:120.0000:4:4:1:0.01700000:48000");
 
   /* The running flag is the fifth field and is 0/1, not "true"/"false" -- the
    * editor tests it against the character. */
-  CHECK(encode_sync(0.0, 120.0, 4, 4, false, 0.017).find(":0:") != std::string::npos);
+  CHECK(encode_sync(0.0, 120.0, 4, 4, false, 0.017, 48000).find(":0:") != std::string::npos);
 }
 
 TEST_CASE("the position keeps enough decimals to separate two columns")
 {
   /* At 200 BPM a column is ~0.06 beats. Three decimals would land two adjacent
    * columns on the same number and stack them on one pixel. */
-  const std::string a = encode_sync(100.000000, 200.0, 4, 4, true, 0.0568);
-  const std::string b = encode_sync(100.056800, 200.0, 4, 4, true, 0.0568);
+  const std::string a = encode_sync(100.000000, 200.0, 4, 4, true, 0.0568, 48000);
+  const std::string b = encode_sync(100.056800, 200.0, 4, 4, true, 0.0568, 48000);
   CHECK(a != b);
 }
 
@@ -307,13 +307,13 @@ TEST_CASE("a negative position survives the wire")
 {
   /* A count-in, or the playhead dragged before the start. The editor folds it
    * back into the window; this file's only job is not to lose the sign. */
-  const std::string s = encode_sync(-0.5, 120.0, 4, 4, true, 0.017);
+  const std::string s = encode_sync(-0.5, 120.0, 4, 4, true, 0.017, 48000);
   CHECK(s.compare(0, 2, "-0") == 0);
 }
 
 TEST_CASE("an odd time signature survives the wire")
 {
-  const std::string s = encode_sync(1.0, 90.0, 6, 8, true, 0.02);
+  const std::string s = encode_sync(1.0, 90.0, 6, 8, true, 0.02, 48000);
   CHECK(s.find(":6:8:") != std::string::npos);
 }
 
@@ -364,6 +364,67 @@ TEST_CASE("a source list skips what it cannot read rather than failing whole")
   got.clear();
   parse_slots("0,-4,99999", got);
   CHECK(got.empty());
+}
+
+TEST_CASE("the sync message carries the session's sample rate")
+{
+  /* The editor needs it to say which Listen-In buses cannot be compared with
+   * this one -- a different rate is a different window and so a different group
+   * delay, and two pictures offset by an amount nobody can see is worse than
+   * one that says it will not draw. */
+  CHECK(encode_sync(0.0, 120.0, 4, 4, true, 0.02, 96000).find(":96000") != std::string::npos);
+}
+
+TEST_CASE("channels parse where slots would not, because zero means something")
+{
+  std::vector<int> got;
+  parse_channels("0,2,3", got);
+  CHECK(got == std::vector<int>{0, 2, 3});
+
+  /* THE DIFFERENCE FROM parse_slots: channel 0 is the track the plugin sits on,
+   * and it is the one a view is most likely to contain. A slot 0 is a mistake;
+   * a channel 0 is the point. */
+  got.clear();
+  parse_channels("0", got);
+  CHECK(got == std::vector<int>{0});
+
+  /* An unreadable field is skipped, not taken as a zero -- which for channels
+   * would silently add this track to a view that did not ask for it. */
+  got.clear();
+  parse_channels("1,x,2", got);
+  CHECK(got == std::vector<int>{1, 2});
+
+  got.clear();
+  parse_channels("", got);
+  CHECK(got.empty());
+
+  got.clear();
+  parse_channels("-1,999", got);
+  CHECK(got.empty());
+}
+
+TEST_CASE("a comparison names two channels and whether it is wanted")
+{
+  int a = -1, b = -1;
+  bool on = false;
+  REQUIRE(parse_compare("0:2:1", a, b, on));
+  CHECK(a == 0);
+  CHECK(b == 2);
+  CHECK(on);
+
+  REQUIRE(parse_compare("1:3:0", a, b, on));
+  CHECK(a == 1);
+  CHECK(b == 3);
+  CHECK(on == false);
+
+  /* Not a range: "0:1:1" through parse_range would be a very small frequency
+   * band, which is why this has a parser of its own. */
+  a = 111; b = 222;
+  CHECK(parse_compare("nonsense", a, b, on) == false);
+  CHECK(parse_compare("0:1", a, b, on) == false);
+  CHECK(a == 111);
+  CHECK(b == 222);
+  CHECK(parse_compare("-1:2:1", a, b, on) == false);
 }
 
 TEST_CASE("a full tick's payload fits the transport's cap")

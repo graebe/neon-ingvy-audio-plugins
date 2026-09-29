@@ -93,9 +93,27 @@ public:
     kMsgClashCols,
 
     kMsgRange = 96,     /* <- UI: "<f_min>:<f_max>" -- the zoom               */
-    /* <- UI: "<slot>,<slot>,..." -- which buses to listen in on, in order.
-     * Empty means the own channel alone. */
+    /*
+     * <- UI: "<slot>,<slot>,..." -- which buses to open, in order. Empty means
+     * the own channel alone.
+     *
+     * DERIVED IN THE EDITOR from what it is viewing and what it is comparing,
+     * rather than being a control of its own. Having a third list to manage was
+     * the thing that made "view" and "compare" feel like one tangled setting.
+     */
     kMsgSelect,
+    /*
+     * <- UI: "<ch>,<ch>,..." -- which channels are ADDED into the picture.
+     *
+     * The plugin sums them, so the editor receives ONE stream and never routes
+     * by channel. That is not a tidy-up: routing by channel is what made a
+     * batch for an unselected source silently dropped, and a saved session come
+     * back showing the wrong track with no way to say so.
+     */
+    kMsgView,
+    /* <- UI: "<a>:<b>:<on>" -- the two channels the clash is measured between,
+     * and whether to send it. Independent of what is being viewed. */
+    kMsgCompare,
     /* <- UI: "<floor_db>:<balance_db>" -- what counts as a clash. */
     kMsgClash,
 
@@ -205,8 +223,15 @@ private:
   /* One drain buffer per channel, plus one for the clash. Sized in the
    * constructor, never on the audio thread -- and never resized, because the
    * band count cannot change without a configure. */
-  std::vector<unsigned char> mCols;
-  std::vector<unsigned char> mOwnCols;
+  /*
+   * ONE BUFFER PER CHANNEL, because the view is a SUM and the comparison is a
+   * pair: both need several channels' columns alive at the same moment, and a
+   * drained column is gone. Sized in the constructor for the most sources a
+   * receiver will ever open.
+   */
+  std::vector<std::vector<unsigned char>> mChanCols;
+  std::vector<int> mChanCount;
+  std::vector<unsigned char> mSum;
   std::vector<unsigned char> mClash;
 
   /*
@@ -220,6 +245,12 @@ private:
    * omission.
    */
   std::vector<unsigned int> mSources;
+  /* Which channels are added into the picture. Channel 0 is this track. */
+  std::vector<int> mView;
+  /* The two the clash is measured between, and whether it is wanted. */
+  int mCmpA = 0;
+  int mCmpB = 1;
+  bool mClashOn = false;
   float mClashFloorDb = -60.0f;
   float mClashBalanceDb = 12.0f;
 

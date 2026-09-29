@@ -226,7 +226,7 @@ export const secondsAgo = (age, colsPerSecond) =>
  */
 
 /**
- * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>" -> an object, or null.
+ * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>:<rate>" -> an object, or null.
  *
  * Rejected whole rather than in part: a sync message with one unreadable field
  * would place columns somewhere confidently wrong, and a picture that is
@@ -243,12 +243,16 @@ export function decodeSync(text) {
   const denom = Number.parseInt(p[3], 10);
   const running = p[4] === '1';
   const ppqPerCol = Number.parseFloat(p[5]);
+  /* The session's sample rate. Optional, because a message from a build before
+   * it existed is still a usable clock -- everything but the rate check works
+   * without it. */
+  const rate = Number.parseInt(p[6], 10);
 
   if (!Number.isFinite(ppq) || !Number.isFinite(bpm) || bpm <= 0) return null;
   if (!Number.isInteger(num) || num < 1 || !Number.isInteger(denom) || denom < 1) return null;
   if (!Number.isFinite(ppqPerCol) || ppqPerCol <= 0) return null;
 
-  return { ppq, bpm, num, denom, running, ppqPerCol };
+  return { ppq, bpm, num, denom, running, ppqPerCol, rate: Number.isInteger(rate) ? rate : 0 };
 }
 
 /**
