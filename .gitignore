@@ -11,6 +11,13 @@ build-coverage/
 .DS_Store
 target/
 
+# Where the Max external is built. The .mxo is a build artefact like any
+# plugin bundle -- it is universal, it is 1MB of linked engine, and it is
+# reproduced by `cmake --build build --target tg.gate_tilde`. It lives beside
+# its device rather than in build/ only because Max has to be pointed at a
+# search path to author the patcher.
+plugins/trance-gate-m4l/externals/
+
 node_modules/
 # The review harness copies the built bundle in beside its page; the page,
 # the mock and the audit are source, the copies are not. Per-plugin paths were

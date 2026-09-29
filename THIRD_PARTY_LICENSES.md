@@ -14,6 +14,21 @@ the README for how that came to be true.
 | [iPlug2](https://github.com/iPlug2/iPlug2) | **zlib**, © the iPlug 2 Developers; based on WDL-OL/iPlug by Oli Larkin and iPlug v1 by John Schwartz / Cockos |
 | VST3 SDK (vendored in iPlug2) | **MIT**, © 2026 Steinberg Media Technologies GmbH |
 | CLAP | **MIT** |
+| [max-sdk-base](https://github.com/Cycling74/max-sdk-base) | **MIT**, © 2021 Cycling '74 |
+
+max-sdk-base is what the Max for Live device's external is built against, and
+it being MIT is the reason that target exists rather than a happy accident: it
+was checked before a line was written. Cycling '74's own wording is the
+standard MIT grant — "use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell" — with the notice-retention condition and nothing
+else, so a compiled external may be shipped inside a frozen `.amxd` on the
+same terms as everything else here.
+
+Note that this is the SDK, not Max. **Max for Live itself is proprietary and
+is not a dependency of this repository** — it is a host, the way Live and
+Logic are. A user needs Live Suite to run the device; nothing about that
+reaches the licence of what is built here, and the VST3 remains the answer for
+everyone else.
 
 The VST3 SDK is the thing most often assumed to force copyleft and no longer
 does: Steinberg withdrew the GPLv3-or-proprietary dual licence and the copy

@@ -49,5 +49,13 @@ include(cmake/Schwung.cmake)
 add_subdirectory(plugins/trance-gate)
 add_subdirectory(plugins/spectrogram)
 
+# The Trance Gate's THIRD shell: a Max external, for the Max for Live device.
+# Opt-in because it needs the max-sdk-base submodule, and a checkout that only
+# wants the plugin should not have to fetch one to configure.
+option(TG_BUILD_M4L "Build tg.gate~, the Max external behind the M4L device" OFF)
+if (TG_BUILD_M4L)
+    add_subdirectory(plugins/trance-gate-m4l/external)
+endif()
+
 enable_testing()
 add_subdirectory(tests)

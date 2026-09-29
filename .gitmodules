@@ -1,3 +1,6 @@
 [submodule "external/iPlug2"]
 	path = external/iPlug2
 	url = https://github.com/iPlug2/iPlug2.git
+[submodule "external/max-sdk-base"]
+	path = external/max-sdk-base
+	url = https://github.com/Cycling74/max-sdk-base.git

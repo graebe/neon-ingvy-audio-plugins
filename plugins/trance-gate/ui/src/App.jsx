@@ -16,6 +16,7 @@
 import { createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js';
 import { onParam, onMessage, sendMessage } from '@ultraviolet/ui';
 import { MSG } from './lib/msg.js';
+import { parseReadout } from './lib/readout.js';
 import { ParamKnob, ParamSelect, ParamToggle } from './lib/params.jsx';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
@@ -43,18 +44,6 @@ const CURVES = ['Linear', 'Exponential', 'S-Curve'];
  */
 const PLOT_W = 760;
 const BAND_W = PLOT_W + 8 + 24;          /* plot, gap, tab strip */
-
-const hexToBits = (hex, n) => {
-  const bits = new Array(n).fill(false);
-  if (!hex) return bits;
-  let bit = 0;
-  for (let i = hex.length - 1; i >= 0 && bit < n; i--) {
-    const v = parseInt(hex[i], 16);
-    if (Number.isNaN(v)) continue;
-    for (let k = 0; k < 4 && bit < n; k++, bit++) bits[bit] = ((v >> k) & 1) === 1;
-  }
-  return bits;
-};
 
 /*
  * COPY, THE WAY A PLUGIN'S WEBVIEW ALLOWS IT.
@@ -134,23 +123,17 @@ export default function App() {
         return setText((p) => { const n = p.slice(); n[tag] = msg; return n; });
 
       if (tag === MSG.uiState) {
-        const f = msg.split(':');
-        if (f.length < 8) return;
-        const length = Math.max(1, parseInt(f[2], 10) || 16);
-        const depths = [];
-        for (let i = 0; i < length; i++)
-          depths.push((parseInt((f[7] || '').substr(i * 2, 2), 16) || 0) / 255);
-        const phase = parseFloat(f[3]) || 0;
-        const msStep = parseFloat(f[4]) || 0;
-        const moving = f[5] === '1';
+        /* DECODED IN readout.js, shared with the Max for Live device's grid.
+         * It returns null rather than a partial object for a string it does
+         * not recognise, and keeping the last good state is the right answer
+         * to that -- see the note there. */
+        const u = parseReadout(msg);
+        if (!u) return;
         /* RE-ANCHORED ON EVERY PUSH, so the interpolation below can never
          * drift further than one idle tick from the engine. */
-        setAnchor({ phase, msStep, length, moving, at: performance.now() });
-        return setUi({
-          steps: hexToBits(f[0], length), ties: hexToBits(f[1], length),
-          length, phase, msStep, moving,
-          cursor: parseInt(f[6], 10) || 0, depths,
-        });
+        setAnchor({ phase: u.phase, msStep: u.msStep, length: u.length,
+                    moving: u.moving, at: performance.now() });
+        return setUi(u);
       }
       if (tag === MSG.params) {
         const f = msg.split(':');
