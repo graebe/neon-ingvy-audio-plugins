@@ -1,0 +1,67 @@
+---
+/*
+ * One page, four sections, a sticky contents rail. Each section is its own file
+ * in docs/tech/, so splitting this into four routes later is a change here and
+ * none to the content.
+ */
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+const sections = (await getCollection('tech')).sort(
+  (a, b) => a.data.order - b.data.order,
+);
+const rendered = await Promise.all(
+  sections.map(async (s) => ({ ...s, Content: (await render(s)).Content })),
+);
+---
+<Base title="Tech" description="How the repository is put together, and how both targets are built and released.">
+  <p class="eyebrow">Tech</p>
+  <h1>How it is put together</h1>
+
+  <div class="cols">
+    <nav class="toc" aria-label="On this page">
+      <ol>
+        {rendered.map((s) => <li><a href={`#${s.data.slug}`}>{s.data.title}</a></li>)}
+      </ol>
+    </nav>
+
+    <div>
+      {rendered.map((s) => (
+        <section id={s.data.slug}>
+          <h2>{s.data.title}</h2>
+          <div class="prose"><s.Content /></div>
+        </section>
+      ))}
+    </div>
+  </div>
+</Base>
+
+<style>
+  .eyebrow { display: block; margin-bottom: var(--s3); }
+  h1 { margin-bottom: var(--s8); }
+  .cols { display: grid; grid-template-columns: 13rem 1fr; gap: var(--s8); align-items: start; }
+  .toc { position: sticky; top: 72px; }
+  .toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+  .toc a {
+    border: 0;
+    color: var(--ink-dim);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .toc a:hover { color: var(--uv); }
+  section + section {
+    margin-top: var(--s8);
+    padding-top: var(--s6);
+    border-top: var(--hair) solid var(--line-100);
+  }
+  section h2 { margin-bottom: var(--s4); }
+  /* The section heading is the page's; the file's own h1 would repeat it. */
+  section .prose :global(h1) { display: none; }
+  @media (max-width: 60rem) {
+    .cols { grid-template-columns: 1fr; gap: var(--s6); }
+    .toc { position: static; }
+    .toc ol { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; gap: var(--s4); }
+  }
+</style>

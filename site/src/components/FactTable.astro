@@ -1,0 +1,40 @@
+---
+const { plugin } = Astro.props;
+const hosts = {
+  live: 'Ableton Live — ' + plugin.data.formats.join(' · '),
+  move: 'Ableton Move — Schwung audio_fx module',
+};
+---
+<table class="facts">
+  <tbody>
+    <tr>
+      <th scope="row">Hosts</th>
+      <td>
+        {plugin.data.hosts.map((h) => <div>{hosts[h]}</div>)}
+        {!plugin.data.hosts.includes('move') && <div class="dim">Not on the Move</div>}
+      </td>
+    </tr>
+    <tr>
+      <th scope="row">Engine</th>
+      <td><code>{plugin.data.engine}</code></td>
+    </tr>
+    <tr>
+      <th scope="row">Crates</th>
+      <td>{plugin.data.crates.map((c) => <code>{c}</code>)}</td>
+    </tr>
+    {plugin.data.tests.length > 0 && (
+      <tr>
+        <th scope="row">Tests</th>
+        <td>{plugin.data.tests.map((t) => <code>{t}</code>)}</td>
+      </tr>
+    )}
+  </tbody>
+</table>
+
+<style>
+  .facts { margin-top: var(--s6); max-width: var(--doc-measure); }
+  .facts th { width: 8rem; white-space: nowrap; }
+  .facts td { color: var(--ink-muted); }
+  .facts code { margin-right: var(--s2); }
+  .dim { color: var(--ink-dim); }
+</style>

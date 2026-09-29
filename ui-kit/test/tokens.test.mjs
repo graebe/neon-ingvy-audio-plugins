@@ -35,6 +35,11 @@ const TREES = [
   join(ROOT, 'ui-kit', 'src'),
   join(ROOT, 'plugins', 'trance-gate', 'ui', 'src'),
   join(ROOT, 'plugins', 'spectrogram', 'ui', 'src'),
+  /* The documentation site draws the same system, and is the consumer most
+   * likely to reach for a #fff on a button hover. Its Markdown CONTENT is not
+   * here and must not be: a product's README may quote a hex triplet in prose,
+   * and that is writing about a colour rather than spelling one. */
+  join(ROOT, 'site', 'src'),
 ];
 const TOKENS = join(ROOT, 'ui-kit', 'src', 'tokens.css');
 
@@ -57,7 +62,9 @@ function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(css|jsx?|mjs)$/.test(name)) out.push(p);
+    /* .astro carries a <style> block, which is CSS in every way that matters
+     * to this test. */
+    else if (/\.(css|jsx?|mjs|astro)$/.test(name)) out.push(p);
   }
   return out;
 }
@@ -90,8 +97,24 @@ test('every var() the UI references is defined in tokens.css', () => {
     [...readFileSync(TOKENS, 'utf8').matchAll(/(--[\w-]+)\s*:/g)]
       .map((m) => m[1]));
 
+  /*
+   * A custom property a source file DECLARES counts as defined, and that is
+   * not a loophole. The test above already forbids a colour literal anywhere
+   * but tokens.css, so a locally declared property can only hold a size, a
+   * length or a var() reaching back into the system -- and the site genuinely
+   * needs sizes the system has none of, because Ultraviolet describes controls
+   * in a fixed window and a scrolling document has a paragraph.
+   *
+   * What this does NOT permit is a second palette, which is the thing worth
+   * preventing.
+   */
+  const files = TREES.flatMap((t) => walk(t));
+  for (const file of files)
+    for (const m of stripComments(readFileSync(file, 'utf8')).matchAll(/(--[\w-]+)\s*:/g))
+      tokens.add(m[1]);
+
   const missing = new Set();
-  for (const file of TREES.flatMap((t) => walk(t))) {
+  for (const file of files) {
     const text = stripComments(readFileSync(file, 'utf8'));
     for (const m of text.matchAll(/var\(\s*(--[\w-]+)/g))
       if (!tokens.has(m[1])) missing.add(`${relative(ROOT, file)}: ${m[1]}`);

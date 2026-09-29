@@ -1,0 +1,23 @@
+{
+  "name": "vst-library-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The public documentation site, built from this repository's own Markdown.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/stage-assets.mjs",
+    "dev": "astro dev",
+    "prebuild": "node scripts/stage-assets.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "node scripts/check-links.mjs"
+  },
+  "dependencies": {
+    "@ultraviolet/ui": "*"
+  },
+  "devDependencies": {
+    "astro": "^5.0.0",
+    "unist-util-visit": "^5.0.0"
+  }
+}

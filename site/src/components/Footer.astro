@@ -1,0 +1,28 @@
+---
+import { url } from '../lib/paths.js';
+---
+<footer>
+  <div class="wrap">
+    <p>
+      MIT, © 2026 Torben Gräber ·
+      <a href="https://github.com/graebe/vst-library">Source</a> ·
+      <a href={url('licences/')}>Third-party notices</a>
+    </p>
+    <p class="fine">
+      Built from this repository's own Markdown. Typeset in JetBrains Mono.
+    </p>
+  </div>
+</footer>
+
+<style>
+  footer {
+    border-top: var(--hair) solid var(--line-100);
+    padding: var(--s6) 0;
+    color: var(--ink-dim);
+    font-size: 12px;
+  }
+  footer p { margin: 0; }
+  .fine { margin-top: var(--s1); }
+  footer a { color: var(--ink-muted); border: 0; }
+  footer a:hover { color: var(--uv); }
+</style>

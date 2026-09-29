@@ -1,0 +1,35 @@
+---
+/*
+ * The shell. Ultraviolet first, the document layer second.
+ * Copyright (c) 2026 Torben Gräber. MIT.
+ */
+import '@ultraviolet/ui/tokens.css';
+import '../styles/site.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+const { title, description } = Astro.props;
+const full = title ? `${title} · vst-library` : 'vst-library — audio plugins for Live and Move';
+const desc = description ?? 'Audio plugins and Schwung modules built from shared Rust engines: one core per product, two shells, and a test that says so.';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={desc} />
+    <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <title>{full}</title>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <Nav />
+    <main id="main" class="wrap"><slot /></main>
+    <Footer />
+  </body>
+</html>
+
+<style is:global>
+  main { padding-top: var(--s8); padding-bottom: var(--s8); }
+</style>

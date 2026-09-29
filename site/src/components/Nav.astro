@@ -1,0 +1,59 @@
+---
+import { getCollection } from 'astro:content';
+import { url } from '../lib/paths.js';
+
+const plugins = (await getCollection('plugins')).sort(
+  (a, b) => a.data.order - b.data.order,
+);
+const here = Astro.url.pathname;
+const on = (p) => here.startsWith(url(p)) ? 'page' : undefined;
+---
+<header class="bar">
+  <div class="wrap row">
+    <a class="mark" href={url()}>vst<span>-library</span></a>
+    <nav aria-label="Sections">
+      {plugins.map((p) => (
+        <a href={url(`plugins/${p.id}/`)} aria-current={on(`plugins/${p.id}/`)}>{p.data.title}</a>
+      ))}
+      <a href={url('tech/')} aria-current={on('tech/')}>Tech</a>
+      <a href={url('licences/')} aria-current={on('licences/')}>Licences</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .bar {
+    border-bottom: var(--hair) solid var(--line-100);
+    background: var(--bg-100);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s6);
+    min-height: 52px;
+    flex-wrap: wrap;
+  }
+  .mark {
+    color: var(--ink);
+    border: 0;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+  .mark span { color: var(--ink-dim); }
+  nav { display: flex; gap: var(--s6); flex-wrap: wrap; }
+  nav a {
+    border: 0;
+    color: var(--ink-muted);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  nav a:hover { color: var(--uv); }
+  /* The current section is the one lit thing in the bar. */
+  nav a[aria-current='page'] { color: var(--uv); }
+</style>

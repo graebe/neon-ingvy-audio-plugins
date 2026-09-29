@@ -11,14 +11,15 @@ in `crates/spectro-core/src/fft.rs`, checked against a naive DFT.
 cargo test              # the FFT, the band mapping, and the no-allocation proof
 ```
 
-## Why it is here and not a submodule
+## Why it has one shell and not two
 
-The Trance Gate's engine is a submodule because it has a second consumer — the
-Schwung module on the Move — and a second copy would drift. This one has no
-second consumer yet: the Move has no screen to draw a spectrogram on. It moves
-out to its own repository and becomes a pinned submodule on the day something
-else links it, and not before. `cmake/SpectroEngine.cmake` says the same thing
-where a build would look for it.
+The Trance Gate's engine carries two wrappers — `tg-capi` for the plugin and
+`tg-move` for the Schwung module — because it has two hosts. This one has one:
+the Move has no screen to draw a spectrogram on. So there is no `spectro-move`,
+and `cmake/Schwung.cmake` says the same thing where a build would look for it.
+
+A crate belongs to exactly one product, which is also why the two engines never
+depend on each other.
 
 ## The shape of it
 

@@ -1,0 +1,79 @@
+# Build site/ and deploy it to GitHub Pages.
+#
+# THE SITE RENDERS THE REPOSITORY'S OWN MARKDOWN -- a product's README and its
+# two interface documents, and docs/tech/ -- so the trigger has to watch those
+# as well as site/ itself. A doc fix that did not redeploy would leave the site
+# quietly stale, which is worse than not having one.
+#
+# `release: published` is here because the download links are composed from
+# versions.json and release.json rather than typed: publishing a release is what
+# changes them, and it happens without a push to main.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'ui-kit/**'
+      - 'plugins/*/README.md'
+      - 'plugins/*/docs/**'
+      - 'plugins/*/ui/public/fonts/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'THIRD_PARTY_LICENSES.md'
+      - 'release.json'
+      - 'versions.json'
+      - '.github/workflows/pages.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# NOT cancel-in-progress. Cancelling a deploy mid-flight can leave the site on a
+# half-uploaded artifact, and the thing being raced here takes seconds.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # No submodules. The site needs no iPlug2, and pulling it would add
+      # minutes and a large tree for a build that never looks at it.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build --workspace site
+
+      # Before upload, not after: a broken internal link should stop the deploy
+      # rather than be discovered on the live site.
+      - name: Every internal link resolves
+        run: npm run check --workspace site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

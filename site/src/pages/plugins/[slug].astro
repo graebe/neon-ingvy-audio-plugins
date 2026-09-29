@@ -1,0 +1,73 @@
+---
+/*
+ * One page per product: Description, then the Live interface, then the Schwung
+ * interface. The three come from three files in the repository.
+ */
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import Download from '../../components/Download.astro';
+import FactTable from '../../components/FactTable.astro';
+import Media from '../../components/Media.astro';
+
+export async function getStaticPaths() {
+  const plugins = await getCollection('plugins');
+  return plugins.map((plugin) => ({ params: { slug: plugin.id }, props: { plugin } }));
+}
+
+const { plugin } = Astro.props;
+const { Content } = await render(plugin);
+
+const docs = (await getCollection('pluginDocs')).filter(
+  (d) => d.id.startsWith(`${plugin.id}/`),
+);
+const pick = (section) => docs.find((d) => d.data.section === section);
+
+const live = pick('live');
+const schwung = pick('schwung');
+const LiveDoc = live ? (await render(live)).Content : null;
+const SchwungDoc = schwung ? (await render(schwung)).Content : null;
+---
+<Base title={plugin.data.title} description={plugin.data.tagline}>
+  <article>
+    <p class="eyebrow">Product</p>
+    <div class="prose"><Content /></div>
+
+    <FactTable plugin={plugin} />
+    <Download plugin={plugin} />
+
+    <Media
+      still={plugin.data.still}
+      alt={`The ${plugin.data.title} editor in Ableton Live`}
+      caption={`${plugin.data.title} — the Live editor.`}
+    />
+
+    <section id="live">
+      <h2>Ableton Live Interface</h2>
+      {LiveDoc ? <div class="prose"><LiveDoc /></div>
+               : <p class="dim">Not documented yet.</p>}
+    </section>
+
+    <section id="schwung">
+      <h2>Schwung Interface</h2>
+      {SchwungDoc ? <div class="prose"><SchwungDoc /></div> : (
+        <div class="prose">
+          <p><strong>Not on the Move.</strong> {plugin.data.notOnMove}</p>
+        </div>
+      )}
+    </section>
+  </article>
+</Base>
+
+<style>
+  .eyebrow { display: block; margin-bottom: var(--s3); }
+  section {
+    margin-top: var(--s8);
+    padding-top: var(--s6);
+    border-top: var(--hair) solid var(--line-100);
+  }
+  section h2 { margin-bottom: var(--s4); }
+  .dim { color: var(--ink-dim); }
+  /* A rendered Markdown heading is an h1; inside a section it is a subhead. */
+  article > .prose :global(h1) { margin-bottom: var(--s4); }
+  section .prose :global(h1) { font-size: var(--doc-h2); }
+</style>

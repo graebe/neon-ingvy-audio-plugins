@@ -1,0 +1,220 @@
+/*
+ * The document layer: what a page needs that a plugin window does not.
+ * Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * NOT A SECOND DESIGN SYSTEM. Every colour here is a var() reaching into
+ * ui-kit/src/tokens.css, and `ctest -R ui_tokens` fails the build if a literal
+ * appears in this directory. What this file adds is scale and flow -- the
+ * things a scrolling document has and a fixed 856x660 editor does not.
+ */
+
+/*
+ * THE TOKEN FILE ENDS BY MAKING THE PAGE A PLUGIN WINDOW:
+ *
+ *   html, body { height: 100%; overflow: hidden; user-select: none; }
+ *
+ * which is right there and wrong here -- it would leave a documentation site
+ * unscrollable and its text unselectable. Overridden rather than weakened: the
+ * plugin rule is correct for the plugin, and this is the only consumer that is
+ * a document.
+ */
+html, body {
+  height: auto;
+  overflow: visible;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/*
+ * THE READING SCALE, AND IT IS AN EXTENSION -- stated here rather than
+ * smuggled in. The system's type family tops out at 28px for a readout and
+ * bottoms at 10px for a hint, because it describes controls in a window. A
+ * document needs a paragraph size, and 11px uppercase is not one.
+ *
+ * These are sizes, not colours, so the token guard permits them; they are
+ * gathered in one block anyway, for the same reason the colours are.
+ */
+:root {
+  --doc-body: 15px;
+  --doc-small: 13px;
+  --doc-h1: 34px;
+  --doc-h2: 21px;
+  --doc-h3: 16px;
+  --doc-measure: 68ch;   /* a line length that can be read, not the window */
+  --doc-lead: 1.65;
+}
+
+body {
+  font-size: var(--doc-body);
+  line-height: var(--doc-lead);
+  color: var(--ink-muted);
+  min-height: 100%;
+}
+
+/* ---- flow ---------------------------------------------------------------- */
+
+.wrap {
+  max-width: 78rem;
+  margin: 0 auto;
+  padding: 0 var(--s6);
+}
+
+.prose { max-width: var(--doc-measure); }
+
+.prose > * + * { margin-top: var(--s4); }
+.prose > * + h2 { margin-top: var(--s8); }
+.prose > * + h3 { margin-top: var(--s6); }
+
+/* ---- headings ------------------------------------------------------------ */
+
+h1, h2, h3, h4 {
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.25;
+  margin: 0;
+}
+h1 { font-size: var(--doc-h1); letter-spacing: -0.01em; }
+h2 { font-size: var(--doc-h2); letter-spacing: 0; }
+h3 { font-size: var(--doc-h3); letter-spacing: 0.02em; }
+
+p, li { margin: 0; }
+strong { color: var(--ink); font-weight: 500; }
+em { font-style: normal; color: var(--ink); }
+
+ul, ol { margin: 0; padding-left: var(--s6); }
+.prose li + li { margin-top: var(--s2); }
+
+/* ---- links --------------------------------------------------------------- */
+
+/*
+ * The system's signal rule, at document scale: the link is the near-white core,
+ * and the violet is the halo under it rather than the text colour. A page of
+ * saturated violet words would be a page that is mostly signal, which the
+ * system says is the thing that has gone wrong.
+ */
+a {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: var(--hair) solid var(--line-200);
+  transition: border-color 120ms ease, color 120ms ease;
+}
+a:hover { color: var(--uv); border-bottom-color: var(--uv-deep); }
+a:focus-visible {
+  outline: var(--hair) solid var(--uv-deep);
+  outline-offset: 2px;
+}
+
+/* ---- code ---------------------------------------------------------------- */
+
+code {
+  font-size: 0.92em;
+  color: var(--uv);
+  background: var(--bg-200);
+  padding: 1px var(--s1);
+  border-radius: var(--radius-1);
+}
+
+pre {
+  margin: 0;
+  padding: var(--s4);
+  background: var(--bg-100);
+  border: var(--hair) solid var(--line-100);
+  border-radius: var(--radius-1);
+  overflow-x: auto;              /* code scrolls; the page never does */
+}
+pre code {
+  background: none;
+  padding: 0;
+  color: var(--ink-muted);
+  font-size: var(--doc-small);
+}
+
+/*
+ * Shiki's css-variables theme emits these and nothing else, so the highlighting
+ * is the design system's own palette rather than a second one imported wholesale.
+ */
+:root {
+  --astro-code-color-text: var(--ink-muted);
+  --astro-code-color-background: transparent;
+  --astro-code-token-comment: var(--ink-dim);
+  --astro-code-token-keyword: var(--uv-deep);
+  --astro-code-token-string: var(--uv);
+  --astro-code-token-string-expression: var(--uv);
+  --astro-code-token-function: var(--ink);
+  --astro-code-token-constant: var(--ink);
+  --astro-code-token-parameter: var(--ink-muted);
+  --astro-code-token-punctuation: var(--ink-dim);
+  --astro-code-token-link: var(--uv-deep);
+}
+
+/* ---- tables -------------------------------------------------------------- */
+
+.prose table, .facts {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--doc-small);
+}
+.prose table { display: block; overflow-x: auto; }
+th {
+  text-align: left;
+  color: var(--ink-dim);
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  font-size: var(--doc-small);
+}
+th, td {
+  padding: var(--s2) var(--s3) var(--s2) 0;
+  border-bottom: var(--hair) solid var(--line-100);
+  vertical-align: top;
+}
+td:first-child { color: var(--ink); white-space: nowrap; }
+.prose table td:not(:first-child) { min-width: 18rem; }
+
+blockquote {
+  margin: 0;
+  padding-left: var(--s4);
+  border-left: var(--rail) solid var(--line-200);
+  color: var(--ink-muted);
+}
+
+hr {
+  border: 0;
+  border-top: var(--hair) solid var(--line-100);
+  margin: var(--s8) 0;
+}
+
+img { max-width: 100%; height: auto; display: block; }
+
+/* ---- shared furniture ---------------------------------------------------- */
+
+.eyebrow {
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.lede {
+  font-size: calc(var(--doc-body) * 1.2);
+  color: var(--ink-muted);
+  max-width: var(--doc-measure);
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+.skip:focus {
+  left: var(--s4);
+  top: var(--s4);
+  z-index: 10;
+  background: var(--bg-200);
+  padding: var(--s2) var(--s3);
+}
+
+@media (max-width: 52rem) {
+  :root { --doc-h1: 27px; --doc-h2: 19px; }
+  .wrap { padding: 0 var(--s4); }
+}
