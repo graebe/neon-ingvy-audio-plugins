@@ -31,6 +31,10 @@ if (APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "" FORCE)
 endif()
 
+# Coverage, when asked for. Must come before any target is defined: it works by
+# adding compile options, which reach only what is declared after it.
+include(cmake/Coverage.cmake)
+
 # One engine build, shared by the plugin and all four native test targets.
 include(cmake/TranceGateEngine.cmake)
 # The Spectrogram's analyzer. In-repo rather than a submodule because it has no

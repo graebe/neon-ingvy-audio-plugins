@@ -43,6 +43,8 @@ iplug_add_plugin(Spectrogram
   SOURCES
     Spectrogram.cpp
     Spectrogram.h
+    Wire.cpp
+    Wire.h
     config.h
     resources/resource.h
   # No APP, for the Trance Gate's reason: the standalone's main() and its

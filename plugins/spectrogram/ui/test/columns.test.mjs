@@ -9,12 +9,51 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 import { decodeColumns, decodeAxis, marksFor, RANGES } from '../src/lib/columns.js';
 
-/* The plugin's own encoding: upper-case hex, two characters a byte, column after
- * column. See OnIdle in Spectrogram.cpp -- this is a transcription of it, which
- * is the point: if the two disagree, this test is the disagreement. */
+/*
+ * THE ENCODER IS NOT WRITTEN HERE ANY MORE.
+ *
+ * It used to be, and the comment above it admitted what that meant: "this is a
+ * transcription of it, which is the point: if the two disagree, this test is
+ * the disagreement". A transcription agrees with its source until somebody
+ * edits one of them -- which is exactly how curves.js kept an un-mirrored
+ * S-curve for as long as it existed, with a passing test beside it the whole
+ * time.
+ *
+ * So the plugin's own Wire.cpp generates one table and both sides are checked
+ * against it, neither against the other:
+ *
+ *   spectro_wire        Wire.cpp still agrees with wire_table.txt
+ *   spectro_columns_js  decodeColumns still agrees with the same file
+ *
+ * Regenerate with `spectro_wire --dump > ui/test/wire_table.txt`, and only when
+ * the wire format is MEANT to change.
+ */
+const here = dirname(fileURLToPath(import.meta.url));
+const TABLE = process.env.SPECTRO_WIRE_TABLE ?? join(here, 'wire_table.txt');
+
+/* "<cols> <bands> <b,b,...> <encoded>" -- the decimals are the input the
+ * plugin encoded, so decoding the payload must reproduce them. */
+const CASES = readFileSync(TABLE, 'utf8')
+  .split('\n')
+  .filter((l) => l.trim())
+  .map((l) => {
+    const [cols, bands, bytes, encoded] = l.split(' ');
+    return {
+      cols: Number(cols),
+      bands: Number(bands),
+      bytes: bytes.split(',').map(Number),
+      encoded,
+    };
+  });
+
+/* Still needed for the malformed-payload cases below, which are about what the
+ * decoder REFUSES and so have no encoder side to generate them. */
 const encode = (columns, bands) => {
   const hex = columns
     .flat()
@@ -22,6 +61,33 @@ const encode = (columns, bands) => {
     .join('');
   return `${columns.length}:${bands}:${hex}`;
 };
+
+test('the fixture is the shape it claims to be', () => {
+  /* A shrinking fixture could quietly stop testing the cases that matter --
+   * the 9 -> A nibble boundary, and a batch of more than one column. */
+  assert.ok(CASES.length >= 7, `only ${CASES.length} cases in ${TABLE}`);
+  assert.ok(CASES.some((c) => c.bands === 256), 'no case covering every byte value');
+  assert.ok(CASES.some((c) => c.cols > 1), 'no multi-column case, so column order is untested');
+  for (const c of CASES) {
+    assert.equal(c.bytes.length, c.cols * c.bands, `${c.cols}x${c.bands} has ${c.bytes.length} bytes`);
+  }
+});
+
+test('the decoder reproduces exactly what the plugin encoded', () => {
+  /*
+   * THE ONE THAT REPLACED THE TRANSCRIPTION. Every payload here came out of
+   * the C++ the plugin actually runs, so an off-by-one in either the nibble
+   * map or the column order is a failure rather than a shared assumption.
+   */
+  for (const { cols, bands, bytes, encoded } of CASES) {
+    const got = decodeColumns(encoded);
+    assert.ok(got, `rejected a payload the plugin produced: ${encoded.slice(0, 40)}`);
+    assert.equal(got.count, cols);
+    assert.equal(got.bands, bands);
+    assert.deepEqual([...got.data], bytes,
+      `decoded ${cols}x${bands} wrongly -- the nibble map or the column order`);
+  }
+});
 
 test('a batch of columns round-trips', () => {
   const columns = [

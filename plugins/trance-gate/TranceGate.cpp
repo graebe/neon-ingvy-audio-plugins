@@ -3,6 +3,7 @@
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "TranceGate.h"
+#include "Wire.h"
 #include "IPlug_include_in_plug_src.h"
 
 #include <algorithm>
@@ -308,7 +309,8 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
      * advance with it or the engine would gate the whole block on one
      * instant. Beats per sample = bpm / 60 / sampleRate. */
     if (t.running)
-      t.beats += double(n) * (double(t.bpm) / 60.0) / GetSampleRate();
+      t.beats = tg::wire::advance_beats(t.beats, n, double(t.bpm),
+                                        GetSampleRate());
   }
 }
 
@@ -385,11 +387,7 @@ void TranceGate::OnIdle()
                      int(kScopeWindowMs));
 
     auto put = [&](float v) {
-      /* -1..1 -> 0..255, clamped: the plot cannot draw past the well edge
-       * anyway, and a NaN from an uninitialised column must not become a
-       * random byte. */
-      const float c = std::isfinite(v) ? std::fmin(1.f, std::fmax(-1.f, v)) : 0.f;
-      const int b = int((c + 1.f) * 127.5f + 0.5f);
+      const int b = tg::wire::encode_sample(v);
       scope[n++] = kHex[(b >> 4) & 0xF];
       scope[n++] = kHex[b & 0xF];
     };
@@ -407,7 +405,7 @@ void TranceGate::OnIdle()
     /* The guard the old code lacked. Base64 costs a third on top, and the
      * transport truncates rather than fails -- so a payload that outgrows the
      * cap would go back to losing its tail in silence. */
-    assert(n * 4 / 3 + 32 < kMaxJSString);
+    assert(tg::wire::framed_size(n) < kMaxJSString);
     SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
 }
@@ -435,10 +433,8 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
     case kMsgSetStep:
     case kMsgSetDepth:
     {
-      const auto colon = arg.find(':');
-      if (colon == std::string::npos) return true;
-      const std::string idx = arg.substr(0, colon);
-      const std::string val = arg.substr(colon + 1);
+      std::string idx, val;
+      if (!tg::wire::split_pair(arg, idx, val)) return true;
       tg_core_set_param(mCore, "cursor", idx.c_str());
       tg_core_set_param(mCore, msgTag == kMsgSetStep ? "step" : "step_amount",
                         val.c_str());
@@ -457,11 +453,11 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
      */
     case kMsgSetText:
     {
-      const auto colon = arg.find(':');
-      if (colon == std::string::npos) return true;
-      const int idx = std::atoi(arg.substr(0, colon).c_str());
+      std::string idxText, valText;
+      if (!tg::wire::split_pair(arg, idxText, valText)) return true;
+      const int idx = std::atoi(idxText.c_str());
       if (idx < 0 || idx >= kNumParams) return true;
-      const double v = GetParam(idx)->StringToValue(arg.substr(colon + 1).c_str());
+      const double v = GetParam(idx)->StringToValue(valText.c_str());
       /* Through the host, not straight into the parameter: a typed value is
        * an edit like any other and belongs in the undo history and the
        * automation lane. */
@@ -483,8 +479,8 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
       /* The UI sends the height it needs, already in the viewport's own
        * pixels -- it is the side that knows both the row count and the scale
        * it had to apply to fit the width it was given. */
-      const int h = std::atoi(arg.c_str());
-      if (h > 100 && h < 4000 && h != GetEditorHeight())
+      const int h = tg::wire::clamp_editor_height(std::atoi(arg.c_str()));
+      if (h && h != GetEditorHeight())
         EditorResizeFromUI(GetEditorWidth(), h, true);
       return true;
     }
