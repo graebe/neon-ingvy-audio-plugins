@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * ASSERTED RATHER THAN CLAIMED, which is this repository's habit. The site is
- * served under /vst-library/, and the failure mode of getting that wrong is the
+ * served under /neon-ingvy-audio-plugins/, and the failure mode of getting that wrong is the
  * worst kind: `astro preview` applies the base too, so a hand-written
  * href="/tech/" is broken only on the deployed site, only after a push, and
  * only for whoever clicks it.
@@ -20,7 +20,7 @@ import { dirname, join, relative } from 'node:path';
 
 const SITE = dirname(dirname(fileURLToPath(import.meta.url)));
 const DIST = join(SITE, 'dist');
-const BASE = '/vst-library/';
+const BASE = '/neon-ingvy-audio-plugins/';
 
 /*
  * No build, no verdict. Exit 2 rather than 1: ctest reads that as a SKIP, so a

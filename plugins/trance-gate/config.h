@@ -24,7 +24,7 @@
 #define PLUG_UNIQUE_ID 'TrGt'
 #define PLUG_MFR_ID 'Grbe'
 
-#define PLUG_URL_STR "https://github.com/graebe/vst-library"
+#define PLUG_URL_STR "https://github.com/graebe/neon-ingvy-audio-plugins"
 #define PLUG_EMAIL_STR ""
 #define PLUG_COPYRIGHT_STR "Copyright 2026 Torben Gräber"
 #define PLUG_CLASS_NAME TranceGate
@@ -112,8 +112,8 @@
 
 #define VST3_SUBCATEGORY "Fx|Modulation"
 
-#define CLAP_MANUAL_URL "https://github.com/graebe/vst-library"
-#define CLAP_SUPPORT_URL "https://github.com/graebe/vst-library/issues"
+#define CLAP_MANUAL_URL "https://github.com/graebe/neon-ingvy-audio-plugins"
+#define CLAP_SUPPORT_URL "https://github.com/graebe/neon-ingvy-audio-plugins/issues"
 #define CLAP_DESCRIPTION "Tempo-locked step gate with a per-step ADSR, ties and eight pattern slots"
 #define CLAP_FEATURES "audio-effect", "stereo", "utility"
 

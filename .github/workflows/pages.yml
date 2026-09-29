@@ -63,7 +63,15 @@ jobs:
       - name: Every internal link resolves
         run: npm run check --workspace site
 
+      # enablement, because Pages was not switched on in the repository's
+      # settings and the action's failure says so only in a REST 404:
+      # "Get Pages site failed ... verify that the repository has Pages
+      # enabled and configured to build using GitHub Actions". With this it
+      # turns itself on the first time instead, which is one less setting that
+      # has to be remembered when a repository is forked or recreated.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/dist

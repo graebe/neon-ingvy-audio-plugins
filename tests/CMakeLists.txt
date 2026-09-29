@@ -113,7 +113,7 @@ if (TG_NODE)
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/ui-kit/test/tokens.test.mjs)
 
-    # THE SITE'S OWN RENDER A/B. It is served from /vst-library/, so a
+    # THE SITE'S OWN RENDER A/B. It is served from /neon-ingvy-audio-plugins/, so a
     # hand-written href="/tech/" works in every local preview -- astro applies
     # the base there too -- and 404s only once deployed, only for whoever clicks
     # it. This walks the built HTML instead of trusting that nobody did it.

@@ -62,6 +62,32 @@ jobs:
           fi
           echo "version check passed: $SOURCE"
 
+      # iPlug2's SDKs ARE DOWNLOADED, NOT TRACKED. The submodule carries the
+      # scripts and not the sources, so a fresh clone has an iPlug2::VST3 whose
+      # include path does not exist and CMake stops at GENERATE time with
+      # "Imported target ... includes non-existent path" -- naming neither
+      # iPlug2 nor a download.
+      #
+      # The README said so and this workflow did not do it, so every run failed
+      # at Configure. Cached because they are a fixed ~100 MB that changes only
+      # when the submodule pin moves.
+      - name: Cache the iPlug2 SDKs
+        id: sdks
+        uses: actions/cache@v4
+        with:
+          path: |
+            external/iPlug2/Dependencies/IPlug/VST3_SDK
+            external/iPlug2/Dependencies/IPlug/CLAP_SDK
+            external/iPlug2/Dependencies/IPlug/CLAP_HELPERS
+          key: iplug2-sdks-${{ hashFiles('.gitmodules') }}-${{ hashFiles('external/iPlug2/Dependencies/IPlug/download-vst3-sdk.sh') }}
+
+      - name: Download the iPlug2 SDKs
+        if: steps.sdks.outputs.cache-hit != 'true'
+        working-directory: external/iPlug2/Dependencies/IPlug
+        run: |
+          ./download-vst3-sdk.sh
+          ./download-clap-sdks.sh
+
       - name: Rust, with both Apple targets
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 

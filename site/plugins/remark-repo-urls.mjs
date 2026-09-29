@@ -17,7 +17,7 @@
  */
 import { visit } from 'unist-util-visit';
 
-const REPO = 'https://github.com/graebe/vst-library/blob/main';
+const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins/blob/main';
 
 // The routes this site actually publishes, keyed by the repository path a
 // content file would link to. Everything else goes to GitHub.
@@ -47,8 +47,8 @@ export default function remarkRepoUrls() {
   return (tree, file) => {
     // The repo-root path of the file being rendered, e.g.
     // "plugins/trance-gate/docs/live.md".
-    const self = (file.history?.[0] ?? '').split('/vst-library/').pop() ?? '';
-    const base = (import.meta.env?.BASE_URL ?? '/vst-library/').replace(/\/*$/, '/');
+    const self = (file.history?.[0] ?? '').split('/neon-ingvy-audio-plugins/').pop() ?? '';
+    const base = (import.meta.env?.BASE_URL ?? '/neon-ingvy-audio-plugins/').replace(/\/*$/, '/');
 
     visit(tree, ['link', 'image'], (node) => {
       const url = node.url ?? '';

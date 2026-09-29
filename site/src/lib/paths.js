@@ -2,7 +2,7 @@
  * The one place an internal URL is spelled.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
- * import.meta.env.BASE_URL is "/vst-library/" in both dev and production,
+ * import.meta.env.BASE_URL is "/neon-ingvy-audio-plugins/" in both dev and production,
  * because Astro applies `base` to the dev server too -- which is the only
  * reason a mistake here is catchable before a deploy.
  */

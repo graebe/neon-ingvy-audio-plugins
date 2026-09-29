@@ -1,5 +1,5 @@
 {
-  "name": "vst-library",
+  "name": "neon-ingvy-audio-plugins",
   "private": true,
   "description": "Audio plugins and a Schwung module around shared Rust engines and one Solid UI kit.",
   "license": "MIT",

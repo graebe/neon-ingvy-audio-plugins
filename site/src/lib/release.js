@@ -18,7 +18,7 @@
 import versions from '../../../versions.json' with { type: 'json' };
 import release from '../../../release.json' with { type: 'json' };
 
-const REPO = 'https://github.com/graebe/vst-library';
+const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins';
 
 /* The macOS bundle zip for a product, as release-plugins.yml names it. */
 export function pluginDownload(product) {

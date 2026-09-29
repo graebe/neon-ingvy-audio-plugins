@@ -55,7 +55,7 @@ Open the Web Manager on your Move — `http://move.local:7700` — go to
 **Modules**, and install from the GitHub URL:
 
 ```
-graebe/vst-library
+graebe/neon-ingvy-audio-plugins
 ```
 
 It installs to `modules/audio_fx/trance-gate/` and is added to a chain slot as

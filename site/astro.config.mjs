@@ -1,6 +1,6 @@
 // The documentation site. Static, no framework islands yet, deployed to Pages.
 //
-// `base` IS THE TRAP. The site lives under /vst-library/, so every internal URL
+// `base` IS THE TRAP. The site lives under /neon-ingvy-audio-plugins/, so every internal URL
 // has to carry that prefix; a hand-written href="/tech/" resolves to
 // graebe.github.io/tech/ and 404s on the deployed site while working perfectly
 // in a local preview. Nothing here writes a leading-slash URL by hand -- see
@@ -11,7 +11,7 @@ import remarkRepoUrls from './plugins/remark-repo-urls.mjs';
 
 export default defineConfig({
   site: 'https://graebe.github.io',
-  base: '/vst-library',
+  base: '/neon-ingvy-audio-plugins',
 
   // Every route becomes a directory with an index.html, which is exactly what
   // GitHub Pages serves with no configuration of its own.

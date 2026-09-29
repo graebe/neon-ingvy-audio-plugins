@@ -1,6 +1,6 @@
 # site
 
-The public documentation site: <https://graebe.github.io/vst-library/>
+The public documentation site: <https://graebe.github.io/neon-ingvy-audio-plugins/>
 
 Astro, static, no framework islands. It draws the Ultraviolet design system by
 importing `@ultraviolet/ui/tokens.css` through the npm workspace — the same file
@@ -26,7 +26,7 @@ blob it means here.
 ## Running it
 
 ```sh
-npm run dev --workspace site        # http://localhost:4321/vst-library/
+npm run dev --workspace site        # http://localhost:4321/neon-ingvy-audio-plugins/
 npm run build --workspace site
 npm run check --workspace site      # every internal link resolves
 npm run preview --workspace site    # the built site, base path and all
@@ -39,7 +39,7 @@ from its own served root. `docs/media/` is staged the same way.
 
 ## The base path is the trap
 
-The site is served under `/vst-library/`. A hand-written `href="/tech/"` resolves
+The site is served under `/neon-ingvy-audio-plugins/`. A hand-written `href="/tech/"` resolves
 to `graebe.github.io/tech/` and 404s — and only on the deployed site, because
 `astro dev` and `astro preview` both apply the base. So:
 

@@ -1,4 +1,4 @@
-# vst-library -- plugin builds around engines that live elsewhere.
+# neon-ingvy-audio-plugins -- plugin builds around engines that live elsewhere.
 #
 # The engines are submodules, not copies. The Trance Gate's DSP is the same
 # Rust crate Schwung builds into the Move module, pinned by commit: a second
@@ -15,9 +15,9 @@ cmake_minimum_required(VERSION 3.22)
 # "CMAKE_OBJCXX_COMPILE_OBJECT is not set", which names neither iPlug2 nor
 # Objective-C++.
 if (APPLE)
-    project(vst_library VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
+    project(neon_ingvy_audio_plugins VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
 else()
-    project(vst_library VERSION 0.1.0 LANGUAGES C CXX)
+    project(neon_ingvy_audio_plugins VERSION 0.1.0 LANGUAGES C CXX)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)

@@ -85,7 +85,7 @@ users from being stranded on a channel that has fallen behind.
 
 The Trance Gate module used to live in its own repository, and the Schwung
 catalog entry in `charlesvestal/schwung` still points there. Until that entry's
-`github_repo` is updated to `graebe/vst-library` and a `trance-gate-v*` tag has
+`github_repo` is updated to `graebe/neon-ingvy-audio-plugins` and a `trance-gate-v*` tag has
 published a release here, installing by catalog resolves against the old
 repository.
 
