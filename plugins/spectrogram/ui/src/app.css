@@ -121,7 +121,6 @@ main {
   overflow: hidden;
   line-height: 0;
 }
-.spectro-canvas { display: block; }
 
 /* "Actions stack on the right edge of the control block, never among the
  * knobs" -- here the title row is the only row there is. */

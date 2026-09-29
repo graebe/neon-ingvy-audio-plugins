@@ -35,6 +35,12 @@ export { Select } from './components/Select.jsx';
 export { Tabs } from './components/Tabs.jsx';
 export { Hint } from './components/Hint.jsx';
 
+/* A scrolling spectrogram canvas. It takes finished columns and draws them --
+ * the analysis, the wire format and what a column MEANS are the caller's, the
+ * same seam every control here follows. */
+export { default as Spectrogram } from './components/Spectrogram.jsx';
+export { buildLut, readStops, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
+
 export { startDrag } from './lib/drag.js';
 export {
   setParam, beginGesture, endGesture, sendMessage, onParam, onMessage,

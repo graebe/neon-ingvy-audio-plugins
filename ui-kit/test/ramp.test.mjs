@@ -27,8 +27,7 @@ import { buildLut, luminance, LEVELS, STOPS } from '../src/lib/ramp.js';
 
 /* The ramp's stops live in the KIT's tokens.css now -- every editor reads its
  * colours from one file, and this test follows them there. */
-const TOKENS = join(dirname(fileURLToPath(import.meta.url)),
-                    '..', '..', '..', '..', 'ui-kit', 'src', 'tokens.css');
+const TOKENS = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'tokens.css');
 
 /** The --spec-* stops, as tokens.css spells them. */
 function stopsFromStylesheet() {

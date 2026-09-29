@@ -27,7 +27,7 @@
  * only thing that stops is `paint`.
  */
 import { onMount, onCleanup, createEffect } from 'solid-js';
-import { buildLut, stopCss } from './ramp.js';
+import { buildLut, stopCss } from '../lib/ramp.js';
 
 export default function Spectrogram(props) {
   /* props: width, height (CSS px), cols (the history depth in columns),

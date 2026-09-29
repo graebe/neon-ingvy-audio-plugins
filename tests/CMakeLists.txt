@@ -179,7 +179,7 @@ if (TG_NODE)
     # The ramp is monotone in luminance -- a ramp that dips is a picture that
     # lies about level.
     add_test(NAME spectro_ramp
-             COMMAND ${TG_NODE} --test ${SPECTRO_UI_TEST}/ramp.test.mjs)
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/ui-kit/test/ramp.test.mjs)
     # The wire: the hex decode, the axis, and where a label goes.
     add_test(NAME spectro_columns_js
              COMMAND ${TG_NODE} --test ${SPECTRO_UI_TEST}/columns.test.mjs)

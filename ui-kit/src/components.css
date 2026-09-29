@@ -163,3 +163,9 @@
  * leaving one behind.
  */
 .select:has(select:focus-visible) { box-shadow: var(--glow-focus);}
+
+/* ------------------------------------------------------- spectrogram --
+ * The canvas fills the well it is given and is sized in DEVICE pixels by
+ * the component; block, so it does not sit on a text baseline and leave a
+ * few pixels of gap under itself. */
+.spectro-canvas { display: block; }

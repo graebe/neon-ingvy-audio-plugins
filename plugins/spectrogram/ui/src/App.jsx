@@ -14,8 +14,8 @@ import { createSignal, onMount, onCleanup } from 'solid-js';
 import { onMessage, sendMessage } from '@ultraviolet/ui';
 import { MSG } from './lib/msg.js';
 import { decodeColumns, decodeAxis, marksFor, RANGES } from './lib/columns.js';
-import Spectrogram from './lib/Spectrogram.jsx';
-import { Hint, Button, Select } from '@ultraviolet/ui';
+
+import { Hint, Button, Select, Spectrogram } from '@ultraviolet/ui';
 
 /* Mirrored by PLUG_WIDTH in config.h and by `main` in app.css. */
 const DESIGN_W = 720;
