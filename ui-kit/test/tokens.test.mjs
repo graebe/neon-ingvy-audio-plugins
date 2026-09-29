@@ -35,6 +35,10 @@ const TREES = [
   join(ROOT, 'ui-kit', 'src'),
   join(ROOT, 'plugins', 'trance-gate', 'ui', 'src'),
   join(ROOT, 'plugins', 'spectrogram', 'ui', 'src'),
+  /* The Max for Live grid. Its tree has no src/ -- a v8ui is loaded as a
+   * file by the patcher rather than bundled -- so the whole ui/ is scanned,
+   * tests included. */
+  join(ROOT, 'plugins', 'trance-gate-m4l', 'ui'),
   /* The documentation site draws the same system, and is the consumer most
    * likely to reach for a #fff on a button hover. Its Markdown CONTENT is not
    * here and must not be: a product's README may quote a hex triplet in prose,
@@ -45,7 +49,14 @@ const TOKENS = join(ROOT, 'ui-kit', 'src', 'tokens.css');
 
 /* tokens.css IS the token file, so it is the one place a colour may be
  * written -- and it is now in the kit, where both editors read it from. */
-const ALLOWED = new Set(['tokens.css']);
+/*
+ * tokens.js joins it for ONE reason: mgraphics takes RGBA floats and cannot
+ * read a stylesheet, so the M4L grid physically cannot say var(--uv). The
+ * permission is narrow and it is paid for -- ui/test/tokens.test.mjs parses
+ * this very file back out of tokens.css and asserts every value in it still
+ * matches. A colour added there without its token fails that test.
+ */
+const ALLOWED = new Set(['tokens.css', 'tokens.js']);
 
 /* #rgb/#rrggbb/#rrggbbaa, and the functional notations. Not `#` in a URL or an
  * SVG id -- those are followed by a letter run that is not hex-only, which the

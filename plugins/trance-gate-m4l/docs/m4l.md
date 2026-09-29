@@ -59,6 +59,50 @@ Max externals are per-platform. macOS is built here; Windows (`.mxe64`) and
 Push 3 (aarch64 Linux) are follow-ups, and the Push 3 slice is nearly free
 because `tg-capi` already cross-builds for the Move.
 
+## The device itself
+
+`NI Trance Gate.amxd` is **generated**, not hand-built:
+
+```sh
+node plugins/trance-gate-m4l/build-device.mjs
+```
+
+A `.amxd` is a binary-framed blob of machine-written JSON — unreadable in a
+diff and full of numbers that have to agree with things stated elsewhere in
+this repository. Two in particular: every control's `num` index has to be its
+`tg_param_t` index, and the Rate menu has to be the engine's ladder in the
+engine's order (`rates.rs` says *"APPENDED, never inserted: RATE_DEFAULT is an
+index into this table"*). Both are silent when wrong — the device works and
+means something else — so the generator reads the ladder out of `rates.rs` and
+`ui/test/device.test.mjs` asserts both facts back out of the built file.
+
+Run the generator when the **parameters** change. Once Max has laid the device
+out, Max owns the pixels and saves them back into the file; re-running the
+generator would discard that.
+
+## Still needs eyes in Max
+
+Everything above is machine-checked as far as it can be. These are not, and
+cannot be — a structural test can say the file is the shape a device is, not
+that Live opens it:
+
+- [ ] Point Max's file preferences at `plugins/trance-gate-m4l/externals/`,
+      then open the device. `tg.gate~` must instantiate.
+- [ ] **Null test.** The `.amxd` on one track, the VST3 on another, same
+      source, one inverted. Any residue is a transport or wire bug, not taste.
+- [ ] The twelve appear in Live's own parameter list and automate.
+- [ ] Click toggles, shift-click ties, drag sets the amount — the same
+      gestures as the plugin and the Move.
+- [ ] Change Slot: Length must follow the slot, not overwrite it.
+- [ ] Copy patch from the VST3, paste into the device, and the reverse.
+- [ ] Save the Set, reopen: pattern, ties, depths and all eight slots intact.
+- [ ] Freeze, then load on a machine without the external installed.
+
+Two things are known to be unfinished rather than unverified: **the pattern is
+not yet persisted** with the device (the `v8` holding the state blob across
+save/load is not written), and the layout is at workable positions rather than
+designed ones.
+
 ## The object, for anyone opening the patcher
 
 `tg.gate~` is two signal inlets and two signal outlets, plus two message

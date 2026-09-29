@@ -140,6 +140,28 @@ if (TG_NODE)
     set_tests_properties(tg_readout_js PROPERTIES
         ENVIRONMENT "TG_READOUT_TABLE=${TG_READOUT_TABLE}")
 
+    # The M4L grid's layout and hit-testing. A pad row two pixels short of
+    # the edge or a drag inverted are faults you would chase in Live with a
+    # mouse rather than read in a diff, which is why layout.js has no Max
+    # object in it.
+    set(TG_M4L_TEST ${CMAKE_SOURCE_DIR}/plugins/trance-gate-m4l/ui/test)
+    add_test(NAME tg_m4l_layout_js
+             COMMAND ${TG_NODE} --test ${TG_M4L_TEST}/layout.test.mjs)
+
+    # ui/tokens.js is the one file outside tokens.css allowed to spell a
+    # colour -- mgraphics takes RGBA floats and cannot read a stylesheet.
+    # This is what stops that permission becoming a second palette.
+    add_test(NAME tg_m4l_tokens_js
+             COMMAND ${TG_NODE} --test ${TG_M4L_TEST}/tokens.test.mjs)
+
+    # The generated .amxd. It cannot say the device LOOKS right -- only Max
+    # can -- but it can say every control still sends its own tg_param_t
+    # index and the rate menu is still the engine's ladder in the engine's
+    # order. Both are silent when wrong: the device works and means
+    # something else.
+    add_test(NAME tg_m4l_device_js
+             COMMAND ${TG_NODE} --test ${TG_M4L_TEST}/device.test.mjs)
+
     # THE TOKEN GUARD, which the JUCE build had and the web port lost. Uv.h
     # said "a ctest target fails the build if a colour literal appears in any
     # other source file"; four had crept into the UI by the time this was
