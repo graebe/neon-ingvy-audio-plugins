@@ -136,7 +136,11 @@
 
 .tab:hover { background: var(--bg-300);}
 
-.tab.on { background: var(--uv); border-color: var(--uv); color: var(--on-uv);}
+/* The glow is here rather than a class toggled from Tabs.jsx -- see the note
+ * there. Same arrangement as a lit pad. */
+.tab.on {
+  background: var(--uv); border-color: var(--uv); color: var(--on-uv);
+  filter: var(--glow-led);}
 
 .tab-text {
   writing-mode: vertical-rl; transform: rotate(180deg);

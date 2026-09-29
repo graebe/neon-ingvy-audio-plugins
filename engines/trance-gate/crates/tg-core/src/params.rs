@@ -345,17 +345,27 @@ impl Instance {
             }
             /*
              * AN ACTION, NOT A VALUE, which is why it is only here and has no
-             * `Param` of its own: a host parameter that regenerates the
-             * pattern every time the host rewrites it would be unusable.
+             * `Param` of its own: a host parameter that regenerated the pattern
+             * every time the host rewrote it would be unusable.
              *
-             * The value is an optional SEED. Empty or 0 walks the instance's
-             * own generator, so successive presses differ; a number pins the
-             * roll, which is what makes the result testable.
+             * AND IT NEEDS A VALUE THAT DOES NOTHING. On the Move this is an
+             * enum knob, which writes whichever option it is turned to -- so
+             * "Hold" has to be expressible, or turning the knob back off would
+             * roll again. An empty value fires: that is the plugin's path,
+             * where a button press carries no payload at all.
+             *
+             * A POSITIVE number is a SEED and pins the roll, which is what
+             * makes the result testable. Anything else that is not a hold --
+             * "Roll", from the Move's own knob -- walks the instance's
+             * generator instead, so successive presses differ.
              */
             "randomize" => {
+                if matches!(val, "Hold" | "hold" | "0" | "Off" | "off") {
+                    return;
+                }
+                let n = fmt::atoi(val);
                 let slot = self.slot;
-                let seed = if val.is_empty() { None } else { Some(fmt::atoi(val) as u32) };
-                self.randomize(slot, seed);
+                self.randomize(slot, if n > 0 { Some(n as u32) } else { None });
             }
             "legato" => {
                 let on = val == "On" || val == "on" || fmt::atoi(val) != 0;
