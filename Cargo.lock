@@ -26,18 +26,18 @@ version = "0.1.1"
 
 [[package]]
 name = "tg-capi"
-version = "1.1.0"
+version = "2026.9.29+1"
 dependencies = [
  "tg-core",
 ]
 
 [[package]]
 name = "tg-core"
-version = "1.1.0"
+version = "2026.9.29+1"
 
 [[package]]
 name = "tg-move"
-version = "1.1.0"
+version = "2026.9.29+1"
 dependencies = [
  "tg-capi",
  "tg-core",

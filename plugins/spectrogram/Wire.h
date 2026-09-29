@@ -64,6 +64,37 @@ std::string encode_axis(const float* hz, int n);
 bool parse_range(const std::string& arg, float& lo, float& hi);
 
 /*
+ * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>" -- where the host's
+ * transport is, and how much musical time one column covers.
+ *
+ * THE PLUGIN REPORTS THE CLOCK AND NOTHING ABOUT THE PICTURE. How many bars the
+ * window spans, and therefore which pixel a position lands on, is a layout
+ * decision and stays in the editor -- which is why this carries no bar count
+ * and why there is no message going the other way to set one.
+ *
+ * `ppqPerCol` is hop / sampleRate * bpm / 60, and it exists so a catch-up batch
+ * of columns can be spread across the positions it actually covers instead of
+ * being stacked on the newest one.
+ *
+ * Six decimals on the position: at 200 BPM a column is ~0.06 beats, and three
+ * would quantise two columns onto one value.
+ */
+std::string encode_sync(double ppq, double bpm, int num, int denom, bool running,
+                        double ppqPerCol);
+
+/*
+ * Beats after `frames` more samples at `bpm`. A non-positive sample rate or
+ * tempo returns `beats` unchanged rather than a NaN that would poison the
+ * position for the rest of the session.
+ *
+ * This is the Trance Gate's `advance_beats` a second time rather than a shared
+ * one: the two plugins keep separate Wire units on purpose (see the top of
+ * this file), and four lines of arithmetic is a smaller thing to carry than a
+ * dependency between two plugins that otherwise have nothing to say.
+ */
+double advance_beats(double beats, int frames, double bpm, double sampleRate);
+
+/*
  * What `n` bytes of payload cost once the transport has formatted them:
  * base64 inflates by a third, and the message frame costs a fixed 32 on top.
  * Spelled here because the number is a property of the wire, not of the class

@@ -15,11 +15,15 @@
  *   28   the title row -- control-h now, because it holds the Pause button
  *   16   space-4
  *  258   the well: a 256px canvas inside a 1px frame
- *   24   space-6
+ *    8   space-2
+ *   16   the time axis: a tick a second, labelled
+ *   12   space-3
+ *   20   the crosshair readout: frequency, time, level
+ *   24   space-6 (the hint bar's own margin)
  *   28   the hint bar
  *   16   space-4, the bottom
  *   ----
- *  402   = PLUG_HEIGHT
+ *  458   = PLUG_HEIGHT
  *
  * And across: 32 + 40 (the frequency scale) + 8 + 608 (the well) + 32 = 720
  * = PLUG_WIDTH.
@@ -40,7 +44,7 @@
  */
 main {
   width: 720px;
-  height: 402px;
+  height: 458px;
   padding: var(--s8) var(--s8) var(--s4);
   display: flex;
   flex-direction: column;
@@ -130,3 +134,104 @@ main {
   gap: var(--s4);
 }
 
+
+/*
+ * ------------------------------------------------------------ under the well
+ *
+ * THE TIME AXIS AND THE READOUT LINE UP WITH THE CANVAS, NOT WITH THE WINDOW.
+ *
+ * The picture's left edge is 49px in: 40 for the frequency gutter, 8 for the
+ * space beside it, and 1 for the well's own frame. Spelled once, here, because
+ * a tick that is a pixel out is a tick that names the wrong column -- the same
+ * reason .scale carries the frame's padding.
+ */
+.under {
+  padding-left: 49px;
+  /* The canvas's width, so a mark at x=606 is at the picture's right edge. */
+  width: 606px;
+  box-sizing: content-box;
+}
+
+.time-axis {
+  position: relative;
+  height: 16px;
+  margin-top: var(--s2);
+}
+
+/*
+ * Each mark is a tick with its label under it. `anchor` keeps the ends inside
+ * the picture: centred, the "0s" at the right edge would hang half its width
+ * over the frame and the window's padding would be all that caught it.
+ */
+.time-mark {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--ink-dim);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.time-mark[data-anchor="end"]   { transform: translateX(-100%); align-items: flex-end; }
+.time-mark[data-anchor="start"] { transform: translateX(0);     align-items: flex-start; }
+
+/*
+ * THE BAR GRID IS LOUDER THAN THE SECONDS GRID, AND IT HAS TO BE.
+ *
+ * A second's tick has a number under it and is read by following the number.
+ * A beat's tick has nothing: it IS the mark, and a 1x4px hairline in --line-200
+ * -- let alone a dimmed one -- simply loses against the window's dot paper,
+ * which is 1px dots of --bg-dot at 12px spacing right behind it. Magnified
+ * eight times it still could not be told from the dots.
+ *
+ * So in this view the bar tick takes the colour of its own label and the beat
+ * tick takes the rail, which gives two steps that both clear the ground. It is
+ * scoped to .bars rather than applied to .time-tick so the seconds axis, where
+ * the labels already do the work, is left exactly as it was.
+ */
+.time-axis.bars .time-tick { background: var(--ink-dim); }
+.time-axis.bars .time-mark.beat .time-tick { background: var(--line-200); }
+
+/* 4px, and 1px wide -- the scale's tick turned on its side. */
+.time-tick {
+  display: block;
+  width: var(--hair);
+  height: var(--s1);
+  background: var(--line-200);
+}
+
+/*
+ * THE CROSSHAIR'S READOUT: a row of key/value pairs, like the hint bar, because
+ * it is the same kind of thing -- a line of facts about what is on screen. It
+ * is not a control and it never moves, so it has no well and no frame.
+ *
+ * NOT `.readout`, WHICH IS ALREADY TAKEN. The kit's `.readout` is the knob's
+ * editable number field: a bg-000 well with a line-200 border, centred. Reusing
+ * the name put a frame around this row and centred it, and the two would have
+ * gone on fighting every time either was restyled.
+ *
+ * The values are tabular so a changing digit does not shift the ones after it,
+ * and each has a floor width -- a readout that jitters as the mouse moves is
+ * unreadable.
+ */
+.crosshair-read {
+  height: 20px;
+  margin-top: var(--s3);
+  display: flex;
+  /* Baseline, not centre: the keys are 11px and the values 13px, and centring
+   * two type sizes leaves neither sitting on a line. */
+  align-items: baseline;
+  gap: var(--s2);
+  color: var(--ink-muted);
+}
+.xh-key { color: var(--ink-dim); }
+.xh-key:not(:first-child) { margin-left: var(--s6); }
+.xh-val {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  /* Wide enough for "< -96 dB", so the row's geometry does not depend on the
+   * value currently in it. */
+  min-width: 76px;
+}

@@ -13,7 +13,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { decodeColumns, decodeAxis, marksFor, RANGES } from '../src/lib/columns.js';
+import {
+  decodeColumns, decodeAxis, marksFor, RANGES,
+  timeMarksFor, secondsAgo, dbForLevel, DB_FLOOR, DB_CEIL,
+  decodeSync, beatsPerBar, slotForPpq, posForSlot, barMarksFor,
+} from '../src/lib/columns.js';
 
 /*
  * THE ENCODER IS NOT WRITTEN HERE ANY MORE.
@@ -196,10 +200,13 @@ test('the scale reaches the bottom of the new axis', () => {
    */
   const marks = marksFor(new Float32Array([10, 20000]), 256);
   const labels = marks.map((m) => m.label);
-  assert.deepEqual(labels, ['10', '20', '50', '100', '500', '1k', '5k', '10k']);
+  assert.deepEqual(labels, ['10', '20', '50', '100', '500', '1k', '5k', '10k', '20k']);
 
   const at = (label) => marks.find((m) => m.label === label);
   assert.ok(Math.abs(at('10').y - 256) < 1e-6, '10 Hz is not at the bottom');
+  /* And the other end: 20 kHz is the top of the Full range, so the picture's
+   * upper edge gets a number too rather than trailing off after 10k. */
+  assert.ok(Math.abs(at('20k').y - 0) < 1e-6, '20 kHz is not at the top');
   assert.ok(at('10').y > at('20').y, 'the axis is upside down at the bottom');
   /* A decade is a decade: 10 -> 100 spans the same pixels as 1k -> 10k. */
   const low = at('10').y - at('100').y;
@@ -241,4 +248,197 @@ test('marks outside the axis are left out rather than clamped to its edge', () =
   assert.deepEqual(marks.map((m) => m.label), ['500', '1k', '5k']);
   assert.equal(marksFor(null, 268).length, 0);
   assert.equal(marksFor(new Float32Array([1000]), 268).length, 0);
+});
+
+
+/* --------------------------------------------------------------- the level --
+ *
+ * These assert against the ENGINE's mapping, not against this file's: bands.rs
+ * does `round(((dB - floor) / (ceil - floor)) * 255)`, and if that ever changes
+ * the crosshair starts quietly naming the wrong decibel.
+ */
+test('a level byte reads back as the decibel the engine encoded', () => {
+  assert.equal(dbForLevel(255), DB_CEIL, 'full scale is not the ceiling');
+  assert.equal(dbForLevel(0), -Infinity, 'byte 0 is "at or below", not a number');
+
+  /* The engine's own round trip: -48 dB is halfway up a -96..0 scale. */
+  const byte = Math.round(((-48 - DB_FLOOR) / (DB_CEIL - DB_FLOOR)) * 255);
+  assert.ok(Math.abs(dbForLevel(byte) - -48) < 0.2, `${dbForLevel(byte)} is not -48 dB`);
+
+  /* Monotonic, or a brighter pixel could read as a quieter one. */
+  for (let v = 2; v <= 255; v++) {
+    assert.ok(dbForLevel(v) > dbForLevel(v - 1), `not monotonic at ${v}`);
+  }
+  assert.equal(dbForLevel(NaN), -Infinity);
+  assert.equal(dbForLevel(-3), -Infinity);
+});
+
+/* ---------------------------------------------------------------- the time --
+ *
+ * The axis is arithmetic on the column rate, so these are the arithmetic.
+ */
+test('the time axis is a tick a second, right edge to left', () => {
+  const marks = timeMarksFor(606, 47, 606);
+
+  assert.equal(marks[0].label, '0s', 'the newest column is not at 0 s');
+  assert.equal(marks[0].x, 606, '0 s is not at the right edge');
+  assert.equal(marks[0].anchor, 'end', '0 s would hang over the frame');
+
+  /* 606 columns at 47 a second is 12.89 s, so -12s fits and -13s does not. */
+  assert.equal(marks.at(-1).label, '-12s');
+  assert.ok(marks.at(-1).x > 0, 'the last tick fell off the left edge');
+  assert.ok(!marks.some((m) => m.label === '-13s'), '-13s is past the picture');
+
+  /* Evenly spaced, because one column is one pixel at a constant column rate. */
+  const step = marks[0].x - marks[1].x;
+  for (let i = 1; i < marks.length; i++) {
+    const d = marks[i - 1].x - marks[i].x;
+    assert.ok(Math.abs(d - step) < 1e-9, `uneven at ${marks[i].label}: ${d} vs ${step}`);
+  }
+  assert.ok(Math.abs(step - 47) < 1e-9, `a second is ${step}px, not 47`);
+
+  /* Descending across the picture: later time to the right. */
+  for (let i = 1; i < marks.length; i++) {
+    assert.ok(marks[i].x < marks[i - 1].x, 'the time axis runs backwards');
+  }
+});
+
+test('the time axis refuses arguments it cannot draw', () => {
+  assert.deepEqual(timeMarksFor(0, 47, 606), []);
+  assert.deepEqual(timeMarksFor(606, 0, 606), []);
+  assert.deepEqual(timeMarksFor(606, 47, 0), []);
+  assert.deepEqual(timeMarksFor(606, 47, 606, 0), []);
+});
+
+test('a column age is its own age in seconds', () => {
+  assert.equal(secondsAgo(0, 47), 0, 'the newest column is not now');
+  assert.ok(Math.abs(secondsAgo(47, 47) - 1) < 1e-9);
+  assert.ok(Math.abs(secondsAgo(605, 47) - 605 / 47) < 1e-9);
+  assert.equal(secondsAgo(-1, 47), 0);
+  assert.equal(secondsAgo(10, 0), 0);
+});
+
+
+/* --------------------------------------------------------------- the bars --
+ *
+ * The bar view's whole claim is that a musical position maps to a PIXEL rather
+ * than to an arrival order. These pin that mapping, its inverse, and the two
+ * host-shaped edge cases that break a naive version of it.
+ */
+test('a sync message is taken whole or not at all', () => {
+  const s = decodeSync('8.5:120:4:4:1:0.017');
+  assert.deepEqual(s, { ppq: 8.5, bpm: 120, num: 4, denom: 4, running: true, ppqPerCol: 0.017 });
+  assert.equal(decodeSync('8.5:120:4:4:0:0.017').running, false);
+
+  /* A field short, or a field unreadable, and the whole message goes: placing
+   * columns from half a clock is worse than not moving the picture. */
+  assert.equal(decodeSync('8.5:120:4:4:1'), null, 'a short message was accepted');
+  assert.equal(decodeSync('x:120:4:4:1:0.017'), null, 'a bad ppq was accepted');
+  assert.equal(decodeSync('8.5:0:4:4:1:0.017'), null, 'a zero tempo was accepted');
+  assert.equal(decodeSync('8.5:120:0:4:1:0.017'), null, 'a zero numerator was accepted');
+  assert.equal(decodeSync('8.5:120:4:4:1:0'), null, 'a zero column length was accepted');
+  assert.equal(decodeSync(null), null);
+});
+
+test('PPQ counts quarter notes, so 6/8 is three beats to the bar', () => {
+  assert.equal(beatsPerBar(4, 4), 4);
+  assert.equal(beatsPerBar(3, 4), 3);
+  /* The one that catches a numerator-only reading: six eighths is three
+   * quarters, and a host's PPQ is quarters whatever the metre says. */
+  assert.equal(beatsPerBar(6, 8), 3);
+  assert.equal(beatsPerBar(5, 4), 5);
+  assert.equal(beatsPerBar(0, 4), 4, 'a nonsense signature is not a crash');
+});
+
+test('a musical position always lands on the same pixel', () => {
+  const COLS = 606;
+  const at = (ppq) => slotForPpq(ppq, 4, 4, 4, COLS);
+
+  assert.equal(at(0), 0, 'the downbeat is not at the left edge');
+  assert.equal(at(8), Math.floor((8 / 16) * COLS), 'half way is not half way');
+
+  /* THE POINT OF THE FEATURE: one window later is the same pixel. */
+  for (const ppq of [0, 1.5, 7.25, 13.75]) {
+    assert.equal(at(ppq), at(ppq + 16), `${ppq} moved after one window`);
+    assert.equal(at(ppq), at(ppq + 160), `${ppq} moved after ten windows`);
+  }
+
+  /* A count-in, or the playhead dragged before the start, reports a NEGATIVE
+   * ppq -- and `%` keeps the sign of its left operand, so the naive version
+   * indexes off the front of the buffer. */
+  assert.ok(at(-0.5) > COLS / 2, `a negative ppq gave ${at(-0.5)}`);
+  assert.equal(at(-16), at(0), 'a whole window back is not the downbeat');
+  assert.equal(at(-0.5), at(15.5), 'the fold is not the same as the wrap');
+
+  /* Never off either end, whatever arrives. */
+  for (const ppq of [-1e9, -1e-9, 0, 1e9, 15.999999]) {
+    const s = at(ppq);
+    assert.ok(Number.isInteger(s) && s >= 0 && s < COLS, `${ppq} gave ${s}`);
+  }
+  assert.equal(slotForPpq(NaN, 4, 4, 4, COLS), 0);
+  assert.equal(slotForPpq(4, 0, 4, 4, COLS), 0);
+});
+
+test('a pixel reads back as the bar and beat a DAW would show', () => {
+  const COLS = 606;
+  /* One-based, like every host's transport: Live's "2.3.1" is bar 2, beat 3. */
+  assert.deepEqual(posForSlot(0, 4, 4, 4, COLS), { bar: 1, beat: 1 });
+
+  /* CEIL, NOT FLOOR: the bar-2 line falls at pixel 151.5 of 606, so 151 is the
+   * LAST pixel of bar 1 and 152 is the first of bar 2. Both are right; the
+   * floor of the quarter point is simply on the other side of the line. */
+  assert.equal(posForSlot(151, 4, 4, 4, COLS).bar, 1, 'pixel 151 left bar 1 early');
+  const q = posForSlot(Math.ceil(COLS / 4), 4, 4, 4, COLS);
+  assert.equal(q.bar, 2, 'a quarter of a 4-bar window is not bar 2');
+  assert.ok(Math.abs(q.beat - 1) < 0.05, `beat ${q.beat} is not the downbeat`);
+
+  const h = posForSlot(Math.floor(COLS / 2), 4, 4, 4, COLS);
+  assert.equal(h.bar, 3);
+
+  /* Round trip against the forward mapping, which is the thing that matters. */
+  for (const ppq of [0, 1, 2.5, 7, 11.25, 15.5]) {
+    const p = posForSlot(slotForPpq(ppq, 4, 4, 4, COLS), 4, 4, 4, COLS);
+    const beats = (p.bar - 1) * 4 + (p.beat - 1);
+    assert.ok(Math.abs(beats - ppq) < 0.05, `${ppq} came back as ${beats}`);
+  }
+  /* Always inside the window. */
+  for (const slot of [-5, 0, 300, 605, 99999]) {
+    const p = posForSlot(slot, 4, 4, 4, COLS);
+    assert.ok(p.bar >= 1 && p.bar <= 4, `bar ${p.bar} is outside a 4-bar window`);
+    assert.ok(p.beat >= 1 && p.beat < 5, `beat ${p.beat} is outside a bar`);
+  }
+});
+
+test('the bar grid drops its beats when a bar gets too narrow', () => {
+  const COLS = 606;
+
+  const four = barMarksFor(4, 4, 4, COLS);
+  const bars = four.filter((m) => !m.beat);
+  assert.equal(bars.length, 4, 'not one tick a bar');
+  assert.deepEqual(bars.map((m) => m.label), ['1', '2', '3', '4'], 'bars count from 1');
+  assert.equal(four.filter((m) => m.beat).length, 12, 'not three beats inside each bar');
+  /* A beat tick never sits on a bar line -- that would stack two ticks and make
+   * the strong one unreadable. */
+  for (const b of four.filter((m) => m.beat)) {
+    assert.ok(!bars.some((x) => Math.abs(x.x - b.x) < 1e-9), `a beat sits on a bar at ${b.x}`);
+  }
+
+  /* Evenly spaced across the picture, starting at the left edge. */
+  assert.equal(bars[0].x, 0);
+  for (let i = 1; i < bars.length; i++) {
+    assert.ok(Math.abs((bars[i].x - bars[i - 1].x) - COLS / 4) < 1e-9, 'bars uneven');
+  }
+
+  /* At 16 bars a bar is 38px and its beats would be 9 apart: a haze, not a
+   * grid, and the bar lines stop reading as the strong ones. */
+  const sixteen = barMarksFor(16, 4, 4, COLS);
+  assert.equal(sixteen.filter((m) => !m.beat).length, 16);
+  assert.ok(!sixteen.some((m) => m.beat), 'beat ticks survived at 16 bars');
+
+  /* 6/8 is three beats, so two ticks inside each bar rather than three. */
+  const six = barMarksFor(2, 6, 8, COLS);
+  assert.equal(six.filter((m) => m.beat).length, 4, '6/8 did not get three beats a bar');
+
+  assert.deepEqual(barMarksFor(0, 4, 4, COLS), []);
+  assert.deepEqual(barMarksFor(4, 4, 4, 0), []);
 });

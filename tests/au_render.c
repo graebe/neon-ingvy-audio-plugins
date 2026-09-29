@@ -127,11 +127,97 @@ int main (void)
         .componentSubType = 'TrGt',
         .componentManufacturer = 'Grbe',
     };
-    AudioComponent comp = AudioComponentFindNext (NULL, &desc);
+    /*
+     * EVERY COMPONENT THAT CLAIMS THE TRIPLE, NOT JUST THE FIRST.
+     *
+     * AudioComponentFindNext is an iterator for a reason: more than one thing can
+     * answer to (aufx, TrGt, Grbe), and on a developer's machine something
+     * usually does. Those three values are the plugin's identity and deliberately
+     * never move, so every build it has ever had claims them -- and macOS's
+     * component registry outlives the files, so a bundle deleted minutes ago is
+     * still enumerated as a ghost that cannot be opened.
+     *
+     * Taking the first match meant this test ran against whatever the registry
+     * happened to list first. That is how it stayed green through the rename to
+     * NITranceGate while the OLD TranceGate.component was the one answering --
+     * passing against a binary with none of the new work in it.
+     *
+     * So the version is the discriminator. EXPECTED_AU_VERSION comes from the
+     * PLUG_VERSION_HEX this tree builds (tests/CMakeLists.txt reads it out of
+     * config.h), and the loop takes the component that actually IS this build,
+     * skipping ghosts and older installs rather than being derailed by them.
+     */
+    AudioComponent comp = NULL;
+#ifdef EXPECTED_AU_VERSION
+    int seen = 0;
+    UInt32 firstVersion = 0;
+    for (AudioComponent c = AudioComponentFindNext (NULL, &desc); c;
+         c = AudioComponentFindNext (c, &desc)) {
+        UInt32 v = 0;
+        AudioComponentGetVersion (c, &v);
+        if (!seen++) firstVersion = v;
+        if (v == (UInt32) EXPECTED_AU_VERSION) { comp = c; break; }
+    }
+    /*
+     * A GHOST IS NOT A FAILURE; A WORKING BUNDLE OF THE WRONG VERSION IS.
+     *
+     * macOS's component registry outlives the files it lists. A bundle deleted
+     * minutes ago is still enumerated, and `auval -a` says so in as many words --
+     * "Cannot open component: -1". The registrar is a launchd daemon and killing
+     * it does not clear that; the machine wants a rescan it only really does at
+     * login. So an unopenable entry says nothing about this tree and must not fail
+     * the build.
+     *
+     * A component that DOES open and is not this version is the opposite: that is
+     * a real older install answering to the same IDs, which is exactly the trap
+     * that kept this test green through the rename. So the two are told apart by
+     * trying to instantiate, and only the second is a failure.
+     */
+    if (seen && !comp) {
+        int anyOpened = 0;
+        UInt32 openedVersion = 0;
+        for (AudioComponent c = AudioComponentFindNext (NULL, &desc); c;
+             c = AudioComponentFindNext (c, &desc)) {
+            AudioUnit probe = NULL;
+            if (AudioComponentInstanceNew (c, &probe) == noErr && probe) {
+                anyOpened = 1;
+                AudioComponentGetVersion (c, &openedVersion);
+                AudioComponentInstanceDispose (probe);
+                break;
+            }
+        }
+        if (anyOpened) {
+            printf ("  FAIL: a working AU claims (aufx, TrGt, Grbe) at version "
+                    "0x%08X; this tree builds 0x%08X\n",
+                    (unsigned) openedVersion, (unsigned) EXPECTED_AU_VERSION);
+            printf ("        An older install is shadowing this build. Delete it:\n"
+                    "          rm -rf ~/Library/Audio/Plug-Ins/Components/TranceGate.component\n");
+            return 1;
+        }
+        printf ("  (skipped: %d stale registry entr%s for these IDs and no bundle "
+                "that opens.\n"
+                "   The first reports 0x%08X and cannot be instantiated -- macOS is "
+                "listing a\n"
+                "   deleted bundle. Log out and back in, or reboot, to make it "
+                "rescan.)\n",
+                seen, seen == 1 ? "y" : "ies", (unsigned) firstVersion);
+        return 0;
+    }
+    if (comp && seen > 1)
+        printf ("  note: %d components claim these IDs; using version 0x%08X\n",
+                seen, (unsigned) EXPECTED_AU_VERSION);
+#else
+    comp = AudioComponentFindNext (NULL, &desc);
+#endif
     if (!comp) {
         printf ("  (skipped: the Trance Gate AU is not installed)\n");
         return 0;
     }
+
+#ifdef EXPECTED_AU_VERSION
+    printf ("  %-56s ok (0x%08X)\n", "the AU under test is the one this tree builds",
+            (unsigned) EXPECTED_AU_VERSION);
+#endif
 
     AudioUnit au = NULL;
     if (AudioComponentInstanceNew (comp, &au) != noErr || !au) {
@@ -202,6 +288,18 @@ int main (void)
          * percentage is the number actually stored. */
         { "Env Time", 0.0f,   1.0f,   1.0f },
         { "Release", 0.0f, 200.0f,  27.3333f },
+        /*
+         * THE FADE, SET TO SOMETHING THAT ACTUALLY DOES SOMETHING.
+         *
+         * Slot 1's default pattern is every other step of sixteen, so eight
+         * arrivals -- at 50% exactly four of them sound and the other four are
+         * gaps. Leaving this at its default would prove the parameter exists and
+         * nothing else; at 50% the render comparison below carries it, which
+         * makes this the one test that drives the fade through a real host's
+         * parameter API rather than through the engine's own door.
+         */
+        { "Fade",       0.0f, 100.0f, 50.0f },
+        { "Fade Shape", 0.0f,   1.0f,  1.0f },   /* Soft */
     };
 
     int allSet = 1;
@@ -248,7 +346,8 @@ int main (void)
      * if they do not, the render difference would be measuring my test setup.
      */
     const char *shownWant[] = { "1/16", "16", "1", "Off", "90.00 %", "75.00 %",
-                                "3.83 %", "43.73 %", "60.00 %", "% Step", "27.33 %" };
+                                "3.83 %", "43.73 %", "60.00 %", "%", "27.33 %",
+                                "50.00 %", "Soft" };
     int allAgree = 1;
     for (size_t i = 0; i < sizeof (patch) / sizeof (patch[0]); i++) {
         AudioUnitParameterID pid = param_id (au, patch[i].name);
@@ -286,6 +385,8 @@ int main (void)
     tg_core_set_param (ref, "slot", "0");
     tg_core_set_param (ref, "amount", "0.900");
     tg_core_set_param (ref, "hold", "0.750");
+    tg_core_set_param (ref, "fade", "0.5");
+    tg_core_set_param (ref, "fade_soft", "1");
     tg_core_set_param (ref, "attack", "3.8267");
     tg_core_set_param (ref, "decay", "43.7333");
     tg_core_set_param (ref, "sustain", "0.600");
