@@ -8,7 +8,12 @@
   before the editor exists. Do not add `defer` to mock.js or `type="module"`:
   that would make the harness pass where the plugin fails.
 
+  kick.js is a module too, and may be: it only adds the K / J / B keys that fake
+  a kick for the animated ground, which is never needed before the editor exists.
+
   Built by test/harness/build.sh, which copies the vite output in beside it.
+  A browser that refuses module scripts from disk (Chrome does) needs it served
+  over http from plugins/trance-gate/ui or above, so kick.js can reach ../../src.
 -->
 <html lang="en">
   <head>
@@ -17,6 +22,7 @@
     <script src="./mock.js"></script>
     <link rel="stylesheet" href="./assets/style.css">
     <script type="module" src="./assets/ui.js"></script>
+    <script type="module" src="./kick.js"></script>
   </head>
   <body>
     <div id="root"></div>
