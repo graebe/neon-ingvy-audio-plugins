@@ -16,6 +16,30 @@
  * fails the build if one is spelled out, in this file or in either editor's.
  */
 
+/* ------------------------------------------------------------ window --
+ * EditorFrame's <main>. The design: window padding space-8, content laid out
+ * from the top, the Hint bar pinned to the bottom edge with its rule running
+ * the full width of the window. `relative` and `isolate` are what the ground's
+ * canvas needs (see .ground below). The scale is a transform from the top-left
+ * corner, set by the frame.
+ */
+.window {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  transform-origin: top left;
+  padding: var(--s8) var(--s8) var(--s4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.window > .hint-bar {
+  flex: none;
+  width: auto;
+  margin: auto calc(-1 * var(--s8)) 0;
+  padding: var(--s3) var(--s8) 0;
+}
+
 /* ------------------------------------------------------------ button --
  * One well, two shapes. The design system draws a button with a WORD in it
  * ("the system uses no icon set ... write the word"), which is the padded

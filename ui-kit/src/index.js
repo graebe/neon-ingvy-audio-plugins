@@ -56,6 +56,16 @@ export { Hint } from './components/Hint.jsx';
 /* The window's ground. One per window, first child of it, and the only thing in
  * the design system that animates. */
 export { Ground } from './components/Ground.jsx';
+/* The window itself: ground, content from the top, the Hint bar at the bottom
+ * edge, the fit-to-viewport scale and the height it reports. Every editor is
+ * drawn inside one. */
+export { EditorFrame } from './components/EditorFrame.jsx';
+export { createFit, fitScale, scaledHeight, reportHeight } from './lib/fit.js';
+/* The playhead's clock: the engine's position carried forward per frame, and
+ * no frame loop while nothing moves. */
+export { createClock, positionAt } from './lib/clock.js';
+/* The ready handshake and the ground's kicks, once for every editor. */
+export { useEditorBridge, parseGround } from './lib/bridge.js';
 /* Its switch's state, remembered per editor -- see the file for why this is not
  * a host parameter. */
 export { createMotion } from './lib/motion.js';
