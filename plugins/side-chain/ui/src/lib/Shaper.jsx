@@ -47,7 +47,7 @@
  * and a curve editor whose handles glide is one you cannot aim at. Only the
  * playhead and the audio move.
  */
-import { For, Show, createMemo } from 'solid-js';
+import { For, Show, createMemo, createSignal } from 'solid-js';
 import { Well, Axis, band, INSET, CAPTION, startDrag, setParam, beginGesture, endGesture }
   from '@ultraviolet/ui';
 import { P, toNorm } from './msg.js';
@@ -93,7 +93,10 @@ export function Shaper(props) {
   const yTop = (g) => mid() - half() * Math.min(1, Math.max(0, g));
   const yBot = (g) => mid() + half() * Math.min(1, Math.max(0, g));
 
-  const p = () => props.shape;
+  /* While a handle is held the drawing follows the parameters the drag is
+   * writing (`heldShape`), not the engine's readout, which lags by a tick. */
+  const [held, setHeld] = createSignal(false);
+  const p = () => (held() && props.heldShape ? props.heldShape : props.shape);
   const b = createMemo(() => bounds(p()));
   const depth = () => (p().depth ?? 100) / 100;
 
@@ -226,6 +229,7 @@ export function Shaper(props) {
 
     const idxs = [hnd.xIdx, hnd.yIdx].filter((i) => i !== undefined);
     for (const i of idxs) beginGesture(i);
+    setHeld(true);
 
     let moved = false;
     startDrag(
@@ -264,7 +268,7 @@ export function Shaper(props) {
           setParam(hnd.yIdx, toNorm(hnd.yIdx, (s0.depth ?? 100) + dDepth * 100));
         }
       },
-      () => { for (const i of idxs) endGesture(i); },
+      () => { for (const i of idxs) endGesture(i); setHeld(false); },
     );
   };
 

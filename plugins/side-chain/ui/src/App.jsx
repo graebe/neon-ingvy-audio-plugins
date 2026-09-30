@@ -11,7 +11,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { EditorFrame, useEditorBridge, createClock } from '@ultraviolet/ui';
 import { createParams, ParamKnob, ParamSelect } from '@ultraviolet/ui/params';
-import { MSG, P, NUM_PARAMS } from './lib/msg.js';
+import { MSG, P, NUM_PARAMS, shapeFromNorm } from './lib/msg.js';
 import { Shaper, SPAN } from './lib/Shaper.jsx';
 import { bounds as boundsOf } from './lib/shape.js';
 import { decodeScope } from './lib/scope.js';
@@ -207,6 +207,7 @@ export default function App() {
       <div class="plot-slot">
         <Shaper w={PLOT_W} h={260}
                 shape={shape()}
+                heldShape={shapeFromNorm(host.value, shape())}
                 scope={scope()}
                 seen={seen}
                 quiet={!hasInput()}
