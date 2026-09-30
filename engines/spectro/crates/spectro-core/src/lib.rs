@@ -1042,21 +1042,35 @@ mod tests {
     fn the_halves_run_on_two_threads_and_lose_nothing() {
         /* The shape the C ABI uses: the producer on one thread, the consumer
          * on another, the ring between them. Every column produced arrives,
-         * once, and none is dropped while the consumer keeps draining. */
+         * once, and none is dropped while the consumer keeps draining.
+         *
+         * The feeder stays at most half a ring ahead of what the consumer has
+         * taken, so a descheduled consumer cannot overflow the ring: dropping
+         * when full is correct behaviour, and not what this test measures. */
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
         let cfg = Config { fft_size: 1024, hop: 256, bands: 64, ..Config::default() };
         let (mut tx, mut rx) = Analyzer::new(cfg).split();
         let hops = 4000usize;
+        let taken = Arc::new(AtomicUsize::new(0));
+        let feeder_taken = Arc::clone(&taken);
         let feeder = std::thread::spawn(move || {
             let block = sine(1000.0, cfg.hop, 0.5);
-            for _ in 0..hops + cfg.fft_size / cfg.hop {
+            let warmup = cfg.fft_size / cfg.hop;
+            for i in 0..hops + warmup {
+                while i >= warmup
+                    && i - warmup >= feeder_taken.load(Ordering::Acquire) + COLUMN_CAPACITY / 2
+                {
+                    std::thread::yield_now();
+                }
                 tx.push(&block);
-                std::thread::yield_now();
             }
         });
         let mut out = vec![0u8; cfg.bands * 32];
         let mut got = 0usize;
         while !feeder.is_finished() {
             got += rx.take_columns(&mut out, 32);
+            taken.store(got, Ordering::Release);
         }
         feeder.join().unwrap();
         got += rx.take_columns(&mut out, 32);
