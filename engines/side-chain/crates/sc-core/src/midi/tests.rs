@@ -131,3 +131,50 @@ fn a_note_name_is_read_in_lives_numbering() {
     assert_eq!(note_from_name("C"), None);
     assert_eq!(note_from_name("C-"), None);
 }
+
+#[test]
+fn the_queue_walks_in_offset_order_and_keeps_arrival_order_within_one() {
+    use crate::midi::Queue;
+    let mut q = Queue::default();
+    q.push(5, Action::Trigger(1.0));
+    q.push(2, Action::Release);
+    q.push(100, Action::Trigger(0.25)); /* past the block: late, not lost */
+    q.push(5, Action::Reset);
+    q.push(2, Action::Trigger(0.5));
+    q.prepare(8);
+    let mut seen = Vec::new();
+    for i in 0..8 {
+        while let Some(a) = q.pop_at(i) {
+            seen.push((i, a));
+        }
+    }
+    assert_eq!(
+        seen,
+        vec![
+            (2, Action::Release),
+            (2, Action::Trigger(0.5)),
+            (5, Action::Trigger(1.0)),
+            (5, Action::Reset),
+            (7, Action::Trigger(0.25)),
+        ]
+    );
+}
+
+#[test]
+fn a_full_queue_in_reverse_order_is_still_walked_in_order() {
+    use crate::midi::{Queue, QUEUE_MAX};
+    let mut q = Queue::default();
+    for k in 0..QUEUE_MAX + 3 {
+        q.push(QUEUE_MAX - 1 - k.min(QUEUE_MAX - 1), Action::Trigger(k as f64 / 100.0));
+    }
+    assert_eq!(q.dropped(), 3, "the overflow is counted");
+    q.prepare(QUEUE_MAX);
+    let mut n = 0;
+    for i in 0..QUEUE_MAX {
+        while let Some(a) = q.pop_at(i) {
+            assert_eq!(a, Action::Trigger((QUEUE_MAX - 1 - i) as f64 / 100.0));
+            n += 1;
+        }
+    }
+    assert_eq!(n, QUEUE_MAX);
+}

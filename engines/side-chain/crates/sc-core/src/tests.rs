@@ -573,3 +573,26 @@ fn an_instance_is_small_enough_to_build_on_any_stack() {
     let size = std::mem::size_of::<Instance>();
     assert!(size < 4096, "Instance is {size} bytes");
 }
+
+#[test]
+fn notes_delivered_out_of_order_each_land_on_their_own_sample() {
+    /* A host is not obliged to hand a block's events over sorted. */
+    let mut p = Instance::new(48000.0);
+    p.set_param("source", "MIDI");
+    p.set_param("attack", "0");
+    /* 0.5% of a 1/4 cycle at the default 120 bpm is 120 samples: long enough
+     * to see, short enough to be over before the second note. */
+    p.set_param("hold", "0.5");
+    p.set_param("release", "0");
+    p.set_param("vel_sens", "1");
+    p.on_midi(&note_on(1, 36, 127), 300);
+    p.on_midi(&note_on(1, 36, 64), 40);
+    let (mut l, mut r) = (vec![1.0f32; 512], vec![1.0f32; 512]);
+    let mut gain = vec![0.0f32; 512];
+    p.process_f32_split_tap(&mut l, &mut r, Some(&mut gain), None, 512, None);
+    assert_eq!(gain[39], 1.0);
+    assert!(gain[40] < 1.0 && gain[40] > 0.0, "the soft note, at 40: {}", gain[40]);
+    assert_eq!(gain[299], 1.0);
+    assert!(gain[300] < gain[40], "the loud note, at 300: {}", gain[300]);
+    assert_eq!(p.fires(), 2);
+}

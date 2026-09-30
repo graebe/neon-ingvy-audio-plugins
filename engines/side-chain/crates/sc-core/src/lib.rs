@@ -435,7 +435,7 @@ impl Instance {
         }
         self.was_running = running;
 
-        self.queue.clamp_into(frames);
+        self.queue.prepare(frames);
 
         Some(Run {
             stages,
@@ -450,7 +450,7 @@ impl Instance {
     #[inline]
     fn next_gain(&mut self, r: &Run, i: usize) -> f32 {
         /* --- did anything ask us to duck on this sample? --- */
-        for action in self.queue.at(i) {
+        while let Some(action) = self.queue.pop_at(i) {
             match action {
                 Action::Trigger(scale) => {
                     self.env.trigger(scale, &r.stages);
@@ -536,7 +536,7 @@ impl Instance {
     #[inline]
     fn block_done(&mut self) {
         /* The queue is per block. An event the walk never reached is an event
-         * that never happened -- which is why `clamp_into` exists. */
+         * that never happened -- which is why `prepare` clamps. */
         self.queue.clear();
         self.key_len = 0;
     }
