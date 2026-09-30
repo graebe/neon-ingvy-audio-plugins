@@ -75,6 +75,35 @@ std::string encode_sync(double ppq, double bpm, int num, int denom, bool running
   return out;
 }
 
+std::string encode_state(float fMin, float fMax, const std::vector<int>& view,
+                         int cmpA, int cmpB, bool clashOn,
+                         float floorDb, float balanceDb)
+{
+  std::string out;
+  out.reserve(64);
+  ni::wire::append_fixed(out, fMin, 2);
+  out += ':';
+  ni::wire::append_fixed(out, fMax, 2);
+  out += ':';
+  if (view.empty())
+    out += '0';
+  for (size_t i = 0; i < view.size(); i++)
+  {
+    if (i)
+      out += ',';
+    ni::wire::append_int(out, view[i]);
+  }
+  out += ':';
+  ni::wire::append_int(out, cmpA);
+  out += ':';
+  ni::wire::append_int(out, cmpB);
+  out += clashOn ? ":1:" : ":0:";
+  ni::wire::append_fixed(out, floorDb, 2);
+  out += ':';
+  ni::wire::append_fixed(out, balanceDb, 2);
+  return out;
+}
+
 bool parse_range(const std::string& arg, float& lo, float& hi)
 {
   /* THE COLON IS THE WHOLE VALIDATION. An empty half reads as 0, and the

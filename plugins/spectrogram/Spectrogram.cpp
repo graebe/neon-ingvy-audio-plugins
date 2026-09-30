@@ -75,6 +75,7 @@ void Spectrogram::ServiceReceiver()
   if (!fresh)
     return;
   srecv_set_clash(fresh, mClashFloorDb, mClashBalanceDb);
+  srecv_set_range(fresh, mRangeLo, mRangeHi);
 
   /* The old one is freed -- its worker joined -- once the audio thread has let
    * go of it. */
@@ -116,6 +117,8 @@ void Spectrogram::OnEditorIdle()
 
 void Spectrogram::OnEditorReady()
 {
+  /* First: the editor holds its pushes until it has this. */
+  SendState();
   SendAxis();
   /* The picker's contents now, not when the slow timer comes round. */
   SendSources();
@@ -245,6 +248,12 @@ void Spectrogram::SendSources()
   SendFramed(kMsgSources, buf, int(strnlen(buf, sizeof buf)));
 }
 
+void Spectrogram::SendState()
+{
+  SendText(kMsgState, spectro::wire::encode_state(mRangeLo, mRangeHi, mView, mCmpA, mCmpB,
+                                                  mClashOn, mClashFloorDb, mClashBalanceDb));
+}
+
 void Spectrogram::SendAxis()
 {
   if (!mRecv)
@@ -278,6 +287,8 @@ bool Spectrogram::SerializeState(IByteChunk& chunk) const
   f.cmpA = mCmpA;
   f.cmpB = mCmpB;
   f.clashOn = mClashOn;
+  f.rangeLo = mRangeLo;
+  f.rangeHi = mRangeHi;
   return spectro::state::Save(chunk, [this](IByteChunk& c) { return PutParams(c); }, f);
 }
 
@@ -292,6 +303,8 @@ int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
   f.cmpA = mCmpA;
   f.cmpB = mCmpB;
   f.clashOn = mClashOn;
+  f.rangeLo = mRangeLo;
+  f.rangeHi = mRangeHi;
   const int pos = spectro::state::Load(
     chunk, startPos,
     [this](const IByteChunk& c, int p) { return CheckParams(c, p); },
@@ -305,11 +318,14 @@ int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
   mCmpA = f.cmpA;
   mCmpB = f.cmpB;
   mClashOn = f.clashOn;
+  mRangeLo = f.rangeLo;
+  mRangeHi = f.rangeHi;
 
   /* The selection changed underneath the receiver, so it follows. */
   if (mRecv)
   {
     srecv_set_clash(mRecv, mClashFloorDb, mClashBalanceDb);
+    srecv_set_range(mRecv, mRangeLo, mRangeHi);
     ApplySources();
   }
   return pos;
@@ -327,6 +343,8 @@ bool Spectrogram::OnEditorMessage(int tag, const std::string& arg)
       float lo = 0.f, hi = 0.f;
       if (spectro::wire::parse_range(arg, lo, hi))
       {
+        mRangeLo = lo;
+        mRangeHi = hi;
         srecv_set_range(mRecv, lo, hi);
         SendAxis();
       }

@@ -46,7 +46,8 @@ const TABLE = process.env.SPECTRO_WIRE_TABLE ?? join(here, 'wire_table.txt');
  * plugin encoded, so decoding the payload must reproduce them. */
 const CASES = readFileSync(TABLE, 'utf8')
   .split('\n')
-  .filter((l) => l.trim())
+  /* The "state" lines are the session message's, tested in session.test.mjs. */
+  .filter((l) => l.trim() && !l.startsWith('state '))
   .map((l) => {
     const [cols, bands, bytes, encoded] = l.split(' ');
     return {

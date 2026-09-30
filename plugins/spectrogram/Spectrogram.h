@@ -49,6 +49,9 @@ enum EMsgTags
    * a Listen-In appears at human speed. */
   kMsgSources = 67,
   kMsgClashCols = 68,  /* -> the clash mask, shaped as a column batch             */
+  /* -> on ready: "<f_min>:<f_max>:<view>:<a>:<b>:<on>:<floor_db>:<balance_db>",
+   * what the session is looking at, applied by the editor before it pushes. */
+  kMsgState = 69,
   kMsgRange = 96,      /* <- "<f_min>:<f_max>" -- the zoom                        */
   /* <- "<slot>,<slot>,..." -- which buses to open, in order; empty is the own
    * channel alone. Derived by the editor from the view and the comparison. */
@@ -100,6 +103,8 @@ private:
   void SendSync();
   /* The buses that exist, for the editor's picker. Probing creates nothing. */
   void SendSources();
+  /* What the session is looking at, for an editor that has just opened. */
+  void SendState();
 
   /*
    * THE RECEIVER: the own channel and every bus listened to, fed in step so
@@ -131,6 +136,11 @@ private:
   bool mClashOn = false;
   float mClashFloorDb = -60.0f;
   float mClashBalanceDb = 12.0f;
+
+  /* The zoom, as the editor asked for it: kept here so a rebuilt receiver, a
+   * reopened editor and a saved session all get it back. */
+  float mRangeLo = SPECTRO_F_MIN;
+  float mRangeHi = SPECTRO_F_MAX;
 
   /* The source list's slow timer. */
   int mSourceTick = 0;

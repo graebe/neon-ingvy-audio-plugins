@@ -65,6 +65,14 @@ bool Save(iplug::IByteChunk& chunk, const PutParams& params, const Fields& f)
   snprintf(cmp, sizeof cmp, "%d:%d:%d", f.cmpA, f.cmpB, f.clashOn ? 1 : 0);
   if (chunk.PutStr(cmp) <= 0)
     return false;
+
+  /* The zoom, last, so an older build reading this stops before it. */
+  std::string range;
+  ni::wire::append_fixed(range, f.rangeLo, 2);
+  range += ':';
+  ni::wire::append_fixed(range, f.rangeHi, 2);
+  if (chunk.PutStr(range.c_str()) <= 0)
+    return false;
   return shell::state::End(chunk, at);
 }
 
@@ -145,6 +153,19 @@ int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
       f.cmpA = a;
       f.cmpB = b;
       f.clashOn = on;
+    }
+    pos = after;
+  }
+
+  WDL_String range;
+  after = shell::state::GetStr(chunk, range, pos);
+  if (after > pos)
+  {
+    float lo = 0.f, hi = 0.f;
+    if (spectro::wire::parse_range(range.Get(), lo, hi) && lo > 0.f && hi > lo)
+    {
+      f.rangeLo = lo;
+      f.rangeHi = hi;
     }
     pos = after;
   }

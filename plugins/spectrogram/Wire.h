@@ -110,5 +110,22 @@ bool parse_compare(const std::string& arg, int& a, int& b, bool& on);
 std::string encode_sync(double ppq, double bpm, int num, int denom, bool running,
                         double ppqPerCol, int sampleRate);
 
+/*
+ * "<f_min>:<f_max>:<view>:<cmpA>:<cmpB>:<on>:<floor_db>:<balance_db>" -- what
+ * the session is looking at, sent to an editor that has just said it is ready.
+ *
+ * WITHOUT IT A REOPENED EDITOR OVERWROTE THE SESSION. The editor started from
+ * its own defaults, and its first push of the view and the comparison replaced
+ * what the plugin had saved -- so opening the window was enough to lose the
+ * setup. The editor now applies this before it will push anything.
+ *
+ * The range is in Hz, as the plugin holds it; which named zoom that is, is the
+ * editor's business. `view` is comma separated (never empty), so every other
+ * field sits at a fixed colon. Two decimals on the frequencies and the dB.
+ */
+std::string encode_state(float fMin, float fMax, const std::vector<int>& view,
+                         int cmpA, int cmpB, bool clashOn,
+                         float floorDb, float balanceDb);
+
 } // namespace wire
 } // namespace spectro

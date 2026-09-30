@@ -18,6 +18,7 @@ import {
   decodeSync, slotForPpq, posForSlot, barMarksFor,
   decodeSources, sourceName,
 } from './lib/columns.js';
+import { decodeState, rangeIndex, createPushGate } from './lib/session.js';
 import { Toolbar, BARS } from './lib/Toolbar.jsx';
 import { SourceStrip } from './lib/SourceStrip.jsx';
 import { Display, PICTURE_W, PICTURE_H } from './lib/Display.jsx';
@@ -71,6 +72,20 @@ export default function App() {
   let lastSeen = 0;
   /* The clash mask waiting for the column batch it belongs to. */
   let pendingClash = null;
+  /* Closed until the plugin's saved session has been applied: a push before
+   * that would replace the session with this editor's defaults. */
+  const session = createPushGate();
+
+  const applyState = (text) => {
+    const st = decodeState(text);
+    if (!st) return;
+    setRange(rangeIndex(st.lo, st.hi, RANGES));
+    setView(st.view);
+    setCmpA(st.cmpA);
+    setCmpB(st.cmpB);
+    setClashOn(st.clashOn);
+    session.open();
+  };
 
   /*
    * THE TRANSPORT, AS THE FEW VALUES THE WINDOW DRAWS FROM. sync arrives every
@@ -117,6 +132,7 @@ export default function App() {
   const bridge = useEditorBridge({
     onMessage: (tag, text) => {
       if (tag === MSG.cols) onColumns(text);
+      else if (tag === MSG.state) applyState(text);
       else if (tag === MSG.axis) setAxis(decodeAxis(text));
       else if (tag === MSG.sync) {
         const t = decodeSync(text);
@@ -182,11 +198,11 @@ export default function App() {
   };
 
   /* One place, because all three settings change the same derived list. */
-  const push = () => {
+  const push = () => session.send(() => {
     sendMessage(MSG.select, neededSlots().join(','));
     sendMessage(MSG.view, view().join(','));
     sendMessage(MSG.compare, `${cmpA()}:${cmpB()}:${clashOn() ? 1 : 0}`);
-  };
+  });
 
   const chooseView = (chans) => {
     /* Never nothing: a spectrogram showing no channel is a broken plugin. */
@@ -204,7 +220,7 @@ export default function App() {
 
   const toggleClash = () => {
     setClashOn(!clashOn());
-    sendMessage(MSG.clash, `${CLASH_FLOOR_DB}:${CLASH_BALANCE_DB}`);
+    session.send(() => sendMessage(MSG.clash, `${CLASH_FLOOR_DB}:${CLASH_BALANCE_DB}`));
     push();
   };
 
@@ -216,7 +232,7 @@ export default function App() {
     setRange(i);
     setPaused(false);
     setGeneration((g) => g + 1);
-    sendMessage(MSG.range, `${r.lo}:${r.hi}`);
+    session.send(() => sendMessage(MSG.range, `${r.lo}:${r.hi}`));
   };
 
   /* THE THREE READOUTS say "—" when the pointer is away rather than a stale number. */

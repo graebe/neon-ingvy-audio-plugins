@@ -95,6 +95,8 @@ static void emit_case(FILE* out, const unsigned char* data, int cols, int bands)
   fprintf(out, " %s\n", encode_columns(data, cols, bands, 0).c_str());
 }
 
+static void dump_state(FILE* out);
+
 static void dump_table(FILE* out)
 {
   for (const auto& c : table_cases())
@@ -108,6 +110,43 @@ static void dump_table(FILE* out)
 
   const unsigned char three[9] = {0, 128, 255, 255, 0, 128, 128, 255, 0};
   emit_case(out, three, 3, 3);
+
+  dump_state(out);
+}
+
+/*
+ * THE SESSION'S STATE, the message an editor applies before it pushes
+ * anything. Lines start with "state" so the column cases stay one shape:
+ *
+ *     state <f_min> <f_max> <view> <a> <b> <on> <floor> <balance> <encoded>
+ */
+struct StateCase
+{
+  float fMin, fMax;
+  std::vector<int> view;
+  int a, b;
+  bool on;
+  float floorDb, balanceDb;
+};
+
+static void dump_state(FILE* out)
+{
+  const StateCase cases[] = {
+    {10.f, 20000.f, {0}, 0, 1, false, -60.f, 12.f},          /* a fresh instance */
+    {40.f, 800.f, {0, 2}, 1, 2, true, -60.f, 12.f},          /* Bass, two channels */
+    {2000.f, 20000.f, {1, 2, 3}, 3, 0, true, -48.5f, 6.25f}, /* a saved clash */
+    {200.f, 4000.f, {}, 0, 1, false, -60.f, 12.f},           /* an empty view is the input */
+  };
+  for (const StateCase& c : cases)
+  {
+    std::string view;
+    for (size_t i = 0; i < c.view.size(); i++)
+      view += (i ? "," : "") + std::to_string(c.view[i]);
+    fprintf(out, "state %.2f %.2f %s %d %d %d %.2f %.2f %s\n", double(c.fMin), double(c.fMax),
+            view.empty() ? "-" : view.c_str(), c.a, c.b, c.on ? 1 : 0,
+            double(c.floorDb), double(c.balanceDb),
+            encode_state(c.fMin, c.fMax, c.view, c.a, c.b, c.on, c.floorDb, c.balanceDb).c_str());
+  }
 }
 
 static int verify_table(const char* path)
@@ -280,6 +319,17 @@ TEST_CASE("a range splits at the colon")
   REQUIRE(parse_range("2000:16000", lo, hi));
   CHECK(lo == doctest::Approx(2000.f));
   CHECK(hi == doctest::Approx(16000.f));
+}
+
+/* ------------------------------------------------------------------ state */
+
+TEST_CASE("the state names the range, the view, the comparison and the clash")
+{
+  CHECK(encode_state(40.f, 800.f, {0, 2}, 1, 2, true, -60.f, 12.f) ==
+        "40.00:800.00:0,2:1:2:1:-60.00:12.00");
+  /* An empty view is the input alone: the plugin never shows nothing. */
+  CHECK(encode_state(10.f, 20000.f, {}, 0, 1, false, -60.f, 12.f) ==
+        "10.00:20000.00:0:0:1:0:-60.00:12.00");
 }
 
 /* ------------------------------------------------------------------- sync */
