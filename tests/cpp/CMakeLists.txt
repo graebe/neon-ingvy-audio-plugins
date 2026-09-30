@@ -25,6 +25,18 @@ if (NOT EXISTS ${DOCTEST_DIR}/doctest.h)
         "See THIRD_PARTY_LICENSES.md for the version and provenance.")
 endif()
 
+set(NI_SHARED ${CMAKE_SOURCE_DIR}/plugins/_shared)
+set(NI_WIRE_SRC ${NI_SHARED}/ni/Wire.cpp)
+
+# ------------------------------------------------------------ the shell
+
+# What every shell does to a buffer or a message: the split, the quantisers,
+# the height, the transport, the chunking, the passthrough, the scope capture
+# and the numbers -- the last under a comma-decimal locale too.
+add_executable(ni_wire ni_wire.cpp ${NI_WIRE_SRC})
+target_include_directories(ni_wire PRIVATE ${DOCTEST_DIR} ${NI_SHARED})
+add_test(NAME ni_wire COMMAND ni_wire)
+
 # ------------------------------------------------------------- Trance Gate
 
 add_executable(tg_wire tg_wire.cpp
