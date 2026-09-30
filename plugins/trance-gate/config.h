@@ -143,8 +143,9 @@
  * and two different ones on the right. The strip is laid OVER the plot now,
  * which buys the alignment for nothing and gives the 32 back.
  *
- * HEIGHT. 644 (kGridY) + one row of pads + space-6 + the hint bar, at the
- * default 16 steps, and it grows with Length -- see kMsgRows.
+ * HEIGHT. 644 (kGridY) + one row of pads + space-6 + the hint bar + the
+ * window's bottom padding (space-4), at the default 16 steps, and it grows
+ * with Length -- the editor reports the height it needs.
  *
  * 644 and not the old 568 because there are three panels in the right column
  * now rather than two. The third one is paid for by the panels themselves: their
@@ -152,16 +153,16 @@
  * panel from 172 to 140 -- so a third costs 76px of window where a fourth
  * horizontal-titled one would have cost 148.
  *
- * Mirrored by `main`'s width and padding-top in ui/src/app.css and by DESIGN_W
- * and designH in ui/src/App.jsx. All of them have to agree, or the page is
+ * Mirrored by ui/src/app.css's layout and by DESIGN_W and designH in
+ * ui/src/App.jsx. All of them have to agree, or the page is
  * scaled against a width it does not have and the window is the wrong height
  * for what is in it.
  */
 #define PLUG_WIDTH 824
-#define PLUG_HEIGHT 736
+#define PLUG_HEIGHT 752
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
-/* The window grows with Length -- see kMsgRows. */
+/* The window grows with Length: the editor sends the height it needs. */
 #define PLUG_HOST_RESIZE 1
 
 #define AUV2_ENTRY NITranceGate_Entry

@@ -64,22 +64,15 @@
 .btn.on { background: var(--uv); border-color: var(--uv); color: var(--on-uv); }
 
 /*
- * PANELS: (304, 32, 488, 140), and three of them now rather than two.
+ * A PANEL: a hairlined bg-100 box that groups the controls of one function.
+ * Only what it LOOKS like -- where it sits and how big it is belong to the
+ * editor that has one.
  *
- * THE TITLE RUNS UP THE LEFT EDGE, and that is what pays for the third panel.
- *
- * It was a heading ABOVE the knobs: 16px of line plus 12 of margin, so every
- * panel carried a 28px band that said one word. A knob-card is 103 tall and
- * fixed by the kit (11 label + 8 + 48 knob + 8 + 28 readout), so with the band
- * gone a panel is 2 border + 32 padding + 103 = 137, and 140 keeps it on the
- * 4px grid. Three of those fit where two used to, for 76px of window instead of
- * the 148 a third horizontal-titled panel would have cost.
- *
- * Bottom-to-top, like the tab strip's labels, and for the same reason: it is the
- * way a label on a left edge is read.
+ * THE TITLE RUNS UP THE LEFT EDGE, bottom-to-top like the tab strip's labels:
+ * a heading above the knobs is a 28px band that says one word.
  */
 .panel {
-  position: absolute; left: 304px; width: 488px; height: 140px;
+  box-sizing: border-box;
   background: var(--bg-100); border: 1px solid var(--line-100);
   padding: var(--s4);
   display: flex; gap: var(--s3);}

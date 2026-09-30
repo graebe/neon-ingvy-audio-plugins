@@ -1,131 +1,66 @@
 /*
  * Layout. Copyright (c) 2026 Torben Gräber. MIT.
  *
- * The numbers are PluginEditor.cpp's, absolutely positioned, because those
- * numbers are the design -- a flex layout that happens to look close is a
- * different drawing.
+ * In normal flow, top to bottom, inside the kit's EditorFrame (which owns the
+ * window's padding, its ground and the Hint bar on the bottom edge):
+ *
+ *   the top block     the ring column (240: ring 240, space-6, envelope 104)
+ *                     beside three 488 x 140 panels, space-4 apart = 452
+ *   space-4
+ *   the settings row  28
+ *   space-2
+ *   the band          92, the plot with the tab strip over its right edge
+ *   space-4
+ *   the pads          a row of 40 per 16 steps, space-2 apart
+ *
+ * 824 = space-8 * 2 + 760, and 760 is sixteen --step pads with --s2 between:
+ * the pads decide the content width and everything lines up with them. The
+ * pads start 644 below the window's top edge -- ABOVE_GRID in App.jsx, which
+ * has to agree, as do PLUG_WIDTH / PLUG_HEIGHT in config.h.
  */
-main {
-  position: relative;
-  /* With `relative` above, this is the other half of what the ground's canvas
-   * needs: a stacking context, so its negative z-index stays inside the window.
-   * See .ground in the kit's components.css. */
-  isolation: isolate;
-  /*
-   * 824 = space-8 * 2 + 760, AND EVERY ELEMENT IN THE WINDOW IS 760 WIDE OR
-   * SITS INSIDE ONE THAT IS.
-   *
-   * ONE PADDING, ALL ROUND. 32 on the left and 32 on the right, for the ring
-   * column, the three panels, the settings row, the plot band and the pads --
-   * so there is a single edge down each side of the window rather than the two
-   * it used to have.
-   *
-   * IT WENT 824 -> 856 -> 824. The tab strip took 24 off the band's right with
-   * 8 of gap, so the plot drew 32 narrower than the pad grid; widening the
-   * window to 856 bought that alignment and gave the strip its own column,
-   * which left the band ending at 824 while everything else ended at 792. Two
-   * right-hand edges. Overlaying the strip on the plot buys the same alignment
-   * for nothing, and the 32 comes back.
-   *
-   * 760 is not a free choice: it is 16 pads of --step (40) with --s2 (8)
-   * between, and --step is a design-system token on a 4px grid. The pads decide
-   * the content width and the window follows them.
-   *
-   * Mirrored by PLUG_WIDTH in config.h and DESIGN_W in App.jsx -- all three
-   * have to agree or the page is scaled against a width it does not have.
-   */
-  width: 824px;
-  margin: 0 auto;
-  /* The absolutely positioned block above the grid is 644 tall (kGridY), and
-   * absolute children contribute no height -- so it is reserved here and the
-   * grid and hint bar follow in normal flow. That is what lets the window
-   * GROW WITH LENGTH: 128 steps is eight rows, and the grid gets taller
-   * rather than the pads getting thinner.
-   *
-   * 644 and not 568: a third panel. See App.jsx's designH, which must agree. */
-  padding-top: 644px;
+
+.top {
+  display: flex;
+  gap: var(--s8);
+  height: 452px;
+  flex: none;
 }
 
-/* ring column: (32, 32, 240, 240), tabs under it */
-.ring-slot { position: absolute; left: 32px; top: 32px; width: 240px; height: 240px; }
-/* The envelope plot is ALWAYS here, under the ring. It is not tabbed. */
-.env-plot-slot { position: absolute; left: 32px; top: 296px; width: 240px; height: 104px; }
+/* The ring, and the envelope plot ALWAYS under it -- it is not tabbed. */
+.left-column {
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
 .ring { display: block; }
 .ring-centre { fill: var(--ink); }
 .ring-label  { fill: var(--ink-muted); }
 
-/* envelope/pattern/signal plot: (32, 296, 240, 104) -- but the strip is the
- * full left column, so the plot spans it. */
+/* The three panels: the kit's look, this window's size. */
+.panels {
+  width: 488px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.panels .panel { height: 140px; }
 
-.plot { width: 100%; height: 104px; }
-/* .plot-caption moved into @ultraviolet/ui's components.css with Well -- it is
- * the component's own, and a second editor now draws one. */
-/*
- * THE STEP NUMBERS HAD NO RULE AT ALL, so they drew in SVG's default fill --
- * black, on a --bg-000 well. They were invisible rather than wrong, which is why
- * nothing reported them: a number nobody can see looks like a number nobody
- * drew. `ink-dim` because they label the plot rather than being part of it.
- */
-.step-number { fill: var(--ink-dim); }
-/* Where the signal sweep is writing. Not a playhead: it says "current up to
- * here", which is the one thing a static axis cannot say by itself. */
+/* The plots take the width their JSX gives them; nothing stretches the text. */
+.plot { display: block; }
+/* Step numbers label the plot rather than being part of it. */
+.step-number { fill: var(--ink-muted); }
+/* Where the signal sweep is writing. Not a playhead: "current up to here". */
 .sweep { stroke-width: 1; }
 
-/*
- * THE RIGHT COLUMN, at 140 tall with 16 between -- the gutters were 24 while
- * the panels were 172 and the column had room to breathe. Three panels and two
- * gutters is 32..484.
- */
-.gate-panel { top: 32px; }
-.env-panel  { top: 188px; }
-.fade-panel { top: 344px; }
-
-/*
- * THE BAND: the two plots occupy it, one at a time, and the tabs take a 24px
- * strip off its RIGHT edge with space-2 between.
- */
-.band {
-  position: absolute; left: 32px; top: 536px;
-  /* The WIDTH is set inline from BAND_W in App.jsx: the plot's own width is a
-   * JSX prop, so the arithmetic that keeps the two in step has to live on that
-   * side or the two files drift. Both are 760 now -- the band no longer makes
-   * room for the tab strip. */
-  height: 92px;
+/* settings row: under the three panels, one line of 28px controls. */
+.settings-row {
+  flex: none;
+  margin-top: var(--s4);
+  height: var(--control-h);
+  display: flex; align-items: center; gap: var(--s6);
 }
-/*
- * THE TAB STRIP, LAID OVER THE PLOT'S RIGHT EDGE.
- *
- * The plot spans the whole band, so the strip floats on it rather than taking a
- * column of its own -- which is what lets the signal line up with the pads and
- * what gave the window's 32 pixels back. It covers 24px of the trace's tail;
- * that is the trade, and it is the right way round, because the alternative was
- * 32px of the whole picture being out of line with everything under it.
- */
-.band .tabs {
-  position: absolute; right: 0; top: 0; height: 100%;
-  /* Above the plot, and clear of the pointer everywhere it is not a tab. */
-  z-index: 1;
-}
-
-/*
- * THE CORNER MARK, and the field that pretends to be nothing.
- *
- * `tag` is pinned to the window's own padding rather than to a panel, so it
- * does not belong to any of them.
- */
-/*
- * THE CORNER MARK IS GONE, and the Signature in the hint bar replaced it.
- *
- * Ultraviolet 1.0.0: "Every plugin window carries it exactly once, at the right
- * end of the `Hint` bar" -- and, in as many words, do not "repeat it on panels".
- * Once the kit's Hint began carrying the Signature, this window had two.
- *
- * It also read `neon inga`, which is not the publisher's name. The comment that
- * used to sit here blamed a GATE panel painting over the first 24px, so the text
- * itself appears to have been shortened at some point to match what was visible.
- * The hint bar's Signature spells it correctly and cannot be overpainted,
- * because it is in normal flow rather than absolutely positioned over a panel.
- */
+.spacer { flex: 1; }
 
 /* Only ever visible for the moment it takes to press the shortcut, so it is
  * sized to the hint it carries rather than to the row. */
@@ -136,28 +71,28 @@ main {
   color: var(--ink); font: inherit; text-align: center; outline: none;
 }
 .paste-field::placeholder { color: var(--ink-muted); }
-/* The plot IS the band now -- the tab strip floats over it rather than beside
- * it, so there is nothing to share the width with. */
-.band-plot { position: absolute; inset: 0; }
-.band-plot .plot { width: 100%; height: 92px; }
 
-/* settings row: y 500, h 28 -- under the three panels. */
-.settings-row {
-  position: absolute; left: 32px; top: 500px; width: 760px;
-  height: var(--control-h);
-  display: flex; align-items: center; gap: var(--s6);
+/*
+ * THE BAND: the two plots occupy it one at a time, and the tab strip is laid
+ * OVER the plot's right edge rather than taking a column -- which is what lets
+ * the signal line up with the pads under it.
+ */
+.band {
+  position: relative;
+  flex: none;
+  margin-top: var(--s2);
+  width: 760px;
+  height: 92px;
 }
-.spacer { flex: 1; }
+.band-plot { position: absolute; inset: 0; }
+.band .tabs {
+  position: absolute; right: 0; top: 0; height: 100%;
+  z-index: 1;
+}
 
 /*
  * THE FADE PANEL'S SECOND CELL: a switch and two actions, stacked, in the space
- * a knob-card would take.
- *
- * `.knob-row` is a row of equal cells and this is one of them, so the three
- * controls stack inside it rather than widening the row -- which keeps the panel
- * the same 140px as the two above it and the Fade knob the same size as every
- * other knob in the window. "Controls have one size each. Do not scale controls
- * to fill a window; leave space instead."
+ * a knob-card would take, so every knob in the window stays the same size.
  */
 .fade-actions {
   display: flex; flex-direction: column; justify-content: center;
@@ -167,15 +102,8 @@ main {
 }
 .fade-actions .btn { width: 100%; }
 
-/*
- * THE SWITCH: a 28x14 housing with an 8x8 square at 2px that moves to 16px
- * and lights. Not a button -- a user-settable boolean is a switch; an LED is
- * for state the plugin REPORTS.
- */
-
 /* ------------------------------------------------------------ pads -- */
-.grid-slot { margin-left: 32px; }
-.grid { display: flex; flex-direction: column; gap: var(--s2); }
+.grid { flex: none; margin-top: var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
 .grid-row { display: flex; gap: var(--s2); }
 .pad {
   position: relative; width: var(--step); height: var(--step);
@@ -280,22 +208,3 @@ main {
  * so. A step still waiting for its number is dimmed towards the ground, which
  * makes "what is left to tap" the thing the grid is showing. */
 .pad.unnamed { background: var(--bg-100); }
-
-/* -------------------------------------------------------- hint bar -- */
-
-/*
- * THE HORIZONTAL INSET, which this window needs and the Spectrogram does not.
- *
- * `main` here has only a padding-top -- every element above the grid is
- * absolutely positioned at left: 32 -- so the hint bar, which is in normal flow
- * at width 100%, spans the full 856 with nothing holding it off the edges.
- *
- * That was invisible while components.css centred the bar's contents. Ultraviolet
- * 1.0.0 left-aligned the tips and put the Signature at the right end, and the
- * two of them went flush to both window edges. The rule below puts them back on
- * the 32px margin every other element in this editor uses.
- *
- * The `line-100` rule above the bar keeps spanning the whole window, as it did.
- */
-.hint-bar { padding-left: var(--s8); padding-right: var(--s8); }
-
