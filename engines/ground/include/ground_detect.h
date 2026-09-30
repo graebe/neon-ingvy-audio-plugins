@@ -15,11 +15,16 @@
  * detection happens on the audio thread, and what crosses to the editor is an
  * onset: a count and a strength, which the editor turns into one ring.
  *
- * THE NUMBERS ARE NOT PARAMETERS. Band (20-80 Hz), envelope times, the running
- * mean, the ratio, the re-arm, the floor and the refractory are all the design
- * system's, and none of them is settable here. Four plugins share one ground
- * and a per-plugin tuning knob would be four backgrounds that disagreed.
- * crates/ground-core/src/detect.rs records what each one is for.
+ * THE NUMBERS ARE NOT PARAMETERS. Band (20-80 Hz), envelope times, refractory
+ * and strength range are the design system's; none of them, nor the onset
+ * rule, is settable here. Four plugins share one ground and a per-plugin tuning
+ * knob would be four backgrounds that disagreed.
+ *
+ * THE ONSET RULE DEVIATES FROM ULTRAVIOLET 1.0.0, pending a design update: the
+ * Motion spec asks for the envelope above 1.8x its 300 ms mean, and this fires
+ * on the envelope's excess over a slow bed follower instead, because the
+ * specified rule almost never fires on a real mix.
+ * crates/ground-core/src/detect.rs states the rule exactly and why.
  *
  * WHY NOT THE SIDE-CHAIN'S DETECTOR, which is forty lines away and already
  * finds onsets: it is broadband, so a snare or a loud vocal moves it. That is

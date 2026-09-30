@@ -9,11 +9,18 @@ fed by the host's audio, so the detection has to happen down here and cross to
 the UI as a message. This is that half, and it is the ONLY half that moved: the
 field itself is ported verbatim in `ui-kit/src/lib/field.js`.
 
-THE NUMBERS ARE THE DESIGN SYSTEM'S, NOT OURS. Band, envelope times, window,
-ratio, re-arm, floor and refractory are the detector row of that Motion table,
+THE NUMBERS ARE THE DESIGN SYSTEM'S -- EXCEPT THE ONSET RULE. Band, envelope
+times, refractory and strength range are the detector row of that Motion table,
 and `design/files/project/components/ground.js` is the implementation they were
 measured on. Retuning any of them changes how the background reads against a
 mix, which is a design decision and does not belong in a DSP file.
+
+THE ONSET RULE DEVIATES FROM ULTRAVIOLET 1.0.0, pending a design update. The
+Motion spec says `env > 1.8 * mean(300 ms)`; this fires on the envelope's
+EXCESS over a slow bed follower instead (see `next`, where the measurement that
+forced it is written out). The owner has the question; until the design
+answers it, the rule below is what ships and the material tests in `tests.rs`
+are its specification.
 
 WHY NOT REUSE THE SIDE-CHAIN'S FOLLOWER, which already detects onsets and is
 forty lines away. Because it is BROADBAND: `sc-core`'s `Follower` takes
@@ -24,23 +31,33 @@ signal and means it -- and wrong here, where the design asks specifically for
 that never sits still. The two detectors want different questions asked, so
 they stay two detectors.
 
-TWO STAGES OF SMOOTHING, AND THEY ARE NOT THE SAME STAGE TWICE.
+THREE STAGES OF SMOOTHING, AND THEY ARE NOT THE SAME STAGE THRICE.
 
   rms     20 ms of the band's power, so one waveform cycle at 50 Hz reads as
           one level instead of a sine's worth of zero crossings
   env     attack 5 ms / release 150 ms over that level -- the hump whose rising
           edge IS the onset
-  mean    300 ms of `env`, the thing the threshold is relative to
+  bed     attack 350 ms / release 200 ms over `env` -- how much bass there has
+          been lately, slow enough in both directions that a transient cannot
+          move it
 
-The threshold being RELATIVE is the whole trick, and it is why there is no
-"sensitivity" parameter. `env > 1.8 * mean` asks "is there more bass right now
-than there has been lately", which is a question with the same answer on a
-quiet dub track and a loud master; an absolute threshold would need a knob per
-song. `floor` exists only so that silence, where the mean is ~0 and any ratio
-is infinite, does not fire.
+THE RULE, exactly as `next` applies it:
 
-RMS IS ONE-POLE, NOT A SLIDING WINDOW -- the one place this deviates in shape
-from the reference. The reference polls a Web Audio analyser every 10 ms and
+  excess  = env - bed               (bed as it was BEFORE this sample)
+  trigger = 0.35 * bed + 0.005      (FLUX_RATIO, FLUX_FLOOR)
+  fire    when armed, env > 0.01 (FLOOR), excess > trigger, and 120 ms have
+          passed since the last onset (REFRACTORY_MS)
+  re-arm  when excess < 0.5 * trigger (REARM_FRACTION)
+  strength = clamp(0.6 * sqrt(excess / trigger), 0.3, 1)
+
+The threshold being RELATIVE to the bed is why there is no "sensitivity"
+parameter: "a third more bass than lately" has the same answer on a quiet dub
+track and a loud master, where an absolute threshold would need a knob per
+song. `FLUX_FLOOR` is the absolute part, and it exists only so that silence and
+near-silence -- where any fraction of nothing is nothing -- do not fire.
+
+RMS IS ONE-POLE, NOT A SLIDING WINDOW -- a second, smaller deviation, in
+shape rather than in rule. The reference polls a Web Audio analyser every 10 ms and
 takes a true boxcar RMS over the last 20 ms of its buffer. A boxcar down here
 would mean a ring buffer of up to 20 ms of samples per plugin instance, and
 this runs per sample on the audio thread. A one-pole on x squared with the same
@@ -48,11 +65,10 @@ this runs per sample on the audio thread. A one-pole on x squared with the same
 and no memory. The onset instant it produces differs by well under a frame,
 which is the only resolution the ground can show.
 
-THE THREAD RULES. `push` runs on the audio thread and does not allocate, lock or
-branch on anything but its own state. `fires` and `strength` are read from the
-message thread; the counter is what makes that safe without a lock -- see
-`lib.rs`, where the pair is published as two atomics for the same reason
-`sc_core_fires` is a counter rather than a flag.
+THE THREAD RULES. `Detector` is plain single-threaded state; `lib.rs` wraps it
+so that only the audio thread's `push` ever touches it, publishes `fires` and
+`strength` as two atomics for the same reason `sc_core_fires` is a counter
+rather than a flag, and turns resets into requests the audio thread applies.
 */
 
 use crate::biquad::{flush, Biquad};
@@ -88,15 +104,20 @@ pub(crate) const FLOOR: f64 = 0.01;
 /// Minimum gap between onsets, ms.
 const REFRACTORY_MS: f64 = 120.0;
 
-/// Reported strength is clamped to this range: a kick that only just crossed
-/// the threshold still has to move the field visibly, and the loudest one must
-/// not exceed what the field was tuned for (`gain` assumes `s` in 0..1).
+/// Reported strength is clamped to this range -- the design's -- because a kick
+/// that only just crossed the threshold still has to move the field visibly,
+/// and the loudest one must not exceed what the field was tuned for (`gain`
+/// assumes `s` in 0..1).
 const STRENGTH_MIN: f64 = 0.3;
 const STRENGTH_MAX: f64 = 1.0;
-/// The reference's scale factor (`0.6 * sqrt(r / ratio)`).
+/// The reference's scale factor. The reference applies it as
+/// `0.6 * sqrt(env / (1.8 * mean))`; here it is `0.6 * sqrt(excess / trigger)`,
+/// the same shape over this rule's own "how far past the threshold".
 const STRENGTH_SCALE: f64 = 0.6;
-/// Below this the running mean is treated as silence and the ratio is taken as
-/// this instead of dividing by ~0.
+/// A guard on the division: below this `trigger` is treated as silence and the
+/// ratio as `SILENT_RATIO`. `trigger` is never below `FLUX_FLOOR`, so with the
+/// current constants this is unreachable -- it is what keeps a retuned floor of
+/// zero from dividing by zero.
 const MEAN_EPSILON: f64 = 1e-6;
 const SILENT_RATIO: f64 = 10.0;
 
@@ -138,7 +159,8 @@ pub struct Detector {
     release_c: f64,
     bed_attack_c: f64,
     bed_release_c: f64,
-    /// False between an onset and the envelope falling back under `REARM`.
+    /// False between an onset and the excess falling back under
+    /// `REARM_FRACTION` of the trigger.
     armed: bool,
     /// Samples still to wait before another onset counts.
     refractory_left: f64,
@@ -299,13 +321,15 @@ impl Detector {
          * nearly nothing and any hit is enormous relative to it.
          *
          * Keying on the EXCESS fixes it without changing what a kick is. The bed
-         * rises slowly (250 ms) and falls slowly (400 ms), so it tracks sustained
-         * bass and cannot follow a transient; a kick's 5 ms attack therefore
-         * stands clear of it whatever the absolute level. Steady bass, however
-         * loud, keeps env and bed together and produces nothing.
+         * rises slowly (BED_ATTACK_MS, 350 ms) and falls slowly (BED_RELEASE_MS,
+         * 200 ms), so it tracks sustained bass and cannot follow a transient; a
+         * kick's 5 ms attack therefore stands clear of it whatever the absolute
+         * level. Steady bass, however loud, keeps env and bed together and
+         * produces nothing.
          *
          * Band, envelope times, refractory and strength range are all still the
-         * design's.
+         * design's. This rule is not, and is a deviation from Ultraviolet
+         * 1.0.0's Motion spec pending a design update.
          */
         let excess = self.env - bed;
         let trigger = FLUX_RATIO * bed + FLUX_FLOOR;
