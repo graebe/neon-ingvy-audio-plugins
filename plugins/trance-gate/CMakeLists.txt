@@ -38,8 +38,7 @@ if (TG_NPM)
     COMMAND ${TG_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
     RESULT_VARIABLE TG_UI_RESULT OUTPUT_QUIET ERROR_QUIET)
   if (NOT TG_UI_RESULT EQUAL 0)
-    message(WARNING "The editor did not build; run: "
-                    "npm --prefix plugins/trance-gate/ui install")
+    message(WARNING "The editor did not build; run `npm ci` at the repository root")
   endif()
 
   add_custom_target(NITranceGateUI ALL
@@ -48,7 +47,7 @@ if (TG_NPM)
     COMMENT "Building the editor (vite)"
     VERBATIM)
 else()
-  message(WARNING "npm not found -- using whatever is already in resources/web")
+  message(WARNING "npm not found -- the editor cannot be built (resources/web is build output)")
 endif()
 
 file(GLOB TG_WEB
@@ -56,30 +55,8 @@ file(GLOB TG_WEB
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/fonts/*")
 
-#
-# AN EMPTY GLOB IS A PLUGIN WITH NO EDITOR, AND IT USED TO SHIP.
-#
-# The vite step above only WARNS when it fails -- a worktree where nobody ran
-# `npm ci`, a broken lockfile, npm missing entirely. The glob then finds nothing,
-# every format builds and links happily, and iPlug2's deploy step does
-# `rm -rf` on the installed bundle before copying the new one over it. So a
-# failed editor build does not merely produce a bad plugin: it REPLACES a working
-# installed plugin with one whose Contents/Resources/web does not exist.
-#
-# What the user sees is a white window. Nothing in the build output says why --
-# the warning scrolled past a thousand lines earlier, if it was even this build
-# that produced it.
-#
-# So: refuse to configure. A build that stops with a message naming the fix is
-# always better than one that succeeds and uninstalls the editor.
-#
-if (NOT TG_WEB)
-  message(FATAL_ERROR
-    "plugins/trance-gate/resources/web is empty, so this build would install a "
-    "plugin with NO EDITOR over whatever is there now -- a white window with "
-    "nothing in the log to explain it.\n"
-    "Run:  npm ci  (at the repository root), then configure again.")
-endif()
+# A plugin with no editor must not configure -- see cmake/EditorGuard.cmake.
+ni_require_editor(trance-gate ${TG_WEB})
 
 iplug_add_plugin(NITranceGate
   SOURCES

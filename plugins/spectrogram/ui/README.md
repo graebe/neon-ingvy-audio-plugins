@@ -5,8 +5,8 @@ by iPlug2's WebView editor over a custom URL scheme. MIT, like everything else
 here.
 
 ```
-npm install
-npm run build        # -> ../resources/web, which CMake globs into the bundle
+npm ci               # at the repository root: one install for every workspace
+npm run build        # -> ../resources/web (build output, untracked), which CMake globs into the bundle
 npm run dev          # live-reload; point mEditorInitFunc at localhost:5173
 test/harness/build.sh   # the built bundle against a fake plugin, in a browser
 ```

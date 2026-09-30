@@ -24,3 +24,9 @@ plugins/*/ui/test/harness/fonts/
 
 # The Schwung module build (cmake --build build --target schwung)
 dist/
+
+# THE EDITORS' BUILD OUTPUT. vite writes each plugin's resources/web from its
+# ui/ at configure and build time; a tracked copy was a second source of truth
+# that could disagree with ui/src and that every UI change had to remember to
+# commit. cmake/EditorGuard.cmake stops a configure that has none.
+plugins/*/resources/web/

@@ -21,8 +21,7 @@ if (SPECTRO_NPM)
     COMMAND ${SPECTRO_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
     RESULT_VARIABLE SPECTRO_UI_RESULT OUTPUT_QUIET ERROR_QUIET)
   if (NOT SPECTRO_UI_RESULT EQUAL 0)
-    message(WARNING "The editor did not build; run: "
-                    "npm --prefix plugins/spectrogram/ui install")
+    message(WARNING "The editor did not build; run `npm ci` at the repository root")
   endif()
 
   add_custom_target(NISpectrogramUI ALL
@@ -31,13 +30,16 @@ if (SPECTRO_NPM)
     COMMENT "Building the Spectrogram editor (vite)"
     VERBATIM)
 else()
-  message(WARNING "npm not found -- using whatever is already in resources/web")
+  message(WARNING "npm not found -- the editor cannot be built (resources/web is build output)")
 endif()
 
 file(GLOB SPECTRO_WEB
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/*.html"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/fonts/*")
+
+# A plugin with no editor must not configure -- see cmake/EditorGuard.cmake.
+ni_require_editor(spectrogram ${SPECTRO_WEB})
 
 iplug_add_plugin(NISpectrogram
   SOURCES

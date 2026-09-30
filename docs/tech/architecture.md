@@ -72,6 +72,14 @@ arrive.
 CMake runs vite at configure time *and* at build time. Configure-only shipped
 stale bundles, and a stale editor looks exactly like a broken one.
 
+`resources/web` is **build output and is not tracked**. A committed copy was a
+second source of truth that could disagree with `ui/src`, and a fresh clone
+builds it anyway — so after `npm ci`, configuring is enough. If the editor did
+not build, configure stops with an error naming `npm ci`
+(`cmake/EditorGuard.cmake`) rather than producing a plugin with a blank window.
+The build also writes `assets/ui.js.LICENSE.txt` beside `ui.js`, with the
+licence text of every npm package the minified bundle contains.
+
 The editor and the plugin talk over numbered message tags rather than through
 parameters, which is what lets the Trance Gate's pattern travel as the engine's
 own state blob — the same text the Move module writes.

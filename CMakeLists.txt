@@ -70,6 +70,10 @@ include(cmake/GroundEngine.cmake)
 # see the note in the file.
 include(cmake/Schwung.cmake)
 
+# resources/web is vite's output and untracked; a plugin whose editor did not
+# build must not configure. See the file.
+include(cmake/EditorGuard.cmake)
+
 # THE NOTICES TRAVEL INSIDE EVERY BUNDLE. MIT asks that the copyright and
 # permission notice accompany every copy, and a plugin bundle is copied on its
 # own -- out of a zip, into ~/Library, onto another machine -- with no
