@@ -13,8 +13,9 @@
  * signal -- a passing render that proves nothing about the gate. The two
  * callbacks below are the entire difference.
  *
- * Skips with success when the component is not installed, so a checkout that
- * has never run a build does not fail the suite.
+ * Skips (exit 77, reported by ctest as Skipped, not Passed) when the component
+ * is not installed, so a checkout that has never deployed a build does not fail
+ * the suite -- and does not claim a pass it never earned either.
  */
 #include <AudioToolbox/AudioToolbox.h>
 #include <AudioUnit/AudioUnit.h>
@@ -27,6 +28,13 @@
 #define SR    44100.0
 #define BLOCK 128
 #define BPM   123.0
+
+/* NOT A PASS. The AU under test is the INSTALLED one, and a checkout that has
+ * not deployed a build has none -- which used to return 0 and read as a green
+ * test that had rendered nothing. 77 is ctest's SKIP_RETURN_CODE for this test
+ * (tests/CMakeLists.txt), so it is reported as Skipped, and CI, which installs
+ * the plugins, fails on a skip. */
+#define SKIPPED 77
 
 static double gSamplePos = 0.0;      /* where the "song" is, in samples */
 
@@ -201,7 +209,7 @@ int main (void)
                 "   deleted bundle. Log out and back in, or reboot, to make it "
                 "rescan.)\n",
                 seen, seen == 1 ? "y" : "ies", (unsigned) firstVersion);
-        return 0;
+        return SKIPPED;
     }
     if (comp && seen > 1)
         printf ("  note: %d components claim these IDs; using version 0x%08X\n",
@@ -211,7 +219,7 @@ int main (void)
 #endif
     if (!comp) {
         printf ("  (skipped: the Trance Gate AU is not installed)\n");
-        return 0;
+        return SKIPPED;
     }
 
 #ifdef EXPECTED_AU_VERSION

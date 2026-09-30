@@ -202,6 +202,8 @@ if (APPLE)
     target_link_libraries(tg_au_render PRIVATE tg_engine m
         "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
     add_test(NAME tg_au COMMAND tg_au_render)
+    # 77 is "the AU is not installed": Skipped, not Passed. See au_render.c.
+    set_tests_properties(tg_au PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 # ---------------------------------------------------------------- Spectrogram
@@ -505,12 +507,15 @@ endif()
 # engine's own render sample for sample.
 #
 # It finds the plugin by the (aumf, SdCh, Grbe) triple -- `aumf` and not `aufx`
-# because PLUG_DOES_MIDI_IN makes it a MusicEffect. It SKIPS with success when
-# the component is not installed, so a checkout that has never run a build does
-# not fail the suite.
+# because PLUG_DOES_MIDI_IN makes it a MusicEffect. It SKIPS (exit 77, reported
+# as Skipped rather than Passed) when the component is not installed, so a
+# checkout that has never deployed a build neither fails the suite nor claims a
+# pass it did not earn. CI installs the plugins and fails if either AU test
+# skips.
 if (APPLE)
     add_executable(sc_au_render ${SC_ENGINE}/tests/au_render.c)
     target_link_libraries(sc_au_render PRIVATE sc_engine m
         "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
     add_test(NAME sc_au COMMAND sc_au_render)
+    set_tests_properties(sc_au PROPERTIES SKIP_RETURN_CODE 77)
 endif()
