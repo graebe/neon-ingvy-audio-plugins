@@ -57,7 +57,8 @@ void spectro_free(spectro_t *s);
 
 /* Re-configure and clear. ALLOCATES: a prepare-to-play call, never an
  * audio-thread one. Out-of-range arguments are CLAMPED, not rejected --
- * fft_size is rounded down to a power of two, f_max down to Nyquist. */
+ * fft_size is rounded down to a power of two, f_max down to Nyquist, and hop
+ * into fft_size/32 .. fft_size. */
 void spectro_configure(spectro_t *s, float sample_rate, int fft_size, int hop,
                        int bands, float f_min, float f_max,
                        float db_floor, float db_ceil);
