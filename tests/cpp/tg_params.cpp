@@ -81,9 +81,9 @@ TEST_CASE("a unit is shown once")
  * the enum's values, finds none, and prints "0"; "0" is no label, so parsing it
  * lands on the first entry, "1/1T". The parameter itself would have held 0 --
  * Set() rounds -- so the fix is one line in IParam::GetDisplay (Constrain the
- * value as FromNormalized already does). It is upstream's to make: see the
- * host-conformance report. When it lands this case starts passing, doctest
- * reports that as a failure, and the decorator comes off.
+ * value as FromNormalized already does), and it is upstream's to make. When
+ * it lands this case starts passing, doctest reports that as a failure, and
+ * the decorator comes off.
  */
 TEST_CASE("a stepped parameter between its steps shows the step it would hold"
           * doctest::should_fail())
