@@ -126,6 +126,15 @@ transforms off both the audio and the UI thread; freeing the receiver joins it.
 Nothing that allocates, maps memory or talks to the editor runs on the audio thread;
 `OnParamChange` and `OnReset` only record what they want, and `OnIdle` does it.
 
+The host's state calls get the same treatment, because the host picks their
+thread: auval's stress test calls `SetState` from threads of its own, and so may a
+DAW restoring a session. `UnserializeState` therefore never calls a main-thread
+API. The Spectrogram's records the load in its `Session` (`plugins/spectrogram/State.h`)
+and the next `OnIdle` hands the receiver whatever moved; `SerializeState` reads the
+same `Session`, so a save straight after a load writes the load. The receiver's
+own C ABI serialises its message side as a floor beneath this, so a caller that
+gets it wrong waits its turn instead of deadlocking (`spectro_recv.h`).
+
 Every plugin's state chunk starts with `shell_state.h`'s versioned header. A
 chunk without it is an older build's and loads as that build wrote it. A chunk
 is read whole before any of it is applied, and one no build could have written
