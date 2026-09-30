@@ -9,15 +9,15 @@ use crate::{FadeDir, Instance, DEPTH_FULL, MAX_STEPS, SLOTS};
 
 #[derive(Clone)]
 pub struct Pattern {
-    pub steps: Mask,
-    pub ties: Mask,
+    pub(crate) steps: Mask,
+    pub(crate) ties: Mask,
     /// 1..=MAX_STEPS
-    pub length: usize,
+    pub(crate) length: usize,
     /// Per-step level, 0..255. An ACCENT: the global Amount scales the whole
     /// sequence on top of it, so this says "how much of the gate" and Amount
     /// says "how much gating". 255 is the neutral value, which is why a v1
     /// blob without the array must fill it rather than zero it.
-    pub depth: [u8; MAX_STEPS],
+    pub(crate) depth: [u8; MAX_STEPS],
     /*
      * ARRIVAL ORDER: WHICH STEP THE FADE INTRODUCES FIRST.
      *
@@ -31,7 +31,7 @@ pub struct Pattern {
      * is why a pre-fade blob without the array must fill it that way rather
      * than zero it: zero would make every step arrive at once.
      */
-    pub order: [u8; MAX_STEPS],
+    pub(crate) order: [u8; MAX_STEPS],
 }
 
 impl Pattern {
@@ -227,6 +227,24 @@ impl Pattern {
             }
         }
         self.order[i] = r;
+    }
+
+    /// How many steps the pattern runs, 1..=MAX_STEPS.
+    #[inline]
+    pub fn length(&self) -> usize {
+        self.length
+    }
+
+    /// Step `i`'s level, 0..255; `None` past MAX_STEPS.
+    #[inline]
+    pub fn depth(&self, i: usize) -> Option<u8> {
+        self.depth.get(i).copied()
+    }
+
+    /// Step `i`'s rank among the steps of its own kind; `None` past MAX_STEPS.
+    #[inline]
+    pub fn order(&self, i: usize) -> Option<u8> {
+        self.order.get(i).copied()
     }
 
     #[inline]

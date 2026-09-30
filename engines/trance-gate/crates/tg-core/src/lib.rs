@@ -85,9 +85,17 @@ pub struct Transport {
 }
 
 pub struct Instance {
-    pub pat: Vec<Pattern>,
-    pub slot: usize,
-    pub rate_idx: usize,
+    /*
+     * EVERY FIELD IS PRIVATE, and the slots are a fixed array. An index a
+     * caller could write directly -- a slot of 9, a rate of 40 -- was one
+     * panic away from an abort of the host (the workspace builds with
+     * panic = "abort"), and nothing on that path could validate it. The doors
+     * are `set_param` / `set_num`, which clamp; the readouts are `get_param`
+     * and the accessors below.
+     */
+    pat: [Pattern; SLOTS],
+    slot: usize,
+    rate_idx: usize,
 
     /*
      * ATTACK, DECAY AND RELEASE ARE PERCENTAGES OF THE GATE'S WIDTH, 0..200.
@@ -102,11 +110,11 @@ pub struct Instance {
      * maximum moves with the rate and with Width while the percentage stays
      * put. See [`Instance::stage_samples`].
      */
-    pub attack: f32,
-    pub decay: f32,
+    attack: f32,
+    decay: f32,
     /// 0..1 -- a LEVEL, not a duration.
-    pub sustain: f32,
-    pub release: f32,
+    sustain: f32,
+    release: f32,
 
     /*
      * How much of a step the gate stays open, 0..1.
@@ -117,19 +125,19 @@ pub struct Instance {
      * control they are reaching for: release begins this far into the step
      * rather than at its end, which is a sequencer's gate length.
      */
-    pub hold: f32,
+    hold: f32,
     /// How much the gate acts, 0..1. 1 == a closed gate is silent, 0 == the
     /// effect is bypassed.
-    pub amount: f32,
+    amount: f32,
     /// Edit position on the ring, 0..length-1.
-    pub cursor: usize,
+    cursor: usize,
 
     // ---- runtime, not saved ----
-    pub step_pos: f64,
+    step_pos: f64,
     /// Step index at the previous sample; `None` = none.
-    pub last_step: Option<usize>,
-    pub was_running: bool,
-    pub env: Env,
+    last_step: Option<usize>,
+    was_running: bool,
+    env: Env,
     /*
      * THE STRUCK STEP'S LEVEL, HELD FOR THE WHOLE GATE.
      *
@@ -139,20 +147,20 @@ pub struct Instance {
      * stepped the level mid-gate -- a discontinuity in the gain, which is a
      * click. Latched when the envelope enters ATTACK and held until IDLE.
      */
-    pub step_level: f32,
+    step_level: f32,
 
     /// Published for the UI, computed once per block, because `get_param`
     /// runs on the audio callback too and must stay trivial.
-    pub ms_per_step: f32,
-    pub last_bpm: f32,
+    ms_per_step: f32,
+    last_bpm: f32,
     /// "The playhead is moving" -- the UI's extrapolator is the only reader
     /// and is written against the concept, not against what drives it.
-    pub advancing: bool,
+    advancing: bool,
     /// Adjacent ON steps hold as ONE gate instead of re-articulating.
-    pub legato: bool,
-    pub time_mode: TimeMode,
-    pub curve: Curve,
-    pub sample_rate: f64,
+    legato: bool,
+    time_mode: TimeMode,
+    curve: Curve,
+    sample_rate: f64,
 
     /*
      * THE FADE-IN: HOW MUCH OF THE PATTERN HAS ARRIVED, 0..1.
@@ -166,7 +174,7 @@ pub struct Instance {
      * patch saved before this existed sound exactly as they did. The golden
      * renders are what say so.
      */
-    pub fade: f32,
+    fade: f32,
     /*
      * Whether a step ARRIVES or APPEARS.
      *
@@ -176,13 +184,13 @@ pub struct Instance {
      * threshold, so the two agree at every arrival boundary and the switch
      * reads as smoothing rather than as a second feature.
      */
-    pub fade_soft: bool,
+    fade_soft: bool,
     /*
      * Which end the pattern is built up from. See [`FadeDir`]. In is the
      * default and the neutral one: it is what the gate did before the direction
      * existed, so every patch and both golden renders are unaffected.
      */
-    pub fade_dir: FadeDir,
+    fade_dir: FadeDir,
     /*
      * THE FADE'S WEIGHT PER STEP, CACHED.
      *
@@ -205,7 +213,7 @@ pub struct Instance {
 impl Instance {
     pub fn new(sample_rate: f64) -> Self {
         let mut me = Self {
-            pat: (0..SLOTS).map(Pattern::new).collect(),
+            pat: core::array::from_fn(Pattern::new),
             slot: 0,
             rate_idx: rates::RATE_DEFAULT,
             /* The percentages that reproduce the old 2 / 20 / 20 ms defaults
@@ -249,6 +257,39 @@ impl Instance {
     }
 }
 impl Instance {
+    /// The sample rate the engine renders at.
+    pub fn sample_rate(&self) -> f64 {
+        self.sample_rate
+    }
+
+    /// A non-positive or non-finite rate is refused rather than stored: every
+    /// length the engine measures in samples divides by it.
+    pub fn set_sample_rate(&mut self, sample_rate: f64) {
+        if !(sample_rate > 0.0) || !sample_rate.is_finite() {
+            return;
+        }
+        self.sample_rate = sample_rate;
+        /* ms_per_step cancels the sample rate out, so this changes nothing
+         * today. It is here so that "ms_per_step is current" holds at every
+         * door into the struct rather than at the two that happen to matter. */
+        self.recalc_ms_per_step();
+    }
+
+    /// The slot being played and edited, 0..SLOTS.
+    pub fn slot(&self) -> usize {
+        self.slot
+    }
+
+    /// The edit position, 0..length.
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// The pattern in slot `slot`, or `None` past the last one.
+    pub fn pattern_in(&self, slot: usize) -> Option<&Pattern> {
+        self.pat.get(slot)
+    }
+
     #[inline]
     pub fn pattern(&self) -> &Pattern {
         &self.pat[self.slot]
@@ -304,3 +345,6 @@ impl Instance {
         pos / length
     }
 }
+
+#[cfg(test)]
+mod tests;

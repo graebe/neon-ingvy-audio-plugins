@@ -620,8 +620,12 @@ impl Instance {
         self.env.stage
     }
 
+    /// Every step of `slot` back to full level. A slot out of range does
+    /// nothing, as it does at every other door that takes one.
     pub fn reset_depths(&mut self, slot: usize) {
-        self.pat[slot].depth = [DEPTH_FULL; MAX_STEPS];
+        if let Some(p) = self.pat.get_mut(slot) {
+            p.depth = [DEPTH_FULL; MAX_STEPS];
+        }
     }
 }
 
