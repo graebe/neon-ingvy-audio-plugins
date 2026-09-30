@@ -66,7 +66,8 @@ iplug_add_plugin(NISideChain
   # itself rides inside libsc_capi.a.
   LINK
     sc_engine
-    ground_engine)
+    ground_engine
+    shell_engine)
 
 # Each format target copies the web resources itself, so each must wait for vite
 # rather than race it.

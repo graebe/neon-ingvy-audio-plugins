@@ -15,7 +15,7 @@
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
-#include "sc_core.h"
+#include "sc_shell.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include <atomic>
 #include <cstdint>
@@ -188,13 +188,19 @@ public:
 
 private:
 #if IPLUG_DSP
-  /* Runs at the top of every block, on the audio thread. */
-  void PushParams();
+  /* Runs at the top of every block, on the audio thread, into the engine
+   * sc_shell_begin lent it. */
+  void PushParams(sc_core_t* core);
   void CaptureBlock(const float* dry, const float* wet, const float* gain,
                     const float* sweep, int frames);
 #endif
 
-  sc_core_t* mCore = nullptr;
+  /*
+   * THE ENGINE, BEHIND ITS SHELL. The audio thread takes it with
+   * sc_shell_begin; OnIdle reads only what the audio thread published.
+   * sc_shell.h states the rule.
+   */
+  sc_shell_t* mShell = nullptr;
 
   Capture mCap;
   /* Audio thread only: the column being accumulated and its running bounds.
