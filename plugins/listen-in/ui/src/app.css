@@ -12,7 +12,7 @@
  * The numbers, top to bottom, all on the system's 4px grid:
  *
  *   32   space-8, the window padding
- *   28   the title row -- control-h, so it lines up with the row below
+ *   28   the status row -- control-h, so it lines up with the row below
  *   16   space-4
  *   28   the controls row: the slot Select and the name field
  *   16   space-4
@@ -25,38 +25,19 @@
  *
  * And across: 32 + 296 + 32 = 360 = PLUG_WIDTH.
  *
- * DESIGN_W in App.jsx and PLUG_WIDTH in config.h have to agree with the 360
- * here, or the page is scaled against a width it does not have.
+ * The window itself -- its size, padding and the Hint bar at the bottom edge --
+ * is the kit's EditorFrame. DESIGN_W / DESIGN_H in App.jsx and PLUG_WIDTH /
+ * PLUG_HEIGHT in config.h have to agree.
  */
-main {
-  width: 360px;
-  height: 232px;
-  padding: var(--s8) var(--s8) var(--s4);
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  /* THE GROUND'S CANVAS NEEDS BOTH OF THESE -- see .ground in the kit's
-   * components.css. `relative` is what its `inset: 0` resolves against;
-   * `isolate` is what keeps its negative z-index inside this window instead of
-   * letting it paint behind the window's background. */
-  position: relative;
-  isolation: isolate;
-}
-
 .row {
   display: flex;
   align-items: center;
   gap: var(--s2);
 }
 
-.title-row {
-  height: 28px;
-  justify-content: space-between;
+.status-row {
+  height: var(--control-h);
   margin-bottom: var(--s4);
-}
-
-.title {
-  letter-spacing: 0.02em;
 }
 
 /*
@@ -144,8 +125,4 @@ main {
 .meter-fill-off {
   background: var(--line-200);
   box-shadow: none;
-}
-
-.hint-bar {
-  margin-top: auto;
 }
