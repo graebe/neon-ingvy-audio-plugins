@@ -84,6 +84,8 @@ export { Well, Axis, band, INSET, CAPTION } from './components/Plot.jsx';
 export { buildLut, readStops, readRgb, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
 
 export { startDrag } from './lib/drag.js';
+/* What a key does to a grid, a pad, a slider, a count or a tab strip. */
+export { gridMove, padKey, sliderKey, tabMove, countKey } from './lib/keys.js';
 /* The latest value per key, sent once a frame: for drags that message. */
 export { createCoalescer } from './lib/coalesce.js';
 export {

@@ -97,3 +97,7 @@
 .selects-row + .selects-row {
   margin-top: var(--s2);
 }
+
+.shaper .handle:focus-visible circle:last-child {
+  fill: var(--uv);
+}

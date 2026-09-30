@@ -47,8 +47,8 @@
  * and a curve editor whose handles glide is one you cannot aim at. Only the
  * playhead and the audio move.
  */
-import { For, Show, createMemo, createSignal } from 'solid-js';
-import { Well, Axis, band, INSET, CAPTION, startDrag, setParam, beginGesture, endGesture }
+import { Index, Show, createMemo, createSignal } from 'solid-js';
+import { Well, Axis, band, INSET, CAPTION, startDrag, setParam, beginGesture, endGesture, sliderKey }
   from '@ultraviolet/ui';
 import { P, toNorm } from './msg.js';
 import { duckAt, bounds } from './shape.js';
@@ -185,10 +185,11 @@ export function Shaper(props) {
     const bb = b();
     const floor = 1 - depth(); /* the gain the duck bottoms out at */
     return [
-      { key: 'start', px: x(bb.start), py: yTop(1), xIdx: P.delay },
-      { key: 'bottom', px: x(bb.bottom), py: yTop(floor), xIdx: P.attack, yIdx: P.depth },
-      { key: 'holdEnd', px: x(bb.holdEnd), py: yTop(floor), xIdx: P.hold },
-      { key: 'end', px: x(bb.end), py: yTop(1), xIdx: P.release },
+      { key: 'start', name: 'Delay', px: x(bb.start), py: yTop(1), xIdx: P.delay },
+      { key: 'bottom', name: 'Attack and depth', px: x(bb.bottom), py: yTop(floor),
+        xIdx: P.attack, yIdx: P.depth },
+      { key: 'holdEnd', name: 'Hold', px: x(bb.holdEnd), py: yTop(floor), xIdx: P.hold },
+      { key: 'end', name: 'Release', px: x(bb.end), py: yTop(1), xIdx: P.release },
     ];
   });
 
@@ -275,6 +276,28 @@ export function Shaper(props) {
   let hostEl;
 
   /*
+   * THE KEYBOARD. Each handle is a slider on the parameter it drags: Left and
+   * Right move it along the cycle, and on the bottom handle Up and Down move
+   * the depth -- up is a shallower duck, as dragging up is. Each key is one
+   * committed edit.
+   */
+  const onKey = (hnd, e) => {
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    const apply = (idx, k, sign = 1) => {
+      if (idx === undefined || !k) return false;
+      const now = props.value?.(idx) ?? 0;
+      props.onCommit?.(idx, k.to !== undefined ? k.to : clamp(now + sign * k.delta));
+      return true;
+    };
+    const done = hnd.yIdx !== undefined && (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+      ? apply(hnd.yIdx, sliderKey(e, 'y'), -1)
+      : apply(hnd.xIdx, sliderKey(e, 'x'));
+    if (done) e.preventDefault();
+  };
+  const valueText = (hnd) => [hnd.xIdx, hnd.yIdx].filter((i) => i !== undefined)
+    .map((i) => props.text?.(i) ?? '').filter(Boolean).join(', ');
+
+  /*
    * A shape that cannot finish inside one cycle. Marked rather than
    * accommodated, and in amber because it is the window's one warning.
    *
@@ -332,19 +355,23 @@ export function Shaper(props) {
                 stroke="var(--amber)" stroke-width="2" />
         </Show>
 
-        {/* Inside a <For>, a conditional child MUST be a <Show>: a For
-          * callback's return value is evaluated once, when the signal is still
-          * its empty initial value, so `cond && <g/>` resolves to false and
-          * never comes back (Ring.jsx:159-176). */}
-        <For each={handles()}>{(hnd) => (
-          <g class="handle" onPointerDown={(e) => grab(hnd, e, hostEl)}>
+        {/* <Index>, keyed by position: the four handles are the same four
+          * elements for the window's life, so one keeps focus while the keys
+          * move it -- a <For> over fresh objects rebuilt them on every value. */}
+        <Index each={handles()}>{(h) => (
+          <g class="handle" onPointerDown={(e) => grab(h(), e, hostEl)}
+             tabindex="0" role="slider" aria-label={h().name}
+             aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow={Math.round((props.value?.(h().xIdx) ?? 0) * 100)}
+             aria-valuetext={valueText(h())}
+             onKeyDown={(e) => onKey(h(), e)}>
             {/* A generous invisible target over a small visible dot: a handle
               * you cannot grab reads as a handle that does not work. */}
-            <circle cx={hnd.px} cy={hnd.py} r={HANDLE_R * 3} fill="transparent" />
-            <circle cx={hnd.px} cy={hnd.py} r={HANDLE_R}
+            <circle cx={h().px} cy={h().py} r={HANDLE_R * 3} fill="transparent" />
+            <circle cx={h().px} cy={h().py} r={HANDLE_R}
                     fill="var(--ink)" stroke="var(--bg-000)" stroke-width="1.5" />
           </g>
-        )}</For>
+        )}</Index>
 
         <Axis w={w()} y={h() - INSET - AXIS_H} spanMs={props.spanMs ?? 0}
               markMs={props.markMs ?? 0} />

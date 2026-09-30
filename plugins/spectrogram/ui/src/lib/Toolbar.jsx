@@ -24,7 +24,9 @@ export function Toolbar(props) {
         <Toggle label="bars" value={props.bars} onChange={props.onBars} />
         <Select ariaLabel="Bars" options={BARS.map(String)} value={props.barCount}
                 onChange={props.onBarCount} width={64} />
-        <Button on={props.paused} onClick={props.onPause}>Pause</Button>
+        {/* The transport's pause glyph, lit while the picture is held. */}
+        <Button icon="pause" on={props.paused} onClick={props.onPause}
+                title={props.paused ? 'Resume the picture' : 'Pause the picture'} />
       </div>
     </div>
   );

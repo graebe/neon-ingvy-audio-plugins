@@ -214,7 +214,9 @@ export default function App() {
                 sweep={playSweep()}
                 spanMs={spanMs()}
                 markMs={markMs()}
-                onReset={(idx) => host.reset(idx)} />
+                onReset={(idx) => host.reset(idx)}
+                value={host.value} text={host.text}
+                onCommit={(idx, v) => host.commit(idx, v)} />
       </div>
 
       <div class="knob-row">

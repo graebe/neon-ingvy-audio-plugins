@@ -11,7 +11,7 @@
 import { createSignal, createMemo } from 'solid-js';
 import { EditorFrame, useEditorBridge, createClock } from '@ultraviolet/ui';
 import { createParams } from '@ultraviolet/ui/params';
-import { MSG, NUM_PARAMS } from './lib/msg.js';
+import { MSG, P, NUM_PARAMS } from './lib/msg.js';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
 import { EnvelopePlot } from './lib/EnvelopePlot.jsx';
@@ -172,7 +172,8 @@ export default function App() {
                 ties={ui().ties} depths={ui().depths} cursor={ui().cursor}
                 playhead={playStep()} moving={ui().moving}
                 weights={weights()} {...orderModel()}
-                centre={String(ui().length)} label="STEPS" />
+                centre={String(ui().length)} label="STEPS"
+                onLength={(steps) => host.commit(P.length, (steps - 1) / 127)} />
           <EnvelopePlot params={plotParams()} w={240} h={104} />
         </div>
         <Panels host={host}

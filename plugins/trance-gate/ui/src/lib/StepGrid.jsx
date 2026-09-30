@@ -10,8 +10,8 @@ import { For, Show, createSignal } from 'solid-js';
 /* The gesture itself lives in steps.js, shared with the ring -- those rules
  * are each a fix for something that read as the click half-failing, and a
  * second copy of them would have drifted. */
-import { padGesture } from './steps.js';
-import { EditField } from '@ultraviolet/ui';
+import { padGesture, pressStep, orderPress, setStep, setDepth, MODE } from './steps.js';
+import { EditField, padKey } from '@ultraviolet/ui';
 
 const COLS = 16, STEP = 40, GAP = 8;
 
@@ -19,7 +19,35 @@ export default function StepGrid(props) {
   const n = () => Math.max(1, props.length ?? 16);
   const rows = () => Math.max(1, Math.ceil(n() / COLS));
 
-  const onDown = (i, e) => padGesture(i, e, props);
+  const onDown = (i, e) => { setFocus(i); padGesture(i, e, props); };
+
+  /*
+   * THE KEYBOARD. One pad is in the tab order (the last one touched); the
+   * arrows move between pads, Space or Enter does what a click does (shift: a
+   * tie), and Alt with Up/Down sets the amount -- what a vertical drag does.
+   */
+  let gridEl;
+  const [focus, setFocus] = createSignal(0);
+  const onKey = (i, e) => {
+    const k = padKey(e, i, n(), COLS);
+    if (!k) return;
+    e.preventDefault();
+    if (k.move !== undefined) {
+      setFocus(k.move);
+      gridEl?.querySelector(`[data-step="${k.move}"]`)?.focus();
+    } else if (k.toggle) {
+      if (!orderPress(i, props)) pressStep(i, props, k.tie);
+    } else if (k.depth !== undefined) {
+      const amt = Math.min(1, Math.max(0, (props.depths?.[i] ?? 1) + k.depth));
+      if (amt <= 0.02) setStep(i, MODE.off);
+      else { if (!props.steps?.[i]) setStep(i, MODE.on); setDepth(i, amt); }
+    }
+  };
+  const describe = (i) => {
+    const state = props.ties?.[i] ? 'tie' : props.steps?.[i] ? 'on' : 'off';
+    const amt = props.steps?.[i] ? `, ${Math.round((props.depths?.[i] ?? 1) * 100)} %` : '';
+    return `Step ${i + 1}, ${state}${amt}`;
+  };
 
   /*
    * THE BORDER IS WHAT YOU DREW. THE FILL IS WHAT YOU HEAR.
@@ -86,12 +114,16 @@ export default function StepGrid(props) {
   };
 
   return (
-    <div class="grid" style={{ width: `${COLS * STEP + (COLS - 1) * GAP}px` }}>
+    <div class="grid" ref={gridEl} role="grid" aria-label="Steps"
+         style={{ width: `${COLS * STEP + (COLS - 1) * GAP}px` }}>
       <For each={Array.from({ length: rows() }, (_, r) => r)}>{(r) => (
-        <div class="grid-row">
+        <div class="grid-row" role="row">
           <For each={Array.from({ length: Math.min(COLS, n() - r * COLS) },
                                 (_, k) => r * COLS + k)}>{(i) => (
-            <div classList={cls(i)} onPointerDown={(e) => onDown(i, e)}>
+            <div classList={cls(i)} role="gridcell" data-step={i}
+                 tabindex={focus() === i ? 0 : -1} aria-label={describe(i)}
+                 aria-selected={!!props.steps?.[i]}
+                 onPointerDown={(e) => onDown(i, e)} onKeyDown={(e) => onKey(i, e)}>
               {/* THE AMOUNT IS THE LIT HEIGHT, FROM THE BOTTOM -- a lit height
                 * reading as a level is how every step sequencer works, and it
                 * is what the hardware does. */}
