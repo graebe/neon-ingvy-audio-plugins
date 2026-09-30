@@ -38,6 +38,9 @@ mod bands;
 mod fft;
 mod window;
 
+#[cfg(test)]
+mod reference;
+
 pub use bands::{
     amplitude_to_byte, byte_to_db, centres_for, clash_cell, clash_column, db_span_to_byte,
     db_to_byte, sum_column, Band, Bands,

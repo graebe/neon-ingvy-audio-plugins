@@ -172,4 +172,26 @@ mod tests {
         assert!(mag(bin - 1) < 1.0 && mag(bin + 1) < 1.0, "leaked into a neighbour");
         assert!(mag(0) < 1.0, "energy at DC");
     }
+    /// Timings, not assertions: `cargo test --release -p spectro-core --lib
+    /// -- --ignored --nocapture fft_timings`.
+    #[test]
+    #[ignore]
+    fn fft_timings() {
+        for n in [1024usize, 8192, 16384] {
+            let fft = Fft::new(n);
+            let src: Vec<f32> = (0..n).map(|i| ((i * 7919) % 1000) as f32 / 500.0 - 1.0).collect();
+            let (mut re, mut im) = (vec![0.0f32; n], vec![0.0f32; n]);
+            let iters = (50_000_000 / (n * n.trailing_zeros() as usize)).max(20);
+            let mut sink = 0.0f32;
+            let t = std::time::Instant::now();
+            for _ in 0..iters {
+                re.copy_from_slice(&src);
+                im.fill(0.0);
+                fft.forward(&mut re, &mut im);
+                sink += re[1];
+            }
+            let us = t.elapsed().as_secs_f64() * 1e6 / iters as f64;
+            println!("fft n={n:5}: {us:8.2} us ({iters} runs, {sink:.1})");
+        }
+    }
 }
