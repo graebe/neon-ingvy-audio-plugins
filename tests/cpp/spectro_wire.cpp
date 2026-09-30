@@ -41,21 +41,21 @@ using namespace spectro::wire;
 /*
  * THE CASES THE TABLE PINS, chosen rather than exhaustive.
  *
- * Every one of them is a boundary the hand-written nibble map on the other
- * side can land wrong on, and none of them is visible in a picture.
+ * Every one of them is a boundary a byte decoder on the other side can land
+ * wrong on -- a sign, a text decode, a stray NUL -- and none of them is
+ * visible in a picture.
  */
 static std::vector<std::vector<unsigned char>> table_cases()
 {
   std::vector<std::vector<unsigned char>> cases;
 
-  /* 9 -> A is char code 57 -> 65, with six characters in between that are
-   * neither. A decoder that subtracts '0' throughout is correct for exactly
-   * the first ten values and plausible for the rest. */
+  /* Every value. Past 0x7F a byte read as UTF-8 text is mangled, and 0x00
+   * ends a C string -- the two ways a binary payload goes wrong in transit. */
   std::vector<unsigned char> all256(256);
   for (int i = 0; i < 256; i++) all256[size_t(i)] = (unsigned char) i;
   cases.push_back(all256);
 
-  /* The ends, and the two values either side of the nibble boundary. */
+  /* The ends, and either side of the sign bit and of a nibble. */
   cases.push_back({0, 1, 15, 16, 127, 128, 254, 255});
 
   /* Silence: every byte the floor. A decoder that drops leading zeros turns
@@ -72,9 +72,38 @@ static std::vector<std::vector<unsigned char>> table_cases()
 }
 
 /*
+ * THE PAYLOAD AS THE EDITOR RECEIVES IT: iPlug2's SendArbitraryMsgFromDelegate
+ * base64-encodes the bytes, and that is what SAMFD hands the page. The table
+ * carries it in the same form, so the editor's test decodes exactly what the
+ * WebView would.
+ */
+static std::string base64(const std::string& in)
+{
+  static const char* const k = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  size_t i = 0;
+  for (; i + 2 < in.size(); i += 3)
+  {
+    const unsigned v = (unsigned char) in[i] << 16 | (unsigned char) in[i + 1] << 8 | (unsigned char) in[i + 2];
+    out += k[v >> 18]; out += k[(v >> 12) & 63]; out += k[(v >> 6) & 63]; out += k[v & 63];
+  }
+  if (i + 1 == in.size())
+  {
+    const unsigned v = (unsigned char) in[i] << 16;
+    out += k[v >> 18]; out += k[(v >> 12) & 63]; out += "==";
+  }
+  else if (i + 2 == in.size())
+  {
+    const unsigned v = (unsigned char) in[i] << 16 | (unsigned char) in[i + 1] << 8;
+    out += k[v >> 18]; out += k[(v >> 12) & 63]; out += k[(v >> 6) & 63]; out += '=';
+  }
+  return out;
+}
+
+/*
  * THE LINE FORMAT, and why it carries the bytes twice.
  *
- *     <cols> <bands> <b,b,b,...> <encoded>
+ *     <cols> <bands> <b,b,b,...> <encoded, as base64>
  *
  * The decimals are the INPUT and the last field is what this encoder made of
  * it. Each side of the wire checks itself against the table and neither is
@@ -92,8 +121,10 @@ static void emit_case(FILE* out, const unsigned char* data, int cols, int bands)
   fprintf(out, "%d %d ", cols, bands);
   for (int i = 0; i < cols * bands; i++)
     fprintf(out, "%s%d", i ? "," : "", int(data[i]));
-  fprintf(out, " %s\n", encode_columns(data, cols, bands, 0).c_str());
+  fprintf(out, " %s\n", base64(encode_columns(data, cols, bands, 0)).c_str());
 }
+
+static void dump_state(FILE* out);
 
 static void dump_table(FILE* out)
 {
@@ -108,6 +139,43 @@ static void dump_table(FILE* out)
 
   const unsigned char three[9] = {0, 128, 255, 255, 0, 128, 128, 255, 0};
   emit_case(out, three, 3, 3);
+
+  dump_state(out);
+}
+
+/*
+ * THE SESSION'S STATE, the message an editor applies before it pushes
+ * anything. Lines start with "state" so the column cases stay one shape:
+ *
+ *     state <f_min> <f_max> <view> <a> <b> <on> <floor> <balance> <encoded>
+ */
+struct StateCase
+{
+  float fMin, fMax;
+  std::vector<int> view;
+  int a, b;
+  bool on;
+  float floorDb, balanceDb;
+};
+
+static void dump_state(FILE* out)
+{
+  const StateCase cases[] = {
+    {10.f, 20000.f, {0}, 0, 1, false, -60.f, 12.f},          /* a fresh instance */
+    {40.f, 800.f, {0, 2}, 1, 2, true, -60.f, 12.f},          /* Bass, two channels */
+    {2000.f, 20000.f, {1, 2, 3}, 3, 0, true, -48.5f, 6.25f}, /* a saved clash */
+    {200.f, 4000.f, {}, 0, 1, false, -60.f, 12.f},           /* an empty view is the input */
+  };
+  for (const StateCase& c : cases)
+  {
+    std::string view;
+    for (size_t i = 0; i < c.view.size(); i++)
+      view += (i ? "," : "") + std::to_string(c.view[i]);
+    fprintf(out, "state %.2f %.2f %s %d %d %d %.2f %.2f %s\n", double(c.fMin), double(c.fMax),
+            view.empty() ? "-" : view.c_str(), c.a, c.b, c.on ? 1 : 0,
+            double(c.floorDb), double(c.balanceDb),
+            encode_state(c.fMin, c.fMax, c.view, c.a, c.b, c.on, c.floorDb, c.balanceDb).c_str());
+  }
 }
 
 static int verify_table(const char* path)
@@ -198,27 +266,22 @@ TEST_CASE("the header names the batch's shape")
   CHECK(encode_columns(c, 2, 3, 2).substr(0, 6) == "2:2:3:");
 }
 
-TEST_CASE("every byte value survives the nibble table")
+TEST_CASE("every byte value is carried as itself, zero and 0xFF included")
 {
   std::vector<unsigned char> all(256);
   for (int i = 0; i < 256; i++) all[size_t(i)] = (unsigned char) i;
 
   const std::string s = encode_columns(all.data(), 1, 256, 0);
-  const std::string body = s.substr(s.find_last_of(':') + 1);
-
-  REQUIRE(body.size() == 512);
+  REQUIRE(s.size() == 8 + 256);
+  CHECK(s.compare(0, 8, "0:1:256:") == 0);
   for (int i = 0; i < 256; i++)
-  {
-    const std::string pair = body.substr(size_t(i) * 2, 2);
-    CHECK(std::stoi(pair, nullptr, 16) == i);
-  }
+    CHECK((unsigned char) s[8 + size_t(i)] == i);
 }
 
-TEST_CASE("the hex is upper case, because the decoder's nibble map assumes it")
+TEST_CASE("a column is one byte a band, not two hex characters")
 {
   const unsigned char c[3] = {0xAB, 0xCD, 0xEF};
-  const std::string s = encode_columns(c, 1, 3, 0);
-  CHECK(s == "0:1:3:ABCDEF");
+  CHECK(encode_columns(c, 1, 3, 0) == std::string("0:1:3:\xAB\xCD\xEF", 9));
 }
 
 TEST_CASE("columns are laid out one after another, not interleaved")
@@ -226,8 +289,8 @@ TEST_CASE("columns are laid out one after another, not interleaved")
   /* Two columns of three bands. Transposed, this reads 04 15 26 -- a picture
    * rotated by 90 degrees, which at a glance is still a spectrogram. */
   const unsigned char c[6] = {0, 1, 2, 4, 5, 6};
-  CHECK(encode_columns(c, 2, 3, 0) == "0:2:3:000102040506");
-  CHECK(encode_columns(c, 2, 3, 1) == "1:2:3:000102040506");
+  CHECK(encode_columns(c, 2, 3, 0) == std::string("0:2:3:\0\1\2\4\5\6", 12));
+  CHECK(encode_columns(c, 2, 3, 1) == std::string("1:2:3:\0\1\2\4\5\6", 12));
 }
 
 TEST_CASE("a batch with nothing in it encodes to nothing at all")
@@ -280,6 +343,17 @@ TEST_CASE("a range splits at the colon")
   REQUIRE(parse_range("2000:16000", lo, hi));
   CHECK(lo == doctest::Approx(2000.f));
   CHECK(hi == doctest::Approx(16000.f));
+}
+
+/* ------------------------------------------------------------------ state */
+
+TEST_CASE("the state names the range, the view, the comparison and the clash")
+{
+  CHECK(encode_state(40.f, 800.f, {0, 2}, 1, 2, true, -60.f, 12.f) ==
+        "40.00:800.00:0,2:1:2:1:-60.00:12.00");
+  /* An empty view is the input alone: the plugin never shows nothing. */
+  CHECK(encode_state(10.f, 20000.f, {}, 0, 1, false, -60.f, 12.f) ==
+        "10.00:20000.00:0:0:1:0:-60.00:12.00");
 }
 
 /* ------------------------------------------------------------------- sync */

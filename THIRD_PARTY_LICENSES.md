@@ -70,7 +70,12 @@ bundles a package that has no row in the table above
 
 **JetBrains Mono** (© 2020 The JetBrains Mono Project Authors, **SIL Open Font
 License 1.1**), `Regular` and `Medium`. It is the design system's one typeface
-and everything that draws the design system bundles it:
+and everything that draws the design system bundles it. The copy is the kit's
+(`ui-kit/src/fonts`): subset to the characters the editors draw and converted to
+WOFF by `scripts/subset-fonts.sh`, which the OFL permits; each editor carries it
+inside its stylesheet (`web/assets/style.css`) and the site as an emitted asset.
+It keeps its name: the OFL's Reserved Font Name clause does not apply, JetBrains
+Mono declaring none.
 
 | Bundle | Path inside it |
 |---|---|
@@ -80,10 +85,10 @@ and everything that draws the design system bundles it:
 | `NISideChain.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
 | the documentation site | `/neon-ingvy-audio-plugins/fonts/` |
 
-**The OFL requires its text to travel beside the font**, so `OFL.txt` sits in
-each `fonts/` directory — copied into every plugin bundle with the editor, and
-into the site's by `site/scripts/stage-assets.mjs`, which fails the build if it
-is not there. The OFL is permissive and GPL-compatible.
+**The OFL requires its text to travel with the font**, so `OFL.txt` sits beside
+it in `ui-kit/src/fonts` and in each editor's `web/fonts/` directory — copied
+into every plugin bundle with the editor, and into the site's `/fonts/` by
+`site/scripts/stage-assets.mjs`, which fails the build if it is not there. The OFL is permissive and GPL-compatible.
 
 ## The engines — this repository's own
 

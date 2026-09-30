@@ -26,7 +26,7 @@ enum EMsgTags
 {
   kMsgUiState = 64,  /* -> the engine's `ui` readout, once a frame          */
   kMsgParams = 65,   /* -> the `params` readout, all fifteen values         */
-  kMsgScope = 66,    /* -> "<cols>:<seen flags>:<hex>" -- dry, wet and gain */
+  kMsgScope = 66,    /* -> "<cols>:" + seen, dry, wet, gain: 6 bytes a column */
   kMsgStageMs = 67,  /* -> the four stage lengths in ms, for the axis       */
   kMsgBuses = 68,    /* -> "<keyConnected>:<keyIsMain>"                     */
 };

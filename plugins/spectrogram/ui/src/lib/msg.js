@@ -10,7 +10,7 @@ import { SHELL_MSG } from '@ultraviolet/ui/shell';
 /* EMsgTags in Spectrogram.h, after the shell's. */
 export const MSG = {
   ...SHELL_MSG,
-  cols: 64,   /* <- plugin: "<ch>:<cols>:<bands>:<hex>", oldest column first */
+  cols: 64,   /* <- plugin: "<ch>:<cols>:<bands>:" + raw bytes, oldest column first */
   axis: 65,   /* <- plugin: the band centre frequencies, comma separated */
   /*
    * THE HOST'S CLOCK, every idle tick whether or not a column came with it.
@@ -29,6 +29,10 @@ export const MSG = {
   /* <- plugin: the clash mask, in the same shape as a column batch, tagged with
    * the source it was measured against the own channel. */
   clashCols: 68,
+  /* <- plugin, on ready: "<f_min>:<f_max>:<view>:<a>:<b>:<on>:<floor>:<balance>"
+   * -- what the session is looking at. Applied before this editor pushes
+   * anything (lib/session.js). */
+  state: 69,
   range: 96,  /* -> plugin: "<f_min>:<f_max>" -- the zoom */
   /* -> plugin: "<slot>,<slot>,..." -- which buses to open, in order.
    * DERIVED from the view and the comparison rather than being a control of

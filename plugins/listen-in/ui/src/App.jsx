@@ -16,49 +16,29 @@
  * displays it -- so a slot changed by automation, by a preset recall or by
  * another editor needs no separate path to arrive here. It already does.
  */
-import { createSignal, onMount, onCleanup } from 'solid-js';
-import { onMessage, sendMessage, setParam, beginGesture, endGesture } from '@ultraviolet/ui';
-import { Ground, Hint, Select, createMotion } from '@ultraviolet/ui';
+import { createSignal } from 'solid-js';
+import { sendMessage, EditorFrame, useEditorBridge } from '@ultraviolet/ui';
+import { createParams, ParamSelect } from '@ultraviolet/ui/params';
 import { MSG, STATUS } from './lib/msg.js';
 import { decodeState, meterFraction, SLOTS, STATUS_TEXT } from './lib/state.js';
 import Meter from './lib/Meter.jsx';
 import NameField from './lib/NameField.jsx';
 
-/* Mirrored by PLUG_WIDTH in config.h and by `main` in app.css. */
+/* Mirrored by PLUG_WIDTH and PLUG_HEIGHT in config.h. */
 const DESIGN_W = 360;
+const DESIGN_H = 232;
 /* kSlot in ListenIn.h. The bridge addresses parameters by index. */
 const P_SLOT = 0;
-
-/* The parameter wire is NORMALISED 0..1 in both directions -- see ParamSelect
- * in the Trance Gate's editor, which states the same conversion for the same
- * reason. Sixteen slots, so slot 1 is 0.0 and slot 16 is 1.0. */
-const toNorm = (slot) => (SLOTS.length > 1 ? (slot - 1) / (SLOTS.length - 1) : 0);
+const SLOT_NAMES = SLOTS.map(String);
 
 export default function App() {
+  /* The Bus is the one host parameter; the store binds the Select to it. */
+  const host = createParams(1);
   const [state, setState] = createSignal({ slot: 1, status: STATUS.idle, peak: 0 });
   const [label, setLabel] = createSignal('');
-  /* The Motion switch, remembered between openings. Not a host parameter -- see
-   * the kit's lib/motion.js for why a view is not something to automate. */
-  const [motion, setMotion] = createMotion('listen-in');
-  /* The ground's handle, set by <Ground ref>. A kick arrives as a message and is
-   * handed straight to it. */
-  let ground = null;
 
-  /*
-   * THE PAGE IS SCALED, NOT LAID OUT FLUIDLY -- the Trance Gate's approach for
-   * the Trance Gate's reason: the numbers in app.css ARE the design, and a
-   * fluid layout that happens to look close is a different drawing.
-   */
-  const fit = () => {
-    const el = document.querySelector('main');
-    if (!el) return;
-    const k = Math.max(0.1, (window.innerWidth || DESIGN_W) / DESIGN_W);
-    el.style.transformOrigin = 'top left';
-    el.style.transform = `scale(${k})`;
-  };
-
-  onMount(() => {
-    const offMsg = onMessage((tag, text) => {
+  const bridge = useEditorBridge({
+    onMessage: (tag, text) => {
       if (tag === MSG.state) {
         const next = decodeState(text);
         /* A malformed payload keeps what we had. A dropped frame should look
@@ -66,34 +46,9 @@ export default function App() {
         if (next) setState(next);
       } else if (tag === MSG.label) {
         setLabel(text ?? '');
-      } else if (tag === MSG.ground) {
-        /* One message, one ring. A malformed payload is dropped rather than
-         * turned into a full-strength kick. */
-        const strength = Number.parseFloat(text);
-        if (Number.isFinite(strength)) ground?.trigger(strength);
       }
-    });
-
-    window.addEventListener('resize', fit);
-    fit();
-
-    /* LAST, and it must be: see MSG.ready. */
-    sendMessage(MSG.ready);
-
-    onCleanup(() => {
-      offMsg();
-      window.removeEventListener('resize', fit);
-    });
+    },
   });
-
-  /* A gesture around the change is what lets a host record it as one edit
-   * rather than as a value that appeared from nowhere. */
-  const chooseSlot = (i) => {
-    const slot = SLOTS[i];
-    beginGesture(P_SLOT);
-    setParam(P_SLOT, toNorm(slot));
-    endGesture(P_SLOT);
-  };
 
   const commitLabel = (text) => {
     setLabel(text);
@@ -126,39 +81,28 @@ export default function App() {
   };
 
   return (
-    <main>
-      {/* FIRST CHILD OF THE WINDOW, which is the design system's contract for a
-        * Ground. There are no panels in this window, so the only thing that
-        * emits and reflects is the window border itself. */}
-      <Ground enabled={motion()} ref={(h) => { ground = h; }} />
-
-      <div class="row title-row">
-        <span class="title t-value">NI Listen-In</span>
-        <span
-          class="status t-label"
-          classList={{ 'status-warn': state().status !== STATUS.live }}
-        >
+    /* No panels in this window, so the only thing the ground's rings reflect
+     * off is the window border itself. */
+    <EditorFrame width={DESIGN_W} height={DESIGN_H} motionKey="listen-in"
+                 bridge={bridge} hint={hints()}>
+      {/* The window does not repeat the plugin's name -- the host shows it. The
+        * status word is the one fact a person opens this window to read. */}
+      <div class="row status-row">
+        <span class="status t-label"
+              classList={{ 'status-warn': state().status !== STATUS.live }}>
           {STATUS_TEXT[state().status]}
         </span>
       </div>
 
       <div class="row controls">
-        <Select
-          label="Bus"
-          labelWidth={28}
-          width={64}
-          options={SLOTS.map(String)}
-          value={SLOTS.indexOf(state().slot)}
-          onChange={chooseSlot}
-        />
+        <ParamSelect params={host} idx={P_SLOT} label="Bus" labelWidth={28} width={64}
+                     options={SLOT_NAMES} />
         <NameField value={label()} onCommit={commitLabel} />
       </div>
 
       <div class="row">
         <Meter value={meterFraction(state().peak)} active={live()} />
       </div>
-
-      <Hint clauses={hints()} motion={motion()} onMotion={setMotion} />
-    </main>
+    </EditorFrame>
   );
 }

@@ -12,7 +12,7 @@
  * WHAT CROSSES A THREAD. ProcessAudio copies the mono sum into the receiver's
  * ring and nothing else; the receiver's own worker thread runs the transforms
  * and leaves finished columns in lock-free rings; OnIdle takes one tick's
- * picture (srecv_frame) and hands it to the WebView as hex.
+ * picture (srecv_frame) and hands it to the WebView as bytes.
  */
 #pragma once
 
@@ -39,7 +39,7 @@ enum EParams
  * in ni/Editor.h. */
 enum EMsgTags
 {
-  kMsgCols = 64,       /* -> "<ch>:<cols>:<bands>:<hex>", oldest column first     */
+  kMsgCols = 64,       /* -> "<ch>:<cols>:<bands>:" + raw bytes, oldest first     */
   kMsgAxis = 65,       /* -> the band centre frequencies, comma separated         */
   /* -> the host's clock, every tick whether or not a column went with it:
    * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>:<sampleRate>". How many
@@ -49,6 +49,9 @@ enum EMsgTags
    * a Listen-In appears at human speed. */
   kMsgSources = 67,
   kMsgClashCols = 68,  /* -> the clash mask, shaped as a column batch             */
+  /* -> on ready: "<f_min>:<f_max>:<view>:<a>:<b>:<on>:<floor_db>:<balance_db>",
+   * what the session is looking at, applied by the editor before it pushes. */
+  kMsgState = 69,
   kMsgRange = 96,      /* <- "<f_min>:<f_max>" -- the zoom                        */
   /* <- "<slot>,<slot>,..." -- which buses to open, in order; empty is the own
    * channel alone. Derived by the editor from the view and the comparison. */
@@ -77,7 +80,7 @@ public:
    * payload provably fit -- columns x bands is what the cap constrains.
    */
   static constexpr int kMaxColsPerTick = 32;
-  static_assert(ni::wire::framed_size(kMaxColsPerTick * SPECTRO_BANDS * 2 + 32)
+  static_assert(ni::wire::framed_size(kMaxColsPerTick * SPECTRO_BANDS + 32)
                     < ni::editor::kMaxJSString,
                 "a full tick no longer fits the WebView's string cap -- "
                 "kMaxColsPerTick and SPECTRO_BANDS are what constrain it");
@@ -100,6 +103,8 @@ private:
   void SendSync();
   /* The buses that exist, for the editor's picker. Probing creates nothing. */
   void SendSources();
+  /* What the session is looking at, for an editor that has just opened. */
+  void SendState();
 
   /*
    * THE RECEIVER: the own channel and every bus listened to, fed in step so
@@ -119,8 +124,8 @@ private:
   /* The mono sum, sized in ResetAudio; one tick's picture and clash, sized once. */
   std::vector<float> mMono;
   std::vector<unsigned char> mSum, mClash;
-  /* The hex payload, reused so OnIdle does not allocate every tick. */
-  std::string mHex;
+  /* The column payload, reused so OnIdle does not allocate every tick. */
+  std::string mPayload;
 
   /* WHAT THE SESSION IS LOOKING AT: saved state, not parameters. Channel 0 is
    * this track. Main thread. */
@@ -131,6 +136,11 @@ private:
   bool mClashOn = false;
   float mClashFloorDb = -60.0f;
   float mClashBalanceDb = 12.0f;
+
+  /* The zoom, as the editor asked for it: kept here so a rebuilt receiver, a
+   * reopened editor and a saved session all get it back. */
+  float mRangeLo = SPECTRO_F_MIN;
+  float mRangeHi = SPECTRO_F_MAX;
 
   /* The source list's slow timer. */
   int mSourceTick = 0;

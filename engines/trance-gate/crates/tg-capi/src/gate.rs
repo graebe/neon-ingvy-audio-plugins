@@ -20,7 +20,6 @@ the last step rather than silence.
 */
 
 use ni_dsp::Transport;
-use std::fmt::Write;
 use tg_core::Instance;
 
 const BPM: f32 = 120.0;
@@ -39,9 +38,10 @@ pub fn encode_gain(v: f32) -> u8 {
     (c * 255.0 + 0.5) as u8
 }
 
-/// `"<length>:<per_step>:<hex>"`, two upper-case hex digits per sample of one
-/// cycle -- or None for an empty state or a patch with no step length.
-pub fn render(state: &str) -> Option<String> {
+/// `"<length>:<per_step>:"` then one raw byte of gain per sample of one cycle
+/// -- or None for an empty state or a patch with no step length. Binary: the
+/// editor's transport base64-encodes it, so hex inside it would only double it.
+pub fn render(state: &str) -> Option<Vec<u8>> {
     if state.is_empty() {
         return None;
     }
@@ -69,11 +69,9 @@ pub fn render(state: &str) -> Option<String> {
         scratch.process_f32_split(&mut l[off..off + step], &mut r[off..off + step], step, Some(&t));
     }
 
-    let mut out = String::with_capacity(frames * 2 + 16);
-    let _ = write!(out, "{length}:{step}:");
-    for &g in &l[frames..] {
-        let _ = write!(out, "{:02X}", encode_gain(g));
-    }
+    let mut out = format!("{length}:{step}:").into_bytes();
+    out.reserve(frames);
+    out.extend(l[frames..].iter().map(|&g| encode_gain(g)));
     Some(out)
 }
 
@@ -122,11 +120,10 @@ mod tests {
             inst.set_param("step", on);
         }
         let got = render(&state_of(&inst)).expect("a patch with steps renders");
-        let (head, hex) = got.split_at(got.match_indices(':').nth(1).unwrap().0 + 1);
-        assert_eq!(head, "4:64:");
-        assert_eq!(hex.len(), 4 * 64 * 2);
-        assert!(hex.bytes().all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b)));
-        let byte = |i: usize| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).unwrap();
+        let (head, body) = got.split_at(5);
+        assert_eq!(head, b"4:64:");
+        assert_eq!(body.len(), 4 * 64, "one raw byte a sample");
+        let byte = |i: usize| body[i];
         /* Mid-step: open on an on step, shut once an off step's release is done. */
         assert!(byte(32) > 200, "step 0 is open");
         assert!(byte(64 + 60) < 20, "step 1 has closed by its end");

@@ -19,7 +19,9 @@
  * meterFraction in state.js. The component draws; it decides nothing. */
 export function Meter(props) {
   return (
-    <div class="meter" role="meter" aria-label="Input level">
+    <div class="meter" role="meter" aria-label="Input level"
+         aria-valuemin="0" aria-valuemax="100"
+         aria-valuenow={Math.round((props.value ?? 0) * 100)}>
       <div
         class="meter-fill"
         classList={{ 'meter-fill-off': !props.active }}

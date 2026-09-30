@@ -27,7 +27,7 @@
  */
 import { sendMessage } from '@ultraviolet/ui';
 import { MSG } from './msg.js';
-import { startDrag } from '@ultraviolet/ui';
+import { startDrag, createCoalescer } from '@ultraviolet/ui';
 
 export const MODE = { off: 0, on: 1, tie: 2 };
 
@@ -37,6 +37,13 @@ export const setStep = (i, mode) => sendMessage(MSG.setStep, `${i}:${mode}`);
 /** A step's amount, 0..1. */
 export const setDepth = (i, amount) =>
   sendMessage(MSG.setDepth, `${i}:${Math.max(0, Math.min(1, amount)).toFixed(4)}`);
+
+/*
+ * A DRAG'S AMOUNTS, AT MOST ONCE A FRAME. pointermove fires far faster than
+ * anything can be drawn or heard, and each setDepth is a message across the
+ * bridge and an edit for the audio thread.
+ */
+const depths = createCoalescer((i, amount) => setDepth(i, amount));
 
 /**
  * A step's place in the fade's ARRIVAL ORDER, 1..N.
@@ -126,9 +133,9 @@ export function padGesture(i, e, model) {
       moved = true;
     }
     const amt = 1 - (ev.clientY - box.top) / box.height;
-    if (amt <= 0.02) setStep(i, MODE.off);
-    else { if (!model.steps?.[i]) setStep(i, MODE.on); setDepth(i, amt); }
-  });
+    if (amt <= 0.02) { depths.flush(); setStep(i, MODE.off); }
+    else { if (!model.steps?.[i]) setStep(i, MODE.on); depths.push(i, amt); }
+  }, () => depths.flush());
 }
 
 /**

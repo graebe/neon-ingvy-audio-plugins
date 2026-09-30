@@ -27,8 +27,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CPP = join(HERE, '..', '..', 'Params.cpp');
 
 /* The C++ enum name for each parameter this test covers. Only the continuous
- * ones: an enum parameter's range is its option count, which COUNTS already
- * carries and ParamSelect derives from. */
+ * ones: an enum parameter's range is its option count, which ParamSelect
+ * takes from the options it is given. */
 const ENUM_NAME = {
   kDelay: P.delay,
   kAttack: P.attack,
@@ -106,4 +106,22 @@ test('out of range clamps rather than extrapolating', () => {
     assert.equal(fromNorm(idx, -5), lo);
     assert.equal(fromNorm(idx, 5), hi);
   }
+});
+
+/*
+ * THE HANDLE UNDER THE POINTER. While a handle is dragged the shape is drawn
+ * from the parameters the drag writes, converted through these same ranges,
+ * rather than from the engine's readout a tick later.
+ */
+test('the held shape is the parameters, in the engine\'s units', async () => {
+  const { shapeFromNorm } = await import('../src/lib/msg.js');
+  const norm = { [P.delay]: 0.6, [P.attack]: 0.05, [P.hold]: 0.1, [P.release]: 0.25, [P.depth]: 0.8 };
+  const s = shapeFromNorm((i) => norm[i], { curve: 2, cycle: true, delay: 99 });
+  assert.equal(s.curve, 2);
+  assert.equal(s.cycle, true);
+  assert.ok(Math.abs(s.delay - 20) < 1e-9);
+  assert.ok(Math.abs(s.attack - 10) < 1e-9);
+  assert.ok(Math.abs(s.hold - 20) < 1e-9);
+  assert.ok(Math.abs(s.release - 50) < 1e-9);
+  assert.ok(Math.abs(s.depth - 80) < 1e-9);
 });

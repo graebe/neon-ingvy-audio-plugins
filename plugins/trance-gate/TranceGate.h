@@ -28,7 +28,7 @@ enum EMsgTags
 {
   kMsgUiState = 64,       /* -> the engine's `ui` readout, once a frame          */
   kMsgParams = 65,        /* -> the `params` readout (fifteen values + width_ms) */
-  kMsgScope = 66,         /* -> "<cols>:<cycleMs>:<head>:<hex>", the capture     */
+  kMsgScope = 66,         /* -> "<cols>:<cycleMs>:<head>:" + 4 bytes a column    */
   kMsgPatch = 67,         /* <-> the state blob, for copy and paste              */
   kMsgSetStep = 96,       /* <- "<index>:<0 off|1 on|2 tie>"                     */
   kMsgSetDepth = 97,      /* <- "<index>:<0..1>"                                 */
@@ -40,6 +40,8 @@ enum EMsgTags
   kMsgRandomize = 104,
   /* -> the gate across one cycle as the engine applies it (tg_core_render_gate) */
   kMsgGate = 105,
+  /* -> the envelope plot's gated and dialled curves (tg_core_render_envelope) */
+  kMsgEnvelope = 106,
 };
 
 class TranceGate final : public ni::WebPlugin
@@ -63,6 +65,11 @@ private:
   void OnEditorIdle() override;
   void OnEditorReady() override;
   bool OnEditorMessage(int tag, const std::string& arg) override;
+  /* The stages read in the unit Env Time asks for (Params.cpp). */
+  void FormatDisplay(int paramIdx, WDL_String& str) const override;
+  double ParseDisplay(int paramIdx, const char* text) const override;
+  /* The gate's open time in ms, as the engine last published it; 0 unknown. */
+  double WidthMs() const;
 
   /* The fifteen parameters into the engine the shell lent this block. */
   void PushParams(tg_core_t* core);
@@ -77,6 +84,10 @@ private:
   ni::Scope<kScopeCols> mScope;
   /* The patch the last curve was rendered from. Main thread. */
   std::string mGateState;
+  /* The stage readouts' unit and scale as the editor was last told them, so a
+   * tempo, Width or Env Time change re-sends them. Main thread. */
+  bool mStageMs = false;
+  double mStageWidthMs = -1.0;
 
   /* iPlug2's `sample` is double and the engine's float path is the one the
    * golden render pins. Sized in ResetAudio, never on the audio thread. */

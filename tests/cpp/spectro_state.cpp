@@ -46,7 +46,8 @@ bool same(const st::Fields& a, const st::Fields& b)
 {
   return a.sources == b.sources && a.clashFloorDb == b.clashFloorDb &&
          a.clashBalanceDb == b.clashBalanceDb && a.view == b.view && a.cmpA == b.cmpA &&
-         a.cmpB == b.cmpB && a.clashOn == b.clashOn;
+         a.cmpB == b.cmpB && a.clashOn == b.clashOn && a.rangeLo == b.rangeLo &&
+         a.rangeHi == b.rangeHi;
 }
 
 bool same_bytes(const IByteChunk& a, const IByteChunk& b)
@@ -66,6 +67,8 @@ TEST_CASE("a session: save, a fresh instance, load, save again")
   a.f.cmpA = 2;
   a.f.cmpB = 3;
   a.f.clashOn = true;
+  a.f.rangeLo = 40.f;
+  a.f.rangeHi = 800.f;
   IByteChunk first;
   REQUIRE(a.save(first));
 
@@ -86,6 +89,21 @@ TEST_CASE("an earlier build's chunk -- the selection only, no header -- still lo
   CHECK(b.load(legacy) == legacy.Size());
   CHECK(b.f.sources == std::vector<unsigned int>{3, 4});
   CHECK(same([] { st::Fields d; d.sources = {3, 4}; return d; }(), b.f));
+}
+
+TEST_CASE("the zoom survives a save and a reload")
+{
+  Instance a;
+  a.f.rangeLo = 2000.f;
+  a.f.rangeHi = 20000.f;
+  IByteChunk chunk;
+  REQUIRE(a.save(chunk));
+
+  Instance b;
+  REQUIRE(b.f.rangeLo == 10.f);
+  REQUIRE(b.load(chunk) == chunk.Size());
+  CHECK(b.f.rangeLo == 2000.f);
+  CHECK(b.f.rangeHi == 20000.f);
 }
 
 TEST_CASE("an empty chunk is refused")

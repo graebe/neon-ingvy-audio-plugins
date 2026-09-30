@@ -17,7 +17,7 @@ namespace spectro {
 namespace state {
 
 /* The chunk's layout, after shell_state.h's header: parameters (none yet),
- * then sources, clash, view and comparison as strings. A chunk with no header
+ * then sources, clash, view, comparison and range as strings. A chunk with no header
  * is this layout as every earlier build wrote it. */
 constexpr int32_t kChunkVersion = 1;
 
@@ -31,6 +31,9 @@ struct Fields
   int cmpA = 0;
   int cmpB = 1;
   bool clashOn = false;
+  /* The zoom, in Hz. Appended last: a chunk from before it keeps the full range. */
+  float rangeLo = 10.0f;
+  float rangeHi = 20000.0f;
 };
 
 using PutParams = std::function<bool(iplug::IByteChunk&)>;

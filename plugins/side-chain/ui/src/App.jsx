@@ -1,34 +1,23 @@
 /*
- * NI Side-Chain's editor.
+ * NI Side-Chain's editor. Copyright (c) 2026 Torben Gräber. MIT.
  *
- * THE LAYOUT IS ABSOLUTE AND THE NUMBERS ARE THE DESIGN. A flex layout that
- * happens to look close is a different drawing, and this one has a load-bearing
- * alignment in it: the shape well and the signal well are the same width and the
- * same span, because the shape you dragged has to sit directly above the audio
- * it shaped. That is the whole editor.
+ * ONE ALIGNMENT IS LOAD-BEARING: the shape you drag sits directly above the
+ * audio it shaped, in one well spanning exactly one cycle. That is the whole
+ * editor; the knobs and selects below it are the same parameters as numbers.
  *
- *   window 760 wide, pad 32, plot 696
- *   tag      y 32   h 16
- *   shape    y 56   h 156
- *   signal   y 220  h 132
- *   axis            under BOTH, not inside either -- see below
- *   knobs    y 372  h 104   (label, 48px disc, readout -- not just the disc)
- *   trigger  y 492  h 28    the source and whatever it needs
- *   shape    y 528  h 28    curve and the time unit, which every source has
- *   hint     y 572  h 20
- *
- * THE AXIS IS UNDER THE WELLS AND NOT LAID OVER THEM. The Spectrogram's rule
- * (app.css:77-84): a label over the picture is legible against silence and
- * invisible against a loud passage, and fixing that would need a backing plate,
- * and nothing in this system floats.
+ * The window itself -- padding, ground, hint bar, scale, height -- is the kit's
+ * EditorFrame; this file is content.
  */
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import { Hint, Ground, createMotion, onParam, onMessage, sendMessage } from '@ultraviolet/ui';
-import { MSG, P, NUM_PARAMS } from './lib/msg.js';
-import { ParamKnob, ParamSelect } from './lib/params.jsx';
+import { EditorFrame, useEditorBridge, createClock } from '@ultraviolet/ui';
+import { createParams, ParamKnob, ParamSelect } from '@ultraviolet/ui/params';
+import { MSG, P, NUM_PARAMS, shapeFromNorm } from './lib/msg.js';
 import { Shaper, SPAN } from './lib/Shaper.jsx';
 import { bounds as boundsOf } from './lib/shape.js';
+import { decodeScope, COL, STRIDE } from './lib/scope.js';
+import { NOTE_NAMES, hintFor } from './lib/text.js';
 
+/* Mirrored by PLUG_WIDTH / PLUG_HEIGHT in config.h. */
 const DESIGN_W = 760;
 const DESIGN_H = 604;
 const PLOT_W = DESIGN_W - 64;
@@ -42,69 +31,35 @@ const CHANNELS = ['Omni', '1', '2', '3', '4', '5', '6', '7', '8',
   '9', '10', '11', '12', '13', '14', '15', '16'];
 const MIDI_MODES = ['Trigger', 'Gate'];
 
-/* 0 Idle, 1 Delay, 2 Attack, 3 Hold, 4 Release -- params.rs's stage_index, whose
- * numbering is a UI contract rather than the enum's order. */
+/* 0 Idle, 1 Delay, 2 Attack, 3 Hold, 4 Release -- params.rs's stage_index. */
 const STAGES = ['idle', 'delay', 'attack', 'hold', 'release'];
 
-/* A nibble table rather than parseInt: this runs over 256 columns every frame,
- * and the Spectrogram's columns.js makes the same trade for the same reason. */
-const NIB = new Int8Array(128).fill(-1);
-for (let i = 0; i < 16; i++) NIB['0123456789ABCDEF'.charCodeAt(i)] = i;
+/*
+ * IS ANYTHING COMING IN AT ALL? The floor is one encoding step: a sample
+ * crosses the wire as one byte over -1..1, so below 0.0118 (~-38 dBFS) the
+ * scope genuinely cannot tell a signal from silence.
+ */
+const INPUT_FLOOR = 0.012;
 
 export default function App() {
-  /* Normalised values, as the host reports them. The Knobs want these. */
-  const [norm, setNorm] = createSignal(new Array(NUM_PARAMS).fill(0));
-  /* The Motion switch, remembered between openings. Not a host parameter -- see
-   * the kit's lib/motion.js for why a view is not something to automate. */
-  const [motion, setMotion] = createMotion('side-chain');
-  /* The ground's handle, set by <Ground ref>. A kick arrives as a message and is
-   * handed straight to it. */
-  let ground = null;
-  /* The plugin's own display strings -- it owns every unit, precision and enum
-   * label, because iPlug2's IParam already does. */
-  const [display, setDisplay] = createSignal(new Array(NUM_PARAMS).fill(''));
-  /* The ENGINE's values, in their own units. What the drawing uses, so no range
-   * arithmetic stands between the picture and the DSP. */
+  /* Every parameter's value, display string and default -- listening from here,
+   * before `ready` is sent. */
+  const host = createParams(NUM_PARAMS);
+  /* The ENGINE's values, in their own units: what the drawing uses, so no
+   * range arithmetic stands between the picture and the DSP. */
   const [engine, setEngine] = createSignal(null);
   const [ui, setUi] = createSignal({
     source: 0, rate: 4, msCycle: 0, sweep: 0, advancing: 0,
     fires: 0, duck: 0, key: 0, connected: 0, stage: 0, phase: 0,
   });
-  const [scope, setScope] = createSignal(null);
-  const [seenBits, setSeenBits] = createSignal('');
+  /* The capture, decoded into one reused buffer -- so it never compares equal
+   * to itself and every frame repaints. */
+  const [scope, setScope] = createSignal(null, { equals: false });
   const [stageMs, setStageMs] = createSignal([0, 0, 0, 0]);
   const [buses, setBuses] = createSignal({ key: 0, isMain: 0 });
-  const [defaults, setDefaults] = createSignal({});
 
-  onMount(() => {
-    const offParam = onParam((idx, value) => {
-      setNorm((v) => {
-        const next = [...v];
-        next[idx] = value;
-        return next;
-      });
-      /* The first value a parameter reports is its default, and the only place
-       * this side can learn one -- which is what a double-click needs. */
-      setDefaults((d) => (idx in d ? d : { ...d, [idx]: value }));
-    });
-
-    const offMsg = onMessage((tag, text) => {
-
-      if (tag === MSG.ground) {
-        /* One message, one ring. A malformed payload is dropped rather than
-         * turned into a full-strength kick. */
-        const gs = Number.parseFloat(text);
-        if (Number.isFinite(gs)) ground?.trigger(gs);
-        return;
-      }
-      if (tag >= 0 && tag < NUM_PARAMS) {
-        setDisplay((v) => {
-          const next = [...v];
-          next[tag] = text;
-          return next;
-        });
-        return;
-      }
+  const bridge = useEditorBridge({
+    onMessage: (tag, text) => {
       switch (tag) {
         case MSG.uiState: {
           const f = text.split(':');
@@ -118,14 +73,12 @@ export default function App() {
         }
         case MSG.params: {
           const f = text.split(':').map(Number);
-          if (f.length < NUM_PARAMS) return;
-          setEngine(f);
+          if (f.length >= NUM_PARAMS) setEngine(f);
           return;
         }
         case MSG.stageMs: {
           const f = text.split(':').map(Number);
-          if (f.length < 4) return;
-          setStageMs(f);
+          if (f.length >= 4) setStageMs(f);
           return;
         }
         case MSG.buses: {
@@ -133,121 +86,41 @@ export default function App() {
           setBuses({ key: +f[0] || 0, isMain: +f[1] || 0 });
           return;
         }
-        case MSG.scope: {
-          /*
-           * "<cols>:<seen bits>:<5 hex pairs per column>"
-           *
-           * A SHORT PAYLOAD IS DROPPED WHOLE rather than drawn in part: the
-           * transport truncates rather than fails, and half a picture drawn
-           * anyway puts a column of garbage in the middle of it, which reads as
-           * a real transient and cannot be told from one.
-           */
-          const c1 = text.indexOf(':');
-          const c2 = text.indexOf(':', c1 + 1);
-          if (c1 < 0 || c2 < 0) return;
-          const cols = Math.max(0, Math.min(1024, parseInt(text.slice(0, c1), 10) || 0));
-          const seen = text.slice(c1 + 1, c2);
-          const hex = text.slice(c2 + 1);
-          if (seen.length < cols || hex.length < cols * 10) return;
-
-          const out = new Array(cols);
-          for (let i = 0; i < cols; i++) {
-            const o = (c2 + 1) + i * 10;
-            const byteAt = (k) => {
-              const hi = NIB[text.charCodeAt(o + k * 2)];
-              const lo = NIB[text.charCodeAt(o + k * 2 + 1)];
-              return hi < 0 || lo < 0 ? 128 : (hi << 4) | lo;
-            };
-            out[i] = [
-              byteAt(0) / 127.5 - 1, /* dry low  */
-              byteAt(1) / 127.5 - 1, /* dry high */
-              byteAt(2) / 127.5 - 1, /* wet low  */
-              byteAt(3) / 127.5 - 1, /* wet high */
-              /* The gain is UNIPOLAR and was encoded as such -- reading it
-               * through the bipolar mapping would put unity at 1 and silence at
-               * -1, and the trace would draw upside down and twice as tall. */
-              byteAt(4) / 255,
-            ];
-          }
-          setSeenBits(seen);
-          setScope(out);
-          return;
-        }
         default:
       }
-    });
-
-    /*
-     * MANDATORY, AND THE LAST THING onMount DOES.
-     *
-     * OnUIOpen fires from didFinishNavigation, but a <script type="module"> is
-     * DEFERRED and evaluates after the document is done -- so every value the
-     * plugin pushed from OnUIOpen landed before globalThis.SPVFD existed and was
-     * dropped on the floor. The Trance Gate sat on twelve zeroes until this line
-     * existed. It goes last, after both listeners are registered.
-     */
-    sendMessage(MSG.ready);
-
-    onCleanup(() => { offParam(); offMsg(); });
+    },
+    /* The capture is BYTES, decoded from base64 once. */
+    bytes: {
+      [MSG.scope]: (bytes) => {
+        const s = decodeScope(bytes, scope()?.data);
+        if (s) setScope(s);
+      },
+    },
   });
 
-  /* ------------------------------------------------ the animation clock ---- */
+  /* ------------------------------------------------ the playhead's clock -- */
 
-  const [frame, setFrame] = createSignal(0);
-  const [anchor, setAnchor] = createSignal({ sweep: 0, at: 0, moving: false, msCycle: 0 });
-
+  /* The playhead moves when the SOURCE is moving, which is not the transport
+   * running: a MIDI duck advances with the timeline parked. */
+  const clock = createClock();
   createEffect(() => {
     const u = ui();
-    setAnchor({
-      sweep: u.sweep,
-      at: performance.now(),
-      /* The playhead moves when the SOURCE is moving, which is not the same as
-       * the transport running: a MIDI duck advances with the timeline parked. */
-      moving: u.source === 0 ? u.advancing > 0 : u.sweep < 1,
-      msCycle: u.msCycle,
-    });
+    const moving = u.source === 0 ? u.advancing > 0 : u.sweep < 1;
+    clock.set(u.sweep, u.msCycle > 0 ? 1 / u.msCycle : 0, moving);
   });
-
-  /*
-   * THE PLAYHEAD'S CLOCK IS THE ENGINE'S, NOT THE TIMER'S.
-   *
-   * OnIdle runs on a main-thread timer at IDLE_TIMER_RATE -- 50 Hz at best, and
-   * worse under Live's UI load -- so drawing the sweep it reports directly
-   * stutters and drifts visibly against the sound. The pushed value is an
-   * ANCHOR; the position is interpolated from it against wall time.
-   */
+  /* A cycle wraps; a one-shot duck stops at its end. */
   const playSweep = () => {
-    const a = anchor();
-    if (!a.moving || !(a.msCycle > 0)) return a.sweep;
-    frame(); /* the dependency that makes this tick */
-    const s = a.sweep + (performance.now() - a.at) / a.msCycle;
+    const s = clock.position();
     return s >= 1 ? (ui().source === 0 ? s % 1 : 1) : s;
   };
 
-  onMount(() => {
-    let live = true;
-    /* rAF rather than setInterval: it is the display's own cadence, and it stops
-     * when the window is hidden -- which is the whole plugin window in a host
-     * tab that is not showing. */
-    const tick = () => {
-      if (!live) return;
-      if (anchor().moving) setFrame((n) => n + 1);
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-    onCleanup(() => { live = false; });
-  });
-
-  /* ---------------------------------------------------------- the warning */
+  /* ---------------------------------------------------------- the warning -- */
 
   /*
-   * ONE AMBER MARK, AND IT IS THE MOST USEFUL THING IN THE WINDOW.
-   *
-   * A ducker whose trigger is not arriving looks exactly like one set to zero
-   * depth, and Side-Chain has three separate ways for that to happen: the transport
-   * stopped, MIDI that Live will not route to an audio track, or a sidechain
-   * with nothing patched. The Spectrogram's watchdog idiom, and its reasoning:
-   * "a spectrogram's whole claim is that what you read is what was measured".
+   * ONE AMBER MARK. A ducker whose trigger is not arriving looks exactly like
+   * one set to zero depth, and there are three ways for that to happen: the
+   * transport stopped, MIDI Live will not route to an audio track, or a
+   * sidechain with nothing patched.
    */
   const [stale, setStale] = createSignal(false);
   onMount(() => {
@@ -261,29 +134,16 @@ export default function App() {
     onCleanup(() => clearInterval(t));
   });
 
-  /*
-   * IS ANYTHING COMING IN AT ALL?
-   *
-   * THE ONE THING THE WINDOW COULD NOT SAY. A ducker fed silence draws exactly
-   * what a broken one draws: a flat line where the waveform should be. The
-   * shape well keeps working either way -- the gain trace is computed whether or
-   * not there is audio to apply it to -- so the picture looks alive while the
-   * part you are actually looking for is missing, and nothing says which.
-   *
-   * THE FLOOR IS ONE ENCODING STEP, not a taste threshold. A sample crosses the
-   * wire as one byte over -1..1, so silence is 128 and the next value up is
-   * 0.0118 -- about -38 dBFS. Below that the scope genuinely cannot tell a
-   * signal from silence, so claiming to is the one thing it must not do.
-   */
-  const INPUT_FLOOR = 0.012;
+  const seen = (i) => scope()?.data[i * STRIDE + COL.seen] === 1;
 
   const hasInput = createMemo(() => {
-    const cols = scope();
-    if (!cols) return true; /* nothing pushed yet is not a verdict */
-    for (let i = 0; i < cols.length; i++) {
-      if (!seen(i)) continue;
-      const r = cols[i];
-      if (Math.abs(r[0]) > INPUT_FLOOR || Math.abs(r[1]) > INPUT_FLOOR) return true;
+    const cap = scope();
+    if (!cap) return true; /* nothing pushed yet is not a verdict */
+    const { data, stride } = cap;
+    for (let i = 0; i < cap.count; i++) {
+      if (data[i * stride + COL.seen] !== 1) continue;
+      if (Math.abs(data[i * stride + COL.dryLo]) > INPUT_FLOOR
+          || Math.abs(data[i * stride + COL.dryHi]) > INPUT_FLOOR) return true;
     }
     return false;
   });
@@ -292,11 +152,7 @@ export default function App() {
     const u = ui();
     if (u.source === 2 && !buses().key) return 'no key routed';
     if (u.source === 2 && buses().isMain) return 'key is the input';
-    /*
-     * BEFORE the trigger warnings. A silent track is the more basic fact, and
-     * reporting "transport stopped" to somebody whose real problem is that no
-     * audio reaches the plugin sends them to the wrong place.
-     */
+    /* BEFORE the trigger warnings: a silent track is the more basic fact. */
     if (!hasInput()) return 'no input';
     if (!stale()) return '';
     if (u.source === 0) return u.advancing ? '' : 'transport stopped';
@@ -304,16 +160,10 @@ export default function App() {
     return 'no trigger';
   });
 
-  /* ------------------------------------------------------------ the shape */
+  /* ------------------------------------------------------------ the shape -- */
 
-  /*
-   * DRAWN FROM THE ENGINE'S OWN VALUES, not from the normalised ones.
-   *
-   * Converting 0..1 back into percentages here would mean a second copy of every
-   * parameter's range, and a range that drifts puts the handle somewhere the
-   * sound is not. The `params` readout carries the engine's numbers; this just
-   * names them.
-   */
+  /* DRAWN FROM THE ENGINE'S OWN VALUES, not the normalised ones: converting
+   * back would be a second copy of every range. */
   const shape = createMemo(() => {
     const e = engine();
     if (!e) return { curve: 0, delay: 0, attack: 2, hold: 8, release: 35, depth: 100 };
@@ -324,201 +174,89 @@ export default function App() {
       hold: e[P.hold],
       release: e[P.release],
       depth: e[P.depth] * 100, /* the engine holds 0..1, the display a percent */
-      /*
-       * WHICH MECHANISM DELAY IS, which the drawing has to know because the two
-       * look different. On Cycle it is a phase in a periodic cycle, so it wraps
-       * and can be negative; anywhere else it is a wait, and a negative one is
-       * no wait at all. `startOf` in shape.js is the one place that branches.
-       */
+      /* On Cycle, Delay is a phase and wraps; anywhere else it is a wait. */
       cycle: ui().source === 0,
     };
   });
 
-  const seen = (i) => seenBits().charCodeAt(i) === 49; /* '1' */
-
-  /* The cycle in ms is the span of BOTH wells, and the landmark is the point the
-   * duck reaches its floor -- the one instant in the shape a listener can name. */
+  /* The cycle in ms is the well's span; the landmark is the instant the duck
+   * reaches its floor, at its WRAPPED position. */
   const spanMs = () => ui().msCycle;
-  /* The landmark is the instant the duck reaches its floor -- the one moment in
-   * the shape a listener can name. It is the WRAPPED position, so with an early
-   * delay it lands where the curve actually is. */
   const markMs = () => {
     const bottom = boundsOf(shape()).bottom;
     return bottom > 0 && bottom <= SPAN ? (bottom / SPAN) * spanMs() : 0;
   };
 
-  /* -------------------------------------------------------------- layout */
-
-  /*
-   * THE DESIGN IS 760 WIDE AND IS SCALED TO WHATEVER VIEWPORT IT GETS.
-   *
-   * Live hands over fewer pixels than asked for, and a page that simply
-   * overflowed would cut off the right-hand controls. Scaling keeps every
-   * proportion and every one of these numbers intact, which laying the design
-   * out fluidly would not.
-   */
-  const fit = () => {
-    const el = document.querySelector('main');
-    if (!el) return 1;
-    const k = Math.max(0.1, (window.innerWidth || DESIGN_W) / DESIGN_W);
-    el.style.transformOrigin = 'top left';
-    el.style.transform = `scale(${k})`;
-    return k;
-  };
-
-  let lastSent = '';
-  createEffect(() => {
-    const k = fit() ?? 1;
-    const msg = String(Math.ceil(DESIGN_H * k));
-    if (msg !== lastSent) { lastSent = msg; sendMessage(MSG.height, msg); }
-  });
-  onMount(() => {
-    const onResize = () => fit();
-    window.addEventListener('resize', onResize);
-    onCleanup(() => window.removeEventListener('resize', onResize));
-  });
-
-  const v = (idx) => norm()[idx];
-  const d = (idx) => display()[idx];
+  const source = () => ui().source;
 
   return (
-    <main>
-      {/* FIRST CHILD OF THE WINDOW, which is the design system's contract for a
-        * Ground. The panels and the shaper's plot emit and reflect; both are opaque to
-        * the field on purpose. */}
-      <Ground enabled={motion()} sources=".panel, .plot-slot, [data-wave-source]" ref={(h) => { ground = h; }} />
-
-      <div class="tag t-hint">
-        NI SIDE-CHAIN
-        <span class="tag-state">
-          {SOURCES[ui().source] ?? ''}
-          {ui().source === 0 ? ` ${RATES[ui().rate] ?? ''}` : ''}
+    /* The shaper's well is the one solid box; the knobs sit on the window. */
+    <EditorFrame width={DESIGN_W} height={DESIGN_H} motionKey="side-chain"
+                 sources=".plot, [data-wave-source]" bridge={bridge}
+                 hint={hintFor(source(), stageMs(), host.value(P.timeMode))}>
+      {/* The trigger's state -- not the plugin's name, which the host shows. */}
+      <div class="state-line t-hint">
+        <span class="state">
+          {SOURCES[source()] ?? ''}
+          {source() === 0 ? ` ${RATES[ui().rate] ?? ''}` : ''}
           {' · '}
           {STAGES[ui().stage] ?? ''}
         </span>
         {/* The window's single amber mark. */}
-        <Show when={warning()}><span class="tag-warn">{warning()}</span></Show>
+        <Show when={warning()}><span class="warn">{warning()}</span></Show>
       </div>
 
       <div class="plot-slot">
         <Shaper w={PLOT_W} h={260}
                 shape={shape()}
+                heldShape={shapeFromNorm(host.value, shape())}
                 scope={scope()}
                 seen={seen}
                 quiet={!hasInput()}
                 sweep={playSweep()}
                 spanMs={spanMs()}
                 markMs={markMs()}
-                defaults={defaults()} />
+                onReset={(idx) => host.reset(idx)}
+                value={host.value} text={host.text}
+                onCommit={(idx, v) => host.commit(idx, v)} />
       </div>
 
-      <section class="panel knob-row">
-        <ParamKnob idx={P.depth} label="Depth" value={v(P.depth)} display={d(P.depth)}
-                   default={defaults()[P.depth]} />
-        <ParamKnob idx={P.delay} label="Delay" value={v(P.delay)} display={d(P.delay)}
-                   default={defaults()[P.delay]} />
-        <ParamKnob idx={P.attack} label="Attack" value={v(P.attack)} display={d(P.attack)}
-                   default={defaults()[P.attack]} />
-        <ParamKnob idx={P.hold} label="Hold" value={v(P.hold)} display={d(P.hold)}
-                   default={defaults()[P.hold]} />
-        <ParamKnob idx={P.release} label="Release" value={v(P.release)}
-                   display={d(P.release)} default={defaults()[P.release]} />
-        {/*
-          * THE SOURCE'S OWN KNOBS, AND ONLY THE ONES THAT APPLY.
-          *
-          * Vel is MIDI's, Threshold and Lockout are the sidechain's, and Cycle
-          * has none. Showing an irrelevant control is worse than a row that
-          * changes width: a Threshold knob on a tempo-locked duck invites
-          * somebody to turn it and conclude the plugin is broken.
-          *
-          * Both of the sidechain's knobs belong HERE and not in the selects row
-          * below -- that row is 28px of select fields, and a 48px disc dropped
-          * into it overflows upward through the readouts above it.
-          */}
-        <Show when={ui().source === 1}>
-          <ParamKnob idx={P.velSens} label="Vel" value={v(P.velSens)}
-                     display={d(P.velSens)} default={defaults()[P.velSens]} />
+      <div class="knob-row">
+        <ParamKnob params={host} idx={P.depth} label="Depth" />
+        <ParamKnob params={host} idx={P.delay} label="Delay" />
+        <ParamKnob params={host} idx={P.attack} label="Attack" />
+        <ParamKnob params={host} idx={P.hold} label="Hold" />
+        <ParamKnob params={host} idx={P.release} label="Release" />
+        {/* THE SOURCE'S OWN KNOBS, AND ONLY THE ONES THAT APPLY: a Threshold
+          * on a tempo-locked duck invites turning it and concluding the plugin
+          * is broken. */}
+        <Show when={source() === 1}>
+          <ParamKnob params={host} idx={P.velSens} label="Vel" />
         </Show>
-        <Show when={ui().source === 2}>
-          <ParamKnob idx={P.threshold} label="Thresh" value={v(P.threshold)}
-                     display={d(P.threshold)} default={defaults()[P.threshold]} />
-          <ParamKnob idx={P.lockout} label="Lockout" value={v(P.lockout)}
-                     display={d(P.lockout)} default={defaults()[P.lockout]} />
-        </Show>
-      </section>
-
-      {/*
-        * TWO ROWS, AND THE SPLIT IS BY SUBJECT RATHER THAN BY FIT.
-        *
-        * The first row is the TRIGGER -- the source and whatever that source
-        * needs. The second is the SHAPE, which every source has.
-        *
-        * One row overflowed in MIDI mode, where the source brings three selects
-        * of its own: Src, Note, Ch, Mode, Curve and Time came to 842px against
-        * 696, so Curve was clipped and Time was off the edge entirely. Splitting
-        * by subject fixes that and also stops the shape controls MOVING when the
-        * source changes, which one row could not do at any width.
-        */}
-      <div class="selects-row selects-trigger">
-        <ParamSelect idx={P.source} label="Src" options={SOURCES}
-                     value={v(P.source)} width={104} labelWidth={30} />
-        <Show when={ui().source === 0}>
-          <ParamSelect idx={P.rate} label="Rate" options={RATES}
-                       value={v(P.rate)} width={84} labelWidth={38} />
-        </Show>
-        <Show when={ui().source === 1}>
-          <ParamSelect idx={P.note} label="Note" options={noteNames()}
-                       value={v(P.note)} width={78} labelWidth={38} />
-          <ParamSelect idx={P.channel} label="Ch" options={CHANNELS}
-                       value={v(P.channel)} width={66} labelWidth={26} />
-          <ParamSelect idx={P.midiMode} label="Mode" options={MIDI_MODES}
-                       value={v(P.midiMode)} width={88} labelWidth={42} />
+        <Show when={source() === 2}>
+          <ParamKnob params={host} idx={P.threshold} label="Thresh" />
+          <ParamKnob params={host} idx={P.lockout} label="Lockout" />
         </Show>
       </div>
 
-      <div class="selects-row selects-shape">
-        <ParamSelect idx={P.curve} label="Curve" options={CURVES}
-                     value={v(P.curve)} width={118} labelWidth={42} />
-        <ParamSelect idx={P.timeMode} label="Time" options={TIME_MODES}
-                     value={v(P.timeMode)} width={92} labelWidth={38} />
+      {/* TWO ROWS, SPLIT BY SUBJECT: the trigger, then the shape every source
+        * has -- so the shape controls do not move when the source changes. */}
+      <div class="selects-row">
+        <ParamSelect params={host} idx={P.source} label="Src" options={SOURCES} width={104} labelWidth={30} />
+        <Show when={source() === 0}>
+          <ParamSelect params={host} idx={P.rate} label="Rate" options={RATES} width={84} labelWidth={38} />
+        </Show>
+        <Show when={source() === 1}>
+          <ParamSelect params={host} idx={P.note} label="Note" options={NOTE_NAMES} width={78} labelWidth={38} />
+          <ParamSelect params={host} idx={P.channel} label="Ch" options={CHANNELS} width={66} labelWidth={26} />
+          <ParamSelect params={host} idx={P.midiMode} label="Mode" options={MIDI_MODES} width={88} labelWidth={42} />
+        </Show>
       </div>
 
-      <Hint clauses={hintFor(ui().source, ui().rate, stageMs(), v(P.timeMode))} motion={motion()} onMotion={setMotion} />
-    </main>
+      <div class="selects-row">
+        <ParamSelect params={host} idx={P.curve} label="Curve" options={CURVES} width={118} labelWidth={42} />
+        <ParamSelect params={host} idx={P.timeMode} label="Time" options={TIME_MODES} width={92} labelWidth={38} />
+      </div>
+    </EditorFrame>
   );
-}
-
-/* Live's octave numbering, where 36 is C1 -- the same table Params.cpp generates
- * for the host's own menu. Built once. */
-let NOTE_NAMES = null;
-function noteNames() {
-  if (NOTE_NAMES) return NOTE_NAMES;
-  const n = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  NOTE_NAMES = Array.from({ length: 128 }, (_, i) => `${n[i % 12]}${Math.floor(i / 12) - 2}`);
-  return NOTE_NAMES;
-}
-
-/*
- * THE HINT BAR STATES THIS WINDOW'S CONVENTIONS ONCE, in the design system's
- * pattern: the verb in `ink`, the rest in `ink-muted`, at most three clauses.
- *
- * The third clause is the thing a reader cannot work out by looking: that the
- * times are percentages of the cycle, and what that is in milliseconds right
- * now. `Time` switches which of the two the clause names.
- */
-function hintFor(source, rate, ms, timeModeNorm) {
-  /*
-   * THREE SHORT CLAUSES. The bar is one line and does not wrap: the first
-   * version of this said what each source needed in a full sentence, and the
-   * three of them ran off the bottom of the window. The component truncates at
-   * three clauses; keeping each one short is this side's half of that bargain.
-   */
-  const showMs = (timeModeNorm ?? 0) < 0.5;
-  const total = ms.reduce((a, b) => a + b, 0);
-  const clauses = [['drag', 'a handle, shift for fine']];
-  if (source === 1) clauses.push(['midi', 'needs a MIDI track']);
-  else if (source === 2) clauses.push(['key', 'route it in the header']);
-  else clauses.push(['cycle', 'follows the transport']);
-  clauses.push(['times', showMs ? `${Math.round(total)} ms total` : '% of the cycle']);
-  return clauses;
 }

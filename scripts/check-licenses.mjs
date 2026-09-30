@@ -112,10 +112,20 @@ try {
 try {
   const fonts = section(sections, 'Bundled font');
   const shipped = new Set();
+  /* The font is the kit's (ui-kit/src/fonts), and every editor that imports
+   * the kit's tokens.css carries it in its stylesheet -- so each of those must
+   * ship OFL.txt in its fonts/ directory, and the kit must keep it beside the
+   * font files. */
+  const kitFonts = join(ROOT, 'ui-kit', 'src', 'fonts');
+  const kitHasFont = existsSync(kitFonts) && readdirSync(kitFonts).some((f) => /\.(ttf|otf|woff2?)$/.test(f));
+  if (kitHasFont && !existsSync(join(kitFonts, 'OFL.txt'))) fail('ui-kit/src/fonts has a font and no OFL.txt');
   for (const p of PLUGINS) {
-    const dir = join(ROOT, 'plugins', p.dir, 'ui', 'public', 'fonts');
-    if (!existsSync(dir) || !readdirSync(dir).some((f) => /\.(ttf|otf|woff2?)$/.test(f))) continue;
-    if (!existsSync(join(dir, 'OFL.txt'))) fail(`plugins/${p.dir}/ui/public/fonts has a font and no OFL.txt`);
+    const ui = join(ROOT, 'plugins', p.dir, 'ui', 'src');
+    const usesKit = existsSync(ui) && readdirSync(ui).some((f) => /\.jsx?$/.test(f)
+      && readFileSync(join(ui, f), 'utf8').includes('@ultraviolet/ui/tokens.css'));
+    if (!kitHasFont || !usesKit) continue;
+    if (!existsSync(join(ROOT, 'plugins', p.dir, 'ui', 'public', 'fonts', 'OFL.txt')))
+      fail(`plugins/${p.dir}/ui draws the kit's font and has no public/fonts/OFL.txt`);
     shipped.add(`${p.bundle}.{vst3,clap,component}`);
   }
   sameSet('font bundles', new Set(fonts.keys()), shipped);

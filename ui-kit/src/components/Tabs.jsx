@@ -1,33 +1,35 @@
 /*
  * Tabs. Copyright (c) 2026 Torben Gräber. MIT.
+ *
+ * A VERTICAL STRIP, each tab a block of the height divided evenly, the text a
+ * quarter turn so it reads bottom-to-top. The lit one is a uv fill with on-uv
+ * text; the glow is a CSS rule on `.tab.on` rather than a class toggled here,
+ * because two class toggles in one commit are not two paints and a WKWebView
+ * deferred the second.
+ *
+ * A tablist to assistive technology: one tab in the tab order (the selected
+ * one), the arrows move between them and select as they go.
  */
 import { For } from 'solid-js';
+import { tabMove } from '../lib/keys.js';
 
-/*
- * A VERTICAL STRIP ON THE BAND'S RIGHT EDGE, 24px wide, each tab a block of
- * the height divided evenly -- `band.removeFromRight(UvTabs::width)`.
- *
- * The text is rotated a quarter turn so it reads BOTTOM-TO-TOP, which is the
- * way a tab on a right edge is read. The lit one is a uv fill with onUv text
- * and glow-led, like every other lit thing in the system.
- *
- * THE GLOW IS A CSS RULE ON `.tab.on`, NOT A CLASS TOGGLED FROM HERE.
- *
- * It used to be a second entry in this classList -- `'glow-led': active` -- and
- * the halo did not keep up with the click: the fill and the text swapped at
- * once and the glow arrived late or not until the next unrelated repaint. Two
- * class toggles in one commit are not two paints, and a `filter` appearing on
- * an element is the half a WKWebView is content to defer.
- *
- * Every other lit thing in this UI already does it the other way -- `.pad.on`
- * carries `filter: var(--glow-led)` in the stylesheet -- so this was the odd
- * one out as well as the broken one. One class, one rule, one paint.
- */
 export function Tabs(props) {
+  let strip;
+  const onKeyDown = (e) => {
+    const to = tabMove(e.key, props.active ?? 0, props.tabs.length);
+    if (to === null) return;
+    e.preventDefault();
+    props.onSelect(to);
+    strip?.querySelectorAll('.tab')[to]?.focus();
+  };
   return (
-    <div class="tabs">
+    <div class="tabs" role="tablist" aria-orientation="vertical" ref={strip}
+         aria-label={props.label} onKeyDown={onKeyDown}>
       <For each={props.tabs}>{(t, i) => (
-        <button class="tab" classList={{ on: props.active === i() }}
+        <button type="button" class="tab" role="tab"
+                aria-selected={props.active === i()}
+                tabindex={props.active === i() ? 0 : -1}
+                classList={{ on: props.active === i() }}
                 onClick={() => props.onSelect(i())}>
           <span class="tab-text t-hint">{t}</span>
         </button>

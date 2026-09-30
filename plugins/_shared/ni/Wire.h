@@ -46,16 +46,6 @@ double advance_beats(double beats, int frames, double bpm, double sampleRate);
  * third and the frame's fixed 32. The transport truncates past its cap. */
 constexpr int framed_size(int nBytes) { return nBytes * 4 / 3 + 32; }
 
-/* Two upper-case hex digits for `b` at `out`; returns past them. The editors'
- * nibble decoders assume upper case. */
-inline char* put_hex(char* out, unsigned char b)
-{
-  static constexpr char kHex[] = "0123456789ABCDEF";
-  out[0] = kHex[b >> 4];
-  out[1] = kHex[b & 0xF];
-  return out + 2;
-}
-
 /* ------------------------------------------------------------- numbers */
 
 /*

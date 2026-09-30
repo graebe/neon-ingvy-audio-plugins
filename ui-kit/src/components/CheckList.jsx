@@ -28,6 +28,7 @@
  */
 import { Index, Show, createSignal, onCleanup } from 'solid-js';
 import { Toggle } from './Toggle.jsx';
+import { Icon } from './Icon.jsx';
 
 export function CheckList(props) {
   /* props: label, summary, options [{ id, name, hint, disabled }],
@@ -67,9 +68,7 @@ export function CheckList(props) {
         onClick={() => setOpen((o) => !o)}
       >
         <span class="select-value t-value">{props.summary}</span>
-        <svg class="chevron" width="8" height="6" viewBox="0 0 8 6">
-          <path d="M1 1 L4 4 L7 1" fill="none" stroke="var(--ink-muted)" stroke-width="1" />
-        </svg>
+        <Icon name="chevron" />
       </button>
 
       <Show when={open()}>
@@ -93,7 +92,8 @@ export function CheckList(props) {
                   <Toggle
                     label={o().name}
                     value={isOn(o().id)}
-                    onChange={(v) => !o().disabled && toggle(o().id, v)}
+                    disabled={!!o().disabled}
+                    onChange={(v) => toggle(o().id, v)}
                   />
                   <Show when={o().hint}>
                     <span class="checklist-hint t-hint">{o().hint}</span>

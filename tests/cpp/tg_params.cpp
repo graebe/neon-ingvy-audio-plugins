@@ -53,6 +53,48 @@ TEST_CASE("every value a host can hold survives value -> text -> value")
   }
 }
 
+/* --------------------------------------------------------------- stages */
+
+TEST_CASE("a stage reads in the unit Env Time asks for")
+{
+  /* 16 % of a 93.75 ms gate (a 1/16 step at 120 BPM, Width 75 %). */
+  CHECK(tg::params::FormatStage(16.0, true, 93.75) == "15.0 ms");
+  CHECK(tg::params::FormatStage(16.0, false, 93.75) == "16.00 %");
+  /* Before the engine has published a width there are no milliseconds to show. */
+  CHECK(tg::params::FormatStage(16.0, true, 0.0) == "16.00 %");
+  CHECK(tg::params::IsStage(kAttack));
+  CHECK(tg::params::IsStage(kRelease));
+  CHECK_FALSE(tg::params::IsStage(kSustain));
+}
+
+/*
+ * THE BUG: in ms mode the editor built "12.5 ms" itself and handed what was
+ * typed to the percent parser, so 12.5 typed into an ms readout set 12.5 %.
+ */
+TEST_CASE("text typed in ms mode is milliseconds")
+{
+  CHECK(tg::params::ParseStage("12.5", true, 93.75) == doctest::Approx(12.5 / 93.75 * 100.0));
+  CHECK(tg::params::ParseStage("12.5 ms", true, 93.75) == doctest::Approx(12.5 / 93.75 * 100.0));
+  /* An explicit unit wins over the mode, both ways round. */
+  CHECK(tg::params::ParseStage("25 %", true, 93.75) == doctest::Approx(25.0));
+  CHECK(tg::params::ParseStage("40 ms", false, 80.0) == doctest::Approx(50.0));
+  CHECK(tg::params::ParseStage("25", false, 93.75) == doctest::Approx(25.0));
+  /* Clamped to the stage's range; a comma locale does not matter. */
+  CHECK(tg::params::ParseStage("1000 ms", true, 93.75) == doctest::Approx(200.0));
+  CHECK(tg::params::ParseStage("-3", false, 93.75) == doctest::Approx(0.0));
+}
+
+TEST_CASE("a stage's ms text reads back to the percent it came from")
+{
+  for (double pct : {0.0, 1.6, 16.0, 99.9, 200.0})
+  {
+    const std::string t = tg::params::FormatStage(pct, true, 93.75);
+    /* One decimal of a millisecond is the readout's resolution. */
+    CHECK(tg::params::ParseStage(t.c_str(), true, 93.75) ==
+          doctest::Approx(pct).epsilon(0.001).scale(100));
+  }
+}
+
 TEST_CASE("a unit is shown once")
 {
   /* The CLAP wrapper appends the label after the display text, so a unit in

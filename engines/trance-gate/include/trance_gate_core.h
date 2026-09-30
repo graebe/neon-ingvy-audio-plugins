@@ -124,12 +124,22 @@ int tg_core_rate_default(void);
 /*
  * The pattern plot's curve for the patch in `state`, rendered through a
  * scratch engine with a DC input so the samples ARE the gate:
- * "<length>:<per_step>:<hex>", two upper-case hex digits of gain per sample of
- * one cycle. Returns the length written, or -1 for nothing to draw or a buffer
- * too small. Allocates: never on the audio thread.
+ * "<length>:<per_step>:" then one raw byte of gain per sample of one cycle.
+ * BINARY, not a C string: returns the number of bytes written, or -1 for
+ * nothing to draw or a buffer too small. Allocates: never on the audio thread.
  */
 #define TG_GATE_MAX 4096
 int tg_core_render_gate(const char *state, char *buf, int buf_len);
+
+/*
+ * The envelope plot's two curves for the patch in `state`, rendered the same
+ * way: "<steps>:<per_step>:" then the gated curve (one gate, the steps after it
+ * off) and the envelope as dialled (the steps tied, no close), one raw byte of
+ * gain per sample each, from silence. BINARY. Returns the number of bytes
+ * written, or -1 for nothing to draw or a buffer too small.
+ */
+#define TG_ENVELOPE_MAX 1024
+int tg_core_render_envelope(const char *state, char *buf, int buf_len);
 
 /*
  * THE AUTOMATABLE PARAMETERS, BY NUMBER.

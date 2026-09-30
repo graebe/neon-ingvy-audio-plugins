@@ -41,19 +41,6 @@ export const P = {
 };
 export const NUM_PARAMS = 15;
 
-/* The enum option counts, so a normalised value can be turned back into an
- * index. The LABELS come from the plugin as display strings; only the counts
- * are needed here, and they are what a Select needs to do its arithmetic. */
-export const COUNTS = {
-  [P.source]: 3,
-  [P.rate]: 12,
-  [P.timeMode]: 2,
-  [P.curve]: 3,
-  [P.channel]: 17,
-  [P.note]: 128,
-  [P.midiMode]: 2,
-};
-
 /*
  * THE PARAMETER RANGES, MIRRORED FROM Params.cpp's InitDouble CALLS.
  *
@@ -91,3 +78,23 @@ export const fromNorm = (idx, n) => {
   const [lo, hi] = RANGES[idx] ?? [0, 1];
   return lo + (hi - lo) * Math.min(1, Math.max(0, n));
 };
+
+/**
+ * THE SHAPE AS THE HOST'S PARAMETERS HOLD IT, for the duration of a drag.
+ *
+ * The drawing normally follows the engine's `params` readout, which arrives on
+ * the next idle tick -- so a handle being dragged trailed the pointer by up to
+ * a tick. The normalised values are written locally the moment the pointer
+ * moves; converted back through the same ranges, they put the handle under it.
+ * `base` supplies what the handles do not move (curve, cycle).
+ */
+export function shapeFromNorm(value, base) {
+  return {
+    ...base,
+    delay: fromNorm(P.delay, value(P.delay)),
+    attack: fromNorm(P.attack, value(P.attack)),
+    hold: fromNorm(P.hold, value(P.hold)),
+    release: fromNorm(P.release, value(P.release)),
+    depth: fromNorm(P.depth, value(P.depth)),
+  };
+}

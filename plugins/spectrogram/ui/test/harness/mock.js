@@ -19,11 +19,18 @@
  * bands" -- which no assertion answers as well as looking at it.
  */
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+/* A column batch as the plugin sends it: an ASCII header, then RAW bytes -- the
+ * mock builds its columns as hex for readability and packs them here. */
+const binary = (header, hex) => {
+  let bin = header;
+  for (let i = 0; i < hex.length; i += 2) bin += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+  return btoa(bin);
+};
 
 const BANDS = 256;
 const MSG_COLS = 64, MSG_AXIS = 65, MSG_SYNC = 66, MSG_SOURCES = 67,
       MSG_CLASHCOLS = 68, MSG_RANGE = 96, MSG_SELECT = 97, MSG_VIEW = 99,
-      MSG_COMPARE = 100, MSG_READY = 120;
+      MSG_COMPARE = 100, MSG_READY = 120, MSG_STATE = 69;
 
 /*
  * A FAKE TRANSPORT, so the bar view can be reviewed without a host.
@@ -102,6 +109,11 @@ window.IPlugSendMsg = (m) => {
   /* kMsgReady -- the editor has mounted and is listening. This is the reply that
    * actually delivers the axis, and the whole point of the handshake. */
   if (m?.msg === 'SAMFUI' && m.msgTag === MSG_READY) {
+    /* The session first, as the plugin does -- the editor pushes nothing
+     * until it has applied it. ?zoom=lo:hi reviews a reopened zoom. */
+    const range = /zoom=([\d.]+:[\d.]+)/.exec(location.search)?.[1] ?? '10.00:20000.00';
+    globalThis.SAMFD?.(MSG_STATE, 0,
+      b64(`${range}:${viewing.join(',')}:${cmpA}:${cmpB}:${clashWanted ? 1 : 0}:-60.00:12.00`));
     globalThis.SAMFD?.(MSG_AXIS, 0, b64(axis()));
     sendSources();
   }
@@ -171,7 +183,7 @@ setInterval(() => {
     const parts = viewing.map((ch) => (ch === 0 ? own : busColumn()));
     viewHex += parts.length > 1 ? sumHex(parts) : parts[0] ?? own;
   }
-  globalThis.SAMFD?.(MSG_COLS, 0, b64(`0:${count}:${BANDS}:${viewHex}`));
+  globalThis.SAMFD?.(MSG_COLS, 0, binary(`0:${count}:${BANDS}:`, viewHex));
 
   /* And the mask between the two channels the editor NAMED. */
   if (clashWanted && cmpA !== cmpB) {
@@ -179,7 +191,7 @@ setInterval(() => {
     for (let c = 0; c < count; c++) {
       chex += clashColumn(hex.slice(c * BANDS * 2, (c + 1) * BANDS * 2));
     }
-    globalThis.SAMFD?.(MSG_CLASHCOLS, 0, b64(`0:${count}:${BANDS}:${chex}`));
+    globalThis.SAMFD?.(MSG_CLASHCOLS, 0, binary(`0:${count}:${BANDS}:`, chex));
   }
 }, 16);
 

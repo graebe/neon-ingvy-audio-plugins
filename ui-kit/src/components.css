@@ -16,17 +16,40 @@
  * fails the build if one is spelled out, in this file or in either editor's.
  */
 
+/* ------------------------------------------------------------ window --
+ * EditorFrame's <main>. The design: window padding space-8, content laid out
+ * from the top, the Hint bar pinned to the bottom edge with its rule running
+ * the full width of the window. `relative` and `isolate` are what the ground's
+ * canvas needs (see .ground below). The scale is a transform from the top-left
+ * corner, set by the frame.
+ */
+.window {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  transform-origin: top left;
+  padding: var(--s8) var(--s8) var(--s4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.window > .hint-bar {
+  flex: none;
+  width: auto;
+  margin: auto calc(-1 * var(--s8)) 0;
+  padding: var(--s3) var(--s8) 0;
+}
+
 /* ------------------------------------------------------------ button --
- * One well, two shapes. The design system draws a button with a WORD in it
- * ("the system uses no icon set ... write the word"), which is the padded
- * default; `.icon` is the 40px square form for the rare mark that earns its
- * place, and it is the only reason the two editors had two class names for
- * one control.
+ * One well, two shapes: a word, optionally led by an Icon, or the 28px square
+ * icon-only form. Adjacent icon buttons join in a `.btn-group`, sharing their
+ * hairlines -- the design's joined Actions.
  */
 .btn {
   height: var(--control-h);
   padding: 0 var(--s3);
-  display: inline-grid; place-items: center;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--s2);
   background: var(--bg-200);
   border: var(--hair) solid var(--line-200);
   border-radius: var(--radius);
@@ -34,28 +57,28 @@
   font-family: inherit;
   cursor: pointer;
 }
-.btn.icon { width: 40px; padding: 0; }
-.btn:hover { background: var(--bg-300); border-color: var(--ink-dim); }
+.btn.icon { width: var(--control-h); padding: 0; }
+.btn:disabled { color: var(--ink-dim); border-color: var(--line-100); background: var(--bg-100); cursor: default; }
+.btn-group { display: inline-flex; }
+.btn-group .btn + .btn { margin-left: calc(-1 * var(--hair)); }
+.btn-group .btn:hover, .btn-group .btn:focus-visible { position: relative; z-index: 1; }
+
+/* An Icon: 16px, in its control's colour. */
+.icon { display: block; flex: none; width: 16px; height: 16px; }
+.btn:hover:not(:disabled) { background: var(--bg-300); border-color: var(--ink-dim); }
 .btn:active,
 .btn.on { background: var(--uv); border-color: var(--uv); color: var(--on-uv); }
 
 /*
- * PANELS: (304, 32, 488, 140), and three of them now rather than two.
+ * A PANEL: a hairlined bg-100 box that groups the controls of one function.
+ * Only what it LOOKS like -- where it sits and how big it is belong to the
+ * editor that has one.
  *
- * THE TITLE RUNS UP THE LEFT EDGE, and that is what pays for the third panel.
- *
- * It was a heading ABOVE the knobs: 16px of line plus 12 of margin, so every
- * panel carried a 28px band that said one word. A knob-card is 103 tall and
- * fixed by the kit (11 label + 8 + 48 knob + 8 + 28 readout), so with the band
- * gone a panel is 2 border + 32 padding + 103 = 137, and 140 keeps it on the
- * 4px grid. Three of those fit where two used to, for 76px of window instead of
- * the 148 a third horizontal-titled panel would have cost.
- *
- * Bottom-to-top, like the tab strip's labels, and for the same reason: it is the
- * way a label on a left edge is read.
+ * THE TITLE RUNS UP THE LEFT EDGE, bottom-to-top like the tab strip's labels:
+ * a heading above the knobs is a 28px band that says one word.
  */
 .panel {
-  position: absolute; left: 304px; width: 488px; height: 140px;
+  box-sizing: border-box;
   background: var(--bg-100); border: 1px solid var(--line-100);
   padding: var(--s4);
   display: flex; gap: var(--s3);}
@@ -122,7 +145,10 @@
   min-width: 0;
 }
 
-.chevron { position: absolute; right: 10px; top: 50%; margin-top: -3px;}
+/* The caret: the design's chevron glyph, 6px in from the field's right edge. */
+.select .icon {
+  position: absolute; right: 6px; top: 50%; margin-top: -8px;
+  color: var(--ink-muted); pointer-events: none;}
 
 /* The real <select> sits invisibly on top so the popup is the OS's. */
 .select select {
@@ -269,13 +295,6 @@
 
 .sep { margin: 0 var(--s3); color: var(--ink-dim);}
 
-/*
- * The ring goes on the HOUSING, not on the control: the inner <select> is what
- * the browser focuses and it has no border of its own to ring. :has() keys it to
- * the thing actually focused, and :focus-visible keeps a mouse click from
- * leaving one behind.
- */
-.select:has(select:focus-visible) { box-shadow: var(--glow-focus);}
 
 /* ------------------------------------------------------------- plots -- */
 
@@ -395,11 +414,18 @@
 .checklist-row:hover { background: var(--bg-300); }
 /* A bus whose sender is at another sample rate cannot be compared, so it is
  * shown and refused rather than hidden -- hiding it would read as the Listen-In
- * not being there at all. */
-.checklist-row.off { opacity: 0.45; }
+ * not being there at all. The design's DISABLED state, not a fade: everything
+ * drops to ink-dim / line-100, no fill, and the row does not rise under the
+ * pointer. */
+.checklist-row.off:hover { background: none; }
+.checklist-row.off .switch-row { cursor: default; }
+.checklist-row.off .switch { background: none; border-color: var(--line-100); }
+.checklist-row.off .switch-knob { background: var(--line-100); }
+.checklist-row.off .switch-label,
+.checklist-row.off .checklist-hint { color: var(--ink-dim); }
 
-.checklist-hint { color: var(--ink-dim); }
-.checklist-empty { color: var(--ink-dim); padding: var(--s2); }
+.checklist-hint { color: var(--ink-muted); }
+.checklist-empty { color: var(--ink-muted); padding: var(--s2); }
 
 /* THE ANIMATED GROUND -- the design system's Ground, as a canvas behind the
  * window's contents.

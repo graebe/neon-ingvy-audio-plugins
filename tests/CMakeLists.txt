@@ -106,10 +106,11 @@ if (TG_NODE)
     set_tests_properties(tg_curves_js PROPERTIES
         ENVIRONMENT "TG_SHAPE_TABLE=${TG_SHAPE_TABLE}")
 
-    add_test(NAME tg_envelope_js
-             COMMAND ${TG_NODE} --test ${TG_UI_TEST}/envelope.test.mjs)
-    set_tests_properties(tg_envelope_js PROPERTIES
-        ENVIRONMENT "TG_ENVELOPE_TABLE=${TG_ENVELOPE_TABLE}")
+    # The envelope plot draws curves the engine rendered (tg_core_render_envelope),
+    # so there is no JavaScript stage machine left to hold to envelope_table.txt;
+    # tg_envelope still holds the engine to it. What the editor decodes is here.
+    add_test(NAME tg_capture_js
+             COMMAND ${TG_NODE} --test ${TG_UI_TEST}/capture.test.mjs)
 
     add_test(NAME tg_fade_js
              COMMAND ${TG_NODE} --test ${TG_UI_TEST}/fade.test.mjs)

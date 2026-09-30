@@ -4,6 +4,9 @@
  */
 #include "Params.h"
 #include "tg_shell.h"
+#include "ni/Wire.h"
+
+#include <cstring>
 
 using iplug::IParam;
 
@@ -93,6 +96,42 @@ void Declare(const std::function<IParam*(int)>& param)
    * the pattern in both and switching this at rest changes nothing.
    */
   param(kFadeDir)->InitEnum("Fade Dir", 0, {"In", "Out"});
+}
+
+bool IsStage(int paramIdx)
+{
+  return paramIdx == kAttack || paramIdx == kDecay || paramIdx == kRelease;
+}
+
+std::string FormatStage(double pct, bool ms, double widthMs)
+{
+  std::string out;
+  if (ms && widthMs > 0.0)
+  {
+    ni::wire::append_fixed(out, pct / 100.0 * widthMs, 1);
+    out += " ms";
+  }
+  else
+  {
+    ni::wire::append_fixed(out, pct, 2);
+    out += " %";
+  }
+  return out;
+}
+
+double ParseStage(const char* text, bool ms, double widthMs)
+{
+  const char* s = text ? text : "";
+  const double v = ni::wire::parse_number(s);
+  /* The unit typed wins over the mode: "40 ms" means milliseconds even while
+   * the readout shows percent, and "25 %" the other way round. */
+  const bool saysMs = std::strstr(s, "ms") != nullptr;
+  const bool saysPct = std::strchr(s, '%') != nullptr;
+  const bool asMs = saysMs || (ms && !saysPct);
+  double pct = v;
+  if (asMs)
+    pct = widthMs > 0.0 ? v / widthMs * 100.0 : 0.0;
+  return pct < 0.0 ? 0.0 : pct > kStageMaxPct ? kStageMaxPct : pct;
 }
 
 } // namespace params

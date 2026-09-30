@@ -115,15 +115,6 @@ TEST_CASE("framed_size accounts for base64's extra third")
   CHECK(framed_size(3000) == 4032);
 }
 
-TEST_CASE("hex is two upper-case digits a byte")
-{
-  char buf[4] = {};
-  CHECK(put_hex(buf, 0xA9) == buf + 2);
-  CHECK(std::string(buf) == "A9");
-  put_hex(buf, 0x0F);
-  CHECK(std::string(buf) == "0F");
-}
-
 /* ------------------------------------------------------------- the height */
 
 TEST_CASE("an editor height is honoured only when a real editor could want it")
@@ -362,19 +353,17 @@ TEST_CASE("a column holds the bounds of the samples filed under it")
   scope.Push(dry, wet, gain, sweep, 6);
 
   char col[16] = {};
-  scope.PutColumn(col, 0, true);
+  /* Five RAW bytes a column with the gain, four without -- no hex. */
+  CHECK(scope.PutColumn(col, 0, true) == col + 5);
+  CHECK(scope.PutColumn(col + 8, 0, false) == col + 12);
   /* Column 0: dry -0.5..0.3, wet -0.2..0.1, the gain's minimum 0.5. */
-  std::string want;
-  for (float v : {-0.5f, 0.3f, -0.2f, 0.1f})
-  {
-    char h[3] = {};
-    put_hex(h, encode_bipolar(v));
-    want += h;
-  }
-  char g[3] = {};
-  put_hex(g, encode_unipolar(0.5f));
-  want += g;
-  CHECK(std::string(col) == want);
+  const unsigned char want[5] = {encode_bipolar(-0.5f), encode_bipolar(0.3f),
+                                 encode_bipolar(-0.2f), encode_bipolar(0.1f),
+                                 encode_unipolar(0.5f)};
+  for (int i = 0; i < 5; i++)
+    CHECK((unsigned char) col[i] == want[i]);
+  for (int i = 0; i < 4; i++)
+    CHECK((unsigned char) col[8 + i] == want[i]);
 
   CHECK(scope.Seen(0));
   CHECK_FALSE(scope.Seen(1));

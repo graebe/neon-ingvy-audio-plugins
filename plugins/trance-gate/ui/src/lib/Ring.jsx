@@ -13,6 +13,7 @@
  * "what a click does to a step" would not stay the same for long.
  */
 import { For, Show } from 'solid-js';
+import { countKey } from '@ultraviolet/ui';
 import { ringGesture } from './steps.js';
 
 const TAU = Math.PI * 2;
@@ -137,9 +138,24 @@ export default function Ring(props) {
     return { x: c + Math.cos(a) * r, y: c + Math.sin(a) * r, r: sz / 2 };
   };
 
+  /*
+   * THE KEYBOARD: the ring's number is the pattern's Length, so to a keyboard
+   * the ring is that slider -- arrows by a step, Page by a beat, Home and End
+   * to the ends. The steps themselves are the pads' to edit from the keyboard.
+   */
+  const onKeyDown = (e) => {
+    const next = countKey(e, n(), 1, props.maxLength ?? 128, 4);
+    if (next === null) return;
+    e.preventDefault();
+    if (next !== n()) props.onLength?.(next);
+  };
+
   return (
     <svg ref={el} class="ring" width={d()} height={d()} viewBox={`0 0 ${d()} ${d()}`}
-         onPointerDown={onDown}>
+         tabindex="0" role="slider" aria-label="Length"
+         aria-valuemin="1" aria-valuemax={props.maxLength ?? 128}
+         aria-valuenow={n()} aria-valuetext={`${n()} steps`}
+         onPointerDown={onDown} onKeyDown={onKeyDown}>
       {/* THE RAIL FIRST, UNDER EVERYTHING: line-200 is the system's token for
         * "the unlit part of an arc", which is exactly what an off step is. It
         * is drawn for every step including the lit ones, so a partial amount

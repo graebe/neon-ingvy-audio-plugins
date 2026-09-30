@@ -1,92 +1,65 @@
 /*
  * NI Side-Chain's LAYOUT. Copyright (c) 2026 Torben Gräber. MIT.
  *
- * ONLY WHERE THINGS SIT. What a control IS lives in @ultraviolet/ui's
- * components.css, and every colour below is a var() -- the token guard
- * (ui-kit/test/tokens.test.mjs) fails the build on a literal, in this file as in
- * either sibling editor's.
+ * ONLY WHERE THINGS SIT, and in normal flow from the top. What a control IS
+ * lives in @ultraviolet/ui's components.css, and the window -- its size,
+ * padding, transparent ground and the Hint bar at the bottom edge -- is the
+ * kit's EditorFrame. Every colour is a var(); the token guard fails the build
+ * on a literal.
  *
- * THE PIXEL BUDGET, which has to agree in three places or the page is scaled
- * against a width it does not have:
+ * Top to bottom inside the 32px window padding, all on the 4px grid:
  *
- *   DESIGN_W in App.jsx      760
- *   PLUG_WIDTH in config.h   760
- *   `main` width below       760
+ *   16   the state line
+ *    8   space-2
+ *  260   the shaper's well
+ *   24   space-6
+ *  104   the knobs: label, 48px disc, readout -- not just the disc
+ *   20
+ *   28   the trigger's selects
+ *    8   space-2
+ *   28   the shape's selects
+ *        spare room, then the hint bar on the bottom edge
  *
- * and the same for DESIGN_H / PLUG_HEIGHT / the reserved padding-top.
+ * DESIGN_W / DESIGN_H in App.jsx and PLUG_WIDTH / PLUG_HEIGHT in config.h have
+ * to agree (760 x 604).
  */
 
-main {
-  position: relative;
-  /* The other half of what the ground's canvas needs, and it matters MOST here:
-   * this window paints an opaque background below, so a negative z-index that
-   * escaped this element would disappear behind it. See the kit's .ground. */
-  isolation: isolate;
-  width: 760px;
-  height: 604px;
-  margin: 0 auto;
-  background: var(--bg-000);
-  color: var(--ink);
-  /* No font-family: tokens.css sets it on `html, body` and the controls all
-   * inherit. Naming it again here needs a token that does not exist, which is
-   * what the token guard caught. */
-  overflow: hidden;
-}
+/* ------------------------------------------------------------ state line -- */
 
-/* ------------------------------------------------------------------ tag -- */
-
-.tag {
-  position: absolute;
-  left: 32px;
-  top: 32px;
-  right: 32px;
+.state-line {
   height: 16px;
+  margin-bottom: var(--s2);
   display: flex;
   align-items: baseline;
   gap: var(--s3);
-  color: var(--ink-muted);
   letter-spacing: 0.08em;
 }
 
-.tag-state {
-  color: var(--ink-dim);
+.state {
+  color: var(--ink-muted);
   text-transform: uppercase;
 }
 
 /*
- * THE WINDOW'S ONE WARNING. The design system allows at most one amber mark per
- * window, and this is it -- pushed to the right so it is the last thing on the
- * line and cannot be mistaken for part of the state readout beside it.
+ * THE WINDOW'S ONE WARNING, at most one amber mark per window -- pushed right,
+ * so it cannot be mistaken for part of the state beside it.
  */
-.tag-warn {
+.warn {
   margin-left: auto;
   color: var(--amber);
   text-transform: uppercase;
 }
 
-/* ---------------------------------------------------------------- plots -- */
+/* ---------------------------------------------------------------- plot -- */
 
-/*
- * ONE PLOT. It was two wells stacked on a shared axis, which meant the reader
- * had to assemble the relationship between them and trust that the x axes
- * matched. Joined, there is nothing to assemble and nothing to keep in step.
- */
+/* ONE PLOT: the shape and the audio it shaped, on one axis. */
 .plot-slot {
-  position: absolute;
-  left: 32px;
-  top: 56px;
-  width: 696px;
   height: 260px;
+  margin-bottom: var(--s6);
 }
 
-.plot {
-  display: block;
-}
-
-/* The handles: a crosshair so it reads as grabbable before it is grabbed, and
- * no transition, because the design system's Motion section is explicit that
- * controls do not animate. A handle that glides to its new position is one you
- * cannot aim at. */
+/* The handles read as grabbable before they are grabbed, and do not animate:
+ * a handle that glides to its new position is one you cannot aim at. */
 .shaper .handle {
   cursor: ew-resize;
 }
@@ -99,68 +72,32 @@ main {
 /* -------------------------------------------------------------- controls -- */
 
 /*
- * 104 TALL, NOT 78. A Knob is a 48px disc with its label above it and its
- * readout below, and the first version of this row reserved only the disc -- so
- * the readouts drew straight through the selects row under them. The number is
- * the component's, not this layout's; it is written down here because this is
- * the only place that can be wrong about it.
+ * THE KNOBS SIT ON THE WINDOW, not in a panel: this window has one function,
+ * and "a window with a single function has no panel at all". 104 tall is the
+ * kit's knob-card (label, disc, readout), written down because this is the
+ * one place that can be wrong about it.
  */
 .knob-row {
-  position: absolute;
-  left: 32px;
-  top: 340px;
-  width: 696px;
+  flex: none;
   height: 104px;
+  margin-bottom: 20px;
   display: flex;
   align-items: flex-start;
   gap: var(--s6);
-  padding: 0;
-  background: transparent;
-  border: 0;
 }
 
-/*
- * TWO SELECT ROWS, split by subject: the trigger above, the shape below.
- *
- * One row overflowed in MIDI mode -- 842px of selects against 696 -- and
- * splitting by subject also stops the shape controls moving when the source
- * changes, which no single-row arrangement could do.
- */
+/* One row of 28px selects; the second follows the first at space-2. */
 .selects-row {
-  position: absolute;
-  left: 32px;
-  width: 696px;
-  height: 28px;
+  height: var(--control-h);
   display: flex;
   align-items: center;
   gap: var(--s4);
 }
 
-.selects-trigger { top: 464px; }
-.selects-shape { top: 500px; }
+.selects-row + .selects-row {
+  margin-top: var(--s2);
+}
 
-/* ------------------------------------------------------------------ hint -- */
-
-/*
- * `.hint-bar`, WHICH IS WHAT THE COMPONENT RENDERS -- not `.hint`. A positioning
- * rule whose selector matches nothing fails silently: the bar was laid out in
- * normal flow at the top of the window, over the title, and looked like a
- * z-order problem rather than a typo.
- */
-.hint-bar {
-  position: absolute;
-  left: 32px;
-  /*
-   * AN EXPLICIT WIDTH, NOT A left/right PAIR.
-   *
-   * components.css gives .hint-bar `width: 100%` -- correct where the bar sits
-   * in normal flow, as it does in the other two editors. Here it is absolutely
-   * positioned, and `width` WINS over a left/right pair: the bar became 760
-   * wide starting at x=32, so it ran 32px past the window and the signature at
-   * its right end was cut in half. Nothing about that reads as a width bug in
-   * the editor's own stylesheet, which is why the number is spelled here.
-   */
-  width: 696px;
-  top: 552px;
-  height: 20px;
+.shaper .handle:focus-visible circle:last-child {
+  fill: var(--uv);
 }

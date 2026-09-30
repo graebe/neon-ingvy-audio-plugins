@@ -33,7 +33,7 @@ export function NameField(props) {
 
   return (
     <input
-      class="name-field"
+      class="name-field t-value"
       type="text"
       maxlength={MAXLEN}
       placeholder="name this bus"

@@ -20,11 +20,15 @@ export const MSG = {
    * walks its own generator and two presses differ. */
   randomize: 104,
   /*
-   * "<length>:<perStep>:<hex>" -- the gate across one cycle, as the ENGINE
-   * applies it: the samples themselves, rendered by a scratch engine with a DC
-   * input, not a description drawn from.
+   * "<length>:<perStep>:" + a raw byte a sample -- the gate across one cycle,
+   * as the ENGINE applies it: the samples themselves, rendered by a scratch
+   * engine with a DC input, not a description drawn from. Binary, like the
+   * scope (66): both arrive through onBytes.
    */
   gate: 105,
+  /* "<steps>:<perStep>:" + the gated curve + the envelope as dialled, a raw
+   * byte a sample each -- the envelope plot, rendered by the engine. */
+  envelope: 106,
 };
 
 /* EParams in Params.h, which is the engine's own Param order -- so the host

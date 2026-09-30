@@ -115,8 +115,18 @@ void WebPlugin::SendDisplay(int paramIdx)
   if (paramIdx < 0 || paramIdx >= NParams())
     return;
   WDL_String str;
-  GetParam(paramIdx)->GetDisplay(str);
+  FormatDisplay(paramIdx, str);
   Send(paramIdx, str.Get(), str.GetLength());
+}
+
+void WebPlugin::FormatDisplay(int paramIdx, WDL_String& str) const
+{
+  GetParam(paramIdx)->GetDisplay(str);
+}
+
+double WebPlugin::ParseDisplay(int paramIdx, const char* text) const
+{
+  return GetParam(paramIdx)->StringToValue(text);
 }
 
 void WebPlugin::SetParamFromPlugin(int paramIdx, double value)
@@ -160,7 +170,7 @@ double WebPlugin::PortDefault(int idx) const
  * history and automation lane. StringToValue is the parser the host uses. */
 void WebPlugin::PortSetFromText(int idx, const char* text)
 {
-  const double v = GetParam(idx)->StringToValue(text);
+  const double v = ParseDisplay(idx, text);
   BeginInformHostOfParamChangeFromUI(idx);
   SendParameterValueFromUI(idx, GetParam(idx)->ToNormalized(v));
   EndInformHostOfParamChangeFromUI(idx);

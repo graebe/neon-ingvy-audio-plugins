@@ -86,6 +86,12 @@ protected:
   virtual void OnEditorReady() {}
   /* A message the shell does not handle. */
   virtual bool OnEditorMessage(int tag, const std::string& arg) { return false; }
+  /* The EDITOR's text for a parameter, and what the editor's typed text means.
+   * By default the parameter's own display and parser -- which is what the
+   * host sees too. A product overrides these where the editor reads a value in
+   * a unit the host's text cannot carry (the Trance Gate's stages in ms). */
+  virtual void FormatDisplay(int paramIdx, WDL_String& str) const;
+  virtual double ParseDisplay(int paramIdx, const char* text) const;
 
   /* ---- what a product may use ---- */
 

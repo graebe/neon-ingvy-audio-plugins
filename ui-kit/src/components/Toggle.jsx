@@ -19,7 +19,8 @@ export function Toggle(props) {
   return (
     <button type="button" class="switch-row"
             role="switch" aria-checked={on()}
-            onClick={() => props.onChange?.(!on())}>
+            disabled={!!props.disabled}
+            onClick={() => !props.disabled && props.onChange?.(!on())}>
       <div class="switch" classList={{ on: on() }}>
         <div class="switch-knob" classList={{ 'glow-led': on() }} />
       </div>

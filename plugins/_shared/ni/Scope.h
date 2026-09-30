@@ -93,16 +93,18 @@ public:
     return mSeen[col].load(std::memory_order_acquire) == mGen.load(std::memory_order_relaxed);
   }
 
-  /* Column `col` as four hex bytes -- dry low, dry high, wet low, wet high,
-   * each bipolar -- and, with `withGain`, a fifth: the gain, unipolar. */
+  /* Column `col` as four raw bytes -- dry low, dry high, wet low, wet high,
+   * each bipolar -- and, with `withGain`, a fifth: the gain, unipolar. Raw, not
+   * hex: the transport base64-encodes the payload anyway, and hex inside it
+   * cost 2.7 times the bytes and a second decode in the editor. */
   char* PutColumn(char* out, int col, bool withGain) const
   {
-    out = wire::put_hex(out, wire::encode_bipolar(mDryLo[col].load(std::memory_order_relaxed)));
-    out = wire::put_hex(out, wire::encode_bipolar(mDryHi[col].load(std::memory_order_relaxed)));
-    out = wire::put_hex(out, wire::encode_bipolar(mWetLo[col].load(std::memory_order_relaxed)));
-    out = wire::put_hex(out, wire::encode_bipolar(mWetHi[col].load(std::memory_order_relaxed)));
+    *out++ = char(wire::encode_bipolar(mDryLo[col].load(std::memory_order_relaxed)));
+    *out++ = char(wire::encode_bipolar(mDryHi[col].load(std::memory_order_relaxed)));
+    *out++ = char(wire::encode_bipolar(mWetLo[col].load(std::memory_order_relaxed)));
+    *out++ = char(wire::encode_bipolar(mWetHi[col].load(std::memory_order_relaxed)));
     if (withGain)
-      out = wire::put_hex(out, wire::encode_unipolar(mGain[col].load(std::memory_order_relaxed)));
+      *out++ = char(wire::encode_unipolar(mGain[col].load(std::memory_order_relaxed)));
     return out;
   }
 
