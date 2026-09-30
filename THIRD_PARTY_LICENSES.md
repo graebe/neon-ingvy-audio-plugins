@@ -95,6 +95,8 @@ is not there. The OFL is permissive and GPL-compatible.
 | `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **MIT**, © 2026 Torben Gräber, with a ported part — see below |
 | `ground-core`, `ground-capi` | `engines/ground` | **MIT**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **MIT**, © 2026 Torben Gräber |
+| `ni-dsp`, `ni-schwung` | `engines/shared` | **MIT**, © 2026 Torben Gräber |
+| `ni-testkit` | `engines/shared` | **MIT**, © 2026 Torben Gräber — a dev-dependency only; it ships in nothing |
 
 **No crate here has a third-party dependency.** `Cargo.lock` holds only these
 workspace members, which `scripts/check-licenses.mjs` verifies: a crate from

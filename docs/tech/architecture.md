@@ -7,9 +7,9 @@ slug: architecture
 Four layers, and each one exists because the layer above it cannot do the job.
 
 ```
-Rust core        the DSP. No dependencies at all.
+Rust core        the DSP, on the shared ni-dsp. No external dependencies.
   ├── C ABI      extern "C", for the plugin
-  └── Schwung    the audio_fx vtable, for the Move
+  └── Schwung    the audio_fx vtable (ni-schwung), for the Move
 C++ glue         iPlug2 — the VST3/AU/CLAP shell and the host plumbing
 Solid editor     a WebView, drawing the Ultraviolet design system
 ```
@@ -17,7 +17,10 @@ Solid editor     a WebView, drawing the Ultraviolet design system
 ## The Rust core
 
 One Cargo workspace at the repository root, and **zero external crates** — every
-`[dependencies]` entry in it is a `path` to a sibling inside the same engine.
+`[dependencies]` entry in it is a `path` to a sibling inside the same engine
+or to one of the product-free shared crates (`engines/shared`, `ground`,
+`shell`, `audio-bus`). Those are rlibs: each product's single static library
+absorbs them, so a plugin still links exactly one archive.
 That is not asceticism; it is what makes the licence audit finish in one
 sitting, and it is why both engines compile for an aarch64 Linux device and a
 universal macOS bundle without a cross-compilation story.

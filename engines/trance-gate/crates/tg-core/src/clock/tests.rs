@@ -58,7 +58,7 @@ fn track(frames: usize, jump_steps: f64, seconds: f64, rate: &str) -> (f64, f64,
         p.process_f32(&mut buf, frames, Some(&Transport { running: true, beats, bpm: 120.0 }));
         done += frames;
         let target = (done as f64 / sr * 2.0 + offset) / beats_per_step;
-        last = target - p.step_pos;
+        last = target - p.phase.pos;
         if offset != 0.0 && e0.is_none() {
             e0 = Some(jump_steps);
             t0 = (done - frames) as f64 / sr;
@@ -78,7 +78,7 @@ fn the_phase_converges_at_the_same_rate_whatever_the_block_size() {
      */
     for frames in [1usize, 32, 128, 4096] {
         let (e0, e, dt) = track(frames, 0.1, 0.1 + 0.3, "1/16");
-        let want = (-dt / super::TRACK_TAU_S).exp();
+        let want = (-dt / ni_dsp::phase::TRACK_TAU_S).exp();
         let got = e / e0;
         assert!(
             got > 0.0 && (got / want - 1.0).abs() < 0.05,
@@ -109,8 +109,8 @@ fn the_playhead_never_runs_backwards() {
             let lag = if t >= 0.5 { 0.2 * 8.0 / 3.0 } else { 0.0 };
             let tr = Transport { running: true, beats: t * 2.0 - lag, bpm: 120.0 };
             p.process_f32(&mut buf, frames, Some(&tr));
-            assert!(p.step_pos >= prev, "{frames}-frame blocks: the playhead went back at {t:.4}s: {prev} -> {}", p.step_pos);
-            prev = p.step_pos;
+            assert!(p.phase.pos >= prev, "{frames}-frame blocks: the playhead went back at {t:.4}s: {prev} -> {}", p.phase.pos);
+            prev = p.phase.pos;
             done += frames;
         }
     }

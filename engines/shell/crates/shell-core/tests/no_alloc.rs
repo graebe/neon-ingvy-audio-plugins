@@ -3,40 +3,15 @@
  * rather than claimed.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * The idiom is spectro-core's: a counting global allocator, armed only across
- * the calls the audio thread makes. THIS FILE MUST HOLD EXACTLY ONE TEST -- the
- * counter is global and cargo runs tests in threads.
+ * ni_testkit's counting allocator, armed only across the calls the audio
+ * thread makes; allocations are asserted. THIS FILE MUST HOLD EXACTLY ONE TEST
+ * -- the counter is global and cargo runs tests in threads.
  */
 
 use shell_core::{Bridge, Handoff, Model, Text};
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-
-struct Counting;
-
-static ARMED: AtomicBool = AtomicBool::new(false);
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
-
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.alloc(layout)
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        System.dealloc(ptr, layout)
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.realloc(ptr, layout, new_size)
-    }
-}
 
 #[global_allocator]
-static ALLOCATOR: Counting = Counting;
+static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
 
 /// A model that formats text into its frame, the way a product's does.
 struct Echo {
@@ -76,7 +51,7 @@ fn the_audio_side_allocates_nothing() {
         b.post(&[b'a' + i; 12]);
     }
 
-    ARMED.store(true, Ordering::SeqCst);
+    ni_testkit::arm();
     for _ in 0..64 {
         unsafe {
             let e = b.begin();
@@ -87,9 +62,9 @@ fn the_audio_side_allocates_nothing() {
         assert!(!p.is_null());
         h.release();
     }
-    ARMED.store(false, Ordering::SeqCst);
+    ni_testkit::disarm();
 
-    assert_eq!(ALLOCS.load(Ordering::SeqCst), 0, "the audio side reached the allocator");
+    assert_eq!(ni_testkit::allocs(), 0, "the audio side reached the allocator");
     assert_eq!(b.read(|r| r.frame.as_str().to_owned()), "t".repeat(12));
 
     let mut h = h;

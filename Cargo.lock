@@ -14,6 +14,9 @@ dependencies = [
 [[package]]
 name = "bus-core"
 version = "2026.9.29+2"
+dependencies = [
+ "ni-testkit",
+]
 
 [[package]]
 name = "ground-capi"
@@ -25,12 +28,31 @@ dependencies = [
 [[package]]
 name = "ground-core"
 version = "2026.9.29+1"
+dependencies = [
+ "ni-dsp",
+]
+
+[[package]]
+name = "ni-dsp"
+version = "2026.9.29+1"
+
+[[package]]
+name = "ni-schwung"
+version = "2026.9.29+1"
+dependencies = [
+ "ni-dsp",
+]
+
+[[package]]
+name = "ni-testkit"
+version = "2026.9.29+1"
 
 [[package]]
 name = "sc-capi"
 version = "2026.9.29+2"
 dependencies = [
  "ground-capi",
+ "ni-dsp",
  "sc-core",
  "shell-core",
 ]
@@ -38,11 +60,16 @@ dependencies = [
 [[package]]
 name = "sc-core"
 version = "2026.9.29+2"
+dependencies = [
+ "ni-dsp",
+ "ni-testkit",
+]
 
 [[package]]
 name = "sc-move"
 version = "2026.9.29+2"
 dependencies = [
+ "ni-schwung",
  "sc-capi",
  "sc-core",
 ]
@@ -57,6 +84,9 @@ dependencies = [
 [[package]]
 name = "shell-core"
 version = "2026.9.29+1"
+dependencies = [
+ "ni-testkit",
+]
 
 [[package]]
 name = "spectro-capi"
@@ -71,12 +101,16 @@ dependencies = [
 [[package]]
 name = "spectro-core"
 version = "2026.9.29+2"
+dependencies = [
+ "ni-testkit",
+]
 
 [[package]]
 name = "spectro-recv"
 version = "2026.9.29+2"
 dependencies = [
  "bus-core",
+ "ni-testkit",
  "spectro-core",
 ]
 
@@ -85,6 +119,7 @@ name = "tg-capi"
 version = "2026.9.29+3"
 dependencies = [
  "ground-capi",
+ "ni-dsp",
  "shell-core",
  "tg-core",
 ]
@@ -92,11 +127,16 @@ dependencies = [
 [[package]]
 name = "tg-core"
 version = "2026.9.29+3"
+dependencies = [
+ "ni-dsp",
+ "ni-testkit",
+]
 
 [[package]]
 name = "tg-move"
 version = "2026.9.29+3"
 dependencies = [
+ "ni-schwung",
  "tg-capi",
  "tg-core",
 ]

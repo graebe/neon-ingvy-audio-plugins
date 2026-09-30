@@ -17,41 +17,12 @@
  * measured window and the failure would look like a real regression.
  */
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use sc_core::params::{Param, PARAM_COUNT};
 use sc_core::{Instance, Transport};
 
-struct Counting;
-
-static ARMED: AtomicBool = AtomicBool::new(false);
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
-static FREES: AtomicUsize = AtomicUsize::new(0);
-
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.alloc(layout)
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if ARMED.load(Ordering::Relaxed) {
-            FREES.fetch_add(1, Ordering::Relaxed);
-        }
-        System.dealloc(ptr, layout)
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.realloc(ptr, layout, new_size)
-    }
-}
-
 #[global_allocator]
-static ALLOCATOR: Counting = Counting;
+static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
 
 const SETS: &[(&str, &str)] = &[
     ("rate", "1/8T"),
@@ -96,7 +67,7 @@ fn process_params_and_midi_allocate_nothing() {
     let mut i16s = vec![8000i16; 256 * 2];
     let mut out = vec![0u8; 4096];
 
-    ARMED.store(true, Ordering::SeqCst);
+    ni_testkit::arm();
     let mut beats = 0.0;
     for block in 0..64 {
         let t = Transport { running: block % 16 != 15, beats, bpm: 120.0 };
@@ -117,8 +88,8 @@ fn process_params_and_midi_allocate_nothing() {
             p.get_param(k, &mut out);
         }
     }
-    ARMED.store(false, Ordering::SeqCst);
+    ni_testkit::disarm();
 
-    let (a, f) = (ALLOCS.load(Ordering::SeqCst), FREES.load(Ordering::SeqCst));
+    let (a, f) = (ni_testkit::allocs(), ni_testkit::frees());
     assert_eq!((a, f), (0, 0), "the audio path allocated {a} times and freed {f} times");
 }

@@ -21,3 +21,5 @@ tg-core = { path = "../tg-core" }
 ground-capi = { path = "../../../ground/crates/ground-capi" }
 # The command queue and the published snapshot between the plugin's threads.
 shell-core = { path = "../../../shell/crates/shell-core" }
+# The C-string and transport helpers every capi crate wraps its entry points in.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }

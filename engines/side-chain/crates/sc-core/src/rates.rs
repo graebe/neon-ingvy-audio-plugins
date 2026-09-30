@@ -1,31 +1,13 @@
 /*!
-The cycle table: how often the duck fires.
+The cycle table: how often the duck fires, in beats per cycle. The parsing is
+`ni_dsp::rate`'s; the list is this product's, and its order is the wire.
 
-Beats per cycle, with `1/4 == 1 beat`. The triplet values match the host's LFO
-table exactly, so a rate reads the same here as it does on an LFO -- and the
-same as it does in the Trance Gate, whose `rates.rs` this is adapted from.
-
-WHY THIS TABLE IS NOT `tg-core`'s, AND WHERE IT DIFFERS.
-
-`tg-core` excludes bar-length rates on the stated grounds that "a bar-long step
-is not a gate", and for a step sequencer that is right. A DUCKER at one duck
-per bar is a different and entirely real thing -- it is the long swell under a
-build -- so `1/1` is here and it is the first entry.
-
-That shifts every index against the Trance Gate's table. The two are separate
-products with separate state, so nothing reads across; what matters is that
-`RATE_DEFAULT` below is an index into THIS table.
-
-THE LABEL IS THE WIRE VALUE, NOT THE INDEX, for the string door. An index on
-the wire would couple this table's order to the shell's option list, and a
-drift between them is not a visible error -- it is the duck firing at the wrong
-subdivision with the right word on screen.
+Unlike the Trance Gate's table, `1/1` is here and first: one duck per bar is
+the long swell under a build. So the indices differ between the two products,
+and `RATE_DEFAULT` is an index into THIS table.
 */
 
-pub struct Rate {
-    pub label: &'static str,
-    pub beats: f64,
-}
+pub use ni_dsp::rate::Rate;
 
 pub static RATES: &[Rate] = &[
     Rate { label: "1/1",   beats: 4.0 },
@@ -49,34 +31,9 @@ pub static RATES: &[Rate] = &[
 /// plugin over a house loop expects to hear without touching anything.
 pub const RATE_DEFAULT: usize = 4;
 
+/// A label, a bare number as an index, or [`RATE_DEFAULT`].
 pub fn index_from(val: &str) -> usize {
-    if val.is_empty() {
-        return RATE_DEFAULT;
-    }
-    for (i, r) in RATES.iter().enumerate() {
-        if val == r.label {
-            return i;
-        }
-    }
-    /* A bare number is an index -- the host resolves a numeric enum value that
-     * way. Parsed with the same leniency strtol has: leading digits, trailing
-     * anything, so "4" and "4 " and "4/x" all land on 4.
-     *
-     * A SLICE OF THE INPUT, NOT A COLLECTED STRING. This runs on the audio
-     * callback (the Move's knob writes a numeric rate), and the String that
-     * used to be built here was a malloc and a free per write. The run it
-     * takes is the same one -- digits and signs -- so what parses is too. */
-    let s = val.trim_start();
-    let run = s
-        .bytes()
-        .take_while(|c| c.is_ascii_digit() || *c == b'-' || *c == b'+')
-        .count();
-    if let Ok(n) = s[..run].parse::<i64>() {
-        if n >= 0 && (n as usize) < RATES.len() {
-            return n as usize;
-        }
-    }
-    RATE_DEFAULT
+    ni_dsp::rate::index_from(RATES, RATE_DEFAULT, val)
 }
 
 #[cfg(test)]

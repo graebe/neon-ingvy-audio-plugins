@@ -11,3 +11,7 @@ description = "A short-time Fourier analyzer that hands finished spectrogram col
 # the artefact is permissive AND ACCOUNTED FOR -- see THIRD_PARTY_LICENSES.md
 # -- and a crate that needs no attribution is cheaper than one that does.
 [dependencies]
+
+# The counting allocator the no_alloc test installs. Test-only.
+[dev-dependencies]
+ni-testkit = { path = "../../../shared/crates/ni-testkit" }

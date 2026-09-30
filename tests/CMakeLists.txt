@@ -316,6 +316,12 @@ add_test(NAME shell_core
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p shell-core -p shell-capi
                  -p tg-capi -p sc-capi)
 
+# THE SHARED CRATES' OWN TESTS. Every product's goldens cover them through the
+# products; these pin each piece on its own.
+add_test(NAME ni_shared
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung -p ni-testkit)
+
 # The handoff's seam, holding a real bus writer the way NI Listen-In does.
 # The shell_handoff_* symbols ride in libbus_capi.a, so that is what it links.
 add_executable(shell_handoff shell_handoff.c)

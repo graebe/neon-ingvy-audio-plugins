@@ -34,17 +34,17 @@ can see and dial.
 */
 
 pub mod follower;
-pub mod fmt;
+pub use ni_dsp::fmt;
 pub mod midi;
 pub mod params;
 pub mod rates;
 pub mod shape;
-mod smooth;
 
 #[cfg(test)]
 mod tests;
 
 use follower::Follower;
+use ni_dsp::phase::{Edge, PhaseTracker};
 use midi::{Action, Midi, Queue};
 use shape::{Curve, Env, Stage, Stages};
 
@@ -76,16 +76,6 @@ pub const STAGE_MAX_PCT: f64 = 200.0;
 /// previous cycle", which is a position we have already passed. MIDI and
 /// Sidechain have no such luxury -- see `block_setup`.
 pub const DELAY_RANGE_PCT: f64 = 100.0;
-
-/// Beyond this much phase error, jump rather than glide. `tg-core`'s value.
-const RESYNC_CYCLES: f64 = 0.25;
-/// How fast the loop pulls in, as a time constant, so the pull is the same
-/// whatever the host's block size. `tg-core/src/clock.rs` says why it is one
-/// and where 56.6 ms comes from; the two are kept equal.
-pub(crate) const TRACK_TAU_S: f64 = 0.0566;
-/// The slowest the phase may run while it pulls back towards a host that is
-/// behind it, as a fraction of its nominal speed. `tg-core`'s value.
-const MIN_SPEED: f64 = 0.5;
 
 /// Where the trigger comes from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -127,15 +117,7 @@ impl TimeMode {
     pub const LABELS: [&'static str; 2] = ["ms", "% of cycle"];
 }
 
-/// What the host says about the transport.
-#[derive(Clone, Copy, Default, Debug)]
-pub struct Transport {
-    pub running: bool,
-    /// Quarter notes since the start of the timeline. Negative means "no
-    /// transport", which is NOT the same as beat zero.
-    pub beats: f64,
-    pub bpm: f32,
-}
+pub use ni_dsp::Transport;
 
 pub struct Instance {
     sample_rate: f64,
@@ -152,7 +134,7 @@ pub struct Instance {
     /// 0..1.
     depth: f64,
     /// `depth` as the gain law hears it, gliding towards it -- see
-    /// `smooth.rs`. Runtime, not saved.
+    /// `ni_dsp::smooth`. Runtime, not saved.
     depth_s: f64,
     curve: Curve,
     midi: Midi,
@@ -179,13 +161,12 @@ pub struct Instance {
     key_len: usize,
 
     /* ---- the cycle's phase-locked loop ---- */
-    /// Position in cycles, fractional.
-    cycle_pos: f64,
+    /// Position in cycles, and whether the transport ran last block.
+    phase: PhaseTracker,
     /// The last whole cycle a trigger fired on. `None` forces the next
     /// boundary to fire even if the index has not changed -- which is what a
     /// seek back onto the cycle we were already on needs.
     last_cycle: Option<i64>,
-    was_running: bool,
 
     /* ---- published once per block, so `get_param` stays trivial ---- */
     /// `get_param` runs on the audio callback too. Anything it reports that
@@ -242,9 +223,8 @@ impl Instance {
             key_l: vec![0.0; MAX_BLOCK].into_boxed_slice(),
             key_r: vec![0.0; MAX_BLOCK].into_boxed_slice(),
             key_len: 0,
-            cycle_pos: 0.0,
             last_cycle: None,
-            was_running: false,
+            phase: PhaseTracker::default(),
             ms_per_cycle: 0.0,
             samples_per_cycle: 1.0,
             last_bpm: 120.0,
@@ -271,7 +251,7 @@ impl Instance {
          * finish the current stage at the wrong speed. */
         self.env.reset();
         self.last_cycle = None;
-        self.was_running = false;
+        self.phase.was_running = false;
     }
 
     pub fn set_key_connected(&mut self, connected: bool) {
@@ -385,7 +365,6 @@ impl Instance {
         self.env.rescale(&self.stages, &stages);
         self.stages = stages;
 
-        let mut inc = 1.0 / samples_per_cycle;
         let cycle = matches!(self.source, Source::Cycle);
         /* In cycles, and signed. See the note on the stages above. */
         let offset = self.delay_pct / 100.0;
@@ -398,77 +377,49 @@ impl Instance {
         let running = beats >= 0.0;
         self.advancing = running;
 
-        if running {
-            let target = beats / beats_per_cycle;
-
-            /*
-             * ARRIVING SOMEWHERE: what the trigger should do about it.
-             *
-             * `None` means "fire on the next sample". That is right when the
-             * transport lands ON a trigger point -- pressing play on the
-             * downbeat must duck -- and wrong everywhere else: with an offset,
-             * landing mid-cycle and firing immediately puts a duck at an
-             * arbitrary phase AND then fires again at the real trigger a moment
-             * later, which is two ducks where the music has one.
-             *
-             * So: fire only if we are within a sample of the trigger, and
-             * otherwise record the boundary we have already passed so the next
-             * one is heard.
-             */
-            let arrive = |pos: f64, offset: f64, inc: f64| -> Option<i64> {
-                let shifted = pos - offset;
-                let floor = shifted.floor();
-                if shifted - floor < inc {
-                    None
-                } else {
-                    Some(floor as i64)
-                }
-            };
-
-            if !self.was_running {
-                /* Transport just started: land exactly, do not glide in. */
-                self.cycle_pos = target;
-                self.last_cycle = arrive(target, offset, inc);
+        /*
+         * ARRIVING SOMEWHERE: what the trigger should do about it. `None`
+         * fires on the next sample, which is right only when the transport
+         * lands within a sample of a trigger point -- play on the downbeat must
+         * duck. Anywhere else, record the boundary already passed so the next
+         * one is heard, rather than a duck at an arbitrary phase and another a
+         * moment later. A jump re-evaluates even onto the current cycle: the
+         * test is `index > last_cycle`.
+         */
+        let arrive = |pos: f64, inc: f64| -> Option<i64> {
+            let shifted = pos - offset;
+            let floor = shifted.floor();
+            if shifted - floor < inc {
+                None
             } else {
-                let err = target - self.cycle_pos;
-                if err > RESYNC_CYCLES || err < -RESYNC_CYCLES {
-                    self.cycle_pos = target; /* loop, seek or tempo jump */
-                    /* A jump re-evaluates the boundary even when it lands on
-                     * the cycle we were already on: the test is
-                     * `index > last_cycle`, so a seek back onto the current
-                     * cycle would otherwise fire nothing. */
-                    self.last_cycle = arrive(target, offset, inc);
-                } else {
-                    let absorb = 1.0 - (-(frames as f64) / (self.sample_rate * TRACK_TAU_S)).exp();
-                    inc += err * absorb / frames as f64;
-                }
+                Some(floor as i64)
             }
-            /* NEVER BACKWARDS: a reversing phase re-crosses the boundary it
-             * just passed and fires the same duck twice. Only a seek (the
-             * resync above) moves the phase back. */
-            inc = inc.max(MIN_SPEED / samples_per_cycle);
-        } else {
-            self.cycle_pos = 0.0;
-            self.last_cycle = None;
-            if cycle && self.was_running {
-                /* Stopped means open, but ONLY for the source that depends on
-                 * the transport. Resetting the envelope here unconditionally
-                 * is what would break a MIDI duck in a stopped session.
-                 *
-                 * And open by RELEASING, once, at the stop -- not by a reset
-                 * every stopped block. A reset mid-duck stepped the gain to
-                 * 1.0 in one sample; a release is what the duck would have
-                 * done had the cycle simply not fired again, and nothing fires
-                 * it while the transport is parked. */
-                self.env.release(&stages);
+        };
+
+        let target = if running { Some(beats / beats_per_cycle) } else { None };
+        let (inc, edge) = self.phase.follow(target, samples_per_cycle, frames, self.sample_rate);
+        match edge {
+            Edge::Started | Edge::Jumped => {
+                self.last_cycle = arrive(self.phase.pos, 1.0 / samples_per_cycle);
+            }
+            Edge::Tracking => {}
+            Edge::Stopped | Edge::Parked => {
+                self.last_cycle = None;
+                if cycle && edge == Edge::Stopped {
+                    /* Stopped means open, but ONLY for the source that
+                     * depends on the transport -- a MIDI duck must still work
+                     * in a stopped session. And open by RELEASING, once, at
+                     * the stop: what the duck would have done had the cycle
+                     * simply not fired again. */
+                    self.env.release(&stages);
+                }
             }
         }
-        self.was_running = running;
 
         self.queue.prepare(frames);
 
         Some(Run {
-            smooth: smooth::coef(self.sample_rate),
+            smooth: ni_dsp::smooth::coef(self.sample_rate),
             stages,
             cycle,
             inc,
@@ -502,7 +453,7 @@ impl Instance {
                  * which is 20% before the next beat and a place we have already
                  * been.
                  */
-                let idx = (self.cycle_pos - r.offset).floor() as i64;
+                let idx = (self.phase.pos - r.offset).floor() as i64;
                 /*
                  * FORWARD CROSSINGS ONLY.
                  *
@@ -524,7 +475,7 @@ impl Instance {
                     self.fires = self.fires.wrapping_add(1);
                     self.since_trigger = 0.0;
                 }
-                self.cycle_pos += r.inc;
+                self.phase.pos += r.inc;
             }
         } else if matches!(self.source, Source::Sidechain) {
             /* A key buffer shorter than the block reads as silence past its
@@ -558,11 +509,11 @@ impl Instance {
         /* DEPTH GLIDES ONLY WHILE IT IS HEARD. With no duck the gain is 1.0
          * whatever Depth is, so it takes a new value at once there -- which is
          * also what keeps a patch set before its first trigger rendering the
-         * same bits it always did. Mid-duck it glides; see `smooth.rs`. */
+         * same bits it always did. Mid-duck it glides; see `ni_dsp::smooth`. */
         self.depth_s = if duck == 0.0 {
             self.depth
         } else {
-            smooth::glide(self.depth_s, self.depth, r.smooth)
+            ni_dsp::smooth::glide(self.depth_s, self.depth, r.smooth)
         };
 
         /* DEPTH ZERO IS A TRUE BYPASS AND NEEDS NO SPECIAL CASE: the product
@@ -704,7 +655,7 @@ impl Instance {
     /// Cycle phase, 0..1. The allocation-free answer for the audio thread;
     /// the UI gets the same number inside the `ui` readout.
     pub fn phase01(&self) -> f64 {
-        let p = self.cycle_pos - self.cycle_pos.floor();
+        let p = self.phase.pos - self.phase.pos.floor();
         if p.is_finite() {
             p.clamp(0.0, 1.0)
         } else {

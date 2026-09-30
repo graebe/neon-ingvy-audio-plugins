@@ -15,9 +15,9 @@
 # render, and that number did not move.
 #
 # PRODUCT engines stay INDEPENDENT of each other. A product crate may depend on
-# its own engine's crates and on the house transport, and on nothing else in
-# this file; spectro-core knowing about tg-core would be a coupling nobody asked
-# for.
+# its own engine's crates, on the house transport and on the shared crates
+# below, and on nothing else in this file; spectro-core knowing about tg-core
+# would be a coupling nobody asked for.
 #
 # audio-bus is the exception that names the rule. It is NOT a product engine --
 # it is the house transport, the Rust counterpart of ui-kit, and it exists
@@ -25,8 +25,8 @@
 # audio and a Spectrogram reads it. It depends on no product in return, which is
 # the direction that actually matters.
 #
-# engines/ground and engines/shell are shared the same way and hold the same
-# line: every plugin uses them, and they depend on no product.
+# engines/ground, engines/shell and engines/shared are shared the same way and
+# hold the same line: products use them, and they depend on no product.
 [workspace]
 resolver = "2"
 members = [
@@ -58,6 +58,11 @@ members = [
     # each product's capi crate supplies the engine-shaped half.
     "engines/shell/crates/shell-core",        # the mechanism
     "engines/shell/crates/shell-capi",        # the handoff's C ABI -> the shells
+    # What two products would otherwise each keep a copy of. Product-free by
+    # the same rule: a piece moves here only once it names no product.
+    "engines/shared/crates/ni-dsp",           # C-compatible fmt, rates, curves, glides
+    "engines/shared/crates/ni-schwung",       # the audio_fx v2 glue -> every module
+    "engines/shared/crates/ni-testkit",       # test-only: the counting allocator
 ]
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.

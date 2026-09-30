@@ -8,3 +8,11 @@ description = "NI Side-Chain DSP engine: a cycle-, MIDI- or sidechain-triggered 
 
 [lib]
 crate-type = ["rlib"]
+
+[dependencies]
+# The DSP the products share; product-free. See the workspace Cargo.toml.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+
+# The counting allocator the no_alloc test installs. Test-only.
+[dev-dependencies]
+ni-testkit = { path = "../../../shared/crates/ni-testkit" }

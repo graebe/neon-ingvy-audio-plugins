@@ -1,22 +1,7 @@
 /*!
 Formatting and parsing that match C's, because the wire is C's.
 
-A VERBATIM COPY OF `tg-core/src/fmt.rs`, AND DELIBERATELY SO.
-
-The root `Cargo.toml` states the rule this obeys: "a crate here may depend on
-its own engine's crates and on nothing else in this file", so `sc-core`
-cannot reach `tg-core` for it. The alternative is a fourth shared crate whose
-whole content is this file, which buys one copy of ~400 lines at the price of a
-dependency edge between two products that are otherwise independent -- and the
-same trade the repo already made twice, once for `SpectroEngine.cmake` and once
-for `SideChainEngine.cmake`, both of which say so in their own headers.
-
-WHAT THAT COSTS, STATED SO IT IS A CHOICE AND NOT A SURPRISE: a fix to C
-parsing compatibility has to land twice. `tests/sc_fmt` and `tests/tg_core`
-both pin the behaviour independently, so a divergence is a test failure rather
-than a silent drift -- which is the only reason the copy is acceptable.
-
-Every value this engine reports crosses a `char*` boundary, and the state blob
+Every value an engine reports crosses a `char*` boundary, and the state blob
 is compared byte-for-byte by the test suite and round-tripped through saved
 patches. So two things have to hold:
 
@@ -48,7 +33,7 @@ impl<'a> Buf<'a> {
     }
 
     /// Null-terminate and return the length written, excluding the
-    /// terminator -- the value `tg_core_get_param` returns.
+    /// terminator -- the value a `*_get_param` C entry point returns.
     pub fn finish(self) -> i32 {
         let n = self.len.min(self.out.len().saturating_sub(1));
         if !self.out.is_empty() {

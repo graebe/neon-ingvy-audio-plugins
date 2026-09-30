@@ -1,154 +1,22 @@
 /*!
-The duck's shape: its curves, and the stage machine that walks them.
+The duck's stage machine, walking `ni_dsp::curve`'s shapes.
 
-THE SHAPE IS A WARP ON TIME, the same invariant `tg-core`'s envelope states:
-every stage has the form `f(t)` with `t` running 0..1 across it, so a curve is
-not a new set of formulas -- it is one function substituted into the two that
-exist:
+Every stage has the form `f(w)` with `w = shape(t)` and `t` running 0..1
+across it:
 
 ```text
-ATTACK    duck = att_from + (scale - att_from) * shape(t)
-RELEASE   duck = rel_from * (1 - shape(t))
+ATTACK    duck = att_from + (scale - att_from) * w
+RELEASE   duck = rel_from * (1 - w)
 ```
 
-`duck` is the ATTENUATION, not the gain: 0 is untouched, `scale` is as far
-down as this trigger goes. The gain a sample is multiplied by is
-`1 - depth * duck`, computed once in `lib.rs`, so nothing here has to know what
-Depth is.
-
-`scale` IS THE ATTACK'S TARGET, NOT A FACTOR ON THE OUTPUT. A velocity-scaled
-duck is a shallower duck, and the difference matters on a retrigger: `from`
-anchoring compares the level the envelope is at against the level it is heading
-for, and those two have to be measured on the same scale. Scaling after the
-fact would make a soft note's release start from a number the machine never
-actually held.
-
-Every shape obeys `shape(0) = 0`, `shape(1) = 1` and is monotonic, so a stage
-still starts and ends exactly where it did and still takes the time it was
-given. Only the path between changes.
-
-THERE IS NO DIRECTION ARGUMENT, AND THERE WAS ONE.
-
-A fourth curve, `Pump`, was asymmetric -- linear going down and a cubic ease-out
-coming back up, from `ducker.c:134-155` -- so `shape` took a `Dir` saying which
-way the envelope was travelling. The other three ignored it.
-
-That curve is gone and the argument went with it, rather than staying as
-something every caller passes and no curve reads. A parameter that no longer
-distinguishes anything is worse than no parameter: the next reader has to work
-out that it does nothing, and the one after has to work out whether that was
-deliberate.
-
-LINEAR RETURNS `t` UNTOUCHED, and the two expressions above are deliberately
-not tidied into a shared `lerp`. `rel_from * (1 - w)` and
-`rel_from - rel_from * w` are one number in algebra and two in floating point.
+`duck` is the ATTENUATION: 0 is untouched, `scale` is as far down as this
+trigger goes; the gain is `1 - depth * duck`, applied in `lib.rs`. `scale` is
+the attack's TARGET, not a factor on the output, so `from` anchoring on a
+retrigger compares levels on one scale. Not tidied into a shared `lerp`:
+`rel_from * (1 - w)` and `rel_from - rel_from * w` differ in floating point.
 */
 
-/// The path a stage takes between its endpoints.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(i32)]
-pub enum Curve {
-    Linear = 0,
-    Exp = 1,
-    SCurve = 2,
-}
-
-impl Curve {
-    pub fn from_i32(v: i32) -> Self {
-        match v {
-            1 => Curve::Exp,
-            2 => Curve::SCurve,
-            _ => Curve::Linear,
-        }
-    }
-
-    pub const COUNT: i32 = 3;
-
-    /// The wire labels, in enum order. The shell re-declares these for the
-    /// host; this is the table it is re-declaring.
-    pub const LABELS: [&'static str; 3] = ["Linear", "Exponential", "S-Curve"];
-}
-
-/// The bend. The same constant `tg-core/src/envelope.rs` uses, so an
-/// exponential reads the same in both plugins: halfway through the stage the
-/// envelope is ~82% of the way.
-const CURVE_K: f64 = 3.0;
-/// `1 - exp(-3)`, spelled out exactly as `tg-core` and the C spell it, so the
-/// division is the same division. NOT `1.0 - (-CURVE_K).exp()`.
-const DENOM: f64 = 0.95021293163213605;
-
-#[inline]
-fn curve_exp(t: f64) -> f64 {
-    (1.0 - (-CURVE_K * t).exp()) / DENOM
-}
-
-#[inline]
-fn curve_exp_inv(w: f64) -> f64 {
-    let x = 1.0 - w * DENOM;
-    if x <= 1e-12 {
-        return 1.0;
-    }
-    -x.ln() / CURVE_K
-}
-
-#[inline]
-pub fn shape(curve: Curve, t: f64) -> f64 {
-    /* `t <= 0.0` rather than `!(t > 0.0)` would let a NaN through as 1.0 via
-     * the next test. Ordered this way a NaN falls out of both comparisons and
-     * lands in the match, where every arm is monotone nonsense but bounded --
-     * so guard it explicitly instead. */
-    if !(t > 0.0) {
-        return 0.0;
-    }
-    if t >= 1.0 {
-        return 1.0;
-    }
-    match curve {
-        Curve::Exp => curve_exp(t),
-        /* TWO EXPONENTIALS, JOINED, and the first one is MIRRORED. The first
-         * half is slow-then-accelerating, the second is the exponential the
-         * right way up, so the pair is slow-fast-slow and meets in the middle
-         * at the same slope -- Einv'(1) being E'(0). A corner there would be
-         * a kink in the gain, audible as surely as a step.
-         *
-         * `0.5 * curve_exp(2t)` on both halves is the version that was wrong
-         * in the Trance Gate for as long as it was: it leaves the floor
-         * vertically and hits the ceiling vertically, which is the opposite
-         * of what an S-curve does at both ends. */
-        Curve::SCurve => {
-            if t < 0.5 {
-                0.5 * (1.0 - curve_exp(1.0 - 2.0 * t))
-            } else {
-                0.5 + 0.5 * curve_exp(2.0 * t - 1.0)
-            }
-        }
-        Curve::Linear => t,
-    }
-}
-
-/// The inverse, which is what lets the curve change mid-duck without a click:
-/// the level is re-anchored through it in `set_curve`. Monotonic and analytic
-/// for all three.
-#[inline]
-pub fn shape_inv(curve: Curve, w: f64) -> f64 {
-    if !(w > 0.0) {
-        return 0.0;
-    }
-    if w >= 1.0 {
-        return 1.0;
-    }
-    match curve {
-        Curve::Exp => curve_exp_inv(w),
-        Curve::SCurve => {
-            if w < 0.5 {
-                0.5 * (1.0 - curve_exp_inv(1.0 - 2.0 * w))
-            } else {
-                0.5 + 0.5 * curve_exp_inv(2.0 * w - 1.0)
-            }
-        }
-        Curve::Linear => w,
-    }
-}
+pub use ni_dsp::curve::{shape, shape_inv, Curve};
 
 /// Which part of the duck is running.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

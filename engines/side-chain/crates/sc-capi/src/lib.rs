@@ -32,40 +32,17 @@ use ground_capi as _;
 mod shell;
 pub use shell::ScShell;
 
+use ni_dsp::ffi::{cstr as s, CTransport};
 use sc_core::params::Param;
-use sc_core::{Instance, Transport, MAX_BLOCK};
+use sc_core::{Instance, MAX_BLOCK};
 use std::os::raw::{c_char, c_int, c_uchar};
 
 /// The opaque handle. A newtype rather than `Instance` directly so the C side
 /// cannot be given a layout it might be tempted to rely on.
 pub struct ScCore(Instance);
 
-#[repr(C)]
-pub struct ScTransport {
-    pub running: c_int,
-    pub beats: f64,
-    pub bpm: f32,
-}
-
-/// `NULL` means "the host told us nothing", which is NOT the same as a stopped
-/// transport: a stopped transport still reports a tempo.
-unsafe fn transport(t: *const ScTransport) -> Option<Transport> {
-    t.as_ref().map(|t| Transport {
-        running: t.running != 0,
-        beats: t.beats,
-        bpm: t.bpm,
-    })
-}
-
-unsafe fn s<'a>(p: *const c_char) -> &'a str {
-    if p.is_null() {
-        return "";
-    }
-    /* A non-UTF-8 byte in a C string is not a reason to abort a host. An empty
-     * key falls through to `get_param`'s -1 and `set_param`'s false, which is
-     * what a caller can actually handle. */
-    std::ffi::CStr::from_ptr(p).to_str().unwrap_or("")
-}
+/// The transport as `sc_core.h` declares it.
+pub use ni_dsp::ffi::CTransport as ScTransport;
 
 /* ----------------------------------------------------------- lifecycle */
 
@@ -177,7 +154,7 @@ pub unsafe extern "C" fn sc_core_process_f32_split(
     let n = frames as usize;
     let lb = std::slice::from_raw_parts_mut(l, n);
     let rb = std::slice::from_raw_parts_mut(r, n);
-    c.0.process_f32_split(lb, rb, n, transport(t).as_ref());
+    c.0.process_f32_split(lb, rb, n, CTransport::read(t).as_ref());
 }
 
 /// The split path, tapping the applied gain and the display sweep per sample.
@@ -220,7 +197,7 @@ pub unsafe extern "C" fn sc_core_process_f32_split_tap(
         gb.as_deref_mut(),
         sb.as_deref_mut(),
         n,
-        transport(t).as_ref(),
+        CTransport::read(t).as_ref(),
     );
 }
 
@@ -237,7 +214,7 @@ pub unsafe extern "C" fn sc_core_process_f32(
     }
     let n = frames as usize;
     let buf = std::slice::from_raw_parts_mut(lr, n * 2);
-    c.0.process_f32(buf, n, transport(t).as_ref());
+    c.0.process_f32(buf, n, CTransport::read(t).as_ref());
 }
 
 #[no_mangle]
@@ -253,7 +230,7 @@ pub unsafe extern "C" fn sc_core_process_i16(
     }
     let n = frames as usize;
     let buf = std::slice::from_raw_parts_mut(lr, n * 2);
-    c.0.process_i16(buf, n, transport(t).as_ref());
+    c.0.process_i16(buf, n, CTransport::read(t).as_ref());
 }
 
 /* ---------------------------------------------------------- parameters */

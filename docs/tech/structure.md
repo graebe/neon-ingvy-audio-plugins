@@ -10,6 +10,7 @@ A monorepo: everything that ships from here is in here. There is one submodule
 
 ```
 engines/<product>/crates     the core, and its wrappers
+engines/shared/crates        ni-dsp, ni-schwung, ni-testkit — shared, product-free
 plugins/<product>/           the VST3/AU/CLAP shell, and its editor
 modules/<product>/           the Schwung module's shell and packaging
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
@@ -36,6 +37,16 @@ audio into a shared-memory bus and a Spectrogram reads it out. Any product may
 depend on it; **it depends on no product in return**, which is the direction that
 actually matters. `spectro-core` knowing about `tg-core` would still be a
 coupling nobody asked for.
+
+`engines/ground`, `engines/shell` and `engines/shared` follow the same rule.
+`engines/shared/crates` holds what two products would otherwise each keep a
+copy of: `ni-dsp` (C-compatible formatting and parsing, the rate parser, the
+envelope curves, the one-pole and the glide, the transport-following phase,
+the capi C helpers), `ni-schwung` (the Schwung audio_fx v2 glue every `*-move`
+crate is built on) and `ni-testkit` (the counting allocator the `no_alloc`
+tests install — a dev-dependency only). Each names no product. A piece moves
+there once it is truly identical in two products; what differs stays in the
+product, as each product's rate list does.
 
 ## One version per product
 

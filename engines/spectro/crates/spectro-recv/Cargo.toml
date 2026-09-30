@@ -15,3 +15,7 @@ bus-core = { path = "../../../audio-bus/crates/bus-core" }
 
 [lib]
 crate-type = ["rlib"]
+
+# The counting allocator the no_alloc test installs. Test-only.
+[dev-dependencies]
+ni-testkit = { path = "../../../shared/crates/ni-testkit" }
