@@ -93,7 +93,8 @@ export function CheckList(props) {
                   <Toggle
                     label={o().name}
                     value={isOn(o().id)}
-                    onChange={(v) => !o().disabled && toggle(o().id, v)}
+                    disabled={!!o().disabled}
+                    onChange={(v) => toggle(o().id, v)}
                   />
                   <Show when={o().hint}>
                     <span class="checklist-hint t-hint">{o().hint}</span>

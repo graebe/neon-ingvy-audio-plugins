@@ -107,8 +107,10 @@ export default function Spectrogram(props) {
   let clashSweepCtx;
   let clashStrip;
   /* The amber the overlay is drawn in, read back from the stylesheet exactly as
-   * the ramp's stops are -- no colour may be spelled in here. */
-  let clashRgb = [255, 176, 0];
+   * the ramp's stops are -- no colour may be spelled in here, not even as a
+   * fallback. Null (no overlay) only if the token is missing, which the ramp
+   * would already have thrown on. */
+  let clashRgb = null;
   /* The last slot written, which is where the playhead goes, and the column
    * that was written there -- the gap filler interpolates from it. */
   let head = -1;
@@ -238,6 +240,7 @@ export default function Spectrogram(props) {
 
   const fillClashStrip = (data, offset, prev) => {
     const px = clashStrip.data;
+    if (!clashRgb) { px.fill(0); return; }
     const [r, g, b] = clashRgb;
     for (let i = 0; i < bands; i++) {
       const row = (bands - 1 - i) * 4;
@@ -494,7 +497,8 @@ export default function Spectrogram(props) {
     /* Read back rather than spelled: no colour may be written in here, and the
      * token guard enforces it -- a runtime-built rgb() string would be caught
      * too. stopCss's own trick, on a different custom property. */
-    clashRgb = readRgb('--amber') ?? clashRgb;
+    clashRgb = readRgb('--amber');
+    if (!clashRgb) console.error('Spectrogram: --amber is not a hex colour; the clash overlay is off');
     setupHistory(props.batch?.bands || 256);
     setupView();
     window.addEventListener('resize', setupView);

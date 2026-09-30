@@ -286,13 +286,6 @@
 
 .sep { margin: 0 var(--s3); color: var(--ink-dim);}
 
-/*
- * The ring goes on the HOUSING, not on the control: the inner <select> is what
- * the browser focuses and it has no border of its own to ring. :has() keys it to
- * the thing actually focused, and :focus-visible keeps a mouse click from
- * leaving one behind.
- */
-.select:has(select:focus-visible) { box-shadow: var(--glow-focus);}
 
 /* ------------------------------------------------------------- plots -- */
 
@@ -412,11 +405,18 @@
 .checklist-row:hover { background: var(--bg-300); }
 /* A bus whose sender is at another sample rate cannot be compared, so it is
  * shown and refused rather than hidden -- hiding it would read as the Listen-In
- * not being there at all. */
-.checklist-row.off { opacity: 0.45; }
+ * not being there at all. The design's DISABLED state, not a fade: everything
+ * drops to ink-dim / line-100, no fill, and the row does not rise under the
+ * pointer. */
+.checklist-row.off:hover { background: none; }
+.checklist-row.off .switch-row { cursor: default; }
+.checklist-row.off .switch { background: none; border-color: var(--line-100); }
+.checklist-row.off .switch-knob { background: var(--line-100); }
+.checklist-row.off .switch-label,
+.checklist-row.off .checklist-hint { color: var(--ink-dim); }
 
-.checklist-hint { color: var(--ink-dim); }
-.checklist-empty { color: var(--ink-dim); padding: var(--s2); }
+.checklist-hint { color: var(--ink-muted); }
+.checklist-empty { color: var(--ink-muted); padding: var(--s2); }
 
 /* THE ANIMATED GROUND -- the design system's Ground, as a canvas behind the
  * window's contents.

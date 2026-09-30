@@ -90,7 +90,7 @@
   display: flex;
   align-items: center;
   gap: var(--s1);
-  color: var(--ink-dim);
+  color: var(--ink-muted);
   white-space: nowrap;
 }
 /* A 4px tick, so the label points at a height rather than merely sitting near
@@ -162,7 +162,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--s1);
-  color: var(--ink-dim);
+  color: var(--ink-muted);
   white-space: nowrap;
   transform: translateX(-50%);
 }
@@ -218,7 +218,7 @@
   gap: var(--s2);
   color: var(--ink-muted);
 }
-.xh-key { color: var(--ink-dim); }
+.xh-key { color: var(--ink-muted); }
 .xh-key:not(:first-child) { margin-left: var(--s6); }
 .xh-val {
   color: var(--ink);
@@ -258,13 +258,13 @@
   gap: var(--s2);
 }
 
-/* The caption names the group rather than any one control in it, so it is
- * ink-dim like the crosshair readout's keys -- a label, not a value. */
-.group-label { color: var(--ink-dim); }
+/* The caption names the group rather than any one control in it: a label, so
+ * ink-muted like every label -- ink-dim is for marks and disabled text, and
+ * fails contrast as running text at this size. */
+.group-label { color: var(--ink-muted); }
 
-/* Between the two halves of the comparison. Dimmer than either, because it is
- * punctuation rather than a third thing to read. */
-.vs { color: var(--ink-dim); margin: 0 var(--s1); }
+/* Between the two halves of the comparison: words, so ink-muted. */
+.vs { color: var(--ink-muted); margin: 0 var(--s1); }
 
 /*
  * The divider: the hint bar's rule turned on its side, and inset a little at

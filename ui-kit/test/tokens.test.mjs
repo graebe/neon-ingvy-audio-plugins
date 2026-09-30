@@ -58,6 +58,22 @@ const ALLOWED = new Set(['tokens.css']);
  * word boundary and the length classes already exclude. */
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\s*\(/;
 
+/*
+ * AND THE SHAPE A COLOUR TAKES IN A CANVAS: three channels in brackets. The
+ * Spectrogram's clash overlay fell back to `[255, 176, 0]` -- amber, spelled
+ * as numbers, where no hex or rgb() could catch it. Any bracketed triple of
+ * 0..255 integers with a channel past 9 reads as one; a list like [0, 1, 2]
+ * does not.
+ */
+const TRIPLE = /\[\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\]/g;
+const colourTriple = (line) => {
+  for (const m of line.matchAll(TRIPLE)) {
+    const c = [m[1], m[2], m[3]].map(Number);
+    if (c.every((v) => v <= 255) && c.some((v) => v > 9)) return m[0];
+  }
+  return null;
+};
+
 /* Comments explain the tokens constantly and must not trip the guard: a line
  * whose colour sits inside a comment is prose, not a value. */
 const stripComments = (text) =>
@@ -81,8 +97,8 @@ test('every colour is spelled in tokens.css and nowhere else', () => {
     const rel = relative(ROOT, file);
     if (ALLOWED.has(basename(rel))) continue;
     stripComments(readFileSync(file, 'utf8')).split('\n').forEach((line, i) => {
-      const m = line.match(COLOUR);
-      if (m) offences.push(`${rel}:${i + 1}  ${m[0]}  --  ${line.trim().slice(0, 72)}`);
+      const m = line.match(COLOUR)?.[0] ?? colourTriple(line);
+      if (m) offences.push(`${rel}:${i + 1}  ${m}  --  ${line.trim().slice(0, 72)}`);
     });
   }
   assert.deepEqual(offences, [],

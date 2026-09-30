@@ -41,25 +41,22 @@
 }
 
 /*
- * THE STATUS WORD IS THE WHOLE POINT OF THIS WINDOW.
- *
- * Everything else here is a control. This is the one piece of information --
- * whether the tap is actually publishing -- and a person who opens the editor
- * is almost always opening it to read exactly this. It is dimmed when live and
- * lit when not, which is the inverse of the obvious choice and the right one:
- * working is the expected state and should be quiet, and the case worth
- * interrupting somebody for is the slot collision.
+ * THE STATUS WORD IS THE WHOLE POINT OF THIS WINDOW: whether the tap is
+ * actually publishing. Quiet (ink-muted, a label) when it is, and in ink when
+ * it is not -- working is the expected state, and the case worth interrupting
+ * somebody for is the slot collision. Never ink-dim: that is for marks and
+ * disabled text, and fails contrast as a word at this size.
  */
 .status {
-  color: var(--ink-dim);
-}
-
-.status-warn {
   color: var(--ink-muted);
 }
 
+.status-warn {
+  color: var(--ink);
+}
+
 .controls {
-  height: 28px;
+  height: var(--control-h);
   margin-bottom: var(--s4);
 }
 
@@ -70,24 +67,22 @@
 .name-field {
   flex: 1 1 auto;
   min-width: 0;
-  height: 28px;
-  box-sizing: border-box;
+  height: var(--control-h);
   padding: 0 var(--s2);
   background: var(--bg-200);
-  border: 1px solid var(--line-100);
-  border-radius: 2px;
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius);
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
   outline: none;
 }
 
 .name-field::placeholder {
-  color: var(--ink-dim);
+  color: var(--ink-muted);
 }
 
 .name-field:focus {
-  border-color: var(--line-200);
+  border-color: var(--uv);
   box-shadow: var(--glow-focus);
 }
 
@@ -99,24 +94,21 @@
  */
 .meter {
   flex: 1 1 auto;
-  height: 12px;
+  height: var(--s3);
   background: var(--bg-200);
   border: 1px solid var(--line-100);
-  border-radius: 2px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
 /*
- * The system's rule is that --uv-deep is never a fill: it is the halo around a
- * near-white core. A bar cannot obey that literally, so it obeys it spatially,
- * the way the Spectrogram's ramp does -- the violet is the falloff and the
- * near-white is the leading edge.
+ * A LEVEL IS A uv FILL, like a slider's: "no gradients", and --uv-deep is never
+ * a fill. No transition either -- "controls never animate: values change
+ * instantly".
  */
 .meter-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--uv-deep), var(--uv));
-  box-shadow: 0 0 8px var(--uv-glow);
-  transition: width 60ms linear;
+  background: var(--uv);
 }
 
 /* A bus that is not publishing still shows its input, greyed: the track has
