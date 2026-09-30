@@ -49,6 +49,14 @@ Everything quick runs, and:
 then `scripts/coverage.sh` with the floor enforced, then `auval`, `pluginval`
 and `clap-validator` over the bundles in `build/out` (or `--bundles DIR`).
 
+**clap-validator is held to a manifest, not to zero.** Some of its failures are
+iPlug2's, fixed by the patches in `docs/iplug2-patches` that are proposed but
+not applied, and one is clap-validator's own bug.
+`tests/validators.known.json` lists each by bundle and test id with the patch
+that fixes it, and `scripts/validator-verdict.mjs` fails the stage on any
+failure it does not list *and* on any listed failure that now passes — so the
+list can only shrink. Warnings are printed and never fail.
+
 **What it reads outside the checkout.** Only Audio Units: `tg_au`, `sc_au`,
 `auval` and pluginval's AU pass find their component through the system's
 registry, which lists *installed* components, so they test the installed AU

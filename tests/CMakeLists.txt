@@ -151,6 +151,11 @@ if (TG_NODE)
              COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
                      --bundles ${CMAKE_BINARY_DIR}/out)
 
+    # THE VALIDATOR STAGE'S VERDICT: clap-validator's JSON against
+    # tests/validators.known.json, strict both ways, and the manifest itself.
+    add_test(NAME validator_verdict
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/validator_verdict.test.mjs)
+
     # THE GROUND'S WIRING IN THE SHARED SHELL, which cannot be linked into a
     # test: the order of a few calls, which the Spectrogram once got wrong.
     add_test(NAME ground_shells
@@ -627,7 +632,7 @@ ni_test_tiers(
         ui_unit tg_curves_js tg_capture_js tg_fade_js sc_shape_js sc_envelope_js
         sc_ranges spectro_ramp spectro_columns_js listenin_wire_js
         # lint-like checks over the tree
-        versions release licenses ground_shells editor_tags ui_tokens
+        versions release licenses ground_shells editor_tags ui_tokens validator_verdict
     FULL
         tg_render_ab:render sc_render_ab:render
         tg_au:host sc_au:host

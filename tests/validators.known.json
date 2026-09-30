@@ -1,0 +1,43 @@
+{
+  "note": "clap-validator failures that are known, explained and owned elsewhere -- read by scripts/validator-verdict.mjs, which fails the validator stage on any failure NOT listed here AND on any listed failure that now passes, so this list can only shrink. Every entry was checked against the host-conformance findings (docs/iplug2-patches/README.md) before it was listed; a failure that is not one of those is a regression, never an entry. Measured with clap-validator 0.4.1 against iPlug2 d54f690, 2026-09-30.",
+
+  "known": [
+    { "bundle": "NITranceGate", "validator": "clap-validator", "test": "layout-audio-ports-config",
+      "cause": "iPlug2: audioPortsGetConfig reports no port type or main-port flag for the main input", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NITranceGate", "validator": "clap-validator", "test": "param-conversions",
+      "cause": "iPlug2: IParam::GetDisplay does not round an enum value between steps (Rate) before looking up its text", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NITranceGate", "validator": "clap-validator", "test": "state-reproducibility-basic",
+      "cause": "iPlug2: CLAP stateLoad does not ask the host to rescan parameter values", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NITranceGate", "validator": "clap-validator", "test": "state-reproducibility-binary",
+      "cause": "iPlug2: CLAP stateLoad does not ask the host to rescan parameter values", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NITranceGate", "validator": "clap-validator", "test": "state-reproducibility-buffered",
+      "cause": "iPlug2: CLAP stateSave fails on a stream that takes fewer bytes than offered", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+
+    { "bundle": "NISideChain", "validator": "clap-validator", "test": "layout-audio-ports-config",
+      "cause": "iPlug2: audioPortsGetConfig reports no port type or main-port flag for the main input", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NISideChain", "validator": "clap-validator", "test": "param-conversions",
+      "cause": "iPlug2: IParam::GetDisplay does not round an enum value between steps (Source) before looking up its text", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NISideChain", "validator": "clap-validator", "test": "state-reproducibility-basic",
+      "cause": "iPlug2: CLAP stateLoad does not ask the host to rescan parameter values", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NISideChain", "validator": "clap-validator", "test": "state-reproducibility-binary",
+      "cause": "iPlug2: CLAP stateLoad does not ask the host to rescan parameter values", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NISideChain", "validator": "clap-validator", "test": "state-reproducibility-buffered",
+      "cause": "iPlug2: CLAP stateSave fails on a stream that takes fewer bytes than offered", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+
+    { "bundle": "NIListenIn", "validator": "clap-validator", "test": "layout-audio-ports-config",
+      "cause": "iPlug2: audioPortsGetConfig reports no port type or main-port flag for the main input", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NIListenIn", "validator": "clap-validator", "test": "state-reproducibility-basic",
+      "cause": "iPlug2: CLAP stateLoad does not ask the host to rescan parameter values", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NIListenIn", "validator": "clap-validator", "test": "state-reproducibility-binary",
+      "cause": "iPlug2: CLAP stateLoad does not ask the host to rescan parameter values", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NIListenIn", "validator": "clap-validator", "test": "state-reproducibility-buffered",
+      "cause": "iPlug2: CLAP stateSave fails on a stream that takes fewer bytes than offered", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+
+    { "bundle": "NISpectrogram", "validator": "clap-validator", "test": "layout-audio-ports-config",
+      "cause": "iPlug2: audioPortsGetConfig reports no port type or main-port flag for the main input", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NISpectrogram", "validator": "clap-validator", "test": "state-reproducibility-buffered",
+      "cause": "iPlug2: CLAP stateSave fails on a stream that takes fewer bytes than offered", "fixed_by": "docs/iplug2-patches/0001-validator-fixes.patch" },
+    { "bundle": "NISpectrogram", "validator": "clap-validator", "test": "param-conversions",
+      "cause": "clap-validator 0.4.1: param-conversions divides by the parameter count and panics on a plugin with none (it reports 'This is a bug in the validator')", "fixed_by": null }
+  ]
+}

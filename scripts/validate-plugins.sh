@@ -7,9 +7,10 @@
 #
 #   scripts/validate-plugins.sh run <tools-dir> [bundle-dir]
 #       Validate every plugin: auval on each INSTALLED Audio Unit, pluginval
-#       (strictness 10) on each VST3 and AU, clap-validator on each CLAP.
-#       bundle-dir defaults to build/out. Exits non-zero if any validator
-#       fails, after running all of them.
+#       (strictness 10) on each VST3 and AU, clap-validator on each CLAP --
+#       the last held to tests/validators.known.json by
+#       scripts/validator-verdict.mjs. bundle-dir defaults to build/out. Exits
+#       non-zero if any validator fails, after running all of them.
 #
 # WHAT EACH ONE IS FOR. The suite checks what these plugins DO -- the render
 # A/B, the oracles. It does not check that they follow each format's rules:
@@ -83,8 +84,16 @@ run() {
             || failed+=("pluginval $bundle.component")
         echo "::endgroup::"
 
+        # HELD TO A MANIFEST, NOT TO ZERO. Some failures are iPlug2's, fixed by
+        # patches not yet applied (docs/iplug2-patches), and one is the
+        # validator's own; tests/validators.known.json lists each. Any failure
+        # it does not list fails, and so does any listed one that now passes.
+        # clap-validator's own exit code is therefore not the verdict: its
+        # JSON is, and an empty or broken report fails the verdict too.
         echo "::group::clap-validator $bundle.clap"
-        "$clapval" validate --only-failed "$out/$bundle.clap" || failed+=("clap-validator $bundle.clap")
+        "$clapval" validate --json --hide-output "$out/$bundle.clap" > "$tools/$bundle.clap.json" || true
+        node "$ROOT/scripts/validator-verdict.mjs" "$bundle" < "$tools/$bundle.clap.json" \
+            || failed+=("clap-validator $bundle.clap")
         echo "::endgroup::"
     done
 
