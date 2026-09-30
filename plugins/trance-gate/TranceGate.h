@@ -216,8 +216,8 @@ enum EMsgTags
 private:
 #if IPLUG_DSP
   /* At the top of every block, on the audio thread, into the engine
-   * tg_shell_begin lent it. */
-  void PushParams(tg_core_t* core);
+   * tg_shell_begin lent it. True when the slot moved this block. */
+  bool PushParams(tg_core_t* core);
 #endif
 
   /*
@@ -237,14 +237,15 @@ private:
    * length actually destroyed, and silently.
    *
    * mSlotPushed is the audio thread's own record of the slot it last set.
-   * When it moves, mSlotSync goes up and the Length push is SUPPRESSED -- the
-   * engine's length is the authority until the host has caught up. OnIdle
-   * sees the flag, reads the engine's length into the parameter, and clears
-   * it, which is one tick at 50Hz. OnIdle runs off a timer created in the
+   * When it moves, the Length push is SUPPRESSED -- the engine's length is the
+   * authority until the host has caught up -- and once the block's readout is
+   * published, mSlotSync goes up. OnIdle sees the flag, reads the published
+   * length into the parameter, and clears it, which is one tick at 50Hz. OnIdle runs off a timer created in the
    * API wrapper's constructor, not with the editor, so this completes whether
    * or not a window is open.
    */
   int mSlotPushed = -1;                 /* audio thread only */
+  double mLengthPushed = -1.0;          /* audio thread only */
   std::atomic<int> mSlotSync{0};
   void SyncSlotParams();                /* main thread only */
 

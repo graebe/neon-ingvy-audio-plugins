@@ -182,8 +182,17 @@ impl<M: Model> Bridge<M> {
         &mut a.engine
     }
 
-    /// End of a block of `frames`: publish a frame if a command was applied or
-    /// the cadence is due. Allocation-free, lock-free, wait-free.
+    /// Publish at the end of this block whatever the cadence says: the engine
+    /// changed in a way a reader must not see late. Allocation-free.
+    ///
+    /// # Safety
+    /// As [`Bridge::begin`].
+    pub unsafe fn touch(&self) {
+        (*self.audio.get()).dirty = true;
+    }
+
+    /// End of a block of `frames`: publish a frame if a command was applied,
+    /// the block was touched, or the cadence is due. Allocation-free, lock-free, wait-free.
     ///
     /// # Safety
     /// As [`Bridge::begin`].

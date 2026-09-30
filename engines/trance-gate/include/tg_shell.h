@@ -62,6 +62,9 @@ int  tg_shell_read(tg_shell_t *s, const char *key, char *buf, int buf_len);
 /* ---- the audio thread ---- */
 
 tg_core_t *tg_shell_begin(tg_shell_t *s);
+/* Publish at this block's end whatever the cadence -- for a change a reader
+ * acts on and must not see late, such as the slot moving. */
+void       tg_shell_touch(tg_shell_t *s);
 void       tg_shell_end(tg_shell_t *s, int frames);
 
 #ifdef __cplusplus

@@ -220,7 +220,7 @@ void TranceGate::OnParamChange(int)
    * them moved. */
 }
 
-void TranceGate::PushParams(tg_core_t* core)
+bool TranceGate::PushParams(tg_core_t* core)
 {
   const int slot = int(GetParam(kSlot)->Value()) - 1;
   tg_core_set_num(core, TG_P_SLOT, double(slot));
@@ -238,6 +238,7 @@ void TranceGate::PushParams(tg_core_t* core)
    * not pushed at all.
    */
   bool pushLength = true;
+  bool moved = false;
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /*
    * GUARDED, BECAUSE THE OTHER HALF OF THE HANDSHAKE IS. SyncSlotParams is
@@ -250,12 +251,22 @@ void TranceGate::PushParams(tg_core_t* core)
   if (slot != mSlotPushed)
   {
     mSlotPushed = slot;
-    mSlotSync.store(1, std::memory_order_release);
+    moved = true;
   }
-  pushLength = mSlotSync.load(std::memory_order_acquire) == 0;
+  pushLength = !moved && mSlotSync.load(std::memory_order_acquire) == 0;
 #endif
   if (pushLength)
-    tg_core_set_num(core, TG_P_LENGTH, GetParam(kLength)->Value() - 1.0);
+  {
+    /* A length is in the saved blob, so a change to it is published at once
+     * rather than on the cadence -- a save straight after it must have it. */
+    const double length = GetParam(kLength)->Value() - 1.0;
+    if (length != mLengthPushed)
+    {
+      mLengthPushed = length;
+      tg_shell_touch(mShell);
+    }
+    tg_core_set_num(core, TG_P_LENGTH, length);
+  }
   tg_core_set_num(core, TG_P_RATE, GetParam(kRate)->Value());
   tg_core_set_num(core, TG_P_LEGATO, GetParam(kLegato)->Value());
   tg_core_set_num(core, TG_P_TIME_MODE, GetParam(kTimeMode)->Value());
@@ -272,6 +283,7 @@ void TranceGate::PushParams(tg_core_t* core)
   tg_core_set_num(core, TG_P_FADE, GetParam(kFade)->Value() / 100.0);
   tg_core_set_num(core, TG_P_FADE_SOFT, GetParam(kFadeSoft)->Value());
   tg_core_set_num(core, TG_P_FADE_DIR, GetParam(kFadeDir)->Value());
+  return moved;
 }
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
@@ -403,7 +415,7 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   /* Every edit posted since the last block lands here, before the host's
    * parameters are pushed over it. */
   tg_core_t* core = tg_shell_begin(mShell);
-  PushParams(core);
+  const bool slotMoved = PushParams(core);
 
   /* A beat position of -1 is the engine's "no transport", which is what it
    * must see when the host is stopped -- not a stale position, which would
@@ -458,7 +470,16 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
                                         GetSampleRate());
   }
 
+  /*
+   * A SLOT SWITCH IS PUBLISHED BEFORE IT IS ANNOUNCED. SyncSlotParams reads the
+   * new slot's length from the published readout the moment it sees the flag,
+   * so the flag goes up only once a frame with that slot in it is out -- or it
+   * would read the slot being left and write that length onto the new one,
+   * which is the bug the handshake exists to prevent.
+   */
+  if (slotMoved) tg_shell_touch(mShell);
   tg_shell_end(mShell, nFrames);
+  if (slotMoved) mSlotSync.store(1, std::memory_order_release);
 }
 
 #endif /* IPLUG_DSP */

@@ -209,6 +209,17 @@ fn the_frame_republishes_on_its_cadence() {
 }
 
 #[test]
+fn a_touched_block_publishes_off_cadence() {
+    let b = tally();
+    unsafe {
+        b.begin().count = 7;
+        b.touch();
+        b.end(1);
+    }
+    assert_eq!(seen(&b).0, 7);
+}
+
+#[test]
 fn a_model_with_no_view_is_always_answered_from_the_frame() {
     let b = Bridge::new(Tally { count: 0, sum: 0 }, None, 256, 8, 1);
     b.post(&3u64.to_le_bytes());

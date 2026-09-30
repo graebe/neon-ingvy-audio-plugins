@@ -281,8 +281,20 @@ pub unsafe extern "C" fn tg_shell_begin(sh: *const TgShell) -> *mut TgCore {
     }
 }
 
+/// The audio thread: publish at the end of this block, off the cadence --
+/// for a change a reader must not see late. Allocation-free.
+///
+/// # Safety
+/// As `tg_shell_begin`.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_touch(sh: *const TgShell) {
+    if let Some(sh) = sh.as_ref() {
+        sh.bridge.touch();
+    }
+}
+
 /// The audio thread, at the end of a block of `frames`: publishes the
-/// readouts when an edit landed or the cadence is due.
+/// readouts when an edit landed, the block was touched, or the cadence is due.
 ///
 /// # Safety
 /// As `tg_shell_begin`.
