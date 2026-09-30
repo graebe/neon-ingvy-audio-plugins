@@ -114,3 +114,20 @@ fn a_short_message_is_rejected_not_indexed_into() {
     assert!(m.decode(&[0x90]).is_none());
     assert!(m.decode(&[0x90, 36]).is_none());
 }
+
+#[test]
+fn a_note_name_is_read_in_lives_numbering() {
+    use crate::midi::note_from_name;
+    assert_eq!(note_from_name("C-2"), Some(0));
+    assert_eq!(note_from_name("C#-2"), Some(1));
+    assert_eq!(note_from_name("C1"), Some(36));
+    assert_eq!(note_from_name("F#3"), Some(66));
+    assert_eq!(note_from_name("G8"), Some(127));
+    /* Past the MIDI range, and things that are not names at all. */
+    assert_eq!(note_from_name("G#8"), None);
+    assert_eq!(note_from_name("36"), None);
+    assert_eq!(note_from_name(""), None);
+    assert_eq!(note_from_name("H1"), None);
+    assert_eq!(note_from_name("C"), None);
+    assert_eq!(note_from_name("C-"), None);
+}

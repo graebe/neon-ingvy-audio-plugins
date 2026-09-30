@@ -287,7 +287,12 @@ impl Instance {
             "hold" => self.set_num(Param::Hold, fmt::atof(val)),
             "release" => self.set_num(Param::Release, fmt::atof(val)),
             "depth" => self.set_num(Param::Depth, fmt::atof(val)),
-            "trigger_note" => self.set_num(Param::Note, fmt::atof(val)),
+            "trigger_note" => {
+                let n = crate::midi::note_from_name(val)
+                    .map(|n| n as f64)
+                    .unwrap_or_else(|| fmt::atof(val));
+                self.set_num(Param::Note, n);
+            }
             "vel_sens" => self.set_num(Param::VelSens, fmt::atof(val)),
             "threshold" => self.set_num(Param::Threshold, fmt::atof(val)),
             "lockout" => self.set_num(Param::Lockout, fmt::atof(val)),

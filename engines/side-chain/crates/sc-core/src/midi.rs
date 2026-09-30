@@ -148,6 +148,46 @@ impl Default for Midi {
     }
 }
 
+/// A note NAME in Live's numbering -- `C-2` is 0, `C1` is 36, `G8` is 127 --
+/// or `None` if `s` is not one.
+///
+/// THE LABEL IS ONE OF TWO SPELLINGS THE MOVE CAN SEND. The declaration wires
+/// `trigger_note` by index, but a hand-written patch and a host that has not
+/// yet learned the convention both send the option's name, and `atof` reads
+/// every name as 0 -- C-2, a note no kick pad sends. Sharps only, because the
+/// declared options are spelled with sharps. Byte parsing, no allocation: this
+/// runs on the audio callback.
+pub fn note_from_name(s: &str) -> Option<i32> {
+    let b = s.trim().as_bytes();
+    let semitone = match b.first()? {
+        b'C' => 0,
+        b'D' => 2,
+        b'E' => 4,
+        b'F' => 5,
+        b'G' => 7,
+        b'A' => 9,
+        b'B' => 11,
+        _ => return None,
+    };
+    let (sharp, rest) = match b.get(1) {
+        Some(b'#') => (1, &b[2..]),
+        _ => (0, &b[1..]),
+    };
+    let (neg, digits) = match rest.first() {
+        Some(b'-') => (true, &rest[1..]),
+        _ => (false, rest),
+    };
+    if digits.is_empty() || digits.len() > 2 || !digits.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let mut octave = digits.iter().fold(0i32, |a, d| a * 10 + (d - b'0') as i32);
+    if neg {
+        octave = -octave;
+    }
+    let note = (octave + 2) * 12 + semitone + sharp;
+    (0..=127).contains(&note).then_some(note)
+}
+
 impl Midi {
     /// Decode one message into an action, or `None` if it is not ours.
     ///
