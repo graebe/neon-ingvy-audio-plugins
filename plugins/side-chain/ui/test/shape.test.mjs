@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { shape, shapeInv, duckAt, bounds, CURVES } from '../src/lib/shape.js';
+import { shape, duckAt, bounds, CURVES } from '../src/lib/shape.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TOL = 1e-12;
@@ -54,22 +54,6 @@ test('shape matches the engine to 1e-12', () => {
   assert.ok(n > 3000, `only checked ${n} rows`);
 });
 
-test('shapeInv matches the engine to 1e-12', () => {
-  for (const [c, t, , want] of rows('shape_table.txt')) {
-    const got = shapeInv(Number(c), Number(t));
-    assert.ok(
-      Math.abs(got - Number(want)) < TOL,
-      `curve ${c} w=${t}: got ${got}, engine says ${want}`,
-    );
-  }
-});
-
-/*
- * The properties below are not redundant with the fixture. The fixture says
- * "these are the numbers"; these say "and these are the numbers we MEANT",
- * which is what catches a regenerated fixture that nobody intended.
- */
-
 test('every curve starts at 0, ends at 1, and never dips', () => {
   for (let c = 0; c < CURVES.length; c++) {
     assert.equal(shape(c, 0), 0, `${CURVES[c]} at 0`);
@@ -91,7 +75,6 @@ test('out of range and NaN are clamped, not propagated', () => {
     assert.equal(shape(c, NaN), 0);
     assert.equal(shape(c, -1), 0);
     assert.equal(shape(c, 2), 1);
-    assert.equal(shapeInv(c, NaN), 0);
   }
 });
 
@@ -129,14 +112,6 @@ test('there are three curves, and an unknown index is Linear', () => {
   }
 });
 
-test('shapeInv round-trips shape', () => {
-  for (let c = 0; c < CURVES.length; c++) {
-    for (let k = 1; k < 1000; k++) {
-      const t = k / 1000;
-      assert.ok(Math.abs(shapeInv(c, shape(c, t)) - t) < 1e-9);
-    }
-  }
-});
 
 /* ------------------------------------------------- the drawing model ---- */
 

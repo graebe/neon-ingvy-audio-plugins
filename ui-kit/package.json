@@ -11,6 +11,7 @@
     "./shell": "./src/lib/shell.js",
     "./params": "./src/params.js",
     "./capture": "./src/lib/capture.js",
+    "./curve": "./src/lib/curve.js",
     "./tokens.css": "./src/tokens.css",
     "./components.css": "./src/components.css"
   },

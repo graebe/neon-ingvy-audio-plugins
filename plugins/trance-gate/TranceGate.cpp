@@ -217,6 +217,11 @@ void TranceGate::SendGate(bool force)
   const int n = tg_core_render_gate(state, gate, int(sizeof gate));
   if (n > 0)
     SendFramed(kMsgGate, gate, n);
+  /* The envelope plot's curves, from the same patch and the same engine. */
+  char env[TG_ENVELOPE_MAX];
+  const int ne = tg_core_render_envelope(state, env, int(sizeof env));
+  if (ne > 0)
+    SendFramed(kMsgEnvelope, env, ne);
 }
 
 /*

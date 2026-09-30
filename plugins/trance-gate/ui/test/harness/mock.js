@@ -154,6 +154,28 @@ const gateCurve = () => {
   return `16:${GATE_PER_STEP}:${hex}`;
 };
 
+/*
+ * THE ENVELOPE PLOT'S CURVES, as tg_core_render_envelope returns them:
+ * "<steps>:<perStep>:" then the gated curve and the envelope as dialled, a byte
+ * a sample. A linear stand-in from ?adsr and ?width -- the real ones come out
+ * of a scratch engine.
+ */
+const envelopeCurves = () => {
+  const STEPS = 4, PER = 64;
+  const w = HOLD, a = +A / 100 * w, d = +D / 100 * w, sus = +S, r = +R / 100 * w;
+  const dialled = (x) => (x < a ? x / a : x < a + d ? 1 - (1 - sus) * (x - a) / d : sus);
+  let bin = `${STEPS}:${PER}:`;
+  const gated = [], ghost = [];
+  for (let i = 0; i < STEPS * PER; i++) {
+    const x = i / PER;
+    const at = dialled(Math.min(x, w));
+    gated.push(x < w ? dialled(x) : r > 0 && x < w + r ? at * (1 - (x - w) / r) : 0);
+    ghost.push(dialled(x));
+  }
+  for (const v of [...gated, ...ghost]) bin += String.fromCharCode(Math.round(Math.max(0, Math.min(1, v)) * 255));
+  return btoa(bin);
+};
+
 let roll = 0;
 /* Every parameter's normalised default, as Params.cpp declares them -- what a
  * double-click resets to. */
@@ -166,6 +188,7 @@ const pushAll = () => {
   globalThis.SAMFD?.(65, 0, b64(PARAMS));
   globalThis.SAMFD?.(66, 0, binary(scope(roll)));
   globalThis.SAMFD?.(105, 0, binary(gateCurve()));
+  globalThis.SAMFD?.(106, 0, envelopeCurves());
 };
 
 /* The plugin pushes the window every idle tick; so does this, or the scope

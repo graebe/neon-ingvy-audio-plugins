@@ -1,6 +1,6 @@
 /*
- * A PORT OF `engines/side-chain/crates/sc-core/src/shape.rs`, AND THE ONLY COPY IN
- * THE UI.
+ * The duck the shaper draws: a port of `engines/side-chain/crates/sc-core/src/shape.rs`,
+ * on the kit's curve.
  *
  * Plain JavaScript with no JSX and no imports, on purpose: this is the one
  * piece of the editor that must agree with the DSP to the digit, so it has to
@@ -17,80 +17,12 @@
  * is MEANT to change.
  */
 
-/* The bend, and the divisor. `DENOM` is `1 - exp(-3)` SPELLED OUT, exactly as
- * the Rust and the C spell it, so the division is the same division. Writing
- * it as `1 - Math.exp(-K)` would be a different number in the last place, and
- * the fixture is compared at 1e-12. */
-const K = 3.0;
-const DENOM = 0.95021293163213605;
+import { shape, CURVES } from '@ultraviolet/ui/curve';
 
-const curveExp = (t) => (1 - Math.exp(-K * t)) / DENOM;
-
-const curveExpInv = (w) => {
-  const x = 1 - w * DENOM;
-  return x <= 1e-12 ? 1 : -Math.log(x) / K;
-};
-
-/** 0 Linear, 1 Exponential, 2 S-Curve -- `Curve::LABELS`' order. */
-export const CURVES = ['Linear', 'Exponential', 'S-Curve'];
-
-/*
- * THE SHAPE IS A WARP ON TIME: every stage is f(t) with t running 0..1 across
- * it, so a curve is not a new set of formulas but one function substituted in.
- * shape(0) = 0, shape(1) = 1, monotonic -- a stage starts and ends where it did
- * and takes the time it was given; only the path between changes.
- *
- * THERE IS NO DIRECTION ARGUMENT, AND THERE WAS ONE: a fourth curve, `Pump`,
- * was asymmetric, so `shape` took one saying which way the envelope travelled
- * and the other three ignored it. That curve is gone and the argument went with
- * it, rather than staying as something every caller passes and no curve reads.
- */
-export function shape(curve, t) {
-  /* `!(t > 0)` rather than `t <= 0` so a NaN lands here rather than falling
-   * through to the `t >= 1` test and returning 1 -- the engine's guard. */
-  if (!(t > 0)) return 0;
-  if (t >= 1) return 1;
-  switch (curve) {
-    case 1:
-      return curveExp(t);
-    /*
-     * TWO EXPONENTIALS, JOINED -- and the first one is MIRRORED.
-     *
-     * `0.5 * curveExp(2t)` on both halves is the version that was wrong in the
-     * Trance Gate for as long as it was: slope K/DENOM ~ 3.16 at t=0, so the
-     * curve leaves the floor vertically and hits the ceiling vertically, which
-     * is the opposite of what an S-curve does at both ends.
-     *
-     * Reversed, the first half is slow-then-accelerating and the pair is
-     * slow-fast-slow, meeting in the middle at the same slope -- Einv'(1) is
-     * E'(0). A corner there would be a kink in the gain, audible as surely as
-     * a step, which is why the join is not simply two arcs.
-     */
-    case 2:
-      return t < 0.5
-        ? 0.5 * (1 - curveExp(1 - 2 * t))
-        : 0.5 + 0.5 * curveExp(2 * t - 1);
-    default:
-      return t;
-  }
-}
-
-/** The inverse. Monotonic and analytic for all four, which is what lets the
- * curve change mid-duck without a click -- see `set_curve` in params.rs. */
-export function shapeInv(curve, w) {
-  if (!(w > 0)) return 0;
-  if (w >= 1) return 1;
-  switch (curve) {
-    case 1:
-      return curveExpInv(w);
-    case 2:
-      return w < 0.5
-        ? 0.5 * (1 - curveExpInv(1 - 2 * w))
-        : 0.5 + 0.5 * curveExpInv(2 * w - 1);
-    default:
-      return w;
-  }
-}
+/* The curve itself is the kit's one copy (ui-kit/src/lib/curve.js); this file
+ * is what the ducker draws with it. Re-exported, so the test pins the module
+ * the drawing uses. */
+export { shape, CURVES };
 
 /*
  * THE IDEALISED SINGLE SHOT, WHICH IS WHAT THE EDITOR DRAWS.

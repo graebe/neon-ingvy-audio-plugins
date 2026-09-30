@@ -26,6 +26,9 @@ export const MSG = {
    * scope (66): both arrive through onBytes.
    */
   gate: 105,
+  /* "<steps>:<perStep>:" + the gated curve + the envelope as dialled, a raw
+   * byte a sample each -- the envelope plot, rendered by the engine. */
+  envelope: 106,
 };
 
 /* EParams in Params.h, which is the engine's own Param order -- so the host

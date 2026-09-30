@@ -21,7 +21,7 @@ import { Band } from './lib/Band.jsx';
 import { fadeWeights } from './lib/fade.js';
 import { setOrder } from './lib/steps.js';
 import { decodeUi, decodeEngineParams } from './lib/readouts.js';
-import { decodeScope, decodeGate } from './lib/capture.js';
+import { decodeScope, decodeGate, decodeEnvelope } from './lib/capture.js';
 import { copyToClipboard } from './lib/clipboard.js';
 
 /* Mirrored by PLUG_WIDTH in config.h: 32 + 760 + 32, the pads decide the 760. */
@@ -51,6 +51,8 @@ export default function App() {
   const [scopeHead, setScopeHead] = createSignal(0);
   /* The rendered gate curve, from the plugin. Null until the first push. */
   const [gate, setGate] = createSignal(null);
+  /* The envelope plot's two curves, rendered by the engine. */
+  const [envelope, setEnvelope] = createSignal(null);
   /*
    * ORDER MODE, and how far into the sequence you are. UI-only: the engine
    * holds the order and normalises it after every rank.
@@ -89,6 +91,10 @@ export default function App() {
       [MSG.gate]: (bytes) => {
         const g = decodeGate(bytes);
         if (g) setGate(g);
+      },
+      [MSG.envelope]: (bytes) => {
+        const e = decodeEnvelope(bytes);
+        if (e) setEnvelope(e);
       },
     },
   });
@@ -182,7 +188,7 @@ export default function App() {
                 weights={weights()} {...orderModel()}
                 centre={String(ui().length)} label="STEPS"
                 onLength={(steps) => host.commit(P.length, (steps - 1) / 127)} />
-          <EnvelopePlot params={plotParams()} w={240} h={104} />
+          <EnvelopePlot params={plotParams()} envelope={envelope()} w={240} h={104} />
         </div>
         <Panels host={host}
                 orderMode={orderMode()} orderNext={orderNext()} hits={hits()}

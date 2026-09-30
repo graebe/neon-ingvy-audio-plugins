@@ -40,6 +40,8 @@ enum EMsgTags
   kMsgRandomize = 104,
   /* -> the gate across one cycle as the engine applies it (tg_core_render_gate) */
   kMsgGate = 105,
+  /* -> the envelope plot's gated and dialled curves (tg_core_render_envelope) */
+  kMsgEnvelope = 106,
 };
 
 class TranceGate final : public ni::WebPlugin

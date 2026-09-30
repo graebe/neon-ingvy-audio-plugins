@@ -33,6 +33,7 @@ mod shell;
 pub use shell::TgShell;
 /* The pattern plot's curve, rendered through a scratch engine; see gate.rs. */
 mod gate;
+mod envelope;
 
 use ni_dsp::ffi::{cstr as s, CTransport};
 use ni_dsp::sweep::CycleSweep;
@@ -240,6 +241,21 @@ pub unsafe extern "C" fn tg_core_rate_label(index: c_int, buf: *mut c_char, buf_
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_render_gate(state: *const c_char, buf: *mut c_char, buf_len: c_int) -> c_int {
     let Some(bytes) = gate::render(s(state)) else { return -1 };
+    if buf.is_null() || buf_len < 0 || bytes.len() > buf_len as usize {
+        return -1;
+    }
+    std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
+    bytes.len() as c_int
+}
+
+/// The envelope plot's two curves for the patch in `state` (see envelope.rs):
+/// `"<steps>:<per_step>:"`, then the gated curve and the envelope as dialled,
+/// one raw byte of gain per sample each. BINARY, not a C string. Returns the
+/// number of bytes written, or -1 for nothing to draw or a buffer too small --
+/// size it with TG_ENVELOPE_MAX. Allocates: never on the audio thread.
+#[no_mangle]
+pub unsafe extern "C" fn tg_core_render_envelope(state: *const c_char, buf: *mut c_char, buf_len: c_int) -> c_int {
+    let Some(bytes) = envelope::render(s(state)) else { return -1 };
     if buf.is_null() || buf_len < 0 || bytes.len() > buf_len as usize {
         return -1;
     }

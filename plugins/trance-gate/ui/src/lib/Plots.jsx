@@ -124,7 +124,7 @@ export function Scope(props) {
    * taken off when the axis was wall time and why it can come back now.
    *
    * AND IT IS THE SAME RENDERED CURVE THE PATTERN TAB DRAWS. It used to be a
-   * coarser re-derivation here -- `gateAt` per step with no carry-in at all --
+   * coarser re-derivation here -- a JS gate per step with no carry-in at all --
    * so the two tabs could disagree about the same gate. One curve, from the
    * engine, drawn twice.
    */

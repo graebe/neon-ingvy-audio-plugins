@@ -132,6 +132,16 @@ int tg_core_rate_default(void);
 int tg_core_render_gate(const char *state, char *buf, int buf_len);
 
 /*
+ * The envelope plot's two curves for the patch in `state`, rendered the same
+ * way: "<steps>:<per_step>:" then the gated curve (one gate, the steps after it
+ * off) and the envelope as dialled (the steps tied, no close), one raw byte of
+ * gain per sample each, from silence. BINARY. Returns the number of bytes
+ * written, or -1 for nothing to draw or a buffer too small.
+ */
+#define TG_ENVELOPE_MAX 1024
+int tg_core_render_envelope(const char *state, char *buf, int buf_len);
+
+/*
  * THE AUTOMATABLE PARAMETERS, BY NUMBER.
  *
  * tg_core_set_param is the canonical door and takes strings, which is right

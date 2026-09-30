@@ -4,7 +4,7 @@
  */
 import { For, createMemo } from 'solid-js';
 import { Well, Axis, INSET, CAPTION } from '@ultraviolet/ui';
-import { envLevel, stageLevel } from './curves.js';
+import { levelAt } from './capture.js';
 import { Curve } from './StepMarks.jsx';
 
 /*
@@ -68,30 +68,25 @@ export function EnvelopePlot(props) {
   });
 
   /*
-   * THE STAGE MACHINE IS curves.js's, NOT A SECOND ONE HERE.
+   * THE CURVES ARE THE ENGINE'S, NOT A MODEL OF IT.
    *
-   * This file had its own copy, in milliseconds. It was the better of the two
-   * -- it already released from the level actually reached -- but having two
-   * at all is why the pattern plot and this one drew different shapes from the
-   * same settings for as long as they did. There is one now, and it is held to
-   * the engine's measured output by ui/test/envelope.test.mjs.
-   *
-   * The lengths here are milliseconds; the machine only asks that they agree
-   * with each other.
+   * This used to run the stage machine in JavaScript (curves.js), pinned to a
+   * table of the engine's output -- a second implementation of DSP with an
+   * oracle behind it. The plugin now renders both curves through a scratch
+   * engine (tg_core_render_envelope) in fractions of a step, and this only maps
+   * them onto the millisecond axis: `gated` is one gate as it sounds, the
+   * ghost (`gated` false) the envelope as dialled with no gate over it.
    */
-  const machine = (sh) => ({
-    curve: sh.curve, sustain: sh.sustain, attack: sh.attackMs,
-    decay: sh.decayMs, release: sh.releaseMs, gate: sh.gateMs,
-  });
-  /* `gated` false is the ghost: the envelope AS DIALLED, with no gate over it. */
-  const levelAt = (sh, ms, gated = true) =>
-    (gated ? envLevel : stageLevel)(machine(sh), ms);
+  const levelOf = (sh, ms, gated = true) => {
+    const e = props.envelope;
+    if (!e || !(sh.msStep > 0)) return 0;
+    return levelAt(gated ? e.gated : e.ghost, e.perStep, ms / sh.msStep);
+  };
 
   const samples = (gated) => {
     const sh = env();
-    if (!sh) return [];
-    return Array.from({ length: 240 }, (_, i) =>
-      levelAt(sh, sh.spanMs * (i / 239), gated));
+    if (!sh || !props.envelope) return [];
+    return Array.from({ length: 240 }, (_, i) => levelOf(sh, sh.spanMs * (i / 239), gated));
   };
 
   const caption = () => {
@@ -172,7 +167,7 @@ export function EnvelopePlot(props) {
                    floor={floor} />
 
             <For each={dots}>{(ms) => (
-              <circle cx={xAt(ms / sh.spanMs)} cy={yAt(levelAt(sh, ms))} r="2.5"
+              <circle cx={xAt(ms / sh.spanMs)} cy={yAt(levelOf(sh, ms))} r="2.5"
                       fill="var(--on-uv)" />
             )}</For>
 
