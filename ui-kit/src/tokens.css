@@ -13,14 +13,21 @@
  * is wrong.
  */
 
+/*
+ * THE FACE IS THE KIT'S: JetBrains Mono (SIL OFL 1.1, fonts/OFL.txt), subset to
+ * what the editors draw and packed as WOFF by scripts/subset-fonts.sh -- ~49 KB
+ * a weight where each editor used to ship its own 274 KB TTFs. The URL is
+ * relative to this file, so every consumer's build resolves it (the editors
+ * inline it into their stylesheet; the site emits it as an asset).
+ */
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('../fonts/JetBrainsMono-Regular.ttf') format('truetype');
+  src: url('./fonts/JetBrainsMono-Regular.woff') format('woff');
   font-weight: 400; font-display: block;
 }
 @font-face {
   font-family: 'JetBrains Mono';
-  src: url('../fonts/JetBrainsMono-Medium.ttf') format('truetype');
+  src: url('./fonts/JetBrainsMono-Medium.woff') format('woff');
   font-weight: 500; font-display: block;
 }
 
