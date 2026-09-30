@@ -89,6 +89,8 @@ int main(void)
     srecv_set_range(NULL, 10.f, 20000.f);
     srecv_set_clash(NULL, -60.f, 12.f);
     ok(srecv_pump(NULL) == 0, "a null receiver pumps nothing");
+    ok(srecv_start(NULL) == 0, "a null receiver starts nothing");
+    ok(srecv_ready(NULL) == 0, "a null receiver has nothing ready");
     ok(srecv_channels(NULL) == 0, "a null receiver has no channels");
     ok(srecv_take_columns(NULL, 0, NULL, 4) == 0, "a null receiver draws nothing");
     ok(srecv_dropped(NULL, 0) == 0, "a null receiver dropped nothing");
@@ -187,6 +189,39 @@ int main(void)
     ok(srecv_channels(r) == 1, "clearing the selection left something open");
 
     free(text); free(a); free(b); free(out);
+
+    /*
+     * AND AS THE PLUGIN RUNS IT: the analysis on the receiver's own thread,
+     * this one only pushing and draining. Columns have to arrive without a
+     * single srecv_pump doing the work, and srecv_free has to join the thread.
+     */
+    {
+        srecv_t* w = make();
+        ok(srecv_start(w) == 1, "the analysis thread started");
+        ok(srecv_start(w) == 1, "and starting it again is not an error");
+        int drawn = 0, pumped = 0;
+        for (int i = 0; i < 40; i++)
+        {
+            fill_mono(block, 1024, 1000.f, 0.5f, &ph);
+            srecv_push_own(w, block, 1024);
+            pumped += srecv_pump(w);
+            const int avail = srecv_ready(w);
+            const int ready = avail < 32 ? avail : 32;
+            drawn += srecv_take_columns(w, SRECV_OWN, cols, ready);
+            usleep(1000);
+        }
+        /* The worker is below this thread's priority; give it time to finish. */
+        for (int i = 0; i < 2500 && drawn == 0; i++)
+        {
+            usleep(2000);
+            drawn += srecv_take_columns(w, SRECV_OWN, cols, 32);
+        }
+        ok(pumped == 0, "srecv_pump left the work to the thread");
+        ok(drawn > 0, "the thread produced columns");
+        ok(srecv_dropped(w, SRECV_OWN) == 0, "and kept up with the feed");
+        srecv_free(w);
+        ok(1, "freeing a running receiver joined its thread");
+    }
 
     free(block);
     free(cols);

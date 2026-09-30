@@ -277,6 +277,11 @@ impl Columns {
         self.write.store(w.wrapping_add(1), Ordering::Release);
     }
 
+    /// Columns waiting, counting any a range change has made stale.
+    fn available(&self) -> usize {
+        self.write.load(Ordering::Acquire).wrapping_sub(self.read.load(Ordering::Relaxed))
+    }
+
     /// Returns the columns written to `out`, which must hold `max_cols * bands`
     /// bytes. Columns measured against an earlier range are consumed and
     /// discarded rather than returned.
@@ -530,6 +535,18 @@ impl Consumer {
     /// Columns the ring had to throw away because nothing drained it.
     pub fn dropped(&self) -> usize {
         self.shared.cols.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Finished columns waiting to be drained -- a lower bound, since the
+    /// producer may be adding more while this is read.
+    pub fn available(&self) -> usize {
+        self.shared.cols.available()
+    }
+
+    /// Whether any column has been produced yet. An analyzer produces none
+    /// until its window has filled once.
+    pub fn started(&self) -> bool {
+        self.shared.cols.write.load(Ordering::Acquire) != 0
     }
 
     /// Drain finished columns into `out`, `bands()` bytes each, oldest first.

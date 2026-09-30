@@ -7,13 +7,13 @@
  * A receiver draws several sources at once and the clash between them is read
  * per cell, so column k of every source has to be the SAME MOMENT. That only
  * holds if every analyzer is fed the same number of frames -- and the bus
- * sources are drained by the message thread, because `bus_core::Reader::read`
+ * sources are drained by the pump, off the audio thread, because `bus_core::Reader::read`
  * is documented "one thread, the same one each time" and opening a reader
  * allocates and mmaps, which is not an audio-thread act.
  *
  * So the own channel meets them there. ProcessBlock does nothing but copy its
- * mono sum in here; the message thread takes min(available) across every source
- * and pushes exactly that many frames into each. Everything then lines up by
+ * mono sum in here; the pump takes the same number of frames from every source
+ * and pushes exactly that many into each. Everything then lines up by
  * construction rather than by hoping two threads keep step.
  *
  * It also takes the FFT off the audio thread, which is a plain win: an analyzer
@@ -38,8 +38,8 @@ use std::sync::Arc;
 
 /// Frames the ring holds. A power of two so the wrap is a mask.
 ///
-/// 32768 is 0.68 s at 48 kHz. The consumer runs off the editor's idle timer at
-/// ~50 Hz, so this absorbs a host that stalls the message thread for two thirds
+/// 32768 is 0.68 s at 48 kHz, 0.34 s at 96. The consumer is the receiver's
+/// worker, waking every few milliseconds, so this absorbs a stall of a third
 /// of a second before anything is lost -- and when something is, `dropped` says
 /// how much rather than letting a gap pass as silence.
 pub const CAPACITY: usize = 1 << 15;
@@ -68,7 +68,7 @@ pub struct MonoProducer {
     ring: Arc<Ring>,
 }
 
-/// The message thread's end.
+/// The pump's end.
 pub struct MonoConsumer {
     ring: Arc<Ring>,
 }
@@ -113,7 +113,22 @@ impl MonoProducer {
     }
 }
 
+/// Reads the ring's drop count from a thread that is neither end.
+pub struct RingStats {
+    ring: Arc<Ring>,
+}
+
+impl RingStats {
+    pub fn dropped(&self) -> u64 {
+        self.ring.dropped.load(Ordering::Relaxed)
+    }
+}
+
 impl MonoConsumer {
+    pub fn stats(&self) -> RingStats {
+        RingStats { ring: self.ring.clone() }
+    }
+
     /// Frames waiting to be taken.
     pub fn available(&self) -> usize {
         self.ring
