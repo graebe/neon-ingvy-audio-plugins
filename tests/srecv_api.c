@@ -78,6 +78,7 @@ int main(void)
     ok(srecv_take_columns(NULL, 0, NULL, 4) == 0, "a null receiver draws nothing");
     ok(srecv_dropped(NULL, 0) == 0, "a null receiver dropped nothing");
     ok(srecv_max_sources() >= 2, "a receiver can hold more than its own channel");
+    ok(srecv_max_sources() == SRECV_MAX_SOURCES, "and the header's constant agrees");
 
     srecv_t* r = make();
     ok(r != NULL, "a receiver was allocated");

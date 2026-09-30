@@ -369,7 +369,7 @@ void Spectrogram::OnIdle()
    * channel that produced nothing this tick is simply left out of the sum
    * rather than contributing silence, which would pull the picture down.
    */
-  const unsigned char* srcs[8];
+  const unsigned char* srcs[SRECV_MAX_SOURCES];
   int nSrc = 0;
   for (int ch : mView)
   {

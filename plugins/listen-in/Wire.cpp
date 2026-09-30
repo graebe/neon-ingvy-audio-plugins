@@ -2,13 +2,16 @@
  * Listen-In's wire format. See Wire.h for why it is not in ListenIn.cpp.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * <string> and <cstdio>, and deliberately nothing else: tests/cpp links this
- * translation unit on its own, and an include of anything iPlug2 would put it
- * back out of reach.
+ * <string>, <cstdio> and audio_bus.h -- for ABUS_MAX_SLOT, a macro, so nothing
+ * is linked -- and deliberately nothing else: tests/cpp links this translation
+ * unit on its own, and an include of anything iPlug2 would put it back out of
+ * reach.
  */
 #include "Wire.h"
 
 #include <cstdio>
+
+#include "audio_bus.h"
 
 namespace listenin {
 namespace wire {
@@ -90,7 +93,7 @@ int parse_label(const char* in, char* out, int cap)
 int clamp_slot(int slot)
 {
   if (slot < 1) return 1;
-  if (slot > 16) return 16;
+  if (slot > ABUS_MAX_SLOT) return ABUS_MAX_SLOT;
   return slot;
 }
 

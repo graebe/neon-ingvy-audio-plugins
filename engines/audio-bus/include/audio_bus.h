@@ -55,7 +55,12 @@ typedef struct AbusReader abus_reader_t;
 #define ABUS_LABEL_CAP 32
 
 /* Highest valid slot number. Slots are 1-based: slot 0 is not a bus, it is a
- * mistake, and it is reported as one. */
+ * mistake, and it is reported as one.
+ *
+ * ABUS_MAX_SLOT is the same number for code that needs it at compile time --
+ * an array bound, or a translation unit that links nothing. abus_roundtrip.c
+ * checks the two agree. */
+#define ABUS_MAX_SLOT 16
 uint32_t abus_max_slot(void);
 
 /* Always 2, always interleaved. A mono source is duplicated by the SENDER, so

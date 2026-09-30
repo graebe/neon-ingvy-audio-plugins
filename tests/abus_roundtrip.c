@@ -35,6 +35,7 @@ int main(void)
   const uint32_t ch = abus_channels();
   check(ch == 2, "the bus is stereo");
   check(abus_max_slot() == 16, "there are sixteen slots");
+  check(abus_max_slot() == ABUS_MAX_SLOT, "and the header's constant agrees");
 
   abus_writer_t* w = NULL;
   check(abus_writer_claim(SLOT, 48000, &w) == ABUS_OK && w != NULL,

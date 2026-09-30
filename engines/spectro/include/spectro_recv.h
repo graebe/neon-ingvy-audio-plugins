@@ -68,7 +68,11 @@ typedef struct Srecv srecv_t;
  * about 47 times a second, roughly 1.5% of a core. Four is also about where a
  * picture stops being readable, so the cost and the legibility run out
  * together.
+ *
+ * SRECV_MAX_SOURCES is the same number for an array bound; srecv_api.c checks
+ * the two agree.
  */
+#define SRECV_MAX_SOURCES 4
 int srecv_max_sources(void);
 
 /*

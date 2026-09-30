@@ -58,9 +58,10 @@ std::string encode_state(int slot, int status, float peak);
  */
 int parse_label(const char* in, char* out, int cap);
 
-/* Slots are 1-based and there are sixteen. A host restoring a project written
- * by a future version, or a parameter that arrived as 0, lands on slot 1
- * rather than on an assertion. */
+/* Slots are 1-based and there are ABUS_MAX_SLOT of them -- the engine's
+ * number, the one the Bus parameter's range comes from too. A host restoring a
+ * project written by a future version, or a parameter that arrived as 0, lands
+ * on a valid slot rather than on an assertion. */
 int clamp_slot(int slot);
 
 } /* namespace wire */

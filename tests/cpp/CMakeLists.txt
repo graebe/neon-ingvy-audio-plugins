@@ -63,8 +63,10 @@ add_test(NAME spectro_wire
 
 add_executable(listenin_wire listenin_wire.cpp
                ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp)
+# audio_bus.h for ABUS_MAX_SLOT only -- a macro, so nothing is linked.
 target_include_directories(listenin_wire PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in)
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in
+    ${CMAKE_SOURCE_DIR}/engines/audio-bus/include)
 
 # THE WIRE ORACLE, both halves -- the Spectrogram's arrangement, applied to the
 # state string and the label sanitiser.
