@@ -11,7 +11,7 @@
 import { createSignal, createMemo } from 'solid-js';
 import { EditorFrame, useEditorBridge, createClock } from '@ultraviolet/ui';
 import { createParams } from '@ultraviolet/ui/params';
-import { MSG, P, NUM_PARAMS } from './lib/msg.js';
+import { MSG, NUM_PARAMS } from './lib/msg.js';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
 import { EnvelopePlot } from './lib/Plots.jsx';
@@ -148,18 +148,6 @@ export default function App() {
     return ABOVE_GRID + rows * 40 + (rows - 1) * 8 + BELOW_GRID;
   });
 
-  /*
-   * THE STAGE READOUTS in whichever unit Env Time asks for. TIME_MODES is
-   * ['ms', '%'] and the engine's Ms = 0, so `>= 0.5` is percent, which is what
-   * the parameter itself formats.
-   */
-  const stageText = (i) => {
-    const p = params();
-    if (!p || host.value(P.timeMode) >= 0.5) return host.text(i);
-    const pct = { [P.attack]: p.attack, [P.decay]: p.decay, [P.release]: p.release }[i];
-    return pct === undefined ? host.text(i) : `${(pct / 100 * p.widthMs).toFixed(1)} ms`;
-  };
-
   /* THREE CLAUSES IS THE CAP, so ORDER mode SWAPS them for its own. */
   const hint = () => (orderMode() ? [
     ['click', `the ${params()?.fadeOut ? 'gaps' : 'steps'} in the order they should arrive`],
@@ -187,7 +175,7 @@ export default function App() {
                 centre={String(ui().length)} label="STEPS" />
           <EnvelopePlot params={plotParams()} w={240} h={104} />
         </div>
-        <Panels host={host} stageText={stageText}
+        <Panels host={host}
                 orderMode={orderMode()} orderNext={orderNext()} hits={hits()}
                 onOrder={() => { setNamed({}); setOrderMode((v) => !v); }} onShuffle={shuffleOrder} />
       </div>

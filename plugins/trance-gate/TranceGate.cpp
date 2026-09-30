@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cmath>
 #include <cstring>
 
 using namespace iplug;
@@ -139,8 +140,52 @@ void TranceGate::OnHostIdle()
     SetParamFromPlugin(kLength, want);
 }
 
+double TranceGate::WidthMs() const
+{
+  /* "...:release:width_ms:fade:..." -- field 12 of the `params` readout. */
+  char buf[TG_STATE_MAX];
+  if (tg_shell_read(mShell, "params", buf, int(sizeof buf)) <= 0)
+    return 0.0;
+  const char* p = buf;
+  for (int field = 0; field < 12 && p; field++)
+  {
+    p = std::strchr(p, ':');
+    if (p)
+      p++;
+  }
+  return p ? ni::wire::parse_number(p) : 0.0;
+}
+
+void TranceGate::FormatDisplay(int paramIdx, WDL_String& str) const
+{
+  if (!tg::params::IsStage(paramIdx))
+    return ni::WebPlugin::FormatDisplay(paramIdx, str);
+  const bool ms = GetParam(kTimeMode)->Int() == 0;
+  str.Set(tg::params::FormatStage(GetParam(paramIdx)->Value(), ms, WidthMs()).c_str());
+}
+
+double TranceGate::ParseDisplay(int paramIdx, const char* text) const
+{
+  if (!tg::params::IsStage(paramIdx))
+    return ni::WebPlugin::ParseDisplay(paramIdx, text);
+  return tg::params::ParseStage(text, GetParam(kTimeMode)->Int() == 0, WidthMs());
+}
+
 void TranceGate::OnEditorIdle()
 {
+  /* The stage readouts follow Env Time and the gate's length in ms, neither of
+   * which is the stage parameter itself changing. */
+  const bool ms = GetParam(kTimeMode)->Int() == 0;
+  const double width = WidthMs();
+  if (ms != mStageMs || (ms && std::fabs(width - mStageWidthMs) > 1e-6))
+  {
+    mStageMs = ms;
+    mStageWidthMs = width;
+    SendDisplay(kAttack);
+    SendDisplay(kDecay);
+    SendDisplay(kRelease);
+  }
+
   char buf[TG_STATE_MAX];
   if (tg_shell_read(mShell, "ui", buf, int(sizeof buf)) > 0)
     SendFramed(kMsgUiState, buf, int(strlen(buf)));

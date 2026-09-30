@@ -63,6 +63,11 @@ private:
   void OnEditorIdle() override;
   void OnEditorReady() override;
   bool OnEditorMessage(int tag, const std::string& arg) override;
+  /* The stages read in the unit Env Time asks for (Params.cpp). */
+  void FormatDisplay(int paramIdx, WDL_String& str) const override;
+  double ParseDisplay(int paramIdx, const char* text) const override;
+  /* The gate's open time in ms, as the engine last published it; 0 unknown. */
+  double WidthMs() const;
 
   /* The fifteen parameters into the engine the shell lent this block. */
   void PushParams(tg_core_t* core);
@@ -77,6 +82,10 @@ private:
   ni::Scope<kScopeCols> mScope;
   /* The patch the last curve was rendered from. Main thread. */
   std::string mGateState;
+  /* The stage readouts' unit and scale as the editor was last told them, so a
+   * tempo, Width or Env Time change re-sends them. Main thread. */
+  bool mStageMs = false;
+  double mStageWidthMs = -1.0;
 
   /* iPlug2's `sample` is double and the engine's float path is the one the
    * golden render pins. Sized in ResetAudio, never on the audio thread. */

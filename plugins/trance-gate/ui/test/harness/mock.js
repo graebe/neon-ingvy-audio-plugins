@@ -34,7 +34,9 @@ const VALUES = [0 / 7, (16 - 1) / 127, 7 / 12, 0, 0, 0, 0.9, 0.75,
                 1.6 / 200, 16 / 200, 1.0, 16 / 200,
                 FADE, SOFT, DIR];
 const DISPLAY = ['1', '16', '1/16', 'Off', 'ms', 'Linear', '90.00 %', '75.00 %',
-                 '1.60 %', '16.00 %', '100.00 %', '16.00 %',
+                 /* The stages in ms, as the plugin formats them with Env Time
+                  * at ms -- the editor no longer converts. */
+                 '1.5 ms', '15.0 ms', '100.00 %', '15.0 ms',
                  `${(FADE * 100).toFixed(2)} %`, SOFT ? 'Soft' : 'Hard',
                  DIR ? 'Out' : 'In'];
 

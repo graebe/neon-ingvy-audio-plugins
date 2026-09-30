@@ -68,9 +68,10 @@ add_test(NAME tg_state COMMAND tg_state)
 # conversions (param_host.h).
 add_executable(tg_params tg_params.cpp
                ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Params.cpp
+               ${NI_WIRE_SRC}
                ${IPLUG_PARAM_SRC})
 target_include_directories(tg_params PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate ${NI_SHARED}
     ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
 target_link_libraries(tg_params PRIVATE tg_engine)
 add_test(NAME tg_params COMMAND tg_params)

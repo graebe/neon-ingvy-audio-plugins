@@ -19,7 +19,7 @@ export function ParamKnob(props) {
       label={props.label}
       size={props.size}
       value={p().value(props.idx)}
-      display={props.display ?? p().text(props.idx)}
+      display={p().text(props.idx)}
       onBegin={() => p().begin(props.idx)}
       onInput={(v) => p().input(props.idx, v)}
       onEnd={() => p().end(props.idx)}

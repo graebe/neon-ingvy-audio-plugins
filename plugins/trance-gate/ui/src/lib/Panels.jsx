@@ -27,13 +27,15 @@ export function Panels(props) {
         </div>
       </section>
 
+      {/* The stages' readouts are the plugin's text in whichever unit Env Time
+        * asks for, and it parses what is typed into them the same way. */}
       <section class="panel">
         <h2 class="t-title">ENVELOPE</h2>
         <div class="knob-row">
-          <ParamKnob params={host()} idx={P.attack} label="Attack" display={props.stageText(P.attack)} />
-          <ParamKnob params={host()} idx={P.decay} label="Decay" display={props.stageText(P.decay)} />
+          <ParamKnob params={host()} idx={P.attack} label="Attack" />
+          <ParamKnob params={host()} idx={P.decay} label="Decay" />
           <ParamKnob params={host()} idx={P.sustain} label="Sustain" />
-          <ParamKnob params={host()} idx={P.release} label="Release" display={props.stageText(P.release)} />
+          <ParamKnob params={host()} idx={P.release} label="Release" />
         </div>
       </section>
 
