@@ -17,11 +17,12 @@
 #include "audio_bus.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-/* Its own slot: ctest may run this beside abus_roundtrip. */
+/* Its own slot, though the namespace below already keeps it apart. */
 #define SLOT 10
 #define FRAMES 1024
 #define ROUNDS 64
@@ -45,8 +46,22 @@ static void fill(float* buf, unsigned base, unsigned n)
   }
 }
 
+/*
+ * A PRIVATE SET OF BUSES FOR THIS PROCESS. The shm names are global to the
+ * user, so a ctest run in another checkout, or a Live session, would otherwise
+ * share -- and unlink -- our slots. The engine hashes NIA_BUS_NS into every
+ * name; set before the first bus call, and inherited across fork.
+ */
+static void private_namespace(const char* test)
+{
+  char ns[64];
+  snprintf(ns, sizeof ns, "%s.%d", test, (int) getpid());
+  setenv("NIA_BUS_NS", ns, 1);
+}
+
 int main(void)
 {
+  private_namespace("abus_ipc");
   const pid_t child = fork();
   if (child < 0) { printf("FAIL: fork\n"); return 1; }
 

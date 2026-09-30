@@ -160,15 +160,62 @@ pub const MAX_SLOT: u32 = 16;
  * comfortable rather than merely sufficient. The name is built without
  * allocating because `claim` is called from the editor thread while audio runs.
  */
-pub struct Name([u8; 16]);
+pub struct Name([u8; 24]);
+
+/// The environment variable that moves every bus in this process into a
+/// private namespace. TESTS ONLY -- see `namespace`.
+pub const NAMESPACE_ENV: &str = "NIA_BUS_NS";
+
+/*
+ * THE NAMES ARE GLOBAL TO THE USER, AND SO ARE THE TESTS THAT USE THEM.
+ *
+ * Two checkouts running their suites at once -- or a suite running beside a
+ * Live session with Listen-Ins on the same slots -- would claim, unlink and
+ * read each other's buses. So a test process can set NIA_BUS_NS, and every
+ * name becomes "/nia.XXXXXXXX.NN", the X's a hash of the value: any string
+ * picks a private set of sixteen, short enough for PSHMNAMLEN whatever the
+ * string was. Unset, the names are the production ones.
+ *
+ * Read once, on the first name built, and fixed for the life of the process;
+ * names are only built by claim, open, probe and release -- main-thread calls
+ * -- so the one allocation reading the environment costs is never on the audio
+ * thread. A fork inherits it, which is what lets a parent and child test meet.
+ */
+fn namespace() -> Option<&'static str> {
+    static NS: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    NS.get_or_init(|| {
+        let v = std::env::var_os(NAMESPACE_ENV)?;
+        let v = v.as_encoded_bytes();
+        if v.is_empty() {
+            return None;
+        }
+        /* FNV-1a, folded to 32 bits: a namespace, not a secret. */
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for &b in v {
+            h = (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        Some(format!("{:08x}", (h ^ (h >> 32)) as u32))
+    })
+    .as_deref()
+}
 
 impl Name {
     pub fn for_slot(slot: u32) -> Name {
-        let mut buf = [0u8; 16];
-        let prefix = b"/nia.bus.";
-        buf[..prefix.len()].copy_from_slice(prefix);
-        buf[prefix.len()] = b'0' + (slot / 10) as u8;
-        buf[prefix.len() + 1] = b'0' + (slot % 10) as u8;
+        let mut buf = [0u8; 24];
+        let mut n = 0;
+        let mut put = |bytes: &[u8]| {
+            buf[n..n + bytes.len()].copy_from_slice(bytes);
+            n += bytes.len();
+        };
+        match namespace() {
+            None => put(b"/nia.bus."),
+            Some(ns) => {
+                put(b"/nia.");
+                put(ns.as_bytes());
+                put(b".");
+            }
+        }
+        put(&[b'0' + (slot / 10) as u8, b'0' + (slot % 10) as u8]);
         Name(buf)
     }
     fn as_ptr(&self) -> *const u8 {
@@ -353,5 +400,26 @@ impl Mapping {
 impl Drop for Mapping {
     fn drop(&mut self) {
         unsafe { munmap(self.base, self.len) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tests_never_touch_the_production_names() {
+        /* The workspace's .cargo/config.toml sets NIA_BUS_NS for every cargo
+         * test. Without it, this suite would claim and unlink the buses of a
+         * Live session running on the same machine. */
+        assert!(
+            namespace().is_some(),
+            "{NAMESPACE_ENV} is not set: the tests would use the real bus names"
+        );
+        let name = Name::for_slot(7);
+        let s = name.as_str();
+        assert!(s.starts_with("/nia.") && s.ends_with(".07"), "{s}");
+        assert_ne!(s, "/nia.bus.07");
+        assert!(s.len() <= 31, "past PSHMNAMLEN: {s}");
     }
 }

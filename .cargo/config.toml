@@ -11,3 +11,15 @@
 # 3992810c52d7962b4d25b3a30494ee2e, the same hash the host suite pins.
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-C", "target-cpu=cortex-a72"]
+
+# EVERY `cargo test` GETS A PRIVATE SET OF AUDIO BUSES.
+#
+# The bus's shared-memory names are global to the user, so two checkouts
+# testing at once -- or a test run beside a Live session -- would claim and
+# unlink each other's slots. bus-core hashes NIA_BUS_NS into the names when it
+# is set; this sets it to the checkout's own path, so each checkout's tests
+# meet only themselves. It reaches the processes cargo runs (tests), not the
+# libraries it builds: a plugin in a host never sees it and uses the real
+# names. The C tests set their own, per process -- see tests/abus_ipc.c.
+[env]
+NIA_BUS_NS = { value = ".", relative = true }

@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static int failures = 0;
 
@@ -59,8 +60,22 @@ static void fill_mono(float* out, int n, float hz, float amp, double* phase)
     }
 }
 
+/*
+ * A PRIVATE SET OF BUSES FOR THIS PROCESS. The shm names are global to the
+ * user, so a ctest run in another checkout, or a Live session, would otherwise
+ * share -- and unlink -- our slots. The engine hashes NIA_BUS_NS into every
+ * name; set before the first bus call, and inherited across fork.
+ */
+static void private_namespace(const char* test)
+{
+  char ns[64];
+  snprintf(ns, sizeof ns, "%s.%d", test, (int) getpid());
+  setenv("NIA_BUS_NS", ns, 1);
+}
+
 int main(void)
 {
+  private_namespace("srecv_api");
     printf("srecv, through the C ABI\n");
 
     /*

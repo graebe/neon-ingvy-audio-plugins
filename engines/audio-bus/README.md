@@ -14,6 +14,15 @@ which is MIT/Apache-2.0 and would be fine, but is a large thing to borrow
 cargo test -p bus-core -p bus-capi
 ```
 
+**Tests run in a private namespace.** The shm names are global to the user, so
+a test run would otherwise share — and unlink — the slots of another checkout's
+tests, or of a Live session on the same machine. When `NIA_BUS_NS` is set,
+every name becomes `/nia.<hash>.NN` instead of `/nia.bus.NN`. The workspace's
+`.cargo/config.toml` sets it to the checkout's path for every `cargo test`
+(bus-core's `tests_never_touch_the_production_names` fails if it is missing),
+and the C tests set a per-process value before their first bus call. Nothing
+sets it in a host, so plugins use the real names.
+
 ## Why it is not a product engine
 
 `docs/tech/structure.md` says a crate belongs to exactly one product and the
