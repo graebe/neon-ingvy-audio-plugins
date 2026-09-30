@@ -15,7 +15,8 @@
  *
  *   abus_writer_claim / release            the main thread
  *   abus_writer_set_label / sample_rate    the main thread
- *   abus_writer_push                       the audio thread, and only it
+ *   abus_pusher_release                    the main thread
+ *   abus_pusher_push                       the audio thread, and only it
  *   abus_reader_open / close / reattach    the main thread
  *   abus_reader_read                       one thread, the same one each time
  *   abus_probe                             the main thread
@@ -25,7 +26,7 @@
  * prevented rather than left undefined: the second abus_writer_claim returns
  * ABUS_ERR_TAKEN and the caller publishes nothing.
  *
- * `abus_writer_push` allocates nothing, takes no lock and makes no system call.
+ * `abus_pusher_push` allocates nothing, takes no lock and makes no system call.
  * `abus_writer_claim` does all three, which is why it is not allowed anywhere
  * near the audio thread.
  *
@@ -43,7 +44,8 @@
 extern "C" {
 #endif
 
-typedef struct AbusWriter abus_writer_t;
+typedef struct AbusWriter abus_writer_t;  /* the main thread's half of a claim  */
+typedef struct AbusPusher abus_pusher_t;  /* the audio thread's half of a claim */
 typedef struct AbusReader abus_reader_t;
 
 #define ABUS_OK                0
@@ -68,15 +70,21 @@ uint32_t abus_max_slot(void);
 uint32_t abus_channels(void);
 
 /*
- * THE SENDING END.
+ * THE SENDING END: ONE CLAIM, TWO HANDLES, ONE PER THREAD.
  *
- * On ABUS_OK, *out holds a handle to release later. On anything else *out is
- * untouched and the caller has no bus -- which is a normal state, not an
- * error to swallow: a second Listen-In on a taken slot must SAY SO rather than
- * quietly publish nothing.
+ * On ABUS_OK, *writer holds the main thread's half (label, rate) and *pusher
+ * the audio thread's (push); both are released later, and the slot stays
+ * claimed until BOTH are. On anything else both are untouched and the caller
+ * has no bus -- which is a normal state, not an error to swallow: a second
+ * Listen-In on a taken slot must SAY SO rather than quietly publish nothing.
+ *
+ * A plugin keeps the writer and lends the pusher to its audio thread -- see
+ * shell_handoff.h, which frees it on the main thread once no block holds it.
  */
-int  abus_writer_claim(uint32_t slot, uint32_t sample_rate, abus_writer_t** out);
+int  abus_writer_claim(uint32_t slot, uint32_t sample_rate,
+                       abus_writer_t** writer, abus_pusher_t** pusher);
 void abus_writer_release(abus_writer_t* w);
+void abus_pusher_release(abus_pusher_t* p);
 
 /*
  * Publish one block: `frames * abus_channels()` interleaved floats.
@@ -85,11 +93,11 @@ void abus_writer_release(abus_writer_t* w);
  * unconditionally, and "the slot was taken" is then silence rather than a
  * branch at the call site.
  */
-void abus_writer_push(abus_writer_t* w, const float* interleaved, uint32_t frames);
+void abus_pusher_push(abus_pusher_t* p, const float* interleaved, uint32_t frames);
 
 /* The host's rate changed. Readers are resynced: samples either side of a rate
  * change are not the same signal, and splicing them would draw a transient
- * that never happened. */
+ * that never happened. Posted: the pusher applies it at its next push. */
 void abus_writer_set_sample_rate(abus_writer_t* w, uint32_t sample_rate);
 
 /* NUL-terminated UTF-8. Anything past ABUS_LABEL_CAP-1 bytes is dropped. */

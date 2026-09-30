@@ -69,7 +69,8 @@ int main(void)
   {
     /* THE SENDER, in its own process. */
     abus_writer_t* w = NULL;
-    if (abus_writer_claim(SLOT, 48000, &w) != ABUS_OK || w == NULL)
+    abus_pusher_t* p = NULL;
+    if (abus_writer_claim(SLOT, 48000, &w, &p) != ABUS_OK || w == NULL || p == NULL)
       _exit(2);
     abus_writer_set_label(w, "Child");
 
@@ -77,12 +78,13 @@ int main(void)
     for (unsigned k = 0; k < ROUNDS; k++)
     {
       fill(buf, k * FRAMES, FRAMES);
-      abus_writer_push(w, buf, FRAMES);
+      abus_pusher_push(p, buf, FRAMES);
       /* Slow enough that the parent is not simply reading an empty bus, and
        * far short of the ring's 131072 frames of slack. */
       usleep(2000);
     }
     usleep(200000); /* stay alive while the parent finishes reading */
+    abus_pusher_release(p);
     abus_writer_release(w);
     _exit(0);
   }

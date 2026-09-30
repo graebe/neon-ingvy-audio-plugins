@@ -80,9 +80,11 @@ not been applied yet is still visible to readers: they are answered from the
 latest snapshot replayed through the outstanding edits. `tg_shell.h` and
 `sc_shell.h` are the per-product surfaces.
 
-Objects the shell builds and frees on the main thread — Listen-In's bus writer,
-the Spectrogram's receiver — reach the audio thread through `shell_handoff.h`,
-which frees a replaced one only once the audio thread has let go of it. Nothing
+Objects the shell builds and frees on the main thread — the audio thread's half
+of Listen-In's bus claim (its `abus_pusher_t`; the main thread keeps the
+`abus_writer_t`), the Spectrogram's receiver — reach the audio thread through
+`shell_handoff.h`, which frees a replaced one only once the audio thread has let
+go of it. Nothing
 that allocates, maps memory or talks to the editor runs on the audio thread;
 `OnParamChange` and `OnReset` only record what they want, and `OnIdle` does it.
 

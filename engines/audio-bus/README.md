@@ -108,8 +108,10 @@ Reader::read                                            one thread, the same one
 
 A claim returns two handles, a `Writer` for the main thread and a `Pusher` for
 the audio thread, and each mutates only through `&mut self` — so safe Rust
-cannot push from two threads at once. The C ABI keeps one handle and projects
-each call to the half its thread owns. A sample-rate change is **posted**: the
+cannot push from two threads at once. The C ABI hands out the same two
+halves, `abus_writer_t` and `abus_pusher_t`, and the slot is released with the
+last of them; NI Listen-In keeps the writer and lends the pusher to its audio
+thread through `shell_handoff.h`. A sample-rate change is **posted**: the
 main thread leaves a request and the next `push` applies it, because the
 restart resets the frame count that only the audio thread may write.
 

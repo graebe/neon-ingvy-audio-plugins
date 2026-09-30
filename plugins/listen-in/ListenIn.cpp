@@ -14,11 +14,11 @@
 
 using namespace listenin;
 
-/* The handoff frees through this; abus_writer_release has the wrong pointer
+/* The handoff frees through this; abus_pusher_release has the wrong pointer
  * type to be called through a void* function pointer. */
-static void ReleaseWriter(void* w)
+static void ReleasePusher(void* p)
 {
-  abus_writer_release(static_cast<abus_writer_t*>(w));
+  abus_pusher_release(static_cast<abus_pusher_t*>(p));
 }
 
 ListenIn::ListenIn(const InstanceInfo& info)
@@ -28,7 +28,7 @@ ListenIn::ListenIn(const InstanceInfo& info)
 
   mStage.resize(size_t(kStageFrames) * abus_channels(), 0.f);
   mLabel.reserve(32);
-  mBus = shell_handoff_new(ReleaseWriter);
+  mBus = shell_handoff_new(ReleasePusher);
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* The ground's detector. Created here rather than in OnReset because OnReset
@@ -50,9 +50,12 @@ ListenIn::ListenIn(const InstanceInfo& info)
 
 ListenIn::~ListenIn()
 {
-  /* The audio thread has stopped by now, so the live writer goes too. */
+  /* The audio thread has stopped by now, so the live pusher goes too, and with
+   * the writer the slot. */
   shell_handoff_free(mBus);
   mBus = nullptr;
+  abus_writer_release(mWriter);
+  mWriter = nullptr;
 #ifdef WEBVIEW_EDITOR_DELEGATE
   gnd_free(mGround);
   mGround = nullptr;
@@ -70,7 +73,7 @@ ListenIn::~ListenIn()
 void ListenIn::ServiceBus()
 {
 #if IPLUG_DSP
-  /* A writer replaced earlier is freed once the audio thread has let go. */
+  /* A pusher replaced earlier is freed once the audio thread has let go. */
   shell_handoff_collect(mBus);
 
   const uint32_t rate = mRate.load(std::memory_order_acquire);
@@ -79,32 +82,36 @@ void ListenIn::ServiceBus()
   const bool reset = mResetSeen.exchange(false, std::memory_order_acq_rel);
   const bool reload = mReclaim.exchange(false, std::memory_order_acq_rel);
   const int want = wire::clamp_slot(mWantSlot.load(std::memory_order_relaxed));
-  auto* live = static_cast<abus_writer_t*>(shell_handoff_current(mBus));
 
   /* A rate change makes the samples either side of it a different signal, so
-   * the bus restarts rather than splicing. */
-  if (reset && live) abus_writer_set_sample_rate(live, rate);
+   * the bus restarts rather than splicing. Posted: the pusher applies it. */
+  if (reset && mWriter) abus_writer_set_sample_rate(mWriter, rate);
 
-  if (!(mWaiting || reload || want != mTriedSlot || (reset && !live))) return;
+  if (!(mWaiting || reload || want != mTriedSlot || (reset && !mWriter))) return;
 
   /*
    * RELEASE FIRST, AND ONLY THEN CLAIM. Moving from 3 to 4 and back would
    * otherwise find slot 3 still held by this very instance and report it
-   * taken. The old writer is freed once the audio thread lets go of it --
-   * within a block -- and until then the claim waits for the next tick.
+   * taken. The writer goes at once; the slot goes with the pusher, once the
+   * audio thread lets go of it -- within a block -- and until then the claim
+   * waits for the next tick.
    */
+  abus_writer_release(mWriter);
+  mWriter = nullptr;
   shell_handoff_set(mBus, nullptr);
   mWaiting = shell_handoff_collect(mBus) > 0;
   if (mWaiting) return;
 
   mTriedSlot = want;
   abus_writer_t* w = nullptr;
-  switch (abus_writer_claim(uint32_t(want), rate, &w))
+  abus_pusher_t* p = nullptr;
+  switch (abus_writer_claim(uint32_t(want), rate, &w, &p))
   {
     case ABUS_OK:
       mStatus = wire::kLive;
-      if (!mLabel.empty()) abus_writer_set_label(w, mLabel.c_str());
-      shell_handoff_set(mBus, w);
+      mWriter = w;
+      if (!mLabel.empty()) abus_writer_set_label(mWriter, mLabel.c_str());
+      shell_handoff_set(mBus, p);
       break;
     case ABUS_ERR_TAKEN:
       /* NOT AN ERROR TO SWALLOW. Another Listen-In already publishes here, and
@@ -168,7 +175,7 @@ void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const int cap = kStageFrames;
   float peak = 0.f;
   /* Held for the block; null when no slot is claimed, which push ignores. */
-  auto* bus = static_cast<abus_writer_t*>(shell_handoff_acquire(mBus));
+  auto* bus = static_cast<abus_pusher_t*>(shell_handoff_acquire(mBus));
 
   for (int off = 0; off < nFrames; off += cap)
   {
@@ -184,7 +191,7 @@ void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       peak = std::max(peak, std::max(std::fabs(l), std::fabs(r)));
     }
     /* A no-op when the slot was taken, which is why there is no branch here. */
-    abus_writer_push(bus, mStage.data(), uint32_t(n));
+    abus_pusher_push(bus, mStage.data(), uint32_t(n));
   }
   shell_handoff_release(mBus);
 
@@ -343,8 +350,7 @@ bool ListenIn::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pDat
     char clean[32];
     wire::parse_label(arg.c_str(), clean, int(sizeof(clean)));
     mLabel = clean;
-    if (auto* w = static_cast<abus_writer_t*>(shell_handoff_current(mBus)))
-      abus_writer_set_label(w, mLabel.c_str());
+    if (mWriter) abus_writer_set_label(mWriter, mLabel.c_str());
     return true;
   }
 

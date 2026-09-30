@@ -107,16 +107,20 @@ private:
 #endif
 
   /*
-   * THE BUS WRITER IS THE MAIN THREAD'S, LENT TO THE AUDIO THREAD.
+   * A CLAIM IS TWO HALVES, AND EACH THREAD HOLDS ONLY ITS OWN.
    *
    * Claiming maps shared memory and releasing unlinks it, so neither may happen
    * on the audio thread -- and OnParamChange IS the audio thread under VST3 and
-   * CLAP automation. Nor may the writer be freed while a block is pushing to
-   * it. So every other thread only records what it wants, below, and OnIdle
-   * does the work; the writer crosses to ProcessBlock through the handoff,
-   * which frees a replaced one only once the audio thread has let go of it.
+   * CLAP automation. So every other thread only records what it wants, below,
+   * and OnIdle does the work.
+   *
+   * The main thread keeps the WRITER (label, rate) outright. The audio thread
+   * needs only the PUSHER, and it crosses to ProcessBlock through the handoff,
+   * which frees a replaced one only once no block holds it. The slot is
+   * released with the last half, so a pusher still mid-block keeps it claimed.
    */
-  shell_handoff_t* mBus = nullptr;
+  abus_writer_t* mWriter = nullptr;     /* main thread only                  */
+  shell_handoff_t* mBus = nullptr;      /* the pusher, lent to ProcessBlock  */
   std::atomic<int> mWantSlot{1};        /* the Slot parameter, from any thread */
   std::atomic<uint32_t> mRate{0};       /* the host's rate, from OnReset       */
   std::atomic<bool> mResetSeen{false};  /* OnReset ran: retry, or retune       */
@@ -125,7 +129,7 @@ private:
   /* Main thread only. */
   int mStatus = 0;                 /* listenin::wire::Status */
   int mTriedSlot = 0;              /* the slot last asked for, won or not     */
-  bool mWaiting = false;           /* a release is waiting on the audio thread */
+  bool mWaiting = false;           /* a pusher is waiting on the audio thread */
 
   std::vector<float> mStage;       /* interleaved, pre-sized, never resized   */
   std::string mLabel;

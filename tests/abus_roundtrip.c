@@ -53,9 +53,10 @@ int main(void)
   check(abus_max_slot() == ABUS_MAX_SLOT, "and the header's constant agrees");
 
   abus_writer_t* w = NULL;
-  check(abus_writer_claim(SLOT, 48000, &w) == ABUS_OK && w != NULL,
-        "a sender can claim a free slot");
-  if (w == NULL) return 1;
+  abus_pusher_t* p = NULL;
+  check(abus_writer_claim(SLOT, 48000, &w, &p) == ABUS_OK && w != NULL && p != NULL,
+        "a sender can claim a free slot, as a writer and a pusher");
+  if (w == NULL || p == NULL) return 1;
 
   abus_writer_set_label(w, "Bass");
 
@@ -69,7 +70,7 @@ int main(void)
   float in[N * 2], out[N * 2];
   for (int i = 0; i < N; i++) { in[i * 2] = (float) i; in[i * 2 + 1] = (float) -i; }
 
-  abus_writer_push(w, in, N);
+  abus_pusher_push(p, in, N);
 
   uint64_t dropped = 0;
   int32_t resynced = 0;
@@ -80,14 +81,16 @@ int main(void)
 
   /* A SECOND SENDER IS REFUSED, not quietly allowed to overwrite. */
   abus_writer_t* w2 = NULL;
-  check(abus_writer_claim(SLOT, 48000, &w2) == ABUS_ERR_TAKEN && w2 == NULL,
+  abus_pusher_t* p2 = NULL;
+  check(abus_writer_claim(SLOT, 48000, &w2, &p2) == ABUS_ERR_TAKEN && w2 == NULL && p2 == NULL,
         "a second sender on a held slot is refused");
 
   /* Out of range is a mistake and is reported as one. */
   abus_writer_t* w3 = NULL;
-  check(abus_writer_claim(0, 48000, &w3) == ABUS_ERR_BAD_SLOT,
+  abus_pusher_t* p3 = NULL;
+  check(abus_writer_claim(0, 48000, &w3, &p3) == ABUS_ERR_BAD_SLOT,
         "slot 0 is not a bus");
-  check(abus_writer_claim(abus_max_slot() + 1, 48000, &w3) == ABUS_ERR_BAD_SLOT,
+  check(abus_writer_claim(abus_max_slot() + 1, 48000, &w3, &p3) == ABUS_ERR_BAD_SLOT,
         "nor is one past the end");
 
   /*
@@ -98,7 +101,7 @@ int main(void)
   float* big = (float*) malloc(sizeof(float) * 8192 * 2);
   if (big == NULL) return 1;
   for (int i = 0; i < 8192 * 2; i++) big[i] = 0.5f;
-  for (int k = 0; k < 64; k++) abus_writer_push(w, big, 8192);  /* 512k frames */
+  for (int k = 0; k < 64; k++) abus_pusher_push(p, big, 8192);  /* 512k frames */
 
   dropped = 0;
   got = abus_reader_read(r, out, N, &dropped, &resynced);
@@ -119,18 +122,25 @@ int main(void)
   /* A SENDER THAT COMES BACK makes a new segment; the open reader follows it
    * only when asked, and says so with a resync. */
   check(abus_reader_reattach(r) == 0, "a current reader does not move");
+  /* THE CLAIM GOES WITH ITS LAST HALF. A pusher still lent to an audio
+   * thread keeps the slot, however long ago the writer went. */
   abus_writer_release(w);
   w = NULL;
-  check(abus_writer_claim(SLOT, 48000, &w) == ABUS_OK && w != NULL,
-        "the slot can be claimed again");
+  check(abus_writer_claim(SLOT, 48000, &w2, &p2) == ABUS_ERR_TAKEN,
+        "a slot whose pusher is still out is still claimed");
+  abus_pusher_release(p);
+  p = NULL;
+  check(abus_writer_claim(SLOT, 48000, &w, &p) == ABUS_OK && w != NULL && p != NULL,
+        "the slot can be claimed again once both halves are released");
   check(abus_reader_reattach(r) == 1, "the reader moves to the new segment");
   got = abus_reader_read(r, out, N, &dropped, &resynced);
   check(got == 0 && resynced == 1, "and reports the move as a restart");
-  abus_writer_push(w, in, N);
+  abus_pusher_push(p, in, N);
   got = abus_reader_read(r, out, N, &dropped, &resynced);
   check(got == N && resynced == 0, "then hears the new sender");
 
   abus_reader_close(r);
+  abus_pusher_release(p);
   abus_writer_release(w);
 
   /* A released slot is gone, not merely idle. */

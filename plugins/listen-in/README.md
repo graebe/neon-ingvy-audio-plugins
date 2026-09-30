@@ -59,7 +59,7 @@ writer, for the reason below. One writer, any number of readers, and **no
 coordination between the readers at all** — each keeps its cursor in its own
 memory and the segment is written by exactly one participant.
 
-`abus_writer_push` runs on the audio thread and allocates nothing, locks nothing
+`abus_pusher_push` runs on the audio thread and allocates nothing, locks nothing
 and makes no system call; `cargo test -p bus-core` fails the build if that stops
 being true.
 

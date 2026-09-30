@@ -29,20 +29,18 @@ use shell_capi as _;
 use bus_core::{ClaimError, Pusher, Reader, Writer};
 
 /*
- * ONE C HANDLE, TWO RUST HALVES, and the halves are why.
+ * TWO C HANDLES, ONE PER THREAD -- the Rust split, carried across the ABI.
  *
- * The C side holds one `abus_writer_t*` and calls push from the audio thread
- * while set_label and set_sample_rate arrive from the main thread. Forming a
- * `&mut` to the whole handle on one thread while the other holds a reference
- * into it would be aliasing undefined behaviour, whatever the two calls then
- * touch. So each entry point projects from the raw pointer to the ONE field
- * its thread owns -- `feed` for the audio thread, `ctl` for the main thread --
- * and never names the handle as a whole except to create or destroy it.
+ * A claim is a `Writer` for the main thread (label, rate, release) and a
+ * `Pusher` for the audio thread (push), and the C side gets them as two boxes.
+ * A plugin keeps the writer and LENDS the pusher to its audio thread through
+ * shell_handoff.h, which frees it only once no block is holding it; nothing
+ * the main thread does to its own half can race a block, because the halves
+ * share nothing but the claim's atomics. The slot stays claimed until BOTH are
+ * released -- the claim is dropped with its last half.
  */
-pub struct AbusWriter {
-    ctl: Writer,
-    feed: Pusher,
-}
+pub struct AbusWriter(Writer);
+pub struct AbusPusher(Pusher);
 pub struct AbusReader(Reader);
 
 /* Mirrors ABUS_OK / ABUS_ERR_* in the header. */
@@ -69,23 +67,26 @@ pub extern "C" fn abus_channels() -> u32 {
     bus_core::CHANNELS
 }
 
-/// Claim a slot. `*out` receives the handle on success and is untouched
-/// otherwise; the return value is ABUS_OK or an ABUS_ERR_*.
+/// Claim a slot. On success `*writer` and `*pusher` receive the two halves,
+/// each to be released later; on failure both are untouched. The return value
+/// is ABUS_OK or an ABUS_ERR_*.
 ///
 /// # Safety
-/// `out` must be a valid, writable pointer.
+/// `writer` and `pusher` must be valid, writable pointers.
 #[no_mangle]
 pub unsafe extern "C" fn abus_writer_claim(
     slot: u32,
     sample_rate: u32,
-    out: *mut *mut AbusWriter,
+    writer: *mut *mut AbusWriter,
+    pusher: *mut *mut AbusPusher,
 ) -> i32 {
-    if out.is_null() {
+    if writer.is_null() || pusher.is_null() {
         return ABUS_ERR_UNAVAILABLE;
     }
     match Writer::claim(slot, sample_rate) {
-        Ok((ctl, feed)) => {
-            *out = Box::into_raw(Box::new(AbusWriter { ctl, feed }));
+        Ok((w, p)) => {
+            *writer = Box::into_raw(Box::new(AbusWriter(w)));
+            *pusher = Box::into_raw(Box::new(AbusPusher(p)));
             ABUS_OK
         }
         Err(e) => code(e),
@@ -101,35 +102,41 @@ pub unsafe extern "C" fn abus_writer_release(w: *mut AbusWriter) {
     }
 }
 
+/// # Safety
+/// `p` must come from `abus_writer_claim` and must not be used afterwards.
+/// Not on the audio thread: the last half released unmaps the segment.
+#[no_mangle]
+pub unsafe extern "C" fn abus_pusher_release(p: *mut AbusPusher) {
+    if !p.is_null() {
+        drop(Box::from_raw(p));
+    }
+}
+
 /// Publish `frames` of interleaved stereo. THE AUDIO THREAD CALLS THIS; it
 /// allocates nothing and makes no system call.
 ///
 /// # Safety
+/// `p` is null or from `abus_writer_claim`, used by one thread at a time;
 /// `interleaved` must point at `frames * abus_channels()` readable floats.
 #[no_mangle]
-pub unsafe extern "C" fn abus_writer_push(
-    w: *mut AbusWriter,
-    interleaved: *const f32,
-    frames: u32,
-) {
+pub unsafe extern "C" fn abus_pusher_push(p: *mut AbusPusher, interleaved: *const f32, frames: u32) {
     /* A NULL handle is the normal state of a Listen-In whose slot was taken by
      * another instance, and ProcessBlock calls this unconditionally. Silence is
      * the correct response, not a branch at every call site. */
-    if w.is_null() || interleaved.is_null() || frames == 0 {
+    let Some(p) = p.as_mut() else { return };
+    if interleaved.is_null() || frames == 0 {
         return;
     }
     let n = frames as usize * bus_core::CHANNELS as usize;
-    let feed = &mut *core::ptr::addr_of_mut!((*w).feed);
-    feed.push(core::slice::from_raw_parts(interleaved, n));
+    p.0.push(core::slice::from_raw_parts(interleaved, n));
 }
 
 /// # Safety
 /// `w` must come from `abus_writer_claim`.
 #[no_mangle]
 pub unsafe extern "C" fn abus_writer_set_sample_rate(w: *mut AbusWriter, sample_rate: u32) {
-    if !w.is_null() {
-        let ctl = &mut *core::ptr::addr_of_mut!((*w).ctl);
-        ctl.set_sample_rate(sample_rate);
+    if let Some(w) = w.as_mut() {
+        w.0.set_sample_rate(sample_rate);
     }
 }
 
@@ -140,12 +147,8 @@ pub unsafe extern "C" fn abus_writer_set_sample_rate(w: *mut AbusWriter, sample_
 /// `text` must be a valid NUL-terminated string or NULL.
 #[no_mangle]
 pub unsafe extern "C" fn abus_writer_set_label(w: *mut AbusWriter, text: *const u8) {
-    if w.is_null() {
-        return;
-    }
-    let s = cstr(text);
-    let ctl = &mut *core::ptr::addr_of_mut!((*w).ctl);
-    ctl.set_label(&s);
+    let Some(w) = w.as_mut() else { return };
+    w.0.set_label(&cstr(text));
 }
 
 /// # Safety

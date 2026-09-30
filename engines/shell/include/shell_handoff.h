@@ -2,7 +2,7 @@
  * shell_handoff.h -- an object the main thread owns, lent to the audio thread.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * A bus writer or an analyzer receiver maps memory and allocates, so it is
+ * A bus pusher or an analyzer receiver maps memory and allocates, so it is
  * built and freed on the main thread; the audio thread uses it in between.
  * Swapping a plain pointer frees the old object while a block may still be
  * using it. This defers the free until the audio thread has let go:
