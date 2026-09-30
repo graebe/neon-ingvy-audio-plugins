@@ -38,7 +38,7 @@ Everything quick runs, and:
 | label | what |
 |---|---|
 | `render` | the render A/B goldens: four seconds through each plugin's audio path, hashed |
-| `host` | `tg_au`, `sc_au`: the installed AU rendered by a host that supplies a transport |
+| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | every built bundle carries its notices |
 | `site` | every root-relative link on the built site resolves |
@@ -57,11 +57,29 @@ that fixes it, and `scripts/validator-verdict.mjs` fails the stage on any
 failure it does not list *and* on any listed failure that now passes — so the
 list can only shrink. Warnings are printed and never fail.
 
-**What it reads outside the checkout.** Only Audio Units: `tg_au`, `sc_au`,
-`auval` and pluginval's AU pass find their component through the system's
-registry, which lists *installed* components, so they test the installed AU
-(`tg_au` refuses one whose version is not this tree's). The VST3 and CLAP
-bundles are validated from the bundle directory.
+**What it reads outside the checkout.** Only in the validator stage: `auval`
+and pluginval's AU pass find their component through the system's registry,
+which lists *installed* components, so they validate the installed AU — on a
+machine that has not installed this build, an older one. They stay there as
+validators of what is installed. The VST3 and CLAP bundles are validated from
+the bundle directory.
+
+**The AU tests in ctest never read what is installed.** `tests/au_bundle.h`
+loads a bundle from `build/out` by path and hands its factory to
+`AudioComponentRegister`, Apple's API for a component implemented inside the
+calling process: the registration is visible to that process alone, under the
+test-only manufacturer `NiTs`, so an installed copy under the same triple can
+neither be tested by mistake nor shadow the build. Type, subtype and factory
+come from the bundle's own `Info.plist`. A missing bundle fails; it never skips.
+
+**`au_stress_<Plugin>`** is `auval -stress`'s state path, for every plugin:
+a render thread, two threads getting and setting `ClassInfo` (the plugin's
+`SerializeState`/`UnserializeState`, on threads that are not the main thread),
+and the main run loop, so iPlug2's idle timer services what they recorded. A
+watchdog turns a hang into a failure naming the stuck thread; a crash fails
+as a crash. Three seconds a plugin by default; `-DNI_AU_STRESS_SECONDS=60`
+makes it a soak, and `build/tests/au_stress <bundle> [seconds] [threads]` runs
+one by hand — against any bundle, an installed one included, read-only.
 
 ## Labels, not lists
 

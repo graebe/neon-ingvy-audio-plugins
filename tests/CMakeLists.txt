@@ -188,42 +188,40 @@ else()
     message(STATUS "node not found -- skipping the UI's tests (curves, envelope, tokens)")
 endif()
 
-# The installed AU, rendered by a host that actually supplies a transport.
+# THE AUDIO UNITS THIS CHECKOUT BUILT, from build/out, never the installed ones.
+#
+# Each test loads its bundle by path and registers it in its own process only,
+# under a test-only manufacturer (au_bundle.h: AudioComponentRegister, Apple's
+# API for a component implemented in the calling process). Nothing is installed
+# and the system's registry is not consulted, so an installed copy -- any
+# version, under the same triple -- can neither be tested by mistake nor
+# shadow the build. The bundles are the full build's; a missing one fails.
+set(NI_BUNDLES ${CMAKE_BINARY_DIR}/out)
+set(NI_AU_LIBS "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
+
+# The Trance Gate AU, rendered by a host that actually supplies a transport.
 # AVAudioEngine supplies none, so a plugin under it correctly holds the gate
 # open and renders dry -- a green render that proves nothing. This one sets
 # the host callbacks the AU wrapper reads, drives the macros through the AU
 # parameter API, and compares against the engine directly.
-#
-# It finds the plugin by the (aufx, TrGt, Grbe) triple, which the iPlug2 build
-# carries over from the JUCE one -- so this test covers the new AU without a line
-# changing in it.
-#
-# WHICH IS ALSO ITS ONE WEAKNESS, AND WHY THE VERSION IS PASSED IN. Those three
-# values are the plugin's identity and never move, so EVERY build it has ever had
-# claims them -- including one left installed under an older bundle name. The
-# rename to NITranceGate left TranceGate.component in place, macOS registered the
-# old one, and this test went on passing against a binary with none of the new
-# work in it. PLUG_VERSION_HEX is read out of config.h here and handed to the test
-# so it can refuse a bundle that is not the one this tree builds.
 if (APPLE)
-    file(READ ${CMAKE_SOURCE_DIR}/plugins/trance-gate/config.h TG_CONFIG_H)
-    string(REGEX MATCH "#define[ \t]+PLUG_VERSION_HEX[ \t]+(0x[0-9a-fA-F]+)"
-           _tg_ver_match "${TG_CONFIG_H}")
-    set(TG_PLUG_VERSION_HEX "${CMAKE_MATCH_1}")
-    if (NOT TG_PLUG_VERSION_HEX)
-        message(FATAL_ERROR
-            "No PLUG_VERSION_HEX in plugins/trance-gate/config.h -- tg_au cannot "
-            "tell the bundle it built from one shadowing it")
-    endif()
-
     add_executable(tg_au_render au_render.c)
-    target_compile_definitions(tg_au_render
-        PRIVATE EXPECTED_AU_VERSION=${TG_PLUG_VERSION_HEX})
-    target_link_libraries(tg_au_render PRIVATE tg_engine m
-        "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
-    add_test(NAME tg_au COMMAND tg_au_render)
-    # 77 is "the AU is not installed": Skipped, not Passed. See au_render.c.
-    set_tests_properties(tg_au PROPERTIES SKIP_RETURN_CODE 77)
+    target_include_directories(tg_au_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(tg_au_render PRIVATE tg_engine m ${NI_AU_LIBS})
+    add_test(NAME tg_au COMMAND tg_au_render ${NI_BUNDLES}/NITranceGate.component)
+
+    # auval -stress's state path on every plugin: a render thread, two threads
+    # setting state back and forth, and the main run loop for iPlug2's idle
+    # timer, under a watchdog -- a hang fails, it never waits. au_stress.c.
+    # NI_AU_STRESS_SECONDS lengthens it for a soak.
+    set(NI_AU_STRESS_SECONDS 3 CACHE STRING "seconds per plugin in the au_stress tests")
+    add_executable(au_stress au_stress.c)
+    target_link_libraries(au_stress PRIVATE ${NI_AU_LIBS})
+    foreach(plugin TranceGate SideChain Spectrogram ListenIn)
+        add_test(NAME au_stress_${plugin}
+                 COMMAND au_stress ${NI_BUNDLES}/NI${plugin}.component
+                         ${NI_AU_STRESS_SECONDS} 2)
+    endforeach()
 endif()
 
 # ---------------------------------------------------------------- Spectrogram
@@ -554,30 +552,16 @@ if (TG_NODE)
              COMMAND ${TG_NODE} --test ${SC_UI_TEST}/ranges.test.mjs)
 endif()
 
-# The installed AU, rendered by a host that actually supplies a transport.
-#
-# THE ONLY TEST THAT EXERCISES THE WHOLE CHAIN AS A DAW DOES: the component is
-# loaded from disk by its triple, its parameters are set through the AU
-# parameter API -- the same one automation drives -- and the transport arrives
-# through the host callbacks iPlug2's wrapper reads.
-#
-# auval passes on a plugin that initialises, accepts every parameter and then
-# passes the audio through untouched; it has no idea what the plugin is FOR.
-# This checks the duck actually happened, and that the AU's output matches the
-# engine's own render sample for sample.
-#
-# It finds the plugin by the (aumf, SdCh, Grbe) triple -- `aumf` and not `aufx`
-# because PLUG_DOES_MIDI_IN makes it a MusicEffect. It SKIPS (exit 77, reported
-# as Skipped rather than Passed) when the component is not installed, so a
-# checkout that has never deployed a build neither fails the suite nor claims a
-# pass it did not earn. CI installs the plugins and fails if either AU test
-# skips.
+# The Side-Chain AU from build/out (see the Trance Gate's, above), rendered with
+# a transport: auval passes on a plugin that initialises, accepts every
+# parameter and passes the audio through untouched; this checks the duck
+# actually happened, and that the AU's output matches the engine's own render
+# sample for sample. `aumf`, not `aufx` -- the bundle's plist says so.
 if (APPLE)
     add_executable(sc_au_render ${SC_ENGINE}/tests/au_render.c)
-    target_link_libraries(sc_au_render PRIVATE sc_engine m
-        "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
-    add_test(NAME sc_au COMMAND sc_au_render)
-    set_tests_properties(sc_au PROPERTIES SKIP_RETURN_CODE 77)
+    target_include_directories(sc_au_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(sc_au_render PRIVATE sc_engine m ${NI_AU_LIBS})
+    add_test(NAME sc_au COMMAND sc_au_render ${NI_BUNDLES}/NISideChain.component)
 endif()
 
 # ----------------------------------------------------------- The whole UI
@@ -636,6 +620,8 @@ ni_test_tiers(
     FULL
         tg_render_ab:render sc_render_ab:render
         tg_au:host sc_au:host
+        au_stress_TranceGate:host au_stress_SideChain:host
+        au_stress_Spectrogram:host au_stress_ListenIn:host
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)

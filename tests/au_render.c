@@ -1,21 +1,24 @@
 /*
- * Render 4 seconds through the INSTALLED Audio Unit and compare it against
- * the engine running the same patch directly.
+ * Render 4 seconds through the Audio Unit this checkout BUILT and compare it
+ * against the engine running the same patch directly.
+ *
+ *   tg_au_render <NITranceGate.component>
  *
  * This is the only test that exercises the whole chain as a DAW does: the
- * component is loaded from disk by its type/subtype/manufacturer, its
- * parameters are set through the AU parameter API (the same one automation
- * drives), the transport arrives through the host callbacks JUCE's wrapper
- * actually reads, and the audio comes back through AudioUnitRender.
+ * component is loaded from its bundle, its parameters are set through the AU
+ * parameter API (the same one automation drives), the transport arrives through
+ * the host callbacks iPlug2's wrapper actually reads, and the audio comes back
+ * through AudioUnitRender.
+ *
+ * THE BUNDLE IS FOUND BY PATH, NOT BY NAME. It is registered in this process
+ * only, under a test-only manufacturer (au_bundle.h), so what renders is the
+ * build in build/out -- never an installed copy, which the system registry
+ * would hand back under the same triple whatever its version.
  *
  * AVAudioEngine cannot do this job: it supplies no musical context, so the
  * plugin correctly sees "stopped", holds the gate open, and renders the dry
  * signal -- a passing render that proves nothing about the gate. The two
  * callbacks below are the entire difference.
- *
- * Skips (exit 77, reported by ctest as Skipped, not Passed) when the component
- * is not installed, so a checkout that has never deployed a build does not fail
- * the suite -- and does not claim a pass it never earned either.
  */
 #include <AudioToolbox/AudioToolbox.h>
 #include <AudioUnit/AudioUnit.h>
@@ -23,18 +26,13 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "au_bundle.h"
 #include "trance_gate_core.h"
 
 #define SR    44100.0
 #define BLOCK 128
 #define BPM   123.0
 
-/* NOT A PASS. The AU under test is the INSTALLED one, and a checkout that has
- * not deployed a build has none -- which used to return 0 and read as a green
- * test that had rendered nothing. 77 is ctest's SKIP_RETURN_CODE for this test
- * (tests/CMakeLists.txt), so it is reported as Skipped, and CI, which installs
- * the plugins, fails on a skip. */
-#define SKIPPED 77
 
 static double gSamplePos = 0.0;      /* where the "song" is, in samples */
 
@@ -128,104 +126,15 @@ static void ok (int cond, const char *what, const char *detail)
     if (!cond) fails++;
 }
 
-int main (void)
+int main (int argc, char **argv)
 {
-    AudioComponentDescription desc = {
-        .componentType = kAudioUnitType_Effect,
-        .componentSubType = 'TrGt',
-        .componentManufacturer = 'Grbe',
-    };
-    /*
-     * EVERY COMPONENT THAT CLAIMS THE TRIPLE, NOT JUST THE FIRST.
-     *
-     * AudioComponentFindNext is an iterator for a reason: more than one thing can
-     * answer to (aufx, TrGt, Grbe), and on a developer's machine something
-     * usually does. Those three values are the plugin's identity and deliberately
-     * never move, so every build it has ever had claims them -- and macOS's
-     * component registry outlives the files, so a bundle deleted minutes ago is
-     * still enumerated as a ghost that cannot be opened.
-     *
-     * Taking the first match meant this test ran against whatever the registry
-     * happened to list first. That is how it stayed green through the rename to
-     * NITranceGate while the OLD TranceGate.component was the one answering --
-     * passing against a binary with none of the new work in it.
-     *
-     * So the version is the discriminator. EXPECTED_AU_VERSION comes from the
-     * PLUG_VERSION_HEX this tree builds (tests/CMakeLists.txt reads it out of
-     * config.h), and the loop takes the component that actually IS this build,
-     * skipping ghosts and older installs rather than being derailed by them.
-     */
-    AudioComponent comp = NULL;
-#ifdef EXPECTED_AU_VERSION
-    int seen = 0;
-    UInt32 firstVersion = 0;
-    for (AudioComponent c = AudioComponentFindNext (NULL, &desc); c;
-         c = AudioComponentFindNext (c, &desc)) {
-        UInt32 v = 0;
-        AudioComponentGetVersion (c, &v);
-        if (!seen++) firstVersion = v;
-        if (v == (UInt32) EXPECTED_AU_VERSION) { comp = c; break; }
+    if (argc < 2) {
+        fprintf (stderr, "usage: tg_au_render <NITranceGate.component>\n");
+        return 2;
     }
-    /*
-     * A GHOST IS NOT A FAILURE; A WORKING BUNDLE OF THE WRONG VERSION IS.
-     *
-     * macOS's component registry outlives the files it lists. A bundle deleted
-     * minutes ago is still enumerated, and `auval -a` says so in as many words --
-     * "Cannot open component: -1". The registrar is a launchd daemon and killing
-     * it does not clear that; the machine wants a rescan it only really does at
-     * login. So an unopenable entry says nothing about this tree and must not fail
-     * the build.
-     *
-     * A component that DOES open and is not this version is the opposite: that is
-     * a real older install answering to the same IDs, which is exactly the trap
-     * that kept this test green through the rename. So the two are told apart by
-     * trying to instantiate, and only the second is a failure.
-     */
-    if (seen && !comp) {
-        int anyOpened = 0;
-        UInt32 openedVersion = 0;
-        for (AudioComponent c = AudioComponentFindNext (NULL, &desc); c;
-             c = AudioComponentFindNext (c, &desc)) {
-            AudioUnit probe = NULL;
-            if (AudioComponentInstanceNew (c, &probe) == noErr && probe) {
-                anyOpened = 1;
-                AudioComponentGetVersion (c, &openedVersion);
-                AudioComponentInstanceDispose (probe);
-                break;
-            }
-        }
-        if (anyOpened) {
-            printf ("  FAIL: a working AU claims (aufx, TrGt, Grbe) at version "
-                    "0x%08X; this tree builds 0x%08X\n",
-                    (unsigned) openedVersion, (unsigned) EXPECTED_AU_VERSION);
-            printf ("        An older install is shadowing this build. Delete it:\n"
-                    "          rm -rf ~/Library/Audio/Plug-Ins/Components/TranceGate.component\n");
-            return 1;
-        }
-        printf ("  (skipped: %d stale registry entr%s for these IDs and no bundle "
-                "that opens.\n"
-                "   The first reports 0x%08X and cannot be instantiated -- macOS is "
-                "listing a\n"
-                "   deleted bundle. Log out and back in, or reboot, to make it "
-                "rescan.)\n",
-                seen, seen == 1 ? "y" : "ies", (unsigned) firstVersion);
-        return SKIPPED;
-    }
-    if (comp && seen > 1)
-        printf ("  note: %d components claim these IDs; using version 0x%08X\n",
-                seen, (unsigned) EXPECTED_AU_VERSION);
-#else
-    comp = AudioComponentFindNext (NULL, &desc);
-#endif
-    if (!comp) {
-        printf ("  (skipped: the Trance Gate AU is not installed)\n");
-        return SKIPPED;
-    }
-
-#ifdef EXPECTED_AU_VERSION
-    printf ("  %-56s ok (0x%08X)\n", "the AU under test is the one this tree builds",
-            (unsigned) EXPECTED_AU_VERSION);
-#endif
+    AudioComponent comp = ni_au_register (argv[1], NULL);
+    if (!comp)
+        return 1;
 
     AudioUnit au = NULL;
     if (AudioComponentInstanceNew (comp, &au) != noErr || !au) {

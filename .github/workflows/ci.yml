@@ -143,8 +143,8 @@ jobs:
         run: npm ci
 
       # Deploy stays ON (iPlug2's default): the plugins are installed into
-      # ~/Library/Audio/Plug-Ins, which is what the AU render tests and auval
-      # need.
+      # ~/Library/Audio/Plug-Ins, which is what auval and pluginval's AU pass
+      # need. The AU tests in ctest do not: they load build/out by path.
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
@@ -156,23 +156,11 @@ jobs:
         run: npm run build --workspace site
 
       # -L full is every test: quick's, plus the render goldens, the AU
-      # renders, the bus across processes, the bundles' notices, the site's
-      # links and the Playwright e2e suite, in the runner's Google Chrome.
+      # renders and state stress (build/out's bundles, loaded by path), the bus
+      # across processes, the bundles' notices, the site's links and the
+      # Playwright e2e suite, in the runner's Google Chrome.
       - name: Full tier
         run: ctest --test-dir build -L full -j3 --output-on-failure
-
-      # A SKIP IS NOT A PASS HERE. tg_au and sc_au render the INSTALLED AU and
-      # report Skipped when there is none. Locally that is fine; here the build
-      # just installed them, so a skip means the AU never registered and the
-      # one test of the whole AU chain did not run.
-      - name: The AU render tests ran
-        run: |
-          out=$(ctest --test-dir build -R '^(tg|sc)_au$' --output-on-failure 2>&1) || { echo "$out"; exit 1; }
-          echo "$out"
-          if grep -q 'Skipped' <<<"$out"; then
-            echo "::error::an AU render test was skipped: the installed AU was not found"
-            exit 1
-          fi
 
       # scripts/coverage.sh: an instrumented build of its own (build-coverage),
       # the suite, cargo llvm-cov and the editors in Chrome, one report -- and

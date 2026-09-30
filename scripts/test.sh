@@ -12,19 +12,19 @@
 #
 #   scripts/test.sh full [--bundles <dir>]
 #       Everything: the full build and the documentation site, `ctest -L full`
-#       (quick, plus the render goldens, the AU host renders, the bus across
+#       (quick, plus the render goldens, the AU renders and state stress, the bus across
 #       processes and across architectures, the bundles' notices, the site's
 #       links and the Playwright e2e suite), then scripts/coverage.sh with the
 #       floor enforced, then auval, pluginval and clap-validator over the
 #       bundles in <dir> (default build/out).
 #
 # WHAT IT READS OUTSIDE THE CHECKOUT, and why. Nothing under ~/Library, with
-# one exception only the full tier makes, which can ONLY use what is installed:
-# the Audio Units. The AU render tests (tg_au, sc_au), auval and pluginval's AU
-# pass find their component through the system's registry, which lists
-# installed components -- so they test the installed AU (tg_au refuses one
-# whose version is not this tree's). The VST3 and CLAP bundles are validated
-# from <dir>.
+# one exception in the validator stage: auval and pluginval's AU pass find their
+# component through the system's registry, which lists INSTALLED components,
+# so they validate the installed AU, not <dir>'s. The ctest AU tests (tg_au,
+# sc_au, au_stress_*) load build/out's bundles by path, registered in their own
+# process only (tests/au_bundle.h), and never look at what is installed. The
+# VST3 and CLAP bundles are validated from <dir>.
 # Nothing is ever written there: a build directory this script configures has
 # -DIPLUG_DEPLOY_PLUGINS=OFF. The validators themselves are downloaded, pinned
 # and checksummed, into build/validators (scripts/validate-plugins.sh).
@@ -60,7 +60,7 @@ took() { printf '    %ss\n' "$(( SECONDS - $1 ))"; }
 
 # THE BUILD DIRECTORY IS CONFIGURED ONCE, WITH DEPLOYMENT OFF. One that exists
 # is used as it is -- CI configures its own with deployment on, because its
-# runner is where the AU tests' components have to be installed -- but it is
+# runner is where auval's components have to be installed -- but it is
 # named if it would deploy, so nobody is surprised by a plugin in ~/Library.
 if [ ! -f "$BUILD/CMakeCache.txt" ]; then
     stage "configuring build (deployment off)"

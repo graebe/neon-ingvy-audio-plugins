@@ -93,7 +93,7 @@ jobs:
 
       - run: npm ci
 
-      # Deploy on (the default): the AU tests and auval need the installed AU.
+      # Deploy on (the default): auval and pluginval need the installed AU.
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -101,16 +101,9 @@ jobs:
 
       # The suite runs here too. A tag is the worst possible moment to discover
       # that the render A/B moved, and it costs a couple of minutes. The AU
-      # tests must have RUN, not skipped -- see ci.yml.
+      # tests load build/out's bundles by path, so they cannot skip.
       - name: Test
-        run: |
-          ctest --test-dir build --output-on-failure
-          out=$(ctest --test-dir build -R '^(tg|sc)_au$' 2>&1)
-          echo "$out"
-          if grep -q 'Skipped' <<<"$out"; then
-            echo "::error::an AU render test was skipped: the installed AU was not found"
-            exit 1
-          fi
+        run: ctest --test-dir build --output-on-failure
 
       - name: Validate (auval, pluginval, clap-validator)
         run: |

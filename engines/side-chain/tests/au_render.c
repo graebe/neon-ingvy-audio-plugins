@@ -1,9 +1,13 @@
 /*
- * Render through the INSTALLED Audio Unit and compare it against the engine
- * running the same settings directly.
+ * Render through the Audio Unit this checkout BUILT and compare it against the
+ * engine running the same settings directly.
+ *
+ *   sc_au_render <NISideChain.component>
  *
  * THIS IS THE ONLY TEST THAT EXERCISES THE WHOLE CHAIN AS A DAW DOES: the
- * component is loaded from disk by its type/subtype/manufacturer, its
+ * component is loaded from its bundle -- by path, registered in this process
+ * only under a test-only manufacturer (tests/au_bundle.h), so it is never an
+ * installed copy answering to the same triple -- its
  * parameters are set through the AU parameter API -- the same one automation
  * drives -- the transport arrives through the host callbacks iPlug2's wrapper
  * actually reads, and the audio comes back through AudioUnitRender.
@@ -20,13 +24,8 @@
  * entire difference.
  *
  * THE COMPONENT TYPE IS kAudioUnitType_MusicEffect ('aumf'), not 'aufx'.
- * PLUG_DOES_MIDI_IN makes it one; see config.h. Looking for the wrong type
- * finds nothing and the test would skip itself forever, quietly.
- *
- * SKIPS -- exit 77, which ctest reports as Skipped rather than Passed -- when
- * the component is not installed, so a checkout that has never deployed a
- * build does not fail the suite and does not claim a pass it never earned
- * either. CI installs the plugins and fails if this skips.
+ * PLUG_DOES_MIDI_IN makes it one; see config.h. The bundle's Info.plist says
+ * so, and au_bundle.h registers what the plist says.
  */
 #include <AudioToolbox/AudioToolbox.h>
 #include <AudioUnit/AudioUnit.h>
@@ -34,6 +33,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "au_bundle.h"
 #include "sc_core.h"
 
 #define SR      44100.0
@@ -139,18 +139,15 @@ static void ok(int cond, const char *what, const char *detail)
     if (!cond) fails++;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
-    AudioComponentDescription desc = {
-        .componentType = kAudioUnitType_MusicEffect,   /* 'aumf' -- see the header */
-        .componentSubType = 'SdCh',
-        .componentManufacturer = 'Grbe',
-    };
-    AudioComponent comp = AudioComponentFindNext(NULL, &desc);
-    if (!comp) {
-        printf("  (skipped: the NI Side-Chain AU is not installed)\n");
-        return 77;
+    if (argc < 2) {
+        fprintf(stderr, "usage: sc_au_render <NISideChain.component>\n");
+        return 2;
     }
+    AudioComponent comp = ni_au_register(argv[1], NULL);
+    if (!comp)
+        return 1;
 
     AudioUnit au = NULL;
     if (AudioComponentInstanceNew(comp, &au) != noErr || !au) {
