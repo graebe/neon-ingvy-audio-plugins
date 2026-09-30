@@ -45,6 +45,9 @@
  * which half of Plots.jsx stayed behind.
  */
 export { Knob } from './components/Knob.jsx';
+/* A value edited in place: focused on insertion, Escape abandons it. */
+export { EditField } from './components/EditField.jsx';
+export { createTextEdit } from './lib/edit.js';
 export { Toggle } from './components/Toggle.jsx';
 export { Button } from './components/Button.jsx';
 export { Select } from './components/Select.jsx';

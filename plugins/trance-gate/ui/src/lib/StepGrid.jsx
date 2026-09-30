@@ -11,6 +11,7 @@ import { For, Show, createSignal } from 'solid-js';
  * are each a fix for something that read as the click half-failing, and a
  * second copy of them would have drifted. */
 import { padGesture } from './steps.js';
+import { EditField } from '@ultraviolet/ui';
 
 const COLS = 16, STEP = 40, GAP = 8;
 
@@ -79,11 +80,9 @@ export default function StepGrid(props) {
    * moves.
    */
   const [editing, setEditing] = createSignal(-1);
-  let field;
   const commit = (i, text) => {
     const n = parseInt(text, 10);
     if (Number.isFinite(n) && n >= 1) props.onOrder?.(i, n);
-    setEditing(-1);
   };
 
   return (
@@ -113,17 +112,12 @@ export default function StepGrid(props) {
                                 e.stopPropagation();
                                 e.preventDefault();
                                 setEditing(i);
-                                requestAnimationFrame(() => field?.select());
                               }}>{num(i)}</span>
                       }>
-                  <input ref={field} class="pad-order-edit t-hint"
-                         value={num(i)} inputmode="numeric"
-                         onPointerDown={(e) => e.stopPropagation()}
-                         onBlur={(e) => commit(i, e.currentTarget.value)}
-                         onKeyDown={(e) => {
-                           if (e.key === 'Enter') commit(i, e.currentTarget.value);
-                           else if (e.key === 'Escape') setEditing(-1);
-                         }} />
+                  {/* Enter or a click away commits; Escape abandons. */}
+                  <EditField class="pad-order-edit t-hint" value={String(num(i))}
+                             inputmode="numeric" ariaLabel={`Arrival of step ${i + 1}`}
+                             onCommit={(t) => commit(i, t)} onClose={() => setEditing(-1)} />
                 </Show>
               </Show>
               {/* SOUNDS, not "is drawn on": a hole Fade Out has not removed

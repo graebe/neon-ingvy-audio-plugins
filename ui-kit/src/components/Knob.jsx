@@ -18,7 +18,8 @@
  * units, no precision and no enum labels, by design, so it could not format one
  * if it wanted to.
  */
-import { createSignal } from 'solid-js';
+import { Show, createSignal } from 'solid-js';
+import { EditField } from './EditField.jsx';
 import { startDrag } from '../lib/drag.js';
 
 const BOX = 48;
@@ -80,7 +81,7 @@ export function Knob(props) {
       case 'PageDown': nudge(-step * 10); break;
       case 'Home': nudge(-1); break;
       case 'End': nudge(1); break;
-      /* The card says double-click to type; Enter is the keyboard's way in. */
+      /* A click on the readout types; Enter is the keyboard's way in. */
       case 'Enter': setEditing(true); break;
       default: return;                     /* not ours -- let tab through */
     }
@@ -150,23 +151,20 @@ export function Knob(props) {
         <path d={ptr()} stroke="var(--uv)" stroke-width="2" fill="none" stroke-linecap="butt" />
       </svg>
 
-      {editing() ? (
-        <input
-          class="readout editing t-value" autofocus
-          value={props.display ?? ''}
-          onBlur={(e) => { setEditing(false); commitText(e.currentTarget.value); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { setEditing(false); commitText(e.currentTarget.value); }
-            if (e.key === 'Escape') setEditing(false);
-          }}
-        />
-      ) : (
-        /* DOUBLE-click to type, as the card says. */
-        <div class="readout t-value" onDblClick={() => setEditing(true)}>
+      {/* CLICK THE READOUT TO TYPE -- one click, as the design's interaction
+        * conventions say ("click the readout to type"). */}
+      <Show when={editing()} fallback={
+        <div class="readout t-value" role="button" tabindex="-1"
+             aria-label={`${props.label ?? ''} value`}
+             onClick={() => setEditing(true)}>
           <span class="num">{split()[0]}</span>
-          {split()[1] && <span class="unit">{split()[1]}</span>}
+          <Show when={split()[1]}><span class="unit">{split()[1]}</span></Show>
         </div>
-      )}
+      }>
+        <EditField class="readout editing t-value" value={props.display ?? ''}
+                   ariaLabel={props.label}
+                   onCommit={commitText} onClose={() => setEditing(false)} />
+      </Show>
     </div>
   );
 }
