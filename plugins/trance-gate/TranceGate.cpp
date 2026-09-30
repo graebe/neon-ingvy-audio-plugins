@@ -3,13 +3,13 @@
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "TranceGate.h"
+#include "Patch.h"
 #include "Wire.h"
 #include "IPlug_include_in_plug_src.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <cassert>
 #include <cmath>
 #include <string>
 #include <cstdlib>
@@ -129,15 +129,15 @@ TranceGate::TranceGate(const InstanceInfo& info)
   MakeDefaultPreset("Default", kNumPresets);
 
 #if IPLUG_DSP
-  mCore = tg_core_create(GetSampleRate() > 0.0 ? GetSampleRate() : 44100.0);
+  mShell = tg_shell_create(GetSampleRate() > 0.0 ? GetSampleRate() : 44100.0);
 #endif
 }
 
 TranceGate::~TranceGate()
 {
 #if IPLUG_DSP
-  if (mCore) tg_core_destroy(mCore);
-  mCore = nullptr;
+  tg_shell_destroy(mShell);
+  mShell = nullptr;
 #endif
 #ifdef WEBVIEW_EDITOR_DELEGATE
   gnd_free(mGround);
@@ -146,49 +146,32 @@ TranceGate::~TranceGate()
 }
 
 /*
- * THE PATCH TEXT IS THE AUTHORITY, NOT THE ENGINE'S COPY OF IT.
- *
- * The engine is loaded FROM this string and never serialised back into it,
- * which is what keeps the save path off the audio thread: the engine's own
- * save allocates, and the only thread that may touch the engine is the one
- * that must not allocate. The host calls Serialize on the main thread while
- * ProcessBlock may be running, so reading the engine here would be a race as
- * well as a realtime violation.
+ * THE PATTERN IS SAVED FROM WHAT THE ENGINE PUBLISHED, not from a copy beside
+ * it -- including an edit posted a moment ago and not yet applied, so a save
+ * straight after an edit has it whether or not audio is running. The host calls
+ * this on the main thread while ProcessBlock may be running; the published
+ * state is the one read that is safe there. Patch.cpp has both halves.
  */
 bool TranceGate::SerializeState(IByteChunk& chunk) const
 {
-  if (!SerializeParams(chunk)) return false;
-  std::string patch;
-  {
-    std::lock_guard<std::mutex> lk(mPatchMx);
-    patch = mPatch;
-  }
-  chunk.PutStr(patch.c_str());
-  return true;
+  return tg::patch::Save(mShell, chunk,
+                         [this](IByteChunk& c) { return SerializeParams(c); });
 }
 
 int TranceGate::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  int pos = UnserializeParams(chunk, startPos);
-  WDL_String patch;
-  pos = chunk.GetStr(patch, pos);
-  {
-    std::lock_guard<std::mutex> lk(mPatchMx);
-    mPatch.assign(patch.Get() ? patch.Get() : "");
-  }
-  /* Handed to the audio thread rather than applied here: the engine belongs
-   * to that thread. It picks this up at the top of the next block. */
-  mPatchDirty.store(true, std::memory_order_release);
-  return pos;
+  /* The blob is posted, not applied: the engine belongs to the audio thread,
+   * which picks it up at the top of the next block -- before PushParams, so the
+   * host's parameters still win over the blob's copies of them. */
+  return tg::patch::Load(mShell, chunk, startPos,
+                         [this](const IByteChunk& c, int pos) { return UnserializeParams(c, pos); });
 }
 
 #if IPLUG_DSP
 
 void TranceGate::OnReset()
 {
-  const double sr = GetSampleRate();
-  if (!mCore) mCore = tg_core_create(sr);
-  else tg_core_set_sample_rate(mCore, sr);
+  tg_shell_post_sample_rate(mShell, GetSampleRate());
 
   /* Sized here, on the main thread, and never on the audio thread. iPlug2's
    * `sample` is double and the engine's float path is the one its golden
@@ -237,22 +220,10 @@ void TranceGate::OnParamChange(int)
    * them moved. */
 }
 
-void TranceGate::ApplyPendingPatch()
-{
-  if (!mPatchDirty.load(std::memory_order_acquire)) return;
-  /* try_lock, never lock: the audio thread must not wait on the main thread.
-   * A miss leaves the flag set and the patch arrives one block later, which
-   * nobody can hear. */
-  std::unique_lock<std::mutex> lk(mPatchMx, std::try_to_lock);
-  if (!lk.owns_lock()) return;
-  if (!mPatch.empty()) tg_core_set_param(mCore, "state", mPatch.c_str());
-  mPatchDirty.store(false, std::memory_order_release);
-}
-
-void TranceGate::PushParams()
+void TranceGate::PushParams(tg_core_t* core)
 {
   const int slot = int(GetParam(kSlot)->Value()) - 1;
-  tg_core_set_num(mCore, TG_P_SLOT, double(slot));
+  tg_core_set_num(core, TG_P_SLOT, double(slot));
 
   /*
    * LENGTH IS PER SLOT, SO IT IS NOT ALWAYS OURS TO PUSH.
@@ -284,23 +255,23 @@ void TranceGate::PushParams()
   pushLength = mSlotSync.load(std::memory_order_acquire) == 0;
 #endif
   if (pushLength)
-    tg_core_set_num(mCore, TG_P_LENGTH, GetParam(kLength)->Value() - 1.0);
-  tg_core_set_num(mCore, TG_P_RATE, GetParam(kRate)->Value());
-  tg_core_set_num(mCore, TG_P_LEGATO, GetParam(kLegato)->Value());
-  tg_core_set_num(mCore, TG_P_TIME_MODE, GetParam(kTimeMode)->Value());
-  tg_core_set_num(mCore, TG_P_CURVE, GetParam(kCurve)->Value());
-  tg_core_set_num(mCore, TG_P_AMOUNT, GetParam(kAmount)->Value() / 100.0);
-  tg_core_set_num(mCore, TG_P_HOLD, GetParam(kWidth)->Value() / 100.0);
-  tg_core_set_num(mCore, TG_P_ATTACK, GetParam(kAttack)->Value());
-  tg_core_set_num(mCore, TG_P_DECAY, GetParam(kDecay)->Value());
-  tg_core_set_num(mCore, TG_P_SUSTAIN, GetParam(kSustain)->Value() / 100.0);
-  tg_core_set_num(mCore, TG_P_RELEASE, GetParam(kRelease)->Value());
+    tg_core_set_num(core, TG_P_LENGTH, GetParam(kLength)->Value() - 1.0);
+  tg_core_set_num(core, TG_P_RATE, GetParam(kRate)->Value());
+  tg_core_set_num(core, TG_P_LEGATO, GetParam(kLegato)->Value());
+  tg_core_set_num(core, TG_P_TIME_MODE, GetParam(kTimeMode)->Value());
+  tg_core_set_num(core, TG_P_CURVE, GetParam(kCurve)->Value());
+  tg_core_set_num(core, TG_P_AMOUNT, GetParam(kAmount)->Value() / 100.0);
+  tg_core_set_num(core, TG_P_HOLD, GetParam(kWidth)->Value() / 100.0);
+  tg_core_set_num(core, TG_P_ATTACK, GetParam(kAttack)->Value());
+  tg_core_set_num(core, TG_P_DECAY, GetParam(kDecay)->Value());
+  tg_core_set_num(core, TG_P_SUSTAIN, GetParam(kSustain)->Value() / 100.0);
+  tg_core_set_num(core, TG_P_RELEASE, GetParam(kRelease)->Value());
   /* The engine compares before it recomputes its weight table, so writing
    * these every block costs two float compares rather than two passes over
    * the pattern. */
-  tg_core_set_num(mCore, TG_P_FADE, GetParam(kFade)->Value() / 100.0);
-  tg_core_set_num(mCore, TG_P_FADE_SOFT, GetParam(kFadeSoft)->Value());
-  tg_core_set_num(mCore, TG_P_FADE_DIR, GetParam(kFadeDir)->Value());
+  tg_core_set_num(core, TG_P_FADE, GetParam(kFade)->Value() / 100.0);
+  tg_core_set_num(core, TG_P_FADE_SOFT, GetParam(kFadeSoft)->Value());
+  tg_core_set_num(core, TG_P_FADE_DIR, GetParam(kFadeDir)->Value());
 }
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
@@ -406,7 +377,7 @@ void TranceGate::RenderGate(const char* state)
 void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
   const int nOut = NOutChansConnected();
-  if (!mCore || nFrames <= 0 || nOut <= 0) return;
+  if (!mShell || nFrames <= 0 || nOut <= 0) return;
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /*
@@ -429,8 +400,10 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const int cap = int(std::min(mL.size(), mR.size()));
   if (cap <= 0) return;
 
-  ApplyPendingPatch();
-  PushParams();
+  /* Every edit posted since the last block lands here, before the host's
+   * parameters are pushed over it. */
+  tg_core_t* core = tg_shell_begin(mShell);
+  PushParams(core);
 
   /* A beat position of -1 is the engine's "no transport", which is what it
    * must see when the host is stopped -- not a stale position, which would
@@ -464,9 +437,9 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
      * arithmetic, where the formatted readout's snprintf has no business on this
      * thread.
      */
-    const double ph0 = tg_core_phase01(mCore);
-    tg_core_process_f32_split(mCore, mL.data(), mR.data(), n, &t);
-    const double ph1 = tg_core_phase01(mCore);
+    const double ph0 = tg_core_phase01(core);
+    tg_core_process_f32_split(core, mL.data(), mR.data(), n, &t);
+    const double ph1 = tg_core_phase01(core);
 
     if ((int) mDry.size() >= n)
       CaptureBlock(mDry.data(), mL.data(), n, ph0, ph1, t.running != 0);
@@ -484,6 +457,8 @@ void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       t.beats = tg::wire::advance_beats(t.beats, n, double(t.bpm),
                                         GetSampleRate());
   }
+
+  tg_shell_end(mShell, nFrames);
 }
 
 #endif /* IPLUG_DSP */
@@ -532,14 +507,14 @@ void TranceGate::SendGround()
 
 void TranceGate::OnIdle()
 {
-  if (!mCore) return;
+  if (!mShell) return;
 
   /* Before the readouts below, so the `params` push carries the length the
    * parameter has just been given rather than the one it is replacing. */
   SyncSlotParams();
 
   char buf[TG_STATE_MAX];
-  if (tg_core_get_param(mCore, "ui", buf, int(sizeof buf)) > 0)
+  if (tg_shell_read(mShell, "ui", buf, int(sizeof buf)) > 0)
   {
     SendArbitraryMsgFromDelegate(kMsgUiState, int(strlen(buf)), buf);
 
@@ -578,7 +553,7 @@ void TranceGate::OnIdle()
    * which is harmless: a render is ~1024 samples through the engine, and the
    * alternative is parsing the blob to exclude one field.
    */
-  if (tg_core_get_param(mCore, "state", buf, int(sizeof buf)) > 0)
+  if (tg_shell_read(mShell, "state", buf, int(sizeof buf)) > 0)
   {
     if (mGateState != buf)
     {
@@ -595,7 +570,7 @@ void TranceGate::OnIdle()
     }
   }
 
-  if (tg_core_get_param(mCore, "params", buf, int(sizeof buf)) > 0)
+  if (tg_shell_read(mShell, "params", buf, int(sizeof buf)) > 0)
     SendArbitraryMsgFromDelegate(kMsgParams, int(strlen(buf)), buf);
 
   /*
@@ -647,8 +622,10 @@ void TranceGate::OnIdle()
 
     /* The guard the old code lacked. Base64 costs a third on top, and the
      * transport truncates rather than fails -- so a payload that outgrows the
-     * cap would go back to losing its tail in silence. */
-    assert(tg::wire::framed_size(n) < kMaxJSString);
+     * cap would go back to losing its tail in silence. The worst case is the
+     * buffer's own size, so it is checked where it cannot be compiled out. */
+    static_assert(tg::wire::framed_size(int(sizeof scope)) < kMaxJSString,
+                  "the scope push no longer fits the WebView's string cap");
     SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
 
@@ -660,56 +637,24 @@ void TranceGate::OnIdle()
 
 /*
  * Pad edits, and the patch. None of these is a host parameter -- the pattern
- * is 128 steps across 8 slots and exposing it would be 1024 of them -- so
- * they arrive here instead and go straight into the engine's string door.
+ * is 128 steps across 8 slots and exposing it would be 1024 of them -- so they
+ * arrive here and are posted to the engine, which applies them at the top of
+ * its next block. Patch.cpp turns each into the engine's keys.
  */
 bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
 {
-  if (!mCore) return false;
+  if (!mShell) return false;
   std::string arg(static_cast<const char*>(pData), size_t(dataSize > 0 ? dataSize : 0));
 
+  using tg::patch::Edit;
   switch (msgTag)
   {
-    case kMsgSetCursor:
-      tg_core_set_param(mCore, "cursor", arg.c_str());
-      return true;
-
-    /* "<index>:<mode>" -- the cursor moves first because `step` edits
-     * whatever the cursor is on. Off/On/Tie is three-state rather than two
-     * because a tie is not a separate property of a step, it is the third
-     * thing a step can be. */
-    case kMsgSetStep:
-    case kMsgSetDepth:
-    {
-      std::string idx, val;
-      if (!tg::wire::split_pair(arg, idx, val)) return true;
-      tg_core_set_param(mCore, "cursor", idx.c_str());
-      tg_core_set_param(mCore, msgTag == kMsgSetStep ? "step" : "step_amount",
-                        val.c_str());
-      return true;
-    }
-
-    /* "<index>:<rank>" -- the cursor first, as for a step's mode and amount.
-     * The engine normalises the whole order afterwards, so a rank out of range
-     * clamps rather than corrupting the permutation. */
-    case kMsgSetOrder:
-    {
-      std::string idx, val;
-      if (!tg::wire::split_pair(arg, idx, val)) return true;
-      tg_core_set_param(mCore, "cursor", idx.c_str());
-      tg_core_set_param(mCore, "step_order", val.c_str());
-      return true;
-    }
-
-    /* An optional seed, or nothing at all. The engine does not touch the
-     * playhead, so this is safe to press mid-bar. */
-    case kMsgRandomize:
-      tg_core_set_param(mCore, "randomize", arg.c_str());
-      return true;
-
-    case kMsgPatch:               /* paste */
-      if (!arg.empty()) tg_core_set_param(mCore, "state", arg.c_str());
-      return true;
+    case kMsgSetCursor:  tg::patch::Post(mShell, Edit::Cursor, arg);    return true;
+    case kMsgSetStep:    tg::patch::Post(mShell, Edit::Step, arg);      return true;
+    case kMsgSetDepth:   tg::patch::Post(mShell, Edit::Depth, arg);     return true;
+    case kMsgSetOrder:   tg::patch::Post(mShell, Edit::Order, arg);     return true;
+    case kMsgRandomize:  tg::patch::Post(mShell, Edit::Randomize, arg); return true;
+    case kMsgPatch:      tg::patch::Post(mShell, Edit::Paste, arg);     return true;
 
     /*
      * TYPING IN A READOUT. The UI holds normalised values and no units, so it
@@ -762,7 +707,7 @@ bool TranceGate::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pD
     case kMsgRequestPatch:        /* copy */
     {
       char blob[TG_STATE_MAX];
-      if (tg_core_get_param(mCore, "state", blob, int(sizeof blob)) > 0)
+      if (tg_shell_read(mShell, "state", blob, int(sizeof blob)) > 0)
         SendArbitraryMsgFromDelegate(kMsgPatch, int(strlen(blob)), blob);
       return true;
     }
@@ -789,10 +734,10 @@ void TranceGate::SendFullState()
    * being broken. Rendered here if the cache is cold, because there is no
    * guarantee an idle tick has run before the editor asks.
    */
-  if (mCore)
+  if (mShell)
   {
     char buf[TG_STATE_MAX];
-    if (tg_core_get_param(mCore, "state", buf, int(sizeof buf)) > 0)
+    if (tg_shell_read(mShell, "state", buf, int(sizeof buf)) > 0)
     {
       if (mGatePayload.empty() || mGateState != buf)
       {
@@ -840,7 +785,7 @@ void TranceGate::SyncSlotParams()
   if (mSlotSync.load(std::memory_order_acquire) == 0) return;
 
   char buf[64];
-  if (tg_core_get_param(mCore, "length", buf, int(sizeof buf)) > 0)
+  if (tg_shell_read(mShell, "length", buf, int(sizeof buf)) > 0)
   {
     const double want = double(std::atoi(buf)) + 1.0;
     if (GetParam(kLength)->Value() != want)
