@@ -12,28 +12,26 @@
  *
  * THE THREAD RULES ARE PART OF THE ABI, and they are NOT the analyzer's:
  *
- *   srecv_new / free                  one thread, nothing else in flight
+ *   srecv_new / free / start          one thread, nothing else in flight
  *   srecv_set_sources / set_clash     the main thread -- both allocate
  *   srecv_slots                       the main thread
  *   srecv_push_own                    the audio thread, and only it
  *   srecv_pump                        the message thread, and only it
  *   srecv_take_columns / clash        the message thread, and only it
  *
- * THE TRANSFORMS RUN ON THE MESSAGE THREAD, which is the one surprising line
- * above and the point of the whole design.
+ * THE TRANSFORMS RUN ON THE RECEIVER'S OWN THREAD once srecv_start has started
+ * it: a worker, below the UI's priority, that wakes every few milliseconds,
+ * drains the plugin's own audio and every bus, and queues finished columns for
+ * srecv_take_columns. srecv_free stops and joins it. Without it, srecv_pump
+ * does the same work on the caller's thread.
  *
  * A bus reader cannot be drained from the audio thread -- opening one allocates
  * and mmaps, and `abus_reader_read` is documented "one thread, the same one
- * each time". So rather than split the sources across two threads and try to
- * keep them in step, every analyzer lives on the message thread and the plugin's
- * OWN audio reaches them through a ring: ProcessBlock does nothing but copy its
- * mono sum into it.
- *
- * Two things fall out, both wanted. `srecv_pump` gives every source the same
- * number of frames, so column k of each is the same moment -- which is what
- * makes a per-cell clash mean anything rather than being a coincidence. And an
- * analyzer that stutters draws a stuttering picture, where one that overran the
- * audio thread would make a noise.
+ * each time". So every analyzer is fed in one place and the plugin's OWN audio
+ * reaches it through a ring: ProcessBlock does nothing but copy its mono sum
+ * into it. Every source is given the same number of frames, so column k of each
+ * is the same moment -- which is what makes a per-cell clash mean anything
+ * rather than being a coincidence.
  *
  * The handle is used from two threads at once -- push_own on the audio thread,
  * everything else on the message thread -- and is built for it: inside, the
@@ -64,10 +62,9 @@ typedef struct Srecv srecv_t;
 /*
  * Sources one receiver draws at once, the own channel included.
  *
- * Each one past the first is a whole analysis chain -- an 8192-point transform
- * about 47 times a second, roughly 1.5% of a core. Four is also about where a
- * picture stops being readable, so the cost and the legibility run out
- * together.
+ * Each one past the first is a whole analysis chain -- up to a 16384-point
+ * transform about 47 times a second. Four is also about where a picture stops
+ * being readable, so the cost and the legibility run out together.
  *
  * SRECV_MAX_SOURCES is the same number for an array bound; srecv_api.c checks
  * the two agree.
@@ -82,7 +79,15 @@ int srecv_max_sources(void);
  */
 srecv_t* srecv_new(float sample_rate, int fft_size, int hop, int bands,
                    float f_min, float f_max, float db_floor, float db_ceil);
+/* Stops and joins the analysis thread first, if one was started. */
 void srecv_free(srecv_t* r);
+
+/*
+ * Start the analysis thread. Returns 1 if it is running (also when it already
+ * was), 0 if it could not be created -- srecv_pump then goes on doing the work
+ * on the caller's thread. Main thread.
+ */
+int srecv_start(srecv_t* r);
 
 /* Channels drawable now: 1 (the own channel) plus each open bus. */
 int srecv_channels(const srecv_t* r);
@@ -119,9 +124,9 @@ void srecv_set_sources(srecv_t* r, const unsigned int* slots, int n);
 void srecv_push_own(srecv_t* r, const float* mono, int n);
 
 /*
- * Move audio into every analyzer, in step; returns the frames each source was
- * given, commonly 0. MESSAGE THREAD ONLY -- this is where the transforms
- * happen.
+ * Move audio into every analyzer, in step, on the calling thread; returns the
+ * frames each source was given, commonly 0 -- and always 0 once srecv_start
+ * has handed the work to the receiver's thread. MESSAGE THREAD ONLY.
  *
  * A source whose sample rate differs from the receiver's is read and
  * discarded, never analysed; the verdict is taken again whenever its sender
@@ -131,8 +136,21 @@ void srecv_push_own(srecv_t* r, const float* mono, int n);
 int srecv_pump(srecv_t* r);
 
 /*
- * Drain one channel's finished columns, spectro_bands() bytes each, oldest
- * first. `out` must hold max_cols * bands bytes. Message thread only.
+ * Columns every drawn channel has ready; take this many from each and column
+ * k is the same moment in all of them. Columns become visible a whole pump at
+ * a time -- the analysis thread feeds one analyzer after another, and a drain
+ * that saw one channel's new column before the next channel had it would pair
+ * them one column apart for good. Left out: a channel refused for its sample
+ * rate, and a bus that has not drawn its first column yet. Message thread
+ * only.
+ */
+int srecv_ready(const srecv_t* r);
+
+/*
+ * Drain one channel's finished columns -- as of the last finished pump --
+ * spectro_bands() bytes each, oldest first. `out` must hold max_cols * bands
+ * bytes; pass srecv_ready() as max_cols to keep the channels in step. Message
+ * thread only.
  */
 int srecv_take_columns(srecv_t* r, int ch, unsigned char* out, int max_cols);
 
@@ -215,8 +233,8 @@ int srecv_slots(unsigned char* out, int cap);
 
 /*
  * Frames a channel lost before the receiver reached them. A diagnostic: it
- * should be zero while an editor is open, and a jump means the message thread
- * stopped running rather than that the analysis broke.
+ * should stay zero, and a jump means whatever pumps -- the receiver's thread,
+ * or the srecv_pump caller -- stopped keeping up, not that the analysis broke.
  */
 int srecv_dropped(const srecv_t* r, int ch);
 

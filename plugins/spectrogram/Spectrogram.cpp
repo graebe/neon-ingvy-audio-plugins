@@ -26,6 +26,7 @@ Spectrogram::Spectrogram(const InstanceInfo& info)
   /* Configured for real once the host has named a rate -- see OnReset. */
   mRecv = srecv_new(48000.f, 8192, 1024, SPECTRO_BANDS,
                     SPECTRO_F_MIN, SPECTRO_F_MAX, SPECTRO_DB_FLOOR, SPECTRO_DB_CEIL);
+  srecv_start(mRecv);
   mRecvLend = shell_handoff_new(FreeReceiver);
   shell_handoff_set(mRecvLend, mRecv);
 
@@ -118,10 +119,13 @@ void Spectrogram::ServiceReceiver()
     return;
   srecv_set_clash(fresh, mClashFloorDb, mClashBalanceDb);
 
-  /* The old one is freed once the audio thread has let go of it. */
+  /* The old one is freed -- its analysis thread joined -- once the audio
+   * thread has let go of it. */
   shell_handoff_set(mRecvLend, fresh);
   mRecv = fresh;
   ApplySources();
+  /* Started once its sources are open, so choosing them waits for no thread. */
+  srecv_start(fresh);
   /* Cleared last: the audio thread starts feeding the new receiver only now,
    * unless OnReset has asked again meanwhile -- then the next tick rebuilds. */
   if (mRecvRate.load(std::memory_order_relaxed) == sr)
@@ -268,11 +272,11 @@ void Spectrogram::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       /*
        * A COPY INTO A RING, AND NOTHING ELSE ON THIS THREAD.
        *
-       * The transform used to happen here. It now happens in OnIdle, with every
-       * other source, because that is the only way they can be fed the same
-       * number of frames and so be compared cell by cell -- and because an
-       * analyzer that stutters draws a stuttering picture where one that
-       * overran this thread would make a noise.
+       * The transform used to happen here. It now happens on the receiver's
+       * own thread, with every other source, because that is the only way they
+       * can be fed the same number of frames and so be compared cell by cell --
+       * and because an analyzer that stutters draws a stuttering picture where
+       * one that overran this thread would make a noise.
        */
       if (recv)
         srecv_push_own(recv, mMono.data(), n);
@@ -401,11 +405,10 @@ void Spectrogram::SendPicture()
   }
 
   /*
-   * AND THIS IS WHERE THE TRANSFORMS HAPPEN, for every source at once.
-   *
-   * One pump feeds them all the same number of frames, so column k of each is
-   * the same moment. That is what lets the clash below be read cell by cell
-   * rather than being a coincidence between two clocks.
+   * THE TRANSFORMS RUN ON THE RECEIVER'S OWN THREAD, which feeds every source
+   * the same number of frames, so column k of each is the same moment -- what
+   * lets the clash below be read cell by cell. This call does the work here
+   * only if that thread could not be started; otherwise it returns at once.
    */
   srecv_pump(mRecv);
 
@@ -423,12 +426,18 @@ void Spectrogram::SendPicture()
    * the same instant. Taking them one at a time and sending as we went is what
    * forced the clash to always be "this bus against channel 0" whatever the
    * editor was actually asking for.
+   *
+   * THE SAME NUMBER FROM EACH: srecv_ready counts only whole pumps, so it is a
+   * number every channel has reached even while the analysis thread is between
+   * one channel's columns and the next's.
    */
+  const int ready = std::min(srecv_ready(mRecv), int(kMaxColsPerTick));
+  if (ready <= 0)
+    return;
   int common = -1;
   for (int ch = 0; ch < channels && ch < int(mChanCols.size()); ch++)
   {
-    const int cols = srecv_take_columns(mRecv, ch, mChanCols[size_t(ch)].data(),
-                                        kMaxColsPerTick);
+    const int cols = srecv_take_columns(mRecv, ch, mChanCols[size_t(ch)].data(), ready);
     mChanCount[size_t(ch)] = cols;
     /* They are fed from one pump, so they agree -- but a channel refused for a
      * sample-rate mismatch returns 0 forever, and must not drag the rest to 0. */

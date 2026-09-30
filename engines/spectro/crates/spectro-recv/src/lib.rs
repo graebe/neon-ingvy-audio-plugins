@@ -6,27 +6,35 @@
  * also read a Listen-In bus, so a bass and a pad can be looked at in one window
  * instead of two -- and so the places they are fighting can be marked.
  *
- * ONE THREAD OWNS EVERYTHING HERE EXCEPT THE PUSH, and that is a decision
- * rather than a convenience.
+ * THREE THREADS, AND EACH OWNS ITS OWN PART.
+ *
+ *   audio      `OwnFeed::push`: the track's mono sum into a ring (ring.rs).
+ *   worker     the pump: drains that ring and every bus, runs the transforms,
+ *              pushes finished columns (worker.rs, engine.rs).
+ *   message    everything on `Receiver`: choosing sources, draining columns,
+ *              summing and comparing them.
  *
  * `bus_core::Reader::read` is documented "one thread, the same one each time",
  * and opening a reader allocates and mmaps -- so the buses cannot be drained
- * from the audio thread. Rather than split the sources across two threads and
- * synchronise them, ALL of the analysis happens on the message thread: the own
- * channel arrives through a ring (see ring.rs) and meets the buses there.
+ * from the audio thread. Rather than split the sources across threads and
+ * synchronise them, ALL of the analysis happens in one place, the pump, and
+ * the own channel arrives there through a ring.
  *
  * Two things fall out of that, both wanted:
  *
- *   ALIGNMENT BY CONSTRUCTION. `pump` takes min(available) across every source
- *   and feeds each analyzer exactly that many frames. Every analyzer therefore
- *   shares one rate, one hop and one phase, so column k of every source is the
- *   same moment -- which is what makes a per-cell clash mean anything. Nothing
- *   has to guess at a timestamp, and the hop-phase offset that would otherwise
- *   sit between two independently started analyzers cannot arise.
+ *   ALIGNMENT BY CONSTRUCTION. The pump feeds every analyzer exactly the same
+ *   number of frames. Every analyzer therefore shares one rate, one hop and
+ *   one phase, so column k of every source is the same moment -- which is what
+ *   makes a per-cell clash mean anything. Nothing has to guess at a timestamp.
  *
  *   THE FFTs LEAVE THE AUDIO THREAD. An analyzer that stutters draws a
  *   stuttering picture; one that overruns the audio thread makes a noise. For a
  *   thing whose entire output is a picture, that is the right way round.
+ *
+ * The pump used to run on the message thread, from the editor's idle timer.
+ * `start` moves it to a worker of the receiver's own, so a host's UI never
+ * waits behind four 16k-point transforms; without it, `pump` runs the same
+ * code on the caller's thread, which is what the deterministic tests do.
  *
  * WHAT IT REFUSES TO DO. A source whose sample rate differs from this
  * receiver's is not analysed at all: a different rate picks a different window
@@ -37,26 +45,38 @@
  *
  * THE AUDIO THREAD'S ONE ENTRY POINT IS A SEPARATE VALUE. `Receiver::new` hands
  * back the receiver and an `OwnFeed`; the feed goes to the audio thread and
- * everything else stays on the message thread. Each works through `&mut self`,
- * so the one thing that crosses threads is the ring between them.
+ * everything else stays with the receiver. Each works through `&mut self`, and
+ * what crosses between the three threads is lock-free rings and atomics.
  */
+mod engine;
 mod ring;
+mod worker;
 
-pub use ring::{mono_ring, MonoConsumer, MonoProducer, CAPACITY as RING_FRAMES};
+pub use ring::{mono_ring, MonoConsumer, MonoProducer, RingStats, CAPACITY as RING_FRAMES};
+pub use worker::TICK as WORKER_TICK;
+
+use core::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use bus_core::{Reader, MAX_SLOT};
-use spectro_core::{clash_column, db_span_to_byte, db_to_byte, sum_column, Analyzer, Config};
+use spectro_core::{clash_column, db_span_to_byte, db_to_byte, Analyzer, Config, Consumer, PowerTable};
+
+use engine::{BusFeed, BusStatus, Engine, Plan};
+use worker::Worker;
 
 /// Sources a receiver will draw at once, the own channel included.
 ///
-/// Each one past the first is a whole analysis chain -- an 8192-point transform
-/// about 47 times a second, roughly 1.5% of a core. Four is where a picture
-/// stops being readable anyway, so the cost and the legibility run out
-/// together.
+/// Each one past the first is a whole analysis chain -- a 16384-point
+/// transform about 47 times a second at 96 kHz. Four is where a picture stops
+/// being readable anyway, so the cost and the legibility run out together.
 pub const MAX_SOURCES: usize = 4;
 
 /// Channel 0 is always the track the plugin is inserted on.
 pub const OWN: usize = 0;
+
+/// The time one `Receiver::pump` stands for when the caller pumps by hand:
+/// the editor's idle timer, which is what pumped before the worker existed.
+pub const PUMP_INTERVAL_US: u64 = 20_000;
 
 /// What the editor's source list is built from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,40 +87,12 @@ pub struct SlotInfo {
     pub label: String,
 }
 
-/// One bus being listened to.
-struct Bus {
+/// One bus, as the message thread sees it: where its columns come out, and
+/// what the pump last said about it.
+struct BusView {
     slot: u32,
-    reader: Reader,
-    analyzer: Analyzer,
-    /// The sender's rate disagrees with ours, so it is not analysed.
-    rate_mismatch: bool,
-    dropped: u64,
-    resynced: bool,
-    /*
-     * MONO, AND WHAT COULD NOT BE USED YET.
-     *
-     * A bus hands over whatever happens to be there, and the sources are only
-     * in step if every analyzer is given the SAME number of frames -- so the
-     * surplus from a bus that ran ahead is kept here until the others catch up.
-     * Without it, the fast source would pull ahead a little every tick and the
-     * per-cell clash would slowly start comparing two different moments.
-     */
-    stage: Vec<f32>,
-    have: usize,
-    /*
-     * HOW LONG THIS BUS HAS HAD NOTHING TO GIVE.
-     *
-     * A Listen-In on a muted track, or one whose host has stopped calling it,
-     * publishes nothing -- and the lockstep below would then hold EVERY source
-     * still, including the plugin's own track. One idle bus froze the whole
-     * picture, which is the worst kind of failure here because the editor goes
-     * on saying it is live.
-     */
-    short: usize,
-    starved: bool,
-    /* Pumps since the reader last delivered anything -- the clock for asking
-     * whether its segment was replaced. See `REATTACH_PUMPS`. */
-    quiet: usize,
+    rx: Consumer,
+    status: Arc<BusStatus>,
 }
 
 /// The audio thread's handle: the own track's samples go in here.
@@ -118,64 +110,68 @@ impl OwnFeed {
 
 pub struct Receiver {
     cfg: Config,
-    own_ring: MonoConsumer,
-    own: Analyzer,
-    buses: Vec<Bus>,
+    own: Consumer,
+    own_settled: Arc<AtomicUsize>,
+    own_stats: RingStats,
+    buses: Vec<BusView>,
 
-    /* Scratch, sized once. `pump` allocates nothing. */
-    interleaved: Vec<f32>,
-    own_take: Vec<f32>,
+    /* Exactly one of these is Some: the engine while the caller pumps, the
+     * worker once it pumps instead. */
+    engine: Option<Box<Engine>>,
+    worker: Option<Worker>,
 
     clash_floor: u8,
     clash_balance: u8,
+    /// The byte scale as power tables, for `sum_into`.
+    power: PowerTable,
 }
-
-/// The most frames one `pump` will move per source. Sized so a 50 Hz idle timer
-/// keeps up with 96 kHz with room to spare, and so the scratch below is fixed.
-const PUMP_FRAMES: usize = 4096;
-
-/// How many pumps in a row a bus may come up short before it is treated as
-/// silent rather than waited for. At the editor's ~50 Hz idle timer this is
-/// about a fifth of a second: long enough that ordinary jitter -- a bus a block
-/// behind on one tick -- waits and catches up, short enough that a muted
-/// Listen-In does not stall the picture for anything a person would notice.
-///
-/// COUNTED IN PUMPS, NOT FRAMES, and that is the fix rather than a detail: a
-/// bus with nothing at all contributes no frames to count, so a frame-based
-/// clock never advances and the grace period never ends. The first version of
-/// this froze exactly as hard as the bug it replaced.
-const GRACE_PUMPS: usize = 10;
-
-/// How many pumps in a row a bus may deliver nothing before the receiver asks
-/// whether its segment was replaced -- about a second at the idle timer. A
-/// sender that quit and came back made a NEW segment, and a reader still on the
-/// old one would call the bus starved forever. Asking is a few system calls,
-/// so it is done once a second for a quiet bus, never per pump.
-const REATTACH_PUMPS: usize = 50;
 
 impl Receiver {
     /// A receiver, and the feed its own channel arrives through. The feed is
-    /// the audio thread's; the receiver is the message thread's.
+    /// the audio thread's; the receiver is the message thread's. Nothing is
+    /// analysed until `pump` is called or `start` hands pumping to a thread.
     pub fn new(cfg: Config) -> (Self, OwnFeed) {
         /* The analyzer clamps what it was given, so ITS config is the effective
          * one -- taking the caller's would let this crate's idea of `bands`
          * drift from the buffers the analyzer actually produces. */
         let own = Analyzer::new(cfg);
         let cfg = own.config();
+        let (own_tx, own_rx) = own.split();
         let (tx, own_ring) = mono_ring();
+        let own_stats = own_ring.stats();
+        let own_settled = Arc::new(AtomicUsize::new(0));
+        let engine = Engine::new(cfg.sample_rate, own_ring, own_tx, own_settled.clone(), MAX_SOURCES - 1);
         let rx = Self {
-            own,
             cfg,
-            own_ring,
+            own: own_rx,
+            own_settled,
+            own_stats,
             buses: Vec::with_capacity(MAX_SOURCES - 1),
-            interleaved: vec![0.0; PUMP_FRAMES * 2],
-            own_take: vec![0.0; PUMP_FRAMES],
+            engine: Some(Box::new(engine)),
+            worker: None,
             /* -60 dB and 12 dB: loud enough to matter, close enough to fight.
              * Both are settable; these are what the picture opens with. */
             clash_floor: db_to_byte(-60.0, cfg.db_floor, cfg.db_ceil),
             clash_balance: db_span_to_byte(12.0, cfg.db_floor, cfg.db_ceil),
+            power: PowerTable::new(cfg.db_floor, cfg.db_ceil),
         };
         (rx, OwnFeed { tx })
+    }
+
+    /// **Main thread.** Hand pumping to a thread of this receiver's own, so the
+    /// transforms never run on the caller's. Returns whether that thread is
+    /// running; if it could not be created the caller goes on pumping.
+    ///
+    /// The thread lives until the receiver is dropped, which stops and joins
+    /// it -- so dropping a receiver can wait for up to one pump.
+    pub fn start(&mut self) -> bool {
+        if let Some(engine) = self.engine.take() {
+            match Worker::start(engine) {
+                Ok(w) => self.worker = Some(w),
+                Err(engine) => self.engine = Some(engine),
+            }
+        }
+        self.worker.is_some()
     }
 
     fn mismatched(&self, rate: u32) -> bool {
@@ -208,21 +204,27 @@ impl Receiver {
         }
     }
 
-    pub fn rate_mismatch(&self, ch: usize) -> bool {
+    fn status(&self, ch: usize) -> Option<&BusStatus> {
         if ch == OWN {
-            false
+            None
         } else {
-            self.buses.get(ch - 1).is_some_and(|b| b.rate_mismatch)
+            self.buses.get(ch - 1).map(|b| &*b.status)
         }
+    }
+
+    pub fn rate_mismatch(&self, ch: usize) -> bool {
+        self.status(ch).is_some_and(|s| s.rate_mismatch.load(Ordering::Relaxed))
     }
 
     /// Frames the own channel could not be given because nothing drained it.
     pub fn own_dropped(&self) -> u64 {
-        self.own_ring.dropped()
+        self.own_stats.dropped()
     }
 
     /// **Main thread.** Choose which buses to listen to. Allocates; opens and
-    /// closes readers; never call it near the audio thread.
+    /// closes readers; never call it near the audio thread. With a worker
+    /// running it waits for the worker to adopt the change -- at most a tick
+    /// and one pump.
     ///
     /// Slots already open are KEPT rather than reopened, so re-selecting a set
     /// that merely gained a member does not restart the ones that were already
@@ -236,39 +238,47 @@ impl Receiver {
             }
         }
 
-        self.buses.retain(|b| wanted.contains(&b.slot));
-
+        /*
+         * The plan is worked out here, where opening a reader is allowed, and
+         * sized so that adopting it allocates nothing: the pumping thread only
+         * moves buses between these vectors.
+         */
+        let mut plan = Box::new(Plan {
+            order: Vec::with_capacity(MAX_SOURCES - 1),
+            fresh: Vec::with_capacity(MAX_SOURCES - 1),
+            retired: Vec::with_capacity(MAX_SOURCES - 1),
+            waiter: None,
+        });
+        let mut views: Vec<BusView> = Vec::with_capacity(MAX_SOURCES - 1);
         for &slot in &wanted {
-            if self.buses.iter().any(|b| b.slot == slot) {
+            if let Some(i) = self.buses.iter().position(|b| b.slot == slot) {
+                views.push(self.buses.swap_remove(i));
+                plan.order.push(slot);
                 continue;
             }
             let Some(reader) = Reader::open(slot) else {
                 continue;
             };
-            let rate_mismatch = self.mismatched(reader.sample_rate());
-            self.buses.push(Bus {
-                slot,
-                reader,
-                analyzer: Analyzer::new(self.cfg),
-                rate_mismatch,
-                dropped: 0,
-                resynced: false,
-                /* Twice a pump, so a bus that ran ahead has somewhere to wait
-                 * rather than being thrown away. Sized here, on the main
-                 * thread, and never resized after. */
-                stage: vec![0.0; PUMP_FRAMES * 2],
-                have: 0,
-                short: 0,
-                starved: false,
-                quiet: 0,
-            });
+            let status = Arc::new(BusStatus::default());
+            status.rate_mismatch.store(self.mismatched(reader.sample_rate()), Ordering::Relaxed);
+            let (tx, rx) = Analyzer::new(self.cfg).split();
+            plan.fresh.push(BusFeed::new(slot, reader, tx, status.clone()));
+            views.push(BusView { slot, rx, status });
+            plan.order.push(slot);
         }
+        /* Whatever is left in `self.buses` was not wanted; its views go now,
+         * its feeds come back in `plan.retired`. Both are dropped here. */
+        self.buses = views;
 
-        /* The frames in flight belong to the answer that just changed. */
-        self.own_ring.clear();
-        /* Order the buses the way the caller asked for them, so a channel index
-         * means the same thing to both sides. */
-        self.buses.sort_by_key(|b| wanted.iter().position(|&w| w == b.slot).unwrap_or(usize::MAX));
+        let plan = match (&mut self.engine, &self.worker) {
+            (Some(engine), _) => {
+                engine.apply(&mut plan);
+                plan
+            }
+            (None, Some(worker)) => worker.apply(plan),
+            (None, None) => plan,
+        };
+        drop(plan);
     }
 
     /// The range every source is measured over. Allocation-free and safe while
@@ -276,7 +286,7 @@ impl Receiver {
     pub fn set_range(&self, f_min: f32, f_max: f32) {
         self.own.set_range(f_min, f_max);
         for b in &self.buses {
-            b.analyzer.set_range(f_min, f_max);
+            b.rx.set_range(f_min, f_max);
         }
     }
 
@@ -286,147 +296,22 @@ impl Receiver {
         self.clash_balance = db_span_to_byte(balance_db, self.cfg.db_floor, self.cfg.db_ceil);
     }
 
-    /// **Message thread.** Move audio into every analyzer, in step.
-    ///
-    /// Returns the frames each source was given. Allocates nothing.
+    /// Move audio into every analyzer, in step, on the calling thread -- for a
+    /// receiver whose worker was not started. Returns the frames each source
+    /// was given; always 0 while a worker runs, which pumps on its own.
+    /// Allocates nothing.
     pub fn pump(&mut self) -> usize {
-        /*
-         * THE COMMON FRAME COUNT IS THE WHOLE POINT. Feeding one analyzer more
-         * than another is how column k stops being the same moment for both,
-         * and a per-cell clash between two moments is not a clash at all -- it
-         * is a coincidence drawn in orange.
-         *
-         * A bus cannot be asked how much it holds without taking it, so each is
-         * drained into its own staging buffer first and the SMALLEST of those,
-         * with the own channel, decides how much everybody gets. The surplus
-         * waits where it is.
-         */
-        let own_rate = self.cfg.sample_rate;
-        for b in &mut self.buses {
-            let room = (b.stage.len() - b.have).min(PUMP_FRAMES);
-            if room == 0 {
-                continue;
-            }
-            let r = b.reader.read(&mut self.interleaved[..room * 2]);
-            b.dropped += r.dropped;
-            b.resynced |= r.resynced;
-
-            /* A restart is when a sender's rate can change, so it is when the
-             * verdict is taken again. */
-            if r.resynced {
-                let rate = b.reader.sample_rate();
-                b.rate_mismatch = rate != 0 && rate as f32 != own_rate;
-                b.have = 0;
-            }
-
-            if r.frames == 0 {
-                b.quiet += 1;
-                if b.quiet % REATTACH_PUMPS == 0 && b.reader.reattach() {
-                    b.quiet = 0;
-                }
-            } else {
-                b.quiet = 0;
-            }
-
-            /* READ AND DISCARDED, never analysed. Still read, so the reader
-             * stays at the live edge and sees the restart that may bring the
-             * rates back into agreement. */
-            if b.rate_mismatch {
-                continue;
-            }
-
-            /* Stereo interleaved in, mono out -- halved, the same sum the own
-             * channel takes, so a centred source does not read 6 dB hot on one
-             * picture and correct on the other. */
-            let got = r.frames as usize;
-            for i in 0..got {
-                let l = self.interleaved[i * 2];
-                let rr = self.interleaved[i * 2 + 1];
-                b.stage[b.have + i] = 0.5 * (l + rr);
-            }
-            b.have += got;
+        match &mut self.engine {
+            Some(engine) => engine.pump(PUMP_INTERVAL_US),
+            None => 0,
         }
-
-        /*
-         * THE OWN CHANNEL SETS THE PACE, and a bus that cannot keep up is given
-         * SILENCE rather than being waited for.
-         *
-         * Taking the minimum across everything was the obvious reading of "feed
-         * them equally" and it was wrong in the one case that matters: a
-         * Listen-In on a muted track publishes nothing, the minimum is nought,
-         * and NO source advances -- the plugin's own picture stops dead because
-         * something else went quiet. A frozen picture that still says "live" is
-         * the worst way for this to fail.
-         *
-         * So the own track decides how much everybody gets. A bus that has it
-         * keeps step exactly as before; one that does not is zero-filled for
-         * the shortfall, which is both true (nothing was published, so nothing
-         * was heard) and keeps column k the same moment for every source, which
-         * is what the comparison rests on.
-         *
-         * The grace period exists so ordinary jitter -- a bus a block behind on
-         * one tick -- waits rather than punching a hole in its own picture.
-         * Only a source that has been empty for a fifth of a second is called
-         * silent, and `starved` says so out loud.
-         */
-        let mut n = self.own_ring.available().min(PUMP_FRAMES);
-        for b in &mut self.buses {
-            if b.rate_mismatch {
-                /* Not in the picture, so not in the pacing either. */
-                continue;
-            }
-            if b.have >= n {
-                /* Keeping up. */
-                b.short = 0;
-                b.starved = false;
-                continue;
-            }
-            if b.short < GRACE_PUMPS {
-                /* Behind, but recently enough that it is probably just jitter:
-                 * wait for it this tick. The counter advances whether or not
-                 * anything is drawn, which is what lets the grace period end. */
-                b.short += 1;
-                n = n.min(b.have);
-            } else {
-                /* Out of grace. It is not coming; do not let it hold the others. */
-                b.starved = true;
-            }
-        }
-        if n == 0 {
-            return 0;
-        }
-
-        let got = self.own_ring.take(&mut self.own_take[..n]);
-        self.own.push(&self.own_take[..got]);
-
-        for b in &mut self.buses {
-            if b.rate_mismatch {
-                continue;
-            }
-            let have = b.have.min(n);
-            if have < n {
-                /* Zero the shortfall in place -- the staging buffer is already
-                 * this long and nothing is allocated. Filled rather than
-                 * skipped, so column k of this source is still the same moment
-                 * as column k of every other. */
-                for slot in b.stage[have..n].iter_mut() {
-                    *slot = 0.0;
-                }
-            }
-            b.analyzer.push(&b.stage[..n]);
-            /* Keep what nobody was ready for. copy_within moves inside the
-             * buffer that is already there; nothing is allocated. */
-            b.stage.copy_within(have..b.have, 0);
-            b.have -= have;
-        }
-        n
     }
 
     /// Whether a channel is being zero-filled because its sender has gone quiet.
     /// The editor says so rather than drawing a black stripe and letting the
     /// reader think the track is silent when the bus is simply absent.
     pub fn starved(&self, ch: usize) -> bool {
-        ch != OWN && self.buses.get(ch - 1).is_some_and(|b| b.starved)
+        self.status(ch).is_some_and(|s| s.starved.load(Ordering::Relaxed))
     }
 
     /// Frames a bus lost before this receiver could reach them, and whether its
@@ -434,22 +319,55 @@ impl Receiver {
     /// silence is a picture lying about the music.
     pub fn bus_dropped(&self, ch: usize) -> u64 {
         if ch == OWN {
-            self.own_ring.dropped()
+            self.own_stats.dropped()
         } else {
-            self.buses.get(ch - 1).map_or(0, |b| b.dropped)
+            self.status(ch).map_or(0, |s| s.dropped.load(Ordering::Relaxed))
         }
     }
 
     pub fn bus_resynced(&self, ch: usize) -> bool {
-        ch != OWN && self.buses.get(ch - 1).is_some_and(|b| b.resynced)
+        self.status(ch).is_some_and(|s| s.resynced.load(Ordering::Relaxed))
     }
 
-    /// **Message thread.** Drain one channel's finished columns.
+    /// How many columns every drawn channel has ready: take this many from
+    /// each and they are the same moments.
+    ///
+    /// Counted only up to the last FINISHED pump -- see `Engine::publish` --
+    /// so a drain that lands while the worker is between one channel and the
+    /// next cannot see a column in one that the other does not have yet.
+    ///
+    /// Left out: a channel refused for its sample rate, which draws nothing,
+    /// and one that has not produced its first column yet -- a bus added a
+    /// moment ago is still filling its window, and waiting for it would hold
+    /// the whole picture still for that long.
+    pub fn ready(&self) -> usize {
+        let waiting = |rx: &Consumer, settled: &AtomicUsize| {
+            let end = settled.load(Ordering::Acquire);
+            (end != 0).then(|| end.wrapping_sub(rx.position()))
+        };
+        self.buses
+            .iter()
+            .filter(|b| !b.status.rate_mismatch.load(Ordering::Relaxed))
+            .filter_map(|b| waiting(&b.rx, &b.status.settled))
+            .chain(waiting(&self.own, &self.own_settled))
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// **Message thread.** Drain one channel's finished columns, as of the
+    /// last finished pump. Pass `ready()` as `max_cols` to keep the channels
+    /// in step.
     pub fn take_columns(&mut self, ch: usize, out: &mut [u8], max_cols: usize) -> usize {
         match ch {
-            OWN => self.own.take_columns(out, max_cols),
+            OWN => {
+                let end = self.own_settled.load(Ordering::Acquire);
+                self.own.take_columns_until(out, max_cols, end)
+            }
             _ => match self.buses.get_mut(ch - 1) {
-                Some(b) if !b.rate_mismatch => b.analyzer.take_columns(out, max_cols),
+                Some(b) if !b.status.rate_mismatch.load(Ordering::Relaxed) => {
+                    let end = b.status.settled.load(Ordering::Acquire);
+                    b.rx.take_columns_until(out, max_cols, end)
+                }
                 _ => 0,
             },
         }
@@ -475,7 +393,7 @@ impl Receiver {
     }
 
     /// Add several channels' columns into one, in POWER -- see
-    /// `spectro_core::sum_column` for why it cannot be done in byte space.
+    /// `spectro_core::PowerTable` for why it cannot be done in byte space.
     ///
     /// Takes columns the caller already drained, for the reason `clash_into`
     /// does: `take_columns` is destructive, so draining again to add would be
@@ -504,7 +422,7 @@ impl Receiver {
             for (i, src) in srcs.iter().take(n).enumerate() {
                 view[i] = &src[r.clone()];
             }
-            sum_column(&view[..n], &mut out[r], self.cfg.db_floor, self.cfg.db_ceil);
+            self.power.sum_column(&view[..n], &mut out[r]);
         }
         for slot in out.iter_mut().skip(cols * bands) {
             *slot = 0;

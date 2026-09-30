@@ -173,7 +173,7 @@ chain.
 | CLAP, clap-helpers | **MIT** |
 | Solid (in every editor) | **MIT** |
 | the Trance Gate engine (`engines/trance-gate`) | **MIT**, and it has no external crates at all |
-| the Spectrogram analyzer (`engines/spectro`) | **MIT**, and it has none either — the FFT is ninety lines rather than a crate |
+| the Spectrogram analyzer (`engines/spectro`) | **MIT**, and it has none either — the FFT is one file rather than a crate |
 | the audio bus (`engines/audio-bus`) | **MIT**, and it has no external crates either — it declares the six POSIX calls it needs rather than taking libc |
 | the Side-Chain engine (`engines/side-chain`) | **MIT**, no external crates. Part of it is a PORT and carries a notice — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) |
 | JetBrains Mono, bundled with every editor | **SIL OFL 1.1**, with `OFL.txt` beside the font in every bundle |

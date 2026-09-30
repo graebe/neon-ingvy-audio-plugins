@@ -388,3 +388,45 @@ fn several_channels_add_in_power() {
     r.sum_into(&[], &mut out);
     assert!(out.iter().all(|&v| v == 0), "no sources is not silence");
 }
+
+#[test]
+fn a_bus_still_filling_its_window_does_not_hold_the_picture() {
+    const SLOT: u32 = 1;
+    let (_w, mut p) = Writer::claim(SLOT, SR as u32).expect("slot 1 was taken");
+
+    let (mut r, mut feed) = Receiver::new(cfg());
+    let mut out = vec![0u8; r.bands() * 64];
+    let (mut po, mut pb) = (0.0, 0.0);
+    for _ in 0..8 {
+        feed.push(&mono(2048, 220.0, 0.5, &mut po));
+        r.pump();
+        let n = r.ready();
+        assert_eq!(r.take_columns(OWN, &mut out, n), n);
+    }
+
+    /* A bus added now has an empty window: thousands of frames before its
+     * first column, while the own channel goes on producing. */
+    r.set_sources(&[SLOT]);
+    p.push(&tone(2048, 220.0, 0.5, &mut pb));
+    feed.push(&mono(2048, 220.0, 0.5, &mut po));
+    r.pump();
+    let mut bus = vec![0u8; r.bands() * 64];
+    assert_eq!(r.take_columns(1, &mut bus, 64), 0, "the bus drew before its window filled");
+    assert!(r.ready() > 0, "a bus still filling its window held the own channel back");
+
+    /* Once it draws, it counts. */
+    for _ in 0..8 {
+        p.push(&tone(2048, 220.0, 0.5, &mut pb));
+        feed.push(&mono(2048, 220.0, 0.5, &mut po));
+        r.pump();
+        let n = r.ready();
+        r.take_columns(OWN, &mut out, n);
+        r.take_columns(1, &mut bus, n);
+    }
+    p.push(&tone(2048, 220.0, 0.5, &mut pb));
+    feed.push(&mono(2048, 220.0, 0.5, &mut po));
+    r.pump();
+    let n = r.ready();
+    assert!(n > 0);
+    assert_eq!((r.take_columns(OWN, &mut out, n), r.take_columns(1, &mut bus, n)), (n, n));
+}

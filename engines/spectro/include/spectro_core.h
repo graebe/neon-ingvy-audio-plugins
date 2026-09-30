@@ -3,8 +3,9 @@
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A short-time Fourier analyzer that produces SPECTROGRAM COLUMNS: one byte per
- * log-spaced frequency band, produced on the audio thread and drained on the
- * message thread through a lock-free ring.
+ * log-spaced frequency band, computed by spectro_push_f32 on the audio thread
+ * and drained on the message thread through a lock-free ring. (The Spectrogram
+ * plugin analyses through spectro_recv.h instead, off the audio thread.)
  *
  * THE THREAD RULES ARE PART OF THE ABI:
  *

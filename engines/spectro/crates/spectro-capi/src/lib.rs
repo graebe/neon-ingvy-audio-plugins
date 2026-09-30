@@ -251,25 +251,28 @@ pub unsafe extern "C" fn spectro_dropped(p: *const Spectro) -> c_int {
  * The thread rules are NOT the same as the analyzer's above, and the difference
  * is the whole design:
  *
- *   srecv_new / free / set_sources / set_clash   the main thread
- *   srecv_push_own                               the audio thread, and only it
- *   srecv_pump / take_columns / clash / slots    the message thread, and only it
+ *   srecv_new / free / start / set_sources / set_clash   the main thread
+ *   srecv_push_own                                       the audio thread, and only it
+ *   srecv_pump / take_columns / clash / slots            the message thread, and only it
  *
- * `srecv_pump` is where the transforms happen, and it is on the MESSAGE thread
- * on purpose -- a bus reader cannot be drained from the audio thread, and an
- * analyzer that stutters draws a stuttering picture where one that overruns the
- * audio thread makes a noise. The own channel reaches it through a ring, which
- * is what lets every source be fed the same number of frames and therefore be
- * compared cell by cell. See the header of spectro-recv.
+ * The transforms run on the receiver's own worker once `srecv_start` has
+ * started it -- never on the audio thread, which cannot drain a bus reader and
+ * must not overrun, and no longer on the host's UI thread either. The own
+ * channel reaches the worker through a ring, which is what lets every source be
+ * fed the same number of frames and therefore be compared cell by cell. Without
+ * a worker, `srecv_pump` runs the same pump on the caller's thread. See the
+ * header of spectro-recv.
  */
 use spectro_recv::{OwnFeed, Receiver, MAX_SOURCES};
 
 /*
  * THE SAME SPLIT AS `Spectro`: the audio thread's `feed` and the message
- * thread's `rx`, reached only by projecting from the raw pointer. `srecv_pump`
- * takes `&mut` of the receiver while `srecv_push_own` may be running on the
- * audio thread -- sound only because the two are different fields and neither
- * call names the handle as a whole.
+ * thread's `rx`, reached only by projecting from the raw pointer. The message
+ * thread takes `&mut` of the receiver while `srecv_push_own` may be running on
+ * the audio thread -- sound only because the two are different fields and
+ * neither call names the handle as a whole. The worker, when started, owns
+ * none of this handle: it holds its own engine inside `rx` and is joined when
+ * `rx` is dropped.
  */
 pub struct Srecv {
     feed: OwnFeed,
@@ -314,6 +317,22 @@ pub extern "C" fn srecv_new(
     Box::into_raw(Box::new(Srecv { feed, rx }))
 }
 
+/// Start the receiver's analysis thread. Returns 1 if it is running (also
+/// when it already was), 0 if it could not be created -- then `srecv_pump`
+/// goes on doing the work on the caller's thread. **Main thread.**
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_start(p: *mut Srecv) -> c_int {
+    if p.is_null() {
+        return 0;
+    }
+    i32::from(recv(p).start())
+}
+
+/// Stops and joins the analysis thread, if one was started, before freeing.
+///
 /// # Safety
 /// `p` must be a pointer from `srecv_new` and must not be used afterwards.
 #[no_mangle]
@@ -394,8 +413,9 @@ pub unsafe extern "C" fn srecv_push_own(p: *mut Srecv, mono: *const f32, n: c_in
     feed.push(core::slice::from_raw_parts(mono, n as usize))
 }
 
-/// Move audio into every analyzer, in step. Returns the frames each source was
-/// given. **Message thread only.**
+/// Move audio into every analyzer, in step, on the calling thread. Returns the
+/// frames each source was given -- always 0 once `srecv_start` has handed the
+/// work to the receiver's thread. **Message thread only.**
 ///
 /// # Safety
 /// `p` must be a live receiver.
@@ -405,6 +425,21 @@ pub unsafe extern "C" fn srecv_pump(p: *mut Srecv) -> c_int {
         return 0;
     }
     recv(p).pump() as c_int
+}
+
+/// Columns every drawn channel has ready, as of the last finished pump.
+/// Taking this many from each keeps them the same moments while the analysis
+/// thread is adding more.
+/// **Message thread only.**
+///
+/// # Safety
+/// `p` must be a live receiver.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_ready(p: *const Srecv) -> c_int {
+    if p.is_null() {
+        return 0;
+    }
+    recv(p).ready().min(c_int::MAX as usize) as c_int
 }
 
 /// Drain one channel's finished columns, `spectro_bands()` bytes each, oldest
@@ -481,7 +516,7 @@ pub unsafe extern "C" fn srecv_clash(
 }
 
 /// Frames a channel lost before the receiver reached them. A diagnostic: a jump
-/// means the message thread stopped running, not that the analysis broke.
+/// means whatever pumps stopped keeping up, not that the analysis broke.
 ///
 /// # Safety
 /// `p` must be a live receiver.

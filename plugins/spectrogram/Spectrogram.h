@@ -12,10 +12,9 @@
  * format, the message tags and the buffer lifetimes are this file's.
  *
  * WHAT CROSSES A THREAD, AND HOW. ProcessBlock pushes the mono sum into the
- * analyzer, which transforms it on the audio thread and leaves finished columns
- * -- one byte per band -- in a lock-free ring. OnIdle drains that ring and hands
- * the columns to the WebView as hex. Nothing is shared but the ring, and the
- * ring's rules are in spectro_core.h.
+ * receiver's ring; the receiver's own thread transforms it and leaves finished
+ * columns -- one byte per band -- in lock-free rings. OnIdle drains those and
+ * hands the columns to the WebView as hex. The rules are in spectro_recv.h.
  */
 #pragma once
 
@@ -225,16 +224,16 @@ private:
    * THE RECEIVER, NOT A BARE ANALYZER, and that is the whole shape of this
    * plugin now. It holds the own channel AND every bus being listened to, and
    * it feeds them all the same number of frames so their columns can be
-   * compared cell by cell. See spectro_recv.h for why the transforms are on the
-   * message thread.
+   * compared cell by cell. The transforms run on its own thread, started with
+   * srecv_start; see spectro_recv.h.
    */
   srecv_t* mRecv = nullptr;
 
   /*
    * AND IT IS THE MAIN THREAD'S, LENT TO THE AUDIO THREAD.
    *
-   * mRecv is the main thread's handle: built, configured, pumped and freed
-   * there. ProcessBlock reaches the same object only through mRecvLend, which
+   * mRecv is the main thread's handle: built, configured, drained and freed
+   * there -- and freeing it joins its analysis thread. ProcessBlock reaches the same object only through mRecvLend, which
    * frees a replaced receiver once the audio thread has let go of it. OnReset
    * -- which some AU hosts call off the main thread -- only records the rate
    * and asks for a rebuild; OnIdle does it. Until then the audio thread feeds

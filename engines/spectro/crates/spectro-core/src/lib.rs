@@ -3,31 +3,18 @@
  * spectrogram columns to a UI.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * WHERE THE FFT RUNS, WHICH IS THE ONE DECISION THIS FILE IS ABOUT.
+ * TWO HALVES, ONE PER THREAD. The `Producer` is fed samples and runs one
+ * transform per hop, on whichever thread feeds it; the finished column -- one
+ * byte per band -- goes into a lock-free single-producer/single-consumer ring
+ * that the `Consumer` drains. Through spectro_capi's `spectro_push_f32` the
+ * producing thread is the audio thread, and the comments below call it that.
+ * In the Spectrogram it is not: spectro-recv feeds every analyzer from a
+ * worker thread of its own, so several sources stay in step and the host's
+ * audio and UI threads run no transforms at all.
  *
- * It runs on the AUDIO THREAD, as each hop completes, and the finished column
- * -- one byte per band -- goes into a lock-free single-producer/single-consumer
- * ring that the message thread drains in OnIdle.
- *
- * The alternative is to ship samples out and transform them on the message
- * thread. That sounds safer and is worse: OnIdle is a 60 Hz timer competing
- * with a DAW's UI, so the analysis would happen in bursts whenever the host let
- * it, and the picture's time axis would stretch and squeeze with the host's
- * load. Here the columns are produced by the audio clock and the only thing UI
- * jitter can do is make several arrive at once -- which the wire format
- * already carries.
- *
- * The cost is bounded and constant, which is the property an audio thread
- * actually cares about: ONE transform per hop, and the hop is a fixed number of
- * samples. At the defaults that is an 8192-point transform every 21 ms -- a few
- * hundred microseconds against a callback that has milliseconds, and around 1.5%
- * of a core.
- *
- * It was a 1024-point transform every 5 ms until the picture had to reach 10 Hz,
- * which is eight times the window and a quarter of the rate. If that ever stops
- * being affordable there are two levers before the threading changes: the
- * real-input packing fft.rs describes (half the work), and a longer hop (fewer
- * columns a second).
+ * The cost is bounded and constant: ONE transform per hop, and the hop is a
+ * fixed number of samples -- at 96 kHz a 16384-point real FFT every 21 ms,
+ * about 50 us on an M1 (fft.rs).
  *
  * NOTHING HERE ALLOCATES AFTER `configure`. `push` and `take_columns` touch
  * preallocated buffers and two atomics, and tests/no_alloc.rs fails the build
@@ -38,9 +25,12 @@ mod bands;
 mod fft;
 mod window;
 
+#[cfg(test)]
+mod reference;
+
 pub use bands::{
     amplitude_to_byte, byte_to_db, centres_for, clash_cell, clash_column, db_span_to_byte,
-    db_to_byte, sum_column, Band, Bands,
+    db_to_byte, power_to_byte, Band, Bands, PowerTable,
 };
 
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
@@ -64,8 +54,8 @@ pub const COLUMN_CAPACITY: usize = 256;
  * means 8192 points; at 96 kHz the same 6 Hz means 16384.
  *
  * The cap is 16384. Past 96 kHz the bins widen again rather than the window
- * growing without limit: a 32768-point transform on the audio thread for a
- * picture is not a trade worth making, and 192 kHz sessions are rare enough
+ * growing without limit: a 32768-point transform per source for a picture is
+ * not a trade worth making, and 192 kHz sessions are rare enough
  * that 11.7 Hz bins there is the right compromise.
  */
 pub const TARGET_BIN_HZ: f32 = 6.0;
@@ -275,15 +265,20 @@ impl Columns {
     }
 
     /// Returns the columns written to `out`, which must hold `max_cols * bands`
-    /// bytes. Columns measured against an earlier range are consumed and
-    /// discarded rather than returned.
+    /// bytes, reading no further than ring position `end` when one is given.
+    /// Columns measured against an earlier range are consumed and discarded
+    /// rather than returned.
     ///
     /// # Safety
     /// Only the single consumer may call this.
-    unsafe fn take(&self, out: &mut [u8], max_cols: usize, epoch: usize) -> usize {
+    unsafe fn take(&self, out: &mut [u8], max_cols: usize, epoch: usize, end: Option<usize>) -> usize {
         let w = self.write.load(Ordering::Acquire);
         let r = self.read.load(Ordering::Relaxed);
-        let available = w.wrapping_sub(r).min(out.len() / self.bands.max(1));
+        let mut available = w.wrapping_sub(r);
+        if let Some(end) = end {
+            available = available.min(end.wrapping_sub(r));
+        }
+        let available = available.min(out.len() / self.bands.max(1));
 
         let mut kept = 0;
         let mut seen = 0;
@@ -336,8 +331,13 @@ struct Dsp {
     /// Frames are not emitted until the ring has been filled once, so the first
     /// column is a window of audio rather than a window of startup zeroes.
     primed: usize,
+    /// The windowed frame, oldest sample first.
+    frame: Box<[f32]>,
+    /// Bins 0..=fft_size/2.
     re: Box<[f32]>,
     im: Box<[f32]>,
+    /// |bin|^2, scaled so a full-scale sine is 1.0.
+    power: Box<[f32]>,
     col: Box<[u8]>,
     /// The range epoch this band table was built for.
     epoch: usize,
@@ -427,8 +427,10 @@ impl Analyzer {
                     pos: 0,
                     since_hop: 0,
                     primed: 0,
-                    re: vec![0.0; n].into_boxed_slice(),
-                    im: vec![0.0; n].into_boxed_slice(),
+                    frame: vec![0.0; n].into_boxed_slice(),
+                    re: vec![0.0; n / 2 + 1].into_boxed_slice(),
+                    im: vec![0.0; n / 2 + 1].into_boxed_slice(),
+                    power: vec![0.0; n / 2 + 1].into_boxed_slice(),
                     col: vec![0u8; cfg.bands].into_boxed_slice(),
                     epoch: 0,
                 },
@@ -522,16 +524,37 @@ impl Consumer {
         self.shared.cols.dropped.load(Ordering::Relaxed)
     }
 
+    /// Ring positions this consumer has read past -- the same count as
+    /// `Producer::produced`, so the difference is what is waiting.
+    pub fn position(&self) -> usize {
+        self.shared.cols.read.load(Ordering::Relaxed)
+    }
+
     /// Drain finished columns into `out`, `bands()` bytes each, oldest first.
     /// **Message thread.** Returns the number of columns written.
     pub fn take_columns(&mut self, out: &mut [u8], max_cols: usize) -> usize {
         let epoch = self.shared.epoch.load(Ordering::Acquire);
         /* The one consumer: this half is unique and borrowed mutably. */
-        unsafe { self.shared.cols.take(out, max_cols, epoch) }
+        unsafe { self.shared.cols.take(out, max_cols, epoch, None) }
+    }
+
+    /// `take_columns`, reading no column past `end` -- a value `produced`
+    /// returned. What lets several analyzers be drained as of one instant of
+    /// their producer's, rather than of whatever each has reached by now.
+    pub fn take_columns_until(&mut self, out: &mut [u8], max_cols: usize, end: usize) -> usize {
+        let epoch = self.shared.epoch.load(Ordering::Acquire);
+        /* The one consumer: this half is unique and borrowed mutably. */
+        unsafe { self.shared.cols.take(out, max_cols, epoch, Some(end)) }
     }
 }
 
 impl Producer {
+    /// Columns pushed so far (a ring position; dropped ones are not counted).
+    /// **The producing thread.**
+    pub fn produced(&self) -> usize {
+        self.shared.cols.write.load(Ordering::Relaxed)
+    }
+
     /// Feed mono samples. **Audio thread.** Allocates nothing, locks nothing,
     /// and takes a bounded amount of time per sample.
     pub fn push(&mut self, mono: &[f32]) {
@@ -578,62 +601,58 @@ impl Producer {
 
         /* Oldest sample first: the ring's write cursor is also its start, which
          * is the whole reason a ring needs no memmove. */
-        for i in 0..n {
-            let src = dsp.pos + i;
-            let src = if src >= n { src - n } else { src };
-            dsp.re[i] = dsp.ring[src] * dsp.window.gain[i];
-            dsp.im[i] = 0.0;
+        let (newer, older) = dsp.ring.split_at(dsp.pos);
+        let (head, tail) = dsp.frame.split_at_mut(older.len());
+        let (g_head, g_tail) = dsp.window.gain.split_at(older.len());
+        for ((f, &s), &g) in head.iter_mut().zip(older).zip(g_head) {
+            *f = s * g;
+        }
+        for ((f, &s), &g) in tail.iter_mut().zip(newer).zip(g_tail) {
+            *f = s * g;
         }
 
-        dsp.fft.forward(&mut dsp.re, &mut dsp.im);
+        dsp.fft.forward(&dsp.frame, &mut dsp.re, &mut dsp.im);
 
-        let scale = dsp.window.amplitude_scale;
-        let nyquist_bin = n / 2;
-        let mag = |k: usize| -> f32 {
-            let m = (dsp.re[k] * dsp.re[k] + dsp.im[k] * dsp.im[k]).sqrt() * scale;
-            /* Every bin but DC and Nyquist has a conjugate twin, and the
-             * amplitude scale counts both. Nyquist has none, so it would read
-             * 6 dB hot -- a permanent bright line along the top of the
-             * picture. */
-            if k == nyquist_bin {
-                m * 0.5
-            } else {
-                m
-            }
-        };
+        /*
+         * POWER, SCALED TO AMPLITUDE SQUARED: |X|^2 * scale^2, so a full-scale
+         * sine reads 0 dB. Bands are reduced in power and a square root is
+         * never taken -- 10*log10(p) is the same decibel as 20*log10(sqrt p).
+         */
+        let gain = dsp.window.amplitude_scale * dsp.window.amplitude_scale;
+        for ((p, &r), &i) in dsp.power.iter_mut().zip(dsp.re.iter()).zip(dsp.im.iter()) {
+            *p = (r * r + i * i) * gain;
+        }
+        /* Every bin but DC and Nyquist has a conjugate twin, and the amplitude
+         * scale counts both. Nyquist has none, so it would read 6 dB hot -- a
+         * permanent bright line along the top of the picture. */
+        if let Some(p) = dsp.power.last_mut() {
+            *p *= 0.25;
+        }
 
-        for (b, range) in dsp.bands.ranges.iter().enumerate() {
-            let v = match range.frac {
+        let power = &dsp.power;
+        /* -400 dB is the old 1e-20 amplitude floor: a silent neighbour pulls an
+         * interpolation towards the floor rather than producing a NaN. */
+        let db = |k: usize| (10.0 * power[k].log10()).max(-400.0);
+        for (out, range) in dsp.col.iter_mut().zip(dsp.bands.ranges.iter()) {
+            *out = match range.frac {
                 /* PEAK over the band's bins -- see bands.rs. */
                 None => {
-                    let mut peak = 0.0f32;
-                    for k in range.lo..range.hi {
-                        let m = mag(k);
-                        if m > peak {
-                            peak = m;
-                        }
-                    }
-                    peak
+                    let peak = power[range.lo..range.hi].iter().fold(0.0f32, |a, &p| a.max(p));
+                    power_to_byte(peak, cfg.db_floor, cfg.db_ceil)
                 }
                 /*
                  * NARROWER THAN A BIN: interpolated between the two either
-                 * side, geometrically -- a straight line in dB, which is the
-                 * axis the picture draws. Snapping to the nearer bin instead
-                 * gave consecutive bands identical bytes and stacked the bottom
-                 * of the picture into a staircase.
-                 *
-                 * The 1e-20 is the encoder's own floor rather than a branch on
-                 * zero: a silent neighbour must pull the result down towards
-                 * the floor, not produce a NaN out of 0/0.
+                 * side along a straight line in dB, which is the axis the
+                 * picture draws. Snapping to the nearer bin instead gave
+                 * consecutive bands identical bytes and stacked the bottom of
+                 * the picture into a staircase.
                  */
                 Some(x) => {
                     let t = (x - range.lo as f32).clamp(0.0, 1.0);
-                    let lo = mag(range.lo).max(1e-20);
-                    let hi = mag(range.lo + 1).max(1e-20);
-                    lo * (hi / lo).powf(t)
+                    let (lo, hi) = (db(range.lo), db(range.lo + 1));
+                    db_to_byte(lo + (hi - lo) * t, cfg.db_floor, cfg.db_ceil)
                 }
             };
-            dsp.col[b] = amplitude_to_byte(v, cfg.db_floor, cfg.db_ceil);
         }
 
         /* The one producer: this half is unique and borrowed mutably. */

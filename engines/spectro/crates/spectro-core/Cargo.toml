@@ -6,7 +6,7 @@ license = "MIT"
 description = "A short-time Fourier analyzer that hands finished spectrogram columns to a UI"
 
 # NO DEPENDENCIES, AND THAT IS A LICENCE DECISION AS MUCH AS A TASTE ONE.
-# The FFT here is 90 lines (fft.rs). rustfft would be MIT/Apache-2.0 and
+# The FFT here is one file (fft.rs). rustfft would be MIT/Apache-2.0 and
 # perfectly usable, but this repository's whole premise is that every byte in
 # the artefact is permissive AND ACCOUNTED FOR -- see THIRD_PARTY_LICENSES.md
 # -- and a crate that needs no attribution is cheaper than one that does.

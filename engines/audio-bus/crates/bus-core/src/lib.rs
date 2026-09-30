@@ -18,7 +18,8 @@
  *
  *   Writer::claim / drop / set_label / set_sample_rate      the main thread
  *   Pusher::push                                            the audio thread, and only it
- *   Reader::open / reattach / drop                          the main thread
+ *   Reader::open / drop                                     the main thread
+ *   Reader::reattach                                        any thread but the audio thread
  *   Reader::read                                            one thread, the same one each time
  *
  * A claim hands back TWO handles, and the split is what makes those rules the
@@ -374,12 +375,13 @@ impl Reader {
      * segment I have? Each segment carries its `incarnation`, and a different
      * one behind the name means ours is orphaned; the reader moves to the new
      * one at its live edge and the next read says `resynced`. This makes
-     * system calls and maps memory, so it is a main-thread call -- a receiver
-     * makes it for a source that has been silent a while, not per block.
+     * system calls and maps memory, so it is never an audio-thread call -- a
+     * receiver makes it for a source that has been silent a while, from the
+     * thread that reads it, not per block.
      */
 
     /// Move to the segment the slot's name leads to now, if that is not the
-    /// one this reader has. Returns true if it moved. **Main thread.**
+    /// one this reader has. Returns true if it moved. **Not the audio thread.**
     pub fn reattach(&mut self) -> bool {
         let Some(fresh) = shm::Mapping::open_existing(self.map.slot()) else {
             return false;
