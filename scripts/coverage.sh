@@ -82,7 +82,11 @@ mkdir -p "$OUT" "$PROF"
 # ------------------------------------------------------- the C and the C++
 
 echo "==> building instrumented (build-coverage)"
-cmake -S "$ROOT" -B "$BUILD" -DVST_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug >/dev/null
+# Deploy OFF: an instrumented plugin must never land in ~/Library/Audio/Plug-Ins,
+# where a running host would pick it up. The AU tests read whatever IS
+# installed, which is the one thing this build may look at there.
+cmake -S "$ROOT" -B "$BUILD" -DVST_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug \
+      -DIPLUG_DEPLOY_PLUGINS=OFF >/dev/null
 cmake --build "$BUILD" -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" >/dev/null
 
 echo "==> running the suite"
