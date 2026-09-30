@@ -70,7 +70,7 @@ echo "Cross prefix: $CROSS_PREFIX"
 
 OUT="dist/$MODULE_ID"
 rm -rf "$OUT"
-mkdir -p build "$OUT"
+mkdir -p "$OUT"
 
 echo "Compiling the Schwung wrapper (Rust)..."
 # CARGO RUNS AT THE REPOSITORY ROOT, which is where the one workspace and its
@@ -88,14 +88,16 @@ cargo build --release -p "$MODULE_CRATE" --target aarch64-unknown-linux-gnu
 # builds the path itself as modules/audio_fx/<id>/<id>.so and never reads
 # module.json's "dsp" field. Name it anything else and the module simply does
 # not load, with no error on screen -- one line in debug.log and nothing else.
+#
+# Straight into dist/, not via build/: that is CMake's build directory, and a
+# script CMake runs has no business leaving files in it.
 LIB="target/aarch64-unknown-linux-gnu/release/lib${MODULE_CRATE//-/_}.so"
-cp "$LIB" "build/${MODULE_ID}.so"
-"${CROSS_PREFIX}strip" --strip-unneeded "build/${MODULE_ID}.so"
-echo "  size: $(wc -c < "build/${MODULE_ID}.so") bytes"
+cp "$LIB" "$OUT/${MODULE_ID}.so"
+"${CROSS_PREFIX}strip" --strip-unneeded "$OUT/${MODULE_ID}.so"
+echo "  size: $(wc -c < "$OUT/${MODULE_ID}.so") bytes"
 
 echo "Packaging..."
 cp "$MODULE_DIR/module.json"   "$OUT/module.json"
-cp "build/${MODULE_ID}.so"     "$OUT/${MODULE_ID}.so"
 # Optional per module: the Side-Chain deliberately ships no ui_chain.js (the
 # host draws its knob grid from chain_params). `if`, not `[ -f ] && cp`, which
 # ends the script under `set -e` when the file is absent.
