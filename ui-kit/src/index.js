@@ -59,7 +59,7 @@ export { Ground } from './components/Ground.jsx';
 /* The window itself: ground, content from the top, the Hint bar at the bottom
  * edge, the fit-to-viewport scale and the height it reports. Every editor is
  * drawn inside one. */
-export { EditorFrame } from './components/EditorFrame.jsx';
+export { EditorFrame, useFrame } from './components/EditorFrame.jsx';
 export { createFit, fitScale, scaledHeight, reportHeight } from './lib/fit.js';
 /* The playhead's clock: the engine's position carried forward per frame, and
  * no frame loop while nothing moves. */

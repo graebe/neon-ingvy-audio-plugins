@@ -12,7 +12,7 @@
  * The numbers, top to bottom, and all of them on the system's 4px grid:
  *
  *   32   space-8, the window padding
- *   28   the title row -- control-h now, because it holds the Pause button
+ *   28   the toolbar -- control-h, because it holds the Pause button
  *   16   space-4
  *   28   the source row: which buses, which one is drawn, and the clash
  *   16   space-4
@@ -41,26 +41,11 @@
  * time axis -- and 256 bands into 256 pixels, none along the frequency axis
  * either.
  *
- * DESIGN_W in App.jsx and PLUG_WIDTH in config.h have to agree with the 720
- * here, or the page is scaled against a width it does not have.
+ * The window -- its size, padding, ground and the Hint bar at the bottom edge --
+ * is the kit's EditorFrame; DESIGN_W / DESIGN_H in App.jsx and PLUG_WIDTH /
+ * PLUG_HEIGHT in config.h have to agree.
  */
-main {
-  /* The ground's canvas is absolutely positioned against this element and paints
-   * at a negative z-index inside it; it needs both of these. See the kit's
-   * .ground rule for why neither is optional. */
-  position: relative;
-  isolation: isolate;
-  width: 720px;
-  height: 502px;
-  padding: var(--s8) var(--s8) var(--s4);
-  display: flex;
-  flex-direction: column;
-  /* "Nothing is centred vertically: windows are laid out from the top, spare
-   * room stays at the bottom above the hint." */
-  justify-content: flex-start;
-}
-
-.title-row {
+.toolbar {
   height: var(--control-h);
   color: var(--ink-muted);
   margin-bottom: var(--s4);
@@ -134,8 +119,8 @@ main {
 }
 
 /* "Actions stack on the right edge of the control block, never among the
- * knobs" -- here the title row is the only row there is. */
-.title-actions {
+ * knobs" -- here the toolbar is the only row there is. */
+.toolbar-actions {
   display: flex;
   align-items: center;
   gap: var(--s4);
@@ -252,7 +237,7 @@ main {
  * NO height -- the window's arithmetic at the top of this file is unchanged,
  * which is the whole reason this shape was chosen over a bordered panel.
  *
- * Right-aligned, like the title row's actions: "actions stack on the right edge
+ * Right-aligned, like the toolbar's actions: "actions stack on the right edge
  * of the control block".
  */
 .control-strip {

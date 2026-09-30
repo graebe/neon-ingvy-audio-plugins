@@ -12,12 +12,18 @@
  * Props: width, height (design px), motionKey, sources (the Ground's selector
  * list), hint (clauses), bridge (from useEditorBridge), class.
  */
+import { createContext, useContext } from 'solid-js';
 import { createFit, reportHeight } from '../lib/fit.js';
 import { createMotion } from '../lib/motion.js';
 import { sendMessage } from '../lib/iplug.js';
 import { SHELL_MSG } from '../lib/shell.js';
 import { Ground } from './Ground.jsx';
 import { Hint } from './Hint.jsx';
+
+/* What a component inside the window may need of it: the scale, for a canvas
+ * that sizes its backing store in device pixels. */
+const FrameContext = createContext(null);
+export const useFrame = () => useContext(FrameContext);
 
 export function EditorFrame(props) {
   const { scale } = createFit(props.width);
@@ -30,7 +36,7 @@ export function EditorFrame(props) {
                    transform: `scale(${scale()})` }}>
       <Ground enabled={motion()} sources={props.sources}
               ref={(h) => props.bridge?.setGround(h)} />
-      {props.children}
+      <FrameContext.Provider value={{ scale }}>{props.children}</FrameContext.Provider>
       <Hint clauses={props.hint ?? []} motion={motion()} onMotion={setMotion} />
     </main>
   );

@@ -37,6 +37,7 @@ export function Select(props) {
           <path d="M1 1 L4 4 L7 1" fill="none" stroke="var(--ink-muted)" stroke-width="1" />
         </svg>
         <select
+          aria-label={props.ariaLabel ?? props.label}
           value={props.value ?? 0}
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}

@@ -42,6 +42,7 @@
  */
 import { onMount, onCleanup, createEffect, untrack, createSignal, Show } from 'solid-js';
 import { buildLut, readRgb, stopCss } from '../lib/ramp.js';
+import { useFrame } from './EditorFrame.jsx';
 
 export default function Spectrogram(props) {
   /* props: width, height (CSS px), cols (the history depth in columns),
@@ -118,6 +119,9 @@ export default function Spectrogram(props) {
   let at = null;     /* the pointer, in picture pixels, or null */
 
   const COLS = () => props.cols;
+  /* The page's zoom: a prop, or the scale of the EditorFrame it is drawn in. */
+  const frame = useFrame();
+  const zoom = () => props.scale ?? frame?.scale() ?? 1;
   /* 'bars' draws the sweep, anything else the scrolling history. Only ever a
    * choice of which finished picture to show: both are written regardless. */
   const isBars = () => props.view === 'bars';
@@ -128,7 +132,7 @@ export default function Spectrogram(props) {
    * a soft picture with visibly fat columns until the zoom reached here. */
   const setupView = () => {
     if (!view) return;
-    const dpr = (window.devicePixelRatio || 1) * (props.scale || 1);
+    const dpr = (window.devicePixelRatio || 1) * zoom();
     const w = Math.max(1, Math.round(props.width * dpr));
     const h = Math.max(1, Math.round(props.height * dpr));
     if (view.width !== w || view.height !== h) {
@@ -500,7 +504,7 @@ export default function Spectrogram(props) {
   /* The page's zoom is a prop, so a host resize repaints at the new resolution
    * rather than at the one the editor opened with. */
   createEffect(() => {
-    void props.scale; void props.width; void props.height;
+    void zoom(); void props.width; void props.height;
     setupView();
   });
 
