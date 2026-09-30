@@ -43,6 +43,7 @@
 import { onMount, onCleanup, createEffect, untrack, createSignal, Show } from 'solid-js';
 import { buildLut, readRgb, stopCss } from '../lib/ramp.js';
 import { useFrame } from './EditorFrame.jsx';
+import { ringSpans } from '../lib/ring-spans.js';
 
 export default function Spectrogram(props) {
   /* props: width, height (CSS px), cols (the history depth in columns),
@@ -52,7 +53,6 @@ export default function Spectrogram(props) {
   let histCtx;
   let viewCtx;
   let lut;
-  let strip;         /* one ImageData column, reused */
   /*
    * THE FROZEN PICTURE, KEPT SOMEWHERE OF ITS OWN.
    *
@@ -105,7 +105,6 @@ export default function Spectrogram(props) {
   let clashHistCtx;
   let clashSweep;
   let clashSweepCtx;
-  let clashStrip;
   /* The amber the overlay is drawn in, read back from the stylesheet exactly as
    * the ramp's stops are -- no colour may be spelled in here, not even as a
    * fallback. Null (no overlay) only if the token is missing, which the ramp
@@ -115,6 +114,8 @@ export default function Spectrogram(props) {
    * that was written there -- the gap filler interpolates from it. */
   let head = -1;
   let headCol;
+  /* The clash column before this one, for the region's left edge. */
+  let clashPrev;
   let host;          /* the positioned box the crosshair is drawn in */
   const [playhead, setPlayhead] = createSignal(-1);
   const [hover, setHover] = createSignal(null);
@@ -150,186 +151,167 @@ export default function Spectrogram(props) {
     paint();
   };
 
+  /*
+   * THE PIXELS ARE MIRRORED IN ImageData AND PUT ONCE PER BATCH.
+   *
+   * A column used to be its own putImageData -- one per column, per layer, plus
+   * one per interpolated gap pixel in the sweep -- and each is a round trip into
+   * the canvas. Now every write lands in a full-size ImageData that mirrors its
+   * canvas, and a batch is put once over the span it touched (twice when the
+   * ring wraps). The repaint of the visible canvas is gated to one per frame.
+   */
+  let histImg, sweepImg, clashHistImg, clashSweepImg;
+
   /* Rebuilt whenever the band count changes, which in practice is once -- but a
    * host that reopens the editor across a sample-rate change gets a new axis,
    * and the history it held was measured against the old one. */
   const setupHistory = (n) => {
     bands = n;
-    hist = document.createElement('canvas');
-    hist.width = COLS();
-    hist.height = bands;
-    histCtx = hist.getContext('2d', { alpha: false });
-    strip = histCtx.createImageData(1, bands);
+    const make = (alpha) => {
+      const c = document.createElement('canvas');
+      c.width = COLS();
+      c.height = bands;
+      return [c, c.getContext('2d', { alpha })];
+    };
+    [hist, histCtx] = make(false);
+    [sweep, sweepCtx] = make(false);
+    /* alpha:true on the clash layers, unlike the picture's -- a clash layer is
+     * mostly nothing, and the nothing has to let the picture through. */
+    [clashHist, clashHistCtx] = make(true);
+    [clashSweep, clashSweepCtx] = make(true);
     levels = new Uint8Array(COLS() * bands);
-
-    sweep = document.createElement('canvas');
-    sweep.width = COLS();
-    sweep.height = bands;
-    sweepCtx = sweep.getContext('2d', { alpha: false });
     sweepLevels = new Uint8Array(COLS() * bands);
-
-    clashHist = document.createElement('canvas');
-    clashHist.width = COLS();
-    clashHist.height = bands;
-    clashHistCtx = clashHist.getContext('2d');
-    clashSweep = document.createElement('canvas');
-    clashSweep.width = COLS();
-    clashSweep.height = bands;
-    clashSweepCtx = clashSweep.getContext('2d');
-    /* alpha:true on both, unlike the picture's -- a clash layer is mostly
-     * nothing, and the nothing has to let the picture through. */
-    clashStrip = clashHistCtx.createImageData(1, bands);
-
     headCol = new Uint8Array(bands);
+    clashPrev = null;
+    clearAll();
+  };
+
+  /* Every layer back to empty: the picture to the floor colour (taken from the
+   * stylesheet, never spelled here), the clash to nothing. */
+  const clearAll = () => {
+    for (const [ctx, c] of [[histCtx, hist], [sweepCtx, sweep]]) {
+      ctx.fillStyle = stopCss(0);
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    histImg = histCtx.getImageData(0, 0, hist.width, bands);
+    sweepImg = sweepCtx.getImageData(0, 0, sweep.width, bands);
+    clashHistCtx.clearRect(0, 0, clashHist.width, bands);
+    clashSweepCtx.clearRect(0, 0, clashSweep.width, bands);
+    clashHistImg = clashHistCtx.createImageData(clashHist.width, bands);
+    clashSweepImg = clashSweepCtx.createImageData(clashSweep.width, bands);
+    levels.fill(0);
+    sweepLevels.fill(0);
+    clashPrev = null;
+    cursor = 0;
     head = -1;
     setPlayhead(-1);
-
-    cursor = 0;
-
-    /* Filled with the floor colour rather than left transparent, so an empty
-     * picture is the same black as a silent one -- not a hole showing the well
-     * through it. Taken from the stylesheet as written: assembling an rgb()
-     * from the LUT here would be a colour spelled outside @ultraviolet/ui's tokens.css. */
-    histCtx.fillStyle = stopCss(0);
-    histCtx.fillRect(0, 0, hist.width, hist.height);
-    sweepCtx.fillStyle = stopCss(0);
-    sweepCtx.fillRect(0, 0, sweep.width, sweep.height);
   };
 
   /*
    * BAND 0 IS THE LOWEST FREQUENCY AND BELONGS AT THE BOTTOM. ImageData row 0
-   * is the top, so the picture is written upside down on purpose; drawn the
-   * other way the bass sits along the top edge and every reader reads the
-   * picture wrong before noticing why. fillStrip above is where that happens.
+   * is the top, so the picture is written upside down on purpose.
    */
-  const writeColumn = (data, offset) => {
-    fillStrip(data, offset);
-    histCtx.putImageData(strip, cursor, 0);
-    levels.set(data.subarray(offset, offset + bands), cursor * bands);
-    cursor = cursor + 1 === COLS() ? 0 : cursor + 1;
+  const putColumn = (img, x, get) => {
+    const w = img.width;
+    const px = img.data;
+    for (let b = 0; b < bands; b++) {
+      const at = ((bands - 1 - b) * w + x) * 4;
+      const v = get(b) * 3;
+      px[at] = lut[v];
+      px[at + 1] = lut[v + 1];
+      px[at + 2] = lut[v + 2];
+      px[at + 3] = 255;
+    }
   };
 
-  /* One column of bytes into the strip, ready to be put somewhere. */
-  const fillStrip = (src, offset) => {
-    const px = strip.data;
-    for (let b = 0; b < bands; b++) {
-      const row = (bands - 1 - b) * 4;
-      const v = src[offset + b] * 3;
-      px[row] = lut[v];
-      px[row + 1] = lut[v + 1];
-      px[row + 2] = lut[v + 2];
-      px[row + 3] = 255;
+  /* The spans a batch touched, put back into their canvases in one call each. */
+  const flushSpans = (ctx, img, spans) => {
+    for (const [x0, x1] of spans) ctx.putImageData(img, 0, 0, x0, 0, x1 - x0 + 1, bands);
+  };
+
+  /* The scrolling history: `count` columns at the cursor, wrapping. */
+  const writeColumns = (data, count) => {
+    const start = cursor;
+    for (let c = 0; c < count; c++) {
+      const off = c * bands;
+      putColumn(histImg, cursor, (b) => data[off + b]);
+      levels.set(data.subarray(off, off + bands), cursor * bands);
+      cursor = cursor + 1 === COLS() ? 0 : cursor + 1;
     }
+    return ringSpans(start, count, COLS());
   };
 
   /*
    * ONE COLUMN OF CLASH, AS ORANGE OVER WHATEVER IS BEHIND IT.
    *
-   * INTENSITY IS ALPHA, not a second ramp. The cell keeps the picture's own
-   * colour underneath and gains orange in proportion to how hard the two
-   * sources are fighting there, so a reader can still see WHAT is clashing
-   * rather than just that something is.
-   *
-   * AND THE EDGE IS DRAWN. A gradient alone has no boundary, so a broad shallow
-   * clash and a narrow fierce one look like the same smudge at a glance. A cell
-   * that is lit with a neighbour that is not gets full alpha, which gives the
-   * region an outline for free -- no second pass, no marching squares, and it
-   * costs one comparison per band.
+   * INTENSITY IS ALPHA, not a second ramp, so a reader can still see WHAT is
+   * clashing. AND THE EDGE IS DRAWN: a cell that is lit with a neighbour that is
+   * not gets full alpha, which outlines the region for one comparison a band.
    */
   const CLASH_EDGE = 12;   /* below this a cell is not "in" the region at all */
 
-  const fillClashStrip = (data, offset, prev) => {
-    const px = clashStrip.data;
-    if (!clashRgb) { px.fill(0); return; }
-    const [r, g, b] = clashRgb;
+  const putClash = (img, x, data, offset, prev) => {
+    const w = img.width;
+    const px = img.data;
     for (let i = 0; i < bands; i++) {
-      const row = (bands - 1 - i) * 4;
+      const at = ((bands - 1 - i) * w + x) * 4;
       const v = data[offset + i];
-      px[row] = r;
-      px[row + 1] = g;
-      px[row + 2] = b;
-
-      if (v < CLASH_EDGE) {
-        px[row + 3] = 0;
-        continue;
-      }
-      /* A neighbour outside the region -- above, below, or the column before --
-       * makes this cell an edge. */
+      if (!clashRgb || v < CLASH_EDGE) { px[at + 3] = 0; continue; }
+      px[at] = clashRgb[0];
+      px[at + 1] = clashRgb[1];
+      px[at + 2] = clashRgb[2];
       const up = i + 1 < bands ? data[offset + i + 1] : 0;
       const down = i > 0 ? data[offset + i - 1] : 0;
       const back = prev ? prev[i] : 0;
       const edge = up < CLASH_EDGE || down < CLASH_EDGE || back < CLASH_EDGE;
       /* The gradient tops out short of opaque so the partial underneath stays
-       * readable through it; the outline does not, because an outline that can
-       * be seen through is not one. */
-      px[row + 3] = edge ? 255 : Math.round((v / 255) * 200);
+       * readable; the outline does not. */
+      px[at + 3] = edge ? 255 : Math.round((v / 255) * 200);
     }
   };
 
   /*
    * THE SWEEP WRITER, AND THE GAP IS THE INTERESTING PART.
    *
-   * A column arrives every ~21 ms whatever the window is, so a picture 606
-   * pixels wide spanning two seconds gets 94 columns for 606 slots: the slot
-   * jumps five or six at a time and the pixels between them were never
-   * measured.
-   *
-   * Held flat, those become blocks -- the same staircase the sub-bin bands had,
-   * and the same answer: INTERPOLATE, and do it in bytes. A byte here is
-   * already linear in dB (see the ramp and the engine's amplitude_to_byte), so
-   * a straight line between two bytes IS a straight line in dB, which is the
-   * axis the picture draws. Nothing is invented that a hold would not also have
-   * claimed; it is claimed smoothly instead of in steps.
+   * A column arrives every ~21 ms whatever the window is, so a wide bar window
+   * gets fewer columns than slots and the slot jumps. The pixels between are
+   * INTERPOLATED in bytes -- a byte is linear in dB, so a straight line between
+   * two bytes is a straight line on the axis the picture draws. Returns the
+   * lowest and highest x written.
    */
-  const writeSweep = (data, offset, slot) => {
-    if (!sweepCtx || slot < 0) return;
+  const writeSweep = (data, offset, slot, span) => {
+    if (slot < 0) return;
     const cols = COLS();
-
-    /* How far the head moved, the short way round the ring. A first column, or
-     * one that has not moved on, is just written where it is. */
     let gap = head < 0 ? 0 : slot - head;
     if (gap < 0) gap += cols;              /* the wrap */
-    /* A jump most of the way round is a seek, not a gap worth painting
-     * through: drawing a ramp across it would invent a sweep that never
-     * happened. */
+    /* A jump most of the way round is a seek, not a gap worth painting. */
     if (gap > cols / 2) gap = 0;
+    const mark = (x) => { if (x < span[0]) span[0] = x; if (x > span[1]) span[1] = x; };
 
     for (let g = 1; g < gap; g++) {
       const t = g / gap;
       const at = (head + g) % cols;
-      for (let b = 0; b < bands; b++) {
+      putColumn(sweepImg, at, (b) => {
         const v = Math.round(headCol[b] + (data[offset + b] - headCol[b]) * t);
-        const row = (bands - 1 - b) * 4;
-        const c = v * 3;
-        strip.data[row] = lut[c];
-        strip.data[row + 1] = lut[c + 1];
-        strip.data[row + 2] = lut[c + 2];
-        strip.data[row + 3] = 255;
         sweepLevels[at * bands + b] = v;
-      }
-      sweepCtx.putImageData(strip, at, 0);
+        return v;
+      });
+      mark(at);
     }
-
-    fillStrip(data, offset);
-    sweepCtx.putImageData(strip, slot, 0);
+    putColumn(sweepImg, slot, (b) => data[offset + b]);
     sweepLevels.set(data.subarray(offset, offset + bands), slot * bands);
     headCol.set(data.subarray(offset, offset + bands));
     head = slot;
+    mark(slot);
   };
 
-  /* The clash follows the picture: the same cursor, the same slot, so the two
-   * layers can never disagree about where a moment is. */
-  let clashPrev;
-  const writeClash = (data, offset, slot) => {
-    if (!clashHistCtx) return;
-    fillClashStrip(data, offset, clashPrev);
-    /* The scroll layer writes at the cursor the picture just left behind. */
-    const at = cursor === 0 ? COLS() - 1 : cursor - 1;
-    clashHistCtx.clearRect(at, 0, 1, bands);
-    clashHistCtx.putImageData(clashStrip, at, 0);
-    if (slot >= 0 && clashSweepCtx) {
-      clashSweepCtx.clearRect(slot, 0, 1, bands);
-      clashSweepCtx.putImageData(clashStrip, slot, 0);
+  /* The clash follows the picture: the same cursor, the same slot. */
+  const writeClash = (data, offset, at, slot, span) => {
+    putClash(clashHistImg, at, data, offset, clashPrev);
+    if (slot >= 0) {
+      putClash(clashSweepImg, slot, data, offset, clashPrev);
+      if (slot < span[0]) span[0] = slot;
+      if (slot > span[1]) span[1] = slot;
     }
     if (!clashPrev || clashPrev.length !== bands) clashPrev = new Uint8Array(bands);
     clashPrev.set(data.subarray(offset, offset + bands));
@@ -492,6 +474,13 @@ export default function Spectrogram(props) {
     }
   });
 
+  /* THE REPAINT, AT MOST ONCE A FRAME: a catch-up burst of batches is one
+   * repaint, not one per message. */
+  let paintFrame = 0;
+  const schedulePaint = () => {
+    if (!paintFrame) paintFrame = requestAnimationFrame(() => { paintFrame = 0; paint(); });
+  };
+
   onMount(() => {
     lut = buildLut();
     /* Read back rather than spelled: no colour may be written in here, and the
@@ -503,7 +492,10 @@ export default function Spectrogram(props) {
     setupView();
     window.addEventListener('resize', setupView);
   });
-  onCleanup(() => window.removeEventListener('resize', setupView));
+  onCleanup(() => {
+    window.removeEventListener('resize', setupView);
+    if (paintFrame) cancelAnimationFrame(paintFrame);
+  });
 
   /* The page's zoom is a prop, so a host resize repaints at the new resolution
    * rather than at the one the editor opened with. */
@@ -529,40 +521,33 @@ export default function Spectrogram(props) {
     if (!batch || !histCtx) return;
     untrack(() => {
       if (batch.bands !== bands) setupHistory(batch.bands);
-      for (let c = 0; c < batch.count; c++) {
-        const off = c * batch.bands;
-        /*
-         * BOTH PICTURES, EVERY COLUMN, WHICHEVER ONE IS ON SCREEN.
-         *
-         * This is what makes the view switch instant instead of a restart. The
-         * bar view is being drawn the whole time the scrolling one is showing,
-         * so it is already complete the moment it is asked for -- the same
-         * bargain pause makes, and for the same reason: the analysis never
-         * stopped, so nothing has to be caught up.
-         */
-        writeColumn(batch.data, off);
-        if (batch.slots) writeSweep(batch.data, off, batch.slots[c]);
-        /* The clash arrives on the same batch, already measured against the
-         * shown channel by the engine -- the editor never computes it. */
-        if (batch.clash) writeClash(batch.clash, off, batch.slots ? batch.slots[c] : -1);
-      }
       /*
-       * THE PLAYHEAD STOPS WITH THE PICTURE, and it has to.
-       *
-       * The sweep keeps being written while paused -- that is what makes
-       * resuming show a current picture rather than a restart -- but the mark
-       * saying WHERE it is writing belongs to the frozen frame. Left ungated it
-       * went on sliding across a still image, which reads as the picture being
-       * live and the analysis being stuck: exactly backwards.
+       * BOTH PICTURES, EVERY COLUMN, WHICHEVER ONE IS ON SCREEN -- which is what
+       * makes the view switch instant instead of a restart.
        */
+      const first = cursor;
+      flushSpans(histCtx, histImg, writeColumns(batch.data, batch.count));
+      if (batch.slots) {
+        const span = [Infinity, -Infinity];
+        for (let c = 0; c < batch.count; c++) writeSweep(batch.data, c * bands, batch.slots[c], span);
+        if (span[1] >= span[0]) flushSpans(sweepCtx, sweepImg, [span]);
+      }
+      /* The clash arrives on the same batch, measured by the engine. */
+      if (batch.clash) {
+        const span = [Infinity, -Infinity];
+        for (let c = 0; c < batch.count; c++) {
+          writeClash(batch.clash, c * bands, (first + c) % COLS(),
+                     batch.slots ? batch.slots[c] : -1, span);
+        }
+        flushSpans(clashHistCtx, clashHistImg, ringSpans(first, batch.count, COLS()));
+        if (span[1] >= span[0]) flushSpans(clashSweepCtx, clashSweepImg, [span]);
+      }
+      /* THE PLAYHEAD STOPS WITH THE PICTURE: the mark belongs to the frozen frame. */
       if (batch.slots && batch.count > 0 && !props.paused) {
         setPlayhead(batch.slots[batch.count - 1]);
       }
-      if (!props.paused) paint();
-      /* The pointer has not moved, but the picture under it has: a stationary
-       * crosshair over a scrolling spectrogram is reading a NEW column every
-       * ~21 ms, and a readout that only updated on mousemove would name the
-       * level of a column that has since left the screen. */
+      if (!props.paused) schedulePaint();
+      /* The pointer has not moved, but the picture under it has. */
       if (at && !props.paused) report();
     });
   });
@@ -610,21 +595,12 @@ export default function Spectrogram(props) {
   createEffect(() => {
     void props.generation;
     if (!histCtx) return;
-    histCtx.fillStyle = stopCss(0);
-    histCtx.fillRect(0, 0, hist.width, hist.height);
-    sweepCtx.fillStyle = stopCss(0);
-    sweepCtx.fillRect(0, 0, sweep.width, sweep.height);
-    levels.fill(0);
-    sweepLevels.fill(0);
-    clashHistCtx.clearRect(0, 0, clashHist.width, clashHist.height);
-    clashSweepCtx.clearRect(0, 0, clashSweep.width, clashSweep.height);
-    clashPrev = null;
-    cursor = 0;
-    head = -1;
-    setPlayhead(-1);
-    paint();
-    /* The crosshair is pointing at a level measured against the old range. */
-    if (at) report();
+    untrack(() => {
+      clearAll();
+      paint();
+      /* The crosshair is pointing at a level measured against the old range. */
+      if (at) report();
+    });
   });
 
   /*
