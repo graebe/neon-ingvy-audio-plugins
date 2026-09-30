@@ -9,6 +9,10 @@
 # through JUCE's plugin host, and rendered the editor -- so they could not
 # outlive it. What remains is everything that was written in plain C against
 # the engine's ABI, which is also everything that checks the SOUND.
+# -DNI_SANITIZE=thread|address|undefined instruments every C/C++ target in this
+# directory and tests/cpp -- the tests, never the plugins. cmake/Sanitize.cmake.
+ni_sanitize_here()
+
 set(TG_ENGINE ${CMAKE_SOURCE_DIR}/engines/trance-gate)
 
 add_executable(tg_core_tests ${TG_ENGINE}/tests/test_core.c)

@@ -3,6 +3,10 @@ build/
 # on purpose: it is -O0, single-slice and has no NDEBUG, so an artefact from it
 # must never be picked up and shipped by mistake.
 build-coverage/
+# Sanitizer builds (-DNI_SANITIZE=..., cmake/Sanitize.cmake): instrumented and
+# single-slice, so never to be mistaken for a shipping build either.
+build-tsan/
+build-asan/
 # An instrumented binary run without LLVM_PROFILE_FILE set drops this wherever
 # it happened to be started from.
 *.profraw
