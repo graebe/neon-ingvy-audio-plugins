@@ -233,3 +233,88 @@ pub extern "C" fn move_audio_fx_on_midi(
     /* The engine has never used MIDI here: the arrows are claimed as CCs and
      * handled in ui_chain.js, which sees them before this would. */
 }
+
+/*
+ * THE PANIC, ON THE GATE.
+ *
+ * A Schwung host panic reaches an audio FX as CC 120/123 through
+ * `move_audio_fx_on_midi` (the v2 vtable has no reset hook). The Side-Chain
+ * holds a note and must let go of it; the gate holds nothing -- its gain is a
+ * function of the transport and the pattern -- so the right answer here is to
+ * accept the panic and change nothing. These pin that it does exactly that,
+ * rather than assuming an empty handler is harmless.
+ */
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /* The host's clock, as the two callbacks the shell reads. A RUNNING
+     * transport, or the gate is open and the comparison proves nothing. */
+    static BEATS: AtomicU64 = AtomicU64::new(0);
+    extern "C" fn bpm() -> f32 {
+        120.0
+    }
+    extern "C" fn beats() -> f64 {
+        f64::from_bits(BEATS.load(Ordering::SeqCst))
+    }
+
+    fn host() -> HostApiV1 {
+        HostApiV1 {
+            api_version: 1,
+            sample_rate: 44100,
+            frames_per_block: 128,
+            mapped_memory: std::ptr::null_mut(),
+            audio_out_offset: 0,
+            audio_in_offset: 0,
+            log: None,
+            midi_send_internal: None,
+            midi_send_external: None,
+            get_clock_status: None,
+            mod_emit_value: std::ptr::null_mut(),
+            mod_clear_source: std::ptr::null_mut(),
+            mod_host_ctx: std::ptr::null_mut(),
+            get_bpm: Some(bpm),
+            midi_inject_to_move: None,
+            slot_recv_channel: None,
+            get_beat_position: Some(beats),
+            reserved: [std::ptr::null_mut(); 8],
+        }
+    }
+
+    fn render(panic: bool) -> Vec<i16> {
+        BEATS.store(0f64.to_bits(), Ordering::SeqCst);
+        let inst = v2_create_instance(std::ptr::null(), std::ptr::null());
+        let (k, v) = (CString::new("amount").unwrap(), CString::new("0.8").unwrap());
+        v2_set_param(inst, k.as_ptr(), v.as_ptr());
+        let mut out = Vec::new();
+        for b in 0..200 {
+            if panic && b == 60 {
+                for cc in [120u8, 123] {
+                    let msg = [0xB0u8, cc, 0];
+                    move_audio_fx_on_midi(inst, msg.as_ptr(), 3, 0);
+                }
+                let (k, v) = (CString::new("panic").unwrap(), CString::new("1").unwrap());
+                v2_set_param(inst, k.as_ptr(), v.as_ptr());
+            }
+            let mut buf = [10000i16; 256];
+            v2_process_block(inst, buf.as_mut_ptr(), 128);
+            out.extend_from_slice(&buf);
+            let b = beats() + 128.0 / 44100.0 * 2.0;
+            BEATS.store(b.to_bits(), Ordering::SeqCst);
+        }
+        v2_destroy_instance(inst);
+        out
+    }
+
+    #[test]
+    fn a_host_panic_is_accepted_and_changes_nothing() {
+        /* Leaked on purpose: the shell keeps the pointer for the process's
+         * life, exactly as it keeps the real host's. */
+        move_audio_fx_init_v2(Box::leak(Box::new(host())));
+        let with = render(true);
+        assert!(with.iter().any(|&v| v < 5000), "the gate never gated -- no transport?");
+        assert_eq!(with, render(false));
+    }
+}
