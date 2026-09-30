@@ -491,3 +491,45 @@ fn a_negative_delay_is_ignored_where_it_cannot_work() {
     /* No wait: the duck is there on the trigger sample itself. */
     assert!(buf[0] < 1.0, "a negative delay delayed a MIDI duck");
 }
+
+/* ------------------------------------------------ midi only when it is asked */
+
+#[test]
+fn a_note_only_ducks_when_midi_is_the_source() {
+    /*
+     * THE TRIGGER NOTE IS A MIDI-SOURCE CONTROL. On Cycle or Sidechain a kick
+     * pad played on the same track is music passing through, not a request to
+     * duck -- and on Cycle it put a second, unsynchronised dip into a pattern
+     * that is supposed to be locked to the bar.
+     */
+    for source in ["Cycle", "Sidechain"] {
+        let mut p = Instance::new(48000.0);
+        p.set_param("source", source);
+        p.set_param("depth", "1");
+        p.set_param("attack", "0");
+        p.on_midi(&note_on(1, 36, 127), 0);
+        let mut buf = vec![1.0f32; 512];
+        p.process_f32(&mut buf, 256, None);
+        assert!(buf.iter().all(|v| *v == 1.0), "a note ducked the {source} source");
+        assert_eq!(p.fires(), 0, "{source} counted a note as a trigger");
+    }
+}
+
+#[test]
+fn a_panic_resets_whatever_the_source() {
+    /* CC 120/123 is a host panic, and the v2 vtable has no other door for one:
+     * it must open a CYCLE duck too, not only a MIDI one. */
+    let sr = 48000.0;
+    let mut p = Instance::new(sr);
+    p.set_param("attack", "0");
+    p.set_param("hold", "100");
+    let t = Transport { running: true, beats: 0.0, bpm: 120.0 };
+    let mut buf = vec![1.0f32; 256];
+    p.process_f32(&mut buf, 128, Some(&t));
+    assert!(p.duck_now() > 0.5, "the cycle did not duck");
+    p.on_midi(&[0xB0, 123, 0], 0);
+    let t = Transport { running: true, beats: 128.0 / sr * 2.0, bpm: 120.0 };
+    let mut buf = vec![1.0f32; 256];
+    p.process_f32(&mut buf, 128, Some(&t));
+    assert_eq!(p.duck_now(), 0.0, "a panic left the cycle ducked");
+}

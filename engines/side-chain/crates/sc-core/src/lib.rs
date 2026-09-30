@@ -265,9 +265,17 @@ impl Instance {
     }
 
     /// Queue a MIDI message at a sample offset within the next block.
+    ///
+    /// A NOTE IS A TRIGGER ONLY WHEN MIDI IS THE SOURCE. On Cycle or Sidechain
+    /// the trigger note is music passing through the track, and ducking on it
+    /// put a second, unsynchronised dip into a pattern locked to the bar. A
+    /// PANIC is not a trigger and is honoured whatever the source: CC 120/123
+    /// is the only reset a Schwung host can deliver.
     pub fn on_midi(&mut self, msg: &[u8], at: usize) {
-        if let Some(action) = self.midi.decode(msg) {
-            self.queue.push(at, action);
+        match self.midi.decode(msg) {
+            Some(Action::Reset) => self.queue.push(at, Action::Reset),
+            Some(action) if self.source == Source::Midi => self.queue.push(at, action),
+            _ => {}
         }
     }
 
