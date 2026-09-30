@@ -14,7 +14,7 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use spectro_core::Config;
 use spectro_recv::{Receiver, OWN};
@@ -48,6 +48,16 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
 
+/// Columns the default configuration draws from `blocks` blocks of 1024.
+fn columns_after(blocks: usize) -> usize {
+    let c = Config::default();
+    if blocks * 1024 < c.fft_size {
+        0
+    } else {
+        (blocks * 1024 - c.fft_size) / c.hop + 1
+    }
+}
+
 #[test]
 fn the_running_worker_allocates_nothing() {
     let (mut r, mut feed) = Receiver::new(Config::default());
@@ -56,25 +66,43 @@ fn the_running_worker_allocates_nothing() {
     let block: Vec<f32> = (0..1024).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
     let mut out = vec![0u8; r.bands() * 32];
     let mut cols = 0usize;
+    let deadline = Instant::now() + Duration::from_secs(20);
 
-    /* Let the thread start, take its engine and run a few ticks unmeasured. */
-    for _ in 0..16 {
+    /*
+     * Each block waits until the worker has drawn to within three blocks of
+     * it: a condition, so a slow or descheduled worker makes the test slower,
+     * never wrong -- the ring cannot overflow. The first 16 blocks, unmeasured,
+     * let the thread start, take its engine and run.
+     */
+    let mut pushed = 0usize;
+    let mut step = |r: &mut Receiver, cols: &mut usize| {
         feed.push(&block);
-        std::thread::sleep(Duration::from_millis(2));
-        cols += r.take_columns(OWN, &mut out, 32);
+        pushed += 1;
+        while *cols < columns_after(pushed.saturating_sub(3)) {
+            *cols += r.take_columns(OWN, &mut out, 32);
+            if Instant::now() > deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        *cols += r.take_columns(OWN, &mut out, 32);
+        true
+    };
+    for _ in 0..16 {
+        assert!(step(&mut r, &mut cols), "the worker never started drawing");
     }
 
     ARMED.store(true, Ordering::Relaxed);
+    let mut kept_up = true;
     for _ in 0..100 {
-        feed.push(&block);
-        std::thread::sleep(Duration::from_millis(2));
-        cols += r.take_columns(OWN, &mut out, 32);
+        kept_up &= step(&mut r, &mut cols);
     }
     let dropped = r.own_dropped();
     ARMED.store(false, Ordering::Relaxed);
 
     let n = ALLOCS.load(Ordering::Relaxed);
     assert_eq!(n, 0, "allocated or freed {n} times while the worker ran");
-    assert!(cols > 0, "no columns were produced, so nothing was measured");
+    assert!(kept_up, "the worker stopped drawing");
+    assert!(cols >= columns_after(113), "no columns were produced, so nothing was measured");
     assert_eq!(dropped, 0, "the ring overflowed during the measurement");
 }

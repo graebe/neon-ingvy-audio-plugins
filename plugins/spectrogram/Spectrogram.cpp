@@ -421,9 +421,9 @@ void Spectrogram::SendPicture()
    * forced the clash to always be "this bus against channel 0" whatever the
    * editor was actually asking for.
    *
-   * THE SAME NUMBER FROM EACH: the analysis thread may be between one channel's
-   * columns and the next's right now, and srecv_ready is a count every channel
-   * has already reached.
+   * THE SAME NUMBER FROM EACH: srecv_ready counts only whole pumps, so it is a
+   * number every channel has reached even while the analysis thread is between
+   * one channel's columns and the next's.
    */
   const int ready = std::min(srecv_ready(mRecv), int(kMaxColsPerTick));
   if (ready <= 0)

@@ -427,8 +427,9 @@ pub unsafe extern "C" fn srecv_pump(p: *mut Srecv) -> c_int {
     recv(p).pump() as c_int
 }
 
-/// Columns every drawn channel has ready. Taking this many from each keeps
-/// them the same moments while the analysis thread is adding more.
+/// Columns every drawn channel has ready, as of the last finished pump.
+/// Taking this many from each keeps them the same moments while the analysis
+/// thread is adding more.
 /// **Message thread only.**
 ///
 /// # Safety

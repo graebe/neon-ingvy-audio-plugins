@@ -136,18 +136,21 @@ void srecv_push_own(srecv_t* r, const float* mono, int n);
 int srecv_pump(srecv_t* r);
 
 /*
- * Columns every drawn channel has ready. The analysis thread pushes one
- * channel's columns and then the next's, so at any instant one channel can be
- * a column ahead; take this many from each and column k is the same moment in
- * all of them. A channel refused for its sample rate is left out. Message
- * thread only.
+ * Columns every drawn channel has ready; take this many from each and column
+ * k is the same moment in all of them. Columns become visible a whole pump at
+ * a time -- the analysis thread feeds one analyzer after another, and a drain
+ * that saw one channel's new column before the next channel had it would pair
+ * them one column apart for good. Left out: a channel refused for its sample
+ * rate, and a bus that has not drawn its first column yet. Message thread
+ * only.
  */
 int srecv_ready(const srecv_t* r);
 
 /*
- * Drain one channel's finished columns, spectro_bands() bytes each, oldest
- * first. `out` must hold max_cols * bands bytes -- pass srecv_ready() as
- * max_cols to keep the channels in step. Message thread only.
+ * Drain one channel's finished columns -- as of the last finished pump --
+ * spectro_bands() bytes each, oldest first. `out` must hold max_cols * bands
+ * bytes; pass srecv_ready() as max_cols to keep the channels in step. Message
+ * thread only.
  */
 int srecv_take_columns(srecv_t* r, int ch, unsigned char* out, int max_cols);
 

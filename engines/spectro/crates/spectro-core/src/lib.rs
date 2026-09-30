@@ -264,21 +264,21 @@ impl Columns {
         self.write.store(w.wrapping_add(1), Ordering::Release);
     }
 
-    /// Columns waiting, counting any a range change has made stale.
-    fn available(&self) -> usize {
-        self.write.load(Ordering::Acquire).wrapping_sub(self.read.load(Ordering::Relaxed))
-    }
-
     /// Returns the columns written to `out`, which must hold `max_cols * bands`
-    /// bytes. Columns measured against an earlier range are consumed and
-    /// discarded rather than returned.
+    /// bytes, reading no further than ring position `end` when one is given.
+    /// Columns measured against an earlier range are consumed and discarded
+    /// rather than returned.
     ///
     /// # Safety
     /// Only the single consumer may call this.
-    unsafe fn take(&self, out: &mut [u8], max_cols: usize, epoch: usize) -> usize {
+    unsafe fn take(&self, out: &mut [u8], max_cols: usize, epoch: usize, end: Option<usize>) -> usize {
         let w = self.write.load(Ordering::Acquire);
         let r = self.read.load(Ordering::Relaxed);
-        let available = w.wrapping_sub(r).min(out.len() / self.bands.max(1));
+        let mut available = w.wrapping_sub(r);
+        if let Some(end) = end {
+            available = available.min(end.wrapping_sub(r));
+        }
+        let available = available.min(out.len() / self.bands.max(1));
 
         let mut kept = 0;
         let mut seen = 0;
@@ -524,16 +524,10 @@ impl Consumer {
         self.shared.cols.dropped.load(Ordering::Relaxed)
     }
 
-    /// Finished columns waiting to be drained -- a lower bound, since the
-    /// producer may be adding more while this is read.
-    pub fn available(&self) -> usize {
-        self.shared.cols.available()
-    }
-
-    /// Whether any column has been produced yet. An analyzer produces none
-    /// until its window has filled once.
-    pub fn started(&self) -> bool {
-        self.shared.cols.write.load(Ordering::Acquire) != 0
+    /// Ring positions this consumer has read past -- the same count as
+    /// `Producer::produced`, so the difference is what is waiting.
+    pub fn position(&self) -> usize {
+        self.shared.cols.read.load(Ordering::Relaxed)
     }
 
     /// Drain finished columns into `out`, `bands()` bytes each, oldest first.
@@ -541,11 +535,26 @@ impl Consumer {
     pub fn take_columns(&mut self, out: &mut [u8], max_cols: usize) -> usize {
         let epoch = self.shared.epoch.load(Ordering::Acquire);
         /* The one consumer: this half is unique and borrowed mutably. */
-        unsafe { self.shared.cols.take(out, max_cols, epoch) }
+        unsafe { self.shared.cols.take(out, max_cols, epoch, None) }
+    }
+
+    /// `take_columns`, reading no column past `end` -- a value `produced`
+    /// returned. What lets several analyzers be drained as of one instant of
+    /// their producer's, rather than of whatever each has reached by now.
+    pub fn take_columns_until(&mut self, out: &mut [u8], max_cols: usize, end: usize) -> usize {
+        let epoch = self.shared.epoch.load(Ordering::Acquire);
+        /* The one consumer: this half is unique and borrowed mutably. */
+        unsafe { self.shared.cols.take(out, max_cols, epoch, Some(end)) }
     }
 }
 
 impl Producer {
+    /// Columns pushed so far (a ring position; dropped ones are not counted).
+    /// **The producing thread.**
+    pub fn produced(&self) -> usize {
+        self.shared.cols.write.load(Ordering::Relaxed)
+    }
+
     /// Feed mono samples. **Audio thread.** Allocates nothing, locks nothing,
     /// and takes a bounded amount of time per sample.
     pub fn push(&mut self, mono: &[f32]) {

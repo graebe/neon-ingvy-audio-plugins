@@ -7,7 +7,7 @@
  * no worker was started. The message thread keeps only the other ends: each
  * analyzer's `Consumer`, and a `BusStatus` per bus it can read without asking.
  */
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::Thread;
 
@@ -46,6 +46,9 @@ pub struct BusStatus {
     pub starved: AtomicBool,
     pub resynced: AtomicBool,
     pub dropped: AtomicU64,
+    /// Columns this bus's analyzer had produced when the last pump finished.
+    /// See `Engine::publish`.
+    pub settled: AtomicUsize,
 }
 
 /// One bus, as the pump sees it.
@@ -119,6 +122,8 @@ pub struct Engine {
     pub sample_rate: f32,
     pub own_ring: MonoConsumer,
     pub own: Producer,
+    /// The own channel's `BusStatus::settled`.
+    pub own_settled: Arc<AtomicUsize>,
     pub buses: Vec<BusFeed>,
     /* Scratch, sized once. `pump` allocates nothing. */
     interleaved: Box<[f32]>,
@@ -126,11 +131,18 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(sample_rate: f32, own_ring: MonoConsumer, own: Producer, max_buses: usize) -> Self {
+    pub fn new(
+        sample_rate: f32,
+        own_ring: MonoConsumer,
+        own: Producer,
+        own_settled: Arc<AtomicUsize>,
+        max_buses: usize,
+    ) -> Self {
         Self {
             sample_rate,
             own_ring,
             own,
+            own_settled,
             buses: Vec::with_capacity(max_buses),
             interleaved: vec![0.0; PUMP_FRAMES * 2].into_boxed_slice(),
             own_take: vec![0.0; PUMP_FRAMES].into_boxed_slice(),
@@ -172,6 +184,9 @@ impl Engine {
          * waits where it is.
          */
         let own_rate = self.sample_rate;
+        /* The own channel's count is taken BEFORE the buses are read, so every
+         * bus has had at least as long as the own channel to deliver it. */
+        let mut n = self.own_ring.available().min(PUMP_FRAMES);
         for b in &mut self.buses {
             let room = (b.stage.len() - b.have).min(PUMP_FRAMES);
             if room == 0 {
@@ -241,7 +256,6 @@ impl Engine {
          * a hole in its own picture. Only a source that has been empty for
          * GRACE_US is called silent, and `starved` says so out loud.
          */
-        let mut n = self.own_ring.available().min(PUMP_FRAMES);
         for b in &mut self.buses {
             if b.status.rate_mismatch.load(Ordering::Relaxed) {
                 /* Not in the picture, so not in the pacing either. */
@@ -284,6 +298,24 @@ impl Engine {
             b.stage.copy_within(have..b.have, 0);
             b.have -= have;
         }
+        self.publish();
         n
+    }
+
+    /*
+     * A PUMP'S COLUMNS APPEAR TOGETHER OR NOT AT ALL.
+     *
+     * The analyzers are fed one after another, so while a pump runs the own
+     * channel can hold a column the buses do not have yet. A drain landing
+     * there took it from one channel and not the others, and from then on
+     * column k of one was paired with k+1 of the other. So the message thread
+     * reads each channel only up to the count published here, after every
+     * analyzer has been fed -- a count all of them reached in the same pump.
+     */
+    fn publish(&self) {
+        self.own_settled.store(self.own.produced(), Ordering::Release);
+        for b in &self.buses {
+            b.status.settled.store(b.tx.produced(), Ordering::Release);
+        }
     }
 }

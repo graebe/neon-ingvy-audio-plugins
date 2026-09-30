@@ -199,23 +199,29 @@ int main(void)
         srecv_t* w = make();
         ok(srecv_start(w) == 1, "the analysis thread started");
         ok(srecv_start(w) == 1, "and starting it again is not an error");
-        int drawn = 0, pumped = 0;
-        for (int i = 0; i < 40; i++)
+        /*
+         * Paced by what has been drawn, not by the clock: each block waits
+         * (up to 20 s, a bound for a broken build) until the thread has drawn
+         * to within three blocks of it, so however slow or descheduled it is
+         * the ring never overflows. 8192-point window, hop 1024 = one block.
+         */
+        int drawn = 0, pumped = 0, waited_out = 0;
+        for (int i = 1; i <= 40 && !waited_out; i++)
         {
             fill_mono(block, 1024, 1000.f, 0.5f, &ph);
             srecv_push_own(w, block, 1024);
             pumped += srecv_pump(w);
-            const int avail = srecv_ready(w);
-            const int ready = avail < 32 ? avail : 32;
-            drawn += srecv_take_columns(w, SRECV_OWN, cols, ready);
-            usleep(1000);
+            const int want = i - 3 >= 8 ? i - 3 - 8 + 1 : 0;
+            for (int t = 0; ; t++)
+            {
+                const int avail = srecv_ready(w);
+                drawn += srecv_take_columns(w, SRECV_OWN, cols, avail < 32 ? avail : 32);
+                if (drawn >= want) break;
+                if (t >= 20000) { waited_out = 1; break; }
+                usleep(1000);
+            }
         }
-        /* The worker is below this thread's priority; give it time to finish. */
-        for (int i = 0; i < 2500 && drawn == 0; i++)
-        {
-            usleep(2000);
-            drawn += srecv_take_columns(w, SRECV_OWN, cols, 32);
-        }
+        ok(!waited_out, "the thread kept drawing");
         ok(pumped == 0, "srecv_pump left the work to the thread");
         ok(drawn > 0, "the thread produced columns");
         ok(srecv_dropped(w, SRECV_OWN) == 0, "and kept up with the feed");

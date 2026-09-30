@@ -55,7 +55,7 @@ mod worker;
 pub use ring::{mono_ring, MonoConsumer, MonoProducer, RingStats, CAPACITY as RING_FRAMES};
 pub use worker::TICK as WORKER_TICK;
 
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use bus_core::{Reader, MAX_SLOT};
@@ -111,6 +111,7 @@ impl OwnFeed {
 pub struct Receiver {
     cfg: Config,
     own: Consumer,
+    own_settled: Arc<AtomicUsize>,
     own_stats: RingStats,
     buses: Vec<BusView>,
 
@@ -138,12 +139,15 @@ impl Receiver {
         let (own_tx, own_rx) = own.split();
         let (tx, own_ring) = mono_ring();
         let own_stats = own_ring.stats();
+        let own_settled = Arc::new(AtomicUsize::new(0));
+        let engine = Engine::new(cfg.sample_rate, own_ring, own_tx, own_settled.clone(), MAX_SOURCES - 1);
         let rx = Self {
             cfg,
             own: own_rx,
+            own_settled,
             own_stats,
             buses: Vec::with_capacity(MAX_SOURCES - 1),
-            engine: Some(Box::new(Engine::new(cfg.sample_rate, own_ring, own_tx, MAX_SOURCES - 1))),
+            engine: Some(Box::new(engine)),
             worker: None,
             /* -60 dB and 12 dB: loud enough to matter, close enough to fight.
              * Both are settable; these are what the picture opens with. */
@@ -328,35 +332,41 @@ impl Receiver {
     /// How many columns every drawn channel has ready: take this many from
     /// each and they are the same moments.
     ///
-    /// NEEDED ONCE THE WORKER RUNS. It pushes one channel's columns, then the
-    /// next's, while the message thread may be draining -- so at any instant
-    /// one channel can be a column ahead of another, and draining "whatever is
-    /// there" from each would pair column k of one with k+1 of the other. The
-    /// minimum is a count every channel has already reached.
+    /// Counted only up to the last FINISHED pump -- see `Engine::publish` --
+    /// so a drain that lands while the worker is between one channel and the
+    /// next cannot see a column in one that the other does not have yet.
     ///
     /// Left out: a channel refused for its sample rate, which draws nothing,
     /// and one that has not produced its first column yet -- a bus added a
     /// moment ago is still filling its window, and waiting for it would hold
     /// the whole picture still for that long.
     pub fn ready(&self) -> usize {
-        let drawn = |rx: &Consumer| rx.started().then(|| rx.available());
+        let waiting = |rx: &Consumer, settled: &AtomicUsize| {
+            let end = settled.load(Ordering::Acquire);
+            (end != 0).then(|| end.wrapping_sub(rx.position()))
+        };
         self.buses
             .iter()
             .filter(|b| !b.status.rate_mismatch.load(Ordering::Relaxed))
-            .filter_map(|b| drawn(&b.rx))
-            .chain(drawn(&self.own))
+            .filter_map(|b| waiting(&b.rx, &b.status.settled))
+            .chain(waiting(&self.own, &self.own_settled))
             .min()
             .unwrap_or(0)
     }
 
-    /// **Message thread.** Drain one channel's finished columns. Pass
-    /// `ready()` as `max_cols` to keep the channels in step.
+    /// **Message thread.** Drain one channel's finished columns, as of the
+    /// last finished pump. Pass `ready()` as `max_cols` to keep the channels
+    /// in step.
     pub fn take_columns(&mut self, ch: usize, out: &mut [u8], max_cols: usize) -> usize {
         match ch {
-            OWN => self.own.take_columns(out, max_cols),
+            OWN => {
+                let end = self.own_settled.load(Ordering::Acquire);
+                self.own.take_columns_until(out, max_cols, end)
+            }
             _ => match self.buses.get_mut(ch - 1) {
                 Some(b) if !b.status.rate_mismatch.load(Ordering::Relaxed) => {
-                    b.rx.take_columns(out, max_cols)
+                    let end = b.status.settled.load(Ordering::Acquire);
+                    b.rx.take_columns_until(out, max_cols, end)
                 }
                 _ => 0,
             },
