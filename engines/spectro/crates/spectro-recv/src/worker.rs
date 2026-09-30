@@ -18,8 +18,17 @@
  * `done`: the main thread opens the readers and sizes the vectors, the worker
  * moves buses between them at the top of its next tick, and the main thread
  * waits for that -- at most a tick and one pump -- and drops what was retired.
- * Only one plan is ever in flight, because the only thread that posts one waits
- * for it.
+ *
+ * ONE PLAN IN FLIGHT, BY CONSTRUCTION. The two slots hold one plan each, so a
+ * second caller posting while the first waits would overwrite the first's plan
+ * and take its answer, leaving the first parked for good. `apply` therefore
+ * takes `&mut self`: the borrow is the proof that nobody else is posting, and a
+ * caller that shares a worker between threads has to put it behind a lock to
+ * call it at all (spectro-capi does, for the whole receiver).
+ *
+ * THE WAIT IS BOUNDED BY THE WORKER BEING THERE. A worker that has stopped, or
+ * whose thread has ended, is never waited for: the plan comes back unapplied if
+ * the thread never took it, and not at all if the thread died holding it.
  *
  * NO LOCK anywhere, and the audio thread never sees any of this: it still only
  * pushes into the own channel's ring.
@@ -83,20 +92,39 @@ impl Worker {
         }
     }
 
-    /// Have the worker apply `plan`, and wait until it has. **Main thread.**
-    pub fn apply(&self, mut plan: Box<Plan>) -> Box<Plan> {
+    /// Have the worker apply `plan`, and wait until it has -- at most a tick
+    /// and one pump. **Main thread.**
+    ///
+    /// Returns the plan, applied, for the caller to drop what it retired. A
+    /// worker that is not running is not waited for: the plan comes back
+    /// unapplied if its thread never took it, and `None` if the thread ended
+    /// while holding it.
+    pub fn apply(&mut self, mut plan: Box<Plan>) -> Option<Box<Plan>> {
+        let Some(thread) = &self.thread else {
+            return Some(plan);
+        };
         plan.waiter = Some(thread::current());
         self.shared.plan.store(Box::into_raw(plan), Ordering::Release);
-        if let Some(t) = &self.thread {
-            t.thread().unpark();
-        }
+        thread.thread().unpark();
         loop {
+            /* Checked BEFORE the slots: a thread seen finished has stored
+             * everything it ever will, so the slots below are final. */
+            let gone = thread.is_finished();
             let done = self.shared.done.swap(ptr::null_mut(), Ordering::Acquire);
             if !done.is_null() {
-                /* Ours: posted by us above, handed back by the worker. */
+                /* Ours: `&mut self` means no other plan was posted. */
                 let mut plan = unsafe { Box::from_raw(done) };
                 plan.waiter = None;
-                return plan;
+                return Some(plan);
+            }
+            if gone {
+                let p = self.shared.plan.swap(ptr::null_mut(), Ordering::Acquire);
+                /* Still in the slot, so never taken: ours, unapplied. */
+                return (!p.is_null()).then(|| {
+                    let mut plan = unsafe { Box::from_raw(p) };
+                    plan.waiter = None;
+                    plan
+                });
             }
             thread::park_timeout(TICK);
         }
@@ -185,3 +213,63 @@ fn lower_priority() {
 
 #[cfg(not(target_vendor = "apple"))]
 fn lower_priority() {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ring::mono_ring;
+    use core::sync::atomic::AtomicUsize;
+    use spectro_core::{Analyzer, Config};
+
+    fn engine() -> Box<Engine> {
+        let (own, _rx) = Analyzer::new(Config::default()).split();
+        let (_tx, ring) = mono_ring();
+        Box::new(Engine::new(48_000.0, ring, own, Arc::new(AtomicUsize::new(0)), 3))
+    }
+
+    fn plan(marker: u32) -> Box<Plan> {
+        let mut order = Vec::with_capacity(3);
+        order.push(marker);
+        Box::new(Plan { order, fresh: Vec::new(), retired: Vec::new(), waiter: None })
+    }
+
+    #[test]
+    fn a_plan_comes_back_applied_to_its_caller() {
+        let mut w = Worker::start(engine()).ok().expect("a thread");
+        for marker in 1..=20 {
+            let back = w.apply(plan(marker)).expect("a running worker answers");
+            assert_eq!(back.order, [marker], "the plan that came back is the one posted");
+            assert!(back.waiter.is_none(), "and the waiter handle is not kept");
+        }
+        assert!(w.stop().is_some(), "the engine comes back");
+    }
+
+    /* The fallback path: nothing to wait for, so no waiting. */
+    #[test]
+    fn a_stopped_worker_is_not_waited_for() {
+        let mut w = Worker::start(engine()).ok().expect("a thread");
+        assert!(w.stop().is_some());
+        let t = Instant::now();
+        let back = w.apply(plan(7)).expect("handed straight back");
+        assert_eq!(back.order, [7]);
+        assert!(t.elapsed() < Duration::from_secs(1));
+    }
+
+    /* A thread that ended without `stop` -- as one that panicked would --
+     * leaves the plan in the slot, and `apply` must notice rather than park. */
+    #[test]
+    fn a_worker_whose_thread_ended_is_not_waited_for() {
+        let mut w = Worker::start(engine()).ok().expect("a thread");
+        w.shared.stop.store(true, Ordering::Release);
+        w.thread.as_ref().unwrap().thread().unpark();
+        let t = Instant::now();
+        while !w.thread.as_ref().unwrap().is_finished() {
+            assert!(t.elapsed() < Duration::from_secs(10), "the thread never ended");
+            thread::sleep(Duration::from_millis(1));
+        }
+        let back = w.apply(plan(9)).expect("never taken, so handed back");
+        assert_eq!(back.order, [9]);
+        assert!(back.waiter.is_none());
+        assert!(t.elapsed() < Duration::from_secs(10));
+    }
+}

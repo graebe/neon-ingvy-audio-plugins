@@ -36,7 +36,16 @@
  * The handle is used from two threads at once -- push_own on the audio thread,
  * everything else on the message thread -- and is built for it: inside, the
  * audio thread's feed and the message thread's receiver are separate, and each
- * call touches only its own. Two threads on the SAME side is still undefined.
+ * call touches only its own. Two threads calling push_own at once is undefined.
+ *
+ * THE MESSAGE SIDE IS SERIALISED, NOT MERELY TRUSTED. Its half sits behind a
+ * lock, so a second thread calling in while the first is inside waits its turn:
+ * nothing is corrupted and nothing deadlocks. That is a floor, not the design.
+ * srecv_set_sources can hold the lock for a worker tick and a pump, and every
+ * message-thread call behind it waits too -- so a plugin still calls these from
+ * its main thread, and a host thread that wants a change (a state load) records
+ * it for the main thread to apply. The audio thread's push_own takes no lock
+ * and never waits on any of this.
  *
  * `srecv_push_own` allocates nothing, takes no lock and makes no system call.
  * `srecv_set_sources` does all three, which is why it is not allowed anywhere
@@ -113,7 +122,13 @@ int srecv_rate_mismatch(const srecv_t* r, int ch);
  * Slots ALREADY OPEN ARE KEPT rather than reopened: a reopened reader starts at
  * the live edge, which would put a seam in a picture that had no reason for one.
  *
- * Main thread. Allocates.
+ * Once srecv_start has started the analysis thread this WAITS for it to adopt
+ * the change -- at most a tick and one pump. A thread that is not running is
+ * never waited for. Concurrent callers are served one after another, each
+ * waiting for its own change: safe, but it blocks every other message-side
+ * call meanwhile, which is why it belongs to the main thread.
+ *
+ * Main thread. Allocates, takes the message side's lock, and waits.
  */
 void srecv_set_sources(srecv_t* r, const unsigned int* slots, int n);
 

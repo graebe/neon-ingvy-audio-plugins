@@ -487,3 +487,60 @@ fn started_the_analysis_runs_on_its_own_thread() {
         srecv_free(r);
     }
 }
+
+/*
+ * TWO THREADS CHOOSING SOURCES AT ONCE. The Spectrogram once did exactly this:
+ * a host restoring state on its own thread called srecv_set_sources beside the
+ * main thread's, and the worker's one-plan hand-over gave one caller the other's
+ * plan and left the other parked forever -- auval -stress hung on it. The ABI
+ * now serialises the message side, so this must finish, and each caller must
+ * leave behind a receiver in a state some caller asked for.
+ *
+ * A HANG IS THE FAILURE, so it is measured rather than waited out: the callers
+ * report through a channel and the test gives up after a bound that only a
+ * deadlock reaches, leaving the stuck threads behind for the process exit.
+ */
+#[test]
+fn concurrent_callers_choosing_sources_neither_hang_nor_steal() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /* A raw pointer is not Send; the ABI is what is being tested for it. */
+    #[derive(Clone, Copy)]
+    struct Handle(*mut Srecv);
+    unsafe impl Send for Handle {}
+
+    const THREADS: usize = 8;
+    const CALLS: usize = 25;
+
+    let r = Handle(make());
+    unsafe {
+        assert_eq!(srecv_start(r.0), 1, "the analysis thread started");
+    }
+    let (tx, rx) = mpsc::channel();
+    for t in 0..THREADS {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let r = r;
+            for i in 0..CALLS {
+                /* Slots nobody sends on: opening one fails, so every plan
+                 * reaches the worker and the hand-over itself is what races. */
+                let slots = [1 + ((t + i) % 16) as u32, 1 + ((t * 7 + i) % 16) as u32];
+                unsafe { srecv_set_sources(r.0, slots.as_ptr(), slots.len() as c_int) };
+            }
+            let _ = tx.send(t);
+        });
+    }
+    drop(tx);
+    let mut finished = 0;
+    while finished < THREADS {
+        match rx.recv_timeout(Duration::from_secs(10)) {
+            Ok(_) => finished += 1,
+            Err(_) => panic!("{} of {THREADS} callers never came back from srecv_set_sources", THREADS - finished),
+        }
+    }
+    unsafe {
+        assert_eq!(srecv_channels(r.0), 1, "no bus was ever open, so only the own channel remains");
+        srecv_free(r.0);
+    }
+}

@@ -255,6 +255,12 @@ pub unsafe extern "C" fn spectro_dropped(p: *const Spectro) -> c_int {
  *   srecv_push_own                                       the audio thread, and only it
  *   srecv_pump / take_columns / clash / slots            the message thread, and only it
  *
+ * The message side is SERIALISED rather than trusted: its half of the handle
+ * sits behind a lock, so a second thread calling in -- a host restoring state
+ * on a thread of its own, say -- waits its turn instead of racing the first.
+ * That is what makes srecv_set_sources, which waits for the worker, safe
+ * against itself. The audio thread's half takes no lock.
+ *
  * The transforms run on the receiver's own worker once `srecv_start` has
  * started it -- never on the audio thread, which cannot drain a bus reader and
  * must not overrun, and no longer on the host's UI thread either. The own
@@ -264,24 +270,34 @@ pub unsafe extern "C" fn spectro_dropped(p: *const Spectro) -> c_int {
  * header of spectro-recv.
  */
 use spectro_recv::{OwnFeed, Receiver, MAX_SOURCES};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 /*
  * THE SAME SPLIT AS `Spectro`: the audio thread's `feed` and the message
- * thread's `rx`, reached only by projecting from the raw pointer. The message
- * thread takes `&mut` of the receiver while `srecv_push_own` may be running on
- * the audio thread -- sound only because the two are different fields and
- * neither call names the handle as a whole. The worker, when started, owns
- * none of this handle: it holds its own engine inside `rx` and is joined when
- * `rx` is dropped.
+ * side's `rx`, reached only by projecting from the raw pointer, so
+ * `srecv_push_own` and a message-side call never alias -- they are different
+ * fields and neither names the handle as a whole. The worker, when started,
+ * owns none of this handle: it holds its own engine inside `rx` and is joined
+ * when `rx` is dropped.
+ *
+ * `rx` IS BEHIND A LOCK and `feed` is not. The message side is documented as
+ * one thread, but a host decides which thread calls a plugin's state methods,
+ * and `Receiver` hands the worker one plan at a time on the strength of `&mut`.
+ * Two threads each making that `&mut` from a raw pointer is exactly how a
+ * caller came to wait forever for a plan the other had taken. The lock is
+ * uncontended in correct use, and the audio thread never touches it.
  */
 pub struct Srecv {
     feed: OwnFeed,
-    rx: Receiver,
+    rx: Mutex<Receiver>,
 }
 
-/// The message thread's half. Caller: the message thread, with `p` live.
-unsafe fn recv<'a>(p: *const Srecv) -> &'a mut Receiver {
-    &mut *addr_of_mut!((*(p as *mut Srecv)).rx)
+/// The message side's half, held for as long as the guard lives. Any thread
+/// but the audio thread, with `p` live. Not re-entrant: take it once a call.
+unsafe fn recv<'a>(p: *const Srecv) -> MutexGuard<'a, Receiver> {
+    /* A panic aborts (see the top of this file), so a poisoned lock cannot be
+     * observed; the guard is taken either way rather than unwrapped. */
+    (*p).rx.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Sources one receiver will draw, the own channel included.
@@ -314,7 +330,7 @@ pub extern "C" fn srecv_new(
         db_ceil,
     };
     let (rx, feed) = Receiver::new(cfg);
-    Box::into_raw(Box::new(Srecv { feed, rx }))
+    Box::into_raw(Box::new(Srecv { feed, rx: Mutex::new(rx) }))
 }
 
 /// Start the receiver's analysis thread. Returns 1 if it is running (also
@@ -457,9 +473,9 @@ pub unsafe extern "C" fn srecv_take_columns(
     if p.is_null() || out.is_null() || max_cols <= 0 || ch < 0 {
         return 0;
     }
-    let bands = recv(p).bands();
-    let slice = core::slice::from_raw_parts_mut(out, bands * max_cols as usize);
-    recv(p).take_columns(ch as usize, slice, max_cols as usize) as c_int
+    let mut r = recv(p);
+    let slice = core::slice::from_raw_parts_mut(out, r.bands() * max_cols as usize);
+    r.take_columns(ch as usize, slice, max_cols as usize) as c_int
 }
 
 /// One editor tick's picture: every channel drained in step, the `view`
@@ -489,7 +505,7 @@ pub unsafe extern "C" fn srecv_frame(
     if p.is_null() || max_cols <= 0 {
         return 0;
     }
-    let r = recv(p);
+    let mut r = recv(p);
     let n = r.bands() * max_cols as usize;
     let wanted: &[c_int] = if view.is_null() || n_view <= 0 {
         &[]
@@ -560,8 +576,9 @@ pub unsafe extern "C" fn srecv_clash(
     if p.is_null() || a.is_null() || b.is_null() || out.is_null() || n_cols <= 0 {
         return;
     }
-    let n = recv(p).bands() * n_cols as usize;
-    recv(p).clash_into(
+    let r = recv(p);
+    let n = r.bands() * n_cols as usize;
+    r.clash_into(
         core::slice::from_raw_parts(a, n),
         core::slice::from_raw_parts(b, n),
         core::slice::from_raw_parts_mut(out, n),
@@ -656,7 +673,8 @@ pub unsafe extern "C" fn srecv_sum(
     if p.is_null() || out.is_null() || n_cols <= 0 {
         return;
     }
-    let n = recv(p).bands() * n_cols as usize;
+    let r = recv(p);
+    let n = r.bands() * n_cols as usize;
     let dst = core::slice::from_raw_parts_mut(out, n);
 
     if srcs.is_null() || n_src <= 0 {
@@ -676,7 +694,7 @@ pub unsafe extern "C" fn srecv_sum(
         view[k] = core::slice::from_raw_parts(ptr, n);
         k += 1;
     }
-    recv(p).sum_into(&view[..k], dst)
+    r.sum_into(&view[..k], dst)
 }
 
 /// Non-zero when a channel is being zero-filled because its sender has gone

@@ -227,7 +227,7 @@ impl Receiver {
     /// **Main thread.** Choose which buses to listen to. Allocates; opens and
     /// closes readers; never call it near the audio thread. With a worker
     /// running it waits for the worker to adopt the change -- at most a tick
-    /// and one pump.
+    /// and one pump -- and a worker that is not running is not waited for.
     ///
     /// Slots already open are KEPT rather than reopened, so re-selecting a set
     /// that merely gained a member does not restart the ones that were already
@@ -273,13 +273,15 @@ impl Receiver {
          * its feeds come back in `plan.retired`. Both are dropped here. */
         self.buses = views;
 
-        let plan = match (&mut self.engine, &self.worker) {
+        /* Whatever comes back -- applied, or unapplied from a worker that is
+         * no longer running -- is dropped here, on the thread that opened it. */
+        let plan = match (&mut self.engine, &mut self.worker) {
             (Some(engine), _) => {
                 engine.apply(&mut plan);
-                plan
+                Some(plan)
             }
             (None, Some(worker)) => worker.apply(plan),
-            (None, None) => plan,
+            (None, None) => Some(plan),
         };
         drop(plan);
     }
