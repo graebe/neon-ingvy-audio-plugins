@@ -266,8 +266,11 @@ void ListenIn::SendGround()
 
 void ListenIn::OnIdle()
 {
-  SendState();
+  /* One ring per kick the detector found since the last tick. FIRST, so no
+   * early return below can starve the ground -- see ground_detect.h. */
   SendGround();
+
+  SendState();
 }
 
 bool ListenIn::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)

@@ -532,6 +532,10 @@ void TranceGate::SendGround()
 
 void TranceGate::OnIdle()
 {
+  /* One ring per kick the detector found since the last tick. FIRST, so no
+   * early return below can starve the ground -- see ground_detect.h. */
+  SendGround();
+
   if (!mCore) return;
 
   /* Before the readouts below, so the `params` push carries the length the
@@ -651,11 +655,6 @@ void TranceGate::OnIdle()
     assert(tg::wire::framed_size(n) < kMaxJSString);
     SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
-
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /* One ring per kick the detector found since the last tick. */
-  SendGround();
-#endif
 }
 
 /*

@@ -298,6 +298,10 @@ void Spectrogram::SendGround()
 
 void Spectrogram::OnIdle()
 {
+  /* One ring per kick the detector found since the last tick. FIRST, so no
+   * early return below can starve the ground -- see ground_detect.h. */
+  SendGround();
+
   if (!mRecv)
     return;
 
@@ -405,11 +409,6 @@ void Spectrogram::OnIdle()
   mHex = spectro::wire::encode_columns(mClash.data(), common, bands, 0);
   assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
   SendArbitraryMsgFromDelegate(kMsgClashCols, int(mHex.size()), mHex.c_str());
-
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /* One ring per kick the detector found since the last tick. */
-  SendGround();
-#endif
 }
 
 /*

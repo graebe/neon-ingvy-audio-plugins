@@ -564,6 +564,10 @@ void SideChain::SendGround()
 
 void SideChain::OnIdle()
 {
+  /* One ring per kick the detector found since the last tick. FIRST, so no
+   * early return below can starve the ground -- see ground_detect.h. */
+  SendGround();
+
   if (!mCore) return;
 
   char buf[SC_STATE_MAX];
@@ -634,11 +638,6 @@ void SideChain::OnIdle()
     assert(sc::wire::framed_size(n) < kMaxJSString);
     SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
-
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /* One ring per kick the detector found since the last tick. */
-  SendGround();
-#endif
 }
 
 bool SideChain::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)

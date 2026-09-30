@@ -131,6 +131,12 @@ if (TG_NODE)
     add_test(NAME versions
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
 
+    # THE GROUND'S WIRING IN THE FOUR SHELLS, which cannot be linked into a
+    # test. The Spectrogram once sent its ground after six early returns and the
+    # background almost never moved; this pins the order that fixed it.
+    add_test(NAME ground_shells
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/ground_shells.test.mjs)
+
     # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
     # editors and the documentation site -- where there used to be one per
     # plugin, each blind to the other.
