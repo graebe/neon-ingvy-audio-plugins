@@ -339,6 +339,9 @@ struct Dsp {
     /// Frames are not emitted until the ring has been filled once, so the first
     /// column is a window of audio rather than a window of startup zeroes.
     primed: usize,
+    /// The windowed frame, oldest sample first.
+    frame: Box<[f32]>,
+    /// Bins 0..=fft_size/2.
     re: Box<[f32]>,
     im: Box<[f32]>,
     col: Box<[u8]>,
@@ -430,8 +433,9 @@ impl Analyzer {
                     pos: 0,
                     since_hop: 0,
                     primed: 0,
-                    re: vec![0.0; n].into_boxed_slice(),
-                    im: vec![0.0; n].into_boxed_slice(),
+                    frame: vec![0.0; n].into_boxed_slice(),
+                    re: vec![0.0; n / 2 + 1].into_boxed_slice(),
+                    im: vec![0.0; n / 2 + 1].into_boxed_slice(),
                     col: vec![0u8; cfg.bands].into_boxed_slice(),
                     epoch: 0,
                 },
@@ -581,14 +585,17 @@ impl Producer {
 
         /* Oldest sample first: the ring's write cursor is also its start, which
          * is the whole reason a ring needs no memmove. */
-        for i in 0..n {
-            let src = dsp.pos + i;
-            let src = if src >= n { src - n } else { src };
-            dsp.re[i] = dsp.ring[src] * dsp.window.gain[i];
-            dsp.im[i] = 0.0;
+        let (newer, older) = dsp.ring.split_at(dsp.pos);
+        let (head, tail) = dsp.frame.split_at_mut(older.len());
+        let (g_head, g_tail) = dsp.window.gain.split_at(older.len());
+        for ((f, &s), &g) in head.iter_mut().zip(older).zip(g_head) {
+            *f = s * g;
+        }
+        for ((f, &s), &g) in tail.iter_mut().zip(newer).zip(g_tail) {
+            *f = s * g;
         }
 
-        dsp.fft.forward(&mut dsp.re, &mut dsp.im);
+        dsp.fft.forward(&dsp.frame, &mut dsp.re, &mut dsp.im);
 
         let scale = dsp.window.amplitude_scale;
         let nyquist_bin = n / 2;

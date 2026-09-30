@@ -210,6 +210,7 @@ mod equivalence {
                     off += usize::from(d != 0);
                 }
                 let frac = off as f64 / want.len().max(1) as f64;
+                println!("{name:>12} fft {:5} bands {:3}: {off} of {} cells off by one", c.fft_size, c.bands, want.len());
                 assert!(frac <= MAX_OFF_FRACTION, "{name} @ {c:?}: {off} of {} cells off by one", want.len());
             }
         }
@@ -231,6 +232,7 @@ mod equivalence {
                     off += usize::from(d != 0);
                 }
             }
+            println!("sum of two, {floor}..{ceil} dB: {off} of 65536 pairs off by one");
             assert!(off as f64 / 65536.0 <= MAX_OFF_FRACTION, "{off} pairs off by one");
         }
     }
@@ -258,6 +260,7 @@ mod equivalence {
                 }
             }
         }
+        println!("sum of three and four: {off} of {} cells off by one", 2 * rounds * cells);
         assert!(off as f64 / (2 * rounds * cells) as f64 <= MAX_OFF_FRACTION);
     }
 }
