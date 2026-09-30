@@ -84,8 +84,9 @@ Objects the shell builds and frees on the main thread — the audio thread's hal
 of Listen-In's bus claim (its `abus_pusher_t`; the main thread keeps the
 `abus_writer_t`), the Spectrogram's receiver — reach the audio thread through
 `shell_handoff.h`, which frees a replaced one only once the audio thread has let
-go of it. Nothing
-that allocates, maps memory or talks to the editor runs on the audio thread;
+go of it. The Spectrogram's receiver also owns a worker thread, which runs its
+transforms off both the audio and the UI thread; freeing the receiver joins it.
+Nothing that allocates, maps memory or talks to the editor runs on the audio thread;
 `OnParamChange` and `OnReset` only record what they want, and `OnIdle` does it.
 
 Every plugin's state chunk starts with `shell_state.h`'s versioned header. A

@@ -3,31 +3,18 @@
  * spectrogram columns to a UI.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * WHERE THE FFT RUNS, WHICH IS THE ONE DECISION THIS FILE IS ABOUT.
+ * TWO HALVES, ONE PER THREAD. The `Producer` is fed samples and runs one
+ * transform per hop, on whichever thread feeds it; the finished column -- one
+ * byte per band -- goes into a lock-free single-producer/single-consumer ring
+ * that the `Consumer` drains. Through spectro_capi's `spectro_push_f32` the
+ * producing thread is the audio thread, and the comments below call it that.
+ * In the Spectrogram it is not: spectro-recv feeds every analyzer from a
+ * worker thread of its own, so several sources stay in step and the host's
+ * audio and UI threads run no transforms at all.
  *
- * It runs on the AUDIO THREAD, as each hop completes, and the finished column
- * -- one byte per band -- goes into a lock-free single-producer/single-consumer
- * ring that the message thread drains in OnIdle.
- *
- * The alternative is to ship samples out and transform them on the message
- * thread. That sounds safer and is worse: OnIdle is a 60 Hz timer competing
- * with a DAW's UI, so the analysis would happen in bursts whenever the host let
- * it, and the picture's time axis would stretch and squeeze with the host's
- * load. Here the columns are produced by the audio clock and the only thing UI
- * jitter can do is make several arrive at once -- which the wire format
- * already carries.
- *
- * The cost is bounded and constant, which is the property an audio thread
- * actually cares about: ONE transform per hop, and the hop is a fixed number of
- * samples. At the defaults that is an 8192-point transform every 21 ms -- a few
- * hundred microseconds against a callback that has milliseconds, and around 1.5%
- * of a core.
- *
- * It was a 1024-point transform every 5 ms until the picture had to reach 10 Hz,
- * which is eight times the window and a quarter of the rate. If that ever stops
- * being affordable there are two levers before the threading changes: the
- * real-input packing fft.rs describes (half the work), and a longer hop (fewer
- * columns a second).
+ * The cost is bounded and constant: ONE transform per hop, and the hop is a
+ * fixed number of samples -- at 96 kHz a 16384-point real FFT every 21 ms,
+ * about 50 us on an M1 (fft.rs).
  *
  * NOTHING HERE ALLOCATES AFTER `configure`. `push` and `take_columns` touch
  * preallocated buffers and two atomics, and tests/no_alloc.rs fails the build
@@ -67,8 +54,8 @@ pub const COLUMN_CAPACITY: usize = 256;
  * means 8192 points; at 96 kHz the same 6 Hz means 16384.
  *
  * The cap is 16384. Past 96 kHz the bins widen again rather than the window
- * growing without limit: a 32768-point transform on the audio thread for a
- * picture is not a trade worth making, and 192 kHz sessions are rare enough
+ * growing without limit: a 32768-point transform per source for a picture is
+ * not a trade worth making, and 192 kHz sessions are rare enough
  * that 11.7 Hz bins there is the right compromise.
  */
 pub const TARGET_BIN_HZ: f32 = 6.0;

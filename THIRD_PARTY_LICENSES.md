@@ -100,7 +100,7 @@ is not there. The OFL is permissive and GPL-compatible.
 workspace members, which `scripts/check-licenses.mjs` verifies: a crate from
 crates.io would need a row in this file before the check passes.
 
-That is deliberate rather than incidental. The FFT is ninety lines in
+That is deliberate rather than incidental. The FFT is one file in
 `spectro-core` rather than a crate, and `bus-core` declares the six POSIX calls
 the transport needs — `shm_open`, `ftruncate`, `mmap`, `fstat`, `kill`,
 `getpid` — rather than depending on `libc`, which would have added nothing to

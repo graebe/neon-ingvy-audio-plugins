@@ -1,14 +1,15 @@
 # spectro
 
 A short-time Fourier analyzer that produces **spectrogram columns**: one byte per
-log-spaced frequency band, computed on the audio thread and handed to a UI
-through a lock-free ring.
+log-spaced frequency band, handed to a UI through a lock-free ring.
 
-MIT, © 2026 Torben Gräber. **No dependencies at all** — the FFT is ninety lines
-in `crates/spectro-core/src/fft.rs`, checked against a naive DFT.
+MIT, © 2026 Torben Gräber. **No dependencies at all** — the FFT is one file,
+`crates/spectro-core/src/fft.rs`, checked against a naive DFT.
 
 ```
-cargo test              # the FFT, the band mapping, and the no-allocation proof
+cargo test              # the FFT, the band mapping, equivalence, no-allocation proofs
+cargo test --release -p spectro-core --lib -- --ignored --nocapture fft_timings
+cargo test --release -p spectro-recv --test bench -- --ignored --nocapture
 ```
 
 ## Why it has one shell and not two
@@ -25,17 +26,22 @@ depend on each other.
 
 | | |
 |---|---|
-| `fft.rs` | radix-2 complex FFT, in place, precomputed twiddles and bit reversal |
+| `fft.rs` | real-input FFT: an N/2 complex radix-2/4 transform and a split pass |
 | `window.rs` | Hann, periodic, with the coherent gain that makes a full-scale sine read 0 dB |
-| `bands.rs` | log-spaced bands, peak per band, dB to byte |
+| `bands.rs` | log-spaced bands, peak power per band, dB to byte, power tables for sums |
 | `lib.rs` | the analyzer and the SPSC column ring |
-| `crates/spectro-capi` | the C ABI; `include/spectro_core.h` is the contract |
+| `reference.rs` | the analysis before it was optimised, kept as the equivalence oracle |
+| `crates/spectro-recv` | several sources into one picture, pumped by a worker thread |
+| `crates/spectro-capi` | the C ABI; `include/spectro_core.h` and `spectro_recv.h` are the contract |
 
-**The FFT runs on the audio thread.** The alternative — ship samples out and
-transform them on the message thread — makes the picture's time axis stretch and
-squeeze with the host's UI load. Here the columns are produced by the audio clock
-and UI jitter can only make several arrive at once. Nothing allocates after
-`configure`, and `tests/no_alloc.rs` fails the build if that stops being true.
+**The transform runs on whichever thread feeds the analyzer** — one per hop, a
+bounded and constant cost. Through `spectro_push_f32` that is the audio thread.
+The Spectrogram plugin feeds its analyzers from **spectro-recv's worker**
+instead: ProcessBlock only copies its mono sum into a ring, and a thread owned
+by the receiver drains it together with every Listen-In bus, so every source
+gets the same frames and neither the audio thread nor the host's UI thread runs
+a transform. Nothing allocates after `configure`, and the `no_alloc` tests fail
+the build if that stops being true — for the worker too.
 
 ## The thread rules are part of the ABI
 
