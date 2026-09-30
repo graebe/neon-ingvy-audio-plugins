@@ -61,6 +61,7 @@ members = [
     # What two products would otherwise each keep a copy of. Product-free by
     # the same rule: a piece moves here only once it names no product.
     "engines/shared/crates/ni-dsp",           # C-compatible fmt, rates, curves, glides
+    "engines/shared/crates/ni-schwung",       # the audio_fx v2 glue -> every module
 ]
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.

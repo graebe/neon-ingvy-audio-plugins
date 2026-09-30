@@ -1,0 +1,14 @@
+[package]
+name = "ni-schwung"
+version = "2026.9.29+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "MIT"
+description = "The Schwung audio_fx v2 glue every Neon Ingvy Move module is built from"
+
+# AN RLIB: each module's *-move crate absorbs it into its one .so.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+ni-dsp = { path = "../ni-dsp" }

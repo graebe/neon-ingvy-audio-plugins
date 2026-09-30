@@ -34,6 +34,13 @@ name = "ni-dsp"
 version = "2026.9.29+1"
 
 [[package]]
+name = "ni-schwung"
+version = "2026.9.29+1"
+dependencies = [
+ "ni-dsp",
+]
+
+[[package]]
 name = "sc-capi"
 version = "2026.9.29+2"
 dependencies = [
@@ -54,6 +61,7 @@ dependencies = [
 name = "sc-move"
 version = "2026.9.29+2"
 dependencies = [
+ "ni-schwung",
  "sc-capi",
  "sc-core",
 ]
@@ -112,6 +120,7 @@ dependencies = [
 name = "tg-move"
 version = "2026.9.29+3"
 dependencies = [
+ "ni-schwung",
  "tg-capi",
  "tg-core",
 ]
