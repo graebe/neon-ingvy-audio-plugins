@@ -198,6 +198,11 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const int cap = int(std::min(mL.size(), mR.size()));
   if (cap <= 0) return;
 
+  /* Which channel is what -- per channel, never by counting them. */
+  const sc::wire::InputMap in = sc::wire::map_inputs(
+    IsChannelConnected(ERoute::kInput, 0), IsChannelConnected(ERoute::kInput, 1),
+    IsChannelConnected(ERoute::kInput, 2), IsChannelConnected(ERoute::kInput, 3));
+
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /*
    * THE GROUND'S DETECTOR SEES THE INPUT, and it is fed here -- at the top,
@@ -205,32 +210,23 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
    * buffer for in and out. No scratch buffer and no conversion: gnd_push takes
    * doubles, which is what `sample` already is.
    */
-  {
-    const int gndIn = NInChansConnected();
-    const double* gndL = gndIn > 0 ? inputs[0] : nullptr;
-    const double* gndR = (gndIn > 1 && inputs[1] != nullptr) ? inputs[1] : gndL;
-    gnd_push(mGround, gndL, gndR, nFrames);
-  }
+  gnd_push(mGround, inputs[in.mainL], inputs[in.mainR], nFrames);
 #endif
 
   sc_core_t* core = sc_shell_begin(mShell);
   PushParams(core);
 
   const bool stereoOut = nOut > 1;
-  const int nIn = NInChansConnected();
-  const bool stereoIn = nIn > 1;
 
   /*
    * THE AUX BUS, AND THE ONE THING THIS SIDE KNOWS THAT THE ENGINE CANNOT.
    *
-   * Inputs 2 and 3 are the sidechain. Whether they are CONNECTED is a question
-   * only the host can answer: an unpatched bus and a silent one are the same
-   * block of zeroes, and "no key" is a different message to the user from
-   * "nothing is playing".
+   * Inputs 2 and 3 are the sidechain (Wire.h's map_inputs says why they always
+   * are). Whether they are CONNECTED is a question only the host can answer: an
+   * unpatched bus and a silent one are the same block of zeroes, and "no key"
+   * is a different message to the user from "nothing is playing".
    */
-  const bool keyL = IsChannelConnected(ERoute::kInput, 2);
-  const bool keyR = IsChannelConnected(ERoute::kInput, 3);
-  const bool haveKey = keyL || keyR;
+  const bool haveKey = in.keyL >= 0;
   mKeyConnected.store(haveKey ? 1 : 0, std::memory_order_relaxed);
   sc_core_set_key_connected(core, haveKey ? 1 : 0);
 
@@ -240,8 +236,8 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 
     for (int i = 0; i < n; i++)
     {
-      mL[i] = float(inputs[0][off + i]);
-      mR[i] = float(stereoIn ? inputs[1][off + i] : inputs[0][off + i]);
+      mL[i] = float(inputs[in.mainL][off + i]);
+      mR[i] = float(inputs[in.mainR][off + i]);
     }
     std::memcpy(mDry.data(), mL.data(), sizeof(float) * size_t(n));
 
@@ -249,8 +245,8 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     {
       for (int i = 0; i < n; i++)
       {
-        mKeyL[i] = keyL ? float(inputs[2][off + i]) : 0.f;
-        mKeyR[i] = keyR ? float(inputs[3][off + i]) : mKeyL[i];
+        mKeyL[i] = float(inputs[in.keyL][off + i]);
+        mKeyR[i] = float(inputs[in.keyR][off + i]);
       }
       /*
        * REPORTED, NOT WORKED AROUND. Logic and GarageBand copy bus 1 into the

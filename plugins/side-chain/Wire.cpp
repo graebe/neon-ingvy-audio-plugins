@@ -75,5 +75,18 @@ bool key_is_duplicate(const float* main, const float* key, int frames)
   return true;
 }
 
+InputMap map_inputs(bool c0, bool c1, bool c2, bool c3)
+{
+  /* Stereo is channel 1 being there, not "more than one channel in": with a
+   * key patched, a mono main is one channel of three. */
+  (void) c0;
+  InputMap m;
+  m.mainL = 0;
+  m.mainR = c1 ? 1 : 0;
+  m.keyL = c2 ? 2 : -1;
+  m.keyR = c3 ? 3 : m.keyL;
+  return m;
+}
+
 } // namespace wire
 } // namespace sc
