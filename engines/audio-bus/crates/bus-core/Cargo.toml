@@ -10,3 +10,7 @@ description = "A shared-memory audio bus: one writer, many readers, across proce
 # and declares them itself (shm.rs) rather than pulling in libc -- which is
 # MIT/Apache-2.0 and would be fine, but is 80,000 lines to borrow `mmap` from.
 [dependencies]
+
+# The counting allocator the no_alloc test installs. Test-only.
+[dev-dependencies]
+ni-testkit = { path = "../../../shared/crates/ni-testkit" }

@@ -1,0 +1,12 @@
+[package]
+name = "ni-testkit"
+version = "2026.9.29+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "MIT"
+description = "Test-only helpers for the Neon Ingvy engines: the counting allocator"
+# Test-only: a [dev-dependencies] entry wherever it is used, so it never
+# reaches a shipped library.
+publish = false
+
+[dependencies]

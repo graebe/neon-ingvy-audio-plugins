@@ -17,41 +17,12 @@
  * measured window and the failure would look like a real regression.
  */
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use tg_core::params::Param;
 use tg_core::{Instance, Transport};
 
-struct Counting;
-
-static ARMED: AtomicBool = AtomicBool::new(false);
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
-static FREES: AtomicUsize = AtomicUsize::new(0);
-
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.alloc(layout)
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if ARMED.load(Ordering::Relaxed) {
-            FREES.fetch_add(1, Ordering::Relaxed);
-        }
-        System.dealloc(ptr, layout)
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.realloc(ptr, layout, new_size)
-    }
-}
-
 #[global_allocator]
-static ALLOCATOR: Counting = Counting;
+static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
 
 /* Every key the string door serves, with a value of each shape it takes. */
 const SETS: &[(&str, &str)] = &[
@@ -106,7 +77,7 @@ fn process_set_param_and_get_param_allocate_nothing() {
     let n = p.get_param("state", &mut state) as usize;
     let state = String::from_utf8(state[..n].to_vec()).unwrap();
 
-    ARMED.store(true, Ordering::SeqCst);
+    ni_testkit::arm();
     let mut beats = 0.0;
     for block in 0..64 {
         let t = Transport { running: block % 16 != 15, beats, bpm: 123.0 };
@@ -124,8 +95,8 @@ fn process_set_param_and_get_param_allocate_nothing() {
         }
     }
     p.set_param("state", &state);
-    ARMED.store(false, Ordering::SeqCst);
+    ni_testkit::disarm();
 
-    let (a, f) = (ALLOCS.load(Ordering::SeqCst), FREES.load(Ordering::SeqCst));
+    let (a, f) = (ni_testkit::allocs(), ni_testkit::frees());
     assert_eq!((a, f), (0, 0), "the audio path allocated {a} times and freed {f} times");
 }

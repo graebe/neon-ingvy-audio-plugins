@@ -18,41 +18,11 @@
  * measured window and the failure would look like a real regression.
  */
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use bus_core::{Reader, Writer};
 
-struct Counting;
-
-static ARMED: AtomicBool = AtomicBool::new(false);
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
-
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.alloc(layout)
-    }
-    /* Counted too: a free takes the same allocator lock a malloc does, and a
-     * value dropped on the audio thread is the usual way one gets there. */
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.dealloc(ptr, layout)
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.realloc(ptr, layout, new_size)
-    }
-}
-
 #[global_allocator]
-static ALLOCATOR: Counting = Counting;
+static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
 
 /* Its own slot, clear of the ones src/slots.rs uses -- this is a separate test
  * binary and may run alongside them. */
@@ -69,7 +39,7 @@ fn push_and_read_allocate_nothing() {
     let block: Vec<f32> = (0..1024 * 2).map(|i| (i as f32 * 0.01).sin()).collect();
     let mut out = vec![0f32; 4096 * 2];
 
-    ARMED.store(true, Ordering::SeqCst);
+    ni_testkit::arm();
     /* Two hundred blocks is 204,800 frames: more than a full ring, so the wrap
      * is inside the measured window rather than just after it. */
     for _ in 0..200 {
@@ -87,8 +57,8 @@ fn push_and_read_allocate_nothing() {
         pusher.push(&block);
         reader.read(&mut out);
     }
-    ARMED.store(false, Ordering::SeqCst);
+    ni_testkit::disarm();
 
-    let n = ALLOCS.load(Ordering::SeqCst);
+    let n = ni_testkit::allocs() + ni_testkit::frees();
     assert_eq!(n, 0, "the audio path allocated or freed {n} times");
 }

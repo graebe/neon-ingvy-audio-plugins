@@ -9,3 +9,7 @@ description = "How a plugin shell's threads reach an engine: a command queue in,
 # NO DEPENDENCIES. Two atomics and a ring are not worth a third-party licence,
 # and every other crate in this workspace holds the same line.
 [dependencies]
+
+# The counting allocator the no_alloc test installs. Test-only.
+[dev-dependencies]
+ni-testkit = { path = "../../../shared/crates/ni-testkit" }

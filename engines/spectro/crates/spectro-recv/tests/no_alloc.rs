@@ -23,42 +23,12 @@
  * measured window and the failure would look like a real regression.
  */
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use spectro_core::Config;
 use spectro_recv::{Receiver, OWN};
 
-struct Counting;
-
-static ARMED: AtomicBool = AtomicBool::new(false);
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
-
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.alloc(layout)
-    }
-    /* Counted too: a free takes the same allocator lock a malloc does, and a
-     * value dropped on the audio thread is the usual way one gets there. */
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.dealloc(ptr, layout)
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if ARMED.load(Ordering::Relaxed) {
-            ALLOCS.fetch_add(1, Ordering::Relaxed);
-        }
-        System.realloc(ptr, layout, new_size)
-    }
-}
-
 #[global_allocator]
-static ALLOCATOR: Counting = Counting;
+static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
 
 #[test]
 fn pushing_pumping_and_draining_allocate_nothing() {
@@ -74,7 +44,7 @@ fn pushing_pumping_and_draining_allocate_nothing() {
     let mut clash_out = vec![0u8; r.bands() * 4];
     let mut cols = 0usize;
 
-    ARMED.store(true, Ordering::Relaxed);
+    ni_testkit::arm();
     for _ in 0..64 {
         feed.push(&block);
         r.pump();
@@ -84,9 +54,9 @@ fn pushing_pumping_and_draining_allocate_nothing() {
     /* Read back inside the window too: a lazy counter that only allocates when
      * someone asks would slip past a test that never asked. */
     let dropped = r.own_dropped();
-    ARMED.store(false, Ordering::Relaxed);
+    ni_testkit::disarm();
 
-    let n = ALLOCS.load(Ordering::Relaxed);
+    let n = ni_testkit::allocs() + ni_testkit::frees();
     assert_eq!(n, 0, "the receiver allocated or freed {n} times while running");
 
     /* And it has to have done the work, or zero allocations means nothing. */
