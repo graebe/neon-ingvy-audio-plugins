@@ -548,6 +548,7 @@ void Spectrogram::SendSync()
  */
 bool Spectrogram::SerializeState(IByteChunk& chunk) const
 {
+  const int at = shell::state::Begin(chunk, kChunkVersion);
   if (!SerializeParams(chunk))
     return false;
 
@@ -584,12 +585,19 @@ bool Spectrogram::SerializeState(IByteChunk& chunk) const
 
   char cmp[48];
   snprintf(cmp, sizeof cmp, "%d:%d:%d", mCmpA, mCmpB, mClashOn ? 1 : 0);
-  return chunk.PutStr(cmp) > 0;
+  if (chunk.PutStr(cmp) <= 0)
+    return false;
+  return shell::state::End(chunk, at);
 }
 
 int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  int pos = UnserializeParams(chunk, startPos);
+  /* A chunk without the header is an earlier build's, laid out the same --
+   * including the empty one every build before the selection was saved wrote. */
+  const shell::state::Header h = shell::state::Read(chunk, startPos);
+  if (h.body < 0)
+    return -1;
+  int pos = UnserializeParams(chunk, h.body);
 
   /*
    * READ BACK DEFENSIVELY. This plugin's chunk was EMPTY until this version, so
@@ -653,7 +661,7 @@ int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
     ApplySources();
   }
 #endif
-  return pos;
+  return shell::state::Finish(h, pos);
 }
 
 void Spectrogram::OnUIOpen()

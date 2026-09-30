@@ -48,6 +48,13 @@ target_include_directories(tg_state PRIVATE
 target_link_libraries(tg_state PRIVATE tg_engine shell_engine)
 add_test(NAME tg_state COMMAND tg_state)
 
+# THE STATE HEADER against every plugin's older chunk layout, byte for byte.
+add_executable(shell_state shell_state.cpp)
+target_include_directories(shell_state PRIVATE
+    ${DOCTEST_DIR} ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
+target_link_libraries(shell_state PRIVATE shell_engine)
+add_test(NAME shell_state COMMAND shell_state)
+
 # -------------------------------------------------------------- Spectrogram
 
 add_executable(spectro_wire spectro_wire.cpp

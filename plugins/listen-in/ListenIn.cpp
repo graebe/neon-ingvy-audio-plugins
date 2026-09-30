@@ -233,14 +233,21 @@ void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
  */
 bool ListenIn::SerializeState(IByteChunk& chunk) const
 {
+  const int at = shell::state::Begin(chunk, kChunkVersion);
   if (!SerializeParams(chunk))
     return false;
-  return chunk.PutStr(mLabel.c_str()) > 0;
+  if (chunk.PutStr(mLabel.c_str()) <= 0)
+    return false;
+  return shell::state::End(chunk, at);
 }
 
 int ListenIn::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  int pos = UnserializeParams(chunk, startPos);
+  /* A chunk without the header is an earlier build's, laid out the same. */
+  const shell::state::Header h = shell::state::Read(chunk, startPos);
+  if (h.body < 0)
+    return -1;
+  int pos = UnserializeParams(chunk, h.body);
 
   WDL_String label;
   const int after = chunk.GetStr(label, pos);
@@ -255,7 +262,7 @@ int ListenIn::UnserializeState(const IByteChunk& chunk, int startPos)
   /* The slot and the label just changed underneath the bus; OnIdle claims
    * afresh. */
   mReclaim.store(true, std::memory_order_release);
-  return pos;
+  return shell::state::Finish(h, pos);
 }
 
 #ifdef WEBVIEW_EDITOR_DELEGATE

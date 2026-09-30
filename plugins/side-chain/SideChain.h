@@ -16,6 +16,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "sc_shell.h"
+#include "shell_state.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include <atomic>
 #include <cstdint>
@@ -116,6 +117,12 @@ public:
   void ProcessMidiMsg(const iplug::IMidiMsg& msg) override;
   void OnReset() override;
 #endif
+
+  /* The parameters behind shell_state.h's header. A chunk without the header is
+   * an earlier build's: the parameters alone, which is what it holds. */
+  static constexpr int32_t kChunkVersion = 1;
+  bool SerializeState(iplug::IByteChunk& chunk) const override;
+  int UnserializeState(const iplug::IByteChunk& chunk, int startPos) override;
 
   /*
    * THE CAPTURE, written on the audio thread and read on the message thread.

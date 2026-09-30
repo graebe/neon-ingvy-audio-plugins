@@ -8,6 +8,7 @@
 
 #include "audio_bus.h"
 #include "shell_handoff.h"
+#include "shell_state.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 
 #include <atomic>
@@ -56,6 +57,10 @@ const int kMaxStateChars = 64;
  * The Spectrogram's mMono is the same arrangement for the same reason.
  */
 const int kStageFrames = 4096;
+
+/* The state chunk's layout, after shell_state.h's header: parameters, then the
+ * label. A chunk with no header is this layout as every earlier build wrote it. */
+constexpr int32_t kChunkVersion = 1;
 
 using namespace iplug;
 

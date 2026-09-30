@@ -7,12 +7,14 @@
  *   size    int32     bytes of body that follow
  *   body              what the plugin wrote: parameters first, then its own
  *
- * WHY THE MAGIC IS A NaN. Every chunk written before this header existed
- * starts with iPlug2's parameter block, whose first eight bytes are the first
- * parameter's value as a double -- and a parameter is clamped to its range, so
- * it is never NaN. Read as a little-endian double, the magic is a quiet NaN.
- * No legacy chunk can be mistaken for a headed one, which is what lets every
- * project saved before this still open: no header means the old layout.
+ * WHY NO OLDER CHUNK CAN LOOK LIKE ONE. Every chunk written before this header
+ * existed starts with iPlug2's parameter block, whose first eight bytes are the
+ * first parameter's value as a double -- and a parameter is clamped to its
+ * range, so it is never NaN. Read as a little-endian double, the magic is a
+ * quiet NaN. A plugin with no parameters (the Spectrogram) started with an
+ * IByteChunk string instead, whose first four bytes are its length -- and
+ * 'NIst' read as that length is 1.9 GB. So no header means the old layout,
+ * which is what lets every project saved before this still open.
  *
  * WHY A SIZE. A later version may append fields this build does not know. The
  * size lets it skip them and return the position just past the body, which a

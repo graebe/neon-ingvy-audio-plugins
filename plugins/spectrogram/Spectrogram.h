@@ -22,6 +22,7 @@
 #include "IPlug_include_in_plug_hdr.h"
 #include "spectro_recv.h"
 #include "shell_handoff.h"
+#include "shell_state.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include "Wire.h"
 #include <atomic>
@@ -29,6 +30,11 @@
 #include <vector>
 
 const int kNumPresets = 1;
+
+/* The state chunk's layout, after shell_state.h's header: parameters (none
+ * yet), then sources, clash, view and comparison as strings. A chunk with no
+ * header is this layout as every earlier build wrote it. */
+constexpr int32_t kChunkVersion = 1;
 
 /*
  * NO PARAMETERS, and that is a statement rather than an omission.

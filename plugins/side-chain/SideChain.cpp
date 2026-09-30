@@ -198,6 +198,21 @@ SideChain::~SideChain()
 #endif
 }
 
+bool SideChain::SerializeState(IByteChunk& chunk) const
+{
+  const int at = shell::state::Begin(chunk, kChunkVersion);
+  return SerializeParams(chunk) && shell::state::End(chunk, at);
+}
+
+int SideChain::UnserializeState(const IByteChunk& chunk, int startPos)
+{
+  const shell::state::Header h = shell::state::Read(chunk, startPos);
+  if (h.body < 0)
+    return -1;
+  const int pos = UnserializeParams(chunk, h.body);
+  return pos < 0 ? pos : shell::state::Finish(h, pos);
+}
+
 #if IPLUG_DSP
 
 void SideChain::OnReset()
