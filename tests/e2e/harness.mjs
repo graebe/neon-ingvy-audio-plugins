@@ -12,6 +12,9 @@
  * attribute changing -- so a slow machine is slower, never red.
  */
 import { test as base, expect } from '@playwright/test';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export { expect };
 
@@ -21,6 +24,16 @@ export const SHELL = { ground: 112, defaults: 113, ready: 120, setText: 121, hei
 export const harnessUrl = (plugin, query = '') =>
   `/plugins/${plugin}/ui/test/harness/index.html${query}`;
 
+/*
+ * THE COVERAGE HOOK. With NI_E2E_COVERAGE set, every page records Chrome's own
+ * V8 block coverage of the editor bundle, written raw to build/e2e/coverage for
+ * scripts/e2e-coverage.mjs to map back to the sources through the bundle's
+ * source map. Off by default: an ordinary run pays nothing for it.
+ */
+const COVERAGE_DIR = process.env.NI_E2E_COVERAGE
+  ? fileURLToPath(new URL('../../build/e2e/coverage/', import.meta.url))
+  : null;
+
 export const test = base.extend({
   /* Console errors and uncaught exceptions, collected for the whole test. */
   errors: async ({ page }, use) => {
@@ -28,6 +41,17 @@ export const test = base.extend({
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(String(e)));
     await use(errors);
+  },
+  page: async ({ page }, use, info) => {
+    if (COVERAGE_DIR) await page.coverage.startJSCoverage({ resetOnNavigation: false });
+    await use(page);
+    if (COVERAGE_DIR) {
+      const entries = (await page.coverage.stopJSCoverage())
+        .filter((e) => /\/ui\/test\/harness\/assets\/ui\.js$/.test(new URL(e.url).pathname));
+      mkdirSync(COVERAGE_DIR, { recursive: true });
+      const name = `${info.titlePath.join(' ').replace(/[^\w.-]+/g, '_')}-${info.repeatEachIndex}`;
+      writeFileSync(join(COVERAGE_DIR, `${name}.json`), JSON.stringify(entries));
+    }
   },
 });
 

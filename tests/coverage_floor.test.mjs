@@ -49,9 +49,10 @@ test('there is a coverage report to check', () => {
 
 const report = existsSync(REPORT) ? JSON.parse(readFileSync(REPORT, 'utf8')) : null;
 
-/* Report-only until the C++ number has climbed. The verdict is computed either
- * way and printed either way; this decides only whether a shortfall is a
- * failure. See `enforcing_note` in coverage.floors.json. */
+/* The verdict is computed and printed either way; `enforcing` decides only
+ * whether a shortfall is a failure. It is on -- see `enforcing_note` in
+ * coverage.floors.json -- and stays a switch so a deliberate, dated step back
+ * to report-only is one visible line rather than an edited test. */
 const enforce = (offences, message) => {
   if (offences.length === 0) return;
   if (FLOORS.enforcing) assert.fail(message);
@@ -126,6 +127,18 @@ test('the deliberate gaps are still deliberate', () => {
     assert.ok(typeof why === 'string' && why.length > 40,
       `exempt["${name}"] needs a reason, not a note. Say what cannot be ` +
       `covered and what covers it instead.`);
+  }
+
+  /* A FILE exemption is held to the same standard: the file exists, it says
+   * why, and its unit is not already exempt as a whole (then it says nothing). */
+  for (const [path, why] of Object.entries(FLOORS.exempt_files ?? {})) {
+    assert.ok(existsSync(join(ROOT, path)),
+      `exempt_files lists "${path}", which does not exist -- a stale excuse.`);
+    assert.ok(typeof why === 'string' && why.length > 40,
+      `exempt_files["${path}"] needs a reason, not a note.`);
+    const unit = report.exemptFiles?.find((e) => e.path === path)?.unit;
+    assert.ok(!unit || !FLOORS.exempt[unit],
+      `"${path}" is exempt twice -- its unit "${unit}" is exempt already`);
   }
 
   for (const [name, floor] of Object.entries(FLOORS.units)) {

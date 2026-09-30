@@ -41,6 +41,9 @@ const INCLUDE = [/^plugins\//, /^engines\//, /^ui-kit\/src\//, /^modules\//];
 const EXCLUDE = [
   /^external\//, /^build/, /node_modules\//, /^target\//, /\/target\//,
   /(^|\/)tests?\//, /\.test\.mjs$/, /(^|\/)dist\//, /(^|\/)resources\/web\//,
+  /* A crate's unit tests, in the `#[cfg(test)] mod tests;` file beside the
+   * code: test code, as surely as anything under tests/. */
+  /(^|\/)tests\.rs$/,
   /\.config\.[cm]?js$/,   /* vite.config.js and friends: build configuration,
                               executed by the bundler and not by anything a
                               test could reasonably drive */
@@ -87,6 +90,17 @@ const norm = (p) => {
 };
 
 const keep = (p) => INCLUDE.some((r) => r.test(p)) && !EXCLUDE.some((r) => r.test(p));
+
+/*
+ * The floors are read here only to LABEL the report -- the judging is the
+ * floor test's job. Without them a reader of "100.0%" beside a plugin has no
+ * way to see that the plugin class beside the counted files is exempt and
+ * uncounted.
+ */
+let FLOORS = { exempt: {}, units: {}, floor: 80 };
+try {
+  FLOORS = JSON.parse(readFileSync(join(ROOT, 'tests', 'coverage.floors.json'), 'utf8'));
+} catch { /* the report still stands without them; it just cannot annotate */ }
 
 /* ------------------------------------------------------------------ lcov */
 
@@ -198,11 +212,48 @@ const onDisk = ['plugins', 'engines', 'ui-kit/src', 'modules']
   .filter(keep)
   .sort();
 
+/*
+ * EXEMPT FILES, as opposed to exempt units: a file that cannot be built into
+ * anything a test can run, inside a unit whose other files can -- the plugin
+ * classes, which compile only inside a plugin-format target, beside the
+ * Params/State/Wire files lifted out of them for exactly that reason. The file
+ * leaves the unit's numbers and the absent list; the unit is still judged.
+ */
+const exemptFile = (p) => !!FLOORS.exempt_files?.[p];
+
+/*
+ * A RUST FILE NO TRACEFILE MENTIONS HAS NO CODE, rather than no test. cargo
+ * compiles every module of every workspace crate into its test binary, and
+ * llvm-cov records every function it compiled, run or not -- so the only Rust
+ * file missing from rust.info is one of declarations: `pub mod` lines, a table
+ * of constants. Listing those as "never loaded" would teach the reader to skim
+ * the list. The other languages get no such blanket pass: a C++ file is absent
+ * exactly when nothing loaded it, and so is a JS module, but for the one case
+ * below.
+ */
+/*
+ * THE JS EQUIVALENT IS A BARREL: a module that only re-exports (the kit's
+ * index.js and params.js). It is loaded -- every editor imports through it --
+ * but a bundler compiles it away, so there is no code for any tracefile to
+ * mention. Recognised by its text, strictly: comments aside, nothing but
+ * `export ... from '...'` statements.
+ */
+const REEXPORT = /^(?:\s*export\s+(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+(['"])[^'"]+\1\s*;?)*\s*$/;
+const reexportsOnly = (p) => {
+  if (LANG(p) !== 'js') return false;
+  const text = readFileSync(join(ROOT, p), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  return REEXPORT.test(text);
+};
+
+const declarationsOnly = (p) => LANG(p) === 'rust' || reexportsOnly(p);
+
 const absent = onDisk
-  .filter((p) => !files.has(p))
+  .filter((p) => !files.has(p) && !exemptFile(p) && !declarationsOnly(p))
   .map((p) => ({ path: p, language: LANG(p), unit: unitOf(p) }));
 
 const perFile = [...files.entries()]
+  .filter(([path]) => !exemptFile(path))
   .map(([path, rec]) => ({
     path,
     language: LANG(path),
@@ -247,21 +298,13 @@ const groupBy = (key) => {
       }));
 };
 
-/*
- * The floors are read here only to LABEL the report -- the judging is the
- * floor test's job. Without this, plugins/spectrogram prints "100.0%" for what
- * is one extracted file, and a reader has no way to see that the plugin shell
- * beside it is exempt and uncounted.
- */
-let FLOORS = { exempt: {}, units: {}, floor: 80 };
-try {
-  FLOORS = JSON.parse(readFileSync(join(ROOT, 'tests', 'coverage.floors.json'), 'utf8'));
-} catch { /* the report still stands without them; it just cannot annotate */ }
 
 const report = {
   generated: new Date().toISOString(),
   sources: seen,
   total: roll(perFile),
+  exemptFiles: Object.entries(FLOORS.exempt_files ?? {})
+    .map(([path, reason]) => ({ path, unit: unitOf(path), reason })),
   absent: {
     count: absent.length,
     note: 'First-party source files no tracefile mentions. They are NOT in the '
@@ -303,6 +346,13 @@ lines.push(`    ${'TOTAL'.padEnd(44)} ${p1(report.total.lines.pct)}  ` +
            `${p1(report.total.functions.pct).trim()} of functions, ` +
            `${p1(report.total.branches.pct).trim()} of branches`);
 lines.push('');
+
+if (report.exemptFiles.length > 0) {
+  lines.push('  exempt, and in no figure above (tests/coverage.floors.json says why):');
+  lines.push('');
+  for (const e of report.exemptFiles) lines.push(`    ${e.path}`);
+  lines.push('');
+}
 
 if (report.absent.count > 0) {
   lines.push('');
@@ -401,6 +451,11 @@ writeFileSync(join(OUT, 'html', 'index.html'), `<!doctype html>
     <ul>${report.absent.files.map((a) => `<li>${esc(a.path)}</li>`).join('')}</ul>
   </div>`}
   ${section('by unit', report.units)}
+  ${report.exemptFiles.length === 0 ? '' : `<h2>exempt files</h2><div class="wrap"><table>
+    <thead><tr><th>path</th><th>why</th></tr></thead><tbody>
+    ${report.exemptFiles.map((e) => `<tr><td class="p">${esc(e.path)}</td>` +
+      `<td>${esc(e.reason)}</td></tr>`).join('\n')}
+  </tbody></table></div>`}
   ${section('by language', report.languages)}
   <h2>by file</h2>
   <div class="wrap"><table><thead><tr><th>path</th><th>lang</th><th>lines</th>

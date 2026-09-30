@@ -17,8 +17,16 @@ export const HARNESSES = readdirSync(join(ROOT, 'plugins'))
   .map((p) => join(ROOT, 'plugins', p, 'ui', 'test', 'harness', 'build.sh'))
   .filter((f) => existsSync(f));
 
+/*
+ * Under NI_E2E_COVERAGE each is built with a source map into build/e2e/web
+ * instead, so scripts/e2e-coverage.mjs can map Chrome's coverage of the bundle
+ * back to the sources -- and resources/web, which ships, never carries one.
+ */
 export default function buildHarnesses() {
   for (const script of HARNESSES) {
-    execFileSync('sh', [script], { stdio: ['ignore', 'inherit', 'inherit'] });
+    const plugin = script.split('/plugins/')[1].split('/')[0];
+    const env = { ...process.env };
+    if (process.env.NI_E2E_COVERAGE) env.NI_HARNESS_SOURCEMAP = join(ROOT, 'build', 'e2e', 'web', plugin);
+    execFileSync('sh', [script], { stdio: ['ignore', 'inherit', 'inherit'], env });
   }
 }

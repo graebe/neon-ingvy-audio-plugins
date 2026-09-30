@@ -42,6 +42,12 @@ need cmake  "install CMake, or use the one your IDE ships"
 need ctest  "it comes with CMake"
 need node   "the UI's tests and the report generator are node's (22+)"
 
+if [ ! -f "$ROOT/node_modules/@playwright/test/cli.js" ]; then
+    echo "@playwright/test not found -- it runs the editors for their coverage." >&2
+    echo "  npm ci" >&2
+    missing=1
+fi
+
 # xcrun finds the toolchain's llvm-* on macOS, where they are not on PATH.
 if command -v xcrun >/dev/null 2>&1; then
     LLVM_PROFDATA="$(xcrun --find llvm-profdata 2>/dev/null || true)"
@@ -101,9 +107,12 @@ echo "==> running the suite"
 # so including it here would check the previous run's file, or fail on a
 # missing one. It is registered with ctest so `ctest -R coverage_floor` works
 # once a report exists, and it is run below, after there is one.
+#
+# -E e2e as well: the end-to-end suite is JavaScript in Chrome, and it runs
+# below with its own coverage switched on rather than here without it.
 suite_status=0
 LLVM_PROFILE_FILE="$PROF/%p-%m.profraw" \
-    ctest --test-dir "$BUILD" -E coverage_floor --output-on-failure \
+    ctest --test-dir "$BUILD" -E '^(coverage_floor|e2e)$' --output-on-failure \
         > "$OUT/ctest.log" 2>&1 || suite_status=$?
 tail -3 "$OUT/ctest.log" | sed 's/^/    /'
 
@@ -140,30 +149,75 @@ cargo llvm-cov --workspace --lcov --output-path "$OUT/rust.info" \
         cargo llvm-cov --workspace --lcov --output-path "$OUT/rust.info"
     }
 
+# EACH C ABI CRATE AGAIN, FROM ITS OWN TEST BINARY. A capi crate's #[no_mangle]
+# functions are also compiled into every product archive that links it -- the
+# ground's and the shell's into all four -- where they are unused, and the
+# workspace export hands llvm-cov every test binary in name order. llvm-cov
+# keeps the FIRST record it sees for a function, so bus_capi's unused copy of
+# gnd_new wins over ground_capi's real one and the crate reads 43% when its own
+# tests reach every line ("functions have mismatched data"). Measured alone,
+# each crate's records are its own; the report adds the runs line by line.
+#
+# ALONE MEANS ITS OWN TARGET DIRECTORY. cargo llvm-cov reports on every test
+# binary it finds under its target directory, not only the ones this run
+# built, so `-p ground-capi` in the shared one still meets bus_capi's copy
+# first. Each gets a directory of its own under build-coverage.
+capi_info=()
+for dir in engines/*/crates/*-capi; do
+    crate="$(basename "$dir")"
+    export CARGO_TARGET_DIR="$BUILD/cargo-capi/$crate"
+    cargo llvm-cov -p "$crate" --lcov --output-path "$OUT/rust-$crate.info" >/dev/null 2>&1 || {
+        echo "cargo llvm-cov -p $crate failed -- rerunning verbosely" >&2
+        cargo llvm-cov -p "$crate" --lcov --output-path "$OUT/rust-$crate.info"
+    }
+    unset CARGO_TARGET_DIR
+    capi_info+=( "$OUT/rust-$crate.info" )
+done
+
 # --------------------------------------------------------------------- JS
 
 echo "==> the editors and the kit"
 # Node's own runner and its own coverage: no c8, no nyc, nothing added to a
 # dependency tree that the licence audit is the reason for keeping small.
+#
+# --conditions=browser, exactly as `npm test` and ctest's ui_unit run them:
+# solid-js's node build is its server renderer, under which the kit's
+# reactive stores never re-run and two of the kit's tests fail.
 js_status=0
-node --test --experimental-test-coverage \
+node --conditions=browser --test --experimental-test-coverage \
      --test-reporter=lcov --test-reporter-destination="$OUT/js.info" \
      --test-reporter=spec --test-reporter-destination=/dev/null \
      ui-kit/test/*.test.mjs plugins/*/ui/test/*.test.mjs >/dev/null 2>&1 || js_status=$?
 
+# THE COMPONENTS, WHICH ONLY A BROWSER RUNS. Every .jsx file -- the kit's
+# controls, each editor's App -- is invisible to node's coverage above; the
+# end-to-end suite drives all of it in Chrome, so it is run again here with
+# V8's coverage on (tests/e2e/harness.mjs) and mapped back to the sources
+# through a source-mapped build of each harness (scripts/e2e-coverage.mjs).
+echo "==> the editors, in Chrome"
+e2e_status=0
+rm -rf "$ROOT/build/e2e/coverage"
+NI_E2E_COVERAGE=1 node "$ROOT/node_modules/@playwright/test/cli.js" test \
+    --config tests/e2e/playwright.config.mjs --reporter=dot \
+    > "$OUT/e2e.log" 2>&1 || e2e_status=$?
+tail -1 "$OUT/e2e.log" | sed 's/^/    /'
+node "$ROOT/scripts/e2e-coverage.mjs" "$ROOT/build/e2e/coverage" "$ROOT/build/e2e/web" \
+    "$OUT/e2e.info" | sed 's/^/    /'
+
 # ------------------------------------------------------------------ report
 
 echo "==> report"
-cat "$OUT/native.info" "$OUT/rust.info" "$OUT/js.info" > "$OUT/lcov.info" 2>/dev/null || true
+tracefiles=( "$OUT/native.info" "$OUT/rust.info" "${capi_info[@]}" "$OUT/js.info" "$OUT/e2e.info" )
+cat "${tracefiles[@]}" > "$OUT/lcov.info" 2>/dev/null || true
 
 COVERAGE_ROOT="$ROOT" COVERAGE_OUT="$OUT" COVERAGE_FLOOR="$FLOOR" \
-    node "$ROOT/scripts/coverage-report.mjs" \
-        "$OUT/native.info" "$OUT/rust.info" "$OUT/js.info"
+    node "$ROOT/scripts/coverage-report.mjs" "${tracefiles[@]}"
 
 # ------------------------------------------------------------------- floor
 
-COVERAGE_JSON="$OUT/coverage.json" node --test "$ROOT/tests/coverage_floor.test.mjs"
-floor_status=$?
+floor_status=0
+COVERAGE_JSON="$OUT/coverage.json" node --test "$ROOT/tests/coverage_floor.test.mjs" \
+    || floor_status=$?
 
 if [ "$suite_status" -ne 0 ]; then
     echo "  NOTE: the suite itself failed (ctest exit $suite_status); see build/coverage/ctest.log" >&2
@@ -171,5 +225,11 @@ fi
 if [ "$js_status" -ne 0 ]; then
     echo "  NOTE: a UI test failed (node exit $js_status)" >&2
 fi
+if [ "$e2e_status" -ne 0 ]; then
+    echo "  NOTE: an end-to-end test failed (exit $e2e_status); see build/coverage/e2e.log" >&2
+fi
 
-exit $(( floor_status != 0 ? floor_status : (suite_status != 0 ? suite_status : js_status) ))
+for s in "$floor_status" "$suite_status" "$js_status" "$e2e_status"; do
+    [ "$s" -eq 0 ] || exit "$s"
+done
+exit 0
