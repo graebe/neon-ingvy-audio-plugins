@@ -38,10 +38,10 @@ test('loads without a console error and completes the ready handshake', async ({
 test('a double-click resets a knob to the default the plugin sent', async ({ page }) => {
   await open(page, 'side-chain');
   await clearSent(page);
-  /* The second press of a double-click as WebKit reports it: see the Trance
-   * Gate's spec -- Chrome leaves pointerdown's `detail` at 0. */
-  await knob(page, 'Depth').dispatchEvent('pointerdown', { detail: 2, bubbles: true, pointerType: 'mouse' });
+  await knob(page, 'Depth').dblclick();
   expect(await writes(page, P.depth)).toEqual([1]);
+  expect((await sent(page)).filter((m) => m.paramIdx === P.depth).map((m) => m.msg))
+    .toEqual(['BPCFUI', 'SPVFUI', 'EPCFUI']);
 });
 
 test('a knob drag is one gesture, and a host echo mid-drag does not move it', async ({ page }) => {
@@ -141,10 +141,14 @@ test('the two-axis handle opens and closes both gestures, and resets both', asyn
   expect((await writes(page, P.attack)).at(-1)).toBeGreaterThan(8 / 200);
 
   await clearSent(page);
-  await bottom.dispatchEvent('pointerdown', { detail: 2, bubbles: true, pointerType: 'mouse' });
+  await handle(page, 'Attack and depth').dblclick();
   /* Params.cpp's defaults, as the mock sends them: Attack 2 %, Depth 100 %. */
   expect(await writes(page, P.attack)).toEqual([2 / 200]);
   expect(await writes(page, P.depth)).toEqual([1]);
+  /* Two resets and nothing else: the presses under them moved nothing. */
+  expect(await gestures(page, [P.attack, P.depth])).toEqual([
+    'BPCFUI 4', 'SPVFUI 4', 'EPCFUI 4', 'BPCFUI 7', 'SPVFUI 7', 'EPCFUI 7',
+  ]);
 });
 
 test('the height is re-sent after a viewport resize', async ({ page }) => {

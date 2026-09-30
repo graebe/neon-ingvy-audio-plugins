@@ -39,16 +39,15 @@ test('a double-click resets a knob to the default the plugin sent', async ({ pag
   const amount = page.getByRole('slider', { name: 'Amount' });
   await expect(amount).toHaveAttribute('aria-valuenow', '0.9');
   await clearSent(page);
-  /*
-   * THE SECOND PRESS OF A DOUBLE-CLICK, AS THE PLUGIN'S WEBVIEW DELIVERS IT.
-   * The knob reads the click count from pointerdown's `detail`, which WebKit
-   * (WKWebView, the plugin's editor) fills in and Chrome leaves at 0 -- so a
-   * real dblclick in Chrome would reset nothing. See the report on this suite.
-   */
-  await amount.dispatchEvent('pointerdown', { detail: 2, bubbles: true, pointerType: 'mouse' });
+  /* A real double-click: two presses and releases, then `dblclick`. */
+  await amount.dblclick();
   /* The mock's defaults (tag 113) say Amount is 1 -- not 0, not the session's 0.9. */
   expect(await writes(page, P.amount)).toEqual([1]);
   await expect(amount).toHaveAttribute('aria-valuenow', '1');
+  /* ONE edit, one undo step: the two presses themselves moved nothing, so
+   * they told the host nothing -- no empty touch gestures around the reset. */
+  expect((await sent(page)).filter((m) => m.paramIdx === P.amount).map((m) => m.msg))
+    .toEqual(['BPCFUI', 'SPVFUI', 'EPCFUI']);
 });
 
 test('a knob drag is one gesture, and a host echo mid-drag does not move it', async ({ page }) => {

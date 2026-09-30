@@ -210,14 +210,6 @@ export function Shaper(props) {
     ev.preventDefault();
     ev.stopPropagation();
 
-    /* Double-click resets, via `detail` rather than a dblclick listener -- a
-     * separate listener fires after the drag has already moved the value. */
-    if (ev.detail === 2) {
-      /* To the plugin's own default for each axis the handle moves. */
-      for (const idx of [hnd.xIdx, hnd.yIdx]) if (idx !== undefined) props.onReset?.(idx);
-      return;
-    }
-
     const rect = host.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const sx = w() / rect.width;
@@ -229,9 +221,10 @@ export function Shaper(props) {
     const s0 = { ...p() };
 
     const idxs = [hnd.xIdx, hnd.yIdx].filter((i) => i !== undefined);
-    for (const i of idxs) beginGesture(i);
-    setHeld(true);
 
+    /* THE GESTURE OPENS ONCE THE DEAD ZONE IS LEFT, not at the press: a press
+     * that moves nothing -- a click, either half of a double-click -- is no
+     * edit and tells the host nothing. */
     let moved = false;
     startDrag(
       (mv) => {
@@ -239,6 +232,8 @@ export function Shaper(props) {
           if (Math.abs(mv.clientX - startX) < DEAD_ZONE
             && Math.abs(mv.clientY - startY) < DEAD_ZONE) return;
           moved = true;
+          for (const i of idxs) beginGesture(i);
+          setHeld(true);
         }
         const dPct = ((mv.clientX - startX) * sx) / plotW() * SPAN / fine;
 
@@ -269,8 +264,25 @@ export function Shaper(props) {
           setParam(hnd.yIdx, toNorm(hnd.yIdx, (s0.depth ?? 100) + dDepth * 100));
         }
       },
-      () => { for (const i of idxs) endGesture(i); setHeld(false); },
+      () => {
+        if (!moved) return;
+        for (const i of idxs) endGesture(i);
+        setHeld(false);
+      },
     );
+  };
+
+  /*
+   * Double-click resets, to the plugin's own default for each axis the handle
+   * moves. The `dblclick` event rather than pointerdown's `detail`, which only
+   * WebKit fills in -- Chromium leaves it at 0, so the reset did nothing there.
+   * It cannot land after a drag has moved the value: two presses inside the
+   * dead zone move nothing, and a press that left it is not a double-click.
+   */
+  const reset = (hnd, ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    for (const idx of [hnd.xIdx, hnd.yIdx]) if (idx !== undefined) props.onReset?.(idx);
   };
 
   let hostEl;
@@ -360,6 +372,7 @@ export function Shaper(props) {
           * move it -- a <For> over fresh objects rebuilt them on every value. */}
         <Index each={handles()}>{(h) => (
           <g class="handle" onPointerDown={(e) => grab(h(), e, hostEl)}
+             onDblClick={(e) => reset(h(), e)}
              tabindex="0" role="slider" aria-label={h().name}
              aria-valuemin="0" aria-valuemax="100"
              aria-valuenow={Math.round((props.value?.(h().xIdx) ?? 0) * 100)}

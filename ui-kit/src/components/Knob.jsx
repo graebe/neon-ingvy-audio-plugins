@@ -37,24 +37,45 @@ export function Knob(props) {
   const commitText = (text) => props.onText?.(text);
 
   const onPointerDown = (e) => {
-    /* Double-click resets -- to the PLUGIN's default, which only the caller
-     * knows (the params store has it from SHELL_MSG.defaults). */
-    if (e.detail === 2) {
-      props.onReset?.();
-      return;
-    }
     /* THE SENSITIVITY IS CHOSEN AT PRESS AND NOT RE-READ: the delta is
      * measured from the press position, so changing the divisor halfway
      * rescales everything since the press and the value jumps. */
     const divisor = e.shiftKey ? TRAVEL * FINE : TRAVEL;
     const startY = e.clientY, startV = norm();
-    props.onBegin?.();
+    /*
+     * THE GESTURE OPENS ON THE FIRST MOVE, NOT ON THE PRESS. A press that
+     * moves nothing -- a click, either half of a double-click -- is no edit,
+     * and a gesture around no edit is an empty touch in the host's automation
+     * lane and, around a double-click, two of them wrapped round the reset.
+     */
+    let begun = false;
     /* Tracked on the window, so the value keeps following the pointer once it
      * leaves the knob -- which is most of a real drag. */
     startDrag(
-      (ev) => props.onInput?.(
-        Math.min(1, Math.max(0, startV + (startY - ev.clientY) / divisor))),
-      () => props.onEnd?.());
+      (ev) => {
+        if (!begun) {
+          if (ev.clientY === startY) return;
+          begun = true;
+          props.onBegin?.();
+        }
+        props.onInput?.(Math.min(1, Math.max(0, startV + (startY - ev.clientY) / divisor)));
+      },
+      () => { if (begun) props.onEnd?.(); });
+  };
+
+  /*
+   * Double-click resets -- to the PLUGIN's default, which only the caller knows
+   * (the params store has it from SHELL_MSG.defaults).
+   *
+   * THE `dblclick` EVENT, NOT pointerdown's `detail`. The click count on
+   * pointerdown is WebKit's (WKWebView fills it in) and Chromium leaves it at
+   * 0 -- so a reset read from it worked in the macOS plugin and in no Chromium
+   * WebView at all. dblclick is fired by both, after the second release; the
+   * presses before it moved nothing and so sent nothing (above).
+   */
+  const onDblClick = (e) => {
+    e.preventDefault();
+    props.onReset?.();
   };
 
   /*
@@ -128,7 +149,7 @@ export function Knob(props) {
            tabindex="0" role="slider" aria-label={props.label}
            aria-valuetext={props.display ?? ''}
            aria-valuenow={norm()} aria-valuemin="0" aria-valuemax="1"
-           onPointerDown={onPointerDown} onKeyDown={onKeyDown}>
+           onPointerDown={onPointerDown} onDblClick={onDblClick} onKeyDown={onKeyDown}>
         {/* the well */}
         <circle cx="24" cy="24" r={BOX * (16 / 48)} fill="var(--bg-200)" />
         {/* the rail */}
