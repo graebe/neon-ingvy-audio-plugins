@@ -241,7 +241,19 @@ void ListenIn::SendState()
 void ListenIn::OnUIOpen()
 {
   iplug::Plugin::OnUIOpen();
+  /* The ground's detector runs only while an editor is open to show it. */
+  gnd_set_active(mGround, 1);
   SendState();
+}
+
+/*
+ * The ground's detector only drives the editor, so it stops with it. Here and
+ * not in OnUIClose, which WebViewEditorDelegate::CloseWindow never calls.
+ */
+void ListenIn::CloseWindow()
+{
+  gnd_set_active(mGround, 0);
+  iplug::Plugin::CloseWindow();
 }
 
 /*

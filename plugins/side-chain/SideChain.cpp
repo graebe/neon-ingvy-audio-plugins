@@ -522,6 +522,8 @@ void SideChain::OnUIOpen()
   /* QUALIFIED because under the CLAP target an unqualified `Plugin` is
    * clap::helpers::Plugin, which has no OnUIOpen. */
   iplug::Plugin::OnUIOpen();
+  /* The ground's detector runs only while an editor is open to show it. */
+  gnd_set_active(mGround, 1);
 
   /*
    * SENT HERE TOO, THOUGH IT IS USUALLY TOO EARLY TO BE HEARD.
@@ -534,6 +536,16 @@ void SideChain::OnUIOpen()
    * reopens the same WebView.
    */
   SendFullState();
+}
+
+/*
+ * The ground's detector only drives the editor, so it stops with it. Here and
+ * not in OnUIClose, which WebViewEditorDelegate::CloseWindow never calls.
+ */
+void SideChain::CloseWindow()
+{
+  gnd_set_active(mGround, 0);
+  iplug::Plugin::CloseWindow();
 }
 
 /*

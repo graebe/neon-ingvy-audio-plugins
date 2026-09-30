@@ -181,6 +181,8 @@ public:
   void SendGround();
 #endif
   void OnUIOpen() override;
+  /* Switches the ground's detector off; see the definition. */
+  void CloseWindow() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
 #endif
 

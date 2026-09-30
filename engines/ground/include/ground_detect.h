@@ -29,24 +29,38 @@
  *
  * THE THREAD RULES ARE PART OF THE ABI:
  *
- *   gnd_new / gnd_free                the main thread
- *   gnd_set_sample_rate / gnd_reset   the main thread
- *   gnd_push                          the audio thread, and only it
- *   gnd_fires / gnd_strength          any thread
+ *   gnd_new / gnd_free                        the main thread
+ *   gnd_push                                  the audio thread, one caller
+ *                                             at a time
+ *   gnd_set_sample_rate / gnd_reset /
+ *   gnd_set_active                            any thread
+ *   gnd_fires / gnd_strength                  any thread
+ *
+ * THE AUDIO THREAD OWNS THE DETECTOR. gnd_push is the only function that ever
+ * writes it. gnd_set_sample_rate, gnd_reset and gnd_set_active store a REQUEST
+ * in an atomic, and the next gnd_push applies it before it reads a sample. So
+ * a host that calls OnReset on the audio thread, on the main thread, or on a
+ * third thread while a block is in flight gets the same, race-free result.
  *
  * gnd_push allocates nothing, takes no lock and makes no system call.
  * gnd_new does all three, which is why it is not allowed near the audio thread.
+ *
+ * A NEW DETECTOR IS INACTIVE. It only drives an editor, so it does nothing --
+ * gnd_push returns at once -- until gnd_set_active(g, 1), and a plugin turns it
+ * off again when the editor closes. Turning it on asks for a reset as well.
  *
  * HOW A PLUGIN USES IT -- the whole of it, and it is the same in all four:
  *
  *     // OnReset
  *     gnd_set_sample_rate(mGround, GetSampleRate());
- *     gnd_reset(mGround);
+ *
+ *     // OnUIOpen / when the editor window closes
+ *     gnd_set_active(mGround, 1);   ...   gnd_set_active(mGround, 0);
  *
  *     // ProcessBlock, after the plugin has done its own work
  *     gnd_push(mGround, inputs[0], inputs[nChans > 1 ? 1 : 0], nFrames);
  *
- *     // OnIdle
+ *     // OnIdle -- FIRST, before anything in OnIdle can return early
  *     const uint32_t fires = gnd_fires(mGround);
  *     if (fires != mGroundFires) {          // != and not >, so a wrap is fine
  *         mGroundFires = fires;
@@ -106,18 +120,30 @@ gnd_t *gnd_new(double sample_rate);
 void gnd_free(gnd_t *g);
 
 /*
- * Reconfigure for a new sample rate and forget all detector state.
+ * Ask for a new sample rate and a clean detector. Any thread: the request is
+ * applied by the next gnd_push, on the audio thread, before it reads a sample.
  *
- * The onset count is deliberately NOT reset -- see gnd_fires. The main thread.
+ * The onset count is deliberately NOT reset -- see gnd_fires.
  */
 void gnd_set_sample_rate(gnd_t *g, double sample_rate);
 
 /*
- * Forget the detector's state, so that a transport stop does not fire an onset
- * on a stale envelope when playback resumes. Leaves the count alone. The main
- * thread.
+ * Ask for the detector's state to be forgotten, so that a transport stop does
+ * not fire an onset on a stale envelope when playback resumes. Leaves the count
+ * alone. Any thread; applied by the next gnd_push.
  */
 void gnd_reset(gnd_t *g);
+
+/*
+ * Switch the detector on (nonzero) or off (zero). A new detector is OFF.
+ *
+ * The detector exists to drive an editor, so a plugin switches it on when the
+ * editor opens and off when it closes; while it is off, gnd_push returns at
+ * once and costs the audio thread nothing. Switching on also asks for a reset,
+ * so a reopened editor starts from silence rather than from the hump the
+ * detector held when it was closed. Any thread.
+ */
+void gnd_set_active(gnd_t *g, int32_t active);
 
 /*
  * Feed one block of stereo. A mono plugin passes the same pointer twice.
@@ -130,8 +156,11 @@ void gnd_reset(gnd_t *g);
  * buffer, no chunking loop and no conversion, and the detector's arithmetic was
  * f64 all along.
  *
- * THE AUDIO THREAD, AND ONLY IT. NULL pointers or a non-positive `frames` are
- * a no-op rather than undefined behaviour: an empty block is ordinary.
+ * THE AUDIO THREAD, AND ONLY IT -- never two calls at once on one handle, which
+ * is what lets it own the detector without a lock. A pending reset or rate
+ * change is applied first; an inactive detector returns at once. NULL pointers
+ * or a non-positive `frames` are a no-op rather than undefined behaviour: an
+ * empty block is ordinary.
  *
  * The detector is the maximum of the two channels AFTER the band, not before,
  * so a kick panned hard left reads the same as a centred one. (Before the band

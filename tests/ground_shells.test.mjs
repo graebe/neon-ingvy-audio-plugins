@@ -16,6 +16,9 @@
  * What is asserted, per shell:
  *
  *   - OnIdle's first statement is SendGround(), before anything can return
+ *   - OnUIOpen switches the detector on
+ *   - CloseWindow switches it off, and chains to the base -- it is CloseWindow
+ *     and not OnUIClose because WebViewEditorDelegate never calls OnUIClose
  *
  *   node --test tests/ground_shells.test.mjs
  */
@@ -64,5 +67,18 @@ for (const [cls, file] of Object.entries(SHELLS)) {
     assert.ok(b, `${cls}::OnIdle not found in ${file}`);
     assert.equal(statements(b)[0], 'SendGround()',
       `${cls}::OnIdle must call SendGround() before anything that can return early`);
+  });
+
+  test(`${cls}: opening the editor switches the detector on`, () => {
+    const b = body(src, cls, 'OnUIOpen');
+    assert.ok(b, `${cls}::OnUIOpen not found in ${file}`);
+    assert.match(b, /gnd_set_active\(\s*mGround\s*,\s*1\s*\)/);
+  });
+
+  test(`${cls}: closing the editor switches the detector off`, () => {
+    const b = body(src, cls, 'CloseWindow');
+    assert.ok(b, `${cls}::CloseWindow not found in ${file} -- OnUIClose is never called by the WebView delegate`);
+    assert.match(b, /gnd_set_active\(\s*mGround\s*,\s*0\s*\)/);
+    assert.match(b, /iplug::Plugin::CloseWindow\(\)/, 'CloseWindow must chain to the base, or the WebView is never torn down');
   });
 }

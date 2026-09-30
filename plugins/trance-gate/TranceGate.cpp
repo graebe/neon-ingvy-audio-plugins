@@ -810,6 +810,8 @@ void TranceGate::OnUIOpen()
   /* QUALIFIED for the same reason the constructor is: under the CLAP target
    * an unqualified `Plugin` is clap::helpers::Plugin, which has no OnUIOpen. */
   iplug::Plugin::OnUIOpen();
+  /* The ground's detector runs only while an editor is open to show it. */
+  gnd_set_active(mGround, 1);
 
   /*
    * SENT HERE TOO, THOUGH IT IS USUALLY TOO EARLY TO BE HEARD.
@@ -821,6 +823,16 @@ void TranceGate::OnUIOpen()
    * already live -- a reload, or a host that reopens the same WebView.
    */
   SendFullState();
+}
+
+/*
+ * The ground's detector only drives the editor, so it stops with it. Here and
+ * not in OnUIClose, which WebViewEditorDelegate::CloseWindow never calls.
+ */
+void TranceGate::CloseWindow()
+{
+  gnd_set_active(mGround, 0);
+  iplug::Plugin::CloseWindow();
 }
 
 /*

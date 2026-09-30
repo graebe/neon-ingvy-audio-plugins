@@ -103,6 +103,8 @@ public:
   void SendFullState();
   void OnParamChangeUI(int paramIdx, iplug::EParamSource source) override;
   void OnUIOpen() override;
+  /* Switches the ground's detector off; see the definition. */
+  void CloseWindow() override;
   void OnIdle() override;
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* One message per onset, from OnIdle. */

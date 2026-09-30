@@ -135,6 +135,8 @@ enum EMsgTags
   void SendFullState();
   void OnParamChangeUI(int paramIdx, EParamSource source) override;
   void OnUIOpen() override;
+  /* Switches the ground's detector off; see the definition. */
+  void CloseWindow() override;
 
   /* Once per frame while the editor is open: the pattern, the playhead, the
    * step duration and the capture. Everything the plots and the ring draw
