@@ -55,7 +55,7 @@ message thread; the counter is what makes that safe without a lock -- see
 `sc_core_fires` is a counter rather than a flag.
 */
 
-use crate::biquad::Biquad;
+use crate::biquad::{flush, Biquad};
 
 /// Band, Hz. One 12 dB/oct Butterworth section at each end.
 pub(crate) const BAND_LO_HZ: f64 = 20.0;
@@ -197,6 +197,18 @@ impl Detector {
         self.env
     }
 
+    /// Every value the recursion carries from one sample to the next. For the
+    /// tests that pin what silence decays into -- see `flush`.
+    #[cfg(test)]
+    pub(crate) fn state(&self) -> Vec<f64> {
+        let mut v = vec![self.power, self.env, self.bed];
+        for b in &self.band {
+            v.extend_from_slice(&b.hp.state());
+            v.extend_from_slice(&b.lp.state());
+        }
+        v
+    }
+
     /// Feed one frame. Returns the onset on the sample it lands, else `None`.
     ///
     /// THE BAND COMES BEFORE THE RECTIFIER, and getting that order wrong is
@@ -224,9 +236,11 @@ impl Detector {
          * ground would be dead until the plugin was reloaded -- silently. And a
          * NaN reaching a biquad poisons its state, not just this sample, so it
          * is stopped here rather than after the band. */
+        /* The same guard also flushes a subnormal INPUT -- the tail of somebody
+         * else's reverb -- before it can be stored in a delay. See `flush`. */
         let clean = |v: f64| {
             if v.is_finite() {
-                v
+                flush(v)
             } else {
                 0.0
             }
@@ -234,10 +248,15 @@ impl Detector {
         let bl = self.band[0].next(clean(l)).abs();
         let br = self.band[1].next(clean(r)).abs();
         let band = if bl > br { bl } else { br };
-        /* A denormal or an unstable section would show up here rather than
-         * further down, where it would be indistinguishable from silence. */
+        /* An unstable section -- an infinity out of a feedback loop -- is
+         * stopped here rather than further down, where it would poison the three
+         * followers for good. (`is_finite` is true for a subnormal; those are
+         * kept out of the state by `flush`, not by this.) */
         let sq = if band.is_finite() { band * band } else { 0.0 };
-        self.power += (sq - self.power) * self.rms_c;
+        /* EVERY FOLLOWER IS FLUSHED AS IT IS STORED. Fed silence, each of them
+         * decays geometrically into the subnormal range and a one-pole then
+         * stays there -- see `flush` for why that is a cost worth a compare. */
+        self.power = flush(self.power + (sq - self.power) * self.rms_c);
         let rms = if self.power > 0.0 { self.power.sqrt() } else { 0.0 };
 
         let c = if rms > self.env {
@@ -245,7 +264,7 @@ impl Detector {
         } else {
             self.release_c
         };
-        self.env += (rms - self.env) * c;
+        self.env = flush(self.env + (rms - self.env) * c);
 
         /* The bed is read BEFORE this sample folds into it: a kick loud enough to
          * move the bed on one sample must not be allowed to raise its own
@@ -256,7 +275,7 @@ impl Detector {
         } else {
             self.bed_release_c
         };
-        self.bed += (self.env - self.bed) * bed_c;
+        self.bed = flush(self.bed + (self.env - self.bed) * bed_c);
 
         if self.refractory_left > 0.0 {
             self.refractory_left -= 1.0;

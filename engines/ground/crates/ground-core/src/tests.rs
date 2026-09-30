@@ -332,6 +332,57 @@ fn a_nan_in_the_buffer_does_not_kill_the_detector() {
 }
 
 #[test]
+fn silence_after_a_signal_decays_to_zero_not_to_subnormals() {
+    /*
+     * THE SILENCE PATH IS THE HOT PATH. Every plugin feeds this detector on
+     * every block, and most of a session is silence between clips. A one-pole
+     * or a biquad fed zeros decays geometrically towards zero and, without a
+     * flush, lands in the SUBNORMAL range and stays there: `x * (1 - c)` of a
+     * subnormal rounds back to the same subnormal once `x * c` underflows, and
+     * x86 and many ARM cores take a microcode assist on every operation with
+     * one. Nothing here sets FTZ/DAZ, and the Move's aarch64 is not ours to
+     * configure, so the detector has to keep its own state clean.
+     *
+     * The claim is checked all the way through the silence rather than only at
+     * the end, so that a value passing through the subnormal range on its way
+     * to zero also fails.
+     */
+    let mut d = Detector::new(SR);
+    run(&mut d, &kick(60.0, 0.05, samples(0.5)));
+    run(&mut d, &tone(40.0, samples(0.5)));
+    let block = samples(0.01);
+    let quiet = silence(block);
+    for n in 0..(300.0 / 0.01) as usize {
+        run(&mut d, &quiet);
+        for (i, v) in d.state().into_iter().enumerate() {
+            assert!(
+                v == 0.0 || v.is_normal(),
+                "state[{i}] = {v:e} is subnormal after {:.2} s of silence",
+                n as f64 * 0.01
+            );
+        }
+    }
+    assert!(
+        d.state().iter().all(|&v| v == 0.0),
+        "five minutes of silence must leave the detector at exactly zero: {:?}",
+        d.state()
+    );
+    /* And it still works from there. */
+    assert_eq!(run(&mut d, &kick(60.0, 0.05, samples(0.4))).len(), 1);
+}
+
+#[test]
+fn a_subnormal_input_does_not_enter_the_state() {
+    /* A host can hand over subnormals itself -- the tail of somebody else's
+     * reverb. They must not be let into the delays. */
+    let mut d = Detector::new(SR);
+    run(&mut d, &[f64::MIN_POSITIVE / 4.0; 256]);
+    for (i, v) in d.state().into_iter().enumerate() {
+        assert!(v == 0.0 || v.is_normal(), "state[{i}] = {v:e}");
+    }
+}
+
+#[test]
 fn reset_forgets_the_hump_but_not_the_contract() {
     let mut d = Detector::new(SR);
     run(&mut d, &kick(60.0, 0.05, samples(0.05)));
