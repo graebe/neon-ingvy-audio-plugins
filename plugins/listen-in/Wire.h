@@ -2,15 +2,9 @@
  * Listen-In's wire format, on its own so it can be tested.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * WHY THIS IS NOT IN ListenIn.cpp, which is the Spectrogram's reason and worth
- * restating because it is structural rather than stylistic: iplug::Plugin is a
- * typedef to IPlugVST3 or IPlugAU depending on which define is set, nothing can
- * construct one outside a plugin bundle, and IPlug_include_in_plug_hdr.h
- * #errors outside one. So NOTHING in the plugin class can be reached by a test.
- *
- * Anything that can be quietly wrong therefore lives here instead, in free
- * functions over plain data. This file includes <string> and <cstdio> and
- * nothing else, which is what lets tests/cpp link it on its own.
+ * A plugin class cannot be constructed outside a plugin bundle, so anything
+ * that can be quietly wrong lives here, in free functions over plain data, and
+ * tests/cpp links it alone.
  */
 #pragma once
 
@@ -33,9 +27,9 @@ enum Status
 /*
  * "<slot>:<status>:<peak>" -- e.g. "3:1:0.4271".
  *
- * Peak is fixed to four decimals rather than %g, because %g emits "1e-05" for
- * a quiet signal and the editor parses this with parseFloat on a split(':').
- * Four decimals is 0.0001, which is -80 dB: below anything a meter draws.
+ * Peak has four fixed decimals, '.' whatever the locale: never an exponent
+ * ("1e-05" for a quiet signal), because the editor splits on ':' and
+ * parseFloats. 0.0001 is -80 dB, below anything a meter draws.
  */
 std::string encode_state(int slot, int status, float peak);
 

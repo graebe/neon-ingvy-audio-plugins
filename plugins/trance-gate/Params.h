@@ -3,12 +3,10 @@
  * declared.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * Lifted out of TranceGate.cpp for the reason Wire.cpp and Patch.cpp were: a
- * test cannot link the plugin's own translation unit, and a parameter's display
- * text is something a host parses back. tests/cpp/tg_params.cpp declares these
- * on bare iplug::IParams -- the same class the plugin uses -- and checks that
- * every value survives value -> text -> value, the round trip a CLAP host (and
- * clap-validator's param-conversions) makes.
+ * Apart from the plugin class so a test can reach them: tests/cpp/tg_params.cpp
+ * declares these on bare iplug::IParams -- the class the plugin uses -- and
+ * checks every value survives value -> text -> value, the round trip a CLAP
+ * host (and clap-validator's param-conversions) makes.
  */
 #pragma once
 
@@ -19,11 +17,8 @@
 /*
  * THE FIFTEEN AUTOMATABLE VALUES, IN THE ENGINE'S OWN WIRE ORDER.
  *
- * This enum is deliberately tg_param_t's order, so the host index IS the
- * engine index and there is no mapping table between them to get wrong. The
- * JUCE build carried exactly such a table (a `wire[]` array) because its
- * parameter declaration order had drifted from the engine's; starting again
- * is a chance not to.
+ * Deliberately tg_param_t's order, so the host index IS the engine index and
+ * there is no mapping table between them to get wrong.
  */
 enum EParams
 {

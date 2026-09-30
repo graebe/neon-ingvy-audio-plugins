@@ -1,149 +1,68 @@
 /*
- * NI Side-Chain -- the iPlug2 shell. See SideChain.h for what it is allowed to do.
+ * NI Side-Chain -- the iPlug2 shell. See SideChain.h for what it may do.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "SideChain.h"
 #include "IPlug_include_in_plug_src.h"
-#include "shell_denormals.h"
 #include "Wire.h"
-#include "Params.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <string>
 
 using namespace iplug;
 
 SideChain::SideChain(const InstanceInfo& info)
-: iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
+: ni::WebPlugin(info, MakeConfig(kNumParams, kNumPresets), {"nisidechain", __FILE__})
 {
   /* Params.cpp, where a test can reach them. */
   sc::params::Declare([this](int i) { return GetParam(i); });
-
-#if IPLUG_DSP
   mShell = sc_shell_create(GetSampleRate() > 0.0 ? GetSampleRate() : 44100.0);
-#endif
-
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /*
-   * 65536, UP FROM iPlug2'S 8192 DEFAULT, because the scope push is the one
-   * message that can approach it and the transport TRUNCATES rather than fails.
-   * The Trance Gate's tail silently vanished from every frame before it found
-   * this; there is an assert at the push here for the same reason.
-   */
-  SetMaxJSStringLength(kMaxJSString);
-  /* file:// blocks the module script, so the page is served over a custom
-   * scheme instead. */
-  SetCustomUrlScheme("nisidechain");
-  SetEnableDevTools(true);
-  /* The ground's detector. Created here rather than in OnReset because OnReset
-   * may run on a real-time thread in some hosts and this allocates; the rate it
-   * is given now is corrected there. */
-  mGround = gnd_new(GetSampleRate());
-
-  mEditorInitFunc = [&]() {
-    LoadIndexHtml(__FILE__, GetBundleID());
-    EnableScroll(false);
-  };
-#endif
 }
 
 SideChain::~SideChain()
 {
   sc_shell_destroy(mShell);
   mShell = nullptr;
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  gnd_free(mGround);
-  mGround = nullptr;
-#endif
 }
 
 bool SideChain::SerializeState(IByteChunk& chunk) const
 {
-  return sc::params::Save(chunk, [this](IByteChunk& c) { return SerializeParams(c); });
+  return sc::params::Save(chunk, [this](IByteChunk& c) { return PutParams(c); });
 }
 
 int SideChain::UnserializeState(const IByteChunk& chunk, int startPos)
 {
   return sc::params::Load(
     chunk, startPos,
-    [this](const IByteChunk& c, int pos) { return shell::state::CheckParams(c, pos, *this); },
-    [this](const IByteChunk& c, int pos) { return UnserializeParams(c, pos); });
+    [this](const IByteChunk& c, int pos) { return CheckParams(c, pos); },
+    [this](const IByteChunk& c, int pos) { return GetParams(c, pos); });
 }
 
-#if IPLUG_DSP
-
-void SideChain::OnReset()
+void SideChain::ResetAudio()
 {
-  if (!mShell) return;
+  if (!mShell)
+    return;
   sc_shell_post_sample_rate(mShell, GetSampleRate());
 
-  /*
-   * SIZED HERE AND NEVER ON THE AUDIO THREAD.
-   *
-   * GetBlockSize() is what the host announced, but a host is allowed to hand
-   * over more than it announced -- so ProcessBlock chunks against this capacity
-   * rather than trusting the frame count. SC_MAX_BLOCK is the engine's own
-   * ceiling for the key buffer and there is no reason to reserve past it.
-   */
-  const int cap = std::max(64, std::min(GetBlockSize(), SC_MAX_BLOCK));
-  mL.assign(size_t(cap), 0.f);
-  mR.assign(size_t(cap), 0.f);
-  mDry.assign(size_t(cap), 0.f);
-  mGain.assign(size_t(cap), 1.f);
-  mSweep.assign(size_t(cap), 0.f);
-  mKeyL.assign(size_t(cap), 0.f);
-  mKeyR.assign(size_t(cap), 0.f);
-
-  /*
-   * A rate change invalidates every column, because a column is a slice of a
-   * cycle and the cycle has just changed length in samples. Bumping the
-   * generation retires them all without touching the values.
-   *
-   * THE WHOLE CAPTURE IS WRITTEN HERE, and `gain` alone is not enough.
-   * `std::atomic<float>` and `std::atomic<uint32_t>` members are DEFAULT-
-   * INITIALISED, which for these leaves them indeterminate -- reading one
-   * before it has been stored to is undefined behaviour, not "reads as zero".
-   *
-   * `seen` was the dangerous one: it is compared against the generation, so an
-   * indeterminate value that happened to match would publish a column of
-   * indeterminate audio as real. The window fills within one cycle and hides it,
-   * which is exactly the kind of bug that surfaces once, on someone else's
-   * machine, as a spike that reads as a transient.
-   */
-  mCapGen.fetch_add(1, std::memory_order_relaxed);
-  mCapCol = -1;
-  for (int i = 0; i < kScopeCols; i++)
-  {
-    mCap.dryLo[i].store(0.f, std::memory_order_relaxed);
-    mCap.dryHi[i].store(0.f, std::memory_order_relaxed);
-    mCap.wetLo[i].store(0.f, std::memory_order_relaxed);
-    mCap.wetHi[i].store(0.f, std::memory_order_relaxed);
-    mCap.gain[i].store(1.f, std::memory_order_relaxed);
-    /* Zero is never a live generation: mCapGen starts at 1 and only rises. */
-    mCap.seen[i].store(0u, std::memory_order_relaxed);
-  }
-
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /* A rate change re-derives every coefficient; the reset stops a hump left over
-   * from before the transport stopped firing an onset the moment it starts
-   * again. Neither touches the onset COUNT -- see gnd_fires. */
-  gnd_set_sample_rate(mGround, GetSampleRate());
-  gnd_reset(mGround);
-#endif
+  /* A host may hand over more than it announced, so ProcessAudio chunks
+   * against this capacity; SC_MAX_BLOCK is the engine's own ceiling. */
+  const size_t cap = size_t(std::max(64, std::min(GetBlockSize(), SC_MAX_BLOCK)));
+  mL.assign(cap, 0.f);
+  mR.assign(cap, 0.f);
+  mDry.assign(cap, 0.f);
+  mGain.assign(cap, 1.f);
+  mSweep.assign(cap, 0.f);
+  mKeyL.assign(cap, 0.f);
+  mKeyR.assign(cap, 0.f);
+  /* A column is a slice of a cycle, and the cycle just changed length. */
+  mScope.Clear();
 }
 
 /*
- * EVERY PARAMETER, EVERY BLOCK, UNCONDITIONALLY.
- *
- * OnParamChange is deliberately not implemented. Pushing on change means
- * maintaining a record of what was pushed and trusting the host to tell us
- * about every path that can move a value -- automation, a preset, a typed
- * entry, a control surface. Fifteen stores per block is nothing, and it removes
- * a whole class of "the host changed it and we missed it".
+ * EVERY PARAMETER, EVERY BLOCK. Pushing on change would trust the host to
+ * report every path that moves a value -- automation, a preset, typed text, a
+ * control surface. Fifteen stores is nothing.
  */
 void SideChain::PushParams(sc_core_t* core)
 {
@@ -154,8 +73,7 @@ void SideChain::PushParams(sc_core_t* core)
   sc_core_set_num(core, SC_P_ATTACK, GetParam(kAttack)->Value());
   sc_core_set_num(core, SC_P_HOLD, GetParam(kHold)->Value());
   sc_core_set_num(core, SC_P_RELEASE, GetParam(kRelease)->Value());
-  /* The engine takes 0..1; the host shows a percentage. One division, in one
-   * place, rather than a percentage inside the DSP. */
+  /* The engine takes 0..1; the host shows a percentage. */
   sc_core_set_num(core, SC_P_DEPTH, GetParam(kDepth)->Value() / 100.0);
   sc_core_set_num(core, SC_P_CURVE, GetParam(kCurve)->Value());
   sc_core_set_num(core, SC_P_CHANNEL, GetParam(kChannel)->Value());
@@ -167,104 +85,58 @@ void SideChain::PushParams(sc_core_t* core)
 }
 
 /*
- * MIDI, WITH ITS SAMPLE OFFSET KEPT.
- *
- * mOffset is the frame within the block the message belongs on, and honouring
- * it is the difference between a duck that lands where the note is and one that
- * lands at the top of whatever buffer the host happens to be using. At 256
- * frames that is up to 5 ms, and it is JITTER rather than latency -- the same
- * note lands on a different sample depending on where in the buffer it fell --
- * so it cannot be compensated for anywhere downstream.
+ * MIDI WITH ITS SAMPLE OFFSET: a duck lands on the note's sample rather than on
+ * the top of whatever buffer the host uses -- jitter, which nothing downstream
+ * could compensate. Not forwarded: a ducker echoing its trigger notes would arm
+ * the instrument after it.
  */
 void SideChain::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  /* The audio thread, ahead of the block the note belongs to -- so the engine
-   * is taken here too; a second begin in the same block is harmless. */
+  /* Ahead of the block the note belongs to; a second begin in one block is
+   * harmless. */
   sc_core_t* core = sc_shell_begin(mShell);
-  if (!core) return;
+  if (!core)
+    return;
   const unsigned char bytes[3] = {
     (unsigned char) msg.mStatus,
     (unsigned char) msg.mData1,
     (unsigned char) msg.mData2,
   };
   sc_core_on_midi(core, bytes, 3, msg.mOffset);
-  /* NOT forwarded: PLUG_DOES_MIDI_OUT is 0, and a ducker that echoed its
-   * trigger notes would arm the instrument after it. */
 }
 
-void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
+void SideChain::ProcessAudio(sample** inputs, sample** outputs, int nFrames)
 {
-  /* No denormals for the length of the block; the host's mode comes back on
-   * the way out. shell_denormals.h says why. */
-  const shell::ScopedFlushDenormals ftz;
-
   const int nOut = NOutChansConnected();
-  if (!mShell || nFrames <= 0 || nOut <= 0) return;
   const int cap = int(std::min(mL.size(), mR.size()));
-  if (cap <= 0) return;
+  if (!mShell || nFrames <= 0 || nOut <= 0 || cap <= 0)
+    return;
 
   /* Which channel is what -- per channel, never by counting them. */
   const sc::wire::InputMap in = sc::wire::map_inputs(
     IsChannelConnected(ERoute::kInput, 0), IsChannelConnected(ERoute::kInput, 1),
     IsChannelConnected(ERoute::kInput, 2), IsChannelConnected(ERoute::kInput, 3));
 
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /*
-   * THE GROUND'S DETECTOR SEES THE INPUT, and it is fed here -- at the top,
-   * before anything writes to `outputs` -- because a host may hand over the same
-   * buffer for in and out. No scratch buffer and no conversion: gnd_push takes
-   * doubles, which is what `sample` already is.
-   */
-  gnd_push(mGround, inputs[in.mainL], inputs[in.mainR], nFrames);
-#endif
-
   sc_core_t* core = sc_shell_begin(mShell);
   PushParams(core);
 
-  const bool stereoOut = nOut > 1;
-
-  /*
-   * THE AUX BUS, AND THE ONE THING THIS SIDE KNOWS THAT THE ENGINE CANNOT.
-   *
-   * Inputs 2 and 3 are the sidechain (Wire.h's map_inputs says why they always
-   * are). Whether they are CONNECTED is a question only the host can answer: an
-   * unpatched bus and a silent one are the same block of zeroes, and "no key"
-   * is a different message to the user from "nothing is playing".
-   */
   const bool haveKey = in.keyL >= 0;
   mKeyConnected.store(haveKey ? 1 : 0, std::memory_order_relaxed);
   sc_core_set_key_connected(core, haveKey ? 1 : 0);
+  const bool stereoOut = nOut > 1;
+  const bool capture = EditorIsOpen();
 
-  for (int off = 0; off < nFrames; off += cap)
-  {
-    const int n = std::min(cap, nFrames - off);
-
-    for (int i = 0; i < n; i++)
-    {
-      mL[i] = float(inputs[in.mainL][off + i]);
-      mR[i] = float(inputs[in.mainR][off + i]);
-    }
+  ni::wire::for_each_chunk(nFrames, cap, [&](int off, int n) {
+    ni::wire::to_float(inputs[in.mainL] + off, mL.data(), n);
+    ni::wire::to_float(inputs[in.mainR] + off, mR.data(), n);
     std::memcpy(mDry.data(), mL.data(), sizeof(float) * size_t(n));
 
     if (haveKey)
     {
-      for (int i = 0; i < n; i++)
-      {
-        mKeyL[i] = float(inputs[in.keyL][off + i]);
-        mKeyR[i] = float(inputs[in.keyR][off + i]);
-      }
-      /*
-       * REPORTED, NOT WORKED AROUND. Logic and GarageBand copy bus 1 into the
-       * sidechain bus when nothing is patched. iPlug2's own example papers over
-       * it with a memcmp and a comment calling the workaround imperfect, saying
-       * the better answer is an explicit enable -- which Side-Chain has, in the
-       * Source parameter. So this only tells the editor, which is the one thing
-       * that would otherwise be actively misleading: a key meter moving in time
-       * with the track's own audio reads as a working sidechain.
-       */
-      mKeyIsMain.store(
-        sc::wire::key_is_duplicate(mDry.data(), mKeyL.data(), n) ? 1 : 0,
-        std::memory_order_relaxed);
+      ni::wire::to_float(inputs[in.keyL] + off, mKeyL.data(), n);
+      ni::wire::to_float(inputs[in.keyR] + off, mKeyR.data(), n);
+      mKeyIsMain.store(sc::wire::key_is_duplicate(mDry.data(), mKeyL.data(), n) ? 1 : 0,
+                       std::memory_order_relaxed);
       sc_core_push_key_f32(core, mKeyL.data(), mKeyR.data(), n);
     }
     else
@@ -272,326 +144,58 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       mKeyIsMain.store(0, std::memory_order_relaxed);
     }
 
-    /*
-     * THE TRANSPORT. `-1` beats means NO TRANSPORT, which is not beat zero: a
-     * stopped host must never be handed a stale position. And a running host
-     * that reports a negative position is not running as far as we are
-     * concerned -- that combination is a host bug, and believing it would make
-     * the phase-locked loop chase a target behind the start of time.
-     */
-    sc_transport_t t;
-    t.running = GetTransportIsRunning() ? 1 : 0;
-    t.bpm = float(GetTempo() > 0.0 ? GetTempo() : 120.0);
-    t.beats = t.running ? GetPPQPos() : -1.0;
-    if (t.running && t.beats < 0.0) { t.running = 0; t.beats = -1.0; }
-    /* A block longer than the reserved capacity is processed in chunks, and
-     * every chunk is a CONTINUATION -- without advancing the position here the
-     * engine would place a whole block's triggers on one instant, which at a
-     * long block is a stutter locked to the buffer size rather than the grid. */
+    /* The host's position at the block, advanced to this chunk. */
+    const ni::wire::Transport host = HostTransport();
+    sc_transport_t t = {host.running, host.beats, host.bpm};
     if (off > 0 && t.running)
-      t.beats = sc::wire::advance_beats(t.beats, off, double(t.bpm), GetSampleRate());
+      t.beats = ni::wire::advance_beats(t.beats, off, double(t.bpm), GetSampleRate());
 
-    sc_core_process_f32_split_tap(core, mL.data(), mR.data(), mGain.data(),
-                                    mSweep.data(), n, &t);
+    sc_core_process_f32_split_tap(core, mL.data(), mR.data(), mGain.data(), mSweep.data(), n, &t);
+    if (capture)
+      mScope.Push(mDry.data(), mL.data(), mGain.data(), mSweep.data(), n);
 
-    CaptureBlock(mDry.data(), mL.data(), mGain.data(), mSweep.data(), n);
-
-    for (int i = 0; i < n; i++)
-    {
-      outputs[0][off + i] = sample(mL[i]);
-      if (stereoOut) outputs[1][off + i] = sample(mR[i]);
-    }
-  }
+    ni::wire::from_float(mL.data(), outputs[0] + off, n);
+    if (stereoOut)
+      ni::wire::from_float(mR.data(), outputs[1] + off, n);
+  });
 
   sc_shell_end(mShell, nFrames);
 }
 
-/*
- * THE CAPTURE, BINNED BY THE ENGINE'S OWN SWEEP.
- *
- * The column index comes from `mSweep[i]`, which the engine wrote -- so there
- * is no copy of the phase arithmetic here to drift out of step with the sound.
- * See SideChain.h for why the window is phase-locked rather than rolling.
- */
-void SideChain::CaptureBlock(const float* dry, const float* wet, const float* gain,
-                        const float* sweep, int frames)
+/* What the audio thread last published -- never the engine itself. */
+void SideChain::OnEditorIdle()
 {
-  const uint32_t gen = mCapGen.load(std::memory_order_relaxed);
-
-  const auto flush = [&](int col) {
-    if (col < 0) return;
-    mCap.dryLo[col].store(mCapDryLo, std::memory_order_relaxed);
-    mCap.dryHi[col].store(mCapDryHi, std::memory_order_relaxed);
-    mCap.wetLo[col].store(mCapWetLo, std::memory_order_relaxed);
-    mCap.wetHi[col].store(mCapWetHi, std::memory_order_relaxed);
-    mCap.gain[col].store(mCapGain, std::memory_order_relaxed);
-    /* Published LAST, and with release, so a reader that sees this column as
-     * seen also sees the five values above it. */
-    mCap.seen[col].store(gen, std::memory_order_release);
-  };
-
-  for (int i = 0; i < frames; i++)
-  {
-    /* The sweep is 0..1 inclusive, so 1.0 would index one past the end. */
-    int col = int(sweep[i] * float(kScopeCols));
-    col = std::min(kScopeCols - 1, std::max(0, col));
-
-    if (col != mCapCol)
-    {
-      flush(mCapCol);
-      mCapCol = col;
-      /* A new column starts FROM THIS SAMPLE rather than widening the last
-       * one's bounds -- otherwise every column would eventually hold the
-       * maximum of the whole cycle and the picture would be a solid block. */
-      mCapDryLo = mCapDryHi = dry[i];
-      mCapWetLo = mCapWetHi = wet[i];
-      mCapGain = gain[i];
-      continue;
-    }
-
-    if (dry[i] < mCapDryLo) mCapDryLo = dry[i];
-    if (dry[i] > mCapDryHi) mCapDryHi = dry[i];
-    if (wet[i] < mCapWetLo) mCapWetLo = wet[i];
-    if (wet[i] > mCapWetHi) mCapWetHi = wet[i];
-    /* The MINIMUM gain: the deepest the duck got in this column, which is the
-     * thing being looked at. */
-    if (gain[i] < mCapGain) mCapGain = gain[i];
-  }
-
-  /*
-   * AND THE COLUMN STILL BEING FILLED, so the picture is at most one block
-   * behind rather than waiting for the sweep to move on.
-   *
-   * This is not cosmetic: when the sweep SATURATES at 1.0 -- a MIDI or
-   * sidechain source that has not fired again -- the index stops changing, and
-   * without this the last column would never be written at all.
-   */
-  flush(mCapCol);
-}
-
-#endif /* IPLUG_DSP */
-
-#if IPLUG_EDITOR
-
-void SideChain::SendDisplay(int paramIdx)
-{
-  if (paramIdx < 0 || paramIdx >= kNumParams) return;
-  WDL_String str;
-  GetParam(paramIdx)->GetDisplay(str);
-  SendArbitraryMsgFromDelegate(paramIdx, str.GetLength(), str.Get());
-}
-
-/*
- * EVERY VALUE AND EVERY STRING. The values because the editor holds nothing but
- * normalised numbers, and the strings because it cannot format one -- it does
- * not know a unit, a precision or an enum's labels, by design.
- */
-void SideChain::SendFullState()
-{
-  SendCurrentParamValuesFromDelegate();
-  for (int i = 0; i < kNumParams; i++)
-    SendDisplay(i);
-}
-
-void SideChain::OnParamChangeUI(int paramIdx, EParamSource source)
-{
-  SendDisplay(paramIdx);
-}
-
-void SideChain::OnUIOpen()
-{
-  /* QUALIFIED because under the CLAP target an unqualified `Plugin` is
-   * clap::helpers::Plugin, which has no OnUIOpen. */
-  iplug::Plugin::OnUIOpen();
-  /* The ground's detector runs only while an editor is open to show it. */
-  gnd_set_active(mGround, 1);
-
-  /*
-   * SENT HERE TOO, THOUGH IT IS USUALLY TOO EARLY TO BE HEARD.
-   *
-   * This fires from didFinishNavigation, and a <script type="module"> is
-   * DEFERRED -- it evaluates after the document is done, so globalThis.SPVFD
-   * does not exist yet and every one of these goes nowhere. kMsgReady is what
-   * actually delivers them. It stays because it costs thirty small messages and
-   * covers the case where the page is already live: a reload, or a host that
-   * reopens the same WebView.
-   */
-  SendFullState();
-}
-
-/*
- * The ground's detector only drives the editor, so it stops with it. Here and
- * not in OnUIClose, which WebViewEditorDelegate::CloseWindow never calls.
- */
-void SideChain::CloseWindow()
-{
-  gnd_set_active(mGround, 0);
-  iplug::Plugin::CloseWindow();
-}
-
-/*
- * ONE FRAME'S WORTH OF EVERYTHING THE EDITOR DRAWS THAT IS NOT A PARAMETER.
- *
- * OnIdle runs off a timer created in the API wrapper's constructor at
- * IDLE_TIMER_RATE, so ~50 Hz at best and not tied to the editor being open.
- * That is why the editor treats the phase it receives as an ANCHOR and
- * interpolates from it on requestAnimationFrame: reading this directly stutters
- * and drifts audibly against the sound.
- */
-/*
- * One message per kick, and only when there has been one. The idiom, and why the
- * count is compared with != rather than >, is in ground_detect.h.
- */
-void SideChain::SendGround()
-{
-  if (!mGround) return;
-  const uint32_t fires = gnd_fires(mGround);
-  if (fires == mGroundFires) return;
-  mGroundFires = fires;
-
-  char b[16];
-  const int gn = snprintf(b, sizeof b, "%.3f", gnd_strength(mGround));
-  if (gn > 0)
-    SendArbitraryMsgFromDelegate(kMsgGround, gn, b);
-}
-
-void SideChain::OnIdle()
-{
-  /* One ring per kick the detector found since the last tick. FIRST, so no
-   * early return below can starve the ground -- see ground_detect.h. */
-  SendGround();
-
-  if (!mShell) return;
-
-  /* What the audio thread last published -- never the engine itself. */
   char buf[SC_STATE_MAX];
   if (sc_shell_read(mShell, "ui", buf, int(sizeof buf)) > 0)
-    SendArbitraryMsgFromDelegate(kMsgUiState, int(strlen(buf)), buf);
+    SendFramed(kMsgUiState, buf, int(strlen(buf)));
   if (sc_shell_read(mShell, "params", buf, int(sizeof buf)) > 0)
-    SendArbitraryMsgFromDelegate(kMsgParams, int(strlen(buf)), buf);
+    SendFramed(kMsgParams, buf, int(strlen(buf)));
   if (sc_shell_read(mShell, "stage_ms", buf, int(sizeof buf)) > 0)
-    SendArbitraryMsgFromDelegate(kMsgStageMs, int(strlen(buf)), buf);
+    SendFramed(kMsgStageMs, buf, int(strlen(buf)));
 
-  {
-    /* "<keyConnected>:<keyIsMain>" -- the two facts only this side knows. */
-    char b[16];
-    const int n = snprintf(b, sizeof b, "%d:%d",
-                           mKeyConnected.load(std::memory_order_relaxed),
-                           mKeyIsMain.load(std::memory_order_relaxed));
-    SendArbitraryMsgFromDelegate(kMsgBuses, n, b);
-  }
+  char buses[16];
+  const int n = snprintf(buses, sizeof buses, "%d:%d",
+                         mKeyConnected.load(std::memory_order_relaxed),
+                         mKeyIsMain.load(std::memory_order_relaxed));
+  SendFramed(kMsgBuses, buses, n);
 
-  /*
-   * THE SCOPE, AS HEX BYTES -- AND THE SIZE IS THE WHOLE POINT.
-   *
-   * SendArbitraryMsgFromDelegate formats through
-   * WDL_String::SetFormatted(mMaxJSStringLength, ...), which TRUNCATES rather
-   * than fails, and base64 inflates by a third on top. The Trance Gate sent
-   * four "%.3f" per column and lost the right-hand edge of its picture every
-   * single frame without any error anywhere.
-   *
-   * A byte per bound is finer than the plot can draw. Five bytes a column here:
-   * the dry's low and high, the wet's low and high, and the gain that was
-   * applied -- 2560 hex characters, plus one seen-flag per column.
-   *
-   * THE SEEN FLAGS ARE NOT PADDING. With a phase-locked sweep there is no head
-   * cursor to orient the window by, so nothing otherwise distinguishes a column
-   * holding silence from one the sweep has not reached yet -- and the first
-   * cycle after loading would draw a flat line across the rest of the window,
-   * which reads as a signal that stopped.
-   */
-  {
-    static const char* kHex = "0123456789ABCDEF";
-    const uint32_t gen = mCapGen.load(std::memory_order_relaxed);
-
-    char scope[kScopeCols * 11 + 64];
-    int n = snprintf(scope, sizeof scope, "%d:", kScopeCols);
-
-    for (int i = 0; i < kScopeCols; i++)
-      scope[n++] = (mCap.seen[i].load(std::memory_order_acquire) == gen) ? '1' : '0';
-    scope[n++] = ':';
-
-    const auto put = [&](unsigned char b) {
-      scope[n++] = kHex[(b >> 4) & 0xF];
-      scope[n++] = kHex[b & 0xF];
-    };
-    for (int i = 0; i < kScopeCols; i++)
-    {
-      put(sc::wire::encode_sample(mCap.dryLo[i].load(std::memory_order_relaxed)));
-      put(sc::wire::encode_sample(mCap.dryHi[i].load(std::memory_order_relaxed)));
-      put(sc::wire::encode_sample(mCap.wetLo[i].load(std::memory_order_relaxed)));
-      put(sc::wire::encode_sample(mCap.wetHi[i].load(std::memory_order_relaxed)));
-      /* The gain is unipolar, so it gets the unipolar encoder -- through the
-       * bipolar one every value would land in 128..255 and the trace would
-       * arrive at seven bits, reading as a coarse meter rather than a bug. */
-      put(sc::wire::encode_unipolar(mCap.gain[i].load(std::memory_order_relaxed)));
-    }
-    scope[n] = '\0';
-
-    /* The guard the Trance Gate lacked until the symptom was traced -- on the
-     * buffer's own size, so it holds in a release build too. */
-    static_assert(sc::wire::framed_size(int(sizeof scope)) < kMaxJSString,
-                  "the scope push no longer fits the WebView's string cap");
-    SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
-  }
+  SendScope();
 }
 
-bool SideChain::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
+/*
+ * "<cols>:" a seen flag per column ":" then five hex bytes a column -- dry
+ * low/high, wet low/high, the gain. The flags are how the editor tells a
+ * column the sweep has not reached from one holding silence.
+ */
+void SideChain::SendScope()
 {
-  std::string arg(static_cast<const char*>(pData),
-                  size_t(dataSize > 0 ? dataSize : 0));
-
-  switch (msgTag)
-  {
-    /*
-     * TYPING IN A READOUT. The editor holds normalised values and no units, so
-     * it cannot parse "-18 dB" or "1/8" -- this side owns the format in both
-     * directions and is the only one that can. StringToValue is the same parser
-     * the host uses for a typed automation value.
-     */
-    case kMsgSetText:
-    {
-      std::string idxText, valText;
-      if (!sc::wire::split_pair(arg, idxText, valText)) return true;
-      const int idx = std::atoi(idxText.c_str());
-      if (idx < 0 || idx >= kNumParams) return true;
-      const double v = GetParam(idx)->StringToValue(valText.c_str());
-      /* Through the host, not straight into the parameter: a typed value is an
-       * edit like any other and belongs in the undo history and the automation
-       * lane. */
-      BeginInformHostOfParamChangeFromUI(idx);
-      SendParameterValueFromUI(idx, GetParam(idx)->ToNormalized(v));
-      EndInformHostOfParamChangeFromUI(idx);
-      SendDisplay(idx);
-      return true;
-    }
-
-    /*
-     * THE EDITOR REPORTS THE HEIGHT IT NEEDS, already in the viewport's own
-     * pixels -- it is the side that knows both its content and the scale it had
-     * to apply to fit the width it was given.
-     *
-     * Which makes the number UNTRUSTED here: an arithmetic slip in the editor
-     * arrives as a request for a 40 000 pixel window, and the host will honour
-     * it. clamp_editor_height is the refusal.
-     */
-    case kMsgHeight:
-    {
-      const int h = sc::wire::clamp_editor_height(std::atoi(arg.c_str()));
-      if (h && h != GetEditorHeight())
-        EditorResizeFromUI(GetEditorWidth(), h, true);
-      return true;
-    }
-
-    /* THE PAGE IS LIVE. Everything OnUIOpen tried to send before the module
-     * script existed, sent again now that there is something to receive it. */
-    case kMsgReady:
-      SendFullState();
-      return true;
-
-    default:
-      return false; /* not ours -- let the base class see it */
-  }
+  char scope[kScopeCols * 11 + 64];
+  char* p = scope + snprintf(scope, sizeof scope, "%d:", kScopeCols);
+  for (int i = 0; i < kScopeCols; i++)
+    *p++ = mScope.Seen(i) ? '1' : '0';
+  *p++ = ':';
+  for (int i = 0; i < kScopeCols; i++)
+    p = mScope.PutColumn(p, i, true);
+  *p = '\0';
+  SendFramed(kMsgScope, scope, int(p - scope));
 }
-
-#endif /* IPLUG_EDITOR */

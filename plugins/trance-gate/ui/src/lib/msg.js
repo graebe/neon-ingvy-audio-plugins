@@ -1,45 +1,18 @@
 /*
  * This editor's message tags. Copyright (c) 2026 Torben Gräber. MIT.
  *
- * NOT IN THE KIT, and that is the seam: @ultraviolet/ui carries the iPlug2
- * bridge because it is identical for every plugin, but EMsgTags is this
- * plugin's own vocabulary and has nothing to say to any other.
+ * The shell's tags are the kit's (@ultraviolet/ui/shell), the same in every
+ * plugin; the rest are this plugin's own vocabulary. tests/editor_tags.test.mjs
+ * holds both to the C++.
  */
-/*
- * THE MESSAGE TAGS, mirroring EMsgTags in TranceGate.h. Tags 0..14 are a
- * parameter's display string, tagged with the parameter's own index -- which is
- * why the first real tag is 64 and not 16: the range grows with the parameter
- * count, and it has grown once already.
- */
+import { SHELL_MSG } from '@ultraviolet/ui/shell';
+
+/* EMsgTags in TranceGate.h, after the shell's. Tags 0..NUM_PARAMS-1 are a
+ * parameter's display string, tagged with its index. */
 export const MSG = {
+  ...SHELL_MSG,
   uiState: 64, params: 65, scope: 66, patch: 67,
-  /*
-   * <- plugin: one kick, as a strength in 0..1.
-   *
-   * SPARSE, unlike the readouts above: it arrives only when the detector fires,
-   * and each message is exactly one ring on the ground. The detection happens in
-   * Rust on the audio thread because a WebView has no access to the host's audio
-   * -- engines/ground/include/ground_detect.h says why at length.
-   */
-  ground: 68,
   setStep: 96, setDepth: 97, setCursor: 98, requestPatch: 99,
-  setText: 100, rows: 101,
-  /*
-   * "I AM LISTENING", and it has to exist because the plugin's push on open
-   * CANNOT be heard.
-   *
-   * OnUIOpen fires from didFinishNavigation and calls SPVFD() twelve times.
-   * But this editor is a <script type="module">, module scripts are DEFERRED,
-   * and so they evaluate AFTER the document is done -- globalThis.SPVFD does
-   * not exist yet and all twelve values are dropped. The UI then sat on
-   * twelve zeroes until something was touched, which showed up as four
-   * separate faults: a knob whose first drag jumped to zero, a switch drawn
-   * off whatever the engine held, and two dropdowns stuck on their first
-   * entry.
-   *
-   * Sent from onMount, so it cannot be early.
-   */
-  ready: 102,
   /* "<index>:<rank>" -- a step's place in the fade's arrival order. Per-step
    * state, so a message and not a parameter, exactly like setDepth. */
   setOrder: 103,
@@ -48,9 +21,15 @@ export const MSG = {
   randomize: 104,
   /*
    * "<length>:<perStep>:<hex>" -- the gate across one cycle, as the ENGINE
-   * applies it. Not a description this side draws from: the samples themselves,
-   * rendered by a scratch engine with a DC input. What used to be modelled here
-   * got a release outliving its step wrong, which is most settings.
+   * applies it: the samples themselves, rendered by a scratch engine with a DC
+   * input, not a description drawn from.
    */
   gate: 105,
 };
+
+/* EParams in Params.h, which is the engine's own Param order -- so the host
+ * index IS the engine index. Fade and its two switches are APPENDED. */
+export const P = { slot: 0, length: 1, rate: 2, legato: 3, timeMode: 4, curve: 5,
+                   amount: 6, width: 7, attack: 8, decay: 9, sustain: 10, release: 11,
+                   fade: 12, fadeSoft: 13, fadeDir: 14 };
+export const NUM_PARAMS = 15;

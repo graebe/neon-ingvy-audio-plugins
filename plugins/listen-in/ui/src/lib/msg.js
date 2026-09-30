@@ -1,37 +1,17 @@
 /*
  * This editor's message tags. Copyright (c) 2026 Torben Gräber. MIT.
  *
- * NOT IN THE KIT, and that is the seam: @ultraviolet/ui carries the iPlug2
- * bridge because it is identical for every plugin, but EMsgTags is this
- * plugin's own vocabulary and has nothing to say to any other.
- *
- * Mirroring EMsgTags in ListenIn.h.
+ * The shell's tags are the kit's (@ultraviolet/ui/shell), the same in every
+ * plugin; the rest are this plugin's own vocabulary. tests/editor_tags.test.mjs
+ * holds both to the C++.
  */
+import { SHELL_MSG } from '@ultraviolet/ui/shell';
+
+/* EMsgTags in ListenIn.h, after the shell's. */
 export const MSG = {
+  ...SHELL_MSG,
   state: 64,  /* <- plugin: "<slot>:<status>:<peak>"        */
-  /*
-   * <- plugin: one kick, as a strength in 0..1.
-   *
-   * SPARSE, unlike `state`: it arrives only when the detector fires, and each
-   * message is exactly one ring on the ground. The detection happens in Rust on
-   * the audio thread because a WebView has no access to the host's audio --
-   * engines/ground/include/ground_detect.h says why at length.
-   */
-  ground: 65,
   label: 96,  /* <-> plugin: the display name, both ways    */
-  /*
-   * "I AM LISTENING", and it has to exist because the plugin's push on open
-   * CANNOT be heard.
-   *
-   * OnUIOpen fires from didFinishNavigation and sends the state. But this
-   * editor is a <script type="module">, module scripts are DEFERRED, and so
-   * they evaluate AFTER the document is done -- globalThis.SAMFD does not exist
-   * yet and the state is dropped. The window would then show slot 1, idle,
-   * whatever the plugin actually holds.
-   *
-   * Sent from onMount, so it cannot be early.
-   */
-  ready: 102,
 };
 
 /* Mirroring listenin::wire::Status in Wire.h. */

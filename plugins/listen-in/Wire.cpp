@@ -1,15 +1,12 @@
 /*
- * Listen-In's wire format. See Wire.h for why it is not in ListenIn.cpp.
+ * Listen-In's wire format. See Wire.h.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * <string>, <cstdio> and audio_bus.h -- for ABUS_MAX_SLOT, a macro, so nothing
- * is linked -- and deliberately nothing else: tests/cpp links this translation
- * unit on its own, and an include of anything iPlug2 would put it back out of
- * reach.
+ * audio_bus.h only for ABUS_MAX_SLOT, a macro: nothing is linked, and
+ * tests/cpp links this translation unit on its own.
  */
 #include "Wire.h"
-
-#include <cstdio>
+#include "ni/Wire.h"
 
 #include "audio_bus.h"
 
@@ -25,9 +22,13 @@ std::string encode_state(int slot, int status, float peak)
    * this format gets the same answer. */
   if (peak > 1.f) peak = 1.f;
 
-  char buf[64];
-  std::snprintf(buf, sizeof(buf), "%d:%d:%.4f", slot, status, double(peak));
-  return std::string(buf);
+  std::string out;
+  ni::wire::append_int(out, slot);
+  out += ':';
+  ni::wire::append_int(out, status);
+  out += ':';
+  ni::wire::append_fixed(out, double(peak), 4);
+  return out;
 }
 
 int parse_label(const char* in, char* out, int cap)
@@ -57,14 +58,9 @@ int parse_label(const char* in, char* out, int cap)
    * one the editor's TextDecoder refuses outright, so the whole message is
    * lost and the editor silently stops updating.
    *
-   * THE FIRST VERSION OF THIS WALKED BACK OVER CONTINUATION BYTES AND THEN
-   * DROPPED THE LEAD BYTE UNCONDITIONALLY, which is right for a cut sequence
-   * and WRONG FOR EVERY COMPLETE ONE: "Bä" is 42 C3 A4, and it came back as
-   * "B". A name that fits perfectly is the common case, so the common case was
-   * the broken one.
-   *
-   * So: find the last sequence's lead byte, ask how many bytes it promises,
-   * and drop it only if that many are not actually there.
+   * Find the last sequence's lead byte, ask how many bytes it promises, and
+   * drop it only if that many are not there -- a complete "Bä" (42 C3 A4)
+   * must survive whole.
    */
   {
     int i = n - 1;

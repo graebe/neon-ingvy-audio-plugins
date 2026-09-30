@@ -24,8 +24,7 @@
  * blob that the other shell parses back byte for byte. A typed C struct would
  * have been tidier and would have needed a second serialiser to go with it.
  *
- * MIT, like the module. The plugin shell around it may be GPL; that does not
- * flow back into this file.
+ * MIT, like everything in this repository.
  */
 #ifndef TRANCE_GATE_CORE_H
 #define TRANCE_GATE_CORE_H

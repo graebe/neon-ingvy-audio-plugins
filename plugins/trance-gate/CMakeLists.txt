@@ -4,5 +4,4 @@ ni_add_plugin(NITranceGate
     TranceGate.cpp TranceGate.h
     Params.cpp Params.h
     Patch.cpp Patch.h
-    Wire.cpp Wire.h
   LINK tg_engine)

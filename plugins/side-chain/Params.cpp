@@ -3,29 +3,13 @@
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "Params.h"
+#include "sc_core.h"
 #include "shell_state.h"
 
 using iplug::IParam;
 
 namespace sc {
 namespace params {
-
-/*
- * THE RATE LABELS ARE THE ENGINE'S TABLE, re-declared here because iPlug2's
- * InitEnum wants them at the call. They are `rates.rs`'s RATES in order, and
- * the engine will happily report its own via get_param("rate_label") -- which
- * is what the editor reads, so a drift here shows up as a host menu that
- * disagrees with the plugin's own readout rather than as a silent wrong rate.
- *
- * `1/1` IS HERE AND IS NOT IN THE TRANCE GATE'S TABLE. A bar-long step is not
- * a gate; a bar-long duck is the long swell under a build.
- */
-static const char* const kRateLabels[] = {
-  "1/1", "1/1T", "1/2", "1/2T", "1/4", "1/4T",
-  "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T",
-};
-static constexpr int kNumRates = int(sizeof kRateLabels / sizeof kRateLabels[0]);
-static constexpr int kRateDefault = 4; /* 1/4 -- rates.rs's RATE_DEFAULT */
 
 /*
  * A UNIT PASSED AS InitDouble's `label` NEVER REACHES AN AU HOST: iPlug2's AU
@@ -75,10 +59,17 @@ void Declare(const std::function<IParam*(int)>& param)
 {
   param(kSource)->InitEnum("Source", 0, 3, "", 0, "",
                               "Cycle", "MIDI", "Sidechain");
-  param(kRate)->InitEnum("Rate", kRateDefault, kNumRates, "", 0, "",
-    kRateLabels[0], kRateLabels[1], kRateLabels[2], kRateLabels[3],
-    kRateLabels[4], kRateLabels[5], kRateLabels[6], kRateLabels[7],
-    kRateLabels[8], kRateLabels[9], kRateLabels[10], kRateLabels[11]);
+  /* The rate labels are the engine's own table (`1/1` is in it, where the
+   * Trance Gate's has none: a bar-long duck is the swell under a build). */
+  IParam* rate = param(kRate);
+  int nRates = 0;
+  char label[MAX_PARAM_DISPLAY_LEN];
+  while (sc_core_rate_label(nRates, label, int(sizeof label)) > 0)
+    nRates++;
+  rate->InitEnum("Rate", sc_core_rate_default(), nRates);
+  for (int i = 0; i < nRates; i++)
+    if (sc_core_rate_label(i, label, int(sizeof label)) > 0)
+      rate->SetDisplayText(i, label);
 
   /*
    * TIME MODE IS A DISPLAY CHOICE AND CHANGES NO SOUND, which is why it is an

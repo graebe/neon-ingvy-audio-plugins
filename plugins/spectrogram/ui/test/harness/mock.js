@@ -23,7 +23,7 @@ const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 const BANDS = 256;
 const MSG_COLS = 64, MSG_AXIS = 65, MSG_SYNC = 66, MSG_SOURCES = 67,
       MSG_CLASHCOLS = 68, MSG_RANGE = 96, MSG_SELECT = 97, MSG_VIEW = 99,
-      MSG_COMPARE = 100, MSG_READY = 102;
+      MSG_COMPARE = 100, MSG_READY = 120;
 
 /*
  * A FAKE TRANSPORT, so the bar view can be reviewed without a host.

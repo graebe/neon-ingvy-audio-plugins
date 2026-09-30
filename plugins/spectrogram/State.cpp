@@ -4,6 +4,7 @@
  */
 #include "State.h"
 #include "Wire.h"
+#include "ni/Wire.h"
 #include "shell_state.h"
 
 #include <cstdio>
@@ -38,9 +39,12 @@ bool Save(iplug::IByteChunk& chunk, const PutParams& params, const Fields& f)
   if (chunk.PutStr(sel.c_str()) <= 0)
     return false;
 
-  char clash[64];
-  snprintf(clash, sizeof clash, "%.2f:%.2f", f.clashFloorDb, f.clashBalanceDb);
-  if (chunk.PutStr(clash) <= 0)
+  /* '.' whatever the locale; parse_range reads it back the same way. */
+  std::string clash;
+  ni::wire::append_fixed(clash, f.clashFloorDb, 2);
+  clash += ':';
+  ni::wire::append_fixed(clash, f.clashBalanceDb, 2);
+  if (chunk.PutStr(clash.c_str()) <= 0)
     return false;
 
   /* The view and the comparison: what the window was showing, and what it was
@@ -84,8 +88,8 @@ static bool is_selection(const char* s)
  *
  * THE SELECTION IS NOT OPTIONAL. Every build that wrote anything wrote it, and
  * always as digits and commas, so a chunk it cannot be read from is not one of
- * ours -- which is how a megabyte of random bytes used to load "successfully". (The builds before it wrote no
- * bytes at all; shell_state.h's Read refuses that chunk, which holds nothing.)
+ * ours. (The builds before it wrote no bytes at all; shell_state.h's Read
+ * refuses that chunk, which holds nothing.)
  */
 int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
          const GetParams& apply, Fields& f)

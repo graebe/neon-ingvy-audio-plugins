@@ -22,7 +22,7 @@ const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
 const MSG = {
   uiState: 64, params: 65, scope: 66, stageMs: 67, buses: 68,
-  setText: 96, height: 97, ready: 98,
+  setText: 121, height: 122, ready: 120,
 };
 
 const Q = new URLSearchParams(location.search);

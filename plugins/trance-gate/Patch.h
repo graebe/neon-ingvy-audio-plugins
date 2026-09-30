@@ -3,9 +3,9 @@
  * engine into the host's saved state and back.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * Lifted out of TranceGate.cpp for the reason Wire.cpp was: a test cannot link
- * the plugin's own translation unit, and this is the code whose failure loses a
- * user's pattern. tests/cpp/tg_state.cpp drives it exactly as the plugin does.
+ * Apart from the plugin class because this is the code whose failure loses a
+ * user's pattern, and a test cannot link the class: tests/cpp/tg_state.cpp
+ * drives it exactly as the plugin does.
  */
 #pragma once
 

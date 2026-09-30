@@ -8,6 +8,7 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./shell": "./src/lib/shell.js",
     "./tokens.css": "./src/tokens.css",
     "./components.css": "./src/components.css"
   },

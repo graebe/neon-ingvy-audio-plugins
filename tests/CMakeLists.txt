@@ -143,11 +143,15 @@ if (TG_NODE)
              COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
                      --bundles ${CMAKE_BINARY_DIR}/out)
 
-    # THE GROUND'S WIRING IN THE FOUR SHELLS, which cannot be linked into a
-    # test. The Spectrogram once sent its ground after six early returns and the
-    # background almost never moved; this pins the order that fixed it.
+    # THE GROUND'S WIRING IN THE SHARED SHELL, which cannot be linked into a
+    # test: the order of a few calls, which the Spectrogram once got wrong.
     add_test(NAME ground_shells
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/ground_shells.test.mjs)
+
+    # THE EDITOR PROTOCOL'S NUMBERS ON BOTH SIDES: every message tag and
+    # parameter index in C++ against the editors' msg.js tables, by name.
+    add_test(NAME editor_tags
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/editor_tags.test.mjs)
 
     # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
     # editors and the documentation site -- where there used to be one per

@@ -119,6 +119,17 @@ set(NI_BUNDLE_NOTICES
     ${CMAKE_SOURCE_DIR}/LICENSE
     ${CMAKE_SOURCE_DIR}/THIRD_PARTY_LICENSES.md)
 
+# The shell every plugin is built on (plugins/_shared). Compiled into each
+# format target -- iplug::Plugin is a different class under each API -- so it
+# is sources and include paths, not a library.
+set(NI_SHELL_DIR ${CMAKE_SOURCE_DIR}/plugins/_shared)
+set(NI_SHELL_SOURCES
+    ${NI_SHELL_DIR}/ni/WebPlugin.cpp
+    ${NI_SHELL_DIR}/ni/Editor.cpp
+    ${NI_SHELL_DIR}/ni/Wire.cpp)
+add_library(ni_shell INTERFACE)
+target_include_directories(ni_shell INTERFACE ${NI_SHELL_DIR})
+
 # resources/web is vite's output and untracked; a plugin whose editor did not
 # build must not configure (it would install a white window over a working
 # one). See the file.
@@ -164,12 +175,12 @@ function(ni_add_plugin name)
     ni_require_editor(${product} ${web})
 
     iplug_add_plugin(${name}
-        SOURCES ${ARG_SOURCES} config.h resources/resource.h
+        SOURCES ${ARG_SOURCES} ${NI_SHELL_SOURCES} config.h resources/resource.h
         FORMATS VST3 CLAP AU
         UI WEBVIEW
         WEB_RESOURCES ${web}
         RESOURCES ${NI_BUNDLE_NOTICES}
-        LINK ground_engine shell_engine ${ARG_LINK})
+        LINK ni_shell ground_engine shell_engine ${ARG_LINK})
 
     if (NOT TARGET ${name}UI)
         return()

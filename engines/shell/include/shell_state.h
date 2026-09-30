@@ -162,7 +162,8 @@ int LoadParams(Plugin& plug, const Chunk& chunk, int pos)
  * a position past the end (and leaves the string untouched), a negative one a
  * position before the string. Garbage therefore "reads" -- which is how random
  * bytes got past every plugin's string fields. This is the same read with the
- * two checks it lacks.
+ * two checks it lacks -- a guard for the iPlug2 bug that
+ * docs/iplug2-patches/0003-getstr-au-restore.patch fixes at the source.
  */
 template <class Chunk, class String>
 int GetStr(const Chunk& chunk, String& str, int pos)

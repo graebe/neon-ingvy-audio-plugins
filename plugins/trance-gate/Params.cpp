@@ -10,19 +10,7 @@ using iplug::IParam;
 namespace tg {
 namespace params {
 
-/*
- * The rate labels are the engine's, read from its own table rather than
- * retyped. A second copy would drift, and the drift would be silent: the
- * host stores an INDEX, so a list that disagrees by one entry re-points every
- * saved automation lane at the wrong division.
- */
-static const char* const kRateLabels[] = {
-  "1/1T", "1/2", "1/2T", "1/4", "1/4T", "1/8", "1/8T",
-  "1/16", "1/16T", "1/32", "1/32T", "1/64", "1/128"
-};
-static constexpr int kNumRates = int(sizeof(kRateLabels) / sizeof(kRateLabels[0]));
-static constexpr int kRateDefault = 7;          /* 1/16 -- tg-core rates.rs */
-static constexpr double kStageMaxPct = 200.0;   /* tg-core STAGE_MAX_PCT    */
+static constexpr double kStageMaxPct = TG_STAGE_MAX_PCT;
 
 /*
  * The percentage format, spelled out rather than left to the `label`
@@ -47,20 +35,22 @@ static const IParam::DisplayFunc kPctDisplay =
 void Declare(const std::function<IParam*(int)>& param)
 {
   /*
-   * Declared in the ENGINE's order, so the host index is the engine index and
-   * there is no mapping table between them to get wrong. The build this
-   * replaces carried one, because its declaration order had drifted.
-   *
-   * Two of these are one-based at the host and zero-based in the engine --
-   * Slot and Length -- and that is deliberate: "slot 1" is what a musician
-   * reads. The conversion happens once, in PushParams, and nowhere else.
+   * Declared in the ENGINE's order, so the host index is the engine index.
+   * Slot and Length are one-based at the host and zero-based in the engine --
+   * "slot 1" is what a musician reads -- and converted once, in PushParams.
    */
   param(kSlot)->InitInt("Slot", 1, 1, TG_SLOTS);
   param(kLength)->InitInt("Length", 16, 1, TG_MAX_STEPS, "steps");
-  param(kRate)->InitEnum("Rate", kRateDefault, kNumRates, "", 0, "", kRateLabels[0],
-    kRateLabels[1], kRateLabels[2], kRateLabels[3], kRateLabels[4], kRateLabels[5],
-    kRateLabels[6], kRateLabels[7], kRateLabels[8], kRateLabels[9], kRateLabels[10],
-    kRateLabels[11], kRateLabels[12]);
+  /* The rate labels are the engine's own table: the host stores an INDEX, so
+   * a list that disagreed by one entry would re-point every automation lane. */
+  IParam* rate = param(kRate);
+  rate->InitEnum("Rate", tg_core_rate_default(), TG_NUM_RATES);
+  for (int i = 0; i < TG_NUM_RATES; i++)
+  {
+    char label[MAX_PARAM_DISPLAY_LEN];
+    if (tg_core_rate_label(i, label, int(sizeof label)) > 0)
+      rate->SetDisplayText(i, label);
+  }
   /* "Off"/"On", capitalised: iPlug2 defaults to lower case and the engine
    * prints "Off". */
   param(kLegato)->InitBool("Join Neighbors", false, "", 0, "", "Off", "On");

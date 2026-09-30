@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "Patch.h"
-#include "Wire.h"
+#include "ni/Wire.h"
 #include "shell_state.h"
 
 #include <vector>
@@ -34,7 +34,7 @@ bool Post(tg_shell_t* gate, Edit edit, const std::string& arg)
     case Edit::Order:
     {
       std::string idx, val;
-      if (!wire::split_pair(arg, idx, val)) return false;
+      if (!ni::wire::split_pair(arg, idx, val)) return false;
       const char* key = edit == Edit::Step ? "step"
                       : edit == Edit::Depth ? "step_amount" : "step_order";
       return post(gate, {"cursor", idx.c_str(), key, val.c_str()});
@@ -79,8 +79,7 @@ int Load(tg_shell_t* gate, const iplug::IByteChunk& chunk, int startPos,
    *
    * THE BLOB IS NOT OPTIONAL. Every build has written one after the
    * parameters, if only an empty one, so a chunk without it is not a chunk
-   * this plugin wrote -- and accepting it anyway is how a megabyte of random
-   * bytes used to load "successfully".
+   * this plugin wrote, and random bytes must not load "successfully".
    */
   int pos = check(chunk, h.body);
   if (pos < 0) return -1;

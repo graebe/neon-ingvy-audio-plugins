@@ -1,13 +1,11 @@
 /*
- * The Spectrogram's wire format. See Wire.h for why it lives apart.
+ * The Spectrogram's wire format. See Wire.h.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * NO iPlug2 AND NO ENGINE. This file includes <string> and <cstdio> and
- * nothing else, which is what lets tests/cpp/spectro_wire.cpp link it in
- * isolation and run in milliseconds. Adding an include here that reaches
- * either direction would quietly undo that.
+ * No iPlug2 and no engine, so tests/cpp/spectro_wire.cpp links it alone.
  */
 #include "Wire.h"
+#include "ni/Wire.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -49,51 +47,45 @@ std::string encode_axis(const float* hz, int n)
 
   std::string out;
   out.reserve(size_t(n) * 8);
-
-  char num[24];
   for (int i = 0; i < n; i++)
   {
-    snprintf(num, sizeof num, "%s%.1f", i ? "," : "", double(hz[i]));
-    out += num;
+    if (i)
+      out += ',';
+    ni::wire::append_fixed(out, double(hz[i]), 1);
   }
-
   return out;
 }
 
 std::string encode_sync(double ppq, double bpm, int num, int denom, bool running,
                         double ppqPerCol, int sampleRate)
 {
-  char buf[160];
-  snprintf(buf, sizeof buf, "%.6f:%.4f:%d:%d:%d:%.8f:%d",
-           ppq, bpm, num, denom, running ? 1 : 0, ppqPerCol, sampleRate);
-  return std::string(buf);
-}
-
-double advance_beats(double beats, int frames, double bpm, double sampleRate)
-{
-  if (frames <= 0 || !(bpm > 0.0) || !(sampleRate > 0.0))
-    return beats;
-
-  return beats + double(frames) * (bpm / 60.0) / sampleRate;
+  std::string out;
+  out.reserve(96);
+  ni::wire::append_fixed(out, ppq, 6);
+  out += ':';
+  ni::wire::append_fixed(out, bpm, 4);
+  out += ':';
+  ni::wire::append_int(out, num);
+  out += ':';
+  ni::wire::append_int(out, denom);
+  out += running ? ":1:" : ":0:";
+  ni::wire::append_fixed(out, ppqPerCol, 8);
+  out += ':';
+  ni::wire::append_int(out, sampleRate);
+  return out;
 }
 
 bool parse_range(const std::string& arg, float& lo, float& hi)
 {
-  /* THE COLON IS THE WHOLE VALIDATION, and that is the pre-existing contract
-   * rather than an oversight worth quietly fixing here. An empty half gives
-   * atof 0, and spectro_set_range refuses anything undrawable -- so "0 Hz to
-   * 0 Hz" reaches the engine and the range is left alone, which is what the
-   * editor is told when the axis comes back unchanged.
-   *
-   * Moving that judgement forward into this function would be a behaviour
-   * change wearing a refactor's clothes. If it should be stricter, that is a
-   * separate commit with the engine's refusal tested first. */
+  /* THE COLON IS THE WHOLE VALIDATION. An empty half reads as 0, and the
+   * engine refuses anything undrawable -- so "0 Hz to 0 Hz" leaves the range
+   * alone, which the editor sees when the axis comes back unchanged. */
   const size_t sep = arg.find(':');
   if (sep == std::string::npos)
     return false;
 
-  lo = float(atof(arg.substr(0, sep).c_str()));
-  hi = float(atof(arg.substr(sep + 1).c_str()));
+  lo = float(ni::wire::parse_number(std::string_view(arg).substr(0, sep)));
+  hi = float(ni::wire::parse_number(std::string_view(arg).substr(sep + 1)));
   return true;
 }
 

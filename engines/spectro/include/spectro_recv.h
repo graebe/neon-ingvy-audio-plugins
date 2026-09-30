@@ -8,16 +8,16 @@
  * marked.
  *
  * It ships in the SAME static library as spectro_core.h (libspectro_capi.a), so
- * linking it costs nothing extra; see cmake/SpectroEngine.cmake.
+ * linking it costs nothing extra; see cmake/NiPlugin.cmake.
  *
  * THE THREAD RULES ARE PART OF THE ABI, and they are NOT the analyzer's:
  *
- *   srecv_new / free / start          one thread, nothing else in flight
- *   srecv_set_sources / set_clash     the main thread -- both allocate
- *   srecv_slots                       the main thread
- *   srecv_push_own                    the audio thread, and only it
- *   srecv_pump                        the message thread, and only it
- *   srecv_take_columns / clash / frame  the message thread, and only it
+ *   srecv_new / free / start             one thread, nothing else in flight
+ *   srecv_set_sources / set_clash        the main thread -- both allocate
+ *   srecv_slots                          the main thread
+ *   srecv_push_own                       the audio thread, and only it
+ *   srecv_pump                           the message thread, and only it
+ *   srecv_take_columns / clash / frame   the message thread, and only it
  *
  * THE TRANSFORMS RUN ON THE RECEIVER'S OWN THREAD once srecv_start has started
  * it: a worker, below the UI's priority, that wakes every few milliseconds,
