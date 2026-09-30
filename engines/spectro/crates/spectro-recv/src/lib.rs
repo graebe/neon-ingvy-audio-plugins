@@ -45,7 +45,7 @@ mod ring;
 pub use ring::{mono_ring, MonoConsumer, MonoProducer, CAPACITY as RING_FRAMES};
 
 use bus_core::{Reader, MAX_SLOT};
-use spectro_core::{clash_column, db_span_to_byte, db_to_byte, sum_column, Analyzer, Config};
+use spectro_core::{clash_column, db_span_to_byte, db_to_byte, Analyzer, Config, PowerTable};
 
 /// Sources a receiver will draw at once, the own channel included.
 ///
@@ -128,6 +128,8 @@ pub struct Receiver {
 
     clash_floor: u8,
     clash_balance: u8,
+    /// The byte scale as power tables, for `sum_into`.
+    power: PowerTable,
 }
 
 /// The most frames one `pump` will move per source. Sized so a 50 Hz idle timer
@@ -174,6 +176,7 @@ impl Receiver {
              * Both are settable; these are what the picture opens with. */
             clash_floor: db_to_byte(-60.0, cfg.db_floor, cfg.db_ceil),
             clash_balance: db_span_to_byte(12.0, cfg.db_floor, cfg.db_ceil),
+            power: PowerTable::new(cfg.db_floor, cfg.db_ceil),
         };
         (rx, OwnFeed { tx })
     }
@@ -475,7 +478,7 @@ impl Receiver {
     }
 
     /// Add several channels' columns into one, in POWER -- see
-    /// `spectro_core::sum_column` for why it cannot be done in byte space.
+    /// `spectro_core::PowerTable` for why it cannot be done in byte space.
     ///
     /// Takes columns the caller already drained, for the reason `clash_into`
     /// does: `take_columns` is destructive, so draining again to add would be
@@ -504,7 +507,7 @@ impl Receiver {
             for (i, src) in srcs.iter().take(n).enumerate() {
                 view[i] = &src[r.clone()];
             }
-            sum_column(&view[..n], &mut out[r], self.cfg.db_floor, self.cfg.db_ceil);
+            self.power.sum_column(&view[..n], &mut out[r]);
         }
         for slot in out.iter_mut().skip(cols * bands) {
             *slot = 0;

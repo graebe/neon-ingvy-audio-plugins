@@ -114,7 +114,7 @@ pub fn sum_cell(cells: &[u8], db_floor: f32, db_ceil: f32) -> u8 {
 #[cfg(test)]
 mod equivalence {
     use super::*;
-    use crate::{sum_column, Analyzer};
+    use crate::{Analyzer, PowerTable};
 
     /*
      * THE TOLERANCE, PINNED: one byte step (0.38 dB on the default -96..0
@@ -221,10 +221,11 @@ mod equivalence {
         for (floor, ceil) in [(-96.0f32, 0.0f32), (-120.0, 6.0), (-60.0, -10.0)] {
             let mut off = 0usize;
             let mut out = [0u8; 256];
+            let table = PowerTable::new(floor, ceil);
             for a in 0..=255u8 {
                 let col_a = [a; 256];
                 let col_b: [u8; 256] = core::array::from_fn(|i| i as u8);
-                sum_column(&[&col_a, &col_b], &mut out, floor, ceil);
+                table.sum_column(&[&col_a, &col_b], &mut out);
                 for b in 0..=255u8 {
                     let want = sum_cell(&[a, b], floor, ceil);
                     let d = (out[b as usize] as i16 - want as i16).abs();
@@ -243,6 +244,7 @@ mod equivalence {
         let mut byte = || ((lcg(&mut seed) * 0.5 + 0.5) * 255.99) as u8;
         let (floor, ceil) = (-96.0f32, 0.0f32);
         let mut off = 0usize;
+        let table = PowerTable::new(floor, ceil);
         let cells = 256;
         let rounds = 64;
         for _ in 0..rounds {
@@ -250,7 +252,7 @@ mod equivalence {
             for k in [3usize, 4] {
                 let view: Vec<&[u8]> = cols[..k].iter().map(|c| c.as_slice()).collect();
                 let mut out = vec![0u8; cells];
-                sum_column(&view, &mut out, floor, ceil);
+                table.sum_column(&view, &mut out);
                 for i in 0..cells {
                     let cell: Vec<u8> = cols[..k].iter().map(|c| c[i]).collect();
                     let want = sum_cell(&cell, floor, ceil);

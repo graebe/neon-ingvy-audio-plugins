@@ -193,6 +193,16 @@ pub fn amplitude_to_byte(amplitude: f32, db_floor: f32, db_ceil: f32) -> u8 {
     (t * 255.0 + 0.5) as u8
 }
 
+/// Power (amplitude squared, 1.0 = full scale) to one byte -- the same scale
+/// as [`amplitude_to_byte`], without the square root.
+#[inline]
+pub fn power_to_byte(power: f32, db_floor: f32, db_ceil: f32) -> u8 {
+    if !power.is_finite() || power <= 0.0 {
+        return 0;
+    }
+    db_to_byte(10.0 * power.log10(), db_floor, db_ceil)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,13 +254,13 @@ mod tests {
          */
         let a = [db_to_byte(-20.0, FLOOR, CEIL); 4];
         let mut out = [0u8; 4];
-        sum_column(&[&a, &a], &mut out, FLOOR, CEIL);
+        PowerTable::new(FLOOR, CEIL).sum_column(&[&a, &a], &mut out);
 
         let got = byte_to_db(out[0], FLOOR, CEIL);
         assert!((got - -17.0).abs() < 0.6, "two -20 dB sources summed to {got}, wanted -17");
 
         /* And four of them are +6 over one. */
-        sum_column(&[&a, &a, &a, &a], &mut out, FLOOR, CEIL);
+        PowerTable::new(FLOOR, CEIL).sum_column(&[&a, &a, &a, &a], &mut out);
         let four = byte_to_db(out[0], FLOOR, CEIL);
         assert!((four - -14.0).abs() < 0.6, "four -20 dB sources summed to {four}");
     }
@@ -261,7 +271,7 @@ mod tests {
         let loud = [db_to_byte(-24.0, FLOOR, CEIL); 4];
         let mut out = [0u8; 4];
 
-        sum_column(&[&loud, &quiet], &mut out, FLOOR, CEIL);
+        PowerTable::new(FLOOR, CEIL).sum_column(&[&loud, &quiet], &mut out);
         assert_eq!(out[0], loud[0], "silence moved a source that was already there");
 
         /*
@@ -270,7 +280,7 @@ mod tests {
          * of them would sum to 6 dB above it and the picture would lift off
          * black for no reason.
          */
-        sum_column(&[&quiet, &quiet, &quiet, &quiet], &mut out, FLOOR, CEIL);
+        PowerTable::new(FLOOR, CEIL).sum_column(&[&quiet, &quiet, &quiet, &quiet], &mut out);
         assert_eq!(out, [0, 0, 0, 0], "silence summed to something");
     }
 
@@ -278,7 +288,7 @@ mod tests {
     fn a_sum_clamps_rather_than_wrapping() {
         let hot = [255u8; 3];
         let mut out = [0u8; 3];
-        sum_column(&[&hot, &hot, &hot, &hot], &mut out, FLOOR, CEIL);
+        PowerTable::new(FLOOR, CEIL).sum_column(&[&hot, &hot, &hot, &hot], &mut out);
         assert_eq!(out, [255, 255, 255], "a sum past the ceiling did not clamp");
     }
 
@@ -286,12 +296,12 @@ mod tests {
     fn a_sum_of_one_is_that_one_and_of_none_is_silence() {
         let a = [10u8, 90, 200];
         let mut out = [7u8; 3];
-        sum_column(&[&a], &mut out, FLOOR, CEIL);
+        PowerTable::new(FLOOR, CEIL).sum_column(&[&a], &mut out);
         for i in 0..3 {
             assert!((out[i] as i16 - a[i] as i16).abs() <= 1, "one source changed: {:?}", out);
         }
         let mut empty = [7u8; 3];
-        sum_column(&[], &mut empty, FLOOR, CEIL);
+        PowerTable::new(FLOOR, CEIL).sum_column(&[], &mut empty);
         assert_eq!(empty, [0, 0, 0], "no sources is silence, and the tail is cleared");
     }
 
@@ -300,7 +310,7 @@ mod tests {
         let a = [200u8, 200];
         let b = [200u8, 200, 200];
         let mut out = [7u8; 5];
-        sum_column(&[&a, &b], &mut out, FLOOR, CEIL);
+        PowerTable::new(FLOOR, CEIL).sum_column(&[&a, &b], &mut out);
         assert!(out[0] > 200 && out[1] > 200);
         assert_eq!(&out[2..], &[0, 0, 0], "past the shortest input was left stale");
     }
@@ -414,6 +424,18 @@ mod tests {
         assert!(*b.centres.last().unwrap() <= 16_000.0);
         for r in &b.ranges {
             assert!(r.hi <= BINS);
+        }
+    }
+
+    #[test]
+    fn power_reads_the_byte_its_amplitude_does() {
+        assert_eq!(power_to_byte(0.0, -96.0, 0.0), 0);
+        assert_eq!(power_to_byte(f32::NAN, -96.0, 0.0), 0);
+        let mut a = 1e-6f32;
+        while a < 4.0 {
+            let (p, q) = (power_to_byte(a * a, -96.0, 0.0), amplitude_to_byte(a, -96.0, 0.0));
+            assert!((p as i16 - q as i16).abs() <= 1, "{a}: {p} vs {q}");
+            a *= 1.01;
         }
     }
 
@@ -560,36 +582,83 @@ pub fn byte_to_db(byte: u8, db_floor: f32, db_ceil: f32) -> f32 {
  * actually measure. A mix of a bass and a pad is the incoherent case.
  */
 
-/// Add several channels' columns into one, in power.
-///
-/// `out` is filled for as many bands as the shortest input has and zeroed past
-/// it, the same contract `clash_column` keeps -- a caller never draws a stale
-/// tail.
-pub fn sum_column(srcs: &[&[u8]], out: &mut [u8], db_floor: f32, db_ceil: f32) {
-    let n = srcs
-        .iter()
-        .map(|s| s.len())
-        .min()
-        .unwrap_or(0)
-        .min(out.len());
+/*
+ * AS TABLES, because a column is 256 cells and a sum was a `powf` per cell per
+ * source and a `log10` per cell. A byte has 256 values, so its power is a
+ * lookup; and a power maps back to the byte whose edges it falls between, so
+ * the way back is a binary search over the 255 edges. The edges are found by
+ * bisecting the encoder above -- `db_to_byte(10 * log10(p))` -- over f32, so
+ * the table reproduces that arithmetic exactly rather than approximating it.
+ */
 
-    for i in 0..n {
-        let mut power = 0.0f32;
-        for s in srcs {
-            let db = byte_to_db(s[i], db_floor, db_ceil);
-            /* Silence contributes nothing at all -- see byte_to_db. */
-            if db.is_finite() {
-                power += 10.0f32.powf(db * 0.1);
+/// The byte scale between one `db_floor` and `db_ceil`, as power tables.
+pub struct PowerTable {
+    /// Byte to power; byte 0 is silence and contributes nothing.
+    power: [f32; 256],
+    /// `edge[b - 1]` is the least power that encodes as byte `b` or above.
+    edge: [f32; 255],
+}
+
+impl PowerTable {
+    pub fn new(db_floor: f32, db_ceil: f32) -> Self {
+        let encode = |p: f32| {
+            if p > 0.0 {
+                db_to_byte(10.0 * p.log10(), db_floor, db_ceil)
+            } else {
+                0
             }
-        }
-        out[i] = if power > 0.0 {
-            db_to_byte(10.0 * power.log10(), db_floor, db_ceil)
-        } else {
-            0
         };
+        let power = core::array::from_fn(|b| {
+            let db = byte_to_db(b as u8, db_floor, db_ceil);
+            if db.is_finite() {
+                10.0f32.powf(db * 0.1)
+            } else {
+                0.0
+            }
+        });
+        /* Positive finite floats order like their bit patterns, so the least
+         * power reaching byte b is a bisection over those. */
+        let edge = core::array::from_fn(|i| {
+            let b = i as u8 + 1;
+            let (mut lo, mut hi) = (0u32, f32::MAX.to_bits());
+            while hi - lo > 1 {
+                let mid = lo + (hi - lo) / 2;
+                if encode(f32::from_bits(mid)) >= b {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            f32::from_bits(hi)
+        });
+        Self { power, edge }
     }
-    for slot in out.iter_mut().skip(n) {
-        *slot = 0;
+
+    /// The byte a power encodes as.
+    #[inline]
+    pub fn to_byte(&self, power: f32) -> u8 {
+        self.edge.partition_point(|&e| e <= power) as u8
+    }
+
+    /// Add several channels' columns into one, in power.
+    ///
+    /// `out` is filled for as many bands as the shortest input has and zeroed
+    /// past it, the same contract `clash_column` keeps -- a caller never draws
+    /// a stale tail.
+    pub fn sum_column(&self, srcs: &[&[u8]], out: &mut [u8]) {
+        let n = srcs
+            .iter()
+            .map(|s| s.len())
+            .min()
+            .unwrap_or(0)
+            .min(out.len());
+
+        for (i, o) in out[..n].iter_mut().enumerate() {
+            /* Silence is power 0 and adds nothing -- see byte_to_db. */
+            let power: f32 = srcs.iter().map(|s| self.power[s[i] as usize]).sum();
+            *o = self.to_byte(power);
+        }
+        out[n..].fill(0);
     }
 }
 

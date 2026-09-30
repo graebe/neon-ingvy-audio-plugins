@@ -43,7 +43,7 @@ mod reference;
 
 pub use bands::{
     amplitude_to_byte, byte_to_db, centres_for, clash_cell, clash_column, db_span_to_byte,
-    db_to_byte, sum_column, Band, Bands,
+    db_to_byte, power_to_byte, Band, Bands, PowerTable,
 };
 
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
@@ -344,6 +344,8 @@ struct Dsp {
     /// Bins 0..=fft_size/2.
     re: Box<[f32]>,
     im: Box<[f32]>,
+    /// |bin|^2, scaled so a full-scale sine is 1.0.
+    power: Box<[f32]>,
     col: Box<[u8]>,
     /// The range epoch this band table was built for.
     epoch: usize,
@@ -436,6 +438,7 @@ impl Analyzer {
                     frame: vec![0.0; n].into_boxed_slice(),
                     re: vec![0.0; n / 2 + 1].into_boxed_slice(),
                     im: vec![0.0; n / 2 + 1].into_boxed_slice(),
+                    power: vec![0.0; n / 2 + 1].into_boxed_slice(),
                     col: vec![0u8; cfg.bands].into_boxed_slice(),
                     epoch: 0,
                 },
@@ -597,53 +600,46 @@ impl Producer {
 
         dsp.fft.forward(&dsp.frame, &mut dsp.re, &mut dsp.im);
 
-        let scale = dsp.window.amplitude_scale;
-        let nyquist_bin = n / 2;
-        let mag = |k: usize| -> f32 {
-            let m = (dsp.re[k] * dsp.re[k] + dsp.im[k] * dsp.im[k]).sqrt() * scale;
-            /* Every bin but DC and Nyquist has a conjugate twin, and the
-             * amplitude scale counts both. Nyquist has none, so it would read
-             * 6 dB hot -- a permanent bright line along the top of the
-             * picture. */
-            if k == nyquist_bin {
-                m * 0.5
-            } else {
-                m
-            }
-        };
+        /*
+         * POWER, SCALED TO AMPLITUDE SQUARED: |X|^2 * scale^2, so a full-scale
+         * sine reads 0 dB. Bands are reduced in power and a square root is
+         * never taken -- 10*log10(p) is the same decibel as 20*log10(sqrt p).
+         */
+        let gain = dsp.window.amplitude_scale * dsp.window.amplitude_scale;
+        for ((p, &r), &i) in dsp.power.iter_mut().zip(dsp.re.iter()).zip(dsp.im.iter()) {
+            *p = (r * r + i * i) * gain;
+        }
+        /* Every bin but DC and Nyquist has a conjugate twin, and the amplitude
+         * scale counts both. Nyquist has none, so it would read 6 dB hot -- a
+         * permanent bright line along the top of the picture. */
+        if let Some(p) = dsp.power.last_mut() {
+            *p *= 0.25;
+        }
 
-        for (b, range) in dsp.bands.ranges.iter().enumerate() {
-            let v = match range.frac {
+        let power = &dsp.power;
+        /* -400 dB is the old 1e-20 amplitude floor: a silent neighbour pulls an
+         * interpolation towards the floor rather than producing a NaN. */
+        let db = |k: usize| (10.0 * power[k].log10()).max(-400.0);
+        for (out, range) in dsp.col.iter_mut().zip(dsp.bands.ranges.iter()) {
+            *out = match range.frac {
                 /* PEAK over the band's bins -- see bands.rs. */
                 None => {
-                    let mut peak = 0.0f32;
-                    for k in range.lo..range.hi {
-                        let m = mag(k);
-                        if m > peak {
-                            peak = m;
-                        }
-                    }
-                    peak
+                    let peak = power[range.lo..range.hi].iter().fold(0.0f32, |a, &p| a.max(p));
+                    power_to_byte(peak, cfg.db_floor, cfg.db_ceil)
                 }
                 /*
                  * NARROWER THAN A BIN: interpolated between the two either
-                 * side, geometrically -- a straight line in dB, which is the
-                 * axis the picture draws. Snapping to the nearer bin instead
-                 * gave consecutive bands identical bytes and stacked the bottom
-                 * of the picture into a staircase.
-                 *
-                 * The 1e-20 is the encoder's own floor rather than a branch on
-                 * zero: a silent neighbour must pull the result down towards
-                 * the floor, not produce a NaN out of 0/0.
+                 * side along a straight line in dB, which is the axis the
+                 * picture draws. Snapping to the nearer bin instead gave
+                 * consecutive bands identical bytes and stacked the bottom of
+                 * the picture into a staircase.
                  */
                 Some(x) => {
                     let t = (x - range.lo as f32).clamp(0.0, 1.0);
-                    let lo = mag(range.lo).max(1e-20);
-                    let hi = mag(range.lo + 1).max(1e-20);
-                    lo * (hi / lo).powf(t)
+                    let (lo, hi) = (db(range.lo), db(range.lo + 1));
+                    db_to_byte(lo + (hi - lo) * t, cfg.db_floor, cfg.db_ceil)
                 }
             };
-            dsp.col[b] = amplitude_to_byte(v, cfg.db_floor, cfg.db_ceil);
         }
 
         /* The one producer: this half is unique and borrowed mutably. */
