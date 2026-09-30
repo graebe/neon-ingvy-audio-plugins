@@ -475,3 +475,6 @@ static PARAM_BY_KEY: [(&str, Param); PARAM_COUNT as usize] = [
     ("threshold", Param::Threshold),
     ("lockout", Param::Lockout),
 ];
+
+#[cfg(test)]
+mod tests;

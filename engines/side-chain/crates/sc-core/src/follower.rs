@@ -139,3 +139,6 @@ impl Follower {
         fired
     }
 }
+
+#[cfg(test)]
+mod tests;

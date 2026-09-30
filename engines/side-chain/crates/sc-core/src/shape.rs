@@ -335,3 +335,6 @@ impl Env {
         self.duck
     }
 }
+
+#[cfg(test)]
+mod tests;

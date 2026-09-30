@@ -201,3 +201,6 @@ impl Midi {
         None
     }
 }
+
+#[cfg(test)]
+mod tests;
