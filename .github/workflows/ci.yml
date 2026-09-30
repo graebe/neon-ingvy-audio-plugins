@@ -1,4 +1,4 @@
-# Build everything and run the suite, on every push and every pull request.
+# Build everything, run the suite, install the plugins and validate them.
 #
 # THE SUITE IS THE ASSET HERE. It is not a smoke test: tg_render_ab renders
 # four seconds through the plugin's audio path and hashes it against the Move
@@ -8,35 +8,49 @@
 # automatically than run when someone remembers.
 #
 # macOS because the plugins are macOS bundles (VST3, AU, CLAP, universal) and
-# auval and the AU host test only exist there. The Schwung module is a Linux
-# cross-build in Docker and is NOT built here -- see release-schwung.yml. It
-# would double the CI time for a target whose own release workflow already
-# builds and verifies it on every tag.
+# auval and the AU host tests only exist there. The runner image is pinned
+# (macos-15, not macos-latest) so an image rollover is a change somebody makes
+# here rather than a red build nobody caused.
+#
+# The Schwung modules are Linux cross-builds in Docker and are NOT built here:
+# release-schwung.yml builds and verifies them on every module tag, and
+# `ctest -R release` checks their configuration on every run of this one.
 name: CI
 
+# ONCE PER CHANGE. `push` on every branch plus `pull_request` ran the whole
+# macOS build twice for every commit on a PR branch. Pushes to main, pull
+# requests, and a manual trigger for anything else.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# A newer commit on the same PR (or main) makes the running build pointless.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive   # iPlug2; the engines are subtrees, not submodules
 
-      # iPlug2's SDKs ARE DOWNLOADED, NOT TRACKED. The submodule carries the
-      # scripts and not the sources, so a fresh clone has an iPlug2::VST3 whose
-      # include path does not exist and CMake stops at GENERATE time with
-      # "Imported target ... includes non-existent path" -- naming neither
-      # iPlug2 nor a download.
-      #
-      # The README said so and this workflow did not do it, so every run failed
-      # at Configure. Cached because they are a fixed ~100 MB that changes only
-      # when the submodule pin moves.
+      # iPlug2's SDKs ARE DOWNLOADED, NOT TRACKED, and scripts/fetch-sdks.sh
+      # fetches them at pinned versions. The cache key is the submodule's
+      # commit plus those pins -- it used to hash .gitmodules, which does not
+      # change when the submodule moves, so a stale SDK could be served forever.
+      - name: SDK cache key
+        id: sdk
+        run: echo "key=$(scripts/fetch-sdks.sh --cache-key)" >> "$GITHUB_OUTPUT"
+
       - name: Cache the iPlug2 SDKs
         id: sdks
         uses: actions/cache@v4
@@ -45,32 +59,42 @@ jobs:
             external/iPlug2/Dependencies/IPlug/VST3_SDK
             external/iPlug2/Dependencies/IPlug/CLAP_SDK
             external/iPlug2/Dependencies/IPlug/CLAP_HELPERS
-          key: iplug2-sdks-${{ hashFiles('.gitmodules') }}-${{ hashFiles('external/iPlug2/Dependencies/IPlug/download-vst3-sdk.sh') }}
+          key: ${{ steps.sdk.outputs.key }}
 
       - name: Download the iPlug2 SDKs
         if: steps.sdks.outputs.cache-hit != 'true'
-        working-directory: external/iPlug2/Dependencies/IPlug
-        run: |
-          ./download-vst3-sdk.sh
-          ./download-clap-sdks.sh
+        run: scripts/fetch-sdks.sh
 
-      # Both engines are Rust. The toolchain the runner ships is fine; the
-      # targets are not installed by default and the plugins are universal.
+      # On a cache hit too: what was restored must be what is pinned.
+      - name: The SDKs are the pinned ones
+        run: scripts/fetch-sdks.sh --verify
+
+      # The toolchain the runner ships is fine; the targets are not installed
+      # by default and the plugins are universal.
       - name: Rust, with both Apple targets
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
           cargo --version && rustc --version
 
+      # ~/.cargo and target/. The workspace has no third-party crates today,
+      # so this saves little now; it is here so the first dependency does not
+      # also become the first slow build.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'      # node --test, which every JS suite here uses
+          cache: npm
 
-      # ONE INSTALL FOR THE WHOLE WORKSPACE: the kit and both editors. Before
-      # npm workspaces this was a per-plugin install, and forgetting one meant
-      # its editor silently shipped whatever was last in resources/web.
+      # ONE INSTALL FOR THE WHOLE WORKSPACE: the kit and every editor. The
+      # editors' built bundles are not tracked -- configuring runs vite -- so
+      # this has to come before cmake.
       - name: Install the editors' dependencies
         run: npm ci
 
+      # Deploy stays ON (iPlug2's default): the plugins are installed into
+      # ~/Library/Audio/Plug-Ins, which is what the AU render tests and auval
+      # need.
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
@@ -79,6 +103,24 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      # A SKIP IS NOT A PASS HERE. tg_au and sc_au render the INSTALLED AU and
+      # report Skipped when there is none. Locally that is fine; here the build
+      # just installed them, so a skip means the AU never registered and the
+      # one test of the whole AU chain did not run.
+      - name: The AU render tests ran
+        run: |
+          out=$(ctest --test-dir build -R '^(tg|sc)_au$' --output-on-failure 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          if grep -q 'Skipped' <<<"$out"; then
+            echo "::error::an AU render test was skipped: the installed AU was not found"
+            exit 1
+          fi
+
+      - name: Rust and JavaScript suites
+        run: |
+          cargo test --workspace
+          npm test
 
       # A build that produced no bundle passes every test above and ships
       # nothing, so the artefacts are checked for rather than assumed.
@@ -94,3 +136,106 @@ jobs:
               echo "ok: $b.$f  ($(lipo -archs "$path"))"
             done
           done
+
+      # tar, because upload-artifact drops the executable bit and a bundle
+      # without it does not load.
+      - name: Keep the bundles for validation
+        run: cd build/out && tar -czf "$GITHUB_WORKSPACE/plugins.tar.gz" -- *.vst3 *.component *.clap
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugins
+          path: plugins.tar.gz
+          retention-days: 3
+
+  # THE HOSTS' OWN RULES. The suite checks what the plugins do; these check
+  # that they follow each format's contract -- state save/restore, parameter
+  # round trips, bus layouts, block-size changes -- which is what a host vendor
+  # runs before blaming the plugin. A job of its own so that its verdict and
+  # the suite's are separate signals.
+  validate:
+    needs: build-and-test
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugins
+
+      - name: Install the plugins
+        run: |
+          mkdir -p build/out ~/Library/Audio/Plug-Ins/{VST3,Components,CLAP}
+          tar -C build/out -xzf plugins.tar.gz
+          cp -R build/out/*.vst3      ~/Library/Audio/Plug-Ins/VST3/
+          cp -R build/out/*.component ~/Library/Audio/Plug-Ins/Components/
+          cp -R build/out/*.clap      ~/Library/Audio/Plug-Ins/CLAP/
+          # The AU registry is cached per login; this makes it rescan.
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+
+      - name: Fetch the validators (pinned, checksummed)
+        run: scripts/validate-plugins.sh fetch "$RUNNER_TEMP/validators"
+
+      - name: auval, pluginval, clap-validator
+        run: scripts/validate-plugins.sh run "$RUNNER_TEMP/validators" build/out
+
+  # THE C AND C++ TESTS UNDER THREADSANITIZER. Every test in tests/ and
+  # tests/cpp/ is built with -fsanitize=thread (cmake/Sanitize.cmake); the
+  # plugins are not. One slice, because the sanitizer runtime is per-arch.
+  # Deploy is off: this job's AU tests report Skipped, which is expected --
+  # build-and-test is the job that requires them to run.
+  tsan:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: SDK cache key
+        id: sdk
+        run: echo "key=$(scripts/fetch-sdks.sh --cache-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the iPlug2 SDKs
+        id: sdks
+        uses: actions/cache@v4
+        with:
+          path: |
+            external/iPlug2/Dependencies/IPlug/VST3_SDK
+            external/iPlug2/Dependencies/IPlug/CLAP_SDK
+            external/iPlug2/Dependencies/IPlug/CLAP_HELPERS
+          key: ${{ steps.sdk.outputs.key }}
+
+      - name: Download the iPlug2 SDKs
+        if: steps.sdks.outputs.cache-hit != 'true'
+        run: scripts/fetch-sdks.sh
+
+      - name: The SDKs are the pinned ones
+        run: scripts/fetch-sdks.sh --verify
+
+      - name: Rust, with the arm64 target
+        run: rustup target add aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure (thread sanitizer, arm64)
+        run: >
+          cmake -B build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DNI_SANITIZE=thread -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DIPLUG_DEPLOY_PLUGINS=OFF
+
+      - name: Build
+        run: cmake --build build-tsan -j3
+
+      - name: Test
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: ctest --test-dir build-tsan --output-on-failure

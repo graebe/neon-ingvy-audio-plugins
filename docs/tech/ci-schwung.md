@@ -53,46 +53,59 @@ owner-writable but never world-writable.
 
 ## Releasing
 
-A tag named `trance-gate-v*` triggers `.github/workflows/release-schwung.yml`.
-The same tag also triggers the plugin release, because the module and the plugin
-are one product in two shells — one tag ships both, and their versions cannot
-drift apart.
+A tag `<product>-<version>` for a product with a module — `trance-gate-v*` or
+`side-chain-v*` — triggers `.github/workflows/release-schwung.yml`, one workflow
+for every module. The same tag also triggers the plugin release, because the
+module and the plugin are one product in two shells — one tag ships both, and
+their versions cannot drift apart.
 
 The workflow, in order:
 
-1. **The tag matches the source.** It is checked against
-   `modules/trance-gate/module.json` *and* against `versions.json`. Since
+1. **The tag matches the source.** `scripts/release.mjs resolve` checks it
+   against `versions.json` and the module's `module.json`. Since
    `ctest -R versions` already holds every other spelling to `versions.json`,
-   checking those two checks all of them, and a release cannot claim a version
-   the tree does not build.
-2. Build in Docker, exactly as locally.
-3. **Verify the artifact.** It must exist, must contain `trance-gate/trance-gate.so`,
-   and `file` must report it as ARM aarch64. This step is the one addition over
-   the house pattern, and it earns its place: the release action *warns* on a
-   missing file rather than failing, so a build that produced nothing would
-   publish an empty release the catalog happily points at — a 404 on install,
-   reported as "the module is broken" rather than as a release that was never
-   built.
-4. Attach the tarball. `prerelease` is set explicitly and never inferred: without
-   that, a `-beta.` tag publishes as a normal release and GitHub shows it as
-   **Latest**, so the build that needs an unreleased host becomes the one every
-   visitor is pointed at.
-5. **Rewrite `release.json` on `main`.** A `-beta.` version routes to
-   `channels.beta` and touches nothing else; anything else is stable and also
-   updates the top-level `version` and `download_url`, because a manager that
-   predates channels reads only those and would otherwise be pinned forever.
+   checking those two checks all of them. (The previous inline check stripped
+   the version's own `v` along with the product prefix, so no correct tag
+   could pass it; `ctest -R release` now runs the parser against every
+   product's current tag.)
+2. Build in Docker with `modules/_shared/package.sh <module>`, exactly as
+   locally.
+3. **Verify the artifact.** It must exist, must contain `<id>/<id>.so`,
+   `module.json`, `LICENSE` and `THIRD_PARTY_LICENSES.md`, and `file` must report
+   the `.so` as ARM aarch64. The release action *warns* on a missing file
+   rather than failing, so a build that produced nothing would otherwise
+   publish an empty release the catalog happily points at.
+4. Attach the tarball. `prerelease` is set explicitly and never inferred:
+   without that, a `-beta.` tag publishes as a normal release and GitHub shows it
+   as **Latest**.
+5. **Record it in `release.json` on `main`**, with
+   `scripts/release.mjs release-json`, run from the tagged tree onto main's
+   current file.
 
-## How a Move finds the module
+### `release.json`
 
-The Schwung catalog carries **no version**. Its entry names the repository, the
-asset, and a `min_host_version`; the manager resolves the actual download at
-install time from `release.json` on the default branch. So `release.json` is the
-contract, the release workflow is the only thing that writes it, and this site
-reads the same file — which is why the version shown here and the version a
-device installs cannot disagree.
+One repository publishes two catalog modules, so the file uses Schwung's
+multi-module shape, keyed by each module's catalog id (`module.json`'s `id`):
 
-A beta is offered only when it is strictly newer than stable, which keeps beta
-users from being stranded on a channel that has fallen behind.
+```json
+{
+  "version": "…", "download_url": "…", "channels": { … },
+  "modules": {
+    "trance-gate":   { "version": "…", "download_url": "…", "channels": { "stable": { … } } },
+    "ni-side-chain": { "version": "…", "download_url": "…", "channels": { "stable": { … } } }
+  }
+}
+```
+
+The top-level fields mirror the Trance Gate, for managers and catalog entries
+that predate the `modules` map. A `-beta.` version goes to that module's
+`channels.beta` and touches nothing else; anything else is stable and also
+moves the entry's own `version`/`download_url`.
+
+**Versions here have no leading `v`** — `2026.09.29.3`, and the same in
+`module.json`. Schwung Manager compares versions with `parseInt` on each dotted
+part, and `parseInt("v2026")` is `NaN`, read as 0: with the `v`, the year would
+be ignored and a January release would sort before December's.
 
 ## Outstanding: the catalog still names the old repository
 
