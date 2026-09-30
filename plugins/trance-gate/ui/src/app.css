@@ -53,12 +53,14 @@
 /* Where the signal sweep is writing. Not a playhead: "current up to here". */
 .sweep { stroke-width: 1; }
 
-/* settings row: under the three panels, one line of 28px controls. */
+/* settings row: under the three panels, one line of 28px controls, space-4
+ * apart as the design spaces controls in a row. At space-6 it came to ~795px
+ * of 760 and pushed the copy/paste pair off the window's edge. */
 .settings-row {
   flex: none;
   margin-top: var(--s4);
   height: var(--control-h);
-  display: flex; align-items: center; gap: var(--s6);
+  display: flex; align-items: center; gap: var(--s4);
 }
 .spacer { flex: 1; }
 

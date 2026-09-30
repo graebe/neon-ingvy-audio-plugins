@@ -6,8 +6,7 @@
  * kind that behaves correctly inside a plugin's WebView, where a div-based menu
  * would be clipped by the window and would not follow the pointer out of it.
  *
- * The chevron is two 1px strokes rather than an icon: the system uses no icon
- * set, and this is one of its two glyphs.
+ * The caret is the design set's `chevron` Icon, as the Select card draws it.
  *
  * IT TAKES AN INDEX, NOT A PARAMETER. The Trance Gate's version was bound to a
  * host parameter and converted normalised values in and out; the Spectrogram's
@@ -17,6 +16,7 @@
  * Gate's editor for the binding.
  */
 import { For, Show, createSignal } from 'solid-js';
+import { Icon } from './Icon.jsx';
 
 export function Select(props) {
   const [open, setOpen] = createSignal(false);
@@ -33,9 +33,7 @@ export function Select(props) {
       <div class="select" classList={{ open: open() }}
            style={{ width: `${props.width ?? 96}px` }}>
         <span class="select-value t-value">{props.options[props.value ?? 0]}</span>
-        <svg class="chevron" width="8" height="6" viewBox="0 0 8 6">
-          <path d="M1 1 L4 4 L7 1" fill="none" stroke="var(--ink-muted)" stroke-width="1" />
-        </svg>
+        <Icon name="chevron" />
         <select
           aria-label={props.ariaLabel ?? props.label}
           value={props.value ?? 0}

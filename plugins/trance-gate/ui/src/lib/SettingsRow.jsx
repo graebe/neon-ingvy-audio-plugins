@@ -37,7 +37,7 @@ export function SettingsRow(props) {
     <div class="settings-row">
       {/* No label: the StepGrid card puts the pattern Select above-left of the
         * grid, where its position says what it is. Named for a screen reader. */}
-      <ParamSelect params={props.host} idx={P.slot} options={SLOTS} width={96} ariaLabel="Slot" />
+      <ParamSelect params={props.host} idx={P.slot} options={SLOTS} width={80} ariaLabel="Slot" />
       <ParamToggle params={props.host} idx={P.legato} label="Join Neighbors" />
       <ParamSelect params={props.host} idx={P.curve} options={CURVES} label="Curve"
                    labelWidth={44} width={124} />
@@ -46,19 +46,14 @@ export function SettingsRow(props) {
       <span class="spacer" />
       <Button title="Fill this slot with a new pattern and arrival order"
               onClick={randomize}>RANDOM</Button>
-      <Button icon title="Copy gate config"
-              onClick={() => sendMessage(MSG.requestPatch)}>
-        <svg width="14" height="14" viewBox="0 0 14 14">
-          <rect x="1.5" y="1.5" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1" />
-          <rect x="4.5" y="4.5" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1" />
-        </svg>
-      </Button>
-      <Button icon title="Paste gate config" onClick={startPaste}>
-        <svg width="14" height="14" viewBox="0 0 14 14">
-          <rect x="2" y="3" width="10" height="9" fill="none" stroke="currentColor" stroke-width="1" />
-          <rect x="5" y="0.5" width="4" height="3" fill="none" stroke="currentColor" stroke-width="1" />
-        </svg>
-      </Button>
+      {/* Copy and paste as the design's joined icon pair: copy before paste,
+        * sharing a hairline, each named in full for the pointer and the
+        * screen reader. */}
+      <div class="btn-group">
+        <Button icon="copy" title="Copy gate config"
+                onClick={() => sendMessage(MSG.requestPatch)} />
+        <Button icon="paste" title="Paste gate config" onClick={startPaste} />
+      </div>
       <Show when={pasting()}>
         <input ref={pasteEl} class="paste-field t-hint"
                placeholder={`${modKey()}V to paste`}
