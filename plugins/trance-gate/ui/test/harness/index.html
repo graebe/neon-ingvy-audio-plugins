@@ -19,6 +19,11 @@
   <head>
     <meta charset="UTF-8" />
     <title>Trance Gate — harness</title>
+    <!-- kick.js imports the editor's msg.js from source, which names the kit
+         by its package name: the page has no bundler, so it is mapped here. -->
+    <script type="importmap">
+      { "imports": { "@ultraviolet/ui/shell": "../../../../../ui-kit/src/lib/shell.js" } }
+    </script>
     <script src="./mock.js"></script>
     <link rel="stylesheet" href="./assets/style.css">
     <script type="module" src="./assets/ui.js"></script>
