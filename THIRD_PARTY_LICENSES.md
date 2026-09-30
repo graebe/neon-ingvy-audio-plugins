@@ -152,7 +152,11 @@ The coverage tooling adds no row: `llvm-cov`, `llvm-profdata` and
 `cargo-llvm-cov` are developer tools that run *on* the build rather than inside
 it. Likewise the CI validators (`pluginval`, `clap-validator`, `auval`) and the
 build tools (vite, astro, CMake, cargo) are run, not shipped — vite's one
-exception is its preload polyfill, listed above.
+exception is its preload polyfill, listed above. So is `@playwright/test`
+(**Apache-2.0**, © Microsoft Corporation), the root `devDependency` that drives
+the editors' end-to-end tests (`tests/e2e`) in the Google Chrome already
+installed: it is pinned in `package-lock.json`, downloads no browser, and no
+editor build bundles it.
 
 ## No longer dependencies
 

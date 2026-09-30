@@ -200,7 +200,7 @@ setInterval(() => { roll += 3; globalThis.SAMFD?.(66, 0, binary(scope(roll))); }
 window.__mockEarlyPush = 0;
 pushAll();
 
-const MSG_READY = 120, MSG_REQUEST_PATCH = 99;
+const MSG_READY = 120, MSG_REQUEST_PATCH = 99, P_TIME_MODE = 4;
 
 /* Everything the editor sends, for the interaction tests to assert on. */
 window.__sent = [];
@@ -216,6 +216,17 @@ window.IPlugSendMsg = (m) => {
   }
   if (m?.msg === 'SAMFUI' && m.msgTag === MSG_REQUEST_PATCH)
     globalThis.SAMFD?.(67, 0, b64('tg1:slot=0:len=16:steps=5555'));
+  /* Env Time switched: the stage readouts follow it, as OnEditorIdle re-sends
+   * them -- in ms of the gate's width, or in percent. That is the plugin's
+   * DISPLAY text, not a value echo, so the rule below still holds. */
+  if (m?.msg === 'SPVFUI' && m.paramIdx === P_TIME_MODE) {
+    const ms = m.value < 0.5;
+    const widthMs = HOLD * 125;
+    [[8, +A], [9, +D], [11, +R]].forEach(([i, pct]) => {
+      const d = ms ? `${(pct / 100 * widthMs).toFixed(1)} ms` : `${pct.toFixed(2)} %`;
+      globalThis.SAMFD?.(i, d.length, b64(d));
+    });
+  }
   /*
    * NO ECHO, DELIBERATELY, AND THIS IS LOAD-BEARING.
    *

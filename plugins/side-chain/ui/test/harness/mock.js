@@ -189,7 +189,11 @@ function pushAll() {
 /* The premature push -- dropped, and that is the point. */
 pushAll();
 
+/* Everything the editor sends, for a review or a headless check to assert on. */
+window.__sent = [];
+
 globalThis.IPlugSendMsg = (m) => {
+  window.__sent.push(m);
   if (m.msg === 'SAMFUI' && (m.msgTag | 0) === MSG.ready) {
     /* The reply that actually arrives. */
     pushAll();

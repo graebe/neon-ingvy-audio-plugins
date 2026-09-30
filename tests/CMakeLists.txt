@@ -592,6 +592,26 @@ if (TG_NODE)
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
+# THE EDITORS, END TO END: each one's review harness in the installed Google
+# Chrome, driven by Playwright against its mock host -- the handshake, the
+# gestures, the keyboard, the resize, and a screenshot per editor held to a
+# committed baseline. tests/e2e/playwright.config.mjs says how it stays
+# deterministic; it serves the harnesses on its own port (NI_E2E_PORT, default
+# 47219) so it cannot collide with a dev server.
+#
+# Registered only once `npm ci` has installed Playwright: a C++ developer's
+# checkout without node_modules still configures, and says why this is absent.
+if (TG_NODE AND EXISTS ${CMAKE_SOURCE_DIR}/node_modules/@playwright/test/cli.js)
+    add_test(NAME e2e
+             COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/node_modules/@playwright/test/cli.js
+                     test --config tests/e2e/playwright.config.mjs --reporter=list
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    # Four browser workers of its own; and it rebuilds the harnesses first.
+    set_tests_properties(e2e PROPERTIES TIMEOUT 600 PROCESSORS 4)
+elseif (TG_NODE)
+    message(STATUS "@playwright/test not installed (npm ci) -- the e2e test is not registered")
+endif()
+
 # =============================================================== THE TIERS
 #
 # cmake/NiTest.cmake says what the two mean and checks that this list is

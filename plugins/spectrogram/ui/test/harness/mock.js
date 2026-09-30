@@ -104,16 +104,23 @@ globalThis.SAMFD?.(MSG_AXIS, 0, b64(axis()));
 /* Everything the editor sends, for a review or a headless check to assert on. */
 window.__sent = [];
 
+/* The session first, as the plugin does -- the editor pushes nothing until it
+ * has applied it. ?zoom=lo:hi reviews a reopened zoom. */
+const sendState = () => {
+  const range = /zoom=([\d.]+:[\d.]+)/.exec(location.search)?.[1] ?? '10.00:20000.00';
+  globalThis.SAMFD?.(MSG_STATE, 0,
+    b64(`${range}:${viewing.join(',')}:${cmpA}:${cmpB}:${clashWanted ? 1 : 0}:-60.00:12.00`));
+};
+
 window.IPlugSendMsg = (m) => {
   window.__sent.push(m);
   /* kMsgReady -- the editor has mounted and is listening. This is the reply that
    * actually delivers the axis, and the whole point of the handshake. */
   if (m?.msg === 'SAMFUI' && m.msgTag === MSG_READY) {
-    /* The session first, as the plugin does -- the editor pushes nothing
-     * until it has applied it. ?zoom=lo:hi reviews a reopened zoom. */
-    const range = /zoom=([\d.]+:[\d.]+)/.exec(location.search)?.[1] ?? '10.00:20000.00';
-    globalThis.SAMFD?.(MSG_STATE, 0,
-      b64(`${range}:${viewing.join(',')}:${cmpA}:${cmpB}:${clashWanted ? 1 : 0}:-60.00:12.00`));
+    /* ?holdstate withholds the session until window.__releaseState() -- the
+     * window in which an editor that pushed early would overwrite it. */
+    if (/[?&]holdstate\b/.test(location.search)) window.__releaseState = sendState;
+    else sendState();
     globalThis.SAMFD?.(MSG_AXIS, 0, b64(axis()));
     sendSources();
   }
