@@ -32,29 +32,16 @@ use ground_capi as _;
 mod shell;
 pub use shell::TgShell;
 
-use std::ffi::{c_char, c_int, CStr};
+use ni_dsp::ffi::{cstr as s, CTransport};
+use std::ffi::{c_char, c_int};
 use tg_core::params::Param;
-use tg_core::{Instance, Transport};
+use tg_core::Instance;
 
 /// Opaque to C, exactly as `tg_core_t` was.
 pub struct TgCore(Instance);
 
-#[repr(C)]
-pub struct TgTransport {
-    pub running: c_int,
-    pub beats: f64,
-    pub bpm: f32,
-}
-
-/// A `*const c_char` as a `&str`, or "" -- which is what the C's `atof` and
-/// `strcmp` effectively did with junk. Invalid UTF-8 is treated as absent
-/// rather than panicking: this runs on an audio callback.
-unsafe fn s<'a>(p: *const c_char) -> &'a str {
-    if p.is_null() {
-        return "";
-    }
-    CStr::from_ptr(p).to_str().unwrap_or("")
-}
+/// The transport as `trance_gate_core.h` declares it.
+pub use ni_dsp::ffi::CTransport as TgTransport;
 
 #[no_mangle]
 pub extern "C" fn tg_core_create(sample_rate: f64) -> *mut TgCore {
@@ -130,14 +117,6 @@ pub unsafe extern "C" fn tg_core_on_midi(_c: *mut TgCore, _msg: *const u8, _len:
      * published surface. */
 }
 
-unsafe fn transport(t: *const TgTransport) -> Option<Transport> {
-    t.as_ref().map(|t| Transport {
-        running: t.running != 0,
-        beats: t.beats,
-        bpm: t.bpm,
-    })
-}
-
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_process_i16(
     c: *mut TgCore,
@@ -150,7 +129,7 @@ pub unsafe extern "C" fn tg_core_process_i16(
         return;
     }
     let buf = std::slice::from_raw_parts_mut(lr, frames as usize * 2);
-    c.0.process_i16(buf, frames as usize, transport(t).as_ref());
+    c.0.process_i16(buf, frames as usize, CTransport::read(t).as_ref());
 }
 
 #[no_mangle]
@@ -165,7 +144,7 @@ pub unsafe extern "C" fn tg_core_process_f32(
         return;
     }
     let buf = std::slice::from_raw_parts_mut(lr, frames as usize * 2);
-    c.0.process_f32(buf, frames as usize, transport(t).as_ref());
+    c.0.process_f32(buf, frames as usize, CTransport::read(t).as_ref());
 }
 
 #[no_mangle]
@@ -183,7 +162,7 @@ pub unsafe extern "C" fn tg_core_process_f32_split(
     let n = frames as usize;
     let lb = std::slice::from_raw_parts_mut(l, n);
     let rb = std::slice::from_raw_parts_mut(r, n);
-    c.0.process_f32_split(lb, rb, n, transport(t).as_ref());
+    c.0.process_f32_split(lb, rb, n, CTransport::read(t).as_ref());
 }
 
 #[no_mangle]

@@ -38,6 +38,7 @@ name = "sc-capi"
 version = "2026.9.29+2"
 dependencies = [
  "ground-capi",
+ "ni-dsp",
  "sc-core",
  "shell-core",
 ]
@@ -95,6 +96,7 @@ name = "tg-capi"
 version = "2026.9.29+3"
 dependencies = [
  "ground-capi",
+ "ni-dsp",
  "shell-core",
  "tg-core",
 ]
