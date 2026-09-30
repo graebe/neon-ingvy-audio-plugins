@@ -65,7 +65,7 @@ pub fn set_pattern_hex(dst: &mut Mask, val: &str) {
  * direction (C's `atof` honours `LC_NUMERIC`, so a comma-decimal host turns
  * "0.750" into 0) and a string-match ladder, per value, per block.
  *
- * These are the same twelve values on the same wire conventions -- slot,
+ * These are the same fifteen values on the same wire conventions -- slot,
  * length and rate are INDICES, legato and time_mode are 0|1, the rest are the
  * units the string keys use -- with the decimal detour removed. `set_param`
  * is implemented in terms of [`Instance::set_num`], so every clamp exists
@@ -126,7 +126,7 @@ impl Param {
 }
 
 impl Instance {
-    /// The twelve automatable values, by number. Every clamp and every side
+    /// The fifteen automatable values, by number. Every clamp and every side
     /// effect lives here; [`Instance::set_param`] parses a string and
     /// delegates, so the two doors cannot drift apart.
     ///
@@ -271,7 +271,7 @@ impl Instance {
 
     pub fn set_param(&mut self, key: &str, val: &str) {
         match key {
-            /* The twelve automatable keys parse and delegate -- `set_num`
+            /* The automatable keys parse and delegate -- `set_num`
              * owns every clamp and every side effect, so the numeric and
              * string doors cannot drift. */
             "slot" => self.set_num(Param::Slot, fmt::atoi(val) as f64),
@@ -497,7 +497,7 @@ impl Instance {
                 fmt::f(&mut b, pos, 3)
             }
             /*
-             * ONE READ FOR THE TWELVE AUTOMATABLE VALUES.
+             * ONE READ FOR THE AUTOMATABLE VALUES.
              *
              * `ui` carries the pattern and the playhead; it carries no part
              * of the SOUND, which is why a shell that wants to know whether

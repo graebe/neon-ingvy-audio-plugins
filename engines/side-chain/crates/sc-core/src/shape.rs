@@ -128,7 +128,7 @@ pub fn shape(curve: Curve, t: f64) -> f64 {
 
 /// The inverse, which is what lets the curve change mid-duck without a click:
 /// the level is re-anchored through it in `set_curve`. Monotonic and analytic
-/// for all four.
+/// for all three.
 #[inline]
 pub fn shape_inv(curve: Curve, w: f64) -> f64 {
     if !(w > 0.0) {

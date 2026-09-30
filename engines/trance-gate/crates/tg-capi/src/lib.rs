@@ -88,7 +88,7 @@ pub unsafe extern "C" fn tg_core_set_param(
     c.0.set_param(s(key), s(val));
 }
 
-/// `tg_core_set_num`: the twelve automatable values by number, for host
+/// `tg_core_set_num`: the fifteen automatable values by number, for host
 /// automation arriving on the audio thread. See [`tg_core::params::Param`] --
 /// the discriminants are the ABI, so a host that saved an automation lane
 /// saved these integers.

@@ -187,7 +187,7 @@ impl Instance {
     ///
     /// So the level is held fixed and the TIME is moved: invert the old shape
     /// to find where we are, then invert the new one to find where that level
-    /// lives on it. `shape_inv` is analytic for all four curves, which is why
+    /// lives on it. `shape_inv` is analytic for all three curves, which is why
     /// they were all chosen to be invertible.
     pub fn set_curve(&mut self, curve: Curve) {
         if curve == self.curve {
