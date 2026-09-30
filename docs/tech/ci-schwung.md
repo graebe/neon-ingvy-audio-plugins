@@ -11,16 +11,24 @@ builds and verifies it on every tag.
 ## Locally
 
 ```sh
-cmake --build build --target schwung     # -> dist/trance-gate-module.tar.gz
+cmake --build build --target schwung              # -> dist/trance-gate-module.tar.gz
+cmake --build build --target schwung-side-chain   # -> dist/ni-side-chain-module.tar.gz
 ```
 
-Behind that target, `modules/trance-gate/package.sh` re-execs itself inside
-Docker unless it is already in a container. The image is Ubuntu 22.04 with
-`gcc-aarch64-linux-gnu` and a pinned rustup toolchain targeting
-`aarch64-unknown-linux-gnu`; the C toolchain is still there because the aarch64
-linker is gcc's.
+Every module is built by the same script, `modules/_shared/package.sh <module>`,
+where `<module>` is the directory under `modules/`. What differs between modules
+— the catalog id, the title and the `*-move` crate — is in that directory's
+`module.env`; `tests/release.test.mjs` holds it to `module.json` and the Cargo
+workspace.
 
-Inside, it runs `cargo build --release -p tg-move --target aarch64-unknown-linux-gnu`
+The script re-execs itself inside Docker unless it is already in a container.
+The image (`modules/_shared/Dockerfile`) is Ubuntu 22.04 with
+`gcc-aarch64-linux-gnu` and a pinned Rust toolchain targeting
+`aarch64-unknown-linux-gnu`, installed by a rustup-init that is pinned by
+version and verified by SHA-256 — never `curl | sh`. The C toolchain is still
+there because the aarch64 linker is gcc's.
+
+Inside, it runs `cargo build --release -p <crate> --target aarch64-unknown-linux-gnu`
 **from the repository root**, so cargo walks up to the one workspace and picks
 up `.cargo/config.toml` — which sets `target-cpu=cortex-a72` for that target and
 nothing else.
@@ -34,9 +42,14 @@ Two things in that script are load-bearing and commented as such:
   `.so` and its tests non-bit-identical, which is exactly the failure the render
   A/B exists to catch.
 
-`modules/trance-gate/install.sh` scps the result to `ableton@move.local`. It
-refuses to create the base directory if it is not already there — a wrong path
-silently creating a tree is worse than an error.
+The tarball carries `LICENSE` and `THIRD_PARTY_LICENSES.md` beside the `.so`:
+what reaches a device has no repository near it, and MIT asks that the notice
+travel with every copy.
+
+`modules/_shared/install.sh <module>` scps the result to `ableton@move.local`.
+It refuses to create the base directory if it is not already there — a wrong
+path silently creating a tree is worse than an error — and leaves the module
+owner-writable but never world-writable.
 
 ## Releasing
 

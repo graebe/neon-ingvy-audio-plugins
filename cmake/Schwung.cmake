@@ -1,7 +1,10 @@
 # The Schwung modules: the Move builds of the engines that have one.
 #
-#   cmake --build build --target schwung        the Trance Gate
+#   cmake --build build --target schwung              NI Trance Gate
 #   cmake --build build --target schwung-side-chain   NI Side-Chain
+#
+# Both run modules/_shared/package.sh with the module's directory name; what
+# differs between modules is in modules/<name>/module.env.
 #
 # WHY THIS IS A CUSTOM TARGET AND NOT A CMAKE LIBRARY. It is an aarch64 LINUX
 # cross-build, produced in a container with a pinned toolchain, and packaged as
@@ -23,14 +26,14 @@
 find_program(SCHWUNG_DOCKER docker)
 
 add_custom_target(schwung
-    COMMAND ${CMAKE_SOURCE_DIR}/modules/trance-gate/package.sh
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh trance-gate
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Building the Trance Gate module for Schwung (aarch64 Linux, via Docker)"
+    COMMENT "Building the NI Trance Gate module for Schwung (aarch64 Linux, via Docker)"
     USES_TERMINAL                 # it is slow and it has progress worth seeing
     VERBATIM)
 
 add_custom_target(schwung-side-chain
-    COMMAND ${CMAKE_SOURCE_DIR}/modules/side-chain/package.sh
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh side-chain
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building the NI Side-Chain module for Schwung (aarch64 Linux, via Docker)"
     USES_TERMINAL
