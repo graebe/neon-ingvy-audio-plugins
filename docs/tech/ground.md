@@ -24,8 +24,9 @@ thickens; in the trough between two rings they shrink and dim and it thins.
 Three things it deliberately does **not** do:
 
 - **It never idles.** With no kick, the field is exactly zero, the picture is
-  identical to the static background, and the render loop stops entirely. A
-  background that drifts on its own would be competing with the meters.
+  the static background, and the render loop stops entirely -- as it also does
+  while the window is hidden. A background that drifts on its own would be
+  competing with the meters.
 - **The grain never travels.** Only its local density changes. Moving grain reads
   as television static.
 - **Rings do not cross a panel.** Panels, wells and the step grid are solid to

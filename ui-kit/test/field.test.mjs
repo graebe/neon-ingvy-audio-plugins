@@ -54,7 +54,7 @@ function stubContext() {
   };
 }
 
-function stubCanvas(w, h) {
+function stubCanvas(w, h, k = 1) {
   const ctx = stubContext();
   return {
     clientWidth: w,
@@ -62,7 +62,24 @@ function stubCanvas(w, h) {
     width: 0,
     height: 0,
     getContext: () => ctx,
+    /* What an editor's `transform: scale(k)` does to the on-screen box and not
+     * to the layout one. */
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: this.clientWidth * k, height: this.clientHeight * k };
+    },
     _ctx: ctx,
+  };
+}
+
+/** A minimal EventTarget: enough for `document` and a MediaQueryList. */
+function target(extra = {}) {
+  const on = {};
+  return {
+    ...extra,
+    addEventListener(type, fn) { (on[type] ||= new Set()).add(fn); },
+    removeEventListener(type, fn) { on[type]?.delete(fn); },
+    dispatch(type, ev = {}) { for (const fn of on[type] || []) fn(ev); },
+    listeners(type) { return on[type]?.size || 0; },
   };
 }
 
@@ -87,23 +104,29 @@ function tokenValues() {
 function installDom({ reducedMotion = false, dpr = 1 } = {}) {
   const values = tokenValues();
   const saved = { ...globalThis };
-  globalThis.document = {
+  globalThis.document = target({
     documentElement: { __root: true },
+    hidden: false,
     createElement: () => stubCanvas(96, 96),
-  };
+  });
   globalThis.getComputedStyle = () => ({
     getPropertyValue: (name) => values[name] ?? '',
   });
-  globalThis.matchMedia = () => ({ matches: reducedMotion });
+  /* One list per query, kept, so a test can flip it and dispatch `change`. */
+  const media = {};
+  globalThis.matchMedia = (q) =>
+    (media[q] ||= target({ matches: q.includes('reduced-motion') ? reducedMotion : false }));
+  globalThis.__media = media;
   globalThis.devicePixelRatio = dpr;
   /* Returns a live handle and never calls back: every test below steps the
    * simulation itself, so a frame that fired on its own would make the number of
    * steps depend on how busy the machine was. */
-  globalThis.requestAnimationFrame = () => 1;
+  let handle = 0;
+  globalThis.requestAnimationFrame = () => ++handle;
   globalThis.cancelAnimationFrame = () => {};
   return () => {
     for (const k of ['document', 'getComputedStyle', 'matchMedia', 'devicePixelRatio',
-      'requestAnimationFrame', 'cancelAnimationFrame']) {
+      'requestAnimationFrame', 'cancelAnimationFrame', '__media']) {
       if (k in saved) globalThis[k] = saved[k]; else delete globalThis[k];
     }
   };
@@ -183,8 +206,8 @@ test('a kick raises the field and it rings out to exactly zero', async () => {
       `after 25 s the field should be under rest (${field.o.rest}); it is ${late}`);
 
     /* And `_tick` is what takes it from "under rest" to EXACTLY zero -- the
-     * design requires a still frame to be pixel-identical to the static ground,
-     * and 1e-9 of wave is a dot drawn at the wrong level. */
+     * design requires a still frame to look like the static design, and 1e-9
+     * of wave is a dot drawn at the wrong level. */
     field._tick();
     assert.equal(field._peak(), 0, 'the field did not return to exactly zero');
     assert.equal(field.raf, 0, 'the render loop is still running at rest');
@@ -380,7 +403,7 @@ test('the ground canvas is stretched by width/height, not by inset alone', () =>
    * over-constrained and `right`/`bottom` are dropped. The result is a 300x150
    * canvas in the top-left corner of the window.
    *
-   * And that is invisible. A field at rest is pixel-identical to the static CSS
+   * And that is invisible. A field at rest looks the same as the static CSS
    * ground underneath it, so the window looks exactly right, and only a small
    * patch in the corner ever animates. It shipped that way once.
    *
@@ -397,4 +420,134 @@ test('the ground canvas is stretched by width/height, not by inset alone', () =>
       `.ground must set ${prop}: 100% -- inset: 0 alone leaves a canvas at its ` +
       'intrinsic 300x150, pinned to the corner, where nobody will notice it');
   }
+});
+
+/* ---------- the page around it ---------- */
+
+test('the backing store includes the editor\'s scale, snapped to whole-pixel dots', async () => {
+  /* Every editor fits its design to the viewport with transform: scale(k). A
+   * canvas sized by devicePixelRatio alone is then resampled by k on screen --
+   * blurred dots at k > 1, wasted pixels at k < 1. */
+  const teardown = installDom({ dpr: 1 });
+  try {
+    const { Field } = await loadField();
+    const field = new Field(stubCanvas(400, 300, 2));
+    assert.equal(field.canvas.width, 800, 'a 2x-scaled window needs a 2x backing store');
+    assert.equal(field.cw, 24, 'one dot pitch is 24 backing px at 2x');
+
+    /* A scale that would make a pitch fractional is snapped, so every dot
+     * lands on a whole pixel and the 68th is where the static ground has it. */
+    const odd = new Field(stubCanvas(824, 300, 0.83));
+    assert.equal(odd.cw, Math.round(12 * 0.83));
+    assert.equal(odd.canvas.width, Math.round(824 * odd.cw / 12));
+  } finally { teardown(); }
+});
+
+test('fit() rebuilds only when the size or the scale actually changed', async () => {
+  /* A rebuild resets the field, so a layout notification that changed nothing
+   * must not cost a ring in flight. */
+  const teardown = installDom();
+  try {
+    const { Field } = await loadField();
+    const canvas = stubCanvas(400, 300);
+    const field = new Field(canvas);
+    field.trigger(1);
+    advance(field, 0.3);
+    assert.equal(field.fit(), false, 'nothing changed, so nothing is rebuilt');
+    assert.ok(field._peak() > 0, 'the ring survived a no-op fit');
+    canvas.clientWidth = 500;
+    assert.equal(field.fit(), true);
+    assert.equal(field.canvas.width, 500);
+  } finally { teardown(); }
+});
+
+test('the loop pauses while the document is hidden and resumes when it is shown', async () => {
+  const teardown = installDom();
+  try {
+    const { Field } = await loadField();
+    const field = new Field(stubCanvas(400, 300));
+    field.trigger(1);
+    assert.ok(field.raf, 'a kick starts the loop');
+
+    document.hidden = true;
+    document.dispatch('visibilitychange');
+    assert.equal(field.raf, 0, 'a hidden window must not keep a frame loop running');
+
+    /* A kick that arrives while hidden is kept, not drawn. */
+    field.trigger(1);
+    assert.equal(field.raf, 0, 'a kick while hidden must not restart the loop');
+
+    document.hidden = false;
+    document.dispatch('visibilitychange');
+    assert.ok(field.raf, 'the loop resumes where there is still something to draw');
+
+    field.destroy();
+    assert.equal(document.listeners('visibilitychange'), 0, 'destroy must unhook the document');
+  } finally { teardown(); }
+});
+
+test('shown again with nothing moving, the loop stays stopped', async () => {
+  const teardown = installDom();
+  try {
+    const { Field } = await loadField();
+    const field = new Field(stubCanvas(400, 300));
+    document.hidden = true;
+    document.dispatch('visibilitychange');
+    document.hidden = false;
+    document.dispatch('visibilitychange');
+    assert.equal(field.raf, 0, 'a field at rest has no reason to run');
+  } finally { teardown(); }
+});
+
+test('turning on reduced motion while running flattens the field at once', async () => {
+  /* The setting is read once no longer: a user who turns it on mid-session
+   * gets it mid-session. */
+  const teardown = installDom();
+  try {
+    const { Field } = await loadField();
+    const field = new Field(stubCanvas(400, 300));
+    field.trigger(1);
+    assert.ok(advance(field, 0.5) > 0.05);
+
+    const mq = globalThis.__media['(prefers-reduced-motion: reduce)'];
+    mq.matches = true;
+    mq.dispatch('change', { matches: true });
+    assert.equal(field.reduced, true);
+    assert.equal(field._peak(), 0, 'the field kept moving after reduced motion was turned on');
+    field.trigger(1);
+    assert.equal(advance(field, 0.5), 0);
+
+    mq.matches = false;
+    mq.dispatch('change', { matches: false });
+    field.trigger(1);
+    assert.ok(advance(field, 0.5) > 0.05, 'turning it off again must bring the field back');
+    field.destroy();
+    assert.equal(mq.listeners('change'), 0, 'destroy must unhook the media query');
+  } finally { teardown(); }
+});
+
+test('a frame redraws only the dots whose level changed', async () => {
+  /* The cost that matters while music plays. A frame used to copy the whole
+   * baked ground and then blit every moving dot again, whether or not it had
+   * moved since the last frame. Each sprite covers its own cell exactly and
+   * opaquely, so drawing only the changed ones gives the same pixels. */
+  const teardown = installDom();
+  try {
+    const { Field } = await loadField();
+    const canvas = stubCanvas(400, 300);
+    const field = new Field(canvas);
+    field.trigger(1);
+    advance(field, 1);
+    field.draw();
+    const ctx = canvas._ctx;
+    ctx.blits = 0;
+    field.draw();
+    assert.equal(ctx.blits, 0, `an unchanged field redrew ${ctx.blits} sprites`);
+
+    field._step();
+    ctx.blits = 0;
+    field.draw();
+    assert.ok(ctx.blits > 0, 'a step that moved the field drew nothing');
+    assert.ok(ctx.blits < field.rows * field.cols, 'one step redrew every dot');
+  } finally { teardown(); }
 });

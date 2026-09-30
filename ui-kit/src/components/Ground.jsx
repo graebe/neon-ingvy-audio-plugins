@@ -30,14 +30,22 @@
  * canvas draws the ground at the wrong pitch. Observing the element asks about
  * the thing that actually matters.
  *
+ * AND WHY THAT IS NOT ENOUGH ON ITS OWN. Every editor here also scales its
+ * <main> with a CSS transform to fit the viewport, and a transform is not a
+ * resize: the ResizeObserver never hears about it. So the element's `style` is
+ * watched as well (that is where each editor writes its scale), and the window's
+ * resize, which is how a devicePixelRatio or zoom change arrives. All of it is
+ * coalesced into one re-measure per frame.
+ *
  * WHAT IT DOES NOT DO: idle. There is no animation loop running when nothing has
- * happened -- `Field` stops its own loop once the field is at rest, and at rest
- * the canvas is pixel-identical to the static CSS ground underneath it.
+ * happened -- `Field` stops its own loop once the field is at rest (and while
+ * the document is hidden), and at rest the canvas shows the static design.
  */
 
 import { onMount, onCleanup, createEffect } from 'solid-js';
 
 import { Field } from '../lib/field.js';
+import { viewScale, toCanvasRects, sameRects } from '../lib/ground-geometry.js';
 
 /*
  * The boxes that emit and reflect, by default.
@@ -57,30 +65,63 @@ export function Ground(props) {
   let canvas;
   let field = null;
   let observer = null;
+  let mutations = null;
+  let dprQuery = null;
+  let pending = 0;
+  let rects = null;
 
   /*
-   * Measure the boxes RELATIVE TO THE CANVAS. Both rects come from
-   * getBoundingClientRect, so subtracting one from the other is the same
-   * coordinate system the field's grid uses -- CSS px from the canvas's top
-   * left -- with no assumption about where either sits on the page.
+   * Measure the boxes RELATIVE TO THE CANVAS AND IN ITS LAYOUT PX. Both rects
+   * come from getBoundingClientRect, which is on-screen px -- AFTER the editor's
+   * scale transform -- while the field simulates in the canvas's clientWidth,
+   * which is before it. So the difference is divided by that scale on the way
+   * in (lib/ground-geometry.js); without that, at any scale but 1 the walls
+   * were not where the panels are.
+   *
+   * An unchanged layout is not passed on: `setSources` rebuilds the grid, which
+   * resets the field, and a style write that moved nothing must not cost a ring.
    */
   const measure = () => {
     if (!field || !canvas) return;
     const root = canvas.parentElement;
     if (!root) return;
     const base = canvas.getBoundingClientRect();
+    const k = viewScale(base, canvas.clientWidth);
     const selector = props.sources || DEFAULT_SOURCES;
-    const rects = Array.from(root.querySelectorAll(selector))
-      .map((el) => {
-        const b = el.getBoundingClientRect();
-        return { x: b.left - base.left, y: b.top - base.top, w: b.width, h: b.height };
-      })
-      /* A box with no area is a box that is not laid out yet (a collapsed
-       * panel, a hidden tab). Passing it through would wall off a single grid
-       * node at the origin, which reads as one dot that never moves. */
-      .filter((b) => b.w > 0 && b.h > 0);
-    field.setSources(rects);
+    const next = toCanvasRects(
+      base,
+      Array.from(root.querySelectorAll(selector), (el) => el.getBoundingClientRect()),
+      k,
+    );
+    if (sameRects(next, rects)) return;
+    rects = next;
+    field.setSources(next);
   };
+
+  /* Everything that can move the layout, the scale or the pixel ratio lands
+   * here, at most once a frame. `fit` rebuilds only if the canvas's size or
+   * ratio really changed; a rebuild clears the walls, so they are re-sent. */
+  const update = () => {
+    pending = 0;
+    if (!field) return;
+    if (field.fit()) rects = null;
+    measure();
+  };
+  const schedule = () => {
+    if (!pending && field) pending = globalThis.requestAnimationFrame(update);
+  };
+
+  /* A devicePixelRatio change -- the window dragged to another screen, a zoom --
+   * is a media query flipping. It is re-armed at the new ratio each time. */
+  const watchDpr = () => {
+    dprQuery?.removeEventListener?.('change', onDpr);
+    dprQuery = globalThis.matchMedia?.(`(resolution: ${globalThis.devicePixelRatio || 1}dppx)`) || null;
+    dprQuery?.addEventListener?.('change', onDpr);
+  };
+  function onDpr() {
+    watchDpr();
+    schedule();
+  }
 
   onMount(() => {
     /*
@@ -123,13 +164,20 @@ export function Ground(props) {
        * a host resize, and observing the boxes as well would only add callbacks
        * that do the same thing several times in one frame.
        */
-      observer = new ResizeObserver(() => {
-        /* `field` is re-read rather than captured: a later failure must not turn
-         * a resize into a second, louder error. */
-        field?.resize();
-        measure();
-      });
+      observer = new ResizeObserver(schedule);
       observer.observe(root);
+    }
+    if (field && root && globalThis.MutationObserver) {
+      /* THE SCALE. Each editor writes `transform: scale(k)` into main's inline
+       * style, and nothing else reports that. Solid mounts this before the
+       * editor's own onMount applies the first scale, so this is also what
+       * catches the initial one. */
+      mutations = new MutationObserver(schedule);
+      mutations.observe(root, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
+    if (field) {
+      globalThis.addEventListener?.('resize', schedule);
+      watchDpr();
     }
 
     props.ref?.({
@@ -150,6 +198,13 @@ export function Ground(props) {
   onCleanup(() => {
     observer?.disconnect();
     observer = null;
+    mutations?.disconnect();
+    mutations = null;
+    globalThis.removeEventListener?.('resize', schedule);
+    dprQuery?.removeEventListener?.('change', onDpr);
+    dprQuery = null;
+    if (pending) globalThis.cancelAnimationFrame(pending);
+    pending = 0;
     field?.destroy();
     field = null;
   });
