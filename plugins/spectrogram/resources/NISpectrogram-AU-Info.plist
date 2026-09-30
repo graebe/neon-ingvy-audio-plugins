@@ -14,7 +14,7 @@
 			<key>name</key>
 			<string>Neon Ingvy: NI Spectrogram</string>
 			<key>sandboxSafe</key>
-			<true/>
+			<false/>
 			<key>subtype</key>
 			<string>SpGr</string>
 			<key>type</key>
@@ -44,7 +44,7 @@
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>2026.9.29</string>
+	<string>2026.9.234</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>

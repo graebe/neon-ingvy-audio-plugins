@@ -44,12 +44,12 @@
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>2026.9.29</string>
+	<string>2026.9.235</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>10.13.0</string>
 	<key>NSPrincipalClass</key>
-	<string>TranceGate_View</string>
+	<string>NITranceGate_View</string>
 </dict>
 </plist>
