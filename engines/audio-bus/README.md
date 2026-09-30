@@ -4,8 +4,9 @@ A **shared-memory audio bus** between plugins in one host. One writer claims a
 numbered slot and publishes stereo float audio; any number of readers, in that
 process or another, open the same slot and read it.
 
-MIT, © 2026 Torben Gräber. **No dependencies at all** — it declares the six
-POSIX calls it needs in `crates/bus-core/src/shm.rs` rather than taking libc,
+MIT, © 2026 Torben Gräber. **No dependencies at all** — it declares the
+handful of macOS calls it needs in `crates/bus-core/src/shm.rs` rather than
+taking libc,
 which is MIT/Apache-2.0 and would be fine, but is a large thing to borrow
 `mmap` from.
 
@@ -39,35 +40,69 @@ The cost is a real one and is stated rather than hidden: a **sandboxed** host
 needs an app-group prefix on the shm name and this will not connect there. Live
 loads VST3 and AU in process.
 
+## Who can see a bus: the trust model
+
+A bus is a POSIX shared-memory object named `/nia.bus.NN`, created with mode
+`0600`. So:
+
+- **Only processes running as the same user can open it at all** — to read or
+  to claim. Another account on the machine gets `EACCES`.
+- **Every process of that user is trusted equally.** The names are fixed and
+  public; any program you run can read what a Listen-In publishes, publish into
+  a free slot, or `shm_unlink` a slot's name. There is no authentication
+  between sender and receiver, by design: they are your own plugins in your
+  own host.
+- A reader maps the segment **read-only**, so a receiver cannot corrupt a bus
+  even by mistake, and treats everything it reads as untrusted — sizes and
+  layout are checked before anything is mapped or interpreted.
+
+That is the right boundary for audio between plugins in one session. It would
+be the wrong one for anything secret: do not put anything on a bus you would
+not show another program running as you.
+
 ## The shape of it
 
 | | |
 |---|---|
-| `header.rs` | the segment layout both Rust and C agree on, and the label's seqlock |
-| `ring.rs` | the wrap, the lap detection, the resync — over a `&Header` and a `*mut f32`, so a test can build one on the heap |
-| `shm.rs` | `shm_open`/`mmap`, and the two doors: only a writer may use the one that creates |
-| `lib.rs` | `Writer`, `Reader`, `probe`, and the claim protocol |
+| `header.rs` | the segment layout, the owner word, and the label's seqlock — every field an atomic |
+| `ring.rs` | the wrap, the lap detection, the resync — over a `&Header` and a `&[AtomicU32]`, so a test can build one on the heap |
+| `shm.rs` | `shm_open`/`mmap`, and the two doors: only a writer may use the one that creates, and a reader's is read-only |
+| `lib.rs` | `Writer` + `Pusher`, `Reader`, `probe`, and the claim protocol |
 | `crates/bus-capi` | the C ABI; `include/audio_bus.h` is the contract |
 
 ## One writer, N readers, and no coordination between them
 
-A reader keeps its cursor **in its own process memory**, never in the segment.
-So the segment is written by exactly one participant and two readers cannot
-interfere with each other, because neither of them writes anything at all. That
-is what makes the whole thing lock-free without being clever.
+A reader keeps its cursor **in its own process memory**, never in the segment,
+and maps the segment read-only. So the stream is written by exactly one
+participant and two readers cannot interfere with each other, because neither
+of them writes anything at all. That is what makes the whole thing lock-free
+without being clever.
 
-The one apparent exception is the 32-byte label, which cannot be read
-atomically; it is a seqlock, and a reader that keeps losing the race keeps the
-name it had rather than spinning on the message thread.
+The samples and every header field are atomics. A reader copying while the
+writer overwrites the same cells is the design — the re-check afterwards throws
+such a copy away — and with plain floats that overlap would be undefined
+behaviour however carefully the result was discarded. Relaxed atomic loads and
+stores compile to the same moves.
+
+The 32-byte label cannot be read in one atomic; it is a seqlock, and a reader
+that keeps losing the race keeps the name it had rather than spinning on the
+message thread.
 
 ## The thread rules are part of the ABI
 
 ```
-Writer::claim / release / set_label / set_sample_rate   the main thread
-Writer::push                                            the audio thread, and only it
-Reader::open / close                                    the main thread
+Writer::claim / drop / set_label / set_sample_rate      the main thread
+Pusher::push                                            the audio thread, and only it
+Reader::open / reattach / drop                          the main thread
 Reader::read                                            one thread, the same one each time
 ```
+
+A claim returns two handles, a `Writer` for the main thread and a `Pusher` for
+the audio thread, and each mutates only through `&mut self` — so safe Rust
+cannot push from two threads at once. The C ABI keeps one handle and projects
+each call to the half its thread owns. A sample-rate change is **posted**: the
+main thread leaves a request and the next `push` applies it, because the
+restart resets the frame count that only the audio thread may write.
 
 `push` allocates nothing, takes no lock and makes no system call —
 `tests/no_alloc.rs` fails the build if that stops being true. `claim` does all
@@ -108,7 +143,40 @@ shm outlives the process that made it, all the way to a reboot. So a slot marked
 CLAIMED is not necessarily a taken one, and refusing it forever would mean one
 crash costs a bus number until you restart the machine.
 
-The evidence is deliberately two-sided, because each half alone lies: a pid can
-be recycled onto an unrelated process, and a heartbeat can be stalled by a host
-that is merely paused. Only `kill(pid, 0) == ESRCH` concludes anything, and it
-concludes the writer is **gone** — never that one is alive.
+So a claim may take over a held slot, but only on one piece of evidence:
+`kill(pid, 0) == ESRCH`, which concludes the holder is **gone** — never that one
+is alive. A recycled pid can make a dead holder look alive; that costs a bus
+number until the unrelated process exits, and is the conservative way to be
+wrong. (There is no heartbeat: a stalled heartbeat cannot tell a dead host from
+a paused one, so it could only ever have been a second opinion nobody acted on.)
+
+**The claim is one compare-and-swap.** Who holds the slot and how many times it
+has been claimed live in one 64-bit owner word, and a claimer swaps from the
+exact word it judged to its own. Two reclaimers of one dead pid both judge the
+same word; whichever swaps first changes it, and the other re-judges a holder
+that is alive. An earlier protocol kept state and pid in separate words, and
+both reclaimers won — `two_reclaimers_of_one_dead_pid_do_not_both_win` in
+`src/claims.rs` places that interleaving deterministically.
+
+## A clean quit removes the bus, and readers follow a new one
+
+A departing writer **unlinks the name, then frees the slot**, in that order: a
+claimer that opened the segment just before the unlink finds it free only once
+it has stopped being the bus, and every claim ends by checking that the slot's
+name still leads to the segment it claimed (each segment carries a unique
+`incarnation`). A claim on an orphan is let go and retried.
+
+A reader still mapping the old segment sees a sender that stopped, and nothing
+in a mapping can say that the name moved on. `Reader::reattach`
+(`abus_reader_reattach`) asks the name again and moves to the new segment,
+reporting a resync. It makes system calls, so it is a main-thread call for a
+reader that has been getting nothing for a while — which is when spectro-recv
+makes it.
+
+## Versions
+
+`ABI_VERSION` in `header.rs` names the layout **and** the claim protocol. A
+reader refuses a segment of another version; a writer replaces it. Version 2
+introduced the owner word and the incarnation and dropped the heartbeat, so a
+version-1 plugin and a version-2 plugin cannot share a slot — the second to
+claim replaces the first's segment.

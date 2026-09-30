@@ -16,10 +16,14 @@
 #[cfg(not(target_os = "macos"))]
 compile_error!("bus-core declares macOS's shm/mmap ABI by hand; port shm.rs before building it elsewhere");
 
+use core::sync::atomic::AtomicU32;
+
 use crate::header::{segment_size, Header, DATA_OFFSET};
+use crate::ring::RING_SAMPLES;
 
 pub type CInt = i32;
 
+const O_RDONLY: CInt = 0x0000;
 const O_RDWR: CInt = 0x0002;
 const O_CREAT: CInt = 0x0200;
 const O_EXCL: CInt = 0x0800;
@@ -77,6 +81,7 @@ extern "C" {
     fn getpid() -> CInt;
     fn kill(pid: CInt, sig: CInt) -> CInt;
     fn __error() -> *mut CInt;
+    fn mach_absolute_time() -> u64;
 }
 
 /*
@@ -138,6 +143,13 @@ pub fn pid_is_gone(p: u32) -> bool {
     unsafe { kill(p as CInt, 0) == -1 && errno() == ESRCH }
 }
 
+/// A value no earlier segment under any name has carried: the monotonic clock,
+/// which starts at boot -- and shm does not survive a reboot. Two creations
+/// under one name are separated by an unlink, so they cannot share a tick.
+pub fn incarnation() -> u64 {
+    unsafe { mach_absolute_time() }.max(1)
+}
+
 pub const MAX_SLOT: u32 = 16;
 
 /*
@@ -174,9 +186,10 @@ pub struct Mapping {
     slot: u32,
 }
 
-/* The mapping is a pointer into shared memory that any thread may read. The
- * discipline that makes that sound -- one writer, readers that write nothing --
- * is stated in header.rs and is not expressible to the compiler. */
+/* Everything reachable through a mapping is an atomic -- the header's fields
+ * and the ring's samples alike -- so sharing one between threads is sound in
+ * the ordinary way. Which of them may WRITE is the protocol's business (see
+ * header.rs), and a reader's mapping cannot: it is PROT_READ. */
 unsafe impl Send for Mapping {}
 unsafe impl Sync for Mapping {}
 
@@ -278,8 +291,10 @@ impl Mapping {
         ))
     }
 
-    /// Open slot `slot` only if it already exists. Readers and `probe` use
-    /// this; it never creates anything.
+    /// Open slot `slot` only if it already exists, READ-ONLY. Readers and
+    /// `probe` use this; it never creates anything and cannot write anything,
+    /// so a bug in a reader faults in the reader instead of scribbling on a
+    /// live bus.
     pub fn open_existing(slot: u32) -> Option<Mapping> {
         if slot == 0 || slot > MAX_SLOT {
             return None;
@@ -287,7 +302,7 @@ impl Mapping {
         let name = Name::for_slot(slot);
         let size = segment_size();
 
-        let fd = unsafe { shm_open(name.as_ptr(), O_RDWR) };
+        let fd = unsafe { shm_open(name.as_ptr(), O_RDONLY) };
         if fd < 0 {
             return None;
         }
@@ -296,16 +311,7 @@ impl Mapping {
             unsafe { close(fd) };
             return None;
         }
-        let base = unsafe {
-            mmap(
-                core::ptr::null_mut(),
-                size,
-                PROT_READ | PROT_WRITE,
-                MAP_SHARED,
-                fd,
-                0,
-            )
-        };
+        let base = unsafe { mmap(core::ptr::null_mut(), size, PROT_READ, MAP_SHARED, fd, 0) };
         unsafe { close(fd) };
         if base == MAP_FAILED || base.is_null() {
             return None;
@@ -321,16 +327,23 @@ impl Mapping {
         unsafe { &*(self.base as *const Header) }
     }
 
-    pub fn data(&self) -> *mut f32 {
-        unsafe { (self.base as *mut u8).add(DATA_OFFSET) as *mut f32 }
+    /// The ring. Read-only in a reader's mapping: loads only.
+    pub fn data(&self) -> &[AtomicU32] {
+        unsafe {
+            core::slice::from_raw_parts(
+                (self.base as *const u8).add(DATA_OFFSET) as *const AtomicU32,
+                RING_SAMPLES,
+            )
+        }
     }
 
     pub fn slot(&self) -> u32 {
         self.slot
     }
 
-    /// Remove the name, so the next claimer creates a fresh segment. Only a
-    /// writer shutting down cleanly does this.
+    /// Remove the name, so the next claimer creates a fresh segment. Only the
+    /// slot's owner shutting down cleanly, or a claimer replacing a segment it
+    /// cannot interpret, does this.
     pub fn unlink(&self) {
         let name = Name::for_slot(self.slot);
         unsafe { shm_unlink(name.as_ptr()) };

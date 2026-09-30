@@ -24,9 +24,23 @@
  */
 use ground_capi as _;
 
-use bus_core::{ClaimError, Reader, Writer};
+use bus_core::{ClaimError, Pusher, Reader, Writer};
 
-pub struct AbusWriter(Writer);
+/*
+ * ONE C HANDLE, TWO RUST HALVES, and the halves are why.
+ *
+ * The C side holds one `abus_writer_t*` and calls push from the audio thread
+ * while set_label and set_sample_rate arrive from the main thread. Forming a
+ * `&mut` to the whole handle on one thread while the other holds a reference
+ * into it would be aliasing undefined behaviour, whatever the two calls then
+ * touch. So each entry point projects from the raw pointer to the ONE field
+ * its thread owns -- `feed` for the audio thread, `ctl` for the main thread --
+ * and never names the handle as a whole except to create or destroy it.
+ */
+pub struct AbusWriter {
+    ctl: Writer,
+    feed: Pusher,
+}
 pub struct AbusReader(Reader);
 
 /* Mirrors ABUS_OK / ABUS_ERR_* in the header. */
@@ -68,8 +82,8 @@ pub unsafe extern "C" fn abus_writer_claim(
         return ABUS_ERR_UNAVAILABLE;
     }
     match Writer::claim(slot, sample_rate) {
-        Ok(w) => {
-            *out = Box::into_raw(Box::new(AbusWriter(w)));
+        Ok((ctl, feed)) => {
+            *out = Box::into_raw(Box::new(AbusWriter { ctl, feed }));
             ABUS_OK
         }
         Err(e) => code(e),
@@ -103,7 +117,8 @@ pub unsafe extern "C" fn abus_writer_push(
         return;
     }
     let n = frames as usize * bus_core::CHANNELS as usize;
-    (*w).0.push(core::slice::from_raw_parts(interleaved, n));
+    let feed = &mut *core::ptr::addr_of_mut!((*w).feed);
+    feed.push(core::slice::from_raw_parts(interleaved, n));
 }
 
 /// # Safety
@@ -111,12 +126,13 @@ pub unsafe extern "C" fn abus_writer_push(
 #[no_mangle]
 pub unsafe extern "C" fn abus_writer_set_sample_rate(w: *mut AbusWriter, sample_rate: u32) {
     if !w.is_null() {
-        (*w).0.set_sample_rate(sample_rate);
+        let ctl = &mut *core::ptr::addr_of_mut!((*w).ctl);
+        ctl.set_sample_rate(sample_rate);
     }
 }
 
 /// Set the display name. `text` is NUL-terminated UTF-8; anything past 31
-/// bytes is dropped.
+/// bytes is dropped, at a character boundary.
 ///
 /// # Safety
 /// `text` must be a valid NUL-terminated string or NULL.
@@ -126,7 +142,8 @@ pub unsafe extern "C" fn abus_writer_set_label(w: *mut AbusWriter, text: *const 
         return;
     }
     let s = cstr(text);
-    (*w).0.set_label(&s);
+    let ctl = &mut *core::ptr::addr_of_mut!((*w).ctl);
+    ctl.set_label(&s);
 }
 
 /// # Safety
@@ -181,6 +198,20 @@ pub unsafe extern "C" fn abus_reader_read(
         *resynced = i32::from(res.resynced);
     }
     res.frames
+}
+
+/// Move a reader to the segment its slot's name leads to now, if a sender
+/// replaced the one it has. Returns 1 if it moved (the next read reports
+/// `resynced`), 0 otherwise. Main thread: it makes system calls.
+///
+/// # Safety
+/// `r` must come from `abus_reader_open`, with no read in flight.
+#[no_mangle]
+pub unsafe extern "C" fn abus_reader_reattach(r: *mut AbusReader) -> i32 {
+    if r.is_null() {
+        return 0;
+    }
+    i32::from((*r).0.reattach())
 }
 
 /// Describe a slot without opening it -- what a receiver builds its source list

@@ -56,9 +56,9 @@ const SLOT: u32 = 11;
 #[test]
 fn push_and_read_allocate_nothing() {
     /* Everything the measured window touches is built before it opens: the
-     * claim (which maps a segment and boxes a handle, and is allowed to), the
+     * claim (which maps a segment and allocates its handles, and is allowed to), the
      * reader, the input block and the output buffer. */
-    let writer = Writer::claim(SLOT, 48_000).expect("claim");
+    let (mut writer, mut pusher) = Writer::claim(SLOT, 48_000).expect("claim");
     let mut reader = Reader::open(SLOT).expect("open");
 
     let block: Vec<f32> = (0..1024 * 2).map(|i| (i as f32 * 0.01).sin()).collect();
@@ -68,7 +68,7 @@ fn push_and_read_allocate_nothing() {
     /* Two hundred blocks is 204,800 frames: more than a full ring, so the wrap
      * is inside the measured window rather than just after it. */
     for _ in 0..200 {
-        writer.push(&block);
+        pusher.push(&block);
         reader.read(&mut out);
     }
     /* And the label path, which is the one place a string crosses into the
@@ -76,8 +76,10 @@ fn push_and_read_allocate_nothing() {
      * writes to memory the audio thread is reading and a Vec hiding in it
      * would be a surprise in the worst place. */
     writer.set_label("Bass");
+    /* And a rate change, which the audio thread applies inside `push`. */
+    writer.set_sample_rate(96_000);
     for _ in 0..8 {
-        writer.push(&block);
+        pusher.push(&block);
         reader.read(&mut out);
     }
     ARMED.store(false, Ordering::SeqCst);

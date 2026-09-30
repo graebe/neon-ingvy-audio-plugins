@@ -3,15 +3,22 @@
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * NOTHING HERE KNOWS ABOUT SHARED MEMORY, and that is deliberate. These
- * functions take a `&Header` and a `*mut f32`, which a test can build on the
+ * functions take a `&Header` and a `&[AtomicU32]`, which a test can build on the
  * heap in three lines. The wrap, the lap detection and the resync -- every part
  * that can be subtly wrong -- is therefore testable without shm_open, without a
  * second process, and without a race to reproduce.
  *
  * `shm.rs` supplies those two arguments from a mapping. That is all it does.
+ *
+ * THE SAMPLES ARE ATOMICS, holding f32 bits. A reader copies while the writer
+ * may be overwriting the same cells -- that is the seqlock's racy read, and the
+ * re-check after the copy is what throws a torn result away. With plain floats
+ * that overlap would be a data race and undefined behaviour however carefully
+ * the result was discarded; relaxed atomic loads and stores compile to the same
+ * plain moves and make the overlap merely a wrong answer that gets retried.
  */
 
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{fence, AtomicU32, Ordering};
 
 use crate::header::{Header, CHANNELS, RING_FRAMES};
 
@@ -39,10 +46,18 @@ impl Cursor {
     /// Start at the live edge. A reader joining a bus that has been running for
     /// an hour wants what is happening now, not an hour of backlog it would
     /// spend the next hour catching up on.
+    ///
+    /// The epoch is loaded FIRST. A restart stores the zeroed count and then
+    /// bumps the epoch with Release, so a count read after an epoch belongs to
+    /// that epoch or a later one -- and a later one is caught by the next read's
+    /// epoch check. The other order could pair a new epoch with the old
+    /// stream's huge count, and the reader would wait for the writer to reach
+    /// it again.
     pub fn at_live_edge(hdr: &Header) -> Self {
+        let epoch = hdr.epoch.load(Ordering::Acquire);
         Cursor {
             frames: hdr.write_frames.load(Ordering::Acquire),
-            epoch: hdr.epoch.load(Ordering::Acquire),
+            epoch,
         }
     }
 }
@@ -79,12 +94,16 @@ pub const MAX_BLOCK_FRAMES: u32 = 8192;
 pub const USABLE_FRAMES: u32 = RING_FRAMES - MAX_BLOCK_FRAMES;
 const USABLE: u64 = USABLE_FRAMES as u64;
 
+/// Samples in the ring: `RING_FRAMES * CHANNELS`.
+pub const RING_SAMPLES: usize = RING_FRAMES as usize * CHANNELS as usize;
+
 /// Publish `src` (interleaved stereo, `src.len() / 2` frames).
 ///
-/// # Safety
-/// `data` must point at `RING_FRAMES * CHANNELS` writable floats belonging to
-/// `hdr`'s segment, and the caller must be the slot's single writer.
-pub unsafe fn push(hdr: &Header, data: *mut f32, src: &[f32]) {
+/// `data` is `hdr`'s ring, `RING_SAMPLES` long. The caller must be the slot's
+/// single writer: two concurrent pushers corrupt the stream (no undefined
+/// behaviour -- everything is atomic -- but no meaningful audio either).
+pub fn push(hdr: &Header, data: &[AtomicU32], src: &[f32]) {
+    assert_eq!(data.len(), RING_SAMPLES);
     let ch = CHANNELS as usize;
     let frames = src.len() / ch;
     if frames == 0 {
@@ -127,13 +146,9 @@ pub unsafe fn push(hdr: &Header, data: *mut f32, src: &[f32]) {
         let start = (w & MASK) as usize;
         let first = core::cmp::min(n, RING_FRAMES as usize - start);
 
-        core::ptr::copy_nonoverlapping(chunk.as_ptr(), data.add(start * ch), first * ch);
+        store(&data[start * ch..(start + first) * ch], &chunk[..first * ch]);
         if first < n {
-            core::ptr::copy_nonoverlapping(
-                chunk.as_ptr().add(first * ch),
-                data,
-                (n - first) * ch,
-            );
+            store(&data[..(n - first) * ch], &chunk[first * ch..]);
         }
 
         /* RELEASE, and it must come after the copies: a reader that sees the
@@ -141,15 +156,37 @@ pub unsafe fn push(hdr: &Header, data: *mut f32, src: &[f32]) {
         hdr.write_frames.store(w + n as u64, Ordering::Release);
         off += n;
     }
-
-    hdr.heartbeat.fetch_add(1, Ordering::Relaxed);
 }
 
-/// Copy up to `out.len() / 2` frames into `out`, advancing `cur`.
-///
-/// # Safety
-/// As `push`, but `data` need only be readable.
-pub unsafe fn read(hdr: &Header, data: *const f32, cur: &mut Cursor, out: &mut [f32]) -> Read {
+fn store(dst: &[AtomicU32], src: &[f32]) {
+    for (d, s) in dst.iter().zip(src) {
+        d.store(s.to_bits(), Ordering::Relaxed);
+    }
+}
+
+fn load(dst: &mut [f32], src: &[AtomicU32]) {
+    for (d, s) in dst.iter_mut().zip(src) {
+        *d = f32::from_bits(s.load(Ordering::Relaxed));
+    }
+}
+
+/// Copy up to `out.len() / 2` frames into `out`, advancing `cur`. Only loads:
+/// `data` may live in a read-only mapping.
+pub fn read(hdr: &Header, data: &[AtomicU32], cur: &mut Cursor, out: &mut [f32]) -> Read {
+    read_with(hdr, data, cur, out, || {})
+}
+
+/// `read`, with `during_copy` run between the copy and the re-check -- the
+/// window a concurrent writer can act in. Tests use it to place a writer's
+/// move exactly there instead of hoping a thread lands in it.
+pub(crate) fn read_with(
+    hdr: &Header,
+    data: &[AtomicU32],
+    cur: &mut Cursor,
+    out: &mut [f32],
+    during_copy: impl FnOnce(),
+) -> Read {
+    assert_eq!(data.len(), RING_SAMPLES);
     let ch = CHANNELS as usize;
     let mut result = Read::default();
 
@@ -162,7 +199,6 @@ pub unsafe fn read(hdr: &Header, data: *const f32, cur: &mut Cursor, out: &mut [
     let epoch = hdr.epoch.load(Ordering::Acquire);
     if epoch != cur.epoch {
         *cur = Cursor::at_live_edge(hdr);
-        cur.epoch = epoch;
         result.resynced = true;
         return result;
     }
@@ -186,14 +222,11 @@ pub unsafe fn read(hdr: &Header, data: *const f32, cur: &mut Cursor, out: &mut [
 
     let start = (cur.frames & MASK) as usize;
     let first = core::cmp::min(want, RING_FRAMES as usize - start);
-    core::ptr::copy_nonoverlapping(data.add(start * ch), out.as_mut_ptr(), first * ch);
+    load(&mut out[..first * ch], &data[start * ch..(start + first) * ch]);
     if first < want {
-        core::ptr::copy_nonoverlapping(
-            data,
-            out.as_mut_ptr().add(first * ch),
-            (want - first) * ch,
-        );
+        load(&mut out[first * ch..want * ch], &data[..(want - first) * ch]);
     }
+    during_copy();
 
     /*
      * AND NOW CHECK AGAIN, which is the part that is easy to leave out.
@@ -215,13 +248,24 @@ pub unsafe fn read(hdr: &Header, data: *const f32, cur: &mut Cursor, out: &mut [
      * makes this sound; this is the second line of defence, for a reader that
      * was simply too slow.
      *
-     * The fence keeps the sample reads above from being deferred past this
-     * load: an acquire LOAD stops later accesses moving earlier, not earlier
+     * The fence keeps the sample reads above from being deferred past these
+     * loads: an acquire LOAD stops later accesses moving earlier, not earlier
      * ones moving later, which is the wrong direction for a check that has to
      * happen after the reads it validates.
+     *
+     * THE EPOCH IS RE-CHECKED TOO. A writer that restarted during the copy
+     * reset `write_frames` to a small number and began overwriting the ring
+     * from the start -- which the lap check reads as "no distance at all" and
+     * would pass. A restart is the one overwrite the frame count cannot show,
+     * so the epoch has to.
      */
-    core::sync::atomic::fence(Ordering::Acquire);
-    let w2 = hdr.write_frames.load(Ordering::Acquire);
+    fence(Ordering::Acquire);
+    if hdr.epoch.load(Ordering::Relaxed) != cur.epoch {
+        *cur = Cursor::at_live_edge(hdr);
+        result.resynced = true;
+        return result;
+    }
+    let w2 = hdr.write_frames.load(Ordering::Relaxed);
     if w2.saturating_sub(cur.frames) > USABLE {
         result.dropped += w2 - cur.frames;
         cur.frames = w2;

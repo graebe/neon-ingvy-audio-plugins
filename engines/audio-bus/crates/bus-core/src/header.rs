@@ -2,7 +2,8 @@
  * The segment header -- the layout Rust and C both agree on.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * ONE WRITER WRITES EVERY FIELD HERE. Readers only read.
+ * ONE WRITER WRITES EVERY FIELD HERE, except `owner`, which is written only by
+ * compare-and-swap. Readers only read -- they map the segment read-only.
  *
  * That is worth stating before the fields, because it is what makes the whole
  * design safe without a single lock: a reader keeps its cursor in its OWN
@@ -14,19 +15,24 @@
  * atomically -- see `label` / `set_label` below for the seqlock that covers it.
  */
 
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{fence, AtomicU32, AtomicU64, AtomicU8, Ordering};
 
-/* 'NIB1' -- Neon Ingvy Bus, layout 1. Written LAST by whoever creates the
- * segment, so a reader that sees it knows every other field is already there.
- * A reader that maps a half-initialised segment and trusts `ring_frames` would
- * compute a size from a zero and read the whole thing as silence. */
+/* 'NIB1' -- Neon Ingvy Bus. Written LAST by whoever creates the segment, so a
+ * reader that sees it knows every other field is already there. A reader that
+ * maps a half-initialised segment and trusts `ring_frames` would compute a size
+ * from a zero and read the whole thing as silence. */
 pub const MAGIC: u32 = 0x4E49_4231;
 
-/* Bumped when anything above changes shape. A reader REFUSES a mismatch rather
- * than interpreting it: an old Spectrogram reading a new Listen-In's segment
- * with shifted field offsets is not a degraded picture, it is noise at full
- * scale into somebody's monitors. */
-pub const ABI_VERSION: u32 = 1;
+/* Bumped when the layout OR the protocol changes shape. A reader REFUSES a
+ * mismatch rather than interpreting it: an old Spectrogram reading a new
+ * Listen-In's segment with shifted field offsets is not a degraded picture, it
+ * is noise at full scale into somebody's monitors. And a writer that finds a
+ * segment of another version replaces it rather than share a slot under two
+ * different claim protocols.
+ *
+ * 2: ownership is one packed word (`owner`), the segment carries its
+ *    `incarnation`, and the heartbeat is gone. */
+pub const ABI_VERSION: u32 = 2;
 
 /* Always stereo, always interleaved. A mono source is duplicated by the sender
  * -- the same choice the Spectrogram's passthrough makes -- so that a reader
@@ -53,13 +59,10 @@ pub const RING_FRAMES: u32 = 1 << 17;
  * C computing `sizeof(struct abus_header)` and Rust computing its own layout
  * agree today, and would keep agreeing right up until someone adds a field and
  * one of the two compilers pads differently. A constant both sides spell out
- * cannot drift, and `header_fits` below fails the build if the struct ever
+ * cannot drift, and the assertion below fails the build if the struct ever
  * outgrows it.
  */
 pub const DATA_OFFSET: usize = 128;
-
-pub const STATE_FREE: u32 = 0;
-pub const STATE_CLAIMED: u32 = 1;
 
 pub const LABEL_BYTES: usize = 32;
 
@@ -68,12 +71,45 @@ pub const fn segment_size() -> usize {
     DATA_OFFSET + (RING_FRAMES as usize) * (CHANNELS as usize) * core::mem::size_of::<f32>()
 }
 
+/*
+ * THE OWNER WORD: who holds the slot, and how many times it has been claimed,
+ * in ONE atomic so that a claim is a single compare-and-swap.
+ *
+ *   high 32 bits  claim count, bumped by every successful claim
+ *   low 32 bits   the holder's pid, or 0 when the slot is free
+ *
+ * Keeping state and pid in separate words is what let two reclaimers of the
+ * same dead pid both win: the second one's "reset to free" landed on the
+ * first one's brand-new claim, because the pid that would have told them apart
+ * was only written after the claim. Here the pid IS the claim. The count is
+ * what keeps a recycled pid from making an old observation look current: a
+ * reclaimer that judged pid P dead can only swap out the exact word it judged.
+ */
+pub const fn owner_word(count: u32, pid: u32) -> u64 {
+    ((count as u64) << 32) | pid as u64
+}
+pub const fn owner_pid(word: u64) -> u32 {
+    word as u32
+}
+pub const fn owner_count(word: u64) -> u32 {
+    (word >> 32) as u32
+}
+
+/*
+ * EVERY FIELD IS AN ATOMIC, the shape fields and the label included.
+ *
+ * The segment is mapped by several threads and several processes at once, and a
+ * `&Header` is handed to all of them; a plain field written through one of those
+ * shared references would be a write the compiler is entitled to assume never
+ * happens. Atomics say what is actually going on, and cost nothing here: the
+ * shape fields are read once per open, the label once per probe.
+ */
 #[repr(C)]
 pub struct Header {
     pub magic: AtomicU32,
-    pub abi_version: u32,
-    pub ring_frames: u32,
-    pub channels: u32,
+    pub abi_version: AtomicU32,
+    pub ring_frames: AtomicU32,
+    pub channels: AtomicU32,
     pub sample_rate: AtomicU32,
     /* Bumped on every claim and on every sample-rate change. A reader that
      * sees it move throws its cursor away and starts again: the samples
@@ -81,21 +117,21 @@ pub struct Header {
      * spectrogram drawn across the seam would show a transient that never
      * happened. */
     pub epoch: AtomicU32,
-    /* Bumped once per audio block. This is the ONLY evidence a reader has that
-     * a writer is alive: a process can die without unlinking, and a pid alone
-     * is not enough because pids are reused. */
-    pub heartbeat: AtomicU32,
-    pub writer_pid: AtomicU32,
-    pub state: AtomicU32,
     pub label_seq: AtomicU32,
-    _reserved: [u32; 2],
+    _reserved: AtomicU32,
+    /* Which segment this is, set once at creation: two segments that have
+     * lived under one name never share it. A reader compares it with whatever
+     * the name opens NOW to learn that its own mapping has been orphaned. */
+    pub incarnation: AtomicU64,
+    /* See `owner_word`. */
+    pub owner: AtomicU64,
     /* Total frames ever written, never wrapped. The wrap is applied when
      * indexing, so a reader can subtract two of these and get a true distance
      * -- which is exactly the "how far behind am I" question the ring cannot
      * answer once the indices have wrapped. 64 bits is 4.7 million years at
      * 96 kHz; 32 would have wrapped in twelve hours. */
     pub write_frames: AtomicU64,
-    pub label: [u8; LABEL_BYTES],
+    pub label: [AtomicU8; LABEL_BYTES],
 }
 
 const _: () = assert!(core::mem::size_of::<Header>() <= DATA_OFFSET);
@@ -104,22 +140,16 @@ const _: () = assert!(core::mem::align_of::<Header>() <= 8);
 impl Header {
     /// Initialise a freshly created segment. The caller must have zeroed it and
     /// must be the process that won `O_CREAT | O_EXCL`; `magic` goes last.
-    pub fn initialise(&self, sample_rate: u32, pid: u32) {
+    pub fn initialise(&self, sample_rate: u32, incarnation: u64) {
+        self.abi_version.store(ABI_VERSION, Ordering::Relaxed);
+        self.ring_frames.store(RING_FRAMES, Ordering::Relaxed);
+        self.channels.store(CHANNELS, Ordering::Relaxed);
         self.sample_rate.store(sample_rate, Ordering::Relaxed);
         self.epoch.store(1, Ordering::Relaxed);
-        self.heartbeat.store(0, Ordering::Relaxed);
-        self.writer_pid.store(pid, Ordering::Relaxed);
-        self.state.store(STATE_FREE, Ordering::Relaxed);
         self.label_seq.store(0, Ordering::Relaxed);
+        self.incarnation.store(incarnation, Ordering::Relaxed);
+        self.owner.store(0, Ordering::Relaxed);
         self.write_frames.store(0, Ordering::Relaxed);
-        /* The three shape fields are plain, not atomic: they are written here,
-         * before `magic`, and never again for the life of the segment. */
-        let shape = self as *const Header as *mut Header;
-        unsafe {
-            (*shape).abi_version = ABI_VERSION;
-            (*shape).ring_frames = RING_FRAMES;
-            (*shape).channels = CHANNELS;
-        }
         /* LAST, and with Release: everything above must be visible to whoever
          * sees the magic. */
         self.magic.store(MAGIC, Ordering::Release);
@@ -130,31 +160,40 @@ impl Header {
     /// thing that survives a reboot-less upgrade.
     pub fn is_valid(&self) -> bool {
         self.magic.load(Ordering::Acquire) == MAGIC
-            && self.abi_version == ABI_VERSION
-            && self.ring_frames == RING_FRAMES
-            && self.channels == CHANNELS
+            && self.abi_version.load(Ordering::Relaxed) == ABI_VERSION
+            && self.ring_frames.load(Ordering::Relaxed) == RING_FRAMES
+            && self.channels.load(Ordering::Relaxed) == CHANNELS
     }
 
     /*
      * THE LABEL IS A SEQLOCK, because it is 32 bytes and there is no atomic
      * that wide.
      *
-     * The writer bumps the sequence to odd, writes, and bumps it to even. A
+     * The writer makes the sequence odd, writes, and makes it even again. A
      * reader reads the sequence, copies, reads it again, and retries if either
      * is odd or the two differ -- which means it saw a torn write. The retry is
      * bounded: a reader that keeps losing gives up and keeps the name it had,
      * because a stale name in a dropdown is nothing and a spin on the message
      * thread is a beachball.
+     *
+     * The fences are the standard seqlock pair. A Release STORE only orders what
+     * comes before it, so the writer's odd store needs a Release fence AFTER it
+     * to keep the byte stores from being seen first; the reader's Acquire fence
+     * keeps its byte loads from drifting past the second sequence load. The
+     * bytes themselves are relaxed atomics, so a torn read is a wrong answer
+     * that gets retried, never undefined behaviour.
+     *
+     * ONE WRITER: the caller must be the slot's owner, which `Writer` enforces
+     * with `&mut self`.
      */
-    pub fn set_label(&self, text: &[u8]) {
+    pub fn set_label(&self, text: &str) {
         let seq = self.label_seq.load(Ordering::Relaxed);
-        self.label_seq.store(seq.wrapping_add(1), Ordering::Release);
+        self.label_seq.store(seq.wrapping_add(1), Ordering::Relaxed);
+        fence(Ordering::Release);
 
-        let n = core::cmp::min(text.len(), LABEL_BYTES - 1);
-        let dst = self.label.as_ptr() as *mut u8;
-        unsafe {
-            core::ptr::write_bytes(dst, 0, LABEL_BYTES);
-            core::ptr::copy_nonoverlapping(text.as_ptr(), dst, n);
+        let bytes = truncate_utf8(text, LABEL_BYTES - 1).as_bytes();
+        for (i, cell) in self.label.iter().enumerate() {
+            cell.store(bytes.get(i).copied().unwrap_or(0), Ordering::Relaxed);
         }
 
         self.label_seq.store(seq.wrapping_add(2), Ordering::Release);
@@ -167,14 +206,29 @@ impl Header {
                 continue;
             }
             let mut out = [0u8; LABEL_BYTES];
-            unsafe {
-                core::ptr::copy_nonoverlapping(self.label.as_ptr(), out.as_mut_ptr(), LABEL_BYTES);
+            for (o, cell) in out.iter_mut().zip(self.label.iter()) {
+                *o = cell.load(Ordering::Relaxed);
             }
-            if self.label_seq.load(Ordering::Acquire) == before {
+            fence(Ordering::Acquire);
+            if self.label_seq.load(Ordering::Relaxed) == before {
                 out[LABEL_BYTES - 1] = 0;
                 return Some(out);
             }
         }
         None
     }
+}
+
+/// The longest prefix of `text` that fits in `max` bytes and ends on a
+/// character boundary. Cutting inside a character would hand every reader a
+/// name that is not UTF-8.
+pub fn truncate_utf8(text: &str, max: usize) -> &str {
+    if text.len() <= max {
+        return text;
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }

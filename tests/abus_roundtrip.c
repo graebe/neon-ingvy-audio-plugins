@@ -100,6 +100,20 @@ int main(void)
   check(sr == 48000, "and reports its sample rate");
   check(strcmp(label, "Bass") == 0, "and carries its name");
 
+  /* A SENDER THAT COMES BACK makes a new segment; the open reader follows it
+   * only when asked, and says so with a resync. */
+  check(abus_reader_reattach(r) == 0, "a current reader does not move");
+  abus_writer_release(w);
+  w = NULL;
+  check(abus_writer_claim(SLOT, 48000, &w) == ABUS_OK && w != NULL,
+        "the slot can be claimed again");
+  check(abus_reader_reattach(r) == 1, "the reader moves to the new segment");
+  got = abus_reader_read(r, out, N, &dropped, &resynced);
+  check(got == 0 && resynced == 1, "and reports the move as a restart");
+  abus_writer_push(w, in, N);
+  got = abus_reader_read(r, out, N, &dropped, &resynced);
+  check(got == N && resynced == 0, "then hears the new sender");
+
   abus_reader_close(r);
   abus_writer_release(w);
 
