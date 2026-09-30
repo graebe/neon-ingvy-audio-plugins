@@ -201,6 +201,10 @@ int main(void) {
     check_near("amount 0.5 closes to half level", lvl, 5000.0, 60.0);
 
     set(api, inst, "amount", "0.25");
+    /* Amount GLIDES (5 ms, landing within ~60 ms) rather than jumping, so a
+     * change mid-gate is not a click. Let it land before measuring the level
+     * it lands on. */
+    run_dc(api, inst, 2940, 10000);
     lvl = run_dc(api, inst, 4000, 10000);
     check_near("amount 0.25 leaves 75% through a shut gate", lvl, 7500.0, 60.0);
 

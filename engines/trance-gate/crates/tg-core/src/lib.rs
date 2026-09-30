@@ -27,6 +27,7 @@ pub mod state;
 mod clock;
 mod pattern;
 mod process;
+mod smooth;
 
 pub use pattern::Pattern;
 
@@ -129,6 +130,10 @@ pub struct Instance {
     /// How much the gate acts, 0..1. 1 == a closed gate is silent, 0 == the
     /// effect is bypassed.
     amount: f32,
+    /// `amount` and `sustain` as the gain law hears them: gliding towards
+    /// the values above -- see `smooth.rs`. Runtime, not saved.
+    amount_s: f32,
+    sustain_s: f32,
     /// Edit position on the ring, 0..length-1.
     cursor: usize,
 
@@ -225,6 +230,8 @@ impl Instance {
             release: 16.0,
             hold: 1.0,
             amount: 1.0,
+            amount_s: 1.0,
+            sustain_s: 1.0,
             cursor: 0,
             step_pos: 0.0,
             last_step: None,

@@ -596,3 +596,99 @@ fn notes_delivered_out_of_order_each_land_on_their_own_sample() {
     assert!(gain[300] < gain[40], "the loud note, at 300: {}", gain[300]);
     assert_eq!(p.fires(), 2);
 }
+
+/* ------------------------------------------------ gain continuity, measured */
+
+/// Drive a held MIDI duck through `blocks` blocks of `frames`, calling `edit`
+/// before each, and return the applied gain per sample.
+fn midi_duck(blocks: usize, frames: usize, mut edit: impl FnMut(&mut Instance, usize)) -> Vec<f32> {
+    let mut p = Instance::new(48000.0);
+    p.set_param("source", "MIDI");
+    p.set_param("attack", "20"); /* 4800 samples at 120 bpm, 1/4 */
+    p.set_param("hold", "40");
+    p.set_param("release", "40");
+    p.on_midi(&note_on(1, 36, 127), 0);
+    let mut out = Vec::new();
+    for b in 0..blocks {
+        edit(&mut p, b);
+        let (mut l, mut r) = (vec![1.0f32; frames], vec![1.0f32; frames]);
+        let mut g = vec![0.0f32; frames];
+        p.process_f32_split_tap(&mut l, &mut r, Some(&mut g), None, frames, None);
+        out.extend_from_slice(&g);
+    }
+    out
+}
+
+fn max_step(v: &[f32]) -> (f32, usize) {
+    let mut worst = (0.0f32, 0);
+    for i in 1..v.len() {
+        let d = (v[i] - v[i - 1]).abs();
+        if d > worst.0 {
+            worst = (d, i);
+        }
+    }
+    worst
+}
+
+/// A 5 ms glide over a full 0..1 jump moves under 0.005 a sample at 48 kHz,
+/// and the duck's own ramps here stay under 0.001.
+const STEP_LIMIT: f32 = 0.01;
+
+#[test]
+fn moving_depth_mid_duck_does_not_step_the_gain() {
+    let g = midi_duck(400, 64, |p, b| {
+        if b > 10 && b % 9 == 0 {
+            p.set_param("depth", if (b / 9) % 2 == 0 { "0.1" } else { "1" });
+        }
+    });
+    let (d, at) = max_step(&g);
+    assert!(d < STEP_LIMIT, "the gain stepped by {d} at sample {at}");
+}
+
+#[test]
+fn moving_a_stage_length_mid_stage_does_not_step_the_gain() {
+    /*
+     * A stage's position is a sample COUNT and its length is recomputed every
+     * block, so shortening the attack under a running attack used to move
+     * `pos / len` past 1 in one block -- the whole rest of the attack in one
+     * sample. The position now scales with the length, which keeps the
+     * fraction through the stage, and so the level, where it was.
+     */
+    let g = midi_duck(400, 64, |p, b| {
+        let edit = match b {
+            30 => Some(("attack", "2")), /* mid-attack, 10x shorter */
+            31 => Some(("attack", "20")),
+            60 => Some(("attack", "35")),
+            140 => Some(("hold", "5")), /* mid-hold */
+            240 => Some(("release", "4")), /* mid-release */
+            241 => Some(("release", "40")),
+            _ => None,
+        };
+        if let Some((k, v)) = edit {
+            p.set_param(k, v);
+        }
+    });
+    let (d, at) = max_step(&g);
+    assert!(d < STEP_LIMIT, "the gain stepped by {d} at sample {at}");
+}
+
+#[test]
+fn a_tempo_change_mid_duck_does_not_step_the_gain() {
+    /* The stage lengths are a percentage of the cycle, so a tempo change is
+     * a length change -- the same fault through a different door. */
+    let mut p = Instance::new(48000.0);
+    p.set_param("source", "MIDI");
+    p.set_param("attack", "20");
+    p.on_midi(&note_on(1, 36, 127), 0);
+    let mut g = Vec::new();
+    for b in 0..100 {
+        let bpm = if b < 30 { 120.0 } else { 60.0 };
+        let t = Transport { running: false, beats: -1.0, bpm };
+        let (mut l, mut r) = (vec![1.0f32; 64], vec![1.0f32; 64]);
+        let mut gb = vec![0.0f32; 64];
+        p.process_f32_split_tap(&mut l, &mut r, Some(&mut gb), None, 64, Some(&t));
+        g.extend_from_slice(&gb);
+    }
+    let (d, at) = max_step(&g);
+    assert!(d < STEP_LIMIT, "the gain stepped by {d} at sample {at}");
+}

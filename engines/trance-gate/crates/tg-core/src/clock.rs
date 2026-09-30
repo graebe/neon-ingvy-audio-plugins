@@ -65,9 +65,13 @@ impl Instance {
         if running {
             let target = beats / beats_per_step;
             if !self.was_running {
-                /* Transport just started: land exactly, do not glide in. */
+                /* Transport just started: land exactly, do not glide in. The
+                 * gate was open until now, so the glides have nothing to be
+                 * continuous WITH -- they start at their targets. */
                 self.step_pos = target;
                 self.last_step = None;
+                self.amount_s = self.amount;
+                self.sustain_s = self.sustain;
             } else {
                 let err = target - self.step_pos;
                 if err > RESYNC_STEPS || err < -RESYNC_STEPS {
@@ -95,9 +99,10 @@ impl Instance {
         self.was_running = running;
 
         /* Amount zero is a true bypass -- m collapses to exactly 1.0 -- so do
-         * not spend a block proving it. The phase still advances, so turning
-         * it back up lands on the step the pattern would have reached. */
-        if self.amount <= 0.0 {
+         * not spend a block proving it, once the glide down to it has landed.
+         * The phase still advances, so turning it back up lands on the step
+         * the pattern would have reached. */
+        if self.amount <= 0.0 && self.amount_s <= 0.0 {
             self.step_pos += inc * frames as f64;
             return None;
         }
@@ -109,12 +114,14 @@ impl Instance {
         }
         Some(Run {
             lens: self.lens(),
+            smooth: crate::smooth::coef(self.sample_rate),
             length,
             inc,
             frac,
             step: step as usize,
         })
-    }}
+    }
+}
 
 /// Per-block state the sample loop walks.
 pub(crate) struct Run {
@@ -123,6 +130,8 @@ pub(crate) struct Run {
     /// can only change between blocks, and the sample loop used to rebuild
     /// them every sample, twice when Width was below 1.
     pub(crate) lens: StageLens,
+    /// The parameter glide's per-sample coefficient at this sample rate.
+    pub(crate) smooth: f32,
     pub(crate) length: usize,
     pub(crate) inc: f64,
     pub(crate) frac: f64,

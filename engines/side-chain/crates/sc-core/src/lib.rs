@@ -39,6 +39,7 @@ pub mod midi;
 pub mod params;
 pub mod rates;
 pub mod shape;
+mod smooth;
 
 #[cfg(test)]
 mod tests;
@@ -145,6 +146,9 @@ pub struct Instance {
     release_pct: f64,
     /// 0..1.
     depth: f64,
+    /// `depth` as the gain law hears it, gliding towards it -- see
+    /// `smooth.rs`. Runtime, not saved.
+    depth_s: f64,
     curve: Curve,
     midi: Midi,
     /// Linear amplitude, converted from the user's dB once, in `params.rs`.
@@ -153,6 +157,10 @@ pub struct Instance {
 
     /* ---- state ---- */
     env: Env,
+    /// The stage lengths the envelope ran under last block. A stage's
+    /// position is a sample count, so when its length changes the position
+    /// is rescaled to keep the FRACTION -- see `Env::rescale`.
+    stages: Stages,
     follower: Follower,
     queue: Queue,
     /// The key signal for the block about to be rendered, and how much of it
@@ -216,12 +224,14 @@ impl Instance {
             hold_pct: 8.0,
             release_pct: 35.0,
             depth: 1.0,
+            depth_s: 1.0,
             curve: Curve::Exp,
             midi: Midi::default(),
             /* -24 dBFS in linear amplitude. */
             threshold: 0.063_095_734_448_019_33,
             lockout_ms: 20.0,
             env: Env::default(),
+            stages: Stages::default(),
             follower: Follower::new(sr),
             queue: Queue::default(),
             key_l: vec![0.0; MAX_BLOCK].into_boxed_slice(),
@@ -365,6 +375,10 @@ impl Instance {
             hold: pct(self.hold_pct),
             release: pct(self.release_pct),
         };
+        /* A length that moved under a running stage -- a knob, automation, a
+         * tempo change -- keeps the stage's progress and so its level. */
+        self.env.rescale(&self.stages, &stages);
+        self.stages = stages;
 
         let mut inc = 1.0 / samples_per_cycle;
         let cycle = matches!(self.source, Source::Cycle);
@@ -438,6 +452,7 @@ impl Instance {
         self.queue.prepare(frames);
 
         Some(Run {
+            smooth: smooth::coef(self.sample_rate),
             stages,
             cycle,
             inc,
@@ -524,12 +539,22 @@ impl Instance {
             self.since_trigger += 1.0;
         }
 
+        /* DEPTH GLIDES ONLY WHILE IT IS HEARD. With no duck the gain is 1.0
+         * whatever Depth is, so it takes a new value at once there -- which is
+         * also what keeps a patch set before its first trigger rendering the
+         * same bits it always did. Mid-duck it glides; see `smooth.rs`. */
+        self.depth_s = if duck == 0.0 {
+            self.depth
+        } else {
+            smooth::glide(self.depth_s, self.depth, r.smooth)
+        };
+
         /* DEPTH ZERO IS A TRUE BYPASS AND NEEDS NO SPECIAL CASE: the product
          * collapses to exactly 1.0, and multiplying by exactly 1.0 is the
          * identity in IEEE 754 for every input including the denormals and the
          * signed zeroes. `tg-core` spends a branch proving this; one multiply
          * is cheaper than the branch and leaves one code path. */
-        (1.0 - self.depth * duck) as f32
+        (1.0 - self.depth_s * duck) as f32
     }
 
     /// Called at the end of every `process`, whatever the format.
@@ -731,6 +756,8 @@ impl Instance {
 /// needs `&mut self` for the envelope, so the block's constants cannot live
 /// behind the same borrow.
 struct Run {
+    /// The parameter glide's per-sample coefficient at this sample rate.
+    smooth: f64,
     stages: Stages,
     cycle: bool,
     /// Cycles per sample, with the phase-locked loop's correction term for

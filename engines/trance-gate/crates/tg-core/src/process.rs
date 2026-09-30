@@ -77,9 +77,24 @@ impl Instance {
     /// it.
     #[inline]
     fn next_gain(&mut self, r: &mut Run) -> f32 {
+        /*
+         * SUSTAIN GLIDES ONLY WHERE IT IS HEARD. It is a level in DECAY (the
+         * target) and in SUSTAIN (the level itself); anywhere else the envelope
+         * does not read it, and every way INTO those two stages starts from a
+         * level that does not depend on it -- decay leaves 1.0 whatever it is
+         * heading for. So outside them it takes the new value at once, and a
+         * change can never be heard as a step.
+         */
+        self.sustain_s = if matches!(self.env.stage, Stage::Decay | Stage::Sustain) {
+            crate::smooth::glide(self.sustain_s, self.sustain, r.smooth)
+        } else {
+            self.sustain
+        };
+        let l = StageLens { sustain: self.sustain_s, ..r.lens };
+
         if Some(r.step) != self.last_step {
             let prev = self.last_step;
-            self.on_step_boundary(prev, r.step, &r.lens);
+            self.on_step_boundary(prev, r.step, &l);
             self.last_step = Some(r.step);
         }
 
@@ -117,11 +132,11 @@ impl Instance {
             let p = &self.pat[self.slot];
             let held = here && (p.tied(r.step) || (self.legato && there));
             if r.frac >= self.hold as f64 && !held {
-                self.env.enter(Stage::Release, &r.lens);
+                self.env.enter(Stage::Release, &l);
             }
         }
 
-        self.env.advance(self.curve, &r.lens);
+        self.env.advance(self.curve, &l);
 
         /* The step's amount is how far the gate OPENS, not how far it closes:
          *     m = 1 - amount * (1 - env * level)
@@ -131,8 +146,11 @@ impl Instance {
          *
          * `step_level` is the STRUCK step's, latched at gate-open -- not
          * `depth[r.step]`, which is a different number the moment a release
-         * or a tie outlives the step that started it. */
-        let m = 1.0 - self.amount * (1.0 - self.env.level * self.step_level);
+         * or a tie outlives the step that started it.
+         *
+         * `amount_s` is Amount as it glides -- see `smooth.rs`. */
+        self.amount_s = crate::smooth::glide(self.amount_s, self.amount, r.smooth);
+        let m = 1.0 - self.amount_s * (1.0 - self.env.level * self.step_level);
 
         self.step_pos += r.inc;
         r.frac += r.inc;
