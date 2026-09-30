@@ -17,8 +17,8 @@
  * another editor needs no separate path to arrive here. It already does.
  */
 import { createSignal, onMount, onCleanup } from 'solid-js';
-import { onMessage, sendMessage, setParam, beginGesture, endGesture } from '@ultraviolet/ui';
-import { Ground, Hint, Select, createMotion } from '@ultraviolet/ui';
+import { onMessage, sendMessage, Ground, Hint, createMotion } from '@ultraviolet/ui';
+import { createParams, ParamSelect } from '@ultraviolet/ui/params';
 import { MSG, STATUS } from './lib/msg.js';
 import { decodeState, meterFraction, SLOTS, STATUS_TEXT } from './lib/state.js';
 import Meter from './lib/Meter.jsx';
@@ -28,13 +28,11 @@ import NameField from './lib/NameField.jsx';
 const DESIGN_W = 360;
 /* kSlot in ListenIn.h. The bridge addresses parameters by index. */
 const P_SLOT = 0;
-
-/* The parameter wire is NORMALISED 0..1 in both directions -- see ParamSelect
- * in the Trance Gate's editor, which states the same conversion for the same
- * reason. Sixteen slots, so slot 1 is 0.0 and slot 16 is 1.0. */
-const toNorm = (slot) => (SLOTS.length > 1 ? (slot - 1) / (SLOTS.length - 1) : 0);
+const SLOT_NAMES = SLOTS.map(String);
 
 export default function App() {
+  /* The Bus is the one host parameter; the store binds the Select to it. */
+  const host = createParams(1);
   const [state, setState] = createSignal({ slot: 1, status: STATUS.idle, peak: 0 });
   const [label, setLabel] = createSignal('');
   /* The Motion switch, remembered between openings. Not a host parameter -- see
@@ -86,15 +84,6 @@ export default function App() {
     });
   });
 
-  /* A gesture around the change is what lets a host record it as one edit
-   * rather than as a value that appeared from nowhere. */
-  const chooseSlot = (i) => {
-    const slot = SLOTS[i];
-    beginGesture(P_SLOT);
-    setParam(P_SLOT, toNorm(slot));
-    endGesture(P_SLOT);
-  };
-
   const commitLabel = (text) => {
     setLabel(text);
     sendMessage(MSG.label, text);
@@ -143,14 +132,8 @@ export default function App() {
       </div>
 
       <div class="row controls">
-        <Select
-          label="Bus"
-          labelWidth={28}
-          width={64}
-          options={SLOTS.map(String)}
-          value={SLOTS.indexOf(state().slot)}
-          onChange={chooseSlot}
-        />
+        <ParamSelect params={host} idx={P_SLOT} label="Bus" labelWidth={28} width={64}
+                     options={SLOT_NAMES} />
         <NameField value={label()} onCommit={commitLabel} />
       </div>
 

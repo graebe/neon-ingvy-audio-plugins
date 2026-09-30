@@ -27,8 +27,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CPP = join(HERE, '..', '..', 'Params.cpp');
 
 /* The C++ enum name for each parameter this test covers. Only the continuous
- * ones: an enum parameter's range is its option count, which COUNTS already
- * carries and ParamSelect derives from. */
+ * ones: an enum parameter's range is its option count, which ParamSelect
+ * takes from the options it is given. */
 const ENUM_NAME = {
   kDelay: P.delay,
   kAttack: P.attack,

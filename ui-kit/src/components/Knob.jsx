@@ -36,8 +36,10 @@ export function Knob(props) {
   const commitText = (text) => props.onText?.(text);
 
   const onPointerDown = (e) => {
-    if (e.detail === 2) {                /* double-click resets */
-      props.onBegin?.(); props.onInput?.(props.default ?? 0); props.onEnd?.();
+    /* Double-click resets -- to the PLUGIN's default, which only the caller
+     * knows (the params store has it from SHELL_MSG.defaults). */
+    if (e.detail === 2) {
+      props.onReset?.();
       return;
     }
     /* THE SENSITIVITY IS CHOSEN AT PRESS AND NOT RE-READ: the delta is

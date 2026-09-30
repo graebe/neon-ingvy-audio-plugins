@@ -22,7 +22,7 @@ const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
 const MSG = {
   uiState: 64, params: 65, scope: 66, stageMs: 67, buses: 68,
-  setText: 121, height: 122, ready: 120,
+  setText: 121, height: 122, ready: 120, defaults: 113,
 };
 
 const Q = new URLSearchParams(location.search);
@@ -160,7 +160,13 @@ const uiState = () => [
 const stageMsText = () => SHAPE.map((p) => ((p / 100) * MS_CYCLE).toFixed(3)).join(':');
 const busesText = () => `${SOURCE === 2 ? num('key', 1) : 0}:${num('keyismain', 0)}`;
 
+/* Every parameter's normalised default, as Params.cpp declares them -- what a
+ * double-click resets to. */
+const DEFAULTS = [0, 4 / 11, 0, 0.5, 2 / 200, 8 / 200, 35 / 200, 1, 0.5,
+                  1 / 16, 36 / 127, 0, 0, 36 / 60, 20 / 200];
+
 function pushAll() {
+  globalThis.SAMFD?.(MSG.defaults, 0, b64(DEFAULTS.join(':')));
   for (let i = 0; i < NORM.length; i++) {
     globalThis.SPVFD?.(i, NORM[i]);
     globalThis.SAMFD?.(i, DISPLAY[i].length, b64(DISPLAY[i]));

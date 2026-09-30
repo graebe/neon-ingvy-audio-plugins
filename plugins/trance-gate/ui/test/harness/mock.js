@@ -145,7 +145,11 @@ const gateCurve = () => {
 };
 
 let roll = 0;
+/* Every parameter's normalised default, as Params.cpp declares them -- what a
+ * double-click resets to. */
+const DEFAULTS = [0, 15 / 127, 7 / 12, 0, 0, 0, 1, 1, 1.6 / 200, 16 / 200, 1, 16 / 200, 1, 0, 0];
 const pushAll = () => {
+  globalThis.SAMFD?.(113, 0, b64(DEFAULTS.join(':')));
   VALUES.forEach((x, i) => globalThis.SPVFD?.(i, x));
   DISPLAY.forEach((d, i) => globalThis.SAMFD?.(i, d.length, b64(d)));
   globalThis.SAMFD?.(64, 0, b64(UI_STATE));

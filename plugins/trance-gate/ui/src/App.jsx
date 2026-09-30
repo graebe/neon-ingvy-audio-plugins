@@ -14,9 +14,9 @@
  * design -- a flex layout that happens to look close is a different drawing.
  */
 import { createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js';
-import { onParam, onMessage, sendMessage } from '@ultraviolet/ui';
+import { onMessage, sendMessage } from '@ultraviolet/ui';
+import { createParams, ParamKnob, ParamSelect, ParamToggle } from '@ultraviolet/ui/params';
 import { MSG, P, NUM_PARAMS as NPARAMS } from './lib/msg.js';
-import { ParamKnob, ParamSelect, ParamToggle } from './lib/params.jsx';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
 import { EnvelopePlot, PatternPlot, Scope } from './lib/Plots.jsx';
@@ -101,14 +101,15 @@ async function copyToClipboard(text) {
 }
 
 export default function App() {
-  const [vals, setVals] = createSignal(new Array(NPARAMS).fill(0));
+  /* Every parameter's value, display string and default -- listening from here,
+   * before `ready` is sent. */
+  const host = createParams(NPARAMS);
   /* The Motion switch, remembered between openings. Not a host parameter -- see
    * the kit's lib/motion.js for why a view is not something to automate. */
   const [motion, setMotion] = createMotion('trance-gate');
   /* The ground's handle, set by <Ground ref>. A kick arrives as a message and is
    * handed straight to it. */
   let ground = null;
-  const [text, setText] = createSignal(new Array(NPARAMS).fill(''));
   const [ui, setUi] = createSignal({ steps: [], ties: [], depths: [], orders: [],
                                      length: 16,
                                      phase: 0, msStep: 0, moving: false, cursor: 0 });
@@ -160,9 +161,6 @@ export default function App() {
   };
 
   onMount(() => {
-    onParam((i, v) => i >= 0 && i < NPARAMS &&
-      setVals((p) => { const n = p.slice(); n[i] = v; return n; }));
-
     onMessage((tag, msg) => {
 
       if (tag === MSG.ground) {
@@ -172,8 +170,6 @@ export default function App() {
         if (Number.isFinite(gs)) ground?.trigger(gs);
         return;
       }
-      if (tag >= 0 && tag < NPARAMS)
-        return setText((p) => { const n = p.slice(); n[tag] = msg; return n; });
 
       if (tag === MSG.uiState) {
         const f = msg.split(':');
@@ -486,9 +482,9 @@ export default function App() {
    */
   const stageText = (i) => {
     const p = params();
-    if (!p || vals()[P.timeMode] >= 0.5) return text()[i];   /* % -- as stored */
+    if (!p || host.value(P.timeMode) >= 0.5) return host.text(i);   /* % -- as stored */
     const pct = { [P.attack]: p.attack, [P.decay]: p.decay, [P.release]: p.release }[i];
-    return pct === undefined ? text()[i] : `${(pct / 100 * p.widthMs).toFixed(1)} ms`;
+    return pct === undefined ? host.text(i) : `${(pct / 100 * p.widthMs).toFixed(1)} ms`;
   };
 
   return (
@@ -522,20 +518,20 @@ export default function App() {
       <section class="panel gate-panel">
         <h2 class="t-title">GATE</h2>
         <div class="knob-row">
-          <ParamKnob idx={P.rate}   label="Rate"   value={vals()[P.rate]}   display={text()[P.rate]} />
-          <ParamKnob idx={P.length} label="Length" value={vals()[P.length]} display={text()[P.length]} />
-          <ParamKnob idx={P.amount} label="Amount" value={vals()[P.amount]} display={text()[P.amount]} />
-          <ParamKnob idx={P.width}  label="Width"  value={vals()[P.width]}  display={text()[P.width]} />
+          <ParamKnob params={host} idx={P.rate} label="Rate" />
+          <ParamKnob params={host} idx={P.length} label="Length" />
+          <ParamKnob params={host} idx={P.amount} label="Amount" />
+          <ParamKnob params={host} idx={P.width} label="Width" />
         </div>
       </section>
 
       <section class="panel env-panel">
         <h2 class="t-title">ENVELOPE</h2>
         <div class="knob-row">
-          <ParamKnob idx={P.attack}  label="Attack"  value={vals()[P.attack]}  display={stageText(P.attack)} />
-          <ParamKnob idx={P.decay}   label="Decay"   value={vals()[P.decay]}   display={stageText(P.decay)} />
-          <ParamKnob idx={P.sustain} label="Sustain" value={vals()[P.sustain]} display={text()[P.sustain]} />
-          <ParamKnob idx={P.release} label="Release" value={vals()[P.release]} display={stageText(P.release)} />
+          <ParamKnob params={host} idx={P.attack} label="Attack" display={stageText(P.attack)} />
+          <ParamKnob params={host} idx={P.decay} label="Decay" display={stageText(P.decay)} />
+          <ParamKnob params={host} idx={P.sustain} label="Sustain" />
+          <ParamKnob params={host} idx={P.release} label="Release" display={stageText(P.release)} />
         </div>
       </section>
 
@@ -549,15 +545,14 @@ export default function App() {
       <section class="panel fade-panel">
         <h2 class="t-title">FADE</h2>
         <div class="knob-row">
-          <ParamKnob idx={P.fade} label="Fade" value={vals()[P.fade]}
-                     display={text()[P.fade]} default={1} />
+          <ParamKnob params={host} idx={P.fade} label="Fade" />
           <div class="fade-actions">
             {/* THE DIRECTION IS A SETTING, NOT A SECOND KNOB. In introduces the
               * steps you drew on and leaves silence behind; Out introduces the
               * holes and leaves the gate open. 100% is the pattern either way. */}
-            <ParamSelect idx={P.fadeDir} options={FADE_DIRS} label="Dir"
-                         labelWidth={28} width={76} value={vals()[P.fadeDir]} />
-            <ParamToggle idx={P.fadeSoft} label="Soft" value={vals()[P.fadeSoft]} />
+            <ParamSelect params={host} idx={P.fadeDir} options={FADE_DIRS} label="Dir"
+                         labelWidth={28} width={76} />
+            <ParamToggle params={host} idx={P.fadeSoft} label="Soft" />
             {/*
               * ORDER MODE. Worded, not a glyph: "the system uses no icon set --
               * state is shown by light and by words". The count is the whole
@@ -586,12 +581,10 @@ export default function App() {
           * No label, as the original had none: `slot.setBounds (kLeftX, ...)`
           * with no slotL beside it. The StepGrid card puts this above-left of
           * the grid, where its position says what it is. */}
-        <ParamSelect idx={P.slot} options={SLOTS} width={96} value={vals()[P.slot]} />
-        <ParamToggle idx={P.legato} label="Join Neighbors" value={vals()[P.legato]} />
-        <ParamSelect idx={P.curve} options={CURVES} label="Curve" labelWidth={44} width={124}
-                value={vals()[P.curve]} />
-        <ParamSelect idx={P.timeMode} options={TIME_MODES} label="Time" labelWidth={36} width={88}
-                value={vals()[P.timeMode]} />
+        <ParamSelect params={host} idx={P.slot} options={SLOTS} width={96} />
+        <ParamToggle params={host} idx={P.legato} label="Join Neighbors" />
+        <ParamSelect params={host} idx={P.curve} options={CURVES} label="Curve" labelWidth={44} width={124} />
+        <ParamSelect params={host} idx={P.timeMode} options={TIME_MODES} label="Time" labelWidth={36} width={88} />
         <span class="spacer" />
         {/* A whole-pattern action, which is why it sits with Copy and Paste
           * rather than in the Fade panel: those three are the only controls here

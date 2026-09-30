@@ -209,14 +209,8 @@ export function Shaper(props) {
     /* Double-click resets, via `detail` rather than a dblclick listener -- a
      * separate listener fires after the drag has already moved the value. */
     if (ev.detail === 2) {
-      for (const idx of [hnd.xIdx, hnd.yIdx]) {
-        if (idx === undefined) continue;
-        const d = props.defaults?.[idx];
-        if (d === undefined) continue;
-        beginGesture(idx);
-        setParam(idx, d);
-        endGesture(idx);
-      }
+      /* To the plugin's own default for each axis the handle moves. */
+      for (const idx of [hnd.xIdx, hnd.yIdx]) if (idx !== undefined) props.onReset?.(idx);
       return;
     }
 

@@ -41,19 +41,6 @@ export const P = {
 };
 export const NUM_PARAMS = 15;
 
-/* The enum option counts, so a normalised value can be turned back into an
- * index. The LABELS come from the plugin as display strings; only the counts
- * are needed here, and they are what a Select needs to do its arithmetic. */
-export const COUNTS = {
-  [P.source]: 3,
-  [P.rate]: 12,
-  [P.timeMode]: 2,
-  [P.curve]: 3,
-  [P.channel]: 17,
-  [P.note]: 128,
-  [P.midiMode]: 2,
-};
-
 /*
  * THE PARAMETER RANGES, MIRRORED FROM Params.cpp's InitDouble CALLS.
  *

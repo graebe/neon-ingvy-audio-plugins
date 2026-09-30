@@ -23,9 +23,9 @@
  * and nothing in this system floats.
  */
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import { Hint, Ground, createMotion, onParam, onMessage, sendMessage } from '@ultraviolet/ui';
+import { Hint, Ground, createMotion, onMessage, sendMessage } from '@ultraviolet/ui';
+import { createParams, ParamKnob, ParamSelect } from '@ultraviolet/ui/params';
 import { MSG, P, NUM_PARAMS } from './lib/msg.js';
-import { ParamKnob, ParamSelect } from './lib/params.jsx';
 import { Shaper, SPAN } from './lib/Shaper.jsx';
 import { bounds as boundsOf } from './lib/shape.js';
 
@@ -52,17 +52,15 @@ const NIB = new Int8Array(128).fill(-1);
 for (let i = 0; i < 16; i++) NIB['0123456789ABCDEF'.charCodeAt(i)] = i;
 
 export default function App() {
-  /* Normalised values, as the host reports them. The Knobs want these. */
-  const [norm, setNorm] = createSignal(new Array(NUM_PARAMS).fill(0));
+  /* Every parameter's value, display string and default -- listening from here,
+   * before `ready` is sent. */
+  const host = createParams(NUM_PARAMS);
   /* The Motion switch, remembered between openings. Not a host parameter -- see
    * the kit's lib/motion.js for why a view is not something to automate. */
   const [motion, setMotion] = createMotion('side-chain');
   /* The ground's handle, set by <Ground ref>. A kick arrives as a message and is
    * handed straight to it. */
   let ground = null;
-  /* The plugin's own display strings -- it owns every unit, precision and enum
-   * label, because iPlug2's IParam already does. */
-  const [display, setDisplay] = createSignal(new Array(NUM_PARAMS).fill(''));
   /* The ENGINE's values, in their own units. What the drawing uses, so no range
    * arithmetic stands between the picture and the DSP. */
   const [engine, setEngine] = createSignal(null);
@@ -74,20 +72,8 @@ export default function App() {
   const [seenBits, setSeenBits] = createSignal('');
   const [stageMs, setStageMs] = createSignal([0, 0, 0, 0]);
   const [buses, setBuses] = createSignal({ key: 0, isMain: 0 });
-  const [defaults, setDefaults] = createSignal({});
 
   onMount(() => {
-    const offParam = onParam((idx, value) => {
-      setNorm((v) => {
-        const next = [...v];
-        next[idx] = value;
-        return next;
-      });
-      /* The first value a parameter reports is its default, and the only place
-       * this side can learn one -- which is what a double-click needs. */
-      setDefaults((d) => (idx in d ? d : { ...d, [idx]: value }));
-    });
-
     const offMsg = onMessage((tag, text) => {
 
       if (tag === MSG.ground) {
@@ -95,14 +81,6 @@ export default function App() {
          * turned into a full-strength kick. */
         const gs = Number.parseFloat(text);
         if (Number.isFinite(gs)) ground?.trigger(gs);
-        return;
-      }
-      if (tag >= 0 && tag < NUM_PARAMS) {
-        setDisplay((v) => {
-          const next = [...v];
-          next[tag] = text;
-          return next;
-        });
         return;
       }
       switch (tag) {
@@ -188,7 +166,7 @@ export default function App() {
      */
     sendMessage(MSG.ready);
 
-    onCleanup(() => { offParam(); offMsg(); });
+    onCleanup(() => { offMsg(); });
   });
 
   /* ------------------------------------------------ the animation clock ---- */
@@ -378,8 +356,7 @@ export default function App() {
     onCleanup(() => window.removeEventListener('resize', onResize));
   });
 
-  const v = (idx) => norm()[idx];
-  const d = (idx) => display()[idx];
+  const v = (idx) => host.value(idx);
 
   return (
     <main>
@@ -409,20 +386,15 @@ export default function App() {
                 sweep={playSweep()}
                 spanMs={spanMs()}
                 markMs={markMs()}
-                defaults={defaults()} />
+                onReset={(idx) => host.reset(idx)} />
       </div>
 
       <section class="panel knob-row">
-        <ParamKnob idx={P.depth} label="Depth" value={v(P.depth)} display={d(P.depth)}
-                   default={defaults()[P.depth]} />
-        <ParamKnob idx={P.delay} label="Delay" value={v(P.delay)} display={d(P.delay)}
-                   default={defaults()[P.delay]} />
-        <ParamKnob idx={P.attack} label="Attack" value={v(P.attack)} display={d(P.attack)}
-                   default={defaults()[P.attack]} />
-        <ParamKnob idx={P.hold} label="Hold" value={v(P.hold)} display={d(P.hold)}
-                   default={defaults()[P.hold]} />
-        <ParamKnob idx={P.release} label="Release" value={v(P.release)}
-                   display={d(P.release)} default={defaults()[P.release]} />
+        <ParamKnob params={host} idx={P.depth} label="Depth" />
+        <ParamKnob params={host} idx={P.delay} label="Delay" />
+        <ParamKnob params={host} idx={P.attack} label="Attack" />
+        <ParamKnob params={host} idx={P.hold} label="Hold" />
+        <ParamKnob params={host} idx={P.release} label="Release" />
         {/*
           * THE SOURCE'S OWN KNOBS, AND ONLY THE ONES THAT APPLY.
           *
@@ -436,14 +408,11 @@ export default function App() {
           * into it overflows upward through the readouts above it.
           */}
         <Show when={ui().source === 1}>
-          <ParamKnob idx={P.velSens} label="Vel" value={v(P.velSens)}
-                     display={d(P.velSens)} default={defaults()[P.velSens]} />
+          <ParamKnob params={host} idx={P.velSens} label="Vel" />
         </Show>
         <Show when={ui().source === 2}>
-          <ParamKnob idx={P.threshold} label="Thresh" value={v(P.threshold)}
-                     display={d(P.threshold)} default={defaults()[P.threshold]} />
-          <ParamKnob idx={P.lockout} label="Lockout" value={v(P.lockout)}
-                     display={d(P.lockout)} default={defaults()[P.lockout]} />
+          <ParamKnob params={host} idx={P.threshold} label="Thresh" />
+          <ParamKnob params={host} idx={P.lockout} label="Lockout" />
         </Show>
       </section>
 
@@ -460,27 +429,20 @@ export default function App() {
         * source changes, which one row could not do at any width.
         */}
       <div class="selects-row selects-trigger">
-        <ParamSelect idx={P.source} label="Src" options={SOURCES}
-                     value={v(P.source)} width={104} labelWidth={30} />
+        <ParamSelect params={host} idx={P.source} label="Src" options={SOURCES} width={104} labelWidth={30} />
         <Show when={ui().source === 0}>
-          <ParamSelect idx={P.rate} label="Rate" options={RATES}
-                       value={v(P.rate)} width={84} labelWidth={38} />
+          <ParamSelect params={host} idx={P.rate} label="Rate" options={RATES} width={84} labelWidth={38} />
         </Show>
         <Show when={ui().source === 1}>
-          <ParamSelect idx={P.note} label="Note" options={noteNames()}
-                       value={v(P.note)} width={78} labelWidth={38} />
-          <ParamSelect idx={P.channel} label="Ch" options={CHANNELS}
-                       value={v(P.channel)} width={66} labelWidth={26} />
-          <ParamSelect idx={P.midiMode} label="Mode" options={MIDI_MODES}
-                       value={v(P.midiMode)} width={88} labelWidth={42} />
+          <ParamSelect params={host} idx={P.note} label="Note" options={noteNames()} width={78} labelWidth={38} />
+          <ParamSelect params={host} idx={P.channel} label="Ch" options={CHANNELS} width={66} labelWidth={26} />
+          <ParamSelect params={host} idx={P.midiMode} label="Mode" options={MIDI_MODES} width={88} labelWidth={42} />
         </Show>
       </div>
 
       <div class="selects-row selects-shape">
-        <ParamSelect idx={P.curve} label="Curve" options={CURVES}
-                     value={v(P.curve)} width={118} labelWidth={42} />
-        <ParamSelect idx={P.timeMode} label="Time" options={TIME_MODES}
-                     value={v(P.timeMode)} width={92} labelWidth={38} />
+        <ParamSelect params={host} idx={P.curve} label="Curve" options={CURVES} width={118} labelWidth={42} />
+        <ParamSelect params={host} idx={P.timeMode} label="Time" options={TIME_MODES} width={92} labelWidth={38} />
       </div>
 
       <Hint clauses={hintFor(ui().source, ui().rate, stageMs(), v(P.timeMode))} motion={motion()} onMotion={setMotion} />
