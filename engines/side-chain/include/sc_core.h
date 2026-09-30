@@ -248,7 +248,7 @@ int    sc_core_set_param(sc_core_t *c, const char *key, const char *val);
  * for the longest readout here, and treat a result of buf_len - 1 as a bug in
  * the caller rather than a value.
  *
- * (`Buf` in fmt.rs does track the would-have-fit length. It is deliberately
+ * (`Buf` in ni_dsp::fmt does track the would-have-fit length. It is deliberately
  * not returned, matching tg_core_get_param, so that both engines' ABIs answer
  * this question the same way. Do not "fix" one of them alone.)
  *
