@@ -281,6 +281,14 @@ add_test(NAME gnd_core
          COMMAND ${GND_ENV} ${GND_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ground-core -p ground-capi)
 
+# THE SHELL PLUMBING'S OWN TESTS: the queue, the snapshot, the handoff, the
+# two-thread stress runs and the no-allocation check -- and each product's
+# bridge over it, which lives in that product's capi crate.
+add_test(NAME shell_core
+         COMMAND ${SHELL_ENV} ${SHELL_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p shell-core -p shell-capi
+                 -p tg-capi -p sc-capi)
+
 # ... and the seam, for the reason abus_roundtrip states: this is the only test
 # that compiles against the hand-written header and links the real library, so
 # it is the only one that can notice the two disagreeing.

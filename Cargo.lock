@@ -46,6 +46,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "shell-capi"
+version = "2026.9.29+1"
+dependencies = [
+ "shell-core",
+]
+
+[[package]]
+name = "shell-core"
+version = "2026.9.29+1"
+
+[[package]]
 name = "spectro-capi"
 version = "2026.9.29+2"
 dependencies = [
@@ -71,6 +82,7 @@ name = "tg-capi"
 version = "2026.9.29+3"
 dependencies = [
  "ground-capi",
+ "shell-core",
  "tg-core",
 ]
 

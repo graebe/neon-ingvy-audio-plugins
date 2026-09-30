@@ -45,6 +45,9 @@ include(cmake/SideChainEngine.cmake)
 # The animated ground's kick detector. Like the bus above it belongs to no single
 # product: every editor draws the same ground, so every plugin links this.
 include(cmake/GroundEngine.cmake)
+# The command queue, the published snapshot, the handoff and the state header
+# between every plugin's threads. Shared, like the two above.
+include(cmake/ShellEngine.cmake)
 
 # The Trance Gate's OTHER shell: the Schwung module for the Move. Not a
 # subdirectory because it is an aarch64 Linux cross-build in a container --
