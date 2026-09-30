@@ -129,10 +129,9 @@ pub(crate) struct Run {
     /// The transport has stopped and the gate is gliding open: the envelope
     /// and the playhead are frozen, and only `amount_s` moves.
     pub(crate) opening: bool,
-    /// The stage lengths, worked out once for the block. Everything they
+    /// The stage lengths, worked out once for the block: everything they
     /// depend on -- the rate, the tempo, Width and the three stage values --
-    /// can only change between blocks, and the sample loop used to rebuild
-    /// them every sample, twice when Width was below 1.
+    /// can only change between blocks.
     pub(crate) lens: StageLens,
     /// The parameter glide's per-sample coefficient at this sample rate.
     pub(crate) smooth: f32,

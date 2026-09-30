@@ -200,11 +200,10 @@ impl Instance {
                 } else {
                     rates::RATE_DEFAULT
                 };
-                /* The `ui` readout carries the step DURATION, and it used to
-                 * be computed only inside a block -- so a rate changed while
-                 * the host was idle reported the old subdivision's length
-                 * until audio ran again. The plugin draws its envelope
-                 * against that number. */
+                /* The `ui` readout carries the step DURATION, which the
+                 * plugin draws its envelope against -- so it follows the rate
+                 * now, not at the next block, or an idle host shows the old
+                 * subdivision's length. */
                 self.recalc_ms_per_step();
             }
             Param::Legato => self.legato = value != 0.0,
@@ -297,11 +296,10 @@ impl Instance {
                  * THE WIRE CARRIES THE OPTION INDEX, and the option NAMES
                  * carry the step numbers -- so index 15 displays as "16".
                  *
-                 * It used to send the 1-based name with `options_as_string`,
-                 * the other legal convention, and it displayed one too high:
-                 * the host has three resolvers for an enum's wire format and
-                 * only two consult that flag. Indices are the host's default
-                 * convention, so speaking them makes all three agree.
+                 * Not the 1-based name with `options_as_string`: the host has
+                 * three resolvers for an enum's wire format and only two
+                 * consult that flag. Indices are its default convention, so
+                 * all three agree on them.
                  */
                 let c = fmt::atoi(val).max(0) as usize;
                 let len = self.pat[self.slot].length;

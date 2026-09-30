@@ -32,9 +32,8 @@ pub enum Stage {
 pub struct Env {
     pub stage: Stage,
     /// Position through the current stage as 0..1, advanced by a PRECOMPUTED
-    /// reciprocal. It used to hold a sample COUNT and divide by the stage
-    /// length every sample -- a double division per sample for a quotient
-    /// whose denominator cannot change inside a stage.
+    /// reciprocal: the stage length cannot change inside a stage, so there is
+    /// no per-sample division.
     pub t: f64,
     /// `1 / stage length in samples`; 0 for a zero-length stage.
     pub inc: f64,
