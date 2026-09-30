@@ -23,8 +23,10 @@
  * PLUG_DOES_MIDI_IN makes it one; see config.h. Looking for the wrong type
  * finds nothing and the test would skip itself forever, quietly.
  *
- * Skips with success when the component is not installed, so a checkout that
- * has never run a build does not fail the suite.
+ * SKIPS -- exit 77, which ctest reports as Skipped rather than Passed -- when
+ * the component is not installed, so a checkout that has never deployed a
+ * build does not fail the suite and does not claim a pass it never earned
+ * either. CI installs the plugins and fails if this skips.
  */
 #include <AudioToolbox/AudioToolbox.h>
 #include <AudioUnit/AudioUnit.h>
@@ -147,7 +149,7 @@ int main(void)
     AudioComponent comp = AudioComponentFindNext(NULL, &desc);
     if (!comp) {
         printf("  (skipped: the NI Side-Chain AU is not installed)\n");
-        return 0;
+        return 77;
     }
 
     AudioUnit au = NULL;

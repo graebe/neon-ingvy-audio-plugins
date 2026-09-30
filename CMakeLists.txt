@@ -9,6 +9,30 @@
 # MIT and the engine is MIT. JUCE was the one exception -- AGPLv3-or-commercial
 # as of JUCE 8 -- and it is gone.
 cmake_minimum_required(VERSION 3.22)
+
+# DEFAULTS, NOT DECREES. Ableton Live is still commonly run as x86_64 under
+# Rosetta and a universal binary loads either way, so that is the default --
+# but a -D on the command line wins: a single-slice debug build, a sanitizer
+# build (TSan has no universal runtime) or a slice-by-slice CI build all need
+# to say otherwise. These used to be set with FORCE after project(), which
+# silently overwrote any -D.
+#
+# BEFORE project(), because project() is where CMake creates both as (empty)
+# cache entries on Apple -- after it, NOT DEFINED is never true. The host test
+# is CMAKE_HOST_APPLE because APPLE itself does not exist yet here, and because
+# on Linux these would otherwise make the engine builds ask cargo for Apple
+# target triples.
+if (CMAKE_HOST_APPLE)
+    if (NOT DEFINED CMAKE_OSX_ARCHITECTURES)
+        set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING
+            "Architectures to build: universal by default")
+    endif()
+    if (NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING
+            "Oldest macOS the plugins load on")
+    endif()
+endif()
+
 # OBJC/OBJCXX on Apple because iPlug2's macOS layer is Objective-C++ -- the
 # AUv2 entry, the WKWebView editor and the standalone's Cocoa shell are all
 # .mm. Without them CMake fails at generate time with a bare
@@ -24,16 +48,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
 
-if (APPLE)
-    # Ableton Live is still commonly run as x86_64 under Rosetta; a universal
-    # binary loads either way and costs only build time.
-    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "" FORCE)
-endif()
-
 # Coverage, when asked for. Must come before any target is defined: it works by
 # adding compile options, which reach only what is declared after it.
 include(cmake/Coverage.cmake)
+# A sanitizer for the C/C++ tests, when asked for (-DNI_SANITIZE=thread).
+include(cmake/Sanitize.cmake)
 
 # One engine build, shared by the plugin and all four native test targets.
 include(cmake/TranceGateEngine.cmake)
@@ -50,6 +69,20 @@ include(cmake/GroundEngine.cmake)
 # subdirectory because it is an aarch64 Linux cross-build in a container --
 # see the note in the file.
 include(cmake/Schwung.cmake)
+
+# resources/web is vite's output and untracked; a plugin whose editor did not
+# build must not configure. See the file.
+include(cmake/EditorGuard.cmake)
+
+# THE NOTICES TRAVEL INSIDE EVERY BUNDLE. MIT asks that the copyright and
+# permission notice accompany every copy, and a plugin bundle is copied on its
+# own -- out of a zip, into ~/Library, onto another machine -- with no
+# repository near it. So each plugin passes these as iPlug2 RESOURCES and they
+# land in Contents/Resources/, for a local build exactly as for a release.
+# scripts/check-licenses.mjs --bundles checks that they arrived.
+set(NI_BUNDLE_NOTICES
+    ${CMAKE_SOURCE_DIR}/LICENSE
+    ${CMAKE_SOURCE_DIR}/THIRD_PARTY_LICENSES.md)
 
 add_subdirectory(plugins/trance-gate)
 add_subdirectory(plugins/spectrogram)

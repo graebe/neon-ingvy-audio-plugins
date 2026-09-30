@@ -1,97 +1,116 @@
-# Tag trance-gate-v1.0.0 -> build in Docker -> attach
-# dist/trance-gate-module.tar.gz -> rewrite release.json on main, which is
-# where the Schwung catalog reads it.
+# Tag <product>-v<version> for a product with a Schwung module -> build that
+# module in Docker -> attach dist/<id>-module.tar.gz -> record it in
+# release.json on main, which is where Schwung Manager reads it.
 #
-# THE TAG IS trance-gate-v*, NOT v*. This repository releases more than one
-# product now, and one `v*` namespace for all of them would make a Spectrogram
-# tag publish a Trance Gate module. The module and the plugin ARE one product
-# in two shells, so the same tag releases both -- see release-plugins.yml --
-# which keeps their versions in lockstep by construction rather than by
-# remembering.
+# ONE WORKFLOW, EVERY MODULE. The tag's product prefix names a directory under
+# modules/, and everything that differs between modules is in that directory's
+# module.env -- the build and the packaging are modules/_shared/package.sh for
+# all of them. tests/release.test.mjs holds the tag list below to exactly the
+# modules that exist, so a new module cannot build and never release.
+#
+# The same tag triggers release-plugins.yml for the macOS bundles: the module
+# and the plugin are one product in two shells, so one tag ships both and their
+# versions cannot drift apart.
 #
 # Adapted from schwung-ducker's, which is the house pattern for a catalog
-# module. The one addition is the explicit artifact check below.
-name: Release
+# module. The additions are the artifact check and the licence check below.
+name: Release Schwung module
 
 on:
   push:
     tags:
       - 'trance-gate-v*'
+      - 'side-chain-v*'
 
 permissions:
   contents: write
 
+# One release per tag at a time. NOT cancel-in-progress: the last step pushes
+# to main, and cancelling it half way would leave a release the catalog cannot
+# see.
+concurrency:
+  group: release-schwung-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify version match
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#trance-gate-v}"
-          MODULE_VERSION=$(grep '"version"' modules/trance-gate/module.json | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-          if [ "$TAG_VERSION" != "$MODULE_VERSION" ]; then
-            echo "ERROR: Tag version ($TAG_VERSION) does not match module.json version ($MODULE_VERSION)"
-            echo "Please update modules/trance-gate/module.json to version $TAG_VERSION before tagging."
-            exit 1
-          fi
-          # versions.json is where a product's version is decided; module.json
-          # is one of the spellings `ctest -R versions` holds to it. Checking
-          # the tag against both means a mismatch cannot reach a release.
-          SOURCE_VERSION=$(python3 -c "import json;print(json.load(open('versions.json'))['trance-gate'])")
-          if [ "$TAG_VERSION" != "$SOURCE_VERSION" ]; then
-            echo "ERROR: Tag $TAG_VERSION does not match versions.json ($SOURCE_VERSION)"
-            exit 1
-          fi
-          echo "Version check passed: $TAG_VERSION"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # THE TAG MUST MATCH THE SOURCE, and it is parsed by scripts/release.mjs
+      # rather than here. This step used to strip "trance-gate-v" and compare
+      # what was left ("2026.09.29.3") against files that say
+      # "v2026.09.29.3", so no correct tag could ever pass it. The script is
+      # the one both release workflows use and tests/release.test.mjs runs.
+      #
+      # It checks the tag against versions.json -- which `ctest -R versions`
+      # holds config.h, the plists and every crate to -- and against
+      # module.json, so a release cannot claim a version the tree does not
+      # build.
+      - name: Resolve the tag
+        id: tag
+        run: |
+          node scripts/release.mjs resolve "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
+          grep -q '^module_id=' "$GITHUB_OUTPUT" || {
+            echo "::error::$GITHUB_REF_NAME names a product with no Schwung module"; exit 1; }
 
       - name: Build with Docker
-        run: |
-          docker build -t module-builder -f modules/trance-gate/Dockerfile .
-          docker run --rm -v "$PWD:/build" -w /build module-builder ./modules/trance-gate/package.sh
+        run: ./modules/_shared/package.sh "${{ steps.tag.outputs.product }}"
 
       # A build step that can be skipped silently defeats every bisect after
-      # it. softprops warns on a missing file rather than failing, so a build
-      # that produced nothing would publish an EMPTY release that the catalog
-      # happily points at -- a 404 on install, reported as "the module is
-      # broken" rather than as a release that was never built.
-      - name: Verify the artifact exists and is aarch64
+      # it. The release action warns on a missing file rather than failing, so
+      # a build that produced nothing would publish an EMPTY release that the
+      # catalog happily points at -- a 404 on install, reported as "the module
+      # is broken" rather than as a release that was never built.
+      #
+      # AND THE NOTICES ARE IN IT. MIT asks that the notice accompany every
+      # copy, and a tarball is the only thing that reaches a device.
+      - name: Verify the artifact
+        env:
+          ID: ${{ steps.tag.outputs.module_id }}
+          TARBALL: dist/${{ steps.tag.outputs.module_asset }}
         run: |
-          TARBALL=dist/trance-gate-module.tar.gz
-          [ -f "$TARBALL" ] || { echo "ERROR: $TARBALL was not produced by build.sh"; exit 1; }
-          tar -tzf "$TARBALL" | grep -q 'trance-gate/trance-gate.so' || {
-            echo "ERROR: $TARBALL carries no trance-gate.so"; exit 1; }
-          tar -xzf "$TARBALL" -C /tmp trance-gate/trance-gate.so
-          file /tmp/trance-gate/trance-gate.so | grep -q 'ARM aarch64' || {
-            echo "ERROR: trance-gate.so is not an aarch64 build:"
-            file /tmp/trance-gate/trance-gate.so; exit 1; }
+          set -euo pipefail
+          [ -f "$TARBALL" ] || { echo "::error::$TARBALL was not produced"; exit 1; }
+          listing=$(tar -tzf "$TARBALL")
+          for f in "$ID/$ID.so" "$ID/module.json" "$ID/LICENSE" "$ID/THIRD_PARTY_LICENSES.md"; do
+            grep -qx "$f" <<<"$listing" || { echo "::error::$TARBALL carries no $f"; exit 1; }
+          done
+          tmp=$(mktemp -d)
+          tar -xzf "$TARBALL" -C "$tmp"
+          file "$tmp/$ID/$ID.so" | grep -q 'ARM aarch64' || {
+            echo "::error::$ID.so is not an aarch64 build:"; file "$tmp/$ID/$ID.so"; exit 1; }
           echo "Artifact OK: $(ls -la "$TARBALL")"
 
-      # `prerelease` is NOT inferred from the version. Without this a
-      # `-beta.` tag is published as a normal release and GitHub shows it as
-      # **Latest** -- so the build that needs an unreleased host becomes the
-      # one every visitor is pointed at, which is the opposite of the point of
-      # having channels at all.
+      # `prerelease` is NOT inferred from the version by GitHub. Without it a
+      # `-beta.` tag is published as a normal release and shown as **Latest**
+      # -- so the build that needs an unreleased host becomes the one every
+      # visitor is pointed at.
+      #
+      # A tag with both a plugin and a module is released by BOTH workflows.
+      # The action looks the release up by tag before creating one, so each
+      # attaches its file to the same release.
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
-          files: dist/trance-gate-module.tar.gz
-          prerelease: ${{ contains(github.ref_name, '-beta.') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: dist/${{ steps.tag.outputs.module_asset }}
+          prerelease: ${{ steps.tag.outputs.prerelease }}
+          fail_on_unmatched_files: true
 
-      # A tag routes to a CHANNEL. `-beta.` goes to channels.beta and touches
-      # nothing else; anything else is stable and must ALSO update the
-      # top-level version/download_url, because a manager that predates
-      # channels reads only those and would otherwise be pinned forever.
+      # Record the release where Schwung Manager looks for it. The shape --
+      # one entry per catalog id under "modules", channels per entry, and the
+      # Trance Gate mirrored at the top level for managers that predate the
+      # map -- is scripts/release.mjs's, and tests/release.test.mjs checks it.
+      #
       # THIS STEP RUNS AFTER THE RELEASE IS PUBLISHED, and it is the one that
       # can leave a release the catalog cannot see: the tarball is attached but
-      # release.json still names the previous version, so Schwung Manager keeps
+      # release.json still names the previous version, so the manager keeps
       # offering the old one and nothing looks broken.
       #
       # It pushes to main, which the Schwung host repo learned the hard way is
@@ -101,42 +120,20 @@ jobs:
       # message below says exactly what to do by hand.
       - name: Commit release.json
         run: |
-          set -e
-          trap 'echo "::error::release.json was NOT updated. The release is published but the catalog will keep offering the previous version. Fix by hand: set version and download_url in release.json on main to ${GITHUB_REF_NAME}, commit, push. If this failed with GH006, main is branch-protected against bot pushes."' ERR
-          VERSION="${GITHUB_REF_NAME#trance-gate-v}"
-          URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/trance-gate-module.tar.gz"
-          case "$VERSION" in
-            *-beta.*) CHANNEL=beta ;;
-            *)        CHANNEL=stable ;;
-          esac
-          echo "routing $VERSION to the $CHANNEL channel"
+          set -euo pipefail
+          trap 'echo "::error::release.json was NOT updated. The release is published but the catalog will keep offering the previous version. Fix by hand: node scripts/release.mjs release-json ${GITHUB_REF_NAME} ${GITHUB_REPOSITORY} on main, commit, push. If this failed with GH006, main is branch-protected against bot pushes."' ERR
 
-          git fetch origin main
-          git checkout -f main
+          # Written from the TAGGED tree, which knows this tag's module and
+          # version, onto MAIN's release.json, which may have moved on since
+          # the tag was cut -- another module's release, say.
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git show origin/main:release.json > "$RUNNER_TEMP/release.json"
+          node scripts/release.mjs release-json "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" "$RUNNER_TEMP/release.json"
+
+          git checkout -f -B main origin/main
+          cp "$RUNNER_TEMP/release.json" release.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          python3 - "$VERSION" "$URL" "$CHANNEL" <<'PY'
-          import json, sys
-          version, url, channel = sys.argv[1], sys.argv[2], sys.argv[3]
-          try:
-              rel = json.load(open("release.json"))
-          except Exception:
-              rel = {}
-          ch = rel.setdefault("channels", {})
-          ch[channel] = {"version": version, "download_url": url}
-          if channel == "stable":
-              # what a channels-unaware manager reads
-              rel["version"] = version
-              rel["download_url"] = url
-          rel = {"version": rel.get("version", version),
-                 "download_url": rel.get("download_url", url),
-                 "channels": ch}
-          json.dump(rel, open("release.json", "w"), indent=2)
-          open("release.json", "a").write("\n")
-          print("release.json now:", json.dumps(rel))
-          PY
-
           git add release.json
-          git commit -m "chore: ${CHANNEL} channel -> ${{ github.ref_name }}" || echo "No changes to commit"
+          git commit -m "Schwung catalog: ${{ steps.tag.outputs.module_id }} ${{ steps.tag.outputs.module_version }}" || echo "No changes to commit"
           git push origin main

@@ -40,7 +40,10 @@ parameter contract.
 
 ## Building
 
-    ./modules/side-chain/package.sh          # from anywhere, via Docker
+    ./modules/_shared/package.sh side-chain  # from anywhere, via Docker
     cmake --build build --target schwung-side-chain
 
-    ./modules/side-chain/install.sh          # scp to move.local
+    ./modules/_shared/install.sh side-chain  # scp to move.local
+
+The build, packaging and install scripts are shared by every module (see
+`modules/_shared/`); what is particular to this one is in `module.env`.

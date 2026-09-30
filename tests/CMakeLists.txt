@@ -9,6 +9,10 @@
 # through JUCE's plugin host, and rendered the editor -- so they could not
 # outlive it. What remains is everything that was written in plain C against
 # the engine's ABI, which is also everything that checks the SOUND.
+# -DNI_SANITIZE=thread|address|undefined instruments every C/C++ target in this
+# directory and tests/cpp -- the tests, never the plugins. cmake/Sanitize.cmake.
+ni_sanitize_here()
+
 set(TG_ENGINE ${CMAKE_SOURCE_DIR}/engines/trance-gate)
 
 add_executable(tg_core_tests ${TG_ENGINE}/tests/test_core.c)
@@ -131,6 +135,21 @@ if (TG_NODE)
     add_test(NAME versions
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
 
+    # WHAT A RELEASE TAG MEANS. Both release workflows parse their tag with
+    # scripts/release.mjs, and a workflow only ever runs on the tag it is
+    # about to get wrong -- so this runs the parser, the release.json writer
+    # and the workflows' tag lists against the real tree instead.
+    add_test(NAME release
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/release.test.mjs)
+
+    # EVERYTHING THAT SHIPS HAS A NOTICE, AND EVERY NOTICE IS FOR SOMETHING
+    # THAT SHIPS. THIRD_PARTY_LICENSES.md is held to the SDK pins, Cargo.lock,
+    # the editors' bundled packages and the fonts -- and, through --bundles, to
+    # the built bundles themselves, which must carry the notices inside.
+    add_test(NAME licenses
+             COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
+                     --bundles ${CMAKE_BINARY_DIR}/out)
+
     # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
     # editors and the documentation site -- where there used to be one per
     # plugin, each blind to the other.
@@ -187,6 +206,8 @@ if (APPLE)
     target_link_libraries(tg_au_render PRIVATE tg_engine m
         "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
     add_test(NAME tg_au COMMAND tg_au_render)
+    # 77 is "the AU is not installed": Skipped, not Passed. See au_render.c.
+    set_tests_properties(tg_au PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 # ---------------------------------------------------------------- Spectrogram
@@ -490,12 +511,15 @@ endif()
 # engine's own render sample for sample.
 #
 # It finds the plugin by the (aumf, SdCh, Grbe) triple -- `aumf` and not `aufx`
-# because PLUG_DOES_MIDI_IN makes it a MusicEffect. It SKIPS with success when
-# the component is not installed, so a checkout that has never run a build does
-# not fail the suite.
+# because PLUG_DOES_MIDI_IN makes it a MusicEffect. It SKIPS (exit 77, reported
+# as Skipped rather than Passed) when the component is not installed, so a
+# checkout that has never deployed a build neither fails the suite nor claims a
+# pass it did not earn. CI installs the plugins and fails if either AU test
+# skips.
 if (APPLE)
     add_executable(sc_au_render ${SC_ENGINE}/tests/au_render.c)
     target_link_libraries(sc_au_render PRIVATE sc_engine m
         "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
     add_test(NAME sc_au COMMAND sc_au_render)
+    set_tests_properties(sc_au PROPERTIES SKIP_RETURN_CODE 77)
 endif()

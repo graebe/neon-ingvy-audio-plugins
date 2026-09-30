@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
+// The notices of every package bundled into ui.js, written beside it, and a
+// failed build for one THIRD_PARTY_LICENSES.md does not list.
+import licenses from '../../../scripts/vite-licenses.mjs';
 
 /*
  * The build lands in ../resources/web, which is what the CMakeLists globs into
@@ -11,7 +14,7 @@ import solid from 'vite-plugin-solid';
  * wrong silently -- a blank editor with no error anywhere. One file cannot.
  */
 export default defineConfig({
-  plugins: [solid()],
+  plugins: [solid(), licenses()],
   base: './',
   build: {
     outDir: '../resources/web',

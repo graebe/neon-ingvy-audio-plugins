@@ -21,8 +21,7 @@ if (LISTENIN_NPM)
     COMMAND ${LISTENIN_NPM} --prefix ${CMAKE_CURRENT_SOURCE_DIR}/ui run build
     RESULT_VARIABLE LISTENIN_UI_RESULT OUTPUT_QUIET ERROR_QUIET)
   if (NOT LISTENIN_UI_RESULT EQUAL 0)
-    message(WARNING "The editor did not build; run: "
-                    "npm --prefix plugins/listen-in/ui install")
+    message(WARNING "The editor did not build; run `npm ci` at the repository root")
   endif()
 
   add_custom_target(NIListenInUI ALL
@@ -31,13 +30,16 @@ if (LISTENIN_NPM)
     COMMENT "Building the NI Listen-In editor (vite)"
     VERBATIM)
 else()
-  message(WARNING "npm not found -- using whatever is already in resources/web")
+  message(WARNING "npm not found -- the editor cannot be built (resources/web is build output)")
 endif()
 
 file(GLOB LISTENIN_WEB
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/*.html"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/assets/*"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web/fonts/*")
+
+# A plugin with no editor must not configure -- see cmake/EditorGuard.cmake.
+ni_require_editor(listen-in ${LISTENIN_WEB})
 
 iplug_add_plugin(NIListenIn
   SOURCES
@@ -54,6 +56,9 @@ iplug_add_plugin(NIListenIn
     VST3 CLAP AU
   UI WEBVIEW
   WEB_RESOURCES ${LISTENIN_WEB}
+  # LICENSE and THIRD_PARTY_LICENSES.md, into Contents/Resources -- see the
+  # root CMakeLists.
+  RESOURCES ${NI_BUNDLE_NOTICES}
   # audio_bus_engine, not an engine of its own: Listen-In has no DSP. The
   # transport is the whole product, and a Spectrogram will link the same
   # library to read what this one writes.
@@ -121,6 +126,8 @@ if (TARGET NIListenInUI)
           COMMAND ${CMAKE_COMMAND} -E copy_directory
                   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web"
                   "${_ni_deploy}/NIListenIn.${_ni_ext}/Contents/Resources/web"
+          COMMAND ${CMAKE_COMMAND} -E copy ${NI_BUNDLE_NOTICES}
+                  "${_ni_deploy}/NIListenIn.${_ni_ext}/Contents/Resources/"
           COMMENT "Refreshing NIListenIn.${_ni_ext}'s editor in ${_ni_deploy}"
           VERBATIM)
       endif()

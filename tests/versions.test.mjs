@@ -106,21 +106,39 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
  * the rules. See the long note in plugins/trance-gate/config.h.
  *
  *   display  what a DAW shows, and what versions.json says
- *   numeric  three integers, for Cargo (semver) and the plists (CFBundle*)
+ *   numeric  three integers: Cargo (semver) and CFBundleShortVersionString
  *   cargo    numeric plus the subversion as BUILD METADATA -- legal semver,
  *            ignored in comparison, and not lost
  *   packed   major<<16 | minor<<8 | patch, which is what a host compares
+ *   bundle   the packed number's three fields in decimal, for CFBundleVersion
+ *   schwung  display without its "v", for module.json and release.json
  *
  * THE SUBVERSION LIVES IN THE LOW BITS OF THE PATCH: day*8+sub. A second
  * release on one day has to move the packed number or a host cannot tell it
  * from the first, and there is no fourth field. Eight a day is the ceiling and
  * a ninth is refused below rather than wrapping into the next day.
+ *
+ * CFBundleVersion IS THE PACKED NUMBER, SPELLED OUT: y.m.(day*8+sub), so
+ * v2026.09.29.3 is 2026.9.235. It is the build number macOS and the installer
+ * compare, and it had been the same "2026.9.29" for .2 and .3 -- two different
+ * builds claiming one build number. It allows at most three integers, so the
+ * subversion cannot be a fourth field; folding it into the third the way the
+ * packed hex already does keeps it monotonic and makes it the SAME number the
+ * AU's version and PLUG_VERSION_HEX carry, rather than a third encoding.
+ * CFBundleShortVersionString stays the human-facing date (2026.9.29).
+ *
+ * THE SCHWUNG SPELLING DROPS THE "v". Schwung Manager compares a module's
+ * installed module.json version with release.json's by parseInt() on each
+ * dotted part, and parseInt("v2026") is NaN, read as 0 -- so with the "v" the
+ * year is ignored and v2027.01.01.1 sorts before v2026.12.31.1. See
+ * scripts/release.mjs, which is what writes release.json.
  */
 const spellings = (v) => {
   const d = DATE_RE.exec(v);
   if (!d) {
     const [a, b, c] = v.split('.').map(Number);
-    return { display: v, numeric: v, cargo: v, packed: (a << 16) | (b << 8) | c };
+    return { display: v, numeric: v, cargo: v, packed: (a << 16) | (b << 8) | c,
+             bundle: v, schwung: v };
   }
   const [, y, mo, day, sub] = d.map(Number);
   const numeric = `${y}.${mo}.${day}`;
@@ -129,6 +147,8 @@ const spellings = (v) => {
     numeric,
     cargo: `${numeric}+${sub}`,
     packed: (y << 16) | (mo << 8) | (day * 8 + sub),
+    bundle: `${y}.${mo}.${day * 8 + sub}`,
+    schwung: v.slice(1),
     sub,
     day,
   };
@@ -192,7 +212,8 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
 
   if (where.module) {
     test(`${product}: module.json agrees (${want})`, () => {
-      assert.equal(JSON.parse(read(where.module)).version, spellings(want).display);
+      assert.equal(JSON.parse(read(where.module)).version, spellings(want).schwung,
+        `${where.module}: the Schwung spelling has no "v" -- see spellings() above`);
     });
   }
 
@@ -219,14 +240,17 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
         new RegExp(`<key>${k}</key>\\s*<string>([^<]*)</string>`).exec(x)?.[1];
 
       /*
-       * THE NUMERIC FORM, NOT THE DISPLAY ONE. CFBundleShortVersionString is
-       * specified as up to three integers, so "v2026.09.29.1" does not belong
-       * in it -- the Finder and the installer read these.
+       * THE NUMERIC FORMS, NOT THE DISPLAY ONE. Both keys are specified as up
+       * to three integers, so "v2026.09.29.1" belongs in neither -- the Finder
+       * and the installer read these. The short string is the date; the build
+       * number carries the subversion too (see spellings() above).
        */
-      for (const k of ['CFBundleShortVersionString', 'CFBundleVersion']) {
-        const got = key(k);
-        if (got !== undefined) assert.equal(got, spellings(want).numeric, `${f}: ${k}`);
-      }
+      const short = key('CFBundleShortVersionString');
+      if (short !== undefined)
+        assert.equal(short, spellings(want).numeric, `${f}: CFBundleShortVersionString`);
+      const build = key('CFBundleVersion');
+      if (build !== undefined)
+        assert.equal(build, spellings(want).bundle, `${f}: CFBundleVersion`);
       const au = key('AudioUnit Version');
       if (au !== undefined)
         assert.equal(Number(au), packed(want),
@@ -275,28 +299,82 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
 }
 
 /*
- * NOT CHECKED, DELIBERATELY: release.json.
+ * release.json: WHAT HAS BEEN PUBLISHED TO THE SCHWUNG CATALOG.
  *
- * It records what has been PUBLISHED -- the release workflow rewrites it when
- * a tag is pushed -- so it is behind the tree whenever there are unreleased
- * changes, which is most of the time. Asserting it against versions.json would
- * fail on every bump between a version being decided and the tag that ships
- * it, which is exactly when nobody wants a red build.
+ * It is NOT held equal to versions.json. It records what has been PUBLISHED --
+ * scripts/release.mjs rewrites it when a module tag is released -- so it is
+ * behind the tree whenever there are unreleased changes, which is most of the
+ * time, and asserting equality would fail on every bump between a version
+ * being decided and the tag that ships it.
  *
- * What IS worth knowing is that it never gets AHEAD: a published version the
- * source does not contain means the workflow released something this tree
+ * What IS checked: that every entry is one the manager can use -- keyed by a
+ * module this tree has, spelled the Schwung way, pointing at the tag and asset
+ * the release workflow would have produced for that version -- and that none
+ * is AHEAD of the tree, which would mean something was released that this tree
  * cannot rebuild.
+ *
+ * ONE LEGACY ENTRY IS ALLOWED TO BE SEMVER: trance-gate 1.0.1, published
+ * before the date scheme existed and still the newest module release there is.
+ * It stays until the first date-scheme tag replaces it; rewriting it by hand
+ * would point the catalog at a release that does not exist.
  */
-test('release.json has not published a version this tree lacks', () => {
+const MODULES = Object.fromEntries(Object.entries(PRODUCTS)
+  .filter(([, w]) => w.module)
+  .map(([product, w]) => [JSON.parse(read(w.module)).id, product]));
+const PUBLISHED_SEMVER = { 'trance-gate': ['1.0.1'] };
+const parts = (v) => v.split('-')[0].split('.').map(Number);
+const ahead = (a, b) => {
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  }
+  return false;
+};
+
+test('release.json: every published module entry is well formed and not ahead', () => {
   const rel = JSON.parse(read('release.json'));
-  const tree = VERSIONS['trance-gate'];
-  const num = (v) => v.split('-')[0].split('.').map(Number);
-  const [a, b, c] = num(rel.version);
-  const [x, y, z] = num(tree);
-  const ahead = a > x || (a === x && (b > y || (b === y && c > z)));
-  assert.ok(!ahead,
-    `release.json publishes ${rel.version} but versions.json says ${tree} -- ` +
-    'the workflow released something this tree cannot rebuild.');
+  const repo = /https:\/\/github\.com\/([^/]+\/[^/]+)\/releases\/download\//
+    .exec(rel.download_url ?? '')?.[1];
+  assert.ok(repo, 'release.json: the top-level download_url names no GitHub release');
+  assert.ok(rel.modules && typeof rel.modules === 'object',
+    'release.json has no "modules" map -- the multi-module form Schwung Manager reads');
+
+  const check = (where, product, moduleId, e) => {
+    assert.ok(e.version && e.download_url, `${where}: needs version and download_url`);
+    const legacy = PUBLISHED_SEMVER[product]?.includes(e.version);
+    assert.ok(legacy || /^\d{4}\.\d{2}\.\d{2}\.\d+(-beta\.\d+)?$/.test(e.version),
+      `${where}: "${e.version}" is not the Schwung spelling of a date version (no "v")`);
+    /* Both schemes tag as <product>-v<schwung spelling>: 1.0.1 was tagged
+     * trance-gate-v1.0.1, and a date version's "v" is its own. */
+    const tag = `${product}-v${e.version}`;
+    assert.equal(e.download_url,
+      `https://github.com/${repo}/releases/download/${tag}/${moduleId}-module.tar.gz`,
+      `${where}: download_url is not what the release workflow publishes for ${e.version}`);
+    assert.ok(!ahead(e.version, spellings(VERSIONS[product]).schwung),
+      `${where} publishes ${e.version} but versions.json says ${VERSIONS[product]} -- ` +
+      'the workflow released something this tree cannot rebuild');
+  };
+
+  for (const [id, entry] of Object.entries(rel.modules)) {
+    const product = MODULES[id];
+    assert.ok(product, `release.json publishes "${id}", which is no module.json's id`);
+    check(`modules.${id}`, product, id, entry);
+    for (const [ch, e] of Object.entries(entry.channels ?? {})) {
+      assert.ok(['stable', 'beta'].includes(ch), `modules.${id}: unknown channel "${ch}"`);
+      check(`modules.${id}.channels.${ch}`, product, id, e);
+    }
+    if (entry.channels?.stable)
+      assert.equal(entry.version, entry.channels.stable.version,
+        `modules.${id}: the entry's version and its stable channel disagree`);
+  }
+
+  /* The top level mirrors the Trance Gate for managers that predate the
+   * modules map -- see LEGACY_TOP_LEVEL in scripts/release.mjs. */
+  const tg = rel.modules['trance-gate'];
+  assert.ok(tg, 'release.json: no trance-gate entry for the top level to mirror');
+  assert.equal(rel.version, tg.version, 'top-level version does not mirror trance-gate');
+  assert.equal(rel.download_url, tg.download_url, 'top-level download_url does not mirror trance-gate');
+  assert.deepEqual(rel.channels ?? {}, tg.channels ?? {}, 'top-level channels do not mirror trance-gate');
 });
 
 /*
@@ -333,6 +411,68 @@ test('the AU plist names the factory the binary exports', () => {
 });
 
 /*
+ * AND THE VIEW CLASS THE AU PLIST NAMES IS THE ONE THE BINARY DEFINES.
+ *
+ * An AUv2 with a Cocoa editor is asked for its view by class NAME: the plist's
+ * NSPrincipalClass is looked up in the bundle, and config.h's
+ * AUV2_VIEW_CLASS_STR is what iPlug2 actually registers. The Trance Gate's
+ * plist said TranceGate_View for as long as the bundle has been NITranceGate --
+ * a rename that moved config.h and not the plist, exactly like the factory
+ * above, and just as invisible to a build.
+ */
+test('the AU plist names the view class the binary defines', () => {
+  for (const [, where] of Object.entries(PRODUCTS)) {
+    if (!where.config) continue;
+    const dir = join(ROOT, dirname(where.config), 'resources');
+    const h = read(where.config);
+    const view = /#define\s+AUV2_VIEW_CLASS_STR\s+"([^"]+)"/.exec(h)?.[1];
+    const sym = /#define\s+AUV2_VIEW_CLASS\s+(\w+)/.exec(h)?.[1];
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('-AU-Info.plist'))) {
+      assert.ok(view, `${where.config}: no AUV2_VIEW_CLASS_STR`);
+      assert.equal(sym, view, `${where.config}: AUV2_VIEW_CLASS and its _STR disagree`);
+      const x = readFileSync(join(dir, f), 'utf8');
+      const principal = /<key>NSPrincipalClass<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
+      assert.equal(principal, view,
+        `${f}: NSPrincipalClass is ${principal}, config.h registers ${view}`);
+    }
+  }
+});
+
+/*
+ * A PLUGIN ON THE SHARED-MEMORY TRANSPORT IS NOT sandboxSafe.
+ *
+ * sandboxSafe tells a host it may load the AU inside its sandboxed
+ * out-of-process host (Logic, GarageBand, AUv3 hosts). audio-bus is POSIX
+ * shared memory -- shm_open on a name every NI plugin agrees on -- and a
+ * sandboxed process may not open a name outside its own app group. So in a
+ * sandbox the send side publishes into nothing and the receive side reads an
+ * empty bus, silently. Claiming sandboxSafe=true for those plugins promised a
+ * host something that plugin cannot do; false makes the host load it in-process
+ * (or not at all), which is the honest answer. An app-group name would be the
+ * alternative, and it cannot be shared with hosts that do not sandbox.
+ *
+ * Which plugins are on the bus is read from the shells' own includes rather
+ * than listed, so a new one cannot miss this.
+ */
+const BUS_HEADERS = ['audio_bus.h', 'spectro_recv.h'];
+test('an AU that opens the shared-memory bus does not claim sandboxSafe', () => {
+  for (const [, where] of Object.entries(PRODUCTS)) {
+    if (!where.config) continue;
+    const pdir = join(ROOT, dirname(where.config));
+    const onBus = readdirSync(pdir)
+      .filter((n) => /\.(h|cpp)$/.test(n))
+      .some((n) => BUS_HEADERS.some((h) => readFileSync(join(pdir, n), 'utf8').includes(`#include "${h}"`)));
+    if (!onBus) continue;
+    const dir = join(pdir, 'resources');
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('-AU-Info.plist'))) {
+      const x = readFileSync(join(dir, f), 'utf8');
+      const safe = /<key>sandboxSafe<\/key>\s*<(true|false)\/>/.exec(x)?.[1];
+      assert.equal(safe, 'false', `${f}: the plugin opens the shm bus, so it is not sandboxSafe`);
+    }
+  }
+});
+
+/*
  * AND THE BUNDLE IDENTIFIERS END IN BUNDLE_NAME.
  *
  * iPlug2 builds the identifier as DOMAIN.MFR.<type>.BUNDLE_NAME and the AU looks
@@ -361,5 +501,27 @@ test('every bundle identifier ends in BUNDLE_NAME', () => {
       const exe = /<key>CFBundleExecutable<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
       if (exe !== undefined) assert.equal(exe, bundle, `${f}: CFBundleExecutable`);
     }
+  }
+});
+
+/*
+ * AND THE PUBLISHER IS NEON INGVY, IN EVERY STRING A HOST SHOWS.
+ *
+ * AGENTS.md: the publisher is "Neon Ingvy" and a product is "NI <name>".
+ * PLUG_MFR is what a DAW groups the plugin under and AAX_PLUG_MFR_STR is the
+ * same thing for Pro Tools; the Side-Chain's AAX string still said "graebe"
+ * after the others had moved. BUNDLE_MFR is deliberately NOT checked: it is a
+ * component of the bundle identifier, and changing it would orphan every saved
+ * project (see listen-in/config.h).
+ */
+test('every plugin is published by Neon Ingvy under an NI name', () => {
+  for (const [, where] of Object.entries(PRODUCTS)) {
+    if (!where.config) continue;
+    const h = read(where.config);
+    const str = (k) => new RegExp(`#define\\s+${k}\\s+"([^"]*)"`).exec(h)?.[1];
+    assert.equal(str('PLUG_MFR'), 'Neon Ingvy', `${where.config}: PLUG_MFR`);
+    const aax = str('AAX_PLUG_MFR_STR');
+    if (aax !== undefined) assert.equal(aax, 'Neon Ingvy', `${where.config}: AAX_PLUG_MFR_STR`);
+    assert.match(str('PLUG_NAME') ?? '', /^NI /, `${where.config}: PLUG_NAME`);
   }
 });

@@ -30,7 +30,7 @@ From the repository root:
 
 ```bash
 cmake --build build --target schwung    # cross-compiles via Docker -> dist/
-./modules/trance-gate/install.sh        # scp to ableton@move.local
+./modules/_shared/install.sh trance-gate  # scp to ableton@move.local
 ctest --test-dir build -R tg_           # the engine's tests, no device needed
 ```
 
@@ -46,11 +46,11 @@ before it builds anything. The tag names the product, because this repository
 releases more than one.
 
 ```bash
-git tag trance-gate-v1.0.0        && git push origin trance-gate-v1.0.0
-git tag trance-gate-v1.1.0-beta.1 && git push origin trance-gate-v1.1.0-beta.1
+git tag trance-gate-v2026.09.29.3 && git push origin trance-gate-v2026.09.29.3
 ```
 
-A beta is only offered when it is strictly newer than stable.
+The tag is the product prefix plus `versions.json`'s version as written. A beta
+is only offered when it is strictly newer than stable.
 
 ## Licence
 

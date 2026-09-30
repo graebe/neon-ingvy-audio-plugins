@@ -6,7 +6,7 @@ import { pluginDownload, moduleDownload } from '../lib/release.js';
 
 const { plugin } = Astro.props;
 const live = plugin.data.hosts.includes('live') ? pluginDownload(plugin.id) : null;
-const move = plugin.data.hosts.includes('move') ? moduleDownload() : null;
+const move = plugin.data.hosts.includes('move') ? moduleDownload(plugin.id) : null;
 ---
 <div class="downloads">
   {live && (

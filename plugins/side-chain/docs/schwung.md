@@ -11,8 +11,8 @@ them sample for sample.
 ## Install
 
 ```sh
-./modules/side-chain/package.sh     # cross-builds in Docker, makes the tarball
-./modules/side-chain/install.sh     # scp to move.local
+./modules/_shared/package.sh side-chain   # cross-builds in Docker, makes the tarball
+./modules/_shared/install.sh side-chain   # scp to move.local
 ```
 
 The module id is `ni-side-chain`. That is deliberately not `ducker`:
