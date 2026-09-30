@@ -7,6 +7,7 @@ pin the sound; these pin the properties a caller of the RUST API relies on,
 which the C ABI's own guards used to hide.
 */
 
+use crate::params::Param;
 use crate::{Instance, Transport, SLOTS};
 
 #[test]
@@ -320,4 +321,74 @@ fn a_hold_is_what_the_engine_ignores() {
     }
     assert!(!crate::params::randomize_holds(""));
     assert!(!crate::params::randomize_holds("Roll"));
+}
+
+/*
+ * THE REVISION IS A PROMISE: if it has not moved, the state blob has not
+ * changed. A shell skips formatting the blob on that promise, so a broken one
+ * publishes a stale patch -- and a save writes it. Every door into the engine,
+ * driven at random, with the blob compared after each step.
+ */
+#[test]
+fn an_unmoved_revision_means_an_unchanged_state() {
+    let mut p = Instance::new(SR);
+    let mut rng = 0x1234_5678u32;
+    let mut next = move || {
+        rng ^= rng << 13;
+        rng ^= rng >> 17;
+        rng ^= rng << 5;
+        rng
+    };
+    let keys = [
+        "slot", "length", "rate", "legato", "curve", "time_mode", "amount", "hold", "attack",
+        "decay", "sustain", "release", "fade", "fade_soft", "fade_dir", "cursor", "step",
+        "step_amount", "step_order", "randomize", "pattern", "ties",
+    ];
+    let mut l = [0.5f32; 64];
+    let mut r = [0.5f32; 64];
+    let mut beats = 0.0;
+    for _ in 0..20_000 {
+        let rev = p.state_rev();
+        let before = readout(&p, "state");
+        match next() % 5 {
+            0 | 1 => {
+                /* PushParams: mostly the value it already had. */
+                let param = Param::from_i32((next() % 15) as i32).unwrap();
+                let v = if next() % 4 == 0 { (next() % 130) as f64 * 0.37 } else { 1.0 };
+                p.set_num(param, v);
+            }
+            2 => {
+                let k = keys[(next() % keys.len() as u32) as usize];
+                let v = (next() % 20).to_string();
+                p.set_param(k, &v);
+            }
+            3 => p.randomize((next() % 8) as usize, Some(next())),
+            _ => {
+                let t = Transport { running: next() % 2 == 0, beats, bpm: 128.0 };
+                p.process_f32_split(&mut l, &mut r, 64, Some(&t));
+                beats += 0.02;
+            }
+        }
+        if p.state_rev() == rev {
+            assert_eq!(readout(&p, "state"), before, "the state changed and the revision did not");
+        }
+    }
+}
+
+#[test]
+fn pushing_the_values_the_engine_already_has_does_not_move_the_revision() {
+    let mut p = Instance::new(SR);
+    let steady = [0.0, 15.0, 7.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.6, 16.0, 1.0, 16.0, 1.0, 0.0, 0.0];
+    for (i, v) in steady.iter().enumerate() {
+        p.set_num(Param::from_i32(i as i32).unwrap(), *v);
+    }
+    let rev = p.state_rev();
+    for _ in 0..100 {
+        for (i, v) in steady.iter().enumerate() {
+            p.set_num(Param::from_i32(i as i32).unwrap(), *v);
+        }
+    }
+    assert_eq!(p.state_rev(), rev);
+    p.set_num(Param::Amount, 0.5);
+    assert_ne!(p.state_rev(), rev);
 }

@@ -227,6 +227,12 @@ pub struct Instance {
      * for anyway.
      */
     rng: u32,
+    /*
+     * THE SAVED STATE'S REVISION: moves whenever anything the state blob
+     * carries may have changed, and at no other time. See
+     * [`Instance::state_rev`]. Runtime, not saved.
+     */
+    rev: u64,
 }
 
 impl Instance {
@@ -273,6 +279,7 @@ impl Instance {
              * the fixed start provides. A shell that wants a specific roll
              * passes its own seed to `randomize`. */
             rng: 0x9E37_79B9,
+            rev: 0,
         };
         me.recalc_ms_per_step();
         me.recalc_fade();
@@ -296,6 +303,27 @@ impl Instance {
          * today. It is here so that "ms_per_step is current" holds at every
          * door into the struct rather than at the two that happen to matter. */
         self.recalc_ms_per_step();
+    }
+
+    /*
+     * WHETHER THE STATE BLOB IS STILL THE ONE A SHELL LAST FORMATTED.
+     *
+     * The blob is the whole patch -- up to ~5 KB of hex for eight full slots --
+     * and a plugin shell republishes its readouts about a hundred times a
+     * second, on the audio thread. Formatting it every time cost ~40 us a
+     * publish for a patch that is between two edits for most of a session. A
+     * shell compares this with the revision its copy was made at and formats
+     * only when they differ.
+     *
+     * It moves on every `set_param` (the editor's and the Move's door, a
+     * handful of calls a second at most) and on a `set_num` that actually
+     * changed a saved value -- not on the fifteen a plugin pushes every block
+     * unchanged. Moving when nothing changed costs one reformat; failing to move
+     * when something did would publish a stale patch, so every doer errs to
+     * the first.
+     */
+    pub fn state_rev(&self) -> u64 {
+        self.rev
     }
 
     /// The slot being played and edited, 0..SLOTS.

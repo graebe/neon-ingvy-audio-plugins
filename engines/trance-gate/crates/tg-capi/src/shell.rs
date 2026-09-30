@@ -34,7 +34,8 @@ const TEXT_MAX: usize = 8192;
 const MAX_COMMAND: usize = 2 * TEXT_MAX;
 const QUEUE_BYTES: usize = 64 * 1024;
 /* Republished a hundred times a second without an edit: faster than any idle
- * timer reads it, and the state blob is not formatted every block. */
+ * timer reads it. The state blob is formatted only when it moved -- see
+ * `publish`. */
 const PUBLISHES_PER_SECOND: f64 = 100.0;
 
 const CMD_PARAMS: u8 = b'P';
@@ -43,6 +44,9 @@ const CMD_SAMPLE_RATE: u8 = b'S';
 pub struct TgFrame {
     text: [Text; 4],
     rt: Playhead,
+    /* The engine's state revision `text[STATE]` was formatted at; None until
+     * it has been. Per frame, because each of the three is refreshed in turn. */
+    state_rev: Option<u64>,
 }
 
 impl Model for TgCore {
@@ -52,6 +56,7 @@ impl Model for TgCore {
         TgFrame {
             text: [Text::new(TEXT_MAX), Text::new(TEXT_MAX), Text::new(TEXT_MAX), Text::new(TEXT_MAX)],
             rt: Playhead::default(),
+            state_rev: None,
         }
     }
 
@@ -80,10 +85,26 @@ impl Model for TgCore {
         }
     }
 
+    /*
+     * THE STATE BLOB IS FORMATTED ONLY WHEN IT CAN HAVE CHANGED.
+     *
+     * It is the whole patch, up to ~5 KB, and this runs on the audio thread a
+     * hundred times a second; formatting it every time was ~40 us a publish for
+     * a patch that sits between two edits for most of a session. The engine's
+     * revision says when the frame's copy is stale -- tg-core's
+     * `an_unmoved_revision_means_an_unchanged_state` holds it to that. The
+     * other three readouts move on their own (the playhead, the step
+     * duration) and are formatted every time, as before.
+     */
     fn publish(&self, f: &mut TgFrame) {
+        let rev = self.0.state_rev();
         for (i, key) in KEYS.iter().enumerate() {
+            if i == STATE && f.state_rev == Some(rev) {
+                continue;
+            }
             f.text[i].fill(|out| self.0.get_param(key, out));
         }
+        f.state_rev = Some(rev);
         f.rt = self.0.playhead();
     }
 
@@ -329,6 +350,98 @@ mod tests {
         let k = CString::new("phase").unwrap();
         assert_eq!(unsafe { tg_shell_read(sh, k.as_ptr(), buf.as_mut_ptr() as *mut c_char, 16) }, -1);
         assert_eq!(read(sh, "length"), "15");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn a_pushed_change_reaches_the_published_state_and_nothing_else_moves_it() {
+        let sh = tg_shell_create(48000.0);
+        let period = publish_every(48000.0) as c_int;
+        audio_block(sh, period);
+        let steady = read(sh, "state");
+        for _ in 0..10 {
+            audio_block(sh, period);
+            assert_eq!(read(sh, "state"), steady);
+        }
+        unsafe {
+            let c = tg_shell_begin(sh);
+            for (i, v) in STEADY.iter().enumerate() {
+                crate::tg_core_set_num(c, i as c_int, *v);
+            }
+            crate::tg_core_set_num(c, 6, 0.25); /* Amount */
+            tg_shell_end(sh, period);
+        }
+        let changed = read(sh, "state");
+        assert_ne!(changed, steady);
+        assert!(changed.contains("\"amount\":0.250"), "{changed}");
+        /* All three frames of the triple buffer come round again, each with
+         * the change -- not one of them still holding the old blob. */
+        audio_block(sh, period);
+        for _ in 0..6 {
+            unsafe {
+                let c = tg_shell_begin(sh);
+                crate::tg_core_set_num(c, 6, 0.25);
+                tg_shell_end(sh, period);
+            }
+            assert_eq!(read(sh, "state"), changed);
+        }
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    /* The fifteen values PushParams writes, in wire order: a steady state, so
+     * pushing them again changes nothing. */
+    const STEADY: [f64; 15] = [0.0, 127.0, 7.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.6, 16.0, 1.0, 16.0, 1.0, 0.0, 0.0];
+
+    /* The heaviest realistic patch: eight slots of 128 random steps, accented. */
+    fn heavy(sh: *const TgShell) {
+        for slot in 0..8 {
+            let slot = slot.to_string();
+            post(sh, &["slot", &slot, "length", "127", "randomize", "12345"]);
+            for i in (0..128).step_by(3) {
+                post(sh, &["cursor", &i.to_string(), "step_amount", "0.5"]);
+            }
+        }
+        post(sh, &["slot", "0"]);
+    }
+
+    /* One audio block as the plugin runs it: edits land, PushParams writes all
+     * fifteen, the readouts are published if the cadence says so. */
+    fn audio_block(sh: *const TgShell, frames: c_int) {
+        unsafe {
+            let c = tg_shell_begin(sh);
+            for (i, v) in STEADY.iter().enumerate() {
+                crate::tg_core_set_num(c, i as c_int, *v);
+            }
+            tg_shell_end(sh, frames);
+        }
+    }
+
+    /*
+     * WHAT A PUBLISH COSTS THE AUDIO THREAD, with the heaviest patch -- a
+     * measurement, not a check, so it is run by hand:
+     *
+     *     cargo test -p tg-capi --release -- --ignored --nocapture publish_cost
+     *
+     * Every block here is one publish period long, so each one publishes.
+     */
+    #[test]
+    #[ignore = "a measurement; run with --release --ignored --nocapture"]
+    fn publish_cost() {
+        let sh = tg_shell_create(48000.0);
+        heavy(sh);
+        let period = publish_every(48000.0) as c_int;
+        audio_block(sh, period);
+        let bytes = read(sh, "state").len();
+        let n = 20_000;
+        for _ in 0..1000 {
+            audio_block(sh, period);
+        }
+        let t = std::time::Instant::now();
+        for _ in 0..n {
+            audio_block(sh, period);
+        }
+        let per = t.elapsed().as_nanos() as f64 / n as f64;
+        println!("publish_cost: {per:.0} ns per published block, state blob {bytes} bytes");
         unsafe { tg_shell_destroy(sh) };
     }
 
