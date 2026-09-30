@@ -31,13 +31,18 @@
  * WHAT IT REFUSES TO DO. A source whose sample rate differs from this
  * receiver's is not compared: a different rate picks a different window (8192
  * at 48 kHz, 16384 at 96), and therefore a different group delay, so the two
- * pictures would be quietly offset from each other. `Source::rate_mismatch`
- * says so and the editor prints it, which beats drawing an offset nobody can
- * see and nobody ordered.
+ * pictures would be quietly offset from each other. `rate_mismatch` says so and
+ * the editor prints it, which beats drawing an offset nobody can see and nobody
+ * ordered.
+ *
+ * THE AUDIO THREAD'S ONE ENTRY POINT IS A SEPARATE VALUE. `Receiver::new` hands
+ * back the receiver and an `OwnFeed`; the feed goes to the audio thread and
+ * everything else stays on the message thread. Each works through `&mut self`,
+ * so the one thing that crosses threads is the ring between them.
  */
 mod ring;
 
-pub use ring::{MonoRing, CAPACITY as RING_FRAMES};
+pub use ring::{mono_ring, MonoConsumer, MonoProducer, CAPACITY as RING_FRAMES};
 
 use bus_core::{Reader, MAX_SLOT};
 use spectro_core::{clash_column, db_span_to_byte, db_to_byte, sum_column, Analyzer, Config};
@@ -95,9 +100,22 @@ struct Bus {
     starved: bool,
 }
 
+/// The audio thread's handle: the own track's samples go in here.
+pub struct OwnFeed {
+    tx: MonoProducer,
+}
+
+impl OwnFeed {
+    /// **Audio thread.** The track's own mono sum. Copies and returns;
+    /// allocates nothing, locks nothing.
+    pub fn push(&mut self, mono: &[f32]) {
+        self.tx.push(mono);
+    }
+}
+
 pub struct Receiver {
     cfg: Config,
-    own_ring: MonoRing,
+    own_ring: MonoConsumer,
     own: Analyzer,
     buses: Vec<Bus>,
 
@@ -126,16 +144,19 @@ const PUMP_FRAMES: usize = 4096;
 const GRACE_PUMPS: usize = 10;
 
 impl Receiver {
-    pub fn new(cfg: Config) -> Self {
+    /// A receiver, and the feed its own channel arrives through. The feed is
+    /// the audio thread's; the receiver is the message thread's.
+    pub fn new(cfg: Config) -> (Self, OwnFeed) {
         /* The analyzer clamps what it was given, so ITS config is the effective
          * one -- taking the caller's would let this crate's idea of `bands`
          * drift from the buffers the analyzer actually produces. */
         let own = Analyzer::new(cfg);
         let cfg = own.config();
-        Self {
+        let (tx, own_ring) = mono_ring();
+        let rx = Self {
             own,
             cfg,
-            own_ring: MonoRing::new(),
+            own_ring,
             buses: Vec::with_capacity(MAX_SOURCES - 1),
             interleaved: vec![0.0; PUMP_FRAMES * 2],
             own_take: vec![0.0; PUMP_FRAMES],
@@ -143,7 +164,12 @@ impl Receiver {
              * Both are settable; these are what the picture opens with. */
             clash_floor: db_to_byte(-60.0, cfg.db_floor, cfg.db_ceil),
             clash_balance: db_span_to_byte(12.0, cfg.db_floor, cfg.db_ceil),
-        }
+        };
+        (rx, OwnFeed { tx })
+    }
+
+    fn mismatched(&self, rate: u32) -> bool {
+        rate != 0 && rate as f32 != self.cfg.sample_rate
     }
 
     pub fn bands(&self) -> usize {
@@ -180,11 +206,6 @@ impl Receiver {
         }
     }
 
-    /// **Audio thread.** The track's own mono sum. Copies and returns.
-    pub fn push_own(&self, mono: &[f32]) {
-        self.own_ring.push(mono);
-    }
-
     /// Frames the own channel could not be given because nothing drained it.
     pub fn own_dropped(&self) -> u64 {
         self.own_ring.dropped()
@@ -214,9 +235,7 @@ impl Receiver {
             let Some(reader) = Reader::open(slot) else {
                 continue;
             };
-            let info = reader.info();
-            let rate_mismatch =
-                info.sample_rate != 0 && info.sample_rate as f32 != self.cfg.sample_rate;
+            let rate_mismatch = self.mismatched(reader.sample_rate());
             self.buses.push(Bus {
                 slot,
                 reader,
@@ -279,6 +298,7 @@ impl Receiver {
             let r = b.reader.read(&mut self.interleaved[..room * 2]);
             b.dropped += r.dropped;
             b.resynced |= r.resynced;
+
 
             /* Stereo interleaved in, mono out -- halved, the same sum the own
              * channel takes, so a centred source does not read 6 dB hot on one
@@ -383,10 +403,10 @@ impl Receiver {
     }
 
     /// **Message thread.** Drain one channel's finished columns.
-    pub fn take_columns(&self, ch: usize, out: &mut [u8], max_cols: usize) -> usize {
+    pub fn take_columns(&mut self, ch: usize, out: &mut [u8], max_cols: usize) -> usize {
         match ch {
             OWN => self.own.take_columns(out, max_cols),
-            _ => match self.buses.get(ch - 1) {
+            _ => match self.buses.get_mut(ch - 1) {
                 Some(b) if !b.rate_mismatch => b.analyzer.take_columns(out, max_cols),
                 _ => 0,
             },

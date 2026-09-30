@@ -57,7 +57,7 @@ static ALLOCATOR: Counting = Counting;
 
 #[test]
 fn pushing_pumping_and_draining_allocate_nothing() {
-    let mut r = Receiver::new(Config::default()); /* allocates, and is allowed to */
+    let (mut r, mut feed) = Receiver::new(Config::default()); /* allocates, and is allowed to */
 
     /* Everything the measured window touches is built before it opens: the
      * input block, the output buffer, and whatever the formatter behind a
@@ -71,7 +71,7 @@ fn pushing_pumping_and_draining_allocate_nothing() {
 
     ARMED.store(true, Ordering::Relaxed);
     for _ in 0..64 {
-        r.push_own(&block);
+        feed.push(&block);
         r.pump();
         cols += r.take_columns(OWN, &mut out, 32);
         r.clash_into(&clash_a, &clash_b, &mut clash_out);

@@ -43,8 +43,8 @@ pub use bands::{
     db_to_byte, sum_column, Band, Bands,
 };
 
-use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use fft::Fft;
 use window::Window;
@@ -196,11 +196,12 @@ impl Config {
 /*
  * THE HANDOVER: a bounded SPSC ring of byte columns.
  *
- * The writer owns `write` and the region ahead of it; the reader owns `read`
- * and the region behind it. Neither ever forms a reference to the whole buffer,
- * which is what keeps two threads inside one allocation from being a data race
- * -- the copies are raw and into disjoint slots, and the two counters publish
- * the handover with Release/Acquire.
+ * The producer owns `write` and the slots ahead of it; the consumer owns
+ * `read` and the slots behind it. The buffers are held as RAW POINTERS, taken
+ * once when they are allocated and turned back into boxes only on drop, so no
+ * reference to a whole buffer ever exists while both sides run: each copy
+ * touches one slot through a pointer, the two sides' slots are disjoint, and
+ * the two counters publish the handover with Release/Acquire.
  *
  * FULL MEANS DROP THE NEW COLUMN, and the count is kept rather than hidden.
  * Overwriting the oldest would need the writer to move the reader's counter,
@@ -209,7 +210,7 @@ impl Config {
  */
 struct Columns {
     bands: usize,
-    buf: UnsafeCell<Box<[u8]>>,
+    buf: *mut u8,
     /*
      * THE RANGE EACH COLUMN WAS MEASURED AGAINST, one per slot.
      *
@@ -224,26 +225,34 @@ struct Columns {
      * So each column carries its epoch and `take` drops the stale ones. It is a
      * fault with no symptom until you are the one reading the picture.
      */
-    epoch: UnsafeCell<Box<[usize]>>,
+    epoch: *mut usize,
     write: AtomicUsize,
     read: AtomicUsize,
     dropped: AtomicUsize,
 }
 
+/* The pointers are owned (see Drop) and every access through them is one of
+ * the two unsafe methods below, whose contract is one producer and one
+ * consumer -- which `Producer` and `Consumer` guarantee by being unique and
+ * taking `&mut self`. */
+unsafe impl Send for Columns {}
+unsafe impl Sync for Columns {}
+
 impl Columns {
     fn new(bands: usize) -> Self {
         Self {
             bands,
-            buf: UnsafeCell::new(vec![0u8; bands * COLUMN_CAPACITY].into_boxed_slice()),
-            epoch: UnsafeCell::new(vec![0usize; COLUMN_CAPACITY].into_boxed_slice()),
+            buf: Box::into_raw(vec![0u8; bands * COLUMN_CAPACITY].into_boxed_slice()) as *mut u8,
+            epoch: Box::into_raw(vec![0usize; COLUMN_CAPACITY].into_boxed_slice()) as *mut usize,
             write: AtomicUsize::new(0),
             read: AtomicUsize::new(0),
             dropped: AtomicUsize::new(0),
         }
     }
 
-    /// Producer side. Audio thread only.
-    fn push(&self, col: &[u8], epoch: usize) {
+    /// # Safety
+    /// Only the single producer may call this.
+    unsafe fn push(&self, col: &[u8], epoch: usize) {
         debug_assert_eq!(col.len(), self.bands);
         let w = self.write.load(Ordering::Relaxed);
         let r = self.read.load(Ordering::Acquire);
@@ -252,18 +261,18 @@ impl Columns {
             return;
         }
         let slot = w % COLUMN_CAPACITY;
-        unsafe {
-            let base = (*self.buf.get()).as_mut_ptr();
-            core::ptr::copy_nonoverlapping(col.as_ptr(), base.add(slot * self.bands), self.bands);
-            (*self.epoch.get())[slot] = epoch;
-        }
+        core::ptr::copy_nonoverlapping(col.as_ptr(), self.buf.add(slot * self.bands), self.bands);
+        self.epoch.add(slot).write(epoch);
         self.write.store(w.wrapping_add(1), Ordering::Release);
     }
 
-    /// Consumer side. Message thread only. Returns the columns written to
-    /// `out`, which must hold `max_cols * bands` bytes. Columns measured against
-    /// an earlier range are consumed and discarded rather than returned.
-    fn take(&self, out: &mut [u8], max_cols: usize, epoch: usize) -> usize {
+    /// Returns the columns written to `out`, which must hold `max_cols * bands`
+    /// bytes. Columns measured against an earlier range are consumed and
+    /// discarded rather than returned.
+    ///
+    /// # Safety
+    /// Only the single consumer may call this.
+    unsafe fn take(&self, out: &mut [u8], max_cols: usize, epoch: usize) -> usize {
         let w = self.write.load(Ordering::Acquire);
         let r = self.read.load(Ordering::Relaxed);
         let available = w.wrapping_sub(r).min(out.len() / self.bands.max(1));
@@ -273,23 +282,35 @@ impl Columns {
         while seen < available && kept < max_cols {
             let slot = r.wrapping_add(seen) % COLUMN_CAPACITY;
             seen += 1;
-            unsafe {
-                if (*self.epoch.get())[slot] != epoch {
-                    continue; /* another range's answer -- see `epoch` above */
-                }
-                let base = (*self.buf.get()).as_ptr();
-                core::ptr::copy_nonoverlapping(
-                    base.add(slot * self.bands),
-                    out.as_mut_ptr().add(kept * self.bands),
-                    self.bands,
-                );
+            if self.epoch.add(slot).read() != epoch {
+                continue; /* another range's answer -- see `epoch` above */
             }
+            core::ptr::copy_nonoverlapping(
+                self.buf.add(slot * self.bands),
+                out.as_mut_ptr().add(kept * self.bands),
+                self.bands,
+            );
             kept += 1;
         }
         if seen > 0 {
             self.read.store(r.wrapping_add(seen), Ordering::Release);
         }
         kept
+    }
+}
+
+impl Drop for Columns {
+    fn drop(&mut self) {
+        unsafe {
+            drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
+                self.buf,
+                self.bands * COLUMN_CAPACITY,
+            )));
+            drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
+                self.epoch,
+                COLUMN_CAPACITY,
+            )));
+        }
     }
 }
 
@@ -314,13 +335,9 @@ struct Dsp {
     epoch: usize,
 }
 
-/// The analyzer. Build it with `new`, feed it from the audio thread with
-/// `push`, drain it from the message thread with `take_columns`.
-///
-/// SAFETY CONTRACT, and it is the whole design: `push` is called from exactly
-/// one thread, `take_columns` from exactly one other, and anything that takes
-/// `&mut self` (only `new`) from neither while they run.
-pub struct Analyzer {
+/// What the two halves share: the configuration, the range request, and the
+/// column ring between them.
+struct Shared {
     cfg: Config,
     /*
      * THE RANGE, AS A REQUEST RATHER THAN AS SHARED STATE.
@@ -338,14 +355,45 @@ pub struct Analyzer {
     /// Bumped on every range change. Stamped onto each column, so the consumer
     /// can tell an answer to the old question from an answer to the new one.
     epoch: AtomicUsize,
-    dsp: UnsafeCell<Dsp>,
     cols: Columns,
 }
 
-/* The producer and the consumer are different threads by construction; what
- * makes that sound is the discipline above, not the absence of this impl. */
-unsafe impl Sync for Analyzer {}
-unsafe impl Send for Analyzer {}
+impl Shared {
+    fn range(&self) -> (f32, f32) {
+        (
+            f32::from_bits(self.req_f_min.load(Ordering::Relaxed)),
+            f32::from_bits(self.req_f_max.load(Ordering::Relaxed)),
+        )
+    }
+}
+
+/*
+ * TWO HALVES, BECAUSE THERE ARE TWO THREADS.
+ *
+ * The audio thread owns the `Producer` and the message thread the `Consumer`.
+ * Neither is Clone, and each does its work through `&mut self` -- so safe code
+ * cannot push from two threads, or drain from two, however the halves are
+ * passed around. That is the whole thread contract, stated to the compiler
+ * rather than in a comment.
+ */
+
+/// The audio thread's half: feed it samples.
+pub struct Producer {
+    dsp: Dsp,
+    shared: Arc<Shared>,
+}
+
+/// The message thread's half: drain columns, change the range, read the axis.
+pub struct Consumer {
+    shared: Arc<Shared>,
+}
+
+/// Both halves in one value, for a caller that feeds and drains on one thread
+/// -- spectro-recv's analyzers, and the tests. `split` hands them to two.
+pub struct Analyzer {
+    tx: Producer,
+    rx: Consumer,
+}
 
 impl Analyzer {
     pub fn new(cfg: Config) -> Self {
@@ -354,42 +402,84 @@ impl Analyzer {
         let n_bins = n / 2 + 1;
         let bands = Bands::new(cfg.bands, n_bins, cfg.sample_rate, cfg.f_min, cfg.f_max);
 
-        Self {
+        let shared = Arc::new(Shared {
             cfg,
             req_f_min: AtomicU32::new(cfg.f_min.to_bits()),
             req_f_max: AtomicU32::new(cfg.f_max.to_bits()),
             epoch: AtomicUsize::new(0),
-            dsp: UnsafeCell::new(Dsp {
-                fft: Fft::new(n),
-                window: Window::hann(n),
-                bands,
-                ring: vec![0.0; n].into_boxed_slice(),
-                pos: 0,
-                since_hop: 0,
-                primed: 0,
-                re: vec![0.0; n].into_boxed_slice(),
-                im: vec![0.0; n].into_boxed_slice(),
-                col: vec![0u8; cfg.bands].into_boxed_slice(),
-                epoch: 0,
-            }),
             cols: Columns::new(cfg.bands),
+        });
+        Self {
+            tx: Producer {
+                dsp: Dsp {
+                    fft: Fft::new(n),
+                    window: Window::hann(n),
+                    bands,
+                    ring: vec![0.0; n].into_boxed_slice(),
+                    pos: 0,
+                    since_hop: 0,
+                    primed: 0,
+                    re: vec![0.0; n].into_boxed_slice(),
+                    im: vec![0.0; n].into_boxed_slice(),
+                    col: vec![0u8; cfg.bands].into_boxed_slice(),
+                    epoch: 0,
+                },
+                shared: shared.clone(),
+            },
+            rx: Consumer { shared },
         }
     }
 
+    /// The two halves, for two threads.
+    pub fn split(self) -> (Producer, Consumer) {
+        (self.tx, self.rx)
+    }
+
     pub fn config(&self) -> Config {
-        self.cfg
+        self.rx.config()
     }
 
     pub fn bands(&self) -> usize {
-        self.cfg.bands
+        self.rx.bands()
+    }
+
+    pub fn range(&self) -> (f32, f32) {
+        self.rx.range()
+    }
+
+    pub fn set_range(&self, f_min: f32, f_max: f32) {
+        self.rx.set_range(f_min, f_max)
+    }
+
+    pub fn band_hz_into(&self, out: &mut [f32]) -> usize {
+        self.rx.band_hz_into(out)
+    }
+
+    pub fn dropped(&self) -> usize {
+        self.rx.dropped()
+    }
+
+    pub fn push(&mut self, mono: &[f32]) {
+        self.tx.push(mono)
+    }
+
+    pub fn take_columns(&mut self, out: &mut [u8], max_cols: usize) -> usize {
+        self.rx.take_columns(out, max_cols)
+    }
+}
+
+impl Consumer {
+    pub fn config(&self) -> Config {
+        self.shared.cfg
+    }
+
+    pub fn bands(&self) -> usize {
+        self.shared.cfg.bands
     }
 
     /// The frequency range the picture currently covers, as requested.
     pub fn range(&self) -> (f32, f32) {
-        (
-            f32::from_bits(self.req_f_min.load(Ordering::Relaxed)),
-            f32::from_bits(self.req_f_max.load(Ordering::Relaxed)),
-        )
+        self.shared.range()
     }
 
     /// Change the frequency range the bands are spread over. **Message thread.**
@@ -402,11 +492,12 @@ impl Analyzer {
         if !f_min.is_finite() || !f_max.is_finite() || f_min < 1.0 || f_max <= f_min * 1.5 {
             return; /* a range that cannot be drawn is not a range */
         }
-        self.req_f_min.store(f_min.to_bits(), Ordering::Relaxed);
-        self.req_f_max.store(f_max.to_bits(), Ordering::Relaxed);
+        let s = &self.shared;
+        s.req_f_min.store(f_min.to_bits(), Ordering::Relaxed);
+        s.req_f_max.store(f_max.to_bits(), Ordering::Relaxed);
         /* Release: the two stores above must be visible to the audio thread
          * before the epoch that tells it to read them. */
-        self.epoch.fetch_add(1, Ordering::Release);
+        s.epoch.fetch_add(1, Ordering::Release);
     }
 
     /// Band centre frequencies in Hz, ascending, written into `out`. Returns how
@@ -414,29 +505,33 @@ impl Analyzer {
     /// the audio thread's table** -- see `bands::centres_for`.
     pub fn band_hz_into(&self, out: &mut [f32]) -> usize {
         let (f_min, f_max) = self.range();
-        centres_for(
-            out,
-            self.cfg.bands,
-            self.cfg.fft_size / 2 + 1,
-            self.cfg.sample_rate,
-            f_min,
-            f_max,
-        )
+        let cfg = &self.shared.cfg;
+        centres_for(out, cfg.bands, cfg.fft_size / 2 + 1, cfg.sample_rate, f_min, f_max)
     }
 
     /// Columns the ring had to throw away because nothing drained it.
     pub fn dropped(&self) -> usize {
-        self.cols.dropped.load(Ordering::Relaxed)
+        self.shared.cols.dropped.load(Ordering::Relaxed)
     }
 
-    /// Feed mono samples. **Audio thread only.** Allocates nothing, locks
-    /// nothing, and takes a bounded amount of time per sample.
-    pub fn push(&self, mono: &[f32]) {
-        /* The single-producer half of the contract above. */
-        let dsp = unsafe { &mut *self.dsp.get() };
-        let n = dsp.ring.len();
+    /// Drain finished columns into `out`, `bands()` bytes each, oldest first.
+    /// **Message thread.** Returns the number of columns written.
+    pub fn take_columns(&mut self, out: &mut [u8], max_cols: usize) -> usize {
+        let epoch = self.shared.epoch.load(Ordering::Acquire);
+        /* The one consumer: this half is unique and borrowed mutably. */
+        unsafe { self.shared.cols.take(out, max_cols, epoch) }
+    }
+}
+
+impl Producer {
+    /// Feed mono samples. **Audio thread.** Allocates nothing, locks nothing,
+    /// and takes a bounded amount of time per sample.
+    pub fn push(&mut self, mono: &[f32]) {
+        let hop = self.shared.cfg.hop;
+        let n = self.dsp.ring.len();
 
         for &s in mono {
+            let dsp = &mut self.dsp;
             /* A NaN in the ring would poison every frame it appears in for the
              * next fft_size samples, not just its own column. */
             dsp.ring[dsp.pos] = if s.is_finite() { s } else { 0.0 };
@@ -445,17 +540,20 @@ impl Analyzer {
                 dsp.primed += 1;
             }
             dsp.since_hop += 1;
-            if dsp.since_hop >= self.cfg.hop {
+            if dsp.since_hop >= hop {
                 dsp.since_hop = 0;
                 if dsp.primed >= n {
-                    self.frame(dsp);
+                    self.frame();
                 }
             }
         }
     }
 
     /// One transform, one column. Audio thread, from `push` only.
-    fn frame(&self, dsp: &mut Dsp) {
+    fn frame(&mut self) {
+        let shared = &*self.shared;
+        let cfg = &shared.cfg;
+        let dsp = &mut self.dsp;
         let n = dsp.ring.len();
 
         /*
@@ -463,17 +561,11 @@ impl Analyzer {
          * Acquire pairs with the Release in `set_range`, so the two frequencies
          * are visible before the epoch that announces them.
          */
-        let epoch = self.epoch.load(Ordering::Acquire);
+        let epoch = shared.epoch.load(Ordering::Acquire);
         if epoch != dsp.epoch {
             dsp.epoch = epoch;
-            let (f_min, f_max) = self.range();
-            dsp.bands.rebuild(
-                self.cfg.bands,
-                n / 2 + 1,
-                self.cfg.sample_rate,
-                f_min,
-                f_max,
-            );
+            let (f_min, f_max) = shared.range();
+            dsp.bands.rebuild(cfg.bands, n / 2 + 1, cfg.sample_rate, f_min, f_max);
         }
 
         /* Oldest sample first: the ring's write cursor is also its start, which
@@ -533,16 +625,11 @@ impl Analyzer {
                     lo * (hi / lo).powf(t)
                 }
             };
-            dsp.col[b] = amplitude_to_byte(v, self.cfg.db_floor, self.cfg.db_ceil);
+            dsp.col[b] = amplitude_to_byte(v, cfg.db_floor, cfg.db_ceil);
         }
 
-        self.cols.push(&dsp.col, dsp.epoch);
-    }
-
-    /// Drain finished columns into `out`, `bands()` bytes each, oldest first.
-    /// **Message thread only.** Returns the number of columns written.
-    pub fn take_columns(&self, out: &mut [u8], max_cols: usize) -> usize {
-        self.cols.take(out, max_cols, self.epoch.load(Ordering::Acquire))
+        /* The one producer: this half is unique and borrowed mutably. */
+        unsafe { shared.cols.push(&dsp.col, dsp.epoch) };
     }
 }
 
@@ -588,7 +675,7 @@ mod tests {
 
     #[test]
     fn a_1k_sine_lights_the_1k_band_and_leaves_the_rest_dark() {
-        let a = Analyzer::new(Config { sample_rate: SR, ..Default::default() });
+        let mut a = Analyzer::new(Config { sample_rate: SR, ..Default::default() });
         a.push(&sine(1000.0, 8192, 1.0));
 
         let mut out = vec![0u8; a.bands() * 16];
@@ -699,7 +786,7 @@ mod tests {
         let sr = 48_000.0f32;
         let fft = pick_fft_size(sr);
         let hop = pick_hop(sr, fft);
-        let a = Analyzer::new(Config {
+        let mut a = Analyzer::new(Config {
             sample_rate: sr,
             fft_size: fft,
             hop,
@@ -750,7 +837,7 @@ mod tests {
          * nearest bin to 30 Hz was bin 1 at 46.9 Hz, so a bass note and a kick
          * fundamental were the same row of pixels.
          */
-        let a = Analyzer::new(Config { sample_rate: SR, ..Default::default() });
+        let mut a = Analyzer::new(Config { sample_rate: SR, ..Default::default() });
         a.push(&sine(30.0, 48_000, 1.0));
 
         let mut out = vec![0u8; a.bands() * 32];
@@ -780,7 +867,7 @@ mod tests {
 
     #[test]
     fn a_range_change_moves_the_axis_at_once_and_the_table_follows() {
-        let a = Analyzer::new(Config::default());
+        let mut a = Analyzer::new(Config::default());
         assert!((a.band_hz()[0] - 10.0).abs() < 0.5, "the full axis starts at 10 Hz");
 
         /* The editor's scale is derived from the request, so it is correct
@@ -821,7 +908,7 @@ mod tests {
          * moment someone is looking to see what changed.
          */
         let cfg = Config::default();
-        let a = Analyzer::new(cfg);
+        let mut a = Analyzer::new(cfg);
         a.push(&sine(1000.0, cfg.fft_size + cfg.hop * 4, 1.0));
 
         a.set_range(200.0, 4000.0);
@@ -872,7 +959,7 @@ mod tests {
 
     #[test]
     fn silence_is_exactly_the_floor() {
-        let a = Analyzer::new(Config::default());
+        let mut a = Analyzer::new(Config::default());
         a.push(&vec![0.0f32; 8192]);
         let mut out = vec![9u8; a.bands() * 8];
         let cols = a.take_columns(&mut out, 8);
@@ -885,7 +972,7 @@ mod tests {
     #[test]
     fn the_first_column_waits_for_a_full_window() {
         let cfg = Config::default();
-        let a = Analyzer::new(cfg);
+        let mut a = Analyzer::new(cfg);
         /* One hop short of a full window: a column now would be mostly the
          * startup zeroes. */
         a.push(&sine(1000.0, cfg.fft_size - 1, 1.0));
@@ -899,7 +986,7 @@ mod tests {
     #[test]
     fn columns_arrive_at_one_per_hop() {
         let cfg = Config { hop: 256, ..Default::default() };
-        let a = Analyzer::new(cfg);
+        let mut a = Analyzer::new(cfg);
         a.push(&sine(440.0, cfg.fft_size, 0.5)); /* primes, emits one */
         let mut out = vec![0u8; a.bands() * 64];
         let primed = a.take_columns(&mut out, 64);
@@ -909,7 +996,7 @@ mod tests {
 
     #[test]
     fn a_nan_in_the_audio_does_not_reach_the_picture() {
-        let a = Analyzer::new(Config::default());
+        let mut a = Analyzer::new(Config::default());
         let mut buf = sine(1000.0, 8192, 0.5);
         buf[100] = f32::NAN;
         buf[101] = f32::INFINITY;
@@ -925,9 +1012,42 @@ mod tests {
     }
 
     #[test]
+    fn the_halves_run_on_two_threads_and_lose_nothing() {
+        /* The shape the C ABI uses: the producer on one thread, the consumer
+         * on another, the ring between them. Every column produced arrives,
+         * once, and none is dropped while the consumer keeps draining. */
+        let cfg = Config { fft_size: 1024, hop: 256, bands: 64, ..Config::default() };
+        let (mut tx, mut rx) = Analyzer::new(cfg).split();
+        let hops = 4000usize;
+        let feeder = std::thread::spawn(move || {
+            let block = sine(1000.0, cfg.hop, 0.5);
+            for _ in 0..hops + cfg.fft_size / cfg.hop {
+                tx.push(&block);
+                std::thread::yield_now();
+            }
+        });
+        let mut out = vec![0u8; cfg.bands * 32];
+        let mut got = 0usize;
+        while !feeder.is_finished() {
+            got += rx.take_columns(&mut out, 32);
+        }
+        feeder.join().unwrap();
+        got += rx.take_columns(&mut out, 32);
+        while got < hops + 1 {
+            let n = rx.take_columns(&mut out, 32);
+            if n == 0 {
+                break;
+            }
+            got += n;
+        }
+        assert_eq!(rx.dropped(), 0, "the ring overflowed with a consumer draining it");
+        assert_eq!(got, hops + 1, "columns were lost or duplicated between threads");
+    }
+
+    #[test]
     fn the_ring_drops_rather_than_blocks_when_nothing_drains_it() {
         let cfg = Config::default();
-        let a = Analyzer::new(cfg);
+        let mut a = Analyzer::new(cfg);
         a.push(&sine(1000.0, cfg.hop * (COLUMN_CAPACITY + 64) + cfg.fft_size, 0.5));
         assert!(a.dropped() > 0, "the ring never filled");
 
@@ -942,7 +1062,7 @@ mod tests {
     #[test]
     fn take_columns_respects_a_short_buffer() {
         let cfg = Config::default();
-        let a = Analyzer::new(cfg);
+        let mut a = Analyzer::new(cfg);
         a.push(&sine(1000.0, cfg.fft_size + cfg.hop * 8, 0.5));
         let mut out = vec![0u8; a.bands() * 3];
         /* max_cols says 8; the buffer holds 3. The buffer wins, and the rest

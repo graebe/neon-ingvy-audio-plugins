@@ -37,14 +37,48 @@
 use ground_capi as _;
 
 use core::ffi::c_int;
-use spectro_core::{pick_fft_size, pick_hop, Analyzer, Config};
+use core::ptr::addr_of_mut;
+use spectro_core::{pick_fft_size, pick_hop, Analyzer, Config, Consumer, Producer};
+
+/*
+ * ONE C HANDLE, TWO RUST HALVES.
+ *
+ * The C side holds one pointer and calls push from the audio thread while the
+ * message thread drains. Making a `&mut` (or even a `&`) to the whole handle on
+ * either thread while the other is inside it would be aliasing undefined
+ * behaviour, however disjoint the work. So every entry point projects from the
+ * raw pointer to the ONE field its thread owns -- `tx` for the audio thread,
+ * `rx` for the message thread -- and the handle as a whole is only named to
+ * create, reconfigure or free it, when nothing else is in flight.
+ */
+pub struct Spectro {
+    tx: Producer,
+    rx: Consumer,
+}
+
+impl Spectro {
+    fn new(cfg: Config) -> Self {
+        let (tx, rx) = Analyzer::new(cfg).split();
+        Spectro { tx, rx }
+    }
+}
+
+/// The audio thread's half. Caller: the audio thread, with `p` live.
+unsafe fn tx<'a>(p: *mut Spectro) -> &'a mut Producer {
+    &mut *addr_of_mut!((*p).tx)
+}
+
+/// The message thread's half. Caller: the message thread, with `p` live.
+unsafe fn rx<'a>(p: *mut Spectro) -> &'a mut Consumer {
+    &mut *addr_of_mut!((*p).rx)
+}
 
 /// Allocate an analyzer with the default configuration. Returns null only if
 /// the allocator does, which on a desktop host means the process is already
 /// finished.
 #[no_mangle]
-pub extern "C" fn spectro_new() -> *mut Analyzer {
-    Box::into_raw(Box::new(Analyzer::new(Config::default())))
+pub extern "C" fn spectro_new() -> *mut Spectro {
+    Box::into_raw(Box::new(Spectro::new(Config::default())))
 }
 
 /// Free an analyzer. Null is a no-op, so a shell's destructor needs no branch.
@@ -52,7 +86,7 @@ pub extern "C" fn spectro_new() -> *mut Analyzer {
 /// # Safety
 /// `p` must be a pointer from `spectro_new` and must not be used afterwards.
 #[no_mangle]
-pub unsafe extern "C" fn spectro_free(p: *mut Analyzer) {
+pub unsafe extern "C" fn spectro_free(p: *mut Spectro) {
     if !p.is_null() {
         drop(Box::from_raw(p));
     }
@@ -67,7 +101,7 @@ pub unsafe extern "C" fn spectro_free(p: *mut Analyzer) {
 /// `p` must be a live analyzer, and no other call may be in flight.
 #[no_mangle]
 pub unsafe extern "C" fn spectro_configure(
-    p: *mut Analyzer,
+    p: *mut Spectro,
     sample_rate: f32,
     fft_size: c_int,
     hop: c_int,
@@ -94,7 +128,7 @@ pub unsafe extern "C" fn spectro_configure(
      * configuration, so "reconfigure" and "reallocate" are the same act. The
      * old one's ring goes with it, which is correct -- its columns were
      * measured against a different axis. */
-    *p = Analyzer::new(cfg);
+    *p = Spectro::new(cfg);
 }
 
 /// Feed `n` mono samples. Audio thread only. Allocates nothing.
@@ -102,11 +136,11 @@ pub unsafe extern "C" fn spectro_configure(
 /// # Safety
 /// `mono` must point to `n` readable floats; `p` must be a live analyzer.
 #[no_mangle]
-pub unsafe extern "C" fn spectro_push_f32(p: *const Analyzer, mono: *const f32, n: c_int) {
+pub unsafe extern "C" fn spectro_push_f32(p: *mut Spectro, mono: *const f32, n: c_int) {
     if p.is_null() || mono.is_null() || n <= 0 {
         return;
     }
-    (*p).push(core::slice::from_raw_parts(mono, n as usize))
+    tx(p).push(core::slice::from_raw_parts(mono, n as usize))
 }
 
 /// Drain finished columns into `out`, `spectro_bands()` bytes each, oldest
@@ -116,16 +150,16 @@ pub unsafe extern "C" fn spectro_push_f32(p: *const Analyzer, mono: *const f32, 
 /// `out` must be writable for `max_cols * spectro_bands(p)` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn spectro_take_columns(
-    p: *const Analyzer,
+    p: *mut Spectro,
     out: *mut u8,
     max_cols: c_int,
 ) -> c_int {
     if p.is_null() || out.is_null() || max_cols <= 0 {
         return 0;
     }
-    let bands = (*p).bands();
-    let slice = core::slice::from_raw_parts_mut(out, bands * max_cols as usize);
-    (*p).take_columns(slice, max_cols as usize) as c_int
+    let rx = rx(p);
+    let slice = core::slice::from_raw_parts_mut(out, rx.bands() * max_cols as usize);
+    rx.take_columns(slice, max_cols as usize) as c_int
 }
 
 /// Bytes per column: the band count.
@@ -133,11 +167,11 @@ pub unsafe extern "C" fn spectro_take_columns(
 /// # Safety
 /// `p` must be a live analyzer.
 #[no_mangle]
-pub unsafe extern "C" fn spectro_bands(p: *const Analyzer) -> c_int {
+pub unsafe extern "C" fn spectro_bands(p: *const Spectro) -> c_int {
     if p.is_null() {
         return 0;
     }
-    (*p).bands() as c_int
+    rx(p as *mut Spectro).bands() as c_int
 }
 
 /// Band centre frequencies in Hz, ascending, up to `max`. Returns how many were
@@ -147,11 +181,11 @@ pub unsafe extern "C" fn spectro_bands(p: *const Analyzer) -> c_int {
 /// # Safety
 /// `out` must be writable for `max` floats.
 #[no_mangle]
-pub unsafe extern "C" fn spectro_band_hz(p: *const Analyzer, out: *mut f32, max: c_int) -> c_int {
+pub unsafe extern "C" fn spectro_band_hz(p: *const Spectro, out: *mut f32, max: c_int) -> c_int {
     if p.is_null() || out.is_null() || max <= 0 {
         return 0;
     }
-    (*p).band_hz_into(core::slice::from_raw_parts_mut(out, max as usize)) as c_int
+    rx(p as *mut Spectro).band_hz_into(core::slice::from_raw_parts_mut(out, max as usize)) as c_int
 }
 
 /// The window length that resolves 10 Hz at this sample rate, as a power of
@@ -185,11 +219,11 @@ pub extern "C" fn spectro_pick_hop(sample_rate: f32, fft_size: c_int) -> c_int {
 /// # Safety
 /// `p` must be a live analyzer.
 #[no_mangle]
-pub unsafe extern "C" fn spectro_set_range(p: *const Analyzer, f_min: f32, f_max: f32) {
+pub unsafe extern "C" fn spectro_set_range(p: *mut Spectro, f_min: f32, f_max: f32) {
     if p.is_null() {
         return;
     }
-    (*p).set_range(f_min, f_max)
+    rx(p).set_range(f_min, f_max)
 }
 
 /// Columns thrown away because nothing drained the ring. A diagnostic: it
@@ -199,11 +233,11 @@ pub unsafe extern "C" fn spectro_set_range(p: *const Analyzer, f_min: f32, f_max
 /// # Safety
 /// `p` must be a live analyzer.
 #[no_mangle]
-pub unsafe extern "C" fn spectro_dropped(p: *const Analyzer) -> c_int {
+pub unsafe extern "C" fn spectro_dropped(p: *const Spectro) -> c_int {
     if p.is_null() {
         return 0;
     }
-    (*p).dropped().min(c_int::MAX as usize) as c_int
+    rx(p as *mut Spectro).dropped().min(c_int::MAX as usize) as c_int
 }
 
 /* ---------------------------------------------------------------- receiver --
@@ -226,7 +260,24 @@ pub unsafe extern "C" fn spectro_dropped(p: *const Analyzer) -> c_int {
  * is what lets every source be fed the same number of frames and therefore be
  * compared cell by cell. See the header of spectro-recv.
  */
-use spectro_recv::{Receiver, MAX_SOURCES};
+use spectro_recv::{OwnFeed, Receiver, MAX_SOURCES};
+
+/*
+ * THE SAME SPLIT AS `Spectro`: the audio thread's `feed` and the message
+ * thread's `rx`, reached only by projecting from the raw pointer. `srecv_pump`
+ * takes `&mut` of the receiver while `srecv_push_own` may be running on the
+ * audio thread -- sound only because the two are different fields and neither
+ * call names the handle as a whole.
+ */
+pub struct Srecv {
+    feed: OwnFeed,
+    rx: Receiver,
+}
+
+/// The message thread's half. Caller: the message thread, with `p` live.
+unsafe fn recv<'a>(p: *const Srecv) -> &'a mut Receiver {
+    &mut *addr_of_mut!((*(p as *mut Srecv)).rx)
+}
 
 /// Sources one receiver will draw, the own channel included.
 #[no_mangle]
@@ -246,7 +297,7 @@ pub extern "C" fn srecv_new(
     f_max: f32,
     db_floor: f32,
     db_ceil: f32,
-) -> *mut Receiver {
+) -> *mut Srecv {
     let cfg = Config {
         sample_rate,
         fft_size: fft_size.max(0) as usize,
@@ -257,13 +308,14 @@ pub extern "C" fn srecv_new(
         db_floor,
         db_ceil,
     };
-    Box::into_raw(Box::new(Receiver::new(cfg)))
+    let (rx, feed) = Receiver::new(cfg);
+    Box::into_raw(Box::new(Srecv { feed, rx }))
 }
 
 /// # Safety
 /// `p` must be a pointer from `srecv_new` and must not be used afterwards.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_free(p: *mut Receiver) {
+pub unsafe extern "C" fn srecv_free(p: *mut Srecv) {
     if !p.is_null() {
         drop(Box::from_raw(p));
     }
@@ -275,11 +327,11 @@ pub unsafe extern "C" fn srecv_free(p: *mut Receiver) {
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_channels(p: *const Receiver) -> c_int {
+pub unsafe extern "C" fn srecv_channels(p: *const Srecv) -> c_int {
     if p.is_null() {
         return 0;
     }
-    (*p).channels() as c_int
+    recv(p).channels() as c_int
 }
 
 /// The bus slot behind a channel, or 0 for the own channel.
@@ -287,11 +339,11 @@ pub unsafe extern "C" fn srecv_channels(p: *const Receiver) -> c_int {
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_slot_of(p: *const Receiver, ch: c_int) -> c_int {
+pub unsafe extern "C" fn srecv_slot_of(p: *const Srecv, ch: c_int) -> c_int {
     if p.is_null() || ch < 0 {
         return 0;
     }
-    (*p).slot_of(ch as usize).unwrap_or(0) as c_int
+    recv(p).slot_of(ch as usize).unwrap_or(0) as c_int
 }
 
 /// Non-zero when a channel's sender runs at another sample rate. Such a source
@@ -301,11 +353,11 @@ pub unsafe extern "C" fn srecv_slot_of(p: *const Receiver, ch: c_int) -> c_int {
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_rate_mismatch(p: *const Receiver, ch: c_int) -> c_int {
+pub unsafe extern "C" fn srecv_rate_mismatch(p: *const Srecv, ch: c_int) -> c_int {
     if p.is_null() || ch < 0 {
         return 0;
     }
-    i32::from((*p).rate_mismatch(ch as usize))
+    i32::from(recv(p).rate_mismatch(ch as usize))
 }
 
 /// Choose which buses to listen to: `slots[0..n]`, 1-based, in the order they
@@ -314,7 +366,7 @@ pub unsafe extern "C" fn srecv_rate_mismatch(p: *const Receiver, ch: c_int) -> c
 /// # Safety
 /// `p` must be a live receiver; `slots` must point to `n` readable u32s.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_set_sources(p: *mut Receiver, slots: *const u32, n: c_int) {
+pub unsafe extern "C" fn srecv_set_sources(p: *mut Srecv, slots: *const u32, n: c_int) {
     if p.is_null() {
         return;
     }
@@ -323,7 +375,7 @@ pub unsafe extern "C" fn srecv_set_sources(p: *mut Receiver, slots: *const u32, 
     } else {
         core::slice::from_raw_parts(slots, n as usize)
     };
-    (*p).set_sources(wanted)
+    recv(p).set_sources(wanted)
 }
 
 /// Feed `n` mono samples from the track this plugin sits on. **Audio thread
@@ -332,11 +384,12 @@ pub unsafe extern "C" fn srecv_set_sources(p: *mut Receiver, slots: *const u32, 
 /// # Safety
 /// `mono` must point to `n` readable floats; `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_push_own(p: *const Receiver, mono: *const f32, n: c_int) {
+pub unsafe extern "C" fn srecv_push_own(p: *mut Srecv, mono: *const f32, n: c_int) {
     if p.is_null() || mono.is_null() || n <= 0 {
         return;
     }
-    (*p).push_own(core::slice::from_raw_parts(mono, n as usize))
+    let feed = &mut *addr_of_mut!((*p).feed);
+    feed.push(core::slice::from_raw_parts(mono, n as usize))
 }
 
 /// Move audio into every analyzer, in step. Returns the frames each source was
@@ -345,11 +398,11 @@ pub unsafe extern "C" fn srecv_push_own(p: *const Receiver, mono: *const f32, n:
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_pump(p: *mut Receiver) -> c_int {
+pub unsafe extern "C" fn srecv_pump(p: *mut Srecv) -> c_int {
     if p.is_null() {
         return 0;
     }
-    (*p).pump() as c_int
+    recv(p).pump() as c_int
 }
 
 /// Drain one channel's finished columns, `spectro_bands()` bytes each, oldest
@@ -359,7 +412,7 @@ pub unsafe extern "C" fn srecv_pump(p: *mut Receiver) -> c_int {
 /// `out` must be writable for `max_cols * bands` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn srecv_take_columns(
-    p: *const Receiver,
+    p: *mut Srecv,
     ch: c_int,
     out: *mut u8,
     max_cols: c_int,
@@ -367,9 +420,9 @@ pub unsafe extern "C" fn srecv_take_columns(
     if p.is_null() || out.is_null() || max_cols <= 0 || ch < 0 {
         return 0;
     }
-    let bands = (*p).bands();
+    let bands = recv(p).bands();
     let slice = core::slice::from_raw_parts_mut(out, bands * max_cols as usize);
-    (*p).take_columns(ch as usize, slice, max_cols as usize) as c_int
+    recv(p).take_columns(ch as usize, slice, max_cols as usize) as c_int
 }
 
 /// The range every source is measured over. Allocation-free and safe while
@@ -378,11 +431,11 @@ pub unsafe extern "C" fn srecv_take_columns(
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_set_range(p: *const Receiver, f_min: f32, f_max: f32) {
+pub unsafe extern "C" fn srecv_set_range(p: *const Srecv, f_min: f32, f_max: f32) {
     if p.is_null() {
         return;
     }
-    (*p).set_range(f_min, f_max)
+    recv(p).set_range(f_min, f_max)
 }
 
 /// What counts as a clash: a floor in dBFS that BOTH sources must clear, and a
@@ -391,11 +444,11 @@ pub unsafe extern "C" fn srecv_set_range(p: *const Receiver, f_min: f32, f_max: 
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_set_clash(p: *mut Receiver, floor_db: f32, balance_db: f32) {
+pub unsafe extern "C" fn srecv_set_clash(p: *mut Srecv, floor_db: f32, balance_db: f32) {
     if p.is_null() {
         return;
     }
-    (*p).set_clash(floor_db, balance_db)
+    recv(p).set_clash(floor_db, balance_db)
 }
 
 /// Clash strength for `n_cols` columns of `a` against `b`, into `out`.
@@ -408,7 +461,7 @@ pub unsafe extern "C" fn srecv_set_clash(p: *mut Receiver, floor_db: f32, balanc
 /// All three must be readable/writable for `n_cols * bands` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn srecv_clash(
-    p: *const Receiver,
+    p: *const Srecv,
     a: *const u8,
     b: *const u8,
     out: *mut u8,
@@ -417,8 +470,8 @@ pub unsafe extern "C" fn srecv_clash(
     if p.is_null() || a.is_null() || b.is_null() || out.is_null() || n_cols <= 0 {
         return;
     }
-    let n = (*p).bands() * n_cols as usize;
-    (*p).clash_into(
+    let n = recv(p).bands() * n_cols as usize;
+    recv(p).clash_into(
         core::slice::from_raw_parts(a, n),
         core::slice::from_raw_parts(b, n),
         core::slice::from_raw_parts_mut(out, n),
@@ -431,11 +484,11 @@ pub unsafe extern "C" fn srecv_clash(
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_dropped(p: *const Receiver, ch: c_int) -> c_int {
+pub unsafe extern "C" fn srecv_dropped(p: *const Srecv, ch: c_int) -> c_int {
     if p.is_null() || ch < 0 {
         return 0;
     }
-    (*p).bus_dropped(ch as usize).min(c_int::MAX as u64) as c_int
+    recv(p).bus_dropped(ch as usize).min(c_int::MAX as u64) as c_int
 }
 
 /// The source list: every slot that exists, as
@@ -465,11 +518,11 @@ pub unsafe extern "C" fn srecv_slots(out: *mut u8, cap: c_int) -> c_int {
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_bands(p: *const Receiver) -> c_int {
+pub unsafe extern "C" fn srecv_bands(p: *const Srecv) -> c_int {
     if p.is_null() {
         return 0;
     }
-    (*p).bands() as c_int
+    recv(p).bands() as c_int
 }
 
 /// The band centre frequencies, ascending, into `out`. Returns how many.
@@ -480,11 +533,11 @@ pub unsafe extern "C" fn srecv_bands(p: *const Receiver) -> c_int {
 /// # Safety
 /// `out` must be writable for `n` floats.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_band_hz(p: *const Receiver, out: *mut f32, n: c_int) -> c_int {
+pub unsafe extern "C" fn srecv_band_hz(p: *const Srecv, out: *mut f32, n: c_int) -> c_int {
     if p.is_null() || out.is_null() || n <= 0 {
         return 0;
     }
-    (*p).band_hz_into(core::slice::from_raw_parts_mut(out, n as usize)) as c_int
+    recv(p).band_hz_into(core::slice::from_raw_parts_mut(out, n as usize)) as c_int
 }
 
 /// Add several channels' columns into one, in POWER, into `out`.
@@ -504,7 +557,7 @@ pub unsafe extern "C" fn srecv_band_hz(p: *const Receiver, out: *mut f32, n: c_i
 /// Every pointer must be readable/writable for `n_cols * bands` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn srecv_sum(
-    p: *const Receiver,
+    p: *const Srecv,
     srcs: *const *const u8,
     n_src: c_int,
     out: *mut u8,
@@ -513,7 +566,7 @@ pub unsafe extern "C" fn srecv_sum(
     if p.is_null() || out.is_null() || n_cols <= 0 {
         return;
     }
-    let n = (*p).bands() * n_cols as usize;
+    let n = recv(p).bands() * n_cols as usize;
     let dst = core::slice::from_raw_parts_mut(out, n);
 
     if srcs.is_null() || n_src <= 0 {
@@ -533,7 +586,7 @@ pub unsafe extern "C" fn srecv_sum(
         view[k] = core::slice::from_raw_parts(ptr, n);
         k += 1;
     }
-    (*p).sum_into(&view[..k], dst)
+    recv(p).sum_into(&view[..k], dst)
 }
 
 /// Non-zero when a channel is being zero-filled because its sender has gone
@@ -545,9 +598,9 @@ pub unsafe extern "C" fn srecv_sum(
 /// # Safety
 /// `p` must be a live receiver.
 #[no_mangle]
-pub unsafe extern "C" fn srecv_starved(p: *const Receiver, ch: c_int) -> c_int {
+pub unsafe extern "C" fn srecv_starved(p: *const Srecv, ch: c_int) -> c_int {
     if p.is_null() || ch < 0 {
         return 0;
     }
-    i32::from((*p).starved(ch as usize))
+    i32::from(recv(p).starved(ch as usize))
 }

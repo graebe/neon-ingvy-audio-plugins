@@ -21,14 +21,20 @@
  * thread makes a noise.
  *
  * THE DISCIPLINE IS THE HOUSE ONE, copied from spectro-core's `Columns` and
- * audio-bus's ring: one producer, one consumer, neither ever forms a reference
- * to the whole buffer, and the two counters publish the handover with
- * Release/Acquire. Full means DROP and say so -- overwriting the oldest would
- * need the writer to move the reader's counter, which is exactly the kind of
- * small shared write that makes a lock-free queue subtly wrong.
+ * audio-bus's ring: one producer, one consumer, and the two counters publish the
+ * handover with Release/Acquire. The buffer is held as a RAW POINTER taken once
+ * when it is allocated, so no reference to the whole buffer exists while both
+ * sides run -- each side touches only its own samples, through the pointer.
+ * Full means DROP and say so -- overwriting the oldest would need the writer to
+ * move the reader's counter, which is exactly the kind of small shared write
+ * that makes a lock-free queue subtly wrong.
+ *
+ * `mono_ring` hands out the two ends as separate values. Neither is Clone and
+ * each works through `&mut self`, so "one producer, one consumer" is enforced
+ * by the compiler rather than promised.
  */
-use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// Frames the ring holds. A power of two so the wrap is a mask.
 ///
@@ -38,87 +44,109 @@ use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 /// how much rather than letting a gap pass as silence.
 pub const CAPACITY: usize = 1 << 15;
 
-pub struct MonoRing {
-    buf: UnsafeCell<Box<[f32]>>,
+struct Ring {
+    buf: *mut f32,
     write: AtomicUsize,
     read: AtomicUsize,
     dropped: AtomicU64,
 }
 
-/* One producer and one consumer by construction; see the header. */
-unsafe impl Sync for MonoRing {}
-unsafe impl Send for MonoRing {}
+/* The pointer is owned (see Drop); the producer writes only slots the consumer
+ * has released and the consumer reads only slots the producer has published,
+ * and there is exactly one of each -- `MonoProducer` and `MonoConsumer`. */
+unsafe impl Send for Ring {}
+unsafe impl Sync for Ring {}
 
-impl MonoRing {
-    pub fn new() -> Self {
-        Self {
-            buf: UnsafeCell::new(vec![0.0; CAPACITY].into_boxed_slice()),
-            write: AtomicUsize::new(0),
-            read: AtomicUsize::new(0),
-            dropped: AtomicU64::new(0),
-        }
+impl Drop for Ring {
+    fn drop(&mut self) {
+        unsafe { drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(self.buf, CAPACITY))) }
     }
+}
 
-    /// Frames waiting to be taken.
-    pub fn available(&self) -> usize {
-        self.write
-            .load(Ordering::Acquire)
-            .wrapping_sub(self.read.load(Ordering::Relaxed))
-    }
+/// The audio thread's end.
+pub struct MonoProducer {
+    ring: Arc<Ring>,
+}
 
-    pub fn dropped(&self) -> u64 {
-        self.dropped.load(Ordering::Relaxed)
-    }
+/// The message thread's end.
+pub struct MonoConsumer {
+    ring: Arc<Ring>,
+}
 
-    /// **Producer only.** Allocates nothing, takes no lock, makes no call.
-    pub fn push(&self, src: &[f32]) {
-        let w = self.write.load(Ordering::Relaxed);
-        let r = self.read.load(Ordering::Acquire);
+/// A ring and its two ends.
+pub fn mono_ring() -> (MonoProducer, MonoConsumer) {
+    let ring = Arc::new(Ring {
+        buf: Box::into_raw(vec![0.0f32; CAPACITY].into_boxed_slice()) as *mut f32,
+        write: AtomicUsize::new(0),
+        read: AtomicUsize::new(0),
+        dropped: AtomicU64::new(0),
+    });
+    (MonoProducer { ring: ring.clone() }, MonoConsumer { ring })
+}
+
+impl MonoProducer {
+    /// Allocates nothing, takes no lock, makes no call.
+    pub fn push(&mut self, src: &[f32]) {
+        let ring = &*self.ring;
+        let w = ring.write.load(Ordering::Relaxed);
+        let r = ring.read.load(Ordering::Acquire);
         let free = CAPACITY - w.wrapping_sub(r);
 
         /* Nothing partial: half a block is a splice, and a splice reads as
          * audio. The whole block is refused and counted. */
         if src.len() > free {
-            self.dropped.fetch_add(src.len() as u64, Ordering::Relaxed);
+            ring.dropped.fetch_add(src.len() as u64, Ordering::Relaxed);
             return;
         }
 
-        let buf = unsafe { &mut *self.buf.get() };
         for (i, &s) in src.iter().enumerate() {
             /* A NaN here would poison every window it appears in, not just its
              * own column -- the same guard spectro-core's push carries. */
-            buf[(w + i) & (CAPACITY - 1)] = if s.is_finite() { s } else { 0.0 };
+            let v = if s.is_finite() { s } else { 0.0 };
+            unsafe { ring.buf.add((w + i) & (CAPACITY - 1)).write(v) };
         }
-        self.write.store(w.wrapping_add(src.len()), Ordering::Release);
+        ring.write.store(w.wrapping_add(src.len()), Ordering::Release);
     }
 
-    /// **Consumer only.** Fills as much of `out` as there is, returns how many.
-    pub fn take(&self, out: &mut [f32]) -> usize {
-        let w = self.write.load(Ordering::Acquire);
-        let r = self.read.load(Ordering::Relaxed);
+    pub fn dropped(&self) -> u64 {
+        self.ring.dropped.load(Ordering::Relaxed)
+    }
+}
+
+impl MonoConsumer {
+    /// Frames waiting to be taken.
+    pub fn available(&self) -> usize {
+        self.ring
+            .write
+            .load(Ordering::Acquire)
+            .wrapping_sub(self.ring.read.load(Ordering::Relaxed))
+    }
+
+    pub fn dropped(&self) -> u64 {
+        self.ring.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Fills as much of `out` as there is, returns how many.
+    pub fn take(&mut self, out: &mut [f32]) -> usize {
+        let ring = &*self.ring;
+        let w = ring.write.load(Ordering::Acquire);
+        let r = ring.read.load(Ordering::Relaxed);
         let n = out.len().min(w.wrapping_sub(r));
 
-        let buf = unsafe { &*self.buf.get() };
         for (i, slot) in out.iter_mut().take(n).enumerate() {
-            *slot = buf[(r + i) & (CAPACITY - 1)];
+            *slot = unsafe { ring.buf.add((r + i) & (CAPACITY - 1)).read() };
         }
         if n > 0 {
-            self.read.store(r.wrapping_add(n), Ordering::Release);
+            ring.read.store(r.wrapping_add(n), Ordering::Release);
         }
         n
     }
 
     /// Forget everything waiting. For a source change, where the frames still
     /// in flight belong to the previous answer.
-    pub fn clear(&self) {
-        self.read
-            .store(self.write.load(Ordering::Acquire), Ordering::Release);
-    }
-}
-
-impl Default for MonoRing {
-    fn default() -> Self {
-        Self::new()
+    pub fn clear(&mut self) {
+        let ring = &*self.ring;
+        ring.read.store(ring.write.load(Ordering::Acquire), Ordering::Release);
     }
 }
 
@@ -128,20 +156,20 @@ mod tests {
 
     #[test]
     fn what_goes_in_comes_out_in_order() {
-        let r = MonoRing::new();
-        r.push(&[1.0, 2.0, 3.0]);
-        assert_eq!(r.available(), 3);
+        let (mut p, mut c) = mono_ring();
+        p.push(&[1.0, 2.0, 3.0]);
+        assert_eq!(c.available(), 3);
 
         let mut out = [0.0; 4];
-        assert_eq!(r.take(&mut out), 3);
+        assert_eq!(c.take(&mut out), 3);
         assert_eq!(&out[..3], &[1.0, 2.0, 3.0]);
-        assert_eq!(r.available(), 0);
-        assert_eq!(r.take(&mut out), 0, "an empty ring is not an error");
+        assert_eq!(c.available(), 0);
+        assert_eq!(c.take(&mut out), 0, "an empty ring is not an error");
     }
 
     #[test]
     fn it_wraps_without_losing_a_frame() {
-        let r = MonoRing::new();
+        let (mut p, mut c) = mono_ring();
         let block = vec![0.0f32; 1000];
         let mut out = vec![0.0f32; 1000];
         /* Well past one lap of the buffer. */
@@ -150,48 +178,48 @@ mod tests {
             for (i, s) in b.iter_mut().enumerate() {
                 *s = (lap * 1000 + i) as f32;
             }
-            r.push(&b);
-            assert_eq!(r.take(&mut out), 1000);
+            p.push(&b);
+            assert_eq!(c.take(&mut out), 1000);
             for (i, &s) in out.iter().enumerate() {
                 assert_eq!(s, (lap * 1000 + i) as f32, "lap {lap} frame {i}");
             }
         }
-        assert_eq!(r.dropped(), 0);
+        assert_eq!(c.dropped(), 0);
     }
 
     #[test]
     fn a_full_ring_drops_whole_blocks_and_counts_them() {
-        let r = MonoRing::new();
+        let (mut p, c) = mono_ring();
         let block = vec![0.5f32; 4096];
         let mut pushed = 0u64;
         for _ in 0..(CAPACITY / 4096) {
-            r.push(&block);
+            p.push(&block);
             pushed += 4096;
         }
-        assert_eq!(r.dropped(), 0, "it dropped before it was full");
-        assert_eq!(r.available(), pushed as usize);
+        assert_eq!(c.dropped(), 0, "it dropped before it was full");
+        assert_eq!(c.available(), pushed as usize);
 
-        r.push(&block);
-        assert_eq!(r.dropped(), 4096, "a full ring took a block anyway");
-        assert_eq!(r.available(), pushed as usize, "a refused block still moved the head");
+        p.push(&block);
+        assert_eq!(c.dropped(), 4096, "a full ring took a block anyway");
+        assert_eq!(c.available(), pushed as usize, "a refused block still moved the head");
     }
 
     #[test]
     fn a_nan_never_reaches_the_analyzer() {
-        let r = MonoRing::new();
-        r.push(&[f32::NAN, f32::INFINITY, 0.25]);
+        let (mut p, mut c) = mono_ring();
+        p.push(&[f32::NAN, f32::INFINITY, 0.25]);
         let mut out = [0.0; 3];
-        r.take(&mut out);
+        c.take(&mut out);
         assert_eq!(out, [0.0, 0.0, 0.25]);
     }
 
     #[test]
     fn clearing_drops_what_was_in_flight() {
-        let r = MonoRing::new();
-        r.push(&[1.0, 2.0, 3.0]);
-        r.clear();
-        assert_eq!(r.available(), 0);
+        let (mut p, mut c) = mono_ring();
+        p.push(&[1.0, 2.0, 3.0]);
+        c.clear();
+        assert_eq!(c.available(), 0);
         let mut out = [0.0; 3];
-        assert_eq!(r.take(&mut out), 0);
+        assert_eq!(c.take(&mut out), 0);
     }
 }
