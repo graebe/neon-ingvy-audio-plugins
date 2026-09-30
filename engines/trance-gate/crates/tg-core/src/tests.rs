@@ -271,3 +271,53 @@ fn the_i16_path_rounds_like_the_float_path_instead_of_truncating() {
         beats += n as f64 / SR * BPM as f64 / 60.0;
     }
 }
+
+/* ------------------------------------------------------------- the mirror */
+
+fn readout(p: &Instance, key: &str) -> String {
+    let mut buf = [0u8; 8192];
+    let n = p.get_param(key, &mut buf);
+    String::from_utf8(buf[..n.max(0) as usize].to_vec()).unwrap()
+}
+
+#[test]
+fn a_mirror_reads_out_what_the_engine_it_copies_reads_out() {
+    /*
+     * A shell's view is a second Instance brought level with the engine by
+     * `mirror`: the state blob plus the playhead. Mid-bar, at a tempo that is
+     * not the default and a rate that is not the constructor's, every readout
+     * the shell serves must agree -- `ui` is the one that carries the playhead.
+     */
+    let mut engine = Instance::new(48000.0);
+    engine.set_param("rate", "5");
+    engine.set_param("cursor", "3");
+    engine.randomize(0, Some(7));
+    let mut l = [1.0f32; 300];
+    let mut r = [1.0f32; 300];
+    let t = Transport { running: true, beats: 1.37, bpm: 133.0 };
+    engine.process_f32_split(&mut l, &mut r, 300, Some(&t));
+
+    let mut state = [0u8; 8192];
+    let n = engine.get_param("state", &mut state);
+    let state = core::str::from_utf8(&state[..n as usize]).unwrap();
+
+    let mut view = Instance::new(44100.0);
+    view.mirror(state, &engine.playhead());
+    assert_eq!(view.playhead(), engine.playhead());
+    for key in ["ui", "state", "length", "params"] {
+        assert_eq!(readout(&view, key), readout(&engine, key), "{key}");
+    }
+}
+
+#[test]
+fn a_hold_is_what_the_engine_ignores() {
+    let mut p = Instance::new(SR);
+    let before = readout(&p, "state");
+    for v in ["Hold", "hold", "0", "Off", "off"] {
+        assert!(crate::params::randomize_holds(v));
+        p.set_param("randomize", v);
+        assert_eq!(readout(&p, "state"), before, "{v} rolled");
+    }
+    assert!(!crate::params::randomize_holds(""));
+    assert!(!crate::params::randomize_holds("Roll"));
+}

@@ -21,7 +21,7 @@ use crate::TgCore;
 use shell_core::{Bridge, Model, Text};
 use std::ffi::{c_char, c_int, CStr};
 use std::sync::atomic::{AtomicU64, Ordering};
-use tg_core::Instance;
+use tg_core::{Instance, Playhead};
 
 /* What a non-audio thread may ask for, in frame order. */
 const KEYS: [&str; 4] = ["ui", "params", "state", "length"];
@@ -40,21 +40,9 @@ const PUBLISHES_PER_SECOND: f64 = 100.0;
 const CMD_PARAMS: u8 = b'P';
 const CMD_SAMPLE_RATE: u8 = b'S';
 
-/// The engine's playhead and clock, which a state blob does not carry and a
-/// view needs to draw the same `ui` readout.
-#[derive(Default, Clone, Copy)]
-struct Runtime {
-    step_pos: f64,
-    advancing: bool,
-    last_bpm: f32,
-    ms_per_step: f32,
-    sample_rate: f64,
-    cursor: usize,
-}
-
 pub struct TgFrame {
     text: [Text; 4],
-    rt: Runtime,
+    rt: Playhead,
 }
 
 impl Model for TgCore {
@@ -63,7 +51,7 @@ impl Model for TgCore {
     fn new_frame(&self) -> TgFrame {
         TgFrame {
             text: [Text::new(TEXT_MAX), Text::new(TEXT_MAX), Text::new(TEXT_MAX), Text::new(TEXT_MAX)],
-            rt: Runtime::default(),
+            rt: Playhead::default(),
         }
     }
 
@@ -86,10 +74,7 @@ impl Model for TgCore {
             CMD_SAMPLE_RATE => {
                 let Some(b) = body.get(..8) else { return };
                 let sr = f64::from_le_bytes(b.try_into().unwrap_or([0; 8]));
-                if sr > 0.0 {
-                    self.0.sample_rate = sr;
-                    self.0.recalc_ms_per_step();
-                }
+                self.0.set_sample_rate(sr);
             }
             _ => {}
         }
@@ -99,26 +84,11 @@ impl Model for TgCore {
         for (i, key) in KEYS.iter().enumerate() {
             f.text[i].fill(|out| self.0.get_param(key, out));
         }
-        let e = &self.0;
-        f.rt = Runtime {
-            step_pos: e.step_pos,
-            advancing: e.advancing,
-            last_bpm: e.last_bpm,
-            ms_per_step: e.ms_per_step,
-            sample_rate: e.sample_rate,
-            cursor: e.cursor,
-        };
+        f.rt = self.0.playhead();
     }
 
     fn restore(&mut self, f: &TgFrame) {
-        let e = &mut self.0;
-        e.sample_rate = f.rt.sample_rate;
-        e.last_bpm = f.rt.last_bpm;
-        e.set_param("state", f.text[STATE].as_str());
-        e.ms_per_step = f.rt.ms_per_step;
-        e.step_pos = f.rt.step_pos;
-        e.advancing = f.rt.advancing;
-        e.cursor = f.rt.cursor.min(e.pattern().length.max(1) - 1);
+        self.0.mirror(f.text[STATE].as_str(), &f.rt);
     }
 }
 
@@ -138,12 +108,8 @@ fn publish_every(sample_rate: f64) -> u32 {
  * The engine's own generator would roll differently in the view than in the
  * engine, and the patch a save wrote would not be the one that played. A seed
  * picked once and carried in the command makes both roll the same pattern.
- * The hold values are the engine's (params.rs, "randomize").
+ * What counts as a hold is the engine's own answer, not a copy of it.
  */
-fn is_hold(val: &str) -> bool {
-    matches!(val, "Hold" | "hold" | "0" | "Off" | "off")
-}
-
 impl TgShell {
     fn next_seed(&self) -> u32 {
         let mut z = self.seed.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed);
@@ -213,7 +179,7 @@ pub unsafe extern "C" fn tg_shell_post(
         let (Some(k), Some(v)) = (s(p[0]), s(p[1])) else { return 0 };
         cmd.extend_from_slice(k.as_bytes());
         cmd.push(0);
-        if k == "randomize" && !is_hold(v) && tg_core::fmt::atoi(v) <= 0 {
+        if k == "randomize" && !tg_core::params::randomize_holds(v) && tg_core::fmt::atoi(v) <= 0 {
             cmd.extend_from_slice(sh.next_seed().to_string().as_bytes());
         } else {
             cmd.extend_from_slice(v.as_bytes());

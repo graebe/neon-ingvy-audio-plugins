@@ -85,6 +85,20 @@ pub struct Transport {
     pub bpm: f32,
 }
 
+/// The playhead and the clock as the last block left them: what a state blob
+/// does not carry. A shell that mirrors the engine off the audio thread copies
+/// this across, so the mirror's readouts draw the same picture as the engine's.
+/// See [`Instance::mirror`].
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct Playhead {
+    pub step_pos: f64,
+    pub advancing: bool,
+    pub last_bpm: f32,
+    pub ms_per_step: f32,
+    pub sample_rate: f64,
+    pub cursor: usize,
+}
+
 pub struct Instance {
     /*
      * EVERY FIELD IS PRIVATE, and the slots are a fixed array. An index a
@@ -292,6 +306,39 @@ impl Instance {
     /// The edit position, 0..length.
     pub fn cursor(&self) -> usize {
         self.cursor
+    }
+
+    /// The playhead and clock, for a mirror. See [`Playhead`].
+    pub fn playhead(&self) -> Playhead {
+        Playhead {
+            step_pos: self.step_pos,
+            advancing: self.advancing,
+            last_bpm: self.last_bpm,
+            ms_per_step: self.ms_per_step,
+            sample_rate: self.sample_rate,
+            cursor: self.cursor,
+        }
+    }
+
+    /*
+     * BECOME A COPY OF AN ENGINE whose saved state is `state` and whose last
+     * block left `p` -- for a shell's view, which replays pending edits off the
+     * audio thread and has to answer with the readouts the engine will give.
+     *
+     * THE ORDER IS THE POINT. The clock goes first, because loading a legacy
+     * blob converts its milliseconds against the width at the tempo known at
+     * that moment; then the blob; then what the blob does not carry. The
+     * block's `ms_per_step` is copied rather than recomputed, because a
+     * running transport measured it and the formula at rest would not agree.
+     */
+    pub fn mirror(&mut self, state: &str, p: &Playhead) {
+        self.set_sample_rate(p.sample_rate);
+        self.last_bpm = p.last_bpm;
+        self.set_param("state", state);
+        self.ms_per_step = p.ms_per_step;
+        self.step_pos = p.step_pos;
+        self.advancing = p.advancing;
+        self.cursor = p.cursor.min(self.pattern().length.max(1) - 1);
     }
 
     /// The pattern in slot `slot`, or `None` past the last one.

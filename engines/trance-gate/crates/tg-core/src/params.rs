@@ -14,6 +14,13 @@ use crate::{rates, Instance, TimeMode, DEPTH_FULL, MAX_STEPS, STAGE_MAX_PCT};
 use core::fmt::Write;
 
 #[inline]
+/// The `randomize` values that roll nothing -- the Move's enum knob turned back
+/// to rest. Public because a shell that seeds a roll on the posting side has to
+/// tell a roll from a hold exactly as the engine does.
+pub fn randomize_holds(val: &str) -> bool {
+    matches!(val, "Hold" | "hold" | "0" | "Off" | "off")
+}
+
 fn clampf(x: f32, lo: f32, hi: f32) -> f32 {
     if x < lo { lo } else if x > hi { hi } else { x }
 }
@@ -387,7 +394,7 @@ impl Instance {
              * generator instead, so successive presses differ.
              */
             "randomize" => {
-                if matches!(val, "Hold" | "hold" | "0" | "Off" | "off") {
+                if randomize_holds(val) {
                     return;
                 }
                 let n = fmt::atoi(val);
