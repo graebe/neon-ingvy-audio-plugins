@@ -7,7 +7,6 @@
 #include "Wire.h"
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -162,7 +161,7 @@ SideChain::SideChain(const InstanceInfo& info)
                                  IParam::kUnitMilliseconds, kMsDisplay);
 
 #if IPLUG_DSP
-  mCore = sc_core_create(GetSampleRate() > 0.0 ? GetSampleRate() : 44100.0);
+  mShell = sc_shell_create(GetSampleRate() > 0.0 ? GetSampleRate() : 44100.0);
 #endif
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
@@ -191,20 +190,35 @@ SideChain::SideChain(const InstanceInfo& info)
 
 SideChain::~SideChain()
 {
-  if (mCore) sc_core_destroy(mCore);
-  mCore = nullptr;
+  sc_shell_destroy(mShell);
+  mShell = nullptr;
 #ifdef WEBVIEW_EDITOR_DELEGATE
   gnd_free(mGround);
   mGround = nullptr;
 #endif
 }
 
+bool SideChain::SerializeState(IByteChunk& chunk) const
+{
+  const int at = shell::state::Begin(chunk, kChunkVersion);
+  return SerializeParams(chunk) && shell::state::End(chunk, at);
+}
+
+int SideChain::UnserializeState(const IByteChunk& chunk, int startPos)
+{
+  const shell::state::Header h = shell::state::Read(chunk, startPos);
+  if (h.body < 0)
+    return -1;
+  const int pos = UnserializeParams(chunk, h.body);
+  return pos < 0 ? pos : shell::state::Finish(h, pos);
+}
+
 #if IPLUG_DSP
 
 void SideChain::OnReset()
 {
-  if (!mCore) return;
-  sc_core_set_sample_rate(mCore, GetSampleRate());
+  if (!mShell) return;
+  sc_shell_post_sample_rate(mShell, GetSampleRate());
 
   /*
    * SIZED HERE AND NEVER ON THE AUDIO THREAD.
@@ -270,25 +284,25 @@ void SideChain::OnReset()
  * entry, a control surface. Fifteen stores per block is nothing, and it removes
  * a whole class of "the host changed it and we missed it".
  */
-void SideChain::PushParams()
+void SideChain::PushParams(sc_core_t* core)
 {
-  sc_core_set_num(mCore, SC_P_SOURCE, GetParam(kSource)->Value());
-  sc_core_set_num(mCore, SC_P_RATE, GetParam(kRate)->Value());
-  sc_core_set_num(mCore, SC_P_TIME_MODE, GetParam(kTimeMode)->Value());
-  sc_core_set_num(mCore, SC_P_DELAY, GetParam(kDelay)->Value());
-  sc_core_set_num(mCore, SC_P_ATTACK, GetParam(kAttack)->Value());
-  sc_core_set_num(mCore, SC_P_HOLD, GetParam(kHold)->Value());
-  sc_core_set_num(mCore, SC_P_RELEASE, GetParam(kRelease)->Value());
+  sc_core_set_num(core, SC_P_SOURCE, GetParam(kSource)->Value());
+  sc_core_set_num(core, SC_P_RATE, GetParam(kRate)->Value());
+  sc_core_set_num(core, SC_P_TIME_MODE, GetParam(kTimeMode)->Value());
+  sc_core_set_num(core, SC_P_DELAY, GetParam(kDelay)->Value());
+  sc_core_set_num(core, SC_P_ATTACK, GetParam(kAttack)->Value());
+  sc_core_set_num(core, SC_P_HOLD, GetParam(kHold)->Value());
+  sc_core_set_num(core, SC_P_RELEASE, GetParam(kRelease)->Value());
   /* The engine takes 0..1; the host shows a percentage. One division, in one
    * place, rather than a percentage inside the DSP. */
-  sc_core_set_num(mCore, SC_P_DEPTH, GetParam(kDepth)->Value() / 100.0);
-  sc_core_set_num(mCore, SC_P_CURVE, GetParam(kCurve)->Value());
-  sc_core_set_num(mCore, SC_P_CHANNEL, GetParam(kChannel)->Value());
-  sc_core_set_num(mCore, SC_P_NOTE, GetParam(kNote)->Value());
-  sc_core_set_num(mCore, SC_P_MIDI_MODE, GetParam(kMidiMode)->Value());
-  sc_core_set_num(mCore, SC_P_VEL_SENS, GetParam(kVelSens)->Value() / 100.0);
-  sc_core_set_num(mCore, SC_P_THRESHOLD, GetParam(kThreshold)->Value());
-  sc_core_set_num(mCore, SC_P_LOCKOUT, GetParam(kLockout)->Value());
+  sc_core_set_num(core, SC_P_DEPTH, GetParam(kDepth)->Value() / 100.0);
+  sc_core_set_num(core, SC_P_CURVE, GetParam(kCurve)->Value());
+  sc_core_set_num(core, SC_P_CHANNEL, GetParam(kChannel)->Value());
+  sc_core_set_num(core, SC_P_NOTE, GetParam(kNote)->Value());
+  sc_core_set_num(core, SC_P_MIDI_MODE, GetParam(kMidiMode)->Value());
+  sc_core_set_num(core, SC_P_VEL_SENS, GetParam(kVelSens)->Value() / 100.0);
+  sc_core_set_num(core, SC_P_THRESHOLD, GetParam(kThreshold)->Value());
+  sc_core_set_num(core, SC_P_LOCKOUT, GetParam(kLockout)->Value());
 }
 
 /*
@@ -303,13 +317,16 @@ void SideChain::PushParams()
  */
 void SideChain::ProcessMidiMsg(const IMidiMsg& msg)
 {
-  if (!mCore) return;
+  /* The audio thread, ahead of the block the note belongs to -- so the engine
+   * is taken here too; a second begin in the same block is harmless. */
+  sc_core_t* core = sc_shell_begin(mShell);
+  if (!core) return;
   const unsigned char bytes[3] = {
     (unsigned char) msg.mStatus,
     (unsigned char) msg.mData1,
     (unsigned char) msg.mData2,
   };
-  sc_core_on_midi(mCore, bytes, 3, msg.mOffset);
+  sc_core_on_midi(core, bytes, 3, msg.mOffset);
   /* NOT forwarded: PLUG_DOES_MIDI_OUT is 0, and a ducker that echoed its
    * trigger notes would arm the instrument after it. */
 }
@@ -317,7 +334,7 @@ void SideChain::ProcessMidiMsg(const IMidiMsg& msg)
 void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
   const int nOut = NOutChansConnected();
-  if (!mCore || nFrames <= 0 || nOut <= 0) return;
+  if (!mShell || nFrames <= 0 || nOut <= 0) return;
   const int cap = int(std::min(mL.size(), mR.size()));
   if (cap <= 0) return;
 
@@ -336,7 +353,8 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   }
 #endif
 
-  PushParams();
+  sc_core_t* core = sc_shell_begin(mShell);
+  PushParams(core);
 
   const bool stereoOut = nOut > 1;
   const int nIn = NInChansConnected();
@@ -354,7 +372,7 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const bool keyR = IsChannelConnected(ERoute::kInput, 3);
   const bool haveKey = keyL || keyR;
   mKeyConnected.store(haveKey ? 1 : 0, std::memory_order_relaxed);
-  sc_core_set_key_connected(mCore, haveKey ? 1 : 0);
+  sc_core_set_key_connected(core, haveKey ? 1 : 0);
 
   for (int off = 0; off < nFrames; off += cap)
   {
@@ -386,7 +404,7 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       mKeyIsMain.store(
         sc::wire::key_is_duplicate(mDry.data(), mKeyL.data(), n) ? 1 : 0,
         std::memory_order_relaxed);
-      sc_core_push_key_f32(mCore, mKeyL.data(), mKeyR.data(), n);
+      sc_core_push_key_f32(core, mKeyL.data(), mKeyR.data(), n);
     }
     else
     {
@@ -412,7 +430,7 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     if (off > 0 && t.running)
       t.beats = sc::wire::advance_beats(t.beats, off, double(t.bpm), GetSampleRate());
 
-    sc_core_process_f32_split_tap(mCore, mL.data(), mR.data(), mGain.data(),
+    sc_core_process_f32_split_tap(core, mL.data(), mR.data(), mGain.data(),
                                     mSweep.data(), n, &t);
 
     CaptureBlock(mDry.data(), mL.data(), mGain.data(), mSweep.data(), n);
@@ -423,6 +441,8 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       if (stereoOut) outputs[1][off + i] = sample(mR[i]);
     }
   }
+
+  sc_shell_end(mShell, nFrames);
 }
 
 /*
@@ -564,14 +584,15 @@ void SideChain::SendGround()
 
 void SideChain::OnIdle()
 {
-  if (!mCore) return;
+  if (!mShell) return;
 
+  /* What the audio thread last published -- never the engine itself. */
   char buf[SC_STATE_MAX];
-  if (sc_core_get_param(mCore, "ui", buf, int(sizeof buf)) > 0)
+  if (sc_shell_read(mShell, "ui", buf, int(sizeof buf)) > 0)
     SendArbitraryMsgFromDelegate(kMsgUiState, int(strlen(buf)), buf);
-  if (sc_core_get_param(mCore, "params", buf, int(sizeof buf)) > 0)
+  if (sc_shell_read(mShell, "params", buf, int(sizeof buf)) > 0)
     SendArbitraryMsgFromDelegate(kMsgParams, int(strlen(buf)), buf);
-  if (sc_core_get_param(mCore, "stage_ms", buf, int(sizeof buf)) > 0)
+  if (sc_shell_read(mShell, "stage_ms", buf, int(sizeof buf)) > 0)
     SendArbitraryMsgFromDelegate(kMsgStageMs, int(strlen(buf)), buf);
 
   {
@@ -630,8 +651,10 @@ void SideChain::OnIdle()
     }
     scope[n] = '\0';
 
-    /* The guard the Trance Gate lacked until the symptom was traced. */
-    assert(sc::wire::framed_size(n) < kMaxJSString);
+    /* The guard the Trance Gate lacked until the symptom was traced -- on the
+     * buffer's own size, so it holds in a release build too. */
+    static_assert(sc::wire::framed_size(int(sizeof scope)) < kMaxJSString,
+                  "the scope push no longer fits the WebView's string cap");
     SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
 

@@ -23,6 +23,8 @@
  * are exported from this archive rather than dropped as unreachable.
  */
 use ground_capi as _;
+/* shell_handoff_*, for the same reason: see engines/shell/include/shell_handoff.h. */
+use shell_capi as _;
 
 use bus_core::{ClaimError, Pusher, Reader, Writer};
 

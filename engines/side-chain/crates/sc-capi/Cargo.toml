@@ -19,3 +19,5 @@ sc-core = { path = "../sc-core" }
 # ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
 # bus-core through spectro-recv.
 ground-capi = { path = "../../../ground/crates/ground-capi" }
+# The command queue and the published snapshot between the plugin's threads.
+shell-core = { path = "../../../shell/crates/shell-core" }

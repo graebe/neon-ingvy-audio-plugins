@@ -62,6 +62,8 @@ iplug_add_plugin(NITranceGate
   SOURCES
     TranceGate.cpp
     TranceGate.h
+    Patch.cpp
+    Patch.h
     Wire.cpp
     Wire.h
     config.h
@@ -82,7 +84,8 @@ iplug_add_plugin(NITranceGate
   # plugin is an invariant here. cmake/GroundEngine.cmake says why.
   LINK
     tg_engine
-    ground_engine)
+    ground_engine
+    shell_engine)
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.

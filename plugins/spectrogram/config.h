@@ -95,11 +95,11 @@
 #define PLUG_DOES_MIDI_OUT 0
 #define PLUG_DOES_MPE 0
 
-/* NO STATE TO SAVE. The picture is not state and there are no parameters yet,
- * so a chunk would serialise nothing. When Range and Speed arrive they are
- * ordinary host parameters and still need no chunk -- the Trance Gate needs one
- * only because a 128-step pattern across 8 slots cannot be parameters. */
-#define PLUG_DOES_STATE_CHUNKS 0
+/* A CHUNK, because there is state that cannot be a parameter: which buses the
+ * window listens to, the view, the comparison and the clash settings -- see
+ * SerializeState. With 0 here iPlug2 keeps presets as parameter values only,
+ * and a preset would drop all of that. */
+#define PLUG_DOES_STATE_CHUNKS 1
 
 #define PLUG_HAS_UI 1
 /*

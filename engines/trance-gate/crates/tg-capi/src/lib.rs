@@ -28,6 +28,10 @@ that; anything else is the caller's bargain, as it was before.
  */
 use ground_capi as _;
 
+/* The plugin shell's door to the engine; see shell.rs. */
+mod shell;
+pub use shell::TgShell;
+
 use std::ffi::{c_char, c_int, CStr};
 use tg_core::params::Param;
 use tg_core::{Instance, Transport};

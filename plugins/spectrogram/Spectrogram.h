@@ -21,6 +21,8 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "spectro_recv.h"
+#include "shell_handoff.h"
+#include "shell_state.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include "Wire.h"
 #include <atomic>
@@ -28,6 +30,11 @@
 #include <vector>
 
 const int kNumPresets = 1;
+
+/* The state chunk's layout, after shell_state.h's header: parameters (none
+ * yet), then sources, clash, view and comparison as strings. A chunk with no
+ * header is this layout as every earlier build wrote it. */
+constexpr int32_t kChunkVersion = 1;
 
 /*
  * NO PARAMETERS, and that is a statement rather than an omission.
@@ -172,14 +179,14 @@ public:
                 "a full OnIdle tick no longer fits the WebView's string cap -- "
                 "kMaxColsPerTick and SPECTRO_BANDS are what constrain it");
 
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /* Once per frame while the editor is open: every column the audio thread has
-   * finished since the last tick. */
+  /* The receiver's lifecycle, then -- with an editor -- every column the
+   * analyzer has finished since the last tick. iPlug2's idle timer belongs to
+   * the API wrapper, so this runs with or without a window. */
   void OnIdle() override;
+
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* One message per onset, from OnIdle. */
   void SendGround();
-#endif
   void OnUIOpen() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
 #endif
@@ -200,7 +207,13 @@ public:
   int UnserializeState(const IByteChunk& chunk, int startPos) override;
 
 private:
+  /* Main thread only: replaces the receiver when OnReset has asked for one. */
+  void ServiceReceiver();
+  /* Hand the receiver the current selection. Main thread: it allocates. */
+  void ApplySources();
 #ifdef WEBVIEW_EDITOR_DELEGATE
+  /* The columns, the transport and the source list, from OnIdle. */
+  void SendPicture();
   /* The frequency scale, sent on kMsgReady. The UI never computes it: the log
    * mapping lives in the analyzer and a second copy would drift. */
   void SendAxis();
@@ -209,8 +222,6 @@ private:
   void SendSync();
   /* The buses that exist, for the editor's picker. Probing creates nothing. */
   void SendSources();
-  /* Hand the receiver the current selection. Main thread: it allocates. */
-  void ApplySources();
 #endif
 
   /*
@@ -221,6 +232,20 @@ private:
    * message thread.
    */
   srecv_t* mRecv = nullptr;
+
+  /*
+   * AND IT IS THE MAIN THREAD'S, LENT TO THE AUDIO THREAD.
+   *
+   * mRecv is the main thread's handle: built, configured, pumped and freed
+   * there. ProcessBlock reaches the same object only through mRecvLend, which
+   * frees a replaced receiver once the audio thread has let go of it. OnReset
+   * -- which some AU hosts call off the main thread -- only records the rate
+   * and asks for a rebuild; OnIdle does it. Until then the audio thread feeds
+   * nothing, rather than feed a receiver configured for the old rate.
+   */
+  shell_handoff_t* mRecvLend = nullptr;
+  std::atomic<float> mRecvRate{0.f};
+  std::atomic<bool> mRecvStale{false};
 
   /*
    * The mono sum, and the drain buffer. Both are sized on the main thread --

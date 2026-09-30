@@ -28,6 +28,10 @@ panicking -- the workspace sets `panic = "abort"` because unwinding out of
  */
 use ground_capi as _;
 
+/* The plugin shell's door to the engine; see shell.rs. */
+mod shell;
+pub use shell::ScShell;
+
 use sc_core::params::Param;
 use sc_core::{Instance, Transport, MAX_BLOCK};
 use std::os::raw::{c_char, c_int, c_uchar};

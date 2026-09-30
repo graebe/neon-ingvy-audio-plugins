@@ -61,6 +61,34 @@ bundles. There is no Standalone target: its `main()` and preferences dialog
 reference menu and combo-box resource IDs that only exist for an IGraphics UI,
 and this editor is a WebView.
 
+## Threads
+
+A plugin's engine belongs to the **audio thread**, and to nothing else. The
+editor's messages, the host's state calls and the idle timer all run elsewhere,
+and the engines have no locks in them, by design. So there are exactly two doors,
+built once in `engines/shell` and used by every product:
+
+- **In, as a command.** A non-audio thread posts an edit; the audio thread
+  applies it at the top of its next block. The queue is bounded, lock-free and
+  allocation-free on the audio side.
+- **Out, as a snapshot.** The audio thread formats what readers need into
+  preallocated text and publishes it through a triple buffer. `OnIdle`, the
+  copy button and `SerializeState` read that — never the engine.
+
+A save must be right even with the host's audio engine off, so an edit that has
+not been applied yet is still visible to readers: they are answered from the
+latest snapshot replayed through the outstanding edits. `tg_shell.h` and
+`sc_shell.h` are the per-product surfaces.
+
+Objects the shell builds and frees on the main thread — Listen-In's bus writer,
+the Spectrogram's receiver — reach the audio thread through `shell_handoff.h`,
+which frees a replaced one only once the audio thread has let go of it. Nothing
+that allocates, maps memory or talks to the editor runs on the audio thread;
+`OnParamChange` and `OnReset` only record what they want, and `OnIdle` does it.
+
+Every plugin's state chunk starts with `shell_state.h`'s versioned header. A
+chunk without it is an older build's and loads as that build wrote it.
+
 ## The editor
 
 Solid and Vite, built into `plugins/<product>/resources/web` and globbed into

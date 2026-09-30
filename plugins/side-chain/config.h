@@ -119,8 +119,10 @@
  * SendParameterValueFromUI / End, so it lands in Live's undo history like a
  * knob. That is worth more than a free-form curve would be.
  *
- * It also skips the mutex-and-dirty-flag machinery TranceGate.cpp needs to get
- * a patch blob from the message thread onto the audio thread without locking.
+ * The project state still passes through SideChain::SerializeState, which puts
+ * shell_state.h's versioned header in front of the parameters. Presets -- all
+ * this flag governs in VST3, AU and CLAP -- are parameter values, which here is
+ * the whole state.
  */
 #define PLUG_DOES_STATE_CHUNKS 0
 

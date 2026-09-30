@@ -24,6 +24,9 @@
 # precisely so that two products can share one thing: a Listen-In publishes
 # audio and a Spectrogram reads it. It depends on no product in return, which is
 # the direction that actually matters.
+#
+# engines/ground and engines/shell are shared the same way and hold the same
+# line: every plugin uses them, and they depend on no product.
 [workspace]
 resolver = "2"
 members = [
@@ -48,6 +51,13 @@ members = [
     # every window the same ground. It depends on no product in return.
     "engines/ground/crates/ground-core",      # the detector
     "engines/ground/crates/ground-capi",      # the C ABI -> every plugin
+    # How a plugin shell's threads reach an engine: the command queue in, the
+    # published snapshot out, and the handoff for objects the main thread
+    # builds and frees. Not a product either, and for the same reason as the
+    # two above: every plugin's shell has the same threads. It knows no product;
+    # each product's capi crate supplies the engine-shaped half.
+    "engines/shell/crates/shell-core",        # the mechanism
+    "engines/shell/crates/shell-capi",        # the handoff's C ABI -> the shells
 ]
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.

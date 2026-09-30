@@ -11,13 +11,11 @@
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
-#include "trance_gate_core.h"
+#include "tg_shell.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include <atomic>
-#include <mutex>
 #include <string>
 #include <vector>
-#include <atomic>
 
 const int kNumPresets = 1;
 
@@ -205,7 +203,7 @@ enum EMsgTags
 
   /* The pattern is not a parameter and never will be -- 128 steps across 8
    * slots is 1024 of them. It travels as the engine's own state blob, which
-   * is the same text the Move module writes. */
+   * is the same text the Move module writes. Patch.cpp holds both halves. */
   bool SerializeState(IByteChunk& chunk) const override;
   int  UnserializeState(const IByteChunk& chunk, int startPos) override;
 
@@ -217,12 +215,17 @@ enum EMsgTags
 
 private:
 #if IPLUG_DSP
-  /* Both run at the top of every block, on the audio thread. */
-  void ApplyPendingPatch();
-  void PushParams();
+  /* At the top of every block, on the audio thread, into the engine
+   * tg_shell_begin lent it. True when the slot moved this block. */
+  bool PushParams(tg_core_t* core);
 #endif
 
-  tg_core_t* mCore = nullptr;
+  /*
+   * THE ENGINE, BEHIND ITS SHELL. The audio thread takes it for one block at a
+   * time; every other thread posts edits to it and reads what it published.
+   * tg_shell.h states the rule, and there is no other door.
+   */
+  tg_shell_t* mShell = nullptr;
 
   /*
    * THE SLOT SWITCH, AND WHY IT NEEDS A HANDSHAKE.
@@ -234,14 +237,15 @@ private:
    * length actually destroyed, and silently.
    *
    * mSlotPushed is the audio thread's own record of the slot it last set.
-   * When it moves, mSlotSync goes up and the Length push is SUPPRESSED -- the
-   * engine's length is the authority until the host has caught up. OnIdle
-   * sees the flag, reads the engine's length into the parameter, and clears
-   * it, which is one tick at 50Hz. OnIdle runs off a timer created in the
+   * When it moves, the Length push is SUPPRESSED -- the engine's length is the
+   * authority until the host has caught up -- and once the block's readout is
+   * published, mSlotSync goes up. OnIdle sees the flag, reads the published
+   * length into the parameter, and clears it, which is one tick at 50Hz. OnIdle runs off a timer created in the
    * API wrapper's constructor, not with the editor, so this completes whether
    * or not a window is open.
    */
   int mSlotPushed = -1;                 /* audio thread only */
+  double mLengthPushed = -1.0;          /* audio thread only */
   std::atomic<int> mSlotSync{0};
   void SyncSlotParams();                /* main thread only */
 
@@ -289,13 +293,6 @@ private:
    * golden render pins, so the block is converted rather than the engine
    * widened. Sized in OnReset; never resized on the audio thread. */
   std::vector<float> mL, mR;
-
-  /* The patch text, and the authority on it -- see SerializeState. Mutable
-   * because SerializeState is const and still has to take the lock; the lock
-   * is what the const-ness is hiding, not a state change. */
-  mutable std::mutex mPatchMx;
-  std::string mPatch;
-  std::atomic<bool> mPatchDirty{false};
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /*

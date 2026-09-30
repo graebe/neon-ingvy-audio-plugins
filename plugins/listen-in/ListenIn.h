@@ -7,6 +7,8 @@
 #include "IPlug_include_in_plug_hdr.h"
 
 #include "audio_bus.h"
+#include "shell_handoff.h"
+#include "shell_state.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 
 #include <atomic>
@@ -56,6 +58,10 @@ const int kMaxStateChars = 64;
  */
 const int kStageFrames = 4096;
 
+/* The state chunk's layout, after shell_state.h's header: parameters, then the
+ * label. A chunk with no header is this layout as every earlier build wrote it. */
+constexpr int32_t kChunkVersion = 1;
+
 using namespace iplug;
 
 /* FULLY QUALIFIED ON PURPOSE in the Spectrogram, and the reason applies here:
@@ -79,25 +85,45 @@ public:
   bool SerializeState(IByteChunk& chunk) const override;
   int UnserializeState(const IByteChunk& chunk, int startPos) override;
 
-#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* The bus's whole lifecycle happens here, on the main thread -- editor or
+   * not, because iPlug2's idle timer belongs to the API wrapper. */
   void OnIdle() override;
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
   void OnUIOpen() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
 #endif
 
 private:
-  /* Main thread only: takes a slot, or finds out it cannot. */
-  void Reclaim();
+  /* Main thread only: claims, releases and retunes the bus to match what the
+   * other threads asked for. */
+  void ServiceBus();
   void SendState();
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* One message per onset, from OnIdle. */
   void SendGround();
 #endif
 
-  abus_writer_t* mBus = nullptr;
+  /*
+   * THE BUS WRITER IS THE MAIN THREAD'S, LENT TO THE AUDIO THREAD.
+   *
+   * Claiming maps shared memory and releasing unlinks it, so neither may happen
+   * on the audio thread -- and OnParamChange IS the audio thread under VST3 and
+   * CLAP automation. Nor may the writer be freed while a block is pushing to
+   * it. So every other thread only records what it wants, below, and OnIdle
+   * does the work; the writer crosses to ProcessBlock through the handoff,
+   * which frees a replaced one only once the audio thread has let go of it.
+   */
+  shell_handoff_t* mBus = nullptr;
+  std::atomic<int> mWantSlot{1};        /* the Slot parameter, from any thread */
+  std::atomic<uint32_t> mRate{0};       /* the host's rate, from OnReset       */
+  std::atomic<bool> mResetSeen{false};  /* OnReset ran: retry, or retune       */
+  std::atomic<bool> mReclaim{false};    /* a state load: claim afresh          */
+
+  /* Main thread only. */
   int mStatus = 0;                 /* listenin::wire::Status */
-  int mClaimedSlot = 0;            /* what mBus actually holds, which is not  */
-                                   /* GetParam(kSlot) while a claim is denied */
+  int mTriedSlot = 0;              /* the slot last asked for, won or not     */
+  bool mWaiting = false;           /* a release is waiting on the audio thread */
 
   std::vector<float> mStage;       /* interleaved, pre-sized, never resized   */
   std::string mLabel;

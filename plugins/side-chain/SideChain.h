@@ -15,7 +15,8 @@
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
-#include "sc_core.h"
+#include "sc_shell.h"
+#include "shell_state.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include <atomic>
 #include <cstdint>
@@ -117,6 +118,12 @@ public:
   void OnReset() override;
 #endif
 
+  /* The parameters behind shell_state.h's header. A chunk without the header is
+   * an earlier build's: the parameters alone, which is what it holds. */
+  static constexpr int32_t kChunkVersion = 1;
+  bool SerializeState(iplug::IByteChunk& chunk) const override;
+  int UnserializeState(const iplug::IByteChunk& chunk, int startPos) override;
+
   /*
    * THE CAPTURE, written on the audio thread and read on the message thread.
    *
@@ -188,13 +195,19 @@ public:
 
 private:
 #if IPLUG_DSP
-  /* Runs at the top of every block, on the audio thread. */
-  void PushParams();
+  /* Runs at the top of every block, on the audio thread, into the engine
+   * sc_shell_begin lent it. */
+  void PushParams(sc_core_t* core);
   void CaptureBlock(const float* dry, const float* wet, const float* gain,
                     const float* sweep, int frames);
 #endif
 
-  sc_core_t* mCore = nullptr;
+  /*
+   * THE ENGINE, BEHIND ITS SHELL. The audio thread takes it with
+   * sc_shell_begin; OnIdle reads only what the audio thread published.
+   * sc_shell.h states the rule.
+   */
+  sc_shell_t* mShell = nullptr;
 
   Capture mCap;
   /* Audio thread only: the column being accumulated and its running bounds.

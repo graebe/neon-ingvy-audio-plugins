@@ -302,6 +302,21 @@ add_test(NAME gnd_core
          COMMAND ${GND_ENV} ${GND_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ground-core -p ground-capi)
 
+# THE SHELL PLUMBING'S OWN TESTS: the queue, the snapshot, the handoff, the
+# two-thread stress runs and the no-allocation check -- and each product's
+# bridge over it, which lives in that product's capi crate.
+add_test(NAME shell_core
+         COMMAND ${SHELL_ENV} ${SHELL_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p shell-core -p shell-capi
+                 -p tg-capi -p sc-capi)
+
+# The handoff's seam, holding a real bus writer the way NI Listen-In does.
+# The shell_handoff_* symbols ride in libbus_capi.a, so that is what it links.
+add_executable(shell_handoff shell_handoff.c)
+target_link_libraries(shell_handoff PRIVATE audio_bus_engine shell_engine)
+add_test(NAME shell_handoff COMMAND shell_handoff)
+set_tests_properties(shell_handoff PROPERTIES SKIP_RETURN_CODE 77)
+
 # ... and the seam, for the reason abus_roundtrip states: this is the only test
 # that compiles against the hand-written header and links the real library, so
 # it is the only one that can notice the two disagreeing.
