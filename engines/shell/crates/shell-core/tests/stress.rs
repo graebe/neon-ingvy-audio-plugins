@@ -152,6 +152,11 @@ fn the_audio_thread_never_holds_a_freed_object() {
         })
     };
 
+    /* The audio thread is running before the swaps start -- otherwise nothing
+     * overlapped and nothing was tested. */
+    while blocks.load(Ordering::Relaxed) == 0 {
+        thread::yield_now();
+    }
     for _ in 0..20_000 {
         h.set(Box::into_raw(Box::new(Canary(AtomicU64::new(ALIVE)))));
         h.collect(free_canary);
@@ -166,7 +171,6 @@ fn the_audio_thread_never_holds_a_freed_object() {
     }
     stop.store(true, Ordering::Release);
     audio.join().unwrap();
-    assert!(blocks.load(Ordering::Relaxed) > 0);
 
     let mut h = Arc::try_unwrap(h).ok().expect("the audio thread has gone");
     h.clear(free_canary);
