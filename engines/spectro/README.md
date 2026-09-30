@@ -49,6 +49,11 @@ spectro_set_range                the message thread, any time
 `push` and `take_columns` may overlap — that is what the ring is for. Two
 pushers, or a `configure` racing either, is undefined.
 
+In Rust the rule is the type system's: `Analyzer::new(cfg).split()` gives a
+`Producer` for the audio thread and a `Consumer` for the message thread, each
+working through `&mut self`, so safe code cannot push from two threads. The C
+handle holds both halves and every entry point touches only its own thread's.
+
 **`set_range` is the exception, and deliberately so**: the frequency range is a
 dropdown in a plugin editor, so it has to be changeable while audio is running.
 It allocates nothing, swaps nothing and locks nothing — it stores a request, and

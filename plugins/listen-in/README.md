@@ -75,9 +75,11 @@ the whole story; the short version is that a writer which has copied its samples
 but not yet published the count is invisible to any amount of re-checking.
 
 **A crashed host leaves the segment behind** — shm outlives its process, to the
-next reboot. A claimer reclaims a slot only when the heartbeat has stopped *and*
-`kill(pid, 0)` says the process is gone; either alone lies, because pids are
-recycled and a merely-paused host still holds its slot.
+next reboot. A claimer reclaims a slot only when `kill(pid, 0)` says the holder's
+process is gone, and the reclaim is a single compare-and-swap, so two senders
+racing for a dead slot cannot both win. A recycled pid can make a dead holder
+look alive; that costs a bus number until the other process exits, which is the
+safe way to be wrong. `engines/audio-bus/README.md` has the details.
 
 ## One known limit
 
