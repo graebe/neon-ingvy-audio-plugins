@@ -503,3 +503,25 @@ test('every bundle identifier ends in BUNDLE_NAME', () => {
     }
   }
 });
+
+/*
+ * AND THE PUBLISHER IS NEON INGVY, IN EVERY STRING A HOST SHOWS.
+ *
+ * AGENTS.md: the publisher is "Neon Ingvy" and a product is "NI <name>".
+ * PLUG_MFR is what a DAW groups the plugin under and AAX_PLUG_MFR_STR is the
+ * same thing for Pro Tools; the Side-Chain's AAX string still said "graebe"
+ * after the others had moved. BUNDLE_MFR is deliberately NOT checked: it is a
+ * component of the bundle identifier, and changing it would orphan every saved
+ * project (see listen-in/config.h).
+ */
+test('every plugin is published by Neon Ingvy under an NI name', () => {
+  for (const [, where] of Object.entries(PRODUCTS)) {
+    if (!where.config) continue;
+    const h = read(where.config);
+    const str = (k) => new RegExp(`#define\\s+${k}\\s+"([^"]*)"`).exec(h)?.[1];
+    assert.equal(str('PLUG_MFR'), 'Neon Ingvy', `${where.config}: PLUG_MFR`);
+    const aax = str('AAX_PLUG_MFR_STR');
+    if (aax !== undefined) assert.equal(aax, 'Neon Ingvy', `${where.config}: AAX_PLUG_MFR_STR`);
+    assert.match(str('PLUG_NAME') ?? '', /^NI /, `${where.config}: PLUG_NAME`);
+  }
+});

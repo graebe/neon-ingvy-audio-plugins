@@ -158,7 +158,7 @@
 #define AUV2_VIEW_CLASS_STR "NISideChain_View"
 
 #define AAX_TYPE_IDS 'Pmp1'
-#define AAX_PLUG_MFR_STR "graebe"
+#define AAX_PLUG_MFR_STR "Neon Ingvy"
 #define AAX_PLUG_NAME_STR "NI Side-Chain\nSdCh"
 #define AAX_DOES_AUDIOSUITE 0
 #define AAX_PLUG_CATEGORY_STR "Dynamics"

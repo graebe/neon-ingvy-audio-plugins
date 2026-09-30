@@ -6,7 +6,7 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 | product | ships as | engine |
 |---|---|---|
 | [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
-| [Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
+| [NI Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
 | [NI Listen-In](plugins/listen-in/README.md) | VST3 · AU · CLAP | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/side-chain` |
 
@@ -27,7 +27,8 @@ product.
 ```
 engines/<product>/crates     the core, and its wrappers
 plugins/<product>/           the VST3/AU/CLAP shell, and its editor
-modules/<product>/           the Schwung module's shell and packaging
+modules/<product>/           a Schwung module: module.json, module.env, its UI
+modules/_shared/             the one Dockerfile, package.sh and install.sh for all of them
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
 site/                        the documentation site, from this repo's own Markdown
 docs/tech/                   how it is built, in prose
@@ -39,19 +40,29 @@ versions.json                one version per product
 
 ```sh
 git submodule update --init --recursive   # iPlug2. The engines are subtrees.
-npm ci                                    # the kit and both editors
+scripts/fetch-sdks.sh                     # the VST3 and CLAP SDKs, at pinned versions
+npm ci                                    # the kit and every editor
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build                       # the macOS plugins, universal
-ctest --test-dir build                    # 17 tests
+ctest --test-dir build                    # the whole suite
 ```
 
-The Move module is the second target, and it is a Linux cross-build in Docker:
+The Move modules are further targets, each a Linux cross-build in Docker:
 
 ```sh
-cmake --build build --target schwung       # -> dist/trance-gate-module.tar.gz
+cmake --build build --target schwung              # -> dist/trance-gate-module.tar.gz
+cmake --build build --target schwung-side-chain   # -> dist/ni-side-chain-module.tar.gz
 ```
 
-Artefacts land in `build/out/` and are copied into `~/Library/Audio/Plug-Ins/`.
+Artefacts land in `build/out/` and are copied into `~/Library/Audio/Plug-Ins/`
+(`-DIPLUG_DEPLOY_PLUGINS=OFF` keeps them in `build/out/`; the two AU render
+tests then report **Skipped**, because they render the installed plugin).
+Each bundle carries `LICENSE` and `THIRD_PARTY_LICENSES.md` in
+`Contents/Resources/`.
+
+**The editors are built, not checked in.** `plugins/*/resources/web` is vite's
+output: configuring runs it, building re-runs it, and a configure that finds no
+editor stops and says to run `npm ci`.
 
 **Needs cargo.** If it is installed and not found, the error names where it
 looked; `cmake/RustToolchain.cmake` searches every layout rustup.rs, Homebrew
@@ -59,9 +70,11 @@ and a bare toolchain use. Homebrew's keeps its shims in
 `/opt/homebrew/opt/rustup/bin`, which is not `~/.cargo/bin`.
 
 **iPlug2's SDKs are downloaded rather than tracked.** A fresh clone needs
-`external/iPlug2/Dependencies/IPlug/download-vst3-sdk.sh` and
-`download-clap-sdks.sh` before the first configure, or CMake stops on a
-non-existent include path in `iPlug2::VST3`.
+`scripts/fetch-sdks.sh` before the first configure, or CMake stops on a
+non-existent include path in `iPlug2::VST3`. It fetches the VST3 SDK, CLAP and
+clap-helpers at the versions pinned in the script — iPlug2's own download
+scripts default to whatever is on `master` today — and `--verify` checks a
+tree that already has them.
 
 ## What the tests are for
 
@@ -72,7 +85,10 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `tg_render_ab` | four seconds through the plugin's audio path, hashed against the Move module's reference render. **The check that a refactor did not change the sound.** |
 | `tg_curves`, `tg_envelope` | the editor's envelope maths against the engine's own *measured* output — the engine is run with a DC input at amount 1, where the gain it applies IS the envelope |
 | `ui_tokens` | no colour is spelled outside `ui-kit/src/tokens.css`, and that file agrees with the vendored design system |
-| `versions` | every spelling of a product's version agrees with `versions.json` |
+| `versions` | every spelling of a product's version agrees with `versions.json`, and every AU plist names the factory, view class and sandbox claim its binary actually has |
+| `release` | a release tag means what both release workflows think it means, and `release.json` is written in the shape Schwung Manager reads |
+| `licenses` | everything that ships has a row in `THIRD_PARTY_LICENSES.md`, nothing listed has stopped shipping, and every built bundle carries the notices |
+| `tg_au`, `sc_au` | the *installed* AU, rendered by a host that supplies a transport. **Skipped** — not passed — when no plugin is installed; CI installs them and fails on a skip |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
 | `spectro_wire`, `spectro_columns_js` | the wire format the editor decodes, both sides pinned to one table the plugin's own C++ generates |
 | `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** |
@@ -137,7 +153,7 @@ Each product's manual lives with it, and this site renders those same files:
 | | |
 |---|---|
 | [NI Trance Gate](plugins/trance-gate/README.md) | a tempo-locked step gate — [in Live](plugins/trance-gate/docs/live.md), [on the Move](plugins/trance-gate/docs/schwung.md) |
-| [Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
+| [NI Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
 | [NI Listen-In](plugins/listen-in/README.md) | a tap that publishes a track on a numbered bus — [in Live](plugins/listen-in/docs/live.md) |
 | [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input |
 
@@ -152,9 +168,10 @@ chain.
 | | |
 |---|---|
 | this repository | **MIT** |
-| [iPlug2](https://github.com/iPlug2/iPlug2) | **zlib**, with WDL/NanoVG/NanoSVG (Zlib) and MetalNanoVG/RTAudio (MIT) |
+| [iPlug2](https://github.com/iPlug2/iPlug2) | **zlib**, with WDL (zlib) and JSON for Modern C++ (MIT) compiled in |
 | VST3 SDK | **MIT**, © 2026 Steinberg Media Technologies GmbH |
-| CLAP | **MIT** |
+| CLAP, clap-helpers | **MIT** |
+| Solid (in every editor) | **MIT** |
 | the Trance Gate engine (`engines/trance-gate`) | **MIT**, and it has no external crates at all |
 | the Spectrogram analyzer (`engines/spectro`) | **MIT**, and it has none either — the FFT is ninety lines rather than a crate |
 | the audio bus (`engines/audio-bus`) | **MIT**, and it has no external crates either — it declares the six POSIX calls it needs rather than taking libc |
