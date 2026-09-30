@@ -140,7 +140,14 @@ if (TG_NODE)
     # THAT SHIPS. THIRD_PARTY_LICENSES.md is held to the SDK pins, Cargo.lock,
     # the editors' bundled packages and the fonts -- and, through --bundles, to
     # the built bundles themselves, which must carry the notices inside.
+    #
+    # Two tests, because they need different things built: `licenses` reads the
+    # tree and the editors' build output (written at configure time), so it is
+    # a quick check; `licenses_bundles` opens the bundles, so it needs the full
+    # build.
     add_test(NAME licenses
+             COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs)
+    add_test(NAME licenses_bundles
              COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
                      --bundles ${CMAKE_BINARY_DIR}/out)
 
@@ -227,7 +234,8 @@ endif()
 # per-engine Cargo.toml that no longer exists.
 add_test(NAME spectro_core
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p spectro-core -p spectro-capi)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p spectro-core -p spectro-recv
+                 -p spectro-capi)
 
 # The same claims through the C ABI the plugin links, because a hand-written
 # header can drift from its implementation without either side failing to
@@ -356,6 +364,30 @@ if (NOT WIN32)
     set_tests_properties(abus_ipc PROPERTIES TIMEOUT 60)
 endif()
 
+# THE SAME, ACROSS THE TWO SLICES OF THE UNIVERSAL BINARY. Live under Rosetta
+# is x86_64; a host beside it may be arm64; the bus is shared memory between
+# them. abus_ipc --sender-arch execs its sender as the other slice, both ways
+# round. Registered only where that can run at all: a universal build, on an
+# arm64 Mac with Rosetta installed -- anywhere else there is no second slice
+# to talk to, and a skip would only pretend.
+if (APPLE AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64"
+    AND "arm64" IN_LIST CMAKE_OSX_ARCHITECTURES
+    AND "x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)
+    execute_process(COMMAND /usr/bin/arch -x86_64 /usr/bin/true
+                    RESULT_VARIABLE _ni_rosetta OUTPUT_QUIET ERROR_QUIET)
+    if (_ni_rosetta EQUAL 0)
+        add_test(NAME abus_ipc_rosetta
+                 COMMAND abus_ipc --sender-arch x86_64)
+        add_test(NAME abus_ipc_rosetta_reader
+                 COMMAND /usr/bin/arch -x86_64 $<TARGET_FILE:abus_ipc>
+                         --sender-arch arm64)
+        set_tests_properties(abus_ipc_rosetta abus_ipc_rosetta_reader
+                             PROPERTIES TIMEOUT 60)
+    else()
+        message(STATUS "Rosetta not installed -- the cross-architecture bus tests are not registered")
+    endif()
+endif()
+
 # NOT A TEST, AND DELIBERATELY BUILT ANYWAY: `abus_tap <slot>` is how a person
 # confirms that Listen-In is routing real audio out of a real host, before any
 # plugin exists that reads a bus. It is also the worked example of the
@@ -398,7 +430,7 @@ endif()
 # puts it, the same as not being run.
 add_test(NAME tg_core_rs
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p tg-core -p tg-capi)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p tg-core -p tg-capi -p tg-move)
 
 # ---------------------------------------------------------------- The C++
 # In its own file so that a plugin arriving in this repository touches one line
@@ -542,3 +574,54 @@ if (APPLE)
     add_test(NAME sc_au COMMAND sc_au_render)
     set_tests_properties(sc_au PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+
+# ----------------------------------------------------------- The whole UI
+
+# EVERY JS UNIT TEST, as `npm test` runs them: the kit's and every editor's.
+# Some are registered above by name because each is one half of an oracle and
+# reads a table from the environment; this is the rest of them too (the kit's
+# params, keys, field, coalesce, frame ...), which otherwise ran only when
+# somebody remembered `npm test`. --conditions=browser, because solid-js's
+# node build is its server renderer and the kit's stores need the browser one.
+if (TG_NODE)
+    file(GLOB NI_UI_UNIT_TESTS CONFIGURE_DEPENDS
+         ${CMAKE_SOURCE_DIR}/ui-kit/test/*.test.mjs
+         ${CMAKE_SOURCE_DIR}/plugins/*/ui/test/*.test.mjs)
+    add_test(NAME ui_unit
+             COMMAND ${TG_NODE} --conditions=browser --test ${NI_UI_UNIT_TESTS}
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
+# =============================================================== THE TIERS
+#
+# cmake/NiTest.cmake says what the two mean and checks that this list is
+# exhaustive. tests/cpp places its own.
+ni_test_tiers(
+    QUICK
+        # Rust: every crate's unit tests
+        tg_core_rs spectro_core abus_core gnd_core shell_core ni_shared sc_core_rs
+        # C against the engines' ABIs, and the oracles that pin the sound
+        tg_core sc_core spectro_columns srecv_api abus_roundtrip gnd_roundtrip
+        shell_handoff tg_curves tg_envelope tg_fade sc_shape sc_envelope
+        # the editors' and the kit's JavaScript
+        ui_unit tg_curves_js tg_capture_js tg_fade_js sc_shape_js sc_envelope_js
+        sc_ranges spectro_ramp spectro_columns_js listenin_wire_js
+        # lint-like checks over the tree
+        versions release licenses ground_shells editor_tags ui_tokens
+    FULL
+        tg_render_ab:render sc_render_ab:render
+        tg_au:host sc_au:host
+        abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
+        licenses_bundles:bundles site_links:site
+        e2e:e2e coverage_floor:coverage)
+
+# EVERYTHING A TEST RUNS, AND NOTHING THAT SHIPS: `cmake --build build --target
+# ni_tests` builds the test programs and the engine archives they link, and no
+# plugin bundle -- which is what lets the quick tier skip the bundles entirely.
+set(_ni_test_bins)
+foreach(dir ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+    get_property(_b DIRECTORY ${dir} PROPERTY BUILDSYSTEM_TARGETS)
+    list(APPEND _ni_test_bins ${_b})
+endforeach()
+add_custom_target(ni_tests)
+add_dependencies(ni_tests ${_ni_test_bins})

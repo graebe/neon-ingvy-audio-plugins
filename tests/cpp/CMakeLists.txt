@@ -181,3 +181,9 @@ target_include_directories(spectro_state PRIVATE
     ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
 target_link_libraries(spectro_state PRIVATE shell_engine)
 add_test(NAME spectro_state COMMAND spectro_state)
+
+# All of them quick: each is a doctest binary over code lifted out of a plugin,
+# with no bundle, host or second process. cmake/NiTest.cmake.
+ni_test_tiers(QUICK
+    ni_wire ni_editor tg_state tg_params shell_state shell_denormals
+    spectro_wire listenin_wire sc_wire sc_params listenin_state spectro_state)

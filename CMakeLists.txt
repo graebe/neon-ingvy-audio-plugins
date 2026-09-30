@@ -86,4 +86,6 @@ add_subdirectory(plugins/listen-in)
 add_subdirectory(plugins/side-chain)
 
 enable_testing()
+# ni_test_tiers: every test is quick or full, and says which.
+include(cmake/NiTest.cmake)
 add_subdirectory(tests)
