@@ -7,10 +7,14 @@
  * take on for `mmap`, and this repository's THIRD_PARTY_LICENSES.md is short
  * on purpose (see bus-core/Cargo.toml).
  *
- * These signatures are the macOS/BSD ones. The plugin is a macOS universal
- * binary and nothing else builds this crate; if that changes, the `off_t` and
- * `mode_t` widths below are the first thing to check.
+ * These signatures, the O_* and errno constants and `__error` are macOS's. The
+ * plugin is a macOS universal binary and nothing else builds this crate, so any
+ * other target is refused at compile time rather than left to link against
+ * the wrong numbers.
  */
+
+#[cfg(not(target_os = "macos"))]
+compile_error!("bus-core declares macOS's shm/mmap ABI by hand; port shm.rs before building it elsewhere");
 
 use crate::header::{segment_size, Header, DATA_OFFSET};
 
@@ -57,6 +61,18 @@ extern "C" {
         offset: i64,
     ) -> *mut core::ffi::c_void;
     fn munmap(addr: *mut core::ffi::c_void, len: usize) -> CInt;
+    /*
+     * THE 64-BIT-INODE ENTRY POINT, BY NAME. On x86_64 the plain `fstat`
+     * symbol is the legacy one that fills the old 32-bit-inode `struct stat`;
+     * the layout below is only what `fstat$INODE64` writes. Reading the legacy
+     * layout through it put `st_size` in the wrong place, so every open of an
+     * existing segment on an Intel Mac failed the size check. arm64 has only
+     * the one layout and the one symbol.
+     */
+    #[cfg_attr(
+        all(target_os = "macos", target_arch = "x86_64"),
+        link_name = "fstat$INODE64"
+    )]
     fn fstat(fd: CInt, buf: *mut Stat) -> CInt;
     fn getpid() -> CInt;
     fn kill(pid: CInt, sig: CInt) -> CInt;
@@ -72,8 +88,8 @@ extern "C" {
  * mapping whose tail SIGBUSes on the audio thread. So the struct is declared,
  * and `repr(C)` does the arithmetic.
  *
- * This is the 64-bit inode layout every macOS since 10.6 uses; `st_size` is
- * all that is read, the rest is here to place it.
+ * This is the 64-bit inode layout (`fstat$INODE64` on x86_64, the only one on
+ * arm64); `st_size` is all that is read, the rest is here to place it.
  */
 #[repr(C)]
 struct Timespec {
