@@ -405,9 +405,10 @@
  * window's contents.
  *
  * The static ground (the dot paper and its grain) is painted on `body` in
- * tokens.css and stays there: it is the fallback, and a field at rest is
- * pixel-identical to it. This canvas sits on top of that and is the same picture
- * until a kick lands.
+ * tokens.css and stays there: it is the fallback, and a field at rest shows the
+ * same design -- the same dots in the same place, the same colours, grain of the
+ * same density, though not the same grain pixels (tokens.css says why). This
+ * canvas sits on top of that and is the same picture until a kick lands.
  *
  * WHAT EACH EDITOR MUST PROVIDE, because this rule cannot: `position: relative`
  * AND `isolation: isolate` on the window element. Both, and the second is the
@@ -444,7 +445,7 @@
    * and the browser drops `right` and `bottom` instead of honouring them.
    *
    * So `inset: 0` alone gets you a 300x150 canvas pinned to the top-left corner
-   * -- which is invisible, because a field at rest is pixel-identical to the
+   * -- which is invisible, because a field at rest looks the same as the
    * static CSS ground it is sitting on. The window looks exactly right and only
    * a patch in the corner ever animates. That is how this shipped once.
    */

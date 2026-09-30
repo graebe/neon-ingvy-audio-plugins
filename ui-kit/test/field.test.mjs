@@ -33,6 +33,7 @@ const ROOT = join(HERE, '..', '..');
 const REFERENCE = join(ROOT, 'design', 'files', 'project', 'components', 'ground.js');
 const TOKENS = join(HERE, '..', 'src', 'tokens.css');
 const COMPONENTS = join(HERE, '..', 'src', 'components.css');
+const BUNDLE = join(ROOT, 'design', 'files', 'project', 'components', 'bundle.css');
 
 /* ---------- the stub ---------- */
 
@@ -550,4 +551,22 @@ test('a frame redraws only the dots whose level changed', async () => {
     assert.ok(ctx.blits > 0, 'a step that moved the field drew nothing');
     assert.ok(ctx.blits < field.rows * field.cols, 'one step redrew every dot');
   } finally { teardown(); }
+});
+
+test('the static CSS grain is the design\'s own uniform-noise tile', () => {
+  /*
+   * NO SILENT MISMATCH WITH THE DESIGN. The fallback ground on body used an SVG
+   * feTurbulence -- FRACTAL noise, which the design rules out ("uniform white
+   * noise, every pixel an independent draw ... not fractal") and which
+   * feTurbulence cannot produce any other way. The design's bundle.css ships
+   * the tile as a PNG; tokens.css carries the same bytes, used as a MASK over
+   * --uv-deep so the colour still comes from the token.
+   */
+  const png = (css) => /url\("?(data:image\/png;base64,[A-Za-z0-9+/=]+)"?\)/.exec(css)?.[1];
+  const design = png(readFileSync(BUNDLE, 'utf8'));
+  assert.ok(design, 'no PNG noise tile found in the design\'s bundle.css');
+  const tokens = readFileSync(TOKENS, 'utf8');
+  assert.equal(png(tokens), design, 'tokens.css must carry the design\'s tile, byte for byte');
+  const rules = tokens.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(rules, /fractalNoise|feTurbulence/, 'the fractal fallback is still there');
 });
