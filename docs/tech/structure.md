@@ -12,12 +12,13 @@ A monorepo: everything that ships from here is in here. There is one submodule
 engines/<product>/crates     the core, and its wrappers
 engines/shared/crates        ni-dsp, ni-schwung, ni-testkit — shared, product-free
 plugins/<product>/           the VST3/AU/CLAP shell, and its editor
+plugins/_shared/ni/          ni::WebPlugin, the editor protocol, ni::wire
 modules/<product>/           the Schwung module's shell and packaging
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
 site/                        this documentation site
 design/files/                the Ultraviolet design system, vendored
 tests/                       the cross-cutting suite
-cmake/                       the Rust toolchain resolver and the engine targets
+cmake/                       the Rust toolchain resolver and NiPlugin.cmake
 versions.json                one version per product
 ```
 
@@ -47,6 +48,21 @@ crate is built on) and `ni-testkit` (the counting allocator the `no_alloc`
 tests install — a dev-dependency only). Each names no product. A piece moves
 there once it is truly identical in two products; what differs stays in the
 product, as each product's rate list does.
+
+## One shell for every plugin
+
+`plugins/_shared/` is to the plugins what `modules/_shared/` is to the Schwung
+modules: what every product's shell would otherwise repeat. `ni::WebPlugin` is
+the iPlug2 class all four derive from; `ni/Editor.h` is the editor protocol with
+no host in it; `ni/Wire.h` the buffer and message helpers (chunking, the float
+round trip, the passthrough, the host's transport, locale-free numbers) and
+`ni/Scope.h` the capture a plot draws. None of it knows a product. It is
+compiled into each plugin's format targets — `iplug::Plugin` is a different
+class under each API — so it is sources, not a library, and `cmake/NiPlugin.cmake`
+adds it. `tests/cpp` links the host-free half.
+
+A plugin's `CMakeLists.txt` is one `ni_add_plugin` call naming its sources and
+its engine.
 
 ## One version per product
 
