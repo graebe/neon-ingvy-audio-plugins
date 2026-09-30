@@ -72,7 +72,7 @@ export { buildLut, readStops, readRgb, stopCss, luminance, STOPS, LEVELS } from 
 
 export { startDrag } from './lib/drag.js';
 export {
-  setParam, beginGesture, endGesture, sendMessage, onParam, onMessage,
+  setParam, beginGesture, endGesture, sendMessage, onParam, onMessage, onBytes,
 } from './lib/iplug.js';
 /* The shell's tags, the same in every plugin. Also importable on its own as
  * '@ultraviolet/ui/shell', which is what the editors' msg.js tables use. */
