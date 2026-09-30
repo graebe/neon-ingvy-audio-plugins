@@ -67,5 +67,14 @@ double advance_beats(double beats, int frames, double bpm, double sampleRate)
   return beats + double(frames) * (bpm / 60.0) / sampleRate;
 }
 
+bool slot_moved(int& pushed, int slot, bool rebase)
+{
+  /* No slot left behind -- the first block, or parameters that arrived
+   * together -- is a new starting point, not a switch. */
+  const bool moved = pushed >= 0 && !rebase && slot != pushed;
+  pushed = slot;
+  return moved;
+}
+
 } // namespace wire
 } // namespace tg

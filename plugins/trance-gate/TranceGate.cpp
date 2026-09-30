@@ -79,10 +79,22 @@ int TranceGate::UnserializeState(const IByteChunk& chunk, int startPos)
   /* The blob is posted, not applied: the engine belongs to the audio thread,
    * which picks it up at the top of the next block -- before PushParams, so the
    * host's parameters still win over the blob's copies of them. */
-  return tg::patch::Load(
+  const int pos = tg::patch::Load(
     mShell, chunk, startPos,
     [this](const IByteChunk& c, int pos) { return shell::state::CheckParams(c, pos, *this); },
     [this](const IByteChunk& c, int pos) { return UnserializeParams(c, pos); });
+  /*
+   * A LOAD IS NOT A SLOT SWITCH. Slot and Length arrived together, so the next
+   * block pushes both -- the host's Length wins over the blob's, as every other
+   * parameter's does -- and a switch the audio thread flagged before the load
+   * is dropped rather than answered with the loaded blob's length.
+   */
+  if (pos >= 0)
+  {
+    mSlotSync.store(0, std::memory_order_release);
+    mSlotRebase.store(1, std::memory_order_release);
+  }
+  return pos;
 }
 
 #if IPLUG_DSP
@@ -166,11 +178,8 @@ bool TranceGate::PushParams(tg_core_t* core)
    * release exists means the worst a future no-UI target can do is behave as
    * this did before the fix, rather than lock a parameter.
    */
-  if (slot != mSlotPushed)
-  {
-    mSlotPushed = slot;
-    moved = true;
-  }
+  moved = tg::wire::slot_moved(mSlotPushed, slot,
+                               mSlotRebase.exchange(0, std::memory_order_acq_rel) != 0);
   pushLength = !moved && mSlotSync.load(std::memory_order_acquire) == 0;
 #endif
   if (pushLength)

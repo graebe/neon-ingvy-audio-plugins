@@ -218,6 +218,9 @@ private:
   int mSlotPushed = -1;                 /* audio thread only */
   double mLengthPushed = -1.0;          /* audio thread only */
   std::atomic<int> mSlotSync{0};
+  /* Set by a state load: the parameters arrived together, so the next block
+   * is a new starting point for the handshake, not a switch. */
+  std::atomic<int> mSlotRebase{0};
   void SyncSlotParams();                /* main thread only */
 
   Capture mCap;

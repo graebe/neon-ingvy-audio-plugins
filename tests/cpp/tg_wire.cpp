@@ -219,3 +219,31 @@ TEST_CASE("the scope payload fits the transport's cap")
   /* kScopeCols is 256: four hex pairs a column, plus the header. */
   CHECK(framed_size(256 * 8 + 32) < 65536);
 }
+
+/* ------------------------------------------------------ the slot handshake */
+
+TEST_CASE("switching slot is a move, and holding it is not")
+{
+  int pushed = 2;
+  CHECK(slot_moved(pushed, 3, false));
+  CHECK(pushed == 3);
+  CHECK_FALSE(slot_moved(pushed, 3, false));
+}
+
+TEST_CASE("a state load is not a slot switch")
+{
+  /* The loaded Slot and Length belong together. Treating the loaded slot as a
+   * switch withheld Length and then copied the loaded blob's length over it,
+   * so a project reopened with Length 24 could come back as 16. */
+  int pushed = 2;
+  CHECK_FALSE(slot_moved(pushed, 5, true));
+  CHECK(pushed == 5);
+  CHECK(slot_moved(pushed, 6, false));
+}
+
+TEST_CASE("the first block is not a switch: there was no slot to leave")
+{
+  int pushed = -1;
+  CHECK_FALSE(slot_moved(pushed, 4, false));
+  CHECK(pushed == 4);
+}
