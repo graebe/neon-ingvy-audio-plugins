@@ -187,7 +187,7 @@ impl Instance {
     ///
     /// So the level is held fixed and the TIME is moved: invert the old shape
     /// to find where we are, then invert the new one to find where that level
-    /// lives on it. `shape_inv` is analytic for all four curves, which is why
+    /// lives on it. `shape_inv` is analytic for all three curves, which is why
     /// they were all chosen to be invertible.
     pub fn set_curve(&mut self, curve: Curve) {
         if curve == self.curve {
@@ -287,7 +287,12 @@ impl Instance {
             "hold" => self.set_num(Param::Hold, fmt::atof(val)),
             "release" => self.set_num(Param::Release, fmt::atof(val)),
             "depth" => self.set_num(Param::Depth, fmt::atof(val)),
-            "trigger_note" => self.set_num(Param::Note, fmt::atof(val)),
+            "trigger_note" => {
+                let n = crate::midi::note_from_name(val)
+                    .map(|n| n as f64)
+                    .unwrap_or_else(|| fmt::atof(val));
+                self.set_num(Param::Note, n);
+            }
             "vel_sens" => self.set_num(Param::VelSens, fmt::atof(val)),
             "threshold" => self.set_num(Param::Threshold, fmt::atof(val)),
             "lockout" => self.set_num(Param::Lockout, fmt::atof(val)),
@@ -475,3 +480,6 @@ static PARAM_BY_KEY: [(&str, Param); PARAM_COUNT as usize] = [
     ("threshold", Param::Threshold),
     ("lockout", Param::Lockout),
 ];
+
+#[cfg(test)]
+mod tests;

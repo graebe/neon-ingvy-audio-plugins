@@ -65,7 +65,7 @@ pub fn set_pattern_hex(dst: &mut Mask, val: &str) {
  * direction (C's `atof` honours `LC_NUMERIC`, so a comma-decimal host turns
  * "0.750" into 0) and a string-match ladder, per value, per block.
  *
- * These are the same twelve values on the same wire conventions -- slot,
+ * These are the same fifteen values on the same wire conventions -- slot,
  * length and rate are INDICES, legato and time_mode are 0|1, the rest are the
  * units the string keys use -- with the decimal detour removed. `set_param`
  * is implemented in terms of [`Instance::set_num`], so every clamp exists
@@ -126,13 +126,19 @@ impl Param {
 }
 
 impl Instance {
-    /// The twelve automatable values, by number. Every clamp and every side
+    /// The fifteen automatable values, by number. Every clamp and every side
     /// effect lives here; [`Instance::set_param`] parses a string and
     /// delegates, so the two doors cannot drift apart.
     ///
     /// Audio-thread safe: a match, a clamp and a store. No allocation, no
     /// formatting, no locale.
     pub fn set_num(&mut self, param: Param, value: f64) {
+        /* A NaN from a host is not a value. Clamping would propagate it
+         * (NaN.clamp is NaN) and `as i32` would turn it into 0 -- a different
+         * slot or rate -- so it is dropped at the door. sc-core does the same. */
+        if value.is_nan() {
+            return;
+        }
         /*
          * `as i32` SATURATES IN RUST WHERE C'S CAST IS UNDEFINED. For an
          * out-of-range double C commonly lands on INT_MIN, which every branch
@@ -265,7 +271,7 @@ impl Instance {
 
     pub fn set_param(&mut self, key: &str, val: &str) {
         match key {
-            /* The twelve automatable keys parse and delegate -- `set_num`
+            /* The automatable keys parse and delegate -- `set_num`
              * owns every clamp and every side effect, so the numeric and
              * string doors cannot drift. */
             "slot" => self.set_num(Param::Slot, fmt::atoi(val) as f64),
@@ -491,7 +497,7 @@ impl Instance {
                 fmt::f(&mut b, pos, 3)
             }
             /*
-             * ONE READ FOR THE TWELVE AUTOMATABLE VALUES.
+             * ONE READ FOR THE AUTOMATABLE VALUES.
              *
              * `ui` carries the pattern and the playhead; it carries no part
              * of the SOUND, which is why a shell that wants to know whether
@@ -614,7 +620,14 @@ impl Instance {
         self.env.stage
     }
 
+    /// Every step of `slot` back to full level. A slot out of range does
+    /// nothing, as it does at every other door that takes one.
     pub fn reset_depths(&mut self, slot: usize) {
-        self.pat[slot].depth = [DEPTH_FULL; MAX_STEPS];
+        if let Some(p) = self.pat.get_mut(slot) {
+            p.depth = [DEPTH_FULL; MAX_STEPS];
+        }
     }
 }
+
+#[cfg(test)]
+mod tests;

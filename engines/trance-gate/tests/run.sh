@@ -83,7 +83,18 @@ cc -std=c11 -Wall -Wextra -Iinclude \
 # which contracts harder still, so the module and its tests never agreed
 # bit-for-bit until now.
 # Previous: 4264807b9e7da87844309fa48d0cc8a3 (C, with contraction)
-GOLDEN=3992810c52d7962b4d25b3a30494ee2e
+# Re-recorded 2026-09-30 for two INTENDED sound changes, compared numerically
+# against the previous render before this was accepted:
+#   - The transport start seeds the envelope at the open gate instead of at
+#     zero, removing a one-sample drop (1.0 -> 0.1 here) at play. All 306
+#     samples that moved by more than 1 LSB are in frames 1..153, the first
+#     step's attack.
+#   - process_i16 ROUNDS instead of truncating, as sc-core's does. Every other
+#     difference is exactly 1 LSB, where truncation had lost it.
+# The phase-loop and parameter-glide changes of the same series move nothing
+# here. tests/render_plugin.c pins the same bytes through the plugin path.
+# Previous: 3992810c52d7962b4d25b3a30494ee2e
+GOLDEN=d8389d25abb3c44b34461f3029f6ab48
 cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude \
    tests/render_ref.c "$ENGINE" \
    -o build/render_ref -lm

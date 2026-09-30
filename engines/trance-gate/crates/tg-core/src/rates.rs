@@ -49,16 +49,42 @@ pub fn index_from(val: &str) -> usize {
     }
     /* A bare number is an index -- the host resolves a numeric enum value
      * that way, and an older state blob may carry one. Parsed with the same
-     * leniency strtol has: leading digits, trailing anything. */
-    let digits: String = val
-        .trim_start()
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '-' || *c == '+')
-        .collect();
-    if let Ok(n) = digits.parse::<i64>() {
+     * leniency strtol has: leading digits, trailing anything.
+     *
+     * A SLICE OF THE INPUT, NOT A COLLECTED STRING. This runs on the audio
+     * callback (the Move's knob writes a numeric rate), and the String that
+     * used to be built here was a malloc and a free per write. The run it
+     * takes is the same one -- digits and signs -- so what parses is too. */
+    let s = val.trim_start();
+    let run = s
+        .bytes()
+        .take_while(|c| c.is_ascii_digit() || *c == b'-' || *c == b'+')
+        .count();
+    if let Ok(n) = s[..run].parse::<i64>() {
         if n >= 0 && (n as usize) < RATES.len() {
             return n as usize;
         }
     }
     RATE_DEFAULT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_label_an_index_or_the_default() {
+        for (i, r) in RATES.iter().enumerate() {
+            assert_eq!(index_from(r.label), i);
+            assert_eq!(index_from(&i.to_string()), i);
+        }
+        /* strtol's leniency: leading space, trailing junk. */
+        assert_eq!(index_from(" 3"), 3);
+        assert_eq!(index_from("3/x"), 3);
+        assert_eq!(index_from("+2"), 2);
+        /* Out of range, malformed or absent is the default, not the nearest end. */
+        for v in ["", "-1", "99", "+-3", "-", "junk"] {
+            assert_eq!(index_from(v), RATE_DEFAULT, "{v:?}");
+        }
+    }
 }

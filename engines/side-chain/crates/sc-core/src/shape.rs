@@ -128,7 +128,7 @@ pub fn shape(curve: Curve, t: f64) -> f64 {
 
 /// The inverse, which is what lets the curve change mid-duck without a click:
 /// the level is re-anchored through it in `set_curve`. Monotonic and analytic
-/// for all four.
+/// for all three.
 #[inline]
 pub fn shape_inv(curve: Curve, w: f64) -> f64 {
     if !(w > 0.0) {
@@ -253,6 +253,30 @@ impl Env {
         self.stage = stage;
     }
 
+    /// The stage lengths changed between blocks: move `pos` so the running
+    /// stage keeps the same FRACTION of itself behind it.
+    ///
+    /// `pos` is a sample count and `pos / len` is where the stage is, so a
+    /// length that changed under it -- a knob, automation, a tempo change,
+    /// every one of which moves a length measured in percent of the cycle --
+    /// moved the level in one sample: shortening a half-done attack ten times
+    /// put it past its end. Scaling `pos` with the length keeps `pos / len`,
+    /// and so the level, where it was; the rest of the stage then runs at the
+    /// new speed. A stage whose length did not change is untouched, bit for
+    /// bit.
+    pub fn rescale(&mut self, old: &Stages, new: &Stages) {
+        let (o, n) = match self.stage {
+            Stage::Idle => return,
+            Stage::Delay => (old.delay, new.delay),
+            Stage::Attack => (old.attack, new.attack),
+            Stage::Hold => (old.hold, new.hold),
+            Stage::Release => (old.release, new.release),
+        };
+        if o != n && o > 0.0 {
+            self.pos *= n / o;
+        }
+    }
+
     /// Advance one sample and return the attenuation, 0..`scale`.
     ///
     /// `gated` is true while the trigger is still held -- Gate mode with a note
@@ -335,3 +359,6 @@ impl Env {
         self.duck
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -38,7 +38,7 @@ than 16 coin flips — uniform random reads as noise, not as a trance gate.
       group and leaves step 0 empty at every density below full, which reads as
       the randomiser being broken. A test caught it.
 - [x] Keep it inside the RT contract: `set_param` runs on the audio callback, so
-      the generator must be a bounded loop over ≤32 steps with no allocation.
+      the generator must be a bounded loop over ≤128 steps with no allocation.
       `rand()` is not RT-safe in the strict sense — use a small xorshift seeded
       per instance.
 - [x] Do not disturb the playhead: regenerating mid-bar must not reset

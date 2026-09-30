@@ -55,9 +55,20 @@ pub struct Event {
 /// will misattribute.
 pub const QUEUE_MAX: usize = 64;
 
+/*
+ * SORTED ONCE PER BLOCK, WALKED WITH A CURSOR.
+ *
+ * The sample loop asks "what lands on sample i" for every i in order. Scanning
+ * the whole queue for each answer was O(frames x events) -- 8192 x 64 scans at
+ * the largest block, per block, on the audio thread, for what is almost always
+ * zero or one event. `prepare` puts the events in offset order once, and the
+ * walk then only ever looks at the next one.
+ */
 pub struct Queue {
     events: [Event; QUEUE_MAX],
     len: usize,
+    /// The first event the walk has not yet handed out.
+    next: usize,
     dropped: u32,
 }
 
@@ -69,6 +80,7 @@ impl Default for Queue {
                 action: Action::Reset,
             }; QUEUE_MAX],
             len: 0,
+            next: 0,
             dropped: 0,
         }
     }
@@ -86,34 +98,59 @@ impl Queue {
 
     pub fn clear(&mut self) {
         self.len = 0;
+        self.next = 0;
     }
 
     pub fn dropped(&self) -> u32 {
         self.dropped
     }
 
-    /// The events landing on sample `i`, in arrival order.
-    pub fn at(&self, i: usize) -> impl Iterator<Item = Action> + '_ {
-        self.events[..self.len]
-            .iter()
-            .filter(move |e| e.at == i)
-            .map(|e| e.action)
+    /// The next event landing on sample `i`, if any; call until `None`.
+    ///
+    /// The walk must visit samples in increasing order after `prepare`, which
+    /// the sample loop does by construction. Events on the same sample come
+    /// out in ARRIVAL order -- a note-on and its note-off at one offset must
+    /// trigger and then release, not the other way round.
+    #[inline]
+    pub fn pop_at(&mut self, i: usize) -> Option<Action> {
+        let e = self.events[..self.len].get(self.next)?;
+        if e.at != i {
+            return None;
+        }
+        self.next += 1;
+        Some(e.action)
     }
 
-    /// Clamp every offset into the block about to be rendered.
+    /// Get the queue ready for the block about to be rendered: clamp every
+    /// offset into it, then put the events in offset order.
     ///
     /// AN OFFSET PAST THE END WOULD BE DROPPED, NOT DEFERRED. The queue is
     /// cleared per block, so an event the walk never reaches is an event that
     /// never happens -- and a host that reports an offset against a different
     /// buffer size is a real thing. Clamping makes it late by under a block
     /// instead of lost.
-    pub fn clamp_into(&mut self, frames: usize) {
+    ///
+    /// AN INSERTION SORT, because it is STABLE -- arrival order must survive
+    /// among equal offsets -- and allocation-free, which `slice::sort` is not
+    /// promised to be. Hosts deliver events in offset order, so this is one
+    /// comparison per event in practice; 64 events in reverse is the worst
+    /// case, and still only a couple of thousand moves.
+    pub fn prepare(&mut self, frames: usize) {
         let last = frames.saturating_sub(1);
-        for e in self.events[..self.len].iter_mut() {
+        let ev = &mut self.events[..self.len];
+        for e in ev.iter_mut() {
             if e.at > last {
                 e.at = last;
             }
         }
+        for i in 1..ev.len() {
+            let mut j = i;
+            while j > 0 && ev[j - 1].at > ev[j].at {
+                ev.swap(j - 1, j);
+                j -= 1;
+            }
+        }
+        self.next = 0;
     }
 
     pub fn is_empty(&self) -> bool {
@@ -146,6 +183,46 @@ impl Default for Midi {
             held: 0,
         }
     }
+}
+
+/// A note NAME in Live's numbering -- `C-2` is 0, `C1` is 36, `G8` is 127 --
+/// or `None` if `s` is not one.
+///
+/// THE LABEL IS ONE OF TWO SPELLINGS THE MOVE CAN SEND. The declaration wires
+/// `trigger_note` by index, but a hand-written patch and a host that has not
+/// yet learned the convention both send the option's name, and `atof` reads
+/// every name as 0 -- C-2, a note no kick pad sends. Sharps only, because the
+/// declared options are spelled with sharps. Byte parsing, no allocation: this
+/// runs on the audio callback.
+pub fn note_from_name(s: &str) -> Option<i32> {
+    let b = s.trim().as_bytes();
+    let semitone = match b.first()? {
+        b'C' => 0,
+        b'D' => 2,
+        b'E' => 4,
+        b'F' => 5,
+        b'G' => 7,
+        b'A' => 9,
+        b'B' => 11,
+        _ => return None,
+    };
+    let (sharp, rest) = match b.get(1) {
+        Some(b'#') => (1, &b[2..]),
+        _ => (0, &b[1..]),
+    };
+    let (neg, digits) = match rest.first() {
+        Some(b'-') => (true, &rest[1..]),
+        _ => (false, rest),
+    };
+    if digits.is_empty() || digits.len() > 2 || !digits.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let mut octave = digits.iter().fold(0i32, |a, d| a * 10 + (d - b'0') as i32);
+    if neg {
+        octave = -octave;
+    }
+    let note = (octave + 2) * 12 + semitone + sharp;
+    (0..=127).contains(&note).then_some(note)
 }
 
 impl Midi {
@@ -201,3 +278,6 @@ impl Midi {
         None
     }
 }
+
+#[cfg(test)]
+mod tests;

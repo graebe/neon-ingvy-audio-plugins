@@ -39,6 +39,7 @@ pub mod midi;
 pub mod params;
 pub mod rates;
 pub mod shape;
+mod smooth;
 
 #[cfg(test)]
 mod tests;
@@ -78,8 +79,13 @@ pub const DELAY_RANGE_PCT: f64 = 100.0;
 
 /// Beyond this much phase error, jump rather than glide. `tg-core`'s value.
 const RESYNC_CYCLES: f64 = 0.25;
-/// Fraction of the phase error absorbed per block.
-const TRACK_GAIN: f64 = 0.05;
+/// How fast the loop pulls in, as a time constant, so the pull is the same
+/// whatever the host's block size. `tg-core/src/clock.rs` says why it is one
+/// and where 56.6 ms comes from; the two are kept equal.
+pub(crate) const TRACK_TAU_S: f64 = 0.0566;
+/// The slowest the phase may run while it pulls back towards a host that is
+/// behind it, as a fraction of its nominal speed. `tg-core`'s value.
+const MIN_SPEED: f64 = 0.5;
 
 /// Where the trigger comes from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -145,6 +151,9 @@ pub struct Instance {
     release_pct: f64,
     /// 0..1.
     depth: f64,
+    /// `depth` as the gain law hears it, gliding towards it -- see
+    /// `smooth.rs`. Runtime, not saved.
+    depth_s: f64,
     curve: Curve,
     midi: Midi,
     /// Linear amplitude, converted from the user's dB once, in `params.rs`.
@@ -153,12 +162,20 @@ pub struct Instance {
 
     /* ---- state ---- */
     env: Env,
+    /// The stage lengths the envelope ran under last block. A stage's
+    /// position is a sample count, so when its length changes the position
+    /// is rescaled to keep the FRACTION -- see `Env::rescale`.
+    stages: Stages,
     follower: Follower,
     queue: Queue,
     /// The key signal for the block about to be rendered, and how much of it
     /// is real. Deinterleaved so the detector reads two contiguous runs.
-    key_l: [f32; MAX_BLOCK],
-    key_r: [f32; MAX_BLOCK],
+    ///
+    /// ON THE HEAP, allocated once in `new`: inline they were 64 KB of an
+    /// instance every shell builds with `Box::new(Instance::new(..))` -- on the
+    /// caller's stack first, and on the Move that caller is the audio thread.
+    key_l: Box<[f32]>,
+    key_r: Box<[f32]>,
     key_len: usize,
 
     /* ---- the cycle's phase-locked loop ---- */
@@ -212,16 +229,18 @@ impl Instance {
             hold_pct: 8.0,
             release_pct: 35.0,
             depth: 1.0,
+            depth_s: 1.0,
             curve: Curve::Exp,
             midi: Midi::default(),
             /* -24 dBFS in linear amplitude. */
             threshold: 0.063_095_734_448_019_33,
             lockout_ms: 20.0,
             env: Env::default(),
+            stages: Stages::default(),
             follower: Follower::new(sr),
             queue: Queue::default(),
-            key_l: [0.0; MAX_BLOCK],
-            key_r: [0.0; MAX_BLOCK],
+            key_l: vec![0.0; MAX_BLOCK].into_boxed_slice(),
+            key_r: vec![0.0; MAX_BLOCK].into_boxed_slice(),
             key_len: 0,
             cycle_pos: 0.0,
             last_cycle: None,
@@ -265,9 +284,17 @@ impl Instance {
     }
 
     /// Queue a MIDI message at a sample offset within the next block.
+    ///
+    /// A NOTE IS A TRIGGER ONLY WHEN MIDI IS THE SOURCE. On Cycle or Sidechain
+    /// the trigger note is music passing through the track, and ducking on it
+    /// put a second, unsynchronised dip into a pattern locked to the bar. A
+    /// PANIC is not a trigger and is honoured whatever the source: CC 120/123
+    /// is the only reset a Schwung host can deliver.
     pub fn on_midi(&mut self, msg: &[u8], at: usize) {
-        if let Some(action) = self.midi.decode(msg) {
-            self.queue.push(at, action);
+        match self.midi.decode(msg) {
+            Some(Action::Reset) => self.queue.push(at, Action::Reset),
+            Some(action) if self.source == Source::Midi => self.queue.push(at, action),
+            _ => {}
         }
     }
 
@@ -293,11 +320,19 @@ impl Instance {
 
     /// Per-block setup: resolve tempo, stage lengths and the cycle's phase.
     ///
-    /// Unlike `tg-core`'s, this NEVER returns "nothing to do". A gate with the
+    /// Unlike `tg-core`'s, this never returns "nothing to do" for a block that
+    /// has samples in it. A gate with the
     /// transport stopped has no work; a ducker does -- two of its three
     /// sources have nothing to do with the transport, and a MIDI-triggered
     /// duck must still work with the timeline parked.
-    fn block_setup(&mut self, frames: usize, t: Option<&Transport>) -> Run {
+    ///
+    /// `None` for an EMPTY block, and only then: no time passed, so nothing --
+    /// the phase, the transport edge, the MIDI queue -- may move. Clamping the
+    /// queue into zero frames and clearing it lost every note waiting in it.
+    fn block_setup(&mut self, frames: usize, t: Option<&Transport>) -> Option<Run> {
+        if frames == 0 {
+            return None;
+        }
         let mut bpm = self.last_bpm;
         if let Some(t) = t {
             if t.bpm > 1.0 && t.bpm < 1000.0 {
@@ -345,6 +380,10 @@ impl Instance {
             hold: pct(self.hold_pct),
             release: pct(self.release_pct),
         };
+        /* A length that moved under a running stage -- a knob, automation, a
+         * tempo change -- keeps the stage's progress and so its level. */
+        self.env.rescale(&self.stages, &stages);
+        self.stages = stages;
 
         let mut inc = 1.0 / samples_per_cycle;
         let cycle = matches!(self.source, Source::Cycle);
@@ -400,37 +439,49 @@ impl Instance {
                      * cycle would otherwise fire nothing. */
                     self.last_cycle = arrive(target, offset, inc);
                 } else {
-                    inc += (err * TRACK_GAIN) / frames as f64;
+                    let absorb = 1.0 - (-(frames as f64) / (self.sample_rate * TRACK_TAU_S)).exp();
+                    inc += err * absorb / frames as f64;
                 }
             }
+            /* NEVER BACKWARDS: a reversing phase re-crosses the boundary it
+             * just passed and fires the same duck twice. Only a seek (the
+             * resync above) moves the phase back. */
+            inc = inc.max(MIN_SPEED / samples_per_cycle);
         } else {
             self.cycle_pos = 0.0;
             self.last_cycle = None;
-            if cycle {
+            if cycle && self.was_running {
                 /* Stopped means open, but ONLY for the source that depends on
                  * the transport. Resetting the envelope here unconditionally
-                 * is what would break a MIDI duck in a stopped session. */
-                self.env.reset();
+                 * is what would break a MIDI duck in a stopped session.
+                 *
+                 * And open by RELEASING, once, at the stop -- not by a reset
+                 * every stopped block. A reset mid-duck stepped the gain to
+                 * 1.0 in one sample; a release is what the duck would have
+                 * done had the cycle simply not fired again, and nothing fires
+                 * it while the transport is parked. */
+                self.env.release(&stages);
             }
         }
         self.was_running = running;
 
-        self.queue.clamp_into(frames);
+        self.queue.prepare(frames);
 
-        Run {
+        Some(Run {
+            smooth: smooth::coef(self.sample_rate),
             stages,
             cycle,
             inc,
             offset,
             lockout: self.lockout_ms * self.sample_rate / 1000.0,
-        }
+        })
     }
 
     /// One sample's gain. THE ONE GAIN LAW, whatever the buffer format.
     #[inline]
     fn next_gain(&mut self, r: &Run, i: usize) -> f32 {
         /* --- did anything ask us to duck on this sample? --- */
-        for action in self.queue.at(i) {
+        while let Some(action) = self.queue.pop_at(i) {
             match action {
                 Action::Trigger(scale) => {
                     self.env.trigger(scale, &r.stages);
@@ -504,19 +555,29 @@ impl Instance {
             self.since_trigger += 1.0;
         }
 
+        /* DEPTH GLIDES ONLY WHILE IT IS HEARD. With no duck the gain is 1.0
+         * whatever Depth is, so it takes a new value at once there -- which is
+         * also what keeps a patch set before its first trigger rendering the
+         * same bits it always did. Mid-duck it glides; see `smooth.rs`. */
+        self.depth_s = if duck == 0.0 {
+            self.depth
+        } else {
+            smooth::glide(self.depth_s, self.depth, r.smooth)
+        };
+
         /* DEPTH ZERO IS A TRUE BYPASS AND NEEDS NO SPECIAL CASE: the product
          * collapses to exactly 1.0, and multiplying by exactly 1.0 is the
          * identity in IEEE 754 for every input including the denormals and the
          * signed zeroes. `tg-core` spends a branch proving this; one multiply
          * is cheaper than the branch and leaves one code path. */
-        (1.0 - self.depth * duck) as f32
+        (1.0 - self.depth_s * duck) as f32
     }
 
     /// Called at the end of every `process`, whatever the format.
     #[inline]
     fn block_done(&mut self) {
         /* The queue is per block. An event the walk never reached is an event
-         * that never happened -- which is why `clamp_into` exists. */
+         * that never happened -- which is why `prepare` clamps. */
         self.queue.clear();
         self.key_len = 0;
     }
@@ -531,7 +592,10 @@ impl Instance {
      * is exactly what `sc_render_ab` does.
      */
     pub fn process_i16(&mut self, lr: &mut [i16], frames: usize, t: Option<&Transport>) {
-        let r = self.block_setup(frames, t);
+        /* Never past the buffer: an index out of range is a panic, and a panic
+         * here is an abort of the host. */
+        let frames = frames.min(lr.len() / 2);
+        let Some(r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&r, i);
             let l = lr[i * 2] as f32 * m;
@@ -559,7 +623,8 @@ impl Instance {
     }
 
     pub fn process_f32(&mut self, lr: &mut [f32], frames: usize, t: Option<&Transport>) {
-        let r = self.block_setup(frames, t);
+        let frames = frames.min(lr.len() / 2);
+        let Some(r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&r, i);
             lr[i * 2] *= m;
@@ -614,7 +679,8 @@ impl Instance {
         frames: usize,
         t: Option<&Transport>,
     ) {
-        let r = self.block_setup(frames, t);
+        let frames = frames.min(l.len()).min(rch.len());
+        let Some(r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&r, i);
             l[i] *= m;
@@ -706,6 +772,8 @@ impl Instance {
 /// needs `&mut self` for the envelope, so the block's constants cannot live
 /// behind the same borrow.
 struct Run {
+    /// The parameter glide's per-sample coefficient at this sample rate.
+    smooth: f64,
     stages: Stages,
     cycle: bool,
     /// Cycles per sample, with the phase-locked loop's correction term for

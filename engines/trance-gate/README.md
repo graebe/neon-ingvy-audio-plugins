@@ -5,8 +5,8 @@ The DSP behind the Trance Gate, in both of its shells. `tg-core` is the engine;
 in Schwung's `audio_fx` vtable for the Ableton Move. Modelled on the Kilohearts
 Trance Gate.
 
-- 8 pattern slots, length 1–32 steps, ties between steps
-- Resolution as a musical division (1/1 … 1/64, incl. triplets)
+- 8 pattern slots, length 1–128 steps, ties between steps
+- Resolution as a musical division (1/1T … 1/128, incl. triplets)
 - Per-step ADSR, a gate-length control, and one **Amount** at two scopes —
   global (dry/wet, 0% is a true bypass) and per step (an accent)
 - Locked to song position via `get_beat_position()`, so it stays bar-aligned

@@ -290,6 +290,14 @@ pub fn load(inst: &mut Instance, val: &str) {
         }
         inst.pat[s].renumber();
     }
+    /* THE CURSOR IS NOT SAVED, BUT THE LENGTH IS. A patch whose current slot
+     * is shorter than where the cursor stood would leave it past the end,
+     * where every edit lands on a step the ring never draws -- the same
+     * re-clamp `slot` and `length` do. */
+    let len = inst.pat[inst.slot].length.clamp(1, MAX_STEPS);
+    if inst.cursor >= len {
+        inst.cursor = len - 1;
+    }
     inst.recalc_fade();
 }
 
@@ -399,3 +407,6 @@ pub fn save(inst: &Instance, mut b: Buf) -> i32 {
     let _ = write!(b, "}}");
     b.finish()
 }
+
+#[cfg(test)]
+mod tests;

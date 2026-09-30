@@ -163,6 +163,10 @@ impl Default for Config {
     }
 }
 
+/// The finest hop a window is allowed: `fft_size / MIN_HOP_DIVISOR`, 97%
+/// overlap. Every hop `pick_hop` chooses is far coarser.
+pub const MIN_HOP_DIVISOR: usize = 32;
+
 impl Config {
     /// Clamp everything into a range the analyzer can actually honour, rather
     /// than trusting a caller across a C ABI. `fft_size` is rounded DOWN to a
@@ -175,7 +179,11 @@ impl Config {
         if !self.fft_size.is_power_of_two() {
             self.fft_size = self.fft_size.next_power_of_two() / 2;
         }
-        self.hop = self.hop.clamp(1, self.fft_size);
+        /* No finer than a thirty-second of the window. A hop of 1 is one
+         * transform per SAMPLE on the audio thread -- far past what any machine
+         * sustains -- for columns 32 times denser than the window resolves.
+         * fft_size is a power of two >= 64 here, so this is a whole number. */
+        self.hop = self.hop.clamp(self.fft_size / MIN_HOP_DIVISOR, self.fft_size);
         self.bands = self.bands.clamp(1, 1024);
         if !self.f_min.is_finite() || self.f_min < 1.0 {
             self.f_min = 10.0;
@@ -1070,6 +1078,19 @@ mod tests {
         assert_eq!(a.take_columns(&mut out, 8), 3);
         let mut big = vec![0u8; a.bands() * 16];
         assert!(a.take_columns(&mut big, 16) >= 5);
+    }
+
+    #[test]
+    fn a_hop_below_a_thirty_second_of_the_window_is_raised_to_it() {
+        /*
+         * A hop of 1 is a whole FFT per SAMPLE -- 8192-point transforms 48,000
+         * times a second on the audio thread, which no machine keeps up with,
+         * for columns 32 times denser than the window can resolve anyway.
+         */
+        for (fft, hop, want) in [(8192, 1, 256), (8192, 255, 256), (8192, 256, 256), (1024, 7, 32), (1024, 4096, 1024)] {
+            let a = Analyzer::new(Config { fft_size: fft, hop, ..Default::default() });
+            assert_eq!(a.config().hop, want, "fft {fft} hop {hop}");
+        }
     }
 
     #[test]

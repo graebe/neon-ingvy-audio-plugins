@@ -23,9 +23,10 @@
  * FNV-1a over the rendered bytes, so the A/B can be a REGISTERED TEST rather
  * than a pipe into md5 that somebody has to remember to type. The expected
  * value is the Move module's own reference render -- the same four seconds of
- * the same patch that tests/render_ref.c in the engine repo produces, whose
- * md5 is 3992810c52d7962b4d25b3a30494ee2e. The hashes differ because the two
- * render through different paths: int16 interleaved there, float split here.
+ * the same patch that engines/trance-gate/tests/render_ref.c produces, whose
+ * md5 is d8389d25abb3c44b34461f3029f6ab48. The two paths are different (int16
+ * interleaved there, float split and rounded here) and the BYTES are the same,
+ * so this constant is also the FNV-1a of that file.
  *
  * If this fires, the port changed the sound. Pipe both renderers to files and
  * `cmp` them: the first differing byte says which step.
@@ -61,7 +62,31 @@
  * Move module is now the uncontracted build -- so the number HAD to move to
  * go on being true.
  * Previous: 0xA55438688E6363E5 */
-#define GOLDEN_FNV1A 0x13190E03DAB19715ULL
+/*
+ * Re-recorded 2026-09-30 for three INTENDED sound changes, together with the
+ * Move reference in engines/trance-gate/tests/run.sh, which is the same bytes
+ * (d8389d25abb3c44b34461f3029f6ab48 is that render's md5; this is its FNV):
+ *
+ *   1. The transport start no longer drops the gate. Stopped is an open gate,
+ *      and the first block used to start the envelope at zero -- 1.0 to 0.1 in
+ *      one sample here, then the attack back up. The envelope is now seeded at
+ *      the open gate's level. This is every difference above 1 LSB, and all of
+ *      them are in frames 1..153, the first step's attack.
+ *   2. The Move's int16 path ROUNDS instead of truncating (tg-core's
+ *      process_i16), as sc-core's already did. Everywhere else the two
+ *      renders differ by exactly 1 LSB, and only where truncation had lost
+ *      it. This file's own float -> int16 conversion rounds the same way
+ *      (roundf) so that it still produces the Move's bytes -- verified: the
+ *      two hashes are equal again.
+ *   3. The phase-locked loop is a time constant rather than a per-block
+ *      fraction, and never runs the playhead backwards. This render's host
+ *      clock is exact, so this one moved nothing -- stated so nobody has to
+ *      wonder.
+ *
+ * The parameter glides (Amount, Sustain) moved nothing either: this patch
+ * does not move a parameter mid-render, and the glides are inert at rest.
+ * Previous: 0x13190E03DAB19715 */
+#define GOLDEN_FNV1A 0xA364399720461935ULL
 
 static uint64_t fnv = 0xcbf29ce484222325ULL;
 static void fnv_add(const void *p, size_t n) {
@@ -121,7 +146,11 @@ int main(int argc, char **argv) {
         }
         tg_core_process_f32_split(c, L, R, n, &t);
         for (int i = 0; i < n; i++) {
-            float l = L[i], r = R[i];
+            /* ROUNDED, half away from zero -- roundf, which is Rust's
+             * f32::round, not lrintf, which rounds half to even. The Move path
+             * rounds this way now, and this conversion has to be the same one
+             * or the two renders differ at every exact half. */
+            float l = roundf(L[i]), r = roundf(R[i]);
             out[i * 2]     = (int16_t)(l > 32767.0f ? 32767.0f : (l < -32768.0f ? -32768.0f : l));
             out[i * 2 + 1] = (int16_t)(r > 32767.0f ? 32767.0f : (r < -32768.0f ? -32768.0f : r));
         }

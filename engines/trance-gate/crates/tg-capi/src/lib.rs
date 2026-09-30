@@ -71,19 +71,12 @@ pub unsafe extern "C" fn tg_core_destroy(c: *mut TgCore) {
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_set_sample_rate(c: *mut TgCore, sample_rate: f64) {
     let Some(c) = c.as_mut() else { return };
-    if sample_rate <= 0.0 {
-        return;
-    }
-    c.0.sample_rate = sample_rate;
-    /* ms_per_step cancels the sample rate out, so this changes nothing today.
-     * It is here so that "ms_per_step is current" holds at every door into
-     * the struct rather than at the two that happen to matter. */
-    c.0.recalc_ms_per_step();
+    c.0.set_sample_rate(sample_rate);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_get_sample_rate(c: *const TgCore) -> f64 {
-    c.as_ref().map_or(0.0, |c| c.0.sample_rate)
+    c.as_ref().map_or(0.0, |c| c.0.sample_rate())
 }
 
 #[no_mangle]
@@ -99,7 +92,7 @@ pub unsafe extern "C" fn tg_core_set_param(
     c.0.set_param(s(key), s(val));
 }
 
-/// `tg_core_set_num`: the twelve automatable values by number, for host
+/// `tg_core_set_num`: the fifteen automatable values by number, for host
 /// automation arriving on the audio thread. See [`tg_core::params::Param`] --
 /// the discriminants are the ABI, so a host that saved an automation lane
 /// saved these integers.

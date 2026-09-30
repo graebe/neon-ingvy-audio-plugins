@@ -262,3 +262,145 @@ pub extern "C" fn move_audio_fx_on_midi(
     let bytes = unsafe { std::slice::from_raw_parts(msg, len as usize) };
     inst.on_midi(bytes, 0);
 }
+
+/*
+ * THE MOVE'S PARAMETER PATH, END TO END.
+ *
+ * The unit tests in `params.rs` pin the declaration against the engine's key
+ * list. These drive the same two entry points the chain host calls, with the
+ * values the host actually sends: the declared default (on a Delete-to-default)
+ * and the option index its learner settles on (on a knob turn).
+ */
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    /// The entry for `key` in the declaration, as raw JSON text.
+    fn entry(key: &str) -> &'static str {
+        let tag = format!("{{\"key\":\"{key}\"");
+        let at = params::CHAIN_PARAMS.find(&tag).expect("declared");
+        let rest = &params::CHAIN_PARAMS[at..];
+        &rest[..rest.find('}').unwrap() + 1]
+    }
+
+    /// A string field of an entry, e.g. `default` or `wire_format`.
+    fn field(key: &str, name: &str) -> Option<String> {
+        let e = entry(key);
+        let tag = format!("\"{name}\":\"");
+        let at = e.find(&tag)? + tag.len();
+        Some(e[at..at + e[at..].find('"')?].to_string())
+    }
+
+    fn options(key: &str) -> Vec<String> {
+        let e = entry(key);
+        let at = e.find("\"options\":[").unwrap() + 11;
+        e[at..at + e[at..].find(']').unwrap()]
+            .split(',')
+            .map(|s| s.trim_matches('"').to_string())
+            .collect()
+    }
+
+    struct Module(*mut c_void);
+    impl Module {
+        fn new() -> Self {
+            Module(v2_create_instance(std::ptr::null(), std::ptr::null()))
+        }
+        fn set(&self, k: &str, v: &str) {
+            let (k, v) = (CString::new(k).unwrap(), CString::new(v).unwrap());
+            v2_set_param(self.0, k.as_ptr(), v.as_ptr());
+        }
+        fn get(&self, k: &str) -> String {
+            let k = CString::new(k).unwrap();
+            let mut buf = [0 as c_char; 256];
+            let n = v2_get_param(self.0, k.as_ptr(), buf.as_mut_ptr(), buf.len() as c_int);
+            assert!(n >= 0, "{k:?} not served");
+            let bytes: Vec<u8> = buf[..n as usize].iter().map(|c| *c as u8).collect();
+            String::from_utf8(bytes).unwrap()
+        }
+    }
+    impl Drop for Module {
+        fn drop(&mut self) {
+            v2_destroy_instance(self.0);
+        }
+    }
+
+    #[test]
+    fn every_enum_the_engine_reports_by_index_declares_it() {
+        /*
+         * THE HOST LEARNS AN UNDECLARED ENUM'S CONVENTION FROM A READ, and
+         * until it has one it writes whatever it holds -- the declared DEFAULT
+         * on a Delete, verbatim. An enum whose getter answers an index and
+         * whose default is a label speaks two conventions at once; declaring
+         * the index is what makes every write path agree with the read.
+         */
+        for key in ["source", "rate", "curve", "time_mode", "channel", "trigger_note", "midi_mode"] {
+            assert_eq!(
+                field(key, "wire_format").as_deref(),
+                Some("index"),
+                "{key} is read back as an index and must declare it"
+            );
+            let d = field(key, "default").unwrap();
+            let n: usize = d.parse().unwrap_or_else(|_| panic!("{key} default {d:?} is not an index"));
+            assert!(n < options(key).len(), "{key} default {n} is past its options");
+        }
+    }
+
+    #[test]
+    fn the_trigger_note_default_is_c1_on_the_device() {
+        let m = Module::new();
+        m.set("trigger_note", "60");
+        m.set("trigger_note", &field("trigger_note", "default").unwrap());
+        assert_eq!(m.get("trigger_note"), "36");
+        assert_eq!(options("trigger_note")[36], "C1");
+    }
+
+    #[test]
+    fn every_trigger_note_round_trips_as_an_index() {
+        let m = Module::new();
+        let opts = options("trigger_note");
+        assert_eq!(opts.len(), 128);
+        for (i, name) in opts.iter().enumerate() {
+            m.set("trigger_note", &i.to_string());
+            let got = m.get("trigger_note");
+            assert_eq!(got, i.to_string(), "index {i}");
+            /* A label reaches the same note -- a hand-written patch, or a
+             * host that has not learned the convention yet. */
+            m.set("trigger_note", "0");
+            m.set("trigger_note", name);
+            assert_eq!(m.get("trigger_note"), got, "label {name}");
+        }
+    }
+
+    #[test]
+    fn every_rate_round_trips_as_an_index_and_as_a_label() {
+        let m = Module::new();
+        for (i, name) in options("rate").iter().enumerate() {
+            m.set("rate", &i.to_string());
+            assert_eq!(m.get("rate"), i.to_string(), "index {i}");
+            m.set("rate", "0");
+            m.set("rate", name);
+            assert_eq!(m.get("rate"), i.to_string(), "label {name}");
+        }
+        m.set("rate", &field("rate", "default").unwrap());
+        assert_eq!(m.get("rate"), "4", "the default is 1/4");
+    }
+
+    #[test]
+    fn panic_opens_the_gate() {
+        /* The v2 vtable has no reset hook: CC 123 is the whole of a host panic. */
+        let m = Module::new();
+        m.set("source", "1");
+        let on = [0x90u8, 36, 127];
+        move_audio_fx_on_midi(m.0, on.as_ptr(), 3, 0);
+        let mut buf = [10000i16; 256];
+        v2_process_block(m.0, buf.as_mut_ptr(), 128);
+        assert!(m.get("duck").parse::<f64>().unwrap() > 0.0);
+        let cc = [0xB0u8, 123, 0];
+        move_audio_fx_on_midi(m.0, cc.as_ptr(), 3, 0);
+        let mut buf = [10000i16; 256];
+        v2_process_block(m.0, buf.as_mut_ptr(), 128);
+        assert_eq!(m.get("duck"), "0.0000");
+        assert!(buf.iter().all(|&s| s == 10000));
+    }
+}
