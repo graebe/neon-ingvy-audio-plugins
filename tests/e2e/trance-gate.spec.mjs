@@ -14,7 +14,7 @@ import {
 
 const W = 824, H = 752;
 /* lib/msg.js */
-const MSG = { patch: 67, setStep: 96, setDepth: 97, requestPatch: 99 };
+const MSG = { patch: 67, setStep: 96, setDepth: 97, requestPatch: 99, setOrder: 103, randomize: 104 };
 const P = { length: 1, timeMode: 4, amount: 6, width: 7, attack: 8 };
 
 test.use({ viewport: { width: W, height: H } });
@@ -196,6 +196,55 @@ test('the stage readouts follow Env Time between ms and %', async ({ page }) => 
 
   await page.getByRole('combobox', { name: 'Time' }).selectOption({ value: '0' });
   await expect(attack.locator('.unit')).toHaveText('ms');
+});
+
+test('the band switches between the pattern and the live signal', async ({ page }) => {
+  await open(page, 'trance-gate');
+  const band = page.locator('.band');
+  const signal = page.getByRole('tab', { name: 'Signal' });
+  await expect(band).toContainText('PATTERN');
+  await signal.click();
+  await expect(signal).toHaveAttribute('aria-selected', 'true');
+  /* The mock's scope is a 2000 ms cycle, and the caption says so. */
+  await expect(band).toContainText('SIGNAL ONE CYCLE, 2000 MS');
+  /* And back from the keyboard: the strip is one tab stop, arrows move. */
+  await signal.focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByRole('tab', { name: 'Pattern' })).toHaveAttribute('aria-selected', 'true');
+  await expect(band).toContainText('PATTERN');
+});
+
+test('ORDER mode names the arrivals by tapping, and SHUFFLE deals a new order', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await clearSent(page);
+  const order = page.getByRole('button', { name: /^ORDER/ });
+  await order.click();
+  /* Eight steps are on in the 5555 mask: that is what can be sequenced. */
+  await expect(order).toHaveText('ORDER 0/8');
+  await pad(page, 6).click();
+  await pad(page, 0).click();
+  await pad(page, 1).click();                 /* off: not an arrival, ignored */
+  await expect(order).toHaveText('ORDER 2/8');
+  /* A tap names; it does not toggle. */
+  expect(await texts(page, MSG.setOrder)).toEqual(['6:1', '0:2']);
+  expect(await texts(page, MSG.setStep)).toEqual([]);
+  await order.click();
+  await expect(order).toHaveText('ORDER');
+
+  await clearSent(page);
+  await page.getByRole('button', { name: 'SHUFFLE' }).click();
+  /* One rank per arriving step, 1..8 each once, however they were dealt. */
+  const dealt = (await texts(page, MSG.setOrder)).map((t) => t.split(':').map(Number));
+  expect(dealt.map(([step]) => step).sort((a, b) => a - b)).toEqual([0, 2, 4, 6, 8, 10, 12, 14]);
+  expect(dealt.map(([, rank]) => rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+test('RANDOM asks the engine to reroll the slot', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await clearSent(page);
+  await page.getByRole('button', { name: 'RANDOM' }).click();
+  /* No payload: the engine walks its own generator, so two presses differ. */
+  expect(await texts(page, MSG.randomize)).toEqual(['']);
 });
 
 test('the height is re-sent after a viewport resize', async ({ page }) => {

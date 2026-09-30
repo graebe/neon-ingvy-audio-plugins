@@ -108,6 +108,32 @@ test('pause holds the picture and says so on its button', async ({ page }) => {
   expect(await pushes(page)).toEqual([]);
 });
 
+test('the bar view follows the host tempo, and the crosshair reads the picture', async ({ page }) => {
+  await open(page, 'spectrogram');
+  const hint = page.locator('.hint-bar');
+  await expect(hint).toContainText('history13 s');
+
+  /* The mock's transport is 120 BPM in 4/4, running. */
+  await page.getByRole('switch', { name: 'bars' }).click();
+  await expect(hint).toContainText('4 bars · 120 BPM');
+  await page.getByRole('combobox', { name: 'Bars' }).selectOption({ value: '0' });
+  await expect(hint).toContainText('1 bar · 120 BPM');
+  /* A view setting: the plugin is not told. */
+  expect(await pushes(page)).toEqual([]);
+
+  /* Over the picture the three readouts say where the pointer is -- in the
+   * bar view the time is a position, "bar:beat" -- and away from it, "—". */
+  const values = page.locator('.xh-val');
+  const box = await page.locator('.spectro').boundingBox();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  await expect(values.nth(0)).toHaveText(/^\d+(\.\d)? k?Hz$/);
+  await expect(page.locator('.xh-key').nth(1)).toHaveText('pos');
+  await expect(values.nth(1)).toHaveText(/^\d+:\d\.\d$/);
+  await expect(values.nth(2)).toHaveText(/dB$/);
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height + 60);
+  await expect(values.nth(0)).toHaveText('—');
+});
+
 test('the height is re-sent after a viewport resize', async ({ page }) => {
   await open(page, 'spectrogram');
   await expect.poll(() => texts(page, SHELL.height)).toEqual([String(H)]);
