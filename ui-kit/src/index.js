@@ -84,6 +84,8 @@ export { Well, Axis, band, INSET, CAPTION } from './components/Plot.jsx';
 export { buildLut, readStops, readRgb, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
 
 export { startDrag } from './lib/drag.js';
+/* The latest value per key, sent once a frame: for drags that message. */
+export { createCoalescer } from './lib/coalesce.js';
 export {
   setParam, beginGesture, endGesture, sendMessage, onParam, onMessage, onBytes,
 } from './lib/iplug.js';
