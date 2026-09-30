@@ -7,6 +7,7 @@
 #include "shell_state.h"
 #include "Wire.h"
 #include "IPlug_include_in_plug_src.h"
+#include "shell_denormals.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -315,6 +316,10 @@ void TranceGate::RenderGate(const char* state)
 
 void TranceGate::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
+  /* No denormals for the length of the block; the host's mode comes back on
+   * the way out. shell_denormals.h says why. */
+  const shell::ScopedFlushDenormals ftz;
+
   const int nOut = NOutChansConnected();
   if (!mShell || nFrames <= 0 || nOut <= 0) return;
 

@@ -5,6 +5,7 @@
 #include "ListenIn.h"
 
 #include "IPlug_include_in_plug_src.h"
+#include "shell_denormals.h"
 #include "Wire.h"
 
 #include <algorithm>
@@ -158,6 +159,10 @@ void ListenIn::OnParamChange(int paramIdx)
 
 void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
+  /* No denormals for the length of the block; the host's mode comes back on
+   * the way out. shell_denormals.h says why. */
+  const shell::ScopedFlushDenormals ftz;
+
   const int nIn = NInChansConnected();
   const int nOut = NOutChansConnected();
 

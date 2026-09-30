@@ -4,6 +4,7 @@
  */
 #include "SideChain.h"
 #include "IPlug_include_in_plug_src.h"
+#include "shell_denormals.h"
 #include "Wire.h"
 #include "Params.h"
 
@@ -193,6 +194,10 @@ void SideChain::ProcessMidiMsg(const IMidiMsg& msg)
 
 void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
+  /* No denormals for the length of the block; the host's mode comes back on
+   * the way out. shell_denormals.h says why. */
+  const shell::ScopedFlushDenormals ftz;
+
   const int nOut = NOutChansConnected();
   if (!mShell || nFrames <= 0 || nOut <= 0) return;
   const int cap = int(std::min(mL.size(), mR.size()));

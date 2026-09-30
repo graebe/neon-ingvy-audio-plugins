@@ -76,6 +76,12 @@ target_include_directories(shell_state PRIVATE
 target_link_libraries(shell_state PRIVATE shell_engine)
 add_test(NAME shell_state COMMAND shell_state)
 
+# THE AUDIO THREAD'S FLUSH-TO-ZERO GUARD, which all four ProcessBlocks open with.
+add_executable(shell_denormals shell_denormals.cpp)
+target_include_directories(shell_denormals PRIVATE ${DOCTEST_DIR})
+target_link_libraries(shell_denormals PRIVATE shell_engine)
+add_test(NAME shell_denormals COMMAND shell_denormals)
+
 # -------------------------------------------------------------- Spectrogram
 
 add_executable(spectro_wire spectro_wire.cpp
