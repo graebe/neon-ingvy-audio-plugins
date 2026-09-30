@@ -35,8 +35,11 @@ export function Well(props) {
       <rect x="0.5" y="0.5" width={props.w - 1} height={props.h - 1}
             fill="var(--bg-000)" stroke="var(--line-100)" />
       {props.children}
+      {/* `well-caption` as well as `plot-caption`, so the caption is reachable
+        * on its own: an Axis's tick labels carry plot-caption too and come
+        * EARLIER in document order. */}
       {props.caption
-        && <text class="plot-caption t-hint" x={INSET} y="11">{props.caption}</text>}
+        && <text class="plot-caption well-caption t-hint" x={INSET} y="11">{props.caption}</text>}
     </svg>
   );
 }

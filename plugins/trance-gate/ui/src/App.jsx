@@ -14,7 +14,7 @@ import { createParams } from '@ultraviolet/ui/params';
 import { MSG, NUM_PARAMS } from './lib/msg.js';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
-import { EnvelopePlot } from './lib/Plots.jsx';
+import { EnvelopePlot } from './lib/EnvelopePlot.jsx';
 import { Panels } from './lib/Panels.jsx';
 import { SettingsRow } from './lib/SettingsRow.jsx';
 import { Band } from './lib/Band.jsx';
