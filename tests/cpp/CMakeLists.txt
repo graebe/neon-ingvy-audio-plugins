@@ -179,7 +179,9 @@ add_executable(spectro_state spectro_state.cpp
 target_include_directories(spectro_state PRIVATE
     ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/spectrogram ${NI_SHARED}
     ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
-target_link_libraries(spectro_state PRIVATE shell_engine)
+# spectro_engine for the receiver the Session tests drive; it carries the
+# shell's C ABI too (one Rust archive per binary -- see tests/CMakeLists.txt).
+target_link_libraries(spectro_state PRIVATE spectro_engine shell_engine)
 add_test(NAME spectro_state COMMAND spectro_state)
 
 # All of them quick: each is a doctest binary over code lifted out of a plugin,

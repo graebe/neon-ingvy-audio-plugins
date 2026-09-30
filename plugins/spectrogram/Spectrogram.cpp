@@ -18,8 +18,20 @@ static void FreeReceiver(void* r)
   srecv_free(static_cast<srecv_t*>(r));
 }
 
+/* What a new instance looks at: this track alone, the full range, and the
+ * clash settings the receiver opens with. */
+static spectro::state::Fields Opening()
+{
+  spectro::state::Fields f;
+  f.view.assign(1, 0);
+  f.rangeLo = SPECTRO_F_MIN;
+  f.rangeHi = SPECTRO_F_MAX;
+  return f;
+}
+
 Spectrogram::Spectrogram(const InstanceInfo& info)
 : ni::WebPlugin(info, MakeConfig(kNumParams, kNumPresets), {"nispectrogram", __FILE__})
+, mSession(Opening())
 {
   /* Configured for real once the host has named a rate: see ResetAudio. */
   mRecv = srecv_new(48000.f, 8192, 1024, SPECTRO_BANDS,
@@ -35,8 +47,6 @@ Spectrogram::Spectrogram(const InstanceInfo& info)
   mSum.assign(span, 0);
   mClash.assign(span, 0);
   mPayload.reserve(span + 32);
-  /* The picture opens on this track alone. */
-  mView.assign(1, 0);
 }
 
 Spectrogram::~Spectrogram()
@@ -47,25 +57,47 @@ Spectrogram::~Spectrogram()
   mRecv = nullptr;
 }
 
-/* Main thread only: it opens and closes readers, which allocates and mmaps. */
-void Spectrogram::ApplySources()
+/* Main thread only: it opens and closes readers, which allocates and mmaps,
+ * and waits for the analysis thread to adopt the change. */
+void Spectrogram::ApplySources(const std::vector<unsigned int>& slots)
 {
   if (mRecv)
-    srecv_set_sources(mRecv, mSources.empty() ? nullptr : mSources.data(),
-                      int(mSources.size()));
+    srecv_set_sources(mRecv, slots.empty() ? nullptr : slots.data(), int(slots.size()));
+}
+
+void Spectrogram::ApplyClash(float floorDb, float balanceDb)
+{
+  if (mRecv)
+    srecv_set_clash(mRecv, floorDb, balanceDb);
+}
+
+/* The engine refuses an undrawable range and clamps f_max to Nyquist, so the
+ * axis goes back as the engine has it. */
+void Spectrogram::ApplyRange(float lo, float hi)
+{
+  if (!mRecv)
+    return;
+  srecv_set_range(mRecv, lo, hi);
+  SendAxis();
 }
 
 /*
  * THE RECEIVER IS REBUILT WHERE IT IS DRAINED. The window is the engine's pick
- * for the rate, and the selection and clash settings survive the rebuild -- the
- * buses are reopened against the new rate, which is also where one that does
- * not match it starts being refused.
+ * for the rate, and the session survives the rebuild -- the buses are reopened
+ * against the new rate, which is also where one that does not match it starts
+ * being refused. Between rebuilds this is where a state load, recorded on the
+ * host's thread, reaches the receiver.
  */
 void Spectrogram::ServiceReceiver()
 {
   shell_handoff_collect(mRecvLend);
   if (!mRecvStale.load(std::memory_order_acquire))
+  {
+    /* A load changes what an open editor shows, not only the receiver. */
+    if (mSession.Service(*this) && EditorIsOpen())
+      SendState();
     return;
+  }
 
   const float sr = mRecvRate.load(std::memory_order_relaxed);
   const int fftSize = spectro_pick_fft_size(sr);
@@ -74,14 +106,14 @@ void Spectrogram::ServiceReceiver()
                              SPECTRO_F_MIN, SPECTRO_F_MAX, SPECTRO_DB_FLOOR, SPECTRO_DB_CEIL);
   if (!fresh)
     return;
-  srecv_set_clash(fresh, mClashFloorDb, mClashBalanceDb);
-  srecv_set_range(fresh, mRangeLo, mRangeHi);
 
   /* The old one is freed -- its worker joined -- once the audio thread has let
    * go of it. */
   shell_handoff_set(mRecvLend, fresh);
   mRecv = fresh;
-  ApplySources();
+  /* Everything, to the new receiver: its sources, its clash, its range and
+   * the axis that range makes. */
+  const bool loaded = mSession.Service(*this, true);
   /* Started once its sources are open, so choosing them waits for no thread. */
   srecv_start(fresh);
   /* Cleared last: the audio thread feeds the new receiver only now -- unless
@@ -89,9 +121,8 @@ void Spectrogram::ServiceReceiver()
   if (mRecvRate.load(std::memory_order_relaxed) == sr)
     mRecvStale.store(false, std::memory_order_release);
   shell_handoff_collect(mRecvLend);
-
-  /* The axis just changed under an editor that may be open. */
-  SendAxis();
+  if (loaded && EditorIsOpen())
+    SendState();
 }
 
 /*
@@ -222,9 +253,10 @@ void Spectrogram::SendPicture()
   const int bands = srecv_bands(mRecv);
   if (bands <= 0 || bands > SPECTRO_BANDS)
     return;
+  const spectro::state::Fields& look = mSession.Applied();
   int clashCols = 0;
-  const int cols = srecv_frame(mRecv, mView.data(), int(mView.size()),
-                               mClashOn ? mCmpA : -1, mClashOn ? mCmpB : -1,
+  const int cols = srecv_frame(mRecv, look.view.data(), int(look.view.size()),
+                               look.clashOn ? look.cmpA : -1, look.clashOn ? look.cmpB : -1,
                                mSum.data(), mClash.data(), kMaxColsPerTick, &clashCols);
   if (cols > 0)
   {
@@ -250,8 +282,9 @@ void Spectrogram::SendSources()
 
 void Spectrogram::SendState()
 {
-  SendText(kMsgState, spectro::wire::encode_state(mRangeLo, mRangeHi, mView, mCmpA, mCmpB,
-                                                  mClashOn, mClashFloorDb, mClashBalanceDb));
+  const spectro::state::Fields& f = mSession.Applied();
+  SendText(kMsgState, spectro::wire::encode_state(f.rangeLo, f.rangeHi, f.view, f.cmpA, f.cmpB,
+                                                  f.clashOn, f.clashFloorDb, f.clashBalanceDb));
 }
 
 void Spectrogram::SendAxis()
@@ -276,95 +309,74 @@ void Spectrogram::SendSync()
     mPubPpqPerCol.load(std::memory_order_relaxed), int(GetSampleRate())));
 }
 
-/* The chunk is State.cpp's: what the session was looking at, as strings. */
+/*
+ * The chunk is State.cpp's: what the session was looking at, as strings.
+ *
+ * NEITHER TOUCHES THE RECEIVER, because a host picks the thread: auval's stress
+ * test loads state on a thread of its own while the main thread services the
+ * receiver, and choosing sources from there once left one of the two waiting
+ * forever for the other's change. A load is recorded in the session and the
+ * main thread applies it on its next idle tick; a save reads the session, so it
+ * writes a load the main thread has not applied yet rather than what preceded
+ * it.
+ */
 bool Spectrogram::SerializeState(IByteChunk& chunk) const
 {
-  spectro::state::Fields f;
-  f.sources = mSources;
-  f.clashFloorDb = mClashFloorDb;
-  f.clashBalanceDb = mClashBalanceDb;
-  f.view = mView;
-  f.cmpA = mCmpA;
-  f.cmpB = mCmpB;
-  f.clashOn = mClashOn;
-  f.rangeLo = mRangeLo;
-  f.rangeHi = mRangeHi;
-  return spectro::state::Save(chunk, [this](IByteChunk& c) { return PutParams(c); }, f);
+  return spectro::state::Save(chunk, [this](IByteChunk& c) { return PutParams(c); },
+                              mSession.Get());
 }
 
 int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  /* What the chunk does not carry keeps its current value. */
-  spectro::state::Fields f;
-  f.sources = mSources;
-  f.clashFloorDb = mClashFloorDb;
-  f.clashBalanceDb = mClashBalanceDb;
-  f.view = mView;
-  f.cmpA = mCmpA;
-  f.cmpB = mCmpB;
-  f.clashOn = mClashOn;
-  f.rangeLo = mRangeLo;
-  f.rangeHi = mRangeHi;
-  const int pos = spectro::state::Load(
+  return mSession.Load(
     chunk, startPos,
     [this](const IByteChunk& c, int p) { return CheckParams(c, p); },
-    [this](const IByteChunk& c, int p) { return GetParams(c, p); }, f);
-  if (pos < 0)
-    return -1;
-  mSources = f.sources;
-  mClashFloorDb = f.clashFloorDb;
-  mClashBalanceDb = f.clashBalanceDb;
-  mView = f.view;
-  mCmpA = f.cmpA;
-  mCmpB = f.cmpB;
-  mClashOn = f.clashOn;
-  mRangeLo = f.rangeLo;
-  mRangeHi = f.rangeHi;
-
-  /* The selection changed underneath the receiver, so it follows. */
-  if (mRecv)
-  {
-    srecv_set_clash(mRecv, mClashFloorDb, mClashBalanceDb);
-    srecv_set_range(mRecv, mRangeLo, mRangeHi);
-    ApplySources();
-  }
-  return pos;
+    [this](const IByteChunk& c, int p) { return GetParams(c, p); });
 }
 
+/*
+ * The editor's changes go through the session like a load does, and are
+ * applied at once: this is the main thread. Only what moved reaches the
+ * receiver -- a view or a comparison is the picture's business, not its.
+ */
 bool Spectrogram::OnEditorMessage(int tag, const std::string& arg)
 {
   switch (tag)
   {
     /* The zoom, while audio runs: the engine stores a request and adopts it at
-     * its next frame, and refuses anything undrawable. The axis goes back as
-     * the engine has it -- f_max is clamped to Nyquist. */
+     * its next frame, and refuses anything undrawable. ApplyRange sends the
+     * axis back as the engine has it -- f_max is clamped to Nyquist. */
     case kMsgRange:
     {
       float lo = 0.f, hi = 0.f;
-      if (spectro::wire::parse_range(arg, lo, hi))
-      {
-        mRangeLo = lo;
-        mRangeHi = hi;
-        srecv_set_range(mRecv, lo, hi);
-        SendAxis();
-      }
-      return true;
+      if (!spectro::wire::parse_range(arg, lo, hi))
+        return true;
+      mSession.Edit([&](spectro::state::Fields& f) {
+        f.rangeLo = lo;
+        f.rangeHi = hi;
+      });
+      break;
     }
 
     case kMsgSelect:
-      mSources.clear();
-      spectro::wire::parse_slots(arg, mSources);
-      ApplySources();
-      return true;
+    {
+      std::vector<unsigned int> slots;
+      spectro::wire::parse_slots(arg, slots);
+      mSession.Edit([&](spectro::state::Fields& f) { f.sources = std::move(slots); });
+      break;
+    }
 
     /* An empty view is refused: a spectrogram showing nothing is a broken
      * plugin, not a view. */
     case kMsgView:
-      mView.clear();
-      spectro::wire::parse_channels(arg, mView);
-      if (mView.empty())
-        mView.assign(1, 0);
-      return true;
+    {
+      std::vector<int> view;
+      spectro::wire::parse_channels(arg, view);
+      if (view.empty())
+        view.assign(1, 0);
+      mSession.Edit([&](spectro::state::Fields& f) { f.view = std::move(view); });
+      break;
+    }
 
     /* Independent of the view: comparing two things not on screen is a fair
      * request. */
@@ -372,28 +384,34 @@ bool Spectrogram::OnEditorMessage(int tag, const std::string& arg)
     {
       int a = 0, b = 0;
       bool on = false;
-      if (spectro::wire::parse_compare(arg, a, b, on))
-      {
-        mCmpA = a;
-        mCmpB = b;
-        mClashOn = on;
-      }
-      return true;
+      if (!spectro::wire::parse_compare(arg, a, b, on))
+        return true;
+      mSession.Edit([&](spectro::state::Fields& f) {
+        f.cmpA = a;
+        f.cmpB = b;
+        f.clashOn = on;
+      });
+      break;
     }
 
     case kMsgClash:
     {
       float floorDb = 0.f, balanceDb = 0.f;
-      if (spectro::wire::parse_range(arg, floorDb, balanceDb))
-      {
-        mClashFloorDb = floorDb;
-        mClashBalanceDb = balanceDb;
-        srecv_set_clash(mRecv, floorDb, balanceDb);
-      }
-      return true;
+      if (!spectro::wire::parse_range(arg, floorDb, balanceDb))
+        return true;
+      mSession.Edit([&](spectro::state::Fields& f) {
+        f.clashFloorDb = floorDb;
+        f.clashBalanceDb = balanceDb;
+      });
+      break;
     }
 
     default:
       return false;
   }
+  /* A load still waiting is applied with it -- the session holds both -- and
+   * then the editor is told what it is now looking at. */
+  if (mSession.Service(*this))
+    SendState();
+  return true;
 }

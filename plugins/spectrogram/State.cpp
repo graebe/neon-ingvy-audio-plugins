@@ -172,5 +172,62 @@ int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
   return shell::state::Finish(h, pos);
 }
 
+Session::Session(const Fields& initial) : mWanted(initial), mApplied(initial) {}
+
+Fields Session::Get() const
+{
+  std::lock_guard<std::mutex> hold(mLock);
+  return mWanted;
+}
+
+/* Held across the parse: what the chunk does not carry keeps the value it had
+ * at this moment, and an Edit cannot land between the copy and the result. */
+int Session::Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
+                  const GetParams& apply)
+{
+  std::lock_guard<std::mutex> hold(mLock);
+  Fields f = mWanted;
+  const int pos = state::Load(chunk, startPos, check, apply, f);
+  if (pos < 0)
+    return -1;
+  mWanted = std::move(f);
+  mChanged = true;
+  mLoaded = true;
+  return pos;
+}
+
+void Session::Edit(const std::function<void(Fields&)>& edit)
+{
+  std::lock_guard<std::mutex> hold(mLock);
+  edit(mWanted);
+  mChanged = true;
+}
+
+bool Session::Service(Sink& sink, bool all)
+{
+  Fields next;
+  bool loaded = false;
+  {
+    std::lock_guard<std::mutex> hold(mLock);
+    if (!mChanged && !all)
+      return false;
+    next = mWanted;
+    loaded = mLoaded;
+    mChanged = false;
+    mLoaded = false;
+  }
+  /* Only what moved: choosing sources waits for the analysis thread, and a
+   * view or a comparison is not the receiver's business at all. */
+  if (all || next.sources != mApplied.sources)
+    sink.ApplySources(next.sources);
+  if (all || next.clashFloorDb != mApplied.clashFloorDb ||
+      next.clashBalanceDb != mApplied.clashBalanceDb)
+    sink.ApplyClash(next.clashFloorDb, next.clashBalanceDb);
+  if (all || next.rangeLo != mApplied.rangeLo || next.rangeHi != mApplied.rangeHi)
+    sink.ApplyRange(next.rangeLo, next.rangeHi);
+  mApplied = std::move(next);
+  return loaded;
+}
+
 } // namespace state
 } // namespace spectro

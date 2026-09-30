@@ -12,11 +12,14 @@
  * WHAT CROSSES A THREAD. ProcessAudio copies the mono sum into the receiver's
  * ring and nothing else; the receiver's own worker thread runs the transforms
  * and leaves finished columns in lock-free rings; OnIdle takes one tick's
- * picture (srecv_frame) and hands it to the WebView as bytes.
+ * picture (srecv_frame) and hands it to the WebView as bytes. The host's state
+ * calls, on whatever thread it makes them, only record what the session is
+ * looking at (State.h's Session); the main thread applies it to the receiver.
  */
 #pragma once
 
 #include "ni/WebPlugin.h"
+#include "State.h"
 #include "spectro_recv.h"
 #include "shell_handoff.h"
 
@@ -63,14 +66,15 @@ enum EMsgTags
   kMsgCompare = 100,   /* <- "<a>:<b>:<on>" -- the clash's two channels           */
 };
 
-class Spectrogram final : public ni::WebPlugin
+class Spectrogram final : public ni::WebPlugin, private spectro::state::Session::Sink
 {
 public:
   Spectrogram(const iplug::InstanceInfo& info);
   ~Spectrogram() override;
 
   /* The chosen sources, the view and the clash settings, so a session reopens
-   * looking at what it was looking at. State.cpp. */
+   * looking at what it was looking at. State.cpp. Any thread but the audio
+   * thread: neither touches the receiver. */
   bool SerializeState(iplug::IByteChunk& chunk) const override;
   int UnserializeState(const iplug::IByteChunk& chunk, int startPos) override;
 
@@ -93,10 +97,14 @@ private:
   void OnEditorReady() override;
   bool OnEditorMessage(int tag, const std::string& arg) override;
 
-  /* Main thread: replaces the receiver when ResetAudio asked for one. */
+  /* Main thread: replaces the receiver when ResetAudio asked for one, and
+   * hands it whatever the session changed since the last tick. */
   void ServiceReceiver();
-  /* Main thread (it allocates): hand the receiver the current selection. */
-  void ApplySources();
+  /* Session::Sink -- the receiver calls, main thread only (they allocate, and
+   * choosing sources waits for the analysis thread). */
+  void ApplySources(const std::vector<unsigned int>& slots) override;
+  void ApplyClash(float floorDb, float balanceDb) override;
+  void ApplyRange(float lo, float hi) override;
   void SendPicture();
   /* The frequency scale. The log mapping is the analyzer's, never the UI's. */
   void SendAxis();
@@ -127,20 +135,14 @@ private:
   /* The column payload, reused so OnIdle does not allocate every tick. */
   std::string mPayload;
 
-  /* WHAT THE SESSION IS LOOKING AT: saved state, not parameters. Channel 0 is
-   * this track. Main thread. */
-  std::vector<unsigned int> mSources;
-  std::vector<int> mView;
-  int mCmpA = 0;
-  int mCmpB = 1;
-  bool mClashOn = false;
-  float mClashFloorDb = -60.0f;
-  float mClashBalanceDb = 12.0f;
-
-  /* The zoom, as the editor asked for it: kept here so a rebuilt receiver, a
-   * reopened editor and a saved session all get it back. */
-  float mRangeLo = SPECTRO_F_MIN;
-  float mRangeHi = SPECTRO_F_MAX;
+  /*
+   * WHAT THE SESSION IS LOOKING AT: the sources, the view, the comparison, the
+   * clash and the zoom -- saved state, not parameters. Channel 0 is this track.
+   * Written by the host's state calls and the editor, applied to the receiver
+   * by the main thread only; a rebuilt receiver, a reopened editor and a saved
+   * session all get it back from here.
+   */
+  spectro::state::Session mSession;
 
   /* The source list's slow timer. */
   int mSourceTick = 0;
