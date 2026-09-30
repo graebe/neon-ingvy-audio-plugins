@@ -182,10 +182,10 @@ export function Scope(props) {
         * but what it means here is "the picture is current up to here and stale
         * after it", which is the one thing a static axis cannot say on its own.
         */}
-      {props.moving && (props.head ?? -1) >= 0 && props.scope?.length > 1 && (
+      {props.moving && (props.head ?? -1) >= 0 && props.scope?.count > 1 && (
         <line class="sweep" stroke="var(--uv)" opacity="0.7"
-              x1={x01(props.head / props.scope.length)}
-              x2={x01(props.head / props.scope.length)}
+              x1={x01(props.head / props.scope.count)}
+              x2={x01(props.head / props.scope.count)}
               y1={top} y2={bot()} />
       )}
       {/* Milliseconds into the cycle, which is what the axis now is. The same

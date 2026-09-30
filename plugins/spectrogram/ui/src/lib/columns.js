@@ -4,53 +4,37 @@
  *
  * Plain JavaScript in its own file rather than helpers inside App.jsx, because
  * these three are the only things in the editor that can be WRONG rather than
- * merely ugly -- an off-by-one in the hex decode is a picture shifted by a band,
+ * merely ugly -- an off-by-one in the decode is a picture shifted by a band,
  * which nobody will spot by eye. node's own test runner can import this; it
  * cannot import JSX.
  */
-/*
- * THE HEX DECODE, and it is a nibble table rather than parseInt because this runs
- * on every column of every frame. '0'..'9' are 48..57 and 'A'..'F' are 65..70;
- * the plugin writes upper case only (see kHex in Spectrogram.cpp).
- */
-const nibble = (code) => (code <= 57 ? code - 48 : code - 55);
+import { readHeader, intField } from '@ultraviolet/ui/capture';
 
 /**
- * "<ch>:<cols>:<bands>:<hex>" -> { ch, count, bands, data } or null.
+ * "<ch>:<cols>:<bands>:" then cols x bands raw bytes -> { ch, count, bands,
+ * data } or null. `data` is a view into the payload, which the bridge decoded
+ * from base64 once and does not reuse.
  *
  * THE CHANNEL LEADS because a receiver sends one message PER SOURCE rather than
  * one frame holding all of them -- the payload budget is a product, and three
  * channels at the full catch-up budget overflows the transport's cap. Channel 0
  * is always the track the plugin sits on.
  */
-export function decodeColumns(text) {
-  if (typeof text !== 'string') return null;
-  const a = text.indexOf(':');
-  const b = text.indexOf(':', a + 1);
-  const c = text.indexOf(':', b + 1);
-  if (a < 1 || b < a + 2 || c < b + 2) return null;
-
-  const ch = Number.parseInt(text.slice(0, a), 10);
-  const count = Number.parseInt(text.slice(a + 1, b), 10);
-  const bands = Number.parseInt(text.slice(b + 1, c), 10);
+export function decodeColumns(bytes) {
+  const h = readHeader(bytes, 3);
+  if (!h) return null;
+  const [ch, count, bands] = h.fields.map(intField);
   if (!Number.isInteger(ch) || !Number.isInteger(count) || !Number.isInteger(bands)) return null;
   if (ch < 0 || count < 1 || bands < 1) return null;
-
-  const hex = text.slice(c + 1);
-  const bytes = count * bands;
+  const n = count * bands;
   /*
    * A SHORT PAYLOAD IS DROPPED WHOLE RATHER THAN DRAWN IN PART. The transport
    * truncates rather than fails (see kMaxJSString), and a truncated batch drawn
    * anyway would put a column of garbage in the middle of the picture -- which
    * reads as a real transient and cannot be told from one.
    */
-  if (hex.length < bytes * 2) return null;
-
-  const data = new Uint8Array(bytes);
-  for (let i = 0; i < bytes; i++) {
-    data[i] = (nibble(hex.charCodeAt(i * 2)) << 4) | nibble(hex.charCodeAt(i * 2 + 1));
-  }
-  return { ch, count, bands, data };
+  if (bytes.length - h.offset < n) return null;
+  return { ch, count, bands, data: bytes.subarray(h.offset, h.offset + n) };
 }
 
 /** "20.6,21.4,..." -> Float32Array of band centres, or null. */

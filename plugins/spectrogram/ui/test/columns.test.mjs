@@ -2,12 +2,13 @@
  * The wire, decoded: the three things in the editor that can be WRONG.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
- * An off-by-one in the hex decode is a picture shifted by one band, and a
+ * An off-by-one in the decode is a picture shifted by one band, and a
  * spectrogram shifted by one band still looks exactly like a spectrogram. Same
  * for the axis: a scale drawn half a band out is unfalsifiable by eye. So these
  * are the parts with an oracle, and this is it.
  */
 import { test } from 'node:test';
+import { decodeBase64 } from '../../../../ui-kit/src/lib/iplug.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -60,17 +61,13 @@ const CASES = readFileSync(TABLE, 'utf8')
 
 /* Still needed for the malformed-payload cases below, which are about what the
  * decoder REFUSES and so have no encoder side to generate them. */
-const encode = (columns, bands, ch = 0) => {
-  const hex = columns
-    .flat()
-    .map((b) => b.toString(16).toUpperCase().padStart(2, '0'))
-    .join('');
-  return `${ch}:${columns.length}:${bands}:${hex}`;
-};
+const ascii = (s) => Uint8Array.from(s, (c) => c.charCodeAt(0));
+const encode = (columns, bands, ch = 0) =>
+  Uint8Array.from([...ascii(`${ch}:${columns.length}:${bands}:`), ...columns.flat()]);
 
 test('the fixture is the shape it claims to be', () => {
   /* A shrinking fixture could quietly stop testing the cases that matter --
-   * the 9 -> A nibble boundary, and a batch of more than one column. */
+   * every byte value, and a batch of more than one column. */
   assert.ok(CASES.length >= 7, `only ${CASES.length} cases in ${TABLE}`);
   assert.ok(CASES.some((c) => c.bands === 256), 'no case covering every byte value');
   assert.ok(CASES.some((c) => c.cols > 1), 'no multi-column case, so column order is untested');
@@ -82,16 +79,18 @@ test('the fixture is the shape it claims to be', () => {
 test('the decoder reproduces exactly what the plugin encoded', () => {
   /*
    * THE ONE THAT REPLACED THE TRANSCRIPTION. Every payload here came out of
-   * the C++ the plugin actually runs, so an off-by-one in either the nibble
+   * the C++ the plugin actually runs, so an off-by-one in either the byte
    * map or the column order is a failure rather than a shared assumption.
    */
   for (const { cols, bands, bytes, encoded } of CASES) {
-    const got = decodeColumns(encoded);
+    /* The table carries the payload as the WebView delivers it -- base64 --
+     * and the bridge's own decoder turns it into bytes, as it does live. */
+    const got = decodeColumns(decodeBase64(encoded));
     assert.ok(got, `rejected a payload the plugin produced: ${encoded.slice(0, 40)}`);
     assert.equal(got.count, cols);
     assert.equal(got.bands, bands);
     assert.deepEqual([...got.data], bytes,
-      `decoded ${cols}x${bands} wrongly -- the nibble map or the column order`);
+      `decoded ${cols}x${bands} wrongly -- a byte or the column order`);
   }
 });
 
@@ -108,9 +107,9 @@ test('a batch of columns round-trips', () => {
   assert.deepEqual([...got.data], columns.flat());
 });
 
-test('every byte value survives the nibble table', () => {
-  /* 0..255 as one 256-band column: the decode is a hand-written nibble map, and
-   * the boundary it can get wrong is 9 -> A (char codes 57 -> 65). */
+test('every byte value survives, zero and past 0x7F included', () => {
+  /* 0..255 as one 256-band column: a 0 byte ends a C string, and past 0x7F a
+   * byte decoded as UTF-8 text is mangled. */
   const all = [Array.from({ length: 256 }, (_, i) => i)];
   const got = decodeColumns(encode(all, 256));
   assert.deepEqual([...got.data], all[0]);
@@ -120,13 +119,17 @@ test('a truncated payload is dropped whole', () => {
   /* The transport truncates rather than failing, and half a batch drawn anyway
    * puts a column of garbage in the middle of the picture -- which reads as a
    * real transient and cannot be told from one. */
-  const text = encode([[1, 2, 3, 4]], 4);
-  assert.equal(decodeColumns(text.slice(0, text.length - 2)), null);
+  const bytes = encode([[1, 2, 3, 4]], 4);
+  assert.equal(decodeColumns(bytes.subarray(0, bytes.length - 1)), null);
 });
 
 test('nonsense is rejected rather than half-read', () => {
-  for (const bad of ['', ':', '1:', '1:4', '0:1:4', 'x:1:4:00', '0:x:4:00', '0:0:4:',
-                     '0:1:0:', '0:-1:4:0000', '-1:1:4:0000', null, undefined, 42]) {
+  for (const bad of ['', ':', '1:', '1:4', '0:1:4', 'x:1:4:\u0000', '0:x:4:\u0000', '0:0:4:',
+                     '0:1:0:', '0:-1:4:\u0000\u0000', '-1:1:4:\u0000\u0000']) {
+    assert.equal(decodeColumns(ascii(bad)), null, `accepted ${JSON.stringify(bad)}`);
+  }
+  /* Text is not bytes: the bridge hands this tag a Uint8Array or nothing. */
+  for (const bad of ['0:1:1:A', null, undefined, 42]) {
     assert.equal(decodeColumns(bad), null, `accepted ${JSON.stringify(bad)}`);
   }
 });

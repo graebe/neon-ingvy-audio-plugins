@@ -98,9 +98,9 @@ export default function App() {
   const running = createMemo(() => sync()?.running ?? true);
   const nBars = () => BARS[barCount()] ?? 4;
 
-  const onColumns = (text) => {
+  const onColumns = (bytes) => {
     /* NOT GATED ON `paused`: the freeze is a repaint gate in the canvas. */
-    const decoded = decodeColumns(text);
+    const decoded = decodeColumns(bytes);
     if (!decoded) return;
     lastSeen = performance.now();
     setLive(true);
@@ -131,19 +131,22 @@ export default function App() {
 
   const bridge = useEditorBridge({
     onMessage: (tag, text) => {
-      if (tag === MSG.cols) onColumns(text);
-      else if (tag === MSG.state) applyState(text);
+      if (tag === MSG.state) applyState(text);
       else if (tag === MSG.axis) setAxis(decodeAxis(text));
       else if (tag === MSG.sync) {
         const t = decodeSync(text);
         if (t) setSync(t);
       } else if (tag === MSG.sources) setSources(decodeSources(text));
+    },
+    /* The columns and the clash mask are BYTES, decoded from base64 once. */
+    bytes: {
+      [MSG.cols]: onColumns,
       /* The mask rides the next column batch, so the orange and the picture
        * under it can never be a frame apart. */
-      else if (tag === MSG.clashCols) {
-        const m = decodeColumns(text);
+      [MSG.clashCols]: (bytes) => {
+        const m = decodeColumns(bytes);
         if (m) pendingClash = m;
-      }
+      },
     },
   });
 

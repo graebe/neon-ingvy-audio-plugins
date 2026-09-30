@@ -726,7 +726,7 @@ int main(void) {
         tg_core_get_param(c, "state", state, sizeof(state));
         const int n = tg_core_render_gate(state, gate, sizeof(gate));
         check("a patch renders a curve", n > 0 && strncmp(gate, "16:64:", 6) == 0);
-        check("...one byte of hex per sample of a cycle", n == 6 + 16 * 64 * 2);
+        check("...one raw byte per sample of a cycle", n == 6 + 16 * 64);
         check("...and a buffer too small is refused, not truncated",
               tg_core_render_gate(state, gate, 64) == -1);
         check("nothing to draw is -1", tg_core_render_gate("", gate, sizeof(gate)) == -1);

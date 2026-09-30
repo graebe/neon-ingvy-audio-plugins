@@ -63,39 +63,3 @@ export function decodeEngineParams(text) {
   };
 }
 
-/**
- * The capture: "<cols>:<cycleMs>:<head>:<4 hex bytes a column>", column k at
- * pattern phase k/cols -> { cols: [[dryLo, dryHi, wetLo, wetHi]], windowMs,
- * head } or null.
- */
-export function decodeScope(text) {
-  const f = String(text).split(':');
-  if (f.length < 4) return null;
-  const n = Math.max(0, Math.min(1024, parseInt(f[0], 10) || 0));
-  const windowMs = parseFloat(f[1]) || 0;
-  const head = Math.max(0, Math.min(n - 1, parseInt(f[2], 10) || 0));
-  const hex = f[3];
-  const cols = new Array(n);
-  for (let i = 0; i < n; i++) {
-    const o = i * 8;
-    const v = (k) => (parseInt(hex.substr(o + k * 2, 2), 16) || 0) / 127.5 - 1;
-    cols[i] = [v(0), v(1), v(2), v(3)];
-  }
-  return { cols, windowMs, head };
-}
-
-/**
- * The gate across one cycle as the engine applies it:
- * "<length>:<perStep>:<hex>", a byte per sample -> { length, perStep, values }.
- */
-export function decodeGate(text) {
-  const f = String(text).split(':');
-  if (f.length < 3) return null;
-  const length = Math.max(1, parseInt(f[0], 10) || 1);
-  const perStep = Math.max(1, parseInt(f[1], 10) || 1);
-  const hex = f[2];
-  const n = Math.min(length * perStep, hex.length >> 1);
-  const values = new Array(n);
-  for (let i = 0; i < n; i++) values[i] = (parseInt(hex.substr(i * 2, 2), 16) || 0) / 255;
-  return { length, perStep, values };
-}

@@ -18,8 +18,6 @@ std::string encode_columns(const unsigned char* cols, int nCols, int bands, int 
   if (!cols || nCols <= 0 || bands <= 0 || ch < 0)
     return std::string();
 
-  static const char* const kHex = "0123456789ABCDEF";
-
   std::string out;
   char head[32];
   snprintf(head, sizeof head, "%d:%d:%d:", ch, nCols, bands);
@@ -28,14 +26,8 @@ std::string encode_columns(const unsigned char* cols, int nCols, int bands, int 
   /* Reserved rather than grown: this runs once per editor frame, and the size
    * is known exactly before the first character is written. */
   const int bytes = nCols * bands;
-  out.reserve(out.size() + size_t(bytes) * 2);
-
-  for (int i = 0; i < bytes; i++)
-  {
-    const unsigned char b = cols[i];
-    out += kHex[(b >> 4) & 0xF];
-    out += kHex[b & 0xF];
-  }
+  out.reserve(out.size() + size_t(bytes));
+  out.append(reinterpret_cast<const char*>(cols), size_t(bytes));
 
   return out;
 }

@@ -20,6 +20,14 @@
  * The reply to kMsgReady is where the values actually arrive.
  */
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+/* The scope and the gate travel as an ASCII header then RAW bytes; the mock
+ * builds them as "<header>:<hex>" for readability and packs them here. */
+const binary = (text) => {
+  const at = text.lastIndexOf(':') + 1;
+  let bin = text.slice(0, at);
+  for (let i = at; i < text.length; i += 2) bin += String.fromCharCode(parseInt(text.substr(i, 2), 16));
+  return btoa(bin);
+};
 
 /* 12 normalised values in EParams order, and their display strings. */
 const Q0 = new URLSearchParams(location.search);
@@ -156,13 +164,13 @@ const pushAll = () => {
   DISPLAY.forEach((d, i) => globalThis.SAMFD?.(i, d.length, b64(d)));
   globalThis.SAMFD?.(64, 0, b64(UI_STATE));
   globalThis.SAMFD?.(65, 0, b64(PARAMS));
-  globalThis.SAMFD?.(66, 0, b64(scope(roll)));
-  globalThis.SAMFD?.(105, 0, b64(gateCurve()));
+  globalThis.SAMFD?.(66, 0, binary(scope(roll)));
+  globalThis.SAMFD?.(105, 0, binary(gateCurve()));
 };
 
 /* The plugin pushes the window every idle tick; so does this, or the scope
  * would look live only because nothing had asked it to change. */
-setInterval(() => { roll += 3; globalThis.SAMFD?.(66, 0, b64(scope(roll))); }, 50);
+setInterval(() => { roll += 3; globalThis.SAMFD?.(66, 0, binary(scope(roll))); }, 50);
 
 /* THE RACE, REPRODUCED: this runs now, before the editor exists, and every one
  * of these calls goes nowhere. It is here to be dropped. */

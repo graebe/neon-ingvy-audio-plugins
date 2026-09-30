@@ -20,7 +20,8 @@ import { SettingsRow } from './lib/SettingsRow.jsx';
 import { Band } from './lib/Band.jsx';
 import { fadeWeights } from './lib/fade.js';
 import { setOrder } from './lib/steps.js';
-import { decodeUi, decodeEngineParams, decodeScope, decodeGate } from './lib/readouts.js';
+import { decodeUi, decodeEngineParams } from './lib/readouts.js';
+import { decodeScope, decodeGate } from './lib/capture.js';
 import { copyToClipboard } from './lib/clipboard.js';
 
 /* Mirrored by PLUG_WIDTH in config.h: 32 + 760 + 32, the pads decide the 760. */
@@ -42,7 +43,9 @@ export default function App() {
                                      cursor: 0 });
   /* The engine's `params` readout, in its own units. */
   const [params, setParams] = createSignal(null);
-  const [scope, setScope] = createSignal([]);
+  /* The Signal capture, decoded into one reused buffer -- so the signal never
+   * compares equal to itself and every frame repaints. */
+  const [scope, setScope] = createSignal(null, { equals: false });
   const [scopeWindow, setScopeWindow] = createSignal(1000);
   /* Where the Signal sweep is writing: a mark, not an origin. */
   const [scopeHead, setScopeHead] = createSignal(0);
@@ -70,18 +73,23 @@ export default function App() {
       } else if (tag === MSG.params) {
         const p = decodeEngineParams(msg);
         if (p) setParams(p);
-      } else if (tag === MSG.scope) {
-        const s = decodeScope(msg);
-        if (!s) return;
-        setScopeWindow(s.windowMs);
-        setScopeHead(s.head);
-        setScope(s.cols);
-      } else if (tag === MSG.gate) {
-        const g = decodeGate(msg);
-        if (g) setGate(g);
       } else if (tag === MSG.patch) {
         copyToClipboard(msg);
       }
+    },
+    /* The capture and the gate are BYTES, decoded from base64 once. */
+    bytes: {
+      [MSG.scope]: (bytes) => {
+        const s = decodeScope(bytes, scope()?.data);
+        if (!s) return;
+        setScopeWindow(s.windowMs);
+        setScopeHead(s.head);
+        setScope(s);
+      },
+      [MSG.gate]: (bytes) => {
+        const g = decodeGate(bytes);
+        if (g) setGate(g);
+      },
     },
   });
 

@@ -183,19 +183,18 @@ void SideChain::OnEditorIdle()
 }
 
 /*
- * "<cols>:" a seen flag per column ":" then five hex bytes a column -- dry
- * low/high, wet low/high, the gain. The flags are how the editor tells a
- * column the sweep has not reached from one holding silence.
+ * "<cols>:" then six raw bytes a column -- seen (0 or 1), dry low/high, wet
+ * low/high, the gain. The flag is how the editor tells a column the sweep has
+ * not reached from one holding silence.
  */
 void SideChain::SendScope()
 {
-  char scope[kScopeCols * 11 + 64];
+  char scope[kScopeCols * 6 + 32];
   char* p = scope + snprintf(scope, sizeof scope, "%d:", kScopeCols);
   for (int i = 0; i < kScopeCols; i++)
-    *p++ = mScope.Seen(i) ? '1' : '0';
-  *p++ = ':';
-  for (int i = 0; i < kScopeCols; i++)
+  {
+    *p++ = mScope.Seen(i) ? 1 : 0;
     p = mScope.PutColumn(p, i, true);
-  *p = '\0';
+  }
   SendFramed(kMsgScope, scope, int(p - scope));
 }

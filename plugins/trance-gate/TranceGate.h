@@ -28,7 +28,7 @@ enum EMsgTags
 {
   kMsgUiState = 64,       /* -> the engine's `ui` readout, once a frame          */
   kMsgParams = 65,        /* -> the `params` readout (fifteen values + width_ms) */
-  kMsgScope = 66,         /* -> "<cols>:<cycleMs>:<head>:<hex>", the capture     */
+  kMsgScope = 66,         /* -> "<cols>:<cycleMs>:<head>:" + 4 bytes a column    */
   kMsgPatch = 67,         /* <-> the state blob, for copy and paste              */
   kMsgSetStep = 96,       /* <- "<index>:<0 off|1 on|2 tie>"                     */
   kMsgSetDepth = 97,      /* <- "<index>:<0..1>"                                 */

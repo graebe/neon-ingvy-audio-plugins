@@ -220,17 +220,16 @@ void TranceGate::SendGate(bool force)
 }
 
 /*
- * "<cols>:<cycleMs>:<head>:" and four hex bytes a column, every frame, in
+ * "<cols>:<cycleMs>:<head>:" and four raw bytes a column, every frame, in
  * place: column k is phase k / kScopeCols and `head` marks the write point.
  */
 void TranceGate::SendScope()
 {
-  char scope[kScopeCols * 8 + 48];
+  char scope[kScopeCols * 4 + 48];
   char* p = scope + snprintf(scope, sizeof scope, "%d:%d:%d:", kScopeCols,
                              int(tg_shell_cycle_ms(mShell)), mScope.Head());
   for (int i = 0; i < kScopeCols; i++)
     p = mScope.PutColumn(p, i, false);
-  *p = '\0';
   SendFramed(kMsgScope, scope, int(p - scope));
 }
 

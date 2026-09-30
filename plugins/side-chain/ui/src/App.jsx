@@ -14,7 +14,7 @@ import { createParams, ParamKnob, ParamSelect } from '@ultraviolet/ui/params';
 import { MSG, P, NUM_PARAMS, shapeFromNorm } from './lib/msg.js';
 import { Shaper, SPAN } from './lib/Shaper.jsx';
 import { bounds as boundsOf } from './lib/shape.js';
-import { decodeScope } from './lib/scope.js';
+import { decodeScope, COL, STRIDE } from './lib/scope.js';
 import { NOTE_NAMES, hintFor } from './lib/text.js';
 
 /* Mirrored by PLUG_WIDTH / PLUG_HEIGHT in config.h. */
@@ -52,8 +52,9 @@ export default function App() {
     source: 0, rate: 4, msCycle: 0, sweep: 0, advancing: 0,
     fires: 0, duck: 0, key: 0, connected: 0, stage: 0, phase: 0,
   });
-  const [scope, setScope] = createSignal(null);
-  const [seenBits, setSeenBits] = createSignal('');
+  /* The capture, decoded into one reused buffer -- so it never compares equal
+   * to itself and every frame repaints. */
+  const [scope, setScope] = createSignal(null, { equals: false });
   const [stageMs, setStageMs] = createSignal([0, 0, 0, 0]);
   const [buses, setBuses] = createSignal({ key: 0, isMain: 0 });
 
@@ -85,15 +86,15 @@ export default function App() {
           setBuses({ key: +f[0] || 0, isMain: +f[1] || 0 });
           return;
         }
-        case MSG.scope: {
-          const s = decodeScope(text);
-          if (!s) return;
-          setSeenBits(s.seen);
-          setScope(s.cols);
-          return;
-        }
         default:
       }
+    },
+    /* The capture is BYTES, decoded from base64 once. */
+    bytes: {
+      [MSG.scope]: (bytes) => {
+        const s = decodeScope(bytes, scope()?.data);
+        if (s) setScope(s);
+      },
     },
   });
 
@@ -133,15 +134,16 @@ export default function App() {
     onCleanup(() => clearInterval(t));
   });
 
-  const seen = (i) => seenBits().charCodeAt(i) === 49; /* '1' */
+  const seen = (i) => scope()?.data[i * STRIDE + COL.seen] === 1;
 
   const hasInput = createMemo(() => {
-    const cols = scope();
-    if (!cols) return true; /* nothing pushed yet is not a verdict */
-    for (let i = 0; i < cols.length; i++) {
-      if (!seen(i)) continue;
-      const r = cols[i];
-      if (Math.abs(r[0]) > INPUT_FLOOR || Math.abs(r[1]) > INPUT_FLOOR) return true;
+    const cap = scope();
+    if (!cap) return true; /* nothing pushed yet is not a verdict */
+    const { data, stride } = cap;
+    for (let i = 0; i < cap.count; i++) {
+      if (data[i * stride + COL.seen] !== 1) continue;
+      if (Math.abs(data[i * stride + COL.dryLo]) > INPUT_FLOOR
+          || Math.abs(data[i * stride + COL.dryHi]) > INPUT_FLOOR) return true;
     }
     return false;
   });

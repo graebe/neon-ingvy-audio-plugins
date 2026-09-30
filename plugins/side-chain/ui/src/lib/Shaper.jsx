@@ -52,6 +52,7 @@ import { Well, Axis, band, INSET, CAPTION, startDrag, setParam, beginGesture, en
   from '@ultraviolet/ui';
 import { P, toNorm } from './msg.js';
 import { duckAt, bounds } from './shape.js';
+import { COL } from './scope.js';
 
 /**
  * THE AXIS IS ONE CYCLE.
@@ -141,10 +142,10 @@ export function Shaper(props) {
    * curve uses them: closing it would draw verticals a whole well apart.
    */
   const measured = createMemo(() => {
-    const cols = props.scope;
-    if (!cols || cols.length < 2) return '';
+    const cap = props.scope;
+    if (!cap || cap.count < 2) return '';
     const seen = props.seen;
-    const n = cols.length;
+    const n = cap.count;
     const width = Math.max(1, Math.round(plotW()));
     const runs = [];
     let up = [];
@@ -162,8 +163,7 @@ export function Shaper(props) {
       let lowest = 2;
       for (let i = a; i < bEnd && i < n; i++) {
         if (seen && !seen(i)) continue;
-        const g = cols[i]?.[4];
-        if (g === undefined) continue;
+        const g = cap.data[i * cap.stride + COL.gain];
         if (g < lowest) lowest = g;
       }
       if (lowest > 1) {
@@ -323,14 +323,14 @@ export function Shaper(props) {
           * alpha -- at full strength it is a slab the rest fights through. The
           * grey shows as a halo around the output wherever the duck took
           * something away, which is precisely where it is worth seeing. */}
-        <path d={band(props.scope, 0, 1, geom(), props.seen)}
+        <path d={band(props.scope, COL.dryLo, COL.dryHi, geom(), props.seen)}
               fill="var(--scope-dry)" opacity="0.5" />
 
         {/* 2. WHAT LEFT. The subject, and the picture's mass. It gets the arc
           * halo -- the same 3px falloff the knob's value arc uses. The 10px LED
           * halo blooms into mud on a trace that fills the well. */}
         <g class="glow-arc">
-          <path d={band(props.scope, 2, 3, geom(), props.seen)} fill="var(--uv)" />
+          <path d={band(props.scope, COL.wetLo, COL.wetHi, geom(), props.seen)} fill="var(--uv)" />
         </g>
 
         {/* 3. THE CEILING the output was allowed to reach, measured. A line, not

@@ -10,7 +10,7 @@ import { SHELL_MSG } from '@ultraviolet/ui/shell';
 /* EMsgTags in Spectrogram.h, after the shell's. */
 export const MSG = {
   ...SHELL_MSG,
-  cols: 64,   /* <- plugin: "<ch>:<cols>:<bands>:<hex>", oldest column first */
+  cols: 64,   /* <- plugin: "<ch>:<cols>:<bands>:" + raw bytes, oldest column first */
   axis: 65,   /* <- plugin: the band centre frequencies, comma separated */
   /*
    * THE HOST'S CLOCK, every idle tick whether or not a column came with it.

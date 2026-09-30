@@ -144,7 +144,14 @@ function buildScope() {
     const gain = 1 - DEPTH * duckAt(pct);
     hex.push(byte(-amp), byte(amp), byte(-amp * gain), byte(amp * gain), ubyte(gain));
   }
-  return `${COLS}:${seen.join('')}:${hex.join('')}`;
+  /* As the plugin sends it: "<cols>:" then six RAW bytes a column -- seen,
+   * then the five values the hex pairs above spell. */
+  let bin = `${COLS}:`;
+  for (let i = 0; i < COLS; i++) {
+    bin += String.fromCharCode(seen[i] === '1' ? 1 : 0);
+    for (let k = 0; k < 5; k++) bin += String.fromCharCode(parseInt(hex[i * 5 + k], 16));
+  }
+  return bin;
 }
 
 /* source:rate:ms_cycle:sweep:advancing:fires:duck:key:connected:stage:phase */
@@ -176,7 +183,7 @@ function pushAll() {
   send(MSG.uiState, uiState());
   send(MSG.stageMs, stageMsText());
   send(MSG.buses, busesText());
-  send(MSG.scope, buildScope());
+  globalThis.SAMFD?.(MSG.scope, 0, btoa(buildScope()));
 }
 
 /* The premature push -- dropped, and that is the point. */

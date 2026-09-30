@@ -34,7 +34,7 @@ Spectrogram::Spectrogram(const InstanceInfo& info)
   const size_t span = size_t(SPECTRO_BANDS) * kMaxColsPerTick;
   mSum.assign(span, 0);
   mClash.assign(span, 0);
-  mHex.reserve(span * 2 + 32);
+  mPayload.reserve(span + 32);
   /* The picture opens on this track alone. */
   mView.assign(1, 0);
 }
@@ -228,13 +228,13 @@ void Spectrogram::SendPicture()
                                mSum.data(), mClash.data(), kMaxColsPerTick, &clashCols);
   if (cols > 0)
   {
-    mHex = spectro::wire::encode_columns(mSum.data(), cols, bands, 0);
-    SendText(kMsgCols, mHex);
+    mPayload = spectro::wire::encode_columns(mSum.data(), cols, bands, 0);
+    SendText(kMsgCols, mPayload);
   }
   if (clashCols > 0)
   {
-    mHex = spectro::wire::encode_columns(mClash.data(), clashCols, bands, 0);
-    SendText(kMsgClashCols, mHex);
+    mPayload = spectro::wire::encode_columns(mClash.data(), clashCols, bands, 0);
+    SendText(kMsgClashCols, mPayload);
   }
 }
 

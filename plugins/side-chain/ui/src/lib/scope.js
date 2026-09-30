@@ -1,44 +1,39 @@
 /*
  * The Side-Chain capture, decoded. Copyright (c) 2026 Torben Gräber. MIT.
  *
- * "<cols>:<seen bits>:<5 hex pairs per column>" -- dry low/high and wet
- * low/high, bipolar, then the gain, UNIPOLAR. Plain JavaScript so node can
- * test it.
+ * "<cols>:" then six raw bytes a column -- seen (0 or 1), dry low/high and wet
+ * low/high (bipolar), then the gain (UNIPOLAR) -- delivered as bytes by the
+ * bridge. Plain JavaScript so node can test it.
  */
+import { readHeader, intField, bipolar, unipolar, reuse } from '@ultraviolet/ui/capture';
 
-/* A nibble table rather than parseInt: this runs over every column every frame. */
-const NIB = new Int8Array(128).fill(-1);
-for (let i = 0; i < 16; i++) NIB['0123456789ABCDEF'.charCodeAt(i)] = i;
+/* Where each value sits in a decoded column. */
+export const COL = { seen: 0, dryLo: 1, dryHi: 2, wetLo: 3, wetHi: 4, gain: 5 };
+export const STRIDE = 6;
 
 /**
- * -> { cols: [[dryLo, dryHi, wetLo, wetHi, gain], ...], seen: '0101...' } or
- * null. A SHORT PAYLOAD IS DROPPED WHOLE: the transport truncates rather than
+ * -> { data, stride, count } or null, `data` reusing `into` when it is big
+ * enough. A SHORT PAYLOAD IS DROPPED WHOLE: the transport truncates rather than
  * fails, and half a picture drawn anyway reads as a real transient.
  */
-export function decodeScope(text) {
-  if (typeof text !== 'string') return null;
-  const c1 = text.indexOf(':');
-  const c2 = text.indexOf(':', c1 + 1);
-  if (c1 < 0 || c2 < 0) return null;
-  const n = Math.max(0, Math.min(1024, parseInt(text.slice(0, c1), 10) || 0));
-  const seen = text.slice(c1 + 1, c2);
-  if (seen.length < n || text.length - (c2 + 1) < n * 10) return null;
-
-  const cols = new Array(n);
-  for (let i = 0; i < n; i++) {
-    const o = (c2 + 1) + i * 10;
-    const byteAt = (k) => {
-      const hi = NIB[text.charCodeAt(o + k * 2)];
-      const lo = NIB[text.charCodeAt(o + k * 2 + 1)];
-      return hi < 0 || lo < 0 ? 128 : (hi << 4) | lo;
-    };
-    cols[i] = [
-      byteAt(0) / 127.5 - 1, byteAt(1) / 127.5 - 1,
-      byteAt(2) / 127.5 - 1, byteAt(3) / 127.5 - 1,
-      /* Unipolar: read through the bipolar mapping the trace would draw upside
-       * down and twice as tall. */
-      byteAt(4) / 255,
-    ];
+export function decodeScope(bytes, into) {
+  const h = readHeader(bytes, 1);
+  if (!h) return null;
+  const count = intField(h.fields[0]);
+  if (!(count >= 1 && count <= 1024)) return null;
+  if (bytes.length - h.offset < count * STRIDE) return null;
+  const data = reuse(into, count * STRIDE);
+  for (let i = 0; i < count; i++) {
+    const o = h.offset + i * STRIDE;
+    const d = i * STRIDE;
+    data[d + COL.seen] = bytes[o] ? 1 : 0;
+    data[d + COL.dryLo] = bipolar(bytes[o + 1]);
+    data[d + COL.dryHi] = bipolar(bytes[o + 2]);
+    data[d + COL.wetLo] = bipolar(bytes[o + 3]);
+    data[d + COL.wetHi] = bipolar(bytes[o + 4]);
+    /* Unipolar: read through the bipolar mapping the trace would draw upside
+     * down and twice as tall. */
+    data[d + COL.gain] = unipolar(bytes[o + 5]);
   }
-  return { cols, seen };
+  return { data, stride: STRIDE, count };
 }

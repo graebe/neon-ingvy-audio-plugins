@@ -12,7 +12,7 @@
  * WHAT CROSSES A THREAD. ProcessAudio copies the mono sum into the receiver's
  * ring and nothing else; the receiver's own worker thread runs the transforms
  * and leaves finished columns in lock-free rings; OnIdle takes one tick's
- * picture (srecv_frame) and hands it to the WebView as hex.
+ * picture (srecv_frame) and hands it to the WebView as bytes.
  */
 #pragma once
 
@@ -39,7 +39,7 @@ enum EParams
  * in ni/Editor.h. */
 enum EMsgTags
 {
-  kMsgCols = 64,       /* -> "<ch>:<cols>:<bands>:<hex>", oldest column first     */
+  kMsgCols = 64,       /* -> "<ch>:<cols>:<bands>:" + raw bytes, oldest first     */
   kMsgAxis = 65,       /* -> the band centre frequencies, comma separated         */
   /* -> the host's clock, every tick whether or not a column went with it:
    * "<ppq>:<bpm>:<num>:<denom>:<running>:<ppqPerCol>:<sampleRate>". How many
@@ -80,7 +80,7 @@ public:
    * payload provably fit -- columns x bands is what the cap constrains.
    */
   static constexpr int kMaxColsPerTick = 32;
-  static_assert(ni::wire::framed_size(kMaxColsPerTick * SPECTRO_BANDS * 2 + 32)
+  static_assert(ni::wire::framed_size(kMaxColsPerTick * SPECTRO_BANDS + 32)
                     < ni::editor::kMaxJSString,
                 "a full tick no longer fits the WebView's string cap -- "
                 "kMaxColsPerTick and SPECTRO_BANDS are what constrain it");
@@ -124,8 +124,8 @@ private:
   /* The mono sum, sized in ResetAudio; one tick's picture and clash, sized once. */
   std::vector<float> mMono;
   std::vector<unsigned char> mSum, mClash;
-  /* The hex payload, reused so OnIdle does not allocate every tick. */
-  std::string mHex;
+  /* The column payload, reused so OnIdle does not allocate every tick. */
+  std::string mPayload;
 
   /* WHAT THE SESSION IS LOOKING AT: saved state, not parameters. Channel 0 is
    * this track. Main thread. */

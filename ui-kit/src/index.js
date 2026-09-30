@@ -84,6 +84,8 @@ export { Well, Axis, band, INSET, CAPTION } from './components/Plot.jsx';
 export { buildLut, readStops, readRgb, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
 
 export { startDrag } from './lib/drag.js';
+/* Binary payloads: the header, the byte mappings, a reused buffer. */
+export { readHeader, intField, bipolar, unipolar, reuse } from './lib/capture.js';
 /* What a key does to a grid, a pad, a slider, a count or a tab strip. */
 export { gridMove, padKey, sliderKey, tabMove, countKey } from './lib/keys.js';
 /* The latest value per key, sent once a frame: for drags that message. */

@@ -112,18 +112,20 @@ export function Axis(props) {
  * taking the extremes of every capture column behind that pixel, which is what
  * keeps a narrow dip visible at 256 columns in 700px.
  *
- * `cols` is an array of rows; `loIdx` and `hiIdx` index into a row. `seen`, when
- * given, is a predicate on the column index: columns it rejects are treated as a
- * gap and break the path, so a picture still filling reads as unfinished rather
- * than as a signal that stopped.
+ * `cap` is a capture as the editors decode one: `{ data, stride, count }`, a
+ * Float32Array holding `count` columns of `stride` values; `loIdx` and `hiIdx`
+ * index into a column. `seen`, when given, is a predicate on the column index:
+ * columns it rejects are treated as a gap and break the path, so a picture
+ * still filling reads as unfinished rather than as a signal that stopped.
  */
-export function band(cols, loIdx, hiIdx, geom, seen) {
-  if (!cols || cols.length < 2) return '';
+export function band(cap, loIdx, hiIdx, geom, seen) {
+  if (!cap || !(cap.count >= 2)) return '';
+  const { data, stride } = cap;
   const { x0, w, top, bottom } = geom;
   const mid = (top + bottom) / 2;
   const half = (bottom - top) * 0.5;
   const y = (v) => mid - half * Math.max(-1, Math.min(1, v));
-  const total = cols.length;
+  const total = cap.count;
 
   /* Runs of consecutive drawn columns, so a gap is a gap and not a line across
    * one. Each run becomes its own closed subpath in the same `d`. */
@@ -143,10 +145,10 @@ export function band(cols, loIdx, hiIdx, geom, seen) {
     let mx = -Infinity;
     for (let i = a; i < b && i < total; i++) {
       if (seen && !seen(i)) continue;
-      const row = cols[i];
-      if (!row) continue;
-      if (row[loIdx] < mn) mn = row[loIdx];
-      if (row[hiIdx] > mx) mx = row[hiIdx];
+      const lo = data[i * stride + loIdx];
+      const hi = data[i * stride + hiIdx];
+      if (lo < mn) mn = lo;
+      if (hi > mx) mx = hi;
     }
     if (mn === Infinity) {
       flush();

@@ -124,9 +124,9 @@ int tg_core_rate_default(void);
 /*
  * The pattern plot's curve for the patch in `state`, rendered through a
  * scratch engine with a DC input so the samples ARE the gate:
- * "<length>:<per_step>:<hex>", two upper-case hex digits of gain per sample of
- * one cycle. Returns the length written, or -1 for nothing to draw or a buffer
- * too small. Allocates: never on the audio thread.
+ * "<length>:<per_step>:" then one raw byte of gain per sample of one cycle.
+ * BINARY, not a C string: returns the number of bytes written, or -1 for
+ * nothing to draw or a buffer too small. Allocates: never on the audio thread.
  */
 #define TG_GATE_MAX 4096
 int tg_core_render_gate(const char *state, char *buf, int buf_len);

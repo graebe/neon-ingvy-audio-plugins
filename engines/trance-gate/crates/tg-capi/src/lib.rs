@@ -232,14 +232,19 @@ pub unsafe extern "C" fn tg_core_rate_label(index: c_int, buf: *mut c_char, buf_
     ni_dsp::ffi::copy_cstr(rate.label, buf, buf_len)
 }
 
-/// The pattern plot's curve for the patch in `state`: `"<length>:<per_step>:
-/// <hex>"`, one byte of gain per sample of one cycle (see gate.rs). Returns the
-/// length written, or -1 for nothing to draw or a buffer too small -- size it
-/// with TG_GATE_MAX. Allocates: never on the audio thread.
+/// The pattern plot's curve for the patch in `state`: `"<length>:<per_step>:"`
+/// then one raw byte of gain per sample of one cycle (see gate.rs). BINARY and
+/// not NUL-terminated -- a gain of 0 is a 0 byte. Returns the number of bytes
+/// written, or -1 for nothing to draw or a buffer too small -- size it with
+/// TG_GATE_MAX. Allocates: never on the audio thread.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_render_gate(state: *const c_char, buf: *mut c_char, buf_len: c_int) -> c_int {
-    let Some(text) = gate::render(s(state)) else { return -1 };
-    ni_dsp::ffi::copy_cstr(&text, buf, buf_len)
+    let Some(bytes) = gate::render(s(state)) else { return -1 };
+    if buf.is_null() || buf_len < 0 || bytes.len() > buf_len as usize {
+        return -1;
+    }
+    std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
+    bytes.len() as c_int
 }
 
 /// The rate a fresh instance plays, as an index into the table.

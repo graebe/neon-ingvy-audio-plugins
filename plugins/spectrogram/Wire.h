@@ -16,8 +16,10 @@ namespace spectro {
 namespace wire {
 
 /*
- * "<ch>:<cols>:<bands>:" then two upper-case hex characters per byte, column
- * after column, band 0 (lowest frequency) first within each.
+ * "<ch>:<cols>:<bands>:" then the bytes themselves, raw, column after column,
+ * band 0 (lowest frequency) first within each. Binary: the transport
+ * base64-encodes the whole payload, so the editor decodes it once into bytes --
+ * hex inside base64 was 2.7 times the size and decoded twice.
  *
  * THE CHANNEL LEADS, and it is there because a receiver sends one message PER
  * SOURCE rather than one frame holding all of them. The budget is a product --
@@ -26,12 +28,6 @@ namespace wire {
  * own budget and the static_assert in Spectrogram.h stays the thing that proves
  * it; the alternative was a ragged multi-channel frame with a new failure mode
  * and a decoder nobody had tested.
- *
- * UPPER CASE is not cosmetic. The editor's decoder is a hand-written nibble
- * map rather than parseInt, and the boundary it can get wrong is 9 -> A --
- * char codes 57 to 65, with six characters in between that are neither.
- * Lower-case hex would land on a different run and decode to nonsense that
- * still draws.
  */
 std::string encode_columns(const unsigned char* cols, int nCols, int bands, int ch);
 

@@ -92,7 +92,9 @@ export function Curve(props) {
     const h = (bot - top) * (1 - floor);
     const x = (i) => INSET + (props.w - 2 * INSET) * (i / (v.length - 1));
     const y = (g) => top + h * (1 - Math.min(1, Math.max(0, g)));
-    const hull = v.map((g, i) => `${i ? 'L' : 'M'} ${x(i).toFixed(2)} ${y(g).toFixed(2)}`).join(' ');
+    /* Array.from, not .map: the values may be a Float32Array, whose map
+     * would return numbers. */
+    const hull = Array.from(v, (g, i) => `${i ? 'L' : 'M'} ${x(i).toFixed(2)} ${y(g).toFixed(2)}`).join(' ');
     return {
       hull,
       under: `${hull} L ${x(v.length - 1).toFixed(2)} ${(top + h).toFixed(2)} L ${x(0).toFixed(2)} ${(top + h).toFixed(2)} Z`,
