@@ -17,12 +17,13 @@
 # `ctest -R release` checks their configuration on every run of this one.
 name: CI
 
-# ONCE PER CHANGE. `push` on every branch plus `pull_request` ran the whole
-# macOS build twice for every commit on a PR branch. Pushes to main, pull
-# requests, and a manual trigger for anything else.
+# TWO TIERS (docs/tech/testing.md). The quick tier runs on every push to any
+# branch and on every pull request: it builds only the test programs, so it is
+# cheap enough that a PR commit running it twice costs little. The full tier --
+# every bundle, the AU renders, the e2e suite, coverage with its floor, the
+# validators and the sanitizer -- runs on main and on a manual trigger.
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -35,7 +36,56 @@ permissions:
   contents: read
 
 jobs:
+  # THE QUICK TIER: every Rust crate's unit tests, the C/C++ wire, state and
+  # parameter tests, the oracles, the kit's and the editors' JavaScript and the
+  # lint-like checks. No bundle, no host, no browser.
+  quick:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: SDK cache key
+        id: sdk
+        run: echo "key=$(scripts/fetch-sdks.sh --cache-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the iPlug2 SDKs
+        id: sdks
+        uses: actions/cache@v4
+        with:
+          path: |
+            external/iPlug2/Dependencies/IPlug/VST3_SDK
+            external/iPlug2/Dependencies/IPlug/CLAP_SDK
+            external/iPlug2/Dependencies/IPlug/CLAP_HELPERS
+          key: ${{ steps.sdk.outputs.key }}
+
+      - name: Download the iPlug2 SDKs
+        if: steps.sdks.outputs.cache-hit != 'true'
+        run: scripts/fetch-sdks.sh
+
+      - name: The SDKs are the pinned ones
+        run: scripts/fetch-sdks.sh --verify
+
+      - name: Rust, with both Apple targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Quick tier
+        run: scripts/test.sh quick
+
+  # THE FULL TIER, from here down: main and manual runs only.
   build-and-test:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: macos-15
 
     steps:
@@ -101,8 +151,15 @@ jobs:
       - name: Build
         run: cmake --build build -j3
 
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+      # site_links reads site/dist; built so it runs rather than skips.
+      - name: Build the documentation site
+        run: npm run build --workspace site
+
+      # -L full is every test: quick's, plus the render goldens, the AU
+      # renders, the bus across processes, the bundles' notices, the site's
+      # links and the Playwright e2e suite, in the runner's Google Chrome.
+      - name: Full tier
+        run: ctest --test-dir build -L full -j3 --output-on-failure
 
       # A SKIP IS NOT A PASS HERE. tg_au and sc_au render the INSTALLED AU and
       # report Skipped when there is none. Locally that is fine; here the build
@@ -117,10 +174,23 @@ jobs:
             exit 1
           fi
 
-      - name: Rust and JavaScript suites
+      # scripts/coverage.sh: an instrumented build of its own (build-coverage),
+      # the suite, cargo llvm-cov and the editors in Chrome, one report -- and
+      # coverage_floor fails the job below 80 % in any counted unit.
+      - name: Coverage tools
         run: |
-          cargo test --workspace
-          npm test
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --locked
+
+      - name: Coverage, with the floor enforced
+        run: scripts/coverage.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: build/coverage
+          retention-days: 14
 
       # A build that produced no bundle passes every test above and ships
       # nothing, so the artefacts are checked for rather than assumed.
@@ -186,6 +256,7 @@ jobs:
   # Deploy is off: this job's AU tests report Skipped, which is expected --
   # build-and-test is the job that requires them to run.
   tsan:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: macos-15
 
     steps:
@@ -235,7 +306,9 @@ jobs:
       - name: Build
         run: cmake --build build-tsan -j3
 
+      # Not the e2e suite: it is JavaScript in Chrome, with nothing here to
+      # sanitize, and build-and-test runs it.
       - name: Test
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ctest --test-dir build-tsan --output-on-failure
+        run: ctest --test-dir build-tsan -L full -LE e2e --output-on-failure

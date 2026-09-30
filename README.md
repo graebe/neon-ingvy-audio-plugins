@@ -44,7 +44,8 @@ scripts/fetch-sdks.sh                     # the VST3 and CLAP SDKs, at pinned ve
 npm ci                                    # the kit and every editor
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build                       # the macOS plugins, universal
-ctest --test-dir build                    # the whole suite
+scripts/test.sh quick                     # the developer loop: seconds, no bundles
+scripts/test.sh full                      # everything: bundles, hosts, browser, coverage
 ```
 
 The Move modules are further targets, each a Linux cross-build in Docker:
@@ -78,6 +79,16 @@ tree that already has them.
 
 ## What the tests are for
 
+**Two tiers** ([docs/tech/testing.md](docs/tech/testing.md)). `scripts/test.sh
+quick` builds only the test programs and runs `ctest -L quick`: every crate's
+unit tests, the C/C++ wire, state and parameter tests, the oracles, all the
+JavaScript and the lint-like checks — a few seconds warm, no bundle, host or
+browser. `scripts/test.sh full` adds the render goldens, the AU host renders,
+the bus across processes and architectures, the Playwright end-to-end suite,
+coverage with its floor and the validators. Every test carries a ctest label
+saying which tier it is in (`cmake/NiTest.cmake`); CI runs quick on every push
+and pull request, and full on `main` and on demand.
+
 Most of them are not smoke tests, and the repository leans on them hard:
 
 | | |
@@ -87,14 +98,15 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `ui_tokens` | no colour is spelled outside `ui-kit/src/tokens.css`, and that file agrees with the vendored design system |
 | `versions` | every spelling of a product's version agrees with `versions.json`, and every AU plist names the factory, view class and sandbox claim its binary actually has |
 | `release` | a release tag means what both release workflows think it means, and `release.json` is written in the shape Schwung Manager reads |
-| `licenses` | everything that ships has a row in `THIRD_PARTY_LICENSES.md`, nothing listed has stopped shipping, and every built bundle carries the notices |
+| `licenses`, `licenses_bundles` | everything that ships has a row in `THIRD_PARTY_LICENSES.md`, nothing listed has stopped shipping, and every built bundle carries the notices |
+| `e2e` | the four editors in Chrome, driven through their review harnesses against the mock hosts: gestures, keyboard, resize, the session handshake, and a screenshot each held to a committed baseline |
 | `tg_au`, `sc_au` | the *installed* AU, rendered by a host that supplies a transport. **Skipped** — not passed — when no plugin is installed; CI installs them and fails on a skip |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
 | `spectro_wire`, `spectro_columns_js` | the wire format the editor decodes, both sides pinned to one table the plugin's own C++ generates |
-| `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** |
+| `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** `abus_ipc_rosetta` and `abus_ipc_rosetta_reader` do it between the x86_64 and arm64 slices, as Live under Rosetta and a native host would |
 | `abus_core` | the ring's wrap and overrun, the claim protocol, and a writer running flat out against a slow reader with every delivered block checked for continuity — a spliced buffer looks exactly like audio |
 | `listenin_wire`, `listenin_wire_js` | the state string and the label sanitiser, both sides pinned to one table the plugin's own C++ generates |
-| `tg_wire` | the four pieces of plugin arithmetic where being wrong is silent — the scope quantiser, the message split, the editor height, the transport advance |
+| `ni_wire` | the pieces of plugin arithmetic where being wrong is silent — the scope quantiser, the message split, the editor height, the transport advance |
 | `tg_fade`, `tg_fade_js` | the fade's per-step level factors in both directions, against the engine's own *measured* gain — DC in with no envelope, so the gain during a step IS that factor. The editor mirrors the formula for the pads and the ring, so the mirror is pinned |
 
 ### Coverage
@@ -103,7 +115,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 ./scripts/coverage.sh
 ```
 
-One command, three languages. `build/coverage/` gets `coverage.json` for a
+One command, four languages. `build/coverage/` gets `coverage.json` for a
 machine, `summary.txt` and `html/index.html` for a person, and `lcov.info` for
 an editor's gutter. It builds into `build-coverage/` and never into `build/`:
 the instrumented build is `-O0`, one architecture and has no `NDEBUG`, so
@@ -112,8 +124,10 @@ nothing from it can be shipped by mistake.
 **One engine for all three languages.** Rust compiles through LLVM, so the same
 `-fprofile-instr-generate` instrumentation and the same `llvm-cov` reader serve
 the C, the C++ and both cargo suites; node's own `--experimental-test-coverage`
-covers the editors without adding a dependency to a tree that is kept small for
-the licence audit. It needs `cargo install cargo-llvm-cov` and
+covers the kit's libraries without adding a dependency to a tree that is kept
+small for the licence audit, and the components — which only a browser runs —
+are measured by Chrome itself during the e2e suite and mapped back to their
+sources through the bundle's source map (`scripts/e2e-coverage.mjs`). It needs `cargo install cargo-llvm-cov` and
 `rustup component add llvm-tools-preview` once — rustc carries its own LLVM, and
 a profile it writes is refused by Xcode's reader with an error that names
 neither. The script names both tools if they are missing rather than failing
@@ -136,15 +150,20 @@ to 19/20 and 11/12, with lines unchanged at 20/20. Read the branch column when
 judging whether a file is actually exercised.
 
 `tests/coverage.floors.json` holds the floor — 80%, which is AGENTS.md's number
-— and the exemptions. An exemption must name a unit that still exists and carry
-a reason rather than a note, and a test enforces both: a stale excuse is how a
-floor quietly stops meaning anything. Floors apply to units **derived from
-paths**, so a plugin arriving in this repository is measured on arrival rather
-than being silently absent from the denominator.
+— and the exemptions. An exemption must name a unit or file that still exists
+and carry a reason rather than a note, and a test enforces both: a stale excuse
+is how a floor quietly stops meaning anything. Floors apply to units **derived
+from paths**, so a plugin arriving in this repository is measured on arrival
+rather than being silently absent from the denominator.
 
-It is report-only for now — the plugin shells are exempt because what is left in
-them after `Wire.cpp` was lifted out is calls into iPlug2 that only `tg_au` can
-exercise. `"enforcing": true` makes a shortfall fail.
+**It is enforcing**: every counted unit clears 80%, and `coverage_floor` (full
+tier) fails when one does not. What is exempt is only what cannot be built into
+anything a test runs: the Schwung module's `ui_chain.js`, which imports the
+Move's own shared modules by their device paths, and the five files that compile
+only inside a plugin-format target — `WebPlugin.cpp` and the four plugin classes.
+The files lifted out of those classes for testing (`Params`, `Patch`, `State`,
+`Wire`, `Editor`) are counted, and each exemption names the logic still left
+behind.
 
 ## The products
 

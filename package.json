@@ -11,6 +11,8 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "node --conditions=browser --test ui-kit/test/*.test.mjs plugins/*/ui/test/*.test.mjs",
+    "test:quick": "scripts/test.sh quick",
+    "test:full": "scripts/test.sh full",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.mjs"
   },
   "devDependencies": {
