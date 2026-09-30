@@ -118,6 +118,11 @@ void srecv_push_own(srecv_t* r, const float* mono, int n);
  * Move audio into every analyzer, in step; returns the frames each source was
  * given, commonly 0. MESSAGE THREAD ONLY -- this is where the transforms
  * happen.
+ *
+ * A source whose sample rate differs from the receiver's is read and
+ * discarded, never analysed; the verdict is taken again whenever its sender
+ * restarts. A bus that has delivered nothing for about a second is re-opened
+ * if its sender quit and came back under the same slot.
  */
 int srecv_pump(srecv_t* r);
 

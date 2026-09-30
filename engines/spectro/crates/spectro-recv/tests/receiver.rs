@@ -9,8 +9,9 @@
  * would test the opposite of that.
  *
  * SLOTS ARE A SHARED RESOURCE OF SIXTEEN and these tests run in threads, so
- * each takes one of its own from the top of the range -- where a person
- * experimenting with Listen-In is least likely to be.
+ * each takes one of its own, clear of the low slots a person experimenting
+ * with Listen-In reaches for first. Some are shared with bus-core's own tests,
+ * which cargo never runs at the same time as these.
  */
 use bus_core::Writer;
 use spectro_core::{pick_fft_size, pick_hop, Config};
@@ -190,6 +191,73 @@ fn a_source_at_another_rate_is_refused_rather_than_quietly_offset() {
 
     let mut out = vec![0u8; r.bands() * 8];
     assert_eq!(r.take_columns(1, &mut out, 8), 0, "a mismatched source drew anyway");
+}
+
+#[test]
+fn a_rate_change_is_judged_again_when_the_sender_restarts() {
+    /*
+     * The verdict used to be taken once, at open. A Listen-In that opened at
+     * 96 kHz and was then moved to the session's 48 stayed refused forever; one
+     * that went the other way was analysed at the wrong rate forever.
+     */
+    const SLOT: u32 = 6;
+    let (mut w, mut p) = Writer::claim(SLOT, 96_000).expect("slot 6 was taken");
+
+    let (mut r, mut feed) = Receiver::new(cfg());
+    r.set_sources(&[SLOT]);
+    assert!(r.rate_mismatch(1));
+
+    let mut out = vec![0u8; r.bands() * 64];
+    let (mut po, mut pb) = (0.0, 0.0);
+    let mut drawn = 0;
+
+    w.set_sample_rate(SR as u32);
+    for _ in 0..40 {
+        p.push(&tone(2048, 220.0, 0.5, &mut pb));
+        feed.push(&mono(2048, 220.0, 0.5, &mut po));
+        r.pump();
+        r.take_columns(OWN, &mut out, 64);
+        drawn += r.take_columns(1, &mut out, 64);
+    }
+    assert!(!r.rate_mismatch(1), "a sender now at our rate is still refused");
+    assert!(drawn > 0, "and it is still not drawn");
+
+    w.set_sample_rate(44_100);
+    p.push(&tone(64, 220.0, 0.5, &mut pb));
+    r.pump();
+    assert!(r.rate_mismatch(1), "a sender that left our rate is still analysed");
+}
+
+#[test]
+fn a_listen_in_that_comes_back_is_heard_again() {
+    /*
+     * THE STARVED-FOREVER PICTURE. A Listen-In removed and re-added makes a
+     * NEW segment under the same name; the receiver's reader was still mapping
+     * the old one and saw a sender that had simply stopped. It has to notice
+     * that the name moved on and follow it.
+     */
+    const SLOT: u32 = 5;
+    let first = Writer::claim(SLOT, SR as u32).expect("slot 5 was taken");
+
+    let (mut r, mut feed) = Receiver::new(cfg());
+    r.set_sources(&[SLOT]);
+    assert_eq!(r.channels(), 2, "the bus did not open");
+    drop(first);
+    let (_w, mut p) = Writer::claim(SLOT, SR as u32).expect("the slot came back");
+
+    let mut a = vec![0u8; r.bands() * 64];
+    let mut b = vec![0u8; r.bands() * 64];
+    let (mut po, mut pb) = (0.0, 0.0);
+    /* Long enough for the receiver to give up waiting and go looking. */
+    for _ in 0..120 {
+        p.push(&tone(1024, 220.0, 0.5, &mut pb));
+        feed.push(&mono(1024, 220.0, 0.5, &mut po));
+        r.pump();
+        r.take_columns(OWN, &mut a, 64);
+        r.take_columns(1, &mut b, 64);
+    }
+    assert!(!r.starved(1), "the receiver never found the sender that came back");
+    assert!(r.bus_resynced(1), "and did not report the move as a restart");
 }
 
 #[test]

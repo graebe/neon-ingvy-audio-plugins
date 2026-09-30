@@ -29,11 +29,11 @@
  *   thing whose entire output is a picture, that is the right way round.
  *
  * WHAT IT REFUSES TO DO. A source whose sample rate differs from this
- * receiver's is not compared: a different rate picks a different window (8192
- * at 48 kHz, 16384 at 96), and therefore a different group delay, so the two
- * pictures would be quietly offset from each other. `rate_mismatch` says so and
- * the editor prints it, which beats drawing an offset nobody can see and nobody
- * ordered.
+ * receiver's is not analysed at all: a different rate picks a different window
+ * (8192 at 48 kHz, 16384 at 96), and therefore a different group delay, so the
+ * two pictures would be quietly offset from each other. `rate_mismatch` says so
+ * and the editor prints it, which beats drawing an offset nobody can see and
+ * nobody ordered.
  *
  * THE AUDIO THREAD'S ONE ENTRY POINT IS A SEPARATE VALUE. `Receiver::new` hands
  * back the receiver and an `OwnFeed`; the feed goes to the audio thread and
@@ -72,7 +72,7 @@ struct Bus {
     slot: u32,
     reader: Reader,
     analyzer: Analyzer,
-    /// The sender's rate disagrees with ours, so its columns are not drawn.
+    /// The sender's rate disagrees with ours, so it is not analysed.
     rate_mismatch: bool,
     dropped: u64,
     resynced: bool,
@@ -98,6 +98,9 @@ struct Bus {
      */
     short: usize,
     starved: bool,
+    /* Pumps since the reader last delivered anything -- the clock for asking
+     * whether its segment was replaced. See `REATTACH_PUMPS`. */
+    quiet: usize,
 }
 
 /// The audio thread's handle: the own track's samples go in here.
@@ -142,6 +145,13 @@ const PUMP_FRAMES: usize = 4096;
 /// clock never advances and the grace period never ends. The first version of
 /// this froze exactly as hard as the bug it replaced.
 const GRACE_PUMPS: usize = 10;
+
+/// How many pumps in a row a bus may deliver nothing before the receiver asks
+/// whether its segment was replaced -- about a second at the idle timer. A
+/// sender that quit and came back made a NEW segment, and a reader still on the
+/// old one would call the bus starved forever. Asking is a few system calls,
+/// so it is done once a second for a quiet bus, never per pump.
+const REATTACH_PUMPS: usize = 50;
 
 impl Receiver {
     /// A receiver, and the feed its own channel arrives through. The feed is
@@ -250,6 +260,7 @@ impl Receiver {
                 have: 0,
                 short: 0,
                 starved: false,
+                quiet: 0,
             });
         }
 
@@ -290,6 +301,7 @@ impl Receiver {
          * with the own channel, decides how much everybody gets. The surplus
          * waits where it is.
          */
+        let own_rate = self.cfg.sample_rate;
         for b in &mut self.buses {
             let room = (b.stage.len() - b.have).min(PUMP_FRAMES);
             if room == 0 {
@@ -299,6 +311,29 @@ impl Receiver {
             b.dropped += r.dropped;
             b.resynced |= r.resynced;
 
+            /* A restart is when a sender's rate can change, so it is when the
+             * verdict is taken again. */
+            if r.resynced {
+                let rate = b.reader.sample_rate();
+                b.rate_mismatch = rate != 0 && rate as f32 != own_rate;
+                b.have = 0;
+            }
+
+            if r.frames == 0 {
+                b.quiet += 1;
+                if b.quiet % REATTACH_PUMPS == 0 && b.reader.reattach() {
+                    b.quiet = 0;
+                }
+            } else {
+                b.quiet = 0;
+            }
+
+            /* READ AND DISCARDED, never analysed. Still read, so the reader
+             * stays at the live edge and sees the restart that may bring the
+             * rates back into agreement. */
+            if b.rate_mismatch {
+                continue;
+            }
 
             /* Stereo interleaved in, mono out -- halved, the same sum the own
              * channel takes, so a centred source does not read 6 dB hot on one
@@ -336,6 +371,10 @@ impl Receiver {
          */
         let mut n = self.own_ring.available().min(PUMP_FRAMES);
         for b in &mut self.buses {
+            if b.rate_mismatch {
+                /* Not in the picture, so not in the pacing either. */
+                continue;
+            }
             if b.have >= n {
                 /* Keeping up. */
                 b.short = 0;
@@ -361,6 +400,9 @@ impl Receiver {
         self.own.push(&self.own_take[..got]);
 
         for b in &mut self.buses {
+            if b.rate_mismatch {
+                continue;
+            }
             let have = b.have.min(n);
             if have < n {
                 /* Zero the shortfall in place -- the staging buffer is already
