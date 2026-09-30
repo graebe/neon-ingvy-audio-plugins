@@ -151,3 +151,6 @@ pub unsafe extern "C" fn gnd_fires(g: *const GndDetector) -> u32 {
 pub unsafe extern "C" fn gnd_strength(g: *const GndDetector) -> f32 {
     g.as_ref().map_or(0.0, |d| d.0.strength())
 }
+
+#[cfg(test)]
+mod tests;

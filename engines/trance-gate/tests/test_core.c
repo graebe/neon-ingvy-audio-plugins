@@ -1918,6 +1918,60 @@ int main(void) {
         tg_core_destroy(c);
     }
 
+    /*
+     * THE MASK HELPERS, which live in the header as static inlines and so are
+     * compiled into every C caller rather than linked from the engine. Nothing
+     * else here reaches them, and the way they break is the way the 128-step
+     * widening could have: a bit landing in the wrong word, or an index past
+     * the end writing into whatever follows the struct.
+     */
+    printf("the header's mask helpers:\n");
+    {
+        /* A sentinel word either side: an out-of-range write that escaped the
+         * bounds check would land in one of them. */
+        struct { uint32_t before; tg_mask_t m; uint32_t after; } g;
+        g.before = g.after = 0xA5A5A5A5u;
+        for (int k = 0; k < TG_MASK_WORDS; k++) g.m.w[k] = 0xFFFFFFFFu;
+
+        tg_mask_zero(&g.m);
+        int all_clear = 1;
+        for (int i = 0; i < TG_MAX_STEPS; i++) if (tg_mask_get(&g.m, i)) all_clear = 0;
+        check("tg_mask_zero clears every step", all_clear);
+
+        /* Every word boundary, both sides, and the very top bit. */
+        const int edges[] = { 0, 31, 32, 63, 64, 95, 96, 127 };
+        const int n_edges = (int)(sizeof(edges) / sizeof(edges[0]));
+        for (int e = 0; e < n_edges; e++) tg_mask_set(&g.m, edges[e], 1);
+        int set_ok = 1, count = 0;
+        for (int i = 0; i < TG_MAX_STEPS; i++) {
+            int want = 0;
+            for (int e = 0; e < n_edges; e++) if (edges[e] == i) want = 1;
+            if (tg_mask_get(&g.m, i) != want) set_ok = 0;
+            count += tg_mask_get(&g.m, i);
+        }
+        check("tg_mask_set lands every edge step in its own bit", set_ok && count == n_edges);
+        check("...step 31 is the top bit of word 0", g.m.w[0] == 0x80000001u);
+        check("...step 127 is the top bit of the top word",
+              (g.m.w[TG_MASK_WORDS - 1] >> 31) == 1u);
+
+        tg_mask_set(&g.m, 32, 0);
+        check("clearing a step clears only that step",
+              !tg_mask_get(&g.m, 32) && tg_mask_get(&g.m, 31) && tg_mask_get(&g.m, 63));
+        tg_mask_set(&g.m, 32, 7);
+        check("any nonzero `on` sets it", tg_mask_get(&g.m, 32) == 1);
+
+        /* Out of range: a read is 0 and a write is dropped, never an index. */
+        tg_mask_t snapshot = g.m;
+        tg_mask_set(&g.m, -1, 1);
+        tg_mask_set(&g.m, TG_MAX_STEPS, 1);
+        tg_mask_set(&g.m, 1 << 20, 1);
+        check("an out-of-range write changes nothing",
+              memcmp(&snapshot, &g.m, sizeof snapshot) == 0 &&
+              g.before == 0xA5A5A5A5u && g.after == 0xA5A5A5A5u);
+        check("an out-of-range read is 0",
+              tg_mask_get(&g.m, -1) == 0 && tg_mask_get(&g.m, TG_MAX_STEPS) == 0);
+    }
+
     printf(failures ? "\nFAILED (%d)\n" : "\nPASS\n", failures);
     return failures ? 1 : 0;
 }

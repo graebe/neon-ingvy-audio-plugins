@@ -35,6 +35,9 @@ pub use shell::TgShell;
 mod gate;
 mod envelope;
 
+#[cfg(test)]
+mod tests;
+
 use ni_dsp::ffi::{cstr as s, CTransport};
 use ni_dsp::sweep::CycleSweep;
 use std::ffi::{c_char, c_int};

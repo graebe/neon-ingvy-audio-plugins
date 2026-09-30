@@ -276,3 +276,6 @@ unsafe fn cstr(p: *const u8) -> String {
     }
     String::from_utf8_lossy(core::slice::from_raw_parts(p, n)).into_owned()
 }
+
+#[cfg(test)]
+mod tests;

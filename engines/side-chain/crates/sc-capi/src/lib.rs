@@ -32,6 +32,9 @@ use ground_capi as _;
 mod shell;
 pub use shell::ScShell;
 
+#[cfg(test)]
+mod tests;
+
 use ni_dsp::ffi::{cstr as s, CTransport};
 use sc_core::params::Param;
 use sc_core::rates::{RATES, RATE_DEFAULT};

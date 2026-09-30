@@ -694,3 +694,6 @@ pub unsafe extern "C" fn srecv_starved(p: *const Srecv, ch: c_int) -> c_int {
     }
     i32::from(recv(p).starved(ch as usize))
 }
+
+#[cfg(test)]
+mod tests;

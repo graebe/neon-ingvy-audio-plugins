@@ -94,43 +94,4 @@ pub unsafe extern "C" fn shell_handoff_collect(h: *const ShellHandoff) -> i32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static RELEASED: AtomicUsize = AtomicUsize::new(0);
-
-    unsafe extern "C" fn release(p: *mut c_void) {
-        RELEASED.fetch_add(1, Ordering::SeqCst);
-        drop(Box::from_raw(p as *mut u64));
-    }
-
-    fn boxed(v: u64) -> *mut c_void {
-        Box::into_raw(Box::new(v)) as *mut c_void
-    }
-
-    #[test]
-    fn the_c_surface_defers_and_then_releases() {
-        unsafe {
-            assert!(shell_handoff_new(None).is_null());
-            assert!(shell_handoff_acquire(std::ptr::null()).is_null());
-
-            let h = shell_handoff_new(Some(release));
-            let a = boxed(1);
-            shell_handoff_set(h, a);
-            assert_eq!(shell_handoff_current(h), a);
-
-            let held = shell_handoff_acquire(h);
-            assert_eq!(held, a);
-            shell_handoff_set(h, boxed(2));
-            assert_eq!(shell_handoff_collect(h), 1);
-            assert_eq!(RELEASED.load(Ordering::SeqCst), 0);
-            shell_handoff_release(h);
-            assert_eq!(shell_handoff_collect(h), 0);
-            assert_eq!(RELEASED.load(Ordering::SeqCst), 1);
-
-            shell_handoff_free(h);
-            assert_eq!(RELEASED.load(Ordering::SeqCst), 2, "the live one too");
-        }
-    }
-}
+mod tests;
