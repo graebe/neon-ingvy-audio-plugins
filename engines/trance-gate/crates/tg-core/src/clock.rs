@@ -23,11 +23,18 @@ impl Instance {
      * -- a phase-locked loop, not a clock divider.
      *
      * Returns `None` when the block needs no gain applied at all, having
-     * already advanced whatever state the next block depends on. The caller
+     * already advanced whatever state the next block depends on -- or when it
+     * is empty. The caller
      * leaves the buffer untouched, which is exactly right: the dry signal is
      * already in it.
      */
     pub(crate) fn block_setup(&mut self, frames: usize, t: Option<&Transport>) -> Option<Run> {
+        /* An empty block is not a block: no time passed, so nothing -- not the
+         * playhead, not the transport edge -- may move. The C ABI refuses one
+         * before it gets here; a Rust caller is not stopped by that. */
+        if frames == 0 {
+            return None;
+        }
         let length = self.pattern().length.clamp(1, MAX_STEPS);
 
         let mut bpm = 120.0f32;
@@ -115,3 +122,6 @@ pub(crate) struct Run {
     pub(crate) frac: f64,
     pub(crate) step: usize,
 }
+
+#[cfg(test)]
+mod tests;

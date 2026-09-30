@@ -133,6 +133,12 @@ impl Instance {
     /// Audio-thread safe: a match, a clamp and a store. No allocation, no
     /// formatting, no locale.
     pub fn set_num(&mut self, param: Param, value: f64) {
+        /* A NaN from a host is not a value. Clamping would propagate it
+         * (NaN.clamp is NaN) and `as i32` would turn it into 0 -- a different
+         * slot or rate -- so it is dropped at the door. sc-core does the same. */
+        if value.is_nan() {
+            return;
+        }
         /*
          * `as i32` SATURATES IN RUST WHERE C'S CAST IS UNDEFINED. For an
          * out-of-range double C commonly lands on INT_MIN, which every branch
@@ -618,3 +624,6 @@ impl Instance {
         self.pat[slot].depth = [DEPTH_FULL; MAX_STEPS];
     }
 }
+
+#[cfg(test)]
+mod tests;

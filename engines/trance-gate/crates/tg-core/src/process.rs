@@ -166,6 +166,9 @@ impl Instance {
      * inaudible until somebody A/B'd the plugin against the hardware.
      */
     pub fn process_i16(&mut self, lr: &mut [i16], frames: usize, t: Option<&Transport>) {
+        /* Never past the buffer: an index out of range is a panic, and a panic
+         * here is an abort of the host. */
+        let frames = frames.min(lr.len() / 2);
         let Some(mut r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&mut r);
@@ -177,6 +180,7 @@ impl Instance {
     }
 
     pub fn process_f32(&mut self, lr: &mut [f32], frames: usize, t: Option<&Transport>) {
+        let frames = frames.min(lr.len() / 2);
         let Some(mut r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&mut r);
@@ -195,6 +199,7 @@ impl Instance {
         frames: usize,
         t: Option<&Transport>,
     ) {
+        let frames = frames.min(l.len()).min(rch.len());
         let Some(mut r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&mut r);

@@ -66,7 +66,10 @@ fn curve_exp_inv(w: f64) -> f64 {
 
 #[inline]
 pub fn shape(curve: Curve, t: f64) -> f64 {
-    if t <= 0.0 {
+    /* `!(t > 0.0)` rather than `t <= 0.0`: a NaN fails both that and the
+     * `>= 1.0` below, and would otherwise reach the curve and come out as a
+     * NaN level. Ordered this way it lands on the stage's start. */
+    if !(t > 0.0) {
         return 0.0;
     }
     if t >= 1.0 {
@@ -94,7 +97,7 @@ pub fn shape(curve: Curve, t: f64) -> f64 {
 /// see the re-anchor in `set_param`. Monotonic and analytic for all three.
 #[inline]
 pub fn shape_inv(curve: Curve, w: f64) -> f64 {
-    if w <= 0.0 {
+    if !(w > 0.0) {
         return 0.0;
     }
     if w >= 1.0 {
@@ -272,3 +275,6 @@ impl Env {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

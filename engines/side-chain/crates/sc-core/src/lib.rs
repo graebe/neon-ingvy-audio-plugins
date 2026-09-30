@@ -301,11 +301,19 @@ impl Instance {
 
     /// Per-block setup: resolve tempo, stage lengths and the cycle's phase.
     ///
-    /// Unlike `tg-core`'s, this NEVER returns "nothing to do". A gate with the
+    /// Unlike `tg-core`'s, this never returns "nothing to do" for a block that
+    /// has samples in it. A gate with the
     /// transport stopped has no work; a ducker does -- two of its three
     /// sources have nothing to do with the transport, and a MIDI-triggered
     /// duck must still work with the timeline parked.
-    fn block_setup(&mut self, frames: usize, t: Option<&Transport>) -> Run {
+    ///
+    /// `None` for an EMPTY block, and only then: no time passed, so nothing --
+    /// the phase, the transport edge, the MIDI queue -- may move. Clamping the
+    /// queue into zero frames and clearing it lost every note waiting in it.
+    fn block_setup(&mut self, frames: usize, t: Option<&Transport>) -> Option<Run> {
+        if frames == 0 {
+            return None;
+        }
         let mut bpm = self.last_bpm;
         if let Some(t) = t {
             if t.bpm > 1.0 && t.bpm < 1000.0 {
@@ -425,13 +433,13 @@ impl Instance {
 
         self.queue.clamp_into(frames);
 
-        Run {
+        Some(Run {
             stages,
             cycle,
             inc,
             offset,
             lockout: self.lockout_ms * self.sample_rate / 1000.0,
-        }
+        })
     }
 
     /// One sample's gain. THE ONE GAIN LAW, whatever the buffer format.
@@ -539,7 +547,10 @@ impl Instance {
      * is exactly what `sc_render_ab` does.
      */
     pub fn process_i16(&mut self, lr: &mut [i16], frames: usize, t: Option<&Transport>) {
-        let r = self.block_setup(frames, t);
+        /* Never past the buffer: an index out of range is a panic, and a panic
+         * here is an abort of the host. */
+        let frames = frames.min(lr.len() / 2);
+        let Some(r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&r, i);
             let l = lr[i * 2] as f32 * m;
@@ -567,7 +578,8 @@ impl Instance {
     }
 
     pub fn process_f32(&mut self, lr: &mut [f32], frames: usize, t: Option<&Transport>) {
-        let r = self.block_setup(frames, t);
+        let frames = frames.min(lr.len() / 2);
+        let Some(r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&r, i);
             lr[i * 2] *= m;
@@ -622,7 +634,8 @@ impl Instance {
         frames: usize,
         t: Option<&Transport>,
     ) {
-        let r = self.block_setup(frames, t);
+        let frames = frames.min(l.len()).min(rch.len());
+        let Some(r) = self.block_setup(frames, t) else { return };
         for i in 0..frames {
             let m = self.next_gain(&r, i);
             l[i] *= m;

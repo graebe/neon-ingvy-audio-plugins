@@ -533,3 +533,30 @@ fn a_panic_resets_whatever_the_source() {
     p.process_f32(&mut buf, 128, Some(&t));
     assert_eq!(p.duck_now(), 0.0, "a panic left the cycle ducked");
 }
+
+#[test]
+fn a_zero_frame_block_changes_nothing() {
+    /*
+     * THE C ABI REFUSES frames <= 0, THE RUST API DID NOT. An empty block
+     * clamped every queued offset "into" a block with no samples and then
+     * cleared the queue -- so a note arriving before a zero-length call was
+     * never heard -- and the loop's correction divided by the frame count.
+     */
+    let mut p = Instance::new(48000.0);
+    p.set_param("source", "MIDI");
+    p.set_param("attack", "0");
+    p.on_midi(&note_on(1, 36, 127), 0);
+    p.process_f32(&mut [], 0, None);
+    let mut buf = vec![1.0f32; 512];
+    p.process_f32(&mut buf, 256, None);
+    assert!(buf.iter().any(|v| *v < 0.5), "the note was lost to an empty block");
+
+    let mut p = Instance::new(48000.0);
+    let t = Transport { running: true, beats: 0.0, bpm: 120.0 };
+    let mut buf = vec![1.0f32; 256];
+    p.process_f32(&mut buf, 128, Some(&t));
+    let before = p.phase01();
+    p.process_f32(&mut [], 0, Some(&t));
+    assert_eq!(p.phase01(), before);
+    assert!(p.phase01().is_finite());
+}
