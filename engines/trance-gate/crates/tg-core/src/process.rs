@@ -4,7 +4,7 @@ formats it is applied to.
 */
 
 use crate::clock::Run;
-use crate::envelope::Stage;
+use crate::envelope::{Stage, StageLens};
 use crate::{Instance, Transport, MAX_STEPS};
 
 impl Instance {
@@ -12,8 +12,7 @@ impl Instance {
      * A step boundary. This is the whole of what a tie means: an ON step
      * arriving on top of a held ON step does NOT restart the envelope.
      */
-    fn on_step_boundary(&mut self, prev_step: Option<usize>, new_step: usize) {
-        let l = self.lens();
+    fn on_step_boundary(&mut self, prev_step: Option<usize>, new_step: usize, l: &StageLens) {
         /* THE FADE'S WEIGHTS ARE READ BEFORE THE PATTERN IS BORROWED, not
          * because the borrow checker insists but because `sounds` consults
          * `self` and `p` holds a shared borrow of it. Three reads, named. */
@@ -67,10 +66,10 @@ impl Instance {
                 } else {
                     0.0
                 };
-                self.env.enter(Stage::Attack, &l);
+                self.env.enter(Stage::Attack, l);
             }
         } else if on_prev || self.env.stage != Stage::Idle {
-            self.env.enter(Stage::Release, &l);
+            self.env.enter(Stage::Release, l);
         }
     }
 
@@ -80,7 +79,7 @@ impl Instance {
     fn next_gain(&mut self, r: &mut Run) -> f32 {
         if Some(r.step) != self.last_step {
             let prev = self.last_step;
-            self.on_step_boundary(prev, r.step);
+            self.on_step_boundary(prev, r.step, &r.lens);
             self.last_step = Some(r.step);
         }
 
@@ -118,13 +117,11 @@ impl Instance {
             let p = &self.pat[self.slot];
             let held = here && (p.tied(r.step) || (self.legato && there));
             if r.frac >= self.hold as f64 && !held {
-                let l = self.lens();
-                self.env.enter(Stage::Release, &l);
+                self.env.enter(Stage::Release, &r.lens);
             }
         }
 
-        let l = self.lens();
-        self.env.advance(self.curve, &l);
+        self.env.advance(self.curve, &r.lens);
 
         /* The step's amount is how far the gate OPENS, not how far it closes:
          *     m = 1 - amount * (1 - env * level)

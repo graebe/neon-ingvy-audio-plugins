@@ -3,7 +3,7 @@ The playhead: where in the pattern the host's transport says we are, tracked
 per block by a phase-locked loop and advanced per sample by the gain loop.
 */
 
-use crate::envelope::Stage;
+use crate::envelope::{Stage, StageLens};
 use crate::{rates, Instance, Transport, MAX_STEPS};
 
 /// Beyond this much error, jump rather than glide.
@@ -108,6 +108,7 @@ impl Instance {
             step += length as i64;
         }
         Some(Run {
+            lens: self.lens(),
             length,
             inc,
             frac,
@@ -117,6 +118,11 @@ impl Instance {
 
 /// Per-block state the sample loop walks.
 pub(crate) struct Run {
+    /// The stage lengths, worked out once for the block. Everything they
+    /// depend on -- the rate, the tempo, Width and the three stage values --
+    /// can only change between blocks, and the sample loop used to rebuild
+    /// them every sample, twice when Width was below 1.
+    pub(crate) lens: StageLens,
     pub(crate) length: usize,
     pub(crate) inc: f64,
     pub(crate) frac: f64,
