@@ -2,11 +2,11 @@
  * NI Side-Chain's fifteen host parameters, and the state chunk that holds them.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * Lifted out of SideChain.cpp for the reason Wire.cpp was: a test cannot link
- * the plugin's own translation unit. tests/cpp/sc_params.cpp declares these on
- * bare iplug::IParams -- the class the plugin uses -- and checks that every
- * value survives value -> text -> value, and that a saved chunk reloads into a
- * fresh instance exactly, as clap-validator's state tests do.
+ * Apart from the plugin class so a test can reach them: tests/cpp/sc_params.cpp
+ * declares these on bare iplug::IParams -- the class the plugin uses -- and
+ * checks that every value survives value -> text -> value, and that a saved
+ * chunk reloads into a fresh instance exactly, as clap-validator's state tests
+ * do.
  */
 #pragma once
 
@@ -20,9 +20,7 @@
  * THE FIFTEEN AUTOMATABLE VALUES, IN THE ENGINE'S OWN WIRE ORDER.
  *
  * Deliberately sc_param_t's order, so the host index IS the engine index and
- * there is no mapping table between them to get wrong. The Trance Gate's JUCE
- * build carried exactly such a table because its declaration order had drifted
- * from the engine's; every plugin here since has started from this instead.
+ * there is no mapping table between them to get wrong.
  *
  * EVERYTHING PUMP HOLDS IS IN THIS LIST, which is why config.h sets
  * PLUG_DOES_STATE_CHUNKS 0. The shape editor's handles are these parameters,

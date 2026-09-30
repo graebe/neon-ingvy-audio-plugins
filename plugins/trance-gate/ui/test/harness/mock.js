@@ -163,7 +163,7 @@ setInterval(() => { roll += 3; globalThis.SAMFD?.(66, 0, b64(scope(roll))); }, 5
 window.__mockEarlyPush = 0;
 pushAll();
 
-const MSG_READY = 102, MSG_REQUEST_PATCH = 99;
+const MSG_READY = 120, MSG_REQUEST_PATCH = 99;
 
 /* Everything the editor sends, for the interaction tests to assert on. */
 window.__sent = [];

@@ -38,9 +38,9 @@ honoured: `f_max` is clamped to Nyquist, so in a 32 kHz session "High" really is
 | `64` | → UI | `"<ch>:<cols>:<bands>:<hex>"` — finished columns, one byte per band, oldest first. One message **per source**: the payload budget is a product, and three channels at the full catch-up budget overflows the cap |
 | `65` | → UI | the band centre frequencies in Hz, comma separated |
 | `96` | → plugin | `"<f_min>:<f_max>"` — the range dropdown's zoom |
-| `102` | → plugin | "mounted, send me the axis" |
+| `120` | → plugin | `ready`: "mounted, send me the axis" — the shell's tag, the same in every plugin |
 
-`102` is not optional. The plugin also pushes the axis from `OnUIOpen`, but that
+`ready` is not optional. The plugin also pushes the axis from `OnUIOpen`, but that
 fires before this deferred module has evaluated, so it lands on an undefined
 global and is dropped. `test/harness/mock.js` reproduces that ordering on
 purpose — if you make it deferred, you have disabled the test.

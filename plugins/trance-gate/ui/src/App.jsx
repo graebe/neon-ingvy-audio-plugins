@@ -15,7 +15,7 @@
  */
 import { createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js';
 import { onParam, onMessage, sendMessage } from '@ultraviolet/ui';
-import { MSG } from './lib/msg.js';
+import { MSG, P, NUM_PARAMS as NPARAMS } from './lib/msg.js';
 import { ParamKnob, ParamSelect, ParamToggle } from './lib/params.jsx';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
@@ -23,16 +23,6 @@ import { EnvelopePlot, PatternPlot, Scope } from './lib/Plots.jsx';
 import { Button, Tabs, Hint, Ground, createMotion } from '@ultraviolet/ui';
 import { fadeWeights } from './lib/fade.js';
 import { randomize, setOrder } from './lib/steps.js';
-
-/* Mirrors EParams in TranceGate.h, which mirrors the engine's own Param -- one
- * order, so the host index IS the engine index and there is no mapping table
- * between them to get wrong. Fade and its shape are APPENDED for that reason. */
-const P = { slot: 0, length: 1, rate: 2, legato: 3, timeMode: 4, curve: 5,
-            amount: 6, width: 7, attack: 8, decay: 9, sustain: 10, release: 11,
-            fade: 12, fadeSoft: 13, fadeDir: 14 };
-/* The count, spelled once. It was a literal `12` in four places and every one
- * of them had to be found by hand when the thirteenth arrived. */
-const NPARAMS = 15;
 
 const RATES = ['1/1T','1/2','1/2T','1/4','1/4T','1/8','1/8T','1/16','1/16T','1/32','1/32T','1/64','1/128'];
 const SLOTS = ['1','2','3','4','5','6','7','8'];
@@ -467,7 +457,7 @@ export default function App() {
      * grid, which gained a third panel. app.css must agree. */
     const designH = 644 + rows * 40 + (rows - 1) * 8 + 24 + 28;
     const msg = String(Math.ceil(designH * k));
-    if (msg !== lastSent) { lastSent = msg; sendMessage(MSG.rows, msg); }
+    if (msg !== lastSent) { lastSent = msg; sendMessage(MSG.height, msg); }
   });
 
   onMount(() => {

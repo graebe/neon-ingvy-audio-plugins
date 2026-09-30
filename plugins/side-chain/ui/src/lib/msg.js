@@ -1,32 +1,23 @@
 /*
- * The message tags, MIRRORED IN SideChain.h's EMsgTags.
+ * This editor's message tags. Copyright (c) 2026 Torben Gräber. MIT.
  *
- * Tags 0..14 are a parameter's own display string, tagged with that parameter's
- * index -- which is why nothing here needs a routing table and why this editor
- * knows no unit, no precision and no enum label. The plugin owns all of that,
- * because iPlug2's IParam already does.
+ * The shell's tags are the kit's (@ultraviolet/ui/shell), the same in every
+ * plugin; the rest are this plugin's own vocabulary. tests/editor_tags.test.mjs
+ * holds both to the C++.
  */
+import { SHELL_MSG } from '@ultraviolet/ui/shell';
+
+/* EMsgTags in SideChain.h, after the shell's. Tags 0..14 are a parameter's own
+ * display string, tagged with its index -- which is why this editor knows no
+ * unit, precision or enum label. */
 export const MSG = {
+  ...SHELL_MSG,
   /* plugin -> UI */
   uiState: 64,
   params: 65,
   scope: 66,
   stageMs: 67,
   buses: 68,
-  /*
-   * <- plugin: one kick, as a strength in 0..1.
-   *
-   * SPARSE, unlike the readouts above: it arrives only when the detector fires,
-   * and each message is exactly one ring on the ground. The detection happens in
-   * Rust on the audio thread because a WebView has no access to the host's audio
-   * -- engines/ground/include/ground_detect.h says why at length.
-   */
-  ground: 69,
-
-  /* UI -> plugin */
-  setText: 96,
-  height: 97,
-  ready: 98,
 };
 
 /* The parameter indices, in SideChain.h's EParams order -- which is the engine's

@@ -1,14 +1,7 @@
-# The engine's own tests, built against the SUBMODULE -- the same library the
-# plugin links. If these pass here and fail on Move, the submodule pin moved.
+# The cross-cutting suite. Every C test links the same engine archives the
+# plugins link (cmake/NiPlugin.cmake), so what passes here is what ships; the
+# plain-C tests against each engine's ABI are what check the SOUND.
 #
-# tg_engine is the submodule's Rust crate, built once at the top level; see
-# cmake/TgEngine.cmake.
-#
-# The C targets were three after JUCE went; tg_params, tg_vst3 and tg_shot hosted JUCE
-# classes directly -- they instantiated the AudioProcessor, hosted the VST3
-# through JUCE's plugin host, and rendered the editor -- so they could not
-# outlive it. What remains is everything that was written in plain C against
-# the engine's ABI, which is also everything that checks the SOUND.
 # -DNI_SANITIZE=thread|address|undefined instruments every C/C++ target in this
 # directory and tests/cpp -- the tests, never the plugins. cmake/Sanitize.cmake.
 ni_sanitize_here()
@@ -150,11 +143,15 @@ if (TG_NODE)
              COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
                      --bundles ${CMAKE_BINARY_DIR}/out)
 
-    # THE GROUND'S WIRING IN THE FOUR SHELLS, which cannot be linked into a
-    # test. The Spectrogram once sent its ground after six early returns and the
-    # background almost never moved; this pins the order that fixed it.
+    # THE GROUND'S WIRING IN THE SHARED SHELL, which cannot be linked into a
+    # test: the order of a few calls, which the Spectrogram once got wrong.
     add_test(NAME ground_shells
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/ground_shells.test.mjs)
+
+    # THE EDITOR PROTOCOL'S NUMBERS ON BOTH SIDES: every message tag and
+    # parameter index in C++ against the editors' msg.js tables, by name.
+    add_test(NAME editor_tags
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/editor_tags.test.mjs)
 
     # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
     # editors and the documentation site -- where there used to be one per
@@ -222,13 +219,13 @@ endif()
 # band mapping, and a counting global allocator proving the audio path allocates
 # nothing. Run from here rather than left to be remembered.
 #
-# SPECTRO_ENV and SPECTRO_CARGO come from cmake/SpectroEngine.cmake, which found
-# the toolchain the hard way (rustup's shims are often not on PATH).
+# RUST_ENV and RUST_CARGO come from cmake/RustToolchain.cmake, which found the
+# toolchain the hard way (rustup's shims are often not on PATH).
 # -p, not --manifest-path: there is ONE workspace and it is at the repository
 # root, so the crates are selected by name rather than by pointing cargo at a
 # per-engine Cargo.toml that no longer exists.
 add_test(NAME spectro_core
-         COMMAND ${SPECTRO_ENV} ${SPECTRO_CARGO} test --manifest-path
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p spectro-core -p spectro-capi)
 
 # The same claims through the C ABI the plugin links, because a hand-written
@@ -288,10 +285,8 @@ endif()
 # label seqlock, and a counting global allocator proving the audio path
 # allocates nothing.
 #
-# ABUS_ENV and ABUS_CARGO come from cmake/AudioBusEngine.cmake, which found the
-# toolchain the hard way (rustup's shims are often not on PATH).
 add_test(NAME abus_core
-         COMMAND ${ABUS_ENV} ${ABUS_CARGO} test --manifest-path
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p bus-core -p bus-capi)
 
 # The same claims through the C ABI the plugins link, because a hand-written
@@ -305,14 +300,14 @@ add_test(NAME abus_roundtrip COMMAND abus_roundtrip)
 # measured against its closed form, a kick firing where a hi-hat does not, and
 # the re-arm that -- not the refractory -- sets how close two kicks may be.
 add_test(NAME gnd_core
-         COMMAND ${GND_ENV} ${GND_CARGO} test --manifest-path
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ground-core -p ground-capi)
 
 # THE SHELL PLUMBING'S OWN TESTS: the queue, the snapshot, the handoff, the
 # two-thread stress runs and the no-allocation check -- and each product's
 # bridge over it, which lives in that product's capi crate.
 add_test(NAME shell_core
-         COMMAND ${SHELL_ENV} ${SHELL_CARGO} test --manifest-path
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p shell-core -p shell-capi
                  -p tg-capi -p sc-capi)
 
@@ -334,7 +329,7 @@ set_tests_properties(shell_handoff PROPERTIES SKIP_RETURN_CODE 77)
 # it is the only one that can notice the two disagreeing.
 #
 # IT LINKS audio_bus_engine, WHICH LOOKS WRONG AND IS THE POINT. ground-capi is
-# an rlib rather than a staticlib of its own (cmake/GroundEngine.cmake says why),
+# an rlib rather than a staticlib of its own (cmake/NiPlugin.cmake says why),
 # so the gnd_* symbols live inside each product's single archive. Linking one of
 # those archives is therefore the only way to reach them -- and it makes this
 # test also check the thing most likely to break quietly: that the symbols really
@@ -396,13 +391,12 @@ endif()
 # THE TRANCE GATE'S RUST, which was the one suite nobody ran.
 #
 # spectro_core has been registered since the Spectrogram arrived, and the note
-# in cmake/SpectroEngine.cmake says why -- "run from here rather than left to be
-# remembered". The same argument applied to tg-core the whole time and the same
+# says why -- "run from here rather than left to be remembered". The same argument applied to tg-core the whole time and the same
 # two variables were already in scope; nothing was using them. A suite that only
 # runs when somebody types `cargo test` in the right directory is, as run.sh
 # puts it, the same as not being run.
 add_test(NAME tg_core_rs
-         COMMAND ${TG_ENV} ${TG_CARGO} test --manifest-path
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p tg-core -p tg-capi)
 
 # ---------------------------------------------------------------- The C++
@@ -430,16 +424,13 @@ add_test(NAME sc_core COMMAND sc_core_tests)
 # detector's edge logic, the parameter clamps and the curve algebra. Stated
 # where the state is reachable, rather than inferred through the ABI.
 #
-# SC_ENV and SC_CARGO come from cmake/SideChainEngine.cmake, which found the
-# toolchain the hard way (rustup's shims are often not on PATH).
-#
 # sc-move is in here too, and its tests are the ones nothing else can make: that
 # `chain_params` declares every key the engine answers to and no key it does
 # not, that the viz group stays contiguous (the host DROPS a graphic whose
 # members are not adjacent), and that the Sidechain source is absent where the
 # hardware has no aux input to feed it.
 add_test(NAME sc_core_rs
-         COMMAND ${SC_ENV} ${SC_CARGO} test --manifest-path
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p sc-core -p sc-capi -p sc-move)
 
 # THE CURVE ORACLE, BOTH HALVES.

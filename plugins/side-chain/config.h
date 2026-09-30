@@ -86,10 +86,10 @@
  *              key on channel 1, which is indistinguishable from a stereo main
  *              with no key -- the same two channels.
  *
- * This used to be Examples/IPlugSideChain's whole list, mono mains with stereo
- * keys included, and under CLAP "1.2-2" delivered the key's left side as the
- * main's right. The #if goes when iPlug2's CLAP wrapper starts each input bus
- * where VST3 and AU do (IPlugCLAP::process, which attaches them packed).
+ * A GUARD FOR AN iPlug2 BUG: IPlugCLAP::process attaches input buses packed,
+ * back to back, where VST3 and AU start each at its own offset -- so under CLAP
+ * "1.2-2" delivered the key's left side as the main's right. The #if goes with
+ * docs/iplug2-patches/0002-clap-bus-offsets.patch, once iPlug2 carries it.
  *
  * In Live this surfaces as a sidechain source selector on the device.
  */

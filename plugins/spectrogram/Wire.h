@@ -2,27 +2,10 @@
  * The Spectrogram's wire format, on its own so it can be tested.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * WHY THIS IS NOT IN Spectrogram.cpp ANY MORE.
- *
- * The encoder lived inside OnIdle, which is a method on a class whose base is
- * the FORMAT WRAPPER -- iplug::Plugin is a typedef to IPlugVST3 or IPlugAU
- * depending on which define is set. Nothing can construct one of those outside
- * a plugin bundle, so the hex encoder could not be reached by a test at all,
- * and the editor's copy of it was the only thing describing the format:
- *
- *   ui/test/columns.test.mjs  "this is a transcription of it, which is the
- *                              point: if the two disagree, this test is the
- *                              disagreement"
- *
- * A transcription is not an oracle. That is the same arrangement the curves
- * had -- shape() in the engine and shape() in JavaScript, agreeing with each
- * other by hand -- and the S-curve was wrong in one of them for as long as
- * both existed.
- *
- * So the format is stated ONCE, here, in free functions over plain data. The
- * plugin calls them and sends the result; the test calls them and pins the
- * result to a table the editor is checked against too. Neither side is
- * compared against the other.
+ * Stated ONCE, in free functions over plain data: the plugin sends what these
+ * return, and tests/cpp/spectro_wire.cpp pins it to ui/test/wire_table.txt,
+ * the table the editor's decoder is checked against too. Neither side is
+ * compared with the other.
  */
 #pragma once
 
@@ -63,12 +46,8 @@ std::string encode_axis(const float* hz, int n);
 
 /*
  * "<f_min>:<f_max>" -> lo, hi. Returns false and leaves both untouched when
- * there is no colon; anything else is handed to atof and passed on.
- *
- * That is deliberately the pre-existing contract and not a stricter one -- the
- * engine is what refuses an undrawable range, and moving the judgement here
- * would be a behaviour change wearing a refactor's clothes. See the note at
- * the implementation.
+ * there is no colon; each half is read as atof would, with '.' as the point
+ * whatever the locale. The engine is what refuses an undrawable range.
  */
 bool parse_range(const std::string& arg, float& lo, float& hi);
 
@@ -130,26 +109,6 @@ bool parse_compare(const std::string& arg, int& a, int& b, bool& on);
  */
 std::string encode_sync(double ppq, double bpm, int num, int denom, bool running,
                         double ppqPerCol, int sampleRate);
-
-/*
- * Beats after `frames` more samples at `bpm`. A non-positive sample rate or
- * tempo returns `beats` unchanged rather than a NaN that would poison the
- * position for the rest of the session.
- *
- * This is the Trance Gate's `advance_beats` a second time rather than a shared
- * one: the two plugins keep separate Wire units on purpose (see the top of
- * this file), and four lines of arithmetic is a smaller thing to carry than a
- * dependency between two plugins that otherwise have nothing to say.
- */
-double advance_beats(double beats, int frames, double bpm, double sampleRate);
-
-/*
- * What `n` bytes of payload cost once the transport has formatted them:
- * base64 inflates by a third, and the message frame costs a fixed 32 on top.
- * Spelled here because the number is a property of the wire, not of the class
- * that happens to send it.
- */
-constexpr int framed_size(int nBytes) { return nBytes * 4 / 3 + 32; }
 
 } // namespace wire
 } // namespace spectro

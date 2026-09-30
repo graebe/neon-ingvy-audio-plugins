@@ -1,24 +1,23 @@
 /*
- * The ground's wiring in the four plugin shells.
+ * The ground's wiring, in the shared shell every plugin is built on.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
- * A SOURCE CHECK, AND ONLY BECAUSE NOTHING ELSE CAN SEE THIS. The shells cannot
- * be linked into a test -- iPlug2 refuses any target that is not a plugin
- * format (tests/cpp/CMakeLists.txt says more) -- and every property below is a
- * property of the ORDER of a few calls in them, which no type checks.
+ * A SOURCE CHECK, AND ONLY BECAUSE NOTHING ELSE CAN SEE THIS. ni::WebPlugin
+ * derives from a format wrapper and cannot be linked into a test, and every
+ * property below is the ORDER of a few calls, which no type checks. The
+ * Spectrogram once sent its ground after six early returns and its background
+ * almost never moved while every test stayed green.
  *
- * It exists because one of them was wrong for a release: the Spectrogram sent
- * its ground AT THE END of OnIdle, after six early returns -- one of them
- * `!mClashOn`, which is off by default -- so its background almost never moved,
- * and every test stayed green. The fix is structural (SendGround is the first
- * statement of every OnIdle) and this keeps it that way.
- *
- * What is asserted, per shell:
+ * What is asserted:
  *
  *   - OnIdle's first statement is SendGround(), before anything can return
- *   - OnUIOpen switches the detector on
- *   - CloseWindow switches it off, and chains to the base -- it is CloseWindow
- *     and not OnUIClose because WebViewEditorDelegate never calls OnUIClose
+ *   - the detector is fed in ProcessBlock before the product's audio runs
+ *   - OnReset re-rates and resets it; the constructor makes it, the
+ *     destructor frees it
+ *   - OnUIOpen switches it on; CloseWindow switches it off and chains to the
+ *     base -- CloseWindow, because WebViewEditorDelegate never calls OnUIClose
+ *   - those hooks are `final`, every plugin derives from ni::WebPlugin, and no
+ *     plugin touches the detector itself
  *
  *   node --test tests/ground_shells.test.mjs
  */
@@ -30,19 +29,13 @@ import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const SHELLS = {
-  TranceGate: 'plugins/trance-gate/TranceGate.cpp',
-  SideChain: 'plugins/side-chain/SideChain.cpp',
-  Spectrogram: 'plugins/spectrogram/Spectrogram.cpp',
-  ListenIn: 'plugins/listen-in/ListenIn.cpp',
-};
-
 /** Strip comments, so a commented-out call cannot satisfy a check. */
 const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+const read = (f) => code(readFileSync(join(ROOT, f), 'utf8'));
 
-/** The body of `Cls::name()`, braces balanced, or null. */
+/** The body of `Cls::name(...)`, braces balanced, or null. */
 function body(src, cls, name) {
-  const m = new RegExp(`\\b${cls}::${name}\\s*\\([^)]*\\)\\s*\\{`).exec(src);
+  const m = new RegExp(`\\b${cls}::${name}\\s*\\([^)]*\\)[^{;]*\\{`).exec(src);
   if (!m) return null;
   let depth = 1;
   let i = m.index + m[0].length;
@@ -59,26 +52,65 @@ const statements = (b) =>
   b.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
     .split(/;|\{|\}/).map((s) => s.trim()).filter(Boolean);
 
-for (const [cls, file] of Object.entries(SHELLS)) {
-  const src = code(readFileSync(join(ROOT, file), 'utf8'));
+const HDR = read('plugins/_shared/ni/WebPlugin.h');
+const SRC = read('plugins/_shared/ni/WebPlugin.cpp');
+const at = (name) => {
+  const b = body(SRC, 'WebPlugin', name);
+  assert.ok(b, `WebPlugin::${name} not found`);
+  return b;
+};
 
-  test(`${cls}: SendGround is the first thing OnIdle does`, () => {
-    const b = body(src, cls, 'OnIdle');
-    assert.ok(b, `${cls}::OnIdle not found in ${file}`);
-    assert.equal(statements(b)[0], 'SendGround()',
-      `${cls}::OnIdle must call SendGround() before anything that can return early`);
-  });
+test('SendGround is the first thing OnIdle does', () => {
+  assert.equal(statements(at('OnIdle'))[0], 'SendGround()');
+});
 
-  test(`${cls}: opening the editor switches the detector on`, () => {
-    const b = body(src, cls, 'OnUIOpen');
-    assert.ok(b, `${cls}::OnUIOpen not found in ${file}`);
-    assert.match(b, /gnd_set_active\(\s*mGround\s*,\s*1\s*\)/);
-  });
+test('the detector hears the input before the product writes an output', () => {
+  const b = at('ProcessBlock');
+  const push = b.indexOf('gnd_push(mGround');
+  const audio = b.indexOf('ProcessAudio(');
+  assert.ok(push >= 0, 'ProcessBlock does not feed the detector');
+  assert.ok(audio > push, 'ProcessAudio runs before the detector is fed');
+});
 
-  test(`${cls}: closing the editor switches the detector off`, () => {
-    const b = body(src, cls, 'CloseWindow');
-    assert.ok(b, `${cls}::CloseWindow not found in ${file} -- OnUIClose is never called by the WebView delegate`);
-    assert.match(b, /gnd_set_active\(\s*mGround\s*,\s*0\s*\)/);
-    assert.match(b, /iplug::Plugin::CloseWindow\(\)/, 'CloseWindow must chain to the base, or the WebView is never torn down');
+test('a reset re-rates the detector and clears its bed', () => {
+  const b = at('OnReset');
+  assert.match(b, /gnd_set_sample_rate\(\s*mGround/);
+  assert.match(b, /gnd_reset\(\s*mGround\s*\)/);
+});
+
+test('the detector is made once and freed once', () => {
+  assert.match(at('WebPlugin'), /mGround\s*=\s*gnd_new\(/);
+  assert.match(at('~WebPlugin'), /gnd_free\(\s*mGround\s*\)/);
+});
+
+test('opening the editor switches the detector on', () => {
+  assert.match(at('OnUIOpen'), /gnd_set_active\(\s*mGround\s*,\s*1\s*\)/);
+});
+
+test('closing the editor switches the detector off and tears the WebView down', () => {
+  const b = at('CloseWindow');
+  assert.match(b, /gnd_set_active\(\s*mGround\s*,\s*0\s*\)/);
+  assert.match(b, /iplug::Plugin::CloseWindow\(\)/, 'CloseWindow must chain to the base');
+});
+
+test('no product can reorder any of it', () => {
+  for (const hook of ['ProcessBlock', 'OnReset', 'OnIdle', 'OnUIOpen', 'CloseWindow']) {
+    assert.match(HDR, new RegExp(`\\b${hook}\\([^)]*\\)\\s*final\\s*;`), `${hook} is not final`);
+  }
+});
+
+const PLUGINS = {
+  TranceGate: 'plugins/trance-gate/TranceGate',
+  SideChain: 'plugins/side-chain/SideChain',
+  Spectrogram: 'plugins/spectrogram/Spectrogram',
+  ListenIn: 'plugins/listen-in/ListenIn',
+};
+
+for (const [cls, base] of Object.entries(PLUGINS)) {
+  test(`${cls} is built on the shared shell and leaves the ground to it`, () => {
+    const h = read(`${base}.h`);
+    const c = read(`${base}.cpp`);
+    assert.match(h, new RegExp(`class\\s+${cls}\\s+final\\s*:\\s*public\\s+ni::WebPlugin`));
+    assert.doesNotMatch(h + c, /\bgnd_\w+\(/, `${cls} calls the detector itself`);
   });
 }

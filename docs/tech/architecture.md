@@ -46,23 +46,56 @@ and who owns the output buffer.
 
 ## The C++ glue
 
-`cmake/RustToolchain.cmake` finds cargo — across every layout rustup.rs,
-Homebrew and a bare toolchain use — and the engine files
-(`cmake/TranceGateEngine.cmake`, `cmake/SpectroEngine.cmake`) do the same three
-steps for each engine:
+`cmake/NiPlugin.cmake` holds the whole build recipe, in two functions.
 
-1. `cargo build --release -p <capi> --target aarch64-apple-darwin --target x86_64-apple-darwin`
-2. `lipo -create` the two static-library slices into one universal `.a`
-3. expose it as a CMake `INTERFACE` library the plugin target links
+`ni_add_rust_engine(<target> CRATE <crate> LIB <lib> INCLUDE <dir>)` registers
+a product's C ABI, and `ni_build_rust_engines()` builds every registered crate
+in **one** cargo invocation with one target directory, so the crates they share
+(`ni-dsp`, `ground`, `shell`, `audio-bus`) compile once:
 
-The cargo step is wrapped in a target that **always runs**, deliberately: cargo
-is the dependency scanner here, not CMake. The `copy_if_different` after `lipo`
-is what stops an unchanged engine from relinking three plugin formats.
+1. `cargo build --release -p tg-capi -p sc-capi … --target aarch64-apple-darwin --target x86_64-apple-darwin`
+2. `lipo -create` each product's two static-library slices into one universal `.a`
+3. each is exposed as a CMake `INTERFACE` library its plugin and tests link
 
-`iplug_add_plugin(... FORMATS VST3 CLAP AU UI WEBVIEW ...)` produces the
-bundles. There is no Standalone target: its `main()` and preferences dialog
-reference menu and combo-box resource IDs that only exist for an IGraphics UI,
-and this editor is a WebView.
+It is still **one static library per plugin**: each product's capi crate is a
+staticlib that absorbs the rlibs it depends on, because two Rust staticlibs in
+one binary each carry the Rust runtime. The cargo step always runs — cargo is the
+dependency scanner, not CMake — and `copy_if_different` after `lipo` is what
+stops an unchanged engine from relinking three plugin formats.
+
+`ni_add_plugin(<NAME> SOURCES … LINK …)` builds the plugin's editor with vite
+(at configure time and at build time), refuses to configure without one
+(`cmake/EditorGuard.cmake`), and calls iPlug2's
+`iplug_add_plugin(... FORMATS VST3 CLAP AU UI WEBVIEW ...)` with the shared shell
+compiled in. There is no Standalone target: its `main()` and preferences dialog
+reference resource IDs that only exist for an IGraphics UI.
+
+## The shared shell
+
+Every plugin class derives from `ni::WebPlugin` (`plugins/_shared/ni`), which
+owns everything the four used to repeat: the WebView bootstrap (a custom URL
+scheme per product, developer tools in debug builds only), the editor protocol,
+the animated ground's detector, flush-to-zero around every block, and `OnIdle`'s
+order — the ground first, then the product's host-facing work, then, only while
+an editor is open, its editor work. The iPlug2 hooks it owns are `final`; a
+product supplies `ProcessAudio`, `ResetAudio`, `OnHostIdle`, `OnEditorIdle`,
+`OnEditorReady` and `OnEditorMessage`, and its state chunk.
+
+The protocol itself (`ni/Editor.h`) has no host in it and is tested without one.
+Tags `0..NParams()-1` carry a parameter's display string; each product's own
+tags are `64..111`; the shell's are the same in every plugin:
+
+| tag | direction | payload |
+|---|---|---|
+| 112 `ground` | → editor | `<strength>`, 0..1, three decimals; one message per kick |
+| 113 `defaults` | → editor | `<d0>:<d1>:…:<dN-1>`, every parameter's normalised default in index order |
+| 120 `ready` | ← editor | none: mounted, send the whole state |
+| 121 `setText` | ← editor | `<paramIdx>:<typed text>` |
+| 122 `height` | ← editor | the height it needs, in viewport pixels |
+
+`tests/editor_tags.test.mjs` holds every tag and parameter index in C++ to the
+editors' `msg.js` tables by name. Numbers on the wire are written and read with
+`'.'` whatever the host's locale (`ni/Wire.h`).
 
 ## Threads
 
@@ -81,7 +114,8 @@ built once in `engines/shell` and used by every product:
 A save must be right even with the host's audio engine off, so an edit that has
 not been applied yet is still visible to readers: they are answered from the
 latest snapshot replayed through the outstanding edits. `tg_shell.h` and
-`sc_shell.h` are the per-product surfaces.
+`sc_shell.h` are the per-product surfaces; the Trance Gate's also decides whose
+Length wins when the Slot moves, which is an engine rule and not the shell's.
 
 Objects the shell builds and frees on the main thread — the audio thread's half
 of Listen-In's bus claim (its `abus_pusher_t`; the main thread keeps the
@@ -100,9 +134,9 @@ the end -- is refused and changes nothing. The parameter declarations and the
 chunk code live outside the plugin class (`Params.cpp`, `Patch.cpp`,
 `State.cpp`) so `tests/cpp` can save and reload them the way a host does.
 
-`ProcessBlock` opens with `shell_denormals.h`'s guard: flush-to-zero for the
-block, the engines included, and the host's floating-point mode back on the way
-out.
+`ni::WebPlugin::ProcessBlock` opens with `shell_denormals.h`'s guard:
+flush-to-zero for the block, the engines included, and the host's
+floating-point mode back on the way out.
 
 ## The editor
 

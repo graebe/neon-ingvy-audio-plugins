@@ -159,7 +159,7 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NISpectrogram.vst3
 
 ## For developers
 
-The column format on the wire, and the mount-ordering bug that tag `102` exists
+The column format on the wire, and the mount-ordering bug that the `ready` tag exists
 to fix, are in [plugins/spectrogram/ui/README.md](../ui/README.md).
 
 ## The background, and the Motion switch

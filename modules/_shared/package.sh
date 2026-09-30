@@ -14,7 +14,7 @@
 # packaged its LICENSE after an `&&` list that ended the script under `set -e`.
 #
 # THE SECOND OF TWO TARGETS AROUND ONE CORE. Each plugin links its engine's
-# `*-capi` crate (see cmake/<Engine>Engine.cmake); this builds the `*-move`
+# `*-capi` crate (see cmake/NiPlugin.cmake); this builds the `*-move`
 # crate, the Schwung audio_fx v2 vtable. Both are members of the repository's
 # single Cargo workspace and both reach the engine's `*-core` by relative path,
 # so what ships here and what ships in the VST3 are the same DSP compiled

@@ -68,7 +68,7 @@ const PRODUCTS = {
    * The ground's kick detector. Not a plugin, and unlike audio-bus not even a
    * static library of its own: ground-capi is an rlib that each product's capi
    * crate absorbs, because one archive per plugin is an invariant here (see
-   * cmake/GroundEngine.cmake). It ships inside ALL FOUR products, which is the
+   * cmake/NiPlugin.cmake). It ships inside ALL FOUR products, which is the
    * strongest version of the reason audio-bus is listed -- a crate that
    * disagreed with itself would disagree in four places at once.
    */

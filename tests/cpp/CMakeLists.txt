@@ -1,21 +1,15 @@
 # The C++ tests, on doctest.
 #
-# WHY THERE ARE ANY AGAIN. Three C++ targets -- tg_params, tg_vst3 and tg_shot
-# -- hosted JUCE classes directly and went with JUCE; see the note at the top
-# of ../CMakeLists.txt. Nothing replaced them, so the plugin shells have been
-# the one part of this repository with no framework pointed at them at all.
+# WHY THEY LINK SO LITTLE. iplug_configure_target refuses any target that is
+# not a plugin format, and IPlug_include_in_plug_hdr.h stops with `#error "No
+# API defined!"` outside one -- so a test cannot link a plugin class, or the
+# shared ni::WebPlugin. What it links is what was lifted out of them: the shell's
+# wire and editor protocol (plugins/_shared/ni), each product's Wire, Params,
+# Patch and State, iPlug2's IPlugParameter.cpp and, where the seam is the point,
+# the real engine.
 #
-# WHY THEY LINK ALMOST NOTHING. iplug_configure_target refuses any target that
-# is not a plugin format, and IPlug_include_in_plug_hdr.h stops with
-# `#error "No API defined!"` outside one -- so a test CANNOT link the plugin's
-# own translation unit. What it can link is the arithmetic that was lifted out
-# of it into Wire.cpp, which includes <string> and nothing else. Each binary
-# below is two files and builds in about a second.
-#
-# doctest is MIT and one header, vendored at external/doctest. Catch2 (BSL-1.0)
-# and GoogleTest (BSD-3) are both permissive and both would have put the first
-# exception into THIRD_PARTY_LICENSES.md's "the licence is uniform: MIT
-# throughout" -- which is a sentence worth keeping literally true.
+# doctest is MIT and one header, vendored at external/doctest, which keeps
+# THIRD_PARTY_LICENSES.md's "MIT throughout" literally true.
 
 set(DOCTEST_DIR ${CMAKE_SOURCE_DIR}/external/doctest)
 
@@ -25,13 +19,25 @@ if (NOT EXISTS ${DOCTEST_DIR}/doctest.h)
         "See THIRD_PARTY_LICENSES.md for the version and provenance.")
 endif()
 
-# ------------------------------------------------------------- Trance Gate
+set(NI_SHARED ${CMAKE_SOURCE_DIR}/plugins/_shared)
+set(NI_WIRE_SRC ${NI_SHARED}/ni/Wire.cpp)
 
-add_executable(tg_wire tg_wire.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Wire.cpp)
-target_include_directories(tg_wire PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate)
-add_test(NAME tg_wire COMMAND tg_wire)
+# ------------------------------------------------------------ the shell
+
+# What every shell does to a buffer or a message: the split, the quantisers,
+# the height, the transport, the chunking, the passthrough, the scope capture
+# and the numbers -- the last under a comma-decimal locale too.
+add_executable(ni_wire ni_wire.cpp ${NI_WIRE_SRC})
+target_include_directories(ni_wire PRIVATE ${DOCTEST_DIR} ${NI_SHARED})
+add_test(NAME ni_wire COMMAND ni_wire)
+
+# THE EDITOR PROTOCOL, over a recording Port: ready, defaults, typed text and
+# the height, as ni::WebPlugin speaks them without a host.
+add_executable(ni_editor ni_editor.cpp ${NI_SHARED}/ni/Editor.cpp ${NI_WIRE_SRC})
+target_include_directories(ni_editor PRIVATE ${DOCTEST_DIR} ${NI_SHARED})
+add_test(NAME ni_editor COMMAND ni_editor)
+
+# ------------------------------------------------------------- Trance Gate
 
 # THE PATTERN'S SAVE AND RELOAD, through Patch.cpp -- the plugin's own code for
 # it -- against the real engine. The one test here that links an engine: what it
@@ -49,10 +55,10 @@ set(IPLUG_PARAM_SRC ${IPLUG2_DIR}/IPlug/IPlugParameter.cpp)
 add_executable(tg_state tg_state.cpp
                ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Params.cpp
                ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Patch.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Wire.cpp
+               ${NI_WIRE_SRC}
                ${IPLUG_PARAM_SRC})
 target_include_directories(tg_state PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate ${NI_SHARED}
     ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
 target_link_libraries(tg_state PRIVATE tg_engine shell_engine)
 add_test(NAME tg_state COMMAND tg_state)
@@ -85,9 +91,9 @@ add_test(NAME shell_denormals COMMAND shell_denormals)
 # -------------------------------------------------------------- Spectrogram
 
 add_executable(spectro_wire spectro_wire.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/spectrogram/Wire.cpp)
+               ${CMAKE_SOURCE_DIR}/plugins/spectrogram/Wire.cpp ${NI_WIRE_SRC})
 target_include_directories(spectro_wire PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/spectrogram)
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/spectrogram ${NI_SHARED})
 
 # THE WIRE ORACLE, both halves -- the curve table's arrangement, applied to the
 # format the editor decodes.
@@ -111,10 +117,10 @@ add_test(NAME spectro_wire
 # --------------------------------------------------------------- Listen-In
 
 add_executable(listenin_wire listenin_wire.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp)
+               ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp ${NI_WIRE_SRC})
 # audio_bus.h for ABUS_MAX_SLOT only -- a macro, so nothing is linked.
 target_include_directories(listenin_wire PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in ${NI_SHARED}
     ${CMAKE_SOURCE_DIR}/engines/audio-bus/include)
 
 # THE WIRE ORACLE, both halves -- the Spectrogram's arrangement, applied to the
@@ -141,22 +147,24 @@ add_test(NAME sc_wire COMMAND sc_wire)
 
 # THE PARAMETERS AS A HOST SEES THEM -- their text and the state chunk, on the
 # plugin's own Params.cpp and real IParams. See tg_params and tg_state above.
+# The engine, because the Rate options are its own table.
 add_executable(sc_params sc_params.cpp
                ${CMAKE_SOURCE_DIR}/plugins/side-chain/Params.cpp
                ${IPLUG_PARAM_SRC})
 target_include_directories(sc_params PRIVATE
     ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/side-chain
     ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
-target_link_libraries(sc_params PRIVATE shell_engine)
+target_link_libraries(sc_params PRIVATE sc_engine shell_engine)
 add_test(NAME sc_params COMMAND sc_params)
 
 # Listen-In's chunk, saved and reloaded as clap-validator's state tests do.
 add_executable(listenin_state listenin_state.cpp
                ${CMAKE_SOURCE_DIR}/plugins/listen-in/State.cpp
                ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp
+               ${NI_WIRE_SRC}
                ${IPLUG_PARAM_SRC})
 target_include_directories(listenin_state PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in ${NI_SHARED}
     ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
 target_link_libraries(listenin_state PRIVATE audio_bus_engine shell_engine)
 add_test(NAME listenin_state COMMAND listenin_state)
@@ -165,9 +173,10 @@ add_test(NAME listenin_state COMMAND listenin_state)
 add_executable(spectro_state spectro_state.cpp
                ${CMAKE_SOURCE_DIR}/plugins/spectrogram/State.cpp
                ${CMAKE_SOURCE_DIR}/plugins/spectrogram/Wire.cpp
+               ${NI_WIRE_SRC}
                ${IPLUG_PARAM_SRC})
 target_include_directories(spectro_state PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/spectrogram
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/spectrogram ${NI_SHARED}
     ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
 target_link_libraries(spectro_state PRIVATE shell_engine)
 add_test(NAME spectro_state COMMAND spectro_state)

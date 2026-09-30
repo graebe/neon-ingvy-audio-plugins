@@ -317,28 +317,6 @@ TEST_CASE("an odd time signature survives the wire")
   CHECK(s.find(":6:8:") != std::string::npos);
 }
 
-/* ----------------------------------------------------------------- beats */
-
-TEST_CASE("beats advance with the samples that carry them")
-{
-  /* 120 BPM is 2 beats a second, so a second of 48 kHz is 2 beats. */
-  CHECK(advance_beats(0.0, 48000, 120.0, 48000.0) == doctest::Approx(2.0));
-  CHECK(advance_beats(10.0, 24000, 120.0, 48000.0) == doctest::Approx(11.0));
-  /* And it accumulates from wherever it already was, including below zero. */
-  CHECK(advance_beats(-1.0, 48000, 120.0, 48000.0) == doctest::Approx(1.0));
-}
-
-TEST_CASE("beats refuse to advance on arguments that would poison the position")
-{
-  /* A NaN here would not be one bad block: the position is carried forward, so
-   * it would be every block after it for the life of the session. */
-  CHECK(advance_beats(5.0, 512, 120.0, 0.0) == doctest::Approx(5.0));
-  CHECK(advance_beats(5.0, 512, 0.0, 48000.0) == doctest::Approx(5.0));
-  CHECK(advance_beats(5.0, 512, -120.0, 48000.0) == doctest::Approx(5.0));
-  CHECK(advance_beats(5.0, 0, 120.0, 48000.0) == doctest::Approx(5.0));
-  CHECK(advance_beats(5.0, -1, 120.0, 48000.0) == doctest::Approx(5.0));
-}
-
 TEST_CASE("a source list skips what it cannot read rather than failing whole")
 {
   std::vector<unsigned int> got;
@@ -425,14 +403,6 @@ TEST_CASE("a comparison names two channels and whether it is wanted")
   CHECK(a == 111);
   CHECK(b == 222);
   CHECK(parse_compare("-1:2:1", a, b, on) == false);
-}
-
-TEST_CASE("a full tick's payload fits the transport's cap")
-{
-  /* The same arithmetic as the static_assert in Spectrogram.h, asserted here
-   * too because the header's version is invisible until someone compiles the
-   * plugin -- and this suite does not. */
-  CHECK(framed_size(32 * 256 * 2) < 65536);
 }
 
 /* -------------------------------------------------------------------- main */

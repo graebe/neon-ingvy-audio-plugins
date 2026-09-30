@@ -148,6 +148,22 @@ int main(void)
         sc_core_get_param(c, "source_label", buf, sizeof buf);
         check("...and a source label", strcmp(buf, "Sidechain") == 0);
 
+        /* The whole table, as a plugin declares its Rate options from it: every
+         * index names the rate the string door selects by that index. */
+        int agree = 1, count = 0;
+        char label[32];
+        for (int i = 0; sc_core_rate_label(i, label, sizeof label) > 0; i++, count++) {
+            char idx[8];
+            snprintf(idx, sizeof idx, "%d", i);
+            sc_core_set_param(c, "rate", idx);
+            sc_core_get_param(c, "rate_label", buf, sizeof buf);
+            if (strcmp(buf, label) != 0) agree = 0;
+        }
+        check("sc_core_rate_label is the engine's table", agree && count == 12);
+        check("...ending where it ends", sc_core_rate_label(count, label, sizeof label) == -1);
+        sc_core_rate_label(sc_core_rate_default(), label, sizeof label);
+        check("sc_core_rate_default is 1/4", strcmp(label, "1/4") == 0);
+
         /*
          * ATOF IS NOT str::parse. "12ms" is 12 to C and an error to Rust, and
          * a state blob written by an older build may carry the unit.

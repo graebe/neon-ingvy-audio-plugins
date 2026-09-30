@@ -18,6 +18,21 @@ pub unsafe fn cstr<'a>(p: *const c_char) -> &'a str {
     CStr::from_ptr(p).to_str().unwrap_or("")
 }
 
+/// Copy `s` into a C buffer of `buf_len` bytes, NUL-terminated. Returns the
+/// length written, or -1 -- writing nothing -- when it does not fit whole: a
+/// truncated label is a different label.
+///
+/// # Safety
+/// `buf` is null or writable for `buf_len` bytes.
+pub unsafe fn copy_cstr(s: &str, buf: *mut c_char, buf_len: c_int) -> c_int {
+    if buf.is_null() || buf_len <= 0 || s.len() >= buf_len as usize {
+        return -1;
+    }
+    core::ptr::copy_nonoverlapping(s.as_ptr(), buf as *mut u8, s.len());
+    *buf.add(s.len()) = 0;
+    s.len() as c_int
+}
+
 /// The transport as every engine's C header declares it.
 #[repr(C)]
 pub struct CTransport {
@@ -58,6 +73,18 @@ mod tests {
             let t = CTransport { running: 2, beats: 1.5, bpm: 90.0 };
             let r = CTransport::read(&t).unwrap();
             assert!(r.running && r.beats == 1.5 && r.bpm == 90.0);
+        }
+    }
+
+    #[test]
+    fn a_copy_fits_whole_or_not_at_all() {
+        let mut buf = [0x7f as c_char; 5];
+        unsafe {
+            assert_eq!(copy_cstr("1/16", buf.as_mut_ptr(), 5), 4);
+            assert_eq!(cstr(buf.as_ptr()), "1/16");
+            assert_eq!(copy_cstr("1/16T", buf.as_mut_ptr(), 5), -1);
+            assert_eq!(cstr(buf.as_ptr()), "1/16", "a refused copy writes nothing");
+            assert_eq!(copy_cstr("x", std::ptr::null_mut(), 5), -1);
         }
     }
 }

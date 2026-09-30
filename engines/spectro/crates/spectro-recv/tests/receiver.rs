@@ -430,3 +430,60 @@ fn a_bus_still_filling_its_window_does_not_hold_the_picture() {
     assert!(n > 0);
     assert_eq!((r.take_columns(OWN, &mut out, n), r.take_columns(1, &mut bus, n)), (n, n));
 }
+
+#[test]
+fn a_frame_drains_every_channel_in_step_and_sends_the_view_and_the_clash() {
+    const SLOT: u32 = 3;
+    let (_w, mut p) = Writer::claim(SLOT, SR as u32).expect("slot 3 was taken");
+
+    let (mut r, mut feed) = Receiver::new(cfg());
+    r.set_sources(&[SLOT]);
+    r.set_clash(-60.0, 12.0);
+    let bands = r.bands();
+    let mut sum = vec![0u8; bands * 32];
+    let mut clash = vec![0u8; bands * 32];
+    let (mut po, mut pb) = (0.0, 0.0);
+
+    let (mut cols, mut clashed) = (0, 0);
+    for _ in 0..40 {
+        p.push(&tone(2048, 220.0, 0.5, &mut pb));
+        feed.push(&mono(2048, 220.0, 0.5, &mut po));
+        r.pump();
+        let (c, k) = r.frame(&[0, 1], Some((0, 1)), Some(&mut sum), Some(&mut clash), 32);
+        assert_eq!(c, k, "the clash covers the columns the view does");
+        cols += c;
+        clashed += k;
+    }
+    assert!(cols > 0, "no picture");
+    assert_eq!(r.ready(), 0, "every channel was drained");
+    assert!(sum[..bands].iter().any(|&b| b > 0), "two tones summed to silence");
+    assert!(clash[..bands].iter().any(|&b| b > 0), "two equal tones did not clash");
+    assert_eq!(cols, clashed);
+
+    /* The same channel twice is no comparison, and a channel that is not open
+     * is no view. */
+    p.push(&tone(8192, 220.0, 0.5, &mut pb));
+    feed.push(&mono(8192, 220.0, 0.5, &mut po));
+    r.pump();
+    assert!(r.ready() > 0);
+    let (c, k) = r.frame(&[3], Some((1, 1)), Some(&mut sum), Some(&mut clash), 32);
+    assert_eq!((c, k), (0, 0), "nothing drawable in the view sends nothing");
+    assert_eq!(r.ready(), 0, "but the columns were still drained");
+}
+
+#[test]
+fn a_frame_without_an_editor_drains_and_drops() {
+    let (mut r, mut feed) = Receiver::new(cfg());
+    let mut ph = 0.0;
+    for _ in 0..20 {
+        feed.push(&mono(2048, 1000.0, 0.5, &mut ph));
+        r.pump();
+    }
+    assert!(r.ready() > 0);
+    assert_eq!(r.frame(&[0], None, None, None, 32), (0, 0));
+    /* At most 32 a call, as an editor tick would take them. */
+    while r.ready() > 0 {
+        r.frame(&[0], None, None, None, 32);
+    }
+    assert_eq!(r.ready(), 0);
+}

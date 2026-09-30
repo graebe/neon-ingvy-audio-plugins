@@ -8,16 +8,16 @@
  * marked.
  *
  * It ships in the SAME static library as spectro_core.h (libspectro_capi.a), so
- * linking it costs nothing extra; see cmake/SpectroEngine.cmake.
+ * linking it costs nothing extra; see cmake/NiPlugin.cmake.
  *
  * THE THREAD RULES ARE PART OF THE ABI, and they are NOT the analyzer's:
  *
- *   srecv_new / free / start          one thread, nothing else in flight
- *   srecv_set_sources / set_clash     the main thread -- both allocate
- *   srecv_slots                       the main thread
- *   srecv_push_own                    the audio thread, and only it
- *   srecv_pump                        the message thread, and only it
- *   srecv_take_columns / clash        the message thread, and only it
+ *   srecv_new / free / start             one thread, nothing else in flight
+ *   srecv_set_sources / set_clash        the main thread -- both allocate
+ *   srecv_slots                          the main thread
+ *   srecv_push_own                       the audio thread, and only it
+ *   srecv_pump                           the message thread, and only it
+ *   srecv_take_columns / clash / frame   the message thread, and only it
  *
  * THE TRANSFORMS RUN ON THE RECEIVER'S OWN THREAD once srecv_start has started
  * it: a worker, below the UI's priority, that wakes every few milliseconds,
@@ -153,6 +153,23 @@ int srecv_ready(const srecv_t* r);
  * thread only.
  */
 int srecv_take_columns(srecv_t* r, int ch, unsigned char* out, int max_cols);
+
+/*
+ * ONE EDITOR TICK'S PICTURE, in one call: every channel drained by the same
+ * number of columns (srecv_ready, at most max_cols), the `view` channels added
+ * in power into `sum_out`, and -- when cmp_a and cmp_b are both >= 0 and differ
+ * -- their clash into `clash_out`. Returns the columns written to `sum_out`, 0
+ * when there is nothing to send; *clash_cols gets the clash's, 0 when there is
+ * none. A channel that drew nothing this tick is left out of the sum rather
+ * than adding silence.
+ *
+ * A null `sum_out` drains and drops -- a closed editor keeps the rings from
+ * filling with a picture nobody will see. Both outputs hold max_cols *
+ * srecv_bands() bytes. Message thread only; allocates on its first call.
+ */
+int srecv_frame(srecv_t* r, const int* view, int n_view, int cmp_a, int cmp_b,
+                unsigned char* sum_out, unsigned char* clash_out, int max_cols,
+                int* clash_cols);
 
 /* Bytes in one column of any channel: the band count they all share. */
 int srecv_bands(const srecv_t* r);

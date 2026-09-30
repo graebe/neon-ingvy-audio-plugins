@@ -3,10 +3,9 @@
  * tested.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * Lifted out of ListenIn.cpp for the reason Wire.cpp was: a test cannot link
- * the plugin's own translation unit. tests/cpp/listenin_state.cpp declares the
- * parameter on a bare iplug::IParam and saves and reloads the chunk the way
- * clap-validator's state tests do.
+ * Apart from the plugin class so a test can reach them: tests/cpp/listenin_state.cpp
+ * declares the parameter on a bare iplug::IParam and saves and reloads the
+ * chunk the way clap-validator's state tests do.
  */
 #pragma once
 

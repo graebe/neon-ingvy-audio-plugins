@@ -386,6 +386,12 @@ impl Instance {
         self.ms_per_step = (samples * 1000.0 / sr) as f32;
     }
 
+    /// One cycle of the pattern in ms: the step length times the steps in the
+    /// current slot.
+    pub fn cycle_ms(&self) -> f64 {
+        self.ms_per_step as f64 * self.pattern().length.max(1) as f64
+    }
+
     /// How long the gate is open for, in ms: Width of a step. The unit every
     /// envelope stage is measured in.
     #[inline]

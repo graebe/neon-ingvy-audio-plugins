@@ -281,6 +281,12 @@ int    sc_core_set_param(sc_core_t *c, const char *key, const char *val);
 int    sc_core_get_param(const sc_core_t *c, const char *key, char *buf,
                            int buf_len);
 
+/* Rate `index`'s label into `buf`, from the engine's own table -- what a
+ * plugin declares its Rate parameter's options from. Returns the length
+ * written, or -1 past the end or for a buffer too small. */
+int sc_core_rate_label(int index, char *buf, int buf_len);
+int sc_core_rate_default(void);
+
 /* ------------------------------------------------- audio-thread reads */
 
 double sc_core_phase01(const sc_core_t *c);
