@@ -157,7 +157,7 @@ impl Instance {
         self.amount_s = ni_dsp::smooth::glide(self.amount_s, self.amount, r.smooth);
         let m = 1.0 - self.amount_s * (1.0 - self.env.level * self.step_level);
 
-        self.step_pos += r.inc;
+        self.phase.pos += r.inc;
         r.frac += r.inc;
         while r.frac >= 1.0 {
             r.frac -= 1.0;

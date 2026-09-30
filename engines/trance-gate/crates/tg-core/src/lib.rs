@@ -31,6 +31,7 @@ mod process;
 pub use pattern::Pattern;
 
 use envelope::{Curve, Env, StageLens};
+use ni_dsp::phase::PhaseTracker;
 
 pub const MAX_STEPS: usize = 128;
 pub const SLOTS: usize = 8;
@@ -145,10 +146,10 @@ pub struct Instance {
     cursor: usize,
 
     // ---- runtime, not saved ----
-    step_pos: f64,
+    /// The playhead, in steps, and whether the transport ran last block.
+    phase: PhaseTracker,
     /// Step index at the previous sample; `None` = none.
     last_step: Option<usize>,
-    was_running: bool,
     env: Env,
     /*
      * THE STRUCK STEP'S LEVEL, HELD FOR THE WHOLE GATE.
@@ -242,9 +243,8 @@ impl Instance {
             amount_s: 0.0,
             sustain_s: 1.0,
             cursor: 0,
-            step_pos: 0.0,
+            phase: PhaseTracker::default(),
             last_step: None,
-            was_running: false,
             env: Env::default(),
             step_level: 0.0,
             ms_per_step: 0.0,
@@ -304,7 +304,7 @@ impl Instance {
     /// The playhead and clock, for a mirror. See [`Playhead`].
     pub fn playhead(&self) -> Playhead {
         Playhead {
-            step_pos: self.step_pos,
+            step_pos: self.phase.pos,
             advancing: self.advancing,
             last_bpm: self.last_bpm,
             ms_per_step: self.ms_per_step,
@@ -329,7 +329,7 @@ impl Instance {
         self.last_bpm = p.last_bpm;
         self.set_param("state", state);
         self.ms_per_step = p.ms_per_step;
-        self.step_pos = p.step_pos;
+        self.phase.pos = p.step_pos;
         self.advancing = p.advancing;
         self.cursor = p.cursor.min(self.pattern().length.max(1) - 1);
     }
@@ -387,7 +387,7 @@ impl Instance {
     /// equivalent formatted readout's `snprintf` does not belong.
     pub fn phase01(&self) -> f64 {
         let length = self.pattern().length.max(1) as f64;
-        let mut pos = self.step_pos % length;
+        let mut pos = self.phase.pos % length;
         if pos < 0.0 {
             pos += length;
         }

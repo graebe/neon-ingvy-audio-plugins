@@ -497,7 +497,7 @@ impl Instance {
              * -- the difference between an animated ring and a slideshow. */
             "phase" | "phase:effective" => {
                 let length = p.length.max(1) as f64;
-                let mut pos = self.step_pos % length;
+                let mut pos = self.phase.pos % length;
                 if pos < 0.0 {
                     pos += length;
                 }
@@ -596,7 +596,7 @@ impl Instance {
     fn ui_readout(&self, mut b: Buf) -> i32 {
         let p = self.pattern();
         let length = p.length.max(1);
-        let mut pos = self.step_pos % length as f64;
+        let mut pos = self.phase.pos % length as f64;
         if pos < 0.0 {
             pos += length as f64;
         }

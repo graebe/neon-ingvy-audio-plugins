@@ -714,10 +714,10 @@ fn the_phase_converges_at_the_same_rate_whatever_the_block_size() {
             let tr = Transport { running: true, beats: t * 2.0 + offset, bpm: 120.0 };
             p.process_f32(&mut buf, frames, Some(&tr));
             done += frames;
-            err = done as f64 / sr * 2.0 + offset - p.cycle_pos;
+            err = done as f64 / sr * 2.0 + offset - p.phase.pos;
         }
         let dt = done as f64 / sr - t0.unwrap();
-        let (got, want) = (err / 0.1, (-dt / crate::TRACK_TAU_S).exp());
+        let (got, want) = (err / 0.1, (-dt / ni_dsp::phase::TRACK_TAU_S).exp());
         assert!(
             got > 0.0 && (got / want - 1.0).abs() < 0.05,
             "{frames}-frame blocks: {got:.5} of the error left after {dt:.3}s, want {want:.5}"
@@ -742,8 +742,8 @@ fn the_cycle_never_runs_backwards_or_fires_twice() {
             let lag = if t >= 0.5 { 0.2 * 4.0 } else { 0.0 };
             let tr = Transport { running: true, beats: t * 2.0 - lag, bpm: 120.0 };
             p.process_f32(&mut buf, frames, Some(&tr));
-            assert!(p.cycle_pos >= prev, "{frames}-frame blocks: the cycle went back at {t:.4}s");
-            prev = p.cycle_pos;
+            assert!(p.phase.pos >= prev, "{frames}-frame blocks: the cycle went back at {t:.4}s");
+            prev = p.phase.pos;
             done += frames;
         }
         /* Two seconds at 120 bpm is exactly one 1/1 cycle: the downbeat fired

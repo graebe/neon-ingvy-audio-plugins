@@ -1,7 +1,7 @@
 /*!
 The pieces every Neon Ingvy engine needs and no product owns: C-compatible
 formatting and parsing, the rate table's parser, the envelope curves, the
-one-pole and the parameter glide.
+one-pole, the parameter glide and the transport-following phase.
 
 It knows no product. A product's crates depend on it; it depends on nothing.
 Everything here runs on an audio callback, so nothing here allocates.
@@ -10,6 +10,7 @@ Everything here runs on an audio callback, so nothing here allocates.
 pub mod curve;
 pub mod fmt;
 pub mod onepole;
+pub mod phase;
 pub mod rate;
 pub mod smooth;
 

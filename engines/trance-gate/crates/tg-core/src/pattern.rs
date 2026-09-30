@@ -372,9 +372,9 @@ impl Instance {
      * but they describe a pattern that no longer exists, so carrying them over
      * would leave a gate holding through a step that is now a gap.
      *
-     * IT DOES NOT TOUCH THE PLAYHEAD. Not `step_pos`, not `last_step`, not
-     * `env`, not `was_running`: pressing this mid-bar must change what the
-     * gate plays, not when it plays it.
+     * IT DOES NOT TOUCH THE PLAYHEAD. Not `phase`, not `last_step`, not
+     * `env`: pressing this mid-bar must change what the gate plays, not when
+     * it plays it.
      */
     pub fn randomize(&mut self, slot: usize, seed: Option<u32>) {
         if slot >= SLOTS {
