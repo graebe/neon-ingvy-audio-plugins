@@ -435,6 +435,21 @@
 .ground {
   position: absolute;
   inset: 0;
+  /*
+   * width AND height ARE REQUIRED, AND `inset: 0` DOES NOT REPLACE THEM.
+   *
+   * A <canvas> is a REPLACED element: it has an intrinsic size of 300x150, and
+   * for a replaced element `width: auto` means "use the intrinsic width" rather
+   * than "stretch between left and right". The offsets are then over-constrained
+   * and the browser drops `right` and `bottom` instead of honouring them.
+   *
+   * So `inset: 0` alone gets you a 300x150 canvas pinned to the top-left corner
+   * -- which is invisible, because a field at rest is pixel-identical to the
+   * static CSS ground it is sitting on. The window looks exactly right and only
+   * a patch in the corner ever animates. That is how this shipped once.
+   */
+  width: 100%;
+  height: 100%;
   z-index: -1;
   /* It carries no information and must never take a click: every control in the
    * window sits above it, and a stray drag on the background should do nothing

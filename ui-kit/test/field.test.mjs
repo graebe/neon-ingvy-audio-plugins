@@ -32,6 +32,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const REFERENCE = join(ROOT, 'design', 'files', 'project', 'components', 'ground.js');
 const TOKENS = join(HERE, '..', 'src', 'tokens.css');
+const COMPONENTS = join(HERE, '..', 'src', 'components.css');
 
 /* ---------- the stub ---------- */
 
@@ -346,4 +347,54 @@ test('a missing token is a reported bug, not a plausible-looking ground', async 
     globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
     assert.throws(() => new Field(stubCanvas(400, 300)), /tokens\.css/);
   } finally { teardown(); }
+});
+
+test('a field that cannot start is reported, not thrown at the editor', async () => {
+  /* The companion to the test above, and the reason Ground.jsx catches.
+   *
+   * Solid mounts children before parents, so the Ground's own onMount runs
+   * BEFORE the editor's -- and a throw there would stop the editor registering
+   * its message handler, leaving a window that renders once and is then dead.
+   * `Field` still throws (that is what the previous test pins); what must not
+   * happen is that the throw reaches the editor. This asserts the shape the
+   * component depends on: the failure is an ordinary exception at construction,
+   * so a try/catch around `new Field` is sufficient and nothing is deferred to a
+   * later tick where a catch could not reach it. */
+  const teardown = installDom();
+  try {
+    const { Field } = await loadField();
+    globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
+    let threw = null;
+    try { new Field(stubCanvas(400, 300)); } catch (e) { threw = e; }
+    assert.ok(threw instanceof Error, 'the failure must be a synchronous throw');
+  } finally { teardown(); }
+});
+
+test('the ground canvas is stretched by width/height, not by inset alone', () => {
+  /*
+   * A REGRESSION GUARD FOR A BUG THAT LOOKED LIKE NOTHING AT ALL.
+   *
+   * `<canvas>` is a REPLACED element with an intrinsic size of 300x150. For a
+   * replaced element, `width: auto` means "use the intrinsic width" -- so
+   * `position: absolute; inset: 0` does NOT stretch it; the offsets become
+   * over-constrained and `right`/`bottom` are dropped. The result is a 300x150
+   * canvas in the top-left corner of the window.
+   *
+   * And that is invisible. A field at rest is pixel-identical to the static CSS
+   * ground underneath it, so the window looks exactly right, and only a small
+   * patch in the corner ever animates. It shipped that way once.
+   *
+   * This cannot be caught by constructing a Field -- the tests above hand it a
+   * stub canvas with whatever size they like, and it believed them. The claim is
+   * about the stylesheet, so the stylesheet is what is read.
+   */
+  const css = readFileSync(COMPONENTS, 'utf8');
+  const rule = /\.ground\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, '.ground is not declared in components.css');
+  const body = rule[1];
+  for (const prop of ['width', 'height']) {
+    assert.match(body, new RegExp(`(^|[;\\s])${prop}\\s*:\\s*100%`),
+      `.ground must set ${prop}: 100% -- inset: 0 alone leaves a canvas at its ` +
+      'intrinsic 300x150, pinned to the corner, where nobody will notice it');
+  }
 });

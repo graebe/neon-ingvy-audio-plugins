@@ -66,6 +66,56 @@ if (TARGET NISpectrogramUI)
   foreach(fmt vst3 clap au)
     if (TARGET NISpectrogram-${fmt})
       add_dependencies(NISpectrogram-${fmt} NISpectrogramUI)
+      # AND THE LINK MUST DEPEND ON THE BUNDLE'S WEB FILES, or a UI-only change
+      # never reaches the installed plugin.
+      #
+      # add_dependencies above is ORDERING ONLY: it guarantees vite has run, not
+      # that anything is copied anywhere. iPlug2 deploys to ~/Library with a
+      # POST_BUILD command, and POST_BUILD runs only when the target actually
+      # relinks -- so editing ui/src rebuilt the bundle inside build/out and left
+      # the INSTALLED plugin untouched. The next test in Live then loaded
+      # yesterday's editor, with nothing anywhere saying so.
+      #
+      # LINK_DEPENDS puts the web files on the link rule, so a changed bundle
+      # relinks the plugin, and the relink is what fires the deploy.
+      set_property(TARGET NISpectrogram-${fmt} APPEND PROPERTY LINK_DEPENDS "${SPECTRO_WEB}")
+
+      # ... AND THEN THE WEB FILES HAVE TO BE PUT BACK, because iPlug2's deploy
+      # races the thing it is deploying.
+      #
+      # CMake copies MACOSX_PACKAGE_LOCATION resources -- which is how every file
+      # under resources/web gets into the bundle -- AFTER the target's POST_BUILD
+      # commands, not before. The build log says so plainly once you look for it:
+      #
+      #   [iPlug2] Copying plugin: ~/Library/Audio/Plug-Ins/CLAP/NIListenIn.clap
+      #   Copying OS X content out/NIListenIn.clap/Contents/Resources/web/assets/style.css
+      #
+      # So iPlug2's `rm -rf` + `copy_directory` can publish a bundle whose editor
+      # is the PREVIOUS build's, or -- on a first build -- missing entirely, which
+      # is a WebView that comes up blank with no error.
+      #
+      # This runs last (POST_BUILD commands run in the order they are added, and
+      # iplug_add_plugin added its own before this file got here) and copies the
+      # editor straight from the source tree, which is what vite just wrote. It
+      # does not depend on the bundle's own copy having happened at all.
+      if (fmt STREQUAL "vst3")
+        set(_ni_deploy "${IPLUG_DEPLOY_PATH_VST3}")
+        set(_ni_ext "vst3")
+      elseif (fmt STREQUAL "clap")
+        set(_ni_deploy "${IPLUG_DEPLOY_PATH_CLAP}")
+        set(_ni_ext "clap")
+      else()
+        set(_ni_deploy "${IPLUG_DEPLOY_PATH_AU}")
+        set(_ni_ext "component")
+      endif()
+      if (_ni_deploy)
+        add_custom_command(TARGET NISpectrogram-${fmt} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_directory
+                  "${CMAKE_CURRENT_SOURCE_DIR}/resources/web"
+                  "${_ni_deploy}/NISpectrogram.${_ni_ext}/Contents/Resources/web"
+          COMMENT "Refreshing NISpectrogram.${_ni_ext}'s editor in ${_ni_deploy}"
+          VERBATIM)
+      endif()
     endif()
   endforeach()
 endif()

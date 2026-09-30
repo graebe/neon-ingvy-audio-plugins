@@ -83,13 +83,39 @@ export function Ground(props) {
   };
 
   onMount(() => {
-    field = new Field(canvas);
-    /* The field's own constructor sizes itself and paints the ground at rest, so
-     * there is a correct picture before any of the below runs. */
-    measure();
+    /*
+     * THE GROUND MAY NEVER TAKE THE EDITOR DOWN WITH IT, and that is not
+     * defensive habit -- it is a specific failure this had.
+     *
+     * Solid mounts children before parents, so this runs BEFORE the editor's own
+     * onMount. A throw here -- a token missing from the stylesheet, a WebView
+     * that refuses a 2D context or `createImageData` -- would therefore stop the
+     * editor from ever registering `onMessage`, and the window would render once
+     * and then sit there completely dead: no meters, no readouts, no parameter
+     * updates, and nothing on screen to say why.
+     *
+     * That is a catastrophic price for a decoration. The design system already
+     * names the fallback: the static CSS ground on `body`, which this canvas
+     * merely draws over. So a failure here leaves the canvas transparent, the CSS
+     * ground showing through it, and the editor entirely intact.
+     *
+     * The console line is the whole diagnosis, and it is enough: the review
+     * harness and a WebView inspector both show it, and `field.js` still THROWS
+     * on a missing token rather than guessing, so ui-kit/test/field.test.mjs
+     * catches a stylesheet bug long before a plugin gets here.
+     */
+    try {
+      field = new Field(canvas);
+      /* The field's own constructor sizes itself and paints the ground at rest,
+       * so there is a correct picture before any of the below runs. */
+      measure();
+    } catch (err) {
+      field = null;
+      console.error('Ground: the animated background is off -', err);
+    }
 
     const root = canvas.parentElement;
-    if (root && globalThis.ResizeObserver) {
+    if (field && root && globalThis.ResizeObserver) {
       /*
        * ONE OBSERVER ON THE WINDOW, NOT ONE PER BOX. What the field needs is to
        * be told "the layout moved"; which box moved does not change the work,
@@ -98,7 +124,9 @@ export function Ground(props) {
        * that do the same thing several times in one frame.
        */
       observer = new ResizeObserver(() => {
-        field.resize();
+        /* `field` is re-read rather than captured: a later failure must not turn
+         * a resize into a second, louder error. */
+        field?.resize();
         measure();
       });
       observer.observe(root);
