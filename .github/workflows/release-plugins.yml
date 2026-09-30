@@ -36,47 +36,24 @@ jobs:
         with:
           submodules: recursive
 
-      # Which product this tag is for, and what version it claims.
-      - name: Read the tag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # WHICH PRODUCT, WHAT VERSION, AND DOES THE TREE AGREE. Parsed by
+      # scripts/release.mjs, the one parser both release workflows share and
+      # tests/release.test.mjs runs: the tag is <product>-<version exactly as
+      # versions.json spells it>, e.g. trance-gate-v2026.09.29.3. versions.json
+      # is where a version is decided and `ctest -R versions` holds config.h,
+      # the plists, module.json and every crate to it -- so checking the tag
+      # against versions.json checks it against all of them.
+      - name: Resolve the tag
         id: tag
         run: |
-          case "$GITHUB_REF_NAME" in
-            trance-gate-v*) PRODUCT=trance-gate; BUNDLE=NITranceGate ;;
-            spectrogram-v*) PRODUCT=spectrogram; BUNDLE=NISpectrogram ;;
-            listen-in-v*)   PRODUCT=listen-in;   BUNDLE=NIListenIn ;;
-            side-chain-v*)  PRODUCT=side-chain;  BUNDLE=NISideChain ;;
-            *) echo "ERROR: $GITHUB_REF_NAME names no product"; exit 1 ;;
-          esac
-          # ONLY THE PRODUCT PREFIX IS STRIPPED, not the "v" after it.
-          #
-          # This used to strip "${PRODUCT}-v" and compare the remainder to
-          # versions.json -- which worked while every version was a bare semver.
-          # The date scheme's versions BEGIN with a v ("v2026.09.29.1"), so that
-          # strip ate a character the version owns and a correct tag would have
-          # needed to say "-vv". The leading v is now normalised away on BOTH
-          # sides instead, in the comparison below, so a tag may spell it either
-          # way and both schemes work.
-          VERSION="${GITHUB_REF_NAME#${PRODUCT}-}"
-          echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
-          echo "bundle=$BUNDLE"   >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      # THE TAG MUST MATCH THE SOURCE. versions.json is where a version is
-      # decided and `ctest -R versions` holds config.h, module.json and every
-      # crate to it -- so checking the tag against versions.json checks it
-      # against all of them, and a release cannot claim a version the tree does
-      # not build.
-      - name: The tag matches versions.json
-        run: |
-          SOURCE=$(python3 -c "import json;print(json.load(open('versions.json'))['${{ steps.tag.outputs.product }}'])")
-          TAGV="${{ steps.tag.outputs.version }}"
-          # A leading "v" is spelling, not version -- the date scheme carries one
-          # and semver does not, so it is removed from both before comparing.
-          if [ "${SOURCE#v}" != "${TAGV#v}" ]; then
-            echo "ERROR: tag says $TAGV, versions.json says $SOURCE"
-            exit 1
-          fi
-          echo "version check passed: $SOURCE"
+          node scripts/release.mjs resolve "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
+          grep -q '^bundle=' "$GITHUB_OUTPUT" || {
+            echo "::error::$GITHUB_REF_NAME names a product with no plugin"; exit 1; }
 
       # iPlug2's SDKs ARE DOWNLOADED, NOT TRACKED. The submodule carries the
       # scripts and not the sources, so a fresh clone has an iPlug2::VST3 whose
@@ -107,9 +84,6 @@ jobs:
       - name: Rust, with both Apple targets
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - run: npm ci
 
       - name: Build
@@ -128,7 +102,7 @@ jobs:
           set -e
           B="${{ steps.tag.outputs.bundle }}"
           V="${{ steps.tag.outputs.version }}"
-          OUT="${{ steps.tag.outputs.product }}-$V-macOS.zip"
+          OUT="${{ steps.tag.outputs.zip }}"
           mkdir -p stage
           for f in vst3 component clap; do
             [ -d "build/out/$B.$f" ] || { echo "missing build/out/$B.$f"; exit 1; }
@@ -146,7 +120,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: ${{ steps.pack.outputs.zip }}
-          prerelease: ${{ contains(github.ref_name, '-beta.') || startsWith(steps.tag.outputs.version, '0.') }}
+          prerelease: ${{ steps.tag.outputs.prerelease }}
           body: |
             ## ${{ steps.tag.outputs.bundle }} ${{ steps.tag.outputs.version }}
 
