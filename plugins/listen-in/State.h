@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 
 /*
@@ -56,6 +57,48 @@ bool Save(iplug::IByteChunk& chunk, const PutParams& params, const std::string& 
  */
 int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
          const GetParams& apply, std::string& label);
+
+/*
+ * THE LABEL, BETWEEN THREADS.
+ *
+ * A host calls SerializeState and UnserializeState on a thread of its choosing
+ * (auval's stress test, a DAW's loader), while the editor's messages and the
+ * idle timer run on the main thread, which alone owns the bus writer. So the
+ * label is not a plain member any of them writes: a load records it here, the
+ * editor edits it here, and the main thread takes what changed on its next
+ * idle tick and hands it to the writer and the editor. A save reads it here,
+ * so a save straight after a load writes the load.
+ *
+ *   any thread but audio     Label, Load, Edit
+ *   main thread              Take
+ *
+ * The lock is held only to copy the label in or out -- never across a bus or
+ * editor call, never on the audio thread. The slot is a parameter, which
+ * iPlug2 keeps atomic, and reaches the main thread through OnParamChange.
+ */
+class Session
+{
+public:
+  /* What a save writes: the label, a load not yet applied included. */
+  std::string Label() const;
+  /* state::Load into the session, as one step. Returns as state::Load does;
+   * a refused chunk changes nothing and marks nothing. */
+  int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
+           const GetParams& apply);
+  /* A label typed in the editor, already sanitised. */
+  void Edit(const std::string& label);
+
+  /* Main thread. What changed since the last Take: false when nothing did.
+   * `loaded` says a state load did it, which also means the bus is claimed
+   * afresh and an open editor is told. */
+  bool Take(std::string& label, bool& loaded);
+
+private:
+  mutable std::mutex mLock;
+  std::string mLabel;    /* under mLock */
+  bool mChanged = false; /* under mLock */
+  bool mLoaded = false;  /* under mLock */
+};
 
 } // namespace state
 } // namespace listenin

@@ -42,7 +42,8 @@ public:
   /* The audio thread under VST3 and CLAP automation: records the slot only. */
   void OnParamChange(int paramIdx) override;
 
-  /* Parameters, then the label: text cannot be a parameter. State.cpp. */
+  /* Parameters, then the label: text cannot be a parameter. State.cpp. Any
+   * thread but the audio thread: both go through mSession, never the bus. */
   bool SerializeState(iplug::IByteChunk& chunk) const override;
   int UnserializeState(const iplug::IByteChunk& chunk, int startPos) override;
 
@@ -58,6 +59,9 @@ private:
   /* Main thread only: claims, releases and retunes the bus to match what the
    * other threads asked for. */
   void ServiceBus();
+  /* Main thread only: the label the session changed, to the writer -- and,
+   * after a load, to an open editor. */
+  void ServiceLabel();
   void SendState();
 
   /*
@@ -73,13 +77,15 @@ private:
   std::atomic<int> mWantSlot{1};        /* the Slot parameter, from any thread */
   std::atomic<uint32_t> mRate{0};       /* the host's rate, from ResetAudio    */
   std::atomic<bool> mResetSeen{false};  /* a reset: retry, or retune           */
-  std::atomic<bool> mReclaim{false};    /* a state load: claim afresh          */
+  /* The label, written by state loads and the editor; see State.h. */
+  listenin::state::Session mSession;
 
   /* Main thread only. */
   int mStatus = 0;                 /* listenin::wire::Status                   */
   int mTriedSlot = 0;              /* the slot last asked for, won or not      */
   bool mWaiting = false;           /* a pusher is waiting on the audio thread  */
-  std::string mLabel;
+  bool mReclaim = false;           /* a state load: claim afresh               */
+  std::string mLabel;              /* the label the writer was given           */
 
   std::vector<float> mStage;       /* interleaved, pre-sized, never resized    */
   /* The meter's peak: written on the audio thread, read on the main one. */

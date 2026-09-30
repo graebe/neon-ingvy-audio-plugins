@@ -60,5 +60,45 @@ int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
   return shell::state::Finish(h, after);
 }
 
+std::string Session::Label() const
+{
+  std::lock_guard<std::mutex> hold(mLock);
+  return mLabel;
+}
+
+int Session::Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
+                  const GetParams& apply)
+{
+  std::string label;
+  const int pos = state::Load(chunk, startPos, check, apply, label);
+  if (pos < 0)
+    return -1;
+  std::lock_guard<std::mutex> hold(mLock);
+  mLabel = std::move(label);
+  mChanged = true;
+  mLoaded = true;
+  return pos;
+}
+
+void Session::Edit(const std::string& label)
+{
+  std::lock_guard<std::mutex> hold(mLock);
+  mLabel = label;
+  mChanged = true;
+}
+
+bool Session::Take(std::string& label, bool& loaded)
+{
+  std::lock_guard<std::mutex> hold(mLock);
+  loaded = mLoaded;
+  if (!mChanged)
+    return false;
+  /* Copied under the lock; the caller hands it to the bus after. */
+  label = mLabel;
+  mChanged = false;
+  mLoaded = false;
+  return true;
+}
+
 } // namespace state
 } // namespace listenin

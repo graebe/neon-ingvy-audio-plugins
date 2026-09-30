@@ -49,13 +49,15 @@ void ListenIn::ServiceBus()
 {
   /* A pusher replaced earlier is freed once the audio thread has let go. */
   shell_handoff_collect(mBus);
+  ServiceLabel();
 
   const uint32_t rate = mRate.load(std::memory_order_acquire);
   if (rate == 0)
     return;
 
   const bool reset = mResetSeen.exchange(false, std::memory_order_acq_rel);
-  const bool reload = mReclaim.exchange(false, std::memory_order_acq_rel);
+  const bool reload = mReclaim;
+  mReclaim = false;
   const int want = wire::clamp_slot(mWantSlot.load(std::memory_order_relaxed));
 
   /* Either side of a rate change is a different signal, so the bus restarts
@@ -101,6 +103,23 @@ void ListenIn::ServiceBus()
       break;
   }
   SendState();
+}
+
+void ListenIn::ServiceLabel()
+{
+  bool loaded = false;
+  if (!mSession.Take(mLabel, loaded))
+    return;
+  if (mWriter)
+    abus_writer_set_label(mWriter, mLabel.c_str());
+  if (loaded)
+  {
+    /* The slot and the label changed underneath the bus: claim afresh. The
+     * editor typed neither, so it is told. */
+    mReclaim = true;
+    if (EditorIsOpen())
+      SendText(kMsgLabel, mLabel);
+  }
 }
 
 /* Recorded, not acted on: this may not be the main thread. */
@@ -155,19 +174,17 @@ void ListenIn::ProcessAudio(sample** inputs, sample** outputs, int nFrames)
 /* The chunk is State.cpp's: parameters, then the label. */
 bool ListenIn::SerializeState(IByteChunk& chunk) const
 {
-  return state::Save(chunk, [this](IByteChunk& c) { return PutParams(c); }, mLabel);
+  return state::Save(chunk, [this](IByteChunk& c) { return PutParams(c); }, mSession.Label());
 }
 
 int ListenIn::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  const int pos = state::Load(
+  /* Recorded, not applied: the host picks this thread. The next idle tick
+   * hands the label to the writer and claims the bus afresh. */
+  return mSession.Load(
     chunk, startPos,
     [this](const IByteChunk& c, int p) { return CheckParams(c, p); },
-    [this](const IByteChunk& c, int p) { return GetParams(c, p); }, mLabel);
-  /* The slot and the label changed underneath the bus; OnIdle claims afresh. */
-  if (pos >= 0)
-    mReclaim.store(true, std::memory_order_release);
-  return pos;
+    [this](const IByteChunk& c, int p) { return GetParams(c, p); });
 }
 
 void ListenIn::SendState()
@@ -180,6 +197,8 @@ void ListenIn::SendState()
  * parsed sixty times a second. */
 void ListenIn::OnEditorReady()
 {
+  /* A load not yet applied is what the editor should open on. */
+  ServiceLabel();
   SendState();
   SendText(kMsgLabel, mLabel);
 }
@@ -190,8 +209,7 @@ bool ListenIn::OnEditorMessage(int tag, const std::string& arg)
     return false;
   char clean[32];
   wire::parse_label(arg.c_str(), clean, int(sizeof clean));
-  mLabel = clean;
-  if (mWriter)
-    abus_writer_set_label(mWriter, mLabel.c_str());
+  mSession.Edit(clean);
+  ServiceLabel();
   return true;
 }
