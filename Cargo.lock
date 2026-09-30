@@ -8,6 +8,7 @@ version = "2026.9.29+2"
 dependencies = [
  "bus-core",
  "ground-capi",
+ "shell-capi",
 ]
 
 [[package]]
@@ -62,6 +63,7 @@ name = "spectro-capi"
 version = "2026.9.29+2"
 dependencies = [
  "ground-capi",
+ "shell-capi",
  "spectro-core",
  "spectro-recv",
 ]

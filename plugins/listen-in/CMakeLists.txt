@@ -66,7 +66,8 @@ iplug_add_plugin(NIListenIn
   # cmake/GroundEngine.cmake has the whole story.
   LINK
     audio_bus_engine
-    ground_engine)
+    ground_engine
+    shell_engine)
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.

@@ -14,6 +14,13 @@
 
 using namespace listenin;
 
+/* The handoff frees through this; abus_writer_release has the wrong pointer
+ * type to be called through a void* function pointer. */
+static void ReleaseWriter(void* w)
+{
+  abus_writer_release(static_cast<abus_writer_t*>(w));
+}
+
 ListenIn::ListenIn(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
@@ -21,6 +28,7 @@ ListenIn::ListenIn(const InstanceInfo& info)
 
   mStage.resize(size_t(kStageFrames) * abus_channels(), 0.f);
   mLabel.reserve(32);
+  mBus = shell_handoff_new(ReleaseWriter);
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* The ground's detector. Created here rather than in OnReset because OnReset
@@ -42,7 +50,8 @@ ListenIn::ListenIn(const InstanceInfo& info)
 
 ListenIn::~ListenIn()
 {
-  abus_writer_release(mBus);
+  /* The audio thread has stopped by now, so the live writer goes too. */
+  shell_handoff_free(mBus);
   mBus = nullptr;
 #ifdef WEBVIEW_EDITOR_DELEGATE
   gnd_free(mGround);
@@ -50,28 +59,52 @@ ListenIn::~ListenIn()
 #endif
 }
 
-void ListenIn::Reclaim()
+/*
+ * THE BUS FOLLOWS WHAT THE OTHER THREADS ASKED FOR, HERE AND NOWHERE ELSE.
+ *
+ * Main thread only: claiming maps shared memory and allocates. The rules are
+ * the ones the bus always had -- nothing is claimed before the host's first
+ * reset; a reset retunes a live bus and retries a refused one; a new slot or a
+ * loaded state claims afresh -- only now they are applied where they are safe.
+ */
+void ListenIn::ServiceBus()
 {
+#if IPLUG_DSP
+  /* A writer replaced earlier is freed once the audio thread has let go. */
+  shell_handoff_collect(mBus);
+
+  const uint32_t rate = mRate.load(std::memory_order_acquire);
+  if (rate == 0) return;
+
+  const bool reset = mResetSeen.exchange(false, std::memory_order_acq_rel);
+  const bool reload = mReclaim.exchange(false, std::memory_order_acq_rel);
+  const int want = wire::clamp_slot(mWantSlot.load(std::memory_order_relaxed));
+  auto* live = static_cast<abus_writer_t*>(shell_handoff_current(mBus));
+
+  /* A rate change makes the samples either side of it a different signal, so
+   * the bus restarts rather than splicing. */
+  if (reset && live) abus_writer_set_sample_rate(live, rate);
+
+  if (!(mWaiting || reload || want != mTriedSlot || (reset && !live))) return;
+
   /*
-   * MAIN THREAD ONLY. This maps shared memory and allocates; ProcessBlock must
-   * never reach it. Releasing first means a slot change hands the old bus back
-   * before asking for the new one -- otherwise moving from 3 to 4 and back
-   * would find slot 3 still held by this very instance and report it taken.
+   * RELEASE FIRST, AND ONLY THEN CLAIM. Moving from 3 to 4 and back would
+   * otherwise find slot 3 still held by this very instance and report it
+   * taken. The old writer is freed once the audio thread lets go of it --
+   * within a block -- and until then the claim waits for the next tick.
    */
-  abus_writer_release(mBus);
-  mBus = nullptr;
-  mClaimedSlot = 0;
+  shell_handoff_set(mBus, nullptr);
+  mWaiting = shell_handoff_collect(mBus) > 0;
+  if (mWaiting) return;
 
-  const int slot = wire::clamp_slot(GetParam(kSlot)->Int());
-  const uint32_t sr = uint32_t(std::lround(GetSampleRate() > 0.0 ? GetSampleRate() : 48000.0));
-
-  const int rc = abus_writer_claim(uint32_t(slot), sr, &mBus);
-  switch (rc)
+  mTriedSlot = want;
+  abus_writer_t* w = nullptr;
+  switch (abus_writer_claim(uint32_t(want), rate, &w))
   {
     case ABUS_OK:
       mStatus = wire::kLive;
-      mClaimedSlot = slot;
-      if (!mLabel.empty()) abus_writer_set_label(mBus, mLabel.c_str());
+      if (!mLabel.empty()) abus_writer_set_label(w, mLabel.c_str());
+      shell_handoff_set(mBus, w);
       break;
     case ABUS_ERR_TAKEN:
       /* NOT AN ERROR TO SWALLOW. Another Listen-In already publishes here, and
@@ -83,26 +116,19 @@ void ListenIn::Reclaim()
       mStatus = wire::kUnavailable;
       break;
   }
-
   SendState();
+#endif
 }
 
 #if IPLUG_DSP
 
 void ListenIn::OnReset()
 {
-  /* A rate change makes the samples either side of it a different signal, so
-   * the bus restarts rather than splicing. A fresh claim does that implicitly;
-   * an existing one is told. */
-  if (mBus != nullptr)
-  {
-    const uint32_t sr = uint32_t(std::lround(GetSampleRate()));
-    abus_writer_set_sample_rate(mBus, sr);
-  }
-  else
-  {
-    Reclaim();
-  }
+  /* Recorded, not acted on: this may not be the main thread. OnIdle retunes or
+   * claims the bus to match. */
+  mRate.store(uint32_t(std::lround(GetSampleRate() > 0.0 ? GetSampleRate() : 48000.0)),
+              std::memory_order_release);
+  mResetSeen.store(true, std::memory_order_release);
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* A rate change re-derives every coefficient; the reset is what stops a hump
@@ -114,10 +140,12 @@ void ListenIn::OnReset()
 #endif
 }
 
+/* The audio thread, under VST3 and CLAP automation: records the slot and
+ * nothing else. OnIdle moves the bus. */
 void ListenIn::OnParamChange(int paramIdx)
 {
-  if (paramIdx == kSlot && wire::clamp_slot(GetParam(kSlot)->Int()) != mClaimedSlot)
-    Reclaim();
+  if (paramIdx == kSlot)
+    mWantSlot.store(wire::clamp_slot(GetParam(kSlot)->Int()), std::memory_order_relaxed);
 }
 
 void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
@@ -139,6 +167,8 @@ void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   const bool stereoIn = nIn > 1 && inputs[1] != nullptr;
   const int cap = kStageFrames;
   float peak = 0.f;
+  /* Held for the block; null when no slot is claimed, which push ignores. */
+  auto* bus = static_cast<abus_writer_t*>(shell_handoff_acquire(mBus));
 
   for (int off = 0; off < nFrames; off += cap)
   {
@@ -154,8 +184,9 @@ void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
       peak = std::max(peak, std::max(std::fabs(l), std::fabs(r)));
     }
     /* A no-op when the slot was taken, which is why there is no branch here. */
-    abus_writer_push(mBus, mStage.data(), uint32_t(n));
+    abus_writer_push(bus, mStage.data(), uint32_t(n));
   }
+  shell_handoff_release(mBus);
 
   /*
    * PEAK DECAYS RATHER THAN RESETTING. The editor reads this at 60 Hz and the
@@ -221,10 +252,9 @@ int ListenIn::UnserializeState(const IByteChunk& chunk, int startPos)
     pos = after;
   }
 
-#if IPLUG_DSP
-  /* The slot just changed underneath us, so the claim has to follow it. */
-  Reclaim();
-#endif
+  /* The slot and the label just changed underneath the bus; OnIdle claims
+   * afresh. */
+  mReclaim.store(true, std::memory_order_release);
   return pos;
 }
 
@@ -264,11 +294,6 @@ void ListenIn::SendGround()
     SendArbitraryMsgFromDelegate(kMsgGround, n, buf);
 }
 
-void ListenIn::OnIdle()
-{
-  SendState();
-  SendGround();
-}
 
 bool ListenIn::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
 {
@@ -299,8 +324,8 @@ bool ListenIn::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pDat
     char clean[32];
     wire::parse_label(arg.c_str(), clean, int(sizeof(clean)));
     mLabel = clean;
-    if (mBus != nullptr)
-      abus_writer_set_label(mBus, mLabel.c_str());
+    if (auto* w = static_cast<abus_writer_t*>(shell_handoff_current(mBus)))
+      abus_writer_set_label(w, mLabel.c_str());
     return true;
   }
 
@@ -312,3 +337,12 @@ bool ListenIn::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pDat
 void ListenIn::SendState() {}
 
 #endif /* WEBVIEW_EDITOR_DELEGATE */
+
+void ListenIn::OnIdle()
+{
+  ServiceBus();
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  SendState();
+  SendGround();
+#endif
+}
