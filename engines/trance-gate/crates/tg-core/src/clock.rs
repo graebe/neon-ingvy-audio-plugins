@@ -151,7 +151,7 @@ impl Instance {
             return Some(Run {
                 opening: true,
                 lens: self.lens(),
-                smooth: crate::smooth::coef(self.sample_rate),
+                smooth: ni_dsp::smooth::coef(self.sample_rate),
                 length,
                 inc: 0.0,
                 frac: 0.0,
@@ -177,7 +177,7 @@ impl Instance {
         Some(Run {
             opening: false,
             lens: self.lens(),
-            smooth: crate::smooth::coef(self.sample_rate),
+            smooth: ni_dsp::smooth::coef(self.sample_rate),
             length,
             inc,
             frac,

@@ -18,7 +18,7 @@ than one that corrupts the host's stack on the way out.
 */
 
 pub mod envelope;
-pub mod fmt;
+pub use ni_dsp::fmt;
 pub mod mask;
 pub mod params;
 pub mod rates;
@@ -27,7 +27,6 @@ pub mod state;
 mod clock;
 mod pattern;
 mod process;
-mod smooth;
 
 pub use pattern::Pattern;
 
@@ -77,13 +76,7 @@ impl FadeDir {
     }
 }
 
-/// What the host says about the transport.
-#[derive(Clone, Copy, Default)]
-pub struct Transport {
-    pub running: bool,
-    pub beats: f64,
-    pub bpm: f32,
-}
+pub use ni_dsp::Transport;
 
 /// The playhead and the clock as the last block left them: what a state blob
 /// does not carry. A shell that mirrors the engine off the audio thread copies
@@ -145,7 +138,7 @@ pub struct Instance {
     /// effect is bypassed.
     amount: f32,
     /// `amount` and `sustain` as the gain law hears them: gliding towards
-    /// the values above -- see `smooth.rs`. Runtime, not saved.
+    /// the values above -- see `ni_dsp::smooth`. Runtime, not saved.
     amount_s: f32,
     sustain_s: f32,
     /// Edit position on the ring, 0..length-1.

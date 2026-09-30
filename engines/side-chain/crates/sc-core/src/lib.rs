@@ -34,12 +34,11 @@ can see and dial.
 */
 
 pub mod follower;
-pub mod fmt;
+pub use ni_dsp::fmt;
 pub mod midi;
 pub mod params;
 pub mod rates;
 pub mod shape;
-mod smooth;
 
 #[cfg(test)]
 mod tests;
@@ -127,15 +126,7 @@ impl TimeMode {
     pub const LABELS: [&'static str; 2] = ["ms", "% of cycle"];
 }
 
-/// What the host says about the transport.
-#[derive(Clone, Copy, Default, Debug)]
-pub struct Transport {
-    pub running: bool,
-    /// Quarter notes since the start of the timeline. Negative means "no
-    /// transport", which is NOT the same as beat zero.
-    pub beats: f64,
-    pub bpm: f32,
-}
+pub use ni_dsp::Transport;
 
 pub struct Instance {
     sample_rate: f64,
@@ -152,7 +143,7 @@ pub struct Instance {
     /// 0..1.
     depth: f64,
     /// `depth` as the gain law hears it, gliding towards it -- see
-    /// `smooth.rs`. Runtime, not saved.
+    /// `ni_dsp::smooth`. Runtime, not saved.
     depth_s: f64,
     curve: Curve,
     midi: Midi,
@@ -468,7 +459,7 @@ impl Instance {
         self.queue.prepare(frames);
 
         Some(Run {
-            smooth: smooth::coef(self.sample_rate),
+            smooth: ni_dsp::smooth::coef(self.sample_rate),
             stages,
             cycle,
             inc,
@@ -558,11 +549,11 @@ impl Instance {
         /* DEPTH GLIDES ONLY WHILE IT IS HEARD. With no duck the gain is 1.0
          * whatever Depth is, so it takes a new value at once there -- which is
          * also what keeps a patch set before its first trigger rendering the
-         * same bits it always did. Mid-duck it glides; see `smooth.rs`. */
+         * same bits it always did. Mid-duck it glides; see `ni_dsp::smooth`. */
         self.depth_s = if duck == 0.0 {
             self.depth
         } else {
-            smooth::glide(self.depth_s, self.depth, r.smooth)
+            ni_dsp::smooth::glide(self.depth_s, self.depth, r.smooth)
         };
 
         /* DEPTH ZERO IS A TRUE BYPASS AND NEEDS NO SPECIAL CASE: the product

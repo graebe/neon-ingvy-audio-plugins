@@ -1,0 +1,15 @@
+[package]
+name = "ni-dsp"
+version = "2026.9.29+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "MIT"
+description = "The DSP and C-compatibility pieces the Neon Ingvy engines share"
+
+# AN RLIB, for ground-capi's reason: one static library per plugin. Each
+# product's crates absorb it into that product's single archive.
+[lib]
+crate-type = ["rlib"]
+
+# NO DEPENDENCIES, like every other crate in this workspace.
+[dependencies]

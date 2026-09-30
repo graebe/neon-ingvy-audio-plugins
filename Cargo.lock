@@ -25,6 +25,13 @@ dependencies = [
 [[package]]
 name = "ground-core"
 version = "2026.9.29+1"
+dependencies = [
+ "ni-dsp",
+]
+
+[[package]]
+name = "ni-dsp"
+version = "2026.9.29+1"
 
 [[package]]
 name = "sc-capi"
@@ -38,6 +45,9 @@ dependencies = [
 [[package]]
 name = "sc-core"
 version = "2026.9.29+2"
+dependencies = [
+ "ni-dsp",
+]
 
 [[package]]
 name = "sc-move"
@@ -92,6 +102,9 @@ dependencies = [
 [[package]]
 name = "tg-core"
 version = "2026.9.29+3"
+dependencies = [
+ "ni-dsp",
+]
 
 [[package]]
 name = "tg-move"

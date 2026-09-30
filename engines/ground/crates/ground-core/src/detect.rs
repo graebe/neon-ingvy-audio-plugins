@@ -72,6 +72,7 @@ rather than a flag, and turns resets into requests the audio thread applies.
 */
 
 use crate::biquad::{flush, Biquad};
+use ni_dsp::onepole::coeff;
 
 /// Band, Hz. One 12 dB/oct Butterworth section at each end.
 pub(crate) const BAND_LO_HZ: f64 = 20.0;
@@ -120,20 +121,6 @@ const STRENGTH_SCALE: f64 = 0.6;
 /// zero from dividing by zero.
 const MEAN_EPSILON: f64 = 1e-6;
 const SILENT_RATIO: f64 = 10.0;
-
-/// One-pole coefficient for a time constant in ms at a sample rate.
-///
-/// The same `1 - exp(-1 / (ms * sr / 1000))` the side-chain's follower uses,
-/// and guarded the same way: a zero or absurd sample rate would otherwise
-/// produce a coefficient above 1, and a one-pole with a coefficient above 1
-/// oscillates instead of smoothing.
-fn coeff(ms: f64, sample_rate: f64) -> f64 {
-    let n = ms * sample_rate / 1000.0;
-    if !(n > 0.0) {
-        return 1.0;
-    }
-    (1.0 - (-1.0 / n).exp()).clamp(0.0, 1.0)
-}
 
 /// An onset, as the ground needs it.
 #[derive(Clone, Copy, Debug, PartialEq)]

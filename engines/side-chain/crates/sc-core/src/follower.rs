@@ -36,6 +36,8 @@ question about waveforms, answered here. The LOCKOUT decides how close two
 triggers may be -- a question about music, answered by the user.
 */
 
+use ni_dsp::onepole::coeff;
+
 /// Detector rise time. Short enough that the edge is not audibly late behind
 /// the transient that caused it.
 const RISE_MS: f64 = 1.0;
@@ -43,19 +45,6 @@ const RISE_MS: f64 = 1.0;
 /// enough that one drum hit is one hump, short enough that separating two hits
 /// stays `Lockout`'s decision and not this constant's. See the header.
 const FALL_MS: f64 = 25.0;
-
-/// One-pole coefficient for a time constant in ms at a sample rate.
-///
-/// `1 - exp(-1 / (ms * sr / 1000))`, and the guard is not decoration: a
-/// zero or absurd sample rate would otherwise produce a coefficient outside
-/// 0..1, and a one-pole with a coefficient above 1 oscillates.
-fn coeff(ms: f64, sample_rate: f64) -> f64 {
-    let n = ms * sample_rate / 1000.0;
-    if !(n > 0.0) {
-        return 1.0;
-    }
-    (1.0 - (-1.0 / n).exp()).clamp(0.0, 1.0)
-}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Follower {

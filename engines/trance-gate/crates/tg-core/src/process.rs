@@ -78,7 +78,7 @@ impl Instance {
     #[inline]
     fn next_gain(&mut self, r: &mut Run) -> f32 {
         if r.opening {
-            self.amount_s = crate::smooth::glide(self.amount_s, 0.0, r.smooth);
+            self.amount_s = ni_dsp::smooth::glide(self.amount_s, 0.0, r.smooth);
             return 1.0 - self.amount_s * (1.0 - self.env.level * self.step_level);
         }
 
@@ -91,7 +91,7 @@ impl Instance {
          * change can never be heard as a step.
          */
         self.sustain_s = if matches!(self.env.stage, Stage::Decay | Stage::Sustain) {
-            crate::smooth::glide(self.sustain_s, self.sustain, r.smooth)
+            ni_dsp::smooth::glide(self.sustain_s, self.sustain, r.smooth)
         } else {
             self.sustain
         };
@@ -153,8 +153,8 @@ impl Instance {
          * `depth[r.step]`, which is a different number the moment a release
          * or a tie outlives the step that started it.
          *
-         * `amount_s` is Amount as it glides -- see `smooth.rs`. */
-        self.amount_s = crate::smooth::glide(self.amount_s, self.amount, r.smooth);
+         * `amount_s` is Amount as it glides -- see `ni_dsp::smooth`. */
+        self.amount_s = ni_dsp::smooth::glide(self.amount_s, self.amount, r.smooth);
         let m = 1.0 - self.amount_s * (1.0 - self.env.level * self.step_level);
 
         self.step_pos += r.inc;

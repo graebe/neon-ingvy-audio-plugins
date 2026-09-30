@@ -1,9 +1,8 @@
 /*!
-The envelope: its shapes, and the stage machine.
+The envelope: the stage machine, walking `ni_dsp::curve`'s shapes.
 
-THE SHAPE IS A WARP ON TIME. Every stage has the form `f(env_t)` with `env_t`
-running 0..1 across it, so a curve is not three new formulas -- it is one
-function substituted for `env_t` in the three that exist:
+Every stage has the form `f(w)` with `w = shape(env_t)` and `env_t` running
+0..1 across it:
 
 ```text
 ATTACK   env = att_from + (1 - att_from) * w
@@ -11,110 +10,11 @@ DECAY    env = 1        - (1 - sustain)  * w
 RELEASE  env = rel_from * (1 - w)
 ```
 
-Every shape obeys `shape(0) = 0`, `shape(1) = 1` and is monotonic, so a stage
-still starts and ends exactly where it did and still takes the time it was
-given. Only the path between changes.
-
-LINEAR RETURNS `t` UNTOUCHED, which is what keeps the reference render
-bit-identical. It is also why the three expressions are not tidied into a
-shared `lerp`: `rel_from * (1 - w)` and `rel_from - rel_from * w` are one
-number in algebra and two in floating point.
+Not tidied into a shared `lerp`: `rel_from * (1 - w)` and
+`rel_from - rel_from * w` are one number in algebra and two in floating point.
 */
 
-/// The path a stage takes between its endpoints.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(i32)]
-pub enum Curve {
-    Linear = 0,
-    Exp = 1,
-    SCurve = 2,
-}
-
-impl Curve {
-    pub fn from_i32(v: i32) -> Self {
-        match v {
-            1 => Curve::Exp,
-            2 => Curve::SCurve,
-            _ => Curve::Linear,
-        }
-    }
-}
-
-/// The bend. Chosen so the curve is clearly audible without being a step:
-/// halfway through an exponential stage the envelope is ~82% of the way.
-const CURVE_K: f64 = 3.0;
-/// `1 - exp(-3)`, spelled out exactly as the C does so the division is the
-/// same division.
-const DENOM: f64 = 0.95021293163213605;
-
-/// Fast, then easing into the target -- what "exponential envelope" means on
-/// hardware, and the direction every stage takes because the three
-/// expressions above already point it the right way for each.
-#[inline]
-fn curve_exp(t: f64) -> f64 {
-    (1.0 - (-CURVE_K * t).exp()) / DENOM
-}
-
-#[inline]
-fn curve_exp_inv(w: f64) -> f64 {
-    let x = 1.0 - w * DENOM;
-    if x <= 1e-12 {
-        return 1.0;
-    }
-    -x.ln() / CURVE_K
-}
-
-#[inline]
-pub fn shape(curve: Curve, t: f64) -> f64 {
-    /* `!(t > 0.0)` rather than `t <= 0.0`: a NaN fails both that and the
-     * `>= 1.0` below, and would otherwise reach the curve and come out as a
-     * NaN level. Ordered this way it lands on the stage's start. */
-    if !(t > 0.0) {
-        return 0.0;
-    }
-    if t >= 1.0 {
-        return 1.0;
-    }
-    match curve {
-        Curve::Exp => curve_exp(t),
-        /* TWO EXPONENTIALS, JOINED. The first half is the exponential
-         * mirrored (slow, then accelerating), the second is it the right way
-         * up -- so the pair is slow-fast-slow and meets in the middle at the
-         * same slope, Einv'(1) being E'(0). A corner there would be a kink in
-         * the gain, which is audible as surely as a step. */
-        Curve::SCurve => {
-            if t < 0.5 {
-                0.5 * (1.0 - curve_exp(1.0 - 2.0 * t))
-            } else {
-                0.5 + 0.5 * curve_exp(2.0 * t - 1.0)
-            }
-        }
-        Curve::Linear => t,
-    }
-}
-
-/// The inverse, which is what lets the curve change mid-gate without a click:
-/// see the re-anchor in `set_param`. Monotonic and analytic for all three.
-#[inline]
-pub fn shape_inv(curve: Curve, w: f64) -> f64 {
-    if !(w > 0.0) {
-        return 0.0;
-    }
-    if w >= 1.0 {
-        return 1.0;
-    }
-    match curve {
-        Curve::Exp => curve_exp_inv(w),
-        Curve::SCurve => {
-            if w < 0.5 {
-                0.5 * (1.0 - curve_exp_inv(1.0 - 2.0 * w))
-            } else {
-                0.5 + 0.5 * curve_exp_inv(2.0 * w - 1.0)
-            }
-        }
-        Curve::Linear => w,
-    }
-}
+pub use ni_dsp::curve::{shape, shape_inv, Curve};
 
 /// Which part of the envelope is running.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
