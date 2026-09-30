@@ -10,6 +10,7 @@ coefficient and everything still compiles.
 */
 
 use super::*;
+use core::sync::atomic::Ordering;
 use crate::detect::{Band, BAND_HI_HZ, BAND_LO_HZ, FLOOR};
 
 const SR: f64 = 48_000.0;
@@ -332,6 +333,57 @@ fn a_nan_in_the_buffer_does_not_kill_the_detector() {
 }
 
 #[test]
+fn silence_after_a_signal_decays_to_zero_not_to_subnormals() {
+    /*
+     * THE SILENCE PATH IS THE HOT PATH. Every plugin feeds this detector on
+     * every block, and most of a session is silence between clips. A one-pole
+     * or a biquad fed zeros decays geometrically towards zero and, without a
+     * flush, lands in the SUBNORMAL range and stays there: `x * (1 - c)` of a
+     * subnormal rounds back to the same subnormal once `x * c` underflows, and
+     * x86 and many ARM cores take a microcode assist on every operation with
+     * one. Nothing here sets FTZ/DAZ, and the Move's aarch64 is not ours to
+     * configure, so the detector has to keep its own state clean.
+     *
+     * The claim is checked all the way through the silence rather than only at
+     * the end, so that a value passing through the subnormal range on its way
+     * to zero also fails.
+     */
+    let mut d = Detector::new(SR);
+    run(&mut d, &kick(60.0, 0.05, samples(0.5)));
+    run(&mut d, &tone(40.0, samples(0.5)));
+    let block = samples(0.01);
+    let quiet = silence(block);
+    for n in 0..(300.0 / 0.01) as usize {
+        run(&mut d, &quiet);
+        for (i, v) in d.state().into_iter().enumerate() {
+            assert!(
+                v == 0.0 || v.is_normal(),
+                "state[{i}] = {v:e} is subnormal after {:.2} s of silence",
+                n as f64 * 0.01
+            );
+        }
+    }
+    assert!(
+        d.state().iter().all(|&v| v == 0.0),
+        "five minutes of silence must leave the detector at exactly zero: {:?}",
+        d.state()
+    );
+    /* And it still works from there. */
+    assert_eq!(run(&mut d, &kick(60.0, 0.05, samples(0.4))).len(), 1);
+}
+
+#[test]
+fn a_subnormal_input_does_not_enter_the_state() {
+    /* A host can hand over subnormals itself -- the tail of somebody else's
+     * reverb. They must not be let into the delays. */
+    let mut d = Detector::new(SR);
+    run(&mut d, &[f64::MIN_POSITIVE / 4.0; 256]);
+    for (i, v) in d.state().into_iter().enumerate() {
+        assert!(v == 0.0 || v.is_normal(), "state[{i}] = {v:e}");
+    }
+}
+
+#[test]
 fn reset_forgets_the_hump_but_not_the_contract() {
     let mut d = Detector::new(SR);
     run(&mut d, &kick(60.0, 0.05, samples(0.05)));
@@ -372,19 +424,37 @@ fn a_kick_panned_hard_left_still_fires() {
 
 /* ---------- what the editor reads ---------- */
 
+/// A `Ground` switched on, as a plugin's is while its editor is open.
+fn live(sr: f64) -> Ground {
+    let g = Ground::new(sr);
+    g.set_active(true);
+    g
+}
+
+/// `push` from the one thread these tests run on, which trivially satisfies its
+/// single-producer contract.
+fn feed(g: &Ground, l: &[f64], r: &[f64]) {
+    unsafe { g.push(l, r) }
+}
+
+/// The detector's level, read from the test thread while nothing is pushing.
+fn level_of(g: &Ground) -> f64 {
+    unsafe { (*g.detector.get()).level() }
+}
+
 #[test]
 fn the_published_pair_reports_each_kick_once() {
-    let mut g = Ground::new(SR);
+    let g = live(SR);
     assert_eq!(g.fires(), 0);
     assert_eq!(g.strength(), 0.0);
 
     let beat = kick(60.0, 0.05, samples(0.5));
-    g.push(&beat, &beat);
+    feed(&g, &beat, &beat);
     assert_eq!(g.fires(), 1);
     let first = g.strength();
     assert!((0.3..=1.0).contains(&first), "strength {first}");
 
-    g.push(&beat, &beat);
+    feed(&g, &beat, &beat);
     assert_eq!(g.fires(), 2, "the count is monotonic across blocks");
 }
 
@@ -393,9 +463,9 @@ fn push_takes_the_shorter_of_two_channels() {
     /* The only reading of a mismatch that cannot index past an end. A host
      * should never hand us one, which is exactly why it must not be UB when it
      * does. */
-    let mut g = Ground::new(SR);
+    let g = live(SR);
     let long = kick(60.0, 0.05, samples(0.5));
-    g.push(&long, &long[..10]);
+    feed(&g, &long, &long[..10]);
     assert_eq!(g.fires(), 0, "ten samples cannot contain an onset");
 }
 
@@ -404,14 +474,160 @@ fn reset_does_not_rewind_the_count() {
     /* The editor compares the count against what it saw last. If a reset moved
      * it backwards, a reader would see "changed" and draw a ring nothing
      * caused -- on every transport stop. */
-    let mut g = Ground::new(SR);
+    let g = live(SR);
     let beat = kick(60.0, 0.05, samples(0.5));
-    g.push(&beat, &beat);
+    feed(&g, &beat, &beat);
     let before = g.fires();
     g.reset();
+    feed(&g, &[0.0], &[0.0]);
     assert_eq!(g.fires(), before);
     g.set_sample_rate(44_100.0);
+    feed(&g, &[0.0], &[0.0]);
     assert_eq!(g.fires(), before);
+}
+
+/* ---------- who may touch what, and when ---------- */
+
+#[test]
+fn a_new_ground_is_inactive_and_ignores_audio() {
+    /* The detector only drives an editor. With none open it must cost nothing,
+     * which means a fresh one has to wait to be switched on. */
+    let g = Ground::new(SR);
+    assert!(!g.is_active());
+    let beat = kick(60.0, 0.05, samples(0.5));
+    feed(&g, &beat, &beat);
+    assert_eq!(g.fires(), 0);
+    assert_eq!(level_of(&g), 0.0, "an inactive push must not even run the band");
+}
+
+#[test]
+fn deactivating_stops_the_detector_mid_signal() {
+    let g = live(SR);
+    let beat = kick(60.0, 0.05, samples(0.5));
+    feed(&g, &beat, &beat);
+    assert_eq!(g.fires(), 1);
+    g.set_active(false);
+    feed(&g, &beat, &beat);
+    assert_eq!(g.fires(), 1, "a closed editor's detector must not fire");
+}
+
+#[test]
+fn reactivating_resumes_from_silence_not_from_the_stale_hump() {
+    /* Switched off on a kick's peak, the detector is holding a high envelope.
+     * Switched back on, it must start from zero: a resumed hump would compare
+     * against a bed that no longer describes the music. */
+    let g = live(SR);
+    let beat = kick(60.0, 0.05, samples(0.02));
+    feed(&g, &beat, &beat);
+    assert!(level_of(&g) > 0.0);
+    g.set_active(false);
+    g.set_active(true);
+    /* The reset is a REQUEST, applied by the next push on the audio thread. */
+    feed(&g, &[0.0], &[0.0]);
+    assert_eq!(level_of(&g), 0.0, "reopening must start the detector cold");
+    /* ... and it still finds the next kick. */
+    let beat = kick(60.0, 0.05, samples(0.5));
+    feed(&g, &beat, &beat);
+    assert!(g.fires() >= 1);
+}
+
+#[test]
+fn a_reset_is_applied_by_the_next_push_and_not_before() {
+    /* The reset used to rewrite the detector from whatever thread called it --
+     * racing a `push` halfway through a block. Now it is a request, and only
+     * the audio thread ever writes the detector. */
+    let g = live(SR);
+    let beat = kick(60.0, 0.05, samples(0.02));
+    feed(&g, &beat, &beat);
+    let held = level_of(&g);
+    assert!(held > 0.0);
+    g.reset();
+    assert_eq!(level_of(&g), held, "reset must not touch the detector itself");
+    feed(&g, &[0.0], &[0.0]);
+    assert_eq!(level_of(&g), 0.0);
+}
+
+#[test]
+fn a_sample_rate_change_is_applied_by_the_next_push() {
+    /* 60 Hz sampled at 96 kHz and analysed as if it were 48 kHz reads as a
+     * 30 Hz tone; the point here is only that the new rate is the one in use
+     * after the next push. One kick at the new rate is one onset. */
+    let g = live(SR);
+    g.set_sample_rate(96_000.0);
+    let n = (0.5 * 96_000.0) as usize;
+    let beat: Vec<f64> = (0..n)
+        .map(|i| {
+            let t = i as f64 / 96_000.0;
+            (-t / 0.05).exp() * (2.0 * core::f64::consts::PI * 60.0 * t).sin()
+        })
+        .collect();
+    feed(&g, &beat, &beat);
+    assert_eq!(g.fires(), 1);
+}
+
+#[test]
+fn two_threads_hammering_one_ground_stay_consistent() {
+    /*
+     * THE THREAD CONTRACT, UNDER LOAD. One thread is the audio callback,
+     * pushing a kick every half second of audio; the other is everything else
+     * at once -- the message thread polling the pair, the host resetting and
+     * changing the rate, the editor opening and closing. Nothing may tear:
+     * the count only moves forward, the strength is always a value `push`
+     * could have written, and when the storm is over the detector still works.
+     */
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    let g = Arc::new(live(SR));
+    let done = Arc::new(AtomicBool::new(false));
+
+    let audio = {
+        let g = Arc::clone(&g);
+        let done = Arc::clone(&done);
+        std::thread::spawn(move || {
+            let beat = kick(60.0, 0.05, samples(0.5));
+            let mut blocks = 0usize;
+            while !done.load(Ordering::Relaxed) {
+                for chunk in beat.chunks(256) {
+                    /* SAFETY: this is the only thread that pushes. */
+                    unsafe { g.push(chunk, chunk) };
+                    blocks += 1;
+                }
+            }
+            blocks
+        })
+    };
+
+    let mut last = g.fires();
+    for i in 0..20_000u32 {
+        let f = g.fires();
+        assert!(f.wrapping_sub(last) < u32::MAX / 2, "the count went backwards: {last} -> {f}");
+        last = f;
+        let s = g.strength();
+        assert!(s == 0.0 || (0.3..=1.0).contains(&s), "torn strength {s}");
+        match i % 7 {
+            0 => g.reset(),
+            1 => g.set_sample_rate(if i % 2 == 0 { 44_100.0 } else { 48_000.0 }),
+            2 => g.set_active(false),
+            3 => g.set_active(true),
+            _ => {}
+        }
+        if i % 64 == 0 {
+            std::thread::yield_now();
+        }
+    }
+    g.set_sample_rate(SR);
+    g.set_active(true);
+    /* Let the audio thread run clean for a while: it must still be detecting. */
+    let before = g.fires();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while g.fires() == before && std::time::Instant::now() < deadline {
+        std::thread::yield_now();
+    }
+    done.store(true, Ordering::Relaxed);
+    let blocks = audio.join().expect("the audio thread must not panic");
+    assert!(blocks > 0);
+    assert_ne!(g.fires(), before, "the detector must still fire after the storm");
 }
 
 #[test]

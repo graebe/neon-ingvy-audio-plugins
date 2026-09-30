@@ -188,6 +188,8 @@ public:
   /* One message per onset, from OnIdle. */
   void SendGround();
   void OnUIOpen() override;
+  /* Switches the ground's detector off; see the definition. */
+  void CloseWindow() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
 #endif
 

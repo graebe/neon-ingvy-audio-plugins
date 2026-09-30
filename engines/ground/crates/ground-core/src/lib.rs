@@ -28,6 +28,25 @@ ring lost inside 20 ms is a ring that would have been inside the one it merged
 with. A consumer that needed each strength would need a ring buffer, and none
 does.
 
+WHO OWNS WHAT, AND WHY `push` TAKES `&self`. There is one handle and three
+threads touch it: the audio thread feeds it, the message thread reads the pair,
+and whichever thread the host calls `OnReset` or opens the editor on asks for a
+reset. Handing the audio thread a `&mut` while the message thread holds a `&`
+to the same object is undefined behaviour however the fields are typed -- and
+a reset that rewrote the detector while `push` was halfway through a block was
+a real race, because hosts do not promise to call `OnReset` off the audio
+thread. So:
+
+  the detector      lives in an `UnsafeCell` and is touched by `push` ALONE.
+                    `push` is `unsafe` for exactly one reason: its caller
+                    promises it is never run twice at once (a single producer,
+                    which is what an audio callback is).
+  the pair          `fires` and `strength`, atomics, written by `push` and read
+                    by anyone.
+  requests          sample rate, reset and active are atomics written by anyone
+                    and CONSUMED by `push` at the top of its next block. Nothing
+                    but `push` ever writes the detector, so nothing needs a lock.
+
 RELAXED ORDERING IS SUFFICIENT AND IS NOT A SHORTCUT. Nothing here publishes a
 pointer or guards a buffer; the two values are independent scalars whose only
 consumer tolerates seeing a new count beside an old strength (it would draw one
@@ -41,28 +60,49 @@ mod detect;
 
 pub use detect::{Detector, Onset};
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 /// A detector plus the two published values the editor polls.
 ///
-/// One per plugin instance. `push` is the audio thread's; `fires` and
-/// `strength` are the message thread's.
+/// One per plugin instance. `push` is the audio thread's; everything else may
+/// be called from any thread. See the header for who owns what.
 pub struct Ground {
-    detector: Detector,
+    /// Touched by `push` and nothing else.
+    detector: UnsafeCell<Detector>,
     /// Monotonic onset count. Wraps at `u32::MAX`, which a reader comparing for
     /// inequality rather than ordering handles without noticing -- at a
     /// physically impossible ten onsets a second that is thirteen years.
     fires: AtomicU32,
     /// The most recent onset's strength, as `f32` bits.
     strength: AtomicU32,
+    /// The sample rate the next reset configures for, as `f64` bits.
+    rate: AtomicU64,
+    /// A reset has been asked for and `push` has not applied it yet. Written
+    /// AFTER `rate`, with release, so the push that takes it sees that rate.
+    reset_pending: AtomicBool,
+    /// Whether `push` does anything at all. False until something asks: the
+    /// detector only drives an editor, and running it with no editor open is
+    /// audio-thread work that nobody sees.
+    active: AtomicBool,
 }
 
+/* SAFETY: the only non-Sync field is the detector, and the only code that
+ * touches it is `push`, whose contract forbids concurrent calls. Everything
+ * else is an atomic. */
+unsafe impl Sync for Ground {}
+
 impl Ground {
+    /// A detector for `sample_rate`, INACTIVE: `push` is a no-op until
+    /// `set_active(true)`.
     pub fn new(sample_rate: f64) -> Self {
         Ground {
-            detector: Detector::new(sample_rate),
+            detector: UnsafeCell::new(Detector::new(sample_rate)),
             fires: AtomicU32::new(0),
             strength: AtomicU32::new(0f32.to_bits()),
+            rate: AtomicU64::new(sample_rate.to_bits()),
+            reset_pending: AtomicBool::new(false),
+            active: AtomicBool::new(false),
         }
     }
 
@@ -76,13 +116,35 @@ impl Ground {
     /// scratch buffer, no chunking loop and no conversion in any of the four
     /// plugins, and the detector's own arithmetic was f64 all along.
     ///
+    /// A pending reset or sample-rate change is applied first, here, on the
+    /// thread that owns the detector. An inactive detector returns at once.
+    ///
     /// Allocates nothing, takes no lock, makes no system call. A mono host
     /// passes the same slice twice; a length mismatch takes the shorter, which
     /// is the only interpretation that cannot read past an end.
-    pub fn push(&mut self, left: &[f64], right: &[f64]) {
+    ///
+    /// # Safety
+    /// Single producer: `push` must never run concurrently with another `push`
+    /// on the same `Ground`. One audio callback per plugin instance is exactly
+    /// that. Every other method may run concurrently with it.
+    pub unsafe fn push(&self, left: &[f64], right: &[f64]) {
+        /* Acquire, pairing with `set_active`'s release: a push that sees the
+         * detector switched on also sees the reset that switching on asked for. */
+        if !self.active.load(Ordering::Acquire) {
+            return;
+        }
+        /* SAFETY: `push` is the only code that touches the detector, and the
+         * caller has promised no two pushes overlap. */
+        let detector = &mut *self.detector.get();
+        if self.reset_pending.swap(false, Ordering::Acquire) {
+            /* Recomputing the coefficients is a handful of exp/sin/cos: no
+             * allocation and no system call, so it is fine here, and doing it
+             * unconditionally keeps one path for "reset" and "new rate". */
+            detector.set_sample_rate(f64::from_bits(self.rate.load(Ordering::Relaxed)));
+        }
         let n = left.len().min(right.len());
         for i in 0..n {
-            if let Some(onset) = self.detector.next(left[i], right[i]) {
+            if let Some(onset) = detector.next(left[i], right[i]) {
                 /* The strength goes first. A reader that sees the new count is
                  * then guaranteed to see at least this strength rather than the
                  * previous one -- the reverse order would make the common case
@@ -94,15 +156,36 @@ impl Ground {
         }
     }
 
-    /// Reconfigure for a new sample rate and forget all state.
-    pub fn set_sample_rate(&mut self, sample_rate: f64) {
-        self.detector.set_sample_rate(sample_rate);
+    /// Ask for a new sample rate and a clean detector, from any thread. Applied
+    /// by the next `push`.
+    pub fn set_sample_rate(&self, sample_rate: f64) {
+        self.rate.store(sample_rate.to_bits(), Ordering::Relaxed);
+        self.reset_pending.store(true, Ordering::Release);
     }
 
-    /// Forget the detector's state without disturbing the published count --
-    /// a reader mid-comparison must not see the count go backwards.
-    pub fn reset(&mut self) {
-        self.detector.reset();
+    /// Ask for the detector's state to be forgotten, from any thread, without
+    /// disturbing the published count -- a reader mid-comparison must not see
+    /// the count go backwards. Applied by the next `push`.
+    pub fn reset(&self) {
+        self.reset_pending.store(true, Ordering::Release);
+    }
+
+    /// Start or stop feeding the detector, from any thread.
+    ///
+    /// Activating also asks for a reset, so a detector that resumes after a
+    /// pause starts from silence rather than from the hump it was holding when
+    /// it stopped -- a stale hump would fire a ring the moment the editor
+    /// reopened.
+    pub fn set_active(&self, active: bool) {
+        if active {
+            self.reset();
+        }
+        self.active.store(active, Ordering::Release);
+    }
+
+    /// Whether `push` currently does anything.
+    pub fn is_active(&self) -> bool {
+        self.active.load(Ordering::Relaxed)
     }
 
     /// Monotonic onset count. Watch it CHANGE; its absolute value means nothing.
@@ -114,11 +197,6 @@ impl Ground {
     /// moved at least once, where it reads 0.
     pub fn strength(&self) -> f32 {
         f32::from_bits(self.strength.load(Ordering::Relaxed))
-    }
-
-    /// The detector's smoothed band level. For tests and diagnosis only.
-    pub fn level(&self) -> f64 {
-        self.detector.level()
     }
 }
 

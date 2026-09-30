@@ -10,7 +10,7 @@
  * Scalars and float buffers cross the boundary. No callbacks, no shared
  * structs, no ownership passing either way except the one opaque handle.
  *
- * THE SURFACE IS FIVE FUNCTIONS because the consumer is four plugins that want
+ * THE SURFACE IS EIGHT FUNCTIONS because the consumer is four plugins that want
  * the same three lines of code each. Everything interesting -- the band, the
  * envelope, the relative threshold -- is in ground-core, and none of it is
  * configurable: the numbers belong to the design system, and a plugin that
@@ -43,31 +43,53 @@ pub unsafe extern "C" fn gnd_free(g: *mut GndDetector) {
     }
 }
 
-/// Reconfigure for a new sample rate and forget all detector state. The onset
-/// count is deliberately NOT reset -- see `gnd_fires`.
+/// Ask for a new sample rate and a clean detector. The onset count is
+/// deliberately NOT reset -- see `gnd_fires`.
 ///
-/// The main thread only.
+/// Any thread: this stores a request, and the audio thread applies it at the
+/// top of its next `gnd_push`. It never touches the detector itself, so it
+/// cannot race a block in progress -- which matters because hosts do not
+/// promise to call `OnReset` off the audio thread.
 ///
 /// # Safety
-/// `g` must be a live handle from `gnd_new`.
+/// `g` must be a live handle from `gnd_new`, or null.
 #[no_mangle]
-pub unsafe extern "C" fn gnd_set_sample_rate(g: *mut GndDetector, sample_rate: f64) {
-    if let Some(d) = g.as_mut() {
+pub unsafe extern "C" fn gnd_set_sample_rate(g: *const GndDetector, sample_rate: f64) {
+    if let Some(d) = g.as_ref() {
         d.0.set_sample_rate(sample_rate);
     }
 }
 
-/// Forget the detector's state without touching the count, so that a transport
-/// stop does not fire an onset on the stale hump when playback resumes.
+/// Ask for the detector's state to be forgotten, without touching the count,
+/// so that a transport stop does not fire an onset on the stale hump when
+/// playback resumes.
 ///
-/// The main thread only.
+/// Any thread; applied by the next `gnd_push`, as `gnd_set_sample_rate` is.
 ///
 /// # Safety
-/// `g` must be a live handle from `gnd_new`.
+/// `g` must be a live handle from `gnd_new`, or null.
 #[no_mangle]
-pub unsafe extern "C" fn gnd_reset(g: *mut GndDetector) {
-    if let Some(d) = g.as_mut() {
+pub unsafe extern "C" fn gnd_reset(g: *const GndDetector) {
+    if let Some(d) = g.as_ref() {
         d.0.reset();
+    }
+}
+
+/// Switch the detector on (nonzero) or off (zero). A new detector is OFF.
+///
+/// The detector only drives an editor, so a plugin switches it on when its
+/// editor opens and off when it closes; while off, `gnd_push` returns at once.
+/// Switching on also asks for a reset, so a reopened editor starts from
+/// silence rather than from whatever hump the detector held when it closed.
+///
+/// Any thread.
+///
+/// # Safety
+/// `g` must be a live handle from `gnd_new`, or null.
+#[no_mangle]
+pub unsafe extern "C" fn gnd_set_active(g: *const GndDetector, active: i32) {
+    if let Some(d) = g.as_ref() {
+        d.0.set_active(active != 0);
     }
 }
 
@@ -77,15 +99,18 @@ pub unsafe extern "C" fn gnd_reset(g: *mut GndDetector) {
 /// hands over `inputs[0]` and `inputs[1]` as they arrive, with no scratch buffer
 /// and no conversion. See `Ground::push`.
 ///
-/// THE AUDIO THREAD, AND ONLY IT. Allocates nothing, takes no lock, makes no
-/// system call. Null pointers or a non-positive `frames` are a no-op rather
-/// than undefined: a host handing us an empty block is ordinary.
+/// THE AUDIO THREAD, AND ONLY IT -- one caller at a time, which is what makes
+/// the detector it owns safe to mutate through a shared handle. Allocates
+/// nothing, takes no lock, makes no system call. Null pointers or a
+/// non-positive `frames` are a no-op rather than undefined: a host handing us an
+/// empty block is ordinary.
 ///
 /// # Safety
-/// `left` and `right` must each be readable for `frames` doubles.
+/// `left` and `right` must each be readable for `frames` doubles, and no other
+/// `gnd_push` on the same handle may be running.
 #[no_mangle]
 pub unsafe extern "C" fn gnd_push(
-    g: *mut GndDetector,
+    g: *const GndDetector,
     left: *const f64,
     right: *const f64,
     frames: i32,
@@ -93,7 +118,7 @@ pub unsafe extern "C" fn gnd_push(
     if frames <= 0 || left.is_null() || right.is_null() {
         return;
     }
-    let Some(d) = g.as_mut() else { return };
+    let Some(d) = g.as_ref() else { return };
     let n = frames as usize;
     d.0.push(
         core::slice::from_raw_parts(left, n),

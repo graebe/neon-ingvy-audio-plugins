@@ -17,6 +17,8 @@
  *     its own last value, so a rewind would draw a ring on every transport stop)
  *   - the NULL and empty-block paths are no-ops, because ProcessBlock is not
  *     going to check
+ *   - a new detector is INACTIVE and ignores audio until gnd_set_active, and
+ *     switching it off stops it -- the editor-closed path every plugin takes
  */
 #include "ground_detect.h"
 
@@ -67,6 +69,7 @@ int main(void)
   gnd_free(NULL);
   gnd_reset(NULL);
   gnd_set_sample_rate(NULL, SR);
+  gnd_set_active(NULL, 1);
   gnd_push(NULL, NULL, NULL, 0);
   check(gnd_fires(NULL) == 0, "gnd_fires(NULL) reads 0");
   check(gnd_strength(NULL) == 0.0f, "gnd_strength(NULL) reads 0");
@@ -77,6 +80,11 @@ int main(void)
 
   check(gnd_fires(g) == 0, "a fresh detector has seen no kicks");
   check(gnd_strength(g) == 0.0f, "... and reports no strength");
+
+  /* Inactive until an editor opens: a kick is ignored outright. */
+  push_tone(g, 0.4, 60.0, 0.05);
+  check(gnd_fires(g) == 0, "an inactive detector ignores a kick");
+  gnd_set_active(g, 1);
 
   /* An empty block, which a host does hand out. */
   double one = 0.0;
@@ -106,6 +114,14 @@ int main(void)
   /* And it still works at the new rate. */
   push_tone(g, 0.4, 60.0, 0.05);
   check(gnd_fires(g) == after_kick + 1, "the detector fires again after a reset");
+
+  /* The editor closes: the detector stops. It reopens: it runs again. */
+  gnd_set_active(g, 0);
+  push_tone(g, 0.4, 60.0, 0.05);
+  check(gnd_fires(g) == after_kick + 1, "an inactive detector adds no onset");
+  gnd_set_active(g, 1);
+  push_tone(g, 0.4, 60.0, 0.05);
+  check(gnd_fires(g) == after_kick + 2, "a reactivated detector fires again");
 
   gnd_free(g);
 

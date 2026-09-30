@@ -17,10 +17,18 @@
  * shrink and dim and it thins. THE GRAIN ITSELF NEVER MOVES, only its local
  * density: moving grain reads as television static.
  *
- * With no sound the field is exactly zero, the canvas is pixel-identical to the
- * static CSS ground, and the render loop STOPS. That last part is not an
- * optimisation, it is the design's rule: "Controls never animate", and a
- * background that idles is a background that is animating.
+ * With no sound the field is exactly zero, the canvas shows the static design --
+ * the same dots, the same colours, grain of the same density -- and the render
+ * loop STOPS. That last part is not an optimisation, it is the design's rule:
+ * "Controls never animate", and a background that idles is a background that is
+ * animating. (It is not PIXEL-identical to the CSS fallback underneath: the
+ * grain is uniform noise either way, but this tile is drawn fresh with
+ * Math.random, as the design's reference does, and the CSS one is the design's
+ * fixed PNG. Only the canvas is ever on screen while it works, so no seam shows.)
+ *
+ * IT ALSO STOPS WHILE NOBODY CAN SEE IT: a hidden document pauses the loop and a
+ * visible one resumes it, and prefers-reduced-motion is followed live rather
+ * than read once.
  *
  * WHAT IS NOT HERE, AND WHY. The reference ships a second half, a BassDetector
  * that builds a Web Audio graph and finds the kick in the browser. A plugin
@@ -36,6 +44,7 @@
  */
 
 import { readRgb, cssHex } from './ramp.js';
+import { viewScale, backingRatio } from './ground-geometry.js';
 
 /*
  * THE DESIGN'S PARAMETER TABLE. Retuning any of these is a design-system change
@@ -174,12 +183,29 @@ export class Field {
     this.lastTick = 0;
     this.acc = 0;
     this.t = 0;
+    /* The level each dot was last drawn at; see `draw`. */
+    this.levels = null;
+    this.fresh = true;
 
     /* prefers-reduced-motion disables the field OUTRIGHT, which the design
      * states as a rule rather than a preference: the Motion switch is a separate
-     * control and cannot turn this back on. */
-    const mq = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
-    this.reduced = !!mq?.matches;
+     * control and cannot turn this back on. FOLLOWED, not read once -- a user
+     * who turns it on mid-session means mid-session. */
+    this._mq = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
+    this.reduced = !!this._mq?.matches;
+    this._onReduced = (e) => {
+      this.reduced = !!e?.matches;
+      if (this.reduced) this._flatten();
+    };
+    this._mq?.addEventListener?.('change', this._onReduced);
+
+    /* A hidden window -- a minimised plugin, a host that hides the editor
+     * rather than closing it -- stops the loop; showing it again resumes. A
+     * WebView does not reliably throttle requestAnimationFrame on its own. */
+    const doc = globalThis.document;
+    this.visible = !doc?.hidden;
+    this._onVisibility = () => this.setVisible(!globalThis.document?.hidden);
+    doc?.addEventListener?.('visibilitychange', this._onVisibility);
 
     const colours = readColours(o.colourFrom || document.documentElement);
     this.bgCss = cssHex(colours.bg);
@@ -190,12 +216,39 @@ export class Field {
     this.resize();
   }
 
+  /* The size and pixel ratio the canvas needs right now. The ratio includes the
+   * editor's CSS scale (see lib/ground-geometry.js): a backing store sized by
+   * devicePixelRatio alone is resampled by that scale on screen. */
+  _measure() {
+    const c = this.canvas;
+    const k = viewScale(c.getBoundingClientRect?.(), c.clientWidth);
+    return {
+      w: c.clientWidth,
+      h: c.clientHeight,
+      ratio: backingRatio(globalThis.devicePixelRatio || 1, k, this.o.pitch),
+    };
+  }
+
+  /**
+   * Resize if, and only if, the canvas's size or pixel ratio has changed.
+   * Returns whether it did. A resize resets the field, so a layout notification
+   * that changed nothing must not cost a ring in flight.
+   */
+  fit() {
+    const m = this._measure();
+    if (m.w === this.w && m.h === this.h && m.ratio === this.dpr) return false;
+    this.resize();
+    return true;
+  }
+
   resize() {
     const c = this.canvas;
-    const dpr = globalThis.devicePixelRatio || 1;
-    this.w = c.clientWidth;
-    this.h = c.clientHeight;
-    this.dpr = dpr;
+    const m = this._measure();
+    this.w = m.w;
+    this.h = m.h;
+    /* `dpr` is backing px per layout px -- the device ratio times the editor's
+     * scale, snapped so a dot pitch is a whole number of pixels. */
+    const dpr = (this.dpr = m.ratio);
     c.width = Math.round(this.w * dpr);
     c.height = Math.round(this.h * dpr);
     this.cols = Math.floor(this.w / this.o.pitch) + 1;
@@ -212,6 +265,8 @@ export class Field {
   setSources(rects) {
     this.rects = rects || [];
     this._grid();
+    /* The walls moved, so which cells are drawn moved with them. */
+    this.fresh = true;
     this.draw();
   }
 
@@ -269,15 +324,41 @@ export class Field {
 
   setEnabled(on) {
     this.enabled = !!on;
-    if (!on) {
-      this.u.fill(0);
-      this.up.fill(0);
-      this.kicks = [];
-      this.draw();
+    if (!on) this._flatten();
+  }
+
+  /** Back to exactly the static ground, now: no wave, no pending kick, no loop. */
+  _flatten() {
+    this.u.fill(0);
+    this.up.fill(0);
+    this.kicks = [];
+    if (this.raf) globalThis.cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.draw();
+  }
+
+  /**
+   * Pause the loop while the document is hidden, and resume it when shown if
+   * there is still something to draw. The simulation does not run while
+   * paused: a ring resumes where it was rather than jumping ahead, and nobody
+   * saw the gap.
+   */
+  setVisible(visible) {
+    this.visible = !!visible;
+    if (!this.visible) {
+      if (this.raf) globalThis.cancelAnimationFrame(this.raf);
+      this.raf = 0;
+      return;
     }
+    /* The backing store may have been discarded while hidden; one full redraw
+     * costs nothing next to a stale frame. */
+    this.fresh = true;
+    if (this.kicks.length || this._peak() > this.o.rest) this._start();
+    else this.draw();
   }
 
   _start() {
+    if (!this.visible) return;
     if (!this.raf) {
       this.lastTick = now();
       this.raf = globalThis.requestAnimationFrame(this._tick);
@@ -369,8 +450,8 @@ export class Field {
     if (this.kicks.length || peak > o.rest) {
       this._start();
     } else {
-      /* Rung out. Back to EXACTLY zero -- not nearly zero -- so the canvas is
-       * pixel-identical to the static ground, and the loop stops. */
+      /* Rung out. Back to EXACTLY zero -- not nearly zero -- so every dot is
+       * back at its resting sprite, and the loop stops. */
       this.u.fill(0);
       this.up.fill(0);
       this.draw();
@@ -432,6 +513,8 @@ export class Field {
     for (let j = 0; j < this.rows; j++) {
       for (let i = 0; i < this.cols; i++) this._blit(y, i, j, MID);
     }
+    this.levels = new Uint8Array(this.rows * this.cols);
+    this.fresh = true;
   }
 
   _blit(x, i, j, level) {
@@ -445,27 +528,50 @@ export class Field {
     );
   }
 
-  /** Blit the baked ground, then one sprite per dot the field has moved. Returns the peak |u|. */
+  /**
+   * Draw the dots whose level changed since the last frame. Returns the peak |u|.
+   *
+   * ONLY THE CHANGED ONES, which is the whole cost of the ground while music
+   * plays. Every sprite covers its own cell exactly -- one pitch square, on
+   * whole pixels, opaque -- so redrawing a cell replaces it completely, and a
+   * cell that has not changed level is already correct on the canvas. A frame
+   * used to copy the whole baked ground and then blit every moving dot again;
+   * now a frame where the field is still is no drawing at all.
+   *
+   * `fresh` forces the full path: after a resize, a rebake, new walls or a
+   * return from hidden, the canvas is copied from the baked ground once and
+   * every level is taken as MID.
+   */
   draw() {
     if (!this.baked || !this.u) return 0;
     const x = this.ctx;
     const u = this.u;
     const wall = this.wall;
     const nx = this.nx;
+    const cols = this.cols;
+    const levels = this.levels;
     const step = Math.round(this.o.pitch / this.o.cell);
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.globalAlpha = 1;
-    x.drawImage(this.baked, 0, 0);
+    if (this.fresh) {
+      x.drawImage(this.baked, 0, 0);
+      levels.fill(MID);
+      this.fresh = false;
+    }
     for (let j = 0; j < this.rows; j++) {
       const gj = j * step;
       if (gj >= this.ny) break;
-      for (let i = 0; i < this.cols; i++) {
+      for (let i = 0; i < cols; i++) {
         const gi = i * step;
         if (gi >= nx) break;
         const q = gj * nx + gi;
         if (wall[q]) continue;
         const level = Math.round((Math.tanh(u[q]) + 1) * MID);
-        if (level !== MID) this._blit(x, i, j, level);
+        const d = j * cols + i;
+        if (level !== levels[d]) {
+          this._blit(x, i, j, level);
+          levels[d] = level;
+        }
       }
     }
     return this._peak();
@@ -475,6 +581,8 @@ export class Field {
     if (this.raf) globalThis.cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.kicks = [];
+    this._mq?.removeEventListener?.('change', this._onReduced);
+    globalThis.document?.removeEventListener?.('visibilitychange', this._onVisibility);
   }
 }
 

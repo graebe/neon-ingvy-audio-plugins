@@ -29,6 +29,36 @@ audible error in its own feedback. The samples arrive as f32 and the answer
 leaves as f64; only the recursion in between is the part that cannot afford it.
 */
 
+/// Anything smaller than this in magnitude is state that has decayed to
+/// nothing, and is stored as exactly zero.
+///
+/// 1e-30 is ~-600 dB: some 280 decades above the subnormal range, so a value is
+/// flushed long before it can become one, and some 25 decades below anything
+/// the detector's thresholds (`FLUX_FLOOR`, `FLOOR`) can see, so no onset
+/// timing moves. See `flush`.
+pub(crate) const FLUSH_BELOW: f64 = 1e-30;
+
+/// Flush a recursive state value to zero once it has decayed below audibility.
+///
+/// WHY THIS IS DONE IN CODE AND NOT BY THE CPU. A one-pole or a biquad fed
+/// silence decays geometrically into the SUBNORMAL range, and a one-pole can
+/// then sit there forever: `x * (1 - c)` of a subnormal rounds back to the same
+/// subnormal once `x * c` underflows. Arithmetic on subnormals takes a microcode
+/// assist on x86 and on several ARM cores -- tens to hundreds of cycles an
+/// operation, on the audio thread, in every plugin, for the whole of the
+/// silence between clips. Nothing in this repository sets FTZ/DAZ (the host
+/// owns the thread's floating-point mode, and the Move's aarch64 build is not
+/// ours to configure), so the state is kept clean here, where it is portable
+/// and deterministic.
+#[inline(always)]
+pub(crate) fn flush(v: f64) -> f64 {
+    if v.abs() < FLUSH_BELOW {
+        0.0
+    } else {
+        v
+    }
+}
+
 /// `1/sqrt(2)` -- the Butterworth Q for a single second-order section. Web
 /// Audio spells this `Math.SQRT1_2`, which is the value the reference passes.
 const BUTTERWORTH_Q: f64 = core::f64::consts::FRAC_1_SQRT_2;
@@ -119,15 +149,28 @@ impl Biquad {
     }
 
     /// One sample through the section.
+    ///
+    /// The output is flushed before it is stored (see `flush`), so the output
+    /// delays can never hold a subnormal. The input is stored as given: the
+    /// detector cleans it before it gets here, and the second section's input is
+    /// the first section's already-flushed output.
     pub fn next(&mut self, x: f64) -> f64 {
-        let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
-            - self.a1 * self.y1
-            - self.a2 * self.y2;
+        let y = flush(
+            self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
+                - self.a1 * self.y1
+                - self.a2 * self.y2,
+        );
         self.x2 = self.x1;
         self.x1 = x;
         self.y2 = self.y1;
         self.y1 = y;
         y
+    }
+
+    /// The four delays, for the tests that pin what silence decays into.
+    #[cfg(test)]
+    pub(crate) fn state(&self) -> [f64; 4] {
+        [self.x1, self.x2, self.y1, self.y2]
     }
 }
 

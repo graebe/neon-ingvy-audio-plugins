@@ -135,6 +135,12 @@ void Spectrogram::ServiceReceiver()
 
 void Spectrogram::OnIdle()
 {
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* One ring per kick the detector found since the last tick. FIRST, ahead of
+   * the receiver's rebuild and of SendPicture's early returns, so nothing that
+   * decides to skip a tick can starve the ground -- see ground_detect.h. */
+  SendGround();
+#endif
   ServiceReceiver();
 #ifdef WEBVIEW_EDITOR_DELEGATE
   SendPicture();
@@ -466,11 +472,6 @@ void Spectrogram::SendPicture()
               mClash.data(), common);
   mHex = spectro::wire::encode_columns(mClash.data(), common, bands, 0);
   SendArbitraryMsgFromDelegate(kMsgClashCols, int(mHex.size()), mHex.c_str());
-
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /* One ring per kick the detector found since the last tick. */
-  SendGround();
-#endif
 }
 
 /*
@@ -669,11 +670,23 @@ void Spectrogram::OnUIOpen()
   /* QUALIFIED for the same reason the constructor is: under the CLAP target an
    * unqualified `Plugin` is clap::helpers::Plugin, which has no OnUIOpen. */
   iplug::Plugin::OnUIOpen();
+  /* The ground's detector runs only while an editor is open to show it. */
+  gnd_set_active(mGround, 1);
 
   /* Usually too early to be heard -- see kMsgReady. It stays because it costs
    * one small message and covers the case where the page is already live: a
    * reload, or a host that reopens the same WebView. */
   SendAxis();
+}
+
+/*
+ * The ground's detector only drives the editor, so it stops with it. Here and
+ * not in OnUIClose, which WebViewEditorDelegate::CloseWindow never calls.
+ */
+void Spectrogram::CloseWindow()
+{
+  gnd_set_active(mGround, 0);
+  iplug::Plugin::CloseWindow();
 }
 
 bool Spectrogram::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)

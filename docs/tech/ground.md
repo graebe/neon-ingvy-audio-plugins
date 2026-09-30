@@ -24,8 +24,9 @@ thickens; in the trough between two rings they shrink and dim and it thins.
 Three things it deliberately does **not** do:
 
 - **It never idles.** With no kick, the field is exactly zero, the picture is
-  identical to the static background, and the render loop stops entirely. A
-  background that drifts on its own would be competing with the meters.
+  the static background, and the render loop stops entirely -- as it also does
+  while the window is hidden. A background that drifts on its own would be
+  competing with the meters.
 - **The grain never travels.** Only its local density changes. Moving grain reads
   as television static.
 - **Rings do not cross a panel.** Panels, wells and the step grid are solid to
@@ -44,8 +45,9 @@ Because the question is *relative*, there is no sensitivity to set. The same
 plugin behaves the same way on a quiet dub mix and on a loud master — it is
 comparing the music to itself.
 
-> **A deviation from the design system, deliberately.** The Ultraviolet spec asks
-> for a different test: the band's level exceeding 1.8× its own 300 ms average.
+> **A deviation from the design system, pending a design update.** Ultraviolet
+> 1.0.0's Motion spec asks for a different test: the band's level exceeding 1.8×
+> its own 300 ms average.
 > That works beautifully on an isolated kick, which is what the design's preview
 > demonstrates — and it very nearly never fires on a record. Over a loud sustained
 > low end, a kick adds only about a third to the level of the 20–80 Hz band,
@@ -53,8 +55,10 @@ comparing the music to itself.
 > 1.8. Measured on an eight-second loop with sixteen kicks in it, the specified
 > rule produced **one** ring on a limited mix and **two** on an 808 pattern.
 > Keying on the attack instead gives sixteen on both, with no false positives.
-> The band, the envelope times, the refractory and the strength range are all
-> still the design's. The table in
+> Concretely: an onset is the band's envelope rising more than 35 % (plus a small
+> absolute floor) above a slow follower of the recent bass -- one that rises over
+> about 350 ms and falls over about 200 ms. The band, the envelope times, the
+> refractory and the strength range are all still the design's. The table in
 > `engines/ground/crates/ground-core/src/tests.rs` (`mod material`) is the real
 > specification now, and `detect.rs` records the reasoning in full.
 
@@ -101,6 +105,12 @@ access to the host's audio — there is no `AudioContext` to hand the signal to.
 audio thread counts onsets; the editor reads that count about fifty times a second
 and turns each new one into a ring. `engines/ground/include/ground_detect.h`
 spells out the whole contract, including why it is a count and not a flag.
+
+The detector runs **only while the plugin's window is open**. It exists to drive
+the background, so with the window closed the plugin skips it entirely and it
+costs the audio thread nothing; reopening the window starts it again from
+silence, so a kick that was ringing when you closed it does not fire a stale
+ring when you come back.
 
 The physics is the damped 2D wave equation on a 6 px grid, one Ricker wavelet per
 kick, reflecting at every panel edge. The parameters — wave speed, damping,

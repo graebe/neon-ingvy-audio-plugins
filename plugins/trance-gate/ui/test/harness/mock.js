@@ -198,41 +198,5 @@ window.IPlugSendMsg = (m) => {
 if (location.search.includes('signal'))
   setTimeout(() => document.querySelectorAll('.tab')[1]?.click(), 260);
 
-/*
- * A KICK, ON DEMAND -- the only way to review the animated ground without a host.
- *
- * The real onset comes from the Rust detector on the audio thread
- * (engines/ground), so there is nothing here to detect: this fakes the MESSAGE
- * that detector's onsets turn into, which is the same thing the editor sees in
- * Live. The design system's own Ground preview does exactly this ("click the
- * ground for a kick"), and for the same reason.
- *
- * It is what separates the two halves when the background does not move: if a
- * kick fired here draws rings, the field and the canvas are fine and the question
- * is whether the detector is firing; if it draws nothing, the field is.
- *
- *   click anywhere on the window   one kick at full strength
- *   press K                        the same
- *   press J                        a weak kick (0.3, the detector's floor)
- *   hold B                         a 120 BPM four-on-the-floor
- */
-const MSG_GROUND = 68;   /* kMsgGround in TranceGate.h */
-const kick = (strength = 1) =>
-  globalThis.SAMFD?.(MSG_GROUND, 0, b64(strength.toFixed(3)));
-
-let beat = 0;
-addEventListener('keydown', (e) => {
-  if (e.repeat) return;
-  const k = e.key.toLowerCase();
-  if (k === 'k') kick(1);
-  else if (k === 'j') kick(0.3);
-  else if (k === 'b' && !beat) beat = setInterval(() => kick(1), 500);
-});
-addEventListener('keyup', (e) => {
-  if (e.key.toLowerCase() === 'b') { clearInterval(beat); beat = 0; }
-});
-/* The click goes on the window rather than the canvas: the ground is
- * pointer-events: none, deliberately, so it can never take a click from a
- * control. */
-addEventListener('click', () => kick(1));
-console.info('harness: click or press K for a kick, J for a weak one, hold B for 120 BPM');
+/* A kick for the animated ground is kick.js's job -- a module, because it takes
+ * the message tag from the editor's own msg.js rather than retyping it. */

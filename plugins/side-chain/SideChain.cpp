@@ -542,6 +542,8 @@ void SideChain::OnUIOpen()
   /* QUALIFIED because under the CLAP target an unqualified `Plugin` is
    * clap::helpers::Plugin, which has no OnUIOpen. */
   iplug::Plugin::OnUIOpen();
+  /* The ground's detector runs only while an editor is open to show it. */
+  gnd_set_active(mGround, 1);
 
   /*
    * SENT HERE TOO, THOUGH IT IS USUALLY TOO EARLY TO BE HEARD.
@@ -554,6 +556,16 @@ void SideChain::OnUIOpen()
    * reopens the same WebView.
    */
   SendFullState();
+}
+
+/*
+ * The ground's detector only drives the editor, so it stops with it. Here and
+ * not in OnUIClose, which WebViewEditorDelegate::CloseWindow never calls.
+ */
+void SideChain::CloseWindow()
+{
+  gnd_set_active(mGround, 0);
+  iplug::Plugin::CloseWindow();
 }
 
 /*
@@ -584,6 +596,10 @@ void SideChain::SendGround()
 
 void SideChain::OnIdle()
 {
+  /* One ring per kick the detector found since the last tick. FIRST, so no
+   * early return below can starve the ground -- see ground_detect.h. */
+  SendGround();
+
   if (!mShell) return;
 
   /* What the audio thread last published -- never the engine itself. */
@@ -657,11 +673,6 @@ void SideChain::OnIdle()
                   "the scope push no longer fits the WebView's string cap");
     SendArbitraryMsgFromDelegate(kMsgScope, n, scope);
   }
-
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /* One ring per kick the detector found since the last tick. */
-  SendGround();
-#endif
 }
 
 bool SideChain::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
