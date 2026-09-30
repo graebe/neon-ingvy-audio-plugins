@@ -392,3 +392,63 @@ fn pushing_the_values_the_engine_already_has_does_not_move_the_revision() {
     p.set_num(Param::Amount, 0.5);
     assert_ne!(p.state_rev(), rev);
 }
+
+/*
+ * PUSHING WHAT THE ENGINE ALREADY HOLDS IS A NO-OP -- in its effect on the
+ * sound and the patch, which is what lets Slot and Length skip their O(n^2)
+ * renumber when they did not move. A plugin pushes all fifteen every block.
+ */
+#[test]
+fn a_steady_push_every_block_sounds_like_one_push() {
+    let setup = |p: &mut Instance| {
+        for slot in 0..8 {
+            p.set_num(Param::Slot, slot as f64);
+            p.set_num(Param::Length, 127.0);
+            p.randomize(slot, Some(99 + slot as u32));
+            p.set_param("cursor", "5");
+            p.set_param("step_order", "3");
+        }
+        p.set_num(Param::Slot, 2.0);
+        p.set_num(Param::Fade, 0.6);
+        p.set_num(Param::FadeSoft, 1.0);
+    };
+    let push = |p: &mut Instance| {
+        p.set_num(Param::Slot, 2.0);
+        p.set_num(Param::Length, 127.0);
+        p.set_num(Param::Fade, 0.6);
+        p.set_num(Param::FadeSoft, 1.0);
+    };
+    let mut once = Instance::new(SR);
+    let mut every = Instance::new(SR);
+    setup(&mut once);
+    setup(&mut every);
+    let mut beats = 0.0;
+    for _ in 0..400 {
+        push(&mut every);
+        let t = Transport { running: true, beats, bpm: 140.0 };
+        let (mut l1, mut r1) = ([0.8f32; 128], [0.8f32; 128]);
+        let (mut l2, mut r2) = ([0.8f32; 128], [0.8f32; 128]);
+        once.process_f32_split(&mut l1, &mut r1, 128, Some(&t));
+        every.process_f32_split(&mut l2, &mut r2, 128, Some(&t));
+        assert_eq!(l1, l2);
+        assert_eq!(r1, r2);
+        beats += 128.0 * (140.0 / 60.0) / SR;
+    }
+    assert_eq!(readout(&once, "state"), readout(&every, "state"));
+    assert_eq!(readout(&once, "ui"), readout(&every, "ui"));
+}
+
+/* And a real change still does all of it: a Length pushed down renumbers. */
+#[test]
+fn a_length_that_moves_still_renumbers_and_reweighs() {
+    let mut p = Instance::new(SR);
+    p.set_num(Param::Length, 15.0);
+    p.set_param("pattern", "FFFF");
+    p.set_param("cursor", "12");
+    p.set_param("step_order", "1");
+    let long = readout(&p, "state");
+    p.set_num(Param::Length, 7.0);
+    assert_eq!(p.pattern().length(), 8);
+    assert!(p.cursor() < 8);
+    assert_ne!(readout(&p, "state"), long);
+}

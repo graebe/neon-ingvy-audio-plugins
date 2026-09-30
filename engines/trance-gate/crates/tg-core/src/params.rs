@@ -191,7 +191,10 @@ impl Instance {
         match param {
             Param::Slot => {
                 let s = value as i32; /* the wire is the OPTION INDEX */
-                if s >= 0 && (s as usize) < crate::SLOTS {
+                /* The slot it already is changes nothing -- and PushParams
+                 * writes it every block, so the weights are not recomputed
+                 * for it. */
+                if s >= 0 && (s as usize) < crate::SLOTS && s as usize != self.slot {
                     self.slot = s as usize;
                     /* The cursor is GLOBAL and the length is PER SLOT, so
                      * switching to a shorter pattern can leave it past the
@@ -209,9 +212,19 @@ impl Instance {
             Param::Length => {
                 /* Option INDEX, as for `cursor`: index 15 is the option named
                  * "16", which is a length of 16. */
-                let n = value as i64 + 1;
+                let n = (value as i64 + 1).clamp(1, MAX_STEPS as i64) as usize;
                 let slot = self.slot;
-                self.pat[slot].length = n.clamp(1, MAX_STEPS as i64) as usize;
+                /*
+                 * THE LENGTH IT ALREADY HAS IS NOT A CHANGE, and PushParams
+                 * writes Length every block. Renumbering is O(length^2) -- ~19 us
+                 * of every block at 128 steps -- and every other door leaves
+                 * the order normalised already (see `Pattern::renumber`), so
+                 * doing it again produced the table it started from.
+                 */
+                if n == self.pat[slot].length {
+                    return;
+                }
+                self.pat[slot].length = n;
                 if self.cursor >= self.pat[slot].length {
                     self.cursor = self.pat[slot].length - 1;
                 }

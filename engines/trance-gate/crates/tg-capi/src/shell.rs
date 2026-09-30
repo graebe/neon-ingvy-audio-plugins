@@ -445,6 +445,31 @@ mod tests {
         unsafe { tg_shell_destroy(sh) };
     }
 
+    /*
+     * WHAT PushParams COSTS A BLOCK THAT DOES NOT PUBLISH -- every block, not a
+     * hundred a second. Run by hand, as publish_cost:
+     *
+     *     cargo test -p tg-capi --release -- --ignored --nocapture push_cost
+     */
+    #[test]
+    #[ignore = "a measurement; run with --release --ignored --nocapture"]
+    fn push_cost() {
+        let sh = tg_shell_create(48000.0);
+        heavy(sh);
+        audio_block(sh, publish_every(48000.0) as c_int);
+        let n = 20_000;
+        for _ in 0..1000 {
+            audio_block(sh, 1);
+        }
+        let t = std::time::Instant::now();
+        for _ in 0..n {
+            audio_block(sh, 1);
+        }
+        let per = t.elapsed().as_nanos() as f64 / n as f64;
+        println!("push_cost: {per:.0} ns per block (fifteen set_num, no publish)");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
     #[test]
     fn the_sample_rate_arrives_with_the_next_block() {
         let sh = tg_shell_create(44100.0);
