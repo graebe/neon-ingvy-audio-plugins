@@ -7,17 +7,25 @@
 #include "IPlug_include_in_plug_src.h"
 
 #include <algorithm>
-#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
+/* The handoff frees through this; srecv_free has the wrong pointer type to be
+ * called through a void* function pointer. */
+static void FreeReceiver(void* r)
+{
+  srecv_free(static_cast<srecv_t*>(r));
+}
+
 Spectrogram::Spectrogram(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
-  /* Configured for real in OnReset, once the host has named a rate. */
+  /* Configured for real once the host has named a rate -- see OnReset. */
   mRecv = srecv_new(48000.f, 8192, 1024, SPECTRO_BANDS,
                     SPECTRO_F_MIN, SPECTRO_F_MAX, SPECTRO_DB_FLOOR, SPECTRO_DB_CEIL);
+  mRecvLend = shell_handoff_new(FreeReceiver);
+  shell_handoff_set(mRecvLend, mRecv);
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* Before anything can be sent: see kMaxJSString. */
@@ -66,11 +74,70 @@ Spectrogram::Spectrogram(const InstanceInfo& info)
 
 Spectrogram::~Spectrogram()
 {
-  srecv_free(mRecv);
+  /* The audio thread has stopped by now; this frees mRecv with the rest. */
+  shell_handoff_free(mRecvLend);
+  mRecvLend = nullptr;
   mRecv = nullptr;
 #ifdef WEBVIEW_EDITOR_DELEGATE
   gnd_free(mGround);
   mGround = nullptr;
+#endif
+}
+
+/* Main thread only: it opens and closes readers, which allocates and mmaps. */
+void Spectrogram::ApplySources()
+{
+  if (!mRecv)
+    return;
+  srecv_set_sources(mRecv, mSources.empty() ? nullptr : mSources.data(),
+                    int(mSources.size()));
+}
+
+/*
+ * THE RECEIVER IS REBUILT HERE, WHERE IT IS PUMPED. Main thread only.
+ *
+ * The window is picked by the engine for the rate (spectro_pick_fft_size), and
+ * the selection and the clash settings survive the rebuild -- the sources are
+ * reopened against the new rate, which is also where a bus that does NOT match
+ * it starts being refused rather than drawn.
+ */
+void Spectrogram::ServiceReceiver()
+{
+  shell_handoff_collect(mRecvLend);
+  if (!mRecvStale.load(std::memory_order_acquire))
+    return;
+
+  const float sr = mRecvRate.load(std::memory_order_relaxed);
+  const int fftSize = spectro_pick_fft_size(sr);
+  const int hop = spectro_pick_hop(sr, fftSize);
+  srecv_t* fresh = srecv_new(sr, fftSize, hop, SPECTRO_BANDS,
+                             SPECTRO_F_MIN, SPECTRO_F_MAX, SPECTRO_DB_FLOOR, SPECTRO_DB_CEIL);
+  if (!fresh)
+    return;
+  srecv_set_clash(fresh, mClashFloorDb, mClashBalanceDb);
+
+  /* The old one is freed once the audio thread has let go of it. */
+  shell_handoff_set(mRecvLend, fresh);
+  mRecv = fresh;
+  ApplySources();
+  /* Cleared last: the audio thread starts feeding the new receiver only now,
+   * unless OnReset has asked again meanwhile -- then the next tick rebuilds. */
+  if (mRecvRate.load(std::memory_order_relaxed) == sr)
+    mRecvStale.store(false, std::memory_order_release);
+  shell_handoff_collect(mRecvLend);
+
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  /* The axis just changed. An editor that is already open would otherwise keep
+   * the old scale until it is reopened. */
+  SendAxis();
+#endif
+}
+
+void Spectrogram::OnIdle()
+{
+  ServiceReceiver();
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  SendPicture();
 #endif
 }
 
@@ -110,29 +177,17 @@ void Spectrogram::OnReset()
   /*
    * A RECEIVER IS REPLACED RATHER THAN RECONFIGURED, for the reason
    * spectro_configure gives: every buffer's size depends on the configuration,
-   * so "reconfigure" and "reallocate" are the same act. The host guarantees
-   * audio is stopped here, which is the only place that is safe.
-   *
-   * The selection survives it -- the sources are reopened against the new rate
-   * below, which is also where a bus that does NOT match it starts being
-   * refused rather than drawn.
+   * so "reconfigure" and "reallocate" are the same act -- and it is done in
+   * OnIdle, on the main thread, never here. This may not be the main thread,
+   * and OnIdle may be pumping the old receiver at this very moment.
    */
-  srecv_free(mRecv);
-  mRecv = srecv_new(sr, fftSize, hop, SPECTRO_BANDS,
-                    SPECTRO_F_MIN, SPECTRO_F_MAX, SPECTRO_DB_FLOOR, SPECTRO_DB_CEIL);
-  srecv_set_clash(mRecv, mClashFloorDb, mClashBalanceDb);
-  ApplySources();
+  mRecvRate.store(sr, std::memory_order_relaxed);
+  mRecvStale.store(true, std::memory_order_release);
 
-  /* Sized here, on the main thread, and never on the audio thread. iPlug2's
-   * `sample` is double and the analyzer's path is float, so the block is
-   * converted rather than the analyzer widened. */
+  /* Sized here, while the host is not processing, and never inside a block.
+   * iPlug2's `sample` is double and the analyzer's path is float, so the block
+   * is converted rather than the analyzer widened. */
   mMono.assign(size_t(std::max(GetBlockSize(), 1)), 0.0f);
-
-#ifdef WEBVIEW_EDITOR_DELEGATE
-  /* The axis just changed. An editor that is already open would otherwise keep
-   * the old scale until it is reopened. */
-  SendAxis();
-#endif
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /* A rate change re-derives every coefficient; the reset stops a hump left over
@@ -174,6 +229,11 @@ void Spectrogram::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
    */
   const bool stereoIn = nIn > 1 && inputs[1] != nullptr;
   const int cap = int(mMono.size());
+  /* Held for the block. Nothing is fed while a rebuild for a new rate is
+   * pending: the receiver in hand was configured for the old one. */
+  auto* recv = static_cast<srecv_t*>(shell_handoff_acquire(mRecvLend));
+  if (mRecvStale.load(std::memory_order_acquire))
+    recv = nullptr;
 
   if (cap > 0)
   {
@@ -202,9 +262,11 @@ void Spectrogram::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
        * analyzer that stutters draws a stuttering picture where one that
        * overran this thread would make a noise.
        */
-      srecv_push_own(mRecv, mMono.data(), n);
+      if (recv)
+        srecv_push_own(recv, mMono.data(), n);
     }
   }
+  shell_handoff_release(mRecvLend);
 
   /*
    * THE HOST'S CLOCK, AND THE TWO WAYS A HOST LIES ABOUT IT.
@@ -296,7 +358,7 @@ void Spectrogram::SendGround()
     SendArbitraryMsgFromDelegate(kMsgGround, gn, b);
 }
 
-void Spectrogram::OnIdle()
+void Spectrogram::SendPicture()
 {
   if (!mRecv)
     return;
@@ -384,8 +446,8 @@ void Spectrogram::OnIdle()
     return;
 
   srecv_sum(mRecv, srcs, nSrc, mSum.data(), common);
+  /* Bounded by kMaxColsPerTick; the static_assert beside it is the guard. */
   mHex = spectro::wire::encode_columns(mSum.data(), common, bands, 0);
-  assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
   SendArbitraryMsgFromDelegate(kMsgCols, int(mHex.size()), mHex.c_str());
 
   /*
@@ -403,7 +465,6 @@ void Spectrogram::OnIdle()
   srecv_clash(mRecv, mChanCols[size_t(mCmpA)].data(), mChanCols[size_t(mCmpB)].data(),
               mClash.data(), common);
   mHex = spectro::wire::encode_columns(mClash.data(), common, bands, 0);
-  assert(spectro::wire::framed_size(int(mHex.size())) < kMaxJSString);
   SendArbitraryMsgFromDelegate(kMsgClashCols, int(mHex.size()), mHex.c_str());
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
@@ -425,18 +486,11 @@ void Spectrogram::SendSources()
     return;
 
   const int len = int(strnlen(buf, sizeof buf));
-  assert(spectro::wire::framed_size(len) < kMaxJSString);
+  static_assert(spectro::wire::framed_size(int(sizeof buf)) < kMaxJSString,
+                "the source list's buffer no longer fits the WebView's string cap");
   SendArbitraryMsgFromDelegate(kMsgSources, len, buf);
 }
 
-/* Main thread only: it opens and closes readers, which allocates and mmaps. */
-void Spectrogram::ApplySources()
-{
-  if (!mRecv)
-    return;
-  srecv_set_sources(mRecv, mSources.empty() ? nullptr : mSources.data(),
-                    int(mSources.size()));
-}
 
 void Spectrogram::SendAxis()
 {
@@ -454,7 +508,10 @@ void Spectrogram::SendAxis()
 
   const std::string axis = spectro::wire::encode_axis(hz.data(), n);
 
-  assert(spectro::wire::framed_size(int(axis.size())) < kMaxJSString);
+  /* Sized at run time, so checked at run time -- and a message that would be
+   * truncated is not sent, rather than sent wrong. */
+  if (spectro::wire::framed_size(int(axis.size())) >= kMaxJSString)
+    return;
   SendArbitraryMsgFromDelegate(kMsgAxis, int(axis.size()), axis.c_str());
 }
 
@@ -475,7 +532,8 @@ void Spectrogram::SendSync()
       mPubPpqPerCol.load(std::memory_order_relaxed),
       int(GetSampleRate()));
 
-  assert(spectro::wire::framed_size(int(s.size())) < kMaxJSString);
+  if (spectro::wire::framed_size(int(s.size())) >= kMaxJSString)
+    return;
   SendArbitraryMsgFromDelegate(kMsgSync, int(s.size()), s.c_str());
 }
 

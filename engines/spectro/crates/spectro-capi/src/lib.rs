@@ -35,6 +35,8 @@
  * are exported from this archive rather than dropped as unreachable.
  */
 use ground_capi as _;
+/* shell_handoff_*, for the same reason: see engines/shell/include/shell_handoff.h. */
+use shell_capi as _;
 
 use core::ffi::c_int;
 use spectro_core::{pick_fft_size, pick_hop, Analyzer, Config};

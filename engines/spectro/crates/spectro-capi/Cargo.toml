@@ -19,3 +19,6 @@ spectro-recv = { path = "../spectro-recv" }
 # ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
 # bus-core through spectro-recv.
 ground-capi = { path = "../../../ground/crates/ground-capi" }
+# The handoff that lends the shell's main-thread objects to its audio thread,
+# carried in this archive for the ground's reason.
+shell-capi = { path = "../../../shell/crates/shell-capi" }

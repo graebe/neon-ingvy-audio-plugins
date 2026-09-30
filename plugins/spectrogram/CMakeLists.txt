@@ -58,7 +58,8 @@ iplug_add_plugin(NISpectrogram
   # itself rides inside libspectro_capi.a.
   LINK
     spectro_engine
-    ground_engine)
+    ground_engine
+    shell_engine)
 
 # The bundle's web resources are copied by each format target, so each of them
 # must wait for vite rather than race it.
