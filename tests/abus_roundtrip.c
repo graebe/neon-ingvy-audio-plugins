@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Its own slots, clear of the ones bus-core's cargo tests use (11..16) and of
  * abus_ipc.c's -- ctest may run these concurrently. */
@@ -30,11 +31,26 @@ static void check(int ok, const char* what)
   else     { printf("ok:   %s\n", what); }
 }
 
+/*
+ * A PRIVATE SET OF BUSES FOR THIS PROCESS. The shm names are global to the
+ * user, so a ctest run in another checkout, or a Live session, would otherwise
+ * share -- and unlink -- our slots. The engine hashes NIA_BUS_NS into every
+ * name; set before the first bus call, and inherited across fork.
+ */
+static void private_namespace(const char* test)
+{
+  char ns[64];
+  snprintf(ns, sizeof ns, "%s.%d", test, (int) getpid());
+  setenv("NIA_BUS_NS", ns, 1);
+}
+
 int main(void)
 {
+  private_namespace("abus_roundtrip");
   const uint32_t ch = abus_channels();
   check(ch == 2, "the bus is stereo");
   check(abus_max_slot() == 16, "there are sixteen slots");
+  check(abus_max_slot() == ABUS_MAX_SLOT, "and the header's constant agrees");
 
   abus_writer_t* w = NULL;
   check(abus_writer_claim(SLOT, 48000, &w) == ABUS_OK && w != NULL,
@@ -99,6 +115,20 @@ int main(void)
   check(live == 1, "and reads as live");
   check(sr == 48000, "and reports its sample rate");
   check(strcmp(label, "Bass") == 0, "and carries its name");
+
+  /* A SENDER THAT COMES BACK makes a new segment; the open reader follows it
+   * only when asked, and says so with a resync. */
+  check(abus_reader_reattach(r) == 0, "a current reader does not move");
+  abus_writer_release(w);
+  w = NULL;
+  check(abus_writer_claim(SLOT, 48000, &w) == ABUS_OK && w != NULL,
+        "the slot can be claimed again");
+  check(abus_reader_reattach(r) == 1, "the reader moves to the new segment");
+  got = abus_reader_read(r, out, N, &dropped, &resynced);
+  check(got == 0 && resynced == 1, "and reports the move as a restart");
+  abus_writer_push(w, in, N);
+  got = abus_reader_read(r, out, N, &dropped, &resynced);
+  check(got == N && resynced == 0, "then hears the new sender");
 
   abus_reader_close(r);
   abus_writer_release(w);

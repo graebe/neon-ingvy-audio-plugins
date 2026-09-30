@@ -9,8 +9,9 @@
  * would test the opposite of that.
  *
  * SLOTS ARE A SHARED RESOURCE OF SIXTEEN and these tests run in threads, so
- * each takes one of its own from the top of the range -- where a person
- * experimenting with Listen-In is least likely to be.
+ * each takes one of its own, clear of the low slots a person experimenting
+ * with Listen-In reaches for first. Some are shared with bus-core's own tests,
+ * which cargo never runs at the same time as these.
  */
 use bus_core::Writer;
 use spectro_core::{pick_fft_size, pick_hop, Config};
@@ -55,7 +56,7 @@ fn mono(frames: usize, hz: f32, amp: f32, phase: &mut f64) -> Vec<f32> {
 
 #[test]
 fn the_own_channel_alone_still_makes_a_picture() {
-    let mut r = Receiver::new(cfg());
+    let (mut r, mut feed) = Receiver::new(cfg());
     assert_eq!(r.channels(), 1, "a receiver with no buses is still one source");
     assert_eq!(r.slot_of(OWN), None);
 
@@ -65,7 +66,7 @@ fn the_own_channel_alone_still_makes_a_picture() {
 
     let mut cols = 0;
     for _ in 0..40 {
-        r.push_own(&mono(2048, 1000.0, 0.5, &mut ph));
+        feed.push(&mono(2048, 1000.0, 0.5, &mut ph));
         r.pump();
         cols += r.take_columns(OWN, &mut out, 32);
     }
@@ -78,9 +79,9 @@ fn the_own_channel_alone_still_makes_a_picture() {
 #[test]
 fn a_bus_source_is_drawn_and_stays_in_step_with_the_own_channel() {
     const SLOT: u32 = 16;
-    let w = Writer::claim(SLOT, SR as u32).expect("slot 16 was taken");
+    let (_w, mut p) = Writer::claim(SLOT, SR as u32).expect("slot 16 was taken");
 
-    let mut r = Receiver::new(cfg());
+    let (mut r, mut feed) = Receiver::new(cfg());
     r.set_sources(&[SLOT]);
     assert_eq!(r.channels(), 2, "the bus did not open");
     assert_eq!(r.slot_of(1), Some(SLOT));
@@ -99,8 +100,8 @@ fn a_bus_source_is_drawn_and_stays_in_step_with_the_own_channel() {
      * different moments.
      */
     for _ in 0..60 {
-        w.push(&tone(2048, 220.0, 0.5, &mut pb));
-        r.push_own(&mono(2048, 220.0, 0.5, &mut po));
+        p.push(&tone(2048, 220.0, 0.5, &mut pb));
+        feed.push(&mono(2048, 220.0, 0.5, &mut po));
         r.pump();
         own_cols += r.take_columns(OWN, &mut own_out, 64);
         bus_cols += r.take_columns(1, &mut bus_out, 64);
@@ -114,9 +115,9 @@ fn a_bus_source_is_drawn_and_stays_in_step_with_the_own_channel() {
 #[test]
 fn a_bus_that_runs_ahead_does_not_pull_the_others_with_it() {
     const SLOT: u32 = 15;
-    let w = Writer::claim(SLOT, SR as u32).expect("slot 15 was taken");
+    let (_w, mut p) = Writer::claim(SLOT, SR as u32).expect("slot 15 was taken");
 
-    let mut r = Receiver::new(cfg());
+    let (mut r, mut feed) = Receiver::new(cfg());
     r.set_sources(&[SLOT]);
 
     let bands = r.bands();
@@ -128,8 +129,8 @@ fn a_bus_that_runs_ahead_does_not_pull_the_others_with_it() {
     /* The bus is given four times as much audio as the own channel. The
      * surplus has to WAIT rather than being analysed early or thrown away. */
     for _ in 0..40 {
-        w.push(&tone(4096, 440.0, 0.5, &mut pb));
-        r.push_own(&mono(1024, 440.0, 0.5, &mut po));
+        p.push(&tone(4096, 440.0, 0.5, &mut pb));
+        feed.push(&mono(1024, 440.0, 0.5, &mut po));
         r.pump();
         ca += r.take_columns(OWN, &mut a, 64);
         cb += r.take_columns(1, &mut b, 64);
@@ -145,7 +146,7 @@ fn choosing_sources_keeps_the_ones_already_open() {
     let _wa = Writer::claim(A, SR as u32).expect("slot 14 was taken");
     let _wb = Writer::claim(B, SR as u32).expect("slot 13 was taken");
 
-    let mut r = Receiver::new(cfg());
+    let (mut r, _feed) = Receiver::new(cfg());
     r.set_sources(&[A]);
     assert_eq!(r.slot_of(1), Some(A));
 
@@ -165,7 +166,7 @@ fn choosing_sources_keeps_the_ones_already_open() {
 
 #[test]
 fn a_selection_is_bounded_deduplicated_and_refuses_nonsense() {
-    let mut r = Receiver::new(cfg());
+    let (mut r, _feed) = Receiver::new(cfg());
     /* Slot 0 is not a bus, it is a mistake; and past MAX_SLOT likewise. */
     r.set_sources(&[0, 9999]);
     assert_eq!(r.channels(), 1, "an impossible slot was opened");
@@ -184,7 +185,7 @@ fn a_source_at_another_rate_is_refused_rather_than_quietly_offset() {
      * delay, and two pictures that do not line up. */
     let _w = Writer::claim(SLOT, 96_000).expect("slot 12 was taken");
 
-    let mut r = Receiver::new(cfg());
+    let (mut r, _feed) = Receiver::new(cfg());
     r.set_sources(&[SLOT]);
     assert!(r.rate_mismatch(1), "a 96 kHz source was accepted against 48 kHz");
 
@@ -193,8 +194,75 @@ fn a_source_at_another_rate_is_refused_rather_than_quietly_offset() {
 }
 
 #[test]
+fn a_rate_change_is_judged_again_when_the_sender_restarts() {
+    /*
+     * The verdict used to be taken once, at open. A Listen-In that opened at
+     * 96 kHz and was then moved to the session's 48 stayed refused forever; one
+     * that went the other way was analysed at the wrong rate forever.
+     */
+    const SLOT: u32 = 6;
+    let (mut w, mut p) = Writer::claim(SLOT, 96_000).expect("slot 6 was taken");
+
+    let (mut r, mut feed) = Receiver::new(cfg());
+    r.set_sources(&[SLOT]);
+    assert!(r.rate_mismatch(1));
+
+    let mut out = vec![0u8; r.bands() * 64];
+    let (mut po, mut pb) = (0.0, 0.0);
+    let mut drawn = 0;
+
+    w.set_sample_rate(SR as u32);
+    for _ in 0..40 {
+        p.push(&tone(2048, 220.0, 0.5, &mut pb));
+        feed.push(&mono(2048, 220.0, 0.5, &mut po));
+        r.pump();
+        r.take_columns(OWN, &mut out, 64);
+        drawn += r.take_columns(1, &mut out, 64);
+    }
+    assert!(!r.rate_mismatch(1), "a sender now at our rate is still refused");
+    assert!(drawn > 0, "and it is still not drawn");
+
+    w.set_sample_rate(44_100);
+    p.push(&tone(64, 220.0, 0.5, &mut pb));
+    r.pump();
+    assert!(r.rate_mismatch(1), "a sender that left our rate is still analysed");
+}
+
+#[test]
+fn a_listen_in_that_comes_back_is_heard_again() {
+    /*
+     * THE STARVED-FOREVER PICTURE. A Listen-In removed and re-added makes a
+     * NEW segment under the same name; the receiver's reader was still mapping
+     * the old one and saw a sender that had simply stopped. It has to notice
+     * that the name moved on and follow it.
+     */
+    const SLOT: u32 = 5;
+    let first = Writer::claim(SLOT, SR as u32).expect("slot 5 was taken");
+
+    let (mut r, mut feed) = Receiver::new(cfg());
+    r.set_sources(&[SLOT]);
+    assert_eq!(r.channels(), 2, "the bus did not open");
+    drop(first);
+    let (_w, mut p) = Writer::claim(SLOT, SR as u32).expect("the slot came back");
+
+    let mut a = vec![0u8; r.bands() * 64];
+    let mut b = vec![0u8; r.bands() * 64];
+    let (mut po, mut pb) = (0.0, 0.0);
+    /* Long enough for the receiver to give up waiting and go looking. */
+    for _ in 0..120 {
+        p.push(&tone(1024, 220.0, 0.5, &mut pb));
+        feed.push(&mono(1024, 220.0, 0.5, &mut po));
+        r.pump();
+        r.take_columns(OWN, &mut a, 64);
+        r.take_columns(1, &mut b, 64);
+    }
+    assert!(!r.starved(1), "the receiver never found the sender that came back");
+    assert!(r.bus_resynced(1), "and did not report the move as a restart");
+}
+
+#[test]
 fn the_clash_is_computed_over_whole_columns() {
-    let mut r = Receiver::new(cfg());
+    let (mut r, _feed) = Receiver::new(cfg());
     let bands = r.bands();
     r.set_clash(-60.0, 12.0);
 
@@ -221,7 +289,7 @@ fn the_clash_is_computed_over_whole_columns() {
 #[test]
 fn probing_reports_a_live_slot_with_its_name() {
     const SLOT: u32 = 11;
-    let w = Writer::claim(SLOT, SR as u32).expect("slot 11 was taken");
+    let (mut w, _p) = Writer::claim(SLOT, SR as u32).expect("slot 11 was taken");
     w.set_label("Bass");
 
     let found = Receiver::slots();
@@ -243,7 +311,7 @@ fn a_silent_bus_does_not_stop_the_picture() {
     let _w = Writer::claim(SLOT, SR as u32).expect("slot 8 was taken");
     /* Claimed, so it opens -- and then never pushed to. */
 
-    let mut r = Receiver::new(cfg());
+    let (mut r, mut feed) = Receiver::new(cfg());
     r.set_sources(&[SLOT]);
     assert_eq!(r.channels(), 2, "the bus did not open");
 
@@ -251,7 +319,7 @@ fn a_silent_bus_does_not_stop_the_picture() {
     let mut ph = 0.0;
     let mut own_cols = 0;
     for _ in 0..80 {
-        r.push_own(&mono(2048, 440.0, 0.5, &mut ph));
+        feed.push(&mono(2048, 440.0, 0.5, &mut ph));
         r.pump();
         own_cols += r.take_columns(OWN, &mut out, 64);
     }
@@ -264,9 +332,9 @@ fn a_silent_bus_does_not_stop_the_picture() {
 #[test]
 fn a_bus_that_goes_quiet_mid_stream_is_zero_filled_rather_than_waited_for() {
     const SLOT: u32 = 7;
-    let w = Writer::claim(SLOT, SR as u32).expect("slot 7 was taken");
+    let (_w, mut p) = Writer::claim(SLOT, SR as u32).expect("slot 7 was taken");
 
-    let mut r = Receiver::new(cfg());
+    let (mut r, mut feed) = Receiver::new(cfg());
     r.set_sources(&[SLOT]);
 
     let mut a = vec![0u8; r.bands() * 64];
@@ -276,9 +344,9 @@ fn a_bus_that_goes_quiet_mid_stream_is_zero_filled_rather_than_waited_for() {
     /* Both fed, then the bus stops while the own track carries on. */
     for i in 0..80 {
         if i < 30 {
-            w.push(&tone(2048, 220.0, 0.5, &mut pb));
+            p.push(&tone(2048, 220.0, 0.5, &mut pb));
         }
-        r.push_own(&mono(2048, 220.0, 0.5, &mut po));
+        feed.push(&mono(2048, 220.0, 0.5, &mut po));
         r.pump();
         r.take_columns(OWN, &mut a, 64);
         r.take_columns(1, &mut b, 64);
@@ -290,7 +358,7 @@ fn a_bus_that_goes_quiet_mid_stream_is_zero_filled_rather_than_waited_for() {
      * something. */
     let (mut ca, mut cb) = (0usize, 0usize);
     for _ in 0..20 {
-        r.push_own(&mono(2048, 220.0, 0.5, &mut po));
+        feed.push(&mono(2048, 220.0, 0.5, &mut po));
         r.pump();
         ca += r.take_columns(OWN, &mut a, 64);
         cb += r.take_columns(1, &mut b, 64);
@@ -300,7 +368,7 @@ fn a_bus_that_goes_quiet_mid_stream_is_zero_filled_rather_than_waited_for() {
 
 #[test]
 fn several_channels_add_in_power() {
-    let r = Receiver::new(cfg());
+    let (r, _feed) = Receiver::new(cfg());
     let bands = r.bands();
 
     /* -20 dB in every band, twice: two uncorrelated sources of equal level

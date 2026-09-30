@@ -16,10 +16,17 @@
  *
  * THE THREAD RULES ARE PART OF THE ABI, exactly as they are for spectro:
  *
- *   Writer::claim / release / set_label / set_sample_rate   the main thread
- *   Writer::push                                            the audio thread, and only it
- *   Reader::open / close                                    the main thread
+ *   Writer::claim / drop / set_label / set_sample_rate      the main thread
+ *   Pusher::push                                            the audio thread, and only it
+ *   Reader::open / reattach / drop                          the main thread
  *   Reader::read                                            one thread, the same one each time
+ *
+ * A claim hands back TWO handles, and the split is what makes those rules the
+ * compiler's business rather than a comment's: the audio thread owns the
+ * `Pusher`, the main thread owns the `Writer`, and each mutates only through
+ * `&mut self` -- so safe code cannot push from two threads, or set a label from
+ * two, however the handles are passed around. The slot is released when the
+ * last of the two is dropped.
  *
  * `push` allocates nothing and makes no system call. `claim` does both, which
  * is why it is not allowed near the audio thread.
@@ -30,6 +37,8 @@ pub mod ring;
 pub mod shm;
 
 #[cfg(test)]
+mod claims;
+#[cfg(test)]
 mod slots;
 #[cfg(test)]
 mod tests;
@@ -38,8 +47,10 @@ pub use header::{segment_size, CHANNELS, LABEL_BYTES, RING_FRAMES};
 pub use ring::Read;
 pub use shm::MAX_SLOT;
 
-use core::sync::atomic::Ordering;
-use header::{STATE_CLAIMED, STATE_FREE};
+use core::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+
+use header::{owner_count, owner_pid, owner_word, Header};
 
 /// Why a claim did not succeed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,145 +63,218 @@ pub enum ClaimError {
     Taken,
 }
 
-/// The sending end. One per Listen-In instance.
-pub struct Writer {
+/*
+ * THE CLAIM ITSELF, and the liveness question it has to answer first.
+ *
+ * A host that crashed with a set open leaves the segment behind -- shm outlives
+ * the process that made it, all the way to a reboot. So a held slot is not
+ * necessarily a taken one, and refusing it forever would mean one crash costs
+ * you a bus number until you restart the machine.
+ *
+ * Only `the pid is gone` -- kill(pid, 0) == ESRCH -- concludes anything, and it
+ * concludes the writer is GONE, never that one is alive: a pid can be recycled
+ * onto an unrelated process, which then keeps the slot looking held. That is
+ * the conservative failure and the one chosen.
+ *
+ * NO EXEMPTION FOR OUR OWN PID, and an earlier draft had one. Two Listen-Ins
+ * on slot 3 in the same Live process share a pid, so "it is only me" would
+ * have let the second instance silently STEAL the bus from the first --
+ * exactly the collision the slot is supposed to report. A live holder is a
+ * live holder.
+ *
+ * ONE COMPARE-AND-SWAP DECIDES, from the exact owner word that was judged to
+ * the claimer's own. Two reclaimers of one dead pid both judge the same word;
+ * whichever swaps first changes it, and the other's swap fails and re-judges a
+ * holder that is now alive. See `header::owner_word` for why state and pid are
+ * one word and why it carries a count.
+ *
+ * `is_gone` is a parameter so the tests can drive two claimers through any
+ * interleaving on a heap header.
+ */
+pub(crate) fn acquire(hdr: &Header, me: u32, is_gone: impl Fn(u32) -> bool) -> Result<u64, ClaimError> {
+    let mut seen = hdr.owner.load(Ordering::Acquire);
+    /* Bounded: every lost swap means somebody else claimed or released in
+     * between, and a slot that busy is taken for any practical purpose. */
+    for _ in 0..8 {
+        let holder = owner_pid(seen);
+        if holder != 0 && !is_gone(holder) {
+            return Err(ClaimError::Taken);
+        }
+        let mine = owner_word(owner_count(seen).wrapping_add(1), me);
+        match hdr.owner.compare_exchange(seen, mine, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return Ok(mine),
+            Err(now) => seen = now,
+        }
+    }
+    Err(ClaimError::Taken)
+}
+
+/// Give the slot back -- only if `token` still holds it. Returns whether it did.
+pub(crate) fn release(hdr: &Header, token: u64) -> bool {
+    hdr.owner
+        .compare_exchange(
+            token,
+            owner_word(owner_count(token), 0),
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .is_ok()
+}
+
+/// Does the slot's NAME still lead to the segment `map` is? False once it was
+/// unlinked, or unlinked and created afresh.
+fn still_named(map: &shm::Mapping) -> bool {
+    shm::Mapping::open_existing(map.slot()).is_some_and(|now| {
+        now.header().is_valid()
+            && now.header().incarnation.load(Ordering::Relaxed)
+                == map.header().incarnation.load(Ordering::Relaxed)
+    })
+}
+
+/// What the two halves of a claim share. Dropping it -- when the last half
+/// goes -- releases the slot.
+struct Claim {
     map: shm::Mapping,
+    token: u64,
+    /* A rate change the main thread asked for and the audio thread has not
+     * applied yet; 0 when there is none. See `Writer::set_sample_rate`. */
+    pending_rate: AtomicU32,
+}
+
+/// The main thread's half of a claimed slot. One per Listen-In instance.
+pub struct Writer {
+    claim: Arc<Claim>,
+}
+
+/// The audio thread's half of a claimed slot.
+pub struct Pusher {
+    claim: Arc<Claim>,
 }
 
 impl Writer {
     /// Take slot `slot`, or say why not.
-    pub fn claim(slot: u32, sample_rate: u32) -> Result<Writer, ClaimError> {
+    pub fn claim(slot: u32, sample_rate: u32) -> Result<(Writer, Pusher), ClaimError> {
         if slot == 0 || slot > MAX_SLOT {
             return Err(ClaimError::BadSlot);
         }
-        let (map, created) = shm::Mapping::create_or_open(slot).ok_or(ClaimError::Unavailable)?;
         let me = shm::pid();
 
-        if created {
-            map.header().initialise(sample_rate, me);
-        } else if !map.header().is_valid() {
-            /*
-             * A SEGMENT FROM A BUILD THAT IS NOT THIS ONE. It cannot be
-             * interpreted and it cannot be repaired in place -- a reader may be
-             * mid-copy inside it right now, under the old layout. Unlinking
-             * detaches the NAME from the object, so that reader keeps its
-             * mapping and simply sees a writer that stopped, while the next
-             * claim creates a fresh segment under the same name.
-             */
-            map.unlink();
-            drop(map);
-            let (fresh, created_now) =
-                shm::Mapping::create_or_open(slot).ok_or(ClaimError::Unavailable)?;
-            if !created_now {
-                return Err(ClaimError::Unavailable);
-            }
-            fresh.header().initialise(sample_rate, me);
-            return Ok(Writer { map: fresh });
-        }
-
-        let hdr = map.header();
-
         /*
-         * THE CLAIM ITSELF, and the liveness question it has to answer first.
-         *
-         * A host that crashed with a set open leaves the segment behind -- shm
-         * outlives the process that made it, all the way to a reboot. So a
-         * CLAIMED slot is not necessarily a taken one, and refusing it forever
-         * would mean one crash costs you a bus number until you restart the
-         * machine.
-         *
-         * The evidence is deliberately two-sided, because each half alone lies:
-         * a pid can be recycled onto an unrelated process, and a heartbeat can
-         * be stalled by a host that is merely paused rather than dead. Only
-         * `the pid is gone` -- kill(pid, 0) == ESRCH -- concludes anything, and
-         * it concludes the writer is GONE, never that one is alive.
+         * A FEW ROUNDS, because two things can send a claimer back to the
+         * start: a segment it cannot interpret, which it replaces, and a
+         * segment that stopped being the one the name leads to while it was
+         * claiming it. Each round opens the name afresh.
          */
-        let mut spins = 0;
-        loop {
-            match hdr.state.compare_exchange(
-                STATE_FREE,
-                STATE_CLAIMED,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => break,
-                Err(_) => {
-                    let holder = hdr.writer_pid.load(Ordering::Acquire);
-                    /*
-                     * NO EXEMPTION FOR OUR OWN PID, and an earlier draft had
-                     * one. Two Listen-Ins on slot 3 in the same Live process
-                     * share a pid, so "it is only me" would have let the second
-                     * instance silently STEAL the bus from the first -- exactly
-                     * the collision the slot is supposed to report. A live
-                     * holder is a live holder.
-                     */
-                    if !shm::pid_is_gone(holder) {
-                        return Err(ClaimError::Taken);
-                    }
-                    /* The holder's process is gone. Put the slot back and go
-                     * round; the CAS above is what settles a race between two
-                     * reclaimers, so only one of them wins. */
-                    if hdr
-                        .state
-                        .compare_exchange(
-                            STATE_CLAIMED,
-                            STATE_FREE,
-                            Ordering::AcqRel,
-                            Ordering::Acquire,
-                        )
-                        .is_err()
-                    {
-                        return Err(ClaimError::Taken);
-                    }
-                    spins += 1;
-                    if spins > 4 {
-                        return Err(ClaimError::Taken);
-                    }
-                }
+        for _ in 0..4 {
+            let (map, created) = shm::Mapping::create_or_open(slot).ok_or(ClaimError::Unavailable)?;
+            let hdr = map.header();
+
+            if created {
+                hdr.initialise(sample_rate, shm::incarnation());
+            } else if !hdr.is_valid() {
+                /*
+                 * A SEGMENT FROM A BUILD THAT IS NOT THIS ONE (or one still
+                 * being initialised by another claimer, which then finds out
+                 * below). It cannot be interpreted and it cannot be repaired
+                 * in place -- a reader may be mid-copy inside it right now,
+                 * under the old layout. Unlinking detaches the NAME from the
+                 * object, so that reader keeps its mapping and simply sees a
+                 * writer that stopped, while the next round creates a fresh
+                 * segment under the same name.
+                 */
+                map.unlink();
+                continue;
             }
+
+            let token = acquire(hdr, me, shm::pid_is_gone)?;
+
+            /*
+             * AND THEN MAKE SURE IT IS STILL THE BUS. The name could have been
+             * unlinked between our open and our claim -- by a departing writer,
+             * or by a claimer that caught this segment half-initialised -- and
+             * a claim on an orphaned segment is a sender nobody can hear: every
+             * reader from now on opens whatever the name leads to instead. So
+             * let go of the orphan and start again from the name.
+             */
+            if !still_named(&map) {
+                release(hdr, token);
+                continue;
+            }
+
+            hdr.sample_rate.store(sample_rate, Ordering::Relaxed);
+            hdr.write_frames.store(0, Ordering::Relaxed);
+            /* LAST, with Release: the bump is what tells every reader to throw
+             * its cursor away, and a reader that sees it must also see the
+             * reset above -- otherwise it resyncs onto the stream we are still
+             * in the middle of clearing. */
+            hdr.epoch.fetch_add(1, Ordering::Release);
+
+            let claim = Arc::new(Claim {
+                map,
+                token,
+                pending_rate: AtomicU32::new(0),
+            });
+            return Ok((
+                Writer {
+                    claim: claim.clone(),
+                },
+                Pusher { claim },
+            ));
         }
-
-        hdr.writer_pid.store(me, Ordering::Release);
-        hdr.sample_rate.store(sample_rate, Ordering::Release);
-        hdr.write_frames.store(0, Ordering::Release);
-        /* LAST: the bump is what tells every reader to throw its cursor away.
-         * Doing it before the resets above would let a reader resync onto the
-         * stream we are still in the middle of clearing. */
-        hdr.epoch.fetch_add(1, Ordering::AcqRel);
-
-        Ok(Writer { map })
+        Err(ClaimError::Unavailable)
     }
 
     pub fn slot(&self) -> u32 {
-        self.map.slot()
+        self.claim.map.slot()
+    }
+
+    /// The host's rate changed, so the stream restarts under a new epoch --
+    /// samples either side of the change are not the same signal.
+    ///
+    /// POSTED, NOT APPLIED. The restart resets `write_frames`, which `push`
+    /// read-modify-writes on the audio thread; a reset from here could land
+    /// between its load and its store and be undone, or undo a block. So this
+    /// leaves a request and the Pusher applies it at the top of its next
+    /// `push`, the only place the count is written. Until then readers see the
+    /// old rate -- which is also true: nothing has been published at the new
+    /// one. A rate of 0 is not a rate and is ignored.
+    pub fn set_sample_rate(&mut self, sample_rate: u32) {
+        if sample_rate != 0 {
+            self.claim.pending_rate.store(sample_rate, Ordering::Release);
+        }
+    }
+
+    /// Set the display name. Anything past 31 bytes is dropped, at a
+    /// character boundary.
+    pub fn set_label(&mut self, text: &str) {
+        self.claim.map.header().set_label(text);
+    }
+}
+
+impl Pusher {
+    pub fn slot(&self) -> u32 {
+        self.claim.map.slot()
     }
 
     /// Publish one block. Interleaved stereo, `src.len() / 2` frames.
     ///
     /// THE AUDIO THREAD CALLS THIS. It allocates nothing, takes no lock and
     /// makes no system call.
-    pub fn push(&self, src: &[f32]) {
-        unsafe { ring::push(self.map.header(), self.map.data(), src) }
-    }
-
-    /// The host's rate changed, so the stream restarts under a new epoch --
-    /// samples either side of the change are not the same signal.
-    pub fn set_sample_rate(&self, sample_rate: u32) {
-        let hdr = self.map.header();
-        if hdr.sample_rate.load(Ordering::Acquire) == sample_rate {
-            return;
+    pub fn push(&mut self, src: &[f32]) {
+        let hdr = self.claim.map.header();
+        if self.claim.pending_rate.load(Ordering::Relaxed) != 0 {
+            let rate = self.claim.pending_rate.swap(0, Ordering::Acquire);
+            if rate != 0 && rate != hdr.sample_rate.load(Ordering::Relaxed) {
+                hdr.sample_rate.store(rate, Ordering::Relaxed);
+                hdr.write_frames.store(0, Ordering::Relaxed);
+                hdr.epoch.fetch_add(1, Ordering::Release);
+            }
         }
-        hdr.sample_rate.store(sample_rate, Ordering::Release);
-        hdr.write_frames.store(0, Ordering::Release);
-        hdr.epoch.fetch_add(1, Ordering::AcqRel);
-    }
-
-    pub fn set_label(&self, text: &str) {
-        self.map.header().set_label(text.as_bytes());
+        ring::push(hdr, self.claim.map.data(), src);
     }
 }
 
-impl Drop for Writer {
+impl Drop for Claim {
     fn drop(&mut self) {
         let hdr = self.map.header();
         /*
@@ -200,20 +284,31 @@ impl Drop for Writer {
          * which time another sender may have reclaimed the slot legitimately.
          * Releasing unconditionally would then mark THEIR claim free and
          * unlink THEIR segment on our way out -- a departing instance taking a
-         * working bus with it.
+         * working bus with it. The token is exact: the count in it changes on
+         * every claim, so a later claim by this same process does not match.
          */
-        if hdr.writer_pid.load(Ordering::Acquire) != shm::pid() {
+        if hdr.owner.load(Ordering::Acquire) != self.token {
             return;
         }
-        hdr.state.store(STATE_FREE, Ordering::Release);
-        hdr.writer_pid.store(0, Ordering::Release);
         /*
-         * UNLINK ON THE WAY OUT, which is what keeps a clean quit from leaving
-         * anything behind for the reclaim path above to have to reason about.
+         * UNLINK FIRST, THEN LET GO, which is what keeps a clean quit from
+         * leaving anything behind -- and the order matters. Marked free while
+         * still named, the segment could be claimed by somebody who opened it a
+         * moment earlier, and then unlinked out from under them. Unlinked
+         * first, a claimer that opened it before the unlink finds it free only
+         * after it has stopped being the bus, and `claim`'s name check sends
+         * that claimer back to create a fresh one.
+         *
+         * The name is only removed if it still leads HERE: a segment replaced
+         * by a build that could not read it is not ours to unlink any more.
          * Readers still mapped keep their mapping -- unlink removes the name,
-         * not the object -- and see a writer that simply stopped.
+         * not the object -- and see a writer that simply stopped until they
+         * `reattach`.
          */
-        self.map.unlink();
+        if still_named(&self.map) {
+            self.map.unlink();
+        }
+        release(hdr, self.token);
     }
 }
 
@@ -230,6 +325,8 @@ pub struct Info {
 pub struct Reader {
     map: shm::Mapping,
     cursor: ring::Cursor,
+    /* Set by `reattach`; the next `read` reports it as a resync. */
+    moved: bool,
 }
 
 impl Reader {
@@ -244,12 +341,64 @@ impl Reader {
             return None;
         }
         let cursor = ring::Cursor::at_live_edge(map.header());
-        Some(Reader { map, cursor })
+        Some(Reader {
+            map,
+            cursor,
+            moved: false,
+        })
+    }
+
+    pub fn slot(&self) -> u32 {
+        self.map.slot()
     }
 
     /// Copy up to `out.len() / 2` frames out. Never blocks, never allocates.
     pub fn read(&mut self, out: &mut [f32]) -> Read {
-        unsafe { ring::read(self.map.header(), self.map.data(), &mut self.cursor, out) }
+        let mut got = ring::read(self.map.header(), self.map.data(), &mut self.cursor, out);
+        if core::mem::take(&mut self.moved) {
+            got.resynced = true;
+        }
+        got
+    }
+
+    /*
+     * A SEGMENT CAN BE REPLACED UNDER ITS NAME, and a mapping cannot notice.
+     *
+     * A sender that quits unlinks its segment; the next sender on that slot
+     * creates a new one. A reader still mapping the old object sees a writer
+     * that stopped -- forever, because nothing will ever write there again.
+     * The Spectrogram showed exactly that: a Listen-In re-added, a picture that
+     * stayed "starved".
+     *
+     * So a reader that has gone quiet asks: does the name still lead to the
+     * segment I have? Each segment carries its `incarnation`, and a different
+     * one behind the name means ours is orphaned; the reader moves to the new
+     * one at its live edge and the next read says `resynced`. This makes
+     * system calls and maps memory, so it is a main-thread call -- a receiver
+     * makes it for a source that has been silent a while, not per block.
+     */
+
+    /// Move to the segment the slot's name leads to now, if that is not the
+    /// one this reader has. Returns true if it moved. **Main thread.**
+    pub fn reattach(&mut self) -> bool {
+        let Some(fresh) = shm::Mapping::open_existing(self.map.slot()) else {
+            return false;
+        };
+        let (old, new) = (self.map.header(), fresh.header());
+        if !new.is_valid()
+            || new.incarnation.load(Ordering::Relaxed) == old.incarnation.load(Ordering::Relaxed)
+        {
+            return false;
+        }
+        self.cursor = ring::Cursor::at_live_edge(new);
+        self.map = fresh;
+        self.moved = true;
+        true
+    }
+
+    /// The rate the sender publishes at. Allocation-free, unlike `info`.
+    pub fn sample_rate(&self) -> u32 {
+        self.map.header().sample_rate.load(Ordering::Acquire)
     }
 
     pub fn info(&self) -> Info {
@@ -257,9 +406,9 @@ impl Reader {
     }
 }
 
-fn info_from(hdr: &header::Header, slot: u32) -> Info {
-    let live = hdr.state.load(Ordering::Acquire) == STATE_CLAIMED
-        && !shm::pid_is_gone(hdr.writer_pid.load(Ordering::Acquire));
+fn info_from(hdr: &Header, slot: u32) -> Info {
+    let holder = owner_pid(hdr.owner.load(Ordering::Acquire));
+    let live = holder != 0 && !shm::pid_is_gone(holder);
     let label = hdr
         .label()
         .map(|raw| {

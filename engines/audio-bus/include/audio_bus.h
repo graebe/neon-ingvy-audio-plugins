@@ -16,7 +16,7 @@
  *   abus_writer_claim / release            the main thread
  *   abus_writer_set_label / sample_rate    the main thread
  *   abus_writer_push                       the audio thread, and only it
- *   abus_reader_open / close               the main thread
+ *   abus_reader_open / close / reattach    the main thread
  *   abus_reader_read                       one thread, the same one each time
  *   abus_probe                             the main thread
  *
@@ -55,7 +55,12 @@ typedef struct AbusReader abus_reader_t;
 #define ABUS_LABEL_CAP 32
 
 /* Highest valid slot number. Slots are 1-based: slot 0 is not a bus, it is a
- * mistake, and it is reported as one. */
+ * mistake, and it is reported as one.
+ *
+ * ABUS_MAX_SLOT is the same number for code that needs it at compile time --
+ * an array bound, or a translation unit that links nothing. abus_roundtrip.c
+ * checks the two agree. */
+#define ABUS_MAX_SLOT 16
 uint32_t abus_max_slot(void);
 
 /* Always 2, always interleaved. A mono source is duplicated by the SENDER, so
@@ -116,6 +121,16 @@ uint32_t abus_reader_read(abus_reader_t* r,
                           uint32_t       max_frames,
                           uint64_t*      dropped,
                           int32_t*       resynced);
+
+/*
+ * A SENDER THAT LEAVES AND COMES BACK MAKES A NEW SEGMENT, and an open reader
+ * is still mapping the old one: it sees a sender that stopped, forever. This
+ * asks the slot's name again and moves the reader to the new segment if there
+ * is one. Returns 1 if it moved -- the next read then reports `resynced` -- and
+ * 0 otherwise. Main thread, and not per block: call it for a reader that has
+ * been getting nothing for a while.
+ */
+int abus_reader_reattach(abus_reader_t* r);
 
 /*
  * Describe a slot without opening it -- what a receiver builds its source list

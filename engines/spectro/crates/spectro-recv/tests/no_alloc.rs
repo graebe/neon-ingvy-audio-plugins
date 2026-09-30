@@ -41,7 +41,12 @@ unsafe impl GlobalAlloc for Counting {
         }
         System.alloc(layout)
     }
+    /* Counted too: a free takes the same allocator lock a malloc does, and a
+     * value dropped on the audio thread is the usual way one gets there. */
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if ARMED.load(Ordering::Relaxed) {
+            ALLOCS.fetch_add(1, Ordering::Relaxed);
+        }
         System.dealloc(ptr, layout)
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
@@ -57,7 +62,7 @@ static ALLOCATOR: Counting = Counting;
 
 #[test]
 fn pushing_pumping_and_draining_allocate_nothing() {
-    let mut r = Receiver::new(Config::default()); /* allocates, and is allowed to */
+    let (mut r, mut feed) = Receiver::new(Config::default()); /* allocates, and is allowed to */
 
     /* Everything the measured window touches is built before it opens: the
      * input block, the output buffer, and whatever the formatter behind a
@@ -71,7 +76,7 @@ fn pushing_pumping_and_draining_allocate_nothing() {
 
     ARMED.store(true, Ordering::Relaxed);
     for _ in 0..64 {
-        r.push_own(&block);
+        feed.push(&block);
         r.pump();
         cols += r.take_columns(OWN, &mut out, 32);
         r.clash_into(&clash_a, &clash_b, &mut clash_out);
@@ -82,7 +87,7 @@ fn pushing_pumping_and_draining_allocate_nothing() {
     ARMED.store(false, Ordering::Relaxed);
 
     let n = ALLOCS.load(Ordering::Relaxed);
-    assert_eq!(n, 0, "the receiver allocated {n} times while running");
+    assert_eq!(n, 0, "the receiver allocated or freed {n} times while running");
 
     /* And it has to have done the work, or zero allocations means nothing. */
     assert!(cols > 0, "no columns were produced, so nothing was measured");

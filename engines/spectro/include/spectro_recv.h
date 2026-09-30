@@ -35,6 +35,11 @@
  * analyzer that stutters draws a stuttering picture, where one that overran the
  * audio thread would make a noise.
  *
+ * The handle is used from two threads at once -- push_own on the audio thread,
+ * everything else on the message thread -- and is built for it: inside, the
+ * audio thread's feed and the message thread's receiver are separate, and each
+ * call touches only its own. Two threads on the SAME side is still undefined.
+ *
  * `srecv_push_own` allocates nothing, takes no lock and makes no system call.
  * `srecv_set_sources` does all three, which is why it is not allowed anywhere
  * near the audio thread.
@@ -51,7 +56,7 @@
 extern "C" {
 #endif
 
-typedef struct Receiver srecv_t;
+typedef struct Srecv srecv_t;
 
 /* Channel 0 is always the track the plugin is inserted on. */
 #define SRECV_OWN 0
@@ -63,7 +68,11 @@ typedef struct Receiver srecv_t;
  * about 47 times a second, roughly 1.5% of a core. Four is also about where a
  * picture stops being readable, so the cost and the legibility run out
  * together.
+ *
+ * SRECV_MAX_SOURCES is the same number for an array bound; srecv_api.c checks
+ * the two agree.
  */
+#define SRECV_MAX_SOURCES 4
 int srecv_max_sources(void);
 
 /*
@@ -107,12 +116,17 @@ void srecv_set_sources(srecv_t* r, const unsigned int* slots, int n);
  * Feed `n` mono samples from this plugin's own track. AUDIO THREAD ONLY.
  * Copies into a ring and returns.
  */
-void srecv_push_own(const srecv_t* r, const float* mono, int n);
+void srecv_push_own(srecv_t* r, const float* mono, int n);
 
 /*
  * Move audio into every analyzer, in step; returns the frames each source was
  * given, commonly 0. MESSAGE THREAD ONLY -- this is where the transforms
  * happen.
+ *
+ * A source whose sample rate differs from the receiver's is read and
+ * discarded, never analysed; the verdict is taken again whenever its sender
+ * restarts. A bus that has delivered nothing for about a second is re-opened
+ * if its sender quit and came back under the same slot.
  */
 int srecv_pump(srecv_t* r);
 
@@ -120,7 +134,7 @@ int srecv_pump(srecv_t* r);
  * Drain one channel's finished columns, spectro_bands() bytes each, oldest
  * first. `out` must hold max_cols * bands bytes. Message thread only.
  */
-int srecv_take_columns(const srecv_t* r, int ch, unsigned char* out, int max_cols);
+int srecv_take_columns(srecv_t* r, int ch, unsigned char* out, int max_cols);
 
 /* Bytes in one column of any channel: the band count they all share. */
 int srecv_bands(const srecv_t* r);

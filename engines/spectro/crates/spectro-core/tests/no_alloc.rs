@@ -33,7 +33,12 @@ unsafe impl GlobalAlloc for Counting {
         }
         System.alloc(layout)
     }
+    /* Counted too: a free takes the same allocator lock a malloc does, and a
+     * value dropped on the audio thread is the usual way one gets there. */
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if ARMED.load(Ordering::Relaxed) {
+            ALLOCS.fetch_add(1, Ordering::Relaxed);
+        }
         System.dealloc(ptr, layout)
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
@@ -50,7 +55,8 @@ static ALLOCATOR: Counting = Counting;
 #[test]
 fn push_and_take_allocate_nothing() {
     let cfg = Config::default();
-    let analyzer = Analyzer::new(cfg); /* allocates, and is allowed to */
+    /* Split, the way the C ABI holds it: the halves the two threads own. */
+    let (mut tx, mut rx) = Analyzer::new(cfg).split(); /* allocates, and is allowed to */
 
     /* Everything the measured window touches is built before it opens: the
      * input block, the output buffer, and whatever the formatter behind a
@@ -58,14 +64,14 @@ fn push_and_take_allocate_nothing() {
     let block: Vec<f32> = (0..2048)
         .map(|i| (i as f32 * 0.01).sin() * 0.5)
         .collect();
-    let mut out = vec![0u8; analyzer.bands() * 32];
+    let mut out = vec![0u8; rx.bands() * 32];
 
     ARMED.store(true, Ordering::SeqCst);
     /* Eight blocks is 16384 samples: several hops, several transforms, and the
      * ring wrapping. */
     for _ in 0..8 {
-        analyzer.push(&block);
-        analyzer.take_columns(&mut out, 32);
+        tx.push(&block);
+        rx.take_columns(&mut out, 32);
     }
 
     /*
@@ -76,13 +82,13 @@ fn push_and_take_allocate_nothing() {
      * that was rebuilt with `Vec::new()` instead of `clear()` would pass every
      * other test in this crate and allocate on the audio thread forever after.
      */
-    analyzer.set_range(200.0, 4000.0);
+    rx.set_range(200.0, 4000.0);
     for _ in 0..8 {
-        analyzer.push(&block);
-        analyzer.take_columns(&mut out, 32);
+        tx.push(&block);
+        rx.take_columns(&mut out, 32);
     }
     ARMED.store(false, Ordering::SeqCst);
 
     let n = ALLOCS.load(Ordering::SeqCst);
-    assert_eq!(n, 0, "the audio path allocated {n} times");
+    assert_eq!(n, 0, "the audio path allocated or freed {n} times");
 }
