@@ -34,23 +34,41 @@ Three things it deliberately does **not** do:
 
 ## What counts as a kick
 
-Only low bass. The detector listens to the band from **20 Hz to 80 Hz** and asks
-whether there is more energy there right now than there has been over the last
-300 ms. So a kick drum moves it; a snare, a hi-hat, a vocal or a loud guitar do
-not, however loud they are.
+Only low bass. The detector listens to the band from **20 Hz to 80 Hz** and looks
+for an **attack** in it — a sudden rise above whatever the bass has been doing for
+the last quarter second or so. A kick drum moves it; a snare, a hi-hat, a vocal or
+a loud guitar do not, however loud they are, and neither does a sustained bass
+note once it is holding.
 
 Because the question is *relative*, there is no sensitivity to set. The same
 plugin behaves the same way on a quiet dub mix and on a loud master — it is
 comparing the music to itself.
 
+> **A deviation from the design system, deliberately.** The Ultraviolet spec asks
+> for a different test: the band's level exceeding 1.8× its own 300 ms average.
+> That works beautifully on an isolated kick, which is what the design's preview
+> demonstrates — and it very nearly never fires on a record. Over a loud sustained
+> low end, a kick adds only about a third to the level of the 20–80 Hz band,
+> because the bass is already filling that band; a third is 1.3×, and 1.3 is not
+> 1.8. Measured on an eight-second loop with sixteen kicks in it, the specified
+> rule produced **one** ring on a limited mix and **two** on an 808 pattern.
+> Keying on the attack instead gives sixteen on both, with no false positives.
+> The band, the envelope times, the refractory and the strength range are all
+> still the design's. The table in
+> `engines/ground/crates/ground-core/src/tests.rs` (`mod material`) is the real
+> specification now, and `detect.rs` records the reasoning in full.
+
 Two details worth knowing, because they are the ones people notice:
 
 - **Two kicks closer together than about a quarter of a second read as one.**
   There is a 120 ms minimum gap between onsets, but the practical floor is longer:
-  after a ring the detector waits for the bass to drop back down before it will
-  fire again. Straight eighth notes above roughly 120 BPM will therefore ring on
-  alternate hits. This is how the design's own reference behaves, and the rings
-  from one hit last far longer than the gap anyway.
+  after a ring the detector waits for the bass to fall back before it will fire
+  again. So a sixteenth-note kick roll merges into one ring, while eighth notes at
+  120 BPM do not. The rings from one hit last far longer than the gap anyway.
+- **A track starting, a clip launching or a channel un-muting can ring once**,
+  even with no kick in it. An amplitude ramp has a spectrum of its own, and a fast
+  one puts real energy into the bass band whatever pitch is playing. It is a
+  genuine transient, so it is treated as one.
 - **It hears the plugin's input.** On NI Side-Chain that is the main input, not
   the key signal.
 
@@ -88,4 +106,18 @@ The physics is the damped 2D wave equation on a 6 px grid, one Ricker wavelet pe
 kick, reflecting at every panel edge. The parameters — wave speed, damping,
 source strength, dot and grain response — all come from the design system and are
 checked against it by `node --test ui-kit/test/field.test.mjs`, which reads the
-reference implementation and diffs the numbers.
+reference implementation and diffs the numbers. The **detector** is the one part
+that deviates, for the reason in the note above.
+
+## What moves, exactly
+
+Both the dots and the grain respond, and neither of them travels.
+
+As a ring passes, the dots grow from 1.0 px to about 1.3 px and brighten by
+roughly a fifth, and the grain thickens from 5 % to about 9 %; in the trough
+behind it they shrink, dim and thin. A full-strength kick redraws around **30 % of
+the window's dots** at its peak and stays visible for eight seconds or more.
+
+The grain **tile itself never moves** — only its local density changes. That is a
+design rule rather than an optimisation: grain that travels reads as television
+static rather than as a surface responding to sound.

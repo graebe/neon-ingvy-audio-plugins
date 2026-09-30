@@ -68,15 +68,22 @@ const RMS_MS: f64 = 20.0;
 const ATTACK_MS: f64 = 5.0;
 /// Envelope release. Long enough that one kick is one hump.
 const RELEASE_MS: f64 = 150.0;
-/// The running mean the threshold is relative to.
-const WINDOW_MS: f64 = 300.0;
-/// Onset when the envelope exceeds this multiple of the running mean.
-const RATIO: f64 = 1.8;
-/// Re-arm when it falls back below this multiple. Between `REARM` and `RATIO`
-/// the detector is neither firing nor re-arming, which is the hysteresis that
-/// stops a level sitting exactly on the threshold from chattering.
-const REARM: f64 = 1.2;
-/// Ignore anything below this envelope. Guards the ratio in near-silence.
+/// How fast the "how much bass has been here lately" follower may RISE, and
+/// fall. Slow in both directions on purpose: it has to represent the sustained
+/// level without ever following a transient, because the transient is the thing
+/// being measured against it.
+const BED_ATTACK_MS: f64 = 350.0;
+const BED_RELEASE_MS: f64 = 200.0;
+/// An onset needs the envelope to stand this far above the bed, as a fraction of
+/// the bed. 0.35 is "a third louder than the last quarter second of bass".
+const FLUX_RATIO: f64 = 0.35;
+/// ... and at least this much in absolute terms, which is what stops silence and
+/// near-silence (where any fraction of nothing is nothing) from firing.
+const FLUX_FLOOR: f64 = 0.005;
+/// Re-arm when the excess falls back under this fraction of what it took to
+/// fire. The hysteresis that stops a level sitting on the threshold chattering.
+const REARM_FRACTION: f64 = 0.5;
+/// Ignore anything below this envelope outright.
 pub(crate) const FLOOR: f64 = 0.01;
 /// Minimum gap between onsets, ms.
 const REFRACTORY_MS: f64 = 120.0;
@@ -122,11 +129,15 @@ pub struct Detector {
     /// Mean square of the band, smoothed over `RMS_MS`.
     power: f64,
     env: f64,
-    mean: f64,
+    /// The sustained level: what the band has been doing for the last quarter
+    /// second or so. An onset is measured against THIS, not against the band's
+    /// absolute level.
+    bed: f64,
     rms_c: f64,
     attack_c: f64,
     release_c: f64,
-    window_c: f64,
+    bed_attack_c: f64,
+    bed_release_c: f64,
     /// False between an onset and the envelope falling back under `REARM`.
     armed: bool,
     /// Samples still to wait before another onset counts.
@@ -140,11 +151,12 @@ impl Detector {
             band: [Band::new(sample_rate), Band::new(sample_rate)],
             power: 0.0,
             env: 0.0,
-            mean: 0.0,
+            bed: 0.0,
             rms_c: 1.0,
             attack_c: 1.0,
             release_c: 1.0,
-            window_c: 1.0,
+            bed_attack_c: 1.0,
+            bed_release_c: 1.0,
             armed: true,
             refractory_left: 0.0,
             refractory_samples: 0.0,
@@ -160,7 +172,8 @@ impl Detector {
         self.rms_c = coeff(RMS_MS, sample_rate);
         self.attack_c = coeff(ATTACK_MS, sample_rate);
         self.release_c = coeff(RELEASE_MS, sample_rate);
-        self.window_c = coeff(WINDOW_MS, sample_rate);
+        self.bed_attack_c = coeff(BED_ATTACK_MS, sample_rate);
+        self.bed_release_c = coeff(BED_RELEASE_MS, sample_rate);
         self.refractory_samples = (REFRACTORY_MS * sample_rate / 1000.0).max(0.0);
         self.reset();
     }
@@ -173,7 +186,7 @@ impl Detector {
         }
         self.power = 0.0;
         self.env = 0.0;
-        self.mean = 0.0;
+        self.bed = 0.0;
         self.armed = true;
         self.refractory_left = 0.0;
     }
@@ -234,34 +247,66 @@ impl Detector {
         };
         self.env += (rms - self.env) * c;
 
-        /* The mean is compared BEFORE this sample's envelope folds into it. The
-         * reference does the same, and it matters: a kick loud enough to move a
-         * 300 ms mean on one sample would otherwise raise its own threshold. */
-        let mean = self.mean;
-        self.mean += (self.env - self.mean) * self.window_c;
+        /* The bed is read BEFORE this sample folds into it: a kick loud enough to
+         * move the bed on one sample must not be allowed to raise its own
+         * threshold. */
+        let bed = self.bed;
+        let bed_c = if self.env > self.bed {
+            self.bed_attack_c
+        } else {
+            self.bed_release_c
+        };
+        self.bed += (self.env - self.bed) * bed_c;
 
         if self.refractory_left > 0.0 {
             self.refractory_left -= 1.0;
         }
 
-        if !self.armed && self.env < mean * REARM {
+        /*
+         * THE EXCESS OVER THE BED, NOT THE RATIO TO IT -- and this is the one
+         * place that deviates from the design system's detector row, so the
+         * reason is here in full.
+         *
+         * The design specifies `env > 1.8 * mean(300 ms)`. Measured against real
+         * program material that almost never fires. Against a loud sustained low
+         * end -- a bassline, a limited master, an 808 with a long tail -- a kick
+         * adds only about a third to the BAND'S level, because the bass is
+         * already filling the same 20-80 Hz. A third is 1.3x, and 1.3 is not
+         * 1.8, so the ground stayed perfectly still on exactly the music people
+         * make. Sixteen kicks in eight seconds produced one onset.
+         *
+         * It passed every test and the design's own preview because both feed it
+         * an ISOLATED synthesized kick, where the mean between hits falls to
+         * nearly nothing and any hit is enormous relative to it.
+         *
+         * Keying on the EXCESS fixes it without changing what a kick is. The bed
+         * rises slowly (250 ms) and falls slowly (400 ms), so it tracks sustained
+         * bass and cannot follow a transient; a kick's 5 ms attack therefore
+         * stands clear of it whatever the absolute level. Steady bass, however
+         * loud, keeps env and bed together and produces nothing.
+         *
+         * Band, envelope times, refractory and strength range are all still the
+         * design's.
+         */
+        let excess = self.env - bed;
+        let trigger = FLUX_RATIO * bed + FLUX_FLOOR;
+
+        if !self.armed && excess < trigger * REARM_FRACTION {
             self.armed = true;
         }
 
-        if self.armed
-            && self.env > FLOOR
-            && self.env > mean * RATIO
-            && self.refractory_left <= 0.0
-        {
+        if self.armed && self.env > FLOOR && excess > trigger && self.refractory_left <= 0.0 {
             self.armed = false;
             self.refractory_left = self.refractory_samples;
-            let ratio = if mean > MEAN_EPSILON {
-                self.env / mean
+            /* How far past the threshold it got, which is the same shape the
+             * design's formula has: a kick that only just crossed reads near the
+             * floor, a big one saturates. */
+            let ratio = if trigger > MEAN_EPSILON {
+                excess / trigger
             } else {
                 SILENT_RATIO
             };
-            let strength =
-                (STRENGTH_SCALE * (ratio / RATIO).sqrt()).clamp(STRENGTH_MIN, STRENGTH_MAX);
+            let strength = (STRENGTH_SCALE * ratio.sqrt()).clamp(STRENGTH_MIN, STRENGTH_MAX);
             return Some(Onset {
                 strength: strength as f32,
             });

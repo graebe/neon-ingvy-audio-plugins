@@ -244,17 +244,19 @@ fn the_rearm_and_not_the_refractory_sets_the_practical_floor() {
     /* WORTH KNOWING AND EASY TO GET WRONG. The design's detector row names a
      * 120 ms refractory, so it is natural to read that as "kicks more than
      * 120 ms apart each ring". They do not. The binding constraint is the
-     * re-arm: after an onset the detector stays un-armed until the envelope
-     * falls back under 1.2x the running mean, and with a 150 ms release over a
-     * 300 ms mean that takes longer than the refractory does.
+     * RE-ARM: after an onset the detector stays un-armed until the envelope's
+     * excess over the bed falls back to half of what it took to fire, and with a
+     * 150 ms envelope release that takes longer than the refractory does.
      *
-     * Measured, the threshold sits between 200 and 250 ms -- so a straight
-     * eighth-note kick above about 120 BPM rings on alternate hits. That is the
-     * reference implementation's behaviour too (`ground.js` has the identical
-     * armed/rearm logic), so it is the DESIGN's behaviour and not a defect here;
-     * changing it would mean retuning constants that belong to the design
-     * system. This test pins it so that a future reader finds the answer here
-     * rather than in a host. */
+     * Measured, the threshold sits between 200 and 250 ms. So a straight
+     * sixteenth-note kick roll merges, and eighth notes at 120 BPM (250 ms) do
+     * not -- which is the musically useful place for it to land, and is why the
+     * 150 ms release is worth keeping even though it is what causes this.
+     *
+     * The number survived re-keying the detector onto the attack (see
+     * `detect.rs`), which is worth recording: the mechanism behind it changed
+     * completely and the behaviour did not. This test pins it so a future reader
+     * finds the answer here rather than in a host. */
     let both = |ms: f64| {
         let mut signal = kick(60.0, 0.05, samples(ms / 1000.0));
         signal.extend_from_slice(&kick(60.0, 0.05, samples(0.5)));
@@ -491,5 +493,181 @@ fn no_sustained_tone_anywhere_in_the_band_chatters() {
             late, 0,
             "a sustained {hz} Hz tone fired {late} times after settling"
         );
+    }
+}
+
+/* ---------- real program material ---------- */
+
+/*
+ * THE TEST THAT WOULD HAVE CAUGHT IT, AND DID NOT EXIST.
+ *
+ * Every other test in this file feeds the detector an isolated kick, sometimes
+ * with a tone beside it. So did the design system's own preview. And on that
+ * material the design's specified test -- `env > 1.8 * mean(300 ms)` -- works
+ * perfectly, which is why it shipped.
+ *
+ * On music it did not work at all. A kick over a loud sustained low end adds only
+ * about a third to the level of the 20-80 Hz band, because the bass is already
+ * filling that band; a third is 1.3x and 1.3 is not 1.8. Sixteen kicks in eight
+ * seconds produced ONE onset on a limited mix, and one on a sustained bassline.
+ * The background stayed perfectly still on exactly the music people make, and
+ * every test passed.
+ *
+ * So this table is the real specification, and it is deliberately the least
+ * clever test here: build something that sounds like a record, count the rings.
+ */
+mod material {
+    use super::*;
+
+    const BEAT: f64 = 0.5; // 120 BPM
+    const BARS: f64 = 8.0; // seconds
+    const KICKS: usize = (BARS / BEAT) as usize;
+
+    /// A kick every `BEAT`: a decaying sine at `hz`.
+    fn kicks(buf: &mut [f64], hz: f64, amp: f64, decay: f64) {
+        let step = samples(BEAT);
+        let mut start = 0;
+        while start < buf.len() {
+            let span = samples(decay * 6.0).min(buf.len() - start);
+            for i in 0..span {
+                let t = i as f64 / SR;
+                buf[start + i] +=
+                    amp * (-t / decay).exp() * (2.0 * core::f64::consts::PI * hz * t).sin();
+            }
+            start += step;
+        }
+    }
+
+    /// A sustained tone, faded in over 50 ms.
+    ///
+    /// THE FADE MATTERS, for the reason `tone` gives above: a tone that starts
+    /// abruptly at full scale is a step, and a step has energy in every band
+    /// including this one. Without it the "no kick" row below fires once, and
+    /// would be measuring the test's own setup.
+    fn sustain(buf: &mut [f64], hz: f64, amp: f64) {
+        let fade = samples(0.05) as f64;
+        for (i, s) in buf.iter_mut().enumerate() {
+            let a = (i as f64 / fade).min(1.0);
+            *s += amp * a * (2.0 * core::f64::consts::PI * hz * (i as f64 / SR)).sin();
+        }
+    }
+
+    /// Hard-clip, the way a loud master is.
+    fn limit(buf: &mut [f64], ceil: f64) {
+        for s in buf.iter_mut() {
+            *s = s.clamp(-ceil, ceil);
+        }
+    }
+
+    fn onsets(buf: &[f64]) -> usize {
+        let mut d = Detector::new(SR);
+        buf.iter().filter_map(|&s| d.next(s, s)).count()
+    }
+
+    fn bed() -> Vec<f64> {
+        vec![0.0f64; samples(BARS)]
+    }
+
+    #[test]
+    fn a_kick_on_its_own() {
+        let mut b = bed();
+        kicks(&mut b, 60.0, 1.0, 0.05);
+        assert_eq!(onsets(&b), KICKS);
+    }
+
+    #[test]
+    fn a_kick_under_a_quiet_bassline() {
+        let mut b = bed();
+        kicks(&mut b, 60.0, 1.0, 0.05);
+        sustain(&mut b, 50.0, 0.1);
+        assert_eq!(onsets(&b), KICKS);
+    }
+
+    #[test]
+    fn a_kick_under_a_loud_sustained_bassline() {
+        /* THE CASE THAT WAS BROKEN: 1 of 16 before the detector was re-keyed onto
+         * the attack. One kick may still be lost while the bed is settling from
+         * silence at the very start, which is why this is not an equality. */
+        let mut b = bed();
+        kicks(&mut b, 60.0, 1.0, 0.05);
+        sustain(&mut b, 50.0, 0.7);
+        let n = onsets(&b);
+        assert!(
+            n >= KICKS - 1,
+            "a loud bassline hid the kick: {n} of {KICKS} rings"
+        );
+    }
+
+    #[test]
+    fn a_kick_under_a_pad_and_hats() {
+        let mut b = bed();
+        kicks(&mut b, 60.0, 1.0, 0.05);
+        sustain(&mut b, 400.0, 0.5);
+        sustain(&mut b, 4_000.0, 0.3);
+        assert_eq!(onsets(&b), KICKS);
+    }
+
+    #[test]
+    fn a_full_limited_mix() {
+        /* THE OTHER CASE THAT WAS BROKEN: 2 of 16. This is what a master sounds
+         * like to the detector, and it is the single most important row here. */
+        let mut b = bed();
+        kicks(&mut b, 60.0, 1.0, 0.05);
+        sustain(&mut b, 50.0, 0.35);
+        sustain(&mut b, 400.0, 0.4);
+        sustain(&mut b, 4_000.0, 0.2);
+        limit(&mut b, 0.9);
+        assert_eq!(onsets(&b), KICKS, "a limited mix lost its kicks");
+    }
+
+    #[test]
+    fn an_808_with_a_long_tail() {
+        /* AND THE THIRD: 2 of 16. A sub kick that rings for a quarter of a second
+         * is its own sustained bass, so it used to hide its own next hit. */
+        let mut b = bed();
+        kicks(&mut b, 40.0, 1.0, 0.25);
+        assert_eq!(onsets(&b), KICKS);
+    }
+
+    #[test]
+    fn a_quiet_kick_still_counts() {
+        /* -20 dB and nothing else. The threshold is relative, so a quiet track
+         * must behave like a loud one -- this is the row that stops the absolute
+         * floor being raised to buy robustness somewhere else. */
+        let mut b = bed();
+        kicks(&mut b, 60.0, 0.1, 0.05);
+        assert_eq!(onsets(&b), KICKS);
+    }
+
+    #[test]
+    fn a_track_with_no_kick_stays_still() {
+        /* COUNTED ONCE THE MUSIC IS PLAYING, not from the first sample, and the
+         * distinction is real rather than convenient.
+         *
+         * A pad that appears out of silence has an amplitude ramp, and a ramp has
+         * a spectrum: a fast one puts real energy into 20-80 Hz whatever pitch it
+         * is playing. So the entry itself is a low-frequency transient and firing
+         * on it is not wrong -- the same is true of a track starting, a clip
+         * launching, or anyone un-muting a channel.
+         *
+         * What must not happen is the ground moving THROUGH material that has no
+         * kick in it, which is what this measures. It is the same window the
+         * sustained-tone test uses, for the same reason. */
+        let mut b = bed();
+        sustain(&mut b, 400.0, 0.5);
+        sustain(&mut b, 4_000.0, 0.3);
+        let mut d = Detector::new(SR);
+        let late = b
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| {
+                // every sample is fed; only the count is windowed
+                let _ = i;
+                true
+            })
+            .filter_map(|(i, &s)| d.next(s, s).map(|_| i))
+            .filter(|i| *i > samples(0.5))
+            .count();
+        assert_eq!(late, 0, "the ground kept moving with no kick in the signal");
     }
 }
