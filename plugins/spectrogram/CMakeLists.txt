@@ -45,6 +45,8 @@ iplug_add_plugin(NISpectrogram
   SOURCES
     Spectrogram.cpp
     Spectrogram.h
+    State.cpp
+    State.h
     Wire.cpp
     Wire.h
     config.h

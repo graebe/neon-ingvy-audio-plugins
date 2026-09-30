@@ -9,6 +9,7 @@
 #include "audio_bus.h"
 #include "shell_handoff.h"
 #include "shell_state.h"
+#include "State.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 
 #include <atomic>
@@ -16,22 +17,6 @@
 #include <vector>
 
 const int kNumPresets = 1;
-
-/*
- * ONE PARAMETER, AND IT EARNS ITS PLACE.
- *
- * The Spectrogram has none, and says so as a statement: nothing about it
- * changes what comes out. That is true here too -- the audio is passed through
- * bit for bit whatever the slot says. But a bus NUMBER is a piece of session
- * structure the host should own: it belongs in the saved set, it should survive
- * a reopen, and somebody will want to automate a switch between two sources.
- * The host does all of that for a parameter and none of it for a message.
- */
-enum EParams
-{
-  kSlot = 0,
-  kNumParams
-};
 
 /* Plugin -> UI from 64, UI -> plugin from 96; 0..kNumParams-1 belong to the
  * host's parameter display strings. The convention is the house's, the numbers
@@ -57,10 +42,6 @@ const int kMaxStateChars = 64;
  * The Spectrogram's mMono is the same arrangement for the same reason.
  */
 const int kStageFrames = 4096;
-
-/* The state chunk's layout, after shell_state.h's header: parameters, then the
- * label. A chunk with no header is this layout as every earlier build wrote it. */
-constexpr int32_t kChunkVersion = 1;
 
 using namespace iplug;
 

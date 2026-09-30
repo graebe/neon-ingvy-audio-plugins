@@ -380,6 +380,7 @@ impl Instance {
         if slot >= SLOTS {
             return;
         }
+        self.rev = self.rev.wrapping_add(1);
         if let Some(s) = seed {
             /* Zero is xorshift's one dead state, so it is spelled as something
              * else rather than silently producing the same pattern forever. */

@@ -106,6 +106,21 @@ unsigned char encode_gain(float v);
  */
 int gate_per_step(int length);
 
+/*
+ * THE SLOT HANDSHAKE'S AUDIO HALF: did the slot move this block?
+ *
+ * `pushed` is the slot the audio thread last set, -1 before the first block.
+ * A move is what suppresses the Length push until the host has been told the
+ * new slot's length (TranceGate.h, mSlotSync, says why).
+ *
+ * `rebase` says the parameters were just replaced wholesale -- a state load or
+ * a preset -- and that is NOT a move. The loaded Slot and Length belong
+ * together; treating the new slot as a switch would let the loaded blob's
+ * length overwrite the loaded Length, so the host's parameters after a load
+ * would differ from the ones that were saved.
+ */
+bool slot_moved(int& pushed, int slot, bool rebase);
+
 /* As the Spectrogram's: base64's extra third plus the frame's fixed 32. */
 constexpr int framed_size(int nBytes) { return nBytes * 4 / 3 + 32; }
 

@@ -17,44 +17,13 @@
 #include "IPlug_include_in_plug_hdr.h"
 #include "sc_shell.h"
 #include "shell_state.h"
+#include "Params.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include <atomic>
 #include <cstdint>
 #include <vector>
 
 const int kNumPresets = 1;
-
-/*
- * THE FIFTEEN AUTOMATABLE VALUES, IN THE ENGINE'S OWN WIRE ORDER.
- *
- * Deliberately sc_param_t's order, so the host index IS the engine index and
- * there is no mapping table between them to get wrong. The Trance Gate's JUCE
- * build carried exactly such a table because its declaration order had drifted
- * from the engine's; every plugin here since has started from this instead.
- *
- * EVERYTHING PUMP HOLDS IS IN THIS LIST, which is why config.h sets
- * PLUG_DOES_STATE_CHUNKS 0. The shape editor's handles are these parameters,
- * so dragging one lands in the host's undo history and automation lane.
- */
-enum EParams
-{
-  kSource = 0,
-  kRate,
-  kTimeMode,
-  kDelay,
-  kAttack,
-  kHold,
-  kRelease,
-  kDepth,
-  kCurve,
-  kChannel,
-  kNote,
-  kMidiMode,
-  kVelSens,
-  kThreshold,
-  kLockout,
-  kNumParams
-};
 
 /*
  * THE MESSAGE TAGS, MIRRORED IN ui/src/lib/msg.js.
@@ -120,9 +89,7 @@ public:
   void OnReset() override;
 #endif
 
-  /* The parameters behind shell_state.h's header. A chunk without the header is
-   * an earlier build's: the parameters alone, which is what it holds. */
-  static constexpr int32_t kChunkVersion = 1;
+  /* Params.cpp's Save and Load: the parameters behind shell_state.h's header. */
   bool SerializeState(iplug::IByteChunk& chunk) const override;
   int UnserializeState(const iplug::IByteChunk& chunk, int startPos) override;
 

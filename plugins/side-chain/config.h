@@ -69,16 +69,35 @@
  * genuinely new piece of shell plumbing in the repository. Neither existing
  * plugin has an aux input.
  *
- * The form is "main.aux-out", and the full list is what
- * Examples/IPlugSideChain/config.h declares: every combination of mono or
- * stereo main, mono or stereo aux, mono or stereo out, plus the two no-aux
- * cases so a host that offers no sidechain still instantiates. Omitting "2-2"
- * would make it un-loadable on a plain stereo track, which is where most of
- * its uses are.
+ * The form is "main.aux-out". "2-2" has to be here: without it the plugin would
+ * not load on a plain stereo track, which is where most of its uses are. "1-1"
+ * is a mono track, with no key.
+ *
+ * WHERE THE KEY LANDS IS THE WRAPPER'S DECISION, and the wrappers disagree.
+ * VST3 and AU start the aux bus after the main bus's WIDEST layout -- channel
+ * 2 here, whatever the main is -- while CLAP packs the buses back to back, so
+ * the key starts wherever the main happens to end. The audio path reads the key
+ * from channel 2 (Wire.h's map_inputs; sc_wire tests it), so each format is
+ * offered exactly the layouts where that is true:
+ *
+ *   VST3, AU   a mono main with a mono key too, "1.1-1". auval's one-channel
+ *              render test needs it, and the key is at 2 there as everywhere.
+ *   CLAP       a key only with a stereo main. Under "1.1-1" CLAP would put the
+ *              key on channel 1, which is indistinguishable from a stereo main
+ *              with no key -- the same two channels.
+ *
+ * This used to be Examples/IPlugSideChain's whole list, mono mains with stereo
+ * keys included, and under CLAP "1.2-2" delivered the key's left side as the
+ * main's right. The #if goes when iPlug2's CLAP wrapper starts each input bus
+ * where VST3 and AU do (IPlugCLAP::process, which attaches them packed).
  *
  * In Live this surfaces as a sidechain source selector on the device.
  */
-#define PLUG_CHANNEL_IO "1-1 1.1-1 1.2-1 1.2-2 2.1-1 2.1-2 2-2 2.2-2"
+#if defined(CLAP_API)
+#define PLUG_CHANNEL_IO "1-1 2-2 2.1-2 2.2-2"
+#else
+#define PLUG_CHANNEL_IO "1-1 1.1-1 2-2 2.1-2 2.2-2"
+#endif
 #define SHARED_RESOURCES_SUBPATH "NISideChain"
 
 #define PLUG_LATENCY 0

@@ -46,10 +46,17 @@ using GetParams = std::function<int(const iplug::IByteChunk&, int)>;
 /* The plugin's SerializeState, with its SerializeParams passed in. */
 bool Save(tg_shell_t* gate, iplug::IByteChunk& chunk, const PutParams& params);
 
-/* The plugin's UnserializeState, with its UnserializeParams passed in. Returns
- * the position past what it read, or -1. */
+/*
+ * The plugin's UnserializeState. `check` is shell::state::CheckParams and
+ * `apply` the plugin's UnserializeParams: the first reads the parameter block
+ * without touching anything, the second sets it, and it runs only once the
+ * whole chunk has been found good. Returns the position past what it read, or
+ * -1 for a chunk this plugin did not write -- nothing there, parameters that
+ * are not numbers of their kind, or no blob after them -- in which case
+ * nothing has changed.
+ */
 int Load(tg_shell_t* gate, const iplug::IByteChunk& chunk, int startPos,
-         const GetParams& params);
+         const GetParams& check, const GetParams& apply);
 
 } // namespace patch
 } // namespace tg

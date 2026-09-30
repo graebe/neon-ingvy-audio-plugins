@@ -1,0 +1,54 @@
+From 26645e18893e6139fdcfac8e2c13da4af067d9f1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Torben=20Gr=C3=A4ber?= <torbengraebergt@gmail.com>
+Date: Wed, 30 Sep 2026 14:48:14 +0200
+Subject: [PATCH 3/4] getstr + au restore
+
+---
+ IPlug/AUv2/IPlugAU.cpp |  3 ++-
+ IPlug/IPlugStructs.h   | 14 ++++++--------
+ 2 files changed, 8 insertions(+), 9 deletions(-)
+
+diff --git a/IPlug/AUv2/IPlugAU.cpp b/IPlug/AUv2/IPlugAU.cpp
+index 812876b..342ac57 100644
+--- a/IPlug/AUv2/IPlugAU.cpp
++++ b/IPlug/AUv2/IPlugAU.cpp
+@@ -1502,7 +1502,8 @@ OSStatus IPlugAU::SetState(CFPropertyListRef pPropList)
+   //  int pos;
+   //  IByteChunk::GetIPlugVerFromChunk(chunk, pos)
+   
+-  if (!UnserializeState(chunk, 0))
++  // UnserializeState returns the position after the state, or -1 on failure
++  if (UnserializeState(chunk, 0) < 0)
+   {
+     return kAudioUnitErr_InvalidPropertyValue;
+   }
+diff --git a/IPlug/IPlugStructs.h b/IPlug/IPlugStructs.h
+index d2b49cb..4d61e83 100644
+--- a/IPlug/IPlugStructs.h
++++ b/IPlug/IPlugStructs.h
+@@ -91,16 +91,14 @@ struct IByteGetter
+   {
+     int len;
+     int strStartPos = GetBytes(pSrc, srcSize, &len, sizeof(len), startPos);
+-    if (strStartPos >= 0)
++    // A length that is negative or runs past the end is not a string
++    if (strStartPos >= 0 && len >= 0 && len <= srcSize - strStartPos)
+     {
+       int strEndPos = strStartPos + len;
+-      if (strEndPos <= srcSize)
+-      {
+-        if (len > 0)
+-          str.Set((char*) (pSrc + strStartPos), len);
+-        else
+-          str.Set("");
+-      }
++      if (len > 0)
++        str.Set((char*) (pSrc + strStartPos), len);
++      else
++        str.Set("");
+       return strEndPos;
+     }
+     return -1;
+-- 
+2.55.0
+

@@ -45,6 +45,8 @@ iplug_add_plugin(NIListenIn
   SOURCES
     ListenIn.cpp
     ListenIn.h
+    State.cpp
+    State.h
     Wire.cpp
     Wire.h
     config.h

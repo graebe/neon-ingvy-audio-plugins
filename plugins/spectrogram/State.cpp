@@ -1,0 +1,151 @@
+/*
+ * The Spectrogram -- the state chunk. See State.h.
+ * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
+ */
+#include "State.h"
+#include "Wire.h"
+#include "shell_state.h"
+
+#include <cstdio>
+#include <string>
+
+namespace spectro {
+namespace state {
+
+/*
+ * WHAT A SESSION HAS TO REMEMBER: which buses this window was looking at, and
+ * what it was calling a clash.
+ *
+ * Written as ONE STRING rather than as a count and a loop, because a reader
+ * that trusts a count it did not write is a reader that can be made to walk off
+ * the end of a chunk. parse_slots already skips anything unreadable.
+ */
+bool Save(iplug::IByteChunk& chunk, const PutParams& params, const Fields& f)
+{
+  const int at = shell::state::Begin(chunk, kChunkVersion);
+  if (!params(chunk))
+    return false;
+
+  std::string sel;
+  for (size_t i = 0; i < f.sources.size(); i++)
+  {
+    if (i)
+      sel += ',';
+    char num[16];
+    snprintf(num, sizeof num, "%u", f.sources[i]);
+    sel += num;
+  }
+  if (chunk.PutStr(sel.c_str()) <= 0)
+    return false;
+
+  char clash[64];
+  snprintf(clash, sizeof clash, "%.2f:%.2f", f.clashFloorDb, f.clashBalanceDb);
+  if (chunk.PutStr(clash) <= 0)
+    return false;
+
+  /* The view and the comparison: what the window was showing, and what it was
+   * measuring. Two separate settings, saved separately. */
+  std::string view;
+  for (size_t i = 0; i < f.view.size(); i++)
+  {
+    if (i)
+      view += ',';
+    char num[16];
+    snprintf(num, sizeof num, "%d", f.view[i]);
+    view += num;
+  }
+  if (chunk.PutStr(view.c_str()) <= 0)
+    return false;
+
+  char cmp[48];
+  snprintf(cmp, sizeof cmp, "%d:%d:%d", f.cmpA, f.cmpB, f.clashOn ? 1 : 0);
+  if (chunk.PutStr(cmp) <= 0)
+    return false;
+  return shell::state::End(chunk, at);
+}
+
+/* What Save writes for the selection: slot numbers and commas, nothing else. */
+static bool is_selection(const char* s)
+{
+  for (; s && *s; s++)
+    if (!((*s >= '0' && *s <= '9') || *s == ','))
+      return false;
+  return true;
+}
+
+/*
+ * READ BACK DEFENSIVELY, BUT NOT BLINDLY.
+ *
+ * The chunk has grown a field at a time -- the selection first, then the clash,
+ * then the view and the comparison -- so a session saved by an earlier build
+ * ends early, and one written by a later build may hold more than this one
+ * knows how to want. Every field after the selection is therefore taken only if
+ * it is there.
+ *
+ * THE SELECTION IS NOT OPTIONAL. Every build that wrote anything wrote it, and
+ * always as digits and commas, so a chunk it cannot be read from is not one of
+ * ours -- which is how a megabyte of random bytes used to load "successfully". (The builds before it wrote no
+ * bytes at all; shell_state.h's Read refuses that chunk, which holds nothing.)
+ */
+int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
+         const GetParams& apply, Fields& f)
+{
+  const shell::state::Header h = shell::state::Read(chunk, startPos);
+  if (h.body < 0)
+    return -1;
+  const int body = check(chunk, h.body);
+  if (body < 0)
+    return -1;
+
+  WDL_String sel;
+  int pos = shell::state::GetStr(chunk, sel, body);
+  if (pos < 0 || !is_selection(sel.Get()))
+    return -1;
+  if (apply(chunk, h.body) != body)
+    return -1;
+  f.sources.clear();
+  spectro::wire::parse_slots(sel.Get(), f.sources);
+
+  WDL_String clash;
+  int after = shell::state::GetStr(chunk, clash, pos);
+  if (after > pos)
+  {
+    float floorDb = 0.f, balanceDb = 0.f;
+    if (spectro::wire::parse_range(clash.Get(), floorDb, balanceDb))
+    {
+      f.clashFloorDb = floorDb;
+      f.clashBalanceDb = balanceDb;
+    }
+    pos = after;
+  }
+
+  WDL_String view;
+  after = shell::state::GetStr(chunk, view, pos);
+  if (after > pos)
+  {
+    f.view.clear();
+    spectro::wire::parse_channels(view.Get(), f.view);
+    if (f.view.empty())
+      f.view.assign(1, 0);
+    pos = after;
+  }
+
+  WDL_String cmp;
+  after = shell::state::GetStr(chunk, cmp, pos);
+  if (after > pos)
+  {
+    int a = 0, b = 0;
+    bool on = false;
+    if (spectro::wire::parse_compare(cmp.Get(), a, b, on))
+    {
+      f.cmpA = a;
+      f.cmpB = b;
+      f.clashOn = on;
+    }
+    pos = after;
+  }
+  return shell::state::Finish(h, pos);
+}
+
+} // namespace state
+} // namespace spectro

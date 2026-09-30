@@ -89,7 +89,16 @@ that allocates, maps memory or talks to the editor runs on the audio thread;
 `OnParamChange` and `OnReset` only record what they want, and `OnIdle` does it.
 
 Every plugin's state chunk starts with `shell_state.h`'s versioned header. A
-chunk without it is an older build's and loads as that build wrote it.
+chunk without it is an older build's and loads as that build wrote it. A chunk
+is read whole before any of it is applied, and one no build could have written
+-- empty, a parameter that is not a number of its kind, a string running off
+the end -- is refused and changes nothing. The parameter declarations and the
+chunk code live outside the plugin class (`Params.cpp`, `Patch.cpp`,
+`State.cpp`) so `tests/cpp` can save and reload them the way a host does.
+
+`ProcessBlock` opens with `shell_denormals.h`'s guard: flush-to-zero for the
+block, the engines included, and the host's floating-point mode back on the way
+out.
 
 ## The editor
 

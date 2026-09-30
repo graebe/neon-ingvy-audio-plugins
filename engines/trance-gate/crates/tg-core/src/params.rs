@@ -140,6 +140,41 @@ impl Instance {
     /// Audio-thread safe: a match, a clamp and a store. No allocation, no
     /// formatting, no locale.
     pub fn set_num(&mut self, param: Param, value: f64) {
+        let before = self.saved_scalars();
+        self.set_num_inner(param, value);
+        if self.saved_scalars() != before {
+            self.rev = self.rev.wrapping_add(1);
+        }
+    }
+
+    /*
+     * EVERY SCALAR THE STATE BLOB CARRIES, plus the current slot's length --
+     * the one pattern field a numeric parameter can move. Compared around
+     * `set_num` so the revision moves only for a real change; a plugin pushes
+     * all fifteen every block, and nearly all of those change nothing.
+     */
+    fn saved_scalars(&self) -> [u32; 16] {
+        [
+            self.slot as u32,
+            self.rate_idx as u32,
+            self.attack.to_bits(),
+            self.decay.to_bits(),
+            self.sustain.to_bits(),
+            self.release.to_bits(),
+            self.hold.to_bits(),
+            self.amount.to_bits(),
+            self.fade.to_bits(),
+            self.fade_soft as u32,
+            self.fade_dir as u32,
+            self.legato as u32,
+            self.time_mode as u32,
+            self.curve as u32,
+            self.pat[self.slot].length as u32,
+            0,
+        ]
+    }
+
+    fn set_num_inner(&mut self, param: Param, value: f64) {
         /* A NaN from a host is not a value. Clamping would propagate it
          * (NaN.clamp is NaN) and `as i32` would turn it into 0 -- a different
          * slot or rate -- so it is dropped at the door. sc-core does the same. */
@@ -156,7 +191,10 @@ impl Instance {
         match param {
             Param::Slot => {
                 let s = value as i32; /* the wire is the OPTION INDEX */
-                if s >= 0 && (s as usize) < crate::SLOTS {
+                /* The slot it already is changes nothing -- and PushParams
+                 * writes it every block, so the weights are not recomputed
+                 * for it. */
+                if s >= 0 && (s as usize) < crate::SLOTS && s as usize != self.slot {
                     self.slot = s as usize;
                     /* The cursor is GLOBAL and the length is PER SLOT, so
                      * switching to a shorter pattern can leave it past the
@@ -174,9 +212,19 @@ impl Instance {
             Param::Length => {
                 /* Option INDEX, as for `cursor`: index 15 is the option named
                  * "16", which is a length of 16. */
-                let n = value as i64 + 1;
+                let n = (value as i64 + 1).clamp(1, MAX_STEPS as i64) as usize;
                 let slot = self.slot;
-                self.pat[slot].length = n.clamp(1, MAX_STEPS as i64) as usize;
+                /*
+                 * THE LENGTH IT ALREADY HAS IS NOT A CHANGE, and PushParams
+                 * writes Length every block. Renumbering is O(length^2) -- ~19 us
+                 * of every block at 128 steps -- and every other door leaves
+                 * the order normalised already (see `Pattern::renumber`), so
+                 * doing it again produced the table it started from.
+                 */
+                if n == self.pat[slot].length {
+                    return;
+                }
+                self.pat[slot].length = n;
                 if self.cursor >= self.pat[slot].length {
                     self.cursor = self.pat[slot].length - 1;
                 }
@@ -277,6 +325,9 @@ impl Instance {
     }
 
     pub fn set_param(&mut self, key: &str, val: &str) {
+        /* Every key here may edit the saved state -- the pattern keys always do
+         * -- and none is called per block, so the revision simply moves. */
+        self.rev = self.rev.wrapping_add(1);
         match key {
             /* The automatable keys parse and delegate -- `set_num`
              * owns every clamp and every side effect, so the numeric and

@@ -1,0 +1,94 @@
+From c30ea830ce93e52ec834efe862fcbb9d64eed30e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Torben=20Gr=C3=A4ber?= <torbengraebergt@gmail.com>
+Date: Wed, 30 Sep 2026 14:47:39 +0200
+Subject: [PATCH 1/4] validator fixes
+
+---
+ IPlug/CLAP/IPlugCLAP.cpp | 31 ++++++++++++++++++++++++++-----
+ IPlug/IPlugParameter.cpp |  3 ++-
+ 2 files changed, 28 insertions(+), 6 deletions(-)
+
+diff --git a/IPlug/CLAP/IPlugCLAP.cpp b/IPlug/CLAP/IPlugCLAP.cpp
+index aee3e57..c642814 100644
+--- a/IPlug/CLAP/IPlugCLAP.cpp
++++ b/IPlug/CLAP/IPlugCLAP.cpp
+@@ -415,7 +415,22 @@ bool IPlugCLAP::stateSave(const clap_ostream* pStream) noexcept
+   if (!SerializeState(chunk))
+     return false;
+   
+-  return pStream->write(pStream, chunk.GetData(), chunk.Size()) == chunk.Size();
++  // A stream may accept fewer bytes than offered, so write until all is taken
++  const uint8_t* pData = chunk.GetData();
++  int64_t remaining = chunk.Size();
++  
++  while (remaining > 0)
++  {
++    const int64_t written = pStream->write(pStream, pData, static_cast<uint64_t>(remaining));
++    
++    if (written <= 0)
++      return false;
++    
++    pData += written;
++    remaining -= written;
++  }
++  
++  return true;
+ }
+ 
+ bool IPlugCLAP::stateLoad(const clap_istream* pStream) noexcept
+@@ -435,7 +450,13 @@ bool IPlugCLAP::stateLoad(const clap_istream* pStream) noexcept
+   bool restoredOK = UnserializeState(chunk, 0) >= 0;
+   
+   if (restoredOK)
++  {
+     OnRestoreState();
++    
++    // The host must be told that every parameter value may have changed
++    if (GetClapHost().canUseParams())
++      GetClapHost().paramsRescan(CLAP_PARAM_RESCAN_VALUES | CLAP_PARAM_RESCAN_TEXT);
++  }
+   
+   return restoredOK;
+ }
+@@ -784,7 +805,7 @@ bool IPlugCLAP::audioPortsGetConfig(uint32_t index, clap_audio_ports_config* pCo
+     // N.B. Configs in iPlug2 currently have no names so we reconstruct the strings...
+     configName.AppendFormatted(CLAP_NAME_SIZE, "%d", getNChans(direction, 0));
+     
+-    for (int i = 0; i < NBuses(direction, index); i++)
++    for (int i = 1; i < NBuses(direction, index); i++)
+       configName.AppendFormatted(CLAP_NAME_SIZE, ".%d", getNChans(direction, i));
+   };
+   
+@@ -798,12 +819,12 @@ bool IPlugCLAP::audioPortsGetConfig(uint32_t index, clap_audio_ports_config* pCo
+   pConfig->input_port_count = static_cast<uint32_t>(NBuses(kInput, index));
+   pConfig->output_port_count = static_cast<uint32_t>(NBuses(kOutput, index));
+ 
+-  pConfig->has_main_input = pConfig->input_port_count > 1;
++  pConfig->has_main_input = pConfig->input_port_count > 0;
+   pConfig->main_input_channel_count = pConfig->has_main_input ? getNChans(kInput, 0) : 0;
+   pConfig->main_input_port_type = ClapPortType(pConfig->main_input_channel_count);
+   
+-  pConfig->has_main_output = pConfig->output_port_count > 1;
+-  pConfig->main_output_channel_count = pConfig->has_main_input ? getNChans(kOutput, 0) : 0;
++  pConfig->has_main_output = pConfig->output_port_count > 0;
++  pConfig->main_output_channel_count = pConfig->has_main_output ? getNChans(kOutput, 0) : 0;
+   pConfig->main_output_port_type = ClapPortType(pConfig->main_output_channel_count);
+ 
+   return true;
+diff --git a/IPlug/IPlugParameter.cpp b/IPlug/IPlugParameter.cpp
+index 2906f71..d181197 100644
+--- a/IPlug/IPlugParameter.cpp
++++ b/IPlug/IPlugParameter.cpp
+@@ -261,7 +261,8 @@ void IParam::SetDisplayPrecision(int precision)
+ 
+ void IParam::GetDisplay(double value, bool normalized, WDL_String& str, bool withDisplayText) const
+ {
+-  if (normalized) value = FromNormalized(value);
++  // A host may ask for any value in range; show the one the parameter would hold
++  value = normalized ? FromNormalized(value) : Constrain(value);
+ 
+   if (mDisplayFunction != nullptr)
+   {
+-- 
+2.55.0
+

@@ -23,6 +23,7 @@
  *   clamp_editor_height  a window that grows to fill the screen, or refuses to
  *   advance_beats        a duck that drifts against the grid over a long block
  *   key_is_duplicate     a sidechain that ducks on its own input
+ *   map_inputs           a key read as the main's right channel
  */
 #pragma once
 
@@ -111,6 +112,22 @@ double advance_beats(double beats, int frames, double bpm, double sampleRate);
  * it as the weaker claim.
  */
 bool key_is_duplicate(const float* main, const float* key, int frames);
+
+/*
+ * WHICH INPUT CHANNEL CARRIES WHAT, from which of the first four the host says
+ * are connected. -1 is "none".
+ *
+ * The key always starts at channel 2: VST3 and AU place the sidechain bus after
+ * the main bus's widest layout, and CLAP packs buses back to back -- which is
+ * the same place only because config.h offers CLAP a key with a stereo main and
+ * nowhere else. A mono main duplicates into both sides; a mono key into both of
+ * its own.
+ */
+struct InputMap
+{
+  int mainL, mainR, keyL, keyR;
+};
+InputMap map_inputs(bool c0, bool c1, bool c2, bool c3);
 
 /* base64's extra third plus the frame's fixed 32, as the Spectrogram's. */
 constexpr int framed_size(int nBytes) { return nBytes * 4 / 3 + 32; }

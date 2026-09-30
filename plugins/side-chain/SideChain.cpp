@@ -4,7 +4,9 @@
  */
 #include "SideChain.h"
 #include "IPlug_include_in_plug_src.h"
+#include "shell_denormals.h"
 #include "Wire.h"
+#include "Params.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,150 +17,11 @@
 
 using namespace iplug;
 
-/*
- * THE RATE LABELS ARE THE ENGINE'S TABLE, re-declared here because iPlug2's
- * InitEnum wants them at the call. They are `rates.rs`'s RATES in order, and
- * the engine will happily report its own via get_param("rate_label") -- which
- * is what the editor reads, so a drift here shows up as a host menu that
- * disagrees with the plugin's own readout rather than as a silent wrong rate.
- *
- * `1/1` IS HERE AND IS NOT IN THE TRANCE GATE'S TABLE. A bar-long step is not
- * a gate; a bar-long duck is the long swell under a build.
- */
-static const char* kRateLabels[] = {
-  "1/1", "1/1T", "1/2", "1/2T", "1/4", "1/4T",
-  "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T",
-};
-static constexpr int kNumRates = int(sizeof kRateLabels / sizeof kRateLabels[0]);
-static constexpr int kRateDefault = 4; /* 1/4 -- rates.rs's RATE_DEFAULT */
-
-/*
- * A UNIT PASSED AS InitDouble's `label` NEVER REACHES AN AU HOST: iPlug2's AU
- * wrapper calls the no-label GetDisplay overload, so the unit silently vanishes
- * in Logic and appears everywhere else. An explicit DisplayFunc is the only
- * spelling that works in all four formats. The Trance Gate found this out.
- */
-static const IParam::DisplayFunc kPctDisplay =
-  [](double v, WDL_String& s) { s.SetFormatted(32, "%.1f %%", v); };
-static const IParam::DisplayFunc kDbDisplay =
-  [](double v, WDL_String& s) {
-    /* The bottom of the range means "anything triggers", and printing it as
-     * "-60.0 dB" invites the reader to look for a quieter setting. */
-    if (v <= -60.0) s.Set("off");
-    else s.SetFormatted(32, "%.1f dB", v);
-  };
-static const IParam::DisplayFunc kMsDisplay =
-  [](double v, WDL_String& s) { s.SetFormatted(32, "%.0f ms", v); };
-
-/*
- * A MIDI NOTE'S NAME IN LIVE'S OCTAVE NUMBERING, where 36 is C1 and 60 is C3 --
- * which is what the pads say.
- *
- * Generated rather than written out, because 128 string literals is 128 chances
- * to mistype one, and a wrong note name is a bug you only find by playing the
- * wrong drum.
- */
-static void NoteName(int n, WDL_String& out)
-{
-  static const char* kNames[] = { "C", "C#", "D", "D#", "E", "F", "F#",
-                                  "G", "G#", "A", "A#", "B" };
-  out.SetFormatted(8, "%s%d", kNames[n % 12], (n / 12) - 2);
-}
-
 SideChain::SideChain(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
-  GetParam(kSource)->InitEnum("Source", 0, 3, "", 0, "",
-                              "Cycle", "MIDI", "Sidechain");
-  GetParam(kRate)->InitEnum("Rate", kRateDefault, kNumRates, "", 0, "",
-    kRateLabels[0], kRateLabels[1], kRateLabels[2], kRateLabels[3],
-    kRateLabels[4], kRateLabels[5], kRateLabels[6], kRateLabels[7],
-    kRateLabels[8], kRateLabels[9], kRateLabels[10], kRateLabels[11]);
-
-  /*
-   * TIME MODE IS A DISPLAY CHOICE AND CHANGES NO SOUND, which is why it is an
-   * enum with no arithmetic behind it here.
-   *
-   * The four stage lengths are percentages of the cycle, always -- see the long
-   * note in engines/side-chain/crates/sc-core/src/lib.rs. Making the unit switch
-   * change their MEANING would give the host four parameters that do something
-   * different depending on a fifth, and a host caches parameter displays.
-   *
-   * So the ms reading is computed by the engine and pushed to the editor as
-   * `stage_ms`, and this parameter tells the editor which of the two to show.
-   */
-  GetParam(kTimeMode)->InitEnum("Time", 0, 2, "", 0, "", "ms", "% of cycle");
-
-  const auto pct = [](IParam* p, const char* name, double def, double hi) {
-    p->InitDouble(name, def, 0.0, hi, 0.01, "%", 0, "",
-                  IParam::ShapeLinear(), IParam::kUnitPercentage, kPctDisplay);
-  };
-  /*
-   * DELAY RUNS BOTH WAYS, -100..+100, AND THE NEGATIVE HALF IS THE POINT.
-   *
-   * An early sidechain -- ducking slightly ahead of the beat so a mix breathes
-   * into the kick rather than after it -- is a real thing to want, and on the
-   * Cycle source it is possible because the cycle is PERIODIC: "20% early" is
-   * "80% into the previous cycle", a position already passed rather than an
-   * event anticipated.
-   *
-   * MIDI and Sidechain have nothing periodic to anticipate, so the engine
-   * clamps a negative delay to no wait there. The parameter still travels the
-   * whole range, because an automation lane is entitled to sweep through it.
-   */
-  GetParam(kDelay)->InitDouble("Delay", 0.0, -100.0, 100.0, 0.01, "%", 0, "",
-                               IParam::ShapeLinear(),
-                               IParam::kUnitPercentage, kPctDisplay);
-  /* The other three run to twice the cycle, which is as far as a stage can go
-   * and still finish before the trigger after next. */
-  pct(GetParam(kAttack), "Attack", 2.0, 200.0);
-  pct(GetParam(kHold), "Hold", 8.0, 200.0);
-  pct(GetParam(kRelease), "Release", 35.0, 200.0);
-  pct(GetParam(kDepth), "Depth", 100.0, 100.0);
-
-  /* THREE, NOT FOUR. `Pump` was an asymmetric curve ported from ducker.c --
-   * linear down, cubic ease-out up. It is gone, and the direction argument that
-   * existed only to serve it went with it. */
-  GetParam(kCurve)->InitEnum("Curve", 1, 3, "", 0, "",
-                             "Linear", "Exponential", "S-Curve");
-
-  /* Omni plus the sixteen channels. Declared as 17 enum values with the first
-   * one named rather than as an int, so the host's own menu reads "Omni". */
-  GetParam(kChannel)->InitEnum("Channel", 1, 17);
-  GetParam(kChannel)->SetDisplayText(0, "Omni");
-  for (int i = 1; i <= 16; i++)
-  {
-    WDL_String s;
-    s.SetFormatted(8, "%d", i);
-    GetParam(kChannel)->SetDisplayText(i, s.Get());
-  }
-
-  /*
-   * A NOTE IS AN ADDRESS, NOT A POSITION ON A RANGE.
-   *
-   * ducker.c:508-512 records what happens otherwise: as a 0..127 int the Move's
-   * grid drew an arc knob, so the cell said nothing and you had to open the
-   * value to learn which note it was. As an enum of names it draws "C1" and
-   * steps a semitone at a time. The wire value is still the note number.
-   */
-  GetParam(kNote)->InitEnum("Trigger", 36, 128);
-  for (int i = 0; i < 128; i++)
-  {
-    WDL_String s;
-    NoteName(i, s);
-    GetParam(kNote)->SetDisplayText(i, s.Get());
-  }
-
-  GetParam(kMidiMode)->InitEnum("Mode", 0, 2, "", 0, "", "Trigger", "Gate");
-  GetParam(kVelSens)->InitDouble("Vel", 0.0, 0.0, 100.0, 0.01, "%", 0, "",
-                                 IParam::ShapeLinear(),
-                                 IParam::kUnitPercentage, kPctDisplay);
-  GetParam(kThreshold)->InitDouble("Threshold", -24.0, -60.0, 0.0, 0.1, "dB", 0, "",
-                                   IParam::ShapeLinear(),
-                                   IParam::kUnitDB, kDbDisplay);
-  GetParam(kLockout)->InitDouble("Lockout", 20.0, 0.0, 200.0, 1.0, "ms", 0, "",
-                                 IParam::ShapeLinear(),
-                                 IParam::kUnitMilliseconds, kMsDisplay);
+  /* Params.cpp, where a test can reach them. */
+  sc::params::Declare([this](int i) { return GetParam(i); });
 
 #if IPLUG_DSP
   mShell = sc_shell_create(GetSampleRate() > 0.0 ? GetSampleRate() : 44100.0);
@@ -200,17 +63,15 @@ SideChain::~SideChain()
 
 bool SideChain::SerializeState(IByteChunk& chunk) const
 {
-  const int at = shell::state::Begin(chunk, kChunkVersion);
-  return SerializeParams(chunk) && shell::state::End(chunk, at);
+  return sc::params::Save(chunk, [this](IByteChunk& c) { return SerializeParams(c); });
 }
 
 int SideChain::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  const shell::state::Header h = shell::state::Read(chunk, startPos);
-  if (h.body < 0)
-    return -1;
-  const int pos = UnserializeParams(chunk, h.body);
-  return pos < 0 ? pos : shell::state::Finish(h, pos);
+  return sc::params::Load(
+    chunk, startPos,
+    [this](const IByteChunk& c, int pos) { return shell::state::CheckParams(c, pos, *this); },
+    [this](const IByteChunk& c, int pos) { return UnserializeParams(c, pos); });
 }
 
 #if IPLUG_DSP
@@ -333,10 +194,19 @@ void SideChain::ProcessMidiMsg(const IMidiMsg& msg)
 
 void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
+  /* No denormals for the length of the block; the host's mode comes back on
+   * the way out. shell_denormals.h says why. */
+  const shell::ScopedFlushDenormals ftz;
+
   const int nOut = NOutChansConnected();
   if (!mShell || nFrames <= 0 || nOut <= 0) return;
   const int cap = int(std::min(mL.size(), mR.size()));
   if (cap <= 0) return;
+
+  /* Which channel is what -- per channel, never by counting them. */
+  const sc::wire::InputMap in = sc::wire::map_inputs(
+    IsChannelConnected(ERoute::kInput, 0), IsChannelConnected(ERoute::kInput, 1),
+    IsChannelConnected(ERoute::kInput, 2), IsChannelConnected(ERoute::kInput, 3));
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /*
@@ -345,32 +215,23 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
    * buffer for in and out. No scratch buffer and no conversion: gnd_push takes
    * doubles, which is what `sample` already is.
    */
-  {
-    const int gndIn = NInChansConnected();
-    const double* gndL = gndIn > 0 ? inputs[0] : nullptr;
-    const double* gndR = (gndIn > 1 && inputs[1] != nullptr) ? inputs[1] : gndL;
-    gnd_push(mGround, gndL, gndR, nFrames);
-  }
+  gnd_push(mGround, inputs[in.mainL], inputs[in.mainR], nFrames);
 #endif
 
   sc_core_t* core = sc_shell_begin(mShell);
   PushParams(core);
 
   const bool stereoOut = nOut > 1;
-  const int nIn = NInChansConnected();
-  const bool stereoIn = nIn > 1;
 
   /*
    * THE AUX BUS, AND THE ONE THING THIS SIDE KNOWS THAT THE ENGINE CANNOT.
    *
-   * Inputs 2 and 3 are the sidechain. Whether they are CONNECTED is a question
-   * only the host can answer: an unpatched bus and a silent one are the same
-   * block of zeroes, and "no key" is a different message to the user from
-   * "nothing is playing".
+   * Inputs 2 and 3 are the sidechain (Wire.h's map_inputs says why they always
+   * are). Whether they are CONNECTED is a question only the host can answer: an
+   * unpatched bus and a silent one are the same block of zeroes, and "no key"
+   * is a different message to the user from "nothing is playing".
    */
-  const bool keyL = IsChannelConnected(ERoute::kInput, 2);
-  const bool keyR = IsChannelConnected(ERoute::kInput, 3);
-  const bool haveKey = keyL || keyR;
+  const bool haveKey = in.keyL >= 0;
   mKeyConnected.store(haveKey ? 1 : 0, std::memory_order_relaxed);
   sc_core_set_key_connected(core, haveKey ? 1 : 0);
 
@@ -380,8 +241,8 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 
     for (int i = 0; i < n; i++)
     {
-      mL[i] = float(inputs[0][off + i]);
-      mR[i] = float(stereoIn ? inputs[1][off + i] : inputs[0][off + i]);
+      mL[i] = float(inputs[in.mainL][off + i]);
+      mR[i] = float(inputs[in.mainR][off + i]);
     }
     std::memcpy(mDry.data(), mL.data(), sizeof(float) * size_t(n));
 
@@ -389,8 +250,8 @@ void SideChain::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     {
       for (int i = 0; i < n; i++)
       {
-        mKeyL[i] = keyL ? float(inputs[2][off + i]) : 0.f;
-        mKeyR[i] = keyR ? float(inputs[3][off + i]) : mKeyL[i];
+        mKeyL[i] = float(inputs[in.keyL][off + i]);
+        mKeyR[i] = float(inputs[in.keyR][off + i]);
       }
       /*
        * REPORTED, NOT WORKED AROUND. Logic and GarageBand copy bus 1 into the

@@ -1,0 +1,75 @@
+From b999f7938e6a7eadeb420d2a9a4119526eb77a2f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Torben=20Gr=C3=A4ber?= <torbengraebergt@gmail.com>
+Date: Wed, 30 Sep 2026 14:48:31 +0200
+Subject: [PATCH 4/4] soft bypass opt-in
+
+---
+ IPlug/AUv2/IPlugAU.cpp                 | 12 ++++++++----
+ IPlug/IPlugProcessor.h                 |  7 +++++++
+ IPlug/VST3/IPlugVST3_ProcessorBase.cpp |  2 +-
+ 3 files changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/IPlug/AUv2/IPlugAU.cpp b/IPlug/AUv2/IPlugAU.cpp
+index 342ac57..668aba5 100644
+--- a/IPlug/AUv2/IPlugAU.cpp
++++ b/IPlug/AUv2/IPlugAU.cpp
+@@ -1232,9 +1232,13 @@ OSStatus IPlugAU::SetProperty(AudioUnitPropertyID propID, AudioUnitScope scope,
+       const bool bypassed = *((UInt32*) pData) != 0;
+       SetBypassed(bypassed);
+       
+-      // TODO: should the following be called here?
+-      OnActivate(!bypassed);
+-      OnReset();
++      // A plug-in that handles bypass keeps running through it, so it is neither deactivated nor reset
++      if (!HandlesBypass())
++      {
++        // TODO: should the following be called here?
++        OnActivate(!bypassed);
++        OnReset();
++      }
+       return noErr;
+     }
+     NO_OP(kAudioUnitProperty_LastRenderError);           // 22,
+@@ -1738,7 +1742,7 @@ OSStatus IPlugAU::RenderProc(void* pPlug, AudioUnitRenderActionFlags* pFlags, co
+       _this->SetChannelConnections(ERoute::kOutput, nConnected, totalNumChans - nConnected, false); // this will disconnect the channels that are on the unconnected buses
+     }
+ 
+-    if (_this->GetBypassed())
++    if (_this->GetBypassed() && !_this->HandlesBypass())
+     {
+       _this->PassThroughBuffers((AudioSampleType) 0, nFrames);
+     }
+diff --git a/IPlug/IPlugProcessor.h b/IPlug/IPlugProcessor.h
+index 5d7500e..a4d8090 100644
+--- a/IPlug/IPlugProcessor.h
++++ b/IPlug/IPlugProcessor.h
+@@ -123,6 +123,13 @@ public:
+   /** @return \c true if the plugin is currently bypassed */
+   bool GetBypassed() const { return mBypassed; }
+ 
++  /** Override to return true if ProcessBlock() implements the host's bypass itself, for example as a short crossfade
++   * to the dry signal. The API classes then keep calling ProcessBlock() while the host has the plug-in bypassed, and
++   * the plug-in reads GetBypassed() to decide what to output. By default the API classes copy inputs to outputs
++   * instead, which switches instantly and can click.
++   * @return \c true if the plug-in handles bypass in ProcessBlock() */
++  virtual bool HandlesBypass() const { return false; }
++
+   /** @return \c true if the plugin is currently rendering off-line */
+   bool GetRenderingOffline() const { return mRenderingOffline; };
+ 
+diff --git a/IPlug/VST3/IPlugVST3_ProcessorBase.cpp b/IPlug/VST3/IPlugVST3_ProcessorBase.cpp
+index b02539a..5098ba2 100644
+--- a/IPlug/VST3/IPlugVST3_ProcessorBase.cpp
++++ b/IPlug/VST3/IPlugVST3_ProcessorBase.cpp
+@@ -396,7 +396,7 @@ void IPlugVST3ProcessorBase::ProcessAudio(ProcessData& data, ProcessSetup& setup
+       chanOffset += busChannels;
+     }
+     
+-    if (GetBypassed())
++    if (GetBypassed() && !HandlesBypass())
+     {
+       if (sampleSize == kSample32)
+         PassThroughBuffers(0.f, data.numSamples); // single precision
+-- 
+2.55.0
+

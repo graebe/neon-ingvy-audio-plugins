@@ -212,3 +212,48 @@ TEST_CASE("framed_size accounts for base64's extra third")
   /* The real payload: 256 columns of five hex pairs, plus the seen flags. */
   CHECK(framed_size(256 * 10 + 256 + 8) < 65536);
 }
+
+/* ------------------------------------------------------- the input channels */
+
+TEST_CASE("stereo main, stereo key")
+{
+  const InputMap m = map_inputs(true, true, true, true);
+  CHECK(m.mainL == 0);
+  CHECK(m.mainR == 1);
+  CHECK(m.keyL == 2);
+  CHECK(m.keyR == 3);
+}
+
+TEST_CASE("stereo main, mono key: the key feeds both of its sides")
+{
+  const InputMap m = map_inputs(true, true, true, false);
+  CHECK(m.mainR == 1);
+  CHECK(m.keyL == 2);
+  CHECK(m.keyR == 2);
+}
+
+TEST_CASE("no key at all")
+{
+  const InputMap m = map_inputs(true, true, false, false);
+  CHECK(m.keyL == -1);
+  CHECK(m.keyR == -1);
+}
+
+TEST_CASE("a mono main with a key is mono: its right side is not a key channel")
+{
+  /* A mono track with a sidechain patched in. Counting connected channels called
+   * that stereo and read channel 1 -- unconnected in VST3, and in CLAP, where
+   * buses are packed, the key's left side -- as the main's right. */
+  const InputMap m = map_inputs(true, false, true, true);
+  CHECK(m.mainL == 0);
+  CHECK(m.mainR == 0);
+  CHECK(m.keyL == 2);
+  CHECK(m.keyR == 3);
+}
+
+TEST_CASE("a mono main alone")
+{
+  const InputMap m = map_inputs(true, false, false, false);
+  CHECK(m.mainR == 0);
+  CHECK(m.keyL == -1);
+}

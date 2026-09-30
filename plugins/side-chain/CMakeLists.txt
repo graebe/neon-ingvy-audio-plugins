@@ -53,6 +53,8 @@ iplug_add_plugin(NISideChain
   SOURCES
     SideChain.cpp
     SideChain.h
+    Params.cpp
+    Params.h
     Wire.cpp
     Wire.h
     config.h
