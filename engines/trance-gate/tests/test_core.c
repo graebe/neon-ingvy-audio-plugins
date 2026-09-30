@@ -685,6 +685,24 @@ int main(void) {
         check("TG_RATE_DEFAULT is 1/16, as the table's comment says",
               strcmp(deflt, "1/16") == 0);
 
+        /* The labels a plugin declares its Rate parameter from. */
+        int labels_agree = 1;
+        for (int i = 0; i < TG_NUM_RATES; i++) {
+            char label[32];
+            if (tg_core_rate_label(i, label, sizeof(label)) <= 0 ||
+                strcmp(label, seen[i]) != 0)
+                labels_agree = 0;
+        }
+        char label[32];
+        check("tg_core_rate_label names the same rates get_param does", labels_agree);
+        check("...and nothing past the end",
+              tg_core_rate_label(TG_NUM_RATES, label, sizeof(label)) == -1 &&
+              tg_core_rate_label(-1, label, sizeof(label)) == -1);
+        check("...and refuses a buffer it does not fit",
+              tg_core_rate_label(0, label, 2) == -1);
+        check("tg_core_rate_default is TG_RATE_DEFAULT",
+              tg_core_rate_default() == TG_RATE_DEFAULT);
+
         /* TG_STAGE_MAX_PCT is the clamp, so one past it must come back AT
          * it. */
         snprintf(v, sizeof(v), "%f", (double)TG_STAGE_MAX_PCT + 50.0);
@@ -694,6 +712,38 @@ int main(void) {
                (double)TG_STAGE_MAX_PCT + 50.0, a);
         check("TG_STAGE_MAX_PCT is where a stage clamps",
               fabs(atof(a) - (double)TG_STAGE_MAX_PCT) < 0.05);
+        tg_core_destroy(c);
+    }
+
+    /*
+     * THE PATTERN PLOT'S CURVE AND THE SCOPE'S SWEEP, through the header a
+     * plugin compiles against.
+     */
+    printf("the plot's curve and the scope's sweep:\n");
+    {
+        tg_core_t *c = tg_core_create(48000.0);
+        char state[TG_STATE_MAX], gate[TG_GATE_MAX];
+        tg_core_get_param(c, "state", state, sizeof(state));
+        const int n = tg_core_render_gate(state, gate, sizeof(gate));
+        check("a patch renders a curve", n > 0 && strncmp(gate, "16:64:", 6) == 0);
+        check("...one byte of hex per sample of a cycle", n == 6 + 16 * 64 * 2);
+        check("...and a buffer too small is refused, not truncated",
+              tg_core_render_gate(state, gate, 64) == -1);
+        check("nothing to draw is -1", tg_core_render_gate("", gate, sizeof(gate)) == -1);
+
+        float l[256], r[256], sweep[256];
+        for (int i = 0; i < 256; i++) { l[i] = r[i] = 0.5f; sweep[i] = -1.f; }
+        tg_transport_t t = { 1, 0.0, 120.0f };
+        tg_core_process_f32_split_tap(c, l, r, sweep, 256, &t);
+        int in_range = 1, rising = 1;
+        for (int i = 0; i < 256; i++) {
+            if (!(sweep[i] >= 0.f && sweep[i] < 1.f)) in_range = 0;
+            if (i && sweep[i] < sweep[i - 1]) rising = 0;
+        }
+        check("the sweep is a cycle phase, 0..1", in_range);
+        check("...and rises across a running block", rising);
+        tg_core_process_f32_split_tap(c, l, r, NULL, 256, &t);
+        check("a null sweep is allowed", 1);
         tg_core_destroy(c);
     }
 

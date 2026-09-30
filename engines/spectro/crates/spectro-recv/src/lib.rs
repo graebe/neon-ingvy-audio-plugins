@@ -124,6 +124,8 @@ pub struct Receiver {
     clash_balance: u8,
     /// The byte scale as power tables, for `sum_into`.
     power: PowerTable,
+    /// `frame`'s drained columns, one buffer per channel, grown on first use.
+    drained: [Vec<u8>; MAX_SOURCES],
 }
 
 impl Receiver {
@@ -154,6 +156,7 @@ impl Receiver {
             clash_floor: db_to_byte(-60.0, cfg.db_floor, cfg.db_ceil),
             clash_balance: db_span_to_byte(12.0, cfg.db_floor, cfg.db_ceil),
             power: PowerTable::new(cfg.db_floor, cfg.db_ceil),
+            drained: Default::default(),
         };
         (rx, OwnFeed { tx })
     }
@@ -371,6 +374,95 @@ impl Receiver {
                 _ => 0,
             },
         }
+    }
+
+    /// **Message thread.** One editor tick's picture.
+    ///
+    /// Every channel is drained by the same number of columns -- `ready()`, at
+    /// most `max_cols` -- so column k of each is the same moment. The `view`
+    /// channels are added into `sum` in power; when `compare` names two
+    /// channels their clash goes into `clash`. Returns the columns written to
+    /// `sum` and to `clash`, 0 when there is nothing to send. A channel that
+    /// drew nothing this tick (refused for its rate, still filling its window)
+    /// is left out of the sum rather than adding silence, and a view with no
+    /// drawable channel sends nothing, the clash included.
+    ///
+    /// With no `sum` the columns are drained and dropped: a closed editor still
+    /// keeps the rings from filling with a picture nobody sees.
+    ///
+    /// Allocates only on its first call (or a larger `max_cols`), for its
+    /// drain buffers.
+    pub fn frame(
+        &mut self,
+        view: &[usize],
+        compare: Option<(usize, usize)>,
+        sum: Option<&mut [u8]>,
+        clash: Option<&mut [u8]>,
+        max_cols: usize,
+    ) -> (usize, usize) {
+        let bands = self.cfg.bands;
+        if bands == 0 || max_cols == 0 {
+            return (0, 0);
+        }
+        for buf in &mut self.drained {
+            if buf.len() < max_cols * bands {
+                buf.resize(max_cols * bands, 0);
+            }
+        }
+        let ready = self.ready().min(max_cols);
+        if ready == 0 {
+            return (0, 0);
+        }
+        let channels = self.channels().min(MAX_SOURCES);
+        let mut counts = [0usize; MAX_SOURCES];
+        let mut common = 0;
+        for (ch, count) in counts.iter_mut().enumerate().take(channels) {
+            let mut buf = core::mem::take(&mut self.drained[ch]);
+            *count = self.take_columns(ch, &mut buf, ready);
+            self.drained[ch] = buf;
+            /* A channel refused for its rate drains 0 forever and must not drag
+             * the others to 0 with it. */
+            if *count > 0 {
+                common = if common == 0 { *count } else { common.min(*count) };
+            }
+        }
+        let Some(sum) = sum else { return (0, 0) };
+        if common == 0 {
+            return (0, 0);
+        }
+        let n = common * bands;
+        if sum.len() < n {
+            return (0, 0);
+        }
+
+        let mut srcs: [&[u8]; MAX_SOURCES] = [&[]; MAX_SOURCES];
+        let mut k = 0;
+        for &ch in view {
+            if ch < channels && counts[ch] >= common && k < MAX_SOURCES {
+                srcs[k] = &self.drained[ch][..n];
+                k += 1;
+            }
+        }
+        if k == 0 {
+            return (0, 0);
+        }
+        self.sum_into(&srcs[..k], &mut sum[..n]);
+
+        let clash_cols = match (compare, clash) {
+            (Some((a, b)), Some(out))
+                if a != b
+                    && a < channels
+                    && b < channels
+                    && counts[a] >= common
+                    && counts[b] >= common
+                    && out.len() >= n =>
+            {
+                self.clash_into(&self.drained[a][..n], &self.drained[b][..n], &mut out[..n]);
+                common
+            }
+            _ => 0,
+        };
+        (common, clash_cols)
     }
 
     /// Probe every slot, for the editor's source list. **Main thread.**

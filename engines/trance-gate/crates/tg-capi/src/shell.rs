@@ -20,8 +20,9 @@ block's push -- the engine's own values are the truth there.
 use crate::TgCore;
 use shell_core::{Bridge, Model, Text};
 use std::ffi::{c_char, c_int, CStr};
-use std::sync::atomic::{AtomicU64, Ordering};
-use tg_core::{Instance, Playhead};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
+use tg_core::params::Param;
+use tg_core::Playhead;
 
 /* What a non-audio thread may ask for, in frame order. */
 const KEYS: [&str; 4] = ["ui", "params", "state", "length"];
@@ -44,6 +45,8 @@ const CMD_SAMPLE_RATE: u8 = b'S';
 pub struct TgFrame {
     text: [Text; 4],
     rt: Playhead,
+    /* One cycle in ms, for the scope's axis. */
+    cycle_ms: f64,
     /* The engine's state revision `text[STATE]` was formatted at; None until
      * it has been. Per frame, because each of the three is refreshed in turn. */
     state_rev: Option<u64>,
@@ -56,6 +59,7 @@ impl Model for TgCore {
         TgFrame {
             text: [Text::new(TEXT_MAX), Text::new(TEXT_MAX), Text::new(TEXT_MAX), Text::new(TEXT_MAX)],
             rt: Playhead::default(),
+            cycle_ms: 0.0,
             state_rev: None,
         }
     }
@@ -106,6 +110,7 @@ impl Model for TgCore {
         }
         f.state_rev = Some(rev);
         f.rt = self.0.playhead();
+        f.cycle_ms = crate::scope_cycle_ms(&self.0);
     }
 
     fn restore(&mut self, f: &TgFrame) {
@@ -116,6 +121,51 @@ impl Model for TgCore {
 pub struct TgShell {
     bridge: Bridge<TgCore>,
     seed: AtomicU64,
+    slot: SlotHandshake,
+}
+
+/*
+ * WHOSE LENGTH WINS WHEN THE SLOT MOVES.
+ *
+ * Length is per slot in the engine and also a host parameter, pushed every
+ * block. Pushing the host's Length on the block the slot moves would write the
+ * slot being left's length over the new slot's pattern. So on that block the
+ * ENGINE's length wins: the push is suppressed, the frame with the new slot is
+ * published, and the main thread is told (`take_length`) to move the host's
+ * Length to it. Until it has, Length is not pushed.
+ *
+ * A state load is not a switch: Slot and Length arrived together, so the next
+ * block pushes both and a switch flagged before the load is dropped (`rebase`).
+ *
+ * The first four fields are the audio thread's own; atomics only because the
+ * shell is shared. `sync` and `rebase` cross threads.
+ */
+struct SlotHandshake {
+    pushed_slot: AtomicI32,
+    pushed_length: AtomicU64,
+    moved: AtomicBool,
+    sync: AtomicBool,
+    rebase: AtomicBool,
+}
+
+impl SlotHandshake {
+    fn new() -> Self {
+        SlotHandshake {
+            pushed_slot: AtomicI32::new(-1),
+            pushed_length: AtomicU64::new((-1.0f64).to_bits()),
+            moved: AtomicBool::new(false),
+            sync: AtomicBool::new(false),
+            rebase: AtomicBool::new(false),
+        }
+    }
+}
+
+/// Whether the slot moved since the last push. A first push, or one straight
+/// after a rebase, is a starting point rather than a move.
+pub(crate) fn slot_moved(pushed: &mut i32, slot: i32, rebase: bool) -> bool {
+    let moved = *pushed >= 0 && !rebase && slot != *pushed;
+    *pushed = slot;
+    moved
 }
 
 fn publish_every(sample_rate: f64) -> u32 {
@@ -154,8 +204,8 @@ unsafe fn s<'a>(p: *const c_char) -> Option<&'a str> {
 pub extern "C" fn tg_shell_create(sample_rate: f64) -> *mut TgShell {
     let sr = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
     let bridge = Bridge::new(
-        TgCore(Instance::new(sr)),
-        Some(TgCore(Instance::new(sr))),
+        TgCore::new(sr),
+        Some(TgCore::new(sr)),
         QUEUE_BYTES,
         MAX_COMMAND,
         publish_every(sr),
@@ -164,7 +214,7 @@ pub extern "C" fn tg_shell_create(sample_rate: f64) -> *mut TgShell {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
-    let shell = Box::new(TgShell { bridge, seed: AtomicU64::new(0) });
+    let shell = Box::new(TgShell { bridge, seed: AtomicU64::new(0), slot: SlotHandshake::new() });
     shell.seed.store(entropy ^ (&*shell as *const TgShell as u64), Ordering::Relaxed);
     Box::into_raw(shell)
 }
@@ -282,6 +332,8 @@ pub unsafe extern "C" fn tg_shell_touch(sh: *const TgShell) {
 
 /// The audio thread, at the end of a block of `frames`: publishes the
 /// readouts when an edit landed, the block was touched, or the cadence is due.
+/// A slot switch pushed this block is announced to the main thread only now,
+/// once a frame holding the new slot's length is out.
 ///
 /// # Safety
 /// As `tg_shell_begin`.
@@ -289,6 +341,95 @@ pub unsafe extern "C" fn tg_shell_touch(sh: *const TgShell) {
 pub unsafe extern "C" fn tg_shell_end(sh: *const TgShell, frames: c_int) {
     if let Some(sh) = sh.as_ref() {
         sh.bridge.end(frames.max(0) as u32);
+        if sh.slot.moved.swap(false, Ordering::Relaxed) {
+            sh.slot.sync.store(true, Ordering::Release);
+        }
+    }
+}
+
+/// The audio thread, between begin and end: push the host's Slot (0-based)
+/// and Length (the option index, steps - 1) into `core`, the engine
+/// `tg_shell_begin` lent -- the Length only when it is the host's to push.
+/// See `SlotHandshake`. Allocation-free.
+///
+/// # Safety
+/// As `tg_shell_begin`; `core` is the pointer it returned this block.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_push_slot(sh: *const TgShell, core: *mut TgCore, slot: c_int, length: f64) {
+    let (Some(sh), Some(core)) = (sh.as_ref(), core.as_mut()) else { return };
+    let hs = &sh.slot;
+    core.0.set_num(Param::Slot, slot as f64);
+
+    let mut pushed = hs.pushed_slot.load(Ordering::Relaxed);
+    let moved = slot_moved(&mut pushed, slot, hs.rebase.swap(false, Ordering::AcqRel));
+    hs.pushed_slot.store(pushed, Ordering::Relaxed);
+
+    if moved {
+        /* Published at this block's end, whatever the cadence: the main thread
+         * reads the new slot's length the moment it hears of the switch. */
+        hs.moved.store(true, Ordering::Relaxed);
+        sh.bridge.touch();
+    } else if !hs.sync.load(Ordering::Acquire) {
+        /* A length is in the saved blob, so a change to it is published at
+         * once: a save straight after it must have it. */
+        if hs.pushed_length.swap(length.to_bits(), Ordering::Relaxed) != length.to_bits() {
+            sh.bridge.touch();
+        }
+        core.0.set_num(Param::Length, length);
+    }
+}
+
+/// The main thread: once per published slot switch, 1 and the Length the host
+/// must now be told (the option index); otherwise 0. Either way the switch is
+/// answered and the host's Length is pushed again from the next block.
+///
+/// # Safety
+/// `sh` is null or live; `length` is writable.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_take_length(sh: *const TgShell, length: *mut c_int) -> c_int {
+    let Some(sh) = sh.as_ref() else { return 0 };
+    if !sh.slot.sync.load(Ordering::Acquire) {
+        return 0;
+    }
+    let mut buf = [0u8; 16];
+    let n = sh.bridge.read(|r| match r.pending {
+        Some(view) => view.0.get_param("length", &mut buf),
+        None => r.frame.text[KEYS.iter().position(|k| *k == "length").unwrap_or(0)].copy_to(&mut buf),
+    });
+    /* Cleared even when the read failed: a flag left up would leave Length
+     * unpushable for good. */
+    sh.slot.sync.store(false, Ordering::Release);
+    if n <= 0 || length.is_null() {
+        return 0;
+    }
+    let text = core::str::from_utf8(&buf[..n as usize]).unwrap_or("");
+    *length = tg_core::fmt::atoi(text) as c_int;
+    1
+}
+
+/// The main thread, after a state load: the loaded Slot and Length belong
+/// together, so the next block is a starting point and not a switch.
+///
+/// # Safety
+/// `sh` is null or live.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_rebase(sh: *const TgShell) {
+    if let Some(sh) = sh.as_ref() {
+        sh.slot.sync.store(false, Ordering::Release);
+        sh.slot.rebase.store(true, Ordering::Release);
+    }
+}
+
+/// One cycle of the pattern in ms, as last published -- the scope's axis. A
+/// second before the engine has a step length. Any non-audio thread.
+///
+/// # Safety
+/// `sh` is null or live.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_cycle_ms(sh: *const TgShell) -> f64 {
+    match sh.as_ref() {
+        Some(sh) => sh.bridge.read(|r| if r.frame.cycle_ms > 0.0 { r.frame.cycle_ms } else { 1000.0 }),
+        None => 1000.0,
     }
 }
 
@@ -467,6 +608,80 @@ mod tests {
         }
         let per = t.elapsed().as_nanos() as f64 / n as f64;
         println!("push_cost: {per:.0} ns per block (fifteen set_num, no publish)");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn switching_slot_is_a_move_and_holding_it_is_not() {
+        let mut pushed = -1;
+        assert!(!slot_moved(&mut pushed, 4, false), "the first block has no slot to leave");
+        assert_eq!(pushed, 4);
+        assert!(slot_moved(&mut pushed, 3, false));
+        assert!(!slot_moved(&mut pushed, 3, false));
+        assert!(!slot_moved(&mut pushed, 5, true), "a state load is not a switch");
+        assert_eq!(pushed, 5);
+        assert!(slot_moved(&mut pushed, 6, false));
+    }
+
+    /* One block as the plugin pushes Slot and Length. */
+    fn push_block(sh: *const TgShell, slot: c_int, length: f64) {
+        unsafe {
+            let c = tg_shell_begin(sh);
+            tg_shell_push_slot(sh, c, slot, length);
+            tg_shell_end(sh, 64);
+        }
+    }
+
+    fn take(sh: *const TgShell) -> Option<c_int> {
+        let mut len = -1;
+        (unsafe { tg_shell_take_length(sh, &mut len) } == 1).then_some(len)
+    }
+
+    #[test]
+    fn a_slot_switch_keeps_the_new_slots_length_and_tells_the_host() {
+        let sh = tg_shell_create(48000.0);
+        push_block(sh, 0, 15.0);
+        push_block(sh, 1, 15.0);
+        assert_eq!(take(sh), Some(15), "slot 1's own length, sixteen steps");
+        push_block(sh, 1, 7.0);
+        assert_eq!(read(sh, "length"), "7", "slot 1 is now eight steps");
+        assert_eq!(take(sh), None, "a Length edit is not a switch");
+
+        /* Back to slot 0 with the host still holding slot 1's Length. */
+        push_block(sh, 0, 7.0);
+        assert_eq!(read(sh, "length"), "15", "slot 0 kept its own length");
+        push_block(sh, 0, 7.0);
+        assert_eq!(read(sh, "length"), "15", "and the stale Length is not pushed until the host has caught up");
+        assert_eq!(take(sh), Some(15), "the host is told slot 0's length, once");
+        assert_eq!(take(sh), None);
+
+        /* Answered: the host's Length is the host's again. */
+        push_block(sh, 0, 3.0);
+        assert_eq!(read(sh, "length"), "3");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn a_state_load_pushes_the_loaded_length_and_drops_a_pending_switch() {
+        let sh = tg_shell_create(48000.0);
+        push_block(sh, 0, 15.0);
+        push_block(sh, 1, 15.0);
+        unsafe { tg_shell_rebase(sh) };
+        assert_eq!(take(sh), None, "the switch before the load is dropped");
+        push_block(sh, 2, 11.0);
+        assert_eq!(read(sh, "length"), "11", "the loaded Length wins over the blob's");
+        assert_eq!(take(sh), None, "and the loaded slot is not a switch");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn the_cycle_is_the_step_times_the_steps() {
+        let sh = tg_shell_create(48000.0);
+        push_block(sh, 0, 15.0);
+        /* 1/16 at the engine's resting 120 BPM is 125 ms; sixteen of them. */
+        assert_eq!(unsafe { tg_shell_cycle_ms(sh) }, 2000.0);
+        push_block(sh, 0, 3.0);
+        assert_eq!(unsafe { tg_shell_cycle_ms(sh) }, 500.0);
         unsafe { tg_shell_destroy(sh) };
     }
 

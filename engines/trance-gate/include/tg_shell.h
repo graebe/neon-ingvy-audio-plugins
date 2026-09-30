@@ -59,9 +59,27 @@ void tg_shell_post_sample_rate(tg_shell_t *s, double sample_rate);
  * TG_STATE_MAX. */
 int  tg_shell_read(tg_shell_t *s, const char *key, char *buf, int buf_len);
 
+/* One cycle of the pattern in ms, as last published: the scope's axis. */
+double tg_shell_cycle_ms(tg_shell_t *s);
+
+/*
+ * THE SLOT SWITCH. Length is per slot in the engine and a host parameter too,
+ * so on the block the Slot moves the engine's length wins and the host has to
+ * follow. Once per published switch this returns 1 with the Length the host's
+ * parameter must take (the option index, steps - 1); the host's Length is
+ * pushed again from the next block. The main thread.
+ */
+int  tg_shell_take_length(tg_shell_t *s, int *length);
+/* After a state load: its Slot and Length belong together, so the next block
+ * is a starting point, not a switch. */
+void tg_shell_rebase(tg_shell_t *s);
+
 /* ---- the audio thread ---- */
 
 tg_core_t *tg_shell_begin(tg_shell_t *s);
+/* The host's Slot (0-based) and Length (option index) into `core`, the engine
+ * begin lent -- the Length only while it is the host's to push. */
+void       tg_shell_push_slot(tg_shell_t *s, tg_core_t *core, int slot, double length);
 /* Publish at this block's end whatever the cadence -- for a change a reader
  * acts on and must not see late, such as the slot moving. */
 void       tg_shell_touch(tg_shell_t *s);

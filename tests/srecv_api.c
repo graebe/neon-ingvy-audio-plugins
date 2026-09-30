@@ -119,6 +119,33 @@ int main(void)
     ok(got > 0, "the own channel produced columns");
     ok(srecv_dropped(r, SRECV_OWN) == 0, "nothing was dropped while draining every tick");
 
+    /* One editor tick through srecv_frame: the own channel viewed, nothing to
+     * compare it with. */
+    {
+        unsigned char* sum = (unsigned char*) calloc((size_t) bands * 32, 1);
+        unsigned char* clash = (unsigned char*) calloc((size_t) bands * 32, 1);
+        const int view[1] = { SRECV_OWN };
+        int clashed = -1, framed = 0;
+        for (int i = 0; i < 10; i++)
+        {
+            fill_mono(block, 2048, 1000.f, 0.5f, &ph);
+            srecv_push_own(r, block, 2048);
+            srecv_pump(r);
+            framed += srecv_frame(r, view, 1, SRECV_OWN, 1, sum, clash, 32, &clashed);
+        }
+        ok(framed > 0, "srecv_frame sends the view");
+        ok(clashed == 0, "...and no clash against a channel that is not open");
+        fill_mono(block, 2048, 1000.f, 0.5f, &ph);
+        srecv_push_own(r, block, 2048);
+        srecv_pump(r);
+        ok(srecv_frame(r, view, 1, -1, -1, NULL, NULL, 32, NULL) == 0 && srecv_ready(r) == 0,
+           "with nowhere to put them, the columns are drained and dropped");
+        ok(srecv_frame(NULL, view, 1, -1, -1, sum, clash, 32, &clashed) == 0 && clashed == 0,
+           "a null receiver frames nothing");
+        free(sum);
+        free(clash);
+    }
+
     /* The clash, which needs no bus: it is a pure function of two columns and
      * the settings, and the shell calls it with columns it already holds. */
     unsigned char* a = (unsigned char*) malloc((size_t) bands);

@@ -462,6 +462,59 @@ pub unsafe extern "C" fn srecv_take_columns(
     recv(p).take_columns(ch as usize, slice, max_cols as usize) as c_int
 }
 
+/// One editor tick's picture: every channel drained in step, the `view`
+/// channels summed in power into `sum_out`, and -- when `cmp_a` and `cmp_b` are
+/// both >= 0 -- their clash into `clash_out`. Returns the columns in
+/// `sum_out` (0: nothing to send) and stores the clash's in `*clash_cols`.
+/// A null `sum_out` drains and drops. **Message thread only.**
+///
+/// # Safety
+/// `view` holds `n_view` ints; `sum_out` and `clash_out` are null or writable
+/// for `max_cols * bands` bytes; `clash_cols` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn srecv_frame(
+    p: *mut Srecv,
+    view: *const c_int,
+    n_view: c_int,
+    cmp_a: c_int,
+    cmp_b: c_int,
+    sum_out: *mut u8,
+    clash_out: *mut u8,
+    max_cols: c_int,
+    clash_cols: *mut c_int,
+) -> c_int {
+    if !clash_cols.is_null() {
+        *clash_cols = 0;
+    }
+    if p.is_null() || max_cols <= 0 {
+        return 0;
+    }
+    let r = recv(p);
+    let n = r.bands() * max_cols as usize;
+    let wanted: &[c_int] = if view.is_null() || n_view <= 0 {
+        &[]
+    } else {
+        core::slice::from_raw_parts(view, n_view as usize)
+    };
+    /* On the stack: a view names at most a handful of channels. */
+    let mut chans = [0usize; 16];
+    let mut k = 0;
+    for &ch in wanted {
+        if ch >= 0 && k < chans.len() {
+            chans[k] = ch as usize;
+            k += 1;
+        }
+    }
+    let compare = (cmp_a >= 0 && cmp_b >= 0).then_some((cmp_a as usize, cmp_b as usize));
+    let sum = (!sum_out.is_null()).then(|| core::slice::from_raw_parts_mut(sum_out, n));
+    let clash = (!clash_out.is_null()).then(|| core::slice::from_raw_parts_mut(clash_out, n));
+    let (cols, clashed) = r.frame(&chans[..k], compare, sum, clash, max_cols as usize);
+    if !clash_cols.is_null() {
+        *clash_cols = clashed as c_int;
+    }
+    cols as c_int
+}
+
 /// The range every source is measured over. Allocation-free and safe while
 /// audio runs, exactly as `spectro_set_range` is.
 ///

@@ -34,6 +34,7 @@ pub use shell::ScShell;
 
 use ni_dsp::ffi::{cstr as s, CTransport};
 use sc_core::params::Param;
+use sc_core::rates::{RATES, RATE_DEFAULT};
 use sc_core::{Instance, MAX_BLOCK};
 use std::os::raw::{c_char, c_int, c_uchar};
 
@@ -280,6 +281,24 @@ pub unsafe extern "C" fn sc_core_get_param(
 
 /// Cycle phase, 0..1. The allocation-free answer, for a caller that wants the
 /// playhead without parsing the `ui` readout.
+/// The label of rate `index`, NUL-terminated into `buf`: the engine's own
+/// table, so a host's menu cannot disagree with it. Returns the length
+/// written, or -1 past the end of the table or for a buffer too small.
+///
+/// # Safety
+/// `buf` is null or writable for `buf_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn sc_core_rate_label(index: c_int, buf: *mut c_char, buf_len: c_int) -> c_int {
+    let Some(rate) = usize::try_from(index).ok().and_then(|i| RATES.get(i)) else { return -1 };
+    ni_dsp::ffi::copy_cstr(rate.label, buf, buf_len)
+}
+
+/// The rate a fresh instance plays, as an index into the table.
+#[no_mangle]
+pub extern "C" fn sc_core_rate_default() -> c_int {
+    RATE_DEFAULT as c_int
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_phase01(c: *const ScCore) -> f64 {
     c.as_ref().map(|c| c.0.phase01()).unwrap_or(0.0)

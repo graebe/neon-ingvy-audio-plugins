@@ -42,7 +42,11 @@ fn pushing_pumping_and_draining_allocate_nothing() {
     let clash_a = vec![0u8; r.bands() * 4];
     let clash_b = vec![0u8; r.bands() * 4];
     let mut clash_out = vec![0u8; r.bands() * 4];
+    let mut sum = vec![0u8; r.bands() * 32];
+    let mut frame_clash = vec![0u8; r.bands() * 32];
     let mut cols = 0usize;
+    /* `frame` sizes its drain buffers on its first call, and only then. */
+    r.frame(&[0], Some((0, 1)), Some(&mut sum), Some(&mut frame_clash), 32);
 
     ni_testkit::arm();
     for _ in 0..64 {
@@ -50,6 +54,9 @@ fn pushing_pumping_and_draining_allocate_nothing() {
         r.pump();
         cols += r.take_columns(OWN, &mut out, 32);
         r.clash_into(&clash_a, &clash_b, &mut clash_out);
+        feed.push(&block);
+        r.pump();
+        cols += r.frame(&[0, 0], Some((0, 1)), Some(&mut sum), Some(&mut frame_clash), 32).0;
     }
     /* Read back inside the window too: a lazy counter that only allocates when
      * someone asks would slip past a test that never asked. */

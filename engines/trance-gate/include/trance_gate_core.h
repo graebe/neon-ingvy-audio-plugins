@@ -111,6 +111,26 @@ void tg_core_process_f32(tg_core_t *c, float   *lr, int frames, const tg_transpo
 /* Non-interleaved, which is what VST3 and AU actually hand you. */
 void tg_core_process_f32_split(tg_core_t *c, float *l, float *r, int frames,
                                const tg_transport_t *t);
+/* The same, and where in the pattern's cycle each sample fell, 0..1, into
+ * `sweep` (may be null) -- the scope's x-axis. A stopped or seeking transport
+ * free-runs the sweep at one cycle per cycle length. */
+void tg_core_process_f32_split_tap(tg_core_t *c, float *l, float *r, float *sweep,
+                                   int frames, const tg_transport_t *t);
+
+/* Rate `index`'s label into `buf`, from the engine's own table. Returns the
+ * length written, or -1 past the end or for a buffer too small. */
+int tg_core_rate_label(int index, char *buf, int buf_len);
+int tg_core_rate_default(void);
+
+/*
+ * The pattern plot's curve for the patch in `state`, rendered through a
+ * scratch engine with a DC input so the samples ARE the gate:
+ * "<length>:<per_step>:<hex>", two upper-case hex digits of gain per sample of
+ * one cycle. Returns the length written, or -1 for nothing to draw or a buffer
+ * too small. Allocates: never on the audio thread.
+ */
+#define TG_GATE_MAX 4096
+int tg_core_render_gate(const char *state, char *buf, int buf_len);
 
 /*
  * THE AUTOMATABLE PARAMETERS, BY NUMBER.
