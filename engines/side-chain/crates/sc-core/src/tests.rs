@@ -560,3 +560,16 @@ fn a_zero_frame_block_changes_nothing() {
     assert_eq!(p.phase01(), before);
     assert!(p.phase01().is_finite());
 }
+
+#[test]
+fn an_instance_is_small_enough_to_build_on_any_stack() {
+    /*
+     * `Box::new(Instance::new(..))` builds the value on the caller's stack and
+     * then moves it -- and on the Move that caller is the audio thread. The two
+     * key buffers used to be inline arrays, 64 KB of them, which is a stack
+     * frame no realtime thread should be asked for. They live on the heap now,
+     * allocated once in `new`, and the instance itself stays small.
+     */
+    let size = std::mem::size_of::<Instance>();
+    assert!(size < 4096, "Instance is {size} bytes");
+}

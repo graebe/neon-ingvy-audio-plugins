@@ -157,8 +157,12 @@ pub struct Instance {
     queue: Queue,
     /// The key signal for the block about to be rendered, and how much of it
     /// is real. Deinterleaved so the detector reads two contiguous runs.
-    key_l: [f32; MAX_BLOCK],
-    key_r: [f32; MAX_BLOCK],
+    ///
+    /// ON THE HEAP, allocated once in `new`: inline they were 64 KB of an
+    /// instance every shell builds with `Box::new(Instance::new(..))` -- on the
+    /// caller's stack first, and on the Move that caller is the audio thread.
+    key_l: Box<[f32]>,
+    key_r: Box<[f32]>,
     key_len: usize,
 
     /* ---- the cycle's phase-locked loop ---- */
@@ -220,8 +224,8 @@ impl Instance {
             env: Env::default(),
             follower: Follower::new(sr),
             queue: Queue::default(),
-            key_l: [0.0; MAX_BLOCK],
-            key_r: [0.0; MAX_BLOCK],
+            key_l: vec![0.0; MAX_BLOCK].into_boxed_slice(),
+            key_r: vec![0.0; MAX_BLOCK].into_boxed_slice(),
             key_len: 0,
             cycle_pos: 0.0,
             last_cycle: None,
