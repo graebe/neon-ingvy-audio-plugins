@@ -1,14 +1,14 @@
 {
   "__": "The version of each PRODUCT in this repository, and the only place it is decided. Every other spelling -- config.h, module.json, the Info.plists and each engine's crates -- is DERIVED from this and checked by `ctest -R versions`. The scheme is v<YYYY.MM.DD>.<subversion>; three of those consumers cannot hold that string literally, so the derivations are spelled out in tests/versions.test.mjs and asserted rather than left to a human. See tests/versions.test.mjs for what is checked and what is deliberately not.",
 
-  "trance-gate": "v2026.09.29.3",
-  "spectrogram": "v2026.09.29.2",
-  "listen-in": "v2026.09.29.2",
-  "side-chain": "v2026.09.29.2",
+  "trance-gate": "v2026.09.30.1",
+  "spectrogram": "v2026.09.30.1",
+  "listen-in": "v2026.09.30.1",
+  "side-chain": "v2026.09.30.1",
 
   "__audio-bus": "The house transport, not a plugin -- it has crates and no config.h, no plists and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
-  "audio-bus": "v2026.09.29.2",
+  "audio-bus": "v2026.09.30.1",
 
   "__ground": "The animated ground's kick detector. Not a plugin either, and not even a library of its own on disk: ground-capi is an rlib that each product's capi crate absorbs, because one static archive per plugin is an invariant here (see cmake/NiPlugin.cmake). It is versioned for audio-bus's reason and one more -- it ships inside ALL FOUR products, so a crate that disagreed with itself would disagree in four places at once.",
-  "ground": "v2026.09.29.1"
+  "ground": "v2026.09.30.1"
 }

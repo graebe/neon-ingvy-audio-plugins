@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>NITranceGate</string>
 	<key>CFBundleGetInfoString</key>
-	<string>NI Trance Gate v2026.09.29.3 Copyright 2026 Torben Gräber</string>
+	<string>NI Trance Gate v2026.09.30.1 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.graebe.clap.NITranceGate</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -17,11 +17,11 @@
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2026.9.29</string>
+	<string>2026.9.30</string>
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>2026.9.235</string>
+	<string>2026.9.241</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
