@@ -79,8 +79,13 @@ pub const DELAY_RANGE_PCT: f64 = 100.0;
 
 /// Beyond this much phase error, jump rather than glide. `tg-core`'s value.
 const RESYNC_CYCLES: f64 = 0.25;
-/// Fraction of the phase error absorbed per block.
-const TRACK_GAIN: f64 = 0.05;
+/// How fast the loop pulls in, as a time constant, so the pull is the same
+/// whatever the host's block size. `tg-core/src/clock.rs` says why it is one
+/// and where 56.6 ms comes from; the two are kept equal.
+pub(crate) const TRACK_TAU_S: f64 = 0.0566;
+/// The slowest the phase may run while it pulls back towards a host that is
+/// behind it, as a fraction of its nominal speed. `tg-core`'s value.
+const MIN_SPEED: f64 = 0.5;
 
 /// Where the trigger comes from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -434,17 +439,28 @@ impl Instance {
                      * cycle would otherwise fire nothing. */
                     self.last_cycle = arrive(target, offset, inc);
                 } else {
-                    inc += (err * TRACK_GAIN) / frames as f64;
+                    let absorb = 1.0 - (-(frames as f64) / (self.sample_rate * TRACK_TAU_S)).exp();
+                    inc += err * absorb / frames as f64;
                 }
             }
+            /* NEVER BACKWARDS: a reversing phase re-crosses the boundary it
+             * just passed and fires the same duck twice. Only a seek (the
+             * resync above) moves the phase back. */
+            inc = inc.max(MIN_SPEED / samples_per_cycle);
         } else {
             self.cycle_pos = 0.0;
             self.last_cycle = None;
-            if cycle {
+            if cycle && self.was_running {
                 /* Stopped means open, but ONLY for the source that depends on
                  * the transport. Resetting the envelope here unconditionally
-                 * is what would break a MIDI duck in a stopped session. */
-                self.env.reset();
+                 * is what would break a MIDI duck in a stopped session.
+                 *
+                 * And open by RELEASING, once, at the stop -- not by a reset
+                 * every stopped block. A reset mid-duck stepped the gain to
+                 * 1.0 in one sample; a release is what the duck would have
+                 * done had the cycle simply not fired again, and nothing fires
+                 * it while the transport is parked. */
+                self.env.release(&stages);
             }
         }
         self.was_running = running;

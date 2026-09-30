@@ -230,7 +230,9 @@ impl Instance {
             release: 16.0,
             hold: 1.0,
             amount: 1.0,
-            amount_s: 1.0,
+            /* 0, NOT `amount`: a fresh instance is a stopped one, and stopped
+             * is an open gate. The first start glides in from here. */
+            amount_s: 0.0,
             sustain_s: 1.0,
             cursor: 0,
             step_pos: 0.0,

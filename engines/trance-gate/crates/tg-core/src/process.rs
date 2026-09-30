@@ -77,6 +77,11 @@ impl Instance {
     /// it.
     #[inline]
     fn next_gain(&mut self, r: &mut Run) -> f32 {
+        if r.opening {
+            self.amount_s = crate::smooth::glide(self.amount_s, 0.0, r.smooth);
+            return 1.0 - self.amount_s * (1.0 - self.env.level * self.step_level);
+        }
+
         /*
          * SUSTAIN GLIDES ONLY WHERE IT IS HEARD. It is a level in DECAY (the
          * target) and in SUSTAIN (the level itself); anywhere else the envelope
@@ -189,8 +194,18 @@ impl Instance {
             let m = self.next_gain(&mut r);
             let l = lr[i * 2] as f32 * m;
             let rr = lr[i * 2 + 1] as f32 * m;
-            lr[i * 2] = l.clamp(-32768.0, 32767.0) as i16;
-            lr[i * 2 + 1] = rr.clamp(-32768.0, 32767.0) as i16;
+            /*
+             * ROUND, THEN CLAMP -- `as i16` alone truncates towards zero, so
+             * every gated sample lost up to a whole LSB and always towards
+             * silence: a bias that scales with the gain being applied, which is
+             * the quantity this plugin modulates. sc-core measured it at 1.47
+             * LSB against its float path. Rounded, the Move's render IS the
+             * plugin's float render, rounded -- which is what the render A/B
+             * compares. The clamp comes after so a value rounding up to 32768
+             * is caught rather than wrapped.
+             */
+            lr[i * 2] = l.round().clamp(-32768.0, 32767.0) as i16;
+            lr[i * 2 + 1] = rr.round().clamp(-32768.0, 32767.0) as i16;
         }
     }
 

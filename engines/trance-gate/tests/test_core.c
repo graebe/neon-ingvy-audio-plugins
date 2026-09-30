@@ -1083,7 +1083,14 @@ int main(void) {
          * test happened to render and nothing else. A linear attack is at
          * t/duration, so sampling a quarter of the way in reads 0.25 whether
          * the stage completes or not.
+         *
+         * FROM A CLOSED GATE, which is why the attack under test is step 1's
+         * and step 0 is off. The transport starts with the gate OPEN and the
+         * envelope seeded there, so the very first step no longer ramps up
+         * from silence -- that drop was a click -- and a ramp measured on it
+         * would be measuring from the wrong floor.
          */
+        const int step = (int)(44100.0 * 60.0 / 120.0 / 4.0);   /* 5512 */
         struct { const char *pct; double hold; double want_ms; } cases[] = {
             { "100", 1.00, 125.0 },   /* a full-width 1/16 step at 120 BPM */
             { "50",  1.00,  62.5 },
@@ -1093,8 +1100,8 @@ int main(void) {
         for (int i = 0; i < 4; i++) {
             tg_core_t *c = tg_core_create(44100.0);
             tg_core_set_param(c, "rate",    "1/16");
-            tg_core_set_param(c, "length",  "0");
-            tg_core_set_param(c, "pattern", "1");
+            tg_core_set_param(c, "length",  "1");   /* two steps: off, on */
+            tg_core_set_param(c, "pattern", "2");
             tg_core_set_param(c, "ties",    "0");
             tg_core_set_param(c, "decay",   "0");
             tg_core_set_param(c, "sustain", "1");
@@ -1105,7 +1112,8 @@ int main(void) {
               tg_core_set_param(c, "hold", v); }
             tg_core_set_param(c, "attack", cases[i].pct);
 
-            const int at = (int)(44100.0 * cases[i].want_ms / 4000.0);  /* a quarter in */
+            /* A quarter of the way into step 1's attack. */
+            const int at = step + 1 + (int)(44100.0 * cases[i].want_ms / 4000.0);
             float *buf = render_dc(c, at + 64, 120.0f);
             char what[96];
             snprintf(what, sizeof(what), "%s%% of a %.0f%% Width ramps over %.0f ms",

@@ -48,7 +48,12 @@
 static const uint64_t GOLDEN = 0xF166F7CC7678B4BEull;
 /* Recorded 2026-09-29, the first render. It did NOT move when the int16 path
  * was changed to round rather than truncate, which is the evidence that that
- * change touched only the Move's path and not the shared gain law. */
+ * change touched only the Move's path and not the shared gain law.
+ *
+ * Nor on 2026-09-30, when the phase-locked loop became a time constant, a
+ * stopped transport began RELEASING a Cycle duck instead of cutting it, Depth
+ * began to glide and a stage length became safe to move mid-stage: this render
+ * never stops, never moves a parameter, and its host clock is exact. */
 
 static uint64_t fnv1a(const void *p, size_t n)
 {

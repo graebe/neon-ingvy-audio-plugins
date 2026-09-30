@@ -692,3 +692,101 @@ fn a_tempo_change_mid_duck_does_not_step_the_gain() {
     let (d, at) = max_step(&g);
     assert!(d < STEP_LIMIT, "the gain stepped by {d} at sample {at}");
 }
+
+/* ------------------------------------------------------ the phase-locked loop */
+
+#[test]
+fn the_phase_converges_at_the_same_rate_whatever_the_block_size() {
+    /* tg-core's test, for the cycle: the loop's pull is a time constant, so
+     * the error left after a given time does not depend on the block size. */
+    let sr = 44100.0;
+    for frames in [1usize, 32, 128, 4096] {
+        let mut p = Instance::new(sr);
+        let mut buf = vec![0.5f32; frames * 2];
+        let (mut done, mut offset, mut t0) = (0usize, 0.0, None);
+        let mut err = 0.0;
+        while (done as f64) < 0.4 * sr {
+            let t = done as f64 / sr;
+            if offset == 0.0 && t >= 0.1 {
+                offset = 0.1; /* a tenth of a 1/4 cycle */
+                t0 = Some(t);
+            }
+            let tr = Transport { running: true, beats: t * 2.0 + offset, bpm: 120.0 };
+            p.process_f32(&mut buf, frames, Some(&tr));
+            done += frames;
+            err = done as f64 / sr * 2.0 + offset - p.cycle_pos;
+        }
+        let dt = done as f64 / sr - t0.unwrap();
+        let (got, want) = (err / 0.1, (-dt / crate::TRACK_TAU_S).exp());
+        assert!(
+            got > 0.0 && (got / want - 1.0).abs() < 0.05,
+            "{frames}-frame blocks: {got:.5} of the error left after {dt:.3}s, want {want:.5}"
+        );
+    }
+}
+
+#[test]
+fn the_cycle_never_runs_backwards_or_fires_twice() {
+    /* A host behind the playhead slows it; it never reverses it, which at a
+     * long cycle and a short block used to re-cross the boundary just passed
+     * and fire the same duck again. */
+    let sr = 44100.0;
+    for frames in [1usize, 32, 128, 4096] {
+        let mut p = Instance::new(sr);
+        p.set_param("rate", "1/1");
+        let mut buf = vec![0.5f32; frames * 2];
+        let (mut done, mut prev) = (0usize, f64::NEG_INFINITY);
+        while done < 2 * 44100 {
+            let t = done as f64 / sr;
+            /* 0.2 of a 1/1 cycle behind, from half a second in. */
+            let lag = if t >= 0.5 { 0.2 * 4.0 } else { 0.0 };
+            let tr = Transport { running: true, beats: t * 2.0 - lag, bpm: 120.0 };
+            p.process_f32(&mut buf, frames, Some(&tr));
+            assert!(p.cycle_pos >= prev, "{frames}-frame blocks: the cycle went back at {t:.4}s");
+            prev = p.cycle_pos;
+            done += frames;
+        }
+        /* Two seconds at 120 bpm is exactly one 1/1 cycle: the downbeat fired
+         * at the start, and nothing else may have. */
+        assert_eq!(p.fires(), 1, "{frames}-frame blocks");
+    }
+}
+
+/* --------------------------------------------------- transport start and stop */
+
+#[test]
+fn stopping_the_transport_releases_a_cycle_duck_instead_of_cutting_it() {
+    /*
+     * Stopped means open for the Cycle source -- and it used to mean open NOW:
+     * `env.reset()` mid-hold stepped the gain from the floor to 1.0 in one
+     * sample. The duck now RELEASES, over the release the user set, which is
+     * exactly what it would have done had the cycle simply not fired again.
+     */
+    let sr = 44100.0;
+    let mut p = Instance::new(sr);
+    p.set_param("attack", "6");
+    p.set_param("hold", "40");
+    p.set_param("release", "20");
+    let mut g = Vec::new();
+    let mut beats = 0.0;
+    for b in 0..200 {
+        let running = !(60..150).contains(&b);
+        if !running {
+            beats = 0.0;
+        }
+        let t = Transport { running, beats, bpm: 120.0 };
+        let (mut l, mut r) = (vec![1.0f32; 64], vec![1.0f32; 64]);
+        let mut gb = vec![0.0f32; 64];
+        p.process_f32_split_tap(&mut l, &mut r, Some(&mut gb), None, 64, Some(&t));
+        g.extend_from_slice(&gb);
+        if running {
+            beats += 64.0 / sr * 2.0;
+        }
+    }
+    assert!(g[60 * 64 - 1] < 0.1, "the duck was not at its floor when the transport stopped");
+    let (d, at) = max_step(&g);
+    assert!(d < STEP_LIMIT, "the gain stepped by {d} at sample {at}");
+    /* 20% of a 1/4 cycle at 120 bpm is 4410 samples: open well before the restart. */
+    assert!(g[140 * 64..150 * 64].iter().all(|&v| v == 1.0), "not open once stopped");
+    assert!(g[150 * 64 + 1400] < 0.1, "the restart did not duck");
+}
