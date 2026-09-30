@@ -45,7 +45,7 @@ const ENGINE = [
 ];
 
 /*
- * Normalised, as a host reports them -- the ranges are SideChain.cpp's.
+ * Normalised, as a host reports them -- the ranges are Params.cpp's.
  *
  * DELAY IS SIGNED, -100..+100, so its normalised form is (v + 100) / 200 rather
  * than v / 100. Getting that wrong puts the handle at twice its offset, which

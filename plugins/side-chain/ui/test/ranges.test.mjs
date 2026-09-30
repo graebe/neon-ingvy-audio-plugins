@@ -9,7 +9,7 @@
  *
  * A duplicated range drifts silently and the symptom is subtle: the handle
  * lands somewhere the sound is not, which reads as a drawing bug and is an
- * arithmetic one. So this parses SideChain.cpp -- the declaration itself, not a
+ * arithmetic one. So this parses Params.cpp -- the declaration itself, not a
  * copy of it -- and fails if the two disagree.
  *
  * The same idiom as the token guard, which parses tokens.css as text, and the
@@ -24,7 +24,7 @@ import { dirname, join } from 'node:path';
 import { RANGES, P, toNorm, fromNorm } from '../src/lib/msg.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const CPP = join(HERE, '..', '..', 'SideChain.cpp');
+const CPP = join(HERE, '..', '..', 'Params.cpp');
 
 /* The C++ enum name for each parameter this test covers. Only the continuous
  * ones: an enum parameter's range is its option count, which COUNTS already
@@ -40,7 +40,7 @@ const ENUM_NAME = {
   kLockout: P.lockout,
 };
 
-/** What SideChain.cpp actually declares, in its own units. */
+/** What Params.cpp actually declares, in its own units. */
 function declared() {
   const src = readFileSync(CPP, 'utf8')
     /* Comments first: a range inside one is prose, not a declaration. */
@@ -48,25 +48,25 @@ function declared() {
     .replace(/\/\/[^\n]*/g, '');
   const out = {};
 
-  /* The `pct` helper: pct(GetParam(kAttack), "Attack", 2.0, 200.0) -- it calls
+  /* The `pct` helper: pct(param(kAttack), "Attack", 2.0, 200.0) -- it calls
    * InitDouble with a fixed low bound of 0. */
   for (const m of src.matchAll(
-    /pct\(GetParam\((k\w+)\)\s*,\s*"[^"]*"\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/g)) {
+    /pct\(param\((k\w+)\)\s*,\s*"[^"]*"\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/g)) {
     out[m[1]] = [0, Number(m[3])];
   }
 
-  /* The direct form: GetParam(kThreshold)->InitDouble("Threshold", -24, -60, 0, ...) */
+  /* The direct form: param(kThreshold)->InitDouble("Threshold", -24, -60, 0, ...) */
   for (const m of src.matchAll(
-    /GetParam\((k\w+)\)->InitDouble\(\s*"[^"]*"\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)/g)) {
+    /param\((k\w+)\)->InitDouble\(\s*"[^"]*"\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)/g)) {
     out[m[1]] = [Number(m[3]), Number(m[4])];
   }
   return out;
 }
 
-test('SideChain.cpp declares every range this editor knows about', () => {
+test('Params.cpp declares every range this editor knows about', () => {
   const d = declared();
   for (const name of Object.keys(ENUM_NAME)) {
-    assert.ok(d[name], `${name} not found in SideChain.cpp -- was it renamed?`);
+    assert.ok(d[name], `${name} not found in Params.cpp -- was it renamed?`);
   }
 });
 
@@ -75,7 +75,7 @@ test('the editor\'s ranges are the plugin\'s ranges', () => {
   for (const [name, idx] of Object.entries(ENUM_NAME)) {
     assert.deepEqual(
       RANGES[idx], d[name],
-      `${name}: SideChain.cpp says [${d[name]}], msg.js says [${RANGES[idx]}]`,
+      `${name}: Params.cpp says [${d[name]}], msg.js says [${RANGES[idx]}]`,
     );
   }
 });

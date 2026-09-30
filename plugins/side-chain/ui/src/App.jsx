@@ -488,7 +488,7 @@ export default function App() {
   );
 }
 
-/* Live's octave numbering, where 36 is C1 -- the same table SideChain.cpp generates
+/* Live's octave numbering, where 36 is C1 -- the same table Params.cpp generates
  * for the host's own menu. Built once. */
 let NOTE_NAMES = null;
 function noteNames() {

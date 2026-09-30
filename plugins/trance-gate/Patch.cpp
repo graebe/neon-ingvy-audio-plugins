@@ -67,25 +67,33 @@ bool Save(tg_shell_t* gate, iplug::IByteChunk& chunk, const PutParams& params)
 }
 
 int Load(tg_shell_t* gate, const iplug::IByteChunk& chunk, int startPos,
-         const GetParams& params)
+         const GetParams& check, const GetParams& apply)
 {
   const shell::state::Header h = shell::state::Read(chunk, startPos);
   if (h.body < 0) return -1;
 
-  int pos = params(chunk, h.body);
+  /*
+   * EVERYTHING IS READ BEFORE ANYTHING IS APPLIED, so a chunk that is refused
+   * leaves the instance exactly as it was -- not with its parameters from the
+   * bad chunk and its pattern from before it.
+   *
+   * THE BLOB IS NOT OPTIONAL. Every build has written one after the
+   * parameters, if only an empty one, so a chunk without it is not a chunk
+   * this plugin wrote -- and accepting it anyway is how a megabyte of random
+   * bytes used to load "successfully".
+   */
+  int pos = check(chunk, h.body);
   if (pos < 0) return -1;
-
   WDL_String blob;
-  const int after = chunk.GetStr(blob, pos);
-  if (after >= pos)
-  {
-    pos = after;
-    /* Empty in a chunk from a build that lost the pattern on save: nothing to
-     * restore, so the engine keeps what it has rather than being reset. */
-    if (blob.Get() && *blob.Get())
-      Post(gate, Edit::Paste, blob.Get());
-  }
-  return shell::state::Finish(h, pos);
+  const int after = shell::state::GetStr(chunk, blob, pos);
+  if (after < pos) return -1;
+
+  if (apply(chunk, h.body) != pos) return -1;
+  /* Empty in a chunk from a build that lost the pattern on save: nothing to
+   * restore, so the engine keeps what it has rather than being reset. */
+  if (blob.Get() && *blob.Get())
+    Post(gate, Edit::Paste, blob.Get());
+  return shell::state::Finish(h, after);
 }
 
 } // namespace patch

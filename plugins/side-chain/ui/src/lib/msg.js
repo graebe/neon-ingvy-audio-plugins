@@ -64,11 +64,11 @@ export const COUNTS = {
 };
 
 /*
- * THE PARAMETER RANGES, MIRRORED FROM SideChain.cpp's InitDouble CALLS.
+ * THE PARAMETER RANGES, MIRRORED FROM Params.cpp's InitDouble CALLS.
  *
  * A duplicated range is exactly the kind of thing that drifts silently -- the
  * handle would land in the wrong place and look like a drawing bug -- so
- * `test/ranges.test.mjs` parses SideChain.cpp and fails if these disagree.
+ * `test/ranges.test.mjs` parses Params.cpp and fails if these disagree.
  *
  * They are needed because a host parameter is a 0..1 number and the drawing is
  * in percent of the cycle. The `params` readout carries the engine's own values
@@ -76,7 +76,7 @@ export const COUNTS = {
  * a pointer position has to become a normalised value to send back.
  */
 export const RANGES = {
-  /* BOTH WAYS. Negative is an early sidechain; see SideChain.cpp, which this
+  /* BOTH WAYS. Negative is an early sidechain; see Params.cpp, which this
    * mirrors and which test/ranges.test.mjs parses to keep the two in step. */
   [P.delay]: [-100, 100],
   [P.attack]: [0, 200],

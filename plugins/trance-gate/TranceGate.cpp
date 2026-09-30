@@ -4,6 +4,7 @@
  */
 #include "TranceGate.h"
 #include "Patch.h"
+#include "shell_state.h"
 #include "Wire.h"
 #include "IPlug_include_in_plug_src.h"
 
@@ -15,96 +16,11 @@
 #include <cstdlib>
 #include <algorithm>
 
-/*
- * The rate labels are the engine's, read from its own table rather than
- * retyped. A second copy would drift, and the drift would be silent: the
- * host stores an INDEX, so a list that disagrees by one entry re-points every
- * saved automation lane at the wrong division.
- */
-static const char* const kRateLabels[] = {
-  "1/1T", "1/2", "1/2T", "1/4", "1/4T", "1/8", "1/8T",
-  "1/16", "1/16T", "1/32", "1/32T", "1/64", "1/128"
-};
-static constexpr int kNumRates = int(sizeof(kRateLabels) / sizeof(kRateLabels[0]));
-static constexpr int kRateDefault = 7;          /* 1/16 -- tg-core rates.rs */
-static constexpr double kStageMaxPct = 200.0;   /* tg-core STAGE_MAX_PCT    */
-
-/*
- * The percentage format, spelled out rather than left to the `label`
- * argument.
- *
- * iPlug2's AU wrapper prints a parameter with GetDisplay(value, false, str) --
- * the overload that does NOT append the label -- so a unit passed as `label`
- * reaches a VST3 host and never reaches an AU one. A host showing "3.83"
- * where it should show "3.83 %" is the sort of thing only a test that
- * compares displayed strings would catch.
- *
- * Two decimals everywhere, for the same reason: the step decides the
- * precision, and 0.1 rendered Sustain as "60.0" against the engine's "60.00".
- */
-static const IParam::DisplayFunc kPctDisplay =
-  [](double v, WDL_String& s) { s.SetFormatted(32, "%.2f %%", v); };
-
 TranceGate::TranceGate(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
-  /*
-   * Declared in the ENGINE's order, so the host index is the engine index and
-   * there is no mapping table between them to get wrong. The build this
-   * replaces carried one, because its declaration order had drifted.
-   *
-   * Two of these are one-based at the host and zero-based in the engine --
-   * Slot and Length -- and that is deliberate: "slot 1" is what a musician
-   * reads. The conversion happens once, in PushParams, and nowhere else.
-   */
-  GetParam(kSlot)->InitInt("Slot", 1, 1, TG_SLOTS);
-  GetParam(kLength)->InitInt("Length", 16, 1, TG_MAX_STEPS, "steps");
-  GetParam(kRate)->InitEnum("Rate", kRateDefault, kNumRates, "", 0, "", kRateLabels[0],
-    kRateLabels[1], kRateLabels[2], kRateLabels[3], kRateLabels[4], kRateLabels[5],
-    kRateLabels[6], kRateLabels[7], kRateLabels[8], kRateLabels[9], kRateLabels[10],
-    kRateLabels[11], kRateLabels[12]);
-  /* "Off"/"On", capitalised: iPlug2 defaults to lower case and the engine
-   * prints "Off". */
-  GetParam(kLegato)->InitBool("Join Neighbors", false, "", 0, "", "Off", "On");
-  /* "%", NOT "% Step". The long form did not fit the readout's 64px and read
-   * as noise beside a 13-character rate label; what the percentage is OF is
-   * said once, by the control's own name, rather than in every value it can
-   * show. The engine accepts either spelling. */
-  GetParam(kTimeMode)->InitEnum("Env Time", 0, {"ms", "%"});
-  GetParam(kCurve)->InitEnum("Env Curve", 0, {"Linear", "Exponential", "S-Curve"});
-
-  /* Shown as percentages because that is what they are; the engine takes
-   * Amount, Width and Sustain as 0..1 and the three envelope stages as the
-   * percent value itself, so only the first three are scaled in PushParams. */
-  const auto pct = [](IParam* p, const char* name, double def, double lo, double hi) {
-    p->InitDouble(name, def, lo, hi, 0.01, "%", 0, "",
-                  IParam::ShapeLinear(), IParam::kUnitPercentage, kPctDisplay);
-  };
-  pct(GetParam(kAmount), "Amount", 100.0, 0.0, 100.0);
-  pct(GetParam(kWidth), "Width", 100.0, 5.0, 100.0);
-  pct(GetParam(kAttack), "Attack", 1.6, 0.0, kStageMaxPct);
-  pct(GetParam(kDecay), "Decay", 16.0, 0.0, kStageMaxPct);
-  pct(GetParam(kSustain), "Sustain", 100.0, 0.0, 100.0);
-  pct(GetParam(kRelease), "Release", 16.0, 0.0, kStageMaxPct);
-  /*
-   * 100% IS THE DEFAULT AND IT HAS TO BE.
-   *
-   * Fade is how much of the pattern has arrived, so zero is silence -- which
-   * is exactly what a build-up wants and exactly what a fresh instance must
-   * not do. At 100 the engine's weights are all 1.0 and the gate is what it
-   * was before this existed, which is what keeps both golden renders valid.
-   */
-  pct(GetParam(kFade), "Fade", 100.0, 0.0, 100.0);
-  /* "Hard"/"Soft" rather than Off/On: the switch does not turn the fade on, it
-   * chooses whether a step arriving ramps or jumps. */
-  GetParam(kFadeSoft)->InitBool("Fade Shape", false, "", 0, "", "Hard", "Soft");
-  /*
-   * WHICH END THE PATTERN IS BUILT UP FROM, and In is the default because it is
-   * what the gate did before the direction existed. The knob means the same
-   * thing either way -- how much of the drawn pattern is present -- so 100% is
-   * the pattern in both and switching this at rest changes nothing.
-   */
-  GetParam(kFadeDir)->InitEnum("Fade Dir", 0, {"In", "Out"});
+  /* Params.cpp, where a test can reach them. */
+  tg::params::Declare([this](int i) { return GetParam(i); });
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   /*
@@ -163,8 +79,10 @@ int TranceGate::UnserializeState(const IByteChunk& chunk, int startPos)
   /* The blob is posted, not applied: the engine belongs to the audio thread,
    * which picks it up at the top of the next block -- before PushParams, so the
    * host's parameters still win over the blob's copies of them. */
-  return tg::patch::Load(mShell, chunk, startPos,
-                         [this](const IByteChunk& c, int pos) { return UnserializeParams(c, pos); });
+  return tg::patch::Load(
+    mShell, chunk, startPos,
+    [this](const IByteChunk& c, int pos) { return shell::state::CheckParams(c, pos, *this); },
+    [this](const IByteChunk& c, int pos) { return UnserializeParams(c, pos); });
 }
 
 #if IPLUG_DSP

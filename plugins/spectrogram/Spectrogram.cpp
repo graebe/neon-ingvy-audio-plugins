@@ -4,6 +4,7 @@
  */
 #include "Spectrogram.h"
 #include "Wire.h"
+#include "State.h"
 #include "IPlug_include_in_plug_src.h"
 
 #include <algorithm>
@@ -538,121 +539,45 @@ void Spectrogram::SendSync()
   SendArbitraryMsgFromDelegate(kMsgSync, int(s.size()), s.c_str());
 }
 
-/*
- * WHAT A SESSION HAS TO REMEMBER: which buses this window was looking at, and
- * what it was calling a clash. Neither is a parameter -- nobody automates which
- * picture they are looking at -- so the host cannot save them for us.
- *
- * Written as ONE STRING rather than as a count and a loop, because a reader
- * that trusts a count it did not write is a reader that can be made to walk off
- * the end of a chunk. parse_slots already skips anything unreadable.
- */
+/* The chunk is State.cpp's: what the session was looking at, as strings. */
 bool Spectrogram::SerializeState(IByteChunk& chunk) const
 {
-  const int at = shell::state::Begin(chunk, kChunkVersion);
-  if (!SerializeParams(chunk))
-    return false;
-
-  std::string sel;
-  for (size_t i = 0; i < mSources.size(); i++)
-  {
-    if (i)
-      sel += ',';
-    char num[16];
-    snprintf(num, sizeof num, "%u", mSources[i]);
-    sel += num;
-  }
-  if (chunk.PutStr(sel.c_str()) <= 0)
-    return false;
-
-  char clash[64];
-  snprintf(clash, sizeof clash, "%.2f:%.2f", mClashFloorDb, mClashBalanceDb);
-  if (chunk.PutStr(clash) <= 0)
-    return false;
-
-  /* The view and the comparison: what the window was showing, and what it was
-   * measuring. Two separate settings, saved separately. */
-  std::string view;
-  for (size_t i = 0; i < mView.size(); i++)
-  {
-    if (i)
-      view += ',';
-    char num[16];
-    snprintf(num, sizeof num, "%d", mView[i]);
-    view += num;
-  }
-  if (chunk.PutStr(view.c_str()) <= 0)
-    return false;
-
-  char cmp[48];
-  snprintf(cmp, sizeof cmp, "%d:%d:%d", mCmpA, mCmpB, mClashOn ? 1 : 0);
-  if (chunk.PutStr(cmp) <= 0)
-    return false;
-  return shell::state::End(chunk, at);
+  spectro::state::Fields f;
+  f.sources = mSources;
+  f.clashFloorDb = mClashFloorDb;
+  f.clashBalanceDb = mClashBalanceDb;
+  f.view = mView;
+  f.cmpA = mCmpA;
+  f.cmpB = mCmpB;
+  f.clashOn = mClashOn;
+  return spectro::state::Save(chunk, [this](IByteChunk& c) { return SerializeParams(c); }, f);
 }
 
 int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  /* A chunk without the header is an earlier build's, laid out the same --
-   * including the empty one every build before the selection was saved wrote. */
-  const shell::state::Header h = shell::state::Read(chunk, startPos);
-  if (h.body < 0)
+  /* What the chunk does not carry keeps its current value -- see State.cpp. */
+  spectro::state::Fields f;
+  f.sources = mSources;
+  f.clashFloorDb = mClashFloorDb;
+  f.clashBalanceDb = mClashBalanceDb;
+  f.view = mView;
+  f.cmpA = mCmpA;
+  f.cmpB = mCmpB;
+  f.clashOn = mClashOn;
+  const int pos = spectro::state::Load(
+    chunk, startPos,
+    [this](const IByteChunk& c, int p) { return shell::state::CheckParams(c, p, *this); },
+    [this](const IByteChunk& c, int p) { return UnserializeParams(c, p); },
+    f);
+  if (pos < 0)
     return -1;
-  int pos = UnserializeParams(chunk, h.body);
-
-  /*
-   * READ BACK DEFENSIVELY. This plugin's chunk was EMPTY until this version, so
-   * every session saved before it will arrive here with nothing after the
-   * parameters -- and a chunk written by a later version may hold more than
-   * this one knows how to want. Each field is taken only if it is there.
-   */
-  WDL_String sel;
-  int after = chunk.GetStr(sel, pos);
-  if (after > pos)
-  {
-    mSources.clear();
-    spectro::wire::parse_slots(sel.Get(), mSources);
-    pos = after;
-  }
-
-  WDL_String clash;
-  after = chunk.GetStr(clash, pos);
-  if (after > pos)
-  {
-    float floorDb = 0.f, balanceDb = 0.f;
-    if (spectro::wire::parse_range(clash.Get(), floorDb, balanceDb))
-    {
-      mClashFloorDb = floorDb;
-      mClashBalanceDb = balanceDb;
-    }
-    pos = after;
-  }
-
-  WDL_String view;
-  after = chunk.GetStr(view, pos);
-  if (after > pos)
-  {
-    mView.clear();
-    spectro::wire::parse_channels(view.Get(), mView);
-    if (mView.empty())
-      mView.assign(1, 0);
-    pos = after;
-  }
-
-  WDL_String cmp;
-  after = chunk.GetStr(cmp, pos);
-  if (after > pos)
-  {
-    int a = 0, b = 0;
-    bool on = false;
-    if (spectro::wire::parse_compare(cmp.Get(), a, b, on))
-    {
-      mCmpA = a;
-      mCmpB = b;
-      mClashOn = on;
-    }
-    pos = after;
-  }
+  mSources = f.sources;
+  mClashFloorDb = f.clashFloorDb;
+  mClashBalanceDb = f.clashBalanceDb;
+  mView = f.view;
+  mCmpA = f.cmpA;
+  mCmpB = f.cmpB;
+  mClashOn = f.clashOn;
 
 #if IPLUG_DSP
   /* The selection just changed underneath the receiver, so it has to follow. */
@@ -662,7 +587,7 @@ int Spectrogram::UnserializeState(const IByteChunk& chunk, int startPos)
     ApplySources();
   }
 #endif
-  return shell::state::Finish(h, pos);
+  return pos;
 }
 
 void Spectrogram::OnUIOpen()

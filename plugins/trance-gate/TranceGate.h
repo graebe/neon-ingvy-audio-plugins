@@ -12,44 +12,13 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "tg_shell.h"
+#include "Params.h"
 #include "ground_detect.h"  /* the ground's kick detector; editor builds only */
 #include <atomic>
 #include <string>
 #include <vector>
 
 const int kNumPresets = 1;
-
-/*
- * THE FIFTEEN AUTOMATABLE VALUES, IN THE ENGINE'S OWN WIRE ORDER.
- *
- * This enum is deliberately tg_param_t's order, so the host index IS the
- * engine index and there is no mapping table between them to get wrong. The
- * JUCE build carried exactly such a table (a `wire[]` array) because its
- * parameter declaration order had drifted from the engine's; starting again
- * is a chance not to.
- */
-enum EParams
-{
-  kSlot = 0,
-  kLength,
-  kRate,
-  kLegato,
-  kTimeMode,
-  kCurve,
-  kAmount,
-  kWidth,
-  kAttack,
-  kDecay,
-  kSustain,
-  kRelease,
-  /* APPENDED, like the engine's own two. A host that catalogued this plugin
-   * stored these indices, so the fade's pair can only go on the end -- not
-   * beside kAmount, which is where they belong by meaning. */
-  kFade,
-  kFadeSoft,
-  kFadeDir,
-  kNumParams
-};
 
 using namespace iplug;
 

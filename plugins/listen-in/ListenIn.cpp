@@ -24,7 +24,8 @@ static void ReleasePusher(void* p)
 ListenIn::ListenIn(const InstanceInfo& info)
 : iplug::Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
-  GetParam(kSlot)->InitInt("Bus", 1, 1, int(abus_max_slot()), "");
+  /* State.cpp, where a test can reach it. */
+  state::Declare([this](int i) { return GetParam(i); });
 
   mStage.resize(size_t(kStageFrames) * abus_channels(), 0.f);
   mLabel.reserve(32);
@@ -230,46 +231,24 @@ void ListenIn::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 
 #endif /* IPLUG_DSP */
 
-/*
- * THE STATE CHUNK: parameters, then the label.
- *
- * The slot is a parameter and SerializeParams handles it. The name is text and
- * cannot be a parameter, so it is appended -- and read back defensively,
- * because a chunk written by a future version may hold more than this one
- * knows how to want.
- */
+/* The chunk is State.cpp's: parameters, then the label. */
 bool ListenIn::SerializeState(IByteChunk& chunk) const
 {
-  const int at = shell::state::Begin(chunk, kChunkVersion);
-  if (!SerializeParams(chunk))
-    return false;
-  if (chunk.PutStr(mLabel.c_str()) <= 0)
-    return false;
-  return shell::state::End(chunk, at);
+  return state::Save(chunk, [this](IByteChunk& c) { return SerializeParams(c); }, mLabel);
 }
 
 int ListenIn::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  /* A chunk without the header is an earlier build's, laid out the same. */
-  const shell::state::Header h = shell::state::Read(chunk, startPos);
-  if (h.body < 0)
-    return -1;
-  int pos = UnserializeParams(chunk, h.body);
-
-  WDL_String label;
-  const int after = chunk.GetStr(label, pos);
-  if (after > pos)
-  {
-    char clean[32];
-    wire::parse_label(label.Get(), clean, int(sizeof(clean)));
-    mLabel = clean;
-    pos = after;
-  }
-
+  const int pos = state::Load(
+    chunk, startPos,
+    [this](const IByteChunk& c, int p) { return shell::state::CheckParams(c, p, *this); },
+    [this](const IByteChunk& c, int p) { return UnserializeParams(c, p); },
+    mLabel);
   /* The slot and the label just changed underneath the bus; OnIdle claims
    * afresh. */
-  mReclaim.store(true, std::memory_order_release);
-  return shell::state::Finish(h, pos);
+  if (pos >= 0)
+    mReclaim.store(true, std::memory_order_release);
+  return pos;
 }
 
 #ifdef WEBVIEW_EDITOR_DELEGATE

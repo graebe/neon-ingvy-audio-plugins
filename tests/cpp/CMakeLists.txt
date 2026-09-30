@@ -38,18 +38,39 @@ add_test(NAME tg_wire COMMAND tg_wire)
 # guards is exactly the seam between the shell and the engine's state, and a
 # stub on either side would be asserting on the stub. iPlug2's IByteChunk is
 # header-only, so the chunk is the one the plugin writes.
+#
+# THE PARAMETERS ARE REAL. iplug::IParam links on its own with
+# IPlugParameter.cpp, so the chunk's parameter block comes from the plugin's own
+# declarations (Params.cpp) rather than fifteen stand-in doubles -- which is what
+# lets these tests do what clap-validator's state-reproducibility does: random
+# values, save, a fresh instance, load, save again, byte for byte.
 set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/external/iPlug2)
+set(IPLUG_PARAM_SRC ${IPLUG2_DIR}/IPlug/IPlugParameter.cpp)
 add_executable(tg_state tg_state.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Params.cpp
                ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Patch.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Wire.cpp)
+               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Wire.cpp
+               ${IPLUG_PARAM_SRC})
 target_include_directories(tg_state PRIVATE
     ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate
     ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
 target_link_libraries(tg_state PRIVATE tg_engine shell_engine)
 add_test(NAME tg_state COMMAND tg_state)
 
+# EVERY PARAMETER'S TEXT PARSES BACK TO ITS VALUE -- clap-validator's
+# param-conversions, on the plugin's declarations and the CLAP wrapper's own
+# conversions (param_host.h).
+add_executable(tg_params tg_params.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Params.cpp
+               ${IPLUG_PARAM_SRC})
+target_include_directories(tg_params PRIVATE
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate
+    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
+target_link_libraries(tg_params PRIVATE tg_engine)
+add_test(NAME tg_params COMMAND tg_params)
+
 # THE STATE HEADER against every plugin's older chunk layout, byte for byte.
-add_executable(shell_state shell_state.cpp)
+add_executable(shell_state shell_state.cpp ${IPLUG_PARAM_SRC})
 target_include_directories(shell_state PRIVATE
     ${DOCTEST_DIR} ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
 target_link_libraries(shell_state PRIVATE shell_engine)
@@ -111,3 +132,36 @@ add_executable(sc_wire sc_wire.cpp
 target_include_directories(sc_wire PRIVATE
     ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/side-chain)
 add_test(NAME sc_wire COMMAND sc_wire)
+
+# THE PARAMETERS AS A HOST SEES THEM -- their text and the state chunk, on the
+# plugin's own Params.cpp and real IParams. See tg_params and tg_state above.
+add_executable(sc_params sc_params.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/side-chain/Params.cpp
+               ${IPLUG_PARAM_SRC})
+target_include_directories(sc_params PRIVATE
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/side-chain
+    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
+target_link_libraries(sc_params PRIVATE shell_engine)
+add_test(NAME sc_params COMMAND sc_params)
+
+# Listen-In's chunk, saved and reloaded as clap-validator's state tests do.
+add_executable(listenin_state listenin_state.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/listen-in/State.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp
+               ${IPLUG_PARAM_SRC})
+target_include_directories(listenin_state PRIVATE
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in
+    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
+target_link_libraries(listenin_state PRIVATE audio_bus_engine shell_engine)
+add_test(NAME listenin_state COMMAND listenin_state)
+
+# The Spectrogram's chunk, saved and reloaded as clap-validator's state tests do.
+add_executable(spectro_state spectro_state.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/spectrogram/State.cpp
+               ${CMAKE_SOURCE_DIR}/plugins/spectrogram/Wire.cpp
+               ${IPLUG_PARAM_SRC})
+target_include_directories(spectro_state PRIVATE
+    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/spectrogram
+    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
+target_link_libraries(spectro_state PRIVATE shell_engine)
+add_test(NAME spectro_state COMMAND spectro_state)

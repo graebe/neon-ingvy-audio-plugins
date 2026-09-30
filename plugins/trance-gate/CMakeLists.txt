@@ -62,6 +62,8 @@ iplug_add_plugin(NITranceGate
   SOURCES
     TranceGate.cpp
     TranceGate.h
+    Params.cpp
+    Params.h
     Patch.cpp
     Patch.h
     Wire.cpp
