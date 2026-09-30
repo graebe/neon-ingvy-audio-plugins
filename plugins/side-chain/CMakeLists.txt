@@ -62,6 +62,9 @@ iplug_add_plugin(NISideChain
     VST3 CLAP AU
   UI WEBVIEW
   WEB_RESOURCES ${SC_WEB}
+  # LICENSE and THIRD_PARTY_LICENSES.md, into Contents/Resources -- see the
+  # root CMakeLists.
+  RESOURCES ${NI_BUNDLE_NOTICES}
   # ground_engine is a HEADER ONLY -- see cmake/GroundEngine.cmake. The detector
   # itself rides inside libsc_capi.a.
   LINK
@@ -121,6 +124,8 @@ if (TARGET NISideChainUI)
           COMMAND ${CMAKE_COMMAND} -E copy_directory
                   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web"
                   "${_ni_deploy}/NISideChain.${_ni_ext}/Contents/Resources/web"
+          COMMAND ${CMAKE_COMMAND} -E copy ${NI_BUNDLE_NOTICES}
+                  "${_ni_deploy}/NISideChain.${_ni_ext}/Contents/Resources/"
           COMMENT "Refreshing NISideChain.${_ni_ext}'s editor in ${_ni_deploy}"
           VERBATIM)
       endif()

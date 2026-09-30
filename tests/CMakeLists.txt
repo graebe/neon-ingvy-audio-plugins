@@ -138,6 +138,14 @@ if (TG_NODE)
     add_test(NAME release
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/release.test.mjs)
 
+    # EVERYTHING THAT SHIPS HAS A NOTICE, AND EVERY NOTICE IS FOR SOMETHING
+    # THAT SHIPS. THIRD_PARTY_LICENSES.md is held to the SDK pins, Cargo.lock,
+    # the editors' bundled packages and the fonts -- and, through --bundles, to
+    # the built bundles themselves, which must carry the notices inside.
+    add_test(NAME licenses
+             COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
+                     --bundles ${CMAKE_BINARY_DIR}/out)
+
     # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
     # editors and the documentation site -- where there used to be one per
     # plugin, each blind to the other.

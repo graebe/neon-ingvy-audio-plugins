@@ -51,6 +51,16 @@ include(cmake/GroundEngine.cmake)
 # see the note in the file.
 include(cmake/Schwung.cmake)
 
+# THE NOTICES TRAVEL INSIDE EVERY BUNDLE. MIT asks that the copyright and
+# permission notice accompany every copy, and a plugin bundle is copied on its
+# own -- out of a zip, into ~/Library, onto another machine -- with no
+# repository near it. So each plugin passes these as iPlug2 RESOURCES and they
+# land in Contents/Resources/, for a local build exactly as for a release.
+# scripts/check-licenses.mjs --bundles checks that they arrived.
+set(NI_BUNDLE_NOTICES
+    ${CMAKE_SOURCE_DIR}/LICENSE
+    ${CMAKE_SOURCE_DIR}/THIRD_PARTY_LICENSES.md)
+
 add_subdirectory(plugins/trance-gate)
 add_subdirectory(plugins/spectrogram)
 add_subdirectory(plugins/listen-in)

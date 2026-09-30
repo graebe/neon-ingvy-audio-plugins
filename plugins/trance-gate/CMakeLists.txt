@@ -97,6 +97,9 @@ iplug_add_plugin(NITranceGate
     VST3 CLAP AU
   UI WEBVIEW
   WEB_RESOURCES ${TG_WEB}
+  # LICENSE and THIRD_PARTY_LICENSES.md, into Contents/Resources -- see the
+  # root CMakeLists.
+  RESOURCES ${NI_BUNDLE_NOTICES}
   # ground_engine is a HEADER ONLY -- the detector's C ABI is compiled into
   # libtg_capi.a via tg-capi's dependency on ground-capi, because one archive per
   # plugin is an invariant here. cmake/GroundEngine.cmake says why.
@@ -157,6 +160,8 @@ if (TARGET NITranceGateUI)
           COMMAND ${CMAKE_COMMAND} -E copy_directory
                   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web"
                   "${_ni_deploy}/NITranceGate.${_ni_ext}/Contents/Resources/web"
+          COMMAND ${CMAKE_COMMAND} -E copy ${NI_BUNDLE_NOTICES}
+                  "${_ni_deploy}/NITranceGate.${_ni_ext}/Contents/Resources/"
           COMMENT "Refreshing NITranceGate.${_ni_ext}'s editor in ${_ni_deploy}"
           VERBATIM)
       endif()

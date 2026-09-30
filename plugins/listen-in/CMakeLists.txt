@@ -54,6 +54,9 @@ iplug_add_plugin(NIListenIn
     VST3 CLAP AU
   UI WEBVIEW
   WEB_RESOURCES ${LISTENIN_WEB}
+  # LICENSE and THIRD_PARTY_LICENSES.md, into Contents/Resources -- see the
+  # root CMakeLists.
+  RESOURCES ${NI_BUNDLE_NOTICES}
   # audio_bus_engine, not an engine of its own: Listen-In has no DSP. The
   # transport is the whole product, and a Spectrogram will link the same
   # library to read what this one writes.
@@ -121,6 +124,8 @@ if (TARGET NIListenInUI)
           COMMAND ${CMAKE_COMMAND} -E copy_directory
                   "${CMAKE_CURRENT_SOURCE_DIR}/resources/web"
                   "${_ni_deploy}/NIListenIn.${_ni_ext}/Contents/Resources/web"
+          COMMAND ${CMAKE_COMMAND} -E copy ${NI_BUNDLE_NOTICES}
+                  "${_ni_deploy}/NIListenIn.${_ni_ext}/Contents/Resources/"
           COMMENT "Refreshing NIListenIn.${_ni_ext}'s editor in ${_ni_deploy}"
           VERBATIM)
       endif()
