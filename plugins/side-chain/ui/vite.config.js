@@ -5,11 +5,21 @@ import solid from 'vite-plugin-solid';
 import licenses from '../../../scripts/vite-licenses.mjs';
 
 /*
- * EVERYTHING INLINED INTO ONE index.html, because a WKWebView on a custom
- * scheme is not a web server: a second request for assets/ui.js is a request
- * this plugin has no way to answer, and the page comes up blank with no error.
+ * WHAT THE BUILD WRITES, into ../resources/web -- which the plugin's CMake
+ * globs into its bundle as web resources:
  *
- * assetsInlineLimit is absurd on purpose -- it is "never emit a separate file".
+ *   index.html                 the page
+ *   assets/ui.js               every module, in one file (inlineDynamicImports)
+ *   assets/style.css           every stylesheet, in one file (cssCodeSplit
+ *                              off), with the kit's font INLINED as
+ *                              a data URI -- assetsInlineLimit is absurd on
+ *                              purpose, so nothing is emitted beside them
+ *   assets/ui.js.LICENSE.txt   the notices of every bundled package
+ *   fonts/OFL.txt              from public/, the font's licence
+ *
+ * Fixed file names rather than hashed ones, because the bundle is rebuilt
+ * whole and a WKWebView over a custom scheme serves exactly the files that are
+ * there.
  */
 export default defineConfig({
   plugins: [solid(), licenses()],

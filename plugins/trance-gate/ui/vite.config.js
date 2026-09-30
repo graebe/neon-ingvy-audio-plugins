@@ -5,13 +5,21 @@ import solid from 'vite-plugin-solid';
 import licenses from '../../../scripts/vite-licenses.mjs';
 
 /*
- * The build lands in ../resources/web, which is what the CMakeLists globs into
- * WEB_RESOURCES and iPlug2 copies into the plugin bundle.
+ * WHAT THE BUILD WRITES, into ../resources/web -- which the plugin's CMake
+ * globs into its bundle as web resources:
  *
- * EVERYTHING IS INLINED into one index.html. A WKWebView loading the page over
- * a custom scheme is not a web server: relative asset URLs resolve against a
- * bundle path, and every separate .js or .css is another chance for that to go
- * wrong silently -- a blank editor with no error anywhere. One file cannot.
+ *   index.html                 the page
+ *   assets/ui.js               every module, in one file (inlineDynamicImports)
+ *   assets/style.css           every stylesheet, in one file (cssCodeSplit
+ *                              off), with the kit's font INLINED as
+ *                              a data URI -- assetsInlineLimit is absurd on
+ *                              purpose, so nothing is emitted beside them
+ *   assets/ui.js.LICENSE.txt   the notices of every bundled package
+ *   fonts/OFL.txt              from public/, the font's licence
+ *
+ * Fixed file names rather than hashed ones, because the bundle is rebuilt
+ * whole and a WKWebView over a custom scheme serves exactly the files that are
+ * there.
  */
 export default defineConfig({
   plugins: [solid(), licenses()],

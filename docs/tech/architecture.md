@@ -141,10 +141,18 @@ floating-point mode back on the way out.
 ## The editor
 
 Solid and Vite, built into `plugins/<product>/resources/web` and globbed into
-the bundle as web resources. Everything is inlined into a single `index.html` —
-`assetsInlineLimit` is set absurdly high on purpose — because **a WKWebView over
-a custom scheme is not a web server**, and a second request would simply not
-arrive.
+the bundle as web resources: `index.html`, one `assets/ui.js` with every module,
+one `assets/style.css` with every stylesheet and the kit's font inlined as a data
+URI (`assetsInlineLimit` is set absurdly high on purpose), the licence notices,
+and `fonts/OFL.txt`. Fixed names, never hashed: **a WKWebView over a custom
+scheme is not a web server**, and it serves exactly the files that are there.
+
+Every editor is drawn in the kit's `EditorFrame` (the ground, the Hint bar, the
+fit-to-viewport scale and the height it reports), reads its host parameters
+from one store (`@ultraviolet/ui/params`, defaults from the shell's message
+113), and speaks to the plugin through `useEditorBridge`. Binary payloads -- the
+plot captures, the rendered curves, the spectrogram's columns -- are an ASCII
+header and raw bytes, which the bridge decodes from base64 once (`onBytes`).
 
 CMake runs vite at configure time *and* at build time. Configure-only shipped
 stale bundles, and a stale editor looks exactly like a broken one.
