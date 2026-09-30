@@ -41,7 +41,12 @@ unsafe impl GlobalAlloc for Counting {
         }
         System.alloc(layout)
     }
+    /* Counted too: a free takes the same allocator lock a malloc does, and a
+     * value dropped on the audio thread is the usual way one gets there. */
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if ARMED.load(Ordering::Relaxed) {
+            ALLOCS.fetch_add(1, Ordering::Relaxed);
+        }
         System.dealloc(ptr, layout)
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
@@ -82,7 +87,7 @@ fn pushing_pumping_and_draining_allocate_nothing() {
     ARMED.store(false, Ordering::Relaxed);
 
     let n = ALLOCS.load(Ordering::Relaxed);
-    assert_eq!(n, 0, "the receiver allocated {n} times while running");
+    assert_eq!(n, 0, "the receiver allocated or freed {n} times while running");
 
     /* And it has to have done the work, or zero allocations means nothing. */
     assert!(cols > 0, "no columns were produced, so nothing was measured");
