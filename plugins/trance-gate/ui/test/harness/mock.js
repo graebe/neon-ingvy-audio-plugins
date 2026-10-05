@@ -200,7 +200,49 @@ setInterval(() => { roll += 3; globalThis.SAMFD?.(66, 0, binary(scope(roll))); }
 window.__mockEarlyPush = 0;
 pushAll();
 
-const MSG_READY = 120, MSG_REQUEST_PATCH = 99, P_TIME_MODE = 4;
+const MSG_READY = 120, MSG_REQUEST_PATCH = 99, P_SLOT = 0, P_TIME_MODE = 4;
+
+/*
+ * EVERY PARAMETER BUT SLOT BELONGS TO A SLOT, as in the plugin. Slot 1 holds
+ * the session above; the other seven are fresh, at the defaults. A write lands
+ * in the current slot, and a Slot write recalls the new slot's values the way
+ * the plugin's switch does: a value and a display string for every parameter
+ * (SetParamFromPlugin), and the Slot's own display -- never its value, which
+ * the editor wrote.
+ */
+const RATES = ['1/1T', '1/2', '1/2T', '1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T',
+               '1/32', '1/32T', '1/64', '1/128'];
+const slots = Array.from({ length: 8 }, (_, s) => (s === 0 ? VALUES : DEFAULTS).slice());
+let slot = 0;
+/* Each parameter's text from its normalised value, as Params.cpp formats it. */
+const displayOf = (i, v, all) => {
+  const pct = (x) => `${(x * 100).toFixed(2)} %`;
+  switch (i) {
+    case 0: return String(Math.round(v * 7) + 1);
+    case 1: return String(Math.round(v * 127) + 1);
+    case 2: return RATES[Math.round(v * 12)];
+    case 3: return v >= 0.5 ? 'On' : 'Off';
+    case 4: return v >= 0.5 ? '%' : 'ms';
+    case 5: return ['Linear', 'Exponential', 'S-Curve'][Math.round(v * 2)];
+    case 8: case 9: case 11: {
+      const stage = v * 200;
+      return all[4] >= 0.5 ? `${stage.toFixed(2)} %` : `${(stage / 100 * all[7] * 125).toFixed(1)} ms`;
+    }
+    case 13: return v >= 0.5 ? 'Soft' : 'Hard';
+    case 14: return v >= 0.5 ? 'Out' : 'In';
+    default: return pct(v);
+  }
+};
+const say = (i, d) => globalThis.SAMFD?.(i, d.length, b64(d));
+const recall = (to) => {
+  slot = to;
+  say(P_SLOT, displayOf(P_SLOT, to / 7, slots[to]));
+  slots[to].forEach((v, i) => {
+    if (i === P_SLOT) return;
+    globalThis.SPVFD?.(i, v);
+    say(i, displayOf(i, v, slots[to]));
+  });
+};
 
 /* Everything the editor sends, for the interaction tests to assert on. */
 window.__sent = [];
@@ -214,6 +256,12 @@ window.IPlugSendMsg = (m) => {
     pushAll();
     return;
   }
+  if (m?.msg === 'SPVFUI' && m.paramIdx === P_SLOT) {
+    const to = Math.round(m.value * 7);
+    if (to !== slot) recall(to);
+    return;
+  }
+  if (m?.msg === 'SPVFUI' && m.paramIdx > P_SLOT) slots[slot][m.paramIdx] = m.value;
   if (m?.msg === 'SAMFUI' && m.msgTag === MSG_REQUEST_PATCH)
     globalThis.SAMFD?.(67, 0, b64('tg1:slot=0:len=16:steps=5555'));
   /* Env Time switched: the stage readouts follow it, as OnEditorIdle re-sends

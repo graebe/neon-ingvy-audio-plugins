@@ -15,7 +15,7 @@ import {
 const W = 824, H = 752;
 /* lib/msg.js */
 const MSG = { patch: 67, setStep: 96, setDepth: 97, requestPatch: 99, setOrder: 103, randomize: 104 };
-const P = { length: 1, timeMode: 4, amount: 6, width: 7, attack: 8 };
+const P = { slot: 0, length: 1, rate: 2, timeMode: 4, amount: 6, width: 7, attack: 8 };
 
 test.use({ viewport: { width: W, height: H } });
 
@@ -195,6 +195,39 @@ test('the stage readouts follow Env Time between ms and %', async ({ page }) => 
 
   await page.getByRole('combobox', { name: 'Time' }).selectOption({ value: '0' });
   await expect(attack.locator('.unit')).toHaveText('ms');
+});
+
+test('switching the slot shows every control at that slot\'s values', async ({ page }) => {
+  await open(page, 'trance-gate');
+  const amount = page.getByRole('slider', { name: 'Amount' });
+  const width = page.getByRole('slider', { name: 'Width' });
+  const attack = page.getByRole('button', { name: 'Attack value' });
+  const time = page.getByRole('combobox', { name: 'Time' });
+  await expect(amount).toHaveAttribute('aria-valuenow', '0.9');
+  await time.selectOption({ value: '1' });           /* slot 1 reads in % */
+  await expect(attack.locator('.unit')).toHaveText('%');
+  await clearSent(page);
+
+  /* Slot 2 has never been touched: every value is the plugin's default. */
+  await page.getByRole('combobox', { name: 'Slot' }).selectOption({ value: '1' });
+  await expect(amount).toHaveAttribute('aria-valuenow', '1');
+  await expect(amount).toHaveAttribute('aria-valuetext', '100.00 %');
+  await expect(width).toHaveAttribute('aria-valuenow', '1');
+  await expect(time).toHaveValue('0');
+  await expect(attack.locator('.num')).toHaveText('2.0');
+  await expect(attack.locator('.unit')).toHaveText('ms');
+
+  /* And back: slot 1 as it was left, Env Time included. */
+  await page.getByRole('combobox', { name: 'Slot' }).selectOption({ value: '0' });
+  await expect(amount).toHaveAttribute('aria-valuenow', '0.9');
+  await expect(width).toHaveAttribute('aria-valuenow', '0.75');
+  await expect(time).toHaveValue('1');
+  await expect(attack.locator('.unit')).toHaveText('%');
+
+  /* The recall is the plugin's: the editor wrote the Slot and nothing else,
+   * so no echo went back as an edit. */
+  const edited = (await sent(page)).filter((m) => m.msg === 'SPVFUI').map((m) => m.paramIdx);
+  expect(new Set(edited)).toEqual(new Set([P.slot]));
 });
 
 test('the band switches between the pattern and the live signal', async ({ page }) => {
