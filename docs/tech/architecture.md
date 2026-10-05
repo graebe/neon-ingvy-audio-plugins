@@ -138,6 +138,18 @@ the fifteen host parameters are a window onto the current slot:
   them, so a project saved before any audio has run still has the parameters the
   host shows, in the slot they belong to.
 
+**Slot files** (`.nitgslot`, one slot; `.nitgbank`, all eight) are the engine's
+text, written and strictly read by `tg-core`'s `slotfile.rs` -- the state blob's
+own per-slot fields under a format id and a version. The editor asks with a
+message (107 export, 108 import); the plugin shows the system's save or open
+panel as a sheet on the editor's window (`ni/FileDialog.mm`, which remembers the
+last folder per product), moves the bytes (`Patch.cpp`), and answers with the
+outcome in words (68), which the hint bar shows. A WKWebView in a plugin has no
+download manager, which is why the panels are the plugin's and not the page's.
+An import is checked on the main thread and queued whole (`tg_shell_import`): a
+refused file changes nothing, and an accepted one is followed by the host
+exactly like a paste.
+
 On the Move the module has no host parameters to mirror: the knob grid reads
 `get_param`, and the module's editor re-reads the grid (`revalue()`) when the
 slot -- carried as the `ui` readout's last field -- changes.

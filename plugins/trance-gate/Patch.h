@@ -82,5 +82,27 @@ void Values(const HostValue& value, double (&out)[TG_P_COUNT]);
 using SetHost = std::function<void(int, double)>;
 bool Follow(tg_shell_t* gate, const HostValue& value, const SetHost& set);
 
+/*
+ * SLOT FILES, between the engine and the disk. The text is the engine's; these
+ * move it, and say what happened in words for the editor's hint bar.
+ */
+enum class FileKind
+{
+  Slot, /* the current slot, .nitgslot */
+  Bank, /* all eight, .nitgbank        */
+};
+const char* Extension(FileKind kind);
+/* What the save panel proposes: "NI Trance Gate Slot 3.nitgslot". */
+std::string FileName(FileKind kind, int slot);
+
+/* Writes the export to `path`. `slot` is the current slot, 1-based, for the
+ * words. True when written; `status` says what happened either way. */
+bool ExportFile(tg_shell_t* gate, const HostValue& value, FileKind kind, int slot,
+                const std::string& path, std::string& status);
+/* Reads `path` and imports it (tg_shell_import): a slot file into the current
+ * slot, a bank into all eight. True when queued; a file refused changes
+ * nothing, and `status` says why. */
+bool ImportFile(tg_shell_t* gate, int slot, const std::string& path, std::string& status);
+
 } // namespace patch
 } // namespace tg

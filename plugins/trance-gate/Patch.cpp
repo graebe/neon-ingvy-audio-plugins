@@ -7,6 +7,8 @@
 #include "ni/Wire.h"
 #include "shell_state.h"
 
+#include <fstream>
+#include <iterator>
 #include <vector>
 
 namespace tg {
@@ -112,6 +114,83 @@ void Values(const HostValue& value, double (&out)[TG_P_COUNT])
 {
   for (int i = 0; i < TG_P_COUNT; i++)
     out[i] = params::ToEngine(i, value(i));
+}
+
+const char* Extension(FileKind kind)
+{
+  return kind == FileKind::Slot ? "nitgslot" : "nitgbank";
+}
+
+std::string FileName(FileKind kind, int slot)
+{
+  std::string name = kind == FileKind::Slot ? "NI Trance Gate Slot " + std::to_string(slot)
+                                            : std::string("NI Trance Gate Bank");
+  return name + "." + Extension(kind);
+}
+
+/* The file's name, for a status line: what the panel showed, not the path. */
+static std::string BaseName(const std::string& path)
+{
+  const size_t at = path.find_last_of('/');
+  return at == std::string::npos ? path : path.substr(at + 1);
+}
+
+bool ExportFile(tg_shell_t* gate, const HostValue& value, FileKind kind, int slot,
+                const std::string& path, std::string& status)
+{
+  std::vector<char> text(TG_SLOTFILE_MAX, '\0');
+  double values[TG_P_COUNT];
+  Values(value, values);
+  const int n = gate ? tg_shell_export(gate, values, TG_P_COUNT, kind == FileKind::Bank,
+                                       text.data(), int(text.size()))
+                     : -1;
+  if (n <= 0)
+  {
+    status = "Failed to export: the plugin is not ready.";
+    return false;
+  }
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out || !out.write(text.data(), n) || !out.flush())
+  {
+    status = "Failed to write " + BaseName(path) + ".";
+    return false;
+  }
+  status = (kind == FileKind::Slot ? "Exported slot " + std::to_string(slot)
+                                   : std::string("Exported all 8 slots")) +
+           " to " + BaseName(path) + ".";
+  return true;
+}
+
+bool ImportFile(tg_shell_t* gate, int slot, const std::string& path, std::string& status)
+{
+  const std::string name = BaseName(path);
+  std::ifstream in(path, std::ios::binary);
+  if (!in)
+  {
+    status = "Failed to open " + name + ".";
+    return false;
+  }
+  /* One byte past the largest file the engine reads, so an oversized one is
+   * refused by the engine with its own words rather than read whole. */
+  std::string text;
+  text.resize(TG_SLOTFILE_MAX + 1);
+  in.read(text.data(), std::streamsize(text.size()));
+  text.resize(size_t(in.gcount()));
+  if (text.find('\0') != std::string::npos)
+  {
+    status = "Failed to import " + name + ": this is not a Trance Gate slot or bank file.";
+    return false;
+  }
+  char err[256] = {};
+  const int kind = gate ? tg_shell_import(gate, text.c_str(), err, int(sizeof err)) : 0;
+  if (kind == 0)
+  {
+    status = "Failed to import " + name + ": " + (err[0] ? err : "the plugin is not ready.");
+    return false;
+  }
+  status = kind == 1 ? "Imported " + name + " into slot " + std::to_string(slot) + "."
+                     : "Imported all 8 slots from " + name + ".";
+  return true;
 }
 
 bool Follow(tg_shell_t* gate, const HostValue& value, const SetHost& set)

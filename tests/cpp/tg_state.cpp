@@ -20,7 +20,11 @@
 #include "shell_state.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <random>
 
 #include <string>
@@ -472,6 +476,120 @@ TEST_CASE("a paste moves the host to the pasted slot's values")
   CHECK(b.follow());
   for (int i = 0; i < kNumParams; i++)
     CHECK_MESSAGE(tg::params::SameInEngine(i, b.value(i), tg::params::ToEngine(i, a.value(i))), i);
+}
+
+/* ------------------------------------------------------------------ slot files */
+
+namespace {
+
+/* A file in the build's temporary directory, removed afterwards. */
+struct TempFile
+{
+  std::string path;
+  explicit TempFile(const char* name)
+  : path(std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") + "/tg_state_" + name)
+  {
+    std::remove(path.c_str());
+  }
+  ~TempFile() { std::remove(path.c_str()); }
+  std::string text() const
+  {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), {});
+  }
+  void write(const std::string& t) const { std::ofstream(path, std::ios::binary) << t; }
+};
+
+} // namespace
+
+TEST_CASE("a slot file's name says what it holds")
+{
+  CHECK(FileName(FileKind::Slot, 3) == "NI Trance Gate Slot 3.nitgslot");
+  CHECK(FileName(FileKind::Bank, 3) == "NI Trance Gate Bank.nitgbank");
+}
+
+TEST_CASE("an exported slot imports into another instance's current slot, and its host follows")
+{
+  Instance a;
+  a.block();
+  for (auto [i, v] : sound(0)) a.automate(i, v);
+  TempFile file("slot.nitgslot");
+  std::string words;
+  REQUIRE(ExportFile(a.gate.s, [&](int i) { return a.value(i); }, FileKind::Slot, 1, file.path, words));
+  CHECK(words == "Exported slot 1 to tg_state_slot.nitgslot.");
+  CHECK(file.text().find("\"format\": \"ni-trance-gate-slot\"") != std::string::npos);
+
+  Instance b;
+  b.block();
+  b.automate(kSlot, 5.0);
+  REQUIRE(ImportFile(b.gate.s, 5, file.path, words));
+  CHECK(words == "Imported tg_state_slot.nitgslot into slot 5.");
+  b.block();
+  CHECK(b.follow());
+  for (int i = 1; i < kNumParams; i++)
+    CHECK_MESSAGE(tg::params::SameInEngine(i, b.value(i), tg::params::ToEngine(i, a.value(i))), i);
+  /* Slot 1 of b is untouched. */
+  b.automate(kSlot, 1.0);
+  CHECK(b.value(kAmount) == 100.0);
+
+  /* And it is saved with the project. */
+  IByteChunk chunk;
+  REQUIRE(b.save(chunk));
+  Instance c;
+  REQUIRE(c.load(chunk) == chunk.Size());
+  c.block();
+  c.automate(kSlot, 5.0);
+  for (int i = 1; i < kNumParams; i++)
+    CHECK_MESSAGE(tg::params::SameInEngine(i, c.value(i), tg::params::ToEngine(i, a.value(i))), i);
+}
+
+TEST_CASE("an exported bank imports all eight slots")
+{
+  Instance a;
+  a.block();
+  for (int k = 0; k < 3; k++)
+  {
+    a.automate(kSlot, 1.0 + k);
+    for (auto [i, v] : sound(k)) a.automate(i, v);
+  }
+  TempFile file("bank.nitgbank");
+  std::string words;
+  REQUIRE(ExportFile(a.gate.s, [&](int i) { return a.value(i); }, FileKind::Bank, 3, file.path, words));
+  CHECK(words == "Exported all 8 slots to tg_state_bank.nitgbank.");
+  Instance b;
+  b.block();
+  REQUIRE(ImportFile(b.gate.s, 1, file.path, words));
+  CHECK(words == "Imported all 8 slots from tg_state_bank.nitgbank.");
+  b.block();
+  b.follow();
+  TempFile again("again.nitgbank");
+  REQUIRE(ExportFile(b.gate.s, [&](int i) { return b.value(i); }, FileKind::Bank, 1, again.path, words));
+  CHECK(again.text() == file.text());
+}
+
+TEST_CASE("a file that is not a slot file is refused with a reason and changes nothing")
+{
+  Instance b;
+  b.block();
+  const std::string before = read(b.gate.s, "state");
+  std::string words;
+  TempFile file("bad.nitgslot");
+  file.write("{\"format\": \"ni-trance-gate-slot\", \"version\": 7}");
+  CHECK_FALSE(ImportFile(b.gate.s, 1, file.path, words));
+  CHECK(words.find("Failed to import tg_state_bad.nitgslot: The file is version 7") == 0);
+  file.write(std::string("{\0}", 3));
+  CHECK_FALSE(ImportFile(b.gate.s, 1, file.path, words));
+  TempFile missing("missing.nitgslot");
+  CHECK_FALSE(ImportFile(b.gate.s, 1, missing.path, words));
+  CHECK(words == "Failed to open tg_state_missing.nitgslot.");
+  b.block();
+  CHECK_FALSE(b.follow());
+  CHECK(read(b.gate.s, "state") == before);
+  CHECK_FALSE(ImportFile(nullptr, 1, file.path, words));
+  CHECK_FALSE(ExportFile(nullptr, [](int) { return 0.0; }, FileKind::Slot, 1, file.path, words));
+  CHECK_FALSE(ExportFile(b.gate.s, [&](int i) { return b.value(i); }, FileKind::Slot, 1,
+                         "/nonexistent-dir/x.nitgslot", words));
+  CHECK(words == "Failed to write x.nitgslot.");
 }
 
 TEST_CASE("an empty chunk is refused")

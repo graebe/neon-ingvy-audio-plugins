@@ -15,6 +15,7 @@ using namespace iplug;
 
 TranceGate::TranceGate(const InstanceInfo& info)
 : ni::WebPlugin(info, MakeConfig(kNumParams, kNumPresets), {"tgate", __FILE__})
+, mFiles(GetBundleID())
 {
   /* Params.cpp, where a test can reach them. */
   tg::params::Declare([this](int i) { return GetParam(i); });
@@ -240,6 +241,8 @@ bool TranceGate::OnEditorMessage(int tag, const std::string& arg)
     case kMsgSetOrder: tg::patch::Post(mShell, Edit::Order, arg); return true;
     case kMsgRandomize: tg::patch::Post(mShell, Edit::Randomize, arg); return true;
     case kMsgPatch: tg::patch::Post(mShell, Edit::Paste, arg); return true;
+    case kMsgExportFile: ExportFile(arg == "bank"); return true;
+    case kMsgImportFile: ImportFile(); return true;
     case kMsgRequestPatch:
     {
       char blob[TG_STATE_MAX];
@@ -250,4 +253,49 @@ bool TranceGate::OnEditorMessage(int tag, const std::string& arg)
     default:
       return false;
   }
+}
+
+/*
+ * SLOT FILES. The panel is the system's, shown as a sheet on the editor; the
+ * text is the engine's (tg_shell_export / tg_shell_import); Patch.cpp moves it
+ * between the two and words the outcome, which the hint bar shows. An import
+ * lands at the top of the next block, and the host's parameters follow it as
+ * they follow a slot switch (OnHostIdle).
+ */
+void TranceGate::ExportFile(bool all)
+{
+  using tg::patch::FileKind;
+  const FileKind kind = all ? FileKind::Bank : FileKind::Slot;
+  const int slot = GetParam(kSlot)->Int();
+  const bool shown = mFiles.Save(
+    EditorView(), tg::patch::FileName(kind, slot), tg::patch::Extension(kind),
+    [this, kind, slot](const std::string& path) {
+      if (path.empty()) return; /* cancelled: nothing to say */
+      std::string words;
+      const bool ok = tg::patch::ExportFile(
+        mShell, [this](int i) { return GetParam(i)->Value(); }, kind, slot, path, words);
+      SendFileStatus(ok, words);
+    });
+  if (!shown)
+    SendFileStatus(false, "Failed to show the save panel.");
+}
+
+void TranceGate::ImportFile()
+{
+  using tg::patch::FileKind;
+  const bool shown = mFiles.Open(
+    EditorView(), {tg::patch::Extension(FileKind::Slot), tg::patch::Extension(FileKind::Bank)},
+    [this](const std::string& path) {
+      if (path.empty()) return;
+      std::string words;
+      const bool ok = tg::patch::ImportFile(mShell, GetParam(kSlot)->Int(), path, words);
+      SendFileStatus(ok, words);
+    });
+  if (!shown)
+    SendFileStatus(false, "Failed to show the open panel.");
+}
+
+void TranceGate::SendFileStatus(bool ok, const std::string& words)
+{
+  SendText(kMsgFileStatus, (ok ? "ok:" : "error:") + words);
 }
