@@ -234,6 +234,40 @@ const displayOf = (i, v, all) => {
   }
 };
 const say = (i, d) => globalThis.SAMFD?.(i, d.length, b64(d));
+
+/*
+ * SLOT FILES. The plugin shows the system's panels; the mock "picks" a fixture
+ * file instead -- fixtures/slot.nitgslot, or the bank when the test has set
+ * window.__importFixture = 'bank' -- and applies it as the engine would: a slot
+ * file into the current slot, a bank into all eight, after which the host's
+ * values follow the current slot (recall). An export answers with the status
+ * the plugin sends once the file is written.
+ */
+const MSG_FILE_STATUS = 68, MSG_EXPORT = 107, MSG_IMPORT = 108;
+const soundToValues = (sound, pattern, into) => {
+  const f = sound.split(':');
+  const length = parseInt(pattern.split(':')[2], 10);
+  const v = into.slice();
+  v[1] = (length - 1) / 127;
+  v[2] = RATES.indexOf(f[0]) / 12;
+  [v[8], v[9], v[10], v[11], v[7], v[6], v[12]] =
+    [+f[1] / 200, +f[2] / 200, +f[3], +f[4] / 200, +f[5], +f[6], +f[7]];
+  [v[13], v[14], v[3], v[4], v[5]] = [+f[8], +f[9], +f[10], +f[11], +f[12] / 2];
+  return v;
+};
+const status = (words) => say(MSG_FILE_STATUS, words);
+const importFixture = async () => {
+  const name = window.__importFixture === 'bank' ? 'bank.nitgbank' : 'slot.nitgslot';
+  const file = JSON.parse(await (await fetch(`fixtures/${name}`)).text());
+  if (file.format === 'ni-trance-gate-bank') {
+    for (let s = 0; s < 8; s++) slots[s] = soundToValues(file[`sound${s + 1}`], file[`pattern${s + 1}`], slots[s]);
+    status(`ok:Imported all 8 slots from ${name}.`);
+  } else {
+    slots[slot] = soundToValues(file.sound, file.pattern, slots[slot]);
+    status(`ok:Imported ${name} into slot ${slot + 1}.`);
+  }
+  recall(slot);
+};
 const recall = (to) => {
   slot = to;
   say(P_SLOT, displayOf(P_SLOT, to / 7, slots[to]));
@@ -254,6 +288,16 @@ window.IPlugSendMsg = (m) => {
   if (m?.msg === 'SAMFUI' && m.msgTag === MSG_READY) {
     window.__mockEarlyPush++;
     pushAll();
+    return;
+  }
+  if (m?.msg === 'SAMFUI' && m.msgTag === MSG_EXPORT) {
+    status(atob(m.data ?? '') === 'bank'
+      ? 'ok:Exported all 8 slots to NI Trance Gate Bank.nitgbank.'
+      : `ok:Exported slot ${slot + 1} to NI Trance Gate Slot ${slot + 1}.nitgslot.`);
+    return;
+  }
+  if (m?.msg === 'SAMFUI' && m.msgTag === MSG_IMPORT) {
+    importFixture();
     return;
   }
   if (m?.msg === 'SPVFUI' && m.paramIdx === P_SLOT) {

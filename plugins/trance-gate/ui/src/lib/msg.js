@@ -12,6 +12,9 @@ import { SHELL_MSG } from '@ultraviolet/ui/shell';
 export const MSG = {
   ...SHELL_MSG,
   uiState: 64, params: 65, scope: 66, patch: 67,
+  /* "ok:<words>" | "error:<words>" -- how a slot file's export or import
+   * went, for the hint bar. */
+  fileStatus: 68,
   setStep: 96, setDepth: 97, setCursor: 98, requestPatch: 99,
   /* "<index>:<rank>" -- a step's place in the fade's arrival order. Per-step
    * state, so a message and not a parameter, exactly like setDepth. */
@@ -29,6 +32,12 @@ export const MSG = {
   /* "<steps>:<perStep>:" + the gated curve + the envelope as dialled, a raw
    * byte a sample each -- the envelope plot, rendered by the engine. */
   envelope: 106,
+  /* "slot" | "bank": save the current slot, or all eight, to a file. The
+   * plugin shows the save panel; the outcome comes back as fileStatus. */
+  exportFile: 107,
+  /* Open a slot or bank file and import it: a slot file replaces the current
+   * slot, a bank all eight. The plugin shows the panel. */
+  importFile: 108,
 };
 
 /* EParams in Params.h, which is the engine's own Param order -- so the host

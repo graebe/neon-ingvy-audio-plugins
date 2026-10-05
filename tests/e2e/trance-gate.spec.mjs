@@ -14,7 +14,7 @@ import {
 
 const W = 824, H = 752;
 /* lib/msg.js */
-const MSG = { patch: 67, setStep: 96, setDepth: 97, requestPatch: 99, setOrder: 103, randomize: 104 };
+const MSG = { exportFile: 107, importFile: 108, patch: 67, setStep: 96, setDepth: 97, requestPatch: 99, setOrder: 103, randomize: 104 };
 const P = { slot: 0, length: 1, rate: 2, timeMode: 4, amount: 6, width: 7, attack: 8 };
 
 test.use({ viewport: { width: W, height: H } });
@@ -228,6 +228,53 @@ test('switching the slot shows every control at that slot\'s values', async ({ p
    * so no echo went back as an edit. */
   const edited = (await sent(page)).filter((m) => m.msg === 'SPVFUI').map((m) => m.paramIdx);
   expect(new Set(edited)).toEqual(new Set([P.slot]));
+});
+
+/* A slot file's outcome: the first clause of the hint bar, verb then the rest. */
+const expectStatus = async (page, verb, rest) => {
+  await expect(page.locator('.hint-bar .hint-key').first()).toHaveText(verb);
+  await expect(page.locator('.hint-bar .hint-val').first()).toHaveText(rest);
+};
+
+test('EXPORT and EXPORT ALL ask the plugin for a file, and the hint says how it went', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await clearSent(page);
+  await page.getByRole('button', { name: 'EXPORT', exact: true }).click();
+  await expectStatus(page, 'Exported', 'slot 1 to NI Trance Gate Slot 1.nitgslot.');
+  /* From the keyboard too: a button is focusable and Enter presses it. */
+  await page.getByRole('button', { name: 'EXPORT ALL', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expectStatus(page, 'Exported', 'all 8 slots to NI Trance Gate Bank.nitgbank.');
+  expect(await texts(page, MSG.exportFile)).toEqual(['slot', 'bank']);
+});
+
+test('IMPORT of a slot file replaces the current slot and the controls follow', async ({ page }) => {
+  await open(page, 'trance-gate');
+  const amount = page.getByRole('slider', { name: 'Amount' });
+  await page.getByRole('combobox', { name: 'Slot' }).selectOption({ value: '2' });
+  await expect(amount).toHaveAttribute('aria-valuenow', '1');
+  await page.getByRole('button', { name: 'IMPORT', exact: true }).click();
+  expect(await texts(page, MSG.importFile)).toEqual(['']);
+  /* fixtures/slot.nitgslot: Amount 70 %, Rate 1/8, Env Time %, S-Curve. */
+  await expect(amount).toHaveAttribute('aria-valuenow', '0.7');
+  await expect(page.getByRole('combobox', { name: 'Time' })).toHaveValue('1');
+  await expect(page.getByRole('combobox', { name: 'Curve' })).toHaveValue('2');
+  await expectStatus(page, 'Imported', 'slot.nitgslot into slot 3.');
+  /* Slot 1 is as it was. */
+  await page.getByRole('combobox', { name: 'Slot' }).selectOption({ value: '0' });
+  await expect(amount).toHaveAttribute('aria-valuenow', '0.9');
+});
+
+test('IMPORT of a bank replaces all eight slots', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await page.evaluate(() => { window.__importFixture = 'bank'; });
+  const amount = page.getByRole('slider', { name: 'Amount' });
+  await page.getByRole('button', { name: 'IMPORT', exact: true }).click();
+  await expectStatus(page, 'Imported', 'all 8 slots from bank.nitgbank.');
+  await expect(amount).toHaveAttribute('aria-valuenow', '1');   /* the bank's slot 1 */
+  await page.getByRole('combobox', { name: 'Slot' }).selectOption({ value: '1' });
+  await expect(amount).toHaveAttribute('aria-valuenow', '0.4');
+  await expect(page.getByRole('slider', { name: 'Width' })).toHaveAttribute('aria-valuenow', '0.5');
 });
 
 test('the band switches between the pattern and the live signal', async ({ page }) => {
