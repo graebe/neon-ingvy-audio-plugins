@@ -22,7 +22,10 @@ const OUT = process.argv[3];
 
 /* The module imports the device's absolute paths; point them at real sources. */
 mkdirSync(OUT, { recursive: true });
-const src = readFileSync('src/ui_chain.js', 'utf8')
+/* Run from engines/trance-gate (tests/run.sh); the module's sources live in
+ * modules/trance-gate. */
+const UI_SRC = resolve('../../modules/trance-gate/ui_chain.js');
+const src = readFileSync(UI_SRC, 'utf8')
     .replaceAll('/data/UserData/schwung/shared', SHARED);
 writeFileSync(resolve(OUT, 'ui_chain.mjs'), src);
 
@@ -31,6 +34,8 @@ let uiLength = 16;              /* what the DSP would report for `length` */
 let uiPhase = 3.250;            /* where the playhead sits */
 let uiMoving = 1;               /* the `advancing` field, not "transport on" */
 let uiWithhold = 0;             /* reads of `ui` still to answer with null */
+let uiSlot = 0;                 /* the slot the `ui` readout reports, last field */
+let reads = 0;                  /* every host_module_get_param call */
 const litPads = Object.create(null);
 const params = Object.create(null);
 
@@ -58,6 +63,7 @@ globalThis.move_midi_internal_send = (pkt) => {
 };
 globalThis.host_module_set_param = (k, v) => { params[k] = String(v); return true; };
 globalThis.host_module_get_param = (k) => {
+    reads++;
     if (k in params) return params[k];
     /* Enough of the real contract to let the controller plan pages. */
     if (k === 'chain_params') { chainParamReads++; return readFileSync(process.env.TG_PARAMS, 'utf8'); }
@@ -67,7 +73,8 @@ globalThis.host_module_get_param = (k) => {
          * after the first frame. This harness used to answer everything
          * instantly, which is precisely why it could not see the deadlock. */
         if (uiWithhold > 0) { uiWithhold--; return null; }
-        return `FFFFFFFF:0:${uiLength}:${uiPhase.toFixed(3)}:125.00:${uiMoving}:2:` + 'FF'.repeat(uiLength);
+        return `FFFFFFFF:0:${uiLength}:${uiPhase.toFixed(3)}:125.00:${uiMoving}:2:` + 'FF'.repeat(uiLength)
+            + `::${uiSlot}`;
     }
     if (k === 'state')   return '{"sv":3}';
     if (k === 'name')    return 'TRANCE GATE';
@@ -726,7 +733,7 @@ step('nothing drawn outside the frame', () => {
         await import(resolve(SHARED, 'param_pages/page_plan.mjs'));
     const chainParams = JSON.parse(readFileSync(process.env.TG_PARAMS, 'utf8'));
     const canvas = chainParams.find((p) => p.type === 'canvas' && p.as_page);
-    const src = readFileSync('src/ui_chain.js', 'utf8');
+    const src = readFileSync(UI_SRC, 'utf8');
 
     /* drawRing's body, so a `vals.` in some other function cannot mask a
      * missing declaration here or invent one. */
@@ -939,6 +946,36 @@ step('nothing drawn outside the frame', () => {
     });
 }
 
+/*
+ * A SLOT SWITCH RE-READS THE GRID. Every parameter but Slot is per slot, so the
+ * grid's cached values all describe the slot being left -- and a knob turn
+ * steps from the cache. The switch is seen in the `ui` readout's last field,
+ * whoever made it, and the page is re-warmed at once: many reads in one tick,
+ * where the rotation alone makes one.
+ */
+step('a slot switch re-reads the whole knob page', () => {
+    const busiest = (ticks) => {
+        let most = 0;
+        for (let i = 0; i < ticks; i++) {
+            const before = reads;
+            ui.tick();
+            most = Math.max(most, reads - before);
+        }
+        return most;
+    };
+    /* A module that answers every key, so a warm is not cut short by the
+     * first read that fails -- the device answers them all. */
+    for (const p of JSON.parse(readFileSync(process.env.TG_PARAMS, 'utf8'))) {
+        if (p.key && !(p.key in params) && p.type !== 'canvas' && p.key !== 'ui')
+            params[p.key] = String(p.default ?? '0');
+    }
+    busiest(40);                           /* settle: the first warm is done */
+    const steady = busiest(40);
+    uiSlot = 5;
+    const switched = busiest(40);
+    uiSlot = 0;
+    if (switched < steady + 3) throw new Error(`at most ${switched} reads a tick after the switch, ${steady} before`);
+});
 rmSync(OUT, { recursive: true, force: true });
 console.log(failures ? `\nFAILED (${failures})` : '\nPASS');
 process.exit(failures ? 1 : 0);
