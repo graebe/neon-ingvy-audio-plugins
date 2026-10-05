@@ -35,21 +35,21 @@ TranceGate::~TranceGate()
  */
 bool TranceGate::SerializeState(IByteChunk& chunk) const
 {
-  return tg::patch::Save(mShell, chunk, [this](IByteChunk& c) { return PutParams(c); });
+  return tg::patch::Save(
+    mShell, chunk, [this](IByteChunk& c) { return PutParams(c); },
+    [this](int i) { return GetParam(i)->Value(); });
 }
 
 int TranceGate::UnserializeState(const IByteChunk& chunk, int startPos)
 {
-  /* The blob is posted, not applied: the audio thread picks it up at the top
-   * of its next block, before the host's parameters are pushed over it. */
-  const int pos = tg::patch::Load(
+  /* The blob and the restored parameters are posted as one edit, not
+   * applied: the audio thread picks them up at the top of its next block.
+   * Nothing here may call a main-thread API -- a host picks this thread. */
+  return tg::patch::Load(
     mShell, chunk, startPos,
     [this](const IByteChunk& c, int p) { return CheckParams(c, p); },
-    [this](const IByteChunk& c, int p) { return GetParams(c, p); });
-  /* A load is not a slot switch: the loaded Slot and Length play together. */
-  if (pos >= 0)
-    tg_shell_rebase(mShell);
-  return pos;
+    [this](const IByteChunk& c, int p) { return GetParams(c, p); },
+    [this](int i) { return GetParam(i)->Value(); });
 }
 
 void TranceGate::ResetAudio()
@@ -65,29 +65,15 @@ void TranceGate::ResetAudio()
 }
 
 /*
- * Every value, every block: the engine clamps, and fifteen stores cost less
- * than tracking which moved. Slot and Length go through the shell, which
- * decides whose Length wins when the Slot moves (tg_shell.h).
+ * Every value, every block, through the shell: it writes what the host moved
+ * into the current slot, and on the block the Slot moves it writes nothing
+ * else -- the new slot's values win and the host follows (OnHostIdle).
  */
 void TranceGate::PushParams(tg_core_t* core)
 {
-  tg_shell_push_slot(mShell, core, int(GetParam(kSlot)->Value()) - 1,
-                     GetParam(kLength)->Value() - 1.0);
-  tg_core_set_num(core, TG_P_RATE, GetParam(kRate)->Value());
-  tg_core_set_num(core, TG_P_LEGATO, GetParam(kLegato)->Value());
-  tg_core_set_num(core, TG_P_TIME_MODE, GetParam(kTimeMode)->Value());
-  tg_core_set_num(core, TG_P_CURVE, GetParam(kCurve)->Value());
-  /* Amount, Width and Sustain are 0..1 in the engine; the stages are the
-   * percentage itself. */
-  tg_core_set_num(core, TG_P_AMOUNT, GetParam(kAmount)->Value() / 100.0);
-  tg_core_set_num(core, TG_P_HOLD, GetParam(kWidth)->Value() / 100.0);
-  tg_core_set_num(core, TG_P_ATTACK, GetParam(kAttack)->Value());
-  tg_core_set_num(core, TG_P_DECAY, GetParam(kDecay)->Value());
-  tg_core_set_num(core, TG_P_SUSTAIN, GetParam(kSustain)->Value() / 100.0);
-  tg_core_set_num(core, TG_P_RELEASE, GetParam(kRelease)->Value());
-  tg_core_set_num(core, TG_P_FADE, GetParam(kFade)->Value() / 100.0);
-  tg_core_set_num(core, TG_P_FADE_SOFT, GetParam(kFadeSoft)->Value());
-  tg_core_set_num(core, TG_P_FADE_DIR, GetParam(kFadeDir)->Value());
+  double values[TG_P_COUNT];
+  tg::patch::Values([this](int i) { return GetParam(i)->Value(); }, values);
+  tg_shell_push(mShell, core, values, TG_P_COUNT);
 }
 
 void TranceGate::ProcessAudio(sample** inputs, sample** outputs, int nFrames)
@@ -129,15 +115,16 @@ void TranceGate::ProcessAudio(sample** inputs, sample** outputs, int nFrames)
   tg_shell_end(mShell, nFrames);
 }
 
-/* A slot switch moved Length in the engine; the host's parameter follows. */
+/*
+ * A slot switch (or a paste) recalled a whole sound in the engine; every host
+ * parameter follows, through the host -- automation lanes, the host's own UI
+ * and the editor all show the recalled values.
+ */
 void TranceGate::OnHostIdle()
 {
-  int length = 0;
-  if (!tg_shell_take_length(mShell, &length))
-    return;
-  const double want = double(length) + 1.0;
-  if (GetParam(kLength)->Value() != want)
-    SetParamFromPlugin(kLength, want);
+  tg::patch::Follow(
+    mShell, [this](int i) { return GetParam(i)->Value(); },
+    [this](int i, double v) { SetParamFromPlugin(i, v); });
 }
 
 double TranceGate::WidthMs() const

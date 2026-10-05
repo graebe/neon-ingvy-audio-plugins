@@ -45,13 +45,15 @@ use tg_core::params::Param;
 use tg_core::rates::{RATES, RATE_DEFAULT};
 use tg_core::Instance;
 
-/// Opaque to C, exactly as `tg_core_t` was: the engine, and the scope sweep
-/// `tg_core_process_f32_split_tap` keeps beside it.
-pub struct TgCore(Instance, CycleSweep);
+/// Opaque to C, exactly as `tg_core_t` was: the engine, the scope sweep
+/// `tg_core_process_f32_split_tap` keeps beside it, and how many times a
+/// shell command has replaced the current slot's sound wholesale (a paste) --
+/// the plugin shell's cue that the host's parameters must follow the engine.
+pub struct TgCore(Instance, CycleSweep, u32);
 
 impl TgCore {
     pub fn new(sample_rate: f64) -> Self {
-        TgCore(Instance::new(sample_rate), CycleSweep::default())
+        TgCore(Instance::new(sample_rate), CycleSweep::default(), 0)
     }
 }
 

@@ -71,7 +71,8 @@ private:
   /* The gate's open time in ms, as the engine last published it; 0 unknown. */
   double WidthMs() const;
 
-  /* The fifteen parameters into the engine the shell lent this block. */
+  /* The fifteen parameters into the engine the shell lent this block; the
+   * shell writes what the host moved into the current slot. */
   void PushParams(tg_core_t* core);
   /* The pattern plot's curve, when the patch has moved (or `force`). */
   void SendGate(bool force);

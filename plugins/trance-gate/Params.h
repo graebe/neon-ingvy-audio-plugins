@@ -51,6 +51,22 @@ namespace params {
 void Declare(const std::function<iplug::IParam*(int)>& param);
 
 /*
+ * ONE CONVERSION EACH WAY between a host value and the engine's numeric wire
+ * (tg_core_set_num). Slot and Length are one-based at the host and option
+ * indices in the engine -- "slot 1" is what a musician reads -- and Amount,
+ * Width, Sustain and Fade are percentages at the host and 0..1 in the engine;
+ * everything else is the same number. The host's values go in through
+ * ToEngine every block, and come back through FromEngine when a slot switch
+ * tells the host the new slot's values.
+ */
+double ToEngine(int paramIdx, double hostValue);
+double FromEngine(int paramIdx, double engineValue);
+/* Whether the host's value already says what `engineValue` says, as the
+ * engine would hold it: a float. A recall only moves a parameter that is
+ * actually different, so a host is not handed a change for a rounding. */
+bool SameInEngine(int paramIdx, double hostValue, double engineValue);
+
+/*
  * THE STAGES IN WHICHEVER UNIT Env Time ASKS FOR -- the editor's readout and
  * the text typed into it.
  *
