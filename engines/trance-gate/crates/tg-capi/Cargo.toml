@@ -1,6 +1,6 @@
 [package]
 name = "tg-capi"
-version = "2026.9.30+1"
+version = "2026.10.6+1"
 edition = "2021"
 authors = ["Torben Gräber"]
 license = "MIT"

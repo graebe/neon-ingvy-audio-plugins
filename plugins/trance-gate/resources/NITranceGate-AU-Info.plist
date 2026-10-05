@@ -20,17 +20,17 @@
 			<key>type</key>
 			<string>aufx</string>
 			<key>version</key>
-			<integer>132778481</integer>
+			<integer>132778545</integer>
 		</dict>
 	</array>
 	<key>AudioUnit Version</key>
-	<string>132778481</string>
+	<string>132778545</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
 	<string>NITranceGate</string>
 	<key>CFBundleGetInfoString</key>
-	<string>NI Trance Gate v2026.09.30.1 Copyright 2026 Torben Gräber</string>
+	<string>NI Trance Gate v2026.10.06.1 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.graebe.audiounit.NITranceGate</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -40,11 +40,11 @@
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2026.9.30</string>
+	<string>2026.10.6</string>
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>2026.9.241</string>
+	<string>2026.10.49</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>

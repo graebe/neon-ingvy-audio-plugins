@@ -1,6 +1,6 @@
 [package]
 name = "spectro-capi"
-version = "2026.9.30+1"
+version = "2026.10.6+1"
 edition = "2021"
 license = "MIT"
 description = "The C ABI the iPlug2 shell and any Schwung module link"

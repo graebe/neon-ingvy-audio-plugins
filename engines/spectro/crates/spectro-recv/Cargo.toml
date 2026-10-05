@@ -1,6 +1,6 @@
 [package]
 name = "spectro-recv"
-version = "2026.9.30+1"
+version = "2026.10.6+1"
 edition = "2021"
 license = "MIT"
 description = "Many sources into one picture: the Spectrogram's listen-in receiver."
