@@ -3,9 +3,9 @@ section: live
 title: Ableton Live Interface
 ---
 
-The editor is a WebView: Solid drawing the Ultraviolet design system, with the
-engine behind a C ABI. It is the same picture the Move draws, at a size a screen
-allows.
+The editor shows the pattern as a ring, the controls in three panels, and the
+steps as pads underneath. It is the same picture the Move draws, at a size a
+screen allows.
 
 ## The ring
 
@@ -22,9 +22,15 @@ sounding, so it is not a fill. The pads say the same thing the same way.
 
 | gesture | what it does |
 |---|---|
-| click | toggles the step, and selects it |
-| shift-click | sets a **tie** — the step holds through the next one without retriggering |
-| drag up/down | sets that step's Amount |
+| click a pad | toggles the step, and selects it |
+| shift-click a pad | sets a **tie** — the step holds through the next one without retriggering |
+| drag up/down on a pad | sets that step's Amount. Drag to the bottom and the step turns off |
+| click a wedge on the ring | toggles that step, like its pad |
+| drag around the ring | paints the same state across every wedge you cross |
+
+For example, to make step 5 half as loud as the others: press on its pad and
+drag down to the middle of the pad. To fill a
+whole bar at once, press on the ring's first wedge and sweep round.
 
 ## Controls
 
@@ -32,13 +38,15 @@ sounding, so it is not a fill. The pads say the same thing the same way.
 
 | | |
 |---|---|
-| **Rate** | the length of one step, as a musical division — 1/1 through 1/64, including triplets |
-| **Length** | how many steps the pattern has, 1–32 |
+| **Rate** | the length of one step, as a musical division — 1/1T through 1/128, including triplets |
+| **Length** | how many steps the pattern has, 1–128. The pads wrap at sixteen to a row and the window grows to fit |
 | **Amount** | dry/wet for the whole effect. 0% is a true bypass |
-| **Width** | how much of a step stays open before it releases |
+| **Width** | how much of a step stays open before it releases, 5–100 % |
 
 **Envelope** holds **Attack, Decay, Sustain** and **Release**, which shape every
-step.
+step. Attack, Decay and Release are measured against the gate — see
+[Timing](../README.md#timing) — and Sustain is a level. Amount and Sustain glide
+over about 5 ms when they move, so sweeping them never clicks.
 
 **Fade** introduces the steps one at a time, in the order they carry:
 
@@ -73,9 +81,51 @@ Below those, four controls decide how the rest is read:
 | **Curve** | Linear, Exponential or S-Curve, applied to the envelope stages |
 | **Time** | whether the stages are read in **ms** or as a **%** of the gate's width — the same envelope, two ways of asking for it |
 
-All fifteen are ordinary host parameters and automate normally. The pattern and
+These fifteen are ordinary host parameters and automate normally. The pattern and
 its arrival order are not among them — see
 [what the host can automate](../README.md#what-the-host-can-automate-and-what-it-cannot).
+
+## Working with knobs and readouts
+
+Every knob works the same way.
+
+- **Drag** up or down to turn it. Hold **Shift** as you press for fine control —
+  the same drag moves it a fifth as far.
+- **Double-click** a knob to reset it to its default. To put Amount back to
+  100 %, double-click the Amount knob. The reset is one ordinary edit, so Live's
+  undo takes it back.
+- **Click the readout** under a knob to type a value. The field opens with the
+  text selected: type, then press **Enter** to commit or **Escape** to leave the
+  value as it was. Clicking elsewhere commits too.
+
+Typing a stage time follows the **Time** setting, and a unit you type wins over
+it. With Time on `ms`, typing `40` into Attack sets 40 milliseconds; typing
+`25 %` sets a quarter of the gate even though the readout is showing
+milliseconds. With Time on `%`, `40` means 40 % and `40 ms` still means
+milliseconds.
+
+## The keyboard
+
+Everything the pointer does, the keyboard does too. **Tab** moves between
+controls; a focused control shows a ring.
+
+| on | key | what it does |
+|---|---|---|
+| a knob | ↑ / → and ↓ / ← | turns it by 1 % of its range (**Shift**: 0.2 %) |
+| | Page Up / Page Down | by 10 % |
+| | Home / End | to the minimum or the maximum |
+| | Enter | opens the readout to type a value |
+| the pads | arrow keys | move between pads (↑ and ↓ jump a row) |
+| | Space or Enter | toggles the focused step, like a click (with **Shift**: a tie) |
+| | **Alt** + ↑ / ↓ | raises or lowers that step's Amount by 10 % (**Shift** too: 1 %) |
+| the ring | ↑ / → and ↓ / ← | Length, one step longer or shorter |
+| | Page Up / Page Down | Length by four steps — a beat at 1/16 |
+| | Home / End | Length 1 or 128 |
+| the Pattern / Signal tabs | arrow keys | switch tab |
+| a menu (Slot, Curve, Time…) | | opens and chooses the way your system's menus do |
+
+For example, to tie step 9: Tab to the pads, press → until step 9 is focused,
+then **Shift + Space**. To thin it out, **Alt + ↓** twice takes it to 80 %.
 
 ## Random
 
@@ -83,6 +133,15 @@ Fills the current slot with a new pattern and a new arrival order — a Euclidea
 gate, so the hits are spread evenly and one always lands on the downbeat. Ties
 are cleared and the levels return to full. It does not disturb the playhead, so
 it is safe to press while the transport runs.
+
+## The envelope plot
+
+Under the ring, one gate on a millisecond axis: the envelope the patch
+produces, from the step opening to the release dying away. It is **the
+engine's own rendering**, not a drawing of the controls — the plugin runs the
+patch through a spare copy of the engine and plots what comes out — so the
+curve, the Curve shape and the point where the release outlives the step are
+exactly what you will hear.
 
 ## Pattern and Signal
 
@@ -103,43 +162,55 @@ difference between what the gate asked for and what the audio did. The dry is
 grey rather than a dimmer violet because the difference between the two should
 not need a legend.
 
-## Copy patch / Paste patch
+## Copy and paste
 
-These move the whole state as one string — see
+The two icons beside RANDOM are **Copy gate config** and **Paste gate config**.
+They move the whole state — every slot, the pattern, the order and the
+settings — as one string; see
 [Patch interchange](../README.md#patch-interchange). It is the same text the
 Move module writes, so a pattern travels between the hardware and the DAW in
 either direction.
 
-## Installing
+If the host does not let the plugin read the clipboard directly, pressing
+paste opens a small field instead: press **⌘V** into it, and the patch is
+applied. **Escape** closes it.
 
-The release carries an unsigned universal bundle in all three formats. macOS
-will refuse to load it until the quarantine attribute is removed:
+## Installing and updating
 
-```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NITranceGate.vst3
-```
+1. **Quit Live completely** — not just the set. Live keeps every plugin it has
+   loaded in memory until it quits, so a bundle replaced while it runs is not
+   the one you hear.
+2. Copy `NITranceGate.vst3`, `NITranceGate.component` and `NITranceGate.clap`
+   from the release into `~/Library/Audio/Plug-Ins/VST3`, `…/Components` and
+   `…/CLAP`.
+3. The bundles are unsigned, so macOS refuses them until the quarantine
+   attribute is removed:
+
+   ```sh
+   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NITranceGate.vst3
+   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/NITranceGate.component
+   ```
+
+4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
+   *Rescan Plug-Ins*. NI Trance Gate appears in the browser under **Neon Ingvy**.
 
 Signing needs an Apple Developer ID and a notarytool round trip; until those
-exist, that one command is the difference. It is a property of the distribution,
-not of the plugin.
+exist, the `xattr` command is the difference. It is a property of the
+distribution, not of the plugin.
 
-**The bundle is `NITranceGate` as of v2026.09.29.1**, where it used to be
-`TranceGate`. The plugin's identity did not change -- a host stores the
-four-character IDs, not the filename, so sessions relink after a rescan -- but an
-old bundle left beside the new one is two bundles claiming one ID, which hosts
-report in their own confusing ways. Delete the old ones:
+The licence notices travel with the plugin: every bundle carries `LICENSE` and
+`THIRD_PARTY_LICENSES.md` in `Contents/Resources/`.
+
+**Coming from a bundle named `TranceGate`** (before v2026.09.29.1)? The plugin's
+identity did not change — Live stores the plugin's IDs, not the filename, so
+sets relink after a rescan — but an old bundle left beside the new one is two
+bundles claiming one ID. Delete the old ones:
 
 ```sh
 rm -rf ~/Library/Audio/Plug-Ins/VST3/TranceGate.vst3 \
        ~/Library/Audio/Plug-Ins/CLAP/TranceGate.clap \
        ~/Library/Audio/Plug-Ins/Components/TranceGate.component
 ```
-
-## For developers
-
-The editor talks to the plugin over numbered message tags — the protocol, and
-why the pattern travels as a state blob rather than as parameters, is in
-[plugins/trance-gate/ui/README.md](../ui/README.md).
 
 ## The background, and the Motion switch
 

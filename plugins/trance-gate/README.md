@@ -26,11 +26,23 @@ keep in sync. `tests/render_plugin.c` then renders four seconds through the
 plugin's own audio path — float, split channels, a DAW-shaped transport — and
 the result is byte-for-byte identical to the module's reference render.
 
+## Your pattern is part of the project
+
+Everything you draw — which steps sound, the ties, each step's amount, the
+arrival order, all eight slots — is saved with your Live set and comes back
+when you reopen it. Draw a pattern, save, close Live, open the set again: the
+pattern is the one you left, not the one the set was first loaded with.
+
 ## Patch interchange
 
-The plugin's saved state **is** the Move patch, verbatim. `Copy patch` puts it
-on the clipboard; `Paste patch` reads one back. The same string moves a pattern
-between the hardware and the DAW in either direction.
+The plugin's saved state **is** the Move patch, verbatim. The **copy** icon
+(*Copy gate config*) puts the current pattern and settings on the clipboard as
+one line of text; the **paste** icon (*Paste gate config*) reads one back. The
+same string moves a pattern between the hardware and the DAW in either
+direction, or between two Trance Gates in one set.
+
+For example: build a gate on track 1, press copy, open the Trance Gate on
+track 2, press paste. Track 2 now plays the identical pattern, slot for slot.
 
 ## The fade
 
@@ -92,15 +104,15 @@ It does not touch the playhead, so it is safe to press mid-bar.
 
 ## What the host can automate, and what it cannot
 
-The fifteen continuous controls — Slot, Length, Rate, Amount, Width, the four
-envelope stages, Join Neighbors, Env Time, Env Curve, and the fade's knob, shape
-and direction — are ordinary host parameters. Automate them, and they behave the way a
+Fifteen controls — Slot, Length, Rate, Amount, Width, the four envelope
+stages, Join Neighbors, Env Time, Env Curve, and the fade's knob, shape and
+direction — are ordinary host parameters. Automate them, and they behave the way a
 DAW expects. **Fade is the one this matters most for**: a build-up is that knob
 drawn across eight bars.
 
 **The pattern is not among them**, and that is a decision rather than an
 omission. Which steps sound, which are tied, how loud each one is and when it
-arrives would be 32 × 8 = 256 more parameters, or 32 that get silently rewritten
+arrives would be 128 × 8 = 1,024 more parameters, or 128 that get silently rewritten
 every time the Slot changes — and a parameter that changes value without the host
 asking is worse than no parameter at all. So the pattern travels in the saved state, which
 is the same model the Move module uses and the reason a patch can cross between
@@ -110,10 +122,19 @@ them at all.
 
 The gate follows song position, so it stays bar-aligned however long it runs
 and survives a seek. Rate is one step's length: at 1/16 a 16-step pattern is one
-bar.
+bar, and a pattern can be up to 128 steps — eight bars at 1/16.
 
-Times are in milliseconds and are **not** synced. A 1/16 step is `15000 / BPM`
-ms — 125 ms at 120 BPM — so keep Attack plus Decay under that, or a step never
-reaches full.
+**The envelope stages are measured against the gate, not the clock.** Attack,
+Decay and Release are a percentage of the step's open time — one step at the
+current Rate, times Width — from 0 to 200 %. So the envelope keeps its shape when
+the tempo changes: a Decay of 50 % is half the gate at 90 BPM and at 140 BPM.
+**Env Time** only chooses how the readouts show it, as milliseconds at the
+current tempo or as that percentage; the sound is the same either way.
+
+**Changes are smooth.** Amount and Sustain glide to a new value over about
+5 ms instead of jumping, so turning or automating them mid-note does not click.
+Starting the transport picks up from the level the gate is already at, and
+stopping it lets the gate open over the same few milliseconds — neither one
+clicks any more.
 
 With the transport stopped the gate holds open and audio passes.

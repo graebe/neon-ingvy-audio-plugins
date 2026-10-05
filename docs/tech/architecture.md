@@ -93,6 +93,12 @@ tags are `64..111`; the shell's are the same in every plugin:
 | 121 `setText` | ← editor | `<paramIdx>:<typed text>` |
 | 122 `height` | ← editor | the height it needs, in viewport pixels |
 
+Each product's own tags are listed with its editor: the Trance Gate's — and why
+its pattern travels as a state blob rather than as parameters — in
+[plugins/trance-gate/ui/README.md](../../plugins/trance-gate/ui/README.md), the
+Spectrogram's column format and the mount-ordering problem the `ready` tag
+solves in [plugins/spectrogram/ui/README.md](../../plugins/spectrogram/ui/README.md).
+
 `tests/editor_tags.test.mjs` holds every tag and parameter index in C++ to the
 editors' `msg.js` tables by name. Numbers on the wire are written and read with
 `'.'` whatever the host's locale (`ni/Wire.h`).
