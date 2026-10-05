@@ -19,29 +19,40 @@ almost never what you meant.
 
 1. Pick a **Bus** — 1 to 16. It is a host parameter, so Live saves it with the
    set and you can automate it.
-2. Type a **Name**. Thirty-one bytes; a colon or a newline is dropped, because
-   the name travels in a message that is parsed by position.
-3. The meter moves when audio is passing. The word beside the title says
-   `listening` when the bus is live.
+2. Click the **Name** field and type, say, `bass`. **Enter** keeps it,
+   **Escape** abandons the edit. Up to thirty-one bytes; a colon or a control
+   character such as a newline is dropped.
+3. The meter moves when audio is passing. The status word at the top says
+   `listening` when the bus is live, and the hint bar names the bus and the
+   name.
 
 Repeat on a second track with a different bus number. That is the setup the
 overlaid spectra need.
 
-## When it says something other than "listening"
+## When the bus is not live
 
-**`slot taken`** — another NI Listen-In already holds that bus. Two senders on one
-bus is the single collision this design can have, and the second one refuses
-rather than fighting over it. Pick a free number; `abus_tap` with no arguments
-lists what is in use.
+The status word says what is wrong, and the hint bar says why:
 
-**`unavailable`** — the shared-memory segment could not be opened. In practice
-this means the host is sandboxing the plugin, which Live does not do for VST3 or
-AU. If you see it in Live, it is worth reporting.
+| status | hint bar | what to do |
+|---|---|---|
+| `slot taken` | bus *N* is taken — another Listen-In holds it | another NI Listen-In already holds that number, on another track or in another open set. Pick a free number; if you removed the other one, move Bus off the number and back to claim it |
+| `unavailable` | bus unavailable — the host may be sandboxed | the bus could not be opened at all. Live does not sandbox VST3 or AU, so in Live this is worth reporting |
+| `idle` | status starting | the plugin has not been given audio yet — press play |
+
+A slot is never shared, and never taken over silently: the second NI Listen-In
+on a number waits, idle, until you give it one of its own.
+
+## After a restart
+
+Nothing to do. Reopen the set and every NI Listen-In claims its saved bus
+number again under its saved name. A Spectrogram reading it reconnects by
+itself.
 
 ## Checking it is really routing
 
-Before any plugin exists that reads a bus, `abus_tap` is how you confirm the
-tap end works against real audio:
+NI Spectrogram is the everyday way to see a bus. Without one, the test tool
+`abus_tap` (built with the repository's tests) confirms the tap end works
+against real audio:
 
 ```
 build/tests/abus_tap          # what every bus is doing
@@ -57,6 +68,34 @@ The bus number lives in the **plugin**, not in the track. Duplicating a track
 duplicates the NI Listen-In on it, bus number and all — so the copy lands on a bus
 that is already taken and says so. Change it, which is one click and is
 preferable to a silent second sender fighting the first.
+
+## Installing and updating
+
+1. **Quit Live completely** — Live keeps every plugin it has loaded in memory
+   until it quits, so a bundle replaced while it runs is not the one you hear.
+2. Copy `NIListenIn.vst3`, `NIListenIn.component` and `NIListenIn.clap` into
+   `~/Library/Audio/Plug-Ins/VST3`, `…/Components` and `…/CLAP`.
+3. The bundles are unsigned, so clear the quarantine attribute:
+
+   ```sh
+   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NIListenIn.vst3
+   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/NIListenIn.component
+   ```
+
+4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
+   *Rescan Plug-Ins*. NI Listen-In appears in the browser under **Neon Ingvy**.
+
+**This release changes the bus format, so update NI Listen-In and NI
+Spectrogram together and quit Live fully before you do.** An old and a new
+build cannot share a slot: whichever claims a number second replaces the
+other's bus, and a Spectrogram does not list a bus written by a build other
+than its own. If Live is still running with the old plugin loaded while the
+new one is installed, the two can end up side by side, each saying it is
+listening, with nothing reaching the Spectrogram. Quitting Live fully makes
+every instance the new one.
+
+Every bundle carries `LICENSE` and `THIRD_PARTY_LICENSES.md` in
+`Contents/Resources/`.
 
 ## The background, and the Motion switch
 

@@ -35,14 +35,24 @@ receiver can draw both.
 
 ## Two controls
 
-**Bus** is a host parameter — automatable, saved with the set, and restored when
-you reopen it. **Name** is not: a name is not a number, so it travels as a
-message and the plugin serialises it into the state chunk itself. Sixteen buses,
-because a number you can hold in your head beats a picker you have to read.
+**Bus** picks one of **sixteen numbered slots**, 1 to 16. It is a host
+parameter — automatable, saved with the set, and restored when you reopen it.
+**Name** is what a reader such as NI Spectrogram lists the bus as: up to 31
+bytes, saved with the set too, though not as a parameter — a name is not a
+number. Sixteen buses, because a number you can hold in your head beats a
+picker you have to read.
 
-**Two NI Listen-Ins cannot share a bus**, and the second one says so rather than
-quietly publishing nothing. That is the one collision this design can have and
-it is reported, never swallowed.
+**A slot belongs to one NI Listen-In at a time.** The first to take a number
+holds it; a second one set to the same number says `slot taken` and publishes
+nothing, rather than both writing into one bus. That holds across tracks, sets
+and processes alike. The second one does not take over by itself when the
+first goes away: give it another number, or move its Bus off the number and
+back once the slot is free.
+
+**After a restart the buses come back by themselves.** Reopen the set and each
+NI Listen-In claims its saved number again, with its saved name, and a
+Spectrogram that was reading it finds it again within about a second. Even
+after a crash, a slot held by a Live that is no longer running is reclaimed.
 
 ## The transport is shared memory, and that is the whole design decision
 
@@ -89,14 +99,13 @@ Live loads VST3 and AU in process, which is what it was built for.
 
 ## Seeing it work without a receiver
 
-`abus_tap` is built with the tests and is the answer to "is it actually
-routing?":
+`abus_tap` is built with the tests and answers "is it actually routing?"
+without opening a Spectrogram:
 
 ```
 abus_tap        # every slot, what is on it, and what it is called
 abus_tap 3      # follow slot 3: peak, frames, frames dropped
 ```
 
-It is also the worked example of the receiving ABI, in sixty lines. Whoever
-wires the Spectrogram to a bus starts there and at
+It is also the worked example of the receiving ABI, in sixty lines, beside
 `engines/audio-bus/include/audio_bus.h`.
