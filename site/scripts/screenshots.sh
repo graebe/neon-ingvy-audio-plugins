@@ -44,5 +44,5 @@ shoot() {
   echo "  -> docs/media/$product/live.png"
 }
 
-shoot trance-gate 856 660 4000 ""
-shoot spectrogram 720 402 16000 ""
+shoot trance-gate 824 752 4000 ""
+shoot spectrogram 720 502 16000 ""
