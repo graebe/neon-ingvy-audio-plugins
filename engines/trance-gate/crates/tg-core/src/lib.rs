@@ -22,6 +22,7 @@ pub use ni_dsp::fmt;
 pub mod mask;
 pub mod params;
 pub mod rates;
+pub mod slotfile;
 pub mod state;
 
 mod clock;

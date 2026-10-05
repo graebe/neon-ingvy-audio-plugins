@@ -61,7 +61,7 @@ use crate::envelope::Curve;
 use crate::sound::Sound;
 use crate::fmt::{self, Buf};
 use crate::params::set_pattern_hex;
-use crate::{rates, Instance, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
+use crate::{rates, Instance, Pattern, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
 use core::fmt::Write;
 
 pub const STATE_VERSION: i32 = 7;
@@ -262,72 +262,9 @@ pub fn load(inst: &mut Instance, val: &str) {
     /* Patterns travel as one field per slot so a slot cannot be restored
      * half-applied. */
     for s in 0..SLOTS {
-        let Some(field) = get_string(val, slot_key(b'p', s).as_str()) else { continue };
-
-        /* "<steps>:<ties>:<length>[:<depths>]". The two masks are up to 32
-         * hex digits now, so they are read as TEXT and handed to the
-         * LSB-aligned parser -- a %x would cap them at whatever an unsigned
-         * holds and silently drop steps 32 and up. A v3 blob's 8-digit field
-         * parses identically. */
-        let mut parts = field.splitn(5, ':');
-        let (Some(stx), Some(tix), Some(lens)) = (parts.next(), parts.next(), parts.next())
-        else {
-            continue;
-        };
-        set_pattern_hex(&mut inst.pat[s].steps, stx);
-        set_pattern_hex(&mut inst.pat[s].ties, tix);
-        inst.pat[s].length = (fmt::atoi(lens)).clamp(1, MAX_STEPS as i64) as usize;
-
-        /*
-         * A V1 TRIPLE HAS NO DEPTHS, AND ABSENT MEANS FULL.
-         *
-         * Every patch saved before that version ends after the length.
-         * Leaving the array at whatever it held -- or zeroing it -- would
-         * load those patches SILENT, with the pattern and the ring both
-         * looking completely correct. This is the whole reason the state
-         * version exists.
-         */
-        inst.pat[s].depth = [DEPTH_FULL; MAX_STEPS];
-        if let Some(d) = parts.next() {
-            let b = d.as_bytes();
-            for i in 0..MAX_STEPS {
-                let (Some(&h), Some(&l)) = (b.get(i * 2), b.get(i * 2 + 1)) else { break };
-                let (Some(h), Some(l)) = (hexval(h), hexval(l)) else { break };
-                inst.pat[s].depth[i] = h * 16 + l;
-            }
+        if let Some(field) = get_string(val, slot_key(b'p', s).as_str()) {
+            read_pattern(&mut inst.pat[s], field);
         }
-
-        /*
-         * AN ABSENT OR ZERO ORDER MEANS POSITION ORDER, AND THAT COVERS TWO
-         * DIFFERENT OLD BLOBS AT ONCE.
-         *
-         * A pre-v5 quadruple has no order field at all. A v5 one has the field
-         * but wrote `00` for every OFF step, because ranks only covered the on
-         * steps then -- so the holes arrive here with nothing to say. Both fall
-         * through to the position seed below, are normalised per kind, and come
-         * out sweeping left to right: the one behaviour nobody has to be told
-         * about. Zeroing instead would make every step rank 1 and the whole
-         * pattern arrive at once, which looks like the fade being broken rather
-         * than absent.
-         */
-        for i in 0..MAX_STEPS {
-            inst.pat[s].order[i] = (i + 1) as u8;
-        }
-        if let Some(o) = parts.next() {
-            let b = o.as_bytes();
-            for i in 0..MAX_STEPS {
-                let (Some(&h), Some(&l)) = (b.get(i * 2), b.get(i * 2 + 1)) else { break };
-                let (Some(h), Some(l)) = (hexval(h), hexval(l)) else { break };
-                let v = h * 16 + l;
-                /* 00 is "this blob had no rank for this step" -- a v5 hole, or
-                 * a step past what was written. Leaving the seeded position
-                 * value there is what makes both old formats load sensibly. */
-                if v != 0 {
-                    inst.pat[s].order[i] = v;
-                }
-            }
-        }
-        inst.pat[s].renumber();
     }
     /* THE CURSOR IS NOT SAVED, BUT THE LENGTH IS. A patch whose current slot
      * is shorter than where the cursor stood would leave it past the end,
@@ -357,6 +294,77 @@ fn slot_key(prefix: u8, slot: usize) -> SlotKey {
     SlotKey([prefix, b'0' + (slot % 10) as u8])
 }
 
+/*
+ * ONE SLOT'S PATTERN FROM ITS FIELD: "<steps>:<ties>:<length>[:<depths>[:<orders>]]".
+ * The same text a slot file carries (see `slotfile`), so both read it here.
+ */
+pub(crate) fn read_pattern(p: &mut Pattern, field: &str) {
+    /* "<steps>:<ties>:<length>[:<depths>]". The two masks are up to 32
+     * hex digits now, so they are read as TEXT and handed to the
+     * LSB-aligned parser -- a %x would cap them at whatever an unsigned
+     * holds and silently drop steps 32 and up. A v3 blob's 8-digit field
+     * parses identically. */
+    let mut parts = field.splitn(5, ':');
+    let (Some(stx), Some(tix), Some(lens)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return;
+    };
+    set_pattern_hex(&mut p.steps, stx);
+    set_pattern_hex(&mut p.ties, tix);
+    p.length = (fmt::atoi(lens)).clamp(1, MAX_STEPS as i64) as usize;
+
+    /*
+     * A V1 TRIPLE HAS NO DEPTHS, AND ABSENT MEANS FULL.
+     *
+     * Every patch saved before that version ends after the length.
+     * Leaving the array at whatever it held -- or zeroing it -- would
+     * load those patches SILENT, with the pattern and the ring both
+     * looking completely correct. This is the whole reason the state
+     * version exists.
+     */
+    p.depth = [DEPTH_FULL; MAX_STEPS];
+    if let Some(d) = parts.next() {
+        let b = d.as_bytes();
+        for i in 0..MAX_STEPS {
+            let (Some(&h), Some(&l)) = (b.get(i * 2), b.get(i * 2 + 1)) else { break };
+            let (Some(h), Some(l)) = (hexval(h), hexval(l)) else { break };
+            p.depth[i] = h * 16 + l;
+        }
+    }
+
+    /*
+     * AN ABSENT OR ZERO ORDER MEANS POSITION ORDER, AND THAT COVERS TWO
+     * DIFFERENT OLD BLOBS AT ONCE.
+     *
+     * A pre-v5 quadruple has no order field at all. A v5 one has the field
+     * but wrote `00` for every OFF step, because ranks only covered the on
+     * steps then -- so the holes arrive here with nothing to say. Both fall
+     * through to the position seed below, are normalised per kind, and come
+     * out sweeping left to right: the one behaviour nobody has to be told
+     * about. Zeroing instead would make every step rank 1 and the whole
+     * pattern arrive at once, which looks like the fade being broken rather
+     * than absent.
+     */
+    for i in 0..MAX_STEPS {
+        p.order[i] = (i + 1) as u8;
+    }
+    if let Some(o) = parts.next() {
+        let b = o.as_bytes();
+        for i in 0..MAX_STEPS {
+            let (Some(&h), Some(&l)) = (b.get(i * 2), b.get(i * 2 + 1)) else { break };
+            let (Some(h), Some(l)) = (hexval(h), hexval(l)) else { break };
+            let v = h * 16 + l;
+            /* 00 is "this blob had no rank for this step" -- a v5 hole, or
+             * a step past what was written. Leaving the seeded position
+             * value there is what makes both old formats load sensibly. */
+            if v != 0 {
+                p.order[i] = v;
+            }
+        }
+    }
+    p.renumber();
+}
+
 fn hexval(c: u8) -> Option<u8> {
     match c {
         b'0'..=b'9' => Some(c - b'0'),
@@ -364,6 +372,69 @@ fn hexval(c: u8) -> Option<u8> {
         b'A'..=b'F' => Some(c - b'A' + 10),
         _ => None,
     }
+}
+
+/// One slot's pattern as its field -- the reader is [`read_pattern`].
+pub(crate) fn write_pattern(p: &Pattern, b: &mut dyn Write) -> core::fmt::Result {
+    p.steps.to_hex(b)?;
+    write!(b, ":")?;
+    p.ties.to_hex(b)?;
+    write!(b, ":{}:", p.length)?;
+
+    /*
+     * TRAILING DEFAULTS ARE NOT WRITTEN.
+     *
+     * This used to emit MAX_STEPS depths unconditionally -- 256
+     * characters per slot at 128 steps, whether or not a single one
+     * differed from full. The reader already treats an absent depth as
+     * FULL (that is how v1 blobs load), so the last non-default entry is
+     * the only place worth stopping at: a pattern with no accents writes
+     * no depths at all.
+     *
+     * It is what keeps a realistic 8-slot patch inside a bus insert's
+     * 1024 bytes at the new length, and it changes nothing about what a
+     * reader gets back.
+     */
+    let last = (0..MAX_STEPS)
+        .rev()
+        .find(|&i| p.depth[i] != DEPTH_FULL);
+    if let Some(last) = last {
+        for i in 0..=last {
+            write!(b, "{:02X}", p.depth[i])?;
+        }
+    }
+
+    /*
+     * THE ORDER IS ONLY WRITTEN WHEN IT IS NOT POSITION ORDER.
+     *
+     * Same rule as the depths above, and here it does more work: an order
+     * nobody has touched is the overwhelmingly common case, and writing it
+     * would add up to 256 characters per slot -- 2 KB across eight -- to
+     * every patch, for a value the reader already defaults to. That is the
+     * difference between a realistic patch fitting a bus insert's
+     * 1024 bytes and not.
+     *
+     * The comparison is against the RANK a position order would give, not
+     * against the raw keys, because that is what a reader reconstructs.
+     */
+    let (mut on_pos, mut off_pos) = (0u8, 0u8);
+    let same = (0..p.length.min(MAX_STEPS)).all(|i| {
+        let pos = if p.on(i) {
+            on_pos += 1;
+            on_pos
+        } else {
+            off_pos += 1;
+            off_pos
+        };
+        p.order[i] == pos
+    });
+    if !same {
+        write!(b, ":")?;
+        for i in 0..p.length.min(MAX_STEPS) {
+            write!(b, "{:02X}", p.order[i])?;
+        }
+    }
+    Ok(())
 }
 
 pub fn save(inst: &Instance, mut b: Buf) -> i32 {
@@ -401,64 +472,7 @@ pub fn save(inst: &Instance, mut b: Buf) -> i32 {
 
     for s in 0..SLOTS {
         let _ = write!(b, ",\"p{}\":\"", s);
-        let _ = inst.pat[s].steps.to_hex(&mut b);
-        let _ = write!(b, ":");
-        let _ = inst.pat[s].ties.to_hex(&mut b);
-        let _ = write!(b, ":{}:", inst.pat[s].length);
-
-        /*
-         * TRAILING DEFAULTS ARE NOT WRITTEN.
-         *
-         * This used to emit MAX_STEPS depths unconditionally -- 256
-         * characters per slot at 128 steps, whether or not a single one
-         * differed from full. The reader already treats an absent depth as
-         * FULL (that is how v1 blobs load), so the last non-default entry is
-         * the only place worth stopping at: a pattern with no accents writes
-         * no depths at all.
-         *
-         * It is what keeps a realistic 8-slot patch inside a bus insert's
-         * 1024 bytes at the new length, and it changes nothing about what a
-         * reader gets back.
-         */
-        let last = (0..MAX_STEPS)
-            .rev()
-            .find(|&i| inst.pat[s].depth[i] != DEPTH_FULL);
-        if let Some(last) = last {
-            for i in 0..=last {
-                let _ = write!(b, "{:02X}", inst.pat[s].depth[i]);
-            }
-        }
-
-        /*
-         * THE ORDER IS ONLY WRITTEN WHEN IT IS NOT POSITION ORDER.
-         *
-         * Same rule as the depths above, and here it does more work: an order
-         * nobody has touched is the overwhelmingly common case, and writing it
-         * would add up to 256 characters per slot -- 2 KB across eight -- to
-         * every patch, for a value the reader already defaults to. That is the
-         * difference between a realistic patch fitting a bus insert's
-         * 1024 bytes and not.
-         *
-         * The comparison is against the RANK a position order would give, not
-         * against the raw keys, because that is what a reader reconstructs.
-         */
-        let (mut on_pos, mut off_pos) = (0u8, 0u8);
-        let same = (0..inst.pat[s].length.min(MAX_STEPS)).all(|i| {
-            let pos = if inst.pat[s].on(i) {
-                on_pos += 1;
-                on_pos
-            } else {
-                off_pos += 1;
-                off_pos
-            };
-            inst.pat[s].order[i] == pos
-        });
-        if !same {
-            let _ = write!(b, ":");
-            for i in 0..inst.pat[s].length.min(MAX_STEPS) {
-                let _ = write!(b, "{:02X}", inst.pat[s].order[i]);
-            }
-        }
+        let _ = write_pattern(&inst.pat[s], &mut b);
         let _ = write!(b, "\"");
     }
 

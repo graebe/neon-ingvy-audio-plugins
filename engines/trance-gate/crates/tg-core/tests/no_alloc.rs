@@ -83,6 +83,12 @@ fn process_set_param_and_get_param_allocate_nothing() {
         p.set_param(k, v);
     }
     p.set_param("slot", "0");
+    /* Slot files, which the plugin shell applies at the top of a block. */
+    let mut file = vec![0u8; 16 * 1024];
+    let n = p.export(tg_core::slotfile::Kind::Bank, &mut file) as usize;
+    let bank = String::from_utf8(file[..n].to_vec()).unwrap();
+    let n = p.export(tg_core::slotfile::Kind::Slot, &mut file) as usize;
+    let slot = String::from_utf8(file[..n].to_vec()).unwrap();
 
     ni_testkit::arm();
     let mut beats = 0.0;
@@ -103,6 +109,10 @@ fn process_set_param_and_get_param_allocate_nothing() {
         }
     }
     p.set_param("state", &state);
+    let _ = p.import(&bank);
+    let _ = p.import(&slot);
+    let _ = p.import("{\"format\": \"nothing\"}");
+    p.export(tg_core::slotfile::Kind::Bank, &mut file);
     ni_testkit::disarm();
 
     let (a, f) = (ni_testkit::allocs(), ni_testkit::frees());

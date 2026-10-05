@@ -25,6 +25,7 @@ use shell_core::{Bridge, Model, Text};
 use std::ffi::{c_char, c_int, CStr};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use tg_core::params::Param;
+use tg_core::slotfile::{Error as SlotFileError, Kind};
 use tg_core::Playhead;
 
 /* What a non-audio thread may ask for, in frame order. */
@@ -48,6 +49,8 @@ const CMD_SAMPLE_RATE: u8 = b'S';
 const CMD_LOAD: u8 = b'L';
 /* The editor's paste: a blob whose current slot the host must then follow. */
 const CMD_PASTE: u8 = b'V';
+/* An imported slot file, checked on the posting side: the same follow. */
+const CMD_IMPORT: u8 = b'I';
 
 /// The host parameters, TG_P_COUNT of them.
 pub(crate) const NUMS: usize = 15;
@@ -125,6 +128,13 @@ impl Model for TgCore {
                 if let Ok(blob) = core::str::from_utf8(body) {
                     self.0.set_param("state", blob);
                     self.2 = self.2.wrapping_add(1);
+                }
+            }
+            CMD_IMPORT => {
+                if let Ok(text) = core::str::from_utf8(body) {
+                    if self.0.import(text).is_ok() {
+                        self.2 = self.2.wrapping_add(1);
+                    }
                 }
             }
             CMD_SAMPLE_RATE => {
@@ -436,17 +446,108 @@ pub unsafe extern "C" fn tg_shell_save(
     }
     let values: &[f64; NUMS] = &*(values as *const [f64; NUMS]);
     let out = std::slice::from_raw_parts_mut(buf as *mut u8, buf_len as usize);
-    let mut state = vec![0u8; TEXT_MAX];
-    let (len, rt, recalls) = sh.bridge.read(|r| match r.pending {
-        Some(view) => (view.0.get_param("state", &mut state), view.0.playhead(), view.2),
-        None => (r.frame.text[STATE].copy_to(&mut state), r.frame.rt, r.frame.recalls),
-    });
-    let Ok(text) = core::str::from_utf8(&state[..len.max(0) as usize]) else { return -1 };
-    let mut next = tg_core::Instance::new(rt.sample_rate);
-    next.mirror(text, &rt);
-    sh.mirror.plan(values, recalls).apply(&mut next, values);
-    next.get_param("state", out)
+    match sh.next(values) {
+        Some(next) => next.get_param("state", out),
+        None => -1,
+    }
 }
+
+/*
+ * THE ENGINE AS THE NEXT BLOCK WILL HOLD IT: what it published, every queued
+ * edit, and the host's values pushed as the next push will push them. Built on
+ * the calling thread, from text, for a reader that needs more than a readout --
+ * a save, an export. Allocates.
+ */
+impl TgShell {
+    fn next(&self, values: &[f64; NUMS]) -> Option<tg_core::Instance> {
+        let mut state = vec![0u8; TEXT_MAX];
+        let (len, rt, recalls) = self.bridge.read(|r| match r.pending {
+            Some(view) => (view.0.get_param("state", &mut state), view.0.playhead(), view.2),
+            None => (r.frame.text[STATE].copy_to(&mut state), r.frame.rt, r.frame.recalls),
+        });
+        let text = core::str::from_utf8(&state[..len.max(0) as usize]).ok()?;
+        let mut next = tg_core::Instance::new(rt.sample_rate);
+        next.mirror(text, &rt);
+        self.mirror.plan(values, recalls).apply(&mut next, values);
+        Some(next)
+    }
+}
+
+/// The current slot as a slot file (`all` 0), or every slot as a bank (`all`
+/// 1), as the next block will hold them -- the host's `values` included, as
+/// for `tg_shell_save`. Returns the length written (NUL-terminated), or -1.
+/// Any non-audio thread; allocates.
+///
+/// # Safety
+/// `values` holds `n` doubles; `buf` holds `buf_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_export(
+    sh: *const TgShell,
+    values: *const f64,
+    n: c_int,
+    all: c_int,
+    buf: *mut c_char,
+    buf_len: c_int,
+) -> c_int {
+    let Some(sh) = sh.as_ref() else { return -1 };
+    if values.is_null() || n < NUMS as c_int || buf.is_null() || buf_len <= 0 {
+        return -1;
+    }
+    let values: &[f64; NUMS] = &*(values as *const [f64; NUMS]);
+    let out = std::slice::from_raw_parts_mut(buf as *mut u8, buf_len as usize);
+    let kind = if all != 0 { Kind::Bank } else { Kind::Slot };
+    match sh.next(values) {
+        Some(next) => next.export(kind, out),
+        None => -1,
+    }
+}
+
+/// Import a slot file: checked here, whole, and queued only when good -- a
+/// slot file replaces the current slot, a bank all eight, at the top of the
+/// next block, after which the host's parameters follow the current slot
+/// (`tg_shell_take_params`). Returns 1 for a slot, 2 for a bank, or 0 with the
+/// reason, in words, NUL-terminated in `err` (may be null). Any non-audio
+/// thread.
+///
+/// # Safety
+/// `text` is null or NUL-terminated; `err` holds `err_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_import(
+    sh: *const TgShell,
+    text: *const c_char,
+    err: *mut c_char,
+    err_len: c_int,
+) -> c_int {
+    let say = |e: SlotFileError| {
+        if !err.is_null() && err_len > 0 {
+            let out = std::slice::from_raw_parts_mut(err as *mut u8, err_len as usize);
+            let mut b = tg_core::fmt::Buf::new(out);
+            let _ = e.describe(&mut b);
+            b.finish();
+        }
+        0
+    };
+    let Some(sh) = sh.as_ref() else { return 0 };
+    /* Bytes that are not text are not a slot file either. */
+    let text = if text.is_null() { "" } else {
+        match CStr::from_ptr(text).to_str() {
+            Ok(t) => t,
+            Err(_) => return say(SlotFileError::NotAFile),
+        }
+    };
+    let kind = match tg_core::slotfile::check(text) {
+        Ok(k) => k,
+        Err(e) => return say(e),
+    };
+    let mut cmd = Vec::with_capacity(text.len() + 1);
+    cmd.push(CMD_IMPORT);
+    cmd.extend_from_slice(text.as_bytes());
+    if !sh.bridge.post(&cmd) {
+        return say(SlotFileError::TooLarge);
+    }
+    if kind == Kind::Slot { 1 } else { 2 }
+}
+
 
 /// The audio thread, at the top of a block: applies every queued edit and
 /// lends out the engine for this block's `tg_core_*` calls. Allocation-free
@@ -875,6 +976,67 @@ mod tests {
         assert_eq!(read(sh, "length"), "3");
         assert_eq!(unsafe { tg_shell_paste(sh, std::ptr::null()) }, 0);
         unsafe { tg_shell_destroy(sh) };
+    }
+
+    fn export(sh: *const TgShell, v: &[f64; NUMS], all: bool) -> String {
+        let mut buf = vec![0u8; 16 * 1024];
+        let n = unsafe {
+            tg_shell_export(sh, v.as_ptr(), NUMS as c_int, all as c_int, buf.as_mut_ptr() as *mut c_char, buf.len() as c_int)
+        };
+        assert!(n > 0);
+        String::from_utf8(buf[..n as usize].to_vec()).unwrap()
+    }
+
+    fn import(sh: *const TgShell, text: &str) -> (c_int, String) {
+        let t = CString::new(text).unwrap();
+        let mut err = [0u8; 256];
+        let r = unsafe { tg_shell_import(sh, t.as_ptr(), err.as_mut_ptr() as *mut c_char, 256) };
+        let n = err.iter().position(|&b| b == 0).unwrap_or(0);
+        (r, String::from_utf8(err[..n].to_vec()).unwrap())
+    }
+
+    #[test]
+    fn an_export_holds_what_the_host_shows_and_an_import_is_followed_by_the_host() {
+        let a = tg_shell_create(48000.0);
+        /* Never run: the host's values reach the export all the same. */
+        let shown = host(0.0, 7.0, 0.3f32 as f64);
+        let file = export(a, &shown, false);
+        assert!(file.contains("\"pattern\": \"5555:0:8"), "{file}");
+        assert!(file.contains(":0.300:"), "{file}");
+
+        let b = tg_shell_create(48000.0);
+        push_block(b, &host(4.0, 15.0, 1.0));
+        assert_eq!(import(b, &file), (1, String::new()));
+        assert!(read(b, "state").contains("\"amount\":0.300"), "the view has it before any audio");
+        push_block(b, &host(4.0, 15.0, 1.0));
+        assert_eq!(take(b), Some(host(4.0, 7.0, 0.3f32 as f64)), "the host follows slot 5, now the file's");
+        assert_eq!(export(b, &host(4.0, 7.0, 0.3f32 as f64), false), file);
+        unsafe { tg_shell_destroy(a) };
+        unsafe { tg_shell_destroy(b) };
+    }
+
+    #[test]
+    fn a_bank_round_trips_and_a_bad_file_is_refused_with_a_reason() {
+        let a = tg_shell_create(48000.0);
+        push_block(a, &host(2.0, 3.0, 0.5));
+        let bank = export(a, &host(2.0, 3.0, 0.5), true);
+        let b = tg_shell_create(48000.0);
+        push_block(b, &host(0.0, 15.0, 1.0));
+        assert_eq!(import(b, &bank).0, 2);
+        push_block(b, &host(0.0, 15.0, 1.0));
+        assert_eq!(export(b, &host(0.0, 15.0, 1.0), true), bank);
+        assert!(take(b).is_some(), "the host follows the bank's slot 1");
+
+        let before = read(b, "state");
+        let (r, why) = import(b, "{\"format\": \"ni-trance-gate-slot\", \"version\": 9}");
+        assert_eq!(r, 0);
+        assert!(why.contains("newer"), "{why}");
+        push_block(b, &host(0.0, 15.0, 1.0));
+        assert_eq!(read(b, "state"), before, "and nothing changed");
+        assert_eq!(take(b), None);
+        assert_eq!(unsafe { tg_shell_import(b, std::ptr::null(), std::ptr::null_mut(), 0) }, 0);
+        unsafe { tg_shell_destroy(a) };
+        unsafe { tg_shell_destroy(b) };
     }
 
     #[test]
