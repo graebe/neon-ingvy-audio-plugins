@@ -1,5 +1,5 @@
 ---
-title: Spectrogram
+title: NI Spectrogram
 tagline: A rolling STFT analyzer — 10 Hz to 20 kHz, 256 log bands, thirteen seconds.
 order: 2
 hosts: [live]
@@ -15,7 +15,7 @@ still: media/spectrogram/live.png
 harness: harness/spectrogram/
 ---
 
-# Spectrogram
+# NI Spectrogram
 
 A rolling spectrogram: log frequency from **10 Hz to 20 kHz** on the vertical,
 256 bands — about two per semitone — time scrolling right to left, **thirteen
@@ -24,8 +24,10 @@ and its whole output is the picture. Universal macOS binary as VST3 / AU / CLAP.
 
 **No parameters**, and that is a statement rather than an omission: nothing about
 it changes what comes out — Pause included, which is a property of the picture
-and not of the audio. Range and Speed will be ordinary host parameters when they
-arrive.
+and not of the audio. What you set up in it — which channels you are viewing,
+what you compare, the clash marking and the zoom — is saved with your Live set
+instead, and is there again when you close and reopen the window or reload the
+project.
 
 ## 10 Hz is a window length, not a setting
 
@@ -48,14 +50,17 @@ multi-resolution analysis, not a shorter window. And below about 35 Hz there are
 only a handful of bins, so the bottom two octaves read as bands of repeated
 value: that is what the analysis actually knows.
 
-## Where the FFT runs
+## Where the analysis runs
 
-On the **audio thread**, as each hop completes, with finished columns going into
-a lock-free ring the editor drains at 60 Hz. Transforming on the message thread
-instead would make the picture's time axis stretch and squeeze with the host's UI
-load; here the columns are produced by the audio clock, and the only thing UI
-jitter can do is make several arrive at once. Nothing allocates after
-`spectro_configure`, and a counting allocator in `engines/spectro` fails the
+On **a thread of its own**, not on Live's audio thread. The audio thread only
+copies each block into a ring and goes on; a worker beside it does the
+transforms, every few milliseconds, at a priority below the interface and
+above background work. So a Spectrogram — even one reading three Listen-In buses
+— costs the audio thread almost nothing, and the transforms never hold it up.
+
+The analysis keeps running while the window is closed, so a window you open
+mid-song already holds the last thirteen seconds. Nothing allocates once the
+analysis is configured, and a counting allocator in `engines/spectro` fails the
 build if that stops being true.
 
 ## The colour is the design system's, extended in one place

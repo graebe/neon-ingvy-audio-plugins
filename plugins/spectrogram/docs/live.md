@@ -6,6 +6,17 @@ title: Ableton Live Interface
 The whole interface is the picture. There are no parameters to automate and
 nothing to set up: insert it, and it draws what is passing through.
 
+## It remembers how you left it
+
+The view (which channels are ticked), the two Compare pickers, the **Clash**
+switch and the **range** zoom are saved with your Live set. Close the window
+and open it again, or save the set and reopen it tomorrow, and the Spectrogram
+is looking at what it was looking at — not back at its own input on the full
+range.
+
+Pause and the bars switch are not saved: a reopened window always starts live,
+in seconds.
+
 ## Reading it
 
 Frequency is the vertical, logarithmic, 10 Hz at the bottom and 20 kHz at the
@@ -54,9 +65,18 @@ than a wide one. It is smoothed, not invented back.
 
 ## Listening in on other tracks
 
-Put a **Listen-In** on the track you want and give it a name. The Spectrogram
-then lists every bus that exists, by that name, in two separate controls — and
-they are separate on purpose, because they answer different questions.
+Put an **NI Listen-In** on the track you want and give it a name. The
+Spectrogram then lists every bus that exists, by that name, in two separate
+controls — and they are separate on purpose, because they answer different
+questions. It reads up to three buses at once beside its own input.
+
+For example, to see a bass and a pad together: put a Listen-In named `bass` on
+the bass track and one named `pad` on the pad track, then tick `bass` and `pad`
+under **View** in the Spectrogram.
+
+If you delete a Listen-In and put it back, or its track is re-created, the
+Spectrogram finds it again by itself within about a second — there is nothing
+to re-tick.
 
 ### View — what the picture is of
 
@@ -87,10 +107,14 @@ that the louder one is simply masking the quieter, which is a different problem.
 
 ### What it will not do
 
-A bus at a **different sample rate** is listed but cannot be picked, with its
-rate as the hint: a different rate picks a different window and so a different
-group delay, and two pictures offset by an amount nobody can see is worse than
-one that says it will not draw.
+A bus at a **different sample rate** — a Listen-In in another session running
+at 96 kHz while this one runs at 48, say — is listed under View but greyed
+out, with its rate as the hint (`96k`), and cannot be ticked. A different rate
+picks a different window and so a different group delay, and two pictures
+offset by an amount nobody can see is worse than one that says it will not
+draw. If you choose such a bus in a Compare picker, it is never analysed, so it
+adds nothing to the clash marking. Once the sender runs at this session's rate,
+the bus becomes available again.
 
 A Listen-In on a **muted track** publishes nothing. The picture keeps moving —
 that source is simply drawn as the silence it is sending. It used to stop
@@ -143,24 +167,36 @@ bottom 40 pixels become ~33 bins at 8 pixels each, which is what makes 50 Hz and
 60 Hz two visibly different rows. Higher up there are several bins to a band
 already, and the zoom is detail in the ordinary sense.
 
-Changing it while audio runs takes no lock and allocates nothing:
-`spectro_set_range` stores a request, the audio thread rebuilds its own band
-table at the next frame, and columns measured against the old range are dropped
-rather than drawn under the new scale.
+Changing it while audio plays is safe and immediate: columns measured against
+the old range are dropped rather than drawn under the new scale, so the picture
+never shows two scales at once.
 
-## Installing
+## Installing and updating
 
-The release carries an unsigned universal bundle in all three formats. macOS
-will refuse to load it until the quarantine attribute is removed:
+1. **Quit Live completely** — Live keeps every plugin it has loaded in memory
+   until it quits, so a bundle replaced while it runs is not the one you hear.
+2. Copy `NISpectrogram.vst3`, `NISpectrogram.component` and
+   `NISpectrogram.clap` into `~/Library/Audio/Plug-Ins/VST3`, `…/Components`
+   and `…/CLAP`.
+3. The bundles are unsigned, so clear the quarantine attribute:
 
-```sh
-xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NISpectrogram.vst3
-```
+   ```sh
+   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NISpectrogram.vst3
+   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/NISpectrogram.component
+   ```
 
-## For developers
+4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
+   *Rescan Plug-Ins*. NI Spectrogram appears in the browser under **Neon Ingvy**.
 
-The column format on the wire, and the mount-ordering bug that the `ready` tag exists
-to fix, are in [plugins/spectrogram/ui/README.md](../ui/README.md).
+Update NI Listen-In at the same time: a Spectrogram reads buses only from a
+Listen-In of the same release (see the NI Listen-In manual).
+
+**On an Intel Mac**, reading Listen-In buses now works. Older builds could not
+open an existing bus there, so the View list stayed at `no Listen-In found`;
+if that is what you saw, updating both plugins fixes it.
+
+Every bundle carries `LICENSE` and `THIRD_PARTY_LICENSES.md` in
+`Contents/Resources/`.
 
 ## The background, and the Motion switch
 
