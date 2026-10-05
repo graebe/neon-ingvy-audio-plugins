@@ -40,6 +40,17 @@ gate immediately and forgets the trigger, whatever the note filter says — a
 ducker still holding a note after a panic leaves a track silent with nothing
 playing, which is the worst way this could fail.
 
+## Choosing the trigger note
+
+**Trigger** is a note *name*, stepped a semitone per detent: `C-2` up to `G8`,
+numbered the way Live numbers them. The default is **C1** — MIDI note 36, the
+note a kick pad usually sends — and resetting the knob to its default puts it
+back on C1. **Channel** offers Omni and 1–16, and defaults to 1.
+
+For example, to duck on a snare on D1: set Source to MIDI, turn Trigger two
+semitones up to `D1`, and set Channel to the channel your snare pad plays on —
+or to Omni to take it from any.
+
 ## The interface
 
 The host's own knob grid, from the module's `chain_params`. The four envelope

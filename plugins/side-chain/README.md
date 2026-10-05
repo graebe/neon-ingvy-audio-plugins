@@ -27,8 +27,10 @@ fires on every division. The host's beat position is an *anchor* that a local
 accumulator is pulled towards rather than a clock to divide, which is what
 survives a loop jump, a seek and a tempo ramp.
 
-**MIDI** is a note, with a channel, Trigger-or-Gate and velocity-to-depth. The
-note lands on **its own sample**, not at the top of the buffer it arrived in —
+**MIDI** is a note, with a channel, Trigger-or-Gate and velocity-to-depth.
+Notes duck **only when Source is MIDI**: on Cycle or Sidechain a kick pad
+played on the same track no longer fires an extra, unsynchronised duck of its
+own. The note lands on **its own sample**, not at the top of the buffer it arrived in —
 iPlug2 reports the offset and this honours it, because up to 5 ms of *jitter* on
 the one event the effect is about cannot be compensated anywhere downstream.
 
@@ -43,6 +45,15 @@ threshold and a retrigger lockout. Two time constants smooth the key into one
 hump per hit; the lockout decides how close two triggers may be. That split is
 deliberate: a longer detector fall would *merge* hits and quietly take the
 decision away from the control that is supposed to own it.
+
+## Smooth when you move it
+
+Depth glides to a new value over about 5 ms while a duck is sounding, so
+riding it during playback does not click. Change a stage length — or the tempo
+— in the middle of a duck and the duck carries on from where it is, at the new
+speed, instead of jumping. And stopping the transport on the Cycle source lets
+the current duck release over your Release time rather than cutting back to
+full level.
 
 ## The picture
 
