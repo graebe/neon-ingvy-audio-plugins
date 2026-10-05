@@ -27,10 +27,12 @@ pub mod state;
 mod clock;
 mod pattern;
 mod process;
+mod sound;
 
 pub use pattern::Pattern;
 
-use envelope::{Curve, Env, StageLens};
+use envelope::{Env, StageLens};
+use sound::Sound;
 use ni_dsp::phase::PhaseTracker;
 
 pub const MAX_STEPS: usize = 128;
@@ -103,43 +105,13 @@ pub struct Instance {
      * and the accessors below.
      */
     pat: [Pattern; SLOTS],
+    /// Every slot's sound: all the parameters but the slot. See [`sound`].
+    snd: [Sound; SLOTS],
     slot: usize,
-    rate_idx: usize,
 
-    /*
-     * ATTACK, DECAY AND RELEASE ARE PERCENTAGES OF THE GATE'S WIDTH, 0..200.
-     *
-     * Not milliseconds, despite the wire keys, which are kept because they
-     * appear in every saved patch. 100% is "exactly fills the gate"; 200% is
-     * "twice the gate", a stage that never finishes before the gate shuts.
-     *
-     * Measured against WIDTH and not against the step because the step is not
-     * the musical unit here -- the gate's open time is. It also makes ms and
-     * % two readings of ONE number: ms is `value/100 * width_ms`, so its
-     * maximum moves with the rate and with Width while the percentage stays
-     * put. See [`Instance::stage_samples`].
-     */
-    attack: f32,
-    decay: f32,
-    /// 0..1 -- a LEVEL, not a duration.
-    sustain: f32,
-    release: f32,
-
-    /*
-     * How much of a step the gate stays open, 0..1.
-     *
-     * SUSTAIN IS A LEVEL AND HAS NO LENGTH -- in an ADSR it holds until the
-     * note ends, and here "the note" is the step. That is correct and it is
-     * also not what someone reaching for a shorter gate wants. This is the
-     * control they are reaching for: release begins this far into the step
-     * rather than at its end, which is a sequencer's gate length.
-     */
-    hold: f32,
-    /// How much the gate acts, 0..1. 1 == a closed gate is silent, 0 == the
-    /// effect is bypassed.
-    amount: f32,
-    /// `amount` and `sustain` as the gain law hears them: gliding towards
-    /// the values above -- see `ni_dsp::smooth`. Runtime, not saved.
+    /// The current slot's `amount` and `sustain` as the gain law hears them:
+    /// gliding towards its values -- see `ni_dsp::smooth`. Runtime, not saved.
+    /// One pair for the instance, which is what makes a slot switch glide.
     amount_s: f32,
     sustain_s: f32,
     /// Edit position on the ring, 0..length-1.
@@ -169,41 +141,8 @@ pub struct Instance {
     /// "The playhead is moving" -- the UI's extrapolator is the only reader
     /// and is written against the concept, not against what drives it.
     advancing: bool,
-    /// Adjacent ON steps hold as ONE gate instead of re-articulating.
-    legato: bool,
-    time_mode: TimeMode,
-    curve: Curve,
     sample_rate: f64,
 
-    /*
-     * THE FADE-IN: HOW MUCH OF THE PATTERN HAS ARRIVED, 0..1.
-     *
-     * 0 is "no step sounds" and 1 is "all of them do", and the N on steps
-     * arrive at equal intervals between the two -- step of rank r crosses at
-     * exactly r/N. A build-up is this parameter automated, which is the whole
-     * reason it is a host parameter and the pattern is not.
-     *
-     * 1.0 IS THE NEUTRAL VALUE and the default, so a fresh instance and every
-     * patch saved before this existed sound exactly as they did. The golden
-     * renders are what say so.
-     */
-    fade: f32,
-    /*
-     * Whether a step ARRIVES or APPEARS.
-     *
-     * Soft ramps the step in on its own level -- the same quantity a drag up
-     * and down in a pad sets -- over its slice of the knob's travel. Hard
-     * jumps it on at the end of that slice. They are one formula and a
-     * threshold, so the two agree at every arrival boundary and the switch
-     * reads as smoothing rather than as a second feature.
-     */
-    fade_soft: bool,
-    /*
-     * Which end the pattern is built up from. See [`FadeDir`]. In is the
-     * default and the neutral one: it is what the gate did before the direction
-     * existed, so every patch and both golden renders are unaffected.
-     */
-    fade_dir: FadeDir,
     /*
      * THE FADE'S WEIGHT PER STEP, CACHED.
      *
@@ -233,17 +172,8 @@ impl Instance {
     pub fn new(sample_rate: f64) -> Self {
         let mut me = Self {
             pat: core::array::from_fn(Pattern::new),
+            snd: [Sound::DEFAULT; SLOTS],
             slot: 0,
-            rate_idx: rates::RATE_DEFAULT,
-            /* The percentages that reproduce the old 2 / 20 / 20 ms defaults
-             * against a full-width 1/16 step at 120 BPM, so a fresh instance
-             * sounds as it always did. */
-            attack: 1.6,
-            decay: 16.0,
-            sustain: 1.0,
-            release: 16.0,
-            hold: 1.0,
-            amount: 1.0,
             /* 0, NOT `amount`: a fresh instance is a stopped one, and stopped
              * is an open gate. The first start glides in from here. */
             amount_s: 0.0,
@@ -256,15 +186,7 @@ impl Instance {
             ms_per_step: 0.0,
             last_bpm: 120.0,
             advancing: false,
-            legato: false,
-            time_mode: TimeMode::Ms,
-            curve: Curve::Linear,
             sample_rate: if sample_rate > 0.0 { sample_rate } else { 44100.0 },
-            /* The whole pattern, arriving as one -- which is the behaviour of
-             * every version before the fade existed. */
-            fade: 1.0,
-            fade_soft: false,
-            fade_dir: FadeDir::In,
             fade_w: [1.0; MAX_STEPS],
             /* A FIXED SEED, ADVANCED PER CALL. There is no entropy source in
              * here -- no clock, no I/O, by design -- so successive presses
@@ -379,7 +301,7 @@ impl Instance {
     pub fn recalc_ms_per_step(&mut self) {
         let bpm = if self.last_bpm > 1.0 { self.last_bpm as f64 } else { 120.0 };
         let sr = if self.sample_rate > 0.0 { self.sample_rate } else { 44100.0 };
-        let mut samples = (60.0 / bpm) * sr * rates::RATES[self.rate_idx].beats;
+        let mut samples = (60.0 / bpm) * sr * rates::RATES[self.snd().rate_idx].beats;
         if samples < 1.0 {
             samples = 1.0;
         }
@@ -396,7 +318,7 @@ impl Instance {
     /// envelope stage is measured in.
     #[inline]
     pub fn width_ms(&self) -> f64 {
-        self.hold as f64 * self.ms_per_step as f64
+        self.snd().hold as f64 * self.ms_per_step as f64
     }
 
     /// How long a stage lasts, in samples. `value` is a percentage of the
@@ -408,11 +330,12 @@ impl Instance {
 
     #[inline]
     fn lens(&self) -> StageLens {
+        let s = *self.snd();
         StageLens {
-            attack: self.stage_samples(self.attack),
-            decay: self.stage_samples(self.decay),
-            release: self.stage_samples(self.release),
-            sustain: self.sustain,
+            attack: self.stage_samples(s.attack),
+            decay: self.stage_samples(s.decay),
+            release: self.stage_samples(s.release),
+            sustain: s.sustain,
         }
     }
 

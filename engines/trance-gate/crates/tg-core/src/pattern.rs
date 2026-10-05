@@ -294,7 +294,8 @@ impl Instance {
      * setting a user is certain to check.
      */
     pub fn recalc_fade(&mut self) {
-        let (fade, soft, dir) = (self.fade, self.fade_soft, self.fade_dir);
+        let s = self.snd();
+        let (fade, soft, dir) = (s.fade, s.fade_soft, s.fade_dir);
         let p = &self.pat[self.slot];
         let arriving_on = dir == FadeDir::In;
         let n = if arriving_on { p.hits() } else { p.holes() };

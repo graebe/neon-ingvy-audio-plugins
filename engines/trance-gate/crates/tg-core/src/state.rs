@@ -40,15 +40,34 @@ the effect silently on a patch that had been working.
   the position order seeded below, so an old patch fades its holes in left to
   right. A v6 blob in a v5 build has its off-step values loaded and then ignored,
   because that build's `renumber` only ranks the on steps.
+- **7**: every slot has its own SOUND -- all thirteen values but the slot (see
+  `crate::sound`). The top-level keys are the CURRENT slot's, exactly as they
+  always were, and a slot whose sound differs from it adds one field,
+  `"s<N>":"rate:attack:decay:sustain:release:hold:amount:fade:fsoft:fdir:legato:tmode:curve"`.
+
+  A slot with no field of its own has the top level's sound, and that one rule
+  is the whole migration: no older blob has an `s<N>`, so its one instance-wide
+  sound -- with every conversion above applied to it first -- lands in all
+  eight slots, beside each slot's own pattern. It also keeps a patch whose slots
+  all sound alike exactly the size it was, which the bus insert's 1024 bytes
+  are measured against.
+
+  A v7 blob read by a v6 build loads the current slot's sound as the
+  instance-wide one and ignores the rest: the slot that was playing still
+  sounds the same.
 */
 
 use crate::envelope::Curve;
+use crate::sound::Sound;
 use crate::fmt::{self, Buf};
 use crate::params::set_pattern_hex;
 use crate::{rates, Instance, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
 use core::fmt::Write;
 
-pub const STATE_VERSION: i32 = 6;
+pub const STATE_VERSION: i32 = 7;
+/// The first version in which every slot carries its own sound. A blob older
+/// than this holds one sound for all eight.
+pub const STATE_VERSION_SLOT_SOUNDS: i32 = 7;
 
 #[inline]
 fn clampf(x: f32, lo: f32, hi: f32) -> f32 {
@@ -92,25 +111,40 @@ fn get_string<'a>(json: &'a str, key: &str) -> Option<&'a str> {
     Some(&rest[..end])
 }
 
+/// The format a blob says it is in: `sv`, or 0 for the oldest blobs, which
+/// carry none. A shell asks, because a blob from before v7 holds one sound
+/// for all eight slots.
+pub fn version(val: &str) -> i32 {
+    get_number(val, "sv").unwrap_or(0.0) as i32
+}
+
 pub fn load(inst: &mut Instance, val: &str) {
+    let from_curve = inst.snd().curve;
     /* Which format this blob is in; 0 when absent, which the oldest
      * pre-version blobs are. */
-    let sv_num = get_number(val, "sv").unwrap_or(0.0) as i32;
+    let sv_num = version(val);
 
     if let Some(n) = get_number(val, "slot") {
         if n >= 0.0 && (n as usize) < SLOTS {
             inst.slot = n as usize;
         }
     }
+    /*
+     * THE TOP LEVEL IS ONE SOUND, read into the slot it was saved from and
+     * then handed to every slot that has no field of its own. It starts from
+     * what that slot held, so a key a blob lacks and nothing below defaults
+     * keeps its value, as it always did.
+     */
+    let mut top = *inst.snd();
     if let Some(s) = get_string(val, "rate") {
-        inst.rate_idx = rates::index_from(s);
+        top.rate_idx = rates::index_from(s);
     } else if let Some(n) = get_number(val, "rate") {
         /* A numeric rate is an INDEX and must be resolved as one. Passing ""
          * here instead silently reset every such blob to the default -- a
          * patch that loads, reports a rate, and runs at another. */
         let n = n as i64;
         if n >= 0 && (n as usize) < rates::RATES.len() {
-            inst.rate_idx = n as usize;
+            top.rate_idx = n as usize;
         }
     }
 
@@ -122,26 +156,26 @@ pub fn load(inst: &mut Instance, val: &str) {
     let raw_rel = get_number(val, "release");
 
     if let Some(n) = get_number(val, "sustain") {
-        inst.sustain = clampf(n as f32, 0.0, 1.0);
+        top.sustain = clampf(n as f32, 0.0, 1.0);
     }
     /* Absent in v1 and v2 blobs, where the gate always ran the whole step;
      * 1.0 is that behaviour, so an old patch is unchanged. */
-    inst.hold = 1.0;
+    top.hold = 1.0;
     /* Absent in a pre-legato blob, and off is what those patches did. */
-    inst.legato = get_number(val, "legato").map_or(false, |n| n >= 0.5);
+    top.legato = get_number(val, "legato").map_or(false, |n| n >= 0.5);
     /* Absent in a pre-% blob, and MS is what those patches meant. */
-    inst.time_mode = match get_number(val, "tmode") {
+    top.time_mode = match get_number(val, "tmode") {
         Some(n) if n >= 0.5 => TimeMode::Pct,
         _ => TimeMode::Ms,
     };
     /* Absent in a pre-curve blob, and straight lines are what those patches
      * sounded like. */
-    inst.curve = match get_number(val, "curve") {
+    top.curve = match get_number(val, "curve") {
         Some(n) => Curve::from_i32((n + 0.5) as i32),
         None => Curve::Linear,
     };
     if let Some(n) = get_number(val, "hold") {
-        inst.hold = clampf(n as f32, 0.0, 1.0);
+        top.hold = clampf(n as f32, 0.0, 1.0);
     }
     /*
      * THE FADE, AND ABSENT MEANS THE WHOLE PATTERN.
@@ -151,13 +185,13 @@ pub fn load(inst: &mut Instance, val: &str) {
      * open eight slots of silence -- the same class of mistake as a v1 blob's
      * depths loading as zero, and the reason that note exists above.
      */
-    inst.fade = match get_number(val, "fade") {
+    top.fade = match get_number(val, "fade") {
         Some(n) => clampf(n as f32, 0.0, 1.0),
         None => 1.0,
     };
-    inst.fade_soft = get_number(val, "fsoft").map_or(false, |n| n >= 0.5);
+    top.fade_soft = get_number(val, "fsoft").map_or(false, |n| n >= 0.5);
     /* Absent in a pre-v6 blob, and In is what those patches did. */
-    inst.fade_dir = match get_number(val, "fdir") {
+    top.fade_dir = match get_number(val, "fdir") {
         Some(n) if n >= 0.5 => crate::FadeDir::Out,
         _ => crate::FadeDir::In,
     };
@@ -181,18 +215,19 @@ pub fn load(inst: &mut Instance, val: &str) {
      * without a tempo to read, and why the version exists rather than a
      * silent reinterpretation.
      */
+    *inst.snd_mut() = top;
     inst.recalc_ms_per_step();
     let legacy_ms = sv_num > 0 && sv_num < 4;
     let w = inst.width_ms();
     let to_pct = if legacy_ms && w > 1.0e-6 { 100.0 / w } else { 1.0 };
     if let Some(v) = raw_att {
-        inst.attack = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
+        top.attack = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
     }
     if let Some(v) = raw_dec {
-        inst.decay = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
+        top.decay = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
     }
     if let Some(v) = raw_rel {
-        inst.release = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
+        top.release = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
     }
 
     /*
@@ -204,26 +239,30 @@ pub fn load(inst: &mut Instance, val: &str) {
      * jump to full -- louder gating on a patch that had been working.
      */
     if let Some(n) = get_number(val, "amount") {
-        inst.amount = clampf(n as f32, 0.0, 1.0);
+        top.amount = clampf(n as f32, 0.0, 1.0);
     } else {
         let mix = get_number(val, "mix");
         let depth = get_number(val, "depth");
         if mix.is_some() || depth.is_some() {
             let m = clampf(mix.unwrap_or(1.0) as f32, 0.0, 1.0);
             let d = clampf(depth.unwrap_or(1.0) as f32, 0.0, 1.0);
-            inst.amount = clampf(m * d, 0.0, 1.0);
+            top.amount = clampf(m * d, 0.0, 1.0);
         }
+    }
+
+    /* Every slot: its own field where a v7 blob wrote one, the top level's
+     * sound everywhere else -- which is every slot of an older blob. */
+    for s in 0..SLOTS {
+        inst.snd[s] = match get_string(val, slot_key(b's', s).as_str()) {
+            Some(field) if sv_num >= 7 => Sound::parse(field).unwrap_or(top),
+            _ => top,
+        };
     }
 
     /* Patterns travel as one field per slot so a slot cannot be restored
      * half-applied. */
     for s in 0..SLOTS {
-        let mut key = [0u8; 8];
-        key[0] = b'p';
-        let d = s as u8 + b'0';
-        key[1] = d;
-        let key = core::str::from_utf8(&key[..2]).unwrap_or("p0");
-        let Some(field) = get_string(val, key) else { continue };
+        let Some(field) = get_string(val, slot_key(b'p', s).as_str()) else { continue };
 
         /* "<steps>:<ties>:<length>[:<depths>]". The two masks are up to 32
          * hex digits now, so they are read as TEXT and handed to the
@@ -298,7 +337,24 @@ pub fn load(inst: &mut Instance, val: &str) {
     if inst.cursor >= len {
         inst.cursor = len - 1;
     }
+    /* The slot's sound arrived whole, so whatever the envelope is doing is
+     * re-anchored and re-measured as a switch would. */
+    inst.reanchor(from_curve);
+    inst.recalc_ms_per_step();
     inst.recalc_fade();
+}
+
+/// `p<N>` or `s<N>`: a slot's field name, without allocating.
+struct SlotKey([u8; 2]);
+
+impl SlotKey {
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.0).unwrap_or("")
+    }
+}
+
+fn slot_key(prefix: u8, slot: usize) -> SlotKey {
+    SlotKey([prefix, b'0' + (slot % 10) as u8])
 }
 
 fn hexval(c: u8) -> Option<u8> {
@@ -311,35 +367,36 @@ fn hexval(c: u8) -> Option<u8> {
 }
 
 pub fn save(inst: &Instance, mut b: Buf) -> i32 {
+    let top = inst.snd();
     let _ = write!(
         b,
         "{{\"sv\":{},\"slot\":{},\"rate\":\"{}\",",
         STATE_VERSION,
         inst.slot,
-        rates::RATES[inst.rate_idx].label
+        rates::RATES[top.rate_idx].label
     );
     let _ = write!(b, "\"attack\":");
-    let _ = fmt::f(&mut b, inst.attack as f64, 2);
+    let _ = fmt::f(&mut b, top.attack as f64, 2);
     let _ = write!(b, ",\"decay\":");
-    let _ = fmt::f(&mut b, inst.decay as f64, 2);
+    let _ = fmt::f(&mut b, top.decay as f64, 2);
     let _ = write!(b, ",\"sustain\":");
-    let _ = fmt::f(&mut b, inst.sustain as f64, 3);
+    let _ = fmt::f(&mut b, top.sustain as f64, 3);
     let _ = write!(b, ",\"release\":");
-    let _ = fmt::f(&mut b, inst.release as f64, 2);
+    let _ = fmt::f(&mut b, top.release as f64, 2);
     let _ = write!(b, ",\"hold\":");
-    let _ = fmt::f(&mut b, inst.hold as f64, 3);
+    let _ = fmt::f(&mut b, top.hold as f64, 3);
     let _ = write!(b, ",\"amount\":");
-    let _ = fmt::f(&mut b, inst.amount as f64, 3);
+    let _ = fmt::f(&mut b, top.amount as f64, 3);
     let _ = write!(b, ",\"fade\":");
-    let _ = fmt::f(&mut b, inst.fade as f64, 4);
+    let _ = fmt::f(&mut b, top.fade as f64, 4);
     let _ = write!(
         b,
         ",\"fsoft\":{},\"fdir\":{},\"legato\":{},\"tmode\":{},\"curve\":{}",
-        inst.fade_soft as i32,
-        inst.fade_dir as i32,
-        inst.legato as i32,
-        inst.time_mode as i32,
-        inst.curve as i32
+        top.fade_soft as i32,
+        top.fade_dir as i32,
+        top.legato as i32,
+        top.time_mode as i32,
+        top.curve as i32
     );
 
     for s in 0..SLOTS {
@@ -403,6 +460,24 @@ pub fn save(inst: &Instance, mut b: Buf) -> i32 {
             }
         }
         let _ = write!(b, "\"");
+    }
+
+    /*
+     * AFTER THE PATTERNS, so everything a v6 blob held is where it was.
+     *
+     * A SLOT IS WRITTEN ONLY WHERE IT SOUNDS DIFFERENT -- compared as the text
+     * it would write, so "different" means different to a reader, and a slot
+     * equal to the top level is the top level's on the way back in.
+     */
+    let mut mine = [0u8; 160];
+    let mine = top.text(&mut mine);
+    for s in 0..SLOTS {
+        let mut theirs = [0u8; 160];
+        if inst.snd[s].text(&mut theirs) != mine {
+            let _ = write!(b, ",\"s{}\":\"", s);
+            let _ = inst.snd[s].write(&mut b);
+            let _ = write!(b, "\"");
+        }
     }
     let _ = write!(b, "}}");
     b.finish()
