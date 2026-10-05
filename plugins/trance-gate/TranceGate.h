@@ -10,6 +10,7 @@
 #pragma once
 
 #include "ni/WebPlugin.h"
+#include "ni/FileDialog.h"
 #include "ni/Scope.h"
 #include "tg_shell.h"
 #include "Params.h"
@@ -30,6 +31,7 @@ enum EMsgTags
   kMsgParams = 65,        /* -> the `params` readout (fifteen values + width_ms) */
   kMsgScope = 66,         /* -> "<cols>:<cycleMs>:<head>:" + 4 bytes a column    */
   kMsgPatch = 67,         /* <-> the state blob, for copy and paste              */
+  kMsgFileStatus = 68,    /* -> "ok:<words>" | "error:<words>", a file's outcome */
   kMsgSetStep = 96,       /* <- "<index>:<0 off|1 on|2 tie>"                     */
   kMsgSetDepth = 97,      /* <- "<index>:<0..1>"                                 */
   kMsgSetCursor = 98,     /* <- "<index>"                                        */
@@ -42,6 +44,11 @@ enum EMsgTags
   kMsgGate = 105,
   /* -> the envelope plot's gated and dialled curves (tg_core_render_envelope) */
   kMsgEnvelope = 106,
+  /* <- "slot" | "bank": save the current slot, or all eight, to a file the
+   * user picks. Answered with kMsgFileStatus once the panel closes. */
+  kMsgExportFile = 107,
+  /* <- open a slot or bank file and import it. Answered the same way. */
+  kMsgImportFile = 108,
 };
 
 class TranceGate final : public ni::WebPlugin
@@ -71,17 +78,24 @@ private:
   /* The gate's open time in ms, as the engine last published it; 0 unknown. */
   double WidthMs() const;
 
-  /* The fifteen parameters into the engine the shell lent this block. */
+  /* The fifteen parameters into the engine the shell lent this block; the
+   * shell writes what the host moved into the current slot. */
   void PushParams(tg_core_t* core);
   /* The pattern plot's curve, when the patch has moved (or `force`). */
   void SendGate(bool force);
   void SendScope();
+  /* Slot files: a panel, then the file, then the outcome to the editor. */
+  void ExportFile(bool all);
+  void ImportFile();
+  void SendFileStatus(bool ok, const std::string& words);
 
   /* THE ENGINE, BEHIND ITS SHELL: the audio thread takes it for a block, every
    * other thread posts edits and reads what it published (tg_shell.h). */
   tg_shell_t* mShell = nullptr;
 
   ni::Scope<kScopeCols> mScope;
+  /* The save and open panels, remembering the last folder. Main thread. */
+  ni::FileDialog mFiles;
   /* The patch the last curve was rendered from. Main thread. */
   std::string mGateState;
   /* The stage readouts' unit and scale as the editor was last told them, so a

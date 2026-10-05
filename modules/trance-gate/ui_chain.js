@@ -273,6 +273,19 @@ let anchor = null;   /* { phase, msStep, length, atMs, running } */
  */
 let valuedCursor = -1;
 
+/*
+ * THE SLOT THE KNOB GRID WAS LAST READ FOR.
+ *
+ * Every parameter but Slot belongs to a slot, so a switch changes every value
+ * the grid shows -- and the grid caches them, refreshing on its own rotation.
+ * Worse than stale: a knob turn steps FROM the cached value, so the first turn
+ * after a switch would write the old slot's number, nudged, into the new one.
+ * revalue() is the host's door for exactly this (a change made from outside
+ * the controller); the `ui` readout carries the slot so the switch is seen
+ * whoever made it.
+ */
+let valuedSlot = -1;
+
 function movy() {
     return {
         fillRect: fill_rect,
@@ -396,7 +409,9 @@ function parseUi(raw) {
         moving,
         /* 0-based here; the `cursor` PARAM is 1-based because it is shown as a
          * step number. The two spellings meet only in the DSP. */
-        cursor: isFinite(cursor) ? cursor : 0
+        cursor: isFinite(cursor) ? cursor : 0,
+        /* Appended by the DSP after the orders; absent from an older one. */
+        slot: f.length > 9 && isFinite(parseInt(f[9], 10)) ? parseInt(f[9], 10) : -1
     };
 }
 
@@ -1008,6 +1023,7 @@ function init() {
     anchor = null;
     landed = false;
     valuedCursor = -1;
+    valuedSlot = -1;
     uiCache = { raw: null, parsed: null };
     uiReadTick = 0;
     /* The redraw gate is state ABOUT a previous session's screen. Left behind,
@@ -1155,8 +1171,9 @@ function tick() {
      * Gated on a real change: it is a whole-page refresh, and running it every
      * frame would spend the read budget several times over.
      */
-    if (u && u.cursor !== valuedCursor) {
+    if (u && (u.cursor !== valuedCursor || u.slot !== valuedSlot)) {
         valuedCursor = u.cursor;
+        valuedSlot = u.slot;
         ctl.revalue();
     }
 

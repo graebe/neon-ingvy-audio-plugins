@@ -135,3 +135,29 @@ TEST_CASE("a stepped parameter between its steps shows the step it would hold"
   CHECK(test::round_trip(rate, 0.12) == "");
   CHECK(test::clap_to_text(rate, 0.12) == test::clap_to_text(rate, 0.0));
 }
+
+/* ------------------------------------------------- host units <-> the engine */
+
+TEST_CASE("every host value reaches the engine and comes back as itself")
+{
+  /* The slot switch hands the host the engine's values through FromEngine;
+   * whatever the host then pushes back through ToEngine must be the value the
+   * slot holds, or a recall would write a rounding into the slot it recalls. */
+  const test::ParamHost host = declared();
+  CHECK(tg::params::ToEngine(kSlot, 3.0) == 2.0);
+  CHECK(tg::params::ToEngine(kLength, 16.0) == 15.0);
+  CHECK(tg::params::ToEngine(kAmount, 70.0) == doctest::Approx(0.7));
+  CHECK(tg::params::ToEngine(kAttack, 12.5) == 12.5);
+  for (int i = 0; i < host.NParams(); i++)
+  {
+    const iplug::IParam& p = *host.GetParam(i);
+    for (int k = 0; k <= 20; k++)
+    {
+      double v = p.GetMin() + (p.GetMax() - p.GetMin()) * k / 20.0;
+      if (!test::is_double(p)) v = std::round(v);
+      const double engine = double(float(tg::params::ToEngine(i, v)));
+      const double back = p.Constrain(tg::params::FromEngine(i, engine));
+      CHECK_MESSAGE(tg::params::SameInEngine(i, back, engine), p.GetName(), " at ", v);
+    }
+  }
+}

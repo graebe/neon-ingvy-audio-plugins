@@ -40,7 +40,7 @@ void Declare(const std::function<IParam*(int)>& param)
   /*
    * Declared in the ENGINE's order, so the host index is the engine index.
    * Slot and Length are one-based at the host and zero-based in the engine --
-   * "slot 1" is what a musician reads -- and converted once, in PushParams.
+   * "slot 1" is what a musician reads -- and converted once, in ToEngine.
    */
   param(kSlot)->InitInt("Slot", 1, 1, TG_SLOTS);
   param(kLength)->InitInt("Length", 16, 1, TG_MAX_STEPS, "steps");
@@ -66,7 +66,7 @@ void Declare(const std::function<IParam*(int)>& param)
 
   /* Shown as percentages because that is what they are; the engine takes
    * Amount, Width and Sustain as 0..1 and the three envelope stages as the
-   * percent value itself, so only the first three are scaled in PushParams. */
+   * percent value itself, so only the first three are scaled (ToEngine). */
   const auto pct = [](IParam* p, const char* name, double def, double lo, double hi) {
     p->InitDouble(name, def, lo, hi, 0.01, "", 0, "",
                   IParam::ShapeLinear(), IParam::kUnitPercentage, kPctDisplay);
@@ -96,6 +96,28 @@ void Declare(const std::function<IParam*(int)>& param)
    * the pattern in both and switching this at rest changes nothing.
    */
   param(kFadeDir)->InitEnum("Fade Dir", 0, {"In", "Out"});
+}
+
+static bool IsPercent(int paramIdx)
+{
+  return paramIdx == kAmount || paramIdx == kWidth || paramIdx == kSustain || paramIdx == kFade;
+}
+
+double ToEngine(int paramIdx, double hostValue)
+{
+  if (paramIdx == kSlot || paramIdx == kLength) return hostValue - 1.0;
+  return IsPercent(paramIdx) ? hostValue / 100.0 : hostValue;
+}
+
+double FromEngine(int paramIdx, double engineValue)
+{
+  if (paramIdx == kSlot || paramIdx == kLength) return engineValue + 1.0;
+  return IsPercent(paramIdx) ? engineValue * 100.0 : engineValue;
+}
+
+bool SameInEngine(int paramIdx, double hostValue, double engineValue)
+{
+  return float(ToEngine(paramIdx, hostValue)) == float(engineValue);
 }
 
 bool IsStage(int paramIdx)

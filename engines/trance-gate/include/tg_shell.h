@@ -59,27 +59,65 @@ void tg_shell_post_sample_rate(tg_shell_t *s, double sample_rate);
  * TG_STATE_MAX. */
 int  tg_shell_read(tg_shell_t *s, const char *key, char *buf, int buf_len);
 
+/*
+ * The state blob a save writes: the engine's, queued edits included, with the
+ * host's TG_P_COUNT `values` (as tg_shell_push takes them) applied the way the
+ * next block will apply them -- so a project saved before any audio has run
+ * holds the parameters the host shows, in the slot they belong to. Returns the
+ * length written, or -1. Size `buf` with TG_STATE_MAX.
+ */
+int  tg_shell_save(tg_shell_t *s, const double *values, int n, char *buf, int buf_len);
+
+/*
+ * SLOT FILES: one slot (.nitgslot) or all eight (.nitgbank), as text the engine
+ * writes and reads (tg-core's slotfile.rs). Size buffers with TG_SLOTFILE_MAX.
+ *
+ * tg_shell_export: the current slot (`all` 0) or every slot (`all` 1), as the
+ * next block will hold them -- the host's `values` included, as for
+ * tg_shell_save. Returns the length written, or -1.
+ *
+ * tg_shell_import: checks `text` whole and queues it only when good -- a slot
+ * file replaces the current slot, a bank all eight, after which the host
+ * follows (tg_shell_take_params). Returns 1 for a slot, 2 for a bank, or 0 with
+ * the reason in words in `err` (may be NULL); nothing changes then.
+ */
+#define TG_SLOTFILE_MAX 16384
+int  tg_shell_export(tg_shell_t *s, const double *values, int n, int all, char *buf, int buf_len);
+int  tg_shell_import(tg_shell_t *s, const char *text, char *err, int err_len);
+
 /* One cycle of the pattern in ms, as last published: the scope's axis. */
 double tg_shell_cycle_ms(tg_shell_t *s);
 
 /*
- * THE SLOT SWITCH. Length is per slot in the engine and a host parameter too,
- * so on the block the Slot moves the engine's length wins and the host has to
- * follow. Once per published switch this returns 1 with the Length the host's
- * parameter must take (the option index, steps - 1); the host's Length is
- * pushed again from the next block. The main thread.
+ * THE HOST'S PARAMETERS MIRROR THE CURRENT SLOT. Every parameter but Slot is
+ * per slot in the engine, so on the block the Slot moves (or a paste lands)
+ * the engine's values win and the host has to follow: once per published
+ * switch this returns 1 with the current slot's TG_P_COUNT values, on the
+ * numeric wire (tg_core_set_num's units), in `out`; the host moves each of its
+ * parameters to them. Otherwise 0. The main thread.
  */
-int  tg_shell_take_length(tg_shell_t *s, int *length);
-/* After a state load: its Slot and Length belong together, so the next block
- * is a starting point, not a switch. */
-void tg_shell_rebase(tg_shell_t *s);
+int  tg_shell_take_params(tg_shell_t *s, double *out, int n);
+
+/*
+ * A host's state load, as ONE edit: the blob (NULL or "" for none), then the
+ * host's own TG_P_COUNT values -- the restored parameters, on the numeric wire
+ * -- which are the current slot's and win over the blob's rounded copy of
+ * them. A blob from before every slot had its own sound holds one sound for
+ * all eight, and these values are it. Returns 1 when queued.
+ */
+int  tg_shell_load(tg_shell_t *s, const char *blob, const double *values, int n);
+/* The editor's paste of a whole patch: the host then follows the engine's
+ * current slot (tg_shell_take_params). Returns 1 when queued. */
+int  tg_shell_paste(tg_shell_t *s, const char *blob);
 
 /* ---- the audio thread ---- */
 
 tg_core_t *tg_shell_begin(tg_shell_t *s);
-/* The host's Slot (0-based) and Length (option index) into `core`, the engine
- * begin lent -- the Length only while it is the host's to push. */
-void       tg_shell_push_slot(tg_shell_t *s, tg_core_t *core, int slot, double length);
+/* The host's TG_P_COUNT parameters, in tg_param_t order and on the numeric
+ * wire, into `core`, the engine begin lent. A value is written when the host
+ * moved it, into the current slot; on the block the Slot moves nothing else is
+ * written, and the host is told the new slot's values (tg_shell_take_params). */
+void       tg_shell_push(tg_shell_t *s, tg_core_t *core, const double *values, int n);
 /* Publish at this block's end whatever the cadence -- for a change a reader
  * acts on and must not see late, such as the slot moving. */
 void       tg_shell_touch(tg_shell_t *s);

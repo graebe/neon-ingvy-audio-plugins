@@ -117,6 +117,10 @@ protected:
    * automation and undo see it, and to the editor, which did not send it. */
   void SetParamFromPlugin(int paramIdx, double value);
 
+  /* The editor's native view (an NSView* on macOS), or null while no editor
+   * is open: what a system panel is shown on (ni/FileDialog.h). Main thread. */
+  void* EditorView() const { return iplug::WebViewEditorDelegate::mView; }
+
   /* The host's clock, as the engines' transport structs hold it. The audio
    * thread. */
   wire::Transport HostTransport() const;

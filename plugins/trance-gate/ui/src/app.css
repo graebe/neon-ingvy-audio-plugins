@@ -34,6 +34,10 @@
   gap: var(--s6);
 }
 .ring { display: block; }
+/* Flush with the panels' bottom edge, the three words across the column, each
+ * button as wide as its word needs and the spare width shared out. */
+.slot-files { margin-top: auto; width: 100%; }
+.slot-files .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; padding: 0 var(--s2); }
 .ring-centre { fill: var(--ink); }
 .ring-label  { fill: var(--ink-muted); }
 

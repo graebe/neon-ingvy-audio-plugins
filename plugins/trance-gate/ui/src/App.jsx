@@ -17,6 +17,7 @@ import StepGrid from './lib/StepGrid.jsx';
 import { EnvelopePlot } from './lib/EnvelopePlot.jsx';
 import { Panels } from './lib/Panels.jsx';
 import { SettingsRow } from './lib/SettingsRow.jsx';
+import { SlotFiles } from './lib/SlotFiles.jsx';
 import { Band } from './lib/Band.jsx';
 import { fadeWeights } from './lib/fade.js';
 import { setOrder } from './lib/steps.js';
@@ -33,6 +34,8 @@ const ABOVE_GRID = 644;
 /* Under the pads: space-6, then the hint bar (28) and the window's bottom
  * padding (16). */
 const BELOW_GRID = 24 + 28 + 16;
+/* How long a slot file's outcome stays in the hint bar. */
+const FILE_STATUS_MS = 6000;
 
 export default function App() {
   /* Every parameter's value, display string and default -- listening from
@@ -58,6 +61,19 @@ export default function App() {
    * holds the order and normalises it after every rank.
    */
   const [orderMode, setOrderMode] = createSignal(false);
+  /* How the last slot file went, for the hint bar: its verb ("Exported",
+   * "Failed") and the rest, shown for a while and then gone. */
+  const [fileStatus, setFileStatus] = createSignal(null);
+  let fileStatusTimer;
+  const showFileStatus = (msg) => {
+    const at = msg.indexOf(':');
+    const words = msg.slice(at + 1);
+    const space = words.indexOf(' ');
+    setFileStatus({ verb: space < 0 ? words : words.slice(0, space),
+                    rest: space < 0 ? '' : words.slice(space + 1) });
+    clearTimeout(fileStatusTimer);
+    fileStatusTimer = setTimeout(() => setFileStatus(null), FILE_STATUS_MS);
+  };
   const [named, setNamed] = createSignal({});
   const orderNext = () => Object.keys(named()).length;
 
@@ -77,6 +93,8 @@ export default function App() {
         if (p) setParams(p);
       } else if (tag === MSG.patch) {
         copyToClipboard(msg);
+      } else if (tag === MSG.fileStatus) {
+        showFileStatus(msg);
       }
     },
     /* The capture and the gate are BYTES, decoded from base64 once. */
@@ -162,8 +180,14 @@ export default function App() {
     return ABOVE_GRID + rows * 40 + (rows - 1) * 8 + BELOW_GRID;
   });
 
-  /* THREE CLAUSES IS THE CAP, so ORDER mode SWAPS them for its own. */
-  const hint = () => (orderMode() ? [
+  /* THREE CLAUSES IS THE CAP, so ORDER mode SWAPS them for its own, and a
+   * slot file's outcome takes the first place while it is shown. */
+  const hint = () => {
+    const status = fileStatus();
+    const own = baseHint();
+    return status && !orderMode() ? [[status.verb, status.rest], ...own.slice(0, 2)] : own;
+  };
+  const baseHint = () => (orderMode() ? [
     ['click', `the ${params()?.fadeOut ? 'gaps' : 'steps'} in the order they should arrive`],
     ['a number', 'to type one — they swap'],
     ['ORDER', 'again to finish'],
@@ -189,6 +213,7 @@ export default function App() {
                 centre={String(ui().length)} label="STEPS"
                 onLength={(steps) => host.commit(P.length, (steps - 1) / 127)} />
           <EnvelopePlot params={plotParams()} envelope={envelope()} w={240} h={104} />
+          <SlotFiles />
         </div>
         <Panels host={host}
                 orderMode={orderMode()} orderNext={orderNext()} hits={hits()}

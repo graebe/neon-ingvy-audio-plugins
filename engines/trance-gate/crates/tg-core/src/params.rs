@@ -148,30 +148,14 @@ impl Instance {
     }
 
     /*
-     * EVERY SCALAR THE STATE BLOB CARRIES, plus the current slot's length --
-     * the one pattern field a numeric parameter can move. Compared around
-     * `set_num` so the revision moves only for a real change; a plugin pushes
-     * all fifteen every block, and nearly all of those change nothing.
+     * EVERY SCALAR THE STATE BLOB CARRIES THAT A NUMBER CAN MOVE: the slot, and
+     * the current slot's sound and length. Compared around `set_num` so the
+     * revision moves only for a real change; a plugin pushes all fifteen every
+     * block, and nearly all of those change nothing. Only the current slot can
+     * be edited through here, and a switch changes `slot` itself.
      */
-    fn saved_scalars(&self) -> [u32; 16] {
-        [
-            self.slot as u32,
-            self.rate_idx as u32,
-            self.attack.to_bits(),
-            self.decay.to_bits(),
-            self.sustain.to_bits(),
-            self.release.to_bits(),
-            self.hold.to_bits(),
-            self.amount.to_bits(),
-            self.fade.to_bits(),
-            self.fade_soft as u32,
-            self.fade_dir as u32,
-            self.legato as u32,
-            self.time_mode as u32,
-            self.curve as u32,
-            self.pat[self.slot].length as u32,
-            0,
-        ]
+    fn saved_scalars(&self) -> (usize, usize, [u32; 13]) {
+        (self.slot, self.pat[self.slot].length, self.snd().bits())
     }
 
     fn set_num_inner(&mut self, param: Param, value: f64) {
@@ -195,18 +179,8 @@ impl Instance {
                  * writes it every block, so the weights are not recomputed
                  * for it. */
                 if s >= 0 && (s as usize) < crate::SLOTS && s as usize != self.slot {
-                    self.slot = s as usize;
-                    /* The cursor is GLOBAL and the length is PER SLOT, so
-                     * switching to a shorter pattern can leave it past the
-                     * end -- where every edit lands on a step the ring never
-                     * draws. */
-                    let len = self.pat[self.slot].length;
-                    if self.cursor >= len {
-                        self.cursor = len - 1;
-                    }
-                    /* A different slot is a different pattern, so a different
-                     * set of weights. */
-                    self.recalc_fade();
+                    /* A switch recalls the slot's whole sound: see `sound`. */
+                    self.switch_slot(s as usize);
                 }
             }
             Param::Length => {
@@ -243,7 +217,7 @@ impl Instance {
                  * anything else, so this is about the patch door, not the
                  * knob. */
                 let i = value as i32;
-                self.rate_idx = if i >= 0 && (i as usize) < rates::RATES.len() {
+                self.snd_mut().rate_idx = if i >= 0 && (i as usize) < rates::RATES.len() {
                     i as usize
                 } else {
                     rates::RATE_DEFAULT
@@ -254,41 +228,26 @@ impl Instance {
                  * subdivision's length. */
                 self.recalc_ms_per_step();
             }
-            Param::Legato => self.legato = value != 0.0,
+            Param::Legato => self.snd_mut().legato = value != 0.0,
             Param::TimeMode => {
-                self.time_mode = if value != 0.0 { TimeMode::Pct } else { TimeMode::Ms }
+                self.snd_mut().time_mode = if value != 0.0 { TimeMode::Pct } else { TimeMode::Ms }
             }
             Param::Curve => {
                 let c = value as i32;
                 let c = Curve::from_i32(if (0..=2).contains(&c) { c } else { 0 });
 
-                /*
-                 * RE-ANCHOR, OR THE CHANGE IS A CLICK.
-                 *
-                 * `env.t` is a position along the STAGE, and the shape
-                 * decides what level that position means. Halfway through a
-                 * stage is 0.50 linear and 0.82 exponential, so swapping the
-                 * shape under a live gate moves the gain instantly -- exactly
-                 * the fault the attack ramp and the level latch were both
-                 * added to avoid.
-                 *
-                 * Solving shape_new(t') = shape_old(t) keeps the LEVEL and
-                 * changes only the trajectory from here.
-                 */
-                if c != self.curve {
-                    if self.env.t > 0.0 && self.env.t < 1.0 {
-                        let w = crate::envelope::shape(self.curve, self.env.t);
-                        self.env.t = crate::envelope::shape_inv(c, w);
-                    }
-                    self.curve = c;
-                }
+                /* Re-anchored, so a mid-gate change keeps the level: see
+                 * `Instance::reanchor`. */
+                let from = self.snd().curve;
+                self.snd_mut().curve = c;
+                self.reanchor(from);
             }
-            Param::Amount => self.amount = clampf(value as f32, 0.0, 1.0),
-            Param::Hold => self.hold = clampf(value as f32, 0.0, 1.0),
-            Param::Sustain => self.sustain = clampf(value as f32, 0.0, 1.0),
-            Param::Attack => self.attack = clampf(value as f32, 0.0, STAGE_MAX_PCT),
-            Param::Decay => self.decay = clampf(value as f32, 0.0, STAGE_MAX_PCT),
-            Param::Release => self.release = clampf(value as f32, 0.0, STAGE_MAX_PCT),
+            Param::Amount => self.snd_mut().amount = clampf(value as f32, 0.0, 1.0),
+            Param::Hold => self.snd_mut().hold = clampf(value as f32, 0.0, 1.0),
+            Param::Sustain => self.snd_mut().sustain = clampf(value as f32, 0.0, 1.0),
+            Param::Attack => self.snd_mut().attack = clampf(value as f32, 0.0, STAGE_MAX_PCT),
+            Param::Decay => self.snd_mut().decay = clampf(value as f32, 0.0, STAGE_MAX_PCT),
+            Param::Release => self.snd_mut().release = clampf(value as f32, 0.0, STAGE_MAX_PCT),
             /*
              * COMPARED BEFORE RECOMPUTED, AND THAT IS NOT AN OPTIMISATION.
              *
@@ -299,15 +258,15 @@ impl Instance {
              */
             Param::Fade => {
                 let v = clampf(value as f32, 0.0, 1.0);
-                if v != self.fade {
-                    self.fade = v;
+                if v != self.snd().fade {
+                    self.snd_mut().fade = v;
                     self.recalc_fade();
                 }
             }
             Param::FadeSoft => {
                 let v = value != 0.0;
-                if v != self.fade_soft {
-                    self.fade_soft = v;
+                if v != self.snd().fade_soft {
+                    self.snd_mut().fade_soft = v;
                     self.recalc_fade();
                 }
             }
@@ -315,8 +274,8 @@ impl Instance {
              * reason: PushParams writes every parameter every block. */
             Param::FadeDir => {
                 let v = crate::FadeDir::from_i32(value as i32);
-                if v != self.fade_dir {
-                    self.fade_dir = v;
+                if v != self.snd().fade_dir {
+                    self.snd_mut().fade_dir = v;
                     self.recalc_fade();
                 }
             }
@@ -497,27 +456,28 @@ impl Instance {
     pub fn get_param(&self, key: &str, out: &mut [u8]) -> i32 {
         let mut b = Buf::new(out);
         let p = self.pattern();
+        let s = self.snd();
         let _ = match key {
             "name" => write!(b, "TRANCE GATE"),
             "slot" => write!(b, "{}", self.slot),
             "length" => write!(b, "{}", p.length - 1),
-            "rate" => write!(b, "{}", rates::RATES[self.rate_idx].label),
-            "attack" => fmt::f(&mut b, self.attack as f64, 1),
-            "decay" => fmt::f(&mut b, self.decay as f64, 1),
-            "sustain" => fmt::f(&mut b, self.sustain as f64, 2),
-            "release" => fmt::f(&mut b, self.release as f64, 1),
-            "hold" => fmt::f(&mut b, self.hold as f64, 2),
-            "amount" => fmt::f(&mut b, self.amount as f64, 2),
-            "legato" => write!(b, "{}", self.legato as i32),
-            "fade" => fmt::f(&mut b, self.fade as f64, 2),
-            "fade_soft" => write!(b, "{}", self.fade_soft as i32),
-            "fade_dir" => write!(b, "{}", self.fade_dir as i32),
+            "rate" => write!(b, "{}", rates::RATES[s.rate_idx].label),
+            "attack" => fmt::f(&mut b, s.attack as f64, 1),
+            "decay" => fmt::f(&mut b, s.decay as f64, 1),
+            "sustain" => fmt::f(&mut b, s.sustain as f64, 2),
+            "release" => fmt::f(&mut b, s.release as f64, 1),
+            "hold" => fmt::f(&mut b, s.hold as f64, 2),
+            "amount" => fmt::f(&mut b, s.amount as f64, 2),
+            "legato" => write!(b, "{}", s.legato as i32),
+            "fade" => fmt::f(&mut b, s.fade as f64, 2),
+            "fade_soft" => write!(b, "{}", s.fade_soft as i32),
+            "fade_dir" => write!(b, "{}", s.fade_dir as i32),
             /* The step's place in the arrival order, at the cursor -- among its
              * OWN KIND, because that is what the fade ranks. An off step has a
              * rank now: it is the order the holes arrive in under Fade Out. */
             "step_order" => write!(b, "{}", p.order[self.cursor]),
-            "time_mode" => write!(b, "{}", self.time_mode as i32),
-            "curve" => write!(b, "{}", self.curve as i32),
+            "time_mode" => write!(b, "{}", s.time_mode as i32),
+            "curve" => write!(b, "{}", s.curve as i32),
             /* The step's length in ms, so a shell can show what a % actually
              * costs without duplicating the rate table. */
             "ms_per_step" => fmt::f(&mut b, self.ms_per_step as f64, 2),
@@ -594,28 +554,21 @@ impl Instance {
                     b,
                     "{}:{}:{}:{}:{}:{}:",
                     self.slot,
-                    self.legato as i32,
-                    self.time_mode as i32,
-                    self.curve as i32,
-                    rates::RATES[self.rate_idx].label,
+                    s.legato as i32,
+                    s.time_mode as i32,
+                    s.curve as i32,
+                    rates::RATES[s.rate_idx].label,
                     p.length - 1
                 );
                 r.and_then(|_| {
-                    for v in [
-                        self.amount,
-                        self.hold,
-                        self.attack,
-                        self.decay,
-                        self.sustain,
-                        self.release,
-                    ] {
+                    for v in [s.amount, s.hold, s.attack, s.decay, s.sustain, s.release] {
                         fmt::g(&mut b, v as f64, 9)?;
                         b.write_char(':')?;
                     }
                     fmt::g(&mut b, self.width_ms(), 9)?;
                     b.write_char(':')?;
-                    fmt::g(&mut b, self.fade as f64, 9)?;
-                    write!(b, ":{}:{}", self.fade_soft as i32, self.fade_dir as i32)
+                    fmt::g(&mut b, s.fade as f64, 9)?;
+                    write!(b, ":{}:{}", s.fade_soft as i32, s.fade_dir as i32)
                 })
             }
             "ui" => return self.ui_readout(b),
@@ -634,13 +587,18 @@ impl Instance {
      * would be six times slower than one, not merely six reads.
      *
      *   steps : ties : length : phase : ms_step : advancing : cursor : depths
-     *     : orders
+     *     : orders : slot
      *
      * `orders` is APPENDED for the same reason the params readout's are: every
      * field here is read by index, on both shells. Two hex digits per step like
      * `depths`, and EVERY step carries one -- a rank among its own kind, because
      * Fade Out ranks the holes. Which set a shell should draw follows from the
      * direction, which it has from the params readout.
+     *
+     * `slot` is appended last, for the same reason. A slot switch changes every
+     * other value a shell shows, and on the Move the knob grid caches them: the
+     * module's editor watches this field and re-reads the grid when it moves,
+     * whoever moved it -- the Slot knob, the arrows, a preset.
      */
     fn ui_readout(&self, mut b: Buf) -> i32 {
         let p = self.pattern();
@@ -667,6 +625,7 @@ impl Instance {
         for i in 0..length {
             let _ = write!(b, "{:02X}", p.order[i]);
         }
+        let _ = write!(b, ":{}", self.slot);
         b.finish()
     }
 

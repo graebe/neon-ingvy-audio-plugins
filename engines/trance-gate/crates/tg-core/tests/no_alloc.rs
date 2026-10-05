@@ -76,6 +76,19 @@ fn process_set_param_and_get_param_allocate_nothing() {
     let mut state = vec![0u8; 8192];
     let n = p.get_param("state", &mut state) as usize;
     let state = String::from_utf8(state[..n].to_vec()).unwrap();
+    /* Slot 6 sounds different in everything, so the switches below recall a
+     * whole sound -- glides, re-anchor, rate and fade weights included. */
+    for (k, v) in [("rate", "1/8T"), ("curve", "Exp"), ("amount", "0.3"), ("fade", "0.4"), ("hold", "0.5")] {
+        p.set_param("slot", "5");
+        p.set_param(k, v);
+    }
+    p.set_param("slot", "0");
+    /* Slot files, which the plugin shell applies at the top of a block. */
+    let mut file = vec![0u8; 16 * 1024];
+    let n = p.export(tg_core::slotfile::Kind::Bank, &mut file) as usize;
+    let bank = String::from_utf8(file[..n].to_vec()).unwrap();
+    let n = p.export(tg_core::slotfile::Kind::Slot, &mut file) as usize;
+    let slot = String::from_utf8(file[..n].to_vec()).unwrap();
 
     ni_testkit::arm();
     let mut beats = 0.0;
@@ -90,11 +103,16 @@ fn process_set_param_and_get_param_allocate_nothing() {
         let (k, v) = SETS[block % SETS.len()];
         p.set_param(k, v);
         p.set_num(Param::from_i32((block % 15) as i32).unwrap(), 0.5);
+        p.set_num(Param::Slot, if block % 2 == 0 { 5.0 } else { 0.0 });
         for k in GETS {
             p.get_param(k, &mut out);
         }
     }
     p.set_param("state", &state);
+    let _ = p.import(&bank);
+    let _ = p.import(&slot);
+    let _ = p.import("{\"format\": \"nothing\"}");
+    p.export(tg_core::slotfile::Kind::Bank, &mut file);
     ni_testkit::disarm();
 
     let (a, f) = (ni_testkit::allocs(), ni_testkit::frees());

@@ -120,8 +120,45 @@ built once in `engines/shell` and used by every product:
 A save must be right even with the host's audio engine off, so an edit that has
 not been applied yet is still visible to readers: they are answered from the
 latest snapshot replayed through the outstanding edits. `tg_shell.h` and
-`sc_shell.h` are the per-product surfaces; the Trance Gate's also decides whose
-Length wins when the Slot moves, which is an engine rule and not the shell's.
+`sc_shell.h` are the per-product surfaces.
+
+The Trance Gate's also keeps the host's parameters on the right slot. Every
+parameter but Slot is stored per slot in the engine (`tg-core`'s `sound.rs`), so
+the fifteen host parameters are a window onto the current slot:
+
+- **A host value is pushed when the host moved it** (`tg_shell_push`), into the
+  current slot. A value the host has not moved is never re-asserted, so a slot
+  switched to keeps its own values while the host still holds the last slot's.
+- **On a switch the engine wins.** The block the host's Slot moves -- automation,
+  the editor, the host's UI -- writes nothing else; the frame with the new slot is
+  published, and the next idle tick moves every host parameter to it
+  (`tg_shell_take_params`, `SetParamFromPlugin`), so automation lanes, the host's
+  UI and the editor all show the recalled sound. A paste is the same.
+- **A state load is one edit** (`tg_shell_load`): the blob, then the restored
+  parameters into the current slot. The parameters are the exact values the
+  project saved -- the blob holds them rounded -- so a project reopens bit for
+  bit, and a blob from before slots had sounds of their own (state v6 and older)
+  takes them in all eight slots.
+- **A save writes what the next block will hold** (`tg_shell_save`): the
+  engine's blob with the host's values applied the way the next push would apply
+  them, so a project saved before any audio has run still has the parameters the
+  host shows, in the slot they belong to.
+
+**Slot files** (`.nitgslot`, one slot; `.nitgbank`, all eight) are the engine's
+text, written and strictly read by `tg-core`'s `slotfile.rs` -- the state blob's
+own per-slot fields under a format id and a version. The editor asks with a
+message (107 export, 108 import); the plugin shows the system's save or open
+panel as a sheet on the editor's window (`ni/FileDialog.mm`, which remembers the
+last folder per product), moves the bytes (`Patch.cpp`), and answers with the
+outcome in words (68), which the hint bar shows. A WKWebView in a plugin has no
+download manager, which is why the panels are the plugin's and not the page's.
+An import is checked on the main thread and queued whole (`tg_shell_import`): a
+refused file changes nothing, and an accepted one is followed by the host
+exactly like a paste.
+
+On the Move the module has no host parameters to mirror: the knob grid reads
+`get_param`, and the module's editor re-reads the grid (`revalue()`) when the
+slot -- carried as the `ui` readout's last field -- changes.
 
 Objects the shell builds and frees on the main thread — the audio thread's half
 of Listen-In's bus claim (its `abus_pusher_t`; the main thread keeps the

@@ -68,8 +68,18 @@ mod tests {
             (api.set_param.unwrap())(inst, k.as_ptr(), v.as_ptr());
         };
         set("amount", "0.8");
+        /* A second slot with a sound of its own, switched to mid-render: the
+         * panic must change nothing about a gate that is recalling. */
+        set("slot", "2");
+        set("pattern", "5555");
+        set("amount", "0.9");
+        set("attack", "40");
+        set("slot", "0");
         let mut out = Vec::new();
         for b in 0..200 {
+            if b == 40 {
+                set("slot", "2");
+            }
             if panic && b == 60 {
                 for cc in [120u8, 123] {
                     let msg = [0xB0u8, cc, 0];
@@ -85,6 +95,59 @@ mod tests {
         }
         (api.destroy_instance.unwrap())(inst);
         out
+    }
+
+    /*
+     * THE KNOB GRID THROUGH A SLOT SWITCH. Every chain param but `slot` is the
+     * current slot's, so turning the Slot knob recalls them all: what
+     * get_param answers is the new slot's, and turning back brings the old
+     * slot's back -- through the vtable the device calls.
+     */
+    #[test]
+    fn the_vtable_reads_and_writes_the_current_slot() {
+        let host: &'static HostApiV1 = Box::leak(Box::new(HostApiV1::with_clock(bpm, beats)));
+        let api = unsafe { &*move_audio_fx_init_v2(host) };
+        let inst = (api.create_instance.unwrap())(std::ptr::null(), std::ptr::null());
+        let set = |k: &str, v: &str| {
+            let (k, v) = (CString::new(k).unwrap(), CString::new(v).unwrap());
+            (api.set_param.unwrap())(inst, k.as_ptr(), v.as_ptr());
+        };
+        let get = |k: &str| {
+            let k = CString::new(k).unwrap();
+            let mut buf = [0 as std::ffi::c_char; 256];
+            let n = (api.get_param.unwrap())(inst, k.as_ptr(), buf.as_mut_ptr(), 256);
+            assert!(n >= 0);
+            unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap().to_owned()
+        };
+        /* Every per-slot key in CHAIN_PARAMS, an A and a B value. */
+        let keys = [
+            ("length", "7", "23"), ("rate", "1/8", "1/32"), ("legato", "1", "0"),
+            ("time_mode", "1", "0"), ("curve", "2", "1"), ("attack", "12.5", "40.0"),
+            ("decay", "33.0", "2.5"), ("sustain", "0.40", "0.85"), ("release", "30.0", "75.5"),
+            ("hold", "0.60", "0.35"), ("amount", "0.70", "0.25"), ("fade", "0.50", "0.20"),
+            ("fade_soft", "1", "0"), ("fade_dir", "1", "0"),
+        ];
+        for (k, a, _) in keys {
+            set(k, a);
+        }
+        set("slot", "4");
+        assert_eq!(get("slot"), "4");
+        assert_eq!(get("amount"), "1.00", "a fresh slot's own value");
+        for (k, _, b) in keys {
+            set(k, b);
+        }
+        set("slot", "0");
+        for (k, a, _) in keys {
+            assert_eq!(get(k), a, "{k} in slot 1");
+        }
+        set("slot", "4");
+        for (k, _, b) in keys {
+            assert_eq!(get(k), b, "{k} in slot 5");
+        }
+        /* The ui readout's last field is the slot: the editor's cue to re-read
+         * the grid. */
+        assert!(get("ui").ends_with(":4"), "{}", get("ui"));
+        (api.destroy_instance.unwrap())(inst);
     }
 
     #[test]

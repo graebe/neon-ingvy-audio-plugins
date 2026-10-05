@@ -3,9 +3,12 @@
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "Patch.h"
+#include "Params.h"
 #include "ni/Wire.h"
 #include "shell_state.h"
 
+#include <fstream>
+#include <iterator>
 #include <vector>
 
 namespace tg {
@@ -44,30 +47,37 @@ bool Post(tg_shell_t* gate, Edit edit, const std::string& arg)
     case Edit::Randomize:
       return post(gate, {"randomize", arg.c_str()});
 
+    /* Not a plain edit: the pasted patch's current slot is what the host's
+     * parameters must show afterwards, which the shell arranges. */
     case Edit::Paste:
-      return !arg.empty() && post(gate, {"state", arg.c_str()});
+      return !arg.empty() && tg_shell_paste(gate, arg.c_str()) == 1;
   }
   return false;
 }
 
 /*
  * THE BLOB IS THE ENGINE'S, READ FROM WHAT IT PUBLISHED -- including any edit
- * still on its way to it. This was a copy kept beside the engine and written
- * only on load, so every edit made since was missing from every save.
+ * still on its way to it, and the host's parameters as the next block will
+ * push them. This was a copy kept beside the engine and written only on load,
+ * so every edit made since was missing from every save; and without the
+ * parameters, a project saved before audio ran would reload its current slot
+ * with values the host never showed.
  */
-bool Save(tg_shell_t* gate, iplug::IByteChunk& chunk, const PutParams& params)
+bool Save(tg_shell_t* gate, iplug::IByteChunk& chunk, const PutParams& params, const HostValue& value)
 {
   const int at = shell::state::Begin(chunk, kChunkVersion);
   if (!params(chunk)) return false;
   std::vector<char> blob(TG_STATE_MAX, '\0');
-  if (!gate || tg_shell_read(gate, "state", blob.data(), int(blob.size())) < 0)
+  double values[TG_P_COUNT];
+  Values(value, values);
+  if (!gate || tg_shell_save(gate, values, TG_P_COUNT, blob.data(), int(blob.size())) < 0)
     blob[0] = '\0';
   chunk.PutStr(blob.data());
   return shell::state::End(chunk, at);
 }
 
 int Load(tg_shell_t* gate, const iplug::IByteChunk& chunk, int startPos,
-         const GetParams& check, const GetParams& apply)
+         const GetParams& check, const GetParams& apply, const HostValue& value)
 {
   const shell::state::Header h = shell::state::Read(chunk, startPos);
   if (h.body < 0) return -1;
@@ -89,10 +99,110 @@ int Load(tg_shell_t* gate, const iplug::IByteChunk& chunk, int startPos,
 
   if (apply(chunk, h.body) != pos) return -1;
   /* Empty in a chunk from a build that lost the pattern on save: nothing to
-   * restore, so the engine keeps what it has rather than being reset. */
-  if (blob.Get() && *blob.Get())
-    Post(gate, Edit::Paste, blob.Get());
+   * restore, so the engine keeps what it has rather than being reset, and the
+   * restored parameters reach it as host edits do. */
+  if (gate && blob.Get() && *blob.Get())
+  {
+    double values[TG_P_COUNT];
+    Values(value, values);
+    tg_shell_load(gate, blob.Get(), values, TG_P_COUNT);
+  }
   return shell::state::Finish(h, after);
+}
+
+void Values(const HostValue& value, double (&out)[TG_P_COUNT])
+{
+  for (int i = 0; i < TG_P_COUNT; i++)
+    out[i] = params::ToEngine(i, value(i));
+}
+
+const char* Extension(FileKind kind)
+{
+  return kind == FileKind::Slot ? "nitgslot" : "nitgbank";
+}
+
+std::string FileName(FileKind kind, int slot)
+{
+  std::string name = kind == FileKind::Slot ? "NI Trance Gate Slot " + std::to_string(slot)
+                                            : std::string("NI Trance Gate Bank");
+  return name + "." + Extension(kind);
+}
+
+/* The file's name, for a status line: what the panel showed, not the path. */
+static std::string BaseName(const std::string& path)
+{
+  const size_t at = path.find_last_of('/');
+  return at == std::string::npos ? path : path.substr(at + 1);
+}
+
+bool ExportFile(tg_shell_t* gate, const HostValue& value, FileKind kind, int slot,
+                const std::string& path, std::string& status)
+{
+  std::vector<char> text(TG_SLOTFILE_MAX, '\0');
+  double values[TG_P_COUNT];
+  Values(value, values);
+  const int n = gate ? tg_shell_export(gate, values, TG_P_COUNT, kind == FileKind::Bank,
+                                       text.data(), int(text.size()))
+                     : -1;
+  if (n <= 0)
+  {
+    status = "Failed to export: the plugin is not ready.";
+    return false;
+  }
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out || !out.write(text.data(), n) || !out.flush())
+  {
+    status = "Failed to write " + BaseName(path) + ".";
+    return false;
+  }
+  status = (kind == FileKind::Slot ? "Exported slot " + std::to_string(slot)
+                                   : std::string("Exported all 8 slots")) +
+           " to " + BaseName(path) + ".";
+  return true;
+}
+
+bool ImportFile(tg_shell_t* gate, int slot, const std::string& path, std::string& status)
+{
+  const std::string name = BaseName(path);
+  std::ifstream in(path, std::ios::binary);
+  if (!in)
+  {
+    status = "Failed to open " + name + ".";
+    return false;
+  }
+  /* One byte past the largest file the engine reads, so an oversized one is
+   * refused by the engine with its own words rather than read whole. */
+  std::string text;
+  text.resize(TG_SLOTFILE_MAX + 1);
+  in.read(text.data(), std::streamsize(text.size()));
+  text.resize(size_t(in.gcount()));
+  if (text.find('\0') != std::string::npos)
+  {
+    status = "Failed to import " + name + ": this is not a Trance Gate slot or bank file.";
+    return false;
+  }
+  char err[256] = {};
+  const int kind = gate ? tg_shell_import(gate, text.c_str(), err, int(sizeof err)) : 0;
+  if (kind == 0)
+  {
+    status = "Failed to import " + name + ": " + (err[0] ? err : "the plugin is not ready.");
+    return false;
+  }
+  status = kind == 1 ? "Imported " + name + " into slot " + std::to_string(slot) + "."
+                     : "Imported all 8 slots from " + name + ".";
+  return true;
+}
+
+bool Follow(tg_shell_t* gate, const HostValue& value, const SetHost& set)
+{
+  double now[TG_P_COUNT];
+  if (!gate || !tg_shell_take_params(gate, now, TG_P_COUNT)) return false;
+  for (int i = 0; i < TG_P_COUNT; i++)
+  {
+    if (i == TG_P_SLOT || params::SameInEngine(i, value(i), now[i])) continue;
+    set(i, params::FromEngine(i, now[i]));
+  }
+  return true;
 }
 
 } // namespace patch

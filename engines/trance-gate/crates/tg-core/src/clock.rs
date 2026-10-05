@@ -17,10 +17,11 @@ impl Instance {
      */
     fn engage(&mut self) {
         let g0 = 1.0 - self.amount_s * (1.0 - self.env.level * self.step_level);
-        self.amount_s = self.amount;
-        if self.amount > 0.0 {
+        let amount = self.snd().amount;
+        self.amount_s = amount;
+        if amount > 0.0 {
             self.step_level = 1.0;
-            self.env.level = (1.0 - (1.0 - g0) / self.amount).max(0.0);
+            self.env.level = (1.0 - (1.0 - g0) / amount).max(0.0);
             self.env.stage = Stage::Sustain;
         }
     }
@@ -46,7 +47,7 @@ impl Instance {
             }
         }
 
-        let beats_per_step = rates::RATES[self.rate_idx].beats;
+        let beats_per_step = rates::RATES[self.snd().rate_idx].beats;
         let mut samples_per_step = (60.0 / bpm as f64) * self.sample_rate * beats_per_step;
         if samples_per_step < 1.0 {
             samples_per_step = 1.0;
@@ -102,7 +103,7 @@ impl Instance {
          * not spend a block proving it, once the glide down to it has landed.
          * The phase still advances, so turning it back up lands on the step
          * the pattern would have reached. */
-        if self.amount <= 0.0 && self.amount_s <= 0.0 {
+        if self.snd().amount <= 0.0 && self.amount_s <= 0.0 {
             self.phase.pos += inc * frames as f64;
             return None;
         }

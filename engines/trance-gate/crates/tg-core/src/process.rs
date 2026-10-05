@@ -31,7 +31,7 @@ impl Instance {
              * nowhere to ramp from a fully open gate. The difference appears
              * BELOW 100%, which is where a retrigger actually re-articulates.
              */
-            if !(on_prev && (tied || self.legato)) {
+            if !(on_prev && (tied || self.snd().legato)) {
                 /* THE FADE SCALES THE STEP'S LEVEL, AND IT SCALES IT HERE.
                  *
                  * This is the one place the struck step's level is read, and
@@ -90,10 +90,11 @@ impl Instance {
          * heading for. So outside them it takes the new value at once, and a
          * change can never be heard as a step.
          */
+        let snd = *self.snd();
         self.sustain_s = if matches!(self.env.stage, Stage::Decay | Stage::Sustain) {
-            ni_dsp::smooth::glide(self.sustain_s, self.sustain, r.smooth)
+            ni_dsp::smooth::glide(self.sustain_s, snd.sustain, r.smooth)
         } else {
-            self.sustain
+            snd.sustain
         };
         let l = StageLens { sustain: self.sustain_s, ..r.lens };
 
@@ -125,7 +126,7 @@ impl Instance {
          * still closes the gate, which is what keeps this distinct from a
          * tie.
          */
-        if self.hold < 1.0
+        if snd.hold < 1.0
             && self.env.stage != Stage::Release
             && self.env.stage != Stage::Idle
         {
@@ -135,13 +136,13 @@ impl Instance {
              * `sounds`. */
             let (here, there) = (self.sounds(r.step), self.sounds(next));
             let p = &self.pat[self.slot];
-            let held = here && (p.tied(r.step) || (self.legato && there));
-            if r.frac >= self.hold as f64 && !held {
+            let held = here && (p.tied(r.step) || (snd.legato && there));
+            if r.frac >= snd.hold as f64 && !held {
                 self.env.enter(Stage::Release, &l);
             }
         }
 
-        self.env.advance(self.curve, &l);
+        self.env.advance(snd.curve, &l);
 
         /* The step's amount is how far the gate OPENS, not how far it closes:
          *     m = 1 - amount * (1 - env * level)
@@ -154,7 +155,7 @@ impl Instance {
          * or a tie outlives the step that started it.
          *
          * `amount_s` is Amount as it glides -- see `ni_dsp::smooth`. */
-        self.amount_s = ni_dsp::smooth::glide(self.amount_s, self.amount, r.smooth);
+        self.amount_s = ni_dsp::smooth::glide(self.amount_s, snd.amount, r.smooth);
         let m = 1.0 - self.amount_s * (1.0 - self.env.level * self.step_level);
 
         self.phase.pos += r.inc;
