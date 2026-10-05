@@ -176,6 +176,8 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Listen-In](plugins/listen-in/README.md) | a tap that publishes a track on a numbered bus — [in Live](plugins/listen-in/docs/live.md) |
 | [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input |
 
+What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).
+
 Published at **https://graebe.github.io/neon-ingvy-audio-plugins/**, built from this
 repository's own Markdown — see [site/README.md](site/README.md).
 

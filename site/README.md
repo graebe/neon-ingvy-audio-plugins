@@ -16,6 +16,7 @@ in `src/content.config.ts` reach **out** of this directory:
 | `plugins` | `plugins/*/README.md` |
 | `pluginDocs` | `plugins/*/docs/*.md` |
 | `tech` | `docs/tech/*.md` |
+| `changelog` | `CHANGELOG.md`, at `/changelog/` |
 
 So the text someone reads on GitHub and the text on the site are the same text,
 and they cannot drift. `plugins/remark-repo-urls.mjs` is what makes that work in

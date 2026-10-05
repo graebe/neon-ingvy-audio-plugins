@@ -74,4 +74,14 @@ const tech = defineCollection({
   }),
 });
 
-export const collections = { plugins, pluginDocs, tech };
+/*
+ * The changelog is the repository's CHANGELOG.md, one file and no frontmatter:
+ * it is read on GitHub as often as here, and the version headings ARE its
+ * structure.
+ */
+const changelog = defineCollection({
+  loader: glob({ base: '..', pattern: 'CHANGELOG.md', generateId: () => 'changelog' }),
+  schema: z.object({}),
+});
+
+export const collections = { plugins, pluginDocs, tech, changelog };

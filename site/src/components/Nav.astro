@@ -10,11 +10,12 @@ const on = (p) => here.startsWith(url(p)) ? 'page' : undefined;
 ---
 <header class="bar">
   <div class="wrap row">
-    <a class="mark" href={url()}>vst<span>-library</span></a>
+    <a class="mark" href={url()}>neon-ingvy<span>-audio-plugins</span></a>
     <nav aria-label="Sections">
       {plugins.map((p) => (
         <a href={url(`plugins/${p.id}/`)} aria-current={on(`plugins/${p.id}/`)}>{p.data.title}</a>
       ))}
+      <a href={url('changelog/')} aria-current={on('changelog/')}>What's new</a>
       <a href={url('tech/')} aria-current={on('tech/')}>Tech</a>
       <a href={url('licences/')} aria-current={on('licences/')}>Licences</a>
     </nav>
