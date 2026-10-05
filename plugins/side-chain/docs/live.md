@@ -168,18 +168,28 @@ Every bundle carries `LICENSE` and `THIRD_PARTY_LICENSES.md` in
 ## The background, and the Motion switch
 
 The window's background is not a static image: a kick drum makes it ring. Each
-hit sends one slow wave out from every panel edge and from the window border; the
-waves reflect, cross and fade out over about twenty seconds, and the dots and
-grain swell and thin as they pass. With no bass playing it is completely still.
+bass onset — a kick, the attack of an 808 — sends one slow wave out from every
+panel edge and from the window border; the waves reflect, cross and fade out
+over about twenty seconds, and the dots and grain swell and thin as they pass.
+With no bass playing it is completely still.
 
-The **Motion** switch in the hint bar turns it off. That setting is remembered on
-your machine and is not a plugin parameter — it will not be automated, saved into
-a preset, or changed on somebody else who opens your project. If your system is
-set to reduce motion, it is off regardless.
+Only 20–80 Hz counts, and only a sudden rise in it, so a snare, a hi-hat or a
+sustained bass note will not move it however loud it is. The plugin listens for
+these **only while its window is open**: close the window and the detector
+stops, so the background costs nothing in a set you are only playing. It also
+stops drawing whenever the window is hidden.
 
-Only 20–80 Hz counts as a kick, so a snare or a hi-hat will not move it however
-loud it is. There is more detail, including why two very close kicks read as one,
-under **The Animated Ground**, on the Tech pages.
+The **Motion** switch in the hint bar at the bottom turns it off. That setting
+is remembered on your machine, separately for each Neon Ingvy plugin, and is not
+a plugin parameter — it will not be automated, saved into a preset, or changed
+on somebody else who opens your project. If your system is set to reduce
+motion, it is off regardless.
+
+The window does not repeat the plugin's name — Live already shows it in the
+title bar. The **Neon Ingvy** mark sits at the right end of the hint bar.
+
+There is more detail, including why two very close kicks read as one, under
+**The Animated Ground**, on the Tech pages.
 
 <!-- NOT A LINK. This file is rendered in two places -- on the docs site, which
      is served under a base path, and on GitHub, which is not -- so a path that
