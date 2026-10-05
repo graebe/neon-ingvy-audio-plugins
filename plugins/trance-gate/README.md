@@ -15,7 +15,7 @@ harness: harness/trance-gate/
 
 A tempo-locked step gate: rhythmic chopping locked to song position, per-step
 ADSR, ties, per-step amount, a fade-in that introduces the steps one at a time,
-and 8 pattern slots. Universal macOS binary as
+and 8 slots, each a complete sound. Universal macOS binary as
 VST3 / AU / CLAP, and a Schwung module for the Ableton Move.
 
 **It is the same engine in both**, and that is asserted rather than claimed.
@@ -32,6 +32,40 @@ Everything you draw — which steps sound, the ties, each step's amount, the
 arrival order, all eight slots — is saved with your Live set and comes back
 when you reopen it. Draw a pattern, save, close Live, open the set again: the
 pattern is the one you left, not the one the set was first loaded with.
+
+## Slots: eight complete sounds
+
+Each of the 8 slots remembers everything except the Slot choice itself: the
+pattern (steps, ties, amounts, length, arrival order) and every control —
+Rate, Amount, Width, Attack, Decay, Sustain, Release, Curve, Env Time, Join
+Neighbors, Fade, Fade Shape and Fade Dir. Changing a control changes it only in
+the slot you are on.
+
+Switching slots recalls the whole sound, whether you pick the slot in the
+editor, automate Slot in Live, or turn the Slot knob on the Move. In Live the
+plugin's controls and automation lanes show the recalled values. The switch is
+smooth: Amount and Sustain glide, the envelope carries on from where it is, and
+the gate stays locked to the bar even when the new slot uses another Rate.
+
+For example: put a tight 1/16 gate at 100 % Amount in slot 1 and a soft 1/8
+swell at 40 % in slot 2, then automate Slot from 1 to 2 for the breakdown.
+
+Projects and Move presets saved before slots held their own sound open with
+their settings copied into all 8 slots, beside each slot's own pattern, so
+they sound exactly as before.
+
+## Slot files
+
+**EXPORT** saves the current slot to a `.nitgslot` file; **EXPORT ALL** saves
+all 8 slots to a `.nitgbank` file. **IMPORT** opens either kind: a slot file
+replaces the current slot, a bank replaces all 8. The dialog remembers the
+last folder you used, and the hint bar says what happened, for example
+"Imported Bassline.nitgslot into slot 3."
+
+A file that is not a Trance Gate slot file, or was written by a newer version,
+is refused with the reason, and nothing changes. Imported slots are saved with
+your Live set. The files are readable text, so they are easy to share. Slot
+files are a plugin feature; the Move keeps its own presets.
 
 ## Patch interchange
 
@@ -110,13 +144,16 @@ direction — are ordinary host parameters. Automate them, and they behave the w
 DAW expects. **Fade is the one this matters most for**: a build-up is that knob
 drawn across eight bars.
 
+Every one of them except Slot belongs to the current slot. When the Slot
+changes, the plugin moves each of them to the new slot's value and tells the
+host it did, so the automation lanes and Live's own controls show the recalled
+sound. Automating any of them writes into the slot that is playing.
+
 **The pattern is not among them**, and that is a decision rather than an
 omission. Which steps sound, which are tied, how loud each one is and when it
-arrives would be 128 × 8 = 1,024 more parameters, or 128 that get silently rewritten
-every time the Slot changes — and a parameter that changes value without the host
-asking is worse than no parameter at all. So the pattern travels in the saved state, which
-is the same model the Move module uses and the reason a patch can cross between
-them at all.
+arrives would be 128 × 8 = 1,024 more parameters. So the pattern travels in the
+saved state, which is the same model the Move module uses and the reason a
+patch can cross between them at all.
 
 ## Timing
 

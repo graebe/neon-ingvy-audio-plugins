@@ -27,6 +27,13 @@
 
 ### NI Trance Gate
 
+- **Every slot is a complete sound.** Rate, Amount, Width, the envelope,
+  Curve, Env Time, Join Neighbors and the fade now belong to each slot, beside
+  its pattern. Switching slots — in the editor, by automation or on the Move —
+  recalls all of them, smoothly. Older sets open with their settings copied
+  into all 8 slots, so they sound as before.
+- **Export and import slots.** EXPORT saves the current slot (`.nitgslot`),
+  EXPORT ALL saves all 8 (`.nitgbank`), IMPORT loads either back.
 - **Your pattern is saved with the set.** Before, a set saved after editing the
   pattern could reopen with the pattern from before the edits.
 - Copy gate config and Paste gate config move the whole state as one line of

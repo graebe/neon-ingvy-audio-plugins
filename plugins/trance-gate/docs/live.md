@@ -175,6 +175,14 @@ If the host does not let the plugin read the clipboard directly, pressing
 paste opens a small field instead: press **⌘V** into it, and the patch is
 applied. **Escape** closes it.
 
+## Export and import
+
+Under the envelope plot, **EXPORT**, **EXPORT ALL** and **IMPORT** save the
+current slot or all 8 slots to a file and load them back; see
+[Slot files](../README.md#slot-files). The result shows in the hint bar for a
+few seconds. All three buttons work from the keyboard: Tab to them and press
+Enter or Space.
+
 ## Installing and updating
 
 1. **Quit Live completely** — not just the set. Live keeps every plugin it has

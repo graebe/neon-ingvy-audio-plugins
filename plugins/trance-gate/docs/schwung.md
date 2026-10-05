@@ -39,7 +39,7 @@ The page with the ring puts these under the eight encoders:
 
 | knob | control |
 |---|---|
-| 1 | **Slot** — which of the 8 patterns plays and is edited |
+| 1 | **Slot** — which of the 8 slots plays and is edited. Each slot is a complete sound; turning Slot recalls its pattern and every knob, and the knob page shows the new values |
 | 2 | **All Amount** — dry/wet for the whole effect; 0% is a bypass. Shown as the bar down the right-hand side |
 | 3 | **Step Amount** — how loud *this* step is; 0% is silent. Pick the step with a pad first |
 | 4–7 | **Attack, Decay, Sustain, Release** |
