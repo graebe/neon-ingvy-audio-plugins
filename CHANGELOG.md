@@ -1,6 +1,6 @@
 # What's new
 
-## v2026.10.06.4
+## v2026.10.06.5
 
 ### Before you update
 
@@ -32,6 +32,9 @@
   and dragging across the Trance Gate's pads is heard while you drag, not only
   when you let go. Both now run on timers rather than on those same screen
   refreshes.
+- **Loading a preset or reopening a set with the editor open is safe.** The
+  plugin no longer writes into its window from the thread Live loads on; the
+  knobs and readouts catch up on the window's next tick, a moment later.
 
 ### NI Trance Gate
 
@@ -96,9 +99,13 @@
 - A Listen-In that is removed and comes back is found again within a second.
 - A bus at another sample rate is shown greyed out with its rate, and is never
   drawn.
+- The picture can no longer stay blank for a whole session when the window
+  opens on a busy computer.
 
 ### NI Listen-In
 
+- A new Listen-In's name field is empty, waiting for a name, instead of
+  reading `(null)`.
 - A bus slot belongs to one Listen-In at a time; a second one on the same
   number says `slot taken` instead of sharing it.
 - After a Live restart, or even a crash, every Listen-In claims its saved bus

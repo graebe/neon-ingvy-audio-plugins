@@ -1,6 +1,6 @@
 [package]
 name = "ni-dsp"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 edition = "2021"
 authors = ["Torben Gräber"]
 license = "MIT"

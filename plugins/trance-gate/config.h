@@ -54,8 +54,8 @@
  * thing -- it is part of the bundle IDENTIFIER, which is identity rather than
  * branding, and it stays. */
 #define PLUG_MFR "Neon Ingvy"
-#define PLUG_VERSION_HEX 0x07EA0A34
-#define PLUG_VERSION_STR "v2026.10.06.4"
+#define PLUG_VERSION_HEX 0x07EA0A35
+#define PLUG_VERSION_STR "v2026.10.06.5"
 
 /* THE FOUR-CHARACTER IDS ARE THE PLUGIN'S IDENTITY and they are carried over
  * from the JUCE build deliberately: a host that catalogued this plugin

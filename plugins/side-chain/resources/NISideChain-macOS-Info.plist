@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>NISideChain</string>
 	<key>CFBundleGetInfoString</key>
-	<string>NI Side-Chain v2026.10.06.4 Copyright 2026 Torben Gräber</string>
+	<string>NI Side-Chain v2026.10.06.5 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIconFile</key>
 	<string>NISideChain.icns</string>
 	<key>CFBundleIdentifier</key>
@@ -23,7 +23,7 @@
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>2026.10.52</string>
+	<string>2026.10.53</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSApplicationCategoryType</key>

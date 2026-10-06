@@ -2,7 +2,7 @@
   "id": "trance-gate",
   "name": "NI Trance Gate",
   "abbrev": "TG",
-  "version": "2026.10.06.4",
+  "version": "2026.10.06.5",
   "description": "Tempo-locked step gate with ADSR, ties, a two-way fade-in and pad editing",
   "author": "Neon Ingvy",
   "license": "MIT",

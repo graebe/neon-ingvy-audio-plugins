@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "bus-capi"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "bus-core",
  "ground-capi",
@@ -13,43 +13,43 @@ dependencies = [
 
 [[package]]
 name = "bus-core"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-testkit",
 ]
 
 [[package]]
 name = "ground-capi"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ground-core",
 ]
 
 [[package]]
 name = "ground-core"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-testkit",
 ]
 
 [[package]]
 name = "ni-dsp"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 
 [[package]]
 name = "ni-schwung"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-dsp",
 ]
 
 [[package]]
 name = "ni-testkit"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 
 [[package]]
 name = "sc-capi"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ground-capi",
  "ni-dsp",
@@ -59,7 +59,7 @@ dependencies = [
 
 [[package]]
 name = "sc-core"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-dsp",
  "ni-testkit",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "sc-move"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-schwung",
  "sc-capi",
@@ -76,21 +76,21 @@ dependencies = [
 
 [[package]]
 name = "shell-capi"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "shell-core",
 ]
 
 [[package]]
 name = "shell-core"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-testkit",
 ]
 
 [[package]]
 name = "spectro-capi"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ground-capi",
  "shell-capi",
@@ -100,14 +100,14 @@ dependencies = [
 
 [[package]]
 name = "spectro-core"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-testkit",
 ]
 
 [[package]]
 name = "spectro-recv"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "bus-core",
  "ni-testkit",
@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "tg-capi"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ground-capi",
  "ni-dsp",
@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "tg-core"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-dsp",
  "ni-testkit",
@@ -134,7 +134,7 @@ dependencies = [
 
 [[package]]
 name = "tg-move"
-version = "2026.10.6+4"
+version = "2026.10.6+5"
 dependencies = [
  "ni-schwung",
  "tg-capi",
