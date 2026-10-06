@@ -1,0 +1,43 @@
+{
+  "product": "NIListenIn",
+  "scenario": "labelled",
+  "description": "Bus 3, named \"Bässe & Kick\" in the editor (UTF-8, two bytes for the ä).",
+  "component": {
+    "file": "labelled.component.bin",
+    "bytes": 45
+  },
+  "controller": {
+    "file": "labelled.controller.bin",
+    "bytes": 0,
+    "sameAsComponent": false
+  },
+  "decoded": {
+    "magic": "NIst",
+    "version": 1,
+    "bodyBytes": 25,
+    "params": [3],
+    "strings": ["Bässe & Kick"],
+    "bypass": 0
+  },
+  "values": [
+    {
+      "id": 65536,
+      "title": "Bypass",
+      "normalized": 0,
+      "plain": 0,
+      "display": "off"
+    },
+    {
+      "id": 0,
+      "title": "Bus",
+      "normalized": 0.13333333333333333,
+      "plain": 3,
+      "display": "3"
+    }
+  ],
+  "reload": {
+    "sameParameters": true,
+    "sameChunk": true,
+    "bypassSavedAfterReload": 0
+  }
+}

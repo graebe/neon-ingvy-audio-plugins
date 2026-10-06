@@ -39,7 +39,7 @@ Everything quick runs, and:
 | label | what |
 |---|---|
 | `render` | the render A/B goldens: four seconds through each plugin's audio path, hashed |
-| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens every plugin's real editor as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it |
+| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens every plugin's real editor as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it; `iplug2_fixtures` reopens the saved states in `tests/fixtures/iplug2` in the VST3s from `build/out`, and every parameter must read what was captured |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | every built bundle carries its notices |
 | `site` | every root-relative link on the built site resolves |
@@ -91,6 +91,14 @@ window may sit behind others, and
 the editors have to survive WebKit calling the page hidden -- no animation
 frames, throttled timers (`editor_timing` is the rule that keeps them
 independent of both).
+
+**`iplug2_fixtures`** (`tests/vst3_capture.mm --check`) guards the sets
+saved with the iPlug2 VST3 builds while those builds exist. The fixtures in
+`tests/fixtures/iplug2` are what v2026.10.06.5 saved, captured through the
+calls Live makes ([README](../../tests/fixtures/iplug2/README.md),
+[FORMAT](../../tests/fixtures/iplug2/FORMAT.md)). Each is loaded the way a host
+reopens a set, and every parameter must read what was captured. Bytes are not
+compared, because a later engine may write the same patch differently.
 
 **`au_stress_<Plugin>`** is `auval -stress`'s state path, for every plugin:
 a render thread, two threads getting and setting `ClassInfo` (the plugin's

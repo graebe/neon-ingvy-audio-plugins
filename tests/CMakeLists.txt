@@ -292,6 +292,12 @@ if (APPLE)
     target_include_directories(vst3_capture PRIVATE ${_vst3})
     target_compile_options(vst3_capture PRIVATE -fobjc-arc)
     target_link_libraries(vst3_capture PRIVATE "-framework Cocoa" "-framework WebKit")
+    set(_ni_vst3_bundles)
+    foreach(plugin TranceGate SideChain Spectrogram ListenIn)
+        list(APPEND _ni_vst3_bundles ${NI_BUNDLES}/NI${plugin}.vst3)
+    endforeach()
+    add_test(NAME iplug2_fixtures
+             COMMAND vst3_capture --check ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/iplug2 ${_ni_vst3_bundles})
 endif()
 
 # ---------------------------------------------------------------- Spectrogram
@@ -702,7 +708,7 @@ ni_test_tiers(
         editor_host_SideChain_vst3:host editor_host_SideChain_au:host
         editor_host_SideChain_clap:host
         editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host
-        editor_host_ListenIn_clap:host
+        editor_host_ListenIn_clap:host iplug2_fixtures:host
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)

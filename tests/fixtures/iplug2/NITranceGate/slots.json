@@ -1,0 +1,141 @@
+{
+  "product": "NITranceGate",
+  "scenario": "slots",
+  "description": "Three slots, each its own sound and pattern; slot 2 current. Slot 1: 1/8, Amount 80, Attack 5, Decay 30, Sustain 60, Release 25, Exponential, a drawn 16-step pattern with a tie and two accents. Slot 2: 32 steps, Width 50, Join Neighbors, Fade 50 soft and out, a roll with seed 2202. Slot 3: 12 steps, 1/16T, Env Time %, S-Curve, Sustain 40, Decay 60, a drawn pattern with a tie and a moved arrival. Slots 4-8 untouched.",
+  "component": {
+    "file": "slots.component.bin",
+    "bytes": 1067
+  },
+  "controller": {
+    "file": "slots.controller.bin",
+    "bytes": 0,
+    "sameAsComponent": false
+  },
+  "decoded": {
+    "magic": "NIst",
+    "version": 1,
+    "bodyBytes": 1047,
+    "params": [2, 32, 7, 1, 0, 0, 100, 50, 1.6000000238418581, 16, 100, 16, 50, 1, 1],
+    "strings": ["{\"sv\":7,\"slot\":1,\"rate\":\"1/16\",\"attack\":1.60,\"decay\":16.00,\"sustain\":1.000,\"release\":16.00,\"hold\":0.500,\"amount\":1.000,\"fade\":0.5000,\"fsoft\":1,\"fdir\":1,\"legato\":1,\"tmode\":0,\"curve\":0,\"p0\":\"CBAD:8:16:FFFFFFFFFF80FFFFFF40:0101020503060407030805090602040A\",\"p1\":\"54A954A9:0:32::0701030805020709090B030D010F05110B02040D060C080E0A0C060E04100A12\",\"p2\":\"F56B:40:12::030201010204050306040705\",\"p3\":\"FFFF:0:16:\",\"p4\":\"FFFF:0:16:\",\"p5\":\"FFFF:0:16:\",\"p6\":\"FFFF:0:16:\",\"p7\":\"FFFF:0:16:\",\"s0\":\"1/8:5.00:30.00:0.600:25.00:1.000:0.800:1.0000:0:0:0:0:1\",\"s2\":\"1/16T:1.60:60.00:0.400:16.00:1.000:1.000:1.0000:0:0:0:1:2\",\"s3\":\"1/16:1.60:16.00:1.000:16.00:1.000:1.000:1.0000:0:0:0:0:0\",\"s4\":\"1/16:1.60:16.00:1.000:16.00:1.000:1.000:1.0000:0:0:0:0:0\",\"s5\":\"1/16:1.60:16.00:1.000:16.00:1.000:1.000:1.0000:0:0:0:0:0\",\"s6\":\"1/16:1.60:16.00:1.000:16.00:1.000:1.000:1.0000:0:0:0:0:0\",\"s7\":\"1/16:1.60:16.00:1.000:16.00:1.000:1.000:1.0000:0:0:0:0:0\"}"],
+    "bypass": 0
+  },
+  "values": [
+    {
+      "id": 65536,
+      "title": "Bypass",
+      "normalized": 0,
+      "plain": 0,
+      "display": "off"
+    },
+    {
+      "id": 0,
+      "title": "Slot",
+      "normalized": 0.14285714285714285,
+      "plain": 2,
+      "display": "2"
+    },
+    {
+      "id": 1,
+      "title": "Length",
+      "normalized": 0.24409448818897639,
+      "plain": 32,
+      "display": "32"
+    },
+    {
+      "id": 2,
+      "title": "Rate",
+      "normalized": 0.58333333333333337,
+      "plain": 7,
+      "display": "1/16"
+    },
+    {
+      "id": 3,
+      "title": "Join Neighbors",
+      "normalized": 1,
+      "plain": 1,
+      "display": "On"
+    },
+    {
+      "id": 4,
+      "title": "Env Time",
+      "normalized": 0,
+      "plain": 0,
+      "display": "ms"
+    },
+    {
+      "id": 5,
+      "title": "Env Curve",
+      "normalized": 0,
+      "plain": 0,
+      "display": "Linear"
+    },
+    {
+      "id": 6,
+      "title": "Amount",
+      "normalized": 1,
+      "plain": 100,
+      "display": "100.00 %"
+    },
+    {
+      "id": 7,
+      "title": "Width",
+      "normalized": 0.47368421052631576,
+      "plain": 50,
+      "display": "50.00 %"
+    },
+    {
+      "id": 8,
+      "title": "Attack",
+      "normalized": 0.0080000001192092902,
+      "plain": 1.6000000238418581,
+      "display": "1.60 %"
+    },
+    {
+      "id": 9,
+      "title": "Decay",
+      "normalized": 0.080000000000000002,
+      "plain": 16,
+      "display": "16.00 %"
+    },
+    {
+      "id": 10,
+      "title": "Sustain",
+      "normalized": 1,
+      "plain": 100,
+      "display": "100.00 %"
+    },
+    {
+      "id": 11,
+      "title": "Release",
+      "normalized": 0.080000000000000002,
+      "plain": 16,
+      "display": "16.00 %"
+    },
+    {
+      "id": 12,
+      "title": "Fade",
+      "normalized": 0.5,
+      "plain": 50,
+      "display": "50.00 %"
+    },
+    {
+      "id": 13,
+      "title": "Fade Shape",
+      "normalized": 1,
+      "plain": 1,
+      "display": "Soft"
+    },
+    {
+      "id": 14,
+      "title": "Fade Dir",
+      "normalized": 1,
+      "plain": 1,
+      "display": "Out"
+    }
+  ],
+  "reload": {
+    "sameParameters": true,
+    "sameChunk": true,
+    "bypassSavedAfterReload": 0
+  }
+}

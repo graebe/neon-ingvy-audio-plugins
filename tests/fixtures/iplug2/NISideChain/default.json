@@ -1,0 +1,141 @@
+{
+  "product": "NISideChain",
+  "scenario": "default",
+  "description": "A fresh instance, nothing touched.",
+  "component": {
+    "file": "default.component.bin",
+    "bytes": 140
+  },
+  "controller": {
+    "file": "default.controller.bin",
+    "bytes": 0,
+    "sameAsComponent": false
+  },
+  "decoded": {
+    "magic": "NIst",
+    "version": 1,
+    "bodyBytes": 120,
+    "params": [0, 4, 0, 0, 2, 8, 35, 100, 1, 1, 36, 0, 0, -24, 20],
+    "strings": [],
+    "bypass": 0
+  },
+  "values": [
+    {
+      "id": 65536,
+      "title": "Bypass",
+      "normalized": 0,
+      "plain": 0,
+      "display": "off"
+    },
+    {
+      "id": 0,
+      "title": "Source",
+      "normalized": 0,
+      "plain": 0,
+      "display": "Cycle"
+    },
+    {
+      "id": 1,
+      "title": "Rate",
+      "normalized": 0.36363636363636365,
+      "plain": 4,
+      "display": "1/4"
+    },
+    {
+      "id": 2,
+      "title": "Time",
+      "normalized": 0,
+      "plain": 0,
+      "display": "ms"
+    },
+    {
+      "id": 3,
+      "title": "Delay",
+      "normalized": 0.5,
+      "plain": 0,
+      "display": "0.0 %"
+    },
+    {
+      "id": 4,
+      "title": "Attack",
+      "normalized": 0.01,
+      "plain": 2,
+      "display": "2.0 %"
+    },
+    {
+      "id": 5,
+      "title": "Hold",
+      "normalized": 0.040000000000000001,
+      "plain": 8,
+      "display": "8.0 %"
+    },
+    {
+      "id": 6,
+      "title": "Release",
+      "normalized": 0.17499999999999999,
+      "plain": 35,
+      "display": "35.0 %"
+    },
+    {
+      "id": 7,
+      "title": "Depth",
+      "normalized": 1,
+      "plain": 100,
+      "display": "100.0 %"
+    },
+    {
+      "id": 8,
+      "title": "Curve",
+      "normalized": 0.5,
+      "plain": 1,
+      "display": "Exponential"
+    },
+    {
+      "id": 9,
+      "title": "Channel",
+      "normalized": 0.0625,
+      "plain": 1,
+      "display": "1"
+    },
+    {
+      "id": 10,
+      "title": "Trigger",
+      "normalized": 0.28346456692913385,
+      "plain": 36,
+      "display": "C1"
+    },
+    {
+      "id": 11,
+      "title": "Mode",
+      "normalized": 0,
+      "plain": 0,
+      "display": "Trigger"
+    },
+    {
+      "id": 12,
+      "title": "Vel",
+      "normalized": 0,
+      "plain": 0,
+      "display": "0.0 %"
+    },
+    {
+      "id": 13,
+      "title": "Threshold",
+      "normalized": 0.59999999999999998,
+      "plain": -24,
+      "display": "-24.0 dB"
+    },
+    {
+      "id": 14,
+      "title": "Lockout",
+      "normalized": 0.10000000000000001,
+      "plain": 20,
+      "display": "20 ms"
+    }
+  ],
+  "reload": {
+    "sameParameters": true,
+    "sameChunk": true,
+    "bypassSavedAfterReload": 0
+  }
+}

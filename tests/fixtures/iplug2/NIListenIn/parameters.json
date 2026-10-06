@@ -1,0 +1,30 @@
+{
+  "product": "NIListenIn",
+  "count": 2,
+  "parameters": [
+    {
+      "index": 0,
+      "id": 65536,
+      "title": "Bypass",
+      "shortTitle": "",
+      "units": "",
+      "stepCount": 1,
+      "defaultNormalizedValue": 0,
+      "unitId": 0,
+      "flags": 65545,
+      "flagNames": ["kCanAutomate", "kIsList", "kIsBypass"]
+    },
+    {
+      "index": 1,
+      "id": 0,
+      "title": "Bus",
+      "shortTitle": "",
+      "units": "",
+      "stepCount": 15,
+      "defaultNormalizedValue": 0,
+      "unitId": 0,
+      "flags": 1,
+      "flagNames": ["kCanAutomate"]
+    }
+  ]
+}

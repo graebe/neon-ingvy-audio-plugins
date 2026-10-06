@@ -1,0 +1,18 @@
+{
+  "product": "NISpectrogram",
+  "count": 1,
+  "parameters": [
+    {
+      "index": 0,
+      "id": 65536,
+      "title": "Bypass",
+      "shortTitle": "",
+      "units": "",
+      "stepCount": 1,
+      "defaultNormalizedValue": 0,
+      "unitId": 0,
+      "flags": 65545,
+      "flagNames": ["kCanAutomate", "kIsList", "kIsBypass"]
+    }
+  ]
+}

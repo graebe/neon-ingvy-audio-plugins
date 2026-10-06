@@ -1,0 +1,141 @@
+{
+  "product": "NISideChain",
+  "scenario": "custom",
+  "description": "Every parameter away from its default: Sidechain source, 1/8, % of cycle, Delay -20, Attack 10, Hold 15, Release 50, Depth 75, S-Curve, channel 10, trigger C3 (60), Gate, Vel 40, Threshold -18 dB, Lockout 50 ms.",
+  "component": {
+    "file": "custom.component.bin",
+    "bytes": 140
+  },
+  "controller": {
+    "file": "custom.controller.bin",
+    "bytes": 0,
+    "sameAsComponent": false
+  },
+  "decoded": {
+    "magic": "NIst",
+    "version": 1,
+    "bodyBytes": 120,
+    "params": [2, 6, 1, -19.999999999999996, 10, 15, 50, 75, 2, 10, 60, 1, 40, -18.000000000000004, 50],
+    "strings": [],
+    "bypass": 0
+  },
+  "values": [
+    {
+      "id": 65536,
+      "title": "Bypass",
+      "normalized": 0,
+      "plain": 0,
+      "display": "off"
+    },
+    {
+      "id": 0,
+      "title": "Source",
+      "normalized": 1,
+      "plain": 2,
+      "display": "Sidechain"
+    },
+    {
+      "id": 1,
+      "title": "Rate",
+      "normalized": 0.54545454545454541,
+      "plain": 6,
+      "display": "1/8"
+    },
+    {
+      "id": 2,
+      "title": "Time",
+      "normalized": 1,
+      "plain": 1,
+      "display": "% of cycle"
+    },
+    {
+      "id": 3,
+      "title": "Delay",
+      "normalized": 0.40000000000000002,
+      "plain": -19.999999999999996,
+      "display": "-20.0 %"
+    },
+    {
+      "id": 4,
+      "title": "Attack",
+      "normalized": 0.050000000000000003,
+      "plain": 10,
+      "display": "10.0 %"
+    },
+    {
+      "id": 5,
+      "title": "Hold",
+      "normalized": 0.074999999999999997,
+      "plain": 15,
+      "display": "15.0 %"
+    },
+    {
+      "id": 6,
+      "title": "Release",
+      "normalized": 0.25,
+      "plain": 50,
+      "display": "50.0 %"
+    },
+    {
+      "id": 7,
+      "title": "Depth",
+      "normalized": 0.75,
+      "plain": 75,
+      "display": "75.0 %"
+    },
+    {
+      "id": 8,
+      "title": "Curve",
+      "normalized": 1,
+      "plain": 2,
+      "display": "S-Curve"
+    },
+    {
+      "id": 9,
+      "title": "Channel",
+      "normalized": 0.625,
+      "plain": 10,
+      "display": "10"
+    },
+    {
+      "id": 10,
+      "title": "Trigger",
+      "normalized": 0.47244094488188976,
+      "plain": 60,
+      "display": "C3"
+    },
+    {
+      "id": 11,
+      "title": "Mode",
+      "normalized": 1,
+      "plain": 1,
+      "display": "Gate"
+    },
+    {
+      "id": 12,
+      "title": "Vel",
+      "normalized": 0.40000000000000002,
+      "plain": 40,
+      "display": "40.0 %"
+    },
+    {
+      "id": 13,
+      "title": "Threshold",
+      "normalized": 0.69999999999999996,
+      "plain": -18.000000000000004,
+      "display": "-18.0 dB"
+    },
+    {
+      "id": 14,
+      "title": "Lockout",
+      "normalized": 0.25,
+      "plain": 50,
+      "display": "50 ms"
+    }
+  ],
+  "reload": {
+    "sameParameters": true,
+    "sameChunk": true,
+    "bypassSavedAfterReload": 0
+  }
+}
