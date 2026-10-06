@@ -386,6 +386,7 @@ name = "tg-core"
 version = "2026.10.6+5"
 dependencies = [
  "arrayvec",
+ "fastrand",
  "ni-dsp",
  "ni-testkit",
  "serde",

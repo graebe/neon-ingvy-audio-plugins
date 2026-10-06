@@ -171,12 +171,13 @@ pub struct Instance {
      */
     fade_w: [f32; MAX_STEPS],
     /*
-     * The generator's state. A small xorshift rather than anything from a
-     * library: `set_param` runs on the audio callback, where `rand()` is not
-     * RT-safe in the strict sense, and the core has no dependencies to reach
-     * for anyway.
+     * THE ROLL'S GENERATOR: fastrand's, one u64 of state that the instance
+     * seeds and advances itself. The crate is taken without `std`, so there is
+     * no thread-local generator and no entropy to reach for by accident:
+     * `set_param` runs on the audio callback, and a roll that no seed can
+     * reproduce is one a shell cannot predict. See `randomize`.
      */
-    rng: u32,
+    rng: fastrand::Rng,
     /*
      * THE SAVED STATE'S REVISION: moves whenever anything the state blob
      * carries may have changed, and at no other time. See
@@ -211,7 +212,7 @@ impl Instance {
              * differing is what the walk provides and reproducibility is what
              * the fixed start provides. A shell that wants a specific roll
              * passes its own seed to `randomize`. */
-            rng: 0x9E37_79B9,
+            rng: fastrand::Rng::with_seed(0x9E37_79B9),
             rev: 0,
         };
         me.recalc_ms_per_step();

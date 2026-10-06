@@ -335,13 +335,8 @@ fn a_hold_is_what_the_engine_ignores() {
 #[test]
 fn an_unmoved_revision_means_an_unchanged_state() {
     let mut p = Instance::new(SR);
-    let mut rng = 0x1234_5678u32;
-    let mut next = move || {
-        rng ^= rng << 13;
-        rng ^= rng >> 17;
-        rng ^= rng << 5;
-        rng
-    };
+    let mut rng = fastrand::Rng::with_seed(0x1234_5678);
+    let mut next = move || rng.u32(..);
     let keys = [
         "slot", "length", "rate", "legato", "curve", "time_mode", "amount", "hold", "attack",
         "decay", "sustain", "release", "fade", "fade_soft", "fade_dir", "cursor", "step",
@@ -454,4 +449,30 @@ fn a_length_that_moves_still_renumbers_and_reweighs() {
     assert_eq!(p.pattern().length(), 8);
     assert!(p.cursor() < 8);
     assert_ne!(readout(&p, "state"), long);
+}
+
+/*
+ * A SEED IS THE WHOLE ROLL. The shell picks one on the posting side and
+ * carries it in the command, so its view and the engine roll the same
+ * pattern; without one, each press walks the instance's generator on.
+ */
+#[test]
+fn a_seed_rolls_the_same_pattern_and_no_seed_walks_on() {
+    let roll = |seed: Option<u32>| {
+        let mut p = Instance::new(SR);
+        p.set_num(Param::Length, 31.0);
+        p.randomize(0, seed);
+        readout(&p, "state")
+    };
+    assert_eq!(roll(Some(12345)), roll(Some(12345)));
+    assert_ne!(roll(Some(12345)), roll(Some(54321)));
+    assert_ne!(roll(Some(0)), roll(Some(1)), "zero is a seed like any other");
+
+    let mut p = Instance::new(SR);
+    p.set_num(Param::Length, 31.0);
+    p.randomize(0, None);
+    let first = readout(&p, "state");
+    p.randomize(0, None);
+    assert_ne!(readout(&p, "state"), first, "the second press rolled the first one again");
+    assert_eq!(roll(None), first, "a fresh instance starts from the same place");
 }

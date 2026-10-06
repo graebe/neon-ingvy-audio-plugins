@@ -346,18 +346,6 @@ impl Instance {
         i < MAX_STEPS && self.fade_w[i] > 0.0
     }
 
-    /// One turn of xorshift32. Never returns 0 once seeded non-zero, which is
-    /// the only state this generator cannot leave.
-    #[inline]
-    fn next_rand(&mut self) -> u32 {
-        let mut x = self.rng;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.rng = x;
-        x
-    }
-
     /*
      * FILL A SLOT WITH A GATE WORTH HEARING.
      *
@@ -385,18 +373,21 @@ impl Instance {
             return;
         }
         self.rev = self.rev.wrapping_add(1);
+        /* A seed is the whole state: the same seed rolls the same pattern, on
+         * any build and in the shell's view as in the engine. Zero is a seed
+         * like any other -- the generator has no state it cannot leave. */
         if let Some(s) = seed {
-            /* Zero is xorshift's one dead state, so it is spelled as something
-             * else rather than silently producing the same pattern forever. */
-            self.rng = if s == 0 { 0x6C07_8965 } else { s };
+            self.rng = fastrand::Rng::with_seed(u64::from(s));
         }
         let length = self.pat[slot].length.clamp(1, MAX_STEPS);
 
         /* A quarter to three quarters full. Below that a gate reads as an
-         * accident and above it as no gate at all. */
+         * accident and above it as no gate at all. `hi` is above `lo` by
+         * construction, so the range is never empty -- an empty one would
+         * panic, and a panic aborts the host. */
         let lo = (length / 4).max(1);
         let hi = (length * 3 / 4).max(lo + 1);
-        let hits = lo + (self.next_rand() as usize) % (hi - lo + 1);
+        let hits = self.rng.usize(lo..=hi);
 
         let p = &mut self.pat[slot];
         p.ties.clear();
@@ -420,26 +411,18 @@ impl Instance {
             p.steps.set(i, (i * hits) % length < hits);
         }
 
-        /* Fisher-Yates over the ranks, in place over the step indices that
-         * carry them. The borrow ends before the generator is asked for the
-         * next number, which is why the ranks are collected first. */
-        let mut idx = [0usize; MAX_STEPS];
+        /* The ranks 1..=n, shuffled and dealt to the n on steps from the left.
+         * On the stack, both: this runs on the audio callback. */
+        let mut on = [0usize; MAX_STEPS];
         let mut n = 0;
-        for i in 0..length {
-            if self.pat[slot].on(i) {
-                idx[n] = i;
-                n += 1;
-            }
+        for i in (0..length).filter(|&i| self.pat[slot].on(i)) {
+            on[n] = i;
+            n += 1;
         }
-        for i in 0..n {
-            self.pat[slot].order[idx[i]] = (i + 1) as u8;
-        }
-        for i in (1..n).rev() {
-            let j = (self.next_rand() as usize) % (i + 1);
-            let (a, b) = (idx[i], idx[j]);
-            let t = self.pat[slot].order[a];
-            self.pat[slot].order[a] = self.pat[slot].order[b];
-            self.pat[slot].order[b] = t;
+        let mut ranks: [u8; MAX_STEPS] = core::array::from_fn(|k| (k + 1) as u8);
+        self.rng.shuffle(&mut ranks[..n]);
+        for (&i, &rank) in on[..n].iter().zip(&ranks[..n]) {
+            self.pat[slot].order[i] = rank;
         }
         self.pat[slot].renumber();
         self.recalc_fade();
