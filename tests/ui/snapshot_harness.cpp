@@ -39,8 +39,13 @@ struct Scratch
 /* NI_UPDATE_BASELINES for one scope. */
 struct Updating
 {
+   #if JUCE_WINDOWS
+    Updating()  { _putenv_s ("NI_UPDATE_BASELINES", "1"); }
+    ~Updating() { _putenv_s ("NI_UPDATE_BASELINES", ""); }
+   #else
     Updating()  { ::setenv ("NI_UPDATE_BASELINES", "1", 1); }
     ~Updating() { ::unsetenv ("NI_UPDATE_BASELINES"); }
+   #endif
 };
 
 struct Square final : public juce::Component

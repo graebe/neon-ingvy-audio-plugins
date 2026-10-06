@@ -505,15 +505,22 @@ void LookAndFeel::drawCornerResizer (juce::Graphics& g, int w, int h, bool mouse
 
 /* ============================================================== shared == */
 
+/*
+ * The typeface cache is cleared both ways: JUCE remembers which face a font
+ * name resolved to, and a name resolved before this was the default would
+ * otherwise keep the face it found then.
+ */
 SharedLookAndFeel::SharedLookAndFeel()
     : previous (&juce::LookAndFeel::getDefaultLookAndFeel())
 {
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    juce::Typeface::clearTypefaceCache();
 }
 
 SharedLookAndFeel::~SharedLookAndFeel()
 {
     juce::LookAndFeel::setDefaultLookAndFeel (previous.get());
+    juce::Typeface::clearTypefaceCache();
 }
 
 } // namespace uv

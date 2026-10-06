@@ -7,6 +7,7 @@
  */
 #include "UvLight.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <tuple>

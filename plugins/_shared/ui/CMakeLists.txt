@@ -74,6 +74,12 @@ target_include_directories(ni_ui INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # otherwise link WebKit on macOS and want webkit2gtk on Linux.
 target_compile_definitions(ni_ui INTERFACE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
 
+# The sources are UTF-8 -- an info line's dash is -- and a compiler with the
+# Visual C++ command line reads them as the system's code page unless told.
+if (MSVC)
+    target_compile_options(ni_ui INTERFACE /utf-8)
+endif()
+
 target_link_libraries(ni_ui INTERFACE
     ni_ui_assets
     juce::juce_core
