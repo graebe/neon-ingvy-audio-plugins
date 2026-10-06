@@ -22,7 +22,10 @@
   (Shift for fine), Page Up/Down, Home/End, and Enter to type.
 - The window no longer repeats the plugin's name; the hint bar along the bottom
   carries the Motion switch and the Neon Ingvy mark.
-- The animated background rings on bass onsets only, and its detector runs only
+- **The animated background keeps time with the song.** It pulses on every
+  beat while the transport plays, stronger on the first beat of each bar, and
+  is still while stopped. It follows the tempo and time signature rather than
+  the audio, so every plugin pulses alike, even on a silent track; it runs only
   while the window is open.
 
 ### NI Trance Gate

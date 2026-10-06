@@ -253,17 +253,18 @@ rm -rf ~/Library/Audio/Plug-Ins/VST3/TranceGate.vst3 \
 
 ## The background, and the Motion switch
 
-The window's background is not a static image: a kick drum makes it ring. Each
-bass onset — a kick, the attack of an 808 — sends one slow wave out from every
-panel edge and from the window border; the waves reflect, cross and fade out
-over about twenty seconds, and the dots and grain swell and thin as they pass.
-With no bass playing it is completely still.
+The window's background is not a static image: it keeps time with your song.
+While Live's transport plays, every beat sends one slow wave out from every
+panel edge and from the window border, and the first beat of each bar sends a
+stronger one. The waves reflect, cross and fade out over about twenty seconds,
+and the dots and grain swell and thin as they pass. Stop the transport and the
+background comes to rest.
 
-Only 20–80 Hz counts, and only a sudden rise in it, so a snare, a hi-hat or a
-sustained bass note will not move it however loud it is. The plugin listens for
-these **only while its window is open**: close the window and the detector
-stops, so the background costs nothing in a set you are only playing. It also
-stops drawing whenever the window is hidden.
+It follows Live's tempo and time signature, not the sound: it pulses the same
+way in every Neon Ingvy plugin, on a drum bus or on a silent track. The plugin
+keeps time **only while its window is open**: close the window and it stops, so
+the background costs nothing in a set you are only playing. It also stops
+drawing whenever the window is hidden.
 
 The **Motion** switch in the hint bar at the bottom turns it off. That setting
 is remembered on your machine, separately for each Neon Ingvy plugin, and is not
@@ -274,8 +275,8 @@ motion, it is off regardless.
 The window does not repeat the plugin's name — Live already shows it in the
 title bar. The **Neon Ingvy** mark sits at the right end of the hint bar.
 
-There is more detail, including why two very close kicks read as one, under
-**The Animated Ground**, on the Tech pages.
+There is more detail, including what happens on a loop, a jump and in 6/8 or
+7/8, under **The Animated Ground**, on the Tech pages.
 
 <!-- NOT A LINK. This file is rendered in two places -- on the docs site, which
      is served under a base path, and on GitHub, which is not -- so a path that

@@ -5,8 +5,9 @@ slug: ground
 ---
 
 Every window in this repository has the same background: violet dot paper over a
-fine grain. Since `v2026.09.29`, that background **moves when a kick lands**, and
-is perfectly still the rest of the time.
+fine grain. That background **keeps time with the song**: while the host's
+transport plays it rings on every beat, a little harder on the first beat of
+each bar, and while the transport is stopped it is perfectly still.
 
 This page is about how it works and how to turn it off. If you just want the
 switch, it is called **Motion** and it sits in the hint bar at the bottom of
@@ -14,67 +15,74 @@ every window.
 
 ## What you see
 
-Play a kick through any of the four plugins and watch the background rather than
-the controls. Each hit makes every panel edge — and the window border itself —
-emit one slow ring. The rings travel outward through the background, bounce off
-the panels and off the border, cross each other, and fade out over about twenty
-seconds. Where a ring peaks the dots grow a little and brighten and the grain
-thickens; in the trough between two rings they shrink and dim and it thins.
+Press play in Live and watch the background rather than the controls. Every
+beat makes each panel edge — and the window border itself — emit one slow ring.
+The rings travel outward through the background, bounce off the panels and off
+the border, cross each other, and fade out over about twenty seconds. Where a
+ring peaks the dots grow a little and brighten and the grain thickens; in the
+trough between two rings they shrink and dim and it thins. The ring on a bar's
+downbeat is the tall one; the others are visibly smaller, so the bar reads in
+the background as one strong pulse and its lighter beats.
 
 Three things it deliberately does **not** do:
 
-- **It never idles.** With no kick, the field is exactly zero, the picture is
-  the static background, and the render loop stops entirely -- as it also does
-  while the window is hidden. A background that drifts on its own would be
-  competing with the meters.
+- **It never idles.** With the transport stopped the field rings out to exactly
+  zero, the picture is the static background, and the render loop stops
+  entirely — as it also does while the window is hidden.
 - **The grain never travels.** Only its local density changes. Moving grain reads
   as television static.
 - **Rings do not cross a panel.** Panels, wells and the step grid are solid to
   the field, which is what keeps the motion feeling like it is *behind* the
   interface rather than on top of it.
 
-## What counts as a kick
+## When it rings
 
-Only low bass. The detector listens to the band from **20 Hz to 80 Hz** and looks
-for an **attack** in it — a sudden rise above whatever the bass has been doing for
-the last quarter second or so. A kick drum moves it; a snare, a hi-hat, a vocal or
-a loud guitar do not, however loud they are, and neither does a sustained bass
-note once it is holding.
+The rule is short, and it is the whole of it:
 
-Because the question is *relative*, there is no sensitivity to set. The same
-plugin behaves the same way on a quiet dub mix and on a loud master — it is
-comparing the music to itself.
+- **one ring on every quarter note**, from the host's song position, while the
+  transport plays;
+- **a strong ring on each bar's downbeat**, from the host's time signature — a
+  bar is *numerator × 4 ÷ denominator* quarter notes, and a host that reports
+  no time signature is taken to be in 4/4;
+- **nothing while the transport is stopped.**
 
-> **A deviation from the design system, pending a design update.** Ultraviolet
-> 1.0.0's Motion spec asks for a different test: the band's level exceeding 1.8×
-> its own 300 ms average.
-> That works beautifully on an isolated kick, which is what the design's preview
-> demonstrates — and it very nearly never fires on a record. Over a loud sustained
-> low end, a kick adds only about a third to the level of the 20–80 Hz band,
-> because the bass is already filling that band; a third is 1.3×, and 1.3 is not
-> 1.8. Measured on an eight-second loop with sixteen kicks in it, the specified
-> rule produced **one** ring on a limited mix and **two** on an 808 pattern.
-> Keying on the attack instead gives sixteen on both, with no false positives.
-> Concretely: an onset is the band's envelope rising more than 35 % (plus a small
-> absolute floor) above a slow follower of the recent bass -- one that rises over
-> about 350 ms and falls over about 200 ms. The band, the envelope times, the
-> refractory and the strength range are all still the design's. The table in
-> `engines/ground/crates/ground-core/src/tests.rs` (`mod material`) is the real
-> specification now, and `detect.rs` records the reasoning in full.
+It reads no audio. Every plugin rings identically — NI Side-Chain on a bass,
+NI Spectrogram on a silent return track — because all of them read the same
+clock.
 
-Two details worth knowing, because they are the ones people notice:
+How the edges behave, because they are the ones people notice:
 
-- **Two kicks closer together than about a quarter of a second read as one.**
-  There is a 120 ms minimum gap between onsets, but the practical floor is longer:
-  after a ring the detector waits for the bass to fall back before it will fire
-  again. So a sixteenth-note kick roll merges into one ring, while eighth notes at
-  120 BPM do not. The rings from one hit last far longer than the gap anyway.
-- **A track starting, a clip launching or a channel un-muting can ring once**,
-  even with no kick in it. An amplitude ramp has a spectrum of its own, and a fast
-  one puts real energy into the bass band whatever pitch is playing. It is a
-  genuine transient, so it is treated as one.
-- **It hears the plugin's input.** On NI Side-Chain that is the main input, not
-  the key signal.
+- **Bars count from the start of the song.** In 6/8 a bar is three quarters,
+  so every third ring is the strong one. In 7/8 a bar is three and a half: the
+  rings fall on quarters 1 2 3 4, the next downbeat lands half a beat after the
+  fourth and rings there, and the bar after it starts on a quarter again.
+- **Pressing play on a beat rings it once**, at once. Pressing play between two
+  beats waits for the next one.
+- **A loop or a jump never rings the beats it skipped.** Landing on a beat rings
+  that beat; landing between two rings nothing until the next. A loop back to
+  bar 1 rings bar 1's downbeat, once.
+- **A tempo change simply changes the spacing.** Very slow and very fast tempos
+  work the same way; a beat cannot be lost or doubled between two audio blocks.
+- **It keeps time only while the window is open.** With the window closed the
+  plugin skips the clock entirely and it costs the audio thread nothing;
+  reopening the window mid-song picks up at the next beat, with no backlog.
+
+The strengths are **1.0** for a downbeat and **0.4** for any other beat. The
+field is linear in strength, so a beat's ring is two fifths the height of a
+downbeat's. Measured in the field, at its peak a downbeat ring moves about 53 %
+of the window's dots two levels or more from rest, and a beat ring about 14 %:
+plainly there, plainly the lesser. 0.55 was the first candidate and moved 34 %,
+which at 120 BPM — where each ring is still swelling when the next one starts —
+read too close to the downbeat. `ui-kit/test/field.test.mjs` holds the field to
+this.
+
+> **A deviation from the design system, by the owner's decision, pending a
+> design update.** Ultraviolet 1.0.0's Motion spec drives the ground *by sound,
+> not by time*: a 20–80 Hz onset detector on each plugin's own input. That made
+> four backgrounds that disagreed — each heard only its own track, so a plugin on
+> a pad or a silent return never moved — and it needed an audio feed per plugin.
+> The ground now follows the host's tempo instead. The field itself, and
+> everything about how a ring looks, is still the design's.
 
 ## Turning it off
 
@@ -94,30 +102,35 @@ cannot override that.
 
 | | |
 |---|---|
-| `engines/ground` | the 20–80 Hz onset detector, in Rust, on the audio thread |
+| `engines/ground` | the beat clock, in Rust, on the audio thread |
+| `plugins/_shared/ni/WebPlugin.cpp` | feeds it the host's transport once a block, and sends each ring to the editor |
 | `ui-kit/src/lib/field.js` | the wave field — a port of the design system's own reference implementation |
 | `ui-kit/src/components/Ground.jsx` | the canvas, its sizing and the panel measurement |
 | `ui-kit/src/lib/motion.js` | the Motion switch's remembered state |
-| `design/files/project/README.md` | the design system's Motion section, which is the specification |
+| `ui-kit/harness/beat.js` | a playing transport for the editors' review harnesses |
+| `design/files/project/README.md` | the design system's Motion section |
 
-The detection has to happen in Rust because a plugin editor is a WebView with no
-access to the host's audio — there is no `AudioContext` to hand the signal to. The
-audio thread counts onsets; the editor reads that count about fifty times a second
-and turns each new one into a ring. `engines/ground/include/ground_detect.h`
-spells out the whole contract, including why it is a count and not a flag.
-
-The detector runs **only while the plugin's window is open**. It exists to drive
-the background, so with the window closed the plugin skips it entirely and it
-costs the audio thread nothing; reopening the window starts it again from
-silence, so a kick that was ringing when you closed it does not fire a stale
-ring when you come back.
+The beat is found in Rust because a plugin editor is a WebView: it cannot see
+the host's transport, and its timers are neither sample-accurate nor running
+when the host renders offline. In every audio block `ni::WebPlugin` hands the
+clock the host's position, tempo, time signature and play state
+(`gnd_tick`); the clock counts the beats and downbeats that block crossed. The
+editor's side reads that count about fifty times a second and turns each new
+one into a ring. `engines/ground/include/ground.h` spells out the whole
+contract, including why it is a count and not a flag, and
+`engines/ground/crates/ground-core/src/beat.rs` the rule, down to how a block
+tells a loop from rounding.
 
 The physics is the damped 2D wave equation on a 6 px grid, one Ricker wavelet per
-kick, reflecting at every panel edge. The parameters — wave speed, damping,
+ring, reflecting at every panel edge. The parameters — wave speed, damping,
 source strength, dot and grain response — all come from the design system and are
 checked against it by `node --test ui-kit/test/field.test.mjs`, which reads the
-reference implementation and diffs the numbers. The **detector** is the one part
-that deviates, for the reason in the note above.
+reference implementation and diffs the numbers.
+
+To review it without a host, open any editor's harness
+(`plugins/<plugin>/ui/test/harness/index.html`, served over http from the
+repository root): it plays a transport at 120 BPM in 4/4. `?bpm=`, `?sig=7/8`
+and `?stopped` change that, and **T** starts and stops it.
 
 ## What moves, exactly
 
@@ -125,8 +138,7 @@ Both the dots and the grain respond, and neither of them travels.
 
 As a ring passes, the dots grow from 1.0 px to about 1.3 px and brighten by
 roughly a fifth, and the grain thickens from 5 % to about 9 %; in the trough
-behind it they shrink, dim and thin. A full-strength kick redraws around **30 % of
-the window's dots** at its peak and stays visible for eight seconds or more.
+behind it they shrink, dim and thin.
 
 The grain **tile itself never moves** — only its local density changes. That is a
 design rule rather than an optimisation: grain that travels reads as television
