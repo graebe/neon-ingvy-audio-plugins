@@ -7,6 +7,7 @@
  * be tested without a DOM and so every control answers the same keys the same
  * way.
  */
+import { nextDetent } from './detents.js';
 
 /**
  * A grid of `count` cells, `cols` to a row: where an arrow, Home or End moves
@@ -75,15 +76,18 @@ export function tabMove(key, index, count) {
 
 /**
  * A count (a length in steps, say): arrows by one, Page by `page`, Home/End to
- * the ends. -> the new count, or null for a key that is not one of these.
+ * the ends. With `detents`, Page goes to the next one that way instead, and by
+ * `page` only where there is none. -> the new count, or null for a key that is
+ * not one of these.
  */
-export function countKey(e, value, min, max, page = 4) {
+export function countKey(e, value, min, max, page = 4, detents) {
   const clamp = (v) => Math.min(max, Math.max(min, v));
+  const pageTo = (dir) => clamp(nextDetent(value, detents, dir) ?? value + dir * page);
   switch (e.key) {
     case 'ArrowUp': case 'ArrowRight': return clamp(value + 1);
     case 'ArrowDown': case 'ArrowLeft': return clamp(value - 1);
-    case 'PageUp': return clamp(value + page);
-    case 'PageDown': return clamp(value - page);
+    case 'PageUp': return pageTo(1);
+    case 'PageDown': return pageTo(-1);
     case 'Home': return min;
     case 'End': return max;
     default: return null;

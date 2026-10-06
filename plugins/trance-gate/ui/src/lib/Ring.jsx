@@ -140,11 +140,15 @@ export default function Ring(props) {
 
   /*
    * THE KEYBOARD: the ring's number is the pattern's Length, so to a keyboard
-   * the ring is that slider -- arrows by a step, Page by a beat, Home and End
-   * to the ends. The steps themselves are the pads' to edit from the keyboard.
+   * the ring is that slider -- arrows by a step, Page to the next of the
+   * Length knob's detents (by a beat where there is none), Home and End to the
+   * ends. The steps themselves are the pads' to edit from the keyboard.
+   *
+   * NO TICKS ON THE RING: its angle is a position in the pattern, not a
+   * length, so there is no place on it that means "32 steps".
    */
   const onKeyDown = (e) => {
-    const next = countKey(e, n(), 1, props.maxLength ?? 128, 4);
+    const next = countKey(e, n(), 1, props.maxLength ?? 128, 4, props.detents);
     if (next === null) return;
     e.preventDefault();
     if (next !== n()) props.onLength?.(next);

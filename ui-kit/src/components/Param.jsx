@@ -6,7 +6,8 @@
  * normalised number, a Select chooses an index. This is the one binding every
  * editor used to write for itself (twice as params.jsx, once inline): a drag
  * is a gesture, a click is one committed write, a reset is the plugin's
- * default, and typed text goes to the plugin to be parsed.
+ * default, and typed text goes to the plugin to be parsed. `detents` pass
+ * straight to the Knob, normalised like the value.
  */
 import { Knob } from './Knob.jsx';
 import { Select } from './Select.jsx';
@@ -18,6 +19,7 @@ export function ParamKnob(props) {
     <Knob
       label={props.label}
       size={props.size}
+      detents={props.detents}
       value={p().value(props.idx)}
       display={p().text(props.idx)}
       onBegin={() => p().begin(props.idx)}

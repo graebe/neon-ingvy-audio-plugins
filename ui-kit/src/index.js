@@ -84,6 +84,8 @@ export { Well, Axis, band, INSET, CAPTION } from './components/Plot.jsx';
 export { buildLut, readStops, readRgb, stopCss, luminance, STOPS, LEVELS } from './lib/ramp.js';
 
 export { startDrag } from './lib/drag.js';
+/* The values a drag holds on, and Page Up/Down's next one. */
+export { DETENT_HOLD_PX, detentTravel, detentValue, dragValue, nextDetent } from './lib/detents.js';
 /* Binary payloads: the header, the byte mappings, a reused buffer. */
 export { readHeader, intField, bipolar, unipolar, reuse } from './lib/capture.js';
 /* What a key does to a grid, a pad, a slider, a count or a tab strip. */

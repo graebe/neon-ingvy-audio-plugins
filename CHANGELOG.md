@@ -45,6 +45,11 @@
 - The envelope plot under the ring is the engine's own rendering of the patch.
 - Keyboard: arrows move between pads, Space or Enter toggles a step (Shift for a
   tie), Alt + ↑/↓ sets its amount; the ring is the Length control.
+- **Length holds on whole bars.** Dragging the Length knob stops briefly at
+  half a bar, one, two and four bars at the current Rate and Live's time
+  signature — 16, 32, 64 and 128 at 1/32 in 4/4. Small marks on the knob show
+  where they are. Page Up/Down jump between them, and Shift-drag passes
+  through.
 - On the Move, the module's audio is rounded rather than truncated to 16 bits,
   so quiet gated passages keep their detail.
 
