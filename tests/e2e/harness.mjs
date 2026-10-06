@@ -149,3 +149,34 @@ export async function openForScreenshot(page, plugin, motionKey, query = '') {
   await page.evaluate(() => document.fonts.ready);
   await page.clock.runFor(500);
 }
+
+/**
+ * EVERYTHING THAT WOULD MAKE A PLUGIN WINDOW LOOK BROKEN, as a list of
+ * sentences -- empty when there is none: the document, or any element in it,
+ * scrolled away from 0,0 (a focused field scrolled into view shifts the whole
+ * editor sideways and cuts it off), or an element whose box reaches past the
+ * window. A box with no size is skipped; it draws nothing.
+ */
+export const layoutBreaches = (page) => page.evaluate(() => {
+  const out = [];
+  const name = (el) => `<${el.tagName.toLowerCase()}${el.className?.baseVal ?? el.className
+    ? ` class="${el.className?.baseVal ?? el.className}"` : ''}${
+    el.getAttribute('aria-label') ? ` aria-label="${el.getAttribute('aria-label')}"` : ''}>`;
+  const doc = document.scrollingElement;
+  if (doc.scrollLeft || doc.scrollTop) out.push(`the document scrolled to ${doc.scrollLeft},${doc.scrollTop}`);
+  const W = window.innerWidth, H = window.innerHeight;
+  for (const el of document.body.querySelectorAll('*')) {
+    if (el.scrollLeft || el.scrollTop) out.push(`${name(el)} scrolled to ${el.scrollLeft},${el.scrollTop}`);
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    /* Half a pixel: a scaled window's edges land between device pixels. */
+    if (r.left < -0.5 || r.top < -0.5 || r.right > W + 0.5 || r.bottom > H + 0.5)
+      out.push(`${name(el)} reaches ${Math.round(r.left)},${Math.round(r.top)} .. ${
+        Math.round(r.right)},${Math.round(r.bottom)} outside ${W}x${H}`);
+  }
+  return out;
+});
+
+/** Two frames: whatever a click or a focus set off has been laid out. */
+export const settle = (page) => page.evaluate(() => new Promise((r) =>
+  requestAnimationFrame(() => requestAnimationFrame(r))));
