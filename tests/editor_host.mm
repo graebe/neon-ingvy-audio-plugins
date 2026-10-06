@@ -1,5 +1,5 @@
 /*
- * The Spectrogram's editor, opened by a real host, in each format.
+ * The editors, opened by a real host, in each format.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  *   editor_host <vst3|au|clap> <bundle> [seconds]
@@ -7,24 +7,33 @@
  * WHAT IT DOES. The bundle this checkout BUILT is loaded in-process -- the
  * VST3 through its factory, the AU registered in this process only
  * (au_bundle.h), the CLAP through its entry -- and driven the way a DAW drives
- * it: a render thread feeding a 1 kHz sine with a kick under it, the main run
- * loop for iPlug2's idle timer, and the editor opened through the format's own
- * call (VST3 attached, AU uiViewForAudioUnit, CLAP set_parent + show). The
- * page is iPlug2's real WKWebView with the shipped bundle in it.
+ * it: a render thread feeding a 1 kHz sine with a kick under it, a transport
+ * running at 120 BPM, the main run loop for iPlug2's idle timer, and the
+ * editor opened through the format's own call (VST3 attached, AU
+ * uiViewForAudioUnit, CLAP set_parent + show). The page is iPlug2's real
+ * WKWebView with the shipped bundle in it. The product is the bundle's name.
  *
  * Then the page itself is asked what arrived. Twice: the editor is closed
  * through the format's own call (removed, removeFromSuperview, hide + destroy)
  * and opened again, because the shell's editor-open state is set and cleared
  * by that sequence and a dead reopen is as blank as a dead open. Each time:
  *
- *   - the page says `ready` again and the plugin answers it: defaults, the
- *     session and the axis -- the shell knows an editor is open;
+ *   every editor
+ *   - the page says `ready` again and the plugin answers it with the defaults:
+ *     the shell knows an editor is open;
+ *   - the ground hears the kick: the shell's detector is active and its
+ *     messages are sent;
+ *
+ *   the Spectrogram
+ *   - the session and the axis answer the ready too;
  *   - column batches arrive whose bytes are not all zero -- a fresh instance's
  *     receiver is fed and drained, and the real encoder's payloads cross;
- *   - the editor's own decoder and canvas turn them into a picture: more than
- *     the floor colour on the visible canvas;
- *   - the ground hears the kick: the shell's detector is active and its
- *     messages are sent.
+ *   - the editor's own decoder and canvas put every one of those columns on
+ *     the visible canvas;
+ *
+ *   the Trance Gate and the Side-Chain
+ *   - the playhead (the pattern's line; the shaper's sweep) moves with the
+ *     transport.
  *
  * WHY. The e2e suite drives the editors against a mock host, which cannot
  * notice when the real plugin-to-editor path stops delivering: the mock sends
@@ -33,8 +42,9 @@
  *
  * WHAT IT NEEDS: a logged-in macOS session -- WKWebView needs a window
  * server. The window it opens may be behind others; WebKit then calls the page
- * hidden and stops servicing animation frames, which the picture must survive
- * (it is what a host whose window WebKit misjudges looks like).
+ * hidden, services no animation frames and throttles timers, which the
+ * editors must survive (it is what a host whose window WebKit misjudges looks
+ * like).
  */
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
@@ -87,6 +97,10 @@ static void source(float* l, float* r, int n)
     phase += 2.0 * M_PI * 1000.0 / kRate;
   }
 }
+
+/* The host's transport: playing from bar 1 at 120 BPM in 4/4. */
+static constexpr double kBpm = 120.0;
+static double Beats(double samples) { return samples / kRate * (kBpm / 60.0); }
 
 /* ------------------------------------------------------------- the formats */
 
@@ -151,9 +165,10 @@ struct Vst3 : Format
     comp->setActive(true);
     proc->setProcessing(true);
     ctx.sampleRate = kRate;
-    ctx.tempo = 120.0;
+    ctx.tempo = kBpm;
     ctx.timeSigNumerator = ctx.timeSigDenominator = 4;
-    ctx.state = Vst::ProcessContext::kTempoValid | Vst::ProcessContext::kTimeSigValid;
+    ctx.state = Vst::ProcessContext::kPlaying | Vst::ProcessContext::kTempoValid |
+                Vst::ProcessContext::kTimeSigValid | Vst::ProcessContext::kProjectTimeMusicValid;
     return true;
   }
 
@@ -176,6 +191,7 @@ struct Vst3 : Format
     pd.processContext = &ctx;
     proc->process(pd);
     ctx.projectTimeSamples += kBlock;
+    ctx.projectTimeMusic = Beats(double(ctx.projectTimeSamples));
   }
 
   bool Open(NSView* parent) override
@@ -206,6 +222,34 @@ struct Au : Format
   AudioTimeStamp ts{};
   std::vector<float> l = std::vector<float>(kBlock), r = l;
 
+  /* The transport, through the host callbacks iPlug2's AU wrapper reads. */
+  static OSStatus BeatAndTempo(void* self, Float64* beat, Float64* tempo)
+  {
+    if (beat) *beat = Beats(static_cast<Au*>(self)->ts.mSampleTime);
+    if (tempo) *tempo = kBpm;
+    return noErr;
+  }
+  static OSStatus MusicalTime(void* self, UInt32* toNext, Float32* num, UInt32* den, Float64* down)
+  {
+    const double beat = Beats(static_cast<Au*>(self)->ts.mSampleTime);
+    if (toNext) *toNext = UInt32((1.0 - (beat - std::floor(beat))) * kRate * 60.0 / kBpm);
+    if (num) *num = 4.0f;
+    if (den) *den = 4;
+    if (down) *down = std::floor(beat / 4.0) * 4.0;
+    return noErr;
+  }
+  static OSStatus TransportState(void* self, Boolean* playing, Boolean* changed, Float64* at,
+                                 Boolean* cycling, Float64* cycleStart, Float64* cycleEnd)
+  {
+    if (playing) *playing = true;
+    if (changed) *changed = false;
+    if (at) *at = static_cast<Au*>(self)->ts.mSampleTime;
+    if (cycling) *cycling = false;
+    if (cycleStart) *cycleStart = 0;
+    if (cycleEnd) *cycleEnd = 0;
+    return noErr;
+  }
+
   static OSStatus Input(void* self, AudioUnitRenderActionFlags*, const AudioTimeStamp*, UInt32,
                         UInt32 frames, AudioBufferList* io)
   {
@@ -230,6 +274,12 @@ struct Au : Format
     AudioUnitSetProperty(au, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, &fmt, sizeof fmt);
     UInt32 max = kBlock;
     AudioUnitSetProperty(au, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &max, sizeof max);
+    HostCallbackInfo host = {};
+    host.hostUserData = this;
+    host.beatAndTempoProc = BeatAndTempo;
+    host.musicalTimeLocationProc = MusicalTime;
+    host.transportStateProc = TransportState;
+    AudioUnitSetProperty(au, kAudioUnitProperty_HostCallbacks, kAudioUnitScope_Global, 0, &host, sizeof host);
     AURenderCallbackStruct cb = {Input, this};
     AudioUnitSetProperty(au, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &cb, sizeof cb);
     ts.mFlags = kAudioTimeStampSampleTimeValid;
@@ -334,7 +384,16 @@ struct Clap : Format
     ib.channel_count = ob.channel_count = 2;
     clap_input_events ie{nullptr, NoEvents, NoEvent};
     clap_output_events oe{nullptr, Drop};
+    clap_event_transport tr{};
+    tr.header.size = sizeof tr;
+    tr.header.type = CLAP_EVENT_TRANSPORT;
+    tr.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE |
+               CLAP_TRANSPORT_HAS_TIME_SIGNATURE | CLAP_TRANSPORT_IS_PLAYING;
+    tr.tempo = kBpm;
+    tr.song_pos_beats = clap_beattime(Beats(double(steady)) * double(CLAP_BEATTIME_FACTOR));
+    tr.tsig_num = tr.tsig_denom = 4;
     clap_process p{};
+    p.transport = &tr;
     p.steady_time = steady;
     p.frames_count = kBlock;
     p.audio_inputs = &ib;
@@ -408,25 +467,32 @@ static std::string Eval(WKWebView* web, NSString* js)
 }
 
 /* Every message the plugin sends from here on is counted by tag in the page,
- * and a column batch is checked for a byte above zero past its header --
- * wrapped around the bridge's own SAMFD, which still runs. */
-static NSString* const kRecord = @"(() => {"
-  "if (typeof globalThis.SAMFD !== 'function') return 'no';"
-  "if (!globalThis.__ni) {"
-  "  const bridge = globalThis.SAMFD;"
-  "  globalThis.__ni = { tags: {}, loud: 0, columns: 0 };"
-  "  globalThis.SAMFD = (tag, n, b64) => {"
-  "    __ni.tags[tag] = (__ni.tags[tag] || 0) + 1;"
-  "    if (tag === 64) {"
-  "      const s = atob(b64); let colons = 0, i = 0;"
-  "      for (; i < s.length && colons < 3; i++) if (s[i] === ':') colons++;"
-  "      __ni.columns += parseInt(s.split(':')[1], 10) || 0;"
-  "      for (; i < s.length; i++) if (s.charCodeAt(i) > 0) { __ni.loud++; break; }"
-  "    }"
-  "    return bridge(tag, n, b64);"
-  "  };"
-  "}"
-  "__ni.tags = {}; __ni.loud = 0; __ni.columns = 0; return 'yes'; })()";
+ * wrapped around the bridge's own SAMFD, which still runs. With `columns`, a
+ * Spectrogram column batch (tag 64) is also checked for a byte above zero past
+ * its header, and its columns are counted. */
+static NSString* Recorder(bool columns)
+{
+  return [NSString stringWithFormat:@"(() => {"
+    "if (typeof globalThis.SAMFD !== 'function') return 'no';"
+    "if (!globalThis.__ni) {"
+    "  const bridge = globalThis.SAMFD;"
+    "  globalThis.__ni = { tags: {}, loud: 0, columns: 0 };"
+    "  globalThis.SAMFD = (tag, n, b64) => {"
+    "    __ni.tags[tag] = (__ni.tags[tag] || 0) + 1;"
+    "    if (%s && tag === 64) {"
+    "      const s = atob(b64); let colons = 0, i = 0;"
+    "      for (; i < s.length && colons < 3; i++) if (s[i] === ':') colons++;"
+    "      __ni.columns += parseInt(s.split(':')[1], 10) || 0;"
+    "      for (; i < s.length; i++) if (s.charCodeAt(i) > 0) { __ni.loud++; break; }"
+    "    }"
+    "    return bridge(tag, n, b64);"
+    "  };"
+    "}"
+    "__ni.tags = {}; __ni.loud = 0; __ni.columns = 0; return 'yes'; })()",
+    columns ? "true" : "false"];
+}
+static NSString* const kRecord = Recorder(false);
+static NSString* const kRecordColumns = Recorder(true);
 
 /*
  * What the editor drew: how many of the picture's columns hold a bright cell
@@ -453,33 +519,22 @@ static int Count(WKWebView* web, int tag)
   return s.empty() ? -1 : atoi(s.c_str());
 }
 
-/* One open of the editor, and what reached it. */
-static void Session(Format& f, NSWindow* window, const char* label, double seconds)
+/* Which editor the bundle holds, from its name. */
+enum class Product { Spectrogram, TranceGate, SideChain, Other };
+
+static Product ProductOf(const std::string& bundle)
 {
-  printf(" %s\n", label);
-  check(f.Open(window.contentView), "the host opens the editor");
-  WKWebView* web = FindWebView(window.contentView);
-  check(web != nil, "the editor is a WKWebView");
-  if (!web)
-    return;
+  const std::string name = [[[NSString stringWithUTF8String:bundle.c_str()] lastPathComponent]
+                            stringByDeletingPathExtension].UTF8String;
+  if (name == "NISpectrogram") return Product::Spectrogram;
+  if (name == "NITranceGate") return Product::TranceGate;
+  if (name == "NISideChain") return Product::SideChain;
+  return Product::Other;
+}
 
-  /* The bridge exists once the page's module has run. */
-  bool recording = false;
-  for (int i = 0; i < 1000 && !recording; i++)
-  {
-    Spin(0.01);
-    recording = Eval(web, kRecord) == "yes";
-  }
-  check(recording, "the page's bridge is up");
-  if (!recording)
-    return;
-
-  /* The handshake, asked again from the page: answered only if the shell
-   * knows an editor is open. kDefaults 113, the session 69, the axis 65. */
-  Eval(web, @"IPlugSendMsg({msg: 'SAMFUI', msgTag: 120, ctrlTag: -1, data: ''}), 1");
-  Spin(seconds);
-
-  check(Count(web, 113) >= 1, "a ready is answered with the defaults");
+/* The Spectrogram: the reply to ready, and the picture. */
+static void CheckSpectrogram(WKWebView* web, double seconds)
+{
   check(Count(web, 69) >= 1, "... and the session");
   check(Count(web, 65) >= 1, "... and the axis");
   const int cols = Count(web, 64);
@@ -494,6 +549,68 @@ static void Session(Format& f, NSWindow* window, const char* label, double secon
   const int painted = atoi(Eval(web, kPainted).c_str());
   check(columns > 0 && painted >= columns * 9 / 10, "the editor's canvas shows every column that arrived",
         std::to_string(painted) + " of " + std::to_string(columns) + " drawn");
+}
+
+/* A playhead -- an SVG line placed by the editor's clock -- moving with the
+ * transport: its x read a few times over a second must take several values. */
+static void CheckPlayhead(WKWebView* web, NSString* selector, const char* what)
+{
+  NSString* read = [NSString stringWithFormat:
+    @"(() => { const l = document.querySelector('%@'); return l ? l.getAttribute('x1') : 'none'; })()",
+    selector];
+  std::vector<std::string> seen;
+  for (int i = 0; i < 5; i++)
+  {
+    const std::string x = Eval(web, read);
+    if (seen.empty() || seen.back() != x)
+      seen.push_back(x);
+    Spin(0.23);
+  }
+  const bool drawn = !seen.empty() && seen.front() != "none" && !seen.front().empty();
+  std::string trail;
+  for (const auto& x : seen)
+    trail += (trail.empty() ? "" : " ") + x.substr(0, 6);
+  check(drawn && seen.size() >= 3, what, "x " + trail);
+}
+
+/* One open of the editor, and what reached it. */
+static void Session(Format& f, Product product, NSWindow* window, const char* label, double seconds)
+{
+  printf(" %s\n", label);
+  check(f.Open(window.contentView), "the host opens the editor");
+  WKWebView* web = FindWebView(window.contentView);
+  check(web != nil, "the editor is a WKWebView");
+  if (!web)
+    return;
+
+  /* The bridge exists once the page's module has run. */
+  bool recording = false;
+  for (int i = 0; i < 1000 && !recording; i++)
+  {
+    Spin(0.01);
+    recording = Eval(web, product == Product::Spectrogram ? kRecordColumns : kRecord) == "yes";
+  }
+  check(recording, "the page's bridge is up");
+  if (!recording)
+    return;
+
+  /* The handshake, asked again from the page: answered only if the shell
+   * knows an editor is open. */
+  Eval(web, @"IPlugSendMsg({msg: 'SAMFUI', msgTag: 120, ctrlTag: -1, data: ''}), 1");
+  Spin(seconds);
+
+  check(Count(web, 113) >= 1, "a ready is answered with the defaults");
+  switch (product)
+  {
+    case Product::Spectrogram: CheckSpectrogram(web, seconds); break;
+    case Product::TranceGate:
+      CheckPlayhead(web, @"line.playhead", "the pattern's playhead moves with the transport");
+      break;
+    case Product::SideChain:
+      CheckPlayhead(web, @"line.sweep", "the shaper's sweep moves with the transport");
+      break;
+    case Product::Other: break;
+  }
   check(Count(web, 112) >= 1, "the ground hears the kick");
 
   f.Close();
@@ -545,15 +662,16 @@ int main(int argc, char** argv)
       return nullptr;
     }, nullptr);
 
-    NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(80, 80, 720, 502)
+    NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(80, 80, 1000, 800)
                                                    styleMask:NSWindowStyleMaskTitled
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
     window.releasedWhenClosed = NO;
     [window orderFrontRegardless];
 
-    Session(*f, window, "first open", seconds);
-    Session(*f, window, "closed and opened again", seconds);
+    const Product product = ProductOf(argv[2]);
+    Session(*f, product, window, "first open", seconds);
+    Session(*f, product, window, "closed and opened again", seconds);
 
     stop.store(true);
     pthread_join(render, nullptr);
