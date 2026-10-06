@@ -102,7 +102,7 @@ GOT=$(./build/render_ref | md5 -q 2>/dev/null || ./build/render_ref | md5sum | c
 echo
 echo "golden render:"
 if [ "$GOT" = "$GOLDEN" ]; then
-  echo "  20s reference render is bit-identical                      ok"
+  echo "  4s reference render is bit-identical                       ok"
 else
   echo "  RENDER CHANGED: got $GOT want $GOLDEN"
   exit 1

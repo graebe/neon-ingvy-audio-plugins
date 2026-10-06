@@ -1,4 +1,4 @@
-# ONE WORKSPACE, BOTH ENGINES.
+# ONE WORKSPACE, EVERY ENGINE.
 #
 # The Trance Gate's crates and the Spectrogram's were two separate workspaces
 # with two lock files and two copies of the profile below -- and the
@@ -7,7 +7,7 @@
 # twice is a setting that will eventually be stated differently.
 #
 # Merging them is free, and that is worth checking rather than assuming:
-# NEITHER ENGINE HAS AN EXTERNAL DEPENDENCY. Every `[dependencies]` entry in
+# NO CRATE HAS AN EXTERNAL DEPENDENCY. Every `[dependencies]` entry in
 # the tree is a `path` inside its own engine, so there are no third-party
 # versions for one lock file to resolve differently from two. The render A/B
 # (tests/render_plugin.c) is what proves it after the fact: it hashes four
@@ -67,7 +67,7 @@ members = [
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.
 #
-# Every entry point in both engines runs on an audio callback, and unwinding a
+# Every entry point in every engine runs on an audio callback, and unwinding a
 # panic out of `extern "C"` into a C or C++ host is undefined behaviour.
 # Aborting is the honest failure: it is a crash either way, and this way it is
 # one the OS reports rather than one that corrupts the host's stack on its way

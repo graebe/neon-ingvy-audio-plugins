@@ -9,8 +9,8 @@
 # but holds only what `cargo install` put there -- no cargo shim).
 #
 # This lived inline in engines/trance-gate/tests/run.sh and nowhere else, so
-# modules/trance-gate/package.sh called bare `cargo` and failed on exactly the
-# setups run.sh had already worked around.
+# the module's package.sh (now modules/_shared/package.sh) called bare `cargo`
+# and failed on exactly the setups run.sh had already worked around.
 
 if ! command -v cargo >/dev/null 2>&1; then
     _tg_cargo=""

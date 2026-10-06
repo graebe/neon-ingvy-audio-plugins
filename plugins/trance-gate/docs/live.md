@@ -83,7 +83,7 @@ Below those, four controls decide how the rest is read:
 
 | | |
 |---|---|
-| **Slot** | which of the 8 patterns is playing and being edited |
+| **Slot** | which of the 8 slots is playing and being edited — each a whole sound, its own pattern and its own settings |
 | **Join Neighbors** | consecutive on-steps run together instead of retriggering |
 | **Curve** | Linear, Exponential or S-Curve, applied to the envelope stages |
 | **Time** | whether the stages are read in **ms** or as a **%** of the gate's width — the same envelope, two ways of asking for it |
@@ -208,7 +208,7 @@ To copy a slot to another track, press **Copy slot** in one Trance Gate and
 **Paste into slot** in the other, on the slot you want to replace.
 
 A whole patch on the clipboard — a Move patch, or what the copy icon put
-there in a Trance Gate older than v2026.10.06.1 — still pastes, and replaces
+there in a Trance Gate older than v2026.10.06.2 — still pastes, and replaces
 all 8 slots as before. Anything else is refused with the reason in the hint
 bar, and nothing changes. See
 [Patch interchange](../README.md#patch-interchange).

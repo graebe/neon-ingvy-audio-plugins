@@ -57,8 +57,9 @@ cmake --build build --target schwung-side-chain   # -> dist/ni-side-chain-module
 ```
 
 Artefacts land in `build/out/` and are copied into `~/Library/Audio/Plug-Ins/`
-(`-DIPLUG_DEPLOY_PLUGINS=OFF` keeps them in `build/out/`; the two AU render
-tests then report **Skipped**, because they render the installed plugin).
+(`-DIPLUG_DEPLOY_PLUGINS=OFF` keeps them in `build/out/`). The AU tests load
+`build/out`'s bundles by path, never the installed ones, so they run the same
+either way; a missing bundle fails them, it never skips.
 Each bundle carries `LICENSE` and `THIRD_PARTY_LICENSES.md` in
 `Contents/Resources/`.
 
@@ -101,7 +102,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `release` | a release tag means what both release workflows think it means, and `release.json` is written in the shape Schwung Manager reads |
 | `licenses`, `licenses_bundles` | everything that ships has a row in `THIRD_PARTY_LICENSES.md`, nothing listed has stopped shipping, and every built bundle carries the notices |
 | `e2e` | the four editors in Chrome, driven through their review harnesses against the mock hosts: gestures, keyboard, resize, the session handshake, and a screenshot each held to a committed baseline |
-| `tg_au`, `sc_au` | the *installed* AU, rendered by a host that supplies a transport. **Skipped** — not passed — when no plugin is installed; CI installs them and fails on a skip |
+| `tg_au`, `sc_au` | the AU from `build/out`, loaded by path and rendered by a host that supplies a transport. Nothing installed is read, and a missing bundle **fails** — it never skips |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
 | `spectro_wire`, `spectro_columns_js` | the wire format the editor decodes, both sides pinned to one table the plugin's own C++ generates |
 | `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** `abus_ipc_rosetta` and `abus_ipc_rosetta_reader` do it between the x86_64 and arm64 slices, as Live under Rosetta and a native host would |

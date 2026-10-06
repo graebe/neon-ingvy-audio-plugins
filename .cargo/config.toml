@@ -9,7 +9,8 @@
 # It changes scheduling, not arithmetic. Verified rather than assumed: the
 # golden render produced ON THE DEVICE with this flag was
 # 3992810c52d7962b4d25b3a30494ee2e, the hash the host suite pinned at the time
-# (since re-recorded for intended sound changes -- see tests/run.sh).
+# (since re-recorded for intended sound changes -- see
+# engines/trance-gate/tests/run.sh).
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-C", "target-cpu=cortex-a72"]
 

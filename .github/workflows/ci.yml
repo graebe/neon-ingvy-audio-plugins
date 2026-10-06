@@ -241,8 +241,16 @@ jobs:
   # THE C AND C++ TESTS UNDER THREADSANITIZER. Every test in tests/ and
   # tests/cpp/ is built with -fsanitize=thread (cmake/Sanitize.cmake); the
   # plugins are not. One slice, because the sanitizer runtime is per-arch.
-  # Deploy is off: this job's AU tests report Skipped, which is expected --
-  # build-and-test is the job that requires them to run.
+  # Deploy is off: nothing reads an installed copy -- the bundle tests load
+  # build-tsan/out by path.
+  #
+  # NOT THE HOST TESTS (-LE host). They load those bundles -- uninstrumented,
+  # by design -- and what they exist to exercise, the plugin's threads, is all
+  # inside them, where TSan sees no memory access at all. What it could watch
+  # is the harness: a render loop and a stop flag. For that it would miss
+  # every ordering the plugin's own atomics and WebKit's threads provide --
+  # the stuff false races are made of -- and add minutes of runs that
+  # build-and-test already makes.
   tsan:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: macos-15
@@ -299,4 +307,4 @@ jobs:
       - name: Test
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ctest --test-dir build-tsan -L full -LE e2e --output-on-failure
+        run: ctest --test-dir build-tsan -L full -LE 'e2e|host' --output-on-failure

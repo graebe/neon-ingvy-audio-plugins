@@ -96,7 +96,7 @@ it into a message or a note and paste it back later.
 
 A *whole patch* is the plugin's saved state, which **is** the Move patch,
 verbatim, and it is also what the copy icon put on the clipboard before
-version v2026.10.06.1. So a patch from the Move, or one copied from an older
+version v2026.10.06.2. So a patch from the Move, or one copied from an older
 Trance Gate, still pastes — and still replaces every slot, as it always did.
 
 Anything else on the clipboard is refused, and nothing changes: the hint bar

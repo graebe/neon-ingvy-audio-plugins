@@ -156,4 +156,4 @@ behind it they shrink, dim and thin.
 
 The grain **tile itself never moves** — only its local density changes. That is a
 design rule rather than an optimisation: grain that travels reads as television
-static rather than as a surface responding to sound.
+static rather than as a surface responding to the beat.

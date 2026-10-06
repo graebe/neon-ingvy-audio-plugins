@@ -16,8 +16,10 @@ ctest --test-dir build
 ```
 
 Artefacts land in `build/out/` and are copied into `~/Library/Audio/Plug-Ins/`.
-With `-DIPLUG_DEPLOY_PLUGINS=OFF` they stay in `build/out/`, and `tg_au` and
-`sc_au` — which render the *installed* Audio Unit — report **Skipped**.
+With `-DIPLUG_DEPLOY_PLUGINS=OFF` they stay in `build/out/`. The AU tests
+(`tg_au`, `sc_au` and the rest) load `build/out`'s bundles by path, never the
+installed ones, so they run the same either way; a missing bundle fails them,
+it never skips.
 
 **iPlug2's SDKs are downloaded rather than tracked.** A fresh clone needs
 `scripts/fetch-sdks.sh` before the first configure, or CMake stops on a

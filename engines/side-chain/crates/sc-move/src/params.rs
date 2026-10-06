@@ -2,10 +2,10 @@
 `chain_params` -- how Schwung's knob grid draws NI Side-Chain.
 
 ONE STRING LITERAL, AND IT IS A CAPTURE RATHER THAN A DECLARATION. The shape is
-the C shell's own output, and `engines/side-chain/tests/dump_params.c` is what keeps it
-that way: the test prints what the module serves and compares it against this
-file, so a parameter added to the engine and forgotten here is a test failure
-rather than a control that quietly does not appear.
+the C shell's own output, and the Rust tests in `sc-move/src/lib.rs` hold it to
+the module that serves it: every enum the engine reads back by index declares
+that wire format and a default inside its options, and every option round-trips
+through the vtable the device calls.
 
 THE FOUR ENVELOPE KEYS ARE CONTIGUOUS ON PURPOSE. A viz group whose members are
 not adjacent is reported by the host's detector as `viz-declared-not-adjacent`,

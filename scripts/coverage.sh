@@ -12,9 +12,10 @@
 #   build/coverage/html/index.html     the human's copy
 #   build/coverage/summary.txt         the same, for a terminal
 #
-# It does NOT build into `build`. An instrumented plugin is -O0, single-slice
-# and NDEBUG-less; keeping it in build-coverage means it can never be picked up
-# and shipped by mistake.
+# It does NOT build into `build`. An instrumented plugin is -O0, NDEBUG-less
+# and single-slice -- cmake/Coverage.cmake forces one architecture, because
+# llvm-cov cannot read a coverage mapping out of a universal binary; keeping it
+# in build-coverage means it can never be picked up and shipped by mistake.
 #
 # Missing tools are NAMED, with the command that installs them, rather than
 # failing somewhere inside llvm-cov -- the same courtesy scripts/rust-env.sh
@@ -89,8 +90,10 @@ mkdir -p "$OUT" "$PROF"
 
 echo "==> building instrumented (build-coverage)"
 # Deploy OFF: an instrumented plugin must never land in ~/Library/Audio/Plug-Ins,
-# where a running host would pick it up. The AU tests read whatever IS
-# installed, which is the one thing this build may look at there.
+# where a running host would pick it up. Nothing here reads from there either:
+# the bundle tests load build-coverage/out's bundles by path (the AU ones
+# registered in their own process only, tests/au_bundle.h), never the installed
+# ones.
 cmake -S "$ROOT" -B "$BUILD" -DVST_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug \
       -DIPLUG_DEPLOY_PLUGINS=OFF >/dev/null
 cmake --build "$BUILD" -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" >/dev/null

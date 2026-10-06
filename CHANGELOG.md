@@ -28,6 +28,10 @@
   the audio, so every plugin pulses alike, even on a silent track; it runs only
   while the window is open. It also moves in Live now: it no longer waits on
   screen refreshes that a plugin window hardly gets.
+- **The Trance Gate's and the Side-Chain's playheads move smoothly in Live**,
+  and dragging across the Trance Gate's pads is heard while you drag, not only
+  when you let go. Both now run on timers rather than on those same screen
+  refreshes.
 
 ### NI Trance Gate
 

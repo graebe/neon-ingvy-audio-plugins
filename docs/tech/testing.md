@@ -141,6 +141,9 @@ the kit's libraries under node, and every component under Chrome through the
 e2e suite and the bundle's source map — into one report in `build/coverage/`.
 `tests/coverage.floors.json` holds the 80 % floor and it is enforcing: a unit
 below it, or a first-party file no test loads, fails. The only exemptions are
-what cannot be built into anything a test runs — the Schwung module's
-`ui_chain.js`, and the five plugin-class files that compile only inside a
-plugin-format target — and each says why.
+what cannot be built into anything a test runs, or driven by one — the Schwung
+module's `ui_chain.js`; the five plugin-class files that compile only inside a
+plugin-format target; and the two AppKit glue files, `FileDialog.mm` and
+`Clipboard.mm`, which also compile only there, and which need a person to answer
+a save panel or would overwrite the clipboard of whoever runs the tests — and
+each says why.

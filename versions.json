@@ -9,6 +9,6 @@
   "__audio-bus": "The house transport, not a plugin -- it has crates and no config.h, no plists and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
   "audio-bus": "v2026.10.06.4",
 
-  "__ground": "The animated ground's kick detector. Not a plugin either, and not even a library of its own on disk: ground-capi is an rlib that each product's capi crate absorbs, because one static archive per plugin is an invariant here (see cmake/NiPlugin.cmake). It is versioned for audio-bus's reason and one more -- it ships inside ALL FOUR products, so a crate that disagreed with itself would disagree in four places at once.",
+  "__ground": "The animated ground's beat clock. Not a plugin either, and not even a library of its own on disk: ground-capi is an rlib that each product's capi crate absorbs, because one static archive per plugin is an invariant here (see cmake/NiPlugin.cmake). It is versioned for audio-bus's reason and one more -- it ships inside ALL FOUR products, so a crate that disagreed with itself would disagree in four places at once.",
   "ground": "v2026.10.06.4"
 }

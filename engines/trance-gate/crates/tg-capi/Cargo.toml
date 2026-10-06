@@ -8,13 +8,13 @@ description = "The tg_core_* C ABI over the Trance Gate engine"
 
 [lib]
 name = "tg_capi"
-# staticlib for the JUCE plugin to link; cdylib so the engine's own C tests
-# can dlopen-free link it the same way they linked the .c files.
+# staticlib for the plugin to link; rlib so tg-move can carry this surface
+# too without a second copy of the Rust runtime.
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 tg-core = { path = "../tg-core" }
-# The animated ground's detector. NOT a second static library -- see the note in
+# The animated ground's beat clock. NOT a second static library -- see the note in
 # ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
 # ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
 # bus-core through spectro-recv.

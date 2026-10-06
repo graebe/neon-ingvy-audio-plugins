@@ -46,7 +46,7 @@ before it builds anything. The tag names the product, because this repository
 releases more than one.
 
 ```bash
-git tag trance-gate-v2026.09.29.3 && git push origin trance-gate-v2026.09.29.3
+git tag trance-gate-vYYYY.MM.DD.N && git push origin trance-gate-vYYYY.MM.DD.N
 ```
 
 The tag is the product prefix plus `versions.json`'s version as written. A beta

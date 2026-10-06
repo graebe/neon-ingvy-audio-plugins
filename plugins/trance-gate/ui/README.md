@@ -11,9 +11,9 @@ npm run dev          # live-reload; point mEditorInitFunc at localhost:5173
 ```
 
 **It is a port of the JUCE editor, not a redesign.** Every colour, space and
-size in `src/uv.css` is carried over from `Uv.h` in the last JUCE commit
-(`7711ba2`), including the comments that say what a token is *for* — which a
-hex triplet cannot.
+size is the kit's, in `ui-kit/src/tokens.css`, carried over from `Uv.h` in the
+last JUCE commit (`7711ba2`), including the comments that say what a token is
+*for* — which a hex triplet cannot.
 
 ## What talks to what
 
@@ -22,12 +22,16 @@ real range, every unit and every display string, and pushes them:
 
 | tag | direction | carries |
 |---|---|---|
-| `0..11` | → UI | one parameter's display text, tagged with its own index |
+| `0..14` | → UI | one parameter's display text, tagged with its own index (`NUM_PARAMS` is 15) |
 | `64` | → UI | the engine's `ui` readout: steps, ties, length, phase, ms/step, cursor, depths |
 | `65` | → UI | the `params` readout: the values, `width_ms`, and the Length detents (half a bar to four bars at the Rate and the host's meter) |
 | `66` | → UI | the scope capture, four bands of 256 columns |
 | `68` | → UI | `ok:` or `error:` and words: how an export, import, copy or paste went, for the hint bar |
 | `96..98` | → plugin | a step's mode, a step's amount, the cursor |
+| `103` | → plugin | a step's place in the fade's arrival order (`setOrder`) |
+| `104` | → plugin | reroll the current slot (`randomize`): an action, so the engine walks its own generator |
+| `105` | → UI | the gate across one cycle as the engine applies it (`gate`), binary |
+| `106` | → UI | the envelope plot's gated and dialled curves (`envelope`), binary |
 | `107`, `108` | → plugin | export the slot (`slot`) or all eight (`bank`); import a file |
 | `109` | → plugin | copy the current slot to the clipboard |
 | `110` | → plugin | paste the clipboard: a slot, a bank or a whole patch, as the engine decides |
@@ -44,8 +48,9 @@ The pattern is deliberately **not** a parameter: 128 steps across 8 slots
 would be 1024 of them. It travels as the engine's own state blob, which is the
 same text the Move module writes — which is what makes a patch portable
 between the two. The fade's **arrival order** is per-step state and travels the
-same way, for the same reason; the fade's knob and its shape are global and *are*
-parameters, because a build-up is that knob automated.
+same way, for the same reason. Fade, Fade Shape and Fade Dir *are* host
+parameters, because a build-up is that knob automated — and like every other
+setting they belong to the current slot, so switching slots recalls them.
 
 ## What mirrors the DSP, what does not, and why
 

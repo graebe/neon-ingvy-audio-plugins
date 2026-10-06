@@ -1,9 +1,9 @@
 /*!
 The `tg_core_*` C ABI.
 
-Fourteen symbols, byte-for-byte the surface the C engine exported, so every
-existing caller -- the Schwung shell, the JUCE plugin, and 1,510 lines of C
-tests -- links this instead without changing a line. That is the whole point:
+Byte-for-byte the surface the C engine exported, so every existing caller --
+the Schwung shell, the plugin, and 1,510 lines of C tests -- links this
+instead without changing a line. That is the whole point:
 the tests are not rewritten for the port, they are relinked, and they are what
 says the port is correct.
 

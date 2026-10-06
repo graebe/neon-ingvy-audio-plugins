@@ -11,7 +11,7 @@ crate-type = ["staticlib"]
 
 [dependencies]
 bus-core = { path = "../bus-core" }
-# The animated ground's detector. NOT a second static library -- see the note in
+# The animated ground's beat clock. NOT a second static library -- see the note in
 # ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
 # ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
 # bus-core through spectro-recv.
