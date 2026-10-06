@@ -32,15 +32,17 @@
  *
  * WHAT IT ASSERTS, at 120 BPM in 4/4 with the transport playing from bar 1:
  *
- *   - four seconds of audio is eight rings, one a beat: 2 Hz
+ *   - four seconds of audio is eight rings, one a beat: 2 Hz of song time
+ *   - each ring comes from the block that holds its beat, not a block late
  *   - the 1st and the 5th -- each bar's downbeat -- are strong (1.000), the
  *     others are the beat strength (0.400)
- *   - their spacing on the wall clock is half a second
  *   - with the transport stopped, no further ring
  *
- * THE RENDER IS PACED TO REAL TIME, because the rings cross over on the idle
- * timer, and that is wall-clock time: a render loop running flat out would put
- * eight beats inside one idle tick, which the editor rightly sees as one.
+ * NOTHING HERE IS TIMED ON THE WALL CLOCK. The render stops after each block
+ * that holds a beat and waits -- run loop spinning, so iPlug2's idle timer
+ * fires -- for that beat's ring to reach the page. One ring per wait, so two
+ * beats can never merge into one idle tick however loaded the machine is, and
+ * a ring that came a block late is a wait that times out.
  *
  * The bundle is loaded by path and registered in this process only
  * (au_bundle.h); nothing installed is read and nothing is installed. A window
@@ -174,9 +176,10 @@ static double Now(void)
 
 static int gBlocks = 0;
 static atomic_int gRendering = 0;
+static double gSampleTime = 0.0;
 
-/* `gBlocks` blocks, each released when its audio would have been due. A
- * stopped transport does not advance the song position, as in a host. */
+/* `gBlocks` blocks, as a host's render thread renders them. A stopped
+ * transport does not advance the song position, as in a host. */
 static void *Render(void *arg)
 {
     (void) arg;
@@ -184,26 +187,18 @@ static void *Render(void *arg)
     struct { AudioBufferList list; AudioBuffer second; } abl;
     AudioTimeStamp ts = {0};
     ts.mFlags = kAudioTimeStampSampleTimeValid;
-    static double sampleTime = 0.0;
-    const double t0 = Now();
     for (int k = 0; k < gBlocks; k++) {
-        const double due = t0 + k * (BLOCK / SR);
-        double wait = due - Now();
-        if (wait > 0) {
-            struct timespec s = {(time_t) wait, (long) ((wait - floor(wait)) * 1e9)};
-            nanosleep(&s, NULL);
-        }
         abl.list.mNumberBuffers = 2;
         abl.list.mBuffers[0] = (AudioBuffer) {1, sizeof l, l};
         abl.list.mBuffers[1] = (AudioBuffer) {1, sizeof r, r};
-        ts.mSampleTime = sampleTime;
+        ts.mSampleTime = gSampleTime;
         AudioUnitRenderActionFlags fl = 0;
         if (AudioUnitRender(gAu, &fl, &ts, 0, BLOCK, &abl.list) != noErr) {
-            printf("  FAIL: AudioUnitRender failed at block %d\n", k);
+            printf("  FAIL: AudioUnitRender failed at sample %.0f\n", gSampleTime);
             gFails++;
             break;
         }
-        sampleTime += BLOCK;
+        gSampleTime += BLOCK;
         if (atomic_load(&gPlaying)) gSamplePos += BLOCK;
     }
     atomic_store(&gRendering, 0);
@@ -217,18 +212,18 @@ static void Spin(double secs)
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
 }
 
-static void RenderFor(double secs)
+/* Render `blocks` blocks on a render thread while the main thread -- the
+ * plugin's main thread -- spins its run loop. */
+static void RenderBlocks(int blocks)
 {
-    gBlocks = (int) lround(secs * SR / BLOCK);
+    if (blocks <= 0) return;
+    gBlocks = blocks;
     atomic_store(&gRendering, 1);
     pthread_t t;
     pthread_create(&t, NULL, Render, NULL);
-    /* The main thread is the plugin's main thread: its idle timer fires here. */
     while (atomic_load(&gRendering))
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
     pthread_join(t, NULL);
-    /* Long enough for the last block's ring to cross on an idle tick. */
-    Spin(0.3);
 }
 
 /* ------------------------------------------------------------ the editor */
@@ -338,7 +333,7 @@ int main(int argc, char **argv)
         ok(WaitFor(web,
                    @"typeof window.SAMFD === 'function' && "
                     "!!document.querySelector('canvas.ground')",
-                   15.0),
+                   60.0),
            "the editor loads, with its ground", NULL);
         ok([Eval(web, kRecorder, 5.0) boolValue], "the page records what the plugin sends",
            NULL);
@@ -355,9 +350,24 @@ int main(int argc, char **argv)
            "the plugin answers the editor (it is open)", NULL);
         Eval(web, @"window.__msgs.length = 0; true", 5.0);
 
-        /* PLAYING, from bar 1 beat 1: four seconds is eight beats. */
+        /* PLAYING, from bar 1 beat 1: four seconds is eight beats, beat j at
+         * sample 24 000 j. Render up to and including the block that holds
+         * each beat, then wait for its ring. */
+        NSString *count = [NSString stringWithFormat:
+            @"window.__msgs.filter((m) => m[0] === %d).length", TAG_GROUND];
+        const int samplesPerBeat = (int) (SR * 60.0 / BPM);
+        const int total = (int) (4.0 * SR / BLOCK);
         atomic_store(&gPlaying, 1);
-        RenderFor(4.0);
+        int rendered = 0, onTime = 0;
+        for (int beat = 0; beat < 8; beat++) {
+            const int holder = beat * samplesPerBeat / BLOCK;
+            RenderBlocks(holder + 1 - rendered);
+            rendered = holder + 1;
+            if (WaitFor(web, [NSString stringWithFormat:@"%@ >= %d", count, beat + 1], 10.0))
+                onTime++;
+        }
+        RenderBlocks(total - rendered);
+        Spin(0.3);
         NSArray *playing = Eval(web,
                                 [NSString stringWithFormat:@"window.__msgs.filter("
                                                             "(m) => m[0] === %d)",
@@ -367,7 +377,8 @@ int main(int argc, char **argv)
         /* STOPPED: the song position holds and the rings stop. */
         Eval(web, @"window.__msgs.length = 0; true", 5.0);
         atomic_store(&gPlaying, 0);
-        RenderFor(1.5);
+        RenderBlocks((int) (1.5 * SR / BLOCK));
+        Spin(0.5);
         NSArray *stopped = Eval(web,
                                 [NSString stringWithFormat:@"window.__msgs.filter("
                                                             "(m) => m[0] === %d)",
@@ -377,7 +388,10 @@ int main(int argc, char **argv)
         char detail[256];
         const NSUInteger n = [playing isKindOfClass:[NSArray class]] ? playing.count : 0;
         snprintf(detail, sizeof detail, "%lu rings", (unsigned long) n);
-        ok(n == 8, "silent audio, 120 BPM: one ring per beat for 4 s", detail);
+        ok(n == 8, "silent audio, 120 BPM: one ring per beat for 4 s (2 Hz)", detail);
+
+        snprintf(detail, sizeof detail, "%d of 8", onTime);
+        ok(onTime == 8, "each ring comes from the block that holds its beat", detail);
 
         NSMutableString *seen = [NSMutableString string];
         int pattern = n == 8;
@@ -388,19 +402,6 @@ int main(int argc, char **argv)
         }
         snprintf(detail, sizeof detail, "%s", seen.UTF8String);
         ok(pattern, "every 4th ring -- the downbeat -- is the strong one", detail);
-
-        if (n >= 2) {
-            const double first = [playing[0][1] doubleValue];
-            const double last = [playing[n - 1][1] doubleValue];
-            const double period = (last - first) / (double) (n - 1);
-            snprintf(detail, sizeof detail, "%.0f ms apart, %.2f Hz", period,
-                     1000.0 / period);
-            /* An idle tick is up to ~20 ms late and the render is paced by a
-             * sleeping thread, so the mean of seven gaps is held to 10 %. */
-            ok(fabs(period - 500.0) < 50.0, "the rings are 2 Hz on the wall clock", detail);
-        } else {
-            ok(0, "the rings are 2 Hz on the wall clock", "too few rings to time");
-        }
 
         const NSUInteger after = [stopped isKindOfClass:[NSArray class]] ? stopped.count : 99;
         snprintf(detail, sizeof detail, "%lu rings", (unsigned long) after);

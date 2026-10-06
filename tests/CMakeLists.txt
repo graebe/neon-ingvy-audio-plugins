@@ -233,12 +233,9 @@ if (APPLE)
     target_compile_options(au_ground PRIVATE -fobjc-arc)
     target_link_libraries(au_ground PRIVATE ${NI_AU_LIBS}
                           "-framework AppKit" "-framework WebKit")
-    # RUN_SERIAL: the rings are timed on the wall clock, and four browsers
-    # rendering beside it would be measuring the machine.
     foreach(plugin TranceGate SideChain Spectrogram ListenIn)
         add_test(NAME au_ground_${plugin}
                  COMMAND au_ground ${NI_BUNDLES}/NI${plugin}.component)
-        set_tests_properties(au_ground_${plugin} PROPERTIES RUN_SERIAL TRUE)
     endforeach()
 endif()
 
