@@ -161,7 +161,7 @@
   font-family: inherit;}
 
 /* A <button>, so the browser's own chrome is stripped back to the div it
- * replaces -- it became one to be focusable; see uv.css. */
+ * replaces -- it became one to be focusable; see tokens.css. */
 .switch-row {
   display: flex; align-items: center; gap: var(--s2);
   cursor: pointer; height: var(--control-h);
@@ -388,7 +388,7 @@
 
 /* ---------------------------------------------------------- checklist --
  *
- * The open list, exactly as design/files/project/components/Select/README.md
+ * The open list, exactly as design/scheme/project/components/Select/README.md
  * specifies it: "a bg-100 box with a uv border, one row per option, the current
  * option in uv, the row under the pointer bg-300."
  *

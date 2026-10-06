@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NI Spectrogram — as built</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="uv-tokens.css">
+<link rel="stylesheet" href="ds/ultraviolet/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#060410}
+</style>
+</helmet>
+<div class="ph" style="position: relative; width: 720px; height: 502px; overflow: hidden; font-family: var(--font-mono); color: var(--ink);">
+
+  <!-- Title row (y 32): the plugin's name, then how the picture is drawn. -->
+  <div style="position: absolute; left: 32px; top: 32px; width: 656px; height: 28px; display: flex; align-items: center; justify-content: space-between;">
+    <span class="ph-title">Spectrogram</span>
+    <div style="display: flex; align-items: center; gap: 16px; font: 400 13px var(--font-mono);">
+      <span style="position: relative; display: block; width: 96px; height: 28px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--line-200); padding: 0 28px 0 12px; line-height: 26px;">Full<svg width="8" height="5" viewBox="0 0 8 5" style="position: absolute; right: 10px; top: 11px;"><path d="M0.5 0.5 L4 4 L7.5 0.5" fill="none" stroke="var(--ink-muted)"></path></svg></span>
+      <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="position: relative; width: 28px; height: 14px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--line-200);"><span style="position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; background: var(--ink-dim);"></span></span><span class="ph-label">Bars</span></span>
+      <span style="position: relative; display: block; width: 64px; height: 28px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--line-200); padding: 0 28px 0 12px; line-height: 26px;">4<svg width="8" height="5" viewBox="0 0 8 5" style="position: absolute; right: 10px; top: 11px;"><path d="M0.5 0.5 L4 4 L7.5 0.5" fill="none" stroke="var(--ink-muted)"></path></svg></span>
+      <button class="ph-btn">Pause</button>
+    </div>
+  </div>
+
+  <!-- Control strip (y 76): what the picture is of, and what the clash measures. Captions in ink-dim. -->
+  <div style="position: absolute; left: 32px; top: 76px; width: 656px; height: 28px; display: flex; align-items: center; justify-content: space-between; font: 400 13px var(--font-mono);">
+    <span style="display: flex; align-items: center; gap: 8px;"><span class="ph-label" style="color: var(--ink-dim);">View</span><span style="position: relative; display: block; width: 150px; height: 28px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--line-200); padding: 0 28px 0 12px; line-height: 26px;">input, bass<svg width="8" height="5" viewBox="0 0 8 5" style="position: absolute; right: 10px; top: 11px;"><path d="M0.5 0.5 L4 4 L7.5 0.5" fill="none" stroke="var(--ink-muted)"></path></svg></span></span>
+    <i style="display: block; width: 1px; height: 20px; background: var(--line-100);"></i>
+    <span style="display: flex; align-items: center; gap: 8px;">
+      <span class="ph-label" style="color: var(--ink-dim);">Compare</span>
+      <span style="position: relative; display: block; width: 112px; height: 28px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--line-200); padding: 0 28px 0 12px; line-height: 26px;">input<svg width="8" height="5" viewBox="0 0 8 5" style="position: absolute; right: 10px; top: 11px;"><path d="M0.5 0.5 L4 4 L7.5 0.5" fill="none" stroke="var(--ink-muted)"></path></svg></span>
+      <span style="font-size: 10px; color: var(--ink-dim); margin: 0 4px;">vs</span>
+      <span style="position: relative; display: block; width: 112px; height: 28px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--line-200); padding: 0 28px 0 12px; line-height: 26px;">bass<svg width="8" height="5" viewBox="0 0 8 5" style="position: absolute; right: 10px; top: 11px;"><path d="M0.5 0.5 L4 4 L7.5 0.5" fill="none" stroke="var(--ink-muted)"></path></svg></span>
+      <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="position: relative; width: 28px; height: 14px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--uv);"><span style="position: absolute; left: 16px; top: 2px; width: 8px; height: 8px; background: var(--uv);"></span></span><span class="ph-label">Clash</span></span>
+    </span>
+  </div>
+
+  <!-- Frequency scale (32..72) and the well (80, 120, 608 x 258). -->
+  <div style="position: absolute; left: 32px; top: 121px; width: 40px; height: 256px;">
+    <sc-for list="{{scale}}" as="m" hint-placeholder-count="8">
+      <div style="{{m.style}}"><span>{{m.label}}</span><i style="display: block; width: 4px; height: 1px; background: var(--line-200);"></i></div>
+    </sc-for>
+  </div>
+  <div style="position: absolute; left: 80px; top: 120px; width: 608px; height: 258px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-200); overflow: hidden;">
+    <svg viewBox="0 0 606 256" width="606" height="256" style="display: block;">
+      <defs><filter id="sb" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.3"></feGaussianBlur></filter></defs>
+      <rect x="0" y="0" width="606" height="256" fill="var(--spec-0)"></rect>
+      <g filter="url(#sb)">
+        <rect x="0" y="198" width="606" height="44" fill="var(--spec-1)" opacity="0.8"></rect>
+        <sc-for list="{{hats}}" as="h" hint-placeholder-count="28"><rect x="{{h.x}}" y="6" width="2" height="46" fill="var(--spec-2)" opacity="0.55"></rect></sc-for>
+        <sc-for list="{{lead}}" as="l" hint-placeholder-count="14">
+          <rect x="{{l.x}}" y="{{l.y1}}" width="{{l.w}}" height="3" fill="var(--spec-3)"></rect>
+          <rect x="{{l.x}}" y="{{l.y2}}" width="{{l.w}}" height="2" fill="var(--spec-2)"></rect>
+          <rect x="{{l.x}}" y="{{l.y3}}" width="{{l.w}}" height="2" fill="var(--spec-2)" opacity="0.7"></rect>
+        </sc-for>
+        <sc-for list="{{kicks}}" as="k" hint-placeholder-count="28">
+          <rect x="{{k.bx}}" y="178" width="9" height="18" fill="var(--spec-3)" opacity="0.8"></rect>
+          <ellipse cx="{{k.x}}" cy="214" rx="3.5" ry="18" fill="var(--spec-3)"></ellipse>
+          <ellipse cx="{{k.x}}" cy="214" rx="1.6" ry="9" fill="var(--spec-4)"></ellipse>
+        </sc-for>
+      </g>
+      <!-- The clash overlay, drawn in amber: the system's state colour used as data. -->
+      <sc-for list="{{clash}}" as="c" hint-placeholder-count="12"><rect x="{{c.x}}" y="178" width="22" height="48" fill="var(--amber)" opacity="0.45"></rect></sc-for>
+      <line x1="420" y1="0" x2="420" y2="256" stroke="var(--uv-deep)" stroke-opacity="0.75"></line>
+      <line x1="0" y1="194" x2="606" y2="194" stroke="var(--uv-deep)" stroke-opacity="0.75"></line>
+    </svg>
+  </div>
+
+  <!-- Time axis (y 386), aligned with the canvas (x 81). -->
+  <div style="position: absolute; left: 81px; top: 386px; width: 606px; height: 16px;">
+    <sc-for list="{{time}}" as="t" hint-placeholder-count="14">
+      <div style="{{t.style}}"><i style="display: block; width: 1px; height: 4px; background: var(--line-200);"></i><span>{{t.label}}</span></div>
+    </sc-for>
+  </div>
+
+  <!-- Crosshair readout (y 414): keys in ink-dim. -->
+  <div style="position: absolute; left: 81px; top: 414px; height: 20px; display: flex; align-items: baseline; gap: 8px;">
+    <span class="ph-label" style="color: var(--ink-dim);">Freq</span><span class="ph-value" style="min-width: 76px;">62 Hz</span>
+    <span class="ph-label" style="color: var(--ink-dim); margin-left: 24px;">Time</span><span class="ph-value" style="min-width: 76px;">−2.4 s</span>
+    <span class="ph-label" style="color: var(--ink-dim); margin-left: 24px;">Level</span><span class="ph-value" style="min-width: 76px;">−18 dB</span>
+  </div>
+
+  <!-- Hint (y 458): facts about the picture, not the window's conventions. -->
+  <div style="position: absolute; left: 32px; top: 458px; width: 656px; height: 28px; box-sizing: border-box; border-top: 1px solid var(--line-100); padding-top: 12px; display: flex; align-items: baseline; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; color: var(--ink-muted);">
+    <span style="white-space: nowrap;"><b style="font-weight: 400; color: var(--ink);">log</b> 10 Hz – 19.7 kHz<span style="margin: 0 12px; color: var(--ink-dim);">–</span><b style="font-weight: 400; color: var(--ink);">floor</b> −96 dB<span style="margin: 0 12px; color: var(--ink-dim);">–</span><b style="font-weight: 400; color: var(--ink);">history</b> 13 s</span>
+    <span style="margin-left: 16px; align-self: center; display: inline-flex; align-items: center; gap: 8px;"><span style="position: relative; width: 28px; height: 14px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--uv);"><span style="position: absolute; left: 16px; top: 2px; width: 8px; height: 8px; background: var(--uv);"></span></span><span class="ph-label">Motion</span></span>
+    <span class="ph-sig" style="margin-left: auto;"><span class="mark"></span>Neon Ingvy</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":720,"height":502}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const f = (n) => n.toFixed(1);
+    const beat = 21.8;
+    const kicks = [], hats = [], clash = [];
+    for (let k = 0; k < 28; k++) {
+      const x = 8 + k * beat;
+      kicks.push({ x: f(x), bx: f(x + 9) });
+      hats.push({ x: f(x + 11) });
+      if (x > 300) clash.push({ x: f(x - 4) });
+    }
+    const notes = [110, 104, 98, 104];
+    const lead = [];
+    for (let i = 0; i < 14; i++) {
+      const y = notes[i % 4];
+      lead.push({ x: f(8 + i * 2 * beat), w: f(2 * beat - 4), y1: f(y), y2: f(y - 23.4), y3: f(y - 37) });
+    }
+    const marks = [['10K', 23], ['5K', 47], ['1K', 101], ['500', 124], ['100', 178], ['50', 202], ['20', 233], ['10', 254]];
+    const scale = marks.map(([label, y]) => ({
+      label,
+      style: 'position: absolute; right: 0; top: ' + y + 'px; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; font: 500 11px/14px var(--font-mono); letter-spacing: .1em; color: var(--ink-dim);',
+    }));
+    const time = [];
+    for (let s = 12; s >= 0; s--) {
+      const x = 606 - s * 46.6;
+      const anchor = s === 0 ? 'translateX(-100%); align-items: flex-end;' : 'translateX(-50%); align-items: center;';
+      time.push({
+        label: s === 0 ? '0s' : '−' + s + 's',
+        style: 'position: absolute; top: 0; left: ' + f(x) + 'px; transform: ' + anchor + ' display: flex; flex-direction: column; gap: 4px; font: 400 10px/12px var(--font-mono); color: var(--ink-dim); white-space: nowrap;',
+      });
+    }
+    return { kicks, hats, clash, lead, scale, time };
+  }
+}
+</script>
+</body>
+</html>

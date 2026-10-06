@@ -16,7 +16,8 @@ plugins/_shared/ni/          ni::WebPlugin, the editor protocol, ni::wire
 modules/<product>/           the Schwung module's shell and packaging
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
 site/                        this documentation site
-design/files/                the Ultraviolet design system, vendored
+design/scheme/               the Ultraviolet design system, vendored
+design/designs/              the "NI Plugin Layouts" canvas, mirrored
 tests/                       the cross-cutting suite
 cmake/                       the Rust toolchain resolver and NiPlugin.cmake
 versions.json                one version per product

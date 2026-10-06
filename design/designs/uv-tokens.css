@@ -1,0 +1,38 @@
+/*
+ * Ultraviolet 1.0.0 tokens as CSS variables, one-to-one from project/tokens.json.
+ * The design system serves no tokens.css, and its bundle.css reads these names.
+ * The block marked KIT ONLY holds values the plugins' ui-kit adds or redefines;
+ * only the "as built" artboards use them, so the drift stays visible.
+ */
+:root {
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  --bg-000: #060410;
+  --bg-dot: #2a1e4a;
+  --bg-100: #0c0818;
+  --bg-200: #140e24;
+  --bg-300: #1d1533;
+  --line-100: #1d1533;
+  --line-200: #3a2a66;
+  --ink: #f3ecff;
+  --ink-muted: #b9a3e6;
+  --ink-dim: #7a5fb5;
+  --uv: #efe3ff;
+  --uv-deep: #a259ff;
+  --uv-glow: #a259ff80;
+  --on-uv: #060410;
+  --amber: #ffb000;
+  --red: #ff4d4d;
+
+  --glow-led: 0 0 10px #a259ff, 0 0 2px #efe3ff;
+  --glow-focus: 0 0 0 1px #efe3ff, 0 0 8px #a259ff80;
+
+  /* KIT ONLY: ui-kit/src/tokens.css, not in Ultraviolet 1.0.0 */
+  --kit-glow-led: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55));
+  --kit-scope-dry: #6b6b78;
+  --spec-0: #060410;
+  --spec-1: #2a1e4a;
+  --spec-2: #6a2fd0;
+  --spec-3: #a259ff;
+  --spec-4: #efe3ff;
+}

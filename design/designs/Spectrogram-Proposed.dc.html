@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NI Spectrogram — proposed</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="uv-tokens.css">
+<link rel="stylesheet" href="ds/ultraviolet/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#060410}
+</style>
+</helmet>
+<div class="ph" style="position: relative; width: 720px; height: 470px; overflow: hidden; font-family: var(--font-mono); color: var(--ink);">
+
+  <!-- ROW 1 (y 32): what the picture is of, and what Clash compares. No title row. -->
+  <div style="position: absolute; left: 32px; top: 32px; width: 656px; height: 28px; display: flex; align-items: center; justify-content: space-between;">
+    <span style="display: flex; align-items: center; gap: 8px;">
+      <span class="ph-label">View</span>
+      <div class="ph-select" style="min-width: 0; width: 150px;"><div class="field">input, bass<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+    </span>
+    <i style="display: block; width: 1px; height: 20px; background: var(--line-100);"></i>
+    <span style="display: flex; align-items: center; gap: 8px;">
+      <span class="ph-label">Compare</span>
+      <div class="ph-select" style="min-width: 0; width: 112px;"><div class="field">input<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+      <span style="font: 400 10px var(--font-mono); color: var(--ink-muted); margin: 0 4px;">vs</span>
+      <div class="ph-select" style="min-width: 0; width: 112px;"><div class="field">bass<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+      <label class="ph-toggle on" style="margin-left: 8px;"><span class="sw"></span><span class="ph-label">Clash</span></label>
+    </span>
+  </div>
+
+  <!-- DISPLAY (y 76): scale gutter and the well. -->
+  <div style="position: absolute; left: 32px; top: 77px; width: 40px; height: 256px;">
+    <sc-for list="{{scale}}" as="m" hint-placeholder-count="8">
+      <div style="{{m.style}}"><span>{{m.label}}</span><i style="display: block; width: 4px; height: 1px; background: var(--line-200);"></i></div>
+    </sc-for>
+  </div>
+  <div style="position: absolute; left: 80px; top: 76px; width: 608px; height: 258px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-200); overflow: hidden;">
+    <svg viewBox="0 0 606 256" width="606" height="256" style="display: block;">
+      <defs>
+        <filter id="sb" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.3"></feGaussianBlur></filter>
+        <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="var(--ink)" stroke-width="1.2"></line></pattern>
+      </defs>
+      <rect x="0" y="0" width="606" height="256" fill="var(--spec-0)"></rect>
+      <g filter="url(#sb)">
+        <rect x="0" y="198" width="606" height="44" fill="var(--spec-1)" opacity="0.8"></rect>
+        <sc-for list="{{hats}}" as="h" hint-placeholder-count="28"><rect x="{{h.x}}" y="6" width="2" height="46" fill="var(--spec-2)" opacity="0.55"></rect></sc-for>
+        <sc-for list="{{lead}}" as="l" hint-placeholder-count="14">
+          <rect x="{{l.x}}" y="{{l.y1}}" width="{{l.w}}" height="3" fill="var(--spec-3)"></rect>
+          <rect x="{{l.x}}" y="{{l.y2}}" width="{{l.w}}" height="2" fill="var(--spec-2)"></rect>
+          <rect x="{{l.x}}" y="{{l.y3}}" width="{{l.w}}" height="2" fill="var(--spec-2)" opacity="0.7"></rect>
+        </sc-for>
+        <sc-for list="{{kicks}}" as="k" hint-placeholder-count="28">
+          <rect x="{{k.bx}}" y="178" width="9" height="18" fill="var(--spec-3)" opacity="0.8"></rect>
+          <ellipse cx="{{k.x}}" cy="214" rx="3.5" ry="18" fill="var(--spec-3)"></ellipse>
+          <ellipse cx="{{k.x}}" cy="214" rx="1.6" ry="9" fill="var(--spec-4)"></ellipse>
+        </sc-for>
+      </g>
+      <!-- Clash as ink hatching: data, not a state, so not amber. -->
+      <sc-for list="{{clash}}" as="c" hint-placeholder-count="12"><rect x="{{c.x}}" y="178" width="22" height="48" fill="url(#hatch)" opacity="0.7"></rect></sc-for>
+      <line x1="420" y1="0" x2="420" y2="256" stroke="var(--uv-deep)" stroke-opacity="0.75"></line>
+      <line x1="0" y1="194" x2="606" y2="194" stroke="var(--uv-deep)" stroke-opacity="0.75"></line>
+    </svg>
+  </div>
+
+  <!-- TIME AXIS (y 342), on the canvas's x. -->
+  <div style="position: absolute; left: 81px; top: 342px; width: 606px; height: 16px;">
+    <sc-for list="{{time}}" as="t" hint-placeholder-count="14">
+      <div style="{{t.style}}"><i style="display: block; width: 1px; height: 4px; background: var(--line-200);"></i><span>{{t.label}}</span></div>
+    </sc-for>
+  </div>
+
+  <!-- READOUT + PICTURE SETTINGS (y 374): the crosshair facts on the left; range, span and pause on the right. -->
+  <div style="position: absolute; left: 81px; top: 374px; width: 607px; height: 28px; display: flex; align-items: center; justify-content: space-between;">
+    <span style="display: flex; align-items: baseline; gap: 8px;">
+      <span class="ph-label">Freq</span><span class="ph-value" style="min-width: 64px;">62 Hz</span>
+      <span class="ph-label" style="margin-left: 16px;">Time</span><span class="ph-value" style="min-width: 64px;">−2.4 s</span>
+      <span class="ph-label" style="margin-left: 16px;">Level</span><span class="ph-value" style="min-width: 64px;">−18 dB</span>
+    </span>
+    <span style="display: flex; align-items: center; gap: 8px;">
+      <div class="ph-select" style="min-width: 0; width: 96px;"><div class="field">Full<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+      <div class="ph-select" style="min-width: 0; width: 88px;"><div class="field">13 s<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+      <span class="ph-transport"><button class="ph-btn icon" aria-label="Pause" title="Pause"><svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M4 2.5v11M12 2.5v11"></path></svg></button></span>
+    </span>
+  </div>
+
+  <!-- HINT (y 426): two conventions. -->
+  <div style="position: absolute; left: 0; top: 426px; width: 720px; height: 28px; box-sizing: border-box; border-top: 1px solid var(--line-100); padding: 0 32px; display: flex; align-items: center; gap: 16px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; color: var(--ink-muted);">
+    <span style="white-space: nowrap;"><b style="font-weight: 400; color: var(--ink);">hover</b> to read a point<span style="margin: 0 12px; color: var(--ink-dim);">–</span><b style="font-weight: 400; color: var(--ink);">clash</b> marks where channels collide</span>
+    <label class="ph-toggle on"><span class="sw"></span><span class="ph-label">Motion</span></label>
+    <span class="ph-sig" style="margin-left: auto;"><span class="mark"></span>Neon Ingvy</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":720,"height":470}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const f = (n) => n.toFixed(1);
+    const beat = 21.8;
+    const kicks = [], hats = [], clash = [];
+    for (let k = 0; k < 28; k++) {
+      const x = 8 + k * beat;
+      kicks.push({ x: f(x), bx: f(x + 9) });
+      hats.push({ x: f(x + 11) });
+      if (x > 300) clash.push({ x: f(x - 4) });
+    }
+    const notes = [110, 104, 98, 104];
+    const lead = [];
+    for (let i = 0; i < 14; i++) {
+      const y = notes[i % 4];
+      lead.push({ x: f(8 + i * 2 * beat), w: f(2 * beat - 4), y1: f(y), y2: f(y - 23.4), y3: f(y - 37) });
+    }
+    const marks = [['10K', 23], ['5K', 47], ['1K', 101], ['500', 124], ['100', 178], ['50', 202], ['20', 233], ['10', 254]];
+    const scale = marks.map(([label, y]) => ({
+      label,
+      style: 'position: absolute; right: 0; top: ' + y + 'px; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; font: 500 11px/14px var(--font-mono); letter-spacing: .1em; color: var(--ink-muted);',
+    }));
+    const time = [];
+    for (let s = 12; s >= 0; s--) {
+      const x = 606 - s * 46.6;
+      const anchor = s === 0 ? 'translateX(-100%); align-items: flex-end;' : 'translateX(-50%); align-items: center;';
+      time.push({
+        label: s === 0 ? '0 s' : '−' + s + ' s',
+        style: 'position: absolute; top: 0; left: ' + f(x) + 'px; transform: ' + anchor + ' display: flex; flex-direction: column; gap: 4px; font: 400 10px/12px var(--font-mono); color: var(--ink-muted); white-space: nowrap;',
+      });
+    }
+    return { kicks, hats, clash, lead, scale, time };
+  }
+}
+</script>
+</body>
+</html>

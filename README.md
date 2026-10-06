@@ -32,7 +32,8 @@ modules/_shared/             the one Dockerfile, package.sh and install.sh for a
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
 site/                        the documentation site, from this repo's own Markdown
 docs/tech/                   how it is built, in prose
-design/files/                the Ultraviolet design system, vendored
+design/scheme/               the Ultraviolet design system, vendored
+design/designs/              the "NI Plugin Layouts" canvas, mirrored
 versions.json                one version per product
 ```
 

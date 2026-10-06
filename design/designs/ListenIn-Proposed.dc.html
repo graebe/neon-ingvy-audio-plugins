@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NI Listen-In — proposed</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="uv-tokens.css">
+<link rel="stylesheet" href="ds/ultraviolet/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#060410}
+</style>
+</helmet>
+<div class="ph" style="position: relative; width: 360px; height: 172px; overflow: hidden; box-sizing: border-box; padding: 32px 32px 16px; display: flex; flex-direction: column; font-family: var(--font-mono); color: var(--ink);">
+
+  <!-- ROW 1: which bus, and its name. No title row: the host names the window. -->
+  <div style="height: 28px; display: flex; align-items: center; gap: 8px;">
+    <span class="ph-label">Bus</span>
+    <div class="ph-select" style="min-width: 0; width: 64px; flex: none;"><div class="field">3<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+    <label style="flex: 1; min-width: 0; margin-left: 8px;"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Bus name</span><input value="kick bus" style="width: 100%; height: 28px; box-sizing: border-box; padding: 0 12px; background: var(--bg-200); border: 1px solid var(--line-200); border-radius: 0; color: var(--ink); font: 400 13px var(--font-mono); outline: none;"></label>
+  </div>
+
+  <!-- ROW 2: the status as an LED, then the level in a slider bed with no thumb. -->
+  <div style="height: 28px; margin-top: 16px; display: flex; align-items: center; gap: 16px;">
+    <span class="ph-led on" style="flex: none;"><span class="lens"></span><span class="ph-label">Live</span></span>
+    <div style="position: relative; flex: 1; height: 12px; box-sizing: border-box; background: var(--bg-200); border: 1px solid var(--line-100);">
+      <div style="position: absolute; left: 0; top: 4px; width: 64%; height: 2px; background: var(--uv); box-shadow: 0 0 6px var(--uv-deep);"></div>
+    </div>
+  </div>
+
+  <!-- HINT: conventions, then the signature. No Ground here, so no Motion switch. -->
+  <div style="margin-top: 24px; height: 28px; box-sizing: border-box; border-top: 1px solid var(--line-100); display: flex; align-items: center; gap: 16px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; color: var(--ink-muted);">
+    <span style="white-space: nowrap;"><b style="font-weight: 400; color: var(--ink);">pick</b> a free bus<span style="margin: 0 12px; color: var(--ink-dim);">–</span><b style="font-weight: 400; color: var(--ink);">name</b> it</span>
+    <span class="ph-sig" style="margin-left: auto;"><span class="mark"></span>Neon Ingvy</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":360,"height":172}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

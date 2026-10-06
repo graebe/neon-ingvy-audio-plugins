@@ -1,13 +1,14 @@
 /*
- * The token guard: no colour may be spelled outside uv.css.
+ * The token guard: no colour may be spelled outside ui-kit/src/tokens.css.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THE JUCE BUILD HAD THIS AND THE WEB PORT LOST IT.
  *
- * Uv.h carried a note -- "a ctest target fails the build if a colour literal
- * appears in any other source file" -- and the reason is not tidiness. When the
- * design system moves, the diff has to be against ONE file; a colour typed into
- * a drawing routine is a value that has silently stopped tracking the system.
+ * Uv.h, the JUCE editor's token header, carried a note -- "a ctest target fails
+ * the build if a colour literal appears in any other source file" -- and the
+ * reason is not tidiness. When the design system moves, the diff has to be
+ * against ONE file; a colour typed into a drawing routine is a value that has
+ * silently stopped tracking the system.
  *
  * It had already happened four times over by the time this was written:
  *
@@ -102,9 +103,10 @@ test('every colour is spelled in tokens.css and nowhere else', () => {
     });
   }
   assert.deepEqual(offences, [],
-    `colour literals outside uv.css:\n  ${offences.join('\n  ')}\n\n` +
-    'Add a token to uv.css and reference it with var(). See the note at the ' +
-    'top of this file for why a literal that "looks right" is still a bug.');
+    `colour literals outside tokens.css:\n  ${offences.join('\n  ')}\n\n` +
+    'Add a token to ui-kit/src/tokens.css and reference it with var(). See ' +
+    'the note at the top of this file for why a literal that "looks right" ' +
+    'is still a bug.');
 });
 
 /* The other half: a var() that no token defines renders as nothing at all --
@@ -153,13 +155,13 @@ test('every var() the UI references is defined in tokens.css', () => {
  * agree with itself and disagree with Ultraviolet, which is the drift that
  * matters once a design file exists in the repository at all.
  *
- * design/files/project/tokens.json is that file, vendored from the published
+ * design/scheme/project/tokens.json is that file, vendored from the published
  * system. This asserts agreement rather than generating the CSS from it: the
  * same habit as the curve and envelope oracles, and for the same reason -- a
  * generator hides a disagreement by overwriting it, where a test names it.
  */
 const SYSTEM = JSON.parse(
-  readFileSync(join(ROOT, 'design', 'files', 'project', 'tokens.json'), 'utf8'));
+  readFileSync(join(ROOT, 'design', 'scheme', 'project', 'tokens.json'), 'utf8'));
 
 /** Every `--name: value` in tokens.css, comments stripped. */
 const cssTokens = () => {
@@ -298,7 +300,7 @@ test('every design-system token is in tokens.css, with the same value', () => {
 
   assert.deepEqual(missing, [], `tokens the system defines and tokens.css lacks:\n  ${missing.join('\n  ')}`);
   assert.deepEqual(wrong, [],
-    `tokens.css disagrees with design/files/project/tokens.json:\n  ${wrong.join('\n  ')}\n\n` +
+    `tokens.css disagrees with design/scheme/project/tokens.json:\n  ${wrong.join('\n  ')}\n\n` +
     'Re-vendor the design file, or change the CSS to match it. If the ' +
     'difference is deliberate, add it to EXEMPT above WITH ITS REASON.');
 });

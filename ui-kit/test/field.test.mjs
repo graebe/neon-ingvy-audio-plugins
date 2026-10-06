@@ -7,7 +7,7 @@
  * The first is that this is still a PORT. src/lib/field.js was copied from the
  * design system's own reference implementation, and the numbers in it are the
  * design's parameter table -- so the test reads the reference's defaults out of
- * design/files/project/components/ground.js and diffs them. That is the same
+ * design/scheme/project/components/ground.js and diffs them. That is the same
  * argument the token guard makes about colours, applied to the one other place
  * the design system hands us values: a generator would overwrite a
  * disagreement, a test names it.
@@ -30,10 +30,10 @@ import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
-const REFERENCE = join(ROOT, 'design', 'files', 'project', 'components', 'ground.js');
+const REFERENCE = join(ROOT, 'design', 'scheme', 'project', 'components', 'ground.js');
 const TOKENS = join(HERE, '..', 'src', 'tokens.css');
 const COMPONENTS = join(HERE, '..', 'src', 'components.css');
-const BUNDLE = join(ROOT, 'design', 'files', 'project', 'components', 'bundle.css');
+const BUNDLE = join(ROOT, 'design', 'scheme', 'project', 'components', 'bundle.css');
 
 /* ---------- the stub ---------- */
 

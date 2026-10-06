@@ -5,7 +5,7 @@
  * THE BEAT CLOCK BEHIND THE ANIMATED BACKGROUND. The Ultraviolet design system
  * gives every plugin window a "ground" -- dot paper over noise grain -- and
  * that ground is a wave field that rings and is perfectly still otherwise
- * (design/files/project/README.md, section Motion). This library decides WHEN
+ * (design/scheme/project/README.md, section Motion). This library decides WHEN
  * it rings, from the host's transport:
  *
  *   - one ring on every quarter note while the transport plays;

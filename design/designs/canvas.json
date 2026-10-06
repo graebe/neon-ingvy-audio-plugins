@@ -1,0 +1,149 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "ListenIn-Proposed.dc.html": {
+      "h": 172,
+      "title": "NI Listen-In — proposed",
+      "w": 360,
+      "x": 2544,
+      "y": 1100
+    },
+    "ListenIn.dc.html": {
+      "h": 232,
+      "title": "NI Listen-In — as built",
+      "w": 360,
+      "x": 2544,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 736,
+      "title": "NI Trance Gate — as built",
+      "w": 824,
+      "x": 0,
+      "y": 0
+    },
+    "SideChain-Proposed.dc.html": {
+      "h": 656,
+      "is_interactive": true,
+      "title": "NI Side-Chain — proposed",
+      "w": 760,
+      "x": 904,
+      "y": 1100
+    },
+    "SideChain.dc.html": {
+      "h": 604,
+      "title": "NI Side-Chain — as built",
+      "w": 760,
+      "x": 904,
+      "y": 0
+    },
+    "Spectrogram-Proposed.dc.html": {
+      "h": 470,
+      "title": "NI Spectrogram — proposed",
+      "w": 720,
+      "x": 1744,
+      "y": 1100
+    },
+    "Spectrogram.dc.html": {
+      "h": 502,
+      "title": "NI Spectrogram — as built",
+      "w": 720,
+      "x": 1744,
+      "y": 0
+    },
+    "TranceGate-Proposed.dc.html": {
+      "h": 768,
+      "title": "NI Trance Gate — proposed",
+      "w": 824,
+      "x": 0,
+      "y": 1100
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-05T09:00:00Z",
+    "v": 1
+  },
+  "designSystems": [
+    {
+      "artifact": "https://claude.ai/artifact/PWHRCrxgsWTm2g8in642gZ",
+      "copiedAt": "2026-10-05T09:00:00Z",
+      "namespace": "ultraviolet",
+      "title": "Ultraviolet",
+      "version": "1790671603-3731"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "legend": {
+      "fill": "purple",
+      "maxH": 640,
+      "text": "HOW TO READ THIS CANVAS\n\nWritten review: https://claude.ai/artifact/Dv38acPjCPNffg6Kxnf9dK\n\nTop row: the four desktop editors as they ship today, redrawn at their real window sizes from the Solid code, with positions measured in a headless browser. Values are realistic stand-ins; a host would supply the real ones.\n\nBottom row: the proposed revision of each window. The sticky under each one lists its changes; the IDs (D1, S1, TG1, …) match the written review.\n\nOnly the Side-Chain proposal is interactive: switch Source in its Tweaks and the Trigger panel changes while nothing else moves.\n\nDefects verified in the shipped build:\nD1  TG: Paste sits past the 824px window edge; Copy and Paste are squeezed to 16px wide\nD2  TG: Soft, Order and Shuffle are squeezed to 18px tall (system: 28)\nD3  SC + LI: hint text truncates; the Motion switch sits 4px from the signature\nD4  SC: hint bar 20px tall, 8px from the bottom edge (others: 28 / 16)\nD5  SC: Delay (bipolar) draws its arc from the minimum, so 0 % looks half-way up",
+      "w": 420,
+      "x": 2984,
+      "y": 0
+    },
+    "li-changes": {
+      "fill": "teal",
+      "maxH": 640,
+      "text": "LISTEN-IN — CHANGES\n\nS1   No 'NI Listen-In' title row.\nLI2  The status is an LED (on / amber taken / red unavailable), not dim text.\nLI3  Flat uv meter fill: no gradient, no 60 ms transition, radius 0.\nLI4  The hint states conventions, not 'bus 3'.\nLI5  The Bus select keeps 16 entries (taken buses disabled in the list): proposed as a documented exception to the 12-option cap.\nLI6  No animated Ground in this utility window, so no Motion switch; that is what stops the hint truncating.\n\nWindow: 360 × 172 (was 232).",
+      "w": 360,
+      "x": 2544,
+      "y": 1988
+    },
+    "row-built": {
+      "kind": "title1",
+      "maxW": 2904,
+      "text": "As built — recreated from main @ 9549651",
+      "w": 240,
+      "x": 0,
+      "y": -260
+    },
+    "row-proposed": {
+      "kind": "title1",
+      "maxW": 2904,
+      "text": "Proposed — on Ultraviolet 1.0.0",
+      "w": 240,
+      "x": 0,
+      "y": 840
+    },
+    "sc-changes": {
+      "fill": "teal",
+      "maxH": 640,
+      "text": "SIDE-CHAIN — CHANGES\n\nS1   No NI SIDE-CHAIN in the window: the host's title bar names it.\nSC1  Source, rate, stage and total time go into the plot caption; the window's one amber mark sits at its right end.\nSC2  Two real panels, DUCK and TRIGGER, instead of a bare knob row and two loose select rows.\nSC3  The Trigger panel has a fixed size: changing Source swaps its contents and moves nothing else.\nSC4  Note (128 options) and Channel (17) become stepped knobs; the system caps a Select at 12.\nSC5  Square 8px handles; the caption no longer repeats the hint.\nSC6  The input under the curve is drawn in line-200 rather than an off-palette grey.\nD5   Delay draws its arc from 12 o'clock (bipolar).\nS7   Mode (Trigger/Gate) and Time (ms/%) become switches.\nS8   Full labels: SOURCE, CHANNEL, THRESHOLD, not Src / Ch / Thresh.\nS2   The hint lists conventions only; '225 ms total' was a readout.\n\nWindow: 760 × 656 (was 604).",
+      "w": 760,
+      "x": 904,
+      "y": 1988
+    },
+    "sp-changes": {
+      "fill": "teal",
+      "maxH": 640,
+      "text": "SPECTROGRAM — CHANGES\n\nS1   The SPECTROGRAM title row goes: the host names the window.\nSP2  The Bars switch and the bar-count select are one setting: a Span select (13 s, 1, 2, 4, 8, 16 bars).\nSP3  Pause is the system's latching pause icon button.\nSP4  Clash is ink hatching, not amber: amber is the system's state colour, and this window already spends it on 'no signal'.\nS8   Group captions and readout keys in ink-muted; ink-dim is for disabled text.\nSP6  Range, Span and Pause sit beside the crosshair readout, under the picture they set.\nS2   Facts leave the hint: the range is in the Range select, history in Span, the floor in the level readout.\n\nWindow: 720 × 470 (was 502).",
+      "w": 720,
+      "x": 1744,
+      "y": 1988
+    },
+    "tg-changes": {
+      "fill": "teal",
+      "maxH": 640,
+      "text": "TRANCE GATE — CHANGES\n\nTG1  Copy patch, Paste patch and Randomize move out of the settings row into the Actions side column as joined icons. Fixes D1.\nTG2  The system's glyphs (16px, 1.5px stroke) replace the hand-drawn 14px ones.\nTG3  One plot instead of Pattern/Signal tabs: the Signal switch lays the measured signal behind the pattern. The tab strip and the 24px of hidden trace go.\nTG4  The left column ends flush with the panel stack (500), not 84px above it; the envelope plot takes the height (204px, was 104).\nTG5  Panel gutters 24 (space-6), not 16.\nTG6  One settings row above the plot, in the original order: Slot, Join, Curve, Time in %, and Signal at the right end over the plot it controls. Without the window verbs it fits 760px with room to spare.\nTG7  Button words in sentence case, verb first: Set order, Shuffle order.\nTG8  Panels narrowed from 488 to 390: knobs keep 64px cells instead of stretching to 95.\nD2   Fade's switches and buttons in two columns at the full 28px.\nS6   Readouts formatted by the UI: 90 %, 15 ms (unit in ink-muted).\nS7   Two-option selects become switches: Fade Dir → OUT, Env Time → TIME IN %.\nS12  The ring is drawn as the system's display ring until the team decides on an editable variant.\n\nWindow: 824 × 768 (was 736): +32 from system spacing, 24px between control groups (was 16) and 16px above the plot (was 8).",
+      "w": 824,
+      "x": 0,
+      "y": 1988
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "SideChain.dc.html",
+    "Spectrogram.dc.html",
+    "ListenIn.dc.html",
+    "TranceGate-Proposed.dc.html",
+    "SideChain-Proposed.dc.html",
+    "Spectrogram-Proposed.dc.html",
+    "ListenIn-Proposed.dc.html"
+  ],
+  "pages": [],
+  "title": "NI Plugin Layouts"
+}

@@ -117,11 +117,6 @@ if (TG_NODE)
     set_tests_properties(tg_fade_js PROPERTIES
         ENVIRONMENT "TG_FADE_TABLE=${TG_FADE_TABLE}")
 
-    # THE TOKEN GUARD, which the JUCE build had and the web port lost. Uv.h
-    # said "a ctest target fails the build if a colour literal appears in any
-    # other source file"; four had crept into the UI by the time this was
-    # written, one of them an arc glow at alpha 0.75 against the system's 0.45,
-    # which no eye was ever going to catch.
     # ONE VERSION PER PRODUCT, spelled once. A product's version appears in
     # three or four files in three languages, nothing held them together, and
     # they had already come apart: the Spectrogram shipped PLUG_VERSION_STR
@@ -171,12 +166,25 @@ if (TG_NODE)
     add_test(NAME editor_timing
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/editor_timing.test.mjs)
 
-    # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
-    # editors and the documentation site -- where there used to be one per
+    # THE TOKEN GUARD, which the JUCE build had and the web port lost. Uv.h
+    # said "a ctest target fails the build if a colour literal appears in any
+    # other source file"; four had crept into the UI by the time this was
+    # written, one of them an arc glow at alpha 0.75 against the system's 0.45,
+    # which no eye was ever going to catch.
+    #
+    # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, every
+    # editor and the documentation site -- where there used to be one per
     # plugin, each blind to the other.
     add_test(NAME ui_tokens
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/ui-kit/test/tokens.test.mjs)
+
+    # Every path into design/ names something that is there: the mirror moves
+    # when its artifacts do, and the icon glob and the token and field oracles
+    # read through those paths.
+    add_test(NAME design_paths
+             COMMAND ${TG_NODE} --test
+                     ${CMAKE_SOURCE_DIR}/tests/design_paths.test.mjs)
 
     # THE SITE'S OWN RENDER A/B. It is served from /neon-ingvy-audio-plugins/, so a
     # hand-written href="/tech/" works in every local preview -- astro applies
@@ -664,7 +672,7 @@ ni_test_tiers(
         sc_ranges spectro_ramp spectro_columns_js listenin_wire_js
         # lint-like checks over the tree
         versions release licenses ground_shells editor_tags editor_timing ui_tokens
-        validator_verdict
+        design_paths validator_verdict
     FULL
         tg_render_ab:render sc_render_ab:render
         tg_au:host sc_au:host

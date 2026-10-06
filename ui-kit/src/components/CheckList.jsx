@@ -11,9 +11,10 @@
  * thing to ask of anyone inside a plugin window.
  *
  * So this is the system's own answer instead, and the shape is already
- * specified: design/files/project/components/Select/README.md describes the open
- * list as "a bg-100 box with a uv border, one row per option, the current option
- * in uv, the row under the pointer bg-300". That is what the panel below is.
+ * specified: design/scheme/project/components/Select/README.md describes the
+ * open list as "a bg-100 box with a uv border, one row per option, the current
+ * option in uv, the row under the pointer bg-300". That is what the panel below
+ * is.
  *
  * IT IS LAID OUT INSIDE THE WINDOW, never portalled to <body>. The window does
  * not scroll and has a fixed size, so a menu that escaped its parent would be

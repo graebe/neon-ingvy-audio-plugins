@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NI Trance Gate — proposed</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="uv-tokens.css">
+<link rel="stylesheet" href="ds/ultraviolet/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#060410}
+</style>
+</helmet>
+<div class="ph" style="position: relative; width: 824px; height: 768px; overflow: hidden; font-family: var(--font-mono); color: var(--ink);">
+
+  <!-- LEFT COLUMN, 240 wide, 32..500: ring and envelope plot, flush with the panel stack. -->
+  <div class="ph-ring" style="position: absolute; left: 32px; top: 32px;">
+    <svg viewBox="0 0 240 240">
+      <circle class="track" cx="120" cy="120" r="99"></circle>
+      <sc-for list="{{ring}}" as="s" hint-placeholder-count="16"><path class="{{s.cls}}" d="{{s.d}}"></path></sc-for>
+    </svg>
+    <div class="center"><div class="ph-readout-text">16</div><div class="ph-label">Steps</div></div>
+  </div>
+
+  <div style="position: absolute; left: 32px; top: 296px; width: 240px; height: 204px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
+    <svg viewBox="0 0 238 202" width="238" height="202" style="display: block;">
+      <text x="6" y="13" fill="var(--ink-muted)" style="font: 400 10px var(--font-mono); letter-spacing: .02em;">ENVELOPE · 109 ms</text>
+      <line x1="6" y1="176" x2="232" y2="176" stroke="var(--line-200)"></line>
+      <path d="M6 176 L8.7 30 L177 30 L204 176 Z" fill="var(--bg-300)"></path>
+      <path d="M6 176 L8.7 30 L177 30 L204 176 L232 176" fill="none" stroke="var(--uv)" stroke-width="2" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></path>
+      <text x="6" y="194" fill="var(--ink-muted)" style="font: 400 10px var(--font-mono);">0</text>
+      <text x="119" y="194" text-anchor="middle" fill="var(--ink-muted)" style="font: 400 10px var(--font-mono);">62 ms</text>
+      <text x="232" y="194" text-anchor="end" fill="var(--ink-muted)" style="font: 400 10px var(--font-mono);">125 ms</text>
+    </svg>
+  </div>
+
+  <!-- PANELS: x 296, 390 wide (was 488), 24 apart (was 16). Compact side-title variant, proposed for Ultraviolet 1.1.0. -->
+  <section class="ph-panel" style="position: absolute; left: 296px; top: 32px; width: 390px; height: 140px; display: flex; gap: 12px;">
+    <h2 class="ph-title" style="margin: 0; align-self: center; writing-mode: vertical-rl; transform: rotate(180deg);">Gate</h2>
+    <div class="ph-row">
+      <sc-for list="{{gate}}" as="k" hint-placeholder-count="4">
+        <div class="ph-knob">
+          <div class="ph-label">{{k.label}}</div>
+          <svg viewBox="0 0 48 48"><circle class="disc" cx="24" cy="24" r="16"></circle><path class="rail" d="{{k.g.rail}}"></path><path class="arc" d="{{k.g.arc}}"></path><line class="ptr" x1="{{k.g.x1}}" y1="{{k.g.y1}}" x2="{{k.g.x2}}" y2="{{k.g.y2}}"></line></svg>
+          <div class="ph-readout">{{k.num}}<span class="unit">{{k.unit}}</span></div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="ph-panel" style="position: absolute; left: 296px; top: 196px; width: 390px; height: 140px; display: flex; gap: 12px;">
+    <h2 class="ph-title" style="margin: 0; align-self: center; writing-mode: vertical-rl; transform: rotate(180deg);">Envelope</h2>
+    <div class="ph-row">
+      <sc-for list="{{env}}" as="k" hint-placeholder-count="4">
+        <div class="ph-knob">
+          <div class="ph-label">{{k.label}}</div>
+          <svg viewBox="0 0 48 48"><circle class="disc" cx="24" cy="24" r="16"></circle><path class="rail" d="{{k.g.rail}}"></path><path class="arc" d="{{k.g.arc}}"></path><line class="ptr" x1="{{k.g.x1}}" y1="{{k.g.y1}}" x2="{{k.g.x2}}" y2="{{k.g.y2}}"></line></svg>
+          <div class="ph-readout">{{k.num}}<span class="unit">{{k.unit}}</span></div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="ph-panel" style="position: absolute; left: 296px; top: 360px; width: 390px; height: 140px; display: flex; gap: 12px;">
+    <h2 class="ph-title" style="margin: 0; align-self: center; writing-mode: vertical-rl; transform: rotate(180deg);">Fade</h2>
+    <div class="ph-row" style="align-items: center;">
+      <div class="ph-knob">
+        <div class="ph-label">Fade</div>
+        <svg viewBox="0 0 48 48"><circle class="disc" cx="24" cy="24" r="16"></circle><path class="rail" d="{{fade.rail}}"></path><path class="arc" d="{{fade.arc}}"></path><line class="ptr" x1="{{fade.x1}}" y1="{{fade.y1}}" x2="{{fade.x2}}" y2="{{fade.y2}}"></line></svg>
+        <div class="ph-readout">100<span class="unit"> %</span></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; width: 72px;">
+        <label class="ph-toggle" style="height: 28px;"><span class="sw"></span><span class="ph-label">Out</span></label>
+        <label class="ph-toggle on" style="height: 28px;"><span class="sw"></span><span class="ph-label">Soft</span></label>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; width: 120px;">
+        <button class="ph-btn" style="justify-content: center;">Set order</button>
+        <button class="ph-btn" style="justify-content: center;">Shuffle order</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SIDE COLUMN, x 710..792: window verbs flush with the panels' top edge (Actions, joined icons). -->
+  <div class="ph-actions joined" style="position: absolute; left: 710px; top: 32px;">
+    <button class="ph-btn icon" aria-label="Copy patch" title="Copy patch"><svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M5.5 5.5h8v8h-8z"></path><path d="M2.5 10.5v-8h8"></path></svg></button>
+    <button class="ph-btn icon" aria-label="Paste patch" title="Paste patch"><svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M5.5 3.5H3.5v10h9v-10h-2"></path><path d="M6 2.5h4v2H6z"></path><path d="M6 8h4M6 10.5h4"></path></svg></button>
+    <button class="ph-btn icon" aria-label="Randomize pattern" title="Randomize pattern"><svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M1.5 4h3l6 8h4M1.5 12h3l1.5-2M8.5 6l2-2h4M12.5 2l2 2-2 2M12.5 10l2 2-2 2"></path></svg></button>
+  </div>
+
+  <!-- SETTINGS ROW, y 524: one row in the original order, Signal at the right end over the plot it controls. The window verbs are in the side column, so the row fits. -->
+  <div style="position: absolute; left: 32px; top: 524px; width: 760px; height: 28px; display: flex; align-items: center; gap: 24px;">
+    <span style="display: flex; align-items: center; gap: 8px;">
+      <span class="ph-label">Slot</span>
+      <div class="ph-select" style="min-width: 0; width: 72px;"><div class="field">1<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+    </span>
+    <label class="ph-toggle"><span class="sw"></span><span class="ph-label">Join</span></label>
+    <span style="display: flex; align-items: center; gap: 8px;">
+      <span class="ph-label">Curve</span>
+      <div class="ph-select" style="min-width: 0; width: 128px;"><div class="field">Linear<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+    </span>
+    <label class="ph-toggle"><span class="sw"></span><span class="ph-label">Time in %</span></label>
+    <label class="ph-toggle on" style="margin-left: auto;"><span class="sw"></span><span class="ph-label">Signal</span></label>
+  </div>
+
+  <!-- BAND, y 568: one plot. The measured signal sits behind the pattern; no tab strip covers the trace. -->
+  <div style="position: absolute; left: 32px; top: 568px; width: 760px; height: 92px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
+    <svg viewBox="0 0 758 90" width="758" height="90" style="display: block;">
+      <sc-for list="{{rules}}" as="r" hint-placeholder-count="16"><line x1="{{r.x}}" y1="20" x2="{{r.x}}" y2="86" stroke="{{r.stroke}}"></line></sc-for>
+      <path d="{{signal}}" fill="var(--line-200)"></path>
+      <path d="{{patternLine}}" fill="none" stroke="var(--uv)" stroke-width="1.5" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></path>
+      <line x1="{{playX}}" y1="20" x2="{{playX}}" y2="86" stroke="var(--uv)"></line>
+      <text x="6" y="13" fill="var(--ink-muted)" style="font: 400 10px var(--font-mono); letter-spacing: .02em;">PATTERN · ONE CYCLE</text>
+      <text x="752" y="13" text-anchor="end" fill="var(--ink-muted)" style="font: 400 10px var(--font-mono); letter-spacing: .02em;">SIGNAL BEHIND</text>
+    </svg>
+  </div>
+
+  <!-- PADS, y 676: the system StepGrid. -->
+  <div class="ph-grid beat" style="position: absolute; left: 32px; top: 676px;">
+    <sc-for list="{{pads}}" as="p" hint-placeholder-count="16">
+      <div class="{{p.cls}}" style="{{p.style}}">
+        <sc-if value="{{p.partial}}" hint-placeholder-val="{{false}}"><div class="amt" style="height: 50%;"></div></sc-if>
+        <sc-if value="{{p.tie}}" hint-placeholder-val="{{false}}"><div style="position: absolute; left: 0; right: 0; top: 50%; margin-top: -1px; height: 2px; background: var(--uv);"></div></sc-if>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- HINT, y 740: three conventions, the Motion switch, the signature. -->
+  <div style="position: absolute; left: 0; top: 740px; width: 824px; height: 28px; box-sizing: border-box; border-top: 1px solid var(--line-100); padding: 0 32px; display: flex; align-items: center; gap: 16px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; color: var(--ink-muted);">
+    <span style="white-space: nowrap;"><b style="font-weight: 400; color: var(--ink);">click</b> a step to toggle<span style="margin: 0 12px; color: var(--ink-dim);">–</span><b style="font-weight: 400; color: var(--ink);">shift-click</b> for a tie<span style="margin: 0 12px; color: var(--ink-dim);">–</span><b style="font-weight: 400; color: var(--ink);">drag</b> up or down for its amount</span>
+    <label class="ph-toggle on"><span class="sw"></span><span class="ph-label">Motion</span></label>
+    <span class="ph-sig" style="margin-left: auto;"><span class="mark"></span>Neon Ingvy</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":824,"height":768}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const f = (n) => n.toFixed(2);
+    const knob = (v) => {
+      const c = 24, r = 20;
+      const pt = (t, rr) => { const a = (-135 + 270 * t) * Math.PI / 180; return [c + rr * Math.sin(a), c - rr * Math.cos(a)]; };
+      const s = pt(0, r), e = pt(1, r), p = pt(v, r), i = pt(v, 6), o = pt(v, 15);
+      return {
+        rail: 'M' + f(s[0]) + ' ' + f(s[1]) + ' A' + r + ' ' + r + ' 0 1 1 ' + f(e[0]) + ' ' + f(e[1]),
+        arc: v <= 0.001 ? '' : 'M' + f(s[0]) + ' ' + f(s[1]) + ' A' + r + ' ' + r + ' 0 ' + (270 * v > 180 ? 1 : 0) + ' 1 ' + f(p[0]) + ' ' + f(p[1]),
+        x1: f(i[0]), y1: f(i[1]), x2: f(o[0]), y2: f(o[1]),
+      };
+    };
+    // Number in ink, unit in ink-muted after a space: "90 %", "15 ms".
+    const K = (label, v, num, unit) => ({ label, num, unit: unit ? ' ' + unit : '', g: knob(v) });
+
+    const steps = ['on', 'off', 'on', 'off', 'half', 'off', 'on', 'tie', 'on', 'off', 'on', 'off', 'on', 'off', 'on', 'on'];
+    const play = 5, cursor = 0, n = steps.length;
+
+    const ring = steps.map((st, i) => {
+      const P = (deg) => { const a = deg * Math.PI / 180; return f(120 + 108 * Math.sin(a)) + ' ' + f(120 - 108 * Math.cos(a)); };
+      const a0 = i * 360 / n + 1.5, a1 = (i + 1) * 360 / n - 1.5;
+      const on = st !== 'off';
+      return { d: 'M' + P(a0) + ' A108 108 0 0 1 ' + P(a1), cls: 'seg' + (on ? ' on' : '') + (i === play ? ' play' : '') };
+    });
+
+    const sw = 748 / n, base = 86;
+    let line = 'M6 86';
+    steps.forEach((st, i) => {
+      if (st === 'off' || st === 'tie') return;
+      const lvl = st === 'half' ? 0.5 : 1, top = base - lvl * 62;
+      let j = i; while (j + 1 < n && steps[j + 1] === 'tie') j++;
+      const x0 = 6 + i * sw, xe = 6 + j * sw + 0.75 * sw;
+      line += ' L' + f(x0) + ' ' + base + ' L' + f(x0 + 1) + ' ' + f(top) + ' L' + f(xe) + ' ' + f(top) + ' L' + f(xe + 5.6) + ' ' + base;
+    });
+    line += ' L752 86';
+
+    // The measured signal: what the gate let through, so it follows the pattern.
+    const gain = (x) => {
+      const i = Math.min(n - 1, Math.floor((x - 6) / sw)), st = steps[i];
+      if (st === 'off') return 0.06;
+      const inStep = (x - 6 - i * sw) / sw;
+      if (st === 'tie' || steps[i + 1] === 'tie') return st === 'half' ? 0.5 : 1;
+      return inStep < 0.78 ? (st === 'half' ? 0.5 : 1) : 0.06;
+    };
+    let sig = 'M6 86';
+    for (let x = 6; x <= 752; x += 2) {
+      const a = gain(x) * (0.55 + 0.4 * Math.abs(Math.sin(x * 0.83) * Math.cos(x * 0.29)));
+      sig += ' L' + x + ' ' + f(86 - a * 60);
+    }
+    sig += ' L752 86 Z';
+
+    const rules = steps.map((_, i) => ({ x: f(6 + i * sw), stroke: i % 4 === 0 ? 'var(--line-200)' : 'var(--line-100)' }));
+
+    const pads = steps.map((st, i) => ({
+      cls: 'ph-step' + (st === 'on' ? ' on' : '') + (st === 'half' || st === 'tie' ? ' on partial' : '') + (i === play ? ' play' : ''),
+      style: i === cursor ? 'outline: 1px solid var(--ink); outline-offset: 2px;' : '',
+      partial: st === 'half',
+      tie: st === 'tie',
+    }));
+
+    return {
+      ring, rules, pads, signal: sig,
+      patternLine: line,
+      playX: f(6 + 5.4 * sw),
+      gate: [K('Rate', 0.583, '1/16', ''), K('Length', 0.118, '16', ''), K('Amount', 0.9, '90', '%'), K('Width', 0.737, '75', '%')],
+      env: [K('Attack', 0.008, '1.5', 'ms'), K('Decay', 0.08, '15', 'ms'), K('Sustain', 1, '100', '%'), K('Release', 0.08, '15', 'ms')],
+      fade: knob(1),
+    };
+  }
+}
+</script>
+</body>
+</html>

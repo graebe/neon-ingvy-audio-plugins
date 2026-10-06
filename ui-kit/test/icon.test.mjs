@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { iconBody, iconName, FILLED } from '../src/lib/icon-svg.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const DIR = join(ROOT, 'design', 'files', 'project', 'assets', 'Icons');
+const DIR = join(ROOT, 'design', 'scheme', 'project', 'assets', 'Icons');
 const SET = ['play', 'pause', 'stop', 'record', 'loop', 'copy', 'paste',
              'shuffle', 'reset', 'link', 'chevron', 'power'];
 

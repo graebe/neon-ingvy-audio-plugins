@@ -108,7 +108,7 @@ cannot override that.
 | `ui-kit/src/components/Ground.jsx` | the canvas, its sizing and the panel measurement |
 | `ui-kit/src/lib/motion.js` | the Motion switch's remembered state |
 | `ui-kit/harness/beat.js` | a playing transport for the editors' review harnesses |
-| `design/files/project/README.md` | the design system's Motion section |
+| `design/scheme/project/README.md` | the design system's Motion section |
 
 The beat is found in Rust because a plugin editor is a WebView: it cannot see
 the host's transport, and its timers are neither sample-accurate nor running

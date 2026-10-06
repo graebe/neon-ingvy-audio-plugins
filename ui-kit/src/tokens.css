@@ -2,9 +2,10 @@
  * ULTRAVIOLET — the design system's tokens, transcribed once.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
- * Every value here comes from Uv.h in the JUCE editor, which in turn came
- * from the system's tokens.json. The comments are the system's own, because
- * they say what a token is FOR, which a hex triplet cannot.
+ * Every value here is the design system's, transcribed from its tokens.json
+ * (design/scheme/project/tokens.json), and `ctest -R ui_tokens` holds the two
+ * in agreement. The comments are the system's own, because they say what a
+ * token is FOR, which a hex triplet cannot.
  *
  * The system in one line: ultraviolet light on black glass. `uv` is THE
  * SIGNAL -- spent ONLY where something is on or IS the current value: a lit
@@ -93,7 +94,7 @@
    * rest of the system uses, so a silent spectrogram is the window's own
    * background and a loud one is lit in the system's own signal colour.
    *
-   * NOT YET IN THE ULTRAVIOLET SYSTEM at design/files/project/tokens.json,
+   * NOT YET IN THE ULTRAVIOLET SYSTEM at design/scheme/project/tokens.json,
    * which has no ramp family. Reported rather than quietly diverged: the
    * system should gain these, and until it does the token test knows to
    * expect them here and not there.
@@ -160,8 +161,9 @@
  * Every hand-retyped copy of these three lines was a token that had quietly
  * stopped tracking the system -- .pad.on had the led glow inline, and
  * .readout.editing had the focus ring inline at a different alpha. The JUCE
- * build had a ctest that failed if a colour literal appeared outside Uv.h;
- * `ctest -R tg_tokens` is that check, restored.
+ * editor this kit replaced had a ctest that failed if a colour literal
+ * appeared outside its token header, Uv.h; `ctest -R ui_tokens` is that check,
+ * restored.
  */
 :root {
   --glow-led: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55))
@@ -183,9 +185,9 @@
 /*
  * KEYBOARD FOCUS, which had no rule at all.
  *
- * .glow-focus was defined here and used nowhere, while the JUCE original
- * called glowFocus() from five places -- slider, readout, button, switch and
- * combo box. So the web port was simply not focusable-looking: tab through it
+ * .glow-focus was defined here and used nowhere, while the JUCE editor this
+ * kit replaced called glowFocus() from five places -- slider, readout, button,
+ * switch and combo box. So the web port was simply not focusable-looking: tab through it
  * and nothing moved.
  *
  * :focus-visible rather than :focus, so a click does not leave a ring behind
@@ -304,7 +306,7 @@ body {
 
 /*
  * THE GROUND: DOT PAPER UNDER NOISE, both from the system, and both exactly the
- * design's `.ph-window` (design/files/project/components/bundle.css).
+ * design's `.ph-window` (design/scheme/project/components/bundle.css).
  *
  * Dots: --bg-dot, 1px with a 0.2px soft edge, on a space-3 pitch, offset half a
  * pitch -- which puts them on the multiples of 12px, where the animated ground's

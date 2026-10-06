@@ -4,8 +4,8 @@
  *
  * A PORT, NOT A DESIGN. Every number and every step here comes from the
  * Ultraviolet design system's own reference implementation,
- * design/files/project/components/ground.js, and the model is spelled out in
- * design/files/project/README.md under Motion. Nothing in this file is a
+ * design/scheme/project/components/ground.js, and the model is spelled out in
+ * design/scheme/project/README.md under Motion. Nothing in this file is a
  * judgement call about how the background should look -- if it reads wrong, the
  * design system is where that gets decided.
  *
