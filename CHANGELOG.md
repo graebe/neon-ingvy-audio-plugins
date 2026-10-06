@@ -56,6 +56,10 @@
   signature — 16, 32, 64 and 128 at 1/32 in 4/4. Small marks on the knob show
   where they are. Page Up/Down jump between them, and Shift-drag passes
   through.
+- **Every control says what it does.** Hover over any control, or Tab to it,
+  and the hint bar at the bottom says what it does in one line — "Rate — the
+  length of one step, synced to the song tempo." Move away and the bar shows
+  its usual tips again. The same line is what a screen reader announces.
 - On the Move, the module's audio is rounded rather than truncated to 16 bits,
   so quiet gated passages keep their detail.
 

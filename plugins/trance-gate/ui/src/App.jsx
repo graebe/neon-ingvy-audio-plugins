@@ -23,6 +23,7 @@ import { fadeWeights } from './lib/fade.js';
 import { setOrder } from './lib/steps.js';
 import { decodeUi, decodeEngineParams } from './lib/readouts.js';
 import { decodeScope, decodeGate, decodeEnvelope } from './lib/capture.js';
+import { INFO } from './lib/info.js';
 
 /* Mirrored by PLUG_WIDTH in config.h: 32 + 760 + 32, the pads decide the 760. */
 const DESIGN_W = 824;
@@ -184,14 +185,15 @@ export default function App() {
     return ABOVE_GRID + rows * 40 + (rows - 1) * 8 + BELOW_GRID;
   });
 
-  /* THREE CLAUSES IS THE CAP, so ORDER mode SWAPS them for its own, and an
-   * action's outcome takes the first place while it is shown. */
-  const hint = () => {
-    const said = status();
-    const own = baseHint();
-    return said && !orderMode() ? [[said.verb, said.rest], ...own.slice(0, 2)] : own;
+  /* THREE CLAUSES IS THE CAP, so ORDER mode SWAPS them for its own. An
+   * action's outcome takes the first place while it is shown (outside ORDER
+   * mode), and the string of the control under the pointer replaces them
+   * otherwise -- the frame applies that precedence (the kit's lib/info.js). */
+  const said = () => {
+    const s = status();
+    return s && !orderMode() ? [s.verb, s.rest] : null;
   };
-  const baseHint = () => (orderMode() ? [
+  const hint = () => (orderMode() ? [
     ['click', `the ${params()?.fadeOut ? 'gaps' : 'steps'} in the order they should arrive`],
     ['a number', 'to type one — they swap'],
     ['ORDER', 'again to finish'],
@@ -206,7 +208,8 @@ export default function App() {
      * reflect the ground's rings. */
     <EditorFrame width={DESIGN_W} height={designH()} motionKey="trance-gate"
                  sources=".panel, .ring, .grid, .band, .plot, [data-wave-source]"
-                 bridge={bridge} hint={hint()}>
+                 bridge={bridge} hint={hint()} status={said()}
+                 motionInfo={INFO.motion} signatureInfo={INFO.signature}>
       <div class="top">
         {/* LEFT: the ring, and the envelope plot ALWAYS under it. */}
         <div class="left-column">
