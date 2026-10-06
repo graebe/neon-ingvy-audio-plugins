@@ -276,6 +276,22 @@ if (APPLE)
         add_test(NAME editor_host_${plugin}_clap
                  COMMAND editor_host clap ${NI_BUNDLES}/NI${plugin}.clap)
     endforeach()
+
+    # WHAT THE iPlug2 VST3 BUILDS SAVE, as fixtures for the builds that replace
+    # them: tests/fixtures/iplug2, whose README says what each file is and how
+    # to regenerate them -- a decision, so capturing is not a test. --check is:
+    # every committed fixture must still open in this build with the parameters
+    # it was captured with. vst3_capture.mm.
+    add_executable(vst3_capture vst3_capture.mm
+        ${_vst3}/pluginterfaces/base/funknown.cpp
+        ${_vst3}/pluginterfaces/base/coreiids.cpp
+        ${_vst3}/public.sdk/source/vst/vstinitiids.cpp
+        ${_vst3}/public.sdk/source/common/commoniids.cpp
+        ${_vst3}/public.sdk/source/common/memorystream.cpp
+        ${_vst3}/public.sdk/source/vst/hosting/parameterchanges.cpp)
+    target_include_directories(vst3_capture PRIVATE ${_vst3})
+    target_compile_options(vst3_capture PRIVATE -fobjc-arc)
+    target_link_libraries(vst3_capture PRIVATE "-framework Cocoa" "-framework WebKit")
 endif()
 
 # ---------------------------------------------------------------- Spectrogram

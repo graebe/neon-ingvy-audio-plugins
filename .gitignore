@@ -7,6 +7,12 @@ build-coverage/
 # single-slice, so never to be mistaken for a shipping build either.
 build-tsan/
 build-asan/
+# The JUCE spike's builds: the iPlug2 reference build the fixtures are captured
+# from, and the spike's own (tests/fixtures/iplug2/README.md, spike/UT2.md).
+# spike/out holds the built spike bundle for the manual Live test -- a build
+# product, rebuilt by the commands in spike/UT2.md, never a tracked file.
+build-spike/
+spike/out/
 # An instrumented binary run without LLVM_PROFILE_FILE set drops this wherever
 # it happened to be started from.
 *.profraw
