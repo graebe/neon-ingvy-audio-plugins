@@ -25,12 +25,14 @@ module's.
 
 # Numbers
 
-A number of up to 19 digits is read as that integer, divided or multiplied
-once by an exactly representable power of ten: one correctly rounded
-operation, and so the same double `str::parse` gives -- which `fmt::atof`, the
-hand-written reader's, also gives. Every number a build has written has at
-most seven digits, and JavaScript, which rewrites them when Schwung stores a
-blob, writes the shortest text that reads back to the same double.
+serde_json reads a number's digits as an integer and divides or multiplies it
+once by a power of ten. Up to fifteen digits and 10^22 both are exact, so
+that is one correctly rounded operation -- the same double `str::parse` gives,
+and `fmt::atof`, the hand-written reader's, gave. Every number a build has
+written has at most seven digits, and JavaScript, which rewrites them when
+Schwung stores a blob, writes the shortest text that reads back to the same
+double. (Past fifteen digits the integer itself can round first, which is why
+the `float_roundtrip` feature exists; nothing here needs it.)
 */
 
 use serde::de::{self, DeserializeSeed, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};

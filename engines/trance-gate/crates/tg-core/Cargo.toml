@@ -16,7 +16,7 @@ ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 # The state blob, slot files and pasted text are flat JSON objects, and
 # serde_json reads them (src/json.rs). One hand-written visitor reads all
 # three, so serde is taken for its traits alone: no derive, and none of its
-# default features. serde_json needs `alloc` for from_str, and nothing of
+# default features. serde_json needs `alloc` to read a str, and nothing of
 # `std`; `float_roundtrip` stays off, which keeps number parsing free of its
 # scratch buffer (json.rs says why the result is the same double).
 serde = { version = "1.0.229", default-features = false }
