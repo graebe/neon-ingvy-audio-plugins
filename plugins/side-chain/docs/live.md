@@ -177,8 +177,7 @@ background comes to rest.
 It follows Live's tempo and time signature, not the sound: it pulses the same
 way in every Neon Ingvy plugin, on a drum bus or on a silent track. The plugin
 keeps time **only while its window is open**: close the window and it stops, so
-the background costs nothing in a set you are only playing. It also stops
-drawing whenever the window is hidden.
+the background costs nothing in a set you are only playing.
 
 The **Motion** switch in the hint bar at the bottom turns it off. That setting
 is remembered on your machine, separately for each Neon Ingvy plugin, and is not

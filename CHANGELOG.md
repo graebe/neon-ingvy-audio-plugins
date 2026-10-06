@@ -26,7 +26,8 @@
   beat while the transport plays, stronger on the first beat of each bar, and
   is still while stopped. It follows the tempo and time signature rather than
   the audio, so every plugin pulses alike, even on a silent track; it runs only
-  while the window is open.
+  while the window is open. It also moves in Live now: it no longer waits on
+  screen refreshes that a plugin window hardly gets.
 
 ### NI Trance Gate
 
