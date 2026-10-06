@@ -156,6 +156,20 @@ An import is checked on the main thread and queued whole (`tg_shell_import`): a
 refused file changes nothing, and an accepted one is followed by the host
 exactly like a paste.
 
+**Copy and paste** go the same way, for the same kind of reason: inside a host a
+WKWebView may not read the clipboard, and ⌘V never reaches it -- the host's menu
+takes it. The editor asks (109 copy, 110 paste); the plugin reads or writes the
+system's clipboard on the main thread (`ni/Clipboard.mm`, NSPasteboard, behind
+the `ni::Clipboard` interface so `tests/cpp` stands a fake in) and answers on 68.
+Copy is the current slot as a slot file's text (`tg_shell_export`). Paste hands
+whatever is there to the engine, which classifies it whole (`tg-core`'s
+`paste.rs`, through `tg_shell_paste`): a slot replaces the slot the host showed
+when it was pasted -- carried in the command, because the host may move its
+Slot in the very block the paste is applied in -- a bank all eight, and a whole
+state blob, the pre-slot Copy's text and the Move's patch, everything. Anything
+else is refused with a reason and changes nothing; an accepted paste is applied
+at the top of the next block and the host follows it as it follows a switch.
+
 On the Move the module has no host parameters to mirror: the knob grid reads
 `get_param`, and the module's editor re-reads the grid (`revalue()`) when the
 slot -- carried as the `ui` readout's last field -- changes.
@@ -200,8 +214,10 @@ and `fonts/OFL.txt`. Fixed names, never hashed: **a WKWebView over a custom
 scheme is not a web server**, and it serves exactly the files that are there.
 
 Every editor is drawn in the kit's `EditorFrame` (the ground, the Hint bar, the
-fit-to-viewport scale and the height it reports), reads its host parameters
-from one store (`@ultraviolet/ui/params`, defaults from the shell's message
+fit-to-viewport scale and the height it reports, and a window that cannot
+scroll: the body and the frame's `<main>` are `overflow: clip`, which is not a
+scroll container, so focusing a control past an edge moves nothing), reads
+its host parameters from one store (`@ultraviolet/ui/params`, defaults from the shell's message
 113), and speaks to the plugin through `useEditorBridge`. Binary payloads -- the
 plot captures, the rendered curves, the spectrogram's columns -- are an ASCII
 header and raw bytes, which the bridge decodes from base64 once (`onBytes`).

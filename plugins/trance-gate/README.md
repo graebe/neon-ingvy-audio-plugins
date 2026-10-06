@@ -69,14 +69,41 @@ files are a plugin feature; the Move keeps its own presets.
 
 ## Patch interchange
 
-The plugin's saved state **is** the Move patch, verbatim. The **copy** icon
-(*Copy gate config*) puts the current pattern and settings on the clipboard as
-one line of text; the **paste** icon (*Paste gate config*) reads one back. The
-same string moves a pattern between the hardware and the DAW in either
-direction, or between two Trance Gates in one set.
+**Copy and paste work on a slot.** The **copy** icon (*Copy slot*) puts the
+current slot — its pattern and its whole sound — on the clipboard. The
+**paste** icon (*Paste into slot*) puts what is on the clipboard into the
+current slot. The other slots are not touched.
 
-For example: build a gate on track 1, press copy, open the Trance Gate on
-track 2, press paste. Track 2 now plays the identical pattern, slot for slot.
+For example, to start slot 2 from slot 1:
+
+1. Select slot 1 and press **copy**. The hint bar says "Copied slot 1."
+2. Select slot 2.
+3. Press **paste**. The hint bar says "Pasted into slot 2.", and slot 2 now
+   plays slot 1's pattern with slot 1's Rate, Amount, envelope and fade.
+   Change it from there; slot 1 stays as it was.
+
+The same works between two Trance Gates — copy on track 1, paste on track 2 —
+and between sets. What is copied is the text of a slot file, so you can paste
+it into a message or a note and paste it back later.
+
+**Paste reads what is on the clipboard and acts on it:**
+
+| on the clipboard | what paste does |
+|---|---|
+| a slot (copy, or the text of a `.nitgslot` file) | replaces the current slot |
+| a bank (the text of a `.nitgbank` file) | replaces all 8 slots |
+| a whole patch | replaces all 8 slots and every setting |
+
+A *whole patch* is the plugin's saved state, which **is** the Move patch,
+verbatim, and it is also what the copy icon put on the clipboard before
+version v2026.10.06.1. So a patch from the Move, or one copied from an older
+Trance Gate, still pastes — and still replaces every slot, as it always did.
+
+Anything else on the clipboard is refused, and nothing changes: the hint bar
+says "Failed to paste: The clipboard doesn't hold a Trance Gate slot."
+
+The plugin reads and writes the clipboard itself, so copy and paste work inside
+Live, where the host keeps **⌘C** and **⌘V** for its own menu.
 
 ## The fade
 

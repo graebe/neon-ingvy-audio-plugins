@@ -26,9 +26,15 @@ real range, every unit and every display string, and pushes them:
 | `64` | → UI | the engine's `ui` readout: steps, ties, length, phase, ms/step, cursor, depths |
 | `65` | → UI | the `params` readout: the twelve values and `width_ms` |
 | `66` | → UI | the scope capture, four bands of 256 columns |
-| `67` | ↔ | the patch blob, for Copy and Paste gate config |
+| `68` | → UI | `ok:` or `error:` and words: how an export, import, copy or paste went, for the hint bar |
 | `96..98` | → plugin | a step's mode, a step's amount, the cursor |
-| `99` | → plugin | send me the patch |
+| `107`, `108` | → plugin | export the slot (`slot`) or all eight (`bank`); import a file |
+| `109` | → plugin | copy the current slot to the clipboard |
+| `110` | → plugin | paste the clipboard: a slot, a bank or a whole patch, as the engine decides |
+
+**The clipboard is the plugin's** (`plugins/_shared/ni/Clipboard.h`). Inside
+Live a WebView gets no permission to read it, and ⌘V never arrives — the host's
+menu takes it first — so the editor only asks, and shows the answer.
 
 A parameter goes back through `SPVFUI`, bracketed by `BPCFUI`/`EPCFUI` so a
 drag is **one** gesture and the host records one undo step rather than a

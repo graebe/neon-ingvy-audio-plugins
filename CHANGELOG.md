@@ -36,8 +36,14 @@
   EXPORT ALL saves all 8 (`.nitgbank`), IMPORT loads either back.
 - **Your pattern is saved with the set.** Before, a set saved after editing the
   pattern could reopen with the pattern from before the edits.
-- Copy gate config and Paste gate config move the whole state as one line of
-  text, between tracks, sets and the Move.
+- **Copy and paste a slot.** *Copy slot* puts the current slot, pattern and
+  sound, on the clipboard; select another slot and *Paste into slot* to
+  replace it. The plugin reads and writes the clipboard itself, so both work in
+  Live, which keeps ⌘C and ⌘V for its own menu. A whole patch on the clipboard
+  — a Move patch, or one copied from an older version — still pastes and
+  replaces all 8 slots. Anything else is refused, and the hint bar says why.
+- Pressing paste no longer opens a field that pushed the editor sideways and
+  cut off its left edge. No editor window can scroll any more.
 - Typing a stage time follows the Time setting: with Time on ms, `40` means
   40 ms. A unit you type — `40 ms` or `25 %` — always wins.
 - Starting and stopping the transport no longer clicks.
