@@ -81,10 +81,13 @@ impl Refused {
 }
 
 /// Every top-level key a state blob has carried that is a plain number --
-/// `mix` and `depth` are v2's, folded into `amount` since.
-const NUMBER_KEYS: [&str; 14] = [
+/// `mix` and `depth` are v2's, folded into `amount` since, and `stopped` is
+/// the early v3 builds' Stop mode, which was removed and is read by nothing.
+/// A key on this list is a patch's even where no reader uses it: a v3 blob
+/// with its Stop setting is still a v3 blob.
+const NUMBER_KEYS: [&str; 15] = [
     "attack", "decay", "sustain", "release", "hold", "amount", "mix", "depth", "fade", "fsoft", "fdir",
-    "legato", "tmode", "curve",
+    "legato", "tmode", "curve", "stopped",
 ];
 
 /// A whole number of nine digits at most, as a version, a slot and a rate

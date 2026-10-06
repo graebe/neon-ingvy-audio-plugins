@@ -70,6 +70,9 @@ fn every_older_patch_is_still_a_patch() {
         "{\"sv\":5,\"slot\":0,\"rate\":\"1/16\",\"attack\":0,\"decay\":0,\"sustain\":1,\"release\":0,\
          \"hold\":1,\"amount\":1,\"fade\":1.0000,\"fsoft\":0,\"legato\":0,\"tmode\":0,\"curve\":0,\
          \"p0\":\"1111:0:16::04000000010000000200000003000000\"}",
+        /* What the first v3 builds wrote, Stop mode and all (0f85754). */
+        "{\"sv\":3,\"slot\":0,\"rate\":\"1/16\",\"attack\":2.00,\"decay\":20.00,\"sustain\":1.000,\
+         \"release\":20.00,\"amount\":1.000,\"stopped\":0,\"p0\":\"5555:0:16:FFFFFFFF\"}",
     ] {
         assert_eq!(classify(blob), Ok(Holds::Patch), "{blob}");
     }
