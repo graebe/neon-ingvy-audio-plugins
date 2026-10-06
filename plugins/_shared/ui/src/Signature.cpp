@@ -6,6 +6,7 @@
  */
 #include "Signature.h"
 
+#include "ChildLights.h"
 #include "UvLight.h"
 #include "UvType.h"
 
@@ -48,11 +49,14 @@ juce::Rectangle<float> Signature::markBounds() const
 
 void Signature::paintLight (juce::Graphics& g)
 {
+    /* The halo outside the signature; the part inside is paint()'s. */
+    excludeOwnBounds (g, *this);
     uv::light::glowLed (g, markBounds());
 }
 
 void Signature::paint (juce::Graphics& g)
 {
+    uv::light::glowLed (g, markBounds());
     g.setColour (c::uv);
     g.fillRect (markBounds());
 

@@ -24,7 +24,8 @@
  *
  * The glow reaches past the bed (6px of blur radius), so the meter is
  * Luminous: its container paints the light outside it (Luminous.h), and the
- * meter paints the part that falls on its own bed.
+ * meter paints the part that falls on its own bed, over the bed and its
+ * hairline as CSS paints a child's box-shadow (ChildLights.h has the rule).
  */
 #pragma once
 

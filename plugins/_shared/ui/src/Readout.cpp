@@ -6,6 +6,7 @@
  */
 #include "Readout.h"
 
+#include "ChildLights.h"
 #include "UvLight.h"
 #include "UvTokens.h"
 #include "UvType.h"
@@ -116,7 +117,7 @@ void Readout::showEditor()
     if (field->isShowing())
         field->grabKeyboardFocus();
 
-    lightChanged (*this);
+    relight (*this);
     repaint();
 }
 
@@ -139,7 +140,7 @@ void Readout::hideEditor (bool keep)
     closing.reset();
 
     exitModalState (0);
-    lightChanged (*this);
+    relight (*this);
     repaint();
 
     juce::Component::SafePointer<Readout> self (this);

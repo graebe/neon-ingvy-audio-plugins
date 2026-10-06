@@ -18,8 +18,10 @@
  * ni::ui::setInfo, like every other line in the bar.
  *
  * ITS LIGHT REACHES PAST ITS EDGE: glow-led around a 6px mark in a 14px line
- * is mostly outside the component, so the mark's halo is Luminous and its
- * container paints it (Luminous.h). The container is the Hint, which does.
+ * is mostly outside the component, so the signature is Luminous and its
+ * container paints the halo outside it (Luminous.h, ChildLights.h); the part
+ * inside, between the mark and the words, it paints itself. The container is
+ * the Hint, which passes the light on to the window.
  *
  * Sized by itself (preferredWidth() x height); place it, never stretch it.
  */

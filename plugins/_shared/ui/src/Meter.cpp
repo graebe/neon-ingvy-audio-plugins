@@ -6,6 +6,7 @@
  */
 #include "Meter.h"
 
+#include "ChildLights.h"
 #include "UvLight.h"
 #include "UvTokens.h"
 
@@ -53,7 +54,7 @@ void Meter::setLevel (float l)
         return;
     level = next;
     repaint();
-    lightChanged (*this);
+    relight (*this);
     if (auto* handler = getAccessibilityHandler())
         handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
 }
@@ -64,7 +65,7 @@ void Meter::setLive (bool on)
         return;
     live = on;
     repaint();
-    lightChanged (*this);
+    relight (*this);
 }
 
 juce::Rectangle<float> Meter::fillBounds() const
@@ -84,6 +85,8 @@ void Meter::drawGlow (juce::Graphics& g) const
 
 void Meter::paintLight (juce::Graphics& g)
 {
+    /* Only what falls outside: the bed's own share is paint()'s (ChildLights.h). */
+    excludeOwnBounds (g, *this);
     drawGlow (g);
 }
 
