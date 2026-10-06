@@ -6,6 +6,7 @@
  */
 #include "Gallery.h"
 
+#include "Luminous.h"
 #include "UvGround.h"
 #include "UvTokens.h"
 #include "UvType.h"
@@ -174,6 +175,9 @@ void Frame::paint (juce::Graphics& g)
     uv::type::draw (g, juce::String (uv::tok::systemName) + " " + uv::tok::release,
                     { (float) pad, (float) pad + title.lineHeight, (float) (listWidth - 2 * pad), hint.lineHeight },
                     uv::type::font (hint), c::inkDim);
+
+    /* A page that is itself Luminous glows on the ground. */
+    ni::ui::paintChildLights (g, *this);
 
     if (rows.empty())
     {

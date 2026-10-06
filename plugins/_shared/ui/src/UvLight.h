@@ -7,32 +7,41 @@
  * "No drop shadows: nothing floats. The only shadow is light." Three of them,
  * and nothing else may glow:
  *
- *   glowLed    tokens glow-led, 0 0 10px uv-deep, 0 0 2px uv -- a lit step,
- *              an LED, the playhead, a primary button, a lit tab
- *   glowFocus  tokens glow-focus, 0 0 0 1px uv, 0 0 8px uv-glow -- keyboard
- *              focus on any control
- *   glowArc    the kit's drop-shadow(0 0 3px uv-deep) at 0.45 -- under a lit
- *              STROKE (a knob's value arc, a plot's curve), where a 10px LED
- *              halo on a 2px line would be mud
+ *   glowLed    a lit step, an LED, the playhead, a primary button, a lit tab:
+ *              the token glow-led, 10px uv-deep and 2px uv
+ *   glowFocus  keyboard focus on any control: the token glow-focus, a 1px uv
+ *              ring and an 8px uv-glow halo
+ *   glowArc    under a lit STROKE -- a knob's value arc, a plot's curve --
+ *              where a 10px LED halo on a 2px line would be mud: 3px uv-deep
  *
  * TWO HALOES, AND THE ORDER IS THE POINT: the wide one is the saturated violet,
  * which is where the hue lives now that the fill is near white; the tight one
- * is the core colour, and keeps the element's own edge from being eaten by the
- * violet.
+ * is the core colour, which keeps the element's own edge from being eaten by
+ * the violet.
  *
- * DRAWN AS CSS DRAWS THEM. A CSS blur radius r is a Gaussian of standard
- * deviation r / 2, and so is this: a rectangle's glow is computed exactly (a
- * blurred rectangle is two error functions, one per axis), any other shape is
- * rendered as a mask and blurred. The JUCE editor drew concentric strokes
- * instead, a guess at the falloff the web kit later had to match by eye.
+ * DRAWN AS THE WEB EDITORS DRAW THEM, because the native ones replace them and
+ * must look the same. That means two different blurs, and the difference is
+ * not a detail:
  *
- * WHERE IT DIFFERS FROM THE TOKEN, ON PURPOSE: glow-led is drawn at 0.55 of its
- * colours' alpha, not 1. tokens.css draws it at 0.55 too, and the ui-kit's
- * token test carries that as its one exemption ("a judgement about a blur,
- * not a typo"); the native editors look like the web ones, so they keep it.
+ *   glow-focus is a CSS box-shadow, whose blur is a RADIUS: a Gaussian of
+ *   standard deviation r / 2. shadow() is that.
  *
- * Call each BEFORE painting the element it surrounds: the halo is under the
- * element, as a drop-shadow is.
+ *   glow-led and the arc glow are CSS filters, drop-shadow(), in the web kit
+ *   (tokens.css --glow-led, --glow-arc) and in the design's own knob arc --
+ *   and a drop-shadow's length IS the standard deviation (Filter Effects 1:
+ *   "the standard deviation instead of blur radius"), twice as wide as the
+ *   same number in a box-shadow. Two filters in a row also compound: the
+ *   second shadows the first's result, so glow-led's white halo lies under
+ *   its violet one as well as under the element. glowLed() and glowArc() do
+ *   exactly that, blurring as browsers do (SVG's three box blurs).
+ *
+ * WHERE IT DIFFERS FROM THE TOKEN, ON PURPOSE: glow-led's colours are drawn at
+ * 0.55 alpha, not 1, as tokens.css draws them -- the ui-kit token test's one
+ * exemption ("a judgement about a blur, not a typo"); the arc glow at 0.45.
+ *
+ * Call each BEFORE painting the element it surrounds: a halo lies under its
+ * element. glowFocus is the exception that needs no order -- it paints only
+ * outside the element, as a box-shadow does.
  */
 #pragma once
 
@@ -46,18 +55,19 @@ namespace uv::light
 /* glow-led's strength in the web kit (tokens.css --glow-led); see above. */
 inline constexpr float ledOpacity = 0.55f;
 /* --glow-arc: drop-shadow(0 0 3px uv-deep) at 0.45. */
-inline constexpr float arcBlur = 3.0f;
+inline constexpr float arcDeviation = 3.0f;
 inline constexpr float arcOpacity = 0.45f;
 
-/* The halo of a lit rectangle (a step, a tab, a button), or of any lit shape
- * (a wedge, a dot, an LED's lens). */
+/* The halo of a lit rectangle (a step, a tab, a button) -- kept per size, so
+ * a grid of lit steps costs one blur -- or of any lit shape (a wedge, a
+ * dot, an LED's lens). */
 void glowLed (juce::Graphics&, juce::Rectangle<float> element);
 void glowLed (juce::Graphics&, const juce::Path& element);
 
 /*
  * The keyboard's focus ring around `element`: its 1px uv ring and its 8px
- * uv-glow halo, drawn OUTSIDE the element only, as CSS draws a box-shadow --
- * so a control with a transparent middle shows no halo through itself.
+ * uv-glow halo, OUTSIDE the element only, as CSS draws a box-shadow -- so a
+ * control with a transparent middle shows no halo through itself.
  * `cornerRadius` follows a round control's outline (a knob's disc: half its
  * size).
  */
@@ -68,13 +78,22 @@ void glowFocus (juce::Graphics&, juce::Rectangle<float> element, float cornerRad
 void glowArc (juce::Graphics&, const juce::Path& stroke);
 
 /*
- * The general case, which the three are made of: one CSS shadow layer -- its
- * offsets, blur and spread in px, and its colour -- under `shape`, its alpha
- * multiplied by `opacity`.
+ * One layer of a CSS box-shadow -- offsets, blur RADIUS and spread in px, and
+ * a colour -- under `shape`, its alpha multiplied by `opacity`: for a light
+ * the design states as a box-shadow (a meter's fill, a warning LED). Drawn
+ * everywhere, inside the shape too: paint the shape over it.
  */
 void shadow (juce::Graphics&, juce::Rectangle<float> shape, const tok::ShadowLayer&,
              float opacity = 1.0f);
 void shadow (juce::Graphics&, const juce::Path& shape, const tok::ShadowLayer&,
              float opacity = 1.0f);
+
+/*
+ * One CSS drop-shadow() filter -- the layer's blur read as the standard
+ * deviation -- under `shape`. A chain of filters is not a list of these:
+ * glowLed() is the chain glow-led is.
+ */
+void dropShadow (juce::Graphics&, const juce::Path& shape, const tok::ShadowLayer&,
+                 float opacity = 1.0f);
 
 } // namespace uv::light

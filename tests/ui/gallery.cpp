@@ -7,6 +7,7 @@
  * software renderer, in one image that no component can change.
  */
 #include "Gallery.h"
+#include "Info.h"
 #include "snapshot.h"
 
 using ni::ui::gallery::Frame;
@@ -50,4 +51,44 @@ NI_SNAPSHOT_TEST ("gallery: the empty frame")
     Frame frame ({});
     REQUIRE (frame.getWidth() == Frame::width);
     NI_CHECK_SNAPSHOT (frame, "gallery-empty");
+}
+
+/* ---------------------------------------------------------------- pages -- */
+
+/*
+ * Every page's info lines are within the limit: a component page sets the
+ * lines its control would carry, so the kit's strings are held here without
+ * anyone remembering to.
+ */
+TEST_CASE ("gallery: no page carries an info line over 72 characters")
+{
+    for (const auto& page : ni::ui::gallery::pages())
+    {
+        CAPTURE (ni::ui::gallery::idOf (page));
+        const auto component = page.make();
+        REQUIRE (component != nullptr);
+        for (const auto& line : ni::ui::collectInfo (*component))
+        {
+            CAPTURE (line);
+            CHECK (line.length() <= ni::ui::infoLimit);
+        }
+    }
+}
+
+/* The foundation's pages, as goldens: the design layer's whole picture. */
+NI_SNAPSHOT_TEST ("gallery: the foundation pages")
+{
+    for (const auto* name : { "Colour", "Type", "Icons", "Light", "Stock widgets" })
+    {
+        CAPTURE (name);
+        Frame frame (ni::ui::gallery::pages());
+        REQUIRE (frame.show (juce::String (name)));
+        REQUIRE (frame.page() != nullptr);
+
+        /* The page as the window shows it, on the ground. */
+        const auto picture = frame.createComponentSnapshot (frame.page()->getBounds(), true, 1.0f,
+                                                            juce::SoftwareImageType());
+        const auto r = ni::ui::test::compare (picture, "foundation-" + juce::String (name).toLowerCase().replaceCharacter (' ', '-'));
+        CHECK_MESSAGE (r.ok, r.message.toStdString());
+    }
 }
