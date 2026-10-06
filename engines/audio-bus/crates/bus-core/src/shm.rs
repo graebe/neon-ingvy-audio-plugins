@@ -2,136 +2,70 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The POSIX shared-memory mapping, and nothing else.
+ * The shared memory behind a slot: one type, `Shm`, on every OS the plugins
+ * ship for.
  *
- * Six calls, declared here rather than borrowed from libc, under a rule from
- * when the project was MIT and THIRD_PARTY_LICENSES.md was kept short on
- * purpose. docs/adr/0003-established-rust-crates.md reverses it (see
- * bus-core/Cargo.toml).
+ * Underneath it is whatever the operating system calls shared memory:
  *
- * These signatures, the O_* and errno constants and `__error` are macOS's. The
- * plugin is a macOS universal binary and nothing else builds this crate, so any
- * other target is refused at compile time rather than left to link against
- * the wrong numbers.
+ *   macOS, Linux   POSIX shm_open and mmap, through libc         shm/posix.rs
+ *   Windows        a named file mapping, through windows-sys    shm/win32.rs
+ *
+ * This file is the part that is the same everywhere -- the slot's name, the
+ * two doors, what a mapping holds -- so lib.rs writes the claim protocol once
+ * and the ring never learns which OS it runs on.
+ *
+ * The calls used to be declared here by hand, for macOS only, under the
+ * zero-dependency rule that docs/adr/0003-established-rust-crates.md reversed.
+ * posix.rs tells the two bugs that cost: they are why the declarations now come
+ * from crates that know each platform's ABI.
+ *
+ * WHAT A BACKEND PROVIDES, and promises:
+ *
+ *   NAME_PREFIX              where the OS keeps shared-memory names
+ *   create_or_open(name, n)  a read-write view of at least n bytes, and
+ *                            whether THIS call made the segment (zero-filled)
+ *   open_existing(name, n)   a read-only view of at least n bytes of a segment
+ *                            that exists; it never creates one
+ *   unlink(name)             take the name away from its segment
+ *   View::base()             the view's first byte, page-aligned; dropping
+ *                            the View unmaps it
+ *   pid_is_gone(pid)         true only if no process has this pid
+ *   ticks_since_boot()       a monotonic count that never repeats within a boot
+ *
+ * "At least n bytes" is checked BEFORE a view is handed out. A segment that an
+ * older build left behind may be shorter, and mapping past its end gives a view
+ * whose tail faults on first touch -- on the audio thread, which is the worst
+ * possible place to discover it.
+ *
+ * THE ONE REAL DIFFERENCE IS HOW LONG A NAME LIVES. A POSIX name lives until
+ * somebody unlinks it, or the machine reboots. A Windows name lives while some
+ * process holds a handle to it, and there is no unlink. win32.rs explains how
+ * that is arranged to give lib.rs the answers POSIX gives.
  */
-
-#[cfg(not(target_os = "macos"))]
-compile_error!("bus-core declares macOS's shm/mmap ABI by hand; port shm.rs before building it elsewhere");
 
 use core::sync::atomic::AtomicU32;
 
 use crate::header::{segment_size, Header, DATA_OFFSET};
 use crate::ring::RING_SAMPLES;
 
-pub type CInt = i32;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod posix;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use posix as sys;
 
-const O_RDONLY: CInt = 0x0000;
-const O_RDWR: CInt = 0x0002;
-const O_CREAT: CInt = 0x0200;
-const O_EXCL: CInt = 0x0800;
+#[cfg(windows)]
+mod win32;
+#[cfg(windows)]
+use win32 as sys;
 
-const PROT_READ: CInt = 1;
-const PROT_WRITE: CInt = 2;
-const MAP_SHARED: CInt = 1;
-const MAP_FAILED: *mut core::ffi::c_void = usize::MAX as *mut core::ffi::c_void;
+/* Every other target is refused here rather than given a backend nobody has
+ * run. Android, for one, is Linux without shm_open. */
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+compile_error!("bus-core maps its segments on macOS, Linux and Windows; give shm.rs a backend before building it elsewhere");
 
-const EEXIST: CInt = 17;
-const ESRCH: CInt = 3;
-
-extern "C" {
-    /*
-     * VARIADIC, AND IT HAS TO BE DECLARED THAT WAY.
-     *
-     * POSIX spells this `int shm_open(const char *, int, ...)`. Declaring the
-     * mode as an ordinary third parameter compiles, links, and runs -- and on
-     * arm64 it is wrong, because variadic arguments are passed on the STACK
-     * while ordinary ones go in registers. The callee reads a mode we never
-     * wrote there.
-     *
-     * The symptom was not a crash. The creating process got its fd and went on
-     * happily, having made a segment with permissions 0; every LATER open of
-     * that name failed with EACCES, so a sender worked and no reader could ever
-     * attach to it. Four tests found it; none of them looked like a calling
-     * convention.
-     */
-    fn shm_open(name: *const u8, oflag: CInt, ...) -> CInt;
-    fn shm_unlink(name: *const u8) -> CInt;
-    fn ftruncate(fd: CInt, length: i64) -> CInt;
-    fn close(fd: CInt) -> CInt;
-    fn mmap(
-        addr: *mut core::ffi::c_void,
-        len: usize,
-        prot: CInt,
-        flags: CInt,
-        fd: CInt,
-        offset: i64,
-    ) -> *mut core::ffi::c_void;
-    fn munmap(addr: *mut core::ffi::c_void, len: usize) -> CInt;
-    /*
-     * THE 64-BIT-INODE ENTRY POINT, BY NAME. On x86_64 the plain `fstat`
-     * symbol is the legacy one that fills the old 32-bit-inode `struct stat`;
-     * the layout below is only what `fstat$INODE64` writes. Reading the legacy
-     * layout through it put `st_size` in the wrong place, so every open of an
-     * existing segment on an Intel Mac failed the size check. arm64 has only
-     * the one layout and the one symbol.
-     */
-    #[cfg_attr(
-        all(target_os = "macos", target_arch = "x86_64"),
-        link_name = "fstat$INODE64"
-    )]
-    fn fstat(fd: CInt, buf: *mut Stat) -> CInt;
-    fn getpid() -> CInt;
-    fn kill(pid: CInt, sig: CInt) -> CInt;
-    fn __error() -> *mut CInt;
-    fn mach_absolute_time() -> u64;
-}
-
-/*
- * macOS `struct stat`, spelled out.
- *
- * The first draft of this read st_size at "offset 96" with a comment admitting
- * it was ugly. An offset in a comment is a layout that no compiler checks:
- * it is right until the day it is silently wrong, and the thing it guards is a
- * mapping whose tail SIGBUSes on the audio thread. So the struct is declared,
- * and `repr(C)` does the arithmetic.
- *
- * This is the 64-bit inode layout (`fstat$INODE64` on x86_64, the only one on
- * arm64); `st_size` is all that is read, the rest is here to place it.
- */
-#[repr(C)]
-struct Timespec {
-    tv_sec: i64,
-    tv_nsec: i64,
-}
-
-#[repr(C)]
-struct Stat {
-    st_dev: i32,
-    st_mode: u16,
-    st_nlink: u16,
-    st_ino: u64,
-    st_uid: u32,
-    st_gid: u32,
-    st_rdev: i32,
-    st_atime: Timespec,
-    st_mtime: Timespec,
-    st_ctime: Timespec,
-    st_birthtime: Timespec,
-    st_size: i64,
-    st_blocks: i64,
-    st_blksize: i32,
-    st_flags: u32,
-    st_gen: u32,
-    st_lspare: i32,
-    st_qspare: [i64; 2],
-}
-
-fn errno() -> CInt {
-    unsafe { *__error() }
-}
-
+/// This process's id, as the owner word records it.
 pub fn pid() -> u32 {
-    unsafe { getpid() as u32 }
+    std::process::id()
 }
 
 /// Is a process with this pid still around?
@@ -139,30 +73,32 @@ pub fn pid() -> u32 {
 /// Pids are recycled, so this is only ever used to confirm that a writer is
 /// GONE -- never to conclude that one is alive. See `Writer::claim`.
 pub fn pid_is_gone(p: u32) -> bool {
-    if p == 0 {
-        return true;
-    }
-    unsafe { kill(p as CInt, 0) == -1 && errno() == ESRCH }
+    p == 0 || sys::pid_is_gone(p)
 }
 
-/// A value no earlier segment under any name has carried: the monotonic clock,
-/// which starts at boot -- and shm does not survive a reboot. Two creations
-/// under one name are separated by an unlink, so they cannot share a tick.
+/// A value no earlier segment under any name has carried: a monotonic clock
+/// that starts at boot, and no segment survives a reboot. Two creations under
+/// one name are separated by the first segment losing its name, so they cannot
+/// share a tick. Only equality is ever asked of it, so its unit is the
+/// backend's business.
 pub fn incarnation() -> u64 {
-    unsafe { mach_absolute_time() }.max(1)
+    sys::ticks_since_boot().max(1)
 }
 
 pub const MAX_SLOT: u32 = 16;
 
 /*
- * "/nia.bus.NN" -- eleven bytes plus the NUL.
+ * "/nia.bus.NN" -- eleven bytes plus the NUL. Windows spells it
+ * "Local\nia.bus.NN"; each backend's NAME_PREFIX is the difference.
  *
  * macOS caps a shm name at PSHMNAMLEN (31), and the failure mode for a longer
  * one is ENAMETOOLONG at open time rather than a truncation, so this is
  * comfortable rather than merely sufficient. The name is built without
  * allocating because `claim` is called from the editor thread while audio runs.
  */
-pub struct Name([u8; 24]);
+const NAME_CAP: usize = 24;
+
+pub struct Name([u8; NAME_CAP]);
 
 /// The environment variable that moves every bus in this process into a
 /// private namespace. TESTS ONLY -- see `namespace`.
@@ -191,28 +127,44 @@ fn namespace() -> Option<&'static str> {
         if v.is_empty() {
             return None;
         }
-        /* FNV-1a, folded to 32 bits: a namespace, not a secret. */
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        for &b in v {
-            h = (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        Some(format!("{:08x}", (h ^ (h >> 32)) as u32))
+        Some(format!("{:08x}", fold(v)))
     })
     .as_deref()
 }
 
+/*
+ * FNV-1a, folded to 32 bits: a namespace, not a secret.
+ *
+ * Five lines, kept here rather than taken from the fnv crate, because the
+ * eight hex digits are part of every name a test process uses, and a name is
+ * where two builds meet. `the_names_are_the_format` pins them to FNV's
+ * published test vector.
+ */
+fn fold(v: &[u8]) -> u32 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in v {
+        h = (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    (h ^ (h >> 32)) as u32
+}
+
 impl Name {
     pub fn for_slot(slot: u32) -> Name {
-        let mut buf = [0u8; 24];
+        Name::in_namespace(namespace(), slot)
+    }
+
+    fn in_namespace(ns: Option<&str>, slot: u32) -> Name {
+        let mut buf = [0u8; NAME_CAP];
         let mut n = 0;
         let mut put = |bytes: &[u8]| {
             buf[n..n + bytes.len()].copy_from_slice(bytes);
             n += bytes.len();
         };
-        match namespace() {
-            None => put(b"/nia.bus."),
+        put(sys::NAME_PREFIX.as_bytes());
+        match ns {
+            None => put(b"nia.bus."),
             Some(ns) => {
-                put(b"/nia.");
+                put(b"nia.");
                 put(ns.as_bytes());
                 put(b".");
             }
@@ -220,29 +172,27 @@ impl Name {
         put(&[b'0' + (slot / 10) as u8, b'0' + (slot % 10) as u8]);
         Name(buf)
     }
-    fn as_ptr(&self) -> *const u8 {
-        self.0.as_ptr()
-    }
+
     pub fn as_str(&self) -> &str {
         let end = self.0.iter().position(|&b| b == 0).unwrap_or(self.0.len());
         core::str::from_utf8(&self.0[..end]).unwrap_or("")
     }
 }
 
-pub struct Mapping {
-    base: *mut core::ffi::c_void,
-    len: usize,
+/// A slot's segment, mapped: the header, then the ring. Dropping it unmaps it.
+pub struct Shm {
+    view: sys::View,
     slot: u32,
 }
 
 /* Everything reachable through a mapping is an atomic -- the header's fields
  * and the ring's samples alike -- so sharing one between threads is sound in
  * the ordinary way. Which of them may WRITE is the protocol's business (see
- * header.rs), and a reader's mapping cannot: it is PROT_READ. */
-unsafe impl Send for Mapping {}
-unsafe impl Sync for Mapping {}
+ * header.rs), and a reader's mapping cannot: it is read-only. */
+unsafe impl Send for Shm {}
+unsafe impl Sync for Shm {}
 
-impl Mapping {
+impl Shm {
     /*
      * TWO DOORS, AND ONLY A WRITER MAY USE THE ONE THAT CREATES.
      *
@@ -259,128 +209,37 @@ impl Mapping {
 
     /// Open slot `slot`, creating the segment if nobody has yet. WRITERS ONLY.
     ///
-    /// Returns `(mapping, created)`. `created` is true for the ONE process that
-    /// won `O_CREAT | O_EXCL` and must therefore initialise the header.
-    pub fn create_or_open(slot: u32) -> Option<(Mapping, bool)> {
+    /// Returns `(segment, created)`. `created` is true for the ONE process
+    /// whose open made the segment, which must therefore initialise the header.
+    pub fn create_or_open(slot: u32) -> Option<(Shm, bool)> {
         if slot == 0 || slot > MAX_SLOT {
             return None;
         }
-        let name = Name::for_slot(slot);
-        let size = segment_size();
-
-        /*
-         * O_EXCL DECIDES WHO INITIALISES, and it has to be an atomic decision.
-         *
-         * The obvious shape -- "open; if it's empty, set it up" -- has two
-         * plugins instantiating at once both seeing an empty segment, both
-         * ftruncating, and one of them zeroing the ring out from under the
-         * other's first block. The kernel can settle this and we cannot, so
-         * let it: exactly one O_CREAT|O_EXCL succeeds.
-         */
-        let mut created = false;
-        let mut fd = unsafe { shm_open(name.as_ptr(), O_RDWR | O_CREAT | O_EXCL, 0o600 as CInt) };
-        if fd >= 0 {
-            created = true;
-            if unsafe { ftruncate(fd, size as i64) } != 0 {
-                unsafe {
-                    close(fd);
-                    shm_unlink(name.as_ptr());
-                }
-                return None;
-            }
-        } else if errno() == EEXIST {
-            fd = unsafe { shm_open(name.as_ptr(), O_RDWR) };
-            if fd < 0 {
-                return None;
-            }
-            /*
-             * A SEGMENT THAT EXISTS BUT IS THE WRONG SIZE is one an older build
-             * left behind, and shm survives until reboot. Mapping `size` bytes
-             * over a shorter file gives a mapping whose tail SIGBUSes on first
-             * touch -- on the audio thread, which is the worst possible place
-             * to discover it. So measure first, and refuse rather than map.
-             */
-            let mut st: Stat = unsafe { core::mem::zeroed() };
-            if unsafe { fstat(fd, &mut st) } != 0 || st.st_size < size as i64 {
-                unsafe { close(fd) };
-                return None;
-            }
-        } else {
-            return None;
-        }
-
-        let base = unsafe {
-            mmap(
-                core::ptr::null_mut(),
-                size,
-                PROT_READ | PROT_WRITE,
-                MAP_SHARED,
-                fd,
-                0,
-            )
-        };
-        /* The fd is not needed once mapped, and leaking one per plugin instance
-         * would exhaust the host's table in a large set. */
-        unsafe { close(fd) };
-
-        if base == MAP_FAILED || base.is_null() {
-            if created {
-                unsafe { shm_unlink(name.as_ptr()) };
-            }
-            return None;
-        }
-
-        Some((
-            Mapping {
-                base,
-                len: size,
-                slot,
-            },
-            created,
-        ))
+        let (view, created) = sys::create_or_open(&Name::for_slot(slot), segment_size())?;
+        Some((Shm { view, slot }, created))
     }
 
     /// Open slot `slot` only if it already exists, READ-ONLY. Readers and
     /// `probe` use this; it never creates anything and cannot write anything,
     /// so a bug in a reader faults in the reader instead of scribbling on a
     /// live bus.
-    pub fn open_existing(slot: u32) -> Option<Mapping> {
+    pub fn open_existing(slot: u32) -> Option<Shm> {
         if slot == 0 || slot > MAX_SLOT {
             return None;
         }
-        let name = Name::for_slot(slot);
-        let size = segment_size();
-
-        let fd = unsafe { shm_open(name.as_ptr(), O_RDONLY) };
-        if fd < 0 {
-            return None;
-        }
-        let mut st: Stat = unsafe { core::mem::zeroed() };
-        if unsafe { fstat(fd, &mut st) } != 0 || st.st_size < size as i64 {
-            unsafe { close(fd) };
-            return None;
-        }
-        let base = unsafe { mmap(core::ptr::null_mut(), size, PROT_READ, MAP_SHARED, fd, 0) };
-        unsafe { close(fd) };
-        if base == MAP_FAILED || base.is_null() {
-            return None;
-        }
-        Some(Mapping {
-            base,
-            len: size,
-            slot,
-        })
+        let view = sys::open_existing(&Name::for_slot(slot), segment_size())?;
+        Some(Shm { view, slot })
     }
 
     pub fn header(&self) -> &Header {
-        unsafe { &*(self.base as *const Header) }
+        unsafe { &*(self.view.base() as *const Header) }
     }
 
     /// The ring. Read-only in a reader's mapping: loads only.
     pub fn data(&self) -> &[AtomicU32] {
         unsafe {
             core::slice::from_raw_parts(
-                (self.base as *const u8).add(DATA_OFFSET) as *const AtomicU32,
+                self.view.base().add(DATA_OFFSET) as *const AtomicU32,
                 RING_SAMPLES,
             )
         }
@@ -392,16 +251,11 @@ impl Mapping {
 
     /// Remove the name, so the next claimer creates a fresh segment. Only the
     /// slot's owner shutting down cleanly, or a claimer replacing a segment it
-    /// cannot interpret, does this.
+    /// cannot interpret, does this. On Windows a name cannot be taken from a
+    /// segment anybody still holds, and goes by itself with the last handle --
+    /// see win32.rs.
     pub fn unlink(&self) {
-        let name = Name::for_slot(self.slot);
-        unsafe { shm_unlink(name.as_ptr()) };
-    }
-}
-
-impl Drop for Mapping {
-    fn drop(&mut self) {
-        unsafe { munmap(self.base, self.len) };
+        sys::unlink(&Name::for_slot(self.slot));
     }
 }
 
@@ -420,8 +274,29 @@ mod tests {
         );
         let name = Name::for_slot(7);
         let s = name.as_str();
-        assert!(s.starts_with("/nia.") && s.ends_with(".07"), "{s}");
-        assert_ne!(s, "/nia.bus.07");
+        let stem = s.strip_prefix(sys::NAME_PREFIX).unwrap_or_default();
+        assert!(stem.starts_with("nia.") && stem.ends_with(".07"), "{s}");
+        assert_ne!(stem, "nia.bus.07");
         assert!(s.len() <= 31, "past PSHMNAMLEN: {s}");
+    }
+
+    #[test]
+    fn the_names_are_the_format() {
+        /*
+         * A SLOT IS ITS NAME. Two builds share a bus only if both spell it the
+         * same way, and the plugins installed today speak format v2 under
+         * these names -- so they are written out here, not derived. The
+         * namespace's hash is FNV-1a 64 folded to 32 bits, and "foobar" is
+         * FNV's published test vector: 0x85944171f73967e8, which folds to
+         * 0x72ad2699.
+         */
+        #[cfg(not(windows))]
+        let (production, namespaced) = ("/nia.bus.07", "/nia.72ad2699.16");
+        #[cfg(windows)]
+        let (production, namespaced) = ("Local\\nia.bus.07", "Local\\nia.72ad2699.16");
+
+        assert_eq!(fold(b"foobar"), 0x72ad_2699);
+        assert_eq!(Name::in_namespace(None, 7).as_str(), production);
+        assert_eq!(Name::in_namespace(Some("72ad2699"), 16).as_str(), namespaced);
     }
 }

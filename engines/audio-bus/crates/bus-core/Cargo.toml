@@ -6,11 +6,28 @@ license = "GPL-3.0-or-later"
 description = "A shared-memory audio bus: one writer, many readers, across processes"
 publish.workspace = true
 
-# NO DEPENDENCIES YET. This crate needs six POSIX calls and declares them
-# itself (shm.rs) rather than pulling in libc: a rule from when the project was
-# MIT and every crate cost a row of notices. docs/adr/0003-established-rust-crates.md
-# reverses it and names libc and windows-sys as the replacement.
-[dependencies]
+# THE OPERATING SYSTEM'S SHARED MEMORY, DECLARED BY THE CRATES THAT KNOW IT.
+# shm.rs used to declare six POSIX calls itself, for macOS only, under the
+# zero-dependency rule docs/adr/0003-established-rust-crates.md reverses. It now
+# keeps one `Shm` type over libc on macOS and Linux and windows-sys on Windows;
+# the seqlock ring above it stays this crate's own. The cfgs match shm.rs's.
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+# shm_open, mmap, fstat, kill and clock_gettime. Its default feature, `std`,
+# adds nothing these calls use.
+libc = { version = "0.2.190", default-features = false }
+
+# The named file mapping, the process check and the clock, from only the
+# modules that hold them. windows-sys has no default features.
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.61.2"
+default-features = false
+features = [
+    "Win32_Foundation",         # handles, errors, STILL_ACTIVE
+    "Win32_Security",           # CreateFileMappingW's signature names SECURITY_ATTRIBUTES
+    "Win32_System_Memory",      # the file mapping and its views
+    "Win32_System_Performance", # QueryPerformanceCounter, the incarnation's clock
+    "Win32_System_Threading",   # OpenProcess and GetExitCodeProcess
+]
 
 # The counting allocator the no_alloc test installs. Test-only.
 [dev-dependencies]

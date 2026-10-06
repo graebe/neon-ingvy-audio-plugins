@@ -141,7 +141,8 @@ const _: () = assert!(core::mem::align_of::<Header>() <= 8);
 
 impl Header {
     /// Initialise a freshly created segment. The caller must have zeroed it and
-    /// must be the process that won `O_CREAT | O_EXCL`; `magic` goes last.
+    /// must be the one process whose open created it (`Shm::create_or_open`
+    /// said so); `magic` goes last.
     pub fn initialise(&self, sample_rate: u32, incarnation: u64) {
         self.abi_version.store(ABI_VERSION, Ordering::Relaxed);
         self.ring_frames.store(RING_FRAMES, Ordering::Relaxed);

@@ -164,18 +164,27 @@ fn a_released_segment_cannot_be_mistaken_for_the_bus() {
      * claimer's swap can succeed, the segment it holds is no longer the one
      * the name leads to. The swap does succeed; what `claim` must then do is
      * notice and start over, and `still_named` is how.
+     *
+     * Windows answers the other way, and is right to: the claimer's own open
+     * holds a handle, and a name lives while a handle does, so the segment it
+     * claimed is still the bus (see shm/win32.rs). Either way the claim ends
+     * up where readers look.
      */
     use crate::header::owner_pid;
     use core::sync::atomic::Ordering;
 
     let (w, p) = Writer::claim(SLOT_ORPHAN, 48_000).expect("claim");
-    let (early, _) = crate::shm::Mapping::create_or_open(SLOT_ORPHAN).expect("the claimer's open");
+    let (early, _) = crate::shm::Shm::create_or_open(SLOT_ORPHAN).expect("the claimer's open");
     assert!(crate::still_named(&early));
     drop((w, p));
 
     assert_eq!(owner_pid(early.header().owner.load(Ordering::Relaxed)), 0, "not released");
     let token = crate::acquire(early.header(), 4242, |_| false).expect("a free segment claims");
-    assert!(!crate::still_named(&early), "an unlinked segment still looks like the bus");
+    assert_eq!(
+        crate::still_named(&early),
+        cfg!(windows),
+        "a segment the owner gave up is mistaken for the bus, or the bus for an orphan"
+    );
     assert!(crate::release(early.header(), token));
 
     /* And a real claim now lands where readers will look. */

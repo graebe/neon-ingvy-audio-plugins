@@ -4,9 +4,10 @@ A **shared-memory audio bus** between plugins in one host. One writer claims a
 numbered slot and publishes stereo float audio; any number of readers, in that
 process or another, open the same slot and read it.
 
-GPL-3.0-or-later, © 2026 Torben Gräber. **No dependencies yet** — it declares
-the handful of macOS calls it needs in `crates/bus-core/src/shm.rs` rather
-than taking libc.
+GPL-3.0-or-later, © 2026 Torben Gräber. It runs on **macOS, Linux and
+Windows**: one `Shm` type (`crates/bus-core/src/shm.rs`) maps the segments,
+through libc on the first two and windows-sys on Windows, and the ring above
+it is this crate's own.
 
 ```
 cargo test -p bus-core -p bus-capi
@@ -49,16 +50,19 @@ loads VST3 and AU in process.
 
 ## Who can see a bus: the trust model
 
-A bus is a POSIX shared-memory object named `/nia.bus.NN`, created with mode
-`0600`. So:
+On macOS and Linux a bus is a POSIX shared-memory object named `/nia.bus.NN`,
+created with mode `0600`. On Windows it is a named file mapping,
+`Local\nia.bus.NN`, in the session's own namespace and with the creator's
+default security. So:
 
 - **Only processes running as the same user can open it at all** — to read or
-  to claim. Another account on the machine gets `EACCES`.
+  to claim. Another account on the machine gets `EACCES`; on Windows, another
+  user's session does not even see the name.
 - **Every process of that user is trusted equally.** The names are fixed and
   public; any program you run can read what a Listen-In publishes, publish into
-  a free slot, or `shm_unlink` a slot's name. There is no authentication
-  between sender and receiver, by design: they are your own plugins in your
-  own host.
+  a free slot, or (on macOS and Linux) `shm_unlink` a slot's name. There is no
+  authentication between sender and receiver, by design: they are your own
+  plugins in your own host.
 - A reader maps the segment **read-only**, so a receiver cannot corrupt a bus
   even by mistake, and treats everything it reads as untrusted — sizes and
   layout are checked before anything is mapped or interpreted.
@@ -73,7 +77,7 @@ not show another program running as you.
 |---|---|
 | `header.rs` | the segment layout, the owner word, and the label's seqlock — every field an atomic |
 | `ring.rs` | the wrap, the lap detection, the resync — over a `&Header` and a `&[AtomicU32]`, so a test can build one on the heap |
-| `shm.rs` | `shm_open`/`mmap`, and the two doors: only a writer may use the one that creates, and a reader's is read-only |
+| `shm.rs` | `Shm`, over `shm_open`/`mmap` (`shm/posix.rs`) or a named file mapping (`shm/win32.rs`), and the two doors: only a writer may use the one that creates, and a reader's is read-only |
 | `lib.rs` | `Writer` + `Pusher`, `Reader`, `probe`, and the claim protocol |
 | `crates/bus-capi` | the C ABI; `include/audio_bus.h` is the contract |
 
@@ -148,16 +152,22 @@ it correct.
 
 ## A crashed host leaves its segment behind
 
-shm outlives the process that made it, all the way to a reboot. So a slot marked
-CLAIMED is not necessarily a taken one, and refusing it forever would mean one
-crash costs a bus number until you restart the machine.
+On macOS and Linux, shm outlives the process that made it, all the way to a
+reboot. So a slot marked CLAIMED is not necessarily a taken one, and refusing it
+forever would mean one crash costs a bus number until you restart the machine.
 
 So a claim may take over a held slot, but only on one piece of evidence:
-`kill(pid, 0) == ESRCH`, which concludes the holder is **gone** — never that one
+`kill(pid, 0) == ESRCH` — on Windows, no such process or an exit code from
+`GetExitCodeProcess` — which concludes the holder is **gone**, never that one
 is alive. A recycled pid can make a dead holder look alive; that costs a bus
 number until the unrelated process exits, and is the conservative way to be
 wrong. (There is no heartbeat: a stalled heartbeat cannot tell a dead host from
 a paused one, so it could only ever have been a second opinion nobody acted on.)
+
+Windows is kinder here. A name lives exactly as long as a handle to it, and the
+writer's claim holds the only lasting one, so a crash takes the bus with it and
+the next sender starts afresh. The liveness check still runs there, for a
+claimer that already had the segment open when its owner died.
 
 **The claim is one compare-and-swap.** Who holds the slot and how many times it
 has been claimed live in one 64-bit owner word, and a claimer swaps from the
@@ -174,6 +184,13 @@ claimer that opened the segment just before the unlink finds it free only once
 it has stopped being the bus, and every claim ends by checking that the slot's
 name still leads to the segment it claimed (each segment carries a unique
 `incarnation`). A claim on an orphan is let go and retried.
+
+Windows has no unlink, and needs none: the writer's handle is the name, and it
+goes when the claim is dropped. A claimer that opened the segment before that
+holds a handle of its own, which keeps the name on the segment it claims, so on
+Windows there is never an orphan to notice. Readers keep only their view and
+never a handle, which is what lets a sender's departure take the name with it
+there too.
 
 A reader still mapping the old segment sees a sender that stopped, and nothing
 in a mapping can say that the name moved on. `Reader::reattach`

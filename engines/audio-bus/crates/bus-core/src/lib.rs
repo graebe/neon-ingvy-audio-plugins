@@ -69,15 +69,18 @@ pub enum ClaimError {
 /*
  * THE CLAIM ITSELF, and the liveness question it has to answer first.
  *
- * A host that crashed with a set open leaves the segment behind -- shm outlives
- * the process that made it, all the way to a reboot. So a held slot is not
- * necessarily a taken one, and refusing it forever would mean one crash costs
- * you a bus number until you restart the machine.
+ * A host that crashed with a set open leaves the segment behind -- POSIX shm
+ * outlives the process that made it, all the way to a reboot. So a held slot is
+ * not necessarily a taken one, and refusing it forever would mean one crash
+ * costs you a bus number until you restart the machine. (Windows takes a dead
+ * process's names with its handles, so there a crashed holder is met only by
+ * a claimer that already had the segment open.)
  *
- * Only `the pid is gone` -- kill(pid, 0) == ESRCH -- concludes anything, and it
- * concludes the writer is GONE, never that one is alive: a pid can be recycled
- * onto an unrelated process, which then keeps the slot looking held. That is
- * the conservative failure and the one chosen.
+ * Only `the pid is gone` -- kill(pid, 0) == ESRCH, or Windows knowing no such
+ * process or its exit code -- concludes anything, and it concludes the writer
+ * is GONE, never that one is alive: a pid can be recycled onto an unrelated
+ * process, which then keeps the slot looking held. That is the conservative
+ * failure and the one chosen.
  *
  * NO EXEMPTION FOR OUR OWN PID, and an earlier draft had one. Two Listen-Ins
  * on slot 3 in the same Live process share a pid, so "it is only me" would
@@ -126,8 +129,8 @@ pub(crate) fn release(hdr: &Header, token: u64) -> bool {
 
 /// Does the slot's NAME still lead to the segment `map` is? False once it was
 /// unlinked, or unlinked and created afresh.
-fn still_named(map: &shm::Mapping) -> bool {
-    shm::Mapping::open_existing(map.slot()).is_some_and(|now| {
+fn still_named(map: &shm::Shm) -> bool {
+    shm::Shm::open_existing(map.slot()).is_some_and(|now| {
         now.header().is_valid()
             && now.header().incarnation.load(Ordering::Relaxed)
                 == map.header().incarnation.load(Ordering::Relaxed)
@@ -137,7 +140,7 @@ fn still_named(map: &shm::Mapping) -> bool {
 /// What the two halves of a claim share. Dropping it -- when the last half
 /// goes -- releases the slot.
 struct Claim {
-    map: shm::Mapping,
+    map: shm::Shm,
     token: u64,
     /* A rate change the main thread asked for and the audio thread has not
      * applied yet; 0 when there is none. See `Writer::set_sample_rate`. */
@@ -169,7 +172,7 @@ impl Writer {
          * claiming it. Each round opens the name afresh.
          */
         for _ in 0..4 {
-            let (map, created) = shm::Mapping::create_or_open(slot).ok_or(ClaimError::Unavailable)?;
+            let (map, created) = shm::Shm::create_or_open(slot).ok_or(ClaimError::Unavailable)?;
             let hdr = map.header();
 
             if created {
@@ -307,6 +310,11 @@ impl Drop for Claim {
          * Readers still mapped keep their mapping -- unlink removes the name,
          * not the object -- and see a writer that simply stopped until they
          * `reattach`.
+         *
+         * On Windows the unlink is a no-op and the name goes with this claim's
+         * own handle, closed when `map` is dropped -- after the release, which
+         * is safe there: a claimer that opened the segment first holds a
+         * handle of its own, so the name stays on the segment it claims.
          */
         if still_named(&self.map) {
             self.map.unlink();
@@ -326,7 +334,7 @@ pub struct Info {
 
 /// The receiving end. Any number of these, in any number of processes.
 pub struct Reader {
-    map: shm::Mapping,
+    map: shm::Shm,
     cursor: ring::Cursor,
     /* Set by `reattach`; the next `read` reports it as a resync. */
     moved: bool,
@@ -339,7 +347,7 @@ impl Reader {
         if slot == 0 || slot > MAX_SLOT {
             return None;
         }
-        let map = shm::Mapping::open_existing(slot)?;
+        let map = shm::Shm::open_existing(slot)?;
         if !map.header().is_valid() {
             return None;
         }
@@ -367,7 +375,8 @@ impl Reader {
     /*
      * A SEGMENT CAN BE REPLACED UNDER ITS NAME, and a mapping cannot notice.
      *
-     * A sender that quits unlinks its segment; the next sender on that slot
+     * A sender that quits takes the name from its segment -- unlinks it, or on
+     * Windows closes the handle that held it; the next sender on that slot
      * creates a new one. A reader still mapping the old object sees a writer
      * that stopped -- forever, because nothing will ever write there again.
      * The Spectrogram showed exactly that: a Listen-In re-added, a picture that
@@ -385,7 +394,7 @@ impl Reader {
     /// Move to the segment the slot's name leads to now, if that is not the
     /// one this reader has. Returns true if it moved. **Not the audio thread.**
     pub fn reattach(&mut self) -> bool {
-        let Some(fresh) = shm::Mapping::open_existing(self.map.slot()) else {
+        let Some(fresh) = shm::Shm::open_existing(self.map.slot()) else {
             return false;
         };
         let (old, new) = (self.map.header(), fresh.header());
@@ -434,7 +443,7 @@ pub fn probe(slot: u32) -> Option<Info> {
     /* `open_existing`, never `create_or_open`: see the note in shm.rs. A
      * dropdown that walks sixteen slots must not bring sixteen buses into
      * existence to find out that none of them are there. */
-    let map = shm::Mapping::open_existing(slot)?;
+    let map = shm::Shm::open_existing(slot)?;
     if !map.header().is_valid() {
         return None;
     }
