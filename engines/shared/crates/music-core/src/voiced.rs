@@ -19,7 +19,7 @@ use core::str::FromStr;
 
 use crate::pitch::{Interval, Pitch, Spelling, parse_pitch_prefix};
 use crate::pitchset::PitchSet;
-use crate::{DisplayBuffer, Harmony, ParseError};
+use crate::{DisplayBuffer, Harmony, ParseError, Spelled};
 
 /// The MIDI number of a pitch class placed in an octave.
 ///
@@ -464,6 +464,30 @@ impl Sub<Note> for Voiced<Pitch> {
     #[inline]
     fn sub(self, rhs: Note) -> Interval {
         Interval::new(self.midi() - rhs.midi())
+    }
+}
+
+impl Note {
+    /// This note, printed with the requested accidentals: `"Eb3"`.
+    ///
+    /// `Display` always uses sharps; this is the same text with a choice.
+    #[inline]
+    #[must_use]
+    pub const fn spelled(self, spelling: Spelling) -> Spelled<Self> {
+        Spelled::new(self, spelling)
+    }
+}
+
+impl fmt::Display for Spelled<Note> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let note = self.value();
+        crate::padded!(
+            f,
+            16,
+            "{}{}",
+            note.pitch().name(self.spelling()),
+            note.octave()
+        )
     }
 }
 

@@ -9,7 +9,7 @@ use core::str::FromStr;
 use crate::notes::Notes;
 use crate::pitch::{Interval, Pitch, Spelling, parse_pitch_prefix};
 use crate::pitchset::PitchSet;
-use crate::{DisplayBuffer, Harmony, ParseError};
+use crate::{DisplayBuffer, Harmony, ParseError, Spelled};
 
 /// A named chord quality: a recognisable pattern of intervals above a root.
 ///
@@ -392,6 +392,47 @@ impl ChordQuality {
             ChordQuality::SevenSharpEleven => "7#11",
             ChordQuality::Fifth => "5",
             ChordQuality::Dominant7Sus4 => "7sus4",
+        }
+    }
+
+    /// The quality written out in words, lowercase: `"half-diminished 7"`.
+    ///
+    /// For text that is read rather than scanned, such as a line under a
+    /// chord symbol. [`ChordQuality::symbol`] is the short form.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            ChordQuality::Major => "major",
+            ChordQuality::Minor => "minor",
+            ChordQuality::Diminished => "diminished",
+            ChordQuality::Augmented => "augmented",
+            ChordQuality::Sus2 => "suspended 2",
+            ChordQuality::Sus4 => "suspended 4",
+            ChordQuality::Major7 => "major 7",
+            ChordQuality::Dominant7 => "dominant 7",
+            ChordQuality::Minor7 => "minor 7",
+            ChordQuality::MinorMajor7 => "minor-major 7",
+            ChordQuality::HalfDiminished7 => "half-diminished 7",
+            ChordQuality::Diminished7 => "diminished 7",
+            ChordQuality::Sixth => "major 6",
+            ChordQuality::MinorSixth => "minor 6",
+            ChordQuality::Add9 => "add 9",
+            ChordQuality::MinorAdd9 => "minor add 9",
+            ChordQuality::SixNine => "six-nine",
+            ChordQuality::Dominant9 => "dominant 9",
+            ChordQuality::Major9 => "major 9",
+            ChordQuality::Minor9 => "minor 9",
+            ChordQuality::Dominant11 => "dominant 11",
+            ChordQuality::Minor11 => "minor 11",
+            ChordQuality::Dominant13 => "dominant 13",
+            ChordQuality::Major13 => "major 13",
+            ChordQuality::SevenFlatFive => "7 flat 5",
+            ChordQuality::SevenSharpFive => "7 sharp 5",
+            ChordQuality::SevenFlatNine => "7 flat 9",
+            ChordQuality::SevenSharpNine => "7 sharp 9",
+            ChordQuality::SevenSharpEleven => "7 sharp 11",
+            ChordQuality::Fifth => "power chord",
+            ChordQuality::Dominant7Sus4 => "7 suspended 4",
         }
     }
 
@@ -1006,20 +1047,42 @@ impl fmt::Display for Chord {
     /// and its semitone offsets, `C[0,1,4,6]`. A chord whose bass is not its
     /// root adds the bass after a slash, `C/E`. Every form parses back.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.spelled(Spelling::Sharps), f)
+    }
+}
+
+impl Chord {
+    /// This chord, printed with the requested accidentals.
+    ///
+    /// `Display` always uses sharps; this is the same text with a choice.
+    ///
+    /// ```
+    /// use music_core::{Chord, Pitch, Spelling};
+    ///
+    /// let chord = Chord::min7(Pitch::B_FLAT).over(Pitch::D_FLAT);
+    /// assert_eq!(chord.to_string(), "A#m7/C#");
+    /// assert_eq!(chord.spelled(Spelling::Flats).to_string(), "Bbm7/Db");
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn spelled(self, spelling: Spelling) -> Spelled<Self> {
+        Spelled::new(self, spelling)
+    }
+}
+
+impl fmt::Display for Spelled<Chord> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let chord = self.value();
+        let spelling = self.spelling();
         let mut buffer = DisplayBuffer::<80>::new();
 
-        match self.quality() {
+        match chord.quality() {
             Some(quality) => {
-                let _ = write!(
-                    buffer,
-                    "{}{}",
-                    self.root.name(Spelling::Sharps),
-                    quality.symbol()
-                );
+                let _ = write!(buffer, "{}{}", chord.root.name(spelling), quality.symbol());
             }
             None => {
-                let _ = write!(buffer, "{}[", self.root.name(Spelling::Sharps));
-                for (index, offset) in self.intervals().iter().enumerate() {
+                let _ = write!(buffer, "{}[", chord.root.name(spelling));
+                for (index, offset) in chord.intervals().iter().enumerate() {
                     let separator = if index > 0 { "," } else { "" };
                     let _ = write!(buffer, "{}{}", separator, offset.value());
                 }
@@ -1027,8 +1090,8 @@ impl fmt::Display for Chord {
             }
         }
 
-        if self.is_inverted() {
-            let _ = write!(buffer, "/{}", self.bass.name(Spelling::Sharps));
+        if chord.is_inverted() {
+            let _ = write!(buffer, "/{}", chord.bass.name(spelling));
         }
         f.pad(buffer.as_str())
     }

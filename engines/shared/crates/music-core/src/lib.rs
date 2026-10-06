@@ -44,6 +44,7 @@
 pub mod abletonmove;
 
 mod chord;
+mod key;
 mod notes;
 mod pitch;
 mod pitchset;
@@ -51,6 +52,7 @@ mod triad;
 mod voiced;
 
 pub use chord::{Chord, ChordQuality, Voicing};
+pub use key::{Degree, Key, Mode};
 pub use notes::Notes;
 pub use pitch::{EDO, Interval, IntervalClass, Pitch, Spelling, parse_pitch_prefix};
 pub use pitchset::{Completions, Interpretations, PitchSet, PitchSetIter};
@@ -116,6 +118,58 @@ impl<const N: usize> fmt::Write for DisplayBuffer<N> {
         self.bytes[self.len..end].copy_from_slice(bytes);
         self.len = end;
         Ok(())
+    }
+}
+
+/// A value paired with how to spell its black keys, for printing.
+///
+/// `Display` on the music types always uses sharps, so that one value has one
+/// text. A display that knows its key wants flats sometimes; this carries that
+/// choice to `Display` without changing the value. Made by `spelled` on
+/// [`Chord`] and [`Note`].
+///
+/// ```
+/// use music_core::{Pitch, Spelling};
+///
+/// let note = Pitch::E_FLAT.at(3);
+/// assert_eq!(note.to_string(), "D#3");
+/// assert_eq!(note.spelled(Spelling::Flats).to_string(), "Eb3");
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Spelled<T> {
+    value: T,
+    spelling: Spelling,
+}
+
+impl<T: Copy> Spelled<T> {
+    /// `value`, to be printed with `spelling`.
+    #[inline]
+    #[must_use]
+    pub const fn new(value: T, spelling: Spelling) -> Self {
+        Self { value, spelling }
+    }
+
+    /// The value itself.
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> T {
+        self.value
+    }
+
+    /// The accidentals it prints with.
+    #[inline]
+    #[must_use]
+    pub const fn spelling(self) -> Spelling {
+        self.spelling
+    }
+}
+
+impl<T: Copy> fmt::Debug for Spelled<T>
+where
+    Spelled<T>: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 

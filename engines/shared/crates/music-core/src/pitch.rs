@@ -179,6 +179,29 @@ impl Pitch {
         Note::from_parts(self, octave)
     }
 
+    /// How many fifths above C this pitch class is, 0 to 11: its place on
+    /// the circle of fifths, clockwise from C at the top.
+    ///
+    /// ```
+    /// use music_core::Pitch;
+    ///
+    /// assert_eq!(Pitch::G.fifths(), 1);
+    /// assert_eq!(Pitch::F.fifths(), 11);    // a fifth below C
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn fifths(self) -> u8 {
+        (self.0 * 7) % 12
+    }
+
+    /// The pitch class `count` fifths above C: the inverse of
+    /// [`Pitch::fifths`].
+    #[inline]
+    #[must_use]
+    pub const fn from_fifths(count: i32) -> Self {
+        Self::new(count * 7)
+    }
+
     /// Names this pitch class with the requested accidentals.
     #[inline]
     #[must_use]
@@ -370,7 +393,64 @@ impl Interval {
     pub const fn class(self) -> IntervalClass {
         IntervalClass::new(self.0 as i32)
     }
+
+    /// Whole octaves beyond the simple interval, ignoring direction.
+    ///
+    /// A major tenth is a major third and one octave more. An octave itself is
+    /// simple, so it has none: every size from a unison to an octave counts
+    /// zero, and the count goes up after each further octave.
+    ///
+    /// ```
+    /// use music_core::Interval;
+    ///
+    /// assert_eq!(Interval::new(16).compound_octaves(), 1);   // a major tenth
+    /// assert_eq!(Interval::OCTAVE.compound_octaves(), 0);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn compound_octaves(self) -> u16 {
+        let size = self.abs();
+        if size == 0 { 0 } else { (size - 1) / 12 }
+    }
+
+    /// The name of the simple interval, ignoring direction: `"major 3rd"`.
+    ///
+    /// A compound interval is named by what is left once its
+    /// [`Interval::compound_octaves`] are taken away, so a major tenth reads
+    /// `"major 3rd"`. The tritone is called that, since a pitch class cannot
+    /// say whether it was an augmented fourth or a diminished fifth.
+    ///
+    /// ```
+    /// use music_core::Interval;
+    ///
+    /// assert_eq!(Interval::MINOR_THIRD.name(), "minor 3rd");
+    /// assert_eq!(Interval::new(-7).name(), "perfect 5th");
+    /// assert_eq!(Interval::new(24).name(), "octave");
+    /// ```
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        let size = self.abs();
+        let simple = if size == 0 { 0 } else { (size - 1) % 12 + 1 };
+        INTERVAL_NAMES[simple as usize]
+    }
 }
+
+/// The simple intervals' names, unison to octave.
+const INTERVAL_NAMES: [&str; 13] = [
+    "unison",
+    "minor 2nd",
+    "major 2nd",
+    "minor 3rd",
+    "major 3rd",
+    "perfect 4th",
+    "tritone",
+    "perfect 5th",
+    "minor 6th",
+    "major 6th",
+    "minor 7th",
+    "major 7th",
+    "octave",
+];
 
 impl Neg for Interval {
     type Output = Interval;

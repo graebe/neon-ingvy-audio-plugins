@@ -1,7 +1,7 @@
 # music-core
 
 General music theory primitives in Rust: pitch classes, intervals, notes,
-chords and pitch-class sets.
+chords, keys and pitch-class sets.
 
 No dependencies, `no_std` by default, and nothing here allocates. Every type is
 `Copy` and small enough to pass around without thinking about it.
@@ -312,6 +312,38 @@ assert!(open.spread().unwrap() > Interval::OCTAVE);
 assert_eq!(open.pitch_set(), close.pitch_set());
 ```
 
+## Keys and modes
+
+A **`Key`** is a tonic and one of the seven church modes. It knows its notes,
+its signature, which way to spell, and what a chord is called inside it.
+
+```rust
+use music_core::{Chord, Key, Mode, Pitch, Spelling};
+
+let d_dorian = Key::new(Pitch::D, Mode::Dorian);
+assert_eq!(d_dorian.signature(), 0);              // C major's notes, from D
+
+let c_minor = Key::new(Pitch::C, Mode::Aeolian);
+assert_eq!(c_minor.signature(), -3);              // three flats
+assert_eq!(c_minor.spelling(), Spelling::Flats);
+
+// Roman numerals, with the root altered when it is not in the key.
+let c_major = Key::new(Pitch::C, Mode::Ionian);
+assert_eq!(c_major.degree_of(Chord::dom7(Pitch::G)).to_string(), "V7");
+assert_eq!(c_major.degree_of(Chord::major(Pitch::B_FLAT)).to_string(), "bVII");
+```
+
+`Display` always spells with sharps, so one value has one text. **`spelled`**
+prints the same chord or note with flats when the key asks for them:
+
+```rust
+use music_core::{Chord, Pitch, Spelling};
+
+let chord = Chord::min7(Pitch::E_FLAT);
+assert_eq!(chord.to_string(), "D#m7");
+assert_eq!(chord.spelled(Spelling::Flats).to_string(), "Ebm7");
+```
+
 ## Sets
 
 ```rust
@@ -353,6 +385,9 @@ assert!((Pitch::A.at(4).frequency_hz_at(432.0) - 432.0).abs() < 1e-9);
 | `Triad` | major or minor, root plus quality | 2 bytes |
 | `Note` | a pitch with a register | 4 bytes |
 | `Notes` | a free list, doublings allowed | 66 bytes |
+| `Mode` | one of the seven church modes | 1 byte |
+| `Key` | a tonic and a mode | 2 bytes |
+| `Degree` | a chord read as a roman numeral in a key | 6 bytes |
 
 ## Try it
 
