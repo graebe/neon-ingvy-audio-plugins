@@ -100,7 +100,13 @@ for (const { plugin, W, H } of EDITORS) {
       /* The editor asks the plugin for frame ticks... */
       await expect.poll(() => page.evaluate(() => window.__transport.groundRunning)).toBe(true);
       /* Without them the field barely moves: its only other clock is the
-       * page's timer, which this page fires every 400 ms at best. */
+       * page's timer, which this page fires every 400 ms at best. So it may
+       * change once for each 400 ms the ten looks took, and once more for
+       * where the timer's phase fell -- the time AS THE PAGE MEASURES IT, not
+       * ten times 20 ms: each look also hashes the canvas, which a busy or
+       * coverage-instrumented machine does slowly, and ten slow looks span
+       * more than two honest timer steps. */
+      const idleFrom = await page.evaluate(() => performance.now());
       let idle = await groundHash(page);
       let idleChanges = 0;
       for (let i = 0; i < 10; i++) {
@@ -109,7 +115,9 @@ for (const { plugin, W, H } of EDITORS) {
         if (h !== idle) idleChanges++;
         idle = h;
       }
-      expect(idleChanges).toBeLessThanOrEqual(2);
+      const idleMs = (await page.evaluate(() => performance.now())) - idleFrom;
+      expect(idleChanges, `${idleChanges} changes in ${Math.round(idleMs)} ms`)
+        .toBeLessThanOrEqual(1 + Math.floor(idleMs / 400));
       /* ... and each tick moves the field. A ring takes a few frames to swell
        * into the dots' levels, so ten ticks first; then, over sixteen more,
        * the picture changes from tick to tick, where a 400 ms timer could have
