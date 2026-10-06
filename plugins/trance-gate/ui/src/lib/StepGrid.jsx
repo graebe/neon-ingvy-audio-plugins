@@ -11,7 +11,8 @@ import { For, Show, createSignal } from 'solid-js';
  * are each a fix for something that read as the click half-failing, and a
  * second copy of them would have drifted. */
 import { padGesture, pressStep, orderPress, setStep, setDepth, MODE } from './steps.js';
-import { EditField, padKey } from '@ultraviolet/ui';
+import { EditField, padKey, infoAttrs } from '@ultraviolet/ui';
+import { INFO } from './info.js';
 
 const COLS = 16, STEP = 40, GAP = 8;
 
@@ -113,8 +114,13 @@ export default function StepGrid(props) {
     if (Number.isFinite(n) && n >= 1) props.onOrder?.(i, n);
   };
 
+  /* ONE STRING FOR EVERY PAD, on the grid so the gaps between pads say it too;
+   * each pad carries it as its description. ORDER mode changes what a click
+   * does, and so the string. */
+  const info = () => (props.orderMode ? INFO.padsOrder : INFO.pads);
+
   return (
-    <div class="grid" ref={gridEl} role="grid" aria-label="Steps"
+    <div class="grid" ref={gridEl} role="grid" aria-label="Steps" data-info={info()}
          style={{ width: `${COLS * STEP + (COLS - 1) * GAP}px` }}>
       <For each={Array.from({ length: rows() }, (_, r) => r)}>{(r) => (
         <div class="grid-row" role="row">
@@ -122,6 +128,7 @@ export default function StepGrid(props) {
                                 (_, k) => r * COLS + k)}>{(i) => (
             <div classList={cls(i)} role="gridcell" data-step={i}
                  tabindex={focus() === i ? 0 : -1} aria-label={describe(i)}
+                 aria-description={info()}
                  aria-selected={!!props.steps?.[i]}
                  onPointerDown={(e) => onDown(i, e)} onKeyDown={(e) => onKey(i, e)}>
               {/* THE AMOUNT IS THE LIT HEIGHT, FROM THE BOTTOM -- a lit height
@@ -138,8 +145,7 @@ export default function StepGrid(props) {
                       fallback={
                         /* stopPropagation, or padGesture measures the drag
                          * against this 9px box instead of the pad. */
-                        <span class="pad-order t-hint"
-                              title="Click to type a new arrival number"
+                        <span class="pad-order t-hint" {...infoAttrs(INFO.arrival)}
                               onPointerDown={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
@@ -149,6 +155,7 @@ export default function StepGrid(props) {
                   {/* Enter or a click away commits; Escape abandons. */}
                   <EditField class="pad-order-edit t-hint" value={String(num(i))}
                              inputmode="numeric" ariaLabel={`Arrival of step ${i + 1}`}
+                             info={INFO.arrival}
                              onCommit={(t) => commit(i, t)} onClose={() => setEditing(-1)} />
                 </Show>
               </Show>

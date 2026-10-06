@@ -27,7 +27,8 @@ archives they link, and no plugin bundle; then `ctest -L quick` runs:
 - all of the kit's and the editors' JavaScript (`ui_unit`, the same files
   `npm test` runs),
 - the lint-like checks: `versions`, `release`, `licenses` (the tree, not the
-  bundles), `ui_tokens`, `editor_tags`, `ground_shells`.
+  bundles), `ui_tokens`, `editor_tags`, `editor_timing` (no editor code may hang off
+  `requestAnimationFrame` or page visibility), `ground_shells`.
 
 No bundle, no host, no browser, no timing. Warm, it takes a few seconds.
 
@@ -38,7 +39,7 @@ Everything quick runs, and:
 | label | what |
 |---|---|
 | `render` | the render A/B goldens: four seconds through each plugin's audio path, hashed |
-| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped |
+| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens the Spectrogram's, the Trance Gate's and the Side-Chain's real editors as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | every built bundle carries its notices |
 | `site` | every root-relative link on the built site resolves |
@@ -71,6 +72,21 @@ calling process: the registration is visible to that process alone, under the
 test-only manufacturer `NiTs`, so an installed copy under the same triple can
 neither be tested by mistake nor shadow the build. Type, subtype and factory
 come from the bundle's own `Info.plist`. A missing bundle fails; it never skips.
+
+**`editor_host_<Plugin>_<format>`** (`tests/editor_host.mm`) is the
+plugin-to-editor path with nothing mocked but the DAW: the bundle from
+`build/out` in-process, iPlug2's WKWebView with the shipped page, a sine and a
+kick on a render thread under a transport playing at 120 BPM, and the editor
+opened and closed through the format's own calls (VST3 `attached`/`removed`,
+the AU's view factory and `removeFromSuperview`, CLAP
+`set_parent`/`hide`/`destroy`). The page is then asked what it received: a
+`ready` answered and the ground's kick, for every editor; for the Spectrogram,
+column batches carrying the sine and every one of those columns on the visible
+canvas; for the Trance Gate and the Side-Chain, a playhead that moves with the
+transport. It needs a logged-in session; the window may sit behind others, and
+the editors have to survive WebKit calling the page hidden -- no animation
+frames, throttled timers (`editor_timing` is the rule that keeps them
+independent of both).
 
 **`au_stress_<Plugin>`** is `auval -stress`'s state path, for every plugin:
 a render thread, two threads getting and setting `ClassInfo` (the plugin's

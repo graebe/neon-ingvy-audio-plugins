@@ -358,7 +358,7 @@ export function Shaper(props) {
               stroke-linecap="round" />
 
         <Show when={props.sweep !== undefined && props.sweep !== null}>
-          <line x1={x(props.sweep * SPAN)} x2={x(props.sweep * SPAN)}
+          <line class="sweep" x1={x(props.sweep * SPAN)} x2={x(props.sweep * SPAN)}
                 y1={top()} y2={bot()} stroke="var(--ink)" opacity="0.45" />
         </Show>
 

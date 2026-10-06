@@ -1,6 +1,6 @@
 [package]
 name = "ground-capi"
-version = "2026.10.6+2"
+version = "2026.10.6+3"
 edition = "2021"
 license = "MIT"
 description = "The C ABI every plugin links to ring its animated ground on the host's beat"

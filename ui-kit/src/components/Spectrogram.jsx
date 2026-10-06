@@ -158,7 +158,8 @@ export default function Spectrogram(props) {
    * one per interpolated gap pixel in the sweep -- and each is a round trip into
    * the canvas. Now every write lands in a full-size ImageData that mirrors its
    * canvas, and a batch is put once over the span it touched (twice when the
-   * ring wraps). The repaint of the visible canvas is gated to one per frame.
+   * ring wraps). The visible canvas is then repainted once per batch -- see
+   * the batch effect for why that is not left to requestAnimationFrame.
    */
   let histImg, sweepImg, clashHistImg, clashSweepImg;
 
@@ -474,13 +475,6 @@ export default function Spectrogram(props) {
     }
   });
 
-  /* THE REPAINT, AT MOST ONCE A FRAME: a catch-up burst of batches is one
-   * repaint, not one per message. */
-  let paintFrame = 0;
-  const schedulePaint = () => {
-    if (!paintFrame) paintFrame = requestAnimationFrame(() => { paintFrame = 0; paint(); });
-  };
-
   onMount(() => {
     lut = buildLut();
     /* Read back rather than spelled: no colour may be written in here, and the
@@ -494,7 +488,6 @@ export default function Spectrogram(props) {
   });
   onCleanup(() => {
     window.removeEventListener('resize', setupView);
-    if (paintFrame) cancelAnimationFrame(paintFrame);
   });
 
   /* The page's zoom is a prop, so a host resize repaints at the new resolution
@@ -546,7 +539,16 @@ export default function Spectrogram(props) {
       if (batch.slots && batch.count > 0 && !props.paused) {
         setPlayhead(batch.slots[batch.count - 1]);
       }
-      if (!props.paused) schedulePaint();
+      /*
+       * REPAINTED HERE, ONCE PER BATCH, AND NOT ON A FRAME CALLBACK. A batch
+       * arrives at most once per plugin idle tick (~50 a second), and the
+       * repaint is two drawImage calls, so a frame gate saved nothing a display
+       * needs -- and it made the picture depend on the WebView servicing
+       * requestAnimationFrame. A WKWebView that takes its window for hidden
+       * stops doing that, and the columns then went into the history and never
+       * onto the screen: the plugin sending a picture, the editor showing none.
+       */
+      if (!props.paused) paint();
       /* The pointer has not moved, but the picture under it has. */
       if (at && !props.paused) report();
     });

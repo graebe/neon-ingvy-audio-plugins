@@ -7,7 +7,8 @@
  * editor used to write for itself (twice as params.jsx, once inline): a drag
  * is a gesture, a click is one committed write, a reset is the plugin's
  * default, and typed text goes to the plugin to be parsed. `detents` pass
- * straight to the Knob, normalised like the value.
+ * straight to the Knob, normalised like the value; `info` (and a knob's
+ * `readoutInfo`) straight to the control, for the hint bar.
  */
 import { Knob } from './Knob.jsx';
 import { Select } from './Select.jsx';
@@ -20,6 +21,8 @@ export function ParamKnob(props) {
       label={props.label}
       size={props.size}
       detents={props.detents}
+      info={props.info}
+      readoutInfo={props.readoutInfo}
       value={p().value(props.idx)}
       display={p().text(props.idx)}
       onBegin={() => p().begin(props.idx)}
@@ -46,6 +49,7 @@ export function ParamSelect(props) {
       ariaLabel={props.ariaLabel}
       labelWidth={props.labelWidth}
       width={props.width}
+      info={props.info}
       onChange={(i) => props.params.commit(props.idx, n() > 1 ? i / (n() - 1) : 0)}
     />
   );
@@ -56,6 +60,7 @@ export function ParamToggle(props) {
   return (
     <Toggle
       label={props.label}
+      info={props.info}
       value={props.params.value(props.idx) > 0.5}
       onChange={(on) => props.params.commit(props.idx, on ? 1 : 0)}
     />

@@ -224,6 +224,17 @@ its host parameters from one store (`@ultraviolet/ui/params`, defaults from the 
 plot captures, the rendered curves, the spectrogram's columns -- are an ASCII
 header and raw bytes, which the bridge decodes from base64 once (`onBytes`).
 
+**What a control does** is declared on it once, as `data-info` (the kit's
+controls take an `info` prop; anything else spreads `infoAttrs(text)`), and is
+also its `aria-description`. The frame listens on its `<main>` and lays the
+string of the control under the pointer, or of the one with visible keyboard
+focus, over the Hint bar's clauses: at once on entering, 150 ms after leaving,
+so moving along a row never flashes the clauses between two strings. An
+action's outcome (tag 68 in the Trance Gate) outranks it while shown, and the
+pointer outranks the focus. The clauses stay laid out underneath, hidden, so
+the bar's width and the Motion switch never move (`ui-kit/src/lib/info.js`).
+The Trance Gate's strings are all in `plugins/trance-gate/ui/src/lib/info.js`.
+
 CMake runs vite at configure time *and* at build time. Configure-only shipped
 stale bundles, and a stale editor looks exactly like a broken one.
 

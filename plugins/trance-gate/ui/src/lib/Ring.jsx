@@ -13,8 +13,9 @@
  * "what a click does to a step" would not stay the same for long.
  */
 import { For, Show } from 'solid-js';
-import { countKey } from '@ultraviolet/ui';
+import { countKey, infoAttrs } from '@ultraviolet/ui';
 import { ringGesture } from './steps.js';
+import { INFO } from './info.js';
 
 const TAU = Math.PI * 2;
 
@@ -158,7 +159,7 @@ export default function Ring(props) {
     <svg ref={el} class="ring" width={d()} height={d()} viewBox={`0 0 ${d()} ${d()}`}
          tabindex="0" role="slider" aria-label="Length"
          aria-valuemin="1" aria-valuemax={props.maxLength ?? 128}
-         aria-valuenow={n()} aria-valuetext={`${n()} steps`}
+         aria-valuenow={n()} aria-valuetext={`${n()} steps`} {...infoAttrs(INFO.ring)}
          onPointerDown={onDown} onKeyDown={onKeyDown}>
       {/* THE RAIL FIRST, UNDER EVERYTHING: line-200 is the system's token for
         * "the unlit part of an arc", which is exactly what an off step is. It
@@ -232,10 +233,11 @@ export default function Ring(props) {
         <circle class="glow-led ring-head" cx={head().x} cy={head().y} r={head().r} fill="var(--ink)" />
       )}
 
-      {/* The window's one readout-size number, with a label under it. */}
-      <text class="t-readout ring-centre" x={d() / 2} y={d() / 2}
+      {/* The window's one readout-size number, with a label under it -- and
+        * its own string, since the hole round it is not a step. */}
+      <text class="t-readout ring-centre" data-info={INFO.steps} x={d() / 2} y={d() / 2}
             text-anchor="middle" dominant-baseline="middle">{props.centre}</text>
-      <text class="t-label ring-label" x={d() / 2} y={d() / 2 + 22}
+      <text class="t-label ring-label" data-info={INFO.steps} x={d() / 2} y={d() / 2 + 22}
             text-anchor="middle" dominant-baseline="hanging">{props.label}</text>
     </svg>
   );

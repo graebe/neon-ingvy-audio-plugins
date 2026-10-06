@@ -39,6 +39,31 @@ test('loads without a console error and completes the ready handshake', async ({
   expect(errors).toEqual([]);
 });
 
+/*
+ * THE PICTURE MAY NOT WAIT FOR A FRAME CALLBACK. A WKWebView that takes its
+ * window for hidden -- occluded, or a host window WebKit misjudges -- stops
+ * servicing requestAnimationFrame while the plugin's columns keep arriving.
+ * The repaint was gated on it, so the history filled and the screen stayed
+ * the floor colour. Here no frame callback ever runs, and the columns the
+ * mock sends must still reach the visible canvas.
+ */
+test('columns reach the picture when no animation frame is ever serviced', async ({ page }) => {
+  await page.addInitScript(() => {
+    globalThis.requestAnimationFrame = () => 1;
+    globalThis.cancelAnimationFrame = () => {};
+  });
+  await open(page, 'spectrogram');
+  const colours = () => page.evaluate(() => {
+    const c = document.querySelector('.spectro-canvas');
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const seen = new Set();
+    for (let i = 0; i < d.length; i += 4) seen.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+    return seen.size;
+  });
+  /* The floor alone is one colour; the mock's sweep and haze are dozens. */
+  await expect.poll(colours, { timeout: 5000 }).toBeGreaterThan(8);
+});
+
 test('the saved session is applied, and nothing is pushed before it', async ({ page }) => {
   await open(page, 'spectrogram', '?holdstate');
   await expect(page.locator('.hint-bar')).toContainText('19.7 kHz');

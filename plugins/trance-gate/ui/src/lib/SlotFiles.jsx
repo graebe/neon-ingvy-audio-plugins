@@ -11,15 +11,16 @@
  */
 import { Button, sendMessage } from '@ultraviolet/ui';
 import { MSG } from './msg.js';
+import { INFO } from './info.js';
 
 export function SlotFiles() {
   return (
     <div class="slot-files btn-group" role="group" aria-label="Slot files">
-      <Button title="Export this slot to a file"
+      <Button info={INFO.exportSlot}
               onClick={() => sendMessage(MSG.exportFile, 'slot')}>EXPORT</Button>
-      <Button title="Export all 8 slots to a file"
+      <Button info={INFO.exportAll}
               onClick={() => sendMessage(MSG.exportFile, 'bank')}>EXPORT ALL</Button>
-      <Button title="Import a slot file into this slot, or a bank into all 8"
+      <Button info={INFO.import}
               onClick={() => sendMessage(MSG.importFile)}>IMPORT</Button>
     </div>
   );

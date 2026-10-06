@@ -7,6 +7,13 @@ The editor shows the pattern as a ring, the controls in three panels, and the
 steps as pads underneath. It is the same picture the Move draws, at a size a
 screen allows.
 
+**Hover or focus any control to see what it does in the bar at the bottom.**
+Point at the Rate knob and the bar reads "Rate — the length of one step, synced
+to the song tempo."; move away and it shows the window's usual tips again. The
+same works from the keyboard: Tab to a control and the bar describes it. While
+the bar is reporting how a copy, paste, export or import went, that report
+stays until it times out.
+
 ## The ring
 
 The ring **is** the pattern, and it mirrors the Move display. Filled arcs are

@@ -46,7 +46,7 @@ export function PatternPlot(props) {
   const values = createMemo(() => props.gate?.values ?? []);
   const top = CAPTION, bot = () => props.h - INSET;
   return (
-    <Well w={props.w} h={props.h} caption="PATTERN   ONE CYCLE">
+    <Well w={props.w} h={props.h} info={props.info} caption="PATTERN   ONE CYCLE">
       {/* Rules UNDER the curve, so nothing is hidden by a rule. */}
       <StepRules count={n()} w={props.w} top={top} bottom={bot()} />
       <Curve values={values()} w={props.w} top={top} bottom={bot()}
@@ -149,7 +149,7 @@ export function Scope(props) {
   });
 
   return (
-    <Well w={props.w} h={props.h}
+    <Well w={props.w} h={props.h} info={props.info}
           caption={`SIGNAL   ONE CYCLE, ${Math.round(cycleMs())} MS   DRY IN GREY, GATED IN FRONT`}>
       {/* The step boundaries, UNDER everything: the axis is the pattern again, so
         * a column has a step and the rules say which. */}

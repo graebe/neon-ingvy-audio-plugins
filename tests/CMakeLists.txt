@@ -166,6 +166,11 @@ if (TG_NODE)
     add_test(NAME editor_tags
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/editor_tags.test.mjs)
 
+    # No editor behaviour may hang off display frames or page visibility: a
+    # WKWebView that takes its host's window for hidden services no frames.
+    add_test(NAME editor_timing
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/editor_timing.test.mjs)
+
     # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
     # editors and the documentation site -- where there used to be one per
     # plugin, each blind to the other.
@@ -236,6 +241,32 @@ if (APPLE)
     foreach(plugin TranceGate SideChain Spectrogram ListenIn)
         add_test(NAME au_ground_${plugin}
                  COMMAND au_ground ${NI_BUNDLES}/NI${plugin}.component)
+    endforeach()
+
+    # The editors opened by a real host in each format -- the VST3, the AU and
+    # the CLAP from build/out, each with iPlug2's WKWebView and the shipped
+    # page in it -- fed audio under a running transport, closed and opened
+    # again, and the page asked what reached it: the Spectrogram's picture,
+    # the Trance Gate's and the Side-Chain's playheads, everyone's ground. The
+    # mock-host e2e suite cannot see this path.
+    # editor_host.mm. Needs a logged-in session (a window server), as a host does.
+    set(_vst3 ${IPLUG2_DIR}/Dependencies/IPlug/VST3_SDK)
+    add_executable(editor_host editor_host.mm
+        ${_vst3}/pluginterfaces/base/funknown.cpp
+        ${_vst3}/pluginterfaces/base/coreiids.cpp
+        ${_vst3}/public.sdk/source/vst/vstinitiids.cpp)
+    target_include_directories(editor_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${_vst3}
+        ${IPLUG2_DIR}/Dependencies/IPlug/CLAP_SDK/include)
+    target_compile_options(editor_host PRIVATE -fobjc-arc)
+    target_link_libraries(editor_host PRIVATE ${NI_AU_LIBS}
+        "-framework Cocoa" "-framework WebKit" "-framework CoreAudioKit")
+    foreach(plugin Spectrogram TranceGate SideChain)
+        add_test(NAME editor_host_${plugin}_vst3
+                 COMMAND editor_host vst3 ${NI_BUNDLES}/NI${plugin}.vst3)
+        add_test(NAME editor_host_${plugin}_au
+                 COMMAND editor_host au ${NI_BUNDLES}/NI${plugin}.component)
+        add_test(NAME editor_host_${plugin}_clap
+                 COMMAND editor_host clap ${NI_BUNDLES}/NI${plugin}.clap)
     endforeach()
 endif()
 
@@ -632,7 +663,8 @@ ni_test_tiers(
         ui_unit tg_curves_js tg_capture_js tg_fade_js sc_shape_js sc_envelope_js
         sc_ranges spectro_ramp spectro_columns_js listenin_wire_js
         # lint-like checks over the tree
-        versions release licenses ground_shells editor_tags ui_tokens validator_verdict
+        versions release licenses ground_shells editor_tags editor_timing ui_tokens
+        validator_verdict
     FULL
         tg_render_ab:render sc_render_ab:render
         tg_au:host sc_au:host
@@ -640,6 +672,11 @@ ni_test_tiers(
         au_stress_Spectrogram:host au_stress_ListenIn:host
         au_ground_TranceGate:host au_ground_SideChain:host
         au_ground_Spectrogram:host au_ground_ListenIn:host
+        editor_host_Spectrogram_vst3:host editor_host_Spectrogram_au:host
+        editor_host_Spectrogram_clap:host editor_host_TranceGate_vst3:host
+        editor_host_TranceGate_au:host editor_host_TranceGate_clap:host
+        editor_host_SideChain_vst3:host editor_host_SideChain_au:host
+        editor_host_SideChain_clap:host
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)

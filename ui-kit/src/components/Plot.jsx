@@ -19,6 +19,7 @@
  * font problem and was a geometry one.
  */
 import { For, createMemo } from 'solid-js';
+import { infoAttrs } from '../lib/info.js';
 
 /** plot::inset and plot::captionH, named as the design system names them. */
 export const INSET = 6;
@@ -27,10 +28,11 @@ export const CAPTION = 14;
 /**
  * Every plot's frame: a `bg-000` ground, a `line-100` hairline, and the caption
  * in hint style. The content area is inset all round with CAPTION off the top.
+ * `info` is what the plot shows, for the hint bar.
  */
 export function Well(props) {
   return (
-    <svg class="plot" width={props.w} height={props.h}
+    <svg class="plot" width={props.w} height={props.h} {...infoAttrs(props.info)}
          viewBox={`0 0 ${props.w} ${props.h}`}>
       <rect x="0.5" y="0.5" width={props.w - 1} height={props.h - 1}
             fill="var(--bg-000)" stroke="var(--line-100)" />

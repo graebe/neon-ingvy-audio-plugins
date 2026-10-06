@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>NITranceGate</string>
 	<key>CFBundleGetInfoString</key>
-	<string>NI Trance Gate v2026.10.06.2 Copyright 2026 Torben Gräber</string>
+	<string>NI Trance Gate v2026.10.06.3 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIconFile</key>
 	<string>TranceGate.icns</string>
 	<key>CFBundleIdentifier</key>
@@ -23,7 +23,7 @@
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>2026.10.50</string>
+	<string>2026.10.51</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSApplicationCategoryType</key>

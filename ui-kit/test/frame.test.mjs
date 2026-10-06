@@ -6,9 +6,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoot } from 'solid-js';
+import { createRoot, createEffect } from 'solid-js';
 import { createFit, fitScale, reportHeight, scaledHeight } from '../src/lib/fit.js';
-import { createClock, positionAt } from '../src/lib/clock.js';
+import { createClock, positionAt, TICK_MS } from '../src/lib/clock.js';
 import { useEditorBridge, parseGround } from '../src/lib/bridge.js';
 import { SHELL_MSG } from '../src/lib/shell.js';
 
@@ -73,28 +73,47 @@ test('the clock interpolates between anchors and holds when stopped', () => {
   assert.equal(positionAt({ pos: 2, perMs: 0, moving: true, at: 100 }, 150), 2);
 });
 
-test('the clock runs a frame loop only while the position moves', () => {
+test('the clock runs its timer only while the position moves', () => {
   let t = 0;
-  const frames = [];
-  const raf = (f) => { frames.push(f); return frames.length; };
-  const caf = () => {};
+  const timers = new Map();
+  let next = 0;
+  const every = (f, ms) => { assert.equal(ms, TICK_MS); timers.set(++next, f); return next; };
+  const cancel = (id) => timers.delete(id);
   createRoot((dispose) => {
-    const c = createClock({ raf, caf, now: () => t });
-    assert.equal(c.running(), false, 'a stopped clock must not schedule frames');
+    const c = createClock({ every, cancel, now: () => t });
+    assert.equal(c.running(), false, 'a stopped clock must not arm a timer');
     c.set(4, 1 / 125, true);
     assert.equal(c.running(), true);
+    assert.equal(timers.size, 1);
+    c.set(4.5, 1 / 125, true);
+    assert.equal(timers.size, 1, 're-anchoring does not arm a second timer');
     t = 250;
-    assert.equal(c.position(), 6);
-    frames.shift()();                          /* one frame ticks and re-arms */
+    assert.equal(c.position(), 6.5);
+    const tick = [...timers.values()][0];
+    tick();                                    /* a tick re-renders, the timer stays */
     assert.equal(c.running(), true);
     c.set(6, 1 / 125, false);                  /* transport stops */
     assert.equal(c.running(), false);
-    const before = frames.length;
-    frames.shift()?.();                        /* a stale frame does not re-arm */
-    assert.equal(frames.length, before - 1);
+    assert.equal(timers.size, 0, 'the timer is cancelled when the position stops');
+    tick();                                    /* a tick already queued does nothing */
     assert.equal(c.position(), 6);
     dispose();
   });
+});
+
+test('a moving clock re-renders on its own timer, with no display frame', async () => {
+  const seen = [];
+  let dispose;
+  createRoot((d) => {
+    dispose = d;
+    const c = createClock();
+    c.set(0, 1, true);
+    createEffect(() => seen.push(c.position()));
+  });
+  await new Promise((r) => setTimeout(r, TICK_MS * 6));
+  dispose();
+  assert.ok(seen.length >= 3, `the position re-rendered ${seen.length} times`);
+  assert.ok(seen[seen.length - 1] > seen[0], 'and moved');
 });
 
 test('the handshake sends ready once, after mount, and hands kicks to the ground', async () => {

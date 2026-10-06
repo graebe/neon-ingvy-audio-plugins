@@ -6,6 +6,7 @@ import { For, createMemo } from 'solid-js';
 import { Well, Axis, INSET, CAPTION } from '@ultraviolet/ui';
 import { levelAt } from './capture.js';
 import { Curve } from './StepMarks.jsx';
+import { INFO } from './info.js';
 
 /*
  * THE ENVELOPE, ON A MILLISECOND AXIS.
@@ -101,7 +102,7 @@ export function EnvelopePlot(props) {
   const xAt = (f) => INSET + (props.w - 2 * INSET) * Math.min(1, Math.max(0, f));
 
   return (
-    <Well w={props.w} h={props.h} caption={caption()}>
+    <Well w={props.w} h={props.h} info={INFO.envelopePlot} caption={caption()}>
       {env() && (() => {
         const sh = env();
         const top = CAPTION, bot = boxBottom();
