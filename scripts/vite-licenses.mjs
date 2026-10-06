@@ -86,15 +86,16 @@ export default function licenses() {
         fileName: NOTICE_FILE,
         source:
           'Third-party software bundled in ui.js, and the notices its licences require.\n' +
-          'The rest of ui.js is Copyright (c) 2026 Torben Gräber, MIT -- see LICENSE and\n' +
-          'THIRD_PARTY_LICENSES.md in the plugin bundle\'s Contents/Resources.\n\n' +
+          'The rest of ui.js is Copyright (C) 2026 Torben Gräber, GPL-3.0-or-later --\n' +
+          'see LICENSE and THIRD_PARTY_LICENSES.md in the plugin bundle\'s\n' +
+          'Contents/Resources.\n\n' +
           sections.map((s) => `${'='.repeat(78)}\n${s}\n`).join('\n'),
       });
 
       /* After minification (generateBundle runs last), so it survives. */
       for (const chunk of Object.values(bundle)) {
         if (chunk.type === 'chunk' && chunk.isEntry)
-          chunk.code = `/*! Copyright (c) 2026 Torben Gräber, MIT. Bundled third-party ` +
+          chunk.code = `/*! Copyright (C) 2026 Torben Gräber, GPL-3.0-or-later. Bundled third-party ` +
                        `licences: ui.js.LICENSE.txt */\n${chunk.code}`;
       }
     },

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "The public documentation site, built from this repository's own Markdown.",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "predev": "node scripts/stage-assets.mjs",

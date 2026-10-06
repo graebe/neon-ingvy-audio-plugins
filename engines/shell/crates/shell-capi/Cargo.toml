@@ -3,7 +3,7 @@ name = "shell-capi"
 version = "2026.10.6+5"
 edition = "2021"
 authors = ["Torben Gräber"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "The shell_handoff_* C ABI: an object the main thread owns, lent to the audio thread"
 
 # AN RLIB, for ground-capi's reason: one static library per plugin. A product's

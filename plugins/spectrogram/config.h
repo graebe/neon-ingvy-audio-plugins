@@ -7,8 +7,7 @@
  * rolling time/frequency picture of it in the Ultraviolet design language.
  *
  * iPlug2 (zlib) + the VST3 SDK (MIT) + CLAP (MIT) + an analyzer crate with no
- * dependencies at all. Nothing here is copyleft, which is the same reason the
- * Trance Gate is on iPlug2 rather than JUCE.
+ * dependencies, around this repository's GPL-3.0-or-later code.
  */
 #pragma once
 

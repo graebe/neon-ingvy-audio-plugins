@@ -22,12 +22,14 @@
  *              beside every copy of it
  *   engines    exactly the crates in Cargo.lock -- and Cargo.lock holds no
  *              crate from a registry, or that crate needs its own row
- *   test-only  doctest, while it is vendored
+ *   test-only  doctest and Schwung's two module-API headers, while they are
+ *              vendored
  *
  * With --bundles it also opens the built bundles and checks that each one
  * carries LICENSE, THIRD_PARTY_LICENSES.md and its editor's notice file.
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { ROOT, listedBySection, section } from './licenses-lib.mjs';
 
@@ -54,8 +56,14 @@ const PLUGINS = readdirSync(join(ROOT, 'plugins'))
   }));
 
 /* ------------------------------------------------------------ our own */
-if (!/^MIT License\s+Copyright \(c\) 2026 Torben Gräber$/m.test(read('LICENSE')))
-  fail('LICENSE is not the MIT licence with "Copyright (c) 2026 Torben Gräber"');
+/* GPL-3.0-or-later, and the licence text exactly as the FSF publishes it
+ * (https://www.gnu.org/licenses/gpl-3.0.txt): the GPL forbids changing the
+ * document, and a hash is the only check that notices a changed word. The
+ * copyright notice is not in it -- it is in the README and at the top of every
+ * source file (tests/spdx.test.mjs). */
+const GPL_3_0_SHA256 = '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986';
+if (createHash('sha256').update(readFileSync(join(ROOT, 'LICENSE'))).digest('hex') !== GPL_3_0_SHA256)
+  fail('LICENSE is not the unmodified text of GPLv3 (https://www.gnu.org/licenses/gpl-3.0.txt)');
 
 /* ------------------------------------------------------------ framework */
 try {
@@ -153,8 +161,11 @@ try {
 /* ------------------------------------------------------------ test-only */
 try {
   const testOnly = section(sections, 'Test-only');
-  sameSet('test-only', new Set(testOnly.keys()),
-    new Set(existsSync(join(ROOT, 'external', 'doctest', 'doctest.h')) ? ['doctest'] : []));
+  const vendored = new Set();
+  if (existsSync(join(ROOT, 'external', 'doctest', 'doctest.h'))) vendored.add('doctest');
+  for (const h of ['plugin_api_v1.h', 'audio_fx_api_v2.h'])
+    if (existsSync(join(ROOT, 'engines', 'trance-gate', 'include', h))) vendored.add(h);
+  sameSet('test-only', new Set(testOnly.keys()), vendored);
 } catch (e) { fail(e.message); }
 
 /* ------------------------------------------------------------ the bundles */

@@ -2,7 +2,7 @@
   "name": "neon-ingvy-audio-plugins",
   "private": true,
   "description": "Audio plugins and a Schwung module around shared Rust engines and one Solid UI kit.",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "workspaces": [
     "ui-kit",
     "plugins/*/ui",

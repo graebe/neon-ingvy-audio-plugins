@@ -3,8 +3,8 @@
 A short-time Fourier analyzer that produces **spectrogram columns**: one byte per
 log-spaced frequency band, handed to a UI through a lock-free ring.
 
-MIT, © 2026 Torben Gräber. **No dependencies at all** — the FFT is one file,
-`crates/spectro-core/src/fft.rs`, checked against a naive DFT.
+GPL-3.0-or-later, © 2026 Torben Gräber. **No dependencies yet** — the FFT is
+one file, `crates/spectro-core/src/fft.rs`, checked against a naive DFT.
 
 ```
 cargo test              # the FFT, the band mapping, equivalence, no-allocation proofs

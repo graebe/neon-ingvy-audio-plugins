@@ -5,7 +5,7 @@
   "version": "2026.10.06.5",
   "description": "Tempo-locked step gate with ADSR, ties, a two-way fade-in and pad editing",
   "author": "Neon Ingvy",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "dsp": "trance-gate.so",
   "api_version": 2,
   "ui_chain": "ui_chain.js",

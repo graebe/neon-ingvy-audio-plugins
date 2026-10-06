@@ -8,7 +8,7 @@
  * different track can draw it. Several of those, overlaid, is the point.
  *
  * iPlug2 (zlib) + the VST3 SDK (MIT) + CLAP (MIT) + a transport crate with no
- * dependencies at all. Nothing here is copyleft.
+ * dependencies, around this repository's GPL-3.0-or-later code.
  */
 #pragma once
 

@@ -2,14 +2,13 @@
 name = "spectro-core"
 version = "2026.10.6+5"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "A short-time Fourier analyzer that hands finished spectrogram columns to a UI"
 
-# NO DEPENDENCIES, AND THAT IS A LICENCE DECISION AS MUCH AS A TASTE ONE.
-# The FFT here is one file (fft.rs). rustfft would be MIT/Apache-2.0 and
-# perfectly usable, but this repository's whole premise is that every byte in
-# the artefact is permissive AND ACCOUNTED FOR -- see THIRD_PARTY_LICENSES.md
-# -- and a crate that needs no attribution is cheaper than one that does.
+# NO DEPENDENCIES YET. The FFT here is one file (fft.rs), written by hand while
+# the project was MIT, when a crate that needed no attribution was cheaper than
+# one that did. docs/adr/0003-established-rust-crates.md reverses that rule and
+# names realfft and rustfft as the replacement.
 [dependencies]
 
 # The counting allocator the no_alloc test installs. Test-only.

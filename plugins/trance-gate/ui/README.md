@@ -1,8 +1,8 @@
 # The editor
 
 A [Solid](https://solidjs.com) app built by Vite into `../resources/web`,
-loaded by iPlug2's WebView editor over a custom URL scheme. MIT, like
-everything else here.
+loaded by iPlug2's WebView editor over a custom URL scheme. GPL-3.0-or-later,
+like everything else here.
 
 ```
 npm ci               # at the repository root: one install for every workspace

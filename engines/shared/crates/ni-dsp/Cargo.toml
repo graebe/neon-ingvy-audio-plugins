@@ -3,7 +3,7 @@ name = "ni-dsp"
 version = "2026.10.6+5"
 edition = "2021"
 authors = ["Torben Gräber"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "The DSP and C-compatibility pieces the Neon Ingvy engines share"
 
 # AN RLIB, for ground-capi's reason: one static library per plugin. Each

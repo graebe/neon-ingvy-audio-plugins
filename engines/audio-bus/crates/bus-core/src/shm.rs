@@ -2,10 +2,10 @@
  * The POSIX shared-memory mapping, and nothing else.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * Six calls, declared here rather than borrowed from libc -- which is
- * MIT/Apache-2.0 and would be perfectly fine, but is a large dependency to
- * take on for `mmap`, and this repository's THIRD_PARTY_LICENSES.md is short
- * on purpose (see bus-core/Cargo.toml).
+ * Six calls, declared here rather than borrowed from libc, under a rule from
+ * when the project was MIT and THIRD_PARTY_LICENSES.md was kept short on
+ * purpose. docs/adr/0003-established-rust-crates.md reverses it (see
+ * bus-core/Cargo.toml).
  *
  * These signatures, the O_* and errno constants and `__error` are macOS's. The
  * plugin is a macOS universal binary and nothing else builds this crate, so any

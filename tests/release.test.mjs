@@ -53,7 +53,7 @@ for (const m of MODULES) {
     assert.ok(env.MODULE_TITLE, 'MODULE_TITLE');
     assert.equal(json.name, env.MODULE_TITLE, 'module.json "name" and MODULE_TITLE');
     assert.equal(json.author, 'Neon Ingvy', 'the publisher is Neon Ingvy');
-    assert.equal(json.license, 'MIT');
+    assert.equal(json.license, 'GPL-3.0-or-later', 'module.json "license" is the repository licence');
 
     const crate = members.find((p) => p.endsWith(`/${env.MODULE_CRATE}`));
     assert.ok(crate, `MODULE_CRATE ${env.MODULE_CRATE} is not a workspace member`);

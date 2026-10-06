@@ -3,7 +3,7 @@ name = "sc-move"
 version = "2026.10.6+5"
 edition = "2021"
 authors = ["Torben Gräber"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "The Schwung audio_fx v2 shell for NI Side-Chain"
 
 [lib]

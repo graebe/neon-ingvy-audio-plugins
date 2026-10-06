@@ -5,7 +5,7 @@
   "version": "2026.10.06.5",
   "description": "Sidechain ducker triggered by the transport or a MIDI note",
   "author": "Neon Ingvy",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "dsp": "ni-side-chain.so",
   "api_version": 2,
   "capabilities": {

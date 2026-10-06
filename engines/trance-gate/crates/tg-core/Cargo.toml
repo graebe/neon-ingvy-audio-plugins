@@ -3,7 +3,7 @@ name = "tg-core"
 version = "2026.10.6+5"
 edition = "2021"
 authors = ["Torben Gräber"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "Trance Gate DSP engine: a tempo-locked step gate with a per-step ADSR"
 
 [lib]

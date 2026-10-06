@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "private": true,
   "description": "The Ultraviolet design system as Solid components: the tokens, the controls, and the iPlug2 bridge every WebView editor needs.",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "main": "src/index.js",
   "exports": {

@@ -2,7 +2,7 @@
 name = "ground-core"
 version = "2026.10.6+5"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "The beat clock behind the Ultraviolet design system's animated ground"
 
 # NO DEPENDENCIES: the clock is arithmetic on the host's transport.

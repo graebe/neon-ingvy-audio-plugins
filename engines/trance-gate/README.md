@@ -54,16 +54,11 @@ is only offered when it is strictly newer than stable.
 
 ## Licence
 
-**MIT**, © 2026 Torben Gräber. See `LICENSE`, which also ships inside the
-module tarball -- what lands on a device is a `.so` and a `.js` with no
-repository near them, and MIT asks that the notice travel with the copy.
+**GPL-3.0-or-later**, © 2026 Torben Gräber, like the rest of this repository.
+See `LICENSE`, which also ships inside the module tarball -- what lands on a
+device is a `.so` and a `.js` with no repository near them, and the GPL asks
+that every copy come with the licence.
 
-Every crate here has **no external dependencies at all** -- `Cargo.lock` holds
-`tg-core`, `tg-capi` and `tg-move` and nothing else -- so there is no
-third-party licence to be compatible with and nothing to attribute.
-
-It was briefly GPL-3.0-or-later, on the belief that the Ableton Live plugin
-had to be. It does not: Steinberg relicensed the **VST3 SDK to MIT**, and
-their GPLv3 and proprietary options are withdrawn. What forced the GPL was
-nih-plug's third-party VST3 bindings, which are GPLv3 and now needlessly so.
-A plugin built on iPlug2 against the official SDK is MIT throughout.
+It was MIT until 2026-10-06.
+[docs/adr/0001-gpl-3.0-or-later.md](../../docs/adr/0001-gpl-3.0-or-later.md)
+says why it changed.

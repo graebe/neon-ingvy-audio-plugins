@@ -8,8 +8,8 @@
 # Patch and State, iPlug2's IPlugParameter.cpp and, where the seam is the point,
 # the real engine.
 #
-# doctest is MIT and one header, vendored at external/doctest, which keeps
-# THIRD_PARTY_LICENSES.md's "MIT throughout" literally true.
+# doctest is MIT and one header, vendored at external/doctest. Nothing that
+# ships links it, so THIRD_PARTY_LICENSES.md lists it as test-only.
 
 set(DOCTEST_DIR ${CMAKE_SOURCE_DIR}/external/doctest)
 

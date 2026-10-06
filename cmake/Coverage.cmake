@@ -10,11 +10,9 @@
 # cargo suites. gcov would have meant a second toolchain for the Rust half and a
 # second set of numbers that could disagree with the first.
 #
-# WHY NOT lcov/genhtml. They are installed here and they are GPL-2.0. There is
-# no obligation -- they are developer tools that never link into an artefact --
-# but llvm-cov already renders HTML, and THIRD_PARTY_LICENSES.md opens with "the
-# licence is uniform: MIT throughout". One fewer thing to have to explain is
-# worth more than the nicer stylesheet.
+# WHY NOT lcov/genhtml. llvm-cov already renders HTML, so they would be a
+# second tool producing the same report. One fewer tool is worth more than the
+# nicer stylesheet.
 #
 # THIS IS NOT A SHIPPABLE CONFIGURATION and is not meant to be built in `build`.
 # scripts/coverage.sh uses build-coverage precisely so an instrumented bundle

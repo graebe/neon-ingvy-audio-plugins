@@ -6,7 +6,7 @@
  * THE NOTICE IS HERE BECAUSE THIS FILE TRAVELS ALONE. It is installed into
  * the module directory on the device as a bare .js, so it is the one piece of
  * this program somebody is most likely to read without the repository around
- * it -- and MIT asks that the notice accompany the copy either way.
+ * it -- and the GPL asks that every copy keep its notices either way.
  *
  * ---------------------------------------------------------------------------
  *

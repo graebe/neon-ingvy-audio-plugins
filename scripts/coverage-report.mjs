@@ -16,11 +16,9 @@
  * not changed in twenty years -- and the merge happens here, where it is
  * arithmetic over integers rather than a version negotiation.
  *
- * WHY THE HTML IS WRITTEN HERE AND NOT BY genhtml. genhtml is GPL-2.0. There
- * is no obligation -- it never links into anything -- but this repository's
- * licence table has no exceptions in it and is worth keeping that way. It also
- * could not have produced ONE page spanning all three languages, which is the
- * only form in which the total means anything.
+ * WHY THE HTML IS WRITTEN HERE AND NOT BY genhtml. genhtml could not have
+ * produced ONE page spanning all three languages, which is the only form in
+ * which the total means anything.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';

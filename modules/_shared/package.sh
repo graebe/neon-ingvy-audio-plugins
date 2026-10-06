@@ -107,9 +107,9 @@ for optional in ui_chain.js help.json; do
     fi
 done
 # THE NOTICES SHIP WITH THE BINARY. What lands on a device is a .so (and a .js)
-# with no repository anywhere near it, and MIT asks that the notice accompany
-# the copy -- so it travels in the tarball or it does not reach the person it
-# is addressed to at all. THIRD_PARTY_LICENSES.md too: the .so statically links
+# with no repository anywhere near it, and the GPL asks that every copy come
+# with the licence -- so it travels in the tarball or it does not reach the
+# person it is addressed to at all. THIRD_PARTY_LICENSES.md too: the .so statically links
 # the Rust standard library, and the Side-Chain's MIDI trigger is a port of
 # MIT-licensed code whose notice is recorded there.
 cp LICENSE                     "$OUT/LICENSE"

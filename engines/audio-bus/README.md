@@ -4,11 +4,9 @@ A **shared-memory audio bus** between plugins in one host. One writer claims a
 numbered slot and publishes stereo float audio; any number of readers, in that
 process or another, open the same slot and read it.
 
-MIT, © 2026 Torben Gräber. **No dependencies at all** — it declares the
-handful of macOS calls it needs in `crates/bus-core/src/shm.rs` rather than
-taking libc,
-which is MIT/Apache-2.0 and would be fine, but is a large thing to borrow
-`mmap` from.
+GPL-3.0-or-later, © 2026 Torben Gräber. **No dependencies yet** — it declares
+the handful of macOS calls it needs in `crates/bus-core/src/shm.rs` rather
+than taking libc.
 
 ```
 cargo test -p bus-core -p bus-capi

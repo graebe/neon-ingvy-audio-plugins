@@ -43,8 +43,8 @@ Two things in that script are load-bearing and commented as such:
   A/B exists to catch.
 
 The tarball carries `LICENSE` and `THIRD_PARTY_LICENSES.md` beside the `.so`:
-what reaches a device has no repository near it, and MIT asks that the notice
-travel with every copy.
+what reaches a device has no repository near it, and the GPL asks that every
+copy come with the licence.
 
 `modules/_shared/install.sh <module>` scps the result to `ableton@move.local`.
 It refuses to create the base directory if it is not already there — a wrong

@@ -3,7 +3,7 @@ name = "sc-core"
 version = "2026.10.6+5"
 edition = "2021"
 authors = ["Torben Gräber"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "NI Side-Chain DSP engine: a cycle-, MIDI- or sidechain-triggered ducker"
 
 [lib]

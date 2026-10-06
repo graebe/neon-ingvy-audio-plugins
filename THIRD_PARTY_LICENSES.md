@@ -1,13 +1,18 @@
 # Third-party licences
 
-Copyright © 2026 Torben Gräber. This project is MIT-licensed (see
-[LICENSE](LICENSE)); what follows are the notices its dependencies require.
+Copyright (C) 2026 Torben Gräber. This project is licensed under the GNU
+General Public License, version 3 or (at your option) any later version —
+GPL-3.0-or-later, see [LICENSE](LICENSE). What follows are the notices its
+dependencies require.
 
-**Everything below is permissive, and nothing in the chain is copyleft.** This
-file ships inside every artefact beside `LICENSE` — each plugin bundle's
-`Contents/Resources/`, the release zips and each Schwung module tarball — so
-the notices reach whoever receives a copy. `scripts/check-licenses.mjs`
-(`ctest -R licenses`) fails when something that ships has no entry here.
+**Every licence below is one GPL-3.0-or-later can take in**, and each keeps its
+own conditions: a permissive licence asks for its notice to travel with the
+copy, and ours does not replace it. This file ships inside every artefact
+beside `LICENSE` — each plugin bundle's `Contents/Resources/`, the release zips
+and each Schwung module tarball — so the notices reach whoever receives a copy.
+`scripts/check-licenses.mjs` (`ctest -R licenses`) fails when something that
+ships has no entry here, or when an entry is for something that no longer
+ships.
 
 ## Where each part ends up
 
@@ -64,7 +69,7 @@ bundles a package that has no row in the table above
 (`scripts/vite-licenses.mjs`).
 
 `@ultraviolet/ui` (in `ui-kit/`) is this repository's own design-system kit,
-© 2026 Torben Gräber, MIT, and needs no row.
+© 2026 Torben Gräber, GPL-3.0-or-later like the rest, and needs no row.
 
 ## Bundled font
 
@@ -96,24 +101,24 @@ OFL is permissive and GPL-compatible.
 
 | Crates | Where | Licence |
 |---|---|---|
-| `tg-core`, `tg-capi`, `tg-move` | `engines/trance-gate` | **MIT**, © 2026 Torben Gräber |
-| `spectro-core`, `spectro-recv`, `spectro-capi` | `engines/spectro` | **MIT**, © 2026 Torben Gräber |
-| `bus-core`, `bus-capi` | `engines/audio-bus` | **MIT**, © 2026 Torben Gräber |
-| `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **MIT**, © 2026 Torben Gräber, with a ported part — see below |
-| `ground-core`, `ground-capi` | `engines/ground` | **MIT**, © 2026 Torben Gräber |
-| `shell-core`, `shell-capi` | `engines/shell` | **MIT**, © 2026 Torben Gräber |
-| `ni-dsp`, `ni-schwung` | `engines/shared` | **MIT**, © 2026 Torben Gräber |
-| `ni-testkit` | `engines/shared` | **MIT**, © 2026 Torben Gräber — a dev-dependency only; it ships in nothing |
+| `tg-core`, `tg-capi`, `tg-move` | `engines/trance-gate` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `spectro-core`, `spectro-recv`, `spectro-capi` | `engines/spectro` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `bus-core`, `bus-capi` | `engines/audio-bus` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber, with a ported part — see below |
+| `ground-core`, `ground-capi` | `engines/ground` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `ni-dsp`, `ni-schwung` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `ni-testkit` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — a dev-dependency only; it ships in nothing |
 
-**No crate here has a third-party dependency.** `Cargo.lock` holds only these
-workspace members, which `scripts/check-licenses.mjs` verifies: a crate from
-crates.io would need a row in this file before the check passes.
+**No crate here has a third-party dependency yet.** `Cargo.lock` holds only
+these workspace members, which `scripts/check-licenses.mjs` verifies: a crate
+from crates.io needs a row in this file before the check passes.
 
-That is deliberate rather than incidental. The FFT is one file in
-`spectro-core` rather than a crate, and `bus-core` declares the six POSIX calls
-the transport needs — `shm_open`, `ftruncate`, `mmap`, `fstat`, `kill`,
-`getpid` — rather than depending on `libc`, which would have added nothing to
-this file (it is MIT/Apache-2.0) but is a large thing to borrow `mmap` from.
+Having none was a rule while the project was MIT, so that this file stayed
+short. [docs/adr/0003-established-rust-crates.md](docs/adr/0003-established-rust-crates.md)
+reverses it: established crates replace the hand-written FFT, queues and
+parsers, each under a licence on the allowlist in
+[docs/adr/0001-gpl-3.0-or-later.md](docs/adr/0001-gpl-3.0-or-later.md).
 
 ## Ported source, which carries a notice even though no library does
 
@@ -123,7 +128,7 @@ exactly the case MIT's notice requirement covers.
 
 | Ported into | From | Licence |
 |---|---|---|
-| `engines/side-chain/crates/sc-core/src/midi.rs` | [`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)'s `src/dsp/ducker.c` | **MIT**, © charlesvestal |
+| `engines/side-chain/crates/sc-core/src/midi.rs` | [`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)'s `src/dsp/ducker.c` | **MIT**, © 2026 Charles Vestal |
 
 What was taken: the MIDI trigger semantics — the channel filter, the note
 match, Trigger versus Gate, a note-on at velocity zero read as a note-off, and
@@ -133,7 +138,9 @@ Move module.
 What was not: the envelope's structure (this one has a Delay that goes negative
 and cycle-relative times, and its stage machine is a different one), the sample
 offsets (`ducker.c` applies a note at the top of its block), and every other
-trigger source. The file itself says which lines it came from.
+trigger source. The file itself says which lines it came from, and carries the
+upstream notice beside its own GPL-3.0-or-later header: MIT allows the port in
+a GPLv3 work on exactly that condition.
 
 A second thing was taken and has since been removed: the `Pump` curve — linear
 going down, a cubic ease-out coming back — was ported into `shape.rs` and later
@@ -145,10 +152,24 @@ Nothing of it remains, so it no longer needs a notice.
 | Component | Licence |
 |---|---|
 | `doctest` 2.4.12 | **MIT**, © 2016-2023 Viktor Kirilov (portions derived from Catch2, **BSL-1.0**) |
+| `plugin_api_v1.h`, `audio_fx_api_v2.h` — Schwung's module API | **MIT**, © 2025-2026 Charles Vestal |
 
-Vendored as a single header at `external/doctest/doctest.h` and reached only by
-the targets in `tests/cpp/`. No plugin, module or bundle links it, so it adds
-nothing to any artefact's notices.
+doctest is vendored as a single header at `external/doctest/doctest.h` and
+reached only by the targets in `tests/cpp/`.
+
+The two Schwung headers are vendored at `engines/trance-gate/include/`, copied
+unmodified from [Schwung](https://github.com/charlesvestal/schwung)'s
+`src/host/`. `audio_fx_api_v2.h` is unchanged there since 2026-02 (Schwung
+`68dc24b3`). `plugin_api_v1.h` is the revision Schwung carried from
+2026-09-07 (`da640c8a`); the current one adds a static assert. They keep
+their origin: no header of ours is added to them. Only the Trance Gate's
+Move-side C tests include them (`engines/trance-gate/tests/test_gate.c`,
+`render_ref.c`, `dump_params.c`), to load the module through the host's own
+vtable. The module itself is Rust, and `ni-schwung` declares the same
+structures for the host to call.
+
+No plugin, module or bundle links any of these, so they add nothing to any
+artefact's notices.
 
 The coverage tooling adds no row: `llvm-cov`, `llvm-profdata` and
 `cargo-llvm-cov` are developer tools that run *on* the build rather than inside

@@ -2,7 +2,7 @@
 name = "bus-capi"
 version = "2026.10.6+5"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "The C ABI that a sending plugin and a receiving plugin both link"
 
 [lib]

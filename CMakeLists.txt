@@ -4,8 +4,9 @@
 # module builds for the Move, so "it sounds different in Live" cannot happen by
 # construction. docs/tech/architecture.md has the layers.
 #
-# EVERYTHING HERE IS PERMISSIVE: iPlug2 is zlib, the VST3 SDK, CLAP and the
-# engines are MIT.
+# GPL-3.0-or-later, around dependencies GPLv3 can take in: iPlug2 is zlib, the
+# VST3 SDK and CLAP are MIT. THIRD_PARTY_LICENSES.md has their notices, and
+# docs/adr/0001-gpl-3.0-or-later.md the reasons.
 cmake_minimum_required(VERSION 3.22)
 
 # DEFAULTS, NOT DECREES. Ableton Live is still commonly run as x86_64 under

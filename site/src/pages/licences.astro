@@ -3,66 +3,85 @@
  * Not decoration. The OFL requires its text to travel with the font, and
  * THIRD_PARTY_LICENSES.md states that it does in every bundle -- this site
  * serves the font, so this site is a bundle and owes the notice.
+ *
+ * The table mirrors THIRD_PARTY_LICENSES.md section by section: what ships in
+ * a plugin or a module, and nothing that only builds or tests it.
  */
 import Base from '../layouts/Base.astro';
 import { url } from '../lib/paths.js';
+
+const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins';
 ---
-<Base title="Licences" description="MIT throughout, and the third-party notices that travel with it.">
+<Base title="Licences" description="GPL-3.0-or-later, and the third-party notices that travel with it.">
   <p class="eyebrow">Licences</p>
-  <h1>MIT, with nothing copyleft in the chain</h1>
+  <h1>GPL-3.0-or-later, with every notice it carries</h1>
 
   <div class="prose">
     <p>
-      Everything in this repository is <strong>MIT</strong>, © 2026 Torben Gräber.
-      The full notices the dependencies require are in
-      <a href="https://github.com/graebe/neon-ingvy-audio-plugins/blob/main/THIRD_PARTY_LICENSES.md">THIRD_PARTY_LICENSES.md</a>;
-      what follows is the shape of it.
+      Everything in this repository is <strong>GPL-3.0-or-later</strong>,
+      Copyright (C) 2026 Torben Gräber: free software you may redistribute and
+      modify under the GNU General Public License, version 3 or (at your
+      option) any later version, with no warranty. The full text is
+      <a href={`${REPO}/blob/main/LICENSE`}>LICENSE</a>, and it ships inside
+      every plugin and every module.
+    </p>
+
+    <p>
+      Every release links the source it was built from: the release notes name
+      the tag, and the tag's tree is the whole source of that build. GPLv3
+      gives everyone who receives a plugin or a module that right.
+    </p>
+
+    <h2>What ships with it</h2>
+
+    <p>
+      Each dependency keeps its own notice, because a permissive licence's
+      conditions travel with the copy rather than being replaced by ours. The
+      full notices are in
+      <a href={`${REPO}/blob/main/THIRD_PARTY_LICENSES.md`}>THIRD_PARTY_LICENSES.md</a>,
+      which ships beside <code>LICENSE</code>; this is the shape of it.
     </p>
 
     <table>
       <tbody>
-        <tr><td>this repository</td><td><strong>MIT</strong></td></tr>
+        <tr><td>this repository</td><td><strong>GPL-3.0-or-later</strong>, © 2026 Torben Gräber — the engines, the shells, the editors and the modules</td></tr>
         <tr><td><a href="https://github.com/iPlug2/iPlug2">iPlug2</a></td><td><strong>zlib</strong>, with the parts of WDL it compiles in (zlib); its IGraphics and standalone-app libraries are linked into nothing that ships</td></tr>
         <tr><td>VST3 SDK</td><td><strong>MIT</strong>, © 2026 Steinberg Media Technologies GmbH</td></tr>
         <tr><td>CLAP, clap-helpers</td><td><strong>MIT</strong>, © 2021 Alexandre Bique</td></tr>
         <tr><td>JSON for Modern C++</td><td><strong>MIT</strong>, © Niels Lohmann, compiled in by iPlug2's WebView editor; its Hedley header is <strong>CC0-1.0</strong></td></tr>
         <tr><td>the Rust standard library</td><td><strong>MIT OR Apache-2.0</strong>, in every plugin and every module, distributed here under MIT</td></tr>
+        <tr><td>Rust crates from crates.io</td><td>each under a licence on the allowlist below; THIRD_PARTY_LICENSES.md lists every one that ships, with its notice</td></tr>
         <tr><td>solid-js</td><td><strong>MIT</strong>, bundled into every editor</td></tr>
         <tr><td>vite's module-preload polyfill</td><td><strong>MIT</strong>, a few hundred bytes at the top of every editor's script; the rest of vite is a build tool and ships in nothing</td></tr>
         <tr><td>JetBrains Mono</td><td><strong>SIL OFL 1.1</strong> — this site serves <a href={url('fonts/OFL.txt')}>OFL.txt</a> with the font, and each plugin bundle carries it in <code>Contents/Resources/web/fonts/</code></td></tr>
-        <tr><td>the engines</td><td><strong>MIT</strong>, and they have <em>no external crates at all</em> — the FFT is one file in spectro-core rather than a dependency</td></tr>
-        <tr><td>NI Side-Chain's MIDI trigger</td><td>ported from <a href="https://github.com/charlesvestal/schwung-ducker">schwung-ducker</a>, <strong>MIT</strong>, © charlesvestal — a port is a derivative work, so its notice travels too</td></tr>
+        <tr><td>NI Side-Chain's MIDI trigger</td><td>ported from <a href="https://github.com/charlesvestal/schwung-ducker">schwung-ducker</a>, <strong>MIT</strong>, © 2026 Charles Vestal — a port is a derivative work, so its notice stays beside ours</td></tr>
       </tbody>
     </table>
 
-    <h2>Two things had to go to get here</h2>
+    <h2>How they combine</h2>
 
     <p>
-      Neither was a licensing decision on its own.
+      Every licence above is one GPLv3 can take in: MIT, zlib, Apache-2.0 and
+      the OFL ask for their notices to travel, and they do. A Rust crate is
+      linked only if its licence is on the allowlist — MIT, Apache-2.0,
+      BSD-2-Clause, BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, CC0-1.0,
+      Unlicense or GPL-3.0. Nothing else is, GPL-2.0-only included: it cannot
+      be combined with GPLv3.
     </p>
 
     <p>
-      <strong>JUCE 8 is AGPLv3-or-commercial</strong> — a <em>stronger</em>
-      obligation than GPL, not an equal one: while that target shipped, the
-      artefact had to be conveyed under AGPLv3. It is gone, and so is the
-      2,586-line editor it drew. That editor is not lost; it is the last commit
-      before the removal, and whatever draws the UI next is a translation of it
-      rather than a fresh design.
+      <strong>JUCE 9</strong>, the shell that replaces iPlug2, is
+      <strong>AGPLv3</strong>. GPLv3's section 13 allows a GPLv3 work to be
+      combined with an AGPLv3 one and the result conveyed: our part stays
+      under GPLv3, and AGPLv3's own section 13, on interaction through a
+      network, applies to the combination as such.
     </p>
 
     <p>
-      <strong>nih-plug is ISC, but <code>nih_export_vst3!()</code> is not.</strong>
-      It pulled in <a href="https://github.com/RustAudio/vst3-sys">vst3-sys</a>,
-      GPL-3.0-or-later — a third-party reimplementation of interfaces Steinberg
-      now publishes under MIT themselves. One crate, and it made the whole build
-      copyleft.
-    </p>
-
-    <p>
-      The premise behind both was that a VST3 plugin cannot be permissive. It
-      can: Steinberg withdrew the GPL-or-proprietary dual licence and the SDK is
-      MIT. That was worth checking rather than assuming, and checking it is what
-      made this repository MIT.
+      Until 2026-10-06 this repository was MIT, and that goal decided the
+      shell, the editor and the dependencies.
+      <a href={`${REPO}/blob/main/docs/adr/0001-gpl-3.0-or-later.md`}>The decision record</a>
+      says what it cost and why it changed.
     </p>
   </div>
 </Base>

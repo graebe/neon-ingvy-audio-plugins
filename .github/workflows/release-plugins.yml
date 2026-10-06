@@ -228,6 +228,10 @@ jobs:
           echo "zip=$OUT" >> "$GITHUB_OUTPUT"
           ls -la "$OUT"
 
+      # THE SOURCE IS LINKED FROM EVERY RELEASE. GPLv3 gives whoever receives a
+      # build the right to the source it was made from (section 6), and that
+      # source is exactly the tagged tree: its scripts fetch the pinned
+      # submodule and SDKs.
       - name: Release notes
         env:
           BUNDLE: ${{ steps.tag.outputs.bundle }}
@@ -261,8 +265,11 @@ jobs:
             fi
             echo
             echo "A host that has already scanned an older build needs to rescan."
-            echo "Licence: MIT; the third-party notices are in THIRD_PARTY_LICENSES.md,"
-            echo "in the zip and inside every bundle."
+            echo
+            echo "Licence: GPL-3.0-or-later. This build's source is the tag"
+            echo "[\`$GITHUB_REF_NAME\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME)."
+            echo "The licence and the third-party notices, LICENSE and"
+            echo "THIRD_PARTY_LICENSES.md, are in the zip and inside every bundle."
           } > "$RUNNER_TEMP/notes.md"
 
       - name: Create Release

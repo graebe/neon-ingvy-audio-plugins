@@ -185,22 +185,41 @@ repository's own Markdown — see [site/README.md](site/README.md).
 
 ## Licence
 
-**MIT**, © 2026 Torben Gräber — every part of it, with nothing copyleft in the
-chain.
+**GPL-3.0-or-later.** Copyright (C) 2026 Torben Gräber.
 
-| | |
-|---|---|
-| this repository | **MIT** |
-| [iPlug2](https://github.com/iPlug2/iPlug2) | **zlib**, with WDL (zlib) and JSON for Modern C++ (MIT) compiled in |
-| VST3 SDK | **MIT**, © 2026 Steinberg Media Technologies GmbH |
-| CLAP, clap-helpers | **MIT** |
-| Solid (in every editor) | **MIT** |
-| the Trance Gate engine (`engines/trance-gate`) | **MIT**, and it has no external crates at all |
-| the Spectrogram analyzer (`engines/spectro`) | **MIT**, and it has none either — the FFT is one file rather than a crate |
-| the audio bus (`engines/audio-bus`) | **MIT**, and it has no external crates either — it declares the six POSIX calls it needs rather than taking libc |
-| the Side-Chain engine (`engines/side-chain`) | **MIT**, no external crates. Part of it is a PORT and carries a notice — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) |
-| JetBrains Mono, bundled with every editor | **SIL OFL 1.1**, with `OFL.txt` beside the font in every bundle |
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. [LICENSE](LICENSE) is the licence's full text.
 
-See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for the notices those
-dependencies require.
+It was MIT until 2026-10-06, and the reasons for the change are in
+[docs/adr/0001-gpl-3.0-or-later.md](docs/adr/0001-gpl-3.0-or-later.md).
 
+### How the licences combine
+
+Everything this repository builds on is under a licence GPLv3 can take in, and
+every part keeps its own notice: a permissive licence's conditions travel with
+the copy rather than being replaced by ours.
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) holds them all, and ships
+inside every bundle and every module beside `LICENSE`.
+
+| | licence | how it combines |
+|---|---|---|
+| this repository | **GPL-3.0-or-later** | |
+| JUCE 9, the plugin shell that replaces iPlug2 | **AGPLv3** | GPLv3 section 13 allows a GPLv3 work to be combined with an AGPLv3 one and the result conveyed: our part stays under GPLv3, and AGPLv3's own section 13, on interaction through a network, applies to the combination as such |
+| VST3 SDK | **MIT** since 3.8 | permissive; Steinberg withdrew the GPLv3-or-proprietary dual licence with 3.8.0 |
+| iPlug2 with WDL, the shell until JUCE replaces it | **zlib** | permissive |
+| CLAP, clap-helpers, JSON for Modern C++ (compiled in by iPlug2) | **MIT** | permissive |
+| Rust crates from crates.io | each under a licence on the project's allowlist: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, CC0-1.0, Unlicense or GPL-3.0 | nothing else may be linked, GPL-2.0-only included: it cannot be combined with GPLv3 |
+| the Side-Chain's MIDI trigger, ported from [schwung-ducker](https://github.com/charlesvestal/schwung-ducker) | **MIT**, © 2026 Charles Vestal | a port is a derivative work, so its notice stays beside ours |
+| JetBrains Mono, in every editor | **SIL OFL 1.1** | `OFL.txt` travels with the font |
+
+### The source
+
+GPLv3 gives everyone who receives a plugin or a module the right to the source
+it was built from (section 6). **Every release links its tagged source**: the
+release notes name the tag the build came from and link that tag's tree, whose
+scripts fetch the pinned submodule and SDKs (`scripts/fetch-sdks.sh`). A build
+made from anything but a tag is not a release.

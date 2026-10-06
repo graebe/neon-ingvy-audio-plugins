@@ -3,7 +3,7 @@ name = "sc-capi"
 version = "2026.10.6+5"
 edition = "2021"
 authors = ["Torben Gräber"]
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "The sc_core_* C ABI over the NI Side-Chain engine"
 
 [lib]

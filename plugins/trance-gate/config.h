@@ -2,13 +2,11 @@
  * Trance Gate -- iPlug2 build configuration.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * WHY iPlug2 AND NOT JUCE. JUCE is GPLv3-or-commercial, and it was the only
- * reason this repository could not be MIT. Nothing here needed it: of the 62
- * distinct juce:: symbols the old build used, 26 were drawing, 8 were the
- * format wrappers and 12 were utility -- and none of them were DSP, which has
- * been Rust for some time. iPlug2 is zlib-licensed and covers all of it, and
- * Steinberg relicensed the VST3 SDK to MIT, so the format costs nothing
- * either.
+ * WHY iPlug2 AND NOT JUCE. JUCE's AGPLv3 was the only reason this repository
+ * could not be MIT, and nothing here needed it: of the 62 distinct juce::
+ * symbols the old build used, 26 were drawing, 8 were the format wrappers and
+ * 12 were utility -- none was DSP. The repository is GPL-3.0-or-later now,
+ * and JUCE replaces iPlug2 (docs/adr/0002-juce-native-editors.md).
  */
 #pragma once
 

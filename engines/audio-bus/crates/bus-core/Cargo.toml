@@ -2,13 +2,13 @@
 name = "bus-core"
 version = "2026.10.6+5"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "A shared-memory audio bus: one writer, many readers, across processes"
 
-# NO DEPENDENCIES, for the reason spectro-core states: every byte in the
-# artefact is permissive AND ACCOUNTED FOR. This crate needs six POSIX calls
-# and declares them itself (shm.rs) rather than pulling in libc -- which is
-# MIT/Apache-2.0 and would be fine, but is 80,000 lines to borrow `mmap` from.
+# NO DEPENDENCIES YET. This crate needs six POSIX calls and declares them
+# itself (shm.rs) rather than pulling in libc: a rule from when the project was
+# MIT and every crate cost a row of notices. docs/adr/0003-established-rust-crates.md
+# reverses it and names libc and windows-sys as the replacement.
 [dependencies]
 
 # The counting allocator the no_alloc test installs. Test-only.

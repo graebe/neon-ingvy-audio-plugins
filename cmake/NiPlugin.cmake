@@ -112,9 +112,10 @@ endfunction()
 
 # ------------------------------------------------------------ the plugins
 #
-# THE NOTICES TRAVEL INSIDE EVERY BUNDLE. MIT asks that the notice accompany
-# every copy, and a bundle is copied on its own. scripts/check-licenses.mjs
-# --bundles checks they arrived.
+# THE NOTICES TRAVEL INSIDE EVERY BUNDLE. The GPL asks that every copy come
+# with the licence, the permissive licences of what is compiled in ask the same
+# of their notices, and a bundle is copied on its own.
+# scripts/check-licenses.mjs --bundles checks they arrived.
 set(NI_BUNDLE_NOTICES
     ${CMAKE_SOURCE_DIR}/LICENSE
     ${CMAKE_SOURCE_DIR}/THIRD_PARTY_LICENSES.md)

@@ -69,8 +69,8 @@ jobs:
       # catalog happily points at -- a 404 on install, reported as "the module
       # is broken" rather than as a release that was never built.
       #
-      # AND THE NOTICES ARE IN IT. MIT asks that the notice accompany every
-      # copy, and a tarball is the only thing that reaches a device.
+      # AND THE NOTICES ARE IN IT. The GPL asks that every copy come with the
+      # licence, and a tarball is the only thing that reaches a device.
       - name: Verify the artifact
         env:
           ID: ${{ steps.tag.outputs.module_id }}
