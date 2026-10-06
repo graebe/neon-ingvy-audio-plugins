@@ -38,7 +38,7 @@ Everything quick runs, and:
 | label | what |
 |---|---|
 | `render` | the render A/B goldens: four seconds through each plugin's audio path, hashed |
-| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each |
+| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | every built bundle carries its notices |
 | `site` | every root-relative link on the built site resolves |

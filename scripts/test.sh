@@ -22,9 +22,9 @@
 # one exception in the validator stage: auval and pluginval's AU pass find their
 # component through the system's registry, which lists INSTALLED components,
 # so they validate the installed AU, not <dir>'s. The ctest AU tests (tg_au,
-# sc_au, au_stress_*) load build/out's bundles by path, registered in their own
-# process only (tests/au_bundle.h), and never look at what is installed. The
-# VST3 and CLAP bundles are validated from <dir>.
+# sc_au, au_stress_*, au_ground_*) load build/out's bundles by path, registered
+# in their own process only (tests/au_bundle.h), and never look at what is
+# installed. The VST3 and CLAP bundles are validated from <dir>.
 # Nothing is ever written there: a build directory this script configures has
 # -DIPLUG_DEPLOY_PLUGINS=OFF. The validators themselves are downloaded, pinned
 # and checksummed, into build/validators (scripts/validate-plugins.sh).

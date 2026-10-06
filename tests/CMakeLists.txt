@@ -222,6 +222,24 @@ if (APPLE)
                  COMMAND au_stress ${NI_BUNDLES}/NI${plugin}.component
                          ${NI_AU_STRESS_SECONDS} 2)
     endforeach()
+
+    # THE GROUND KEEPS THE HOST'S TIME, end to end, in every plugin: silent
+    # audio, a 120 BPM 4/4 transport through the host callbacks, the real
+    # editor opened through the bundle's own Cocoa view factory, and the rings
+    # read where they land -- in the page. Eight in four seconds, every fourth
+    # strong, none once stopped. au_ground.m.
+    add_executable(au_ground au_ground.m)
+    target_include_directories(au_ground PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_options(au_ground PRIVATE -fobjc-arc)
+    target_link_libraries(au_ground PRIVATE ${NI_AU_LIBS}
+                          "-framework AppKit" "-framework WebKit")
+    # RUN_SERIAL: the rings are timed on the wall clock, and four browsers
+    # rendering beside it would be measuring the machine.
+    foreach(plugin TranceGate SideChain Spectrogram ListenIn)
+        add_test(NAME au_ground_${plugin}
+                 COMMAND au_ground ${NI_BUNDLES}/NI${plugin}.component)
+        set_tests_properties(au_ground_${plugin} PROPERTIES RUN_SERIAL TRUE)
+    endforeach()
 endif()
 
 # ---------------------------------------------------------------- Spectrogram
@@ -623,6 +641,8 @@ ni_test_tiers(
         tg_au:host sc_au:host
         au_stress_TranceGate:host au_stress_SideChain:host
         au_stress_Spectrogram:host au_stress_ListenIn:host
+        au_ground_TranceGate:host au_ground_SideChain:host
+        au_ground_Spectrogram:host au_ground_ListenIn:host
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)
