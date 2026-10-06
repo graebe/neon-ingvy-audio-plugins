@@ -39,7 +39,7 @@ export const setDepth = (i, amount) =>
   sendMessage(MSG.setDepth, `${i}:${Math.max(0, Math.min(1, amount)).toFixed(4)}`);
 
 /*
- * A DRAG'S AMOUNTS, AT MOST ONCE A FRAME. pointermove fires far faster than
+ * A DRAG'S AMOUNTS, AT MOST ONCE PER ~16 MS. pointermove fires far faster than
  * anything can be drawn or heard, and each setDepth is a message across the
  * bridge and an edit for the audio thread.
  */
