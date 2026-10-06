@@ -128,6 +128,15 @@ export async function freezeClock(page) {
 }
 
 /**
+ * Motion off, through the editor's own remembered setting, before the page
+ * loads: the ground draws its static design and never animates. `key` is the
+ * editor's motion key, its plugin's folder name.
+ */
+export const motionOff = (page, key) => page.addInitScript((k) => {
+  try { localStorage.setItem(`ultraviolet.motion.${k}`, '0'); } catch { /* none */ }
+}, key);
+
+/**
  * THE SCREENSHOT'S PREPARATION, and every line of it is determinism.
  *
  *   - Motion off, through the editor's own remembered setting, BEFORE the page
@@ -139,9 +148,7 @@ export async function freezeClock(page) {
  *     on every run on every machine.
  */
 export async function openForScreenshot(page, plugin, motionKey, query = '') {
-  await page.addInitScript((key) => {
-    try { localStorage.setItem(`ultraviolet.motion.${key}`, '0'); } catch { /* none */ }
-  }, motionKey);
+  await motionOff(page, motionKey);
   await freezeClock(page);
   await page.goto(harnessUrl(plugin, query));
   await page.clock.runFor(2000);
