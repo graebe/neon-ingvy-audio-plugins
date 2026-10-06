@@ -68,16 +68,6 @@
 }
 .spacer { flex: 1; }
 
-/* Only ever visible for the moment it takes to press the shortcut, so it is
- * sized to the hint it carries rather than to the row. */
-.paste-field {
-  width: 132px; height: var(--control-h);
-  background: var(--bg-000); border: 1px solid var(--uv);
-  box-shadow: var(--glow-focus);
-  color: var(--ink); font: inherit; text-align: center; outline: none;
-}
-.paste-field::placeholder { color: var(--ink-muted); }
-
 /*
  * THE BAND: the two plots occupy it one at a time, and the tab strip is laid
  * OVER the plot's right edge rather than taking a column -- which is what lets

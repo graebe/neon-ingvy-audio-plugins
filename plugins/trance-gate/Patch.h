@@ -10,6 +10,7 @@
 #pragma once
 
 #include "IPlugStructs.h"
+#include "ni/Clipboard.h"
 #include "tg_shell.h"
 
 #include <cstdint>
@@ -34,7 +35,6 @@ enum class Edit
   Depth,      /* "<index>:<0..1>"                                  */
   Order,      /* "<index>:<rank>"                                  */
   Randomize,  /* "" or a seed                                      */
-  Paste,      /* a whole state blob; the host then follows it      */
 };
 
 /* Posts one edit to the engine; false for a payload that is not one. */
@@ -99,10 +99,30 @@ std::string FileName(FileKind kind, int slot);
  * words. True when written; `status` says what happened either way. */
 bool ExportFile(tg_shell_t* gate, const HostValue& value, FileKind kind, int slot,
                 const std::string& path, std::string& status);
-/* Reads `path` and imports it (tg_shell_import): a slot file into the current
- * slot, a bank into all eight. True when queued; a file refused changes
- * nothing, and `status` says why. */
+/* Reads `path` and imports it (tg_shell_import): a slot file into `slot` --
+ * the host's current slot, 1-based, carried with the import -- a bank into all
+ * eight. True when queued; a file refused changes nothing, and `status` says
+ * why. */
 bool ImportFile(tg_shell_t* gate, int slot, const std::string& path, std::string& status);
+
+/*
+ * COPY AND PASTE, between the engine and the clipboard. The main thread, as the
+ * clipboard is (ni/Clipboard.h). `slot` is the host's current slot, 1-based:
+ * the words name it, and a pasted slot goes into it. `status` says what
+ * happened either way, for the hint bar.
+ *
+ * CopySlot puts the current slot on the clipboard as a slot file's text, as
+ * the next block will hold it -- the host's values included, as for an export.
+ *
+ * Paste reads the clipboard and lets the engine decide what it holds
+ * (tg_shell_paste): a slot replaces the current slot, a bank all eight, a whole
+ * patch -- what Copy wrote before slots, and the Move's -- everything. True
+ * when queued; the host then follows the current slot (Follow). Anything else
+ * is refused with the engine's reason and changes nothing.
+ */
+bool CopySlot(tg_shell_t* gate, const HostValue& value, int slot, ni::Clipboard& clipboard,
+              std::string& status);
+bool Paste(tg_shell_t* gate, int slot, ni::Clipboard& clipboard, std::string& status);
 
 } // namespace patch
 } // namespace tg

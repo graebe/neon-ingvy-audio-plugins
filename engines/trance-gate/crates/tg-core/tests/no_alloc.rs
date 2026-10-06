@@ -112,6 +112,11 @@ fn process_set_param_and_get_param_allocate_nothing() {
     let _ = p.import(&bank);
     let _ = p.import(&slot);
     let _ = p.import("{\"format\": \"nothing\"}");
+    /* A paste is applied on the audio thread, whatever it holds. */
+    let _ = p.paste(&slot);
+    let _ = p.paste(&bank);
+    let _ = p.paste(&state);
+    let _ = p.paste("not a patch");
     p.export(tg_core::slotfile::Kind::Bank, &mut file);
     ni_testkit::disarm();
 

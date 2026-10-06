@@ -25,6 +25,7 @@ use shell_core::{Bridge, Model, Text};
 use std::ffi::{c_char, c_int, CStr};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use tg_core::params::Param;
+use tg_core::paste::{Holds, Refused};
 use tg_core::slotfile::{Error as SlotFileError, Kind};
 use tg_core::Playhead;
 
@@ -47,9 +48,11 @@ const CMD_PARAMS: u8 = b'P';
 const CMD_SAMPLE_RATE: u8 = b'S';
 /* A host's state load: the host's fifteen values, then the blob. */
 const CMD_LOAD: u8 = b'L';
-/* The editor's paste: a blob whose current slot the host must then follow. */
+/* The editor's paste: a slot, a bank or a whole patch, checked on the posting
+ * side; the host then follows the current slot. */
 const CMD_PASTE: u8 = b'V';
-/* An imported slot file, checked on the posting side: the same follow. */
+/* An imported slot file, checked on the posting side: the target slot, then
+ * the text; the same follow. */
 const CMD_IMPORT: u8 = b'I';
 
 /// The host parameters, TG_P_COUNT of them.
@@ -125,14 +128,17 @@ impl Model for TgCore {
                 }
             }
             CMD_PASTE => {
-                if let Ok(blob) = core::str::from_utf8(body) {
-                    self.0.set_param("state", blob);
-                    self.2 = self.2.wrapping_add(1);
+                let Some((&slot, text)) = body.split_first() else { return };
+                if let Ok(text) = core::str::from_utf8(text) {
+                    if self.0.paste_into(slot as usize, text).is_ok() {
+                        self.2 = self.2.wrapping_add(1);
+                    }
                 }
             }
             CMD_IMPORT => {
-                if let Ok(text) = core::str::from_utf8(body) {
-                    if self.0.import(text).is_ok() {
+                let Some((&slot, text)) = body.split_first() else { return };
+                if let Ok(text) = core::str::from_utf8(text) {
+                    if self.0.import_into(slot as usize, text).is_ok() {
                         self.2 = self.2.wrapping_add(1);
                     }
                 }
@@ -509,11 +515,16 @@ pub unsafe extern "C" fn tg_shell_export(
 /// reason, in words, NUL-terminated in `err` (may be null). Any non-audio
 /// thread.
 ///
+/// `slot` (0-based) is where a slot file goes, carried in the command for the
+/// reason `tg_shell_paste` carries it. Out of range is the engine's current
+/// slot.
+///
 /// # Safety
 /// `text` is null or NUL-terminated; `err` holds `err_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_shell_import(
     sh: *const TgShell,
+    slot: c_int,
     text: *const c_char,
     err: *mut c_char,
     err_len: c_int,
@@ -539,8 +550,9 @@ pub unsafe extern "C" fn tg_shell_import(
         Ok(k) => k,
         Err(e) => return say(e),
     };
-    let mut cmd = Vec::with_capacity(text.len() + 1);
+    let mut cmd = Vec::with_capacity(text.len() + 2);
     cmd.push(CMD_IMPORT);
+    cmd.push(u8::try_from(slot).unwrap_or(u8::MAX));
     cmd.extend_from_slice(text.as_bytes());
     if !sh.bridge.post(&cmd) {
         return say(SlotFileError::TooLarge);
@@ -670,19 +682,66 @@ pub unsafe extern "C" fn tg_shell_load(sh: *const TgShell, blob: *const c_char, 
     sh.bridge.post(&cmd) as c_int
 }
 
-/// The editor's paste: a whole patch, after which the host's parameters follow
-/// the engine's current slot (`tg_shell_take_params`). Any non-audio thread;
-/// returns 1 when queued, 0 for an empty or oversized blob.
+/// The editor's paste of the clipboard's text: classified here, whole, and
+/// queued only when good (`tg_core::paste`) -- a slot replaces the current
+/// slot, a bank all eight, a whole patch everything -- after which the host's
+/// parameters follow the current slot (`tg_shell_take_params`). Returns 1 for
+/// a slot, 2 for a bank, 3 for a patch, or 0 with the reason, in words,
+/// NUL-terminated in `err` (may be null); nothing changes then. Any non-audio
+/// thread.
+///
+/// `slot` (0-based) is where a slot goes: the host's current slot as the
+/// person saw it, carried in the command because the host's Slot may move in
+/// the very block the paste is applied in, after it. Out of range is the
+/// engine's current slot.
+///
+/// `text` is `len` bytes, not NUL-terminated: a clipboard holds anything,
+/// a NUL included, and that must be refused rather than cut short.
 ///
 /// # Safety
-/// `blob` is null or NUL-terminated.
+/// `text` is null or holds `len` bytes; `err` holds `err_len` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn tg_shell_paste(sh: *const TgShell, blob: *const c_char) -> c_int {
+pub unsafe extern "C" fn tg_shell_paste(
+    sh: *const TgShell,
+    slot: c_int,
+    text: *const c_char,
+    len: c_int,
+    err: *mut c_char,
+    err_len: c_int,
+) -> c_int {
+    let say = |r: Refused| {
+        if !err.is_null() && err_len > 0 {
+            let out = std::slice::from_raw_parts_mut(err as *mut u8, err_len as usize);
+            let mut b = tg_core::fmt::Buf::new(out);
+            let _ = r.describe(&mut b);
+            b.finish();
+        }
+        0
+    };
     let Some(sh) = sh.as_ref() else { return 0 };
-    let Some(b) = s(blob).filter(|b| !b.is_empty()) else { return 0 };
-    let mut cmd = vec![CMD_PASTE];
-    cmd.extend_from_slice(b.as_bytes());
-    sh.bridge.post(&cmd) as c_int
+    /* Bytes that are not text hold no slot either. */
+    let text = if text.is_null() || len <= 0 { "" } else {
+        match core::str::from_utf8(std::slice::from_raw_parts(text as *const u8, len as usize)) {
+            Ok(t) => t,
+            Err(_) => return say(Refused::NotTranceGate),
+        }
+    };
+    let holds = match tg_core::paste::classify(text) {
+        Ok(h) => h,
+        Err(r) => return say(r),
+    };
+    let mut cmd = Vec::with_capacity(text.len() + 2);
+    cmd.push(CMD_PASTE);
+    cmd.push(u8::try_from(slot).unwrap_or(u8::MAX));
+    cmd.extend_from_slice(text.as_bytes());
+    if !sh.bridge.post(&cmd) {
+        return say(Refused::NotTranceGate);
+    }
+    match holds {
+        Holds::Slot => 1,
+        Holds::Bank => 2,
+        Holds::Patch => 3,
+    }
 }
 
 /// One cycle of the pattern in ms, as last published -- the scope's axis. A
@@ -969,12 +1028,86 @@ mod tests {
         src.set_param("length", "3");
         let mut buf = vec![0u8; TEXT_MAX];
         let n = src.get_param("state", &mut buf) as usize;
-        let blob = CString::new(&buf[..n]).unwrap();
-        assert_eq!(unsafe { tg_shell_paste(sh, blob.as_ptr()) }, 1);
+        let blob = std::str::from_utf8(&buf[..n]).unwrap();
+        assert_eq!(paste_into(sh, 0, blob), (3, String::new()));
         push_block(sh, &host(0.0, 15.0, 1.0));
         assert_eq!(take(sh), Some(host(0.0, 3.0, 0.3f32 as f64)), "the pasted slot wins over the host");
         assert_eq!(read(sh, "length"), "3");
-        assert_eq!(unsafe { tg_shell_paste(sh, std::ptr::null()) }, 0);
+        assert_eq!(unsafe { tg_shell_paste(sh, 0, std::ptr::null(), 0, std::ptr::null_mut(), 0) }, 0);
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn a_paste_queued_with_a_slot_switch_lands_in_the_new_slot() {
+        /* The Slot moved and the paste was posted before any block ran: the
+         * block applies the paste, then sees the switch. The paste goes where
+         * the person was looking, not into the slot being left. */
+        let sh = tg_shell_create(48000.0);
+        let one = host(0.0, 3.0, 0.3);
+        push_block(sh, &one);
+        let copied = export(sh, &one, false);
+        let blank = export(sh, &host(1.0, 15.0, 1.0), false);
+        assert_eq!(paste_into(sh, 1, &copied).0, 1);
+        push_block(sh, &host(1.0, 15.0, 1.0));
+        assert_eq!(take(sh), Some(host(1.0, 3.0, 0.3f32 as f64)));
+        push_block(sh, &host(0.0, 3.0, 0.3f32 as f64));
+        assert_eq!(take(sh), Some(host(0.0, 3.0, 0.3f32 as f64)), "slot 1 kept its own");
+        assert_ne!(copied, blank);
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn an_import_queued_with_a_slot_switch_lands_in_the_new_slot() {
+        /* As for a paste: the Slot moved and the import was posted before any
+         * block ran. The import goes into the slot the person selected. */
+        let sh = tg_shell_create(48000.0);
+        let one = host(0.0, 3.0, 0.3);
+        push_block(sh, &one);
+        let file = export(sh, &one, false);
+        assert_eq!(import_into(sh, 1, &file).0, 1);
+        push_block(sh, &host(1.0, 15.0, 1.0));
+        assert_eq!(take(sh), Some(host(1.0, 3.0, 0.3f32 as f64)), "slot 2 holds the import");
+        push_block(sh, &host(0.0, 3.0, 0.3f32 as f64));
+        assert_eq!(take(sh), Some(host(0.0, 3.0, 0.3f32 as f64)), "slot 1 kept its own");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    fn paste_into(sh: *const TgShell, slot: c_int, text: &str) -> (c_int, String) {
+        let mut err = [0u8; 256];
+        let r = unsafe {
+            tg_shell_paste(sh, slot, text.as_ptr() as *const c_char, text.len() as c_int, err.as_mut_ptr() as *mut c_char, 256)
+        };
+        let n = err.iter().position(|&b| b == 0).unwrap_or(0);
+        (r, String::from_utf8(err[..n].to_vec()).unwrap())
+    }
+
+    #[test]
+    fn a_copied_slot_pastes_into_the_current_slot_and_the_host_follows() {
+        /* Copy slot 1, switch to slot 2, paste: slot 2 sounds like slot 1. */
+        let sh = tg_shell_create(48000.0);
+        let one = host(0.0, 3.0, 0.3);
+        push_block(sh, &one);
+        let copied = export(sh, &one, false);
+        let two = host(1.0, 15.0, 1.0);
+        push_block(sh, &two);
+        let _ = take(sh);
+        assert_eq!(paste_into(sh, 1, &copied), (1, String::new()));
+        push_block(sh, &two);
+        assert_eq!(take(sh), Some(host(1.0, 3.0, 0.3f32 as f64)), "the host follows the pasted slot");
+        assert_eq!(export(sh, &host(1.0, 3.0, 0.3f32 as f64), false), copied);
+        /* Slot 1 is as it was. */
+        push_block(sh, &host(0.0, 3.0, 0.3f32 as f64));
+        assert_eq!(take(sh), Some(host(0.0, 3.0, 0.3f32 as f64)));
+
+        /* Garbage is refused with a reason, and nothing moves. */
+        let before = read(sh, "state");
+        assert_eq!(paste_into(sh, 0, "hello"), (0, "The clipboard doesn't hold a Trance Gate slot.".into()));
+        assert_eq!(paste_into(sh, 0, &copied.replace("\"sound\"", "\"sou\0nd\"")).0, 0, "a NUL is refused, not cut short");
+        assert_eq!(paste_into(sh, 0, ""), (0, "The clipboard is empty.".into()));
+        assert_eq!(unsafe { tg_shell_paste(sh, 0, std::ptr::null(), 0, std::ptr::null_mut(), 0) }, 0);
+        push_block(sh, &host(0.0, 3.0, 0.3f32 as f64));
+        assert_eq!(take(sh), None);
+        assert_eq!(read(sh, "state"), before);
         unsafe { tg_shell_destroy(sh) };
     }
 
@@ -987,10 +1120,15 @@ mod tests {
         String::from_utf8(buf[..n as usize].to_vec()).unwrap()
     }
 
+    /* Into the engine's current slot, as every caller before the slot did. */
     fn import(sh: *const TgShell, text: &str) -> (c_int, String) {
+        import_into(sh, -1, text)
+    }
+
+    fn import_into(sh: *const TgShell, slot: c_int, text: &str) -> (c_int, String) {
         let t = CString::new(text).unwrap();
         let mut err = [0u8; 256];
-        let r = unsafe { tg_shell_import(sh, t.as_ptr(), err.as_mut_ptr() as *mut c_char, 256) };
+        let r = unsafe { tg_shell_import(sh, slot, t.as_ptr(), err.as_mut_ptr() as *mut c_char, 256) };
         let n = err.iter().position(|&b| b == 0).unwrap_or(0);
         (r, String::from_utf8(err[..n].to_vec()).unwrap())
     }
@@ -1034,7 +1172,7 @@ mod tests {
         push_block(b, &host(0.0, 15.0, 1.0));
         assert_eq!(read(b, "state"), before, "and nothing changed");
         assert_eq!(take(b), None);
-        assert_eq!(unsafe { tg_shell_import(b, std::ptr::null(), std::ptr::null_mut(), 0) }, 0);
+        assert_eq!(unsafe { tg_shell_import(b, 0, std::ptr::null(), std::ptr::null_mut(), 0) }, 0);
         unsafe { tg_shell_destroy(a) };
         unsafe { tg_shell_destroy(b) };
     }

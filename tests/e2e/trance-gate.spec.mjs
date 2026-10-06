@@ -14,7 +14,7 @@ import {
 
 const W = 824, H = 752;
 /* lib/msg.js */
-const MSG = { exportFile: 107, importFile: 108, patch: 67, setStep: 96, setDepth: 97, requestPatch: 99, setOrder: 103, randomize: 104 };
+const MSG = { exportFile: 107, importFile: 108, copySlot: 109, pasteSlot: 110, setStep: 96, setDepth: 97, setOrder: 103, randomize: 104 };
 const P = { slot: 0, length: 1, rate: 2, timeMode: 4, amount: 6, width: 7, attack: 8 };
 
 test.use({ viewport: { width: W, height: H } });
@@ -238,35 +238,6 @@ test('only the Length knob has detents', async ({ page }) => {
   await expect(page.locator('svg.knob[aria-label="Length"]').locator('.knob-tick')).toHaveCount(4);
 });
 
-test('copy and paste carry the pattern through the clipboard', async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await open(page, 'trance-gate');
-  await clearSent(page);
-  await page.getByRole('button', { name: 'Copy gate config' }).click();
-  expect(await texts(page, MSG.requestPatch)).toEqual(['']);
-  /* The mock answers with the patch; the editor puts it on the clipboard. */
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()))
-    .toBe('tg1:slot=0:len=16:steps=5555');
-
-  await page.getByRole('button', { name: 'Paste gate config' }).click();
-  await expect.poll(() => texts(page, MSG.patch)).toEqual(['tg1:slot=0:len=16:steps=5555']);
-});
-
-test('paste falls back to a field when the clipboard cannot be read', async ({ page }) => {
-  await open(page, 'trance-gate');
-  await clearSent(page);
-  await page.getByRole('button', { name: 'Paste gate config' }).click();
-  const field = page.locator('.paste-field');
-  await expect(field).toBeFocused();
-  await field.evaluate((el) => {
-    const data = new DataTransfer();
-    data.setData('text', 'tg1:slot=2:len=8:steps=00FF');
-    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-  });
-  await expect(field).toHaveCount(0);
-  expect(await texts(page, MSG.patch)).toEqual(['tg1:slot=2:len=8:steps=00FF']);
-});
-
 test('the stage readouts follow Env Time between ms and %', async ({ page }) => {
   await open(page, 'trance-gate');
   const attack = page.getByRole('button', { name: 'Attack value' });
@@ -360,6 +331,58 @@ test('IMPORT of a bank replaces all eight slots', async ({ page }) => {
   await page.getByRole('combobox', { name: 'Slot' }).selectOption({ value: '1' });
   await expect(amount).toHaveAttribute('aria-valuenow', '0.4');
   await expect(page.getByRole('slider', { name: 'Width' })).toHaveAttribute('aria-valuenow', '0.5');
+});
+
+/* Every pad's description: the pattern as the grid shows it. */
+const padLabels = (page) => page.locator('.grid [data-step]').evaluateAll(
+  (pads) => pads.map((p) => p.getAttribute('aria-label')));
+
+test('copy slot 1, select slot 2, paste: slot 2 holds slot 1\'s sound and pattern', async ({ page }) => {
+  await open(page, 'trance-gate');
+  const amount = page.getByRole('slider', { name: 'Amount' });
+  const width = page.getByRole('slider', { name: 'Width' });
+  const slot = page.getByRole('combobox', { name: 'Slot' });
+  await expect(pad(page, 4)).toHaveAttribute('aria-label', /50 %/);
+  const one = await padLabels(page);
+
+  await page.getByRole('button', { name: /^Copy/ }).click();
+  await expectStatus(page, 'Copied', 'slot 1.');
+  /* The plugin wrote the clipboard -- the page never touched it. */
+  expect(await page.evaluate(() => window.__clipboard)).toContain('"format": "ni-trance-gate-slot"');
+
+  await slot.selectOption({ value: '1' });
+  await expect(amount).toHaveAttribute('aria-valuenow', '1');
+  await expect.poll(() => padLabels(page)).not.toEqual(one);
+  await clearSent(page);
+
+  await page.getByRole('button', { name: /^Paste/ }).click();
+  await expectStatus(page, 'Pasted', 'into slot 2.');
+  expect(await texts(page, MSG.pasteSlot)).toEqual(['']);
+  await expect(amount).toHaveAttribute('aria-valuenow', '0.9');
+  await expect(width).toHaveAttribute('aria-valuenow', '0.75');
+  await expect.poll(() => padLabels(page)).toEqual(one);
+  /* The recall is the plugin's: the editor sent the paste and nothing else. */
+  expect((await sent(page)).filter((m) => m.msg === 'SPVFUI')).toEqual([]);
+
+  /* Slot 1 is as it was. */
+  await slot.selectOption({ value: '0' });
+  await expect(amount).toHaveAttribute('aria-valuenow', '0.9');
+  await expect.poll(() => padLabels(page)).toEqual(one);
+});
+
+test('pasting what is not a slot is refused, and nothing changes', async ({ page }) => {
+  await open(page, 'trance-gate');
+  const amount = page.getByRole('slider', { name: 'Amount' });
+  const one = await padLabels(page);
+  await page.evaluate(() => { window.__clipboard = 'https://example.com/a-link'; });
+  await clearSent(page);
+  await page.getByRole('button', { name: /^Paste/ }).click();
+  await expectStatus(page, 'Failed', "to paste: The clipboard doesn't hold a Trance Gate slot.");
+  await expect(amount).toHaveAttribute('aria-valuenow', '0.9');
+  expect(await padLabels(page)).toEqual(one);
+  expect((await sent(page)).filter((m) => m.msg === 'SPVFUI')).toEqual([]);
+  /* Nothing to paste INTO, either: the editor has no field of its own. */
+  await expect(page.locator('main input:not([type])')).toHaveCount(0);
 });
 
 test('the band switches between the pattern and the live signal', async ({ page }) => {

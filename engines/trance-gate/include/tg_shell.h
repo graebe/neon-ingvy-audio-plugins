@@ -77,13 +77,16 @@ int  tg_shell_save(tg_shell_t *s, const double *values, int n, char *buf, int bu
  * tg_shell_save. Returns the length written, or -1.
  *
  * tg_shell_import: checks `text` whole and queues it only when good -- a slot
- * file replaces the current slot, a bank all eight, after which the host
- * follows (tg_shell_take_params). Returns 1 for a slot, 2 for a bank, or 0 with
- * the reason in words in `err` (may be NULL); nothing changes then.
+ * file replaces `slot` (0-based, the host's current slot; out of range is the
+ * engine's), a bank all eight, after which the host follows
+ * (tg_shell_take_params). The slot travels with the import, as with
+ * tg_shell_paste: the host may move its Slot in the block the import lands in.
+ * Returns 1 for a slot, 2 for a bank, or 0 with the reason in words in `err`
+ * (may be NULL); nothing changes then.
  */
 #define TG_SLOTFILE_MAX 16384
 int  tg_shell_export(tg_shell_t *s, const double *values, int n, int all, char *buf, int buf_len);
-int  tg_shell_import(tg_shell_t *s, const char *text, char *err, int err_len);
+int  tg_shell_import(tg_shell_t *s, int slot, const char *text, char *err, int err_len);
 
 /* One cycle of the pattern in ms, as last published: the scope's axis. */
 double tg_shell_cycle_ms(tg_shell_t *s);
@@ -106,9 +109,26 @@ int  tg_shell_take_params(tg_shell_t *s, double *out, int n);
  * all eight, and these values are it. Returns 1 when queued.
  */
 int  tg_shell_load(tg_shell_t *s, const char *blob, const double *values, int n);
-/* The editor's paste of a whole patch: the host then follows the engine's
- * current slot (tg_shell_take_params). Returns 1 when queued. */
-int  tg_shell_paste(tg_shell_t *s, const char *blob);
+/*
+ * PASTE: the clipboard's `len` bytes of text, classified whole by the engine (tg-core's
+ * paste.rs) and queued only when good, after which the host follows the
+ * current slot (tg_shell_take_params):
+ *
+ *   TG_PASTE_SLOT   a slot file's text      replaces the current slot
+ *   TG_PASTE_BANK   a bank file's text      replaces all eight
+ *   TG_PASTE_PATCH  a whole state blob      replaces the patch -- what Copy
+ *                                           wrote before slots, and the Move's
+ *
+ * Anything else returns 0 with the reason in words in `err` (may be NULL), and
+ * nothing changes. A slot goes into `slot` (0-based), the host's current slot
+ * as the person saw it: the host may move its Slot in the very block the paste
+ * lands in, after it. Out of range is the engine's current slot. Copy is
+ * tg_shell_export with `all` 0.
+ */
+#define TG_PASTE_SLOT  1
+#define TG_PASTE_BANK  2
+#define TG_PASTE_PATCH 3
+int  tg_shell_paste(tg_shell_t *s, int slot, const char *text, int len, char *err, int err_len);
 
 /* ---- the audio thread ---- */
 

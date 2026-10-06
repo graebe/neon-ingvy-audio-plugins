@@ -245,16 +245,10 @@ bool TranceGate::OnEditorMessage(int tag, const std::string& arg)
     case kMsgSetDepth: tg::patch::Post(mShell, Edit::Depth, arg); return true;
     case kMsgSetOrder: tg::patch::Post(mShell, Edit::Order, arg); return true;
     case kMsgRandomize: tg::patch::Post(mShell, Edit::Randomize, arg); return true;
-    case kMsgPatch: tg::patch::Post(mShell, Edit::Paste, arg); return true;
     case kMsgExportFile: ExportFile(arg == "bank"); return true;
     case kMsgImportFile: ImportFile(); return true;
-    case kMsgRequestPatch:
-    {
-      char blob[TG_STATE_MAX];
-      if (tg_shell_read(mShell, "state", blob, int(sizeof blob)) > 0)
-        SendFramed(kMsgPatch, blob, int(strlen(blob)));
-      return true;
-    }
+    case kMsgCopySlot: CopySlot(); return true;
+    case kMsgPasteSlot: PasteSlot(); return true;
     default:
       return false;
   }
@@ -279,10 +273,10 @@ void TranceGate::ExportFile(bool all)
       std::string words;
       const bool ok = tg::patch::ExportFile(
         mShell, [this](int i) { return GetParam(i)->Value(); }, kind, slot, path, words);
-      SendFileStatus(ok, words);
+      SendStatus(ok, words);
     });
   if (!shown)
-    SendFileStatus(false, "Failed to show the save panel.");
+    SendStatus(false, "Failed to show the save panel.");
 }
 
 void TranceGate::ImportFile()
@@ -294,13 +288,36 @@ void TranceGate::ImportFile()
       if (path.empty()) return;
       std::string words;
       const bool ok = tg::patch::ImportFile(mShell, GetParam(kSlot)->Int(), path, words);
-      SendFileStatus(ok, words);
+      SendStatus(ok, words);
     });
   if (!shown)
-    SendFileStatus(false, "Failed to show the open panel.");
+    SendStatus(false, "Failed to show the open panel.");
 }
 
-void TranceGate::SendFileStatus(bool ok, const std::string& words)
+/*
+ * THE CLIPBOARD IS THE PLUGIN'S, as the panels are: a WebView in a host can
+ * neither read the clipboard nor receive ⌘V. Copy writes the current slot as a
+ * slot file's text; Paste hands whatever is there to the engine, which decides
+ * what it is (Patch.cpp, tg_shell_paste). A paste lands at the top of the next
+ * block and the host's parameters follow it (OnHostIdle), as for an import.
+ */
+void TranceGate::CopySlot()
 {
-  SendText(kMsgFileStatus, (ok ? "ok:" : "error:") + words);
+  std::string words;
+  const bool ok = tg::patch::CopySlot(
+    mShell, [this](int i) { return GetParam(i)->Value(); }, GetParam(kSlot)->Int(),
+    ni::Clipboard::System(), words);
+  SendStatus(ok, words);
+}
+
+void TranceGate::PasteSlot()
+{
+  std::string words;
+  const bool ok = tg::patch::Paste(mShell, GetParam(kSlot)->Int(), ni::Clipboard::System(), words);
+  SendStatus(ok, words);
+}
+
+void TranceGate::SendStatus(bool ok, const std::string& words)
+{
+  SendText(kMsgStatus, (ok ? "ok:" : "error:") + words);
 }

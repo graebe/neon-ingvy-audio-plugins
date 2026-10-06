@@ -212,8 +212,7 @@
 .pad:focus,
 .ring:focus,
 .handle:focus,
-.select select:focus,
-.paste-field:focus {
+.select select:focus {
   outline: none;
 }
 .knob, .switch-row, .btn, .tab, .pad, .ring, .handle {
@@ -278,6 +277,29 @@ html, body {
    * highlight on a drag looks like a bug. */
   overflow: hidden;
   user-select: none; -webkit-user-select: none;
+}
+/*
+ * NOTHING SCROLLS, NOT EVEN BY ITSELF. `hidden` only hides the scrollbar: the
+ * box is still a scroll container, and focusing a control that reaches past
+ * its edge scrolls it into view -- in Live that slid the whole Trance Gate
+ * sideways, ring and EXPORT cut off, with no scrollbar to put it back. `clip`
+ * is not a scroll container at all, so there is nothing for focus, find or
+ * scrollIntoView to move; the window's <main> is clipped the same way
+ * (components.css). The root stays `hidden`, because the root's overflow is the
+ * viewport's and the viewport is always a scroll container -- but the body is
+ * exactly the viewport's size and clips everything inside it, so the viewport
+ * has nothing to scroll to. `relative` makes the body the containing block of
+ * anything positioned, so that is clipped too; only `fixed` escapes, and a
+ * fixed box never scrolls the viewport.
+ *
+ * WebKit before 16 (Safari 16 is on macOS 11 and 12 only as an update) does
+ * not know `clip` and keeps `hidden`: there, the guarantee is that nothing is
+ * laid out outside the window, which tests/e2e/layout.spec.mjs holds every
+ * editor to.
+ */
+body {
+  overflow: clip;
+  position: relative;
 }
 
 /*

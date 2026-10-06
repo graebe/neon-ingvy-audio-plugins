@@ -21,6 +21,7 @@ pub mod envelope;
 pub use ni_dsp::fmt;
 pub mod mask;
 pub mod params;
+pub mod paste;
 pub mod rates;
 pub mod slotfile;
 pub mod state;

@@ -23,7 +23,6 @@ import { fadeWeights } from './lib/fade.js';
 import { setOrder } from './lib/steps.js';
 import { decodeUi, decodeEngineParams } from './lib/readouts.js';
 import { decodeScope, decodeGate, decodeEnvelope } from './lib/capture.js';
-import { copyToClipboard } from './lib/clipboard.js';
 
 /* Mirrored by PLUG_WIDTH in config.h: 32 + 760 + 32, the pads decide the 760. */
 const DESIGN_W = 824;
@@ -34,8 +33,8 @@ const ABOVE_GRID = 644;
 /* Under the pads: space-6, then the hint bar (28) and the window's bottom
  * padding (16). */
 const BELOW_GRID = 24 + 28 + 16;
-/* How long a slot file's outcome stays in the hint bar. */
-const FILE_STATUS_MS = 6000;
+/* How long an action's outcome stays in the hint bar. */
+const STATUS_MS = 6000;
 
 export default function App() {
   /* Every parameter's value, display string and default -- listening from
@@ -61,18 +60,19 @@ export default function App() {
    * holds the order and normalises it after every rank.
    */
   const [orderMode, setOrderMode] = createSignal(false);
-  /* How the last slot file went, for the hint bar: its verb ("Exported",
-   * "Failed") and the rest, shown for a while and then gone. */
-  const [fileStatus, setFileStatus] = createSignal(null);
-  let fileStatusTimer;
-  const showFileStatus = (msg) => {
+  /* How the last export, import, copy or paste went, for the hint bar: its
+   * verb ("Exported", "Pasted", "Failed") and the rest, shown for a while and
+   * then gone. */
+  const [status, setStatus] = createSignal(null);
+  let statusTimer;
+  const showStatus = (msg) => {
     const at = msg.indexOf(':');
     const words = msg.slice(at + 1);
     const space = words.indexOf(' ');
-    setFileStatus({ verb: space < 0 ? words : words.slice(0, space),
-                    rest: space < 0 ? '' : words.slice(space + 1) });
-    clearTimeout(fileStatusTimer);
-    fileStatusTimer = setTimeout(() => setFileStatus(null), FILE_STATUS_MS);
+    setStatus({ verb: space < 0 ? words : words.slice(0, space),
+                rest: space < 0 ? '' : words.slice(space + 1) });
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => setStatus(null), STATUS_MS);
   };
   const [named, setNamed] = createSignal({});
   const orderNext = () => Object.keys(named()).length;
@@ -91,10 +91,8 @@ export default function App() {
       } else if (tag === MSG.params) {
         const p = decodeEngineParams(msg);
         if (p) setParams(p);
-      } else if (tag === MSG.patch) {
-        copyToClipboard(msg);
-      } else if (tag === MSG.fileStatus) {
-        showFileStatus(msg);
+      } else if (tag === MSG.status) {
+        showStatus(msg);
       }
     },
     /* The capture and the gate are BYTES, decoded from base64 once. */
@@ -186,12 +184,12 @@ export default function App() {
     return ABOVE_GRID + rows * 40 + (rows - 1) * 8 + BELOW_GRID;
   });
 
-  /* THREE CLAUSES IS THE CAP, so ORDER mode SWAPS them for its own, and a
-   * slot file's outcome takes the first place while it is shown. */
+  /* THREE CLAUSES IS THE CAP, so ORDER mode SWAPS them for its own, and an
+   * action's outcome takes the first place while it is shown. */
   const hint = () => {
-    const status = fileStatus();
+    const said = status();
     const own = baseHint();
-    return status && !orderMode() ? [[status.verb, status.rest], ...own.slice(0, 2)] : own;
+    return said && !orderMode() ? [[said.verb, said.rest], ...own.slice(0, 2)] : own;
   };
   const baseHint = () => (orderMode() ? [
     ['click', `the ${params()?.fadeOut ? 'gaps' : 'steps'} in the order they should arrive`],

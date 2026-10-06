@@ -185,16 +185,26 @@ not need a legend.
 
 ## Copy and paste
 
-The two icons beside RANDOM are **Copy gate config** and **Paste gate config**.
-They move the whole state — every slot, the pattern, the order and the
-settings — as one string; see
-[Patch interchange](../README.md#patch-interchange). It is the same text the
-Move module writes, so a pattern travels between the hardware and the DAW in
-either direction.
+The two icons beside RANDOM are **Copy slot** and **Paste into slot**. Use the
+icons, not **⌘C** and **⌘V**: Live keeps those keys for its own menu, so a
+plugin window never receives them. The icons work anyway, because the plugin
+reads and writes the clipboard itself.
 
-If the host does not let the plugin read the clipboard directly, pressing
-paste opens a small field instead: press **⌘V** into it, and the patch is
-applied. **Escape** closes it.
+To start slot 2 from slot 1:
+
+1. Select slot 1 and press **Copy slot**. The hint bar says "Copied slot 1."
+2. Select slot 2.
+3. Press **Paste into slot**. The hint bar says "Pasted into slot 2." Slot 2
+   now has slot 1's pattern and its whole sound; slot 1 is unchanged.
+
+To copy a slot to another track, press **Copy slot** in one Trance Gate and
+**Paste into slot** in the other, on the slot you want to replace.
+
+A whole patch on the clipboard — a Move patch, or what the copy icon put
+there in a Trance Gate older than v2026.10.06.1 — still pastes, and replaces
+all 8 slots as before. Anything else is refused with the reason in the hint
+bar, and nothing changes. See
+[Patch interchange](../README.md#patch-interchange).
 
 ## Export and import
 

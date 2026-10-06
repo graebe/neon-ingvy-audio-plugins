@@ -10,6 +10,7 @@
 #pragma once
 
 #include "ni/WebPlugin.h"
+#include "ni/Clipboard.h"
 #include "ni/FileDialog.h"
 #include "ni/Scope.h"
 #include "tg_shell.h"
@@ -30,12 +31,12 @@ enum EMsgTags
   kMsgUiState = 64,       /* -> the engine's `ui` readout, once a frame          */
   kMsgParams = 65,        /* -> the `params` readout (fifteen values + width_ms) */
   kMsgScope = 66,         /* -> "<cols>:<cycleMs>:<head>:" + 4 bytes a column    */
-  kMsgPatch = 67,         /* <-> the state blob, for copy and paste              */
-  kMsgFileStatus = 68,    /* -> "ok:<words>" | "error:<words>", a file's outcome */
+  /* -> "ok:<words>" | "error:<words>": how an export, an import, a copy or a
+   * paste went, for the hint bar. */
+  kMsgStatus = 68,
   kMsgSetStep = 96,       /* <- "<index>:<0 off|1 on|2 tie>"                     */
   kMsgSetDepth = 97,      /* <- "<index>:<0..1>"                                 */
   kMsgSetCursor = 98,     /* <- "<index>"                                        */
-  kMsgRequestPatch = 99,  /* <- send me the blob (Copy gate config)              */
   kMsgSetOrder = 103,     /* <- "<index>:<rank>", its place in the fade          */
   /* <- regenerate the current slot. An action, not a parameter: a host
    * rewriting it would reroll the pattern. Payload: an optional seed. */
@@ -49,6 +50,12 @@ enum EMsgTags
   kMsgExportFile = 107,
   /* <- open a slot or bank file and import it. Answered the same way. */
   kMsgImportFile = 108,
+  /* <- put the current slot on the clipboard, as a slot file's text. The
+   * plugin writes the clipboard (ni/Clipboard.h); answered with kMsgStatus. */
+  kMsgCopySlot = 109,
+  /* <- paste the clipboard: a slot into the current slot, a bank into all
+   * eight, a whole patch over everything. Answered with kMsgStatus. */
+  kMsgPasteSlot = 110,
 };
 
 class TranceGate final : public ni::WebPlugin
@@ -87,7 +94,11 @@ private:
   /* Slot files: a panel, then the file, then the outcome to the editor. */
   void ExportFile(bool all);
   void ImportFile();
-  void SendFileStatus(bool ok, const std::string& words);
+  /* The clipboard: the current slot onto it, or whatever it holds into the
+   * engine, then the outcome to the editor. */
+  void CopySlot();
+  void PasteSlot();
+  void SendStatus(bool ok, const std::string& words);
 
   /* THE ENGINE, BEHIND ITS SHELL: the audio thread takes it for a block, every
    * other thread posts edits and reads what it published (tg_shell.h). */
