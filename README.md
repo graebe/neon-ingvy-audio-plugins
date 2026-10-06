@@ -32,6 +32,7 @@ modules/_shared/             the one Dockerfile, package.sh and install.sh for a
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
 site/                        the documentation site, from this repo's own Markdown
 docs/tech/                   how it is built, in prose
+tools/docker/, tools/cross/  the cross-build kit: Linux and Windows build images, the JUCE smoke plugin
 design/scheme/               the Ultraviolet design system, vendored
 design/designs/              the "NI Plugin Layouts" canvas, mirrored
 versions.json                one version per product
@@ -78,6 +79,12 @@ non-existent include path in `iPlug2::VST3`. It fetches the VST3 SDK, CLAP and
 clap-helpers at the versions pinned in the script — iPlug2's own download
 scripts default to whatever is on `master` today — and `--verify` checks a
 tree that already has them.
+
+**Linux and Windows are built locally too**, in Docker: `scripts/build-all.sh`
+builds a JUCE plugin project for macOS, Linux and Windows in turn, runs its
+tests and validates every VST3 with pluginval
+([docs/tech/cross-build.md](docs/tech/cross-build.md)). It is proven on
+`tools/cross/smoke`; the plugins join it with their move to JUCE.
 
 ## What the tests are for
 

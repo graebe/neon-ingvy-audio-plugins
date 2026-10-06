@@ -20,6 +20,8 @@ design/scheme/               the Ultraviolet design system, vendored
 design/designs/              the "NI Plugin Layouts" canvas, mirrored
 tests/                       the cross-cutting suite
 cmake/                       the Rust toolchain resolver and NiPlugin.cmake
+tools/docker/, tools/cross/  the cross-build kit: Linux and Windows build images,
+                             the Windows toolchain, the JUCE smoke plugin
 versions.json                one version per product
 ```
 

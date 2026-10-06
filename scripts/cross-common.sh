@@ -26,7 +26,8 @@
 # through one bind mount, at /work.
 #
 # Runs under macOS's bash 3.2 as well as the containers' bash 5: no
-# associative arrays, and every possibly empty array expanded with ${a[@]+...}.
+# associative arrays, and no array expanded before it is known not to be empty
+# (bash 3.2 calls an empty one unbound under set -u).
 
 NI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -96,13 +97,18 @@ ni_stage() {
     [ "$status" = passed ]
 }
 
-# ni_finish: the exit status the result file adds up to.
+# ni_finish: the exit status the result file adds up to. A bundle with no
+# validator is not a failure of the build, and is not called a pass either.
 ni_finish() {
     if grep -q $'\tFAILED' "$NI_RESULT"; then
         echo "=== FAILED: $(grep $'\tFAILED' "$NI_RESULT" | cut -f2 | tr '\n' ' ')" >&2
         return 1
     fi
-    echo "=== all passed (${NI_RESULT#"$NI_ROOT"/})"
+    if grep -q $'\tnot validated' "$NI_RESULT"; then
+        echo "=== built and tested, NOT validated (${NI_RESULT#"$NI_ROOT"/})"
+    else
+        echo "=== all passed (${NI_RESULT#"$NI_ROOT"/})"
+    fi
 }
 
 # How many compilers to run at once. JUCE's module translation units are big
