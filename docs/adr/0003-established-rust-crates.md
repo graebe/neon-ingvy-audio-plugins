@@ -89,3 +89,37 @@ These rules do not change, and every crate has to fit them:
   they describe is replaced.
 - **The first build needs the network**, or a populated cargo cache, to fetch
   the crates.
+
+## Where the code kept its own, and why
+
+Added after the first wave of the change (2026-10-06), which replaced the
+FFT, the Spectrogram's rings, the float atomics in the analyzer and the bus,
+the bus's system calls, the MIDI decode, the randomiser and the tests' noise,
+the Trance Gate's formats and the engines' number reading. Four pieces of
+hand-written code in the table above stayed. Each reason is recorded beside
+the code it concerns, and listed here so that this record does not promise
+what the code does not do.
+
+- **The Side-Chain's parameter text** (`sc-core/src/params.rs`) is not read
+  with serde. Its words are C's, and saved patches and the Move's knob grid
+  speak them: `atof`'s leniency, an enum as its label or its index, a note as
+  `F#3` or `66`. serde_json refuses `"4abc"`, `".5"` and `"+40"`, so a
+  `Deserialize` would carry the same rules in visitors, and a derived enum
+  allocates on the audio callback for the index a knob sends.
+- **The Hann window** (`spectro-core/src/window.rs`). apodize's is the
+  symmetric window, which puts a periodic ripple through an overlap-add
+  spectrogram, and its latest release dates from April 2019.
+- **Writing numbers** (`ni-dsp/src/fmt.rs`) is `core::fmt`'s, not
+  lexical-core's. lexical-core rounds the shortest digits that read back
+  rather than the value itself, so it writes 2.68 where printf writes 2.67.
+  Reading numbers is lexical-core's.
+- **The bus's name hash** (`bus-core/src/shm.rs`) is five lines of FNV-1a
+  rather than the fnv crate: its digits are part of every name two builds
+  must agree on, and a test pins them to FNV's published vector.
+
+One row is held up by a licence rather than by its turn. `assert_no_alloc`
+is BSD-1-Clause, which the allowlist in [0001](0001-gpl-3.0-or-later.md) does
+not name. BSD-1-Clause is compatible with GPLv3, so adding it is a decision
+about the allowlist, not a technical one. Until that decision is made,
+ni-testkit's counting allocator is what proves that nothing on the audio
+thread allocates.
