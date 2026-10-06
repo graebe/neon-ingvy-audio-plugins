@@ -298,58 +298,76 @@ fn a_clamped_label_is_still_utf8() {
  *
  * So: a writer running flat out, a reader deliberately slow, and every
  * delivered block checked for internal continuity. A splice fails this.
+ *
+ * ENOUGH BLOCKS, NOT ENOUGH POLLS. The reader used to make 4000 polls and stop,
+ * which natively checks a few hundred blocks. Under emulation, beside the rest
+ * of the suite, the writer thread could still be waiting to be scheduled when
+ * the last poll came and went: nothing was checked, and the test failed for a
+ * reason that had nothing to do with the ring. So the reader reads until it has
+ * checked BLOCKS blocks -- more than a native run of the old loop ever did --
+ * and the deadline is there only so that a ring that stops delivering fails
+ * instead of hanging the suite.
  */
 #[test]
 fn a_reader_is_never_handed_a_splice() {
     use core::sync::atomic::AtomicBool;
-    use std::sync::Arc;
+    use std::time::{Duration, Instant};
 
-    let seg = Segment::new();
-    let stop = Arc::new(AtomicBool::new(false));
+    const BLOCKS: u32 = 400;
 
-    let hdr_addr = seg.hdr() as *const Header as usize;
-    let data_addr = seg.data().as_ptr() as usize;
-
-    let stop_w = stop.clone();
-    let writer = std::thread::spawn(move || {
-        let hdr = unsafe { &*(hdr_addr as *const Header) };
-        let data =
-            unsafe { core::slice::from_raw_parts(data_addr as *const AtomicF32, RING_SAMPLES) };
-        let mut written = 0u64;
-        while !stop_w.load(Ordering::Relaxed) {
-            let block = 512usize;
-            ring::push(hdr, data, &ramp(written, block));
-            written += block as u64;
+    /* Stops the writer however the reader's half ends. An assert that fails
+     * mid-loop would otherwise leave the scope below waiting forever on a
+     * writer nobody told to stop. */
+    struct Stop<'a>(&'a AtomicBool);
+    impl Drop for Stop<'_> {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
         }
-        written
-    });
-
-    let hdr = unsafe { &*(hdr_addr as *const Header) };
-    let data = unsafe { core::slice::from_raw_parts(data_addr as *const AtomicF32, RING_SAMPLES) };
-    let mut cur = Cursor::at_live_edge(hdr);
-    let mut out = vec![0f32; 4096 * CHANNELS as usize];
-    let mut blocks_seen = 0u32;
-
-    for _ in 0..4000 {
-        let got = ring::read(hdr, data, &mut cur, &mut out);
-        if got.frames > 1 {
-            blocks_seen += 1;
-            let first = frame_of(&out, 0);
-            for i in 0..got.frames as usize {
-                assert_eq!(
-                    frame_of(&out, i),
-                    first + i as u64,
-                    "SPLICE: frame {i} of a {}-frame block is not contiguous",
-                    got.frames
-                );
-            }
-        }
-        std::thread::yield_now();
     }
 
-    stop.store(true, Ordering::Relaxed);
-    let written = writer.join().unwrap();
-    assert!(written > 0, "the writer never ran");
-    assert!(blocks_seen > 0, "the reader never saw a block");
-    drop(seg);
+    let seg = Segment::new();
+    let stop = AtomicBool::new(false);
+
+    /* Scoped, so the writer borrows the segment and is joined before the
+     * segment is freed, whichever way the reader leaves. */
+    std::thread::scope(|scope| {
+        let writer = scope.spawn(|| {
+            let mut written = 0u64;
+            while !stop.load(Ordering::Relaxed) {
+                let block = 512usize;
+                ring::push(seg.hdr(), seg.data(), &ramp(written, block));
+                written += block as u64;
+            }
+        });
+        let stopping = Stop(&stop);
+
+        let mut cur = Cursor::at_live_edge(seg.hdr());
+        let mut out = vec![0f32; 4096 * CHANNELS as usize];
+        let mut blocks_seen = 0u32;
+        let deadline = Instant::now() + Duration::from_secs(60);
+
+        while blocks_seen < BLOCKS {
+            assert!(
+                Instant::now() < deadline,
+                "only {blocks_seen} blocks were delivered in a minute"
+            );
+            let got = ring::read(seg.hdr(), seg.data(), &mut cur, &mut out);
+            if got.frames > 1 {
+                blocks_seen += 1;
+                let first = frame_of(&out, 0);
+                for i in 0..got.frames as usize {
+                    assert_eq!(
+                        frame_of(&out, i),
+                        first + i as u64,
+                        "SPLICE: frame {i} of a {}-frame block is not contiguous",
+                        got.frames
+                    );
+                }
+            }
+            std::thread::yield_now();
+        }
+
+        drop(stopping);
+        writer.join().expect("the writer panicked");
+    });
 }
