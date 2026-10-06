@@ -13,14 +13,23 @@ name = "sc_capi"
 # too without a second copy of the Rust runtime.
 crate-type = ["staticlib", "rlib"]
 
+# THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (sc_shell_*, on
+# shell-core's bridge) and the ground's C ABI (gnd_*) that every plugin's one
+# archive carries. sc-move turns it off, for tg-capi's reason: the Move module
+# has one thread and no editor, and its .so is a file on a device with a fixed
+# amount of space.
+[features]
+default = ["shell"]
+shell = ["dep:shell-core", "dep:ground-capi"]
+
 [dependencies]
 sc-core = { path = "../sc-core" }
 # The animated ground's beat clock. NOT a second static library -- see the note in
 # ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
 # ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
 # bus-core through spectro-recv.
-ground-capi = { path = "../../../ground/crates/ground-capi" }
+ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 # The command queue and the published snapshot between the plugin's threads.
-shell-core = { path = "../../../shell/crates/shell-core" }
+shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }

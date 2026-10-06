@@ -139,28 +139,28 @@ impl Model for TgCore {
             Command::Edits(changes) => {
                 for change in changes.iter() {
                     match change {
-                        Change::Edit(edit) => self.0.apply_edit(edit),
-                        Change::Patch(patch) => self.0.load(patch),
+                        Change::Edit(edit) => self.engine.apply_edit(edit),
+                        Change::Patch(patch) => self.engine.load(patch),
                     }
                 }
             }
-            Command::SampleRate(sample_rate) => self.0.set_sample_rate(*sample_rate),
+            Command::SampleRate(sample_rate) => self.engine.set_sample_rate(*sample_rate),
             Command::Load(load) => {
                 if let Some(patch) = &load.patch {
-                    self.0.load(patch);
+                    self.engine.load(patch);
                 }
                 for (i, &v) in load.values.iter().enumerate() {
                     if let Some(p) = Param::from_i32(i as i32) {
-                        self.0.set_num(p, v);
+                        self.engine.set_num(p, v);
                     }
                 }
                 if load.spread {
-                    self.0.spread_sound();
+                    self.engine.spread_sound();
                 }
             }
             Command::Paste { slot, clip } => {
-                self.0.apply_clip(*slot, clip);
-                self.2 = self.2.wrapping_add(1);
+                self.engine.apply_clip(*slot, clip);
+                self.recalls = self.recalls.wrapping_add(1);
             }
         }
     }
@@ -177,23 +177,23 @@ impl Model for TgCore {
      * duration) and are formatted every time, as before.
      */
     fn publish(&self, f: &mut TgFrame) {
-        let rev = self.0.state_rev();
+        let rev = self.engine.state_rev();
         for (i, key) in KEYS.iter().enumerate() {
             if i == STATE && f.state_rev == Some(rev) {
                 continue;
             }
-            f.text[i].fill(|out| self.0.get_param(key, out));
+            f.text[i].fill(|out| self.engine.get_param(key, out));
         }
         f.state_rev = Some(rev);
-        f.nums = self.0.numbers();
-        f.recalls = self.2;
-        f.rt = self.0.playhead();
-        f.cycle_ms = crate::scope_cycle_ms(&self.0);
+        f.nums = self.engine.numbers();
+        f.recalls = self.recalls;
+        f.rt = self.engine.playhead();
+        f.cycle_ms = crate::scope_cycle_ms(&self.engine);
     }
 
     fn restore(&mut self, f: &TgFrame) {
-        self.0.mirror(f.text[STATE].as_str(), &f.rt);
-        self.2 = f.recalls;
+        self.engine.mirror(f.text[STATE].as_str(), &f.rt);
+        self.recalls = f.recalls;
     }
 }
 
@@ -440,7 +440,7 @@ pub unsafe extern "C" fn tg_shell_read(
     let Some(i) = KEYS.iter().position(|k| *k == key) else { return -1 };
     let out = std::slice::from_raw_parts_mut(buf as *mut u8, buf_len as usize);
     sh.bridge.read(|r| match r.pending {
-        Some(view) if i != PARAMS => view.0.get_param(key, out),
+        Some(view) if i != PARAMS => view.engine.get_param(key, out),
         _ => r.frame.text[i].copy_to(out),
     })
 }
@@ -484,7 +484,7 @@ impl TgShell {
     fn next(&self, values: &[f64; NUMS]) -> Option<tg_core::Instance> {
         let mut state = vec![0u8; TEXT_MAX];
         let (len, rt, recalls) = self.bridge.read(|r| match r.pending {
-            Some(view) => (view.0.get_param("state", &mut state), view.0.playhead(), view.2),
+            Some(view) => (view.engine.get_param("state", &mut state), view.engine.playhead(), view.recalls),
             None => (r.frame.text[STATE].copy_to(&mut state), r.frame.rt, r.frame.recalls),
         });
         let text = state_text(&state, len)?;
@@ -657,17 +657,17 @@ pub unsafe extern "C" fn tg_shell_push(sh: *const TgShell, core: *mut TgCore, va
     }
     let values: &[f64; NUMS] = &*(values as *const [f64; NUMS]);
     let m = &sh.mirror;
-    let rev = core.0.state_rev();
-    let plan = m.plan(values, core.2);
-    plan.apply(&mut core.0, values);
-    m.commit(values, core.2);
+    let rev = core.engine.state_rev();
+    let plan = m.plan(values, core.recalls);
+    plan.apply(&mut core.engine, values);
+    m.commit(values, core.recalls);
     let (switched, pasted) = (plan.switched, plan.pasted);
     if switched || pasted {
         /* Published at this block's end, whatever the cadence: the main thread
          * reads the new slot's values the moment it hears of the switch. */
         m.moved.store(true, Ordering::Relaxed);
         sh.bridge.touch();
-    } else if core.0.state_rev() != rev {
+    } else if core.engine.state_rev() != rev {
         /* A value is in the saved blob, so a change to it is published at
          * once: a save straight after it must have it. */
         sh.bridge.touch();
@@ -687,7 +687,7 @@ pub unsafe extern "C" fn tg_shell_take_params(sh: *const TgShell, out: *mut f64,
         return 0;
     }
     let nums = sh.bridge.read(|r| match r.pending {
-        Some(view) => view.0.numbers(),
+        Some(view) => view.engine.numbers(),
         None => r.frame.nums,
     });
     std::slice::from_raw_parts_mut(out, NUMS).copy_from_slice(&nums);

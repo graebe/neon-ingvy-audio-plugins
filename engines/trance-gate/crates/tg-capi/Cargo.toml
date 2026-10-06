@@ -13,18 +13,27 @@ name = "tg_capi"
 # too without a second copy of the Rust runtime.
 crate-type = ["staticlib", "rlib"]
 
+# THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (tg_shell_*, on
+# shell-core's bridge) and the ground's C ABI (gnd_*) that every plugin's one
+# archive carries. tg-move turns it off. The Move module has one thread and no
+# editor, so neither has a caller there, and its .so is a file on a device with
+# a fixed amount of space.
+[features]
+default = ["shell"]
+shell = ["dep:shell-core", "dep:ground-capi", "dep:atomic_float"]
+
 [dependencies]
 tg-core = { path = "../tg-core" }
 # The animated ground's beat clock. NOT a second static library -- see the note in
 # ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
 # ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
 # bus-core through spectro-recv.
-ground-capi = { path = "../../../ground/crates/ground-capi" }
+ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 # The command queue and the published snapshot between the plugin's threads.
-shell-core = { path = "../../../shell/crates/shell-core" }
+shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The host's values as the audio thread last pushed them (src/shell.rs's
 # Mirror): doubles another thread reads. `atomic_f64` is the feature that
 # brings AtomicF64; the workspace takes no crate's defaults.
-atomic_float = { workspace = true, features = ["atomic_f64"] }
+atomic_float = { workspace = true, features = ["atomic_f64"], optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }

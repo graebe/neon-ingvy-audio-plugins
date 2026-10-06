@@ -28,11 +28,18 @@ panicking -- the workspace sets `panic = "abort"` because unwinding out of
  * repository keeps one archive per plugin (spectro-capi's Cargo.toml states the
  * rule). Naming the crate here is what makes rustc link it in, so the symbols
  * are exported from this archive rather than dropped as unreachable.
+ *
+ * It and the shell are the `shell` feature, the plugin's half of this crate:
+ * the Move module has no editor and one thread, and builds without either
+ * (see Cargo.toml).
  */
+#[cfg(feature = "shell")]
 use ground_capi as _;
 
 /* The plugin shell's door to the engine; see shell.rs. */
+#[cfg(feature = "shell")]
 mod shell;
+#[cfg(feature = "shell")]
 pub use shell::ScShell;
 
 #[cfg(test)]
