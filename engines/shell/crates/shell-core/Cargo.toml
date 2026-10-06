@@ -20,6 +20,11 @@ triple_buffer = { workspace = true }
 # (src/reclaim.rs). No features to choose: the crate is no_std with alloc.
 basedrop = { workspace = true }
 
-# The counting allocator the no_alloc test installs. Test-only.
+# Test-only: built for the tests, shipped in nothing.
 [dev-dependencies]
+# The counting allocator the no_alloc test installs.
 ni-testkit = { path = "../../../shared/crates/ni-testkit" }
+# The property test (tests/round_trip.rs). `std` is its generator and its
+# runner; fork, timeout and bit-set -- a process per case, a watchdog, a
+# bit-set strategy -- are features nothing here uses.
+proptest = { workspace = true, features = ["std"] }

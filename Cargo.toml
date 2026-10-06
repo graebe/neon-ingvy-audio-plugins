@@ -115,6 +115,9 @@ serde = { version = "1.0.229", default-features = false }
 serde_json = { version = "1.0.151", default-features = false }
 # A seeded generator: the Trance Gate's randomiser and the tests' noise.
 fastrand = { version = "2.5.0", default-features = false }
+# Property tests: generated cases, shrunk to the smallest that fails. A
+# dev-dependency wherever it appears, so it ships in nothing.
+proptest = { version = "1.11.0", default-features = false }
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.
 #
