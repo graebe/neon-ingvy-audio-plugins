@@ -66,8 +66,9 @@ typedef struct CdReading {
   // The notes sounding now.
   uint64_t sounding[2];
   // The key: tonic 0-11, mode 0-6 (Ionian to Locrian), its signature (-5
-  // flats to 6 sharps), its pitch classes, and how the texts are spelled
-  // (0 sharps, 1 flats).
+  // flats to 6 sharps), its pitch classes, and the Spelling choice the
+  // texts were written with (0 the key's way, 1 sharps, 2 flats) -- what
+  // `cd_write_note` takes to name the history's notes the same way.
   uint8_t tonic;
   uint8_t mode;
   int8_t signature;
@@ -105,6 +106,20 @@ typedef struct CdParamInfo {
   int32_t default_choice;
   bool automatable;
 } CdParamInfo;
+
+// How a score writes one note: what a staff needs to place it.
+typedef struct CdWrittenNote {
+  // The letter, 0 C to 6 B.
+  uint8_t letter;
+  // Sharps positive, flats negative, -2 to 2.
+  int8_t accidental;
+  // The written octave: C flat 4 sounds as B 3.
+  int16_t octave;
+  // Letter steps up from C in octave 0: one per line and per space.
+  int32_t staff_step;
+  // The name with its octave, `Bb3`.
+  char name[8];
+} CdWrittenNote;
 
 #ifdef __cplusplus
 extern "C" {
@@ -219,6 +234,12 @@ int32_t cd_param_name(int32_t index, char *out, size_t cap);
 // # Safety
 // As `cd_param_key`.
 int32_t cd_param_choice(int32_t index, int32_t choice, char *out, size_t cap);
+
+// How MIDI note `midi` is written in the key `tonic` (0-11) / `mode` (0-6)
+// under Spelling choice `spelling` (0 the key's way, 1 sharps, 2 flats) --
+// the same naming the reading's texts use. Any thread; a pure function.
+// Out-of-range values are clamped.
+struct CdWrittenNote cd_write_note(int32_t tonic, int32_t mode, int32_t spelling, int32_t midi);
 
 #ifdef __cplusplus
 }  // extern "C"

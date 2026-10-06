@@ -112,6 +112,40 @@ let printed = note.spelled(spelling).to_string(); // "Eb4"
 
 The value does not change. Only its text does.
 
+## How A Key Writes Its Notes
+
+Sharps or flats throughout is not how a score is written. C major writes its
+lowered seventh as B flat but its raised fourth as F sharp, and F sharp major
+writes its seventh as E sharp, not F. `name_of` names a pitch the way the key
+does: its own seven notes take the scale's seven letters, and every other note
+takes the letter of the step its roman numeral is on.
+
+```rust
+use music_core::Key;
+use music_core::Mode;
+use music_core::Pitch;
+
+let c_major = Key::new(Pitch::C, Mode::Ionian);
+let seventh = c_major.name_of(Pitch::B_FLAT).to_string();  // "Bb"
+let fourth = c_major.name_of(Pitch::F_SHARP).to_string();  // "F#"
+
+let f_sharp_major = Key::new(Pitch::F_SHARP, Mode::Ionian);
+let leading = f_sharp_major.name_of(Pitch::F).to_string(); // "E#"
+```
+
+A `NoteName` is a letter and its accidentals. The letter is what a staff
+needs: it decides which line or space the note sits on.
+
+```rust
+use music_core::Letter;
+use music_core::NoteName;
+use music_core::Pitch;
+
+let c_flat = NoteName::new(Letter::C, -1);
+let sounds = c_flat.pitch();                    // B
+let octave = c_flat.octave_of(Pitch::B.at(3));  // 4, as written: Cb4
+```
+
 ## Roman Numerals
 
 `degree_of` names a chord by where its root sits in the key. The case of the

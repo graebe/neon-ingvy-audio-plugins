@@ -45,6 +45,7 @@ pub mod abletonmove;
 
 mod chord;
 mod key;
+mod name;
 mod notes;
 mod pitch;
 mod pitchset;
@@ -53,6 +54,7 @@ mod voiced;
 
 pub use chord::{Chord, ChordQuality, Voicing};
 pub use key::{Degree, Key, Mode};
+pub use name::{Letter, NoteName};
 pub use notes::Notes;
 pub use pitch::{EDO, Interval, IntervalClass, Pitch, Spelling, parse_pitch_prefix};
 pub use pitchset::{Completions, Interpretations, PitchSet, PitchSetIter};

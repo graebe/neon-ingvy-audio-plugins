@@ -39,8 +39,8 @@ use std::os::raw::c_char;
 use std::sync::Mutex;
 
 use cd_core::text::{write_chord, write_degree, write_description, write_name, write_notes};
-use cd_core::{Detector, NoteEvent, Param, Transport, PARAM_COUNT};
-use music_core::Spelling;
+use cd_core::{Detector, Names, NoteEvent, Param, Transport, PARAM_COUNT};
+use music_core::{Key, Mode, Note, Pitch, Spelling};
 use shell_core::{publish_every, Bridge, Model};
 
 #[cfg(test)]
@@ -93,8 +93,9 @@ pub struct CdReading {
     /// The notes sounding now.
     pub sounding: [u64; 2],
     /// The key: tonic 0-11, mode 0-6 (Ionian to Locrian), its signature (-5
-    /// flats to 6 sharps), its pitch classes, and how the texts are spelled
-    /// (0 sharps, 1 flats).
+    /// flats to 6 sharps), its pitch classes, and the Spelling choice the
+    /// texts were written with (0 the key's way, 1 sharps, 2 flats) -- what
+    /// `cd_write_note` takes to name the history's notes the same way.
     pub tonic: u8,
     pub mode: u8,
     pub signature: i8,
@@ -292,8 +293,8 @@ impl Model for CdCore {
         f.sounding = split(d.sounding());
 
         let serial = d.serial();
-        let spelling = d.spelling();
-        let spelling_code = (spelling == Spelling::Flats) as u8;
+        let names = d.names();
+        let spelling_code = d.param(Param::Spelling);
         let key = d.key();
         if f.serial == serial
             && f.spelling == spelling_code
@@ -317,15 +318,15 @@ impl Model for CdCore {
         f.spelling = spelling_code;
         f.scale = key.pitch_set().bits();
 
-        let _ = write_name(r, spelling, &mut CText::new(&mut f.name));
-        let _ = write_description(r, spelling, &mut CText::new(&mut f.description));
+        let _ = write_name(r, names, &mut CText::new(&mut f.name));
+        let _ = write_description(r, names, &mut CText::new(&mut f.description));
         let _ = write_degree(r, &mut CText::new(&mut f.degree));
-        let _ = write_notes(r, spelling, &mut CText::new(&mut f.notes_text));
+        let _ = write_notes(r, names, &mut CText::new(&mut f.notes_text));
         let _ = core::fmt::write(&mut CText::new(&mut f.key_name), format_args!("{key}"));
 
         let mut count = 0;
         for (slot, chord) in f.alternatives.iter_mut().zip(r.alternatives()) {
-            let _ = write_chord(chord, spelling, &mut CText::new(slot));
+            let _ = write_chord(chord, names, &mut CText::new(slot));
             count += 1;
         }
         for slot in f.alternatives.iter_mut().skip(count) {
@@ -648,4 +649,50 @@ pub unsafe extern "C" fn cd_param_choice(
         Some(label) => copy_text(label, out, cap),
         None => -1,
     }
+}
+
+/* ------------------------------------------------------- naming a note */
+
+/// How a score writes one note: what a staff needs to place it.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CdWrittenNote {
+    /// The letter, 0 C to 6 B.
+    pub letter: u8,
+    /// Sharps positive, flats negative, -2 to 2.
+    pub accidental: i8,
+    /// The written octave: C flat 4 sounds as B 3.
+    pub octave: i16,
+    /// Letter steps up from C in octave 0: one per line and per space.
+    pub staff_step: i32,
+    /// The name with its octave, `Bb3`.
+    pub name: [c_char; 8],
+}
+
+/// How MIDI note `midi` is written in the key `tonic` (0-11) / `mode` (0-6)
+/// under Spelling choice `spelling` (0 the key's way, 1 sharps, 2 flats) --
+/// the same naming the reading's texts use. Any thread; a pure function.
+/// Out-of-range values are clamped.
+#[no_mangle]
+pub extern "C" fn cd_write_note(tonic: i32, mode: i32, spelling: i32, midi: i32) -> CdWrittenNote {
+    let key = Key::new(
+        Pitch::new(tonic.clamp(0, 11)),
+        Mode::from_index(mode.clamp(0, 6) as u8).unwrap_or_default(),
+    );
+    let names = match spelling {
+        1 => Names::Fixed(Spelling::Sharps),
+        2 => Names::Fixed(Spelling::Flats),
+        _ => Names::Key(key),
+    };
+    let note = Note::from_midi(midi.clamp(0, 127) as i16);
+    let name = names.of(note.pitch());
+    let mut out = CdWrittenNote {
+        letter: name.letter().index(),
+        accidental: name.accidental(),
+        octave: name.octave_of(note),
+        staff_step: name.staff_step(note),
+        name: [0; 8],
+    };
+    let _ = names.write_note(note, &mut CText::new(&mut out.name));
+    out
 }

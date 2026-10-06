@@ -67,13 +67,13 @@ fn midi_clock_params_and_texts_allocate_nothing() {
             block as i32 % 13,
         );
         let r = *d.reading();
-        let spelling = d.spelling();
-        let _ = write_name(&r, spelling, &mut name);
-        let _ = write_description(&r, spelling, &mut words);
+        let names = d.names();
+        let _ = write_name(&r, names, &mut name);
+        let _ = write_description(&r, names, &mut words);
         let _ = write_degree(&r, &mut numeral);
-        let _ = write_notes(&r, spelling, &mut notes);
+        let _ = write_notes(&r, names, &mut notes);
         for chord in r.alternatives() {
-            let _ = write_chord(chord, spelling, &mut other);
+            let _ = write_chord(chord, names, &mut other);
         }
         if block % 64 == 63 {
             d.reset(|_| events += 1);

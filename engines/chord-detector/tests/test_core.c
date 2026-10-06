@@ -79,6 +79,11 @@ int main(void) {
     CHECK(cd_param_choice(0, 6, text, sizeof text) > 0 && strcmp(text, "F#/Gb") == 0);
     CHECK(cd_param_key(3, text, sizeof text) == 4 && strcmp(text, "hold") == 0);
 
+    /* A note as a staff places it: B flat in C major, by value through C. */
+    CdWrittenNote b_flat = cd_write_note(0, 0, 0, 58);
+    CHECK(b_flat.letter == 6 && b_flat.accidental == -1 && b_flat.octave == 3);
+    CHECK(strcmp(b_flat.name, "Bb3") == 0);
+
     /* A panic. */
     core = cd_shell_begin(shell);
     cd_core_reset(core);

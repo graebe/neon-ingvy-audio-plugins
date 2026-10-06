@@ -75,12 +75,12 @@ fn the_key_and_spelling_reach_the_texts() {
         assert_eq!(text(&r.name), "Eb");
         assert_eq!(text(&r.degree), "VII"); // Eb is F Dorian's own seventh
         assert_eq!(text(&r.key_name), "F Dorian");
-        assert_eq!((r.tonic, r.mode, r.signature, r.spelling), (5, 1, -3, 1));
+        assert_eq!((r.tonic, r.mode, r.signature, r.spelling), (5, 1, -3, 0));
 
         block(shell, &[], &[(2, 1)]); // Sharps
         let r = read(shell);
         assert_eq!(text(&r.name), "D#");
-        assert_eq!(r.spelling, 0);
+        assert_eq!(r.spelling, 1);
         cd_shell_destroy(shell);
     }
 }
@@ -271,4 +271,30 @@ fn text_that_does_not_fit_stops_at_the_last_whole_piece() {
     assert_eq!(text(&buf), "C3 E3");
     let mut empty: [c_char; 0] = [];
     assert!(core::fmt::Write::write_str(&mut CText::new(&mut empty), "x").is_err());
+}
+
+#[test]
+fn notes_are_written_with_the_letters_a_staff_needs() {
+    let b_flat = cd_write_note(0, 0, 0, 58); // C major, the lowered seventh
+    assert_eq!(
+        (b_flat.letter, b_flat.accidental, b_flat.octave),
+        (6, -1, 3)
+    );
+    assert_eq!(text(&b_flat.name), "Bb3");
+    assert_eq!(b_flat.staff_step, 3 * 7 + 6);
+
+    let a_sharp = cd_write_note(0, 0, 1, 58);
+    assert_eq!((a_sharp.letter, a_sharp.accidental), (5, 1));
+    assert_eq!(text(&a_sharp.name), "A#3");
+
+    let e_sharp = cd_write_note(6, 0, 0, 65); // F# major's seventh
+    assert_eq!(text(&e_sharp.name), "E#4");
+    assert_eq!(e_sharp.staff_step, 4 * 7 + 2);
+
+    let clamped = cd_write_note(99, -3, 7, 300);
+    assert_eq!(
+        text(&clamped.name),
+        "G9",
+        "B Ionian, key spelling, MIDI 127"
+    );
 }

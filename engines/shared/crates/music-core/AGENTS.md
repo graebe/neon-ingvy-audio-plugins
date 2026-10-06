@@ -85,6 +85,13 @@ should change deliberately, not incidentally.
   accidental is measured against the mode's own step, so it is never more than
   one. A test sweeps every root in every key to hold that.
 - A `Degree` ignores the bass: a slash chord is the degree of its root.
+- `Key::name_of` writes a pitch as a score in the key does: the seven scale
+  notes take seven consecutive letters from the tonic's, every other pitch
+  takes the letter of the step `degree_of` reads it as. A `NoteName` is the
+  letter plus accidentals (never more than two here); `octave_of` and
+  `staff_step` follow the letter, so C flat 4 is written in octave 4 though it
+  sounds as B 3. `Display` stays one text per value (sharps); a name is asked
+  for, never implied.
 
 ## Writing examples
 

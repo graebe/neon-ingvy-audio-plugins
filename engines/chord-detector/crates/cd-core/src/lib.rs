@@ -33,6 +33,7 @@ pub use music_core::{Key, Mode, Pitch, Spelling};
 pub use params::{Param, PARAM_COUNT};
 pub use reading::{Kind, Reading};
 pub use sounding::NoteSet;
+pub use text::Names;
 pub use timeline::Timeline;
 
 use sounding::{Effect, Sounding};
@@ -166,12 +167,13 @@ impl Detector {
         Key::new(tonic, mode)
     }
 
-    /// How the texts spell: the key's way under Auto, otherwise as chosen.
-    pub fn spelling(&self) -> Spelling {
+    /// How the texts name notes: the key's way under Auto, otherwise plainly
+    /// with the sharps or flats chosen.
+    pub fn names(&self) -> Names {
         match self.param(Param::Spelling) {
-            1 => Spelling::Sharps,
-            2 => Spelling::Flats,
-            _ => self.key().spelling(),
+            1 => Names::Fixed(Spelling::Sharps),
+            2 => Names::Fixed(Spelling::Flats),
+            _ => Names::Key(self.key()),
         }
     }
 

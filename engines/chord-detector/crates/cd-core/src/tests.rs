@@ -28,13 +28,13 @@ fn release(d: &mut Detector, notes: &[u8]) -> Vec<NoteEvent> {
 
 fn name(d: &Detector) -> String {
     let mut b = DisplayBuffer::<64>::new();
-    write_name(d.reading(), d.spelling(), &mut b).unwrap();
+    write_name(d.reading(), d.names(), &mut b).unwrap();
     b.as_str().to_string()
 }
 
 fn description(d: &Detector) -> String {
     let mut b = DisplayBuffer::<96>::new();
-    write_description(d.reading(), d.spelling(), &mut b).unwrap();
+    write_description(d.reading(), d.names(), &mut b).unwrap();
     b.as_str().to_string()
 }
 
@@ -46,7 +46,7 @@ fn degree(d: &Detector) -> String {
 
 fn notes(d: &Detector) -> String {
     let mut b = DisplayBuffer::<128>::new();
-    write_notes(d.reading(), d.spelling(), &mut b).unwrap();
+    write_notes(d.reading(), d.names(), &mut b).unwrap();
     b.as_str().to_string()
 }
 
@@ -69,7 +69,7 @@ fn in_key(tonic: i32, mode: i32) -> Detector {
 #[case(&[52, 57, 60, 67], "Am7/E", "A minor 7 · 2nd inversion", "vi7")]
 #[case(&[55, 59, 62, 65], "G7", "G dominant 7", "V7")]
 #[case(&[54, 57, 60, 64], "F#m7b5", "F# half-diminished 7", "#ivø7")]
-#[case(&[58, 62, 65], "A#", "A# major", "bVII")]
+#[case(&[58, 62, 65], "A#", "A# major", "bVII")] // sharps chosen; Auto: see below
 fn chords_are_named_with_their_bass(
     #[case] played: &[u8],
     #[case] want_name: &str,
@@ -106,7 +106,7 @@ fn one_pitch_in_octaves_is_still_a_note() {
 
 #[rstest]
 #[case(&[60, 64], "C–E", "major 3rd")]
-#[case(&[60, 63], "C–D#", "minor 3rd")]
+#[case(&[60, 63], "C–Eb", "minor 3rd")]
 #[case(&[48, 64], "C–E", "major 3rd + 1 octave")]
 #[case(&[36, 64], "C–E", "major 3rd + 2 octaves")]
 #[case(&[60, 66], "C–F#", "tritone")]
@@ -129,7 +129,7 @@ fn a_cluster_with_no_name_lists_its_pitches() {
     let mut d = Detector::new(48000.0);
     play(&mut d, &[60, 61, 62]);
     assert_eq!(d.reading().kind(), Kind::Unnamed);
-    assert_eq!(name(&d), "C C# D");
+    assert_eq!(name(&d), "C Db D");
     assert_eq!(description(&d), "no common name · 3 pitch classes");
     assert_eq!(degree(&d), "");
 }
@@ -376,14 +376,27 @@ fn the_view_settings_are_kept_but_change_no_reading() {
 }
 
 #[test]
-fn auto_spelling_follows_the_key() {
-    let mut d = in_key(5, 0); // F major
-    assert_eq!(d.spelling(), Spelling::Flats);
-    d.set_param(Param::Tonic, 7); // G major
-    assert_eq!(d.spelling(), Spelling::Sharps);
+fn auto_spelling_names_notes_the_way_the_key_writes_them() {
+    let mut d = in_key(0, 0); // C major
+    assert_eq!(d.names(), Names::Key(d.key()));
+    play(&mut d, &[58, 62, 65]); // a borrowed bVII
+    assert_eq!(
+        name(&d),
+        "Bb",
+        "C major writes its lowered seventh as B flat"
+    );
+    assert_eq!(notes(&d), "Bb3 D4 F4");
+    d.set_param(Param::Spelling, 1);
+    assert_eq!(name(&d), "A#");
     d.set_param(Param::Spelling, 2);
-    assert_eq!(d.spelling(), Spelling::Flats);
-    assert_eq!(d.key().to_string(), "G Ionian");
+    assert_eq!(name(&d), "Bb");
+    assert_eq!(d.names(), Names::Fixed(Spelling::Flats));
+
+    let mut f_sharp = in_key(6, 0); // F# major: its seventh is E#
+    play(&mut f_sharp, &[53, 56, 59]); // E# G# B: the vii°
+    assert_eq!(name(&f_sharp), "E#dim");
+    assert_eq!(degree(&f_sharp), "vii°");
+    assert_eq!(f_sharp.key().to_string(), "F# Ionian");
 }
 
 // --- the history's clock ----------------------------------------------------

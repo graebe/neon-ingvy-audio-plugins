@@ -14,5 +14,5 @@
   "ground": "v2026.10.06.5",
 
   "__music-core": "Music theory: pitches, chords, keys and modes. Not a plugin either -- a shared crate that NI Chord-Detector names chords with and that neo-riemann (codeberg.org/graebe/neo-riemann) builds on through a git dependency on this repository. Versioned here because a crate another repository pins by revision should say which release it is.",
-  "music-core": "v2026.10.06.2"
+  "music-core": "v2026.10.06.3"
 }

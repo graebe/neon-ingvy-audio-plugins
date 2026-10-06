@@ -13,6 +13,7 @@ use core::fmt::{self, Write as _};
 
 use crate::DisplayBuffer;
 use crate::chord::{Chord, ChordQuality};
+use crate::name::NoteName;
 use crate::pitch::{Pitch, Spelling};
 use crate::pitchset::PitchSet;
 
@@ -232,28 +233,55 @@ impl Key {
     /// the tritone above the tonic is a raised fourth, never a lowered fifth.
     #[must_use]
     pub fn degree_of(self, chord: Chord) -> Degree {
-        let above = self.tonic.interval_to(chord.root()).semitones() as u8;
-        let steps = self.mode.steps();
-
-        let mut step = 0;
-        let mut in_key = false;
-        while step < 7 {
-            if steps[step] == above {
-                in_key = true;
-                break;
-            }
-            step += 1;
-        }
-        if !in_key {
-            step = CHROMATIC_STEP[above as usize] as usize;
-        }
-        let accidental = above as i8 - steps[step] as i8;
-
+        let (step, accidental) = self.step_of(chord.root());
         Degree {
-            step: step as u8,
+            step,
             accidental,
             chord,
         }
+    }
+
+    /// How a score in this key writes `pitch`: its letter and accidentals.
+    ///
+    /// The seven notes of the key take the scale's letters, one each, upward
+    /// from the tonic's -- so F# major has its E sharp, not an F. Every other
+    /// pitch takes the letter of the step [`Key::degree_of`] reads it as: the
+    /// lowered seventh of C major is B flat, never A sharp, and the leading
+    /// tone of A minor is G sharp.
+    ///
+    /// ```
+    /// use music_core::{Key, Mode, Pitch};
+    ///
+    /// let c_major = Key::new(Pitch::C, Mode::Ionian);
+    /// assert_eq!(c_major.name_of(Pitch::B_FLAT).to_string(), "Bb");
+    /// assert_eq!(c_major.name_of(Pitch::F_SHARP).to_string(), "F#");
+    ///
+    /// let f_sharp_major = Key::new(Pitch::F_SHARP, Mode::Ionian);
+    /// assert_eq!(f_sharp_major.name_of(Pitch::F).to_string(), "E#");
+    /// ```
+    #[must_use]
+    pub const fn name_of(self, pitch: Pitch) -> NoteName {
+        let tonic = NoteName::of(self.tonic, self.spelling());
+        let (step, _) = self.step_of(pitch);
+        let letter = tonic.letter().up(step as i32);
+        let from_natural = (pitch.value() as i32 - letter.natural().value() as i32 + 18) % 12 - 6;
+        NoteName::new(letter, from_natural as i8)
+    }
+
+    /// The scale step `pitch` is read as, 0 to 6, and how it is altered
+    /// against the mode's own note on that step: -1, 0 or +1.
+    const fn step_of(self, pitch: Pitch) -> (u8, i8) {
+        let above = self.tonic.interval_to(pitch).semitones() as u8;
+        let steps = self.mode.steps();
+        let mut step = 0;
+        while step < 7 {
+            if steps[step] == above {
+                return (step as u8, 0);
+            }
+            step += 1;
+        }
+        let step = CHROMATIC_STEP[above as usize] as usize;
+        (step as u8, above as i8 - steps[step] as i8)
     }
 }
 

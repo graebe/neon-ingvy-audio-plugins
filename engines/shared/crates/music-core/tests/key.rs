@@ -325,3 +325,8 @@ fn the_new_types_stay_small() {
     assert_eq!(size_of::<Key>(), 2);
     assert_eq!(size_of::<music_core::Degree>(), 6);
 }
+
+#[test]
+fn a_note_name_is_two_bytes() {
+    assert_eq!(core::mem::size_of::<music_core::NoteName>(), 2);
+}

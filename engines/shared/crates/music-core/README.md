@@ -388,6 +388,7 @@ assert!((Pitch::A.at(4).frequency_hz_at(432.0) - 432.0).abs() < 1e-9);
 | `Mode` | one of the seven church modes | 1 byte |
 | `Key` | a tonic and a mode | 2 bytes |
 | `Degree` | a chord read as a roman numeral in a key | 6 bytes |
+| `NoteName` | a pitch with its letter: `Bb`, `E#` | 2 bytes |
 
 ## Try it
 
