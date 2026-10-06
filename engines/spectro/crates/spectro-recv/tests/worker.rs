@@ -80,22 +80,17 @@ fn drain_until(r: &mut Receiver, into: &mut [Vec<u8>], buf: &mut [u8], want: usi
     }
 }
 
-/// Deterministic noise, so every column differs from its neighbours and an
-/// offset of one column cannot pass for alignment.
-fn noise(frames: usize, seed: &mut u32) -> Vec<f32> {
-    (0..frames)
-        .map(|_| {
-            *seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            ((*seed >> 8) as f32 / (1u32 << 24) as f32 - 0.5) * 0.5
-        })
-        .collect()
+/// Seeded noise, so every column differs from its neighbours and an offset
+/// of one column cannot pass for alignment.
+fn noise(frames: usize, rng: &mut fastrand::Rng) -> Vec<f32> {
+    (0..frames).map(|_| (rng.f32() - 0.5) * 0.5).collect()
 }
 
 #[test]
 fn the_worker_draws_what_pumping_by_hand_draws() {
     let blocks = 60;
-    let mut seed = 1;
-    let audio: Vec<Vec<f32>> = (0..blocks).map(|_| noise(BLOCK, &mut seed)).collect();
+    let mut rng = fastrand::Rng::with_seed(1);
+    let audio: Vec<Vec<f32>> = (0..blocks).map(|_| noise(BLOCK, &mut rng)).collect();
     let expect = columns_after(blocks);
 
     /* By hand, the reference. */
@@ -139,7 +134,7 @@ fn a_bus_stays_in_step_with_the_own_channel_across_threads() {
     let bands = r.bands();
     let mut buf = vec![0u8; bands * 64];
     let mut cols = vec![Vec::new(), Vec::new()];
-    let mut seed = 7;
+    let mut rng = fastrand::Rng::with_seed(7);
     let blocks: usize = 200;
     for i in 0..blocks {
         /*
@@ -149,7 +144,7 @@ fn a_bus_stays_in_step_with_the_own_channel_across_threads() {
          * where a drain used to land between them and take a column from the
          * own channel that the bus did not have yet.
          */
-        let block = noise(BLOCK, &mut seed);
+        let block = noise(BLOCK, &mut rng);
         p.push(&stereo(&block));
         feed.push(&block);
         drain_until(&mut r, &mut cols, &mut buf, columns_after((i + 1).saturating_sub(LAG_BLOCKS)));

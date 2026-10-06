@@ -6,17 +6,25 @@ license = "GPL-3.0-or-later"
 description = "Many sources into one picture: the Spectrogram's listen-in receiver."
 publish.workspace = true
 
-# spectro-core is this engine's own; bus-core is the HOUSE TRANSPORT, which the
-# workspace names as the one dependency a product crate may take outside its own
-# engine. It depends on no product in return, which is the direction that
-# matters. See the note at the top of the workspace Cargo.toml.
+# Of this repository's crates: spectro-core is this engine's own; bus-core is
+# the HOUSE TRANSPORT, which the workspace names as the one a product crate may
+# take from outside its own engine. It depends on no product in return, which
+# is the direction that matters. See the note at the top of the workspace
+# Cargo.toml.
 [dependencies]
 spectro-core = { path = "../spectro-core" }
 bus-core = { path = "../../../audio-bus/crates/bus-core" }
+# The own channel's ring from the audio thread to the pump (src/ring.rs). Its
+# one default feature, `std`, adds std::error and io::Read/Write impls; the
+# ring is the same without it.
+rtrb = { version = "0.4.0", default-features = false }
 
 [lib]
 crate-type = ["rlib"]
 
-# The counting allocator the no_alloc test installs. Test-only.
 [dev-dependencies]
+# Seeded noise for the tests, reproducible run to run. `std` would add only
+# the thread-local generator and entropy seeding, which a fixed seed never uses.
+fastrand = { version = "2.5.0", default-features = false }
+# The counting allocator tests/no_alloc.rs installs.
 ni-testkit = { path = "../../../shared/crates/ni-testkit" }

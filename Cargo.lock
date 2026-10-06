@@ -275,7 +275,9 @@ name = "spectro-recv"
 version = "2026.10.6+5"
 dependencies = [
  "bus-core",
+ "fastrand",
  "ni-testkit",
+ "rtrb",
  "spectro-core",
 ]
 

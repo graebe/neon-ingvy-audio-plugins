@@ -1,10 +1,14 @@
 # spectro
 
 A short-time Fourier analyzer that produces **spectrogram columns**: one byte per
-log-spaced frequency band, handed to a UI through a lock-free ring.
+log-spaced frequency band, handed to a UI through a wait-free ring.
 
-GPL-3.0-or-later, © 2026 Torben Gräber. **No dependencies yet** — the FFT is
-one file, `crates/spectro-core/src/fft.rs`, checked against a naive DFT.
+GPL-3.0-or-later, © 2026 Torben Gräber. The plumbing is established crates —
+[realfft](https://crates.io/crates/realfft) for the transform (checked against a
+naive DFT), [rtrb](https://crates.io/crates/rtrb) for the rings,
+[atomic_float](https://crates.io/crates/atomic_float) for the range — and the
+analysis is this repository's own
+([ADR 0003](../../docs/adr/0003-established-rust-crates.md)).
 
 ```
 cargo test              # the FFT, the band mapping, equivalence, no-allocation proofs
@@ -26,11 +30,11 @@ depend on each other.
 
 | | |
 |---|---|
-| `fft.rs` | real-input FFT: an N/2 complex radix-2/4 transform and a split pass |
+| `fft.rs` | the real-input FFT: realfft, planned once, run without allocating |
 | `window.rs` | Hann, periodic, with the coherent gain that makes a full-scale sine read 0 dB |
 | `bands.rs` | log-spaced bands, peak power per band, dB to byte, power tables for sums |
-| `lib.rs` | the analyzer and the SPSC column ring |
-| `reference.rs` | the analysis before it was optimised, kept as the equivalence oracle |
+| `lib.rs` | the analyzer, and the rtrb ring its columns cross |
+| `reference.rs` | the analysis before it was optimised, on rustfft's full-length transform: the equivalence oracle |
 | `crates/spectro-recv` | several sources into one picture, pumped by a worker thread |
 | `crates/spectro-capi` | the C ABI; `include/spectro_core.h` and `spectro_recv.h` are the contract |
 

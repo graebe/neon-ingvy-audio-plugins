@@ -22,23 +22,24 @@
  * that stutters draws a stuttering picture, where one that overruns the audio
  * thread makes a noise.
  *
- * THE DISCIPLINE IS THE HOUSE ONE, copied from spectro-core's `Columns` and
- * audio-bus's ring: one producer, one consumer, and the two counters publish the
- * handover with Release/Acquire. The buffer is held as a RAW POINTER taken once
- * when it is allocated, so no reference to the whole buffer exists while both
- * sides run -- each side touches only its own samples, through the pointer.
- * Full means DROP and say so -- overwriting the oldest would need the writer to
- * move the reader's counter, which is exactly the kind of small shared write
- * that makes a lock-free queue subtly wrong.
+ * THE RING IS rtrb's: one producer, one consumer, wait-free, and its buffer is
+ * allocated once, when the ring is made. Full means DROP and say so -- rtrb
+ * refuses a block it has no room for rather than overwriting the oldest, and
+ * overwriting would need the writer to move the reader's position, which is
+ * exactly the kind of small shared write that makes a lock-free queue subtly
+ * wrong.
  *
- * `mono_ring` hands out the two ends as separate values. Neither is Clone and
- * each works through `&mut self`, so "one producer, one consumer" is enforced
- * by the compiler rather than promised.
+ * `mono_ring` hands out the two ends as separate values. Neither is Clone,
+ * each works through `&mut self`, and rtrb's ends are Send but not Sync, so
+ * "one producer, one consumer" is enforced by the compiler rather than
+ * promised.
  */
-use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// Frames the ring holds. A power of two so the wrap is a mask.
+use rtrb::RingBuffer;
+
+/// Frames the ring holds.
 ///
 /// 32768 is 0.68 s at 48 kHz, 0.34 s at 96. The consumer is the receiver's
 /// worker, waking every few milliseconds, so this absorbs a stall of a third
@@ -46,124 +47,84 @@ use std::sync::Arc;
 /// how much rather than letting a gap pass as silence.
 pub const CAPACITY: usize = 1 << 15;
 
-struct Ring {
-    buf: *mut f32,
-    write: AtomicUsize,
-    read: AtomicUsize,
-    dropped: AtomicU64,
-}
-
-/* The pointer is owned (see Drop); the producer writes only slots the consumer
- * has released and the consumer reads only slots the producer has published,
- * and there is exactly one of each -- `MonoProducer` and `MonoConsumer`. */
-unsafe impl Send for Ring {}
-unsafe impl Sync for Ring {}
-
-impl Drop for Ring {
-    fn drop(&mut self) {
-        unsafe { drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(self.buf, CAPACITY))) }
-    }
-}
-
 /// The audio thread's end.
 pub struct MonoProducer {
-    ring: Arc<Ring>,
+    ring: rtrb::Producer<f32>,
+    dropped: Arc<AtomicU64>,
 }
 
 /// The pump's end.
 pub struct MonoConsumer {
-    ring: Arc<Ring>,
+    ring: rtrb::Consumer<f32>,
+    dropped: Arc<AtomicU64>,
 }
 
 /// A ring and its two ends.
 pub fn mono_ring() -> (MonoProducer, MonoConsumer) {
-    let ring = Arc::new(Ring {
-        buf: Box::into_raw(vec![0.0f32; CAPACITY].into_boxed_slice()) as *mut f32,
-        write: AtomicUsize::new(0),
-        read: AtomicUsize::new(0),
-        dropped: AtomicU64::new(0),
-    });
-    (MonoProducer { ring: ring.clone() }, MonoConsumer { ring })
+    let (tx, rx) = RingBuffer::new(CAPACITY);
+    /* Frames refused for want of room: the producer counts them, and the
+     * consumer and any `RingStats` read the count. */
+    let dropped = Arc::new(AtomicU64::new(0));
+    (MonoProducer { ring: tx, dropped: dropped.clone() }, MonoConsumer { ring: rx, dropped })
 }
 
 impl MonoProducer {
     /// Allocates nothing, takes no lock, makes no call.
     pub fn push(&mut self, src: &[f32]) {
-        let ring = &*self.ring;
-        let w = ring.write.load(Ordering::Relaxed);
-        let r = ring.read.load(Ordering::Acquire);
-        let free = CAPACITY - w.wrapping_sub(r);
-
         /* Nothing partial: half a block is a splice, and a splice reads as
          * audio. The whole block is refused and counted. */
-        if src.len() > free {
-            ring.dropped.fetch_add(src.len() as u64, Ordering::Relaxed);
+        let Ok(block) = self.ring.write_chunk_uninit(src.len()) else {
+            self.dropped.fetch_add(src.len() as u64, Ordering::Relaxed);
             return;
-        }
-
-        for (i, &s) in src.iter().enumerate() {
-            /* A NaN here would poison every window it appears in, not just its
-             * own column -- the same guard spectro-core's push carries. */
-            let v = if s.is_finite() { s } else { 0.0 };
-            unsafe { ring.buf.add((w + i) & (CAPACITY - 1)).write(v) };
-        }
-        ring.write.store(w.wrapping_add(src.len()), Ordering::Release);
+        };
+        /* A NaN here would poison every window it appears in, not just its
+         * own column -- the same guard spectro-core's push carries. */
+        block.fill_from_iter(src.iter().map(|&s| if s.is_finite() { s } else { 0.0 }));
     }
 
     pub fn dropped(&self) -> u64 {
-        self.ring.dropped.load(Ordering::Relaxed)
+        self.dropped.load(Ordering::Relaxed)
     }
 }
 
 /// Reads the ring's drop count from a thread that is neither end.
 pub struct RingStats {
-    ring: Arc<Ring>,
+    dropped: Arc<AtomicU64>,
 }
 
 impl RingStats {
     pub fn dropped(&self) -> u64 {
-        self.ring.dropped.load(Ordering::Relaxed)
+        self.dropped.load(Ordering::Relaxed)
     }
 }
 
 impl MonoConsumer {
     pub fn stats(&self) -> RingStats {
-        RingStats { ring: self.ring.clone() }
+        RingStats { dropped: self.dropped.clone() }
     }
 
     /// Frames waiting to be taken.
     pub fn available(&self) -> usize {
-        self.ring
-            .write
-            .load(Ordering::Acquire)
-            .wrapping_sub(self.ring.read.load(Ordering::Relaxed))
+        self.ring.slots()
     }
 
     pub fn dropped(&self) -> u64 {
-        self.ring.dropped.load(Ordering::Relaxed)
+        self.dropped.load(Ordering::Relaxed)
     }
 
     /// Fills as much of `out` as there is, returns how many.
     pub fn take(&mut self, out: &mut [f32]) -> usize {
-        let ring = &*self.ring;
-        let w = ring.write.load(Ordering::Acquire);
-        let r = ring.read.load(Ordering::Relaxed);
-        let n = out.len().min(w.wrapping_sub(r));
-
-        for (i, slot) in out.iter_mut().take(n).enumerate() {
-            *slot = unsafe { ring.buf.add((r + i) & (CAPACITY - 1)).read() };
-        }
-        if n > 0 {
-            ring.read.store(r.wrapping_add(n), Ordering::Release);
-        }
-        n
+        self.ring.pop_partial_slice(out).0.len()
     }
 
     /// Forget everything waiting. For a source change, where the frames still
     /// in flight belong to the previous answer.
     pub fn clear(&mut self) {
-        let ring = &*self.ring;
-        ring.read.store(ring.write.load(Ordering::Acquire), Ordering::Release);
+        /* What is waiting now. A block pushed meanwhile already belongs to the
+         * new answer, and stays. */
+        if let Ok(waiting) = self.ring.read_chunk(self.ring.slots()) {
+            waiting.commit_all();
+        }
     }
 }
 

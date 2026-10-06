@@ -27,17 +27,16 @@ const SR: f32 = 96_000.0;
 const SECONDS: usize = 10;
 const BLOCK: usize = 1024;
 
-/// A deterministic noise-plus-tone source, so every channel has a full spectrum.
+/// A seeded noise-plus-tone source, so every channel has a full spectrum.
 struct Source {
-    seed: u32,
+    rng: fastrand::Rng,
     phase: f64,
     hz: f64,
 }
 
 impl Source {
     fn next(&mut self) -> f32 {
-        self.seed = self.seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-        let noise = (self.seed >> 8) as f32 / (1u32 << 24) as f32 - 0.5;
+        let noise = self.rng.f32() - 0.5;
         self.phase += 2.0 * std::f64::consts::PI * self.hz / SR as f64;
         0.1 * noise + 0.4 * self.phase.sin() as f32
     }
@@ -72,7 +71,11 @@ fn four_sources_at_96k_for_ten_seconds() {
         let mut clash = vec![0u8; bands * max_cols];
 
         let mut srcs: Vec<Source> = (0..MAX_SOURCES)
-            .map(|i| Source { seed: 17 + i as u32, phase: 0.0, hz: 110.0 * (i + 1) as f64 })
+            .map(|i| Source {
+                rng: fastrand::Rng::with_seed(17 + i as u64),
+                phase: 0.0,
+                hz: 110.0 * (i + 1) as f64,
+            })
             .collect();
         let mut mono = vec![0.0f32; BLOCK];
         let mut stereo = vec![0.0f32; BLOCK * 2];
