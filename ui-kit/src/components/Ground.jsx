@@ -125,7 +125,12 @@ export function Ground(props) {
     schedule();
   }
 
-  onMount(() => {
+  /* The field is built once the document's stylesheets have applied, and not
+   * before: see `onMount`. */
+  let disposed = false;
+  const start = () => {
+    globalThis.removeEventListener?.('load', start);
+    if (disposed || field) return;
     /*
      * THE GROUND MAY NEVER TAKE THE EDITOR DOWN WITH IT, and that is not
      * defensive habit -- it is a specific failure this had.
@@ -180,7 +185,23 @@ export function Ground(props) {
     if (field) {
       globalThis.addEventListener?.('resize', schedule);
       watchDpr();
+      field.setEnabled(props.enabled ?? true);
     }
+  };
+
+  onMount(() => {
+    /*
+     * NOT BEFORE THE STYLESHEET. The field reads its three colours from
+     * tokens.css, and a module script is not guaranteed to run after the
+     * page's stylesheet has applied: in a plugin host under load the editor
+     * mounted first, the tokens read empty, the field refused to start (as it
+     * must on a missing token) and the background was dead for the whole
+     * session. The window's `load` comes after every stylesheet; until then
+     * the static CSS ground is what shows, which is also what a field at rest
+     * draws.
+     */
+    if (globalThis.document?.readyState === 'complete') start();
+    else globalThis.addEventListener?.('load', start);
 
     props.ref?.({
       /* The only way in. A ring arrives as a message from the plugin -- one a
@@ -199,6 +220,8 @@ export function Ground(props) {
   });
 
   onCleanup(() => {
+    disposed = true;
+    globalThis.removeEventListener?.('load', start);
     observer?.disconnect();
     observer = null;
     mutations?.disconnect();
