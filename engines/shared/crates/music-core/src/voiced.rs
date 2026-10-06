@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Giving an abstract harmony a register.
 //!
 //! One act, two levels. A [`Note`] is a voiced [`Pitch`], and the `neo-riemann`

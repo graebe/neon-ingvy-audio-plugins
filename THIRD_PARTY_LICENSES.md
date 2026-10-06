@@ -109,6 +109,7 @@ OFL is permissive and GPL-compatible.
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ni-dsp`, `ni-schwung` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ni-testkit` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — a dev-dependency only; it ships in nothing |
+| `music-core` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — moved here from [neo-riemann](https://codeberg.org/graebe/neo-riemann), where it was MIT under the same owner |
 
 These are the workspace's members, each `publish = false`, and
 `scripts/check-licenses.mjs` holds this table to the path packages in

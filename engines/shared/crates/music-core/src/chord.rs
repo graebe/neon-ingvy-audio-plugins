@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Chords: a root plus any set of pitches, and the vocabulary for naming them.
 
 use core::fmt::{self, Write as _};

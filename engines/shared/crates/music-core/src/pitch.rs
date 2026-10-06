@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Pitch primitives: pitch classes, intervals, and interval classes.
 
 use core::fmt::{self, Write as _};

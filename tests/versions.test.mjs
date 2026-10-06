@@ -78,6 +78,11 @@ const PRODUCTS = {
     crates: ['ground-core', 'ground-capi'].map(
       (c) => `engines/ground/crates/${c}/Cargo.toml`),
   },
+  /* Music theory, shared like ni-dsp but versioned, because neo-riemann pins
+   * it by revision from another repository. */
+  'music-core': {
+    crates: ['engines/shared/crates/music-core/Cargo.toml'],
+  },
   /* The directory is `modules/side-chain` and the module ID inside it is
    * `ni-side-chain`: charlesvestal/schwung-ducker already owns `ducker` on the
    * device. The path is what this test needs; the ID is module.json's business. */

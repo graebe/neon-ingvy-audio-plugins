@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Chords with arbitrary pitch content, and naming them.
 //!
 //! A chord here is a root plus any set of pitches, so most of these tests are

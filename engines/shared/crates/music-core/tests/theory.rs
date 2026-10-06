@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! The behaviour of the core types: wrapping, folding, register, arithmetic
 //! and frequency.
 //!

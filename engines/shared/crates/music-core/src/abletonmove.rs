@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Where the notes sit on an Ableton Move's pads.
 //!
 //! The Move has thirty-two pads in four rows of eight. Played in a key, each pad

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! The Move pad layout: what each pad sounds, and what it is doing in a chord.
 
 use music_core::abletonmove::{COLUMNS, DEFAULT_ROW_OFFSET, Layout, PADS, PadGrid, PadRole, ROWS};

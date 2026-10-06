@@ -6,8 +6,9 @@ chords and pitch-class sets.
 No dependencies, `no_std` by default, and nothing here allocates. Every type is
 `Copy` and small enough to pass around without thinking about it.
 
-This is the layer underneath [`neo-riemann`](../neo-riemann), which adds the
-PLR transformation group on top. Nothing here knows about that theory, which is
+This is the layer underneath [`neo-riemann`](https://codeberg.org/graebe/neo-riemann),
+which adds the PLR transformation group on top, and the theory NI Chord-Detector
+names chords with. Nothing here knows about that theory, which is
 the point of the separation.
 
 ## Two levels
@@ -363,4 +364,6 @@ cargo run -p music-core --example chord    # roots, sets, and naming them
 
 ## License
 
-Copyright © 2026 Torben Gräber. Released under the [MIT License](../LICENSE).
+Copyright © 2026 Torben Gräber. Released under the GNU General Public License,
+version 3 or (at your option) any later version — see
+[LICENSE](../../../../LICENSE).

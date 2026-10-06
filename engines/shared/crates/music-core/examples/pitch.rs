@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! A tour of `Pitch`, written to be read rather than to be clever.
 //!
 //! Run it with:

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Parsing, printing, and the arithmetic invariants underneath them.
 //!
 //! Parsing exists for user input. Everything else in this crate should reach

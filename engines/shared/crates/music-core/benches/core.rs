@@ -1,12 +1,23 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Benchmarks for the core types.
 //!
 //! Each walks a fixed sweep rather than a single call, so the numbers are
 //! per-sweep and stable enough to compare across runs.
+//!
+//! divan, not criterion: criterion asks for serde's `derive`, and a dev
+//! dependency's features land in the one feature set `cargo metadata` reports
+//! for the whole workspace -- which is what scripts/check-licenses.mjs reads to
+//! decide what ships. Nothing here needs a report format.
 
 use std::hint::black_box;
 
-use criterion::{Criterion, criterion_group, criterion_main};
-use music_core::{Chord, ChordQuality, Interval, Pitch, PitchSet};
+use music_core::{Chord, ChordQuality, Interval, Notes, Pitch, PitchSet};
+
+fn main() {
+    divan::main();
+}
 
 /// The 24 consonant triads as pitch-class sets, built without the theory crate.
 fn all_triad_sets() -> Vec<PitchSet> {
@@ -18,58 +29,88 @@ fn all_triad_sets() -> Vec<PitchSet> {
     out
 }
 
-fn sets(c: &mut Criterion) {
-    let mut group = c.benchmark_group("pitch_set");
+#[divan::bench_group]
+mod pitch_set {
+    use super::*;
 
-    group.bench_function("intersection over 24 pairs", |b| {
-        let sets: Vec<PitchSet> = all_triad_sets();
-        b.iter(|| {
+    #[divan::bench(name = "intersection over 24 pairs")]
+    fn intersection(bencher: divan::Bencher) {
+        let sets = all_triad_sets();
+        bencher.bench_local(|| {
             let mut acc = 0u32;
             for set in &sets {
                 acc += (black_box(*set) & black_box(sets[0])).len();
             }
             acc
-        })
-    });
+        });
+    }
 
-    group.bench_function("transpose over 12 steps", |b| {
+    #[divan::bench(name = "transpose over 12 steps")]
+    fn transpose() -> u16 {
         let set = Chord::major(Pitch::C).pitches();
-        b.iter(|| {
-            let mut acc = 0u16;
-            for n in 0..12 {
-                acc ^= black_box(set).transpose(Interval::new(n)).bits();
-            }
-            acc
-        })
-    });
+        let mut acc = 0u16;
+        for n in 0..12 {
+            acc ^= black_box(set).transpose(Interval::new(n)).bits();
+        }
+        acc
+    }
 
-    group.bench_function("interval vector over 24 sets", |b| {
-        let sets: Vec<PitchSet> = all_triad_sets();
-        b.iter(|| {
+    #[divan::bench(name = "interval vector over 24 sets")]
+    fn interval_vector(bencher: divan::Bencher) {
+        let sets = all_triad_sets();
+        bencher.bench_local(|| {
             let mut acc = 0u32;
             for set in &sets {
                 acc += black_box(*set).interval_vector()[3] as u32;
             }
             acc
-        })
-    });
-
-    group.finish();
+        });
+    }
 }
 
-fn search_and_parse(c: &mut Criterion) {
-    let mut group = c.benchmark_group("search_and_parse");
+/// Naming what is sounding: the call a chord display makes on every change.
+#[divan::bench_group]
+mod identify {
+    use super::*;
 
-    group.bench_function("parse chord", |b| {
-        b.iter(|| black_box("Cm7b5").parse::<Chord>().unwrap())
-    });
+    #[divan::bench(name = "a voicing, bass first")]
+    fn voicing() -> Option<Chord> {
+        let notes = Notes::from_slice(&[
+            Pitch::C.at(3),
+            Pitch::A.at(3),
+            Pitch::E.at(4),
+            Pitch::G.at(4),
+        ])
+        .unwrap();
+        black_box(notes).identify()
+    }
 
-    group.bench_function("parse chord, long", |b| {
-        b.iter(|| black_box("F#m7b5").parse::<Chord>().unwrap())
-    });
-
-    group.finish();
+    #[divan::bench(name = "every pitch-class set")]
+    fn every_set() -> u32 {
+        let mut named = 0u32;
+        for bits in 0..4096u16 {
+            if PitchSet::from_bits_truncating(black_box(bits))
+                .identify()
+                .is_some()
+            {
+                named += 1;
+            }
+        }
+        named
+    }
 }
 
-criterion_group!(benches, sets, search_and_parse);
-criterion_main!(benches);
+#[divan::bench_group]
+mod parse {
+    use super::*;
+
+    #[divan::bench(name = "parse chord")]
+    fn short() -> Chord {
+        black_box("Cm7b5").parse::<Chord>().unwrap()
+    }
+
+    #[divan::bench(name = "parse chord, long")]
+    fn long() -> Chord {
+        black_box("F#m7b5").parse::<Chord>().unwrap()
+    }
+}

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! A set of pitch classes, stored as a 12-bit mask.
 
 use core::fmt::{self, Write as _};

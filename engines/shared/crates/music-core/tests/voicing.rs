@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Giving a chord a register: canonical stacks, arrangements and inversions.
 //!
 //! `music-core` keeps harmony as pitch classes, so everything here is about the

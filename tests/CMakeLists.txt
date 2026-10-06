@@ -398,6 +398,17 @@ add_test(NAME ni_shared
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung -p ni-testkit)
 
+# MUSIC-CORE, TWICE: with `std` and without it. The crate promises `no_std` and a
+# method set that only ever loses the two frequency methods without `std`, and
+# a build that is never made without it is a promise nobody checks. The README
+# runs as doctests in both, so the front page cannot drift either.
+add_test(NAME music_core_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p music-core)
+add_test(NAME music_core_no_std
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p music-core --no-default-features)
+
 # The handoff's seam, holding a real bus writer the way NI Listen-In does.
 # The shell_handoff_* symbols ride in libbus_capi.a, so that is what it links.
 add_executable(shell_handoff shell_handoff.c)
@@ -697,6 +708,7 @@ ni_test_tiers(
     QUICK
         # Rust: every crate's unit tests, and the licence gate over its graph
         tg_core_rs spectro_core abus_core gnd_core shell_core ni_shared sc_core_rs
+        music_core_rs music_core_no_std
         cargo_deny
         # C against the engines' ABIs, and the oracles that pin the sound
         tg_core sc_core spectro_columns srecv_api abus_roundtrip gnd_roundtrip

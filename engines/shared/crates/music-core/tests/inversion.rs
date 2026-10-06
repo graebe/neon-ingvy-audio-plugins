@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Inversions, slash chords, and how open a voicing is.
 //!
 //! The thread running through these is the bass. A set of pitch classes cannot
