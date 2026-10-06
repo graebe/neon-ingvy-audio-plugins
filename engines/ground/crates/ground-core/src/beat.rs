@@ -40,15 +40,15 @@ blocks of one playback agree with each other to rounding, and every exception
                A host whose position stalls for a block or two (some do at
                transport start) is continuous too, and rings nothing new.
   a jump       anything else. The range starts at p0, so a start reported
-               as 3.9999999999 is still ON beat 4. Nothing between
-               the old position and the new one is rung -- a seek over twenty
-               bars is not twenty bars of rings -- and so a jump rings at most
-               what its own block holds.
+               as 3.9999999999 is still ON beat 4. Nothing between the old
+               position and the new one is rung -- a seek over twenty bars is
+               not twenty bars of rings -- so a jump rings at most what its
+               own block holds.
 
 SLACK is a sixty-fourth note. It is far wider than any host's rounding and
 than the drift a tempo ramp causes inside one block (the end is projected at
-the block's starting tempo), and far narrower than the half-quarter between the
-closest two rings a meter can produce -- so a jump small enough to pass for
+the block's starting tempo), and narrower than the gap between two rings in
+any meter with a denominator up to 32 -- so a jump small enough to pass for
 continuity can still never ring more than one beat it skipped.
 
 STRENGTHS. 1.0 for a downbeat, BEAT_STRENGTH for every other beat. The field
