@@ -470,10 +470,19 @@ export function generate() {
   ]);
 }
 
-/** The files whose bytes on disk differ from what generate() makes. */
+/*
+ * The files on disk that differ from what generate() makes: byte for byte,
+ * except that a text file checked out with CRLF line ends (git's autocrlf on
+ * Windows) is the same file.
+ */
 export function stale(files = generate()) {
-  return [...files].filter(([path, bytes]) =>
-    !existsSync(path) || !readFileSync(path).equals(bytes)).map(([path]) => path);
+  const same = (path, bytes) => {
+    if (!existsSync(path)) return false;
+    const disk = readFileSync(path);
+    if (!path.endsWith('.h')) return disk.equals(bytes);
+    return disk.toString('utf8').replace(/\r\n/g, '\n') === bytes.toString('utf8');
+  };
+  return [...files].filter(([path, bytes]) => !same(path, bytes)).map(([path]) => path);
 }
 
 function main(argv) {
