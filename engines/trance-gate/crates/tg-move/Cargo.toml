@@ -19,3 +19,8 @@ tg-core = { path = "../tg-core" }
 tg-capi = { path = "../tg-capi" }
 # The Schwung audio_fx v2 glue, shared with every module.
 ni-schwung = { path = "../../../shared/crates/ni-schwung" }
+
+[dev-dependencies]
+# The tests' stand-in for the host's clock, a double the vtable's callback
+# reads (src/lib.rs). `atomic_f64` is the feature that brings AtomicF64.
+atomic_float = { workspace = true, features = ["atomic_f64"] }

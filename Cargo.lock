@@ -68,6 +68,7 @@ dependencies = [
 name = "ground-core"
 version = "2026.10.6+5"
 dependencies = [
+ "atomic_float",
  "ni-testkit",
 ]
 
@@ -391,6 +392,7 @@ dependencies = [
 name = "tg-capi"
 version = "2026.10.6+5"
 dependencies = [
+ "atomic_float",
  "ground-capi",
  "ni-dsp",
  "shell-core",
@@ -413,6 +415,7 @@ dependencies = [
 name = "tg-move"
 version = "2026.10.6+5"
 dependencies = [
+ "atomic_float",
  "ni-schwung",
  "tg-capi",
  "tg-core",

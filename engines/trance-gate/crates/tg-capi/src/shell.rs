@@ -30,6 +30,7 @@ two have to be kept pointing at the same one. See `Mirror`.
 */
 
 use crate::TgCore;
+use atomic_float::AtomicF64;
 use shell_core::{publish_every, Bridge, Model, Shared, Text};
 use std::ffi::{c_char, c_int, CStr};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
@@ -229,7 +230,7 @@ pub struct TgShell {
  */
 struct Mirror {
     pushed_slot: AtomicI32,
-    pushed: [AtomicU64; NUMS],
+    pushed: [AtomicF64; NUMS],
     recalls: AtomicU32,
     moved: AtomicBool,
     sync: AtomicBool,
@@ -240,7 +241,7 @@ impl Mirror {
         Mirror {
             pushed_slot: AtomicI32::new(-1),
             /* NaN: nothing pushed yet, so the first block pushes everything. */
-            pushed: core::array::from_fn(|_| AtomicU64::new(f64::NAN.to_bits())),
+            pushed: core::array::from_fn(|_| AtomicF64::new(f64::NAN)),
             recalls: AtomicU32::new(0),
             moved: AtomicBool::new(false),
             sync: AtomicBool::new(false),
@@ -276,9 +277,11 @@ impl Plan {
 impl Mirror {
     fn plan(&self, values: &[f64; NUMS], recalls: u32) -> Plan {
         let mut pushed_slot = self.pushed_slot.load(Ordering::Relaxed);
+        /* Compared as bits, as the engine compares a sound: a change the
+         * saved blob could show is never missed, and `-0.0 == 0.0` would. */
         let mut moved = [false; NUMS];
         for (i, v) in values.iter().enumerate() {
-            moved[i] = self.pushed[i].load(Ordering::Relaxed) != v.to_bits();
+            moved[i] = self.pushed[i].load(Ordering::Relaxed).to_bits() != v.to_bits();
         }
         Plan {
             switched: slot_moved(&mut pushed_slot, values[Param::Slot as usize] as i32),
@@ -291,8 +294,8 @@ impl Mirror {
     /// held when the engine last heard from it.
     fn commit(&self, values: &[f64; NUMS], recalls: u32) {
         self.pushed_slot.store(values[Param::Slot as usize] as i32, Ordering::Relaxed);
-        for (i, v) in values.iter().enumerate() {
-            self.pushed[i].store(v.to_bits(), Ordering::Relaxed);
+        for (i, &v) in values.iter().enumerate() {
+            self.pushed[i].store(v, Ordering::Relaxed);
         }
         self.recalls.store(recalls, Ordering::Relaxed);
     }
