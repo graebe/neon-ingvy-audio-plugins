@@ -16,10 +16,15 @@ use std::sync::Arc;
 /* ----------------------------------------------------------------- bridge */
 
 /// A model whose state is a count and a sum of the commands applied, so any
-/// lost, duplicated or reordered command shows up as a wrong number.
+/// lost, duplicated or reordered command shows up as a wrong number -- and
+/// which keeps, as a view, how much work answering its readers took.
+#[derive(Default)]
 struct Tally {
     count: u64,
     sum: u64,
+    /// Commands applied, and restores from a frame, over the model's life.
+    applies: u64,
+    restores: u64,
 }
 
 #[derive(Clone)]
@@ -38,6 +43,7 @@ impl Model for Tally {
     fn apply(&mut self, cmd: &u64) {
         self.count += 1;
         self.sum += cmd;
+        self.applies += 1;
     }
     fn publish(&self, f: &mut TallyFrame) {
         f.count = self.count;
@@ -51,12 +57,13 @@ impl Model for Tally {
     fn restore(&mut self, f: &TallyFrame) {
         self.count = f.count;
         self.sum = f.sum;
+        self.restores += 1;
     }
 }
 
 /* Twelve commands fit the ring; the rest wait on the main side. */
 fn tally() -> Bridge<Tally> {
-    Bridge::new(Tally { count: 0, sum: 0 }, Some(Tally { count: 0, sum: 0 }), 12, 1000)
+    Bridge::new(Tally::default(), Some(Tally::default()), 12, 1000)
 }
 
 fn seen(b: &Bridge<Tally>) -> (u64, u64, bool) {
@@ -96,6 +103,31 @@ fn a_reader_sees_its_own_edits_with_no_audio_thread() {
     assert_eq!(b.outstanding(), 10);
     block(&b);
     assert_eq!(seen(&b), (10, 55, false), "the engine caught up; the frame answers");
+}
+
+#[test]
+fn with_no_audio_thread_a_read_applies_only_what_the_view_has_not_seen() {
+    /* No frame comes to confirm anything, so the outbox only grows. A read
+     * that replayed all of it every time made a session of N edits cost
+     * N(N+1)/2 applies; it is N, from one restore. */
+    let b = tally();
+    let work = |b: &Bridge<Tally>| b.read(|r| r.pending.map(|v| (v.applies, v.restores)));
+    for v in 1..=200u64 {
+        b.post(v);
+        assert_eq!(seen(&b), (v, v * (v + 1) / 2, true));
+        assert_eq!(seen(&b), (v, v * (v + 1) / 2, true), "a second read applies nothing more");
+    }
+    assert_eq!(work(&b), Some((200, 1)));
+
+    /* A new frame is a new starting point: the view is restored from it and
+     * brought forward through what is still outstanding -- 188, the ring
+     * having carried twelve. */
+    block(&b);
+    assert_eq!(seen(&b), (200, 20100, true));
+    assert_eq!(work(&b), Some((200 + 188, 2)));
+    b.post(201);
+    assert_eq!(seen(&b), (201, 20301, true));
+    assert_eq!(work(&b), Some((200 + 188 + 1, 2)), "and only the newest after that");
 }
 
 #[test]
@@ -152,7 +184,7 @@ fn a_touched_block_publishes_off_cadence() {
 
 #[test]
 fn a_model_with_no_view_is_always_answered_from_the_frame() {
-    let b = Bridge::new(Tally { count: 0, sum: 0 }, None, 16, 1);
+    let b = Bridge::new(Tally::default(), None, 16, 1);
     b.post(3);
     assert_eq!(seen(&b), (0, 0, false));
 }

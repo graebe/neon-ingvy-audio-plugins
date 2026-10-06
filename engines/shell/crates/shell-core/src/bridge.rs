@@ -139,8 +139,9 @@ struct Main<M: Model> {
     outbox: VecDeque<Posted<M::Command>>,
     sent: usize,
     next_seq: u64,
-    /// (frame applied, newest seq) the view was built for.
-    view_key: Option<(u64, u64)>,
+    /// The newest command the view has applied since it was restored from
+    /// the latest frame; `None` when it has to be restored first.
+    view_upto: Option<u64>,
 }
 
 pub struct Bridge<M: Model> {
@@ -187,7 +188,7 @@ impl<M: Model> Bridge<M> {
                 outbox: VecDeque::new(),
                 sent: 0,
                 next_seq: 1,
-                view_key: None,
+                view_upto: None,
             }),
             publish_every: AtomicU32::new(publish_every.max(1)),
             reclaim: Reclaim::new(),
@@ -288,22 +289,33 @@ impl<M: Model> Bridge<M> {
         let mut guard = self.lock();
         guard.sync();
         self.reclaim.collect();
-        let Main { frames, view, outbox, view_key, .. } = &mut *guard;
+        let Main { frames, view, outbox, view_upto, .. } = &mut *guard;
         let frame = frames.output_buffer();
 
         let Some(view) = view.as_mut().filter(|_| !outbox.is_empty()) else {
-            *view_key = None;
+            *view_upto = None;
             return f(Read { frame: &frame.data, pending: None });
         };
-        let newest = outbox.back().map_or(0, |p| p.seq);
-        let key = (frame.applied, newest);
-        if *view_key != Some(key) {
-            view.restore(&frame.data);
-            for posted in outbox.iter() {
-                view.apply(&posted.cmd);
+        /*
+         * BROUGHT FORWARD, NOT REBUILT, for as long as the frame it was
+         * restored from is the latest. With the audio thread stopped no frame
+         * comes to confirm anything and the outbox only grows: replaying all
+         * of it for every read made a session of edits cost the square of its
+         * length. Without a new frame nothing is retired either -- retiring
+         * takes a frame that confirms -- so the outbox is what the view has
+         * applied, then what was posted since, and only that is applied now.
+         */
+        let seen = match *view_upto {
+            Some(upto) => upto,
+            None => {
+                view.restore(&frame.data);
+                frame.applied
             }
-            *view_key = Some(key);
+        };
+        for posted in outbox.iter().skip_while(|p| p.seq <= seen) {
+            view.apply(&posted.cmd);
         }
+        *view_upto = outbox.back().map(|p| p.seq);
         f(Read { frame: &frame.data, pending: Some(view) })
     }
 
@@ -333,7 +345,7 @@ impl<M: Model> Main<M> {
      * payload is queued for the collector. */
     fn sync(&mut self) {
         if self.frames.update() {
-            self.view_key = None;
+            self.view_upto = None;
         }
         let applied = self.frames.output_buffer().applied;
         while self.outbox.front().is_some_and(|p| p.seq <= applied) {
