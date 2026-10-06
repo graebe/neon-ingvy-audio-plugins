@@ -187,11 +187,14 @@ fn slots_that_sound_alike_cost_the_blob_nothing() {
  * sound it carried, in all of them, beside each slot's own pattern -- and with
  * every migration of its own version still applied.
  */
+/// A format's name, a blob in it, and readouts the load must give.
+type OlderBlob = (&'static str, String, &'static [(&'static str, &'static str)]);
+
 #[test]
 fn every_older_blob_loads_its_sound_into_all_eight_slots() {
     let pats = "\"p0\":\"5555:0:16\",\"p1\":\"FFFF:0:8\",\"p3\":\"F0F0:0:16:80FF\"";
     let v456 = "\"rate\":\"1/8\",\"attack\":12.50,\"decay\":40.00,\"sustain\":0.400,\"release\":30.00,\"hold\":0.600,\"amount\":0.700,\"legato\":1,\"tmode\":1,\"curve\":2";
-    let cases: &[(&str, String, &[(&str, &str)])] = &[
+    let cases: &[OlderBlob] = &[
         ("v6", format!("{{\"sv\":6,\"slot\":2,{v456},\"fade\":0.5000,\"fsoft\":1,\"fdir\":1,{pats}}}"),
          &[("rate", "1/8"), ("attack", "12.5"), ("decay", "40.0"), ("sustain", "0.40"), ("release", "30.0"),
            ("hold", "0.60"), ("amount", "0.70"), ("legato", "1"), ("time_mode", "1"), ("curve", "2"),
@@ -206,7 +209,7 @@ fn every_older_blob_loads_its_sound_into_all_eight_slots() {
         /* v2: mix and depth were one quantity; the product is the amount. */
         ("v2", format!("{{\"sv\":2,\"slot\":2,\"rate\":7,\"attack\":12.5,\"decay\":20.0,\"sustain\":0.5,\"release\":25.0,\"mix\":0.5,\"depth\":0.5,{pats}}}"),
          &[("rate", "1/16"), ("attack", "10.0"), ("amount", "0.25")]),
-        ("v1", format!("{{\"sv\":1,\"slot\":2,\"rate\":\"1/4\",\"attack\":12.5,\"mix\":0.6,\"p0\":\"5555:0:16\",\"p1\":\"FFFF:0:8\"}}"),
+        ("v1", "{\"sv\":1,\"slot\":2,\"rate\":\"1/4\",\"attack\":12.5,\"mix\":0.6,\"p0\":\"5555:0:16\",\"p1\":\"FFFF:0:8\"}".to_string(),
          &[("rate", "1/4"), ("amount", "0.60")]),
         /* No version at all: the oldest blobs, read as they were written. */
         ("v0", format!("{{\"slot\":2,\"rate\":\"1/2\",\"attack\":3.0,\"sustain\":0.25,{pats}}}"),

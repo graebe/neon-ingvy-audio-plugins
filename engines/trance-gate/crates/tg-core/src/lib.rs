@@ -228,6 +228,7 @@ impl Instance {
 
     /// A non-positive or non-finite rate is refused rather than stored: every
     /// length the engine measures in samples divides by it.
+    #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is refused with it")]
     pub fn set_sample_rate(&mut self, sample_rate: f64) {
         if !(sample_rate > 0.0) || !sample_rate.is_finite() {
             return;

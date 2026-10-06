@@ -103,7 +103,7 @@ impl Pattern {
     fn renumber_kind(&mut self, want_on: bool) {
         let n = self.length.min(MAX_STEPS);
         let mut rank = [0u8; MAX_STEPS];
-        for i in 0..n {
+        for (i, rank_i) in rank.iter_mut().enumerate().take(n) {
             if self.on(i) != want_on {
                 continue;
             }
@@ -117,11 +117,11 @@ impl Pattern {
                     r += 1;
                 }
             }
-            rank[i] = r.min(255) as u8;
+            *rank_i = r.min(255) as u8;
         }
-        for i in 0..n {
+        for (i, &r) in rank.iter().enumerate().take(n) {
             if self.on(i) == want_on {
-                self.order[i] = rank[i];
+                self.order[i] = r;
             }
         }
     }
@@ -304,10 +304,10 @@ impl Instance {
         let n = if arriving_on { p.hits() } else { p.holes() };
         let mut w = [0.0f32; MAX_STEPS];
 
-        for i in 0..p.length.min(MAX_STEPS) {
+        for (i, w_i) in w.iter_mut().enumerate().take(p.length.min(MAX_STEPS)) {
             /* The finished value for a step the knob does not move. */
             if p.on(i) != arriving_on {
-                w[i] = if p.on(i) { 1.0 } else { 0.0 };
+                *w_i = if p.on(i) { 1.0 } else { 0.0 };
                 continue;
             }
             if n == 0 {
@@ -325,7 +325,7 @@ impl Instance {
             };
             /* In: the hit fades UP from nothing. Out: the hole fades the step
              * DOWN from a full one, and arriving means gone. */
-            w[i] = if arriving_on { v } else { 1.0 - v };
+            *w_i = if arriving_on { v } else { 1.0 - v };
         }
         self.fade_w = w;
     }

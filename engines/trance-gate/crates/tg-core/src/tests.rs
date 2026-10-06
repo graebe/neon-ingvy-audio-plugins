@@ -224,7 +224,7 @@ fn stopping_the_transport_eases_the_gate_open() {
     for pattern in ["FFFF", "0"] {
         let mut p = slow_gate();
         p.set_param("pattern", pattern);
-        let g = render_transport(&mut p, 160, 64, |b| b < 60 || b >= 130);
+        let g = render_transport(&mut p, 160, 64, |b| !(60..130).contains(&b));
         let (d, at) = max_step(&g);
         assert!(d < STEP_LIMIT, "pattern {pattern}: the gain stepped by {d} at sample {at}");
         assert!(g[60 * 64] < 0.9, "pattern {pattern}: the stop did not glide");

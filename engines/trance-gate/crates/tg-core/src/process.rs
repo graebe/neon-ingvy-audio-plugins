@@ -20,10 +20,10 @@ impl Instance {
          * because the borrow checker insists but because `sounds` consults
          * `self` and `p` holds a shared borrow of it. Three reads, named. */
         let on_now = self.sounds(new_step);
-        let on_prev = prev_step.map_or(false, |s| self.sounds(s));
+        let on_prev = prev_step.is_some_and(|s| self.sounds(s));
         let w_now = if new_step < MAX_STEPS { self.fade_w[new_step] } else { 0.0 };
         let p = &self.pat[self.slot];
-        let tied = prev_step.map_or(false, |s| p.tied(s));
+        let tied = prev_step.is_some_and(|s| p.tied(s));
 
         if on_now {
             /*

@@ -17,7 +17,7 @@ past them is not something a caller can express.
 
 use crate::MAX_STEPS;
 
-pub const MASK_WORDS: usize = (MAX_STEPS + 31) / 32;
+pub const MASK_WORDS: usize = MAX_STEPS.div_ceil(32);
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct Mask {
