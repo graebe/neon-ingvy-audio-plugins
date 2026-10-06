@@ -30,3 +30,9 @@ dist/
 # that could disagree with ui/src and that every UI change had to remember to
 # commit. cmake/EditorGuard.cmake stops a configure that has none.
 plugins/*/resources/web/
+
+# The cross-build kit's build directories (scripts/build-<platform>.sh), which
+# sit inside whichever project they build -- tools/cross/smoke has its own.
+build-macos-*/
+build-linux-*/
+build-windows-*/
