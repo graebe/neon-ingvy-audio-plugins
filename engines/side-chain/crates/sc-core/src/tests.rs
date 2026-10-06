@@ -34,7 +34,7 @@ pub(crate) fn hit(out: &mut Vec<f32>, peak: f32, len: usize, gap: usize) {
         let e = 1.0 - (i as f32 / len as f32);
         out.push(peak * e * e);
     }
-    out.extend(std::iter::repeat(0.0).take(gap));
+    out.extend(std::iter::repeat_n(0.0, gap));
 }
 
 pub(crate) fn note_off(ch: u8, note: u8) -> [u8; 3] {

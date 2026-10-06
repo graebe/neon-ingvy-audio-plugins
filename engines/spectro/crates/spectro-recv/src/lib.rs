@@ -238,7 +238,7 @@ impl Receiver {
     pub fn set_sources(&mut self, slots: &[u32]) {
         let mut wanted: Vec<u32> = Vec::with_capacity(MAX_SOURCES - 1);
         for &s in slots {
-            if s >= 1 && s <= MAX_SLOT && !wanted.contains(&s) && wanted.len() < MAX_SOURCES - 1 {
+            if (1..=MAX_SLOT).contains(&s) && !wanted.contains(&s) && wanted.len() < MAX_SOURCES - 1 {
                 wanted.push(s);
             }
         }

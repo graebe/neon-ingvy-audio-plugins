@@ -141,6 +141,10 @@ impl Bands {
     pub fn len(&self) -> usize {
         self.ranges.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
+    }
 }
 
 /// The band centre frequencies for a range, written into `out`, ascending.
@@ -204,6 +208,220 @@ pub fn power_to_byte(power: f32, db_floor: f32, db_ceil: f32) -> u8 {
         return 0;
     }
     db_to_byte(10.0 * power.log10(), db_floor, db_ceil)
+}
+
+/* ------------------------------------------------------------------ clash --
+ *
+ * WHERE TWO SOURCES ARE FIGHTING, which is not the same question as where they
+ * overlap.
+ *
+ * The obvious metric is the product of the two spectra, and it is the wrong
+ * one. A product in amplitude is a SUM in dB, so 0 dB against -60 dB scores
+ * exactly what -30 dB against -30 dB scores -- and only the second is a clash.
+ * The first is one source winning outright, which is what a mix is supposed to
+ * sound like.
+ *
+ * So two conditions, and both are needed:
+ *
+ *   BOTH PRESENT      min(a, b) above a floor. `min` is high only where
+ *                     neither source is quiet, which is the actual question.
+ *   COMPARABLE        |a - b| within a window. Past about 9-12 dB the louder
+ *                     source simply masks the other; that is a source being
+ *                     buried, not two sources competing, and painting it would
+ *                     bury the real clashes in orange.
+ *
+ * IT IS ALL BYTE ARITHMETIC, and that is not a shortcut. A column byte is
+ * already linear in dB -- see `amplitude_to_byte` above -- so `min` of two
+ * bytes IS `min` of two decibels, and a byte difference IS a dB difference
+ * scaled by 255/96. Nothing needs converting back.
+ *
+ * The result is a STRENGTH, not a flag: 0 where there is no clash, rising with
+ * how far above the floor the quieter source is and how evenly the two are
+ * matched. The picture paints it as an intensity, so a cell where two sources
+ * sit at -6 dB together has to read louder than one where they meet at -50.
+ */
+
+/// Clash strength for one cell, 0 where there is none.
+///
+/// `floor` and `balance` are in the same byte units as the levels; see
+/// [`db_to_byte`] and [`db_span_to_byte`].
+#[inline]
+pub fn clash_cell(a: u8, b: u8, floor: u8, balance: u8) -> u8 {
+    let lo = a.min(b);
+    if lo < floor {
+        return 0;
+    }
+    let diff = a.abs_diff(b);
+    if diff > balance {
+        return 0;
+    }
+
+    /*
+     * Two factors, multiplied, both 0..=255:
+     *
+     *   depth    how far the QUIETER source is above the floor -- the headroom
+     *            it has to be heard in
+     *   even     how matched they are, falling to nothing at the edge of the
+     *            balance window so the region fades out rather than ending on
+     *            a hard line nobody chose
+     *
+     * `balance == 0` means "only exact ties", and then `even` is 255 rather
+     * than a divide by zero.
+     */
+    let span = 255 - floor as u16;
+    let depth = ((lo - floor) as u16 * 255).checked_div(span).unwrap_or(255);
+    let even = if balance == 0 {
+        255u16
+    } else {
+        255 - (diff as u16 * 255) / balance as u16
+    };
+    ((depth * even) / 255) as u8
+}
+
+/// A whole column. `out` is filled for `min(a.len(), b.len(), out.len())` bands
+/// and zeroed past it, so a caller never draws a stale tail.
+pub fn clash_column(a: &[u8], b: &[u8], out: &mut [u8], floor: u8, balance: u8) {
+    let n = a.len().min(b.len()).min(out.len());
+    for i in 0..n {
+        out[i] = clash_cell(a[i], b[i], floor, balance);
+    }
+    for slot in out.iter_mut().skip(n) {
+        *slot = 0;
+    }
+}
+
+/// A dBFS level as the byte the engine would have encoded it as.
+///
+/// The inverse of `amplitude_to_byte`'s scaling, and the only correct way to
+/// turn "flag anything above -60 dB" into a threshold these bytes can be
+/// compared against.
+pub fn db_to_byte(db: f32, db_floor: f32, db_ceil: f32) -> u8 {
+    let span = (db_ceil - db_floor).max(1.0);
+    let t = ((db - db_floor) / span).clamp(0.0, 1.0);
+    (t * 255.0 + 0.5) as u8
+}
+
+/// A byte back to the dBFS it stands for -- the inverse of [`db_to_byte`].
+///
+/// BYTE 0 IS NOT `db_floor`, IT IS "AT OR BELOW IT". `amplitude_to_byte`
+/// returns 0 for silence and for anything under the floor alike, so this
+/// returns [`f32::NEG_INFINITY`] rather than pretending to a level it was never
+/// told. A caller summing power needs that distinction: four silent channels
+/// must add to silence, and they will not if each contributes 10^(floor/10).
+pub fn byte_to_db(byte: u8, db_floor: f32, db_ceil: f32) -> f32 {
+    if byte == 0 {
+        return f32::NEG_INFINITY;
+    }
+    let span = (db_ceil - db_floor).max(1.0);
+    db_floor + (byte as f32 / 255.0) * span
+}
+
+/* -------------------------------------------------------------------- sum --
+ *
+ * SEVERAL SOURCES INTO ONE PICTURE, and it cannot be done in byte space.
+ *
+ * A byte here is linear in dB (see `amplitude_to_byte`), which is exactly what
+ * makes `clash_cell` above cheap -- and exactly what makes summing impossible
+ * the same way. Adding two bytes adds two DECIBELS, which is multiplying two
+ * amplitudes: -20 dB and -20 dB would come out at -40, quieter than either.
+ *
+ * So a sum has to leave byte space, add POWER, and come back:
+ *
+ *     db  = floor + (byte / 255) * (ceil - floor)
+ *     pow = 10^(db / 10)
+ *     out = db_to_byte(10 * log10(sum of pow))
+ *
+ * POWER RATHER THAN AMPLITUDE because two tracks are not phase locked. Adding
+ * amplitudes assumes they are, and would put two equal sources 6 dB up; adding
+ * power puts them at +3, which is what two uncorrelated sources of equal level
+ * actually measure. A mix of a bass and a pad is the incoherent case.
+ */
+
+/*
+ * AS TABLES, because a column is 256 cells and a sum was a `powf` per cell per
+ * source and a `log10` per cell. A byte has 256 values, so its power is a
+ * lookup; and a power maps back to the byte whose edges it falls between, so
+ * the way back is a binary search over the 255 edges. The edges are found by
+ * bisecting the encoder above -- `db_to_byte(10 * log10(p))` -- over f32, so
+ * the table reproduces that arithmetic exactly rather than approximating it.
+ */
+
+/// The byte scale between one `db_floor` and `db_ceil`, as power tables.
+pub struct PowerTable {
+    /// Byte to power; byte 0 is silence and contributes nothing.
+    power: [f32; 256],
+    /// `edge[b - 1]` is the least power that encodes as byte `b` or above.
+    edge: [f32; 255],
+}
+
+impl PowerTable {
+    pub fn new(db_floor: f32, db_ceil: f32) -> Self {
+        let encode = |p: f32| {
+            if p > 0.0 {
+                db_to_byte(10.0 * p.log10(), db_floor, db_ceil)
+            } else {
+                0
+            }
+        };
+        let power = core::array::from_fn(|b| {
+            let db = byte_to_db(b as u8, db_floor, db_ceil);
+            if db.is_finite() {
+                10.0f32.powf(db * 0.1)
+            } else {
+                0.0
+            }
+        });
+        /* Positive finite floats order like their bit patterns, so the least
+         * power reaching byte b is a bisection over those. */
+        let edge = core::array::from_fn(|i| {
+            let b = i as u8 + 1;
+            let (mut lo, mut hi) = (0u32, f32::MAX.to_bits());
+            while hi - lo > 1 {
+                let mid = lo + (hi - lo) / 2;
+                if encode(f32::from_bits(mid)) >= b {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            f32::from_bits(hi)
+        });
+        Self { power, edge }
+    }
+
+    /// The byte a power encodes as.
+    #[inline]
+    pub fn to_byte(&self, power: f32) -> u8 {
+        self.edge.partition_point(|&e| e <= power) as u8
+    }
+
+    /// Add several channels' columns into one, in power.
+    ///
+    /// `out` is filled for as many bands as the shortest input has and zeroed
+    /// past it, the same contract `clash_column` keeps -- a caller never draws
+    /// a stale tail.
+    pub fn sum_column(&self, srcs: &[&[u8]], out: &mut [u8]) {
+        let n = srcs
+            .iter()
+            .map(|s| s.len())
+            .min()
+            .unwrap_or(0)
+            .min(out.len());
+
+        for (i, o) in out[..n].iter_mut().enumerate() {
+            /* Silence is power 0 and adds nothing -- see byte_to_db. */
+            let power: f32 = srcs.iter().map(|s| self.power[s[i] as usize]).sum();
+            *o = self.to_byte(power);
+        }
+        out[n..].fill(0);
+    }
+}
+
+/// A dB DIFFERENCE in byte units -- for the balance window, which is a span
+/// rather than a level and so has no floor to subtract.
+pub fn db_span_to_byte(db: f32, db_floor: f32, db_ceil: f32) -> u8 {
+    let span = (db_ceil - db_floor).max(1.0);
+    ((db.max(0.0) / span) * 255.0 + 0.5).min(255.0) as u8
 }
 
 #[cfg(test)]
@@ -452,222 +670,4 @@ mod tests {
         let mid = amplitude_to_byte(10f32.powf(-48.0 / 20.0), -96.0, 0.0);
         assert!((i32::from(mid) - 128).abs() <= 1, "-48 dB landed at {mid}");
     }
-}
-
-/* ------------------------------------------------------------------ clash --
- *
- * WHERE TWO SOURCES ARE FIGHTING, which is not the same question as where they
- * overlap.
- *
- * The obvious metric is the product of the two spectra, and it is the wrong
- * one. A product in amplitude is a SUM in dB, so 0 dB against -60 dB scores
- * exactly what -30 dB against -30 dB scores -- and only the second is a clash.
- * The first is one source winning outright, which is what a mix is supposed to
- * sound like.
- *
- * So two conditions, and both are needed:
- *
- *   BOTH PRESENT      min(a, b) above a floor. `min` is high only where
- *                     neither source is quiet, which is the actual question.
- *   COMPARABLE        |a - b| within a window. Past about 9-12 dB the louder
- *                     source simply masks the other; that is a source being
- *                     buried, not two sources competing, and painting it would
- *                     bury the real clashes in orange.
- *
- * IT IS ALL BYTE ARITHMETIC, and that is not a shortcut. A column byte is
- * already linear in dB -- see `amplitude_to_byte` above -- so `min` of two
- * bytes IS `min` of two decibels, and a byte difference IS a dB difference
- * scaled by 255/96. Nothing needs converting back.
- *
- * The result is a STRENGTH, not a flag: 0 where there is no clash, rising with
- * how far above the floor the quieter source is and how evenly the two are
- * matched. The picture paints it as an intensity, so a cell where two sources
- * sit at -6 dB together has to read louder than one where they meet at -50.
- */
-
-/// Clash strength for one cell, 0 where there is none.
-///
-/// `floor` and `balance` are in the same byte units as the levels; see
-/// [`db_to_byte`] and [`db_span_to_byte`].
-#[inline]
-pub fn clash_cell(a: u8, b: u8, floor: u8, balance: u8) -> u8 {
-    let lo = a.min(b);
-    if lo < floor {
-        return 0;
-    }
-    let diff = a.abs_diff(b);
-    if diff > balance {
-        return 0;
-    }
-
-    /*
-     * Two factors, multiplied, both 0..=255:
-     *
-     *   depth    how far the QUIETER source is above the floor -- the headroom
-     *            it has to be heard in
-     *   even     how matched they are, falling to nothing at the edge of the
-     *            balance window so the region fades out rather than ending on
-     *            a hard line nobody chose
-     *
-     * `balance == 0` means "only exact ties", and then `even` is 255 rather
-     * than a divide by zero.
-     */
-    let span = 255 - floor as u16;
-    let depth = if span == 0 {
-        255u16
-    } else {
-        ((lo - floor) as u16 * 255) / span
-    };
-    let even = if balance == 0 {
-        255u16
-    } else {
-        255 - (diff as u16 * 255) / balance as u16
-    };
-    ((depth * even) / 255) as u8
-}
-
-/// A whole column. `out` is filled for `min(a.len(), b.len(), out.len())` bands
-/// and zeroed past it, so a caller never draws a stale tail.
-pub fn clash_column(a: &[u8], b: &[u8], out: &mut [u8], floor: u8, balance: u8) {
-    let n = a.len().min(b.len()).min(out.len());
-    for i in 0..n {
-        out[i] = clash_cell(a[i], b[i], floor, balance);
-    }
-    for slot in out.iter_mut().skip(n) {
-        *slot = 0;
-    }
-}
-
-/// A dBFS level as the byte the engine would have encoded it as.
-///
-/// The inverse of `amplitude_to_byte`'s scaling, and the only correct way to
-/// turn "flag anything above -60 dB" into a threshold these bytes can be
-/// compared against.
-pub fn db_to_byte(db: f32, db_floor: f32, db_ceil: f32) -> u8 {
-    let span = (db_ceil - db_floor).max(1.0);
-    let t = ((db - db_floor) / span).clamp(0.0, 1.0);
-    (t * 255.0 + 0.5) as u8
-}
-
-/// A byte back to the dBFS it stands for -- the inverse of [`db_to_byte`].
-///
-/// BYTE 0 IS NOT `db_floor`, IT IS "AT OR BELOW IT". `amplitude_to_byte`
-/// returns 0 for silence and for anything under the floor alike, so this
-/// returns [`f32::NEG_INFINITY`] rather than pretending to a level it was never
-/// told. A caller summing power needs that distinction: four silent channels
-/// must add to silence, and they will not if each contributes 10^(floor/10).
-pub fn byte_to_db(byte: u8, db_floor: f32, db_ceil: f32) -> f32 {
-    if byte == 0 {
-        return f32::NEG_INFINITY;
-    }
-    let span = (db_ceil - db_floor).max(1.0);
-    db_floor + (byte as f32 / 255.0) * span
-}
-
-/* -------------------------------------------------------------------- sum --
- *
- * SEVERAL SOURCES INTO ONE PICTURE, and it cannot be done in byte space.
- *
- * A byte here is linear in dB (see `amplitude_to_byte`), which is exactly what
- * makes `clash_cell` above cheap -- and exactly what makes summing impossible
- * the same way. Adding two bytes adds two DECIBELS, which is multiplying two
- * amplitudes: -20 dB and -20 dB would come out at -40, quieter than either.
- *
- * So a sum has to leave byte space, add POWER, and come back:
- *
- *     db  = floor + (byte / 255) * (ceil - floor)
- *     pow = 10^(db / 10)
- *     out = db_to_byte(10 * log10(sum of pow))
- *
- * POWER RATHER THAN AMPLITUDE because two tracks are not phase locked. Adding
- * amplitudes assumes they are, and would put two equal sources 6 dB up; adding
- * power puts them at +3, which is what two uncorrelated sources of equal level
- * actually measure. A mix of a bass and a pad is the incoherent case.
- */
-
-/*
- * AS TABLES, because a column is 256 cells and a sum was a `powf` per cell per
- * source and a `log10` per cell. A byte has 256 values, so its power is a
- * lookup; and a power maps back to the byte whose edges it falls between, so
- * the way back is a binary search over the 255 edges. The edges are found by
- * bisecting the encoder above -- `db_to_byte(10 * log10(p))` -- over f32, so
- * the table reproduces that arithmetic exactly rather than approximating it.
- */
-
-/// The byte scale between one `db_floor` and `db_ceil`, as power tables.
-pub struct PowerTable {
-    /// Byte to power; byte 0 is silence and contributes nothing.
-    power: [f32; 256],
-    /// `edge[b - 1]` is the least power that encodes as byte `b` or above.
-    edge: [f32; 255],
-}
-
-impl PowerTable {
-    pub fn new(db_floor: f32, db_ceil: f32) -> Self {
-        let encode = |p: f32| {
-            if p > 0.0 {
-                db_to_byte(10.0 * p.log10(), db_floor, db_ceil)
-            } else {
-                0
-            }
-        };
-        let power = core::array::from_fn(|b| {
-            let db = byte_to_db(b as u8, db_floor, db_ceil);
-            if db.is_finite() {
-                10.0f32.powf(db * 0.1)
-            } else {
-                0.0
-            }
-        });
-        /* Positive finite floats order like their bit patterns, so the least
-         * power reaching byte b is a bisection over those. */
-        let edge = core::array::from_fn(|i| {
-            let b = i as u8 + 1;
-            let (mut lo, mut hi) = (0u32, f32::MAX.to_bits());
-            while hi - lo > 1 {
-                let mid = lo + (hi - lo) / 2;
-                if encode(f32::from_bits(mid)) >= b {
-                    hi = mid;
-                } else {
-                    lo = mid;
-                }
-            }
-            f32::from_bits(hi)
-        });
-        Self { power, edge }
-    }
-
-    /// The byte a power encodes as.
-    #[inline]
-    pub fn to_byte(&self, power: f32) -> u8 {
-        self.edge.partition_point(|&e| e <= power) as u8
-    }
-
-    /// Add several channels' columns into one, in power.
-    ///
-    /// `out` is filled for as many bands as the shortest input has and zeroed
-    /// past it, the same contract `clash_column` keeps -- a caller never draws
-    /// a stale tail.
-    pub fn sum_column(&self, srcs: &[&[u8]], out: &mut [u8]) {
-        let n = srcs
-            .iter()
-            .map(|s| s.len())
-            .min()
-            .unwrap_or(0)
-            .min(out.len());
-
-        for (i, o) in out[..n].iter_mut().enumerate() {
-            /* Silence is power 0 and adds nothing -- see byte_to_db. */
-            let power: f32 = srcs.iter().map(|s| self.power[s[i] as usize]).sum();
-            *o = self.to_byte(power);
-        }
-        out[n..].fill(0);
-    }
-}
-
-/// A dB DIFFERENCE in byte units -- for the balance window, which is a span
-/// rather than a level and so has no floor to subtract.
-pub fn db_span_to_byte(db: f32, db_floor: f32, db_ceil: f32) -> u8 {
-    let span = (db_ceil - db_floor).max(1.0);
-    ((db.max(0.0) / span) * 255.0 + 0.5).min(255.0) as u8
 }

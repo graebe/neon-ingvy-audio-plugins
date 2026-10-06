@@ -120,8 +120,8 @@ impl Model for TgCore {
                 if !blob.is_empty() {
                     self.0.set_param("state", blob);
                 }
-                for (i, b) in head.chunks_exact(8).enumerate() {
-                    let v = f64::from_le_bytes(b.try_into().unwrap_or([0; 8]));
+                for (i, b) in head.as_chunks::<8>().0.iter().enumerate() {
+                    let v = f64::from_le_bytes(*b);
                     if let Some(p) = Param::from_i32(i as i32) {
                         self.0.set_num(p, v);
                     }

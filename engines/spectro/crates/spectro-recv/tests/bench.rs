@@ -106,10 +106,9 @@ fn four_sources_at_96k_for_ten_seconds() {
             }
             feed.push(&mono);
             for (p, src) in pushers.iter_mut().zip(srcs.iter_mut().skip(1)) {
-                for f in stereo.chunks_exact_mut(2) {
+                for f in stereo.as_chunks_mut::<2>().0 {
                     let v = src.next();
-                    f[0] = v;
-                    f[1] = v;
+                    *f = [v, v];
                 }
                 p.push(&stereo);
             }

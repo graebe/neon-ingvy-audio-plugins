@@ -230,7 +230,7 @@ impl Engine {
             let got = r.frames as usize;
             for (m, lr) in b.stage[b.have..b.have + got]
                 .iter_mut()
-                .zip(self.interleaved.chunks_exact(2))
+                .zip(self.interleaved.as_chunks::<2>().0)
             {
                 *m = 0.5 * (lr[0] + lr[1]);
             }
