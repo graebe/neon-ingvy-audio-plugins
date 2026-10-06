@@ -3,8 +3,9 @@
  *
  * 16px, 1.5px stroke, square caps, drawn in currentColor so it takes the colour
  * of its control: ink at rest, on-uv on a lit button, ink-dim when disabled.
- * Twelve glyphs -- play, pause, stop, record, loop, copy, paste, shuffle,
- * reset, link, chevron, power -- and never one outside the set.
+ * Fifteen glyphs -- play, pause, stop, record, loop, copy, paste, export,
+ * export-all, import, shuffle, reset, link, chevron, power -- and never one
+ * outside the set.
  *
  * Decorative to assistive technology: an icon replaces a WORD on a control,
  * and the control carries that word as its aria-label.

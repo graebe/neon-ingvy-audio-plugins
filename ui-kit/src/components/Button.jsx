@@ -7,10 +7,10 @@
  * which is also what a pressed button looks like: "selected is uv".
  *
  * AN ICON REPLACES A VERB, and only on a control that acts (transport,
- * copy/paste, loop, link, reset, power) -- never as decoration. `icon` names a
- * glyph from the design's set of twelve; with no label the button is the 28px
- * square icon-only form, and then it carries the verb as its aria-label and
- * title.
+ * copy/paste, export/import, loop, link, reset, power) -- never as decoration.
+ * `icon` names a glyph from the design's set of fifteen; with no label the
+ * button is the 28px square icon-only form, and then it carries the verb as
+ * its aria-label and title.
  *
  * `info` is what it does, for the hint bar and as its accessible description.
  * A button that has one shows no native tooltip: two texts appearing for one
