@@ -47,7 +47,7 @@ export const INFO = {
   shuffle: 'SHUFFLE — deal a random arrival order; the pattern stays as it is.',
 
   /* The settings row. */
-  slot: 'Slot — choose which of the 8 patterns plays and is edited.',
+  slot: 'Slot — pick one of 8 slots; each keeps its own pattern and sound.',
   join: 'Join Neighbors — run consecutive steps together instead of retriggering.',
   curve: 'Curve — the stages\' shape: Linear, Exponential or S-Curve.',
   time: 'Time — read Attack, Decay and Release in ms or as % of the gate.',
@@ -78,7 +78,7 @@ export const INFO = {
   arrival: 'Arrival — click to type a new place; a number in use swaps.',
 
   /* The window's own: the switch and the signature in the hint bar. */
-  motion: 'Motion — let kicks ripple the background; remembered on this Mac.',
+  motion: 'Motion — let the music ripple the background; remembered on this Mac.',
   signature: 'Neon Ingvy — the publisher of this plugin.',
 
   /* Every knob's readout. */
