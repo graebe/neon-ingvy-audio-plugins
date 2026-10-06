@@ -18,9 +18,9 @@ hypothetical; it is why `trance_gate_core.h:116-132` argues the same case.
 `set_param` IS IMPLEMENTED VIA `set_num`, so every clamp exists exactly once.
 The string door's only extra job is deciding which number a word means.
 
-EACH KEY IS SPELLED ONCE, in `Param::key`. Both doors find a parameter by its
-key through `Param::from_key`, which reads the spellings off `key` rather than
-keeping a second copy of them.
+EACH KEY IS SPELLED ONCE, in `Param::key`. `set_param` and `get_param` find a
+parameter by its key through `Param::from_key`, which reads the spellings off
+`key` rather than keeping a second copy of them.
 
 WHY THE STRING DOOR IS NOT SERDE. The words are C's, and saved patches and the
 Move's knob grid already speak them: `atof`'s leniency (`"4abc"` is 4, `"abc"`
@@ -89,7 +89,8 @@ impl Param {
 
     /// The parameter `key` names on the wire, if any. A scan of fifteen
     /// `&'static str` comparisons: no table to keep in step with `key`, and
-    /// nothing allocated, because both doors call it on the audio callback.
+    /// nothing allocated, because `set_param` and `get_param` call it on the
+    /// audio callback.
     pub fn from_key(key: &str) -> Option<Param> {
         Param::ALL.into_iter().find(|p| p.key() == key)
     }
