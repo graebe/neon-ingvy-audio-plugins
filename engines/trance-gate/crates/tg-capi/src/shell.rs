@@ -596,7 +596,6 @@ unsafe fn refuse(
     0
 }
 
-
 /// The audio thread, at the top of a block: applies every queued edit and
 /// lends out the engine for this block's `tg_core_*` calls. Allocation-free
 /// and wait-free.
