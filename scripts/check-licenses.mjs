@@ -183,7 +183,23 @@ function tomlArray(file, table, key) {
  * from a registry that the workspace reaches through normal dependencies, on
  * any platform -- never through a build or a dev one, which run on the build
  * machine. deny.toml says why no target narrows it. What this catches is a
- * Cargo.lock that moved without the notices being regenerated. */
+ * Cargo.lock that moved without the notices being regenerated.
+ *
+ * `cargo metadata`'s resolve is a little wider than that graph, in two ways
+ * that cargo-about and cargo-deny correct (both walk it with the krates
+ * crate), so this corrects them the same way -- or the two sides would
+ * disagree about crates that nothing builds:
+ *
+ *   - It keeps an edge to an optional dependency that only a weak feature
+ *     names. lexical-core's `format` asks for `lexical-write-float?/format`,
+ *     which configures the writer IF something else turns it on; nothing
+ *     does, and the build and `cargo tree` agree. enabled() asks the node's
+ *     own features instead.
+ *   - It keeps an edge whose cfg() holds on no platform at all. serde_core
+ *     pins serde_derive's version through `cfg(any())`, which would otherwise
+ *     bring in serde_derive, syn, quote, proc-macro2 and unicode-ident.
+ *     noPlatform() drops exactly that shape and keeps every cfg() that names
+ *     a platform: every platform counts. */
 function shippedCrates() {
   let meta;
   try {
@@ -196,18 +212,71 @@ function shippedCrates() {
       : `cargo metadata failed: ${e.stderr || e.message}`);
   }
   const packages = new Map(meta.packages.map((p) => [p.id, p]));
-  const deps = new Map(meta.resolve.nodes.map((n) => [n.id, n.deps]));
+  const nodes = new Map(meta.resolve.nodes.map((n) => [n.id, n]));
   const seen = new Set();
   const todo = [...meta.workspace_members];
   while (todo.length) {
     const id = todo.pop();
     if (seen.has(id)) continue;
     seen.add(id);
-    for (const d of deps.get(id) ?? [])
-      if (d.dep_kinds.some((k) => k.kind === null)) todo.push(d.pkg);
+    const pkg = packages.get(id);
+    const node = nodes.get(id);
+    for (const d of node?.deps ?? []) {
+      const name = packages.get(d.pkg).name;
+      if (d.dep_kinds.some((k) => k.kind === null && !noPlatform(k.target)
+                               && enabled(pkg, node, name, k.target)))
+        todo.push(d.pkg);
+    }
   }
   return new Set([...seen].map((id) => packages.get(id))
     .filter((p) => p.source).map((p) => `${p.name} ${p.version}`));
+}
+
+/* Whether `pkg`, resolved as `node`, depends on the package `name` through its
+ * normal dependency for `target`. A declaration that is not optional always
+ * does. An optional one does only when an enabled feature switches it on
+ * strongly: `dep:x`, or `x/feature` -- never `x?/feature`. `node.features` is
+ * every feature cargo enabled, the implicit `x = ["dep:x"]` of an optional
+ * dependency included, so one switched on by its own name is found the same
+ * way. */
+function enabled(pkg, node, name, target) {
+  const bare = (t) => (t ?? '').replace(/\s+/g, '');
+  const decls = pkg.dependencies.filter((dep) =>
+    dep.kind === null && dep.name === name && bare(dep.target) === bare(target));
+  if (!decls.length)
+    throw new Error(`cargo metadata resolves ${pkg.name} -> ${name} (${target ?? 'every platform'}), ` +
+                    `which ${pkg.name}'s manifest does not declare`);
+  return decls.some((dep) => {
+    if (!dep.optional) return true;
+    const local = dep.rename ?? dep.name;
+    return node.features.some((f) => (pkg.features[f] ?? []).some((v) =>
+      v === `dep:${local}` || v.startsWith(`${local}/`)));
+  });
+}
+
+/* Whether a dependency's target holds on no platform, by its shape alone: a
+ * cfg() with no predicate in it -- only all(), any() and not() of nothing --
+ * that comes out false, as `cfg(any())` does. krates draws the line at the
+ * same place. Anything that names a predicate is some platform's, and a bare
+ * target triple is one. */
+function noPlatform(target) {
+  const cfg = /^cfg\((.*)\)$/s.exec(target ?? '');
+  const tokens = cfg?.[1].match(/[A-Za-z_][\w-]*|"[^"]*"|\S/g) ?? [];
+  if (!tokens.length || tokens.some((t) => !['all', 'any', 'not', '(', ')', ','].includes(t)))
+    return false;
+  let i = 0;
+  const expr = () => {
+    const op = tokens[i];
+    i += 2;                       // the operator and its '('
+    const args = [];
+    while (tokens[i] !== ')') {
+      args.push(expr());
+      if (tokens[i] === ',') i++;
+    }
+    i++;                          // its ')'
+    return op === 'all' ? args.every(Boolean) : op === 'any' ? args.some(Boolean) : !args[0];
+  };
+  return !expr();
 }
 
 try {
