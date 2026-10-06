@@ -4,7 +4,7 @@ order: 7
 slug: cross-build
 ---
 
-Every plugin is built and checked for all three desktop platforms on one Mac,
+A plugin is built and checked for all three desktop platforms on one Mac,
 before anything reaches GitHub: macOS natively, Linux and Windows in Docker.
 GitHub Actions only publishes. One command builds a JUCE plugin project for
 each platform, runs its tests, validates every VST3 it produced with
@@ -16,7 +16,8 @@ scripts/build-all.sh --juce <JUCE 9.0.3> tools/cross/smoke
 
 `tools/cross/smoke` is the proof the kit is held to: a JUCE 9.0.3 VST3 whose
 `processBlock` hands every channel to a twenty-line Rust static library through
-a C ABI — the shape every product here has. It ships nowhere.
+a C ABI — the shape every product here has. It ships nowhere. The products
+themselves join the kit with their move to JUCE.
 
 ## What runs where
 
@@ -38,7 +39,8 @@ a C ABI — the shape every product here has. It ships nowhere.
   x86_64-apple-darwin`) — what the plugins already need.
 - **Docker Desktop**, with *Use Rosetta for x86_64/amd64 emulation* on Apple
   silicon (both images are linux/amd64), at least 8 GB of memory for its VM,
-  and about 6 GB of disk for the two images.
+  and about 3 GB of disk for the two images — the Windows image is built on
+  the Linux one — plus Docker's build cache.
 - **JUCE at tag 9.0.3**, passed as `--juce <dir>`. The repository will keep it
   as a submodule at `external/JUCE`, which is the default; until then:
   `git clone --depth 1 --branch 9.0.3 https://github.com/juce-framework/JUCE.git <dir>`.
@@ -187,24 +189,40 @@ shortcoming can fail here; there is no real audio device, no Windows host, and
 no code signing. The run that counts is the native Windows one in GitHub
 Actions at publishing time.
 
+**It has not yet run on a plugin**: that waits for the licence. What is
+established is that `pluginval.exe` 1.0.4 starts and runs its command line
+under the image's Wine and Rosetta. The run is set to strictness 10 with the
+editor tests, like the other two platforms; should Wine fail the editor tests
+on a plugin that passes them natively, the plan is to drop to
+`--skip-gui-tests` for Windows and say so in the verdict — the editor then
+being checked on macOS and Linux only, and natively on Windows in CI.
+
 ## Timings
 
 Measured on 2026-10-06 on this machine (Apple silicon, Docker Desktop with 10
-CPUs, 8 GB and Rosetta), on the smoke plugin. *Cold* is a first build: images
-built, JUCE compiled from scratch.
+CPUs, 8 GB and Rosetta), on the smoke plugin, with `scripts/build-all.sh`.
+*Cold* is a first build: empty build directory, JUCE compiled from scratch.
 
 | Step | macOS | Linux amd64 | Windows x64 |
 |---|---|---|---|
-| Image, first build | — | 4 min 34 s | not built (licence) |
-| Configure | 10 s | 58 s | — |
-| Build, cold | 3 min 00 s | 7 min 53 s | — |
-| ctest | 2 s | 15 s | — |
-| pluginval, strictness 10 | 18 s | 21 s | — |
+| Image, first build (once per Dockerfile change) | — | 4 min 15 s – 4 min 34 s | `tools` stage 1 min 27 s; `sdk` stage not built (licence) |
+| Configure (JUCE builds its juceaide helper here) | 13 s | 60 s | — |
+| Build, cold | 2 min 24 s | 6 min 38 s | — |
+| ctest | 2 s | 3 s | — |
+| pluginval, strictness 10 | 21 s | 14 s | — |
+| **The platform in `build-all.sh`**, images present | **3 min 04 s** | **7 min 58 s** | stops at the licence gate |
+| The same, nothing changed since | 19 s | 20 s | — |
+
+The whole cold `build-all.sh` took 11 min 03 s. The Linux image is 1.46 GB
+(linux/arm64: 1.36 GB, built in 6 min 12 s, and the smoke plugin natively in
+it in 2 min 06 s); the Windows `tools` stage adds 1.03 GB to it, and the `sdk`
+stage the CRT and SDK — about 0.6 GB for an x86_64 splat, by xwin's own count.
 
 Linux builds under x86_64 emulation, at one compile job per GiB of the Docker
 VM's memory (7 here): JUCE's module translation units are large, and more jobs
 than memory allows end in the out-of-memory killer. `CMAKE_BUILD_PARALLEL_LEVEL`
-overrides it.
+overrides it. About a third of a cold Linux build is the plugin's final link:
+JUCE's recommended flags turn on link-time optimisation.
 
 ## Known limits
 
