@@ -211,6 +211,29 @@ add_dependencies(spike_host NITranceGateSpike_VST3)
 add_test(NAME spike_host
          COMMAND spike_host "${NI_SPIKE_BUNDLE}" ${NI_FIXTURES} "${NI_IPLUG2_OUT}/NITranceGate.vst3")
 
+# THE AUDIO CALLBACK ALLOCATES NOTHING: the processor itself, its sources
+# compiled in, under alloc_guard, which counts every malloc of the calling
+# thread -- C++, JUCE and the Rust engine alike. test/alloc_guard.c says why
+# it is an interposer and not a global allocator.
+add_library(spike_alloc_guard SHARED test/alloc_guard.c)
+juce_add_console_app(spike_rt PRODUCT_NAME "spike_rt")
+target_sources(spike_rt PRIVATE test/RtTest.cpp
+    Source/Processor.cpp Source/Params.cpp Source/Chunk.cpp ${NI_ROOT}/plugins/_shared/ni/Wire.cpp)
+target_include_directories(spike_rt PRIVATE Source ${NI_ROOT}/plugins/_shared)
+target_compile_definitions(spike_rt PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    "JucePlugin_Name=\"NI Trance Gate\""
+    "NI_IPLUG2_TG_CLASS=\"${NI_IPLUG2_TG_CLASS}\"")
+target_link_libraries(spike_rt PRIVATE
+    tg_capi
+    juce::juce_audio_utils
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_warning_flags)
+add_test(NAME spike_rt COMMAND spike_rt ${NI_FIXTURES})
+set_tests_properties(spike_rt PROPERTIES
+    ENVIRONMENT "DYLD_INSERT_LIBRARIES=$<TARGET_FILE:spike_alloc_guard>")
+
 # PLUGINVAL AT STRICTNESS 10, the pinned v1.0.4 scripts/validate-plugins.sh
 # fetches (`scripts/validate-plugins.sh fetch build-spike/validators`), with
 # its editor tests. A missing pluginval fails; it never skips.
