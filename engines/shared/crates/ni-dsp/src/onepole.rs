@@ -10,6 +10,7 @@ The one-pole smoother's coefficient.
 /// a coefficient outside 0..1, and a one-pole above 1 oscillates -- hence
 /// the guard and the clamp.
 #[inline]
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN time constant is absurd too, and takes the guard")]
 pub fn coeff(ms: f64, sample_rate: f64) -> f64 {
     let n = ms * sample_rate / 1000.0;
     if !(n > 0.0) {

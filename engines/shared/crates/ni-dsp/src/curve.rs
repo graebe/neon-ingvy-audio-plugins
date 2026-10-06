@@ -40,6 +40,7 @@ impl Curve {
 const CURVE_K: f64 = 3.0;
 /// `1 - exp(-3)`, spelled out exactly as the C did so the division is the
 /// same division. NOT `1.0 - (-CURVE_K).exp()`.
+#[allow(clippy::excessive_precision, reason = "the digits the C wrote, kept as it wrote them")]
 const DENOM: f64 = 0.95021293163213605;
 
 /// Fast, then easing into the target -- what "exponential envelope" means on
@@ -59,6 +60,7 @@ fn curve_exp_inv(w: f64) -> f64 {
 }
 
 #[inline]
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN must take the first branch")]
 pub fn shape(curve: Curve, t: f64) -> f64 {
     /* `!(t > 0.0)` rather than `t <= 0.0`: a NaN fails both that and the
      * `>= 1.0` below, and would otherwise reach the curve and come out as a
@@ -90,6 +92,7 @@ pub fn shape(curve: Curve, t: f64) -> f64 {
 /// click: the level is re-anchored through it. Monotonic and analytic for all
 /// three.
 #[inline]
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN must take the first branch, as in shape")]
 pub fn shape_inv(curve: Curve, w: f64) -> f64 {
     if !(w > 0.0) {
         return 0.0;

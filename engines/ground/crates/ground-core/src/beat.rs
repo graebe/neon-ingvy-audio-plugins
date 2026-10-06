@@ -170,6 +170,7 @@ impl BeatClock {
 
 /// The rings in `[lo, hi)`: every quarter, and every bar start, a bar start on
 /// a quarter being one ring.
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN end rings nothing, as an empty range does")]
 fn ring(lo: f64, hi: f64, bar: f64) -> Rings {
     let mut out = Rings::default();
     if !(hi > lo) {
