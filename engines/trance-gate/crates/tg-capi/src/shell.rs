@@ -1217,6 +1217,52 @@ mod tests {
     }
 
     #[test]
+    fn a_posted_state_loads_the_patch_and_a_text_that_is_none_changes_nothing() {
+        /* tg_shell_post takes every key tg_core_set_param does, `state`
+         * included: read here into a patch, loaded at the next block. */
+        let mut src = Instance::new(48000.0);
+        src.set_param("length", "5");
+        src.set_param("randomize", "99");
+        let mut buf = vec![0u8; TEXT_MAX];
+        let n = src.get_param("state", &mut buf) as usize;
+        let blob = std::str::from_utf8(&buf[..n]).unwrap().to_owned();
+
+        let sh = tg_shell_create(48000.0);
+        assert_eq!(post(sh, &["state", &blob]), 1);
+        assert_eq!(read(sh, "state"), blob, "the view has it before any audio");
+        block(sh);
+        assert_eq!(read(sh, "state"), blob, "and the engine once it has run");
+
+        assert_eq!(post(sh, &["state", "{\"sv\":7,\"amount\":"]), 1, "queued, as before");
+        assert_eq!(post(sh, &["no-such-key", "1"]), 1);
+        block(sh);
+        assert_eq!(read(sh, "state"), blob, "neither changed anything");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn a_key_or_value_that_is_not_text_refuses_the_whole_edit() {
+        let sh = tg_shell_create(48000.0);
+        let before = read(sh, "state");
+        let (k, step, bad) = (CString::new("cursor").unwrap(), CString::new("step").unwrap(), CString::new(vec![0xFFu8, 0xFE]).unwrap());
+        let one = CString::new("1").unwrap();
+        let pairs = [k.as_ptr(), one.as_ptr(), step.as_ptr(), bad.as_ptr()];
+        assert_eq!(unsafe { tg_shell_post(sh, pairs.as_ptr(), 2) }, 0, "not even the cursor moves");
+        block(sh);
+        assert_eq!(read(sh, "state"), before);
+
+        /* The same for an import's and a paste's text, with the reason. */
+        let mut err = [0u8; 128];
+        let r = unsafe { tg_shell_import(sh, 0, bad.as_ptr(), err.as_mut_ptr() as *mut c_char, 128) };
+        let why = CStr::from_bytes_until_nul(&err).unwrap().to_str().unwrap();
+        assert_eq!((r, why), (0, "This is not a Trance Gate slot or bank file."));
+        let r = unsafe { tg_shell_paste(sh, 0, bad.as_ptr(), 2, err.as_mut_ptr() as *mut c_char, 128) };
+        let why = CStr::from_bytes_until_nul(&err).unwrap().to_str().unwrap();
+        assert_eq!((r, why), (0, "The clipboard doesn't hold a Trance Gate slot."));
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
     fn the_sample_rate_arrives_with_the_next_block() {
         let sh = tg_shell_create(44100.0);
         unsafe {
