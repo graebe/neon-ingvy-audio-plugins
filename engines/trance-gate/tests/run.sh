@@ -4,8 +4,8 @@
 # THE ENGINE IS RUST AND THE TESTS ARE STILL C. That is deliberate and is the
 # whole verification strategy of the port: these suites link the engine
 # through its C ABI and do not care what is behind it, so they were relinked
-# rather than rewritten -- 1,510 lines of existing assertions, unchanged,
-# saying whether the port is correct.
+# rather than rewritten: the assertions written against the C engine are what
+# say whether the port is correct.
 set -e
 # RESOLVED BEFORE THE cd, AND BOTH OF THEM. `$0` is relative when this is
 # invoked by a relative path, so every later use of `dirname "$0"` resolved
