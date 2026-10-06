@@ -1,15 +1,21 @@
-/* Ultraviolet Ground 1.0.0 — bass-triggered wave field on the dot-paper ground.
+/* Ultraviolet Ground 1.1.0 — the dot-paper ground as a wave field that keeps the host's musical time.
  * Reference implementation, no dependencies. Two parts:
- *   UVGround.Field        simulates and renders the ground (dots + grain) into a <canvas>
- *   UVGround.BassDetector turns a Web Audio signal into kick onsets (20–80 Hz)
+ *   UVGround.Field      simulates and renders the ground (dots + grain) into a <canvas>
+ *   UVGround.BeatClock  turns the host's transport into rings: one on every quarter note while it
+ *                       plays, a stronger one on each bar's downbeat, none while it is stopped
  *
  * Model: the damped 2D wave equation  u_tt = c²∇²u − γ·u_t + A·s·ψ(t − t₀)·S(x)
  * on a 6 px grid (every second node is a dot). S marks the sources: every open node next to a
- * box edge and every node on the window border. ψ is a Ricker wavelet (peak f₀), so each kick
- * emits one slow ring of wavelength c/f₀. Box edges and the window border reflect (Neumann, no
- * phase flip), waves superpose linearly, so they interfere, and γ = 2/τ lets the whole field,
- * reflections included, ring out over ~14 s. The field is soft-clipped with tanh for display.
+ * box edge and every node on the window border. ψ is a Ricker wavelet (peak f₀), so each ring
+ * is one slow wave of wavelength c/f₀, s its strength. Box edges and the window border reflect
+ * (Neumann, no phase flip), waves superpose linearly, so they interfere, and γ = 2/τ lets the whole
+ * field, reflections included, ring out over ~20 s. The field is soft-clipped with tanh for display.
  * Peaks (u > 0): bigger, brighter dots and more grain. Valleys (u < 0): smaller, dimmer dots, less grain.
+ *
+ * Clock: the field steps on a timer at its frame rate, never on requestAnimationFrame, and page
+ * visibility does not pause it: plugin hosts report their editor pages as hidden while they are on
+ * screen. The timer runs only while the field moves; destroy() stops it, which the host does when
+ * the window closes.
  */
 (function (root) {
   'use strict';
@@ -18,13 +24,13 @@
     pitch: 12,          // dot pitch, px (space-3)
     cell: 6,            // simulation grid, px (half a pitch)
     speed: 100,         // c, px/s
-    freq: 1.5,          // f₀ of the source wavelet, Hz → wavelength c/f₀ ≈ 67 px; keeps a steady kick from cancelling itself (90–140 BPM)
-    tau: 3.5,           // amplitude e-folding time, s (γ = 2/τ); a kick rings out in ~14 s
-    gain: 65,           // source strength A: one kick peaks near u ≈ 0.9
+    freq: 1.5,          // f₀ of the source wavelet, Hz → wavelength c/f₀ ≈ 67 px; a ring on every beat (90–140 BPM) does not cancel the last
+    tau: 3.5,           // amplitude e-folding time, s (γ = 2/τ); the field rings out in ~20 s
+    gain: 65,           // source strength A: one downbeat peaks near u ≈ 0.9
     border: true,       // the window border emits as well as reflects
     dt: 1 / 60,         // fixed simulation step, s
     maxSteps: 6,        // per frame, after a stall
-    rest: 0.004,        // below this everywhere (and no source active) the field is reset and the loop stops
+    rest: 0.004,        // below this everywhere (and no ring active) the field is reset and the timer stops
     dotR: 1.0,          // dot radius at rest, px
     dotDR: 0.4,         // ± radius at |v| = 1
     dotDA: 0.3,         // ± relative dot opacity at |v| = 1
@@ -32,7 +38,7 @@
     grainK: 0.8,        // grain gain per unit v
     grainMin: 0.2,      // → 2% effective in the deepest valley
     grainMax: 0.9,      // → 9% effective on the highest peak
-    fps: 30,
+    fps: 30,            // the timer's rate while the field moves; 0 at rest
     bg: [6, 4, 16],          // bg-000
     dot: [42, 30, 74],       // bg-dot
     grain: [162, 89, 255]    // uv-deep
@@ -71,10 +77,10 @@
     for (k in (opts || {})) o[k] = opts[k];
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.kicks = [];
+    this.rings = [];
     this.rects = [];
     this.enabled = true;
-    this.raf = 0; this.lastFrame = 0; this.lastTick = 0; this.acc = 0; this.t = 0;
+    this.timer = 0; this.lastTick = 0; this.acc = 0; this.t = 0;
     var mq = root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)');
     this.reduced = !!(mq && mq.matches);
     this.grain = makeGrain(o.grain);
@@ -122,23 +128,29 @@
       if (near || (o.border && edge)) src.push(q);
     }
     this.src = new Int32Array(src);
-    this.kicks = []; this.t = 0;
+    this.rings = []; this.t = 0;
   };
 
-  // one kick; s in 0..1
+  // one ring; s in 0..1 (1 on a downbeat, about half on any other beat)
   Field.prototype.trigger = function (s) {
     if (this.reduced || !this.enabled || !this.src.length) return;
-    this.kicks.push({ t0: this.t, s: clamp(s == null ? 1 : s, 0, 1) });
+    this.rings.push({ t0: this.t, s: clamp(s == null ? 1 : s, 0, 1) });
     this._start();
   };
 
   Field.prototype.setEnabled = function (on) {
     this.enabled = !!on;
-    if (!on) { this.u.fill(0); this.up.fill(0); this.kicks = []; this.draw(); }
+    if (!on) { this._stop(); this.u.fill(0); this.up.fill(0); this.rings = []; this.draw(); }
   };
 
+  // a timer at the frame rate: animation frames and page visibility have no say in it
   Field.prototype._start = function () {
-    if (!this.raf) { this.lastTick = now(); this.raf = root.requestAnimationFrame(this._tick); }
+    if (!this.timer) { this.lastTick = now(); this.acc = 0; this.timer = root.setInterval(this._tick, 1000 / this.o.fps); }
+  };
+
+  Field.prototype._stop = function () {
+    if (this.timer) root.clearInterval(this.timer);
+    this.timer = 0;
   };
 
   // one explicit step of the damped wave equation, Neumann at walls and at the border
@@ -159,13 +171,13 @@
         un[q] = (2 * c - b * up[q] + k2 * (l + r + t + d - 4 * c)) * a;
       }
     }
-    // sources: the sum of every active kick's wavelet
+    // sources: the sum of every active ring's wavelet
     var F = 0, live = [], span = 2.5 / o.freq;
-    for (var k = 0; k < this.kicks.length; k++) {
-      var age = this.t - this.kicks[k].t0;
-      if (age < span) { F += this.kicks[k].s * ricker(age, o.freq); live.push(this.kicks[k]); }
+    for (var k = 0; k < this.rings.length; k++) {
+      var age = this.t - this.rings[k].t0;
+      if (age < span) { F += this.rings[k].s * ricker(age, o.freq); live.push(this.rings[k]); }
     }
-    this.kicks = live;
+    this.rings = live;
     if (F !== 0) {
       var f = dt * dt * o.gain * F * a, S = this.src;
       for (k = 0; k < S.length; k++) un[S[k]] += f;
@@ -174,18 +186,17 @@
     this.t += dt;
   };
 
+  // one frame: catch the simulation up to the clock, draw, and stop once the field has rung out
   Field.prototype._tick = function () {
-    this.raf = 0;
     var o = this.o, t = now();
     this.acc += Math.min(0.1, (t - this.lastTick) / 1000); this.lastTick = t;
     var n = 0;
     while (this.acc >= o.dt && n < o.maxSteps) { this._step(); this.acc -= o.dt; n++; }
     if (this.acc > o.dt) this.acc = 0;   // after a long stall, drop the backlog instead of racing
-    var peak;
-    if (t - this.lastFrame >= 1000 / o.fps - 2) { this.lastFrame = t; peak = this.draw(); }
-    else peak = this._peak();
-    if (this.kicks.length || peak > o.rest) this._start();
-    else { this.u.fill(0); this.up.fill(0); this.draw(); }   // rung out: back to the exact static ground, loop stops
+    var peak = this.draw();
+    if (!this.rings.length && peak <= o.rest) {   // rung out: back to the exact static ground, timer stops
+      this._stop(); this.u.fill(0); this.up.fill(0); this.draw();
+    }
   };
 
   Field.prototype._peak = function () {
@@ -251,67 +262,57 @@
   };
 
   Field.prototype.destroy = function () {
-    if (this.raf) root.cancelAnimationFrame(this.raf);
-    this.raf = 0; this.kicks = [];
+    this._stop();
+    this.rings = [];
   };
 
-  /* ---------- bass onset detector ---------- */
-  var BASS = {
-    lo: 20, hi: 80,       // band, Hz — two 12 dB/oct Butterworth sections
-    attack: 5,            // envelope attack, ms
-    release: 150,         // envelope release, ms
-    window: 300,          // running mean, ms
-    ratio: 1.8,           // onset when envelope > ratio × running mean
-    rearm: 1.2,           // re-arm when envelope falls below rearm × mean
-    floor: 0.01,          // ignore anything below this RMS
-    refractory: 120,      // ms between onsets
-    poll: 10              // ms
+  /* ---------- beat clock ---------- */
+  var BEAT = {
+    downbeat: 1,          // a bar's first beat: the field's full source strength
+    beat: 0.55,           // every other quarter note: about half (a plugin may tune it)
+    fps: 30,              // ticks per second: one tick's travel is how far past a beat a start may land and still ring it
+    slack: 1 / 16         // quarter notes: a position this far behind the last tick is jitter, not a jump
   };
 
-  function BassDetector(audioCtx, onOnset, opts) {
+  // quarter notes in a bar: numerator × 4 ÷ denominator; 4/4 when the host gives no time signature
+  function barQuarters(num, den) { return num > 0 && den > 0 ? num * 4 / den : 4; }
+
+  // trigger(strength) is called once per ring — pass field.trigger.bind(field)
+  function BeatClock(trigger, opts) {
     var o = this.o = {};
-    for (var k in BASS) o[k] = BASS[k];
+    for (var k in BEAT) o[k] = BEAT[k];
     for (k in (opts || {})) o[k] = opts[k];
-    this.ctx = audioCtx; this.onOnset = onOnset;
-    this.input = audioCtx.createGain();
-    var hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = o.lo; hp.Q.value = Math.SQRT1_2;
-    var lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = o.hi; lp.Q.value = Math.SQRT1_2;
-    this.analyser = audioCtx.createAnalyser(); this.analyser.fftSize = 2048;
-    var sink = audioCtx.createGain(); sink.gain.value = 0;   // keeps the graph pulled, silently
-    this.input.connect(hp); hp.connect(lp); lp.connect(this.analyser); this.analyser.connect(sink); sink.connect(audioCtx.destination);
-    this.buf = new Float32Array(this.analyser.fftSize);
-    this.span = Math.min(this.buf.length, Math.round(audioCtx.sampleRate * 0.02));   // 20 ms RMS
-    this.env = 0; this.mean = 0; this.armed = true; this.lastOn = -1e9; this.lastT = 0; this.timer = 0;
+    this.trigger = trigger;
+    this.last = null;     // the position at the last playing tick, in quarter notes; null while stopped
   }
 
-  BassDetector.prototype.start = function () {
-    var self = this;
-    if (this.timer) return;
-    this.lastT = now();
-    this.timer = root.setInterval(function () { self._poll(); }, this.o.poll);
-  };
+  // forget the last tick: the next playing tick is a start
+  BeatClock.prototype.reset = function () { this.last = null; };
 
-  BassDetector.prototype.stop = function () {
-    root.clearInterval(this.timer); this.timer = 0;
-  };
-
-  BassDetector.prototype._poll = function () {
-    var o = this.o, t = now(), dt = Math.max(1, t - this.lastT); this.lastT = t;
-    this.analyser.getFloatTimeDomainData(this.buf);
-    var sum = 0, n = this.buf.length;
-    for (var i = n - this.span; i < n; i++) sum += this.buf[i] * this.buf[i];
-    var rms = Math.sqrt(sum / this.span);
-    var a = 1 - Math.exp(-dt / (rms > this.env ? o.attack : o.release));
-    this.env += (rms - this.env) * a;
-    var m = this.mean;
-    this.mean += (this.env - this.mean) * (1 - Math.exp(-dt / o.window));
-    if (!this.armed && this.env < m * o.rearm) this.armed = true;
-    if (this.armed && this.env > o.floor && this.env > m * o.ratio && t - this.lastOn > o.refractory) {
-      this.armed = false; this.lastOn = t;
-      var r = m > 1e-6 ? this.env / m : 10;
-      this.onOnset(clamp(0.6 * Math.sqrt(r / o.ratio), 0.3, 1));
+  // One tick at the frame rate: the host's position in quarter notes, its tempo (quarter notes per
+  // minute), its time signature and whether the transport plays. Rings every quarter note and every
+  // bar start crossed since the last tick; returns how many.
+  BeatClock.prototype.tick = function (pos, bpm, num, den, playing) {
+    var o = this.o;
+    if (!playing || !isFinite(pos)) { this.last = null; return 0; }
+    var step = (isFinite(bpm) && bpm > 0 ? bpm : 120) / 60 / o.fps;   // quarter notes one tick covers
+    var last = this.last;
+    var jump = last === null || pos < last - o.slack || pos > last + 4 * step + o.slack;
+    this.last = pos;
+    // a start, a loop or a seek rings only what its own tick holds: the beat it lands on, never the ones it skipped
+    var lo = jump ? pos - step : last;
+    if (pos <= lo) return 0;
+    var bar = barQuarters(num, den), q = Math.floor(lo) + 1, d = Math.ceil(lo / bar) * bar, rings = [];
+    if (d <= lo) d += bar;
+    while (Math.min(q, d) <= pos && rings.length < 16) {
+      if (Math.abs(q - d) < 1e-9) { rings.push(o.downbeat); q += 1; d += bar; }   // a downbeat on a quarter is one ring
+      else if (d < q) { rings.push(o.downbeat); d += bar; }                      // 7/8: a downbeat between two quarters
+      else { rings.push(o.beat); q += 1; }
     }
+    if (jump) rings = rings.slice(-1);
+    for (var i = 0; i < rings.length; i++) this.trigger(rings[i]);
+    return rings.length;
   };
 
-  root.UVGround = { version: '1.0.0', Field: Field, BassDetector: BassDetector, defaults: DEFAULTS, bassDefaults: BASS };
+  root.UVGround = { version: '1.1.0', Field: Field, BeatClock: BeatClock, defaults: DEFAULTS, beatDefaults: BEAT };
 })(window);

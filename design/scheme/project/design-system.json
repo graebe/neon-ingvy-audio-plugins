@@ -25,6 +25,9 @@
     "loop.svg",
     "copy.svg",
     "paste.svg",
+    "export.svg",
+    "export-all.svg",
+    "import.svg",
     "shuffle.svg",
     "reset.svg",
     "link.svg",
@@ -103,6 +106,24 @@
      "blob": "b151ffd911b8bf664ef4f484f7667188",
      "size": 226,
      "type": "image/svg+xml"
+    },
+    "export.svg": {
+     "name": "export.svg",
+     "blob": "f36f2ebd09605b4f581ffb37a6d24b66",
+     "size": 260,
+     "type": "image/svg+xml"
+    },
+    "export-all.svg": {
+     "name": "export-all.svg",
+     "blob": "41ebd5322d4b08d7d6f0fe83d95387ea",
+     "size": 276,
+     "type": "image/svg+xml"
+    },
+    "import.svg": {
+     "name": "import.svg",
+     "blob": "f56ad94e38530462ec7c506c7aea6823",
+     "size": 259,
+     "type": "image/svg+xml"
     }
    }
   },
@@ -129,9 +150,9 @@
  },
  "lastChange": {
   "by": "Torben",
-  "at": "2026-09-29T08:46:05Z",
-  "via": "Cowork",
-  "note": "Release 1.0.0: versioning rules and changelog",
-  "version": "1.0.0"
+  "at": "2026-10-06T10:50:00Z",
+  "via": "Claude Code",
+  "note": "Release 1.1.0: beat-driven ground, hover info, knob detents, export/import icons, PlotWell, Meter, TextField, data tokens; on-uv is deep ultraviolet",
+  "version": "1.1.0"
  }
 }
