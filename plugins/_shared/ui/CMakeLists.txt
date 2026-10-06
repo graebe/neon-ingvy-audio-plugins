@@ -40,7 +40,8 @@ get_filename_component(NI_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../.. ABSOLUTE)
 # ------------------------------------------------------------------ assets
 #
 # What the kit draws with and does not draw itself: the two faces of JetBrains
-# Mono (fonts/README.md has their provenance), the design system's fifteen
+# Mono (fonts/README.md has their provenance), Bravura for the notation
+# (fonts/bravura/README.md), the design system's fifteen
 # icons straight from its mirror, and the window ground's grain tile, which
 # scripts/gen-tokens.mjs takes out of the design's stylesheet. Embedded, so a
 # plugin finds them wherever its bundle is and a test needs no files at all.
@@ -53,12 +54,16 @@ juce_add_binary_data(ni_ui_assets
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/fonts/JetBrainsMono-Regular.ttf
         ${CMAKE_CURRENT_SOURCE_DIR}/fonts/JetBrainsMono-Medium.ttf
+        ${CMAKE_CURRENT_SOURCE_DIR}/fonts/bravura/Bravura.otf
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/ground-grain.png
         ${NI_UI_ICONS})
 
 # The OFL travels with the font: a plugin build copies this into its bundle.
 set(NI_UI_FONT_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/fonts/OFL.txt)
 set(NI_UI_FONT_LICENSE ${NI_UI_FONT_LICENSE} PARENT_SCOPE)
+# Bravura's, likewise, for a plugin whose editor draws notation.
+set(NI_UI_MUSIC_FONT_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/fonts/bravura/OFL.txt)
+set(NI_UI_MUSIC_FONT_LICENSE ${NI_UI_MUSIC_FONT_LICENSE} PARENT_SCOPE)
 
 # --------------------------------------------------------------------- kit
 

@@ -97,6 +97,21 @@ every plugin bundle with the editor, and `site/scripts/stage-assets.mjs` copies
 the kit's into the site's `/fonts/`, failing the build if it is not there. The
 OFL is permissive and GPL-compatible.
 
+## Bundled music font
+
+**Bravura** 1.482 (© 2015 Steinberg Media Technologies GmbH, **SIL Open Font
+License 1.1**, Reserved Font Name "Bravura"), the reference font of SMuFL. The
+native kit draws its notation with it (`ni::ui::GrandStaff`: clefs,
+accidentals, noteheads) and embeds `Bravura.otf` whole and unmodified, as
+BinaryData of `ni_ui_assets` -- which is what lets it keep its reserved name;
+a subset would have to be renamed. The file and its `OFL.txt` are at
+`plugins/_shared/ui/fonts/bravura/`, with their provenance in its `README.md`.
+
+**The OFL travels with the font**: a plugin whose editor draws notation copies
+`NI_UI_MUSIC_FONT_LICENSE` (that `OFL.txt`) into its bundle's resources. The
+first is NI Chord-Detector, whose bundle row arrives with its JUCE build. The
+OFL is permissive and GPL-compatible.
+
 ## The engines — this repository's own
 
 | Crates | Where | Licence |
