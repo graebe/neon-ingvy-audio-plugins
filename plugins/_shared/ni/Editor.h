@@ -17,6 +17,7 @@
  */
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <string_view>
 
@@ -82,9 +83,37 @@ std::string EncodeDefaults(const Port& port);
 /* kGround's payload. */
 std::string EncodeGround(float strength);
 
+/* Every value and every display string: what a state load or a preset moves
+ * all at once. */
+void SendValues(Port& port);
+
 /* Everything an editor that has just started listening needs: the defaults,
  * every value, every display string, then the product's own. */
 void SendAll(Port& port);
+
+/*
+ * AN EDITOR LEFT BEHIND BY ANOTHER THREAD. A host loads state on a thread of
+ * its choosing, and iPlug2 reports every parameter the load set from that same
+ * thread -- but the WebView may only be spoken to from the main thread. So a
+ * thread that is not the main one marks the editor stale, and the main
+ * thread's next idle tick sends the values and the display strings, once,
+ * however many parameters moved.
+ */
+class Stale
+{
+public:
+  /* Any thread. Release: the values set before it are what the flush reads. */
+  void Mark() { mStale.store(true, std::memory_order_release); }
+  /* The main thread, while an editor is open. */
+  void Flush(Port& port)
+  {
+    if (mStale.exchange(false, std::memory_order_acquire))
+      SendValues(port);
+  }
+
+private:
+  std::atomic<bool> mStale{false};
+};
 
 /* A shell message from the editor. False for a tag that is not the shell's. */
 bool Handle(Port& port, int tag, std::string_view arg);

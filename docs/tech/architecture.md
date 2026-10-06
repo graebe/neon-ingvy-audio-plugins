@@ -188,7 +188,10 @@ Nothing that allocates, maps memory or talks to the editor runs on the audio thr
 The host's state calls get the same treatment, because the host picks their
 thread: auval's stress test calls `SetState` from threads of its own, and so may a
 DAW restoring a session. `UnserializeState` therefore never calls a main-thread
-API. The Spectrogram's records the load in its `Session` (`plugins/spectrogram/State.h`)
+API, and neither does what iPlug2 calls after it on that thread: each
+parameter's `OnParamChangeUI` and the closing `OnRestoreState` only mark the
+editor stale (`editor::Stale` in `ni/Editor.h`), and the next `OnIdle` sends
+every value and display string once. The Spectrogram's records the load in its `Session` (`plugins/spectrogram/State.h`)
 and the next `OnIdle` hands the receiver whatever moved; `SerializeState` reads the
 same `Session`, so a save straight after a load writes the load. The receiver's
 own C ABI serialises its message side as a floor beneath this, so a caller that

@@ -5,6 +5,8 @@
 #include "ni/WebPlugin.h"
 #include "shell_denormals.h"
 
+#include <pthread.h>
+
 namespace ni {
 
 using namespace iplug;
@@ -68,7 +70,10 @@ void WebPlugin::OnIdle()
   SendGround();
   OnHostIdle();
   if (EditorIsOpen())
+  {
+    mStale.Flush(*this);
     OnEditorIdle();
+  }
 }
 
 void WebPlugin::OnUIOpen()
@@ -92,9 +97,29 @@ void WebPlugin::CloseWindow()
   iplug::Plugin::CloseWindow();
 }
 
+/*
+ * NOT ALWAYS THE MAIN THREAD, whatever iPlug2's comment says: a state load
+ * reaches here through UnserializeParams -> OnParamReset on the host's thread
+ * (auval's stress test and an AU host's ClassInfo load from threads of their
+ * own), and the WebView may only be spoken to from the main thread. There the
+ * readout follows at once; anywhere else the next idle tick sends it.
+ * pthread_main_np, because the editor is a WKWebView: this shell is macOS's.
+ */
 void WebPlugin::OnParamChangeUI(int paramIdx, EParamSource)
 {
-  SendDisplay(paramIdx);
+  if (pthread_main_np())
+    SendDisplay(paramIdx);
+  else
+    mStale.Mark();
+}
+
+/* iPlug2's default sends every value straight into the WebView, from the
+ * thread the AU, VST3 or CLAP wrapper restored state on. Marked rather than
+ * sent, on any thread: one flush on the next idle tick, display strings
+ * included, which the default leaves out. */
+void WebPlugin::OnRestoreState()
+{
+  mStale.Mark();
 }
 
 bool WebPlugin::OnMessage(int msgTag, int, int dataSize, const void* pData)
@@ -148,10 +173,26 @@ wire::Transport WebPlugin::HostTransport() const
   return wire::host_transport(GetTransportIsRunning(), GetTempo(), GetPPQPos());
 }
 
+/*
+ * AN EMPTY PAYLOAD IS SPELLED HERE, not by iPlug2. SendArbitraryMsgFromDelegate
+ * encodes into a vector it only sizes when there are bytes, then formats its
+ * data() with '%s' -- for nothing, a null pointer, which the C library prints
+ * as "(null)". The page got SAMFD(tag, 0, '(null)'), which is not base64, so
+ * the bridge passed it through as text: a fresh Listen-In's name field read
+ * "(null)". The call it would have made, with the empty string it meant.
+ */
 void WebPlugin::Send(int tag, const char* data, int size)
 {
-  if (EditorIsOpen())
+  if (!EditorIsOpen())
+    return;
+  if (size > 0)
+  {
     SendArbitraryMsgFromDelegate(tag, size, data);
+    return;
+  }
+  WDL_String str;
+  str.SetFormatted(64, "SAMFD(%i, 0, '')", tag);
+  EvaluateJavaScript(str.Get());
 }
 
 /* One message per ring, and only when there was one. The count is compared

@@ -29,13 +29,18 @@ std::string EncodeGround(float strength)
   return out;
 }
 
+void SendValues(Port& port)
+{
+  port.PortSendValues();
+  for (int i = 0; i < port.PortParamCount(); i++)
+    port.PortSendDisplay(i);
+}
+
 void SendAll(Port& port)
 {
   const std::string defaults = EncodeDefaults(port);
   port.PortSend(kDefaults, defaults.data(), int(defaults.size()));
-  port.PortSendValues();
-  for (int i = 0; i < port.PortParamCount(); i++)
-    port.PortSendDisplay(i);
+  SendValues(port);
   port.PortReady();
 }
 

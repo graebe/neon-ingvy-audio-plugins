@@ -2,7 +2,7 @@
  * The editors, opened by a real host, in each format.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- *   editor_host <vst3|au|clap> <bundle> [seconds]
+ *   editor_host <vst3|au|clap> <bundle>
  *
  * WHAT IT DOES. The bundle this checkout BUILT is loaded in-process -- the
  * VST3 through its factory, the AU registered in this process only
@@ -28,12 +28,17 @@
  *   - the session and the axis answer the ready too;
  *   - column batches arrive whose bytes are not all zero -- a fresh instance's
  *     receiver is fed and drained, and the real encoder's payloads cross;
- *   - the editor's own decoder and canvas put every one of those columns on
+ *   - the editor's own decoder and canvas put the columns that arrived on
  *     the visible canvas;
  *
  *   the Trance Gate and the Side-Chain
  *   - the playhead (the pattern's line; the shaper's sweep) moves with the
- *     transport.
+ *     transport;
+ *
+ *   the Listen-In
+ *   - the bus's state and its name answer the ready, and a fresh instance's
+ *     name field is empty -- not "(null)", which is what an empty payload
+ *     once reached the page as.
  *
  * WHY. The e2e suite drives the editors against a mock host, which cannot
  * notice when the real plugin-to-editor path stops delivering: the mock sends
@@ -64,15 +69,20 @@
 #include <dlfcn.h>
 #include <pthread.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
 static constexpr double kRate = 48000.0;
 static constexpr int kBlock = 512;
+/* The longest any condition is waited for. Generous on purpose: it bounds a
+ * hang, it is not a speed requirement -- an idle machine passes in seconds. */
+static constexpr double kPatience = 60.0;
 
 static int gFails = 0;
 static void check(bool ok, const char* what, const std::string& detail = "")
@@ -459,7 +469,7 @@ static std::string Eval(WKWebView* web, NSString* js)
     out = error ? nil : [NSString stringWithFormat:@"%@", result];
     done = true;
   }];
-  NSDate* until = [NSDate dateWithTimeIntervalSinceNow:5];
+  NSDate* until = [NSDate dateWithTimeIntervalSinceNow:kPatience];
   while (!done && [until timeIntervalSinceNow] > 0)
     [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
                              beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.005]];
@@ -467,13 +477,18 @@ static std::string Eval(WKWebView* web, NSString* js)
 }
 
 /* Every message the plugin sends from here on is counted by tag in the page,
- * wrapped around the bridge's own SAMFD, which still runs. With `columns`, a
+ * wrapped around the bridge's own SAMFD, which still runs. Not before the
+ * editor has rendered: SAMFD exists as soon as the bridge's module has run,
+ * but the editor's listeners only once its component has, and a message
+ * counted in between was never the editor's to show -- on a loaded machine
+ * that gap is long enough to fill with a second of columns. With `columns`, a
  * Spectrogram column batch (tag 64) is also checked for a byte above zero past
  * its header, and its columns are counted. */
 static NSString* Recorder(bool columns)
 {
   return [NSString stringWithFormat:@"(() => {"
     "if (typeof globalThis.SAMFD !== 'function') return 'no';"
+    "if (!(document.getElementById('root')?.childElementCount > 0)) return 'no';"
     "if (!globalThis.__ni) {"
     "  const bridge = globalThis.SAMFD;"
     "  globalThis.__ni = { tags: {}, loud: 0, columns: 0 };"
@@ -495,23 +510,30 @@ static NSString* const kRecord = Recorder(false);
 static NSString* const kRecordColumns = Recorder(true);
 
 /*
- * What the editor drew: how many of the picture's columns hold a bright cell
- * -- the sine is near the top of the ramp, and the floor and the haze are far
- * below it -- in the editor's own columns, so the page's zoom and pixel ratio
- * do not matter. Every column that arrived should be on screen, not only the
- * ones a repaint happened to catch.
+ * ONE SAMPLE, TAKEN IN ONE JAVASCRIPT TASK: the batches and columns received
+ * so far, how many of those batches carried the sine, and what the editor
+ * drew. No message can land between the counts and the canvas read, so the
+ * picture is judged against exactly the columns that had arrived -- a slow
+ * machine delivers fewer, and is held to fewer.
+ *
+ * Drawn is how many of the picture's columns hold a bright cell -- the sine is
+ * near the top of the ramp, the floor and the haze far below it -- in the
+ * editor's own columns, so the page's zoom and pixel ratio do not matter.
  */
-static NSString* const kPainted = @"(() => {"
-  "const c = document.querySelector('.spectro-canvas'); if (!c) return 0;"
-  "const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;"
-  "let painted = 0;"
-  "for (let x = 0; x < c.width; x++) {"
-  "  for (let y = 0; y < c.height; y++) {"
-  "    const i = (y * c.width + x) * 4;"
-  "    if (d[i] + d[i + 1] + d[i + 2] >= 300) { painted++; break; }"
+static NSString* const kSample = @"(() => {"
+  "const c = document.querySelector('.spectro-canvas');"
+  "let drawn = 0;"
+  "if (c) {"
+  "  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;"
+  "  for (let x = 0; x < c.width; x++) {"
+  "    for (let y = 0; y < c.height; y++) {"
+  "      const i = (y * c.width + x) * 4;"
+  "      if (d[i] + d[i + 1] + d[i + 2] >= 300) { drawn++; break; }"
+  "    }"
   "  }"
+  "  drawn = Math.round(drawn * 606 / c.width);"
   "}"
-  "return Math.round(painted * 606 / c.width); })()";
+  "return [__ni.tags[64] || 0, __ni.columns, __ni.loud, drawn].join(' '); })()";
 
 static int Count(WKWebView* web, int tag)
 {
@@ -520,7 +542,7 @@ static int Count(WKWebView* web, int tag)
 }
 
 /* Which editor the bundle holds, from its name. */
-enum class Product { Spectrogram, TranceGate, SideChain, Other };
+enum class Product { Spectrogram, TranceGate, SideChain, ListenIn, Other };
 
 static Product ProductOf(const std::string& bundle)
 {
@@ -529,52 +551,114 @@ static Product ProductOf(const std::string& bundle)
   if (name == "NISpectrogram") return Product::Spectrogram;
   if (name == "NITranceGate") return Product::TranceGate;
   if (name == "NISideChain") return Product::SideChain;
+  if (name == "NIListenIn") return Product::ListenIn;
   return Product::Other;
 }
 
-/* The Spectrogram: the reply to ready, and the picture. */
-static void CheckSpectrogram(WKWebView* web, double seconds)
+/*
+ * LOAD DOES NOT DECIDE A VERDICT. A machine busy with other builds delivers
+ * the same messages later, so nothing here is judged over a wall-clock window:
+ * each check waits for its condition, up to kPatience, and a slow machine
+ * merely takes longer to pass. What a check says on failure includes what it
+ * saw and how long it waited.
+ */
+static bool WaitFor(const std::function<bool()>& done, double* waited = nullptr)
 {
-  check(Count(web, 69) >= 1, "... and the session");
-  check(Count(web, 65) >= 1, "... and the axis");
-  const int cols = Count(web, 64);
-  const int loud = atoi(Eval(web, @"String(__ni.loud)").c_str());
-  check(cols >= int(seconds * 20), "column batches arrive (about 47 columns a second)",
-        std::to_string(cols) + " batches");
-  check(loud >= cols / 2 && loud > 0, "... and carry the sine, not silence",
-        std::to_string(loud) + " with a byte above the floor");
-  /* Read straight after a batch could have landed: the newest column or two
-   * may not have been drawn yet, nothing more. */
-  const int columns = atoi(Eval(web, @"String(__ni.columns)").c_str());
-  const int painted = atoi(Eval(web, kPainted).c_str());
-  check(columns > 0 && painted >= columns * 9 / 10, "the editor's canvas shows every column that arrived",
-        std::to_string(painted) + " of " + std::to_string(columns) + " drawn");
+  NSDate* start = [NSDate date];
+  bool ok = done();
+  while (!ok && -[start timeIntervalSinceNow] < kPatience)
+  {
+    Spin(0.02);
+    ok = done();
+  }
+  if (waited)
+    *waited = -[start timeIntervalSinceNow];
+  return ok;
+}
+
+static std::string Seconds(double s)
+{
+  char buf[32];
+  snprintf(buf, sizeof buf, "%.1f s", s);
+  return buf;
+}
+
+/* A message with this tag has arrived since the page was hooked. */
+static void CheckArrives(WKWebView* web, int tag, const char* what)
+{
+  double waited = 0.0;
+  const bool ok = WaitFor([&] { return Count(web, tag) >= 1; }, &waited);
+  check(ok, what, ok ? "" : "none in " + Seconds(waited));
+}
+
+/* The Spectrogram: the picture, judged over a number of received batches. */
+static void CheckSpectrogram(WKWebView* web, const std::string& format)
+{
+  constexpr int kBatches = 40;   /* about a second of columns, at any speed */
+  int batches = 0, columns = 0, loud = 0, drawn = 0;
+  const auto sample = [&] {
+    const std::string s = Eval(web, kSample);
+    return sscanf(s.c_str(), "%d %d %d %d", &batches, &columns, &loud, &drawn) == 4;
+  };
+  double waited = 0.0;
+  const bool arrived = WaitFor([&] { return sample() && batches >= kBatches; }, &waited);
+  /* The canvas holds 606 columns; anything older has scrolled out. */
+  const int expected = std::min(columns, 606);
+  const std::string seen = format + ": " + std::to_string(batches) + " batches, " +
+                           std::to_string(columns) + " columns received, " +
+                           std::to_string(loud) + " loud, " + std::to_string(drawn) +
+                           " drawn, after " + Seconds(waited);
+  check(arrived, "column batches arrive", arrived ? std::to_string(batches) + " batches" : seen);
+  const bool sine = loud >= batches / 2 && loud > 0;
+  check(sine, "... and carry the sine, not silence", sine ? std::to_string(loud) + " loud" : seen);
+  const bool painted = expected > 0 && drawn >= expected * 9 / 10;
+  check(painted, "the editor's canvas shows the columns that arrived",
+        painted ? std::to_string(drawn) + " of " + std::to_string(expected) : seen);
 }
 
 /* A playhead -- an SVG line placed by the editor's clock -- moving with the
- * transport: its x read a few times over a second must take several values. */
-static void CheckPlayhead(WKWebView* web, NSString* selector, const char* what)
+ * transport: its x must take three different values, however long the
+ * machine takes to deliver them. */
+static void CheckPlayhead(WKWebView* web, NSString* selector, const char* what,
+                          const std::string& format)
 {
   NSString* read = [NSString stringWithFormat:
     @"(() => { const l = document.querySelector('%@'); return l ? l.getAttribute('x1') : 'none'; })()",
     selector];
   std::vector<std::string> seen;
-  for (int i = 0; i < 5; i++)
-  {
+  double waited = 0.0;
+  const bool ok = WaitFor([&] {
     const std::string x = Eval(web, read);
-    if (seen.empty() || seen.back() != x)
+    if (!x.empty() && x != "none" && (seen.empty() || seen.back() != x))
       seen.push_back(x);
-    Spin(0.23);
-  }
-  const bool drawn = !seen.empty() && seen.front() != "none" && !seen.front().empty();
+    return seen.size() >= 3;
+  }, &waited);
   std::string trail;
   for (const auto& x : seen)
     trail += (trail.empty() ? "" : " ") + x.substr(0, 6);
-  check(drawn && seen.size() >= 3, what, "x " + trail);
+  check(ok, what, ok ? "x " + trail
+                     : format + ": " + std::to_string(seen.size()) + " positions (" + trail +
+                         ") in " + Seconds(waited));
+}
+
+/* The Listen-In: the bus's name, which a fresh instance does not have. It is
+ * sent empty in reply to the ready, and iPlug2 once printed an empty payload
+ * as "(null)", which the field then showed as the bus's name
+ * (ni::WebPlugin::Send). Bracketed, so an empty field and a failed read
+ * differ. */
+static void CheckListenIn(WKWebView* web, const std::string& format)
+{
+  CheckArrives(web, 64, "... and the bus's state");
+  CheckArrives(web, 96, "... and its name");
+  const std::string name = Eval(web,
+    @"(() => { const f = document.querySelector('input.name-field');"
+     "return f ? '[' + f.value + ']' : 'none'; })()");
+  check(name == "[]", "a fresh bus's name field is empty, not \"(null)\"", format + ": " + name);
 }
 
 /* One open of the editor, and what reached it. */
-static void Session(Format& f, Product product, NSWindow* window, const char* label, double seconds)
+static void Session(Format& f, Product product, const std::string& format, NSWindow* window,
+                    const char* label)
 {
   printf(" %s\n", label);
   check(f.Open(window.contentView), "the host opens the editor");
@@ -583,35 +667,38 @@ static void Session(Format& f, Product product, NSWindow* window, const char* la
   if (!web)
     return;
 
-  /* The bridge exists once the page's module has run. */
-  bool recording = false;
-  for (int i = 0; i < 1000 && !recording; i++)
-  {
-    Spin(0.01);
-    recording = Eval(web, product == Product::Spectrogram ? kRecordColumns : kRecord) == "yes";
-  }
-  check(recording, "the page's bridge is up");
+  /* The bridge exists once the page's module has run, the editor once its
+   * component has. */
+  double waited = 0.0;
+  const bool recording = WaitFor([&] {
+    return Eval(web, product == Product::Spectrogram ? kRecordColumns : kRecord) == "yes";
+  }, &waited);
+  check(recording, "the page's bridge is up", recording ? "" : format + ": not after " + Seconds(waited));
   if (!recording)
     return;
 
   /* The handshake, asked again from the page: answered only if the shell
    * knows an editor is open. */
   Eval(web, @"IPlugSendMsg({msg: 'SAMFUI', msgTag: 120, ctrlTag: -1, data: ''}), 1");
-  Spin(seconds);
 
-  check(Count(web, 113) >= 1, "a ready is answered with the defaults");
+  CheckArrives(web, 113, "a ready is answered with the defaults");
   switch (product)
   {
-    case Product::Spectrogram: CheckSpectrogram(web, seconds); break;
+    case Product::Spectrogram:
+      CheckArrives(web, 69, "... and the session");
+      CheckArrives(web, 65, "... and the axis");
+      CheckSpectrogram(web, format);
+      break;
     case Product::TranceGate:
-      CheckPlayhead(web, @"line.playhead", "the pattern's playhead moves with the transport");
+      CheckPlayhead(web, @"line.playhead", "the pattern's playhead moves with the transport", format);
       break;
     case Product::SideChain:
-      CheckPlayhead(web, @"line.sweep", "the shaper's sweep moves with the transport");
+      CheckPlayhead(web, @"line.sweep", "the shaper's sweep moves with the transport", format);
       break;
+    case Product::ListenIn: CheckListenIn(web, format); break;
     case Product::Other: break;
   }
-  check(Count(web, 112) >= 1, "the ground rings on the transport's beat");
+  CheckArrives(web, 112, "the ground rings on the transport's beat");
 
   f.Close();
   Spin(0.2);
@@ -621,11 +708,10 @@ int main(int argc, char** argv)
 {
   if (argc < 3)
   {
-    fprintf(stderr, "usage: editor_host <vst3|au|clap> <bundle> [seconds]\n");
+    fprintf(stderr, "usage: editor_host <vst3|au|clap> <bundle>\n");
     return 2;
   }
   const std::string kind = argv[1];
-  const double seconds = argc > 3 ? atof(argv[3]) : 2.0;
 
   @autoreleasepool
   {
@@ -670,8 +756,8 @@ int main(int argc, char** argv)
     [window orderFrontRegardless];
 
     const Product product = ProductOf(argv[2]);
-    Session(*f, product, window, "first open", seconds);
-    Session(*f, product, window, "closed and opened again", seconds);
+    Session(*f, product, kind, window, "first open");
+    Session(*f, product, kind, window, "closed and opened again");
 
     stop.store(true);
     pthread_join(render, nullptr);

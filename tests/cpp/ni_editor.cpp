@@ -10,6 +10,7 @@
 
 #include <clocale>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -145,4 +146,35 @@ TEST_CASE("a product's own tag is not the shell's")
   CHECK_FALSE(Handle(r, 96, "x"));
   CHECK_FALSE(Handle(r, kGround, "x"));
   CHECK(r.log.empty());
+}
+
+/*
+ * A STATE LOAD ON THE HOST'S THREAD. iPlug2 reports each parameter the load set
+ * from whatever thread the host loaded on, where the WebView must not be
+ * touched; that thread only marks the editor stale, and the main thread's next
+ * idle tick sends what it missed -- once, however many parameters moved, and
+ * without the defaults or the product's state, which a load does not change.
+ */
+TEST_CASE("a load off the main thread reaches the editor once, on the next flush")
+{
+  Recorder r;
+  Stale stale;
+  stale.Flush(r);
+  CHECK(r.log.empty());
+
+  std::thread loader([&] {
+    for (int i = 0; i < r.PortParamCount(); i++)
+      stale.Mark();
+  });
+  loader.join();
+  CHECK(r.log.empty());
+
+  stale.Flush(r);
+  const std::vector<std::string> want = {"values", "display 0", "display 1", "display 2",
+                                         "display 3"};
+  CHECK(r.log == want);
+  CHECK(r.sent.empty());
+
+  stale.Flush(r);
+  CHECK(r.log == want);
 }

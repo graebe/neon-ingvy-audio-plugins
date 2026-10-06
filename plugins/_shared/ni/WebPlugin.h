@@ -20,8 +20,11 @@
  * it wants, OnParamChange and ProcessMidiMsg.
  *
  * THREADS. ProcessAudio runs on the audio thread; everything else here on the
- * main thread, except EditorIsOpen, which any thread may ask. Engine mutation
- * goes through each engine's shell (docs/tech/architecture.md, Threads).
+ * main thread, except EditorIsOpen, which any thread may ask, and
+ * OnParamChangeUI and OnRestoreState, which run wherever the host loads state
+ * and only mark the editor stale off the main thread (editor::Stale). Engine
+ * mutation goes through each engine's shell (docs/tech/architecture.md,
+ * Threads).
  */
 #pragma once
 
@@ -68,6 +71,7 @@ public:
   void OnUIOpen() final;
   void CloseWindow() final;
   void OnParamChangeUI(int paramIdx, iplug::EParamSource source) final;
+  void OnRestoreState() final;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) final;
 
 protected:
@@ -150,6 +154,9 @@ private:
   void PortGroundRunning(bool running) override { mGroundRunning = running; }
 
   std::atomic<bool> mEditorOpen{false};
+  /* Values and display strings a thread other than the main one changed, for
+   * the next idle tick to send. */
+  editor::Stale mStale;
 
   /*
    * THE GROUND'S BEAT CLOCK. Every window's ground rings on the host's beat,

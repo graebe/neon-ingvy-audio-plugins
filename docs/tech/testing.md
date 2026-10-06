@@ -39,7 +39,7 @@ Everything quick runs, and:
 | label | what |
 |---|---|
 | `render` | the render A/B goldens: four seconds through each plugin's audio path, hashed |
-| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens the Spectrogram's, the Trance Gate's and the Side-Chain's real editors as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it |
+| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens every plugin's real editor as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | every built bundle carries its notices |
 | `site` | every root-relative link on the built site resolves |
@@ -80,10 +80,14 @@ kick on a render thread under a transport playing at 120 BPM, and the editor
 opened and closed through the format's own calls (VST3 `attached`/`removed`,
 the AU's view factory and `removeFromSuperview`, CLAP
 `set_parent`/`hide`/`destroy`). The page is then asked what it received: a
-`ready` answered and the ground's kick, for every editor; for the Spectrogram,
-column batches carrying the sine and every one of those columns on the visible
-canvas; for the Trance Gate and the Side-Chain, a playhead that moves with the
-transport. It needs a logged-in session; the window may sit behind others, and
+`ready` answered and a ring on each beat of the transport, for every editor;
+for the Spectrogram, column batches carrying the sine and the columns that
+arrived on the visible canvas; for the Trance Gate and the Side-Chain, a
+playhead that moves with the transport; for the Listen-In, the bus's state and
+name, and a fresh bus's name field empty rather than `(null)`. Each check
+waits for its condition rather than a fixed time, up to a minute, so a busy
+machine is slower to pass, never failed. It needs a logged-in session; the
+window may sit behind others, and
 the editors have to survive WebKit calling the page hidden -- no animation
 frames, throttled timers (`editor_timing` is the rule that keeps them
 independent of both).
