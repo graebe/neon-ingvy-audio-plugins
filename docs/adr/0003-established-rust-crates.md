@@ -48,7 +48,7 @@ Each one must be under a licence on the allowlist in
 | xorshift and the tests' LCGs | `fastrand`, seeded |
 | the command queue, the Spectrogram's ring and its columns | `rtrb`, with typed command enums |
 | the snapshot | `triple_buffer` |
-| the handoff | `basedrop` or `arc-swap` |
+| the handoff | `basedrop` (not `arc-swap`; see below) |
 | `AtomicU32` bit casts | `atomic_float` |
 | the Trance Gate's state, slot files and paste, and the Side-Chain's parameters | `serde` and `serde_json`: the migrations become a versioned enum, and every old blob still reads |
 | `ni-dsp`'s number formatting | `core::fmt` and `arrayvec`; `lexical-core` where C-compatible text is a protocol, as Schwung's is |
@@ -123,3 +123,25 @@ not name. BSD-1-Clause is compatible with GPLv3, so adding it is a decision
 about the allowlist, not a technical one. Until that decision is made,
 ni-testkit's counting allocator is what proves that nothing on the audio
 thread allocates.
+
+## How the shell's threads use them
+
+Added after the second wave (2026-10-06), which moved the plugin shells'
+plumbing onto the crates.
+
+- **The handoff is basedrop's, not arc-swap's.** Both are lock-free for the
+  audio thread, which reads. arc-swap's first read on a thread allocates a debt
+  node behind a thread-local, and its references are `Arc`s: whichever thread
+  lets go last frees the object, which for a bus pusher is an unmap on the
+  audio thread. basedrop's read is two counter increments, and its last
+  release only queues the object for a collector that the main thread runs.
+  Its writer spins while a read is in flight, and the writer is the main
+  thread.
+- **Commands are typed.** Each capi crate defines its own command enum, and
+  the text that arrives through its C ABI is read where it is posted: the
+  Trance Gate's key/value pairs become `tg_core::edit::Edit`s, a host's blob a
+  `Patch`, the clipboard and a slot file a `Clip`. A command's heavy payload
+  rides in a basedrop `Shared`, so the audio thread drops it without freeing.
+- **The Move modules leave the plugin's half out.** The capi crates put their
+  shell and the ground's C ABI behind a default-on `shell` feature, and the
+  Move crates turn it off.

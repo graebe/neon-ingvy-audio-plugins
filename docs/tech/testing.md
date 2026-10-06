@@ -20,8 +20,10 @@ yet, so nothing is ever installed into `~/Library/Audio/Plug-Ins`.
 `cmake --build build --target ni_tests` builds the test programs and the engine
 archives they link, and no plugin bundle; then `ctest -L quick` runs:
 
-- every Rust crate's unit tests (`cargo test`, crate by crate), and
-  `cargo_deny`, the licence gate over their dependency graph (below),
+- every Rust crate's unit tests (`cargo test`, crate by crate) — among them
+  the no-allocation checks, the two-thread stress runs and the property tests,
+  whose seed is fixed so the tier's verdict never changes without a commit —
+  and `cargo_deny`, the licence gate over their dependency graph (below),
 - the C tests against each engine's hand-written ABI, and the oracles that pin
   the editors' maths to the engine's measured output,
 - the doctest wire, state and parameter tests (`tests/cpp`),

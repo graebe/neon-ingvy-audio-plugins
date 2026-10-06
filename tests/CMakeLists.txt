@@ -384,9 +384,10 @@ add_test(NAME gnd_core
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ground-core -p ground-capi)
 
-# THE SHELL PLUMBING'S OWN TESTS: the queue, the snapshot, the handoff, the
-# two-thread stress runs and the no-allocation check -- and each product's
-# bridge over it, which lives in that product's capi crate.
+# THE SHELL PLUMBING'S OWN TESTS: the bridge and the handoff, the property
+# that holds the bridge to its round trip, the two-thread stress runs and the
+# no-allocation check -- and each product's bridge over it, which lives in that
+# product's capi crate.
 add_test(NAME shell_core
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p shell-core -p shell-capi
