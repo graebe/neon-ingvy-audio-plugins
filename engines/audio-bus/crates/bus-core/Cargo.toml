@@ -11,6 +11,12 @@ publish.workspace = true
 # zero-dependency rule docs/adr/0003-established-rust-crates.md reverses. It now
 # keeps one `Shm` type over libc on macOS and Linux and windows-sys on Windows;
 # the seqlock ring above it stays this crate's own. The cfgs match shm.rs's.
+[dependencies]
+# The ring's samples (ring.rs): a float stored and loaded through an AtomicU32's
+# bits, in an f32's four bytes. Its default feature adds AtomicF64, which the
+# ring has no use for.
+atomic_float = { version = "1.1.0", default-features = false }
+
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 # shm_open, mmap, fstat, kill and clock_gettime. Its default feature, `std`,
 # adds nothing these calls use.

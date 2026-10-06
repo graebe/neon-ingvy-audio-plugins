@@ -43,7 +43,7 @@
  * that is arranged to give lib.rs the answers POSIX gives.
  */
 
-use core::sync::atomic::AtomicU32;
+use atomic_float::AtomicF32;
 
 use crate::header::{segment_size, Header, DATA_OFFSET};
 use crate::ring::RING_SAMPLES;
@@ -236,10 +236,10 @@ impl Shm {
     }
 
     /// The ring. Read-only in a reader's mapping: loads only.
-    pub fn data(&self) -> &[AtomicU32] {
+    pub fn data(&self) -> &[AtomicF32] {
         unsafe {
             core::slice::from_raw_parts(
-                self.view.base().add(DATA_OFFSET) as *const AtomicU32,
+                self.view.base().add(DATA_OFFSET) as *const AtomicF32,
                 RING_SAMPLES,
             )
         }

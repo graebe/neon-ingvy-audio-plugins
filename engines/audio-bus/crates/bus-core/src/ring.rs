@@ -5,22 +5,26 @@
  * The ring: one writer, many readers, no coordination between them.
  *
  * NOTHING HERE KNOWS ABOUT SHARED MEMORY, and that is deliberate. These
- * functions take a `&Header` and a `&[AtomicU32]`, which a test can build on the
+ * functions take a `&Header` and a `&[AtomicF32]`, which a test can build on the
  * heap in three lines. The wrap, the lap detection and the resync -- every part
  * that can be subtly wrong -- is therefore testable without shm_open, without a
  * second process, and without a race to reproduce.
  *
  * `shm.rs` supplies those two arguments from a mapping. That is all it does.
  *
- * THE SAMPLES ARE ATOMICS, holding f32 bits. A reader copies while the writer
- * may be overwriting the same cells -- that is the seqlock's racy read, and the
+ * THE SAMPLES ARE ATOMICS: atomic_float's AtomicF32, which stores and loads a
+ * float's bits through an AtomicU32. A reader copies while the writer may be
+ * overwriting the same cells -- that is the seqlock's racy read, and the
  * re-check after the copy is what throws a torn result away. With plain floats
  * that overlap would be a data race and undefined behaviour however carefully
  * the result was discarded; relaxed atomic loads and stores compile to the same
  * plain moves and make the overlap merely a wrong answer that gets retried.
  */
 
+use core::mem::{align_of, size_of};
 use core::sync::atomic::{fence, AtomicU32, Ordering};
+
+use atomic_float::AtomicF32;
 
 use crate::header::{Header, CHANNELS, RING_FRAMES};
 
@@ -99,12 +103,24 @@ const USABLE: u64 = USABLE_FRAMES as u64;
 /// Samples in the ring: `RING_FRAMES * CHANNELS`.
 pub const RING_SAMPLES: usize = RING_FRAMES as usize * CHANNELS as usize;
 
+/*
+ * A SAMPLE IS FOUR BYTES OF THE SEGMENT, and AtomicF32 has to stay exactly
+ * that. It is the f32 itself, reached through an AtomicU32's view of the same
+ * bytes -- the AtomicU32 this ring stored bits in before it used the crate --
+ * so a segment written by either build reads the same in the other, and
+ * `segment_size` can count the ring in f32s. A crate's layout is its own
+ * business until it is a shared-memory format, so it is asserted here.
+ */
+const _: () = assert!(size_of::<AtomicF32>() == size_of::<AtomicU32>());
+const _: () = assert!(align_of::<AtomicF32>() == align_of::<AtomicU32>());
+const _: () = assert!(size_of::<AtomicF32>() == size_of::<f32>());
+
 /// Publish `src` (interleaved stereo, `src.len() / 2` frames).
 ///
 /// `data` is `hdr`'s ring, `RING_SAMPLES` long. The caller must be the slot's
 /// single writer: two concurrent pushers corrupt the stream (no undefined
 /// behaviour -- everything is atomic -- but no meaningful audio either).
-pub fn push(hdr: &Header, data: &[AtomicU32], src: &[f32]) {
+pub fn push(hdr: &Header, data: &[AtomicF32], src: &[f32]) {
     assert_eq!(data.len(), RING_SAMPLES);
     let ch = CHANNELS as usize;
     let frames = src.len() / ch;
@@ -160,21 +176,21 @@ pub fn push(hdr: &Header, data: &[AtomicU32], src: &[f32]) {
     }
 }
 
-fn store(dst: &[AtomicU32], src: &[f32]) {
-    for (d, s) in dst.iter().zip(src) {
-        d.store(s.to_bits(), Ordering::Relaxed);
+fn store(dst: &[AtomicF32], src: &[f32]) {
+    for (d, &s) in dst.iter().zip(src) {
+        d.store(s, Ordering::Relaxed);
     }
 }
 
-fn load(dst: &mut [f32], src: &[AtomicU32]) {
+fn load(dst: &mut [f32], src: &[AtomicF32]) {
     for (d, s) in dst.iter_mut().zip(src) {
-        *d = f32::from_bits(s.load(Ordering::Relaxed));
+        *d = s.load(Ordering::Relaxed);
     }
 }
 
 /// Copy up to `out.len() / 2` frames into `out`, advancing `cur`. Only loads:
 /// `data` may live in a read-only mapping.
-pub fn read(hdr: &Header, data: &[AtomicU32], cur: &mut Cursor, out: &mut [f32]) -> Read {
+pub fn read(hdr: &Header, data: &[AtomicF32], cur: &mut Cursor, out: &mut [f32]) -> Read {
     read_with(hdr, data, cur, out, || {})
 }
 
@@ -183,7 +199,7 @@ pub fn read(hdr: &Header, data: &[AtomicU32], cur: &mut Cursor, out: &mut [f32])
 /// move exactly there instead of hoping a thread lands in it.
 pub(crate) fn read_with(
     hdr: &Header,
-    data: &[AtomicU32],
+    data: &[AtomicF32],
     cur: &mut Cursor,
     out: &mut [f32],
     during_copy: impl FnOnce(),

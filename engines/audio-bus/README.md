@@ -76,7 +76,7 @@ not show another program running as you.
 | | |
 |---|---|
 | `header.rs` | the segment layout, the owner word, and the label's seqlock — every field an atomic |
-| `ring.rs` | the wrap, the lap detection, the resync — over a `&Header` and a `&[AtomicU32]`, so a test can build one on the heap |
+| `ring.rs` | the wrap, the lap detection, the resync — over a `&Header` and a `&[AtomicF32]`, so a test can build one on the heap |
 | `shm.rs` | `Shm`, over `shm_open`/`mmap` (`shm/posix.rs`) or a named file mapping (`shm/win32.rs`), and the two doors: only a writer may use the one that creates, and a reader's is read-only |
 | `lib.rs` | `Writer` + `Pusher`, `Reader`, `probe`, and the claim protocol |
 | `crates/bus-capi` | the C ABI; `include/audio_bus.h` is the contract |
@@ -89,9 +89,10 @@ participant and two readers cannot interfere with each other, because neither
 of them writes anything at all. That is what makes the whole thing lock-free
 without being clever.
 
-The samples and every header field are atomics. A reader copying while the
-writer overwrites the same cells is the design — the re-check afterwards throws
-such a copy away — and with plain floats that overlap would be undefined
+The samples and every header field are atomics; a sample is atomic_float's
+`AtomicF32`, a float's bits in an `AtomicU32`'s place. A reader copying while
+the writer overwrites the same cells is the design — the re-check afterwards
+throws such a copy away — and with plain floats that overlap would be undefined
 behaviour however carefully the result was discarded. Relaxed atomic loads and
 stores compile to the same moves.
 

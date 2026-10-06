@@ -4,7 +4,7 @@
 /*
  * The ring, tested without a single shm_open.
  *
- * `ring.rs` takes a `&Header` and a `&[AtomicU32]` rather than a mapping precisely
+ * `ring.rs` takes a `&Header` and a `&[AtomicF32]` rather than a mapping precisely
  * so that this file can build one on the heap. Every part that can be subtly
  * wrong -- the wrap, the lap detection, the resync -- is exercised here with no
  * shared memory, no second process, and no race to provoke.
@@ -13,7 +13,9 @@
  * `tests/abus_ipc.c` (two).
  */
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::Ordering;
+
+use atomic_float::AtomicF32;
 
 use crate::header::{Header, CHANNELS, DATA_OFFSET, RING_FRAMES};
 use crate::ring::{self, Cursor, RING_SAMPLES, USABLE_FRAMES};
@@ -42,10 +44,10 @@ impl Segment {
     fn hdr(&self) -> &Header {
         unsafe { &*(self.buf.as_ptr() as *const Header) }
     }
-    fn data(&self) -> &[AtomicU32] {
+    fn data(&self) -> &[AtomicF32] {
         unsafe {
             core::slice::from_raw_parts(
-                self.buf.as_ptr().add(DATA_OFFSET) as *const AtomicU32,
+                self.buf.as_ptr().add(DATA_OFFSET) as *const AtomicF32,
                 RING_SAMPLES,
             )
         }
@@ -312,7 +314,7 @@ fn a_reader_is_never_handed_a_splice() {
     let writer = std::thread::spawn(move || {
         let hdr = unsafe { &*(hdr_addr as *const Header) };
         let data =
-            unsafe { core::slice::from_raw_parts(data_addr as *const AtomicU32, RING_SAMPLES) };
+            unsafe { core::slice::from_raw_parts(data_addr as *const AtomicF32, RING_SAMPLES) };
         let mut written = 0u64;
         while !stop_w.load(Ordering::Relaxed) {
             let block = 512usize;
@@ -323,7 +325,7 @@ fn a_reader_is_never_handed_a_splice() {
     });
 
     let hdr = unsafe { &*(hdr_addr as *const Header) };
-    let data = unsafe { core::slice::from_raw_parts(data_addr as *const AtomicU32, RING_SAMPLES) };
+    let data = unsafe { core::slice::from_raw_parts(data_addr as *const AtomicF32, RING_SAMPLES) };
     let mut cur = Cursor::at_live_edge(hdr);
     let mut out = vec![0f32; 4096 * CHANNELS as usize];
     let mut blocks_seen = 0u32;

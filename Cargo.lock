@@ -33,6 +33,7 @@ dependencies = [
 name = "bus-core"
 version = "2026.10.6+5"
 dependencies = [
+ "atomic_float",
  "libc",
  "ni-testkit",
  "windows-sys",
