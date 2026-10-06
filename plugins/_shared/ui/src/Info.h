@@ -226,17 +226,18 @@ public:
  * The pointer's half, delegated: listens to every component inside `root`
  * and tells `state` what the pointer is over. Lives as long as the root.
  */
-class InfoTracker final : private juce::MouseListener
+class InfoTracker final : public juce::MouseListener
 {
 public:
     InfoTracker (juce::Component& root, InfoState& state);
     ~InfoTracker() override;
 
-private:
+    /* What the root's components hear, delegated here. */
     void mouseEnter (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
+private:
     void point (juce::Component* under);
 
     juce::Component& root;

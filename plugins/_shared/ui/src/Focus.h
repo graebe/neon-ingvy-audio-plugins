@@ -61,6 +61,7 @@ private:
     void set (bool shouldBeVisible);
 
     juce::Component& owner;
+    bool focused = false;
     bool visible = false;
 
     JUCE_DECLARE_NON_COPYABLE (FocusVisibility)

@@ -31,17 +31,21 @@ FocusVisibility::~FocusVisibility()
 
 void FocusVisibility::focusGained (juce::Component::FocusChangeType cause)
 {
+    focused = true;
     set (cause == juce::Component::focusChangedByTabKey);
 }
 
 void FocusVisibility::focusLost()
 {
+    focused = false;
     set (false);
 }
 
 void FocusVisibility::keyUsed()
 {
-    if (owner.hasKeyboardFocus (false))
+    /* Only the focus it has: a key cannot reach a control that has none, but
+     * a control may forward one it was handed. */
+    if (focused)
         set (true);
 }
 

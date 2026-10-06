@@ -40,6 +40,10 @@ target_include_directories(ni_ui_test_support INTERFACE ${CMAKE_CURRENT_SOURCE_D
 # doctest's header is not held to JUCE's warning flags; the tests are.
 target_include_directories(ni_ui_test_support SYSTEM INTERFACE ${DOCTEST_DIR})
 target_compile_definitions(ni_ui_test_support INTERFACE
+    # A test may run the message loop for a while to let a timer fire
+    # (MessageManager::runDispatchLoopUntil). Tests only: the kit itself never
+    # runs a modal loop, and a plugin build does not define this.
+    JUCE_MODAL_LOOPS_PERMITTED=1
     # Baselines are committed beside the tests; what a failed comparison
     # writes stays in the build tree.
     "NI_UI_BASELINES=\"${CMAKE_CURRENT_SOURCE_DIR}/baselines\""
