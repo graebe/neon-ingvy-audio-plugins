@@ -75,6 +75,8 @@ pub extern "C" fn tg_core_create(sample_rate: f64) -> *mut TgCore {
     Box::into_raw(Box::new(TgCore::new(sample_rate)))
 }
 
+/// # Safety
+/// `c` is null or from `tg_core_create`, and is not used afterwards.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_destroy(c: *mut TgCore) {
     if !c.is_null() {
@@ -82,17 +84,24 @@ pub unsafe extern "C" fn tg_core_destroy(c: *mut TgCore) {
     }
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_set_sample_rate(c: *mut TgCore, sample_rate: f64) {
     let Some(c) = c.as_mut() else { return };
     c.0.set_sample_rate(sample_rate);
 }
 
+/// # Safety
+/// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_get_sample_rate(c: *const TgCore) -> f64 {
     c.as_ref().map_or(0.0, |c| c.0.sample_rate())
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `key` and `val`
+/// are each null or NUL-terminated.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_set_param(
     c: *mut TgCore,
@@ -113,6 +122,9 @@ pub unsafe extern "C" fn tg_core_set_param(
 ///
 /// A parameter outside the enum is DROPPED, not clamped onto a neighbour: one
 /// silently moving a different control is worse than one doing nothing.
+///
+/// # Safety
+/// `c` is null or a live engine that no other call is using.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_set_num(c: *mut TgCore, param: c_int, value: f64) {
     let Some(c) = c.as_mut() else { return };
@@ -122,6 +134,10 @@ pub unsafe extern "C" fn tg_core_set_num(c: *mut TgCore, param: c_int, value: f6
 
 /// Returns the length written, or -1 for a key this engine does not serve --
 /// which is how a shell knows to answer its own.
+///
+/// # Safety
+/// `c` is null or a live engine; `key` is null or NUL-terminated; `buf` is null
+/// or writable for `buf_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_get_param(
     c: *mut TgCore,
@@ -140,6 +156,9 @@ pub unsafe extern "C" fn tg_core_get_param(
 /// The host's time signature. Changes no sample -- the `params` readout's
 /// Length detents are counted in it. A meter no host could mean, or 0/0 for
 /// "the host did not say", is 4/4. Audio thread, allocation-free.
+///
+/// # Safety
+/// `c` is null or a live engine that no other call is using.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_set_meter(c: *mut TgCore, num: c_int, den: c_int) {
     if let Some(c) = c.as_mut() {
@@ -147,6 +166,8 @@ pub unsafe extern "C" fn tg_core_set_meter(c: *mut TgCore, num: c_int, den: c_in
     }
 }
 
+/// # Safety
+/// Sound for any arguments: it reads none of them.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_on_midi(_c: *mut TgCore, _msg: *const u8, _len: c_int) {
     /* The engine has never used MIDI; the Move shell claims CCs for the
@@ -154,6 +175,9 @@ pub unsafe extern "C" fn tg_core_on_midi(_c: *mut TgCore, _msg: *const u8, _len:
      * published surface. */
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `lr` is null or
+/// holds `2 * frames` interleaved samples; `t` is null or a valid transport.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_process_i16(
     c: *mut TgCore,
@@ -169,6 +193,9 @@ pub unsafe extern "C" fn tg_core_process_i16(
     c.0.process_i16(buf, frames as usize, CTransport::read(t).as_ref());
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `lr` is null or
+/// holds `2 * frames` interleaved samples; `t` is null or a valid transport.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_process_f32(
     c: *mut TgCore,
@@ -184,6 +211,9 @@ pub unsafe extern "C" fn tg_core_process_f32(
     c.0.process_f32(buf, frames as usize, CTransport::read(t).as_ref());
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `l` and `r` are
+/// each null or hold `frames` samples; `t` is null or a valid transport.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_process_f32_split(
     c: *mut TgCore,
@@ -206,6 +236,10 @@ pub unsafe extern "C" fn tg_core_process_f32_split(
 /// fell, 0..1, into `sweep` -- the scope's x-axis. A stopped or seeking
 /// transport free-runs the sweep at one cycle per cycle length (see
 /// `ni_dsp::sweep`). `sweep` may be null.
+///
+/// # Safety
+/// As `tg_core_process_f32_split`, and `sweep` is null or writable for `frames`
+/// floats.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_process_f32_split_tap(
     c: *mut TgCore,
@@ -237,6 +271,8 @@ pub unsafe extern "C" fn tg_core_process_f32_split_tap(
     c.1.fill(ph0, ph1, advancing, cycle_samples, std::slice::from_raw_parts_mut(sweep, n));
 }
 
+/// # Safety
+/// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_phase01(c: *const TgCore) -> f64 {
     c.as_ref().map_or(0.0, |c| c.0.phase01())
@@ -245,6 +281,9 @@ pub unsafe extern "C" fn tg_core_phase01(c: *const TgCore) -> f64 {
 /// The label of rate `index`, NUL-terminated into `buf`: the engine's own
 /// table, so a host's menu cannot disagree with it. Returns the length
 /// written, or -1 past the end of the table or for a buffer too small.
+///
+/// # Safety
+/// `buf` is null or writable for `buf_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_rate_label(index: c_int, buf: *mut c_char, buf_len: c_int) -> c_int {
     let Some(rate) = usize::try_from(index).ok().and_then(|i| RATES.get(i)) else { return -1 };
@@ -256,6 +295,10 @@ pub unsafe extern "C" fn tg_core_rate_label(index: c_int, buf: *mut c_char, buf_
 /// not NUL-terminated -- a gain of 0 is a 0 byte. Returns the number of bytes
 /// written, or -1 for nothing to draw or a buffer too small -- size it with
 /// TG_GATE_MAX. Allocates: never on the audio thread.
+///
+/// # Safety
+/// `state` is null or NUL-terminated; `buf` is null or writable for `buf_len`
+/// bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_render_gate(state: *const c_char, buf: *mut c_char, buf_len: c_int) -> c_int {
     let Some(bytes) = gate::render(s(state)) else { return -1 };
@@ -271,6 +314,10 @@ pub unsafe extern "C" fn tg_core_render_gate(state: *const c_char, buf: *mut c_c
 /// one raw byte of gain per sample each. BINARY, not a C string. Returns the
 /// number of bytes written, or -1 for nothing to draw or a buffer too small --
 /// size it with TG_ENVELOPE_MAX. Allocates: never on the audio thread.
+///
+/// # Safety
+/// `state` is null or NUL-terminated; `buf` is null or writable for `buf_len`
+/// bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_render_envelope(state: *const c_char, buf: *mut c_char, buf_len: c_int) -> c_int {
     let Some(bytes) = envelope::render(s(state)) else { return -1 };

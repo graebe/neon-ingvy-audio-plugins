@@ -58,6 +58,8 @@ pub extern "C" fn sc_core_create(sample_rate: f64) -> *mut ScCore {
     Box::into_raw(Box::new(ScCore(Instance::new(sample_rate))))
 }
 
+/// # Safety
+/// `c` is null or from `sc_core_create`, and is not used afterwards.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_destroy(c: *mut ScCore) {
     if !c.is_null() {
@@ -65,6 +67,8 @@ pub unsafe extern "C" fn sc_core_destroy(c: *mut ScCore) {
     }
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_set_sample_rate(c: *mut ScCore, sample_rate: f64) {
     if let Some(c) = c.as_mut() {
@@ -72,11 +76,15 @@ pub unsafe extern "C" fn sc_core_set_sample_rate(c: *mut ScCore, sample_rate: f6
     }
 }
 
+/// # Safety
+/// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_get_sample_rate(c: *const ScCore) -> f64 {
     c.as_ref().map(|c| c.0.sample_rate()).unwrap_or(0.0)
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_reset(c: *mut ScCore) {
     if let Some(c) = c.as_mut() {
@@ -91,6 +99,10 @@ pub unsafe extern "C" fn sc_core_reset(c: *mut ScCore) {
 /// Called BEFORE `process`, and the engine clears it afterwards -- so a block
 /// with no key is silence rather than the previous block held. A shell that
 /// forgets to push does not get a stale trigger.
+///
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `l` and `r` are
+/// each null or hold `frames` samples.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_push_key_f32(
     c: *mut ScCore,
@@ -115,6 +127,9 @@ pub unsafe extern "C" fn sc_core_push_key_f32(
 /// The engine does not infer this. An unconnected bus and a silent one are the
 /// same block of zeroes, and the difference is what the UI has to report --
 /// "no key" is a different message from "nothing is playing".
+///
+/// # Safety
+/// `c` is null or a live engine that no other call is using.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_set_key_connected(c: *mut ScCore, connected: c_int) {
     if let Some(c) = c.as_mut() {
@@ -129,6 +144,10 @@ pub unsafe extern "C" fn sc_core_set_key_connected(c: *mut ScCore, connected: c_
 /// whose timing is the whole effect. iPlug2 has it in `IMidiMsg::mOffset`; the
 /// Schwung v2 `on_midi` has no such field and passes 0, which is also what
 /// makes the Live/Move render A/B comparable.
+///
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `msg` is null or
+/// holds `len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_on_midi(
     c: *mut ScCore,
@@ -146,6 +165,9 @@ pub unsafe extern "C" fn sc_core_on_midi(
 
 /* ------------------------------------------------------------- process */
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `l` and `r` are
+/// each null or hold `frames` samples; `t` is null or a valid transport.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_process_f32_split(
     c: *mut ScCore,
@@ -171,6 +193,10 @@ pub unsafe extern "C" fn sc_core_process_f32_split(
 /// from it is what the listener heard, not the envelope behind it. `sweep` is
 /// where the sample sits on the editor's axis, which is what lets the shell bin
 /// its capture columns without re-implementing the phase logic.
+///
+/// # Safety
+/// As `sc_core_process_f32_split`, and `gain` and `sweep` are each null or
+/// writable for `frames` floats.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_process_f32_split_tap(
     c: *mut ScCore,
@@ -188,12 +214,12 @@ pub unsafe extern "C" fn sc_core_process_f32_split_tap(
     let n = frames as usize;
     let lb = std::slice::from_raw_parts_mut(l, n);
     let rb = std::slice::from_raw_parts_mut(r, n);
-    let mut gb = if gain.is_null() {
+    let gb = if gain.is_null() {
         None
     } else {
         Some(std::slice::from_raw_parts_mut(gain, n))
     };
-    let mut sb = if sweep.is_null() {
+    let sb = if sweep.is_null() {
         None
     } else {
         Some(std::slice::from_raw_parts_mut(sweep, n))
@@ -201,13 +227,16 @@ pub unsafe extern "C" fn sc_core_process_f32_split_tap(
     c.0.process_f32_split_tap(
         lb,
         rb,
-        gb.as_deref_mut(),
-        sb.as_deref_mut(),
+        gb,
+        sb,
         n,
         CTransport::read(t).as_ref(),
     );
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `lr` is null or
+/// holds `2 * frames` interleaved samples; `t` is null or a valid transport.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_process_f32(
     c: *mut ScCore,
@@ -224,6 +253,9 @@ pub unsafe extern "C" fn sc_core_process_f32(
     c.0.process_f32(buf, n, CTransport::read(t).as_ref());
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `lr` is null or
+/// holds `2 * frames` interleaved samples; `t` is null or a valid transport.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_process_i16(
     c: *mut ScCore,
@@ -242,6 +274,8 @@ pub unsafe extern "C" fn sc_core_process_i16(
 
 /* ---------------------------------------------------------- parameters */
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_set_num(c: *mut ScCore, param: c_int, value: f64) {
     let Some(c) = c.as_mut() else { return };
@@ -249,6 +283,8 @@ pub unsafe extern "C" fn sc_core_set_num(c: *mut ScCore, param: c_int, value: f6
     c.0.set_num(p, value);
 }
 
+/// # Safety
+/// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_get_num(c: *const ScCore, param: c_int) -> f64 {
     let Some(c) = c.as_ref() else { return 0.0 };
@@ -258,6 +294,9 @@ pub unsafe extern "C" fn sc_core_get_num(c: *const ScCore, param: c_int) -> f64 
     c.0.num(p)
 }
 
+/// # Safety
+/// `c` is null or a live engine that no other call is using; `key` and `val`
+/// are each null or NUL-terminated.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_set_param(
     c: *mut ScCore,
@@ -268,6 +307,9 @@ pub unsafe extern "C" fn sc_core_set_param(
     c.0.set_param(s(key), s(val)) as c_int
 }
 
+/// # Safety
+/// `c` is null or a live engine; `key` is null or NUL-terminated; `buf` is null
+/// or writable for `buf_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_get_param(
     c: *const ScCore,
@@ -285,8 +327,6 @@ pub unsafe extern "C" fn sc_core_get_param(
 
 /* -------------------------------------------------- audio-thread reads */
 
-/// Cycle phase, 0..1. The allocation-free answer, for a caller that wants the
-/// playhead without parsing the `ui` readout.
 /// The label of rate `index`, NUL-terminated into `buf`: the engine's own
 /// table, so a host's menu cannot disagree with it. Returns the length
 /// written, or -1 past the end of the table or for a buffer too small.
@@ -305,6 +345,11 @@ pub extern "C" fn sc_core_rate_default() -> c_int {
     RATE_DEFAULT as c_int
 }
 
+/// Cycle phase, 0..1. The allocation-free answer, for a caller that wants the
+/// playhead without parsing the `ui` readout.
+///
+/// # Safety
+/// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_phase01(c: *const ScCore) -> f64 {
     c.as_ref().map(|c| c.0.phase01()).unwrap_or(0.0)
@@ -313,6 +358,9 @@ pub unsafe extern "C" fn sc_core_phase01(c: *const ScCore) -> f64 {
 /// Where the display window has got to, 0..1 -- one cycle long, and defined for
 /// all three sources. The scope indexes its columns by this so the audio lands
 /// on the same axis the editor draws the shape on.
+///
+/// # Safety
+/// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_sweep01(c: *const ScCore) -> f64 {
     c.as_ref().map(|c| c.0.sweep01()).unwrap_or(1.0)
@@ -320,6 +368,9 @@ pub unsafe extern "C" fn sc_core_sweep01(c: *const ScCore) -> f64 {
 
 /// The attenuation as of the last sample rendered, 0..1. What the meter shows,
 /// and what the scope's gain-reduction trace is built from.
+///
+/// # Safety
+/// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_duck(c: *const ScCore) -> f32 {
     c.as_ref().map(|c| c.0.duck_now()).unwrap_or(0.0)
@@ -327,6 +378,9 @@ pub unsafe extern "C" fn sc_core_duck(c: *const ScCore) -> f32 {
 
 /// Monotonic trigger count. The UI watches it CHANGE, which is how "nothing
 /// has fired for 500 ms" is answered without the engine owning a clock.
+///
+/// # Safety
+/// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn sc_core_fires(c: *const ScCore) -> u32 {
     c.as_ref().map(|c| c.0.fires()).unwrap_or(0)
