@@ -19,6 +19,7 @@ const on = (p) => here.startsWith(url(p)) ? 'page' : undefined;
         <a href={url(`plugins/${p.id}/`)} aria-current={on(`plugins/${p.id}/`)}>{p.data.title}</a>
       ))}
       <a href={url('changelog/')} aria-current={on('changelog/')}>What's new</a>
+      <a href={url('music-core/')} aria-current={on('music-core/')}>music-core</a>
       <a href={url('tech/')} aria-current={on('tech/')}>Tech</a>
       <a href={url('licences/')} aria-current={on('licences/')}>Licences</a>
     </nav>

@@ -77,6 +77,20 @@ const tech = defineCollection({
 });
 
 /*
+ * music-core's tutorial, from the crate's own docs/ folder for the reason the
+ * plugins' manuals are read from theirs: one text, read on GitHub and here.
+ * Same shape as tech: one page, a section per file.
+ */
+const musicCore = defineCollection({
+  loader: glob({ base: '../engines/shared/crates/music-core/docs', pattern: '*.md' }),
+  schema: z.object({
+    title: z.string(),
+    order: z.number(),
+    slug: z.string(),
+  }),
+});
+
+/*
  * The changelog is the repository's CHANGELOG.md, one file and no frontmatter:
  * it is read on GitHub as often as here, and the version headings ARE its
  * structure.
@@ -86,4 +100,4 @@ const changelog = defineCollection({
   schema: z.object({}),
 });
 
-export const collections = { plugins, pluginDocs, tech, changelog };
+export const collections = { plugins, pluginDocs, tech, musicCore, changelog };

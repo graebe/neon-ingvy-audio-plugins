@@ -34,6 +34,7 @@ const ROUTES = new Map([
   ['plugins/side-chain/README.md', 'plugins/side-chain/'],
   ['plugins/side-chain/docs/live.md', 'plugins/side-chain/#live'],
   ['plugins/side-chain/docs/schwung.md', 'plugins/side-chain/#schwung'],
+  ['engines/shared/crates/music-core/README.md', 'music-core/'],
   ['CHANGELOG.md', 'changelog/'],
   ['README.md', ''],
   ['THIRD_PARTY_LICENSES.md', 'licences/'],
