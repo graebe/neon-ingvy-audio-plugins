@@ -1,3 +1,6 @@
 [submodule "external/iPlug2"]
 	path = external/iPlug2
 	url = https://github.com/iPlug2/iPlug2.git
+[submodule "external/JUCE"]
+	path = external/JUCE
+	url = https://github.com/juce-framework/JUCE.git
