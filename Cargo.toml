@@ -46,10 +46,10 @@ members = [
     "engines/side-chain/crates/sc-core",      # the DSP
     "engines/side-chain/crates/sc-capi",      # the C ABI -> the plugin
     "engines/side-chain/crates/sc-move",      # the Schwung vtable -> the module
-    # The animated ground's bass-onset detector. Like audio-bus it is not a
+    # The animated ground's beat clock. Like audio-bus it is not a
     # product: it ships inside EVERY editor, because the design system gives
     # every window the same ground. It depends on no product in return.
-    "engines/ground/crates/ground-core",      # the detector
+    "engines/ground/crates/ground-core",      # the beat clock
     "engines/ground/crates/ground-capi",      # the C ABI -> every plugin
     # How a plugin shell's threads reach an engine: the command queue in, the
     # published snapshot out, and the handoff for objects the main thread

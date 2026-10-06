@@ -11,13 +11,15 @@
  * What is asserted:
  *
  *   - OnIdle's first statement is SendGround(), before anything can return
- *   - the detector is fed in ProcessBlock before the product's audio runs
+ *   - ProcessBlock ticks the clock exactly once, from the host's transport
+ *     (position, tempo, meter, playing), before the product's audio runs --
+ *     and hands it no audio: the ground keeps time, it does not listen
  *   - OnReset re-rates and resets it; the constructor makes it, the
  *     destructor frees it
  *   - OnUIOpen switches it on; CloseWindow switches it off and chains to the
  *     base -- CloseWindow, because WebViewEditorDelegate never calls OnUIClose
  *   - those hooks are `final`, every plugin derives from ni::WebPlugin, and no
- *     plugin touches the detector itself
+ *     plugin touches the ground itself
  *
  *   node --test tests/ground_shells.test.mjs
  */
@@ -64,30 +66,45 @@ test('SendGround is the first thing OnIdle does', () => {
   assert.equal(statements(at('OnIdle'))[0], 'SendGround()');
 });
 
-test('the detector hears the input before the product writes an output', () => {
+test('ProcessBlock ticks the clock once, from the host transport, before the audio', () => {
   const b = at('ProcessBlock');
-  const push = b.indexOf('gnd_push(mGround');
+  const ticks = b.match(/\bgnd_tick\(/g) ?? [];
+  assert.equal(ticks.length, 1, 'ProcessBlock must tick the ground exactly once a block');
+  const tick = b.indexOf('gnd_tick(mGround');
   const audio = b.indexOf('ProcessAudio(');
-  assert.ok(push >= 0, 'ProcessBlock does not feed the detector');
-  assert.ok(audio > push, 'ProcessAudio runs before the detector is fed');
+  assert.ok(tick >= 0, 'ProcessBlock does not tick the ground');
+  assert.ok(audio > tick, 'ProcessAudio runs before the ground is ticked');
+
+  /* The arguments, in the header's order: position, tempo, meter, playing,
+   * frames. Swapping two doubles compiles and rings on the wrong beats. */
+  const call = b.slice(tick, b.indexOf(';', tick));
+  assert.match(call,
+    /gnd_tick\(\s*mGround\s*,\s*GetPPQPos\(\)\s*,\s*GetTempo\(\)\s*,\s*num\s*,\s*den\s*,\s*GetTransportIsRunning\(\)[^,]*,\s*nFrames\s*\)/);
+  assert.match(b, /GetTimeSig\(\s*num\s*,\s*den\s*\)/, 'the meter comes from the host');
 });
 
-test('a reset re-rates the detector and clears its bed', () => {
+test('the ground is fed no audio, in the shell or anywhere', () => {
+  assert.doesNotMatch(SRC + HDR, /\bgnd_push\b/, 'gnd_push is gone: the ground keeps time');
+  assert.doesNotMatch(at('ProcessBlock').slice(0, at('ProcessBlock').indexOf('ProcessAudio(')),
+    /\binputs\b/, 'nothing before ProcessAudio reads the input');
+});
+
+test('a reset re-rates the clock and makes the next block a fresh start', () => {
   const b = at('OnReset');
   assert.match(b, /gnd_set_sample_rate\(\s*mGround/);
   assert.match(b, /gnd_reset\(\s*mGround\s*\)/);
 });
 
-test('the detector is made once and freed once', () => {
+test('the ground is made once and freed once', () => {
   assert.match(at('WebPlugin'), /mGround\s*=\s*gnd_new\(/);
   assert.match(at('~WebPlugin'), /gnd_free\(\s*mGround\s*\)/);
 });
 
-test('opening the editor switches the detector on', () => {
+test('opening the editor switches the ground on', () => {
   assert.match(at('OnUIOpen'), /gnd_set_active\(\s*mGround\s*,\s*1\s*\)/);
 });
 
-test('closing the editor switches the detector off and tears the WebView down', () => {
+test('closing the editor switches the ground off and tears the WebView down', () => {
   const b = at('CloseWindow');
   assert.match(b, /gnd_set_active\(\s*mGround\s*,\s*0\s*\)/);
   assert.match(b, /iplug::Plugin::CloseWindow\(\)/, 'CloseWindow must chain to the base');
@@ -111,6 +128,6 @@ for (const [cls, base] of Object.entries(PLUGINS)) {
     const h = read(`${base}.h`);
     const c = read(`${base}.cpp`);
     assert.match(h, new RegExp(`class\\s+${cls}\\s+final\\s*:\\s*public\\s+ni::WebPlugin`));
-    assert.doesNotMatch(h + c, /\bgnd_\w+\(/, `${cls} calls the detector itself`);
+    assert.doesNotMatch(h + c, /\bgnd_\w+\(/, `${cls} calls the ground itself`);
   });
 }

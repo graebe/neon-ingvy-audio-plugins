@@ -308,9 +308,10 @@ add_executable(abus_roundtrip abus_roundtrip.c)
 target_link_libraries(abus_roundtrip PRIVATE audio_bus_engine)
 add_test(NAME abus_roundtrip COMMAND abus_roundtrip)
 
-# THE GROUND DETECTOR'S OWN TESTS, which are cargo's: the Butterworth band
-# measured against its closed form, a kick firing where a hi-hat does not, and
-# the re-arm that -- not the refractory -- sets how close two kicks may be.
+# THE GROUND'S OWN TESTS, which are cargo's: the beat clock through every
+# transport a host can report -- starts, stalls, loops, seeks, tempo changes,
+# meters with and without whole-quarter bars, stops -- and its no-allocation
+# check.
 add_test(NAME gnd_core
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ground-core -p ground-capi)

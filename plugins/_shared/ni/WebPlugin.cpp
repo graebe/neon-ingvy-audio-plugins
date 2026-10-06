@@ -41,19 +41,21 @@ void WebPlugin::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
    * back on the way out. */
   const shell::ScopedFlushDenormals ftz;
 
-  /* The ground hears the input before anything writes an output: a host may
-   * hand over one buffer for both. A mono input is its own right side. */
-  const double* l = IsChannelConnected(ERoute::kInput, 0) ? inputs[0] : nullptr;
-  const double* r = IsChannelConnected(ERoute::kInput, 1) ? inputs[1] : l;
-  gnd_push(mGround, l, r, nFrames);
+  /* The ground keeps the host's time, once a block, from the transport the
+   * wrapper has just read: a ring a beat while it plays (ground.h). It reads
+   * no audio, so every plugin rings alike. The values go through as the host
+   * gave them; what a missing tempo or meter means is decided in ground-core. */
+  int num = 0, den = 0;
+  GetTimeSig(num, den);
+  gnd_tick(mGround, GetPPQPos(), GetTempo(), num, den, GetTransportIsRunning() ? 1 : 0, nFrames);
 
   ProcessAudio(inputs, outputs, nFrames);
 }
 
 void WebPlugin::OnReset()
 {
-  /* Requests the detector applies at its next block, whatever thread this is.
-   * Neither touches the onset count the editor compares against. */
+  /* Requests the clock applies at its next block, whatever thread this is.
+   * Neither touches the ring count the editor compares against. */
   gnd_set_sample_rate(mGround, GetSampleRate());
   gnd_reset(mGround);
   ResetAudio();
@@ -150,8 +152,8 @@ void WebPlugin::Send(int tag, const char* data, int size)
     SendArbitraryMsgFromDelegate(tag, size, data);
 }
 
-/* One message per kick, and only when there was one. The count is compared
- * with != so that its wrap is a non-event (ground_detect.h). */
+/* One message per ring, and only when there was one. The count is compared
+ * with != so that its wrap is a non-event (ground.h). */
 void WebPlugin::SendGround()
 {
   const uint32_t fires = gnd_fires(mGround);

@@ -75,7 +75,7 @@ reference resource IDs that only exist for an IGraphics UI.
 Every plugin class derives from `ni::WebPlugin` (`plugins/_shared/ni`), which
 owns everything the four used to repeat: the WebView bootstrap (a custom URL
 scheme per product, developer tools in debug builds only), the editor protocol,
-the animated ground's detector, flush-to-zero around every block, and `OnIdle`'s
+the animated ground's beat clock, flush-to-zero around every block, and `OnIdle`'s
 order — the ground first, then the product's host-facing work, then, only while
 an editor is open, its editor work. The iPlug2 hooks it owns are `final`; a
 product supplies `ProcessAudio`, `ResetAudio`, `OnHostIdle`, `OnEditorIdle`,
@@ -87,7 +87,7 @@ tags are `64..111`; the shell's are the same in every plugin:
 
 | tag | direction | payload |
 |---|---|---|
-| 112 `ground` | → editor | `<strength>`, 0..1, three decimals; one message per kick |
+| 112 `ground` | → editor | `<strength>`, 1 on a downbeat and 0.4 on a beat, three decimals; one message per ring |
 | 113 `defaults` | → editor | `<d0>:<d1>:…:<dN-1>`, every parameter's normalised default in index order |
 | 120 `ready` | ← editor | none: mounted, send the whole state |
 | 121 `setText` | ← editor | `<paramIdx>:<typed text>` |

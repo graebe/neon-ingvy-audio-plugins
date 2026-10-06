@@ -69,7 +69,7 @@ ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi
     INCLUDE ${CMAKE_SOURCE_DIR}/engines/audio-bus/include)
 ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi
     INCLUDE ${CMAKE_SOURCE_DIR}/engines/side-chain/include)
-# The ground's kick detector and the shell plumbing (command queue, snapshot,
+# The ground's beat clock and the shell plumbing (command queue, snapshot,
 # handoff, state header, denormal guard) belong to no product: their C ABI
 # rides inside every product's archive, so they are headers here.
 ni_add_rust_headers(ground_engine INCLUDE ${CMAKE_SOURCE_DIR}/engines/ground/include)

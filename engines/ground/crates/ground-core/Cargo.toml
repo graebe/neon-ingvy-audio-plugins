@@ -3,10 +3,11 @@ name = "ground-core"
 version = "2026.10.6+2"
 edition = "2021"
 license = "MIT"
-description = "The bass-onset detector behind the Ultraviolet design system's animated ground"
+description = "The beat clock behind the Ultraviolet design system's animated ground"
 
-# NO THIRD-PARTY DEPENDENCIES: every byte in the artefact is permissive AND
-# ACCOUNTED FOR. ni-dsp is the house's own and names no product, so the ground
-# stays product-free with it.
+# NO DEPENDENCIES: the clock is arithmetic on the host's transport.
 [dependencies]
-ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+
+[dev-dependencies]
+# The counting allocator behind tests/no_alloc.rs.
+ni-testkit = { path = "../../../shared/crates/ni-testkit" }

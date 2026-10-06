@@ -1,30 +1,32 @@
 /*
- * The ground's kick detector through its C ABI.
+ * The ground's beat clock through its C ABI.
  * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
- * ground-core's own cargo tests cover the detector in Rust -- the band, the
- * relative threshold, the re-arm. THIS one compiles against the hand-written
- * engines/ground/include/ground_detect.h and links the real staticlib, which is
- * the only thing that catches the header drifting from the implementation: both
- * sides keep compiling while they disagree.
+ * ground-core's own cargo tests cover the clock in Rust -- starts, loops,
+ * seeks, tempo changes, meters. THIS one compiles against the hand-written
+ * engines/ground/include/ground.h and links the real staticlib, which is the
+ * only thing that catches the header drifting from the implementation: both
+ * sides keep compiling while they disagree -- an argument swapped in gnd_tick,
+ * a double read as an int, and the ground rings on the wrong beats or never.
  *
- * The claims here are the ones the four plugins depend on, and every one of them
- * is a thing a wrong header would break silently:
+ * The claims here are the ones the four plugins depend on, and every one of
+ * them is a thing a wrong header would break silently:
  *
- *   - a kick moves the count and a hi-hat does not
- *   - the strength arrives inside the range the field was calibrated for
+ *   - a playing transport rings once a beat, the downbeat at 1 and the rest
+ *     at 0.4, in 4/4 and in 7/8 -- so ppq, bpm, num and den each arrive where
+ *     the header says
+ *   - a stopped one rings nothing -- so `playing` does
  *   - gnd_reset does NOT rewind the count (every plugin compares it against
- *     its own last value, so a rewind would draw a ring on every transport stop)
+ *     its own last value, so a rewind would draw a ring on every reset)
  *   - the NULL and empty-block paths are no-ops, because ProcessBlock is not
  *     going to check
- *   - a new detector is INACTIVE and ignores audio until gnd_set_active, and
- *     switching it off stops it -- the editor-closed path every plugin takes
+ *   - a new ground is INACTIVE until gnd_set_active, and switching it off
+ *     stops it -- the editor-closed path every plugin takes
  */
-#include "ground_detect.h"
+#include "ground.h"
 
 #include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #define SR     48000.0
 #define BLOCK  512
@@ -37,29 +39,22 @@ static void check(int ok, const char* what)
   else     { printf("ok:   %s\n", what); }
 }
 
-/* A decaying sine at `hz`, written into `buf`, continuing from sample `start`.
- * Doubles, as iPlug2's `sample` is -- see gnd_push in the header. */
-static void fill_tone(double* buf, int n, int start, double hz, double decay)
+/* Play from `ppq` for `blocks` blocks at `bpm` in num/den, as a host would;
+ * returns where the song got to. A stopped transport stays where it is. */
+static double play(gnd_t* g, double ppq, int blocks, double bpm, int num, int den, int playing)
 {
-  for (int i = 0; i < n; i++)
+  for (int i = 0; i < blocks; i++)
   {
-    const double t = (double) (start + i) / SR;
-    const double a = decay > 0.0 ? exp(-t / decay) : 1.0;
-    buf[i] = a * sin(2.0 * M_PI * hz * t);
+    gnd_tick(g, ppq, bpm, num, den, playing, BLOCK);
+    if (playing) ppq += BLOCK * bpm / (60.0 * SR);
   }
+  return ppq;
 }
 
-/* Push `secs` of a tone through in BLOCK-sized chunks, as a host would. */
-static void push_tone(gnd_t* g, double secs, double hz, double decay)
+/* Blocks of BLOCK samples in `quarters` at `bpm`, rounded down. */
+static int blocks_for(double quarters, double bpm)
 {
-  double buf[BLOCK];
-  const int total = (int) (secs * SR);
-  for (int done = 0; done < total; done += BLOCK)
-  {
-    const int n = (total - done) < BLOCK ? (total - done) : BLOCK;
-    fill_tone(buf, n, done, hz, decay);
-    gnd_push(g, buf, buf, n);
-  }
+  return (int) (quarters * 60.0 / bpm * SR / BLOCK);
 }
 
 int main(void)
@@ -70,58 +65,88 @@ int main(void)
   gnd_reset(NULL);
   gnd_set_sample_rate(NULL, SR);
   gnd_set_active(NULL, 1);
-  gnd_push(NULL, NULL, NULL, 0);
+  gnd_tick(NULL, 0.0, 120.0, 4, 4, 1, BLOCK);
   check(gnd_fires(NULL) == 0, "gnd_fires(NULL) reads 0");
   check(gnd_strength(NULL) == 0.0f, "gnd_strength(NULL) reads 0");
 
   gnd_t* g = gnd_new(SR);
-  check(g != NULL, "a detector can be created");
+  check(g != NULL, "a ground can be created");
   if (g == NULL) return 1;
 
-  check(gnd_fires(g) == 0, "a fresh detector has seen no kicks");
+  check(gnd_fires(g) == 0, "a fresh ground has rung nothing");
   check(gnd_strength(g) == 0.0f, "... and reports no strength");
 
-  /* Inactive until an editor opens: a kick is ignored outright. */
-  push_tone(g, 0.4, 60.0, 0.05);
-  check(gnd_fires(g) == 0, "an inactive detector ignores a kick");
+  /* Inactive until an editor opens: a playing transport is ignored. */
+  play(g, 0.0, blocks_for(4.0, 120.0), 120.0, 4, 4, 1);
+  check(gnd_fires(g) == 0, "an inactive ground ignores the transport");
   gnd_set_active(g, 1);
 
-  /* An empty block, which a host does hand out. */
-  double one = 0.0;
-  gnd_push(g, &one, &one, 0);
-  gnd_push(g, &one, &one, -1);
+  /* Empty blocks, which hosts do hand out. */
+  gnd_tick(g, 0.0, 120.0, 4, 4, 1, 0);
+  gnd_tick(g, 0.0, 120.0, 4, 4, 1, -1);
   check(gnd_fires(g) == 0, "an empty block is a no-op");
 
-  /* One kick. */
-  push_tone(g, 0.4, 60.0, 0.05);
-  const uint32_t after_kick = gnd_fires(g);
-  check(after_kick == 1, "a 60 Hz kick is one onset");
+  /* 4/4 at 120: one ring a beat, the downbeat strong. Beat by beat, so each
+   * ring's strength can be read before the next replaces it. */
+  int beats_ok = 1;
+  double ppq = 0.0;
+  for (int beat = 0; beat < 8; beat++)
+  {
+    /* From just before this beat to just before the next. */
+    ppq = play(g, ppq, blocks_for(1.0, 120.0), 120.0, 4, 4, 1);
+    const float want = beat % 4 == 0 ? 1.0f : 0.4f;
+    if (gnd_fires(g) != (uint32_t) beat + 1 || gnd_strength(g) != want) beats_ok = 0;
+  }
+  check(beats_ok, "4/4 at 120 BPM: a ring a beat, 1.0 on the one, 0.4 on the rest");
+  const uint32_t after_bars = gnd_fires(g);
 
-  const float s = gnd_strength(g);
-  check(s >= 0.3f && s <= 1.0f, "the strength is inside 0.3..1");
+  /* Stopped: nothing, however long. */
+  play(g, ppq, blocks_for(8.0, 120.0), 120.0, 4, 4, 0);
+  check(gnd_fires(g) == after_bars, "a stopped transport rings nothing");
 
-  /* A hi-hat must not move it -- the property that makes this detector
-   * different from the side-chain's broadband follower. */
-  push_tone(g, 2.0, 1000.0, 0.0);
-  check(gnd_fires(g) == after_kick, "a sustained 1 kHz tone adds no onset");
-
-  /* Reset forgets the envelope but must NOT rewind the count. */
+  /* Reset forgets the last block but must NOT rewind the count. */
   gnd_reset(g);
-  check(gnd_fires(g) == after_kick, "gnd_reset leaves the count alone");
+  check(gnd_fires(g) == after_bars, "gnd_reset leaves the count alone");
   gnd_set_sample_rate(g, 44100.0);
-  check(gnd_fires(g) == after_kick, "gnd_set_sample_rate leaves the count alone");
+  check(gnd_fires(g) == after_bars, "gnd_set_sample_rate leaves the count alone");
 
-  /* And it still works at the new rate. */
-  push_tone(g, 0.4, 60.0, 0.05);
-  check(gnd_fires(g) == after_kick + 1, "the detector fires again after a reset");
+  /* 7/8 at 90, from the top, at the new rate: 0 1 2 3, the downbeat at 3.5,
+   * 4 5 6 -- eight rings in seven quarters, the 1st and the 5th strong. One
+   * block is BLOCK/44100 s; the meter and the tempo both have to arrive. */
+  int seven_ok = 1, rang = 0, strong = 0;
+  ppq = 0.0;
+  const double span = BLOCK * 90.0 / (60.0 * 44100.0);
+  while (ppq + span <= 6.9)
+  {
+    const uint32_t before = gnd_fires(g);
+    gnd_tick(g, ppq, 90.0, 7, 8, 1, BLOCK);
+    const uint32_t now = gnd_fires(g);
+    if (now != before)
+    {
+      if (now - before != 1) seven_ok = 0;
+      const int is_strong = gnd_strength(g) == 1.0f;
+      if (is_strong != (rang == 0 || rang == 4)) seven_ok = 0;
+      strong += is_strong;
+      rang++;
+    }
+    ppq += span;
+  }
+  check(seven_ok && rang == 8 && strong == 2, "7/8 at 90 BPM, 44.1 kHz: 0 1 2 3 3.5 4 5 6");
 
-  /* The editor closes: the detector stops. It reopens: it runs again. */
+  /* No time signature from the host is 4/4: 4 is a downbeat. Back at 48 kHz,
+   * which play() assumes. */
+  gnd_set_sample_rate(g, SR);
+  gnd_tick(g, 4.0, 120.0, 0, 0, 1, BLOCK);
+  check(gnd_strength(g) == 1.0f, "a host without a time signature is 4/4");
+
+  /* The editor closes: the ground stops. It reopens: it rings again. */
+  const uint32_t before_close = gnd_fires(g);
   gnd_set_active(g, 0);
-  push_tone(g, 0.4, 60.0, 0.05);
-  check(gnd_fires(g) == after_kick + 1, "an inactive detector adds no onset");
+  play(g, 8.0, blocks_for(4.0, 120.0), 120.0, 4, 4, 1);
+  check(gnd_fires(g) == before_close, "an inactive ground adds no ring");
   gnd_set_active(g, 1);
-  push_tone(g, 0.4, 60.0, 0.05);
-  check(gnd_fires(g) == after_kick + 2, "a reactivated detector fires again");
+  play(g, 16.0, blocks_for(1.0, 120.0), 120.0, 4, 4, 1);
+  check(gnd_fires(g) == before_close + 1, "a reactivated ground rings again");
 
   gnd_free(g);
 

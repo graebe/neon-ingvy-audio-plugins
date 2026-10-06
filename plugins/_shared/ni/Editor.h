@@ -25,8 +25,8 @@ namespace editor {
 
 enum Tag : int
 {
-  /* -> editor: one kick, "<strength>" in 0..1 with three decimals. Sent only
-   * when the ground's detector fires: one message is one ring. */
+  /* -> editor: one ring, "<strength>" in 0..1 with three decimals. Sent only
+   * when the ground's beat clock rings: one message is one ring. */
   kGround = 112,
   /* -> editor: every parameter's DEFAULT, normalised, "<d0>:<d1>:...:<dN-1>"
    * in parameter-index order -- what a reset sets. Sent with the state on

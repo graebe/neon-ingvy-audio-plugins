@@ -1,889 +1,523 @@
 /*!
-What the detector must do, stated as signals rather than as internal state.
+What the ground must do, stated as a host's transport in and rings out.
 
-EVERY TEST HERE FEEDS AUDIO AND COUNTS ONSETS. That is deliberate: the
-constants in `detect.rs` belong to the design system, so a test that asserted
-one of them would only restate the file above it. What is worth pinning is the
-BEHAVIOUR those constants were chosen for -- a kick fires, a hi-hat does not,
-one hit is one ring -- because that is what breaks if somebody retunes a
-coefficient and everything still compiles.
+EVERY TEST HERE PLAYS A HOST. A `Host` hands the clock one block at a time with
+the position, tempo and meter a DAW would report, and the tests count what
+rang and where -- because what the owner asked for is a behaviour ("one ring a
+beat, stronger on the one, nothing while stopped"), and the arithmetic inside
+`beat.rs` is only one way of getting it.
 */
 
 use super::*;
-use core::sync::atomic::Ordering;
-use crate::detect::{Band, BAND_HI_HZ, BAND_LO_HZ, FLOOR};
+use crate::beat::{MAX_PER_BLOCK, SLACK};
 
 const SR: f64 = 48_000.0;
+const BLOCK: usize = 512;
 
-/// Samples for a duration in seconds.
-fn samples(secs: f64) -> usize {
-    (secs * SR).round() as usize
+/// A DAW's transport, block by block.
+struct Host {
+    clock: BeatClock,
+    ppq: f64,
+    bpm: f64,
+    num: i32,
+    den: i32,
+    playing: bool,
+    block: usize,
+    /// Every ring so far: the block it rang in and its strength. A block
+    /// holding two contributes two entries with its final strength -- what the
+    /// atomics publish.
+    rang: Vec<(usize, f32)>,
 }
 
-/// A kick: a decaying sine at `hz`. Amplitude 1 at the transient, e-folding in
-/// `decay` seconds -- close enough to a drum machine's that the detector sees
-/// the same shape it will see in a host.
-fn kick(hz: f64, decay: f64, n: usize) -> Vec<f64> {
-    (0..n)
-        .map(|i| {
-            let t = i as f64 / SR;
-            let a = (-t / decay).exp();
-            a * (2.0 * core::f64::consts::PI * hz * t).sin()
-        })
-        .collect()
-}
-
-/// A steady tone at `hz`, faded in over 50 ms.
-///
-/// THE FADE IS THE POINT, not politeness. A tone that starts abruptly at full
-/// scale is a step, and a step has energy at every frequency including 20-80 Hz
-/// -- so a hard-started 1 kHz sine legitimately fires this detector, and so
-/// would a hard-started anything. Fading in asks the question the test means:
-/// does a SUSTAINED high-frequency signal fire it.
-fn tone(hz: f64, n: usize) -> Vec<f64> {
-    let fade = samples(0.05) as f64;
-    (0..n)
-        .map(|i| {
-            let t = i as f64 / SR;
-            let a = (i as f64 / fade).min(1.0);
-            a * (2.0 * core::f64::consts::PI * hz * t).sin()
-        })
-        .collect()
-}
-
-/// Silence, `n` samples of it.
-fn silence(n: usize) -> Vec<f64> {
-    vec![0.0f64; n]
-}
-
-/// Feed a mono signal to both channels and collect every onset.
-fn run(d: &mut Detector, signal: &[f64]) -> Vec<Onset> {
-    signal.iter().filter_map(|&s| d.next(s, s)).collect()
-}
-
-/* ---------- the band ---------- */
-
-#[test]
-fn the_band_passes_a_kick_and_rejects_a_hi_hat() {
-    /* Both signals are full scale. What separates them is only frequency, which
-     * is the one thing this detector is supposed to care about. */
-    let mut bass = Detector::new(SR);
-    run(&mut bass, &tone(60.0, samples(0.5)));
-
-    let mut treble = Detector::new(SR);
-    run(&mut treble, &tone(1_000.0, samples(0.5)));
-
-    assert!(
-        bass.level() > 0.1,
-        "a 60 Hz tone sits inside the band; the envelope reached only {}",
-        bass.level()
-    );
-    assert!(
-        treble.level() < FLOOR,
-        "a 1 kHz tone is two 12 dB/oct sections outside the band, so it must not \
-         even reach the floor; the envelope reached {}",
-        treble.level()
-    );
-}
-
-#[test]
-fn the_band_rejects_infrasound_below_it() {
-    /* The high-pass end matters as much as the low-pass one: DC offset and a
-     * rumble a listener cannot hear would otherwise hold the mean up and
-     * desensitise the detector to the kicks it exists for.
-     *
-     * The assertion is a RATIO rather than an absolute floor, because 12 dB/oct
-     * is a slope and not a wall: 5 Hz is two octaves down and arrives at about
-     * a tenth of its level, which is small but not under `FLOOR`. What matters
-     * is that it cannot compete with a kick, and that a sustained rumble does
-     * not keep firing. */
-    let mut sub = Detector::new(SR);
-    run(&mut sub, &tone(5.0, samples(1.0)));
-    let mut mid = Detector::new(SR);
-    run(&mut mid, &tone(40.0, samples(1.0)));
-    assert!(
-        sub.level() * 8.0 < mid.level(),
-        "5 Hz ({}) must be far below the band's centre at 40 Hz ({})",
-        sub.level(),
-        mid.level()
-    );
-
-    /* And no ONGOING onsets: the first crossing as the rumble appears is fair
-     * (something did get louder), but a steady sub must then settle.
-     *
-     * EVERY SAMPLE IS FED AND ONLY THE COUNT IS WINDOWED. Skipping the early
-     * samples instead would hand the detector a cold start on a signal already
-     * at full scale -- a step, which fires legitimately -- and the test would
-     * then be measuring its own setup. */
-    let mut d = Detector::new(SR);
-    let mut late = 0;
-    for (i, &s) in tone(5.0, samples(5.0)).iter().enumerate() {
-        if d.next(s, s).is_some() && i > samples(0.5) {
-            late += 1;
+impl Host {
+    fn new(bpm: f64, num: i32, den: i32) -> Self {
+        Host {
+            clock: BeatClock::new(SR),
+            ppq: 0.0,
+            bpm,
+            num,
+            den,
+            playing: true,
+            block: 0,
+            rang: Vec::new(),
         }
     }
-    assert_eq!(late, 0, "a sustained 5 Hz rumble kept firing");
-}
 
-#[test]
-fn a_rectified_kick_would_read_as_nothing() {
-    /* THIS TEST EXISTS BECAUSE THE BUG IT CATCHES WAS WRITTEN. `next` filters
-     * the signed signal and rectifies afterwards. Rectifying first -- the move
-     * the side-chain's broadband follower opens with -- looks harmless and is
-     * not: |sin(2*pi*60*t)| has a DC term and harmonics from 120 Hz up, and no
-     * energy at 60 Hz whatsoever, so a 20-80 Hz band returns almost nothing.
-     *
-     * The symptom was a detector that merely seemed insensitive, and whose level
-     * FELL as the kick's pitch rose. Feeding the rectified signal in on purpose
-     * and asserting it reads far lower than the real one pins the ordering. */
-    let signal = tone(60.0, samples(1.0));
-    let rectified: Vec<f64> = signal.iter().map(|s| s.abs()).collect();
-
-    let mut signed = Detector::new(SR);
-    run(&mut signed, &signal);
-    let mut pre = Detector::new(SR);
-    run(&mut pre, &rectified);
-
-    assert!(
-        pre.level() * 4.0 < signed.level(),
-        "a pre-rectified 60 Hz sine ({}) must read far lower than the signed one \
-         ({}) -- if these are close, the band is being applied after a rectifier",
-        pre.level(),
-        signed.level()
-    );
-}
-
-#[test]
-fn an_absurd_sample_rate_is_a_pass_through_not_a_nan() {
-    /* A host that reports a zero sample rate before its first block is a real
-     * thing. The detector must survive it and still work once told the truth,
-     * rather than latch on a NaN nothing ever clears. */
-    let mut d = Detector::new(0.0);
-    let onsets = run(&mut d, &kick(60.0, 0.05, 4_800));
-    assert!(d.level().is_finite(), "level went non-finite: {}", d.level());
-    assert!(
-        onsets.iter().all(|o| o.strength.is_finite()),
-        "a strength went non-finite"
-    );
-
-    d.set_sample_rate(SR);
-    assert_eq!(
-        run(&mut d, &kick(60.0, 0.05, samples(0.4))).len(),
-        1,
-        "the detector must work normally once given a real sample rate"
-    );
-}
-
-/* ---------- onsets ---------- */
-
-#[test]
-fn silence_never_fires() {
-    let mut d = Detector::new(SR);
-    assert!(run(&mut d, &silence(samples(5.0))).is_empty());
-}
-
-#[test]
-fn a_sustained_hi_hat_never_fires() {
-    let mut d = Detector::new(SR);
-    assert!(
-        run(&mut d, &tone(1_000.0, samples(5.0))).is_empty(),
-        "a full-scale 1 kHz tone must not move the ground -- this is the property \
-         the side-chain's broadband follower does NOT have, and the reason this \
-         detector exists separately from it"
-    );
-}
-
-#[test]
-fn one_kick_is_one_onset() {
-    let mut d = Detector::new(SR);
-    /* 400 ms is long enough that the release (150 ms) has brought the envelope
-     * back down, so a second crossing would show up here if there were one. */
-    assert_eq!(run(&mut d, &kick(60.0, 0.05, samples(0.4))).len(), 1);
-}
-
-#[test]
-fn a_kick_per_beat_at_120_bpm() {
-    let beat = samples(0.5);
-    let mut signal = Vec::new();
-    for _ in 0..8 {
-        signal.extend_from_slice(&kick(60.0, 0.05, beat));
+    fn transport(&self) -> Transport {
+        Transport { playing: self.playing, ppq: self.ppq, bpm: self.bpm, num: self.num, den: self.den }
     }
-    let mut d = Detector::new(SR);
-    assert_eq!(
-        run(&mut d, &signal).len(),
-        8,
-        "eight kicks, eight rings -- no merging and no double-triggering"
-    );
-}
 
-#[test]
-fn the_refractory_merges_two_hits_inside_120_ms() {
-    /* 60 ms apart: two transients, one ring. The design asks for 120 ms between
-     * onsets, and a 32nd-note kick roll must read as one event rather than
-     * filling the window with rings. */
-    let gap = samples(0.06);
-    let mut signal = kick(60.0, 0.05, gap);
-    signal.extend_from_slice(&kick(60.0, 0.05, samples(0.4)));
+    /// One block of `frames`; the position advances only while playing.
+    fn block_of(&mut self, frames: usize) -> Rings {
+        let r = self.clock.tick(&self.transport(), frames);
+        for _ in 0..r.count {
+            self.rang.push((self.block, r.strength));
+        }
+        if self.playing {
+            self.ppq += frames as f64 * self.bpm / (60.0 * SR);
+        }
+        self.block += 1;
+        r
+    }
 
-    let mut d = Detector::new(SR);
-    assert_eq!(run(&mut d, &signal).len(), 1);
-}
-
-#[test]
-fn well_separated_hits_both_fire() {
-    /* The companion to the test above: the refractory is a gate, not a ceiling. */
-    let gap = samples(0.3);
-    let mut signal = kick(60.0, 0.05, gap);
-    signal.extend_from_slice(&kick(60.0, 0.05, samples(0.4)));
-
-    let mut d = Detector::new(SR);
-    assert_eq!(run(&mut d, &signal).len(), 2);
-}
-
-#[test]
-fn the_rearm_and_not_the_refractory_sets_the_practical_floor() {
-    /* WORTH KNOWING AND EASY TO GET WRONG. The design's detector row names a
-     * 120 ms refractory, so it is natural to read that as "kicks more than
-     * 120 ms apart each ring". They do not. The binding constraint is the
-     * RE-ARM: after an onset the detector stays un-armed until the envelope's
-     * excess over the bed falls back to half of what it took to fire, and with a
-     * 150 ms envelope release that takes longer than the refractory does.
-     *
-     * Measured, the threshold sits between 200 and 250 ms. So a straight
-     * sixteenth-note kick roll merges, and eighth notes at 120 BPM (250 ms) do
-     * not -- which is the musically useful place for it to land, and is why the
-     * 150 ms release is worth keeping even though it is what causes this.
-     *
-     * The number survived re-keying the detector onto the attack (see
-     * `detect.rs`), which is worth recording: the mechanism behind it changed
-     * completely and the behaviour did not. This test pins it so a future reader
-     * finds the answer here rather than in a host. */
-    let both = |ms: f64| {
-        let mut signal = kick(60.0, 0.05, samples(ms / 1000.0));
-        signal.extend_from_slice(&kick(60.0, 0.05, samples(0.5)));
-        let mut d = Detector::new(SR);
-        run(&mut d, &signal).len()
-    };
-    assert_eq!(both(160.0), 1, "160 ms apart merges, despite the 120 ms refractory");
-    assert_eq!(both(250.0), 2, "250 ms apart is far enough for the re-arm");
-}
-
-#[test]
-fn strength_stays_inside_the_range_the_field_expects() {
-    /* `Field`'s `gain` is calibrated for s in 0..1, and the design clamps to
-     * 0.3..1 so that a marginal kick still shows. Feed everything from a whisper
-     * to a clipped kick and the contract must hold for every onset. */
-    for amp in [0.02f64, 0.1, 0.5, 1.0, 4.0] {
-        let mut d = Detector::new(SR);
-        let signal: Vec<f64> = kick(60.0, 0.05, samples(1.0))
-            .iter()
-            .map(|s| s * amp)
-            .collect();
-        for onset in run(&mut d, &signal) {
-            assert!(
-                (0.3..=1.0).contains(&onset.strength),
-                "amp {amp} produced strength {}",
-                onset.strength
-            );
+    fn run(&mut self, blocks: usize) {
+        for _ in 0..blocks {
+            self.block_of(BLOCK);
         }
     }
-}
 
-#[test]
-fn a_louder_kick_is_a_stronger_onset() {
-    /* Monotonicity is the only thing about the strength curve worth asserting:
-     * the exact value is the design's formula, but a louder kick reading as a
-     * SMALLER ring would be visibly wrong however the formula changed. */
-    let strength = |amp: f64| {
-        let mut d = Detector::new(SR);
-        /* A little music first, so the running mean is a real one rather than
-         * the near-zero of a cold start -- which saturates the ratio and would
-         * give every amplitude the same clamped answer. */
-        let bed: Vec<f64> = tone(60.0, samples(1.0)).iter().map(|s| s * 0.05).collect();
-        run(&mut d, &bed);
-        run(&mut d, &silence(samples(0.5)));
-        let signal: Vec<f64> = kick(60.0, 0.05, samples(0.5))
-            .iter()
-            .map(|s| s * amp)
-            .collect();
-        run(&mut d, &signal).first().map(|o| o.strength)
-    };
-    let quiet = strength(0.15).expect("a quiet kick over a quiet bed still fires");
-    let loud = strength(1.0).expect("a loud kick fires");
-    assert!(
-        loud > quiet,
-        "a full-scale kick ({loud}) must read at least as strong as a quiet one ({quiet})"
-    );
-}
-
-#[test]
-fn a_nan_in_the_buffer_does_not_kill_the_detector() {
-    /* A NaN envelope compares false against every threshold, so without the
-     * guard in `next` the ground would go dead for the rest of the session and
-     * nothing would say why. */
-    let mut d = Detector::new(SR);
-    run(&mut d, &[f64::NAN; 64]);
-    run(&mut d, &[f64::INFINITY; 64]);
-    assert!(d.level().is_finite(), "level is {}", d.level());
-    assert_eq!(
-        run(&mut d, &kick(60.0, 0.05, samples(0.4))).len(),
-        1,
-        "the detector must still fire after being fed garbage"
-    );
-}
-
-#[test]
-fn silence_after_a_signal_decays_to_zero_not_to_subnormals() {
-    /*
-     * THE SILENCE PATH IS THE HOT PATH. Every plugin feeds this detector on
-     * every block, and most of a session is silence between clips. A one-pole
-     * or a biquad fed zeros decays geometrically towards zero and, without a
-     * flush, lands in the SUBNORMAL range and stays there: `x * (1 - c)` of a
-     * subnormal rounds back to the same subnormal once `x * c` underflows, and
-     * x86 and many ARM cores take a microcode assist on every operation with
-     * one. Nothing here sets FTZ/DAZ, and the Move's aarch64 is not ours to
-     * configure, so the detector has to keep its own state clean.
-     *
-     * The claim is checked all the way through the silence rather than only at
-     * the end, so that a value passing through the subnormal range on its way
-     * to zero also fails.
-     */
-    let mut d = Detector::new(SR);
-    run(&mut d, &kick(60.0, 0.05, samples(0.5)));
-    run(&mut d, &tone(40.0, samples(0.5)));
-    let block = samples(0.01);
-    let quiet = silence(block);
-    for n in 0..(300.0 / 0.01) as usize {
-        run(&mut d, &quiet);
-        for (i, v) in d.state().into_iter().enumerate() {
-            assert!(
-                v == 0.0 || v.is_normal(),
-                "state[{i}] = {v:e} is subnormal after {:.2} s of silence",
-                n as f64 * 0.01
-            );
+    /// Play every whole block that ends by `ppq`: the beats in `[start, ppq)`
+    /// for any `ppq` not within a block of a beat.
+    fn play_to(&mut self, ppq: f64) {
+        while self.ppq + BLOCK as f64 * self.bpm / (60.0 * SR) <= ppq {
+            self.block_of(BLOCK);
         }
     }
-    assert!(
-        d.state().iter().all(|&v| v == 0.0),
-        "five minutes of silence must leave the detector at exactly zero: {:?}",
-        d.state()
+
+    fn strengths(&self) -> Vec<f32> {
+        self.rang.iter().map(|r| r.1).collect()
+    }
+}
+
+const S: f32 = DOWNBEAT_STRENGTH;
+const W: f32 = BEAT_STRENGTH;
+
+/* ---------- the rule ---------- */
+
+#[test]
+fn four_four_rings_every_quarter_and_the_one_strongest() {
+    let mut h = Host::new(120.0, 4, 4);
+    h.play_to(16.0);
+    assert_eq!(
+        h.strengths(),
+        [S, W, W, W, S, W, W, W, S, W, W, W, S, W, W, W],
+        "four bars of 4/4 from bar 1"
     );
-    /* And it still works from there. */
-    assert_eq!(run(&mut d, &kick(60.0, 0.05, samples(0.4))).len(), 1);
 }
 
 #[test]
-fn a_subnormal_input_does_not_enter_the_state() {
-    /* A host can hand over subnormals itself -- the tail of somebody else's
-     * reverb. They must not be let into the delays. */
-    let mut d = Detector::new(SR);
-    run(&mut d, &[f64::MIN_POSITIVE / 4.0; 256]);
-    for (i, v) in d.state().into_iter().enumerate() {
-        assert!(v == 0.0 || v.is_normal(), "state[{i}] = {v:e}");
+fn each_ring_lands_in_the_block_that_holds_its_beat() {
+    /* At 120 BPM and 48 kHz a beat is 24 000 samples: beat k is in block
+     * floor(24 000 k / 512). A ring a block late is a ring out of time. */
+    let mut h = Host::new(120.0, 4, 4);
+    h.play_to(8.0);
+    let blocks: Vec<usize> = h.rang.iter().map(|r| r.0).collect();
+    let want: Vec<usize> = (0..8).map(|k| k * 24_000 / BLOCK).collect();
+    assert_eq!(blocks, want);
+}
+
+#[test]
+fn a_ring_is_published_as_a_count_and_the_last_strength() {
+    let g = live();
+    tick(&g, 0.0, 120.0, 4, 4, true, BLOCK);
+    assert_eq!((g.fires(), g.strength()), (1, S), "the downbeat");
+    tick(&g, 1.0, 120.0, 4, 4, true, BLOCK);
+    assert_eq!((g.fires(), g.strength()), (2, W), "a beat");
+}
+
+#[test]
+fn the_strengths_are_the_documented_pair() {
+    /* docs/tech/ground.md and ground.h state these numbers; the field's
+     * calibration (ui-kit/test/field.test.mjs) assumes them. */
+    assert_eq!(DOWNBEAT_STRENGTH, 1.0);
+    assert_eq!(BEAT_STRENGTH, 0.4);
+}
+
+/* ---------- starting ---------- */
+
+#[test]
+fn a_start_exactly_on_a_beat_rings_once_not_twice() {
+    let mut h = Host::new(120.0, 4, 4);
+    h.ppq = 4.0;
+    h.run(4);
+    assert_eq!(h.rang, [(0, S)]);
+}
+
+#[test]
+fn a_start_reported_a_hair_before_the_beat_is_on_it() {
+    /* A host's position is a double that went through a tempo map. */
+    let mut h = Host::new(120.0, 4, 4);
+    h.ppq = 4.0 - 1e-9;
+    h.run(4);
+    assert_eq!(h.rang, [(0, S)]);
+}
+
+#[test]
+fn a_host_that_holds_the_start_position_for_a_few_blocks_rings_once() {
+    /* Some hosts report the same position for the first block or two after
+     * pressing play. That is not a loop back to the start. */
+    let mut c = BeatClock::new(SR);
+    let at0 = Transport { playing: true, ppq: 0.0, bpm: 120.0, num: 4, den: 4 };
+    let n: u32 = (0..4).map(|_| c.tick(&at0, BLOCK).count).sum();
+    assert_eq!(n, 1);
+}
+
+#[test]
+fn a_start_between_beats_waits_for_the_next() {
+    let mut h = Host::new(120.0, 4, 4);
+    h.ppq = 4.3;
+    h.play_to(6.0);
+    assert_eq!(h.strengths(), [W], "beat 5, and nothing for the 4.3 we started on");
+}
+
+/* ---------- jumps ---------- */
+
+#[test]
+fn a_loop_back_rings_its_start_once_and_never_the_beats_it_skipped() {
+    /* A two-bar loop, 0..8, three times round. A loop end that falls inside a
+     * block rings the next bar's downbeat there; the wrapped block that
+     * follows does not ring it again. */
+    let mut h = Host::new(120.0, 4, 4);
+    for _ in 0..3 {
+        h.play_to(8.0);
+        h.ppq -= 8.0;
+    }
+    let s = h.strengths();
+    assert_eq!(s.len(), 24, "eight rings a time round: {s:?}");
+    for (i, x) in s.iter().enumerate() {
+        assert_eq!(*x, if i % 4 == 0 { S } else { W }, "ring {i} of {s:?}");
     }
 }
 
 #[test]
-fn reset_forgets_the_hump_but_not_the_contract() {
-    let mut d = Detector::new(SR);
-    run(&mut d, &kick(60.0, 0.05, samples(0.05)));
-    d.reset();
-    assert_eq!(d.level(), 0.0);
-    /* And it fires again from a cold start, rather than being stuck un-armed. */
-    assert_eq!(run(&mut d, &kick(60.0, 0.05, samples(0.4))).len(), 1);
+fn a_jump_back_onto_a_beat_rings_it_and_off_one_rings_nothing() {
+    let mut h = Host::new(120.0, 4, 4);
+    h.play_to(7.9);
+    let before = h.rang.len();
+    h.ppq = 4.0;
+    h.block_of(BLOCK);
+    assert_eq!(h.rang.len() - before, 1, "back to bar 2's downbeat");
+    assert_eq!(h.rang.last().unwrap().1, S);
+
+    h.play_to(7.9);
+    let before = h.rang.len();
+    h.ppq = 4.5;
+    h.block_of(BLOCK);
+    assert_eq!(h.rang.len(), before, "back to between beats");
 }
 
 #[test]
-fn the_detector_works_at_every_supported_sample_rate() {
-    /* The coefficients are all derived from the sample rate, and 20 Hz at
-     * 192 kHz is the pole closest to the unit circle the sections will ever be
-     * asked to hold. If f64 state were not enough, it would show here. */
-    for sr in [44_100.0f64, 48_000.0, 88_200.0, 96_000.0, 192_000.0] {
-        let n = (0.4 * sr).round() as usize;
-        let signal: Vec<f64> = (0..n)
-            .map(|i| {
-                let t = i as f64 / sr;
-                (-t / 0.05).exp() * (2.0 * core::f64::consts::PI * 60.0 * t).sin()
-            })
-            .collect();
-        let mut d = Detector::new(sr);
-        let onsets: Vec<Onset> = signal.iter().filter_map(|&s| d.next(s, s)).collect();
-        assert_eq!(onsets.len(), 1, "one kick at {sr} Hz gave {onsets:?}");
+fn a_seek_forward_rings_at_most_one_and_never_a_burst() {
+    let mut h = Host::new(120.0, 4, 4);
+    h.play_to(2.2);
+    let before = h.rang.len();
+    h.ppq = 50.0;
+    h.block_of(BLOCK);
+    assert_eq!(h.rang.len() - before, 1, "47 skipped beats, one ring: the one it landed on");
+    assert_eq!(h.rang.last().unwrap().1, W, "50 is beat 3 of bar 13");
+
+    let before = h.rang.len();
+    h.ppq = 120.3;
+    h.block_of(BLOCK);
+    assert_eq!(h.rang.len(), before, "landing between beats rings nothing");
+    h.play_to(121.5);
+    assert_eq!(h.rang.len() - before, 1, "and the next beat rings in time");
+}
+
+#[test]
+fn slack_is_the_line_between_rounding_and_a_seek() {
+    /* A block ending at 0.99, and the next starting a little past beat 1.
+     * Within SLACK that is the same playback, and beat 1 rings (once); past
+     * it, it is a seek, and the beat it skipped stays skipped. */
+    let at = |ppq| Transport { playing: true, ppq, bpm: 120.0, num: 4, den: 4 };
+    let span = BLOCK as f64 * 2.0 / SR;
+    for (past, rings) in [(0.5, 1), (1.5, 0)] {
+        let mut c = BeatClock::new(SR);
+        assert_eq!(c.tick(&at(0.99 - span), BLOCK).count, 0);
+        assert_eq!(c.tick(&at(0.99 + SLACK * past), BLOCK).count, rings, "{past} x SLACK");
     }
 }
 
 #[test]
-fn a_kick_panned_hard_left_still_fires() {
-    /* The detector is the channel maximum, not a sum, so that the threshold
-     * reads the drum and not the panner. */
-    let signal = kick(60.0, 0.05, samples(0.4));
-    let mut d = Detector::new(SR);
-    let onsets: Vec<Onset> = signal.iter().filter_map(|&s| d.next(s, 0.0)).collect();
-    assert_eq!(onsets.len(), 1);
+fn rounding_either_side_of_a_block_boundary_rings_each_beat_once() {
+    /* A host whose positions wobble by 1e-9 around the exact values -- and
+     * one whose blocks overlap or leave a hair of gap -- still rings exactly
+     * once a beat. */
+    for wobble in [1e-9, -1e-9, 1e-7, -1e-7] {
+        let mut c = BeatClock::new(SR);
+        let span = BLOCK as f64 * 2.0 / SR;
+        let mut n = 0;
+        for k in 0..2_000usize {
+            let jitter = if k % 2 == 0 { wobble } else { -wobble };
+            let ppq = k as f64 * span + jitter;
+            n += c.tick(&Transport { playing: true, ppq, bpm: 120.0, num: 4, den: 4 }, BLOCK).count;
+        }
+        let beats = (2_000.0 * span).ceil() as u32;
+        assert_eq!(n, beats, "wobble {wobble}");
+    }
 }
 
-/* ---------- what the editor reads ---------- */
+/* ---------- tempo ---------- */
+
+#[test]
+fn a_tempo_change_keeps_one_ring_a_beat() {
+    let mut h = Host::new(120.0, 4, 4);
+    h.play_to(6.0);
+    h.bpm = 87.0;
+    h.play_to(12.0);
+    h.bpm = 174.0;
+    h.play_to(20.0);
+    assert_eq!(h.rang.len(), 20);
+    assert_eq!(h.strengths().iter().filter(|s| **s == S).count(), 5);
+}
+
+#[test]
+fn a_tempo_ramp_inside_a_block_is_not_a_jump() {
+    /* The clock projects a block's end at the block's starting tempo; a host
+     * ramping tempo reports the next start a little off that projection. It
+     * is still the same playback, so no beat rings twice or goes missing. */
+    let mut c = BeatClock::new(SR);
+    let (mut ppq, mut bpm, mut n) = (0.0, 60.0, 0u32);
+    while ppq < 63.5 {
+        n += c.tick(&Transport { playing: true, ppq, bpm, num: 4, den: 4 }, BLOCK).count;
+        let next = bpm * 1.02;
+        /* The true advance at the mean tempo of the block. */
+        ppq += BLOCK as f64 * 0.5 * (bpm + next) / (60.0 * SR);
+        bpm = next.min(240.0);
+    }
+    assert_eq!(n, 64, "beats 0..=63");
+}
+
+#[test]
+fn a_very_slow_tempo_rings_every_beat() {
+    let mut h = Host::new(20.0, 4, 4);
+    h.play_to(8.0);
+    assert_eq!(h.strengths(), [S, W, W, W, S, W, W, W]);
+    let gaps: Vec<usize> = h.rang.windows(2).map(|w| w[1].0 - w[0].0).collect();
+    /* Three seconds a beat: 281 blocks of 512 at 48 kHz, give or take one. */
+    assert!(gaps.iter().all(|g| (280..=282).contains(g)), "{gaps:?}");
+}
+
+#[test]
+fn a_very_fast_tempo_rings_every_beat() {
+    let mut h = Host::new(999.0, 4, 4);
+    h.play_to(64.0);
+    assert_eq!(h.rang.len(), 64);
+    assert_eq!(h.strengths().iter().filter(|s| **s == S).count(), 16);
+}
+
+#[test]
+fn a_block_holding_two_beats_rings_both() {
+    let mut c = BeatClock::new(SR);
+    /* Two quarters' worth of frames at 120 BPM: a second. Positions 3.5..5.5
+     * hold the downbeat 4 and beat 5. */
+    let r = c.tick(&Transport { playing: true, ppq: 3.5, bpm: 120.0, num: 4, den: 4 }, 48_000);
+    assert_eq!(r.count, 2);
+    assert_eq!(r.strength, W, "the strength published is the later ring's");
+
+    let g = live();
+    tick(&g, 3.5, 120.0, 4, 4, true, 48_000);
+    assert_eq!(g.fires(), 2, "the count carries both");
+}
+
+#[test]
+fn a_nonsensical_host_cannot_make_a_block_ring_without_bound() {
+    let mut c = BeatClock::new(SR);
+    /* A 1/64 bar is a downbeat every sixteenth of a quarter. */
+    let r = c.tick(&Transport { playing: true, ppq: 0.0, bpm: 120.0, num: 1, den: 64 }, 96_000);
+    assert_eq!(r.count, MAX_PER_BLOCK);
+    let r = c.tick(&Transport { playing: true, ppq: 0.0, bpm: 1e12, num: 4, den: 4 }, 4096);
+    assert_eq!(r.count, MAX_PER_BLOCK);
+}
+
+/* ---------- meters ---------- */
+
+#[test]
+fn six_eight_is_a_downbeat_every_three_quarters() {
+    let mut h = Host::new(120.0, 6, 8);
+    h.play_to(12.0);
+    assert_eq!(h.strengths(), [S, W, W, S, W, W, S, W, W, S, W, W]);
+}
+
+#[test]
+fn seven_eight_puts_every_other_downbeat_between_two_quarters() {
+    /* 7/8 is three and a half quarters: rings at 0 1 2 3, the downbeat at
+     * 3.5, 4 5 6, then the downbeat at 7 -- which is on a quarter, so one. */
+    let mut h = Host::new(120.0, 7, 8);
+    h.play_to(7.5);
+    assert_eq!(h.strengths(), [S, W, W, W, S, W, W, W, S]);
+    /* The 3.5 downbeat rings half a beat after beat 3, in its own block. */
+    assert_eq!(h.rang[3].0, 72_000 / BLOCK);
+    assert_eq!(h.rang[4].0, 84_000 / BLOCK);
+}
+
+#[test]
+fn three_four_and_five_four() {
+    let mut h = Host::new(140.0, 3, 4);
+    h.play_to(9.0);
+    assert_eq!(h.strengths(), [S, W, W, S, W, W, S, W, W]);
+    let mut h = Host::new(140.0, 5, 4);
+    h.play_to(10.0);
+    assert_eq!(h.strengths(), [S, W, W, W, W, S, W, W, W, W]);
+}
+
+#[test]
+fn a_host_that_reports_no_time_signature_is_four_four() {
+    /* iPlug2's AU wrapper reports 0/0 when the host has no musical-time
+     * callback; others leave its 4/4 default. Either way: 4/4. */
+    for (num, den) in [(0, 0), (3, 0), (0, 8), (-3, 4), (4, -4)] {
+        let mut h = Host::new(120.0, num, den);
+        h.play_to(8.0);
+        assert_eq!(h.strengths(), [S, W, W, W, S, W, W, W], "{num}/{den}");
+    }
+    assert_eq!(bar_quarters(0, 0), 4.0);
+    assert_eq!(bar_quarters(6, 8), 3.0);
+    assert_eq!(bar_quarters(7, 8), 3.5);
+}
+
+/* ---------- stopping ---------- */
+
+#[test]
+fn a_stopped_transport_never_rings() {
+    let mut h = Host::new(120.0, 4, 4);
+    h.playing = false;
+    h.run(1_000);
+    assert!(h.rang.is_empty());
+}
+
+#[test]
+fn stopping_stops_the_rings_and_restarting_starts_fresh() {
+    let mut h = Host::new(120.0, 4, 4);
+    h.play_to(2.1);
+    assert_eq!(h.rang.len(), 3);
+    h.playing = false;
+    h.run(500);
+    assert_eq!(h.rang.len(), 3, "rings stop with the transport");
+
+    /* Restart where it stopped, mid-beat: nothing until beat 3. */
+    h.playing = true;
+    h.play_to(2.9);
+    assert_eq!(h.rang.len(), 3);
+    h.play_to(3.1);
+    assert_eq!(h.rang.len(), 4);
+
+    /* Stop, return to zero, play: the downbeat rings at once. */
+    h.playing = false;
+    h.block_of(BLOCK);
+    h.ppq = 0.0;
+    h.playing = true;
+    h.block_of(BLOCK);
+    assert_eq!(h.rang.last(), Some(&(h.block - 1, S)));
+}
+
+#[test]
+fn a_host_with_no_tempo_is_taken_at_120() {
+    for bpm in [0.0, -10.0, f64::NAN, f64::INFINITY] {
+        let mut h = Host::new(120.0, 4, 4);
+        let mut c = BeatClock::new(SR);
+        let mut n = 0;
+        /* 120 BPM's worth of position, reported with a useless tempo. */
+        for _ in 0..200 {
+            n += c.tick(&Transport { playing: true, ppq: h.ppq, bpm, num: 4, den: 4 }, BLOCK).count;
+            h.ppq += BLOCK as f64 * 2.0 / SR;
+        }
+        assert_eq!(n, h.ppq.ceil() as u32, "bpm {bpm}");
+    }
+}
+
+#[test]
+fn an_unusable_position_or_rate_rings_nothing() {
+    let play = |ppq| Transport { playing: true, ppq, bpm: 120.0, num: 4, den: 4 };
+    let mut c = BeatClock::new(SR);
+    assert_eq!(c.tick(&play(f64::NAN), BLOCK).count, 0);
+    assert_eq!(c.tick(&play(f64::INFINITY), BLOCK).count, 0);
+    for sr in [0.0, -1.0, f64::NAN] {
+        let mut c = BeatClock::new(sr);
+        assert_eq!(c.tick(&play(0.0), BLOCK).count, 0, "rate {sr}");
+    }
+    let mut c = BeatClock::new(SR);
+    assert_eq!(c.tick(&play(0.0), 0).count, 0, "an empty block");
+    assert_eq!(c.tick(&play(0.0), BLOCK).count, 1, "and it did not count as the start");
+}
+
+#[test]
+fn a_negative_position_counts_in() {
+    /* A count-in or pre-roll reports positions before zero. Bars count back
+     * from zero the same way: -4 is a downbeat. */
+    let mut h = Host::new(120.0, 4, 4);
+    h.ppq = -4.0;
+    h.play_to(1.0);
+    assert_eq!(h.strengths(), [S, W, W, W, S]);
+}
+
+/* ---------- the published pair, and who may touch it ---------- */
 
 /// A `Ground` switched on, as a plugin's is while its editor is open.
-fn live(sr: f64) -> Ground {
-    let g = Ground::new(sr);
+fn live() -> Ground {
+    let g = Ground::new(SR);
     g.set_active(true);
     g
 }
 
-/// `push` from the one thread these tests run on, which trivially satisfies its
-/// single-producer contract.
-fn feed(g: &Ground, l: &[f64], r: &[f64]) {
-    unsafe { g.push(l, r) }
-}
-
-/// The detector's level, read from the test thread while nothing is pushing.
-fn level_of(g: &Ground) -> f64 {
-    unsafe { (*g.detector.get()).level() }
+/// `tick` from the one thread these tests run on, which trivially satisfies
+/// its single-producer contract.
+fn tick(g: &Ground, ppq: f64, bpm: f64, num: i32, den: i32, playing: bool, frames: usize) {
+    unsafe { g.tick(&Transport { playing, ppq, bpm, num, den }, frames) }
 }
 
 #[test]
-fn the_published_pair_reports_each_kick_once() {
-    let g = live(SR);
-    assert_eq!(g.fires(), 0);
-    assert_eq!(g.strength(), 0.0);
-
-    let beat = kick(60.0, 0.05, samples(0.5));
-    feed(&g, &beat, &beat);
-    assert_eq!(g.fires(), 1);
-    let first = g.strength();
-    assert!((0.3..=1.0).contains(&first), "strength {first}");
-
-    feed(&g, &beat, &beat);
-    assert_eq!(g.fires(), 2, "the count is monotonic across blocks");
-}
-
-#[test]
-fn push_takes_the_shorter_of_two_channels() {
-    /* The only reading of a mismatch that cannot index past an end. A host
-     * should never hand us one, which is exactly why it must not be UB when it
-     * does. */
-    let g = live(SR);
-    let long = kick(60.0, 0.05, samples(0.5));
-    feed(&g, &long, &long[..10]);
-    assert_eq!(g.fires(), 0, "ten samples cannot contain an onset");
-}
-
-#[test]
-fn reset_does_not_rewind_the_count() {
-    /* The editor compares the count against what it saw last. If a reset moved
-     * it backwards, a reader would see "changed" and draw a ring nothing
-     * caused -- on every transport stop. */
-    let g = live(SR);
-    let beat = kick(60.0, 0.05, samples(0.5));
-    feed(&g, &beat, &beat);
-    let before = g.fires();
-    g.reset();
-    feed(&g, &[0.0], &[0.0]);
-    assert_eq!(g.fires(), before);
-    g.set_sample_rate(44_100.0);
-    feed(&g, &[0.0], &[0.0]);
-    assert_eq!(g.fires(), before);
-}
-
-/* ---------- who may touch what, and when ---------- */
-
-#[test]
-fn a_new_ground_is_inactive_and_ignores_audio() {
-    /* The detector only drives an editor. With none open it must cost nothing,
-     * which means a fresh one has to wait to be switched on. */
+fn a_new_ground_is_inactive_and_ignores_the_transport() {
     let g = Ground::new(SR);
     assert!(!g.is_active());
-    let beat = kick(60.0, 0.05, samples(0.5));
-    feed(&g, &beat, &beat);
-    assert_eq!(g.fires(), 0);
-    assert_eq!(level_of(&g), 0.0, "an inactive push must not even run the band");
+    tick(&g, 0.0, 120.0, 4, 4, true, BLOCK);
+    assert_eq!((g.fires(), g.strength()), (0, 0.0));
 }
 
 #[test]
-fn deactivating_stops_the_detector_mid_signal() {
-    let g = live(SR);
-    let beat = kick(60.0, 0.05, samples(0.5));
-    feed(&g, &beat, &beat);
+fn deactivating_stops_the_rings() {
+    let g = live();
+    tick(&g, 0.0, 120.0, 4, 4, true, BLOCK);
     assert_eq!(g.fires(), 1);
     g.set_active(false);
-    feed(&g, &beat, &beat);
-    assert_eq!(g.fires(), 1, "a closed editor's detector must not fire");
+    assert!(!g.is_active());
+    tick(&g, 1.0, 120.0, 4, 4, true, BLOCK);
+    assert_eq!(g.fires(), 1, "a closed editor's ground must not ring");
 }
 
 #[test]
-fn reactivating_resumes_from_silence_not_from_the_stale_hump() {
-    /* Switched off on a kick's peak, the detector is holding a high envelope.
-     * Switched back on, it must start from zero: a resumed hump would compare
-     * against a bed that no longer describes the music. */
-    let g = live(SR);
-    let beat = kick(60.0, 0.05, samples(0.02));
-    feed(&g, &beat, &beat);
-    assert!(level_of(&g) > 0.0);
+fn reopening_mid_song_rings_no_backlog() {
+    /* Closed at beat 1, reopened at beat 40.5: nothing for the 39 beats in
+     * between, and the next beat rings. */
+    let g = live();
+    tick(&g, 0.0, 120.0, 4, 4, true, BLOCK);
     g.set_active(false);
     g.set_active(true);
-    /* The reset is a REQUEST, applied by the next push on the audio thread. */
-    feed(&g, &[0.0], &[0.0]);
-    assert_eq!(level_of(&g), 0.0, "reopening must start the detector cold");
-    /* ... and it still finds the next kick. */
-    let beat = kick(60.0, 0.05, samples(0.5));
-    feed(&g, &beat, &beat);
-    assert!(g.fires() >= 1);
+    tick(&g, 40.5, 120.0, 4, 4, true, BLOCK);
+    assert_eq!(g.fires(), 1);
+    tick(&g, 40.99, 120.0, 4, 4, true, BLOCK);
+    assert_eq!(g.fires(), 2);
 }
 
 #[test]
-fn a_reset_is_applied_by_the_next_push_and_not_before() {
-    /* The reset used to rewrite the detector from whatever thread called it --
-     * racing a `push` halfway through a block. Now it is a request, and only
-     * the audio thread ever writes the detector. */
-    let g = live(SR);
-    let beat = kick(60.0, 0.05, samples(0.02));
-    feed(&g, &beat, &beat);
-    let held = level_of(&g);
-    assert!(held > 0.0);
+fn reset_does_not_rewind_the_count_and_makes_the_next_block_a_start() {
+    let g = live();
+    tick(&g, 0.0, 120.0, 4, 4, true, BLOCK);
+    let span = BLOCK as f64 * 2.0 / SR;
+    tick(&g, span, 120.0, 4, 4, true, BLOCK);
+    assert_eq!(g.fires(), 1);
     g.reset();
-    assert_eq!(level_of(&g), held, "reset must not touch the detector itself");
-    feed(&g, &[0.0], &[0.0]);
-    assert_eq!(level_of(&g), 0.0);
+    assert_eq!(g.fires(), 1, "a reset never moves the count");
+    /* The same position again, after a reset, is a start: had the clock kept
+     * its memory this would be a stall and ring nothing. */
+    tick(&g, 0.0, 120.0, 4, 4, true, BLOCK);
+    assert_eq!(g.fires(), 2);
 }
 
 #[test]
-fn a_sample_rate_change_is_applied_by_the_next_push() {
-    /* 60 Hz sampled at 96 kHz and analysed as if it were 48 kHz reads as a
-     * 30 Hz tone; the point here is only that the new rate is the one in use
-     * after the next push. One kick at the new rate is one onset. */
-    let g = live(SR);
+fn a_sample_rate_change_is_applied_by_the_next_tick() {
+    let g = live();
     g.set_sample_rate(96_000.0);
-    let n = (0.5 * 96_000.0) as usize;
-    let beat: Vec<f64> = (0..n)
-        .map(|i| {
-            let t = i as f64 / 96_000.0;
-            (-t / 0.05).exp() * (2.0 * core::f64::consts::PI * 60.0 * t).sin()
-        })
-        .collect();
-    feed(&g, &beat, &beat);
+    assert_eq!(g.fires(), 0);
+    /* At 96 kHz a 48 000-frame block is a quarter at 120 BPM; at 48 kHz it
+     * would have been two. */
+    tick(&g, 0.5, 120.0, 4, 4, true, 48_000);
     assert_eq!(g.fires(), 1);
 }
 
 #[test]
-fn two_threads_hammering_one_ground_stay_consistent() {
-    /*
-     * THE THREAD CONTRACT, UNDER LOAD. One thread is the audio callback,
-     * pushing a kick every half second of audio; the other is everything else
-     * at once -- the message thread polling the pair, the host resetting and
-     * changing the rate, the editor opening and closing. Nothing may tear:
-     * the count only moves forward, the strength is always a value `push`
-     * could have written, and when the storm is over the detector still works.
-     */
-    use std::sync::atomic::AtomicBool;
-    use std::sync::Arc;
-
-    let g = Arc::new(live(SR));
-    let done = Arc::new(AtomicBool::new(false));
-
-    let audio = {
-        let g = Arc::clone(&g);
-        let done = Arc::clone(&done);
-        std::thread::spawn(move || {
-            let beat = kick(60.0, 0.05, samples(0.5));
-            let mut blocks = 0usize;
-            while !done.load(Ordering::Relaxed) {
-                for chunk in beat.chunks(256) {
-                    /* SAFETY: this is the only thread that pushes. */
-                    unsafe { g.push(chunk, chunk) };
-                    blocks += 1;
-                }
-            }
-            blocks
-        })
-    };
-
-    let mut last = g.fires();
-    for i in 0..20_000u32 {
-        let f = g.fires();
-        assert!(f.wrapping_sub(last) < u32::MAX / 2, "the count went backwards: {last} -> {f}");
-        last = f;
-        let s = g.strength();
-        assert!(s == 0.0 || (0.3..=1.0).contains(&s), "torn strength {s}");
-        match i % 7 {
-            0 => g.reset(),
-            1 => g.set_sample_rate(if i % 2 == 0 { 44_100.0 } else { 48_000.0 }),
-            2 => g.set_active(false),
-            3 => g.set_active(true),
-            _ => {}
-        }
-        if i % 64 == 0 {
-            std::thread::yield_now();
-        }
-    }
-    g.set_sample_rate(SR);
-    g.set_active(true);
-    /* Let the audio thread run clean for a while: it must still be detecting. */
-    let before = g.fires();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while g.fires() == before && std::time::Instant::now() < deadline {
-        std::thread::yield_now();
-    }
-    done.store(true, Ordering::Relaxed);
-    let blocks = audio.join().expect("the audio thread must not panic");
-    assert!(blocks > 0);
-    assert_ne!(g.fires(), before, "the detector must still fire after the storm");
-}
-
-#[test]
-fn the_band_is_the_butterworth_response_it_claims_to_be() {
-    /* MEASURED, NOT ASSUMED. The coefficients are the Audio EQ Cookbook's
-     * precisely so that this band matches the pair of Web Audio nodes the design
-     * system's reference builds, and a transcription slip in one of the five
-     * coefficients gives a filter that is stable, plausible and wrong. So the
-     * response is swept and checked against the closed form.
-     *
-     * The corners must read 1/sqrt(2) -- that IS the definition of the -3 dB
-     * point, and it is the one number a wrong Q or a swapped sign would move.
-     * The 12 dB/oct slopes are checked two octaves out on each side, where a
-     * second-order section has fallen by a factor of sixteen. */
-    let magnitude = |hz: f64| {
-        let mut band = Band::new(SR);
-        let n = samples(2.0);
-        let settled = n - samples(0.5);
-        let mut peak = 0.0f64;
-        for i in 0..n {
-            let t = i as f64 / SR;
-            let y = band.next((2.0 * core::f64::consts::PI * hz * t).sin());
-            if i > settled && y.abs() > peak {
-                peak = y.abs();
-            }
-        }
-        peak
-    };
-
-    let corner = core::f64::consts::FRAC_1_SQRT_2;
-    for hz in [BAND_LO_HZ, BAND_HI_HZ] {
-        let m = magnitude(hz);
-        assert!(
-            (m - corner).abs() < 0.01,
-            "{hz} Hz is a corner and must read {corner:.4}, not {m:.4}"
-        );
-    }
-
-    /* Inside the band, near its centre, essentially everything gets through. */
-    let centre = magnitude(40.0);
-    assert!(centre > 0.9, "40 Hz sits inside the band and read {centre:.4}");
-
-    /* Two octaves below 20 Hz and two above 80 Hz: down by ~16, i.e. 24 dB. */
-    let below = magnitude(BAND_LO_HZ / 4.0);
-    let above = magnitude(BAND_HI_HZ * 4.0);
-    for (name, m) in [("5 Hz", below), ("320 Hz", above)] {
-        assert!(
-            m < 0.08,
-            "{name} is two octaves outside a 12 dB/oct edge and must fall below \
-             0.08; it read {m:.4}"
-        );
-    }
-    /* And the two edges are symmetric to within a few percent, which is what
-     * says both sections are the same order and the same Q. */
-    assert!(
-        (below - above).abs() < 0.02,
-        "the two edges are not the same slope: {below:.4} below, {above:.4} above"
-    );
-}
-
-#[test]
-fn no_sustained_tone_anywhere_in_the_band_chatters() {
-    /* The design's rule is that the ground settles back to the static design
-     * when nothing is happening. A held bass note is "nothing happening", and a
-     * detector whose RMS window (20 ms) is shorter than the period it is
-     * measuring (50 ms at 20 Hz) is exactly the shape that could ripple its way
-     * across the threshold once a second. It does not -- because the running
-     * mean ripples with it -- and that is worth holding still. */
-    for hz in [5.0f64, 10.0, 20.0, 30.0, 40.0, 60.0, 80.0] {
-        let mut d = Detector::new(SR);
-        let mut late = 0;
-        let signal = tone(hz, samples(10.0));
-        for (i, &s) in signal.iter().enumerate() {
-            if d.next(s, s).is_some() && i > samples(0.5) {
-                late += 1;
-            }
-        }
-        assert_eq!(
-            late, 0,
-            "a sustained {hz} Hz tone fired {late} times after settling"
-        );
-    }
-}
-
-/* ---------- real program material ---------- */
-
-/*
- * THE TEST THAT WOULD HAVE CAUGHT IT, AND DID NOT EXIST.
- *
- * Every other test in this file feeds the detector an isolated kick, sometimes
- * with a tone beside it. So did the design system's own preview. And on that
- * material the design's specified test -- `env > 1.8 * mean(300 ms)` -- works
- * perfectly, which is why it shipped.
- *
- * On music it did not work at all. A kick over a loud sustained low end adds only
- * about a third to the level of the 20-80 Hz band, because the bass is already
- * filling that band; a third is 1.3x and 1.3 is not 1.8. Sixteen kicks in eight
- * seconds produced ONE onset on a limited mix, and one on a sustained bassline.
- * The background stayed perfectly still on exactly the music people make, and
- * every test passed.
- *
- * So this table is the real specification, and it is deliberately the least
- * clever test here: build something that sounds like a record, count the rings.
- */
-mod material {
-    use super::*;
-
-    const BEAT: f64 = 0.5; // 120 BPM
-    const BARS: f64 = 8.0; // seconds
-    const KICKS: usize = (BARS / BEAT) as usize;
-
-    /// A kick every `BEAT`: a decaying sine at `hz`.
-    fn kicks(buf: &mut [f64], hz: f64, amp: f64, decay: f64) {
-        let step = samples(BEAT);
-        let mut start = 0;
-        while start < buf.len() {
-            let span = samples(decay * 6.0).min(buf.len() - start);
-            for i in 0..span {
-                let t = i as f64 / SR;
-                buf[start + i] +=
-                    amp * (-t / decay).exp() * (2.0 * core::f64::consts::PI * hz * t).sin();
-            }
-            start += step;
-        }
-    }
-
-    /// A sustained tone, faded in over 50 ms.
-    ///
-    /// THE FADE MATTERS, for the reason `tone` gives above: a tone that starts
-    /// abruptly at full scale is a step, and a step has energy in every band
-    /// including this one. Without it the "no kick" row below fires once, and
-    /// would be measuring the test's own setup.
-    fn sustain(buf: &mut [f64], hz: f64, amp: f64) {
-        let fade = samples(0.05) as f64;
-        for (i, s) in buf.iter_mut().enumerate() {
-            let a = (i as f64 / fade).min(1.0);
-            *s += amp * a * (2.0 * core::f64::consts::PI * hz * (i as f64 / SR)).sin();
-        }
-    }
-
-    /// Hard-clip, the way a loud master is.
-    fn limit(buf: &mut [f64], ceil: f64) {
-        for s in buf.iter_mut() {
-            *s = s.clamp(-ceil, ceil);
-        }
-    }
-
-    fn onsets(buf: &[f64]) -> usize {
-        let mut d = Detector::new(SR);
-        buf.iter().filter_map(|&s| d.next(s, s)).count()
-    }
-
-    fn bed() -> Vec<f64> {
-        vec![0.0f64; samples(BARS)]
-    }
-
-    #[test]
-    fn a_kick_on_its_own() {
-        let mut b = bed();
-        kicks(&mut b, 60.0, 1.0, 0.05);
-        assert_eq!(onsets(&b), KICKS);
-    }
-
-    #[test]
-    fn a_kick_under_a_quiet_bassline() {
-        let mut b = bed();
-        kicks(&mut b, 60.0, 1.0, 0.05);
-        sustain(&mut b, 50.0, 0.1);
-        assert_eq!(onsets(&b), KICKS);
-    }
-
-    #[test]
-    fn a_kick_under_a_loud_sustained_bassline() {
-        /* THE CASE THAT WAS BROKEN: 1 of 16 before the detector was re-keyed onto
-         * the attack. One kick may still be lost while the bed is settling from
-         * silence at the very start, which is why this is not an equality. */
-        let mut b = bed();
-        kicks(&mut b, 60.0, 1.0, 0.05);
-        sustain(&mut b, 50.0, 0.7);
-        let n = onsets(&b);
-        assert!(
-            n >= KICKS - 1,
-            "a loud bassline hid the kick: {n} of {KICKS} rings"
-        );
-    }
-
-    #[test]
-    fn a_kick_under_a_pad_and_hats() {
-        let mut b = bed();
-        kicks(&mut b, 60.0, 1.0, 0.05);
-        sustain(&mut b, 400.0, 0.5);
-        sustain(&mut b, 4_000.0, 0.3);
-        assert_eq!(onsets(&b), KICKS);
-    }
-
-    #[test]
-    fn a_full_limited_mix() {
-        /* THE OTHER CASE THAT WAS BROKEN: 2 of 16. This is what a master sounds
-         * like to the detector, and it is the single most important row here. */
-        let mut b = bed();
-        kicks(&mut b, 60.0, 1.0, 0.05);
-        sustain(&mut b, 50.0, 0.35);
-        sustain(&mut b, 400.0, 0.4);
-        sustain(&mut b, 4_000.0, 0.2);
-        limit(&mut b, 0.9);
-        assert_eq!(onsets(&b), KICKS, "a limited mix lost its kicks");
-    }
-
-    #[test]
-    fn an_808_with_a_long_tail() {
-        /* AND THE THIRD: 2 of 16. A sub kick that rings for a quarter of a second
-         * is its own sustained bass, so it used to hide its own next hit. */
-        let mut b = bed();
-        kicks(&mut b, 40.0, 1.0, 0.25);
-        assert_eq!(onsets(&b), KICKS);
-    }
-
-    #[test]
-    fn a_quiet_kick_still_counts() {
-        /* -20 dB and nothing else. The threshold is relative, so a quiet track
-         * must behave like a loud one -- this is the row that stops the absolute
-         * floor being raised to buy robustness somewhere else. */
-        let mut b = bed();
-        kicks(&mut b, 60.0, 0.1, 0.05);
-        assert_eq!(onsets(&b), KICKS);
-    }
-
-    #[test]
-    fn a_track_with_no_kick_stays_still() {
-        /* COUNTED ONCE THE MUSIC IS PLAYING, not from the first sample, and the
-         * distinction is real rather than convenient.
-         *
-         * A pad that appears out of silence has an amplitude ramp, and a ramp has
-         * a spectrum: a fast one puts real energy into 20-80 Hz whatever pitch it
-         * is playing. So the entry itself is a low-frequency transient and firing
-         * on it is not wrong -- the same is true of a track starting, a clip
-         * launching, or anyone un-muting a channel.
-         *
-         * What must not happen is the ground moving THROUGH material that has no
-         * kick in it, which is what this measures. It is the same window the
-         * sustained-tone test uses, for the same reason. */
-        let mut b = bed();
-        sustain(&mut b, 400.0, 0.5);
-        sustain(&mut b, 4_000.0, 0.3);
-        let mut d = Detector::new(SR);
-        let late = b
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| {
-                // every sample is fed; only the count is windowed
-                let _ = i;
-                true
-            })
-            .filter_map(|(i, &s)| d.next(s, s).map(|_| i))
-            .filter(|i| *i > samples(0.5))
-            .count();
-        assert_eq!(late, 0, "the ground kept moving with no kick in the signal");
-    }
+fn the_count_wraps_rather_than_saturating() {
+    let g = live();
+    g.fires.store(u32::MAX, core::sync::atomic::Ordering::Relaxed);
+    tick(&g, 0.0, 120.0, 4, 4, true, BLOCK);
+    assert_eq!(g.fires(), 0, "a reader compares with != and sees it move");
 }

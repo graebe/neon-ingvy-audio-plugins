@@ -65,7 +65,7 @@ const PRODUCTS = {
       (c) => `engines/audio-bus/crates/${c}/Cargo.toml`),
   },
   /*
-   * The ground's kick detector. Not a plugin, and unlike audio-bus not even a
+   * The ground's beat clock. Not a plugin, and unlike audio-bus not even a
    * static library of its own: ground-capi is an rlib that each product's capi
    * crate absorbs, because one archive per plugin is an invariant here (see
    * cmake/NiPlugin.cmake). It ships inside ALL FOUR products, which is the

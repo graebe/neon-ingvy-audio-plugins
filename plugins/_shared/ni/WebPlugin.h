@@ -9,7 +9,7 @@
  *     debug builds only, index.html, no rubber-band scroll;
  *   the editor protocol (ni/Editor.h) -- the ready handshake, the defaults,
  *     display strings, typed text and the window height;
- *   the animated ground's kick detector (ground_detect.h), start to end;
+ *   the animated ground's beat clock (ground.h), start to end;
  *   flush-to-zero around every block (shell_denormals.h);
  *   OnIdle's order: the ground first, then the product's host-facing work,
  *     then -- only while an editor is open -- its editor work.
@@ -29,7 +29,7 @@
 
 #include "ni/Editor.h"
 #include "ni/Wire.h"
-#include "ground_detect.h"
+#include "ground.h"
 #include "shell_state.h"
 
 #include <atomic>
@@ -73,7 +73,7 @@ public:
 protected:
   /* ---- what a product supplies ---- */
 
-  /* The audio thread, with denormals flushed and the ground already fed. */
+  /* The audio thread, with denormals flushed and the ground already ticked. */
   virtual void ProcessAudio(iplug::sample** inputs, iplug::sample** outputs, int nFrames) = 0;
   /* The host's rate or block size changed. May not be the main thread. */
   virtual void ResetAudio() {}
@@ -151,10 +151,10 @@ private:
   std::atomic<bool> mEditorOpen{false};
 
   /*
-   * THE GROUND'S DETECTOR. Every window's ground rings when a kick lands, and a
-   * WebView cannot hear the host -- so the audio thread detects, and one
-   * message per onset crosses over (ground_detect.h). mGroundFires is the last
-   * count the editor was told, the main thread's alone.
+   * THE GROUND'S BEAT CLOCK. Every window's ground rings on the host's beat,
+   * and a WebView cannot see the host's transport -- so the audio thread keeps
+   * time, and one message per ring crosses over (ground.h). mGroundFires is the
+   * last count the editor was told, the main thread's alone.
    */
   gnd_t* mGround = nullptr;
   uint32_t mGroundFires = 0;

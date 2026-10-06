@@ -6,99 +6,114 @@
  * and that is what keeps the header honest. It links a release staticlib,
  * though, so cargo's coverage never sees this file run. These are the claims
  * the four plugins depend on, made again from Rust through the same raw
- * pointers -- not ground-core's detector behaviour, which ground-core tests.
+ * pointers -- not the beat clock's musical rule, which ground-core tests.
  */
 
 use super::*;
 use core::ptr::null;
 
 const SR: f64 = 48_000.0;
-const BLOCK: usize = 512;
+const BLOCK: i32 = 512;
 
-/// `secs` of a decaying sine at `hz` (no decay when `decay` is 0), pushed in
-/// host-sized blocks with the SAME pointer for both channels, as a mono
-/// plugin does.
-unsafe fn push_tone(g: *const GndDetector, secs: f64, hz: f64, decay: f64) {
-    let total = (secs * SR) as usize;
-    let mut buf = [0.0f64; BLOCK];
-    let mut done = 0;
-    while done < total {
-        let n = BLOCK.min(total - done);
-        for (i, s) in buf[..n].iter_mut().enumerate() {
-            let t = (done + i) as f64 / SR;
-            let a = if decay > 0.0 { (-t / decay).exp() } else { 1.0 };
-            *s = a * (2.0 * core::f64::consts::PI * hz * t).sin();
+/// `secs` of a 120 BPM 4/4 transport from `from` quarters, in host-sized
+/// blocks; returns the position it stopped at.
+unsafe fn play(g: *const GndGround, from: f64, secs: f64, playing: bool) -> f64 {
+    let blocks = (secs * SR / BLOCK as f64) as usize;
+    let span = BLOCK as f64 * 2.0 / SR;
+    let mut ppq = from;
+    for _ in 0..blocks {
+        gnd_tick(g, ppq, 120.0, 4, 4, playing as i32, BLOCK);
+        if playing {
+            ppq += span;
         }
-        gnd_push(g, buf.as_ptr(), buf.as_ptr(), n as i32);
-        done += n;
     }
-}
-
-unsafe fn kick(g: *const GndDetector) {
-    push_tone(g, 0.4, 60.0, 0.05);
+    ppq
 }
 
 #[test]
 fn a_null_handle_is_silence_not_a_crash() {
-    /* ProcessBlock calls these unconditionally; "no detector" must read as
+    /* ProcessBlock calls these unconditionally; "no ground" must read as
      * "nothing happened". */
     unsafe {
         gnd_free(core::ptr::null_mut());
         gnd_reset(null());
         gnd_set_sample_rate(null(), SR);
         gnd_set_active(null(), 1);
-        let x = [1.0f64; 4];
-        gnd_push(null(), x.as_ptr(), x.as_ptr(), 4);
+        gnd_tick(null(), 0.0, 120.0, 4, 4, 1, BLOCK);
         assert_eq!(gnd_fires(null()), 0);
         assert_eq!(gnd_strength(null()), 0.0);
     }
 }
 
 #[test]
-fn a_new_detector_is_quiet_and_inactive() {
+fn a_new_ground_is_quiet_and_inactive() {
     unsafe {
         let g = gnd_new(SR);
         assert!(!g.is_null());
-        assert_eq!(gnd_fires(g), 0, "a fresh detector has seen no kicks");
+        assert_eq!(gnd_fires(g), 0, "a fresh ground has rung nothing");
         assert_eq!(gnd_strength(g), 0.0, "and reports no strength");
 
-        kick(g);
+        play(g, 0.0, 2.0, true);
         assert_eq!(gnd_fires(g), 0, "inactive until an editor opens");
         gnd_free(g);
     }
 }
 
 #[test]
-fn an_empty_or_pointerless_block_is_a_no_op() {
+fn an_empty_block_is_a_no_op() {
     unsafe {
         let g = gnd_new(SR);
         gnd_set_active(g, 1);
-        let x = [0.9f64; BLOCK];
-        gnd_push(g, x.as_ptr(), x.as_ptr(), 0);
-        gnd_push(g, x.as_ptr(), x.as_ptr(), -1);
-        gnd_push(g, null(), x.as_ptr(), BLOCK as i32);
-        gnd_push(g, x.as_ptr(), null(), BLOCK as i32);
+        gnd_tick(g, 0.0, 120.0, 4, 4, 1, 0);
+        gnd_tick(g, 0.0, 120.0, 4, 4, 1, -1);
         assert_eq!(gnd_fires(g), 0);
 
         /* And the guards left it working. */
-        kick(g);
+        gnd_tick(g, 0.0, 120.0, 4, 4, 1, BLOCK);
         assert_eq!(gnd_fires(g), 1);
         gnd_free(g);
     }
 }
 
 #[test]
-fn a_kick_fires_once_and_a_hi_hat_does_not() {
+fn a_playing_transport_rings_each_beat_and_the_downbeat_strongest() {
     unsafe {
         let g = gnd_new(SR);
         gnd_set_active(g, 1);
-        kick(g);
-        assert_eq!(gnd_fires(g), 1, "a 60 Hz kick is one onset");
-        let s = gnd_strength(g);
-        assert!((0.3..=1.0).contains(&s), "strength {s} outside the field's 0.3..1");
+        /* Beat by beat: each half second is one ring. */
+        let mut seen = Vec::new();
+        let mut ppq = 0.0;
+        for _ in 0..8 {
+            ppq = play(g, ppq, 0.5, true);
+            seen.push((gnd_fires(g), gnd_strength(g)));
+        }
+        let want: Vec<(u32, f32)> =
+            (1..=8).map(|n| (n, if n % 4 == 1 { 1.0 } else { 0.4 })).collect();
+        assert_eq!(seen, want);
+        gnd_free(g);
+    }
+}
 
-        push_tone(g, 2.0, 1000.0, 0.0);
-        assert_eq!(gnd_fires(g), 1, "a sustained 1 kHz tone adds no onset");
+#[test]
+fn a_stopped_transport_rings_nothing() {
+    unsafe {
+        let g = gnd_new(SR);
+        gnd_set_active(g, 1);
+        play(g, 0.0, 3.0, false);
+        assert_eq!(gnd_fires(g), 0);
+        gnd_free(g);
+    }
+}
+
+#[test]
+fn a_host_without_a_time_signature_is_four_four() {
+    unsafe {
+        let g = gnd_new(SR);
+        gnd_set_active(g, 1);
+        gnd_tick(g, 4.0, 120.0, 0, 0, 1, BLOCK);
+        assert_eq!((gnd_fires(g), gnd_strength(g)), (1, 1.0), "4 is a downbeat in 4/4");
+        gnd_tick(g, 3.0, 120.0, 0, 0, 1, BLOCK);
+        assert_eq!((gnd_fires(g), gnd_strength(g)), (2, 0.4), "3 is not");
         gnd_free(g);
     }
 }
@@ -110,7 +125,7 @@ fn reset_and_a_new_rate_never_rewind_the_count() {
     unsafe {
         let g = gnd_new(SR);
         gnd_set_active(g, 1);
-        kick(g);
+        play(g, 0.0, 0.25, true);
         let seen = gnd_fires(g);
         assert_eq!(seen, 1);
 
@@ -119,8 +134,8 @@ fn reset_and_a_new_rate_never_rewind_the_count() {
         gnd_set_sample_rate(g, 44_100.0);
         assert_eq!(gnd_fires(g), seen);
 
-        kick(g);
-        assert_eq!(gnd_fires(g), seen + 1, "and it still fires afterwards");
+        play(g, 0.0, 0.25, true);
+        assert_eq!(gnd_fires(g), seen + 1, "and it rings again afterwards");
         gnd_free(g);
     }
 }
@@ -130,16 +145,16 @@ fn switching_off_stops_it_and_switching_on_resumes() {
     unsafe {
         let g = gnd_new(SR);
         gnd_set_active(g, 7); /* any nonzero is on */
-        kick(g);
+        let ppq = play(g, 0.0, 0.25, true);
         assert_eq!(gnd_fires(g), 1);
 
         gnd_set_active(g, 0);
-        kick(g);
-        assert_eq!(gnd_fires(g), 1, "a closed editor's detector adds nothing");
+        let ppq = play(g, ppq, 1.0, true);
+        assert_eq!(gnd_fires(g), 1, "a closed editor's ground adds nothing");
 
         gnd_set_active(g, 1);
-        kick(g);
-        assert_eq!(gnd_fires(g), 2, "a reopened editor's detector fires again");
+        play(g, ppq, 1.0, true);
+        assert_eq!(gnd_fires(g), 3, "a reopened editor's ground rings the next beats");
         gnd_free(g);
     }
 }
