@@ -10,6 +10,7 @@
  */
 import { onMount } from 'solid-js';
 import { createTextEdit } from '../lib/edit.js';
+import { infoAttrs } from '../lib/info.js';
 
 export function EditField(props) {
   let el;
@@ -25,6 +26,7 @@ export function EditField(props) {
       value={props.value ?? ''}
       inputmode={props.inputmode}
       aria-label={props.ariaLabel}
+      {...infoAttrs(props.info)}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         if (edit.keyDown(e.key, e.currentTarget.value)) e.preventDefault();

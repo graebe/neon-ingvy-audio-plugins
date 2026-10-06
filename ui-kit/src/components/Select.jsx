@@ -14,6 +14,9 @@
  * the one that belongs in a kit -- a Select is a choice widget, and knowing
  * what a choice MEANS is the caller's business. See ParamSelect in the Trance
  * Gate's editor for the binding.
+ *
+ * `info` covers the label and the face: the hint bar shows it over either, and
+ * the <select> carries it as its accessible description.
  */
 import { For, Show, createSignal } from 'solid-js';
 import { Icon } from './Icon.jsx';
@@ -24,7 +27,7 @@ export function Select(props) {
     /* The label sits BESIDE the select, on the same 28px row -- these say how a
      * thing is measured or drawn rather than what its value is, and a panel of
      * knobs leaves no room above. */
-    <div class="select-group">
+    <div class="select-group" data-info={props.info}>
       <Show when={props.label}>
         <span class="select-label t-label" style={{ width: `${props.labelWidth ?? 44}px` }}>
           {props.label}
@@ -36,6 +39,7 @@ export function Select(props) {
         <Icon name="chevron" />
         <select
           aria-label={props.ariaLabel ?? props.label}
+          aria-description={props.info}
           value={props.value ?? 0}
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}

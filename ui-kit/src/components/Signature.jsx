@@ -16,12 +16,17 @@
  * nothing", and a `name` prop would be an invitation to put something else
  * there -- which the same card forbids in as many words ("do not ... pair it
  * with another logo").
+ *
+ * `info` is what the hint bar says while the pointer is on it -- a description,
+ * not a name, and the editor's to write like every other string there.
  */
 
+import { infoAttrs } from '../lib/info.js';
+
 /** The signature, as it appears in a plugin window. */
-export function Signature() {
+export function Signature(props) {
   return (
-    <span class="signature" aria-label="Neon Ingvy">
+    <span class="signature" aria-label="Neon Ingvy" {...infoAttrs(props.info)}>
       <i class="mark" aria-hidden="true" />
       Neon Ingvy
     </span>

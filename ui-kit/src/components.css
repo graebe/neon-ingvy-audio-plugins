@@ -287,10 +287,26 @@
 .hint-tips {
   flex: 0 1 auto;
   min-width: 0;
+  display: inline-grid;
+}
+
+/*
+ * THE CLAUSES AND AN INFO STRING SHARE ONE CELL. The clauses always size it --
+ * hidden, not removed, while a string is shown -- and the string's
+ * `contain: inline-size` keeps it from sizing it at all, so the bar's width,
+ * and with it the Motion switch's place, is the clauses' whatever is laid over
+ * them. A string longer than the clauses truncates: the ellipsis says that
+ * string is too long for its window, as it says it of a fourth clause.
+ */
+.hint-clauses, .hint-info {
+  grid-area: 1 / 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.hint-info { contain: inline-size; }
+.hint-clauses.held { visibility: hidden; }
 
 .hint-bar .signature { margin-left: auto; }
 

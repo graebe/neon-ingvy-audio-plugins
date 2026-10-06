@@ -56,6 +56,9 @@ export { Select } from './components/Select.jsx';
 export { CheckList } from './components/CheckList.jsx';
 export { Tabs } from './components/Tabs.jsx';
 export { Hint } from './components/Hint.jsx';
+/* What a control does, in the hint bar while it is pointed at or focused: the
+ * attributes that declare a string, and the rules EditorFrame applies them by. */
+export { infoAttrs, infoClause, hintClauses, createInfo, bindInfo, INFO_DELAY_MS } from './lib/info.js';
 /* The window's ground. One per window, first child of it, and the only thing in
  * the design system that animates. */
 export { Ground } from './components/Ground.jsx';

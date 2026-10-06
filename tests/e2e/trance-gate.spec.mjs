@@ -11,6 +11,7 @@ import {
   test, expect, open, openForScreenshot, sent, texts, writes, clearSent,
   pushParam, dragVertically, SHELL,
 } from './harness.mjs';
+import { INFO } from '../../plugins/trance-gate/ui/src/lib/info.js';
 
 const W = 824, H = 752;
 /* lib/msg.js */
@@ -440,6 +441,169 @@ test('the height is re-sent after a viewport resize', async ({ page }) => {
   await page.setViewportSize({ width: W * 0.75, height: H });
   await expect.poll(() => texts(page, SHELL.height))
     .toEqual([String(H), String(Math.ceil(H * 0.75))]);
+});
+
+/*
+ * THE INFO STRINGS: what a control does, in the hint bar, while the pointer is
+ * over it or the keyboard is on it -- and the window's conventions otherwise.
+ * The bar's text is compared without whitespace, because its clauses are spans
+ * whose spacing is CSS margins rather than characters.
+ */
+const bare = (t) => (t ?? '').replace(/\s+/g, '');
+/* What the bar reads: the info laid over the clauses, or the clauses. */
+const tipText = (page) => page.locator('.hint-bar .hint-tips').evaluate((t) =>
+  (t.querySelector('.hint-info') ?? t.querySelector('.hint-clauses')).textContent.replace(/\s+/g, ''));
+const motionAt = (page) => page.locator('.hint-bar .switch-row').evaluate((e) => e.getBoundingClientRect().x);
+/* An info string cut short by the bar: its own box narrower than its text. */
+const truncated = (page) => page.locator('.hint-bar .hint-info').evaluate((e) => e.scrollWidth > e.clientWidth);
+/* The window's padding: the ground, which describes nothing. */
+const park = (page) => page.mouse.move(4, 4);
+
+test('hovering the Rate knob shows what it does, and leaving brings the conventions back', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await park(page);
+  const rest = await tipText(page);
+  expect(rest).toBe(bare('click a step to toggle – shift-click for a tie – drag up or down for its amount'));
+
+  const motion = await motionAt(page);
+  await page.getByRole('slider', { name: 'Rate' }).hover();
+  /* No delay on the way in. The name in ink, the rest muted, the Motion switch
+   * where it was. */
+  expect(await tipText(page)).toBe(bare(INFO.rate));
+  await expect(page.locator('.hint-bar .hint-info .hint-key')).toHaveText('Rate');
+  await expect(page.locator('.hint-bar .hint-info .hint-val'))
+    .toHaveText('— the length of one step, synced to the song tempo.');
+  expect(await motionAt(page)).toBe(motion);
+
+  await park(page);
+  await expect.poll(() => tipText(page)).toBe(rest);
+});
+
+test('keyboard focus shows a control\'s string, and it is the accessible description', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await park(page);
+  const rest = await tipText(page);
+  const rate = page.getByRole('slider', { name: 'Rate' });
+  await expect(rate).toHaveAttribute('aria-description', INFO.rate);
+  /* From the keyboard: Tab into the window lands on the ring, then each
+   * control in turn. */
+  await page.keyboard.press('Tab');
+  await expect(page.locator('svg.ring')).toBeFocused();
+  await expect.poll(() => tipText(page)).toBe(bare(INFO.ring));
+  while (!(await rate.evaluate((e) => e === document.activeElement))) await page.keyboard.press('Tab');
+  await expect.poll(() => tipText(page)).toBe(bare(INFO.rate));
+  await page.keyboard.press('Tab');
+  await expect.poll(() => tipText(page)).toBe(bare(INFO.length));
+  /* Focus leaves the window's controls: the conventions return. */
+  await page.evaluate(() => document.activeElement.blur());
+  await expect.poll(() => tipText(page)).toBe(rest);
+});
+
+test('an action\'s outcome keeps the bar over the info under the pointer', async ({ page }) => {
+  await open(page, 'trance-gate');
+  const copy = page.getByRole('button', { name: /^Copy/ });
+  await copy.hover();
+  expect(await tipText(page)).toBe(bare(INFO.copy));
+  await copy.click();
+  /* The pointer is still on Copy: the outcome wins while it is shown. */
+  await expect(page.locator('.hint-bar .hint-key').first()).toHaveText('Copied');
+  await page.getByRole('slider', { name: 'Rate' }).hover();
+  await expect(page.locator('.hint-bar .hint-key').first()).toHaveText('Copied');
+});
+
+/*
+ * EVERY CONTROL HAS A STRING. Each element a pointer or a keyboard can act on,
+ * and each piece of the window that explains itself (the panel titles, the
+ * plots, the ring's count, the signature), is hovered from a resting bar; the
+ * bar has to change, to a string of 80 characters at most. A control added
+ * without one fails here by name.
+ */
+const DESCRIBED = [
+  'button', 'select', 'input', '[tabindex]', '[role]',
+  'h2', 'svg.plot', '.ring text', '.knob-card', '.signature',
+].map((s) => `main.window ${s}`).join(', ');
+
+async function everyControlSays(page) {
+  await park(page);
+  const rest = await tipText(page);
+  const all = page.locator(DESCRIBED);
+  const n = await all.count();
+  expect(n).toBeGreaterThan(40);
+  const silent = [];
+  const cut = [];
+  const motion = await motionAt(page);
+  for (let i = 0; i < n; i++) {
+    const el = all.nth(i);
+    if (!(await el.isVisible())) continue;
+    const name = await el.evaluate((e) => `<${e.tagName.toLowerCase()} class="${e.getAttribute('class') ?? ''}" aria-label="${e.getAttribute('aria-label') ?? ''}">${e.textContent.trim().slice(0, 24)}`);
+    await park(page);
+    await expect.poll(() => tipText(page), { intervals: [50] }).toBe(rest);
+    /* force: the Select's own <select> is transparent over its face, which
+     * Playwright would call covered. The pointer lands on it either way. */
+    await el.hover({ force: true });
+    const said = await tipText(page);
+    if (said === rest || !said) silent.push(name);
+    else if (await truncated(page)) cut.push(name);
+    expect(await motionAt(page), name).toBe(motion);
+  }
+  expect(silent).toEqual([]);
+  /* Every string fits the bar: none ends in an ellipsis. */
+  expect(cut).toEqual([]);
+  /* And none of them is too long for the bar. */
+  const strings = await page.locator('main.window [data-info]')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-info')));
+  for (const s of strings) {
+    expect(s.length, s).toBeGreaterThan(0);
+    expect(s.length, s).toBeLessThanOrEqual(80);
+  }
+}
+
+test('every control in the window says what it does', async ({ page }) => {
+  /* Some seventy hovers, each waiting out the delay back to the conventions. */
+  test.slow();
+  await open(page, 'trance-gate');
+  await everyControlSays(page);
+});
+
+test('so do the arrival numbers, and the pads while ORDER is on', async ({ page }) => {
+  test.slow();
+  /* Part way in, the numbers are drawn, and they are controls too. */
+  await open(page, 'trance-gate', '?fade=0.5');
+  await expect(page.locator('.pad-order').first()).toBeVisible();
+  await everyControlSays(page);
+  await page.getByRole('button', { name: /^ORDER/ }).click();
+  await pad(page, 1).hover();
+  expect(await tipText(page)).toBe(bare(INFO.padsOrder));
+});
+
+test('every tab stop says what it does, from the keyboard', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await park(page);
+  const rest = await tipText(page);
+  const seen = [];
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press('Tab');
+    /* Each stop once: the walk ends where it began, or leaves the page. */
+    const at = await page.evaluate(() => {
+      const e = document.activeElement;
+      window.__stops ??= new WeakSet();
+      if (!e || e === document.body || window.__stops.has(e)) return null;
+      window.__stops.add(e);
+      return { id: e.outerHTML.slice(0, 120), description: e.getAttribute('aria-description') };
+    });
+    if (!at) break;
+    seen.push(at.id);
+    expect(at.description, at.id).toBeTruthy();
+    await expect.poll(() => tipText(page), { message: at.id }).toBe(bare(at.description));
+  }
+  expect(seen.length).toBeGreaterThan(20);
+});
+
+test('a readout being typed into says how to type it', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await page.getByRole('button', { name: 'Attack value' }).click();
+  await park(page);
+  await expect.poll(() => tipText(page)).toBe(bare(INFO.readout.attack));
 });
 
 test('looks as designed in its default state', async ({ page }) => {

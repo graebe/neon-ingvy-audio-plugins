@@ -10,11 +10,18 @@
  * plugin whenever the design height or the scale moves.
  *
  * Props: width, height (design px), motionKey, sources (the Ground's selector
- * list), hint (clauses), bridge (from useEditorBridge), class.
+ * list), hint (clauses), status (an action's outcome as one clause, or null),
+ * motionInfo and signatureInfo (the bar's own two strings), bridge (from
+ * useEditorBridge), class.
+ *
+ * THE INFO STRINGS ARE THE WINDOW'S, so they are wired here once: every
+ * element inside it with a `data-info` puts its string in the hint bar while it
+ * is pointed at or focused (lib/info.js has the rules and the precedence).
  */
-import { createContext, useContext } from 'solid-js';
+import { createContext, useContext, onMount, onCleanup } from 'solid-js';
 import { createFit, reportHeight } from '../lib/fit.js';
 import { createMotion } from '../lib/motion.js';
+import { createInfo, bindInfo, hintClauses } from '../lib/info.js';
 import { sendMessage } from '../lib/iplug.js';
 import { SHELL_MSG } from '../lib/shell.js';
 import { Ground } from './Ground.jsx';
@@ -30,14 +37,20 @@ export function EditorFrame(props) {
   const [motion, setMotion] = createMotion(props.motionKey);
   reportHeight(() => props.height, scale,
                (h) => sendMessage(SHELL_MSG.height, h));
+  const info = createInfo();
+  let root;
+  onMount(() => onCleanup(bindInfo(root, info)));
+  const bar = () => hintClauses({ conventions: props.hint ?? [], info: info.text(),
+                                  status: props.status });
   return (
-    <main class={`window${props.class ? ` ${props.class}` : ''}`}
+    <main ref={root} class={`window${props.class ? ` ${props.class}` : ''}`}
           style={{ width: `${props.width}px`, height: `${props.height}px`,
                    transform: `scale(${scale()})` }}>
       <Ground enabled={motion()} sources={props.sources}
               ref={(h) => props.bridge?.setGround(h)} />
       <FrameContext.Provider value={{ scale }}>{props.children}</FrameContext.Provider>
-      <Hint clauses={props.hint ?? []} motion={motion()} onMotion={setMotion} />
+      <Hint clauses={bar().clauses} info={bar().info} motion={motion()} onMotion={setMotion}
+            motionInfo={props.motionInfo} signatureInfo={props.signatureInfo} />
     </main>
   );
 }

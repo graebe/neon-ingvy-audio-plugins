@@ -11,19 +11,26 @@
  * glyph from the design's set of twelve; with no label the button is the 28px
  * square icon-only form, and then it carries the verb as its aria-label and
  * title.
+ *
+ * `info` is what it does, for the hint bar and as its accessible description.
+ * A button that has one shows no native tooltip: two texts appearing for one
+ * hover, a beat apart and in two places, is one too many. `title` then only
+ * names an icon-only button.
  */
 import { Show } from 'solid-js';
 import { Icon } from './Icon.jsx';
+import { infoAttrs } from '../lib/info.js';
 
 export function Button(props) {
   const iconOnly = () => !!props.icon && !props.children;
   return (
     <button type="button" class="btn t-button"
             classList={{ on: props.on, icon: iconOnly() }}
-            title={props.title}
+            title={props.info ? undefined : props.title}
             aria-label={props.ariaLabel ?? (iconOnly() ? props.title : undefined)}
             aria-pressed={props.on === undefined ? undefined : !!props.on}
             disabled={!!props.disabled}
+            {...infoAttrs(props.info)}
             onClick={props.onClick}>
       <Show when={props.icon}><Icon name={props.icon} /></Show>
       {props.children}

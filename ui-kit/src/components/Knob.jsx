@@ -23,9 +23,14 @@
  * next one, and each is drawn as a tick outside the rail: an `ink-dim` mark,
  * as the system's inactive marks are, and `uv` while the value is on it.
  * Typed text, the reset and the arrows are untouched by them.
+ *
+ * `info` and `readoutInfo` are what the knob and its readout do, for the hint
+ * bar: the knob's covers its label too, and the readout's stays while a value
+ * is being typed into it.
  */
 import { For, Show, createSignal } from 'solid-js';
 import { EditField } from './EditField.jsx';
+import { infoAttrs } from '../lib/info.js';
 import { startDrag } from '../lib/drag.js';
 import { dragValue, nextDetent } from '../lib/detents.js';
 
@@ -170,11 +175,11 @@ export function Knob(props) {
   };
 
   return (
-    <div class="knob-card">
+    <div class="knob-card" data-info={props.info}>
       <div class="knob-label t-label">{props.label}</div>
       <svg ref={el} class="knob" width={BOX} height={BOX} viewBox={`0 0 ${BOX} ${BOX}`}
            tabindex="0" role="slider" aria-label={props.label}
-           aria-valuetext={props.display ?? ''}
+           aria-valuetext={props.display ?? ''} aria-description={props.info}
            aria-valuenow={norm()} aria-valuemin="0" aria-valuemax="1"
            onPointerDown={onPointerDown} onDblClick={onDblClick} onKeyDown={onKeyDown}>
         {/* the well */}
@@ -209,14 +214,14 @@ export function Knob(props) {
         * conventions say ("click the readout to type"). */}
       <Show when={editing()} fallback={
         <div class="readout t-value" role="button" tabindex="-1"
-             aria-label={`${props.label ?? ''} value`}
+             aria-label={`${props.label ?? ''} value`} {...infoAttrs(props.readoutInfo)}
              onClick={() => setEditing(true)}>
           <span class="num">{split()[0]}</span>
           <Show when={split()[1]}><span class="unit">{split()[1]}</span></Show>
         </div>
       }>
         <EditField class="readout editing t-value" value={props.display ?? ''}
-                   ariaLabel={props.label}
+                   ariaLabel={props.label} info={props.readoutInfo}
                    onCommit={commitText} onClose={() => setEditing(false)} />
       </Show>
     </div>
