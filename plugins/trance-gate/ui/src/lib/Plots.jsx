@@ -161,7 +161,7 @@ export function Scope(props) {
         * alpha: a sustained input fills every column edge to edge, and at
         * full strength it is a slab with the gated trace fighting to be seen
         * through it. */}
-      <path d={band(props.scope, 0, 1, geom())} fill="var(--scope-dry)" opacity="0.5" />
+      <path d={band(props.scope, 0, 1, geom())} fill="var(--plot-dry)" opacity="0.5" />
       {/*
         * THE GATED TRACE IS THE SUBJECT, so it gets the arc halo -- the same
         * 3px falloff the knob's value arc uses, and for the same reason: `uv`

@@ -170,9 +170,11 @@ export default function StepGrid(props) {
                   height: `${Math.max(5, 100 * (drawn(i) ? (props.depths?.[i] ?? 1) : 1) * w(i))}%`
                 }}>
                   {/* THE PLAYHEAD ON A PAD THAT IS ALREADY LIT: darken the lit
-                    * part. onUv is the token for "what goes on top of a uv
-                    * fill"; at a quarter alpha it reads as a shadow crossing
-                    * the row. NOT uv-deep, which is never a fill. */}
+                    * part with --dip, the window ground at a quarter alpha,
+                    * which reads as a shadow crossing the row. NOT uv-deep,
+                    * which is never a fill, and not on-uv, a violet since
+                    * Ultraviolet 1.1, which would tint the pad rather than
+                    * shade it. */}
                   {props.moving && props.playhead === i && <div class="pad-dip" />}
                 </div>
               )}

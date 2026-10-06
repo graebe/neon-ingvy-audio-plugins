@@ -15,7 +15,7 @@
  *   .pad.on            the led glow, retyped inline
  *   .readout.editing   the focus ring, retyped at a different alpha
  *   Knob.jsx           the arc glow, at 0.75 against the system's 0.45
- *   .pad-dip           on-uv at a quarter alpha, as a bare rgba()
+ *   .pad-dip           the ground at a quarter alpha, as a bare rgba()
  *
  * Every one still looked right. The arc was the tell: nobody would notice 0.75
  * against 0.45 by eye, and nobody did.
