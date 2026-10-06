@@ -836,7 +836,9 @@ impl Chord {
     /// ```
     #[must_use]
     pub fn inversion(self) -> u8 {
-        let from_root = self.bass.value().wrapping_sub(self.root.value()) % 12;
+        // Upward from the root, 0 to 11. Subtracting the bytes would wrap a
+        // bass below the root's value to 256 minus the gap, not 12 minus it.
+        let from_root = (self.bass.value() + 12 - self.root.value()) % 12;
         for (index, offset) in self.intervals().iter().enumerate() {
             if offset.value() == from_root {
                 return index as u8;

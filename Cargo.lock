@@ -67,6 +67,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cd-core"
+version = "2026.10.6+1"
+dependencies = [
+ "ground-core",
+ "music-core",
+ "ni-testkit",
+ "proptest",
+ "rstest",
+ "wmidi",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -250,7 +262,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "music-core"
-version = "2026.10.6+1"
+version = "2026.10.6+2"
 dependencies = [
  "divan",
  "proptest",

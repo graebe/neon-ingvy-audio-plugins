@@ -1,0 +1,27 @@
+[package]
+name = "cd-core"
+version = "2026.10.6+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "NI Chord-Detector engine: what is sounding, and what it is called"
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# The theory: naming a voicing, keys, modes and roman numerals. No std needed:
+# the frequency methods are the only thing `std` adds, and nothing here asks.
+music-core = { path = "../../../shared/crates/music-core", default-features = false }
+# MIDI bytes to messages. Core-only without its `std` feature, as sc-core takes it.
+wmidi = { workspace = true }
+# The host's clock for one block, and the length of a bar -- the ground's
+# reading of a transport, so the history's bar lines fall where its rings do.
+ground-core = { path = "../../../ground/crates/ground-core" }
+
+[dev-dependencies]
+# The counting allocator tests/no_alloc.rs installs.
+ni-testkit = { path = "../../../shared/crates/ni-testkit" }
+rstest = { workspace = true }
+proptest = { workspace = true, features = ["std"] }

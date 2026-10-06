@@ -5,6 +5,7 @@
   "spectrogram": "v2026.10.06.5",
   "listen-in": "v2026.10.06.5",
   "side-chain": "v2026.10.06.5",
+  "chord-detector": "v2026.10.06.1",
 
   "__audio-bus": "The house transport, not a plugin -- it has crates and no config.h, no plists and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
   "audio-bus": "v2026.10.06.5",
@@ -13,5 +14,5 @@
   "ground": "v2026.10.06.5",
 
   "__music-core": "Music theory: pitches, chords, keys and modes. Not a plugin either -- a shared crate that NI Chord-Detector names chords with and that neo-riemann (codeberg.org/graebe/neo-riemann) builds on through a git dependency on this repository. Versioned here because a crate another repository pins by revision should say which release it is.",
-  "music-core": "v2026.10.06.1"
+  "music-core": "v2026.10.06.2"
 }

@@ -301,3 +301,24 @@ fn voicing_a_slash_chord_sounds_its_bass() {
         }
     }
 }
+
+#[test]
+fn every_chord_tone_in_the_bass_is_its_own_inversion_from_any_root() {
+    // Pinned after `inversion` read A minor 7 over E as root position: the
+    // bass's distance from the root was taken by subtracting bytes, which
+    // wraps whenever the bass's pitch class is numerically below the root's.
+    for root in Pitch::ALL {
+        for quality in ChordQuality::ALL {
+            let chord = Chord::from_quality(root, quality);
+            for (index, offset) in chord.intervals().iter().enumerate() {
+                let bass = root.transpose(Interval::new(offset.value() as i16));
+                assert_eq!(
+                    chord.over(bass).inversion() as usize,
+                    index,
+                    "{chord} over {bass}"
+                );
+            }
+        }
+    }
+    assert_eq!(Chord::min7(Pitch::A).over(Pitch::E).inversion(), 2);
+}

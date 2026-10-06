@@ -50,6 +50,9 @@ members = [
     "engines/side-chain/crates/sc-core",      # the DSP
     "engines/side-chain/crates/sc-capi",      # the C ABI -> the plugin
     "engines/side-chain/crates/sc-move",      # the Schwung vtable -> the module
+    # NI Chord-Detector: one core, one wrapper. No Move target yet (the
+    # owner's call, 2026-10-06); the core keeps nothing that would stop one.
+    "engines/chord-detector/crates/cd-core",  # what is sounding, and its name
     # The animated ground's beat clock. Like audio-bus it is not a
     # product: it ships inside EVERY editor, because the design system gives
     # every window the same ground. It depends on no product in return.
