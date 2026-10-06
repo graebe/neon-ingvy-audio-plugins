@@ -2,7 +2,7 @@
   "id": "ni-side-chain",
   "name": "NI Side-Chain",
   "abbrev": "SC",
-  "version": "2026.10.06.3",
+  "version": "2026.10.06.4",
   "description": "Sidechain ducker triggered by the transport or a MIDI note",
   "author": "Neon Ingvy",
   "license": "MIT",
