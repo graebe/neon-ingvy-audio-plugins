@@ -553,26 +553,17 @@ pub unsafe extern "C" fn tg_shell_import(
     err: *mut c_char,
     err_len: c_int,
 ) -> c_int {
-    let say = |e: SlotFileError| {
-        if !err.is_null() && err_len > 0 {
-            let out = std::slice::from_raw_parts_mut(err as *mut u8, err_len as usize);
-            let mut b = tg_core::fmt::Buf::new(out);
-            let _ = e.describe(&mut b);
-            b.finish();
-        }
-        0
-    };
     let Some(sh) = sh.as_ref() else { return 0 };
     /* Bytes that are not text are not a slot file either. */
     let text = if text.is_null() { "" } else {
         match CStr::from_ptr(text).to_str() {
             Ok(t) => t,
-            Err(_) => return say(SlotFileError::NotAFile),
+            Err(_) => return refuse(err, err_len, |w| SlotFileError::NotAFile.describe(w)),
         }
     };
     let file = match SlotFile::parse(text) {
         Ok(file) => file,
-        Err(e) => return say(e),
+        Err(e) => return refuse(err, err_len, |w| e.describe(w)),
     };
     let kind = file.kind();
     sh.bridge.post(Command::Paste { slot: slot_index(slot), clip: sh.shared(Clip::File(file)) });
@@ -583,6 +574,26 @@ pub unsafe extern "C" fn tg_shell_import(
  * negative one included -- the engine reads as its current slot. */
 fn slot_index(slot: c_int) -> usize {
     usize::try_from(slot).unwrap_or(usize::MAX)
+}
+
+/// Why a text was refused, in words, into `err` (which may be null),
+/// NUL-terminated and cut to fit -- and 0, which is how every refusal is
+/// answered.
+///
+/// # Safety
+/// `err` is null or holds `err_len` bytes.
+unsafe fn refuse(
+    err: *mut c_char,
+    err_len: c_int,
+    why: impl FnOnce(&mut dyn core::fmt::Write) -> core::fmt::Result,
+) -> c_int {
+    if !err.is_null() && err_len > 0 {
+        let out = std::slice::from_raw_parts_mut(err as *mut u8, err_len as usize);
+        let mut b = tg_core::fmt::Buf::new(out);
+        let _ = why(&mut b);
+        b.finish();
+    }
+    0
 }
 
 
@@ -733,26 +744,17 @@ pub unsafe extern "C" fn tg_shell_paste(
     err: *mut c_char,
     err_len: c_int,
 ) -> c_int {
-    let say = |r: Refused| {
-        if !err.is_null() && err_len > 0 {
-            let out = std::slice::from_raw_parts_mut(err as *mut u8, err_len as usize);
-            let mut b = tg_core::fmt::Buf::new(out);
-            let _ = r.describe(&mut b);
-            b.finish();
-        }
-        0
-    };
     let Some(sh) = sh.as_ref() else { return 0 };
     /* Bytes that are not text hold no slot either. */
     let text = if text.is_null() || len <= 0 { "" } else {
         match core::str::from_utf8(std::slice::from_raw_parts(text as *const u8, len as usize)) {
             Ok(t) => t,
-            Err(_) => return say(Refused::NotTranceGate),
+            Err(_) => return refuse(err, err_len, |w| Refused::NotTranceGate.describe(w)),
         }
     };
     let clip = match Clip::parse(text) {
         Ok(clip) => clip,
-        Err(r) => return say(r),
+        Err(r) => return refuse(err, err_len, |w| r.describe(w)),
     };
     let holds = clip.holds();
     sh.bridge.post(Command::Paste { slot: slot_index(slot), clip: sh.shared(clip) });
