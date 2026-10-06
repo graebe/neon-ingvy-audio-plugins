@@ -20,17 +20,17 @@
 			<key>type</key>
 			<string>aumf</string>
 			<key>version</key>
-			<integer>132778545</integer>
+			<integer>132778546</integer>
 		</dict>
 	</array>
 	<key>AudioUnit Version</key>
-	<string>132778545</string>
+	<string>132778546</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
 	<string>NISideChain</string>
 	<key>CFBundleGetInfoString</key>
-	<string>NI Side-Chain v2026.10.06.1 Copyright 2026 Torben Gräber</string>
+	<string>NI Side-Chain v2026.10.06.2 Copyright 2026 Torben Gräber</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.graebe.audiounit.NISideChain</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -44,7 +44,7 @@
 	<key>CFBundleSignature</key>
 	<string>Ipef</string>
 	<key>CFBundleVersion</key>
-	<string>2026.10.49</string>
+	<string>2026.10.50</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>

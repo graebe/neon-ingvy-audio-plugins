@@ -1,6 +1,6 @@
 # What's new
 
-## v2026.10.06.1
+## v2026.10.06.2
 
 ### Before you update
 
