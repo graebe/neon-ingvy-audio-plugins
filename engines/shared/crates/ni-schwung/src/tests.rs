@@ -36,11 +36,32 @@ impl Module for Probe {
     }
 }
 
+/// A second module type, for what two types in one binary must not share.
+struct Other;
+
+impl Module for Other {
+    const CHAIN_PARAMS: &'static str = "[]";
+    fn new(_: f64) -> Self {
+        Other
+    }
+    fn process_i16(&mut self, _: &mut [i16], _: usize, _: Option<&Transport>) {}
+    fn set_param(&mut self, _: &str, _: &str) {}
+    fn get_param(&self, _: &str, _: &mut [u8]) -> c_int {
+        -1
+    }
+}
+
 extern "C" fn bpm() -> f32 {
     96.0
 }
 extern "C" fn beats() -> f64 {
     3.5
+}
+extern "C" fn other_bpm() -> f32 {
+    150.0
+}
+extern "C" fn other_beats() -> f64 {
+    9.0
 }
 
 #[test]
@@ -53,7 +74,7 @@ fn the_host_table_matches_the_c_layout() {
     }
 }
 
-/* ONE TEST drives the vtable: HOST and FX_API are process-wide, as on the
+/* ONE TEST drives the vtable: the host's clock is process-wide, as on the
  * device, and cargo runs tests in threads. */
 #[test]
 fn the_vtable_end_to_end() {
@@ -86,10 +107,12 @@ fn the_vtable_end_to_end() {
     assert_eq!(unsafe { &*(inst as *const Probe) }.key, "rate=1/8");
 
     let msg = [0xB0u8, 123, 0];
-    on_midi::<Probe>(inst, msg.as_ptr(), 3, 0);
-    on_midi::<Probe>(inst, msg.as_ptr(), 9, 0);
-    on_midi::<Probe>(inst, std::ptr::null(), 3, 0);
-    on_midi::<Probe>(std::ptr::null_mut(), msg.as_ptr(), 3, 0);
+    unsafe {
+        on_midi::<Probe>(inst, msg.as_ptr(), 3, 0);
+        on_midi::<Probe>(inst, msg.as_ptr(), 9, 0);
+        on_midi::<Probe>(inst, std::ptr::null(), 3, 0);
+        on_midi::<Probe>(std::ptr::null_mut(), msg.as_ptr(), 3, 0);
+    }
     assert_eq!(unsafe { &*(inst as *const Probe) }.midi, msg);
 
     /* Null instances and buffers are refused, not dereferenced. */
@@ -99,9 +122,44 @@ fn the_vtable_end_to_end() {
     (api.destroy_instance.unwrap())(inst);
     (api.destroy_instance.unwrap())(std::ptr::null_mut());
 
+    /* ONE TABLE PER MODULE TYPE, and nothing writes it: another type's init
+     * leaves the first type's table building the first type. The `static mut`
+     * this replaced was one table for every type, rewritten by each init, so
+     * `api` would have been building Others from here on. */
+    let other = unsafe { &*init::<Other>(std::ptr::null()) };
+    let o = (other.create_instance.unwrap())(std::ptr::null(), std::ptr::null());
+    assert_eq!(get(other, o, "chain_params", 64), (2, Other::CHAIN_PARAMS.to_string()));
+    (other.destroy_instance.unwrap())(o);
+    let p = (api.create_instance.unwrap())(std::ptr::null(), std::ptr::null());
+    assert_eq!(get(api, p, "chain_params", 64), (13, Probe::CHAIN_PARAMS.to_string()));
+    (api.destroy_instance.unwrap())(p);
+
     /* A host with a running clock. */
     let host: &'static HostApiV1 = Box::leak(Box::new(HostApiV1::with_clock(bpm, beats)));
-    init::<Probe>(host);
+    unsafe { init::<Probe>(host) };
     let t = read_transport();
     assert!(t.running && t.beats == 3.5 && t.bpm == 96.0);
+
+    /*
+     * THE CLOCK IS COPIED AT INIT, NOT READ THROUGH THE TABLE LATER. A chain
+     * frees its table when it goes; here the table is rewritten in place and
+     * then freed, and the transport is the clock init saw, both times. Read
+     * through a kept pointer it would be the new clock, and then freed memory.
+     */
+    let mut table = Box::new(HostApiV1::with_clock(bpm, beats));
+    unsafe { init::<Probe>(&*table) };
+    *table = HostApiV1::with_clock(other_bpm, other_beats);
+    let t = read_transport();
+    assert!(t.running && t.beats == 3.5 && t.bpm == 96.0, "{t:?}");
+    drop(table);
+    let t = read_transport();
+    assert!(t.running && t.beats == 3.5 && t.bpm == 96.0, "{t:?}");
+
+    /* The latest init wins, a host without a clock included. */
+    unsafe { init::<Probe>(&HostApiV1::with_clock(other_bpm, other_beats)) };
+    let t = read_transport();
+    assert!(t.running && t.beats == 9.0 && t.bpm == 150.0, "{t:?}");
+    unsafe { init::<Probe>(std::ptr::null()) };
+    let t = read_transport();
+    assert!(!t.running && t.beats == -1.0 && t.bpm == 120.0, "{t:?}");
 }

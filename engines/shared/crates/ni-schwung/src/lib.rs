@@ -9,14 +9,21 @@ product's `*-move` crate is its `chain_params` and a thin impl.
 # Threading
 
 Every entry point runs on the SPI audio callback (SCHED_FIFO 70, core 3,
-~2370us per 128-frame block). No control thread: no allocation outside
-`create_instance`, no I/O, no locks, and no logging, including the host's.
+~2370us per 128-frame block): no allocation outside `create_instance`, no
+I/O, no locks, and no logging, including the host's. The one exception is
+the host's, not ours: a chain loads a module into a bus position on its
+worker thread, so init and `create_instance` may also run there, at the same
+time as a slot's on the callback. Nothing they share is written without
+synchronisation.
 */
 
 use ni_dsp::ffi::cstr;
 use ni_dsp::Transport;
 use std::ffi::{c_char, c_int, c_void};
+use std::marker::PhantomData;
 use std::os::raw::c_uchar;
+use std::ptr::null_mut;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 /// The Move's mailbox rate. The engines take a rate only so a DAW can differ.
 pub const SAMPLE_RATE: f64 = 44100.0;
@@ -104,34 +111,68 @@ pub struct AudioFxApiV2 {
 }
 
 /*
- * The host hands its table to `move_audio_fx_init_v2` once and every later
- * call needs it. `static mut` is the shape the ABI forces; it is sound because
- * init runs once, before any instance exists, and every reader afterwards is
- * the same single audio thread. One module per .so, so one of each.
+ * THE HOST'S CLOCK, COPIED OUT OF ITS TABLE AT INIT. The table itself is not
+ * kept, for two reasons the Move's own source gives.
+ *
+ * ITS LIFETIME IS THE CALLER'S. A chain hands init `&inst->subplugin_host_api`,
+ * a member of the chain instance it frees when the chain goes (chain_host.c),
+ * so a pointer kept past init can outlive what it points at -- and the
+ * `static mut` this replaced kept the LAST caller's, whichever chain that was.
+ *
+ * INIT CAN RUN ON TWO THREADS AT ONCE. A slot loads on the SPI callback and a
+ * bus position on the chain's worker (chain_bus.c), so the same module in both
+ * is two inits racing, and a `static mut` both of them write is a data race.
+ *
+ * What a module needs from the table is two functions, and every table the
+ * Move builds carries the same two: the shim's `shim_get_bpm` and
+ * `shadow_transport_beat_position`, which live as long as the process. So
+ * init copies them into atomics, and the audio thread's cost is two loads.
+ * The latest init wins, as it always did; two racing can leave one's tempo
+ * beside the other's beat, which are the same shim's.
+ *
+ * ADDRESSES, NOT FUNCTION POINTERS, because std has no atomic function
+ * pointer: `as *mut ()` is how its documentation says to hold one, and
+ * transmuting back is sound because each slot only ever holds its own type, or
+ * null. RELAXED, because the address is all there is to publish -- of code
+ * the host mapped before it called init.
  */
-static mut HOST: *const HostApiV1 = std::ptr::null();
-static mut FX_API: AudioFxApiV2 = AudioFxApiV2 {
-    api_version: 2,
-    create_instance: None,
-    destroy_instance: None,
-    process_block: None,
-    set_param: None,
-    get_param: None,
-    on_midi: None,
-};
+static HOST_BPM: AtomicPtr<()> = AtomicPtr::new(null_mut());
+static HOST_BEATS: AtomicPtr<()> = AtomicPtr::new(null_mut());
+
+type GetBpm = extern "C" fn() -> f32;
+type GetBeatPosition = extern "C" fn() -> f64;
+
+/// Copy the clock out of `host`. No table, or a table without a clock, is a
+/// host that tells us nothing: a stopped transport at 120.
+fn keep_clock(host: Option<&HostApiV1>) {
+    let bpm = host.and_then(|h| h.get_bpm).map_or(null_mut(), |f| f as *mut ());
+    let beats = host.and_then(|h| h.get_beat_position).map_or(null_mut(), |f| f as *mut ());
+    HOST_BPM.store(bpm, Ordering::Relaxed);
+    HOST_BEATS.store(beats, Ordering::Relaxed);
+}
+
+fn host_bpm() -> Option<GetBpm> {
+    let p = HOST_BPM.load(Ordering::Relaxed);
+    /* SAFETY: `keep_clock` stores a GetBpm here, or null, and nothing else. */
+    (!p.is_null()).then(|| unsafe { std::mem::transmute::<*mut (), GetBpm>(p) })
+}
+
+fn host_beat_position() -> Option<GetBeatPosition> {
+    let p = HOST_BEATS.load(Ordering::Relaxed);
+    /* SAFETY: `keep_clock` stores a GetBeatPosition here, or null. */
+    (!p.is_null()).then(|| unsafe { std::mem::transmute::<*mut (), GetBeatPosition>(p) })
+}
 
 /// The host's tempo and beat position. A negative beat is a stopped transport.
 pub fn read_transport() -> Transport {
     let mut t = Transport { bpm: 120.0, running: false, beats: -1.0 };
-    let host = unsafe { HOST };
-    let Some(h) = (unsafe { host.as_ref() }) else { return t };
-    if let Some(f) = h.get_bpm {
+    if let Some(f) = host_bpm() {
         let b = f();
         if b > 1.0 && b < 1000.0 {
             t.bpm = b;
         }
     }
-    if let Some(f) = h.get_beat_position {
+    if let Some(f) = host_beat_position() {
         let beats = f();
         if beats >= 0.0 {
             t.running = true;
@@ -139,6 +180,27 @@ pub fn read_transport() -> Transport {
         }
     }
     t
+}
+
+/// The table init returns for module type `M`. A CONSTANT: init hands out a
+/// read-only table and writes nothing a second thread's init could race, and
+/// two module types in one binary each keep their own.
+///
+/// The host only reads it: chain_host.c, chain_bus.c, shadow_chain_mgmt.c and
+/// schwung_shim.c call through it and keep the pointer. The `*mut` in init's
+/// signature is the C header's spelling, not a promise to write.
+struct Vtable<M>(PhantomData<M>);
+
+impl<M: Module> Vtable<M> {
+    const API: AudioFxApiV2 = AudioFxApiV2 {
+        api_version: 2,
+        create_instance: Some(create::<M>),
+        destroy_instance: Some(destroy::<M>),
+        process_block: Some(process_block::<M>),
+        set_param: Some(set_param::<M>),
+        get_param: Some(get_param::<M>),
+        on_midi: None,
+    };
 }
 
 extern "C" fn create<M: Module>(_dir: *const c_char, _cfg: *const c_char) -> *mut c_void {
@@ -210,25 +272,23 @@ extern "C" fn get_param<M: Module>(
 /// `on_midi` is NOT set in the table: an older host built against a six-field
 /// struct reads it off the end of its own idea of the table. The host dlsym's
 /// the free symbol `move_audio_fx_on_midi` instead.
-pub fn init<M: Module>(host: *const HostApiV1) -> *mut AudioFxApiV2 {
-    unsafe {
-        HOST = host;
-        FX_API = AudioFxApiV2 {
-            api_version: 2,
-            create_instance: Some(create::<M>),
-            destroy_instance: Some(destroy::<M>),
-            process_block: Some(process_block::<M>),
-            set_param: Some(set_param::<M>),
-            get_param: Some(get_param::<M>),
-            on_midi: None,
-        };
-        std::ptr::addr_of_mut!(FX_API)
-    }
+///
+/// # Safety
+/// `host` is null or a host table that is valid for the call -- which is as
+/// long as this reads it.
+pub unsafe fn init<M: Module>(host: *const HostApiV1) -> *mut AudioFxApiV2 {
+    keep_clock(unsafe { host.as_ref() });
+    let api: &'static AudioFxApiV2 = &Vtable::<M>::API;
+    (api as *const AudioFxApiV2).cast_mut()
 }
 
 /// `move_audio_fx_on_midi`'s body; see [`export_audio_fx!`]. `source` is
 /// ignored: a note is a note whether it came from the pads, USB or the host.
-pub fn on_midi<M: Module>(inst: *mut c_void, msg: *const c_uchar, len: c_int, _source: c_int) {
+///
+/// # Safety
+/// `inst` is null or an instance this module's table created and has not
+/// destroyed, and `msg` is null or readable for `len` bytes.
+pub unsafe fn on_midi<M: Module>(inst: *mut c_void, msg: *const c_uchar, len: c_int, _source: c_int) {
     let Some(inst) = (unsafe { (inst as *mut M).as_mut() }) else { return };
     if msg.is_null() || len <= 0 || len > 8 {
         return;
@@ -238,24 +298,33 @@ pub fn on_midi<M: Module>(inst: *mut c_void, msg: *const c_uchar, len: c_int, _s
 }
 
 /// Export the two symbols the chain host looks up, for module type `$m`.
+///
+/// They are the C host's entry points, so the contract on their pointers is
+/// the C header's and their caller keeps it, as with any C function: the
+/// `unsafe` inside each is that contract, taken on the host's word. Clippy's
+/// rule for a public function that dereferences a pointer argument is for
+/// functions Rust code calls, so it is waived here, by name and with that
+/// reason; the module crates' tests do call them, on the same terms.
 #[macro_export]
 macro_rules! export_audio_fx {
     ($m:ty) => {
         #[no_mangle]
+        #[allow(clippy::not_unsafe_ptr_arg_deref, reason = "a C entry point: the C header is its contract")]
         pub extern "C" fn move_audio_fx_init_v2(
             host: *const $crate::HostApiV1,
         ) -> *mut $crate::AudioFxApiV2 {
-            $crate::init::<$m>(host)
+            unsafe { $crate::init::<$m>(host) }
         }
 
         #[no_mangle]
+        #[allow(clippy::not_unsafe_ptr_arg_deref, reason = "a C entry point: the C header is its contract")]
         pub extern "C" fn move_audio_fx_on_midi(
             inst: *mut ::std::ffi::c_void,
             msg: *const ::std::os::raw::c_uchar,
             len: ::std::ffi::c_int,
             source: ::std::ffi::c_int,
         ) {
-            $crate::on_midi::<$m>(inst, msg, len, source)
+            unsafe { $crate::on_midi::<$m>(inst, msg, len, source) }
         }
     };
 }
