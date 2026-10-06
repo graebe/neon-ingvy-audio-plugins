@@ -27,6 +27,7 @@ no build wrote. What they return is applied by [`Instance::load`],
 The state module says which thread reads what.
 */
 
+pub mod edit;
 pub mod envelope;
 pub use ni_dsp::fmt;
 pub mod mask;
