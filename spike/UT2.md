@@ -72,7 +72,10 @@ check:
   sounds (Rate 1/8 on slot 1, for example), and the rhythm changes to that
   slot's pattern.
 - The automation lane is still attached to Amount and moves it during
-  playback.
+  playback. If it drives a neighbouring parameter instead, Live keys VST3
+  automation by list position rather than by ID. iPlug2 lists Bypass first
+  and JUCE lists it last, so every lane would be off by one. Note which
+  parameter it drives.
 - **The null test.** Play bars 1 to 4 with the reference track's Utility set
   to invert phase, both tracks at unity. The sum must be silent, or very
   nearly. The spike's tests find the two builds' outputs identical to the
