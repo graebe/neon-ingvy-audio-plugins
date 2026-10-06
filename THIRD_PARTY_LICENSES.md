@@ -77,18 +77,20 @@ inside its stylesheet (`web/assets/style.css`) and the site as an emitted asset.
 It keeps its name: the OFL's Reserved Font Name clause does not apply, JetBrains
 Mono declaring none.
 
-| Bundle | Path inside it |
-|---|---|
-| `NITranceGate.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
-| `NISpectrogram.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
-| `NIListenIn.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
-| `NISideChain.{vst3,clap,component}` | `Contents/Resources/web/fonts/` |
-| the documentation site | `/neon-ingvy-audio-plugins/fonts/` |
+| Bundle | The font | `OFL.txt` |
+|---|---|---|
+| `NITranceGate.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
+| `NISpectrogram.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
+| `NIListenIn.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
+| `NISideChain.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
+| the documentation site | emitted by the build as a hashed asset under `/neon-ingvy-audio-plugins/_astro/` | `/neon-ingvy-audio-plugins/fonts/OFL.txt` |
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits beside
-it in `ui-kit/src/fonts` and in each editor's `web/fonts/` directory — copied
-into every plugin bundle with the editor, and into the site's `/fonts/` by
-`site/scripts/stage-assets.mjs`, which fails the build if it is not there. The OFL is permissive and GPL-compatible.
+the kit's font files in `ui-kit/src/fonts`, and wherever the font ships: each
+editor copies it from its own `ui/public/fonts/` into `web/fonts/`, so it is in
+every plugin bundle with the editor, and `site/scripts/stage-assets.mjs` copies
+the kit's into the site's `/fonts/`, failing the build if it is not there. The
+OFL is permissive and GPL-compatible.
 
 ## The engines — this repository's own
 
@@ -212,5 +214,6 @@ line as listed:
 
 ### SIL Open Font License 1.1 (JetBrains Mono)
 
-The full text is `OFL.txt`, beside the font files in every `fonts/` directory
-that carries them.
+The full text is `OFL.txt`, in `ui-kit/src/fonts` beside the font files and at
+the path the table under *Bundled font* gives for each artefact that ships the
+font.

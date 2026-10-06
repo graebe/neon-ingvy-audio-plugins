@@ -22,11 +22,16 @@ import { url } from '../lib/paths.js';
     <table>
       <tbody>
         <tr><td>this repository</td><td><strong>MIT</strong></td></tr>
-        <tr><td><a href="https://github.com/iPlug2/iPlug2">iPlug2</a></td><td><strong>zlib</strong>, with WDL/NanoVG/NanoSVG (Zlib) and MetalNanoVG/RTAudio (MIT)</td></tr>
+        <tr><td><a href="https://github.com/iPlug2/iPlug2">iPlug2</a></td><td><strong>zlib</strong>, with the parts of WDL it compiles in (zlib); its IGraphics and standalone-app libraries are linked into nothing that ships</td></tr>
         <tr><td>VST3 SDK</td><td><strong>MIT</strong>, © 2026 Steinberg Media Technologies GmbH</td></tr>
-        <tr><td>CLAP</td><td><strong>MIT</strong></td></tr>
-        <tr><td>the engines</td><td><strong>MIT</strong>, and they have <em>no external crates at all</em> — the FFT is ninety lines rather than a dependency</td></tr>
-        <tr><td>JetBrains Mono</td><td><strong>SIL OFL 1.1</strong> — <a href={url('fonts/OFL.txt')}>OFL.txt</a>, served beside the font as the licence asks</td></tr>
+        <tr><td>CLAP, clap-helpers</td><td><strong>MIT</strong>, © 2021 Alexandre Bique</td></tr>
+        <tr><td>JSON for Modern C++</td><td><strong>MIT</strong>, © Niels Lohmann, compiled in by iPlug2's WebView editor; its Hedley header is <strong>CC0-1.0</strong></td></tr>
+        <tr><td>the Rust standard library</td><td><strong>MIT OR Apache-2.0</strong>, in every plugin and every module, distributed here under MIT</td></tr>
+        <tr><td>solid-js</td><td><strong>MIT</strong>, bundled into every editor</td></tr>
+        <tr><td>vite's module-preload polyfill</td><td><strong>MIT</strong>, a few hundred bytes at the top of every editor's script; the rest of vite is a build tool and ships in nothing</td></tr>
+        <tr><td>JetBrains Mono</td><td><strong>SIL OFL 1.1</strong> — this site serves <a href={url('fonts/OFL.txt')}>OFL.txt</a> with the font, and each plugin bundle carries it in <code>Contents/Resources/web/fonts/</code></td></tr>
+        <tr><td>the engines</td><td><strong>MIT</strong>, and they have <em>no external crates at all</em> — the FFT is one file in spectro-core rather than a dependency</td></tr>
+        <tr><td>NI Side-Chain's MIDI trigger</td><td>ported from <a href="https://github.com/charlesvestal/schwung-ducker">schwung-ducker</a>, <strong>MIT</strong>, © charlesvestal — a port is a derivative work, so its notice travels too</td></tr>
       </tbody>
     </table>
 
