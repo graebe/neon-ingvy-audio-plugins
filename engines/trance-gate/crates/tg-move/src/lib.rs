@@ -49,6 +49,7 @@ mod tests {
     use ni_schwung::{AudioFxApiV2, HostApiV1};
     use std::ffi::CString;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Once;
 
     /* The host's clock. A RUNNING transport, or the gate is open and the
      * comparison proves nothing. */
@@ -58,6 +59,23 @@ mod tests {
     }
     extern "C" fn beats() -> f64 {
         f64::from_bits(BEATS.load(Ordering::SeqCst))
+    }
+
+    /* The vtable, initialised once: it is process-wide, as on the device,
+     * and cargo runs these tests in threads -- two inits racing on the
+     * shell's statics would be a data race. The host is leaked on purpose:
+     * the shell keeps the pointer for the process's life, exactly as it keeps
+     * the real host's. */
+    fn api() -> &'static AudioFxApiV2 {
+        static INIT: Once = Once::new();
+        static mut API: *const AudioFxApiV2 = std::ptr::null();
+        unsafe {
+            INIT.call_once(|| {
+                let host: &'static HostApiV1 = Box::leak(Box::new(HostApiV1::with_clock(bpm, beats)));
+                API = move_audio_fx_init_v2(host);
+            });
+            &*API
+        }
     }
 
     fn render(api: &AudioFxApiV2, panic: bool) -> Vec<i16> {
@@ -105,8 +123,7 @@ mod tests {
      */
     #[test]
     fn the_vtable_reads_and_writes_the_current_slot() {
-        let host: &'static HostApiV1 = Box::leak(Box::new(HostApiV1::with_clock(bpm, beats)));
-        let api = unsafe { &*move_audio_fx_init_v2(host) };
+        let api = api();
         let inst = (api.create_instance.unwrap())(std::ptr::null(), std::ptr::null());
         let set = |k: &str, v: &str| {
             let (k, v) = (CString::new(k).unwrap(), CString::new(v).unwrap());
@@ -152,10 +169,7 @@ mod tests {
 
     #[test]
     fn a_host_panic_is_accepted_and_changes_nothing() {
-        /* Leaked on purpose: the shell keeps the pointer for the process's
-         * life, exactly as it keeps the real host's. */
-        let host: &'static HostApiV1 = Box::leak(Box::new(HostApiV1::with_clock(bpm, beats)));
-        let api = unsafe { &*move_audio_fx_init_v2(host) };
+        let api = api();
         let with = render(api, true);
         assert!(with.iter().any(|&v| v < 5000), "the gate never gated -- no transport?");
         assert_eq!(with, render(api, false));

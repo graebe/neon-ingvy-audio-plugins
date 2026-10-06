@@ -471,12 +471,20 @@ impl TgShell {
             Some(view) => (view.0.get_param("state", &mut state), view.0.playhead(), view.2),
             None => (r.frame.text[STATE].copy_to(&mut state), r.frame.rt, r.frame.recalls),
         });
-        let text = core::str::from_utf8(&state[..len.max(0) as usize]).ok()?;
+        let text = state_text(&state, len)?;
         let mut next = tg_core::Instance::new(rt.sample_rate);
         next.mirror(text, &rt);
         self.mirror.plan(values, recalls).apply(&mut next, values);
         Some(next)
     }
+}
+
+/* A negative length is the reader's "nothing", never an empty patch: mirrored,
+ * "" leaves a default Instance, and a save or an export would write that over
+ * the person's patch. Nothing to read is nothing to write. */
+fn state_text(state: &[u8], len: c_int) -> Option<&str> {
+    let len = usize::try_from(len).ok()?;
+    core::str::from_utf8(state.get(..len)?).ok()
 }
 
 /// The current slot as a slot file (`all` 0), or every slot as a bank (`all`
@@ -1186,6 +1194,14 @@ mod tests {
         push_block(sh, &host(0.0, 3.0, 1.0));
         assert_eq!(unsafe { tg_shell_cycle_ms(sh) }, 500.0);
         unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn a_state_that_could_not_be_read_is_no_patch_at_all() {
+        let state = b"{\"sv\":7}";
+        assert_eq!(state_text(state, -1), None, "not an empty patch to save");
+        assert_eq!(state_text(state, state.len() as c_int + 1), None);
+        assert_eq!(state_text(state, state.len() as c_int), Some("{\"sv\":7}"));
     }
 
     #[test]
