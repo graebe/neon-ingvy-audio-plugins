@@ -110,9 +110,10 @@ function(ni_add_rust_staticlib name)
     else()
         set(archive lib${ARG_LIB}.a)
         if (NOT APPLE)
+            # -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc; the driver adds -lc.
             set(THREADS_PREFER_PTHREAD_FLAG ON)
             find_package(Threads REQUIRED)
-            set(system_libs Threads::Threads ${CMAKE_DL_LIBS} m)
+            set(system_libs gcc_s util rt Threads::Threads m ${CMAKE_DL_LIBS})
         endif()
     endif()
 
