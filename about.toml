@@ -32,3 +32,41 @@ ignore-dev-dependencies = true
 # This repository's own crates are `publish = false` (the root Cargo.toml).
 # They are listed by hand in the notices' "engines" section, not here.
 private = { ignore = true }
+
+# THE TWO MICROSOFT CRATES SHIP THEIR MIT TEXT AS `license-mit`, A NAME
+# cargo-about NEVER READS. Its walk over a crate keeps only files that the
+# `ignore` crate's file types recognise, and their `license` type matches
+# `license` and `license.*` but not `license-mit` (their `license-apache-2.0`
+# is read only because its `.0` passes for a man page). Without these entries
+# the notice falls back to the bare MIT template, which drops the one line the
+# MIT licence asks to be kept: "Copyright (c) Microsoft Corporation."
+#
+# Each file is named with its SHA-256, so a release that changes the text
+# stops scripts/gen-rust-notices.sh (--fail) instead of being taken unread.
+# The expression is the crates' own, and both files are named, so the notice
+# follows the preference order in `accepted` above.
+[windows-sys.clarify]
+license = "MIT OR Apache-2.0"
+
+[[windows-sys.clarify.files]]
+path = "license-mit"
+license = "MIT"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[[windows-sys.clarify.files]]
+path = "license-apache-2.0"
+license = "Apache-2.0"
+checksum = "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+
+[windows-link.clarify]
+license = "MIT OR Apache-2.0"
+
+[[windows-link.clarify.files]]
+path = "license-mit"
+license = "MIT"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[[windows-link.clarify.files]]
+path = "license-apache-2.0"
+license = "Apache-2.0"
+checksum = "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"

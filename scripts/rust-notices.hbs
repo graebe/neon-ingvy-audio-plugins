@@ -13,6 +13,14 @@ from `Cargo.lock`; scripts/gen-rust-notices.sh rewrites it.
 {{#each licenses~}}
 ### {{name}}: {{#each used_by}}`{{crate.name}}` {{crate.version}}{{#unless @last}}, {{/unless}}{{/each}}
 
+{{#unless source_path~}}
+{{#each used_by~}}
+`{{crate.name}}` {{crate.version}} ships no licence file. Its manifest declares {{../id}}{{#if crate.authors}} and names {{#each crate.authors}}`{{{this}}}`{{#unless @last}}, {{/unless}}{{/each}} as its author{{/if}}{{#if crate.repository}}; its source is at <{{{crate.repository}}}>{{/if}}.
+{{/each~}}
+The text below is therefore the licence as SPDX publishes it, whose copyright
+line is a placeholder for the authorship stated above.
+
+{{/unless~}}
 ```text
 {{{text}}}
 ```
