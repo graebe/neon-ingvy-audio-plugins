@@ -212,6 +212,17 @@ fn the_frame_republishes_on_its_cadence() {
 }
 
 #[test]
+fn the_cadence_is_a_hundred_publishes_a_second_at_any_rate() {
+    assert_eq!(publish_every(48000.0), 480);
+    assert_eq!(publish_every(96000.0), 960);
+    /* A host that has not named its rate yet, or named nonsense. */
+    for unknown in [0.0, -1.0, f64::NAN] {
+        assert_eq!(publish_every(unknown), 441, "{unknown}");
+    }
+    assert_eq!(publish_every(50.0), 1, "never a period of no frames");
+}
+
+#[test]
 fn a_touched_block_publishes_off_cadence() {
     let b = tally();
     unsafe {

@@ -24,7 +24,7 @@ two have to be kept pointing at the same one. See `Mirror`.
 */
 
 use crate::TgCore;
-use shell_core::{Bridge, Model, Text};
+use shell_core::{publish_every, Bridge, Model, Text};
 use std::ffi::{c_char, c_int, CStr};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use tg_core::params::Param;
@@ -42,10 +42,6 @@ const TEXT_MAX: usize = 8192;
 /* A pasted state and its key, with room. */
 const MAX_COMMAND: usize = 2 * TEXT_MAX;
 const QUEUE_BYTES: usize = 64 * 1024;
-/* Republished a hundred times a second without an edit: faster than any idle
- * timer reads it. The state blob is formatted only when it moved -- see
- * `publish`. */
-const PUBLISHES_PER_SECOND: f64 = 100.0;
 
 const CMD_PARAMS: u8 = b'P';
 const CMD_SAMPLE_RATE: u8 = b'S';
@@ -295,11 +291,6 @@ pub(crate) fn slot_moved(pushed: &mut i32, slot: i32) -> bool {
     let moved = *pushed >= 0 && slot != *pushed;
     *pushed = slot;
     moved
-}
-
-fn publish_every(sample_rate: f64) -> u32 {
-    let sr = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
-    (sr / PUBLISHES_PER_SECOND).max(1.0) as u32
 }
 
 /*

@@ -27,7 +27,7 @@ mod handoff;
 mod queue;
 mod snapshot;
 
-pub use bridge::{Bridge, Frame, Model, Read};
+pub use bridge::{publish_every, Bridge, Frame, Model, Read, PUBLISHES_PER_SECOND};
 pub use handoff::Handoff;
 pub use queue::Queue;
 pub use snapshot::TripleBuffer;

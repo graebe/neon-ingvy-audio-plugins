@@ -14,7 +14,7 @@ from the latest frame, which is at most one publish interval old.
 */
 
 use crate::ScCore;
-use shell_core::{Bridge, Model, Text};
+use shell_core::{publish_every, Bridge, Model, Text};
 use std::ffi::{c_char, c_int, CStr};
 use sc_core::Instance;
 
@@ -24,8 +24,6 @@ const KEYS: [&str; 3] = ["ui", "params", "stage_ms"];
 const TEXT_MAX: usize = 4096;
 const MAX_COMMAND: usize = 64;
 const QUEUE_BYTES: usize = 4096;
-/* Faster than any idle timer reads it; the editor interpolates between. */
-const PUBLISHES_PER_SECOND: f64 = 100.0;
 
 const CMD_SAMPLE_RATE: u8 = b'S';
 
@@ -55,11 +53,6 @@ impl Model for ScCore {
 }
 
 pub struct ScShell(Bridge<ScCore>);
-
-fn publish_every(sample_rate: f64) -> u32 {
-    let sr = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
-    (sr / PUBLISHES_PER_SECOND).max(1.0) as u32
-}
 
 /// Allocates; the main thread only.
 #[no_mangle]

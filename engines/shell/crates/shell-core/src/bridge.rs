@@ -74,6 +74,19 @@ pub struct Read<'a, M: Model> {
     pub pending: Option<&'a M>,
 }
 
+/// How often a bridge republishes when nothing was posted: faster than any
+/// idle timer reads it, so a readout that moves on its own -- a playhead -- is
+/// never more than a tick behind, and an editor interpolates between frames.
+pub const PUBLISHES_PER_SECOND: f64 = 100.0;
+
+/// [`PUBLISHES_PER_SECOND`] as a period in frames at `sample_rate`, which is
+/// what [`Bridge::new`] and [`Bridge::set_publish_every`] take. A rate that is
+/// not positive is a host that has not said yet, and 44.1 kHz stands in.
+pub fn publish_every(sample_rate: f64) -> u32 {
+    let sr = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
+    (sr / PUBLISHES_PER_SECOND).max(1.0) as u32
+}
+
 const SEQ: usize = 8;
 
 struct Audio<M> {
