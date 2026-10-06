@@ -60,6 +60,10 @@ bool Handle(Port& port, int tag, std::string_view arg)
       return true;
     }
 
+    case kGroundRun:
+      port.PortGroundRunning(arg == "1");
+      return true;
+
     case kHeight:
     {
       int h = 0;

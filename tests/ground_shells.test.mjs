@@ -14,6 +14,8 @@
  *   - ProcessBlock ticks the clock exactly once, from the host's transport
  *     (position, tempo, meter, playing), before the product's audio runs --
  *     and hands it no audio: the ground keeps time, it does not listen
+ *   - SendGround sends a frame tick every idle tick while, and only while,
+ *     the editor says its ground is moving, and a closed editor gets none
  *   - OnReset re-rates and resets it; the constructor makes it, the
  *     destructor frees it
  *   - OnUIOpen switches it on; CloseWindow switches it off and chains to the
@@ -87,6 +89,15 @@ test('the ground is fed no audio, in the shell or anywhere', () => {
   assert.doesNotMatch(SRC + HDR, /\bgnd_push\b/, 'gnd_push is gone: the ground keeps time');
   assert.doesNotMatch(at('ProcessBlock').slice(0, at('ProcessBlock').indexOf('ProcessAudio(')),
     /\binputs\b/, 'nothing before ProcessAudio reads the input');
+});
+
+test('while the editor reports its ground moving, every idle tick sends it a frame tick', () => {
+  const b = at('SendGround');
+  assert.match(b, /if\s*\(\s*mGroundRunning\s*\)\s*SendText\(\s*editor::kGroundTick/,
+    'the frame tick is gated on the editor\'s report and nothing else');
+  assert.match(HDR, /PortGroundRunning\(bool running\) override\s*\{\s*mGroundRunning = running;/);
+  assert.match(at('CloseWindow'), /mGroundRunning\s*=\s*false/, 'a closed editor gets no ticks');
+  assert.match(at('OnUIOpen'), /mGroundRunning\s*=\s*false/, 'a new page starts at rest');
 });
 
 test('a reset re-rates the clock and makes the next block a fresh start', () => {

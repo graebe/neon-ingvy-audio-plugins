@@ -25,9 +25,15 @@
  * and the keyboard: T starts and stops it. A stopped transport restarts from
  * bar 1, as a host's play button does from the start marker.
  *
+ * AND THE GROUND'S FRAME CLOCK, as the plugin's idle tick sends it: while the
+ * editor reports its ground moving (SHELL_MSG.groundRun "1"), an empty
+ * groundTick every 20 ms, until it reports "0". Those two messages are the
+ * plugin's business, so they are answered here and never reach the mock's
+ * record of what the editor sent.
+ *
  * For a test, `window.__transport` is the same thing as an object: `play()`,
  * `stop()`, and `playing`, `bpm`, `rings` (each sent ring's strength, oldest
- * first) to read.
+ * first) and `groundRunning` to read.
  *
  * WHY THE RULE IS RESTATED HERE, when it lives in ground-core: this file's
  * whole job is to stand in for the plugin, and the plugin's copy is on the
@@ -98,6 +104,20 @@ const transport = {
   },
 };
 window.__transport = transport;
+
+/* The plugin's half of the ground's frame clock. */
+transport.groundRunning = false;
+const toMock = window.IPlugSendMsg;
+window.IPlugSendMsg = (m) => {
+  if (m?.msg === 'SAMFUI' && m.msgTag === SHELL_MSG.groundRun) {
+    transport.groundRunning = atob(m.data ?? '') === '1';
+    return;
+  }
+  toMock?.(m);
+};
+setInterval(() => {
+  if (transport.groundRunning) globalThis.SAMFD?.(SHELL_MSG.groundTick, 0, '');
+}, TICK_MS);
 
 addEventListener('keydown', (e) => {
   if (e.repeat || e.key.toLowerCase() !== 't') return;

@@ -42,13 +42,18 @@ struct Recorder final : Port
     log.push_back("resize " + std::to_string(h));
   }
   void PortReady() override { log.push_back("product"); }
+  void PortGroundRunning(bool running) override
+  {
+    log.push_back(running ? "ground on" : "ground off");
+  }
 };
 
 } // namespace
 
 TEST_CASE("the shell's tags sit past every product's")
 {
-  for (int t : {int(kGround), int(kDefaults), int(kReady), int(kSetText), int(kHeight)})
+  for (int t : {int(kGround), int(kDefaults), int(kGroundTick), int(kReady), int(kSetText),
+                int(kHeight), int(kGroundRun)})
     CHECK(t >= 112);
   CHECK(kMaxJSString == 65536);
 }
@@ -120,6 +125,17 @@ TEST_CASE("the editor's height is honoured when plausible and new")
     CHECK(Handle(r, kHeight, bad));
   CHECK(r.height == 700);
   CHECK(r.log.size() == 1);
+}
+
+TEST_CASE("the editor says when its ground moves; anything but \"1\" is at rest")
+{
+  Recorder r;
+  CHECK(Handle(r, kGroundRun, "1"));
+  CHECK(Handle(r, kGroundRun, "0"));
+  CHECK(Handle(r, kGroundRun, ""));
+  CHECK(Handle(r, kGroundRun, "yes"));
+  CHECK(r.log == std::vector<std::string>{"ground on", "ground off", "ground off", "ground off"});
+  CHECK(r.sent.empty());
 }
 
 TEST_CASE("a product's own tag is not the shell's")

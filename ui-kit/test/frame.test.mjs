@@ -119,3 +119,27 @@ test('the handshake sends ready once, after mount, and hands kicks to the ground
   assert.deepEqual(other, [[64, 'x']]);
   assert.equal(parseGround(''), null);
 });
+
+test('the plugin\'s frame ticks reach the ground, and its running state reaches the plugin', async () => {
+  const sent = [];
+  globalThis.IPlugSendMsg = (m) => sent.push(m);
+  let ticks = 0;
+  let report = null;
+  const other = [];
+  const dispose = createRoot((d) => {
+    const bridge = useEditorBridge({ onMessage: (tag, text) => other.push(tag) });
+    bridge.setGround({ trigger: () => {}, tick: () => ticks++, onRunning: (fn) => { report = fn; } });
+    return d;
+  });
+  await flush();
+  globalThis.SAMFD(SHELL_MSG.groundTick, 0, '');
+  globalThis.SAMFD(SHELL_MSG.groundTick, 0, '');
+  assert.equal(ticks, 2);
+  assert.deepEqual(other, [], 'a tick is the ground\'s, not the editor\'s');
+
+  report(true);
+  report(false);
+  const run = sent.filter((m) => m.msgTag === SHELL_MSG.groundRun).map((m) => atob(m.data));
+  assert.deepEqual(run, ['1', '0']);
+  dispose();
+});

@@ -26,12 +26,18 @@
  * Math.random, as the design's reference does, and the CSS one is the design's
  * fixed PNG. Only the canvas is ever on screen while it works, so no seam shows.)
  *
- * ITS CLOCK IS A TIMER, NOT requestAnimationFrame, AND IT DOES NOT PAUSE WHILE
- * THE DOCUMENT IS HIDDEN. In a real host WebKit reports a plugin editor as
- * hidden and all but stops its animation frames, so a field clocked by them --
- * or one that paused while hidden, as this one once did -- never moved in
- * Live. lib/ticker.js says what the clock is and why. Work stops when the
- * field rings out, and the plugin stops ringing it when its window closes.
+ * ITS CLOCK IS THE PLUGIN, NOT requestAnimationFrame, AND IT DOES NOT PAUSE
+ * WHILE THE DOCUMENT IS HIDDEN. In a real host WebKit treats a plugin editor
+ * as a hidden page: about one animation frame in three seconds, and the
+ * page's own timers throttled to a few hertz -- while the plugin's messages
+ * arrive at once. A field clocked by frames, or one that paused while hidden,
+ * as this one once did, never moved in Live. So the field reports when it
+ * starts and stops moving (`onRunning`), the plugin sends a frame tick on
+ * every idle tick in between, about fifty a second (ni/Editor.h, kGroundTick),
+ * and each `tick()` steps the simulation by the time that really passed and
+ * draws. A page timer is only the fallback for ticks that stop coming -- a
+ * harness, a plugin too old to send them. Work stops when the field rings
+ * out, and the plugin stops ringing it when its window closes.
  * prefers-reduced-motion is followed live rather than read once.
  *
  * WHAT IS NOT HERE, AND WHY. The reference ships a second half, a BassDetector
@@ -50,7 +56,6 @@
 
 import { readRgb, cssHex } from './ramp.js';
 import { viewScale, backingRatio } from './ground-geometry.js';
-import { createTicker } from './ticker.js';
 
 /*
  * THE DESIGN'S PARAMETER TABLE. Retuning any of these is a design-system change
@@ -111,6 +116,11 @@ const GRAIN_MAX_ALPHA = 52;   // of 255, i.e. ~20%
  * --bg-dot exactly; peaks then reach 100%. Any other value and a field at rest
  * would not match the static CSS ground. */
 const DOT_ALPHA = 0.77;
+
+/* With no frame tick from the plugin for this long, the field's own page
+ * timer steps it instead -- slowly, in a host's hidden page, but never not at
+ * all. */
+const FALLBACK_AFTER_MS = 100;
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const now = () => (globalThis.performance || Date).now();
@@ -184,8 +194,11 @@ export class Field {
     this.kicks = [];
     this.rects = [];
     this.enabled = true;
-    this.lastFrame = 0;
+    this.running = false;
+    this.fallback = 0;
     this.lastTick = 0;
+    /* When the last tick from outside arrived; see `tick`. */
+    this.lastOutside = -Infinity;
     this.acc = 0;
     this.t = 0;
     /* The level each dot was last drawn at; see `draw`. */
@@ -210,9 +223,12 @@ export class Field {
     this.dot = dotBase(colours.bg, colours.dot);
 
     this._tick = this._tick.bind(this);
-    /* The frame clock, at the design's frame rate, running only while there
-     * is something to move. */
-    this.clock = createTicker(this._tick, 1000 / o.fps);
+    /* Told true when the field starts moving and false when it stops: the
+     * plugin sends frame ticks in between. */
+    this.onRunning = typeof opts.onRunning === 'function' ? opts.onRunning : null;
+    this._fallbackTick = () => {
+      if (now() - this.lastOutside > FALLBACK_AFTER_MS) this._tick();
+    };
     this.resize();
   }
 
@@ -332,20 +348,34 @@ export class Field {
     this.u.fill(0);
     this.up.fill(0);
     this.kicks = [];
-    this.clock.stop();
+    this._stop();
     this.draw();
   }
 
-  /** Whether the frame clock is running: true from a trigger until rest. */
-  get running() {
-    return this.clock.running;
+  /**
+   * One frame, from outside: the plugin's frame tick. Steps the simulation by
+   * the time that really passed since the last frame and draws. Ignored at
+   * rest.
+   */
+  tick() {
+    this.lastOutside = now();
+    if (this.running) this._tick();
   }
 
   _start() {
-    if (!this.clock.running) {
-      this.lastTick = now();
-      this.clock.start();
-    }
+    if (this.running) return;
+    this.running = true;
+    this.lastTick = now();
+    this.fallback = globalThis.setInterval(this._fallbackTick, 1000 / this.o.fps);
+    this.onRunning?.(true);
+  }
+
+  _stop() {
+    if (!this.running) return;
+    this.running = false;
+    globalThis.clearInterval(this.fallback);
+    this.fallback = 0;
+    this.onRunning?.(false);
   }
 
   /* One explicit step of the damped wave equation, Neumann at walls and at the
@@ -422,22 +452,14 @@ export class Field {
     /* After a long stall, drop the backlog instead of racing to catch up --
      * which would show as the field suddenly running fast. */
     if (this.acc > o.dt) this.acc = 0;
-    /* At most one frame per frame period: the clock has two sources
-     * (lib/ticker.js), and between frames a tick only steps. */
-    let peak;
-    if (t - this.lastFrame >= 1000 / o.fps - 2) {
-      this.lastFrame = t;
-      peak = this.draw();
-    } else {
-      peak = this._peak();
-    }
+    const peak = this.draw();
     if (!this.kicks.length && peak <= o.rest) {
       /* Rung out. Back to EXACTLY zero -- not nearly zero -- so every dot is
        * back at its resting sprite, and the clock stops. */
       this.u.fill(0);
       this.up.fill(0);
       this.draw();
-      this.clock.stop();
+      this._stop();
     }
   }
 
@@ -561,7 +583,7 @@ export class Field {
   }
 
   destroy() {
-    this.clock.destroy();
+    this._stop();
     this.kicks = [];
     this._mq?.removeEventListener?.('change', this._onReduced);
   }

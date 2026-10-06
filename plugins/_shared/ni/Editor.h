@@ -32,6 +32,12 @@ enum Tag : int
    * in parameter-index order -- what a reset sets. Sent with the state on
    * kReady and on open; an empty payload for a plugin with no parameters. */
   kDefaults = 113,
+  /* -> editor: the ground's frame clock -- an empty message on every idle
+   * tick (~50 Hz) while the editor reports its ground moving (kGroundRun).
+   * A host's WebKit shows the editor as a hidden page and throttles its
+   * timers to a few hertz, but delivers these at once, so the field steps on
+   * them (ui-kit/src/lib/field.js). */
+  kGroundTick = 114,
 
   /* <- editor: mounted and listening -- send the whole state. */
   kReady = 120,
@@ -40,6 +46,9 @@ enum Tag : int
   kSetText = 121,
   /* <- editor: the height it needs in viewport pixels, a whole number. */
   kHeight = 122,
+  /* <- editor: "1" while its ground's field is moving -- a ring in flight,
+   * Motion on -- and "0" once it is at rest or switched off. */
+  kGroundRun = 123,
 };
 
 /* The transport's cap on one message, raised from iPlug2's 8192. It
@@ -60,6 +69,8 @@ public:
   virtual void PortResize(int height) = 0;
   /* The product's own state, after the shell's. */
   virtual void PortReady() = 0;
+  /* Whether the editor's ground is moving, so wants kGroundTick. */
+  virtual void PortGroundRunning(bool running) = 0;
 
 protected:
   ~Port() = default;

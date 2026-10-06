@@ -10,8 +10,9 @@
  *   - with the transport playing, the ground moves over time;
  *   - with it stopped, the ground is still, and T starts it;
  *   - with Motion off, it is still whatever the transport does;
- *   - and it moves in a page that is hidden and never gets an animation
- *     frame, which is how WebKit shows a plugin editor in a real host.
+ *   - and it moves on the plugin's frame ticks in a page that is hidden,
+ *     gets no animation frame and has its timers throttled, which is how
+ *     WebKit shows a plugin editor in a real host.
  *
  * Under Playwright's paused clock, so "it did not move" is a statement about a
  * fixed interval of simulated time rather than about how long a test waited.
@@ -36,18 +37,27 @@ const rings = (page) => page.evaluate(() => window.__transport.rings.slice());
 
 /*
  * WHAT A HOST'S WEBVIEW DOES TO THE PAGE, installed before it loads: the
- * document reports hidden, and requestAnimationFrame never calls back. In
- * Live a plugin editor gets about one animation frame in three seconds and
- * document.hidden is true for as long as it is open; a ground clocked by
- * frames, or one that paused while hidden, never moved there.
+ * document reports hidden, requestAnimationFrame never calls back, and the
+ * page's own timers fire no more often than every 400 ms. In Live a plugin
+ * editor is hidden for as long as it is open, gets about one animation frame
+ * in three seconds and has its timers throttled to a few hertz -- while the
+ * plugin's messages arrive at once. A ground clocked by frames or timers, or
+ * one that paused while hidden, never moved there.
  */
 const asAHostShowsIt = (page) => page.addInitScript(() => {
-  window.__rafAsked = 0;
-  window.requestAnimationFrame = () => ++window.__rafAsked;
+  window.requestAnimationFrame = () => 0;
   window.cancelAnimationFrame = () => {};
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+  const throttle = (timer) => (fn, ms, ...rest) => timer(fn, Math.max(Number(ms) || 0, 400), ...rest);
+  window.setInterval = throttle(window.setInterval.bind(window));
+  window.setTimeout = throttle(window.setTimeout.bind(window));
 });
+
+/* What the plugin sends: one ring, and a frame tick every 20 ms -- from the
+ * test, as a plugin's come from outside the page. */
+const ring = (page, s) => page.evaluate((text) => globalThis.SAMFD(112, text.length, btoa(text)), s);
+const frameTick = (page) => page.evaluate(() => globalThis.SAMFD(114, 0, ''));
 
 for (const { plugin, W, H } of EDITORS) {
   test.describe(plugin, () => {
@@ -79,18 +89,46 @@ for (const { plugin, W, H } of EDITORS) {
       expect(await groundHash(page)).not.toBe(rest);
     });
 
-    test('it moves in a hidden page that never gets an animation frame', async ({ page, errors }) => {
-      /* Real time, not the paused clock: Playwright's fake clock brings its own
-       * requestAnimationFrame, and this is about the page having none. */
+    test('in a hidden, throttled page with no animation frames, the plugin\'s ticks move it', async ({ page, errors }) => {
       await asAHostShowsIt(page);
-      await page.goto(harnessUrl(plugin, '?bpm=120'));
+      await page.goto(harnessUrl(plugin, '?stopped'));
       expect(await page.evaluate(() => document.hidden)).toBe(true);
-      await expect.poll(() => rings(page)).not.toEqual([]);
-      /* Moving, not drawn once: two changes in a row. */
-      const first = await groundHash(page);
-      await expect.poll(() => groundHash(page)).not.toBe(first);
-      const second = await groundHash(page);
-      await expect.poll(() => groundHash(page)).not.toBe(second);
+      await page.waitForFunction(() => document.readyState === 'complete');
+      const rest = await groundHash(page);
+
+      await ring(page, '1.000');
+      /* The editor asks the plugin for frame ticks... */
+      await expect.poll(() => page.evaluate(() => window.__transport.groundRunning)).toBe(true);
+      /* Without them the field barely moves: its only other clock is the
+       * page's timer, which this page fires every 400 ms at best. */
+      let idle = await groundHash(page);
+      let idleChanges = 0;
+      for (let i = 0; i < 10; i++) {
+        await page.waitForTimeout(20);
+        const h = await groundHash(page);
+        if (h !== idle) idleChanges++;
+        idle = h;
+      }
+      expect(idleChanges).toBeLessThanOrEqual(2);
+      /* ... and each tick moves the field. A ring takes a few frames to swell
+       * into the dots' levels, so ten ticks first; then, over sixteen more,
+       * the picture changes from tick to tick, where a 400 ms timer could have
+       * stepped it once at most. */
+      for (let i = 0; i < 10; i++) {
+        await page.waitForTimeout(20);
+        await frameTick(page);
+      }
+      let last = await groundHash(page);
+      expect(last).not.toBe(rest);
+      let changes = 0;
+      for (let i = 0; i < 16; i++) {
+        await page.waitForTimeout(20);
+        await frameTick(page);
+        const h = await groundHash(page);
+        if (h !== last) changes++;
+        last = h;
+      }
+      expect(changes).toBeGreaterThanOrEqual(12);
       expect(errors).toEqual([]);
     });
 

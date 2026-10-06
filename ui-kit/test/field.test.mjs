@@ -119,12 +119,11 @@ function installDom({ reducedMotion = false, dpr = 1 } = {}) {
     (media[q] ||= target({ matches: q.includes('reduced-motion') ? reducedMotion : false }));
   globalThis.__media = media;
   globalThis.devicePixelRatio = dpr;
-  /* THE FRAME CLOCK IS A TIMER (lib/ticker.js), and here it is one that never
-   * calls back on its own: every test below steps the simulation itself, so a
-   * tick that fired by itself would make the number of steps depend on how
-   * busy the machine was. The callbacks are kept in `__intervals` for the one
-   * test that drives the clock by hand. There is no Worker in node, so the
-   * page timer is the whole clock here.
+  /* THE FRAME CLOCK IS THE PLUGIN'S TICKS, with a page timer as fallback, and
+   * here that timer never calls back on its own: every test below steps the
+   * simulation itself, so a tick that fired by itself would make the number of
+   * steps depend on how busy the machine was. The callbacks are kept in
+   * `__intervals` for the tests that drive the fallback by hand.
    *
    * requestAnimationFrame THROWS: a plugin host shows the editor as hidden and
    * all but stops animation frames, so the field must never depend on one. */
@@ -224,8 +223,8 @@ test('a kick raises the field and it rings out to exactly zero', async () => {
      * of wave is a dot drawn at the wrong level. */
     field._tick();
     assert.equal(field._peak(), 0, 'the field did not return to exactly zero');
-    assert.equal(field.running, false, 'the frame clock is still running at rest');
-    assert.equal(globalThis.__intervals.size, 0, 'and its timer is still set');
+    assert.equal(field.running, false, 'the field still counts as moving at rest');
+    assert.equal(globalThis.__intervals.size, 0, 'and its fallback timer is still set');
   } finally { teardown(); }
 });
 
@@ -521,23 +520,68 @@ test('fit() rebuilds only when the size or the scale actually changed', async ()
   } finally { teardown(); }
 });
 
-test('a trigger starts the frame clock, and its timer is what moves the field', async () => {
+test('the plugin\'s frame ticks move the field, and it says when it starts and stops', async () => {
   /* No animation frame anywhere: installDom's requestAnimationFrame throws. */
   const teardown = installDom();
   try {
     const { Field } = await loadField();
-    const field = new Field(stubCanvas(400, 300));
-    assert.equal(field.running, false, 'a field at rest has no clock running');
-    field.trigger(1);
-    assert.equal(field.running, true);
-    const [tick] = [...globalThis.__intervals.values()];
-    assert.ok(tick, 'the clock is a timer');
+    const said = [];
+    const field = new Field(stubCanvas(400, 300), { onRunning: (on) => said.push(on) });
+    field.tick();
+    assert.equal(field.t, 0, 'a tick at rest moves nothing');
+    assert.deepEqual(said, []);
 
-    /* A tenth of a second since the last tick: the timer's callback steps the
-     * simulation by it. */
+    field.trigger(1);
+    assert.deepEqual(said, [true], 'a ring starts it, and the plugin is told');
+    /* A tenth of a second since the last frame: one tick steps by it and
+     * draws. */
     field.lastTick -= 100;
-    tick();
+    field.tick();
     assert.ok(field.t > 0.09, `one tick after 100 ms stepped ${field.t} s`);
+
+    /* Rung out over ticks, it stops and says so. */
+    for (let i = 0; i < 2000 && field.running; i++) {
+      field.lastTick -= 50;
+      field.tick();
+    }
+    assert.equal(field.running, false);
+    assert.deepEqual(said, [true, false]);
+    assert.equal(globalThis.__intervals.size, 0, 'no fallback timer is left set');
+  } finally { teardown(); }
+});
+
+test('a page timer steps the field only when the plugin\'s ticks stop coming', async () => {
+  const teardown = installDom();
+  try {
+    const { Field } = await loadField();
+    const field = new Field(stubCanvas(400, 300));
+    field.trigger(1);
+    const [fallback] = [...globalThis.__intervals.values()];
+    assert.ok(fallback, 'a fallback timer is set while the field moves');
+
+    field.tick();
+    const t = field.t;
+    field.lastTick -= 50;
+    fallback();
+    assert.equal(field.t, t, 'with ticks arriving the timer leaves the field to them');
+
+    field.lastOutside -= 1000;
+    field.lastTick -= 50;
+    fallback();
+    assert.ok(field.t > t, 'with none for a while, the timer steps it');
+  } finally { teardown(); }
+});
+
+test('Motion off stops the field and tells the plugin it can stop ticking', async () => {
+  const teardown = installDom();
+  try {
+    const { Field } = await loadField();
+    const said = [];
+    const field = new Field(stubCanvas(400, 300), { onRunning: (on) => said.push(on) });
+    field.trigger(1);
+    field.setEnabled(false);
+    assert.deepEqual(said, [true, false]);
+    assert.equal(globalThis.__intervals.size, 0);
   } finally { teardown(); }
 });
 

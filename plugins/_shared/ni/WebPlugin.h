@@ -147,6 +147,7 @@ private:
   int PortHeight() const override { return GetEditorHeight(); }
   void PortResize(int height) override;
   void PortReady() override { OnEditorReady(); }
+  void PortGroundRunning(bool running) override { mGroundRunning = running; }
 
   std::atomic<bool> mEditorOpen{false};
 
@@ -158,6 +159,10 @@ private:
    */
   gnd_t* mGround = nullptr;
   uint32_t mGroundFires = 0;
+  /* The editor's ground is moving and wants a frame tick each idle tick
+   * (kGroundRun, kGroundTick). The main thread's alone; false whenever there
+   * is no editor. */
+  bool mGroundRunning = false;
 };
 
 } // namespace ni

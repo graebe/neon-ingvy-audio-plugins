@@ -89,9 +89,11 @@ tags are `64..111`; the shell's are the same in every plugin:
 |---|---|---|
 | 112 `ground` | → editor | `<strength>`, 1 on a downbeat and 0.4 on a beat, three decimals; one message per ring |
 | 113 `defaults` | → editor | `<d0>:<d1>:…:<dN-1>`, every parameter's normalised default in index order |
+| 114 `groundTick` | → editor | none: the ground's frame clock, every idle tick while the editor reports it moving |
 | 120 `ready` | ← editor | none: mounted, send the whole state |
 | 121 `setText` | ← editor | `<paramIdx>:<typed text>` |
 | 122 `height` | ← editor | the height it needs, in viewport pixels |
+| 123 `groundRun` | ← editor | `1` while the ground's field is moving, `0` once at rest or switched off |
 
 Each product's own tags are listed with its editor: the Trance Gate's — and why
 its pattern travels as a state blob rather than as parameters — in

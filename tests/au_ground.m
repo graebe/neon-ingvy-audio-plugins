@@ -38,7 +38,10 @@
  *     others are the beat strength (0.400)
  *   - the ground's canvas then changes at least every other 50 ms sample:
  *     it animates in the editor as a host shows it, which WebKit reports as
- *     hidden, with requestAnimationFrame all but stopped
+ *     hidden, with requestAnimationFrame all but stopped and page timers
+ *     throttled -- because the plugin sends a frame tick (114) every idle
+ *     tick while the editor reports its ground moving, and that is asserted
+ *     too
  *   - with the transport stopped, no further ring
  *
  * NOTHING HERE IS TIMED ON THE WALL CLOCK. The render stops after each block
@@ -65,9 +68,10 @@
 #define BLOCK  512
 #define BPM    120.0
 
-/* The editor protocol's ground and ready tags (ni/Editor.h; editor_tags holds
- * the editors' copies to the C++). */
+/* The editor protocol's ground, frame-tick and ready tags (ni/Editor.h;
+ * editor_tags holds the editors' copies to the C++). */
 #define TAG_GROUND 112
+#define TAG_GROUND_TICK 114
 #define TAG_READY  120
 
 static AudioUnit gAu;
@@ -391,6 +395,9 @@ int main(int argc, char **argv)
              "    h = Math.imul(h ^ (d[i] ^ (d[i + 1] << 8) ^ (d[i + 2] << 16)), 16777619);"
              "  return h >>> 0; })()";
         id hidden = Eval(web, @"document.hidden", 5.0);
+        NSString *tickCount = [NSString stringWithFormat:
+            @"window.__msgs.filter((m) => m[0] === %d).length", TAG_GROUND_TICK];
+        const int ticksBefore = [Eval(web, tickCount, 5.0) intValue];
         id last = Eval(web, hash, 5.0);
         int samples = 0, changes = 0;
         const double sampleEnd = Now() + 1.0;
@@ -401,6 +408,7 @@ int main(int argc, char **argv)
             if (h && last && ![h isEqual:last]) changes++;
             last = h;
         }
+        const int ticks = [Eval(web, tickCount, 5.0) intValue] - ticksBefore;
 
         /* STOPPED: the song position holds and the rings stop. */
         Eval(web, @"window.__msgs.length = 0; true", 5.0);
@@ -435,6 +443,8 @@ int main(int argc, char **argv)
                  changes, samples, [hidden boolValue] ? "true" : "false");
         ok(samples >= 5 && changes * 2 >= samples, "the ground animates in the hidden editor",
            detail);
+        snprintf(detail, sizeof detail, "%d in about a second", ticks);
+        ok(ticks >= 15, "the plugin sends its frame ticks while it moves", detail);
 
         const NSUInteger after = [stopped isKindOfClass:[NSArray class]] ? stopped.count : 99;
         snprintf(detail, sizeof detail, "%lu rings", (unsigned long) after);

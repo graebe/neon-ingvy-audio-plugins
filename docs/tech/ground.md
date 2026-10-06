@@ -105,7 +105,6 @@ cannot override that.
 | `engines/ground` | the beat clock, in Rust, on the audio thread |
 | `plugins/_shared/ni/WebPlugin.cpp` | feeds it the host's transport once a block, and sends each ring to the editor |
 | `ui-kit/src/lib/field.js` | the wave field — a port of the design system's own reference implementation |
-| `ui-kit/src/lib/ticker.js` | its frame clock, which keeps running in a hidden plugin page |
 | `ui-kit/src/components/Ground.jsx` | the canvas, its sizing and the panel measurement |
 | `ui-kit/src/lib/motion.js` | the Motion switch's remembered state |
 | `ui-kit/harness/beat.js` | a playing transport for the editors' review harnesses |
@@ -122,16 +121,19 @@ contract, including why it is a count and not a flag, and
 `engines/ground/crates/ground-core/src/beat.rs` the rule, down to how a block
 tells a loop from rounding.
 
-**The field runs on a timer, never on animation frames, and does not pause when
-the page says it is hidden.** In a real host WebKit reports a plugin editor as
-hidden for as long as it is open: `document.hidden` is true, the page gets
-about one animation frame in three seconds, and its own timers are throttled to
-a few hertz. A field clocked by animation frames — or one that paused while
-hidden, as this one once did — never moved in Live. So the frame clock
-(`ui-kit/src/lib/ticker.js`) is a page interval together with a dedicated
-worker's, which WebKit does not throttle: in a real AU editor that runs the
-field at about 28 frames a second, against the design's 30. Work stops when the
-field rings out, and the plugin stops ringing it when the window closes.
+**The plugin is the field's clock — never animation frames, and it does not
+pause when the page says it is hidden.** In a real host WebKit treats a plugin
+editor as a hidden page for as long as it is open: `document.hidden` is true,
+the page gets about one animation frame in three seconds, and its own timers
+are throttled to a few hertz — while the plugin's messages arrive at once. A
+field clocked by animation frames, or one that paused while hidden, as this one
+once did, never moved in Live. So the editor tells the plugin when its field
+starts and stops moving (tag 123, `groundRun`), and in between the plugin sends
+an empty frame tick on every idle tick, about fifty a second (tag 114,
+`groundTick`). Each tick steps the simulation by the time that really passed
+and draws once. A page timer steps it only if the ticks stop coming, and in a
+host's hidden page that is slow by design. Work stops when the field rings out,
+and the plugin stops ringing it, and ticking it, when the window closes.
 
 The physics is the damped 2D wave equation on a 6 px grid, one Ricker wavelet per
 ring, reflecting at every panel edge. The parameters — wave speed, damping,

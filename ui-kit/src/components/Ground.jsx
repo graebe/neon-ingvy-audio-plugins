@@ -37,7 +37,7 @@
  * resize, which is how a devicePixelRatio or zoom change arrives. All of it is
  * coalesced into one re-measure, on a timer rather than an animation frame: a
  * plugin host shows this page as hidden, and WebKit all but stops a hidden
- * page's animation frames (lib/ticker.js).
+ * page's animation frames (lib/field.js says more).
  *
  * WHAT IT DOES NOT DO: idle. There is no animation loop running when nothing has
  * happened -- `Field` stops its own clock once the field is at rest, and at rest
@@ -71,6 +71,9 @@ export function Ground(props) {
   let dprQuery = null;
   let pending = 0;
   let rects = null;
+  /* Who is told when the field starts and stops moving: the bridge, which
+   * asks the plugin for frame ticks in between. */
+  let reportRunning = null;
 
   /*
    * Measure the boxes RELATIVE TO THE CANVAS AND IN ITS LAYOUT PX. Both rects
@@ -153,7 +156,7 @@ export function Ground(props) {
      * catches a stylesheet bug long before a plugin gets here.
      */
     try {
-      field = new Field(canvas);
+      field = new Field(canvas, { onRunning: (on) => reportRunning?.(on) });
       /* The field's own constructor sizes itself and paints the ground at rest,
        * so there is a correct picture before any of the below runs. */
       measure();
@@ -208,6 +211,10 @@ export function Ground(props) {
        * beat while the host plays -- and the editor hands its strength
        * straight through. */
       trigger: (strength) => field?.trigger(strength),
+      /* The plugin's frame tick: the field's clock while it moves. */
+      tick: () => field?.tick(),
+      /* `fn(running)` when the field starts and stops moving. */
+      onRunning: (fn) => { reportRunning = fn; },
     });
   });
 
@@ -232,6 +239,7 @@ export function Ground(props) {
     if (pending) globalThis.clearTimeout(pending);
     pending = 0;
     field?.destroy();
+    reportRunning = null;
     field = null;
   });
 

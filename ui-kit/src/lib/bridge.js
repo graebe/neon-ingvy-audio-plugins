@@ -38,11 +38,22 @@ export function useEditorBridge(opts = {}) {
         if (s !== null) ground?.trigger(s);
         return;
       }
+      if (tag === SHELL_MSG.groundTick) {
+        ground?.tick?.();
+        return;
+      }
       opts.onMessage?.(tag, text);
     }),
     ...Object.entries(opts.bytes ?? {}).map(([tag, fn]) => onBytes(Number(tag), fn)),
   ];
   onMount(() => sendMessage(SHELL_MSG.ready));
   onCleanup(() => offs.forEach((off) => off()));
-  return { setGround: (handle) => { ground = handle; } };
+  return {
+    setGround: (handle) => {
+      ground = handle;
+      /* The field says when it moves; the plugin sends frame ticks while it
+       * does. */
+      handle?.onRunning?.((on) => sendMessage(SHELL_MSG.groundRun, on ? '1' : '0'));
+    },
+  };
 }

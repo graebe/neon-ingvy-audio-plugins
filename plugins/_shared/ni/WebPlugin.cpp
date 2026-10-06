@@ -75,6 +75,7 @@ void WebPlugin::OnUIOpen()
 {
   iplug::Plugin::OnUIOpen();
   mEditorOpen.store(true, std::memory_order_relaxed);
+  mGroundRunning = false;
   gnd_set_active(mGround, 1);
   /* Usually too early to be heard -- the module script has not run -- which
    * is what kReady is for. It covers a page that is already live. */
@@ -86,6 +87,7 @@ void WebPlugin::OnUIOpen()
 void WebPlugin::CloseWindow()
 {
   mEditorOpen.store(false, std::memory_order_relaxed);
+  mGroundRunning = false;
   gnd_set_active(mGround, 0);
   iplug::Plugin::CloseWindow();
 }
@@ -153,14 +155,20 @@ void WebPlugin::Send(int tag, const char* data, int size)
 }
 
 /* One message per ring, and only when there was one. The count is compared
- * with != so that its wrap is a non-event (ground.h). */
+ * with != so that its wrap is a non-event (ground.h). Then, while the editor's
+ * ground is moving, its frame tick: a host's WebKit treats the editor as a
+ * hidden page and throttles its timers to a few hertz, but these arrive at
+ * once, so they are the field's clock (Editor.h, kGroundTick). */
 void WebPlugin::SendGround()
 {
   const uint32_t fires = gnd_fires(mGround);
-  if (fires == mGroundFires)
-    return;
-  mGroundFires = fires;
-  SendText(editor::kGround, editor::EncodeGround(gnd_strength(mGround)));
+  if (fires != mGroundFires)
+  {
+    mGroundFires = fires;
+    SendText(editor::kGround, editor::EncodeGround(gnd_strength(mGround)));
+  }
+  if (mGroundRunning)
+    SendText(editor::kGroundTick, {});
 }
 
 double WebPlugin::PortDefault(int idx) const
