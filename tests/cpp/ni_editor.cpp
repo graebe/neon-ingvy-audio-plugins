@@ -149,13 +149,17 @@ TEST_CASE("a product's own tag is not the shell's")
 }
 
 /*
- * A STATE LOAD ON THE HOST'S THREAD. iPlug2 reports each parameter the load set
- * from whatever thread the host loaded on, where the WebView must not be
- * touched; that thread only marks the editor stale, and the main thread's next
- * idle tick sends what it missed -- once, however many parameters moved, and
- * without the defaults or the product's state, which a load does not change.
+ * THE STALE LATCH, AND ONLY THE LATCH. Marks from another thread send nothing;
+ * the next flush sends every value and every display string once, however
+ * many marks came before it, and without the defaults or the product's state;
+ * a flush with no mark since sends nothing.
+ *
+ * That ni::WebPlugin marks rather than sends when a host loads state off the
+ * main thread, and flushes on its idle tick, needs the shell, a format and a
+ * WebView, none of which this links: tests/editor_host.mm (CheckReload) loads
+ * each plugin's state on a thread of its own, in each format, and checks that.
  */
-TEST_CASE("a load off the main thread reaches the editor once, on the next flush")
+TEST_CASE("the stale latch: marks from any thread become one flush of the values")
 {
   Recorder r;
   Stale stale;

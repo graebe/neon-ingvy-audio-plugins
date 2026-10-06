@@ -84,16 +84,27 @@ opened and closed through the format's own calls (VST3 `attached`/`removed`,
 the AU's view factory and `removeFromSuperview`, CLAP
 `set_parent`/`hide`/`destroy`). The page is then asked what it received: a
 `ready` answered and a ring on each beat of the transport, for every editor;
-for the Spectrogram, column batches carrying the sine and the columns that
-arrived on the visible canvas; for the Trance Gate and the Side-Chain, a
-playhead that moves with the transport; for the Listen-In, the bus's state and
-name, and a fresh bus's name field empty rather than `(null)`. Each check
-waits for its condition rather than a fixed time, up to a minute, so a busy
-machine is slower to pass, never failed. It needs a logged-in session; the
-window may sit behind others, and
-the editors have to survive WebKit calling the page hidden -- no animation
-frames, throttled timers (`editor_timing` is the rule that keeps them
-independent of both).
+for the Spectrogram, column batches carrying the sine, the fortieth within ten
+seconds of the first, and the columns that arrived on the visible canvas; for
+the Trance Gate and the Side-Chain, a playhead that moves with the transport,
+its third position within five seconds of its first; for the Listen-In, the
+bus's state and name, and a fresh bus's name field empty rather than `(null)`.
+
+With the editor open, the plugin's own state is then saved and loaded back
+through the format's calls (VST3 `getState`/`setState`/`setComponentState`, the
+AU's `ClassInfo`, CLAP `state`) on a thread that is not the main one, as an AU
+host may and a careless VST3 or CLAP host can; iPlug2 reports the load from
+that thread. WKWebView's `evaluateJavaScript:` is swizzled for the whole run,
+so a call from any thread but the main one is counted and dropped: there must
+be none, and every value and display string must reach the page afterwards,
+from the shell's next idle tick.
+
+Each check waits for its condition rather than a fixed time, up to a minute,
+so a busy machine is slower to pass; only the two rates above are held to a
+clock, each at least ten times what an idle machine needs. It needs a
+logged-in session; the window may sit behind others, and the editors have to
+survive WebKit calling the page hidden — no animation frames, throttled timers
+(`editor_timing` is the rule that keeps them independent of both).
 
 **`au_stress_<Plugin>`** is `auval -stress`'s state path, for every plugin:
 a render thread, two threads getting and setting `ClassInfo` (the plugin's

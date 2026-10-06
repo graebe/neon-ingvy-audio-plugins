@@ -21,24 +21,31 @@
  *   every editor
  *   - the page says `ready` again and the plugin answers it with the defaults:
  *     the shell knows an editor is open;
+ *   - the plugin's own state, saved and loaded back through the format's calls
+ *     on a thread that is not the main one, never reaches the WebView from
+ *     that thread, and every value and display string reaches the page after;
  *   - the ground rings on the beat: the shell's beat clock is active and
  *     its messages are sent;
  *
  *   the Spectrogram
  *   - the session and the axis answer the ready too;
  *   - column batches arrive whose bytes are not all zero -- a fresh instance's
- *     receiver is fed and drained, and the real encoder's payloads cross;
+ *     receiver is fed and drained, and the real encoder's payloads cross --
+ *     the fortieth within ten seconds of the first;
  *   - the editor's own decoder and canvas put the columns that arrived on
  *     the visible canvas;
  *
  *   the Trance Gate and the Side-Chain
  *   - the playhead (the pattern's line; the shaper's sweep) moves with the
- *     transport;
+ *     transport: three positions, the third within five seconds of the first;
  *
  *   the Listen-In
  *   - the bus's state and its name answer the ready, and a fresh instance's
  *     name field is empty -- not "(null)", which is what an empty payload
  *     once reached the page as.
+ *
+ * And over the whole run, editor closed or open: nothing calls the WebView's
+ * evaluateJavaScript: from a thread that is not the main one.
  *
  * WHY. The e2e suite drives the editors against a mock host, which cannot
  * notice when the real plugin-to-editor path stops delivering: the mock sends
@@ -54,9 +61,11 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 #import <AudioUnit/AUCocoaUIView.h>
+#import <objc/runtime.h>
 
 #include "au_bundle.h"
 
+#include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/base/ipluginbase.h"
 #include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
@@ -76,6 +85,7 @@
 #include <cstring>
 #include <functional>
 #include <string>
+#include <thread>
 #include <vector>
 
 static constexpr double kRate = 48000.0;
@@ -124,10 +134,67 @@ struct Format
   /* The editor into `parent`, and out again. The main thread. */
   virtual bool Open(NSView* parent) = 0;
   virtual void Close() = 0;
+  /* The plugin's own state, saved and loaded straight back through the
+   * format's calls: a preset recall that changes nothing. Both on the calling
+   * thread, which is the point -- CheckReload calls it from one that is not
+   * the main thread. */
+  virtual bool Reload() = 0;
   virtual void Unload() = 0;
 };
 
 using namespace Steinberg;
+
+/* The smallest IBStream a host could hand over: bytes and a position. */
+struct Stream : IBStream
+{
+  std::vector<char> bytes;
+  int64 pos = 0;
+
+  tresult PLUGIN_API queryInterface(const TUID, void** obj) override
+  {
+    *obj = nullptr;
+    return kNoInterface;
+  }
+  uint32 PLUGIN_API addRef() override { return 1; }
+  uint32 PLUGIN_API release() override { return 1; }
+
+  tresult PLUGIN_API read(void* buffer, int32 n, int32* got) override
+  {
+    const int32 k = int32(std::clamp<int64>(int64(bytes.size()) - pos, 0, n));
+    if (k > 0)
+      memcpy(buffer, bytes.data() + pos, size_t(k));
+    pos += k;
+    if (got)
+      *got = k;
+    return kResultOk;
+  }
+  tresult PLUGIN_API write(void* buffer, int32 n, int32* put) override
+  {
+    if (size_t(pos + n) > bytes.size())
+      bytes.resize(size_t(pos + n));
+    memcpy(bytes.data() + pos, buffer, size_t(n));
+    pos += n;
+    if (put)
+      *put = n;
+    return kResultOk;
+  }
+  tresult PLUGIN_API seek(int64 to, int32 mode, int64* at) override
+  {
+    const int64 base = mode == kIBSeekSet ? 0 : mode == kIBSeekCur ? pos : int64(bytes.size());
+    if (base + to < 0 || base + to > int64(bytes.size()))
+      return kResultFalse;
+    pos = base + to;
+    if (at)
+      *at = pos;
+    return kResultOk;
+  }
+  tresult PLUGIN_API tell(int64* at) override
+  {
+    if (at)
+      *at = pos;
+    return kResultOk;
+  }
+};
 
 struct Vst3 : Format
 {
@@ -215,6 +282,21 @@ struct Vst3 : Format
     view->removed();
     view->release();
     view = nullptr;
+  }
+
+  /* A host restores both halves, the component's and then the controller's.
+   * iPlug2's single-component wrapper restores from setState and ignores
+   * setComponentState; it is called because a host calls it. */
+  bool Reload() override
+  {
+    Stream state;
+    if (comp->getState(&state) != kResultOk)
+      return false;
+    state.pos = 0;
+    if (comp->setState(&state) != kResultOk)
+      return false;
+    state.pos = 0;
+    return ctrl->setComponentState(&state) == kResultOk;
   }
 
   void Unload() override
@@ -335,6 +417,20 @@ struct Au : Format
     view = nil;
   }
 
+  /* ClassInfo, which an AU host gets and sets on threads of its own. */
+  bool Reload() override
+  {
+    CFPropertyListRef state = nullptr;
+    UInt32 size = sizeof state;
+    if (AudioUnitGetProperty(au, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0,
+                             &state, &size) != noErr || !state)
+      return false;
+    const OSStatus err = AudioUnitSetProperty(au, kAudioUnitProperty_ClassInfo,
+                                              kAudioUnitScope_Global, 0, &state, sizeof state);
+    CFRelease(state);
+    return err == noErr;
+  }
+
   void Unload() override
   {
     AudioUnitUninitialize(au);
@@ -432,6 +528,31 @@ struct Clap : Format
     gui->destroy(plugin);
   }
 
+  /* CLAP names the main thread for both. This host offers no thread_check
+   * extension, so the wrapper cannot tell, as a release build would not
+   * look: the load runs where it is called, as a careless host's would. */
+  bool Reload() override
+  {
+    auto* state = (const clap_plugin_state*) plugin->get_extension(plugin, CLAP_EXT_STATE);
+    if (!state)
+      return false;
+    Stream bytes;
+    clap_ostream out{&bytes, [](const clap_ostream* s, const void* b, uint64_t n) -> int64_t {
+      int32 put = 0;
+      static_cast<Stream*>(s->ctx)->write(const_cast<void*>(b), int32(n), &put);
+      return put;
+    }};
+    if (!state->save(plugin, &out))
+      return false;
+    bytes.pos = 0;
+    clap_istream in{&bytes, [](const clap_istream* s, void* b, uint64_t n) -> int64_t {
+      int32 got = 0;
+      static_cast<Stream*>(s->ctx)->read(b, int32(std::min<uint64_t>(n, INT32_MAX)), &got);
+      return got;
+    }};
+    return state->load(plugin, &in);
+  }
+
   void Unload() override
   {
     plugin->deactivate(plugin);
@@ -476,25 +597,49 @@ static std::string Eval(WKWebView* web, NSString* js)
   return out ? std::string(out.UTF8String) : std::string();
 }
 
-/* Every message the plugin sends from here on is counted by tag in the page,
- * wrapped around the bridge's own SAMFD, which still runs. Not before the
- * editor has rendered: SAMFD exists as soon as the bridge's module has run,
- * but the editor's listeners only once its component has, and a message
- * counted in between was never the editor's to show -- on a loaded machine
- * that gap is long enough to fill with a second of columns. With `columns`, a
- * Spectrogram column batch (tag 64) is also checked for a byte above zero past
- * its header, and its columns are counted. */
+/* The Spectrogram's picture is judged once this many batches have arrived:
+ * about a second of columns, at any speed. */
+static constexpr int kBatches = 40;
+
+/*
+ * Every message the plugin sends from here on is counted by tag in the page,
+ * wrapped around the bridge's own SAMFD, which still runs; every value
+ * (SPVFD) and every display string (a SAMFD tagged with its parameter's
+ * index, below 64) is noted by index. The defaults (kDefaults, tag 113) say
+ * how many parameters there are: one each. With `columns`, a Spectrogram column
+ * batch (tag 64) is also checked for a byte above zero past its header, its
+ * columns are counted, and the arrivals of the first batch and the
+ * kBatches-th are timed.
+ *
+ * NOT BEFORE THE EDITOR CAN SHOW THEM, so the recorder starts only once the
+ * root has children AND document.readyState is 'complete'. SAMFD exists as
+ * soon as the bridge's module has run, the editor's listeners only once its
+ * component has, and the Spectrogram's picture only after the window's `load`:
+ * that is when it builds its history, and every batch before it is dropped
+ * (ui-kit/src/components/Spectrogram.jsx, onMount). Counted, those batches
+ * were never the editor's to draw -- on a loaded machine the gap holds a
+ * second of columns, and the canvas was then judged against columns that had
+ * gone nowhere. The browser sets readyState to 'complete' in the task that
+ * fires `load`, before the listeners run, so a script that sees it runs after
+ * them. Every editor waits the same way; only the Spectrogram needs it.
+ */
 static NSString* Recorder(bool columns)
 {
   return [NSString stringWithFormat:@"(() => {"
     "if (typeof globalThis.SAMFD !== 'function') return 'no';"
+    "if (typeof globalThis.SPVFD !== 'function') return 'no';"
     "if (!(document.getElementById('root')?.childElementCount > 0)) return 'no';"
+    "if (document.readyState !== 'complete') return 'no';"
     "if (!globalThis.__ni) {"
-    "  const bridge = globalThis.SAMFD;"
-    "  globalThis.__ni = { tags: {}, loud: 0, columns: 0 };"
+    "  const bridge = globalThis.SAMFD, value = globalThis.SPVFD;"
+    "  globalThis.__ni = {};"
     "  globalThis.SAMFD = (tag, n, b64) => {"
     "    __ni.tags[tag] = (__ni.tags[tag] || 0) + 1;"
+    "    if (tag < 64) __ni.shown.add(tag);"
+    "    if (tag === 113) __ni.params = b64 ? atob(b64).split(':').length : 0;"
     "    if (%s && tag === 64) {"
+    "      if (__ni.tags[64] === 1) __ni.first = performance.now();"
+    "      if (__ni.tags[64] === %d) __ni.kth = performance.now();"
     "      const s = atob(b64); let colons = 0, i = 0;"
     "      for (; i < s.length && colons < 3; i++) if (s[i] === ':') colons++;"
     "      __ni.columns += parseInt(s.split(':')[1], 10) || 0;"
@@ -502,19 +647,23 @@ static NSString* Recorder(bool columns)
     "    }"
     "    return bridge(tag, n, b64);"
     "  };"
+    "  globalThis.SPVFD = (idx, v) => { __ni.values.add(idx); return value(idx, v); };"
     "}"
-    "__ni.tags = {}; __ni.loud = 0; __ni.columns = 0; return 'yes'; })()",
-    columns ? "true" : "false"];
+    "Object.assign(__ni, { tags: {}, values: new Set(), shown: new Set(), params: -1,"
+    "                      loud: 0, columns: 0, first: -1, kth: -1 });"
+    "return 'yes'; })()",
+    columns ? "true" : "false", kBatches];
 }
 static NSString* const kRecord = Recorder(false);
 static NSString* const kRecordColumns = Recorder(true);
 
 /*
  * ONE SAMPLE, TAKEN IN ONE JAVASCRIPT TASK: the batches and columns received
- * so far, how many of those batches carried the sine, and what the editor
- * drew. No message can land between the counts and the canvas read, so the
- * picture is judged against exactly the columns that had arrived -- a slow
- * machine delivers fewer, and is held to fewer.
+ * so far, how many of those batches carried the sine, what the editor drew,
+ * and the milliseconds from the first batch to the kBatches-th (-1 until it
+ * has come). No message can land between the counts and the canvas read, so
+ * the picture is judged against exactly the columns that had arrived -- a
+ * slow machine delivers fewer, and is held to fewer.
  *
  * Drawn is how many of the picture's columns hold a bright cell -- the sine is
  * near the top of the ramp, the floor and the haze far below it -- in the
@@ -533,12 +682,20 @@ static NSString* const kSample = @"(() => {"
   "  }"
   "  drawn = Math.round(drawn * 606 / c.width);"
   "}"
-  "return [__ni.tags[64] || 0, __ni.columns, __ni.loud, drawn].join(' '); })()";
+  "const ms = __ni.kth < 0 ? -1 : Math.round(__ni.kth - __ni.first);"
+  "return [__ni.tags[64] || 0, __ni.columns, __ni.loud, drawn, ms].join(' '); })()";
 
+/* A whole number the page computes; -1 if it could not. */
+static int Int(WKWebView* web, NSString* js)
+{
+  const std::string s = Eval(web, js);
+  return s.empty() ? -1 : atoi(s.c_str());
+}
+
+/* How many messages with this tag have arrived since the page was hooked. */
 static int Count(WKWebView* web, int tag)
 {
-  const std::string s = Eval(web, [NSString stringWithFormat:@"String(__ni.tags[%d] || 0)", tag]);
-  return s.empty() ? -1 : atoi(s.c_str());
+  return Int(web, [NSString stringWithFormat:@"String(__ni.tags[%d] || 0)", tag]);
 }
 
 /* Which editor the bundle holds, from its name. */
@@ -557,11 +714,23 @@ static Product ProductOf(const std::string& bundle)
 
 /*
  * LOAD DOES NOT DECIDE A VERDICT. A machine busy with other builds delivers
- * the same messages later, so nothing here is judged over a wall-clock window:
- * each check waits for its condition, up to kPatience, and a slow machine
- * merely takes longer to pass. What a check says on failure includes what it
- * saw and how long it waited.
+ * the same messages later, so no check waits for its condition over a tight
+ * wall-clock window: each waits up to kPatience, and a slow machine merely
+ * takes longer to pass. What a check says on failure includes what it saw and
+ * how long it waited.
+ *
+ * EXCEPT FOR TWO RATES, which no wait can see: a delivery that has slowed to a
+ * crawl -- a throttled timer, a backlog -- still meets every condition inside
+ * a minute. They are held to bounds of their own, apart from kPatience, each
+ * at least ten times what an idle machine needs: it takes about a second for
+ * the batches and a tenth of one for the playhead. The time measured is
+ * printed either way.
  */
+/* The Spectrogram's kBatches-th column batch, after its first. */
+static constexpr double kBatchSpan = 10.0;
+/* A playhead's third position, after its first. */
+static constexpr double kGlide = 5.0;
+
 static bool WaitFor(const std::function<bool()>& done, double* waited = nullptr)
 {
   NSDate* start = [NSDate date];
@@ -594,11 +763,10 @@ static void CheckArrives(WKWebView* web, int tag, const char* what)
 /* The Spectrogram: the picture, judged over a number of received batches. */
 static void CheckSpectrogram(WKWebView* web, const std::string& format)
 {
-  constexpr int kBatches = 40;   /* about a second of columns, at any speed */
-  int batches = 0, columns = 0, loud = 0, drawn = 0;
+  int batches = 0, columns = 0, loud = 0, drawn = 0, ms = -1;
   const auto sample = [&] {
     const std::string s = Eval(web, kSample);
-    return sscanf(s.c_str(), "%d %d %d %d", &batches, &columns, &loud, &drawn) == 4;
+    return sscanf(s.c_str(), "%d %d %d %d %d", &batches, &columns, &loud, &drawn, &ms) == 5;
   };
   double waited = 0.0;
   const bool arrived = WaitFor([&] { return sample() && batches >= kBatches; }, &waited);
@@ -609,6 +777,14 @@ static void CheckSpectrogram(WKWebView* web, const std::string& format)
                            std::to_string(loud) + " loud, " + std::to_string(drawn) +
                            " drawn, after " + Seconds(waited);
   check(arrived, "column batches arrive", arrived ? std::to_string(batches) + " batches" : seen);
+  /* The rate (kBatchSpan), measured in the page from the first counted
+   * batch's arrival to the kBatches-th's. */
+  const bool brisk = ms >= 0 && ms < kBatchSpan * 1000.0;
+  const std::string within = "... the " + std::to_string(kBatches) + "th within " +
+                             Seconds(kBatchSpan) + " of the first";
+  check(brisk, within.c_str(),
+        ms >= 0 ? format + ": " + Seconds(ms / 1000.0)
+                : format + ": only " + std::to_string(batches) + " arrived");
   const bool sine = loud >= batches / 2 && loud > 0;
   check(sine, "... and carry the sine, not silence", sine ? std::to_string(loud) + " loud" : seen);
   const bool painted = expected > 0 && drawn >= expected * 9 / 10;
@@ -618,7 +794,9 @@ static void CheckSpectrogram(WKWebView* web, const std::string& format)
 
 /* A playhead -- an SVG line placed by the editor's clock -- moving with the
  * transport: its x must take three different values, however long the
- * machine takes to deliver them. */
+ * machine takes to deliver them, and the third must come within kGlide of the
+ * first -- still a playhead that moves, not one that jumps every few
+ * seconds. */
 static void CheckPlayhead(WKWebView* web, NSString* selector, const char* what,
                           const std::string& format)
 {
@@ -626,11 +804,17 @@ static void CheckPlayhead(WKWebView* web, NSString* selector, const char* what,
     @"(() => { const l = document.querySelector('%@'); return l ? l.getAttribute('x1') : 'none'; })()",
     selector];
   std::vector<std::string> seen;
-  double waited = 0.0;
+  NSDate* first = nil;
+  double glide = 0.0, waited = 0.0;
   const bool ok = WaitFor([&] {
     const std::string x = Eval(web, read);
     if (!x.empty() && x != "none" && (seen.empty() || seen.back() != x))
+    {
       seen.push_back(x);
+      if (!first)
+        first = [NSDate date];
+      glide = -[first timeIntervalSinceNow];
+    }
     return seen.size() >= 3;
   }, &waited);
   std::string trail;
@@ -639,6 +823,102 @@ static void CheckPlayhead(WKWebView* web, NSString* selector, const char* what,
   check(ok, what, ok ? "x " + trail
                      : format + ": " + std::to_string(seen.size()) + " positions (" + trail +
                          ") in " + Seconds(waited));
+  const bool smooth = ok && glide < kGlide;
+  const std::string within = "... the third within " + Seconds(kGlide) + " of the first";
+  check(smooth, within.c_str(),
+        ok ? format + ": " + Seconds(glide)
+           : format + ": only " + std::to_string(seen.size()) + " positions");
+}
+
+/*
+ * THE WEBVIEW, SPOKEN TO FROM ANOTHER THREAD. WebKit's API is the main
+ * thread's, and a call from any other is undefined: in a host, a crash some
+ * time later, not an error now. Every -[WKWebView
+ * evaluateJavaScript:completionHandler:] in this process -- the one call
+ * iPlug2's WebView sends everything to the page through -- passes through
+ * here, swizzled before any WebView exists: from the main thread it goes on,
+ * from any other it is counted and dropped, so the run lives to report it.
+ * Whatever reaches the page has therefore come from the main thread.
+ */
+static std::atomic<int> gOffMain{0};
+
+static void GuardWebViews()
+{
+  using Fn = void (*)(id, SEL, NSString*, void (^)(id, NSError*));
+  const SEL sel = @selector(evaluateJavaScript:completionHandler:);
+  const Method m = class_getInstanceMethod([WKWebView class], sel);
+  static const Fn original = (Fn) method_getImplementation(m);
+  method_setImplementation(m, imp_implementationWithBlock(
+    ^(WKWebView* web, NSString* js, void (^done)(id, NSError*)) {
+      if (![NSThread isMainThread])
+      {
+        gOffMain.fetch_add(1);
+        return;
+      }
+      original(web, sel, js, done);
+    }));
+}
+
+/*
+ * A STATE LOAD ON THE HOST'S THREAD, with the editor open: the plugin's own
+ * state, saved and loaded straight back through the format's calls
+ * (Format::Reload) on a std::thread, while the main thread runs on, idle ticks
+ * and all, as a host's does. An AU host gets and sets ClassInfo on threads of
+ * its own -- auval's stress test does; VST3 and CLAP name the main thread for
+ * it, which nothing makes a host keep. All three formats can do it here.
+ *
+ * iPlug2 reports every parameter the load set, and then that the state was
+ * restored, from the loading thread (OnParamChangeUI, OnRestoreState), and its
+ * WebView delegate's default sends both into the page from there. ni::WebPlugin
+ * overrides both to send only from the main thread, and off it to mark the
+ * editor stale for the next idle tick to send (editor::Stale). So:
+ *
+ *   - nothing calls the WebView off the main thread while the load runs;
+ *   - afterwards every parameter's value (SPVFD) and display string reaches
+ *     the page -- through the guard, so from the main thread. Nothing but that
+ *     flush and a ready sends a display string for every parameter, so no
+ *     other traffic can pass this.
+ *
+ * The parameter count is the defaults'. The Spectrogram has none, so its load
+ * need only stay off the WebView.
+ */
+static NSString* const kRefreshed = @"(() => { let v = 0, s = 0;"
+  "for (let i = 0; i < __ni.params; i++) { v += __ni.values.has(i); s += __ni.shown.has(i); }"
+  "return v + ' ' + s; })()";
+
+static void CheckReload(Format& f, WKWebView* web, const std::string& format)
+{
+  const int params = Int(web, @"String(__ni.params)");
+  Eval(web, @"(__ni.values = new Set(), __ni.shown = new Set(), 1)");
+
+  const int before = gOffMain.load();
+  std::atomic<int> loaded{-1};
+  std::thread host([&] { loaded = f.Reload() ? 1 : 0; });
+  double waited = 0.0;
+  WaitFor([&] { return loaded.load() >= 0; }, &waited);
+  host.join();
+  check(loaded == 1, "the host loads the plugin's state on a thread of its own",
+        loaded == 1 ? "" : format + ": the format's call failed");
+  const int off = gOffMain.load() - before;
+  check(off == 0, "... and nothing speaks to the WebView off the main thread",
+        off == 0 ? "" : format + ": " + std::to_string(off) + " calls");
+
+  const char* what = "... and every value and display string reaches the page";
+  if (params <= 0)
+  {
+    check(params == 0, what, params == 0 ? "no parameters" : format + ": no defaults arrived");
+    return;
+  }
+  int values = 0, shown = 0;
+  const bool sent = WaitFor([&] {
+    return sscanf(Eval(web, kRefreshed).c_str(), "%d %d", &values, &shown) == 2 &&
+           values == params && shown == params;
+  }, &waited);
+  const std::string of = " of " + std::to_string(params);
+  check(sent, what,
+        sent ? std::to_string(params) + (params == 1 ? " parameter" : " parameters")
+             : format + ": " + std::to_string(values) + of + " values, " +
+                 std::to_string(shown) + of + " display strings, in " + Seconds(waited));
 }
 
 /* The Listen-In: the bus's name, which a fresh instance does not have. It is
@@ -698,6 +978,7 @@ static void Session(Format& f, Product product, const std::string& format, NSWin
     case Product::ListenIn: CheckListenIn(web, format); break;
     case Product::Other: break;
   }
+  CheckReload(f, web, format);
   CheckArrives(web, 112, "the ground rings on the transport's beat");
 
   f.Close();
@@ -717,6 +998,7 @@ int main(int argc, char** argv)
   {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    GuardWebViews();
 
     Vst3 vst3;
     Au au;
@@ -764,6 +1046,13 @@ int main(int argc, char** argv)
     [window orderOut:nil];
     f->Unload();
   }
+
+  /* The guard saw every thread, the render thread's included, from the first
+   * open to the unload. */
+  printf(" the whole run\n");
+  const int off = gOffMain.load();
+  check(off == 0, "nothing spoke to the WebView off the main thread",
+        off == 0 ? "" : kind + ": " + std::to_string(off) + " calls");
 
   printf("%s\n", gFails ? "FAIL" : "ok");
   return gFails ? 1 : 0;

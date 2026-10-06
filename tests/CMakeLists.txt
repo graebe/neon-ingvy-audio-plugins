@@ -258,7 +258,9 @@ if (APPLE)
     # page in it -- fed audio under a running transport, closed and opened
     # again, and the page asked what reached it: the Spectrogram's picture,
     # the Trance Gate's and the Side-Chain's playheads, the Listen-In's name,
-    # everyone's ground. The mock-host e2e suite cannot see this path.
+    # everyone's ground -- and, after a state load on a thread that is not the
+    # main one, every value, with nothing sent to the WebView from that
+    # thread. The mock-host e2e suite cannot see this path.
     # editor_host.mm. Needs a logged-in session (a window server), as a host does.
     set(_vst3 ${IPLUG2_DIR}/Dependencies/IPlug/VST3_SDK)
     add_executable(editor_host editor_host.mm
