@@ -179,9 +179,11 @@ if (TG_NODE)
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/ui-kit/test/tokens.test.mjs)
 
-    # Every path into design/ names something that is there: the mirror moves
-    # when its artifacts do, and the icon glob and the token and field oracles
-    # read through those paths.
+    # Every path into design/ that a tracked file names exists, however it is
+    # spelled: from the root, climbing from the naming file's own directory
+    # with ../ (as the icon glob does), or as path.join() arguments. The
+    # mirror moves when its artifacts do, and the icon glob and the token and
+    # field oracles read through those paths. The test's header has the rules.
     add_test(NAME design_paths
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/tests/design_paths.test.mjs)
