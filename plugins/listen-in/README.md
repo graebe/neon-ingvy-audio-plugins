@@ -62,12 +62,14 @@ put the sender and the receiver in different processes — an AU under a sandbox
 a bridged VST3, a plugin scanned out of process — and the symptom would have
 been a receiver that is simply always empty, with nothing in any log.
 
-So each bus is a POSIX shared-memory segment: `/nia.bus.NN`, a header and a ring
-of 131072 stereo frames — 1 MiB, of which a reader may use 122880 (2.56 seconds
-at 48 kHz); the remaining 8192 are the margin it keeps between itself and the
-writer, for the reason below. One writer, any number of readers, and **no
-coordination between the readers at all** — each keeps its cursor in its own
-memory and the segment is written by exactly one participant.
+So each bus is a shared-memory segment: a header and a ring of 131072 stereo
+frames — 1 MiB, of which a reader may use 122880 (2.56 seconds at 48 kHz); the
+remaining 8192 are the margin it keeps between itself and the writer, for the
+reason below. On macOS and Linux the segment is a POSIX shared-memory object
+named `/nia.bus.NN`, on Windows a named file mapping, `Local\nia.bus.NN`. One
+writer, any number of readers, and **no coordination between the readers at
+all** — each keeps its cursor in its own memory and the segment is written by
+exactly one participant.
 
 `abus_pusher_push` runs on the audio thread and allocates nothing, locks nothing
 and makes no system call; `cargo test -p bus-core` fails the build if that stops
@@ -84,17 +86,20 @@ reader was given a margin to stay behind. `engines/audio-bus/README.md` has
 the whole story; the short version is that a writer which has copied its samples
 but not yet published the count is invisible to any amount of re-checking.
 
-**A crashed host leaves the segment behind** — shm outlives its process, to the
-next reboot. A claimer reclaims a slot only when `kill(pid, 0)` says the holder's
-process is gone, and the reclaim is a single compare-and-swap, so two senders
-racing for a dead slot cannot both win. A recycled pid can make a dead holder
-look alive; that costs a bus number until the other process exits, which is the
-safe way to be wrong. `engines/audio-bus/README.md` has the details.
+**A crashed host leaves the segment behind** on macOS and Linux, where shm
+outlives its process, to the next reboot. A claimer reclaims a slot only when
+the system says the holder's process is gone — `kill(pid, 0)`, or on Windows
+`OpenProcess` and its exit code — and the reclaim is a single compare-and-swap,
+so two senders racing for a dead slot cannot both win. A recycled pid can make
+a dead holder look alive; that costs a bus number until the other process exits,
+which is the safe way to be wrong. On Windows a name lives only as long as a
+handle to it, so a crashed host takes its bus with it.
+`engines/audio-bus/README.md` has the details.
 
 ## One known limit
 
-If a host sandboxes the plugin, POSIX shm names need an app-group prefix and
-this will not connect — the editor says `unavailable` rather than pretending.
+If a host sandboxes the plugin on macOS, its shm names need an app-group prefix
+and this will not connect — the editor says `unavailable` rather than pretending.
 Live loads VST3 and AU in process, which is what it was built for.
 
 ## Seeing it work without a receiver

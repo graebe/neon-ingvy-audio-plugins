@@ -7,7 +7,7 @@ slug: architecture
 Four layers, and each one exists because the layer above it cannot do the job.
 
 ```
-Rust core        the DSP, on the shared ni-dsp. No external dependencies.
+Rust core        the DSP, on the shared ni-dsp and established crates
   ├── C ABI      extern "C", for the plugin
   └── Schwung    the audio_fx vtable (ni-schwung), for the Move
 C++ glue         iPlug2 — the VST3/AU/CLAP shell and the host plumbing
@@ -26,17 +26,21 @@ and what it costs:
 
 ## The Rust core
 
-One Cargo workspace at the repository root. Every `[dependencies]` entry in it
-is still a `path`: to a sibling inside the same engine, or to one of the
+One Cargo workspace at the repository root. A dependency on this repository's
+own code is a `path`: to a sibling inside the same engine, or to one of the
 product-free shared crates (`engines/shared`, `ground`, `shell`, `audio-bus`).
-Those are rlibs. Each product's single static library absorbs them, so a
-plugin still links exactly one archive.
+Those are rlibs. Each product's single static library absorbs them, and the
+crates from crates.io with them, so a plugin still links exactly one archive.
 
 Having no external crates was a rule, kept so that the MIT licence audit
 finished in one sitting. [0003](../adr/0003-established-rust-crates.md)
-reverses it. Established crates replace the hand-written FFT, queues, parsers
-and headers, each one under a licence on the allowlist. The one-archive rule
-stays.
+reversed it. The FFT is realfft's, the Spectrogram's rings are rtrb's, the
+float atomics are atomic_float's, the bus maps its memory through libc and
+windows-sys, the Side-Chain decodes MIDI with wmidi, the Trance Gate reads its
+formats with serde_json, and the engines read numbers with lexical-core. Each
+is under a licence on the allowlist, and its version is written once, in the
+root `Cargo.toml`'s `[workspace.dependencies]`. The shell's queues and the C
+headers are next. The one-archive rule stays.
 
 `[profile.release]` sets `panic = "abort"`, and that one is load-bearing rather
 than a size tweak: unwinding out of an `extern "C"` function into a C or C++
