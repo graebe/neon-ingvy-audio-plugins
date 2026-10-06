@@ -96,6 +96,22 @@ else()
     set(NI_IPLUG2_TG_CLASS F2AEE70D00DE4F4E4772626554724774)
 endif()
 
+# TWO WAYS FOR A SET TO FIND THIS BUILD, and the spike builds either:
+#
+#   OFF (default)  JUCE's own class ID, and the iPlug2 class declared
+#                  compatible: moduleinfo.json's Compatibility and the
+#                  factory's IPluginCompatibility. It works only in a host that
+#                  reads them, and Live's release notes up to 12.4.6 say
+#                  nothing of either.
+#   ON             the iPlug2 class ID itself (JUCE_VST3_COMPONENT_CLASS, JUCE's
+#                  own switch for replacing a VST3 not built with JUCE), so a
+#                  set finds this build exactly as it found the old one. Bypass
+#                  keeps JUCE's ID (15, not 65536), and the two bundles must
+#                  never be installed side by side.
+#
+# spike/UT2.md tests both in Live.
+option(NI_SPIKE_SAME_CLASS "Use the iPlug2 build's VST3 class ID instead of declaring it compatible" OFF)
+
 juce_add_plugin(NITranceGateSpike
     PRODUCT_NAME "NI Trance Gate"
     COMPANY_NAME "Neon Ingvy"
@@ -126,10 +142,18 @@ target_compile_definitions(NITranceGateSpike PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
     # The index is the VST3 parameter ID, as it was in iPlug2.
     JUCE_FORCE_USE_LEGACY_PARAM_IDS=1
+    "NI_IPLUG2_TG_CLASS=\"${NI_IPLUG2_TG_CLASS}\"")
+if (NI_SPIKE_SAME_CLASS)
+    target_compile_definitions(NITranceGateSpike PUBLIC
+        "JUCE_VST3_COMPONENT_CLASS=\"${NI_IPLUG2_TG_CLASS}\""
+        NI_SPIKE_SAME_CLASS=1)
+else()
     # moduleinfo.json's Compatibility and the factory's IPluginCompatibility
     # class both come from this: New is this build's class, Old the iPlug2 one.
-    "JUCE_VST3_COMPATIBLE_CLASSES=VST3Interface::hexStringToId(\"${NI_IPLUG2_TG_CLASS}\")"
-    "NI_IPLUG2_TG_CLASS=\"${NI_IPLUG2_TG_CLASS}\"")
+    target_compile_definitions(NITranceGateSpike PUBLIC
+        "JUCE_VST3_COMPATIBLE_CLASSES=VST3Interface::hexStringToId(\"${NI_IPLUG2_TG_CLASS}\")"
+        NI_SPIKE_SAME_CLASS=0)
+endif()
 
 target_link_libraries(NITranceGateSpike
     PRIVATE tg_capi
@@ -137,13 +161,19 @@ target_link_libraries(NITranceGateSpike
     PUBLIC  juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
 
-# For the manual Live test (spike/UT2.md): the bundle, copied to spike/out.
+# For the manual Live test (spike/UT2.md): the bundle, copied to spike/out --
+# the same-class variant to spike/out/same-class, so the two never meet.
 get_target_property(NI_SPIKE_BUNDLE NITranceGateSpike_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
+if (NI_SPIKE_SAME_CLASS)
+    set(NI_SPIKE_OUT ${NI_ROOT}/spike/out/same-class)
+else()
+    set(NI_SPIKE_OUT ${NI_ROOT}/spike/out)
+endif()
 add_custom_target(spike_out
-    COMMAND ${CMAKE_COMMAND} -E rm -rf "${NI_ROOT}/spike/out/NI Trance Gate.vst3"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${NI_SPIKE_BUNDLE}" "${NI_ROOT}/spike/out/NI Trance Gate.vst3"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${NI_SPIKE_OUT}/NI Trance Gate.vst3"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${NI_SPIKE_BUNDLE}" "${NI_SPIKE_OUT}/NI Trance Gate.vst3"
     DEPENDS NITranceGateSpike_VST3
-    COMMENT "Copying the spike to spike/out"
+    COMMENT "Copying the spike to ${NI_SPIKE_OUT}"
     VERBATIM)
 
 # -------------------------------------------------------------- the tests
@@ -171,7 +201,8 @@ target_compile_definitions(spike_host PRIVATE
     JUCE_PLUGINHOST_AU=0
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    "NI_IPLUG2_TG_CLASS=\"${NI_IPLUG2_TG_CLASS}\"")
+    "NI_IPLUG2_TG_CLASS=\"${NI_IPLUG2_TG_CLASS}\""
+    NI_SPIKE_SAME_CLASS=$<BOOL:${NI_SPIKE_SAME_CLASS}>)
 target_link_libraries(spike_host PRIVATE
     juce::juce_audio_utils
     juce::juce_recommended_config_flags

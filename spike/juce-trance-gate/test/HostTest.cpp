@@ -12,7 +12,8 @@
  *
  *   the class        moduleinfo.json declares the iPlug2 class compatible
  *                    (Old) with this one (New), and Old is the class ID the
- *                    iPlug2 factory reports (ids.json);
+ *                    iPlug2 factory reports (ids.json) -- or, built with
+ *                    NI_SPIKE_SAME_CLASS, this build's class IS that ID;
  *   the parameters   the same IDs, names, units, steps, defaults and default
  *                    texts as the iPlug2 build's (parameters.json), Bypass
  *                    apart: its ID is 15 here, 65536 there;
@@ -174,6 +175,12 @@ void CheckClass(const File& bundle, const File& fixtures)
         component = c["CID"].toString();
   Check(component.length() == 32, "moduleinfo.json lists this build's component class", component);
 
+#if NI_SPIKE_SAME_CLASS
+  /* The variant that takes the iPlug2 class over outright: nothing to map. */
+  Check(component == iplug2, "this build's component class IS the iPlug2 class", component);
+  Check(info["Compatibility"].getArray() == nullptr || info["Compatibility"].getArray()->isEmpty(),
+        "moduleinfo.json declares no compatibility", JSON::toString(info["Compatibility"], true));
+#else
   bool listed = false;
   if (auto* entries = info["Compatibility"].getArray())
     for (const auto& entry : *entries)
@@ -182,6 +189,7 @@ void CheckClass(const File& bundle, const File& fixtures)
           listed = old->contains(var(iplug2));
   Check(listed, "moduleinfo.json: New is this build, Old the iPlug2 class",
         JSON::toString(info["Compatibility"], true));
+#endif
 }
 
 void CheckParameters(AudioPluginInstance& spike, const File& fixtures)

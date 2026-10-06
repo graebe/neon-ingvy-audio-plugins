@@ -11,7 +11,9 @@
  *   the class      the VST3 class ID differs (JUCE derives its own), so the
  *                  build declares the iPlug2 one compatible: CMakeLists.txt's
  *                  JUCE_VST3_COMPATIBLE_CLASSES, which JUCE writes into
- *                  moduleinfo.json and answers through IPluginCompatibility;
+ *                  moduleinfo.json and answers through IPluginCompatibility
+ *                  -- or, with NI_SPIKE_SAME_CLASS, takes the iPlug2 class ID
+ *                  itself (JUCE_VST3_COMPONENT_CLASS);
  *   the parameters the same fifteen at the same IDs (Params.h, with
  *                  JUCE_FORCE_USE_LEGACY_PARAM_IDS), and Bypass, whose ID
  *                  differs, mapped by getCompatibleParameterIds;
@@ -77,7 +79,9 @@ public:
   /*
    * THE iPlug2 BUILD'S PARAMETER IDS, mapped onto these parameters, for a
    * host that reopens its set here (IRemapParamID). 0..14 are the same IDs
-   * already; Bypass was 65536 there and is 15 here.
+   * already; Bypass was 65536 there and is 15 here. Built with
+   * NI_SPIKE_SAME_CLASS there is no other class to map from, and a host
+   * that finds the old class finds this one.
    */
   std::map<uint32_t, juce::String> getCompatibleParameterIds(const juce::VST3Interface::Id& compatibleClass) const override;
 
