@@ -55,6 +55,18 @@ TEST_CASE ("type: a style's size is the em square, as CSS sizes it")
     }
 }
 
+TEST_CASE ("type: the glyphs are the size a browser sets them")
+{
+    /* JetBrains Mono: 1000 units to the em, every advance 600, ascent 1020
+     * and descent 300 (hhea and OS/2 alike). At the value style's 13px a
+     * browser sets ten digits in 78px and a line's glyph box 17.16px tall;
+     * so must the kit, or a native editor's text is not the web one's. */
+    const auto f = uv::type::value();
+    CHECK (uv::type::width (f, "0123456789") == doctest::Approx (78.0f).epsilon (0.002));
+    CHECK (f.getHeight() == doctest::Approx (13.0f * 1.32f).epsilon (0.002));
+    CHECK (f.getAscent() == doctest::Approx (13.0f * 1.02f).epsilon (0.002));
+}
+
 TEST_CASE ("type: tracking is CSS letter-spacing, in em")
 {
     const auto f = uv::type::label();
