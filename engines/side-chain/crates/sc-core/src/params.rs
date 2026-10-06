@@ -132,6 +132,7 @@ pub fn db_to_amp(db: f64) -> f64 {
 /// Linear amplitude back to dB, floored. The inverse of `db_to_amp` on the
 /// open interval; the UI prints this, so it must not return `-inf` and make a
 /// readout say "-inf dB".
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN amplitude must take the floor, not reach log10")]
 pub fn amp_to_db(a: f64) -> f64 {
     if !(a > 0.0) {
         return THRESHOLD_MIN_DB;
@@ -207,6 +208,7 @@ impl Instance {
     /// to find where we are, then invert the new one to find where that level
     /// lives on it. `shape_inv` is analytic for all three curves, which is why
     /// they were all chosen to be invertible.
+    #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN span, level or position must take its guard, not reach a division")]
     pub fn set_curve(&mut self, curve: Curve) {
         if curve == self.curve {
             return;

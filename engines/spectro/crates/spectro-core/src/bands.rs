@@ -151,6 +151,7 @@ impl Bands {
 /// thread's own table would be a data race the moment the range changes; deriving
 /// the same numbers from the same inputs is not. The two agree because they are
 /// the same arithmetic, and `the_axis_matches_the_table` says so.
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN sample rate must take the guard, and gives no centres")]
 pub fn centres_for(
     out: &mut [f32],
     count: usize,

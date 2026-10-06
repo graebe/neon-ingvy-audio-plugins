@@ -36,6 +36,7 @@ pub const PER_STEP: usize = 64;
 
 const BPM: f32 = 120.0;
 
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN step length must take the guard, not reach the division")]
 fn curve(state: &str, pattern: &str, ties: &str) -> Option<Vec<u8>> {
     let mut scratch = Instance::new(44100.0);
     scratch.set_param("state", state);

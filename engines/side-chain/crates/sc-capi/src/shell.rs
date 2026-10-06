@@ -84,6 +84,7 @@ pub unsafe extern "C" fn sc_shell_destroy(sh: *mut ScShell) {
 /// # Safety
 /// `sh` is null or live.
 #[no_mangle]
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is dropped with it")]
 pub unsafe extern "C" fn sc_shell_post_sample_rate(sh: *const ScShell, sample_rate: f64) {
     let Some(sh) = sh.as_ref() else { return };
     if !(sample_rate > 0.0) {

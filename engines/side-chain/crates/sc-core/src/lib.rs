@@ -243,6 +243,7 @@ impl Instance {
         self.sample_rate
     }
 
+    #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is refused with it")]
     pub fn set_sample_rate(&mut self, sample_rate: f64) {
         if !(sample_rate > 0.0) || sample_rate == self.sample_rate {
             return;
@@ -689,6 +690,7 @@ impl Instance {
     /// 60 bpm it is once every four seconds, and the picture IS that old --
     /// the alternative is a rolling window that does not line up with the
     /// editor, which is a worse picture that merely looks fresher.
+    #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN cycle length must take the guard, not reach the division")]
     pub fn sweep01(&self) -> f64 {
         if matches!(self.source, Source::Cycle) {
             return self.phase01();

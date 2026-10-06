@@ -44,6 +44,7 @@ pub fn encode_gain(v: f32) -> u8 {
 /// `"<length>:<per_step>:"` then one raw byte of gain per sample of one cycle
 /// -- or None for an empty state or a patch with no step length. Binary: the
 /// editor's transport base64-encodes it, so hex inside it would only double it.
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN step length must take the guard, not reach the division")]
 pub fn render(state: &str) -> Option<Vec<u8>> {
     if state.is_empty() {
         return None;
