@@ -96,13 +96,18 @@ function(ni_add_rust_staticlib name)
     set(system_libs "")
     if (WIN32)
         set(archive ${ARG_LIB}.lib)
-        set(system_libs kernel32 advapi32 ntdll userenv ws2_32 dbghelp)
+        # The C runtime is not in the list: the C++ build names its own.
+        set(system_libs kernel32 ntdll userenv ws2_32 dbghelp)
 
         # ONE C RUNTIME PER BINARY. Rust builds for the DLL runtime unless told
         # otherwise; a C++ build on the static one (CMAKE_MSVC_RUNTIME_LIBRARY
         # without "DLL") needs the Rust objects built for it as well, or the
         # link pulls in both libcmt and msvcrt. Unset means CMake's default,
         # which is the DLL runtime.
+        #
+        # --config takes the place of any rustflags the environment gives this
+        # target: those are an image's linker paths, and a static library is
+        # never linked.
         if (CMAKE_MSVC_RUNTIME_LIBRARY AND NOT CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL")
             list(APPEND cargo_args --config
                  "target.${triples}.rustflags=[\"-C\", \"target-feature=+crt-static\"]")
