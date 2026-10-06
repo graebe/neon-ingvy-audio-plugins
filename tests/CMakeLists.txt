@@ -146,6 +146,10 @@ if (TG_NODE)
     # build. RUST_ENV, because the check asks cargo what ships.
     add_test(NAME licenses
              COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs)
+    # What the check counts as shipping, on a graph small enough to read: the
+    # feature resolver it uses instead of cargo metadata's unified features.
+    add_test(NAME licenses_resolve
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/licenses_resolve.test.mjs)
     add_test(NAME licenses_bundles
              COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
                      --bundles ${CMAKE_BINARY_DIR}/out)
@@ -415,9 +419,18 @@ add_test(NAME music_core_no_std
 # voicing, the pedal, Hold, the panic, the history's clock that never goes
 # back, a counting allocator over everything the audio thread calls, and
 # property tests over arbitrary MIDI.
+# The C ABI from C: compiled against the header cbindgen writes
+# (cd-capi/build.rs) and linked to the real archive.
+add_executable(cd_core_tests ${CMAKE_SOURCE_DIR}/engines/chord-detector/tests/test_core.c)
+target_link_libraries(cd_core_tests PRIVATE cd_engine)
+if (NOT WIN32)
+    target_link_libraries(cd_core_tests PRIVATE m)
+endif()
+add_test(NAME cd_core COMMAND cd_core_tests)
+
 add_test(NAME cd_core_rs
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p cd-core)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p cd-core -p cd-capi)
 
 # The handoff's seam, holding a real bus writer the way NI Listen-In does.
 # The shell_handoff_* symbols ride in libbus_capi.a, so that is what it links.
@@ -721,13 +734,13 @@ ni_test_tiers(
         music_core_rs music_core_no_std cd_core_rs
         cargo_deny
         # C against the engines' ABIs, and the oracles that pin the sound
-        tg_core sc_core spectro_columns srecv_api abus_roundtrip gnd_roundtrip
+        tg_core sc_core cd_core spectro_columns srecv_api abus_roundtrip gnd_roundtrip
         shell_handoff tg_curves tg_envelope tg_fade sc_shape sc_envelope
         # the editors' and the kit's JavaScript
         ui_unit tg_curves_js tg_capture_js tg_fade_js sc_shape_js sc_envelope_js
         sc_ranges spectro_ramp spectro_columns_js listenin_wire_js
         # lint-like checks over the tree
-        versions release licenses spdx ground_shells editor_tags editor_timing
+        versions release licenses licenses_resolve spdx ground_shells editor_tags editor_timing
         ui_tokens design_paths validator_verdict
     FULL
         tg_render_ab:render sc_render_ab:render

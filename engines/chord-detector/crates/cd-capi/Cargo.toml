@@ -1,0 +1,34 @@
+[package]
+name = "cd-capi"
+version = "2026.10.6+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The cd_* C ABI over the NI Chord-Detector engine"
+publish.workspace = true
+build = "build.rs"
+
+[lib]
+name = "cd_capi"
+# staticlib for the plugin to link (one archive per plugin, see
+# cmake/NiPlugin.cmake); rlib so its own tests and a later Move module can
+# reach this surface without a second copy of the Rust runtime.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+cd-core = { path = "../cd-core" }
+# The engine's way in and out: commands through rtrb, frames through
+# triple_buffer, both wrapped once for every product.
+shell-core = { path = "../../../shell/crates/shell-core" }
+# The history's note events, audio thread to editor: a wait-free SPSC ring.
+rtrb = { workspace = true }
+music-core = { path = "../../../shared/crates/music-core", default-features = false }
+
+[build-dependencies]
+# THE HEADER IS GENERATED, never written by hand (docs/adr/0003): a hand-written
+# header can drift from the Rust it declares and nothing fails until a call
+# corrupts the stack. build.rs writes engines/chord-detector/include/cd_capi.h.
+cbindgen = { workspace = true }
+
+[dev-dependencies]
+ni-testkit = { path = "../../../shared/crates/ni-testkit" }

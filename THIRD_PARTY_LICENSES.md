@@ -105,7 +105,7 @@ OFL is permissive and GPL-compatible.
 | `spectro-core`, `spectro-recv`, `spectro-capi` | `engines/spectro` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `bus-core`, `bus-capi` | `engines/audio-bus` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber, with a ported part — see below |
-| `cd-core` | `engines/chord-detector` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `cd-core`, `cd-capi` | `engines/chord-detector` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ground-core`, `ground-capi` | `engines/ground` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ni-dsp`, `ni-schwung` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |

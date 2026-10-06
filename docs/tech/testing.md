@@ -20,15 +20,19 @@ yet, so nothing is ever installed into `~/Library/Audio/Plug-Ins`.
 `cmake --build build --target ni_tests` builds the test programs and the engine
 archives they link, and no plugin bundle; then `ctest -L quick` runs:
 
-- every Rust crate's unit tests (`cargo test`, crate by crate), and
-  `cargo_deny`, the licence gate over their dependency graph (below),
-- the C tests against each engine's hand-written ABI, and the oracles that pin
-  the editors' maths to the engine's measured output,
+- every Rust crate's unit tests (`cargo test`, crate by crate) --
+  music-core's twice, with `std` and without (`music_core_rs`,
+  `music_core_no_std`) -- and `cargo_deny`, the licence gate over their
+  dependency graph (below),
+- the C tests against each engine's ABI, hand-written or, for NI
+  Chord-Detector's `cd_core`, the header cbindgen generates; and the oracles
+  that pin the editors' maths to the engine's measured output,
 - the doctest wire, state and parameter tests (`tests/cpp`),
 - all of the kit's and the editors' JavaScript (`ui_unit`, the same files
   `npm test` runs),
 - the lint-like checks: `versions`, `release`, `licenses` (the tree, not the
-  bundles), `spdx` (every source file opens with its licence and copyright),
+  bundles), `licenses_resolve` (the feature resolution `licenses` decides
+  what ships with, on a graph small enough to read), `spdx` (every source file opens with its licence and copyright),
   `ui_tokens`, `editor_tags`, `editor_timing` (no editor code may hang off
   `requestAnimationFrame` or page visibility), `ground_shells`, `design_paths`
   (every path into `design/` that a tracked file names exists, however it is
@@ -121,13 +125,14 @@ one by hand — against any bundle, an installed one included, read-only.
 
 The project is GPL-3.0-or-later
 ([docs/adr/0001-gpl-3.0-or-later.md](../adr/0001-gpl-3.0-or-later.md)), and
-three quick-tier tests hold it to that:
+four quick-tier tests hold it to that:
 
 | test | what it holds |
 |---|---|
 | `spdx` | every source file this repository owns opens with `SPDX-License-Identifier: GPL-3.0-or-later` and `Copyright (C) 2026 Torben Gräber`, in its own comment syntax. `tests/spdx.test.mjs` lists what is excluded and why: external code, the design mirrors, the web editors this refactor deletes, Schwung's vendored headers |
 | `cargo_deny` | `cargo deny check licenses bans sources`: every crate in the graph is under a licence on `deny.toml`'s allowlist and comes from crates.io, and a crate in two versions is shown |
-| `licenses` | `LICENSE` is the unmodified GPLv3, `THIRD_PARTY_LICENSES.md` lists exactly what ships, and the Rust crates' section of it lists exactly the crates and versions `cargo metadata` says ship |
+| `licenses` | `LICENSE` is the unmodified GPLv3, `THIRD_PARTY_LICENSES.md` lists exactly what ships, and the Rust crates' section of it lists exactly the crates and versions a build of the workspace links |
+| `licenses_resolve` | how `licenses` decides what a build links: `cargo metadata` unifies each package's features over normal, build and dev edges alike, so a build dependency asking for serde's `derive` (cbindgen does) would make serde_derive look shipped. `resolveFeatures` (`scripts/licenses-lib.mjs`) resolves them again through normal edges only, as cargo's resolver does for a real build; this test holds it to each rule on a synthetic graph |
 
 The Rust crates' section of `THIRD_PARTY_LICENSES.md` is generated, never
 written by hand:

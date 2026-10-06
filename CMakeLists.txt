@@ -73,6 +73,9 @@ ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi
     INCLUDE ${CMAKE_SOURCE_DIR}/engines/audio-bus/include)
 ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi
     INCLUDE ${CMAKE_SOURCE_DIR}/engines/side-chain/include)
+# NI Chord-Detector's header is cbindgen's (cd-capi/build.rs), checked in.
+ni_add_rust_engine(cd_engine CRATE cd-capi LIB cd_capi
+    INCLUDE ${CMAKE_SOURCE_DIR}/engines/chord-detector/include)
 # The ground's beat clock and the shell plumbing (command queue, snapshot,
 # handoff, state header, denormal guard) belong to no product: their C ABI
 # rides inside every product's archive, so they are headers here.

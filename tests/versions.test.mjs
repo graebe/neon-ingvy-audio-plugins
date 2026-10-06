@@ -81,7 +81,7 @@ const PRODUCTS = {
   /* NI Chord-Detector. Its engine for now; the JUCE plugin brings its
    * build's version strings. */
   'chord-detector': {
-    crates: ['cd-core'].map(
+    crates: ['cd-core', 'cd-capi'].map(
       (c) => `engines/chord-detector/crates/${c}/Cargo.toml`),
   },
   /* Music theory, shared like ni-dsp but versioned, because neo-riemann pins
