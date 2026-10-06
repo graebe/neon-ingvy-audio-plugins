@@ -7,7 +7,7 @@
  * software renderer, in one image that no component can change.
  */
 #include "Gallery.h"
-#include "Info.h"
+#include "checks.h"
 #include "snapshot.h"
 
 using ni::ui::gallery::Frame;
@@ -67,11 +67,7 @@ TEST_CASE ("gallery: no page carries an info line over 72 characters")
         CAPTURE (ni::ui::gallery::idOf (page));
         const auto component = page.make();
         REQUIRE (component != nullptr);
-        for (const auto& line : ni::ui::collectInfo (*component))
-        {
-            CAPTURE (line);
-            CHECK (line.length() <= ni::ui::infoLimit);
-        }
+        NI_CHECK_INFO_LIMIT (*component);
     }
 }
 
