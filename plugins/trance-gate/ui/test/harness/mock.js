@@ -449,5 +449,5 @@ window.IPlugSendMsg = (m) => {
 if (location.search.includes('signal'))
   setTimeout(() => document.querySelectorAll('.tab')[1]?.click(), 260);
 
-/* A kick for the animated ground is kick.js's job -- a module, because it takes
- * the message tag from the editor's own msg.js rather than retyping it. */
+/* The animated ground's rings are the kit's harness/beat.js: a playing
+ * transport, shared by every editor's harness. */

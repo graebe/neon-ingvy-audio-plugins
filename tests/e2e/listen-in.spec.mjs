@@ -74,24 +74,26 @@ test('the height is re-sent after a viewport resize', async ({ page }) => {
 
 test.describe('the ground', () => {
   /* Fake time, so "it did not move" is a statement about a fixed interval
-   * rather than about how long the test happened to wait. */
+   * rather than about how long the test happened to wait -- and the harness's
+   * transport stopped, so the one ring below is the only one
+   * (tests/e2e/ground.spec.mjs is the transport's own test). */
   test.beforeEach(async ({ page }) => {
     await freezeClock(page);
-    await page.goto('/plugins/listen-in/ui/test/harness/index.html');
+    await page.goto('/plugins/listen-in/ui/test/harness/index.html?stopped');
     await page.clock.runFor(500);
   });
 
-  const kick = (page) => pushText(page, SHELL.ground, '1.000');
+  const ring = (page) => pushText(page, SHELL.ground, '1.000');
   const RING_MS = 600;
 
-  test('a kick moves it, and the Motion switch stops it and is remembered', async ({ page }) => {
+  test('a ring moves it, and the Motion switch stops it and is remembered', async ({ page }) => {
     const motion = page.getByRole('switch', { name: 'Motion' });
     await expect(motion).toHaveAttribute('aria-checked', 'true');
     const rest = await groundHash(page);
 
     /* A ring takes a few hundred ms to swell into view: the wavelet's peak is
      * not its onset. */
-    await kick(page);
+    await ring(page);
     await page.clock.runFor(RING_MS);
     expect(await groundHash(page)).not.toBe(rest);
 
@@ -99,14 +101,14 @@ test.describe('the ground', () => {
     await expect(motion).toHaveAttribute('aria-checked', 'false');
     /* Off flattens at once, back to the static design. */
     expect(await groundHash(page)).toBe(rest);
-    await kick(page);
+    await ring(page);
     await page.clock.runFor(RING_MS);
     expect(await groundHash(page)).toBe(rest);
     expect(await page.evaluate(() => localStorage.getItem('ultraviolet.motion.listen-in'))).toBe('0');
   });
 
   test('it pauses while the document is hidden and resumes when shown', async ({ page }) => {
-    await kick(page);
+    await ring(page);
     await page.clock.runFor(100);
 
     const setHidden = (hidden) => page.evaluate((h) => {

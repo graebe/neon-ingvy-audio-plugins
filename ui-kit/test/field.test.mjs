@@ -215,7 +215,7 @@ test('a kick raises the field and it rings out to exactly zero', async () => {
   } finally { teardown(); }
 });
 
-test('a kick is stronger than a quiet one, and strength is clamped to 0..1', async () => {
+test('a strong ring is stronger than a weak one, and strength is clamped to 0..1', async () => {
   const teardown = installDom();
   try {
     const { Field } = await loadField();
@@ -224,11 +224,55 @@ test('a kick is stronger than a quiet one, and strength is clamped to 0..1', asy
       field.trigger(s);
       return advance(field, 0.5);
     };
-    assert.ok(peakFor(1) > peakFor(0.3), 'a full kick must move the field more than a weak one');
-    /* Out-of-range input is clamped rather than trusted: the detector promises
-     * 0.3..1 but the field is what has to survive a bug upstream. */
+    assert.ok(peakFor(1) > peakFor(0.4), 'a downbeat must move the field more than a beat');
+    /* Out-of-range input is clamped rather than trusted: the plugin sends 0.4
+     * or 1 but the field is what has to survive a bug upstream. */
     assert.equal(peakFor(5), peakFor(1), 'a strength above 1 is not clamped');
     assert.equal(peakFor(-1), peakFor(0), 'a negative strength is not clamped');
+  } finally { teardown(); }
+});
+
+test('a beat ring reads clearly as the lesser of the two, and still moves the ground', async () => {
+  /*
+   * The plugin rings 1.0 on each bar's downbeat and 0.4 on every other beat
+   * (engines/ground/include/ground.h). The field is linear in strength, so a
+   * beat is a ring two fifths the height -- but what a person sees is dots
+   * drawn at another LEVEL, through tanh and 25 quantised levels, so that is
+   * what is measured: the largest share of the window's dots that a ring moves
+   * two levels or more from rest. Measured: about 53 % for a downbeat, 14 %
+   * for a beat (0.55, the first candidate, gave 34 % -- too close to tell
+   * apart at 120 BPM, where each ring is still swelling when the next starts).
+   */
+  const teardown = installDom();
+  try {
+    const { Field, MID } = await loadField();
+    const ring = (s) => {
+      const field = new Field(stubCanvas(400, 300));
+      field.trigger(s);
+      let peak = 0;
+      let share = 0;
+      for (let i = 0; i < 120; i++) {
+        field._step();
+        peak = Math.max(peak, field._peak());
+        let moved = 0;
+        let open = 0;
+        for (let q = 0; q < field.u.length; q++) {
+          if (field.wall[q]) continue;
+          open++;
+          const level = Math.round((Math.tanh(field.u[q]) + 1) * MID);
+          if (Math.abs(level - MID) >= 2) moved++;
+        }
+        share = Math.max(share, moved / open);
+      }
+      return { peak, share };
+    };
+    const down = ring(1);
+    const beat = ring(0.4);
+    assert.ok(Math.abs(beat.peak / down.peak - 0.4) < 0.01,
+      `the field is no longer linear in strength (${beat.peak} / ${down.peak})`);
+    assert.ok(beat.share > 0.08, `a beat ring barely shows (${beat.share})`);
+    assert.ok(down.share > 2.5 * beat.share,
+      `a downbeat (${down.share}) does not read clearly above a beat (${beat.share})`);
   } finally { teardown(); }
 });
 

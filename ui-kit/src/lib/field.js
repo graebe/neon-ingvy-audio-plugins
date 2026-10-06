@@ -9,7 +9,7 @@
  * judgement call about how the background should look -- if it reads wrong, the
  * design system is where that gets decided.
  *
- * WHAT IT DOES. A kick makes every panel edge and the window border emit one
+ * WHAT IT DOES. A trigger makes every panel edge and the window border emit one
  * slow ring. Rings travel through the background only -- panels and wells are
  * solid to them -- reflect off those edges and off the window border, cross each
  * other and interfere, and the whole field rings out over about twenty seconds.
@@ -17,7 +17,7 @@
  * shrink and dim and it thins. THE GRAIN ITSELF NEVER MOVES, only its local
  * density: moving grain reads as television static.
  *
- * With no sound the field is exactly zero, the canvas shows the static design --
+ * With no trigger the field is exactly zero, the canvas shows the static design --
  * the same dots, the same colours, grain of the same density -- and the render
  * loop STOPS. That last part is not an optimisation, it is the design's rule:
  * "Controls never animate", and a background that idles is a background that is
@@ -31,9 +31,10 @@
  * than read once.
  *
  * WHAT IS NOT HERE, AND WHY. The reference ships a second half, a BassDetector
- * that builds a Web Audio graph and finds the kick in the browser. A plugin
- * editor is a WebView with no AudioContext fed by the host's audio, so that half
- * cannot work here at all. The detection happens in Rust on the audio thread
+ * that builds a Web Audio graph and finds the kick in the browser. Here the
+ * ground follows the host's tempo instead, by the owner's decision: a ring on
+ * every beat while the song plays, the downbeat strongest
+ * (docs/tech/ground.md). The beat is found in Rust on the audio thread
  * (engines/ground) and arrives as a message; `trigger` is where it lands. This
  * is the ONLY part of the reference that moved.
  *
@@ -315,7 +316,7 @@ export class Field {
     this.t = 0;
   }
 
-  /** One kick. `s` is 0..1 -- what the detector's strength means. */
+  /** One ring. `s` is 0..1: the plugin sends 1 on a downbeat, 0.4 on a beat. */
   trigger(s) {
     if (this.reduced || !this.enabled || !this.src.length) return;
     this.kicks.push({ t0: this.t, s: clamp(s == null ? 1 : s, 0, 1) });

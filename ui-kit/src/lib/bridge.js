@@ -8,7 +8,7 @@
  * once it is listening, and the plugin answers with everything: the defaults,
  * every value, every display string, then its own messages.
  *
- * Four editors each wrote that, plus the same few lines handing a kick to the
+ * Four editors each wrote that, plus the same few lines handing a ring to the
  * ground. This is the one copy. Call it in the editor's body, after any
  * createParams: its listeners are live at once, and `ready` goes out from
  * onMount -- after every child has mounted and registered its own.
@@ -17,7 +17,7 @@ import { onMount, onCleanup } from 'solid-js';
 import { onMessage, onBytes, sendMessage } from './iplug.js';
 import { SHELL_MSG } from './shell.js';
 
-/** A kick's strength, or null for a payload that is not one. */
+/** A ring's strength, or null for a payload that is not one. */
 export const parseGround = (text) => {
   const s = Number.parseFloat(text);
   return Number.isFinite(s) ? s : null;
@@ -33,7 +33,7 @@ export function useEditorBridge(opts = {}) {
   const offs = [
     onMessage((tag, text) => {
       if (tag === SHELL_MSG.ground) {
-        /* One message, one ring; a malformed payload is not a full-strength kick. */
+        /* One message, one ring; a malformed payload is not a full-strength ring. */
         const s = parseGround(text);
         if (s !== null) ground?.trigger(s);
         return;

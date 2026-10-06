@@ -181,8 +181,9 @@ export function Ground(props) {
     }
 
     props.ref?.({
-      /* The only way in. A kick arrives as a message from the plugin; the editor
-       * hands the strength straight through. */
+      /* The only way in. A ring arrives as a message from the plugin -- one a
+       * beat while the host plays -- and the editor hands its strength
+       * straight through. */
       trigger: (strength) => field?.trigger(strength),
     });
   });
@@ -212,7 +213,7 @@ export function Ground(props) {
   /*
    * aria-hidden, and it is not laziness. The ground carries no information -- it
    * is the same picture whatever the plugin is doing, and its only content is
-   * that a kick happened, which the user can hear. A screen reader announcing a
+   * the song's beat, which the user can hear. A screen reader announcing a
    * canvas here would be announcing decoration.
    */
   return <canvas class="ground" ref={canvas} aria-hidden="true" />;

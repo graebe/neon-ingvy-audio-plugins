@@ -2,9 +2,9 @@
  * The review harnesses, over http, for the end-to-end suite.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
- * WHY A SERVER AT ALL. Chrome refuses module scripts from file://, and the
- * Trance Gate's harness imports the editor's own msg.js from source (kick.js)
- * through an import map that climbs out of the harness directory. So the pages
+ * WHY A SERVER AT ALL. Chrome refuses module scripts from file://, and every
+ * harness loads the kit's harness/beat.js -- the fake transport that rings the
+ * ground -- from a path that climbs out of the harness directory. So the pages
  * are served from the repository root, where every relative path they use
  * resolves exactly as it does for a person reviewing them by hand.
  *
