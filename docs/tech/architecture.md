@@ -14,16 +14,29 @@ C++ glue         iPlug2 — the VST3/AU/CLAP shell and the host plumbing
 Solid editor     a WebView, drawing the Ultraviolet design system
 ```
 
+Three decisions are reshaping these layers. Each is recorded with its context
+and what it costs:
+
+- [0001](../adr/0001-gpl-3.0-or-later.md): the licence is GPL-3.0-or-later
+  rather than MIT.
+- [0002](../adr/0002-juce-native-editors.md): JUCE is the shell, and the
+  editors are native JUCE Components. They replace iPlug2 and the WebView.
+- [0003](../adr/0003-established-rust-crates.md): established Rust crates
+  replace hand-written code.
+
 ## The Rust core
 
-One Cargo workspace at the repository root, and **zero external crates** — every
-`[dependencies]` entry in it is a `path` to a sibling inside the same engine
-or to one of the product-free shared crates (`engines/shared`, `ground`,
-`shell`, `audio-bus`). Those are rlibs: each product's single static library
-absorbs them, so a plugin still links exactly one archive.
-That is not asceticism; it is what makes the licence audit finish in one
-sitting, and it is why both engines compile for an aarch64 Linux device and a
-universal macOS bundle without a cross-compilation story.
+One Cargo workspace at the repository root. Every `[dependencies]` entry in it
+is still a `path`: to a sibling inside the same engine, or to one of the
+product-free shared crates (`engines/shared`, `ground`, `shell`, `audio-bus`).
+Those are rlibs. Each product's single static library absorbs them, so a
+plugin still links exactly one archive.
+
+Having no external crates was a rule, kept so that the MIT licence audit
+finished in one sitting. [0003](../adr/0003-established-rust-crates.md)
+reverses it. Established crates replace the hand-written FFT, queues, parsers
+and headers, each one under a licence on the allowlist. The one-archive rule
+stays.
 
 `[profile.release]` sets `panic = "abort"`, and that one is load-bearing rather
 than a size tweak: unwinding out of an `extern "C"` function into a C or C++
