@@ -222,6 +222,25 @@ if (APPLE)
                  COMMAND au_stress ${NI_BUNDLES}/NI${plugin}.component
                          ${NI_AU_STRESS_SECONDS} 2)
     endforeach()
+
+    # The Spectrogram's editor opened by a real host in each format -- the
+    # VST3, the AU and the CLAP from build/out, each with iPlug2's WKWebView and
+    # the shipped page in it -- fed audio, closed and opened again, and the
+    # page asked what reached it. The mock-host e2e suite cannot see this path.
+    # editor_host.mm. Needs a logged-in session (a window server), as a host does.
+    set(_vst3 ${IPLUG2_DIR}/Dependencies/IPlug/VST3_SDK)
+    add_executable(editor_host editor_host.mm
+        ${_vst3}/pluginterfaces/base/funknown.cpp
+        ${_vst3}/pluginterfaces/base/coreiids.cpp
+        ${_vst3}/public.sdk/source/vst/vstinitiids.cpp)
+    target_include_directories(editor_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${_vst3}
+        ${IPLUG2_DIR}/Dependencies/IPlug/CLAP_SDK/include)
+    target_compile_options(editor_host PRIVATE -fobjc-arc)
+    target_link_libraries(editor_host PRIVATE ${NI_AU_LIBS}
+        "-framework Cocoa" "-framework WebKit" "-framework CoreAudioKit")
+    add_test(NAME editor_host_vst3 COMMAND editor_host vst3 ${NI_BUNDLES}/NISpectrogram.vst3)
+    add_test(NAME editor_host_au COMMAND editor_host au ${NI_BUNDLES}/NISpectrogram.component)
+    add_test(NAME editor_host_clap COMMAND editor_host clap ${NI_BUNDLES}/NISpectrogram.clap)
 endif()
 
 # ---------------------------------------------------------------- Spectrogram
@@ -622,6 +641,7 @@ ni_test_tiers(
         tg_au:host sc_au:host
         au_stress_TranceGate:host au_stress_SideChain:host
         au_stress_Spectrogram:host au_stress_ListenIn:host
+        editor_host_vst3:host editor_host_au:host editor_host_clap:host
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)
