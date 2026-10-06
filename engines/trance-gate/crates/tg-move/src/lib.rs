@@ -52,7 +52,6 @@ mod tests {
     use ni_schwung::{AudioFxApiV2, HostApiV1};
     use std::ffi::CString;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Once;
 
     /* The host's clock. A RUNNING transport, or the gate is open and the
      * comparison proves nothing. */
@@ -64,21 +63,17 @@ mod tests {
         f64::from_bits(BEATS.load(Ordering::SeqCst))
     }
 
-    /* The vtable, initialised once: it is process-wide, as on the device,
-     * and cargo runs these tests in threads -- two inits racing on the
-     * shell's statics would be a data race. The host is leaked on purpose:
-     * the shell keeps the pointer for the process's life, exactly as it keeps
-     * the real host's. */
+    /* The vtable, from the init the device calls, with this file's clock.
+     * The table is a constant, and init copies the host's two clock functions
+     * and keeps nothing else (ni_schwung's keep_clock) -- so the host table
+     * can be a local, every test asks, and two asking at once store the same
+     * clock. */
     fn api() -> &'static AudioFxApiV2 {
-        static INIT: Once = Once::new();
-        static mut API: *const AudioFxApiV2 = std::ptr::null();
-        unsafe {
-            INIT.call_once(|| {
-                let host: &'static HostApiV1 = Box::leak(Box::new(HostApiV1::with_clock(bpm, beats)));
-                API = move_audio_fx_init_v2(host);
-            });
-            &*API
-        }
+        let host = HostApiV1::with_clock(bpm, beats);
+        /* SAFETY: `host` is valid for the call, which is as long as init
+         * reads it; init returns its module type's table, a constant that
+         * lives as long as the process. */
+        unsafe { &*move_audio_fx_init_v2(&host) }
     }
 
     fn render(api: &AudioFxApiV2, panic: bool) -> Vec<i16> {

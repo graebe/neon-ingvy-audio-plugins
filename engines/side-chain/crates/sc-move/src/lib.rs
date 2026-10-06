@@ -61,7 +61,6 @@ mod tests {
     use ni_schwung::AudioFxApiV2;
     use serde_json::Value;
     use std::ffi::{c_char, c_void, CString};
-    use std::sync::Once;
 
     /// The entry for `key` in the declaration, read with serde_json as
     /// params.rs's tests read the whole of it.
@@ -86,15 +85,14 @@ mod tests {
         options.iter().map(|o| o.as_str().expect("an option is text").to_string()).collect()
     }
 
-    /* The vtable, initialised once: it is process-wide, as on the device,
-     * and cargo runs these tests in threads. No host: a stopped transport. */
+    /* The vtable, from the init the device calls. It is a constant, the same
+     * table whichever init returns it, and init keeps nothing of a host but
+     * its clock -- so every test asks, and two asking at once is two writes
+     * of the same thing. No host: a stopped transport. */
     fn api() -> &'static AudioFxApiV2 {
-        static INIT: Once = Once::new();
-        static mut API: *const AudioFxApiV2 = std::ptr::null();
-        unsafe {
-            INIT.call_once(|| API = move_audio_fx_init_v2(std::ptr::null()));
-            &*API
-        }
+        /* SAFETY: init returns its module type's table, a constant that lives
+         * as long as the process. */
+        unsafe { &*move_audio_fx_init_v2(std::ptr::null()) }
     }
 
     struct Module(*mut c_void);
