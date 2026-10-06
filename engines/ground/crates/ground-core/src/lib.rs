@@ -56,8 +56,9 @@ pub use beat::{
     bar_quarters, BeatClock, Rings, Transport, BEAT_STRENGTH, DEFAULT_BPM, DOWNBEAT_STRENGTH,
 };
 
+use atomic_float::{AtomicF32, AtomicF64};
 use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 /// A beat clock plus the two published values the editor polls.
 ///
@@ -69,10 +70,10 @@ pub struct Ground {
     /// Monotonic ring count. Wraps at `u32::MAX`, which a reader comparing for
     /// inequality rather than ordering handles without noticing.
     fires: AtomicU32,
-    /// The most recent ring's strength, as `f32` bits.
-    strength: AtomicU32,
-    /// The sample rate the next reset configures for, as `f64` bits.
-    rate: AtomicU64,
+    /// The most recent ring's strength.
+    strength: AtomicF32,
+    /// The sample rate the next reset configures for.
+    rate: AtomicF64,
     /// A reset has been asked for and `tick` has not applied it yet. Written
     /// AFTER `rate`, with release, so the tick that takes it sees that rate.
     reset_pending: AtomicBool,
@@ -93,8 +94,8 @@ impl Ground {
         Ground {
             clock: UnsafeCell::new(BeatClock::new(sample_rate)),
             fires: AtomicU32::new(0),
-            strength: AtomicU32::new(0f32.to_bits()),
-            rate: AtomicU64::new(sample_rate.to_bits()),
+            strength: AtomicF32::new(0.0),
+            rate: AtomicF64::new(sample_rate),
             reset_pending: AtomicBool::new(false),
             active: AtomicBool::new(false),
         }
@@ -122,7 +123,7 @@ impl Ground {
          * caller has promised no two ticks overlap. */
         let clock = &mut *self.clock.get();
         if self.reset_pending.swap(false, Ordering::Acquire) {
-            clock.set_sample_rate(f64::from_bits(self.rate.load(Ordering::Relaxed)));
+            clock.set_sample_rate(self.rate.load(Ordering::Relaxed));
         }
         let rings = clock.tick(t, frames);
         if rings.count > 0 {
@@ -130,7 +131,7 @@ impl Ground {
              * then guaranteed to see at least this strength rather than the
              * previous one -- the reverse order would make the common case
              * the stale one. */
-            self.strength.store(rings.strength.to_bits(), Ordering::Relaxed);
+            self.strength.store(rings.strength, Ordering::Relaxed);
             self.fires.fetch_add(rings.count, Ordering::Relaxed);
         }
     }
@@ -138,7 +139,7 @@ impl Ground {
     /// Ask for a new sample rate and a fresh clock, from any thread. Applied
     /// by the next `tick`.
     pub fn set_sample_rate(&self, sample_rate: f64) {
-        self.rate.store(sample_rate.to_bits(), Ordering::Relaxed);
+        self.rate.store(sample_rate, Ordering::Relaxed);
         self.reset_pending.store(true, Ordering::Release);
     }
 
@@ -174,7 +175,7 @@ impl Ground {
     /// The most recent ring's strength: DOWNBEAT_STRENGTH or BEAT_STRENGTH.
     /// Meaningless until `fires` has moved at least once, where it reads 0.
     pub fn strength(&self) -> f32 {
-        f32::from_bits(self.strength.load(Ordering::Relaxed))
+        self.strength.load(Ordering::Relaxed)
     }
 }
 

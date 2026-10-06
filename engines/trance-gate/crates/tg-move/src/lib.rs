@@ -49,18 +49,19 @@ ni_schwung::export_audio_fx!(Gate);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use atomic_float::AtomicF64;
     use ni_schwung::{AudioFxApiV2, HostApiV1};
     use std::ffi::CString;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::Ordering;
 
     /* The host's clock. A RUNNING transport, or the gate is open and the
      * comparison proves nothing. */
-    static BEATS: AtomicU64 = AtomicU64::new(0);
+    static BEATS: AtomicF64 = AtomicF64::new(0.0);
     extern "C" fn bpm() -> f32 {
         120.0
     }
     extern "C" fn beats() -> f64 {
-        f64::from_bits(BEATS.load(Ordering::SeqCst))
+        BEATS.load(Ordering::SeqCst)
     }
 
     /* The vtable, from the init the device calls, with this file's clock.
@@ -77,7 +78,7 @@ mod tests {
     }
 
     fn render(api: &AudioFxApiV2, panic: bool) -> Vec<i16> {
-        BEATS.store(0f64.to_bits(), Ordering::SeqCst);
+        BEATS.store(0.0, Ordering::SeqCst);
         let inst = (api.create_instance.unwrap())(std::ptr::null(), std::ptr::null());
         let set = |k: &str, v: &str| {
             let (k, v) = (CString::new(k).unwrap(), CString::new(v).unwrap());
@@ -106,8 +107,7 @@ mod tests {
             let mut buf = [10000i16; 256];
             (api.process_block.unwrap())(inst, buf.as_mut_ptr(), 128);
             out.extend_from_slice(&buf);
-            let b = beats() + 128.0 / 44100.0 * 2.0;
-            BEATS.store(b.to_bits(), Ordering::SeqCst);
+            BEATS.store(beats() + 128.0 / 44100.0 * 2.0, Ordering::SeqCst);
         }
         (api.destroy_instance.unwrap())(inst);
         out

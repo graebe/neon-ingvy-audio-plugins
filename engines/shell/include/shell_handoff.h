@@ -20,8 +20,11 @@
  * never installed again. shell_handoff_free releases everything and must only
  * run once no block can start -- in the plugin's destructor.
  *
- * The mechanism is a hazard pointer; engines/shell/crates/shell-core/src/
- * handoff.rs has the argument for why it is sound.
+ * The mechanism is basedrop's reference counting: a block holds a counted
+ * copy, and the last copy let go of -- on whichever thread -- is queued, never
+ * released there; shell_handoff_collect and shell_handoff_free are where the
+ * release function runs. engines/shell/crates/shell-core/src/handoff.rs has
+ * the argument for why it is sound.
  */
 #ifndef SHELL_HANDOFF_H
 #define SHELL_HANDOFF_H

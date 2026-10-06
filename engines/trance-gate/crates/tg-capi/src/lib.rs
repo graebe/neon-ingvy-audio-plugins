@@ -301,12 +301,7 @@ pub unsafe extern "C" fn tg_core_rate_label(index: c_int, buf: *mut c_char, buf_
 /// bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_render_gate(state: *const c_char, buf: *mut c_char, buf_len: c_int) -> c_int {
-    let Some(bytes) = gate::render(s(state)) else { return -1 };
-    if buf.is_null() || buf_len < 0 || bytes.len() > buf_len as usize {
-        return -1;
-    }
-    std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
-    bytes.len() as c_int
+    copy_out(gate::render(s(state)), buf, buf_len)
 }
 
 /// The envelope plot's two curves for the patch in `state` (see envelope.rs):
@@ -320,7 +315,17 @@ pub unsafe extern "C" fn tg_core_render_gate(state: *const c_char, buf: *mut c_c
 /// bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_render_envelope(state: *const c_char, buf: *mut c_char, buf_len: c_int) -> c_int {
-    let Some(bytes) = envelope::render(s(state)) else { return -1 };
+    copy_out(envelope::render(s(state)), buf, buf_len)
+}
+
+/// A rendered plot into the caller's buffer, as both renders answer it: the
+/// number of bytes written, or -1 for nothing to draw or a buffer too small.
+/// Binary, so no NUL is added -- a gain of 0 is a 0 byte.
+///
+/// # Safety
+/// `buf` is null or writable for `buf_len` bytes.
+unsafe fn copy_out(bytes: Option<Vec<u8>>, buf: *mut c_char, buf_len: c_int) -> c_int {
+    let Some(bytes) = bytes else { return -1 };
     if buf.is_null() || buf_len < 0 || bytes.len() > buf_len as usize {
         return -1;
     }

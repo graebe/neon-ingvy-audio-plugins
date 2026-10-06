@@ -10,6 +10,7 @@ conventions each key speaks. Two of those are load-bearing and easy to get
 backwards, so they are stated where they are used rather than here.
 */
 
+use crate::edit::Edit;
 use crate::envelope::{Curve, Stage};
 use crate::fmt::{self, Buf};
 use crate::mask::Mask;
@@ -285,179 +286,25 @@ impl Instance {
         }
     }
 
+    /// The string door: [`Edit::parse`] and [`Instance::apply_edit`] in one
+    /// call, on whatever thread calls it -- the Move's audio callback, which
+    /// has no other. A key that is not an edit changes nothing.
     pub fn set_param(&mut self, key: &str, val: &str) {
-        /* Every key here may edit the saved state -- the pattern keys always do
-         * -- and none is called per block, so the revision simply moves. */
-        self.rev = self.rev.wrapping_add(1);
         match key {
-            /* The automatable keys parse and delegate -- `set_num`
-             * owns every clamp and every side effect, so the numeric and
-             * string doors cannot drift. */
-            "slot" => self.set_num(Param::Slot, fmt::atoi(val) as f64),
-            "length" => self.set_num(Param::Length, fmt::atoi(val) as f64),
-            /* A LABEL first, a bare number as an index -- `rates::index_from`
-             * owns that convention. */
-            "rate" => self.set_num(Param::Rate, rates::index_from(val) as f64),
-            "attack" => self.set_num(Param::Attack, fmt::atof(val)),
-            "decay" => self.set_num(Param::Decay, fmt::atof(val)),
-            "sustain" => self.set_num(Param::Sustain, fmt::atof(val)),
-            "hold" => self.set_num(Param::Hold, fmt::atof(val)),
-            "release" => self.set_num(Param::Release, fmt::atof(val)),
-            "amount" => self.set_num(Param::Amount, fmt::atof(val)),
-            "cursor" => {
-                /*
-                 * THE WIRE CARRIES THE OPTION INDEX, and the option NAMES
-                 * carry the step numbers -- so index 15 displays as "16".
-                 *
-                 * Not the 1-based name with `options_as_string`: the host has
-                 * three resolvers for an enum's wire format and only two
-                 * consult that flag. Indices are its default convention, so
-                 * all three agree on them.
-                 */
-                let c = fmt::atoi(val).max(0) as usize;
-                let len = self.pat[self.slot].length;
-                self.cursor = if c >= len { len - 1 } else { c };
-            }
-            "step" => {
-                /*
-                 * THE ONE KNOB THAT EDITS THE PATTERN, three-state rather
-                 * than two because a tie is not a separate property of a step
-                 * -- it is the third thing a step can be. Off / On / Tie maps
-                 * onto the two bits, costs one knob instead of two, and
-                 * cannot express the meaningless fourth combination (tied
-                 * while off).
-                 */
-                let c = self.cursor;
-                if c < MAX_STEPS {
-                    let mode = match val {
-                        "Off" => 0,
-                        "On" => 1,
-                        "Tie" => 2,
-                        _ => fmt::atoi(val).clamp(0, 2),
-                    };
-                    let slot = self.slot;
-                    let was = self.pat[slot].on(c);
-                    self.pat[slot].steps.set(c, mode != 0);
-                    self.pat[slot].ties.set(c, mode == 2);
-                    /*
-                     * A STEP CHANGING KIND ARRIVES LAST IN ITS NEW ONE, and the
-                     * kind it left closes up behind it. Symmetric on purpose:
-                     * a hole is as much a thing that arrives as a hit is, so
-                     * switching a step off puts it at the end of the hole order
-                     * rather than wherever its old hit rank happens to land.
-                     *
-                     * On <-> Tie does not move a step at all -- a tie changes
-                     * what a live step does, not when it arrives.
-                     */
-                    if (mode != 0) != was {
-                        self.pat[slot].order_append(c);
-                    } else {
-                        self.pat[slot].renumber();
-                    }
-                    self.recalc_fade();
-                }
-            }
-            "step_amount" => {
-                let c = self.cursor;
-                if c < MAX_STEPS {
-                    let f = clampf(fmt::atof(val) as f32, 0.0, 1.0);
-                    let slot = self.slot;
-                    self.pat[slot].depth[c] = (f * 255.0 + 0.5) as u8;
-                }
-            }
-            /*
-             * THE STEP'S PLACE IN THE ARRIVAL ORDER, 1..=N, at the cursor --
-             * the same door `step_amount` uses, for the same reason: per-step
-             * state is never a host parameter, so it comes through here.
-             */
-            "step_order" => {
-                let c = self.cursor;
-                let slot = self.slot;
-                let r = fmt::atoi(val).max(1) as usize;
-                self.pat[slot].order_set(c, r);
-                self.recalc_fade();
-            }
-            "fade" => self.set_num(Param::Fade, fmt::atof(val)),
-            "fade_soft" => {
-                let on = val == "On" || val == "on" || fmt::atoi(val) != 0;
-                self.set_num(Param::FadeSoft, on as i32 as f64);
-            }
-            /* Names as well as the index: the Move wires this enum by index
-             * while a patch or a plugin may well say which way it means. */
-            "fade_dir" => {
-                let out = val == "Out" || val == "out" || fmt::atoi(val) != 0;
-                self.set_num(Param::FadeDir, out as i32 as f64);
-            }
-            /*
-             * AN ACTION, NOT A VALUE, which is why it is only here and has no
-             * `Param` of its own: a host parameter that regenerated the pattern
-             * every time the host rewrote it would be unusable.
-             *
-             * AND IT NEEDS A VALUE THAT DOES NOTHING. On the Move this is an
-             * enum knob, which writes whichever option it is turned to -- so
-             * "Hold" has to be expressible, or turning the knob back off would
-             * roll again. An empty value fires: that is the plugin's path,
-             * where a button press carries no payload at all.
-             *
-             * A POSITIVE number is a SEED and pins the roll, which is what
-             * makes the result testable. Anything else that is not a hold --
-             * "Roll", from the Move's own knob -- walks the instance's
-             * generator instead, so successive presses differ.
-             */
-            "randomize" => {
-                if randomize_holds(val) {
-                    return;
-                }
-                let n = fmt::atoi(val);
-                let slot = self.slot;
-                self.randomize(slot, if n > 0 { Some(n as u32) } else { None });
-            }
-            "legato" => {
-                let on = val == "On" || val == "on" || fmt::atoi(val) != 0;
-                self.set_num(Param::Legato, on as i32 as f64);
-            }
-            "curve" => {
-                /* Names as well as the index; the re-anchor that keeps a
-                 * mid-gate change from clicking lives in `set_num` with the
-                 * rest. */
-                let c = match val {
-                    "Exponential" | "Exp" => 1,
-                    "S-Curve" | "S" => 2,
-                    _ => fmt::atoi(val) as i32,
-                };
-                self.set_num(Param::Curve, c as f64);
-            }
-            "time_mode" => {
-                /* Names as well as the index: the Move shell wires this enum
-                 * by index while a patch or a plugin may well say what it
-                 * means. */
-                let pct =
-                    val == "%" || val == "Step" || val == "step" || fmt::atoi(val) != 0;
-                self.set_num(Param::TimeMode, pct as i32 as f64);
-            }
-            "pattern" => {
-                let slot = self.slot;
-                set_pattern_hex(&mut self.pat[slot].steps, val);
-                /* A WHOLE NEW MASK, so every rank it might have had is stale --
-                 * see `reseed_order`. Position order is what a pattern that
-                 * arrived in one piece should fade in as, and it is also what
-                 * makes the same mask written twice land on the same order. */
-                self.pat[slot].reseed_order();
-                self.recalc_fade();
-            }
-            "ties" => {
-                let slot = self.slot;
-                set_pattern_hex(&mut self.pat[slot].ties, val);
-            }
-            /* Parse and load in one: the door a shell without a main thread
-             * of its own uses -- see the state module on where parsing runs.
-             * A text that is no blob loads nothing. */
+            /* A whole patch has a reader of its own, so this is the one key
+             * that is not an `Edit`: parse and load in one -- see the state
+             * module on where parsing runs. A text that is no blob loads
+             * nothing. */
             "state" => {
                 if let Ok(patch) = crate::state::Patch::parse(val) {
                     self.load(&patch);
                 }
             }
-            _ => {}
+            _ => {
+                if let Some(edit) = Edit::parse(key, val) {
+                    self.apply_edit(&edit);
+                }
+            }
         }
     }
 

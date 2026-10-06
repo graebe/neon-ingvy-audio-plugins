@@ -8,6 +8,12 @@ The engine is owned by the audio thread (see shell-core). The shell edits it
 by posting commands and reads it through a published frame; the audio thread
 takes it for one block at a time with [`tg_shell_begin`].
 
+WHAT IS POSTED. Every text that arrives through this C ABI -- an edit's
+key/value pairs, a host's blob, the clipboard, a slot file -- is read and
+checked here, on the posting thread, and what crosses to the audio thread is
+the result: an `Edit`, a `Patch`, a `Clip` (see [`Command`]). The audio thread
+applies values; it never parses.
+
 WHAT IS PUBLISHED. The four readouts the plugin reads off the audio thread --
 `ui`, `params`, `state`, `length` -- formatted by the engine's own
 non-allocating `get_param` into preallocated text, plus the handful of runtime
@@ -24,12 +30,15 @@ two have to be kept pointing at the same one. See `Mirror`.
 */
 
 use crate::TgCore;
-use shell_core::{publish_every, Bridge, Model, Text};
+use atomic_float::AtomicF64;
+use shell_core::{publish_every, Bridge, Model, Shared, Text};
 use std::ffi::{c_char, c_int, CStr};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
+use tg_core::edit::Edit;
 use tg_core::params::Param;
-use tg_core::paste::{Holds, Refused};
-use tg_core::slotfile::{Error as SlotFileError, Kind};
+use tg_core::paste::{Clip, Holds, Refused};
+use tg_core::slotfile::{Error as SlotFileError, Kind, SlotFile};
+use tg_core::state::Patch;
 use tg_core::Playhead;
 
 /* What a non-audio thread may ask for, in frame order. */
@@ -39,24 +48,62 @@ const STATE: usize = 2;
 
 /* TG_STATE_MAX: every readout fits, the state blob being the longest. */
 const TEXT_MAX: usize = 8192;
-/* A pasted state and its key, with room. */
-const MAX_COMMAND: usize = 2 * TEXT_MAX;
-const QUEUE_BYTES: usize = 64 * 1024;
-
-const CMD_PARAMS: u8 = b'P';
-const CMD_SAMPLE_RATE: u8 = b'S';
-/* A host's state load: the host's fifteen values, then the blob. */
-const CMD_LOAD: u8 = b'L';
-/* The editor's paste: a slot, a bank or a whole patch, checked on the posting
- * side; the host then follows the current slot. */
-const CMD_PASTE: u8 = b'V';
-/* An imported slot file, checked on the posting side: the target slot, then
- * the text; the same follow. */
-const CMD_IMPORT: u8 = b'I';
+/* Commands the ring holds between two blocks: a burst of edits and a load,
+ * with room. More wait on the posting side, in order. */
+const QUEUE: usize = 256;
 
 /// The host parameters, TG_P_COUNT of them.
 pub(crate) const NUMS: usize = 15;
 
+/// What the shell's other threads ask of the engine, each one read and
+/// checked where it was posted. Anything longer than a few words rides in a
+/// `Shared`, which the bridge's collector frees off the audio thread.
+#[derive(Clone)]
+pub enum Command {
+    /// One post's pairs, read, applied together and in order: a cursor move
+    /// and the step it aims at land in the same block.
+    Edits(Shared<Vec<Change>>),
+    /// The host's rate.
+    SampleRate(f64),
+    /// A host's state load; see [`Load`].
+    Load(Shared<Load>),
+    /// The editor's paste: a slot, a bank or a whole patch -- or an imported
+    /// file, whose text is pasted as its clip. A slot goes into `slot`
+    /// (0-based), carried here because the host's Slot may move in the very
+    /// block the paste is applied in, after it; out of range is the engine's
+    /// current slot. The host then follows the current slot.
+    Paste { slot: usize, clip: Shared<Clip> },
+}
+
+/// One pair of a post, read.
+pub enum Change {
+    Edit(Edit),
+    /// `state`: a whole patch. The editor never posts one -- a host's goes
+    /// through `tg_shell_load` -- but `tg_shell_post` takes every key
+    /// `tg_core_set_param` does.
+    Patch(Box<Patch>),
+}
+
+/*
+ * A STATE LOAD, AND THE ORDER IS THE POINT. The blob first -- every slot's
+ * pattern and sound -- then the host's own values, which are the current
+ * slot's and win over the blob's rounded copy of them, so a project reopens
+ * with exactly the parameters it saved. A blob from before slots had sounds of
+ * their own carries ONE sound, and the host's values are that sound: it goes
+ * into all eight slots.
+ */
+/// A host's state load, read: what [`Command::Load`] carries.
+pub struct Load {
+    /// The blob, read; `None` when there was none or it was no patch.
+    patch: Option<Patch>,
+    /// The host's fifteen, on the numeric wire.
+    values: [f64; NUMS],
+    /// The blob predates every slot having its own sound -- or could not be
+    /// read at all, which has always counted the same.
+    spread: bool,
+}
+
+#[derive(Clone)]
 pub struct TgFrame {
     text: [Text; 4],
     rt: Playhead,
@@ -73,6 +120,7 @@ pub struct TgFrame {
 }
 
 impl Model for TgCore {
+    type Command = Command;
     type Frame = TgFrame;
 
     fn new_frame(&self) -> TgFrame {
@@ -86,68 +134,34 @@ impl Model for TgCore {
         }
     }
 
-    fn apply(&mut self, cmd: &[u8]) {
-        let Some((&tag, body)) = cmd.split_first() else { return };
-        match tag {
-            CMD_PARAMS => {
-                /* key \0 value \0, repeated: one edit is one command, so a
-                 * cursor move and the step it aims at land in the same block. */
-                let mut it = body.split(|&b| b == 0);
-                while let (Some(k), Some(v)) = (it.next(), it.next()) {
-                    let (Ok(k), Ok(v)) = (core::str::from_utf8(k), core::str::from_utf8(v)) else {
-                        continue;
-                    };
-                    if !k.is_empty() {
-                        self.0.set_param(k, v);
+    fn apply(&mut self, cmd: &Command) {
+        match cmd {
+            Command::Edits(changes) => {
+                for change in changes.iter() {
+                    match change {
+                        Change::Edit(edit) => self.0.apply_edit(edit),
+                        Change::Patch(patch) => self.0.load(patch),
                     }
                 }
             }
-            /*
-             * A STATE LOAD, AND THE ORDER IS THE POINT. The blob first -- every
-             * slot's pattern and sound -- then the host's own values, which are
-             * the current slot's and win over the blob's rounded copy of them,
-             * so a project reopens with exactly the parameters it saved. A blob
-             * from before slots had sounds of their own carries ONE sound, and
-             * the host's values are that sound: it goes into all eight slots.
-             */
-            CMD_LOAD => {
-                let Some(head) = body.get(..NUMS * 8) else { return };
-                let blob = core::str::from_utf8(&body[NUMS * 8..]).unwrap_or("");
-                if !blob.is_empty() {
-                    self.0.set_param("state", blob);
+            Command::SampleRate(sample_rate) => self.0.set_sample_rate(*sample_rate),
+            Command::Load(load) => {
+                if let Some(patch) = &load.patch {
+                    self.0.load(patch);
                 }
-                for (i, b) in head.as_chunks::<8>().0.iter().enumerate() {
-                    let v = f64::from_le_bytes(*b);
+                for (i, &v) in load.values.iter().enumerate() {
                     if let Some(p) = Param::from_i32(i as i32) {
                         self.0.set_num(p, v);
                     }
                 }
-                if !blob.is_empty() && tg_core::state::version(blob) < tg_core::state::STATE_VERSION_SLOT_SOUNDS {
+                if load.spread {
                     self.0.spread_sound();
                 }
             }
-            CMD_PASTE => {
-                let Some((&slot, text)) = body.split_first() else { return };
-                if let Ok(text) = core::str::from_utf8(text) {
-                    if self.0.paste_into(slot as usize, text).is_ok() {
-                        self.2 = self.2.wrapping_add(1);
-                    }
-                }
+            Command::Paste { slot, clip } => {
+                self.0.apply_clip(*slot, clip);
+                self.2 = self.2.wrapping_add(1);
             }
-            CMD_IMPORT => {
-                let Some((&slot, text)) = body.split_first() else { return };
-                if let Ok(text) = core::str::from_utf8(text) {
-                    if self.0.import_into(slot as usize, text).is_ok() {
-                        self.2 = self.2.wrapping_add(1);
-                    }
-                }
-            }
-            CMD_SAMPLE_RATE => {
-                let Some(b) = body.get(..8) else { return };
-                let sr = f64::from_le_bytes(b.try_into().unwrap_or([0; 8]));
-                self.0.set_sample_rate(sr);
-            }
-            _ => {}
         }
     }
 
@@ -208,15 +222,15 @@ pub struct TgShell {
  *   (`tg_shell_take_params`) to move every host parameter to it. A paste is the
  *   same: the pasted patch's current slot is what the host must show.
  *
- * A state load is not a switch: it is a command (CMD_LOAD) carrying the host's
- * values with the blob, so the next block finds nothing the host moved.
+ * A state load is not a switch: it is a command (`Command::Load`) carrying the
+ * host's values with the blob, so the next block finds nothing the host moved.
  *
  * The audio thread's own fields are atomics only because the shell is shared;
  * `sync` is the one that crosses threads.
  */
 struct Mirror {
     pushed_slot: AtomicI32,
-    pushed: [AtomicU64; NUMS],
+    pushed: [AtomicF64; NUMS],
     recalls: AtomicU32,
     moved: AtomicBool,
     sync: AtomicBool,
@@ -227,7 +241,7 @@ impl Mirror {
         Mirror {
             pushed_slot: AtomicI32::new(-1),
             /* NaN: nothing pushed yet, so the first block pushes everything. */
-            pushed: core::array::from_fn(|_| AtomicU64::new(f64::NAN.to_bits())),
+            pushed: core::array::from_fn(|_| AtomicF64::new(f64::NAN)),
             recalls: AtomicU32::new(0),
             moved: AtomicBool::new(false),
             sync: AtomicBool::new(false),
@@ -263,9 +277,11 @@ impl Plan {
 impl Mirror {
     fn plan(&self, values: &[f64; NUMS], recalls: u32) -> Plan {
         let mut pushed_slot = self.pushed_slot.load(Ordering::Relaxed);
+        /* Compared as bits, as the engine compares a sound: a change the
+         * saved blob could show is never missed, and `-0.0 == 0.0` would. */
         let mut moved = [false; NUMS];
         for (i, v) in values.iter().enumerate() {
-            moved[i] = self.pushed[i].load(Ordering::Relaxed) != v.to_bits();
+            moved[i] = self.pushed[i].load(Ordering::Relaxed).to_bits() != v.to_bits();
         }
         Plan {
             switched: slot_moved(&mut pushed_slot, values[Param::Slot as usize] as i32),
@@ -278,8 +294,8 @@ impl Mirror {
     /// held when the engine last heard from it.
     fn commit(&self, values: &[f64; NUMS], recalls: u32) {
         self.pushed_slot.store(values[Param::Slot as usize] as i32, Ordering::Relaxed);
-        for (i, v) in values.iter().enumerate() {
-            self.pushed[i].store(v.to_bits(), Ordering::Relaxed);
+        for (i, &v) in values.iter().enumerate() {
+            self.pushed[i].store(v, Ordering::Relaxed);
         }
         self.recalls.store(recalls, Ordering::Relaxed);
     }
@@ -293,15 +309,34 @@ pub(crate) fn slot_moved(pushed: &mut i32, slot: i32) -> bool {
     moved
 }
 
-/*
- * AN UNSEEDED ROLL IS GIVEN A SEED HERE, on the posting side.
- *
- * The engine's own generator would roll differently in the view than in the
- * engine, and the patch a save wrote would not be the one that played. A seed
- * picked once and carried in the command makes both roll the same pattern.
- * What counts as a hold is the engine's own answer, not a copy of it.
- */
 impl TgShell {
+    /// One pair of a post, read: `None` for a pair that changes nothing -- a
+    /// key the engine does not know, a roll that holds, a `state` that is no
+    /// patch.
+    fn change(&self, key: &str, val: &str) -> Option<Change> {
+        if key == "state" {
+            return Patch::parse(val).ok().map(|patch| Change::Patch(Box::new(patch)));
+        }
+        Some(Change::Edit(match Edit::parse(key, val)? {
+            Edit::Randomize(None) => Edit::Randomize(Some(self.next_seed())),
+            edit => edit,
+        }))
+    }
+
+    /// A payload for a command, freed by the bridge's collector.
+    fn shared<T: Send + Sync + 'static>(&self, value: T) -> Shared<T> {
+        Shared::new(self.bridge.handle(), value)
+    }
+
+    /*
+     * AN UNSEEDED ROLL IS GIVEN A SEED HERE, on the posting side.
+     *
+     * The engine's own generator would roll differently in the view than in
+     * the engine, and the patch a save wrote would not be the one that
+     * played. A seed picked once and carried in the command makes both roll
+     * the same pattern. What counts as a hold is the engine's own answer
+     * (`Edit::parse`), not a copy of it.
+     */
     fn next_seed(&self) -> u32 {
         let mut z = self.seed.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed);
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -323,13 +358,7 @@ unsafe fn s<'a>(p: *const c_char) -> Option<&'a str> {
 #[no_mangle]
 pub extern "C" fn tg_shell_create(sample_rate: f64) -> *mut TgShell {
     let sr = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
-    let bridge = Bridge::new(
-        TgCore::new(sr),
-        Some(TgCore::new(sr)),
-        QUEUE_BYTES,
-        MAX_COMMAND,
-        publish_every(sr),
-    );
+    let bridge = Bridge::new(TgCore::new(sr), Some(TgCore::new(sr)), QUEUE, publish_every(sr));
     let entropy = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
@@ -348,9 +377,9 @@ pub unsafe extern "C" fn tg_shell_destroy(sh: *mut TgShell) {
     }
 }
 
-/// Queue one edit: `n_pairs` key/value pairs, applied together in order.
-/// Returns 1 when queued, 0 when refused (null, malformed, or too long ever
-/// to be delivered). Any non-audio thread.
+/// Queue one edit: `n_pairs` key/value pairs, read here and applied together
+/// in order. Returns 1 when queued, 0 when refused (a null, or a key or value
+/// that is not text). Any non-audio thread.
 ///
 /// # Safety
 /// `pairs` holds `2 * n_pairs` pointers, each null or a NUL-terminated string.
@@ -365,19 +394,13 @@ pub unsafe extern "C" fn tg_shell_post(
         return 0;
     }
     let kv = std::slice::from_raw_parts(pairs, n_pairs as usize * 2);
-    let mut cmd = vec![CMD_PARAMS];
+    let mut changes = Vec::with_capacity(kv.len() / 2);
     for p in kv.chunks(2) {
         let (Some(k), Some(v)) = (s(p[0]), s(p[1])) else { return 0 };
-        cmd.extend_from_slice(k.as_bytes());
-        cmd.push(0);
-        if k == "randomize" && !tg_core::params::randomize_holds(v) && tg_core::fmt::atoi(v) <= 0 {
-            cmd.extend_from_slice(sh.next_seed().to_string().as_bytes());
-        } else {
-            cmd.extend_from_slice(v.as_bytes());
-        }
-        cmd.push(0);
+        changes.extend(sh.change(k, v));
     }
-    sh.bridge.post(&cmd) as c_int
+    sh.bridge.post(Command::Edits(sh.shared(changes)));
+    1
 }
 
 /// The host's rate, applied at the top of the next block. Any non-audio
@@ -392,9 +415,7 @@ pub unsafe extern "C" fn tg_shell_post_sample_rate(sh: *const TgShell, sample_ra
     if !(sample_rate > 0.0) {
         return;
     }
-    let mut cmd = vec![CMD_SAMPLE_RATE];
-    cmd.extend_from_slice(&sample_rate.to_le_bytes());
-    sh.bridge.post(&cmd);
+    sh.bridge.post(Command::SampleRate(sample_rate));
     sh.bridge.set_publish_every(publish_every(sample_rate));
 }
 
@@ -532,35 +553,47 @@ pub unsafe extern "C" fn tg_shell_import(
     err: *mut c_char,
     err_len: c_int,
 ) -> c_int {
-    let say = |e: SlotFileError| {
-        if !err.is_null() && err_len > 0 {
-            let out = std::slice::from_raw_parts_mut(err as *mut u8, err_len as usize);
-            let mut b = tg_core::fmt::Buf::new(out);
-            let _ = e.describe(&mut b);
-            b.finish();
-        }
-        0
-    };
     let Some(sh) = sh.as_ref() else { return 0 };
     /* Bytes that are not text are not a slot file either. */
     let text = if text.is_null() { "" } else {
         match CStr::from_ptr(text).to_str() {
             Ok(t) => t,
-            Err(_) => return say(SlotFileError::NotAFile),
+            Err(_) => return refuse(err, err_len, |w| SlotFileError::NotAFile.describe(w)),
         }
     };
-    let kind = match tg_core::slotfile::check(text) {
-        Ok(k) => k,
-        Err(e) => return say(e),
+    let file = match SlotFile::parse(text) {
+        Ok(file) => file,
+        Err(e) => return refuse(err, err_len, |w| e.describe(w)),
     };
-    let mut cmd = Vec::with_capacity(text.len() + 2);
-    cmd.push(CMD_IMPORT);
-    cmd.push(u8::try_from(slot).unwrap_or(u8::MAX));
-    cmd.extend_from_slice(text.as_bytes());
-    if !sh.bridge.post(&cmd) {
-        return say(SlotFileError::TooLarge);
-    }
+    let kind = file.kind();
+    sh.bridge.post(Command::Paste { slot: slot_index(slot), clip: sh.shared(Clip::File(file)) });
     if kind == Kind::Slot { 1 } else { 2 }
+}
+
+/* The slot a paste or an import names, 0-based. Anything out of range -- a
+ * negative one included -- the engine reads as its current slot. */
+fn slot_index(slot: c_int) -> usize {
+    usize::try_from(slot).unwrap_or(usize::MAX)
+}
+
+/// Why a text was refused, in words, into `err` (which may be null),
+/// NUL-terminated and cut to fit -- and 0, which is how every refusal is
+/// answered.
+///
+/// # Safety
+/// `err` is null or holds `err_len` bytes.
+unsafe fn refuse(
+    err: *mut c_char,
+    err_len: c_int,
+    why: impl FnOnce(&mut dyn core::fmt::Write) -> core::fmt::Result,
+) -> c_int {
+    if !err.is_null() && err_len > 0 {
+        let out = std::slice::from_raw_parts_mut(err as *mut u8, err_len as usize);
+        let mut b = tg_core::fmt::Buf::new(out);
+        let _ = why(&mut b);
+        b.finish();
+    }
+    0
 }
 
 
@@ -675,14 +708,13 @@ pub unsafe extern "C" fn tg_shell_load(sh: *const TgShell, blob: *const c_char, 
     if values.is_null() || n < NUMS as c_int {
         return 0;
     }
-    let mut cmd = vec![CMD_LOAD];
-    for v in std::slice::from_raw_parts(values, NUMS) {
-        cmd.extend_from_slice(&v.to_le_bytes());
-    }
-    if let Some(b) = s(blob) {
-        cmd.extend_from_slice(b.as_bytes());
-    }
-    sh.bridge.post(&cmd) as c_int
+    let values = *(values as *const [f64; NUMS]);
+    /* A blob that is not text is no blob, as an empty one is. */
+    let blob = s(blob).unwrap_or("");
+    let patch = if blob.is_empty() { None } else { Patch::parse(blob).ok() };
+    let spread = !blob.is_empty() && !patch.as_ref().is_some_and(|p| p.version().slot_sounds());
+    sh.bridge.post(Command::Load(sh.shared(Load { patch, values, spread })));
+    1
 }
 
 /// The editor's paste of the clipboard's text: classified here, whole, and
@@ -712,34 +744,20 @@ pub unsafe extern "C" fn tg_shell_paste(
     err: *mut c_char,
     err_len: c_int,
 ) -> c_int {
-    let say = |r: Refused| {
-        if !err.is_null() && err_len > 0 {
-            let out = std::slice::from_raw_parts_mut(err as *mut u8, err_len as usize);
-            let mut b = tg_core::fmt::Buf::new(out);
-            let _ = r.describe(&mut b);
-            b.finish();
-        }
-        0
-    };
     let Some(sh) = sh.as_ref() else { return 0 };
     /* Bytes that are not text hold no slot either. */
     let text = if text.is_null() || len <= 0 { "" } else {
         match core::str::from_utf8(std::slice::from_raw_parts(text as *const u8, len as usize)) {
             Ok(t) => t,
-            Err(_) => return say(Refused::NotTranceGate),
+            Err(_) => return refuse(err, err_len, |w| Refused::NotTranceGate.describe(w)),
         }
     };
-    let holds = match tg_core::paste::classify(text) {
-        Ok(h) => h,
-        Err(r) => return say(r),
+    let clip = match Clip::parse(text) {
+        Ok(clip) => clip,
+        Err(r) => return refuse(err, err_len, |w| r.describe(w)),
     };
-    let mut cmd = Vec::with_capacity(text.len() + 2);
-    cmd.push(CMD_PASTE);
-    cmd.push(u8::try_from(slot).unwrap_or(u8::MAX));
-    cmd.extend_from_slice(text.as_bytes());
-    if !sh.bridge.post(&cmd) {
-        return say(Refused::NotTranceGate);
-    }
+    let holds = clip.holds();
+    sh.bridge.post(Command::Paste { slot: slot_index(slot), clip: sh.shared(clip) });
     match holds {
         Holds::Slot => 1,
         Holds::Bank => 2,

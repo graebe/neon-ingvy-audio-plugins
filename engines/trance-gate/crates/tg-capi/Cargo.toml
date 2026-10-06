@@ -22,5 +22,9 @@ tg-core = { path = "../tg-core" }
 ground-capi = { path = "../../../ground/crates/ground-capi" }
 # The command queue and the published snapshot between the plugin's threads.
 shell-core = { path = "../../../shell/crates/shell-core" }
+# The host's values as the audio thread last pushed them (src/shell.rs's
+# Mirror): doubles another thread reads. `atomic_f64` is the feature that
+# brings AtomicF64; the workspace takes no crate's defaults.
+atomic_float = { workspace = true, features = ["atomic_f64"] }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }

@@ -7,11 +7,18 @@ license = "GPL-3.0-or-later"
 description = "How a plugin shell's threads reach an engine: a command queue in, a published snapshot out"
 publish.workspace = true
 
-# NO DEPENDENCIES YET. Two atomics and a ring were not worth a third-party
-# licence while the project was MIT. docs/adr/0003-established-rust-crates.md
-# reverses that rule and names rtrb, triple_buffer and basedrop or arc-swap as
-# the replacements.
 [dependencies]
+# The bridge's way in (src/bridge.rs): a wait-free ring of the product's own
+# typed commands. `std` adds only std::error::Error for its error types.
+rtrb = { workspace = true }
+# The bridge's way out: the latest whole frame, handed over by one atomic
+# swap, never torn and never waited for. Its one feature is for running Miri.
+triple_buffer = { workspace = true }
+# What crosses with a command or is lent to the audio thread (src/handoff.rs)
+# is a reference-counted Shared whose last release -- on whichever thread --
+# only queues it: the free is the collector's, on the main thread
+# (src/reclaim.rs). No features to choose: the crate is no_std with alloc.
+basedrop = { workspace = true }
 
 # The counting allocator the no_alloc test installs. Test-only.
 [dev-dependencies]

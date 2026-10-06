@@ -11,14 +11,14 @@
  * `rates::index_from` did exactly that for a numeric rate, on every write from
  * the Move's knob.
  *
- * WHAT A LOAD, AN IMPORT OR A PASTE HANDS THE AUDIO THREAD is a value read
- * elsewhere -- a Patch, a SlotFile, a Clip -- and applying one is measured
- * here. So are the text doors that read and apply in one call, with the texts
- * a build writes: they are what the Move's set_param and the plugin shell's
- * command queue apply today. A REFUSED text is not: serde_json boxes the
- * error it reports, and such a text never reaches the audio thread -- the
- * shell checks a paste and an import as they are posted (see the state
- * module's note on threads).
+ * WHAT AN EDIT, A LOAD, AN IMPORT OR A PASTE HANDS THE AUDIO THREAD is a
+ * value read elsewhere -- an Edit, a Patch, a SlotFile, a Clip -- and applying
+ * one is measured here. So are the text doors that read and apply in one
+ * call, with the texts a build writes: they are what the Move's set_param
+ * applies on its audio callback. A REFUSED text is not: serde_json boxes the
+ * error it reports, and such a text never reaches the plugin's audio thread --
+ * its shell reads everything as it is posted (see the state module's note on
+ * threads).
  *
  * The allocator counts allocations AND frees: a free is the same lock as a
  * malloc, and a temporary that is allocated before the window and dropped
@@ -29,6 +29,7 @@
  * measured window and the failure would look like a real regression.
  */
 
+use tg_core::edit::Edit;
 use tg_core::params::Param;
 use tg_core::paste::Clip;
 use tg_core::slotfile::{Kind, SlotFile};
@@ -107,6 +108,7 @@ fn process_set_param_and_get_param_allocate_nothing() {
     let patch = Patch::parse(&state).unwrap();
     let banked = SlotFile::parse(&bank).unwrap();
     let pasted = [Clip::parse(&slot).unwrap(), Clip::parse(&bank).unwrap(), Clip::parse(&state).unwrap()];
+    let edits: Vec<Edit> = SETS.iter().filter_map(|&(k, v)| Edit::parse(k, v)).collect();
 
     ni_testkit::arm();
     let mut beats = 0.0;
@@ -127,6 +129,9 @@ fn process_set_param_and_get_param_allocate_nothing() {
         }
     }
     /* The ready values. */
+    for edit in &edits {
+        p.apply_edit(edit);
+    }
     p.load(&patch);
     p.apply_file(3, &banked);
     for clip in &pasted {

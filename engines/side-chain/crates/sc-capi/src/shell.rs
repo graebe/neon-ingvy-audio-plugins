@@ -22,23 +22,29 @@ use sc_core::Instance;
 const KEYS: [&str; 3] = ["ui", "params", "stage_ms"];
 /* SC_STATE_MAX: every readout fits. */
 const TEXT_MAX: usize = 4096;
-const MAX_COMMAND: usize = 64;
-const QUEUE_BYTES: usize = 4096;
+/* Commands the ring holds between two blocks. The sample rate is the only
+ * one, and a host sets it a handful of times a session. */
+const QUEUE: usize = 16;
 
-const CMD_SAMPLE_RATE: u8 = b'S';
+/// What another thread may ask of the engine: the one edit the Side-Chain has
+/// that is not a host parameter.
+#[derive(Clone, Copy)]
+pub enum Command {
+    /// The host's rate, applied at the top of the next block.
+    SampleRate(f64),
+}
 
 impl Model for ScCore {
+    type Command = Command;
     type Frame = [Text; 3];
 
     fn new_frame(&self) -> [Text; 3] {
         [Text::new(TEXT_MAX), Text::new(TEXT_MAX), Text::new(TEXT_MAX)]
     }
 
-    fn apply(&mut self, cmd: &[u8]) {
-        if let [CMD_SAMPLE_RATE, rest @ ..] = cmd {
-            if let Some(b) = rest.get(..8) {
-                self.0.set_sample_rate(f64::from_le_bytes(b.try_into().unwrap_or([0; 8])));
-            }
+    fn apply(&mut self, cmd: &Command) {
+        match *cmd {
+            Command::SampleRate(sr) => self.0.set_sample_rate(sr),
         }
     }
 
@@ -58,7 +64,7 @@ pub struct ScShell(Bridge<ScCore>);
 #[no_mangle]
 pub extern "C" fn sc_shell_create(sample_rate: f64) -> *mut ScShell {
     let sr = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
-    let bridge = Bridge::new(ScCore(Instance::new(sr)), None, QUEUE_BYTES, MAX_COMMAND, publish_every(sr));
+    let bridge = Bridge::new(ScCore(Instance::new(sr)), None, QUEUE, publish_every(sr));
     Box::into_raw(Box::new(ScShell(bridge)))
 }
 
@@ -83,10 +89,7 @@ pub unsafe extern "C" fn sc_shell_post_sample_rate(sh: *const ScShell, sample_ra
     if !(sample_rate > 0.0) {
         return;
     }
-    let mut cmd = [0u8; 9];
-    cmd[0] = CMD_SAMPLE_RATE;
-    cmd[1..].copy_from_slice(&sample_rate.to_le_bytes());
-    sh.0.post(&cmd);
+    sh.0.post(Command::SampleRate(sample_rate));
     sh.0.set_publish_every(publish_every(sample_rate));
 }
 

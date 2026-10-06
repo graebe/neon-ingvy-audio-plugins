@@ -46,9 +46,10 @@ void        tg_shell_destroy(tg_shell_t *s);
 /*
  * One edit: `n_pairs` key/value pairs for tg_core_set_param, applied together
  * and in order -- "cursor","3","step","2" moves the cursor and edits the step
- * it lands on in the same block. Returns 1 when queued, 0 when refused (a null
- * or an edit longer than any state blob). A full queue is not a refusal: the
- * edit waits on this side and is sent in order.
+ * it lands on in the same block. The pairs are read here, on the calling
+ * thread, and the audio thread is handed the values. Returns 1 when queued, 0
+ * when refused (a null, or a key or value that is not UTF-8 text). A full queue
+ * is not a refusal: the edit waits on this side and is sent in order.
  *
  * "randomize" with no seed is given one here, so the roll that plays is the
  * roll a save writes.
