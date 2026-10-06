@@ -24,20 +24,19 @@ thread is handed the [`Patch`] -- or a [`SlotFile`](crate::slotfile::SlotFile)
 or a [`Clip`](crate::paste::Clip) -- to apply. tests/no_alloc.rs holds the
 three applies to it.
 
-- **The plugin** parses on its main thread: tg-capi's shell checks a paste and
-  an import as they are posted, and rebuilds its view and every save from text
-  there. Its command queue still carries a load, a paste or an import to the
-  audio thread as TEXT, applied there through the text doors below -- a paste
-  or an import checked, a load as the host handed it over -- until the queue
-  carries the values themselves.
+- **The plugin** parses on its main thread: tg-capi's shell reads every edit,
+  load, paste and import as it is posted, and its command queue carries what
+  was read -- an [`Edit`](crate::edit::Edit), a [`Patch`], a
+  [`Clip`](crate::paste::Clip) -- for the audio thread to apply. Its view and
+  every save are rebuilt from text there too.
 - **The Move** has no other thread. Schwung calls `set_param` -- the text
   door -- on its audio callback, so a blob is parsed there, as it always was.
 
 The text doors -- `set_param("state", _)`, [`Instance::import_into`] and
-[`Instance::paste_into`] -- are parse-then-apply in one call, for those two.
-Every text a build writes goes through them without allocating; only a
-damaged one -- a corrupt chunk, a mangled preset -- makes serde_json allocate
-the error it reports, on whichever thread called.
+[`Instance::paste_into`] -- are parse-then-apply in one call, for the Move and
+for a plugin shell's main thread. Every text a build writes goes through them
+without allocating; only a damaged one -- a corrupt chunk, a mangled preset --
+makes serde_json allocate the error it reports, on whichever thread called.
 
 # The format
 

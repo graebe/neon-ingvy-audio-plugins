@@ -22,6 +22,7 @@ struct Tally {
     sum: u64,
 }
 
+#[derive(Clone)]
 struct TallyFrame {
     count: u64,
     sum: u64,
@@ -30,15 +31,14 @@ struct TallyFrame {
 }
 
 impl Model for Tally {
+    type Command = u64;
     type Frame = TallyFrame;
     fn new_frame(&self) -> TallyFrame {
         TallyFrame { count: 0, sum: 0, payload: vec![0; PAYLOAD].into_boxed_slice() }
     }
-    fn apply(&mut self, cmd: &[u8]) {
-        let mut b = [0u8; 8];
-        b.copy_from_slice(&cmd[..8]);
+    fn apply(&mut self, cmd: &u64) {
         self.count += 1;
-        self.sum += u64::from_le_bytes(b);
+        self.sum += cmd;
     }
     fn publish(&self, f: &mut TallyFrame) {
         f.count = self.count;
@@ -59,9 +59,8 @@ fn commands_and_frames_cross_two_threads_intact() {
     let b = Arc::new(Bridge::new(
         Tally { count: 0, sum: 0 },
         Some(Tally { count: 0, sum: 0 }),
-        /* Small on purpose, so the outbox and the full-queue path are used. */
-        512,
-        8,
+        /* Small on purpose, so the outbox and the full-ring path are used. */
+        16,
         64,
     ));
     let stop = Arc::new(AtomicBool::new(false));
@@ -86,7 +85,7 @@ fn commands_and_frames_cross_two_threads_intact() {
 
     let mut last_frame = 0;
     for v in 1..=N {
-        assert!(b.post(&v.to_le_bytes()));
+        b.post(v);
         let (count, sum, frame_count) = b.read(|r| {
             let f = r.frame;
             assert!(f.payload.iter().all(|&w| w == f.count), "a torn frame");

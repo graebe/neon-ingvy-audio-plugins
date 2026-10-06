@@ -2,85 +2,16 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The queue, the triple buffer, the bridge and the handoff, one thread at a
- * time. The two-thread stress tests are in tests/stress.rs and the allocation
- * check in tests/no_alloc.rs, each its own binary.
+ * The bridge and the handoff, one thread at a time. The two-thread stress
+ * tests are in tests/stress.rs and the allocation check in tests/no_alloc.rs,
+ * each its own binary. The ring and the triple buffer are rtrb's and
+ * triple_buffer's, and their own suites test them; what is tested here is what
+ * this crate builds on them.
  */
 
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-
-/* ------------------------------------------------------------------ queue */
-
-#[test]
-fn queue_is_fifo_and_wraps() {
-    let q = Queue::new(64, 16);
-    let mut out = [0u8; 16];
-    /* Enough rounds that records straddle the end of the ring many times. */
-    for round in 0u8..200 {
-        let a = [round; 5];
-        let b = [round.wrapping_add(1); 11];
-        unsafe {
-            assert!(q.push(&[&a]));
-            assert!(q.push(&[&b[..4], &b[4..]]));
-            assert_eq!(q.pop(&mut out), Some(5));
-            assert_eq!(&out[..5], &a);
-            assert_eq!(q.pop(&mut out), Some(11));
-            assert_eq!(&out[..11], &b);
-            assert_eq!(q.pop(&mut out), None);
-        }
-    }
-    assert!(q.is_empty());
-}
-
-#[test]
-fn queue_refuses_what_does_not_fit() {
-    let q = Queue::new(32, 8);
-    assert_eq!(q.capacity(), 32);
-    unsafe {
-        assert!(!q.push(&[&[0u8; 9]]), "longer than max_record");
-        let mut n = 0;
-        while q.push(&[&[7u8; 8]]) {
-            n += 1;
-        }
-        assert_eq!(n, 2, "two 12-byte records fit in 32, three do not");
-        let mut out = [0u8; 8];
-        assert_eq!(q.pop(&mut out), Some(8));
-        assert!(q.push(&[&[7u8; 8]]), "room again once one is taken");
-    }
-}
-
-#[test]
-fn queue_empty_record_is_a_record() {
-    let q = Queue::new(16, 4);
-    let mut out = [0u8; 4];
-    unsafe {
-        assert!(q.push(&[]));
-        assert_eq!(q.pop(&mut out), Some(0));
-        assert_eq!(q.pop(&mut out), None);
-    }
-}
-
-/* --------------------------------------------------------- triple buffer */
-
-#[test]
-fn triple_buffer_hands_over_the_latest_whole_value() {
-    let t = TripleBuffer::new(|| 0u32);
-    unsafe {
-        *t.back() = 1;
-        t.publish();
-        *t.back() = 2;
-        t.publish();
-        let (v, fresh) = t.latest();
-        assert_eq!((*v, fresh), (2, true), "a slow reader skips to the newest");
-        let (v, fresh) = t.latest();
-        assert_eq!((*v, fresh), (2, false), "and keeps it until there is another");
-        *t.back() = 3;
-        t.publish();
-        assert_eq!(*t.latest().0, 3);
-    }
-}
 
 /* ----------------------------------------------------------------- bridge */
 
@@ -91,6 +22,7 @@ struct Tally {
     sum: u64,
 }
 
+#[derive(Clone)]
 struct TallyFrame {
     count: u64,
     sum: u64,
@@ -98,15 +30,14 @@ struct TallyFrame {
 }
 
 impl Model for Tally {
+    type Command = u64;
     type Frame = TallyFrame;
     fn new_frame(&self) -> TallyFrame {
         TallyFrame { count: 0, sum: 0, text: Text::new(32) }
     }
-    fn apply(&mut self, cmd: &[u8]) {
-        let mut b = [0u8; 8];
-        b.copy_from_slice(&cmd[..8]);
+    fn apply(&mut self, cmd: &u64) {
         self.count += 1;
-        self.sum += u64::from_le_bytes(b);
+        self.sum += cmd;
     }
     fn publish(&self, f: &mut TallyFrame) {
         f.count = self.count;
@@ -123,14 +54,9 @@ impl Model for Tally {
     }
 }
 
+/* Twelve commands fit the ring; the rest wait on the main side. */
 fn tally() -> Bridge<Tally> {
-    Bridge::new(
-        Tally { count: 0, sum: 0 },
-        Some(Tally { count: 0, sum: 0 }),
-        256,
-        8,
-        1000,
-    )
+    Bridge::new(Tally { count: 0, sum: 0 }, Some(Tally { count: 0, sum: 0 }), 12, 1000)
 }
 
 fn seen(b: &Bridge<Tally>) -> (u64, u64, bool) {
@@ -140,11 +66,18 @@ fn seen(b: &Bridge<Tally>) -> (u64, u64, bool) {
     })
 }
 
+fn block(b: &Bridge<Tally>) {
+    unsafe {
+        b.begin();
+        b.end(1);
+    }
+}
+
 #[test]
 fn a_command_reaches_the_engine_at_the_next_block() {
     let b = tally();
     assert_eq!(seen(&b), (0, 0, false), "the first frame is published at construction");
-    assert!(b.post(&5u64.to_le_bytes()));
+    b.post(5);
     unsafe {
         assert_eq!(b.begin().count, 1);
         b.end(1);
@@ -157,59 +90,29 @@ fn a_command_reaches_the_engine_at_the_next_block() {
 fn a_reader_sees_its_own_edits_with_no_audio_thread() {
     let b = tally();
     for v in 1..=10u64 {
-        b.post(&v.to_le_bytes());
+        b.post(v);
         assert_eq!(seen(&b), (v, v * (v + 1) / 2, true));
     }
     assert_eq!(b.outstanding(), 10);
-    unsafe {
-        b.begin();
-        b.end(1);
-    }
+    block(&b);
     assert_eq!(seen(&b), (10, 55, false), "the engine caught up; the frame answers");
 }
 
 #[test]
-fn a_full_queue_holds_commands_back_rather_than_losing_them() {
-    /* 256 bytes of queue, 20 bytes a record: twelve fit, the rest wait. */
+fn a_full_ring_holds_commands_back_rather_than_losing_them() {
     let b = tally();
     for v in 1..=100u64 {
-        b.post(&v.to_le_bytes());
+        b.post(v);
     }
     assert_eq!(seen(&b), (100, 5050, true), "the view counts the ones still waiting");
     let mut blocks = 0;
     while b.outstanding() > 0 {
-        unsafe {
-            b.begin();
-            b.end(1);
-        }
+        block(&b);
         blocks += 1;
         assert!(blocks < 100, "the outbox drains");
     }
-    assert!(blocks > 1, "it took more than one queue's worth");
+    assert!(blocks > 1, "it took more than one ring's worth");
     assert_eq!(seen(&b), (100, 5050, false));
-}
-
-#[test]
-fn an_oversized_command_is_refused_up_front() {
-    let b = tally();
-    assert!(!b.post(&[0u8; 9]));
-    assert_eq!(b.outstanding(), 0);
-}
-
-#[test]
-fn the_frame_republishes_on_its_cadence() {
-    let b = tally();
-    b.set_publish_every(100);
-    unsafe {
-        b.begin().count = 42; /* a change no command made */
-        b.end(99);
-    }
-    assert_eq!(seen(&b).0, 0, "not due yet");
-    unsafe {
-        b.begin();
-        b.end(1);
-    }
-    assert_eq!(seen(&b).0, 42, "due at 100 frames");
 }
 
 #[test]
@@ -221,6 +124,19 @@ fn the_cadence_is_a_hundred_publishes_a_second_at_any_rate() {
         assert_eq!(publish_every(unknown), 441, "{unknown}");
     }
     assert_eq!(publish_every(50.0), 1, "never a period of no frames");
+}
+
+#[test]
+fn the_frame_republishes_on_its_cadence() {
+    let b = tally();
+    b.set_publish_every(100);
+    unsafe {
+        b.begin().count = 42; /* a change no command made */
+        b.end(99);
+    }
+    assert_eq!(seen(&b).0, 0, "not due yet");
+    block(&b);
+    assert_eq!(seen(&b).0, 42, "due at 100 frames");
 }
 
 #[test]
@@ -236,9 +152,67 @@ fn a_touched_block_publishes_off_cadence() {
 
 #[test]
 fn a_model_with_no_view_is_always_answered_from_the_frame() {
-    let b = Bridge::new(Tally { count: 0, sum: 0 }, None, 256, 8, 1);
-    b.post(&3u64.to_le_bytes());
+    let b = Bridge::new(Tally { count: 0, sum: 0 }, None, 16, 1);
+    b.post(3);
     assert_eq!(seen(&b), (0, 0, false));
+}
+
+#[test]
+fn every_frame_of_the_triple_buffer_carries_a_publish() {
+    /* A reader that reads after every block sees each publish in turn, as
+     * the three frames go round -- none of them still holding an older one. */
+    let b = tally();
+    for v in 1..=9u64 {
+        b.post(v);
+        block(&b);
+        assert_eq!(seen(&b), (v, v * (v + 1) / 2, false), "after block {v}");
+    }
+}
+
+/* A payload that counts its own free, carried by every command. */
+struct Payload(Arc<AtomicUsize>);
+
+impl Drop for Payload {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+struct Holder;
+
+impl Model for Holder {
+    type Command = Shared<Payload>;
+    type Frame = ();
+    fn new_frame(&self) {}
+    fn apply(&mut self, _: &Shared<Payload>) {}
+    fn publish(&self, _: &mut ()) {}
+    fn restore(&mut self, _: &()) {}
+}
+
+#[test]
+fn a_payload_lives_until_the_engine_has_confirmed_it_and_no_longer() {
+    let freed = Arc::new(AtomicUsize::new(0));
+    let b = Bridge::new(Holder, None, 4, 1);
+    for _ in 0..10 {
+        b.post(Shared::new(b.handle(), Payload(Arc::clone(&freed))));
+    }
+    unsafe {
+        b.begin();
+        b.end(1);
+    }
+    assert_eq!(freed.load(Ordering::SeqCst), 0, "applied, but not yet confirmed to the main side");
+    while b.outstanding() > 0 {
+        unsafe {
+            b.begin();
+            b.end(1);
+        }
+    }
+    assert_eq!(freed.load(Ordering::SeqCst), 10, "each freed once, by the collector");
+
+    /* What is still in flight when the bridge goes is freed with it. */
+    b.post(Shared::new(b.handle(), Payload(Arc::clone(&freed))));
+    drop(b);
+    assert_eq!(freed.load(Ordering::SeqCst), 11);
 }
 
 #[test]

@@ -11,23 +11,26 @@
  * TEST -- the counter is global and cargo runs tests in threads.
  */
 
-use shell_core::{Bridge, Handoff, Model, Text};
+use shell_core::{Bridge, Handoff, Model, Shared, Text};
 
 #[global_allocator]
 static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
 
-/// A model that formats text into its frame, the way a product's does.
+/// A model that formats text into its frame, the way a product's does, from
+/// commands whose payload rides in a `Shared`, the way a product's heavy ones
+/// do.
 struct Echo {
     last: [u8; 64],
     len: usize,
 }
 
 impl Model for Echo {
+    type Command = Shared<Vec<u8>>;
     type Frame = Text;
     fn new_frame(&self) -> Text {
         Text::new(64)
     }
-    fn apply(&mut self, cmd: &[u8]) {
+    fn apply(&mut self, cmd: &Shared<Vec<u8>>) {
         let n = cmd.len().min(self.last.len());
         self.last[..n].copy_from_slice(&cmd[..n]);
         self.len = n;
@@ -44,14 +47,14 @@ impl Model for Echo {
 
 #[test]
 fn the_audio_side_allocates_nothing() {
-    let b = Bridge::new(Echo { last: [0; 64], len: 0 }, None, 1024, 64, 16);
+    let b = Bridge::new(Echo { last: [0; 64], len: 0 }, None, 32, 16);
     let h = Handoff::new();
     h.set(Some(7u32));
 
     /* Commands waiting in the queue, posted before the window opens: posting
      * is the main thread's and allocates by design. */
     for i in 0..20u8 {
-        b.post(&[b'a' + i; 12]);
+        b.post(Shared::new(b.handle(), vec![b'a' + i; 12]));
     }
 
     ni_testkit::arm();

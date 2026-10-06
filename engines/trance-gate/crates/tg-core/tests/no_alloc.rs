@@ -13,12 +13,12 @@
  *
  * WHAT AN EDIT, A LOAD, AN IMPORT OR A PASTE HANDS THE AUDIO THREAD is a
  * value read elsewhere -- an Edit, a Patch, a SlotFile, a Clip -- and applying
- * one is measured here. So are the text doors that read and apply in one call, with the texts
- * a build writes: they are what the Move's set_param and the plugin shell's
- * command queue apply today. A REFUSED text is not: serde_json boxes the
- * error it reports, and such a text never reaches the audio thread -- the
- * shell checks a paste and an import as they are posted (see the state
- * module's note on threads).
+ * one is measured here. So are the text doors that read and apply in one
+ * call, with the texts a build writes: they are what the Move's set_param
+ * applies on its audio callback. A REFUSED text is not: serde_json boxes the
+ * error it reports, and such a text never reaches the plugin's audio thread --
+ * its shell reads everything as it is posted (see the state module's note on
+ * threads).
  *
  * The allocator counts allocations AND frees: a free is the same lock as a
  * malloc, and a temporary that is allocated before the window and dropped
