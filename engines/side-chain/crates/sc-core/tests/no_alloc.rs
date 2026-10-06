@@ -50,6 +50,17 @@ const SETS: &[(&str, &str)] = &[
     ("source", "Cycle"),
 ];
 
+/* What the MIDI decode refuses, or reads and has no use for. A refusal is an
+ * error value inside `wmidi`, and it must cost no more than a note does. */
+const MIDI_IGNORED: &[&[u8]] = &[
+    &[0x90, 36, 0x80],         /* a status byte where the velocity belongs */
+    &[0x90, 36],               /* cut short */
+    &[36, 100, 0],             /* running status */
+    &[0xF0, 0x7E, 0x7F, 0xF7], /* SysEx */
+    &[0xB0, 64, 127],          /* a controller that is not a panic */
+    &[0xF8],                   /* the clock */
+];
+
 const GETS: &[&str] = &[
     "ui", "params", "stage_ms", "phase", "sweep", "ms_per_cycle", "fires", "duck",
     "key_level", "advancing", "dropped", "rate_label", "curve_label", "source_label",
@@ -76,6 +87,10 @@ fn process_params_and_midi_allocate_nothing() {
         p.push_key(&key, &key, 256);
         p.on_midi(&[0x90, 36, 100], block % 256);
         p.on_midi(&[0x80, 36, 0], 200);
+        p.on_midi(MIDI_IGNORED[block % MIDI_IGNORED.len()], 100);
+        if block % 16 == 7 {
+            p.on_midi(&[0xB0, 123, 0], 255); /* a host panic */
+        }
         match block % 4 {
             0 => p.process_f32(&mut inter, 256, Some(&t)),
             1 => p.process_f32_split(&mut l, &mut r, 256, Some(&t)),

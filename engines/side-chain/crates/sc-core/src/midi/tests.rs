@@ -119,6 +119,86 @@ fn a_short_message_is_rejected_not_indexed_into() {
 }
 
 #[test]
+fn a_panic_obeys_the_channel_filter_and_omni_hears_every_channel() {
+    /* The note filter never applies to a panic (above); the channel filter
+     * always has. A channel mode message speaks for its own channel, so a
+     * ducker on channel 2 keeps its held note through channel 1's. */
+    let mut m = Midi {
+        channel: 2,
+        gate: true,
+        ..Default::default()
+    };
+    m.decode(&note_on(2, 36, 100));
+    assert_eq!(m.decode(&[0xB0, 123, 0]), None, "channel 1's All Notes Off");
+    assert_eq!(m.held, 1);
+    assert_eq!(m.decode(&[0xB1, 120, 0]), Some(Action::Reset), "channel 2's");
+    assert_eq!(m.held, 0);
+
+    let mut omni = Midi {
+        channel: 0,
+        ..Default::default()
+    };
+    for ch in 0..16u8 {
+        for cc in [120u8, 123u8] {
+            assert_eq!(
+                omni.decode(&[0xB0 | ch, cc, 0]),
+                Some(Action::Reset),
+                "ch {} CC {cc}",
+                ch + 1
+            );
+        }
+    }
+}
+
+#[test]
+fn nothing_but_the_trigger_note_and_the_two_panics_means_anything() {
+    let mut m = Midi {
+        gate: true,
+        ..Default::default()
+    };
+    m.decode(&note_on(1, 36, 100));
+    let others: [&[u8]; 8] = [
+        &[0xB0, 121, 0],           /* Reset All Controllers is not a panic */
+        &[0xB0, 36, 127],          /* a controller numbered like the note */
+        &[0xA0, 36, 90],           /* aftertouch on the trigger note */
+        &[0xC0, 36],               /* a program change */
+        &[0xE0, 0, 64],            /* a pitch bend */
+        &[0xF8],                   /* the clock */
+        &[0xF0, 0x7E, 0x7F, 0xF7], /* SysEx */
+        &[36, 100, 0],             /* running status: no status byte of its own */
+    ];
+    for msg in others {
+        assert_eq!(m.decode(msg), None, "{msg:02X?}");
+    }
+    assert_eq!(m.held, 1, "and none of them touched the held note");
+}
+
+#[test]
+fn a_longer_buffer_is_read_from_the_front() {
+    /* The C ABI and the Move pass up to eight bytes. */
+    let mut m = Midi::default();
+    assert_eq!(m.decode(&[0x90, 36, 127, 0, 0xFF]), Some(Action::Trigger(1.0)));
+    assert_eq!(m.decode(&[0xB0, 123, 0, 0x90, 36, 100]), Some(Action::Reset));
+}
+
+#[test]
+fn a_data_byte_with_its_top_bit_set_cuts_the_message_short() {
+    /* That byte is a status byte, so neither of these is what it looks like:
+     * not a note-on at velocity 0x80, not an All Notes Off with an odd value.
+     * The hand-written decode read them as both; see the module header. */
+    let mut m = Midi {
+        gate: true,
+        ..Default::default()
+    };
+    assert_eq!(m.decode(&[0x90, 36, 0x80]), None);
+    assert_eq!(m.held, 0);
+    m.decode(&note_on(1, 36, 100));
+    assert_eq!(m.decode(&[0x80, 36, 0xFF]), None);
+    assert_eq!(m.decode(&[0xB0, 123, 0x90]), None);
+    assert_eq!(m.held, 1);
+}
+
+#[test]
 fn a_note_name_is_read_in_lives_numbering() {
     use crate::midi::note_from_name;
     assert_eq!(note_from_name("C-2"), Some(0));

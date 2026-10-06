@@ -63,6 +63,7 @@ version = "2026.10.6+5"
 dependencies = [
  "ni-dsp",
  "ni-testkit",
+ "wmidi",
 ]
 
 [[package]]
@@ -140,3 +141,9 @@ dependencies = [
  "tg-capi",
  "tg-core",
 ]
+
+[[package]]
+name = "wmidi"
+version = "4.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b1b1e28ac6301b1c097d21c11130090f7ecc5db9d5ef4e52595ab942f8d76d5"

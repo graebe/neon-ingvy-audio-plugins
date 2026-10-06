@@ -12,6 +12,25 @@ Ported from `schwung-modules/graebe/schwung-ducker/src/dsp/ducker.c:306-345`
 (MIT, (c) 2026 Charles Vestal) -- the channel filter, the note match, Trigger
 vs Gate, and velocity scaling depth. See THIRD_PARTY_LICENSES.md.
 
+THE BYTES ARE `wmidi`'s; WHAT THEY MEAN IS OURS.
+
+`ducker.c` split the status byte into its nibbles and indexed the data bytes by
+hand, and this file did the same. Reading bytes into a message is the MIDI
+specification's business rather than a ducker's, so `wmidi` does it: the
+status, the channel, a note-on at velocity 0 read as the note-off it is, and a
+message cut short refused rather than indexed into. It borrows the slice and
+builds nothing, so it is as allocation-free as the code it replaced --
+`tests/no_alloc.rs` runs it armed. What is left here is what a message means
+to a ducker: the four things ported above, and the panic.
+
+ONE INPUT READS DIFFERENTLY, ON PURPOSE: a data byte with its top bit set. That
+byte is a status byte, so `[0xB0, 123, 0x90]` is a message cut short, not an
+All Notes Off with a strange value -- yet the hand-written decode read it as a
+panic, and a note-on whose velocity byte was `0x80` as a full-depth trigger.
+`wmidi` refuses both. No host builds either message: a plugin shell fills the
+data bytes from 0..127 values, and the Move hands over what came off a MIDI
+wire.
+
 WHAT IS ADDED HERE, AND WHY IT IS NOT A LUXURY: A SAMPLE OFFSET.
 
 `ducker.c` applies a note the moment the host hands it over, which in a chain
@@ -34,6 +53,8 @@ panic leaves the track quiet with nothing playing, which is the worst failure
 this plugin has: silence that looks like a broken session rather than a stuck
 effect.
 */
+
+use wmidi::{Channel, ControlFunction, MidiMessage, Note};
 
 /// What a message asks the envelope to do.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -235,54 +256,54 @@ pub fn note_from_name(s: &str) -> Option<i32> {
 impl Midi {
     /// Decode one message into an action, or `None` if it is not ours.
     ///
-    /// `msg` is raw MIDI bytes. A running-status or malformed message is
-    /// rejected on length rather than indexed into.
+    /// `msg` is raw MIDI bytes, as many as the host hands over: the message is
+    /// read from the front, and one that is cut short, starts mid-message
+    /// (running status) or is malformed is refused rather than indexed into.
     pub fn decode(&mut self, msg: &[u8]) -> Option<Action> {
-        if msg.len() < 3 {
-            return None;
-        }
-        let status = msg[0] & 0xF0;
-        let chan = (msg[0] & 0x0F) as i32 + 1;
-        if self.channel != 0 && chan != self.channel {
-            return None;
-        }
-
-        /* Panic first, and regardless of the note filter: a panic that only
-         * arrived on the trigger note would not be a panic. */
-        if status == 0xB0 && (msg[1] == 120 || msg[1] == 123) {
-            self.held = 0;
-            return Some(Action::Reset);
-        }
-
-        let note = msg[1] as i32;
-        if note != self.note {
-            return None;
-        }
-
-        let vel = msg[2];
-        /* A note-on at velocity 0 IS a note-off. Hosts and hardware both send
-         * it, and reading it as a trigger at zero depth would leave Gate mode
-         * holding a note that was never pressed. */
-        let on = status == 0x90 && vel > 0;
-        let off = status == 0x80 || (status == 0x90 && vel == 0);
-
-        if on {
-            self.held += 1;
-            /* ducker.c:325-330: at sens 0 every note is full depth; at sens 1
-             * depth follows velocity linearly. */
-            let v = vel as f64 / 127.0;
-            let scale = 1.0 - self.vel_sens + self.vel_sens * v;
-            return Some(Action::Trigger(scale.clamp(0.0, 1.0)));
-        }
-        if off {
-            if self.held > 0 {
-                self.held -= 1;
+        match MidiMessage::try_from(msg).ok()? {
+            /* Panic first, and regardless of the note filter: a panic that only
+             * arrived on the trigger note would not be a panic. The channel
+             * filter does apply, as it always has -- a channel mode message
+             * speaks for its own channel. */
+            MidiMessage::ControlChange(
+                ch,
+                ControlFunction::ALL_SOUND_OFF | ControlFunction::ALL_NOTES_OFF,
+                _,
+            ) if self.listens_to(ch) => {
+                self.held = 0;
+                Some(Action::Reset)
             }
-            if self.gate && self.held == 0 {
-                return Some(Action::Release);
+            MidiMessage::NoteOn(ch, note, vel) if self.is_trigger(ch, note) => {
+                self.held += 1;
+                /* ducker.c:325-330: at sens 0 every note is full depth; at sens
+                 * 1 depth follows velocity linearly. */
+                let v = u8::from(vel) as f64 / 127.0;
+                let scale = 1.0 - self.vel_sens + self.vel_sens * v;
+                Some(Action::Trigger(scale.clamp(0.0, 1.0)))
             }
+            /* A note-on at velocity 0 arrives here: `wmidi` reads it as the
+             * note-off it is. Hosts and hardware both send it, and reading it
+             * as a trigger at zero depth would leave Gate mode holding a note
+             * that was never pressed -- `a_note_on_at_velocity_zero_is_a_note_off`
+             * holds the crate to it. */
+            MidiMessage::NoteOff(ch, note, _) if self.is_trigger(ch, note) => {
+                if self.held > 0 {
+                    self.held -= 1;
+                }
+                (self.gate && self.held == 0).then_some(Action::Release)
+            }
+            _ => None,
         }
-        None
+    }
+
+    /// The channel filter: 0 is Omni, 1..16 is that channel only.
+    fn listens_to(&self, ch: Channel) -> bool {
+        self.channel == 0 || i32::from(ch.number()) == self.channel
+    }
+
+    /// The trigger note, on a channel the filter lets through.
+    fn is_trigger(&self, ch: Channel, note: Note) -> bool {
+        self.listens_to(ch) && i32::from(u8::from(note)) == self.note
     }
 }
 
