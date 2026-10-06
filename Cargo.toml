@@ -6,13 +6,17 @@
 # Trance Gate engine, for the same reasons". A shared setting that is stated
 # twice is a setting that will eventually be stated differently.
 #
-# Merging them is free, and that is worth checking rather than assuming:
-# NO CRATE HAS AN EXTERNAL DEPENDENCY. Every `[dependencies]` entry in
-# the tree is a `path` inside its own engine, so there are no third-party
-# versions for one lock file to resolve differently from two. The render A/B
-# (tests/render_plugin.c) is what proves it after the fact: it hashes four
-# seconds through the plugin's audio path against the Move module's reference
-# render, and that number did not move.
+# Merging them was free, and that was checked rather than assumed: no crate had
+# an external dependency then, so there were no third-party versions for one
+# lock file to resolve differently from two. The render A/B
+# (tests/render_plugin.c) proved it after the fact: it hashes four seconds
+# through the plugin's audio path against the Move module's reference render,
+# and that number did not move.
+#
+# Crates from crates.io came later, when docs/adr/0003-established-rust-crates.md
+# reversed the zero-dependency rule, and one lock file is what keeps them
+# cheap: every engine links the same version of each, and
+# [workspace.dependencies] below is the one place that version is written.
 #
 # PRODUCT engines stay INDEPENDENT of each other. A product crate may depend on
 # its own engine's crates, on the house transport and on the shared crates
@@ -72,6 +76,41 @@ members = [
 # Every member says `publish.workspace = true`.
 [workspace.package]
 publish = false
+
+# THE CRATES FROM crates.io, EACH VERSION WRITTEN ONCE. A member takes one with
+# `name = { workspace = true }` and names the features it uses, with its
+# reasons, in its own manifest. Several engines share a crate here -- rtrb,
+# atomic_float, arrayvec and fastrand already do -- and a version written in
+# each of them would drift the way the two workspaces' profiles did.
+#
+# NO DEFAULT FEATURES, for any of them. A crate's defaults are usually `std`, or
+# a convenience nothing here calls, and Cargo merges features across the whole
+# graph: one member that took a crate's defaults would switch them on for every
+# engine linking that crate. So the switch is off here, once, and each member
+# asks for exactly what it uses.
+#
+# What may appear here at all is deny.toml's to decide (licence and source);
+# scripts/gen-rust-notices.sh writes the notices for whatever ships.
+[workspace.dependencies]
+# The Spectrogram's FFT, and the complex transform its test oracle runs.
+realfft = { version = "3.5.0", default-features = false }
+rustfft = { version = "6.4.1", default-features = false }
+# Between threads: a wait-free SPSC ring, and floats an atomic can hold.
+rtrb = { version = "0.4.0", default-features = false }
+atomic_float = { version = "1.1.0", default-features = false }
+# The audio bus's shared memory: libc on macOS and Linux, windows-sys on Windows.
+libc = { version = "0.2.190", default-features = false }
+windows-sys = { version = "0.61.2", default-features = false }
+# MIDI bytes to messages, for the Side-Chain's trigger.
+wmidi = { version = "4.0.11", default-features = false }
+# Text: numbers read as C reads them, a string on the stack, and the Trance
+# Gate's JSON formats.
+lexical-core = { version = "1.0.6", default-features = false }
+arrayvec = { version = "0.7.8", default-features = false }
+serde = { version = "1.0.229", default-features = false }
+serde_json = { version = "1.0.151", default-features = false }
+# A seeded generator: the Trance Gate's randomiser and the tests' noise.
+fastrand = { version = "2.5.0", default-features = false }
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.
 #

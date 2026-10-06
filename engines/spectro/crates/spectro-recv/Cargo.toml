@@ -17,7 +17,7 @@ bus-core = { path = "../../../audio-bus/crates/bus-core" }
 # The own channel's ring from the audio thread to the pump (src/ring.rs). Its
 # one default feature, `std`, adds std::error and io::Read/Write impls; the
 # ring is the same without it.
-rtrb = { version = "0.4.0", default-features = false }
+rtrb = { workspace = true }
 
 [lib]
 crate-type = ["rlib"]
@@ -25,6 +25,6 @@ crate-type = ["rlib"]
 [dev-dependencies]
 # Seeded noise for the tests, reproducible run to run. `std` would add only
 # the thread-local generator and entropy seeding, which a fixed seed never uses.
-fastrand = { version = "2.5.0", default-features = false }
+fastrand = { workspace = true }
 # The counting allocator tests/no_alloc.rs installs.
 ni-testkit = { path = "../../../shared/crates/ni-testkit" }

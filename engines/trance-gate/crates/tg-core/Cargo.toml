@@ -19,14 +19,14 @@ ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 # default features. serde_json needs `alloc` to read a str, and nothing of
 # `std`; `float_roundtrip` stays off, which keeps number parsing free of its
 # scratch buffer (json.rs says why the result is the same double).
-serde = { version = "1.0.229", default-features = false }
-serde_json = { version = "1.0.151", default-features = false, features = ["alloc"] }
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["alloc"] }
 # A file's fields, in order, on the stack (json::Object).
-arrayvec = { version = "0.7.8", default-features = false }
+arrayvec = { workspace = true }
 # The randomiser's generator (Instance::randomize), seeded and advanced by the
 # instance. `std` would add only the thread-local generator and its entropy,
 # which a roll that must be reproducible from its seed never uses.
-fastrand = { version = "2.5.0", default-features = false }
+fastrand = { workspace = true }
 
 # The counting allocator the no_alloc test installs. Test-only.
 [dev-dependencies]

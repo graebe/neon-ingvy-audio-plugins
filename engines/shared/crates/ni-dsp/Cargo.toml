@@ -19,10 +19,10 @@ crate-type = ["rlib"]
 # Reading numbers as C's strtod and atoi do (fmt::atof, fmt::atoi): the longest
 # number at the front of the text, without allocating at any length. `format`
 # is what lets src/fmt.rs narrow the grammar to the one this wire has carried.
-lexical-core = { version = "1.0.6", default-features = false, features = ["parse-floats", "parse-integers", "format"] }
+lexical-core = { workspace = true, features = ["parse-floats", "parse-integers", "format"] }
 # The scratch text %g is put together in (fmt::g): a string on the stack, with
 # the capacity it is declared with and no more.
-arrayvec = { version = "0.7.8", default-features = false }
+arrayvec = { workspace = true }
 
 [dev-dependencies]
 # The counting allocator tests/no_alloc.rs installs.

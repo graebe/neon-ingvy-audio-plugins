@@ -7,28 +7,29 @@ description = "A short-time Fourier analyzer that hands finished spectrogram col
 publish.workspace = true
 
 # ESTABLISHED CRATES, NOT HAND-WRITTEN ONES (docs/adr/0003-established-rust-crates.md):
-# the FFT, the ring the columns cross, and the range's atomics. Each is taken
-# without its default features and given back only what this crate uses.
+# the FFT, the ring the columns cross, and the range's atomics. The workspace
+# takes each without its default features (the root Cargo.toml says why), and
+# this crate asks back only for what it uses.
 [dependencies]
 # The real-input FFT (src/fft.rs), on rustfft's complex transforms. realfft's
 # default features are exactly rustfft's SIMD paths -- AVX and SSE on x86_64,
-# Neon on aarch64 -- and they are named here rather than inherited because they
-# are the point of the crate: each is used only where the CPU reports it.
-realfft = { version = "3.5.0", default-features = false, features = ["avx", "sse", "neon"] }
+# Neon on aarch64 -- and they are asked for by name because they are the point
+# of the crate: each is used only where the CPU reports it.
+realfft = { workspace = true, features = ["avx", "sse", "neon"] }
 # The ring between the two halves (src/lib.rs). Its one default feature, `std`,
 # adds std::error and io::Read/Write impls; the ring is the same without it.
-rtrb = { version = "0.4.0", default-features = false }
+rtrb = { workspace = true }
 # The requested frequency range: two floats a dropdown stores while audio runs.
 # The default feature adds AtomicF64, which nothing here needs.
-atomic_float = { version = "1.1.0", default-features = false }
+atomic_float = { workspace = true }
 
 [dev-dependencies]
 # The oracle's transform (src/reference.rs): rustfft's complex FFT over all N
 # points, so it shares none of realfft's packing or split. It is the rustfft
 # realfft already links; nothing extra is built.
-rustfft = { version = "6.4.1", default-features = false }
+rustfft = { workspace = true }
 # Seeded noise for the tests, reproducible run to run. `std` would add only
 # the thread-local generator and entropy seeding, which a fixed seed never uses.
-fastrand = { version = "2.5.0", default-features = false }
+fastrand = { workspace = true }
 # The counting allocator the no_alloc test installs.
 ni-testkit = { path = "../../../shared/crates/ni-testkit" }

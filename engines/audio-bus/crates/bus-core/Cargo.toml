@@ -15,18 +15,17 @@ publish.workspace = true
 # The ring's samples (ring.rs): a float stored and loaded through an AtomicU32's
 # bits, in an f32's four bytes. Its default feature adds AtomicF64, which the
 # ring has no use for.
-atomic_float = { version = "1.1.0", default-features = false }
+atomic_float = { workspace = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 # shm_open, mmap, fstat, kill and clock_gettime. Its default feature, `std`,
 # adds nothing these calls use.
-libc = { version = "0.2.190", default-features = false }
+libc = { workspace = true }
 
 # The named file mapping, the process check and the clock, from only the
 # modules that hold them. windows-sys has no default features.
 [target.'cfg(windows)'.dependencies.windows-sys]
-version = "0.61.2"
-default-features = false
+workspace = true
 features = [
     "Win32_Foundation",         # handles, errors, STILL_ACTIVE
     "Win32_Security",           # CreateFileMappingW's signature names SECURITY_ATTRIBUTES

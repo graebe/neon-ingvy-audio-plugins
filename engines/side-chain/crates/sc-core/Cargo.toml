@@ -16,7 +16,7 @@ ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 # MIDI bytes to messages, for the MIDI trigger (src/midi.rs). Without its
 # default `std` feature it is core-only: that feature adds an owned SysEx and
 # io::Read, and a ducker has a use for neither.
-wmidi = { version = "4.0.11", default-features = false }
+wmidi = { workspace = true }
 
 # The counting allocator the no_alloc test installs. Test-only.
 [dev-dependencies]
