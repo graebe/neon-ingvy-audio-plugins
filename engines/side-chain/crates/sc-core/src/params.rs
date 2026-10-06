@@ -18,6 +18,21 @@ hypothetical; it is why `trance_gate_core.h:116-132` argues the same case.
 `set_param` IS IMPLEMENTED VIA `set_num`, so every clamp exists exactly once.
 The string door's only extra job is deciding which number a word means.
 
+EACH KEY IS SPELLED ONCE, in `Param::key`. Both doors find a parameter by its
+key through `Param::from_key`, which reads the spellings off `key` rather than
+keeping a second copy of them.
+
+WHY THE STRING DOOR IS NOT SERDE. The words are C's, and saved patches and the
+Move's knob grid already speak them: `atof`'s leniency (`"4abc"` is 4, `"abc"`
+is 0), an enum as its label OR its index, a note as `F#3` or as `66`.
+`serde_json` refuses `"4abc"`, `".5"` and `"+40"` outright, so a `Deserialize`
+would have to be taught each rule by hand -- the parsing would move into
+visitors, not go away. And it would allocate on the audio callback: a derived
+enum reports a word that is not a variant name by formatting an error, three
+allocations for the `"2"` a knob sends, because in label-or-index every index
+is such a word first. The wire tests in `params/tests.rs` hold the bytes
+either way.
+
 WHAT `get_param` MUST NOT DO. It runs on the audio callback too, so it does not
 allocate and it does not compute. Everything it reports that costs arithmetic --
 `ms_per_cycle`, the detector level -- is published by `block_setup`, once per
@@ -58,26 +73,25 @@ pub enum Param {
 pub const PARAM_COUNT: i32 = 15;
 
 impl Param {
-    pub fn from_i32(v: i32) -> Option<Param> {
+    /// Every parameter, in index order: `ALL[i] as i32 == i`, which a test
+    /// holds it to.
+    pub const ALL: [Param; PARAM_COUNT as usize] = {
         use Param::*;
-        Some(match v {
-            0 => Source,
-            1 => Rate,
-            2 => TimeMode,
-            3 => Delay,
-            4 => Attack,
-            5 => Hold,
-            6 => Release,
-            7 => Depth,
-            8 => Curve,
-            9 => Channel,
-            10 => Note,
-            11 => MidiMode,
-            12 => VelSens,
-            13 => Threshold,
-            14 => Lockout,
-            _ => return None,
-        })
+        [
+            Source, Rate, TimeMode, Delay, Attack, Hold, Release, Depth, Curve, Channel, Note,
+            MidiMode, VelSens, Threshold, Lockout,
+        ]
+    };
+
+    pub fn from_i32(v: i32) -> Option<Param> {
+        usize::try_from(v).ok().and_then(|i| Param::ALL.get(i)).copied()
+    }
+
+    /// The parameter `key` names on the wire, if any. A scan of fifteen
+    /// `&'static str` comparisons: no table to keep in step with `key`, and
+    /// nothing allocated, because both doors call it on the audio callback.
+    pub fn from_key(key: &str) -> Option<Param> {
+        Param::ALL.into_iter().find(|p| p.key() == key)
     }
 
     /// The wire key, which is also the `chain_params` key. One spelling.
@@ -240,70 +254,46 @@ impl Instance {
     /// The string door. Returns false for a key it does not own, so a shell
     /// can chain its own keys after these.
     pub fn set_param(&mut self, key: &str, val: &str) -> bool {
+        /* Not a parameter: a host panic arriving through the only door a
+         * Schwung module has for one. See midi.rs. */
+        if key == "panic" {
+            self.reset();
+            return true;
+        }
+        let Some(p) = Param::from_key(key) else {
+            return false;
+        };
         /* The enums take a WORD or an index, because both arrive: the host
          * sends an index, a saved state or a hand-written patch sends the
-         * label. `index_from` and the label scans below resolve either. */
-        match key {
-            "source" => {
-                let i = Source::LABELS
-                    .iter()
-                    .position(|l| *l == val)
-                    .map(|i| i as f64)
-                    .unwrap_or_else(|| fmt::atoi(val) as f64);
-                self.set_num(Param::Source, i);
-            }
-            "rate" => self.set_num(Param::Rate, rates::index_from(val) as f64),
-            "time_mode" => {
-                let i = TimeMode::LABELS
-                    .iter()
-                    .position(|l| *l == val)
-                    .map(|i| i as f64)
-                    .unwrap_or_else(|| fmt::atoi(val) as f64);
-                self.set_num(Param::TimeMode, i);
-            }
-            "curve" => {
-                let i = Curve::LABELS
-                    .iter()
-                    .position(|l| *l == val)
-                    .map(|i| i as f64)
-                    .unwrap_or_else(|| fmt::atoi(val) as f64);
-                self.set_num(Param::Curve, i);
-            }
-            "midi_mode" => {
-                let i = match val {
-                    "Trigger" => 0.0,
-                    "Gate" => 1.0,
-                    _ => fmt::atoi(val) as f64,
-                };
-                self.set_num(Param::MidiMode, i);
-            }
-            "channel" => {
-                let i = if val == "Omni" {
+         * label. `index_from` and `label_or_index` resolve either. Every
+         * parameter is named, so a new one cannot arrive without a rule for
+         * reading its text. */
+        let v = match p {
+            Param::Source => label_or_index(&Source::LABELS, val),
+            Param::Rate => rates::index_from(val) as f64,
+            Param::TimeMode => label_or_index(&TimeMode::LABELS, val),
+            Param::Curve => label_or_index(&Curve::LABELS, val),
+            Param::MidiMode => label_or_index(&["Trigger", "Gate"], val),
+            Param::Channel => {
+                if val == "Omni" {
                     0.0
                 } else {
                     fmt::atoi(val) as f64
-                };
-                self.set_num(Param::Channel, i);
+                }
             }
-            "delay" => self.set_num(Param::Delay, fmt::atof(val)),
-            "attack" => self.set_num(Param::Attack, fmt::atof(val)),
-            "hold" => self.set_num(Param::Hold, fmt::atof(val)),
-            "release" => self.set_num(Param::Release, fmt::atof(val)),
-            "depth" => self.set_num(Param::Depth, fmt::atof(val)),
-            "trigger_note" => {
-                let n = crate::midi::note_from_name(val)
-                    .map(|n| n as f64)
-                    .unwrap_or_else(|| fmt::atof(val));
-                self.set_num(Param::Note, n);
+            Param::Note => {
+                crate::midi::note_from_name(val).map_or_else(|| fmt::atof(val), f64::from)
             }
-            "vel_sens" => self.set_num(Param::VelSens, fmt::atof(val)),
-            "threshold" => self.set_num(Param::Threshold, fmt::atof(val)),
-            "lockout" => self.set_num(Param::Lockout, fmt::atof(val)),
-            /* Not a parameter: a host panic arriving through the only door a
-             * Schwung module has for one. See midi.rs. */
-            "panic" => self.reset(),
-            _ => return false,
-        }
+            Param::Delay
+            | Param::Attack
+            | Param::Hold
+            | Param::Release
+            | Param::Depth
+            | Param::VelSens
+            | Param::Threshold
+            | Param::Lockout => fmt::atof(val),
+        };
+        self.set_num(p, v);
         true
     }
 
@@ -432,13 +422,10 @@ impl Instance {
             "curve_label" => write!(b, "{}", Curve::LABELS[self.curve as usize]),
             "source_label" => write!(b, "{}", Source::LABELS[self.source as usize]),
 
-            _ => {
-                if let Some(p) = PARAM_BY_KEY.iter().find(|(k, _)| *k == key) {
-                    write!(b, "{}", self.num(p.1))
-                } else {
-                    return -1;
-                }
-            }
+            _ => match Param::from_key(key) {
+                Some(p) => write!(b, "{}", self.num(p)),
+                None => return -1,
+            },
         };
         if ok.is_err() {
             /* Truncation is not an error the caller can act on -- `Buf` has
@@ -464,25 +451,14 @@ fn stage_index(s: Stage) -> i32 {
     }
 }
 
-/// Key -> parameter, for `get_param`'s fallback. Derived from `Param::key` so
-/// there is still only one spelling of each key.
-static PARAM_BY_KEY: [(&str, Param); PARAM_COUNT as usize] = [
-    ("source", Param::Source),
-    ("rate", Param::Rate),
-    ("time_mode", Param::TimeMode),
-    ("delay", Param::Delay),
-    ("attack", Param::Attack),
-    ("hold", Param::Hold),
-    ("release", Param::Release),
-    ("depth", Param::Depth),
-    ("curve", Param::Curve),
-    ("channel", Param::Channel),
-    ("trigger_note", Param::Note),
-    ("midi_mode", Param::MidiMode),
-    ("vel_sens", Param::VelSens),
-    ("threshold", Param::Threshold),
-    ("lockout", Param::Lockout),
-];
+/// The position of `val` among `labels`, or else `val` read as an index with
+/// `atoi`'s leniency -- so a word that is neither is 0, as the C read it.
+fn label_or_index(labels: &[&str], val: &str) -> f64 {
+    labels
+        .iter()
+        .position(|l| *l == val)
+        .map_or_else(|| fmt::atoi(val) as f64, |i| i as f64)
+}
 
 #[cfg(test)]
 mod tests;

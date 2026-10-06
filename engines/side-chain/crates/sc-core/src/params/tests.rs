@@ -6,7 +6,7 @@
 use crate::params::{amp_to_db, db_to_amp, Param, PARAM_COUNT};
 use crate::shape::{Curve, Stage};
 use crate::tests::note_on;
-use crate::{rates, Instance, Source};
+use crate::{rates, Instance, Source, Transport};
 
 /* ----------------------------------------------------------- parameters */
 
@@ -143,6 +143,191 @@ fn an_unknown_key_is_refused_by_both_doors() {
     assert_eq!(p.get_param("wobble", &mut buf), -1);
     assert!(Param::from_i32(PARAM_COUNT).is_none());
     assert!(Param::from_i32(-1).is_none());
+}
+
+#[test]
+fn a_parameters_index_is_its_place_in_the_list_and_its_key_finds_it() {
+    /* APPEND ONLY (see `Param`): the index is what a host stores. */
+    assert_eq!(Param::ALL.len(), PARAM_COUNT as usize);
+    for (i, p) in Param::ALL.into_iter().enumerate() {
+        assert_eq!(p as i32, i as i32, "{p:?} is out of place");
+        assert_eq!(Param::from_i32(i as i32), Some(p));
+        assert_eq!(Param::from_key(p.key()), Some(p), "{}", p.key());
+    }
+    assert_eq!(Param::from_key("panic"), None, "a command, not a parameter");
+}
+
+/* ---------------------------------------------------------------- the wire */
+
+/*
+ * WHAT A SCHWUNG HOST AND A SAVED PATCH SEE, BYTE FOR BYTE.
+ *
+ * The round trips above prove the two doors agree with each other; these pin
+ * what they SAY. Every string below is the engine's own output, recorded, so
+ * a change to the parsing or the formatting -- here, or in ni-dsp's
+ * C-compatible fmt underneath -- that a host would notice fails here first.
+ */
+
+/// A state whose every readout is plain arithmetic, so the bytes are the same
+/// on every platform's maths library and not only on this one's: a Linear
+/// curve, so no `exp` in the envelope; the threshold at its floor, so no
+/// `log10` in its readout; and one block of a transport that has just started,
+/// so the phase is the host's own number rather than a tracked one.
+fn a_state_on_the_wire() -> Instance {
+    let mut p = Instance::new(48000.0);
+    for (param, v) in [
+        (Param::Source, 1.0),
+        (Param::Rate, 6.0),
+        (Param::TimeMode, 1.0),
+        (Param::Delay, -12.5),
+        (Param::Attack, 5.0),
+        (Param::Hold, 10.0),
+        (Param::Release, 25.0),
+        (Param::Depth, 0.625),
+        (Param::Curve, 0.0),
+        (Param::Channel, 7.0),
+        (Param::Note, 60.0),
+        (Param::MidiMode, 1.0),
+        (Param::VelSens, 0.5),
+        (Param::Threshold, -60.0),
+        (Param::Lockout, 33.0),
+    ] {
+        p.set_num(param, v);
+    }
+    p.on_midi(&note_on(7, 60, 100), 10);
+    let t = Transport { running: true, beats: 1.25, bpm: 120.0 };
+    let mut buf = vec![0.5f32; 512];
+    p.process_f32(&mut buf, 256, Some(&t));
+    p
+}
+
+#[test]
+fn every_readout_says_the_same_bytes() {
+    const WIRE: [(&str, &str); 29] = [
+        ("ui", "1:6:250.000:0.020500:1:1:0.3649:0.00000:0:2:0.500000"),
+        ("params", "1:6:1:-12.5:5:10:25:0.625:0:7:60:1:0.5:-60:33"),
+        ("stage_ms", "-31.250:12.500:25.000:62.500"),
+        ("phase", "0.500000"),
+        ("sweep", "0.020500"),
+        ("ms_per_cycle", "250.000"),
+        ("fires", "1"),
+        ("duck", "0.3649"),
+        ("key_level", "0.00000"),
+        ("advancing", "1"),
+        ("dropped", "0"),
+        ("rate_label", "1/8"),
+        ("curve_label", "Linear"),
+        ("source_label", "MIDI"),
+        ("source", "1"),
+        ("rate", "6"),
+        ("time_mode", "1"),
+        ("delay", "-12.5"),
+        ("attack", "5"),
+        ("hold", "10"),
+        ("release", "25"),
+        ("depth", "0.625"),
+        ("curve", "0"),
+        ("channel", "7"),
+        ("trigger_note", "60"),
+        ("midi_mode", "1"),
+        ("vel_sens", "0.5"),
+        ("threshold", "-60"),
+        ("lockout", "33"),
+    ];
+    let p = a_state_on_the_wire();
+    let mut out = [0u8; 256];
+    for (key, want) in WIRE {
+        let n = p.get_param(key, &mut out);
+        assert!(n >= 0, "{key} is not served");
+        assert_eq!(std::str::from_utf8(&out[..n as usize]).unwrap(), want, "{key}");
+    }
+    /* A panic is something to do, not a value to read. */
+    assert_eq!(p.get_param("panic", &mut out), -1);
+}
+
+#[test]
+fn every_written_word_reads_back_as_it_always_has() {
+    /*
+     * C's leniency IS the protocol: a label or an index for an enum, `atof`
+     * for a number ("4abc" is 4, "abc" is 0), a note's name or its number, and
+     * a clamp rather than a refusal. Each word is written to a fresh engine
+     * and read back through the same key.
+     */
+    const WRITES: [(&str, &str, &str); 63] = [
+        ("source", "MIDI", "1"),
+        ("source", "Sidechain", "2"),
+        ("source", "2", "2"),
+        ("source", " 1 junk", "1"),
+        ("source", "junk", "0"),
+        ("source", "7", "0"),
+        ("rate", "1/8T", "7"),
+        ("rate", " 7 junk", "7"),
+        ("rate", "11", "11"),
+        ("rate", "12", "4"),
+        ("rate", "-1", "4"),
+        ("rate", "1/64", "1"),
+        ("time_mode", "% of cycle", "1"),
+        ("time_mode", "ms", "0"),
+        ("time_mode", "1", "1"),
+        ("time_mode", "5", "1"),
+        ("curve", "S-Curve", "2"),
+        ("curve", "Exponential", "1"),
+        ("curve", "Linear", "0"),
+        ("curve", "2", "2"),
+        ("curve", "9", "0"),
+        ("midi_mode", "Gate", "1"),
+        ("midi_mode", "Trigger", "0"),
+        ("midi_mode", "1", "1"),
+        ("midi_mode", "gate", "0"),
+        ("channel", "Omni", "0"),
+        ("channel", "16", "16"),
+        ("channel", "17", "16"),
+        ("channel", "-3", "0"),
+        ("channel", "3.9", "3"),
+        ("delay", "-12.5", "-12.5"),
+        ("delay", "-250", "-100"),
+        ("delay", "0.125abc", "0.125"),
+        ("attack", "0.750", "0.75"),
+        ("attack", "4abc", "4"),
+        ("attack", "1e1", "10"),
+        ("attack", "1e", "1"),
+        ("attack", ".5", "0.5"),
+        ("attack", "999", "200"),
+        ("hold", " +40", "40"),
+        ("hold", "-3", "0"),
+        ("hold", "abc", "0"),
+        ("hold", "", "0"),
+        ("release", "111.5", "111.5"),
+        ("release", "1e400", "200"),
+        ("depth", "0.7", "0.7"),
+        ("depth", "1.5", "1"),
+        ("depth", "nan", "0"),
+        ("trigger_note", "F#3", "66"),
+        ("trigger_note", "C-2", "0"),
+        ("trigger_note", "G8", "127"),
+        ("trigger_note", "36", "36"),
+        ("trigger_note", "60.9", "60"),
+        ("trigger_note", "G#8", "0"),
+        ("trigger_note", "200", "127"),
+        ("vel_sens", "0.25", "0.25"),
+        ("vel_sens", "-1", "0"),
+        ("threshold", "-60", "-60"),
+        ("threshold", "-90", "-60"),
+        ("threshold", "5", "0"),
+        ("threshold", "0", "0"),
+        ("lockout", "30", "30"),
+        ("lockout", "1000", "200"),
+    ];
+    let mut out = [0u8; 64];
+    for (key, val, want) in WRITES {
+        let mut p = Instance::new(48000.0);
+        assert!(p.set_param(key, val), "{key} refused {val:?}");
+        let n = p.get_param(key, &mut out);
+        assert!(n >= 0, "{key} is not served");
+        assert_eq!(std::str::from_utf8(&out[..n as usize]).unwrap(), want, "{key} = {val:?}");
+    }
+    /* Not a parameter, and still the string door's: see midi.rs. */
+    assert!(Instance::new(48000.0).set_param("panic", "1"));
 }
 
 #[test]
