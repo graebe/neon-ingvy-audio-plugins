@@ -263,6 +263,7 @@ dependencies = [
  "ni-schwung",
  "sc-capi",
  "sc-core",
+ "serde_json",
 ]
 
 [[package]]

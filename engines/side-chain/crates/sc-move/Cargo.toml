@@ -19,3 +19,9 @@ sc-core = { path = "../sc-core" }
 sc-capi = { path = "../sc-capi" }
 # The Schwung audio_fx v2 glue, shared with every module.
 ni-schwung = { path = "../../../shared/crates/ni-schwung" }
+
+[dev-dependencies]
+# The chain_params tests read the declaration as JSON (src/params.rs): the
+# parser tg-core already links, with tg-core's features, so a test build adds
+# no second configuration of it.
+serde_json = { workspace = true, features = ["alloc"] }

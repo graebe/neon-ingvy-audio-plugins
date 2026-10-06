@@ -45,6 +45,7 @@ mod tests {
     use super::CHAIN_PARAMS;
     use sc_core::params::Param;
     use sc_core::Instance;
+    use serde_json::{Map, Value};
 
     /*
      * WHAT THESE PIN, AND WHY IT IS NOT A JSON-SHAPE TEST.
@@ -59,54 +60,59 @@ mod tests {
      * silently absent or inert on the device, which is the hardest place in this
      * project to notice anything.
      *
-     * Parsed by scanning rather than with a JSON crate: the workspace has no
-     * external dependencies and this is not where that changes.
+     * Read with serde_json, the parser tg-core already links. A string that is
+     * not JSON fails as a parse error rather than as a count of braces, and an
+     * entry's fields are found wherever they sit in it, not only after a `key`
+     * that happens to come first.
      */
 
-    /// Every `"key":"..."` in declaration order.
+    /// The declaration, one object per control, in order. A string that is
+    /// not a JSON array of objects fails whichever test asked.
+    fn declared() -> Vec<Map<String, Value>> {
+        let parsed: Value = serde_json::from_str(CHAIN_PARAMS).expect("chain_params is not JSON");
+        let Value::Array(entries) = parsed else { panic!("chain_params is not a JSON array") };
+        entries
+            .into_iter()
+            .map(|entry| match entry {
+                Value::Object(fields) => fields,
+                other => panic!("a chain_params entry is not an object: {other}"),
+            })
+            .collect()
+    }
+
+    /// A text field of an entry, or "" for one it does not have.
+    fn text<'a>(entry: &'a Map<String, Value>, field: &str) -> &'a str {
+        entry.get(field).and_then(Value::as_str).unwrap_or("")
+    }
+
+    /// Every `key` in declaration order.
     fn keys() -> Vec<String> {
         entries().into_iter().map(|(k, _)| k).collect()
     }
 
     /// Each entry as (key, type).
     fn entries() -> Vec<(String, String)> {
-        let mut out = Vec::new();
-        for entry in CHAIN_PARAMS.split("{\"key\":\"").skip(1) {
-            let Some(end) = entry.find('"') else { continue };
-            let key = entry[..end].to_string();
-            let ty = entry
-                .find("\"type\":\"")
-                .map(|i| {
-                    let r = &entry[i + 8..];
-                    r[..r.find('"').unwrap_or(0)].to_string()
-                })
-                .unwrap_or_default();
-            out.push((key, ty));
-        }
-        out
+        declared()
+            .iter()
+            .map(|e| (text(e, "key").to_string(), text(e, "type").to_string()))
+            .collect()
     }
 
     /// The `viz` group named on each entry, in the same order as `keys()`.
     fn viz_groups() -> Vec<Option<String>> {
-        let mut out = Vec::new();
-        for entry in CHAIN_PARAMS.split("{\"key\":\"").skip(1) {
-            let group = entry.find("\"group\":\"").map(|i| {
-                let r = &entry[i + 9..];
-                r[..r.find('"').unwrap_or(0)].to_string()
-            });
-            out.push(group);
-        }
-        out
+        declared()
+            .iter()
+            .map(|e| e.get("viz").and_then(|viz| viz.get("group")).and_then(Value::as_str).map(str::to_string))
+            .collect()
     }
 
     #[test]
-    fn the_declaration_is_balanced_and_non_empty() {
-        assert!(CHAIN_PARAMS.starts_with('['), "chain_params must be a JSON array");
-        assert!(CHAIN_PARAMS.ends_with(']'));
-        let opens = CHAIN_PARAMS.matches('{').count();
-        let closes = CHAIN_PARAMS.matches('}').count();
-        assert_eq!(opens, closes, "unbalanced braces");
-        assert!(keys().len() >= 14, "only {} keys", keys().len());
+    fn the_declaration_is_a_json_array_of_keyed_entries() {
+        let declared = declared();
+        for entry in &declared {
+            assert!(!text(entry, "key").is_empty(), "an entry has no key: {entry:?}");
+        }
+        assert!(declared.len() >= 14, "only {} keys", declared.len());
     }
 
     #[test]

@@ -59,32 +59,31 @@ ni_schwung::export_audio_fx!(Ducker);
 mod tests {
     use super::*;
     use ni_schwung::AudioFxApiV2;
+    use serde_json::Value;
     use std::ffi::{c_char, c_void, CString};
     use std::sync::Once;
 
-    /// The entry for `key` in the declaration, as raw JSON text.
-    fn entry(key: &str) -> &'static str {
-        let tag = format!("{{\"key\":\"{key}\"");
-        let at = params::CHAIN_PARAMS.find(&tag).expect("declared");
-        let rest = &params::CHAIN_PARAMS[at..];
-        &rest[..rest.find('}').unwrap() + 1]
+    /// The entry for `key` in the declaration, read with serde_json as
+    /// params.rs's tests read the whole of it.
+    fn entry(key: &str) -> Value {
+        let declared: Value = serde_json::from_str(params::CHAIN_PARAMS).expect("chain_params is not JSON");
+        let entries = declared.as_array().expect("chain_params is not a JSON array");
+        entries
+            .iter()
+            .find(|e| e["key"] == key)
+            .unwrap_or_else(|| panic!("\"{key}\" is not declared"))
+            .clone()
     }
 
     /// A string field of an entry, e.g. `default` or `wire_format`.
     fn field(key: &str, name: &str) -> Option<String> {
-        let e = entry(key);
-        let tag = format!("\"{name}\":\"");
-        let at = e.find(&tag)? + tag.len();
-        Some(e[at..at + e[at..].find('"')?].to_string())
+        entry(key)[name].as_str().map(str::to_string)
     }
 
     fn options(key: &str) -> Vec<String> {
         let e = entry(key);
-        let at = e.find("\"options\":[").unwrap() + 11;
-        e[at..at + e[at..].find(']').unwrap()]
-            .split(',')
-            .map(|s| s.trim_matches('"').to_string())
-            .collect()
+        let options = e["options"].as_array().unwrap_or_else(|| panic!("\"{key}\" declares no options"));
+        options.iter().map(|o| o.as_str().expect("an option is text").to_string()).collect()
     }
 
     /* The vtable, initialised once: it is process-wide, as on the device,
