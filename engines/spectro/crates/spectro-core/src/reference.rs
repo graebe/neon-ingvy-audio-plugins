@@ -4,54 +4,25 @@
 /*
  * The analysis as it was before it was made fast -- kept as the oracle.
  *
- * A complex radix-2 FFT on real input, a sqrt per bin, `powf` between bins,
- * and a `powf` per cell to sum sources. Slow and plainly right, which is what
- * an oracle is for. `equivalence` below holds the fast path to it: every column
- * byte within one step of this, on a fixed set of signals and configurations.
+ * A full-length complex FFT on real input, a sqrt per bin, `powf` between
+ * bins, and a `powf` per cell to sum sources. Slow and plainly right, which is
+ * what an oracle is for. `equivalence` below holds the fast path to it: every
+ * column byte within one step of this, on a fixed set of signals and
+ * configurations.
+ *
+ * THE TRANSFORM IS rustfft's COMPLEX ONE, PLANNED FOR ALL N POINTS, and that
+ * is the independence that matters here. The fast path runs realfft, which
+ * packs the real input into N/2 complex points and untangles the result with
+ * a split pass; none of that is on this path. The transform underneath both is
+ * held to a naive DFT on its own, in fft.rs.
  */
+
+use rustfft::num_complex::Complex32;
+use rustfft::FftPlanner;
 
 use crate::bands::{amplitude_to_byte, byte_to_db, db_to_byte, Bands};
 use crate::window::Window;
 use crate::Config;
-
-fn fft(re: &mut [f32], im: &mut [f32]) {
-    let n = re.len();
-    let bits = n.trailing_zeros();
-    for i in 0..n {
-        let j = ((i as u32).reverse_bits() >> (32 - bits)) as usize;
-        if i < j {
-            re.swap(i, j);
-            im.swap(i, j);
-        }
-    }
-    let (cos, sin): (Vec<f32>, Vec<f32>) = (0..n / 2)
-        .map(|k| {
-            let theta = -2.0 * core::f64::consts::PI * (k as f64) / (n as f64);
-            (theta.cos() as f32, theta.sin() as f32)
-        })
-        .unzip();
-    let mut len = 2;
-    while len <= n {
-        let half = len / 2;
-        let stride = n / len;
-        let mut base = 0;
-        while base < n {
-            for k in 0..half {
-                let t = k * stride;
-                let (wr, wi) = (cos[t], sin[t]);
-                let (a, b) = (base + k, base + k + half);
-                let xr = re[b] * wr - im[b] * wi;
-                let xi = re[b] * wi + im[b] * wr;
-                re[b] = re[a] - xr;
-                im[b] = im[a] - xi;
-                re[a] += xr;
-                im[a] += xi;
-            }
-            base += len;
-        }
-        len <<= 1;
-    }
-}
 
 /// Every column the analyzer would produce from `signal`, concatenated.
 pub fn columns(cfg: Config, signal: &[f32]) -> Vec<u8> {
@@ -59,20 +30,20 @@ pub fn columns(cfg: Config, signal: &[f32]) -> Vec<u8> {
     let n = cfg.fft_size;
     let window = Window::hann(n);
     let bands = Bands::new(cfg.bands, n / 2 + 1, cfg.sample_rate, cfg.f_min, cfg.f_max);
+    let fft = FftPlanner::<f32>::new().plan_fft_forward(n);
     let mut out = Vec::new();
     let mut t = cfg.hop;
     while t <= signal.len() {
         if t >= n {
-            let mut re: Vec<f32> = signal[t - n..t]
+            let mut bins: Vec<Complex32> = signal[t - n..t]
                 .iter()
                 .zip(&window.gain)
-                .map(|(&s, &g)| if s.is_finite() { s } else { 0.0 } * g)
+                .map(|(&s, &g)| Complex32::new(if s.is_finite() { s } else { 0.0 } * g, 0.0))
                 .collect();
-            let mut im = vec![0.0f32; n];
-            fft(&mut re, &mut im);
+            fft.process(&mut bins);
             let scale = window.amplitude_scale;
             let mag = |k: usize| -> f32 {
-                let m = (re[k] * re[k] + im[k] * im[k]).sqrt() * scale;
+                let m = bins[k].norm_sqr().sqrt() * scale;
                 if k == n / 2 {
                     m * 0.5
                 } else {
@@ -127,17 +98,17 @@ mod equivalence {
     const MAX_STEP: i16 = 1;
     const MAX_OFF_FRACTION: f64 = 0.01;
 
-    fn lcg(seed: &mut u64) -> f32 {
-        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        ((*seed >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0
+    /// Uniform in [-1, 1), from a generator seeded once per test.
+    fn bipolar(rng: &mut fastrand::Rng) -> f32 {
+        rng.f32() * 2.0 - 1.0
     }
 
     /// The fixed signal set: each one aimed at a different part of the path.
     fn signals(sr: f32, len: usize) -> Vec<(&'static str, Vec<f32>)> {
         let tau = 2.0 * core::f64::consts::PI;
-        let mut seed = 0x2545_F491_4F6C_DD1Du64;
-        let noise: Vec<f32> = (0..len).map(|_| 0.5 * lcg(&mut seed)).collect();
-        let faint: Vec<f32> = (0..len).map(|_| 2e-5 * lcg(&mut seed)).collect();
+        let mut rng = fastrand::Rng::with_seed(0x2545_F491_4F6C_DD1D);
+        let noise: Vec<f32> = (0..len).map(|_| 0.5 * bipolar(&mut rng)).collect();
+        let faint: Vec<f32> = (0..len).map(|_| 2e-5 * bipolar(&mut rng)).collect();
         let tones: Vec<f32> = (0..len)
             .map(|i| {
                 let t = i as f64 / sr as f64;
@@ -242,8 +213,8 @@ mod equivalence {
 
     #[test]
     fn the_sum_matches_the_reference_for_three_and_four_sources() {
-        let mut seed = 7u64;
-        let mut byte = || ((lcg(&mut seed) * 0.5 + 0.5) * 255.99) as u8;
+        let mut rng = fastrand::Rng::with_seed(7);
+        let mut byte = || rng.u8(..);
         let (floor, ceil) = (-96.0f32, 0.0f32);
         let mut off = 0usize;
         let table = PowerTable::new(floor, ceil);

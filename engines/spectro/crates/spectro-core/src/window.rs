@@ -15,6 +15,12 @@
  * away amplitude -- sum(hann)/N is 0.5 -- so a full-scale sine reads 6 dB down
  * unless the magnitude is scaled back up by it. `amplitude_scale` is that
  * factor, and it is why a sine at 1.0 shows as 0 dB and not as -6.
+ *
+ * WRITTEN HERE, NOT TAKEN FROM A CRATE, and the obvious crate was looked at.
+ * apodize's `hanning_iter` is the SYMMETRIC window -- it divides by n-1, the
+ * definition `hann` below rejects -- and 1.0.0, from April 2019, is still its
+ * latest release. What is left is one cosine per sample, computed once per
+ * configuration: not the kind of code a dependency saves anyone from.
  */
 
 pub struct Window {

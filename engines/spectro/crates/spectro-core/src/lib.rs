@@ -7,20 +7,20 @@
  *
  * TWO HALVES, ONE PER THREAD. The `Producer` is fed samples and runs one
  * transform per hop, on whichever thread feeds it; the finished column -- one
- * byte per band -- goes into a lock-free single-producer/single-consumer ring
- * that the `Consumer` drains. Through spectro_capi's `spectro_push_f32` the
- * producing thread is the audio thread, and the comments below call it that.
- * In the Spectrogram it is not: spectro-recv feeds every analyzer from a
+ * byte per band -- goes into a wait-free single-producer/single-consumer ring
+ * (rtrb) that the `Consumer` drains. Through spectro_capi's `spectro_push_f32`
+ * the producing thread is the audio thread, and the comments below call it
+ * that. In the Spectrogram it is not: spectro-recv feeds every analyzer from a
  * worker thread of its own, so several sources stay in step and the host's
  * audio and UI threads run no transforms at all.
  *
  * The cost is bounded and constant: ONE transform per hop, and the hop is a
  * fixed number of samples -- at 96 kHz a 16384-point real FFT every 21 ms,
- * about 50 us on an M1 (fft.rs).
+ * about 26 us on an M1 Pro (fft.rs's `fft_timings`).
  *
  * NOTHING HERE ALLOCATES AFTER `configure`. `push` and `take_columns` touch
- * preallocated buffers and two atomics, and tests/no_alloc.rs fails the build
- * if that stops being true.
+ * preallocated buffers and a handful of atomics, and tests/no_alloc.rs fails
+ * the build if that stops being true.
  */
 
 mod bands;
@@ -35,8 +35,10 @@ pub use bands::{
     db_to_byte, power_to_byte, Band, Bands, PowerTable,
 };
 
-use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use atomic_float::AtomicF32;
 
 use fft::Fft;
 use window::Window;
@@ -194,128 +196,118 @@ impl Config {
 /* ------------------------------------------------------------------ columns */
 
 /*
- * THE HANDOVER: a bounded SPSC ring of byte columns.
+ * THE HANDOVER: a bounded rtrb ring of byte columns.
  *
- * The producer owns `write` and the slots ahead of it; the consumer owns
- * `read` and the slots behind it. The buffers are held as RAW POINTERS, taken
- * once when they are allocated and turned back into boxes only on drop, so no
- * reference to a whole buffer ever exists while both sides run: each copy
- * touches one slot through a pointer, the two sides' slots are disjoint, and
- * the two counters publish the handover with Release/Acquire.
+ * rtrb is a wait-free single-producer/single-consumer ring. Its two ends are
+ * separate values -- the producing one lives in `Producer`, the draining one in
+ * `Consumer` -- and its buffer is allocated once, when the ring is made. A
+ * column crosses as ONE RECORD (see `STAMP`), written and read whole, so
+ * neither side ever sees half of one.
  *
  * FULL MEANS DROP THE NEW COLUMN, and the count is kept rather than hidden.
- * Overwriting the oldest would need the writer to move the reader's counter,
- * which is exactly the kind of "small" shared write that makes a lock-free
- * queue subtly wrong.
+ * rtrb refuses a record it has no room for rather than overwriting the oldest,
+ * which is the rule this ring has always had: overwriting would need the
+ * writer to move the reader's position, exactly the kind of "small" shared
+ * write that makes a lock-free queue subtly wrong.
  */
-struct Columns {
-    bands: usize,
-    buf: *mut u8,
-    /*
-     * THE RANGE EACH COLUMN WAS MEASURED AGAINST, one per slot.
-     *
-     * Changing the range is a request the audio thread picks up at its next
-     * frame, so for up to one hop -- 21 ms -- it is still producing columns on
-     * the OLD axis while the editor has already redrawn its scale for the new
-     * one. Those columns are not wrong, they are answers to a different
-     * question, and drawing them under the new scale puts a stripe of
-     * mislabelled data at the very moment the user is looking to see what
-     * changed.
-     *
-     * So each column carries its epoch and `take` drops the stale ones. It is a
-     * fault with no symptom until you are the one reading the picture.
-     */
-    epoch: *mut usize,
-    write: AtomicUsize,
-    read: AtomicUsize,
-    dropped: AtomicUsize,
+
+/*
+ * THE RANGE EACH COLUMN WAS MEASURED AGAINST, stamped in front of it.
+ *
+ * Changing the range is a request the audio thread picks up at its next
+ * frame, so for up to one hop -- 21 ms -- it is still producing columns on the
+ * OLD axis while the editor has already redrawn its scale for the new one.
+ * Those columns are not wrong, they are answers to a different question, and
+ * drawing them under the new scale puts a stripe of mislabelled data at the
+ * very moment the user is looking to see what changed.
+ *
+ * So every record opens with the epoch its column was measured under, and
+ * `take` drops the stale ones. It is a fault with no symptom until you are the
+ * one reading the picture.
+ */
+const STAMP: usize = core::mem::size_of::<u64>();
+
+/// A ring for `bands`-byte columns, as its two ends.
+fn columns(bands: usize) -> (ColumnTx, ColumnRx) {
+    let (ring_tx, ring_rx) = rtrb::RingBuffer::new(COLUMN_CAPACITY * (STAMP + bands));
+    (
+        ColumnTx { ring: ring_tx, bands, pushed: 0 },
+        ColumnRx { ring: ring_rx, bands, taken: 0 },
+    )
 }
 
-/* The pointers are owned (see Drop) and every access through them is one of
- * the two unsafe methods below, whose contract is one producer and one
- * consumer -- which `Producer` and `Consumer` guarantee by being unique and
- * taking `&mut self`. */
-unsafe impl Send for Columns {}
-unsafe impl Sync for Columns {}
+/// The producing end, owned by `Producer`.
+struct ColumnTx {
+    ring: rtrb::Producer<u8>,
+    bands: usize,
+    /// Columns queued so far: a ring position, dropped ones not counted.
+    pushed: usize,
+}
 
-impl Columns {
-    fn new(bands: usize) -> Self {
-        Self {
-            bands,
-            buf: Box::into_raw(vec![0u8; bands * COLUMN_CAPACITY].into_boxed_slice()) as *mut u8,
-            epoch: Box::into_raw(vec![0usize; COLUMN_CAPACITY].into_boxed_slice()) as *mut usize,
-            write: AtomicUsize::new(0),
-            read: AtomicUsize::new(0),
-            dropped: AtomicUsize::new(0),
-        }
-    }
-
-    /// # Safety
-    /// Only the single producer may call this.
-    unsafe fn push(&self, col: &[u8], epoch: usize) {
+impl ColumnTx {
+    /// Queue a column measured under `epoch`. False when the ring was full and
+    /// the column was dropped instead.
+    fn push(&mut self, col: &[u8], epoch: usize) -> bool {
         debug_assert_eq!(col.len(), self.bands);
-        let w = self.write.load(Ordering::Relaxed);
-        let r = self.read.load(Ordering::Acquire);
-        if w.wrapping_sub(r) >= COLUMN_CAPACITY {
-            self.dropped.fetch_add(1, Ordering::Relaxed);
-            return;
-        }
-        let slot = w % COLUMN_CAPACITY;
-        core::ptr::copy_nonoverlapping(col.as_ptr(), self.buf.add(slot * self.bands), self.bands);
-        self.epoch.add(slot).write(epoch);
-        self.write.store(w.wrapping_add(1), Ordering::Release);
+        let Ok(record) = self.ring.write_chunk_uninit(STAMP + col.len()) else {
+            return false;
+        };
+        let stamp = (epoch as u64).to_ne_bytes();
+        record.fill_from_iter(stamp.into_iter().chain(col.iter().copied()));
+        self.pushed = self.pushed.wrapping_add(1);
+        true
     }
+}
 
+/// The draining end, owned by `Consumer`.
+struct ColumnRx {
+    ring: rtrb::Consumer<u8>,
+    bands: usize,
+    /// Columns read past so far, kept or discarded: the position `Producer`'s
+    /// `pushed` counts towards.
+    taken: usize,
+}
+
+impl ColumnRx {
     /// Returns the columns written to `out`, which must hold `max_cols * bands`
     /// bytes, reading no further than ring position `end` when one is given.
     /// Columns measured against an earlier range are consumed and discarded
     /// rather than returned.
-    ///
-    /// # Safety
-    /// Only the single consumer may call this.
-    unsafe fn take(&self, out: &mut [u8], max_cols: usize, epoch: usize, end: Option<usize>) -> usize {
-        let w = self.write.load(Ordering::Acquire);
-        let r = self.read.load(Ordering::Relaxed);
-        let mut available = w.wrapping_sub(r);
+    fn take(&mut self, out: &mut [u8], max_cols: usize, epoch: usize, end: Option<usize>) -> usize {
+        let record = STAMP + self.bands;
+        let mut available = self.ring.slots() / record;
         if let Some(end) = end {
-            available = available.min(end.wrapping_sub(r));
+            available = available.min(end.wrapping_sub(self.taken));
         }
         let available = available.min(out.len() / self.bands.max(1));
 
         let mut kept = 0;
         let mut seen = 0;
         while seen < available && kept < max_cols {
-            let slot = r.wrapping_add(seen) % COLUMN_CAPACITY;
+            /* Counted above, and the producer only ever adds. */
+            let Ok(chunk) = self.ring.read_chunk(record) else {
+                break;
+            };
             seen += 1;
-            if self.epoch.add(slot).read() != epoch {
-                continue; /* another range's answer -- see `epoch` above */
+            /* rtrb hands a chunk out as two slices, the second one non-empty
+             * only where the chunk wraps past the end of the buffer. No record
+             * does in a ring of whole records, and read in order the pair
+             * would be right even if one did. */
+            let (first, second) = chunk.as_slices();
+            let mut bytes = first.iter().chain(second).copied();
+            let stamp: [u8; STAMP] = core::array::from_fn(|_| bytes.next().unwrap_or(0));
+            if u64::from_ne_bytes(stamp) == epoch as u64 {
+                let slot = &mut out[kept * self.bands..(kept + 1) * self.bands];
+                for (to, from) in slot.iter_mut().zip(bytes) {
+                    *to = from;
+                }
+                kept += 1;
             }
-            core::ptr::copy_nonoverlapping(
-                self.buf.add(slot * self.bands),
-                out.as_mut_ptr().add(kept * self.bands),
-                self.bands,
-            );
-            kept += 1;
+            /* Kept or another range's answer, it is read now -- see `STAMP`. */
+            chunk.commit_all();
         }
-        if seen > 0 {
-            self.read.store(r.wrapping_add(seen), Ordering::Release);
-        }
+        self.taken = self.taken.wrapping_add(seen);
         kept
-    }
-}
-
-impl Drop for Columns {
-    fn drop(&mut self) {
-        unsafe {
-            drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
-                self.buf,
-                self.bands * COLUMN_CAPACITY,
-            )));
-            drop(Box::from_raw(core::ptr::slice_from_raw_parts_mut(
-                self.epoch,
-                COLUMN_CAPACITY,
-            )));
-        }
     }
 }
 
@@ -345,8 +337,8 @@ struct Dsp {
     epoch: usize,
 }
 
-/// What the two halves share: the configuration, the range request, and the
-/// column ring between them.
+/// What the two halves share besides the ring: the configuration, the range
+/// request, and how many columns the ring had to drop.
 struct Shared {
     cfg: Config,
     /*
@@ -357,23 +349,20 @@ struct Shared {
      * dropdown change the picture's frequency range while audio is running with
      * no lock, no reallocation and no pointer swap -- and why `set_range` is
      * safe where `configure` is not.
-     *
-     * Stored as bits because there is no AtomicF32.
      */
-    req_f_min: AtomicU32,
-    req_f_max: AtomicU32,
+    req_f_min: AtomicF32,
+    req_f_max: AtomicF32,
     /// Bumped on every range change. Stamped onto each column, so the consumer
     /// can tell an answer to the old question from an answer to the new one.
     epoch: AtomicUsize,
-    cols: Columns,
+    /// Columns the ring had no room for: counted by the producer, read by the
+    /// consumer.
+    dropped: AtomicUsize,
 }
 
 impl Shared {
     fn range(&self) -> (f32, f32) {
-        (
-            f32::from_bits(self.req_f_min.load(Ordering::Relaxed)),
-            f32::from_bits(self.req_f_max.load(Ordering::Relaxed)),
-        )
+        (self.req_f_min.load(Ordering::Relaxed), self.req_f_max.load(Ordering::Relaxed))
     }
 }
 
@@ -381,20 +370,22 @@ impl Shared {
  * TWO HALVES, BECAUSE THERE ARE TWO THREADS.
  *
  * The audio thread owns the `Producer` and the message thread the `Consumer`.
- * Neither is Clone, and each does its work through `&mut self` -- so safe code
- * cannot push from two threads, or drain from two, however the halves are
- * passed around. That is the whole thread contract, stated to the compiler
- * rather than in a comment.
+ * Neither is Clone, each does its work through `&mut self`, and the ring ends
+ * inside them are Send but not Sync -- so safe code cannot push from two
+ * threads, or drain from two, however the halves are passed around. That is
+ * the whole thread contract, stated to the compiler rather than in a comment.
  */
 
 /// The audio thread's half: feed it samples.
 pub struct Producer {
     dsp: Dsp,
+    cols: ColumnTx,
     shared: Arc<Shared>,
 }
 
 /// The message thread's half: drain columns, change the range, read the axis.
 pub struct Consumer {
+    cols: ColumnRx,
     shared: Arc<Shared>,
 }
 
@@ -414,11 +405,12 @@ impl Analyzer {
 
         let shared = Arc::new(Shared {
             cfg,
-            req_f_min: AtomicU32::new(cfg.f_min.to_bits()),
-            req_f_max: AtomicU32::new(cfg.f_max.to_bits()),
+            req_f_min: AtomicF32::new(cfg.f_min),
+            req_f_max: AtomicF32::new(cfg.f_max),
             epoch: AtomicUsize::new(0),
-            cols: Columns::new(cfg.bands),
+            dropped: AtomicUsize::new(0),
         });
+        let (cols_tx, cols_rx) = columns(cfg.bands);
         Self {
             tx: Producer {
                 dsp: Dsp {
@@ -436,9 +428,10 @@ impl Analyzer {
                     col: vec![0u8; cfg.bands].into_boxed_slice(),
                     epoch: 0,
                 },
+                cols: cols_tx,
                 shared: shared.clone(),
             },
-            rx: Consumer { shared },
+            rx: Consumer { cols: cols_rx, shared },
         }
     }
 
@@ -499,14 +492,14 @@ impl Consumer {
     /// Unlike `Analyzer::new`, this allocates nothing and is safe to call while
     /// audio is running: it stores a request, and the audio thread rebuilds its
     /// own band table at the next frame. Columns already queued from before the
-    /// change are dropped rather than handed out -- see `Columns::epoch`.
+    /// change are dropped rather than handed out -- see `STAMP`.
     pub fn set_range(&self, f_min: f32, f_max: f32) {
         if !f_min.is_finite() || !f_max.is_finite() || f_min < 1.0 || f_max <= f_min * 1.5 {
             return; /* a range that cannot be drawn is not a range */
         }
         let s = &self.shared;
-        s.req_f_min.store(f_min.to_bits(), Ordering::Relaxed);
-        s.req_f_max.store(f_max.to_bits(), Ordering::Relaxed);
+        s.req_f_min.store(f_min, Ordering::Relaxed);
+        s.req_f_max.store(f_max, Ordering::Relaxed);
         /* Release: the two stores above must be visible to the audio thread
          * before the epoch that tells it to read them. */
         s.epoch.fetch_add(1, Ordering::Release);
@@ -523,21 +516,20 @@ impl Consumer {
 
     /// Columns the ring had to throw away because nothing drained it.
     pub fn dropped(&self) -> usize {
-        self.shared.cols.dropped.load(Ordering::Relaxed)
+        self.shared.dropped.load(Ordering::Relaxed)
     }
 
     /// Ring positions this consumer has read past -- the same count as
     /// `Producer::produced`, so the difference is what is waiting.
     pub fn position(&self) -> usize {
-        self.shared.cols.read.load(Ordering::Relaxed)
+        self.cols.taken
     }
 
     /// Drain finished columns into `out`, `bands()` bytes each, oldest first.
     /// **Message thread.** Returns the number of columns written.
     pub fn take_columns(&mut self, out: &mut [u8], max_cols: usize) -> usize {
         let epoch = self.shared.epoch.load(Ordering::Acquire);
-        /* The one consumer: this half is unique and borrowed mutably. */
-        unsafe { self.shared.cols.take(out, max_cols, epoch, None) }
+        self.cols.take(out, max_cols, epoch, None)
     }
 
     /// `take_columns`, reading no column past `end` -- a value `produced`
@@ -545,8 +537,7 @@ impl Consumer {
     /// their producer's, rather than of whatever each has reached by now.
     pub fn take_columns_until(&mut self, out: &mut [u8], max_cols: usize, end: usize) -> usize {
         let epoch = self.shared.epoch.load(Ordering::Acquire);
-        /* The one consumer: this half is unique and borrowed mutably. */
-        unsafe { self.shared.cols.take(out, max_cols, epoch, Some(end)) }
+        self.cols.take(out, max_cols, epoch, Some(end))
     }
 }
 
@@ -554,7 +545,7 @@ impl Producer {
     /// Columns pushed so far (a ring position; dropped ones are not counted).
     /// **The producing thread.**
     pub fn produced(&self) -> usize {
-        self.shared.cols.write.load(Ordering::Relaxed)
+        self.cols.pushed
     }
 
     /// Feed mono samples. **Audio thread.** Allocates nothing, locks nothing,
@@ -657,8 +648,9 @@ impl Producer {
             };
         }
 
-        /* The one producer: this half is unique and borrowed mutably. */
-        unsafe { shared.cols.push(&dsp.col, dsp.epoch) };
+        if !self.cols.push(&dsp.col, dsp.epoch) {
+            shared.dropped.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -807,15 +799,22 @@ mod tests {
      *
      *     [126,127,128,126,123,121,118,115,118,122,125,129,130,130,130, ...]
      *
-     * The thresholds are loose on purpose -- the point is the shape, and the
-     * two regimes are 68 repeats apart, not two.
+     * JUDGED OVER EIGHT DRAWS OF NOISE, NOT ONE. Snapping is a structure: it
+     * scores 68 to 71 repeats in every draw, with a run of 13 at the bottom.
+     * Interpolation's score depends on the draw -- where two neighbouring bins
+     * happen to sit within a fraction of a dB, even a straight line between
+     * them is a run of equal bytes -- and over 64 draws it ranged from 1 to 36
+     * repeats and from 2 to 20 bands the longest run. A single draw therefore
+     * says little, and one generator's lucky draw passed a threshold another's
+     * misses. The total and the median do not wander like that, and the
+     * thresholds sit halfway between the regimes.
      */
     #[test]
     fn the_bands_below_one_bin_are_interpolated_rather_than_repeated() {
         let sr = 48_000.0f32;
         let fft = pick_fft_size(sr);
         let hop = pick_hop(sr, fft);
-        let mut a = Analyzer::new(Config {
+        let cfg = Config {
             sample_rate: sr,
             fft_size: fft,
             hop,
@@ -824,39 +823,51 @@ mod tests {
             f_max: 20_000.0,
             db_floor: -96.0,
             db_ceil: 0.0,
-        });
+        };
 
-        /* Deterministic white noise, so every band sits well above the floor
-         * and a repeat means the mapping repeated rather than that two bands
-         * were both silent. */
-        let mut st = 0x1234_5678u32;
-        let n = fft + hop * 4;
-        let mut buf = Vec::with_capacity(n);
-        for _ in 0..n {
-            st = st.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            buf.push(((st >> 8) as f32 / 8_388_608.0 - 1.0) * 0.25);
-        }
-        a.push(&buf);
+        let draws = 8;
+        let mut repeats = 0;
+        let mut longest_runs = Vec::with_capacity(draws);
+        for seed in 1..=draws as u64 {
+            /* White noise, so every band sits well above the floor and a
+             * repeat means the mapping repeated rather than that two bands
+             * were both silent. */
+            let mut rng = fastrand::Rng::with_seed(seed);
+            let buf: Vec<f32> = (0..fft + hop * 4).map(|_| (rng.f32() * 2.0 - 1.0) * 0.25).collect();
+            let mut a = Analyzer::new(cfg);
+            a.push(&buf);
 
-        let mut out = vec![0u8; 256 * 8];
-        assert!(a.take_columns(&mut out, 8) > 0, "the noise produced no column");
-        let col = &out[..256];
+            let mut out = vec![0u8; 256 * 8];
+            assert!(a.take_columns(&mut out, 8) > 0, "the noise produced no column");
+            let col = &out[..256];
 
-        let (mut repeats, mut longest, mut run) = (0, 1, 1);
-        for b in 1..100 {
-            if col[b] == col[b - 1] {
-                repeats += 1;
-                run += 1;
-                longest = longest.max(run);
-            } else {
-                run = 1;
+            let (mut longest, mut run) = (1, 1);
+            for b in 1..100 {
+                if col[b] == col[b - 1] {
+                    repeats += 1;
+                    run += 1;
+                    longest = longest.max(run);
+                } else {
+                    run = 1;
+                }
+                assert!(col[b] > 0, "seed {seed}: band {b} sat on the floor; the noise was too quiet");
             }
-            assert!(col[b] > 0, "band {b} sat on the floor; the noise was too quiet");
+            longest_runs.push(longest);
         }
+        longest_runs.sort_unstable();
+        let typical_longest = longest_runs[draws / 2];
 
-        /* Snapping scores 68 and 13 here; interpolating scores 14 and 3. */
-        assert!(repeats <= 30, "{repeats}/99 bands repeat their neighbour -- the staircase is back");
-        assert!(longest <= 5, "a run of {longest} identical bands is a flat block");
+        /* Over these eight, snapping scores 551 repeats and a run of 13 in every
+         * draw; interpolating scores 152, and 6 the median longest run. */
+        assert!(
+            repeats <= draws * 34,
+            "{repeats} of {} bands repeat their neighbour -- the staircase is back",
+            draws * 99
+        );
+        assert!(
+            typical_longest <= 9,
+            "the typical longest run is {typical_longest} identical bands ({longest_runs:?}): flat blocks"
+        );
     }
 
     #[test]
