@@ -7,7 +7,8 @@ formatting and parsing, the rate table's parser, the envelope curves, the
 one-pole, the parameter glide, the transport-following phase, a scope's cycle
 sweep, and the C helpers a capi crate's entry points are built from.
 
-It knows no product. A product's crates depend on it; it depends on nothing.
+It knows no product. A product's crates depend on it; it depends on no product
+in return, only on the two crates `fmt` reads and writes numbers with.
 Everything here runs on an audio callback, so nothing here allocates.
 */
 

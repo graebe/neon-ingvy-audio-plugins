@@ -12,5 +12,18 @@ publish.workspace = true
 [lib]
 crate-type = ["rlib"]
 
-# NO DEPENDENCIES, like every other crate in this workspace.
+# ESTABLISHED CRATES, NOT HAND-WRITTEN ONES (docs/adr/0003-established-rust-crates.md),
+# for the two parts of src/fmt.rs that core::fmt does not cover. Neither takes
+# its default features: `std` is all they add, and nothing here needs it.
 [dependencies]
+# Reading numbers as C's strtod and atoi do (fmt::atof, fmt::atoi): the longest
+# number at the front of the text, without allocating at any length. `format`
+# is what lets src/fmt.rs narrow the grammar to the one this wire has carried.
+lexical-core = { version = "1.0.6", default-features = false, features = ["parse-floats", "parse-integers", "format"] }
+# The scratch text %g is put together in (fmt::g): a string on the stack, with
+# the capacity it is declared with and no more.
+arrayvec = { version = "0.7.8", default-features = false }
+
+[dev-dependencies]
+# The counting allocator tests/no_alloc.rs installs.
+ni-testkit = { path = "../ni-testkit" }

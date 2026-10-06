@@ -31,6 +31,8 @@ pub unsafe fn copy_cstr(s: &str, buf: *mut c_char, buf_len: c_int) -> c_int {
     if buf.is_null() || buf_len <= 0 || s.len() >= buf_len as usize {
         return -1;
     }
+    /* A raw copy, not a `&mut [u8]` over the buffer: the caller's bytes may be
+     * uninitialised C memory, and a slice of u8 would claim they are not. */
     core::ptr::copy_nonoverlapping(s.as_ptr(), buf as *mut u8, s.len());
     *buf.add(s.len()) = 0;
     s.len() as c_int
@@ -88,6 +90,13 @@ mod tests {
             assert_eq!(copy_cstr("1/16T", buf.as_mut_ptr(), 5), -1);
             assert_eq!(cstr(buf.as_ptr()), "1/16", "a refused copy writes nothing");
             assert_eq!(copy_cstr("x", std::ptr::null_mut(), 5), -1);
+            /* No room, or a length C got wrong, is a refusal too. */
+            assert_eq!(copy_cstr("", buf.as_mut_ptr(), 0), -1);
+            assert_eq!(copy_cstr("", buf.as_mut_ptr(), -1), -1);
+            assert_eq!(cstr(buf.as_ptr()), "1/16");
+            /* The empty label needs the terminator's byte and no more. */
+            assert_eq!(copy_cstr("", buf.as_mut_ptr(), 1), 0);
+            assert_eq!(cstr(buf.as_ptr()), "");
         }
     }
 }
