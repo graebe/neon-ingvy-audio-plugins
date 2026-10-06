@@ -67,8 +67,8 @@ export { Ground } from './components/Ground.jsx';
  * drawn inside one. */
 export { EditorFrame, useFrame } from './components/EditorFrame.jsx';
 export { createFit, fitScale, scaledHeight, reportHeight } from './lib/fit.js';
-/* The playhead's clock: the engine's position carried forward per frame, and
- * no frame loop while nothing moves. */
+/* The playhead's clock: the engine's position carried forward on a timer, and
+ * no timer while nothing moves. */
 export { createClock, positionAt } from './lib/clock.js';
 /* The ready handshake and the ground's kicks, once for every editor. */
 export { useEditorBridge, parseGround } from './lib/bridge.js';
@@ -93,7 +93,7 @@ export { DETENT_HOLD_PX, detentTravel, detentValue, dragValue, nextDetent } from
 export { readHeader, intField, bipolar, unipolar, reuse } from './lib/capture.js';
 /* What a key does to a grid, a pad, a slider, a count or a tab strip. */
 export { gridMove, padKey, sliderKey, tabMove, countKey } from './lib/keys.js';
-/* The latest value per key, sent once a frame: for drags that message. */
+/* The latest value per key, sent once per ~16 ms: for drags that message. */
 export { createCoalescer } from './lib/coalesce.js';
 export {
   setParam, beginGesture, endGesture, sendMessage, onParam, onMessage, onBytes,
