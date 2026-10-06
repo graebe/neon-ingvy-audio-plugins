@@ -79,11 +79,11 @@ fn fixtures(kind: &str) -> Vec<(String, String)> {
 fn busy() -> Instance {
     let mut p = Instance::new(SR);
     let masks = ["1", "F00F", "A5A5A5", "8000000000000001", "FFFFFFFF0F", "3", "123456789ABCDEF0", "77"];
-    for s in 0..SLOTS {
+    for (s, mask) in masks.iter().enumerate() {
         let v = s as f64;
         p.set_num(Param::Slot, v);
         p.set_param("length", &(3 + 13 * s).to_string());
-        p.set_param("pattern", masks[s]);
+        p.set_param("pattern", mask);
         p.set_param("ties", if s % 2 == 0 { "2" } else { "100" });
         p.set_param("cursor", "1");
         p.set_param("step_amount", &format!("0.{}", s + 1));

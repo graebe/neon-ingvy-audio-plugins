@@ -10,7 +10,7 @@ randomiser.
 use crate::mask::Mask;
 use crate::{FadeDir, Instance, DEPTH_FULL, MAX_STEPS, SLOTS};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Pattern {
     pub(crate) steps: Mask,
     pub(crate) ties: Mask,

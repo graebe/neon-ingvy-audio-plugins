@@ -449,7 +449,14 @@ impl Instance {
                 let slot = self.slot;
                 set_pattern_hex(&mut self.pat[slot].ties, val);
             }
-            "state" => crate::state::load(self, val),
+            /* Parse and load in one: the door a shell without a main thread
+             * of its own uses -- see the state module on where parsing runs.
+             * A text that is no blob loads nothing. */
+            "state" => {
+                if let Ok(patch) = crate::state::Patch::parse(val) {
+                    self.load(&patch);
+                }
+            }
             _ => {}
         }
     }

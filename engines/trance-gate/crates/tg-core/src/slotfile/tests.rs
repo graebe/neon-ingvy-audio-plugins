@@ -197,3 +197,35 @@ fn the_editor_harness_fixtures_are_files_this_engine_reads() {
     assert_eq!(p.import(bank), Ok(Kind::Bank));
     assert_eq!(export(&p, Kind::Bank), bank);
 }
+
+#[test]
+fn a_file_read_once_applies_as_its_text_imports() {
+    /* The main thread reads, the audio thread applies: the same result as the
+     * text door, slot by slot. */
+    let a = busy();
+    for kind in [Kind::Slot, Kind::Bank] {
+        let text = export(&a, kind);
+        let file = super::SlotFile::parse(&text).unwrap();
+        assert_eq!(file.kind(), kind);
+        let (mut by_value, mut by_text) = (Instance::new(SR), Instance::new(SR));
+        assert_eq!(by_value.apply_file(5, &file), kind);
+        assert_eq!(by_text.import_into(5, &text), Ok(kind));
+        assert_eq!(get(&by_value, "state"), get(&by_text, "state"), "{kind:?}");
+    }
+    assert_eq!(super::SlotFile::parse("{}").err(), Some(Error::WrongFormat));
+}
+
+#[test]
+fn a_number_no_build_writes_is_no_version() {
+    /* The one place this reads more strictly than the hand-written
+     * tokenizer, which took any run of digits and points for a number: to it
+     * `01` was version 1. JSON's grammar refuses a leading zero, and a point
+     * with no digit after it, outright -- and no build ever wrote either. The
+     * other two were refused before as they are now, only with the other
+     * reason. */
+    let good = export(&Instance::new(SR), Kind::Slot);
+    for (v, want) in [("01", Error::NotAFile), ("1.", Error::NotAFile), ("1e0", Error::BadVersion), ("1.0", Error::BadVersion)] {
+        let f = good.replace("\"version\": 1", &format!("\"version\": {v}"));
+        assert_eq!(check(&f), Err(want), "{v}");
+    }
+}

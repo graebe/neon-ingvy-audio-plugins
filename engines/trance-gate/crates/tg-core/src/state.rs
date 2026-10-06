@@ -4,68 +4,69 @@
 /*!
 The `state` blob: one string that carries a whole patch.
 
-# Versions, and why there is a number at all
+```text
+text --Patch::parse--> Patch --Instance::load--> the engine
+```
 
-A version field costs nothing and is the only thing that can tell one reading
-of a number from another. The Ducker shipped without one, and a 0.1.x blob's
-envelope times -- read as the units the next version introduced -- collapsed
-the effect silently on a patch that had been working.
+[`Patch::parse`] reads the text with serde_json (see `json`) and does all of a
+load that is not the engine's own: the version decided, every number typed and
+clamped, every slot's pattern and sound decoded. What it returns is ready and
+fixed-size, and [`Instance::load`] applies it with a handful of stores and the
+recalculations a parameter change already pays for -- no text, no allocation.
+Writing goes the other way in [`save`], into the caller's buffer.
 
-- **2**: patterns gained a per-step DEPTH array. A v1 blob has none, and the
-  absent value must load as FULL; loading it as zero would silently mute every
-  gate in every patch that already works.
-- **3**: `depth` folded into `mix`. They were one quantity with two names --
-  only their PRODUCT ever reached the audio -- so a v2 blob's migration
-  multiplies them, and a saved patch sounds identical rather than jumping to
-  full wet.
-- **4**: attack/decay/release are PERCENTAGES OF WIDTH, not milliseconds. The
-  keys did not change, so only the version can tell a v3's `"attack": 2.0`
-  (2 ms) from a v4's (2% of the gate).
-- **5**: the fade-in. Patterns gained a per-step ARRIVAL ORDER as a fifth
-  `p<N>` field, and `fade` / `fsoft` joined the globals. Every one of them is
-  ABSENT-MEANS-INERT: no order field is position order, no `fade` is 1.0 and no
-  `fsoft` is hard, which together are exactly what a v4 patch did. So this
-  version number buys nothing today -- and it is here anyway, because the one
-  thing it can do is tell a later reader that an absent order field meant
-  "never reordered" rather than "written by a build that had no orders".
+# Where the parsing happens
 
-  A v5 blob read by a v4 build stops cleanly rather than corrupting: that
-  reader splits three ways and hands the depth parser `"<depths>:<order>"`,
-  where the colon is not a hex digit and ends the run at exactly the right
-  place.
-- **6**: the fade gained a DIRECTION (`fdir`), and with it the arrival order
-  changed meaning. It used to be a rank among the ON steps, with `00` written
-  for every off step; it is now a rank among the step's OWN KIND, so the holes
-  carry one too -- that is the order Fade Out introduces them in. Same field,
-  same width, different reading, which is exactly what a version number is for.
+A text this repository wrote parses without allocating (`json` says why), but
+a text from outside can be anything, and serde_json boxes the error it
+reports. So parsing belongs on a thread that may allocate, and the audio
+thread is handed the [`Patch`] -- or a [`SlotFile`](crate::slotfile::SlotFile)
+or a [`Clip`](crate::paste::Clip) -- to apply. tests/no_alloc.rs holds the
+three applies to it.
 
-  Both directions degrade rather than break. A v5 blob's `00`s fall through to
-  the position order seeded below, so an old patch fades its holes in left to
-  right. A v6 blob in a v5 build has its off-step values loaded and then ignored,
-  because that build's `renumber` only ranks the on steps.
-- **7**: every slot has its own SOUND -- all thirteen values but the slot (see
-  `crate::sound`). The top-level keys are the CURRENT slot's, exactly as they
-  always were, and a slot whose sound differs from it adds one field,
-  `"s<N>":"rate:attack:decay:sustain:release:hold:amount:fade:fsoft:fdir:legato:tmode:curve"`.
+- **The plugin** parses on its main thread: tg-capi's shell checks a paste and
+  an import as they are posted, and rebuilds its view and every save from text
+  there. Its command queue still carries a load, a paste or an import to the
+  audio thread as TEXT, applied there through the text doors below -- a paste
+  or an import checked, a load as the host handed it over -- until the queue
+  carries the values themselves.
+- **The Move** has no other thread. Schwung calls `set_param` -- the text
+  door -- on its audio callback, so a blob is parsed there, as it always was.
 
-  A slot with no field of its own has the top level's sound, and that one rule
-  is the whole migration: no older blob has an `s<N>`, so its one instance-wide
-  sound -- with every conversion above applied to it first -- lands in all
-  eight slots, beside each slot's own pattern. It also keeps a patch whose slots
-  all sound alike exactly the size it was, which the bus insert's 1024 bytes
-  are measured against.
+The text doors -- `set_param("state", _)`, [`Instance::import_into`] and
+[`Instance::paste_into`] -- are parse-then-apply in one call, for those two.
+Every text a build writes goes through them without allocating; only a
+damaged one -- a corrupt chunk, a mangled preset -- makes serde_json allocate
+the error it reports, on whichever thread called.
 
-  A v7 blob read by a v6 build loads the current slot's sound as the
-  instance-wide one and ignores the rest: the slot that was playing still
-  sounds the same.
+# The format
+
+```text
+{"sv":7,"slot":0,"rate":"1/16","attack":1.60,...,"p0":"5555:0:16:",...,"s3":"1/4:..."}
+```
+
+A flat object: the version, the current slot, the current slot's sound as
+top-level keys, each slot's pattern as `p<N>`, and a slot's own sound as
+`s<N>` where it differs. A key the blob lacks keeps what the engine held, or
+reads as the value that changes nothing (see [`Version`]); a key this build
+does not know is passed over -- the `stopped` a v3 blob carries, or whatever a
+newer build adds. A text that is not a JSON object loads nothing at all, rather
+than whatever fields could be picked out of it.
+
+The written form is v7's, byte for byte as every build since v7 wrote it:
+older builds and the Move read it. Its numbers have fixed decimals (`1.60`,
+`1.000`), which serde_json cannot write -- it writes the shortest form -- so
+the writer is `core::fmt`, as it was.
 */
 
 use crate::envelope::Curve;
-use crate::sound::Sound;
 use crate::fmt::{self, Buf};
+use crate::json::{self, Scalar, Sink};
 use crate::params::set_pattern_hex;
-use crate::{rates, Instance, Pattern, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
+use crate::sound::Sound;
+use crate::{rates, FadeDir, Instance, Pattern, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
 use core::fmt::Write;
+use std::borrow::Cow;
 
 pub const STATE_VERSION: i32 = 7;
 /// The first version in which every slot carries its own sound. A blob older
@@ -77,241 +78,456 @@ fn clampf(x: f32, lo: f32, hi: f32) -> f32 {
     if x < lo { lo } else if x > hi { hi } else { x }
 }
 
-/* Tiny JSON scanners. No allocation, no locale surprises -- the same two the
- * C had, for the same reason: the blob is ours, it is flat, and a parser
- * would be more code than the format. */
-fn find_value<'a>(json: &'a str, key: &str) -> Option<&'a str> {
-    let mut needle = [0u8; 64];
-    let mut n = 0;
-    for &b in b"\"" {
-        needle[n] = b;
-        n += 1;
-    }
-    for &b in key.as_bytes() {
-        if n + 2 >= needle.len() {
-            return None;
-        }
-        needle[n] = b;
-        n += 1;
-    }
-    needle[n] = b'"';
-    n += 1;
-    needle[n] = b':';
-    n += 1;
-    let needle = core::str::from_utf8(&needle[..n]).ok()?;
-    let at = json.find(needle)? + needle.len();
-    Some(json[at..].trim_start_matches([' ', '\t']))
+/*
+ * THE VERSIONS, AND WHY THERE IS A NUMBER AT ALL.
+ *
+ * A version field costs nothing and is the only thing that can tell one
+ * reading of a number from another. The Ducker shipped without one, and a
+ * 0.1.x blob's envelope times -- read as the units the next version
+ * introduced -- collapsed the effect silently on a patch that had been
+ * working.
+ *
+ * Most of the migrations below need no number to apply: what a version added
+ * is ABSENT-MEANS-INERT, so an older blob, lacking it, reads as the behaviour
+ * it was written with. Two readings do turn on the number, and they are the
+ * two predicates: whether the stages are milliseconds, and whether a slot's
+ * own sound is there to be read.
+ */
+/// The version a blob was written in, by its `sv`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Version {
+    /// No `sv` at all: the oldest blobs, read as they were written.
+    Unversioned,
+    /// Patterns are `<steps>:<ties>:<length>`, with no per-step levels. An
+    /// ABSENT LEVEL IS FULL, in every version: loading it as zero would
+    /// silently mute every gate in every patch that already works.
+    V1,
+    /// Patterns gained the per-step levels, and the amount was two globals,
+    /// `mix` and `depth`. They were one quantity with two names -- only their
+    /// PRODUCT ever reached the audio -- so a blob without `amount` reads the
+    /// product as its amount, and sounds identical rather than jumping to
+    /// full.
+    V2,
+    /// `depth` folded into `mix`, written as `amount`. Attack, decay and
+    /// release are still milliseconds, as in v1 and v2 (see
+    /// [`Version::stages_in_ms`]).
+    V3,
+    /// Attack, decay and release are PERCENTAGES OF WIDTH, not milliseconds.
+    /// The keys did not change, so only the version can tell a v3's
+    /// `"attack": 2.0` (2 ms) from a v4's (2% of the gate).
+    V4,
+    /// The fade-in. Patterns gained a per-step ARRIVAL ORDER as a fifth `p<N>`
+    /// field, and `fade` / `fsoft` joined the globals. Every one of them is
+    /// ABSENT-MEANS-INERT: no order field is position order, no `fade` is 1.0
+    /// and no `fsoft` is hard, which together are exactly what a v4 patch did.
+    /// So this version number buys nothing today -- and it is here anyway,
+    /// because the one thing it can do is tell a later reader that an absent
+    /// order field meant "never reordered" rather than "written by a build that
+    /// had no orders".
+    ///
+    /// A v5 blob read by a v4 build stops cleanly rather than corrupting: that
+    /// reader splits three ways and hands the depth parser
+    /// `"<depths>:<order>"`, where the colon is not a hex digit and ends the
+    /// run at exactly the right place.
+    V5,
+    /// The fade gained a DIRECTION (`fdir`), and with it the arrival order
+    /// changed meaning. It used to be a rank among the ON steps, with `00`
+    /// written for every off step; it is now a rank among the step's OWN KIND,
+    /// so the holes carry one too -- that is the order Fade Out introduces
+    /// them in. Same field, same width, different reading, which is exactly
+    /// what a version number is for.
+    ///
+    /// Both directions degrade rather than break. A v5 blob's `00`s fall
+    /// through to the position order (see `read_pattern`), so an old patch
+    /// fades its holes in left to right. A v6 blob in a v5 build has its
+    /// off-step values loaded and then ignored, because that build's
+    /// `renumber` only ranks the on steps.
+    V6,
+    /// Every slot has its own SOUND -- all thirteen values but the slot (see
+    /// `crate::sound`). The top-level keys are the CURRENT slot's, exactly as
+    /// they always were, and a slot whose sound differs from it adds one
+    /// field, `"s<N>":"rate:attack:decay:sustain:release:hold:amount:fade:fsoft:fdir:legato:tmode:curve"`.
+    ///
+    /// A slot with no field of its own has the top level's sound, and that
+    /// one rule is the whole migration: no older blob has an `s<N>`, so its
+    /// one instance-wide sound -- with every conversion above applied to it
+    /// first -- lands in all eight slots, beside each slot's own pattern. It
+    /// also keeps a patch whose slots all sound alike exactly the size it
+    /// was, which the bus insert's 1024 bytes are measured against.
+    ///
+    /// A v7 blob read by a v6 build loads the current slot's sound as the
+    /// instance-wide one and ignores the rest: the slot that was playing
+    /// still sounds the same.
+    V7,
+    /// Written by a newer build: read as far as this one understands it.
+    Newer(i32),
 }
 
-fn get_number(json: &str, key: &str) -> Option<f64> {
-    find_value(json, key).map(fmt::atof)
-}
-
-fn get_string<'a>(json: &'a str, key: &str) -> Option<&'a str> {
-    let v = find_value(json, key)?;
-    let rest = v.strip_prefix('"')?;
-    let end = rest.find('"')?;
-    Some(&rest[..end])
-}
-
-/// The format a blob says it is in: `sv`, or 0 for the oldest blobs, which
-/// carry none. A shell asks, because a blob from before v7 holds one sound
-/// for all eight slots.
-pub fn version(val: &str) -> i32 {
-    get_number(val, "sv").unwrap_or(0.0) as i32
-}
-
-pub fn load(inst: &mut Instance, val: &str) {
-    let from_curve = inst.snd().curve;
-    /* Which format this blob is in; 0 when absent, which the oldest
-     * pre-version blobs are. */
-    let sv_num = version(val);
-
-    if let Some(n) = get_number(val, "slot") {
-        if n >= 0.0 && (n as usize) < SLOTS {
-            inst.slot = n as usize;
-        }
-    }
-    /*
-     * THE TOP LEVEL IS ONE SOUND, read into the slot it was saved from and
-     * then handed to every slot that has no field of its own. It starts from
-     * what that slot held, so a key a blob lacks and nothing below defaults
-     * keeps its value, as it always did.
-     */
-    let mut top = *inst.snd();
-    if let Some(s) = get_string(val, "rate") {
-        top.rate_idx = rates::index_from(s);
-    } else if let Some(n) = get_number(val, "rate") {
-        /* A numeric rate is an INDEX and must be resolved as one. Passing ""
-         * here instead silently reset every such blob to the default -- a
-         * patch that loads, reports a rate, and runs at another. */
-        let n = n as i64;
-        if n >= 0 && (n as usize) < rates::RATES.len() {
-            top.rate_idx = n as usize;
-        }
-    }
-
-    /* Read raw and clamp LATER: a v3 blob's numbers are milliseconds and do
-     * not fit the 0..200 a percentage does, so clamping here would flatten
-     * every legacy attack above 200 ms before it could be converted. */
-    let raw_att = get_number(val, "attack");
-    let raw_dec = get_number(val, "decay");
-    let raw_rel = get_number(val, "release");
-
-    if let Some(n) = get_number(val, "sustain") {
-        top.sustain = clampf(n as f32, 0.0, 1.0);
-    }
-    /* Absent in v1 and v2 blobs, where the gate always ran the whole step;
-     * 1.0 is that behaviour, so an old patch is unchanged. */
-    top.hold = 1.0;
-    /* Absent in a pre-legato blob, and off is what those patches did. */
-    top.legato = get_number(val, "legato").map_or(false, |n| n >= 0.5);
-    /* Absent in a pre-% blob, and MS is what those patches meant. */
-    top.time_mode = match get_number(val, "tmode") {
-        Some(n) if n >= 0.5 => TimeMode::Pct,
-        _ => TimeMode::Ms,
-    };
-    /* Absent in a pre-curve blob, and straight lines are what those patches
-     * sounded like. */
-    top.curve = match get_number(val, "curve") {
-        Some(n) => Curve::from_i32((n + 0.5) as i32),
-        None => Curve::Linear,
-    };
-    if let Some(n) = get_number(val, "hold") {
-        top.hold = clampf(n as f32, 0.0, 1.0);
-    }
-    /*
-     * THE FADE, AND ABSENT MEANS THE WHOLE PATTERN.
-     *
-     * Every patch written before v5 has no `fade`, and 1.0 is what those
-     * patches did: all of the gate, all of the time. Loading them at 0 would
-     * open eight slots of silence -- the same class of mistake as a v1 blob's
-     * depths loading as zero, and the reason that note exists above.
-     */
-    top.fade = match get_number(val, "fade") {
-        Some(n) => clampf(n as f32, 0.0, 1.0),
-        None => 1.0,
-    };
-    top.fade_soft = get_number(val, "fsoft").map_or(false, |n| n >= 0.5);
-    /* Absent in a pre-v6 blob, and In is what those patches did. */
-    top.fade_dir = match get_number(val, "fdir") {
-        Some(n) if n >= 0.5 => crate::FadeDir::Out,
-        _ => crate::FadeDir::In,
-    };
-
-    /*
-     * THE STAGES, ONCE RATE AND WIDTH ARE BOTH KNOWN.
-     *
-     * A v3 blob holds absolute milliseconds and a v4 one percentages of the
-     * gate's width, so a legacy patch is CONVERTED rather than reinterpreted
-     * -- 2 ms read as 2% would be a patch that loads and sounds like a
-     * different patch.
-     *
-     * The conversion needs the width, which needs the rate AND hold, and hold
-     * is parsed just above. Hence the raw reads earlier and the arithmetic
-     * here rather than in place.
-     *
-     * IT ASSUMES 120 BPM, because a patch does not carry the tempo it was
-     * written at. `ms_per_step` is seeded at that tempo and only a running
-     * transport replaces it, so a patch written at 120 converts exactly and
-     * one written elsewhere converts proportionally -- the best available
-     * without a tempo to read, and why the version exists rather than a
-     * silent reinterpretation.
-     */
-    *inst.snd_mut() = top;
-    inst.recalc_ms_per_step();
-    let legacy_ms = sv_num > 0 && sv_num < 4;
-    let w = inst.width_ms();
-    let to_pct = if legacy_ms && w > 1.0e-6 { 100.0 / w } else { 1.0 };
-    if let Some(v) = raw_att {
-        top.attack = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
-    }
-    if let Some(v) = raw_dec {
-        top.decay = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
-    }
-    if let Some(v) = raw_rel {
-        top.release = clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
-    }
-
-    /*
-     * THREE SPELLINGS OF ONE VALUE, AND THE OLD PAIR MULTIPLIES.
-     *
-     * v3 writes `amount`. v2 wrote `mix` and `depth`, which spanned one
-     * degree of freedom between them, so the faithful migration is that
-     * product. Reading just one would make every patch saved with depth < 1
-     * jump to full -- louder gating on a patch that had been working.
-     */
-    if let Some(n) = get_number(val, "amount") {
-        top.amount = clampf(n as f32, 0.0, 1.0);
-    } else {
-        let mix = get_number(val, "mix");
-        let depth = get_number(val, "depth");
-        if mix.is_some() || depth.is_some() {
-            let m = clampf(mix.unwrap_or(1.0) as f32, 0.0, 1.0);
-            let d = clampf(depth.unwrap_or(1.0) as f32, 0.0, 1.0);
-            top.amount = clampf(m * d, 0.0, 1.0);
+impl Version {
+    /// The version an `sv` names. Zero or less is what a blob without one
+    /// reads as.
+    pub fn of(sv: i32) -> Version {
+        match sv {
+            i32::MIN..=0 => Version::Unversioned,
+            1 => Version::V1,
+            2 => Version::V2,
+            3 => Version::V3,
+            4 => Version::V4,
+            5 => Version::V5,
+            6 => Version::V6,
+            7 => Version::V7,
+            n => Version::Newer(n),
         }
     }
 
-    /* Every slot: its own field where a v7 blob wrote one, the top level's
-     * sound everywhere else -- which is every slot of an older blob. */
-    for s in 0..SLOTS {
-        inst.snd[s] = match get_string(val, slot_key(b's', s).as_str()) {
-            Some(field) if sv_num >= 7 => Sound::parse(field).unwrap_or(top),
-            _ => top,
-        };
+    /// v1 to v3 wrote the stages as MILLISECONDS. They are converted to
+    /// percentages of the gate's width as they load -- 2 ms read as 2% would
+    /// be a patch that loads and sounds like a different patch.
+    pub fn stages_in_ms(self) -> bool {
+        matches!(self, Version::V1 | Version::V2 | Version::V3)
     }
 
-    /* Patterns travel as one field per slot so a slot cannot be restored
-     * half-applied. */
-    for s in 0..SLOTS {
-        if let Some(field) = get_string(val, slot_key(b'p', s).as_str()) {
-            read_pattern(&mut inst.pat[s], field);
-        }
+    /// From v7 on, a slot whose sound differs carries it as `s<N>`.
+    pub fn slot_sounds(self) -> bool {
+        matches!(self, Version::V7 | Version::Newer(_))
     }
-    /* THE CURSOR IS NOT SAVED, BUT THE LENGTH IS. A patch whose current slot
-     * is shorter than where the cursor stood would leave it past the end,
-     * where every edit lands on a step the ring never draws -- the same
-     * re-clamp `slot` and `length` do. */
-    let len = inst.pat[inst.slot].length.clamp(1, MAX_STEPS);
-    if inst.cursor >= len {
-        inst.cursor = len - 1;
-    }
-    /* The slot's sound arrived whole, so whatever the envelope is doing is
-     * re-anchored and re-measured as a switch would. */
-    inst.reanchor(from_curve);
-    inst.recalc_ms_per_step();
-    inst.recalc_fade();
-}
-
-/// `p<N>` or `s<N>`: a slot's field name, without allocating.
-struct SlotKey([u8; 2]);
-
-impl SlotKey {
-    fn as_str(&self) -> &str {
-        core::str::from_utf8(&self.0).unwrap_or("")
-    }
-}
-
-fn slot_key(prefix: u8, slot: usize) -> SlotKey {
-    SlotKey([prefix, b'0' + (slot % 10) as u8])
 }
 
 /*
- * ONE SLOT'S PATTERN FROM ITS FIELD: "<steps>:<ties>:<length>[:<depths>[:<orders>]]".
- * The same text a slot file carries (see `slotfile`), so both read it here.
+ * A BLOB'S FIELDS, BY THE KEY EACH WAS SAVED UNDER: every key a version has
+ * written and this one reads. The first of a key wins, as the reader that
+ * searched the text for a key always found the first. Anything else -- v3's
+ * `stopped`, a newer build's additions -- is passed over.
  */
-pub(crate) fn read_pattern(p: &mut Pattern, field: &str) {
-    /* "<steps>:<ties>:<length>[:<depths>]". The two masks are up to 32
-     * hex digits now, so they are read as TEXT and handed to the
-     * LSB-aligned parser -- a %x would cap them at whatever an unsigned
-     * holds and silently drop steps 32 and up. A v3 blob's 8-digit field
-     * parses identically. */
+#[derive(Default)]
+pub(crate) struct Fields<'a> {
+    sv: Option<Scalar<'a>>,
+    slot: Option<Scalar<'a>>,
+    rate: Option<Scalar<'a>>,
+    attack: Option<Scalar<'a>>,
+    decay: Option<Scalar<'a>>,
+    sustain: Option<Scalar<'a>>,
+    release: Option<Scalar<'a>>,
+    hold: Option<Scalar<'a>>,
+    amount: Option<Scalar<'a>>,
+    mix: Option<Scalar<'a>>,
+    depth: Option<Scalar<'a>>,
+    fade: Option<Scalar<'a>>,
+    fsoft: Option<Scalar<'a>>,
+    fdir: Option<Scalar<'a>>,
+    legato: Option<Scalar<'a>>,
+    tmode: Option<Scalar<'a>>,
+    curve: Option<Scalar<'a>>,
+    p: [Option<Scalar<'a>>; SLOTS],
+    s: [Option<Scalar<'a>>; SLOTS],
+}
+
+impl<'a> Fields<'a> {
+    fn place(&mut self, key: &str) -> Option<&mut Option<Scalar<'a>>> {
+        Some(match key {
+            "sv" => &mut self.sv,
+            "slot" => &mut self.slot,
+            "rate" => &mut self.rate,
+            "attack" => &mut self.attack,
+            "decay" => &mut self.decay,
+            "sustain" => &mut self.sustain,
+            "release" => &mut self.release,
+            "hold" => &mut self.hold,
+            "amount" => &mut self.amount,
+            "mix" => &mut self.mix,
+            "depth" => &mut self.depth,
+            "fade" => &mut self.fade,
+            "fsoft" => &mut self.fsoft,
+            "fdir" => &mut self.fdir,
+            "legato" => &mut self.legato,
+            "tmode" => &mut self.tmode,
+            "curve" => &mut self.curve,
+            k => match (slot_field(k, b'p'), slot_field(k, b's')) {
+                (Some(i), _) => &mut self.p[i],
+                (_, Some(i)) => &mut self.s[i],
+                _ => return None,
+            },
+        })
+    }
+}
+
+impl<'a> Sink<'a> for Fields<'a> {
+    fn field(&mut self, key: Cow<'a, str>, value: Scalar<'a>) -> Result<(), ()> {
+        if let Some(place) = self.place(&key) {
+            place.get_or_insert(value);
+        }
+        Ok(())
+    }
+}
+
+/// `p<N>` / `s<N>` for a slot 0..7: the slot, or None.
+pub(crate) fn slot_field(key: &str, prefix: u8) -> Option<usize> {
+    match key.as_bytes() {
+        [p, d] if *p == prefix && d.is_ascii_digit() && ((d - b'0') as usize) < SLOTS => Some((d - b'0') as usize),
+        _ => None,
+    }
+}
+
+/// A text that is not one flat JSON object, and so no patch at all.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NotAPatch;
+
+/*
+ * A STATE BLOB, READ: everything it carries, typed, clamped and decoded, and
+ * nothing it does not. What a key's ABSENCE means is decided here too, where
+ * it does not depend on the engine -- a blob without `hold` is a gate the
+ * whole step long, whatever the engine held -- and left to the load where it
+ * does: a blob without `sustain` keeps the engine's.
+ *
+ * Fixed-size and free of text, so it can be built where parsing is allowed and
+ * handed to the audio thread whole.
+ */
+/// A state blob, read: ready for [`Instance::load`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct Patch {
+    sv: i32,
+    slot: Option<usize>,
+    rate: Option<usize>,
+    /// As written: a v1..v3 blob's are milliseconds, converted by the load
+    /// against the width the engine then has.
+    attack: Option<f64>,
+    decay: Option<f64>,
+    release: Option<f64>,
+    sustain: Option<f32>,
+    hold: f32,
+    amount: Option<f32>,
+    legato: bool,
+    time_mode: TimeMode,
+    curve: Curve,
+    fade: f32,
+    fade_soft: bool,
+    fade_dir: FadeDir,
+    sounds: [Option<Sound>; SLOTS],
+    patterns: [Option<Pattern>; SLOTS],
+}
+
+impl Patch {
+    /// `text`, read. Allocates nothing for a blob a build wrote; see the note
+    /// on threads above.
+    pub fn parse(text: &str) -> Result<Patch, NotAPatch> {
+        let mut f = Fields::default();
+        json::read(text, &mut f).map_err(|_| NotAPatch)?;
+        Ok(Patch::from_fields(&f))
+    }
+
+    /// The version the blob says it is in.
+    pub fn version(&self) -> Version {
+        Version::of(self.sv)
+    }
+
+    pub(crate) fn from_fields(f: &Fields<'_>) -> Patch {
+        let num = |v: &Option<Scalar<'_>>| v.as_ref().and_then(Scalar::number);
+        let on = |v: &Option<Scalar<'_>>| num(v).is_some_and(|n| n >= 0.5);
+        let unit = |n: f64| clampf(n as f32, 0.0, 1.0);
+        /* Which format this blob is in; 0 when absent, which the oldest
+         * pre-version blobs are. */
+        let sv = num(&f.sv).unwrap_or(0.0) as i32;
+        let version = Version::of(sv);
+
+        let rate = match &f.rate {
+            Some(Scalar::Str(label)) => Some(rates::index_from(label)),
+            /* A numeric rate is an INDEX and must be resolved as one. Passing
+             * "" here instead silently reset every such blob to the default --
+             * a patch that loads, reports a rate, and runs at another. */
+            v => num(v).map(|n| n as i64).filter(|n| *n >= 0 && (*n as usize) < rates::RATES.len()).map(|n| n as usize),
+        };
+
+        /*
+         * THREE SPELLINGS OF ONE VALUE, AND THE OLD PAIR MULTIPLIES.
+         *
+         * v3 writes `amount`. v2 wrote `mix` and `depth`, which spanned one
+         * degree of freedom between them, so the faithful migration is that
+         * product. Reading just one would make every patch saved with depth < 1
+         * jump to full -- louder gating on a patch that had been working.
+         */
+        let amount = match (num(&f.amount), num(&f.mix), num(&f.depth)) {
+            (Some(a), _, _) => Some(unit(a)),
+            (None, None, None) => None,
+            (None, mix, depth) => Some(clampf(unit(mix.unwrap_or(1.0)) * unit(depth.unwrap_or(1.0)), 0.0, 1.0)),
+        };
+
+        Patch {
+            sv,
+            slot: num(&f.slot).filter(|n| *n >= 0.0 && (*n as usize) < SLOTS).map(|n| n as usize),
+            rate,
+            /* Kept raw and clamped LATER: a v3 blob's numbers are milliseconds
+             * and do not fit the 0..200 a percentage does, so clamping here
+             * would flatten every legacy attack above 200 ms before it could
+             * be converted. */
+            attack: num(&f.attack),
+            decay: num(&f.decay),
+            release: num(&f.release),
+            sustain: num(&f.sustain).map(unit),
+            /* Absent in v1 and v2 blobs, where the gate always ran the whole
+             * step; 1.0 is that behaviour, so an old patch is unchanged. */
+            hold: num(&f.hold).map_or(1.0, unit),
+            amount,
+            /* Absent in a pre-legato blob, and off is what those patches did. */
+            legato: on(&f.legato),
+            /* Absent in a pre-% blob, and MS is what those patches meant. */
+            time_mode: if on(&f.tmode) { TimeMode::Pct } else { TimeMode::Ms },
+            /* Absent in a pre-curve blob, and straight lines are what those
+             * patches sounded like. */
+            curve: num(&f.curve).map_or(Curve::Linear, |n| Curve::from_i32((n + 0.5) as i32)),
+            /*
+             * THE FADE, AND ABSENT MEANS THE WHOLE PATTERN.
+             *
+             * Every patch written before v5 has no `fade`, and 1.0 is what those
+             * patches did: all of the gate, all of the time. Loading them at 0
+             * would open eight slots of silence -- the same class of mistake as
+             * a v1 blob's depths loading as zero.
+             */
+            fade: num(&f.fade).map_or(1.0, unit),
+            fade_soft: on(&f.fsoft),
+            /* Absent in a pre-v6 blob, and In is what those patches did. */
+            fade_dir: if on(&f.fdir) { FadeDir::Out } else { FadeDir::In },
+            /* A slot's own sound where a v7 blob wrote one; a field that is not
+             * one this build could read leaves the slot the top level's. */
+            sounds: core::array::from_fn(|s| {
+                let field = f.s[s].as_ref().and_then(Scalar::text).filter(|_| version.slot_sounds());
+                field.and_then(Sound::parse)
+            }),
+            /* Patterns travel as one field per slot so a slot cannot be
+             * restored half-applied. */
+            patterns: core::array::from_fn(|s| f.p[s].as_ref().and_then(Scalar::text).and_then(read_pattern)),
+        }
+    }
+}
+
+/// The format a blob says it is in: `sv`, or 0 for the oldest blobs, which
+/// carry none -- and for a text that is no blob. A shell asks, because a blob
+/// from before v7 holds one sound for all eight slots.
+pub fn version(text: &str) -> i32 {
+    /* Only `sv` is kept: the rest of the text is read past, not decoded. */
+    struct Sv<'a>(Option<Scalar<'a>>);
+    impl<'a> Sink<'a> for Sv<'a> {
+        fn field(&mut self, key: Cow<'a, str>, value: Scalar<'a>) -> Result<(), ()> {
+            if key == "sv" && self.0.is_none() {
+                self.0 = Some(value);
+            }
+            Ok(())
+        }
+    }
+    let mut sv = Sv(None);
+    match json::read(text, &mut sv) {
+        Ok(()) => sv.0.and_then(|v| v.number()).unwrap_or(0.0) as i32,
+        Err(_) => 0,
+    }
+}
+
+impl Instance {
+    /*
+     * A READ BLOB, APPLIED. Allocation-free, and no text in sight: everything
+     * that could be decided without the engine was decided by `Patch::parse`.
+     *
+     * THE TOP LEVEL IS ONE SOUND, read into the slot it was saved from and
+     * then handed to every slot that has no field of its own. It starts from
+     * what that slot held, so a key a blob lacks and nothing defaults keeps
+     * its value, as it always did.
+     */
+    /// Load `patch` -- the whole saved state -- into the engine. The playhead
+    /// and the envelope carry on as through a slot switch.
+    pub fn load(&mut self, patch: &Patch) {
+        self.rev = self.rev.wrapping_add(1);
+        let from_curve = self.snd().curve;
+        if let Some(slot) = patch.slot {
+            self.slot = slot;
+        }
+        let mut top = *self.snd();
+        if let Some(rate) = patch.rate {
+            top.rate_idx = rate;
+        }
+        if let Some(sustain) = patch.sustain {
+            top.sustain = sustain;
+        }
+        top.hold = patch.hold;
+        top.legato = patch.legato;
+        top.time_mode = patch.time_mode;
+        top.curve = patch.curve;
+        top.fade = patch.fade;
+        top.fade_soft = patch.fade_soft;
+        top.fade_dir = patch.fade_dir;
+
+        /*
+         * THE STAGES, ONCE RATE AND WIDTH ARE BOTH KNOWN.
+         *
+         * A v3 blob holds absolute milliseconds and a v4 one percentages of the
+         * gate's width, so a legacy patch is CONVERTED rather than
+         * reinterpreted. The conversion needs the width, which needs the rate
+         * AND hold -- hence the sound goes in first and the arithmetic follows.
+         *
+         * IT ASSUMES 120 BPM, because a patch does not carry the tempo it was
+         * written at. `ms_per_step` is seeded at that tempo and only a running
+         * transport replaces it, so a patch written at 120 converts exactly and
+         * one written elsewhere converts proportionally -- the best available
+         * without a tempo to read, and why the version exists rather than a
+         * silent reinterpretation.
+         */
+        *self.snd_mut() = top;
+        self.recalc_ms_per_step();
+        let w = self.width_ms();
+        let to_pct = if patch.version().stages_in_ms() && w > 1.0e-6 { 100.0 / w } else { 1.0 };
+        let stage = |v: f64| clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
+        if let Some(v) = patch.attack {
+            top.attack = stage(v);
+        }
+        if let Some(v) = patch.decay {
+            top.decay = stage(v);
+        }
+        if let Some(v) = patch.release {
+            top.release = stage(v);
+        }
+        if let Some(amount) = patch.amount {
+            top.amount = amount;
+        }
+
+        /* Every slot: its own sound where a v7 blob wrote one, the top level's
+         * everywhere else -- which is every slot of an older blob. */
+        for (s, own) in patch.sounds.iter().enumerate() {
+            self.snd[s] = own.unwrap_or(top);
+        }
+        for (s, pattern) in patch.patterns.iter().enumerate() {
+            if let Some(p) = pattern {
+                self.pat[s] = p.clone();
+            }
+        }
+        /* THE CURSOR IS NOT SAVED, BUT THE LENGTH IS. A patch whose current slot
+         * is shorter than where the cursor stood would leave it past the end,
+         * where every edit lands on a step the ring never draws -- the same
+         * re-clamp `slot` and `length` do. */
+        let len = self.pat[self.slot].length.clamp(1, MAX_STEPS);
+        if self.cursor >= len {
+            self.cursor = len - 1;
+        }
+        /* The slot's sound arrived whole, so whatever the envelope is doing is
+         * re-anchored and re-measured as a switch would. */
+        self.reanchor(from_curve);
+        self.recalc_ms_per_step();
+        self.recalc_fade();
+    }
+}
+
+/*
+ * ONE SLOT'S PATTERN FROM ITS FIELD: "<steps>:<ties>:<length>[:<depths>[:<orders>]]",
+ * or None for a field with fewer than three parts, which leaves the slot's
+ * pattern as it was. The same text a slot file carries (see `slotfile`), so
+ * both read it here.
+ */
+pub(crate) fn read_pattern(field: &str) -> Option<Pattern> {
+    /* The two masks are up to 32 hex digits, so they are read as TEXT and
+     * handed to the LSB-aligned parser -- a %x would cap them at whatever an
+     * unsigned holds and silently drop steps 32 and up. A v3 blob's 8-digit
+     * field parses identically. */
     let mut parts = field.splitn(5, ':');
-    let (Some(stx), Some(tix), Some(lens)) = (parts.next(), parts.next(), parts.next())
-    else {
-        return;
+    let (Some(stx), Some(tix), Some(lens)) = (parts.next(), parts.next(), parts.next()) else {
+        return None;
     };
+    let mut p = Pattern::new(0);
     set_pattern_hex(&mut p.steps, stx);
     set_pattern_hex(&mut p.ties, tix);
     p.length = (fmt::atoi(lens)).clamp(1, MAX_STEPS as i64) as usize;
@@ -319,11 +535,10 @@ pub(crate) fn read_pattern(p: &mut Pattern, field: &str) {
     /*
      * A V1 TRIPLE HAS NO DEPTHS, AND ABSENT MEANS FULL.
      *
-     * Every patch saved before that version ends after the length.
-     * Leaving the array at whatever it held -- or zeroing it -- would
-     * load those patches SILENT, with the pattern and the ring both
-     * looking completely correct. This is the whole reason the state
-     * version exists.
+     * Every patch saved before that version ends after the length. Leaving
+     * the array at whatever it held -- or zeroing it -- would load those
+     * patches SILENT, with the pattern and the ring both looking completely
+     * correct. This is the whole reason the state version exists.
      */
     p.depth = [DEPTH_FULL; MAX_STEPS];
     if let Some(d) = parts.next() {
@@ -357,15 +572,16 @@ pub(crate) fn read_pattern(p: &mut Pattern, field: &str) {
             let (Some(&h), Some(&l)) = (b.get(i * 2), b.get(i * 2 + 1)) else { break };
             let (Some(h), Some(l)) = (hexval(h), hexval(l)) else { break };
             let v = h * 16 + l;
-            /* 00 is "this blob had no rank for this step" -- a v5 hole, or
-             * a step past what was written. Leaving the seeded position
-             * value there is what makes both old formats load sensibly. */
+            /* 00 is "this blob had no rank for this step" -- a v5 hole, or a
+             * step past what was written. Leaving the seeded position value
+             * there is what makes both old formats load sensibly. */
             if v != 0 {
                 p.order[i] = v;
             }
         }
     }
     p.renumber();
+    Some(p)
 }
 
 fn hexval(c: u8) -> Option<u8> {
@@ -440,6 +656,8 @@ pub(crate) fn write_pattern(p: &Pattern, b: &mut dyn Write) -> core::fmt::Result
     Ok(())
 }
 
+/// The engine's saved state as a v7 blob, into `b`. Allocation-free: a shell
+/// formats it on the audio thread whenever it may have changed.
 pub fn save(inst: &Instance, mut b: Buf) -> i32 {
     let top = inst.snd();
     let _ = write!(

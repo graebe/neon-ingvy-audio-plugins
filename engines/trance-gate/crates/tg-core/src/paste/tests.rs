@@ -166,3 +166,15 @@ fn a_bank_replaces_all_eight_and_a_patch_everything() {
     assert_eq!(c.paste(&get(&a, "state")), Ok(Holds::Patch));
     assert_eq!(get(&c, "state"), get(&a, "state"), "the whole patch, its current slot included");
 }
+
+#[test]
+fn a_clip_read_once_applies_as_its_text_pastes() {
+    let a = busy();
+    for text in [export(&a, Kind::Slot), export(&a, Kind::Bank), get(&a, "state")] {
+        let clip = super::Clip::parse(&text).unwrap();
+        let (mut by_value, mut by_text) = (Instance::new(SR), Instance::new(SR));
+        assert_eq!(Ok(by_value.apply_clip(3, &clip)), by_text.paste_into(3, &text));
+        assert_eq!(get(&by_value, "state"), get(&by_text, "state"));
+        assert_eq!(Ok(clip.holds()), classify(&text));
+    }
+}

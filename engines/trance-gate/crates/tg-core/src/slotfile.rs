@@ -30,11 +30,16 @@ clamps them -- an Attack of 900 is a long attack, not a broken file -- but a
 file that is not one this build could have written is refused with a reason,
 and nothing changes.
 
-Parsing allocates nothing, so the audio thread can apply what the main thread
-has already checked: the same text, read again, at the top of a block.
+serde_json reads the text (`json`), and the grammar it holds the text to is
+this build's: a key at most once, string and number values only, no escapes.
+[`SlotFile::parse`] does all of it -- the checking and the decoding -- and
+returns the slots ready to apply; [`Instance::apply_file`] copies them in
+without a byte of text, so it may run on the audio thread. Where the parsing
+runs is the state module's note.
 */
 
 use crate::fmt::{self, Buf};
+use crate::json::{Fault, Object, Scalar};
 use crate::sound::Sound;
 use crate::state::{read_pattern, write_pattern};
 use crate::{rates, Instance, Pattern, MAX_STEPS, SLOTS};
@@ -151,110 +156,12 @@ fn digit(buf: &mut [u8; 2], n: usize) -> &str {
 
 /* ------------------------------------------------------------- the reader */
 
-/// Room for more fields than any file has -- format, version and two per
-/// slot -- so a text with a few extra is read far enough to say what it is.
-pub(crate) const MAX_FIELDS: usize = 40;
-
-#[derive(Clone, Copy)]
-pub(crate) enum Value<'a> {
-    Str(&'a str),
-    Num(&'a str),
-}
-
-/*
- * A FLAT JSON OBJECT, STRICTLY: `{`, then `"key": value` pairs separated by
- * commas, then `}` and nothing but whitespace. A value is a string without
- * escapes (nothing in this format needs one) or a run of digits. No nesting,
- * no trailing comma, no duplicate keys.
- */
-pub(crate) fn fields<'a>(text: &'a str, out: &mut [(&'a str, Value<'a>); MAX_FIELDS]) -> Result<usize, Error> {
-    let b = text.as_bytes();
-    let mut i = 0;
-    let ws = |i: &mut usize| {
-        while *i < b.len() && matches!(b[*i], b' ' | b'\t' | b'\n' | b'\r') {
-            *i += 1;
-        }
-    };
-    let string = |i: &mut usize| -> Result<&'a str, Error> {
-        if b.get(*i) != Some(&b'"') {
-            return Err(Error::NotAFile);
-        }
-        let start = *i + 1;
-        let mut j = start;
-        while j < b.len() && b[j] != b'"' {
-            if b[j] == b'\\' || b[j] < 0x20 {
-                return Err(Error::NotAFile);
-            }
-            j += 1;
-        }
-        if j >= b.len() {
-            return Err(Error::NotAFile);
-        }
-        *i = j + 1;
-        Ok(&text[start..j])
-    };
-
-    ws(&mut i);
-    if b.get(i) != Some(&b'{') {
-        return Err(Error::NotAFile);
-    }
-    i += 1;
-    ws(&mut i);
-    let mut n = 0;
-    if b.get(i) == Some(&b'}') {
-        i += 1;
-    } else {
-        loop {
-            ws(&mut i);
-            let key = string(&mut i)?;
-            ws(&mut i);
-            if b.get(i) != Some(&b':') {
-                return Err(Error::NotAFile);
-            }
-            i += 1;
-            ws(&mut i);
-            let value = match b.get(i) {
-                Some(b'"') => Value::Str(string(&mut i)?),
-                Some(c) if c.is_ascii_digit() || *c == b'-' => {
-                    let start = i;
-                    i += 1;
-                    while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'.') {
-                        i += 1;
-                    }
-                    Value::Num(&text[start..i])
-                }
-                _ => return Err(Error::NotAFile),
-            };
-            if out[..n].iter().any(|(k, _)| *k == key) {
-                return Err(Error::Duplicate);
-            }
-            if n == MAX_FIELDS {
-                return Err(Error::UnknownKey);
-            }
-            out[n] = (key, value);
-            n += 1;
-            ws(&mut i);
-            match b.get(i) {
-                Some(b',') => i += 1,
-                Some(b'}') => {
-                    i += 1;
-                    break;
-                }
-                _ => return Err(Error::NotAFile),
-            }
-        }
-    }
-    ws(&mut i);
-    if i != b.len() {
-        return Err(Error::NotAFile);
-    }
-    Ok(n)
-}
-
 fn is_hex(s: &str) -> bool {
     s.bytes().all(|c| c.is_ascii_hexdigit())
 }
 
+/// A decimal as the sound field writes its numbers: an optional minus, digits
+/// and at most one point.
 pub(crate) fn is_number(s: &str) -> bool {
     let t = s.strip_prefix('-').unwrap_or(s);
     let mut dots = 0;
@@ -314,73 +221,96 @@ pub(crate) fn pattern_ok(field: &str) -> bool {
     n >= 3
 }
 
-/// One slot as a file holds it, checked.
-#[derive(Clone, Copy)]
-struct SlotText<'a> {
-    sound: &'a str,
-    pattern: &'a str,
+/// A slot or bank file, read and checked: its slots' sounds and patterns,
+/// decoded and ready for [`Instance::apply_file`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct SlotFile {
+    kind: Kind,
+    /// The file's slots in order; a slot file's is the first.
+    sounds: [Sound; SLOTS],
+    patterns: [Pattern; SLOTS],
 }
 
-/*
- * THE WHOLE FILE, CHECKED, without touching anything. A bank's eight slots are
- * all found good before the caller applies one.
- */
-fn read(text: &str) -> Result<(Kind, [SlotText<'_>; SLOTS]), Error> {
-    if text.trim().is_empty() {
-        return Err(Error::Empty);
-    }
-    if text.len() > MAX_BYTES {
-        return Err(Error::TooLarge);
-    }
-    let mut f = [("", Value::Num("")); MAX_FIELDS];
-    let n = fields(text, &mut f)?;
-    let f = &f[..n];
-    let get = |key: &str| f.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
-
-    let kind = match get("format") {
-        Some(Value::Str(SLOT_FORMAT)) => Kind::Slot,
-        Some(Value::Str(BANK_FORMAT)) => Kind::Bank,
-        _ => return Err(Error::WrongFormat),
-    };
-    match get("version") {
-        Some(Value::Num(v)) if v.bytes().all(|c| c.is_ascii_digit()) && v.len() <= 9 => {
-            let v = fmt::atoi(v) as u32;
-            if v == 0 {
-                return Err(Error::BadVersion);
-            }
-            if v > VERSION {
-                return Err(Error::Newer(v));
-            }
+impl SlotFile {
+    /*
+     * THE WHOLE FILE, CHECKED AND DECODED, without touching an engine. A bank's
+     * eight slots are all found good before the caller applies one.
+     */
+    /// `text`, read, or why it cannot be imported.
+    pub fn parse(text: &str) -> Result<SlotFile, Error> {
+        if text.trim().is_empty() {
+            return Err(Error::Empty);
         }
-        _ => return Err(Error::BadVersion),
+        if text.len() > MAX_BYTES {
+            return Err(Error::TooLarge);
+        }
+        let o = Object::read(text).map_err(|f| match f {
+            Fault::NotAFile => Error::NotAFile,
+            Fault::Duplicate => Error::Duplicate,
+            Fault::TooMany => Error::UnknownKey,
+        })?;
+        SlotFile::from_object(&o)
     }
 
-    let slots = if kind == Kind::Slot { 1 } else { SLOTS };
-    let mut out = [SlotText { sound: "", pattern: "" }; SLOTS];
-    for (s, slot) in out.iter_mut().enumerate().take(slots) {
-        let label = if kind == Kind::Slot { 0 } else { s as u8 + 1 };
-        let mut sk = [0u8; 8];
-        let mut pk = [0u8; 10];
-        let (sk, pk) = (key(&mut sk, "sound", label), key(&mut pk, "pattern", label));
-        let field = |k: &str, pattern: bool| match get(k) {
-            Some(Value::Str(v)) => Ok(v),
-            Some(Value::Num(_)) => Err(Error::Malformed { pattern, slot: label }),
-            None => Err(Error::Missing { pattern, slot: label }),
+    /// What the file holds.
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    /// The checks after the grammar, in the order they have always been made:
+    /// the format, the version, each slot's two fields, and nothing else.
+    pub(crate) fn from_object(o: &Object<'_>) -> Result<SlotFile, Error> {
+        let kind = match o.get("format").and_then(Scalar::text) {
+            Some(SLOT_FORMAT) => Kind::Slot,
+            Some(BANK_FORMAT) => Kind::Bank,
+            _ => return Err(Error::WrongFormat),
         };
-        slot.sound = field(sk, false)?;
-        slot.pattern = field(pk, true)?;
-        if !sound_ok(slot.sound) {
-            return Err(Error::Malformed { pattern: false, slot: label });
+        /* A positive whole number, as nine digits at most: what the
+         * hand-written tokenizer let through, and so what a file may say. */
+        match o.get("version") {
+            Some(&Scalar::Whole(v)) if v <= 999_999_999 => {
+                if v == 0 {
+                    return Err(Error::BadVersion);
+                }
+                if v > VERSION as u64 {
+                    return Err(Error::Newer(v as u32));
+                }
+            }
+            _ => return Err(Error::BadVersion),
         }
-        if !pattern_ok(slot.pattern) {
-            return Err(Error::Malformed { pattern: true, slot: label });
+
+        let slots = if kind == Kind::Slot { 1 } else { SLOTS };
+        let mut file = SlotFile {
+            kind,
+            sounds: [Sound::DEFAULT; SLOTS],
+            patterns: core::array::from_fn(Pattern::new),
+        };
+        for s in 0..slots {
+            let label = if kind == Kind::Slot { 0 } else { s as u8 + 1 };
+            let mut sk = [0u8; 8];
+            let mut pk = [0u8; 10];
+            let (sk, pk) = (key(&mut sk, "sound", label), key(&mut pk, "pattern", label));
+            let field = |k: &str, pattern: bool| match o.get(k) {
+                Some(Scalar::Str(v)) => Ok(v.as_ref()),
+                Some(_) => Err(Error::Malformed { pattern, slot: label }),
+                None => Err(Error::Missing { pattern, slot: label }),
+            };
+            let (sound, pattern) = (field(sk, false)?, field(pk, true)?);
+            file.sounds[s] = Some(sound)
+                .filter(|f| sound_ok(f))
+                .and_then(Sound::parse)
+                .ok_or(Error::Malformed { pattern: false, slot: label })?;
+            file.patterns[s] = Some(pattern)
+                .filter(|f| pattern_ok(f))
+                .and_then(read_pattern)
+                .ok_or(Error::Malformed { pattern: true, slot: label })?;
         }
+        /* Exactly the fields the format has: two, and two per slot. */
+        if o.fields().len() != 2 + 2 * slots {
+            return Err(Error::UnknownKey);
+        }
+        Ok(file)
     }
-    /* Exactly the fields the format has: two, and two per slot. */
-    if n != 2 + 2 * slots {
-        return Err(Error::UnknownKey);
-    }
-    Ok((kind, out))
 }
 
 /// `sound`, `sound3`, `pattern8`: a field's name, without allocating.
@@ -398,37 +328,27 @@ fn key<'a>(buf: &'a mut [u8], base: &str, slot: u8) -> &'a str {
 
 /// What `text` is, or why it cannot be imported. Changes nothing.
 pub fn check(text: &str) -> Result<Kind, Error> {
-    read(text).map(|(k, _)| k)
+    SlotFile::parse(text).map(|f| f.kind)
 }
 
 impl Instance {
     /*
-     * A FILE, APPLIED: a slot file replaces the current slot's sound and
-     * pattern, a bank replaces all eight. Checked whole first -- a refused file
-     * changes nothing. The playhead and the envelope carry on as through a
+     * A FILE, APPLIED: a slot file replaces one slot's sound and pattern, a
+     * bank all eight. The playhead and the envelope carry on as through a
      * switch: the new sound is in place, and the glides and the latched stage
-     * take the gain across.
+     * take the gain across. Allocation-free, and no text: the file was read
+     * and checked whole by `SlotFile::parse`.
      */
-    pub fn import(&mut self, text: &str) -> Result<Kind, Error> {
-        self.import_into(self.slot, text)
-    }
-
-    /// As [`Instance::import`], with a slot file going into `slot` (0-based)
-    /// rather than the current one -- for a shell whose host may have moved
-    /// the Slot in the same block, after the import was queued. A slot out of
-    /// range is the current one.
-    pub fn import_into(&mut self, slot: usize, text: &str) -> Result<Kind, Error> {
-        let (kind, slots) = read(text)?;
+    /// Apply `file`, a slot file going into `slot` (0-based) -- for a shell
+    /// whose host may have moved the Slot in the same block, after the import
+    /// was queued. A slot out of range is the current one.
+    pub fn apply_file(&mut self, slot: usize, file: &SlotFile) -> Kind {
         let from_curve = self.snd().curve;
         let slot = if slot < SLOTS { slot } else { self.slot };
-        let targets = if kind == Kind::Slot { slot..slot + 1 } else { 0..SLOTS };
+        let targets = if file.kind == Kind::Slot { slot..slot + 1 } else { 0..SLOTS };
         for (i, s) in targets.enumerate() {
-            let t = slots[i];
-            /* `sound_ok` passed, so this parses. */
-            if let Some(sound) = Sound::parse(t.sound) {
-                self.snd[s] = sound;
-            }
-            read_pattern(&mut self.pat[s], t.pattern);
+            self.snd[s] = file.sounds[i];
+            self.pat[s] = file.patterns[i].clone();
         }
         let len = self.pat[self.slot].length;
         if self.cursor >= len {
@@ -438,7 +358,20 @@ impl Instance {
         self.recalc_ms_per_step();
         self.recalc_fade();
         self.rev = self.rev.wrapping_add(1);
-        Ok(kind)
+        file.kind
+    }
+
+    /// Read `text` and apply it to the current slot, or all eight. A refused
+    /// file changes nothing.
+    pub fn import(&mut self, text: &str) -> Result<Kind, Error> {
+        self.import_into(self.slot, text)
+    }
+
+    /// [`SlotFile::parse`] and [`Instance::apply_file`] in one call. A refused
+    /// file changes nothing.
+    pub fn import_into(&mut self, slot: usize, text: &str) -> Result<Kind, Error> {
+        let file = SlotFile::parse(text)?;
+        Ok(self.apply_file(slot, &file))
     }
 }
 

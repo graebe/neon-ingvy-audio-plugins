@@ -4,11 +4,21 @@
 /*
  * The audio thread allocates nothing, asserted rather than claimed.
  *
- * Every entry point of this engine runs on an audio callback -- on the Move,
- * set_param and get_param as much as process -- so "no allocation outside
- * Instance::new" is a claim about all three. It stays true only until somebody
- * collects a String in a parser that looked harmless; `rates::index_from` did
- * exactly that for a numeric rate, on every write from the Move's knob.
+ * Every entry point of this engine may run on an audio callback -- on the
+ * Move, set_param and get_param as much as process -- so "no allocation
+ * outside Instance::new" is a claim about all three. It stays true only until
+ * somebody collects a String in a parser that looked harmless;
+ * `rates::index_from` did exactly that for a numeric rate, on every write from
+ * the Move's knob.
+ *
+ * WHAT A LOAD, AN IMPORT OR A PASTE HANDS THE AUDIO THREAD is a value read
+ * elsewhere -- a Patch, a SlotFile, a Clip -- and applying one is measured
+ * here. So are the text doors that read and apply in one call, with the texts
+ * a build writes: they are what the Move's set_param and the plugin shell's
+ * command queue apply today. A REFUSED text is not: serde_json boxes the
+ * error it reports, and such a text never reaches the audio thread -- the
+ * shell checks a paste and an import as they are posted (see the state
+ * module's note on threads).
  *
  * The allocator counts allocations AND frees: a free is the same lock as a
  * malloc, and a temporary that is allocated before the window and dropped
@@ -19,8 +29,10 @@
  * measured window and the failure would look like a real regression.
  */
 
-
 use tg_core::params::Param;
+use tg_core::paste::Clip;
+use tg_core::slotfile::{Kind, SlotFile};
+use tg_core::state::Patch;
 use tg_core::{Instance, Transport};
 
 #[global_allocator]
@@ -75,22 +87,26 @@ fn process_set_param_and_get_param_allocate_nothing() {
     let mut r = vec![0.25f32; 256];
     let mut i16s = vec![8000i16; 256 * 2];
     let mut out = vec![0u8; 8192];
-    let mut state = vec![0u8; 8192];
-    let n = p.get_param("state", &mut state) as usize;
-    let state = String::from_utf8(state[..n].to_vec()).unwrap();
     /* Slot 6 sounds different in everything, so the switches below recall a
-     * whole sound -- glides, re-anchor, rate and fade weights included. */
+     * whole sound -- glides, re-anchor, rate and fade weights included -- and
+     * the blob carries an `s<N>` to read. */
     for (k, v) in [("rate", "1/8T"), ("curve", "Exp"), ("amount", "0.3"), ("fade", "0.4"), ("hold", "0.5")] {
         p.set_param("slot", "5");
         p.set_param(k, v);
     }
     p.set_param("slot", "0");
-    /* Slot files, which the plugin shell applies at the top of a block. */
+    let mut state = vec![0u8; 8192];
+    let n = p.get_param("state", &mut state) as usize;
+    let state = String::from_utf8(state[..n].to_vec()).unwrap();
     let mut file = vec![0u8; 16 * 1024];
-    let n = p.export(tg_core::slotfile::Kind::Bank, &mut file) as usize;
+    let n = p.export(Kind::Bank, &mut file) as usize;
     let bank = String::from_utf8(file[..n].to_vec()).unwrap();
-    let n = p.export(tg_core::slotfile::Kind::Slot, &mut file) as usize;
+    let n = p.export(Kind::Slot, &mut file) as usize;
     let slot = String::from_utf8(file[..n].to_vec()).unwrap();
+    /* What the main thread reads and the audio thread applies. */
+    let patch = Patch::parse(&state).unwrap();
+    let banked = SlotFile::parse(&bank).unwrap();
+    let pasted = [Clip::parse(&slot).unwrap(), Clip::parse(&bank).unwrap(), Clip::parse(&state).unwrap()];
 
     ni_testkit::arm();
     let mut beats = 0.0;
@@ -110,16 +126,20 @@ fn process_set_param_and_get_param_allocate_nothing() {
             p.get_param(k, &mut out);
         }
     }
+    /* The ready values. */
+    p.load(&patch);
+    p.apply_file(3, &banked);
+    for clip in &pasted {
+        p.apply_clip(2, clip);
+    }
+    /* The text doors, with what a build writes. */
     p.set_param("state", &state);
     let _ = p.import(&bank);
     let _ = p.import(&slot);
-    let _ = p.import("{\"format\": \"nothing\"}");
-    /* A paste is applied on the audio thread, whatever it holds. */
     let _ = p.paste(&slot);
     let _ = p.paste(&bank);
     let _ = p.paste(&state);
-    let _ = p.paste("not a patch");
-    p.export(tg_core::slotfile::Kind::Bank, &mut file);
+    p.export(Kind::Bank, &mut file);
     ni_testkit::disarm();
 
     let (a, f) = (ni_testkit::allocs(), ni_testkit::frees());

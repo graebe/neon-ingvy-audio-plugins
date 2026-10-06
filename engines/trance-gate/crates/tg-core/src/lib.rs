@@ -18,6 +18,13 @@ So: **no allocation outside [`Instance::new`], no I/O, no locks, no logging**.
 The workspace sets `panic = "abort"` because unwinding out of `extern "C"`
 into a C host is undefined behaviour, and a crash the OS reports is better
 than one that corrupts the host's stack on the way out.
+
+The three READERS are the exception, and they are kept apart for it:
+[`state::Patch::parse`], [`slotfile::SlotFile::parse`] and
+[`paste::Clip::parse`] read a text with serde_json, which allocates for a text
+no build wrote. What they return is applied by [`Instance::load`],
+[`Instance::apply_file`] and [`Instance::apply_clip`], which allocate nothing.
+The state module says which thread reads what.
 */
 
 pub mod envelope;
@@ -30,6 +37,7 @@ pub mod slotfile;
 pub mod state;
 
 mod clock;
+mod json;
 mod pattern;
 mod process;
 mod sound;
