@@ -64,6 +64,42 @@ test('columns reach the picture when no animation frame is ever serviced', async
   await expect.poll(colours, { timeout: 5000 }).toBeGreaterThan(8);
 });
 
+/*
+ * THE PICTURE MAY NOT DEPEND ON THE STYLESHEET HAVING WON THE RACE. In a
+ * plugin host under load WKWebView ran the editor before its stylesheet had
+ * applied: the ramp read empty, the component refused to build its picture,
+ * and every column after that went nowhere, behind a blank canvas, for the
+ * whole session. Chrome does not lose that race by itself, so it is staged:
+ * until the window's load event, no custom property has a value.
+ */
+test('the picture is built even when the stylesheet applies after the editor mounts',
+  async ({ page, errors }) => {
+    await page.addInitScript(() => {
+      const real = globalThis.getComputedStyle;
+      let styled = false;
+      globalThis.addEventListener('load', () => { styled = true; }, { capture: true });
+      globalThis.getComputedStyle = (el, pseudo) => {
+        const style = real(el, pseudo);
+        if (styled) return style;
+        return new Proxy(style, {
+          get: (target, key) => (key === 'getPropertyValue'
+            ? (name) => (String(name).startsWith('--') ? '' : target.getPropertyValue(name))
+            : Reflect.get(target, key)),
+        });
+      };
+    });
+    await open(page, 'spectrogram');
+    const colours = () => page.evaluate(() => {
+      const c = document.querySelector('.spectro-canvas');
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const seen = new Set();
+      for (let i = 0; i < d.length; i += 4) seen.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+      return seen.size;
+    });
+    await expect.poll(colours, { timeout: 5000 }).toBeGreaterThan(8);
+    expect(errors).toEqual([]);
+  });
+
 test('the saved session is applied, and nothing is pushed before it', async ({ page }) => {
   await open(page, 'spectrogram', '?holdstate');
   await expect(page.locator('.hint-bar')).toContainText('19.7 kHz');

@@ -475,7 +475,12 @@ export default function Spectrogram(props) {
     }
   });
 
-  onMount(() => {
+  /* The picture is built once the document's stylesheets have applied, and not
+   * before: see `onMount`. */
+  let disposed = false;
+  const start = () => {
+    window.removeEventListener('load', start);
+    if (disposed || hist) return;
     lut = buildLut();
     /* Read back rather than spelled: no colour may be written in here, and the
      * token guard enforces it -- a runtime-built rgb() string would be caught
@@ -485,8 +490,25 @@ export default function Spectrogram(props) {
     setupHistory(props.batch?.bands || 256);
     setupView();
     window.addEventListener('resize', setupView);
+  };
+
+  onMount(() => {
+    /*
+     * NOT BEFORE THE STYLESHEET -- the ground's race, met again. The ramp is
+     * read from tokens.css, and a module script is not guaranteed to run after
+     * the page's stylesheet has applied: in a plugin host under load the
+     * editor mounted first, buildLut found no ramp and threw (as it must on a
+     * missing token), and the picture was never set up -- columns arrived and
+     * went nowhere, behind a blank 300x150 canvas, for the whole session. The
+     * window's `load` comes after every stylesheet; batches before it are
+     * dropped by the batch effect, which waits for the history.
+     */
+    if (document.readyState === 'complete') start();
+    else window.addEventListener('load', start);
   });
   onCleanup(() => {
+    disposed = true;
+    window.removeEventListener('load', start);
     window.removeEventListener('resize', setupView);
   });
 
