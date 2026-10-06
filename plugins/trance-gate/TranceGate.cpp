@@ -91,6 +91,11 @@ void TranceGate::ProcessAudio(sample** inputs, sample** outputs, int nFrames)
 
   const ni::wire::Transport host = HostTransport();
   tg_transport_t t = {host.running, host.beats, host.bpm};
+  /* The meter counts the editor's Length detents and nothing else. iPlug2
+   * holds 4/4 for a host that does not say. */
+  int num = 4, den = 4;
+  GetTimeSig(num, den);
+  tg_core_set_meter(core, num, den);
   const bool stereo = nOut > 1 && outputs[1] != nullptr;
   const bool capture = EditorIsOpen();
 

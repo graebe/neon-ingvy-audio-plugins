@@ -134,6 +134,16 @@ pub unsafe extern "C" fn tg_core_get_param(
     c.0.get_param(s(key), out)
 }
 
+/// The host's time signature. Changes no sample -- the `params` readout's
+/// Length detents are counted in it. A meter no host could mean, or 0/0 for
+/// "the host did not say", is 4/4. Audio thread, allocation-free.
+#[no_mangle]
+pub unsafe extern "C" fn tg_core_set_meter(c: *mut TgCore, num: c_int, den: c_int) {
+    if let Some(c) = c.as_mut() {
+        c.0.set_meter(num, den);
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_on_midi(_c: *mut TgCore, _msg: *const u8, _len: c_int) {
     /* The engine has never used MIDI; the Move shell claims CCs for the

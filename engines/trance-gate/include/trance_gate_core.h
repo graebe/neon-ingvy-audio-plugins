@@ -116,6 +116,13 @@ void tg_core_process_f32_split(tg_core_t *c, float *l, float *r, int frames,
 void tg_core_process_f32_split_tap(tg_core_t *c, float *l, float *r, float *sweep,
                                    int frames, const tg_transport_t *t);
 
+/* The host's time signature, `num`/`den`, per block like the transport. It
+ * changes no sample: the `params` readout's last field -- the pattern lengths
+ * that are half a bar, one, two or four at the current Rate, "16,32,64,128" at
+ * 1/32 in 4/4 -- is counted in it. 0/0, or any meter no host could mean, is
+ * 4/4. Safe on the audio thread. */
+void tg_core_set_meter(tg_core_t *c, int num, int den);
+
 /* Rate `index`'s label into `buf`, from the engine's own table. Returns the
  * length written, or -1 past the end or for a buffer too small. */
 int tg_core_rate_label(int index, char *buf, int buf_len);

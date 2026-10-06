@@ -516,8 +516,8 @@ int main(void) {
         int n = tg_core_get_param(c, "params", line, sizeof(line));
         check("params answers at all", n > 0);
 
-        /* Split on ':' -- 16 fields: the twelve automatable values, width_ms,
-         * and the fade's three on the end. */
+        /* Split on ':' -- 17 fields: the twelve automatable values, width_ms,
+         * the fade's three, and the Length detents on the end. */
         char *f[24]; int nf = 0;
         for (char *t = line; nf < 24; ) {
             f[nf++] = t;
@@ -525,7 +525,10 @@ int main(void) {
             if (!colon) break;
             *colon = '\0'; t = colon + 1;
         }
-        check("params has sixteen fields", nf == 16);
+        check("params has seventeen fields", nf == 17);
+        /* 1/8 in 4/4: half a bar to four bars. */
+        check("...the detents are the last, in common time by default",
+              strcmp(f[16], "4,8,16,32") == 0);
 
         char one[TG_STATE_MAX];
         #define MIRRORS(idx, key) \
@@ -563,9 +566,9 @@ int main(void) {
                 if (!colon) break;
                 *colon = '\0'; t = colon + 1;
             }
-            if (ng != 16 || strcmp(g[6 + i], f[6 + i]) != 0) {
+            if (ng != 17 || strcmp(g[6 + i], f[6 + i]) != 0) {
                 printf("      %s: wrote %s, read %s\n", fkeys[i], f[6 + i],
-                       (ng == 16) ? g[6 + i] : "(short line)");
+                       (ng == 17) ? g[6 + i] : "(short line)");
                 exact = 0;
             }
         }
@@ -595,7 +598,26 @@ int main(void) {
             *colon = '\0'; t = colon + 1;
         }
         check("params carries width_ms at field 12",
-              nf == 16 && fabs(atof(f[12]) - atof(w)) < 0.01);
+              nf == 17 && fabs(atof(f[12]) - atof(w)) < 0.01);
+        tg_core_destroy(c);
+    }
+    {
+        /* The host's meter moves the detents and nothing else; one no host
+         * could mean is common time. */
+        tg_core_t *c = tg_core_create(48000.0);
+        tg_core_set_param(c, "rate", "1/16");
+        char line[TG_STATE_MAX];
+        tg_core_set_meter(c, 3, 4);
+        tg_core_get_param(c, "params", line, sizeof(line));
+        const char *last = strrchr(line, ':');
+        check("tg_core_set_meter: 1/16 in 3/4 holds at 6,12,24,48",
+              last && strcmp(last + 1, "6,12,24,48") == 0);
+        tg_core_set_meter(c, 4, 3);
+        tg_core_get_param(c, "params", line, sizeof(line));
+        last = strrchr(line, ':');
+        check("tg_core_set_meter: 4/3 is no meter, so 4/4",
+              last && strcmp(last + 1, "8,16,32,64") == 0);
+        tg_core_set_meter(NULL, 3, 4);   /* a null engine is ignored */
         tg_core_destroy(c);
     }
 
