@@ -9,7 +9,9 @@
  *
  *   - with the transport playing, the ground moves over time;
  *   - with it stopped, the ground is still, and T starts it;
- *   - with Motion off, it is still whatever the transport does.
+ *   - with Motion off, it is still whatever the transport does;
+ *   - and it moves in a page that is hidden and never gets an animation
+ *     frame, which is how WebKit shows a plugin editor in a real host.
  *
  * Under Playwright's paused clock, so "it did not move" is a statement about a
  * fixed interval of simulated time rather than about how long a test waited.
@@ -31,6 +33,21 @@ const openAt = async (page, plugin, query) => {
   await page.clock.runFor(300);
 };
 const rings = (page) => page.evaluate(() => window.__transport.rings.slice());
+
+/*
+ * WHAT A HOST'S WEBVIEW DOES TO THE PAGE, installed before it loads: the
+ * document reports hidden, and requestAnimationFrame never calls back. In
+ * Live a plugin editor gets about one animation frame in three seconds and
+ * document.hidden is true for as long as it is open; a ground clocked by
+ * frames, or one that paused while hidden, never moved there.
+ */
+const asAHostShowsIt = (page) => page.addInitScript(() => {
+  window.__rafAsked = 0;
+  window.requestAnimationFrame = () => ++window.__rafAsked;
+  window.cancelAnimationFrame = () => {};
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+});
 
 for (const { plugin, W, H } of EDITORS) {
   test.describe(plugin, () => {
@@ -60,6 +77,21 @@ for (const { plugin, W, H } of EDITORS) {
       await page.clock.runFor(800);
       expect((await rings(page))[0]).toBe(1);
       expect(await groundHash(page)).not.toBe(rest);
+    });
+
+    test('it moves in a hidden page that never gets an animation frame', async ({ page, errors }) => {
+      /* Real time, not the paused clock: Playwright's fake clock brings its own
+       * requestAnimationFrame, and this is about the page having none. */
+      await asAHostShowsIt(page);
+      await page.goto(harnessUrl(plugin, '?bpm=120'));
+      expect(await page.evaluate(() => document.hidden)).toBe(true);
+      await expect.poll(() => rings(page)).not.toEqual([]);
+      /* Moving, not drawn once: two changes in a row. */
+      const first = await groundHash(page);
+      await expect.poll(() => groundHash(page)).not.toBe(first);
+      const second = await groundHash(page);
+      await expect.poll(() => groundHash(page)).not.toBe(second);
+      expect(errors).toEqual([]);
     });
 
     test('Motion off keeps the ground still while the transport plays', async ({ page }) => {

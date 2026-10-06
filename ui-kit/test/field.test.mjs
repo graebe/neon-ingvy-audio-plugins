@@ -119,15 +119,28 @@ function installDom({ reducedMotion = false, dpr = 1 } = {}) {
     (media[q] ||= target({ matches: q.includes('reduced-motion') ? reducedMotion : false }));
   globalThis.__media = media;
   globalThis.devicePixelRatio = dpr;
-  /* Returns a live handle and never calls back: every test below steps the
-   * simulation itself, so a frame that fired on its own would make the number of
-   * steps depend on how busy the machine was. */
+  /* THE FRAME CLOCK IS A TIMER (lib/ticker.js), and here it is one that never
+   * calls back on its own: every test below steps the simulation itself, so a
+   * tick that fired by itself would make the number of steps depend on how
+   * busy the machine was. The callbacks are kept in `__intervals` for the one
+   * test that drives the clock by hand. There is no Worker in node, so the
+   * page timer is the whole clock here.
+   *
+   * requestAnimationFrame THROWS: a plugin host shows the editor as hidden and
+   * all but stops animation frames, so the field must never depend on one. */
   let handle = 0;
-  globalThis.requestAnimationFrame = () => ++handle;
+  const intervals = new Map();
+  globalThis.__intervals = intervals;
+  globalThis.setInterval = (fn) => { intervals.set(++handle, fn); return handle; };
+  globalThis.clearInterval = (id) => { intervals.delete(id); };
+  globalThis.requestAnimationFrame = () => {
+    throw new Error('the field asked for an animation frame');
+  };
   globalThis.cancelAnimationFrame = () => {};
   return () => {
     for (const k of ['document', 'getComputedStyle', 'matchMedia', 'devicePixelRatio',
-      'requestAnimationFrame', 'cancelAnimationFrame', '__media']) {
+      'requestAnimationFrame', 'cancelAnimationFrame', 'setInterval', 'clearInterval',
+      '__media', '__intervals']) {
       if (k in saved) globalThis[k] = saved[k]; else delete globalThis[k];
     }
   };
@@ -211,7 +224,8 @@ test('a kick raises the field and it rings out to exactly zero', async () => {
      * of wave is a dot drawn at the wrong level. */
     field._tick();
     assert.equal(field._peak(), 0, 'the field did not return to exactly zero');
-    assert.equal(field.raf, 0, 'the render loop is still running at rest');
+    assert.equal(field.running, false, 'the frame clock is still running at rest');
+    assert.equal(globalThis.__intervals.size, 0, 'and its timer is still set');
   } finally { teardown(); }
 });
 
@@ -400,7 +414,8 @@ test('destroy stops the loop and drops pending kicks', async () => {
     const field = new Field(stubCanvas(400, 300));
     field.trigger(1);
     field.destroy();
-    assert.equal(field.raf, 0);
+    assert.equal(field.running, false);
+    assert.equal(globalThis.__intervals.size, 0);
     assert.equal(field.kicks.length, 0);
   } finally { teardown(); }
 });
@@ -506,41 +521,44 @@ test('fit() rebuilds only when the size or the scale actually changed', async ()
   } finally { teardown(); }
 });
 
-test('the loop pauses while the document is hidden and resumes when it is shown', async () => {
+test('a trigger starts the frame clock, and its timer is what moves the field', async () => {
+  /* No animation frame anywhere: installDom's requestAnimationFrame throws. */
   const teardown = installDom();
   try {
     const { Field } = await loadField();
     const field = new Field(stubCanvas(400, 300));
+    assert.equal(field.running, false, 'a field at rest has no clock running');
     field.trigger(1);
-    assert.ok(field.raf, 'a kick starts the loop');
+    assert.equal(field.running, true);
+    const [tick] = [...globalThis.__intervals.values()];
+    assert.ok(tick, 'the clock is a timer');
 
-    document.hidden = true;
-    document.dispatch('visibilitychange');
-    assert.equal(field.raf, 0, 'a hidden window must not keep a frame loop running');
-
-    /* A kick that arrives while hidden is kept, not drawn. */
-    field.trigger(1);
-    assert.equal(field.raf, 0, 'a kick while hidden must not restart the loop');
-
-    document.hidden = false;
-    document.dispatch('visibilitychange');
-    assert.ok(field.raf, 'the loop resumes where there is still something to draw');
-
-    field.destroy();
-    assert.equal(document.listeners('visibilitychange'), 0, 'destroy must unhook the document');
+    /* A tenth of a second since the last tick: the timer's callback steps the
+     * simulation by it. */
+    field.lastTick -= 100;
+    tick();
+    assert.ok(field.t > 0.09, `one tick after 100 ms stepped ${field.t} s`);
   } finally { teardown(); }
 });
 
-test('shown again with nothing moving, the loop stays stopped', async () => {
+test('a hidden document neither pauses the field nor is listened to', async () => {
+  /*
+   * In a real host WebKit reports the plugin's editor as hidden -- for as long
+   * as it is open. The field used to pause while hidden, so in Live it never
+   * moved. It no longer looks: the plugin stops ringing it when the window
+   * closes, which is the only "nobody can see this" a plugin can know.
+   */
   const teardown = installDom();
   try {
+    document.hidden = true;
     const { Field } = await loadField();
     const field = new Field(stubCanvas(400, 300));
-    document.hidden = true;
+    assert.equal(document.listeners('visibilitychange'), 0, 'the field listens for visibility');
+    field.trigger(1);
+    assert.equal(field.running, true, 'a ring in a hidden document must start the clock');
+    assert.ok(advance(field, 0.5) > 0.05, 'and move the field');
     document.dispatch('visibilitychange');
-    document.hidden = false;
-    document.dispatch('visibilitychange');
-    assert.equal(field.raf, 0, 'a field at rest has no reason to run');
+    assert.equal(field.running, true, 'a visibility change must not stop it');
   } finally { teardown(); }
 });
 

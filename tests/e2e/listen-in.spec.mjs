@@ -107,26 +107,22 @@ test.describe('the ground', () => {
     expect(await page.evaluate(() => localStorage.getItem('ultraviolet.motion.listen-in'))).toBe('0');
   });
 
-  test('it pauses while the document is hidden and resumes when shown', async ({ page }) => {
-    await ring(page);
-    await page.clock.runFor(100);
-
-    const setHidden = (hidden) => page.evaluate((h) => {
-      Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
-      Object.defineProperty(document, 'visibilityState', {
-        configurable: true, get: () => (h ? 'hidden' : 'visible'),
-      });
+  test('it keeps moving while the document is hidden', async ({ page }) => {
+    /* A host's WebView reports the editor hidden for as long as it is open
+     * (tests/e2e/ground.spec.mjs has the whole of that); the ground used to
+     * pause on it and so never moved in Live. */
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
       document.dispatchEvent(new Event('visibilitychange'));
-    }, hidden);
-
-    await setHidden(true);
-    const paused = await groundHash(page);
+    });
+    const before = await groundHash(page);
+    await ring(page);
     await page.clock.runFor(RING_MS);
-    expect(await groundHash(page)).toBe(paused);
-
-    await setHidden(false);
+    const during = await groundHash(page);
+    expect(during).not.toBe(before);
     await page.clock.runFor(RING_MS);
-    expect(await groundHash(page)).not.toBe(paused);
+    expect(await groundHash(page)).not.toBe(during);
   });
 });
 

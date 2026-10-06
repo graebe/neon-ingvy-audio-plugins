@@ -35,11 +35,13 @@
  * resize: the ResizeObserver never hears about it. So the element's `style` is
  * watched as well (that is where each editor writes its scale), and the window's
  * resize, which is how a devicePixelRatio or zoom change arrives. All of it is
- * coalesced into one re-measure per frame.
+ * coalesced into one re-measure, on a timer rather than an animation frame: a
+ * plugin host shows this page as hidden, and WebKit all but stops a hidden
+ * page's animation frames (lib/ticker.js).
  *
  * WHAT IT DOES NOT DO: idle. There is no animation loop running when nothing has
- * happened -- `Field` stops its own loop once the field is at rest (and while
- * the document is hidden), and at rest the canvas shows the static design.
+ * happened -- `Field` stops its own clock once the field is at rest, and at rest
+ * the canvas shows the static design.
  */
 
 import { onMount, onCleanup, createEffect } from 'solid-js';
@@ -99,7 +101,7 @@ export function Ground(props) {
   };
 
   /* Everything that can move the layout, the scale or the pixel ratio lands
-   * here, at most once a frame. `fit` rebuilds only if the canvas's size or
+   * here, once per burst of notifications. `fit` rebuilds only if the canvas's size or
    * ratio really changed; a rebuild clears the walls, so they are re-sent. */
   const update = () => {
     pending = 0;
@@ -108,7 +110,7 @@ export function Ground(props) {
     measure();
   };
   const schedule = () => {
-    if (!pending && field) pending = globalThis.requestAnimationFrame(update);
+    if (!pending && field) pending = globalThis.setTimeout(update, 0);
   };
 
   /* A devicePixelRatio change -- the window dragged to another screen, a zoom --
@@ -204,7 +206,7 @@ export function Ground(props) {
     globalThis.removeEventListener?.('resize', schedule);
     dprQuery?.removeEventListener?.('change', onDpr);
     dprQuery = null;
-    if (pending) globalThis.cancelAnimationFrame(pending);
+    if (pending) globalThis.clearTimeout(pending);
     pending = 0;
     field?.destroy();
     field = null;

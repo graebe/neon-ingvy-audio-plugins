@@ -36,6 +36,9 @@
  *   - each ring comes from the block that holds its beat, not a block late
  *   - the 1st and the 5th -- each bar's downbeat -- are strong (1.000), the
  *     others are the beat strength (0.400)
+ *   - the ground's canvas then changes at least every other 50 ms sample:
+ *     it animates in the editor as a host shows it, which WebKit reports as
+ *     hidden, with requestAnimationFrame all but stopped
  *   - with the transport stopped, no further ring
  *
  * NOTHING HERE IS TIMED ON THE WALL CLOCK. The render stops after each block
@@ -374,6 +377,31 @@ int main(int argc, char **argv)
                                                            TAG_GROUND],
                                 5.0);
 
+        /* AND THE GROUND MOVES. The rings are in the field now; sample the
+         * canvas every 50 ms for a second and count how often it changed
+         * between two samples. The page is HIDDEN, as WebKit reports a plugin
+         * editor in a real host (document.hidden, about one
+         * requestAnimationFrame in three seconds, page timers throttled to a
+         * few hertz) -- the conditions the field has to animate in. */
+        NSString *hash =
+            @"(() => { const c = document.querySelector('canvas.ground');"
+             "  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;"
+             "  let h = 2166136261;"
+             "  for (let i = 0; i < d.length; i += 4)"
+             "    h = Math.imul(h ^ (d[i] ^ (d[i + 1] << 8) ^ (d[i + 2] << 16)), 16777619);"
+             "  return h >>> 0; })()";
+        id hidden = Eval(web, @"document.hidden", 5.0);
+        id last = Eval(web, hash, 5.0);
+        int samples = 0, changes = 0;
+        const double sampleEnd = Now() + 1.0;
+        while (Now() < sampleEnd) {
+            Spin(0.05);
+            id h = Eval(web, hash, 5.0);
+            samples++;
+            if (h && last && ![h isEqual:last]) changes++;
+            last = h;
+        }
+
         /* STOPPED: the song position holds and the rings stop. */
         Eval(web, @"window.__msgs.length = 0; true", 5.0);
         atomic_store(&gPlaying, 0);
@@ -402,6 +430,11 @@ int main(int argc, char **argv)
         }
         snprintf(detail, sizeof detail, "%s", seen.UTF8String);
         ok(pattern, "every 4th ring -- the downbeat -- is the strong one", detail);
+
+        snprintf(detail, sizeof detail, "changed in %d of %d 50 ms samples; document.hidden %s",
+                 changes, samples, [hidden boolValue] ? "true" : "false");
+        ok(samples >= 5 && changes * 2 >= samples, "the ground animates in the hidden editor",
+           detail);
 
         const NSUInteger after = [stopped isKindOfClass:[NSArray class]] ? stopped.count : 99;
         snprintf(detail, sizeof detail, "%lu rings", (unsigned long) after);

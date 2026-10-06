@@ -26,9 +26,13 @@
  * Math.random, as the design's reference does, and the CSS one is the design's
  * fixed PNG. Only the canvas is ever on screen while it works, so no seam shows.)
  *
- * IT ALSO STOPS WHILE NOBODY CAN SEE IT: a hidden document pauses the loop and a
- * visible one resumes it, and prefers-reduced-motion is followed live rather
- * than read once.
+ * ITS CLOCK IS A TIMER, NOT requestAnimationFrame, AND IT DOES NOT PAUSE WHILE
+ * THE DOCUMENT IS HIDDEN. In a real host WebKit reports a plugin editor as
+ * hidden and all but stops its animation frames, so a field clocked by them --
+ * or one that paused while hidden, as this one once did -- never moved in
+ * Live. lib/ticker.js says what the clock is and why. Work stops when the
+ * field rings out, and the plugin stops ringing it when its window closes.
+ * prefers-reduced-motion is followed live rather than read once.
  *
  * WHAT IS NOT HERE, AND WHY. The reference ships a second half, a BassDetector
  * that builds a Web Audio graph and finds the kick in the browser. Here the
@@ -46,6 +50,7 @@
 
 import { readRgb, cssHex } from './ramp.js';
 import { viewScale, backingRatio } from './ground-geometry.js';
+import { createTicker } from './ticker.js';
 
 /*
  * THE DESIGN'S PARAMETER TABLE. Retuning any of these is a design-system change
@@ -179,7 +184,6 @@ export class Field {
     this.kicks = [];
     this.rects = [];
     this.enabled = true;
-    this.raf = 0;
     this.lastFrame = 0;
     this.lastTick = 0;
     this.acc = 0;
@@ -200,20 +204,15 @@ export class Field {
     };
     this._mq?.addEventListener?.('change', this._onReduced);
 
-    /* A hidden window -- a minimised plugin, a host that hides the editor
-     * rather than closing it -- stops the loop; showing it again resumes. A
-     * WebView does not reliably throttle requestAnimationFrame on its own. */
-    const doc = globalThis.document;
-    this.visible = !doc?.hidden;
-    this._onVisibility = () => this.setVisible(!globalThis.document?.hidden);
-    doc?.addEventListener?.('visibilitychange', this._onVisibility);
-
     const colours = readColours(o.colourFrom || document.documentElement);
     this.bgCss = cssHex(colours.bg);
     this.grain = makeGrain(colours.grain);
     this.dot = dotBase(colours.bg, colours.dot);
 
     this._tick = this._tick.bind(this);
+    /* The frame clock, at the design's frame rate, running only while there
+     * is something to move. */
+    this.clock = createTicker(this._tick, 1000 / o.fps);
     this.resize();
   }
 
@@ -333,36 +332,19 @@ export class Field {
     this.u.fill(0);
     this.up.fill(0);
     this.kicks = [];
-    if (this.raf) globalThis.cancelAnimationFrame(this.raf);
-    this.raf = 0;
+    this.clock.stop();
     this.draw();
   }
 
-  /**
-   * Pause the loop while the document is hidden, and resume it when shown if
-   * there is still something to draw. The simulation does not run while
-   * paused: a ring resumes where it was rather than jumping ahead, and nobody
-   * saw the gap.
-   */
-  setVisible(visible) {
-    this.visible = !!visible;
-    if (!this.visible) {
-      if (this.raf) globalThis.cancelAnimationFrame(this.raf);
-      this.raf = 0;
-      return;
-    }
-    /* The backing store may have been discarded while hidden; one full redraw
-     * costs nothing next to a stale frame. */
-    this.fresh = true;
-    if (this.kicks.length || this._peak() > this.o.rest) this._start();
-    else this.draw();
+  /** Whether the frame clock is running: true from a trigger until rest. */
+  get running() {
+    return this.clock.running;
   }
 
   _start() {
-    if (!this.visible) return;
-    if (!this.raf) {
+    if (!this.clock.running) {
       this.lastTick = now();
-      this.raf = globalThis.requestAnimationFrame(this._tick);
+      this.clock.start();
     }
   }
 
@@ -427,7 +409,6 @@ export class Field {
   }
 
   _tick() {
-    this.raf = 0;
     const o = this.o;
     const t = now();
     this.acc += Math.min(0.1, (t - this.lastTick) / 1000);
@@ -441,6 +422,8 @@ export class Field {
     /* After a long stall, drop the backlog instead of racing to catch up --
      * which would show as the field suddenly running fast. */
     if (this.acc > o.dt) this.acc = 0;
+    /* At most one frame per frame period: the clock has two sources
+     * (lib/ticker.js), and between frames a tick only steps. */
     let peak;
     if (t - this.lastFrame >= 1000 / o.fps - 2) {
       this.lastFrame = t;
@@ -448,14 +431,13 @@ export class Field {
     } else {
       peak = this._peak();
     }
-    if (this.kicks.length || peak > o.rest) {
-      this._start();
-    } else {
+    if (!this.kicks.length && peak <= o.rest) {
       /* Rung out. Back to EXACTLY zero -- not nearly zero -- so every dot is
-       * back at its resting sprite, and the loop stops. */
+       * back at its resting sprite, and the clock stops. */
       this.u.fill(0);
       this.up.fill(0);
       this.draw();
+      this.clock.stop();
     }
   }
 
@@ -539,9 +521,9 @@ export class Field {
    * used to copy the whole baked ground and then blit every moving dot again;
    * now a frame where the field is still is no drawing at all.
    *
-   * `fresh` forces the full path: after a resize, a rebake, new walls or a
-   * return from hidden, the canvas is copied from the baked ground once and
-   * every level is taken as MID.
+   * `fresh` forces the full path: after a resize, a rebake or new walls, the
+   * canvas is copied from the baked ground once and every level is taken as
+   * MID.
    */
   draw() {
     if (!this.baked || !this.u) return 0;
@@ -579,11 +561,9 @@ export class Field {
   }
 
   destroy() {
-    if (this.raf) globalThis.cancelAnimationFrame(this.raf);
-    this.raf = 0;
+    this.clock.destroy();
     this.kicks = [];
     this._mq?.removeEventListener?.('change', this._onReduced);
-    globalThis.document?.removeEventListener?.('visibilitychange', this._onVisibility);
   }
 }
 
