@@ -1,5 +1,5 @@
 /*
- * The Icon is the design system's own twelve glyphs.
+ * The Icon is the design system's own fifteen glyphs.
  * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { test } from 'node:test';
@@ -12,9 +12,10 @@ import { iconBody, iconName, FILLED } from '../src/lib/icon-svg.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DIR = join(ROOT, 'design', 'scheme', 'project', 'assets', 'Icons');
 const SET = ['play', 'pause', 'stop', 'record', 'loop', 'copy', 'paste',
+             'export', 'export-all', 'import',
              'shuffle', 'reset', 'link', 'chevron', 'power'];
 
-test('the design ships the twelve glyphs the Icon names', () => {
+test('the design ships the fifteen glyphs the Icon names', () => {
   const names = readdirSync(DIR).filter((f) => f.endsWith('.svg')).map(iconName).sort();
   assert.deepEqual(names, [...SET].sort());
 });

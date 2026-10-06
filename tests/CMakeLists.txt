@@ -189,9 +189,11 @@ if (TG_NODE)
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/ui-kit/test/tokens.test.mjs)
 
-    # Every path into design/ names something that is there: the mirror moves
-    # when its artifacts do, and the icon glob and the token and field oracles
-    # read through those paths.
+    # Every path into design/ that a tracked file names exists, however it is
+    # spelled: from the root, climbing from the naming file's own directory
+    # with ../ (as the icon glob does), or as path.join() arguments. The
+    # mirror moves when its artifacts do, and the icon glob and the token and
+    # field oracles read through those paths. The test's header has the rules.
     add_test(NAME design_paths
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/tests/design_paths.test.mjs)
@@ -266,7 +268,9 @@ if (APPLE)
     # page in it -- fed audio under a running transport, closed and opened
     # again, and the page asked what reached it: the Spectrogram's picture,
     # the Trance Gate's and the Side-Chain's playheads, the Listen-In's name,
-    # everyone's ground. The mock-host e2e suite cannot see this path.
+    # everyone's ground -- and, after a state load on a thread that is not the
+    # main one, every value, with nothing sent to the WebView from that
+    # thread. The mock-host e2e suite cannot see this path.
     # editor_host.mm. Needs a logged-in session (a window server), as a host does.
     set(_vst3 ${IPLUG2_DIR}/Dependencies/IPlug/VST3_SDK)
     add_executable(editor_host editor_host.mm

@@ -49,8 +49,10 @@ and a bare toolchain use, because Homebrew's keeps its shims in
 
 ## CI
 
-`.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, and by
-hand — once per change, with a newer commit cancelling the older run. It runs
+`.github/workflows/ci.yml` runs **by hand only**. Every change is built and
+tested locally before it is pushed (`scripts/test.sh quick` and `full`); that
+is the gate, and Actions publish rather than discover. Started by hand, it
+checks a clean runner, with a newer run cancelling the older one. It runs
 on a pinned `macos-15` image: the plugins are macOS bundles and `auval` and the
 AU host tests only exist there. Three jobs:
 
@@ -129,9 +131,10 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NITranceGate.vst3
 
 ## Deploying this site
 
-`.github/workflows/pages.yml` builds `site/` and deploys it to GitHub Pages on
-every push to `main` that touches documentation, and on every published release
-so the download links refresh without a commit.
+`.github/workflows/pages.yml` builds `site/` and deploys it to GitHub Pages
+when a release is published, and by hand. Never on a push: the site's download
+links name release tags, and a push to `main` that bumps `versions.json` would
+otherwise link a version that has not been released yet.
 
 **One manual step, once:** repository Settings → Pages → Source must be set to
 **GitHub Actions**. Until it is, the deploy step fails with a message that does

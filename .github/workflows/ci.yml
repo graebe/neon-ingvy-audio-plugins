@@ -20,14 +20,12 @@
 # `ctest -R release` checks their configuration on every run of this one.
 name: CI
 
-# TWO TIERS (docs/tech/testing.md). The quick tier runs on every push to any
-# branch and on every pull request: it builds only the test programs, so it is
-# cheap enough that a PR commit running it twice costs little. The full tier --
-# every bundle, the AU renders, the e2e suite, coverage with its floor, the
-# validators and the sanitizer -- runs on main and on a manual trigger.
+# BY HAND ONLY. Every change is built and tested LOCALLY before it is pushed
+# (scripts/test.sh quick and full; docs/tech/testing.md): that is the gate, and
+# the owner's rule is that GitHub Actions publish rather than discover. This
+# workflow is kept as the hand crank for a check on a clean runner -- the same
+# two tiers, the full one on main -- and runs only when someone starts it.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 # A newer commit on the same PR (or main) makes the running build pointless.

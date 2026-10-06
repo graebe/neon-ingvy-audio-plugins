@@ -128,7 +128,7 @@ window.__auditPromise = (async () => {
     glowLed: cs.getPropertyValue('--glow-led').trim().slice(0, 40),
     glowArc: cs.getPropertyValue('--glow-arc').trim(),
     glowFocus: cs.getPropertyValue('--glow-focus').trim(),
-    scopeDry: cs.getPropertyValue('--scope-dry').trim(),
+    plotDry: cs.getPropertyValue('--plot-dry').trim(),
   };
   o.padOnFilter = qa('.pad.on')[0] ? getComputedStyle(qa('.pad.on')[0]).filter.slice(0, 40) : null;
 

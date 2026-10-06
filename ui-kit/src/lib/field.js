@@ -40,13 +40,13 @@
  * out, and the plugin stops ringing it when its window closes.
  * prefers-reduced-motion is followed live rather than read once.
  *
- * WHAT IS NOT HERE, AND WHY. The reference ships a second half, a BassDetector
- * that builds a Web Audio graph and finds the kick in the browser. Here the
- * ground follows the host's tempo instead, by the owner's decision: a ring on
- * every beat while the song plays, the downbeat strongest
- * (docs/tech/ground.md). The beat is found in Rust on the audio thread
- * (engines/ground) and arrives as a message; `trigger` is where it lands. This
- * is the ONLY part of the reference that moved.
+ * WHAT IS NOT HERE, AND WHY. The reference ships a second half, a BeatClock
+ * that a page ticks with the host's position to find the beats. A plugin's
+ * page cannot see the host's transport, so the same rule runs in Rust on the
+ * audio thread (engines/ground): a ring on every beat while the song plays,
+ * the downbeat strongest (docs/tech/ground.md), arriving as a message;
+ * `trigger` is where it lands. This is the ONLY part of the reference that
+ * is not here.
  *
  * NO COLOUR IS SPELLED HERE. The reference carries three RGB triples in its
  * defaults; a canvas cannot use a CSS variable, so this reads them back out of

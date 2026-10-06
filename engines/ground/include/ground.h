@@ -19,9 +19,9 @@
  * on a drum bus. crates/ground-core/src/beat.rs states the rule exactly,
  * including starts, loops, seeks and meters whose bars are not whole quarters.
  *
- * A DEVIATION FROM ULTRAVIOLET 1.0.0, by the owner's decision: the design's
- * Motion spec drives the ground from the sound (a 20-80 Hz onset detector).
- * docs/tech/ground.md says why it follows the tempo instead.
+ * Ultraviolet 1.0.0 drove the ground from the sound (a 20-80 Hz onset
+ * detector); this followed the tempo instead by the owner's decision, and
+ * Ultraviolet 1.1.0 made that the design's rule. docs/tech/ground.md says why.
  *
  * WHY IT IS DOWN HERE AT ALL, since the field itself is drawn in the editor.
  * A plugin editor is a WebView: it cannot see the host's transport, and its

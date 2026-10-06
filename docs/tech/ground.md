@@ -76,13 +76,14 @@ which at 120 BPM — where each ring is still swelling when the next one starts 
 read too close to the downbeat. `ui-kit/test/field.test.mjs` holds the field to
 this.
 
-> **A deviation from the design system, by the owner's decision, pending a
-> design update.** Ultraviolet 1.0.0's Motion spec drives the ground *by sound,
-> not by time*: a 20–80 Hz onset detector on each plugin's own input. That made
-> four backgrounds that disagreed — each heard only its own track, so a plugin on
-> a pad or a silent return never moved — and it needed an audio feed per plugin.
-> The ground now follows the host's tempo instead. The field itself, and
-> everything about how a ring looks, is still the design's.
+> **The design followed the plugins here.** Ultraviolet 1.0.0's Motion spec
+> drove the ground *by sound, not by time*: a 20–80 Hz onset detector on each
+> plugin's own input. That made four backgrounds that disagreed — each heard
+> only its own track, so a plugin on a pad or a silent return never moved — and
+> it needed an audio feed per plugin. The plugins moved to the host's tempo by
+> the owner's decision, and Ultraviolet 1.1.0 adopted the same rule. Its
+> reference strength for a beat is 0.55, "about half", which the system lets a
+> plugin tune; 0.4 is that tuning, for the reason above.
 
 ## Turning it off
 

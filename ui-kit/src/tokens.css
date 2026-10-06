@@ -57,30 +57,51 @@
   --uv: #efe3ff;
   --uv-deep: #a259ff;
   --uv-glow: rgba(162, 89, 255, 0.5);
-  --on-uv: #060410;     /* text on a signal fill */
+  /* Text and glyphs on a uv fill: deep ultraviolet, uv-deep's hue darkened to
+   * 7:1 on uv, so a lit control keeps its violet in its own letters. Never on
+   * red, where it falls under 3:1. Ultraviolet 1.1's value; until then it was
+   * bg-000's black. */
+  --on-uv: #5d00d6;
   --amber: #ffb000;
   --red: #ff4d4d;
   --bg-dot: #2a1e4a;
 
   /*
-   * THE SCOPE'S DRY TRACE, and the one deliberately achromatic value here.
+   * THE PLOTS' DATA COLOURS, Ultraviolet 1.1's. They paint pictures of a
+   * signal and nothing else: never a control, a panel or text.
    *
-   * It was --ink-dim, which is a VIOLET and which the system reserves for
-   * disabled text. Two consequences: the dry input read as a dim version of
-   * the signal rather than as something else entirely, and it carried the same
-   * hue as the gated trace in front of it, so the two blurred into one
-   * picture.
+   * plot-dry is the dry input behind a processed trace, at half opacity, and
+   * the one deliberately achromatic value here. The editors had it first, as
+   * --scope-dry with this same value; plot-dry is the system's name for it,
+   * and the rename is the whole of the change. It was --ink-dim once, which
+   * is a VIOLET and which the system reserves for disabled text: the dry
+   * input read as a dim version of the signal rather than as something else
+   * entirely, and it carried the same hue as the gated trace in front of it,
+   * so the two blurred into one picture. Grey is the point. The dry is the
+   * input, the violet is what the plugin DID to it, and the difference
+   * between those two should not need a legend.
    *
-   * Grey is the point. The dry is the input, the violet is what the plugin
-   * DID to it, and the difference between those two should not need a legend.
+   * plot-fill is the area under a curve in a PlotWell, the value of bg-300, so
+   * the curve's own 2px uv line is the only light in the well; plot-ghost is a
+   * reference curve behind the one that plays (the envelope as dialled), the
+   * value of line-200. NEITHER IS DRAWN YET. The Trance Gate's plots predate
+   * the PlotWell: they fill under the envelope with --uv-glow and draw the
+   * ghost in --ink-dim, which are other values, so moving them onto these is a
+   * change to the picture and not a rename. Defined here so that move is one
+   * var() each, and because the token test requires every system token here.
    */
-  --scope-dry: #6b6b78;
+  --plot-dry: #6b6b78;
+  --plot-fill: #1d1533;
+  --plot-ghost: #3a2a66;
 
   /*
-   * THE PLAYHEAD CROSSING A PAD THAT IS ALREADY LIT: on-uv at a quarter alpha,
+   * THE PLAYHEAD CROSSING A PAD THAT IS ALREADY LIT: bg-000 at a quarter alpha,
    * so it reads as a shadow moving across the row. NOT --uv-deep, which is
-   * never a fill. A token because the alternative is an rgba() in app.css, and
-   * an rgba() in app.css is precisely what the token guard exists to stop.
+   * never a fill, and no longer on-uv's value: that was this same black until
+   * Ultraviolet 1.1 made on-uv violet, and a violet wash over a lit pad would
+   * read as a tint, not a shadow. A token because the alternative is an rgba()
+   * in app.css, and an rgba() in app.css is precisely what the token guard
+   * exists to stop.
    */
   --dip: rgba(6, 4, 16, 0.25);
 
@@ -94,10 +115,9 @@
    * rest of the system uses, so a silent spectrogram is the window's own
    * background and a loud one is lit in the system's own signal colour.
    *
-   * NOT YET IN THE ULTRAVIOLET SYSTEM at design/scheme/project/tokens.json,
-   * which has no ramp family. Reported rather than quietly diverged: the
-   * system should gain these, and until it does the token test knows to
-   * expect them here and not there.
+   * The system's own spec-0..spec-4 since Ultraviolet 1.1
+   * (design/scheme/project/tokens.json), at the values the editors already
+   * drew with.
    */
   --spec-0: #060410;
   --spec-1: #2a1e4a;

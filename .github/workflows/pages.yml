@@ -14,21 +14,9 @@
 name: Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'site/**'
-      - 'ui-kit/**'
-      - 'plugins/*/README.md'
-      - 'plugins/*/docs/**'
-      - 'plugins/*/ui/public/fonts/**'
-      - 'docs/**'
-      - 'README.md'
-      - 'THIRD_PARTY_LICENSES.md'
-      - 'release.json'
-      - 'modules/*/module.json'   # the site maps a product to its catalog id
-      - 'versions.json'
-      - '.github/workflows/pages.yml'
+  # THE SITE FOLLOWS A RELEASE. Its download links name release tags, so it is
+  # deployed when a release is published -- never by a push to main, which would
+  # link a version nobody has released yet.
   release:
     types: [published]
   # THE HAND CRANK. Everything above is a consequence of something else, and

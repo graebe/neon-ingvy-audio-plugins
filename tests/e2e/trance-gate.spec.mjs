@@ -11,9 +11,10 @@
  */
 import {
   test, expect, open, openForScreenshot, sent, texts, writes, clearSent,
-  pushParam, dragVertically, SHELL,
+  pushParam, dragVertically, motionOff, SHELL,
 } from './harness.mjs';
 import { INFO } from '../../plugins/trance-gate/ui/src/lib/info.js';
+import { INFO_DELAY_MS } from '../../ui-kit/src/lib/info.js';
 
 const W = 824, H = 752;
 /* lib/msg.js */
@@ -519,14 +520,33 @@ test('an action\'s outcome keeps the bar over the info under the pointer', async
  * plots, the ring's count, the signature), is hovered from a resting bar; the
  * bar has to change, to a string of 80 characters at most. A control added
  * without one fails here by name.
+ *
+ * THE WALK IS ABOUT STRINGS, AND WAITS FOR NOTHING ELSE. Some seventy hovers,
+ * each a handful of round trips to the page, and two things slowed every one
+ * of them: the animated ground, redrawing the window's background on the
+ * thread each step waits for -- far more slowly under coverage
+ * instrumentation -- and the bar's way back to the conventions, INFO_DELAY_MS
+ * after the pointer leaves, waited out in real time. On a busy machine the two
+ * stretched the walk past its timeout. So the callers open the editor with
+ * Motion off, and install Playwright's clock, which still flows with the wall
+ * clock, for `rested` to jump past the delay: fastForward fires what fell due
+ * once, where runFor would play every frame of the running transport in
+ * between. The delay itself is ui-kit/test/info.test.mjs's to hold; the Rate
+ * test above leaves a control in real time.
  */
 const DESCRIBED = [
   'button', 'select', 'input', '[tabindex]', '[role]',
   'h2', 'svg.plot', '.ring text', '.knob-card', '.signature',
 ].map((s) => `main.window ${s}`).join(', ');
 
-async function everyControlSays(page) {
+/* The pointer parked, and the bar back at the conventions. */
+async function rested(page) {
   await park(page);
+  await page.clock.fastForward(INFO_DELAY_MS);
+}
+
+async function everyControlSays(page) {
+  await rested(page);
   const rest = await tipText(page);
   const all = page.locator(DESCRIBED);
   const n = await all.count();
@@ -538,7 +558,7 @@ async function everyControlSays(page) {
     const el = all.nth(i);
     if (!(await el.isVisible())) continue;
     const name = await el.evaluate((e) => `<${e.tagName.toLowerCase()} class="${e.getAttribute('class') ?? ''}" aria-label="${e.getAttribute('aria-label') ?? ''}">${e.textContent.trim().slice(0, 24)}`);
-    await park(page);
+    await rested(page);
     await expect.poll(() => tipText(page), { intervals: [50] }).toBe(rest);
     /* force: the Select's own <select> is transparent over its face, which
      * Playwright would call covered. The pointer lands on it either way. */
@@ -561,14 +581,17 @@ async function everyControlSays(page) {
 }
 
 test('every control in the window says what it does', async ({ page }) => {
-  /* Some seventy hovers, each waiting out the delay back to the conventions. */
   test.slow();
+  await motionOff(page, 'trance-gate');
+  await page.clock.install();
   await open(page, 'trance-gate');
   await everyControlSays(page);
 });
 
 test('so do the arrival numbers, and the pads while ORDER is on', async ({ page }) => {
   test.slow();
+  await motionOff(page, 'trance-gate');
+  await page.clock.install();
   /* Part way in, the numbers are drawn, and they are controls too. */
   await open(page, 'trance-gate', '?fade=0.5');
   await expect(page.locator('.pad-order').first()).toBeVisible();

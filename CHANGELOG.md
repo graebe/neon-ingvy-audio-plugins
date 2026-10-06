@@ -22,6 +22,10 @@
   (Shift for fine), Page Up/Down, Home/End, and Enter to type.
 - The window no longer repeats the plugin's name; the hint bar along the bottom
   carries the Motion switch and the Neon Ingvy mark.
+- Text and icons on a lit control — a pressed button, the selected tab — are
+  deep violet on the white fill rather than black, so a lit control keeps its
+  colour. The Trance Gate's numbers on lit steps and the marks on its envelope
+  plot follow.
 - **The animated background keeps time with the song.** It pulses on every
   beat while the transport plays, stronger on the first beat of each bar, and
   is still while stopped. It follows the tempo and time signature rather than

@@ -45,10 +45,12 @@ matters for a module that ships to a device.
 
 ## The C ABI
 
-`tg-capi` exposes fourteen `extern "C"` symbols — byte for byte the surface the
-original C engine exported. That was a deliberate constraint when the DSP was
-ported to Rust: keeping the ABI identical meant 1,510 lines of existing C tests
-relinked against the new engine rather than being rewritten, so the port was
+`tg-capi` exports the `tg_core_*` C ABI
+(`engines/trance-gate/include/trance_gate_core.h`) — byte for byte the surface
+the original C engine exported, and grown since. That was a deliberate
+constraint when the DSP was ported to Rust: keeping the ABI identical meant the
+existing C tests (`engines/trance-gate/tests/test_core.c` and `test_gate.c`)
+were relinked against the new engine rather than rewritten, so the port was
 checked by tests that had never seen Rust.
 
 The headers in `engines/*/include/` are hand-written rather than generated,

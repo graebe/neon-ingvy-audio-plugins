@@ -1,3 +1,5 @@
 # Panel
 
 A hairlined `bg-100` box that groups the controls of one function (Gate, Envelope) inside a `bg-000` window. Use one panel per function, never one per control; a window with a single function has no panel at all, just the window. Consumer provides: the `title` and the controls as children. Padding is `space-4`, panels sit `space-6` apart. Do not nest panels, do not give a panel a heading longer than two words.
+
+**Compact** (`ph-panel compact`): for a window with three or more panels, where a title band above each would spend a row per panel on one word. The panel is 140px tall, exactly one knob card (label, knob, readout) inside its padding and hairlines, and its `title` runs up the left edge, read bottom to top, centred on the panel's height, `space-3` before the controls. Every panel in such a window is compact, never a mix. The title carries the panel's info string ("Gate — when the steps fall and how much of each one sounds."), so pointing at it says what the group is for.

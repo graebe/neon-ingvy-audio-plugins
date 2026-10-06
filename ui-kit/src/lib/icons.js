@@ -1,5 +1,5 @@
 /*
- * The twelve glyphs, taken from the design system's own files at build time.
+ * The fifteen glyphs, taken from the design system's own files at build time.
  * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * NOT COPIED BY HAND. Vite reads design/scheme/project/assets/Icons/*.svg --

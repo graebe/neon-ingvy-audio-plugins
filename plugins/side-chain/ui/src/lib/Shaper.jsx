@@ -336,7 +336,7 @@ export function Shaper(props) {
           * grey shows as a halo around the output wherever the duck took
           * something away, which is precisely where it is worth seeing. */}
         <path d={band(props.scope, COL.dryLo, COL.dryHi, geom(), props.seen)}
-              fill="var(--scope-dry)" opacity="0.5" />
+              fill="var(--plot-dry)" opacity="0.5" />
 
         {/* 2. WHAT LEFT. The subject, and the picture's mass. It gets the arc
           * halo -- the same 3px falloff the knob's value arc uses. The 10px LED
