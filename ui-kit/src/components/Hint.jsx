@@ -25,6 +25,11 @@ import { Toggle } from './Toggle.jsx';
  * passes neither has no ground and gets no switch. Putting it here is what makes
  * "every window with a Ground has one" true by construction instead of by
  * four editors each remembering.
+ *
+ * WHAT THE CLAUSES SAY IS DECIDED ABOVE THIS: EditorFrame passes the window's
+ * conventions, an action's outcome or the string of the control under the
+ * pointer (lib/info.js, hintClauses). The bar only draws them -- as text, so a
+ * string can never be markup.
  */
 export function Hint(props) {
   return (
@@ -45,21 +50,35 @@ export function Hint(props) {
         * A window that actually truncates is a window whose hints are too long
         * -- the ellipsis is the signal, not the fix.
         */}
+      {/*
+        * AN INFO STRING IS LAID OVER THE CLAUSES, NOT SWAPPED FOR THEM: they
+        * stay, hidden, and hold the width, so the Motion switch after them
+        * does not jump each time the pointer crosses a control.
+        */}
       <span class="hint-tips">
-        <For each={props.clauses.slice(0, 3)}>{(c, i) => (
-          <>
-            <Show when={i() > 0}><span class="sep">–</span></Show>
-            <span class="hint-key">{c[0]}</span>
-            <span class="hint-val">{c[1]}</span>
-          </>
-        )}</For>
+        <span class="hint-clauses" classList={{ held: !!props.info }}>
+          <For each={props.clauses.slice(0, 3)}>{(c, i) => (
+            <>
+              <Show when={i() > 0}><span class="sep">–</span></Show>
+              <span class="hint-key">{c[0]}</span>
+              <span class="hint-val">{c[1]}</span>
+            </>
+          )}</For>
+        </span>
+        <Show when={props.info}>{(info) => (
+          <span class="hint-info">
+            <span class="hint-key">{info()[0]}</span>
+            <Show when={info()[1]}><span class="hint-val">{info()[1]}</span></Show>
+          </span>
+        )}</Show>
       </span>
       {/* Before the Signature, which keeps its margin-left: auto and so stays at
         * the right end of the bar whether or not this is here. */}
       <Show when={props.motion !== undefined}>
-        <Toggle label="Motion" value={props.motion} onChange={props.onMotion} />
+        <Toggle label="Motion" value={props.motion} onChange={props.onMotion}
+                info={props.motionInfo} />
       </Show>
-      <Signature />
+      <Signature info={props.signatureInfo} />
     </div>
   );
 }

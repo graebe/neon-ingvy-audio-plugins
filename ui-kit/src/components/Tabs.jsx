@@ -9,9 +9,12 @@
  *
  * A tablist to assistive technology: one tab in the tab order (the selected
  * one), the arrows move between them and select as they go.
+ *
+ * `infos`, parallel to `tabs`: what each one shows, for the hint bar.
  */
 import { For } from 'solid-js';
 import { tabMove } from '../lib/keys.js';
+import { infoAttrs } from '../lib/info.js';
 
 export function Tabs(props) {
   let strip;
@@ -30,6 +33,7 @@ export function Tabs(props) {
                 aria-selected={props.active === i()}
                 tabindex={props.active === i() ? 0 : -1}
                 classList={{ on: props.active === i() }}
+                {...infoAttrs(props.infos?.[i()])}
                 onClick={() => props.onSelect(i())}>
           <span class="tab-text t-hint">{t}</span>
         </button>
