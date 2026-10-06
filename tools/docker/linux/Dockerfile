@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # THE LINUX BUILD IMAGE: JUCE 9's Linux build dependencies, the pinned Rust
 # toolchain, and pluginval under Xvfb. scripts/build-linux.sh builds it and runs
@@ -12,12 +12,14 @@
 # EVERYTHING IN IT IS PINNED, so that rebuilding the image months from now
 # compiles with the same tools:
 #
+#   frontend    the Dockerfile syntax above, by digest: the bare
+#               docker/dockerfile:1 is whichever 1.x Docker Hub serves today
 #   the base    ubuntu:24.04, by its multi-platform index digest
-#   packages    ONE Ubuntu archive snapshot (snapshot.ubuntu.com). apt reads
-#               the archive as it was at UBUNTU_SNAPSHOT, so clang, CMake and
-#               each -dev package keep the version they had then. Pinning
-#               versions package by package breaks the day Ubuntu supersedes
-#               one; a snapshot does not move.
+#   packages    ONE Ubuntu archive snapshot (snapshot.ubuntu.com), every one
+#               of them. apt reads the archive as it was at UBUNTU_SNAPSHOT,
+#               so clang, CMake and each -dev package keep the version they
+#               had then. Pinning versions package by package breaks the day
+#               Ubuntu supersedes one; a snapshot does not move.
 #   Rust        rustup-init by version and SHA-256, the toolchain by version:
 #               the pins of modules/_shared/Dockerfile, which move together
 #               with these
@@ -27,25 +29,41 @@
 # To move the snapshot, set any later UTC timestamp (YYYYMMDDTHHMMSSZ) and
 # rebuild; the build log names the version of every package it installed.
 
-FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+ARG UBUNTU=ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+
+# THE ONE THING TAKEN FROM THE LIVE ARCHIVE, AND IT NEVER REACHES THE IMAGE.
+# The snapshot service is HTTPS-only, and apt needs root certificates to reach
+# it; the base image has none. This throw-away stage installs them from the
+# live archive -- whatever ca-certificates, openssl and libssl it serves that
+# day -- only so the step below can trust the snapshot's server while it
+# fetches the snapshot's own. Nothing of it is copied: the bundle is mounted
+# for that one step. TLS is not what makes the packages genuine either way:
+# apt checks every index against Ubuntu's archive key.
+FROM ${UBUNTU} AS bootstrap-ca
+ARG DEBIAN_FRONTEND=noninteractive
+RUN set -eu; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
+
+FROM ${UBUNTU}
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG UBUNTU_SNAPSHOT=20261001T000000Z
 
-# THE ONE PACKAGE THAT IS NOT FROM THE SNAPSHOT: the root certificates, without
-# which apt cannot reach the snapshot service at all (it is HTTPS-only).
-#
-# Then every source -- the release, its updates and its security pocket --
-# points at the snapshot itself. One URL serves both architectures: the
-# snapshot carries arm64 as well, which the live archive leaves to
-# ports.ubuntu.com. apt still checks every index against Ubuntu's archive key.
-RUN set -eu; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates; \
-    rm -rf /var/lib/apt/lists/*; \
+# Every source -- the release, its updates and its security pocket -- points
+# at the snapshot itself. One URL serves both architectures: the snapshot
+# carries arm64 as well, which the live archive leaves to ports.ubuntu.com.
+# Then the snapshot's ca-certificates, fetched with the bootstrap bundle and
+# trusted from here on.
+RUN --mount=type=bind,from=bootstrap-ca,source=/etc/ssl/certs/ca-certificates.crt,target=/tmp/bootstrap-ca.crt \
+    set -eu; \
     sed -i -E "s#^URIs: .*#URIs: https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}/#" \
         /etc/apt/sources.list.d/ubuntu.sources; \
-    grep -E '^(URIs|Suites):' /etc/apt/sources.list.d/ubuntu.sources
+    grep -E '^(URIs|Suites):' /etc/apt/sources.list.d/ubuntu.sources; \
+    apt-get -o Acquire::https::CaInfo=/tmp/bootstrap-ca.crt update; \
+    apt-get -o Acquire::https::CaInfo=/tmp/bootstrap-ca.crt install -y --no-install-recommends ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
 
 # ONE LLVM FOR BOTH CONTAINERS: clang compiles the Linux build here, and the
 # Windows image adds clang-cl and lld-link of the same release. Its bin

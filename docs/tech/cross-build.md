@@ -96,8 +96,9 @@ them is pinned:
 
 | What | Pin | Where |
 |---|---|---|
+| Dockerfile frontend | `docker/dockerfile` 1.27 by digest | both Dockerfiles |
 | Base | `ubuntu:24.04` by index digest | `tools/docker/linux/Dockerfile` |
-| Every Ubuntu package (clang, CMake, Ninja, the -dev packages, Xvfb, Wine) | one archive snapshot, `20261001T000000Z`, from `snapshot.ubuntu.com` | the same |
+| Every Ubuntu package (clang, CMake, Ninja, the -dev packages, Xvfb, Wine, the root certificates) | one archive snapshot, `20261001T000000Z`, from `snapshot.ubuntu.com` | the same |
 | LLVM | 20 (20.1.2 in that snapshot) | the same, `LLVM_MAJOR` |
 | Rust | rustup-init 1.29.1 by SHA-256, toolchain 1.98.1 | the same, and `modules/_shared/Dockerfile`, which move together |
 | pluginval | 1.0.4 by SHA-256, per platform | the Linux and Windows Dockerfiles; `scripts/validate-plugins.sh` for macOS |
@@ -106,8 +107,10 @@ them is pinned:
 
 A snapshot rather than per-package versions, because Ubuntu removes a version
 from its archive as soon as it supersedes it, and a snapshot never changes.
-The one package taken from the live archive is `ca-certificates`: apt needs it
-to reach the snapshot service at all.
+The snapshot service is HTTPS-only, and the base image has no root
+certificates to reach it with, so a throw-away stage takes `ca-certificates`
+from the live archive; its bundle is mounted for the one step that fetches the
+snapshot's own, and nothing of it lands in the image.
 
 ### Linux
 

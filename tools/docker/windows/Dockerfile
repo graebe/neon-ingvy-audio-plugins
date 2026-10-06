@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # check=skip=InvalidDefaultArgInFrom
 
 # THE WINDOWS CROSS-BUILD IMAGE: the Linux image (tools/docker/linux) plus
@@ -19,6 +19,7 @@
 # PINS, on top of the base image's (its Ubuntu snapshot, its LLVM_MAJOR, its
 # Rust):
 #
+#   frontend    the Dockerfile syntax above, by the Linux image's digest
 #   Wine        wine64 9.0, from the base image's Ubuntu snapshot
 #   pluginval   the Linux image's release, by SHA-256
 #   xwin        a release, by SHA-256
