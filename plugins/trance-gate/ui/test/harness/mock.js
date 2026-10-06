@@ -200,7 +200,7 @@ setInterval(() => { roll += 3; globalThis.SAMFD?.(66, 0, binary(scope(roll))); }
 window.__mockEarlyPush = 0;
 pushAll();
 
-const MSG_READY = 120, MSG_REQUEST_PATCH = 99, P_SLOT = 0, P_TIME_MODE = 4;
+const MSG_READY = 120, P_SLOT = 0, P_TIME_MODE = 4;
 
 /*
  * EVERY PARAMETER BUT SLOT BELONGS TO A SLOT, as in the plugin. Slot 1 holds
@@ -214,6 +214,38 @@ const RATES = ['1/1T', '1/2', '1/2T', '1/4', '1/4T', '1/8', '1/8T', '1/16', '1/1
                '1/32', '1/32T', '1/64', '1/128'];
 const slots = Array.from({ length: 8 }, (_, s) => (s === 0 ? VALUES : DEFAULTS).slice());
 let slot = 0;
+/*
+ * AND ITS OWN PATTERN: slot 1 is the session's (ties, an accent, a scrambled
+ * arrival order), the others the engine's default -- every other step on, full
+ * depth, position order. The `ui` readout is the current slot's, re-sent on a
+ * switch as the plugin's next idle tick would.
+ */
+const positional = (steps, n) => {
+  let on = 0, off = 0;
+  return Array.from({ length: n }, (_, i) => {
+    const lit = (parseInt(steps[steps.length - 1 - (i >> 2)] ?? '0', 16) >> (i & 3)) & 1;
+    return (lit ? ++on : ++off).toString(16).padStart(2, '0').toUpperCase();
+  }).join('');
+};
+const freshPattern = () => ({ steps: '5555', ties: '0', depths: '', orders: '' });
+const patterns = Array.from({ length: 8 }, (_, s) =>
+  (s === 0 ? { steps: '5555', ties: '0044', depths: DEPTHS, orders: ORDERS } : freshPattern()));
+const lengthOf = (s) => Math.round(slots[s][1] * 127) + 1;
+const uiState = (s) => {
+  const p = patterns[s], n = lengthOf(s);
+  const depths = (p.depths || '').padEnd(2 * n, 'F').slice(0, 2 * n);
+  const orders = p.orders ? p.orders.padEnd(2 * n, '0').slice(0, 2 * n) : positional(p.steps, n);
+  return `${p.steps}:${p.ties}:${n}:5.400:125.00:1:${Math.min(5, n - 1)}:${depths}:${orders}`;
+};
+/* A slot file's "pattern" field -- "steps:ties:length[:depths[:orders]]". */
+const parsePattern = (field) => {
+  const [steps, ties, , depths = '', orders = ''] = field.split(':');
+  return { steps, ties, depths, orders };
+};
+const patternField = (s) => {
+  const p = patterns[s];
+  return `${p.steps}:${p.ties}:${lengthOf(s)}:${p.depths}${p.orders ? `:${p.orders}` : ''}`;
+};
 /* Each parameter's text from its normalised value, as Params.cpp formats it. */
 const displayOf = (i, v, all) => {
   const pct = (x) => `${(x * 100).toFixed(2)} %`;
@@ -242,8 +274,16 @@ const say = (i, d) => globalThis.SAMFD?.(i, d.length, b64(d));
  * file into the current slot, a bank into all eight, after which the host's
  * values follow the current slot (recall). An export answers with the status
  * the plugin sends once the file is written.
+ *
+ * THE CLIPBOARD IS THE PLUGIN'S (ni/Clipboard.h): window.__clipboard stands in
+ * for NSPasteboard, which a test may read or fill. Copy writes the current slot
+ * as a slot file's text; Paste reads it back as the engine would -- a slot into
+ * the current slot, a bank into all eight -- and refuses anything else with the
+ * engine's words. (The third kind, a whole patch, is the engine's to read and
+ * is tested there: tg-core's paste.rs, tests/cpp/tg_state.cpp.)
  */
-const MSG_FILE_STATUS = 68, MSG_EXPORT = 107, MSG_IMPORT = 108;
+const MSG_STATUS = 68, MSG_EXPORT = 107, MSG_IMPORT = 108, MSG_COPY = 109, MSG_PASTE = 110;
+window.__clipboard = '';
 const soundToValues = (sound, pattern, into) => {
   const f = sound.split(':');
   const length = parseInt(pattern.split(':')[2], 10);
@@ -255,21 +295,54 @@ const soundToValues = (sound, pattern, into) => {
   [v[13], v[14], v[3], v[4], v[5]] = [+f[8], +f[9], +f[10], +f[11], +f[12] / 2];
   return v;
 };
-const status = (words) => say(MSG_FILE_STATUS, words);
+const valuesToSound = (v) => [
+  RATES[Math.round(v[2] * 12)], (v[8] * 200).toFixed(2), (v[9] * 200).toFixed(2), v[10].toFixed(3),
+  (v[11] * 200).toFixed(2), v[7].toFixed(3), v[6].toFixed(3), v[12].toFixed(4),
+  Math.round(v[13]), Math.round(v[14]), Math.round(v[3]), Math.round(v[4]), Math.round(v[5] * 2),
+].join(':');
+const status = (words) => say(MSG_STATUS, words);
+/* A slot or bank file's text into the slots, as tg-core's import applies it;
+ * the kind it was, or null for text that is neither. */
+const apply = (text) => {
+  let file;
+  try { file = JSON.parse(text); } catch { return null; }
+  if (file?.format === 'ni-trance-gate-bank') {
+    for (let s = 0; s < 8; s++) {
+      slots[s] = soundToValues(file[`sound${s + 1}`], file[`pattern${s + 1}`], slots[s]);
+      patterns[s] = parsePattern(file[`pattern${s + 1}`]);
+    }
+    return 'bank';
+  }
+  if (file?.format === 'ni-trance-gate-slot') {
+    slots[slot] = soundToValues(file.sound, file.pattern, slots[slot]);
+    patterns[slot] = parsePattern(file.pattern);
+    return 'slot';
+  }
+  return null;
+};
 const importFixture = async () => {
   const name = window.__importFixture === 'bank' ? 'bank.nitgbank' : 'slot.nitgslot';
-  const file = JSON.parse(await (await fetch(`fixtures/${name}`)).text());
-  if (file.format === 'ni-trance-gate-bank') {
-    for (let s = 0; s < 8; s++) slots[s] = soundToValues(file[`sound${s + 1}`], file[`pattern${s + 1}`], slots[s]);
-    status(`ok:Imported all 8 slots from ${name}.`);
-  } else {
-    slots[slot] = soundToValues(file.sound, file.pattern, slots[slot]);
-    status(`ok:Imported ${name} into slot ${slot + 1}.`);
-  }
+  const kind = apply(await (await fetch(`fixtures/${name}`)).text());
+  status(kind === 'bank' ? `ok:Imported all 8 slots from ${name}.`
+                         : `ok:Imported ${name} into slot ${slot + 1}.`);
+  recall(slot);
+};
+const copySlot = () => {
+  window.__clipboard = `{\n  "format": "ni-trance-gate-slot",\n  "version": 1,\n  "sound": "${
+    valuesToSound(slots[slot])}",\n  "pattern": "${patternField(slot)}"\n}\n`;
+  status(`ok:Copied slot ${slot + 1}.`);
+};
+const pasteSlot = () => {
+  const text = window.__clipboard ?? '';
+  if (!text.trim()) return status('error:Failed to paste: The clipboard is empty.');
+  const kind = apply(text);
+  if (!kind) return status("error:Failed to paste: The clipboard doesn't hold a Trance Gate slot.");
+  status(kind === 'bank' ? 'ok:Pasted all 8 slots.' : `ok:Pasted into slot ${slot + 1}.`);
   recall(slot);
 };
 const recall = (to) => {
   slot = to;
+  globalThis.SAMFD?.(64, 0, b64(uiState(to)));
   say(P_SLOT, displayOf(P_SLOT, to / 7, slots[to]));
   slots[to].forEach((v, i) => {
     if (i === P_SLOT) return;
@@ -300,14 +373,20 @@ window.IPlugSendMsg = (m) => {
     importFixture();
     return;
   }
+  if (m?.msg === 'SAMFUI' && m.msgTag === MSG_COPY) {
+    copySlot();
+    return;
+  }
+  if (m?.msg === 'SAMFUI' && m.msgTag === MSG_PASTE) {
+    pasteSlot();
+    return;
+  }
   if (m?.msg === 'SPVFUI' && m.paramIdx === P_SLOT) {
     const to = Math.round(m.value * 7);
     if (to !== slot) recall(to);
     return;
   }
   if (m?.msg === 'SPVFUI' && m.paramIdx > P_SLOT) slots[slot][m.paramIdx] = m.value;
-  if (m?.msg === 'SAMFUI' && m.msgTag === MSG_REQUEST_PATCH)
-    globalThis.SAMFD?.(67, 0, b64('tg1:slot=0:len=16:steps=5555'));
   /* Env Time switched: the stage readouts follow it, as OnEditorIdle re-sends
    * them -- in ms of the gate's width, or in percent. That is the plugin's
    * DISPLAY text, not a value echo, so the rule below still holds. */

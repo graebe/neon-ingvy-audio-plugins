@@ -110,6 +110,29 @@ struct Gate
   ~Gate() { tg_shell_destroy(s); }
 };
 
+/* The system's clipboard, stood in for: what the plugin's Copy and Paste see
+ * of NSPasteboard, without touching the clipboard of whoever runs the tests. */
+struct FakeClipboard final : ni::Clipboard
+{
+  std::string text;
+  bool holdsText = true;
+  bool writable = true;
+  explicit FakeClipboard(std::string t = {}) : text(std::move(t)) {}
+  bool Read(std::string& out) override
+  {
+    if (!holdsText) return false;
+    out = text;
+    return true;
+  }
+  bool Write(const std::string& t) override
+  {
+    if (!writable) return false;
+    text = t;
+    holdsText = true;
+    return true;
+  }
+};
+
 } // namespace
 
 /* A slot's whole sound, as the host would hold it: one value per parameter
@@ -165,7 +188,9 @@ TEST_CASE("a paste is saved like any other edit")
 {
   Gate a, b;
   edit(a.s);
-  REQUIRE(Post(b.s, Edit::Paste, read(a.s, "state")));
+  FakeClipboard clip(read(a.s, "state"));
+  std::string words;
+  REQUIRE(Paste(b.s, 1, clip, words));
   IByteChunk chunk;
   REQUIRE(Save(b.s, chunk, put_params, default_value));
   Gate c;
@@ -249,7 +274,6 @@ TEST_CASE("a malformed edit is refused rather than sent")
 {
   Gate a;
   CHECK_FALSE(Post(a.s, Edit::Step, "no colon"));
-  CHECK_FALSE(Post(a.s, Edit::Paste, ""));
   CHECK_FALSE(Post(nullptr, Edit::Cursor, "1"));
 }
 
@@ -471,7 +495,12 @@ TEST_CASE("a paste moves the host to the pasted slot's values")
   a.block();
   for (auto [i, v] : sound(0)) a.automate(i, v);
   b.block();
-  REQUIRE(Post(b.gate.s, Edit::Paste, read(a.gate.s, "state")));
+  /* A whole patch on the clipboard: what Copy wrote before slots, and the
+   * Move's patch. It still replaces everything. */
+  FakeClipboard clip(read(a.gate.s, "state"));
+  std::string words;
+  REQUIRE(Paste(b.gate.s, 1, clip, words));
+  CHECK(words == "Pasted a whole patch into all 8 slots.");
   b.block();
   CHECK(b.follow());
   for (int i = 0; i < kNumParams; i++)
@@ -590,6 +619,112 @@ TEST_CASE("a file that is not a slot file is refused with a reason and changes n
   CHECK_FALSE(ExportFile(b.gate.s, [&](int i) { return b.value(i); }, FileKind::Slot, 1,
                          "/nonexistent-dir/x.nitgslot", words));
   CHECK(words == "Failed to write x.nitgslot.");
+}
+
+/* ------------------------------------------------------------ copy and paste */
+
+TEST_CASE("copy slot 1, switch to slot 2, paste: slot 2 sounds like slot 1, and slot 1 is as it was")
+{
+  Instance a;
+  a.block();
+  for (auto [i, v] : sound(0)) a.automate(i, v);
+  FakeClipboard clip;
+  std::string words;
+  REQUIRE(CopySlot(a.gate.s, [&](int i) { return a.value(i); }, 1, clip, words));
+  CHECK(words == "Copied slot 1.");
+  CHECK(clip.text.find("\"format\": \"ni-trance-gate-slot\"") != std::string::npos);
+  const std::string one = clip.text;
+
+  a.automate(kSlot, 2.0);
+  CHECK(a.value(kAmount) == 100.0); /* slot 2 is fresh */
+  REQUIRE(Paste(a.gate.s, 2, clip, words));
+  CHECK(words == "Pasted into slot 2.");
+  a.block();
+  CHECK(a.follow());
+  for (const auto& [i, v] : sound(0))
+  {
+    const int idx = i;
+    CHECK_MESSAGE(tg::params::SameInEngine(i, a.value(i), tg::params::ToEngine(i, v)), idx);
+  }
+
+  /* Slot 2 copies back as slot 1 did, byte for byte. */
+  FakeClipboard again;
+  REQUIRE(CopySlot(a.gate.s, [&](int i) { return a.value(i); }, 2, again, words));
+  CHECK(again.text == one);
+
+  /* Slot 1 is untouched, and so is every other slot. */
+  a.automate(kSlot, 1.0);
+  for (const auto& [i, v] : sound(0))
+  {
+    const int idx = i;
+    CHECK_MESSAGE(tg::params::SameInEngine(i, a.value(i), tg::params::ToEngine(i, v)), idx);
+  }
+  a.automate(kSlot, 3.0);
+  CHECK(a.value(kAmount) == 100.0);
+}
+
+TEST_CASE("a bank on the clipboard replaces all eight slots")
+{
+  Instance a;
+  a.block();
+  a.automate(kSlot, 4.0);
+  for (auto [i, v] : sound(1)) a.automate(i, v);
+  TempFile file("clip.nitgbank");
+  std::string words;
+  REQUIRE(ExportFile(a.gate.s, [&](int i) { return a.value(i); }, FileKind::Bank, 4, file.path, words));
+  Instance b;
+  b.block();
+  FakeClipboard clip(file.text());
+  REQUIRE(Paste(b.gate.s, 1, clip, words));
+  CHECK(words == "Pasted all 8 slots.");
+  b.block();
+  b.follow();
+  b.automate(kSlot, 4.0);
+  for (const auto& [i, v] : sound(1))
+  {
+    const int idx = i;
+    CHECK_MESSAGE(tg::params::SameInEngine(i, b.value(i), tg::params::ToEngine(i, v)), idx);
+  }
+}
+
+TEST_CASE("what is not a Trance Gate slot is refused with a reason and changes nothing")
+{
+  Instance b;
+  b.block();
+  const std::string before = read(b.gate.s, "state");
+  std::string words;
+
+  FakeClipboard garbage("https://example.com/not-a-slot");
+  CHECK_FALSE(Paste(b.gate.s, 1, garbage, words));
+  CHECK(words == "Failed to paste: The clipboard doesn't hold a Trance Gate slot.");
+
+  /* A NUL inside: refused whole, not cut short into a good patch before it. */
+  FakeClipboard nul(std::string("{\"sv\":7}") + '\0' + "trailing");
+  CHECK_FALSE(Paste(b.gate.s, 1, nul, words));
+  CHECK(words == "Failed to paste: The clipboard doesn't hold a Trance Gate slot.");
+
+  FakeClipboard huge(std::string(1 << 20, ' ') + read(b.gate.s, "state"));
+  CHECK_FALSE(Paste(b.gate.s, 1, huge, words));
+  CHECK(words == "Failed to paste: The clipboard doesn't hold a Trance Gate slot.");
+
+  FakeClipboard nothing;
+  nothing.holdsText = false; /* an image, say */
+  CHECK_FALSE(Paste(b.gate.s, 1, nothing, words));
+  CHECK(words == "Failed to paste: The clipboard is empty.");
+
+  CHECK_FALSE(Paste(nullptr, 1, garbage, words));
+  CHECK(words == "Failed to paste: the plugin is not ready.");
+
+  b.block();
+  CHECK_FALSE(b.follow());
+  CHECK(read(b.gate.s, "state") == before);
+
+  FakeClipboard locked;
+  locked.writable = false;
+  CHECK_FALSE(CopySlot(b.gate.s, [&](int i) { return b.value(i); }, 1, locked, words));
+  CHECK(words == "Failed to copy: the clipboard could not be written.");
+  CHECK_FALSE(CopySlot(nullptr, [](int) { return 0.0; }, 1, locked, words));
+  CHECK(words == "Failed to copy: the plugin is not ready.");
 }
 
 TEST_CASE("an empty chunk is refused")

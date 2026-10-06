@@ -150,10 +150,10 @@ fn digit(buf: &mut [u8; 2], n: usize) -> &str {
 
 /// Room for more fields than any file has -- format, version and two per
 /// slot -- so a text with a few extra is read far enough to say what it is.
-const MAX_FIELDS: usize = 40;
+pub(crate) const MAX_FIELDS: usize = 40;
 
 #[derive(Clone, Copy)]
-enum Value<'a> {
+pub(crate) enum Value<'a> {
     Str(&'a str),
     Num(&'a str),
 }
@@ -164,7 +164,7 @@ enum Value<'a> {
  * escapes (nothing in this format needs one) or a run of digits. No nesting,
  * no trailing comma, no duplicate keys.
  */
-fn fields<'a>(text: &'a str, out: &mut [(&'a str, Value<'a>); MAX_FIELDS]) -> Result<usize, Error> {
+pub(crate) fn fields<'a>(text: &'a str, out: &mut [(&'a str, Value<'a>); MAX_FIELDS]) -> Result<usize, Error> {
     let b = text.as_bytes();
     let mut i = 0;
     let ws = |i: &mut usize| {
@@ -252,7 +252,7 @@ fn is_hex(s: &str) -> bool {
     s.bytes().all(|c| c.is_ascii_hexdigit())
 }
 
-fn is_number(s: &str) -> bool {
+pub(crate) fn is_number(s: &str) -> bool {
     let t = s.strip_prefix('-').unwrap_or(s);
     let mut dots = 0;
     !t.is_empty()
@@ -268,7 +268,7 @@ fn is_number(s: &str) -> bool {
 
 /// A sound field this build could have written: thirteen parts, the rate a
 /// known label, seven numbers, then five whole-number switches.
-fn sound_ok(field: &str) -> bool {
+pub(crate) fn sound_ok(field: &str) -> bool {
     let mut n = 0;
     for (i, part) in field.split(':').enumerate() {
         let ok = match i {
@@ -289,7 +289,7 @@ fn sound_ok(field: &str) -> bool {
 /// A pattern field this build could have written: two masks of up to 128
 /// steps, a length of 1..128, then optionally the levels and the order, two
 /// hex digits a step.
-fn pattern_ok(field: &str) -> bool {
+pub(crate) fn pattern_ok(field: &str) -> bool {
     let mut n = 0;
     for (i, part) in field.split(':').enumerate() {
         let ok = match i {
@@ -407,9 +407,18 @@ impl Instance {
      * take the gain across.
      */
     pub fn import(&mut self, text: &str) -> Result<Kind, Error> {
+        self.import_into(self.slot, text)
+    }
+
+    /// As [`Instance::import`], with a slot file going into `slot` (0-based)
+    /// rather than the current one -- for a shell whose host may have moved
+    /// the Slot in the same block, after the import was queued. A slot out of
+    /// range is the current one.
+    pub fn import_into(&mut self, slot: usize, text: &str) -> Result<Kind, Error> {
         let (kind, slots) = read(text)?;
         let from_curve = self.snd().curve;
-        let targets = if kind == Kind::Slot { self.slot..self.slot + 1 } else { 0..SLOTS };
+        let slot = if slot < SLOTS { slot } else { self.slot };
+        let targets = if kind == Kind::Slot { slot..slot + 1 } else { 0..SLOTS };
         for (i, s) in targets.enumerate() {
             let t = slots[i];
             /* `sound_ok` passed, so this parses. */

@@ -11,11 +11,11 @@ import { SHELL_MSG } from '@ultraviolet/ui/shell';
  * parameter's display string, tagged with its index. */
 export const MSG = {
   ...SHELL_MSG,
-  uiState: 64, params: 65, scope: 66, patch: 67,
-  /* "ok:<words>" | "error:<words>" -- how a slot file's export or import
-   * went, for the hint bar. */
-  fileStatus: 68,
-  setStep: 96, setDepth: 97, setCursor: 98, requestPatch: 99,
+  uiState: 64, params: 65, scope: 66,
+  /* "ok:<words>" | "error:<words>" -- how an export, an import, a copy or a
+   * paste went, for the hint bar. */
+  status: 68,
+  setStep: 96, setDepth: 97, setCursor: 98,
   /* "<index>:<rank>" -- a step's place in the fade's arrival order. Per-step
    * state, so a message and not a parameter, exactly like setDepth. */
   setOrder: 103,
@@ -33,11 +33,18 @@ export const MSG = {
    * byte a sample each -- the envelope plot, rendered by the engine. */
   envelope: 106,
   /* "slot" | "bank": save the current slot, or all eight, to a file. The
-   * plugin shows the save panel; the outcome comes back as fileStatus. */
+   * plugin shows the save panel; the outcome comes back as status. */
   exportFile: 107,
   /* Open a slot or bank file and import it: a slot file replaces the current
    * slot, a bank all eight. The plugin shows the panel. */
   importFile: 108,
+  /* Put the current slot on the clipboard. THE PLUGIN WRITES IT: a WebView in
+   * a host can neither read the clipboard nor receive ⌘V, so the page never
+   * touches it. The outcome comes back as status. */
+  copySlot: 109,
+  /* Paste the clipboard: a slot into the current slot, a bank into all eight,
+   * a whole patch over everything -- the engine decides. Answered as status. */
+  pasteSlot: 110,
 };
 
 /* EParams in Params.h, which is the engine's own Param order -- so the host

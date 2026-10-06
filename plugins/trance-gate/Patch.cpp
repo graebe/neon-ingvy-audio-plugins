@@ -7,6 +7,7 @@
 #include "ni/Wire.h"
 #include "shell_state.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <vector>
@@ -46,11 +47,6 @@ bool Post(tg_shell_t* gate, Edit edit, const std::string& arg)
     /* The engine does not touch the playhead, so this is safe mid-bar. */
     case Edit::Randomize:
       return post(gate, {"randomize", arg.c_str()});
-
-    /* Not a plain edit: the pasted patch's current slot is what the host's
-     * parameters must show afterwards, which the shell arranges. */
-    case Edit::Paste:
-      return !arg.empty() && tg_shell_paste(gate, arg.c_str()) == 1;
   }
   return false;
 }
@@ -191,6 +187,49 @@ bool ImportFile(tg_shell_t* gate, int slot, const std::string& path, std::string
   status = kind == 1 ? "Imported " + name + " into slot " + std::to_string(slot) + "."
                      : "Imported all 8 slots from " + name + ".";
   return true;
+}
+
+bool CopySlot(tg_shell_t* gate, const HostValue& value, int slot, ni::Clipboard& clipboard,
+              std::string& status)
+{
+  std::vector<char> text(TG_SLOTFILE_MAX, '\0');
+  double values[TG_P_COUNT];
+  Values(value, values);
+  const int n = gate ? tg_shell_export(gate, values, TG_P_COUNT, 0, text.data(), int(text.size())) : -1;
+  if (n <= 0)
+  {
+    status = "Failed to copy: the plugin is not ready.";
+    return false;
+  }
+  if (!clipboard.Write(std::string(text.data(), size_t(n))))
+  {
+    status = "Failed to copy: the clipboard could not be written.";
+    return false;
+  }
+  status = "Copied slot " + std::to_string(slot) + ".";
+  return true;
+}
+
+bool Paste(tg_shell_t* gate, int slot, ni::Clipboard& clipboard, std::string& status)
+{
+  /* No text on the clipboard is an empty text, which the engine words. */
+  std::string text;
+  if (!clipboard.Read(text))
+    text.clear();
+  /* Past the largest text the engine reads, the length only has to stay past
+   * it: the engine refuses it whole, with its own words. */
+  const int len = int(std::min<size_t>(text.size(), TG_SLOTFILE_MAX + 1));
+  char err[256] = {};
+  const int holds = gate ? tg_shell_paste(gate, slot - 1, text.data(), len, err, int(sizeof err)) : 0;
+  switch (holds)
+  {
+    case TG_PASTE_SLOT: status = "Pasted into slot " + std::to_string(slot) + "."; return true;
+    case TG_PASTE_BANK: status = "Pasted all 8 slots."; return true;
+    case TG_PASTE_PATCH: status = "Pasted a whole patch into all 8 slots."; return true;
+    default:
+      status = std::string("Failed to paste: ") + (err[0] ? err : "the plugin is not ready.");
+      return false;
+  }
 }
 
 bool Follow(tg_shell_t* gate, const HostValue& value, const SetHost& set)

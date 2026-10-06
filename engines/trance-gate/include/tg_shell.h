@@ -106,9 +106,26 @@ int  tg_shell_take_params(tg_shell_t *s, double *out, int n);
  * all eight, and these values are it. Returns 1 when queued.
  */
 int  tg_shell_load(tg_shell_t *s, const char *blob, const double *values, int n);
-/* The editor's paste of a whole patch: the host then follows the engine's
- * current slot (tg_shell_take_params). Returns 1 when queued. */
-int  tg_shell_paste(tg_shell_t *s, const char *blob);
+/*
+ * PASTE: the clipboard's `len` bytes of text, classified whole by the engine (tg-core's
+ * paste.rs) and queued only when good, after which the host follows the
+ * current slot (tg_shell_take_params):
+ *
+ *   TG_PASTE_SLOT   a slot file's text      replaces the current slot
+ *   TG_PASTE_BANK   a bank file's text      replaces all eight
+ *   TG_PASTE_PATCH  a whole state blob      replaces the patch -- what Copy
+ *                                           wrote before slots, and the Move's
+ *
+ * Anything else returns 0 with the reason in words in `err` (may be NULL), and
+ * nothing changes. A slot goes into `slot` (0-based), the host's current slot
+ * as the person saw it: the host may move its Slot in the very block the paste
+ * lands in, after it. Out of range is the engine's current slot. Copy is
+ * tg_shell_export with `all` 0.
+ */
+#define TG_PASTE_SLOT  1
+#define TG_PASTE_BANK  2
+#define TG_PASTE_PATCH 3
+int  tg_shell_paste(tg_shell_t *s, int slot, const char *text, int len, char *err, int err_len);
 
 /* ---- the audio thread ---- */
 
