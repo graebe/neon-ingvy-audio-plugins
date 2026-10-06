@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "The sc_core_* C ABI over the NI Side-Chain engine"
+publish.workspace = true
 
 [lib]
 name = "sc_capi"

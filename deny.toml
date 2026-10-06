@@ -1,0 +1,61 @@
+# What a Rust crate must be before anything this repository ships may link it:
+# under a licence GPL-3.0-or-later can take in, from crates.io, and -- when it
+# arrives twice, in two versions -- noticed.
+#
+#   cargo deny check licenses bans sources
+#
+# ctest runs exactly that as `cargo_deny`, in the quick tier
+# (tests/CMakeLists.txt). docs/adr/0001-gpl-3.0-or-later.md is the policy, and
+# docs/tech/testing.md says which cargo-deny it is written against.
+#
+# ADVISORIES ARE NOT PART OF THAT RUN, deliberately. They come from a database
+# fetched at check time, so the verdict would change without a commit -- the
+# one property a quick tier must not have. `cargo deny check advisories` is
+# the separate question, asked on demand.
+
+# EVERY PLATFORM'S DEPENDENCIES ARE CHECKED, not only those of the targets a
+# product ships for. Narrowing by target was tried and does not hold:
+# cargo-deny and cargo-about decide per dependency edge whether it is live on
+# "any of the targets", which lets in a crate gated to a combination no single
+# target has, while `cargo metadata` decides per target. With no target list,
+# the gate, the notices (about.toml) and their check (check-licenses.mjs) all
+# judge the same, whole graph: a notice too many for a platform nothing is
+# built for, never one too few.
+
+[licenses]
+# THE ALLOWLIST. Anything not on it is refused -- GPL-2.0-only included, which
+# cannot be combined with GPLv3, and MPL-2.0-no-copyleft-exception, which opts
+# out of the clause that lets MPL-2.0 code be combined with it. about.toml
+# accepts the same list, and scripts/check-licenses.mjs holds the two equal.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "Unlicense",
+    "GPL-3.0-or-later",
+    "GPL-3.0-only",
+]
+# The list is the policy, not an inventory of what is linked today, so an
+# entry no crate uses yet is not worth a warning.
+unused-allowed-license = "allow"
+
+[bans]
+# The same crate in two versions is two copies of it in the binary, and usually
+# a sign that one dependency is behind. Shown, never fatal: the fix is upstream,
+# and the wait for it is routine.
+multiple-versions = "warn"
+
+[sources]
+# crates.io only. A git dependency, or a crate from another registry, is code
+# that no published, immutable version pins.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

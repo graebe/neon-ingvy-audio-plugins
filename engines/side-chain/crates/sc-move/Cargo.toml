@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "The Schwung audio_fx v2 shell for NI Side-Chain"
+publish.workspace = true
 
 [lib]
 name = "sc_move"

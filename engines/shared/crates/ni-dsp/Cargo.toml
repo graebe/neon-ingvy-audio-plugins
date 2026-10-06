@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "The DSP and C-compatibility pieces the Neon Ingvy engines share"
+publish.workspace = true
 
 # AN RLIB, for ground-capi's reason: one static library per plugin. Each
 # product's crates absorb it into that product's single archive.

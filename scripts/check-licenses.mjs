@@ -22,8 +22,14 @@
  *              the notice files scripts/vite-licenses.mjs writes
  *   font       one row per plugin bundle that carries the font, and OFL.txt
  *              beside every copy of it
- *   engines    exactly the crates in Cargo.lock -- and Cargo.lock holds no
- *              crate from a registry, or that crate needs its own row
+ *   engines    exactly the workspace's own crates, the path packages in
+ *              Cargo.lock
+ *   crates     exactly the crates from crates.io that ship, at their versions:
+ *              cargo-about writes the section (scripts/gen-rust-notices.sh),
+ *              and this recomputes what ships from `cargo metadata` and holds
+ *              the two to each other -- and holds deny.toml's allowlist and
+ *              targets to about.toml's, so the gate and the notices judge one
+ *              graph by one rule
  *   test-only  doctest and Schwung's two module-API headers, while they are
  *              vendored
  *
@@ -32,8 +38,9 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { ROOT, listedBySection, section } from './licenses-lib.mjs';
+import { ROOT, listedBySection, rowsOf, section } from './licenses-lib.mjs';
 
 const problems = [];
 const fail = (msg) => problems.push(msg);
@@ -142,22 +149,81 @@ try {
 } catch (e) { fail(e.message); }
 
 /* ------------------------------------------------------------ engines */
+/* The workspace's own crates: every package in Cargo.lock without a source. A
+ * crate from a registry is the next block's. */
 try {
   const engines = section(sections, 'The engines');
-  const lock = read('Cargo.lock');
   const shipped = new Set();
-  for (const pkg of lock.split('[[package]]').slice(1)) {
-    const name = /^name = "([^"]+)"/m.exec(pkg)?.[1];
-    if (/^source = /m.test(pkg)) {
-      /* A registry or git crate. It would be linked into a product, so it
-       * needs a row somewhere -- and today there are none. */
-      if (![...sections.values()].some((s) => s.has(name)))
-        fail(`Cargo.lock: \`${name}\` comes from a registry and THIRD_PARTY_LICENSES.md does not list it`);
-    } else {
-      shipped.add(name);
-    }
-  }
+  for (const pkg of read('Cargo.lock').split('[[package]]').slice(1))
+    if (!/^source = /m.test(pkg)) shipped.add(/^name = "([^"]+)"/m.exec(pkg)?.[1]);
   sameSet('engine crates', new Set(engines.keys()), shipped);
+} catch (e) { fail(e.message); }
+
+/* ------------------------------------------------------------ crates */
+/* A string array from one of the two licence-tool configs: `key = [...]` in
+ * [table], or at the top when table is ''. Enough TOML for deny.toml and
+ * about.toml, which this repository writes -- not a TOML parser. */
+function tomlArray(file, table, key) {
+  const lines = read(file).split('\n');
+  let current = '';
+  for (let i = 0; i < lines.length; i++) {
+    const header = /^\s*\[([^\]]+)\]\s*(#.*)?$/.exec(lines[i]);
+    if (header) { current = header[1].trim(); continue; }
+    if (current !== table) continue;
+    const start = new RegExp(`^\\s*${key}\\s*=\\s*\\[(.*)$`).exec(lines[i]);
+    if (!start) continue;
+    let body = start[1];
+    while (!body.includes(']') && i + 1 < lines.length) body += `\n${lines[++i]}`;
+    return [...body.split(']')[0].matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+  }
+  throw new Error(`${file} has no ${table ? `[${table}] ` : ''}${key} = [...]`);
+}
+
+/* WHAT SHIPS, BY about.toml's RULE, COMPUTED WITHOUT cargo-about: the crates
+ * from a registry that the workspace reaches through normal dependencies, on
+ * any platform -- never through a build or a dev one, which run on the build
+ * machine. deny.toml says why no target narrows it. What this catches is a
+ * Cargo.lock that moved without the notices being regenerated. */
+function shippedCrates() {
+  let meta;
+  try {
+    meta = JSON.parse(execFileSync(process.env.CARGO ?? 'cargo',
+      ['metadata', '--format-version', '1', '--locked', '--manifest-path', join(ROOT, 'Cargo.toml')],
+      { encoding: 'utf8', maxBuffer: 256 << 20, stdio: ['ignore', 'pipe', 'pipe'] }));
+  } catch (e) {
+    throw new Error(e.code === 'ENOENT'
+      ? 'cargo is not on PATH -- `. scripts/rust-env.sh` finds it'
+      : `cargo metadata failed: ${e.stderr || e.message}`);
+  }
+  const packages = new Map(meta.packages.map((p) => [p.id, p]));
+  const deps = new Map(meta.resolve.nodes.map((n) => [n.id, n.deps]));
+  const seen = new Set();
+  const todo = [...meta.workspace_members];
+  while (todo.length) {
+    const id = todo.pop();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const d of deps.get(id) ?? [])
+      if (d.dep_kinds.some((k) => k.kind === null)) todo.push(d.pkg);
+  }
+  return new Set([...seen].map((id) => packages.get(id))
+    .filter((p) => p.source).map((p) => `${p.name} ${p.version}`));
+}
+
+try {
+  const allow = tomlArray('deny.toml', 'licenses', 'allow');
+  const accepted = tomlArray('about.toml', '', 'accepted');
+  if (allow.length !== accepted.length || !allow.every((l) => accepted.includes(l)))
+    fail(`deny.toml allows ${JSON.stringify(allow)} and about.toml accepts ` +
+         `${JSON.stringify(accepted)} -- one allowlist, written twice, must say one thing`);
+
+  const listed = new Set(rowsOf('Rust crates').map(([name, version]) =>
+    `${name.replace(/`/g, '')} ${version}`));
+  const shipped = shippedCrates();
+  for (const c of shipped)
+    if (!listed.has(c)) fail(`crates: \`${c}\` ships and is not listed -- run scripts/gen-rust-notices.sh`);
+  for (const c of listed)
+    if (!shipped.has(c)) fail(`crates: \`${c}\` is listed and does not ship -- run scripts/gen-rust-notices.sh`);
 } catch (e) { fail(e.message); }
 
 /* ------------------------------------------------------------ test-only */

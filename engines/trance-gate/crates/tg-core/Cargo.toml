@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "Trance Gate DSP engine: a tempo-locked step gate with a per-step ADSR"
+publish.workspace = true
 
 [lib]
 crate-type = ["rlib"]

@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "NI Side-Chain DSP engine: a cycle-, MIDI- or sidechain-triggered ducker"
+publish.workspace = true
 
 [lib]
 crate-type = ["rlib"]

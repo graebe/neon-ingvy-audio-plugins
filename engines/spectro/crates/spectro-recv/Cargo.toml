@@ -4,6 +4,7 @@ version = "2026.10.6+5"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Many sources into one picture: the Spectrogram's listen-in receiver."
+publish.workspace = true
 
 # spectro-core is this engine's own; bus-core is the HOUSE TRANSPORT, which the
 # workspace names as the one dependency a product crate may take outside its own

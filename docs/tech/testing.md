@@ -20,14 +20,16 @@ yet, so nothing is ever installed into `~/Library/Audio/Plug-Ins`.
 `cmake --build build --target ni_tests` builds the test programs and the engine
 archives they link, and no plugin bundle; then `ctest -L quick` runs:
 
-- every Rust crate's unit tests (`cargo test`, crate by crate),
+- every Rust crate's unit tests (`cargo test`, crate by crate), and
+  `cargo_deny`, the licence gate over their dependency graph (below),
 - the C tests against each engine's hand-written ABI, and the oracles that pin
   the editors' maths to the engine's measured output,
 - the doctest wire, state and parameter tests (`tests/cpp`),
 - all of the kit's and the editors' JavaScript (`ui_unit`, the same files
   `npm test` runs),
 - the lint-like checks: `versions`, `release`, `licenses` (the tree, not the
-  bundles), `ui_tokens`, `editor_tags`, `editor_timing` (no editor code may hang off
+  bundles), `spdx` (every source file opens with its licence and copyright),
+  `ui_tokens`, `editor_tags`, `editor_timing` (no editor code may hang off
   `requestAnimationFrame` or page visibility), `ground_shells`.
 
 No bundle, no host, no browser, no timing. Warm, it takes a few seconds.
@@ -100,6 +102,48 @@ watchdog turns a hang into a failure naming the stuck thread; a crash fails
 as a crash. Three seconds a plugin by default; `-DNI_AU_STRESS_SECONDS=60`
 makes it a soak, and `build/tests/au_stress <bundle> [seconds] [threads]` runs
 one by hand — against any bundle, an installed one included, read-only.
+
+## Licences
+
+The project is GPL-3.0-or-later
+([docs/adr/0001-gpl-3.0-or-later.md](../adr/0001-gpl-3.0-or-later.md)), and
+three quick-tier tests hold it to that:
+
+| test | what it holds |
+|---|---|
+| `spdx` | every source file this repository owns opens with `SPDX-License-Identifier: GPL-3.0-or-later` and `Copyright (C) 2026 Torben Gräber`, in its own comment syntax. `tests/spdx.test.mjs` lists what is excluded and why: external code, the design mirrors, the web editors this refactor deletes, Schwung's vendored headers |
+| `cargo_deny` | `cargo deny check licenses bans sources`: every crate in the graph is under a licence on `deny.toml`'s allowlist and comes from crates.io, and a crate in two versions is shown |
+| `licenses` | `LICENSE` is the unmodified GPLv3, `THIRD_PARTY_LICENSES.md` lists exactly what ships, and the Rust crates' section of it lists exactly the crates and versions `cargo metadata` says ship |
+
+The Rust crates' section of `THIRD_PARTY_LICENSES.md` is generated, never
+written by hand:
+
+```sh
+scripts/gen-rust-notices.sh      # after anything changes Cargo.lock
+```
+
+It runs cargo-about with `about.toml` and the template
+`scripts/rust-notices.hbs`, and replaces the text between the section's two
+markers. `licenses` fails until it has been run.
+
+**The two tools are pinned**: cargo-deny **0.20.2** and cargo-about **0.9.2**.
+`deny.toml`'s schema has changed under cargo-deny before, and two versions of
+cargo-about may render the same graph differently. `scripts/licence-tools.sh`
+is the one place the versions are spelled:
+
+```sh
+scripts/licence-tools.sh install     # cargo install --locked, both, at their pins
+scripts/licence-tools.sh verify      # names what is missing or at another version
+```
+
+They are developer tools, installed into cargo's own `bin` directory and
+linked into nothing. Without cargo-deny, `cargo_deny` fails rather than
+skipping, and configure warns first. The generator refuses any cargo-about but
+the pinned one.
+
+**Advisories are not part of the quick tier.** They come from a database
+fetched at check time, so the verdict would change without a commit.
+`cargo deny check advisories` is the separate question, asked on demand.
 
 ## Labels, not lists
 

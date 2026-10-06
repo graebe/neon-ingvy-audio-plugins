@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "The shell_handoff_* C ABI: an object the main thread owns, lent to the audio thread"
+publish.workspace = true
 
 # AN RLIB, for ground-capi's reason: one static library per plugin. A product's
 # capi crate that needs these symbols depends on this one, so they end up in

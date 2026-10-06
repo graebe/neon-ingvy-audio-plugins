@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "The Schwung audio_fx v2 glue every Neon Ingvy Move module is built from"
+publish.workspace = true
 
 # AN RLIB: each module's *-move crate absorbs it into its one .so.
 [lib]

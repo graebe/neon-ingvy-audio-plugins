@@ -65,6 +65,14 @@ members = [
     "engines/shared/crates/ni-testkit",       # test-only: the counting allocator
 ]
 
+# NEVER PUBLISHED. These crates ship inside the products and nowhere else, so
+# none of them goes to crates.io -- and publish = false is also how cargo-about
+# (about.toml) tells this repository's own crates, listed by hand in
+# THIRD_PARTY_LICENSES.md, from the third-party ones whose notices it writes.
+# Every member says `publish.workspace = true`.
+[workspace.package]
+publish = false
+
 # THE AUDIO CALLBACK MUST NOT UNWIND.
 #
 # Every entry point in every engine runs on an audio callback, and unwinding a

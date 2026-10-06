@@ -94,6 +94,10 @@ jobs:
       - name: Rust, with both Apple targets
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
+      # The suite below includes the licence gate, ctest's cargo_deny.
+      - name: cargo-deny, at its pin
+        run: scripts/licence-tools.sh install cargo-deny
+
       - run: npm ci
 
       # Deploy on (the default): auval and pluginval need the installed AU.

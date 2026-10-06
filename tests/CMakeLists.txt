@@ -135,18 +135,19 @@ if (TG_NODE)
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/release.test.mjs)
 
     # EVERYTHING THAT SHIPS HAS A NOTICE, AND EVERY NOTICE IS FOR SOMETHING
-    # THAT SHIPS. THIRD_PARTY_LICENSES.md is held to the SDK pins, Cargo.lock,
+    # THAT SHIPS. THIRD_PARTY_LICENSES.md is held to the SDK pins, the
+    # workspace's crates and what `cargo metadata` says ships from crates.io,
     # the editors' bundled packages and the fonts -- and, through --bundles, to
     # the built bundles themselves, which must carry the notices inside.
     #
     # Two tests, because they need different things built: `licenses` reads the
     # tree and the editors' build output (written at configure time), so it is
     # a quick check; `licenses_bundles` opens the bundles, so it needs the full
-    # build.
+    # build. RUST_ENV, because the check asks cargo what ships.
     add_test(NAME licenses
-             COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs)
+             COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs)
     add_test(NAME licenses_bundles
-             COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
+             COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
                      --bundles ${CMAKE_BINARY_DIR}/out)
 
     # EVERY SOURCE FILE SAYS WHOSE IT IS, AND UNDER WHAT LICENCE: the SPDX line
@@ -488,6 +489,25 @@ if (TG_NODE AND VST_COVERAGE)
         ENVIRONMENT "COVERAGE_JSON=${CMAKE_SOURCE_DIR}/build/coverage/coverage.json")
 endif()
 
+# THE RUST LICENCE GATE. Every crate in the graph is under a licence on
+# deny.toml's allowlist and comes from crates.io, and a crate that arrives in
+# two versions is shown. No advisories: deny.toml says why they stay out of a
+# quick tier.
+#
+# It needs cargo-deny at its pin (scripts/licence-tools.sh install cargo-deny),
+# and without it the test FAILS, naming the missing subcommand: a licence
+# check that skips is not one. Configure says so up front.
+add_test(NAME cargo_deny
+         COMMAND ${RUST_ENV} ${RUST_CARGO} deny --manifest-path ${CMAKE_SOURCE_DIR}/Cargo.toml
+                 --config ${CMAKE_SOURCE_DIR}/deny.toml --locked
+                 check licenses bans sources)
+execute_process(COMMAND ${RUST_ENV} ${RUST_CARGO} deny --version
+                RESULT_VARIABLE _ni_cargo_deny OUTPUT_QUIET ERROR_QUIET)
+if (NOT _ni_cargo_deny EQUAL 0)
+    message(WARNING "cargo-deny is not installed, so the cargo_deny test will fail. "
+                    "Install it at its pin: scripts/licence-tools.sh install cargo-deny")
+endif()
+
 # THE TRANCE GATE'S RUST, which was the one suite nobody ran.
 #
 # spectro_core has been registered since the Spectrogram arrived, and the note
@@ -671,8 +691,9 @@ endif()
 # exhaustive. tests/cpp places its own.
 ni_test_tiers(
     QUICK
-        # Rust: every crate's unit tests
+        # Rust: every crate's unit tests, and the licence gate over its graph
         tg_core_rs spectro_core abus_core gnd_core shell_core ni_shared sc_core_rs
+        cargo_deny
         # C against the engines' ABIs, and the oracles that pin the sound
         tg_core sc_core spectro_columns srecv_api abus_roundtrip gnd_roundtrip
         shell_handoff tg_curves tg_envelope tg_fade sc_shape sc_envelope

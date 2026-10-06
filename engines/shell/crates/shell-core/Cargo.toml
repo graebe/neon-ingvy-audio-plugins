@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "How a plugin shell's threads reach an engine: a command queue in, a published snapshot out"
+publish.workspace = true
 
 # NO DEPENDENCIES YET. Two atomics and a ring were not worth a third-party
 # licence while the project was MIT. docs/adr/0003-established-rust-crates.md

@@ -4,6 +4,7 @@ version = "2026.10.6+5"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "A short-time Fourier analyzer that hands finished spectrogram columns to a UI"
+publish.workspace = true
 
 # NO DEPENDENCIES YET. The FFT here is one file (fft.rs), written by hand while
 # the project was MIT, when a crate that needed no attribution was cheaper than

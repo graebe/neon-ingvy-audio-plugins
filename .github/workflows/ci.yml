@@ -76,6 +76,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
 
+      # The licence gate (ctest's cargo_deny) is in every tier, so cargo-deny
+      # is installed at its pin (scripts/licence-tools.sh). rust-cache keeps
+      # ~/.cargo/bin, so it compiles once per cache.
+      - name: cargo-deny, at its pin
+        run: scripts/licence-tools.sh install cargo-deny
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -133,6 +139,12 @@ jobs:
       # so this saves little now; it is here so the first dependency does not
       # also become the first slow build.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
+
+      # The licence gate (ctest's cargo_deny) is in every tier, so cargo-deny
+      # is installed at its pin (scripts/licence-tools.sh). rust-cache keeps
+      # ~/.cargo/bin, so it compiles once per cache.
+      - name: cargo-deny, at its pin
+        run: scripts/licence-tools.sh install cargo-deny
 
       - uses: actions/setup-node@v4
         with:
@@ -288,6 +300,12 @@ jobs:
         run: rustup target add aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
+
+      # The licence gate (ctest's cargo_deny) is in every tier, so cargo-deny
+      # is installed at its pin (scripts/licence-tools.sh). rust-cache keeps
+      # ~/.cargo/bin, so it compiles once per cache.
+      - name: cargo-deny, at its pin
+        run: scripts/licence-tools.sh install cargo-deny
 
       - uses: actions/setup-node@v4
         with:
