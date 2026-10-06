@@ -15,7 +15,8 @@ lock the audio thread can wait on anywhere in that path.
 - [`Bridge`]: the two, around one engine, with the main-side bookkeeping that
   keeps a reader correct when the audio thread is not running at all.
 - [`Handoff`]: an object built and freed on the main thread and lent to the
-  audio thread, with the free deferred until the audio thread has let go.
+  audio thread, with the free deferred until the audio thread has let go --
+  basedrop's reference counting, whose frees are always the collector's.
 
 This crate knows no product. A product supplies a [`Model`] -- how to apply a
 command, what to publish, how to rebuild a view -- and wraps the result in its
@@ -25,6 +26,7 @@ own C ABI.
 mod bridge;
 mod handoff;
 mod queue;
+mod reclaim;
 mod snapshot;
 
 pub use bridge::{publish_every, Bridge, Frame, Model, Read, PUBLISHES_PER_SECOND};

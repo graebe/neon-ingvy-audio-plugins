@@ -21,6 +21,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "basedrop"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0cab808e4f26ab216811b4b759e85823f9630a4da86e90e207bdc99cf565d32"
+
+[[package]]
 name = "bus-capi"
 version = "2026.10.6+5"
 dependencies = [
@@ -319,6 +325,7 @@ dependencies = [
 name = "shell-core"
 version = "2026.10.6+5"
 dependencies = [
+ "basedrop",
  "ni-testkit",
 ]
 

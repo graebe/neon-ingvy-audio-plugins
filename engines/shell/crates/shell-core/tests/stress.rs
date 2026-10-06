@@ -119,13 +119,12 @@ const DEAD: u64 = 0xDEAD_DEAD_DEAD_DEAD;
 
 struct Canary(AtomicU64);
 
-fn free_canary(p: *mut Canary) {
-    unsafe {
-        /* Poisoned before it is freed, so a use after this point is a
+impl Drop for Canary {
+    fn drop(&mut self) {
+        /* Poisoned as it is freed, so a use after this point is a
          * deterministic failure rather than a read of recycled memory that
          * happens to look fine. */
-        (*p).0.store(DEAD, Ordering::SeqCst);
-        drop(Box::from_raw(p));
+        self.0.store(DEAD, Ordering::SeqCst);
     }
 }
 
@@ -141,14 +140,14 @@ fn the_audio_thread_never_holds_a_freed_object() {
         let blocks = Arc::clone(&blocks);
         thread::spawn(move || {
             while !stop.load(Ordering::Acquire) {
-                let p = h.acquire();
-                if !p.is_null() {
+                /* SAFETY: this is the one audio thread, and the reference is
+                 * not used past the release. */
+                if let Some(c) = unsafe { h.acquire() } {
                     for _ in 0..16 {
-                        assert_eq!(unsafe { (*p).0.load(Ordering::SeqCst) }, ALIVE,
-                                   "the audio thread saw a freed object");
+                        assert_eq!(c.0.load(Ordering::SeqCst), ALIVE, "the audio thread saw a freed object");
                     }
                 }
-                h.release();
+                unsafe { h.release() };
                 blocks.fetch_add(1, Ordering::Relaxed);
             }
         })
@@ -160,20 +159,18 @@ fn the_audio_thread_never_holds_a_freed_object() {
         thread::yield_now();
     }
     for _ in 0..20_000 {
-        h.set(Box::into_raw(Box::new(Canary(AtomicU64::new(ALIVE)))));
-        h.collect(free_canary);
+        h.set(Some(Canary(AtomicU64::new(ALIVE))));
+        h.collect();
     }
     /* Deferral must be temporary: once the audio thread lets go, everything
      * retired is freed. */
     let mut spins = 0;
-    while h.collect(free_canary) > 0 {
+    while h.collect() > 0 {
         thread::yield_now();
         spins += 1;
         assert!(spins < 1_000_000, "a retired object was never freed");
     }
     stop.store(true, Ordering::Release);
     audio.join().unwrap();
-
-    let mut h = Arc::try_unwrap(h).ok().expect("the audio thread has gone");
-    h.clear(free_canary);
+    assert!(Arc::try_unwrap(h).is_ok(), "the audio thread has gone");
 }

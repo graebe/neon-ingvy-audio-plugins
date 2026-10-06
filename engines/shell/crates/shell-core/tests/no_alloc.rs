@@ -6,8 +6,9 @@
  * rather than claimed.
  *
  * ni_testkit's counting allocator, armed only across the calls the audio
- * thread makes; allocations are asserted. THIS FILE MUST HOLD EXACTLY ONE TEST
- * -- the counter is global and cargo runs tests in threads.
+ * thread makes; allocations and frees are asserted, since a free takes the
+ * allocator's lock as surely as a malloc does. THIS FILE MUST HOLD EXACTLY ONE
+ * TEST -- the counter is global and cargo runs tests in threads.
  */
 
 use shell_core::{Bridge, Handoff, Model, Text};
@@ -45,7 +46,7 @@ impl Model for Echo {
 fn the_audio_side_allocates_nothing() {
     let b = Bridge::new(Echo { last: [0; 64], len: 0 }, None, 1024, 64, 16);
     let h = Handoff::new();
-    h.set(Box::into_raw(Box::new(7u32)));
+    h.set(Some(7u32));
 
     /* Commands waiting in the queue, posted before the window opens: posting
      * is the main thread's and allocates by design. */
@@ -59,16 +60,26 @@ fn the_audio_side_allocates_nothing() {
             let e = b.begin();
             assert!(e.len <= 64);
             b.end(8);
+            assert_eq!(h.acquire(), Some(&7));
+            h.release();
         }
-        let p = h.acquire();
-        assert!(!p.is_null());
-        h.release();
     }
     ni_testkit::disarm();
 
-    assert_eq!(ni_testkit::allocs(), 0, "the audio side reached the allocator");
-    assert_eq!(b.read(|r| r.frame.as_str().to_owned()), "t".repeat(12));
+    /* THE LAST REFERENCE, LET GO OF ON THE AUDIO THREAD. The main thread
+     * retires the object mid-block, so the block's release is the one that
+     * drops it -- and that must queue it for the collector, not free it. */
+    ni_testkit::arm();
+    let held = unsafe { h.acquire() }.copied();
+    ni_testkit::disarm();
+    h.set(Some(8));
+    ni_testkit::arm();
+    unsafe { h.release() };
+    ni_testkit::disarm();
 
-    let mut h = h;
-    h.clear(|p| unsafe { drop(Box::from_raw(p)) });
+    assert_eq!(ni_testkit::allocs(), 0, "the audio side reached the allocator");
+    assert_eq!(ni_testkit::frees(), 0, "the audio side freed");
+    assert_eq!(held, Some(7));
+    assert_eq!(h.collect(), 0, "freed by the collector instead");
+    assert_eq!(b.read(|r| r.frame.as_str().to_owned()), "t".repeat(12));
 }

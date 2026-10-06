@@ -9,6 +9,7 @@
 
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /* ------------------------------------------------------------------ queue */
 
@@ -258,37 +259,63 @@ fn text_copies_out_c_style() {
 
 /* ---------------------------------------------------------------- handoff */
 
-static FREED: AtomicUsize = AtomicUsize::new(0);
+/// A lent object that counts its own free. EACH TEST HAS ITS OWN COUNTER:
+/// cargo runs these on parallel threads, and a shared one would let one
+/// test's frees land in another's assertion.
+struct Lent {
+    id: u32,
+    freed: Arc<AtomicUsize>,
+}
 
-fn free_box(p: *mut u32) {
-    FREED.fetch_add(1, Ordering::SeqCst);
-    unsafe { drop(Box::from_raw(p)) };
+impl Drop for Lent {
+    fn drop(&mut self) {
+        self.freed.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+fn lent(id: u32, freed: &Arc<AtomicUsize>) -> Option<Lent> {
+    Some(Lent { id, freed: Arc::clone(freed) })
 }
 
 #[test]
 fn a_retired_object_outlives_the_block_that_holds_it() {
-    FREED.store(0, Ordering::SeqCst);
-    let mut h = Handoff::new();
-    let a = Box::into_raw(Box::new(1u32));
-    let b = Box::into_raw(Box::new(2u32));
-    h.set(a);
+    let freed = Arc::new(AtomicUsize::new(0));
+    let h = Handoff::new();
+    h.set(lent(1, &freed));
 
-    let held = h.acquire(); /* the audio thread, mid-block */
-    assert_eq!(held, a);
-    h.set(b);
-    assert_eq!(h.collect(free_box), 1, "still held: not freed");
-    assert_eq!(FREED.load(Ordering::SeqCst), 0);
-    assert_eq!(unsafe { *held }, 1, "and still readable");
-    h.release();
+    /* The audio thread, mid-block. */
+    let held = unsafe { h.acquire() }.expect("an object is installed");
+    assert_eq!(held.id, 1);
+    h.set(lent(2, &freed));
+    assert_eq!(h.collect(), 1, "still held: not freed");
+    assert_eq!(freed.load(Ordering::SeqCst), 0);
+    assert_eq!(held.id, 1, "and still readable");
+    unsafe { h.release() };
 
-    assert_eq!(h.collect(free_box), 0);
-    assert_eq!(FREED.load(Ordering::SeqCst), 1);
-    assert_eq!(h.acquire(), b, "the next block gets the new one");
-    h.release();
+    assert_eq!(h.collect(), 0);
+    assert_eq!(freed.load(Ordering::SeqCst), 1);
+    assert_eq!(unsafe { h.acquire() }.map(|o| o.id), Some(2), "the next block gets the new one");
+    unsafe { h.release() };
+    assert_eq!(h.with_current(|o| o.map(|o| o.id)), Some(2), "the main thread sees what it installed");
 
-    h.set(core::ptr::null_mut());
-    assert_eq!(h.acquire(), core::ptr::null_mut());
-    h.release();
-    h.clear(free_box);
-    assert_eq!(FREED.load(Ordering::SeqCst), 2);
+    h.set(None);
+    assert!(unsafe { h.acquire() }.is_none(), "nothing installed is nothing lent");
+    unsafe { h.release() };
+    assert_eq!(h.collect(), 0);
+    assert_eq!(freed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn dropping_the_handoff_frees_everything_it_was_given() {
+    /* The destructor's path: the live object and a retired one nobody
+     * collected go with the handoff, each exactly once. */
+    let freed = Arc::new(AtomicUsize::new(0));
+    let h = Handoff::new();
+    h.set(lent(1, &freed));
+    unsafe { h.acquire() };
+    h.set(lent(2, &freed));
+    unsafe { h.release() };
+    assert_eq!(freed.load(Ordering::SeqCst), 0, "not collected yet");
+    drop(h);
+    assert_eq!(freed.load(Ordering::SeqCst), 2);
 }

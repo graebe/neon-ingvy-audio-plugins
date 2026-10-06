@@ -7,11 +7,12 @@ license = "GPL-3.0-or-later"
 description = "How a plugin shell's threads reach an engine: a command queue in, a published snapshot out"
 publish.workspace = true
 
-# NO DEPENDENCIES YET. Two atomics and a ring were not worth a third-party
-# licence while the project was MIT. docs/adr/0003-established-rust-crates.md
-# reverses that rule and names rtrb, triple_buffer and basedrop or arc-swap as
-# the replacements.
 [dependencies]
+# The handoff (src/handoff.rs): an object lent to the audio thread as a
+# reference-counted Shared, whose last release -- on whichever thread -- only
+# queues it, and whose free is the collector's, on the main thread. No
+# features to choose: the crate is no_std with alloc and has none.
+basedrop = { workspace = true }
 
 # The counting allocator the no_alloc test installs. Test-only.
 [dev-dependencies]

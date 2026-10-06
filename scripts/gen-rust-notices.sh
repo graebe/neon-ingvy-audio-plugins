@@ -51,11 +51,19 @@ cargo about generate --locked --fail --workspace \
 
 # The markers stay; what is between them is replaced, with one blank line on
 # each side of the generated text and no trailing blank lines inside it.
+#
+# LINE ENDINGS ARE THE FILE'S, NOT THE CRATES'. cargo-about copies a licence
+# file byte for byte, and some ship with CRLF (rustfft's and transpose's do):
+# spliced as they come, their lines end in a carriage return the rest of this
+# file does not have, and every run of this script is a diff against the last.
 awk -v begin="$BEGIN" -v end="$END" -v gen="$generated" '
     $0 == begin {
         print; print ""
         n = 0
-        while ((getline line < gen) > 0) text[++n] = line
+        while ((getline line < gen) > 0) {
+            sub(/\r$/, "", line)
+            text[++n] = line
+        }
         while (n > 0 && text[n] ~ /^[[:space:]]*$/) n--
         for (i = 1; i <= n; i++) print text[i]
         print ""

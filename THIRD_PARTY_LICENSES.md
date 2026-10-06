@@ -143,6 +143,7 @@ from `Cargo.lock`; scripts/gen-rust-notices.sh rewrites it.
 |---|---|---|
 | `arrayvec` | 0.7.8 | MIT OR Apache-2.0 |
 | `atomic_float` | 1.1.0 | Apache-2.0 OR MIT OR Unlicense |
+| `basedrop` | 0.1.3 | MIT OR Apache-2.0 |
 | `fastrand` | 2.5.0 | Apache-2.0 OR MIT |
 | `itoa` | 1.0.18 | MIT OR Apache-2.0 |
 | `lexical-core` | 1.0.6 | MIT OR Apache-2.0 |
@@ -462,6 +463,35 @@ DEALINGS IN THE SOFTWARE.
 ```
 
 ### MIT License: `fastrand` 2.5.0, `itoa` 1.0.18, `lexical-core` 1.0.6, `lexical-parse-float` 1.0.6, `lexical-parse-integer` 1.0.6, `lexical-util` 1.0.7, `rtrb` 0.4.0, `serde` 1.0.229, `serde_core` 1.0.229, `serde_json` 1.0.151, `zmij` 1.0.23
+
+```text
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
+### MIT License: `basedrop` 0.1.3
 
 ```text
 Permission is hereby granted, free of charge, to any

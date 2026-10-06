@@ -4,7 +4,7 @@
 /*
  * The shell_handoff_* C ABI, called the way a plugin calls it.
  *
- * shell-core proves the hazard pointer, two threads and all; tests/
+ * shell-core proves the handoff, two threads and all; tests/
  * shell_handoff.c proves the hand-written header against a real bus pusher.
  * These prove the THIN LAYER between them -- the null guards, the missing
  * release function, and that every object handed in is released exactly
@@ -24,6 +24,9 @@ use std::sync::Arc;
 type Tally = Arc<AtomicUsize>;
 
 unsafe extern "C" fn release(p: *mut c_void) {
+    /* NULL is "nothing installed", never an object: a release handed one
+     * would free nothing here and crash a plugin's. */
+    assert!(!p.is_null(), "release was handed NULL");
     let tally = Box::from_raw(p as *mut Tally);
     tally.fetch_add(1, Ordering::SeqCst);
 }
