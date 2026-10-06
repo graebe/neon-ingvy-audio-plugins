@@ -49,7 +49,7 @@ purpose — if you make it deferred, you have disabled the test.
 
 | | |
 |---|---|
-| `src/uv.css` | the Ultraviolet tokens, transcribed. **The only place a colour may be spelled** — `ui/test/tokens.test.mjs` fails the build otherwise |
+| `@ultraviolet/ui/tokens.css` (ui-kit/src/tokens.css) | the Ultraviolet tokens. **The only place a colour may be spelled**: `ctest -R ui_tokens` (ui-kit/test/tokens.test.mjs) fails the build otherwise |
 | `@ultraviolet/ui` (ramp) | level → colour, reading the five `--spec-*` stops back out of the stylesheet, because a canvas cannot use a CSS variable |
 | `@ultraviolet/ui` (Spectrogram) | the picture: a ring of columns on an offscreen canvas, two `drawImage` calls to show it, and the crosshair over it |
 | `src/lib/columns.js` | the wire, decoded. Plain JS so node's test runner can import it |
