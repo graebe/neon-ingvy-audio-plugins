@@ -77,13 +77,16 @@ int  tg_shell_save(tg_shell_t *s, const double *values, int n, char *buf, int bu
  * tg_shell_save. Returns the length written, or -1.
  *
  * tg_shell_import: checks `text` whole and queues it only when good -- a slot
- * file replaces the current slot, a bank all eight, after which the host
- * follows (tg_shell_take_params). Returns 1 for a slot, 2 for a bank, or 0 with
- * the reason in words in `err` (may be NULL); nothing changes then.
+ * file replaces `slot` (0-based, the host's current slot; out of range is the
+ * engine's), a bank all eight, after which the host follows
+ * (tg_shell_take_params). The slot travels with the import, as with
+ * tg_shell_paste: the host may move its Slot in the block the import lands in.
+ * Returns 1 for a slot, 2 for a bank, or 0 with the reason in words in `err`
+ * (may be NULL); nothing changes then.
  */
 #define TG_SLOTFILE_MAX 16384
 int  tg_shell_export(tg_shell_t *s, const double *values, int n, int all, char *buf, int buf_len);
-int  tg_shell_import(tg_shell_t *s, const char *text, char *err, int err_len);
+int  tg_shell_import(tg_shell_t *s, int slot, const char *text, char *err, int err_len);
 
 /* One cycle of the pattern in ms, as last published: the scope's axis. */
 double tg_shell_cycle_ms(tg_shell_t *s);

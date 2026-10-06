@@ -152,9 +152,9 @@ panel as a sheet on the editor's window (`ni/FileDialog.mm`, which remembers the
 last folder per product), moves the bytes (`Patch.cpp`), and answers with the
 outcome in words (68), which the hint bar shows. A WKWebView in a plugin has no
 download manager, which is why the panels are the plugin's and not the page's.
-An import is checked on the main thread and queued whole (`tg_shell_import`): a
-refused file changes nothing, and an accepted one is followed by the host
-exactly like a paste.
+An import is checked on the main thread and queued whole (`tg_shell_import`),
+with the slot the host showed, as a paste is (below): a refused file changes
+nothing, and an accepted one is followed by the host exactly like a paste.
 
 **Copy and paste** go the same way, for the same kind of reason: inside a host a
 WKWebView may not read the clipboard, and ⌘V never reaches it -- the host's menu

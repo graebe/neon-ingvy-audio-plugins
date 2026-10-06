@@ -178,7 +178,7 @@ bool ImportFile(tg_shell_t* gate, int slot, const std::string& path, std::string
     return false;
   }
   char err[256] = {};
-  const int kind = gate ? tg_shell_import(gate, text.c_str(), err, int(sizeof err)) : 0;
+  const int kind = gate ? tg_shell_import(gate, slot - 1, text.c_str(), err, int(sizeof err)) : 0;
   if (kind == 0)
   {
     status = "Failed to import " + name + ": " + (err[0] ? err : "the plugin is not ready.");

@@ -99,9 +99,10 @@ std::string FileName(FileKind kind, int slot);
  * words. True when written; `status` says what happened either way. */
 bool ExportFile(tg_shell_t* gate, const HostValue& value, FileKind kind, int slot,
                 const std::string& path, std::string& status);
-/* Reads `path` and imports it (tg_shell_import): a slot file into the current
- * slot, a bank into all eight. True when queued; a file refused changes
- * nothing, and `status` says why. */
+/* Reads `path` and imports it (tg_shell_import): a slot file into `slot` --
+ * the host's current slot, 1-based, carried with the import -- a bank into all
+ * eight. True when queued; a file refused changes nothing, and `status` says
+ * why. */
 bool ImportFile(tg_shell_t* gate, int slot, const std::string& path, std::string& status);
 
 /*

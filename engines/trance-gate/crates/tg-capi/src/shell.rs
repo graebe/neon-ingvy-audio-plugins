@@ -51,7 +51,8 @@ const CMD_LOAD: u8 = b'L';
 /* The editor's paste: a slot, a bank or a whole patch, checked on the posting
  * side; the host then follows the current slot. */
 const CMD_PASTE: u8 = b'V';
-/* An imported slot file, checked on the posting side: the same follow. */
+/* An imported slot file, checked on the posting side: the target slot, then
+ * the text; the same follow. */
 const CMD_IMPORT: u8 = b'I';
 
 /// The host parameters, TG_P_COUNT of them.
@@ -135,8 +136,9 @@ impl Model for TgCore {
                 }
             }
             CMD_IMPORT => {
-                if let Ok(text) = core::str::from_utf8(body) {
-                    if self.0.import(text).is_ok() {
+                let Some((&slot, text)) = body.split_first() else { return };
+                if let Ok(text) = core::str::from_utf8(text) {
+                    if self.0.import_into(slot as usize, text).is_ok() {
                         self.2 = self.2.wrapping_add(1);
                     }
                 }
@@ -513,11 +515,16 @@ pub unsafe extern "C" fn tg_shell_export(
 /// reason, in words, NUL-terminated in `err` (may be null). Any non-audio
 /// thread.
 ///
+/// `slot` (0-based) is where a slot file goes, carried in the command for the
+/// reason `tg_shell_paste` carries it. Out of range is the engine's current
+/// slot.
+///
 /// # Safety
 /// `text` is null or NUL-terminated; `err` holds `err_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_shell_import(
     sh: *const TgShell,
+    slot: c_int,
     text: *const c_char,
     err: *mut c_char,
     err_len: c_int,
@@ -543,8 +550,9 @@ pub unsafe extern "C" fn tg_shell_import(
         Ok(k) => k,
         Err(e) => return say(e),
     };
-    let mut cmd = Vec::with_capacity(text.len() + 1);
+    let mut cmd = Vec::with_capacity(text.len() + 2);
     cmd.push(CMD_IMPORT);
+    cmd.push(u8::try_from(slot).unwrap_or(u8::MAX));
     cmd.extend_from_slice(text.as_bytes());
     if !sh.bridge.post(&cmd) {
         return say(SlotFileError::TooLarge);
@@ -1048,6 +1056,22 @@ mod tests {
         unsafe { tg_shell_destroy(sh) };
     }
 
+    #[test]
+    fn an_import_queued_with_a_slot_switch_lands_in_the_new_slot() {
+        /* As for a paste: the Slot moved and the import was posted before any
+         * block ran. The import goes into the slot the person selected. */
+        let sh = tg_shell_create(48000.0);
+        let one = host(0.0, 3.0, 0.3);
+        push_block(sh, &one);
+        let file = export(sh, &one, false);
+        assert_eq!(import_into(sh, 1, &file).0, 1);
+        push_block(sh, &host(1.0, 15.0, 1.0));
+        assert_eq!(take(sh), Some(host(1.0, 3.0, 0.3f32 as f64)), "slot 2 holds the import");
+        push_block(sh, &host(0.0, 3.0, 0.3f32 as f64));
+        assert_eq!(take(sh), Some(host(0.0, 3.0, 0.3f32 as f64)), "slot 1 kept its own");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
     fn paste_into(sh: *const TgShell, slot: c_int, text: &str) -> (c_int, String) {
         let mut err = [0u8; 256];
         let r = unsafe {
@@ -1096,10 +1120,15 @@ mod tests {
         String::from_utf8(buf[..n as usize].to_vec()).unwrap()
     }
 
+    /* Into the engine's current slot, as every caller before the slot did. */
     fn import(sh: *const TgShell, text: &str) -> (c_int, String) {
+        import_into(sh, -1, text)
+    }
+
+    fn import_into(sh: *const TgShell, slot: c_int, text: &str) -> (c_int, String) {
         let t = CString::new(text).unwrap();
         let mut err = [0u8; 256];
-        let r = unsafe { tg_shell_import(sh, t.as_ptr(), err.as_mut_ptr() as *mut c_char, 256) };
+        let r = unsafe { tg_shell_import(sh, slot, t.as_ptr(), err.as_mut_ptr() as *mut c_char, 256) };
         let n = err.iter().position(|&b| b == 0).unwrap_or(0);
         (r, String::from_utf8(err[..n].to_vec()).unwrap())
     }
@@ -1143,7 +1172,7 @@ mod tests {
         push_block(b, &host(0.0, 15.0, 1.0));
         assert_eq!(read(b, "state"), before, "and nothing changed");
         assert_eq!(take(b), None);
-        assert_eq!(unsafe { tg_shell_import(b, std::ptr::null(), std::ptr::null_mut(), 0) }, 0);
+        assert_eq!(unsafe { tg_shell_import(b, 0, std::ptr::null(), std::ptr::null_mut(), 0) }, 0);
         unsafe { tg_shell_destroy(a) };
         unsafe { tg_shell_destroy(b) };
     }
