@@ -113,8 +113,9 @@ done
 # with no repository anywhere near it, and the GPL asks that every copy come
 # with the licence -- so it travels in the tarball or it does not reach the
 # person it is addressed to at all. THIRD_PARTY_LICENSES.md too: the .so statically links
-# the Rust standard library, and the Side-Chain's MIDI trigger is a port of
-# MIT-licensed code whose notice is recorded there.
+# the Rust standard library and the crates from crates.io its engine uses
+# (wmidi, lexical-core, serde_json and the rest), and the Side-Chain's MIDI
+# trigger is a port of MIT-licensed code; every one's notice is recorded there.
 cp LICENSE                     "$OUT/LICENSE"
 cp THIRD_PARTY_LICENSES.md     "$OUT/THIRD_PARTY_LICENSES.md"
 chmod 755 "$OUT/${MODULE_ID}.so"
