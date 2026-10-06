@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The ground's beat clock through its C ABI.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * ground-core's own cargo tests cover the clock in Rust -- starts, loops,
  * seeks, tempo changes, meters. THIS one compiles against the hand-written

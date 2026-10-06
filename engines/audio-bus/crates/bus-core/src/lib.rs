@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * audio-bus -- a shared-memory audio bus between plugins in one host.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A sender claims one of sixteen numbered slots and publishes stereo float
  * audio into it. Any number of receivers, in this process or another, open the

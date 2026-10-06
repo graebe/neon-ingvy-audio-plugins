@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The handoff through its C ABI, holding a real bus pusher.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * shell-core's cargo tests prove the mechanism, two threads and all. This one
  * compiles against the hand-written engines/shell/include/shell_handoff.h and

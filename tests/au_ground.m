@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The animated ground keeps the host's time -- end to end, through the Audio
  * Unit this checkout BUILT, with its real editor open.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  *   au_ground <bundle.component>
  *

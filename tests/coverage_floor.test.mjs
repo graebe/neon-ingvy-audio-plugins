@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The coverage floor: what the suite reaches, and what it is allowed not to.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * AGENTS.md has asked for this from the beginning -- "use coverage tests with
  * human & machine readable outputs", "target coverage: >80%" -- and the word

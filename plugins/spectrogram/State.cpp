@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Spectrogram -- the state chunk. See State.h.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "State.h"
 #include "Wire.h"

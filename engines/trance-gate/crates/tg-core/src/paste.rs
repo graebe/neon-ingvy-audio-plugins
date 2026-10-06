@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 Paste: whatever text is on the clipboard, and what the engine makes of it.
 

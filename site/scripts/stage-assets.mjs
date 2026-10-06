@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Copy the assets the site serves but does not own.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THE FONT'S LICENCE. ui-kit/src/tokens.css names the kit's own WOFF files by a
  * relative URL, so the site's build resolves and emits them itself; what it

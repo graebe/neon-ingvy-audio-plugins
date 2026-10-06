@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Spectrogram's wire format, on its own so it can be tested.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Stated ONCE, in free functions over plain data: the plugin sends what these
  * return, and tests/cpp/spectro_wire.cpp pins it to ui/test/wire_table.txt,

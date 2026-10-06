@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The audio thread allocates nothing, asserted rather than claimed.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The same guard spectro-core carries, for the same reason: a malloc on the
  * audio thread is not a slow path, it is a lock shared with every other thread

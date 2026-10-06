@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The envelope plot's two curves, as the engine applies them -- one gate on its
 own, and the envelope as dialled.

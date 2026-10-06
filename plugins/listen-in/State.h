@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Listen-In's host parameter and state chunk, on their own so they can be
  * tested.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Apart from the plugin class so a test can reach them: tests/cpp/listenin_state.cpp
  * declares the parameter on a bare iplug::IParam and saves and reloads the

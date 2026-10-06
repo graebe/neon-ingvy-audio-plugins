@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The pump: every source's audio into its analyzer, in step.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Everything the transforms touch lives here, owned by whichever thread pumps
  * -- the receiver's worker (worker.rs), or the caller of `Receiver::pump` when

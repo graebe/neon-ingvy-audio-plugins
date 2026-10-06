@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * spectro-core -- the C ABI.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A short-time Fourier analyzer that produces SPECTROGRAM COLUMNS: one byte per
  * log-spaced frequency band, computed by spectro_push_f32 on the audio thread

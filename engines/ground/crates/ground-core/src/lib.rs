@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The animated ground's beat clock, and the atomics that carry its rings to the
 editor.

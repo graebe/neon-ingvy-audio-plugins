@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The queue, the triple buffer, the bridge and the handoff, one thread at a
  * time. The two-thread stress tests are in tests/stress.rs and the allocation

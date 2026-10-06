@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 Slot files: one slot, or all eight, as a small text file a person can read.
 

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The audio bus through its C ABI, in one process.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * bus-core's own cargo tests cover the ring in Rust. THIS one compiles against
  * the hand-written engines/audio-bus/include/audio_bus.h and links the real

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::editor. See Editor.h.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "ni/Editor.h"
 #include "ni/Wire.h"

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Claiming, releasing and probing -- the parts that do touch shared memory.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * These use real segments, so they need real slot numbers, and cargo runs
  * tests in parallel threads of ONE process. Two tests on slot 3 would fight

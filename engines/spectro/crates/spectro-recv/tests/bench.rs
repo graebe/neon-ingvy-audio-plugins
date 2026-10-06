@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What the whole picture costs, timed rather than asserted.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  *     cargo test --release -p spectro-recv --test bench -- --ignored --nocapture
  *

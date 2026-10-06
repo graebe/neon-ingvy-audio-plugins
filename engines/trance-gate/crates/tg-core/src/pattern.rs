@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The pattern: its steps, ties and levels, the fade's arrival order over them, and
 the two things that rewrite a slot wholesale -- the fade's weight table and the

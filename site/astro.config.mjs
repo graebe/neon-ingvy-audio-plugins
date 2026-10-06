@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 // The documentation site. Static, no framework islands yet, deployed to Pages.
 //
 // `base` IS THE TRAP. The site lives under /neon-ingvy-audio-plugins/, so every internal URL

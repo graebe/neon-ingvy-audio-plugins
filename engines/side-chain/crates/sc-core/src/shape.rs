@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The duck's stage machine, walking `ni_dsp::curve`'s shapes.
 

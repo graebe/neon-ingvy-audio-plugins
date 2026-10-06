@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::editor -- the part of the editor protocol every plugin speaks the same
  * way, with no host in it.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The editor is a WebView. It holds normalised parameter values and nothing
  * else, so the plugin formats every readout, parses every typed value and

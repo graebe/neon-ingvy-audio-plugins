@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * shell_state.h -- the header every plugin's state chunk starts with.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  *   magic   8 bytes   'N' 'I' 's' 't' 00 00 F8 7F
  *   version int32     the plugin's own chunk version

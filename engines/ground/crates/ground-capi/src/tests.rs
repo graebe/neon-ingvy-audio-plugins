@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The gnd_* C ABI, called the way a plugin calls it.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * tests/gnd_roundtrip.c makes these same claims from C, against the header,
  * and that is what keeps the header honest. It links a release staticlib,

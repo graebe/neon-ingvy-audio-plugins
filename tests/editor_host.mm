@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The editors, opened by a real host, in each format.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  *   editor_host <vst3|au|clap> <bundle>
  *

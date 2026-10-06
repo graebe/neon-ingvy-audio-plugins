@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Tests for the C ABI -- compiled against sc_core.h and linked to the real
  * library, which is the ONLY thing keeping that hand-written header honest.

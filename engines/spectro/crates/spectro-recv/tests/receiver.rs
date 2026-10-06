@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The receiver, against a real bus.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * These run against actual shared memory -- a `bus_core::Writer` on a real
  * slot, the same thing a Listen-In claims -- rather than a stand-in. The whole

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Listen-In's wire format. See Wire.h.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * audio_bus.h only for ABUS_MAX_SLOT, a macro: nothing is linked, and
  * tests/cpp links this translation unit on its own.

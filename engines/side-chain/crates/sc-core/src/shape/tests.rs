@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! The curve algebra and the stage machine's bookkeeping: properties, checkable
 //! without a buffer of audio. See `crate::tests` for what is pinned elsewhere.
 

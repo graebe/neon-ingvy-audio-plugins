@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 Whole-engine tests: the real `Instance`, driven through a transport and its two
 parameter doors.

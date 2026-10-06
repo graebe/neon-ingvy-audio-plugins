@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Coverage, for the C, the C++ and the Rust at once.
 #
 # AGENTS.md has asked for this from the start -- "use coverage tests with human

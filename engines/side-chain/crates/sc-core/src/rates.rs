@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The cycle table: how often the duck fires, in beats per cycle. The parsing is
 `ni_dsp::rate`'s; the list is this product's, and its order is the wire.

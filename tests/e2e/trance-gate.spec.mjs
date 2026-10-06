@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Trance Gate's editor, end to end against its mock host.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The mock's pattern is the 5555 mask -- every other step on, steps 2 and 6
  * tied, step 4 at half amount -- so each gesture below starts from a known

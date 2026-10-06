@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Fetch the plugin SDKs iPlug2 builds against, at PINNED versions.
 #
 #   scripts/fetch-sdks.sh              download all three into the iPlug2 submodule

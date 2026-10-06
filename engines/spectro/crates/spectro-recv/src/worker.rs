@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The receiver's own thread: the pump and every transform, off the host's.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A receiver with four sources at 96 kHz runs four 16384-point transforms
  * about 47 times a second each. On the message thread that is work the host's

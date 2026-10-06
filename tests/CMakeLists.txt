@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # The cross-cutting suite. Every C test links the same engine archives the
 # plugins link (cmake/NiPlugin.cmake), so what passes here is what ships; the
 # plain-C tests against each engine's ABI are what check the SOUND.
@@ -145,6 +148,12 @@ if (TG_NODE)
     add_test(NAME licenses_bundles
              COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
                      --bundles ${CMAKE_BINARY_DIR}/out)
+
+    # EVERY SOURCE FILE SAYS WHOSE IT IS, AND UNDER WHAT LICENCE: the SPDX line
+    # and the copyright line open every file this repository owns, in its own
+    # comment syntax. What is excluded, and why, is listed in the test.
+    add_test(NAME spdx
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/spdx.test.mjs)
 
     # THE VALIDATOR STAGE'S VERDICT: clap-validator's JSON against
     # tests/validators.known.json, strict both ways, and the manifest itself.
@@ -671,8 +680,8 @@ ni_test_tiers(
         ui_unit tg_curves_js tg_capture_js tg_fade_js sc_shape_js sc_envelope_js
         sc_ranges spectro_ramp spectro_columns_js listenin_wire_js
         # lint-like checks over the tree
-        versions release licenses ground_shells editor_tags editor_timing ui_tokens
-        design_paths validator_verdict
+        versions release licenses spdx ground_shells editor_tags editor_timing
+        ui_tokens design_paths validator_verdict
     FULL
         tg_render_ab:render sc_render_ab:render
         tg_au:host sc_au:host

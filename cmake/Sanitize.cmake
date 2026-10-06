@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Sanitizers for the C and C++ tests.
 #
 #   cmake -B build-tsan -DNI_SANITIZE=thread  -DCMAKE_OSX_ARCHITECTURES=arm64

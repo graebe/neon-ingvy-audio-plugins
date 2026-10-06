@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The fade oracle: the engine's own arrival weights, MEASURED.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY A TABLE AND NOT A READING OF THE RUST.
  *

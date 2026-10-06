@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # The Schwung modules: the Move builds of the engines that have one.
 #
 #   cmake --build build --target schwung              NI Trance Gate

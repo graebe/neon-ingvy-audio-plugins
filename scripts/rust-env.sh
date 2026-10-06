@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Put cargo on PATH, or say why it cannot be found. Source, do not execute:
 #
 #     . "$(dirname "$0")/../../scripts/rust-env.sh"

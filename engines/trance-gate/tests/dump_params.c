@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 #include <stdio.h>
 #include <string.h>
 #include "audio_fx_api_v2.h"

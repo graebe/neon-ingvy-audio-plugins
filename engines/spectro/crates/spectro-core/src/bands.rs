@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The frequency axis: FFT bins folded into log-spaced bands.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * AN FFT IS LINEAR IN FREQUENCY AND MUSIC IS NOT. At 48 kHz with N=1024 the
  * bins are 46.9 Hz apart, so the octave from 40 to 80 Hz -- the whole bottom of

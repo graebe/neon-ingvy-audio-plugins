@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * spectro-core -- a short-time Fourier analyzer that hands finished
  * spectrogram columns to a UI.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * TWO HALVES, ONE PER THREAD. The `Producer` is fed samples and runs one
  * transform per hop, on whichever thread feeds it; the finished column -- one

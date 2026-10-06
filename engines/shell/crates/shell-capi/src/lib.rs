@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The shell_handoff_* C ABI.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * `engines/shell/include/shell_handoff.h` is the contract, written by hand for
  * the reason every header in this repository is. The mechanism and its proof

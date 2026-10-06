@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The content lives in the repository, not in this directory.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * A product's manual is the README.md beside its source, and the two interface
  * documents are in its docs/ folder. This site renders those files; it does not

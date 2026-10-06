@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Generates the ENVELOPE fixture -- and it MEASURES rather than transcribes.
  *

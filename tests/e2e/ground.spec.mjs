@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The animated ground keeps the song's time, in every editor.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Each harness plays a host transport for its ground (ui-kit/harness/beat.js):
  * a ring a beat at the query's tempo, "1.000" on each downbeat and "0.400"

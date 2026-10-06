@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Resource IDs.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * THESE ARE THE STANDALONE'S, NOT THE PLUGIN'S. The plugin formats draw
  * nothing yet and need none of them, but iPlug2's app shell

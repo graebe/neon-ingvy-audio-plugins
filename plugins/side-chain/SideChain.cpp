@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain -- the iPlug2 shell. See SideChain.h for what it may do.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "SideChain.h"
 #include "IPlug_include_in_plug_src.h"

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * clap-validator's verdict, held to the known-failures manifest.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  *   clap-validator validate --json <bundle>.clap \
  *     | node scripts/validator-verdict.mjs <bundle> [manifest]

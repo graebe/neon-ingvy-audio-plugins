@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The own channel's way off the audio thread.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * WHY THE PLUGIN'S OWN AUDIO TAKES A RING RATHER THAN GOING STRAIGHT IN.
  *

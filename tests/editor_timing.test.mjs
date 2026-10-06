@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * No editor behaviour may depend on display frames or page visibility.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY THIS IS A RULE. An editor is iPlug2's WKWebView inside a host's window,
  * and whether WebKit calls that page visible is WebKit's guess about a window

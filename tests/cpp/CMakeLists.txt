@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # The C++ tests, on doctest.
 #
 # WHY THEY LINK SO LITTLE. iplug_configure_target refuses any target that is

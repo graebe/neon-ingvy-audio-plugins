@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::Clipboard -- the system's clipboard as text, for a WebView editor.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * WHY THE PLUGIN AND NOT THE PAGE. Inside a plugin the page cannot reach the
  * clipboard: a WKWebView grants navigator.clipboard.readText no permission it

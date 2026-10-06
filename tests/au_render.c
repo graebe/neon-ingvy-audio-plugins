@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Render 4 seconds through the Audio Unit this checkout BUILT and compare it
  * against the engine running the same patch directly.

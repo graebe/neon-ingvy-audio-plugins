@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Trance Gate -- iPlug2 build configuration.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * WHY iPlug2 AND NOT JUCE. JUCE's AGPLv3 was the only reason this repository
  * could not be MIT, and nothing here needed it: of the 62 distinct juce::

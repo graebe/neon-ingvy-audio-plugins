@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * sc_shell.h -- the Side-Chain engine as a plugin shell holds it.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * THE ENGINE BELONGS TO THE AUDIO THREAD; tg_shell.h states the rule and this
  * is the same arrangement. The audio thread calls sc_core_* only on the pointer

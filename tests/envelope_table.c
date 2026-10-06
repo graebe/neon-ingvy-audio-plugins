@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The envelope oracle: the gate's gain, measured from the real engine.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY MEASURED AND NOT DERIVED.
  *

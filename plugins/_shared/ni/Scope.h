@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::Scope -- a signal capture for an editor's plot, written on the audio
  * thread and read on the message thread.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The x-axis is ONE CYCLE of the engine, not a window of wall time: sample i of
  * a block is filed under column int(sweep[i] * Cols), where the engine supplies

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Install a packaged Schwung module onto a Move.
 #
 #   ./modules/_shared/install.sh trance-gate                  # ableton@move.local

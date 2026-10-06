@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The segment header -- the layout Rust and C both agree on.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * ONE WRITER WRITES EVERY FIELD HERE, except `owner`, which is written only by
  * compare-and-swap. Readers only read -- they map the segment read-only.

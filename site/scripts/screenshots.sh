@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Screenshots of the editors, generated rather than taken by hand.
 #
 # THE HARNESS IS THE SUBJECT, not a mock-up of it: test/harness/build.sh lays

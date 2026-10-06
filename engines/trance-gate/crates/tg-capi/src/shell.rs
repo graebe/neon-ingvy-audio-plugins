@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The `tg_shell_*` C ABI: the engine as a plugin shell must hold it.
 

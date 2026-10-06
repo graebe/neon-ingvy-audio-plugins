@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The claim protocol, on a heap header, through every interleaving that
  * matters.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * `acquire` takes its liveness check as a parameter, so a test can decide which
  * pids are dead and -- more to the point -- run a SECOND claimer from inside

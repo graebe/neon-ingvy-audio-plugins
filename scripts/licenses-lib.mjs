@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What THIRD_PARTY_LICENSES.md lists, read the same way by everything that
  * checks it.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * AN ENTRY IS A TABLE ROW WHOSE FIRST CELL NAMES THE THING IN BACKTICKS:
  *

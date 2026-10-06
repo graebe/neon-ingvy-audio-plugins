@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * Trance Gate -- the module's editor.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE, which ships beside
- * this file in the module directory.
+ * Trance Gate -- the module's editor. The licence, LICENSE, ships beside this
+ * file in the module directory.
  *
  * THE NOTICE IS HERE BECAUSE THIS FILE TRAVELS ALONE. It is installed into
  * the module directory on the device as a bare .js, so it is the one piece of

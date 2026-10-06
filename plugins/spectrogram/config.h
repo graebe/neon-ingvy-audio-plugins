@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Spectrogram -- iPlug2 build configuration.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The second plugin in this repository, and it exists to be looked at rather
  * than listened to: audio passes through untouched and the editor draws a

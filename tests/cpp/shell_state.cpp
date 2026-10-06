@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The state chunk's header, and every older chunk it must not be mistaken for.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Each plugin's UnserializeState is Read, then its own fields from h.body, then
  * Finish. The legacy cases below are each plugin's chunk as the builds before

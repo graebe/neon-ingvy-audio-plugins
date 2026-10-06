@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Listen-In -- iPlug2 build configuration.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The third plugin here, and the first that exists for the sake of ANOTHER
  * plugin. It makes no sound and draws no picture: it passes audio through

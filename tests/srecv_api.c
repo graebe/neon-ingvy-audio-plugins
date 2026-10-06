@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The receiver, through the C ABI the plugin actually links.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * spectro-recv's own cargo tests cover the behaviour. This covers the SEAM:
  * spectro_recv.h is hand-written, and a hand-written header can drift from its

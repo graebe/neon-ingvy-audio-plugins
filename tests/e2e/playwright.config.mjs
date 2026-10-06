@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The editors, end to end, in a real browser against their mock hosts.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Full tier only (docs/tech/testing.md). Run it with
  *

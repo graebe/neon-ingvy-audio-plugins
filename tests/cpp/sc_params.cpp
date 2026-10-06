@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain's parameters as a host sees them: their text, and the chunk.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * clap-validator's param-conversions and state-reproducibility, on the
  * plugin's own declarations and state code (Params.cpp) and the CLAP wrapper's

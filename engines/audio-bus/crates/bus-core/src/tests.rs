@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The ring, tested without a single shm_open.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * `ring.rs` takes a `&Header` and a `&[AtomicU32]` rather than a mapping precisely
  * so that this file can build one on the heap. Every part that can be subtly

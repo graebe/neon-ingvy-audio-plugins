@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * shell_handoff.h -- an object the main thread owns, lent to the audio thread.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A bus pusher or an analyzer receiver maps memory and allocates, so it is
  * built and freed on the main thread; the audio thread uses it in between.

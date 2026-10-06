@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * THE TWO PATHS, RENDERED SIDE BY SIDE, AND THE RESULT PINNED.
  *

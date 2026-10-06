@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Every root-relative URL in the built site resolves.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * ASSERTED RATHER THAN CLAIMED, which is this repository's habit. The site is
  * served under /neon-ingvy-audio-plugins/, and the failure mode of getting that wrong is the

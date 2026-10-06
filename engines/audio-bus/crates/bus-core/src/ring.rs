@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The ring: one writer, many readers, no coordination between them.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * NOTHING HERE KNOWS ABOUT SHARED MEMORY, and that is deliberate. These
  * functions take a `&Header` and a `&[AtomicU32]`, which a test can build on the

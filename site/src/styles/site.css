@@ -1,6 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Torben Gräber */
+
 /*
  * The document layer: what a page needs that a plugin window does not.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * NOT A SECOND DESIGN SYSTEM. Every colour here is a var() reaching into
  * ui-kit/src/tokens.css, and `ctest -R ui_tokens` fails the build if a literal

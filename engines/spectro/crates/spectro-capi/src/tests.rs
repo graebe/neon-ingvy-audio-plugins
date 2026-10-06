@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The spectro_* and srecv_* C ABI, called the way the shell calls it.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * spectro-core and spectro-recv test the analysis. tests/spectro_columns.c and
  * tests/srecv_api.c test the hand-written headers against the release

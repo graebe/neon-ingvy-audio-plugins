@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Build every editor's review harness before the suite runs.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Each harness's build.sh runs vite and copies the bundle in beside the page,
  * so the suite drives the SAME bundle the plugin ships -- not a dev server.

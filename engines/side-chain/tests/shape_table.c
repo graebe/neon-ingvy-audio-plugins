@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Generates the curve fixture that BOTH copies of the shape maths are pinned
  * to -- the C one here and the JavaScript one in plugins/side-chain/ui/src/lib.

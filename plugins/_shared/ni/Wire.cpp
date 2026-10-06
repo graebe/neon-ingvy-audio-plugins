@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::wire. See Wire.h.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "ni/Wire.h"
 

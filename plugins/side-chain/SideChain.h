@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain -- the Ableton Live plugin, on iPlug2.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The DSP is the Rust engine in engines/side-chain, reached through its C ABI:
  * the same engine the Schwung module builds into its .so, which `sc_render_ab`

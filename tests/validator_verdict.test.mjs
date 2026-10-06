@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The validator verdict: strict both ways, over clap-validator's own output.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The samples are clap-validator 0.4.1's --json shape, trimmed. The manifest is
  * checked too: every entry names a real bundle, a validator this script reads,

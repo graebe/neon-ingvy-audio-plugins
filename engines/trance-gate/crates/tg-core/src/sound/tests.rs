@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! Every slot keeps its own sound: what a switch recalls, what a load fills in,
 //! and what the gain does while it happens.
 

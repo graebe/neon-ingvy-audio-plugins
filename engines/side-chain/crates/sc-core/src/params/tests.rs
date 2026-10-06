@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! The parameter clamps, both doors, and the click-free curve change.
 
 use crate::params::{amp_to_db, db_to_amp, Param, PARAM_COUNT};

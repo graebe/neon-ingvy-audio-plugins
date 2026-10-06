@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * abus_tap -- listen to a bus from the command line.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * NOT A TEST. This is the tool that answers "is Listen-In actually routing?"
  * against real audio in a real host, before any plugin exists that reads a bus

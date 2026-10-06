@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Trance Gate's pattern survives a save and a reload.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Driven through Patch.cpp, which is the code the plugin runs: an edit goes in
  * the way the editor's message does, the chunk comes out the way the host asks

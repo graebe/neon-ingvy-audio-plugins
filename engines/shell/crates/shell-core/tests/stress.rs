@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The bridge and the handoff with real threads on both sides.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * What each test would catch: a command lost, duplicated or reordered between
  * the threads (the tally's sum), a frame read while it was being written (the

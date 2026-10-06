@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain's fifteen host parameters, and the state chunk that holds them.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Apart from the plugin class so a test can reach them: tests/cpp/sc_params.cpp
  * declares these on bare iplug::IParams -- the class the plugin uses -- and

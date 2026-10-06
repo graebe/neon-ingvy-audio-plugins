@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 Parameter glides: the one-pole a gain-bearing parameter moves through, so a
 written jump is not a click.

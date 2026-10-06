@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
 #
 # The one entry point to the tests: the quick tier while you work, the full
 # tier before you call it done. docs/tech/testing.md has the whole picture.
-# Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
 #
 #   scripts/test.sh quick
 #       Builds the test programs (cmake --target ni_tests: no plugin bundle)

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::FileDialog -- the system's save and open panels, for a WebView editor.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * WHY THE PLUGIN AND NOT THE PAGE. A WKWebView inside a plugin has no download
  * manager, so a page cannot save a file at all; iPlug2's UI delegate does run an

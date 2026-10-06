@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! What a note means: the channel and note filter, Trigger vs Gate, velocity,
 //! and the panic.
 

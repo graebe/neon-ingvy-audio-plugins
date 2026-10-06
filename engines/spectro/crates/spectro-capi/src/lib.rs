@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * spectro-capi -- the C ABI. This is the whole surface the iPlug2 shell sees,
  * and the surface a Schwung module on the Move would see.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The shape is the Trance Gate engine's: an opaque handle, a couple of
  * functions, no callbacks and no C structs shared across the boundary. A C ABI

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Listen-In's state chunk, saved and reloaded as a host does.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * clap-validator's state-reproducibility and state-invalid tests, on the
  * plugin's own State.cpp and a real IParam (param_host.h).

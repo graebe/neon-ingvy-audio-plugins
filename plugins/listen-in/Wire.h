@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Listen-In's wire format, on its own so it can be tested.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A plugin class cannot be constructed outside a plugin bundle, so anything
  * that can be quietly wrong lives here, in free functions over plain data, and

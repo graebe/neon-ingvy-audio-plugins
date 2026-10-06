@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Build and package one Schwung module for the Move (aarch64 Linux).
 #
 #   ./modules/_shared/package.sh trance-gate

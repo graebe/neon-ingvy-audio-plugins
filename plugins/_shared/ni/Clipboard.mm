@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::Clipboard on macOS: the general pasteboard, as plain text. See
  * Clipboard.h.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "ni/Clipboard.h"
 

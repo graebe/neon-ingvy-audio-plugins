@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * spectro-recv -- the C ABI for the listen-in receiver.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * spectro_core.h analyses ONE source: the track the plugin sits on. This is the
  * other half -- a receiver that also reads Listen-In buses, so a bass and a pad

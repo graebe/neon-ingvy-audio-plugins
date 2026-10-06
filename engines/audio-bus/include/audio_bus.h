@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * audio-bus -- the C ABI.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A SHARED-MEMORY AUDIO BUS between plugins in one host. A sender claims one of
  * sixteen numbered slots and publishes stereo float audio into it; any number

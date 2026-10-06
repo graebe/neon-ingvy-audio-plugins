@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The Schwung audio_fx v2 glue: the host's vtable mirrored, the transport read
 from it, and the instance entry points -- generic over a [`Module`], so a

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The counting allocator behind every `tests/no_alloc.rs`: the audio thread
 allocates nothing, asserted rather than claimed.

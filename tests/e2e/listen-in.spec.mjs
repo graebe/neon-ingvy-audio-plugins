@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Listen-In's editor, end to end against its mock host.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Two controls and a meter -- and the window every editor shares (the height it
  * asks for, the Motion switch, the ground), which is tested here in its

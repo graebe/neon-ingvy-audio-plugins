@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Listen-In's wire format, and the table both sides are pinned to.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * THE ORACLE ARRANGEMENT, third time. The curves had shape() twice -- once in
  * the engine, once in JavaScript -- and the S-curve's first half was

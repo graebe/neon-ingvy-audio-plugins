@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The audio thread allocates nothing, asserted rather than claimed.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Every entry point of this engine runs on an audio callback -- on the Move,
  * set_param and get_param as much as process -- so "no allocation outside

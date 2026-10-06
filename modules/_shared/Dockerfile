@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+
 FROM ubuntu:22.04
 
 # ONE IMAGE FOR EVERY SCHWUNG MODULE. The modules differ in which crate they

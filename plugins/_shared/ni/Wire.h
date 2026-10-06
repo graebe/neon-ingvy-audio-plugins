@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::wire -- what every plugin shell does to a buffer or a message on its way
  * between the host, the engine and the editor.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * No iPlug2 type and no engine: tests/cpp/ni_wire.cpp links this alone.
  *

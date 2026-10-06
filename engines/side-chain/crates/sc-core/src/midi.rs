@@ -1,9 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+//
+// Ported in part from https://github.com/charlesvestal/schwung-ducker
+// (src/dsp/ducker.c), MIT License, Copyright (c) 2026 Charles Vestal.
+// THIRD_PARTY_LICENSES.md carries that notice and the licence's text.
+
 /*!
 The MIDI trigger: what a note means, and when it means it.
 
 Ported from `schwung-modules/graebe/schwung-ducker/src/dsp/ducker.c:306-345`
-(MIT, (c) charlesvestal) -- the channel filter, the note match, Trigger vs
-Gate, and velocity scaling depth. See THIRD_PARTY_LICENSES.md.
+(MIT, (c) 2026 Charles Vestal) -- the channel filter, the note match, Trigger
+vs Gate, and velocity scaling depth. See THIRD_PARTY_LICENSES.md.
 
 WHAT IS ADDED HERE, AND WHY IT IS NOT A LUXURY: A SAMPLE OFFSET.
 

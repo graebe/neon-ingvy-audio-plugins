@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain's input arithmetic: the places where being wrong is SILENT.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The shared wire pieces are tests/cpp/ni_wire.cpp's; these two are this
  * product's -- a sidechain ducking on its own input, a key read as the main.

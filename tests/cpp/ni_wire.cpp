@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::wire and ni::Scope: what every shell does to a buffer or a message on its
  * way between host, engine and editor -- the places being wrong is SILENT.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A dropped edit looks like not clicking, a wrong byte like a plausible
  * waveform, a comma for a point like a zero; none of them errors.

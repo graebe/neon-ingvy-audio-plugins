@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * A real-input FFT: an N/2-point complex transform and a split pass.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * N real samples are packed as N/2 complex ones (even samples real, odd
  * imaginary), transformed, and untangled into bins 0..=N/2 -- half the work of

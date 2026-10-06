@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Smoke test for ui_chain.js -- it RUNS the module, it does not merely load it.
  *

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The analysis window.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Hann, and only Hann. A spectrogram is read by eye, and the eye wants the
  * narrowest main lobe it can get with sidelobes low enough that a loud tone

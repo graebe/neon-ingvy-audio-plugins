@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The editor protocol's numbers, on both sides of the WebView.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Every message tag and parameter index exists twice: an enum in C++ and a
  * table in JavaScript. Neither is generated from the other -- a generator hides

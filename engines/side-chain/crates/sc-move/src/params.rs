@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 `chain_params` -- how Schwung's knob grid draws NI Side-Chain.
 

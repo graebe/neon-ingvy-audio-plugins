@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The receiver with its worker running: two threads, as the plugin runs it.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * receiver.rs pins the pump's behaviour by calling it by hand. These run it
  * the way the Spectrogram does -- `start`, then this thread only pushes and

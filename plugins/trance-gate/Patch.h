@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The pattern's two journeys: from the editor into the engine, and from the
  * engine into the host's saved state and back.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Apart from the plugin class because this is the code whose failure loses a
  * user's pattern, and a test cannot link the class: tests/cpp/tg_state.cpp

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ground -- the C ABI.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * THE BEAT CLOCK BEHIND THE ANIMATED BACKGROUND. The Ultraviolet design system
  * gives every plugin window a "ground" -- dot paper over noise grain -- and

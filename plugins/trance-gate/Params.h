@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Trance Gate's fifteen host parameters: their order, and how each is
  * declared.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Apart from the plugin class so a test can reach them: tests/cpp/tg_params.cpp
  * declares these on bare iplug::IParams -- the class the plugin uses -- and

@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The release plumbing: what a tag means, what gets built for it, and what is
  * written back to release.json.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * NONE OF THIS CAN RUN WHERE IT MATTERS BEFORE IT MATTERS. A release workflow
  * runs on a tag push and nowhere else, so its tag parsing was last exercised by

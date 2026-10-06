@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * An Audio Unit from a BUNDLE PATH, registered in this process only.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * WHY NOT THE SYSTEM'S REGISTRY. AudioComponentFindNext lists what is INSTALLED
  * in ~/Library or /Library, so a test that looks a plugin up by its triple

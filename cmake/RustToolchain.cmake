@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Finding cargo, once, for everything in this repository that needs it.
 #
 # WHY THIS IS NOT JUST `find_program(cargo)`.

@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The editor protocol every plugin speaks, without a host: ni::editor over a
  * recording Port, the part of ni::WebPlugin a test can link.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"

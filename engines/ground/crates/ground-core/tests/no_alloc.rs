@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The audio thread allocates nothing, asserted rather than claimed.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * `Ground::tick` runs in every plugin's ProcessBlock, once a block, so it is
  * measured through every branch a host can send it into: playing, stopped, a

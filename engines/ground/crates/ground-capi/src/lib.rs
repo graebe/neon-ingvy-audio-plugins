@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The C ABI: what every plugin in this repository links to ring its ground on
  * the beat.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * `engines/ground/include/ground.h` is the contract; this is the half that
  * implements it. The header is written by hand rather than generated, for the

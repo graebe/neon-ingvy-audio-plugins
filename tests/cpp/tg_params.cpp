@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Every Trance Gate parameter survives value -> text -> value.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A host shows a parameter as the plugin's text and parses what a user types
  * back through the plugin, so the two have to invert each other; this is

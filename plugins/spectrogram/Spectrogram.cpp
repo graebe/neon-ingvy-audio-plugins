@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Spectrogram -- a rolling analyzer for Ableton Live, on iPlug2.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "Spectrogram.h"
 #include "State.h"

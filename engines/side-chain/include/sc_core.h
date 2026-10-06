@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain -- the C ABI over the Rust ducker engine.
- *
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THIS HEADER IS WRITTEN BY HAND RATHER THAN GENERATED, AND IT IS THE
  * CONTRACT. If it and crates/sc-capi/src/lib.rs disagree, they disagree

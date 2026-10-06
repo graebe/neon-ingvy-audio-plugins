@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # ni_require_editor(<plugin dir> <globbed web files...>)
 #
 # AN EMPTY GLOB IS A PLUGIN WITH NO EDITOR, AND IT USED TO SHIP.

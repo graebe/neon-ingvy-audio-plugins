@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The audio side of the bridge and the handoff allocates nothing, asserted
  * rather than claimed.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * ni_testkit's counting allocator, armed only across the calls the audio
  * thread makes; allocations are asserted. THIS FILE MUST HOLD EXACTLY ONE TEST

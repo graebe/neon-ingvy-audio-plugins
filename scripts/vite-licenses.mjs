@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The licence notices of whatever an editor build bundles, written beside it.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY THIS EXISTS. An editor's ui.js is minified, and minifying removes every
  * comment -- including the notices MIT asks to accompany each copy. Solid's

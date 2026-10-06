@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The abus_* C ABI, called the way a plugin calls it.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * bus-core's tests prove the ring and the claim; tests/abus_roundtrip.c proves
  * the hand-written header against this crate's release staticlib. What is

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * auval -stress's state path, against the Audio Unit this checkout BUILT.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  *   au_stress <bundle.component> [seconds] [state-threads]
  *

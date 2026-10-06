@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The transport-following phase: a position in units of one step or one cycle,
 anchored to the host per block and advanced per sample.

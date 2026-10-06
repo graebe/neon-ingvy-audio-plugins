@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Every path into design/ names something that is there.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY THIS IS A TEST. The design folder is a mirror of two published artifacts
  * -- the Ultraviolet system in design/scheme/project and the plugin layout

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain's input arithmetic, on its own so it can be tested.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * No iPlug2 type and no engine: tests/cpp/sc_wire.cpp links it alone. The
  * shared pieces are in ni/Wire.h. These two are where being wrong is silent:

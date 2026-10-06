@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The playhead: where in the pattern the host's transport says we are, tracked
 per block by a phase-locked loop and advanced per sample by the gain loop.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Tests for the portable engine -- the three things the split made possible
  * and the shell could never exercise.

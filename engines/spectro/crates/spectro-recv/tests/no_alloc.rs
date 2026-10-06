@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The receiver allocates nothing once it is running, asserted rather than claimed.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * TWO THREADS ARE BEING PROTECTED HERE, FOR DIFFERENT REASONS.
  *

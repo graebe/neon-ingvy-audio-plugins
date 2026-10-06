@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * spectro-recv -- many sources into one picture.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The Spectrogram analyses the track it sits on. This is the part that lets it
  * also read a Listen-In bus, so a bass and a pad can be looked at in one window

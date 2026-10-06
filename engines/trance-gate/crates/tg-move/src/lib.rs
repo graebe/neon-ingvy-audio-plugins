@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The Schwung shell for the Trance Gate: its `chain_params` and a [`Module`]
 impl over [`tg_core`]. The vtable, the transport and the entry points are

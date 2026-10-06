@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The audio thread allocates nothing, asserted rather than claimed.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * "It does not allocate" is the kind of claim that stays true until someone
  * adds a `vec![]` inside a loop that looked like a good place for one. A malloc

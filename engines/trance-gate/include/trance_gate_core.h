@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * trance_gate_core.h -- the engine, with no host in it.
  *
@@ -23,8 +26,6 @@
  * already speaks, and it is what makes a patch portable: `state` emits a JSON
  * blob that the other shell parses back byte for byte. A typed C struct would
  * have been tidier and would have needed a second serialiser to go with it.
- *
- * GPL-3.0-or-later, like everything in this repository.
  */
 #ifndef TRANCE_GATE_CORE_H
 #define TRANCE_GATE_CORE_H

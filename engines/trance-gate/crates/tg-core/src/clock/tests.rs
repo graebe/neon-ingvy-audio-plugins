@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! The playhead: the phase-locked loop, and the edge cases a Rust caller can
 //! reach that the C ABI's guards used to hide.
 

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Spectrogram's state chunk, on its own so it can be tested.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Apart from the plugin class so a test can reach it: tests/cpp/spectro_state.cpp
  * saves and reloads it the way clap-validator's state tests do.

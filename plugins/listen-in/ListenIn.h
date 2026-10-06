@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Listen-In -- a tap that other plugins can read.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Audio passes through bit for bit and is published, stereo, on a shared-memory
  * bus a Spectrogram can listen to (engines/audio-bus). ni::WebPlugin is the

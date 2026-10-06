@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What to download, without a version typed on a web page.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * TWO SOURCES, AND NEITHER IS THIS FILE.
  *

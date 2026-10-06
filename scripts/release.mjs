@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What a release tag means, and the one writer of release.json.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  *   node scripts/release.mjs resolve <tag>
  *       Checks the tag against the tree and prints what it releases, as

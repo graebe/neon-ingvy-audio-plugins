@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Three lcov files in, one report out.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY THE MERGE IS OF LCOV AND NOT OF PROFDATA.
  *

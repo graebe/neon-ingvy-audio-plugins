@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * tg_shell.h -- the Trance Gate engine as a plugin shell holds it.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * THE ENGINE BELONGS TO THE AUDIO THREAD. A plugin has at least three threads
  * that want it -- the audio callback, the editor's messages, the host's state

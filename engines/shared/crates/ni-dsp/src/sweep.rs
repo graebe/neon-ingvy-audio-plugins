@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 A scope's x-axis: where in one cycle each sample of a block fell, 0..1.
 

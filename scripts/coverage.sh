@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
 #
 # The coverage run: build instrumented, run everything, report once.
-# Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
 #
 # AGENTS.md asks for "coverage tests with human & machine readable outputs" and
 # a target above 80%. This is the one command that produces them:

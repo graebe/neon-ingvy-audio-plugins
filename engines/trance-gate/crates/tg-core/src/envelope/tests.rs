@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 //! The curve algebra: endpoints, bounds, and what a NaN turns into.
 
 use crate::envelope::{shape, shape_inv, Curve};

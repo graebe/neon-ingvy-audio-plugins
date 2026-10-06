@@ -1,8 +1,10 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Everything that ships has a notice, and every notice is for something that
  * ships.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  *   node scripts/check-licenses.mjs [--bundles build/out]
  *

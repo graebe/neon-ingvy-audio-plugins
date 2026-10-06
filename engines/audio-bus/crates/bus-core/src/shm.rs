@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The POSIX shared-memory mapping, and nothing else.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * Six calls, declared here rather than borrowed from libc, under a rule from
  * when the project was MIT and THIRD_PARTY_LICENSES.md was kept short on

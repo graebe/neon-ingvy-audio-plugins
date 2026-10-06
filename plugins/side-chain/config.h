@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain -- iPlug2 build configuration.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #pragma once
 

@@ -1,5 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # The test tiers: every registered test is QUICK or FULL, and says which.
-# Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
 #
 #   quick  the developer loop -- unit tests, the wire/state/parameter tests,
 #          the oracles and the lint-like checks. No bundle, no host, no

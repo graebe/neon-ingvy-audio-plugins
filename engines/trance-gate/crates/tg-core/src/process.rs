@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The gain loop: step boundaries, the envelope, the gain law, and the three buffer
 formats it is applied to.

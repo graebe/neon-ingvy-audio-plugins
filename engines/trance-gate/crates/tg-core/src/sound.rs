@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 A slot's SOUND: every parameter except the slot itself, beside the pattern the
 slot already kept.

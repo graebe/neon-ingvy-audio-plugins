@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The audio thread's flush-to-zero guard: on for the block, and the host's mode
  * back afterwards.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"

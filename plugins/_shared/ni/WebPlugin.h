@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * ni::WebPlugin -- the iPlug2 shell every Neon Ingvy plugin is built on.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * WHAT IT OWNS, so no product has to:
  *

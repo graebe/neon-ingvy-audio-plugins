@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What every editor's end-to-end test needs: the page, its mock host, and a way
  * to read what the editor said to it.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THE MOCK IS THE HOST. Each harness's mock.js records every message the editor
  * sends in `window.__sent`, exactly as iPlug2 would receive it; these helpers

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Side-Chain's editor, end to end against its mock host.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The mock's shape is Delay 4, Attack 8, Hold 14, Release 45 (percent of the
  * cycle) at Depth 0.85. Unlike the Trance Gate's, this mock echoes an edit back

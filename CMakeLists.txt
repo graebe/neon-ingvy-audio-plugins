@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # neon-ingvy-audio-plugins -- the Live plugins around the Rust engines.
 #
 # One engine, two shells: each product's DSP is the same Rust crate its Schwung

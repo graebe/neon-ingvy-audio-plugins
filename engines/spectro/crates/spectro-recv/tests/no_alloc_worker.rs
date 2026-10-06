@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The receiver's worker allocates nothing once it is running.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * no_alloc.rs measures the pump when it is called by hand. This measures it
  * where the plugin runs it -- on the worker thread, woken by its own timer --

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 The pieces every Neon Ingvy engine needs and no product owns: C-compatible
 formatting and parsing, the rate table's parser, the envelope curves, the

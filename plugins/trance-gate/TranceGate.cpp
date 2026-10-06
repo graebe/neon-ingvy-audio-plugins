@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Trance Gate -- the Ableton Live plugin, on iPlug2.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  */
 #include "TranceGate.h"
 #include "Patch.h"

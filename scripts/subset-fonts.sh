@@ -1,6 +1,9 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Subset JetBrains Mono (SIL OFL 1.1) to what the editors draw, as WOFF, into
-# ui-kit/src/fonts. Copyright (c) 2026 Torben Gräber. MIT.
+# ui-kit/src/fonts.
 #
 #   scripts/subset-fonts.sh <dir holding JetBrainsMono-Regular.ttf and -Medium.ttf>
 #

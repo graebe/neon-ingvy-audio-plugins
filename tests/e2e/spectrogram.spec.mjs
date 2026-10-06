@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Spectrogram's editor, end to end against its mock host.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The one editor with no host parameters: what it sends are the session's
  * messages -- which buses to open, what the picture is of, what the clash

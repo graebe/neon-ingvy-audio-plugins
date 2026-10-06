@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The analyzer, through the C ABI the plugin actually links.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * WHY THIS EXISTS WHEN cargo test ALREADY PASSES. The Rust tests check the
  * analyzer; this checks the BOUNDARY -- that spectro_core.h and the crate agree

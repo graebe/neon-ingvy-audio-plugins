@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The ground's wiring, in the shared shell every plugin is built on.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * A SOURCE CHECK, AND ONLY BECAUSE NOTHING ELSE CAN SEE THIS. ni::WebPlugin
  * derives from a format wrapper and cannot be linked into a test, and every

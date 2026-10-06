@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * One version per product, spelled once and checked everywhere.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * A PRODUCT'S VERSION APPEARS IN THREE OR FOUR FILES, in three languages:
  * config.h as a string AND as packed hex, module.json, and every crate of its

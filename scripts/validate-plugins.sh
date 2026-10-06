@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Run the hosts' own validators over the built plugins.
 #
 #   scripts/validate-plugins.sh fetch <tools-dir>

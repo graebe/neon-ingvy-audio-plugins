@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * A plugin's parameters, hosted the way iPlug2 hosts them -- without a plugin.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * The plugin class cannot be built outside a bundle (IPlug_include_in_plug_hdr.h
  * #errors), but its parameters can: they are iplug::IParam, which links on its

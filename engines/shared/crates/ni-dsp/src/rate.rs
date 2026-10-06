@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*!
 A rate table: labelled lengths in beats, with `1/4 == 1 beat`.
 

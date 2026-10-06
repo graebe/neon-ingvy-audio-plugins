@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Headless tests for the gate engine. Runs natively -- no Move required.
 #
 # THE ENGINE IS RUST AND THE TESTS ARE STILL C. That is deliberate and is the

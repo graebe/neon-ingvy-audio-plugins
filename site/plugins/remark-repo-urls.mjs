@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Make one Markdown file read correctly in two places.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The content files live in the repository and are written to be read on
  * GitHub, so their links are relative paths between repository files:

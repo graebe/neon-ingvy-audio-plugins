@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * shell_denormals.h -- no denormals on the audio thread, for one block.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A filter or an envelope decaying towards silence passes through the
  * denormal range on its way to zero, and on both architectures this runs on a

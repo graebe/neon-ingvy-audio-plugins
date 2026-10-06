@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The shell_handoff_* C ABI, called the way a plugin calls it.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * shell-core proves the hazard pointer, two threads and all; tests/
  * shell_handoff.c proves the hand-written header against a real bus pusher.

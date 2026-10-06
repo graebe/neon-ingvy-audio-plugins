@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The analysis as it was before it was made fast -- kept as the oracle.
- * Copyright (c) 2026 Torben Gräber. MIT -- see LICENSE.
  *
  * A complex radix-2 FFT on real input, a sqrt per bin, `powf` between bins,
  * and a `powf` per cell to sum sources. Slow and plainly right, which is what

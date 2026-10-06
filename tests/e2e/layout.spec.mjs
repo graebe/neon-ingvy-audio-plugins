@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The window stays a window: in every editor, nothing scrolls it and nothing
- * leaves it. Copyright (c) 2026 Torben Gräber. MIT.
+ * leaves it.
  *
  * WHY THIS IS A TEST OF ITS OWN. In Live, pressing the Trance Gate's paste
  * opened a field that ran past the window's right edge and took the focus; the

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The review harnesses, over http, for the end-to-end suite.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY A SERVER AT ALL. Chrome refuses module scripts from file://, and every
  * harness loads the kit's harness/beat.js -- the fake transport that rings the
