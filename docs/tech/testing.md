@@ -27,7 +27,8 @@ archives they link, and no plugin bundle; then `ctest -L quick` runs:
 - all of the kit's and the editors' JavaScript (`ui_unit`, the same files
   `npm test` runs),
 - the lint-like checks: `versions`, `release`, `licenses` (the tree, not the
-  bundles), `ui_tokens`, `editor_tags`, `ground_shells`.
+  bundles), `ui_tokens`, `editor_tags`, `editor_timing` (no editor code may hang off
+  `requestAnimationFrame` or page visibility), `ground_shells`.
 
 No bundle, no host, no browser, no timing. Warm, it takes a few seconds.
 

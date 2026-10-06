@@ -166,6 +166,11 @@ if (TG_NODE)
     add_test(NAME editor_tags
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/editor_tags.test.mjs)
 
+    # No editor behaviour may hang off display frames or page visibility: a
+    # WKWebView that takes its host's window for hidden services no frames.
+    add_test(NAME editor_timing
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/editor_timing.test.mjs)
+
     # ui_tokens, not tg_tokens: it guards the WHOLE ui now -- the kit, both
     # editors and the documentation site -- where there used to be one per
     # plugin, each blind to the other.
@@ -635,7 +640,8 @@ ni_test_tiers(
         ui_unit tg_curves_js tg_capture_js tg_fade_js sc_shape_js sc_envelope_js
         sc_ranges spectro_ramp spectro_columns_js listenin_wire_js
         # lint-like checks over the tree
-        versions release licenses ground_shells editor_tags ui_tokens validator_verdict
+        versions release licenses ground_shells editor_tags editor_timing ui_tokens
+        validator_verdict
     FULL
         tg_render_ab:render sc_render_ab:render
         tg_au:host sc_au:host
