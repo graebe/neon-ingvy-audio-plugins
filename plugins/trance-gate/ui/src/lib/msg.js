@@ -46,3 +46,8 @@ export const P = { slot: 0, length: 1, rate: 2, legato: 3, timeMode: 4, curve: 5
                    amount: 6, width: 7, attack: 8, decay: 9, sustain: 10, release: 11,
                    fade: 12, fadeSoft: 13, fadeDir: 14 };
 export const NUM_PARAMS = 15;
+
+/* Length is 1..MAX_LENGTH steps, normalised over its 127 intervals -- the
+ * host's integer parameter (Params.cpp). */
+export const MAX_LENGTH = 128;
+export const lengthNorm = (steps) => (steps - 1) / (MAX_LENGTH - 1);

@@ -47,9 +47,19 @@ export function decodeUi(text) {
 }
 
 /**
+ * The Length detents, "16,32,64,128" -> [16, 32, 64, 128]: the lengths the
+ * ENGINE says are half a bar to four bars at the Rate and the host's meter.
+ * Absent (an older plugin) or empty is none.
+ */
+export function decodeDetents(field) {
+  if (!field) return [];
+  return String(field).split(',').map((x) => parseInt(x, 10)).filter((n) => n > 0);
+}
+
+/**
  * The `params` readout, the engine's own units:
  * slot:legato:time_mode:curve:rate:length:amount:hold:attack:decay:sustain:
- * release:width_ms:fade:fade_soft:fade_dir -> an object, or null.
+ * release:width_ms:fade:fade_soft:fade_dir:detents -> an object, or null.
  */
 export function decodeEngineParams(text) {
   const f = String(text).split(':');
@@ -60,6 +70,7 @@ export function decodeEngineParams(text) {
     attack: +f[8], decay: +f[9], sustain: +f[10],
     release: +f[11], widthMs: +f[12],
     fade: +f[13], fadeSoft: +f[14] >= 0.5, fadeOut: +f[15] >= 0.5,
+    detents: decodeDetents(f[16]),
   };
 }
 

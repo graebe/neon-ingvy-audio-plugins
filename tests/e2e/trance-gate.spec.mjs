@@ -149,8 +149,93 @@ test('the ring is the Length slider to the keyboard', async ({ page }) => {
   await ring.focus();
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('PageDown');
-  /* 17 steps, then (the mock does not echo) 16 - 4 = 12. */
-  expect(await writes(page, P.length)).toEqual([16 / 127, 11 / 127]);
+  await page.keyboard.press('PageUp');
+  /* 17 steps; then (the mock does not echo) Page goes to the Length detents
+   * at 1/16 -- 8, 16, 32, 64 -- so from 16, down to 8 and up to 32. */
+  expect(await writes(page, P.length)).toEqual([16 / 127, 7 / 127, 31 / 127]);
+});
+
+/*
+ * THE LENGTH DETENTS: half a bar to four bars at the Rate, as the engine lists
+ * them on the `params` readout. The host moves the Rate and the Length here
+ * (the mock's __hostMoves), as automation would.
+ */
+const hostMoves = (page, idx, value) =>
+  page.evaluate(([i, v]) => window.__hostMoves(i, v), [idx, value]);
+const steps = (n) => (n - 1) / 127;
+const RATE_1_16 = 7 / 12, RATE_1_32 = 9 / 12;
+
+test('at 1/32 a Length drag passing near 32 lands on it and holds', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await hostMoves(page, P.rate, RATE_1_32);
+  await hostMoves(page, P.length, steps(20));
+  const length = page.locator('svg.knob[aria-label="Length"]');
+  await expect(length.locator('.knob-tick')).toHaveCount(4);
+
+  /* 32 is 12 steps -- 18.9px of the knob's 200 -- above 20. 24px up would be
+   * 35 steps on a plain knob; it is inside 32's hold. */
+  await clearSent(page);
+  await dragVertically(page, length, -24, { steps: 12 });
+  expect((await writes(page, P.length)).at(-1)).toBe(steps(32));
+  await expect(length.locator('.knob-tick.on')).toHaveCount(1);
+
+  /* 31px up is 39 steps on a plain knob, and still 32 here: the hold is 14px. */
+  await hostMoves(page, P.length, steps(20));
+  await clearSent(page);
+  await dragVertically(page, length, -31, { steps: 16 });
+  expect((await writes(page, P.length)).at(-1)).toBe(steps(32));
+
+  /* Past the hold it moves on, and a fine (shift) drag ignores it. */
+  await hostMoves(page, P.length, steps(20));
+  await clearSent(page);
+  await dragVertically(page, length, -40, { steps: 16 });
+  expect(Math.round((await writes(page, P.length)).at(-1) * 127) + 1).toBeGreaterThan(32);
+  await hostMoves(page, P.length, steps(31));
+  await clearSent(page);
+  await page.keyboard.down('Shift');
+  await dragVertically(page, length, -8, { steps: 8 });
+  await page.keyboard.up('Shift');
+  const fine = (await writes(page, P.length)).at(-1);
+  expect(fine).toBeGreaterThan(steps(31));
+  expect(fine).not.toBe(steps(32));
+});
+
+test('Page Up and Down jump between the Length detents, which follow the Rate', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await hostMoves(page, P.rate, RATE_1_32);
+  await hostMoves(page, P.length, steps(20));
+  const length = page.locator('svg.knob[aria-label="Length"]');
+  await length.focus();
+  await clearSent(page);
+  await page.keyboard.press('PageUp');
+  expect(await writes(page, P.length)).toEqual([steps(32)]);
+  /* The arrows are untouched: the knob's 1 %, which the host's integer
+   * Length rounds to the next step. */
+  await hostMoves(page, P.length, steps(20));
+  await clearSent(page);
+  await page.keyboard.press('ArrowUp');
+  const [arrow] = await writes(page, P.length);
+  expect(arrow).toBeCloseTo(steps(20) + 0.01, 9);
+  expect(Math.round(arrow * 127) + 1).toBe(21);
+
+  /* At 1/16 the detents are 8, 16, 32, 64: from 14, down is 8 -- at 1/32
+   * there was nothing below 16. The ticks moved with them. */
+  const before = await length.locator('.knob-tick').evaluateAll((t) => t.map((e) => e.getAttribute('d')));
+  await hostMoves(page, P.rate, RATE_1_16);
+  await expect.poll(() => length.locator('.knob-tick').evaluateAll((t) => t.map((e) => e.getAttribute('d'))))
+    .not.toEqual(before);
+  await hostMoves(page, P.length, steps(14));
+  await clearSent(page);
+  await page.keyboard.press('PageDown');
+  expect(await writes(page, P.length)).toEqual([steps(8)]);
+  await hostMoves(page, P.length, steps(64));
+  await expect(length.locator('.knob-tick.on')).toHaveCount(1);
+});
+
+test('only the Length knob has detents', async ({ page }) => {
+  await open(page, 'trance-gate');
+  await expect(page.locator('.knob-tick')).toHaveCount(4);
+  await expect(page.locator('svg.knob[aria-label="Length"]').locator('.knob-tick')).toHaveCount(4);
 });
 
 test('copy and paste carry the pattern through the clipboard', async ({ page, context }) => {

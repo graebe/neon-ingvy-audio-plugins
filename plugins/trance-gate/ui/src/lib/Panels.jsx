@@ -21,7 +21,9 @@ export function Panels(props) {
         <h2 class="t-title">GATE</h2>
         <div class="knob-row">
           <ParamKnob params={host()} idx={P.rate} label="Rate" />
-          <ParamKnob params={host()} idx={P.length} label="Length" />
+          {/* Holds on half a bar to four bars at the Rate (the engine's list). */}
+          <ParamKnob params={host()} idx={P.length} label="Length"
+                     detents={props.lengthDetents} />
           <ParamKnob params={host()} idx={P.amount} label="Amount" />
           <ParamKnob params={host()} idx={P.width} label="Width" />
         </div>

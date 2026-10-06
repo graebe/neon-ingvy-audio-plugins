@@ -24,7 +24,7 @@ real range, every unit and every display string, and pushes them:
 |---|---|---|
 | `0..11` | → UI | one parameter's display text, tagged with its own index |
 | `64` | → UI | the engine's `ui` readout: steps, ties, length, phase, ms/step, cursor, depths |
-| `65` | → UI | the `params` readout: the twelve values and `width_ms` |
+| `65` | → UI | the `params` readout: the values, `width_ms`, and the Length detents (half a bar to four bars at the Rate and the host's meter) |
 | `66` | → UI | the scope capture, four bands of 256 columns |
 | `67` | ↔ | the patch blob, for Copy and Paste gate config |
 | `96..98` | → plugin | a step's mode, a step's amount, the cursor |

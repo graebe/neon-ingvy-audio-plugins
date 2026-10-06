@@ -528,7 +528,7 @@ impl Instance {
              * get it.
              *
              *   slot:legato:time_mode:curve:rate:length:amount:hold:attack:
-             *   decay:sustain:release:width_ms:fade:fade_soft:fade_dir
+             *   decay:sustain:release:width_ms:fade:fade_soft:fade_dir:detents
              *
              * FADE AND FADE_SOFT ARE APPENDED, past `width_ms`, because every
              * reader of this string indexes it. Adding them anywhere else --
@@ -548,6 +548,14 @@ impl Instance {
              * exactly as the single-key getters answer them -- one convention
              * per key, not two. attack/decay/release are PERCENTAGES OF
              * WIDTH, like everywhere else.
+             *
+             * `detents` is APPENDED, for the same reason: the pattern lengths,
+             * comma-separated and ascending, that are half a bar, one, two or
+             * four at this slot's Rate and the host's meter (`rates::detents`)
+             * -- "16,32,64,128" at 1/32 in 4/4, empty when none is whole. The
+             * editor's Length control holds on them; it is told them rather
+             * than working them out, so the rate table stays the only thing
+             * that knows what a step is worth.
              */
             "params" => {
                 let r = write!(
@@ -568,7 +576,15 @@ impl Instance {
                     fmt::g(&mut b, self.width_ms(), 9)?;
                     b.write_char(':')?;
                     fmt::g(&mut b, s.fade as f64, 9)?;
-                    write!(b, ":{}:{}", s.fade_soft as i32, s.fade_dir as i32)
+                    write!(b, ":{}:{}:", s.fade_soft as i32, s.fade_dir as i32)?;
+                    let d = rates::detents(s.rate_idx, self.meter, MAX_STEPS);
+                    for (i, steps) in d.as_slice().iter().enumerate() {
+                        if i > 0 {
+                            b.write_char(',')?;
+                        }
+                        write!(b, "{steps}")?;
+                    }
+                    Ok(())
                 })
             }
             "ui" => return self.ui_readout(b),

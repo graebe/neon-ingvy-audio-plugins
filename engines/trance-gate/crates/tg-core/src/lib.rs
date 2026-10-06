@@ -94,6 +94,7 @@ pub struct Playhead {
     pub ms_per_step: f32,
     pub sample_rate: f64,
     pub cursor: usize,
+    pub meter: rates::Meter,
 }
 
 pub struct Instance {
@@ -143,6 +144,9 @@ pub struct Instance {
     /// and is written against the concept, not against what drives it.
     advancing: bool,
     sample_rate: f64,
+    /// The host's time signature, as last told: what the `params` readout's
+    /// detents are counted in. Runtime, not saved -- it is the host's.
+    meter: rates::Meter,
 
     /*
      * THE FADE'S WEIGHT PER STEP, CACHED.
@@ -188,6 +192,7 @@ impl Instance {
             last_bpm: 120.0,
             advancing: false,
             sample_rate: if sample_rate > 0.0 { sample_rate } else { 44100.0 },
+            meter: rates::Meter::COMMON,
             fade_w: [1.0; MAX_STEPS],
             /* A FIXED SEED, ADVANCED PER CALL. There is no entropy source in
              * here -- no clock, no I/O, by design -- so successive presses
@@ -219,6 +224,19 @@ impl Instance {
          * today. It is here so that "ms_per_step is current" holds at every
          * door into the struct rather than at the two that happen to matter. */
         self.recalc_ms_per_step();
+    }
+
+    /// The host's time signature, numerator over denominator. One the host
+    /// could not mean -- or 0/0 for "it did not say" -- is 4/4. Changes no
+    /// sample: only the Length detents in the `params` readout are counted in
+    /// it.
+    pub fn set_meter(&mut self, num: i32, den: i32) {
+        self.meter = rates::Meter::new(num, den);
+    }
+
+    /// The time signature the detents are counted in.
+    pub fn meter(&self) -> rates::Meter {
+        self.meter
     }
 
     /*
@@ -261,6 +279,7 @@ impl Instance {
             ms_per_step: self.ms_per_step,
             sample_rate: self.sample_rate,
             cursor: self.cursor,
+            meter: self.meter,
         }
     }
 
@@ -282,6 +301,7 @@ impl Instance {
         self.ms_per_step = p.ms_per_step;
         self.phase.pos = p.step_pos;
         self.advancing = p.advancing;
+        self.meter = p.meter;
         self.cursor = p.cursor.min(self.pattern().length.max(1) - 1);
     }
 

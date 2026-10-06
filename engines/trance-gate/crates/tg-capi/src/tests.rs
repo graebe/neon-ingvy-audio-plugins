@@ -337,3 +337,19 @@ fn inner_is_the_same_instance_the_abi_drives() {
         tg_core_destroy(c);
     }
 }
+
+#[test]
+fn the_meter_reaches_the_detents_and_a_null_is_ignored() {
+    unsafe {
+        let c = tg_core_create(48000.0);
+        set(c, "rate", "1/32");
+        let last = |c| get(c, "params").unwrap().rsplit(':').next().unwrap().to_owned();
+        assert_eq!(last(c), "16,32,64,128");
+        tg_core_set_meter(c, 7, 8);
+        assert_eq!(last(c), "14,28,56,112");
+        tg_core_set_meter(c, 0, 0);
+        assert_eq!(last(c), "16,32,64,128", "no meter is common time");
+        tg_core_set_meter(null_mut(), 3, 4);
+        tg_core_destroy(c);
+    }
+}

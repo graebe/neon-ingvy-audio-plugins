@@ -17,10 +17,17 @@
  * `display` is the text under it, which the PLUGIN formats: this side holds no
  * units, no precision and no enum labels, by design, so it could not format one
  * if it wanted to.
+ *
+ * `detents` (normalised, optional) are values a drag holds on -- see
+ * lib/detents.js for the feel and its numbers. Page Up and Page Down go to the
+ * next one, and each is drawn as a tick outside the rail: an `ink-dim` mark,
+ * as the system's inactive marks are, and `uv` while the value is on it.
+ * Typed text, the reset and the arrows are untouched by them.
  */
-import { Show, createSignal } from 'solid-js';
+import { For, Show, createSignal } from 'solid-js';
 import { EditField } from './EditField.jsx';
 import { startDrag } from '../lib/drag.js';
+import { dragValue, nextDetent } from '../lib/detents.js';
 
 const BOX = 48;
 const START = 135, SWEEP = 270;          /* degrees, gap at the bottom */
@@ -40,8 +47,12 @@ export function Knob(props) {
     /* THE SENSITIVITY IS CHOSEN AT PRESS AND NOT RE-READ: the delta is
      * measured from the press position, so changing the divisor halfway
      * rescales everything since the press and the value jumps. */
-    const divisor = e.shiftKey ? TRAVEL * FINE : TRAVEL;
+    const fine = e.shiftKey;
+    const divisor = fine ? TRAVEL * FINE : TRAVEL;
     const startY = e.clientY, startV = norm();
+    /* The detents as they were at the press: a Rate changing mid-drag moves
+     * them, and moving the ground under a drag would jump the value. */
+    const detents = props.detents;
     /*
      * THE GESTURE OPENS ON THE FIRST MOVE, NOT ON THE PRESS. A press that
      * moves nothing -- a click, either half of a double-click -- is no edit,
@@ -58,7 +69,8 @@ export function Knob(props) {
           begun = true;
           props.onBegin?.();
         }
-        props.onInput?.(Math.min(1, Math.max(0, startV + (startY - ev.clientY) / divisor)));
+        props.onInput?.(dragValue(startV, startY - ev.clientY,
+                                  { travel: divisor, detents, fine }));
       },
       () => { if (begun) props.onEnd?.(); });
   };
@@ -92,14 +104,20 @@ export function Knob(props) {
     props.onEnd?.();
   };
 
+  const page = (dir, by) => {
+    const to = nextDetent(norm(), props.detents, dir);
+    nudge(to === null ? dir * by : to - norm());
+  };
+
   const onKeyDown = (e) => {
     /* Shift is FINE here as it is in a drag, and the ratio is the same 5. */
     const step = (e.shiftKey ? 0.002 : 0.01);
     switch (e.key) {
       case 'ArrowUp': case 'ArrowRight': nudge(step); break;
       case 'ArrowDown': case 'ArrowLeft': nudge(-step); break;
-      case 'PageUp': nudge(step * 10); break;
-      case 'PageDown': nudge(-step * 10); break;
+      /* To the next detent where there is one, and by a tenth where not. */
+      case 'PageUp': page(1, step * 10); break;
+      case 'PageDown': page(-1, step * 10); break;
       case 'Home': nudge(-1); break;
       case 'End': nudge(1); break;
       /* A click on the readout types; Enter is the keyboard's way in. */
@@ -128,6 +146,15 @@ export function Knob(props) {
     return `M ${x0} ${y0} L ${x1} ${y1}`;
   };
 
+  /* A detent's tick: radial, just outside the rail (which spans r 19..21), a
+   * hairline with butt caps for the same reason the arc has them. */
+  const tick = (d) => {
+    const [x0, y0] = pt(BOX * (22 / 48), START + SWEEP * d);
+    const [x1, y1] = pt(BOX * (24 / 48), START + SWEEP * d);
+    return `M ${x0} ${y0} L ${x1} ${y1}`;
+  };
+  const onDetent = (d) => Math.abs(d - norm()) < 1e-4;
+
   /*
    * NUMBER IN ink, UNIT IN ink-muted -- split at the LAST space.
    *
@@ -154,6 +181,12 @@ export function Knob(props) {
         <circle cx="24" cy="24" r={BOX * (16 / 48)} fill="var(--bg-200)" />
         {/* the rail */}
         <path d={arc(0, 1)} fill="none" stroke="var(--line-200)" stroke-width="2" stroke-linecap="butt" />
+        {/* the detents: marks, so no glow */}
+        <For each={props.detents ?? []}>{(d) => (
+          <path class="knob-tick" classList={{ on: onDetent(d) }} d={tick(d)}
+                stroke={onDetent(d) ? 'var(--uv)' : 'var(--ink-dim)'}
+                stroke-width="1" fill="none" stroke-linecap="butt" />
+        )}</For>
         {/*
           * THE ARC'S DROP SHADOW, WHICH IS WHERE ITS COLOUR COMES FROM. The
           * value arc is near-white; drawn alone it is a white line on a dark

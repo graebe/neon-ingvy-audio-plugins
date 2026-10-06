@@ -11,7 +11,7 @@
 import { createSignal, createMemo } from 'solid-js';
 import { EditorFrame, useEditorBridge, createClock } from '@ultraviolet/ui';
 import { createParams } from '@ultraviolet/ui/params';
-import { MSG, P, NUM_PARAMS } from './lib/msg.js';
+import { MSG, P, NUM_PARAMS, MAX_LENGTH, lengthNorm } from './lib/msg.js';
 import Ring from './lib/Ring.jsx';
 import StepGrid from './lib/StepGrid.jsx';
 import { EnvelopePlot } from './lib/EnvelopePlot.jsx';
@@ -127,6 +127,12 @@ export default function App() {
   };
   const playStep = createMemo(() => Math.floor(playPhase()) % Math.max(1, ui().length));
 
+  /* The Length detents, in steps, as the engine counted them for this slot's
+   * Rate and the host's meter. Compared by value, so an unchanged list does
+   * not redraw the ticks thirty times a second. */
+  const detents = createMemo(() => params()?.detents ?? [],
+                             [], { equals: (a, b) => a.join() === b.join() });
+
   /* The stage percentages come from `params` and the step duration from `ui`. */
   const plotParams = () => {
     const p = params();
@@ -211,11 +217,12 @@ export default function App() {
                 playhead={playStep()} moving={ui().moving}
                 weights={weights()} {...orderModel()}
                 centre={String(ui().length)} label="STEPS"
-                onLength={(steps) => host.commit(P.length, (steps - 1) / 127)} />
+                maxLength={MAX_LENGTH} detents={detents()}
+                onLength={(steps) => host.commit(P.length, lengthNorm(steps))} />
           <EnvelopePlot params={plotParams()} envelope={envelope()} w={240} h={104} />
           <SlotFiles />
         </div>
-        <Panels host={host}
+        <Panels host={host} lengthDetents={detents().map(lengthNorm)}
                 orderMode={orderMode()} orderNext={orderNext()} hits={hits()}
                 onOrder={() => { setNamed({}); setOrderMode((v) => !v); }} onShuffle={shuffleOrder} />
       </div>

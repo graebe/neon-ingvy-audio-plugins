@@ -104,6 +104,27 @@ it. With Time on `ms`, typing `40` into Attack sets 40 milliseconds; typing
 milliseconds. With Time on `%`, `40` means 40 % and `40 ms` still means
 milliseconds.
 
+### Length holds on whole bars
+
+Most patterns are half a bar, a bar, two bars or four bars long, so the
+**Length** knob makes those lengths easy to hit. Small marks outside its arc
+show where they are, and the mark you are on lights up. While you drag past one,
+the knob stays on that length for a short stretch before it moves on. You can
+land on it without aiming, and you never get stuck there.
+
+Say Rate is **1/32** and the set is in 4/4. A bar is 32 steps, so Length holds
+at **16, 32, 64 and 128**. To get a two-bar pattern, drag Length up from where
+it is. When the readout says 64, let go. Change Rate to 1/16 and the marks move
+to 8, 16, 32 and 64. They follow Live's time signature too: at 1/16 in 3/4 they
+are 6, 12, 24 and 48. A triplet rate holds on its own bars: 1/16T in 4/4 holds
+at 12, 24, 48 and 96. The marks always count in the current slot's Rate.
+
+The other ways to set Length ignore these lengths. Hold **Shift** as you drag
+to pass through them, or type any length into the readout. With the knob
+focused, **Page Up** and **Page Down** jump straight to the next one. The holds
+are part of the editor only: automation and Live's own controls set Length one
+step at a time, as before.
+
 ## The keyboard
 
 Everything the pointer does, the keyboard does too. **Tab** moves between
@@ -112,14 +133,14 @@ controls; a focused control shows a ring.
 | on | key | what it does |
 |---|---|---|
 | a knob | ↑ / → and ↓ / ← | turns it by 1 % of its range (**Shift**: 0.2 %) |
-| | Page Up / Page Down | by 10 % |
+| | Page Up / Page Down | by 10 % (Length: to the next whole-bar length — see above) |
 | | Home / End | to the minimum or the maximum |
 | | Enter | opens the readout to type a value |
 | the pads | arrow keys | move between pads (↑ and ↓ jump a row) |
 | | Space or Enter | toggles the focused step, like a click (with **Shift**: a tie) |
 | | **Alt** + ↑ / ↓ | raises or lowers that step's Amount by 10 % (**Shift** too: 1 %) |
 | the ring | ↑ / → and ↓ / ← | Length, one step longer or shorter |
-| | Page Up / Page Down | Length by four steps — a beat at 1/16 |
+| | Page Up / Page Down | Length to the next whole-bar length (four steps where there is none) |
 | | Home / End | Length 1 or 128 |
 | the Pattern / Signal tabs | arrow keys | switch tab |
 | a menu (Slot, Curve, Time…) | | opens and chooses the way your system's menus do |

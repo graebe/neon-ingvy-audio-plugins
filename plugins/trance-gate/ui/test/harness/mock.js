@@ -88,8 +88,22 @@ const HOLD = Number(Q.get('width') ?? 0.75);
  * attack, not three. That bug was invisible here because legato was hard-coded
  * off AND the editor never read the field. */
 const LEGATO = Q0.has('legato') ? '1' : '0';
-const PARAMS = `0:${LEGATO}:0:${CURVE}:1/16:15:0.9:${HOLD}:${A}:${D}:${S}:${R}:` +
-               `${(HOLD * 125).toFixed(2)}:${FADE}:${SOFT}:${DIR}`;
+const RATES = ['1/1T', '1/2', '1/2T', '1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T',
+               '1/32', '1/32T', '1/64', '1/128'];
+/*
+ * THE LENGTH DETENTS, per rate, in 4/4 -- exactly the 4/4 column of tg-core's
+ * `the_detents_for_every_rate_and_meter` (rates.rs). The editor is told them
+ * and never works them out, so a stand-in table is all the mock needs.
+ */
+const DETENTS_44 = ['3,6', '1,2,4,8', '3,6,12', '2,4,8,16', '3,6,12,24', '4,8,16,32',
+                    '6,12,24,48', '8,16,32,64', '12,24,48,96', '16,32,64,128',
+                    '24,48,96', '32,64,128', '64,128'];
+/* The readout for the rate at normalised `rate`, as the engine formats it. */
+const paramsLine = (rate) => {
+  const r = Math.round(rate * 12);
+  return `0:${LEGATO}:0:${CURVE}:${RATES[r]}:15:0.9:${HOLD}:${A}:${D}:${S}:${R}:` +
+         `${(HOLD * 125).toFixed(2)}:${FADE}:${SOFT}:${DIR}:${DETENTS_44[r]}`;
+};
 
 /*
  * The scope as the plugin sends it:
@@ -177,6 +191,9 @@ const envelopeCurves = () => {
 };
 
 let roll = 0;
+/* The current slot's values -- VALUES until the slots below exist, which is
+ * after the early push this file makes on purpose. */
+let current = () => VALUES;
 /* Every parameter's normalised default, as Params.cpp declares them -- what a
  * double-click resets to. */
 const DEFAULTS = [0, 15 / 127, 7 / 12, 0, 0, 0, 1, 1, 1.6 / 200, 16 / 200, 1, 16 / 200, 1, 0, 0];
@@ -185,7 +202,7 @@ const pushAll = () => {
   VALUES.forEach((x, i) => globalThis.SPVFD?.(i, x));
   DISPLAY.forEach((d, i) => globalThis.SAMFD?.(i, d.length, b64(d)));
   globalThis.SAMFD?.(64, 0, b64(UI_STATE));
-  globalThis.SAMFD?.(65, 0, b64(PARAMS));
+  globalThis.SAMFD?.(65, 0, b64(paramsLine(current()[2])));
   globalThis.SAMFD?.(66, 0, binary(scope(roll)));
   globalThis.SAMFD?.(105, 0, binary(gateCurve()));
   globalThis.SAMFD?.(106, 0, envelopeCurves());
@@ -200,7 +217,7 @@ setInterval(() => { roll += 3; globalThis.SAMFD?.(66, 0, binary(scope(roll))); }
 window.__mockEarlyPush = 0;
 pushAll();
 
-const MSG_READY = 120, MSG_REQUEST_PATCH = 99, P_SLOT = 0, P_TIME_MODE = 4;
+const MSG_READY = 120, MSG_REQUEST_PATCH = 99, P_SLOT = 0, P_RATE = 2, P_TIME_MODE = 4;
 
 /*
  * EVERY PARAMETER BUT SLOT BELONGS TO A SLOT, as in the plugin. Slot 1 holds
@@ -210,10 +227,9 @@ const MSG_READY = 120, MSG_REQUEST_PATCH = 99, P_SLOT = 0, P_TIME_MODE = 4;
  * (SetParamFromPlugin), and the Slot's own display -- never its value, which
  * the editor wrote.
  */
-const RATES = ['1/1T', '1/2', '1/2T', '1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T',
-               '1/32', '1/32T', '1/64', '1/128'];
 const slots = Array.from({ length: 8 }, (_, s) => (s === 0 ? VALUES : DEFAULTS).slice());
 let slot = 0;
+current = () => slots[slot];
 /* Each parameter's text from its normalised value, as Params.cpp formats it. */
 const displayOf = (i, v, all) => {
   const pct = (x) => `${(x * 100).toFixed(2)} %`;
@@ -276,6 +292,19 @@ const recall = (to) => {
     globalThis.SPVFD?.(i, v);
     say(i, displayOf(i, v, slots[to]));
   });
+  globalThis.SAMFD?.(65, 0, b64(paramsLine(slots[to][2])));
+};
+
+/*
+ * THE HOST MOVING A PARAMETER -- automation, its own UI -- as the plugin
+ * relays it: the value, its display text and, for the Rate, the engine's next
+ * `params` readout with that rate's detents.
+ */
+window.__hostMoves = (i, v) => {
+  slots[slot][i] = v;
+  globalThis.SPVFD?.(i, v);
+  say(i, displayOf(i, v, slots[slot]));
+  if (i === P_RATE) globalThis.SAMFD?.(65, 0, b64(paramsLine(v)));
 };
 
 /* Everything the editor sends, for the interaction tests to assert on. */
@@ -306,6 +335,9 @@ window.IPlugSendMsg = (m) => {
     return;
   }
   if (m?.msg === 'SPVFUI' && m.paramIdx > P_SLOT) slots[slot][m.paramIdx] = m.value;
+  /* A Rate moved: the engine's next `params` readout carries its detents. */
+  if (m?.msg === 'SPVFUI' && m.paramIdx === P_RATE)
+    globalThis.SAMFD?.(65, 0, b64(paramsLine(m.value)));
   if (m?.msg === 'SAMFUI' && m.msgTag === MSG_REQUEST_PATCH)
     globalThis.SAMFD?.(67, 0, b64('tg1:slot=0:len=16:steps=5555'));
   /* Env Time switched: the stage readouts follow it, as OnEditorIdle re-sends
