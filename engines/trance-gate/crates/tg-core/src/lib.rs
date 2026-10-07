@@ -330,6 +330,15 @@ impl Instance {
         &self.pat[self.slot]
     }
 
+    /// Each step's level factor from the fade, 0..1, for the current slot:
+    /// what the gate multiplies the step's level by (`recalc_fade`), so a view
+    /// draws what plays without a second copy of the formula. Steps past the
+    /// pattern's length are 0.
+    #[inline]
+    pub fn fade_levels(&self) -> &[f32; MAX_STEPS] {
+        &self.fade_w
+    }
+
     /// One step's duration in ms, at the rate and tempo currently known.
     /// Called whenever either changes, so the `ui` readout never reports a
     /// stale one -- a value that only appeared after the first block meant a

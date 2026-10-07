@@ -94,6 +94,12 @@ int  tg_shell_import(tg_shell_t *s, int slot, const char *text, char *err, int e
 /* One cycle of the pattern in ms, as last published: the scope's axis. */
 double tg_shell_cycle_ms(tg_shell_t *s);
 
+/* The current slot's fade levels, 0..1 a step, as the engine multiplies them
+ * in: `n` floats at most from step 0. Returns how many, or -1. ADDED after the
+ * headers were generated (the JUCE shell's editor draws them), so it is not in
+ * the archived Max for Live external; an addition breaks no caller. */
+int  tg_shell_levels(tg_shell_t *s, float *out, int n);
+
 /*
  * THE HOST'S PARAMETERS MIRROR THE CURRENT SLOT. Every parameter but Slot is
  * per slot in the engine, so on the block the Slot moves (or a paste lands)

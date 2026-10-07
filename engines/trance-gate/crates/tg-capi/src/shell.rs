@@ -158,6 +158,8 @@ pub struct TgFrame {
     nums: [f64; NUMS],
     /* The engine's paste count, so a view replaying a paste counts on from it. */
     recalls: u32,
+    /* The current slot's fade levels, one per step: `tg_shell_levels`. */
+    levels: [f32; tg_core::MAX_STEPS],
 }
 
 impl Model for TgCore {
@@ -172,6 +174,7 @@ impl Model for TgCore {
             state_rev: None,
             nums: [0.0; NUMS],
             recalls: 0,
+            levels: [0.0; tg_core::MAX_STEPS],
         }
     }
 
@@ -230,6 +233,7 @@ impl Model for TgCore {
         f.recalls = self.recalls;
         f.rt = self.engine.playhead();
         f.cycle_ms = crate::scope_cycle_ms(&self.engine);
+        f.levels = *self.engine.fade_levels();
     }
 
     fn restore(&mut self, f: &TgFrame) {
@@ -490,6 +494,31 @@ pub unsafe extern "C" fn tg_shell_read(
         Some(view) if i != PARAMS => view.engine.get_param(key, out),
         _ => r.frame.text[i].copy_to(out),
     })
+}
+
+/// The current slot's per-step level factors from the fade, 0..1 -- the
+/// engine's own, which it multiplies each step's level by -- into `out`, from
+/// step 0, `n` of them at most (TG_MAX_STEPS are kept; steps past the
+/// pattern's length are 0). As last published, or, while an edit is queued,
+/// as the engine will hold them once it lands, as the `ui` readout is.
+/// Returns how many were written, or -1. Any non-audio thread; never touches
+/// the engine.
+///
+/// # Safety
+/// `out` holds `n` floats.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_levels(sh: *mut TgShell, out: *mut f32, n: c_int) -> c_int {
+    let Some(sh) = sh.as_ref() else { return -1 };
+    if out.is_null() || n <= 0 {
+        return -1;
+    }
+    let count = (n as usize).min(tg_core::MAX_STEPS);
+    let out = std::slice::from_raw_parts_mut(out, count);
+    sh.bridge.read(|r| match r.pending {
+        Some(view) => out.copy_from_slice(&view.engine.fade_levels()[..count]),
+        None => out.copy_from_slice(&r.frame.levels[..count]),
+    });
+    count as c_int
 }
 
 /// The state blob a save must write: the engine's, every queued edit
@@ -873,6 +902,39 @@ mod tests {
         post(sh, &["randomize", "Hold"]);
         block(sh);
         assert_eq!(read(sh, "state"), predicted, "a hold rolls nothing");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    fn levels(sh: *mut TgShell) -> Vec<f32> {
+        let mut out = vec![-1.0f32; tg_core::MAX_STEPS];
+        assert_eq!(unsafe { tg_shell_levels(sh, out.as_mut_ptr(), out.len() as c_int) }, out.len() as c_int);
+        out
+    }
+
+    #[test]
+    fn the_fade_levels_are_the_engines_queued_and_published() {
+        let sh = tg_shell_create(48000.0);
+        /* Eight hits, every other step of sixteen, at Fade 50 % hard: the
+         * first four arrivals sound, the rest are gaps, the holes 0. */
+        post(sh, &["length", "15", "pattern", "5555", "fade", "0.5"]);
+        let queued = levels(sh);
+        let on: Vec<usize> = (0..16).filter(|i| queued[*i] > 0.0).collect();
+        assert_eq!(on.len(), 4, "{queued:?}");
+        assert!(on.iter().all(|i| i % 2 == 0), "a hole sounds: {queued:?}");
+        assert!(queued[16..].iter().all(|v| *v == 0.0), "past the length: {queued:?}");
+        block(sh);
+        assert_eq!(levels(sh), queued, "the published levels are the queued ones");
+        post(sh, &["fade", "1.0"]);
+        block(sh);
+        let full = levels(sh);
+        assert!((0..16).all(|i| full[i] == if i % 2 == 0 { 1.0 } else { 0.0 }), "{full:?}");
+
+        /* Fewer asked for, fewer written; nothing to write into, refused. */
+        let mut two = [0.0f32; 2];
+        assert_eq!(unsafe { tg_shell_levels(sh, two.as_mut_ptr(), 2) }, 2);
+        assert_eq!(two, [1.0, 0.0]);
+        assert_eq!(unsafe { tg_shell_levels(sh, std::ptr::null_mut(), 4) }, -1);
+        assert_eq!(unsafe { tg_shell_levels(std::ptr::null_mut(), two.as_mut_ptr(), 2) }, -1);
         unsafe { tg_shell_destroy(sh) };
     }
 
