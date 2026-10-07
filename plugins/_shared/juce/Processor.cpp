@@ -56,13 +56,11 @@ void Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer
 
 void Processor::getStateInformation (juce::MemoryBlock& out)
 {
-    JUCE_ASSERT_MESSAGE_THREAD
     writeState (out);
 }
 
 void Processor::setStateInformation (const void* data, int size)
 {
-    JUCE_ASSERT_MESSAGE_THREAD
     if (data != nullptr && size > 0)
         readState (data, (size_t) size);
 }
