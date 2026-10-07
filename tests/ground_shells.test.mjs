@@ -132,9 +132,8 @@ test('no product can reorder any of it', () => {
   }
 });
 
-const PLUGINS = {
-  ListenIn: 'plugins/listen-in/ListenIn',
-};
+/* The products on iPlug2: none any more. */
+const PLUGINS = {};
 
 for (const [cls, base] of Object.entries(PLUGINS)) {
   test(`${cls} is built on the shared shell and leaves the ground to it`, () => {
@@ -155,6 +154,7 @@ for (const [cls, base] of Object.entries(PLUGINS)) {
  */
 const JUCE_PLUGINS = {
   'NI Trance Gate': ['plugins/trance-gate/TranceGate.h', 'plugins/trance-gate/TranceGate.cpp', /tg_shell_begin/],
+  'NI Listen-In': ['plugins/listen-in/ListenIn.h', 'plugins/listen-in/ListenIn.cpp', /shell_handoff_acquire/],
   'NI Spectrogram': ['plugins/spectrogram/SpectrogramProcessor.h', 'plugins/spectrogram/SpectrogramProcessor.cpp',
     /shell_handoff_acquire/],
   /* Its block, heard or bypassed, is one run() around sc_shell_begin. */

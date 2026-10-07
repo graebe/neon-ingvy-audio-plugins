@@ -276,7 +276,7 @@ set(NI_AU_LIBS "-framework AudioToolbox" "-framework AudioUnit" "-framework Core
 # The Audio Units are the products still on iPlug2 (NI_IPLUG2_PRODUCTS): a
 # product on the JUCE shell is a VST3 only, held by the JUCE bundle tests
 # below.
-set(NI_IPLUG2_PRODUCTS ListenIn)
+set(NI_IPLUG2_PRODUCTS)
 if (APPLE)
     # auval -stress's state path on every plugin: a render thread, two threads
     # setting state back and forth, and the main run loop for iPlug2's idle
@@ -309,11 +309,12 @@ if (APPLE)
     # The editors opened by a real host in each format -- the VST3, the AU and
     # the CLAP from build/out, each with iPlug2's WKWebView and the shipped
     # page in it -- fed audio under a running transport, closed and opened
-    # again, and the page asked what reached it: the Spectrogram's picture,
-    # the Listen-In's name,
-    # everyone's ground -- and, after a state load on a thread that is not the
-    # main one, every value, with nothing sent to the WebView from that
-    # thread. The mock-host e2e suite cannot see this path.
+    # again, and the page asked what reached it: everyone's ground -- and,
+    # after a state load on a thread that is not the main one, every value,
+    # with nothing sent to the WebView from that thread. The mock-host e2e
+    # suite cannot see this path. No product is on iPlug2 any more
+    # (NI_IPLUG2_PRODUCTS), so these harnesses register nothing; they go with
+    # the iPlug2 build itself.
     # editor_host.mm. Needs a logged-in session (a window server), as a host does.
     set(_vst3 ${IPLUG2_DIR}/Dependencies/IPlug/VST3_SDK)
     add_executable(editor_host editor_host.mm
@@ -350,8 +351,8 @@ if (APPLE)
     target_compile_options(vst3_capture PRIVATE -fobjc-arc)
     target_link_libraries(vst3_capture PRIVATE "-framework Cocoa" "-framework WebKit")
     set(_ni_vst3_bundles)
-    # The iPlug2 builds still here; the JUCE Trance Gate reads its fixtures in
-    # tg_processor and tg_host.
+    # The iPlug2 builds still here; a product on the JUCE shell reads its
+    # fixtures in its own processor and host tests.
     foreach(plugin IN LISTS NI_IPLUG2_PRODUCTS)
         list(APPEND _ni_vst3_bundles ${NI_BUNDLES}/NI${plugin}.vst3)
     endforeach()
@@ -483,6 +484,10 @@ target_compile_definitions(tg_host PRIVATE
 target_link_libraries(tg_host PRIVATE
     tg_engine juce::juce_audio_processors juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 add_test(NAME tg_host COMMAND tg_host ${NI_BUNDLES}/NITranceGate.vst3 ${NI_FIXTURES})
+
+# NI LISTEN-IN: its processor, its audio callback and its built bundle, in a
+# directory of their own with their own tiers.
+add_subdirectory(listen-in)
 
 # NI SIDE-CHAIN: its processor, its audio callback and its built bundle, in a
 # directory of their own with their own tiers.
@@ -675,8 +680,8 @@ endif()
 
 if (TG_NODE)
     set(LISTENIN_UI_TEST ${CMAKE_SOURCE_DIR}/plugins/listen-in/ui/test)
-    # The other half of the wire oracle; listenin_wire is the first. See
-    # tests/cpp/CMakeLists.txt for the pair.
+    # The web editor's decoder against the state strings the iPlug2 build
+    # sent (ui/test/wire_table.txt), kept with ui/ until the web editors go.
     add_test(NAME listenin_wire_js
              COMMAND ${TG_NODE} --test ${LISTENIN_UI_TEST}/state.test.mjs)
     set_tests_properties(listenin_wire_js PROPERTIES
@@ -904,10 +909,7 @@ ni_test_tiers(
         nist_fixtures tg_processor tg_rt
     FULL
         tg_render_ab:render sc_render_ab:render
-        au_stress_ListenIn:host
-        au_ground_ListenIn:host
-        editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host
-        editor_host_ListenIn_clap:host iplug2_fixtures:host
+        iplug2_fixtures:host
         ${_ni_juce_tiers}
         tg_host:host versions_bundles:bundles
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc

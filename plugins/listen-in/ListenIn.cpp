@@ -2,216 +2,292 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Listen-In -- a tap that other plugins can read.
+ * NI Listen-In on the JUCE shell. ListenIn.h says what it keeps and where.
  */
 #include "ListenIn.h"
+
+#include "EngineModel.h"
+#include "ListenInEditor.h"
+#include "PluginEditor.h"
 #include "Wire.h"
-#include "IPlug_include_in_plug_src.h"
+#include "ni/Wire.h"
 
 #include <algorithm>
 #include <cmath>
 
-using namespace iplug;
-using namespace listenin;
+namespace ni::li
+{
 
+namespace
+{
 /* The handoff frees through this; abus_pusher_release's pointer type is not
  * void*. */
-static void ReleasePusher(void* p)
+void releasePusher (void* p)
 {
-  abus_pusher_release(static_cast<abus_pusher_t*>(p));
+    abus_pusher_release (static_cast<abus_pusher_t*> (p));
 }
 
-ListenIn::ListenIn(const InstanceInfo& info)
-: ni::WebPlugin(info, MakeConfig(kNumParams, kNumPresets), {"nilistenin", __FILE__})
+/* How much of the last peak a block keeps: a quiet block landing between two
+ * frames would otherwise flicker the meter to nothing. */
+constexpr float peakDecay = 0.85f;
+
+/* A name as the plugin keeps it (Wire.h). */
+std::string kept (const char* typed)
 {
-  /* State.cpp, where a test can reach it. */
-  state::Declare([this](int i) { return GetParam(i); });
-  mStage.resize(size_t(kStageFrames) * abus_channels(), 0.f);
-  mLabel.reserve(32);
-  mBus = shell_handoff_new(ReleasePusher);
-  MakeDefaultPreset("Default", kNumPresets);
+    char clean[ABUS_LABEL_CAP];
+    wire::parse_label (typed, clean, (int) sizeof clean);
+    return clean;
+}
+} // namespace
+
+Processor::Processor()
+    : ni::Processor (BusesProperties()
+                         .withInput ("Input", juce::AudioChannelSet::stereo(), true)
+                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      handoff (shell_handoff_new (releasePusher))
+{
+    auto b = std::make_unique<ni::Parameter> (busSpec());
+    bus = b.get();
+    addParameter (b.release());
+    /* LAST, so its index -- and VST3 ID -- is 1. */
+    auto off = std::make_unique<ni::Parameter> (ni::bypassSpec());
+    bypass = off.get();
+    addParameter (off.release());
+
+    stage.assign ((std::size_t) stageFrames * abus_channels(), 0.0f);
+    named.reserve (ABUS_LABEL_CAP);
+    editorModel = std::make_unique<EngineModel> (*this);
+    /* The bus service: a host's idle rate, as iPlug2's was. */
+    startTimerHz (30);
 }
 
-ListenIn::~ListenIn()
+Processor::~Processor()
 {
-  /* The audio thread has stopped, so the live pusher goes too, and with the
-   * writer the slot. */
-  shell_handoff_free(mBus);
-  mBus = nullptr;
-  abus_writer_release(mWriter);
-  mWriter = nullptr;
+    stopTimer();
+    /* No block runs any more, so the live pusher goes too, and with the
+     * writer the bus. */
+    shell_handoff_free (handoff);
+    abus_writer_release (writer);
+}
+
+bool Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    return layouts.getMainInputChannelSet() == juce::AudioChannelSet::stereo()
+        && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+}
+
+/* Recorded, not acted on: a host may prepare on any thread. */
+void Processor::prepareToPlay (double sampleRate, int)
+{
+    rate.store ((std::uint32_t) std::lround (sampleRate > 0.0 ? sampleRate : 48000.0), std::memory_order_release);
+    resetSeen.store (true, std::memory_order_release);
+    beat.prepare (sampleRate > 0.0 ? sampleRate : 48000.0);
+}
+
+/*
+ * THE TAP. The input is read into the stage before anything else could touch
+ * the buffer, interleaved -- the bus is always stereo, so a lone channel is
+ * published on both sides -- and pushed in chunks of what was reserved. The
+ * buffer itself is not written: JUCE's input is its output, so the audio
+ * passes through bit for bit by being left alone.
+ *
+ * THE HOST'S BYPASS IS READ HERE. JUCE's VST3 wrapper hands a processor with
+ * a bypass parameter of its own every block through processBlock, that
+ * parameter on or off, and leaves bypassing to it (processBlockBypassed comes
+ * only from hosts that bypass a plugin themselves). Either way it is the
+ * same: the audio left alone, nothing published, the meter falling.
+ */
+void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+{
+    const int frames = buffer.getNumSamples();
+    const auto clock = readClock (getPlayHead());
+    beat.tick (clock, frames);
+    if (bypass->getValue() >= 0.5f)
+    {
+        fall();
+        return;
+    }
+    const int channels = buffer.getNumChannels();
+    if (frames <= 0 || channels < 1)
+        return;
+
+    const float* left = buffer.getReadPointer (0);
+    const float* right = buffer.getReadPointer (channels > 1 ? 1 : 0);
+    float peak = 0.0f;
+    /* Held for the block; null while no bus is claimed, which push ignores. */
+    auto* pusher = static_cast<abus_pusher_t*> (shell_handoff_acquire (handoff));
+    ni::wire::for_each_chunk (frames, stageFrames, [&] (int off, int n)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            const float l = left[off + i], r = right[off + i];
+            stage[(std::size_t) i * 2] = l;
+            stage[(std::size_t) i * 2 + 1] = r;
+            peak = std::max (peak, std::max (std::fabs (l), std::fabs (r)));
+        }
+        abus_pusher_push (pusher, stage.data(), (std::uint32_t) n);
+    });
+    shell_handoff_release (handoff);
+
+    /* Clamped here, so every reader gets the same answer: a sample above full
+     * scale is real, a meter drawn past its well is not. */
+    const float prev = level.load (std::memory_order_relaxed);
+    level.store (std::min (1.0f, std::max (peak, prev * peakDecay)), std::memory_order_relaxed);
+}
+
+/* Bypassed by a host that does it itself -- audio through, nothing
+ * published -- while the meter falls and the Ground keeps the host's time. */
+void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
+    fall();
+    ni::Processor::processBypassed (buffer, midi);
+}
+
+void Processor::fall() noexcept
+{
+    level.store (level.load (std::memory_order_relaxed) * peakDecay, std::memory_order_relaxed);
 }
 
 /*
  * THE BUS FOLLOWS WHAT THE OTHER THREADS ASKED FOR, here and nowhere else.
- * Nothing is claimed before the host's first reset; a reset retunes a live bus
- * and retries a refused one; a new slot or a loaded state claims afresh.
+ * Nothing is claimed before the host's first prepare; a prepare retunes a live
+ * bus and retries a refused one; a new bus number or a loaded state claims
+ * afresh.
  */
-void ListenIn::ServiceBus()
+void Processor::serviceBus()
 {
-  /* A pusher replaced earlier is freed once the audio thread has let go. */
-  shell_handoff_collect(mBus);
-  ServiceLabel();
+    /* A pusher replaced earlier is freed once the audio thread has let go. */
+    shell_handoff_collect (handoff);
+    serviceLabel();
 
-  const uint32_t rate = mRate.load(std::memory_order_acquire);
-  if (rate == 0)
-    return;
+    const std::uint32_t r = rate.load (std::memory_order_acquire);
+    if (r == 0)
+        return;
 
-  const bool reset = mResetSeen.exchange(false, std::memory_order_acq_rel);
-  const bool reload = mReclaim;
-  mReclaim = false;
-  const int want = wire::clamp_slot(mWantSlot.load(std::memory_order_relaxed));
+    const bool reset = resetSeen.exchange (false, std::memory_order_acq_rel);
+    const bool reload = reclaim;
+    reclaim = false;
+    const int want = wire::clamp_slot ((int) std::lround (bus->plain()));
 
-  /* Either side of a rate change is a different signal, so the bus restarts
-   * rather than splicing. Posted: the pusher applies it. */
-  if (reset && mWriter)
-    abus_writer_set_sample_rate(mWriter, rate);
+    /* Either side of a rate change is a different signal, so the bus restarts
+     * rather than splicing. Posted: the pusher applies it. */
+    if (reset && writer != nullptr)
+        abus_writer_set_sample_rate (writer, r);
 
-  if (!(mWaiting || reload || want != mTriedSlot || (reset && !mWriter)))
-    return;
+    if (! (waiting || reload || want != triedSlot || (reset && writer == nullptr)))
+        return;
 
-  /*
-   * RELEASE FIRST, AND ONLY THEN CLAIM: moving 3 -> 4 -> 3 would otherwise find
-   * slot 3 still held by this instance and call it taken. The writer goes at
-   * once; the slot goes with the pusher once the audio thread lets go -- within
-   * a block -- and until then the claim waits for the next tick.
-   */
-  abus_writer_release(mWriter);
-  mWriter = nullptr;
-  shell_handoff_set(mBus, nullptr);
-  mWaiting = shell_handoff_collect(mBus) > 0;
-  if (mWaiting)
-    return;
+    /*
+     * RELEASE FIRST, AND ONLY THEN CLAIM: moving 3 -> 4 -> 3 would otherwise
+     * find bus 3 still held by this instance and call it taken. The writer
+     * goes at once; the bus goes with the pusher once the audio thread lets go
+     * -- within a block -- and until then the claim waits for the next tick.
+     */
+    abus_writer_release (writer);
+    writer = nullptr;
+    shell_handoff_set (handoff, nullptr);
+    waiting = shell_handoff_collect (handoff) > 0;
+    if (waiting)
+        return;
 
-  mTriedSlot = want;
-  abus_writer_t* w = nullptr;
-  abus_pusher_t* p = nullptr;
-  switch (abus_writer_claim(uint32_t(want), rate, &w, &p))
-  {
-    case ABUS_OK:
-      mStatus = wire::kLive;
-      mWriter = w;
-      if (!mLabel.empty())
-        abus_writer_set_label(mWriter, mLabel.c_str());
-      shell_handoff_set(mBus, p);
-      break;
-    case ABUS_ERR_TAKEN:
-      /* Another Listen-In publishes here, and the editor says so: a tap that
-       * silently does nothing is worse than one that refuses out loud. */
-      mStatus = wire::kTaken;
-      break;
-    default:
-      mStatus = wire::kUnavailable;
-      break;
-  }
-  SendState();
-}
-
-void ListenIn::ServiceLabel()
-{
-  bool loaded = false;
-  if (!mSession.Take(mLabel, loaded))
-    return;
-  if (mWriter)
-    abus_writer_set_label(mWriter, mLabel.c_str());
-  if (loaded)
-  {
-    /* The slot and the label changed underneath the bus: claim afresh. The
-     * editor typed neither, so it is told. */
-    mReclaim = true;
-    if (EditorIsOpen())
-      SendText(kMsgLabel, mLabel);
-  }
-}
-
-/* Recorded, not acted on: this may not be the main thread. */
-void ListenIn::ResetAudio()
-{
-  mRate.store(uint32_t(std::lround(GetSampleRate() > 0.0 ? GetSampleRate() : 48000.0)),
-              std::memory_order_release);
-  mResetSeen.store(true, std::memory_order_release);
-}
-
-void ListenIn::OnParamChange(int paramIdx)
-{
-  if (paramIdx == kSlot)
-    mWantSlot.store(wire::clamp_slot(GetParam(kSlot)->Int()), std::memory_order_relaxed);
-}
-
-void ListenIn::ProcessAudio(sample** inputs, sample** outputs, int nFrames)
-{
-  const int nIn = NInChansConnected();
-  const int nOut = NOutChansConnected();
-  if (nIn < 1 || nOut < 1)
-    return;
-
-  /* The tap reads the input before the passthrough: a host may hand over one
-   * buffer for both. The bus is always stereo; a mono source is duplicated. */
-  const bool stereoIn = nIn > 1 && inputs[1] != nullptr;
-  float peak = 0.f;
-  /* Held for the block; null when no slot is claimed, which push ignores. */
-  auto* bus = static_cast<abus_pusher_t*>(shell_handoff_acquire(mBus));
-
-  ni::wire::for_each_chunk(nFrames, kStageFrames, [&](int off, int n) {
-    for (int i = 0; i < n; i++)
+    triedSlot = want;
+    abus_writer_t* w = nullptr;
+    abus_pusher_t* p = nullptr;
+    switch (abus_writer_claim ((std::uint32_t) want, r, &w, &p))
     {
-      const float l = float(inputs[0][off + i]);
-      const float r = float(stereoIn ? inputs[1][off + i] : inputs[0][off + i]);
-      mStage[size_t(i) * 2] = l;
-      mStage[size_t(i) * 2 + 1] = r;
-      peak = std::max(peak, std::max(std::fabs(l), std::fabs(r)));
+        case ABUS_OK:
+            state = Status::live;
+            writer = w;
+            if (! named.empty())
+                abus_writer_set_label (writer, named.c_str());
+            shell_handoff_set (handoff, p);
+            break;
+        case ABUS_ERR_TAKEN:
+            /* Another Listen-In publishes here, and the window says so: a tap
+             * that silently does nothing is worse than one that refuses out
+             * loud. */
+            state = Status::taken;
+            break;
+        default:
+            state = Status::unavailable;
+            break;
     }
-    abus_pusher_push(bus, mStage.data(), uint32_t(n));
-  });
-  shell_handoff_release(mBus);
-
-  /* The peak decays rather than resets, or a quiet block landing under a
-   * 60 Hz read would flicker the meter to nothing. */
-  const float prev = mPeak.load(std::memory_order_relaxed);
-  mPeak.store(std::max(peak, prev * 0.85f), std::memory_order_relaxed);
-
-  ni::wire::passthrough(inputs, nIn, outputs, nOut, nFrames);
 }
 
-/* The chunk is State.cpp's: parameters, then the label. */
-bool ListenIn::SerializeState(IByteChunk& chunk) const
+void Processor::serviceLabel()
 {
-  return state::Save(chunk, [this](IByteChunk& c) { return PutParams(c); }, mSession.Label());
+    bool loaded = false;
+    if (! session.take (named, loaded))
+        return;
+    if (writer != nullptr)
+        abus_writer_set_label (writer, named.c_str());
+    /* The bus and its name changed underneath the claim: claim afresh. */
+    if (loaded)
+        reclaim = true;
 }
 
-int ListenIn::UnserializeState(const IByteChunk& chunk, int startPos)
+void Processor::editLabel (const std::string& typed)
 {
-  /* Recorded, not applied: the host picks this thread. The next idle tick
-   * hands the label to the writer and claims the bus afresh. */
-  return mSession.Load(
-    chunk, startPos,
-    [this](const IByteChunk& c, int p) { return CheckParams(c, p); },
-    [this](const IByteChunk& c, int p) { return GetParams(c, p); });
+    JUCE_ASSERT_MESSAGE_THREAD
+    auto name = kept (typed.c_str());
+    if (name == session.label())
+        return;
+    session.edit (std::move (name));
+    serviceLabel();
+    /* A name is not a parameter, so the host cannot see it change. */
+    nonParameterStateChanged();
 }
 
-void ListenIn::SendState()
+juce::AudioProcessorEditor* Processor::createEditor()
 {
-  const int slot = wire::clamp_slot(GetParam(kSlot)->Int());
-  SendText(kMsgState, wire::encode_state(slot, mStatus, mPeak.load(std::memory_order_relaxed)));
+    return new ni::PluginEditor (*this, std::make_unique<ListenInEditor> (*editorModel),
+                                 ni::PluginEditor::FollowDesign {});
 }
 
-/* The name is not in the state string: it changes rarely, and the state is
- * parsed sixty times a second. */
-void ListenIn::OnEditorReady()
+/* While a window shows it: the Ground. */
+void Processor::editorOpened()
 {
-  /* A load not yet applied is what the editor should open on. */
-  ServiceLabel();
-  SendState();
-  SendText(kMsgLabel, mLabel);
+    beat.setActive (true);
 }
 
-bool ListenIn::OnEditorMessage(int tag, const std::string& arg)
+void Processor::editorClosed()
 {
-  if (tag != kMsgLabel)
-    return false;
-  char clean[32];
-  wire::parse_label(arg.c_str(), clean, int(sizeof clean));
-  mSession.Edit(clean);
-  ServiceLabel();
-  return true;
+    beat.setActive (false);
+}
+
+/* THE CHUNK THE iPlug2 BUILD WROTE: the bus, its name, and the bypass after
+ * it, which iPlug2 needs to load it. */
+void Processor::writeState (juce::MemoryBlock& out)
+{
+    nist::State saved;
+    saved.params.push_back (bus->plain());
+    saved.strings.push_back (session.label());
+    saved.bypass = bypass->plain() >= 0.5;
+    const auto bytes = nist::write (layout(), saved);
+    out.replaceAll (bytes.data(), bytes.size());
+}
+
+/*
+ * A SET REOPENED: every check before anything is applied, so a chunk no build
+ * wrote changes nothing; then the bus, the bypass and the name, kept as the
+ * editor's would be. The bus itself is claimed afresh by the message thread.
+ */
+bool Processor::readState (const void* data, size_t size)
+{
+    const auto loaded = nist::read (layout(), data, size);
+    if (! loaded)
+        return false;
+    bus->setPlainNotifyingHost (loaded->params[kBus]);
+    if (loaded->bypass)
+        bypass->setPlainNotifyingHost (*loaded->bypass ? 1.0 : 0.0);
+    session.load (kept (loaded->strings.front().c_str()));
+    return true;
+}
+
+} // namespace ni::li
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new ni::li::Processor();
 }

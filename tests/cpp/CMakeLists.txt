@@ -45,7 +45,7 @@ add_test(NAME ni_editor COMMAND ni_editor)
 # The Trance Gate's state and parameters are tested on the JUCE shell now,
 # with its processor in the program (tests/tg_processor.cpp): the iPlug2
 # product these two linked is gone. iPlug2's parameter class stays for the
-# three products still on it.
+# products still on it.
 set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/external/iPlug2)
 set(IPLUG_PARAM_SRC ${IPLUG2_DIR}/IPlug/IPlugParameter.cpp)
 
@@ -62,45 +62,7 @@ target_include_directories(shell_denormals PRIVATE ${DOCTEST_DIR})
 target_link_libraries(shell_denormals PRIVATE shell_engine)
 add_test(NAME shell_denormals COMMAND shell_denormals)
 
-# --------------------------------------------------------------- Listen-In
-
-add_executable(listenin_wire listenin_wire.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp ${NI_WIRE_SRC})
-# audio_bus.h for ABUS_MAX_SLOT only -- a macro, so nothing is linked; the
-# header is generated, so the target waits for the cargo run that writes it.
-target_include_directories(listenin_wire PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in ${NI_SHARED}
-    ${NI_CAPI_INCLUDE_DIR})
-add_dependencies(listenin_wire ni_rust_engines)
-
-# THE WIRE ORACLE, both halves -- the Spectrogram's arrangement, applied to the
-# state string and the label sanitiser.
-#
-#   listenin_wire      Wire.cpp still agrees with ui/test/wire_table.txt
-#   listenin_wire_js   ui/src/lib/state.js still agrees with the same file
-#
-# Regenerate with `listenin_wire --dump > ui/test/wire_table.txt`, and only when
-# the format is MEANT to change -- which means the decoder changes in the same
-# commit.
-set(LISTENIN_WIRE_TABLE
-    ${CMAKE_SOURCE_DIR}/plugins/listen-in/ui/test/wire_table.txt)
-
-add_test(NAME listenin_wire
-         COMMAND listenin_wire --verify ${LISTENIN_WIRE_TABLE})
-# Listen-In's chunk, saved and reloaded as clap-validator's state tests do.
-add_executable(listenin_state listenin_state.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/listen-in/State.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp
-               ${NI_WIRE_SRC}
-               ${IPLUG_PARAM_SRC})
-target_include_directories(listenin_state PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in ${NI_SHARED}
-    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
-target_link_libraries(listenin_state PRIVATE audio_bus_engine shell_engine)
-add_test(NAME listenin_state COMMAND listenin_state)
-
 # All of them quick: each is a doctest binary over code lifted out of a plugin,
 # with no bundle, host or second process. cmake/NiTest.cmake.
 ni_test_tiers(QUICK
-    ni_wire ni_editor shell_state shell_denormals
-    listenin_wire listenin_state)
+    ni_wire ni_editor shell_state shell_denormals)

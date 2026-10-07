@@ -2,105 +2,70 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Listen-In -- the parameter and the state chunk. See State.h.
+ * NI Listen-In's parameter, state layout and name session. State.h says what
+ * they must stay.
  */
 #include "State.h"
-#include "Wire.h"
+
 #include "audio_bus.h"
-#include "shell_state.h"
 
-namespace listenin {
-namespace state {
+#include <utility>
 
-void Declare(const std::function<iplug::IParam*(int)>& param)
+namespace ni::li
 {
-  /* The engine's own limit, not a copy of it. */
-  param(kSlot)->InitInt("Bus", 1, 1, int(abus_max_slot()), "");
+
+namespace
+{
+/* The iPlug2 build's InitInt ("Bus", 1, 1, abus_max_slot()): the engine's
+ * own limit, as a macro the generated header carries. */
+const ParamSpec table[kNumParams] {
+    { "bus", "Bus", ParamSpec::Kind::integer, 1, ABUS_MAX_SLOT, 1, "" },
+};
+} // namespace
+
+const ParamSpec& busSpec()
+{
+    return table[kBus];
 }
 
-/*
- * THE STATE CHUNK: parameters, then the label.
- *
- * The slot is a parameter and SerializeParams handles it. The name is text and
- * cannot be a parameter, so it is appended.
- */
-bool Save(iplug::IByteChunk& chunk, const PutParams& params, const std::string& label)
+const nist::Layout& layout()
 {
-  const int at = shell::state::Begin(chunk, kChunkVersion);
-  if (!params(chunk))
-    return false;
-  if (chunk.PutStr(label.c_str()) <= 0)
-    return false;
-  return shell::state::End(chunk, at);
+    static const nist::Layout l { table, kNumParams, { kNumParams }, 1, 1 };
+    return l;
 }
 
-/*
- * THE LABEL IS NOT OPTIONAL. Every build has written it after the parameter,
- * if only as an empty string, so a chunk without one is not a chunk this plugin
- * wrote. Fields a later version appends after it are skipped by the header's
- * size, which is where Finish returns.
- */
-int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
-         const GetParams& apply, std::string& label)
+std::string Session::label() const
 {
-  const shell::state::Header h = shell::state::Read(chunk, startPos);
-  if (h.body < 0)
-    return -1;
-  const int pos = check(chunk, h.body);
-  if (pos < 0)
-    return -1;
-  WDL_String text;
-  const int after = shell::state::GetStr(chunk, text, pos);
-  if (after < pos)
-    return -1;
-
-  if (apply(chunk, h.body) != pos)
-    return -1;
-  char clean[32];
-  wire::parse_label(text.Get(), clean, int(sizeof(clean)));
-  label = clean;
-  return shell::state::Finish(h, after);
+    const std::lock_guard<std::mutex> hold (lock);
+    return name;
 }
 
-std::string Session::Label() const
+void Session::load (std::string label)
 {
-  std::lock_guard<std::mutex> hold(mLock);
-  return mLabel;
+    const std::lock_guard<std::mutex> hold (lock);
+    name = std::move (label);
+    changed = true;
+    loaded = true;
 }
 
-int Session::Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
-                  const GetParams& apply)
+void Session::edit (std::string label)
 {
-  std::string label;
-  const int pos = state::Load(chunk, startPos, check, apply, label);
-  if (pos < 0)
-    return -1;
-  std::lock_guard<std::mutex> hold(mLock);
-  mLabel = std::move(label);
-  mChanged = true;
-  mLoaded = true;
-  return pos;
+    const std::lock_guard<std::mutex> hold (lock);
+    name = std::move (label);
+    changed = true;
 }
 
-void Session::Edit(const std::string& label)
+bool Session::take (std::string& label, bool& wasLoaded)
 {
-  std::lock_guard<std::mutex> hold(mLock);
-  mLabel = label;
-  mChanged = true;
+    const std::lock_guard<std::mutex> hold (lock);
+    wasLoaded = loaded;
+    if (! changed)
+        return false;
+    /* Copied under the lock; the caller hands it to the bus after. */
+    label = name;
+    changed = false;
+    loaded = false;
+    return true;
 }
 
-bool Session::Take(std::string& label, bool& loaded)
-{
-  std::lock_guard<std::mutex> hold(mLock);
-  loaded = mLoaded;
-  if (!mChanged)
-    return false;
-  /* Copied under the lock; the caller hands it to the bus after. */
-  label = mLabel;
-  mChanged = false;
-  mLoaded = false;
-  return true;
-}
-
-} // namespace state
-} // namespace listenin
+} // namespace ni::li

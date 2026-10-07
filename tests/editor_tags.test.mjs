@@ -65,12 +65,10 @@ test('the shell tags agree, name for name and number for number', () => {
   assert.deepEqual(cpp, SHELL_MSG);
 });
 
-/* The products whose editors are still web pages on iPlug2. NI Trance Gate's,
- * NI Spectrogram's and NI Side-Chain's are native (plugins/<product>/editor),
- * with no tags to agree on: their models are C++ (editor/Model.h). */
-const PLUGINS = [
-  { name: 'listen-in', header: 'plugins/listen-in/ListenIn.h', params: 'plugins/listen-in/State.h' },
-];
+/* The products whose editors are still web pages on iPlug2: none. Every
+ * product's editor is native (plugins/<product>/editor), with no tags to agree
+ * on: their models are C++ (editor/Model.h). */
+const PLUGINS = [];
 
 for (const p of PLUGINS) {
   const msg = await load(`plugins/${p.name}/ui/src/lib/msg.js`);

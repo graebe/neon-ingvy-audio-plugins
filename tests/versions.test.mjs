@@ -62,7 +62,7 @@ const PRODUCTS = {
       (c) => `engines/spectro/crates/${c}/Cargo.toml`),
   },
   'listen-in': {
-    config: 'plugins/listen-in/config.h',
+    juce: { cmake: 'plugins/listen-in/CMakeLists.txt', bundle: 'NIListenIn' },
     /* No crates: its engine is audio-bus, which is versioned on its own below
      * because a Spectrogram will link the same library. */
   },
@@ -546,7 +546,8 @@ test('every bundle identifier ends in BUNDLE_NAME', () => {
  * same thing for Pro Tools; the Side-Chain's AAX string still said "graebe"
  * after the others had moved. BUNDLE_MFR is deliberately NOT checked: it is a
  * component of the bundle identifier, and changing it would orphan every saved
- * project (see listen-in/config.h).
+ * project -- which is why a JUCE build's BUNDLE_ID keeps com.graebe too
+ * (cmake/NiJucePlugin.cmake).
  */
 test('every plugin is published by Neon Ingvy under an NI name', () => {
   for (const [, where] of Object.entries(PRODUCTS)) {

@@ -2,94 +2,144 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Listen-In -- a tap that other plugins can read.
+ * NI Listen-In on the JUCE shell: a tap that other plugins can read. Audio
+ * passes through bit for bit and is published, stereo, on one of sixteen
+ * shared-memory buses (engines/audio-bus) a Spectrogram can listen to.
  *
- * Audio passes through bit for bit and is published, stereo, on a shared-memory
- * bus a Spectrogram can listen to (engines/audio-bus). ni::WebPlugin is the
- * rest of the shell.
+ * WHAT CARRIES A LIVE SET ACROSS FROM THE iPlug2 BUILD, each in its place:
+ *
+ *   the class        the iPlug2 class ID itself (CMakeLists.txt: IPLUG2_CLASS)
+ *   the bundle       NIListenIn.vst3, the old bundle's name, so installing this
+ *                    one replaces it instead of standing beside it
+ *   the parameter    Bus at ID 0, holding its plain value exactly
+ *                    (ni::Parameter, State.h); Bypass is the host's, ID 1 here
+ *                    and 65536 there, which Live maps by its flag
+ *   the state        the iPlug2 chunk, the bus and its name (ni::nist,
+ *                    State.h's layout), read in every layout it ever had and
+ *                    written as the last one wrote it; the bypass it carries
+ *                    is restored too, which iPlug2 left in its controller
+ *
+ * A CLAIM IS TWO HALVES, AND EACH THREAD HOLDS ONLY ITS OWN. Claiming maps
+ * shared memory and releasing unlinks it, so neither happens on the audio
+ * thread: every other thread only records what it wants -- the host's rate,
+ * a state load, a name -- and the message thread acts on it (serviceBus, at
+ * 30 Hz as iPlug2's idle timer did). That thread keeps the WRITER (the name,
+ * the rate); the audio thread's PUSHER crosses to it through the shell's
+ * handoff, which frees a replaced one only once no block holds it. The bus is
+ * released with the last half. Nothing is claimed before the host first
+ * prepares the plugin, since a bus is announced at a sample rate.
+ *
+ * THE BLOCK (process): the Ground ticked from the host's clock, the input
+ * interleaved into a staging buffer sized up front -- a mono input published
+ * on both sides -- and pushed to the bus, the peak kept, and the audio left
+ * exactly as it came, in place. Nothing there allocates, locks or makes a
+ * system call. Bypassed -- the host's Bypass on, which the block reads itself,
+ * or a host bypassing it -- nothing is published and the meter falls.
  */
 #pragma once
 
-#include "ni/WebPlugin.h"
-#include "audio_bus.h"
-#include "shell_handoff.h"
+#include "GroundClock.h"
+#include "Parameter.h"
+#include "Processor.h"
 #include "State.h"
+#include "audio_bus.h"
+#include "Model.h"
+#include "shell_handoff.h"
 
 #include <atomic>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
-const int kNumPresets = 1;
-
-/* THIS PRODUCT'S MESSAGE TAGS, mirrored in ui/src/lib/msg.js. The shell's are
- * in ni/Editor.h. */
-enum EMsgTags
+namespace ni::li
 {
-  kMsgState = 64,  /* -> "<slot>:<status>:<peak>", every tick               */
-  kMsgLabel = 96,  /* <-> the display name, both ways                       */
-};
 
-/*
- * The block staged for the bus. A host may hand over more than it announced,
- * so ProcessAudio chunks against this rather than resizing on the audio thread.
- */
-const int kStageFrames = 4096;
+class EngineModel;
 
-class ListenIn final : public ni::WebPlugin
+class Processor final : public ni::Processor,
+                        private juce::Timer
 {
 public:
-  ListenIn(const iplug::InstanceInfo& info);
-  ~ListenIn() override;
+    /* The block staged for the bus. A host may hand over more than it
+     * announced, so a block is pushed in chunks of this, never resized. */
+    static constexpr int stageFrames = 4096;
 
-  /* The audio thread under VST3 and CLAP automation: records the slot only. */
-  void OnParamChange(int paramIdx) override;
+    Processor();
+    ~Processor() override;
 
-  /* Parameters, then the label: text cannot be a parameter. State.cpp. Any
-   * thread but the audio thread: both go through mSession, never the bus. */
-  bool SerializeState(iplug::IByteChunk& chunk) const override;
-  int UnserializeState(const iplug::IByteChunk& chunk, int startPos) override;
+    /* Stereo in, stereo out, as the iPlug2 build's "2-2"; a mono track's
+     * stereo pair is published as it comes. */
+    bool isBusesLayoutSupported (const BusesLayout&) const override;
+    void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void releaseResources() override {}
+
+    juce::AudioProcessorEditor* createEditor() override;
+    bool hasEditor() const override { return true; }
+    void editorOpened() override;
+    void editorClosed() override;
+
+    juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
+
+    /* ---- what the model and the tests reach */
+
+    ni::Parameter& busParameter() const noexcept { return *bus; }
+    ni::GroundClock& ground() noexcept { return beat; }
+    EngineModel& model() noexcept { return *editorModel; }
+
+    /* The bus's state as the message thread last decided it. Message thread. */
+    Status status() const noexcept { return state; }
+    /* The input's peak, linear, 0..1, decaying rather than reset. Any thread. */
+    float peak() const noexcept { return level.load (std::memory_order_relaxed); }
+    /* The name a save writes, a load not yet taken included. Any thread but
+     * the audio one. */
+    std::string label() const { return session.label(); }
+    /* A name typed in the editor: kept (wire::parse_label), handed to the
+     * bus at once, and the set marked unsaved. Message thread. */
+    void editLabel (const std::string& typed);
+
+    /* What the timer does at 30 Hz, at once: claims, releases and retunes the
+     * bus to match what the other threads asked for, and hands it a changed
+     * name. Message thread. */
+    void serviceBus();
+
+protected:
+    void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void writeState (juce::MemoryBlock&) override;
+    bool readState (const void* data, size_t size) override;
 
 private:
-  void ProcessAudio(iplug::sample** inputs, iplug::sample** outputs, int nFrames) override;
-  void ResetAudio() override;
-  /* The bus is HOST-facing: its whole lifecycle runs editor or not. */
-  void OnHostIdle() override { ServiceBus(); }
-  void OnEditorIdle() override { SendState(); }
-  void OnEditorReady() override;
-  bool OnEditorMessage(int tag, const std::string& arg) override;
+    void timerCallback() override { serviceBus(); }
+    /* A block that publishes nothing: the meter falls. Audio thread. */
+    void fall() noexcept;
+    /* The name the session changed, to the writer. Message thread. */
+    void serviceLabel();
 
-  /* Main thread only: claims, releases and retunes the bus to match what the
-   * other threads asked for. */
-  void ServiceBus();
-  /* Main thread only: the label the session changed, to the writer -- and,
-   * after a load, to an open editor. */
-  void ServiceLabel();
-  void SendState();
+    ni::Parameter* bus = nullptr;
+    ni::Parameter* bypass = nullptr;
 
-  /*
-   * A CLAIM IS TWO HALVES, AND EACH THREAD HOLDS ONLY ITS OWN. Claiming maps
-   * shared memory and releasing unlinks it, so neither happens on the audio
-   * thread; every other thread only records what it wants, and OnIdle acts.
-   * The main thread keeps the WRITER (label, rate); the audio thread's PUSHER
-   * crosses to it through the handoff, which frees a replaced one only once no
-   * block holds it. The slot goes with the last half.
-   */
-  abus_writer_t* mWriter = nullptr;     /* main thread only                   */
-  shell_handoff_t* mBus = nullptr;      /* the pusher, lent to ProcessAudio   */
-  std::atomic<int> mWantSlot{1};        /* the Slot parameter, from any thread */
-  std::atomic<uint32_t> mRate{0};       /* the host's rate, from ResetAudio    */
-  std::atomic<bool> mResetSeen{false};  /* a reset: retry, or retune           */
-  /* The label, written by state loads and the editor; see State.h. */
-  listenin::state::Session mSession;
+    /* The pusher, lent to process(). */
+    shell_handoff_t* const handoff;
+    std::atomic<std::uint32_t> rate { 0 };      /* the host's, from prepareToPlay */
+    std::atomic<bool> resetSeen { false };      /* a prepare: retry, or retune */
+    Session session;
+    std::atomic<float> level { 0.0f };
 
-  /* Main thread only. */
-  int mStatus = 0;                 /* listenin::wire::Status                   */
-  int mTriedSlot = 0;              /* the slot last asked for, won or not      */
-  bool mWaiting = false;           /* a pusher is waiting on the audio thread  */
-  bool mReclaim = false;           /* a state load: claim afresh               */
-  std::string mLabel;              /* the label the writer was given           */
+    /* Message thread only. */
+    abus_writer_t* writer = nullptr;
+    Status state = Status::idle;
+    int triedSlot = 0;     /* the bus last asked for, won or not */
+    bool waiting = false;  /* the old pusher is still held by a block */
+    bool reclaim = false;  /* a state load: claim afresh */
+    std::string named;     /* the name the writer was given */
 
-  std::vector<float> mStage;       /* interleaved, pre-sized, never resized    */
-  /* The meter's peak: written on the audio thread, read on the main one. */
-  std::atomic<float> mPeak{0.f};
+    ni::GroundClock beat;
+    std::vector<float> stage; /* interleaved, pre-sized, never resized */
+
+    std::unique_ptr<EngineModel> editorModel;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Processor)
 };
+
+} // namespace ni::li
