@@ -30,6 +30,13 @@ constexpr int caretRoom = (int) uv::tok::size::controlH;
 constexpr int caretInset = 6;                           // .select .icon { right: 6px }
 constexpr int glyph = 16;
 
+/* An index the options hold, or -1 for none: a negative stays none, anything
+ * else is clamped to the list. */
+int indexIn (const juce::StringArray& options, int i)
+{
+    return i < 0 ? -1 : juce::jlimit (0, juce::jmax (0, options.size() - 1), i);
+}
+
 /* What a screen reader hears of a select: its option, which it may set by
  * name, and whether its list is open. */
 class SelectAccessibility final : public juce::AccessibilityHandler
@@ -235,6 +242,12 @@ void SelectList::mouseExit (const juce::MouseEvent&)
     }
 }
 
+void SelectList::mouseDown (const juce::MouseEvent& e)
+{
+    if (onPress)
+        onPress (e);   // may delete this
+}
+
 void SelectList::mouseUp (const juce::MouseEvent& e)
 {
     const int row = rowAt (e.getPosition());
@@ -277,13 +290,13 @@ void Select::setOptions (const juce::StringArray& o)
 {
     close();
     options = o;
-    index = juce::jlimit (0, juce::jmax (0, options.size() - 1), index);
+    index = indexIn (options, index);
     repaint();
 }
 
 void Select::setIndex (int i)
 {
-    i = juce::jlimit (0, juce::jmax (0, options.size() - 1), i);
+    i = indexIn (options, i);
     if (i == index)
         return;
     index = i;
@@ -336,7 +349,12 @@ void Select::open()
 
     list = std::make_unique<SelectList> (options, index);
     list->onChoose = [this] (int row) { choose (row); };
-    popup = std::make_unique<Popup> ([this] { close(); });
+    list->onPress = [this] (const juce::MouseEvent& e) { return secondPress (e); };
+    popup = std::make_unique<Popup> ([this] (const juce::MouseEvent& e)
+                                     {
+                                         if (! secondPress (e))
+                                             close();
+                                     });
     popup->show (window, *list, at);
 
     repaint();
@@ -368,6 +386,22 @@ void Select::choose (int row)
     close();
     if (row != index && row >= 0 && row < options.size() && onChange)
         onChange (row);   // may delete this
+}
+
+bool Select::secondPress (const juce::MouseEvent& e)
+{
+    /* The second press of a double-click on the field: the first opened the
+     * list, so this one reaches the list or its layer -- whichever is over
+     * the field -- and comes here first. Not a row, not a dismissal: the
+     * reset. */
+    const auto at = getLocalPoint (e.eventComponent, e.position);
+    if (e.getNumberOfClicks() < 2 || ! isEnabled() || ! field().toFloat().contains (at))
+        return false;
+
+    close();
+    if (onReset)
+        onReset();   // may delete this
+    return true;
 }
 
 /* ============================================================ pointer == */
@@ -445,6 +479,12 @@ bool Select::keyPressed (const juce::KeyPress& key)
         }
         focus.keyUsed();
         relight (*this);
+        if (const int row = typedOption (key); row >= -1)
+        {
+            if (row >= 0)
+                list->setHighlighted (row);
+            return true;
+        }
         return list->handleKey (key);   // may delete the list
     }
 
@@ -456,7 +496,45 @@ bool Select::keyPressed (const juce::KeyPress& key)
         open();
         return true;
     }
+
+    if (const int row = typedOption (key); row >= -1)
+    {
+        focus.keyUsed();
+        relight (*this);
+        if (row >= 0)
+            choose (row);   // may delete this
+        return true;
+    }
     return false;
+}
+
+int Select::typedOption (const juce::KeyPress& key)
+{
+    /* Not a character -- a shortcut, a navigation key, Space, which opens and
+     * chooses -- is no typing: -2. */
+    const auto ch = key.getTextCharacter();
+    const auto mods = key.getModifiers();
+    if (ch <= ' ' || ch == 0x7f || mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown())
+        return -2;
+
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (now - typedAt > typeAheadMs)
+        typed.clear();
+    typedAt = now;
+    typed += juce::String::charToString (ch).toLowerCase();
+
+    /* One key, or the same key again: the next option that starts with it,
+     * after the one on show. Several: the first that starts with them all,
+     * from the one on show, which may already. */
+    const bool oneKey = typed.containsOnly (typed.substring (0, 1));
+    const auto prefix = oneKey ? typed.substring (0, 1) : typed;
+    const int shown = list != nullptr && list->getHighlighted() >= 0 ? list->getHighlighted() : index;
+    const int from = shown < 0 ? 0 : shown + (oneKey ? 1 : 0);
+    const int n = options.size();
+    for (int i = 0; i < n; ++i)
+        if (const int row = (from + i) % n; options[row].toLowerCase().startsWith (prefix))
+            return row;
+    return -1;   // typed, and nothing starts so
 }
 
 void Select::focusGained (FocusChangeType cause)
@@ -506,13 +584,14 @@ void Select::paint (juce::Graphics& g)
 
     g.setColour (! live ? c::bg100 : (fieldHovered ? c::bg300 : c::bg200));
     g.fillRect (box);
-    g.setColour (! live ? c::line100 : (isOpen() ? c::uv : c::line200));
+    g.setColour (! live ? c::line100 : isOpen() ? c::uv : fieldHovered ? c::inkDim : c::line200);
     g.drawRect (box, hair);
 
     /* One line, and cut if it has to be: a wrapped value would make the
      * control twice as tall (.select-value). */
+    /* None is the em dash, as a reading with nothing to read. */
     if (options.size() > 0)
-        uv::type::draw (g, options[index],
+        uv::type::draw (g, index >= 0 ? options[index] : juce::String::fromUTF8 ("\xe2\x80\x94"),
                         box.withTrimmedLeft (hair + (float) pad).withTrimmedRight (hair + (float) caretRoom),
                         uv::type::value(), live ? c::ink : c::inkDim);
 

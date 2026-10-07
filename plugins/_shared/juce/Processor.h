@@ -74,7 +74,10 @@ public:
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
+    /* The one program has a name, "Default" as iPlug2's builds called theirs:
+     * the VST3 wrapper lists it as a program list, and Steinberg's validator
+     * fails a program without one. */
+    const juce::String getProgramName (int) override { return "Default"; }
     void changeProgramName (int, const juce::String&) override {}
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) final;
@@ -86,6 +89,12 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) final;
 
     juce::VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
+
+    /* An ni::PluginEditor opened, or is closing: what a product runs only
+     * while a window shows it (a scope, the Ground). JUCE's own
+     * editorBeingDeleted is not virtual. Message thread. */
+    virtual void editorOpened() {}
+    virtual void editorClosed() {}
 
     /* The default state's root tag, and the format it writes. */
     static constexpr const char* stateTag = "NeonIngvy";

@@ -78,7 +78,8 @@ TEST_CASE ("spectrogram: the shipped picture, solid to the rings, a crosshair to
     CHECK (s.getBands() == 256);
     CHECK (s.isOpaque());
     CHECK (ni::ui::isWaveSource (s));
-    CHECK_FALSE (s.getWantsKeyboardFocus());
+    /* Reachable by Tab, as every pointer control is. */
+    CHECK (s.getWantsKeyboardFocus());
     CHECK (s.getMouseCursor() == juce::MouseCursor (juce::MouseCursor::CrosshairCursor));
 
     const auto handler = s.createAccessibilityHandler();
@@ -358,6 +359,61 @@ TEST_CASE ("spectrogram: the crosshair samples a band and a level, and says when
     CHECK_FALSE (heard.back().has_value());
     CHECK_FALSE (s.hovered().has_value());
     CHECK_FALSE (s.sampleAt ({ 100.0f, 0.0f }).has_value());
+}
+
+TEST_CASE ("spectrogram: the keys move the crosshair as the pointer does, and it leaves with the focus")
+{
+    Spectrogram s (10, 4);
+    s.setSize (100, 40);
+    for (int i = 0; i < 10; ++i)
+        pushOne (s, Bytes { (std::uint8_t) (i * 10), 0, 0, 200 });
+
+    std::vector<std::optional<Spectrogram::Sample>> heard;
+    s.onHover = [&] (const std::optional<Spectrogram::Sample>& h) { heard.push_back (h); };
+
+    /* Nothing to take away yet: Escape is not the picture's, nor a letter. */
+    CHECK_FALSE (s.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
+    CHECK_FALSE (s.keyPressed (juce::KeyPress ('a')));
+    CHECK (heard.empty());
+
+    /* Tabbed onto: the crosshair stands at the centre, and is reported. */
+    s.focusGained (juce::Component::focusChangedByTabKey);
+    REQUIRE (s.hovered().has_value());
+    CHECK (s.hovered()->x == doctest::Approx (50.5f));
+    CHECK (s.hovered()->y == doctest::Approx (20.5f));
+    REQUIRE (! heard.empty());
+    CHECK (heard.back()->slot == 5);
+
+    /* A pixel an arrow, ten with Shift; Home and End are the two edges. */
+    CHECK (s.keyPressed (juce::KeyPress (juce::KeyPress::rightKey)));
+    CHECK (s.hovered()->x == doctest::Approx (51.5f));
+    CHECK (s.keyPressed (juce::KeyPress (juce::KeyPress::downKey, juce::ModifierKeys::shiftModifier, 0)));
+    CHECK (s.hovered()->y == doctest::Approx (30.5f));
+    CHECK (heard.back()->band == 0);
+    CHECK (s.keyPressed (juce::KeyPress (juce::KeyPress::endKey)));
+    CHECK (heard.back()->age == 0);
+    CHECK (heard.back()->level == 90);
+    CHECK (s.keyPressed (juce::KeyPress (juce::KeyPress::homeKey)));
+    CHECK (heard.back()->age == 9);
+    /* Held inside the picture. */
+    CHECK (s.keyPressed (juce::KeyPress (juce::KeyPress::leftKey, juce::ModifierKeys::shiftModifier, 0)));
+    CHECK (s.hovered()->x >= 0.0f);
+
+    /* Escape takes it away. */
+    CHECK (s.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
+    CHECK_FALSE (s.hovered().has_value());
+    CHECK_FALSE (heard.back().has_value());
+
+    /* An arrow brings it back at the centre's neighbour; losing the focus
+     * takes a crosshair the keys placed. */
+    CHECK (s.keyPressed (juce::KeyPress (juce::KeyPress::upKey)));
+    CHECK (s.hovered()->y == doctest::Approx (19.5f));
+    s.focusLost (juce::Component::focusChangedDirectly);
+    CHECK_FALSE (s.hovered().has_value());
+
+    /* Focus by a click places nothing: the pointer is where it is. */
+    s.focusGained (juce::Component::focusChangedByMouseClick);
+    CHECK_FALSE (s.hovered().has_value());
 }
 
 TEST_CASE ("spectrogram: the playhead is drawn in the bar view only")

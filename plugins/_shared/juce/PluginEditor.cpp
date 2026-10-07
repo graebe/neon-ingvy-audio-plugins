@@ -7,6 +7,8 @@
  */
 #include "PluginEditor.h"
 
+#include "Processor.h"
+
 #include <cmath>
 
 namespace ni
@@ -16,21 +18,42 @@ PluginEditor::PluginEditor (juce::AudioProcessor& p, std::unique_ptr<juce::Compo
                             juce::RangedAudioParameter* zoomParameter, std::vector<float> zoomScales)
     : juce::AudioProcessorEditor (p),
       design (std::move (d)),
-      fit (*design, width, height),
+      fit (std::make_unique<ni::ui::FixedDesign> (*design, width, height)),
       scales (std::move (zoomScales))
 {
     setLookAndFeel (&look->lookAndFeel);
     setOpaque (true);
     setResizable (false, false);
-    addAndMakeVisible (fit);
+    addAndMakeVisible (*fit);
     if (zoomParameter != nullptr && ! scales.empty())
         zoom = std::make_unique<ni::ui::ParamBinding> (*zoomParameter, [this] { applyZoom(); });
     applyZoom();
+    opened();
+}
+
+PluginEditor::PluginEditor (juce::AudioProcessor& p, std::unique_ptr<juce::Component> d, FollowDesign)
+    : juce::AudioProcessorEditor (p),
+      design (std::move (d))
+{
+    setLookAndFeel (&look->lookAndFeel);
+    setOpaque (true);
+    setResizable (false, false);
+    addAndMakeVisible (*design);
+    setSize (design->getWidth(), design->getHeight());
+    opened();
 }
 
 PluginEditor::~PluginEditor()
 {
+    if (auto* p = dynamic_cast<ni::Processor*> (&processor))
+        p->editorClosed();
     setLookAndFeel (nullptr);
+}
+
+void PluginEditor::opened()
+{
+    if (auto* p = dynamic_cast<ni::Processor*> (&processor))
+        p->editorOpened();
 }
 
 float PluginEditor::scale() const noexcept
@@ -44,14 +67,26 @@ float PluginEditor::scale() const noexcept
 
 void PluginEditor::applyZoom()
 {
-    const auto bounds = fit.boundsAt (scale());
+    const auto bounds = fit->boundsAt (scale());
     if (bounds.getWidth() != getWidth() || bounds.getHeight() != getHeight())
         setSize (bounds.getWidth(), bounds.getHeight());
 }
 
 void PluginEditor::resized()
 {
-    fit.setBounds (getLocalBounds());
+    if (fit != nullptr)
+        fit->setBounds (getLocalBounds());
+    else
+        design->setTopLeftPosition (0, 0);
+}
+
+/* A design that sizes itself asked for a new size: the window takes it, and
+ * with it the host. */
+void PluginEditor::childBoundsChanged (juce::Component* child)
+{
+    if (fit == nullptr && child == design.get()
+        && (design->getWidth() != getWidth() || design->getHeight() != getHeight()))
+        setSize (design->getWidth(), design->getHeight());
 }
 
 } // namespace ni

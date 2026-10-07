@@ -1,117 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Torben Gräber
 #
-# How a Neon Ingvy plugin is built: its Rust engine, and the iPlug2 bundle
-# around it.
+# How a Neon Ingvy plugin is built: the iPlug2 bundle around its engine.
 #
-#   ni_add_rust_engine(<target> CRATE <crate> LIB <lib> INCLUDE <dir>)
-#   ni_add_rust_headers(<target> INCLUDE <dir>)
-#   ni_build_rust_engines()           once, after every ni_add_rust_engine
 #   ni_add_plugin(<NAME> SOURCES <files> LINK <targets>)
 #
-# Include it once, at the root, after project() and iPlug2.
-
-include(${CMAKE_SOURCE_DIR}/cmake/RustToolchain.cmake)
-
-# ------------------------------------------------------------ the engines
-#
-# ONE CARGO INVOCATION, ONE TARGET DIRECTORY. Every product's capi crate is
-# built together, so the crates they share -- ni-dsp, ground, shell, audio-bus --
-# compile once rather than once per product.
-#
-# ONE STATIC LIBRARY PER PLUGIN STILL. Each product's capi crate is a staticlib
-# that absorbs the rlibs it depends on (engines/spectro/crates/spectro-capi's
-# Cargo.toml states the rule): two Rust staticlibs in one binary each carry the
-# Rust runtime and fail to link. So a plugin links exactly its own archive, and
-# a crate with no product of its own -- ground, shell -- is headers only here.
-#
-# CARGO IS THE DEPENDENCY SCANNER: the target always runs, cargo is a no-op
-# when nothing changed, and copy_if_different keeps an unchanged archive's
-# timestamp so nothing relinks.
-
-if (NOT EXISTS ${CMAKE_SOURCE_DIR}/Cargo.toml)
-    message(FATAL_ERROR "No Cargo.toml at the repository root -- the workspace is missing.")
-endif()
-
-set(NI_RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/rust)
-set(NI_RUST_LIB_DIR ${CMAKE_BINARY_DIR}/rust-lib)
-
-# CMake's Apple architecture names are not Rust's target triples.
-set(NI_RUST_TRIPLES "")
-foreach(arch IN LISTS CMAKE_OSX_ARCHITECTURES)
-    if (arch STREQUAL "arm64")
-        list(APPEND NI_RUST_TRIPLES aarch64-apple-darwin)
-    elseif (arch STREQUAL "x86_64")
-        list(APPEND NI_RUST_TRIPLES x86_64-apple-darwin)
-    else()
-        message(FATAL_ERROR "no Rust target known for OSX architecture '${arch}'")
-    endif()
-endforeach()
-
-function(ni_add_rust_engine name)
-    cmake_parse_arguments(ARG "" "CRATE;LIB" "INCLUDE" ${ARGN})
-    if (NOT ARG_CRATE OR NOT ARG_LIB OR NOT ARG_INCLUDE)
-        message(FATAL_ERROR "ni_add_rust_engine(${name}) needs CRATE, LIB and INCLUDE")
-    endif()
-    set_property(GLOBAL APPEND PROPERTY NI_RUST_CRATES ${ARG_CRATE})
-    set_property(GLOBAL APPEND PROPERTY NI_RUST_LIBS ${ARG_LIB})
-    add_library(${name} INTERFACE)
-    target_link_libraries(${name} INTERFACE ${NI_RUST_LIB_DIR}/lib${ARG_LIB}.a)
-    target_include_directories(${name} INTERFACE ${ARG_INCLUDE})
-    add_dependencies(${name} ni_rust_engines)
-endfunction()
-
-# A crate whose C ABI rides inside every product's archive: its header, and no
-# archive of its own.
-function(ni_add_rust_headers name)
-    cmake_parse_arguments(ARG "" "" "INCLUDE" ${ARGN})
-    add_library(${name} INTERFACE)
-    target_include_directories(${name} INTERFACE ${ARG_INCLUDE})
-endfunction()
-
-function(ni_build_rust_engines)
-    get_property(crates GLOBAL PROPERTY NI_RUST_CRATES)
-    get_property(libs GLOBAL PROPERTY NI_RUST_LIBS)
-
-    set(cargo_args build --release --target-dir ${NI_RUST_TARGET_DIR})
-    foreach(crate IN LISTS crates)
-        list(APPEND cargo_args -p ${crate})
-    endforeach()
-    foreach(triple IN LISTS NI_RUST_TRIPLES)
-        list(APPEND cargo_args --target ${triple})
-    endforeach()
-
-    set(combine "")
-    set(archives "")
-    foreach(lib IN LISTS libs)
-        set(out ${NI_RUST_LIB_DIR}/lib${lib}.a)
-        set(slices "")
-        foreach(triple IN LISTS NI_RUST_TRIPLES)
-            list(APPEND slices ${NI_RUST_TARGET_DIR}/${triple}/release/lib${lib}.a)
-        endforeach()
-        if (NOT slices)
-            # No OSX_ARCHITECTURES: one host build, no triple in the path.
-            set(slices ${NI_RUST_TARGET_DIR}/release/lib${lib}.a)
-        endif()
-        list(LENGTH slices n)
-        if (n GREATER 1)
-            list(APPEND combine COMMAND lipo -create ${slices} -output ${out}.new)
-        else()
-            list(APPEND combine COMMAND ${CMAKE_COMMAND} -E copy ${slices} ${out}.new)
-        endif()
-        list(APPEND combine COMMAND ${CMAKE_COMMAND} -E copy_if_different ${out}.new ${out})
-        list(APPEND archives ${out})
-    endforeach()
-
-    add_custom_target(ni_rust_engines ALL
-        BYPRODUCTS ${archives}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${NI_RUST_LIB_DIR}
-        COMMAND ${RUST_ENV} ${RUST_CARGO} ${cargo_args}
-        ${combine}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Building the Rust engines (cargo: ${crates}; ${NI_RUST_TRIPLES})"
-        VERBATIM)
-endfunction()
+# Include it once, at the root, after project(), iPlug2 and cmake/NiRust.cmake,
+# which builds the engines a plugin LINKs.
 
 # ------------------------------------------------------------ the plugins
 #
@@ -133,13 +28,6 @@ set(NI_SHELL_SOURCES
     ${NI_SHELL_DIR}/ni/Wire.cpp)
 add_library(ni_shell INTERFACE)
 target_include_directories(ni_shell INTERFACE ${NI_SHELL_DIR})
-# The system's save and open panels (ni/FileDialog.h) and its clipboard
-# (ni/Clipboard.h): AppKit glue, under ARC like iPlug2's own WebView sources,
-# and UTType for the panels' file types.
-if (APPLE)
-    list(APPEND NI_SHELL_SOURCES ${NI_SHELL_DIR}/ni/FileDialog.mm ${NI_SHELL_DIR}/ni/Clipboard.mm)
-    target_link_libraries(ni_shell INTERFACE "-framework UniformTypeIdentifiers")
-endif()
 
 # resources/web is vite's output and untracked; a plugin whose editor did not
 # build must not configure (it would install a white window over a working
@@ -185,12 +73,6 @@ function(ni_add_plugin name)
         "${dir}/resources/web/fonts/*")
     ni_require_editor(${product} ${web})
 
-    # A source property is the calling directory's, so it is set here, where
-    # the plugin's targets are made.
-    if (APPLE)
-        set_source_files_properties(${NI_SHELL_DIR}/ni/FileDialog.mm ${NI_SHELL_DIR}/ni/Clipboard.mm
-            PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-    endif()
     iplug_add_plugin(${name}
         SOURCES ${ARG_SOURCES} ${NI_SHELL_SOURCES} config.h resources/resource.h
         FORMATS VST3 CLAP AU

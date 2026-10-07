@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The JavaScript copy of the curve maths, pinned to the engine's own output.
  *

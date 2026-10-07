@@ -20,17 +20,21 @@
  * memory and is covered by audio-bus's own no_alloc. What is measured here is
  * this crate's own bookkeeping -- the staging, the mono sum, the carry.
  *
- * THIS FILE MUST HOLD EXACTLY ONE TEST. The counter is global and cargo runs
- * tests in threads, so a second test in this binary could allocate inside the
- * measured window and the failure would look like a real regression.
+ * The guard is assert_no_alloc's, and it watches one thread: inside the
+ * closure, an allocation or a free on the thread that runs it is a violation,
+ * while the threads cargo runs other tests on are not watched at all. It
+ * counts rather than aborts (warn_debug, warn_release), so the assertion
+ * below can say how many.
  */
 
 
 use spectro_core::Config;
 use spectro_recv::{Receiver, OWN};
 
+use assert_no_alloc::{assert_no_alloc, violation_count, AllocDisabler};
+
 #[global_allocator]
-static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
+static ALLOCATOR: AllocDisabler = AllocDisabler;
 
 #[test]
 fn pushing_pumping_and_draining_allocate_nothing() {
@@ -50,22 +54,22 @@ fn pushing_pumping_and_draining_allocate_nothing() {
     /* `frame` sizes its drain buffers on its first call, and only then. */
     r.frame(&[0], Some((0, 1)), Some(&mut sum), Some(&mut frame_clash), 32);
 
-    ni_testkit::arm();
-    for _ in 0..64 {
-        feed.push(&block);
-        r.pump();
-        cols += r.take_columns(OWN, &mut out, 32);
-        r.clash_into(&clash_a, &clash_b, &mut clash_out);
-        feed.push(&block);
-        r.pump();
-        cols += r.frame(&[0, 0], Some((0, 1)), Some(&mut sum), Some(&mut frame_clash), 32).0;
-    }
-    /* Read back inside the window too: a lazy counter that only allocates when
-     * someone asks would slip past a test that never asked. */
-    let dropped = r.own_dropped();
-    ni_testkit::disarm();
+    let dropped = assert_no_alloc(|| {
+        for _ in 0..64 {
+            feed.push(&block);
+            r.pump();
+            cols += r.take_columns(OWN, &mut out, 32);
+            r.clash_into(&clash_a, &clash_b, &mut clash_out);
+            feed.push(&block);
+            r.pump();
+            cols += r.frame(&[0, 0], Some((0, 1)), Some(&mut sum), Some(&mut frame_clash), 32).0;
+        }
+        /* Read back inside the window too: a lazy counter that only allocates when
+         * someone asks would slip past a test that never asked. */
+        r.own_dropped()
+    });
 
-    let n = ni_testkit::allocs() + ni_testkit::frees();
+    let n = violation_count();
     assert_eq!(n, 0, "the receiver allocated or freed {n} times while running");
 
     /* And it has to have done the work, or zero allocations means nothing. */

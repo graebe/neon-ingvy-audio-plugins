@@ -1,5 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Torben Gräber */
+
 /*
- * Layout. Copyright (c) 2026 Torben Gräber. MIT.
+ * Layout.
  *
  * In normal flow, top to bottom, inside the kit's EditorFrame (which owns the
  * window's padding, its ground and the Hint bar on the bottom edge):

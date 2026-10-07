@@ -5,11 +5,11 @@
  * The ground's beat clock through its C ABI.
  *
  * ground-core's own cargo tests cover the clock in Rust -- starts, loops,
- * seeks, tempo changes, meters. THIS one compiles against the hand-written
- * engines/ground/include/ground.h and links the real staticlib, which is the
- * only thing that catches the header drifting from the implementation: both
- * sides keep compiling while they disagree -- an argument swapped in gnd_tick,
- * a double read as an int, and the ground rings on the wrong beats or never.
+ * seeks, tempo changes, meters. THIS one compiles against ground.h, which
+ * ground-capi's build.rs generates, and links the real staticlib, which is the
+ * only thing that catches the C side and the Rust disagreeing while both keep
+ * compiling -- an argument swapped in gnd_tick, a double read as an int, and
+ * the ground rings on the wrong beats or never.
  *
  * The claims here are the ones the four plugins depend on, and every one of
  * them is a thing a wrong header would break silently:

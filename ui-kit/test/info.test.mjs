@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Info in the hint bar: in at once, out after a beat, and an outcome first.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Run with --conditions=browser (npm test does), so Solid's signals update.
  */

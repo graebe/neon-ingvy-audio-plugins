@@ -56,10 +56,10 @@ public:
     /* ---- the Model, for the editor: message thread */
     int numParameters() const override { return paramCount; }
     juce::RangedAudioParameter& parameter (int index) override { return *params[(size_t) index]; }
-    const CdReading& reading() override;
-    int takeNotes (CdNoteEvent* out, int capacity) override;
-    CdWrittenNote write (int midi) const override;
-    CdKey key() const override;
+    const Reading& reading() override;
+    int takeNotes (NoteEvent* out, int capacity) override;
+    WrittenNote write (int midi) const override;
+    KeyInfo key() const override;
 
     /* The scales the Zoom choices stand for. */
     static const std::vector<float>& zoomScales();
@@ -80,7 +80,11 @@ private:
     };
     std::unique_ptr<CdShell, ShellDeleter> shell;
     std::array<juce::AudioParameterChoice*, paramCount> params {};
-    CdReading latest {};
+    /* The last reading, as the editor takes it: its texts are converted only
+     * when its serial moves, its clock on every read. */
+    Reading latest;
+    /* The engine's events, read through before they are handed on. */
+    std::array<CdNoteEvent, 256> drained {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordDetector)
 };

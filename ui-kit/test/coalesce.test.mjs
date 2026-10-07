@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * One message per key per window, and nothing lost at the end of a gesture.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

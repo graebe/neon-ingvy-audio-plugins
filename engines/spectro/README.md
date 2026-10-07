@@ -36,7 +36,7 @@ depend on each other.
 | `lib.rs` | the analyzer, and the rtrb ring its columns cross |
 | `reference.rs` | the analysis before it was optimised, on rustfft's full-length transform: the equivalence oracle |
 | `crates/spectro-recv` | several sources into one picture, pumped by a worker thread |
-| `crates/spectro-capi` | the C ABI; `include/spectro_core.h` and `spectro_recv.h` are the contract |
+| `crates/spectro-capi` | the C ABI; the `spectro_core.h` and `spectro_recv.h` its `build.rs` generates are the contract |
 
 **The transform runs on whichever thread feeds the analyzer** — one per hop, a
 bounded and constant cost. Through `spectro_push_f32` that is the audio thread.

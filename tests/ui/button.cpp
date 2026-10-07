@@ -208,6 +208,26 @@ TEST_CASE ("button group: joined buttons share a hairline, five icons in 136px")
         CHECK (buttons[i]->getBounds() == juce::Rectangle<int> (i * 27, 0, 28, 28));
 }
 
+TEST_CASE ("button group: a column joins them top to bottom, six icons in 163px")
+{
+    ButtonGroup group (ButtonGroup::Form::column);
+    juce::OwnedArray<Button> buttons;
+    for (const auto* icon : { "copy", "paste", "export", "export-all", "import", "shuffle" })
+        group.add (*buttons.add (new Button ({}, icon)));
+
+    CHECK (group.idealSize() == juce::Rectangle<int> (28, 163));
+    group.setBounds (group.idealSize());
+    for (int i = 0; i < 6; ++i)
+        CHECK (buttons[i]->getBounds() == juce::Rectangle<int> (0, i * 27, 28, 28));
+
+    /* Raised as a row raises them, and Tab still goes top to bottom. */
+    Pointer p;
+    p.enter (*buttons[2]);
+    CHECK (group.getChildComponent (group.getNumChildComponents() - 1) == buttons[2]);
+    p.exit (*buttons[2]);
+    CHECK (buttons[0]->getExplicitFocusOrder() < buttons[5]->getExplicitFocusOrder());
+}
+
 TEST_CASE ("button group: the hovered or focused button is raised over its neighbours")
 {
     ButtonGroup group;

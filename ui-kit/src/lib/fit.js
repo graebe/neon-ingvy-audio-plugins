@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The window's scale, and the height it asks the host for.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Every editor is a fixed design width scaled to whatever viewport the WebView
  * hands it: Live gives fewer CSS pixels than asked for, and a page that simply

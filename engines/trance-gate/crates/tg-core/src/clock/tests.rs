@@ -118,3 +118,30 @@ fn the_playhead_never_runs_backwards() {
         }
     }
 }
+
+#[test]
+fn a_position_the_host_cannot_give_is_no_position() {
+    /*
+     * JUCE'S SHELL SAYS "NO MUSICAL POSITION" WITH NaN (ni::readClock), where
+     * iPlug2's said -1; and a host may report an infinity. Each must play
+     * exactly as a stopped transport does -- the cycle open, the playhead
+     * parked -- never as a position the phase loop chases.
+     */
+    let render = |transport: Transport| {
+        let mut p = Instance::new(44100.0);
+        let mut out = Vec::new();
+        for _ in 0..40 {
+            let mut buf = vec![0.5f32; 256];
+            p.process_f32(&mut buf, 128, Some(&transport));
+            out.extend_from_slice(&buf);
+        }
+        (out, p.playhead().advancing, p.phase01())
+    };
+    let (stopped, _, parked) = render(Transport { running: false, beats: -1.0, bpm: 120.0 });
+    for beats in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let (out, advancing, phase) = render(t(beats));
+        assert!(!advancing, "{beats}: the playhead advanced");
+        assert_eq!(phase.to_bits(), parked.to_bits(), "{beats}: the playhead moved");
+        assert!(out == stopped, "{beats}: did not play as a stopped transport");
+    }
+}

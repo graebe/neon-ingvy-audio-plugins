@@ -68,6 +68,12 @@ set(NI_UI_MUSIC_FONT_LICENSE ${NI_UI_MUSIC_FONT_LICENSE} PARENT_SCOPE)
 # --------------------------------------------------------------------- kit
 
 file(GLOB NI_UI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
+# The few calls only Cocoa answers (ReducedMotion.mm), on Apple, where the
+# toolchain compiles Objective-C++ as JUCE's own .mm files are compiled.
+if (APPLE)
+    file(GLOB NI_UI_SOURCES_MAC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm)
+    list(APPEND NI_UI_SOURCES ${NI_UI_SOURCES_MAC})
+endif()
 
 add_library(ni_ui INTERFACE)
 target_sources(ni_ui INTERFACE ${NI_UI_SOURCES})

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Listen-In, faked, for reviewing the editor without a host.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * A classic script, so it runs BEFORE the editor's deferred module -- the
  * first push below lands on globals that do not exist yet and is dropped,

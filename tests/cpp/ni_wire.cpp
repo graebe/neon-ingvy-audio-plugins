@@ -17,6 +17,7 @@
 #include <clocale>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -168,6 +169,14 @@ TEST_CASE("the host's clock: stopped is no position, and a lie is stopped")
   CHECK(t.running == 0);
   CHECK(t.beats == -1.0);
   CHECK(t.bpm == 120.0f);
+  /* No musical position -- NaN from the JUCE shell's readClock -- and an
+   * infinity are no position either, never one the engine chases. */
+  for (double ppq : {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()})
+  {
+    t = host_transport(true, 128.0, ppq);
+    CHECK(t.running == 0);
+    CHECK(t.beats == -1.0);
+  }
 }
 
 /* -------------------------------------------------------------- the blocks */
@@ -366,6 +375,15 @@ TEST_CASE("a column holds the bounds of the samples filed under it")
     CHECK((unsigned char) col[i] == want[i]);
   for (int i = 0; i < 4; i++)
     CHECK((unsigned char) col[8 + i] == want[i]);
+
+  /* And as the floats themselves, for an editor that draws them. */
+  float floats[5] = {};
+  scope.ReadColumn(0, floats);
+  CHECK(floats[0] == -0.5f);
+  CHECK(floats[1] == 0.3f);
+  CHECK(floats[2] == -0.2f);
+  CHECK(floats[3] == 0.1f);
+  CHECK(floats[4] == 0.5f);
 
   CHECK(scope.Seen(0));
   CHECK_FALSE(scope.Seen(1));

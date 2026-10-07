@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The band: the Pattern and the Signal plots in one place, one at a time, and
  * the tab strip laid over the plot's right edge.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { createSignal, Show } from 'solid-js';
 import { Tabs } from '@ultraviolet/ui';

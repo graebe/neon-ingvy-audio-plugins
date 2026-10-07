@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The handshake every editor makes with its plugin.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The plugin pushes its state from OnUIOpen, which fires before a deferred
  * module script has run -- so every one of those pushes lands on globals that

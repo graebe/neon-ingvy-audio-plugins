@@ -5,19 +5,22 @@
 # The one entry point to the tests: the quick tier while you work, the full
 # tier before you call it done. docs/tech/testing.md has the whole picture.
 #
-#   scripts/test.sh quick
+#   scripts/test.sh quick [--build <dir>]
 #       Builds the test programs (cmake --target ni_tests: no plugin bundle)
 #       and runs `ctest -L quick` -- every Rust crate's unit tests, the C/C++
 #       wire, state and parameter tests, the oracles, all of the kit's and the
 #       editors' JavaScript, and the lint-like checks. Under a minute warm.
 #
-#   scripts/test.sh full [--bundles <dir>]
+#   scripts/test.sh full [--build <dir>] [--bundles <dir>]
 #       Everything: the full build and the documentation site, `ctest -L full`
 #       (quick, plus the render goldens, the AU renders and state stress, the bus across
 #       processes and across architectures, the bundles' notices, the site's
 #       links and the Playwright e2e suite), then scripts/coverage.sh with the
 #       floor enforced, then auval, pluginval and clap-validator over the
-#       bundles in <dir> (default build/out).
+#       bundles in <dir> (default <build>/out).
+#
+#   --build <dir> is the build directory, build/ by default: one per person or
+#   agent building at the same time, so no two share a tree.
 #
 # WHAT IT READS OUTSIDE THE CHECKOUT, and why. Nothing under ~/Library, with
 # one exception in the validator stage: auval and pluginval's AU pass find their
@@ -45,13 +48,15 @@ usage() {
 tier="${1:-}"
 [ "$tier" = quick ] || [ "$tier" = full ] || usage
 shift
-bundles="$BUILD/out"
+bundles=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        --build) [ $# -ge 2 ] || usage; mkdir -p "$2"; BUILD="$(cd "$2" && pwd)"; shift 2 ;;
         --bundles) [ $# -ge 2 ] || usage; bundles="$(cd "$2" && pwd)"; shift 2 ;;
         *) usage ;;
     esac
 done
+bundles="${bundles:-$BUILD/out}"
 
 # shellcheck source=./rust-env.sh
 . "$ROOT/scripts/rust-env.sh"
@@ -106,7 +111,8 @@ took $s
 
 s=$SECONDS; stage "validators over $bundles"
 tools="$BUILD/validators"
-if [ ! -x "$tools/binaries/clap-validator" ] || [ ! -d "$tools/pluginval.app" ]; then
+if [ ! -x "$tools/binaries/clap-validator" ] || [ ! -d "$tools/pluginval.app" ] \
+   || [ ! -x "$tools/binaries/vst3-validator" ]; then
     "$ROOT/scripts/validate-plugins.sh" fetch "$tools" >/dev/null
 fi
 "$ROOT/scripts/validate-plugins.sh" run "$tools" "$bundles"

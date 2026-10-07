@@ -18,6 +18,9 @@ fn g_of(v: f64, sig: usize) -> ArrayString<64> {
 }
 
 /// What `f` writes, as text. A String, because `%f` of 1e300 is 301 digits.
+/// Only the tests held to C's own printf use it, and they run where there is
+/// one to call: on unix.
+#[cfg(unix)]
 fn f_of(v: f64, decimals: usize) -> String {
     let mut s = String::new();
     f(&mut s, v, decimals).unwrap();

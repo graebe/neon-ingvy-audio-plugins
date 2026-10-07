@@ -11,6 +11,8 @@
 #       [CATEGORIES <VST3 ...>]     Fx by default
 #       [SYNTH] [MIDI_IN]           an instrument, and/or MIDI into it
 #       [VST3_CLASS <32 hex>]       keep an older build's class ID (below)
+#       [IPLUG2_CLASS]              the class the iPlug2 bundle TARGET had, from
+#                                   tests/fixtures/iplug2/ids.json
 #       [LEGACY_PARAM_IDS]          a parameter's index is its VST3 ID
 #       [EDITOR]                    plugins/<product>/editor, built on the kit
 #       [NOTICES <files>]           more licence texts the bundle carries
@@ -19,15 +21,22 @@
 # WHAT IT DECIDES ONCE, FOR EVERY PRODUCT:
 #
 #   VST3 only, from Neon Ingvy (maker code Grbe), with JUCE's web browser and
-#   curl compiled out: no product opens a page or a connection.
+#   curl compiled out: no product opens a page or a connection. No splash
+#   screen either, and no switch for one: JUCE 9 has none, and defining
+#   JUCE_DISPLAY_SPLASH_SCREEN only earns its "the flag is ignored" warning.
 #
 #   THE VERSION IS versions.json's. "v2026.10.07.1" is v<date>.<n>, and JUCE
-#   takes three numbers, so the date is the VERSION (2026.10.7) and the whole
-#   string is NI_VERSION_STRING for the editor and the bundle's Info.plist.
+#   takes three numbers, so the date is the VERSION (2026.10.7: what the
+#   Finder shows, CFBundleShortVersionString), the build number folds the
+#   subversion into the day as tests/versions.test.mjs derives it
+#   (2026.10.57 = day*8+sub: CFBundleVersion, which tells two builds of one
+#   day apart), and the whole string is NI_VERSION_STRING for the editor.
 #
 #   THE NOTICES TRAVEL INSIDE THE BUNDLE: LICENSE and THIRD_PARTY_LICENSES.md
-#   (NI_BUNDLE_NOTICES, the iPlug2 bundles' list) and the NOTICES given, which
-#   is where an embedded font's OFL goes.
+#   (NI_BUNDLE_NOTICES, the iPlug2 bundles' list), the AGPLv3 and Apache 2.0
+#   texts of JUCE and what it compiles in (licenses/), the kit's font licence
+#   (OFL.txt) for a product with an EDITOR -- the kit embeds the font -- and
+#   the NOTICES given.
 #
 #   SIGNED LAST. JUCE signs its bundle and then writes
 #   Contents/Resources/moduleinfo.json into it, which breaks the seal: Live's
@@ -44,6 +53,10 @@
 #   this build exactly as it found the old one (JUCE_VST3_COMPONENT_CLASS:
 #   JUCE's own switch, and the one Live honours). Without it JUCE derives the
 #   class from the maker and plugin codes, which is right for a new product.
+#   IPLUG2_CLASS takes the class from the fixtures the iPlug2 factories were
+#   asked for (ids.json), and checks the bytes this platform gets against the
+#   ones recorded there, so a product taking over an iPlug2 bundle cannot be
+#   given a class that differs from it by a typo or a byte order.
 #
 #   OUT AND DEPLOYED as the iPlug2 bundles are: copied to build/out, and to
 #   ~/Library/Audio/Plug-Ins/VST3 when IPLUG_DEPLOY_PLUGINS is on (the root
@@ -81,8 +94,9 @@ else()
     set(NI_JUCE_DEPLOY_VST3 "$ENV{HOME}/.vst3")
 endif()
 
-# The version versions.json gives a product, as { "v2026.10.07.1", 2026.10.7 }.
-function(ni_juce_version product out_string out_numbers)
+# The version versions.json gives a product, as { "v2026.10.07.1", 2026.10.7,
+# 2026.10.57 }.
+function(ni_juce_version product out_string out_numbers out_build)
     file(READ ${CMAKE_SOURCE_DIR}/versions.json versions)
     string(JSON v ERROR_VARIABLE err GET "${versions}" "${product}")
     if (err)
@@ -93,8 +107,10 @@ function(ni_juce_version product out_string out_numbers)
     endif()
     math(EXPR month "${CMAKE_MATCH_2}")
     math(EXPR day "${CMAKE_MATCH_3}")
+    math(EXPR packed_day "${day} * 8 + ${CMAKE_MATCH_4}")
     set(${out_string} "${v}" PARENT_SCOPE)
     set(${out_numbers} "${CMAKE_MATCH_1}.${month}.${day}" PARENT_SCOPE)
+    set(${out_build} "${CMAKE_MATCH_1}.${month}.${packed_day}" PARENT_SCOPE)
 endfunction()
 
 # A class ID as the factory reports it (FUID order) to the bytes JUCE wants
@@ -130,8 +146,28 @@ function(ni_juce_class_bytes fuid out)
     set(${out} "${fuid}" PARENT_SCOPE)
 endfunction()
 
+# The class an iPlug2 bundle's factory reported, from the fixtures, and the
+# bytes it is on this platform -- checked against those recorded there.
+function(ni_juce_iplug2_class bundle out)
+    file(READ ${CMAKE_SOURCE_DIR}/tests/fixtures/iplug2/ids.json ids)
+    string(JSON cid ERROR_VARIABLE err GET "${ids}" "${bundle}" cid)
+    if (err)
+        message(FATAL_ERROR "tests/fixtures/iplug2/ids.json has no class for '${bundle}'")
+    endif()
+    if (WIN32)
+        string(JSON want GET "${ids}" "${bundle}" tuidBytesWindows)
+    else()
+        string(JSON want GET "${ids}" "${bundle}" tuidBytesMacOS)
+    endif()
+    ni_juce_class_bytes(${cid} bytes)
+    if (NOT bytes STREQUAL want)
+        message(FATAL_ERROR "${bundle}: class ${cid} is ${bytes} here, but ids.json records ${want}")
+    endif()
+    set(${out} "${cid}" PARENT_SCOPE)
+endfunction()
+
 function(ni_add_juce_plugin product)
-    cmake_parse_arguments(ARG "SYNTH;MIDI_IN;LEGACY_PARAM_IDS;EDITOR"
+    cmake_parse_arguments(ARG "SYNTH;MIDI_IN;LEGACY_PARAM_IDS;EDITOR;IPLUG2_CLASS"
         "TARGET;NAME;CODE;ENGINE;VST3_CLASS" "CATEGORIES;NOTICES;SOURCES" ${ARGN})
     foreach(required TARGET NAME CODE ENGINE SOURCES)
         if (NOT ARG_${required})
@@ -141,8 +177,14 @@ function(ni_add_juce_plugin product)
     if (NOT ARG_CATEGORIES)
         set(ARG_CATEGORIES Fx)
     endif()
+    if (ARG_IPLUG2_CLASS)
+        if (ARG_VST3_CLASS)
+            message(FATAL_ERROR "ni_add_juce_plugin(${product}): VST3_CLASS or IPLUG2_CLASS, not both")
+        endif()
+        ni_juce_iplug2_class(${ARG_TARGET} ARG_VST3_CLASS)
+    endif()
 
-    ni_juce_version(${product} version_string version_numbers)
+    ni_juce_version(${product} version_string version_numbers version_build)
     set(synth FALSE)
     set(midi_in FALSE)
     if (ARG_SYNTH)
@@ -157,6 +199,7 @@ function(ni_add_juce_plugin product)
         PLUGIN_NAME "${ARG_NAME}"
         DESCRIPTION "${ARG_NAME}"
         VERSION ${version_numbers}
+        BUILD_VERSION ${version_build}
         COMPANY_NAME "Neon Ingvy"
         COMPANY_COPYRIGHT "Copyright (C) 2026 Torben Gräber. GPL-3.0-or-later."
         COMPANY_WEBSITE "https://github.com/graebe/neon-ingvy-audio-plugins"
@@ -202,6 +245,10 @@ function(ni_add_juce_plugin product)
     target_compile_definitions(${ARG_TARGET} PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
+        # No WebP decoder: no product loads one, and juce_graphics would
+        # otherwise compile libwebp in. PNG and JPEG it compiles in regardless
+        # (THIRD_PARTY_LICENSES.md lists what a bundle carries).
+        JUCE_USE_WEBP=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         "NI_VERSION_STRING=\"${version_string}\""
         "NI_PRODUCT=\"${product}\"")
@@ -213,7 +260,11 @@ function(ni_add_juce_plugin product)
         target_compile_definitions(${ARG_TARGET} PUBLIC "JUCE_VST3_COMPONENT_CLASS=\"${class_bytes}\"")
     endif()
 
-    set(link ${ARG_ENGINE} juce::juce_audio_utils)
+    # The plugin client and the processors, and none of juce_audio_utils:
+    # no product reads or writes an audio file or opens a device, and that
+    # module would compile juce_audio_formats' codecs (FLAC, Ogg Vorbis, Opus,
+    # an MP3 decoder) into every bundle. A product that needs it links it.
+    set(link ${ARG_ENGINE} juce::juce_audio_processors)
     if (ARG_EDITOR)
         string(REPLACE "-" "_" id ${product})
         if (NOT TARGET ni_editor_${id})
@@ -229,7 +280,20 @@ function(ni_add_juce_plugin product)
 
     # The bundle: notices in, signed last, then out and deployed.
     get_target_property(bundle ${ARG_TARGET}_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
-    set(notices ${NI_BUNDLE_NOTICES} ${ARG_NOTICES})
+    # JUCE's AGPLv3 and the Apache 2.0 of a library it compiles in travel
+    # with every bundle (THIRD_PARTY_LICENSES.md, JUCE's own dependencies).
+    set(notices ${NI_BUNDLE_NOTICES}
+        ${CMAKE_SOURCE_DIR}/licenses/AGPL-3.0.txt
+        ${CMAKE_SOURCE_DIR}/licenses/Apache-2.0.txt
+        ${ARG_NOTICES})
+    if (ARG_EDITOR)
+        list(APPEND notices ${NI_UI_FONT_LICENSE})
+    endif()
+    # The steps below run when the bundle is linked, and only then: a notice
+    # edited later would otherwise stay stale in every bundle an incremental
+    # build leaves alone. As a link dependency, editing one relinks the bundle,
+    # and so copies it in and signs again.
+    set_property(TARGET ${ARG_TARGET}_VST3 APPEND PROPERTY LINK_DEPENDS ${notices})
     set(steps
         COMMAND ${CMAKE_COMMAND} -E make_directory "${bundle}/Contents/Resources"
         COMMAND ${CMAKE_COMMAND} -E copy ${notices} "${bundle}/Contents/Resources/")

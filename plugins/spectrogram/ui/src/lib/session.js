@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What the session is looking at, as the plugin remembers it.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THE EDITOR USED TO FORGET IT AND THEN OVERWRITE IT. On ready the plugin sent
  * nothing about the view, the comparison, the clash or the zoom, so a reopened

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Info: what the control under the pointer or the keyboard does, in the hint bar.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * AN ELEMENT DECLARES ITS STRING ONCE, as `data-info` -- the kit's controls take
  * it as an `info` prop, anything else spreads `infoAttrs(text)` -- and the

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The fade's weights in JS, against the ENGINE's measured gain.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * ui/src/lib/fade.js is a second implementation of something the DSP owns, and
  * this is what makes that tolerable. The fixture is not a transcription of

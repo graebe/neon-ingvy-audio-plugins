@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The intensity ramp: five stops, and a picture that does not lie about level.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * TWO CLAIMS, and the second is the one that matters.
  *

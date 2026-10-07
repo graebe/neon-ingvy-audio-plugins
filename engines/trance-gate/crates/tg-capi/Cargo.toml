@@ -37,3 +37,7 @@ shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 atomic_float = { workspace = true, features = ["atomic_f64"], optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+
+# trance_gate_core.h and tg_shell.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }

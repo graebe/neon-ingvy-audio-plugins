@@ -10,16 +10,20 @@
  * music-core's Display through a fixed buffer, and a String anywhere on that
  * path would show up here.
  *
- * THIS FILE MUST HOLD EXACTLY ONE TEST: the counter is global and cargo runs
- * tests in threads.
+ * The guard is assert_no_alloc's, and it watches one thread: inside the
+ * closure, an allocation or a free on the thread that runs it is a violation.
+ * It counts rather than aborts (warn_debug, warn_release), so the assertion
+ * can say how many.
  */
 
 use cd_core::text::{write_chord, write_degree, write_description, write_name, write_notes};
 use cd_core::{Detector, Param, Transport, PARAM_COUNT};
 use music_core::DisplayBuffer;
 
+use assert_no_alloc::{assert_no_alloc, violation_count, AllocDisabler};
+
 #[global_allocator]
-static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
+static ALLOCATOR: AllocDisabler = AllocDisabler;
 
 const MIDI: &[&[u8]] = &[
     &[0x90, 60, 100],
@@ -46,47 +50,43 @@ fn midi_clock_params_and_texts_allocate_nothing() {
     let mut other = DisplayBuffer::<32>::new();
     let mut events = 0usize;
 
-    ni_testkit::arm();
-    for block in 0..256usize {
-        let t = Transport {
-            playing: block % 32 < 24,
-            ppq: block as f64 * 0.125,
-            bpm: 100.0 + (block % 7) as f64,
-            num: 3 + (block % 2) as i32,
-            den: 4,
-        };
-        d.begin_block(Some(&t));
-        for (i, msg) in MIDI.iter().enumerate() {
-            d.on_midi(msg, (i * 17) as u32, |_| events += 1);
+    assert_no_alloc(|| {
+        for block in 0..256usize {
+            let t = Transport {
+                playing: block % 32 < 24,
+                ppq: block as f64 * 0.125,
+                bpm: 100.0 + (block % 7) as f64,
+                num: 3 + (block % 2) as i32,
+                den: 4,
+            };
+            d.begin_block(Some(&t));
+            for (i, msg) in MIDI.iter().enumerate() {
+                d.on_midi(msg, (i * 17) as u32, |_| events += 1);
+            }
+            for n in 0..24u8 {
+                d.on_midi(&[0x90, 30 + n * 3, 64], 0, |_| events += 1);
+            }
+            d.set_param(
+                Param::from_i32((block % PARAM_COUNT) as i32).unwrap(),
+                block as i32 % 13,
+            );
+            let r = *d.reading();
+            let names = d.names();
+            let _ = write_name(&r, names, &mut name);
+            let _ = write_description(&r, names, &mut words);
+            let _ = write_degree(&r, &mut numeral);
+            let _ = write_notes(&r, names, &mut notes);
+            for chord in r.alternatives() {
+                let _ = write_chord(chord, names, &mut other);
+            }
+            if block % 64 == 63 {
+                d.reset(|_| events += 1);
+            }
+            d.end_block(256);
         }
-        for n in 0..24u8 {
-            d.on_midi(&[0x90, 30 + n * 3, 64], 0, |_| events += 1);
-        }
-        d.set_param(
-            Param::from_i32((block % PARAM_COUNT) as i32).unwrap(),
-            block as i32 % 13,
-        );
-        let r = *d.reading();
-        let names = d.names();
-        let _ = write_name(&r, names, &mut name);
-        let _ = write_description(&r, names, &mut words);
-        let _ = write_degree(&r, &mut numeral);
-        let _ = write_notes(&r, names, &mut notes);
-        for chord in r.alternatives() {
-            let _ = write_chord(chord, names, &mut other);
-        }
-        if block % 64 == 63 {
-            d.reset(|_| events += 1);
-        }
-        d.end_block(256);
-    }
-    ni_testkit::disarm();
+    });
 
-    let (a, f) = (ni_testkit::allocs(), ni_testkit::frees());
-    assert_eq!(
-        (a, f),
-        (0, 0),
-        "the audio path allocated {a} times and freed {f} times"
-    );
+    let n = violation_count();
+    assert_eq!(n, 0, "the audio path allocated or freed {n} times");
     assert!(events > 0);
 }

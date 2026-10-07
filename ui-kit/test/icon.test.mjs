@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Icon is the design system's own fifteen glyphs.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

@@ -3,9 +3,9 @@
 
 /*
  * The hint bar: what it shows by the precedence the card gives, the tips
- * truncating in a cell the conventions size, and the two things that never
- * move -- the Motion switch after the tips and the Signature closing the bar,
- * always at least 16px apart.
+ * truncating in a cell that takes all the room the window leaves them, and
+ * the two things that never move -- the Signature closing the bar and the
+ * Motion switch 16px before it.
  */
 #include "Hint.h"
 
@@ -76,15 +76,24 @@ TEST_CASE ("hint: the rule, the line and the signature where the card puts them"
     CHECK (bar.hint.tipsBounds().getY() == Hint::lineTop);
 }
 
-TEST_CASE ("hint: the conventions size the tips, and the switch follows them by space-4")
+TEST_CASE ("hint: the tips take all the room to space-4 before the switch, which sits space-4 before the signature")
 {
-    Bar bar;
-    const auto tips = bar.hint.tipsBounds();
-    CHECK (tips.getWidth() == (int) std::ceil (ni::ui::clausesWidth (conventions)));
-    CHECK (bar.hint.motionBounds().getX() == tips.getRight() + 16);
+    /* .tips { flex: 1; min-width: 0 }: the window's width places them, the
+     * conventions do not -- a line has all the room there is. */
+    for (const auto& clauses : { conventions, std::vector<Clause> { { "pick", "a bus" } }, std::vector<Clause> {} })
+    {
+        CAPTURE (clauses.size());
+        Bar bar;
+        bar.hint.setConventions (clauses);
+        const auto tips = bar.hint.tipsBounds();
+        CHECK (tips.getRight() + Hint::gap == bar.hint.motionBounds().getX());
+        CHECK (bar.hint.motionBounds().getRight() + Hint::gap == bar.hint.signature().getX());
+        CHECK (tips.getWidth() > (int) std::ceil (ni::ui::clausesWidth (conventions)));
+    }
+
     /* Its 14px housing is centred on the text's line. */
+    Bar bar;
     CHECK (bar.motion.getBounds().getCentreY() == Hint::lineTop + 7);
-    CHECK (bar.hint.signature().getX() - bar.hint.motionBounds().getRight() >= 16);
 }
 
 TEST_CASE ("hint: neither the switch nor the signature moves while a line or an outcome comes and goes")
@@ -112,9 +121,9 @@ TEST_CASE ("hint: in a narrow window the tips give way, never the 16px before th
         const auto tips = bar.hint.tipsBounds();
         const auto motion = bar.hint.motionBounds();
         const auto sig = bar.hint.signature().getBounds();
-        CHECK (sig.getX() - motion.getRight() >= 16);
+        CHECK (sig.getX() - motion.getRight() == 16);
         CHECK (motion.getX() - tips.getRight() == 16);
-        CHECK (tips.getWidth() <= (int) std::ceil (ni::ui::clausesWidth (conventions)));
+        CHECK (tips.getWidth() < (int) std::ceil (ni::ui::clausesWidth (conventions)));
 
         /* No text between the tips' cell and the switch -- only the lit
          * switch's halo reaches there: the line is cut inside its cell, with
@@ -131,7 +140,7 @@ TEST_CASE ("hint: without a Ground there is no switch, and the tips run to 16px 
     hint.setConventions (conventions);
     hint.setSize (360, Hint::height);
     CHECK (hint.motionBounds().isEmpty());
-    CHECK (hint.signature().getX() - hint.tipsBounds().getRight() >= 16);
+    CHECK (hint.signature().getX() - hint.tipsBounds().getRight() == 16);
 }
 
 TEST_CASE ("hint: an outcome first, then the line under the pointer, then the conventions")

@@ -52,9 +52,9 @@ int indexOf (float normalised, int count)
 }
 
 /* The pitch-class name of a written note: "Bb3" -> "Bb". */
-juce::String pitchName (const CdWrittenNote& w)
+juce::String pitchName (const WrittenNote& w)
 {
-    return juce::String::fromUTF8 (w.name).trimCharactersAtEnd ("-0123456789");
+    return w.name.trimCharactersAtEnd ("-0123456789");
 }
 
 juce::String signatureText (int signature)
@@ -65,14 +65,6 @@ juce::String signatureText (int signature)
     return juce::String (n) + (signature > 0 ? " sharp" : " flat") + (n > 1 ? "s" : "");
 }
 
-ni::ui::music::NoteSet noteSet (const uint64_t (&words)[2])
-{
-    ni::ui::music::NoteSet s;
-    for (int n = 0; n < 128; ++n)
-        if ((words[n / 64] >> (n % 64)) & 1u)
-            s.set ((size_t) n);
-    return s;
-}
 } // namespace
 
 Editor::Editor (Model& m) : model (m)
@@ -135,9 +127,9 @@ Editor::Editor (Model& m) : model (m)
 
     staff.setWriter ([this] (int midi) {
         const auto w = model.write (midi);
-        return ni::ui::GrandStaff::Written { w.staff_step, w.accidental };
+        return ni::ui::GrandStaff::Written { w.staffStep, w.accidental };
     });
-    roll.setNamer ([this] (int midi) { return juce::String::fromUTF8 (model.write (midi).name); });
+    roll.setNamer ([this] (int midi) { return model.write (midi).name; });
     addChildComponent (staff);
     addChildComponent (roll);
     addAndMakeVisible (keyboard);
@@ -154,13 +146,13 @@ Editor::Editor (Model& m) : model (m)
 
     /* What the ring held before this window opened belongs to no history it
      * can show: the notes are taken from what sounds now instead. */
-    CdNoteEvent stale[256];
+    NoteEvent stale[256];
     while (model.takeNotes (stale, (int) std::size (stale)) > 0)
     {
     }
     const auto& now = model.reading();
     seenDropped = now.dropped;
-    history.setClock ({ now.now, now.bpm, now.bar, now.bar_origin, now.playing != 0 });
+    history.setClock ({ now.now, now.bpm, now.bar, now.barOrigin, now.playing });
     reconcile (now);
 
     showParameters();
@@ -210,20 +202,20 @@ void Editor::showParameters()
 
     /* A new key changes the circle's names and tint and the staff's
      * signature at once: they are drawn from the parameters, not the reading. */
-    shownSerial = 0xffffffffu;
+    shownSerial.reset();
     showReading (model.reading());
 }
 
-double Editor::spanQuarters (const CdReading& r) const
+double Editor::spanQuarters (const Reading& r) const
 {
     static constexpr double bars[] = { 1.0, 2.0, 4.0, 8.0 };
     const double barLength = r.bar > 0.0 ? r.bar : 4.0;
     return bars[juce::jlimit (0, 3, choiceOf (Param::historySpan))] * barLength;
 }
 
-void Editor::reconcile (const CdReading& r)
+void Editor::reconcile (const Reading& r)
 {
-    const auto sounding = noteSet (r.sounding);
+    const auto& sounding = r.sounding;
     ni::ui::music::NoteSet known;
     for (const auto& n : history.notes())
         if (n.sounding())
@@ -239,7 +231,7 @@ void Editor::reconcile (const CdReading& r)
 
 void Editor::drainNotes()
 {
-    CdNoteEvent events[256];
+    NoteEvent events[256];
     for (int n; (n = model.takeNotes (events, (int) std::size (events))) > 0;)
         for (int i = 0; i < n; ++i)
         {
@@ -259,7 +251,7 @@ void Editor::tick()
     const auto& r = model.reading();
     /* The longest span it can be asked to show, in this meter. */
     history.setKeep (8.0 * (r.bar > 0.0 ? r.bar : 4.0));
-    history.setClock ({ r.now, r.bpm, r.bar, r.bar_origin, r.playing != 0 });
+    history.setClock ({ r.now, r.bpm, r.bar, r.barOrigin, r.playing });
     if (r.dropped != seenDropped)
     {
         seenDropped = r.dropped;
@@ -272,27 +264,26 @@ void Editor::tick()
     roll.repaint();
 }
 
-void Editor::showReading (const CdReading& r)
+void Editor::showReading (const Reading& r)
 {
-    const bool keysMoved = noteSet (r.sounding) != keyboard.getState().lit && r.held == 0;
-    if (r.serial == shownSerial && ! keysMoved && (r.pedal != 0) == pedal)
+    const bool keysMoved = r.sounding != keyboard.getState().lit && ! r.held;
+    if (r.serial == shownSerial && ! keysMoved && r.pedal == pedal)
         return;
     shownSerial = r.serial;
-    if ((r.pedal != 0) != pedal)
+    if (r.pedal != pedal)
     {
-        pedal = r.pedal != 0;
+        pedal = r.pedal;
         repaint (readoutArea.getX(), controlsTop, readoutArea.getWidth(), rowH);
     }
 
-    const bool held = r.held != 0;
+    const bool held = r.held;
 
     ni::ui::ChordReadout::State words;
-    words.name = juce::String::fromUTF8 (r.name);
-    words.degree = juce::String::fromUTF8 (r.degree);
-    words.description = juce::String::fromUTF8 (r.description);
-    words.notes = juce::String::fromUTF8 (r.notes_text);
-    for (int i = 0; i < r.alternative_count && i < CD_ALTERNATIVES; ++i)
-        words.alternatives.add (juce::String::fromUTF8 (r.alternatives[i]));
+    words.name = r.name;
+    words.degree = r.degree;
+    words.description = r.description;
+    words.notes = r.notesText;
+    words.alternatives = r.alternatives;
     words.held = held;
     readout.setState (words);
 
@@ -302,7 +293,7 @@ void Editor::showReading (const CdReading& r)
     ni::ui::CircleOfFifths::State ring;
     ring.tonic = choiceOf (Param::tonic);
     ring.scale = key.scale;
-    ring.lit = r.pitch_classes;
+    ring.lit = r.pitchClasses;
     ring.root = r.root;
     ring.dimmed = held;
     for (int pc = 0; pc < 12; ++pc)
@@ -313,7 +304,7 @@ void Editor::showReading (const CdReading& r)
 
     /* The keyboard: what sounds; under Hold, after release, what was held. */
     ni::ui::Keyboard::State keys = keyboard.getState();
-    keys.lit = held ? noteSet (r.notes) : noteSet (r.sounding);
+    keys.lit = held ? r.notes : r.sounding;
     keys.dimmed = held;
     keys.bass = r.bass;
     keys.lowest = ni::ui::Keyboard::lowestToShow (keys.lit, keys.octaves, keys.lowest);

@@ -13,7 +13,7 @@ crate-type = ["staticlib"]
 [dependencies]
 spectro-core = { path = "../spectro-core" }
 # The receiver half. It brings bus-core with it, which is why libspectro_capi.a
-# is still the ONE static library the shell links -- see cmake/NiPlugin.cmake.
+# is still the ONE static library the shell links -- see cmake/NiRust.cmake.
 spectro-recv = { path = "../spectro-recv" }
 # The animated ground's beat clock. NOT a second static library -- see the note in
 # ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
@@ -23,3 +23,7 @@ ground-capi = { path = "../../../ground/crates/ground-capi" }
 # The handoff that lends the shell's main-thread objects to its audio thread,
 # carried in this archive for the ground's reason.
 shell-capi = { path = "../../../shell/crates/shell-capi" }
+
+# spectro_core.h and spectro_recv.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }

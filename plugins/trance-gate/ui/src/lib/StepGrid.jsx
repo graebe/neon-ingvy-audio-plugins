@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * The pads. Copyright (c) 2026 Torben Gräber. MIT.
+ * The pads.
  * Ported from StepGridView::paint / mouseDown / mouseDrag.
  *
  * 16 columns of 40px steps with 8px between them, so the grid is 760 wide and

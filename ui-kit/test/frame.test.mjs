@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The frame's pieces: the fit, the height it reports, the clock and the
- * handshake. Copyright (c) 2026 Torben Gräber. MIT.
+ * handshake.
  *
  * Run with --conditions=browser (npm test does), so Solid's effects run.
  */

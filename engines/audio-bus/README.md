@@ -79,7 +79,7 @@ not show another program running as you.
 | `ring.rs` | the wrap, the lap detection, the resync — over a `&Header` and a `&[AtomicF32]`, so a test can build one on the heap |
 | `shm.rs` | `Shm`, over `shm_open`/`mmap` (`shm/posix.rs`) or a named file mapping (`shm/win32.rs`), and the two doors: only a writer may use the one that creates, and a reader's is read-only |
 | `lib.rs` | `Writer` + `Pusher`, `Reader`, `probe`, and the claim protocol |
-| `crates/bus-capi` | the C ABI; `include/audio_bus.h` is the contract |
+| `crates/bus-capi` | the C ABI; the `audio_bus.h` its `build.rs` generates is the contract |
 
 ## One writer, N readers, and no coordination between them
 

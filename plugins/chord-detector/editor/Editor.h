@@ -45,6 +45,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 
 namespace ni::chord_detector
 {
@@ -89,10 +90,10 @@ private:
     void commit (Param, int choice);
     void bind (ni::ui::Select&, Param);
     void showParameters();
-    void showReading (const CdReading&);
+    void showReading (const Reading&);
     void drainNotes();
-    void reconcile (const CdReading&);
-    double spanQuarters (const CdReading&) const;
+    void reconcile (const Reading&);
+    double spanQuarters (const Reading&) const;
 
     Model& model;
 
@@ -119,7 +120,8 @@ private:
     ni::ui::Keyboard keyboard;
     ni::ui::Hint bar;
 
-    std::uint32_t shownSerial = 0xffffffffu;
+    /* The reading on screen; none while the parameters' look is stale. */
+    std::optional<std::uint32_t> shownSerial;
     std::uint32_t seenDropped = 0;
     bool pedal = false;
 

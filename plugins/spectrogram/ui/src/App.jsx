@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Spectrogram — the editor.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Three jobs, and nothing else: decode the columns the plugin pushes, hand them
  * to the canvas, and draw the frequency scale beside it.

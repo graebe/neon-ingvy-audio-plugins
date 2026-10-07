@@ -16,3 +16,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 shell-core = { path = "../shell-core" }
+
+# shell_handoff.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }

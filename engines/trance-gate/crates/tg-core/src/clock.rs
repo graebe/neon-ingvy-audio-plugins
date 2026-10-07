@@ -56,9 +56,12 @@ impl Instance {
             samples_per_step = 1.0;
         }
 
-        /* A stopped transport is not beat 0, it is no beat at all. */
+        /* A stopped transport is not beat 0, it is no beat at all -- and
+         * neither is a position the host could not give: JUCE's shell hands
+         * a missing musical position over as NaN (ni::readClock), and a host
+         * may report an infinity. Either would otherwise count as running. */
         let beats = match t {
-            Some(t) if t.running => t.beats,
+            Some(t) if t.running && t.beats.is_finite() => t.beats,
             _ => -1.0,
         };
         let running = beats >= 0.0;

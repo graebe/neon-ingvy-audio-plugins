@@ -95,6 +95,18 @@ public:
     return mSeen[col].load(std::memory_order_acquire) == mGen.load(std::memory_order_relaxed);
   }
 
+  /* Column `col` as the floats it holds: dry low, dry high, wet low, wet high
+   * -- each -1..1 -- and the gain. For a reader that draws them itself (the
+   * JUCE editors), where PutColumn encodes them for a page. */
+  void ReadColumn(int col, float (&out)[5]) const
+  {
+    out[0] = mDryLo[col].load(std::memory_order_relaxed);
+    out[1] = mDryHi[col].load(std::memory_order_relaxed);
+    out[2] = mWetLo[col].load(std::memory_order_relaxed);
+    out[3] = mWetHi[col].load(std::memory_order_relaxed);
+    out[4] = mGain[col].load(std::memory_order_relaxed);
+  }
+
   /* Column `col` as four raw bytes -- dry low, dry high, wet low, wet high,
    * each bipolar -- and, with `withGain`, a fifth: the gain, unipolar. Raw, not
    * hex: the transport base64-encodes the payload anyway, and hex inside it

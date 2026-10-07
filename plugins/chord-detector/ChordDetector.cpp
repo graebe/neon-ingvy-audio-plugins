@@ -103,25 +103,69 @@ void ChordDetector::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&
     buffer.clear();
 }
 
-const CdReading& ChordDetector::reading()
+namespace
 {
-    cd_shell_read (shell.get(), &latest);
+/* The engine's 128-bit note set: note n at bit n % 64 of word n / 64. */
+ni::ui::music::NoteSet noteSet (const uint64_t (&words)[2])
+{
+    ni::ui::music::NoteSet set;
+    for (int n = 0; n < 128; ++n)
+        set[(size_t) n] = ((words[n / 64] >> (n % 64)) & 1u) != 0;
+    return set;
+}
+} // namespace
+
+const Reading& ChordDetector::reading()
+{
+    CdReading r {};
+    cd_shell_read (shell.get(), &r);
+    latest.now = r.now;
+    latest.bpm = r.bpm;
+    latest.bar = r.bar;
+    latest.barOrigin = r.bar_origin;
+    latest.dropped = r.dropped;
+    latest.playing = r.playing != 0;
+    if (r.serial == latest.serial)
+        return latest;
+
+    latest.serial = r.serial;
+    latest.kind = r.kind;
+    latest.held = r.held != 0;
+    latest.pedal = r.pedal != 0;
+    latest.root = r.root;
+    latest.bass = r.bass;
+    latest.pitchClasses = r.pitch_classes;
+    latest.notes = noteSet (r.notes);
+    latest.sounding = noteSet (r.sounding);
+    latest.name = juce::String::fromUTF8 (r.name);
+    latest.description = juce::String::fromUTF8 (r.description);
+    latest.degree = juce::String::fromUTF8 (r.degree);
+    latest.notesText = juce::String::fromUTF8 (r.notes_text);
+    latest.alternatives.clearQuick();
+    for (int i = 0; i < r.alternative_count && i < CD_ALTERNATIVES; ++i)
+        latest.alternatives.add (juce::String::fromUTF8 (r.alternatives[i]));
     return latest;
 }
 
-int ChordDetector::takeNotes (CdNoteEvent* out, int capacity)
+int ChordDetector::takeNotes (NoteEvent* out, int capacity)
 {
-    return capacity > 0 ? (int) cd_shell_drain (shell.get(), out, (size_t) capacity) : 0;
+    const int n = (int) cd_shell_drain (shell.get(), drained.data(),
+                                        (size_t) juce::jlimit (0, (int) drained.size(), capacity));
+    for (int i = 0; i < n; ++i)
+        out[i] = { drained[(size_t) i].at, drained[(size_t) i].note, drained[(size_t) i].velocity };
+    return n;
 }
 
-CdWrittenNote ChordDetector::write (int midi) const
+WrittenNote ChordDetector::write (int midi) const
 {
-    return cd_write_note (choice (Param::tonic), choice (Param::mode), choice (Param::spelling), midi);
+    const auto w = cd_write_note (choice (Param::tonic), choice (Param::mode), choice (Param::spelling), midi);
+    return { w.staff_step, w.accidental, juce::String::fromUTF8 (w.name) };
 }
 
-CdKey ChordDetector::key() const
+KeyInfo ChordDetector::key() const
 {
-    return cd_key_info (choice (Param::tonic), choice (Param::mode));
+    const auto k = cd_key_info (choice (Param::tonic), choice (Param::mode));
+    return { k.scale, k.signature };
 }
 
 juce::AudioProcessorEditor* ChordDetector::createEditor()

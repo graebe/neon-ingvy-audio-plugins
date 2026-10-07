@@ -1,6 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Torben Gräber */
+
 /*
  * ULTRAVIOLET — the design system's tokens, transcribed once.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Every value here is the design system's, transcribed from its tokens.json
  * (design/scheme/project/tokens.json), and `ctest -R ui_tokens` holds the two

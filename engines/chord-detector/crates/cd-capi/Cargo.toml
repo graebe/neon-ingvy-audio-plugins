@@ -6,7 +6,6 @@ authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "The cd_* C ABI over the NI Chord-Detector engine"
 publish.workspace = true
-build = "build.rs"
 
 [lib]
 name = "cd_capi"
@@ -25,10 +24,10 @@ rtrb = { workspace = true }
 music-core = { path = "../../../shared/crates/music-core", default-features = false }
 
 [build-dependencies]
-# THE HEADER IS GENERATED, never written by hand (docs/adr/0003): a hand-written
-# header can drift from the Rust it declares and nothing fails until a call
-# corrupts the stack. build.rs writes engines/chord-detector/include/cd_capi.h.
+# The header, written from the Rust it declares (build.rs, through
+# engines/shared/cbindgen/capi_header.rs).
 cbindgen = { workspace = true }
 
 [dev-dependencies]
-ni-testkit = { path = "../../../shared/crates/ni-testkit" }
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

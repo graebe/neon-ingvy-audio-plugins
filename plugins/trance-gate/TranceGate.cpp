@@ -2,324 +2,264 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * Trance Gate -- the Ableton Live plugin, on iPlug2.
+ * NI Trance Gate on the JUCE shell. TranceGate.h says what it keeps and where.
  */
 #include "TranceGate.h"
-#include "Patch.h"
-#include "IPlug_include_in_plug_src.h"
 
-#include <algorithm>
-#include <cstdio>
-#include <cmath>
+#include "EngineModel.h"
+#include "PluginEditor.h"
+#include "Window.h"
+#include "ni/Wire.h"
+
 #include <cstring>
+#include <string>
 
-using namespace iplug;
-
-TranceGate::TranceGate(const InstanceInfo& info)
-: ni::WebPlugin(info, MakeConfig(kNumParams, kNumPresets), {"tgate", __FILE__})
-, mFiles(GetBundleID())
+namespace ni::tg
 {
-  /* Params.cpp, where a test can reach them. */
-  tg::params::Declare([this](int i) { return GetParam(i); });
-  MakeDefaultPreset("Default", kNumPresets);
-  mShell = tg_shell_create(GetSampleRate() > 0.0 ? GetSampleRate() : 44100.0);
+
+namespace
+{
+/* Rate's words: the engine's own table. A host stores the INDEX, so a list
+ * that disagreed with the engine by one entry would re-point every lane. */
+juce::StringArray rateLabels()
+{
+    juce::StringArray out;
+    for (int i = 0; i < TG_NUM_RATES; ++i)
+    {
+        char label[32];
+        out.add (tg_core_rate_label (i, label, (int) sizeof label) > 0 ? juce::String (label) : juce::String (i));
+    }
+    return out;
 }
 
-TranceGate::~TranceGate()
+std::unique_ptr<ni::Parameter> make (int index)
 {
-  tg_shell_destroy(mShell);
-  mShell = nullptr;
+    const auto& spec = specOf (index);
+    if (index == kRate)
+        return std::make_unique<ni::Parameter> (spec, rateLabels());
+    if (spec.kind != ParamSpec::Kind::continuous)
+        return std::make_unique<ni::Parameter> (spec);
+    /* Every continuous one is a percentage at the host, the stages included:
+     * their milliseconds are the editor's reading (Params.h). */
+    return std::make_unique<ni::Parameter> (
+        spec, juce::StringArray(), [] (double v) { return juce::String (percentText (v)); },
+        [] (const juce::String& text) -> std::optional<double>
+        {
+            double v = 0.0;
+            if (parsePercent (text.toStdString(), v))
+                return v;
+            return std::nullopt;
+        });
+}
+} // namespace
+
+Processor::Processor()
+    : ni::Processor (BusesProperties()
+                         .withInput ("Input", juce::AudioChannelSet::stereo(), true)
+                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      shell (tg_shell_create (44100.0))
+{
+    /* In index order: with legacy parameter IDs the index is the VST3 ID,
+     * and these have to be the iPlug2 build's. */
+    for (int i = 0; i < kNumParams; ++i)
+    {
+        auto p = make (i);
+        params[(std::size_t) i] = p.get();
+        addParameter (p.release());
+    }
+    /* LAST, so its index -- and VST3 ID -- is 15. */
+    auto b = std::make_unique<ni::Parameter> (ni::bypassSpec());
+    bypass = b.get();
+    addParameter (b.release());
+
+    editorModel = std::make_unique<EngineModel> (*this);
+    /* The slot follow: a host's idle rate, as iPlug2's was. */
+    startTimerHz (30);
 }
 
-/*
- * THE PATTERN IS SAVED FROM WHAT THE ENGINE PUBLISHED -- an edit posted a
- * moment ago and not yet applied included, so a save straight after an edit
- * has it whether or not audio is running. Patch.cpp has both halves.
- */
-bool TranceGate::SerializeState(IByteChunk& chunk) const
+Processor::~Processor()
 {
-  return tg::patch::Save(
-    mShell, chunk, [this](IByteChunk& c) { return PutParams(c); },
-    [this](int i) { return GetParam(i)->Value(); });
+    stopTimer();
 }
 
-int TranceGate::UnserializeState(const IByteChunk& chunk, int startPos)
+bool Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-  /* The blob and the restored parameters are posted as one edit, not
-   * applied: the audio thread picks them up at the top of its next block.
-   * Nothing here may call a main-thread API -- a host picks this thread. */
-  return tg::patch::Load(
-    mShell, chunk, startPos,
-    [this](const IByteChunk& c, int p) { return CheckParams(c, p); },
-    [this](const IByteChunk& c, int p) { return GetParams(c, p); },
-    [this](int i) { return GetParam(i)->Value(); });
+    return layouts.getMainInputChannelSet() == juce::AudioChannelSet::stereo()
+        && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
 
-void TranceGate::ResetAudio()
+void Processor::prepareToPlay (double rate, int maximumBlock)
 {
-  tg_shell_post_sample_rate(mShell, GetSampleRate());
-  const size_t n = size_t(std::max(GetBlockSize(), 1));
-  mL.assign(n, 0.0f);
-  mR.assign(n, 0.0f);
-  mDry.assign(n, 0.0f);
-  mSweep.assign(n, 0.0f);
-  /* Or the first picture after a rate change is the last session's. */
-  mScope.Clear();
+    sampleRate = rate > 0.0 ? rate : 44100.0;
+    tg_shell_post_sample_rate (shell.get(), sampleRate);
+    beat.prepare (sampleRate);
+    const auto n = (std::size_t) juce::jmax (maximumBlock, 1);
+    dry.assign (n, 0.0f);
+    sweep.assign (n, 0.0f);
+    /* Or the first picture after a rate change is the last session's. */
+    capture.Clear();
 }
 
-/*
- * Every value, every block, through the shell: it writes what the host moved
- * into the current slot, and on the block the Slot moves it writes nothing
- * else -- the new slot's values win and the host follows (OnHostIdle).
- */
-void TranceGate::PushParams(tg_core_t* core)
+void Processor::engineValues (double (&out)[kNumParams]) const noexcept
 {
-  double values[TG_P_COUNT];
-  tg::patch::Values([this](int i) { return GetParam(i)->Value(); }, values);
-  tg_shell_push(mShell, core, values, TG_P_COUNT);
-}
-
-void TranceGate::ProcessAudio(sample** inputs, sample** outputs, int nFrames)
-{
-  const int nOut = NOutChansConnected();
-  const int cap = int(std::min(mL.size(), mR.size()));
-  if (!mShell || nFrames <= 0 || nOut <= 0 || cap <= 0)
-    return;
-
-  /* Every edit posted since the last block lands here, before the host's
-   * parameters are pushed over it. */
-  tg_core_t* core = tg_shell_begin(mShell);
-  PushParams(core);
-
-  const ni::wire::Transport host = HostTransport();
-  tg_transport_t t = {host.running, host.beats, host.bpm};
-  /* The meter counts the editor's Length detents and nothing else. iPlug2
-   * holds 4/4 for a host that does not say. */
-  int num = 4, den = 4;
-  GetTimeSig(num, den);
-  tg_core_set_meter(core, num, den);
-  const bool stereo = nOut > 1 && outputs[1] != nullptr;
-  const bool capture = EditorIsOpen();
-
-  ni::wire::for_each_chunk(nFrames, cap, [&](int off, int n) {
-    ni::wire::to_float(inputs[0] + off, mL.data(), n);
-    ni::wire::to_float((stereo ? inputs[1] : inputs[0]) + off, mR.data(), n);
-    if (capture)
-      std::memcpy(mDry.data(), mL.data(), sizeof(float) * size_t(n));
-
-    tg_core_process_f32_split_tap(core, mL.data(), mR.data(),
-                                  capture ? mSweep.data() : nullptr, n, &t);
-    if (capture)
-      mScope.Push(mDry.data(), mL.data(), nullptr, mSweep.data(), n);
-
-    ni::wire::from_float(mL.data(), outputs[0] + off, n);
-    if (stereo)
-      ni::wire::from_float(mR.data(), outputs[1] + off, n);
-    /* A chunk continues the block, so the transport moves with it. */
-    if (t.running)
-      t.beats = ni::wire::advance_beats(t.beats, n, double(t.bpm), GetSampleRate());
-  });
-
-  tg_shell_end(mShell, nFrames);
+    for (int i = 0; i < kNumParams; ++i)
+        out[i] = toEngine (i, params[(std::size_t) i]->plain());
 }
 
 /*
- * A slot switch (or a paste) recalled a whole sound in the engine; every host
- * parameter follows, through the host -- automation lanes, the host's own UI
- * and the editor all show the recalled values.
+ * THE iPlug2 SHELL'S BLOCK, on JUCE's float buffers in place: every edit
+ * posted since the last block lands at begin, the host's values are pushed
+ * over it, the transport and meter go in, and the engine gates the two
+ * channels -- in chunks of what was reserved, should a host hand over more.
  */
-void TranceGate::OnHostIdle()
+void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-  tg::patch::Follow(
-    mShell, [this](int i) { return GetParam(i)->Value(); },
-    [this](int i, double v) { SetParamFromPlugin(i, v); });
-}
+    const int frames = buffer.getNumSamples();
+    const int cap = (int) juce::jmin (dry.size(), sweep.size());
+    const auto clock = readClock (getPlayHead());
+    beat.tick (clock, frames);
+    if (frames <= 0 || buffer.getNumChannels() < 2 || cap <= 0)
+        return;
 
-double TranceGate::WidthMs() const
-{
-  /* "...:release:width_ms:fade:..." -- field 12 of the `params` readout. */
-  char buf[TG_STATE_MAX];
-  if (tg_shell_read(mShell, "params", buf, int(sizeof buf)) <= 0)
-    return 0.0;
-  const char* p = buf;
-  for (int field = 0; field < 12 && p; field++)
-  {
-    p = std::strchr(p, ':');
-    if (p)
-      p++;
-  }
-  return p ? ni::wire::parse_number(p) : 0.0;
-}
+    double values[kNumParams];
+    engineValues (values);
+    tg_core_t* core = tg_shell_begin (shell.get());
+    tg_shell_push (shell.get(), core, values, kNumParams);
 
-void TranceGate::FormatDisplay(int paramIdx, WDL_String& str) const
-{
-  if (!tg::params::IsStage(paramIdx))
-    return ni::WebPlugin::FormatDisplay(paramIdx, str);
-  const bool ms = GetParam(kTimeMode)->Int() == 0;
-  str.Set(tg::params::FormatStage(GetParam(paramIdx)->Value(), ms, WidthMs()).c_str());
-}
+    /* What a missing tempo or position means is decided once, for every
+     * shell: a NaN position is none (ni::readClock), a missing meter 4/4. */
+    const auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
+    tg_transport_t transport { host.running, host.beats, host.bpm };
+    tg_core_set_meter (core, clock.numerator > 0 ? clock.numerator : 4, clock.denominator > 0 ? clock.denominator : 4);
 
-double TranceGate::ParseDisplay(int paramIdx, const char* text) const
-{
-  if (!tg::params::IsStage(paramIdx))
-    return ni::WebPlugin::ParseDisplay(paramIdx, text);
-  return tg::params::ParseStage(text, GetParam(kTimeMode)->Int() == 0, WidthMs());
-}
-
-void TranceGate::OnEditorIdle()
-{
-  /* The stage readouts follow Env Time and the gate's length in ms, neither of
-   * which is the stage parameter itself changing. */
-  const bool ms = GetParam(kTimeMode)->Int() == 0;
-  const double width = WidthMs();
-  if (ms != mStageMs || (ms && std::fabs(width - mStageWidthMs) > 1e-6))
-  {
-    mStageMs = ms;
-    mStageWidthMs = width;
-    SendDisplay(kAttack);
-    SendDisplay(kDecay);
-    SendDisplay(kRelease);
-  }
-
-  char buf[TG_STATE_MAX];
-  if (tg_shell_read(mShell, "ui", buf, int(sizeof buf)) > 0)
-    SendFramed(kMsgUiState, buf, int(strlen(buf)));
-  SendGate(false);
-  if (tg_shell_read(mShell, "params", buf, int(sizeof buf)) > 0)
-    SendFramed(kMsgParams, buf, int(strlen(buf)));
-  SendScope();
-}
-
-/* An editor that opens on a patch nobody then touches still gets its curve. */
-void TranceGate::OnEditorReady()
-{
-  SendGate(true);
-}
-
-/*
- * The curve is rendered only when the patch moves: the state string is the
- * whole patch, so an unchanged string is an unchanged curve.
- */
-void TranceGate::SendGate(bool force)
-{
-  char state[TG_STATE_MAX];
-  if (tg_shell_read(mShell, "state", state, int(sizeof state)) <= 0)
-    return;
-  if (!force && mGateState == state)
-    return;
-  mGateState = state;
-  char gate[TG_GATE_MAX];
-  const int n = tg_core_render_gate(state, gate, int(sizeof gate));
-  if (n > 0)
-    SendFramed(kMsgGate, gate, n);
-  /* The envelope plot's curves, from the same patch and the same engine. */
-  char env[TG_ENVELOPE_MAX];
-  const int ne = tg_core_render_envelope(state, env, int(sizeof env));
-  if (ne > 0)
-    SendFramed(kMsgEnvelope, env, ne);
-}
-
-/*
- * "<cols>:<cycleMs>:<head>:" and four raw bytes a column, every frame, in
- * place: column k is phase k / kScopeCols and `head` marks the write point.
- */
-void TranceGate::SendScope()
-{
-  char scope[kScopeCols * 4 + 48];
-  char* p = scope + snprintf(scope, sizeof scope, "%d:%d:%d:", kScopeCols,
-                             int(tg_shell_cycle_ms(mShell)), mScope.Head());
-  for (int i = 0; i < kScopeCols; i++)
-    p = mScope.PutColumn(p, i, false);
-  SendFramed(kMsgScope, scope, int(p - scope));
-}
-
-/*
- * The pattern's edits: none is a host parameter, so each is posted to the
- * engine, which applies it at the top of its next block.
- */
-bool TranceGate::OnEditorMessage(int tag, const std::string& arg)
-{
-  using tg::patch::Edit;
-  switch (tag)
-  {
-    case kMsgSetCursor: tg::patch::Post(mShell, Edit::Cursor, arg); return true;
-    case kMsgSetStep: tg::patch::Post(mShell, Edit::Step, arg); return true;
-    case kMsgSetDepth: tg::patch::Post(mShell, Edit::Depth, arg); return true;
-    case kMsgSetOrder: tg::patch::Post(mShell, Edit::Order, arg); return true;
-    case kMsgRandomize: tg::patch::Post(mShell, Edit::Randomize, arg); return true;
-    case kMsgExportFile: ExportFile(arg == "bank"); return true;
-    case kMsgImportFile: ImportFile(); return true;
-    case kMsgCopySlot: CopySlot(); return true;
-    case kMsgPasteSlot: PasteSlot(); return true;
-    default:
-      return false;
-  }
-}
-
-/*
- * SLOT FILES. The panel is the system's, shown as a sheet on the editor; the
- * text is the engine's (tg_shell_export / tg_shell_import); Patch.cpp moves it
- * between the two and words the outcome, which the hint bar shows. An import
- * lands at the top of the next block, and the host's parameters follow it as
- * they follow a slot switch (OnHostIdle).
- */
-void TranceGate::ExportFile(bool all)
-{
-  using tg::patch::FileKind;
-  const FileKind kind = all ? FileKind::Bank : FileKind::Slot;
-  const int slot = GetParam(kSlot)->Int();
-  const bool shown = mFiles.Save(
-    EditorView(), tg::patch::FileName(kind, slot), tg::patch::Extension(kind),
-    [this, kind, slot](const std::string& path) {
-      if (path.empty()) return; /* cancelled: nothing to say */
-      std::string words;
-      const bool ok = tg::patch::ExportFile(
-        mShell, [this](int i) { return GetParam(i)->Value(); }, kind, slot, path, words);
-      SendStatus(ok, words);
+    const bool tap = capturing.load (std::memory_order_relaxed);
+    float* left = buffer.getWritePointer (0);
+    float* right = buffer.getWritePointer (1);
+    ni::wire::for_each_chunk (frames, cap, [&] (int off, int n)
+    {
+        if (tap)
+            std::memcpy (dry.data(), left + off, sizeof (float) * (std::size_t) n);
+        tg_core_process_f32_split_tap (core, left + off, right + off, tap ? sweep.data() : nullptr, n, &transport);
+        if (tap)
+            capture.Push (dry.data(), left + off, nullptr, sweep.data(), n);
+        /* A chunk continues the block, so the transport moves with it. */
+        if (transport.running)
+            transport.beats = ni::wire::advance_beats (transport.beats, n, (double) transport.bpm, sampleRate);
     });
-  if (!shown)
-    SendStatus(false, "Failed to show the save panel.");
+
+    tg_shell_end (shell.get(), frames);
 }
 
-void TranceGate::ImportFile()
+/* Bypassed, the host's own way -- audio through -- while the Ground keeps the
+ * host's time, so the window's beat does not stop with the sound. */
+void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-  using tg::patch::FileKind;
-  const bool shown = mFiles.Open(
-    EditorView(), {tg::patch::Extension(FileKind::Slot), tg::patch::Extension(FileKind::Bank)},
-    [this](const std::string& path) {
-      if (path.empty()) return;
-      std::string words;
-      const bool ok = tg::patch::ImportFile(mShell, GetParam(kSlot)->Int(), path, words);
-      SendStatus(ok, words);
-    });
-  if (!shown)
-    SendStatus(false, "Failed to show the open panel.");
+    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
+    ni::Processor::processBypassed (buffer, midi);
 }
 
 /*
- * THE CLIPBOARD IS THE PLUGIN'S, as the panels are: a WebView in a host can
- * neither read the clipboard nor receive ⌘V. Copy writes the current slot as a
- * slot file's text; Paste hands whatever is there to the engine, which decides
- * what it is (Patch.cpp, tg_shell_paste). A paste lands at the top of the next
- * block and the host's parameters follow it (OnHostIdle), as for an import.
+ * A SLOT SWITCH, A PASTE OR AN IMPORT RECALLED A WHOLE SOUND; the host's
+ * parameters follow it. Slot is the host's own and never set.
  */
-void TranceGate::CopySlot()
+bool Processor::followEngine()
 {
-  std::string words;
-  const bool ok = tg::patch::CopySlot(
-    mShell, [this](int i) { return GetParam(i)->Value(); }, GetParam(kSlot)->Int(),
-    ni::Clipboard::System(), words);
-  SendStatus(ok, words);
+    double now[kNumParams];
+    if (! tg_shell_take_params (shell.get(), now, kNumParams))
+        return false;
+    for (int i = 0; i < kNumParams; ++i)
+    {
+        auto& p = *params[(std::size_t) i];
+        if (i == kSlot || sameInEngine (i, p.plain(), now[i]))
+            continue;
+        p.beginChangeGesture();
+        p.setPlainNotifyingHost (fromEngine (i, now[i]));
+        p.endChangeGesture();
+    }
+    return true;
 }
 
-void TranceGate::PasteSlot()
+juce::AudioProcessorEditor* Processor::createEditor()
 {
-  std::string words;
-  const bool ok = tg::patch::Paste(mShell, GetParam(kSlot)->Int(), ni::Clipboard::System(), words);
-  SendStatus(ok, words);
+    return new ni::PluginEditor (*this, std::make_unique<Window> (*editorModel), ni::PluginEditor::FollowDesign {});
 }
 
-void TranceGate::SendStatus(bool ok, const std::string& words)
+/* While a window shows them: the Signal capture and the Ground. */
+void Processor::editorOpened()
 {
-  SendText(kMsgStatus, (ok ? "ok:" : "error:") + words);
+    capture.Retire();
+    capturing.store (true, std::memory_order_relaxed);
+    beat.setActive (true);
+}
+
+void Processor::editorClosed()
+{
+    capturing.store (false, std::memory_order_relaxed);
+    beat.setActive (false);
+}
+
+/*
+ * THE CHUNK THE iPlug2 BUILD WROTE, from what the engine published: the host's
+ * values, and the blob as the next block will hold it, a queued edit included
+ * (tg_shell_save) -- then the bypass after it, which iPlug2 needs to load it.
+ *
+ * THE VALUES AGREE WITH THE BLOB. Between a Slot the host moved and the block
+ * that applies it, the host still holds the slot it left, and the blob is
+ * already the new one's: written as they stand, a reopened set would put the
+ * old slot's sound into the new slot. So a value the next block will replace
+ * -- the one the host is about to follow -- is written as that.
+ */
+void Processor::writeState (juce::MemoryBlock& out)
+{
+    nist::State state;
+    for (auto* p : params)
+        state.params.push_back (p->plain());
+    double values[kNumParams], next[kNumParams];
+    engineValues (values);
+    if (tg_shell_next_params (shell.get(), values, kNumParams, next) == 1)
+        for (int i = 0; i < kNumParams; ++i)
+            if (i != kSlot && ! sameInEngine (i, state.params[(std::size_t) i], next[i]))
+                state.params[(std::size_t) i] = fromEngine (i, next[i]);
+    std::string blob (TG_STATE_MAX, '\0');
+    const int length = tg_shell_save (shell.get(), values, kNumParams, blob.data(), (int) blob.size());
+    blob.resize (length > 0 ? (std::size_t) length : 0);
+    state.strings.push_back (std::move (blob));
+    state.bypass = bypass->plain() >= 0.5;
+    const auto bytes = nist::write (layout(), state);
+    out.replaceAll (bytes.data(), bytes.size());
+}
+
+/*
+ * A SET REOPENED, in iPlug2's order: every check before anything is applied,
+ * so a chunk no build wrote changes nothing; then the parameters, which are
+ * the current slot's; then the blob, every slot's pattern and sound, with
+ * those parameters winning over its rounded copy of the current slot -- one
+ * edit, applied at the top of the next block.
+ */
+bool Processor::readState (const void* data, size_t size)
+{
+    const auto state = nist::read (layout(), data, size);
+    if (! state)
+        return false;
+    for (int i = 0; i < kNumParams; ++i)
+        params[(std::size_t) i]->setPlainNotifyingHost (state->params[(std::size_t) i]);
+    if (state->bypass)
+        bypass->setPlainNotifyingHost (*state->bypass ? 1.0 : 0.0);
+
+    /* An empty blob is a build that saved none: the engine keeps its pattern,
+     * and the parameters reach it as a host's edits do, with the next block. */
+    const auto& blob = state->strings.front();
+    if (blob.empty())
+        return true;
+    double values[kNumParams];
+    engineValues (values);
+    tg_shell_load (shell.get(), blob.c_str(), values, kNumParams);
+    return true;
+}
+
+} // namespace ni::tg
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new ni::tg::Processor();
 }

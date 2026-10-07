@@ -12,14 +12,14 @@
  */
 
 use super::*;
-use core::ptr::null;
+use core::ptr::{null, null_mut};
 
 const SR: f64 = 48_000.0;
 const BLOCK: i32 = 512;
 
 /// `secs` of a 120 BPM 4/4 transport from `from` quarters, in host-sized
 /// blocks; returns the position it stopped at.
-unsafe fn play(g: *const GndGround, from: f64, secs: f64, playing: bool) -> f64 {
+unsafe fn play(g: *mut GndGround, from: f64, secs: f64, playing: bool) -> f64 {
     let blocks = (secs * SR / BLOCK as f64) as usize;
     let span = BLOCK as f64 * 2.0 / SR;
     let mut ppq = from;
@@ -37,11 +37,11 @@ fn a_null_handle_is_silence_not_a_crash() {
     /* ProcessBlock calls these unconditionally; "no ground" must read as
      * "nothing happened". */
     unsafe {
-        gnd_free(core::ptr::null_mut());
-        gnd_reset(null());
-        gnd_set_sample_rate(null(), SR);
-        gnd_set_active(null(), 1);
-        gnd_tick(null(), 0.0, 120.0, 4, 4, 1, BLOCK);
+        gnd_free(null_mut());
+        gnd_reset(null_mut());
+        gnd_set_sample_rate(null_mut(), SR);
+        gnd_set_active(null_mut(), 1);
+        gnd_tick(null_mut(), 0.0, 120.0, 4, 4, 1, BLOCK);
         assert_eq!(gnd_fires(null()), 0);
         assert_eq!(gnd_strength(null()), 0.0);
     }

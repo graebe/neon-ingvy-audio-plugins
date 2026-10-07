@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
 // The notices of every package bundled into ui.js, written beside it, and a

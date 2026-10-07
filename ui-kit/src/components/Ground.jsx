@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The window's animated ground.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THE DESIGN SYSTEM GIVES EVERY WINDOW ONE OF THESE, and it is the only thing in
  * the whole system that animates. `lib/field.js` is the simulation, ported from

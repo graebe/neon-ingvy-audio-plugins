@@ -1,0 +1,141 @@
+{
+  "product": "NITranceGate",
+  "scenario": "default",
+  "description": "A fresh instance, nothing touched.",
+  "component": {
+    "file": "default.component.bin",
+    "bytes": 471
+  },
+  "controller": {
+    "file": "default.controller.bin",
+    "bytes": 0,
+    "sameAsComponent": false
+  },
+  "decoded": {
+    "magic": "NIst",
+    "version": 1,
+    "bodyBytes": 451,
+    "params": [1, 16, 7, 0, 0, 0, 100, 100, 1.6000000000000001, 16, 100, 16, 100, 0, 0],
+    "strings": ["{\"sv\":7,\"slot\":0,\"rate\":\"1/16\",\"attack\":1.60,\"decay\":16.00,\"sustain\":1.000,\"release\":16.00,\"hold\":1.000,\"amount\":1.000,\"fade\":1.0000,\"fsoft\":0,\"fdir\":0,\"legato\":0,\"tmode\":0,\"curve\":0,\"p0\":\"5555:0:16:\",\"p1\":\"FFFF:0:16:\",\"p2\":\"FFFF:0:16:\",\"p3\":\"FFFF:0:16:\",\"p4\":\"FFFF:0:16:\",\"p5\":\"FFFF:0:16:\",\"p6\":\"FFFF:0:16:\",\"p7\":\"FFFF:0:16:\"}"],
+    "bypass": 0
+  },
+  "values": [
+    {
+      "id": 65536,
+      "title": "Bypass",
+      "normalized": 0,
+      "plain": 0,
+      "display": "off"
+    },
+    {
+      "id": 0,
+      "title": "Slot",
+      "normalized": 0,
+      "plain": 1,
+      "display": "1"
+    },
+    {
+      "id": 1,
+      "title": "Length",
+      "normalized": 0.11811023622047244,
+      "plain": 16,
+      "display": "16"
+    },
+    {
+      "id": 2,
+      "title": "Rate",
+      "normalized": 0.58333333333333337,
+      "plain": 7,
+      "display": "1/16"
+    },
+    {
+      "id": 3,
+      "title": "Join Neighbors",
+      "normalized": 0,
+      "plain": 0,
+      "display": "Off"
+    },
+    {
+      "id": 4,
+      "title": "Env Time",
+      "normalized": 0,
+      "plain": 0,
+      "display": "ms"
+    },
+    {
+      "id": 5,
+      "title": "Env Curve",
+      "normalized": 0,
+      "plain": 0,
+      "display": "Linear"
+    },
+    {
+      "id": 6,
+      "title": "Amount",
+      "normalized": 1,
+      "plain": 100,
+      "display": "100.00 %"
+    },
+    {
+      "id": 7,
+      "title": "Width",
+      "normalized": 1,
+      "plain": 100,
+      "display": "100.00 %"
+    },
+    {
+      "id": 8,
+      "title": "Attack",
+      "normalized": 0.0080000000000000002,
+      "plain": 1.6000000000000001,
+      "display": "1.60 %"
+    },
+    {
+      "id": 9,
+      "title": "Decay",
+      "normalized": 0.080000000000000002,
+      "plain": 16,
+      "display": "16.00 %"
+    },
+    {
+      "id": 10,
+      "title": "Sustain",
+      "normalized": 1,
+      "plain": 100,
+      "display": "100.00 %"
+    },
+    {
+      "id": 11,
+      "title": "Release",
+      "normalized": 0.080000000000000002,
+      "plain": 16,
+      "display": "16.00 %"
+    },
+    {
+      "id": 12,
+      "title": "Fade",
+      "normalized": 1,
+      "plain": 100,
+      "display": "100.00 %"
+    },
+    {
+      "id": 13,
+      "title": "Fade Shape",
+      "normalized": 0,
+      "plain": 0,
+      "display": "Hard"
+    },
+    {
+      "id": 14,
+      "title": "Fade Dir",
+      "normalized": 0,
+      "plain": 0,
+      "display": "In"
+    }
+  ],
+  "reload": {
+    "sameParameters": true,
+    "sameChunk": true,
+    "bypassSavedAfterReload": 0
+  }
+}

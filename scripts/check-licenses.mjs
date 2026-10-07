@@ -31,7 +31,8 @@
  *              targets to about.toml's, so the gate and the notices judge one
  *              graph by one rule
  *   test-only  doctest and Schwung's two module-API headers, while they are
- *              vendored
+ *              vendored, and JUCE while .gitmodules names it -- read there,
+ *              not from the checkout, so a clone without submodules agrees
  *
  * With --bundles it also opens the built bundles and checks that each one
  * carries LICENSE, THIRD_PARTY_LICENSES.md and its editor's notice file.
@@ -40,7 +41,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { ROOT, listedBySection, resolveFeatures, rowsOf, section } from './licenses-lib.mjs';
+import { ROOT, listedBySection, rowsOf, section } from './licenses-lib.mjs';
 
 const problems = [];
 const fail = (msg) => problems.push(msg);
@@ -90,11 +91,33 @@ const GPL_3_0_SHA256 = '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9
 if (createHash('sha256').update(readFileSync(join(ROOT, 'LICENSE'))).digest('hex') !== GPL_3_0_SHA256)
   fail('LICENSE is not the unmodified text of GPLv3 (https://www.gnu.org/licenses/gpl-3.0.txt)');
 
+/* The texts every bundle on the JUCE shell carries beside the notices, as
+ * their publishers publish them: JUCE's AGPLv3 and SheenBidi's Apache 2.0. */
+const LICENCE_FILES = {
+  'AGPL-3.0.txt': ['0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0',
+                   'https://www.gnu.org/licenses/agpl-3.0.txt'],
+  'Apache-2.0.txt': ['cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30',
+                     'https://www.apache.org/licenses/LICENSE-2.0.txt'],
+};
+if (JUCE_PLUGINS.length)
+  for (const [f, [sha, url]] of Object.entries(LICENCE_FILES)) {
+    const at = join(ROOT, 'licenses', f);
+    if (!existsSync(at)) fail(`licenses/${f} is missing -- the bundles on the JUCE shell carry it`);
+    else if (createHash('sha256').update(readFileSync(at)).digest('hex') !== sha)
+      fail(`licenses/${f} is not the unmodified text (${url})`);
+  }
+
 /* ------------------------------------------------------------ framework */
 try {
   const fw = section(sections, 'The plugin framework');
-  need(fw, 'iPlug2', 'every plugin is an iPlug2 plugin');
-  need(fw, 'WDL', 'iPlug2 compiles WDL in');
+  if (PLUGINS.length) {
+    need(fw, 'iPlug2', 'a plugin is an iPlug2 plugin');
+    need(fw, 'WDL', 'iPlug2 compiles WDL in');
+  }
+  if (JUCE_PLUGINS.length) {
+    need(fw, 'JUCE', 'a plugin is built on the JUCE shell');
+    need(fw, "VST3 SDK (JUCE's copy)", 'JUCE compiles its own VST3 SDK into a bundle on the JUCE shell');
+  }
   const pins = read('scripts', 'fetch-sdks.sh');
   const pin = (k) => new RegExp(`^${k}=(\\S+)`, 'm').exec(pins)?.[1];
   const formats = PLUGINS.map((p) => /FORMATS\s+([\s\S]*?)\n\s*UI/.exec(p.cmake)?.[1] ?? '').join(' ');
@@ -114,6 +137,17 @@ try {
     if (!need(fw, 'JSON for Modern C++', 'the WebView bridge compiles it into every plugin').includes(v))
       fail(`the JSON for Modern C++ row does not name the vendored ${v}`);
   }
+} catch (e) { fail(e.message); }
+
+/* ------------------------------------------------------------ JUCE's own */
+/* What juce_core and juce_graphics compile in from JUCE's tree, for the
+ * modules and switches cmake/NiJucePlugin.cmake uses. */
+try {
+  const shipped = new Set(JUCE_PLUGINS.length
+    ? ['zlib', 'libpng', 'IJG JPEG library', 'HarfBuzz', 'SheenBidi', 'LunaSVG', 'PlutoVG'] : []);
+  const has = [...sections.keys()].some((k) => k.startsWith("JUCE's own dependencies"));
+  if (shipped.size || has)
+    sameSet("JUCE's dependencies", new Set(section(sections, "JUCE's own dependencies").keys()), shipped);
 } catch (e) { fail(e.message); }
 
 /* ------------------------------------------------------------ Rust std */
@@ -166,9 +200,12 @@ try {
     if (p.editor) shipped.add(`${p.bundle}.vst3`);
   sameSet('font bundles', new Set(fonts.keys()), shipped);
 
-  const music = section(sections, 'Bundled music font');
-  sameSet('music font bundles', new Set(music.keys()),
-    new Set(JUCE_PLUGINS.filter((p) => p.music).map((p) => `${p.bundle}.vst3`)));
+  /* The music font's section is there while a product embeds it, and only
+   * then: a branch without that product has nothing to list. */
+  const musical = new Set(JUCE_PLUGINS.filter((p) => p.music).map((p) => `${p.bundle}.vst3`));
+  const hasMusicSection = [...sections.keys()].some((k) => k.startsWith('Bundled music font'));
+  if (musical.size || hasMusicSection)
+    sameSet('music font bundles', new Set(section(sections, 'Bundled music font').keys()), musical);
 } catch (e) { fail(e.message); }
 
 /* ------------------------------------------------------------ engines */
@@ -213,22 +250,25 @@ function tomlArray(file, table, key) {
  * this corrects them the same way -- or the two sides would disagree about
  * crates that nothing builds:
  *
- *   - ITS FEATURES ARE ONE SET PER PACKAGE, unified over every kind of edge.
- *     A build or dev dependency that asks for a feature puts it in that set:
- *     cbindgen (a build dependency) asks for serde's `derive`, and serde's
- *     node then claims serde_derive, syn, quote, proc-macro2 and
- *     unicode-ident -- none of which any shipping build compiles, because
- *     cargo's resolver keeps build and dev features apart. So the features are
- *     resolved again here, through normal edges only (resolveFeatures, in
- *     licenses-lib.mjs, where tests/licenses_resolve.test.mjs holds it).
+ *   - Its features are every build's at once. A node's `features` are the
+ *     union over every way the workspace reaches it, build-dependencies
+ *     included, where resolver 2 resolves a normal dependency's features
+ *     apart from a build one's. cbindgen, every C ABI crate's
+ *     build-dependency, turns on serde's `derive`; the engines never do, and
+ *     nothing they build compiles serde_derive, syn, quote, proc-macro2 or
+ *     unicode-ident. So the features are worked out here, from the workspace
+ *     members down normal edges only: what each declaration asks for (its
+ *     `features`, and `default` unless it opts out), what the parent's
+ *     enabled features ask of it (`x/feature`, and `x?/feature` once x is
+ *     on), and what those features turn on in turn.
  *   - It keeps an edge to an optional dependency that only a weak feature
  *     names. lexical-core's `format` asks for `lexical-write-float?/format`,
  *     which configures the writer IF something else turns it on; nothing
- *     does, and the build and `cargo tree` agree. The resolver below enables
- *     an optional dependency only strongly.
+ *     does, and the build and `cargo tree` agree. switchedOn() asks for a
+ *     strong switch instead.
  *   - It keeps an edge whose cfg() holds on no platform at all. serde_core
  *     pins serde_derive's version through `cfg(any())`, which would otherwise
- *     bring in the same five crates. noPlatform() (licenses-lib.mjs) drops
+ *     bring in serde_derive and the crates under it. noPlatform() drops
  *     exactly that shape and keeps every cfg() that names a platform: every
  *     platform counts. */
 function shippedCrates() {
@@ -244,9 +284,115 @@ function shippedCrates() {
   }
   const packages = new Map(meta.packages.map((p) => [p.id, p]));
   const nodes = new Map(meta.resolve.nodes.map((n) => [n.id, n]));
-  const reached = resolveFeatures(meta.workspace_members, packages, nodes);
+
+  /* Each reached package's enabled features, grown until nothing moves. The
+   * workspace members' are cargo's own: they are the roots, built as the
+   * workspace builds them. */
+  const reached = new Map(meta.workspace_members.map((id) =>
+    [id, new Set(nodes.get(id)?.features ?? [])]));
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (const [id, on] of [...reached]) {
+      const pkg = packages.get(id);
+      for (const d of nodes.get(id)?.deps ?? []) {
+        const child = packages.get(d.pkg);
+        for (const k of d.dep_kinds) {
+          if (k.kind !== null || noPlatform(k.target)) continue;
+          for (const dep of switchedOn(pkg, on, child.name, k.target)) {
+            if (!reached.has(d.pkg)) {
+              reached.set(d.pkg, new Set());
+              moved = true;
+            }
+            if (enable(child, reached.get(d.pkg), asked(pkg, on, dep))) moved = true;
+          }
+        }
+      }
+    }
+  }
   return new Set([...reached.keys()].map((id) => packages.get(id))
     .filter((p) => p.source).map((p) => `${p.name} ${p.version}`));
+}
+
+/* The declarations by which `pkg`, with the features `on`, depends on the
+ * package `name` through its normal dependency for `target`. A declaration
+ * that is not optional always does. An optional one does only when an
+ * enabled feature switches it on strongly: `dep:x`, or `x/feature` -- never
+ * `x?/feature`. `pkg.features` holds the implicit `x = ["dep:x"]` of an
+ * optional dependency, so one switched on by its own name is found the same
+ * way. */
+function switchedOn(pkg, on, name, target) {
+  const bare = (t) => (t ?? '').replace(/\s+/g, '');
+  const decls = pkg.dependencies.filter((dep) =>
+    dep.kind === null && dep.name === name && bare(dep.target) === bare(target));
+  if (!decls.length)
+    throw new Error(`cargo metadata resolves ${pkg.name} -> ${name} (${target ?? 'every platform'}), ` +
+                    `which ${pkg.name}'s manifest does not declare`);
+  return decls.filter((dep) => {
+    if (!dep.optional) return true;
+    const local = dep.rename ?? dep.name;
+    return [...on].some((f) => (pkg.features[f] ?? []).some((v) =>
+      v === `dep:${local}` || v.startsWith(`${local}/`)));
+  });
+}
+
+/* The features `pkg`, with the features `on`, asks of its dependency `dep`:
+ * the declaration's own, `default` unless it opts out, and every
+ * `x/feature` or `x?/feature` an enabled feature names -- x being on, a weak
+ * one counts. */
+function asked(pkg, on, dep) {
+  const local = dep.rename ?? dep.name;
+  const want = [...dep.features];
+  if (dep.uses_default_features) want.push('default');
+  for (const f of on) {
+    for (const v of pkg.features[f] ?? []) {
+      const m = /^([^/?]+)\??\/(.+)$/.exec(v);
+      if (m && m[1] === local) want.push(m[2]);
+    }
+  }
+  return want;
+}
+
+/* `want` and what it turns on within `pkg`, added to `on`. A `dep:x` or an
+ * `x/feature` is about a dependency, and is read when `pkg`'s own edges are
+ * walked. Whether anything was added. */
+function enable(pkg, on, want) {
+  let added = false;
+  const todo = [...want];
+  while (todo.length) {
+    const f = todo.pop();
+    if (on.has(f)) continue;
+    on.add(f);
+    added = true;
+    for (const v of pkg.features[f] ?? [])
+      if (!v.startsWith('dep:') && !v.includes('/')) todo.push(v);
+  }
+  return added;
+}
+
+/* Whether a dependency's target holds on no platform, by its shape alone: a
+ * cfg() with no predicate in it -- only all(), any() and not() of nothing --
+ * that comes out false, as `cfg(any())` does. krates draws the line at the
+ * same place. Anything that names a predicate is some platform's, and a bare
+ * target triple is one. */
+function noPlatform(target) {
+  const cfg = /^cfg\((.*)\)$/s.exec(target ?? '');
+  const tokens = cfg?.[1].match(/[A-Za-z_][\w-]*|"[^"]*"|\S/g) ?? [];
+  if (!tokens.length || tokens.some((t) => !['all', 'any', 'not', '(', ')', ','].includes(t)))
+    return false;
+  let i = 0;
+  const expr = () => {
+    const op = tokens[i];
+    i += 2;                       // the operator and its '('
+    const args = [];
+    while (tokens[i] !== ')') {
+      args.push(expr());
+      if (tokens[i] === ',') i++;
+    }
+    i++;                          // its ')'
+    return op === 'all' ? args.every(Boolean) : op === 'any' ? args.some(Boolean) : !args[0];
+  };
+  return !expr();
 }
 
 try {
@@ -272,6 +418,11 @@ try {
   if (existsSync(join(ROOT, 'external', 'doctest', 'doctest.h'))) vendored.add('doctest');
   for (const h of ['plugin_api_v1.h', 'audio_fx_api_v2.h'])
     if (existsSync(join(ROOT, 'engines', 'trance-gate', 'include', h))) vendored.add(h);
+  /* JUCE is test-only until a product ships it; then its row is the
+   * framework's. */
+  if (!JUCE_PLUGINS.length
+      && /^\s*path\s*=\s*external\/JUCE\s*$/m.test(readFileSync(join(ROOT, '.gitmodules'), 'utf8')))
+    vendored.add('JUCE');
   sameSet('test-only', new Set(testOnly.keys()), vendored);
 } catch (e) { fail(e.message); }
 
@@ -288,7 +439,7 @@ if (at > 0) {
   }
   for (const p of JUCE_PLUGINS) {
     const res = join(out, `${p.bundle}.vst3`, 'Contents', 'Resources');
-    const files = ['LICENSE', 'THIRD_PARTY_LICENSES.md',
+    const files = ['LICENSE', 'THIRD_PARTY_LICENSES.md', ...Object.keys(LICENCE_FILES),
       ...(p.editor ? ['OFL.txt'] : []), ...(p.music ? ['Bravura-OFL.txt'] : [])];
     for (const f of files)
       if (!existsSync(join(res, f))) fail(`${p.bundle}.vst3 ships without Contents/Resources/${f}`);

@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * The engine's readouts, decoded. Copyright (c) 2026 Torben Gräber. MIT.
+ * The engine's readouts, decoded.
  *
  * Plain JavaScript so node can test it: these are the parsers the editor used
  * to carry inline in App.jsx.

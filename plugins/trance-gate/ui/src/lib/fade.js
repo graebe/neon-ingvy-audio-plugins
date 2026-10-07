@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The fade-in's weights, mirroring the engine exactly.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * A PORT OF Instance::recalc_fade IN crates/tg-core/src/lib.rs, AND THE ONLY
  * COPY IN THE UI.

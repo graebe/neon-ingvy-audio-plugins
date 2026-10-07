@@ -60,26 +60,24 @@ set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/external/iPlug2 CACHE PATH "iPlug2 root")
 include(${IPLUG2_DIR}/iPlug2.cmake)
 find_package(iPlug2 REQUIRED)
 
-# ni_add_rust_engine and ni_add_plugin. See the file.
+# ni_add_rust_engine (the engines, through Corrosion) and ni_add_plugin. See
+# the files.
+include(cmake/NiRust.cmake)
 include(cmake/NiPlugin.cmake)
 
-# Each product's C ABI, one static library apiece. audio-bus is the house
-# transport rather than a product, and Listen-In's whole engine.
-ni_add_rust_engine(tg_engine CRATE tg-capi LIB tg_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/trance-gate/include)
-ni_add_rust_engine(spectro_engine CRATE spectro-capi LIB spectro_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/spectro/include)
-ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/audio-bus/include)
-ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/side-chain/include)
-# NI Chord-Detector's header is cbindgen's (cd-capi/build.rs), checked in.
-ni_add_rust_engine(cd_engine CRATE cd-capi LIB cd_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/chord-detector/include)
+# Each product's C ABI, one static library apiece, with the headers its
+# build.rs generates. audio-bus is the house transport rather than a product,
+# and Listen-In's whole engine.
+ni_add_rust_engine(tg_engine CRATE tg-capi LIB tg_capi)
+ni_add_rust_engine(spectro_engine CRATE spectro-capi LIB spectro_capi)
+ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi)
+ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi)
+ni_add_rust_engine(cd_engine CRATE cd-capi LIB cd_capi)
 # The ground's beat clock and the shell plumbing (command queue, snapshot,
-# handoff, state header, denormal guard) belong to no product: their C ABI
-# rides inside every product's archive, so they are headers here.
-ni_add_rust_headers(ground_engine INCLUDE ${CMAKE_SOURCE_DIR}/engines/ground/include)
+# handoff) belong to no product: their C ABI rides inside every product's
+# archive, so they are headers here. The shell's state header and denormal
+# guard are C++ with no Rust behind them, and stay hand-written.
+ni_add_rust_headers(ground_engine)
 ni_add_rust_headers(shell_engine INCLUDE ${CMAKE_SOURCE_DIR}/engines/shell/include)
 ni_build_rust_engines()
 
@@ -87,15 +85,13 @@ ni_build_rust_engines()
 # Move, an aarch64 Linux cross-build in a container -- see the note in the file.
 include(cmake/Schwung.cmake)
 
-add_subdirectory(plugins/trance-gate)
-add_subdirectory(plugins/spectrogram)
-add_subdirectory(plugins/listen-in)
-add_subdirectory(plugins/side-chain)
-
 # THE JUCE SHELL, beside iPlug2 while the refactor moves the four products
-# onto it (docs/adr/0002). JUCE as a subproject, excluded from `all` so only
-# what a plugin links is built; the native UI kit every editor is made of
-# (plugins/_shared/ui); and ni_add_juce_plugin (cmake/NiJucePlugin.cmake).
+# onto it (docs/adr/0002), and before them, since a product on it calls
+# ni_add_juce_plugin in its own directory: NI Trance Gate is there already,
+# the other three are still iPlug2's. JUCE as a subproject, excluded from
+# `all` so only what a plugin links is built; the native UI kit every editor
+# is made of (plugins/_shared/ui); and ni_add_juce_plugin
+# (cmake/NiJucePlugin.cmake).
 set(NI_ROOT ${CMAKE_SOURCE_DIR})
 add_subdirectory(external/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 add_subdirectory(plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
@@ -105,10 +101,13 @@ add_subdirectory(plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
 foreach(product trance-gate side-chain spectrogram listen-in chord-detector)
     ni_ui_add_editor(${product})
 endforeach()
-target_include_directories(ni_editor_chord_detector INTERFACE ${CMAKE_SOURCE_DIR}/engines/chord-detector/include)
 add_subdirectory(plugins/_shared/ui/gallery ${CMAKE_BINARY_DIR}/gallery)
 include(cmake/NiJucePlugin.cmake)
 
+add_subdirectory(plugins/trance-gate)
+add_subdirectory(plugins/spectrogram)
+add_subdirectory(plugins/listen-in)
+add_subdirectory(plugins/side-chain)
 add_subdirectory(plugins/chord-detector)
 
 

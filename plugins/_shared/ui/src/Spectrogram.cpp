@@ -6,6 +6,8 @@
  */
 #include "Spectrogram.h"
 
+#include "ChildLights.h"
+#include "UvLight.h"
 #include "UvTokens.h"
 #include "WaveSource.h"
 
@@ -100,7 +102,7 @@ Spectrogram::Spectrogram (int columnCount, int bandCount)
 {
     setWaveSource (*this);
     setOpaque (true);
-    setWantsKeyboardFocus (false);
+    setWantsKeyboardFocus (true);
     setMouseCursor (juce::MouseCursor::CrosshairCursor);
     setup (juce::jmax (1, bandCount));
     setSize (columns, bands);
@@ -484,10 +486,94 @@ void Spectrogram::point (std::optional<juce::Point<float>> p)
     report();
 }
 
-void Spectrogram::mouseEnter (const juce::MouseEvent& e) { point (e.position); }
-void Spectrogram::mouseMove (const juce::MouseEvent& e) { point (e.position); }
-void Spectrogram::mouseDrag (const juce::MouseEvent& e) { point (e.position); }
-void Spectrogram::mouseExit (const juce::MouseEvent&) { point (std::nullopt); }
+void Spectrogram::mouseEnter (const juce::MouseEvent& e) { keyed = false; point (e.position); }
+void Spectrogram::mouseMove (const juce::MouseEvent& e) { keyed = false; point (e.position); }
+void Spectrogram::mouseDrag (const juce::MouseEvent& e) { keyed = false; point (e.position); }
+void Spectrogram::mouseExit (const juce::MouseEvent&) { keyed = false; point (std::nullopt); }
+
+void Spectrogram::mouseDown (const juce::MouseEvent& e)
+{
+    focus.pointerUsed();
+    relight (*this);
+    keyed = false;
+    point (e.position);
+}
+
+/* ------------------------------------------------------------ keyboard -- */
+
+juce::Point<float> Spectrogram::centre() const
+{
+    return { std::floor ((float) getWidth() * 0.5f) + 0.5f, std::floor ((float) getHeight() * 0.5f) + 0.5f };
+}
+
+bool Spectrogram::keyPressed (const juce::KeyPress& key)
+{
+    const int code = key.getKeyCode();
+    const bool arrow = code == juce::KeyPress::leftKey || code == juce::KeyPress::rightKey
+                    || code == juce::KeyPress::upKey || code == juce::KeyPress::downKey;
+    const bool end = code == juce::KeyPress::homeKey || code == juce::KeyPress::endKey;
+
+    /* Escape is the picture's only while there is a crosshair to take away. */
+    if (code == juce::KeyPress::escapeKey && ! pointer)
+        return false;
+    if (! arrow && ! end && code != juce::KeyPress::escapeKey)
+        return false;
+
+    focus.keyUsed();
+    relight (*this);
+
+    if (code == juce::KeyPress::escapeKey)
+    {
+        keyed = false;
+        point (std::nullopt);
+        return true;
+    }
+
+    auto at = pointer.value_or (centre());
+    const float step = key.getModifiers().isShiftDown() ? keyLeap : keyStep;
+    if (code == juce::KeyPress::leftKey)        at.x -= step;
+    else if (code == juce::KeyPress::rightKey)  at.x += step;
+    else if (code == juce::KeyPress::upKey)     at.y -= step;
+    else if (code == juce::KeyPress::downKey)   at.y += step;
+    else if (code == juce::KeyPress::homeKey)   at.x = 0.5f;
+    else                                        at.x = (float) getWidth() - 0.5f;
+
+    keyed = true;
+    point (at);   // clamped to the picture
+    return true;
+}
+
+void Spectrogram::focusGained (FocusChangeType cause)
+{
+    focus.focusGained (cause);
+    relight (*this);
+    /* Tabbed onto: something to read at once, where the pointer is not. */
+    if (focus.isVisible() && ! pointer)
+    {
+        keyed = true;
+        point (centre());
+    }
+}
+
+void Spectrogram::focusLost (FocusChangeType)
+{
+    focus.focusLost();
+    relight (*this);
+    if (keyed)
+    {
+        keyed = false;
+        point (std::nullopt);
+    }
+}
+
+void Spectrogram::paintLight (juce::Graphics& g)
+{
+    if (! isFocusVisible (*this))
+        return;
+    juce::Graphics::ScopedSaveState state (g);
+    excludeOwnBounds (g, *this);
+    uv::light::glowFocus (g, getLocalBounds().toFloat());
+}
 
 std::unique_ptr<juce::AccessibilityHandler> Spectrogram::createAccessibilityHandler()
 {

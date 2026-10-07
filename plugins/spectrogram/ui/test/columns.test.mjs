@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The wire, decoded: the three things in the editor that can be WRONG.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * An off-by-one in the decode is a picture shifted by one band, and a
  * spectrogram shifted by one band still looks exactly like a spectrogram. Same

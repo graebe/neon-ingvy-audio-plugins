@@ -51,38 +51,54 @@ matters for a module that ships to a device.
 
 ## The C ABI
 
-`tg-capi` exports the `tg_core_*` C ABI
-(`engines/trance-gate/include/trance_gate_core.h`) — byte for byte the surface
+`tg-capi` exports the `tg_core_*` C ABI (`trance_gate_core.h`) — byte for byte the surface
 the original C engine exported, and grown since. That was a deliberate
 constraint when the DSP was ported to Rust: keeping the ABI identical meant the
 existing C tests (`engines/trance-gate/tests/test_core.c` and `test_gate.c`)
 were relinked against the new engine rather than rewritten, so the port was
 checked by tests that had never seen Rust.
 
-The headers in `engines/*/include/` are hand-written rather than generated,
-which is a real risk — a hand-written header can drift from the Rust side
-without either one failing to compile. `tests/spectro_columns.c` exists
-specifically to exercise that boundary: argument order, the meaning of `bands`,
-and who owns the output buffer.
+The C headers are generated. Each `*-capi` crate's `build.rs` writes its own
+with cbindgen from the Rust it declares (`engines/shared/cbindgen/capi_header.rs`,
+configured by the crate's `cbindgen/*.toml`), into the build's
+`cargo/include` directory, so a header cannot drift from the Rust side. What a
+generated header can still do is compile and mean something else to a caller,
+so the plain-C tests call through every one of them, and `tests/spectro_columns.c`
+exercises the analyzer's boundary specifically: argument order, the meaning of
+`bands`, and who owns the output buffer. The Trance Gate's headers have a caller
+outside this repository, the archived Max for Live external, so their last
+hand-written versions are fixtures (`tests/fixtures/tg-capi`) that
+`capi_compat_tg` and `capi_compat_tg_names` hold the generated ones to,
+declaration for declaration. Only C++ with no Rust behind it stays hand-written:
+`engines/shell/include`'s state header and denormal guard, and Schwung's own
+headers vendored for the Move-side tests.
 
 ## The C++ glue
 
-`cmake/NiPlugin.cmake` holds the whole build recipe, in two functions.
+The build recipe is two files. `cmake/NiRust.cmake` builds the engines through
+[Corrosion](https://github.com/corrosion-rs/corrosion), pinned in
+`cmake/NiCorrosion.cmake`; `cmake/NiPlugin.cmake` builds the plugins around them.
 
-`ni_add_rust_engine(<target> CRATE <crate> LIB <lib> INCLUDE <dir>)` registers
-a product's C ABI, and `ni_build_rust_engines()` builds every registered crate
-in **one** cargo invocation with one target directory, so the crates they share
-(`ni-dsp`, `ground`, `shell`, `audio-bus`) compile once:
+`ni_add_rust_engine(<target> CRATE <crate> LIB <lib> [INCLUDE <dir>])` registers
+a product's C ABI, and `ni_build_rust_engines()` imports every registered crate
+with Corrosion, which runs cargo once per crate in one target directory, so the
+crates they share (`ni-dsp`, `ground`, `shell`, `audio-bus`) compile once:
 
-1. `cargo build --release -p tg-capi -p sc-capi … --target aarch64-apple-darwin --target x86_64-apple-darwin`
-2. `lipo -create` each product's two static-library slices into one universal `.a`
+1. Corrosion builds each product's static library for the build's target
+   triple, which it takes from the C++ toolchain, so a Linux or Windows build
+   selects its triple through its CMake toolchain file
+2. a universal macOS build is the one thing Corrosion does not do: it builds
+   one triple per CMake project. So each further slice is a sub-build
+   (`cmake/rust-slice`, the same import for `x86_64-apple-darwin`), and
+   `lipo -create` joins each product's two slices into one universal `.a`
 3. each is exposed as a CMake `INTERFACE` library its plugin and tests link
 
 It is still **one static library per plugin**: each product's capi crate is a
 staticlib that absorbs the rlibs it depends on, because two Rust staticlibs in
 one binary each carry the Rust runtime. The cargo step always runs — cargo is the
-dependency scanner, not CMake — and `copy_if_different` after `lipo` is what
-stops an unchanged engine from relinking three plugin formats.
+dependency scanner, not CMake — and Corrosion copies an archive out with
+`copy_if_different`, so an unchanged engine keeps its timestamp, `lipo` does not
+run again, and three plugin formats do not relink.
 
 `ni_add_plugin(<NAME> SOURCES … LINK …)` builds the plugin's editor with vite
 (at configure time and at build time), refuses to configure without one
@@ -166,7 +182,7 @@ the fifteen host parameters are a window onto the current slot:
 - **On a switch the engine wins.** The block the host's Slot moves -- automation,
   the editor, the host's UI -- writes nothing else; the frame with the new slot is
   published, and the next idle tick moves every host parameter to it
-  (`tg_shell_take_params`, `SetParamFromPlugin`), so automation lanes, the host's
+  (`tg_shell_take_params`, `Processor::followEngine`), so automation lanes, the host's
   UI and the editor all show the recalled sound. A paste is the same.
 - **A state load is one edit** (`tg_shell_load`): the blob, then the restored
   parameters into the current slot. The parameters are the exact values the
@@ -176,33 +192,34 @@ the fifteen host parameters are a window onto the current slot:
 - **A save writes what the next block will hold** (`tg_shell_save`): the
   engine's blob with the host's values applied the way the next push would apply
   them, so a project saved before any audio has run still has the parameters the
-  host shows, in the slot they belong to.
+  host shows, in the slot they belong to -- and, between a Slot switch and the
+  block that applies it, the new slot's values beside the new slot's blob
+  (`tg_shell_next_params`), never the slot that was left.
 
 **Slot files** (`.nitgslot`, one slot; `.nitgbank`, all eight) are the engine's
 text, written and strictly read by `tg-core`'s `slotfile.rs` -- the state blob's
-own per-slot fields under a format id and a version. The editor asks with a
-message (107 export, 108 import); the plugin shows the system's save or open
-panel as a sheet on the editor's window (`ni/FileDialog.mm`, which remembers the
-last folder per product), moves the bytes (`Patch.cpp`), and answers with the
-outcome in words (68), which the hint bar shows. A WKWebView in a plugin has no
-download manager, which is why the panels are the plugin's and not the page's.
-An import is checked on the main thread and queued whole (`tg_shell_import`),
-with the slot the host showed, as a paste is (below): a refused file changes
-nothing, and an accepted one is followed by the host exactly like a paste.
+own per-slot fields under a format id and a version. NI Trance Gate is on the
+JUCE shell, and its native editor shows the system's save or open panel itself
+(`juce::FileChooser`, behind `editor/FilePanels.h`), remembering the last
+folder in the processor's model; the model turns a slot into text and back
+(`EngineModel`: `tg_shell_export`, `tg_shell_import`), and the editor words the
+outcome in the hint bar. An import is checked on the message thread and queued
+whole (`tg_shell_import`), with the slot the host showed, as a paste is
+(below): a refused file changes nothing, and an accepted one is followed by the
+host exactly like a paste, and marks the set unsaved.
 
-**Copy and paste** go the same way, for the same kind of reason: inside a host a
-WKWebView may not read the clipboard, and ⌘V never reaches it -- the host's menu
-takes it. The editor asks (109 copy, 110 paste); the plugin reads or writes the
-system's clipboard on the main thread (`ni/Clipboard.mm`, NSPasteboard, behind
-the `ni::Clipboard` interface so `tests/cpp` stands a fake in) and answers on 68.
-Copy is the current slot as a slot file's text (`tg_shell_export`). Paste hands
-whatever is there to the engine, which classifies it whole (`tg-core`'s
-`paste.rs`, through `tg_shell_paste`): a slot replaces the slot the host showed
-when it was pasted -- carried in the command, because the host may move its
-Slot in the very block the paste is applied in -- a bank all eight, and a whole
-state blob, the pre-slot Copy's text and the Move's patch, everything. Anything
-else is refused with a reason and changes nothing; an accepted paste is applied
-at the top of the next block and the host follows it as it follows a switch.
+**Copy and paste** are the editor's too: it reads and writes the system's
+clipboard (`juce::SystemClipboard`, behind `editor/Clipboard.h`, so the
+editor's tests stand a fake in). Copy is the current slot as a slot file's text
+(`tg_shell_export`). Paste hands whatever is there to the engine, which
+classifies it whole (`tg-core`'s `paste.rs`, through `tg_shell_paste`): a slot
+replaces the slot the host showed when it was pasted -- carried in the command,
+because the host may move its Slot in the very block the paste is applied in --
+a bank all eight, and a whole state blob, the pre-slot Copy's text and the
+Move's patch, everything. Anything else is refused with a reason and changes
+nothing; an accepted paste is applied at the top of the next block, the host
+follows it as it follows a switch, and the set is marked unsaved
+(`ChangeDetails::withNonParameterStateChanged`).
 
 On the Move the module has no host parameters to mirror: the knob grid reads
 `get_param`, and the module's editor re-reads the grid (`revalue()`) when the
@@ -233,11 +250,17 @@ Every plugin's state chunk starts with `shell_state.h`'s versioned header. A
 chunk without it is an older build's and loads as that build wrote it. A chunk
 is read whole before any of it is applied, and one no build could have written
 -- empty, a parameter that is not a number of its kind, a string running off
-the end -- is refused and changes nothing. The parameter declarations and the
-chunk code live outside the plugin class (`Params.cpp`, `Patch.cpp`,
-`State.cpp`) so `tests/cpp` can save and reload them the way a host does.
+the end -- is refused and changes nothing. On iPlug2 the parameter
+declarations and the chunk code live outside the plugin class (`Params.cpp`,
+`State.cpp`) so `tests/cpp` can save and reload them the way a host does; on
+the JUCE shell the chunk is `ni::nist` (`plugins/_shared/juce/Nist.h`), one
+codec for every product's layout, and a product's parameters are a table
+(`ParamSpec`) built into `ni::Parameter`s that hold the plain values exactly,
+so a fixture loaded and saved again is the same bytes.
 
-`ni::WebPlugin::ProcessBlock` opens with `shell_denormals.h`'s guard:
+`ni::Processor::processBlock` (JUCE) runs a product's block under
+`juce::ScopedNoDenormals`; `ni::WebPlugin::ProcessBlock` (iPlug2) opens with
+`shell_denormals.h`'s guard:
 flush-to-zero for the block, the engines included, and the host's
 floating-point mode back on the way out.
 

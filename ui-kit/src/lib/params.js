@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The host parameters, as one store every editor reads.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * It existed three times -- the Trance Gate's and Side-Chain's params.jsx and
  * Listen-In's inline version -- and each held the values as ONE array signal,

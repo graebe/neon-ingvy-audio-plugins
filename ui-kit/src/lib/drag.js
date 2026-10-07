@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * One drag gesture, tracked on the window.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * LISTENERS GO ON THE WINDOW, NOT THE ELEMENT, and that is the whole reason
  * this file exists. Both the knob and the pads attached `pointermove` to the

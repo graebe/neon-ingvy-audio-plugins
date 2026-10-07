@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The editor's decoder, against the table the C++ generated.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THIS FILE CONTAINS NO ENCODER, and that is the point. The Spectrogram's
  * columns test used to carry a transcription of the plugin's encoder and said

@@ -42,42 +42,12 @@ add_test(NAME ni_editor COMMAND ni_editor)
 
 # ------------------------------------------------------------- Trance Gate
 
-# THE PATTERN'S SAVE AND RELOAD, through Patch.cpp -- the plugin's own code for
-# it -- against the real engine. The one test here that links an engine: what it
-# guards is exactly the seam between the shell and the engine's state, and a
-# stub on either side would be asserting on the stub. iPlug2's IByteChunk is
-# header-only, so the chunk is the one the plugin writes.
-#
-# THE PARAMETERS ARE REAL. iplug::IParam links on its own with
-# IPlugParameter.cpp, so the chunk's parameter block comes from the plugin's own
-# declarations (Params.cpp) rather than fifteen stand-in doubles -- which is what
-# lets these tests do what clap-validator's state-reproducibility does: random
-# values, save, a fresh instance, load, save again, byte for byte.
+# The Trance Gate's state and parameters are tested on the JUCE shell now,
+# with its processor in the program (tests/tg_processor.cpp): the iPlug2
+# product these two linked is gone. iPlug2's parameter class stays for the
+# three products still on it.
 set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/external/iPlug2)
 set(IPLUG_PARAM_SRC ${IPLUG2_DIR}/IPlug/IPlugParameter.cpp)
-add_executable(tg_state tg_state.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Params.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Patch.cpp
-               ${NI_WIRE_SRC}
-               ${IPLUG_PARAM_SRC})
-target_include_directories(tg_state PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate ${NI_SHARED}
-    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
-target_link_libraries(tg_state PRIVATE tg_engine shell_engine)
-add_test(NAME tg_state COMMAND tg_state)
-
-# EVERY PARAMETER'S TEXT PARSES BACK TO ITS VALUE -- clap-validator's
-# param-conversions, on the plugin's declarations and the CLAP wrapper's own
-# conversions (param_host.h).
-add_executable(tg_params tg_params.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/trance-gate/Params.cpp
-               ${NI_WIRE_SRC}
-               ${IPLUG_PARAM_SRC})
-target_include_directories(tg_params PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/trance-gate ${NI_SHARED}
-    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
-target_link_libraries(tg_params PRIVATE tg_engine)
-add_test(NAME tg_params COMMAND tg_params)
 
 # THE STATE HEADER against every plugin's older chunk layout, byte for byte.
 add_executable(shell_state shell_state.cpp ${IPLUG_PARAM_SRC})
@@ -122,10 +92,12 @@ add_test(NAME spectro_wire
 
 add_executable(listenin_wire listenin_wire.cpp
                ${CMAKE_SOURCE_DIR}/plugins/listen-in/Wire.cpp ${NI_WIRE_SRC})
-# audio_bus.h for ABUS_MAX_SLOT only -- a macro, so nothing is linked.
+# audio_bus.h for ABUS_MAX_SLOT only -- a macro, so nothing is linked; the
+# header is generated, so the target waits for the cargo run that writes it.
 target_include_directories(listenin_wire PRIVATE
     ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/listen-in ${NI_SHARED}
-    ${CMAKE_SOURCE_DIR}/engines/audio-bus/include)
+    ${NI_CAPI_INCLUDE_DIR})
+add_dependencies(listenin_wire ni_rust_engines)
 
 # THE WIRE ORACLE, both halves -- the Spectrogram's arrangement, applied to the
 # state string and the label sanitiser.
@@ -150,7 +122,7 @@ target_include_directories(sc_wire PRIVATE
 add_test(NAME sc_wire COMMAND sc_wire)
 
 # THE PARAMETERS AS A HOST SEES THEM -- their text and the state chunk, on the
-# plugin's own Params.cpp and real IParams. See tg_params and tg_state above.
+# plugin's own Params.cpp and real IParams.
 # The engine, because the Rate options are its own table.
 add_executable(sc_params sc_params.cpp
                ${CMAKE_SOURCE_DIR}/plugins/side-chain/Params.cpp
@@ -190,5 +162,5 @@ add_test(NAME spectro_state COMMAND spectro_state)
 # All of them quick: each is a doctest binary over code lifted out of a plugin,
 # with no bundle, host or second process. cmake/NiTest.cmake.
 ni_test_tiers(QUICK
-    ni_wire ni_editor tg_state tg_params shell_state shell_denormals
+    ni_wire ni_editor shell_state shell_denormals
     spectro_wire listenin_wire sc_wire sc_params listenin_state spectro_state)

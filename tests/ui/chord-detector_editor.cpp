@@ -14,7 +14,6 @@
 
 #include <doctest.h>
 
-#include <cstring>
 #include <deque>
 
 using namespace ni::chord_detector;
@@ -36,16 +35,12 @@ struct FakeModel final : public Model
         params.addChoice ("zoom", "Zoom", { "75%", "100%", "125%", "150%" }, 1);
         now.bpm = 120.0;
         now.bar = 4.0;
-        now.scale = 0b1010'1011'0101;
-        now.root = -1;
-        now.bass = -1;
-        std::strcpy (now.key_name, "C Ionian");
     }
 
     int numParameters() const override { return params.size(); }
     juce::RangedAudioParameter& parameter (int i) override { return params[i]; }
-    const CdReading& reading() override { return now; }
-    int takeNotes (CdNoteEvent* out, int capacity) override
+    const Reading& reading() override { return now; }
+    int takeNotes (NoteEvent* out, int capacity) override
     {
         int n = 0;
         while (n < capacity && ! notes.empty())
@@ -55,19 +50,19 @@ struct FakeModel final : public Model
         }
         return n;
     }
-    CdKey key() const override
+    KeyInfo key() const override
     {
         /* The major keys' notes and signatures are all a fake needs. */
         const int tonic = (int) std::lround (params[Param::tonic].getValue() * 11.0f);
-        CdKey k {};
+        KeyInfo k;
         for (int step : { 0, 2, 4, 5, 7, 9, 11 })
             k.scale = (uint16_t) (k.scale | (1u << ((tonic + step) % 12)));
         const int fifths = (tonic * 7) % 12;
-        k.signature = (int8_t) (fifths > 6 ? fifths - 12 : fifths);
+        k.signature = fifths > 6 ? fifths - 12 : fifths;
         return k;
     }
 
-    CdWrittenNote write (int midi) const override
+    WrittenNote write (int midi) const override
     {
         static constexpr int whites[] = { 0, 2, 4, 5, 7, 9, 11 };
         static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
@@ -75,14 +70,8 @@ struct FakeModel final : public Model
         int letter = 6;
         while (whites[letter] > pc)
             --letter;
-        CdWrittenNote w {};
-        w.letter = (uint8_t) letter;
-        w.accidental = (int8_t) (pc - whites[letter]);
-        w.octave = (int16_t) (midi / 12 - 1);
-        w.staff_step = w.octave * 7 + letter;
-        const auto text = juce::String (names[pc]) + juce::String (w.octave);
-        text.copyToUTF8 (w.name, sizeof w.name);
-        return w;
+        const int octave = midi / 12 - 1;
+        return { octave * 7 + letter, pc - whites[letter], juce::String (names[pc]) + juce::String (octave) };
     }
 
     /* A chord, as the engine would publish it after `notes` started. */
@@ -91,23 +80,22 @@ struct FakeModel final : public Model
     {
         ++now.serial;
         now.kind = 3;
-        now.held = 0;
-        now.notes[0] = now.notes[1] = 0;
-        now.pitch_classes = 0;
+        now.held = false;
+        now.notes.reset();
+        now.pitchClasses = 0;
         for (int m : midi)
         {
-            now.notes[m / 64] |= 1ull << (m % 64);
-            now.pitch_classes = (uint16_t) (now.pitch_classes | (1u << (m % 12)));
-            notes.push_back ({ at, (uint8_t) m, 100 });
+            now.notes.set ((size_t) m);
+            now.pitchClasses = (uint16_t) (now.pitchClasses | (1u << (m % 12)));
+            notes.push_back ({ at, m, 100 });
         }
-        now.sounding[0] = now.notes[0];
-        now.sounding[1] = now.notes[1];
-        now.bass = (int8_t) *midi.begin();
-        now.root = (int8_t) root;
-        std::strcpy (now.name, name);
-        std::strcpy (now.degree, degree);
-        std::strcpy (now.description, words);
-        std::strcpy (now.notes_text, noteText);
+        now.sounding = now.notes;
+        now.bass = *midi.begin();
+        now.root = root;
+        now.name = juce::String::fromUTF8 (name);
+        now.degree = juce::String::fromUTF8 (degree);
+        now.description = juce::String::fromUTF8 (words);
+        now.notesText = juce::String::fromUTF8 (noteText);
         now.now = at;
     }
 
@@ -115,17 +103,17 @@ struct FakeModel final : public Model
     void release (double at)
     {
         for (int m = 0; m < 128; ++m)
-            if ((now.sounding[m / 64] >> (m % 64)) & 1u)
-                notes.push_back ({ at, (uint8_t) m, 0 });
-        now.sounding[0] = now.sounding[1] = 0;
-        now.held = 1;
+            if (now.sounding[(size_t) m])
+                notes.push_back ({ at, m, 0 });
+        now.sounding.reset();
+        now.held = true;
         ++now.serial;
         now.now = at;
     }
 
     ni::ui::test::FakeParameters params;
-    CdReading now {};
-    std::deque<CdNoteEvent> notes;
+    Reading now;
+    std::deque<NoteEvent> notes;
 };
 
 int choice (FakeModel& m, Param p)
@@ -179,8 +167,7 @@ TEST_CASE ("chord-detector: a reading lights the readout, the circle and the key
     FakeModel model;
     Editor editor (model);
     model.play ({ 52, 57, 60, 67 }, "Am7/E", "vi7", "A minor 7 · 2nd inversion", "E3 A3 C4 G4", 9, 1.0);
-    std::strcpy (model.now.alternatives[0], "C6/E");
-    model.now.alternative_count = 1;
+    model.now.alternatives = { "C6/E" };
     editor.tick();
 
     const auto& words = editor.chordReadout().getState();
@@ -277,7 +264,8 @@ TEST_CASE ("chord-detector: a window opened late starts from what sounds, and dr
     CHECK (seeded[1].sounding());
 
     /* The engine dropped events: E stopped and C started, unheard. */
-    model.now.sounding[0] = (1ull << 48) | (1ull << 55);
+    model.now.sounding.reset();
+    model.now.sounding.set (48).set (55);
     model.now.dropped = 7;
     model.now.now = 2.0;
     editor.tick();

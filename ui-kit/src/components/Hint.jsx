@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * The hint bar. Copyright (c) 2026 Torben Gräber. MIT.
+ * The hint bar.
  *
  * Byte-identical in both editors before the kit existed, which is as good a
  * signal as any that it belonged here.

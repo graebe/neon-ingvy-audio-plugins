@@ -5,7 +5,7 @@
 The `sc_core_*` C ABI, called the way a shell calls it.
 
 `engines/side-chain/tests/test_core.c` makes these claims from C against the
-hand-written header, which is what keeps the header honest -- but it links a
+generated header, which is what proves the boundary from C -- but it links a
 release staticlib, so cargo's coverage cannot see this crate run. These make
 the same claims from Rust, through the same raw pointers: every entry point
 survives a null instance or a garbage argument, the two parameter doors agree,
@@ -17,7 +17,8 @@ The DSP itself is `sc-core`'s to test. What is asserted here is the boundary.
 
 use super::*;
 use sc_core::params::{Param, PARAM_COUNT};
-use std::ffi::CString;
+use sc_core::MAX_BLOCK;
+use std::ffi::{c_char, c_int, CString};
 use std::ptr::{null, null_mut};
 
 const SR: f64 = 48_000.0;

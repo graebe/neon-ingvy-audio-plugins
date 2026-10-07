@@ -18,6 +18,6 @@ ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 # io::Read, and a ducker has a use for neither.
 wmidi = { workspace = true }
 
-# The counting allocator the no_alloc test installs. Test-only.
 [dev-dependencies]
-ni-testkit = { path = "../../../shared/crates/ni-testkit" }
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

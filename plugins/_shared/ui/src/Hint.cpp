@@ -9,8 +9,6 @@
 #include "ChildLights.h"
 #include "UvType.h"
 
-#include <cmath>
-
 namespace ni::ui
 {
 
@@ -216,18 +214,18 @@ void Hint::resized()
     const int sigWidth = Signature::preferredWidth();
     sig.setBounds (getWidth() - padding - sigWidth, lineTop, sigWidth, Signature::height);
 
-    /* Everything left of it is the tips' and the switch's, the switch keeping
-     * space-4 to either side: the tips give way first. */
+    /* The switch space-4 before it, centred on the text's line, and fixed
+     * there by the window's width alone. */
     int end = sig.getX() - gap;
     if (motion != nullptr)
-        end -= motion->getWidth() + gap;
+    {
+        end -= motion->getWidth();
+        motion->setTopLeftPosition (end, lineTop + (line - motion->getHeight()) / 2);
+        end -= gap;
+    }
 
-    const int natural = (int) std::ceil (clausesWidth (capped (conventions)));
-    tips = { padding, lineTop, juce::jlimit (0, juce::jmax (0, end - padding), natural), line };
-
-    /* Centred on the text's line. */
-    if (motion != nullptr)
-        motion->setTopLeftPosition (tips.getRight() + gap, lineTop + (line - motion->getHeight()) / 2);
+    /* .tips { flex: 1; min-width: 0 }: everything else is the tips'. */
+    tips = { padding, lineTop, juce::jmax (0, end - padding), line };
 }
 
 void Hint::paint (juce::Graphics& g)
@@ -237,7 +235,7 @@ void Hint::paint (juce::Graphics& g)
     g.fillRect (0, 0, getWidth(), (int) uv::tok::size::hairline);
 
     /* A line is laid over the conventions, which stay underneath, held:
-     * they size the tips, and are not drawn while the line is. */
+     * not drawn while the line is. */
     const auto bar = content();
     drawRuns (g, runsOf (bar.info.has_value() ? std::vector<Clause> { *bar.info } : bar.clauses),
               tips.toFloat());

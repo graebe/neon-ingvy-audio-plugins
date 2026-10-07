@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# ground.h, from src/lib.rs (build.rs). The Trance Gate's
+# trance_gate_core.toml explains the settings every capi header shares.
+
+language = "C"
+style = "type"
+cpp_compat = true
+no_includes = true
+sys_includes = ["stdint.h"]
+documentation_style = "c99"
+include_guard = "GROUND_H"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// ground.h -- the animated ground's beat clock, `gnd_*`, which every plugin's
+// editor draws from.
+//
+// GENERATED at build time by cbindgen from
+// engines/ground/crates/ground-capi/src/lib.rs, whose doc comments are the
+// comments below: edit that, not this."""
+
+# The opaque handle keeps its old struct tag, declared here rather than by
+# cbindgen: trance_gate_core.toml says why.
+after_includes = """
+
+// The opaque handle. One per plugin instance.
+typedef struct GndGround gnd_t;"""
+
+[export]
+exclude = ["GndGround"]
+
+[export.rename]
+"GndGround" = "gnd_t"

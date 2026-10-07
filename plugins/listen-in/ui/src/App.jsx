@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Listen-In — the editor.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Two controls and a meter. The plugin decides everything; this file shows what
  * it decided and sends back the two things a person can change.

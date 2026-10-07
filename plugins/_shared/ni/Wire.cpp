@@ -234,7 +234,9 @@ Transport host_transport(bool running, double tempo, double ppq)
   t.running = running ? 1 : 0;
   t.bpm = float(tempo > 0.0 ? tempo : 120.0);
   t.beats = running ? ppq : -1.0;
-  if (t.running && t.beats < 0.0)
+  /* No position (NaN, which is how the JUCE shell's readClock says it) and an
+   * infinity are as unfilled as -1. */
+  if (t.running && !(std::isfinite(t.beats) && t.beats >= 0.0))
   {
     t.running = 0;
     t.beats = -1.0;

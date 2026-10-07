@@ -14,5 +14,5 @@ publish.workspace = true
 atomic_float = { workspace = true, features = ["atomic_f64"] }
 
 [dev-dependencies]
-# The counting allocator behind tests/no_alloc.rs.
-ni-testkit = { path = "../../../shared/crates/ni-testkit" }
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

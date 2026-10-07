@@ -5,7 +5,7 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 
 | product | ships as | engine |
 |---|---|---|
-| [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
+| [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · a Schwung module for the Move | `engines/trance-gate` |
 | [NI Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
 | [NI Listen-In](plugins/listen-in/README.md) | VST3 · AU · CLAP | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/side-chain` |
@@ -27,12 +27,15 @@ product.
 
 ```
 engines/<product>/crates     the core, and its wrappers
-plugins/<product>/           the VST3/AU/CLAP shell, and its editor
+plugins/<product>/           the VST3/AU/CLAP shell, its web editor and its native one
+plugins/_shared/ui/          the native Ultraviolet kit (JUCE); ui/ builds it with the editors
 modules/<product>/           a Schwung module: module.json, module.env, its UI
 modules/_shared/             the one Dockerfile, package.sh and install.sh for all of them
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
 site/                        the documentation site, from this repo's own Markdown
 docs/tech/                   how it is built, in prose
+spike/                       the JUCE class-ID spike; tests/fixtures/iplug2 its contract
+tools/docker/, tools/cross/  the cross-build kit: Linux and Windows build images, the JUCE smoke plugin
 design/scheme/               the Ultraviolet design system, vendored
 design/designs/              the "NI Plugin Layouts" canvas, mirrored
 versions.json                one version per product
@@ -41,7 +44,7 @@ versions.json                one version per product
 ## Build
 
 ```sh
-git submodule update --init --recursive   # iPlug2. The engines are subtrees.
+git submodule update --init --recursive   # iPlug2 and JUCE. The engines are subtrees.
 scripts/fetch-sdks.sh                     # the VST3 and CLAP SDKs, at pinned versions
 npm ci                                    # the kit and every editor
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -80,6 +83,12 @@ clap-helpers at the versions pinned in the script — iPlug2's own download
 scripts default to whatever is on `master` today — and `--verify` checks a
 tree that already has them.
 
+**Linux and Windows are built locally too**, in Docker: `scripts/build-all.sh`
+builds a JUCE plugin project for macOS, Linux and Windows in turn, runs its
+tests and validates every VST3 with pluginval
+([docs/tech/cross-build.md](docs/tech/cross-build.md)). It is proven on
+`tools/cross/smoke`; the plugins join it with their move to JUCE.
+
 ## What the tests are for
 
 **Two tiers** ([docs/tech/testing.md](docs/tech/testing.md)). `scripts/test.sh
@@ -106,7 +115,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `spdx` | every source file this repository owns opens with its licence and its copyright |
 | `e2e` | the four editors in Chrome, driven through their review harnesses against the mock hosts: gestures, keyboard, resize, the session handshake, and a screenshot each held to a committed baseline |
 | `tg_au`, `sc_au` | the AU from `build/out`, loaded by path and rendered by a host that supplies a transport. Nothing installed is read, and a missing bundle **fails** — it never skips |
-| `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
+| `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
 | `spectro_wire`, `spectro_columns_js` | the wire format the editor decodes, both sides pinned to one table the plugin's own C++ generates |
 | `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** `abus_ipc_rosetta` and `abus_ipc_rosetta_reader` do it between the x86_64 and arm64 slices, as Live under Rosetta and a native host would |
 | `abus_core` | the ring's wrap and overrun, the claim protocol, and a writer running flat out against a slow reader with every delivered block checked for continuity — a spliced buffer looks exactly like audio |
@@ -216,7 +225,7 @@ inside every bundle and every module beside `LICENSE`.
 | VST3 SDK | **MIT** since 3.8 | permissive; Steinberg withdrew the GPLv3-or-proprietary dual licence with 3.8.0 |
 | iPlug2 with WDL, the shell until JUCE replaces it | **zlib** | permissive |
 | CLAP, clap-helpers, JSON for Modern C++ (compiled in by iPlug2) | **MIT** | permissive |
-| Rust crates from crates.io | each under a licence on the allowlist in [`deny.toml`](deny.toml): MIT, Apache-2.0 (also WITH LLVM-exception), BSD-2-Clause, BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, CC0-1.0, Unlicense, GPL-3.0-or-later or GPL-3.0-only | `cargo deny` refuses anything else, GPL-2.0-only included, which cannot be combined with GPLv3; cargo-about writes the crates' notices into THIRD_PARTY_LICENSES.md |
+| Rust crates from crates.io | each under a licence on the allowlist in [`deny.toml`](deny.toml): MIT, Apache-2.0 (also WITH LLVM-exception), BSD-1-Clause, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, CC0-1.0, Unlicense, GPL-3.0-or-later or GPL-3.0-only | `cargo deny` refuses anything else, GPL-2.0-only included, which cannot be combined with GPLv3; cargo-about writes the crates' notices into THIRD_PARTY_LICENSES.md |
 | the Side-Chain's MIDI trigger, ported from [schwung-ducker](https://github.com/charlesvestal/schwung-ducker) | **MIT**, © 2026 Charles Vestal | a port is a derivative work, so its notice stays beside ours |
 | JetBrains Mono, in every editor | **SIL OFL 1.1** | `OFL.txt` travels with the font |
 

@@ -5,7 +5,7 @@
  * The abus_* C ABI, called the way a plugin calls it.
  *
  * bus-core's tests prove the ring and the claim; tests/abus_roundtrip.c proves
- * the hand-written header against this crate's release staticlib. What is
+ * the generated header against this crate's release staticlib. What is
  * left is the layer in between, and it is not nothing: the out-parameters, the
  * error codes, the NULL-handle silence ProcessBlock relies on, the label copy
  * and its terminator. Each is asserted here through the same raw pointers a C
@@ -60,7 +60,7 @@ unsafe fn probe(slot: u32) -> Option<(bool, u32, String)> {
     let mut live = -1;
     let mut rate = u32::MAX;
     let mut label = [0xAAu8; 32];
-    let found = abus_probe(slot, &mut live, &mut rate, label.as_mut_ptr(), label.len() as u32);
+    let found = abus_probe(slot, &mut live, &mut rate, label.as_mut_ptr().cast(), label.len() as u32);
     if found == 0 {
         /* A missing slot still answers every out-parameter. */
         assert_eq!((live, rate, label[0]), (0, 0, 0), "a missing slot left junk behind");
@@ -263,13 +263,13 @@ fn the_label_is_bounded_and_always_terminated() {
         /* 40 bytes of two-byte characters: stored at most 31 bytes, and on a
          * character boundary, so 15 of them. */
         let long = "é".repeat(20) + "\0";
-        abus_writer_set_label(w, long.as_ptr());
+        abus_writer_set_label(w, long.as_ptr().cast());
         assert_eq!(probe(SLOT_LABEL).map(|i| i.2), Some("é".repeat(15)));
 
         /* A caller's short buffer gets what fits and a terminator. */
         abus_writer_set_label(w, c"Pad Synth".as_ptr().cast());
         let mut small = [0xAAu8; 4];
-        assert_eq!(abus_probe(SLOT_LABEL, null_mut(), null_mut(), small.as_mut_ptr(), 4), 1);
+        assert_eq!(abus_probe(SLOT_LABEL, null_mut(), null_mut(), small.as_mut_ptr().cast(), 4), 1);
         assert_eq!(&small, b"Pad\0");
 
         /* NULL text is an empty label rather than a crash. */

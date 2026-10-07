@@ -8,8 +8,16 @@
  * A 28px (control-h) bg-200 well on a line-200 hairline, `value` text in ink
  * padded space-2, and while it is empty what belongs there in ink-muted ("name
  * this bus") -- shown until something is typed, focused or not, as a browser
- * shows a placeholder. While it is typed into, its hairline is uv with
- * glow-focus round it; disabled, bg-100 on line-100 with ink-dim text.
+ * shows a placeholder. Under the pointer the well rises to bg-300 and the
+ * hairline is ink-dim (1.1.0's States); while it is typed into, its hairline
+ * is uv with glow-focus round it; disabled, bg-100 on line-100 with ink-dim
+ * text.
+ *
+ * ITS FOCUS IS ALWAYS VISIBLE WHILE IT IS TYPED INTO, however it was focused:
+ * a browser's :focus-visible matches a text input focused by the pointer too,
+ * as the caret shows. So the hint bar shows its line for as long as the edit
+ * lasts (Focus.h). Tab into it selects what is there, so typing replaces it,
+ * as a browser's input does; a click places the caret where it lands.
  *
  * ONE COMMIT PER EDIT, NEVER PER KEYSTROKE. An edit starts when the field takes
  * the keyboard and ends on the first of Enter (keep), a click elsewhere (keep)
@@ -27,6 +35,7 @@
  */
 #pragma once
 
+#include "Focus.h"
 #include "Luminous.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -57,6 +66,10 @@ public:
     std::function<void (const juce::String&)> onCommit;
 
     bool isBeingEdited() const noexcept { return editing; }
+    /* Ends an open edit as Enter does: kept, and the keyboard let go. What a
+     * click elsewhere in the window does (EditorFrame). */
+    void finishEdit();
+    bool isHovered() const noexcept { return hovered; }
 
     /* ---- juce::TextEditor */
     void focusGained (FocusChangeType) override;
@@ -65,6 +78,8 @@ public:
     void escapePressed() override;
     bool keyPressed (const juce::KeyPress&) override;
     void enablementChanged() override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
     void paintOverChildren (juce::Graphics&) override;
 
     /* ---- Luminous: glow-focus round it while it is typed into */
@@ -75,9 +90,12 @@ private:
     void keep();
     void cancel();
     void leave();
+    void restyle();
 
     juce::String value, placeholder;
     bool editing = false;
+    bool hovered = false;
+    FocusVisibility focus { *this };
 
     JUCE_DECLARE_NON_COPYABLE (TextField)
 };

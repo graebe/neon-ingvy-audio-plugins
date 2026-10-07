@@ -5,7 +5,7 @@
 The `tg_core_*` C ABI, called the way a shell calls it.
 
 `engines/trance-gate/tests/test_core.c` is the contract's real test: it
-compiles against the hand-written header and links the library. It links a
+compiles against the generated header and links the library. It links a
 release staticlib, though, so cargo's coverage cannot see this file run. These
 make the boundary's own claims again from Rust, through the same raw pointers:
 null is survived everywhere, garbage arguments are refused without touching the
@@ -17,15 +17,15 @@ their own curves.
 */
 
 use super::*;
-use std::ffi::CString;
+use std::ffi::{c_char, c_int, CString};
 use std::ptr::{null, null_mut};
 use tg_core::params::Param;
 
-const PARAM_COUNT: c_int = 15; /* TG_P_COUNT */
-const NUM_RATES: c_int = 13; /* TG_NUM_RATES */
-const STATE_MAX: usize = 8192; /* TG_STATE_MAX */
-const GATE_MAX: usize = 4096; /* TG_GATE_MAX */
-const ENVELOPE_MAX: usize = 1024; /* TG_ENVELOPE_MAX */
+const PARAM_COUNT: c_int = TgParam::TG_P_COUNT as c_int;
+const NUM_RATES: c_int = TG_NUM_RATES as c_int;
+const STATE_MAX: usize = TG_STATE_MAX;
+const GATE_MAX: usize = TG_GATE_MAX;
+const ENVELOPE_MAX: usize = TG_ENVELOPE_MAX;
 
 fn transport(running: bool, beats: f64) -> TgTransport {
     TgTransport { running: running as c_int, beats, bpm: 120.0 }

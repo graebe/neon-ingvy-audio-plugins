@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The intensity ramp: one byte of level to one colour.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * NO COLOUR IS SPELLED HERE, and that is the point of the file existing at all.
  * The five stops live in @ultraviolet/ui's tokens.css as --spec-0..--spec-4 and are read back through

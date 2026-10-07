@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * The Side-Chain capture, decoded. Copyright (c) 2026 Torben Gräber. MIT.
+ * The Side-Chain capture, decoded.
  *
  * "<cols>:" then six raw bytes a column -- seen (0 or 1), dry low/high and wet
  * low/high (bipolar), then the gain (UNIPOLAR) -- delivered as bytes by the

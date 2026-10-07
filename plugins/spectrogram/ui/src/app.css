@@ -1,5 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Torben Gräber */
+
 /*
- * The Spectrogram's LAYOUT. Copyright (c) 2026 Torben Gräber. MIT.
+ * The Spectrogram's LAYOUT.
  *
  * Only where things sit. What the controls LOOK like is
  * @ultraviolet/ui/components.css, imported before this file -- the button, the
@@ -7,7 +10,7 @@
  * stylesheet, and had drifted.
  */
 /*
- * Layout. Copyright (c) 2026 Torben Gräber. MIT.
+ * Layout.
  *
  * The numbers, top to bottom, and all of them on the system's 4px grid:
  *

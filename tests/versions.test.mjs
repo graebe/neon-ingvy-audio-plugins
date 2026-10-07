@@ -30,7 +30,9 @@ const read = (...p) => readFileSync(join(ROOT, ...p), 'utf8');
 const VERSIONS = JSON.parse(read('versions.json'));
 
 /*
- * Every product, and everything that spells its version. `crates` are that
+ * Every product, and everything that spells its version: an iPlug2 plugin's
+ * config.h, a JUCE plugin's build (`juce`), a Schwung module's module.json
+ * and its engine's crates. `crates` are that
  * product's engine -- a crate belongs to exactly one PRODUCT engine, which is
  * also why the two product engines never depend on each other.
  *
@@ -45,8 +47,11 @@ const VERSIONS = JSON.parse(read('versions.json'));
  * whole file exists to prevent.
  */
 const PRODUCTS = {
+  /* On the JUCE shell: its build takes the version from versions.json itself
+   * (cmake/NiJucePlugin.cmake), so what is checked is that it asks for its
+   * own -- and, given the built bundles, what they say. */
   'trance-gate': {
-    config: 'plugins/trance-gate/config.h',
+    juce: { cmake: 'plugins/trance-gate/CMakeLists.txt', bundle: 'NITranceGate' },
     module: 'modules/trance-gate/module.json',
     crates: ['tg-core', 'tg-capi', 'tg-move'].map(
       (c) => `engines/trance-gate/crates/${c}/Cargo.toml`),
@@ -70,7 +75,7 @@ const PRODUCTS = {
    * The ground's beat clock. Not a plugin, and unlike audio-bus not even a
    * static library of its own: ground-capi is an rlib that each product's capi
    * crate absorbs, because one archive per plugin is an invariant here (see
-   * cmake/NiPlugin.cmake). It ships inside ALL FOUR products, which is the
+   * cmake/NiRust.cmake). It ships inside ALL FOUR products, which is the
    * strongest version of the reason audio-bus is listed -- a crate that
    * disagreed with itself would disagree in four places at once.
    */
@@ -116,7 +121,7 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
  *
  * Three consumers cannot hold a date version literally, so each has a form of
  * its own -- and the point of deriving them here is that nobody has to remember
- * the rules. See the long note in plugins/trance-gate/config.h.
+ * the rules: cmake/NiJucePlugin.cmake derives the same ones for a JUCE build.
  *
  *   display  what a DAW shows, and what versions.json says
  *   numeric  three integers: Cargo (semver) and CFBundleShortVersionString
@@ -202,9 +207,9 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
   const want = VERSIONS[product];
 
   test(`${product}: it is either a bundle or a crate, and says which`, () => {
-    assert.ok(where.config || where.crates,
-      `${product} names neither a config.h nor any crates, so nothing about ` +
-      `its version is actually checked`);
+    assert.ok(where.config || where.juce || where.crates,
+      `${product} names neither a config.h, a JUCE build nor any crates, so ` +
+      `nothing about its version is actually checked`);
   });
 
   if (where.config)
@@ -222,6 +227,33 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
     assert.equal(Number(hex), packed(want),
       `PLUG_VERSION_HEX is ${hex}; ${want} packs to 0x${packed(want).toString(16).padStart(8, '0')}`);
   });
+
+  if (where.juce) {
+    test(`${product}: its JUCE build asks for its own version`, () => {
+      const call = /ni_add_juce_plugin\(\s*(\S+)/.exec(read(where.juce.cmake))?.[1];
+      assert.equal(call, product,
+        `${where.juce.cmake}: ni_add_juce_plugin's first argument is the versions.json key`);
+    });
+
+    /*
+     * WHAT THE BUILT BUNDLE SAYS, when there is one: NI_BUNDLES names
+     * build/out in the full tier (versions_bundles). The same spellings as an
+     * iPlug2 plist -- the date for the Finder, the packed day for the build
+     * number -- and the date as the VST3 class's version.
+     */
+    const out = process.env.NI_BUNDLES;
+    if (out)
+    test(`${product}: the built ${where.juce.bundle}.vst3 agrees (${want})`, () => {
+      const res = join(out, `${where.juce.bundle}.vst3`, 'Contents');
+      const x = readFileSync(join(res, 'Info.plist'), 'utf8');
+      const key = (k) => new RegExp(`<key>${k}</key>\\s*<string>([^<]*)</string>`).exec(x)?.[1];
+      assert.equal(key('CFBundleShortVersionString'), spellings(want).numeric, 'CFBundleShortVersionString');
+      assert.equal(key('CFBundleVersion'), spellings(want).bundle, 'CFBundleVersion');
+      const info = readFileSync(join(res, 'Resources', 'moduleinfo.json'), 'utf8');
+      assert.match(info, new RegExp(`"Version":\\s*"${spellings(want).numeric.replaceAll('.', '\\.')}"`),
+        'moduleinfo.json Version');
+    });
+  }
 
   if (where.module) {
     test(`${product}: module.json agrees (${want})`, () => {

@@ -37,7 +37,7 @@ juce::Rectangle<int> placeInside (juce::Rectangle<int> window, juce::Rectangle<i
     return { x, window.getBottom() - h, w, h };
 }
 
-Popup::Popup (std::function<void()> d) : dismissed (std::move (d))
+Popup::Popup (std::function<void (const juce::MouseEvent&)> d) : dismissed (std::move (d))
 {
     setInterceptsMouseClicks (true, true);
     setAlwaysOnTop (true);
@@ -58,12 +58,12 @@ void Popup::show (juce::Component& window, juce::Component& content, juce::Recta
     content.setBounds (bounds);
 }
 
-void Popup::mouseDown (const juce::MouseEvent&)
+void Popup::mouseDown (const juce::MouseEvent& e)
 {
     /* Only presses that reach this layer itself arrive here: outside the
      * content, which takes its own. */
     if (dismissed)
-        dismissed();   // may delete this
+        dismissed (e);   // may delete this
 }
 
 } // namespace ni::ui

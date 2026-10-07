@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The plugin, faked, for reviewing the editor without a host.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * IT PUSHES BEFORE THE EDITOR LOADS, ON PURPOSE.
  *

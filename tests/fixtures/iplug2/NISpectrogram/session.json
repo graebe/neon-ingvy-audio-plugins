@@ -1,0 +1,36 @@
+{
+  "product": "NISpectrogram",
+  "scenario": "session",
+  "description": "What the editor sends when buses 2 and 5 are shown beside this track, the clash compares them, and the zoom is Bass: select \"2,5\", view \"0,1,2\", compare \"1:2:1\", clash \"-60:12\" (the editor's constants), range \"40:800\".",
+  "component": {
+    "file": "session.component.bin",
+    "bytes": 77
+  },
+  "controller": {
+    "file": "session.controller.bin",
+    "bytes": 0,
+    "sameAsComponent": false
+  },
+  "decoded": {
+    "magic": "NIst",
+    "version": 1,
+    "bodyBytes": 57,
+    "params": [],
+    "strings": ["2,5", "-60.00:12.00", "0,1,2", "1:2:1", "40.00:800.00"],
+    "bypass": 0
+  },
+  "values": [
+    {
+      "id": 65536,
+      "title": "Bypass",
+      "normalized": 0,
+      "plain": 0,
+      "display": "off"
+    }
+  ],
+  "reload": {
+    "sameParameters": true,
+    "sameChunk": true,
+    "bypassSavedAfterReload": 0
+  }
+}

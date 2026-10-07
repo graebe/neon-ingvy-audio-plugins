@@ -1,6 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Torben Gräber */
+
 /*
  * The Ultraviolet components' own styling.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * ONLY WHAT A COMPONENT IS, never where it sits. Each editor's app.css keeps
  * its layout -- the absolute positions that ARE that plugin's design -- and

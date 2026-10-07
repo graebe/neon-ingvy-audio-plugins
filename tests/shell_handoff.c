@@ -5,9 +5,9 @@
  * The handoff through its C ABI, holding a real bus pusher.
  *
  * shell-core's cargo tests prove the mechanism, two threads and all. This one
- * compiles against the hand-written engines/shell/include/shell_handoff.h and
+ * compiles against shell_handoff.h, which shell-capi's build.rs generates, and
  * links an archive the symbols ride in (libbus_capi.a), which is the only way
- * to notice the header drifting from the implementation. And it holds what
+ * to notice the C side and the Rust disagreeing. And it holds what
  * NI Listen-In holds: the audio thread's half of a bus claim, whose release --
  * with the main thread's writer already gone -- frees a slot, so "released
  * later" is visible as "the slot is still taken until then".

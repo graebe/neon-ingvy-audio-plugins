@@ -17,7 +17,7 @@
 # packaged its LICENSE after an `&&` list that ended the script under `set -e`.
 #
 # THE SECOND OF TWO TARGETS AROUND ONE CORE. Each plugin links its engine's
-# `*-capi` crate (see cmake/NiPlugin.cmake); this builds the `*-move`
+# `*-capi` crate (see cmake/NiRust.cmake); this builds the `*-move`
 # crate, the Schwung audio_fx v2 vtable. Both are members of the repository's
 # single Cargo workspace and both reach the engine's `*-core` by relative path,
 # so what ships here and what ships in the VST3 are the same DSP compiled
@@ -85,7 +85,12 @@ echo "Compiling the Schwung wrapper (Rust)..."
 # suite that tested it were never bit-identical to each other. Rust does not
 # contract, so the module and its tests compute the same numbers, and the
 # golden render pins the algorithm rather than a compiler flag.
-cargo build --release -p "$MODULE_CRATE" --target aarch64-unknown-linux-gnu
+#
+# --locked: the module links exactly the crates Cargo.lock names, the ones the
+# licence gate checked and the notices below list. A manifest edited past its
+# lock stops the build here, where cargo would otherwise re-resolve, rewrite
+# the lock and ship crates nothing has checked.
+cargo build --locked --release -p "$MODULE_CRATE" --target aarch64-unknown-linux-gnu
 
 # THE .so NAME IS LOAD-BEARING. For component_type audio_fx the chain host
 # builds the path itself as modules/audio_fx/<id>/<id>.so and never reads

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The three panels right of the ring: Gate, Envelope, Fade.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THE TITLE RUNS UP THE LEFT EDGE, which is what pays for the third panel: a
  * heading above the knobs cost a 28px band that said one word.

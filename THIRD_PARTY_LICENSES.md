@@ -18,7 +18,8 @@ ships.
 
 | Artefact | What is in it |
 |---|---|
-| Plugin bundles (`NI*.vst3`, `NI*.component`, `NI*.clap`) | the plugin framework, the SDKs, JSON for Modern C++, the Rust standard library, the engines and the crates from crates.io they link, and each editor's web bundle and fonts |
+| Plugin bundles on iPlug2 (`NISideChain`, `NISpectrogram`, `NIListenIn`: `.vst3`, `.component`, `.clap`) | iPlug2, WDL, the SDKs, JSON for Modern C++, the Rust standard library, the engines and the crates from crates.io they link, and each editor's web bundle and fonts |
+| Plugin bundles on the JUCE shell (`NITranceGate.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
 | Schwung module tarballs (`*-module.tar.gz`) | the Rust standard library, the engines and the crates from crates.io they link; the Trance Gate's also carries its own `ui_chain.js` |
 | The documentation site | JetBrains Mono |
 
@@ -32,6 +33,14 @@ ships.
 | `CLAP` | `1.2.10` | **MIT**, © 2021 Alexandre Bique |
 | `clap-helpers` | commit `55a5dd5d` | **MIT**, © 2021 Alexandre Bique |
 | `JSON for Modern C++` (nlohmann/json) | 3.12.0, as vendored in iPlug2 | **MIT**, © 2013-2026 Niels Lohmann; portions © 2008-2009 Björn Hoehrmann, © 2009 Florian Loitsch, © 2018 The Abseil Authors (all MIT); Hedley © 2016-2021 Evan Nemerson (**CC0-1.0**) |
+| `JUCE` | 9.0.3, the `external/JUCE` submodule | **AGPL-3.0**, taken here under the AGPLv3 (JUCE is also offered under the commercial JUCE 9 licence), © Raw Material Software Limited |
+| `VST3 SDK (JUCE's copy)` | 3.8.0, as vendored in JUCE | **MIT**, © 2026 Steinberg Media Technologies GmbH |
+
+The rows above JUCE are the bundles still on iPlug2; JUCE and its copy of the
+VST3 SDK are the bundles on the JUCE shell, which link none of iPlug2's. JUCE's
+modules are AGPLv3, which GPLv3 section 13 lets this GPL-3.0-or-later work
+combine with ([ADR 0001](docs/adr/0001-gpl-3.0-or-later.md)); the full AGPLv3
+text travels in every bundle on the JUCE shell as `AGPL-3.0.txt`.
 
 The SDK versions are the pins in `scripts/fetch-sdks.sh`; nothing is fetched
 from a moving branch. The VST3 SDK is the one most often assumed to force
@@ -45,6 +54,24 @@ iPlug2's other bundled libraries — NanoVG, NanoSVG, MetalNanoVG, yoga, RTAudio
 RTMidi — belong to its IGraphics UI and its standalone app. These plugins use
 the WebView editor and build no app, so none of them is linked into anything
 that ships.
+
+## JUCE's own dependencies — compiled into every bundle on the JUCE shell
+
+`juce_core` and `juce_graphics` compile these in from JUCE's tree
+(`external/JUCE/JUCE.spdx.json` is JUCE's inventory of them); the shell links
+nothing of `juce_audio_utils`, so none of `juce_audio_formats`' codecs (FLAC,
+Ogg Vorbis, Opus) is in a bundle, and it switches the WebP decoder off
+(`JUCE_USE_WEBP=0`, `cmake/NiJucePlugin.cmake`), so libwebp is not either.
+
+| Component | Version | Licence |
+|---|---|---|
+| `zlib` | 1.3.2, in `juce_core` | **Zlib**, © 1995-2026 Jean-loup Gailly and Mark Adler |
+| `libpng` | 1.6.58, in `juce_graphics` | **libpng-2.0** (the PNG Reference Library License version 2), © 1995-2026 The PNG Reference Library Authors, © 2018-2026 Cosmin Truta, © 2000-2002, 2004, 2006-2018 Glenn Randers-Pehrson, © 1996-1997 Andreas Dilger, © 1995-1996 Guy Eric Schalnat, Group 42, Inc. |
+| `IJG JPEG library` | 10.0, in `juce_graphics` | **IJG**, © 1991-2026 Thomas G. Lane, Guido Vollbeding. This software is based in part on the work of the Independent JPEG Group. |
+| `HarfBuzz` | 14.2.1, in `juce_graphics` | **MIT-Modern-Variant** (HarfBuzz's "Old MIT"), © 2010-2022 Google, Inc. and the other holders listed with its licence text below |
+| `SheenBidi` | 2.9.0, in `juce_graphics` | **Apache-2.0**, © 2014-2025 Muhammad Tayyab Akram |
+| `LunaSVG` | 3.5.0, in `juce_graphics` | **MIT**, © 2020-2025 Samuel Ugochukwu |
+| `PlutoVG` | 1.3.2, in `juce_graphics` | **MIT**, © 2020-2025 Samuel Ugochukwu |
 
 ## The Rust standard library — in every plugin and every module
 
@@ -84,7 +111,7 @@ Mono declaring none.
 
 | Bundle | The font | `OFL.txt` |
 |---|---|---|
-| `NITranceGate.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
+| `NITranceGate.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | `NISpectrogram.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
 | `NIListenIn.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
 | `NISideChain.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
@@ -93,10 +120,13 @@ Mono declaring none.
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits beside
 the kit's font files in `ui-kit/src/fonts`, and wherever the font ships: each
-editor copies it from its own `ui/public/fonts/` into `web/fonts/`, so it is in
-every plugin bundle with the editor, and `site/scripts/stage-assets.mjs` copies
-the kit's into the site's `/fonts/`, failing the build if it is not there. The
-OFL is permissive and GPL-compatible.
+web editor copies it from its own `ui/public/fonts/` into `web/fonts/`, so it is
+in every plugin bundle with the editor, and `site/scripts/stage-assets.mjs`
+copies the kit's into the site's `/fonts/`, failing the build if it is not
+there. The native kit keeps its own copy beside its faces
+(`plugins/_shared/ui/fonts`, whose README has their provenance), and every
+bundle on the JUCE shell with an editor carries it in `Contents/Resources`
+(`cmake/NiJucePlugin.cmake`). The OFL is permissive and GPL-compatible.
 
 ## Bundled music font
 
@@ -129,7 +159,6 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 | `ground-core`, `ground-capi` | `engines/ground` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ni-dsp`, `ni-schwung` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
-| `ni-testkit` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — a dev-dependency only; it ships in nothing |
 | `music-core` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — moved here from [neo-riemann](https://codeberg.org/graebe/neo-riemann), where it was MIT under the same owner |
 
 These are the workspace's members, each `publish = false`, and
@@ -1040,25 +1069,64 @@ Move-side C tests include them (`engines/trance-gate/tests/test_gate.c`,
 vtable. The module itself is Rust, and `ni-schwung` declares the same
 structures for the host to call.
 
+JUCE, which the tests also build on (the JUCE host tests, the native UI's
+tests, the class-ID spike), ships in the bundles on the JUCE shell and is
+listed with the framework above.
+
 No plugin, module or bundle links any of these, so they add nothing to any
 artefact's notices.
 
 The coverage tooling adds no row: `llvm-cov`, `llvm-profdata` and
 `cargo-llvm-cov` are developer tools that run *on* the build rather than inside
 it. Likewise the licence tools (`cargo-deny`, `cargo-about`), the CI
-validators (`pluginval`, `clap-validator`, `auval`) and the build tools (vite,
-astro, CMake, cargo) are run, not shipped — vite's one
-exception is its preload polyfill, listed above. So is `@playwright/test`
+validators (`pluginval`, `clap-validator`, `auval`, and Steinberg's VST3
+`validator`, **MIT**, built from the VST3 SDK by
+`scripts/validate-plugins.sh`) and the build tools (vite,
+astro, CMake, cargo, Corrosion, and the cross-build kit's, listed below) are
+run, not shipped — vite's one exception is its preload polyfill, listed
+above. So is `@playwright/test`
 (**Apache-2.0**, © Microsoft Corporation), the root `devDependency` that drives
 the editors' end-to-end tests (`tests/e2e`) in the Google Chrome already
 installed: it is pinned in `package-lock.json`, downloads no browser, and no
 editor build bundles it.
 
+Corrosion 0.6.1 (**MIT**, © 2018 Andrew Gaspar), the CMake module that runs
+cargo for the engines, is downloaded at configure time by
+`cmake/NiCorrosion.cmake`, pinned by its release tarball's SHA-256. It is CMake
+code, and nothing of it is compiled into an artefact.
+
+## Build tools (not shipped)
+
+The cross-build kit — `tools/docker`, `tools/cross` and `scripts/build-*.sh`,
+described in [docs/tech/cross-build.md](docs/tech/cross-build.md) — builds and
+checks the plugins for macOS, Linux and Windows with these. They run *on* the
+build: nothing of theirs is linked or copied into an artefact that ships, so
+they add no notice to one. They are listed so that every licence in the chain
+is known.
+
+| Tool | Where | Licence |
+|---|---|---|
+| `Ubuntu 24.04` packages: the base image, build-essential, CMake, Ninja, pkgconf, the X11, ALSA, FreeType and Fontconfig development packages, Xvfb, DejaVu fonts | both build images, from one Ubuntu archive snapshot | each its own free-software licence (GPL, LGPL, MIT/X11, BSD and the like, per Ubuntu's archive policy) |
+| `LLVM` 20: clang, clang-cl, lld, llvm-lib, llvm-rc, llvm-mt | both build images | **Apache-2.0 WITH LLVM-exception** |
+| `rustup` 1.29.1 and the Rust 1.98.1 toolchain | both build images | **MIT OR Apache-2.0** |
+| `xwin` 0.10.0 | Windows image | **MIT OR Apache-2.0** |
+| `Wine` 9.0 | Windows image | **LGPL-2.1-or-later** |
+| `pluginval` 1.0.4 | all three platforms | **GPL-3.0** |
+| `JUCE` 9.0.3 | the smoke plugin (`tools/cross/smoke`), from the `external/JUCE` submodule; it ships in the bundles on the JUCE shell, and its row is with the framework above | **AGPL-3.0**, or the commercial JUCE licence |
+| `Microsoft C runtime` 14.44 and `Windows SDK` 10.0.26100 | Windows image, downloaded by xwin | **Microsoft's licence terms**, accepted by the owner alone ([tools/docker/windows/README.md](tools/docker/windows/README.md)) |
+
+The Microsoft row is the one exception to *nothing of theirs is linked*: a
+Windows build links the static C runtime into its DLL. No Windows binary ships
+from this repository today, and none from this kit ever will — a Windows
+release comes from the native Windows build, which links the same runtime and
+will bring this row up into the shipped sections with it.
+
 ## No longer dependencies
 
 `vst3-sys`, `vst3-com*` (GPL-3.0-or-later), `nih_plug*`/`nih_log` (ISC) and the
 crates.io dependencies they brought were removed when the nih-plug wrapper was
-replaced by iPlug2; JUCE (AGPLv3-or-commercial) went before that. None is linked
+replaced by iPlug2; JUCE (AGPLv3-or-commercial) went before that, and has
+come back under the AGPLv3 (with the framework, above). None of the rest is linked
 into anything, so their notices no longer apply and their rows were removed.
 
 ---
@@ -1088,7 +1156,7 @@ line as listed:
 > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 > SOFTWARE.
 
-### zlib (iPlug2, WDL)
+### zlib (iPlug2, WDL, JUCE's zlib)
 
 > This software is provided 'as-is', without any express or implied warranty.
 > In no event will the authors be held liable for any damages arising from the
@@ -1105,6 +1173,119 @@ line as listed:
 > 2. Altered source versions must be plainly marked as such, and must not be
 >    misrepresented as being the original software.
 > 3. This notice may not be removed or altered from any source distribution.
+
+### GNU Affero General Public License v3 (JUCE)
+
+The full text is `AGPL-3.0.txt`, beside this file in every bundle on the JUCE
+shell (`Contents/Resources`), and `licenses/AGPL-3.0.txt` in the repository:
+the FSF's text, unmodified (https://www.gnu.org/licenses/agpl-3.0.txt).
+
+### Apache License 2.0 (SheenBidi)
+
+The full text is `Apache-2.0.txt`, beside this file in every bundle on the JUCE
+shell, and `licenses/Apache-2.0.txt` in the repository: the Apache Software
+Foundation's text, unmodified (https://www.apache.org/licenses/LICENSE-2.0.txt).
+
+### PNG Reference Library License version 2 (libpng)
+
+> The software is supplied "as is", without warranty of any kind,
+> express or implied, including, without limitation, the warranties
+> of merchantability, fitness for a particular purpose, title, and
+> non-infringement.  In no event shall the Copyright owners, or
+> anyone distributing the software, be liable for any damages or
+> other liability, whether in contract, tort or otherwise, arising
+> from, out of, or in connection with the software, or the use or
+> other dealings in the software, even if advised of the possibility
+> of such damage.
+>
+> Permission is hereby granted to use, copy, modify, and distribute
+> this software, or portions hereof, for any purpose, without fee,
+> subject to the following restrictions:
+>
+>  1. The origin of this software must not be misrepresented; you
+>     must not claim that you wrote the original software.  If you
+>     use this software in a product, an acknowledgment in the product
+>     documentation would be appreciated, but is not required.
+>
+>  2. Altered source versions must be plainly marked as such, and must
+>     not be misrepresented as being the original software.
+>
+>  3. This Copyright notice may not be removed or altered from any
+>     source or altered source distribution.
+
+### The Independent JPEG Group's licence (IJG JPEG library)
+
+> The authors make NO WARRANTY or representation, either express or implied,
+> with respect to this software, its quality, accuracy, merchantability, or
+> fitness for a particular purpose.  This software is provided "AS IS", and you,
+> its user, assume the entire risk as to its quality and accuracy.
+>
+> This software is copyright (C) 1991-2026, Thomas G. Lane, Guido Vollbeding.
+> All Rights Reserved except as specified below.
+>
+> Permission is hereby granted to use, copy, modify, and distribute this
+> software (or portions thereof) for any purpose, without fee, subject to these
+> conditions:
+> (1) If any part of the source code for this software is distributed, then this
+> README file must be included, with this copyright and no-warranty notice
+> unaltered; and any additions, deletions, or changes to the original files
+> must be clearly indicated in accompanying documentation.
+> (2) If only executable code is distributed, then the accompanying
+> documentation must state that "this software is based in part on the work of
+> the Independent JPEG Group".
+> (3) Permission for use of this software is granted only if the user accepts
+> full responsibility for any undesirable consequences; the authors accept
+> NO LIABILITY for damages of any kind.
+>
+> These conditions apply to any software derived from or based on the IJG code,
+> not just to the unmodified library.  If you use our work, you ought to
+> acknowledge us.
+>
+> Permission is NOT granted for the use of any IJG author's name or company name
+> in advertising or publicity relating to this software or products derived from
+> it.  This software may be referred to only as "the Independent JPEG Group's
+> software".
+
+The bundles carry executable code only, so condition (2) is what applies: this
+software is based in part on the work of the Independent JPEG Group.
+
+### HarfBuzz's "Old MIT" licence (MIT-Modern-Variant)
+
+> Copyright © 2010-2022  Google, Inc.
+> Copyright © 2015-2020  Ebrahim Byagowi
+> Copyright © 2019,2020  Facebook, Inc.
+> Copyright © 2012,2015  Mozilla Foundation
+> Copyright © 2011  Codethink Limited
+> Copyright © 2008,2010  Nokia Corporation and/or its subsidiary(-ies)
+> Copyright © 2009  Keith Stribley
+> Copyright © 2011  Martin Hosken and SIL International
+> Copyright © 2007  Chris Wilson
+> Copyright © 2005,2006,2020,2021,2022,2023  Behdad Esfahbod
+> Copyright © 2004,2007,2008,2009,2010,2013,2021,2022,2023  Red Hat, Inc.
+> Copyright © 1998-2005  David Turner and Werner Lemberg
+> Copyright © 2016  Igalia S.L.
+> Copyright © 2022  Matthias Clasen
+> Copyright © 2018,2021  Khaled Hosny
+> Copyright © 2018,2019,2020  Adobe, Inc
+> Copyright © 2013-2015  Alexei Podtelezhnikov
+>
+> Permission is hereby granted, without written agreement and without
+> license or royalty fees, to use, copy, modify, and distribute this
+> software and its documentation for any purpose, provided that the
+> above copyright notice and the following two paragraphs appear in
+> all copies of this software.
+>
+> IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE TO ANY PARTY FOR
+> DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES
+> ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN
+> IF THE COPYRIGHT HOLDER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
+> DAMAGE.
+>
+> THE COPYRIGHT HOLDER SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING,
+> BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+> FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
+> ON AN "AS IS" BASIS, AND THE COPYRIGHT HOLDER HAS NO OBLIGATION TO
+> PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
 
 ### SIL Open Font License 1.1 (JetBrains Mono)
 

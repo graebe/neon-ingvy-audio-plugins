@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The first row: how the picture is drawn -- the zoom, the bar view, pause --
  * and the window's one amber word when nothing is arriving.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { Button, Select, Toggle } from '@ultraviolet/ui';
 import { RANGES } from './columns.js';

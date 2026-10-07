@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * A headless audit of the rendered editor.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WHY THIS AND NOT A SCREENSHOT. Several of the things that were wrong here are
  * invisible in a picture: a readout showing base64, a glow at the wrong alpha, a

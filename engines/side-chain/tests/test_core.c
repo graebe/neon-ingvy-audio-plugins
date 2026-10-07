@@ -2,8 +2,9 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * Tests for the C ABI -- compiled against sc_core.h and linked to the real
- * library, which is the ONLY thing keeping that hand-written header honest.
+ * Tests for the C ABI -- compiled against sc_core.h, which sc-capi's build.rs
+ * generates from the Rust, and linked to the real library: what a header that
+ * compiles can still get wrong, a caller in C finds.
  *
  * WHAT THIS FILE IS FOR, AND WHAT IT IS NOT. The DSP's behaviour is covered in
  * Rust (`cargo test -p sc-core`, 48 cases), where the stage machine's state

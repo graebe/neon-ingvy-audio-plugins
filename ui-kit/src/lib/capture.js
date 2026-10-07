@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Reading a binary payload from the plugin: a short ASCII header, then bytes.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The plot captures and the spectrogram's columns used to travel as hex inside
  * the base64 the WebView transport adds anyway: 2.7 times the bytes, decoded

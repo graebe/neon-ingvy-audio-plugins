@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The shell's message tags: the part of the editor protocol every plugin
- * speaks the same way. Copyright (c) 2026 Torben Gräber. MIT.
+ * speaks the same way.
  *
  * Mirrors ni::editor::Tag in plugins/_shared/ni/Editor.h, which
  * tests/editor_tags.test.mjs holds this to. Tags 0..nParams-1 are parameter

@@ -5,9 +5,10 @@
  * The audio bus through its C ABI, in one process.
  *
  * bus-core's own cargo tests cover the ring in Rust. THIS one compiles against
- * the hand-written engines/audio-bus/include/audio_bus.h and links the real
- * staticlib, which is the only thing that catches the header drifting from the
- * implementation -- both sides keep compiling while they disagree.
+ * audio_bus.h, which bus-capi's build.rs generates, and links the real
+ * staticlib: the header cannot drift from the Rust any more, but it can still
+ * compile and mean something else to a C caller, and only a C caller sees
+ * that.
  *
  * The claims here are the ones a receiver depends on: samples come back
  * unchanged, falling behind is REPORTED rather than papered over, and a second

@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * This editor's message tags. Copyright (c) 2026 Torben Gräber. MIT.
+ * This editor's message tags.
  *
  * The shell's tags are the kit's (@ultraviolet/ui/shell), the same in every
  * plugin; the rest are this plugin's own vocabulary. tests/editor_tags.test.mjs

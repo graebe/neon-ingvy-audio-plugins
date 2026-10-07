@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# shell_handoff.h, from src/lib.rs (build.rs). The Trance Gate's
+# trance_gate_core.toml explains the settings every capi header shares.
+
+language = "C"
+style = "type"
+cpp_compat = true
+no_includes = true
+documentation_style = "c99"
+include_guard = "SHELL_HANDOFF_H"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// shell_handoff.h -- an object the main thread builds, lent to the audio
+// thread and freed where freeing is allowed, `shell_handoff_*`.
+//
+// GENERATED at build time by cbindgen from
+// engines/shell/crates/shell-capi/src/lib.rs, whose doc comments are the
+// comments below: edit that, not this."""
+
+# The opaque handle keeps its old struct tag, declared here rather than by
+# cbindgen: trance_gate_core.toml says why.
+after_includes = """
+
+typedef struct ShellHandoff shell_handoff_t;"""
+
+[export]
+exclude = ["ShellHandoff"]
+
+[export.rename]
+"ShellHandoff" = "shell_handoff_t"
+"ShellReleaseFn" = "shell_release_fn"

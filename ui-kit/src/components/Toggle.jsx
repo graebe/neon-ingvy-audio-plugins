@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * A switch. Copyright (c) 2026 Torben Gräber. MIT.
+ * A switch.
  *
  * THE SWITCH FORM: a 28x14 bg-200 housing with an 8x8 square at 2px that moves
  * to 16px and lights.

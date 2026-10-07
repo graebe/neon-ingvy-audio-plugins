@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * @ultraviolet/ui -- the Ultraviolet design system, as Solid components.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THREE INDEPENDENT THINGS an editor in this repository needs:
  *

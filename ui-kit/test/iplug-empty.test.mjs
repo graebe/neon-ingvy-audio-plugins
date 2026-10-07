@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The iPlug2 bridge, given nothing.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The shell sends an empty payload as SAMFD(tag, 0, '') (ni::WebPlugin::Send):
  * iPlug2's own call printed a null pointer there, and "(null)" is not base64,

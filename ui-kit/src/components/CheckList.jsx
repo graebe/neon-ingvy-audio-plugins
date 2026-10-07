@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * A dropdown that chooses SEVERAL. Copyright (c) 2026 Torben Gräber. MIT.
+ * A dropdown that chooses SEVERAL.
  *
  * WHY THIS IS NOT A Select.
  *

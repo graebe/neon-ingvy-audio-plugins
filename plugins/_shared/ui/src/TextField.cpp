@@ -69,7 +69,8 @@ void TextField::begin()
     if (editing || ! isEnabled())
         return;
     editing = true;
-    repaint();
+    focus.keyUsed();
+    restyle();
     relight (*this);
 }
 
@@ -78,7 +79,7 @@ void TextField::keep()
     if (! editing)
         return;
     editing = false;
-    repaint();
+    restyle();
     relight (*this);
 
     const auto typed = getText();
@@ -92,7 +93,7 @@ void TextField::cancel()
         return;
     editing = false;
     setText (value, false);
-    repaint();
+    restyle();
     relight (*this);
 }
 
@@ -107,21 +108,30 @@ void TextField::leave()
 void TextField::focusGained (FocusChangeType cause)
 {
     juce::TextEditor::focusGained (cause);
+    if (cause == focusChangedByTabKey)
+        selectAll();
+    focus.focusGained (cause);
     begin();
 }
 
 void TextField::focusLost (FocusChangeType cause)
 {
     juce::TextEditor::focusLost (cause);
+    focus.focusLost();
     keep();   // a click elsewhere keeps it
 }
 
-void TextField::returnPressed()
+void TextField::finishEdit()
 {
     juce::Component::SafePointer<TextField> self (this);
     keep();
     if (self != nullptr)
         leave();
+}
+
+void TextField::returnPressed()
+{
+    finishEdit();
 }
 
 void TextField::escapePressed()
@@ -142,7 +152,31 @@ void TextField::enablementChanged()
     if (! isEnabled())
         cancel();
     applyColourToAllText (isEnabled() ? c::ink : c::inkDim);
+    restyle();
     juce::TextEditor::enablementChanged();
+}
+
+/* ============================================================ pointer == */
+
+void TextField::mouseEnter (const juce::MouseEvent& e)
+{
+    juce::TextEditor::mouseEnter (e);
+    hovered = true;
+    restyle();
+}
+
+void TextField::mouseExit (const juce::MouseEvent& e)
+{
+    juce::TextEditor::mouseExit (e);
+    hovered = false;
+    restyle();
+}
+
+/* The well under the pointer rises to bg-300, until it is typed into. */
+void TextField::restyle()
+{
+    setColour (juce::TextEditor::backgroundColourId, hovered && ! editing && isEnabled() ? c::bg300 : c::bg200);
+    repaint();
 }
 
 /* ============================================================= paint == */
@@ -157,7 +191,7 @@ void TextField::paintOverChildren (juce::Graphics& g)
                         r.reduced ((float) hair).withTrimmedLeft ((float) getLeftIndent()),
                         getFont(), isEnabled() ? c::inkMuted : c::inkDim);
 
-    g.setColour (! isEnabled() ? c::line100 : (editing ? c::uv : c::line200));
+    g.setColour (! isEnabled() ? c::line100 : editing ? c::uv : hovered ? c::inkDim : c::line200);
     g.drawRect (r, uv::tok::stroke::strokeHair);
 }
 

@@ -20,7 +20,7 @@ import { readFileSync, readdirSync, existsSync, mkdtempSync, cpSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  ROOT, resolve, readModuleEnv, updateReleaseJson, schwungVersion, LEGACY_TOP_LEVEL,
+  ROOT, resolve, readModuleEnv, updateReleaseJson, schwungVersion, LEGACY_TOP_LEVEL, bundleOf,
 } from '../scripts/release.mjs';
 
 const read = (...p) => readFileSync(join(ROOT, ...p), 'utf8');
@@ -28,8 +28,10 @@ const VERSIONS = JSON.parse(read('versions.json'));
 const PRODUCTS = Object.keys(VERSIONS).filter((k) => !k.startsWith('__'));
 const MODULES = readdirSync(join(ROOT, 'modules'))
   .filter((d) => existsSync(join(ROOT, 'modules', d, 'module.env')));
+/* A product with a plugin: an iPlug2 config.h, or a JUCE build's
+ * ni_add_juce_plugin (scripts/release.mjs, bundleOf). */
 const PLUGINS = readdirSync(join(ROOT, 'plugins'))
-  .filter((d) => existsSync(join(ROOT, 'plugins', d, 'config.h')));
+  .filter((d) => !d.startsWith('_') && bundleOf(ROOT, d));
 
 /* ------------------------------------------------------------ the modules */
 

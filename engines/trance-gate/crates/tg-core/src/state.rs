@@ -17,12 +17,10 @@ Writing goes the other way in [`save`], into the caller's buffer.
 
 # Where the parsing happens
 
-A text this repository wrote parses without allocating (`json` says why), but
-a text from outside can be anything, and serde_json boxes the error it
-reports. So parsing belongs on a thread that may allocate, and the audio
-thread is handed the [`Patch`] -- or a [`SlotFile`](crate::slotfile::SlotFile)
-or a [`Clip`](crate::paste::Clip) -- to apply. tests/no_alloc.rs holds the
-three applies to it.
+Parsing belongs on a thread that may allocate, and the audio thread is handed
+the [`Patch`] -- or a [`SlotFile`](crate::slotfile::SlotFile) or a
+[`Clip`](crate::paste::Clip) -- to apply. tests/no_alloc.rs holds the three
+applies to it.
 
 - **The plugin** parses on its main thread: tg-capi's shell reads every edit,
   load, paste and import as it is posted, and its command queue carries what
@@ -30,13 +28,21 @@ three applies to it.
   [`Clip`](crate::paste::Clip) -- for the audio thread to apply. Its view and
   every save are rebuilt from text there too.
 - **The Move** has no other thread. Schwung calls `set_param` -- the text
-  door -- on its audio callback, so a blob is parsed there, as it always was.
+  door -- on its audio callback, so a blob is parsed there, as it always was,
+  and whatever Schwung restores: a blob it stored, or one a hand-edit or a
+  truncated patch file damaged.
+
+So a blob is read with `json::read_plain`, which never allocates, whatever the
+text: a text serde_json would refuse -- and box the error -- or would have to
+copy is refused before serde_json sees it. That is the one narrowing of
+JSON, and it is a narrowing to what every build writes: a blob whose string
+has an escape, or with a value that is an array or an object, is no patch.
+A slot file or a paste is read on the plugin's main thread only, with the
+plain `json::read`, which may allocate for a text it refuses.
 
 The text doors -- `set_param("state", _)`, [`Instance::import_into`] and
 [`Instance::paste_into`] -- are parse-then-apply in one call, for the Move and
-for a plugin shell's main thread. Every text a build writes goes through them
-without allocating; only a damaged one -- a corrupt chunk, a mangled preset --
-makes serde_json allocate the error it reports, on whichever thread called.
+for a plugin shell's main thread.
 
 # The format
 
@@ -267,7 +273,8 @@ pub(crate) fn slot_field(key: &str, prefix: u8) -> Option<usize> {
     }
 }
 
-/// A text that is not one flat JSON object, and so no patch at all.
+/// A text that is not one flat JSON object of the kind every build writes
+/// (`json::plain`), and so no patch at all.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct NotAPatch;
 
@@ -306,11 +313,11 @@ pub struct Patch {
 }
 
 impl Patch {
-    /// `text`, read. Allocates nothing for a blob a build wrote; see the note
-    /// on threads above.
+    /// `text`, read. Allocates nothing, whatever the text, so the Move's
+    /// audio callback may call it; see the note on threads above.
     pub fn parse(text: &str) -> Result<Patch, NotAPatch> {
         let mut f = Fields::default();
-        json::read(text, &mut f).map_err(|_| NotAPatch)?;
+        json::read_plain(text, &mut f).map_err(|_| NotAPatch)?;
         Ok(Patch::from_fields(&f))
     }
 
@@ -413,7 +420,9 @@ pub fn version(text: &str) -> i32 {
         }
     }
     let mut sv = Sv(None);
-    match json::read(text, &mut sv) {
+    /* The same reader as Patch::parse, so a text it refuses is version 0 here
+     * too, and no text says a version it would not load as. */
+    match json::read_plain(text, &mut sv) {
         Ok(()) => sv.0.and_then(|v| v.number()).unwrap_or(0.0) as i32,
         Err(_) => 0,
     }

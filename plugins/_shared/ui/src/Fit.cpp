@@ -55,6 +55,19 @@ juce::Rectangle<int> FixedDesign::boundsAt (float s) const
     return { juce::roundToInt ((float) width * s), scaledHeight ((float) height, s) };
 }
 
+void FixedDesign::setDesignSize (int w, int h)
+{
+    jassert (w > 0 && h > 0);
+    if (w == width && h == height)
+        return;
+    width = w;
+    height = h;
+    /* At the scale it has: the host's window is resized to boundsAt() next,
+     * and only then does the fit have the size it is meant to fill. */
+    design.setBounds (0, 0, width, height);
+    design.setTransform (juce::AffineTransform::scale (scale));
+}
+
 void FixedDesign::resized()
 {
     /* Whichever way fits: with constrainToDesign the two agree, and without

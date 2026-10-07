@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The slot files: export this slot or all eight, import either.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * WINDOW VERBS, so they sit together as one joined group and never among the
  * knobs -- under the envelope plot, flush with the panels' bottom edge, the one

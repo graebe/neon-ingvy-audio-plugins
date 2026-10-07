@@ -8,9 +8,9 @@ WHAT THIS CRATE IS ALLOWED TO DO: null-check, bound-check, copy into C memory,
 and hand the call to `cd-core`. What a chord is called is decided there.
 
 THE HEADER IS GENERATED. `build.rs` runs cbindgen over this file and writes
-`engines/chord-detector/include/cd_capi.h`; the C test compiles against it and
-links this archive, so a declaration that drifted from its definition would
-have to drift in cbindgen first.
+`cd_capi.h` at build time (engines/shared/cbindgen/capi_header.rs); the C test
+compiles against it and links this archive, so a declaration that drifted from
+its definition would have to drift in cbindgen first.
 
 THREE THREADS AND WHAT EACH MAY CALL:
 

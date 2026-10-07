@@ -2,161 +2,166 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * Trance Gate -- the host parameters. See Params.h.
+ * NI Trance Gate's host parameters. Params.h says what they must stay.
  */
 #include "Params.h"
-#include "tg_shell.h"
+
 #include "ni/Wire.h"
 
 #include <cstring>
 
-using iplug::IParam;
+namespace ni::tg
+{
 
-namespace tg {
-namespace params {
+namespace
+{
+using Kind = ParamSpec::Kind;
 
-static constexpr double kStageMaxPct = TG_STAGE_MAX_PCT;
+const char* const offOn[] { "Off", "On" };
+/* "%", not "% Step": what the percentage is OF is said once, by the name. */
+const char* const envTime[] { "ms", "%" };
+const char* const curves[] { "Linear", "Exponential", "S-Curve" };
+/* The switch does not turn the fade on; it chooses whether an arriving step
+ * ramps or jumps. */
+const char* const hardSoft[] { "Hard", "Soft" };
+/* Which end the pattern is built up from; In is what the gate did before the
+ * direction existed. */
+const char* const inOut[] { "In", "Out" };
+
+/* The iPlug2 build's Params.cpp Declare, row for row. */
+const ParamSpec table[kNumParams] {
+    { "slot", "Slot", Kind::integer, 1, TG_SLOTS, 1, "" },
+    { "length", "Length", Kind::integer, 1, TG_MAX_STEPS, 16, "steps" },
+    { "rate", "Rate", Kind::choice, 0, TG_NUM_RATES - 1, TG_RATE_DEFAULT, "" },
+    { "legato", "Join Neighbors", Kind::toggle, 0, 1, 0, "", offOn, 2 },
+    { "timeMode", "Env Time", Kind::choice, 0, 1, 0, "", envTime, 2 },
+    { "curve", "Env Curve", Kind::choice, 0, 2, 0, "", curves, 3 },
+    { "amount", "Amount", Kind::continuous, 0, 100, 100, "" },
+    { "width", "Width", Kind::continuous, 5, 100, 100, "" },
+    { "attack", "Attack", Kind::continuous, 0, TG_STAGE_MAX_PCT, 1.6, "" },
+    { "decay", "Decay", Kind::continuous, 0, TG_STAGE_MAX_PCT, 16, "" },
+    { "sustain", "Sustain", Kind::continuous, 0, 100, 100, "" },
+    { "release", "Release", Kind::continuous, 0, TG_STAGE_MAX_PCT, 16, "" },
+    /* 100 IS THE DEFAULT AND HAS TO BE: Fade is how much of the pattern has
+     * arrived, so zero is silence -- which a fresh instance must not be. */
+    { "fade", "Fade", Kind::continuous, 0, 100, 100, "" },
+    { "fadeSoft", "Fade Shape", Kind::toggle, 0, 1, 0, "", hardSoft, 2 },
+    { "fadeDir", "Fade Dir", Kind::choice, 0, 1, 0, "", inOut, 2 },
+};
+
+bool isPercent (int index)
+{
+    return index == kAmount || index == kWidth || index == kSustain || index == kFade;
+}
+
+/* Whether `s` starts with a number, as parse_number would read one. */
+bool startsWithNumber (const std::string& s)
+{
+    std::size_t i = 0;
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t'))
+        ++i;
+    if (i < s.size() && (s[i] == '+' || s[i] == '-'))
+        ++i;
+    if (i < s.size() && s[i] == '.')
+        ++i;
+    return i < s.size() && s[i] >= '0' && s[i] <= '9';
+}
+} // namespace
+
+const ParamSpec& specOf (int index)
+{
+    return table[index];
+}
+
+const ParamSpec* specs()
+{
+    return table;
+}
+
+const nist::Layout& layout()
+{
+    static const nist::Layout l { table, kNumParams, { 15, 14, 12 }, 1, 1 };
+    return l;
+}
+
+double toEngine (int index, double plain)
+{
+    if (index == kSlot || index == kLength)
+        return plain - 1.0;
+    return isPercent (index) ? plain / 100.0 : plain;
+}
+
+double fromEngine (int index, double engine)
+{
+    if (index == kSlot || index == kLength)
+        return engine + 1.0;
+    return isPercent (index) ? engine * 100.0 : engine;
+}
 
 /*
- * The percentage format, spelled out rather than left to the `label`
- * argument.
- *
- * iPlug2's AU wrapper prints a parameter with GetDisplay(value, false, str) --
- * the overload that does NOT append the label -- so a unit passed as `label`
- * reaches a VST3 host and never reaches an AU one. A host showing "3.83"
- * where it should show "3.83 %" is the sort of thing only a test that
- * compares displayed strings would catch.
- *
- * AND THEN NO LABEL AT ALL. The CLAP wrapper appends the label to whatever
- * the display function wrote, so "%" as a label as well printed "3.83 % %"
- * there -- the unit is said once, here, and reaches every format.
- *
- * Two decimals everywhere, for the same reason: the step decides the
- * precision, and 0.1 rendered Sustain as "60.0" against the engine's "60.00".
+ * EXACTLY, AS FLOATS, and on purpose: the engine holds a float, and a switch
+ * moves a host parameter only when the float it would hold differs. A
+ * tolerance would leave a real difference unfollowed.
  */
-static const IParam::DisplayFunc kPctDisplay =
-  [](double v, WDL_String& s) { s.SetFormatted(32, "%.2f %%", v); };
-
-void Declare(const std::function<IParam*(int)>& param)
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfloat-equal"
+#endif
+bool sameInEngine (int index, double plain, double engine)
 {
-  /*
-   * Declared in the ENGINE's order, so the host index is the engine index.
-   * Slot and Length are one-based at the host and zero-based in the engine --
-   * "slot 1" is what a musician reads -- and converted once, in ToEngine.
-   */
-  param(kSlot)->InitInt("Slot", 1, 1, TG_SLOTS);
-  param(kLength)->InitInt("Length", 16, 1, TG_MAX_STEPS, "steps");
-  /* The rate labels are the engine's own table: the host stores an INDEX, so
-   * a list that disagreed by one entry would re-point every automation lane. */
-  IParam* rate = param(kRate);
-  rate->InitEnum("Rate", tg_core_rate_default(), TG_NUM_RATES);
-  for (int i = 0; i < TG_NUM_RATES; i++)
-  {
-    char label[MAX_PARAM_DISPLAY_LEN];
-    if (tg_core_rate_label(i, label, int(sizeof label)) > 0)
-      rate->SetDisplayText(i, label);
-  }
-  /* "Off"/"On", capitalised: iPlug2 defaults to lower case and the engine
-   * prints "Off". */
-  param(kLegato)->InitBool("Join Neighbors", false, "", 0, "", "Off", "On");
-  /* "%", NOT "% Step". The long form did not fit the readout's 64px and read
-   * as noise beside a 13-character rate label; what the percentage is OF is
-   * said once, by the control's own name, rather than in every value it can
-   * show. The engine accepts either spelling. */
-  param(kTimeMode)->InitEnum("Env Time", 0, {"ms", "%"});
-  param(kCurve)->InitEnum("Env Curve", 0, {"Linear", "Exponential", "S-Curve"});
+    return (float) toEngine (index, plain) == (float) engine;
+}
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
-  /* Shown as percentages because that is what they are; the engine takes
-   * Amount, Width and Sustain as 0..1 and the three envelope stages as the
-   * percent value itself, so only the first three are scaled (ToEngine). */
-  const auto pct = [](IParam* p, const char* name, double def, double lo, double hi) {
-    p->InitDouble(name, def, lo, hi, 0.01, "", 0, "",
-                  IParam::ShapeLinear(), IParam::kUnitPercentage, kPctDisplay);
-  };
-  pct(param(kAmount), "Amount", 100.0, 0.0, 100.0);
-  pct(param(kWidth), "Width", 100.0, 5.0, 100.0);
-  pct(param(kAttack), "Attack", 1.6, 0.0, kStageMaxPct);
-  pct(param(kDecay), "Decay", 16.0, 0.0, kStageMaxPct);
-  pct(param(kSustain), "Sustain", 100.0, 0.0, 100.0);
-  pct(param(kRelease), "Release", 16.0, 0.0, kStageMaxPct);
-  /*
-   * 100% IS THE DEFAULT AND IT HAS TO BE.
-   *
-   * Fade is how much of the pattern has arrived, so zero is silence -- which
-   * is exactly what a build-up wants and exactly what a fresh instance must
-   * not do. At 100 the engine's weights are all 1.0 and the gate is what it
-   * was before this existed, which is what keeps both golden renders valid.
-   */
-  pct(param(kFade), "Fade", 100.0, 0.0, 100.0);
-  /* "Hard"/"Soft" rather than Off/On: the switch does not turn the fade on, it
-   * chooses whether a step arriving ramps or jumps. */
-  param(kFadeSoft)->InitBool("Fade Shape", false, "", 0, "", "Hard", "Soft");
-  /*
-   * WHICH END THE PATTERN IS BUILT UP FROM, and In is the default because it is
-   * what the gate did before the direction existed. The knob means the same
-   * thing either way -- how much of the drawn pattern is present -- so 100% is
-   * the pattern in both and switching this at rest changes nothing.
-   */
-  param(kFadeDir)->InitEnum("Fade Dir", 0, {"In", "Out"});
+std::string percentText (double plain)
+{
+    std::string out;
+    ni::wire::append_fixed (out, plain, 2);
+    return out + " %";
 }
 
-static bool IsPercent(int paramIdx)
+bool parsePercent (const std::string& text, double& plain)
 {
-  return paramIdx == kAmount || paramIdx == kWidth || paramIdx == kSustain || paramIdx == kFade;
+    if (! startsWithNumber (text))
+        return false;
+    plain = ni::wire::parse_number (text);
+    return true;
 }
 
-double ToEngine(int paramIdx, double hostValue)
+bool isStage (int index)
 {
-  if (paramIdx == kSlot || paramIdx == kLength) return hostValue - 1.0;
-  return IsPercent(paramIdx) ? hostValue / 100.0 : hostValue;
+    return index == kAttack || index == kDecay || index == kRelease;
 }
 
-double FromEngine(int paramIdx, double engineValue)
+std::string formatStage (double pct, bool ms, double widthMs)
 {
-  if (paramIdx == kSlot || paramIdx == kLength) return engineValue + 1.0;
-  return IsPercent(paramIdx) ? engineValue * 100.0 : engineValue;
+    std::string out;
+    if (ms && widthMs > 0.0)
+    {
+        ni::wire::append_fixed (out, pct / 100.0 * widthMs, 1);
+        return out + " ms";
+    }
+    ni::wire::append_fixed (out, pct, 2);
+    return out + " %";
 }
 
-bool SameInEngine(int paramIdx, double hostValue, double engineValue)
+bool parseStage (const std::string& text, bool ms, double widthMs, double& pct)
 {
-  return float(ToEngine(paramIdx, hostValue)) == float(engineValue);
+    if (! startsWithNumber (text))
+        return false;
+    const double v = ni::wire::parse_number (text);
+    /* The unit typed wins over the mode: "40 ms" means milliseconds even
+     * while the readout shows percent, and "25 %" the other way round. */
+    const bool saysMs = text.find ("ms") != std::string::npos;
+    const bool saysPct = text.find ('%') != std::string::npos;
+    const bool asMs = saysMs || (ms && ! saysPct);
+    double p = v;
+    if (asMs)
+        p = widthMs > 0.0 ? v / widthMs * 100.0 : 0.0;
+    pct = p < 0.0 ? 0.0 : p > TG_STAGE_MAX_PCT ? (double) TG_STAGE_MAX_PCT : p;
+    return true;
 }
 
-bool IsStage(int paramIdx)
-{
-  return paramIdx == kAttack || paramIdx == kDecay || paramIdx == kRelease;
-}
-
-std::string FormatStage(double pct, bool ms, double widthMs)
-{
-  std::string out;
-  if (ms && widthMs > 0.0)
-  {
-    ni::wire::append_fixed(out, pct / 100.0 * widthMs, 1);
-    out += " ms";
-  }
-  else
-  {
-    ni::wire::append_fixed(out, pct, 2);
-    out += " %";
-  }
-  return out;
-}
-
-double ParseStage(const char* text, bool ms, double widthMs)
-{
-  const char* s = text ? text : "";
-  const double v = ni::wire::parse_number(s);
-  /* The unit typed wins over the mode: "40 ms" means milliseconds even while
-   * the readout shows percent, and "25 %" the other way round. */
-  const bool saysMs = std::strstr(s, "ms") != nullptr;
-  const bool saysPct = std::strchr(s, '%') != nullptr;
-  const bool asMs = saysMs || (ms && !saysPct);
-  double pct = v;
-  if (asMs)
-    pct = widthMs > 0.0 ? v / widthMs * 100.0 : 0.0;
-  return pct < 0.0 ? 0.0 : pct > kStageMaxPct ? kStageMaxPct : pct;
-}
-
-} // namespace params
-} // namespace tg
+} // namespace ni::tg

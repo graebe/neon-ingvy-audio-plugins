@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# tg_shell.h, from src/shell.rs (build.rs). trance_gate_core.toml explains the
+# settings the two share.
+
+language = "C"
+style = "type"
+cpp_compat = true
+no_includes = true
+# tg_core_t, which tg_shell_begin lends, is the core header's.
+includes = ["trance_gate_core.h"]
+documentation_style = "c99"
+include_guard = "TG_SHELL_H"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// tg_shell.h -- the Trance Gate engine as a plugin shell holds it, `tg_shell_*`.
+//
+// GENERATED at build time by cbindgen from
+// engines/trance-gate/crates/tg-capi/src/shell.rs, whose doc comments are the
+// comments below: edit that, not this. tests/capi-compat.mjs holds it to its
+// last hand-written version (tests/fixtures/tg-capi)."""
+
+# The opaque handle keeps its old struct tag, declared here rather than by
+# cbindgen: trance_gate_core.toml says why.
+after_includes = """
+
+typedef struct TgShell tg_shell_t;"""
+
+[export]
+exclude = ["TgShell"]
+
+[export.rename]
+"TgCore" = "tg_core_t"
+"TgShell" = "tg_shell_t"

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * A knob that can be dragged finely, and its readout.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Ported from UvLookAndFeel::drawRotarySlider and UvReadout::paint.
  *

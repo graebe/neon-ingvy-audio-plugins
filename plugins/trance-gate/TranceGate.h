@@ -2,121 +2,131 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * Trance Gate -- the Ableton Live plugin, on iPlug2.
+ * NI Trance Gate on the JUCE shell: the iPlug2 build's identity, parameters
+ * and saved state, around the same Rust engine, with the native editor.
  *
- * The DSP is the Rust engine in engines/trance-gate, reached through its C ABI:
- * the same engine the Schwung module builds into the Move's .so. This class
- * marshals -- parameters in, the pattern edits in, readouts and a capture out;
- * ni::WebPlugin is the rest of the shell.
+ * WHAT CARRIES A LIVE SET ACROSS FROM THE iPlug2 BUILD, each in its place:
+ *
+ *   the class        the iPlug2 class ID itself (CMakeLists.txt: IPLUG2_CLASS,
+ *                    JUCE_VST3_COMPONENT_CLASS), so a set finds this build as
+ *                    it found the old one -- proven in Live (UT2)
+ *   the bundle       NITranceGate.vst3, the old bundle's name, so installing
+ *                    this one replaces it instead of standing beside it with
+ *                    the same class
+ *   the parameters   the same fifteen at the same IDs (Params.h, legacy
+ *                    parameter IDs), holding plain values exactly
+ *                    (ni::Parameter); Bypass is the host's, ID 15 here and
+ *                    65536 there, which Live maps by its flag
+ *   the state        the iPlug2 chunk, read in every layout it ever had and
+ *                    written as the last one wrote it (ni::nist, Params.h's
+ *                    layout); the bypass it carries is restored too, which
+ *                    iPlug2 left in its controller
+ *
+ * THE ENGINE BELONGS TO THE AUDIO THREAD (tg_shell.h). process() takes it for
+ * one block between tg_shell_begin and tg_shell_end: the host's values are
+ * pushed, the transport and meter go in, the two channels are gated in place,
+ * and -- while an editor is open -- the dry and gated signal go to the scope.
+ * Nothing there allocates, locks or parses. Every other thread posts edits and
+ * reads what the engine published: the state calls (any thread but the audio
+ * one), the slot follow and the editor's model (the message thread).
+ *
+ * A SLOT SWITCH RECALLS A WHOLE SOUND. When the engine says a switch, a paste
+ * or an import landed (tg_shell_take_params), the host's parameters follow it
+ * on the message thread, so automation lanes, Live's panel and the editor all
+ * show the recalled values.
  */
 #pragma once
 
-#include "ni/WebPlugin.h"
-#include "ni/Clipboard.h"
-#include "ni/FileDialog.h"
+#include "GroundClock.h"
+#include "Parameter.h"
+#include "Params.h"
+#include "Processor.h"
 #include "ni/Scope.h"
 #include "tg_shell.h"
-#include "Params.h"
 
-#include <string>
+#include <array>
+#include <atomic>
+#include <memory>
 #include <vector>
 
-const int kNumPresets = 1;
-
-/*
- * THIS PRODUCT'S MESSAGE TAGS, mirrored in ui/src/lib/msg.js. The shell's
- * (display strings, ready, typed text, height, ground, defaults) are in
- * ni/Editor.h.
- */
-enum EMsgTags
+namespace ni::tg
 {
-  kMsgUiState = 64,       /* -> the engine's `ui` readout, once a frame          */
-  kMsgParams = 65,        /* -> the `params` readout (fifteen values + width_ms) */
-  kMsgScope = 66,         /* -> "<cols>:<cycleMs>:<head>:" + 4 bytes a column    */
-  /* -> "ok:<words>" | "error:<words>": how an export, an import, a copy or a
-   * paste went, for the hint bar. */
-  kMsgStatus = 68,
-  kMsgSetStep = 96,       /* <- "<index>:<0 off|1 on|2 tie>"                     */
-  kMsgSetDepth = 97,      /* <- "<index>:<0..1>"                                 */
-  kMsgSetCursor = 98,     /* <- "<index>"                                        */
-  kMsgSetOrder = 103,     /* <- "<index>:<rank>", its place in the fade          */
-  /* <- regenerate the current slot. An action, not a parameter: a host
-   * rewriting it would reroll the pattern. Payload: an optional seed. */
-  kMsgRandomize = 104,
-  /* -> the gate across one cycle as the engine applies it (tg_core_render_gate) */
-  kMsgGate = 105,
-  /* -> the envelope plot's gated and dialled curves (tg_core_render_envelope) */
-  kMsgEnvelope = 106,
-  /* <- "slot" | "bank": save the current slot, or all eight, to a file the
-   * user picks. Answered with kMsgFileStatus once the panel closes. */
-  kMsgExportFile = 107,
-  /* <- open a slot or bank file and import it. Answered the same way. */
-  kMsgImportFile = 108,
-  /* <- put the current slot on the clipboard, as a slot file's text. The
-   * plugin writes the clipboard (ni/Clipboard.h); answered with kMsgStatus. */
-  kMsgCopySlot = 109,
-  /* <- paste the clipboard: a slot into the current slot, a bank into all
-   * eight, a whole patch over everything. Answered with kMsgStatus. */
-  kMsgPasteSlot = 110,
-};
 
-class TranceGate final : public ni::WebPlugin
+class EngineModel;
+
+class Processor final : public ni::Processor,
+                        private juce::Timer
 {
 public:
-  TranceGate(const iplug::InstanceInfo& info);
-  ~TranceGate() override;
+    /* The Signal capture's columns: column k is pattern phase k / columns. */
+    static constexpr int scopeColumns = 256;
+    using Scope = ni::Scope<scopeColumns>;
 
-  /* The pattern is not a parameter -- 128 steps across 8 slots. It travels as
-   * the engine's own state blob, the text the Move module writes. */
-  bool SerializeState(iplug::IByteChunk& chunk) const override;
-  int UnserializeState(const iplug::IByteChunk& chunk, int startPos) override;
+    Processor();
+    ~Processor() override;
 
-  /* The capture's width: column k is pattern phase k / kScopeCols. */
-  static constexpr int kScopeCols = 256;
+    /* Stereo in, stereo out, and nothing else: the iPlug2 build's "2-2". */
+    bool isBusesLayoutSupported (const BusesLayout&) const override;
+    void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void releaseResources() override {}
+
+    juce::AudioProcessorEditor* createEditor() override;
+    bool hasEditor() const override { return true; }
+    void editorOpened() override;
+    void editorClosed() override;
+
+    juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
+
+    /* ---- what the model and the tests reach */
+
+    tg_shell_t* engine() const noexcept { return shell.get(); }
+    ni::Parameter& parameter (int index) const noexcept { return *params[(std::size_t) index]; }
+    /* Every host value on the engine's numeric wire, in tg_param_t order: what
+     * a block pushes, and what a save or an export is made with. Any thread. */
+    void engineValues (double (&out)[kNumParams]) const noexcept;
+    const Scope& scope() const noexcept { return capture; }
+    ni::GroundClock& ground() noexcept { return beat; }
+    EngineModel& model() noexcept { return *editorModel; }
+    bool editorOpen() const noexcept { return capturing.load (std::memory_order_relaxed); }
+
+    /* The pattern, a slot, a paste or an import changed what a save writes,
+     * and the host cannot see it: mark the set unsaved. Message thread. */
+    void stateChanged() { nonParameterStateChanged(); }
+
+    /* The slot follow, at once: what the timer does at 30 Hz. Whether the
+     * engine had a switch, a paste or an import to follow. Message thread. */
+    bool followEngine();
+
+protected:
+    void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void writeState (juce::MemoryBlock&) override;
+    bool readState (const void* data, size_t size) override;
 
 private:
-  void ProcessAudio(iplug::sample** inputs, iplug::sample** outputs, int nFrames) override;
-  void ResetAudio() override;
-  void OnHostIdle() override;
-  void OnEditorIdle() override;
-  void OnEditorReady() override;
-  bool OnEditorMessage(int tag, const std::string& arg) override;
-  /* The stages read in the unit Env Time asks for (Params.cpp). */
-  void FormatDisplay(int paramIdx, WDL_String& str) const override;
-  double ParseDisplay(int paramIdx, const char* text) const override;
-  /* The gate's open time in ms, as the engine last published it; 0 unknown. */
-  double WidthMs() const;
+    void timerCallback() override { followEngine(); }
 
-  /* The fifteen parameters into the engine the shell lent this block; the
-   * shell writes what the host moved into the current slot. */
-  void PushParams(tg_core_t* core);
-  /* The pattern plot's curve, when the patch has moved (or `force`). */
-  void SendGate(bool force);
-  void SendScope();
-  /* Slot files: a panel, then the file, then the outcome to the editor. */
-  void ExportFile(bool all);
-  void ImportFile();
-  /* The clipboard: the current slot onto it, or whatever it holds into the
-   * engine, then the outcome to the editor. */
-  void CopySlot();
-  void PasteSlot();
-  void SendStatus(bool ok, const std::string& words);
+    struct ShellDeleter
+    {
+        void operator() (tg_shell_t* s) const noexcept { tg_shell_destroy (s); }
+    };
+    std::unique_ptr<tg_shell_t, ShellDeleter> shell;
 
-  /* THE ENGINE, BEHIND ITS SHELL: the audio thread takes it for a block, every
-   * other thread posts edits and reads what it published (tg_shell.h). */
-  tg_shell_t* mShell = nullptr;
+    std::array<ni::Parameter*, kNumParams> params {};
+    ni::Parameter* bypass = nullptr;
 
-  ni::Scope<kScopeCols> mScope;
-  /* The save and open panels, remembering the last folder. Main thread. */
-  ni::FileDialog mFiles;
-  /* The patch the last curve was rendered from. Main thread. */
-  std::string mGateState;
-  /* The stage readouts' unit and scale as the editor was last told them, so a
-   * tempo, Width or Env Time change re-sends them. Main thread. */
-  bool mStageMs = false;
-  double mStageWidthMs = -1.0;
+    Scope capture;
+    ni::GroundClock beat;
+    std::atomic<bool> capturing { false };
+    double sampleRate = 44100.0;
+    /* The dry input and the engine's sweep, for the capture. Sized in
+     * prepareToPlay, never on the audio thread; a longer block is processed
+     * in chunks of this. */
+    std::vector<float> dry, sweep;
 
-  /* iPlug2's `sample` is double and the engine's float path is the one the
-   * golden render pins. Sized in ResetAudio, never on the audio thread. */
-  std::vector<float> mL, mR, mDry, mSweep;
+    std::unique_ptr<EngineModel> editorModel;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Processor)
 };
+
+} // namespace ni::tg

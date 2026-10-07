@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The window every editor is drawn in.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * What the design system gives EVERY window, so no editor lays it out itself:
  * the ground as its first child, the content from the top ("nothing is centred

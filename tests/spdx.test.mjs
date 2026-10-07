@@ -21,8 +21,10 @@
  *               # SPDX-License-Identifier: GPL-3.0-or-later
  *               # Copyright (C) 2026 Torben Gräber
  *
- * A shebang stays the first line, and the pair follows it. A generated source
- * file is still ours: its generator writes the two lines.
+ * A shebang stays the first line, and the pair follows it; so do a
+ * Dockerfile's parser directives (`# syntax=...`, `# check=...`), which
+ * Docker reads only before any other line, comments included. A generated
+ * source file is still ours: its generator writes the two lines.
  *
  *   node --test tests/spdx.test.mjs
  */
@@ -69,10 +71,6 @@ const EXCLUDED = [
    'vendored code and the iPlug2 submodule: third-party code keeps its own notices'],
   [/^design\//,
    'the mirrors of the two design artifacts, which stay byte for byte what was published'],
-  [/^ui-kit\//,
-   'the Solid kit, deleted with the web editors later in the JUCE refactor'],
-  [/^plugins\/[^/]+\/ui\//,
-   'the Solid editors, deleted with the kit'],
   [/^engines\/trance-gate\/include\/(plugin_api_v1|audio_fx_api_v2)\.h$/,
    "Schwung's module-API headers, copied unmodified: they keep their origin, " +
    'which THIRD_PARTY_LICENSES.md records'],
@@ -90,10 +88,13 @@ const owned = () =>
     .filter((f) => statSync(join(ROOT, f), { throwIfNoEntry: false })?.isFile());
 
 /* The two lines that must be the notice: the first that can hold a comment,
- * which is after a shebang, and inside an .astro file's opening fence. */
+ * which is after a shebang, after a Dockerfile's parser directives, and inside
+ * an .astro file's opening fence. */
+const DIRECTIVE = /^#\s*[A-Za-z]+=\S/;
 function headOf(file, text) {
   const lines = text.split('\n');
-  const at = lines[0]?.startsWith('#!') || (file.endsWith('.astro') && lines[0] === '---') ? 1 : 0;
+  let at = lines[0]?.startsWith('#!') || (file.endsWith('.astro') && lines[0] === '---') ? 1 : 0;
+  if (basename(file) === 'Dockerfile') while (DIRECTIVE.test(lines[at] ?? '')) at++;
   return lines.slice(at, at + 2);
 }
 
@@ -111,7 +112,8 @@ test('every owned source file opens with its licence and its copyright', () => {
   }
   assert.deepEqual(wrong, [],
     `${wrong.length} source file(s) do not open with the licence notice. Put these two ` +
-    'lines first (after a shebang; inside the fence in .astro), in the file\'s comment ' +
+    'lines first (after a shebang or a Dockerfile\'s parser directives; inside the fence ' +
+    'in .astro), in the file\'s comment ' +
     `syntax:\n  ${wrong.join('\n  ')}`);
 });
 

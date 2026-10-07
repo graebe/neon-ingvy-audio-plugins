@@ -26,7 +26,12 @@ mkdir -p build
 # cargo, wherever it is installed -- this file's own version of this searched
 # only via rustup, so a toolchain installed any other way was not found.
 . "$ROOT/scripts/rust-env.sh"
-cargo build --release -p tg-move
+# trance_gate_core.h IS GENERATED: tg-capi's build.rs writes it from the Rust
+# (engines/shared/cbindgen/capi_header.rs) into the directory this names, inside
+# the target directory it was built with. include/ holds only Schwung's own
+# headers now, vendored for the Move-side tests below.
+CAPI="$ROOT/target/capi-include"
+NI_CAPI_INCLUDE_DIR="$CAPI" cargo build --release -p tg-move
 # ONE staticlib carries both surfaces -- the Schwung vtable and the tg_core_*
 # ABI -- because two would each bundle a copy of the Rust runtime and collide.
 #
@@ -34,14 +39,14 @@ cargo build --release -p tg-move
 # repository when this was written; as a subtree in the monorepo it shares one
 # Cargo workspace, so the target directory is the root's.
 ENGINE=$ROOT/target/release/libtg_move.a
-cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude \
+cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude -I"$CAPI" \
    tests/test_gate.c "$ENGINE" -o build/test_gate -lm
 ./build/test_gate || exit 1
 
 # The portable engine's own tests: sample rate, the float paths and the
 # transport struct -- three freedoms the Schwung shell cannot exercise,
 # because it is always 44100, always int16 and always has a host.
-cc -std=c11 -Wall -Wextra -Iinclude \
+cc -std=c11 -Wall -Wextra -Iinclude -I"$CAPI" \
    tests/test_core.c "$ENGINE" -o build/test_core -lm
 ./build/test_core || exit 1
 
@@ -98,7 +103,7 @@ cc -std=c11 -Wall -Wextra -Iinclude \
 # here. tests/render_plugin.c pins the same bytes through the plugin path.
 # Previous: 3992810c52d7962b4d25b3a30494ee2e
 GOLDEN=d8389d25abb3c44b34461f3029f6ab48
-cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude \
+cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude -I"$CAPI" \
    tests/render_ref.c "$ENGINE" \
    -o build/render_ref -lm
 GOT=$(./build/render_ref | md5 -q 2>/dev/null || ./build/render_ref | md5sum | cut -d" " -f1)
@@ -135,7 +140,7 @@ if [ -d "$SHARED/param_pages" ]; then
   # against the PREVIOUS build's JSON, silently, for as long as the old
   # binary kept working. A stale fixture reports the old contract as the
   # current one, which is worse than no fixture at all.
-  cc -std=c11 -Iinclude tests/dump_params.c "$ENGINE" \
+  cc -std=c11 -Iinclude -I"$CAPI" tests/dump_params.c "$ENGINE" \
      -o build/dump_params -lm
   ./build/dump_params > build/chain_params.json
   TG_PARAMS=build/chain_params.json node tests/smoke_ui.mjs "$SHARED" build/.smoke

@@ -70,7 +70,6 @@ members = [
     # the same rule: a piece moves here only once it names no product.
     "engines/shared/crates/ni-dsp",           # C-compatible fmt, rates, curves, glides
     "engines/shared/crates/ni-schwung",       # the audio_fx v2 glue -> every module
-    "engines/shared/crates/ni-testkit",       # test-only: the counting allocator
     "engines/shared/crates/music-core",       # pitches, chords, keys: the theory
 ]
 
@@ -127,7 +126,17 @@ proptest = { version = "1.11.0", default-features = false }
 # table-driven cases and its benchmarks.
 rstest = { version = "0.27.0", default-features = false }
 divan = { version = "0.1.21", default-features = false }
-# Build only: the C headers, written from the Rust they declare.
+# The no-allocation guard every tests/no_alloc.rs installs: an allocator that
+# refuses, on the thread that asked, any allocation or free inside
+# assert_no_alloc(..). A dev-dependency wherever it appears. Without its
+# default feature, which switches the guard off in a release build; each test
+# asks for warn_debug and warn_release instead, so the guard counts in both
+# profiles and the test asserts the count, rather than aborting the binary.
+assert_no_alloc = { version = "1.1.2", default-features = false }
+# Each C ABI crate's headers, written from its Rust by its build.rs
+# (engines/shared/build/capi_header.rs). A build-dependency wherever it
+# appears: it runs on the build machine and ships in nothing. Without its
+# default feature, which is the command line's argument parser.
 cbindgen = { version = "0.29.4", default-features = false }
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.

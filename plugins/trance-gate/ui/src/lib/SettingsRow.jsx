@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The row under the panels: the slot, the pattern's settings, and the three
  * actions that replace the pattern rather than adjust it.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { Button, sendMessage } from '@ultraviolet/ui';
 import { ParamSelect, ParamToggle } from '@ultraviolet/ui/params';

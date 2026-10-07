@@ -20,3 +20,7 @@ ground-capi = { path = "../../../ground/crates/ground-capi" }
 # The handoff that lends the shell's main-thread objects to its audio thread,
 # carried in this archive for the ground's reason.
 shell-capi = { path = "../../../shell/crates/shell-capi" }
+
+# audio_bus.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }
