@@ -24,10 +24,21 @@
  *
  * THE WINDOW'S OWN STATE, WIRED ONCE. The Motion switch shows what the model
  * holds (EditorModel::motion) and asks it to change; the Ground follows it.
- * The hint's info comes from an InfoTracker on the whole window, so a control
- * anywhere in the content needs nothing but its line (setInfo). An action's
+ * The switch's line is the kit's (motionInfo), so it reads the same in every
+ * window. The hint's info comes from an InfoTracker on the whole window, so a
+ * control anywhere in the content needs nothing but its line (setInfo). An
+ * action's
  * outcome stays for outcomeMs, timed by the clock: what the bar shows is a
  * function of the time now, and the timer only refreshes it.
+ *
+ * A PRESS ELSEWHERE ENDS A TYPED NAME, as a click anywhere on the web page
+ * blurred its input. JUCE moves the keyboard only to a component that takes
+ * it, and a press on the window's background, an LED, a meter or the hint's
+ * text lands on one that does not, so the field would keep the keyboard and
+ * its edit open. The frame hears every press in the window (pressed()) and
+ * ends the edit of a TextField the press was not on: the field keeps what
+ * was typed and lets the keyboard go. (A Readout's field ends its own: it is
+ * modal while open.)
  *
  * LIGHT. The Ground is opaque, so the light of what stands on it cannot be
  * painted by this component (its paint() is under every child). It is painted
@@ -103,7 +114,13 @@ public:
     /* The outcome shown at the clock's time now, if any. */
     std::optional<Clause> outcome() const;
 
-    /* The bar's own two lines: the Motion switch's and the Signature's. */
+    /* The Motion switch's line in every window, which the frame gives it. */
+    static constexpr InfoText motionInfo {
+        "Motion — ripple the background on the beat; remembered on this computer."
+    };
+
+    /* The bar's own two lines: the Motion switch's (motionInfo unless an
+     * editor says otherwise) and the Signature's. */
     void setMotionInfo (const juce::String&);
     void setSignatureInfo (const juce::String&);
 
@@ -115,6 +132,11 @@ public:
     /* Ends an outcome or an info grace that has run out by the clock: what
      * the timers do, and what a test does after moving its clock. */
     void poll();
+
+    /* A press landed on `at`, after `at` had it: a name being typed anywhere
+     * else in the window is kept. What every press in the window calls, and
+     * what a test calls for one. */
+    void pressed (juce::Component& at);
 
     Ground& ground() noexcept { return groundLayer; }
     Hint& hint() noexcept { return bar; }
@@ -134,6 +156,18 @@ private:
         void paint (juce::Graphics&) override;
     };
 
+    /* Every press in the window, to pressed(). */
+    class PressListener final : public juce::MouseListener
+    {
+    public:
+        explicit PressListener (EditorFrame&);
+        ~PressListener() override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+    private:
+        EditorFrame& frame;
+    };
+
     void timerCallback() override { poll(); }
     void refreshBar();
 
@@ -148,6 +182,7 @@ private:
 
     InfoState info;
     InfoTracker tracker { *this, info };
+    PressListener presses { *this };
     FrameClock frames;
 
     std::optional<Clause> shownOutcome;

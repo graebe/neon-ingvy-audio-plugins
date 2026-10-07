@@ -65,6 +65,7 @@ ParamSelect::ParamSelect (juce::RangedAudioParameter& p, const juce::StringArray
         const int last = getOptions().size() - 1;
         bound.commit (last > 0 ? (float) index / (float) last : 0.0f);
     };
+    onReset = [this] { bound.reset(); };
     refresh();
 }
 

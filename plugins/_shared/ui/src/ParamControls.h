@@ -14,8 +14,9 @@
  *   ParamKnob    a drag is begin, input per move, end; a key commits; a
  *                double-click resets to the PLUGIN's default; typed text is
  *                read by the plugin (getValueForText)
- *   ParamSelect  a choice commits; the options are the parameter's own
- *                choices unless the editor names them
+ *   ParamSelect  a choice commits; a double-click resets to the plugin's
+ *                default; the options are the parameter's own choices unless
+ *                the editor names them
  *   ParamToggle  a flip commits; on is the upper half of the range, which is
  *                the second of two options -- a switch for a parameter of two
  *                ("two options are a Toggle", Select card)

@@ -7,6 +7,7 @@
 #include "EditorFrame.h"
 
 #include "Luminous.h"
+#include "TextField.h"
 
 namespace ni::ui
 {
@@ -32,6 +33,41 @@ void EditorFrame::Layer::paint (juce::Graphics& g)
 {
     paintChildLights (g, *this);
 }
+
+/* ------------------------------------------------------------ presses -- */
+
+EditorFrame::PressListener::PressListener (EditorFrame& f) : frame (f)
+{
+    frame.addMouseListener (this, true);
+}
+
+EditorFrame::PressListener::~PressListener()
+{
+    frame.removeMouseListener (this);
+}
+
+void EditorFrame::PressListener::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.eventComponent != nullptr)
+        frame.pressed (*e.eventComponent);
+}
+
+namespace
+{
+/* The TextField under `c` with an edit open, if any: one at most, as only
+ * one has the keyboard. */
+TextField* editedIn (juce::Component& c)
+{
+    for (auto* child : c.getChildren())
+    {
+        if (auto* field = dynamic_cast<TextField*> (child); field != nullptr && field->isBeingEdited())
+            return field;
+        if (auto* field = editedIn (*child))
+            return field;
+    }
+    return nullptr;
+}
+} // namespace
 
 /* --------------------------------------------------------------- frame -- */
 
@@ -59,6 +95,7 @@ EditorFrame::EditorFrame (EditorModel& m, Clock c)
         model.setMotion (on);
         motionChanged();
     };
+    setInfo (motionToggle, motionInfo);
     bar.setMotionSwitch (&motionToggle);
     bar.setPadding (padding);
 
@@ -134,6 +171,14 @@ void EditorFrame::motionChanged()
     const bool on = model.motion();
     motionToggle.setOn (on);
     groundLayer.setEnabled (on);
+}
+
+void EditorFrame::pressed (juce::Component& at)
+{
+    /* `at` has had its press and taken the keyboard if it takes it; a field
+     * still typed into was pressed past -- unless the press was on it. */
+    if (auto* field = editedIn (*this); field != nullptr && field != &at && ! field->isParentOf (&at))
+        field->finishEdit();   // its commit may delete it
 }
 
 void EditorFrame::poll()

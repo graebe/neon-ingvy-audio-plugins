@@ -48,9 +48,9 @@ juce::Rectangle<int> placeInside (juce::Rectangle<int> window, juce::Rectangle<i
 class Popup final : public juce::Component
 {
 public:
-    /* `dismissed` is called for a press outside the content. It may delete
-     * this. */
-    explicit Popup (std::function<void()> dismissed);
+    /* `dismissed` is called for a press outside the content, with the press.
+     * It may delete this. */
+    explicit Popup (std::function<void (const juce::MouseEvent&)> dismissed);
     ~Popup() override;
 
     /* Covers `window` and shows `content` at `bounds` (window coordinates)
@@ -60,7 +60,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
 
 private:
-    std::function<void()> dismissed;
+    std::function<void (const juce::MouseEvent&)> dismissed;
 
     JUCE_DECLARE_NON_COPYABLE (Popup)
 };

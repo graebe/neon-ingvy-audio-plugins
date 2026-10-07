@@ -7,7 +7,8 @@
  * THE FIELD: 28px, a bg-200 well on a line-200 hairline, the option in `value`
  * type padded 12px on the left and cut with an ellipsis rather than wrapped,
  * the design's chevron in ink-muted 6px in from the right. Under the pointer
- * the well rises to bg-300; while its list is open its hairline is uv; keyboard
+ * the well rises to bg-300 and its hairline is ink-dim (1.1.0's States);
+ * while its list is open its hairline is uv; keyboard
  * focus is glow-focus round it; disabled, bg-100 on line-100 in ink-dim. A
  * label may sit BESIDE it on the same 28px row, in the label style, a fixed
  * width wide (labelWidth): these say how a thing is measured or drawn, and a
@@ -28,10 +29,21 @@
  *                           leaves it open to choose from
  *   click a row             chooses it and closes
  *   press outside the list  closes it, and goes no further
- *   keys, closed            Space, Enter, Up or Down open it
+ *   double-click the field  onReset: the parameter's default (1.1.0's
+ *                           interaction conventions). The first click opens
+ *                           the list, so the second lands on the list or the
+ *                           layer round it, wherever it opened -- and is the
+ *                           select's whenever it is over the field
+ *   keys, closed            Space, Enter, Up or Down open it; typing chooses
  *   keys, open              Up and Down move, Home and End go to the ends,
  *                           Page Up and Down a list's height, Enter or Space
- *                           choose, Escape or Tab close
+ *                           choose, Escape or Tab close; typing moves
+ *
+ * TYPING, as a focused <select> takes it: characters typed within typeAheadMs
+ * of each other make one prefix, and the first option after the current one
+ * that starts with it is chosen (closed) or moved to (open); one key pressed
+ * again goes on to the next option that starts with it. On the Listen-In's
+ * buses, 3 is bus 3 and 1, 6 is bus 16.
  *
  * The keyboard stays with the Select while its list is open, so its focus and
  * its ring never move; the list is only drawn and pointed at.
@@ -97,10 +109,15 @@ public:
      * The list may be deleted from it. */
     std::function<void (int row)> onChoose;
 
+    /* A press on the list, before it is a choice: true if the owner took it
+     * (and the list may be gone). */
+    std::function<bool (const juce::MouseEvent&)> onPress;
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
+    void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
@@ -149,6 +166,12 @@ public:
 
     /* A choice of another option. */
     std::function<void (int index)> onChange;
+    /* A double-click on the field: back to the default, which only the
+     * owner knows. */
+    std::function<void()> onReset;
+
+    /* How long typed characters run together into one prefix. */
+    static constexpr double typeAheadMs = 1000.0;
 
     /* ---- the list */
     void open();
@@ -177,6 +200,10 @@ public:
 
 private:
     void choose (int);
+    bool secondPress (const juce::MouseEvent&);
+    /* The option a typed key goes to; -1 for typing that names none, -2
+     * for a key that is not typing. */
+    int typedOption (const juce::KeyPress&);
     void setFieldHovered (bool);
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
@@ -187,6 +214,8 @@ private:
     int fieldWidth = 96;
     bool fieldHovered = false;
     bool pressOpened = false;
+    juce::String typed;
+    double typedAt = 0.0;
 
     FocusVisibility focus { *this };
     std::unique_ptr<SelectList> list;
