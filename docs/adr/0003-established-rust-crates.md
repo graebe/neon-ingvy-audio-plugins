@@ -117,12 +117,12 @@ what the code does not do.
   rather than the fnv crate: its digits are part of every name two builds
   must agree on, and a test pins them to FNV's published vector.
 
-One row is held up by a licence rather than by its turn. `assert_no_alloc`
-is BSD-1-Clause, which the allowlist in [0001](0001-gpl-3.0-or-later.md) does
-not name. BSD-1-Clause is compatible with GPLv3, so adding it is a decision
-about the allowlist, not a technical one. Until that decision is made,
-ni-testkit's counting allocator is what proves that nothing on the audio
-thread allocates.
+`assert_no_alloc` is BSD-1-Clause. The owner's licence policy names BSD-1,
+-2 and -3, so the allowlist in [0001](0001-gpl-3.0-or-later.md), deny.toml
+and about.toml carry BSD-1-Clause: it asks only that its source keep its
+notice, and GPLv3 can take it in. Its row waits for its turn like the others.
+Until it comes, ni-testkit's counting allocator is what proves that nothing
+on the audio thread allocates.
 
 ## How the shell's threads use them
 

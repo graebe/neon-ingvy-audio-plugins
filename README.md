@@ -214,7 +214,7 @@ inside every bundle and every module beside `LICENSE`.
 | VST3 SDK | **MIT** since 3.8 | permissive; Steinberg withdrew the GPLv3-or-proprietary dual licence with 3.8.0 |
 | iPlug2 with WDL, the shell until JUCE replaces it | **zlib** | permissive |
 | CLAP, clap-helpers, JSON for Modern C++ (compiled in by iPlug2) | **MIT** | permissive |
-| Rust crates from crates.io | each under a licence on the allowlist in [`deny.toml`](deny.toml): MIT, Apache-2.0 (also WITH LLVM-exception), BSD-2-Clause, BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, CC0-1.0, Unlicense, GPL-3.0-or-later or GPL-3.0-only | `cargo deny` refuses anything else, GPL-2.0-only included, which cannot be combined with GPLv3; cargo-about writes the crates' notices into THIRD_PARTY_LICENSES.md |
+| Rust crates from crates.io | each under a licence on the allowlist in [`deny.toml`](deny.toml): MIT, Apache-2.0 (also WITH LLVM-exception), BSD-1-Clause, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, MPL-2.0, Unicode-3.0, CC0-1.0, Unlicense, GPL-3.0-or-later or GPL-3.0-only | `cargo deny` refuses anything else, GPL-2.0-only included, which cannot be combined with GPLv3; cargo-about writes the crates' notices into THIRD_PARTY_LICENSES.md |
 | the Side-Chain's MIDI trigger, ported from [schwung-ducker](https://github.com/charlesvestal/schwung-ducker) | **MIT**, © 2026 Charles Vestal | a port is a derivative work, so its notice stays beside ours |
 | JetBrains Mono, in every editor | **SIL OFL 1.1** | `OFL.txt` travels with the font |
 
