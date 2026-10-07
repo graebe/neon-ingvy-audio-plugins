@@ -289,6 +289,11 @@ function(ni_add_juce_plugin product)
     if (ARG_EDITOR)
         list(APPEND notices ${NI_UI_FONT_LICENSE})
     endif()
+    # The steps below run when the bundle is linked, and only then: a notice
+    # edited later would otherwise stay stale in every bundle an incremental
+    # build leaves alone. As a link dependency, editing one relinks the bundle,
+    # and so copies it in and signs again.
+    set_property(TARGET ${ARG_TARGET}_VST3 APPEND PROPERTY LINK_DEPENDS ${notices})
     set(steps
         COMMAND ${CMAKE_COMMAND} -E make_directory "${bundle}/Contents/Resources"
         COMMAND ${CMAKE_COMMAND} -E copy ${notices} "${bundle}/Contents/Resources/")
