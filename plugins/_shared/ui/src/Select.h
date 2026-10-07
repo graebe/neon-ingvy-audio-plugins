@@ -39,6 +39,11 @@
  * IT TAKES AN INDEX, NOT A PARAMETER: what a choice means is the caller's
  * (ParamSelect binds a host parameter). onChange is told only of a choice
  * that is not the current one.
+ *
+ * NONE IS AN INDEX TOO: -1, for a choice the caller holds that no option
+ * names (a channel whose bus has gone). The face shows the em dash a missing
+ * reading shows, never a neighbouring option it would be mistaken for, and
+ * every row is a change, so any pick is told.
  */
 #pragma once
 
@@ -120,7 +125,8 @@ public:
     Select();
     ~Select() override;
 
-    /* The options, in order, and the one shown. setIndex sends nothing. */
+    /* The options, in order, and the one shown: an option's index, or -1 for
+     * none (any negative is none). setIndex sends nothing. */
     void setOptions (const juce::StringArray&);
     const juce::StringArray& getOptions() const noexcept { return options; }
     void setIndex (int);

@@ -397,6 +397,24 @@ TEST_CASE ("spectrogram editor: the comparison is its own setting, and the clash
     CHECK_FALSE (rig.picture().isClashShown());
 }
 
+TEST_CASE ("spectrogram editor: a compared channel with no bus shows as none, and picking input sends")
+{
+    /* The session's default compares input against channel 1; with no
+     * Listen-In there is no channel 1. */
+    Rig rig;
+    auto& v = rig.view();
+    CHECK (v.compareSelect().getIndex() == 0);
+    CHECK (v.againstSelect().getIndex() == -1);
+
+    /* Down opens the list with no row lit, Down again lights input. */
+    key (v.againstSelect(), juce::KeyPress::downKey);
+    key (v.againstSelect(), juce::KeyPress::downKey);
+    key (v.againstSelect(), juce::KeyPress::returnKey);
+    REQUIRE (rig.model.looks.size() == 1);
+    CHECK (rig.model.looks[0].b == 0);
+    CHECK (v.againstSelect().getIndex() == 0);
+}
+
 TEST_CASE ("spectrogram editor: a Listen-In inserted while the window is open joins both lists by its name")
 {
     Rig rig;

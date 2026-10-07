@@ -176,6 +176,37 @@ TEST_CASE ("select: choosing the option it shows tells nobody")
     CHECK_FALSE (f.select.isOpen());
 }
 
+TEST_CASE ("select: none is an index -- it stays none, and any row chosen is a change")
+{
+    Fixture f;
+    f.select.setIndex (-1);
+    CHECK (f.select.getIndex() == -1);
+    /* New options keep it none; an index past them is still clamped. */
+    f.select.setOptions ({ "1/4", "1/8" });
+    CHECK (f.select.getIndex() == -1);
+    f.select.setIndex (7);
+    CHECK (f.select.getIndex() == 1);
+    f.select.setIndex (-3);
+    CHECK (f.select.getIndex() == -1);
+
+    /* The list opens with no row lit; Down lights the first. */
+    key (f.select, juce::KeyPress::returnKey);
+    REQUIRE (f.select.isOpen());
+    CHECK (f.select.getList()->getCurrent() == -1);
+    CHECK (f.select.getList()->getHighlighted() == -1);
+    key (f.select, juce::KeyPress::downKey);
+    CHECK (f.select.getList()->getHighlighted() == 0);
+    key (f.select, juce::KeyPress::returnKey);
+    CHECK (f.chosen == std::vector<int> { 0 });
+
+    /* Enter on a list with nothing lit chooses nothing, and closes it. */
+    f.select.setIndex (-1);
+    key (f.select, juce::KeyPress::returnKey);
+    key (f.select, juce::KeyPress::returnKey);
+    CHECK_FALSE (f.select.isOpen());
+    CHECK (f.chosen.size() == 1);
+}
+
 TEST_CASE ("select: the keyboard going elsewhere closes it")
 {
     Fixture f;

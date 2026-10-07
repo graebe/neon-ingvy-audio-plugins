@@ -269,8 +269,14 @@ void SpectrogramView::syncSession (bool force)
     range.setIndex (rangeIndex (s.rangeLo, s.rangeHi));
     view.setSelected (s.view);
     view.setSummary (viewSummary (s.view, channelNames (shown.sources)));
-    compareA.setIndex (s.compareA);
-    compareB.setIndex (s.compareB);
+    /* A channel the session holds whose bus is not here (compareB is 1 with
+     * no Listen-In) shows as none, not as a neighbour it would be taken for;
+     * picking anything then sends. */
+    const auto shownIndex = [] (const ni::ui::Select& select, int channel) {
+        return channel >= 0 && channel < select.getOptions().size() ? channel : -1;
+    };
+    compareA.setIndex (shownIndex (compareA, s.compareA));
+    compareB.setIndex (shownIndex (compareB, s.compareB));
     clash.setOn (s.clash);
     picture().setClash (s.clash);
 }

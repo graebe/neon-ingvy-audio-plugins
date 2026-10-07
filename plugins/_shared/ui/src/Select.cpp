@@ -30,6 +30,13 @@ constexpr int caretRoom = (int) uv::tok::size::controlH;
 constexpr int caretInset = 6;                           // .select .icon { right: 6px }
 constexpr int glyph = 16;
 
+/* An index the options hold, or -1 for none: a negative stays none, anything
+ * else is clamped to the list. */
+int indexIn (const juce::StringArray& options, int i)
+{
+    return i < 0 ? -1 : juce::jlimit (0, juce::jmax (0, options.size() - 1), i);
+}
+
 /* What a screen reader hears of a select: its option, which it may set by
  * name, and whether its list is open. */
 class SelectAccessibility final : public juce::AccessibilityHandler
@@ -277,13 +284,13 @@ void Select::setOptions (const juce::StringArray& o)
 {
     close();
     options = o;
-    index = juce::jlimit (0, juce::jmax (0, options.size() - 1), index);
+    index = indexIn (options, index);
     repaint();
 }
 
 void Select::setIndex (int i)
 {
-    i = juce::jlimit (0, juce::jmax (0, options.size() - 1), i);
+    i = indexIn (options, i);
     if (i == index)
         return;
     index = i;
@@ -511,8 +518,9 @@ void Select::paint (juce::Graphics& g)
 
     /* One line, and cut if it has to be: a wrapped value would make the
      * control twice as tall (.select-value). */
+    /* None is the em dash, as a reading with nothing to read. */
     if (options.size() > 0)
-        uv::type::draw (g, options[index],
+        uv::type::draw (g, index >= 0 ? options[index] : juce::String::fromUTF8 ("\xe2\x80\x94"),
                         box.withTrimmedLeft (hair + (float) pad).withTrimmedRight (hair + (float) caretRoom),
                         uv::type::value(), live ? c::ink : c::inkDim);
 
