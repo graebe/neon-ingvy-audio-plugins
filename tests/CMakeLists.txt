@@ -918,9 +918,10 @@ ni_test_tiers(
 # ni_tests` builds the test programs and the engine archives they link, and no
 # plugin bundle -- which is what lets the quick tier skip the bundles entirely.
 set(_ni_test_bins)
-# tests/ui's programs too: the kit's and the editors' tests are in the quick
-# tier, and a quick tier that had not built them ran none of them.
-foreach(dir ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/cpp ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+# Every subdirectory's programs too -- tests/ui's, a product's own: a quick
+# tier that had not built them ran none of them.
+get_property(_ni_test_dirs DIRECTORY PROPERTY SUBDIRECTORIES)
+foreach(dir ${CMAKE_CURRENT_SOURCE_DIR} ${_ni_test_dirs})
     get_property(_b DIRECTORY ${dir} PROPERTY BUILDSYSTEM_TARGETS)
     foreach(t ${_b})
         get_target_property(_type ${t} TYPE)
