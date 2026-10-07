@@ -28,13 +28,6 @@ set(NI_SHELL_SOURCES
     ${NI_SHELL_DIR}/ni/Wire.cpp)
 add_library(ni_shell INTERFACE)
 target_include_directories(ni_shell INTERFACE ${NI_SHELL_DIR})
-# The system's save and open panels (ni/FileDialog.h) and its clipboard
-# (ni/Clipboard.h): AppKit glue, under ARC like iPlug2's own WebView sources,
-# and UTType for the panels' file types.
-if (APPLE)
-    list(APPEND NI_SHELL_SOURCES ${NI_SHELL_DIR}/ni/FileDialog.mm ${NI_SHELL_DIR}/ni/Clipboard.mm)
-    target_link_libraries(ni_shell INTERFACE "-framework UniformTypeIdentifiers")
-endif()
 
 # resources/web is vite's output and untracked; a plugin whose editor did not
 # build must not configure (it would install a white window over a working
@@ -80,12 +73,6 @@ function(ni_add_plugin name)
         "${dir}/resources/web/fonts/*")
     ni_require_editor(${product} ${web})
 
-    # A source property is the calling directory's, so it is set here, where
-    # the plugin's targets are made.
-    if (APPLE)
-        set_source_files_properties(${NI_SHELL_DIR}/ni/FileDialog.mm ${NI_SHELL_DIR}/ni/Clipboard.mm
-            PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-    endif()
     iplug_add_plugin(${name}
         SOURCES ${ARG_SOURCES} ${NI_SHELL_SOURCES} config.h resources/resource.h
         FORMATS VST3 CLAP AU

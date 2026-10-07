@@ -8,12 +8,13 @@ Two tiers, one entry point. The **quick** tier is the loop you run while
 working; the **full** tier is the verification before you call something done.
 
 ```sh
-scripts/test.sh quick                  # npm run test:quick
-scripts/test.sh full [--bundles DIR]   # npm run test:full
+scripts/test.sh quick [--build DIR]                  # npm run test:quick
+scripts/test.sh full [--build DIR] [--bundles DIR]   # npm run test:full
 ```
 
-Both configure `build/` with `-DIPLUG_DEPLOY_PLUGINS=OFF` if it does not exist
-yet, so nothing is ever installed into `~/Library/Audio/Plug-Ins`.
+Both configure `build/` (or `--build DIR`, one per person or agent building at
+the same time) with `-DIPLUG_DEPLOY_PLUGINS=OFF` if it does not exist yet, so
+nothing is ever installed into `~/Library/Audio/Plug-Ins`.
 
 ## Quick — the developer loop
 
@@ -26,7 +27,12 @@ archives they link, and no plugin bundle; then `ctest -L quick` runs:
   and `cargo_deny`, the licence gate over their dependency graph (below),
 - the C tests against each engine's hand-written ABI, and the oracles that pin
   the editors' maths to the engine's measured output,
-- the doctest wire, state and parameter tests (`tests/cpp`),
+- the doctest wire, state and parameter tests (`tests/cpp`), the JUCE shell's
+  state codec over every product's iPlug2 fixture (`nist_fixtures`), NI Trance
+  Gate's processor, model and editor in one program (`tg_processor`), and its
+  audio callback under an allocation guard (`tg_rt`, macOS),
+- the native kit's and editors' unit tests (`tests/ui`; their snapshot
+  goldens are in the full tier),
 - all of the kit's and the editors' JavaScript (`ui_unit`, the same files
   `npm test` runs),
 - the lint-like checks: `versions`, `release`, `licenses` (the tree, not the
@@ -46,16 +52,18 @@ Everything quick runs, and:
 | label | what |
 |---|---|
 | `render` | the render A/B goldens: four seconds through each plugin's audio path, hashed |
-| `host` | the AUs from `build/out`, loaded by path: `tg_au`, `sc_au` render through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens every plugin's real editor as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it; `iplug2_fixtures` reopens the saved states in `tests/fixtures/iplug2` in the VST3s from `build/out`, and every parameter must read what was captured |
+| `host` | NI Trance Gate's VST3 from `build/out`, hosted by JUCE (`tg_host`): its iPlug2 class, its parameters through the controller, every fixture reopened and saved back byte for byte, the golden render through its audio path, and the window under a running transport with a set loaded on another thread; `juce_host_*` runs, saves and opens every bundle on the JUCE shell. The AUs of the products still on iPlug2 from `build/out`, loaded by path: `sc_au` renders through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens every plugin's real editor as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it; `iplug2_fixtures` reopens the saved states in `tests/fixtures/iplug2` in the VST3s from `build/out`, and every parameter must read what was captured |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
-| `bundles` | every built bundle carries its notices |
+| `bundles` | every built bundle carries its notices; every JUCE bundle's signature verifies as Live's scanner checks it (`codesign --verify --deep --strict`); the bundles' version spellings (`versions_bundles`) |
 | `site` | every root-relative link on the built site resolves |
 | `e2e` | the four editors in Chrome against their mock hosts (below) |
 | `coverage` | the coverage floor, in the instrumented build |
 
 `scripts/test.sh full` builds everything and the site, runs `ctest -L full`,
 then `scripts/coverage.sh` with the floor enforced, then `auval`, `pluginval`
-and `clap-validator` over the bundles in `build/out` (or `--bundles DIR`).
+and `clap-validator` over the bundles in `build/out` (or `--bundles DIR`), and
+`pluginval` with its editor tests and Steinberg's VST3 `validator` over every
+bundle on the JUCE shell. `--build DIR` uses another build directory.
 
 **clap-validator is held to a manifest, not to zero.** Some of its failures are
 iPlug2's, fixed by the patches in `docs/iplug2-patches` that are proposed but
@@ -210,8 +218,7 @@ e2e suite and the bundle's source map — into one report in `build/coverage/`.
 `tests/coverage.floors.json` holds the 80 % floor and it is enforcing: a unit
 below it, or a first-party file no test loads, fails. The only exemptions are
 what cannot be built into anything a test runs, or driven by one — the Schwung
-module's `ui_chain.js`; the five plugin-class files that compile only inside a
-plugin-format target; and the two AppKit glue files, `FileDialog.mm` and
-`Clipboard.mm`, which also compile only there, and which need a person to answer
-a save panel or would overwrite the clipboard of whoever runs the tests — and
-each says why.
+module's `ui_chain.js`, and the plugin-class files of the products still on
+iPlug2, which compile only inside a plugin-format target — and each says why.
+A product on the JUCE shell has no such file: its processor, model and editor
+compile into a test program (NI Trance Gate's `tg_processor`).

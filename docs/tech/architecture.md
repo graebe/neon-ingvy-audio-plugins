@@ -182,7 +182,7 @@ the fifteen host parameters are a window onto the current slot:
 - **On a switch the engine wins.** The block the host's Slot moves -- automation,
   the editor, the host's UI -- writes nothing else; the frame with the new slot is
   published, and the next idle tick moves every host parameter to it
-  (`tg_shell_take_params`, `SetParamFromPlugin`), so automation lanes, the host's
+  (`tg_shell_take_params`, `Processor::followEngine`), so automation lanes, the host's
   UI and the editor all show the recalled sound. A paste is the same.
 - **A state load is one edit** (`tg_shell_load`): the blob, then the restored
   parameters into the current slot. The parameters are the exact values the
@@ -192,33 +192,34 @@ the fifteen host parameters are a window onto the current slot:
 - **A save writes what the next block will hold** (`tg_shell_save`): the
   engine's blob with the host's values applied the way the next push would apply
   them, so a project saved before any audio has run still has the parameters the
-  host shows, in the slot they belong to.
+  host shows, in the slot they belong to -- and, between a Slot switch and the
+  block that applies it, the new slot's values beside the new slot's blob
+  (`tg_shell_next_params`), never the slot that was left.
 
 **Slot files** (`.nitgslot`, one slot; `.nitgbank`, all eight) are the engine's
 text, written and strictly read by `tg-core`'s `slotfile.rs` -- the state blob's
-own per-slot fields under a format id and a version. The editor asks with a
-message (107 export, 108 import); the plugin shows the system's save or open
-panel as a sheet on the editor's window (`ni/FileDialog.mm`, which remembers the
-last folder per product), moves the bytes (`Patch.cpp`), and answers with the
-outcome in words (68), which the hint bar shows. A WKWebView in a plugin has no
-download manager, which is why the panels are the plugin's and not the page's.
-An import is checked on the main thread and queued whole (`tg_shell_import`),
-with the slot the host showed, as a paste is (below): a refused file changes
-nothing, and an accepted one is followed by the host exactly like a paste.
+own per-slot fields under a format id and a version. NI Trance Gate is on the
+JUCE shell, and its native editor shows the system's save or open panel itself
+(`juce::FileChooser`, behind `editor/FilePanels.h`), remembering the last
+folder in the processor's model; the model turns a slot into text and back
+(`EngineModel`: `tg_shell_export`, `tg_shell_import`), and the editor words the
+outcome in the hint bar. An import is checked on the message thread and queued
+whole (`tg_shell_import`), with the slot the host showed, as a paste is
+(below): a refused file changes nothing, and an accepted one is followed by the
+host exactly like a paste, and marks the set unsaved.
 
-**Copy and paste** go the same way, for the same kind of reason: inside a host a
-WKWebView may not read the clipboard, and ⌘V never reaches it -- the host's menu
-takes it. The editor asks (109 copy, 110 paste); the plugin reads or writes the
-system's clipboard on the main thread (`ni/Clipboard.mm`, NSPasteboard, behind
-the `ni::Clipboard` interface so `tests/cpp` stands a fake in) and answers on 68.
-Copy is the current slot as a slot file's text (`tg_shell_export`). Paste hands
-whatever is there to the engine, which classifies it whole (`tg-core`'s
-`paste.rs`, through `tg_shell_paste`): a slot replaces the slot the host showed
-when it was pasted -- carried in the command, because the host may move its
-Slot in the very block the paste is applied in -- a bank all eight, and a whole
-state blob, the pre-slot Copy's text and the Move's patch, everything. Anything
-else is refused with a reason and changes nothing; an accepted paste is applied
-at the top of the next block and the host follows it as it follows a switch.
+**Copy and paste** are the editor's too: it reads and writes the system's
+clipboard (`juce::SystemClipboard`, behind `editor/Clipboard.h`, so the
+editor's tests stand a fake in). Copy is the current slot as a slot file's text
+(`tg_shell_export`). Paste hands whatever is there to the engine, which
+classifies it whole (`tg-core`'s `paste.rs`, through `tg_shell_paste`): a slot
+replaces the slot the host showed when it was pasted -- carried in the command,
+because the host may move its Slot in the very block the paste is applied in --
+a bank all eight, and a whole state blob, the pre-slot Copy's text and the
+Move's patch, everything. Anything else is refused with a reason and changes
+nothing; an accepted paste is applied at the top of the next block, the host
+follows it as it follows a switch, and the set is marked unsaved
+(`ChangeDetails::withNonParameterStateChanged`).
 
 On the Move the module has no host parameters to mirror: the knob grid reads
 `get_param`, and the module's editor re-reads the grid (`revalue()`) when the
@@ -249,11 +250,17 @@ Every plugin's state chunk starts with `shell_state.h`'s versioned header. A
 chunk without it is an older build's and loads as that build wrote it. A chunk
 is read whole before any of it is applied, and one no build could have written
 -- empty, a parameter that is not a number of its kind, a string running off
-the end -- is refused and changes nothing. The parameter declarations and the
-chunk code live outside the plugin class (`Params.cpp`, `Patch.cpp`,
-`State.cpp`) so `tests/cpp` can save and reload them the way a host does.
+the end -- is refused and changes nothing. On iPlug2 the parameter
+declarations and the chunk code live outside the plugin class (`Params.cpp`,
+`State.cpp`) so `tests/cpp` can save and reload them the way a host does; on
+the JUCE shell the chunk is `ni::nist` (`plugins/_shared/juce/Nist.h`), one
+codec for every product's layout, and a product's parameters are a table
+(`ParamSpec`) built into `ni::Parameter`s that hold the plain values exactly,
+so a fixture loaded and saved again is the same bytes.
 
-`ni::WebPlugin::ProcessBlock` opens with `shell_denormals.h`'s guard:
+`ni::Processor::processBlock` (JUCE) runs a product's block under
+`juce::ScopedNoDenormals`; `ni::WebPlugin::ProcessBlock` (iPlug2) opens with
+`shell_denormals.h`'s guard:
 flush-to-zero for the block, the engines included, and the host's
 floating-point mode back on the way out.
 
