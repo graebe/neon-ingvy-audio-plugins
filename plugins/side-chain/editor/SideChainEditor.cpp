@@ -13,6 +13,8 @@
 #include "UvTokens.h"
 #include "UvType.h"
 
+#include <algorithm>
+
 namespace ni::sc
 {
 
@@ -241,8 +243,10 @@ ni::ui::ParamToggle& SideChainEditor::toggle (int parameterIndex)
 
 /*
  * WHICH SOURCE'S CONTROLS SHOW follows the Source PARAMETER -- the control
- * you just changed -- so the window answers the choice at once, and the rest of
- * the knob row closes up behind the shape's five as the web row did.
+ * you just changed -- so the window answers the choice at once. The source's
+ * knobs follow the shape's five, and the row's width is shared out again among
+ * all that show, as the web row's was: the knobs keep their order and only
+ * their widths change, and the two rows under them do not move.
  */
 void SideChainEditor::showSource()
 {
@@ -269,16 +273,25 @@ void SideChainEditor::layoutRows()
     header->setBounds (0, 0, width, headerH);
     plot->setBounds (0, plotY, width, plotH);
 
-    int x = 0;
+    /* THE KNOBS SHARE THE ROW, each as wide as the others and never narrower
+     * than its readout: the web's knob cards were flex 1 in a flex row. Each
+     * edge is rounded on its own, as a browser snaps a fractional box, so the
+     * last card ends on the row's right edge. */
+    const auto shown = (int) std::count_if (knobs.begin(), knobs.end(), [] (const auto& k) { return k->isVisible(); });
+    const float cell = shown > 0 ? std::max ((float) ni::ui::Knob::minWidth,
+                                             (float) (width - (shown - 1) * knobGap) / (float) shown)
+                                 : 0.0f;
+    int i = 0;
     for (auto& k : knobs)
         if (k->isVisible())
         {
-            k->setBounds (x, knobsY, ni::ui::Knob::minWidth, ni::ui::Knob::cardHeight);
-            x += ni::ui::Knob::minWidth + knobGap;
+            const float left = (float) i++ * (cell + (float) knobGap);
+            const int l = juce::roundToInt (left);
+            k->setBounds (l, knobsY, juce::roundToInt (left + cell) - l, ni::ui::Knob::cardHeight);
         }
 
     /* A row, left to right, of what is showing in it. */
-    x = 0;
+    int x = 0;
     const auto place = [&x] (juce::Component& c, int w, int y)
     {
         if (! c.isVisible())

@@ -20,10 +20,18 @@
  *    24
  *   106   the knobs: Depth, Delay, Attack, Hold, Release, then the source's
  *         own -- Note, Ch and Vel for MIDI, Thresh and Lockout for Sidechain
- *    20
+ *         -- sharing the row's width equally, as the web row's flex cards
+ *         did: 120px each on Cycle, the artboard's measure
+ *    18
  *    28   the trigger's row: Src, then Rate on Cycle or the Gate switch on MIDI
  *     8
  *    28   the shape's row: Curve and the "% of cycle" switch
+ *
+ * The rows land where the web editor and the artboard put them, at 464 and
+ * 500 in the window, both on the grid. The web's knob card was 104 tall with
+ * 20 under it; the kit's card is 106 (its label band is 14, not 11), so the
+ * gap under it is 18 and the 124 between the knobs' top and the trigger's row
+ * stays the web's.
  *
  * THE SOURCE'S OWN CONTROLS, AND ONLY THE ONES THAT APPLY: a Threshold on a
  * tempo-locked duck invites turning it and concluding the plugin is broken.
@@ -78,7 +86,7 @@ public:
     static constexpr int plotY = headerH + 8;
     static constexpr int plotH = 260;
     static constexpr int knobsY = plotY + plotH + 24;
-    static constexpr int triggerRowY = knobsY + ni::ui::Knob::cardHeight + 20;
+    static constexpr int triggerRowY = knobsY + ni::ui::Knob::cardHeight + 18;
     static constexpr int shapeRowY = triggerRowY + 28 + 8;
 
     /* `model` must outlive the editor; `clock` is the frame's (EditorFrame). */

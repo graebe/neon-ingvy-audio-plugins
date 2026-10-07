@@ -130,11 +130,16 @@ TEST_CASE ("side-chain: 760 x 604, the plot over the knobs over the two rows, in
     CHECK (rig.editor.content().getBounds() == juce::Rectangle<int> (32, 32, 696, 504));
 
     CHECK (rig.shaper().getBounds() == juce::Rectangle<int> (0, 24, 696, 260));
-    CHECK (rig.editor.knob (param::depth).getBounds() == juce::Rectangle<int> (0, 308, 64, 106));
-    CHECK (rig.editor.knob (param::delay).getX() == 88);
-    CHECK (rig.editor.knob (param::release).getX() == 4 * 88);
-    CHECK (rig.editor.select (param::source).getBounds().getPosition() == juce::Point<int> (0, 434));
-    CHECK (rig.editor.select (param::curve).getBounds().getPosition() == juce::Point<int> (0, 470));
+    /* On Cycle the five knobs share the row, 120px each: the artboard's cells. */
+    CHECK (rig.editor.knob (param::depth).getBounds() == juce::Rectangle<int> (0, 308, 120, 106));
+    CHECK (rig.editor.knob (param::delay).getX() == 144);
+    CHECK (rig.editor.knob (param::release).getBounds() == juce::Rectangle<int> (576, 308, 120, 106));
+    /* The rows at 464 and 500 in the window, as the web editor and the
+     * artboard put them: on the 4px grid. */
+    CHECK (rig.editor.select (param::source).getBounds().getPosition() == juce::Point<int> (0, 432));
+    CHECK (rig.editor.select (param::curve).getBounds().getPosition() == juce::Point<int> (0, 468));
+    CHECK ((32 + SideChainEditor::triggerRowY) % 4 == 0);
+    CHECK ((32 + SideChainEditor::shapeRowY) % 4 == 0);
     /* The hint bar on the bottom edge, 16px above it. */
     CHECK (rig.editor.frame().hint().getBottom() == 604 - 16);
 }
@@ -146,22 +151,27 @@ TEST_CASE ("side-chain: a fixed design, scaled to whatever the host gives")
     CHECK (rig.editor.fit().getScale() == doctest::Approx (0.5f));
     /* Nothing reflows: the content is laid out at the design's size. */
     CHECK (rig.editor.frame().getWidth() == SideChainEditor::designWidth);
-    CHECK (rig.editor.knob (param::release).getX() == 4 * 88);
+    CHECK (rig.editor.knob (param::release).getX() == 576);
 }
 
-TEST_CASE ("side-chain: each source shows its own controls and only those; nothing else moves")
+TEST_CASE ("side-chain: each source shows its own controls and only those; the knobs share the row")
 {
     Rig rig;
     auto& e = rig.editor;
-    const auto shapeKnobs = [&]
+    /* The shape's five come first, in their order, whatever the source. */
+    const auto shapeFirst = [&]
     {
-        juce::Array<juce::Rectangle<int>> b;
+        int x = -1;
         for (const int i : { param::depth, param::delay, param::attack, param::hold, param::release })
-            b.add (e.knob (i).getBounds());
-        return b;
+        {
+            if (e.knob (i).getX() <= x)
+                return false;
+            x = e.knob (i).getX();
+        }
+        return e.knob (param::depth).getX() == 0;
     };
-    const auto before = shapeKnobs();
     const auto curveRow = e.select (param::curve).getBounds();
+    const auto sourceRow = e.select (param::source).getBounds();
 
     /* Cycle: the rate, nothing of MIDI's or the key's. */
     CHECK (e.select (param::rate).isVisible());
@@ -169,29 +179,34 @@ TEST_CASE ("side-chain: each source shows its own controls and only those; nothi
         CHECK_FALSE (e.knob (i).isVisible());
     CHECK_FALSE (e.toggle (param::midiMode).isVisible());
 
-    /* MIDI: Note, Ch and Vel after the shape's five, and the Gate switch. */
+    /* MIDI: Note, Ch and Vel after the shape's five, eight knobs of 66px,
+     * and the Gate switch. */
     rig.setSource (Source::midi);
     CHECK_FALSE (e.select (param::rate).isVisible());
     CHECK (e.knob (param::note).isVisible());
-    CHECK (e.knob (param::note).getX() == 5 * 88);
-    CHECK (e.knob (param::channel).getX() == 6 * 88);
-    CHECK (e.knob (param::velSens).getX() == 7 * 88);
-    CHECK (e.knob (param::velSens).getRight() <= 696);
+    CHECK (e.knob (param::depth).getWidth() == 66);
+    CHECK (e.knob (param::note).getX() == 5 * 90);
+    CHECK (e.knob (param::channel).getX() == 6 * 90);
+    CHECK (e.knob (param::velSens).getX() == 7 * 90);
+    CHECK (e.knob (param::velSens).getRight() == 696);
     CHECK (e.toggle (param::midiMode).isVisible());
     CHECK (e.toggle (param::midiMode).getX() == e.select (param::source).getRight() + 16);
     CHECK_FALSE (e.knob (param::threshold).isVisible());
 
-    /* Sidechain: Thresh and Lockout, closed up behind the shape's five. */
+    /* Sidechain: Thresh and Lockout behind the shape's five; seven knobs of
+     * 78.9px, each edge rounded on its own, the last on the row's edge. */
     rig.setSource (Source::sidechain);
     CHECK (e.knob (param::threshold).isVisible());
-    CHECK (e.knob (param::threshold).getX() == 5 * 88);
+    CHECK (e.knob (param::threshold).getX() == 514);
     CHECK (e.knob (param::lockout).isVisible());
+    CHECK (e.knob (param::lockout).getRight() == 696);
     CHECK_FALSE (e.knob (param::note).isVisible());
     CHECK_FALSE (e.toggle (param::midiMode).isVisible());
     CHECK_FALSE (e.select (param::rate).isVisible());
 
-    CHECK (shapeKnobs() == before);
+    CHECK (shapeFirst());
     CHECK (e.select (param::curve).getBounds() == curveRow);
+    CHECK (e.select (param::source).getBounds() == sourceRow);
 }
 
 /* -------------------------------------------------------- 1.1.0 controls -- */
