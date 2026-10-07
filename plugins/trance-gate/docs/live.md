@@ -62,13 +62,13 @@ over about 5 ms when they move, so sweeping them never clicks.
 | | |
 |---|---|
 | **Fade** | how much of the drawn pattern is present. **This is the knob a build-up is drawn on** |
-| **Dir** | **In** brings the steps you drew on in, from silence. **Out** brings the *holes* in, from a gate that has none. 100% is the pattern either way |
+| **Out** | a switch. Off, the fade brings the steps you drew in, from silence. On, it brings the *holes* in, from a gate that has none. 100% is the pattern either way |
 | **Soft** | a step arriving ramps in on its own level rather than jumping on. An arriving hole ramps the other way — from a full step down to a gap |
-| **ORDER** | tap the steps in the order the fade should introduce them. The button counts how far into the sequence you are; press it again to finish |
-| **SHUFFLE** | a random arrival order, leaving the pattern alone |
+| **Set order** | tap the steps in the order the fade should introduce them. The button counts how far into the sequence you are, as *n*/*m*; press it again to finish. A step already named in this pass keeps its place; press Set order twice to start again |
+| **Shuffle order** | a random arrival order, leaving the pattern alone |
 
 The numbers on the pads are the arrival order, and they are drawn only while
-ORDER is on or the fade is part way in — the rest of the time they would be
+Set order is on or the fade is part way in — the rest of the time they would be
 clutter, because the fourth-step borders already say where the bars are.
 
 **Click a number to type one.** If the number you type is already taken, the two
@@ -88,7 +88,7 @@ Below those, four controls decide how the rest is read:
 | **Slot** | which of the 8 slots is playing and being edited — each a whole sound, its own pattern and its own settings |
 | **Join Neighbors** | consecutive on-steps run together instead of retriggering |
 | **Curve** | Linear, Exponential or S-Curve, applied to the envelope stages |
-| **Time** | whether the stages are read in **ms** or as a **%** of the gate's width — the same envelope, two ways of asking for it |
+| **Time in %** | a switch: on, the stages are read as a **%** of the gate's width; off, in **ms** — the same envelope, two ways of asking for it |
 
 These fifteen are ordinary host parameters and automate normally. The pattern and
 its arrival order are not among them — see
@@ -107,10 +107,10 @@ Every knob works the same way.
   text selected: type, then press **Enter** to commit or **Escape** to leave the
   value as it was. Clicking elsewhere commits too.
 
-Typing a stage time follows the **Time** setting, and a unit you type wins over
-it. With Time on `ms`, typing `40` into Attack sets 40 milliseconds; typing
-`25 %` sets a quarter of the gate even though the readout is showing
-milliseconds. With Time on `%`, `40` means 40 % and `40 ms` still means
+Typing a stage time follows the **Time in %** switch, and a unit you type wins
+over it. With the switch off, typing `40` into Attack sets 40 milliseconds;
+typing `25 %` sets a quarter of the gate even though the readout is showing
+milliseconds. With it on, `40` means 40 % and `40 ms` still means
 milliseconds.
 
 ### Length holds on whole bars
@@ -141,28 +141,32 @@ controls; a focused control shows a ring.
 
 | on | key | what it does |
 |---|---|---|
-| a knob | ↑ / → and ↓ / ← | turns it by 1 % of its range (**Shift**: 0.2 %) |
-| | Page Up / Page Down | by 10 % (Length: to the next whole-bar length — see above) |
+| a knob | ↑ / → and ↓ / ← | turns it by 1 % of its range (**Shift**: 0.2 %). Rate and Length: one division or one step |
+| | Page Up / Page Down | by 10 % (Rate: a tenth of its list; Length: to the next whole-bar length — see above) |
 | | Home / End | to the minimum or the maximum |
 | | Enter | opens the readout to type a value |
 | the pads | arrow keys | move between pads (↑ and ↓ jump a row) |
 | | Space or Enter | toggles the focused step, like a click (with **Shift**: a tie) |
 | | **Alt** + ↑ / ↓ | raises or lowers that step's Amount by 10 % (**Shift** too: 1 %) |
+| | a digit | on a pad whose arrival number shows, opens it to type a new place (**Enter** keeps, **Escape** cancels) |
 | the ring | ↑ / → and ↓ / ← | Length, one step longer or shorter |
 | | Page Up / Page Down | Length to the next whole-bar length (four steps where there is none) |
 | | Home / End | Length 1 or 128 |
 | the Pattern / Signal tabs | arrow keys | switch tab |
-| a menu (Slot, Curve, Time…) | | opens and chooses the way your system's menus do |
+| a menu (Slot, Curve) | Space, Enter, ↑ or ↓ | opens it; the arrows choose, **Enter** keeps, **Escape** closes |
+| a switch (Out, Soft, Join Neighbors, Time in %) | Space or Enter | turns it on or off |
+| a button (Set order, Shuffle order, the icons) | Space or Enter | presses it |
 
 For example, to tie step 9: Tab to the pads, press → until step 9 is focused,
 then **Shift + Space**. To thin it out, **Alt + ↓** twice takes it to 80 %.
 
-## Random
+## Randomize
 
-Fills the current slot with a new pattern and a new arrival order — a Euclidean
-gate, so the hits are spread evenly and one always lands on the downbeat. Ties
-are cleared and the levels return to full. It does not disturb the playhead, so
-it is safe to press while the transport runs.
+**Randomize** is the last icon in the column right of the panels. It fills the
+current slot with a new pattern and a new arrival order — a Euclidean gate, so
+the hits are spread evenly and one always lands on the downbeat. Ties are
+cleared and the levels return to full. It does not disturb the playhead, so it
+is safe to press while the transport runs.
 
 ## The envelope plot
 
@@ -186,7 +190,7 @@ floor under the curve rather than a different curve.
 
 **Signal** shows the dry input against what the plugin did to it, on the same
 axis: one cycle of the pattern, standing still, with the trace filling left to
-right and a violet line marking where it is being written. The envelope is drawn
+right and a thin grey line marking where it is being written. The envelope is drawn
 over it as an outline, so the gap between the outline and the trace is the
 difference between what the gate asked for and what the audio did. The dry is
 grey rather than a dimmer violet because the difference between the two should
