@@ -821,9 +821,11 @@ impl Chord {
 
     /// Which inversion this is, counting upward from the root.
     ///
-    /// Root position is 0, first inversion 1, and so on. Defined as the bass's
-    /// position in the chord's ascending-from-root order, so it works for
-    /// chords with no name as readily as for triads.
+    /// Root position is 0, first inversion 1, and so on. For a named chord it
+    /// is the bass's place in the chord's stacking of thirds
+    /// ([`ChordQuality::stacking`]): the third is 1, the fifth 2, the seventh
+    /// 3, a ninth 4 -- even where the ninth sorts below the third by pitch. A
+    /// chord with no name counts in ascending order from the root instead.
     ///
     /// ```
     /// use music_core::{Chord, Pitch};
@@ -839,6 +841,16 @@ impl Chord {
         // Upward from the root, 0 to 11. Subtracting the bytes would wrap a
         // bass below the root's value to 256 minus the gap, not 12 minus it.
         let from_root = (self.bass.value() + 12 - self.root.value()) % 12;
+        // A named chord counts in its stacking of thirds: the ninth of Cadd9
+        // sorts below the third by pitch, but E in the bass is still the
+        // first inversion and D the fourth.
+        if let Some(quality) = self.quality() {
+            for (index, offset) in quality.stacking().iter().enumerate() {
+                if offset % 12 == from_root {
+                    return index as u8;
+                }
+            }
+        }
         for (index, offset) in self.intervals().iter().enumerate() {
             if offset.value() == from_root {
                 return index as u8;

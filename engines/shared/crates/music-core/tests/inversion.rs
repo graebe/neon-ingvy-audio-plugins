@@ -307,11 +307,13 @@ fn every_chord_tone_in_the_bass_is_its_own_inversion_from_any_root() {
     // Pinned after `inversion` read A minor 7 over E as root position: the
     // bass's distance from the root was taken by subtracting bytes, which
     // wraps whenever the bass's pitch class is numerically below the root's.
+    // The count is in the stacking of thirds, so a ninth is the fourth
+    // inversion even though it sorts below the third by pitch.
     for root in Pitch::ALL {
         for quality in ChordQuality::ALL {
             let chord = Chord::from_quality(root, quality);
-            for (index, offset) in chord.intervals().iter().enumerate() {
-                let bass = root.transpose(Interval::new(offset.value() as i16));
+            for (index, offset) in quality.stacking().iter().enumerate() {
+                let bass = root.transpose(Interval::new(*offset as i16));
                 assert_eq!(
                     chord.over(bass).inversion() as usize,
                     index,
@@ -321,4 +323,32 @@ fn every_chord_tone_in_the_bass_is_its_own_inversion_from_any_root() {
         }
     }
     assert_eq!(Chord::min7(Pitch::A).over(Pitch::E).inversion(), 2);
+}
+
+#[test]
+fn an_added_or_extended_tone_below_the_third_does_not_shift_the_count() {
+    let c = Pitch::C;
+    let add9 = Chord::from_quality(c, ChordQuality::Add9);
+    let nine = Chord::from_quality(c, ChordQuality::Dominant9);
+    let sharp11 = Chord::from_quality(c, ChordQuality::SevenSharpEleven);
+    assert_eq!(add9.over(Pitch::E).inversion(), 1, "Cadd9/E");
+    assert_eq!(nine.over(Pitch::E).inversion(), 1, "C9/E");
+    assert_eq!(
+        nine.over(Pitch::D).inversion(),
+        4,
+        "C9/D: the ninth in the bass"
+    );
+    assert_eq!(sharp11.over(Pitch::G).inversion(), 2, "C7#11/G");
+    let minor_add9 = Chord::from_quality(c, ChordQuality::MinorAdd9);
+    assert_eq!(minor_add9.over(Pitch::E_FLAT).inversion(), 1, "Cm(add9)/Eb");
+}
+
+#[test]
+fn a_shape_with_no_name_counts_by_pitch() {
+    let shape = Chord::new(
+        Pitch::C,
+        PitchSet::from_pitches(&[Pitch::D, Pitch::F_SHARP]),
+    );
+    assert_eq!(shape.quality(), None);
+    assert_eq!(shape.over(Pitch::F_SHARP).inversion(), 2);
 }
