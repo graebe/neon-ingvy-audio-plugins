@@ -19,6 +19,12 @@
  * which on a Length knob is another number of steps. Disabled, the arc and
  * the pointer are ink-dim. Keyboard focus is glow-focus round the dial.
  *
+ * BIPOLAR (1.1.0): a parameter that runs both ways about a centre -- a delay
+ * from -100 % to +100 %, a pan -- draws its arc from 12 o'clock to the value
+ * instead, to the left below the centre and to the right above it, so at the
+ * centre there is no arc at all, only the pointer at 12. Drawn from the
+ * minimum, 0 % would read as half-way up.
+ *
  * DETENTS (1.1.0): values a drag holds on for about 14px of travel
  * (Detents.h has the feel and its numbers), each a 1px radial tick from
  * radius 22 to 24 in ink-dim, the one at the current value uv without glow.
@@ -87,6 +93,10 @@ public:
     void setValueText (const juce::String&);
     const juce::String& getValueText() const noexcept { return readoutBox.getValueText(); }
 
+    /* Whether the arc starts at 12 o'clock rather than at the minimum. */
+    void setBipolar (bool);
+    bool isBipolar() const noexcept { return bipolar; }
+
     /* Normalised values a drag holds on, drawn as ticks; empty for none. */
     void setDetents (std::vector<double> normalised);
     const std::vector<double>& getDetents() const noexcept { return detentsAt; }
@@ -121,6 +131,7 @@ private:
 
     juce::String label;
     float value = 0.0f;
+    bool bipolar = false;
     std::vector<double> detentsAt;
 
     std::unique_ptr<Dial> dialComponent;

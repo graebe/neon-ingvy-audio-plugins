@@ -14,6 +14,7 @@
 #include "UvTokens.h"
 #include "UvType.h"
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 
@@ -113,11 +114,14 @@ public:
             g.fillPath (radial (centre, tickFrom, tickTo, angleOf (d), uv::tok::stroke::strokeHair));
         }
 
-        /* The value arc, its glow under it -- not drawn at the minimum, where
-         * it would be a sliver of light at the rail's end. */
-        if (v > 0.0001)
+        /* The value arc, its glow under it, from the minimum -- or from 12
+         * o'clock on a bipolar knob, either way. Not drawn where it starts,
+         * where it would be a sliver of light. */
+        const double origin = knob.bipolar ? 0.5 : 0.0;
+        if (std::abs (v - origin) > 0.0001)
         {
-            const auto arc = railStroke (centre, startAngle, angleOf (v));
+            const auto a = angleOf (origin), b = angleOf (v);
+            const auto arc = railStroke (centre, std::min (a, b), std::max (a, b));
             if (live)
                 uv::light::glowArc (g, arc);
             g.setColour (live ? c::uv : c::inkDim);
@@ -345,6 +349,14 @@ void Knob::setValue (float normalised)
     dialComponent->repaint();
     if (auto* handler = dialComponent->getAccessibilityHandler())
         handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+}
+
+void Knob::setBipolar (bool shouldBe)
+{
+    if (shouldBe == bipolar)
+        return;
+    bipolar = shouldBe;
+    dialComponent->repaint();
 }
 
 void Knob::setValueText (const juce::String& text)
