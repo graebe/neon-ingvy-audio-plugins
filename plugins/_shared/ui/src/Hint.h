@@ -15,16 +15,18 @@
  * arithmetic): an action's outcome in the first clause's place while there is
  * one; else the info line of the control under the pointer or on the visible
  * keyboard focus, laid OVER the conventions -- name in ink, the dash and the
- * rest in ink-muted -- with the conventions still sizing the tips underneath;
+ * rest in ink-muted -- with the conventions held underneath (`clauses held`);
  * else the conventions.
  *
- * THEN THE WINDOW'S OWN TWO, WHICH NEVER MOVE. In a window with a Ground the
- * Motion switch follows the tips, space-4 after them; the Signature closes the
- * bar on the right. 1.1.0's guarantee: Motion sits at least 16px (space-4)
- * before the Signature, and the tips give way before that gap does. The tips
- * are as wide as the CONVENTIONS -- not as the line or the outcome laid over
- * them, which truncate in that width -- so nothing a pointer or an action
- * does can move the switch.
+ * THEN THE WINDOW'S OWN TWO, WHICH NEVER MOVE. The Signature closes the bar on
+ * the right; in a window with a Ground the Motion switch sits space-4 before
+ * it, and the tips take everything to space-4 before the switch (bundle.css
+ * `.tips { flex: 1; min-width: 0 }`). 1.1.0's guarantee: Motion sits at least
+ * 16px (space-4) before the Signature, and the tips give way before that gap
+ * does. Both are placed by the window's width alone -- not by the
+ * conventions, the line or the outcome, which truncate in the tips' cell -- so
+ * nothing a pointer or an action does can move the switch, and a line has all
+ * the room the window has.
  *
  * The bar owns the Signature (exactly once per window, at the right end, so an
  * editor cannot forget it, move it or show two) and places the Motion switch
@@ -60,8 +62,7 @@ public:
     static constexpr int height = (int) uv::tok::size::controlH;
     /* The text's line box, under the rule, centred in what is left. */
     static constexpr int lineTop = 8;
-    /* Tips to Motion, and the least there is between Motion and the
-     * Signature: space-4. */
+    /* Tips to Motion, and Motion to the Signature: space-4. */
     static constexpr int gap = (int) uv::tok::space::space4;
     /* .sep { margin: 0 12px } */
     static constexpr float separatorMargin = 12.0f;
@@ -114,8 +115,8 @@ private:
     JUCE_DECLARE_NON_COPYABLE (Hint)
 };
 
-/* The width `clauses` take in the bar, separators included: what the tips
- * would be without a limit. */
+/* The width `clauses` take in the bar, separators included: whether they
+ * fit the tips whole. */
 float clausesWidth (const std::vector<Clause>&);
 
 } // namespace ni::ui
