@@ -9,6 +9,7 @@
 #include "ChildLights.h"
 #include "Info.h"
 #include "Keys.h"
+#include "Step.h"
 #include "UvLight.h"
 #include "UvTokens.h"
 #include "UvType.h"
@@ -236,6 +237,13 @@ int Ring::stepAt (juce::Point<float> p) const
     return i >= 0 && i < count ? i : -1;
 }
 
+float Ring::litOuter (const StepState& s, const Band& b) const
+{
+    /* THE AMOUNT IS THE LIT DEPTH, from the inner edge, never under 5 %: a
+     * step that sounds must show however quiet. */
+    return b.inner + (b.outer - b.inner) * juce::jlimit (Step::minLit, 1.0f, s.amount);
+}
+
 juce::Path Ring::litPath() const
 {
     const auto b = band();
@@ -245,16 +253,9 @@ juce::Path Ring::litPath() const
     {
         const auto& s = steps[(size_t) i];
         if (s.tie)
-        {
             lit.addPath (wedge (i, b.inner + depth * 0.45f, b.inner + depth * 0.55f));
-        }
         else if (s.on)
-        {
-            /* THE AMOUNT IS THE LIT DEPTH, from the inner edge, never under
-             * 5 %: a step that is on must show as on however quiet. */
-            const float a = juce::jlimit (0.05f, 1.0f, s.amount);
-            lit.addPath (wedge (i, b.inner, b.inner + depth * a));
-        }
+            lit.addPath (wedge (i, b.inner, litOuter (s, b)));
     }
     return lit;
 }
@@ -276,9 +277,23 @@ void Ring::paint (juce::Graphics& g)
         uv::light::glowLed (g, lit);
     g.setColour (c::uv);
     g.fillPath (lit);
+
+    /* What is drawn but not heard is hollow, and what is heard but not drawn
+     * is filled at the Step's alpha: neither glows. */
     for (int i = 0; i < count; ++i)
-        if (steps[(size_t) i].tie)
+    {
+        const auto& s = steps[(size_t) i];
+        if (s.filled && ! s.on && ! s.tie)
+        {
+            g.setColour (c::uv.withMultipliedAlpha (Step::filledAlpha));
+            g.fillPath (wedge (i, b.inner, litOuter (s, b)));
+        }
+        if (s.tie || (s.pending && ! s.on))
+        {
+            g.setColour (c::uv);
             g.strokePath (wedge (i, b.inner, b.outer), juce::PathStrokeType (uv::tok::stroke::strokeHair));
+        }
+    }
 
     if (cursor >= 0 && cursor < count)
     {

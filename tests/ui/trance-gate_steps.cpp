@@ -215,12 +215,21 @@ TEST_CASE ("trance-gate pads: the border is what you drew, the fill is what you 
      * holes none. */
     CHECK (rig.state (14).number == 8);
     CHECK (rig.state (1).number == 0);
+    /* The ring says the same: drawn, not arrived, is hollow -- not a gap. */
+    CHECK (rig.editor.ring().getStep (14).pending);
+    CHECK_FALSE (rig.editor.ring().getStep (14).on);
+    CHECK_FALSE (rig.editor.ring().getStep (0).pending);
+    CHECK_FALSE (rig.editor.ring().getStep (1).pending);
 
     /* Fade Out: the holes arrive; one not yet removed still sounds. */
     rig.model.set (param::fadeDir, 1.0f);
     rig.frame();
     CHECK (rig.editor.pads().grid().step (15).isFilled());   // hole rank 8: still sounding
     CHECK_FALSE (rig.editor.pads().grid().step (1).isFilled()); // hole rank 1: removed
+    CHECK (rig.editor.ring().getStep (15).filled);
+    CHECK (rig.editor.ring().getStep (15).amount == doctest::Approx (rig.state (15).level));
+    CHECK_FALSE (rig.editor.ring().getStep (1).filled);
+    CHECK_FALSE (rig.editor.ring().getStep (0).filled);
     CHECK (rig.state (15).number == 8);
     CHECK (rig.state (0).number == 0);
 

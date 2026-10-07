@@ -380,17 +380,21 @@ void TranceGateEditor::tick (double nowMs)
         knob (param::length).setDetents (normalised);
     }
 
-    /* THE RING: what sounds, as the pads show it -- a step the fade has not
-     * brought in is the rail. */
+    /* THE RING: what was drawn and what sounds, as the pads show them -- a
+     * step the fade has not brought in is hollow, and a hole Fade Out has not
+     * removed yet is filled to its level, so neither reads as a gap. */
     patternRing.setCount (length);
     for (int i = 0; i < length; ++i)
     {
         const auto at = (std::size_t) i;
         const bool sounds = p.levels[at] > 0.0f;
+        const bool drawn = p.steps[at] != StepMode::off;
         ni::ui::Ring::StepState s;
         s.on = sounds && p.steps[at] == StepMode::on;
         s.tie = sounds && p.steps[at] == StepMode::tie;
-        s.amount = juce::jlimit (0.0f, 1.0f, p.depths[at] * p.levels[at]);
+        s.pending = ! sounds && drawn;
+        s.filled = sounds && ! drawn;
+        s.amount = juce::jlimit (0.0f, 1.0f, drawn ? p.depths[at] * p.levels[at] : p.levels[at]);
         patternRing.setStep (i, s);
     }
     patternRing.setCursor (p.cursor >= 0 && p.cursor < length ? p.cursor : -1);

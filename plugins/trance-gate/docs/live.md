@@ -17,13 +17,15 @@ stays until it times out.
 ## The ring
 
 The ring **is** the pattern, and it mirrors the Move display. Filled arcs are
-steps that sound, hollow ones are gaps, and the band thickens with the step's
-Amount. A dot inside the ring is the playhead; a bracket outside it is the step
-you are editing.
+steps that sound, plain grey ones are gaps, and the fill reaches further out
+with the step's Amount. A dot inside the ring is the playhead; an outline
+round a wedge is the step you are editing.
 
 While the fade is part way in, a step that has not arrived yet draws as a
-**hollow** arc — it is in the pattern, so it is not a gap, and it is not
-sounding, so it is not a fill. The pads say the same thing the same way.
+**hollow** arc, outlined with no fill: it is in the pattern, so it is not a
+gap, and it is not sounding, so it is not a fill. Under Fade Out, a hole that
+still sounds is filled, more faintly than a step you drew, and has no
+outline. The pads say the same things the same way.
 
 ## Editing a step
 

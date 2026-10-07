@@ -10,6 +10,8 @@
 #include "Gallery.h"
 #include "Pointer.h"
 #include "Ring.h"
+#include "Step.h"
+#include "UvTokens.h"
 #include "checks.h"
 #include "snapshot.h"
 
@@ -137,6 +139,44 @@ TEST_CASE ("ring: a slider named Length, its value read as the owner writes it")
     CHECK (handler->getValueInterface()->getCurrentValueAsString() == "16 steps");
     handler->getValueInterface()->setValue (24.0);
     CHECK (rig.said() == "count 24");
+}
+
+TEST_CASE ("ring: a step not heard yet is hollow, a hole still heard is filled at the Step's alpha")
+{
+    namespace c = uv::tok::colour;
+    Rig rig;
+    Ring::StepState pending;
+    pending.pending = true;
+    Ring::StepState filled;
+    filled.filled = true;
+    filled.amount = 0.5f;
+    rig.ring.setStep (2, pending);
+    rig.ring.setStep (4, filled);
+    rig.ring.setStep (6, filled);
+    rig.ring.setStep (6, {});   // a gap: the rail alone
+
+    const auto b = rig.ring.band();
+    const float mid = (b.inner + b.outer) * 0.5f;
+    const auto pixel = [&] (const juce::Image& img, float radius, int step)
+    {
+        const auto p = at (radius, ((float) step + 0.5f) / 16.0f);
+        return img.getPixelAt ((int) p.x, (int) p.y);
+    };
+    const auto img = ni::ui::test::render (rig.ring);
+
+    /* Pending: the rail inside a uv outline, and nothing lit. */
+    CHECK (pixel (img, mid, 2) == c::line200);
+    CHECK (pixel (img, b.outer - 0.5f, 2).getBrightness() > c::line200.getBrightness() + 0.2f);
+    /* Filled: uv at 0.55 over the rail up to its level, the rail past it;
+     * no outline at the outer edge. */
+    const auto lit = c::line200.overlaidWith (c::uv.withMultipliedAlpha (ni::ui::Step::filledAlpha));
+    CHECK (pixel (img, b.inner + (b.outer - b.inner) * 0.25f, 4).getBrightness()
+           == doctest::Approx (lit.getBrightness()).epsilon (0.02));
+    CHECK (pixel (img, b.inner + (b.outer - b.inner) * 0.75f, 4) == c::line200);
+    CHECK (pixel (img, b.outer - 0.5f, 4).getBrightness()
+           == doctest::Approx (pixel (img, b.outer - 0.5f, 6).getBrightness()).epsilon (0.02));
+    /* A gap is the rail. */
+    CHECK (pixel (img, mid, 6) == c::line200);
 }
 
 NI_SNAPSHOT_TEST ("ring: on, partial, tie, cursor, playhead; 128 steps with focus")

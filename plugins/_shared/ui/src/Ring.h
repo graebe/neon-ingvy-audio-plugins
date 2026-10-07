@@ -19,6 +19,13 @@
  *              and never under 5 %, with glow-led
  *   tie        a 1px uv outline of the wedge with a uv arc across its middle
  *              (45 % to 55 % of the band), as on a Step
+ *   pending    drawn on or tied but not sounding yet (a fade has not brought
+ *              it in): a 1px uv outline of the wedge, no fill and no glow --
+ *              hollow, so it is never mistaken for a gap, as on a Step
+ *   filled     drawn off but sounding (a hole Fade Out has not removed yet):
+ *              uv at Step::filledAlpha from the inner edge, the lit depth
+ *              being its level, with no outline and no glow -- what sounds is
+ *              filled, and it is never mistaken for a step that was drawn
  *   cursor     the step being edited: a 1px ink outline from 3px inside the
  *              band to 3px outside it
  *   playhead   an ink dot of D x 7/240 just inside the band at the step being
@@ -73,11 +80,14 @@ public:
     {
         bool on = false;
         bool tie = false;
-        float amount = 1.0f;   // the lit depth of an on step, 0..1
+        float amount = 1.0f;   // the lit depth of an on or filled step, 0..1
+        bool pending = false;
+        bool filled = false;
 
         bool operator== (const StepState& o) const
         {
-            return on == o.on && tie == o.tie && juce::exactlyEqual (amount, o.amount);
+            return on == o.on && tie == o.tie && pending == o.pending && filled == o.filled
+                && juce::exactlyEqual (amount, o.amount);
         }
         bool operator!= (const StepState& o) const { return ! (*this == o); }
     };
@@ -146,8 +156,11 @@ public:
 private:
     class Centre;
 
-    /* What glows: the lit wedges and the ties. */
+    /* What glows: the lit wedges and the ties. A pending wedge and a filled
+     * one do not, as a Step that is neither on nor tied does not. */
     juce::Path litPath() const;
+    /* The lit depth of a wedge, between the band's inner edge and this. */
+    float litOuter (const StepState&, const Band&) const;
     void changed();
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
