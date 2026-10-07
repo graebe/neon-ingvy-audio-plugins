@@ -475,7 +475,8 @@ TEST_CASE ("trance-gate: the playhead is the model's transport, on the ring, the
     CHECK (rig.editor.ring().isPlaying());
     CHECK (rig.editor.pads().grid().getState (5).play);
     CHECK_FALSE (rig.editor.pads().grid().getState (4).play);
-    CHECK (rig.editor.band().pattern().getPhase() == doctest::Approx (5.4));
+    /* The plot's rule snaps with them: the step, not the phase within it. */
+    CHECK (rig.editor.band().pattern().getPlayhead() == 5);
 
     /* Past the pattern's end it wraps; stopped, there is none. */
     rig.model.engineTransport.phase = 18.25;
@@ -485,7 +486,7 @@ TEST_CASE ("trance-gate: the playhead is the model's transport, on the ring, the
     rig.frame();
     CHECK_FALSE (rig.editor.ring().isPlaying());
     CHECK_FALSE (rig.editor.pads().grid().getState (2).play);
-    CHECK (rig.editor.band().pattern().getPhase() < 0.0);
+    CHECK (rig.editor.band().pattern().getPlayhead() < 0);
 }
 
 TEST_CASE ("trance-gate: the tabs show one plot at a time, from the pointer or the keys")

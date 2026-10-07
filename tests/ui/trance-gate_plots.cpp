@@ -9,7 +9,7 @@
  *   the envelope   its span holds both curves and 4 % of air; the step's edge
  *                  is amber when the release outlives the step; the letters
  *                  label what ran; the caption names the span and the step
- *   the pattern    its caption, its playhead on the fractional phase
+ *   the pattern    its caption, its playhead in whole steps
  *   the signal     its caption carries the cycle in ms
  *   the marks      a rule per step from 6px, bars and beats at any density
  */
@@ -93,14 +93,17 @@ TEST_CASE ("trance-gate plots: the letters label the stages that ran, each where
     CHECK (plot.letters() == "AR");
 }
 
-TEST_CASE ("trance-gate plots: the pattern's caption, and its playhead on the fractional phase")
+TEST_CASE ("trance-gate plots: the pattern's caption, and its playhead in whole steps")
 {
     PatternPlot plot;
     plot.setSize (760, 92);
     CHECK (plot.getCaption() == "PATTERN   ONE CYCLE");
-    CHECK (plot.getPhase() < 0.0);
-    plot.setPhase (5.4);
-    CHECK (plot.getPhase() == doctest::Approx (5.4));
+    CHECK (plot.getPlayhead() < 0);
+    plot.setPlayhead (5);
+    CHECK (plot.getPlayhead() == 5);
+    /* A step the pattern does not have is none. */
+    plot.setPlayhead (16);
+    CHECK (plot.getPlayhead() < 0);
     CHECK (ni::ui::infoOf (plot) == info::patternPlot.str());
 }
 
@@ -108,6 +111,8 @@ TEST_CASE ("trance-gate plots: the signal's caption carries one cycle in ms")
 {
     SignalPlot plot;
     plot.setSize (760, 92);
+    /* Before the first capture: the second its ruler is laid out over. */
+    CHECK (plot.getCaption() == "SIGNAL   ONE CYCLE, 1000 MS   DRY IN GREY, GATED IN FRONT");
     FakeModel model;
     renderCurves (model);
     fillCapture (model, 256, 10, 2000.0);

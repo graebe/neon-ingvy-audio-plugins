@@ -137,9 +137,11 @@ public:
 
     /* The render, the pattern's length and Amount (0..1). */
     void update (const GateCurve&, int length, float amount);
-    /* The playhead, in steps; negative for none. Repaints its strips. */
-    void setPhase (double steps);
-    double getPhase() const noexcept { return phase; }
+    /* The step being played, or -1 for none: the rule at its leading edge,
+     * advancing a whole step at a time as 1.1.0's Motion asks of a playhead
+     * (the ring and the pads snap the same way). Repaints its strips. */
+    void setPlayhead (int step);
+    int getPlayhead() const noexcept { return playStep; }
 
     void resized() override;
 
@@ -154,7 +156,7 @@ private:
     bool built = false;
     int length = 16;
     float amount = 1.0f;
-    double phase = -1.0;
+    int playStep = -1;
     juce::Path line, area;
     juce::Rectangle<float> floorBox;
 };

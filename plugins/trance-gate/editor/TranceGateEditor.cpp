@@ -416,7 +416,7 @@ void TranceGateEditor::tick (double nowMs)
 
     const auto& gate = model.gate();
     plotBand->pattern().update (gate, length, amount);
-    plotBand->pattern().setPhase (phase);
+    plotBand->pattern().setPlayhead (playStep);
     plotBand->signal().update (model.capture(), gate, length, amount, transport.playing);
 
     /* The stages in ms follow the tempo and Width, which are not theirs. */

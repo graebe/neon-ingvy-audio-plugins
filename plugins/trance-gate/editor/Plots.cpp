@@ -298,20 +298,21 @@ void PatternPlot::update (const GateCurve& g, int steps, float level)
 
 float PatternPlot::playheadX() const
 {
-    return xAt ((float) (phase / length));
+    return xAt ((float) playStep / (float) length);
 }
 
-void PatternPlot::setPhase (double steps)
+void PatternPlot::setPlayhead (int step)
 {
-    if (juce::exactlyEqual (steps, phase))
+    step = step >= 0 && step < length ? step : -1;
+    if (step == playStep)
         return;
-    const auto strip = [this] (double at)
+    const auto strip = [this]
     {
-        return at < 0.0 ? juce::Rectangle<int>() : juce::Rectangle<int> (juce::roundToInt (xAt ((float) (at / length))) - 2, 0, 5, getHeight());
+        return playStep < 0 ? juce::Rectangle<int>() : juce::Rectangle<int> (juce::roundToInt (playheadX()) - 2, 0, 5, getHeight());
     };
-    repaint (strip (phase));
-    phase = steps;
-    repaint (strip (phase));
+    repaint (strip());
+    playStep = step;
+    repaint (strip());
 }
 
 void PatternPlot::resized()
@@ -339,8 +340,8 @@ void PatternPlot::paintPlot (juce::Graphics& g)
     }
     plot::under (g, area);
     plot::curve (g, line);
-    /* The fractional phase, so the playhead glides where a pad snaps. */
-    if (phase >= 0.0)
+    /* The playhead in hard steps, as the ring and the pads have it. */
+    if (playStep >= 0)
         plot::rule (g, playheadX(), top, bottom);
     /* Numbers last, so a number is never swallowed by what it labels. */
     StepMarks::numbers (g, length, (float) getWidth(), top);
@@ -396,8 +397,11 @@ void SignalPlot::resized()
 
 void SignalPlot::rebuild()
 {
-    setCaption ("Signal   one cycle, " + juce::String (juce::roundToInt (cycleMs)) + " ms   dry in grey, gated in front");
-    axis.set ((float) getWidth(), cycleMs > 0.0 ? cycleMs : 1000.0, 0.0);
+    /* Before the first capture there is no cycle yet: the caption and the
+     * ruler both read the web editor's first window, a second. */
+    const double ms = cycleMs > 0.0 ? cycleMs : 1000.0;
+    setCaption ("Signal   one cycle, " + juce::String (juce::roundToInt (ms)) + " ms   dry in grey, gated in front");
+    axis.set ((float) getWidth(), ms, 0.0);
 
     const int usable = std::min (columns, (int) (data.size() / (std::size_t) Capture::stride));
     const plot::Capture capture { data.data(), Capture::stride, usable };
