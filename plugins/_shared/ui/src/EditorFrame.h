@@ -24,8 +24,8 @@
  *
  * THE WINDOW'S OWN STATE, WIRED ONCE. The Motion switch shows what the model
  * holds (EditorModel::motion) and asks it to change; the Ground follows it.
- * The switch's line is the kit's (motionInfo), so it reads the same in every
- * window. The hint's info comes from an InfoTracker on the whole window, so a
+ * The switch's line and the Signature's are the kit's (motionInfo,
+ * signatureInfo), so they read the same in every window. The hint's info comes from an InfoTracker on the whole window, so a
  * control anywhere in the content needs nothing but its line (setInfo). An
  * action's
  * outcome stays for outcomeMs, timed by the clock: what the bar shows is a
@@ -114,13 +114,16 @@ public:
     /* The outcome shown at the clock's time now, if any. */
     std::optional<Clause> outcome() const;
 
-    /* The Motion switch's line in every window, which the frame gives it. */
+    /* The Motion switch's line and the Signature's in every window, which the
+     * frame gives them: the Hint card's one voice. The card writes "remembered
+     * on this Mac"; the plugin also runs on Windows and Linux. */
     static constexpr InfoText motionInfo {
         "Motion — ripple the background on the beat; remembered on this computer."
     };
+    static constexpr InfoText signatureInfo { "Neon Ingvy — the publisher of this plugin." };
 
-    /* The bar's own two lines: the Motion switch's (motionInfo unless an
-     * editor says otherwise) and the Signature's. */
+    /* The bar's own two lines, for an editor that has a reason to say them
+     * otherwise (motionInfo and signatureInfo until then). */
     void setMotionInfo (const juce::String&);
     void setSignatureInfo (const juce::String&);
 

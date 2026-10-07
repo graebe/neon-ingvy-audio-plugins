@@ -96,6 +96,7 @@ EditorFrame::EditorFrame (EditorModel& m, Clock c)
         motionChanged();
     };
     setInfo (motionToggle, motionInfo);
+    setInfo (bar.signature(), signatureInfo);
     bar.setMotionSwitch (&motionToggle);
     bar.setPadding (padding);
 

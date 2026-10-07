@@ -625,7 +625,8 @@ TEST_CASE ("spectrogram editor: the bar states conventions; every control says w
     CHECK (ni::ui::infoOf (v.againstSelect()) == info::against.str());
     CHECK (ni::ui::infoOf (v.clashSwitch()) == info::clash.str());
     CHECK (ni::ui::infoOf (rig.picture()) == info::picture.str());
-    CHECK (ni::ui::infoOf (frame.motionSwitch()) == info::motion.str());
+    CHECK (ni::ui::infoOf (frame.motionSwitch()) == ni::ui::EditorFrame::motionInfo.str());
+    CHECK (ni::ui::infoOf (frame.hint().signature()) == ni::ui::EditorFrame::signatureInfo.str());
     NI_CHECK_INFO_LIMIT (frame);
 
     /* Every state's lines, the bar view and an open list included. */

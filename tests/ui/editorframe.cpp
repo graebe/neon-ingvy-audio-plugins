@@ -182,6 +182,11 @@ TEST_CASE ("editor frame: the bar shows the info line, then an outcome for six s
 TEST_CASE ("editor frame: the bar's two lines, within the limit, and the window takes the keyboard round")
 {
     Rig rig;
+    /* The kit's own two lines until an editor says otherwise. */
+    CHECK (ni::ui::infoOf (rig.frame.motionSwitch()) == ni::ui::EditorFrame::motionInfo.str());
+    CHECK (ni::ui::infoOf (rig.frame.hint().signature()) == ni::ui::EditorFrame::signatureInfo.str());
+    NI_CHECK_INFO_LIMIT (rig.frame);
+
     rig.frame.setMotionInfo (juce::String::fromUTF8 ("Motion \xe2\x80\x94 let the music ripple the background."));
     rig.frame.setSignatureInfo (juce::String::fromUTF8 ("Neon Ingvy \xe2\x80\x94 the publisher of this plugin."));
     CHECK (ni::ui::infoOf (rig.frame.motionSwitch()).startsWith ("Motion"));

@@ -462,8 +462,6 @@ SpectrogramEditor::SpectrogramEditor (Model& m, ni::ui::EditorFrame::Clock clock
     window.setContent (&content);
     /* Conventions only, as the Hint card has the bar. */
     window.setConventions ({ { "hover", "to read a point" }, { "clash", "marks where channels collide" } });
-    window.setMotionInfo (info::motion);
-    window.setSignatureInfo (info::signature);
 
     addAndMakeVisible (scaled);
     ticking = window.frameClock().subscribe ([this] (double now) { content.update (now); });
