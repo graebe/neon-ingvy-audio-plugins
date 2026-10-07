@@ -17,6 +17,7 @@
  */
 #pragma once
 
+#include "Luminous.h"
 #include "Scales.h"
 #include "Spectrogram.h"
 
@@ -81,8 +82,12 @@ public:
  * caption, and those are what this follows. The facts a caption would carry
  * sit in the toolbar instead (SpectrogramEditor.h). Should the Spectrogram
  * become a captioned PlotWell, its height grows by 14 + 2 x 6 px.
+ *
+ * The picture's focus ring falls on the frame and past it: the well paints
+ * the part inside itself and hands the rest up.
  */
-class Well final : public juce::Component
+class Well final : public juce::Component,
+                   public ni::ui::Luminous
 {
 public:
     Well();
@@ -91,6 +96,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void paintLight (juce::Graphics&) override;
 
 private:
     ni::ui::Spectrogram spectrogram;

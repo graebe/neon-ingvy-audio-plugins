@@ -528,6 +528,26 @@ TEST_CASE ("spectrogram editor: the crosshair reads the picture -- frequency, ti
     CHECK (r.getLevel() == noReading());
 }
 
+TEST_CASE ("spectrogram editor: the keys read the picture too -- Tab onto it, the arrows move the crosshair")
+{
+    Rig rig;
+    auto& v = rig.view();
+    auto& r = v.readout();
+    rig.model.queue (2, 208);
+    rig.frame();
+
+    rig.picture().focusGained (juce::Component::focusChangedByTabKey);
+    CHECK (r.getFrequency() != noReading());
+    CHECK (r.getTime() != noReading());
+
+    /* End is the newest column. */
+    CHECK (key (rig.picture(), juce::KeyPress::endKey));
+    CHECK (r.getTime() == "now");
+
+    CHECK (key (rig.picture(), juce::KeyPress::escapeKey));
+    CHECK (r.getFrequency() == noReading());
+}
+
 /* ----------------------------------------------------------------- window */
 
 TEST_CASE ("spectrogram editor: 720 x 502, the content in the frame's padding, the rows on the 4 px grid")
@@ -641,6 +661,7 @@ TEST_CASE ("spectrogram editor: Tab goes through the controls in reading order, 
     const int a = indexOf (v.compareSelect());
     const int b = indexOf (v.againstSelect());
     const int clash = indexOf (v.clashSwitch());
+    const int picture = indexOf (rig.picture());
     const int motion = indexOf (frame.motionSwitch());
     CHECK (range >= 0);
     CHECK (range < span);
@@ -649,7 +670,8 @@ TEST_CASE ("spectrogram editor: Tab goes through the controls in reading order, 
     CHECK (list < a);
     CHECK (a < b);
     CHECK (b < clash);
-    CHECK (clash < motion);
+    CHECK (clash < picture);
+    CHECK (picture < motion);
 }
 
 TEST_CASE ("spectrogram editor: no parameters -- nothing here changes what comes out")

@@ -149,6 +149,12 @@ about the palette rather than about the audio.
 It is honest under pause, too: the numbers freeze with the picture, so the
 readout and the pixel under it always describe the same moment.
 
+It works from the keyboard as well. Press **Tab** until the picture has the
+focus ring and the crosshair appears at its centre. The arrow keys move it one
+pixel, ten with **Shift** held. **Home** and **End** jump to the left and right
+edges (in seconds, the oldest and the newest column), and **Escape** takes it
+away.
+
 ## Pause holds the view, not the analysis
 
 The columns keep arriving and keep filling the history behind the frozen

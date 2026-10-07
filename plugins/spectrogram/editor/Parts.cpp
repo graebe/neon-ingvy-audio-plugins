@@ -3,6 +3,7 @@
 
 #include "Parts.h"
 
+#include "ChildLights.h"
 #include "UvTokens.h"
 #include "UvType.h"
 #include "WaveSource.h"
@@ -98,6 +99,12 @@ void Well::paint (juce::Graphics& g)
     g.fillAll (c::bg000);
     g.setColour (c::line200);
     g.drawRect (getLocalBounds().toFloat(), hair);
+    ni::ui::paintChildLights (g, *this);
+}
+
+void Well::paintLight (juce::Graphics& g)
+{
+    ni::ui::forwardChildLights (g, *this);
 }
 
 void Well::resized()

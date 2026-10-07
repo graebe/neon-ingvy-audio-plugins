@@ -38,7 +38,7 @@ inline constexpr InfoText against { "Against — the second channel the clash is
 inline constexpr InfoText clash { "Clash — mark where the two compared channels fight for one place." };
 
 /* The picture itself. */
-inline constexpr InfoText picture { "Spectrogram — hover to read the frequency, time and level there." };
+inline constexpr InfoText picture { "Spectrogram — hover, or the arrow keys, to read frequency, time, level." };
 
 /* The window's own: the switch and the signature in the hint bar. */
 inline constexpr InfoText motion { "Motion — let the music ripple the background; kept on this machine." };

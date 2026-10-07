@@ -54,11 +54,23 @@
  * against the old one is cleared). A batch writes into them and repaints
  * once, whatever its size, at whatever rate the plugin produces columns.
  *
- * Message thread. Takes the pointer for its crosshair (a hairline each way in
- * uv-deep at 0.75) and draws the sweep's playhead (uv at 0.9) in the bar view;
- * neither is part of the picture. Solid to the Ground's rings.
+ * THE CROSSHAIR answers the pointer and the keyboard alike, because 1.1.0
+ * has every pointer control reachable by Tab and operable from the keys. Tab
+ * onto the picture and the crosshair stands at its centre; the arrows move it
+ * a pixel (Shift: ten), Home and End take it to the oldest and the newest
+ * column (the left and right edges), Escape takes it away. Either way it is
+ * one point, reported through onHover, so a readout cannot tell keys from a
+ * pointer. A crosshair the keys placed leaves with the focus.
+ *
+ * Message thread. Draws the crosshair (a hairline each way in uv-deep at
+ * 0.75), glow-focus round itself while it has visible keyboard focus, and the
+ * sweep's playhead (uv at 0.9) in the bar view; none is part of the picture.
+ * Solid to the Ground's rings.
  */
 #pragma once
+
+#include "Focus.h"
+#include "Luminous.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -70,13 +82,18 @@
 namespace ni::ui
 {
 
-class Spectrogram final : public juce::Component
+class Spectrogram final : public juce::Component,
+                          public Luminous
 {
 public:
     /* The shipped picture: 606 columns (about 13 s at 47 a second) of 256
      * bands. */
     static constexpr int defaultColumns = 606;
     static constexpr int defaultBands = 256;
+
+    /* What an arrow moves the crosshair, in pixels, and with Shift held. */
+    static constexpr float keyStep = 1.0f;
+    static constexpr float keyLeap = 10.0f;
 
     /* A clash cell below this level is outside the region altogether. */
     static constexpr std::uint8_t clashEdge = 12;
@@ -181,7 +198,14 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    bool keyPressed (const juce::KeyPress&) override;
+    void focusGained (FocusChangeType) override;
+    void focusLost (FocusChangeType) override;
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+    /* ---- Luminous: glow-focus round the picture */
+    void paintLight (juce::Graphics&) override;
 
 private:
     void setup (int bandCount);
@@ -190,6 +214,8 @@ private:
     void writeClash (const std::uint8_t* column, int historyAt, int slot);
     void freeze();
     void point (std::optional<juce::Point<float>>);
+    /* The middle pixel, where the keys put a crosshair first. */
+    juce::Point<float> centre() const;
     void report();
     void repaintCrosshair();
     juce::Rectangle<float> playheadBounds (int slot) const;
@@ -221,6 +247,9 @@ private:
     ClashStyle clashStyle = ClashStyle::amber;
 
     std::optional<juce::Point<float>> pointer;
+    /* The crosshair is the keys', not the pointer's: it goes with the focus. */
+    bool keyed = false;
+    FocusVisibility focus { *this };
     juce::Image hatch;
 
     JUCE_DECLARE_NON_COPYABLE (Spectrogram)
