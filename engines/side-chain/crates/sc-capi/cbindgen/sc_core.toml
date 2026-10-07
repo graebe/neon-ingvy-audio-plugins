@@ -41,3 +41,5 @@ exclude = ["ScParamArg", "ScCore"]
 "CTransport" = "sc_transport_t"
 "ScParam" = "sc_param_t"
 "ScParamArg" = "sc_param_t"
+"ScShape" = "sc_shape_t"
+"ScShapeMarks" = "sc_shape_marks_t"

@@ -42,6 +42,7 @@ pub mod midi;
 pub mod params;
 pub mod rates;
 pub mod shape;
+pub mod single;
 
 #[cfg(test)]
 mod tests;

@@ -473,6 +473,42 @@ fn the_tap_reports_the_gain_it_applied_and_where_each_sample_sat() {
     }
 }
 
+/* ------------------------------------------------------- the single shot */
+
+#[test]
+fn the_single_shot_is_sc_cores_through_the_abi() {
+    let s = ScShape { curve: 1, delay: -20.0, attack: 6.0, hold: 11.0, release: 42.0, depth: 0.85, cycle: 1 };
+    let want = sc_core::single::Single {
+        curve: sc_core::shape::Curve::Exp,
+        delay: -20.0,
+        attack: 6.0,
+        hold: 11.0,
+        release: 42.0,
+        depth: 0.85,
+        cycle: true,
+    };
+    let mut gain = [0.0f32; 201];
+    unsafe { sc_shape_render(&s, gain.as_mut_ptr(), gain.len() as c_int) };
+    for (i, g) in gain.iter().enumerate() {
+        assert_eq!(*g, want.gain_at(i as f64 / 2.0) as f32, "column {i}");
+    }
+    let mut m = ScShapeMarks { start: -1.0, bottom: -1.0, hold_end: -1.0, end: -1.0, span: -1.0, floor: -1.0 };
+    assert_eq!(unsafe { sc_shape_marks(&s, &mut m) }, 0);
+    let w = want.marks();
+    assert_eq!((m.start, m.bottom, m.hold_end, m.end, m.span, m.floor), (w.start, w.bottom, w.hold_end, w.end, w.span, w.floor));
+    assert_eq!(m.start, 80.0);
+
+    /* Null and empty arguments are refused, and touch nothing. */
+    unsafe {
+        sc_shape_render(null(), gain.as_mut_ptr(), 4);
+        sc_shape_render(&s, null_mut(), 4);
+        sc_shape_render(&s, gain.as_mut_ptr(), 0);
+        sc_shape_render(&s, gain.as_mut_ptr(), -3);
+        assert_eq!(sc_shape_marks(null(), &mut m), -1);
+        assert_eq!(sc_shape_marks(&s, null_mut()), -1);
+    }
+}
+
 /* ------------------------------------------------------------ test hooks */
 
 #[test]

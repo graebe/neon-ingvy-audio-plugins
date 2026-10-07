@@ -596,6 +596,84 @@ pub unsafe extern "C" fn sc_core_fires(c: *const ScCore) -> u32 {
     c.as_ref().map(|c| c.0.fires()).unwrap_or(0)
 }
 
+/* ------------------------------------------------------- the single shot */
+
+/// The duck one trigger makes when nothing interrupts it, from these
+/// parameters in the engine's units: what the plugin's shape well draws
+/// (sc-core's `single.rs`). The four stages are percentages of the cycle,
+/// `depth` 0..1, `curve` sc_param_t's SC_P_CURVE value, and `cycle` non-zero
+/// when the source is Cycle, whose Delay wraps.
+#[repr(C)]
+pub struct ScShape {
+    pub curve: c_int,
+    pub delay: f64,
+    pub attack: f64,
+    pub hold: f64,
+    pub release: f64,
+    pub depth: f64,
+    pub cycle: c_int,
+}
+
+/// Where its corners sit, as phases 0..100 (wrapped on Cycle): where the duck
+/// starts, reaches the bottom, leaves it and is back. `span` is the three
+/// stages' sum unwrapped, which says whether the duck can finish inside one
+/// cycle; `floor` is the gain at the bottom, 1 - depth.
+#[repr(C)]
+pub struct ScShapeMarks {
+    pub start: f64,
+    pub bottom: f64,
+    pub hold_end: f64,
+    pub end: f64,
+    pub span: f64,
+    pub floor: f64,
+}
+
+fn single(s: &ScShape) -> sc_core::single::Single {
+    sc_core::single::Single {
+        curve: sc_core::shape::Curve::from_i32(s.curve),
+        delay: s.delay,
+        attack: s.attack,
+        hold: s.hold,
+        release: s.release,
+        depth: s.depth,
+        cycle: s.cycle != 0,
+    }
+}
+
+/// The shot's gain, Depth applied, at `count` phases evenly spaced from 0 to
+/// 100 % of the cycle, both ends included. Needs no engine, allocates nothing;
+/// any thread.
+///
+/// # Safety
+/// `s` is null or valid; `gain` is null or holds `count` floats.
+#[no_mangle]
+pub unsafe extern "C" fn sc_shape_render(s: *const ScShape, gain: *mut f32, count: c_int) {
+    let Some(s) = s.as_ref() else { return };
+    if gain.is_null() || count <= 0 {
+        return;
+    }
+    single(s).render(std::slice::from_raw_parts_mut(gain, count as usize));
+}
+
+/// The shot's corners into `out`. Returns 0, or -1 for a null argument.
+///
+/// # Safety
+/// `s` and `out` are null or valid.
+#[no_mangle]
+pub unsafe extern "C" fn sc_shape_marks(s: *const ScShape, out: *mut ScShapeMarks) -> c_int {
+    let (Some(s), Some(out)) = (s.as_ref(), out.as_mut()) else { return -1 };
+    let m = single(s).marks();
+    *out = ScShapeMarks {
+        start: m.start,
+        bottom: m.bottom,
+        hold_end: m.hold_end,
+        end: m.end,
+        span: m.span,
+        floor: m.floor,
+    };
+    0
+}
+
 /* ------------------------------------------------------------ test hooks */
 
 /// The shape, reachable from C so `tests/shape_table.c` can generate the
