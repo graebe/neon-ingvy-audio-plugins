@@ -21,9 +21,11 @@ namespace ni
 
 struct MachineSettings
 {
-    /* On unless switched off on this machine. */
-    static bool motion();
-    static void setMotion (bool on);
+    /* A product's Motion switch (its versions.json key, "trance-gate"): on
+     * unless switched off for that product on this machine. Each product
+     * remembers its own, as the manuals say. */
+    static bool motion (const char* product);
+    static void setMotion (const char* product, bool on);
 };
 
 } // namespace ni

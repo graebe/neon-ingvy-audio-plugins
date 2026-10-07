@@ -91,11 +91,33 @@ const GPL_3_0_SHA256 = '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9
 if (createHash('sha256').update(readFileSync(join(ROOT, 'LICENSE'))).digest('hex') !== GPL_3_0_SHA256)
   fail('LICENSE is not the unmodified text of GPLv3 (https://www.gnu.org/licenses/gpl-3.0.txt)');
 
+/* The texts every bundle on the JUCE shell carries beside the notices, as
+ * their publishers publish them: JUCE's AGPLv3 and SheenBidi's Apache 2.0. */
+const LICENCE_FILES = {
+  'AGPL-3.0.txt': ['0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0',
+                   'https://www.gnu.org/licenses/agpl-3.0.txt'],
+  'Apache-2.0.txt': ['cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30',
+                     'https://www.apache.org/licenses/LICENSE-2.0.txt'],
+};
+if (JUCE_PLUGINS.length)
+  for (const [f, [sha, url]] of Object.entries(LICENCE_FILES)) {
+    const at = join(ROOT, 'licenses', f);
+    if (!existsSync(at)) fail(`licenses/${f} is missing -- the bundles on the JUCE shell carry it`);
+    else if (createHash('sha256').update(readFileSync(at)).digest('hex') !== sha)
+      fail(`licenses/${f} is not the unmodified text (${url})`);
+  }
+
 /* ------------------------------------------------------------ framework */
 try {
   const fw = section(sections, 'The plugin framework');
-  need(fw, 'iPlug2', 'every plugin is an iPlug2 plugin');
-  need(fw, 'WDL', 'iPlug2 compiles WDL in');
+  if (PLUGINS.length) {
+    need(fw, 'iPlug2', 'a plugin is an iPlug2 plugin');
+    need(fw, 'WDL', 'iPlug2 compiles WDL in');
+  }
+  if (JUCE_PLUGINS.length) {
+    need(fw, 'JUCE', 'a plugin is built on the JUCE shell');
+    need(fw, "VST3 SDK (JUCE's copy)", 'JUCE compiles its own VST3 SDK into a bundle on the JUCE shell');
+  }
   const pins = read('scripts', 'fetch-sdks.sh');
   const pin = (k) => new RegExp(`^${k}=(\\S+)`, 'm').exec(pins)?.[1];
   const formats = PLUGINS.map((p) => /FORMATS\s+([\s\S]*?)\n\s*UI/.exec(p.cmake)?.[1] ?? '').join(' ');
@@ -115,6 +137,17 @@ try {
     if (!need(fw, 'JSON for Modern C++', 'the WebView bridge compiles it into every plugin').includes(v))
       fail(`the JSON for Modern C++ row does not name the vendored ${v}`);
   }
+} catch (e) { fail(e.message); }
+
+/* ------------------------------------------------------------ JUCE's own */
+/* What juce_core and juce_graphics compile in from JUCE's tree, for the
+ * modules and switches cmake/NiJucePlugin.cmake uses. */
+try {
+  const shipped = new Set(JUCE_PLUGINS.length
+    ? ['zlib', 'libpng', 'IJG JPEG library', 'HarfBuzz', 'SheenBidi', 'LunaSVG', 'PlutoVG'] : []);
+  const has = [...sections.keys()].some((k) => k.startsWith("JUCE's own dependencies"));
+  if (shipped.size || has)
+    sameSet("JUCE's dependencies", new Set(section(sections, "JUCE's own dependencies").keys()), shipped);
 } catch (e) { fail(e.message); }
 
 /* ------------------------------------------------------------ Rust std */
@@ -167,9 +200,12 @@ try {
     if (p.editor) shipped.add(`${p.bundle}.vst3`);
   sameSet('font bundles', new Set(fonts.keys()), shipped);
 
-  const music = section(sections, 'Bundled music font');
-  sameSet('music font bundles', new Set(music.keys()),
-    new Set(JUCE_PLUGINS.filter((p) => p.music).map((p) => `${p.bundle}.vst3`)));
+  /* The music font's section is there while a product embeds it, and only
+   * then: a branch without that product has nothing to list. */
+  const musical = new Set(JUCE_PLUGINS.filter((p) => p.music).map((p) => `${p.bundle}.vst3`));
+  const hasMusicSection = [...sections.keys()].some((k) => k.startsWith('Bundled music font'));
+  if (musical.size || hasMusicSection)
+    sameSet('music font bundles', new Set(section(sections, 'Bundled music font').keys()), musical);
 } catch (e) { fail(e.message); }
 
 /* ------------------------------------------------------------ engines */
@@ -382,7 +418,10 @@ try {
   if (existsSync(join(ROOT, 'external', 'doctest', 'doctest.h'))) vendored.add('doctest');
   for (const h of ['plugin_api_v1.h', 'audio_fx_api_v2.h'])
     if (existsSync(join(ROOT, 'engines', 'trance-gate', 'include', h))) vendored.add(h);
-  if (/^\s*path\s*=\s*external\/JUCE\s*$/m.test(readFileSync(join(ROOT, '.gitmodules'), 'utf8')))
+  /* JUCE is test-only until a product ships it; then its row is the
+   * framework's. */
+  if (!JUCE_PLUGINS.length
+      && /^\s*path\s*=\s*external\/JUCE\s*$/m.test(readFileSync(join(ROOT, '.gitmodules'), 'utf8')))
     vendored.add('JUCE');
   sameSet('test-only', new Set(testOnly.keys()), vendored);
 } catch (e) { fail(e.message); }
@@ -400,7 +439,7 @@ if (at > 0) {
   }
   for (const p of JUCE_PLUGINS) {
     const res = join(out, `${p.bundle}.vst3`, 'Contents', 'Resources');
-    const files = ['LICENSE', 'THIRD_PARTY_LICENSES.md',
+    const files = ['LICENSE', 'THIRD_PARTY_LICENSES.md', ...Object.keys(LICENCE_FILES),
       ...(p.editor ? ['OFL.txt'] : []), ...(p.music ? ['Bravura-OFL.txt'] : [])];
     for (const f of files)
       if (!existsSync(join(res, f))) fail(`${p.bundle}.vst3 ships without Contents/Resources/${f}`);

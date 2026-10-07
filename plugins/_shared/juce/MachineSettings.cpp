@@ -32,19 +32,22 @@ struct Store
     juce::PropertiesFile file;
 };
 
-const char* const motionKey = "motion";
+juce::String motionKey (const char* product)
+{
+    return "motion." + juce::String (product);
+}
 } // namespace
 
-bool MachineSettings::motion()
+bool MachineSettings::motion (const char* product)
 {
     const juce::SharedResourcePointer<Store> store;
-    return store->file.getBoolValue (motionKey, true);
+    return store->file.getBoolValue (motionKey (product), true);
 }
 
-void MachineSettings::setMotion (bool on)
+void MachineSettings::setMotion (const char* product, bool on)
 {
     const juce::SharedResourcePointer<Store> store;
-    store->file.setValue (motionKey, on);
+    store->file.setValue (motionKey (product), on);
     store->file.saveIfNeeded();
 }
 

@@ -153,9 +153,13 @@ std::optional<State> readLegacy (const Layout& layout, const std::uint8_t* b, st
         {
             if (k >= layout.requiredStrings)
             {
-                if (*pos + 4 == size)
+                /* The wrapper wrote 0 or 1 there, and nothing else: four
+                 * bytes that are neither are not its bypass, which is what
+                 * tells a body from bytes that only happen to end there. */
+                const auto flag = *pos + 4 == size ? getI32 (b + *pos) : -1;
+                if (flag == 0 || flag == 1)
                 {
-                    s.bypass = getI32 (b + *pos) != 0;
+                    s.bypass = flag == 1;
                     return s;
                 }
                 if (*pos == size)

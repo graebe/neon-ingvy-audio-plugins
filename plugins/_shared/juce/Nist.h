@@ -15,7 +15,10 @@
  *                        load without
  *   no header (legacy)   the same body from offset 0, from a build before
  *                        2026-09-30, with as many parameters as that build
- *                        had (`legacyCounts`)
+ *                        had (`legacyCounts`): the count for which the body
+ *                        ends at the stream's end, or four bytes before it
+ *                        where the wrapper's bypass is -- 0 or 1, as it only
+ *                        ever wrote
  *
  * Read makes every check FORMAT.md lists before it returns anything, so a
  * stream no build wrote changes nothing; Write writes the current form, which
