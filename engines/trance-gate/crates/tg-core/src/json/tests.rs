@@ -4,7 +4,7 @@
 //! The flat-object reader: what it hands a sink, what it borrows, and what a
 //! file's grammar refuses.
 
-use super::{read, Fault, Object, Scalar, Sink, Unread, MAX_FIELDS};
+use super::{plain, read, read_plain, Fault, Object, Scalar, Sink, Unread, MAX_FIELDS};
 use crate::fmt;
 use std::borrow::Cow;
 
@@ -90,11 +90,105 @@ fn a_whole_number_is_told_from_any_other() {
 }
 
 #[test]
-fn an_escape_is_decoded_for_a_blob_and_refused_in_a_file() {
+fn an_escape_is_decoded_by_the_reader_and_refused_by_a_file_and_a_plain_read() {
     let text = "{\"rate\":\"1\\/16\"}";
     assert_eq!(all(text).unwrap()[0].1.text(), Some("1/16"));
     assert_eq!(Object::read(text).err(), Some(Fault::NotAFile));
     assert_eq!(Object::read("{\"r\\u0061te\":\"1/16\"}").err(), Some(Fault::NotAFile));
+    /* serde_json decodes it into a copy, so the reader that must not allocate
+     * never asks it to. */
+    assert_eq!(read_plain(text, &mut All::default()), Err(Unread::NotAnObject));
+}
+
+/* What the reader that must not allocate passes to serde_json, and what it
+ * refuses itself. */
+#[test]
+fn a_plain_text_is_one_object_that_serde_json_reads_in_place() {
+    for text in [
+        "{}",
+        " {\n\t\"sv\" : 7 ,\r\n \"x\":null } ",
+        "{\"sv\":7,\"rate\":\"1/16\",\"attack\":1.60,\"p0\":\"5555:0:16:\"}",
+        "{\"a\":true,\"b\":false,\"c\":-0,\"d\":0.5,\"e\":1e-7,\"f\":2.5E+2,\"g\":1e-300}",
+        "{\"name\":\"Größe ♪\"}",
+        /* Nested values, as a newer build might write under a key this one
+         * passes over: two deep and no deeper. */
+        "{\"x\":[],\"y\":{},\"z\":[1,\"a\",{\"k\":2},[]],\"w\":{\"k\":[1,2],\"l\":{}}}",
+        "{\"n\":12345678901234567890123456789012}",
+    ] {
+        assert!(plain(text), "{text}");
+        assert!(read_plain(text, &mut All::default()).is_ok(), "{text}");
+    }
+    for text in [
+        "",
+        " ",
+        "null",
+        "[]",
+        "\"x\"",
+        "{",
+        "}",
+        "{\"sv\":7,",
+        "{\"sv\":}",
+        "{\"sv\" 7}",
+        "{,}",
+        "{\"a\":1,}",
+        "{\"a\":1}}",
+        "{\"a\":1} x",
+        "{a:1}",
+        "{\"a\":01}",
+        "{\"a\":1.}",
+        "{\"a\":.5}",
+        "{\"a\":-}",
+        "{\"a\":1e}",
+        "{\"a\":1e+}",
+        "{\"a\":+1}",
+        "{\"a\":tru}",
+        "{\"a\":nul}",
+        "{\"a\":nullx}",
+        "{\"a\":\"x}",
+        "{\"a\":\"x\\ny\"}",
+        "{\"a\\u0062\":1}",
+        "{\"a\":\"tab\there\"}",
+        "{\"a\":[1,]}",
+        "{\"a\":[1}",
+        "{\"a\":{\"b\"}}",
+        /* Three deep: serde_json skips it on a stack it allocates. */
+        "{\"a\":[[[]]]}",
+        "{\"a\":{\"b\":{\"c\":[]}}}",
+        /* Too large for a double, which serde_json refuses. */
+        "{\"a\":1e999}",
+        "{\"a\":1e+100}",
+        "{\"a\":123456789012345678901234567890123}",
+        "\u{feff}{}",
+        "{}\u{c}",
+    ] {
+        assert!(!plain(text), "{text}");
+        assert_eq!(read_plain(text, &mut All::default()), Err(Unread::NotAnObject), "{text}");
+    }
+}
+
+proptest::proptest! {
+    /* plain may refuse what serde_json reads, but never pass what it refuses
+     * or has to copy: that would be the allocation it exists to prevent. The
+     * texts are drawn from JSON's own alphabet, so most are near misses. */
+    #[test]
+    fn a_plain_text_never_makes_serde_json_refuse_or_copy(text in "[{}\\[\\],:\" \\\\a0-9.eE+\\-tnul\n]{0,40}") {
+        if plain(&text) {
+            let got = all(&text);
+            proptest::prop_assert!(got.is_ok(), "{text:?}");
+            proptest::prop_assert!(got.unwrap().iter().all(|(k, v)| matches!(k, Cow::Borrowed(_)) && !matches!(v, Scalar::Str(Cow::Owned(_)))));
+        }
+    }
+
+    /* And every way of breaking a blob a build wrote, which is what a damaged
+     * patch file is. */
+    #[test]
+    fn a_damaged_blob_is_plain_only_when_serde_json_reads_it(cut in 0usize..200, at in 0usize..200, byte in proptest::sample::select(b"{}[]:,\"\\0-.e ".to_vec())) {
+        let blob = "{\"sv\":7,\"slot\":0,\"rate\":\"1/16\",\"attack\":1.60,\"sustain\":1.000,\"p0\":\"5555:0:16:\",\"s3\":\"1/4:1.6:20.0\"}";
+        let mut damaged = blob.as_bytes()[..cut.min(blob.len())].to_vec();
+        damaged.insert(at.min(damaged.len()), byte);
+        let text = String::from_utf8(damaged).unwrap();
+        proptest::prop_assert!(!plain(&text) || all(&text).is_ok(), "{text:?}");
+    }
 }
 
 #[test]

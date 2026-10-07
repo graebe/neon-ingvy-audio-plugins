@@ -14,11 +14,13 @@
  * WHAT AN EDIT, A LOAD, AN IMPORT OR A PASTE HANDS THE AUDIO THREAD is a
  * value read elsewhere -- an Edit, a Patch, a SlotFile, a Clip -- and applying
  * one is measured here. So are the text doors that read and apply in one
- * call, with the texts a build writes: they are what the Move's set_param
- * applies on its audio callback. A REFUSED text is not: serde_json boxes the
- * error it reports, and such a text never reaches the plugin's audio thread --
- * its shell reads everything as it is posted (see the state module's note on
- * threads).
+ * call, with the texts a build writes. And set_param("state") with every text
+ * a damaged patch could hold: it is what the Move's set_param reads on its
+ * audio callback, whatever Schwung restores, so a blob it refuses must be
+ * refused without the error serde_json would box (see the state module's note
+ * on threads). An import or a paste of a refused text is not measured: the
+ * Move has neither, and the plugin's shell reads both as they are posted, on
+ * its main thread.
  *
  * The allocator counts allocations AND frees: a free is the same lock as a
  * malloc, and a temporary that is allocated before the window and dropped
@@ -38,6 +40,32 @@ use tg_core::{Instance, Transport};
 
 #[global_allocator]
 static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
+
+/* A state blob damaged every way that matters to its reader: empty, not an
+ * object, unfinished, mistyped, escaped, nested too deep, a number no double
+ * holds -- each a text serde_json would refuse or copy. Every prefix and
+ * suffix of a real blob is measured too, below. */
+const DAMAGED: &[&str] = &[
+    "",
+    "   ",
+    "null",
+    "7",
+    "\"state\"",
+    "[{\"sv\":7}]",
+    "{\"sv\":7,",
+    "{\"sv\":}",
+    "{\"sv\":\"7\"",
+    "{\"sv\":7,}",
+    "{\"sv\":7}}",
+    "{\"sv\":07}",
+    "{\"sv\":7} trailing",
+    "{\"sv\":7,\"rate\":\"1\\/16\"}",
+    "{\"sv\":7,\"r\\u0061te\":\"1/16\"}",
+    "{\"sv\":7,\"x\":[[[1]]]}",
+    "{\"sv\":7,\"x\":{\"y\":{\"z\":{}}}}",
+    "{\"sv\":1e999}",
+    "{\"sv\":7,\"amount\":tru}",
+];
 
 /* Every key the string door serves, with a value of each shape it takes. */
 const SETS: &[(&str, &str)] = &[
@@ -137,8 +165,18 @@ fn process_set_param_and_get_param_allocate_nothing() {
     for clip in &pasted {
         p.apply_clip(2, clip);
     }
-    /* The text doors, with what a build writes. */
+    /* The text doors, with what a build writes... */
     p.set_param("state", &state);
+    /* ...a newer build's nesting, under a key this one passes over... */
+    p.set_param("state", "{\"sv\":7,\"future\":{\"x\":[1,2]},\"more\":[{},[]]}");
+    /* ...and what a damaged patch holds. */
+    for text in DAMAGED {
+        p.set_param("state", text);
+    }
+    for at in (0..state.len()).filter(|&i| state.is_char_boundary(i)) {
+        p.set_param("state", &state[..at]);
+        p.set_param("state", &state[at..]);
+    }
     let _ = p.import(&bank);
     let _ = p.import(&slot);
     let _ = p.paste(&slot);

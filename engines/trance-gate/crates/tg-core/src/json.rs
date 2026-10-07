@@ -20,8 +20,14 @@ borrowed from it -- none of the formats has a character to escape -- numbers
 are parsed in place, and both sinks are fixed-size. serde_json allocates for
 what no build writes, an escaped string (decoded into a new one) or a value
 nested two deep (skipped on a stack), and for every error it reports, which it
-boxes. Which thread may read which text is therefore `state`'s note, not this
-module's.
+boxes.
+
+[`read`] is therefore for a thread that may allocate. [`read_plain`] is for
+one that may not -- the Move's audio callback, which is where a state blob is
+read there -- and never allocates, whatever the text: it lets serde_json see
+only a text [`plain`] has found it reads without an error and without a copy,
+and refuses every other text itself. Which thread reads which text is
+`state`'s note.
 
 # Numbers
 
@@ -96,6 +102,179 @@ pub(crate) fn read<'a>(text: &'a str, sink: &mut impl Sink<'a>) -> Result<(), Un
         Ok(()) => Ok(()),
         Err(_) if stopped => Err(Unread::Stopped),
         Err(_) => Err(Unread::NotAnObject),
+    }
+}
+
+/// [`read`], for a thread that must not allocate: a text that is not
+/// [`plain`] is refused before serde_json sees it, as `NotAnObject`, and every
+/// other text is read, as by [`read`], without a copy or an error to box --
+/// provided the sink never stops, as only a file's does.
+pub(crate) fn read_plain<'a>(text: &'a str, sink: &mut impl Sink<'a>) -> Result<(), Unread> {
+    if !plain(text) {
+        return Err(Unread::NotAnObject);
+    }
+    read(text, sink)
+}
+
+/*
+ * THE TEXTS SERDE_JSON READS WITHOUT ALLOCATING: one JSON object, nothing but
+ * whitespace around it, no escape in any string, and no value nested more than
+ * two deep. Every format here is that -- flat, with no character to escape --
+ * so this is no second grammar to keep in step with the formats: it is
+ * serde_json's own JSON, narrowed to what reads in place, and it decides only
+ * whether serde_json is asked at all.
+ *
+ * The depth is serde_json's. A value that is an array or an object is walked
+ * by the visitor (one deep) and its members skipped by serde_json (two deep);
+ * a third level is the first that its skipping keeps on a stack, which it
+ * allocates. Two deep keeps a blob from a newer build readable if it ever
+ * nests a value under a key this build passes over.
+ *
+ * It must never pass a text serde_json then refuses: that refusal is the
+ * allocation this exists to keep off the audio thread. Hence JSON's number
+ * grammar to the letter (no leading zero, a digit on both sides of the point
+ * and after the `e`), no control character inside a string, and one bound
+ * JSON does not have. serde_json refuses a number too large for a double, so a
+ * number is at most NUMBER_MAX bytes long and a positive exponent at most two
+ * digits: below 10^32 * 10^99, far inside a double's range. No build writes a
+ * number over ten bytes, and JavaScript's shortest form -- what Schwung
+ * rewrites a stored blob's numbers to -- is at most 24.
+ */
+pub(crate) fn plain(text: &str) -> bool {
+    let mut s = Scan { b: text.as_bytes(), i: 0 };
+    s.ws();
+    let object = s.peek() == Some(b'{') && s.members(b'}', |s| s.string() && s.ws_eat(b':') && s.value(DEPTH_MAX));
+    s.ws();
+    object && s.i == s.b.len()
+}
+
+/// The longest number [`plain`] passes; see there.
+const NUMBER_MAX: usize = 32;
+/// How deep [`plain`] lets a value nest; see there.
+const DEPTH_MAX: u32 = 2;
+
+struct Scan<'a> {
+    b: &'a [u8],
+    i: usize,
+}
+
+impl Scan<'_> {
+    fn peek(&self) -> Option<u8> {
+        self.b.get(self.i).copied()
+    }
+
+    fn eat(&mut self, c: u8) -> bool {
+        let hit = self.peek() == Some(c);
+        self.i += hit as usize;
+        hit
+    }
+
+    /// JSON's whitespace, which is not Rust's: no form feed, no Unicode.
+    fn ws(&mut self) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+            self.i += 1;
+        }
+    }
+
+    fn ws_eat(&mut self, c: u8) -> bool {
+        self.ws();
+        self.eat(c)
+    }
+
+    fn digits(&mut self) -> usize {
+        let from = self.i;
+        while matches!(self.peek(), Some(b'0'..=b'9')) {
+            self.i += 1;
+        }
+        self.i - from
+    }
+
+    /// A string with no escape and no control character, which serde_json
+    /// borrows; the text is a `str`, so its bytes are UTF-8 already.
+    fn string(&mut self) -> bool {
+        if !self.eat(b'"') {
+            return false;
+        }
+        loop {
+            match self.peek() {
+                Some(b'"') => {
+                    self.i += 1;
+                    return true;
+                }
+                Some(b'\\' | 0x00..=0x1f) | None => return false,
+                Some(_) => self.i += 1,
+            }
+        }
+    }
+
+    /// A value, which may be an array or an object `depth` levels deep.
+    fn value(&mut self, depth: u32) -> bool {
+        self.ws();
+        match self.peek() {
+            Some(b'"') => self.string(),
+            Some(b'-' | b'0'..=b'9') => self.number(),
+            Some(b't') => self.word(b"true"),
+            Some(b'f') => self.word(b"false"),
+            Some(b'n') => self.word(b"null"),
+            Some(b'[') if depth > 0 => self.members(b']', |s| s.value(depth - 1)),
+            Some(b'{') if depth > 0 => self.members(b'}', |s| s.string() && s.ws_eat(b':') && s.value(depth - 1)),
+            _ => false,
+        }
+    }
+
+    /// An array's or an object's members, from its opening bracket to `close`.
+    fn members(&mut self, close: u8, mut member: impl FnMut(&mut Self) -> bool) -> bool {
+        self.i += 1;
+        if self.ws_eat(close) {
+            return true;
+        }
+        loop {
+            self.ws();
+            if !member(self) {
+                return false;
+            }
+            if self.ws_eat(close) {
+                return true;
+            }
+            if !self.eat(b',') {
+                return false;
+            }
+        }
+    }
+
+    fn word(&mut self, w: &[u8]) -> bool {
+        let hit = self.b[self.i..].starts_with(w);
+        self.i += if hit { w.len() } else { 0 };
+        hit
+    }
+
+    /// `-? (0 | [1-9][0-9]*) (. [0-9]+)? ([eE] [+-]? [0-9]+)?`, within the
+    /// bounds [`plain`] gives.
+    fn number(&mut self) -> bool {
+        let from = self.i;
+        self.eat(b'-');
+        match self.peek() {
+            Some(b'0') => self.i += 1,
+            Some(b'1'..=b'9') => {
+                self.digits();
+            }
+            _ => return false,
+        }
+        if self.eat(b'.') && self.digits() == 0 {
+            return false;
+        }
+        if self.eat(b'e') || self.eat(b'E') {
+            let negative = self.eat(b'-');
+            if !negative {
+                self.eat(b'+');
+            }
+            match self.digits() {
+                0 => return false,
+                n if !negative && n > 2 => return false,
+                _ => {}
+            }
+        }
+        self.i - from <= NUMBER_MAX
     }
 }
 
