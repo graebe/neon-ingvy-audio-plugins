@@ -59,7 +59,7 @@ body{margin:0;background:#060410}
 
     <div style="margin-top: auto; height: 28px; display: flex; align-items: center; gap: 24px;">
       <span style="display: flex; align-items: center; gap: 8px;">
-        <span class="ph-label">Spelling</span>
+        <span class="ph-label" style="width: 72px;">Spelling</span>
         <span class="ph-transport" role="group" aria-label="Spelling">
           <sc-for list="{{spellings}}" as="s" hint-placeholder-count="3">
             <button type="button" class="{{s.cls}}" aria-pressed="{{s.on}}" onClick="{{s.pick}}" style="min-width: 40px; justify-content: center;">{{s.label}}</button>
@@ -75,6 +75,10 @@ body{margin:0;background:#060410}
   <div style="position: absolute; left: 32px; top: 288px; width: 696px; height: 28px; display: flex; align-items: center; gap: 16px;">
     <h2 class="ph-title" style="margin: 0;">History</h2>
     <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+      <span class="ph-label">Zoom</span>
+      <button type="button" class="ph-btn" aria-label="Zoom: {{zoomLabel}}. Click for the next size." onClick="{{nextZoom}}" style="width: 88px; justify-content: space-between; padding: 0 8px 0 12px; font-weight: 400; font-size: 13px; letter-spacing: 0;">{{zoomLabel}}<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></button>
+    </span>
+    <span style="display: flex; align-items: center; gap: 8px;">
       <span class="ph-label">Span</span>
       <button type="button" class="ph-btn" aria-label="Span: {{spanLabel}}. Click for the next span." onClick="{{nextSpan}}" style="width: 88px; justify-content: space-between; padding: 0 8px 0 12px; font-weight: 400; font-size: 13px; letter-spacing: 0;">{{spanLabel}}<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></button>
     </span>
@@ -136,10 +140,9 @@ body{margin:0;background:#060410}
     </div>
   </div>
 
-  <!-- HINT (32, 572): three conventions, the zoom, the signature. -->
+  <!-- HINT (32, 572): three conventions, then the signature. -->
   <div class="ph-hint" style="position: absolute; left: 32px; top: 572px; width: 696px; height: 28px; box-sizing: border-box; padding: 0;">
     <span class="tips" style="white-space: nowrap;"><b>play</b> notes on this track<span class="sep">–</span><b>click</b> a key on the circle<span class="sep">–</span><b>hold</b> keeps the last chord</span>
-    <span style="display: flex; align-items: center; gap: 8px;"><span class="ph-label">Zoom</span><span style="font: 400 12px var(--font-mono); color: var(--ink);">100%</span></span>
     <span class="ph-sig"><span class="mark"></span>Neon Ingvy</span>
   </div>
 </div>
@@ -148,7 +151,7 @@ body{margin:0;background:#060410}
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { tonic: 0, mode: 0, spelling: 0, hold: true, view: 'staff', span: 2, tick: 40 };
+    this.state = { tonic: 0, mode: 0, spelling: 0, hold: true, view: 'staff', span: 2, zoom: 1, tick: 40 };
   }
 
   componentDidMount() {
@@ -401,6 +404,8 @@ class Component extends DCLogic {
       toggleHold: () => this.setState({ hold: !S.hold }),
       spanLabel: spanBars + (spanBars === 1 ? ' bar' : ' bars'),
       nextSpan: () => this.setState({ span: (S.span + 1) % 4 }),
+      zoomLabel: ['75%', '100%', '125%', '150%'][S.zoom],
+      nextZoom: () => this.setState({ zoom: (S.zoom + 1) % 4 }),
       views: [['staff', 'Staff'], ['midi', 'MIDI']].map(([id, label]) => ({
         label, on: S.view === id, cls: 'ph-btn' + (S.view === id ? ' active' : ''),
         pick: () => this.setState({ view: id }),
