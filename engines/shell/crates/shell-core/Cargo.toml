@@ -22,8 +22,8 @@ basedrop = { workspace = true }
 
 # Test-only: built for the tests, shipped in nothing.
 [dev-dependencies]
-# The counting allocator the no_alloc test installs.
-ni-testkit = { path = "../../../shared/crates/ni-testkit" }
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
 # The property test (tests/round_trip.rs). `std` is its generator and its
 # runner; fork, timeout and bit-set -- a process per case, a watchdog, a
 # bit-set strategy -- are features nothing here uses.

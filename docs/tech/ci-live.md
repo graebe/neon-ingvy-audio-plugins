@@ -81,7 +81,7 @@ AU host tests only exist there. Three jobs:
 | `versions` | every spelling of a product's version agrees with `versions.json`, and every AU plist agrees with its `config.h` |
 | `release` | a tag means what the release workflows think it means |
 | `licenses` | everything that ships has a notice, and every bundle carries them |
-| `spectro_core` | the FFT against a naive DFT, the band mapping, and a counting allocator proving the audio path allocates nothing |
+| `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
 
 The JS suites skip rather than fail when node is absent: a C++ developer building
 the plugin should not need a JS toolchain to run the C tests.

@@ -5,16 +5,20 @@
  * The audio side of the bridge and the handoff allocates nothing, asserted
  * rather than claimed.
  *
- * ni_testkit's counting allocator, armed only across the calls the audio
- * thread makes; allocations and frees are asserted, since a free takes the
- * allocator's lock as surely as a malloc does. THIS FILE MUST HOLD EXACTLY ONE
- * TEST -- the counter is global and cargo runs tests in threads.
+ * assert_no_alloc's guard, closed only around the calls the audio thread
+ * makes; allocations and frees are both violations, since a free takes the
+ * allocator's lock as surely as a malloc does. The guard watches the thread
+ * that runs the closure, and no other, so the tests cargo runs beside this
+ * one cannot trip it. It counts rather than aborts (warn_debug,
+ * warn_release), so the assertion below can say how many.
  */
 
 use shell_core::{Bridge, Handoff, Model, Shared, Text};
 
+use assert_no_alloc::{assert_no_alloc, violation_count, AllocDisabler};
+
 #[global_allocator]
-static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
+static ALLOCATOR: AllocDisabler = AllocDisabler;
 
 /// A model that formats text into its frame, the way a product's does, from
 /// commands whose payload rides in a `Shared`, the way a product's heavy ones
@@ -57,31 +61,27 @@ fn the_audio_side_allocates_nothing() {
         b.post(Shared::new(b.handle(), vec![b'a' + i; 12]));
     }
 
-    ni_testkit::arm();
-    for _ in 0..64 {
-        unsafe {
-            let e = b.begin();
-            assert!(e.len <= 64);
-            b.end(8);
-            assert_eq!(h.acquire(), Some(&7));
-            h.release();
+    assert_no_alloc(|| {
+        for _ in 0..64 {
+            unsafe {
+                let e = b.begin();
+                assert!(e.len <= 64);
+                b.end(8);
+                assert_eq!(h.acquire(), Some(&7));
+                h.release();
+            }
         }
-    }
-    ni_testkit::disarm();
+    });
 
     /* THE LAST REFERENCE, LET GO OF ON THE AUDIO THREAD. The main thread
      * retires the object mid-block, so the block's release is the one that
      * drops it -- and that must queue it for the collector, not free it. */
-    ni_testkit::arm();
-    let held = unsafe { h.acquire() }.copied();
-    ni_testkit::disarm();
+    let held = assert_no_alloc(|| unsafe { h.acquire() }.copied());
     h.set(Some(8));
-    ni_testkit::arm();
-    unsafe { h.release() };
-    ni_testkit::disarm();
+    assert_no_alloc(|| unsafe { h.release() });
 
-    assert_eq!(ni_testkit::allocs(), 0, "the audio side reached the allocator");
-    assert_eq!(ni_testkit::frees(), 0, "the audio side freed");
+    let n = violation_count();
+    assert_eq!(n, 0, "the audio side allocated or freed {n} times");
     assert_eq!(held, Some(7));
     assert_eq!(h.collect(), 0, "freed by the collector instead");
     assert_eq!(b.read(|r| r.frame.as_str().to_owned()), "t".repeat(12));

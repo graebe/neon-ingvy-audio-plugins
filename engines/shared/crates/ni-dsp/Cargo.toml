@@ -25,5 +25,5 @@ lexical-core = { workspace = true, features = ["parse-floats", "parse-integers",
 arrayvec = { workspace = true }
 
 [dev-dependencies]
-# The counting allocator tests/no_alloc.rs installs.
-ni-testkit = { path = "../ni-testkit" }
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

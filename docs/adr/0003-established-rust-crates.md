@@ -120,9 +120,26 @@ what the code does not do.
 `assert_no_alloc` is BSD-1-Clause. The owner's licence policy names BSD-1,
 -2 and -3, so the allowlist in [0001](0001-gpl-3.0-or-later.md), deny.toml
 and about.toml carry BSD-1-Clause: it asks only that its source keep its
-notice, and GPLv3 can take it in. Its row waits for its turn like the others.
-Until it comes, ni-testkit's counting allocator is what proves that nothing
-on the audio thread allocates.
+notice, and GPLv3 can take it in.
+
+It is the house no-allocation guard (2026-10-07), and ni-testkit is gone.
+Every `tests/no_alloc.rs` installs its `AllocDisabler` and closes
+`assert_no_alloc(..)` around exactly the calls the audio thread makes. The
+tests are as strict as ni-testkit's were: an allocation and a free are both
+violations, and a reallocation is both. Three things differ, each on purpose:
+
+- **The guard watches one thread**, the one that runs the closure, where the
+  counting allocator counted every thread. The audio thread is one thread,
+  so that is the claim; and a test file no longer has to hold exactly one
+  test to keep the other tests' allocations out of its window.
+- **It counts rather than aborts.** Each test takes the `warn_debug` and
+  `warn_release` features and asserts `violation_count()` is zero, so a
+  failure names how many, where the default would abort the test binary.
+- **It runs in a release build too.** The crate's default feature switches
+  the guard off there; the workspace takes it without default features.
+
+It is a dev-dependency wherever it appears, so it ships in nothing and has no
+row in THIRD_PARTY_LICENSES.md, like proptest.
 
 ## How the shell's threads use them
 

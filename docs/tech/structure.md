@@ -10,7 +10,7 @@ A monorepo: everything that ships from here is in here. There is one submodule
 
 ```
 engines/<product>/crates     the core, and its wrappers
-engines/shared/crates        ni-dsp, ni-schwung, ni-testkit — shared, product-free
+engines/shared/crates        ni-dsp, ni-schwung — shared, product-free
 plugins/<product>/           the VST3/AU/CLAP shell, and its editor
 plugins/_shared/ni/          ni::WebPlugin, the editor protocol, ni::wire
 modules/<product>/           the Schwung module's shell and packaging
@@ -44,9 +44,8 @@ coupling nobody asked for.
 `engines/shared/crates` holds what two products would otherwise each keep a
 copy of: `ni-dsp` (C-compatible formatting and parsing, the rate parser, the
 envelope curves, the one-pole and the glide, the transport-following phase,
-the capi C helpers), `ni-schwung` (the Schwung audio_fx v2 glue every `*-move`
-crate is built on) and `ni-testkit` (the counting allocator the `no_alloc`
-tests install — a dev-dependency only). Each names no product. A piece moves
+the capi C helpers) and `ni-schwung` (the Schwung audio_fx v2 glue every
+`*-move` crate is built on). Each names no product. A piece moves
 there once it is truly identical in two products; what differs stays in the
 product, as each product's rate list does.
 

@@ -11,20 +11,24 @@
  * `rates::index_from` did exactly that for a numeric rate, which is what the
  * Move's knob writes.
  *
- * The allocator counts allocations AND frees: a free is the same lock as a
+ * The guard refuses allocations AND frees: a free is the same lock as a
  * malloc.
  *
- * THIS FILE MUST HOLD EXACTLY ONE TEST. The counter is global and cargo runs
- * tests in threads, so a second test in this binary could allocate inside the
- * measured window and the failure would look like a real regression.
+ * The guard is assert_no_alloc's, and it watches one thread: inside the
+ * closure, an allocation or a free on the thread that runs it is a violation,
+ * while the threads cargo runs other tests on are not watched at all. It
+ * counts rather than aborts (warn_debug, warn_release), so the assertion
+ * below can say how many.
  */
 
 
 use sc_core::params::{Param, PARAM_COUNT};
 use sc_core::{Instance, Transport};
 
+use assert_no_alloc::{assert_no_alloc, violation_count, AllocDisabler};
+
 #[global_allocator]
-static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
+static ALLOCATOR: AllocDisabler = AllocDisabler;
 
 const SETS: &[(&str, &str)] = &[
     ("rate", "1/8T"),
@@ -80,33 +84,33 @@ fn process_params_and_midi_allocate_nothing() {
     let mut i16s = vec![8000i16; 256 * 2];
     let mut out = vec![0u8; 4096];
 
-    ni_testkit::arm();
-    let mut beats = 0.0;
-    for block in 0..64 {
-        let t = Transport { running: block % 16 != 15, beats, bpm: 120.0 };
-        p.push_key(&key, &key, 256);
-        p.on_midi(&[0x90, 36, 100], block % 256);
-        p.on_midi(&[0x80, 36, 0], 200);
-        p.on_midi(MIDI_IGNORED[block % MIDI_IGNORED.len()], 100);
-        if block % 16 == 7 {
-            p.on_midi(&[0xB0, 123, 0], 255); /* a host panic */
+    assert_no_alloc(|| {
+        let mut beats = 0.0;
+        for block in 0..64 {
+            let t = Transport { running: block % 16 != 15, beats, bpm: 120.0 };
+            p.push_key(&key, &key, 256);
+            p.on_midi(&[0x90, 36, 100], block % 256);
+            p.on_midi(&[0x80, 36, 0], 200);
+            p.on_midi(MIDI_IGNORED[block % MIDI_IGNORED.len()], 100);
+            if block % 16 == 7 {
+                p.on_midi(&[0xB0, 123, 0], 255); /* a host panic */
+            }
+            match block % 4 {
+                0 => p.process_f32(&mut inter, 256, Some(&t)),
+                1 => p.process_f32_split(&mut l, &mut r, 256, Some(&t)),
+                2 => p.process_f32_split_tap(&mut l, &mut r, Some(&mut gain), Some(&mut sweep), 256, Some(&t)),
+                _ => p.process_i16(&mut i16s, 256, Some(&t)),
+            }
+            beats += 256.0 / 44100.0 * 2.0;
+            let (k, v) = SETS[block % SETS.len()];
+            p.set_param(k, v);
+            p.set_num(Param::from_i32(block as i32 % PARAM_COUNT).unwrap(), 0.5);
+            for k in GETS {
+                p.get_param(k, &mut out);
+            }
         }
-        match block % 4 {
-            0 => p.process_f32(&mut inter, 256, Some(&t)),
-            1 => p.process_f32_split(&mut l, &mut r, 256, Some(&t)),
-            2 => p.process_f32_split_tap(&mut l, &mut r, Some(&mut gain), Some(&mut sweep), 256, Some(&t)),
-            _ => p.process_i16(&mut i16s, 256, Some(&t)),
-        }
-        beats += 256.0 / 44100.0 * 2.0;
-        let (k, v) = SETS[block % SETS.len()];
-        p.set_param(k, v);
-        p.set_num(Param::from_i32(block as i32 % PARAM_COUNT).unwrap(), 0.5);
-        for k in GETS {
-            p.get_param(k, &mut out);
-        }
-    }
-    ni_testkit::disarm();
+    });
 
-    let (a, f) = (ni_testkit::allocs(), ni_testkit::frees());
-    assert_eq!((a, f), (0, 0), "the audio path allocated {a} times and freed {f} times");
+    let n = violation_count();
+    assert_eq!(n, 0, "the audio path allocated or freed {n} times");
 }

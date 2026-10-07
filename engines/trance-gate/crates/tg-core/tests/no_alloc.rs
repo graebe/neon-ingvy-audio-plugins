@@ -22,13 +22,15 @@
  * Move has neither, and the plugin's shell reads both as they are posted, on
  * its main thread.
  *
- * The allocator counts allocations AND frees: a free is the same lock as a
+ * The guard refuses allocations AND frees: a free is the same lock as a
  * malloc, and a temporary that is allocated before the window and dropped
  * inside it is still a lock taken on the audio thread.
  *
- * THIS FILE MUST HOLD EXACTLY ONE TEST. The counter is global and cargo runs
- * tests in threads, so a second test in this binary could allocate inside the
- * measured window and the failure would look like a real regression.
+ * The guard is assert_no_alloc's, and it watches one thread: inside the
+ * closure, an allocation or a free on the thread that runs it is a violation,
+ * while the threads cargo runs other tests on are not watched at all. It
+ * counts rather than aborts (warn_debug, warn_release), so the assertion
+ * below can say how many.
  */
 
 use tg_core::edit::Edit;
@@ -38,8 +40,10 @@ use tg_core::slotfile::{Kind, SlotFile};
 use tg_core::state::Patch;
 use tg_core::{Instance, Transport};
 
+use assert_no_alloc::{assert_no_alloc, violation_count, AllocDisabler};
+
 #[global_allocator]
-static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
+static ALLOCATOR: AllocDisabler = AllocDisabler;
 
 /* A state blob damaged every way that matters to its reader: empty, not an
  * object, unfinished, mistyped, escaped, nested too deep, a number no double
@@ -138,53 +142,53 @@ fn process_set_param_and_get_param_allocate_nothing() {
     let pasted = [Clip::parse(&slot).unwrap(), Clip::parse(&bank).unwrap(), Clip::parse(&state).unwrap()];
     let edits: Vec<Edit> = SETS.iter().filter_map(|&(k, v)| Edit::parse(k, v)).collect();
 
-    ni_testkit::arm();
-    let mut beats = 0.0;
-    for block in 0..64 {
-        let t = Transport { running: block % 16 != 15, beats, bpm: 123.0 };
-        match block % 3 {
-            0 => p.process_f32(&mut inter, 256, Some(&t)),
-            1 => p.process_f32_split(&mut l, &mut r, 256, Some(&t)),
-            _ => p.process_i16(&mut i16s, 256, Some(&t)),
+    assert_no_alloc(|| {
+        let mut beats = 0.0;
+        for block in 0..64 {
+            let t = Transport { running: block % 16 != 15, beats, bpm: 123.0 };
+            match block % 3 {
+                0 => p.process_f32(&mut inter, 256, Some(&t)),
+                1 => p.process_f32_split(&mut l, &mut r, 256, Some(&t)),
+                _ => p.process_i16(&mut i16s, 256, Some(&t)),
+            }
+            beats += 256.0 / 44100.0 * 123.0 / 60.0;
+            let (k, v) = SETS[block % SETS.len()];
+            p.set_param(k, v);
+            p.set_num(Param::from_i32((block % 15) as i32).unwrap(), 0.5);
+            p.set_num(Param::Slot, if block % 2 == 0 { 5.0 } else { 0.0 });
+            for k in GETS {
+                p.get_param(k, &mut out);
+            }
         }
-        beats += 256.0 / 44100.0 * 123.0 / 60.0;
-        let (k, v) = SETS[block % SETS.len()];
-        p.set_param(k, v);
-        p.set_num(Param::from_i32((block % 15) as i32).unwrap(), 0.5);
-        p.set_num(Param::Slot, if block % 2 == 0 { 5.0 } else { 0.0 });
-        for k in GETS {
-            p.get_param(k, &mut out);
+        /* The ready values. */
+        for edit in &edits {
+            p.apply_edit(edit);
         }
-    }
-    /* The ready values. */
-    for edit in &edits {
-        p.apply_edit(edit);
-    }
-    p.load(&patch);
-    p.apply_file(3, &banked);
-    for clip in &pasted {
-        p.apply_clip(2, clip);
-    }
-    /* The text doors, with what a build writes... */
-    p.set_param("state", &state);
-    /* ...a newer build's nesting, under a key this one passes over... */
-    p.set_param("state", "{\"sv\":7,\"future\":{\"x\":[1,2]},\"more\":[{},[]]}");
-    /* ...and what a damaged patch holds. */
-    for text in DAMAGED {
-        p.set_param("state", text);
-    }
-    for at in (0..state.len()).filter(|&i| state.is_char_boundary(i)) {
-        p.set_param("state", &state[..at]);
-        p.set_param("state", &state[at..]);
-    }
-    let _ = p.import(&bank);
-    let _ = p.import(&slot);
-    let _ = p.paste(&slot);
-    let _ = p.paste(&bank);
-    let _ = p.paste(&state);
-    p.export(Kind::Bank, &mut file);
-    ni_testkit::disarm();
+        p.load(&patch);
+        p.apply_file(3, &banked);
+        for clip in &pasted {
+            p.apply_clip(2, clip);
+        }
+        /* The text doors, with what a build writes... */
+        p.set_param("state", &state);
+        /* ...a newer build's nesting, under a key this one passes over... */
+        p.set_param("state", "{\"sv\":7,\"future\":{\"x\":[1,2]},\"more\":[{},[]]}");
+        /* ...and what a damaged patch holds. */
+        for text in DAMAGED {
+            p.set_param("state", text);
+        }
+        for at in (0..state.len()).filter(|&i| state.is_char_boundary(i)) {
+            p.set_param("state", &state[..at]);
+            p.set_param("state", &state[at..]);
+        }
+        let _ = p.import(&bank);
+        let _ = p.import(&slot);
+        let _ = p.paste(&slot);
+        let _ = p.paste(&bank);
+        let _ = p.paste(&state);
+        p.export(Kind::Bank, &mut file);
+    });
 
-    let (a, f) = (ni_testkit::allocs(), ni_testkit::frees());
-    assert_eq!((a, f), (0, 0), "the audio path allocated {a} times and freed {f} times");
+    let n = violation_count();
+    assert_eq!(n, 0, "the audio path allocated or freed {n} times");
 }

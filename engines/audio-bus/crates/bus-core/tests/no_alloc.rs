@@ -15,16 +15,20 @@
  * adds a `format!` to a debug branch or collects the input into a Vec, nothing
  * else in this repository would notice.
  *
- * THIS FILE MUST HOLD EXACTLY ONE TEST. The counter is global and cargo runs
- * tests in threads, so a second test in this binary could allocate inside the
- * measured window and the failure would look like a real regression.
+ * The guard is assert_no_alloc's, and it watches one thread: inside the
+ * closure, an allocation or a free on the thread that runs it is a violation,
+ * while the threads cargo runs other tests on are not watched at all. It
+ * counts rather than aborts (warn_debug, warn_release), so the assertion
+ * below can say how many.
  */
 
 
 use bus_core::{Reader, Writer};
 
+use assert_no_alloc::{assert_no_alloc, violation_count, AllocDisabler};
+
 #[global_allocator]
-static ALLOCATOR: ni_testkit::Counting = ni_testkit::Counting;
+static ALLOCATOR: AllocDisabler = AllocDisabler;
 
 /* Its own slot, clear of the ones src/slots.rs uses -- this is a separate test
  * binary and may run alongside them. */
@@ -41,26 +45,26 @@ fn push_and_read_allocate_nothing() {
     let block: Vec<f32> = (0..1024 * 2).map(|i| (i as f32 * 0.01).sin()).collect();
     let mut out = vec![0f32; 4096 * 2];
 
-    ni_testkit::arm();
-    /* Two hundred blocks is 204,800 frames: more than a full ring, so the wrap
-     * is inside the measured window rather than just after it. */
-    for _ in 0..200 {
-        pusher.push(&block);
-        reader.read(&mut out);
-    }
-    /* And the label path, which is the one place a string crosses into the
-     * segment. It is a message-thread call, not an audio-thread one, but it
-     * writes to memory the audio thread is reading and a Vec hiding in it
-     * would be a surprise in the worst place. */
-    writer.set_label("Bass");
-    /* And a rate change, which the audio thread applies inside `push`. */
-    writer.set_sample_rate(96_000);
-    for _ in 0..8 {
-        pusher.push(&block);
-        reader.read(&mut out);
-    }
-    ni_testkit::disarm();
+    assert_no_alloc(|| {
+        /* Two hundred blocks is 204,800 frames: more than a full ring, so the wrap
+         * is inside the measured window rather than just after it. */
+        for _ in 0..200 {
+            pusher.push(&block);
+            reader.read(&mut out);
+        }
+        /* And the label path, which is the one place a string crosses into the
+         * segment. It is a message-thread call, not an audio-thread one, but it
+         * writes to memory the audio thread is reading and a Vec hiding in it
+         * would be a surprise in the worst place. */
+        writer.set_label("Bass");
+        /* And a rate change, which the audio thread applies inside `push`. */
+        writer.set_sample_rate(96_000);
+        for _ in 0..8 {
+            pusher.push(&block);
+            reader.read(&mut out);
+        }
+    });
 
-    let n = ni_testkit::allocs() + ni_testkit::frees();
+    let n = violation_count();
     assert_eq!(n, 0, "the audio path allocated or freed {n} times");
 }
