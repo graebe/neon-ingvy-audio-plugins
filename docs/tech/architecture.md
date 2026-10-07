@@ -51,19 +51,27 @@ matters for a module that ships to a device.
 
 ## The C ABI
 
-`tg-capi` exports the `tg_core_*` C ABI
-(`engines/trance-gate/include/trance_gate_core.h`) — byte for byte the surface
+`tg-capi` exports the `tg_core_*` C ABI (`trance_gate_core.h`) — byte for byte the surface
 the original C engine exported, and grown since. That was a deliberate
 constraint when the DSP was ported to Rust: keeping the ABI identical meant the
 existing C tests (`engines/trance-gate/tests/test_core.c` and `test_gate.c`)
 were relinked against the new engine rather than rewritten, so the port was
 checked by tests that had never seen Rust.
 
-The headers in `engines/*/include/` are hand-written rather than generated,
-which is a real risk — a hand-written header can drift from the Rust side
-without either one failing to compile. `tests/spectro_columns.c` exists
-specifically to exercise that boundary: argument order, the meaning of `bands`,
-and who owns the output buffer.
+The C headers are generated. Each `*-capi` crate's `build.rs` writes its own
+with cbindgen from the Rust it declares (`engines/shared/cbindgen/capi_header.rs`,
+configured by the crate's `cbindgen/*.toml`), into the build's
+`cargo/include` directory, so a header cannot drift from the Rust side. What a
+generated header can still do is compile and mean something else to a caller,
+so the plain-C tests call through every one of them, and `tests/spectro_columns.c`
+exercises the analyzer's boundary specifically: argument order, the meaning of
+`bands`, and who owns the output buffer. The Trance Gate's headers have a caller
+outside this repository, the archived Max for Live external, so their last
+hand-written versions are fixtures (`tests/fixtures/tg-capi`) that
+`capi_compat_tg` and `capi_compat_tg_names` hold the generated ones to,
+declaration for declaration. Only C++ with no Rust behind it stays hand-written:
+`engines/shell/include`'s state header and denormal guard, and Schwung's own
+headers vendored for the Move-side tests.
 
 ## The C++ glue
 

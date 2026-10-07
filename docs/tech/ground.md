@@ -117,8 +117,8 @@ when the host renders offline. In every audio block `ni::WebPlugin` hands the
 clock the host's position, tempo, time signature and play state
 (`gnd_tick`); the clock counts the beats and downbeats that block crossed. The
 editor's side reads that count about fifty times a second and turns each new
-one into a ring. `engines/ground/include/ground.h` spells out the whole
-contract, including why it is a count and not a flag, and
+one into a ring. `engines/ground/crates/ground-capi/src/lib.rs`, which `ground.h`
+is generated from, spells out the whole contract, including why it is a count and not a flag, and
 `engines/ground/crates/ground-core/src/beat.rs` the rule, down to how a block
 tells a loop from rounding.
 

@@ -7,9 +7,19 @@
 #   ni_add_rust_headers(<target> [INCLUDE <dir>])
 #   ni_build_rust_engines()           once, after every ni_add_rust_engine
 #
-# <target> is an INTERFACE library: linking it brings the archive and the
-# system libraries the Rust standard library needs, and INCLUDE's headers.
-# Include it once, at the root, after project().
+# <target> is an INTERFACE library: linking it brings the archive, the system
+# libraries the Rust standard library needs, the C ABI's generated headers and
+# INCLUDE's hand-written ones. Include it once, at the root, after project().
+#
+# THE C HEADERS ARE GENERATED. Each capi crate's build.rs writes its own with
+# cbindgen (engines/shared/cbindgen/capi_header.rs) into NI_CAPI_INCLUDE_DIR,
+# which the cargo runs below are given, so a header is the Rust it declares
+# and is rewritten only when its text changed. All of them land in one
+# directory because the ground's and the shell's crates are built inside every
+# product's cargo run: one value for all of them is what keeps their build
+# scripts from rerunning, and three plugin formats relinking, on every build.
+# The directory sits beside cargo's target directory, under build/cargo, so the
+# two go together.
 #
 # ONE STATIC LIBRARY PER PLUGIN. Each product's capi crate is a staticlib that
 # absorbs the rlibs it depends on (engines/spectro/crates/spectro-capi's
@@ -35,6 +45,8 @@ if (NOT EXISTS ${CMAKE_SOURCE_DIR}/Cargo.toml)
 endif()
 
 set(NI_RUST_LIB_DIR ${CMAKE_BINARY_DIR}/rust-lib)
+set(NI_CAPI_INCLUDE_DIR ${CMAKE_BINARY_DIR}/cargo/include)
+file(MAKE_DIRECTORY ${NI_CAPI_INCLUDE_DIR})
 
 # THE macOS SLICES, as Rust target triples. CMake's Apple architecture names
 # are not Rust's. The first slice is the one Corrosion builds in this project;
@@ -85,20 +97,18 @@ function(ni_add_rust_engine name)
         # ni_build_rust_engines has imported it.
         target_link_libraries(${name} INTERFACE ${ARG_LIB})
     endif()
-    if (ARG_INCLUDE)
-        target_include_directories(${name} INTERFACE ${ARG_INCLUDE})
-    endif()
+    target_include_directories(${name} INTERFACE ${NI_CAPI_INCLUDE_DIR} ${ARG_INCLUDE})
     add_dependencies(${name} ni_rust_engines)
 endfunction()
 
 # A crate whose C ABI rides inside every product's archive: its header, and no
-# archive of its own.
+# archive of its own. The header is written by the products' cargo runs, so a
+# target that includes it waits for them as well.
 function(ni_add_rust_headers name)
     cmake_parse_arguments(ARG "" "" "INCLUDE" ${ARGN})
     add_library(${name} INTERFACE)
-    if (ARG_INCLUDE)
-        target_include_directories(${name} INTERFACE ${ARG_INCLUDE})
-    endif()
+    target_include_directories(${name} INTERFACE ${NI_CAPI_INCLUDE_DIR} ${ARG_INCLUDE})
+    add_dependencies(${name} ni_rust_engines)
 endfunction()
 
 function(ni_build_rust_engines)
@@ -117,6 +127,7 @@ function(ni_build_rust_engines)
         set_target_properties(${lib} PROPERTIES
             ARCHIVE_OUTPUT_DIRECTORY ${NI_RUST_LIB_DIR}/${Rust_CARGO_TARGET})
         ni_rust_quiet_cargo(${lib})
+        corrosion_set_env_vars(${lib} NI_CAPI_INCLUDE_DIR=${NI_CAPI_INCLUDE_DIR})
         add_dependencies(ni_rust_engines cargo-build_${lib})
 
         # WHAT libSystem ALREADY IS. On Apple, the native libraries rustc

@@ -5,9 +5,9 @@
  * The receiver, through the C ABI the plugin actually links.
  *
  * spectro-recv's own cargo tests cover the behaviour. This covers the SEAM:
- * spectro_recv.h is hand-written, and a hand-written header can drift from its
- * implementation without either side failing to compile -- a wrong argument
- * order or a missing const reads perfectly well right up until it runs.
+ * spectro_recv.h is generated from the Rust, and a header that compiles can
+ * still mean something else to a C caller -- a wrong argument order or a
+ * missing const reads perfectly well right up until it runs.
  *
  * It also exercises the two things a C caller gets wrong first: passing null
  * for everything, and asking for a source list before knowing how big it is.

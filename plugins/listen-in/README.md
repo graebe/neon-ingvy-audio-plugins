@@ -113,4 +113,5 @@ abus_tap 3      # follow slot 3: peak, frames, frames dropped
 ```
 
 It is also the worked example of the receiving ABI, in sixty lines, beside
-`engines/audio-bus/include/audio_bus.h`.
+`audio_bus.h`, which the build generates from
+`engines/audio-bus/crates/bus-capi/src/lib.rs`.

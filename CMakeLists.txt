@@ -65,20 +65,18 @@ find_package(iPlug2 REQUIRED)
 include(cmake/NiRust.cmake)
 include(cmake/NiPlugin.cmake)
 
-# Each product's C ABI, one static library apiece. audio-bus is the house
-# transport rather than a product, and Listen-In's whole engine.
-ni_add_rust_engine(tg_engine CRATE tg-capi LIB tg_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/trance-gate/include)
-ni_add_rust_engine(spectro_engine CRATE spectro-capi LIB spectro_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/spectro/include)
-ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/audio-bus/include)
-ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi
-    INCLUDE ${CMAKE_SOURCE_DIR}/engines/side-chain/include)
+# Each product's C ABI, one static library apiece, with the headers its
+# build.rs generates. audio-bus is the house transport rather than a product,
+# and Listen-In's whole engine.
+ni_add_rust_engine(tg_engine CRATE tg-capi LIB tg_capi)
+ni_add_rust_engine(spectro_engine CRATE spectro-capi LIB spectro_capi)
+ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi)
+ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi)
 # The ground's beat clock and the shell plumbing (command queue, snapshot,
-# handoff, state header, denormal guard) belong to no product: their C ABI
-# rides inside every product's archive, so they are headers here.
-ni_add_rust_headers(ground_engine INCLUDE ${CMAKE_SOURCE_DIR}/engines/ground/include)
+# handoff) belong to no product: their C ABI rides inside every product's
+# archive, so they are headers here. The shell's state header and denormal
+# guard are C++ with no Rust behind them, and stay hand-written.
+ni_add_rust_headers(ground_engine)
 ni_add_rust_headers(shell_engine INCLUDE ${CMAKE_SOURCE_DIR}/engines/shell/include)
 ni_build_rust_engines()
 

@@ -248,7 +248,7 @@ test('a strong ring is stronger than a weak one, and strength is clamped to 0..1
 test('a beat ring reads clearly as the lesser of the two, and still moves the ground', async () => {
   /*
    * The plugin rings 1.0 on each bar's downbeat and 0.4 on every other beat
-   * (engines/ground/include/ground.h). The field is linear in strength, so a
+   * (engines/ground/crates/ground-capi, ground.h). The field is linear in strength, so a
    * beat is a ring two fifths the height -- but what a person sees is dots
    * drawn at another LEVEL, through tanh and 25 quantised levels, so that is
    * what is measured: the largest share of the window's dots that a ring moves
