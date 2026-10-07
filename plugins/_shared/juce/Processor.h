@@ -74,7 +74,10 @@ public:
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
+    /* The one program has a name, "Default" as iPlug2's builds called theirs:
+     * the VST3 wrapper lists it as a program list, and Steinberg's validator
+     * fails a program without one. */
+    const juce::String getProgramName (int) override { return "Default"; }
     void changeProgramName (int, const juce::String&) override {}
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) final;

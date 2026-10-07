@@ -1057,7 +1057,9 @@ artefact's notices.
 The coverage tooling adds no row: `llvm-cov`, `llvm-profdata` and
 `cargo-llvm-cov` are developer tools that run *on* the build rather than inside
 it. Likewise the licence tools (`cargo-deny`, `cargo-about`), the CI
-validators (`pluginval`, `clap-validator`, `auval`) and the build tools (vite,
+validators (`pluginval`, `clap-validator`, `auval`, and Steinberg's VST3
+`validator`, **MIT**, built from the VST3 SDK by
+`scripts/validate-plugins.sh`) and the build tools (vite,
 astro, CMake, cargo, Corrosion, and the cross-build kit's, listed below) are
 run, not shipped — vite's one exception is its preload polyfill, listed
 above. So is `@playwright/test`

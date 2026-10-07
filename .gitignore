@@ -18,6 +18,9 @@ spike/out/
 # builds share a tree.
 build-ui/
 build-ui-*/
+# Any other build directory: one per person or agent building at the same
+# time (scripts/test.sh --build <dir>), never a source.
+build-*/
 # An instrumented binary run without LLVM_PROFILE_FILE set drops this wherever
 # it happened to be started from.
 *.profraw

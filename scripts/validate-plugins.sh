@@ -6,12 +6,14 @@
 #
 #   scripts/validate-plugins.sh fetch <tools-dir>
 #       Download pluginval and clap-validator at pinned releases, checked
-#       against pinned SHA-256 digests.
+#       against pinned SHA-256 digests, and build Steinberg's VST3 validator
+#       from the VST3 SDK at a pinned tag and commit.
 #
 #   scripts/validate-plugins.sh run <tools-dir> [bundle-dir]
 #       Validate every plugin: auval on each INSTALLED Audio Unit, pluginval
 #       (strictness 10) on each VST3 and AU -- and on each bundle on the JUCE
-#       shell, editor tests included -- clap-validator on each CLAP --
+#       shell, editor tests included, and Steinberg's validator on those --
+#       clap-validator on each CLAP --
 #       the last held to tests/validators.known.json by
 #       scripts/validator-verdict.mjs. bundle-dir defaults to build/out. Exits
 #       non-zero if any validator fails, after running all of them.
@@ -23,11 +25,14 @@
 # validators' job, and they are what a host vendor runs before blaming the
 # plugin.
 #
-# THE STEINBERG VST3 VALIDATOR IS NOT RUN SEPARATELY. iPlug2's
-# download-vst3-sdk.sh can build it, but only through an Xcode-generator build
-# of the SDK's hosting samples that pins a deployment target current Xcode
-# refuses (10.13); making it work would mean patching the submodule's script.
-# pluginval's VST3 checks cover the same ground from a host's side.
+# THE STEINBERG VST3 VALIDATOR runs on every bundle on the JUCE shell. It is
+# the SDK's own sample host (public.sdk/samples/vst-hosting/validator), built
+# here from the SDK at the tag JUCE 9.0.3 vendors (3.8.0), with CMake's
+# default generator -- iPlug2's download-vst3-sdk.sh could only build it with
+# an Xcode generator pinning a deployment target current Xcode refuses, which
+# is why the iPlug2 bundles never had it. The clone is checked against the
+# tag's commit; the SDK's submodules are the ones that commit pins. MIT, run
+# and not shipped (THIRD_PARTY_LICENSES.md, build tools).
 #
 # The AUs are identified by the (type, subtype, manufacturer) triple in each
 # plugin's own AU Info.plist, so a new plugin needs no edit here.
@@ -40,6 +45,8 @@ PLUGINVAL_SHA256=3c4c533bda0c5059eea3ddaea752d757ee2025041f0f47e6bcb0e87f6082b29
 CLAP_VALIDATOR_VERSION=0.4.1
 CLAP_VALIDATOR_ASSET=clap-validator-0.4.1-127-g152b982-macos-universal.zip
 CLAP_VALIDATOR_SHA256=bbec8cd7d18274e549d5d8c12ece3cec54be966129388dd2e742b9957f2ba9f1
+VST3_SDK_TAG=v3.8.0_build_66
+VST3_SDK_COMMIT=9fad9770f2ae8542ab1a548a68c1ad1ac690abe0
 
 fetch() {
     local dir=$1
@@ -58,12 +65,29 @@ fetch() {
     tar -xzf clap-validator-*.tar.gz
     ./pluginval.app/Contents/MacOS/pluginval --version
     ./binaries/clap-validator --version
+
+    rm -rf vst3sdk vst3sdk-build
+    git clone -q --depth 1 --branch "$VST3_SDK_TAG" https://github.com/steinbergmedia/vst3sdk vst3sdk
+    [ "$(git -C vst3sdk rev-parse HEAD)" = "$VST3_SDK_COMMIT" ] \
+        || { echo "vst3sdk $VST3_SDK_TAG is not $VST3_SDK_COMMIT" >&2; exit 1; }
+    git -C vst3sdk submodule update -q --init --depth 1 base cmake pluginterfaces public.sdk
+    # The SDK's build talks a lot; its log is kept, and shown when it fails.
+    { cmake -S vst3sdk -B vst3sdk-build -DCMAKE_BUILD_TYPE=Release \
+          -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF \
+          -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=ON -DSMTG_RUN_VST_VALIDATOR=OFF \
+          -DSMTG_CREATE_PLUGIN_LINK=OFF \
+      && cmake --build vst3sdk-build --config Release --target validator -j; } >vst3sdk-build.log 2>&1 \
+        || { tail -30 vst3sdk-build.log >&2; exit 1; }
+    mkdir -p binaries
+    cp vst3sdk-build/bin/Release/validator binaries/vst3-validator
+    ./binaries/vst3-validator -version 2>/dev/null | head -1 || true
 }
 
 run() {
     local tools=$1 out=${2:-$ROOT/build/out}
     local pluginval="$tools/pluginval.app/Contents/MacOS/pluginval"
     local clapval="$tools/binaries/clap-validator"
+    local vst3val="$tools/binaries/vst3-validator"
     local failed=()
 
     for plist in "$ROOT"/plugins/*/resources/*-AU-Info.plist; do
@@ -111,6 +135,10 @@ run() {
         echo "::group::pluginval $name"
         "$pluginval" --strictness-level 10 --timeout-ms 300000 \
             --validate "$bundle" || failed+=("pluginval $name")
+        echo "::endgroup::"
+
+        echo "::group::vst3-validator $name"
+        "$vst3val" "$bundle" || failed+=("vst3-validator $name")
         echo "::endgroup::"
     done
 
