@@ -54,6 +54,10 @@ set(CMAKE_C_STANDARD 11)
 include(cmake/Coverage.cmake)
 # A sanitizer for the C/C++ tests, when asked for (-DNI_SANITIZE=thread).
 include(cmake/Sanitize.cmake)
+# ccache in front of every compile, when it is installed (-DNI_USE_CCACHE=OFF
+# turns it off), with hits across build directories and worktrees. After
+# Coverage.cmake, whose build it treats differently.
+include(cmake/NiCcache.cmake)
 
 # iPlug2, once for every plugin.
 set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/external/iPlug2 CACHE PATH "iPlug2 root")
