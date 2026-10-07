@@ -9,8 +9,7 @@
  *
  * THE WARNING EXISTS BECAUSE A DUCKER WHOSE TRIGGER IS NOT ARRIVING LOOKS
  * EXACTLY LIKE ONE SET TO ZERO DEPTH, and there are several ways for that to
- * happen: a sidechain with nothing patched, or patched to the track's own
- * audio; a silent track; the transport stopped; MIDI that Live will not route
+ * happen: a sidechain with nothing patched; a silent track; the transport stopped; MIDI that Live will not route
  * to an audio track; a key that never crosses Threshold. One amber mark, at
  * most, in that order -- the more basic fact first.
  */

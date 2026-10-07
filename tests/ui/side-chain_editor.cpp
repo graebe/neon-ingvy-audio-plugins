@@ -545,11 +545,10 @@ TEST_CASE ("side-chain: the header says the source, its rate on Cycle, and the s
 TEST_CASE ("side-chain: one amber mark, in its order: the key, the input, then the trigger")
 {
     State s;
-    Buses unpatched, self { true, true }, patched { true, false };
+    Buses unpatched, patched { true };
 
     s.source = Source::sidechain;
     CHECK (warningFor (s, unpatched, false, true) == "no key routed");
-    CHECK (warningFor (s, self, false, true) == "key is the input");
     CHECK (warningFor (s, patched, false, true) == "no input");
     CHECK (warningFor (s, patched, true, true) == "no trigger");
     CHECK (warningFor (s, patched, true, false) == "");

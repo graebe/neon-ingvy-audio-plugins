@@ -133,7 +133,6 @@ test('no product can reorder any of it', () => {
 });
 
 const PLUGINS = {
-  SideChain: 'plugins/side-chain/SideChain',
   ListenIn: 'plugins/listen-in/ListenIn',
 };
 
@@ -158,6 +157,8 @@ const JUCE_PLUGINS = {
   'NI Trance Gate': ['plugins/trance-gate/TranceGate.h', 'plugins/trance-gate/TranceGate.cpp', /tg_shell_begin/],
   'NI Spectrogram': ['plugins/spectrogram/SpectrogramProcessor.h', 'plugins/spectrogram/SpectrogramProcessor.cpp',
     /shell_handoff_acquire/],
+  /* Its block, heard or bypassed, is one run() around sc_shell_begin. */
+  'NI Side-Chain': ['plugins/side-chain/SideChain.h', 'plugins/side-chain/SideChain.cpp', /^run\s*\(/],
 };
 
 test('ni::GroundClock ticks from the host clock it is given, and forgets old rings when a window opens', () => {
@@ -178,7 +179,7 @@ for (const [name, [h, cpp, audioStarts]] of Object.entries(JUCE_PLUGINS)) {
     const audio = process.findIndex((st) => audioStarts.test(st));
     assert.ok(tick >= 0 && audio > tick, 'the ground is ticked before the engine runs, and before an early return');
     assert.ok(process.slice(0, tick).every((st) => !/return/.test(st)), 'nothing returns before the tick');
-    assert.match(body(src, 'Processor', 'processBypassed'), /\.tick\s*\(\s*readClock/);
+    assert.match(body(src, 'Processor', 'processBypassed'), /\.tick\s*\(\s*(readClock\s*\(|clock\s*,)/);
     assert.match(body(src, 'Processor', 'prepareToPlay'), /\.prepare\s*\(/);
     assert.match(body(src, 'Processor', 'editorOpened'), /\.setActive\s*\(\s*true\s*\)/);
     assert.match(body(src, 'Processor', 'editorClosed'), /\.setActive\s*\(\s*false\s*\)/);

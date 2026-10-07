@@ -2,178 +2,159 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Side-Chain -- the host parameters and the state chunk. See Params.h.
+ * NI Side-Chain's host parameters. Params.h says what they must stay.
  */
 #include "Params.h"
-#include "sc_core.h"
-#include "shell_state.h"
 
-using iplug::IParam;
+#include "ni/Wire.h"
 
-namespace sc {
-namespace params {
+namespace ni::sc
+{
+
+namespace
+{
+using Kind = ParamSpec::Kind;
+
+const char* const sources[] { "Cycle", "MIDI", "Sidechain" };
+/*
+ * TIME IS A READING AND CHANGES NO SOUND. The four stages are percentages of
+ * the cycle, always (sc-core's lib.rs has the long note): a unit switch that
+ * changed their meaning would give the host four parameters that do something
+ * different depending on a fifth, and a host caches parameter displays. The
+ * editor shows the engine's stage_ms when this says ms.
+ */
+const char* const timeModes[] { "ms", "% of cycle" };
+/* Three, not four: the asymmetric Pump curve is gone. */
+const char* const curves[] { "Linear", "Exponential", "S-Curve" };
+/* Omni and the sixteen channels, as a choice, so the host's menu reads Omni. */
+const char* const channels[] { "Omni", "1", "2",  "3",  "4",  "5",  "6",  "7", "8",
+                               "9",    "10", "11", "12", "13", "14", "15", "16" };
+const char* const midiModes[] { "Trigger", "Gate" };
 
 /*
- * A UNIT PASSED AS InitDouble's `label` NEVER REACHES AN AU HOST: iPlug2's AU
- * wrapper calls the no-label GetDisplay overload, so the unit silently vanishes
- * in Logic and appears everywhere else. An explicit DisplayFunc is the only
- * spelling that works in all four formats. The Trance Gate found this out.
+ * The iPlug2 build's Params.cpp Declare, row for row.
  *
- * AND THEN NO LABEL AT ALL: the CLAP wrapper appends the label after the
- * display text, so a unit in both printed "35.0 % %". Said once, here.
- */
-static const IParam::DisplayFunc kPctDisplay =
-  [](double v, WDL_String& s) { s.SetFormatted(32, "%.1f %%", v); };
-static const IParam::DisplayFunc kDbDisplay =
-  [](double v, WDL_String& s) {
-    /*
-     * The bottom of the range means "anything triggers", and printing it as
-     * "-60.0 dB" invites the reader to look for a quieter setting.
-     *
-     * "-inf dB", NOT "off". A host parses what it displays back through
-     * StringToValue, which is atof: "off" read as 0 dB -- the top of the range,
-     * the setting that almost never triggers. "-inf" is what strtod reads as
-     * minus infinity, which clamps to this bottom; and it says the same thing,
-     * a threshold nothing can fall below.
-     */
-    if (v <= -60.0) s.Set("-inf dB");
-    else s.SetFormatted(32, "%.1f dB", v);
-  };
-static const IParam::DisplayFunc kMsDisplay =
-  [](double v, WDL_String& s) { s.SetFormatted(32, "%.0f ms", v); };
-
-/*
- * A MIDI NOTE'S NAME IN LIVE'S OCTAVE NUMBERING, where 36 is C1 and 60 is C3 --
- * which is what the pads say.
+ * DELAY RUNS BOTH WAYS, -100..+100, AND THE NEGATIVE HALF IS THE POINT: on
+ * Cycle "20 % early" is "80 % into the previous cycle", a position already
+ * passed. MIDI and Sidechain have nothing periodic to anticipate, so the
+ * engine clamps a negative Delay to no wait there; the parameter still
+ * travels the whole range, because an automation lane may sweep through it.
+ * Attack, Hold and Release run to twice the cycle, as far as a stage can go
+ * and still finish before the trigger after next.
  *
- * Generated rather than written out, because 128 string literals is 128 chances
- * to mistype one, and a wrong note name is a bug you only find by playing the
- * wrong drum.
+ * A NOTE IS AN ADDRESS, NOT A POSITION ON A RANGE: Trigger is a choice of the
+ * 128 notes by name, so a host draws "C1" and steps a semitone at a time.
  */
-static void NoteName(int n, WDL_String& out)
+const ParamSpec table[kNumParams] {
+    { "source", "Source", Kind::choice, 0, 2, 0, "", sources, 3 },
+    { "rate", "Rate", Kind::choice, 0, numRates - 1, defaultRate, "" },
+    { "timeMode", "Time", Kind::choice, 0, 1, 0, "", timeModes, 2 },
+    { "delay", "Delay", Kind::continuous, -100, 100, 0, "" },
+    { "attack", "Attack", Kind::continuous, 0, 200, 2, "" },
+    { "hold", "Hold", Kind::continuous, 0, 200, 8, "" },
+    { "release", "Release", Kind::continuous, 0, 200, 35, "" },
+    { "depth", "Depth", Kind::continuous, 0, 100, 100, "" },
+    { "curve", "Curve", Kind::choice, 0, 2, 1, "", curves, 3 },
+    { "channel", "Channel", Kind::choice, 0, 16, 1, "", channels, 17 },
+    { "note", "Trigger", Kind::choice, 0, 127, 36, "" },
+    { "midiMode", "Mode", Kind::choice, 0, 1, 0, "", midiModes, 2 },
+    { "velSens", "Vel", Kind::continuous, 0, 100, 0, "" },
+    { "threshold", "Threshold", Kind::continuous, -60, 0, -24, "" },
+    { "lockout", "Lockout", Kind::continuous, 0, 200, 20, "" },
+};
+
+bool isPercent (int index)
 {
-  static const char* kNames[] = { "C", "C#", "D", "D#", "E", "F", "F#",
-                                  "G", "G#", "A", "A#", "B" };
-  out.SetFormatted(8, "%s%d", kNames[n % 12], (n / 12) - 2);
+    return index == kDelay || index == kAttack || index == kHold || index == kRelease || index == kDepth
+        || index == kVelSens;
 }
 
-void Declare(const std::function<IParam*(int)>& param)
+/* Whether `s` starts with a number, as parse_number would read one. */
+bool startsWithNumber (const std::string& s)
 {
-  param(kSource)->InitEnum("Source", 0, 3, "", 0, "",
-                              "Cycle", "MIDI", "Sidechain");
-  /* The rate labels are the engine's own table (`1/1` is in it, where the
-   * Trance Gate's has none: a bar-long duck is the swell under a build). */
-  IParam* rate = param(kRate);
-  int nRates = 0;
-  char label[MAX_PARAM_DISPLAY_LEN];
-  while (sc_core_rate_label(nRates, label, int(sizeof label)) > 0)
-    nRates++;
-  rate->InitEnum("Rate", sc_core_rate_default(), nRates);
-  for (int i = 0; i < nRates; i++)
-    if (sc_core_rate_label(i, label, int(sizeof label)) > 0)
-      rate->SetDisplayText(i, label);
+    std::size_t i = 0;
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t'))
+        ++i;
+    if (i < s.size() && (s[i] == '+' || s[i] == '-'))
+        ++i;
+    if (i < s.size() && s[i] == '.')
+        ++i;
+    return i < s.size() && s[i] >= '0' && s[i] <= '9';
+}
+} // namespace
 
-  /*
-   * TIME MODE IS A DISPLAY CHOICE AND CHANGES NO SOUND, which is why it is an
-   * enum with no arithmetic behind it here.
-   *
-   * The four stage lengths are percentages of the cycle, always -- see the long
-   * note in engines/side-chain/crates/sc-core/src/lib.rs. Making the unit switch
-   * change their MEANING would give the host four parameters that do something
-   * different depending on a fifth, and a host caches parameter displays.
-   *
-   * So the ms reading is computed by the engine and pushed to the editor as
-   * `stage_ms`, and this parameter tells the editor which of the two to show.
-   */
-  param(kTimeMode)->InitEnum("Time", 0, 2, "", 0, "", "ms", "% of cycle");
-
-  const auto pct = [](IParam* p, const char* name, double def, double hi) {
-    p->InitDouble(name, def, 0.0, hi, 0.01, "", 0, "",
-                  IParam::ShapeLinear(), IParam::kUnitPercentage, kPctDisplay);
-  };
-  /*
-   * DELAY RUNS BOTH WAYS, -100..+100, AND THE NEGATIVE HALF IS THE POINT.
-   *
-   * An early sidechain -- ducking slightly ahead of the beat so a mix breathes
-   * into the kick rather than after it -- is a real thing to want, and on the
-   * Cycle source it is possible because the cycle is PERIODIC: "20% early" is
-   * "80% into the previous cycle", a position already passed rather than an
-   * event anticipated.
-   *
-   * MIDI and Sidechain have nothing periodic to anticipate, so the engine
-   * clamps a negative delay to no wait there. The parameter still travels the
-   * whole range, because an automation lane is entitled to sweep through it.
-   */
-  param(kDelay)->InitDouble("Delay", 0.0, -100.0, 100.0, 0.01, "", 0, "",
-                               IParam::ShapeLinear(),
-                               IParam::kUnitPercentage, kPctDisplay);
-  /* The other three run to twice the cycle, which is as far as a stage can go
-   * and still finish before the trigger after next. */
-  pct(param(kAttack), "Attack", 2.0, 200.0);
-  pct(param(kHold), "Hold", 8.0, 200.0);
-  pct(param(kRelease), "Release", 35.0, 200.0);
-  pct(param(kDepth), "Depth", 100.0, 100.0);
-
-  /* THREE, NOT FOUR. `Pump` was an asymmetric curve ported from ducker.c --
-   * linear down, cubic ease-out up. It is gone, and the direction argument that
-   * existed only to serve it went with it. */
-  param(kCurve)->InitEnum("Curve", 1, 3, "", 0, "",
-                             "Linear", "Exponential", "S-Curve");
-
-  /* Omni plus the sixteen channels. Declared as 17 enum values with the first
-   * one named rather than as an int, so the host's own menu reads "Omni". */
-  param(kChannel)->InitEnum("Channel", 1, 17);
-  param(kChannel)->SetDisplayText(0, "Omni");
-  for (int i = 1; i <= 16; i++)
-  {
-    WDL_String s;
-    s.SetFormatted(8, "%d", i);
-    param(kChannel)->SetDisplayText(i, s.Get());
-  }
-
-  /*
-   * A NOTE IS AN ADDRESS, NOT A POSITION ON A RANGE.
-   *
-   * ducker.c:508-512 records what happens otherwise: as a 0..127 int the Move's
-   * grid drew an arc knob, so the cell said nothing and you had to open the
-   * value to learn which note it was. As an enum of names it draws "C1" and
-   * steps a semitone at a time. The wire value is still the note number.
-   */
-  param(kNote)->InitEnum("Trigger", 36, 128);
-  for (int i = 0; i < 128; i++)
-  {
-    WDL_String s;
-    NoteName(i, s);
-    param(kNote)->SetDisplayText(i, s.Get());
-  }
-
-  param(kMidiMode)->InitEnum("Mode", 0, 2, "", 0, "", "Trigger", "Gate");
-  param(kVelSens)->InitDouble("Vel", 0.0, 0.0, 100.0, 0.01, "", 0, "",
-                                 IParam::ShapeLinear(),
-                                 IParam::kUnitPercentage, kPctDisplay);
-  param(kThreshold)->InitDouble("Threshold", -24.0, -60.0, 0.0, 0.1, "", 0, "",
-                                   IParam::ShapeLinear(),
-                                   IParam::kUnitDB, kDbDisplay);
-  param(kLockout)->InitDouble("Lockout", 20.0, 0.0, 200.0, 1.0, "", 0, "",
-                                 IParam::ShapeLinear(),
-                                 IParam::kUnitMilliseconds, kMsDisplay);
+const ParamSpec& specOf (int index)
+{
+    return table[index];
 }
 
-bool Save(iplug::IByteChunk& chunk, const PutParams& params)
+const ParamSpec* specs()
 {
-  const int at = shell::state::Begin(chunk, kChunkVersion);
-  return params(chunk) && shell::state::End(chunk, at);
+    return table;
 }
 
-int Load(const iplug::IByteChunk& chunk, int startPos,
-         const GetParams& check, const GetParams& apply)
+const nist::Layout& layout()
 {
-  const shell::state::Header h = shell::state::Read(chunk, startPos);
-  if (h.body < 0) return -1;
-  const int pos = check(chunk, h.body);
-  if (pos < 0 || apply(chunk, h.body) != pos) return -1;
-  return shell::state::Finish(h, pos);
+    static const nist::Layout l { table, kNumParams, { kNumParams }, 0, 0 };
+    return l;
 }
 
-} // namespace params
-} // namespace sc
+double toEngine (int index, double plain)
+{
+    return index == kDepth || index == kVelSens ? plain / 100.0 : plain;
+}
+
+std::string rateLabel (int index)
+{
+    char label[32];
+    if (sc_core_rate_label (index, label, (int) sizeof label) > 0)
+        return label;
+    std::string out;
+    ni::wire::append_int (out, index);
+    return out;
+}
+
+std::string noteName (int note)
+{
+    static const char* const pitch[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    const int n = note < 0 ? 0 : note > 127 ? 127 : note;
+    std::string out (pitch[n % 12]);
+    ni::wire::append_int (out, n / 12 - 2);
+    return out;
+}
+
+std::string valueText (int index, double plain)
+{
+    std::string out;
+    if (index == kThreshold)
+    {
+        if (plain <= -60.0)
+            return "-inf dB";
+        ni::wire::append_fixed (out, plain, 1);
+        return out + " dB";
+    }
+    if (index == kLockout)
+    {
+        ni::wire::append_fixed (out, plain, 0);
+        return out + " ms";
+    }
+    ni::wire::append_fixed (out, plain, isPercent (index) ? 1 : 2);
+    return isPercent (index) ? out + " %" : out;
+}
+
+bool parseValue (int index, const std::string& text, double& plain)
+{
+    /* What the bottom of Threshold reads as reads back as that bottom; a
+     * positive infinity is past the top, which the parameter clamps. */
+    if (index == kThreshold && text.find ("inf") != std::string::npos)
+    {
+        plain = text.find ('-') != std::string::npos ? specOf (kThreshold).min : specOf (kThreshold).max;
+        return true;
+    }
+    if (! startsWithNumber (text))
+        return false;
+    plain = ni::wire::parse_number (text);
+    return true;
+}
+
+} // namespace ni::sc

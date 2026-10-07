@@ -47,8 +47,6 @@ juce::String warningFor (const State& state, const Buses& buses, bool input, boo
 {
     if (state.source == Source::sidechain && ! buses.keyConnected)
         return "no key routed";
-    if (state.source == Source::sidechain && buses.keyIsMain)
-        return "key is the input";
     /* BEFORE the trigger's: a silent track is the more basic fact. */
     if (! input)
         return "no input";

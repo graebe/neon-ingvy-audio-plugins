@@ -87,7 +87,7 @@ const PRODUCTS = {
    * `ni-side-chain`: charlesvestal/schwung-ducker already owns `ducker` on the
    * device. The path is what this test needs; the ID is module.json's business. */
   'side-chain': {
-    config: 'plugins/side-chain/config.h',
+    juce: { cmake: 'plugins/side-chain/CMakeLists.txt', bundle: 'NISideChain' },
     module: 'modules/side-chain/module.json',
     crates: ['sc-core', 'sc-capi', 'sc-move'].map(
       (c) => `engines/side-chain/crates/${c}/Cargo.toml`),

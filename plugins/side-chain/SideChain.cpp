@@ -2,201 +2,266 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Side-Chain -- the iPlug2 shell. See SideChain.h for what it may do.
+ * NI Side-Chain on the JUCE shell. SideChain.h says what it keeps and where.
  */
 #include "SideChain.h"
-#include "IPlug_include_in_plug_src.h"
-#include "Wire.h"
 
-#include <algorithm>
-#include <cstdio>
+#include "EngineModel.h"
+#include "PluginEditor.h"
+#include "SideChainEditor.h"
+#include "ni/Wire.h"
+
 #include <cstring>
+#include <string>
 
-using namespace iplug;
-
-SideChain::SideChain(const InstanceInfo& info)
-: ni::WebPlugin(info, MakeConfig(kNumParams, kNumPresets), {"nisidechain", __FILE__})
+namespace ni::sc
 {
-  /* Params.cpp, where a test can reach them. */
-  sc::params::Declare([this](int i) { return GetParam(i); });
-  mShell = sc_shell_create(GetSampleRate() > 0.0 ? GetSampleRate() : 44100.0);
+
+namespace
+{
+juce::StringArray wordsOf (std::string (*word) (int), int count)
+{
+    juce::StringArray out;
+    for (int i = 0; i < count; ++i)
+        out.add (juce::String::fromUTF8 (word (i).c_str()));
+    return out;
 }
 
-SideChain::~SideChain()
+std::unique_ptr<ni::Parameter> make (int index)
 {
-  sc_shell_destroy(mShell);
-  mShell = nullptr;
+    const auto& spec = specOf (index);
+    /* Rate's words are the engine's table: a host stores the INDEX, so a list
+     * that disagreed with the engine by one entry would re-point every lane. */
+    if (index == kRate)
+        return std::make_unique<ni::Parameter> (spec, wordsOf (rateLabel, numRates));
+    if (index == kNote)
+        return std::make_unique<ni::Parameter> (spec, wordsOf (noteName, 128));
+    if (spec.kind != ParamSpec::Kind::continuous)
+        return std::make_unique<ni::Parameter> (spec);
+    return std::make_unique<ni::Parameter> (
+        spec, juce::StringArray(), [index] (double v) { return juce::String (valueText (index, v)); },
+        [index] (const juce::String& text) -> std::optional<double>
+        {
+            double v = 0.0;
+            if (parseValue (index, text.toStdString(), v))
+                return v;
+            return std::nullopt;
+        });
 }
 
-bool SideChain::SerializeState(IByteChunk& chunk) const
+bool monoOrStereo (const juce::AudioChannelSet& set)
 {
-  return sc::params::Save(chunk, [this](IByteChunk& c) { return PutParams(c); });
+    return set == juce::AudioChannelSet::mono() || set == juce::AudioChannelSet::stereo();
 }
+} // namespace
 
-int SideChain::UnserializeState(const IByteChunk& chunk, int startPos)
+Processor::Processor()
+    : ni::Processor (BusesProperties()
+                         .withInput ("Input", juce::AudioChannelSet::stereo(), true)
+                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                         /* Off until a host connects a key: a bus nobody
+                          * patched is not a key. */
+                         .withInput ("Sidechain", juce::AudioChannelSet::stereo(), false)),
+      shell (sc_shell_create (44100.0))
 {
-  return sc::params::Load(
-    chunk, startPos,
-    [this](const IByteChunk& c, int pos) { return CheckParams(c, pos); },
-    [this](const IByteChunk& c, int pos) { return GetParams(c, pos); });
-}
-
-void SideChain::ResetAudio()
-{
-  if (!mShell)
-    return;
-  sc_shell_post_sample_rate(mShell, GetSampleRate());
-
-  /* A host may hand over more than it announced, so ProcessAudio chunks
-   * against this capacity; SC_MAX_BLOCK is the engine's own ceiling. */
-  const size_t cap = size_t(std::max(64, std::min(GetBlockSize(), SC_MAX_BLOCK)));
-  mL.assign(cap, 0.f);
-  mR.assign(cap, 0.f);
-  mDry.assign(cap, 0.f);
-  mGain.assign(cap, 1.f);
-  mSweep.assign(cap, 0.f);
-  mKeyL.assign(cap, 0.f);
-  mKeyR.assign(cap, 0.f);
-  /* A column is a slice of a cycle, and the cycle just changed length. */
-  mScope.Clear();
-}
-
-/*
- * EVERY PARAMETER, EVERY BLOCK. Pushing on change would trust the host to
- * report every path that moves a value -- automation, a preset, typed text, a
- * control surface. Fifteen stores is nothing.
- */
-void SideChain::PushParams(sc_core_t* core)
-{
-  sc_core_set_num(core, SC_P_SOURCE, GetParam(kSource)->Value());
-  sc_core_set_num(core, SC_P_RATE, GetParam(kRate)->Value());
-  sc_core_set_num(core, SC_P_TIME_MODE, GetParam(kTimeMode)->Value());
-  sc_core_set_num(core, SC_P_DELAY, GetParam(kDelay)->Value());
-  sc_core_set_num(core, SC_P_ATTACK, GetParam(kAttack)->Value());
-  sc_core_set_num(core, SC_P_HOLD, GetParam(kHold)->Value());
-  sc_core_set_num(core, SC_P_RELEASE, GetParam(kRelease)->Value());
-  /* The engine takes 0..1; the host shows a percentage. */
-  sc_core_set_num(core, SC_P_DEPTH, GetParam(kDepth)->Value() / 100.0);
-  sc_core_set_num(core, SC_P_CURVE, GetParam(kCurve)->Value());
-  sc_core_set_num(core, SC_P_CHANNEL, GetParam(kChannel)->Value());
-  sc_core_set_num(core, SC_P_NOTE, GetParam(kNote)->Value());
-  sc_core_set_num(core, SC_P_MIDI_MODE, GetParam(kMidiMode)->Value());
-  sc_core_set_num(core, SC_P_VEL_SENS, GetParam(kVelSens)->Value() / 100.0);
-  sc_core_set_num(core, SC_P_THRESHOLD, GetParam(kThreshold)->Value());
-  sc_core_set_num(core, SC_P_LOCKOUT, GetParam(kLockout)->Value());
-}
-
-/*
- * MIDI WITH ITS SAMPLE OFFSET: a duck lands on the note's sample rather than on
- * the top of whatever buffer the host uses -- jitter, which nothing downstream
- * could compensate. Not forwarded: a ducker echoing its trigger notes would arm
- * the instrument after it.
- */
-void SideChain::ProcessMidiMsg(const IMidiMsg& msg)
-{
-  /* Ahead of the block the note belongs to; a second begin in one block is
-   * harmless. */
-  sc_core_t* core = sc_shell_begin(mShell);
-  if (!core)
-    return;
-  const unsigned char bytes[3] = {
-    (unsigned char) msg.mStatus,
-    (unsigned char) msg.mData1,
-    (unsigned char) msg.mData2,
-  };
-  sc_core_on_midi(core, bytes, 3, msg.mOffset);
-}
-
-void SideChain::ProcessAudio(sample** inputs, sample** outputs, int nFrames)
-{
-  const int nOut = NOutChansConnected();
-  const int cap = int(std::min(mL.size(), mR.size()));
-  if (!mShell || nFrames <= 0 || nOut <= 0 || cap <= 0)
-    return;
-
-  /* Which channel is what -- per channel, never by counting them. */
-  const sc::wire::InputMap in = sc::wire::map_inputs(
-    IsChannelConnected(ERoute::kInput, 0), IsChannelConnected(ERoute::kInput, 1),
-    IsChannelConnected(ERoute::kInput, 2), IsChannelConnected(ERoute::kInput, 3));
-
-  sc_core_t* core = sc_shell_begin(mShell);
-  PushParams(core);
-
-  const bool haveKey = in.keyL >= 0;
-  mKeyConnected.store(haveKey ? 1 : 0, std::memory_order_relaxed);
-  sc_core_set_key_connected(core, haveKey ? 1 : 0);
-  const bool stereoOut = nOut > 1;
-  const bool capture = EditorIsOpen();
-
-  ni::wire::for_each_chunk(nFrames, cap, [&](int off, int n) {
-    ni::wire::to_float(inputs[in.mainL] + off, mL.data(), n);
-    ni::wire::to_float(inputs[in.mainR] + off, mR.data(), n);
-    std::memcpy(mDry.data(), mL.data(), sizeof(float) * size_t(n));
-
-    if (haveKey)
+    /* In index order: with legacy parameter IDs the index is the VST3 ID,
+     * and these have to be the iPlug2 build's. */
+    for (int i = 0; i < kNumParams; ++i)
     {
-      ni::wire::to_float(inputs[in.keyL] + off, mKeyL.data(), n);
-      ni::wire::to_float(inputs[in.keyR] + off, mKeyR.data(), n);
-      mKeyIsMain.store(sc::wire::key_is_duplicate(mDry.data(), mKeyL.data(), n) ? 1 : 0,
-                       std::memory_order_relaxed);
-      sc_core_push_key_f32(core, mKeyL.data(), mKeyR.data(), n);
+        auto p = make (i);
+        params[(std::size_t) i] = p.get();
+        addParameter (p.release());
     }
-    else
-    {
-      mKeyIsMain.store(0, std::memory_order_relaxed);
-    }
+    /* LAST, so its index -- and VST3 ID -- is 15. */
+    auto b = std::make_unique<ni::Parameter> (ni::bypassSpec());
+    bypass = b.get();
+    addParameter (b.release());
 
-    /* The host's position at the block, advanced to this chunk. */
-    const ni::wire::Transport host = HostTransport();
-    sc_transport_t t = {host.running, host.beats, host.bpm};
-    if (off > 0 && t.running)
-      t.beats = ni::wire::advance_beats(t.beats, off, double(t.bpm), GetSampleRate());
-
-    sc_core_process_f32_split_tap(core, mL.data(), mR.data(), mGain.data(), mSweep.data(), n, &t);
-    if (capture)
-      mScope.Push(mDry.data(), mL.data(), mGain.data(), mSweep.data(), n);
-
-    ni::wire::from_float(mL.data(), outputs[0] + off, n);
-    if (stereoOut)
-      ni::wire::from_float(mR.data(), outputs[1] + off, n);
-  });
-
-  sc_shell_end(mShell, nFrames);
+    editorModel = std::make_unique<EngineModel> (*this);
 }
 
-/* What the audio thread last published -- never the engine itself. */
-void SideChain::OnEditorIdle()
+Processor::~Processor() = default;
+
+/*
+ * The iPlug2 build offered "1-1 1.1-1 2-2 2.1-2 2.2-2": a main input of one
+ * or two channels, the output the same, and a key of one or two or none.
+ * JUCE hands each bus over on its own, so any key goes with any main.
+ */
+bool Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-  char buf[SC_STATE_MAX];
-  if (sc_shell_read(mShell, "ui", buf, int(sizeof buf)) > 0)
-    SendFramed(kMsgUiState, buf, int(strlen(buf)));
-  if (sc_shell_read(mShell, "params", buf, int(sizeof buf)) > 0)
-    SendFramed(kMsgParams, buf, int(strlen(buf)));
-  if (sc_shell_read(mShell, "stage_ms", buf, int(sizeof buf)) > 0)
-    SendFramed(kMsgStageMs, buf, int(strlen(buf)));
+    const auto main = layouts.getMainInputChannelSet();
+    if (! monoOrStereo (main) || layouts.getMainOutputChannelSet() != main)
+        return false;
+    if (layouts.inputBuses.size() < 2)
+        return true;
+    const auto key = layouts.getChannelSet (true, 1);
+    return key.isDisabled() || monoOrStereo (key);
+}
 
-  char buses[16];
-  const int n = snprintf(buses, sizeof buses, "%d:%d",
-                         mKeyConnected.load(std::memory_order_relaxed),
-                         mKeyIsMain.load(std::memory_order_relaxed));
-  SendFramed(kMsgBuses, buses, n);
-
-  SendScope();
+void Processor::prepareToPlay (double rate, int maximumBlock)
+{
+    sampleRate = rate > 0.0 ? rate : 44100.0;
+    sc_shell_post_sample_rate (shell.get(), sampleRate);
+    beat.prepare (sampleRate);
+    /* The engine's key buffer holds SC_MAX_BLOCK, so no chunk is longer. */
+    const auto n = (std::size_t) juce::jlimit (1, SC_MAX_BLOCK, maximumBlock);
+    for (auto* v : { &dry, &gain, &sweep, &copyL, &copyR })
+        v->assign (n, 0.0f);
+    /* A column is a slice of a cycle, and the cycle may have changed length. */
+    capture.Clear();
 }
 
 /*
- * "<cols>:" then six raw bytes a column -- seen (0 or 1), dry low/high, wet
- * low/high, the gain. The flag is how the editor tells a column the sweep has
- * not reached from one holding silence.
+ * THE iPlug2 SHELL'S BLOCK, on JUCE's float buffers: every parameter pushed
+ * every block -- pushing on change would trust the host to report every path
+ * that moves a value -- the key and the MIDI in, and the main channels ducked,
+ * in chunks of what was reserved should a host hand over more.
  */
-void SideChain::SendScope()
+void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& midi, const ni::HostClock& clock,
+                     bool heard)
 {
-  char scope[kScopeCols * 6 + 32];
-  char* p = scope + snprintf(scope, sizeof scope, "%d:", kScopeCols);
-  for (int i = 0; i < kScopeCols; i++)
-  {
-    *p++ = mScope.Seen(i) ? 1 : 0;
-    p = mScope.PutColumn(p, i, true);
-  }
-  SendFramed(kMsgScope, scope, int(p - scope));
+    const int frames = buffer.getNumSamples();
+    const int cap = (int) dry.size();
+    auto main = getBusBuffer (buffer, true, 0);
+    if (frames <= 0 || cap <= 0 || main.getNumChannels() < 1)
+        return;
+    float* left = main.getWritePointer (0);
+    float* right = main.getNumChannels() > 1 ? main.getWritePointer (1) : nullptr;
+
+    /* The key, if the host connected one: a mono key feeds both its sides. */
+    const int keyChannels = getBusCount (true) > 1 ? getChannelCountOfBus (true, 1) : 0;
+    const float* keyL = nullptr;
+    const float* keyR = nullptr;
+    if (keyChannels > 0)
+    {
+        const auto keyBus = getBusBuffer (buffer, true, 1);
+        keyL = keyBus.getReadPointer (0);
+        keyR = keyChannels > 1 ? keyBus.getReadPointer (1) : keyL;
+    }
+    keyed.store (keyL != nullptr, std::memory_order_relaxed);
+
+    sc_core_t* core = sc_shell_begin (shell.get());
+    for (int i = 0; i < kNumParams; ++i)
+        sc_core_set_num (core, (sc_param_t) i, toEngine (i, params[(std::size_t) i]->plain()));
+    sc_core_set_key_connected (core, keyL != nullptr ? 1 : 0);
+
+    /* What a missing tempo or position means is decided once, for every
+     * shell: a NaN position is none (ni::readClock). */
+    const auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
+    sc_transport_t transport { host.running, host.beats, host.bpm };
+
+    const bool tap = heard && capturing.load (std::memory_order_relaxed);
+    ni::wire::for_each_chunk (frames, cap, [&] (int off, int n)
+    {
+        /* The messages that fall in this chunk, at their offset in it; one
+         * the host placed outside the block lands at its nearer end. */
+        for (const auto m : midi)
+        {
+            const int at = juce::jlimit (0, frames - 1, m.samplePosition);
+            if (at >= off && at < off + n)
+                sc_core_on_midi (core, m.data, m.numBytes, at - off);
+        }
+        if (keyL != nullptr)
+            sc_core_push_key_f32 (core, keyL + off, keyR + off, n);
+
+        /* The engine takes two channels: a mono track's second is a copy of
+         * its first, ducked alike and dropped; a bypassed block runs on a
+         * copy of both. */
+        const auto bytes = sizeof (float) * (std::size_t) n;
+        float* l = left + off;
+        float* r = right != nullptr ? right + off : l;
+        if (! heard)
+        {
+            std::memcpy (copyL.data(), l, bytes);
+            l = copyL.data();
+        }
+        if (! heard || right == nullptr)
+        {
+            std::memcpy (copyR.data(), r, bytes);
+            r = copyR.data();
+        }
+        if (tap)
+            std::memcpy (dry.data(), l, sizeof (float) * (std::size_t) n);
+        sc_core_process_f32_split_tap (core, l, r, tap ? gain.data() : nullptr, tap ? sweep.data() : nullptr, n,
+                                       &transport);
+        if (tap)
+            capture.Push (dry.data(), l, gain.data(), sweep.data(), n);
+        /* A chunk continues the block, so the transport moves with it. */
+        if (transport.running)
+            transport.beats = ni::wire::advance_beats (transport.beats, n, (double) transport.bpm, sampleRate);
+    });
+
+    sc_shell_end (shell.get(), frames);
+}
+
+void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    const int frames = buffer.getNumSamples();
+    const auto clock = readClock (getPlayHead());
+    beat.tick (clock, frames);
+    run (buffer, midi, clock, true);
+}
+
+/* Bypassed, the host's own way -- audio through -- while the engine runs on a
+ * copy, hearing the MIDI and keeping time, and the Ground keeps the host's
+ * time, so the window's beat does not stop with the sound. */
+void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    const auto clock = readClock (getPlayHead());
+    beat.tick (clock, buffer.getNumSamples());
+    run (buffer, midi, clock, false);
+    ni::Processor::processBypassed (buffer, midi);
+}
+
+juce::AudioProcessorEditor* Processor::createEditor()
+{
+    return new ni::PluginEditor (*this, std::make_unique<SideChainEditor> (*editorModel),
+                                 ni::PluginEditor::FollowDesign {});
+}
+
+/* While a window shows them: the capture and the Ground. */
+void Processor::editorOpened()
+{
+    capture.Retire();
+    capturing.store (true, std::memory_order_relaxed);
+    beat.setActive (true);
+}
+
+void Processor::editorClosed()
+{
+    capturing.store (false, std::memory_order_relaxed);
+    beat.setActive (false);
+}
+
+/* THE CHUNK THE iPlug2 BUILD WROTE: the fifteen plain values, then the bypass
+ * after it, which iPlug2 needs to load it. */
+void Processor::writeState (juce::MemoryBlock& out)
+{
+    nist::State state;
+    for (auto* p : params)
+        state.params.push_back (p->plain());
+    state.bypass = bypass->plain() >= 0.5;
+    const auto bytes = nist::write (layout(), state);
+    out.replaceAll (bytes.data(), bytes.size());
+}
+
+/* A SET REOPENED: every check before anything is applied, so a chunk no
+ * build wrote changes nothing; then the values, which the next block pushes. */
+bool Processor::readState (const void* data, size_t size)
+{
+    const auto state = nist::read (layout(), data, size);
+    if (! state)
+        return false;
+    for (int i = 0; i < kNumParams; ++i)
+        params[(std::size_t) i]->setPlainNotifyingHost (state->params[(std::size_t) i]);
+    if (state->bypass)
+        bypass->setPlainNotifyingHost (*state->bypass ? 1.0 : 0.0);
+    return true;
+}
+
+} // namespace ni::sc
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new ni::sc::Processor();
 }

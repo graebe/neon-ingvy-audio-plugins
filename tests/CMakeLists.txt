@@ -273,8 +273,10 @@ endif()
 set(NI_BUNDLES ${CMAKE_BINARY_DIR}/out)
 set(NI_AU_LIBS "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
 
-# The Audio Units are the three products still on iPlug2: NI Trance Gate is a
-# VST3 on the JUCE shell, held by the JUCE bundle tests below.
+# The Audio Units are the products still on iPlug2 (NI_IPLUG2_PRODUCTS): a
+# product on the JUCE shell is a VST3 only, held by the JUCE bundle tests
+# below.
+set(NI_IPLUG2_PRODUCTS ListenIn)
 if (APPLE)
     # auval -stress's state path on every plugin: a render thread, two threads
     # setting state back and forth, and the main run loop for iPlug2's idle
@@ -283,7 +285,7 @@ if (APPLE)
     set(NI_AU_STRESS_SECONDS 3 CACHE STRING "seconds per plugin in the au_stress tests")
     add_executable(au_stress au_stress.c)
     target_link_libraries(au_stress PRIVATE ${NI_AU_LIBS})
-    foreach(plugin SideChain ListenIn)
+    foreach(plugin IN LISTS NI_IPLUG2_PRODUCTS)
         add_test(NAME au_stress_${plugin}
                  COMMAND au_stress ${NI_BUNDLES}/NI${plugin}.component
                          ${NI_AU_STRESS_SECONDS} 2)
@@ -299,7 +301,7 @@ if (APPLE)
     target_compile_options(au_ground PRIVATE -fobjc-arc)
     target_link_libraries(au_ground PRIVATE ${NI_AU_LIBS}
                           "-framework AppKit" "-framework WebKit")
-    foreach(plugin SideChain ListenIn)
+    foreach(plugin IN LISTS NI_IPLUG2_PRODUCTS)
         add_test(NAME au_ground_${plugin}
                  COMMAND au_ground ${NI_BUNDLES}/NI${plugin}.component)
     endforeach()
@@ -308,7 +310,7 @@ if (APPLE)
     # the CLAP from build/out, each with iPlug2's WKWebView and the shipped
     # page in it -- fed audio under a running transport, closed and opened
     # again, and the page asked what reached it: the Spectrogram's picture,
-    # the Trance Gate's and the Side-Chain's playheads, the Listen-In's name,
+    # the Listen-In's name,
     # everyone's ground -- and, after a state load on a thread that is not the
     # main one, every value, with nothing sent to the WebView from that
     # thread. The mock-host e2e suite cannot see this path.
@@ -323,7 +325,7 @@ if (APPLE)
     target_compile_options(editor_host PRIVATE -fobjc-arc)
     target_link_libraries(editor_host PRIVATE ${NI_AU_LIBS}
         "-framework Cocoa" "-framework WebKit" "-framework CoreAudioKit")
-    foreach(plugin SideChain ListenIn)
+    foreach(plugin IN LISTS NI_IPLUG2_PRODUCTS)
         add_test(NAME editor_host_${plugin}_vst3
                  COMMAND editor_host vst3 ${NI_BUNDLES}/NI${plugin}.vst3)
         add_test(NAME editor_host_${plugin}_au
@@ -350,11 +352,13 @@ if (APPLE)
     set(_ni_vst3_bundles)
     # The iPlug2 builds still here; the JUCE Trance Gate reads its fixtures in
     # tg_processor and tg_host.
-    foreach(plugin SideChain ListenIn)
+    foreach(plugin IN LISTS NI_IPLUG2_PRODUCTS)
         list(APPEND _ni_vst3_bundles ${NI_BUNDLES}/NI${plugin}.vst3)
     endforeach()
-    add_test(NAME iplug2_fixtures
-             COMMAND vst3_capture --check ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/iplug2 ${_ni_vst3_bundles})
+    if (_ni_vst3_bundles)
+        add_test(NAME iplug2_fixtures
+                 COMMAND vst3_capture --check ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/iplug2 ${_ni_vst3_bundles})
+    endif()
 endif()
 
 # ------------------------------------------------------------ the native kit
@@ -479,6 +483,10 @@ target_compile_definitions(tg_host PRIVATE
 target_link_libraries(tg_host PRIVATE
     tg_engine juce::juce_audio_processors juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 add_test(NAME tg_host COMMAND tg_host ${NI_BUNDLES}/NITranceGate.vst3 ${NI_FIXTURES})
+
+# NI SIDE-CHAIN: its processor, its audio callback and its built bundle, in a
+# directory of their own with their own tiers.
+add_subdirectory(side-chain)
 
 # ---------------------------------------------------------------- Spectrogram
 
@@ -828,23 +836,11 @@ if (TG_NODE)
 
     # THE RANGES, which exist in two languages because a pointer position has to
     # become a normalised value before it can be sent back to the host. The JS
-    # copy is parsed against SideChain.cpp's own InitDouble calls, so a range
+    # copy is parsed against Params.cpp's own table, so a range
     # changed on one side and not the other is a test failure rather than a
     # handle that lands somewhere the sound is not.
     add_test(NAME sc_ranges
              COMMAND ${TG_NODE} --test ${SC_UI_TEST}/ranges.test.mjs)
-endif()
-
-# The Side-Chain AU from build/out (see the Trance Gate's, above), rendered with
-# a transport: auval passes on a plugin that initialises, accepts every
-# parameter and passes the audio through untouched; this checks the duck
-# actually happened, and that the AU's output matches the engine's own render
-# sample for sample. `aumf`, not `aufx` -- the bundle's plist says so.
-if (APPLE)
-    add_executable(sc_au_render ${SC_ENGINE}/tests/au_render.c)
-    target_include_directories(sc_au_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(sc_au_render PRIVATE sc_engine m ${NI_AU_LIBS})
-    add_test(NAME sc_au COMMAND sc_au_render ${NI_BUNDLES}/NISideChain.component)
 endif()
 
 # ----------------------------------------------------------- The whole UI
@@ -908,13 +904,8 @@ ni_test_tiers(
         nist_fixtures tg_processor tg_rt
     FULL
         tg_render_ab:render sc_render_ab:render
-        sc_au:host
-        au_stress_SideChain:host
         au_stress_ListenIn:host
-        au_ground_SideChain:host
         au_ground_ListenIn:host
-        editor_host_SideChain_vst3:host editor_host_SideChain_au:host
-        editor_host_SideChain_clap:host
         editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host
         editor_host_ListenIn_clap:host iplug2_fixtures:host
         ${_ni_juce_tiers}

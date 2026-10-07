@@ -6,8 +6,7 @@
  *
  * The web editor was fed through message tags (ui/src/lib/msg.js): the
  * engine's `ui`, `params` and `stage_ms` readouts as colon-separated text
- * every idle tick, the key bus as "<connected>:<isMain>", and the capture as
- * six bytes a column. This is the same traffic as C++: snapshots the editor
+ * every idle tick, the key bus, and the capture as six bytes a column. This is the same traffic as C++: snapshots the editor
  * reads when it wants them -- no tags, no text where the data is a number, no
  * format to parse. The Side-Chain sends nothing back but parameter edits:
  * everything it holds is a host parameter, the shape's handles included.
@@ -15,11 +14,11 @@
  * MESSAGE THREAD, EVERY CALL (EditorModel.h). A getter returns the latest
  * snapshot the engine published, already copied out of its triple buffer; a
  * reference it returns stays valid until the same getter is called again. The
- * processor implements this; tests/ui/side-chain_fakes.h implements it with
- * nothing behind it.
+ * processor implements this (EngineModel.h); tests/ui/side-chain_fakes.h
+ * implements it with nothing behind it.
  *
  * THE HOST PARAMETERS ARE THE PLUGIN'S FIFTEEN, in the iPlug2 index order
- * that is their VST3 ID (Params.h, and the spike's
+ * that is their VST3 ID (Params.h, and
  * tests/fixtures/iplug2/NISideChain/parameters.json): parameter(param::delay)
  * is Delay. Bypass is the host's and is not among them. Their text is the
  * plugin's ("35.0 %", "-inf dB", "C1", "Omni"), and the editor holds no unit,
@@ -128,14 +127,11 @@ struct StageMs
 
 /*
  * THE KEY BUS, which only the plugin can see: whether the host connected one
- * at all (an unpatched bus and a silent one are the same zeroes), and whether
- * the "key" is byte for byte the track's own input -- Logic and GarageBand
- * hand that over when the slot is empty (Wire.h).
+ * at all -- an unpatched bus and a silent one are the same zeroes.
  */
 struct Buses
 {
     bool keyConnected = false;
-    bool keyIsMain = false;
 };
 
 /*

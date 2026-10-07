@@ -12,8 +12,8 @@
  *
  * A duplicated range drifts silently and the symptom is subtle: the handle
  * lands somewhere the sound is not, which reads as a drawing bug and is an
- * arithmetic one. So this parses Params.cpp -- the declaration itself, not a
- * copy of it -- and fails if the two disagree.
+ * arithmetic one. So this parses Params.cpp's table -- the declaration
+ * itself, not a copy of it -- and fails if the two disagree.
  *
  * The same idiom as the token guard, which parses tokens.css as text, and the
  * versions test, which parses config.h: the authority is the file that the
@@ -29,39 +29,31 @@ import { RANGES, P, toNorm, fromNorm } from '../src/lib/msg.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CPP = join(HERE, '..', '..', 'Params.cpp');
 
-/* The C++ enum name for each parameter this test covers. Only the continuous
+/* The table's id for each parameter this test covers. Only the continuous
  * ones: an enum parameter's range is its option count, which ParamSelect
  * takes from the options it is given. */
 const ENUM_NAME = {
-  kDelay: P.delay,
-  kAttack: P.attack,
-  kHold: P.hold,
-  kRelease: P.release,
-  kDepth: P.depth,
-  kVelSens: P.velSens,
-  kThreshold: P.threshold,
-  kLockout: P.lockout,
+  delay: P.delay,
+  attack: P.attack,
+  hold: P.hold,
+  release: P.release,
+  depth: P.depth,
+  velSens: P.velSens,
+  threshold: P.threshold,
+  lockout: P.lockout,
 };
 
-/** What Params.cpp actually declares, in its own units. */
+/** What Params.cpp actually declares, in its own units: each row of its
+ *  table, { "attack", "Attack", Kind::continuous, 0, 200, 2, "" }. */
 function declared() {
   const src = readFileSync(CPP, 'utf8')
     /* Comments first: a range inside one is prose, not a declaration. */
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/[^\n]*/g, '');
   const out = {};
-
-  /* The `pct` helper: pct(param(kAttack), "Attack", 2.0, 200.0) -- it calls
-   * InitDouble with a fixed low bound of 0. */
   for (const m of src.matchAll(
-    /pct\(param\((k\w+)\)\s*,\s*"[^"]*"\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/g)) {
-    out[m[1]] = [0, Number(m[3])];
-  }
-
-  /* The direct form: param(kThreshold)->InitDouble("Threshold", -24, -60, 0, ...) */
-  for (const m of src.matchAll(
-    /param\((k\w+)\)->InitDouble\(\s*"[^"]*"\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)/g)) {
-    out[m[1]] = [Number(m[3]), Number(m[4])];
+    /\{\s*"(\w+)"\s*,\s*"[^"]*"\s*,\s*Kind::continuous\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,/g)) {
+    out[m[1]] = [Number(m[2]), Number(m[3])];
   }
   return out;
 }

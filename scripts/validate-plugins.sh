@@ -91,6 +91,9 @@ run() {
     local failed=()
 
     for plist in "$ROOT"/plugins/*/resources/*-AU-Info.plist; do
+        # No product on iPlug2 left: the pattern matches nothing, and is
+        # handed over as itself.
+        [ -f "$plist" ] || continue
         local bundle type sub mfr
         bundle=$(basename "$plist" -AU-Info.plist)
         type=$(plutil -extract AudioComponents.0.type raw "$plist")

@@ -16,6 +16,7 @@
  * phase-locked loop rather than a queue of notes.
  */
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define SC_RENDER_SR 44100.0

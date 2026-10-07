@@ -65,11 +65,10 @@ test('the shell tags agree, name for name and number for number', () => {
   assert.deepEqual(cpp, SHELL_MSG);
 });
 
-/* The products whose editors are still web pages on iPlug2. NI Trance Gate's
- * and NI Spectrogram's are native (plugins/<product>/editor), with no tags to
- * agree on: their models are C++ (editor/Model.h). */
+/* The products whose editors are still web pages on iPlug2. NI Trance Gate's,
+ * NI Spectrogram's and NI Side-Chain's are native (plugins/<product>/editor),
+ * with no tags to agree on: their models are C++ (editor/Model.h). */
 const PLUGINS = [
-  { name: 'side-chain', header: 'plugins/side-chain/SideChain.h', params: 'plugins/side-chain/Params.h' },
   { name: 'listen-in', header: 'plugins/listen-in/ListenIn.h', params: 'plugins/listen-in/State.h' },
 ];
 

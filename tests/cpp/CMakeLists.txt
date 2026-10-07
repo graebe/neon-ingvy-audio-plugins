@@ -87,26 +87,6 @@ set(LISTENIN_WIRE_TABLE
 
 add_test(NAME listenin_wire
          COMMAND listenin_wire --verify ${LISTENIN_WIRE_TABLE})
-# ------------------------------------------------------------ NI Side-Chain
-
-add_executable(sc_wire sc_wire.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/side-chain/Wire.cpp)
-target_include_directories(sc_wire PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/side-chain)
-add_test(NAME sc_wire COMMAND sc_wire)
-
-# THE PARAMETERS AS A HOST SEES THEM -- their text and the state chunk, on the
-# plugin's own Params.cpp and real IParams.
-# The engine, because the Rate options are its own table.
-add_executable(sc_params sc_params.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/side-chain/Params.cpp
-               ${IPLUG_PARAM_SRC})
-target_include_directories(sc_params PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/side-chain
-    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
-target_link_libraries(sc_params PRIVATE sc_engine shell_engine)
-add_test(NAME sc_params COMMAND sc_params)
-
 # Listen-In's chunk, saved and reloaded as clap-validator's state tests do.
 add_executable(listenin_state listenin_state.cpp
                ${CMAKE_SOURCE_DIR}/plugins/listen-in/State.cpp
@@ -123,4 +103,4 @@ add_test(NAME listenin_state COMMAND listenin_state)
 # with no bundle, host or second process. cmake/NiTest.cmake.
 ni_test_tiers(QUICK
     ni_wire ni_editor shell_state shell_denormals
-    listenin_wire sc_wire sc_params listenin_state)
+    listenin_wire listenin_state)
