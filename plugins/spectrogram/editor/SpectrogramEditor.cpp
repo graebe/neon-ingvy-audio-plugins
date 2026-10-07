@@ -131,6 +131,10 @@ SpectrogramView::SpectrogramView (Model& m)
     /* THE DISPLAY. */
     addAndMakeVisible (scale);
     ni::ui::setInfo (picture(), info::picture);
+    /* The clash is data, not a state, so it is ink hatching rather than amber
+     * (proposal SP4): amber is the window's one state colour, and "no signal"
+     * already spends it. */
+    picture().setClashStyle (ni::ui::Spectrogram::ClashStyle::hatch);
     picture().onHover = [this] (const std::optional<ni::ui::Spectrogram::Sample>& s) { refreshReadout (s); };
     addAndMakeVisible (pictureWell);
     addAndMakeVisible (axis);

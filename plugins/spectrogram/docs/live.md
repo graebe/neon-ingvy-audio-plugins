@@ -93,7 +93,7 @@ what you are looking at is what the two tracks do *together*.
 Changing the view clears the history, because thirteen seconds of the previous
 mix spliced onto the new one with no seam is not a picture of anything.
 
-### Compare — what the orange is measuring
+### Compare — what the hatching is measuring
 
 Two pickers and a switch, independent of the view: comparing two channels you
 are not currently looking at is a legitimate thing to ask for, and tying the two
