@@ -21,12 +21,20 @@ header = """// SPDX-License-Identifier: GPL-3.0-or-later
 // engines/side-chain/crates/sc-capi/src/engine.rs, whose doc comments are the
 // comments below: edit that, not this."""
 
+# The opaque handle keeps its old struct tag, declared here rather than by
+# cbindgen: trance_gate_core.toml says why.
+after_includes = """
+
+// The opaque handle. A newtype rather than `Instance` directly so the C side
+// cannot be given a layout it might be tempted to rely on.
+typedef struct sc_instance sc_core_t;"""
+
 [export]
 # The numbers sc_core_set_num takes, which no function names as a type.
 include = ["ScParam"]
 # The int an sc_param_t arrives as, spelled sc_param_t in the header
 # (engine.rs says why Rust takes the int).
-exclude = ["ScParamArg"]
+exclude = ["ScParamArg", "ScCore"]
 
 [export.rename]
 "ScCore" = "sc_core_t"

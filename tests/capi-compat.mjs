@@ -23,7 +23,8 @@
  *           (return and parameter types, const and enums included -- names do
  *           not count), each macro's value and type, each enum constant's
  *           value, each struct's size and every field's offset and type, each
- *           function pointer typedef, each opaque handle's name. The COMPILER does the
+ *           function pointer typedef, each opaque handle's name and struct
+ *           tag. The COMPILER does the
  *           comparing, so "the same" means what C++ means by it, and the
  *           build fails on the first difference with the name in the message.
  *
@@ -53,7 +54,7 @@ export function parse(text) {
     enums: [],              // { name | null, consts: [[name, value]] }
     structs: new Map(),     // name -> [field declaration]
     fnptrs: new Map(),      // name -> { ret, params }
-    opaque: new Set(),      // names of `typedef struct X name;`
+    opaque: new Map(),      // name -> tag, of `typedef struct tag name;`
   };
   const lines = [];
   for (const line of stripComments(text).split('\n')) {
@@ -100,7 +101,7 @@ export function parse(text) {
     } else if ((m = /^typedef struct(?: \w+)? ?\{(.*)\} ?(\w+)$/.exec(raw))) {
       out.structs.set(m[2], m[1].split(';').map(squash).filter(Boolean));
     } else if ((m = /^typedef struct (\w+) (\w+)$/.exec(raw))) {
-      out.opaque.add(m[2]);
+      out.opaque.set(m[2], m[1]);
     } else if ((m = /^typedef (.+?)\(\s*\*\s*(\w+)\s*\)\s*\((.*)\)$/.exec(raw))) {
       out.fnptrs.set(m[2], { ret: squash(m[1]), params: squash(m[3]) });
     } else if ((m = /^(?:static )?(?:inline )?(.+?)\b(\w+)\s*\(([^()]*)\)(?:\s*\{.*\})?$/.exec(raw))) {
@@ -131,10 +132,9 @@ function readAll(files) {
   const merged = parse('');
   for (const f of files) {
     const p = parse(readFileSync(f, 'utf8'));
-    for (const key of ['functions', 'macros', 'structs', 'fnptrs']) {
+    for (const key of ['functions', 'macros', 'structs', 'fnptrs', 'opaque']) {
       for (const [k, v] of p[key]) merged[key].set(k, v);
     }
-    for (const k of p.opaque) merged.opaque.add(k);
     merged.enums.push(...p.enums);
   }
   return merged;
@@ -203,8 +203,12 @@ function emit({ fixture, include, out }) {
     check(`std::is_same<${name}, ${ret} (*)(${params})>::value`,
       `${name} is not the fixture's ${ret} (*)(${params})`);
   }
-  for (const name of fx.opaque) {
+  /* A handle's struct tag is part of its surface: a caller may forward-declare
+   * it, or spell `struct tag *`. Named here and not declared by the header,
+   * `struct tag` is a new, different type, so the assert fails. */
+  for (const [name, tag] of fx.opaque) {
     check(`sizeof(${name} *) == sizeof(void *)`, `${name} is not declared`);
+    check(`std::is_same<struct ${tag}, ${name}>::value`, `${name} is not struct ${tag}`);
   }
 
   lines.push('', 'int main() {',

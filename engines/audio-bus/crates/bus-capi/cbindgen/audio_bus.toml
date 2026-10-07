@@ -21,6 +21,20 @@ header = """// SPDX-License-Identifier: GPL-3.0-or-later
 // engines/audio-bus/crates/bus-capi/src/lib.rs, whose doc comments are the
 // comments below: edit that, not this."""
 
+# The opaque handles keep their old struct tags, declared here rather than by
+# cbindgen: trance_gate_core.toml says why.
+after_includes = """
+
+// The main thread's half of a claim.
+typedef struct AbusWriter abus_writer_t;
+// The audio thread's half of a claim.
+typedef struct AbusPusher abus_pusher_t;
+// One receiver's place in one slot's stream.
+typedef struct AbusReader abus_reader_t;"""
+
+[export]
+exclude = ["AbusWriter", "AbusPusher", "AbusReader"]
+
 [export.rename]
 "AbusWriter" = "abus_writer_t"
 "AbusPusher" = "abus_pusher_t"

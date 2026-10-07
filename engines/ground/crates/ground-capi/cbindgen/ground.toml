@@ -21,5 +21,15 @@ header = """// SPDX-License-Identifier: GPL-3.0-or-later
 // engines/ground/crates/ground-capi/src/lib.rs, whose doc comments are the
 // comments below: edit that, not this."""
 
+# The opaque handle keeps its old struct tag, declared here rather than by
+# cbindgen: trance_gate_core.toml says why.
+after_includes = """
+
+// The opaque handle. One per plugin instance.
+typedef struct GndGround gnd_t;"""
+
+[export]
+exclude = ["GndGround"]
+
 [export.rename]
 "GndGround" = "gnd_t"

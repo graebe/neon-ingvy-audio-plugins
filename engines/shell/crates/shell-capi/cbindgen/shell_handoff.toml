@@ -20,6 +20,15 @@ header = """// SPDX-License-Identifier: GPL-3.0-or-later
 // engines/shell/crates/shell-capi/src/lib.rs, whose doc comments are the
 // comments below: edit that, not this."""
 
+# The opaque handle keeps its old struct tag, declared here rather than by
+# cbindgen: trance_gate_core.toml says why.
+after_includes = """
+
+typedef struct ShellHandoff shell_handoff_t;"""
+
+[export]
+exclude = ["ShellHandoff"]
+
 [export.rename]
 "ShellHandoff" = "shell_handoff_t"
 "ShellReleaseFn" = "shell_release_fn"

@@ -48,6 +48,18 @@ static inline void tg_mask_zero(tg_mask_t *m) {
 
 #endif /* TRANCE_GATE_CORE_H */"""
 
+# THE OPAQUE HANDLE IS DECLARED HERE, not by cbindgen, because its struct tag
+# is a name only C has. The hand-written header said
+# `typedef struct tg_instance tg_core_t;`, and a caller may name the tag -- a
+# forward declaration, `struct tg_instance *` -- where cbindgen can only write
+# `typedef struct tg_core_t tg_core_t;`. So TgCore is left out of the export
+# and declared below with its old tag, and its uses are still renamed to
+# tg_core_t. capi-compat holds every handle's tag.
+after_includes = """
+
+// Opaque to C, exactly as `tg_core_t` was.
+typedef struct tg_instance tg_core_t;"""
+
 [export]
 # Declared for C and used by no function: the mask is C's view of a step
 # bitmap, and the enum names the numbers tg_core_set_num takes.
@@ -55,7 +67,7 @@ include = ["TgMask", "TgParam"]
 # TgParamArg is the int a tg_param_t arrives as (engine.rs says why Rust takes
 # the int); in the header it is spelled tg_param_t, the enum's own name, so it
 # is renamed to that and its own typedef left out.
-exclude = ["TgParamArg"]
+exclude = ["TgParamArg", "TgCore"]
 
 [export.rename]
 "TgCore" = "tg_core_t"
