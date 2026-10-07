@@ -56,6 +56,20 @@ set(NI_JUCE_SHELL_DIR ${CMAKE_SOURCE_DIR}/plugins/_shared/juce)
 file(GLOB NI_JUCE_SHELL_SOURCES CONFIGURE_DEPENDS ${NI_JUCE_SHELL_DIR}/*.cpp)
 set(NI_JUCE_OUT ${CMAKE_BINARY_DIR}/out)
 
+# What a VST3 module exports: its entry points and nothing else. Everything
+# else the binary holds -- JUCE, its bundled C libraries, the Rust engine's
+# C ABI -- stays inside it, so two plugins in one host never bind to each
+# other's copies (ELF interposes global symbols across modules; macOS keeps
+# them apart by two-level namespace, but has no reason to see them).
+if (APPLE)
+    set(NI_JUCE_EXPORTS ${CMAKE_BINARY_DIR}/ni_vst3_exports.txt)
+    file(WRITE ${NI_JUCE_EXPORTS} "_GetPluginFactory\n_bundleEntry\n_bundleExit\n")
+elseif (UNIX)
+    set(NI_JUCE_EXPORTS ${CMAKE_BINARY_DIR}/ni_vst3_exports.map)
+    file(WRITE ${NI_JUCE_EXPORTS}
+        "{\n  global: GetPluginFactory; ModuleEntry; ModuleExit;\n  local: *;\n};\n")
+endif()
+
 if (NOT DEFINED IPLUG_DEPLOY_PLUGINS)
     option(IPLUG_DEPLOY_PLUGINS "Deploy built plugins to system directories" ON)
 endif()
@@ -157,6 +171,30 @@ function(ni_add_juce_plugin product)
         IS_MIDI_EFFECT FALSE
         EDITOR_WANTS_KEYBOARD_FOCUS TRUE
         COPY_PLUGIN_AFTER_BUILD FALSE)
+
+    # NOTHING BUT THE ENTRY POINTS LEAVES THE BUNDLE. With default
+    # visibility a plugin exports every inline function of JUCE as a weak
+    # symbol, and so does a JUCE host; the macOS loader coalesces weak
+    # definitions across images, so the plugin ends up calling the HOST's copy
+    # of an inline juce::String function and frees what its own allocator
+    # never gave out ("pointer being freed was not allocated", the debug
+    # juce_host under coverage). Release builds hid it, link-time optimisation
+    # internalising the symbols; hidden visibility makes it true for every
+    # configuration and every host.
+    foreach(t ${ARG_TARGET} ${ARG_TARGET}_VST3)
+        set_target_properties(${t} PROPERTIES
+            C_VISIBILITY_PRESET hidden
+            CXX_VISIBILITY_PRESET hidden
+            OBJCXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON)
+    endforeach()
+
+    if (APPLE)
+        target_link_options(${ARG_TARGET}_VST3 PRIVATE "LINKER:-exported_symbols_list,${NI_JUCE_EXPORTS}")
+    elseif (UNIX)
+        target_link_options(${ARG_TARGET}_VST3 PRIVATE "LINKER:--version-script=${NI_JUCE_EXPORTS}")
+    endif()
+    # Windows exports what JUCE marks dllexport: the entry points alone.
 
     target_sources(${ARG_TARGET} PRIVATE ${ARG_SOURCES} ${NI_JUCE_SHELL_SOURCES})
     target_include_directories(${ARG_TARGET} PRIVATE
