@@ -338,6 +338,9 @@ void SpectrogramView::togglePause()
     picture().setPaused (paused);
     pause.setOn (paused);
     pause.setTitle (paused ? info::resumeTitle : info::pauseTitle);
+    /* The line under the pointer says what a press does now, as the web
+     * button's tooltip did. */
+    ni::ui::setInfo (pause, paused ? info::resume : info::pause);
 }
 
 /* Never nothing: a spectrogram showing no channel is a broken plugin. */

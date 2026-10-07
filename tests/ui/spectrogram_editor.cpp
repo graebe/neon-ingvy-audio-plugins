@@ -235,6 +235,8 @@ TEST_CASE ("spectrogram editor: pause holds the picture while the columns keep a
     CHECK (rig.picture().isPaused());
     CHECK (pause.isOn());
     CHECK (pause.getTitle() == "Resume the picture");
+    /* The hint says what a press does now, as the tooltip did. */
+    CHECK (ni::ui::infoOf (pause) == info::resume.str());
 
     /* The analysis is never told: columns are taken and written on. */
     rig.model.queue (5, 77);
@@ -246,6 +248,7 @@ TEST_CASE ("spectrogram editor: pause holds the picture while the columns keep a
     Pointer().click (pause, { 14.0f, 14.0f });
     CHECK_FALSE (v.isPaused());
     CHECK_FALSE (pause.isOn());
+    CHECK (ni::ui::infoOf (pause) == info::pause.str());
     CHECK (rig.model.ranges.empty());
     CHECK (rig.model.looks.empty());
 }

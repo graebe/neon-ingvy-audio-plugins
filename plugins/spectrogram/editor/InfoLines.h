@@ -29,6 +29,8 @@ inline constexpr InfoText range { "Range — zoom the picture to Full, Sub, Bass
 inline constexpr InfoText bars { "Bars — draw the host's bars across the picture instead of seconds." };
 inline constexpr InfoText barCount { "Bars shown — how many bars the bar view spans: 1, 2, 4, 8 or 16." };
 inline constexpr InfoText pause { "Pause — hold the picture; the analysis keeps running behind it." };
+/* The same button while the picture is held: what pressing it does now. */
+inline constexpr InfoText resume { "Pause — let the picture go; the history behind it is already current." };
 
 /* The second row: what the picture is of, and what the clash measures. */
 inline constexpr InfoText view { "View — tick channels to add into the picture; input is this track." };
