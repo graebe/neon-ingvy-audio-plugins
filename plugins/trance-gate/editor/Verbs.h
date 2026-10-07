@@ -3,8 +3,8 @@
 
 /*
  * The Trance Gate's window verbs: Copy slot, Paste slot, Export slot,
- * Export all, Import and Randomize, as one joined row of icons -- the Actions
- * card of Ultraviolet 1.1.0 -- and what each one does.
+ * Export all, Import and Randomize, as one joined group of icons -- the
+ * Actions card of Ultraviolet 1.1.0 -- and what each one does.
  *
  * ONE GROUP WHERE THE WEB EDITOR HAD TWO. The web window put Copy and Paste
  * at the end of the settings row, where they ran past the window's edge
@@ -12,10 +12,11 @@
  * plot, because the system had no glyph for a file then. 1.1.0 has the three
  * glyphs and joins all five verbs edge to edge, in its order -- copy, paste,
  * export, export all, import -- with Randomize after them, as the card puts a
- * window's Randomize. The row takes the file verbs' old place, flush with the
- * panels' bottom edge, so the settings row keeps only settings. Each icon is
- * named by its full verb (its accessible title) and says what it does in the
- * hint bar (InfoLines.h).
+ * window's Randomize. The group stands in the side column right of the
+ * panels, flush with their top edge, as the card lays it out; the column is
+ * 28 wide, so the icons run top to bottom (ButtonGroup's column), and the
+ * settings row keeps only settings. Each icon is named by its full verb (its
+ * accessible title) and says what it does in the hint bar (InfoLines.h).
  *
  * WHAT THEY DO, as the iPlug2 shell did it (Patch.cpp, TranceGate.cpp) and
  * the manual says it (README, Slot files and Patch interchange):
@@ -79,8 +80,8 @@ public:
     Verbs (Model&, Clipboard&, FilePanels&, Report);
     ~Verbs();
 
-    /* The row of icons, laid out at its own size (idealSize()). */
-    ni::ui::ButtonGroup& group() noexcept { return row; }
+    /* The column of icons, laid out at its own size (idealSize()). */
+    ni::ui::ButtonGroup& group() noexcept { return icons; }
     ni::ui::Button& button (Verb v) noexcept { return *buttons[(std::size_t) v]; }
 
     void copy();
@@ -101,7 +102,7 @@ private:
     Report reportTo;
 
     std::array<std::unique_ptr<ni::ui::Button>, (std::size_t) Verb::count> buttons;
-    ni::ui::ButtonGroup row { ni::ui::ButtonGroup::Form::joined };
+    ni::ui::ButtonGroup icons { ni::ui::ButtonGroup::Form::column };
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (Verbs)
     JUCE_DECLARE_NON_COPYABLE (Verbs)

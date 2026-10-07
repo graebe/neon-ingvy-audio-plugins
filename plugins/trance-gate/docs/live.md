@@ -194,10 +194,11 @@ not need a legend.
 
 ## Copy and paste
 
-The two icons beside RANDOM are **Copy slot** and **Paste slot**. Use the
-icons, not **⌘C** and **⌘V**: Live keeps those keys for its own menu, so a
-plugin window never receives them. The icons work anyway, because the plugin
-reads and writes the clipboard itself.
+Right of the panels stands a column of six icons, the window's actions. The
+first two are **Copy slot** and **Paste slot**; point at any of them and the
+hint bar names it. Use the icons, not **⌘C** and **⌘V**: Live keeps those keys
+for its own menu, so a plugin window never receives them. The icons work
+anyway, because the plugin reads and writes the clipboard itself.
 
 To start slot 2 from slot 1:
 
@@ -217,11 +218,11 @@ bar, and nothing changes. See
 
 ## Export and import
 
-Under the envelope plot, **EXPORT**, **EXPORT ALL** and **IMPORT** save the
-current slot or all 8 slots to a file and load them back; see
-[Slot files](../README.md#slot-files). The result shows in the hint bar for a
-few seconds. All three buttons work from the keyboard: Tab to them and press
-Enter or Space.
+The next three icons in the column, **Export slot**, **Export all** and
+**Import**, save the current slot or all 8 slots to a file and load them back;
+see [Slot files](../README.md#slot-files). Point at an icon and the hint bar
+names it. The result shows in the hint bar for a few seconds. All three work
+from the keyboard: Tab to them and press Enter or Space.
 
 ## Installing and updating
 

@@ -244,10 +244,8 @@ void TranceGateEditor::layout()
 {
     patternRing.setBounds (0, 0, ringSize, ringSize);
     envelope->setBounds (0, envelopeY, ringSize, envelopeH);
-    /* The verbs flush with the panels' bottom edge, where the web editor's
-     * file verbs were. */
-    auto& verbs = slotVerbs->group();
-    verbs.setTopLeftPosition (0, topH - verbs.getHeight());
+    /* The verbs in the side column, flush with the panels' top edge. */
+    slotVerbs->group().setTopLeftPosition (sideX, 0);
 
     for (std::size_t i = 0; i < panels.size(); ++i)
         panels[i]->setBounds (panelX, (int) i * (ni::ui::Panel::compactHeight + panelGap), panelW,

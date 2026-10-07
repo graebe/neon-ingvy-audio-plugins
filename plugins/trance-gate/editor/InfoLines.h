@@ -68,7 +68,7 @@ inline constexpr InfoText join { "Join Neighbors — run consecutive steps toget
 inline constexpr InfoText curve { "Curve — the stages' shape: Linear, Exponential or S-Curve." };
 inline constexpr InfoText time { "Time in % — read Attack, Decay and Release as % of the gate, not ms." };
 
-/* The window's verbs, one joined row of icons under the envelope plot (the
+/* The window's verbs, one joined column of icons right of the panels (the
  * Actions card, Verbs.h): each line names its button's full verb, which the
  * icon replaces. */
 inline constexpr InfoText copy { "Copy slot — put this slot, pattern and sound, on the clipboard." };

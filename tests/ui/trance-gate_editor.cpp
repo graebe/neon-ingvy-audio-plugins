@@ -7,8 +7,9 @@
  * (plugins/trance-gate/ui):
  *
  *   the parameters    the fifteen, in the iPlug2 order, with the plugin's text
- *   the layout        the as-built artboard: 824 wide, the pads 644 down, a
- *                     row more of window per sixteen steps
+ *   the layout        the as-built artboard on 1.1.0's spacing, the verbs in
+ *                     the side column: 824 wide, the pads 676 down, a row
+ *                     more of window per sixteen steps
  *   the controls      every knob, switch and select on its parameter, Rate
  *                     and Length stepped, Length holding on whole bars
  *   the stages        read in the unit Env Time asks for, typed in either
@@ -113,29 +114,31 @@ TEST_CASE ("trance-gate: the fifteen parameters, in the iPlug2 order, with the p
 
 /* ---------------------------------------------------------------- layout -- */
 
-TEST_CASE ("trance-gate: the as-built window -- the ring and its column, three panels, a row, the band, the pads")
+TEST_CASE ("trance-gate: the window -- the ring and its column, three panels, the side column, a row, the band, the pads")
 {
     Rig rig;
     auto& e = rig.editor;
     CHECK (e.getWidth() == 824);
-    CHECK (e.getHeight() == 752);
-    CHECK (TranceGateEditor::designHeightFor (16) == 752);
-    CHECK (e.content().getBounds() == juce::Rectangle<int> (32, 32, 760, 652));
+    CHECK (e.getHeight() == 784);
+    CHECK (TranceGateEditor::designHeightFor (16) == 784);
+    CHECK (e.content().getBounds() == juce::Rectangle<int> (32, 32, 760, 684));
 
     CHECK (e.ring().getBounds() == juce::Rectangle<int> (0, 0, 240, 240));
     CHECK (e.envelopePlot().getBounds() == juce::Rectangle<int> (0, 264, 240, 104));
-    /* The window verbs flush with the panels' bottom edge, where the web
-     * editor's file verbs were. */
-    CHECK (e.verbs().group().getBounds() == juce::Rectangle<int> (0, 424, 163, 28));
-    CHECK (e.panel (0).getBounds() == juce::Rectangle<int> (272, 0, 488, 140));
-    CHECK (e.panel (1).getBounds() == juce::Rectangle<int> (272, 156, 488, 140));
-    CHECK (e.panel (2).getBounds() == juce::Rectangle<int> (272, 312, 488, 140));
-    CHECK (e.select (param::slot).getBounds().getPosition() == juce::Point<int> (0, 468));
-    CHECK (e.band().getBounds() == juce::Rectangle<int> (0, 504, 760, 92));
-    /* The pads 644 below the window's top edge, as App.jsx's ABOVE_GRID. */
-    CHECK (e.pads().getBounds() == juce::Rectangle<int> (0, 612, 760, 40));
-    CHECK (e.content().getY() + e.pads().getY() == 644);
-    CHECK (e.frame().hint().getBottom() == 752 - 16);
+    /* Panels 390 wide (TG8), space-6 apart (1.1.0, TG5). */
+    CHECK (e.panel (0).getBounds() == juce::Rectangle<int> (272, 0, 390, 140));
+    CHECK (e.panel (1).getBounds() == juce::Rectangle<int> (272, 164, 390, 140));
+    CHECK (e.panel (2).getBounds() == juce::Rectangle<int> (272, 328, 390, 140));
+    /* The window verbs in the side column, space-6 right of the panels and
+     * flush with their top edge (the Actions card), inside the content. */
+    CHECK (e.verbs().group().getBounds() == juce::Rectangle<int> (686, 0, 28, 6 * 28 - 5));
+    CHECK (e.verbs().group().getRight() <= 760);
+    /* The rows: space-6 under the panels, 16 above the plot and under it. */
+    CHECK (e.select (param::slot).getBounds().getPosition() == juce::Point<int> (0, 492));
+    CHECK (e.band().getBounds() == juce::Rectangle<int> (0, 536, 760, 92));
+    CHECK (e.pads().getBounds() == juce::Rectangle<int> (0, 644, 760, 40));
+    CHECK (e.content().getY() + e.pads().getY() == 676);
+    CHECK (e.frame().hint().getBottom() == 784 - 16);
 }
 
 TEST_CASE ("trance-gate: the window grows a row at a time with Length, at the scale it has")
@@ -144,23 +147,23 @@ TEST_CASE ("trance-gate: the window grows a row at a time with Length, at the sc
     auto& e = rig.editor;
     rig.model.next.length = 17;
     rig.frame();
-    CHECK (e.getHeight() == 752 + 48);
+    CHECK (e.getHeight() == 784 + 48);
     CHECK (e.pads().getHeight() == 88);
-    CHECK (e.frame().hint().getBottom() == 800 - 16);
+    CHECK (e.frame().hint().getBottom() == 832 - 16);
 
     rig.model.next.length = 128;
     rig.frame();
-    CHECK (e.getHeight() == 1088);
+    CHECK (e.getHeight() == 1120);
     CHECK (e.pads().grid().getCount() == 128);
 
     /* Scaled by the host, it keeps its scale when it grows. */
-    e.setSize (412, 544);
+    e.setSize (412, 560);
     CHECK (e.fit().getScale() == doctest::Approx (0.5f));
     rig.model.next.length = 16;
     rig.frame();
     CHECK (e.getWidth() == 412);
-    CHECK (e.getHeight() == 376);
-    CHECK (e.frame().getHeight() == 752);
+    CHECK (e.getHeight() == 392);
+    CHECK (e.frame().getHeight() == 784);
 }
 
 TEST_CASE ("trance-gate: every knob the same size, the Fade panel's switches and actions at the full 28px")
@@ -216,7 +219,7 @@ TEST_CASE ("trance-gate: the settings row holds the four settings, space-4 apart
     CHECK (time.getX() == curve.getRight() + 16);
     CHECK (time.getRight() <= 760);
     for (auto* c : std::initializer_list<juce::Component*> { &slot, &join, &curve, &time })
-        CHECK (c->getY() == 468);
+        CHECK (c->getY() == 492);
 
     CHECK (slot.getOptions() == juce::StringArray { "1", "2", "3", "4", "5", "6", "7", "8" });
     CHECK (curve.getOptions() == juce::StringArray { "Linear", "Exponential", "S-Curve" });

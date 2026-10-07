@@ -53,10 +53,10 @@ Verbs::Verbs (Model& m, Clipboard& c, FilePanels& f, Report r)
         auto b = std::make_unique<ni::ui::Button> (juce::String(), faces[i].icon);
         b->setTitle (faces[i].title);
         ni::ui::setInfo (*b, faces[i].line);
-        row.add (*b);
+        icons.add (*b);
         buttons[i] = std::move (b);
     }
-    row.setTitle ("Slot actions");
+    icons.setTitle ("Slot actions");
 
     button (Verb::copy).onClick = [this] { copy(); };
     button (Verb::paste).onClick = [this] { paste(); };
@@ -65,7 +65,7 @@ Verbs::Verbs (Model& m, Clipboard& c, FilePanels& f, Report r)
     button (Verb::import).onClick = [this] { import(); };
     button (Verb::randomize).onClick = [this] { randomize(); };
 
-    row.setSize (row.idealSize().getWidth(), row.idealSize().getHeight());
+    icons.setSize (icons.idealSize().getWidth(), icons.idealSize().getHeight());
 }
 
 Verbs::~Verbs() = default;

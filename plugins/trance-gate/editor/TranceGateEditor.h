@@ -8,39 +8,44 @@
  *
  * THE WINDOW, inside the window padding (EditorFrame), on the 4px grid:
  *
- *   the top block     452 tall: the ring (240) with the envelope plot (104)
- *                     space-6 under it and the window verbs flush with the
- *                     panels' bottom edge; space-8 to its right, the three
- *                     compact panels, 488 x 140, space-4 apart -- Gate,
- *                     Envelope, Fade
- *   space-4
+ *   the top block     468 tall: the ring (240) with the envelope plot (104)
+ *                     space-6 under it; space-8 to its right, the three
+ *                     compact panels, 390 x 140, space-6 apart -- Gate,
+ *                     Envelope, Fade; space-6 to their right, the side
+ *                     column, the window verbs in it flush with the panels'
+ *                     top edge (the Actions card)
+ *   space-6
  *   the settings row  28: Slot, Join Neighbors, Curve, Time in %
- *   space-2
+ *   space-4
  *   the band          92: the Pattern and Signal plots, the tabs over its
  *                     right edge
  *   space-4
  *   the pads          a row of 40 per sixteen steps, space-2 apart
  *
  * 760 across, which is sixteen pads: the pads decide the content's width and
- * everything lines up with them. The pads start 644 below the window's top
- * edge and THE WINDOW GROWS A ROW AT A TIME with Length -- 752 tall at up to
- * sixteen steps, 1088 at 128 -- through FixedDesign, so nothing shrinks and
- * nothing scrolls. The editor asks for its new size itself (setSize); the
- * plugin's window follows its child.
+ * everything lines up with them. The gaps are 1.1.0's -- panels and control
+ * groups space-6 apart -- and the proposed artboard's 16 above the plot and
+ * under it (canvas TG5 and its window note, +32 over the web editor's 16, 8
+ * and 16). The pads start 676 below the window's top edge and THE WINDOW
+ * GROWS A ROW AT A TIME with Length -- 784 tall at up to sixteen steps, 1120
+ * at 128 -- through FixedDesign, so nothing shrinks and nothing scrolls. The
+ * editor asks for its new size itself (setSize); the plugin's window follows
+ * its child.
  *
  * WHAT 1.1.0 CHANGED HERE, against the web editor: the window verbs are one
- * joined row of icons (Verbs.h) where the web had words under the plot and two
- * icons past the window's edge (canvas D1, TG1, TG2); the two-option selects
- * are switches, Fade Dir as "Out" and Env Time as "Time in %" (S7); the Fade
- * panel's switches and buttons stand in two columns at the full 28px (D2),
- * worded in sentence case, verb first -- Set order, Shuffle order (TG7);
- * Rate and Length are stepped knobs, an arrow being one division or one step
- * (Rate has thirteen, more than a Select holds); the ring and the pads are the
- * system's Ring and StepGrid cards; the plots draw in the PlotWell card's data
- * colours (Plots.h); and the hint bar is the kit's, with the Motion switch.
- * What the canvas proposes beyond 1.1.0 -- one plot with a Signal switch
- * (TG3), a taller envelope plot (TG4), 24px gutters (TG5) and narrower
- * panels (TG8) -- is left for the owner.
+ * joined column of icons in the side column (Verbs.h) where the web had words
+ * under the plot and two icons past the window's edge (canvas D1, TG1, TG2);
+ * the panels are 390 wide to make room for it, the knobs keeping their cells
+ * instead of stretching (TG8); the two-option selects are switches, Fade Dir
+ * as "Out" and Env Time as "Time in %" (S7); the Fade panel's switches and
+ * buttons stand in two columns at the full 28px (D2), worded in sentence
+ * case, verb first -- Set order, Shuffle order (TG7); Rate and Length are
+ * stepped knobs, an arrow being one division or one step (Rate has thirteen,
+ * more than a Select holds); the ring and the pads are the system's Ring and
+ * StepGrid cards; the plots draw in the PlotWell card's data colours
+ * (Plots.h); and the hint bar is the kit's, with the Motion switch. What the
+ * canvas proposes beyond 1.1.0 -- one plot with a Signal switch (TG3) and a
+ * taller envelope plot (TG4) -- is left for the owner.
  *
  * STATE LIVES IN THE MODEL AND THE CONTROLS. tick() reads the model's
  * snapshots and repaints; the editor's one FrameClock calls it on the
@@ -66,6 +71,7 @@
 #include "ParamChoiceKnob.h"
 #include "ParamControls.h"
 #include "Ring.h"
+#include "UvTokens.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -85,14 +91,16 @@ public:
     static constexpr int ringSize = 240;
     static constexpr int envelopeY = ringSize + 24;
     static constexpr int envelopeH = 104;
-    static constexpr int panelX = ringSize + 32;
-    static constexpr int panelW = contentWidth - panelX;
-    static constexpr int panelGap = 16;
+    static constexpr int panelX = ringSize + (int) uv::tok::space::space8;
+    static constexpr int panelW = 390;
+    static constexpr int panelGap = (int) uv::tok::space::space6;
     static constexpr int topH = 3 * 140 + 2 * panelGap;
+    /* The side column, right of the panels. */
+    static constexpr int sideX = panelX + panelW + (int) uv::tok::space::space6;
     /* The rows under it. */
-    static constexpr int settingsY = topH + 16;
-    static constexpr int bandY = settingsY + 28 + 8;
-    static constexpr int padsY = bandY + Band::height + 16;
+    static constexpr int settingsY = topH + (int) uv::tok::space::space6;
+    static constexpr int bandY = settingsY + (int) uv::tok::size::controlH + (int) uv::tok::space::space4;
+    static constexpr int padsY = bandY + Band::height + (int) uv::tok::space::space4;
 
     /* The window's height for a pattern of `length` steps. */
     static int designHeightFor (int length);

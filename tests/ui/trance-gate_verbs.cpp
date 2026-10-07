@@ -62,9 +62,10 @@ TEST_CASE ("trance-gate verbs: six icons in the card's order, each named and des
         CHECK (ni::ui::infoOf (b).startsWith (titles[i]));
         CHECK (ni::ui::infoOf (b).length() <= ni::ui::infoLimit);
     }
-    /* Joined edge to edge, sharing hairlines: 28 a button, less one each. */
-    CHECK (rig.verbs.group().getWidth() == 6 * 28 - 5);
-    CHECK (rig.verbs.group().getHeight() == 28);
+    /* Joined edge to edge, top to bottom for the side column, sharing
+     * hairlines: 28 a button, less one each. */
+    CHECK (rig.verbs.group().getWidth() == 28);
+    CHECK (rig.verbs.group().getHeight() == 6 * 28 - 5);
 }
 
 /* ------------------------------------------------------- the clipboard -- */
