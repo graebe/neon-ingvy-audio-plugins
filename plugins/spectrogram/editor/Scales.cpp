@@ -83,8 +83,10 @@ std::vector<TimeMark> secondMarks (int columns, double colsPerSecond, float widt
             break;
         TimeMark m;
         const bool whole = std::abs (a - std::round (a)) < 1e-9;
-        m.label = k == 0 ? juce::String ("0s")
-                         : "-" + (whole ? juce::String ((int) std::round (a)) : juce::String (a, 1)) + "s";
+        /* "0 s", "−12 s": the true minus and a spaced unit, as every other
+         * reading in the window has them. */
+        m.label = k == 0 ? juce::String ("0 s")
+                         : minus + (whole ? juce::String ((int) std::round (a)) : juce::String (a, 1)) + " s";
         m.x = (float) x;
         m.anchor = x > width - 12.0 ? TimeMark::Anchor::end
                  : x < 12.0         ? TimeMark::Anchor::start

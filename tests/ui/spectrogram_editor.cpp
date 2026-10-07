@@ -262,7 +262,7 @@ TEST_CASE ("spectrogram editor: the bars switch draws the host's bars, and place
     rig.model.clock.ppq = 6.0;          // bar 2, beat 3 of a 4-bar window
     rig.model.clock.ppqPerColumn = 0.5;
 
-    CHECK (v.timeAxis().getMarks().front().label == "0s");
+    CHECK (v.timeAxis().getMarks().front().label == "0 s");
     CHECK (v.readout().getTimeKey() == "time");
 
     Pointer().click (v.barsSwitch(), { 7.0f, 14.0f });

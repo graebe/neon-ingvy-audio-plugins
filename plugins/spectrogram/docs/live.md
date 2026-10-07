@@ -26,8 +26,8 @@ rows. Time scrolls right to left and the visible window holds thirteen seconds.
 Brightness is level: the ground is quiet, a near-white core is loud, and the
 violet between them is the falloff.
 
-Time is also ticked along the bottom, a mark a second from `0s` at the right
-edge back to `-12s` at the left. The ticks are arithmetic rather than a clock:
+Time is also ticked along the bottom, a mark a second from `0 s` at the right
+edge back to `−12 s` at the left. The ticks are arithmetic rather than a clock:
 one column is one pixel and the engine holds the column rate constant across
 sample rates, so the width *is* the span.
 

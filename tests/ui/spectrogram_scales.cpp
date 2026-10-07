@@ -109,10 +109,10 @@ TEST_CASE ("spectrogram scales: the time axis is a tick a second, right edge to 
 {
     const auto marks = secondMarks (606, 47.0, 606.0f);
     REQUIRE (! marks.empty());
-    CHECK (marks.front().label == "0s");
+    CHECK (marks.front().label == "0 s");
     CHECK (marks.front().x == doctest::Approx (606.0));
     CHECK (marks.front().anchor == TimeMark::Anchor::end);
-    CHECK (marks.back().label == "-12s");
+    CHECK (marks.back().label == u ("\xe2\x88\x92" "12 s"));
     CHECK (marks.back().x > 0.0f);
     for (size_t i = 1; i < marks.size(); ++i)
         CHECK (marks[i - 1].x - marks[i].x == doctest::Approx (47.0));

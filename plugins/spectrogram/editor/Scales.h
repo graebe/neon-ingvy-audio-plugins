@@ -107,7 +107,7 @@ struct TimeMark
     bool beat = false;
 };
 
-/* A tick every `stepS` seconds from "0s" at the right edge leftwards, the end
+/* A tick every `stepS` seconds from "0 s" at the right edge leftwards, the end
  * labels anchored inside the picture. */
 std::vector<TimeMark> secondMarks (int columns, double colsPerSecond, float width, double stepS = 1.0);
 
