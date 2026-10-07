@@ -6,6 +6,8 @@
  */
 #include "Processor.h"
 
+#include <limits>
+
 namespace ni
 {
 
@@ -20,7 +22,9 @@ HostClock readClock (juce::AudioPlayHead* head)
 
     clock.known = true;
     clock.playing = position->getIsPlaying();
-    clock.ppq = position->getPpqPosition().orFallback (0.0);
+    /* No position is not position 0: an engine anchoring bar lines to 0
+     * every block would pin them to now. NaN is "none" to the engines. */
+    clock.ppq = position->getPpqPosition().orFallback (std::numeric_limits<double>::quiet_NaN());
     clock.bpm = position->getBpm().orFallback (0.0);
     if (const auto meter = position->getTimeSignature())
     {
@@ -52,6 +56,17 @@ void Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer
 {
     const juce::ScopedNoDenormals noDenormals;
     process (buffer, midi);
+}
+
+void Processor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    const juce::ScopedNoDenormals noDenormals;
+    processBypassed (buffer, midi);
+}
+
+void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    juce::AudioProcessor::processBlockBypassed (buffer, midi);
 }
 
 void Processor::getStateInformation (juce::MemoryBlock& out)

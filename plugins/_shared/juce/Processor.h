@@ -11,7 +11,10 @@
  *                 program
  *   the block     processBlock is final: it runs the product's process()
  *                 under juce::ScopedNoDenormals, so no product forgets the
- *                 guard and no product pays for denormals
+ *                 guard and no product pays for denormals. Bypassed blocks
+ *                 (the host's bypass) go to processBypassed(), JUCE's own by
+ *                 default; a product whose engine must keep hearing MIDI
+ *                 while bypassed -- or its held notes stick -- overrides it
  *   the clock     readClock() reads the host's transport into a plain value,
  *                 allocation-free, for the engines' block clocks
  *   the state     getStateInformation and setStateInformation are final and
@@ -39,7 +42,8 @@ namespace ni
 {
 
 /* The host's transport for one block. `known` is false when the host gave
- * no position at all, which is not the same as a stopped transport. */
+ * no position at all, which is not the same as a stopped transport; `ppq` is
+ * NaN when it gave a position without a musical one. */
 struct HostClock
 {
     bool known = false;
@@ -75,6 +79,8 @@ public:
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) final;
     using juce::AudioProcessor::processBlock;
+    void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) final;
+    using juce::AudioProcessor::processBlockBypassed;
 
     void getStateInformation (juce::MemoryBlock&) final;
     void setStateInformation (const void* data, int sizeInBytes) final;
@@ -88,6 +94,11 @@ public:
 protected:
     /* One block of the product. Audio thread. */
     virtual void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) = 0;
+
+    /* One block while the host bypasses the plugin: JUCE's own handling
+     * (audio through, a latency kept) unless a product says otherwise. Audio
+     * thread. */
+    virtual void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&);
 
     /* The state, both ways, on any thread but the audio one: touch no
      * component. readState returns whether it understood what it was given;
