@@ -287,8 +287,9 @@ PatternPlot::PatternPlot()
 void PatternPlot::update (const GateCurve& g, int steps, float level)
 {
     steps = juce::jlimit (1, maxSteps, steps);
-    if (g.serial == curve.serial && steps == length && juce::exactlyEqual (level, amount) && ! curve.values.empty())
+    if (built && g.serial == curve.serial && steps == length && juce::exactlyEqual (level, amount))
         return;
+    built = true;
     curve = g;
     length = steps;
     amount = level;

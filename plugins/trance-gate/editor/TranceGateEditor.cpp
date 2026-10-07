@@ -67,6 +67,8 @@ TranceGateEditor::TranceGateEditor (Model& m, Clipboard& clipboard, FilePanels& 
       padGrid (std::make_unique<Pads> (edits)),
       timeParam (m.parameter (param::timeMode), [this]
       {
+          if (knobs.empty())
+              return;   // not built yet: the first tick reads them
           for (const int i : { param::attack, param::decay, param::release })
               knob (i).refresh();
       }),

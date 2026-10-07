@@ -151,6 +151,7 @@ private:
     float playheadX() const;
 
     GateCurve curve;
+    bool built = false;
     int length = 16;
     float amount = 1.0f;
     double phase = -1.0;
