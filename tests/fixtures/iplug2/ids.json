@@ -1,0 +1,130 @@
+{
+  "NITranceGate": {
+    "name": "NI Trance Gate",
+    "vendor": "",
+    "factoryVendor": "Neon Ingvy",
+    "capturedFromVersion": "v2026.10.06.5",
+    "sdkVersion": "VST 3.8.1",
+    "category": "Audio Module Class",
+    "subCategories": "Fx|Modulation",
+    "cardinality": 2147483647,
+    "classFlags": 2,
+    "classFlagNames": ["kSimpleModeSupported"],
+    "factoryClasses": [
+      {
+        "category": "Audio Module Class",
+        "name": "NI Trance Gate",
+        "cid": "F2AEE70D00DE4F4E4772626554724774"
+      }
+    ],
+    "singleComponent": true,
+    "getControllerClassId": "kNotImplemented",
+    "fuid": "0xF2AEE70D, 0x00DE4F4E, 0x47726265, 0x54724774",
+    "fuidWords": {
+      "l1": "F2AEE70D: iPlug2's VST3_PROCESSOR_UID constant",
+      "l2": "00DE4F4E: iPlug2's VST3_PROCESSOR_UID constant",
+      "l3": "47726265: PLUG_MFR_ID 'Grbe'",
+      "l4": "54724774: PLUG_UNIQUE_ID 'TrGt'"
+    },
+    "cid": "F2AEE70D00DE4F4E4772626554724774",
+    "tuidBytesMacOS": "F2AEE70D00DE4F4E4772626554724774",
+    "tuidBytesWindows": "0DE7AEF2DE004E4F4772626554724774",
+    "moduleinfoJson": false
+  },
+  "NISideChain": {
+    "name": "NI Side-Chain",
+    "vendor": "",
+    "factoryVendor": "Neon Ingvy",
+    "capturedFromVersion": "v2026.10.06.5",
+    "sdkVersion": "VST 3.8.1",
+    "category": "Audio Module Class",
+    "subCategories": "Fx|Dynamics",
+    "cardinality": 2147483647,
+    "classFlags": 2,
+    "classFlagNames": ["kSimpleModeSupported"],
+    "factoryClasses": [
+      {
+        "category": "Audio Module Class",
+        "name": "NI Side-Chain",
+        "cid": "F2AEE70D00DE4F4E4772626553644368"
+      }
+    ],
+    "singleComponent": true,
+    "getControllerClassId": "kNotImplemented",
+    "fuid": "0xF2AEE70D, 0x00DE4F4E, 0x47726265, 0x53644368",
+    "fuidWords": {
+      "l1": "F2AEE70D: iPlug2's VST3_PROCESSOR_UID constant",
+      "l2": "00DE4F4E: iPlug2's VST3_PROCESSOR_UID constant",
+      "l3": "47726265: PLUG_MFR_ID 'Grbe'",
+      "l4": "53644368: PLUG_UNIQUE_ID 'SdCh'"
+    },
+    "cid": "F2AEE70D00DE4F4E4772626553644368",
+    "tuidBytesMacOS": "F2AEE70D00DE4F4E4772626553644368",
+    "tuidBytesWindows": "0DE7AEF2DE004E4F4772626553644368",
+    "moduleinfoJson": false
+  },
+  "NISpectrogram": {
+    "name": "NI Spectrogram",
+    "vendor": "",
+    "factoryVendor": "Neon Ingvy",
+    "capturedFromVersion": "v2026.10.06.5",
+    "sdkVersion": "VST 3.8.1",
+    "category": "Audio Module Class",
+    "subCategories": "Fx|Analyzer",
+    "cardinality": 2147483647,
+    "classFlags": 2,
+    "classFlagNames": ["kSimpleModeSupported"],
+    "factoryClasses": [
+      {
+        "category": "Audio Module Class",
+        "name": "NI Spectrogram",
+        "cid": "F2AEE70D00DE4F4E4772626553704772"
+      }
+    ],
+    "singleComponent": true,
+    "getControllerClassId": "kNotImplemented",
+    "fuid": "0xF2AEE70D, 0x00DE4F4E, 0x47726265, 0x53704772",
+    "fuidWords": {
+      "l1": "F2AEE70D: iPlug2's VST3_PROCESSOR_UID constant",
+      "l2": "00DE4F4E: iPlug2's VST3_PROCESSOR_UID constant",
+      "l3": "47726265: PLUG_MFR_ID 'Grbe'",
+      "l4": "53704772: PLUG_UNIQUE_ID 'SpGr'"
+    },
+    "cid": "F2AEE70D00DE4F4E4772626553704772",
+    "tuidBytesMacOS": "F2AEE70D00DE4F4E4772626553704772",
+    "tuidBytesWindows": "0DE7AEF2DE004E4F4772626553704772",
+    "moduleinfoJson": false
+  },
+  "NIListenIn": {
+    "name": "NI Listen-In",
+    "vendor": "",
+    "factoryVendor": "Neon Ingvy",
+    "capturedFromVersion": "v2026.10.06.5",
+    "sdkVersion": "VST 3.8.1",
+    "category": "Audio Module Class",
+    "subCategories": "Fx|Tools",
+    "cardinality": 2147483647,
+    "classFlags": 2,
+    "classFlagNames": ["kSimpleModeSupported"],
+    "factoryClasses": [
+      {
+        "category": "Audio Module Class",
+        "name": "NI Listen-In",
+        "cid": "F2AEE70D00DE4F4E477262654C736E49"
+      }
+    ],
+    "singleComponent": true,
+    "getControllerClassId": "kNotImplemented",
+    "fuid": "0xF2AEE70D, 0x00DE4F4E, 0x47726265, 0x4C736E49",
+    "fuidWords": {
+      "l1": "F2AEE70D: iPlug2's VST3_PROCESSOR_UID constant",
+      "l2": "00DE4F4E: iPlug2's VST3_PROCESSOR_UID constant",
+      "l3": "47726265: PLUG_MFR_ID 'Grbe'",
+      "l4": "4C736E49: PLUG_UNIQUE_ID 'LsnI'"
+    },
+    "cid": "F2AEE70D00DE4F4E477262654C736E49",
+    "tuidBytesMacOS": "F2AEE70D00DE4F4E477262654C736E49",
+    "tuidBytesWindows": "0DE7AEF2DE004E4F477262654C736E49",
+    "moduleinfoJson": false
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "product": "NIListenIn",
+  "scenario": "default",
+  "description": "A fresh instance, nothing touched: bus 1, no name.",
+  "component": {
+    "file": "default.component.bin",
+    "bytes": 32
+  },
+  "controller": {
+    "file": "default.controller.bin",
+    "bytes": 0,
+    "sameAsComponent": false
+  },
+  "decoded": {
+    "magic": "NIst",
+    "version": 1,
+    "bodyBytes": 12,
+    "params": [1],
+    "strings": [""],
+    "bypass": 0
+  },
+  "values": [
+    {
+      "id": 65536,
+      "title": "Bypass",
+      "normalized": 0,
+      "plain": 0,
+      "display": "off"
+    },
+    {
+      "id": 0,
+      "title": "Bus",
+      "normalized": 0,
+      "plain": 1,
+      "display": "1"
+    }
+  ],
+  "reload": {
+    "sameParameters": true,
+    "sameChunk": true,
+    "bypassSavedAfterReload": 0
+  }
+}

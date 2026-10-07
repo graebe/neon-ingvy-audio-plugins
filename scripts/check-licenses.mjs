@@ -31,7 +31,8 @@
  *              targets to about.toml's, so the gate and the notices judge one
  *              graph by one rule
  *   test-only  doctest and Schwung's two module-API headers, while they are
- *              vendored
+ *              vendored, and JUCE while .gitmodules names it -- read there,
+ *              not from the checkout, so a clone without submodules agrees
  *
  * With --bundles it also opens the built bundles and checks that each one
  * carries LICENSE, THIRD_PARTY_LICENSES.md and its editor's notice file.
@@ -358,6 +359,8 @@ try {
   if (existsSync(join(ROOT, 'external', 'doctest', 'doctest.h'))) vendored.add('doctest');
   for (const h of ['plugin_api_v1.h', 'audio_fx_api_v2.h'])
     if (existsSync(join(ROOT, 'engines', 'trance-gate', 'include', h))) vendored.add(h);
+  if (/^\s*path\s*=\s*external\/JUCE\s*$/m.test(readFileSync(join(ROOT, '.gitmodules'), 'utf8')))
+    vendored.add('JUCE');
   sameSet('test-only', new Set(testOnly.keys()), vendored);
 } catch (e) { fail(e.message); }
 

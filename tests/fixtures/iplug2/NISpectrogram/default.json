@@ -1,0 +1,36 @@
+{
+  "product": "NISpectrogram",
+  "scenario": "default",
+  "description": "A fresh instance, nothing touched.",
+  "component": {
+    "file": "default.component.bin",
+    "bytes": 72
+  },
+  "controller": {
+    "file": "default.controller.bin",
+    "bytes": 0,
+    "sameAsComponent": false
+  },
+  "decoded": {
+    "magic": "NIst",
+    "version": 1,
+    "bodyBytes": 52,
+    "params": [],
+    "strings": ["", "-60.00:12.00", "0", "0:1:0", "10.00:20000.00"],
+    "bypass": 0
+  },
+  "values": [
+    {
+      "id": 65536,
+      "title": "Bypass",
+      "normalized": 0,
+      "plain": 0,
+      "display": "off"
+    }
+  ],
+  "reload": {
+    "sameParameters": true,
+    "sameChunk": true,
+    "bypassSavedAfterReload": 0
+  }
+}

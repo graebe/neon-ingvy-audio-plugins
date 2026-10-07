@@ -334,6 +334,28 @@ if (APPLE)
         add_test(NAME editor_host_${plugin}_clap
                  COMMAND editor_host clap ${NI_BUNDLES}/NI${plugin}.clap)
     endforeach()
+
+    # WHAT THE iPlug2 VST3 BUILDS SAVE, as fixtures for the builds that replace
+    # them: tests/fixtures/iplug2, whose README says what each file is and how
+    # to regenerate them -- a decision, so capturing is not a test. --check is:
+    # every committed fixture must still open in this build with the parameters
+    # it was captured with. vst3_capture.mm.
+    add_executable(vst3_capture vst3_capture.mm
+        ${_vst3}/pluginterfaces/base/funknown.cpp
+        ${_vst3}/pluginterfaces/base/coreiids.cpp
+        ${_vst3}/public.sdk/source/vst/vstinitiids.cpp
+        ${_vst3}/public.sdk/source/common/commoniids.cpp
+        ${_vst3}/public.sdk/source/common/memorystream.cpp
+        ${_vst3}/public.sdk/source/vst/hosting/parameterchanges.cpp)
+    target_include_directories(vst3_capture PRIVATE ${_vst3})
+    target_compile_options(vst3_capture PRIVATE -fobjc-arc)
+    target_link_libraries(vst3_capture PRIVATE "-framework Cocoa" "-framework WebKit")
+    set(_ni_vst3_bundles)
+    foreach(plugin TranceGate SideChain Spectrogram ListenIn)
+        list(APPEND _ni_vst3_bundles ${NI_BUNDLES}/NI${plugin}.vst3)
+    endforeach()
+    add_test(NAME iplug2_fixtures
+             COMMAND vst3_capture --check ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/iplug2 ${_ni_vst3_bundles})
 endif()
 
 # ---------------------------------------------------------------- Spectrogram
@@ -767,7 +789,7 @@ ni_test_tiers(
         editor_host_SideChain_vst3:host editor_host_SideChain_au:host
         editor_host_SideChain_clap:host
         editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host
-        editor_host_ListenIn_clap:host
+        editor_host_ListenIn_clap:host iplug2_fixtures:host
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)

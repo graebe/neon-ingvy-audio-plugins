@@ -1002,6 +1002,7 @@ Nothing of it remains, so it no longer needs a notice.
 |---|---|
 | `doctest` 2.4.12 | **MIT**, © 2016-2023 Viktor Kirilov (portions derived from Catch2, **BSL-1.0**) |
 | `plugin_api_v1.h`, `audio_fx_api_v2.h` — Schwung's module API | **MIT**, © 2025-2026 Charles Vestal |
+| `JUCE` 9.0.3 | **AGPL-3.0**, or the commercial JUCE 9 licence; © Raw Material Software Limited |
 
 doctest is vendored as a single header at `external/doctest/doctest.h` and
 reached only by the targets in `tests/cpp/`.
@@ -1016,6 +1017,14 @@ Move-side C tests include them (`engines/trance-gate/tests/test_gate.c`,
 `render_ref.c`, `dump_params.c`), to load the module through the host's own
 vtable. The module itself is Rust, and `ni-schwung` declares the same
 structures for the host to call.
+
+JUCE is the submodule at `external/JUCE`, pinned to the 9.0.3 tag. Today it
+builds the class-ID spike (`spike/juce-trance-gate`) and nothing else; the
+plugins still ship on iPlug2. This project takes JUCE under the AGPLv3,
+which GPLv3 section 13 lets a GPL-3.0-or-later work combine with
+([ADR 0001](docs/adr/0001-gpl-3.0-or-later.md)). When the JUCE shell replaces
+iPlug2, its row moves up into the framework section, and the AGPLv3 text
+travels with every bundle.
 
 No plugin, module or bundle links any of these, so they add nothing to any
 artefact's notices.
@@ -1040,7 +1049,8 @@ code, and nothing of it is compiled into an artefact.
 
 `vst3-sys`, `vst3-com*` (GPL-3.0-or-later), `nih_plug*`/`nih_log` (ISC) and the
 crates.io dependencies they brought were removed when the nih-plug wrapper was
-replaced by iPlug2; JUCE (AGPLv3-or-commercial) went before that. None is linked
+replaced by iPlug2; JUCE (AGPLv3-or-commercial) went before that, and has
+come back under the AGPLv3 (test-only, above). None of the rest is linked
 into anything, so their notices no longer apply and their rows were removed.
 
 ---
