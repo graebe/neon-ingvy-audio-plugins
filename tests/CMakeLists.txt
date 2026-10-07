@@ -379,13 +379,22 @@ target_compile_definitions(juce_host PRIVATE
     JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(juce_host PRIVATE
     juce::juce_audio_utils juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+#
+# In a bus namespace of this build's own (NIA_BUS_NS, engines/audio-bus): a
+# product that claims or reads a bus never meets a Live session's, or another
+# checkout's. Their tiers follow the list, so a product moving onto the shell
+# is tested here by being built.
 get_property(_ni_juce GLOBAL PROPERTY NI_JUCE_BUNDLES)
+set(_ni_juce_tiers)
 foreach(bundle IN LISTS _ni_juce)
     get_property(_name GLOBAL PROPERTY NI_JUCE_NAME_${bundle})
     add_test(NAME juce_host_${bundle} COMMAND juce_host ${NI_BUNDLES}/${bundle}.vst3 "${_name}")
+    set_tests_properties(juce_host_${bundle} PROPERTIES ENVIRONMENT "NIA_BUS_NS=${CMAKE_BINARY_DIR}")
+    list(APPEND _ni_juce_tiers juce_host_${bundle}:host)
     if (APPLE)
         add_test(NAME codesign_${bundle}
                  COMMAND codesign --verify --deep --strict ${NI_BUNDLES}/${bundle}.vst3)
+        list(APPEND _ni_juce_tiers codesign_${bundle}:bundles)
     endif()
 endforeach()
 
@@ -908,7 +917,7 @@ ni_test_tiers(
         editor_host_SideChain_clap:host
         editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host
         editor_host_ListenIn_clap:host iplug2_fixtures:host
-        juce_host_NITranceGate:host codesign_NITranceGate:bundles
+        ${_ni_juce_tiers}
         tg_host:host versions_bundles:bundles
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
