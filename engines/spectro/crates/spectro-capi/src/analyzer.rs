@@ -44,14 +44,22 @@ pub const SPECTRO_FFT_SIZE: c_int = 8192;
 pub const SPECTRO_HOP: c_int = 1024;
 /// Bands per column: bytes per column.
 pub const SPECTRO_BANDS: c_int = 256;
+/* THE FOUR FLOATS ARE CAST TO THEIR OWN TYPE, for C. The header has always
+ * declared them float (10.0f), and cbindgen writes a float literal's digits
+ * without its suffix -- a double, which changes the type of every expression
+ * a C caller builds from one. A cast it writes as a cast: (float)10.0. */
 /// The bottom of the frequency axis, in Hz.
-pub const SPECTRO_F_MIN: f32 = 10.0;
+#[allow(clippy::unnecessary_cast, reason = "the cast is the C type: cbindgen writes it as (float), and drops an f32 suffix")]
+pub const SPECTRO_F_MIN: f32 = 10.0 as f32;
 /// The top of the frequency axis, in Hz.
-pub const SPECTRO_F_MAX: f32 = 20000.0;
+#[allow(clippy::unnecessary_cast, reason = "the cast is the C type: cbindgen writes it as (float), and drops an f32 suffix")]
+pub const SPECTRO_F_MAX: f32 = 20000.0 as f32;
 /// The level a column byte of 0 stands for, in dBFS: 16-bit silence.
-pub const SPECTRO_DB_FLOOR: f32 = -96.0;
+#[allow(clippy::unnecessary_cast, reason = "the cast is the C type: cbindgen writes it as (float), and drops an f32 suffix")]
+pub const SPECTRO_DB_FLOOR: f32 = -96.0 as f32;
 /// The level a column byte of 255 stands for, in dBFS.
-pub const SPECTRO_DB_CEIL: f32 = 0.0;
+#[allow(clippy::unnecessary_cast, reason = "the cast is the C type: cbindgen writes it as (float), and drops an f32 suffix")]
+pub const SPECTRO_DB_CEIL: f32 = 0.0 as f32;
 /// Columns the ring holds before it starts dropping them: ~5 s at the
 /// defaults. A drainer running at 60 Hz leaves at most one behind.
 pub const SPECTRO_COLUMN_CAPACITY: c_int = 256;

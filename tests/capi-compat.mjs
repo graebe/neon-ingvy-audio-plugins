@@ -21,9 +21,9 @@
  *   emit    writes a C++ file in which every fixture declaration is a
  *           static_assert against the generated header: each function's type
  *           (return and parameter types, const and enums included -- names do
- *           not count), each macro's and enum constant's value, each struct's
- *           size and every field's offset and type, each function pointer
- *           typedef, each opaque handle's name. The COMPILER does the
+ *           not count), each macro's value and type, each enum constant's
+ *           value, each struct's size and every field's offset and type, each
+ *           function pointer typedef, each opaque handle's name. The COMPILER does the
  *           comparing, so "the same" means what C++ means by it, and the
  *           build fails on the first difference with the name in the message.
  *
@@ -173,6 +173,10 @@ function emit({ fixture, include, out }) {
   for (const [name, value] of fx.macros) {
     if (isGuard(name, value)) continue;
     check(`(${name}) == (${value})`, `${name} is not ${value}`);
+    /* And of the same type: 200.0 equals 200.0f, but a double where a float
+     * was turns every expression a caller builds from it into a double. */
+    check(`std::is_same<decltype(${name}), decltype(${value})>::value`,
+      `${name} is not of ${value}'s type`);
   }
   for (const { name, consts } of fx.enums) {
     if (name) {

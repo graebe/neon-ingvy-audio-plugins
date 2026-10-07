@@ -61,7 +61,10 @@ pub const TG_NUM_RATES: usize = 13;
 /// The rate a fresh instance plays: 1/16.
 pub const TG_RATE_DEFAULT: usize = 7;
 /// A stage runs from 0 to twice the gate's WIDTH, as a percentage of it.
-pub const TG_STAGE_MAX_PCT: f32 = 200.0;
+// Cast for C, as a float: cbindgen drops a literal's f32 suffix and would
+// write a double. spectro-capi's analyzer.rs says more.
+#[allow(clippy::unnecessary_cast, reason = "the cast is the C type: cbindgen writes it as (float), and drops an f32 suffix")]
+pub const TG_STAGE_MAX_PCT: f32 = 200.0 as f32;
 /// The 32-bit words of one step bitmap ([`TgMask`]).
 #[allow(clippy::manual_div_ceil, reason = "cbindgen writes this expression into the header, and C has no div_ceil")]
 pub const TG_MASK_WORDS: usize = (TG_MAX_STEPS + 31) / 32;
