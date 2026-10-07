@@ -170,6 +170,11 @@ if (TG_NODE)
     # "1.0.0" against crates that said 0.1.0.
     add_test(NAME versions
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
+    # And what the built bundles say, which needs them: a JUCE build writes its
+    # Info.plist and moduleinfo.json itself, from versions.json.
+    add_test(NAME versions_bundles
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
+    set_tests_properties(versions_bundles PROPERTIES ENVIRONMENT "NI_BUNDLES=${CMAKE_BINARY_DIR}/out")
 
     # WHAT A RELEASE TAG MEANS. Both release workflows parse their tag with
     # scripts/release.mjs, and a workflow only ever runs on the tag it is
@@ -450,6 +455,21 @@ if (APPLE)
     set_tests_properties(tg_rt PROPERTIES
         ENVIRONMENT "DYLD_INSERT_LIBRARIES=$<TARGET_FILE:ni_alloc_guard>")
 endif()
+
+# THE BUILT NITranceGate.vst3, AS A DAW HOSTS IT: the iPlug2 class, the
+# parameters through the controller, every fixture reopened as Live reopens a
+# set and saved back byte for byte, the golden render through the VST3's audio
+# path (tg_render_golden.h, the Move module's reference), and the window open
+# under a running transport while a set loads on another thread. tg_host.cpp.
+juce_add_console_app(tg_host PRODUCT_NAME tg_host)
+target_sources(tg_host PRIVATE tg_host.cpp)
+target_include_directories(tg_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(tg_host PRIVATE
+    JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=0 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+    JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(tg_host PRIVATE
+    tg_engine juce::juce_audio_processors juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+add_test(NAME tg_host COMMAND tg_host ${NI_BUNDLES}/NITranceGate.vst3 ${NI_FIXTURES})
 
 # ---------------------------------------------------------------- Spectrogram
 
@@ -886,6 +906,7 @@ ni_test_tiers(
         editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host
         editor_host_ListenIn_clap:host iplug2_fixtures:host
         juce_host_NITranceGate:host codesign_NITranceGate:bundles
+        tg_host:host versions_bundles:bundles
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)
