@@ -18,8 +18,7 @@ ships.
 
 | Artefact | What is in it |
 |---|---|
-| Plugin bundles on iPlug2 (`NIListenIn`: `.vst3`, `.component`, `.clap`) | iPlug2, WDL, the SDKs, JSON for Modern C++, the Rust standard library, the engines and the crates from crates.io they link, and each editor's web bundle and fonts |
-| Plugin bundles on the JUCE shell (`NITranceGate.vst3`, `NISpectrogram.vst3`, `NISideChain.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
+| Plugin bundles on the JUCE shell (`NITranceGate.vst3`, `NISpectrogram.vst3`, `NISideChain.vst3`, `NIListenIn.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
 | Schwung module tarballs (`*-module.tar.gz`) | the Rust standard library, the engines and the crates from crates.io they link; the Trance Gate's also carries its own `ui_chain.js` |
 | The documentation site | JetBrains Mono |
 
@@ -36,8 +35,11 @@ ships.
 | `JUCE` | 9.0.3, the `external/JUCE` submodule | **AGPL-3.0**, taken here under the AGPLv3 (JUCE is also offered under the commercial JUCE 9 licence), © Raw Material Software Limited |
 | `VST3 SDK (JUCE's copy)` | 3.8.0, as vendored in JUCE | **MIT**, © 2026 Steinberg Media Technologies GmbH |
 
-The rows above JUCE are the bundles still on iPlug2; JUCE and its copy of the
-VST3 SDK are the bundles on the JUCE shell, which link none of iPlug2's. JUCE's
+The rows above JUCE were the bundles on iPlug2. Since NI Listen-In, the last
+of them, moved to the JUCE shell, no bundle links any of them: they stay
+listed only while the iPlug2 build itself is still in the tree, and go with
+it. JUCE and its copy of the VST3 SDK are the bundles on the JUCE shell, which
+link none of iPlug2's. JUCE's
 modules are AGPLv3, which GPLv3 section 13 lets this GPL-3.0-or-later work
 combine with ([ADR 0001](docs/adr/0001-gpl-3.0-or-later.md)); the full AGPLv3
 text travels in every bundle on the JUCE shell as `AGPL-3.0.txt`.
@@ -82,14 +84,14 @@ Ogg Vorbis, Opus) is in a bundle, and it switches the WebP decoder off
 Each engine is a Rust static library (in a plugin) or shared object (in a
 module), so the parts of the standard library it uses are compiled into it.
 
-## The editors — in every plugin bundle's `Contents/Resources/web/`
+## The editors — no plugin bundle ships a web editor any more
 
-| Package | Licence |
-|---|---|
-| `solid-js` | **MIT**, © 2016-2025 Ryan Carniato |
-| `vite` (only its module-preload polyfill, a few hundred bytes at the top of ui.js) | **MIT**, © 2019-present VoidZero Inc. and Vite contributors |
+Every bundle's editor is native, drawn by the kit in `plugins/_shared/ui`, so
+no bundle carries `Contents/Resources/web/` and this section lists nothing.
+The web editors in `plugins/*/ui` are still built for their own tests until
+they go, and what they bundle is listed with the build tools below.
 
-The minifier strips comments, so each editor's build writes the full licence
+When a web editor was built into a bundle, the minifier stripped comments, so each editor's build writes the full licence
 text of every package it bundled to `assets/ui.js.LICENSE.txt` beside `ui.js`,
 and marks `ui.js` with a comment pointing there. The build **fails** if it
 bundles a package that has no row in the table above
@@ -114,7 +116,7 @@ Mono declaring none.
 | `NITranceGate.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | `NISpectrogram.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | `NISideChain.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
-| `NIListenIn.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
+| `NIListenIn.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | the documentation site | emitted by the build as a hashed asset under `/neon-ingvy-audio-plugins/_astro/` | `/neon-ingvy-audio-plugins/fonts/OFL.txt` |
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits beside
@@ -1061,8 +1063,8 @@ validators (`pluginval`, `clap-validator`, `auval`, and Steinberg's VST3
 `validator`, **MIT**, built from the VST3 SDK by
 `scripts/validate-plugins.sh`) and the build tools (vite,
 astro, CMake, cargo, Corrosion, and the cross-build kit's, listed below) are
-run, not shipped — vite's one exception is its preload polyfill, listed
-above. So is `@playwright/test`
+run, not shipped; vite and the web editors it builds are listed below too.
+So is `@playwright/test`
 (**Apache-2.0**, © Microsoft Corporation), the root `devDependency` that drives
 the editors' end-to-end tests (`tests/e2e`) in the Google Chrome already
 installed: it is pinned in `package-lock.json`, downloads no browser, and no
@@ -1091,6 +1093,8 @@ is known.
 | `Wine` 9.0 | Windows image | **LGPL-2.1-or-later** |
 | `pluginval` 1.0.4 | all three platforms | **GPL-3.0** |
 | `JUCE` 9.0.3 | the smoke plugin (`tools/cross/smoke`), from the `external/JUCE` submodule; it ships in the bundles on the JUCE shell, and its row is with the framework above | **AGPL-3.0**, or the commercial JUCE licence |
+| `solid-js` | the web editors in plugins/*/ui, built for their own tests until they go; no bundle carries one | **MIT**, © 2016-2025 Ryan Carniato |
+| `vite` | builds those web editors, and its module-preload polyfill is the few hundred bytes at the top of each one's ui.js | **MIT**, © 2019-present VoidZero Inc. and Vite contributors |
 | `Microsoft C runtime` 14.44 and `Windows SDK` 10.0.26100 | Windows image, downloaded by xwin | **Microsoft's licence terms**, accepted by the owner alone ([tools/docker/windows/README.md](tools/docker/windows/README.md)) |
 
 The Microsoft row is the one exception to *nothing of theirs is linked*: a
