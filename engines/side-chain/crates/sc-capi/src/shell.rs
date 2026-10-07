@@ -11,6 +11,29 @@ other thread reads what it published with [`sc_shell_read`].
 Side-Chain has no pattern and no edit that is not a host parameter, so its only
 command is the sample rate and it keeps no view: a reader is always answered
 from the latest frame, which is at most one publish interval old.
+
+THIS FILE IS sc_shell.h: build.rs generates the header from it (cbindgen's
+configuration is cbindgen/sc_shell.toml), and the doc comments on the items
+below are the header's comments. What a C caller needs before any of them:
+
+THE ENGINE BELONGS TO THE AUDIO THREAD; the Trance Gate's tg_shell.h states
+the rule and this is the same arrangement. The audio thread calls sc_core_*
+only on the pointer sc_shell_begin lends it, between sc_shell_begin and
+sc_shell_end. Every other thread reads what the audio thread published, and
+never the engine:
+
+  audio thread                        any other thread
+  ------------                        ----------------
+  c = sc_shell_begin(s);              sc_shell_read(s, "ui", buf, n);
+  sc_core_set_num(c, ...);
+  sc_core_process_f32_split_tap(c,...)
+  sc_shell_end(s, frames);
+
+Readouts are republished a hundred times a second. begin/end allocate
+nothing, take no lock and never wait. begin may be called again before end
+within one block -- for MIDI, which the host delivers ahead of the block.
+
+The Move module does not use this: Schwung calls its module on one thread.
 */
 
 use crate::ScCore;
@@ -20,8 +43,8 @@ use sc_core::Instance;
 
 /* What a non-audio thread may ask for, in frame order. */
 const KEYS: [&str; 3] = ["ui", "params", "stage_ms"];
-/* SC_STATE_MAX: every readout fits. */
-const TEXT_MAX: usize = 4096;
+/* Every readout fits. */
+const TEXT_MAX: usize = crate::SC_STATE_MAX;
 /* Commands the ring holds between two blocks. The sample rate is the only
  * one, and a host sets it a handful of times a session. */
 const QUEUE: usize = 16;
@@ -84,7 +107,7 @@ pub unsafe extern "C" fn sc_shell_destroy(sh: *mut ScShell) {
 /// `sh` is null or live.
 #[no_mangle]
 #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is dropped with it")]
-pub unsafe extern "C" fn sc_shell_post_sample_rate(sh: *const ScShell, sample_rate: f64) {
+pub unsafe extern "C" fn sc_shell_post_sample_rate(sh: *mut ScShell, sample_rate: f64) {
     let Some(sh) = sh.as_ref() else { return };
     if !(sample_rate > 0.0) {
         return;
@@ -93,15 +116,15 @@ pub unsafe extern "C" fn sc_shell_post_sample_rate(sh: *const ScShell, sample_ra
     sh.0.set_publish_every(publish_every(sample_rate));
 }
 
-/// `ui`, `params` or `stage_ms`, as the engine formats them, NUL-terminated.
-/// Returns the length written, or -1 for any other key. Any non-audio thread;
-/// never touches the engine.
+/// `ui`, `params` or `stage_ms`, exactly as `sc_core_get_param` formats them,
+/// NUL-terminated. Returns the length written, or -1 for any other key. Size
+/// `buf` with SC_STATE_MAX. Any non-audio thread; never touches the engine.
 ///
 /// # Safety
 /// `buf` holds `buf_len` bytes; `key` is null or NUL-terminated.
 #[no_mangle]
 pub unsafe extern "C" fn sc_shell_read(
-    sh: *const ScShell,
+    sh: *mut ScShell,
     key: *const c_char,
     buf: *mut c_char,
     buf_len: c_int,
@@ -122,7 +145,7 @@ pub unsafe extern "C" fn sc_shell_read(
 /// The audio thread only, and the pointer must not be used after
 /// `sc_shell_end`.
 #[no_mangle]
-pub unsafe extern "C" fn sc_shell_begin(sh: *const ScShell) -> *mut ScCore {
+pub unsafe extern "C" fn sc_shell_begin(sh: *mut ScShell) -> *mut ScCore {
     match sh.as_ref() {
         Some(sh) => sh.0.begin() as *mut ScCore,
         None => std::ptr::null_mut(),
@@ -134,7 +157,7 @@ pub unsafe extern "C" fn sc_shell_begin(sh: *const ScShell) -> *mut ScCore {
 /// # Safety
 /// As `sc_shell_begin`.
 #[no_mangle]
-pub unsafe extern "C" fn sc_shell_end(sh: *const ScShell, frames: c_int) {
+pub unsafe extern "C" fn sc_shell_end(sh: *mut ScShell, frames: c_int) {
     if let Some(sh) = sh.as_ref() {
         sh.0.end(frames.max(0) as u32);
     }
@@ -145,7 +168,7 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
-    fn read(sh: *const ScShell, key: &str) -> Option<String> {
+    fn read(sh: *mut ScShell, key: &str) -> Option<String> {
         let mut buf = vec![0u8; TEXT_MAX];
         let k = CString::new(key).unwrap();
         let n = unsafe { sc_shell_read(sh, k.as_ptr(), buf.as_mut_ptr() as *mut c_char, buf.len() as c_int) };

@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# audio_bus.h, from src/lib.rs (build.rs). The Trance Gate's
+# trance_gate_core.toml explains the settings every capi header shares.
+
+language = "C"
+style = "type"
+cpp_compat = true
+no_includes = true
+sys_includes = ["stdint.h"]
+documentation_style = "c99"
+include_guard = "AUDIO_BUS_H"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// audio_bus.h -- the house audio bus, `abus_*`: what a sending plugin and a
+// receiving plugin both link.
+//
+// GENERATED at build time by cbindgen from
+// engines/audio-bus/crates/bus-capi/src/lib.rs, whose doc comments are the
+// comments below: edit that, not this."""
+
+[export.rename]
+"AbusWriter" = "abus_writer_t"
+"AbusPusher" = "abus_pusher_t"
+"AbusReader" = "abus_reader_t"

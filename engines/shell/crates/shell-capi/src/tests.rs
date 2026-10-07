@@ -5,7 +5,7 @@
  * The shell_handoff_* C ABI, called the way a plugin calls it.
  *
  * shell-core proves the handoff, two threads and all; tests/
- * shell_handoff.c proves the hand-written header against a real bus pusher.
+ * shell_handoff.c proves the generated header against a real bus pusher.
  * These prove the THIN LAYER between them -- the null guards, the missing
  * release function, and that every object handed in is released exactly
  * once, through the caller's function, at the moment the header says.

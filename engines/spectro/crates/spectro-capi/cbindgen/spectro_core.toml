@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# spectro_core.h, from src/analyzer.rs (build.rs). The Trance Gate's
+# trance_gate_core.toml explains the settings every capi header shares.
+
+language = "C"
+style = "type"
+cpp_compat = true
+no_includes = true
+documentation_style = "c99"
+include_guard = "SPECTRO_CORE_H"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// spectro_core.h -- the Spectrogram's analyzer, `spectro_*`.
+//
+// GENERATED at build time by cbindgen from
+// engines/spectro/crates/spectro-capi/src/analyzer.rs, whose doc comments are
+// the comments below: edit that, not this."""
+
+[export.rename]
+"Spectro" = "spectro_t"

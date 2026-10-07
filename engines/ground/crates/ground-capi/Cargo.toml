@@ -29,3 +29,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 ground-core = { path = "../ground-core" }
+
+# ground.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }

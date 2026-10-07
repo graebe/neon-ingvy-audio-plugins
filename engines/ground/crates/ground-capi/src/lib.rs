@@ -1,24 +1,106 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Torben Gräber
 
-/*
- * The C ABI: what every plugin in this repository links to ring its ground on
- * the beat.
- *
- * `engines/ground/include/ground.h` is the contract; this is the half that
- * implements it. The header is written by hand rather than generated, for the
- * reason the other engines here state: a generator hides a disagreement by
- * overwriting it, so the two would drift silently.
- *
- * Scalars cross the boundary. No callbacks, no shared structs, no ownership
- * passing either way except the one opaque handle.
- *
- * THE SURFACE IS EIGHT FUNCTIONS because the consumer is four plugins that want
- * the same few lines of code each. The musical rule -- a ring a beat, the
- * downbeat strongest, nothing while stopped -- is ground-core's, and none of it
- * is configurable: a plugin that could tune it would be a plugin whose
- * background disagreed with the others.
- */
+/*!
+The C ABI: what every plugin in this repository links to ring its ground on
+the beat -- and the source of ground.h, which build.rs generates from this
+file (cbindgen's configuration is cbindgen/ground.toml), these doc comments
+included.
+
+Scalars cross the boundary. No callbacks, no shared structs, no ownership
+passing either way except the one opaque handle.
+
+THE SURFACE IS EIGHT FUNCTIONS because the consumer is four plugins that want
+the same few lines of code each. The musical rule -- a ring a beat, the
+downbeat strongest, nothing while stopped -- is ground-core's, and none of it
+is configurable: a plugin that could tune it would be a plugin whose
+background disagreed with the others.
+
+THE BEAT CLOCK BEHIND THE ANIMATED BACKGROUND. The Ultraviolet design system
+gives every plugin window a "ground" -- dot paper over noise grain -- and
+that ground is a wave field that rings and is perfectly still otherwise
+(design/scheme/project/README.md, section Motion). This library decides WHEN
+it rings, from the host's transport:
+
+  - one ring on every quarter note while the transport plays;
+  - a strong ring on each bar's downbeat, the bar being num*4/den quarters
+    (4/4 when the host reports no time signature);
+  - nothing while it is stopped.
+
+It reads no audio, so every plugin rings identically, on a silent track as
+on a drum bus. crates/ground-core/src/beat.rs states the rule exactly,
+including starts, loops, seeks and meters whose bars are not whole quarters.
+
+Ultraviolet 1.0.0 drove the ground from the sound (a 20-80 Hz onset
+detector); this followed the tempo instead by the owner's decision, and
+Ultraviolet 1.1.0 made that the design's rule. docs/tech/ground.md says why.
+
+WHY IT IS DOWN HERE AT ALL, since the field itself is drawn in the editor.
+A plugin editor is a WebView: it cannot see the host's transport, and its
+timers are neither sample-accurate nor running when the host bounces. So
+the beat is found on the audio thread, against the host's own clock, and
+what crosses to the editor is a ring: a count and a strength.
+
+THE RULE IS NOT A PARAMETER. Four plugins share one ground and a per-plugin
+knob would be four backgrounds that disagreed.
+
+THE THREAD RULES ARE PART OF THE ABI:
+
+  gnd_new / gnd_free                        the main thread
+  gnd_tick                                  the audio thread, one caller
+                                            at a time
+  gnd_set_sample_rate / gnd_reset /
+  gnd_set_active                            any thread
+  gnd_fires / gnd_strength                  any thread
+
+THE AUDIO THREAD OWNS THE CLOCK. gnd_tick is the only function that ever
+writes it. gnd_set_sample_rate, gnd_reset and gnd_set_active store a REQUEST
+in an atomic, and the next gnd_tick applies it first. So a host that calls
+OnReset on the audio thread, on the main thread, or on a third thread while
+a block is in flight gets the same, race-free result.
+
+gnd_tick allocates nothing, takes no lock and makes no system call.
+gnd_new allocates, which is why it is not allowed near the audio thread.
+
+A NEW GROUND IS INACTIVE. It only drives an editor, so it does nothing --
+gnd_tick returns at once -- until gnd_set_active(g, 1), and a plugin turns it
+off again when the editor closes. Turning it on asks for a reset as well.
+
+HOW A PLUGIN USES IT -- the whole of it, and ni::WebPlugin does it for all
+four:
+
+```c
+// OnReset
+gnd_set_sample_rate(mGround, GetSampleRate());
+
+// OnUIOpen / when the editor window closes
+gnd_set_active(mGround, 1);   ...   gnd_set_active(mGround, 0);
+
+// ProcessBlock, once a block, from the host's transport
+gnd_tick(mGround, GetPPQPos(), GetTempo(), num, den,
+         GetTransportIsRunning(), nFrames);
+
+// OnIdle -- FIRST, before anything in OnIdle can return early
+const uint32_t fires = gnd_fires(mGround);
+if (fires != mGroundFires) {          // != and not >, so a wrap is fine
+    mGroundFires = fires;
+    // send gnd_strength(mGround) to the editor
+}
+```
+
+THE COUNT IS COMPARED FOR INEQUALITY, NOT ORDER. It is monotonic but it
+wraps, and `fires > mGroundFires` would go permanently false at the wrap.
+
+A COUNT AND NOT A FLAG, because the editor reads it 20-50 times a second and
+a flag can be missed entirely if the tick lands between the audio thread
+setting and clearing it. A count cannot lose an event: the reader compares
+it against what it saw last.
+
+WHAT A READER MAY CONCLUDE, exactly: if the count moved, at least one ring
+happened, and gnd_strength is the strength of the MOST RECENT one. It is not
+a queue. Two rings inside one idle tick read as +2 and the later strength --
+the field sums overlapping rings anyway.
+*/
 
 use ground_core::{Ground, Transport};
 
@@ -57,7 +139,7 @@ pub unsafe extern "C" fn gnd_free(g: *mut GndGround) {
 /// # Safety
 /// `g` must be a live handle from `gnd_new`, or null.
 #[no_mangle]
-pub unsafe extern "C" fn gnd_set_sample_rate(g: *const GndGround, sample_rate: f64) {
+pub unsafe extern "C" fn gnd_set_sample_rate(g: *mut GndGround, sample_rate: f64) {
     if let Some(d) = g.as_ref() {
         d.0.set_sample_rate(sample_rate);
     }
@@ -72,7 +154,7 @@ pub unsafe extern "C" fn gnd_set_sample_rate(g: *const GndGround, sample_rate: f
 /// # Safety
 /// `g` must be a live handle from `gnd_new`, or null.
 #[no_mangle]
-pub unsafe extern "C" fn gnd_reset(g: *const GndGround) {
+pub unsafe extern "C" fn gnd_reset(g: *mut GndGround) {
     if let Some(d) = g.as_ref() {
         d.0.reset();
     }
@@ -90,7 +172,7 @@ pub unsafe extern "C" fn gnd_reset(g: *const GndGround) {
 /// # Safety
 /// `g` must be a live handle from `gnd_new`, or null.
 #[no_mangle]
-pub unsafe extern "C" fn gnd_set_active(g: *const GndGround, active: i32) {
+pub unsafe extern "C" fn gnd_set_active(g: *mut GndGround, active: i32) {
     if let Some(d) = g.as_ref() {
         d.0.set_active(active != 0);
     }
@@ -114,7 +196,7 @@ pub unsafe extern "C" fn gnd_set_active(g: *const GndGround, active: i32) {
 /// on the same handle may be running.
 #[no_mangle]
 pub unsafe extern "C" fn gnd_tick(
-    g: *const GndGround,
+    g: *mut GndGround,
     ppq: f64,
     bpm: f64,
     num: i32,

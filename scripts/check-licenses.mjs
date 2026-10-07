@@ -185,21 +185,32 @@ function tomlArray(file, table, key) {
  * machine. deny.toml says why no target narrows it. What this catches is a
  * Cargo.lock that moved without the notices being regenerated.
  *
- * `cargo metadata`'s resolve is a little wider than that graph, in two ways
- * that cargo-about and cargo-deny correct (both walk it with the krates
- * crate), so this corrects them the same way -- or the two sides would
- * disagree about crates that nothing builds:
+ * `cargo metadata`'s resolve is wider than that graph, in three ways that
+ * cargo-about and cargo-deny correct (both walk it with the krates crate), so
+ * this corrects them the same way -- or the two sides would disagree about
+ * crates that nothing builds:
  *
+ *   - Its features are every build's at once. A node's `features` are the
+ *     union over every way the workspace reaches it, build-dependencies
+ *     included, where resolver 2 resolves a normal dependency's features
+ *     apart from a build one's. cbindgen, every C ABI crate's
+ *     build-dependency, turns on serde's `derive`; the engines never do, and
+ *     nothing they build compiles serde_derive, syn, quote, proc-macro2 or
+ *     unicode-ident. So the features are worked out here, from the workspace
+ *     members down normal edges only: what each declaration asks for (its
+ *     `features`, and `default` unless it opts out), what the parent's
+ *     enabled features ask of it (`x/feature`, and `x?/feature` once x is
+ *     on), and what those features turn on in turn.
  *   - It keeps an edge to an optional dependency that only a weak feature
  *     names. lexical-core's `format` asks for `lexical-write-float?/format`,
  *     which configures the writer IF something else turns it on; nothing
- *     does, and the build and `cargo tree` agree. enabled() asks the node's
- *     own features instead.
+ *     does, and the build and `cargo tree` agree. switchedOn() asks for a
+ *     strong switch instead.
  *   - It keeps an edge whose cfg() holds on no platform at all. serde_core
  *     pins serde_derive's version through `cfg(any())`, which would otherwise
- *     bring in serde_derive, syn, quote, proc-macro2 and unicode-ident.
- *     noPlatform() drops exactly that shape and keeps every cfg() that names
- *     a platform: every platform counts. */
+ *     bring in serde_derive and the crates under it. noPlatform() drops
+ *     exactly that shape and keeps every cfg() that names a platform: every
+ *     platform counts. */
 function shippedCrates() {
   let meta;
   try {
@@ -213,45 +224,90 @@ function shippedCrates() {
   }
   const packages = new Map(meta.packages.map((p) => [p.id, p]));
   const nodes = new Map(meta.resolve.nodes.map((n) => [n.id, n]));
-  const seen = new Set();
-  const todo = [...meta.workspace_members];
-  while (todo.length) {
-    const id = todo.pop();
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const pkg = packages.get(id);
-    const node = nodes.get(id);
-    for (const d of node?.deps ?? []) {
-      const name = packages.get(d.pkg).name;
-      if (d.dep_kinds.some((k) => k.kind === null && !noPlatform(k.target)
-                               && enabled(pkg, node, name, k.target)))
-        todo.push(d.pkg);
+
+  /* Each reached package's enabled features, grown until nothing moves. The
+   * workspace members' are cargo's own: they are the roots, built as the
+   * workspace builds them. */
+  const reached = new Map(meta.workspace_members.map((id) =>
+    [id, new Set(nodes.get(id)?.features ?? [])]));
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (const [id, on] of [...reached]) {
+      const pkg = packages.get(id);
+      for (const d of nodes.get(id)?.deps ?? []) {
+        const child = packages.get(d.pkg);
+        for (const k of d.dep_kinds) {
+          if (k.kind !== null || noPlatform(k.target)) continue;
+          for (const dep of switchedOn(pkg, on, child.name, k.target)) {
+            if (!reached.has(d.pkg)) {
+              reached.set(d.pkg, new Set());
+              moved = true;
+            }
+            if (enable(child, reached.get(d.pkg), asked(pkg, on, dep))) moved = true;
+          }
+        }
+      }
     }
   }
-  return new Set([...seen].map((id) => packages.get(id))
+  return new Set([...reached.keys()].map((id) => packages.get(id))
     .filter((p) => p.source).map((p) => `${p.name} ${p.version}`));
 }
 
-/* Whether `pkg`, resolved as `node`, depends on the package `name` through its
- * normal dependency for `target`. A declaration that is not optional always
- * does. An optional one does only when an enabled feature switches it on
- * strongly: `dep:x`, or `x/feature` -- never `x?/feature`. `node.features` is
- * every feature cargo enabled, the implicit `x = ["dep:x"]` of an optional
- * dependency included, so one switched on by its own name is found the same
+/* The declarations by which `pkg`, with the features `on`, depends on the
+ * package `name` through its normal dependency for `target`. A declaration
+ * that is not optional always does. An optional one does only when an
+ * enabled feature switches it on strongly: `dep:x`, or `x/feature` -- never
+ * `x?/feature`. `pkg.features` holds the implicit `x = ["dep:x"]` of an
+ * optional dependency, so one switched on by its own name is found the same
  * way. */
-function enabled(pkg, node, name, target) {
+function switchedOn(pkg, on, name, target) {
   const bare = (t) => (t ?? '').replace(/\s+/g, '');
   const decls = pkg.dependencies.filter((dep) =>
     dep.kind === null && dep.name === name && bare(dep.target) === bare(target));
   if (!decls.length)
     throw new Error(`cargo metadata resolves ${pkg.name} -> ${name} (${target ?? 'every platform'}), ` +
                     `which ${pkg.name}'s manifest does not declare`);
-  return decls.some((dep) => {
+  return decls.filter((dep) => {
     if (!dep.optional) return true;
     const local = dep.rename ?? dep.name;
-    return node.features.some((f) => (pkg.features[f] ?? []).some((v) =>
+    return [...on].some((f) => (pkg.features[f] ?? []).some((v) =>
       v === `dep:${local}` || v.startsWith(`${local}/`)));
   });
+}
+
+/* The features `pkg`, with the features `on`, asks of its dependency `dep`:
+ * the declaration's own, `default` unless it opts out, and every
+ * `x/feature` or `x?/feature` an enabled feature names -- x being on, a weak
+ * one counts. */
+function asked(pkg, on, dep) {
+  const local = dep.rename ?? dep.name;
+  const want = [...dep.features];
+  if (dep.uses_default_features) want.push('default');
+  for (const f of on) {
+    for (const v of pkg.features[f] ?? []) {
+      const m = /^([^/?]+)\??\/(.+)$/.exec(v);
+      if (m && m[1] === local) want.push(m[2]);
+    }
+  }
+  return want;
+}
+
+/* `want` and what it turns on within `pkg`, added to `on`. A `dep:x` or an
+ * `x/feature` is about a dependency, and is read when `pkg`'s own edges are
+ * walked. Whether anything was added. */
+function enable(pkg, on, want) {
+  let added = false;
+  const todo = [...want];
+  while (todo.length) {
+    const f = todo.pop();
+    if (on.has(f)) continue;
+    on.add(f);
+    added = true;
+    for (const v of pkg.features[f] ?? [])
+      if (!v.startsWith('dep:') && !v.includes('/')) todo.push(v);
+  }
+  return added;
 }
 
 /* Whether a dependency's target holds on no platform, by its shape alone: a

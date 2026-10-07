@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# trance_gate_core.h, from src/engine.rs and ni-dsp's transport (build.rs).
+# The settings every capi header shares are explained once, in
+# engines/shared/cbindgen/capi_header.rs; what is particular to this one is
+# commented where it is.
+
+language = "C"
+# typedef'd names, as the hand-written header had: `tg_core_t`, not
+# `struct tg_core_t`.
+style = "type"
+# extern "C" around the prototypes, for the plugins' C++.
+cpp_compat = true
+no_includes = true
+sys_includes = ["stdint.h"]
+documentation_style = "c99"
+# THE GUARD IS WRITTEN HERE, NOT BY cbindgen, because the mask helpers in the
+# trailer must sit inside it and cbindgen writes its trailer after its own
+# guard's #endif.
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// trance_gate_core.h -- the Trance Gate engine's C ABI, `tg_core_*`.
+//
+// GENERATED at build time by cbindgen from
+// engines/trance-gate/crates/tg-capi/src/engine.rs, whose doc comments are the
+// comments below: edit that, not this. The archived Max for Live external
+// compiles against this header, so tests/capi-compat.mjs holds it to its last
+// hand-written version (tests/fixtures/tg-capi).
+
+#ifndef TRANCE_GATE_CORE_H
+#define TRANCE_GATE_CORE_H"""
+trailer = """
+// THE MASK'S ACCESSORS, which are C: there is no Rust to generate them from.
+// Out of range reads 0 and writes nothing.
+static inline int tg_mask_get(const tg_mask_t *m, int i) {
+    return (i >= 0 && i < TG_MAX_STEPS) ? (int)((m->w[i >> 5] >> (i & 31)) & 1u) : 0;
+}
+static inline void tg_mask_set(tg_mask_t *m, int i, int on) {
+    if (i < 0 || i >= TG_MAX_STEPS) return;
+    if (on) m->w[i >> 5] |=  (1u << (i & 31));
+    else    m->w[i >> 5] &= ~(1u << (i & 31));
+}
+static inline void tg_mask_zero(tg_mask_t *m) {
+    for (int k = 0; k < TG_MASK_WORDS; k++) m->w[k] = 0;
+}
+
+#endif /* TRANCE_GATE_CORE_H */"""
+
+[export]
+# Declared for C and used by no function: the mask is C's view of a step
+# bitmap, and the enum names the numbers tg_core_set_num takes.
+include = ["TgMask", "TgParam"]
+# TgParamArg is the int a tg_param_t arrives as (engine.rs says why Rust takes
+# the int); in the header it is spelled tg_param_t, the enum's own name, so it
+# is renamed to that and its own typedef left out.
+exclude = ["TgParamArg"]
+
+[export.rename]
+"TgCore" = "tg_core_t"
+"CTransport" = "tg_transport_t"
+"TgMask" = "tg_mask_t"
+"TgParam" = "tg_param_t"
+"TgParamArg" = "tg_param_t"

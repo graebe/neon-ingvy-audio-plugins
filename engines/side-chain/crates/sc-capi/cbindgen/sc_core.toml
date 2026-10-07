@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# sc_core.h, from src/engine.rs and ni-dsp's transport (build.rs). The
+# Trance Gate's trance_gate_core.toml explains the settings every capi header
+# shares.
+
+language = "C"
+style = "type"
+cpp_compat = true
+no_includes = true
+sys_includes = ["stdint.h"]
+documentation_style = "c99"
+include_guard = "SC_CORE_H"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// sc_core.h -- NI Side-Chain's C ABI over the Rust ducker engine, `sc_core_*`.
+//
+// GENERATED at build time by cbindgen from
+// engines/side-chain/crates/sc-capi/src/engine.rs, whose doc comments are the
+// comments below: edit that, not this."""
+
+[export]
+# The numbers sc_core_set_num takes, which no function names as a type.
+include = ["ScParam"]
+# The int an sc_param_t arrives as, spelled sc_param_t in the header
+# (engine.rs says why Rust takes the int).
+exclude = ["ScParamArg"]
+
+[export.rename]
+"ScCore" = "sc_core_t"
+"CTransport" = "sc_transport_t"
+"ScParam" = "sc_param_t"
+"ScParamArg" = "sc_param_t"

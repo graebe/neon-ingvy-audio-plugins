@@ -5,7 +5,7 @@
  * The spectro_* and srecv_* C ABI, called the way the shell calls it.
  *
  * spectro-core and spectro-recv test the analysis. tests/spectro_columns.c and
- * tests/srecv_api.c test the hand-written headers against the release
+ * tests/srecv_api.c test the generated headers against the release
  * staticlib -- which cargo's coverage cannot see. These make the ABI's own
  * promises from Rust, through the same raw pointers: null is a no-op
  * everywhere, out-of-range arguments are clamped rather than trusted, buffers
@@ -19,13 +19,31 @@
  */
 
 use super::*;
+use core::ffi::c_int;
 use core::ptr::{null, null_mut};
+use spectro_core::Config;
 
 const SR: f32 = 48_000.0;
-const BANDS: usize = 256; /* SPECTRO_BANDS */
-const FFT: c_int = 8192; /* SPECTRO_FFT_SIZE */
-const HOP: c_int = 1024; /* SPECTRO_HOP */
-const COLUMN_CAPACITY: usize = 256; /* SPECTRO_COLUMN_CAPACITY */
+const BANDS: usize = SPECTRO_BANDS as usize;
+const FFT: c_int = SPECTRO_FFT_SIZE;
+const HOP: c_int = SPECTRO_HOP;
+const COLUMN_CAPACITY: usize = SPECTRO_COLUMN_CAPACITY as usize;
+
+#[test]
+fn the_headers_defaults_are_the_analyzers() {
+    /* C reads these as literals; Config::default() is what spectro_new
+     * analyses with. Held equal here because Config is not const. */
+    let d = Config::default();
+    assert_eq!(d.fft_size, SPECTRO_FFT_SIZE as usize);
+    assert_eq!(d.hop, SPECTRO_HOP as usize);
+    assert_eq!(d.bands, SPECTRO_BANDS as usize);
+    assert_eq!(d.f_min, SPECTRO_F_MIN);
+    assert_eq!(d.f_max, SPECTRO_F_MAX);
+    assert_eq!(d.db_floor, SPECTRO_DB_FLOOR);
+    assert_eq!(d.db_ceil, SPECTRO_DB_CEIL);
+    assert_eq!(spectro_pick_fft_size(48_000.0), SPECTRO_FFT_SIZE);
+    assert_eq!(spectro_pick_hop(48_000.0, SPECTRO_FFT_SIZE), SPECTRO_HOP);
+}
 
 /// A sine, continuing from `*phase`, `n` samples long.
 fn sine(hz: f32, amp: f32, n: usize, phase: &mut f64) -> Vec<f32> {

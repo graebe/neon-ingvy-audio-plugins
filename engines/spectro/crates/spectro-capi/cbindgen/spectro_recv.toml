@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# spectro_recv.h, from src/recv.rs (build.rs). The Trance Gate's
+# trance_gate_core.toml explains the settings every capi header shares.
+
+language = "C"
+style = "type"
+cpp_compat = true
+no_includes = true
+# The analyzer's constants, which a receiver's caller configures it with.
+includes = ["spectro_core.h"]
+documentation_style = "c99"
+include_guard = "SPECTRO_RECV_H"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// spectro_recv.h -- the Spectrogram's listen-in receiver, `srecv_*`.
+//
+// GENERATED at build time by cbindgen from
+// engines/spectro/crates/spectro-capi/src/recv.rs, whose doc comments are the
+// comments below: edit that, not this."""
+
+[export.rename]
+"Srecv" = "srecv_t"

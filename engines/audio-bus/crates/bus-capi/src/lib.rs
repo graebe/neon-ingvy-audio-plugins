@@ -1,18 +1,42 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Torben Gräber
 
-/*
- * The C ABI: what a sending plugin and a receiving plugin both link.
- *
- * `engines/audio-bus/include/audio_bus.h` is the contract; this is the half
- * that implements it. The header is written by hand rather than generated, for
- * the reason spectro states: a generator hides a disagreement by overwriting
- * it, and `abus_roundtrip.c` compiles against the header and links this, which
- * is what catches drift.
- *
- * Scalars and float buffers cross the boundary. No callbacks, no shared
- * structs, no ownership passing either way except the two opaque handles.
- */
+/*!
+The C ABI: what a sending plugin and a receiving plugin both link -- and the
+source of audio_bus.h, which build.rs generates from this file (cbindgen's
+configuration is cbindgen/audio_bus.toml), these doc comments included.
+
+Scalars and float buffers cross the boundary. No callbacks, no shared structs,
+no ownership passing either way except the opaque handles.
+
+A SHARED-MEMORY AUDIO BUS between plugins in one host. A sender claims one of
+sixteen numbered slots and publishes stereo float audio into it; any number
+of receivers, in this process or another, open the same slot and read it.
+
+Nobody blocks anybody. The sender never waits. A receiver that falls behind
+is TOLD how much it missed rather than handed a buffer spliced together from
+two different moments -- which would look exactly like audio and be exactly
+wrong. See `dropped` on abus_reader_read.
+
+THE THREAD RULES ARE PART OF THE ABI:
+
+  abus_writer_claim / release            the main thread
+  abus_writer_set_label / sample_rate    the main thread
+  abus_pusher_release                    the main thread
+  abus_pusher_push                       the audio thread, and only it
+  abus_reader_open / close / reattach    the main thread
+  abus_reader_read                       one thread, the same one each time
+  abus_probe                             the main thread
+
+push and read may overlap across any number of processes -- that is the whole
+point. TWO SENDERS ON ONE SLOT IS THE ONE THING THAT CANNOT HAPPEN, and it is
+prevented rather than left undefined: the second abus_writer_claim returns
+ABUS_ERR_TAKEN and the caller publishes nothing.
+
+`abus_pusher_push` allocates nothing, takes no lock and makes no system call.
+`abus_writer_claim` does all three, which is why it is not allowed anywhere
+near the audio thread.
+*/
 
 /*
  * THE GROUND'S C ABI RIDES IN THIS ARCHIVE, and this line is what puts it there.
@@ -25,10 +49,11 @@
  * are exported from this archive rather than dropped as unreachable.
  */
 use ground_capi as _;
-/* shell_handoff_*, for the same reason: see engines/shell/include/shell_handoff.h. */
+/* shell_handoff_*, for the same reason: see shell-capi. */
 use shell_capi as _;
 
 use bus_core::{ClaimError, Pusher, Reader, Writer};
+use std::ffi::{c_char, c_int};
 
 /*
  * TWO C HANDLES, ONE PER THREAD -- the Rust split, carried across the ABI.
@@ -41,17 +66,32 @@ use bus_core::{ClaimError, Pusher, Reader, Writer};
  * share nothing but the claim's atomics. The slot stays claimed until BOTH are
  * released -- the claim is dropped with its last half.
  */
+/// The main thread's half of a claim.
 pub struct AbusWriter(Writer);
+/// The audio thread's half of a claim.
 pub struct AbusPusher(Pusher);
+/// One receiver's place in one slot's stream.
 pub struct AbusReader(Reader);
 
-/* Mirrors ABUS_OK / ABUS_ERR_* in the header. */
-const ABUS_OK: i32 = 0;
-const ABUS_ERR_BAD_SLOT: i32 = -1;
-const ABUS_ERR_UNAVAILABLE: i32 = -2;
-const ABUS_ERR_TAKEN: i32 = -3;
+/// What `abus_writer_claim` and `abus_reader_open` answer when they worked.
+pub const ABUS_OK: c_int = 0;
+/// The slot is outside 1..abus_max_slot().
+pub const ABUS_ERR_BAD_SLOT: c_int = -1;
+/// The segment could not be made or mapped.
+pub const ABUS_ERR_UNAVAILABLE: c_int = -2;
+/// Another LIVE sender holds this slot.
+pub const ABUS_ERR_TAKEN: c_int = -3;
 
-fn code(e: ClaimError) -> i32 {
+/// Bytes in the buffer `abus_probe` fills, NUL included.
+pub const ABUS_LABEL_CAP: c_int = 32;
+/// The highest slot, for code that needs it at compile time -- an array
+/// bound, or a translation unit that links nothing. `abus_max_slot` answers
+/// the same; abus_roundtrip.c checks the two agree.
+pub const ABUS_MAX_SLOT: c_int = 16;
+const _: () = assert!(ABUS_LABEL_CAP as usize == bus_core::LABEL_BYTES);
+const _: () = assert!(ABUS_MAX_SLOT as u32 == bus_core::MAX_SLOT);
+
+fn code(e: ClaimError) -> c_int {
     match e {
         ClaimError::BadSlot => ABUS_ERR_BAD_SLOT,
         ClaimError::Unavailable => ABUS_ERR_UNAVAILABLE,
@@ -59,11 +99,15 @@ fn code(e: ClaimError) -> i32 {
     }
 }
 
+/// The highest valid slot number. Slots are 1-based: slot 0 is not a bus, it
+/// is a mistake, and it is reported as one.
 #[no_mangle]
 pub extern "C" fn abus_max_slot() -> u32 {
     bus_core::MAX_SLOT
 }
 
+/// Always 2, always interleaved. A mono source is duplicated by the SENDER, so
+/// a receiver never has to ask how many channels arrived.
 #[no_mangle]
 pub extern "C" fn abus_channels() -> u32 {
     bus_core::CHANNELS
@@ -81,7 +125,7 @@ pub unsafe extern "C" fn abus_writer_claim(
     sample_rate: u32,
     writer: *mut *mut AbusWriter,
     pusher: *mut *mut AbusPusher,
-) -> i32 {
+) -> c_int {
     if writer.is_null() || pusher.is_null() {
         return ABUS_ERR_UNAVAILABLE;
     }
@@ -148,7 +192,7 @@ pub unsafe extern "C" fn abus_writer_set_sample_rate(w: *mut AbusWriter, sample_
 /// # Safety
 /// `text` must be a valid NUL-terminated string or NULL.
 #[no_mangle]
-pub unsafe extern "C" fn abus_writer_set_label(w: *mut AbusWriter, text: *const u8) {
+pub unsafe extern "C" fn abus_writer_set_label(w: *mut AbusWriter, text: *const c_char) {
     let Some(w) = w.as_mut() else { return };
     w.0.set_label(&cstr(text));
 }
@@ -156,7 +200,7 @@ pub unsafe extern "C" fn abus_writer_set_label(w: *mut AbusWriter, text: *const 
 /// # Safety
 /// `out` must be a valid, writable pointer.
 #[no_mangle]
-pub unsafe extern "C" fn abus_reader_open(slot: u32, out: *mut *mut AbusReader) -> i32 {
+pub unsafe extern "C" fn abus_reader_open(slot: u32, out: *mut *mut AbusReader) -> c_int {
     if out.is_null() {
         return ABUS_ERR_UNAVAILABLE;
     }
@@ -214,11 +258,11 @@ pub unsafe extern "C" fn abus_reader_read(
 /// # Safety
 /// `r` must come from `abus_reader_open`, with no read in flight.
 #[no_mangle]
-pub unsafe extern "C" fn abus_reader_reattach(r: *mut AbusReader) -> i32 {
+pub unsafe extern "C" fn abus_reader_reattach(r: *mut AbusReader) -> c_int {
     if r.is_null() {
         return 0;
     }
-    i32::from((*r).0.reattach())
+    c_int::from((*r).0.reattach())
 }
 
 /// Describe a slot without opening it -- what a receiver builds its source list
@@ -233,9 +277,9 @@ pub unsafe extern "C" fn abus_probe(
     slot: u32,
     live: *mut i32,
     sample_rate: *mut u32,
-    label: *mut u8,
+    label: *mut c_char,
     label_cap: u32,
-) -> i32 {
+) -> c_int {
     let info = match bus_core::probe(slot) {
         Some(i) => i,
         None => {
@@ -260,7 +304,7 @@ pub unsafe extern "C" fn abus_probe(
     if !label.is_null() && label_cap > 0 {
         let bytes = info.label.as_bytes();
         let n = core::cmp::min(bytes.len(), label_cap as usize - 1);
-        core::ptr::copy_nonoverlapping(bytes.as_ptr(), label, n);
+        core::ptr::copy_nonoverlapping(bytes.as_ptr(), label.cast::<u8>(), n);
         *label.add(n) = 0;
     }
     1
@@ -268,7 +312,8 @@ pub unsafe extern "C" fn abus_probe(
 
 /// # Safety
 /// `p` must be NUL-terminated or NULL.
-unsafe fn cstr(p: *const u8) -> String {
+unsafe fn cstr(p: *const c_char) -> String {
+    let p = p.cast::<u8>();
     if p.is_null() {
         return String::new();
     }

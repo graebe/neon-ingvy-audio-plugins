@@ -33,3 +33,7 @@ ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+
+# sc_core.h and sc_shell.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }

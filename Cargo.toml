@@ -118,6 +118,11 @@ fastrand = { version = "2.5.0", default-features = false }
 # Property tests: generated cases, shrunk to the smallest that fails. A
 # dev-dependency wherever it appears, so it ships in nothing.
 proptest = { version = "1.11.0", default-features = false }
+# Each C ABI crate's headers, written from its Rust by its build.rs
+# (engines/shared/build/capi_header.rs). A build-dependency wherever it
+# appears: it runs on the build machine and ships in nothing. Without its
+# default feature, which is the command line's argument parser.
+cbindgen = { version = "0.29.4", default-features = false }
 
 # THE AUDIO CALLBACK MUST NOT UNWIND.
 #

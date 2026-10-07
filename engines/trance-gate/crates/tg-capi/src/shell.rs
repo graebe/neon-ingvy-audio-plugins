@@ -27,6 +27,33 @@ frame -- the engine's live values, host pushes included.
 THE HOST'S PARAMETERS MIRROR THE CURRENT SLOT. Every parameter but Slot is per
 slot in the engine, so the host's fifteen are a window onto one slot, and the
 two have to be kept pointing at the same one. See `Mirror`.
+
+THIS FILE IS tg_shell.h: build.rs generates the header from it (cbindgen's
+configuration is cbindgen/tg_shell.toml), and the doc comments on the items
+below are the header's comments. What a C caller needs before any of them:
+
+THE ENGINE BELONGS TO THE AUDIO THREAD. A plugin has at least three threads
+that want it -- the audio callback, the editor's messages, the host's state
+calls -- and tg_core_* has no lock in it, by design. So a shell never calls
+tg_core_* on anything but the pointer tg_shell_begin lends it, and only
+between tg_shell_begin and tg_shell_end:
+
+  audio thread                      any other thread
+  ------------                      ----------------
+  c = tg_shell_begin(s);            tg_shell_post(s, kv, n);    edits in
+  tg_core_set_num(c, ...);          tg_shell_read(s, "ui", ...) readouts out
+  tg_core_process_f32_split(c,...)
+  tg_shell_end(s, frames);
+
+An edit is applied at the top of the next block. A readout is the latest one
+the audio thread published -- or, while an edit is still waiting to be
+applied, what the engine WILL read once it has been, so a save straight after
+an edit writes that edit even with the host's audio engine off.
+
+begin/end allocate nothing, take no lock and never wait. post/read may
+allocate and serialise with each other, never with the audio thread.
+
+The Move module does not use this: Schwung calls its module on one thread.
 */
 
 use crate::TgCore;
@@ -46,14 +73,28 @@ const KEYS: [&str; 4] = ["ui", "params", "state", "length"];
 const PARAMS: usize = 1;
 const STATE: usize = 2;
 
-/* TG_STATE_MAX: every readout fits, the state blob being the longest. */
-const TEXT_MAX: usize = 8192;
+/* Every readout fits, the state blob being the longest. */
+const TEXT_MAX: usize = crate::TG_STATE_MAX;
 /* Commands the ring holds between two blocks: a burst of edits and a load,
  * with room. More wait on the posting side, in order. */
 const QUEUE: usize = 256;
 
 /// The host parameters, TG_P_COUNT of them.
-pub(crate) const NUMS: usize = 15;
+pub(crate) const NUMS: usize = crate::TgParam::TG_P_COUNT as usize;
+
+/// A slot file's (.nitgslot) or a bank file's (.nitgbank) text at its longest:
+/// size `tg_shell_export`'s buffer with this. The files are tg-core's
+/// slotfile.rs.
+pub const TG_SLOTFILE_MAX: usize = 16384;
+const _: () = assert!(TG_SLOTFILE_MAX == tg_core::slotfile::MAX_BYTES);
+
+/// What `tg_shell_paste` found on the clipboard and queued: a slot file's text
+/// replaces the current slot, a bank file's all eight, and a whole state blob
+/// -- what Copy wrote before there were slots, and the Move's -- the patch.
+/// `tg_shell_import` answers with the first two.
+pub const TG_PASTE_SLOT: c_int = 1;
+pub const TG_PASTE_BANK: c_int = 2;
+pub const TG_PASTE_PATCH: c_int = 3;
 
 /// What the shell's other threads ask of the engine, each one read and
 /// checked where it was posted. Anything longer than a few words rides in a
@@ -377,15 +418,21 @@ pub unsafe extern "C" fn tg_shell_destroy(sh: *mut TgShell) {
     }
 }
 
-/// Queue one edit: `n_pairs` key/value pairs, read here and applied together
-/// in order. Returns 1 when queued, 0 when refused (a null, or a key or value
-/// that is not text). Any non-audio thread.
+/// Queue one edit: `n_pairs` key/value pairs for tg_core_set_param, read here
+/// and applied together and in order -- "cursor","3","step","2" moves the
+/// cursor and edits the step it lands on in the same block. Returns 1 when
+/// queued, 0 when refused (a null, or a key or value that is not text). A full
+/// queue is not a refusal: the edit waits on this side and is sent in order.
+/// Any non-audio thread.
+///
+/// "randomize" with no seed is given one here, so the roll that plays is the
+/// roll a save writes.
 ///
 /// # Safety
 /// `pairs` holds `2 * n_pairs` pointers, each null or a NUL-terminated string.
 #[no_mangle]
 pub unsafe extern "C" fn tg_shell_post(
-    sh: *const TgShell,
+    sh: *mut TgShell,
     pairs: *const *const c_char,
     n_pairs: c_int,
 ) -> c_int {
@@ -410,7 +457,7 @@ pub unsafe extern "C" fn tg_shell_post(
 /// `sh` is null or live.
 #[no_mangle]
 #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is dropped with it")]
-pub unsafe extern "C" fn tg_shell_post_sample_rate(sh: *const TgShell, sample_rate: f64) {
+pub unsafe extern "C" fn tg_shell_post_sample_rate(sh: *mut TgShell, sample_rate: f64) {
     let Some(sh) = sh.as_ref() else { return };
     if !(sample_rate > 0.0) {
         return;
@@ -427,7 +474,7 @@ pub unsafe extern "C" fn tg_shell_post_sample_rate(sh: *const TgShell, sample_ra
 /// `buf` holds `buf_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_shell_read(
-    sh: *const TgShell,
+    sh: *mut TgShell,
     key: *const c_char,
     buf: *mut c_char,
     buf_len: c_int,
@@ -456,7 +503,7 @@ pub unsafe extern "C" fn tg_shell_read(
 /// `values` holds `n` doubles; `buf` holds `buf_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_shell_save(
-    sh: *const TgShell,
+    sh: *mut TgShell,
     values: *const f64,
     n: c_int,
     buf: *mut c_char,
@@ -512,7 +559,7 @@ fn state_text(state: &[u8], len: c_int) -> Option<&str> {
 /// `values` holds `n` doubles; `buf` holds `buf_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_shell_export(
-    sh: *const TgShell,
+    sh: *mut TgShell,
     values: *const f64,
     n: c_int,
     all: c_int,
@@ -535,9 +582,9 @@ pub unsafe extern "C" fn tg_shell_export(
 /// Import a slot file: checked here, whole, and queued only when good -- a
 /// slot file replaces the current slot, a bank all eight, at the top of the
 /// next block, after which the host's parameters follow the current slot
-/// (`tg_shell_take_params`). Returns 1 for a slot, 2 for a bank, or 0 with the
-/// reason, in words, NUL-terminated in `err` (may be null). Any non-audio
-/// thread.
+/// (`tg_shell_take_params`). Returns TG_PASTE_SLOT for a slot, TG_PASTE_BANK
+/// for a bank, or 0 with the reason, in words, NUL-terminated in `err` (may be
+/// null); nothing changes then. Any non-audio thread.
 ///
 /// `slot` (0-based) is where a slot file goes, carried in the command for the
 /// reason `tg_shell_paste` carries it. Out of range is the engine's current
@@ -547,7 +594,7 @@ pub unsafe extern "C" fn tg_shell_export(
 /// `text` is null or NUL-terminated; `err` holds `err_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_shell_import(
-    sh: *const TgShell,
+    sh: *mut TgShell,
     slot: c_int,
     text: *const c_char,
     err: *mut c_char,
@@ -567,7 +614,7 @@ pub unsafe extern "C" fn tg_shell_import(
     };
     let kind = file.kind();
     sh.bridge.post(Command::Paste { slot: slot_index(slot), clip: sh.shared(Clip::File(file)) });
-    if kind == Kind::Slot { 1 } else { 2 }
+    if kind == Kind::Slot { TG_PASTE_SLOT } else { TG_PASTE_BANK }
 }
 
 /* The slot a paste or an import names, 0-based. Anything out of range -- a
@@ -604,7 +651,7 @@ unsafe fn refuse(
 /// The audio thread only, and the pointer must not be used after
 /// `tg_shell_end`.
 #[no_mangle]
-pub unsafe extern "C" fn tg_shell_begin(sh: *const TgShell) -> *mut TgCore {
+pub unsafe extern "C" fn tg_shell_begin(sh: *mut TgShell) -> *mut TgCore {
     match sh.as_ref() {
         Some(sh) => sh.bridge.begin() as *mut TgCore,
         None => std::ptr::null_mut(),
@@ -617,7 +664,7 @@ pub unsafe extern "C" fn tg_shell_begin(sh: *const TgShell) -> *mut TgCore {
 /// # Safety
 /// As `tg_shell_begin`.
 #[no_mangle]
-pub unsafe extern "C" fn tg_shell_touch(sh: *const TgShell) {
+pub unsafe extern "C" fn tg_shell_touch(sh: *mut TgShell) {
     if let Some(sh) = sh.as_ref() {
         sh.bridge.touch();
     }
@@ -631,7 +678,7 @@ pub unsafe extern "C" fn tg_shell_touch(sh: *const TgShell) {
 /// # Safety
 /// As `tg_shell_begin`.
 #[no_mangle]
-pub unsafe extern "C" fn tg_shell_end(sh: *const TgShell, frames: c_int) {
+pub unsafe extern "C" fn tg_shell_end(sh: *mut TgShell, frames: c_int) {
     if let Some(sh) = sh.as_ref() {
         sh.bridge.end(frames.max(0) as u32);
         if sh.mirror.moved.swap(false, Ordering::Relaxed) {
@@ -649,7 +696,7 @@ pub unsafe extern "C" fn tg_shell_end(sh: *const TgShell, frames: c_int) {
 /// As `tg_shell_begin`; `core` is the pointer it returned this block, and
 /// `values` holds `n` doubles.
 #[no_mangle]
-pub unsafe extern "C" fn tg_shell_push(sh: *const TgShell, core: *mut TgCore, values: *const f64, n: c_int) {
+pub unsafe extern "C" fn tg_shell_push(sh: *mut TgShell, core: *mut TgCore, values: *const f64, n: c_int) {
     let (Some(sh), Some(core)) = (sh.as_ref(), core.as_mut()) else { return };
     if values.is_null() || n < NUMS as c_int {
         return;
@@ -680,7 +727,7 @@ pub unsafe extern "C" fn tg_shell_push(sh: *const TgShell, core: *mut TgCore, va
 /// # Safety
 /// `sh` is null or live; `out` holds `n` doubles.
 #[no_mangle]
-pub unsafe extern "C" fn tg_shell_take_params(sh: *const TgShell, out: *mut f64, n: c_int) -> c_int {
+pub unsafe extern "C" fn tg_shell_take_params(sh: *mut TgShell, out: *mut f64, n: c_int) -> c_int {
     let Some(sh) = sh.as_ref() else { return 0 };
     if out.is_null() || n < NUMS as c_int || !sh.mirror.sync.swap(false, Ordering::AcqRel) {
         return 0;
@@ -702,7 +749,7 @@ pub unsafe extern "C" fn tg_shell_take_params(sh: *const TgShell, out: *mut f64,
 /// # Safety
 /// `blob` is null or NUL-terminated; `values` holds `n` doubles.
 #[no_mangle]
-pub unsafe extern "C" fn tg_shell_load(sh: *const TgShell, blob: *const c_char, values: *const f64, n: c_int) -> c_int {
+pub unsafe extern "C" fn tg_shell_load(sh: *mut TgShell, blob: *const c_char, values: *const f64, n: c_int) -> c_int {
     let Some(sh) = sh.as_ref() else { return 0 };
     if values.is_null() || n < NUMS as c_int {
         return 0;
@@ -719,10 +766,10 @@ pub unsafe extern "C" fn tg_shell_load(sh: *const TgShell, blob: *const c_char, 
 /// The editor's paste of the clipboard's text: classified here, whole, and
 /// queued only when good (`tg_core::paste`) -- a slot replaces the current
 /// slot, a bank all eight, a whole patch everything -- after which the host's
-/// parameters follow the current slot (`tg_shell_take_params`). Returns 1 for
-/// a slot, 2 for a bank, 3 for a patch, or 0 with the reason, in words,
-/// NUL-terminated in `err` (may be null); nothing changes then. Any non-audio
-/// thread.
+/// parameters follow the current slot (`tg_shell_take_params`). Returns
+/// TG_PASTE_SLOT, TG_PASTE_BANK or TG_PASTE_PATCH, or 0 with the reason, in
+/// words, NUL-terminated in `err` (may be null); nothing changes then. Any
+/// non-audio thread. Copy is `tg_shell_export` with `all` 0.
 ///
 /// `slot` (0-based) is where a slot goes: the host's current slot as the
 /// person saw it, carried in the command because the host's Slot may move in
@@ -736,7 +783,7 @@ pub unsafe extern "C" fn tg_shell_load(sh: *const TgShell, blob: *const c_char, 
 /// `text` is null or holds `len` bytes; `err` holds `err_len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn tg_shell_paste(
-    sh: *const TgShell,
+    sh: *mut TgShell,
     slot: c_int,
     text: *const c_char,
     len: c_int,
@@ -758,9 +805,9 @@ pub unsafe extern "C" fn tg_shell_paste(
     let holds = clip.holds();
     sh.bridge.post(Command::Paste { slot: slot_index(slot), clip: sh.shared(clip) });
     match holds {
-        Holds::Slot => 1,
-        Holds::Bank => 2,
-        Holds::Patch => 3,
+        Holds::Slot => TG_PASTE_SLOT,
+        Holds::Bank => TG_PASTE_BANK,
+        Holds::Patch => TG_PASTE_PATCH,
     }
 }
 
@@ -770,7 +817,7 @@ pub unsafe extern "C" fn tg_shell_paste(
 /// # Safety
 /// `sh` is null or live.
 #[no_mangle]
-pub unsafe extern "C" fn tg_shell_cycle_ms(sh: *const TgShell) -> f64 {
+pub unsafe extern "C" fn tg_shell_cycle_ms(sh: *mut TgShell) -> f64 {
     match sh.as_ref() {
         Some(sh) => sh.bridge.read(|r| if r.frame.cycle_ms > 0.0 { r.frame.cycle_ms } else { 1000.0 }),
         None => 1000.0,
@@ -783,13 +830,13 @@ mod tests {
     use std::ffi::CString;
     use tg_core::Instance;
 
-    fn post(sh: *const TgShell, kv: &[&str]) -> c_int {
+    fn post(sh: *mut TgShell, kv: &[&str]) -> c_int {
         let owned: Vec<CString> = kv.iter().map(|s| CString::new(*s).unwrap()).collect();
         let ptrs: Vec<*const c_char> = owned.iter().map(|c| c.as_ptr()).collect();
         unsafe { tg_shell_post(sh, ptrs.as_ptr(), (ptrs.len() / 2) as c_int) }
     }
 
-    fn read(sh: *const TgShell, key: &str) -> String {
+    fn read(sh: *mut TgShell, key: &str) -> String {
         let mut buf = vec![0u8; TEXT_MAX];
         let k = CString::new(key).unwrap();
         let n = unsafe { tg_shell_read(sh, k.as_ptr(), buf.as_mut_ptr() as *mut c_char, buf.len() as c_int) };
@@ -797,7 +844,7 @@ mod tests {
         String::from_utf8(buf[..n as usize].to_vec()).unwrap()
     }
 
-    fn block(sh: *const TgShell) {
+    fn block(sh: *mut TgShell) {
         unsafe {
             tg_shell_begin(sh);
             tg_shell_end(sh, 64);
@@ -879,7 +926,7 @@ mod tests {
     const STEADY: [f64; 15] = [0.0, 127.0, 7.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.6, 16.0, 1.0, 16.0, 1.0, 0.0, 0.0];
 
     /* The heaviest realistic patch: eight slots of 128 random steps, accented. */
-    fn heavy(sh: *const TgShell) {
+    fn heavy(sh: *mut TgShell) {
         for slot in 0..8 {
             let slot = slot.to_string();
             post(sh, &["slot", &slot, "length", "127", "randomize", "12345"]);
@@ -892,7 +939,7 @@ mod tests {
 
     /* One audio block as the plugin runs it: edits land, PushParams writes all
      * fifteen, the readouts are published if the cadence says so. */
-    fn audio_block(sh: *const TgShell, frames: c_int) {
+    fn audio_block(sh: *mut TgShell, frames: c_int) {
         unsafe {
             let c = tg_shell_begin(sh);
             for (i, v) in STEADY.iter().enumerate() {
@@ -979,7 +1026,7 @@ mod tests {
     }
 
     /* One block as the plugin pushes the host's parameters. */
-    fn push_block(sh: *const TgShell, v: &[f64; NUMS]) {
+    fn push_block(sh: *mut TgShell, v: &[f64; NUMS]) {
         unsafe {
             let c = tg_shell_begin(sh);
             tg_shell_push(sh, c, v.as_ptr(), NUMS as c_int);
@@ -987,7 +1034,7 @@ mod tests {
         }
     }
 
-    fn take(sh: *const TgShell) -> Option<[f64; NUMS]> {
+    fn take(sh: *mut TgShell) -> Option<[f64; NUMS]> {
         let mut v = [0.0; NUMS];
         (unsafe { tg_shell_take_params(sh, v.as_mut_ptr(), NUMS as c_int) } == 1).then_some(v)
     }
@@ -1092,7 +1139,7 @@ mod tests {
         unsafe { tg_shell_destroy(sh) };
     }
 
-    fn paste_into(sh: *const TgShell, slot: c_int, text: &str) -> (c_int, String) {
+    fn paste_into(sh: *mut TgShell, slot: c_int, text: &str) -> (c_int, String) {
         let mut err = [0u8; 256];
         let r = unsafe {
             tg_shell_paste(sh, slot, text.as_ptr() as *const c_char, text.len() as c_int, err.as_mut_ptr() as *mut c_char, 256)
@@ -1131,7 +1178,7 @@ mod tests {
         unsafe { tg_shell_destroy(sh) };
     }
 
-    fn export(sh: *const TgShell, v: &[f64; NUMS], all: bool) -> String {
+    fn export(sh: *mut TgShell, v: &[f64; NUMS], all: bool) -> String {
         let mut buf = vec![0u8; 16 * 1024];
         let n = unsafe {
             tg_shell_export(sh, v.as_ptr(), NUMS as c_int, all as c_int, buf.as_mut_ptr() as *mut c_char, buf.len() as c_int)
@@ -1141,11 +1188,11 @@ mod tests {
     }
 
     /* Into the engine's current slot, as every caller before the slot did. */
-    fn import(sh: *const TgShell, text: &str) -> (c_int, String) {
+    fn import(sh: *mut TgShell, text: &str) -> (c_int, String) {
         import_into(sh, -1, text)
     }
 
-    fn import_into(sh: *const TgShell, slot: c_int, text: &str) -> (c_int, String) {
+    fn import_into(sh: *mut TgShell, slot: c_int, text: &str) -> (c_int, String) {
         let t = CString::new(text).unwrap();
         let mut err = [0u8; 256];
         let r = unsafe { tg_shell_import(sh, slot, t.as_ptr(), err.as_mut_ptr() as *mut c_char, 256) };
