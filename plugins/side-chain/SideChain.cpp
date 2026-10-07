@@ -194,17 +194,24 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
     sc_shell_end (shell.get(), frames);
 }
 
+/*
+ * THE HOST'S BYPASS IS READ HERE. JUCE's VST3 wrapper hands a processor with
+ * a bypass parameter of its own every block through processBlock, that
+ * parameter on or off, and leaves bypassing to it; processBlockBypassed comes
+ * only from hosts that bypass a plugin themselves. Either way it is the same
+ * block: the audio left as it came, the engine on a copy.
+ */
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     const int frames = buffer.getNumSamples();
     const auto clock = readClock (getPlayHead());
     beat.tick (clock, frames);
-    run (buffer, midi, clock, true);
+    run (buffer, midi, clock, bypass->plain() < 0.5);
 }
 
-/* Bypassed, the host's own way -- audio through -- while the engine runs on a
- * copy, hearing the MIDI and keeping time, and the Ground keeps the host's
- * time, so the window's beat does not stop with the sound. */
+/* Bypassed by the host itself: audio through, its own way, while the engine
+ * runs on a copy, hearing the MIDI and keeping time, and the Ground keeps the
+ * host's time, so the window's beat does not stop with the sound. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     const auto clock = readClock (getPlayHead());

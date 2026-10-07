@@ -11,7 +11,7 @@
  * shell's C++, JUCE's, and the Rust engine's alike. The blocks cover what a
  * session does to it: a set loaded, playback under a running transport with
  * the window open (the scope and the Ground at work), a key ducking on
- * Sidechain, MIDI notes and a panic, the host's bypass with MIDI in it, a
+ * Sidechain, MIDI notes and a panic, either bypass with MIDI in it, a
  * block longer than the host announced, and a second load. Each must count
  * zero.
  *
@@ -164,6 +164,12 @@ int main (int argc, char* argv[])
     allocations = 0;
     play (20, notes, true);
     check (allocations == 0, "the host's bypass, MIDI in it", allocations);
+
+    allocations = 0;
+    processor.getBypassParameter()->setValueNotifyingHost (1.0f);
+    play (20, notes);
+    processor.getBypassParameter()->setValueNotifyingHost (0.0f);
+    check (allocations == 0, "the plugin's own Bypass, MIDI in it", allocations);
 
     allocations = 0;
     play (4, notes, false, &longer);

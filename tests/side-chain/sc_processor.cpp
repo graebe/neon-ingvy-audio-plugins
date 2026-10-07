@@ -575,7 +575,7 @@ TEST_CASE ("the panic: CC 120 and CC 123 open a held gate, on the trigger's chan
     CHECK (highest (held.block()) < 0.05f);
 }
 
-TEST_CASE ("bypassed, the audio passes untouched while the engine still hears the MIDI")
+TEST_CASE ("bypassed, by the host or by its own Bypass, the audio passes untouched while the engine still hears the MIDI")
 {
     Instance a;
     holdGate (a);
@@ -586,6 +586,19 @@ TEST_CASE ("bypassed, the audio passes untouched while the engine still hears th
         CHECK (lowest (a.block ({}, true, true)) == 0.5f);
     /* The note was released while bypassed; back in, the duck is gone. */
     CHECK (lowest (a.block()) > 0.45f);
+
+    /* The plugin's own Bypass, as JUCE's VST3 wrapper hands it over: every
+     * block through processBlock, the parameter on. */
+    Instance b;
+    holdGate (b);
+    b.p.getBypassParameter()->setValueNotifyingHost (1.0f);
+    const auto own = b.block (message (juce::MidiMessage::noteOff (1, 36)));
+    CHECK (lowest (own) == 0.5f);
+    CHECK (highest (own) == 0.5f);
+    for (int i = 0; i < 20; ++i)
+        b.block();
+    b.p.getBypassParameter()->setValueNotifyingHost (0.0f);
+    CHECK (lowest (b.block()) > 0.45f);
 }
 
 /* ---------------------------------------------------------------- model -- */
