@@ -1,5 +1,36 @@
 # What's new
 
+## v2026.10.07.1
+
+### New: NI Chord-Detector
+
+A new plugin that tells you what you are playing. Put it on a MIDI track — in an
+Instrument Rack beside your synth — and it names the chord, its roman numeral in
+your key, the notes, and the other names the same notes go by.
+
+- **A circle of fifths** shows the key you chose, its seven notes, and the
+  notes you are playing lit up. Click a key to choose it, and pick one of the
+  seven modes in its centre.
+- **Notes are spelled the way your key writes them**: B flat in C major, E sharp
+  in F sharp major. Or choose sharps or flats throughout.
+- **Inversions and slash chords** are read from the lowest note: `C/E`,
+  `Am7/G`.
+- **Hold** keeps the last chord on screen after you let go.
+- **A scrolling history** of the last bars, as notes on a grand staff or as one
+  line per MIDI note.
+- **A keyboard** with the keys you hold lit.
+
+It makes no sound, works with the sustain pedal, and clears at once on Stop.
+It is a VST3 for macOS and the first plugin built on JUCE 9 with a native
+editor; the others follow.
+
+### Install
+
+Quit Live, copy `NIChordDetector.vst3` into your VST3 folder
+(`~/Library/Audio/Plug-Ins/VST3`), start Live and rescan
+(**Settings → Plug-Ins → Rescan**). It is listed as an instrument from Neon
+Ingvy.
+
 ## v2026.10.06.5
 
 ### Before you update

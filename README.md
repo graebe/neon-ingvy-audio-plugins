@@ -9,6 +9,7 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 | [NI Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
 | [NI Listen-In](plugins/listen-in/README.md) | VST3 · AU · CLAP | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/side-chain` |
+| [NI Chord-Detector](plugins/chord-detector/README.md) | VST3, on JUCE 9 with a native editor | `engines/chord-detector` |
 
 ## How it is put together
 
@@ -179,6 +180,7 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
 | [NI Listen-In](plugins/listen-in/README.md) | a tap that publishes a track on a numbered bus — [in Live](plugins/listen-in/docs/live.md) |
 | [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input |
+| [NI Chord-Detector](plugins/chord-detector/README.md) | names the note or chord a MIDI lane plays — [in Live](plugins/chord-detector/docs/live.md) |
 
 What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).
 
