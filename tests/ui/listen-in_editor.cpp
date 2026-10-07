@@ -36,7 +36,8 @@ namespace
 struct Rig
 {
     FakeModel model;
-    ListenInEditor editor { model, [] { return 0.0; } };
+    double now = 0.0;   // the frame's clock, which a test moves
+    ListenInEditor editor { model, [this] { return now; } };
 
     Rig() { editor.frame().ground().setReducedMotionQuery ([] { return false; }); }
 
@@ -47,6 +48,31 @@ struct Rig
     }
 
     juce::String line (juce::Component& c) { return ni::ui::infoOf (c); }
+
+    /* What a press at `at` (window design pixels) lands on, by the window's
+     * own hit testing -- and the point in its coordinates. */
+    std::pair<juce::Component*, juce::Point<float>> hit (juce::Point<int> at)
+    {
+        auto* c = editor.frame().getComponentAt (at);
+        REQUIRE (c != nullptr);
+        return { c, c->getLocalPoint (&editor.frame(), at).toFloat() };
+    }
+
+    /* A press there, as JUCE gives it: to what it lands on, then to the
+     * window, which hears every press. */
+    void press (juce::Point<int> at, int clicks = 1)
+    {
+        auto [c, local] = hit (at);
+        c->mouseDown (ni::ui::gallery::Pointer::event (*c, local, juce::ModifierKeys::leftButtonModifier, clicks));
+        editor.frame().pressed (*c);
+    }
+
+    /* The Bus field's centre, in the window. */
+    juce::Point<int> busField()
+    {
+        auto& bus = editor.busSelect();
+        return editor.frame().getLocalPoint (&bus, bus.field().getCentre());
+    }
 };
 
 /* Types `text` into `e` as keys, one character each. */
@@ -128,6 +154,159 @@ TEST_CASE ("listen-in: Bus offers sixteen buses and shows the host parameter")
     CHECK (bus.getIndex() == 2);
 }
 
+namespace
+{
+bool typed (ni::ui::Select& s, juce::juce_wchar ch, juce::ModifierKeys mods = {})
+{
+    return s.keyPressed (juce::KeyPress (ch, mods, ch));
+}
+} // namespace
+
+TEST_CASE ("listen-in: typing a number chooses that bus, as the web editor's <select> did")
+{
+    SUBCASE ("one key")
+    {
+        Rig rig;
+        CHECK (typed (rig.editor.busSelect(), '3'));
+        CHECK (rig.model.bus() == 3);
+        CHECK_FALSE (rig.editor.busSelect().isOpen());
+    }
+
+    SUBCASE ("two keys in a row are one number")
+    {
+        Rig rig;
+        typed (rig.editor.busSelect(), '1');
+        typed (rig.editor.busSelect(), '6');
+        CHECK (rig.model.bus() == 16);
+    }
+
+    SUBCASE ("a pause starts a new one")
+    {
+        Rig rig;
+        typed (rig.editor.busSelect(), '1');
+        CHECK (rig.model.bus() == 10);   // after bus 1, the next to start with 1
+        juce::Thread::sleep ((int) ni::ui::Select::typeAheadMs + 100);
+        typed (rig.editor.busSelect(), '6');
+        CHECK (rig.model.bus() == 6);
+    }
+
+    SUBCASE ("in the open list typing moves the highlight; Enter chooses it")
+    {
+        Rig rig;
+        auto& bus = rig.editor.busSelect();
+        key (bus, juce::KeyPress::downKey);
+        REQUIRE (bus.isOpen());
+        typed (bus, '7');
+        CHECK (bus.getList()->getHighlighted() == 6);
+        CHECK (rig.model.bus() == 1);
+        key (bus, juce::KeyPress::returnKey);
+        CHECK (rig.model.bus() == 7);
+    }
+
+    SUBCASE ("a shortcut is not typing: it is the host's")
+    {
+        Rig rig;
+        CHECK_FALSE (typed (rig.editor.busSelect(), '2', juce::ModifierKeys::commandModifier));
+        CHECK (rig.model.bus() == 1);
+    }
+}
+
+TEST_CASE ("listen-in: a double-click on Bus puts the parameter's default back, wherever the list opened")
+{
+    Rig rig;
+    auto& bus = rig.editor.busSelect();
+    rig.model.setBus (5);
+    rig.model.params.clear();
+
+    /* The first click opens the list, which in this window covers the field;
+     * the second lands on the list over it, and is the reset, not a row. */
+    rig.press (rig.busField());
+    REQUIRE (bus.isOpen());
+    CHECK (rig.hit (rig.busField()).first == bus.getList());
+    rig.press (rig.busField(), 2);
+
+    CHECK_FALSE (bus.isOpen());
+    CHECK (rig.model.bus() == 1);
+    CHECK (rig.model.params.log() == "begin 0, value 0 0.000, end 0");
+
+    /* One click on a row is still a choice. */
+    rig.press (rig.busField());
+    REQUIRE (bus.isOpen());
+    auto* list = bus.getList();
+    const auto row = list->rowBounds (list->getFirstShown() + 2).getCentre();
+    ni::ui::gallery::Pointer().click (*list, row.toFloat());
+    CHECK (rig.model.bus() == list->getFirstShown() + 3);
+}
+
+TEST_CASE ("listen-in: the Bus list shows six of its sixteen, the window's height (LI5, not 1.1.0)")
+{
+    /* The Select card allows 3 to 12 options; sixteen buses are the canvas's
+     * proposed exception (LI5), and in a 172px window the list is as tall as
+     * the window, over both rows and the bar, and scrolls. Pinned so a change
+     * to either is a decision, not a side effect. */
+    Rig rig;
+    auto& bus = rig.editor.busSelect();
+    key (bus, juce::KeyPress::downKey);
+    REQUIRE (bus.isOpen());
+    auto* list = bus.getList();
+
+    CHECK (list->getNumRows() == 16);
+    CHECK (list->numShown() == 6);
+    const auto field = rig.editor.frame().getLocalArea (&bus, bus.field());
+    CHECK (rig.inWindow (*list) == juce::Rectangle<int> (field.getX(), 0, field.getWidth(), 172));
+
+    key (bus, juce::KeyPress::endKey);
+    CHECK (list->getFirstShown() == 10);
+}
+
+TEST_CASE ("listen-in: under the pointer Bus and Name rise to bg-300 with an ink-dim hairline")
+{
+    Rig rig;
+    auto& bus = rig.editor.busSelect();
+    auto& name = rig.editor.nameField();
+    namespace c = uv::tok::colour;
+
+    const auto edges = [&]
+    {
+        const auto img = ni::ui::test::render (rig.editor);
+        const auto b = rig.inWindow (bus).getX() + bus.field().getX();
+        const auto n = rig.inWindow (name);
+        return std::pair { img.getPixelAt (b, 46), img.getPixelAt (n.getX(), 46) };
+    };
+    const auto wells = [&]
+    {
+        const auto img = ni::ui::test::render (rig.editor);
+        const auto b = rig.inWindow (bus).getX() + bus.field().getX();
+        return std::pair { img.getPixelAt (b + 4, 34), img.getPixelAt (rig.inWindow (name).getRight() - 4, 34) };
+    };
+
+    CHECK (edges().first == c::line200);
+    CHECK (edges().second == c::line200);
+    CHECK (wells().first == c::bg200);
+    CHECK (wells().second == c::bg200);
+
+    ni::ui::gallery::Pointer p;
+    p.enter (bus, bus.field().getCentre().toFloat());
+    p.enter (name, { 20.0f, 14.0f });
+    CHECK (bus.isFieldHovered());
+    CHECK (name.isHovered());
+    CHECK (edges().first == c::inkDim);
+    CHECK (edges().second == c::inkDim);
+    CHECK (wells().first == c::bg300);
+    CHECK (wells().second == c::bg300);
+
+    /* Typed into, the field is the edit's: uv, its well bg-200. */
+    name.focusGained (juce::Component::focusChangedByMouseClick);
+    CHECK (edges().second == c::uv);
+    CHECK (wells().second == c::bg200);
+    name.focusLost (juce::Component::focusChangedByMouseClick);
+
+    p.exit (bus);
+    p.exit (name);
+    CHECK (edges().first == c::line200);
+    CHECK (edges().second == c::line200);
+}
+
 TEST_CASE ("listen-in: choosing a bus from the keyboard is one gesture on the host parameter")
 {
     Rig rig;
@@ -201,6 +380,77 @@ TEST_CASE ("listen-in: a click elsewhere keeps the name too; Escape abandons it"
     typeName (name, "lead", juce::KeyPress::escapeKey);
     CHECK (rig.model.typedLabels == juce::StringArray { "pad" });
     CHECK (name.getText() == "pad");
+}
+
+TEST_CASE ("listen-in: a press anywhere else in the window keeps the name -- the background, the LED, the meter, the bar")
+{
+    Rig rig;
+    auto& name = rig.editor.nameField();
+    auto& frame = rig.editor.frame();
+
+    /* Places nothing takes the keyboard from: the content between the rows,
+     * the LED, the meter, the hint's text. */
+    const auto led = rig.inWindow (rig.editor.statusLed()).getCentre();
+    const auto meter = rig.inWindow (rig.editor.levelMeter()).getCentre();
+    const auto tips = frame.getLocalArea (&frame.hint(), frame.hint().tipsBounds()).getCentre();
+    const juce::Point<int> between { 200, 68 };
+
+    int n = 0;
+    for (auto at : { between, led, meter, tips })
+    {
+        CAPTURE (at.toString());
+        const auto typed = "name " + juce::String (++n);
+        name.focusGained (juce::Component::focusChangedByMouseClick);
+        name.selectAll();
+        type (name, typed);
+        REQUIRE (name.isBeingEdited());
+
+        rig.press (at);
+        CHECK_FALSE (name.isBeingEdited());
+        CHECK (rig.model.name == typed);
+        name.focusLost (juce::Component::focusChangedDirectly);   // what JUCE then sends
+    }
+    CHECK (rig.model.typedLabels.size() == 4);
+
+    /* A press on the field itself is the edit's own: it goes on. */
+    name.focusGained (juce::Component::focusChangedByMouseClick);
+    type (name, "x");
+    rig.press (rig.inWindow (name).getCentre());
+    CHECK (name.isBeingEdited());
+}
+
+TEST_CASE ("listen-in: Tab into the name selects it and shows its line; typing replaces it")
+{
+    Rig rig;
+    auto& name = rig.editor.nameField();
+    auto& frame = rig.editor.frame();
+    rig.model.name = "kick";
+    rig.editor.refresh();
+
+    name.focusGained (juce::Component::focusChangedByTabKey);
+    CHECK (frame.infoState().text() == ni::li::info::name.str());
+    CHECK (name.getHighlightedText() == "kick");
+
+    type (name, "bass");
+    key (name, juce::KeyPress::returnKey);
+    name.focusLost (juce::Component::focusChangedDirectly);
+    CHECK (rig.model.name == "bass");
+}
+
+TEST_CASE ("listen-in: a field being typed into shows its line however it was focused, and drops it after")
+{
+    Rig rig;
+    auto& name = rig.editor.nameField();
+    auto& frame = rig.editor.frame();
+
+    /* :focus-visible matches a text input focused by the pointer too. */
+    name.focusGained (juce::Component::focusChangedByMouseClick);
+    CHECK (frame.infoState().text() == ni::li::info::name.str());
+
+    name.focusLost (juce::Component::focusChangedByMouseClick);
+    rig.now += 1000.0;   // past the grace
+    frame.poll();
+    CHECK_FALSE (frame.hint().content().info.has_value());
 }
 
 TEST_CASE ("listen-in: a colon is dropped and a long name cut on a character, as the plugin keeps them")
@@ -344,13 +594,13 @@ TEST_CASE ("listen-in: under the pointer, the bar shows the status line, and fol
     CHECK (frame.hint().content().info->rest.contains ("listening on bus 3"));
 }
 
-TEST_CASE ("listen-in: the conventions fit whole beside Motion and the Signature")
+TEST_CASE ("listen-in: the tips take the bar to Motion, which sits space-4 before the Signature")
 {
     Rig rig;
     auto& bar = rig.editor.frame().hint();
     CHECK (ni::ui::clausesWidth (bar.getConventions()) <= (float) bar.tipsBounds().getWidth());
-    CHECK (bar.motionBounds().getX() >= bar.tipsBounds().getRight() + ni::ui::Hint::gap);
-    CHECK (bar.signature().getX() >= bar.motionBounds().getRight() + ni::ui::Hint::gap);
+    CHECK (bar.tipsBounds().getRight() + ni::ui::Hint::gap == bar.motionBounds().getX());
+    CHECK (bar.motionBounds().getRight() + ni::ui::Hint::gap == bar.signature().getX());
 }
 
 TEST_CASE ("listen-in: every control has its line, within the limit")
@@ -360,7 +610,7 @@ TEST_CASE ("listen-in: every control has its line, within the limit")
     CHECK (rig.line (rig.editor.nameField()).startsWith ("Name"));
     CHECK (rig.line (rig.editor.levelMeter()).startsWith ("Level"));
     CHECK (rig.line (rig.editor.statusLed()).startsWith ("Status"));
-    CHECK (rig.line (rig.editor.frame().motionSwitch()).startsWith ("Motion"));
+    CHECK (rig.line (rig.editor.frame().motionSwitch()) == ni::ui::EditorFrame::motionInfo.str());
     CHECK (rig.line (rig.editor.frame().hint().signature()).startsWith ("Neon Ingvy"));
     NI_CHECK_INFO_LIMIT (rig.editor);
 

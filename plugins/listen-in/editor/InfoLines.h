@@ -33,8 +33,8 @@ inline constexpr InfoText bus { "Bus — which of the 16 buses this track is pub
 inline constexpr InfoText name { "Name — what readers list this bus as; Enter keeps, Escape cancels." };
 inline constexpr InfoText level { "Level — the input's peak; grey while it goes nowhere." };
 
-/* The bar's own two. */
-inline constexpr InfoText motion { "Motion — let the music ripple the background; remembered per machine." };
+/* The Signature's line; the Motion switch's is the kit's
+ * (EditorFrame::motionInfo), the same in every window. */
 inline constexpr InfoText signature { "Neon Ingvy — the publisher of this plugin." };
 
 /*
@@ -67,6 +67,12 @@ inline juce::String statusText (Status s)
  * The status LED's line: what the state means, for the bus `busText` (the
  * Bus parameter's text) and the name the plugin keeps, `kept`. The longest,
  * listening on bus 16 under a 31-character name, is 68 characters.
+ *
+ * NOT YET READABLE IN THE BAR. With the Motion switch the tips are 87px, about
+ * fourteen characters, so the bar shows "Status — list…": the reason a bus is
+ * not live is the screen reader's, not the eye's. Without the Ground (the
+ * canvas's LI6) they would be 186px, about thirty, and these lines would be
+ * cut to fit ("Status — bus 3 held elsewhere"). Which, is the owner's call.
  */
 inline juce::String statusLine (Status s, const juce::String& busText, const juce::String& kept)
 {

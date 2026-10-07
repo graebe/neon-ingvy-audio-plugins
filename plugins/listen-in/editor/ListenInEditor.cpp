@@ -133,7 +133,6 @@ ListenInEditor::ListenInEditor (Model& m, ni::ui::EditorFrame::Clock clock)
       fit (window, designWidth, designHeight)
 {
     window.setConventions ({ { info::pickVerb, info::pickRest } });
-    window.setMotionInfo (info::motion);
     window.setSignatureInfo (info::signature);
     window.setSize (designWidth, designHeight);
     window.setContent (&content);

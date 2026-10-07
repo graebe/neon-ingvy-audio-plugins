@@ -40,6 +40,21 @@
  *   - the field and the meter are the 1.1.0 cards (TextField, Meter), which
  *     were drawn from this editor's.
  *
+ * AND WHERE IT IS NOT YET 1.1.0, each waiting on the owner:
+ *   - DESIGN DEBT, LI5: Bus is a Select of sixteen, where the Select card
+ *     allows 3 to 12 ("more than 12 want a knob with a stepped readout"). The
+ *     canvas proposes sixteen buses as a documented exception, with taken
+ *     buses disabled in the list; 1.1.0 has not ratified it. In this 172px
+ *     window the list is the window's height, over both rows and the bar, and
+ *     shows six buses at a time (a test pins it). Rejected, Bus becomes the
+ *     kit's stepped long-choice knob, in a redesigned row; ratified, the
+ *     model reports the taken buses and the list greys them.
+ *   - PENDING, LI6: the canvas drops the Ground and the Motion switch from
+ *     this utility window, which gives the hint bar the room for "pick a free
+ *     bus – name it" and for the status line's why. Until it is decided the
+ *     window keeps both, as the web editor and docs/live.md do, and the
+ *     conventions are cut to one short clause (InfoLines.h).
+ *
  * STATE LIVES IN THE MODEL. refresh() reads it -- the status, the peak, the
  * name -- and shows it; the frame clock calls it once a frame while the window
  * is open, and anything else may call it too. A missed frame shows the truth a
