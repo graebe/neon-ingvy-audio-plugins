@@ -9,8 +9,12 @@
  * untouched and publishes a copy on a numbered bus, so that a Spectrogram on a
  * different track can draw it. Several of those, overlaid, is the point.
  *
- * iPlug2 (zlib) + the VST3 SDK (MIT) + CLAP (MIT) + a transport crate with no
- * dependencies, around this repository's GPL-3.0-or-later code.
+ * iPlug2 (zlib) + the VST3 SDK (MIT) + CLAP (MIT) + the bus's Rust crates and
+ * the crates.io crates they link -- rtrb, basedrop, triple_buffer, libc (and
+ * windows-sys on Windows) and theirs -- around this repository's
+ * GPL-3.0-or-later code. Every one of those is under a licence on deny.toml's
+ * allowlist, MPL-2.0's triple_buffer among them, and THIRD_PARTY_LICENSES.md
+ * carries their notices (`cargo tree -p bus-capi -e normal` lists them).
  */
 #pragma once
 

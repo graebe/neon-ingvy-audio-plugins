@@ -8,8 +8,12 @@
  * than listened to: audio passes through untouched and the editor draws a
  * rolling time/frequency picture of it in the Ultraviolet design language.
  *
- * iPlug2 (zlib) + the VST3 SDK (MIT) + CLAP (MIT) + an analyzer crate with no
- * dependencies, around this repository's GPL-3.0-or-later code.
+ * iPlug2 (zlib) + the VST3 SDK (MIT) + CLAP (MIT) + the analyzer's Rust crates
+ * and the crates.io crates they link -- realfft, rustfft, rtrb, basedrop,
+ * triple_buffer and theirs -- around this repository's GPL-3.0-or-later code.
+ * Every one of those is under a licence on deny.toml's allowlist, MPL-2.0's
+ * triple_buffer among them, and THIRD_PARTY_LICENSES.md carries their notices
+ * (`cargo tree -p spectro-capi -e normal` lists them).
  */
 #pragma once
 
