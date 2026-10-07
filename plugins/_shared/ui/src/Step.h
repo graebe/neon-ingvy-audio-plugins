@@ -35,15 +35,23 @@
  *
  *   play       the playhead: a bg-300 well, a uv border and glow-led; on a lit
  *              step the fill is shaded with --dip (bg-000 at a quarter), on
- *              any other a uv-glow wash
+ *              any other a uv-glow wash at half opacity, as the card's
+ *              .ph-step.play:not(.on)::before
  *   beat       the first step of a beat: a line-200 border where nothing else
  *              colours it, so bars read without numbers
  *   accent     an amber border
  *   cursor     the step being edited: a 1px ink outline 2px outside the cell
  *   waiting    a bg-100 well: a step a mode is still waiting on (the Trance
  *              Gate's Set order)
- *   number     the card's index, 10px hint text at the top left, ink-dim (on-uv
- *              over a fill); 0 for none
+ *   number     10px hint text at the top left; 0 for none. Each part of it
+ *              takes the colour that reads on what is behind that part: on-uv
+ *              over a full uv fill, bg-000 over a hole lit at filledAlpha
+ *              (5.7:1), and over the well ink-dim for the card's index, which
+ *              is a mark -- or ink where the number is a control you press
+ *              (numberIsControl: the Trance Gate's arrival numbers), since
+ *              1.1.0 keeps ink-dim for disabled text and inactive marks only.
+ *              A fill that stops part way up the number splits it, rather
+ *              than leaving one part on a colour it cannot be read on
  *
  * Everything outside the cell -- glow-led's halo, the cursor's outline -- is
  * light past its bounds, painted by the parent (Luminous.h): a StepGrid.
@@ -91,13 +99,14 @@ public:
         bool cursor = false;
         bool waiting = false;
         int number = 0;
+        bool numberIsControl = false;
 
         bool operator== (const State& o) const
         {
             return drawn == o.drawn && juce::exactlyEqual (amount, o.amount)
                 && juce::exactlyEqual (level, o.level) && play == o.play && beat == o.beat
                 && accent == o.accent && cursor == o.cursor && waiting == o.waiting
-                && number == o.number;
+                && number == o.number && numberIsControl == o.numberIsControl;
         }
         bool operator!= (const State& o) const { return ! (*this == o); }
     };
@@ -118,8 +127,11 @@ public:
     bool isLit() const noexcept;
     /* The lit height, 0..1, or 0 for none. */
     float litHeight() const noexcept;
-    /* Whether a number over it sits on the uv fill (and is on-uv). */
-    bool isOverFill() const noexcept;
+    /* The top of the fill in the cell's coordinates: its height when there
+     * is none. */
+    float fillTop() const noexcept;
+    /* The colour the number takes at height `y` in the cell. */
+    juce::Colour numberColourAt (float y) const noexcept;
 
     void paint (juce::Graphics&) override;
     void paintLight (juce::Graphics&) override;

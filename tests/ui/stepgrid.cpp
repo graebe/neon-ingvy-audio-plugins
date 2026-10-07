@@ -11,6 +11,7 @@
 #include "Gallery.h"
 #include "Pointer.h"
 #include "StepGrid.h"
+#include "UvTokens.h"
 #include "checks.h"
 #include "snapshot.h"
 
@@ -85,10 +86,55 @@ TEST_CASE ("step: the border is what was drawn, the fill is what is heard")
     /* A tie is a bar, never a fill; a tie the fade has not reached is pending. */
     s.setState (drawn (Step::Drawn::tie));
     CHECK_FALSE (s.isLit());
-    CHECK (s.isOverFill());
     s.setState (drawn (Step::Drawn::tie, 1.0f, 0.0f));
     CHECK (s.isPending());
-    CHECK_FALSE (s.isOverFill());
+}
+
+TEST_CASE ("step: a number takes the colour that reads on what is behind it")
+{
+    namespace c = uv::tok::colour;
+    Step s;
+    /* Where the number's glyphs sit: the top of its 14px box at y = 2. */
+    constexpr float glyphs = 8.0f;
+
+    /* A full fill: on-uv. */
+    auto state = drawn (Step::Drawn::on);
+    state.number = 3;
+    state.numberIsControl = true;
+    s.setState (state);
+    CHECK (s.numberColourAt (glyphs) == c::onUv);
+
+    /* A fill that stops below the number, a tie, a step waiting for the
+     * fade: the bare well, so ink -- never on-uv on bg-200. */
+    for (const auto& below : { drawn (Step::Drawn::on, 0.4f), drawn (Step::Drawn::tie),
+                               drawn (Step::Drawn::on, 1.0f, 0.0f) })
+    {
+        auto st = below;
+        st.number = 3;
+        st.numberIsControl = true;
+        s.setState (st);
+        CHECK (s.numberColourAt (glyphs) == c::ink);
+    }
+    /* Part way up the number: split at the fill's top edge. */
+    state.amount = 0.8f;
+    s.setState (state);
+    CHECK (s.fillTop() == doctest::Approx (39.0f - 38.0f * 0.8f));
+    CHECK (s.numberColourAt (s.fillTop() - 1.0f) == c::ink);
+    CHECK (s.numberColourAt (s.fillTop() + 1.0f) == c::onUv);
+
+    /* A hole lit at filledAlpha: bg-000, at 5.7:1 on it. */
+    auto hole = drawn (Step::Drawn::off, 1.0f, 1.0f);
+    hole.number = 5;
+    hole.numberIsControl = true;
+    s.setState (hole);
+    CHECK (s.isFilled());
+    CHECK (s.numberColourAt (glyphs) == c::bg000);
+
+    /* The card's plain index is a mark: ink-dim off the fill. */
+    auto index = drawn (Step::Drawn::off);
+    index.number = 4;
+    s.setState (index);
+    CHECK (s.numberColourAt (glyphs) == c::inkDim);
 }
 
 TEST_CASE ("step grid: sixteen to a row, 8 apart, 760 wide, rows that grow")

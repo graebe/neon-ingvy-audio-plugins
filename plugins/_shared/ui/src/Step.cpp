@@ -72,9 +72,17 @@ float Step::litHeight() const noexcept
     return juce::jlimit (minLit, 1.0f, amount * state.level);
 }
 
-bool Step::isOverFill() const noexcept
+float Step::fillTop() const noexcept
 {
-    return state.drawn != Drawn::off && ! isPending();
+    const auto inner = getLocalBounds().toFloat().reduced (hairline);
+    return isLit() ? inner.getBottom() - inner.getHeight() * litHeight() : (float) getHeight();
+}
+
+juce::Colour Step::numberColourAt (float y) const noexcept
+{
+    if (isLit() && y >= fillTop())
+        return isFilled() ? c::bg000 : c::onUv;
+    return state.numberIsControl ? c::ink : c::inkDim;
 }
 
 bool Step::glows() const noexcept
@@ -127,7 +135,7 @@ void Step::paint (juce::Graphics& g)
     if (isLit())
     {
         const float alpha = isFilled() ? filledAlpha : 1.0f;
-        const auto lit = inner.withTop (inner.getBottom() - inner.getHeight() * litHeight());
+        const auto lit = inner.withTop (fillTop());
         g.setColour (c::uv.withMultipliedAlpha (alpha));
         g.fillRect (lit);
         if (state.play)
@@ -147,16 +155,24 @@ void Step::paint (juce::Graphics& g)
      * step is not on and must not read as uv. */
     if (state.play && ! on && ! tie)
     {
-        g.setColour (c::uvGlow);
+        g.setColour (c::uvGlow.withMultipliedAlpha (0.5f));
         g.fillRect (inner);
     }
 
+    /* THE NUMBER, in the colour of what is behind it: above the fill's top
+     * edge in the well's, below it in the fill's. */
     if (state.number > 0)
     {
-        const auto font = uv::type::hint();
-        uv::type::draw (g, juce::String (state.number),
-                        { 4.0f, 2.0f, box.getWidth() - 4.0f, uv::tok::type::hint.lineHeight }, font,
-                        isOverFill() ? c::onUv : c::inkDim, juce::Justification::centredLeft);
+        const auto text = juce::String (state.number);
+        const juce::Rectangle<float> at { 4.0f, 2.0f, box.getWidth() - 4.0f, uv::tok::type::hint.lineHeight };
+        const int split = juce::roundToInt (fillTop());
+        for (const bool overFill : { false, true })
+        {
+            const juce::Graphics::ScopedSaveState keep (g);
+            if (g.reduceClipRegion (overFill ? getLocalBounds().withTop (split) : getLocalBounds().withBottom (split)))
+                uv::type::draw (g, text, at, uv::type::hint(), numberColourAt (overFill ? (float) getHeight() : 0.0f),
+                                juce::Justification::centredLeft);
+        }
     }
 }
 

@@ -20,7 +20,9 @@
  *   waiting    in Set order, an arriving step not named yet this pass
  *   number     the step's arrival, only while it means something: in Set
  *              order, or while the fade is part way in -- and only on the
- *              kind the fade brings in, the hits or under Fade Out the holes
+ *              kind the fade brings in, the hits or under Fade Out the holes.
+ *              A control, so ink over the well where the card's plain index
+ *              is ink-dim (Step.h)
  *
  * THE NUMBER IS A CONTROL. A press on it opens a field over the pad's corner
  * to type a new place (EditField: Enter or a click away keeps it, Escape

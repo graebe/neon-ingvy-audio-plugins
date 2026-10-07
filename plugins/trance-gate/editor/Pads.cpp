@@ -127,6 +127,7 @@ void Pads::show (const Pattern& p, int playStep, bool fading)
         s.cursor = i == p.cursor;
         s.waiting = ordering && arriving && ! edits.isNamed (i);
         s.number = numbered && arriving ? juce::jmax (0, p.orders[at]) : 0;
+        s.numberIsControl = true;
         steps.setState (i, s);
 
         auto& number = *numbers[at];
