@@ -139,6 +139,20 @@ objects=()
 for f in "$BUILD"/tests/* "$BUILD"/tests/cpp/*; do
     [ -f "$f" ] && [ -x "$f" ] && objects+=( -object "$f" )
 done
+# JUCE puts a console app in <name>_artefacts/<config>/: the native kit's and
+# the editors' tests (tests/ui), and juce_host.
+for f in "$BUILD"/tests/*_artefacts/*/* "$BUILD"/tests/ui/*_artefacts/*/*; do
+    [ -f "$f" ] && [ -x "$f" ] && objects+=( -object "$f" )
+done
+# And the code of a plugin on the JUCE shell runs inside its bundle, which
+# juce_host loads: each JUCE bundle (the one with JUCE's moduleinfo.json) is an
+# instrumented image of its own, writing its own profile.
+for b in "$BUILD"/out/*.vst3; do
+    [ -f "$b/Contents/Resources/moduleinfo.json" ] || continue
+    for f in "$b"/Contents/MacOS/*; do
+        [ -f "$f" ] && objects+=( -object "$f" )
+    done
+done
 
 "$LLVM_COV" export "${objects[@]}" \
     -instr-profile="$PROF/merged.profdata" \

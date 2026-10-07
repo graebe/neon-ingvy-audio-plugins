@@ -296,6 +296,12 @@ if (APPLE)
     endforeach()
 endif()
 
+# ------------------------------------------------------------ the native kit
+
+# The kit's and the editors' own tests (tests/ui): unit tests in quick, the
+# snapshot goldens in full. They place themselves in the tiers.
+add_subdirectory(ui)
+
 # ------------------------------------------------------------ the JUCE bundles
 
 # EVERY BUNDLE BUILT ON THE JUCE SHELL (cmake/NiJucePlugin.cmake), hosted as a
