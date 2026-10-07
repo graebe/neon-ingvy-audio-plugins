@@ -1019,7 +1019,9 @@ vtable. The module itself is Rust, and `ni-schwung` declares the same
 structures for the host to call.
 
 JUCE is the submodule at `external/JUCE`, pinned to the 9.0.3 tag. Today it
-builds the class-ID spike (`spike/juce-trance-gate`) and nothing else; the
+builds the class-ID spike (`spike/juce-trance-gate`) and the native UI on its
+own (`ui/CMakeLists.txt`: the kit in `plugins/_shared/ui`, the editors in
+`plugins/*/editor`, their tests in `tests/ui`), none of which ships; the
 plugins still ship on iPlug2. This project takes JUCE under the AGPLv3,
 which GPLv3 section 13 lets a GPL-3.0-or-later work combine with
 ([ADR 0001](docs/adr/0001-gpl-3.0-or-later.md)). When the JUCE shell replaces

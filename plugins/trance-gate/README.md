@@ -56,9 +56,10 @@ they sound exactly as before.
 
 ## Slot files
 
-**EXPORT** saves the current slot to a `.nitgslot` file; **EXPORT ALL** saves
-all 8 slots to a `.nitgbank` file. **IMPORT** opens either kind: a slot file
-replaces the current slot, a bank replaces all 8. The dialog remembers the
+**Export slot** saves the current slot to a `.nitgslot` file; **Export all**
+saves all 8 slots to a `.nitgbank` file. **Import** opens either kind: a slot
+file replaces the current slot, a bank replaces all 8. In Live they are icons
+in the column right of the panels, and the hint bar names each one. The dialog remembers the
 last folder you used, and the hint bar says what happened, for example
 "Imported Bassline.nitgslot into slot 3."
 
@@ -71,7 +72,7 @@ files are a plugin feature; the Move keeps its own presets.
 
 **Copy and paste work on a slot.** The **copy** icon (*Copy slot*) puts the
 current slot — its pattern and its whole sound — on the clipboard. The
-**paste** icon (*Paste into slot*) puts what is on the clipboard into the
+**paste** icon (*Paste slot*) puts what is on the clipboard into the
 current slot. The other slots are not touched.
 
 For example, to start slot 2 from slot 1:
@@ -110,14 +111,14 @@ Live, where the host keeps **⌘C** and **⌘V** for its own menu.
 **Every step carries an arrival number**, and Fade introduces them in that order,
 evenly spaced — the step ranked *r* of *n* arrives at exactly *r/n*.
 
-**Dir** chooses which end the pattern is built up from. The knob means the same
-thing in both: *how much of the drawn pattern is present*. Only the missing part
-differs.
+**Out** (the Fade Dir parameter, **Dir** on the Move) chooses which end the
+pattern is built up from. The knob means the same thing both ways: *how much of
+the drawn pattern is present*. Only the missing part differs.
 
 | | what arrives, one at a time | an un-arrived step | at 0% | at 100% |
 |---|---|---|---|---|
-| **In** | the steps you drew ON | is a gap — silent | silence | the pattern |
-| **Out** | the steps you drew OFF, the holes | sounds, like an ordinary step | every hole filled | the pattern |
+| **Out** off (In) | the steps you drew ON | is a gap — silent | silence | the pattern |
+| **Out** on | the steps you drew OFF, the holes | sounds, like an ordinary step | every hole filled | the pattern |
 
 So 100% is the pattern either way, which is what makes it the neutral default and
 lets the direction be switched at rest without changing a sample.
@@ -145,17 +146,18 @@ sounds in order to decide whether to hold a gate open through it, so a step that
 has not arrived must not keep its neighbour's gate open.
 
 **The order is the point.** In position order a fade can only be a left-to-right
-wipe; shuffled, it is a build-up. `Random` shuffles it along with the pattern, and
-`ORDER` in the Fade panel lets you tap the steps into the sequence you want — or
+wipe; shuffled, it is a build-up. **Randomize** shuffles it along with the pattern,
+**Shuffle order** shuffles it alone, and **Set order** in the Fade panel lets you
+tap the steps into the sequence you want — or
 click a number on a pad and type one. Typing a number that is taken **swaps** the
 two steps, so nothing between them moves.
 
 The hits and the holes carry **separate orders**, ranked among themselves, because
 a step is one or the other and never both. Fade Out sequences the holes.
 
-## Random
+## Randomize
 
-`Random` fills the current slot with a Euclidean gate — a random number of hits
+**Randomize** fills the current slot with a Euclidean gate — a random number of hits
 spread as evenly as the length allows, always with one on the downbeat — and a
 shuffled arrival order. Sixteen coin flips reads as noise rather than as a trance
 gate, which is why it is not that. Ties are cleared and the levels return to
