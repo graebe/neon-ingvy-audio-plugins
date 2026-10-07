@@ -31,71 +31,28 @@
 #include <math.h>
 #include <stdint.h>
 #include "sc_core.h"
+/* The patch's length, the input and the golden hash, shared with the test
+ * that renders the same through the built VST3 (tests/side-chain/sc_host). */
+#include "render_golden.h"
 
-#define SR      44100.0
-#define BLOCK   128
-#define SECONDS 4
-/* Spelled as an integer rather than (int)(SR * SECONDS): a cast of a double is
- * not a constant expression, so the arrays below became variable-length arrays
- * and only compiled as a GNU extension. */
-#define FRAMES  (44100 * SECONDS)
-
-/*
- * THE GOLDEN HASH, FNV-1a over the rendered float bytes.
- *
- * A registered test rather than a pipe into md5 that somebody has to remember
- * to type. If this fires, the DSP changed: re-run with --dump, satisfy yourself
- * that the change was intended, and record the new value WITH A REASON, as the
- * Trance Gate's equivalent does.
- */
-static const uint64_t GOLDEN = 0xF166F7CC7678B4BEull;
-/* Recorded 2026-09-29, the first render. It did NOT move when the int16 path
- * was changed to round rather than truncate, which is the evidence that that
- * change touched only the Move's path and not the shared gain law.
- *
- * Nor on 2026-09-30, when the phase-locked loop became a time constant, a
- * stopped transport began RELEASING a Cycle duck instead of cutting it, Depth
- * began to glide and a stage length became safe to move mid-stage: this render
- * never stops, never moves a parameter, and its host clock is exact. */
+#define SR      SC_RENDER_SR
+#define BLOCK   SC_RENDER_BLOCK
+#define FRAMES  SC_RENDER_FRAMES
+#define GOLDEN  SC_RENDER_GOLDEN
 
 static uint64_t fnv1a(const void *p, size_t n)
 {
-    const unsigned char *b = (const unsigned char *)p;
-    uint64_t h = 1469598103934665603ull;
-    for (size_t i = 0; i < n; i++) {
-        h ^= b[i];
-        h *= 1099511628211ull;
-    }
-    return h;
+    return sc_render_fnv1a(SC_RENDER_FNV_START, p, n);
 }
 
-/*
- * A REPRODUCIBLE INPUT WITH TRANSIENTS IN IT.
- *
- * A pure sine would hide every timing error that lands between zero crossings.
- * This is a sine plus a cheap LCG click train, so a duck that starts a sample
- * early or late changes the bytes.
- */
 static void make_input(float *l, float *r, int frames)
 {
-    uint32_t seed = 0x5E1F1E1Du;
-    for (int i = 0; i < frames; i++) {
-        const double t = (double)i / SR;
-        const float tone = (float)(0.35 * sin(2.0 * M_PI * 220.0 * t));
-        seed = seed * 1664525u + 1013904223u;
-        /* A transient every 1024 samples, so the picture has edges. */
-        const float click = (i % 1024 < 24)
-            ? (float)((seed >> 9) & 0xFFFF) / 65535.0f * 0.5f - 0.25f
-            : 0.0f;
-        l[i] = tone + click;
-        r[i] = tone - click;
-    }
+    sc_render_input(l, r, frames);
 }
 
+/* render_golden.h's SC_RENDER_PARAMS, through the engine's string door. */
 static void configure(sc_core_t *c)
 {
-    /* Cycle, so the render depends on the transport and exercises the
-     * phase-locked loop rather than a queue of notes. */
     sc_core_set_num(c, SC_P_SOURCE, 0);
     sc_core_set_param(c, "rate", "1/4");
     sc_core_set_num(c, SC_P_CURVE, 1);      /* Exponential */
