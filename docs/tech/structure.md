@@ -4,8 +4,9 @@ order: 1
 slug: structure
 ---
 
-A monorepo: everything that ships from here is in here. There is one submodule
-(iPlug2) and the engines are subtrees, not submodules — so a clone plus
+A monorepo: everything that ships from here is in here. There are two
+submodules, iPlug2 and JUCE 9.0.3 (the framework that replaces it), and the
+engines are subtrees, not submodules — so a clone plus
 `git submodule update --init --recursive` is the whole checkout.
 
 ```
@@ -13,13 +14,20 @@ engines/<product>/crates     the core, and its wrappers
 engines/shared/crates        ni-dsp, ni-schwung — shared, product-free
 plugins/<product>/           the VST3/AU/CLAP shell, and its editor
 plugins/_shared/ni/          ni::WebPlugin, the editor protocol, ni::wire
+plugins/_shared/ui/          the native Ultraviolet kit (JUCE), for the editors below
+plugins/<product>/editor/    the product's native editor, on that kit
+ui/                          the native kit, editors and tests as a project of their own
 modules/<product>/           the Schwung module's shell and packaging
 ui-kit/                      @ultraviolet/ui — tokens, controls, the iPlug2 bridge
 site/                        this documentation site
 design/scheme/               the Ultraviolet design system, vendored
 design/designs/              the "NI Plugin Layouts" canvas, mirrored
-tests/                       the cross-cutting suite
+tests/                       the cross-cutting suite; tests/ui the native UI's
+tests/fixtures/iplug2/       what the iPlug2 VST3 builds save: the compatibility contract
+spike/juce-trance-gate/      the JUCE class-ID spike, the reference for that contract
 cmake/                       the Rust toolchain resolver, NiRust.cmake (Corrosion) and NiPlugin.cmake
+tools/docker/, tools/cross/  the cross-build kit: Linux and Windows build images,
+                             the Windows toolchain, the JUCE smoke plugin
 versions.json                one version per product
 ```
 

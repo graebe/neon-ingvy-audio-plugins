@@ -1035,8 +1035,9 @@ The coverage tooling adds no row: `llvm-cov`, `llvm-profdata` and
 `cargo-llvm-cov` are developer tools that run *on* the build rather than inside
 it. Likewise the licence tools (`cargo-deny`, `cargo-about`), the CI
 validators (`pluginval`, `clap-validator`, `auval`) and the build tools (vite,
-astro, CMake, cargo, Corrosion) are run, not shipped — vite's one
-exception is its preload polyfill, listed above. So is `@playwright/test`
+astro, CMake, cargo, Corrosion, and the cross-build kit's, listed below) are
+run, not shipped — vite's one exception is its preload polyfill, listed
+above. So is `@playwright/test`
 (**Apache-2.0**, © Microsoft Corporation), the root `devDependency` that drives
 the editors' end-to-end tests (`tests/e2e`) in the Google Chrome already
 installed: it is pinned in `package-lock.json`, downloads no browser, and no
@@ -1046,6 +1047,32 @@ Corrosion 0.6.1 (**MIT**, © 2018 Andrew Gaspar), the CMake module that runs
 cargo for the engines, is downloaded at configure time by
 `cmake/NiCorrosion.cmake`, pinned by its release tarball's SHA-256. It is CMake
 code, and nothing of it is compiled into an artefact.
+
+## Build tools (not shipped)
+
+The cross-build kit — `tools/docker`, `tools/cross` and `scripts/build-*.sh`,
+described in [docs/tech/cross-build.md](docs/tech/cross-build.md) — builds and
+checks the plugins for macOS, Linux and Windows with these. They run *on* the
+build: nothing of theirs is linked or copied into an artefact that ships, so
+they add no notice to one. They are listed so that every licence in the chain
+is known.
+
+| Tool | Where | Licence |
+|---|---|---|
+| `Ubuntu 24.04` packages: the base image, build-essential, CMake, Ninja, pkgconf, the X11, ALSA, FreeType and Fontconfig development packages, Xvfb, DejaVu fonts | both build images, from one Ubuntu archive snapshot | each its own free-software licence (GPL, LGPL, MIT/X11, BSD and the like, per Ubuntu's archive policy) |
+| `LLVM` 20: clang, clang-cl, lld, llvm-lib, llvm-rc, llvm-mt | both build images | **Apache-2.0 WITH LLVM-exception** |
+| `rustup` 1.29.1 and the Rust 1.98.1 toolchain | both build images | **MIT OR Apache-2.0** |
+| `xwin` 0.10.0 | Windows image | **MIT OR Apache-2.0** |
+| `Wine` 9.0 | Windows image | **LGPL-2.1-or-later** |
+| `pluginval` 1.0.4 | all three platforms | **GPL-3.0** |
+| `JUCE` 9.0.3 | the smoke plugin (`tools/cross/smoke`), from the `external/JUCE` submodule; in no product yet, and its row is under test-only above | **AGPL-3.0**, or the commercial JUCE licence |
+| `Microsoft C runtime` 14.44 and `Windows SDK` 10.0.26100 | Windows image, downloaded by xwin | **Microsoft's licence terms**, accepted by the owner alone ([tools/docker/windows/README.md](tools/docker/windows/README.md)) |
+
+The Microsoft row is the one exception to *nothing of theirs is linked*: a
+Windows build links the static C runtime into its DLL. No Windows binary ships
+from this repository today, and none from this kit ever will — a Windows
+release comes from the native Windows build, which links the same runtime and
+will bring this row up into the shipped sections with it.
 
 ## No longer dependencies
 

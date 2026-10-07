@@ -1,0 +1,30 @@
+# The engine of the cross-build smoke plugin: the least Rust that still proves
+# a JUCE plugin links a Rust static library on macOS, Linux and Windows.
+#
+# NOT A MEMBER OF THE REPOSITORY'S WORKSPACE, on purpose: the empty
+# [workspace] below makes this its own root, so it never enters the products'
+# Cargo.lock and `cargo test` at the root never builds it.
+[package]
+name = "ni-cross-smoke"
+version = "0.0.0"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "ni_cross_smoke"
+crate-type = ["staticlib"]
+
+[workspace]
+
+# The products' release profile (the root Cargo.toml says why), so the smoke
+# test links what a product links: no unwinding out of the audio callback.
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[profile.dev]
+panic = "abort"
