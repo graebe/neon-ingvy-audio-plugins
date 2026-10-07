@@ -141,6 +141,12 @@ violations, and a reallocation is both. Three things differ, each on purpose:
 It is a dev-dependency wherever it appears, so it ships in nothing and has no
 row in THIRD_PARTY_LICENSES.md, like proptest.
 
+One test keeps a counter of its own: `spectro-recv/tests/no_alloc_worker.rs`
+measures the receiver's worker on the thread the receiver starts, which no
+closure of the test's runs on, so a per-thread guard cannot see it. Its
+twenty lines count every thread, as ni-testkit did, and the file holds one
+test for that reason.
+
 ## How the shell's threads use them
 
 Added after the second wave (2026-10-06), which moved the plugin shells'

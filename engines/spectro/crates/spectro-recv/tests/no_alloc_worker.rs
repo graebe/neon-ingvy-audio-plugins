@@ -10,8 +10,12 @@
  * thread's own loop does (the clock, the parking, the hand-over) is counted
  * too. The test thread in the window only pushes, drains and sleeps.
  *
- * THIS FILE MUST HOLD EXACTLY ONE TEST, for the reason no_alloc.rs gives: the
- * counter is global.
+ * SO THE COUNTER IS THE PROCESS'S, not assert_no_alloc's. That guard, the one
+ * every other no_alloc test installs, watches the thread that runs its
+ * closure, and the thread measured here is one the receiver starts itself;
+ * no closure of the test's reaches it. A global counter is what sees it, and
+ * a global counter is why THIS FILE MUST HOLD EXACTLY ONE TEST: cargo runs
+ * tests in threads, and a second one could allocate inside the window.
  */
 
 use std::alloc::{GlobalAlloc, Layout, System};
