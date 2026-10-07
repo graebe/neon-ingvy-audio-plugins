@@ -9,11 +9,13 @@ drawn to the staff-space metrics notation engravers use.
 | File | SHA-256 |
 |---|---|
 | `Bravura.otf` | `cdf0f893ee1fdb64b7f6713d71ee0dcfc349c0ac01429a8e451b01a9e79f5f3b` |
-| `OFL.txt` | `c24929be7028026a65ee8894da1e3c36d2a4ccce0548d9ba8ba64509f46319ee` |
+| `Bravura-OFL.txt` | `c24929be7028026a65ee8894da1e3c36d2a4ccce0548d9ba8ba64509f46319ee` |
 
 **Version 1.482**, the official release `bravura-1.482` of
 <https://github.com/steinbergmedia/bravura/releases/tag/bravura-1.482>
-(24 August 2026), `Bravura.otf` and `OFL.txt`, unmodified.
+(24 August 2026), `Bravura.otf` and `OFL.txt`, unmodified. The licence is
+kept as `Bravura-OFL.txt`, so that in a bundle's resources it sits beside
+JetBrains Mono's `OFL.txt` instead of replacing it.
 
 Embedded whole, as BinaryData of `ni_ui_assets`, never asked of the system.
 

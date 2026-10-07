@@ -62,7 +62,7 @@ juce_add_binary_data(ni_ui_assets
 set(NI_UI_FONT_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/fonts/OFL.txt)
 set(NI_UI_FONT_LICENSE ${NI_UI_FONT_LICENSE} PARENT_SCOPE)
 # Bravura's, likewise, for a plugin whose editor draws notation.
-set(NI_UI_MUSIC_FONT_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/fonts/bravura/OFL.txt)
+set(NI_UI_MUSIC_FONT_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/fonts/bravura/Bravura-OFL.txt)
 set(NI_UI_MUSIC_FONT_LICENSE ${NI_UI_MUSIC_FONT_LICENSE} PARENT_SCOPE)
 
 # --------------------------------------------------------------------- kit

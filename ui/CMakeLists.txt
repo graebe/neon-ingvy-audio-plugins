@@ -55,9 +55,12 @@ add_subdirectory(${NI_ROOT}/external/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_
 
 # The kit, then one library per editor.
 add_subdirectory(${NI_ROOT}/plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
-foreach(product trance-gate side-chain spectrogram listen-in)
+foreach(product trance-gate side-chain spectrogram listen-in chord-detector)
     ni_ui_add_editor(${product})
 endforeach()
+# NI Chord-Detector's model hands the engine's own structs over: its editor
+# reads the header cbindgen writes (it links nothing of the engine).
+target_include_directories(ni_editor_chord_detector INTERFACE ${NI_ROOT}/engines/chord-detector/include)
 
 # The gallery: every component in its states, for a person to look at.
 add_subdirectory(${NI_ROOT}/plugins/_shared/ui/gallery ${CMAKE_BINARY_DIR}/gallery)

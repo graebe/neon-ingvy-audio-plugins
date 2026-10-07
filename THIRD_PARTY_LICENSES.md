@@ -89,6 +89,7 @@ Mono declaring none.
 | `NIListenIn.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
 | `NISideChain.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
 | the documentation site | emitted by the build as a hashed asset under `/neon-ingvy-audio-plugins/_astro/` | `/neon-ingvy-audio-plugins/fonts/OFL.txt` |
+| `NIChordDetector.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits beside
 the kit's font files in `ui-kit/src/fonts`, and wherever the font ships: each
@@ -104,13 +105,17 @@ License 1.1**, Reserved Font Name "Bravura"), the reference font of SMuFL. The
 native kit draws its notation with it (`ni::ui::GrandStaff`: clefs,
 accidentals, noteheads) and embeds `Bravura.otf` whole and unmodified, as
 BinaryData of `ni_ui_assets` -- which is what lets it keep its reserved name;
-a subset would have to be renamed. The file and its `OFL.txt` are at
+a subset would have to be renamed. The file and its licence (`Bravura-OFL.txt`,
+the release's `OFL.txt` renamed so it never replaces JetBrains Mono's) are at
 `plugins/_shared/ui/fonts/bravura/`, with their provenance in its `README.md`.
 
 **The OFL travels with the font**: a plugin whose editor draws notation copies
-`NI_UI_MUSIC_FONT_LICENSE` (that `OFL.txt`) into its bundle's resources. The
-first is NI Chord-Detector, whose bundle row arrives with its JUCE build. The
-OFL is permissive and GPL-compatible.
+`NI_UI_MUSIC_FONT_LICENSE` (that file) into its bundle's resources. The
+first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
+
+| Bundle | The font | Its licence |
+|---|---|---|
+| `NIChordDetector.vst3` | embedded whole, as OpenType, in the plugin binary | `Contents/Resources/Bravura-OFL.txt` |
 
 ## The engines — this repository's own
 

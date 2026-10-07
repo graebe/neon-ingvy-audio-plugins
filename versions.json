@@ -5,7 +5,7 @@
   "spectrogram": "v2026.10.06.5",
   "listen-in": "v2026.10.06.5",
   "side-chain": "v2026.10.06.5",
-  "chord-detector": "v2026.10.06.1",
+  "chord-detector": "v2026.10.07.1",
 
   "__audio-bus": "The house transport, not a plugin -- it has crates and no config.h, no plists and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
   "audio-bus": "v2026.10.06.5",

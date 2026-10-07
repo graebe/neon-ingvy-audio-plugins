@@ -1,6 +1,6 @@
 [package]
 name = "cd-capi"
-version = "2026.10.6+1"
+version = "2026.10.7+1"
 edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"

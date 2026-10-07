@@ -101,6 +101,8 @@ add_subdirectory(external/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 add_subdirectory(plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
 include(cmake/NiJucePlugin.cmake)
 
+add_subdirectory(plugins/chord-detector)
+
 
 enable_testing()
 # ni_test_tiers: every test is quick or full, and says which.
