@@ -194,7 +194,7 @@ not need a legend.
 
 ## Copy and paste
 
-The two icons beside RANDOM are **Copy slot** and **Paste into slot**. Use the
+The two icons beside RANDOM are **Copy slot** and **Paste slot**. Use the
 icons, not **⌘C** and **⌘V**: Live keeps those keys for its own menu, so a
 plugin window never receives them. The icons work anyway, because the plugin
 reads and writes the clipboard itself.
@@ -203,11 +203,11 @@ To start slot 2 from slot 1:
 
 1. Select slot 1 and press **Copy slot**. The hint bar says "Copied slot 1."
 2. Select slot 2.
-3. Press **Paste into slot**. The hint bar says "Pasted into slot 2." Slot 2
+3. Press **Paste slot**. The hint bar says "Pasted into slot 2." Slot 2
    now has slot 1's pattern and its whole sound; slot 1 is unchanged.
 
 To copy a slot to another track, press **Copy slot** in one Trance Gate and
-**Paste into slot** in the other, on the slot you want to replace.
+**Paste slot** in the other, on the slot you want to replace.
 
 A whole patch on the clipboard — a Move patch, or what the copy icon put
 there in a Trance Gate older than v2026.10.06.2 — still pastes, and replaces

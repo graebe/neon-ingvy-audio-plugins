@@ -71,7 +71,7 @@ files are a plugin feature; the Move keeps its own presets.
 
 **Copy and paste work on a slot.** The **copy** icon (*Copy slot*) puts the
 current slot — its pattern and its whole sound — on the clipboard. The
-**paste** icon (*Paste into slot*) puts what is on the clipboard into the
+**paste** icon (*Paste slot*) puts what is on the clipboard into the
 current slot. The other slots are not touched.
 
 For example, to start slot 2 from slot 1:

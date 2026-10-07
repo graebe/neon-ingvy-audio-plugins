@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The Trance Gate's window verbs: Copy slot, Paste into slot, Export slot,
+ * The Trance Gate's window verbs: Copy slot, Paste slot, Export slot,
  * Export all, Import and Randomize, as one joined row of icons -- the Actions
  * card of Ultraviolet 1.1.0 -- and what each one does.
  *

@@ -17,8 +17,9 @@
  * WHERE ONE DIFFERS FROM THE WEB EDITOR, its control changed with Ultraviolet
  * 1.1.0 and the name follows the control: the two-option selects became
  * switches (Out, Time in %), the buttons are sentence case and verb first
- * (Set order, Shuffle order, Randomize), and the file verbs are icons whose
- * names are the Actions card's (Export slot, Export all). The Motion switch's
+ * (Set order, Shuffle order, Randomize), and the window verbs are icons whose
+ * names are the Actions card's (Paste slot, Export slot, Export all): two
+ * words at most, as the Button card asks of a button's text. The Motion switch's
  * line is the frame's, the same in every window: it rings on the beat on
  * every platform now, not only on a Mac.
  *
@@ -71,7 +72,7 @@ inline constexpr InfoText time { "Time in % — read Attack, Decay and Release a
  * Actions card, Verbs.h): each line names its button's full verb, which the
  * icon replaces. */
 inline constexpr InfoText copy { "Copy slot — put this slot, pattern and sound, on the clipboard." };
-inline constexpr InfoText paste { "Paste into slot — replace this slot from the clipboard; a bank, all 8." };
+inline constexpr InfoText paste { "Paste slot — replace this slot from the clipboard; a bank, all 8." };
 inline constexpr InfoText exportSlot { "Export slot — save this slot to a .nitgslot file." };
 inline constexpr InfoText exportAll { "Export all — save all 8 slots to one .nitgbank file." };
 inline constexpr InfoText import { "Import — load a slot file into this slot, or a bank into all 8." };

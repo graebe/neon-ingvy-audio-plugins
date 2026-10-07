@@ -50,7 +50,7 @@ TEST_CASE ("trance-gate verbs: six icons in the card's order, each named and des
 {
     Rig rig;
     const char* icons[] { "copy", "paste", "export", "export-all", "import", "shuffle" };
-    const char* titles[] { "Copy slot", "Paste into slot", "Export slot", "Export all", "Import", "Randomize" };
+    const char* titles[] { "Copy slot", "Paste slot", "Export slot", "Export all", "Import", "Randomize" };
     for (int i = 0; i < (int) Verbs::Verb::count; ++i)
     {
         CAPTURE (i);

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The clipboard, as the Trance Gate's Copy slot and Paste into slot use it.
+ * The clipboard, as the Trance Gate's Copy slot and Paste slot use it.
  *
  * THE EDITOR READS AND WRITES IT ITSELF, through this, and only through this.
  * In the web editor the plugin did (a WebView in a host can neither read the

@@ -26,7 +26,7 @@ struct Face
 
 const Face faces[] {
     { "copy", "Copy slot", info::copy },
-    { "paste", "Paste into slot", info::paste },
+    { "paste", "Paste slot", info::paste },
     { "export", "Export slot", info::exportSlot },
     { "export-all", "Export all", info::exportAll },
     { "import", "Import", info::import },
