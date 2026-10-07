@@ -131,8 +131,12 @@ void checkClass (const File& bundle, const File& fixtures)
         if (c["Category"].toString() == "Audio Module Class")
         {
             component = c["CID"].toString();
-            check (c["Sub Categories"].toString().contains ("Analyzer"), "an analyzer, as the iPlug2 build was",
-                   c["Sub Categories"].toString());
+            StringArray sub;
+            if (const auto* list = c["Sub Categories"].getArray())
+                for (const auto& v : *list)
+                    sub.add (v.toString());
+            check (sub.joinIntoString ("|") == "Fx|Analyzer", "Fx|Analyzer, as the iPlug2 build was",
+                   sub.joinIntoString ("|"));
         }
     check (component == iplug2, "the component class is the iPlug2 build's", component + " / " + iplug2);
     const auto* compat = info["Compatibility"].getArray();
