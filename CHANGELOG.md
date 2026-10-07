@@ -1,6 +1,6 @@
 # What's new
 
-## v2026.10.07.1
+## v2026.10.07.2
 
 ### New: NI Chord-Detector
 
