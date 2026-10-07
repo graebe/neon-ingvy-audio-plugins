@@ -52,9 +52,22 @@ int ParamBinding::steps() const
     return n == juce::AudioProcessorParameter::getDefaultNumParameterSteps() ? 0 : n;
 }
 
+/*
+ * EACH STEP'S OWN TEXT, not getAllValueStrings. That list is a hosting aid a
+ * parameter may leave empty while it still has steps -- JUCE's AudioParameterInt,
+ * which calls itself continuous, and ni::Parameter's integers (the Trance
+ * Gate's Slot) both do -- and a select given no options shows nothing and
+ * cannot open (UT3). Read through textFor at the very values commit() writes
+ * and ParamSelect::indexOfValue reads, the options are the plugin's text and
+ * cannot disagree with steps(), whatever the parameter's class.
+ */
 juce::StringArray ParamBinding::choices() const
 {
-    return steps() > 0 ? param.getAllValueStrings() : juce::StringArray();
+    juce::StringArray out;
+    const int n = steps();
+    for (int i = 0; i < n; ++i)
+        out.add (textFor (n > 1 ? (float) i / (float) (n - 1) : 0.0f));
+    return out;
 }
 
 void ParamBinding::begin()

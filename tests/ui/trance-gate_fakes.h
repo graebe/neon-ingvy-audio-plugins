@@ -62,16 +62,19 @@ inline juce::String percentText (float v)
 }
 
 /*
- * AN INTEGER THE HOST STEPS THROUGH, as the spike's processor declares Slot
- * and Length (spike/juce-trance-gate/Source/Processor.cpp): JUCE's int
- * parameter calls itself continuous unless it says otherwise, and iPlug2
- * declared both stepped.
+ * AN INTEGER THE HOST STEPS THROUGH, as the processor's ni::Parameter declares
+ * Slot and Length (plugins/_shared/juce/Parameter.cpp): discrete, as iPlug2
+ * declared both, its steps counted -- and NO LIST OF ITS VALUES, which that
+ * class gives only a choice or a toggle. JUCE's own int would build one from
+ * its text, and a fake that kind hid UT3: the plugin's Slot select empty,
+ * while this one showed "1".
  */
 class SteppedInt final : public juce::AudioParameterInt
 {
 public:
     using AudioParameterInt::AudioParameterInt;
     bool isDiscrete() const override { return true; }
+    juce::StringArray getAllValueStrings() const override { return {}; }
 };
 
 /* The fifteen, as Params.cpp declares them and the spike's processor builds

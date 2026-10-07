@@ -13,6 +13,8 @@
  *   trance-gate-signal     the Signal tab, the sweep writing, an outcome in
  *                          the bar
  *   trance-gate-32         two rows of pads, the window grown by one
+ *   trance-gate-settings   the settings row alone, slot 3 and Exponential
+ *                          on their faces (UT3: the Slot select was empty)
  *
  * Each is the same engine stand-in (trance-gate_fakes.h renderCurves), so a
  * change in a picture is a change in the editor.
@@ -152,4 +154,25 @@ NI_SNAPSHOT_TEST ("trance-gate: 32 steps, two rows, the window grown")
     s.model.engineTransport = { true, 20.6, 62.5 };
     s.frame();
     NI_CHECK_SNAPSHOT (s.editor, "trance-gate-32");
+}
+
+NI_SNAPSHOT_TEST ("trance-gate: the settings row, its selects showing the slot and the curve")
+{
+    Scene s;
+    s.model.set (param::slot, 3.0f);
+    s.model.set (param::curve, 1.0f);
+    s.model.set (param::legato, 1.0f);
+    s.frame();
+
+    /* The row only, as the editor draws it: Slot to Time in %, with the
+     * room a focus ring would take round it. */
+    auto& e = s.editor;
+    auto row = e.getLocalArea (&e.select (param::slot), e.select (param::slot).getLocalBounds());
+    for (juce::Component* c : { (juce::Component*) &e.toggle (param::legato),
+                                (juce::Component*) &e.select (param::curve),
+                                (juce::Component*) &e.toggle (param::timeMode) })
+        row = row.getUnion (e.getLocalArea (c, c->getLocalBounds()));
+    const auto picture = ni::ui::test::render (e).getClippedImage (row.expanded (4));
+    const auto result = ni::ui::test::compare (picture, "trance-gate-settings");
+    CHECK_MESSAGE (result.ok, result.message.toStdString());
 }

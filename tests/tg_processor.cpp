@@ -26,7 +26,8 @@
  *   the editor      on the real model: the window, its rows growing with
  *                   Length, the ring's playhead moving under a running
  *                   transport, a set loaded on another thread while it is
- *                   open, and the window verbs through a clipboard and panels
+ *                   open, the window verbs through a clipboard and panels,
+ *                   and the Slot select on the real Slot (UT3)
  *
  * What is the editor's own behaviour against a model that does as told is
  * tests/ui's (trance-gate_*.cpp, on fakes); this is what only the real model
@@ -39,6 +40,7 @@
 #include "TranceGate.h"
 #include "Window.h"
 #include "trance-gate_fakes.h"
+#include "ui/gallery/Pointer.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -825,6 +827,79 @@ TEST_CASE ("the editor stays whole while a set loads on another thread")
     CHECK (e.ring().getCount() == 32);
     CHECK (e.knob (kWidth).binding().value() == doctest::Approx (a.p.parameter (kWidth).getValue()));
     CHECK (a.value (kSlot) == 2.0);
+}
+
+/* What a host hears of one parameter: its gestures and its values, in order. */
+struct GestureEar final : juce::AudioProcessorParameter::Listener
+{
+    juce::StringArray heard;
+    void parameterValueChanged (int, float v) override { heard.add ("value " + juce::String (v, 3)); }
+    void parameterGestureChanged (int, bool starting) override { heard.add (starting ? "begin" : "end"); }
+};
+
+TEST_CASE ("the Slot select on the real Slot: it shows the slot wherever it was set, and a row chosen recalls that slot (UT3)")
+{
+    Instance a;
+    a.block();
+    test::FakeClipboard clipboard;
+    test::FakeFilePanels panels;
+    TranceGateEditor e (a.model(), clipboard, panels, [] { return 0.0; });
+    e.tick (0.0);
+
+    auto& slot = e.select (kSlot);
+    auto& parameter = a.p.parameter (kSlot);
+    const auto shown = [&slot] { return slot.getOptions()[slot.getIndex()]; };
+
+    /* The parameter's own text for every slot, and the one it holds. */
+    CHECK (slot.getOptions() == juce::StringArray { "1", "2", "3", "4", "5", "6", "7", "8" });
+    CHECK (shown() == "1");
+    CHECK (shown() == parameter.getCurrentValueAsText());
+
+    /* A set loads, on the host's thread: the face follows on the message
+     * thread. */
+    const auto slots = fixture ("slots");
+    std::thread host ([&] { a.p.setStateInformation (slots.data(), (int) slots.size()); });
+    host.join();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+    CHECK (a.value (kSlot) == 2.0);
+    CHECK (shown() == "2");
+
+    /* The host's automation. Slot 3 is given a sound of its own on the way. */
+    a.automate (kSlot, 3.0);
+    CHECK (shown() == "3");
+    for (const auto& [i, v] : sound (2))
+        a.automate (i, v);
+    a.automate (kSlot, 5.0);
+    CHECK (shown() == "5");
+    e.tick (16.0);
+    CHECK (e.ring().getCount() != 7);
+
+    /* A click on the field and one on the third row: Slot 3, one complete
+     * gesture, and the editor shows slot 3's sound and pattern once the
+     * engine has switched. */
+    GestureEar ear;
+    parameter.addListener (&ear);
+    ni::ui::gallery::Pointer().click (slot, slot.field().getCentre().toFloat());
+    REQUIRE (slot.isOpen());
+    auto* list = slot.getList();
+    REQUIRE (list != nullptr);
+    CHECK (list->getCurrent() == 4);
+    ni::ui::gallery::Pointer().click (*list, list->rowBounds (2).getCentre().toFloat());
+    parameter.removeListener (&ear);
+    CHECK_FALSE (slot.isOpen());
+    CHECK (ear.heard.joinIntoString (", ") == "begin, value 0.286, end");
+    CHECK (a.value (kSlot) == 3.0);
+    CHECK (shown() == "3");
+
+    a.block();
+    a.follow();
+    e.tick (32.0);
+    checkSound (a, 2);
+    CHECK (e.ring().getCount() == 7);
+    CHECK (e.knob (kAmount).getValueText() == a.p.parameter (kAmount).getCurrentValueAsText());
+    CHECK (e.select (kCurve).getOptions()[e.select (kCurve).getIndex()]
+           == a.p.parameter (kCurve).getCurrentValueAsText());
+    CHECK (shown() == "3");
 }
 
 TEST_CASE ("the window verbs copy, paste, export and import through the real engine")

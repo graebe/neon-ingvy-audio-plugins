@@ -231,6 +231,38 @@ TEST_CASE ("trance-gate: the settings row holds the four settings, space-4 apart
 
 /* -------------------------------------------------------------- controls -- */
 
+TEST_CASE ("trance-gate: the Slot select shows the slot the parameter holds, and a row chosen is that slot, one gesture (UT3)")
+{
+    Rig rig;
+    auto& slot = rig.editor.select (param::slot);
+    auto& parameter = rig.model.parameter (param::slot);
+    const auto shown = [&slot] { return slot.getOptions()[slot.getIndex()]; };
+
+    /* The parameter's own text, from the first frame on. */
+    CHECK (shown() == "1");
+    CHECK (shown() == parameter.getCurrentValueAsText());
+
+    /* The host, a set or automation moves it: the face follows. */
+    rig.model.set (param::slot, 6.0f);
+    CHECK (shown() == "6");
+    CHECK (shown() == parameter.getCurrentValueAsText());
+
+    /* A click on the field, a click on the third row: slot 3, as one
+     * complete gesture, and the face says so. */
+    Pointer p;
+    p.click (slot, slot.field().getCentre().toFloat());
+    REQUIRE (slot.isOpen());
+    auto* list = slot.getList();
+    REQUIRE (list != nullptr);
+    CHECK (list->getNumRows() == 8);
+    CHECK (list->getCurrent() == 5);
+    Pointer().click (*list, list->rowBounds (2).getCentre().toFloat());
+    CHECK_FALSE (slot.isOpen());
+    CHECK (rig.model.plain (param::slot) == 3.0f);
+    CHECK (rig.model.params.log() == "begin 0, value 0 0.286, end 0");
+    CHECK (shown() == "3");
+}
+
 TEST_CASE ("trance-gate: the switches are their parameters -- Out is Fade Dir's second option, Time in % Env Time's")
 {
     Rig rig;
