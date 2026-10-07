@@ -15,8 +15,10 @@ crate-type = ["cdylib", "staticlib"]
 sc-core = { path = "../sc-core" }
 # Pulled in so ONE staticlib carries both surfaces: the Schwung vtable and the
 # sc_core_* ABI the tests and the plugin link. Two staticlibs would each
-# bundle their own copy of the Rust runtime and collide.
-sc-capi = { path = "../sc-capi" }
+# bundle their own copy of the Rust runtime and collide. Without its `shell`
+# feature: the plugin shell and the ground are the plugin's, and nothing on the
+# Move calls them (sc-capi's Cargo.toml).
+sc-capi = { path = "../sc-capi", default-features = false }
 # The Schwung audio_fx v2 glue, shared with every module.
 ni-schwung = { path = "../../../shared/crates/ni-schwung" }
 

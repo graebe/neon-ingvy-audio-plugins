@@ -120,10 +120,12 @@ serde = { version = "1.0.229", default-features = false }
 serde_json = { version = "1.0.151", default-features = false }
 # A seeded generator: the Trance Gate's randomiser and the tests' noise.
 fastrand = { version = "2.5.0", default-features = false }
-# Test and bench only, never linked into anything that ships: music-core's
-# table-driven cases, its property tests and its benchmarks.
-rstest = { version = "0.27.0", default-features = false }
+# Property tests: generated cases, shrunk to the smallest that fails. A
+# dev-dependency wherever it appears, so it ships in nothing.
 proptest = { version = "1.11.0", default-features = false }
+# Test and bench only, never linked into anything that ships: music-core's
+# table-driven cases and its benchmarks.
+rstest = { version = "0.27.0", default-features = false }
 divan = { version = "0.1.21", default-features = false }
 # Build only: the C headers, written from the Rust they declare.
 cbindgen = { version = "0.29.4", default-features = false }

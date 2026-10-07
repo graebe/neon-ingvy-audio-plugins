@@ -20,9 +20,11 @@ yet, so nothing is ever installed into `~/Library/Audio/Plug-Ins`.
 `cmake --build build --target ni_tests` builds the test programs and the engine
 archives they link, and no plugin bundle; then `ctest -L quick` runs:
 
-- every Rust crate's unit tests (`cargo test`, crate by crate) --
+- every Rust crate's unit tests (`cargo test`, crate by crate) — among them
+  the no-allocation checks, the two-thread stress runs and the property tests,
+  whose seed is fixed so the tier's verdict never changes without a commit;
   music-core's twice, with `std` and without (`music_core_rs`,
-  `music_core_no_std`) -- and `cargo_deny`, the licence gate over their
+  `music_core_no_std`) — and `cargo_deny`, the licence gate over their
   dependency graph (below),
 - the C tests against each engine's ABI, hand-written or, for NI
   Chord-Detector's `cd_core`, the header cbindgen generates; and the oracles

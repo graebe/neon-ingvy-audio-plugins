@@ -715,6 +715,7 @@ version = "2026.10.6+5"
 dependencies = [
  "basedrop",
  "ni-testkit",
+ "proptest",
  "rtrb",
  "triple_buffer",
 ]
@@ -812,6 +813,7 @@ dependencies = [
  "fastrand",
  "ni-dsp",
  "ni-testkit",
+ "proptest",
  "serde",
  "serde_json",
 ]

@@ -255,7 +255,7 @@ fn a_stopped_sweep_free_runs_across_a_cycle() {
     unsafe {
         let c = gate();
         /* 2 steps of 1/16 at 120 BPM is 250 ms: 12 000 samples at 48 kHz. */
-        assert!((scope_cycle_ms(&(*c).0) - 250.0).abs() < 1e-3);
+        assert!((scope_cycle_ms(&(*c).engine) - 250.0).abs() < 1e-3);
         const N: usize = 3000;
         let (mut l, mut r, mut sweep) = (vec![0.5f32; N], vec![0.5f32; N], vec![-1.0f32; N]);
         tg_core_process_f32_split_tap(c, l.as_mut_ptr(), r.as_mut_ptr(), sweep.as_mut_ptr(), N as c_int, &transport(false, 0.0));

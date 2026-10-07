@@ -28,11 +28,18 @@ that; anything else is the caller's bargain, as it was before.
  * repository keeps one archive per plugin (spectro-capi's Cargo.toml states the
  * rule). Naming the crate here is what makes rustc link it in, so the symbols
  * are exported from this archive rather than dropped as unreachable.
+ *
+ * It and the shell are the `shell` feature, the plugin's half of this crate:
+ * the Move module has no editor and one thread, and builds without either
+ * (see Cargo.toml).
  */
+#[cfg(feature = "shell")]
 use ground_capi as _;
 
 /* The plugin shell's door to the engine; see shell.rs. */
+#[cfg(feature = "shell")]
 mod shell;
+#[cfg(feature = "shell")]
 pub use shell::TgShell;
 /* The pattern plot's curve, rendered through a scratch engine; see gate.rs. */
 mod gate;
@@ -48,15 +55,27 @@ use tg_core::params::Param;
 use tg_core::rates::{RATES, RATE_DEFAULT};
 use tg_core::Instance;
 
-/// Opaque to C, exactly as `tg_core_t` was: the engine, the scope sweep
-/// `tg_core_process_f32_split_tap` keeps beside it, and how many times a
-/// shell command has replaced the current slot's sound wholesale (a paste) --
-/// the plugin shell's cue that the host's parameters must follow the engine.
-pub struct TgCore(Instance, CycleSweep, u32);
+/// Opaque to C, exactly as `tg_core_t` was.
+pub struct TgCore {
+    engine: Instance,
+    /// The scope's sweep, which `tg_core_process_f32_split_tap` keeps beside
+    /// the engine.
+    sweep: CycleSweep,
+    /// How many times a shell command has replaced the current slot's sound
+    /// wholesale (a paste): the plugin shell's cue that the host's parameters
+    /// must follow the engine.
+    #[cfg(feature = "shell")]
+    recalls: u32,
+}
 
 impl TgCore {
     pub fn new(sample_rate: f64) -> Self {
-        TgCore(Instance::new(sample_rate), CycleSweep::default(), 0)
+        TgCore {
+            engine: Instance::new(sample_rate),
+            sweep: CycleSweep::default(),
+            #[cfg(feature = "shell")]
+            recalls: 0,
+        }
     }
 }
 
@@ -89,14 +108,14 @@ pub unsafe extern "C" fn tg_core_destroy(c: *mut TgCore) {
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_set_sample_rate(c: *mut TgCore, sample_rate: f64) {
     let Some(c) = c.as_mut() else { return };
-    c.0.set_sample_rate(sample_rate);
+    c.engine.set_sample_rate(sample_rate);
 }
 
 /// # Safety
 /// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_get_sample_rate(c: *const TgCore) -> f64 {
-    c.as_ref().map_or(0.0, |c| c.0.sample_rate())
+    c.as_ref().map_or(0.0, |c| c.engine.sample_rate())
 }
 
 /// # Safety
@@ -112,7 +131,7 @@ pub unsafe extern "C" fn tg_core_set_param(
     if key.is_null() || val.is_null() {
         return;
     }
-    c.0.set_param(s(key), s(val));
+    c.engine.set_param(s(key), s(val));
 }
 
 /// `tg_core_set_num`: the fifteen automatable values by number, for host
@@ -129,7 +148,7 @@ pub unsafe extern "C" fn tg_core_set_param(
 pub unsafe extern "C" fn tg_core_set_num(c: *mut TgCore, param: c_int, value: f64) {
     let Some(c) = c.as_mut() else { return };
     let Some(p) = Param::from_i32(param) else { return };
-    c.0.set_num(p, value);
+    c.engine.set_num(p, value);
 }
 
 /// Returns the length written, or -1 for a key this engine does not serve --
@@ -150,7 +169,7 @@ pub unsafe extern "C" fn tg_core_get_param(
         return -1;
     }
     let out = std::slice::from_raw_parts_mut(buf as *mut u8, buf_len as usize);
-    c.0.get_param(s(key), out)
+    c.engine.get_param(s(key), out)
 }
 
 /// The host's time signature. Changes no sample -- the `params` readout's
@@ -162,7 +181,7 @@ pub unsafe extern "C" fn tg_core_get_param(
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_set_meter(c: *mut TgCore, num: c_int, den: c_int) {
     if let Some(c) = c.as_mut() {
-        c.0.set_meter(num, den);
+        c.engine.set_meter(num, den);
     }
 }
 
@@ -190,7 +209,7 @@ pub unsafe extern "C" fn tg_core_process_i16(
         return;
     }
     let buf = std::slice::from_raw_parts_mut(lr, frames as usize * 2);
-    c.0.process_i16(buf, frames as usize, CTransport::read(t).as_ref());
+    c.engine.process_i16(buf, frames as usize, CTransport::read(t).as_ref());
 }
 
 /// # Safety
@@ -208,7 +227,7 @@ pub unsafe extern "C" fn tg_core_process_f32(
         return;
     }
     let buf = std::slice::from_raw_parts_mut(lr, frames as usize * 2);
-    c.0.process_f32(buf, frames as usize, CTransport::read(t).as_ref());
+    c.engine.process_f32(buf, frames as usize, CTransport::read(t).as_ref());
 }
 
 /// # Safety
@@ -229,7 +248,7 @@ pub unsafe extern "C" fn tg_core_process_f32_split(
     let n = frames as usize;
     let lb = std::slice::from_raw_parts_mut(l, n);
     let rb = std::slice::from_raw_parts_mut(r, n);
-    c.0.process_f32_split(lb, rb, n, CTransport::read(t).as_ref());
+    c.engine.process_f32_split(lb, rb, n, CTransport::read(t).as_ref());
 }
 
 /// `tg_core_process_f32_split`, and where in the pattern's cycle each sample
@@ -255,8 +274,8 @@ pub unsafe extern "C" fn tg_core_process_f32_split_tap(
     }
     let n = frames as usize;
     let transport = CTransport::read(t);
-    let ph0 = c.0.phase01();
-    c.0.process_f32_split(
+    let ph0 = c.engine.phase01();
+    c.engine.process_f32_split(
         std::slice::from_raw_parts_mut(l, n),
         std::slice::from_raw_parts_mut(r, n),
         n,
@@ -265,17 +284,17 @@ pub unsafe extern "C" fn tg_core_process_f32_split_tap(
     if sweep.is_null() {
         return;
     }
-    let ph1 = c.0.phase01();
+    let ph1 = c.engine.phase01();
     let advancing = transport.is_some_and(|t| t.running);
-    let cycle_samples = scope_cycle_ms(&c.0) * c.0.sample_rate() / 1000.0;
-    c.1.fill(ph0, ph1, advancing, cycle_samples, std::slice::from_raw_parts_mut(sweep, n));
+    let cycle_samples = scope_cycle_ms(&c.engine) * c.engine.sample_rate() / 1000.0;
+    c.sweep.fill(ph0, ph1, advancing, cycle_samples, std::slice::from_raw_parts_mut(sweep, n));
 }
 
 /// # Safety
 /// `c` is null or a live engine.
 #[no_mangle]
 pub unsafe extern "C" fn tg_core_phase01(c: *const TgCore) -> f64 {
-    c.as_ref().map_or(0.0, |c| c.0.phase01())
+    c.as_ref().map_or(0.0, |c| c.engine.phase01())
 }
 
 /// The label of rate `index`, NUL-terminated into `buf`: the engine's own
@@ -361,6 +380,6 @@ pub extern "C" fn tg_test_shape_inv(curve: c_int, w: f64) -> f64 {
 /// through C.
 impl TgCore {
     pub fn inner(&mut self) -> &mut Instance {
-        &mut self.0
+        &mut self.engine
     }
 }

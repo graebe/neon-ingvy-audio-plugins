@@ -37,10 +37,12 @@ finished in one sitting. [0003](../adr/0003-established-rust-crates.md)
 reversed it. The FFT is realfft's, the Spectrogram's rings are rtrb's, the
 float atomics are atomic_float's, the bus maps its memory through libc and
 windows-sys, the Side-Chain decodes MIDI with wmidi, the Trance Gate reads its
-formats with serde_json, and the engines read numbers with lexical-core. Each
-is under a licence on the allowlist, and its version is written once, in the
-root `Cargo.toml`'s `[workspace.dependencies]`. The shell's queues and the C
-headers are next. The one-archive rule stays.
+formats with serde_json, and the engines read numbers with lexical-core. The
+shell's command queue is rtrb's too, its snapshot triple_buffer's and its
+handoff basedrop's (see Threads below). Each is under a licence on the
+allowlist, and its version is written once, in the root `Cargo.toml`'s
+`[workspace.dependencies]`. The C headers are next. The one-archive rule
+stays.
 
 `[profile.release]` sets `panic = "abort"`, and that one is load-bearing rather
 than a size tweak: unwinding out of an `extern "C"` function into a C or C++
@@ -132,16 +134,27 @@ and the engines have no locks in them, by design. So there are exactly two doors
 built once in `engines/shell` and used by every product:
 
 - **In, as a command.** A non-audio thread posts an edit; the audio thread
-  applies it at the top of its next block. The queue is bounded, lock-free and
-  allocation-free on the audio side.
+  applies it at the top of its next block. Each product has its own command
+  type, and whatever arrives as text — an edit's key and value, a host's blob,
+  the clipboard, a slot file — is read on the posting thread, so the audio
+  thread applies values and never parses. The commands cross on rtrb's
+  wait-free ring; anything heavy they carry rides in a basedrop `Shared`,
+  whose last release only queues it, so the audio thread neither allocates
+  nor frees.
 - **Out, as a snapshot.** The audio thread formats what readers need into
-  preallocated text and publishes it through a triple buffer. `OnIdle`, the
-  copy button and `SerializeState` read that — never the engine.
+  preallocated text and publishes it through triple_buffer's triple buffer.
+  `OnIdle`, the copy button and `SerializeState` read that — never the engine.
 
 A save must be right even with the host's audio engine off, so an edit that has
 not been applied yet is still visible to readers: they are answered from the
-latest snapshot replayed through the outstanding edits. `tg_shell.h` and
-`sc_shell.h` are the per-product surfaces.
+latest snapshot replayed through the outstanding edits — each edit once, as it
+arrives, however long the engine stays off. `tg_shell.h` and `sc_shell.h` are
+the per-product surfaces.
+
+Objects the main thread builds and frees — a Listen-In's bus pusher, a
+Spectrogram's receiver — are lent to the audio thread through
+`shell_handoff.h`, on basedrop as well: a block holds a counted copy, and the
+release function runs only where the main thread collects.
 
 The Trance Gate's also keeps the host's parameters on the right slot. Every
 parameter but Slot is stored per slot in the engine (`tg-core`'s `sound.rs`), so
@@ -276,7 +289,10 @@ own state blob — the same text the Move module writes.
 
 `tg-capi` and `tg-move` are members of the same workspace and both reach
 `tg-core` by relative path. They cannot drift apart — not by policy, by
-construction.
+construction. `tg-move` links `tg-capi` for the `tg_core_*` surface its C tests
+use, without the crate's default `shell` feature: the plugin's shell and the
+ground have no caller on the Move, so its `.so` does not carry them. The
+Side-Chain's two do the same.
 
 `tests/render_plugin.c` then proves it after the fact. It sets the identical
 patch the module's reference render uses, generates four seconds of a 220 Hz

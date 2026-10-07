@@ -139,28 +139,28 @@ impl Model for TgCore {
             Command::Edits(changes) => {
                 for change in changes.iter() {
                     match change {
-                        Change::Edit(edit) => self.0.apply_edit(edit),
-                        Change::Patch(patch) => self.0.load(patch),
+                        Change::Edit(edit) => self.engine.apply_edit(edit),
+                        Change::Patch(patch) => self.engine.load(patch),
                     }
                 }
             }
-            Command::SampleRate(sample_rate) => self.0.set_sample_rate(*sample_rate),
+            Command::SampleRate(sample_rate) => self.engine.set_sample_rate(*sample_rate),
             Command::Load(load) => {
                 if let Some(patch) = &load.patch {
-                    self.0.load(patch);
+                    self.engine.load(patch);
                 }
                 for (i, &v) in load.values.iter().enumerate() {
                     if let Some(p) = Param::from_i32(i as i32) {
-                        self.0.set_num(p, v);
+                        self.engine.set_num(p, v);
                     }
                 }
                 if load.spread {
-                    self.0.spread_sound();
+                    self.engine.spread_sound();
                 }
             }
             Command::Paste { slot, clip } => {
-                self.0.apply_clip(*slot, clip);
-                self.2 = self.2.wrapping_add(1);
+                self.engine.apply_clip(*slot, clip);
+                self.recalls = self.recalls.wrapping_add(1);
             }
         }
     }
@@ -177,23 +177,23 @@ impl Model for TgCore {
      * duration) and are formatted every time, as before.
      */
     fn publish(&self, f: &mut TgFrame) {
-        let rev = self.0.state_rev();
+        let rev = self.engine.state_rev();
         for (i, key) in KEYS.iter().enumerate() {
             if i == STATE && f.state_rev == Some(rev) {
                 continue;
             }
-            f.text[i].fill(|out| self.0.get_param(key, out));
+            f.text[i].fill(|out| self.engine.get_param(key, out));
         }
         f.state_rev = Some(rev);
-        f.nums = self.0.numbers();
-        f.recalls = self.2;
-        f.rt = self.0.playhead();
-        f.cycle_ms = crate::scope_cycle_ms(&self.0);
+        f.nums = self.engine.numbers();
+        f.recalls = self.recalls;
+        f.rt = self.engine.playhead();
+        f.cycle_ms = crate::scope_cycle_ms(&self.engine);
     }
 
     fn restore(&mut self, f: &TgFrame) {
-        self.0.mirror(f.text[STATE].as_str(), &f.rt);
-        self.2 = f.recalls;
+        self.engine.mirror(f.text[STATE].as_str(), &f.rt);
+        self.recalls = f.recalls;
     }
 }
 
@@ -440,7 +440,7 @@ pub unsafe extern "C" fn tg_shell_read(
     let Some(i) = KEYS.iter().position(|k| *k == key) else { return -1 };
     let out = std::slice::from_raw_parts_mut(buf as *mut u8, buf_len as usize);
     sh.bridge.read(|r| match r.pending {
-        Some(view) if i != PARAMS => view.0.get_param(key, out),
+        Some(view) if i != PARAMS => view.engine.get_param(key, out),
         _ => r.frame.text[i].copy_to(out),
     })
 }
@@ -484,7 +484,7 @@ impl TgShell {
     fn next(&self, values: &[f64; NUMS]) -> Option<tg_core::Instance> {
         let mut state = vec![0u8; TEXT_MAX];
         let (len, rt, recalls) = self.bridge.read(|r| match r.pending {
-            Some(view) => (view.0.get_param("state", &mut state), view.0.playhead(), view.2),
+            Some(view) => (view.engine.get_param("state", &mut state), view.engine.playhead(), view.recalls),
             None => (r.frame.text[STATE].copy_to(&mut state), r.frame.rt, r.frame.recalls),
         });
         let text = state_text(&state, len)?;
@@ -596,7 +596,6 @@ unsafe fn refuse(
     0
 }
 
-
 /// The audio thread, at the top of a block: applies every queued edit and
 /// lends out the engine for this block's `tg_core_*` calls. Allocation-free
 /// and wait-free.
@@ -657,17 +656,17 @@ pub unsafe extern "C" fn tg_shell_push(sh: *const TgShell, core: *mut TgCore, va
     }
     let values: &[f64; NUMS] = &*(values as *const [f64; NUMS]);
     let m = &sh.mirror;
-    let rev = core.0.state_rev();
-    let plan = m.plan(values, core.2);
-    plan.apply(&mut core.0, values);
-    m.commit(values, core.2);
+    let rev = core.engine.state_rev();
+    let plan = m.plan(values, core.recalls);
+    plan.apply(&mut core.engine, values);
+    m.commit(values, core.recalls);
     let (switched, pasted) = (plan.switched, plan.pasted);
     if switched || pasted {
         /* Published at this block's end, whatever the cadence: the main thread
          * reads the new slot's values the moment it hears of the switch. */
         m.moved.store(true, Ordering::Relaxed);
         sh.bridge.touch();
-    } else if core.0.state_rev() != rev {
+    } else if core.engine.state_rev() != rev {
         /* A value is in the saved blob, so a change to it is published at
          * once: a save straight after it must have it. */
         sh.bridge.touch();
@@ -687,7 +686,7 @@ pub unsafe extern "C" fn tg_shell_take_params(sh: *const TgShell, out: *mut f64,
         return 0;
     }
     let nums = sh.bridge.read(|r| match r.pending {
-        Some(view) => view.0.numbers(),
+        Some(view) => view.engine.numbers(),
         None => r.frame.nums,
     });
     std::slice::from_raw_parts_mut(out, NUMS).copy_from_slice(&nums);
@@ -1215,6 +1214,52 @@ mod tests {
         assert_eq!(state_text(state, -1), None, "not an empty patch to save");
         assert_eq!(state_text(state, state.len() as c_int + 1), None);
         assert_eq!(state_text(state, state.len() as c_int), Some("{\"sv\":7}"));
+    }
+
+    #[test]
+    fn a_posted_state_loads_the_patch_and_a_text_that_is_none_changes_nothing() {
+        /* tg_shell_post takes every key tg_core_set_param does, `state`
+         * included: read here into a patch, loaded at the next block. */
+        let mut src = Instance::new(48000.0);
+        src.set_param("length", "5");
+        src.set_param("randomize", "99");
+        let mut buf = vec![0u8; TEXT_MAX];
+        let n = src.get_param("state", &mut buf) as usize;
+        let blob = std::str::from_utf8(&buf[..n]).unwrap().to_owned();
+
+        let sh = tg_shell_create(48000.0);
+        assert_eq!(post(sh, &["state", &blob]), 1);
+        assert_eq!(read(sh, "state"), blob, "the view has it before any audio");
+        block(sh);
+        assert_eq!(read(sh, "state"), blob, "and the engine once it has run");
+
+        assert_eq!(post(sh, &["state", "{\"sv\":7,\"amount\":"]), 1, "queued, as before");
+        assert_eq!(post(sh, &["no-such-key", "1"]), 1);
+        block(sh);
+        assert_eq!(read(sh, "state"), blob, "neither changed anything");
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    #[test]
+    fn a_key_or_value_that_is_not_text_refuses_the_whole_edit() {
+        let sh = tg_shell_create(48000.0);
+        let before = read(sh, "state");
+        let (k, step, bad) = (CString::new("cursor").unwrap(), CString::new("step").unwrap(), CString::new(vec![0xFFu8, 0xFE]).unwrap());
+        let one = CString::new("1").unwrap();
+        let pairs = [k.as_ptr(), one.as_ptr(), step.as_ptr(), bad.as_ptr()];
+        assert_eq!(unsafe { tg_shell_post(sh, pairs.as_ptr(), 2) }, 0, "not even the cursor moves");
+        block(sh);
+        assert_eq!(read(sh, "state"), before);
+
+        /* The same for an import's and a paste's text, with the reason. */
+        let mut err = [0u8; 128];
+        let r = unsafe { tg_shell_import(sh, 0, bad.as_ptr(), err.as_mut_ptr() as *mut c_char, 128) };
+        let why = CStr::from_bytes_until_nul(&err).unwrap().to_str().unwrap();
+        assert_eq!((r, why), (0, "This is not a Trance Gate slot or bank file."));
+        let r = unsafe { tg_shell_paste(sh, 0, bad.as_ptr(), 2, err.as_mut_ptr() as *mut c_char, 128) };
+        let why = CStr::from_bytes_until_nul(&err).unwrap().to_str().unwrap();
+        assert_eq!((r, why), (0, "The clipboard doesn't hold a Trance Gate slot."));
+        unsafe { tg_shell_destroy(sh) };
     }
 
     #[test]

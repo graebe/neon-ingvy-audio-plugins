@@ -28,6 +28,11 @@ arrayvec = { workspace = true }
 # which a roll that must be reproducible from its seed never uses.
 fastrand = { workspace = true }
 
-# The counting allocator the no_alloc test installs. Test-only.
+# Test-only: built for the tests, shipped in nothing.
 [dev-dependencies]
+# The counting allocator the no_alloc test installs.
 ni-testkit = { path = "../../../shared/crates/ni-testkit" }
+# The property test (tests/state_round_trip.rs). `std` is its generator and its
+# runner; fork, timeout and bit-set -- a process per case, a watchdog, a
+# bit-set strategy -- are features nothing here uses.
+proptest = { workspace = true, features = ["std"] }
