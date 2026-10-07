@@ -157,14 +157,18 @@ TranceGateEditor::TranceGateEditor (Model& m, Clipboard& clipboard, FilePanels& 
      * above-left of the pads, where the StepGrid card puts a pattern select. */
     slotSelect = std::make_unique<ni::ui::ParamSelect> (model.parameter (param::slot));
     slotSelect->setTitle ("Slot");
-    slotSelect->setFieldWidth (96);
+    /* The web row's widths: 80 for a single digit, as SettingsRow.jsx. */
+    slotSelect->setFieldWidth (80);
     ni::ui::setInfo (*slotSelect, info::slot);
     joinSwitch = std::make_unique<ni::ui::ParamToggle> (model.parameter (param::legato), "Join Neighbors");
     ni::ui::setInfo (*joinSwitch, info::join);
     curveSelect = std::make_unique<ni::ui::ParamSelect> (model.parameter (param::curve));
     curveSelect->setLabel ("Curve", 44);
-    /* "Exponential" whole, in the system's face. */
-    curveSelect->setFieldWidth (136);
+    /* "Exponential" whole, in the system's face: 86px of text after the 12px
+     * pad and the 28px caret room and the hairlines, so 128 on the 4px grid
+     * (the proposed artboard's figure). The web row's 124 cut it to
+     * "Exponent...". */
+    curveSelect->setFieldWidth (128);
     ni::ui::setInfo (*curveSelect, info::curve);
     timeSwitch = std::make_unique<ni::ui::ParamToggle> (model.parameter (param::timeMode), "Time in %");
     ni::ui::setInfo (*timeSwitch, info::time);

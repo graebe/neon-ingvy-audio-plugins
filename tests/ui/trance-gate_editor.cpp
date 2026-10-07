@@ -22,6 +22,7 @@
 
 #include "InfoLines.h"
 #include "Pointer.h"
+#include "UvType.h"
 #include "checks.h"
 #include "trance-gate_fakes.h"
 
@@ -201,7 +202,15 @@ TEST_CASE ("trance-gate: the settings row holds the four settings, space-4 apart
     auto& curve = e.select (param::curve);
     auto& time = e.toggle (param::timeMode);
     CHECK (slot.getX() == 0);
-    CHECK (slot.field().getWidth() == 96);
+    CHECK (slot.field().getWidth() == 80);
+    /* Curve's field shows every option whole: the text inside the hairlines,
+     * the 12px pad and the 28px caret room. */
+    CHECK (curve.field().getWidth() == 128);
+    for (const auto& option : curve.getOptions())
+    {
+        CAPTURE (option);
+        CHECK (uv::type::width (uv::type::value(), option) <= (float) (curve.field().getWidth() - 2 - 12 - 28));
+    }
     CHECK (join.getX() == slot.getRight() + 16);
     CHECK (curve.getX() == join.getRight() + 16);
     CHECK (time.getX() == curve.getRight() + 16);
