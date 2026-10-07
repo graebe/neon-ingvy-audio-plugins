@@ -80,7 +80,8 @@ bool parse_int(std::string_view s, int& out);
 
 /* The host's clock as every engine's transport struct holds it. A stopped
  * transport is beats -1, not a stale position; a running one with a negative
- * position is a host bug and treated as stopped; a tempo of 0 is 120. */
+ * or non-finite position (no musical position, or a host bug) is treated as
+ * stopped; a tempo of 0 is 120. */
 struct Transport
 {
   int running;

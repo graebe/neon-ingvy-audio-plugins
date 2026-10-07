@@ -793,3 +793,33 @@ fn stopping_the_transport_releases_a_cycle_duck_instead_of_cutting_it() {
     assert!(g[140 * 64..150 * 64].iter().all(|&v| v == 1.0), "not open once stopped");
     assert!(g[150 * 64 + 1400] < 0.1, "the restart did not duck");
 }
+
+#[test]
+fn a_position_the_host_cannot_give_is_no_position() {
+    /*
+     * NaN is JUCE's shell saying "no musical position" (ni::readClock), and an
+     * infinity is a host's bug: both must play as a stopped transport -- the
+     * cycle open, nothing fired -- rather than as a position.
+     */
+    let sr = 48000.0;
+    let render = |transport: Option<Transport>| {
+        let mut p = Instance::new(sr);
+        p.set_param("depth", "1");
+        let start = p.fires();
+        let mut out = Vec::new();
+        for _ in 0..100 {
+            let mut buf = vec![1.0f32; 512];
+            p.process_f32(&mut buf, 256, transport.as_ref());
+            out.extend_from_slice(&buf);
+        }
+        (out, p.fires().wrapping_sub(start), p.advancing())
+    };
+    let stopped = Transport { running: false, beats: -1.0, bpm: 120.0 };
+    let (open, _, _) = render(Some(stopped));
+    for beats in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let (out, fired, advancing) = render(Some(Transport { running: true, beats, bpm: 120.0 }));
+        assert_eq!(fired, 0, "{beats}: the cycle fired");
+        assert!(!advancing, "{beats}: counted as running");
+        assert!(out == open, "{beats}: did not play as a stopped transport");
+    }
+}

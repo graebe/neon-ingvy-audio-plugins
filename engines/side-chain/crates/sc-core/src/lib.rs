@@ -373,9 +373,12 @@ impl Instance {
         /* In cycles, and signed. See the note on the stages above. */
         let offset = self.delay_pct / 100.0;
 
-        /* A stopped transport is not beat 0, it is no beat at all. */
+        /* A stopped transport is not beat 0, it is no beat at all -- and
+         * neither is a position the host could not give: NaN from JUCE's
+         * shell (ni::readClock) when there is no musical position, or an
+         * infinity, which `>= 0.0` alone would take as running. */
         let beats = match t {
-            Some(t) if t.running && t.beats >= 0.0 => t.beats,
+            Some(t) if t.running && t.beats.is_finite() && t.beats >= 0.0 => t.beats,
             _ => -1.0,
         };
         let running = beats >= 0.0;

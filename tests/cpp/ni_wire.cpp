@@ -17,6 +17,7 @@
 #include <clocale>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -168,6 +169,14 @@ TEST_CASE("the host's clock: stopped is no position, and a lie is stopped")
   CHECK(t.running == 0);
   CHECK(t.beats == -1.0);
   CHECK(t.bpm == 120.0f);
+  /* No musical position -- NaN from the JUCE shell's readClock -- and an
+   * infinity are no position either, never one the engine chases. */
+  for (double ppq : {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()})
+  {
+    t = host_transport(true, 128.0, ppq);
+    CHECK(t.running == 0);
+    CHECK(t.beats == -1.0);
+  }
 }
 
 /* -------------------------------------------------------------- the blocks */
