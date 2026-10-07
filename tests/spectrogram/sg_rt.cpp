@@ -16,6 +16,10 @@
  * landing, the host's bypass, a new sample rate -- the blocks while its
  * receiver is pending, and after -- and a second load. Each must count zero.
  *
+ * And the other end of a column's way: the editor's takes on the message
+ * thread, the receiver's finished columns copied straight into the buffers
+ * the picture is written from, count zero too -- nothing per column.
+ *
  * The guard is shown an allocation first, so a guard that was not inserted
  * -- and would count nothing ever -- fails rather than passes. macOS only:
  * the guard is a dyld interposer.
@@ -111,6 +115,19 @@ int main (int argc, char* argv[])
         clash (levels.size());
     double phase = 0.0;
     long allocations = 0;
+    /* The editor's takes, on the message thread: the receiver's columns
+     * straight into the editor's buffers. srecv_frame sizes its scratch on
+     * its first call, which the service made before any window opened. */
+    long takeAllocations = 0, columnsTaken = 0;
+    const auto take = [&]
+    {
+        int clashCount = 0;
+        begin();
+        const int n = processor.model().takeColumns (levels.data(), clash.data(),
+                                                     ni::spectrogram::Model::maxColumns, clashCount);
+        takeAllocations += end();
+        columnsTaken += n;
+    };
     const auto play = [&] (int blocks, bool bypassed = false)
     {
         for (int b = 0; b < blocks; ++b)
@@ -135,11 +152,7 @@ int main (int argc, char* argv[])
             {
                 processor.service();
                 if (processor.editorOpen())
-                {
-                    int clashCount = 0;
-                    processor.model().takeColumns (levels.data(), clash.data(),
-                                                   ni::spectrogram::Model::maxColumns, clashCount);
-                }
+                    take();
             }
         }
     };
@@ -158,6 +171,15 @@ int main (int argc, char* argv[])
     processor.editorOpened();
     play (100);
     check (allocations == 0, "playback with the window open: the columns and the Ground", allocations);
+    for (int i = 0; i < 200 && columnsTaken < 8; ++i)
+    {
+        processor.service();
+        take();
+        juce::Thread::sleep (10);
+    }
+    check (columnsTaken > 0 && takeAllocations == 0,
+           "the editor takes " + juce::String (columnsTaken) + " columns into its buffers, allocating none",
+           takeAllocations);
 
     allocations = 0;
     auto& model = processor.model();
