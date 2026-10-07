@@ -67,22 +67,30 @@ and who owns the output buffer.
 
 ## The C++ glue
 
-`cmake/NiPlugin.cmake` holds the whole build recipe, in two functions.
+The build recipe is two files. `cmake/NiRust.cmake` builds the engines through
+[Corrosion](https://github.com/corrosion-rs/corrosion), pinned in
+`cmake/NiCorrosion.cmake`; `cmake/NiPlugin.cmake` builds the plugins around them.
 
-`ni_add_rust_engine(<target> CRATE <crate> LIB <lib> INCLUDE <dir>)` registers
-a product's C ABI, and `ni_build_rust_engines()` builds every registered crate
-in **one** cargo invocation with one target directory, so the crates they share
-(`ni-dsp`, `ground`, `shell`, `audio-bus`) compile once:
+`ni_add_rust_engine(<target> CRATE <crate> LIB <lib> [INCLUDE <dir>])` registers
+a product's C ABI, and `ni_build_rust_engines()` imports every registered crate
+with Corrosion, which runs cargo once per crate in one target directory, so the
+crates they share (`ni-dsp`, `ground`, `shell`, `audio-bus`) compile once:
 
-1. `cargo build --release -p tg-capi -p sc-capi … --target aarch64-apple-darwin --target x86_64-apple-darwin`
-2. `lipo -create` each product's two static-library slices into one universal `.a`
+1. Corrosion builds each product's static library for the build's target
+   triple, which it takes from the C++ toolchain, so a Linux or Windows build
+   selects its triple through its CMake toolchain file
+2. a universal macOS build is the one thing Corrosion does not do: it builds
+   one triple per CMake project. So each further slice is a sub-build
+   (`cmake/rust-slice`, the same import for `x86_64-apple-darwin`), and
+   `lipo -create` joins each product's two slices into one universal `.a`
 3. each is exposed as a CMake `INTERFACE` library its plugin and tests link
 
 It is still **one static library per plugin**: each product's capi crate is a
 staticlib that absorbs the rlibs it depends on, because two Rust staticlibs in
 one binary each carry the Rust runtime. The cargo step always runs — cargo is the
-dependency scanner, not CMake — and `copy_if_different` after `lipo` is what
-stops an unchanged engine from relinking three plugin formats.
+dependency scanner, not CMake — and Corrosion copies an archive out with
+`copy_if_different`, so an unchanged engine keeps its timestamp, `lipo` does not
+run again, and three plugin formats do not relink.
 
 `ni_add_plugin(<NAME> SOURCES … LINK …)` builds the plugin's editor with vite
 (at configure time and at build time), refuses to configure without one

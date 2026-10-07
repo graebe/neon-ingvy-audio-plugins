@@ -19,7 +19,7 @@ site/                        this documentation site
 design/scheme/               the Ultraviolet design system, vendored
 design/designs/              the "NI Plugin Layouts" canvas, mirrored
 tests/                       the cross-cutting suite
-cmake/                       the Rust toolchain resolver and NiPlugin.cmake
+cmake/                       the Rust toolchain resolver, NiRust.cmake (Corrosion) and NiPlugin.cmake
 versions.json                one version per product
 ```
 

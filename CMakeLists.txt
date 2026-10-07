@@ -60,7 +60,9 @@ set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/external/iPlug2 CACHE PATH "iPlug2 root")
 include(${IPLUG2_DIR}/iPlug2.cmake)
 find_package(iPlug2 REQUIRED)
 
-# ni_add_rust_engine and ni_add_plugin. See the file.
+# ni_add_rust_engine (the engines, through Corrosion) and ni_add_plugin. See
+# the files.
+include(cmake/NiRust.cmake)
 include(cmake/NiPlugin.cmake)
 
 # Each product's C ABI, one static library apiece. audio-bus is the house
