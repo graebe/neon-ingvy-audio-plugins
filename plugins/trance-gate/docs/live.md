@@ -233,15 +233,16 @@ from the keyboard: Tab to them and press Enter or Space.
 1. **Quit Live completely** — not just the set. Live keeps every plugin it has
    loaded in memory until it quits, so a bundle replaced while it runs is not
    the one you hear.
-2. Copy `NITranceGate.vst3`, `NITranceGate.component` and `NITranceGate.clap`
-   from the release into `~/Library/Audio/Plug-Ins/VST3`, `…/Components` and
-   `…/CLAP`.
-3. The bundles are unsigned, so macOS refuses them until the quarantine
+2. Copy `NITranceGate.vst3` from the release into
+   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there. NI Trance Gate is
+   a VST3 only: the Audio Unit and the CLAP builds were discontinued with the
+   native editor. A set that used the Audio Unit opens with the VST3 in its
+   place once you insert it again.
+3. The bundle is not notarised, so macOS refuses it until the quarantine
    attribute is removed:
 
    ```sh
    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NITranceGate.vst3
-   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/NITranceGate.component
    ```
 
 4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
@@ -251,8 +252,14 @@ Signing needs an Apple Developer ID and a notarytool round trip; until those
 exist, the `xattr` command is the difference. It is a property of the
 distribution, not of the plugin.
 
-The licence notices travel with the plugin: every bundle carries `LICENSE` and
-`THIRD_PARTY_LICENSES.md` in `Contents/Resources/`.
+The licence notices travel with the plugin: the bundle carries `LICENSE`,
+`THIRD_PARTY_LICENSES.md`, the font's `OFL.txt` and the texts of the licences
+of what it is built with (`AGPL-3.0.txt`, `Apache-2.0.txt`) in
+`Contents/Resources/`.
+
+**Sets saved with an earlier version open as they were saved**: the plugin
+keeps the identity, the parameters and the saved state of every earlier VST3
+build, so slots, patterns and automation come back.
 
 **Coming from a bundle named `TranceGate`** (before v2026.09.29.1)? The plugin's
 identity did not change — Live stores the plugin's IDs, not the filename, so

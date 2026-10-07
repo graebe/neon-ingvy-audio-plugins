@@ -268,17 +268,9 @@ endif()
 set(NI_BUNDLES ${CMAKE_BINARY_DIR}/out)
 set(NI_AU_LIBS "-framework AudioToolbox" "-framework AudioUnit" "-framework CoreFoundation")
 
-# The Trance Gate AU, rendered by a host that actually supplies a transport.
-# AVAudioEngine supplies none, so a plugin under it correctly holds the gate
-# open and renders dry -- a green render that proves nothing. This one sets
-# the host callbacks the AU wrapper reads, drives the macros through the AU
-# parameter API, and compares against the engine directly.
+# The Audio Units are the three products still on iPlug2: NI Trance Gate is a
+# VST3 on the JUCE shell, held by the JUCE bundle tests below.
 if (APPLE)
-    add_executable(tg_au_render au_render.c)
-    target_include_directories(tg_au_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(tg_au_render PRIVATE tg_engine m ${NI_AU_LIBS})
-    add_test(NAME tg_au COMMAND tg_au_render ${NI_BUNDLES}/NITranceGate.component)
-
     # auval -stress's state path on every plugin: a render thread, two threads
     # setting state back and forth, and the main run loop for iPlug2's idle
     # timer, under a watchdog -- a hang fails, it never waits. au_stress.c.
@@ -286,7 +278,7 @@ if (APPLE)
     set(NI_AU_STRESS_SECONDS 3 CACHE STRING "seconds per plugin in the au_stress tests")
     add_executable(au_stress au_stress.c)
     target_link_libraries(au_stress PRIVATE ${NI_AU_LIBS})
-    foreach(plugin TranceGate SideChain Spectrogram ListenIn)
+    foreach(plugin SideChain Spectrogram ListenIn)
         add_test(NAME au_stress_${plugin}
                  COMMAND au_stress ${NI_BUNDLES}/NI${plugin}.component
                          ${NI_AU_STRESS_SECONDS} 2)
@@ -302,7 +294,7 @@ if (APPLE)
     target_compile_options(au_ground PRIVATE -fobjc-arc)
     target_link_libraries(au_ground PRIVATE ${NI_AU_LIBS}
                           "-framework AppKit" "-framework WebKit")
-    foreach(plugin TranceGate SideChain Spectrogram ListenIn)
+    foreach(plugin SideChain Spectrogram ListenIn)
         add_test(NAME au_ground_${plugin}
                  COMMAND au_ground ${NI_BUNDLES}/NI${plugin}.component)
     endforeach()
@@ -326,7 +318,7 @@ if (APPLE)
     target_compile_options(editor_host PRIVATE -fobjc-arc)
     target_link_libraries(editor_host PRIVATE ${NI_AU_LIBS}
         "-framework Cocoa" "-framework WebKit" "-framework CoreAudioKit")
-    foreach(plugin Spectrogram TranceGate SideChain ListenIn)
+    foreach(plugin Spectrogram SideChain ListenIn)
         add_test(NAME editor_host_${plugin}_vst3
                  COMMAND editor_host vst3 ${NI_BUNDLES}/NI${plugin}.vst3)
         add_test(NAME editor_host_${plugin}_au
@@ -351,7 +343,9 @@ if (APPLE)
     target_compile_options(vst3_capture PRIVATE -fobjc-arc)
     target_link_libraries(vst3_capture PRIVATE "-framework Cocoa" "-framework WebKit")
     set(_ni_vst3_bundles)
-    foreach(plugin TranceGate SideChain Spectrogram ListenIn)
+    # The iPlug2 builds still here; the JUCE Trance Gate reads its fixtures in
+    # tg_processor and tg_host.
+    foreach(plugin SideChain Spectrogram ListenIn)
         list(APPEND _ni_vst3_bundles ${NI_BUNDLES}/NI${plugin}.vst3)
     endforeach()
     add_test(NAME iplug2_fixtures
@@ -389,6 +383,48 @@ foreach(bundle IN LISTS _ni_juce)
                  COMMAND codesign --verify --deep --strict ${NI_BUNDLES}/${bundle}.vst3)
     endif()
 endforeach()
+
+# THE JUCE SHELL'S STATE CODEC (plugins/_shared/juce/Nist.h) against every
+# iPlug2 fixture of every product -- decoded as captured, written back byte
+# for byte -- and the Trance Gate's legacy layouts and refusals on its real
+# table. The codec is plain C++; juce_core reads the fixtures' JSON.
+set(NI_JUCE_SHELL ${CMAKE_SOURCE_DIR}/plugins/_shared/juce)
+set(NI_TG ${CMAKE_SOURCE_DIR}/plugins/trance-gate)
+set(NI_FIXTURES ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/iplug2)
+juce_add_console_app(nist_fixtures PRODUCT_NAME nist_fixtures)
+target_sources(nist_fixtures PRIVATE nist_fixtures.cpp
+    ${NI_JUCE_SHELL}/Nist.cpp ${NI_TG}/Params.cpp ${CMAKE_SOURCE_DIR}/plugins/_shared/ni/Wire.cpp)
+target_include_directories(nist_fixtures PRIVATE ${NI_JUCE_SHELL} ${NI_TG} ${CMAKE_SOURCE_DIR}/plugins/_shared)
+target_include_directories(nist_fixtures SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/external/doctest)
+target_compile_definitions(nist_fixtures PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 "NI_FIXTURES=\"${NI_FIXTURES}\"")
+target_link_libraries(nist_fixtures PRIVATE
+    tg_engine juce::juce_core juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+add_test(NAME nist_fixtures COMMAND nist_fixtures)
+
+# NI TRANCE GATE'S PROCESSOR, ITS MODEL AND ITS EDITOR, IN ONE PROGRAM: the
+# product's sources and the shell's compiled in, as the plugin compiles them,
+# with the definitions its build gives them, around the real engine.
+# tg_processor.cpp says what it holds; tests/ui holds the editor on fakes.
+file(GLOB _ni_shell_sources CONFIGURE_DEPENDS ${NI_JUCE_SHELL}/*.cpp)
+juce_add_console_app(tg_processor PRODUCT_NAME tg_processor)
+target_sources(tg_processor PRIVATE tg_processor.cpp ${_ni_shell_sources}
+    ${NI_TG}/TranceGate.cpp ${NI_TG}/Params.cpp ${NI_TG}/EngineModel.cpp ${NI_TG}/Window.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/_shared/ni/Wire.cpp)
+target_include_directories(tg_processor PRIVATE
+    ${NI_TG} ${NI_JUCE_SHELL} ${CMAKE_SOURCE_DIR}/plugins/_shared ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+target_include_directories(tg_processor SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/external/doctest)
+target_compile_definitions(tg_processor PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_WEBP=0
+    # A test may run the message loop for a moment to let a timer fire.
+    JUCE_MODAL_LOOPS_PERMITTED=1
+    "JucePlugin_Name=\"NI Trance Gate\"" JucePlugin_WantsMidiInput=0
+    "NI_PRODUCT=\"trance-gate\"" "NI_VERSION_STRING=\"tg_processor\""
+    "NI_FIXTURES=\"${NI_FIXTURES}\"")
+target_link_libraries(tg_processor PRIVATE
+    tg_engine ni_editor_trance_gate juce::juce_audio_processors
+    juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+add_test(NAME tg_processor COMMAND tg_processor)
 
 # ---------------------------------------------------------------- Spectrogram
 
@@ -808,20 +844,23 @@ ni_test_tiers(
         # lint-like checks over the tree
         versions release licenses spdx ground_shells editor_tags editor_timing
         ui_tokens design_paths validator_verdict
+        # the JUCE shell's state codec, and NI Trance Gate's processor, model
+        # and editor in one program
+        nist_fixtures tg_processor
     FULL
         tg_render_ab:render sc_render_ab:render
-        tg_au:host sc_au:host
-        au_stress_TranceGate:host au_stress_SideChain:host
+        sc_au:host
+        au_stress_SideChain:host
         au_stress_Spectrogram:host au_stress_ListenIn:host
-        au_ground_TranceGate:host au_ground_SideChain:host
+        au_ground_SideChain:host
         au_ground_Spectrogram:host au_ground_ListenIn:host
         editor_host_Spectrogram_vst3:host editor_host_Spectrogram_au:host
-        editor_host_Spectrogram_clap:host editor_host_TranceGate_vst3:host
-        editor_host_TranceGate_au:host editor_host_TranceGate_clap:host
+        editor_host_Spectrogram_clap:host
         editor_host_SideChain_vst3:host editor_host_SideChain_au:host
         editor_host_SideChain_clap:host
         editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host
         editor_host_ListenIn_clap:host iplug2_fixtures:host
+        juce_host_NITranceGate:host codesign_NITranceGate:bundles
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)
@@ -830,9 +869,16 @@ ni_test_tiers(
 # ni_tests` builds the test programs and the engine archives they link, and no
 # plugin bundle -- which is what lets the quick tier skip the bundles entirely.
 set(_ni_test_bins)
-foreach(dir ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+# tests/ui's programs too: the kit's and the editors' tests are in the quick
+# tier, and a quick tier that had not built them ran none of them.
+foreach(dir ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/cpp ${CMAKE_CURRENT_SOURCE_DIR}/ui)
     get_property(_b DIRECTORY ${dir} PROPERTY BUILDSYSTEM_TARGETS)
-    list(APPEND _ni_test_bins ${_b})
+    foreach(t ${_b})
+        get_target_property(_type ${t} TYPE)
+        if (NOT _type STREQUAL "INTERFACE_LIBRARY")
+            list(APPEND _ni_test_bins ${t})
+        endif()
+    endforeach()
 endforeach()
 add_custom_target(ni_tests)
 add_dependencies(ni_tests ${_ni_test_bins})

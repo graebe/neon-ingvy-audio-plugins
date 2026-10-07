@@ -22,8 +22,11 @@
  *     destructor frees it
  *   - OnUIOpen switches it on; CloseWindow switches it off and chains to the
  *     base -- CloseWindow, because WebViewEditorDelegate never calls OnUIClose
- *   - those hooks are `final`, every plugin derives from ni::WebPlugin, and no
- *     plugin touches the ground itself
+ *   - those hooks are `final`, every plugin on iPlug2 derives from
+ *     ni::WebPlugin, and no plugin touches the ground itself
+ *   - on the JUCE shell, ni::GroundClock keeps the same order for a product
+ *     that owns one: ticked before the audio, bypassed too, on only while a
+ *     window is open
  *
  *   node --test tests/ground_shells.test.mjs
  */
@@ -130,7 +133,6 @@ test('no product can reorder any of it', () => {
 });
 
 const PLUGINS = {
-  TranceGate: 'plugins/trance-gate/TranceGate',
   SideChain: 'plugins/side-chain/SideChain',
   Spectrogram: 'plugins/spectrogram/Spectrogram',
   ListenIn: 'plugins/listen-in/ListenIn',
@@ -142,5 +144,41 @@ for (const [cls, base] of Object.entries(PLUGINS)) {
     const c = read(`${base}.cpp`);
     assert.match(h, new RegExp(`class\\s+${cls}\\s+final\\s*:\\s*public\\s+ni::WebPlugin`));
     assert.doesNotMatch(h + c, /\bgnd_\w+\(/, `${cls} calls the ground itself`);
+  });
+}
+
+/*
+ * THE JUCE SHELL'S GROUND: ni::GroundClock (plugins/_shared/juce), which a
+ * product on that shell owns. The same order holds there -- the clock ticked
+ * from the host's transport before the product's audio, the bypassed block
+ * included, on only while a window shows it -- and the same rule: no product
+ * calls the ground's C ABI itself.
+ */
+const JUCE_PLUGINS = {
+  'NI Trance Gate': ['plugins/trance-gate/TranceGate.h', 'plugins/trance-gate/TranceGate.cpp'],
+};
+
+test('ni::GroundClock ticks from the host clock it is given, and forgets old rings when a window opens', () => {
+  const g = read('plugins/_shared/juce/GroundClock.h');
+  assert.match(g, /gnd_tick\s*\(\s*clock\s*,\s*c\.ppq\s*,\s*c\.bpm\s*,\s*c\.numerator\s*,\s*c\.denominator\s*,/);
+  assert.match(g, /seen\s*=\s*gnd_fires\s*\(\s*clock\s*\)\s*;\s*gnd_set_active\s*\(\s*clock\s*,\s*on/,
+    'a window opening skips the rings counted while it was closed');
+  assert.match(g, /gnd_set_sample_rate\s*\(\s*clock[\s\S]*gnd_reset\s*\(\s*clock\s*\)/);
+});
+
+for (const [name, [h, cpp]] of Object.entries(JUCE_PLUGINS)) {
+  test(`${name} ticks its ground before its audio, bypassed too, and only with a window open`, () => {
+    const src = read(cpp);
+    assert.match(read(h), /ni::GroundClock\s+\w+\s*;/);
+    assert.doesNotMatch(read(h) + src, /\bgnd_\w+\(/, `${name} calls the ground itself`);
+    const process = statements(body(src, 'Processor', 'process'));
+    const tick = process.findIndex((st) => /\.tick\s*\(\s*clock\s*,\s*frames\s*\)/.test(st));
+    const audio = process.findIndex((st) => /tg_shell_begin/.test(st));
+    assert.ok(tick >= 0 && audio > tick, 'the ground is ticked before the engine runs, and before an early return');
+    assert.ok(process.slice(0, tick).every((st) => !/return/.test(st)), 'nothing returns before the tick');
+    assert.match(body(src, 'Processor', 'processBypassed'), /\.tick\s*\(\s*readClock/);
+    assert.match(body(src, 'Processor', 'prepareToPlay'), /\.prepare\s*\(/);
+    assert.match(body(src, 'Processor', 'editorOpened'), /\.setActive\s*\(\s*true\s*\)/);
+    assert.match(body(src, 'Processor', 'editorClosed'), /\.setActive\s*\(\s*false\s*\)/);
   });
 }

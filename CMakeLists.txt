@@ -84,15 +84,13 @@ ni_build_rust_engines()
 # Move, an aarch64 Linux cross-build in a container -- see the note in the file.
 include(cmake/Schwung.cmake)
 
-add_subdirectory(plugins/trance-gate)
-add_subdirectory(plugins/spectrogram)
-add_subdirectory(plugins/listen-in)
-add_subdirectory(plugins/side-chain)
-
 # THE JUCE SHELL, beside iPlug2 while the refactor moves the four products
-# onto it (docs/adr/0002). JUCE as a subproject, excluded from `all` so only
-# what a plugin links is built; the native UI kit every editor is made of
-# (plugins/_shared/ui); and ni_add_juce_plugin (cmake/NiJucePlugin.cmake).
+# onto it (docs/adr/0002), and before them, since a product on it calls
+# ni_add_juce_plugin in its own directory: NI Trance Gate is there already,
+# the other three are still iPlug2's. JUCE as a subproject, excluded from
+# `all` so only what a plugin links is built; the native UI kit every editor
+# is made of (plugins/_shared/ui); and ni_add_juce_plugin
+# (cmake/NiJucePlugin.cmake).
 set(NI_ROOT ${CMAKE_SOURCE_DIR})
 add_subdirectory(external/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 add_subdirectory(plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
@@ -104,6 +102,11 @@ foreach(product trance-gate side-chain spectrogram listen-in)
 endforeach()
 add_subdirectory(plugins/_shared/ui/gallery ${CMAKE_BINARY_DIR}/gallery)
 include(cmake/NiJucePlugin.cmake)
+
+add_subdirectory(plugins/trance-gate)
+add_subdirectory(plugins/spectrogram)
+add_subdirectory(plugins/listen-in)
+add_subdirectory(plugins/side-chain)
 
 
 enable_testing()

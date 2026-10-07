@@ -5,7 +5,7 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 
 | product | ships as | engine |
 |---|---|---|
-| [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/trance-gate` |
+| [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · a Schwung module for the Move | `engines/trance-gate` |
 | [NI Spectrogram](plugins/spectrogram/README.md) | VST3 · AU · CLAP | `engines/spectro` |
 | [NI Listen-In](plugins/listen-in/README.md) | VST3 · AU · CLAP | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/side-chain` |

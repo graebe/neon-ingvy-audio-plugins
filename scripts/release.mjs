@@ -21,7 +21,8 @@
  *
  * TAG = <product>-<version as versions.json spells it>, e.g.
  * trance-gate-v2026.09.29.3. The product is a key of versions.json; a product
- * with plugins/<product>/config.h ships bundles, one with
+ * with a plugin ships bundles (bundleOf: an iPlug2 config.h's BUNDLE_NAME, or
+ * the TARGET of a JUCE build's ni_add_juce_plugin), one with
  * modules/<product>/module.env ships a Schwung module, and a tag releases both
  * when it has both -- they are one product in two shells.
  */
@@ -30,6 +31,28 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/*
+ * THE BUNDLE A PRODUCT SHIPS, or nothing for a product with no plugin: the
+ * BUNDLE_NAME of plugins/<product>/config.h on iPlug2, or the TARGET its
+ * CMakeLists.txt gives ni_add_juce_plugin on the JUCE shell. Throws for a
+ * config.h without one, which is a plugin that cannot be named.
+ */
+export function bundleOf(root, product) {
+  const config = join(root, 'plugins', product, 'config.h');
+  if (existsSync(config)) {
+    const bundle = /#define\s+BUNDLE_NAME\s+"([^"]+)"/.exec(readFileSync(config, 'utf8'))?.[1];
+    if (!bundle) throw new Error(`plugins/${product}/config.h has no BUNDLE_NAME`);
+    return bundle;
+  }
+  const cmake = join(root, 'plugins', product, 'CMakeLists.txt');
+  if (!existsSync(cmake)) return null;
+  const text = readFileSync(cmake, 'utf8');
+  if (!/ni_add_juce_plugin\s*\(/.test(text)) return null;
+  const bundle = /\bTARGET\s+(\S+)/.exec(text)?.[1];
+  if (!bundle) throw new Error(`plugins/${product}/CMakeLists.txt calls ni_add_juce_plugin with no TARGET`);
+  return bundle;
+}
 
 /*
  * THE SCHWUNG SPELLING OF A VERSION: versions.json's, without the leading "v".
@@ -76,10 +99,8 @@ export function resolve(tag, root = ROOT) {
 
   const out = { product, version, prerelease: /-beta\./.test(version) };
 
-  const config = join(root, 'plugins', product, 'config.h');
-  if (existsSync(config)) {
-    const bundle = /#define\s+BUNDLE_NAME\s+"([^"]+)"/.exec(readFileSync(config, 'utf8'))?.[1];
-    if (!bundle) throw new Error(`plugins/${product}/config.h has no BUNDLE_NAME`);
+  const bundle = bundleOf(root, product);
+  if (bundle) {
     out.bundle = bundle;
     out.zip = `${product}-${version}-macOS.zip`;
   }
@@ -98,7 +119,7 @@ export function resolve(tag, root = ROOT) {
   }
 
   if (!out.bundle && !out.module_id)
-    throw new Error(`${product} has neither plugins/${product}/config.h nor modules/${product}/module.env -- nothing to release`);
+    throw new Error(`${product} has neither a plugin in plugins/${product} nor modules/${product}/module.env -- nothing to release`);
   return out;
 }
 

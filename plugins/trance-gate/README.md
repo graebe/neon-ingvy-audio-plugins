@@ -3,10 +3,10 @@ title: NI Trance Gate
 tagline: A tempo-locked step gate, in Live and on the Move, from one Rust engine.
 order: 1
 hosts: [live, move]
-formats: [VST3, AU, CLAP]
+formats: [VST3]
 engine: engines/trance-gate
 crates: [tg-core, tg-capi, tg-move]
-tests: [tg_core, tg_render_ab, tg_curves, tg_envelope, tg_au]
+tests: [tg_core, tg_render_ab, tg_curves, tg_envelope, tg_processor, tg_host]
 still: media/trance-gate/live.png
 harness: harness/trance-gate/
 ---
@@ -15,8 +15,8 @@ harness: harness/trance-gate/
 
 A tempo-locked step gate: rhythmic chopping locked to song position, per-step
 ADSR, ties, per-step amount, a fade-in that introduces the steps one at a time,
-and 8 slots, each a complete sound. Universal macOS binary as
-VST3 / AU / CLAP, and a Schwung module for the Ableton Move.
+and 8 slots, each a complete sound. A universal macOS VST3 with a native
+editor, and a Schwung module for the Ableton Move.
 
 **It is the same engine in both**, and that is asserted rather than claimed.
 `tg-capi` wraps the core in a C ABI for the plugin and `tg-move` wraps it in
