@@ -426,6 +426,31 @@ target_link_libraries(tg_processor PRIVATE
     juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 add_test(NAME tg_processor COMMAND tg_processor)
 
+# NI TRANCE GATE'S AUDIO CALLBACK ALLOCATES NOTHING: the processor under
+# alloc_guard.c, which counts every malloc of the calling thread -- C++, JUCE
+# and the Rust engine alike. The guard is a dyld interposer, so macOS only;
+# the engines' own no-allocation tests (assert_no_alloc) run everywhere.
+if (APPLE)
+    add_library(ni_alloc_guard SHARED alloc_guard.c)
+    juce_add_console_app(tg_rt PRODUCT_NAME tg_rt)
+    target_sources(tg_rt PRIVATE tg_rt.cpp ${_ni_shell_sources}
+        ${NI_TG}/TranceGate.cpp ${NI_TG}/Params.cpp ${NI_TG}/EngineModel.cpp ${NI_TG}/Window.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/_shared/ni/Wire.cpp)
+    target_include_directories(tg_rt PRIVATE
+        ${NI_TG} ${NI_JUCE_SHELL} ${CMAKE_SOURCE_DIR}/plugins/_shared)
+    target_compile_definitions(tg_rt PRIVATE
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_WEBP=0
+        "JucePlugin_Name=\"NI Trance Gate\"" JucePlugin_WantsMidiInput=0
+        "NI_PRODUCT=\"trance-gate\"" "NI_VERSION_STRING=\"tg_rt\"")
+    target_link_libraries(tg_rt PRIVATE
+        tg_engine ni_editor_trance_gate juce::juce_audio_processors
+        juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+    add_dependencies(tg_rt ni_alloc_guard)
+    add_test(NAME tg_rt COMMAND tg_rt ${NI_FIXTURES})
+    set_tests_properties(tg_rt PROPERTIES
+        ENVIRONMENT "DYLD_INSERT_LIBRARIES=$<TARGET_FILE:ni_alloc_guard>")
+endif()
+
 # ---------------------------------------------------------------- Spectrogram
 
 # THE ANALYZER'S OWN TESTS, which are cargo's: the FFT against a naive DFT, the
@@ -846,7 +871,7 @@ ni_test_tiers(
         ui_tokens design_paths validator_verdict
         # the JUCE shell's state codec, and NI Trance Gate's processor, model
         # and editor in one program
-        nist_fixtures tg_processor
+        nist_fixtures tg_processor tg_rt
     FULL
         tg_render_ab:render sc_render_ab:render
         sc_au:host
