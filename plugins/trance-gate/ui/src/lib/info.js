@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What every control in the editor does, in one line each.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The hint bar shows one of these while the pointer is over its control or the
  * keyboard focus is on it, and each is also the control's accessible

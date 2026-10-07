@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The playhead's clock: the engine's position, carried forward between the
- * engine's reports. Copyright (c) 2026 Torben Gräber. MIT.
+ * engine's reports.
  *
  * OnIdle runs on a main-thread timer -- 50 Hz at best, and worse under a host's
  * UI load -- so drawing the position it reports directly stutters and drifts

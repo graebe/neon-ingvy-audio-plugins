@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Trance Gate — the editor.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The window, top to bottom: the ring and the envelope plot on the left with
  * the three panels beside them, the settings row, the Pattern/Signal band, and

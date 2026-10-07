@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What a key does to a control, as plain functions.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * "A focus ring on a control you cannot operate is decoration." Every control
  * that takes a pointer takes the keyboard too; the mapping lives here so it can

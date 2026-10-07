@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * What the Trance Gate's plots draw that knows what a STEP is: the rules
  * between steps, their numbers, and the gate's curve over an Amount floor.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The general half -- the well, the millisecond ruler, the min/max band -- is
  * the kit's (components/Plot.jsx).

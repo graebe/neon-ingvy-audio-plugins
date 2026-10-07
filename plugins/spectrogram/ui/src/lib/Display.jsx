@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The picture, its frequency scale, the time axis under it and the crosshair's
- * readout. Copyright (c) 2026 Torben Gräber. MIT.
+ * readout.
  *
  * THE SCALES ARE OUTSIDE THE WELL, not laid over the picture: over it a label
  * is legible against silence and invisible against a loud partial, and fixing

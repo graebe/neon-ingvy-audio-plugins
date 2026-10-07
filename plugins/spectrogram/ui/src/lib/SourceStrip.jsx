@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The second row: what the picture is OF, and what the orange is measuring.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * TWO GROUPS, ONE STRIP, AND A RULE BETWEEN THEM. "What is the picture of" and
  * "what is the clash measuring" are different questions, and one undivided row

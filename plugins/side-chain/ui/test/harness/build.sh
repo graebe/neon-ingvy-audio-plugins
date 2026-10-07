@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
 # Build the editor and lay it out beside the harness page, so a review looks at
 # the SAME bundle the plugin ships rather than at a dev server.
 #

@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * A machine glyph from the design system's set. Copyright (c) 2026 Torben Gräber. MIT.
+ * A machine glyph from the design system's set.
  *
  * 16px, 1.5px stroke, square caps, drawn in currentColor so it takes the colour
  * of its control: ink at rest, on-uv on a lit button, ink-dim when disabled.

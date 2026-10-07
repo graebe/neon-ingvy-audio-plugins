@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * A choice, not a quantity. Copyright (c) 2026 Torben Gräber. MIT.
+ * A choice, not a quantity.
  *
  * THE MECHANISM IS THE PART WORTH KEEPING: a styled div with a REAL, invisible
  * <select> stretched over it. The popup is then the OS's -- which is the only

@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * A field that edits a value in place: focused and selected the moment it
  * appears, committed on Enter or blur, abandoned on Escape.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * FOCUSED FROM onMount, NOT BY `autofocus`. The attribute only acts on page
  * load; a field inserted later -- which is every field here, since each

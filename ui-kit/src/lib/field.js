@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The animated ground: a damped wave field on the dot paper.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * A PORT, NOT A DESIGN. Every number and every step here comes from the
  * Ultraviolet design system's own reference implementation,

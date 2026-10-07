@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The rolling picture.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * TWO CANVASES, AND THE SECOND ONE IS WHY THE SCROLL IS FREE.
  *

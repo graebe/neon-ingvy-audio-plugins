@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * A PLAYING TRANSPORT, for reviewing the animated ground without a host.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * In a plugin the ground rings on the host's beat: the beat clock in Rust
  * (engines/ground) watches the transport on the audio thread and the plugin

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The token guard: no colour may be spelled outside ui-kit/src/tokens.css.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THE JUCE BUILD HAD THIS AND THE WEB PORT LOST IT.
  *

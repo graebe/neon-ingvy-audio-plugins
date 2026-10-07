@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * Tabs. Copyright (c) 2026 Torben Gräber. MIT.
+ * Tabs.
  *
  * A VERTICAL STRIP, each tab a block of the height divided evenly, the text a
  * quarter turn so it reads bottom-to-top. The lit one is a uv fill with on-uv

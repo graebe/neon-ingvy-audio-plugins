@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The kit's controls, bound to host parameters through a params store.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The controls themselves know nothing about parameters -- a Knob turns a
  * normalised number, a Select chooses an index. This is the one binding every

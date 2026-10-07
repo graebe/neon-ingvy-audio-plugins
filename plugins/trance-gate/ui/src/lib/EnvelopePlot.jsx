@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The envelope plot under the ring: one gate on a millisecond axis.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { For, createMemo } from 'solid-js';
 import { Well, Axis, INSET, CAPTION } from '@ultraviolet/ui';

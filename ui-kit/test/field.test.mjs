@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The animated ground's simulation.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * TWO KINDS OF CLAIM HERE, and they are different in status.
  *

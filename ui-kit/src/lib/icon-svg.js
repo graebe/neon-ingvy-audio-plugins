@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * The design system's icon files, read. Copyright (c) 2026 Torben Gräber. MIT.
+ * The design system's icon files, read.
  *
  * Plain JavaScript so node can test it against the files themselves.
  */

@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * NI Side-Chain's editor. Copyright (c) 2026 Torben Gräber. MIT.
+ * NI Side-Chain's editor.
  *
  * ONE ALIGNMENT IS LOAD-BEARING: the shape you drag sits directly above the
  * audio it shaped, in one well spanning exactly one cycle. That is the whole

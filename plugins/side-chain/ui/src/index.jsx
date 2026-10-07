@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /* The import order is the cascade: tokens, then what a component IS, then
  * where this editor puts it. */
 import '@ultraviolet/ui/tokens.css';

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The iPlug2 bridge, without a WebView.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * The plugin calls SPVFD / SAMFD as globals on the page; these tests call them
  * the same way.

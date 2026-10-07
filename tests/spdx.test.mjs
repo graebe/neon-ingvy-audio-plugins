@@ -69,10 +69,6 @@ const EXCLUDED = [
    'vendored code and the iPlug2 submodule: third-party code keeps its own notices'],
   [/^design\//,
    'the mirrors of the two design artifacts, which stay byte for byte what was published'],
-  [/^ui-kit\//,
-   'the Solid kit, deleted with the web editors later in the JUCE refactor'],
-  [/^plugins\/[^/]+\/ui\//,
-   'the Solid editors, deleted with the kit'],
   [/^engines\/trance-gate\/include\/(plugin_api_v1|audio_fx_api_v2)\.h$/,
    "Schwung's module-API headers, copied unmodified: they keep their origin, " +
    'which THIRD_PARTY_LICENSES.md records'],

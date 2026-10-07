@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The parameter store: the plugin's defaults, per-parameter values, and the
  * reset that sets the default rather than zero.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

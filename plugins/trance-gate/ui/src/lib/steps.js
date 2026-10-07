@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Editing a step — the one implementation of it.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * This was inline in StepGrid.jsx, which was fine while the pads were the only
  * thing you could click. The ring edits the same sixteen steps, and a second

@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * At most one message per key per window. Copyright (c) 2026 Torben Gräber. MIT.
+ * At most one message per key per window.
  *
  * A pointer reports far more often than the display draws -- a pad dragged for
  * its amount sent a message on every pointermove, each one a base64 frame

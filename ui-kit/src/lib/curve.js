@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The envelope curves, as the engines shape a stage -- the one copy in the UI.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * A PORT OF ni_dsp::curve (engines/shared), which both engines use. It was two
  * copies -- the Trance Gate's curves.js and Side-Chain's shape.js -- and it is

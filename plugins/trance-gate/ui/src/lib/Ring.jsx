@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * The pattern as a ring. Copyright (c) 2026 Torben Gräber. MIT.
+ * The pattern as a ring.
  * Ported from RingDisplay::paint, and then given the two things it never had.
  *
  * ANNULAR SECTORS, NOT STROKED ARCS -- a segment is a wedge you can read at a

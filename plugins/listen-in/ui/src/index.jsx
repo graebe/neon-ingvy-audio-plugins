@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * NI Listen-In — the editor's entry point.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { render } from 'solid-js/web';
 import '@ultraviolet/ui/tokens.css';

@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
- * The activity meter. Copyright (c) 2026 Torben Gräber. MIT.
+ * The activity meter.
  *
  * LOCAL TO THIS EDITOR, NOT IN THE KIT, and that is the kit's own rule rather
  * than an omission -- ui-kit/src/index.js:

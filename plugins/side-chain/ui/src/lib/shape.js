@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The duck the shaper draws: a port of `engines/side-chain/crates/sc-core/src/shape.rs`,
  * on the kit's curve.

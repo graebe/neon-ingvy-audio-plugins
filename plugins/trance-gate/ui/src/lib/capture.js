@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Trance Gate's two binary readouts: the Signal capture and the rendered
- * gate. Copyright (c) 2026 Torben Gräber. MIT.
+ * gate.
  *
  * Both arrive as bytes (the bridge's onBytes), an ASCII header and then one
  * byte a value. Plain JavaScript so node can test them.

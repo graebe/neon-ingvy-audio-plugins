@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Which x ranges `count` columns written into a ring of `cols` from `start`
- * touched: one span, or two when the write wraps. Copyright (c) 2026 Torben Gräber. MIT.
+ * touched: one span, or two when the write wraps.
  */
 export function ringSpans(start, count, cols) {
   const n = Math.min(Math.max(0, count), cols);

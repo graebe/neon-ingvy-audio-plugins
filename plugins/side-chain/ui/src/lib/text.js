@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The words the Side-Chain window writes: its note names and its hint clauses.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 
 /* Live's octave numbering, where 36 is C1 -- the same table Params.cpp

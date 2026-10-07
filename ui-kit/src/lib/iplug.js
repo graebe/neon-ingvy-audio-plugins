@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The iPlug2 bridge, both directions. Shared by every editor in this repository.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THIS IS A PROPERTY OF iPlug2, NOT OF ANY PLUGIN, which is why it lives in the
  * kit. It existed twice -- once per editor -- and the Spectrogram's copy said

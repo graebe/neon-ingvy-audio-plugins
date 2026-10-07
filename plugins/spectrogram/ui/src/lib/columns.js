@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The wire, decoded: columns, the frequency axis, and where a label goes.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Plain JavaScript in its own file rather than helpers inside App.jsx, because
  * these three are the only things in the editor that can be WRONG rather than

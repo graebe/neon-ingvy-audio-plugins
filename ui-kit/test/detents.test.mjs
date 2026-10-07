@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Detents: the values a control holds on while it is dragged past them.
- * Copyright (c) 2026 Torben Gräber. MIT.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

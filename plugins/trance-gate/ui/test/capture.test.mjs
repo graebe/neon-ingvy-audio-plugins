@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The Trance Gate's binary readouts, as ni::Scope and tg_core_render_gate
- * write them. Copyright (c) 2026 Torben Gräber. MIT.
+ * write them.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The ground's geometry: where the canvas is, at what scale, and in what pixels.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * PURE FUNCTIONS, pulled out of Ground.jsx and field.js so that the one part of
  * the ground that is arithmetic about the page can be tested without one.

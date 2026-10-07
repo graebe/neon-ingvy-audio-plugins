@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The band's two plots: the Pattern (the gate across one cycle, as the engine
  * applies it) and the Signal (the capture, dry behind and gated in front).
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * THE VIEWBOX IS THE PIXEL SIZE, 1:1: a stretched viewBox scales the text too.
  * The well, the ruler and the band are the kit's.

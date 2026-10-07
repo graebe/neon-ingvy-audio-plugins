@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * Side-Chain's capture: six raw bytes a column, as SideChain::SendScope writes
- * them. Copyright (c) 2026 Torben Gräber. MIT.
+ * them.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

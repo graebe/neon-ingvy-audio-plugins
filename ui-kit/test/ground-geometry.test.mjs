@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
 /*
  * The ground's geometry: rects, scale and backing pixels.
- * Copyright (c) 2026 Torben Gräber. MIT.
  *
  * Every editor here scales its <main> with a CSS transform, and the ground's
  * canvas lives inside it. These pin the arithmetic that turns what the page
