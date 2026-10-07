@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "cd-capi"
-version = "2026.10.7+1"
+version = "2026.10.7+2"
 dependencies = [
  "cbindgen",
  "cd-core",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "cd-core"
-version = "2026.10.7+1"
+version = "2026.10.7+2"
 dependencies = [
  "ground-core",
  "music-core",
@@ -342,7 +342,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "music-core"
-version = "2026.10.6+3"
+version = "2026.10.6+4"
 dependencies = [
  "divan",
  "proptest",

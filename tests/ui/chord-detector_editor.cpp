@@ -55,6 +55,18 @@ struct FakeModel final : public Model
         }
         return n;
     }
+    CdKey key() const override
+    {
+        /* The major keys' notes and signatures are all a fake needs. */
+        const int tonic = (int) std::lround (params[Param::tonic].getValue() * 11.0f);
+        CdKey k {};
+        for (int step : { 0, 2, 4, 5, 7, 9, 11 })
+            k.scale = (uint16_t) (k.scale | (1u << ((tonic + step) % 12)));
+        const int fifths = (tonic * 7) % 12;
+        k.signature = (int8_t) (fifths > 6 ? fifths - 12 : fifths);
+        return k;
+    }
+
     CdWrittenNote write (int midi) const override
     {
         static constexpr int whites[] = { 0, 2, 4, 5, 7, 9, 11 };
@@ -247,6 +259,45 @@ TEST_CASE ("chord-detector: the controls ask the host, and show what it holds")
     CHECK (editor.spanSelect().getIndex() == 0);
     editor.tick();
     CHECK (editor.grandStaff().getSpan() == doctest::Approx (4.0));
+}
+
+TEST_CASE ("chord-detector: a window opened late starts from what sounds, and dropped events are put right")
+{
+    FakeModel model;
+    /* Played before the window opened: a stale stream, and E and G sounding. */
+    model.play ({ 52, 55 }, "E–G", "", "minor 3rd", "E3 G3", -1, 1.0);
+    model.notes.push_back ({ 0.5, 40, 0 });
+    Editor editor (model);
+    const auto& seeded = editor.noteHistory().notes();
+    REQUIRE (seeded.size() == 2);
+    CHECK (seeded[0].sounding());
+    CHECK (seeded[1].sounding());
+
+    /* The engine dropped events: E stopped and C started, unheard. */
+    model.now.sounding[0] = (1ull << 48) | (1ull << 55);
+    model.now.dropped = 7;
+    model.now.now = 2.0;
+    editor.tick();
+    int sounding = 0;
+    for (const auto& n : editor.noteHistory().notes())
+    {
+        if (n.sounding())
+        {
+            ++sounding;
+            CHECK ((n.midi == 48 || n.midi == 55));
+        }
+    }
+    CHECK (sounding == 2);
+}
+
+TEST_CASE ("chord-detector: the key is drawn from the parameters at once")
+{
+    FakeModel model;
+    Editor editor (model);
+    model.params[Param::tonic].setValueNotifyingHost (5.0f / 11.0f);   // F major, no block run yet
+    CHECK (editor.circleOfFifths().getState().tonic == 5);
+    CHECK (editor.circleOfFifths().getState().caption == "1 flat");
+    CHECK (editor.grandStaff().getSignature() == -1);
 }
 
 NI_SNAPSHOT_TEST ("chord-detector: the window, playing, as notation")

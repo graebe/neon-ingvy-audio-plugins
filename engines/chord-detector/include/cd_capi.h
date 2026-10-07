@@ -121,6 +121,13 @@ typedef struct CdWrittenNote {
   char name[8];
 } CdWrittenNote;
 
+// What a key is, for drawing it: its seven pitch classes (C at bit 0) and
+// its signature, -5 flats to 6 sharps.
+typedef struct CdKey {
+  uint16_t scale;
+  int8_t signature;
+} CdKey;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -139,6 +146,14 @@ void cd_shell_destroy(struct CdShell *shell);
 // # Safety
 // `shell` is null or live.
 void cd_shell_post_sample_rate(const struct CdShell *shell, double sample_rate);
+
+// Every note stops and a held reading clears, at the top of the next block:
+// what a shell posts when the host (re)activates it, since a deactivated
+// plugin hears no note-offs. Not the audio thread.
+//
+// # Safety
+// `shell` is null or live.
+void cd_shell_post_reset(const struct CdShell *shell);
 
 // The audio thread, at the top of a block: the engine, for this block only.
 //
@@ -240,6 +255,12 @@ int32_t cd_param_choice(int32_t index, int32_t choice, char *out, size_t cap);
 // the same naming the reading's texts use. Any thread; a pure function.
 // Out-of-range values are clamped.
 struct CdWrittenNote cd_write_note(int32_t tonic, int32_t mode, int32_t spelling, int32_t midi);
+
+// The key `tonic` (0-11) / `mode` (0-6, Ionian to Locrian), as the engine
+// reads in it: what an editor draws from its parameters while the engine has
+// not run a block with them yet. Any thread; a pure function. Out-of-range
+// values are clamped.
+struct CdKey cd_key_info(int32_t tonic, int32_t mode);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -151,6 +151,18 @@ Editor::Editor (Model& m) : model (m)
 
     /* Laid out once everything it lays out exists. */
     setSize (width, height);
+
+    /* What the ring held before this window opened belongs to no history it
+     * can show: the notes are taken from what sounds now instead. */
+    CdNoteEvent stale[256];
+    while (model.takeNotes (stale, (int) std::size (stale)) > 0)
+    {
+    }
+    const auto& now = model.reading();
+    seenDropped = now.dropped;
+    history.setClock ({ now.now, now.bpm, now.bar, now.bar_origin, now.playing != 0 });
+    reconcile (now);
+
     showParameters();
     tick();
     frame = clock.subscribe ([this] (double) { tick(); });
@@ -196,9 +208,8 @@ void Editor::showParameters()
     staff.setVisible (view == 0);
     roll.setVisible (view == 1);
 
-    /* The key changes the names around the circle and the staff's
-     * signature before the engine has read a block: draw them from the
-     * parameters now, and the reading confirms them. */
+    /* A new key changes the circle's names and tint and the staff's
+     * signature at once: they are drawn from the parameters, not the reading. */
     shownSerial = 0xffffffffu;
     showReading (model.reading());
 }
@@ -210,9 +221,24 @@ double Editor::spanQuarters (const CdReading& r) const
     return bars[juce::jlimit (0, 3, choiceOf (Param::historySpan))] * barLength;
 }
 
-void Editor::tick()
+void Editor::reconcile (const CdReading& r)
 {
-    /* The notes since the last frame, into the history. */
+    const auto sounding = noteSet (r.sounding);
+    ni::ui::music::NoteSet known;
+    for (const auto& n : history.notes())
+        if (n.sounding())
+            known.set ((size_t) n.midi);
+    for (int m = 0; m < 128; ++m)
+    {
+        if (known.test ((size_t) m) && ! sounding.test ((size_t) m))
+            history.stop (m, r.now);
+        else if (sounding.test ((size_t) m) && ! known.test ((size_t) m))
+            history.start (m, 100, r.now);
+    }
+}
+
+void Editor::drainNotes()
+{
     CdNoteEvent events[256];
     for (int n; (n = model.takeNotes (events, (int) std::size (events))) > 0;)
         for (int i = 0; i < n; ++i)
@@ -223,9 +249,22 @@ void Editor::tick()
             else
                 history.stop (e.note, e.at);
         }
+}
+
+void Editor::tick()
+{
+    /* The notes since the last frame, into the history. */
+    drainNotes();
 
     const auto& r = model.reading();
+    /* The longest span it can be asked to show, in this meter. */
+    history.setKeep (8.0 * (r.bar > 0.0 ? r.bar : 4.0));
     history.setClock ({ r.now, r.bpm, r.bar, r.bar_origin, r.playing != 0 });
+    if (r.dropped != seenDropped)
+    {
+        seenDropped = r.dropped;
+        reconcile (r);
+    }
     staff.setSpan (spanQuarters (r));
     roll.setSpan (spanQuarters (r));
     showReading (r);
@@ -257,18 +296,20 @@ void Editor::showReading (const CdReading& r)
     words.held = held;
     readout.setState (words);
 
-    /* The circle: the key from the parameters, the rest from the reading. */
+    /* The circle: the key from the parameters (Model::key), what sounds from
+     * the reading. */
+    const auto key = model.key();
     ni::ui::CircleOfFifths::State ring;
     ring.tonic = choiceOf (Param::tonic);
-    ring.scale = r.scale;
+    ring.scale = key.scale;
     ring.lit = r.pitch_classes;
     ring.root = r.root;
     ring.dimmed = held;
     for (int pc = 0; pc < 12; ++pc)
         ring.names[(size_t) pc] = pitchName (model.write (60 + pc));
-    ring.caption = signatureText (r.signature);
+    ring.caption = signatureText (key.signature);
     circle.setState (ring);
-    staff.setSignature (r.signature);
+    staff.setSignature (key.signature);
 
     /* The keyboard: what sounds; under Hold, after release, what was held. */
     ni::ui::Keyboard::State keys = keyboard.getState();

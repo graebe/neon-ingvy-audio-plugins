@@ -51,6 +51,13 @@ public:
      * reading's texts write it (cd_write_note). */
     virtual CdWrittenNote write (int midi) const = 0;
 
+    /* The key the parameters describe: its notes and signature
+     * (cd_key_info). Everything the window draws of the key comes from here
+     * and from write(), so a key just chosen shows at once -- the reading
+     * catches up at the engine's next block, which with the host's audio off
+     * is when it is switched back on. */
+    virtual CdKey key() const = 0;
+
     int takeRings (float*, int) override { return 0; }
     bool motion() const override { return false; }
     void setMotion (bool) override {}

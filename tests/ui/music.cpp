@@ -59,8 +59,9 @@ TEST_CASE ("keyboard: it stays put while the notes fit, and moves to the C below
     CHECK (Keyboard::lowestToShow ({}, 4, 36) == 36);
     CHECK (Keyboard::lowestToShow (notes ({ 45, 64 }), 4, 36) == 36);
     CHECK (Keyboard::lowestToShow (notes ({ 30, 50 }), 4, 36) == 24);
-    CHECK (Keyboard::lowestToShow (notes ({ 90 }), 4, 36) == 72);   // 84 would run past 127
-    CHECK (Keyboard::lowestToShow (notes ({ 127 }), 4, 36) == 72);   // four octaves still fit
+    CHECK (Keyboard::lowestToShow (notes ({ 90 }), 4, 36) == 84);
+    CHECK (Keyboard::lowestToShow (notes ({ 127 }), 4, 36) == 84);   // its octaves reach G9
+    CHECK (Keyboard::lowestToShow (notes ({ 127 }), 1, 36) == 120);
     CHECK (Keyboard::lowestToShow (notes ({ 0 }), 4, 36) == 0);
 }
 

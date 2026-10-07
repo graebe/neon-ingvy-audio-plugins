@@ -298,3 +298,39 @@ fn notes_are_written_with_the_letters_a_staff_needs() {
         "B Ionian, key spelling, MIDI 127"
     );
 }
+
+#[test]
+fn a_key_is_described_for_drawing() {
+    let c = cd_key_info(0, 0);
+    assert_eq!(
+        c,
+        CdKey {
+            scale: 0b1010_1011_0101,
+            signature: 0
+        }
+    );
+    let c_minor = cd_key_info(0, 5);
+    assert_eq!(c_minor.signature, -3);
+    assert_eq!(cd_key_info(99, -1), cd_key_info(11, 0));
+}
+
+#[test]
+fn a_posted_reset_stops_every_note_at_the_next_block() {
+    unsafe {
+        let shell = cd_shell_create(48000.0);
+        block(shell, &[[0x90, 60, 100], [0x90, 64, 100]], &[(3, 1)]);
+        let mut events = [CdNoteEvent {
+            at: 0.0,
+            note: 0,
+            velocity: 0,
+        }; 8];
+        assert_eq!(cd_shell_drain(shell, events.as_mut_ptr(), 8), 2);
+        cd_shell_post_reset(shell);
+        cd_shell_post_reset(std::ptr::null());
+        block(shell, &[], &[]);
+        assert_eq!(cd_shell_drain(shell, events.as_mut_ptr(), 8), 2);
+        assert!(events[..2].iter().all(|e| e.velocity == 0));
+        assert_eq!(read(shell).kind, 0, "a held reading clears too");
+        cd_shell_destroy(shell);
+    }
+}

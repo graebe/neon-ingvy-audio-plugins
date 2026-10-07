@@ -59,12 +59,17 @@ public:
     const CdReading& reading() override;
     int takeNotes (CdNoteEvent* out, int capacity) override;
     CdWrittenNote write (int midi) const override;
+    CdKey key() const override;
 
     /* The scales the Zoom choices stand for. */
     static const std::vector<float>& zoomScales();
 
 protected:
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    /* Bypassed, it still hears the lane: a note released during the bypass
+     * would otherwise sound on in the engine after it. The output is silence
+     * either way. */
+    void processBypassed (juce::AudioBuffer<float>& b, juce::MidiBuffer& m) override { process (b, m); }
 
 private:
     int choice (int index) const;

@@ -17,8 +17,10 @@ THE KIND, by how many notes and how many pitch classes:
   one pitch class             Note: one note, or the same note in octaves
   exactly two notes           Interval, from the lower to the upper; a fifth
                               also carries its chord, `C5`
-  three or more, named        Chord
-  three or more, two classes  Interval between the bass and the other class
+  three or more, named        Chord -- C3 G3 C4 too: two classes a fifth
+                              apart are the power chord `C5`
+  three or more, two classes  Interval between the bass and the other class,
+  with no name                C3 E3 C4 say
   three or more, unnamed      Unnamed
 
 SIXTEEN NOTES AT MOST ARE NAMED, the lowest sixteen: `Notes` holds that many,

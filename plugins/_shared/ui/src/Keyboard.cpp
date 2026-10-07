@@ -95,7 +95,8 @@ int Keyboard::lowestToShow (const music::NoteSet& notes, int octaves, int curren
     const int span = 12 * std::max (1, octaves);
     if (low >= current && high < current + span)
         return current;
-    const int top = std::max (0, (128 - span) / 12 * 12);
+    /* The highest C whose octaves still reach 127 -- G9, MIDI's top. */
+    const int top = std::max (0, 120 - (span - 12));
     return std::clamp (low / 12 * 12, 0, top);
 }
 

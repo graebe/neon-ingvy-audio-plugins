@@ -146,9 +146,15 @@ impl Detector {
                 self.serial = self.serial.wrapping_add(1);
             }
             Param::Hold => {
-                if choice == 0 && self.reading.is_held() {
-                    self.reading = Reading::default();
-                    self.serial = self.serial.wrapping_add(1);
+                /* Off: name what sounds now -- nothing after a full release,
+                 * what is left after a partial one, which Hold had kept as
+                 * the whole chord. On: the reading stands until a release. */
+                if choice == 0 {
+                    let fresh = Reading::of(self.sounding.notes(), self.key());
+                    if fresh != self.reading {
+                        self.reading = fresh;
+                        self.serial = self.serial.wrapping_add(1);
+                    }
                 }
             }
             Param::HistoryView | Param::HistorySpan | Param::Zoom => {}

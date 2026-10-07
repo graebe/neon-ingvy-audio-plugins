@@ -261,6 +261,9 @@ impl CdCore {
 #[derive(Clone, Copy)]
 pub enum Command {
     SampleRate(f64),
+    /// Every note stops and a held reading clears: a host that deactivated
+    /// the plugin sent no note-offs for what was held.
+    Reset,
 }
 
 impl Model for CdCore {
@@ -274,6 +277,10 @@ impl Model for CdCore {
     fn apply(&mut self, cmd: &Command) {
         match *cmd {
             Command::SampleRate(rate) => self.detector.set_sample_rate(rate),
+            Command::Reset => {
+                let (detector, sink) = self.parts();
+                detector.reset(sink);
+            }
         }
     }
 
@@ -397,6 +404,19 @@ pub unsafe extern "C" fn cd_shell_post_sample_rate(shell: *const CdShell, sample
     }
     shell.bridge.post(Command::SampleRate(sample_rate));
     shell.bridge.set_publish_every(publish_every(sample_rate));
+}
+
+/// Every note stops and a held reading clears, at the top of the next block:
+/// what a shell posts when the host (re)activates it, since a deactivated
+/// plugin hears no note-offs. Not the audio thread.
+///
+/// # Safety
+/// `shell` is null or live.
+#[no_mangle]
+pub unsafe extern "C" fn cd_shell_post_reset(shell: *const CdShell) {
+    if let Some(shell) = shell.as_ref() {
+        shell.bridge.post(Command::Reset);
+    }
 }
 
 /// The audio thread, at the top of a block: the engine, for this block only.
@@ -695,4 +715,31 @@ pub extern "C" fn cd_write_note(tonic: i32, mode: i32, spelling: i32, midi: i32)
     };
     let _ = names.write_note(note, &mut CText::new(&mut out.name));
     out
+}
+
+/* --------------------------------------------------------- naming a key */
+
+/// What a key is, for drawing it: its seven pitch classes (C at bit 0) and
+/// its signature, -5 flats to 6 sharps.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CdKey {
+    pub scale: u16,
+    pub signature: i8,
+}
+
+/// The key `tonic` (0-11) / `mode` (0-6, Ionian to Locrian), as the engine
+/// reads in it: what an editor draws from its parameters while the engine has
+/// not run a block with them yet. Any thread; a pure function. Out-of-range
+/// values are clamped.
+#[no_mangle]
+pub extern "C" fn cd_key_info(tonic: i32, mode: i32) -> CdKey {
+    let key = Key::new(
+        Pitch::new(tonic.clamp(0, 11)),
+        Mode::from_index(mode.clamp(0, 6) as u8).unwrap_or_default(),
+    );
+    CdKey {
+        scale: key.pitch_set().bits(),
+        signature: key.signature(),
+    }
 }

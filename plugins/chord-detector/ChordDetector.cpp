@@ -70,6 +70,9 @@ bool ChordDetector::isBusesLayoutSupported (const BusesLayout& layout) const
 
 void ChordDetector::prepareToPlay (double sampleRate, int)
 {
+    /* A host that deactivated the plugin sent no note-offs for what was held
+     * then, so it starts again from silence. */
+    cd_shell_post_reset (shell.get());
     cd_shell_post_sample_rate (shell.get(), sampleRate);
 }
 
@@ -114,6 +117,11 @@ int ChordDetector::takeNotes (CdNoteEvent* out, int capacity)
 CdWrittenNote ChordDetector::write (int midi) const
 {
     return cd_write_note (choice (Param::tonic), choice (Param::mode), choice (Param::spelling), midi);
+}
+
+CdKey ChordDetector::key() const
+{
+    return cd_key_info (choice (Param::tonic), choice (Param::mode));
 }
 
 juce::AudioProcessorEditor* ChordDetector::createEditor()

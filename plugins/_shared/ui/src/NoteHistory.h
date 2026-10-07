@@ -74,6 +74,10 @@ public:
 
     void mark (double at, const juce::String& text);
 
+    /* How many quarters it keeps: what the longest view of it shows. */
+    void setKeep (double quarters) noexcept { keep = juce::jmax (1.0, quarters); }
+    double getKeep() const noexcept { return keep; }
+
     /* The clock moves; what is now too old goes. */
     void setClock (const Clock&);
     const Clock& clock() const noexcept { return now; }

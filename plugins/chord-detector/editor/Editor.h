@@ -16,7 +16,10 @@
  *   (0, 572)   the Hint: three conventions, then the Signature
  *
  * EVERYTHING SHOWN COMES FROM THE MODEL, once a frame: the reading when its
- * serial moves, the note events into the history every frame. Every control
+ * serial moves, the note events into the history every frame. The events are
+ * a stream the editor only hears while it is open, so the history starts from
+ * what is sounding when the window opens, and is put right again from what is
+ * sounding whenever the engine reports events it had to drop. Every control
  * is a host parameter, bound through ParamBinding; the window keeps nothing a
  * session would miss. It draws at its design size: the host's window around it
  * scales it by Zoom (ni::PluginEditor).
@@ -87,6 +90,8 @@ private:
     void bind (ni::ui::Select&, Param);
     void showParameters();
     void showReading (const CdReading&);
+    void drainNotes();
+    void reconcile (const CdReading&);
     double spanQuarters (const CdReading&) const;
 
     Model& model;
@@ -115,6 +120,7 @@ private:
     ni::ui::Hint bar;
 
     std::uint32_t shownSerial = 0xffffffffu;
+    std::uint32_t seenDropped = 0;
     bool pedal = false;
 
     JUCE_DECLARE_NON_COPYABLE (Editor)

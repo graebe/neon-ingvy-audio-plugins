@@ -299,6 +299,20 @@ fn hold_keeps_the_whole_chord_while_its_keys_come_up() {
 }
 
 #[test]
+fn turning_hold_off_mid_release_names_what_is_left() {
+    let mut d = Detector::new(48000.0);
+    d.set_param(Param::Hold, 1);
+    play(&mut d, &[60, 64, 67]);
+    release(&mut d, &[67]);
+    assert_eq!(name(&d), "C", "Hold keeps the chord played");
+    let serial = d.serial();
+    d.set_param(Param::Hold, 0);
+    assert_eq!(d.reading().kind(), Kind::Interval);
+    assert_eq!(name(&d), "C–E");
+    assert_ne!(d.serial(), serial);
+}
+
+#[test]
 fn without_hold_what_is_left_is_named() {
     let mut d = Detector::new(48000.0);
     play(&mut d, &[60, 64, 67]);

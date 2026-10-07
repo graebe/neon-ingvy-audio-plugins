@@ -62,8 +62,8 @@ public:
     juce::Rectangle<float> keyBounds (int midi) const;
 
     /* `current` while every note of `notes` is inside its octaves, otherwise
-     * the C at or below the lowest note, kept low enough that the octaves fit
-     * under 128. */
+     * the C at or below the lowest note -- no higher than the C whose octaves
+     * just reach 127, so the top notes can always be shown. */
     static int lowestToShow (const music::NoteSet& notes, int octaves, int current);
 
     /* Under the keys: the gap and the bass mark. */
