@@ -376,6 +376,15 @@ TEST_CASE("a column holds the bounds of the samples filed under it")
   for (int i = 0; i < 4; i++)
     CHECK((unsigned char) col[8 + i] == want[i]);
 
+  /* And as the floats themselves, for an editor that draws them. */
+  float floats[5] = {};
+  scope.ReadColumn(0, floats);
+  CHECK(floats[0] == -0.5f);
+  CHECK(floats[1] == 0.3f);
+  CHECK(floats[2] == -0.2f);
+  CHECK(floats[3] == 0.1f);
+  CHECK(floats[4] == 0.5f);
+
   CHECK(scope.Seen(0));
   CHECK_FALSE(scope.Seen(1));
   CHECK(scope.Seen(2));

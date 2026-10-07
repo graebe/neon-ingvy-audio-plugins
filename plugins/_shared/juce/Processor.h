@@ -87,6 +87,12 @@ public:
 
     juce::VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
 
+    /* An ni::PluginEditor opened, or is closing: what a product runs only
+     * while a window shows it (a scope, the Ground). JUCE's own
+     * editorBeingDeleted is not virtual. Message thread. */
+    virtual void editorOpened() {}
+    virtual void editorClosed() {}
+
     /* The default state's root tag, and the format it writes. */
     static constexpr const char* stateTag = "NeonIngvy";
     static constexpr int stateFormat = 1;

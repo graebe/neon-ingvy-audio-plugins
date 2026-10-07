@@ -13,9 +13,10 @@
  *   it runs          prepared, a second of blocks with MIDI in every one (an
  *                    instrument's notes, a pedal, a panic) at two block sizes,
  *                    released and prepared again at another rate
- *   it saves         every parameter set to a value of its own, the state
- *                    saved, a second instance loaded from it: the same values,
- *                    and the same state saved back
+ *   it saves         every parameter set to a value of its own, a block
+ *                    run and the message loop let through, the state saved,
+ *                    a second instance loaded from it: the values the first
+ *                    holds, and the same state saved back
  *   it opens         its editor, at a size, created and destroyed twice
  *
  * Every product on the JUCE shell runs this (tests/CMakeLists.txt), so a
@@ -54,7 +55,7 @@ void run (juce::AudioPluginInstance& p, double rate, int block, int seconds)
     p.prepareToPlay (rate, block);
     juce::AudioBuffer<float> buffer (juce::jmax (p.getTotalNumInputChannels(), p.getTotalNumOutputChannels()), block);
     juce::MidiBuffer midi;
-    const int blocks = (int) (seconds * rate / block);
+    const int blocks = juce::jmax (1, (int) (seconds * rate / block));
     for (int i = 0; i < blocks; ++i)
     {
         buffer.clear();
@@ -113,6 +114,12 @@ int main (int argc, char** argv)
         const float v = (float) ((i % (steps - 1)) + 1) / (float) (steps - 1);
         p->setValueNotifyingHost (v);
     }
+    /* Then a block and a moment of the message loop before the save, as a
+     * host gives them: a plugin whose state answers a parameter -- the Trance
+     * Gate's Slot recalls a whole sound, and its other parameters follow --
+     * has settled, and what it saves is what it now holds. */
+    run (*first, 48000.0, 512, 0);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
     juce::MemoryBlock saved;
     first->getStateInformation (saved);
     check (saved.getSize() > 0, "the state is not empty");

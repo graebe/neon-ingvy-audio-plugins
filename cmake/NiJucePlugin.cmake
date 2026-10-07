@@ -11,6 +11,8 @@
 #       [CATEGORIES <VST3 ...>]     Fx by default
 #       [SYNTH] [MIDI_IN]           an instrument, and/or MIDI into it
 #       [VST3_CLASS <32 hex>]       keep an older build's class ID (below)
+#       [IPLUG2_CLASS]              the class the iPlug2 bundle TARGET had, from
+#                                   tests/fixtures/iplug2/ids.json
 #       [LEGACY_PARAM_IDS]          a parameter's index is its VST3 ID
 #       [EDITOR]                    plugins/<product>/editor, built on the kit
 #       [NOTICES <files>]           more licence texts the bundle carries
@@ -19,15 +21,18 @@
 # WHAT IT DECIDES ONCE, FOR EVERY PRODUCT:
 #
 #   VST3 only, from Neon Ingvy (maker code Grbe), with JUCE's web browser and
-#   curl compiled out: no product opens a page or a connection.
+#   curl compiled out: no product opens a page or a connection. No splash
+#   screen either, and no switch for one: JUCE 9 has none, and defining
+#   JUCE_DISPLAY_SPLASH_SCREEN only earns its "the flag is ignored" warning.
 #
 #   THE VERSION IS versions.json's. "v2026.10.07.1" is v<date>.<n>, and JUCE
 #   takes three numbers, so the date is the VERSION (2026.10.7) and the whole
 #   string is NI_VERSION_STRING for the editor and the bundle's Info.plist.
 #
 #   THE NOTICES TRAVEL INSIDE THE BUNDLE: LICENSE and THIRD_PARTY_LICENSES.md
-#   (NI_BUNDLE_NOTICES, the iPlug2 bundles' list) and the NOTICES given, which
-#   is where an embedded font's OFL goes.
+#   (NI_BUNDLE_NOTICES, the iPlug2 bundles' list), the kit's font licence
+#   (OFL.txt) for a product with an EDITOR -- the kit embeds the font -- and
+#   the NOTICES given.
 #
 #   SIGNED LAST. JUCE signs its bundle and then writes
 #   Contents/Resources/moduleinfo.json into it, which breaks the seal: Live's
@@ -44,6 +49,10 @@
 #   this build exactly as it found the old one (JUCE_VST3_COMPONENT_CLASS:
 #   JUCE's own switch, and the one Live honours). Without it JUCE derives the
 #   class from the maker and plugin codes, which is right for a new product.
+#   IPLUG2_CLASS takes the class from the fixtures the iPlug2 factories were
+#   asked for (ids.json), and checks the bytes this platform gets against the
+#   ones recorded there, so a product taking over an iPlug2 bundle cannot be
+#   given a class that differs from it by a typo or a byte order.
 #
 #   OUT AND DEPLOYED as the iPlug2 bundles are: copied to build/out, and to
 #   ~/Library/Audio/Plug-Ins/VST3 when IPLUG_DEPLOY_PLUGINS is on (the root
@@ -130,8 +139,28 @@ function(ni_juce_class_bytes fuid out)
     set(${out} "${fuid}" PARENT_SCOPE)
 endfunction()
 
+# The class an iPlug2 bundle's factory reported, from the fixtures, and the
+# bytes it is on this platform -- checked against those recorded there.
+function(ni_juce_iplug2_class bundle out)
+    file(READ ${CMAKE_SOURCE_DIR}/tests/fixtures/iplug2/ids.json ids)
+    string(JSON cid ERROR_VARIABLE err GET "${ids}" "${bundle}" cid)
+    if (err)
+        message(FATAL_ERROR "tests/fixtures/iplug2/ids.json has no class for '${bundle}'")
+    endif()
+    if (WIN32)
+        string(JSON want GET "${ids}" "${bundle}" tuidBytesWindows)
+    else()
+        string(JSON want GET "${ids}" "${bundle}" tuidBytesMacOS)
+    endif()
+    ni_juce_class_bytes(${cid} bytes)
+    if (NOT bytes STREQUAL want)
+        message(FATAL_ERROR "${bundle}: class ${cid} is ${bytes} here, but ids.json records ${want}")
+    endif()
+    set(${out} "${cid}" PARENT_SCOPE)
+endfunction()
+
 function(ni_add_juce_plugin product)
-    cmake_parse_arguments(ARG "SYNTH;MIDI_IN;LEGACY_PARAM_IDS;EDITOR"
+    cmake_parse_arguments(ARG "SYNTH;MIDI_IN;LEGACY_PARAM_IDS;EDITOR;IPLUG2_CLASS"
         "TARGET;NAME;CODE;ENGINE;VST3_CLASS" "CATEGORIES;NOTICES;SOURCES" ${ARGN})
     foreach(required TARGET NAME CODE ENGINE SOURCES)
         if (NOT ARG_${required})
@@ -140,6 +169,12 @@ function(ni_add_juce_plugin product)
     endforeach()
     if (NOT ARG_CATEGORIES)
         set(ARG_CATEGORIES Fx)
+    endif()
+    if (ARG_IPLUG2_CLASS)
+        if (ARG_VST3_CLASS)
+            message(FATAL_ERROR "ni_add_juce_plugin(${product}): VST3_CLASS or IPLUG2_CLASS, not both")
+        endif()
+        ni_juce_iplug2_class(${ARG_TARGET} ARG_VST3_CLASS)
     endif()
 
     ni_juce_version(${product} version_string version_numbers)
@@ -230,6 +265,9 @@ function(ni_add_juce_plugin product)
     # The bundle: notices in, signed last, then out and deployed.
     get_target_property(bundle ${ARG_TARGET}_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
     set(notices ${NI_BUNDLE_NOTICES} ${ARG_NOTICES})
+    if (ARG_EDITOR)
+        list(APPEND notices ${NI_UI_FONT_LICENSE})
+    endif()
     set(steps
         COMMAND ${CMAKE_COMMAND} -E make_directory "${bundle}/Contents/Resources"
         COMMAND ${CMAKE_COMMAND} -E copy ${notices} "${bundle}/Contents/Resources/")
