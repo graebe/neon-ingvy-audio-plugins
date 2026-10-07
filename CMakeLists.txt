@@ -89,6 +89,16 @@ add_subdirectory(plugins/spectrogram)
 add_subdirectory(plugins/listen-in)
 add_subdirectory(plugins/side-chain)
 
+# THE JUCE SHELL, beside iPlug2 while the refactor moves the four products
+# onto it (docs/adr/0002). JUCE as a subproject, excluded from `all` so only
+# what a plugin links is built; the native UI kit every editor is made of
+# (plugins/_shared/ui); and ni_add_juce_plugin (cmake/NiJucePlugin.cmake).
+set(NI_ROOT ${CMAKE_SOURCE_DIR})
+add_subdirectory(external/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
+add_subdirectory(plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
+include(cmake/NiJucePlugin.cmake)
+
+
 enable_testing()
 # ni_test_tiers: every test is quick or full, and says which.
 include(cmake/NiTest.cmake)
