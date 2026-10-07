@@ -579,6 +579,34 @@ fn state_text(state: &[u8], len: c_int) -> Option<&str> {
     core::str::from_utf8(state.get(..len)?).ok()
 }
 
+/// The current slot's fifteen values as the next block will leave them, on
+/// the numeric wire, into `out` (`n` >= 15), given the host's `values` as
+/// `tg_shell_push` takes them. After a Slot the host moved and no block has
+/// applied yet, these are the new slot's own -- the values the host is about
+/// to be moved to (`tg_shell_take_params`) -- where the host still holds the
+/// slot it left. A save writes these beside the blob `tg_shell_save` writes,
+/// so the two agree: otherwise a reopened set puts the slot that was left
+/// into the one switched to. Returns 1, or 0 with nothing written. Any
+/// non-audio thread; allocates.
+///
+/// # Safety
+/// `values` and `out` each hold `n` doubles.
+#[no_mangle]
+pub unsafe extern "C" fn tg_shell_next_params(sh: *mut TgShell, values: *const f64, n: c_int, out: *mut f64) -> c_int {
+    let Some(sh) = sh.as_ref() else { return 0 };
+    if values.is_null() || out.is_null() || n < NUMS as c_int {
+        return 0;
+    }
+    let values: &[f64; NUMS] = &*(values as *const [f64; NUMS]);
+    match sh.next(values) {
+        Some(next) => {
+            std::slice::from_raw_parts_mut(out, NUMS).copy_from_slice(&next.numbers());
+            1
+        }
+        None => 0,
+    }
+}
+
 /// The current slot as a slot file (`all` 0), or every slot as a bank (`all`
 /// 1), as the next block will hold them -- the host's `values` included, as
 /// for `tg_shell_save`. Returns the length written (NUL-terminated), or -1.
@@ -935,6 +963,45 @@ mod tests {
         assert_eq!(two, [1.0, 0.0]);
         assert_eq!(unsafe { tg_shell_levels(sh, std::ptr::null_mut(), 4) }, -1);
         assert_eq!(unsafe { tg_shell_levels(std::ptr::null_mut(), two.as_mut_ptr(), 2) }, -1);
+        unsafe { tg_shell_destroy(sh) };
+    }
+
+    fn next_params(sh: *mut TgShell, values: &[f64; 15]) -> [f64; 15] {
+        let mut out = [f64::NAN; 15];
+        assert_eq!(unsafe { tg_shell_next_params(sh, values.as_ptr(), 15, out.as_mut_ptr()) }, 1);
+        out
+    }
+
+    #[test]
+    fn a_save_after_a_switch_no_block_applied_has_the_new_slots_values() {
+        let sh = tg_shell_create(48000.0);
+        audio_block(sh, 64);
+        /* Slot 1 at Amount 0.25, pushed as a host's automation would be. */
+        let mut values = STEADY;
+        values[6] = 0.25;
+        unsafe {
+            let c = tg_shell_begin(sh);
+            tg_shell_push(sh, c, values.as_ptr(), 15);
+            tg_shell_end(sh, 64);
+        }
+        /* Nothing pending: the host's values, as the engine holds them -- a
+         * float each. */
+        let as_held = |v: [f64; 15]| v.map(|x| x as f32);
+        assert_eq!(as_held(next_params(sh, &values)), as_held(values));
+        /* The host moves to slot 2 and still holds slot 1's Amount: the next
+         * block leaves slot 2's own, the default. */
+        values[0] = 1.0;
+        let next = next_params(sh, &values);
+        assert_eq!(next[0], 1.0);
+        assert_eq!(next[6], 1.0, "{next:?}");
+        /* And the blob a save writes beside them is that slot's. */
+        let mut blob = vec![0u8; crate::TG_STATE_MAX];
+        let n = unsafe { tg_shell_save(sh, values.as_ptr(), 15, blob.as_mut_ptr() as *mut c_char, blob.len() as c_int) };
+        let blob = std::str::from_utf8(&blob[..n as usize]).unwrap();
+        assert!(blob.contains("\"slot\":1,") && blob.contains("\"amount\":1.000"), "{blob}");
+        let mut out = [0.0; 15];
+        assert_eq!(unsafe { tg_shell_next_params(sh, values.as_ptr(), 14, out.as_mut_ptr()) }, 0);
+        assert_eq!(unsafe { tg_shell_next_params(std::ptr::null_mut(), values.as_ptr(), 15, out.as_mut_ptr()) }, 0);
         unsafe { tg_shell_destroy(sh) };
     }
 
