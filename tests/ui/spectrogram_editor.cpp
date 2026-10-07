@@ -21,6 +21,8 @@
 
 #include "Channels.h"
 #include "InfoLines.h"
+#include "UvTokens.h"
+#include "UvType.h"
 #include "Pointer.h"
 #include "WaveSource.h"
 #include "checks.h"
@@ -255,7 +257,7 @@ TEST_CASE ("spectrogram editor: pause holds the picture while the columns keep a
 
 /* -------------------------------------------------------------- bar view */
 
-TEST_CASE ("spectrogram editor: the bars switch draws the host's bars, and places columns by position")
+TEST_CASE ("spectrogram editor: a Span in bars draws the host's bars, and places columns by position")
 {
     Rig rig;
     auto& v = rig.view();
@@ -265,9 +267,18 @@ TEST_CASE ("spectrogram editor: the bars switch draws the host's bars, and place
     CHECK (v.timeAxis().getMarks().front().label == "0 s");
     CHECK (v.readout().getTimeKey() == "time");
 
-    Pointer().click (v.barsSwitch(), { 7.0f, 14.0f });
+    /* One setting, seconds or bars: its face is the history the picture
+     * holds. By keys: Down opens it on 13 s, three rows down is 4 bars. */
+    auto& span = v.spanSelect();
+    CHECK (span.getOptions().joinIntoString ("|") == "13 s|1 bar|2 bars|4 bars|8 bars|16 bars");
+    CHECK (span.getIndex() == 0);
+    key (span, juce::KeyPress::downKey);
+    for (int i = 0; i < 3; ++i)
+        key (span, juce::KeyPress::downKey);
+    key (span, juce::KeyPress::returnKey);
     CHECK (v.isBarView());
-    CHECK (v.barsSwitch().isOn());
+    CHECK (span.getIndex() == 3);
+    CHECK (v.bars() == 4);
     CHECK (rig.picture().getView() == ni::ui::Spectrogram::View::bars);
     CHECK (v.timeAxis().isBarView());
     CHECK (v.readout().getTimeKey() == "pos");
@@ -282,11 +293,12 @@ TEST_CASE ("spectrogram editor: the bars switch draws the host's bars, and place
     CHECK (rig.picture().getPlayhead() == slotForPpq (6.0, 4, 4, 4, pictureWidth));
     CHECK (rig.picture().levelAt (ni::ui::Spectrogram::View::bars, slotForPpq (5.0, 4, 4, 4, pictureWidth), 0) == 150);
 
-    /* How many bars: by keys, opened on 4, Up to 2. */
-    key (v.barCountSelect(), juce::KeyPress::upKey);
-    key (v.barCountSelect(), juce::KeyPress::upKey);
-    key (v.barCountSelect(), juce::KeyPress::returnKey);
+    /* How many bars: by keys, opened on 4 bars, Up to 2. */
+    key (span, juce::KeyPress::upKey);
+    key (span, juce::KeyPress::upKey);
+    key (span, juce::KeyPress::returnKey);
     CHECK (v.bars() == 2);
+    CHECK (span.getIndex() == 2);
     barTicks = 0;
     for (const auto& m : v.timeAxis().getMarks())
         barTicks += m.beat ? 0 : 1;
@@ -301,12 +313,47 @@ TEST_CASE ("spectrogram editor: the bars switch draws the host's bars, and place
         beats += m.beat ? 1 : 0;
     CHECK (beats == 4);
 
-    /* Switching back loses nothing and asks the plugin nothing. */
-    space (v.barsSwitch());
+    /* Switching back loses nothing and asks the plugin nothing; the bar
+     * view's width is kept for the next time. */
+    key (span, juce::KeyPress::downKey);
+    key (span, juce::KeyPress::homeKey);
+    key (span, juce::KeyPress::returnKey);
     CHECK_FALSE (v.isBarView());
+    CHECK (span.getIndex() == 0);
+    CHECK (v.bars() == 2);
     CHECK (rig.picture().getView() == ni::ui::Spectrogram::View::scroll);
     CHECK (rig.picture().getCursor() == 3);
     CHECK (rig.model.looks.empty());
+}
+
+TEST_CASE ("spectrogram editor: the facts the hint gave up sit in the toolbar, and say `free` off the playhead")
+{
+    Rig rig ([] (FakeModel& m) { m.hz.clear(); });
+    auto& v = rig.view();
+    auto& facts = v.facts();
+    CHECK (facts.getText() == "waiting for the plugin");
+
+    /* The axis arrives: the span it really drew, and the floor. */
+    for (int i = 0; i < 256; ++i)
+        rig.model.hz.push_back ((float) (10.0 * std::pow (1970.0, (i + 0.5) / 256.0)));
+    rig.frame();
+    CHECK (facts.getText() == pictureFacts (rig.model.hz, false, 120.0, false));
+    CHECK (facts.getText().endsWith (juce::String::fromUTF8 ("floor \xe2\x88\x92" "96 dB")));
+    CHECK_FALSE (facts.getText().contains ("BPM"));
+
+    /* The bar view adds the tempo, `free` while no playhead drives it... */
+    rig.model.clock.bpm = 127.5;
+    rig.frame();
+    v.spanSelect().onChange (3);
+    CHECK (facts.getText().endsWith ("127.5 BPM free"));
+
+    /* ...and drops it when the host's transport runs. */
+    rig.model.clock.running = true;
+    rig.frame();
+    CHECK (facts.getText().endsWith ("127.5 BPM"));
+
+    v.spanSelect().onChange (0);
+    CHECK_FALSE (facts.getText().contains ("BPM"));
 }
 
 /* --------------------------------------------------------- view, compare */
@@ -472,7 +519,7 @@ TEST_CASE ("spectrogram editor: the crosshair reads the picture -- frequency, ti
     CHECK (r.getTime() == juce::String::fromUTF8 ("\xe2\x88\x92" "0.02 s"));
 
     /* The bar view says where in the bars. */
-    space (v.barsSwitch());
+    v.spanSelect().onChange (3);
     CHECK (r.getTimeKey() == "pos");
     CHECK (r.getTime().containsChar (':'));
 
@@ -494,12 +541,18 @@ TEST_CASE ("spectrogram editor: 720 x 502, the content in the frame's padding, t
     CHECK (e.getHeight() == 502);
     CHECK (v.getBounds() == juce::Rectangle<int> (32, 32, 656, 402));
 
-    /* The toolbar: Pause on the right edge, the others space-4 apart. */
+    /* The toolbar: Pause on the right edge, Span (100) and Range (96)
+     * space-4 apart before it, the facts ending space-4 before Range, past
+     * the amber word's room. */
     CHECK (v.pauseButton().getBounds() == juce::Rectangle<int> (628, 0, 28, 28));
-    CHECK (v.barCountSelect().getBounds() == juce::Rectangle<int> (548, 0, 64, 28));
-    CHECK (v.barsSwitch().getRight() == 532);
-    CHECK (v.rangeSelect().getWidth() == 96);
-    CHECK (v.rangeSelect().getRight() == v.barsSwitch().getX() - 16);
+    CHECK (v.spanSelect().getBounds() == juce::Rectangle<int> (512, 0, 100, 28));
+    CHECK (v.rangeSelect().getBounds() == juce::Rectangle<int> (400, 0, 96, 28));
+    CHECK (v.facts().getRight() == 384);
+    /* Every option shows whole, "16 bars" included. */
+    const auto valueFont = uv::type::font (uv::tok::type::value);
+    for (const auto& option : v.spanSelect().getOptions())
+        CHECK (uv::type::width (valueFont, option) <= (float) (v.spanSelect().field().getWidth() - 2 - 12 - 28));
+    CHECK (v.facts().getX() == v.status().getRight() + 16);
 
     /* The strip, space-4 under it: View on the left, the clash switch on the
      * right edge, the rule between. */
@@ -545,8 +598,7 @@ TEST_CASE ("spectrogram editor: the bar states conventions; every control says w
 
     auto& v = rig.view();
     CHECK (ni::ui::infoOf (v.rangeSelect()) == info::range.str());
-    CHECK (ni::ui::infoOf (v.barsSwitch()) == info::bars.str());
-    CHECK (ni::ui::infoOf (v.barCountSelect()) == info::barCount.str());
+    CHECK (ni::ui::infoOf (v.spanSelect()) == info::span.str());
     CHECK (ni::ui::infoOf (v.pauseButton()) == info::pause.str());
     CHECK (ni::ui::infoOf (v.viewList()) == info::view.str());
     CHECK (ni::ui::infoOf (v.compareSelect()) == info::compare.str());
@@ -557,7 +609,7 @@ TEST_CASE ("spectrogram editor: the bar states conventions; every control says w
     NI_CHECK_INFO_LIMIT (frame);
 
     /* Every state's lines, the bar view and an open list included. */
-    space (v.barsSwitch());
+    v.spanSelect().onChange (3);
     v.viewList().open();
     NI_CHECK_INFO_LIMIT (frame);
 
@@ -583,8 +635,7 @@ TEST_CASE ("spectrogram editor: Tab goes through the controls in reading order, 
         return -1;
     };
     const int range = indexOf (v.rangeSelect());
-    const int bars = indexOf (v.barsSwitch());
-    const int count = indexOf (v.barCountSelect());
+    const int span = indexOf (v.spanSelect());
     const int pause = indexOf (v.pauseButton());
     const int list = indexOf (v.viewList());
     const int a = indexOf (v.compareSelect());
@@ -592,9 +643,8 @@ TEST_CASE ("spectrogram editor: Tab goes through the controls in reading order, 
     const int clash = indexOf (v.clashSwitch());
     const int motion = indexOf (frame.motionSwitch());
     CHECK (range >= 0);
-    CHECK (range < bars);
-    CHECK (bars < count);
-    CHECK (count < pause);
+    CHECK (range < span);
+    CHECK (span < pause);
     CHECK (pause < list);
     CHECK (list < a);
     CHECK (a < b);

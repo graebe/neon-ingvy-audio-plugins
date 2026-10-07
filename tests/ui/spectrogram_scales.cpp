@@ -105,6 +105,30 @@ TEST_CASE ("spectrogram scales: a range in Hz is its named zoom, or Full")
     CHECK (rangeIndex (30.0f, 300.0f) == 0);
 }
 
+TEST_CASE ("spectrogram scales: the Span is the seconds the picture holds, then the bar views")
+{
+    CHECK (spanOptions().joinIntoString ("|") == "13 s|1 bar|2 bars|4 bars|8 bars|16 bars");
+    CHECK (spanOptions().size() == numBarCounts + 1);
+}
+
+TEST_CASE ("spectrogram scales: the facts are the span drawn, the floor, and in bars the tempo")
+{
+    CHECK (readTempo (120.0) == "120 BPM");
+    CHECK (readTempo (127.5) == "127.5 BPM");
+    CHECK (readTempo (99.96) == "100 BPM");
+
+    CHECK (pictureFacts ({}, false, 120.0, true) == "waiting for the plugin");
+    CHECK (pictureFacts ({ 440.0f }, true, 120.0, true) == "waiting for the plugin");
+
+    /* The top is the analyzer's, clamped under Nyquist, not the range's. */
+    const std::vector<float> hz { 10.0f, 100.0f, 19700.0f };
+    CHECK (pictureFacts (hz, false, 120.0, false)
+           == u ("10 Hz \xe2\x80\x93 19.7 kHz \xc2\xb7 floor \xe2\x88\x92" "96 dB"));
+    CHECK (pictureFacts (hz, true, 120.0, true)
+           == u ("10 Hz \xe2\x80\x93 19.7 kHz \xc2\xb7 floor \xe2\x88\x92" "96 dB \xc2\xb7 120 BPM"));
+    CHECK (pictureFacts (hz, true, 120.0, false).endsWith ("120 BPM free"));
+}
+
 TEST_CASE ("spectrogram scales: the time axis is a tick a second, right edge to left")
 {
     const auto marks = secondMarks (606, 47.0, 606.0f);

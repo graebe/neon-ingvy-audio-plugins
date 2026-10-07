@@ -40,7 +40,10 @@ static_assert (wellX + pictureWidth + 2 == SpectrogramView::width);
 
 /* The field widths the web editor gave its controls. */
 constexpr int rangeW = 96;
-constexpr int barCountW = 64;
+/* The Span select: the artboard draws it 88 wide around "13 s", but past
+ * the field's 12 px padding and the chevron's 28 its longest option, "16
+ * bars", needs 97 -- 100 is the 4 px grid's first width that shows it whole. */
+constexpr int spanW = 100;
 constexpr int viewW = 150;
 constexpr int compareW = 112;
 
@@ -60,8 +63,10 @@ SpectrogramView::SpectrogramView (Model& m)
       clashLevels (levels.size())
 {
 
-    /* THE TOOLBAR: how the picture is drawn. */
+    /* THE TOOLBAR: how the picture is drawn, and the facts of it. */
     addAndMakeVisible (noSignal);
+    factsLine.setJustification (juce::Justification::centredRight);
+    addAndMakeVisible (factsLine);
 
     juce::StringArray rangeNames;
     for (const auto& r : ranges)
@@ -73,22 +78,15 @@ SpectrogramView::SpectrogramView (Model& m)
     range.onChange = [this] (int i) { chooseRange (i); };
     addAndMakeVisible (range);
 
-    /* The switch says WHICH axis; the select says how much of it, and stays
-     * while the switch is off, so the window does not change shape. */
-    ni::ui::setInfo (barsToggle, info::bars);
-    barsToggle.onChange = [this] (bool on) { chooseBars (on); };
-    addAndMakeVisible (barsToggle);
-
-    juce::StringArray counts;
-    for (int n : barCounts)
-        counts.add (juce::String (n));
-    barCount.setOptions (counts);
-    barCount.setIndex (barIndex);
-    barCount.setFieldWidth (barCountW);
-    barCount.setTitle ("Bars shown");
-    ni::ui::setInfo (barCount, info::barCount);
-    barCount.onChange = [this] (int i) { chooseBarCount (i); };
-    addAndMakeVisible (barCount);
+    /* Which axis and how much of it, in one setting (SP2): its face is the
+     * history the picture holds, seconds or bars. */
+    span.setOptions (spanOptions());
+    span.setIndex (0);
+    span.setFieldWidth (spanW);
+    span.setTitle ("Span");
+    ni::ui::setInfo (span, info::span);
+    span.onChange = [this] (int i) { chooseSpan (i); };
+    addAndMakeVisible (span);
 
     /* The transport's pause glyph, latched and lit while the picture is held. */
     pause.setOn (false);
@@ -220,6 +218,7 @@ void SpectrogramView::syncTransport (bool force)
     shown.transport = t;
     if (metre && barView)
         refreshTimeMarks();
+    refreshFacts();
     if (rate && ! force)
         syncSources (true);
 }
@@ -231,6 +230,7 @@ void SpectrogramView::syncAxis (bool force)
         return;
     shown.hz = hz;
     scale.setMarks (freqMarks (shown.hz, (float) pictureHeight));
+    refreshFacts();
     refreshReadout (picture().hovered());
 }
 
@@ -289,6 +289,14 @@ void SpectrogramView::refreshTimeMarks()
                    barView);
 }
 
+/* The tempo and `free` only mean something in the bar view; the span and
+ * the floor always do. Set only when it reads differently (Words). */
+void SpectrogramView::refreshFacts()
+{
+    const auto& t = shown.transport;
+    factsLine.setText (pictureFacts (shown.hz, barView, t.bpm, t.running));
+}
+
 /* The three readouts say a dash with the pointer away, not a stale number. */
 void SpectrogramView::refreshReadout (const std::optional<ni::ui::Spectrogram::Sample>& s)
 {
@@ -319,21 +327,18 @@ void SpectrogramView::chooseRange (int index)
     syncSession (false);
 }
 
-void SpectrogramView::chooseBars (bool on)
+void SpectrogramView::chooseSpan (int index)
 {
-    barView = on;
-    barsToggle.setOn (on);
+    index = juce::jlimit (0, numBarCounts, index);
+    barView = index > 0;
+    /* The seconds leave the bar view's width as it was, for the next time. */
+    if (barView)
+        barIndex = index - 1;
+    span.setIndex (index);
     /* Both pictures were written from every column: switching loses nothing. */
-    picture().setView (on ? ni::ui::Spectrogram::View::bars : ni::ui::Spectrogram::View::scroll);
+    picture().setView (barView ? ni::ui::Spectrogram::View::bars : ni::ui::Spectrogram::View::scroll);
     refreshTimeMarks();
-    refreshReadout (picture().hovered());
-}
-
-void SpectrogramView::chooseBarCount (int index)
-{
-    barIndex = juce::jlimit (0, numBarCounts - 1, index);
-    barCount.setIndex (barIndex);
-    refreshTimeMarks();
+    refreshFacts();
     refreshReadout (picture().hovered());
 }
 
@@ -386,8 +391,11 @@ void SpectrogramView::sendLook (const std::vector<int>& v, int a, int b, bool on
 void SpectrogramView::resized()
 {
     /* THE TOOLBAR: the amber word on the left, the actions stacked on the
-     * right edge, space-4 apart. */
-    noSignal.setBounds (0, 0, width / 2, controlH);
+     * right edge, space-4 apart, and the facts ending space-4 before them --
+     * in what is left after the amber word's room, so neither moves when the
+     * other changes. */
+    const int statusW = Words::widthOf (Words::Voice::warning, "no signal");
+    noSignal.setBounds (0, 0, statusW, controlH);
     int x = width;
     const auto right = [&x] (juce::Component& c, int w) {
         x -= w;
@@ -395,9 +403,9 @@ void SpectrogramView::resized()
         x -= s4;
     };
     right (pause, controlH);
-    right (barCount, barCount.idealWidth());
-    right (barsToggle, barsToggle.idealWidth());
+    right (span, span.idealWidth());
     right (range, range.idealWidth());
+    factsLine.setBounds (statusW + s4, 0, juce::jmax (0, x - statusW - s4), controlH);
 
     /* THE STRIP: space-between, space-2 apart, the rule inset space-2 either
      * side of it and the "vs" space-1 either side. */

@@ -14,7 +14,7 @@ and open it again, or save the set and reopen it tomorrow, and the Spectrogram
 is looking at what it was looking at — not back at its own input on the full
 range.
 
-Pause and the bars switch are not saved: a reopened window always starts live,
+Pause and the **Span** are not saved: a reopened window always starts live,
 in seconds.
 
 ## Reading it
@@ -26,6 +26,13 @@ rows. Time scrolls right to left and the visible window holds thirteen seconds.
 Brightness is level: the ground is quiet, a near-white core is loud, and the
 violet between them is the falloff.
 
+The quiet line at the top, just left of **Range**, states what the picture
+spans: the frequencies it really drew, bottom band to top band, and the floor
+below which everything is the ground, `−96 dB`. The top is the analyzer's own,
+so at 44.1 kHz it reads a little under 20 kHz, because nothing above half the
+sample rate exists to draw. Until the plugin has sent its first axis it says
+`waiting for the plugin`.
+
 Time is also ticked along the bottom, a mark a second from `0 s` at the right
 edge back to `−12 s` at the left. The ticks are arithmetic rather than a clock:
 one column is one pixel and the engine holds the column rate constant across
@@ -33,9 +40,11 @@ sample rates, so the width *is* the span.
 
 ## The x-axis can be bars instead of seconds
 
-Throw the **bars** switch and the picture stops scrolling. The x-axis becomes a
-window of the host's own timeline — 1, 2, 4, 8 or 16 bars — and columns fill it
-left to right. When the sweep reaches the right edge it wraps to the left and
+The **Span** select beside Range says what the x-axis is and how much of it:
+`13 s`, the history it holds in seconds, or `1 bar` to `16 bars`. Choose a
+number of bars and the picture stops scrolling. The x-axis becomes a window of
+the host's own timeline, 1, 2, 4, 8 or 16 bars wide, and columns fill it left
+to right. When the sweep reaches the right edge it wraps to the left and
 writes over the pass before it, with a bright hairline marking where it is
 writing now.
 
@@ -54,7 +63,8 @@ moment you ask for it — the same bargain Pause makes, and for the same reason.
 
 **With the transport stopped** — or in a host that reports no beat timeline at
 all — the sweep keeps filling at the last tempo it saw, so the picture still
-moves while you audition. The hint bar says `free` when it is running on that
+moves while you audition. The line at the top gives the tempo in the bar view,
+and says `free` after it (`120 BPM free`) when the sweep is running on that
 rather than on a playhead.
 
 One honest limit: the analyzer finishes about 47 columns a second whatever the

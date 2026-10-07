@@ -66,6 +66,34 @@ std::vector<FreqMark> freqMarks (const std::vector<float>& hz, float height)
     return out;
 }
 
+juce::StringArray spanOptions()
+{
+    juce::StringArray out { juce::String (juce::roundToInt (pictureWidth / columnsPerSecond)) + " s" };
+    for (int n : barCounts)
+        out.add (juce::String (n) + (n == 1 ? " bar" : " bars"));
+    return out;
+}
+
+juce::String readTempo (double bpm)
+{
+    const double tenths = roundHalfUp (bpm * 10.0) / 10.0;
+    const bool whole = std::abs (tenths - std::round (tenths)) < 1e-9;
+    return (whole ? juce::String ((int) std::round (tenths)) : juce::String (tenths, 1)) + " BPM";
+}
+
+juce::String pictureFacts (const std::vector<float>& hz, bool barView, double bpm, bool running)
+{
+    if (hz.size() < 2)
+        return "waiting for the plugin";
+
+    const auto dot = juce::String::fromUTF8 (" \xc2\xb7 ");
+    auto facts = asHz (hz.front()) + juce::String::fromUTF8 (" \xe2\x80\x93 ") + asHz (hz.back())
+               + dot + "floor " + minus + juce::String ((int) std::abs (dbFloor)) + " dB";
+    if (barView)
+        facts << dot << readTempo (bpm) << (running ? "" : " free");
+    return facts;
+}
+
 std::vector<TimeMark> secondMarks (int columns, double colsPerSecond, float width, double stepS)
 {
     std::vector<TimeMark> out;

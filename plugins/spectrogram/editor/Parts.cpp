@@ -46,15 +46,26 @@ void Words::setText (const juce::String& t)
 
 int Words::idealWidth() const
 {
-    const auto& style = styleOf (voice);
-    return (int) std::ceil (uv::type::width (uv::type::font (style), uv::type::cased (style, text)));
+    return widthOf (voice, text);
+}
+
+int Words::widthOf (Voice v, const juce::String& t)
+{
+    const auto& style = styleOf (v);
+    return (int) std::ceil (uv::type::width (uv::type::font (style), uv::type::cased (style, t)));
+}
+
+void Words::setJustification (juce::Justification j)
+{
+    justification = j;
+    repaint();
 }
 
 void Words::paint (juce::Graphics& g)
 {
     const auto& style = styleOf (voice);
     uv::type::draw (g, uv::type::cased (style, text), getLocalBounds().toFloat(), uv::type::font (style),
-                    colourOf (voice), juce::Justification::centredLeft);
+                    colourOf (voice), justification);
 }
 
 /* ---------------------------------------------------------------- Divider */

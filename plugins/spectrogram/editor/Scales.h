@@ -73,8 +73,31 @@ int rangeIndex (float lo, float hi);
 /* The bar view's widths, in bars. */
 inline constexpr int barCounts[] { 1, 2, 4, 8, 16 };
 inline constexpr int numBarCounts = (int) (sizeof (barCounts) / sizeof (barCounts[0]));
-/* The index a window opens on: 4 bars, as the web editor's did. */
+/* The width the bar view keeps until another is chosen: 4 bars, as the web
+ * editor's bars switch opened on. */
 inline constexpr int defaultBarCount = 2;
+
+/*
+ * THE SPAN, one setting for what the x-axis is and how much of it (proposal
+ * SP2): the seconds the picture holds, then each bar view's width --
+ * "13 s", "1 bar", "2 bars" ... "16 bars". Option 0 is the seconds; option
+ * n is barCounts[n - 1].
+ */
+juce::StringArray spanOptions();
+
+/* -------------------------------------------------------------- the facts */
+
+/* "120 BPM", "127.5 BPM": the host's tempo, to a tenth. */
+juce::String readTempo (double bpm);
+
+/*
+ * The picture's facts, which the web editor's hint bar printed and 1.1.0's
+ * Hint no longer holds: the span the analyzer really drew, band centre to
+ * band centre (its top clamped below Nyquist), and the floor; in the bar view
+ * the tempo the sweep is placed by, and `free` while no playhead drives it.
+ * "waiting for the plugin" before the first axis.
+ */
+juce::String pictureFacts (const std::vector<float>& hz, bool barView, double bpm, bool running);
 
 /* ------------------------------------------------------------------ marks */
 

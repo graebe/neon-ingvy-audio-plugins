@@ -28,9 +28,10 @@ namespace ni::spectrogram
 {
 
 /*
- * One word in a text style: a group's caption (label, ink-muted), the "vs"
- * between the two comparison pickers (hint, ink-muted), and the window's one
- * amber mark, "no signal" (label, amber). Its ideal width is its text's.
+ * Words in a text style: a group's caption (label, ink-muted), the "vs"
+ * between the two comparison pickers and the picture's facts (hint,
+ * ink-muted), and the window's one amber mark, "no signal" (label, amber).
+ * Its ideal width is its text's; drawn from the left unless told otherwise.
  */
 class Words final : public juce::Component
 {
@@ -42,12 +43,18 @@ public:
     void setText (const juce::String&);
     const juce::String& getText() const noexcept { return text; }
     int idealWidth() const;
+    /* The width `text` takes in `voice`. */
+    static int widthOf (Voice, const juce::String& text);
+
+    /* centredLeft, or centredRight for words that end where a control starts. */
+    void setJustification (juce::Justification);
 
     void paint (juce::Graphics&) override;
 
 private:
     const Voice voice;
     juce::String text;
+    juce::Justification justification = juce::Justification::centredLeft;
 };
 
 /* The hint bar's rule turned on its side, inset space-1 top and bottom, so it
@@ -66,6 +73,14 @@ public:
  * ways, so the frame eats none of it: the web editor once lost its bottom two
  * bands to a frame exactly as tall as the canvas. The well, not the picture,
  * is the wall the Ground's rings break around.
+ *
+ * NOT THE PLOTWELL CARD, ON PURPOSE, until the design owner says otherwise.
+ * The 1.1.0 card asks a plot for a line-100 hairline, its content inset 6 px
+ * and a 14 px caption band; both Spectrogram artboards, as built and
+ * proposed, draw this well on line-200 with the picture flush and no
+ * caption, and those are what this follows. The facts a caption would carry
+ * sit in the toolbar instead (SpectrogramEditor.h). Should the Spectrogram
+ * become a captioned PlotWell, its height grows by 14 + 2 x 6 px.
  */
 class Well final : public juce::Component
 {

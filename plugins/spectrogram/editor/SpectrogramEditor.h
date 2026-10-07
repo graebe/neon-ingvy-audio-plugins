@@ -10,7 +10,7 @@
  * to bottom on the system's 4 px grid:
  *
  *    28   the toolbar: the one amber word on the left when nothing arrives;
- *         Range, the bars switch, how many bars, Pause on the right
+ *         the picture's facts, then Range, Span and Pause on the right
  *    16   space-4
  *    28   the source strip: VIEW and its list, a rule, COMPARE a vs b and
  *         the clash switch
@@ -23,10 +23,24 @@
  *    20   the crosshair's readout: freq, time or pos, level
  *
  * and the frame's hint bar under it: the window's conventions, Motion and
- * the Signature. Per Ultraviolet's Hint card the bar states conventions
- * only; the facts the web editor printed there (the span, the floor, the
- * history) are where the 1.1.0 layouts put them -- in the Range select, the
- * level readout and the time axis (proposal S2).
+ * the Signature.
+ *
+ * WHICH 1.1.0 PROPOSALS, AND WHY NOT ALL. Taken: S2 (the hint states
+ * conventions only), SP2 (one Span select for the bars switch and the bar
+ * count), SP3 (Pause is the latching icon button) and SP4 (the clash is ink
+ * hatching). NOT taken, decided: SP6 and the 470 px window that comes with it
+ * -- Range, Span and Pause beside the readout under the picture, and no
+ * toolbar. That layout has no place left for what the toolbar's left half
+ * holds: the amber "no signal", and the facts the web editor's hint printed
+ * (the span the analyzer drew, its top the real one under Nyquist; the floor;
+ * the tempo and `free` in the bar view). Its artboard draws neither, and the
+ * home the system has for them, a PlotWell caption (Side-Chain's proposal
+ * puts its state there), is not drawn for this window either (Parts.h, Well).
+ * So the window keeps the as-built geometry, readout included (values 76 px
+ * wide, 32 px before each key), until the design owner places them; the
+ * history S2 moved into Span is its face ("13 s", "4 bars"; the field is 100
+ * wide, not the artboard's 88, which cuts "16 bars"), and the rest of the
+ * facts sit in the toolbar, in the hint voice, ending where Range starts.
  *
  * WHAT IS WHOSE. The session -- the view, the comparison, the clash, the
  * zoom -- is the model's, saved with the set: a control shows what
@@ -86,14 +100,14 @@ public:
     bool isLive() const noexcept { return live; }
     bool isPaused() const noexcept { return paused; }
     bool isBarView() const noexcept { return barView; }
-    /* The bar view's width, in bars. */
+    /* The bar view's width, in bars: the last chosen, 4 until then. */
     int bars() const;
 
     /* ---- the parts, for the editor's tests */
     Words& status() noexcept { return noSignal; }
+    Words& facts() noexcept { return factsLine; }
     ni::ui::Select& rangeSelect() noexcept { return range; }
-    ni::ui::Toggle& barsSwitch() noexcept { return barsToggle; }
-    ni::ui::Select& barCountSelect() noexcept { return barCount; }
+    ni::ui::Select& spanSelect() noexcept { return span; }
     ni::ui::Button& pauseButton() noexcept { return pause; }
     ni::ui::CheckList& viewList() noexcept { return view; }
     ni::ui::Select& compareSelect() noexcept { return compareA; }
@@ -126,12 +140,13 @@ private:
     void syncAxis (bool force);
     void syncTransport (bool force);
     void refreshTimeMarks();
+    void refreshFacts();
     void refreshReadout (const std::optional<ni::ui::Spectrogram::Sample>&);
 
     /* The user's choices, as the web editor's handlers. */
     void chooseRange (int index);
-    void chooseBars (bool on);
-    void chooseBarCount (int index);
+    /* 0 is the seconds; n is the bar view, barCounts[n - 1] wide. */
+    void chooseSpan (int index);
     void togglePause();
     void chooseView (std::vector<int> channels);
     void chooseCompare (int a, int b);
@@ -153,8 +168,8 @@ private:
     std::array<int, Model::maxColumns> slots {};
 
     Words noSignal { Words::Voice::warning };
-    ni::ui::Select range, barCount;
-    ni::ui::Toggle barsToggle { "bars" };
+    Words factsLine { Words::Voice::quiet };
+    ni::ui::Select range, span;
     ni::ui::Button pause { {}, "pause" };
 
     Words viewCaption { Words::Voice::caption, "view" };

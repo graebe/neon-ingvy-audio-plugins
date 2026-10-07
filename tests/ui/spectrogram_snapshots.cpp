@@ -127,8 +127,7 @@ NI_SNAPSHOT_TEST ("spectrogram: the bar view, paused, the clash marked between t
     rig.model.look.clash = true;
     rig.open();
     auto& v = rig.editor->view();
-    v.barsSwitch().onChange (true);
-    v.barCountSelect().onChange (1);
+    v.spanSelect().onChange (2);
     rig.play (640, true);
     v.pauseButton().onClick();
     NI_CHECK_SNAPSHOT (*rig.editor, "spectrogram-bars-clash");
