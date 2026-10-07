@@ -240,9 +240,11 @@ DAW restoring a session. `UnserializeState` therefore never calls a main-thread
 API, and neither does what iPlug2 calls after it on that thread: each
 parameter's `OnParamChangeUI` and the closing `OnRestoreState` only mark the
 editor stale (`editor::Stale` in `ni/Editor.h`), and the next `OnIdle` sends
-every value and display string once. The Spectrogram's records the load in its `Session` (`plugins/spectrogram/State.h`)
-and the next `OnIdle` hands the receiver whatever moved; `SerializeState` reads the
-same `Session`, so a save straight after a load writes the load. The receiver's
+every value and display string once. NI Spectrogram, on the JUCE shell,
+records the load in its `Session` (`plugins/spectrogram/State.h`), and its
+processor's next service on the message thread hands the receiver whatever
+moved; `writeState` reads the same `Session`, so a save straight after a load
+writes the load. The receiver's
 own C ABI serialises its message side as a floor beneath this, so a caller that
 gets it wrong waits its turn instead of deadlocking (`spectro_recv.h`).
 

@@ -18,8 +18,8 @@ ships.
 
 | Artefact | What is in it |
 |---|---|
-| Plugin bundles on iPlug2 (`NISideChain`, `NISpectrogram`, `NIListenIn`: `.vst3`, `.component`, `.clap`) | iPlug2, WDL, the SDKs, JSON for Modern C++, the Rust standard library, the engines and the crates from crates.io they link, and each editor's web bundle and fonts |
-| Plugin bundles on the JUCE shell (`NITranceGate.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
+| Plugin bundles on iPlug2 (`NISideChain`, `NIListenIn`: `.vst3`, `.component`, `.clap`) | iPlug2, WDL, the SDKs, JSON for Modern C++, the Rust standard library, the engines and the crates from crates.io they link, and each editor's web bundle and fonts |
+| Plugin bundles on the JUCE shell (`NITranceGate.vst3`, `NISpectrogram.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
 | Schwung module tarballs (`*-module.tar.gz`) | the Rust standard library, the engines and the crates from crates.io they link; the Trance Gate's also carries its own `ui_chain.js` |
 | The documentation site | JetBrains Mono |
 
@@ -112,7 +112,7 @@ Mono declaring none.
 | Bundle | The font | `OFL.txt` |
 |---|---|---|
 | `NITranceGate.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
-| `NISpectrogram.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
+| `NISpectrogram.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | `NIListenIn.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
 | `NISideChain.{vst3,clap,component}` | inlined, as a data URI, in `Contents/Resources/web/assets/style.css` | `Contents/Resources/web/fonts/OFL.txt` |
 | the documentation site | emitted by the build as a hashed asset under `/neon-ingvy-audio-plugins/_astro/` | `/neon-ingvy-audio-plugins/fonts/OFL.txt` |

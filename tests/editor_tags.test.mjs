@@ -66,11 +66,10 @@ test('the shell tags agree, name for name and number for number', () => {
 });
 
 /* The products whose editors are still web pages on iPlug2. NI Trance Gate's
- * is native (plugins/trance-gate/editor), with no tags to agree on: its model
- * is C++ (editor/Model.h). */
+ * and NI Spectrogram's are native (plugins/<product>/editor), with no tags to
+ * agree on: their models are C++ (editor/Model.h). */
 const PLUGINS = [
   { name: 'side-chain', header: 'plugins/side-chain/SideChain.h', params: 'plugins/side-chain/Params.h' },
-  { name: 'spectrogram', header: 'plugins/spectrogram/Spectrogram.h', params: 'plugins/spectrogram/Spectrogram.h' },
   { name: 'listen-in', header: 'plugins/listen-in/ListenIn.h', params: 'plugins/listen-in/State.h' },
 ];
 

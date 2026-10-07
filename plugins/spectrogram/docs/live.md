@@ -191,14 +191,16 @@ never shows two scales at once.
 
 1. **Quit Live completely** — Live keeps every plugin it has loaded in memory
    until it quits, so a bundle replaced while it runs is not the one you hear.
-2. Copy `NISpectrogram.vst3`, `NISpectrogram.component` and
-   `NISpectrogram.clap` into `~/Library/Audio/Plug-Ins/VST3`, `…/Components`
-   and `…/CLAP`.
-3. The bundles are unsigned, so clear the quarantine attribute:
+2. Copy `NISpectrogram.vst3` from the release into
+   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there. NI Spectrogram is
+   a VST3 only: the Audio Unit and the CLAP builds were discontinued with the
+   native editor. A set that used the Audio Unit opens with the VST3 in its
+   place once you insert it again.
+3. The bundle is not notarised, so macOS refuses it until the quarantine
+   attribute is removed:
 
    ```sh
    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NISpectrogram.vst3
-   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/NISpectrogram.component
    ```
 
 4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
@@ -211,7 +213,18 @@ Listen-In of the same release (see the NI Listen-In manual).
 open an existing bus there, so the View list stayed at `no Listen-In found`;
 if that is what you saw, updating both plugins fixes it.
 
-Every bundle carries `LICENSE` and `THIRD_PARTY_LICENSES.md` in
+**Sets saved with an earlier version open as they were saved**: the plugin
+keeps the identity and the saved session of every earlier VST3 build, so each
+NI Spectrogram comes back looking at the buses, the view, the comparison, the
+clash and the zoom it was saved with. One thing moved: the plugin's own
+**Bypass** has a new number inside the plugin (0, where it was 65536). A set
+that never automated it notices nothing; an automation lane drawn on that
+Bypass in an earlier version may no longer reach it, and then wants drawing
+again.
+
+The licence notices travel with the plugin: the bundle carries `LICENSE`,
+`THIRD_PARTY_LICENSES.md`, the font's `OFL.txt` and the texts of the licences
+of what it is built with (`AGPL-3.0.txt`, `Apache-2.0.txt`) in
 `Contents/Resources/`.
 
 ## The background, and the Motion switch

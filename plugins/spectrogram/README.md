@@ -3,10 +3,10 @@ title: NI Spectrogram
 tagline: A rolling STFT analyzer — 10 Hz to 20 kHz, 256 log bands, thirteen seconds.
 order: 2
 hosts: [live]
-formats: [VST3, AU, CLAP]
+formats: [VST3]
 engine: engines/spectro
 crates: [spectro-core, spectro-capi]
-tests: [spectro_core, spectro_columns, spectro_ramp, spectro_columns_js]
+tests: [spectro_core, spectro_columns, spectro_ramp, spectro_state, sg_processor, sg_host]
 notOnMove: >-
   The Spectrogram draws a picture and the Move has no screen to draw it on.
   That is also why `engines/spectro` has no `tg-move` counterpart — a crate
@@ -20,7 +20,8 @@ harness: harness/spectrogram/
 A rolling spectrogram: log frequency from **10 Hz to 20 kHz** on the vertical,
 256 bands — about two per semitone — time scrolling right to left, **thirteen
 seconds** of history. Audio passes through **bit for bit**: it is an analyzer,
-and its whole output is the picture. Universal macOS binary as VST3 / AU / CLAP.
+and its whole output is the picture. A universal macOS VST3 with a native
+editor.
 
 **No parameters**, and that is a statement rather than an omission: nothing about
 it changes what comes out — Pause included, which is a property of the picture

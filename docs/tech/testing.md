@@ -30,7 +30,9 @@ archives they link, and no plugin bundle; then `ctest -L quick` runs:
 - the doctest wire, state and parameter tests (`tests/cpp`), the JUCE shell's
   state codec over every product's iPlug2 fixture (`nist_fixtures`), NI Trance
   Gate's processor, model and editor in one program (`tg_processor`), and its
-  audio callback under an allocation guard (`tg_rt`, macOS),
+  audio callback under an allocation guard (`tg_rt`, macOS); NI Spectrogram's
+  the same, with its session on its own (`tests/spectrogram`: `sg_processor`,
+  `sg_rt`, `spectro_state`, `spectro_wire`),
 - the native kit's and editors' unit tests (`tests/ui`; their snapshot
   goldens are in the full tier),
 - all of the kit's and the editors' JavaScript (`ui_unit`, the same files
@@ -52,7 +54,7 @@ Everything quick runs, and:
 | label | what |
 |---|---|
 | `render` | the render A/B goldens: four seconds through each plugin's audio path, hashed |
-| `host` | NI Trance Gate's VST3 from `build/out`, hosted by JUCE (`tg_host`): its iPlug2 class, its parameters through the controller, every fixture reopened and saved back byte for byte, the golden render through its audio path, and the window under a running transport with a set loaded on another thread; `juce_host_*` runs, saves and opens every bundle on the JUCE shell. The AUs of the products still on iPlug2 from `build/out`, loaded by path: `sc_au` renders through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens every plugin's real editor as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it; `iplug2_fixtures` reopens the saved states in `tests/fixtures/iplug2` in the VST3s from `build/out`, and every parameter must read what was captured |
+| `host` | NI Trance Gate's VST3 from `build/out`, hosted by JUCE (`tg_host`): its iPlug2 class, its parameters through the controller, every fixture reopened and saved back byte for byte, the golden render through its audio path, and the window under a running transport with a set loaded on another thread; NI Spectrogram's (`sg_host`) the same, its audio through bit for bit where the Trance Gate's renders; `juce_host_*` runs, saves and opens every bundle on the JUCE shell. The AUs of the products still on iPlug2 from `build/out`, loaded by path: `sc_au` renders through a host that supplies a transport; `au_stress_*` runs auval's stress pattern on each; `au_ground_*` opens each one's real editor and plays silent audio at 120 BPM, and the page must receive a ring a beat, every fourth strong, and none once stopped; `editor_host_*` opens every plugin's real editor as a VST3, an AU and a CLAP host would, feeds them audio under a running transport, closes and reopens them, and asks the page what reached it; `iplug2_fixtures` reopens the saved states in `tests/fixtures/iplug2` in the VST3s from `build/out`, and every parameter must read what was captured |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | every built bundle carries its notices; every JUCE bundle's signature verifies as Live's scanner checks it (`codesign --verify --deep --strict`); the bundles' version spellings (`versions_bundles`) |
 | `site` | every root-relative link on the built site resolves |

@@ -62,32 +62,6 @@ target_include_directories(shell_denormals PRIVATE ${DOCTEST_DIR})
 target_link_libraries(shell_denormals PRIVATE shell_engine)
 add_test(NAME shell_denormals COMMAND shell_denormals)
 
-# -------------------------------------------------------------- Spectrogram
-
-add_executable(spectro_wire spectro_wire.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/spectrogram/Wire.cpp ${NI_WIRE_SRC})
-target_include_directories(spectro_wire PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/spectrogram ${NI_SHARED})
-
-# THE WIRE ORACLE, both halves -- the curve table's arrangement, applied to the
-# format the editor decodes.
-#
-# The editor's test used to carry its own transcription of the encoder and said
-# so in a comment. A transcription agrees with its source until somebody edits
-# one of them, which is how the S-curve stayed wrong in curves.js.
-#
-#   spectro_wire        Wire.cpp still agrees with ui/test/wire_table.txt
-#   spectro_columns_js  ui/src/lib/columns.js still agrees with the same file
-#
-# Regenerate with `spectro_wire --dump > ui/test/wire_table.txt`, and only when
-# the wire format is MEANT to change -- which means the decoder changes in the
-# same commit.
-set(SPECTRO_WIRE_TABLE
-    ${CMAKE_SOURCE_DIR}/plugins/spectrogram/ui/test/wire_table.txt)
-
-add_test(NAME spectro_wire
-         COMMAND spectro_wire --verify ${SPECTRO_WIRE_TABLE})
-
 # --------------------------------------------------------------- Listen-In
 
 add_executable(listenin_wire listenin_wire.cpp
@@ -145,22 +119,8 @@ target_include_directories(listenin_state PRIVATE
 target_link_libraries(listenin_state PRIVATE audio_bus_engine shell_engine)
 add_test(NAME listenin_state COMMAND listenin_state)
 
-# The Spectrogram's chunk, saved and reloaded as clap-validator's state tests do.
-add_executable(spectro_state spectro_state.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/spectrogram/State.cpp
-               ${CMAKE_SOURCE_DIR}/plugins/spectrogram/Wire.cpp
-               ${NI_WIRE_SRC}
-               ${IPLUG_PARAM_SRC})
-target_include_directories(spectro_state PRIVATE
-    ${DOCTEST_DIR} ${CMAKE_SOURCE_DIR}/plugins/spectrogram ${NI_SHARED}
-    ${IPLUG2_DIR}/IPlug ${IPLUG2_DIR}/WDL)
-# spectro_engine for the receiver the Session tests drive; it carries the
-# shell's C ABI too (one Rust archive per binary -- see tests/CMakeLists.txt).
-target_link_libraries(spectro_state PRIVATE spectro_engine shell_engine)
-add_test(NAME spectro_state COMMAND spectro_state)
-
 # All of them quick: each is a doctest binary over code lifted out of a plugin,
 # with no bundle, host or second process. cmake/NiTest.cmake.
 ni_test_tiers(QUICK
     ni_wire ni_editor shell_state shell_denormals
-    spectro_wire listenin_wire sc_wire sc_params listenin_state spectro_state)
+    listenin_wire sc_wire sc_params listenin_state)

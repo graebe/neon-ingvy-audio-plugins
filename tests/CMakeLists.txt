@@ -283,7 +283,7 @@ if (APPLE)
     set(NI_AU_STRESS_SECONDS 3 CACHE STRING "seconds per plugin in the au_stress tests")
     add_executable(au_stress au_stress.c)
     target_link_libraries(au_stress PRIVATE ${NI_AU_LIBS})
-    foreach(plugin SideChain Spectrogram ListenIn)
+    foreach(plugin SideChain ListenIn)
         add_test(NAME au_stress_${plugin}
                  COMMAND au_stress ${NI_BUNDLES}/NI${plugin}.component
                          ${NI_AU_STRESS_SECONDS} 2)
@@ -299,7 +299,7 @@ if (APPLE)
     target_compile_options(au_ground PRIVATE -fobjc-arc)
     target_link_libraries(au_ground PRIVATE ${NI_AU_LIBS}
                           "-framework AppKit" "-framework WebKit")
-    foreach(plugin SideChain Spectrogram ListenIn)
+    foreach(plugin SideChain ListenIn)
         add_test(NAME au_ground_${plugin}
                  COMMAND au_ground ${NI_BUNDLES}/NI${plugin}.component)
     endforeach()
@@ -323,7 +323,7 @@ if (APPLE)
     target_compile_options(editor_host PRIVATE -fobjc-arc)
     target_link_libraries(editor_host PRIVATE ${NI_AU_LIBS}
         "-framework Cocoa" "-framework WebKit" "-framework CoreAudioKit")
-    foreach(plugin Spectrogram SideChain ListenIn)
+    foreach(plugin SideChain ListenIn)
         add_test(NAME editor_host_${plugin}_vst3
                  COMMAND editor_host vst3 ${NI_BUNDLES}/NI${plugin}.vst3)
         add_test(NAME editor_host_${plugin}_au
@@ -350,7 +350,7 @@ if (APPLE)
     set(_ni_vst3_bundles)
     # The iPlug2 builds still here; the JUCE Trance Gate reads its fixtures in
     # tg_processor and tg_host.
-    foreach(plugin SideChain Spectrogram ListenIn)
+    foreach(plugin SideChain ListenIn)
         list(APPEND _ni_vst3_bundles ${NI_BUNDLES}/NI${plugin}.vst3)
     endforeach()
     add_test(NAME iplug2_fixtures
@@ -519,6 +519,11 @@ if (NOT WIN32)
 endif()
 add_test(NAME srecv_api COMMAND srecv_api)
 
+# NI SPECTROGRAM ON THE JUCE SHELL: its session, its processor, its audio
+# callback and its built bundle, in a directory of their own with their own
+# tiers.
+add_subdirectory(spectrogram)
+
 # The editor's tests, on node's own runner (22+), so the UI keeps a dependency
 # tree of vite and solid and nothing else.
 if (TG_NODE)
@@ -530,11 +535,11 @@ if (TG_NODE)
     # lies about level.
     add_test(NAME spectro_ramp
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/ui-kit/test/ramp.test.mjs)
-    # The wire: the hex decode, the axis, and where a label goes.
+    # The web editor's decoder -- the columns, the axis, where a label goes
+    # -- against the messages the iPlug2 build sent (ui/test/wire_table.txt),
+    # kept with ui/ until the web editors go.
     add_test(NAME spectro_columns_js
              COMMAND ${TG_NODE} --test ${SPECTRO_UI_TEST}/columns.test.mjs)
-    # The other half of the wire oracle; spectro_wire is the first. See
-    # tests/cpp/CMakeLists.txt for the pair.
     set_tests_properties(spectro_columns_js PROPERTIES
         ENVIRONMENT "SPECTRO_WIRE_TABLE=${SPECTRO_UI_TEST}/wire_table.txt")
 endif()
@@ -896,11 +901,9 @@ ni_test_tiers(
         tg_render_ab:render sc_render_ab:render
         sc_au:host
         au_stress_SideChain:host
-        au_stress_Spectrogram:host au_stress_ListenIn:host
+        au_stress_ListenIn:host
         au_ground_SideChain:host
-        au_ground_Spectrogram:host au_ground_ListenIn:host
-        editor_host_Spectrogram_vst3:host editor_host_Spectrogram_au:host
-        editor_host_Spectrogram_clap:host
+        au_ground_ListenIn:host
         editor_host_SideChain_vst3:host editor_host_SideChain_au:host
         editor_host_SideChain_clap:host
         editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host

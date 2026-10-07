@@ -2,234 +2,211 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The Spectrogram -- the state chunk. See State.h.
+ * NI Spectrogram's session and its chunk. See State.h.
  */
 #include "State.h"
+
 #include "Wire.h"
 #include "ni/Wire.h"
-#include "shell_state.h"
 
-#include <cstdio>
-#include <string>
+#include <functional>
 
-namespace spectro {
-namespace state {
-
-/*
- * WHAT A SESSION HAS TO REMEMBER: which buses this window was looking at, and
- * what it was calling a clash.
- *
- * Written as ONE STRING rather than as a count and a loop, because a reader
- * that trusts a count it did not write is a reader that can be made to walk off
- * the end of a chunk. parse_slots already skips anything unreadable.
- */
-bool Save(iplug::IByteChunk& chunk, const PutParams& params, const Fields& f)
+namespace spectro::state
 {
-  const int at = shell::state::Begin(chunk, kChunkVersion);
-  if (!params(chunk))
-    return false;
 
-  std::string sel;
-  for (size_t i = 0; i < f.sources.size(); i++)
-  {
-    if (i)
-      sel += ',';
-    char num[16];
-    snprintf(num, sizeof num, "%u", f.sources[i]);
-    sel += num;
-  }
-  if (chunk.PutStr(sel.c_str()) <= 0)
-    return false;
-
-  /* '.' whatever the locale; parse_range reads it back the same way. */
-  std::string clash;
-  ni::wire::append_fixed(clash, f.clashFloorDb, 2);
-  clash += ':';
-  ni::wire::append_fixed(clash, f.clashBalanceDb, 2);
-  if (chunk.PutStr(clash.c_str()) <= 0)
-    return false;
-
-  /* The view and the comparison: what the window was showing, and what it was
-   * measuring. Two separate settings, saved separately. */
-  std::string view;
-  for (size_t i = 0; i < f.view.size(); i++)
-  {
-    if (i)
-      view += ',';
-    char num[16];
-    snprintf(num, sizeof num, "%d", f.view[i]);
-    view += num;
-  }
-  if (chunk.PutStr(view.c_str()) <= 0)
-    return false;
-
-  char cmp[48];
-  snprintf(cmp, sizeof cmp, "%d:%d:%d", f.cmpA, f.cmpB, f.clashOn ? 1 : 0);
-  if (chunk.PutStr(cmp) <= 0)
-    return false;
-
-  /* The zoom, last, so an older build reading this stops before it. */
-  std::string range;
-  ni::wire::append_fixed(range, f.rangeLo, 2);
-  range += ':';
-  ni::wire::append_fixed(range, f.rangeHi, 2);
-  if (chunk.PutStr(range.c_str()) <= 0)
-    return false;
-  return shell::state::End(chunk, at);
+namespace
+{
+/* What the iPlug2 build wrote for the selection: slot numbers and commas. */
+bool isSelection (const std::string& s)
+{
+    for (const char c : s)
+        if (! ((c >= '0' && c <= '9') || c == ','))
+            return false;
+    return true;
 }
 
-/* What Save writes for the selection: slot numbers and commas, nothing else. */
-static bool is_selection(const char* s)
+template <class T>
+std::string commaList (const std::vector<T>& values)
 {
-  for (; s && *s; s++)
-    if (!((*s >= '0' && *s <= '9') || *s == ','))
-      return false;
-  return true;
-}
-
-/*
- * READ BACK DEFENSIVELY, BUT NOT BLINDLY.
- *
- * The chunk has grown a field at a time -- the selection first, then the clash,
- * then the view and the comparison -- so a session saved by an earlier build
- * ends early, and one written by a later build may hold more than this one
- * knows how to want. Every field after the selection is therefore taken only if
- * it is there.
- *
- * THE SELECTION IS NOT OPTIONAL. Every build that wrote anything wrote it, and
- * always as digits and commas, so a chunk it cannot be read from is not one of
- * ours. (The builds before it wrote no bytes at all; shell_state.h's Read
- * refuses that chunk, which holds nothing.)
- */
-int Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
-         const GetParams& apply, Fields& f)
-{
-  const shell::state::Header h = shell::state::Read(chunk, startPos);
-  if (h.body < 0)
-    return -1;
-  const int body = check(chunk, h.body);
-  if (body < 0)
-    return -1;
-
-  WDL_String sel;
-  int pos = shell::state::GetStr(chunk, sel, body);
-  if (pos < 0 || !is_selection(sel.Get()))
-    return -1;
-  if (apply(chunk, h.body) != body)
-    return -1;
-  f.sources.clear();
-  spectro::wire::parse_slots(sel.Get(), f.sources);
-
-  WDL_String clash;
-  int after = shell::state::GetStr(chunk, clash, pos);
-  if (after > pos)
-  {
-    float floorDb = 0.f, balanceDb = 0.f;
-    if (spectro::wire::parse_range(clash.Get(), floorDb, balanceDb))
+    std::string out;
+    for (std::size_t i = 0; i < values.size(); ++i)
     {
-      f.clashFloorDb = floorDb;
-      f.clashBalanceDb = balanceDb;
+        if (i > 0)
+            out += ',';
+        ni::wire::append_int (out, (long long) values[i]);
     }
-    pos = after;
-  }
+    return out;
+}
 
-  WDL_String view;
-  after = shell::state::GetStr(chunk, view, pos);
-  if (after > pos)
-  {
-    f.view.clear();
-    spectro::wire::parse_channels(view.Get(), f.view);
-    if (f.view.empty())
-      f.view.assign(1, 0);
-    pos = after;
-  }
+/* Exactly the same value: what a session holds is compared as stored, and a
+ * change of any size is a change. */
+bool same (float a, float b)
+{
+    return std::equal_to<float>() (a, b);
+}
 
-  WDL_String cmp;
-  after = shell::state::GetStr(chunk, cmp, pos);
-  if (after > pos)
-  {
-    int a = 0, b = 0;
+std::string pair (float a, float b)
+{
+    std::string out;
+    ni::wire::append_fixed (out, a, 2);
+    out += ':';
+    ni::wire::append_fixed (out, b, 2);
+    return out;
+}
+} // namespace
+
+bool Fields::operator== (const Fields& o) const
+{
+    return sources == o.sources && same (clashFloorDb, o.clashFloorDb) && same (clashBalanceDb, o.clashBalanceDb)
+        && view == o.view && cmpA == o.cmpA && cmpB == o.cmpB && clashOn == o.clashOn
+        && same (rangeLo, o.rangeLo) && same (rangeHi, o.rangeHi);
+}
+
+const ni::nist::Layout& layout()
+{
+    /* The selection, then the clash, the view, the comparison and the zoom,
+     * each added after the one before it. */
+    static const ni::nist::Layout l { nullptr, 0, {}, 1, 5 };
+    return l;
+}
+
+std::vector<std::string> strings (const Fields& f)
+{
+    std::string compare;
+    ni::wire::append_int (compare, f.cmpA);
+    compare += ':';
+    ni::wire::append_int (compare, f.cmpB);
+    compare += f.clashOn ? ":1" : ":0";
+    return { commaList (f.sources), pair (f.clashFloorDb, f.clashBalanceDb), commaList (f.view), compare,
+             pair (f.rangeLo, f.rangeHi) };
+}
+
+/*
+ * READ BACK DEFENSIVELY, BUT NOT BLINDLY. The chunk grew a string at a time,
+ * so one saved by an earlier build ends early, and every string after the
+ * selection is taken only if it is there and reads. The selection is not
+ * optional: see State.h.
+ */
+bool apply (const std::vector<std::string>& s, Fields& f)
+{
+    if (s.empty() || ! isSelection (s[0]))
+        return false;
+
+    Fields next = f;
+    next.sources.clear();
+    spectro::wire::parse_slots (s[0], next.sources);
+
+    float a = 0.0f, b = 0.0f;
+    if (s.size() > 1 && spectro::wire::parse_range (s[1], a, b))
+    {
+        next.clashFloorDb = a;
+        next.clashBalanceDb = b;
+    }
+
+    if (s.size() > 2)
+    {
+        std::vector<int> view;
+        spectro::wire::parse_channels (s[2], view);
+        /* A spectrogram showing nothing is a broken plugin, not a view. */
+        next.view = view.empty() ? std::vector<int> { 0 } : std::move (view);
+    }
+
+    int ca = 0, cb = 0;
     bool on = false;
-    if (spectro::wire::parse_compare(cmp.Get(), a, b, on))
+    if (s.size() > 3 && spectro::wire::parse_compare (s[3], ca, cb, on))
     {
-      f.cmpA = a;
-      f.cmpB = b;
-      f.clashOn = on;
+        next.cmpA = ca;
+        next.cmpB = cb;
+        next.clashOn = on;
     }
-    pos = after;
-  }
 
-  WDL_String range;
-  after = shell::state::GetStr(chunk, range, pos);
-  if (after > pos)
-  {
-    float lo = 0.f, hi = 0.f;
-    if (spectro::wire::parse_range(range.Get(), lo, hi) && lo > 0.f && hi > lo)
+    if (s.size() > 4 && spectro::wire::parse_range (s[4], a, b) && a > 0.0f && b > a)
     {
-      f.rangeLo = lo;
-      f.rangeHi = hi;
+        next.rangeLo = a;
+        next.rangeHi = b;
     }
-    pos = after;
-  }
-  return shell::state::Finish(h, pos);
+
+    f = std::move (next);
+    return true;
 }
 
-Session::Session(const Fields& initial) : mWanted(initial), mApplied(initial) {}
-
-Fields Session::Get() const
+std::vector<std::uint8_t> write (const Fields& f, bool bypass)
 {
-  std::lock_guard<std::mutex> hold(mLock);
-  return mWanted;
+    ni::nist::State s;
+    s.strings = strings (f);
+    s.bypass = bypass;
+    return ni::nist::write (layout(), s);
 }
 
-/* Held across the parse: what the chunk does not carry keeps the value it had
- * at this moment, and an Edit cannot land between the copy and the result. */
-int Session::Load(const iplug::IByteChunk& chunk, int startPos, const GetParams& check,
-                  const GetParams& apply)
+std::optional<Loaded> read (const void* data, std::size_t size, const Fields& current)
 {
-  std::lock_guard<std::mutex> hold(mLock);
-  Fields f = mWanted;
-  const int pos = state::Load(chunk, startPos, check, apply, f);
-  if (pos < 0)
-    return -1;
-  mWanted = std::move(f);
-  mChanged = true;
-  mLoaded = true;
-  return pos;
+    const auto state = ni::nist::read (layout(), data, size);
+    if (! state)
+        return std::nullopt;
+    Loaded out { current, state->bypass };
+    if (! apply (state->strings, out.fields))
+        return std::nullopt;
+    return out;
 }
 
-void Session::Edit(const std::function<void(Fields&)>& edit)
+/* --------------------------------------------------------------- Session */
+
+Session::Session (const Fields& initial) : wanted (initial), done (initial) {}
+
+Fields Session::get() const
 {
-  std::lock_guard<std::mutex> hold(mLock);
-  edit(mWanted);
-  mChanged = true;
+    const std::lock_guard<std::mutex> hold (lock);
+    return wanted;
 }
 
-bool Session::Service(Sink& sink, bool all)
+/* Held across the parse: what the stream does not carry keeps the value it
+ * had at this moment, and an edit cannot land between the copy and the
+ * result. */
+bool Session::load (const void* data, std::size_t size, std::optional<bool>& bypass)
 {
-  Fields next;
-  bool loaded = false;
-  {
-    std::lock_guard<std::mutex> hold(mLock);
-    if (!mChanged && !all)
-      return false;
-    next = mWanted;
-    loaded = mLoaded;
-    mChanged = false;
-    mLoaded = false;
-  }
-  /* Only what moved: choosing sources waits for the analysis thread, and a
-   * view or a comparison is not the receiver's business at all. */
-  if (all || next.sources != mApplied.sources)
-    sink.ApplySources(next.sources);
-  if (all || next.clashFloorDb != mApplied.clashFloorDb ||
-      next.clashBalanceDb != mApplied.clashBalanceDb)
-    sink.ApplyClash(next.clashFloorDb, next.clashBalanceDb);
-  if (all || next.rangeLo != mApplied.rangeLo || next.rangeHi != mApplied.rangeHi)
-    sink.ApplyRange(next.rangeLo, next.rangeHi);
-  mApplied = std::move(next);
-  return loaded;
+    const std::lock_guard<std::mutex> hold (lock);
+    auto got = read (data, size, wanted);
+    if (! got)
+        return false;
+    wanted = std::move (got->fields);
+    bypass = got->bypass;
+    changed = true;
+    loaded = true;
+    rev.fetch_add (1, std::memory_order_release);
+    return true;
 }
 
-} // namespace state
-} // namespace spectro
+void Session::edit (const std::function<void (Fields&)>& change)
+{
+    const std::lock_guard<std::mutex> hold (lock);
+    change (wanted);
+    changed = true;
+    rev.fetch_add (1, std::memory_order_release);
+}
+
+bool Session::service (Sink& sink, bool all)
+{
+    Fields next;
+    bool wasLoad = false;
+    {
+        const std::lock_guard<std::mutex> hold (lock);
+        if (! changed && ! all)
+            return false;
+        next = wanted;
+        wasLoad = loaded;
+        changed = false;
+        loaded = false;
+    }
+    /* Only what moved: choosing sources waits for the analysis thread, and a
+     * view or a comparison is not the receiver's business at all. */
+    if (all || next.sources != done.sources)
+        sink.applySources (next.sources);
+    if (all || ! same (next.clashFloorDb, done.clashFloorDb) || ! same (next.clashBalanceDb, done.clashBalanceDb))
+        sink.applyClash (next.clashFloorDb, next.clashBalanceDb);
+    if (all || ! same (next.rangeLo, done.rangeLo) || ! same (next.rangeHi, done.rangeHi))
+        sink.applyRange (next.rangeLo, next.rangeHi);
+    done = std::move (next);
+    return wasLoad;
+}
+
+} // namespace spectro::state

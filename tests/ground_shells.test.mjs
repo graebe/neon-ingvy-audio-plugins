@@ -134,7 +134,6 @@ test('no product can reorder any of it', () => {
 
 const PLUGINS = {
   SideChain: 'plugins/side-chain/SideChain',
-  Spectrogram: 'plugins/spectrogram/Spectrogram',
   ListenIn: 'plugins/listen-in/ListenIn',
 };
 
@@ -152,10 +151,13 @@ for (const [cls, base] of Object.entries(PLUGINS)) {
  * product on that shell owns. The same order holds there -- the clock ticked
  * from the host's transport before the product's audio, the bypassed block
  * included, on only while a window shows it -- and the same rule: no product
- * calls the ground's C ABI itself.
+ * calls the ground's C ABI itself. Each product names the statement its
+ * audio starts with: the engine taken for the block, or the bus's pusher.
  */
 const JUCE_PLUGINS = {
-  'NI Trance Gate': ['plugins/trance-gate/TranceGate.h', 'plugins/trance-gate/TranceGate.cpp'],
+  'NI Trance Gate': ['plugins/trance-gate/TranceGate.h', 'plugins/trance-gate/TranceGate.cpp', /tg_shell_begin/],
+  'NI Spectrogram': ['plugins/spectrogram/SpectrogramProcessor.h', 'plugins/spectrogram/SpectrogramProcessor.cpp',
+    /shell_handoff_acquire/],
 };
 
 test('ni::GroundClock ticks from the host clock it is given, and forgets old rings when a window opens', () => {
@@ -166,14 +168,14 @@ test('ni::GroundClock ticks from the host clock it is given, and forgets old rin
   assert.match(g, /gnd_set_sample_rate\s*\(\s*clock[\s\S]*gnd_reset\s*\(\s*clock\s*\)/);
 });
 
-for (const [name, [h, cpp]] of Object.entries(JUCE_PLUGINS)) {
+for (const [name, [h, cpp, audioStarts]] of Object.entries(JUCE_PLUGINS)) {
   test(`${name} ticks its ground before its audio, bypassed too, and only with a window open`, () => {
     const src = read(cpp);
     assert.match(read(h), /ni::GroundClock\s+\w+\s*;/);
     assert.doesNotMatch(read(h) + src, /\bgnd_\w+\(/, `${name} calls the ground itself`);
     const process = statements(body(src, 'Processor', 'process'));
     const tick = process.findIndex((st) => /\.tick\s*\(\s*clock\s*,\s*frames\s*\)/.test(st));
-    const audio = process.findIndex((st) => /tg_shell_begin/.test(st));
+    const audio = process.findIndex((st) => audioStarts.test(st));
     assert.ok(tick >= 0 && audio > tick, 'the ground is ticked before the engine runs, and before an early return');
     assert.ok(process.slice(0, tick).every((st) => !/return/.test(st)), 'nothing returns before the tick');
     assert.match(body(src, 'Processor', 'processBypassed'), /\.tick\s*\(\s*readClock/);

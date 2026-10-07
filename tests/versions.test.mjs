@@ -57,7 +57,7 @@ const PRODUCTS = {
       (c) => `engines/trance-gate/crates/${c}/Cargo.toml`),
   },
   spectrogram: {
-    config: 'plugins/spectrogram/config.h',
+    juce: { cmake: 'plugins/spectrogram/CMakeLists.txt', bundle: 'NISpectrogram' },
     crates: ['spectro-core', 'spectro-recv', 'spectro-capi'].map(
       (c) => `engines/spectro/crates/${c}/Cargo.toml`),
   },
