@@ -61,13 +61,31 @@ inline juce::String percentText (float v)
     return juce::String (std::round (v * 100.0f) / 100.0f + 0.0f, 2) + " %";
 }
 
-/* The fifteen, as Params.cpp declares them. */
+/*
+ * AN INTEGER THE HOST STEPS THROUGH, as the spike's processor declares Slot
+ * and Length (spike/juce-trance-gate/Source/Processor.cpp): JUCE's int
+ * parameter calls itself continuous unless it says otherwise, and iPlug2
+ * declared both stepped.
+ */
+class SteppedInt final : public juce::AudioParameterInt
+{
+public:
+    using AudioParameterInt::AudioParameterInt;
+    bool isDiscrete() const override { return true; }
+};
+
+/* The fifteen, as Params.cpp declares them and the spike's processor builds
+ * them: the percentages continuous, as iPlug2 left them. */
 inline void addParameters (ni::ui::test::FakeParameters& p)
 {
     const auto number = [] (const juce::String& s) { return s.getFloatValue(); };
     const auto pct = [&] (const char* id, const char* name, float lo, float hi, float def)
     {
-        p.addFloat (id, name, { lo, hi, 0.01f }, def, percentText, number);
+        p.addFloat (id, name, { lo, hi }, def, percentText, number);
+    };
+    const auto stepped = [&] (const char* id, const char* name, int lo, int hi, int def)
+    {
+        p.add (std::make_unique<SteppedInt> (juce::ParameterID { id, 1 }, name, lo, hi, def));
     };
     /* A switch whose two states are words of its own ("Hard", "Soft"). */
     const auto words = [&] (const char* id, const char* name, const char* off, const char* on)
@@ -78,8 +96,8 @@ inline void addParameters (ni::ui::test::FakeParameters& p)
         p.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id, 1 }, name, false, attributes));
     };
 
-    p.addInt ("slot", "Slot", 1, 8, 1);
-    p.addInt ("length", "Length", 1, 128, 16);
+    stepped ("slot", "Slot", 1, 8, 1);
+    stepped ("length", "Length", 1, 128, 16);
     p.addChoice ("rate", "Rate", rateLabels(), 7);
     words ("legato", "Join Neighbors", "Off", "On");
     p.addChoice ("timeMode", "Env Time", { "ms", "%" }, 0);
@@ -308,6 +326,102 @@ public:
         params.clear();
     }
 };
+
+/* ------------------------------------------------- renders, for pictures -- */
+
+/*
+ * Curves shaped like the engine's, for the goldens and the plot tests: a
+ * linear attack, decay to Sustain, the gate closing at Width and a linear
+ * release, per step at its amount and level, a tie carrying the step before
+ * it on. Not the engine's DSP and not meant to be: the editor draws whatever
+ * curve it is handed, and these only have to look like one.
+ */
+inline float stageLevel (double t, double a, double d, double s, double gate, double r)
+{
+    const auto attackDecay = [&] (double u)
+    {
+        if (u < a)
+            return a > 0.0 ? u / a : 1.0;
+        if (u < a + d)
+            return 1.0 - (1.0 - s) * (d > 0.0 ? (u - a) / d : 1.0);
+        return s;
+    };
+    if (t < gate)
+        return (float) attackDecay (t);
+    const double at = attackDecay (gate);
+    if (r <= 0.0 || t >= gate + r)
+        return 0.0f;
+    return (float) (at * (1.0 - (t - gate) / r));
+}
+
+inline void renderCurves (FakeModel& m, int perStep = 32)
+{
+    const double width = m.plain (param::width) / 100.0;
+    const double a = m.plain (param::attack) / 100.0 * width, d = m.plain (param::decay) / 100.0 * width,
+                 r = m.plain (param::release) / 100.0 * width, s = m.plain (param::sustain) / 100.0;
+    const auto& p = m.shown;
+    const int n = juce::jlimit (1, maxSteps, p.length);
+
+    m.gateCurve.steps = n;
+    m.gateCurve.perStep = perStep;
+    m.gateCurve.values.assign ((std::size_t) (n * perStep), 0.0f);
+    float carry = 0.0f;
+    for (int i = 0; i < n; ++i)
+    {
+        const auto mode = p.steps[(std::size_t) i];
+        const float level = p.depths[(std::size_t) i] * p.levels[(std::size_t) i];
+        for (int k = 0; k < perStep; ++k)
+        {
+            const double t = (double) k / perStep;
+            float v = 0.0f;
+            if (mode == StepMode::tie && i > 0)
+                v = carry;
+            else if (level > 0.0f)
+                v = level * stageLevel (t, a, d, s, width, r);
+            m.gateCurve.values[(std::size_t) (i * perStep + k)] = v;
+        }
+        carry = m.gateCurve.values[(std::size_t) (i * perStep + perStep - 1)];
+        if (mode != StepMode::tie && level > 0.0f)
+            carry = level * stageLevel (std::min (width, 0.999), a, d, s, width, r);
+    }
+    ++m.gateCurve.serial;
+
+    const int steps = 3;
+    m.envelopeCurves.steps = steps;
+    m.envelopeCurves.perStep = perStep;
+    m.envelopeCurves.gated.resize ((std::size_t) (steps * perStep));
+    m.envelopeCurves.ghost.resize ((std::size_t) (steps * perStep));
+    for (int k = 0; k < steps * perStep; ++k)
+    {
+        const double t = (double) k / perStep;
+        m.envelopeCurves.gated[(std::size_t) k] = stageLevel (t, a, d, s, width, r);
+        m.envelopeCurves.ghost[(std::size_t) k] = stageLevel (t, a, d, s, 1.0e9, r);
+    }
+    ++m.envelopeCurves.serial;
+}
+
+/* A capture of one cycle: a busy input, gated by the render, written up to
+ * column `head`. */
+inline void fillCapture (FakeModel& m, int columns, int head, double cycleMs, float level = 0.8f)
+{
+    auto& c = m.signal;
+    c.columns = columns;
+    c.cycleMs = cycleMs;
+    c.head = head;
+    c.data.assign ((std::size_t) (columns * Capture::stride), 0.0f);
+    const auto& g = m.gateCurve.values;
+    for (int i = 0; i < columns; ++i)
+    {
+        const float in = level * (float) (0.55 + 0.45 * std::abs (std::sin (i * 0.37) * std::cos (i * 0.11)));
+        const float gain = g.empty() ? 1.0f : g[(std::size_t) ((double) i / columns * (double) g.size())];
+        auto* col = c.data.data() + i * Capture::stride;
+        col[0] = -in;
+        col[1] = in;
+        col[2] = -in * gain;
+        col[3] = in * gain;
+    }
+    ++c.serial;
+}
 
 /* ------------------------------------------------- clipboard and panels -- */
 
