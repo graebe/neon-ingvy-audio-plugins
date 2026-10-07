@@ -581,13 +581,14 @@ fn state_text(state: &[u8], len: c_int) -> Option<&str> {
 
 /// The current slot's fifteen values as the next block will leave them, on
 /// the numeric wire, into `out` (`n` >= 15), given the host's `values` as
-/// `tg_shell_push` takes them. After a Slot the host moved and no block has
-/// applied yet, these are the new slot's own -- the values the host is about
-/// to be moved to (`tg_shell_take_params`) -- where the host still holds the
-/// slot it left. A save writes these beside the blob `tg_shell_save` writes,
-/// so the two agree: otherwise a reopened set puts the slot that was left
-/// into the one switched to. Returns 1, or 0 with nothing written. Any
-/// non-audio thread; allocates.
+/// `tg_shell_push` takes them. After a Slot the host moved, or a paste, that
+/// no block has applied yet, these are the new slot's own -- the values the
+/// host is about to be moved to (`tg_shell_take_params`) -- where the host
+/// still holds the slot it left. Otherwise they are `values` themselves,
+/// exactly. A save writes these beside the blob `tg_shell_save` writes, so
+/// the two agree: otherwise a reopened set puts the slot that was left into
+/// the one switched to. Returns 1, or 0 with nothing written. Any non-audio
+/// thread; allocates.
 ///
 /// # Safety
 /// `values` and `out` each hold `n` doubles.
@@ -598,9 +599,21 @@ pub unsafe extern "C" fn tg_shell_next_params(sh: *mut TgShell, values: *const f
         return 0;
     }
     let values: &[f64; NUMS] = &*(values as *const [f64; NUMS]);
+    let out = std::slice::from_raw_parts_mut(out, NUMS);
+    /* Nothing for the host to follow: its own values, not the next view's,
+     * which is mirrored from the blob's text and so rounded. */
+    let recalls = sh.bridge.read(|r| match r.pending {
+        Some(view) => view.recalls,
+        None => r.frame.recalls,
+    });
+    let plan = sh.mirror.plan(values, recalls);
+    if !(plan.switched || plan.pasted) {
+        out.copy_from_slice(values);
+        return 1;
+    }
     match sh.next(values) {
         Some(next) => {
-            std::slice::from_raw_parts_mut(out, NUMS).copy_from_slice(&next.numbers());
+            out.copy_from_slice(&next.numbers());
             1
         }
         None => 0,
@@ -984,10 +997,11 @@ mod tests {
             tg_shell_push(sh, c, values.as_ptr(), 15);
             tg_shell_end(sh, 64);
         }
-        /* Nothing pending: the host's values, as the engine holds them -- a
-         * float each. */
-        let as_held = |v: [f64; 15]| v.map(|x| x as f32);
-        assert_eq!(as_held(next_params(sh, &values)), as_held(values));
+        /* Nothing pending: the host's values themselves, to the bit -- not
+         * the blob's rounding of them. */
+        let mut exact = values;
+        exact[8] = 1.600_000_123_456_789;
+        assert_eq!(next_params(sh, &exact).map(f64::to_bits), exact.map(f64::to_bits));
         /* The host moves to slot 2 and still holds slot 1's Amount: the next
          * block leaves slot 2's own, the default. */
         values[0] = 1.0;
