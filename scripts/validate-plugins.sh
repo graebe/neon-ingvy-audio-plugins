@@ -10,7 +10,8 @@
 #
 #   scripts/validate-plugins.sh run <tools-dir> [bundle-dir]
 #       Validate every plugin: auval on each INSTALLED Audio Unit, pluginval
-#       (strictness 10) on each VST3 and AU, clap-validator on each CLAP --
+#       (strictness 10) on each VST3 and AU -- and on each bundle on the JUCE
+#       shell, editor tests included -- clap-validator on each CLAP --
 #       the last held to tests/validators.known.json by
 #       scripts/validator-verdict.mjs. bundle-dir defaults to build/out. Exits
 #       non-zero if any validator fails, after running all of them.
@@ -97,6 +98,19 @@ run() {
         "$clapval" validate --json --hide-output "$out/$bundle.clap" > "$tools/$bundle.clap.json" || true
         node "$ROOT/scripts/validator-verdict.mjs" "$bundle" < "$tools/$bundle.clap.json" \
             || failed+=("clap-validator $bundle.clap")
+        echo "::endgroup::"
+    done
+
+    # THE BUNDLES ON THE JUCE SHELL (cmake/NiJucePlugin.cmake): VST3 only, and
+    # known by the moduleinfo.json JUCE writes into each. pluginval runs WITH
+    # its editor tests -- native editors have no WebView to keep them from it.
+    for bundle in "$out"/*.vst3; do
+        [ -f "$bundle/Contents/Resources/moduleinfo.json" ] || continue
+        local name
+        name=$(basename "$bundle")
+        echo "::group::pluginval $name"
+        "$pluginval" --strictness-level 10 --timeout-ms 300000 \
+            --validate "$bundle" || failed+=("pluginval $name")
         echo "::endgroup::"
     done
 
