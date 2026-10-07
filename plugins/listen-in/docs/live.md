@@ -22,22 +22,23 @@ almost never what you meant.
 2. Click the **Name** field and type, say, `bass`. **Enter** keeps it,
    **Escape** abandons the edit. Up to thirty-one bytes; a colon or a control
    character such as a newline is dropped.
-3. The meter moves when audio is passing. The status word at the top says
-   `listening` when the bus is live, and the hint bar names the bus and the
-   name.
+3. The meter moves when audio is passing. The light beside it is lit and says
+   `listening` when the bus is live; point at it and the hint bar names the
+   bus and its name.
 
 Repeat on a second track with a different bus number. That is the setup the
 overlaid spectra need.
 
 ## When the bus is not live
 
-The status word says what is wrong, and the hint bar says why:
+The light says what is wrong, in its colour and its word, and pointing at it
+shows why in the hint bar (a screen reader reads the same line):
 
-| status | hint bar | what to do |
+| light | its line | what to do |
 |---|---|---|
-| `slot taken` | bus *N* is taken — another Listen-In holds it | another NI Listen-In already holds that number, on another track or in another open set. Pick a free number; if you removed the other one, move Bus off the number and back to claim it |
-| `unavailable` | bus unavailable — the host may be sandboxed | the bus could not be opened at all. Live does not sandbox VST3 or AU, so in Live this is worth reporting |
-| `idle` | status starting | the plugin has not been given audio yet — press play |
+| amber, `slot taken` | bus *N* is taken: another Listen-In holds it. | another NI Listen-In already holds that number, on another track or in another open set. Pick a free number; if you removed the other one, move Bus off the number and back to claim it |
+| red, `unavailable` | bus unavailable: the host may be sandboxed. | the bus could not be opened at all. Live does not sandbox VST3 plugins, so in Live this is worth reporting |
+| dark, `idle` | starting: no audio yet; press play. | the plugin has not been given audio yet — press play |
 
 A slot is never shared, and never taken over silently: the second NI Listen-In
 on a number waits, idle, until you give it one of its own.
@@ -73,13 +74,16 @@ preferable to a silent second sender fighting the first.
 
 1. **Quit Live completely** — Live keeps every plugin it has loaded in memory
    until it quits, so a bundle replaced while it runs is not the one you hear.
-2. Copy `NIListenIn.vst3`, `NIListenIn.component` and `NIListenIn.clap` into
-   `~/Library/Audio/Plug-Ins/VST3`, `…/Components` and `…/CLAP`.
-3. The bundles are unsigned, so clear the quarantine attribute:
+2. Copy `NIListenIn.vst3` from the release into
+   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there. NI Listen-In is a
+   VST3 only: the Audio Unit and the CLAP builds were discontinued with the
+   native editor. A set that used the Audio Unit opens with the VST3 in its
+   place once you insert it again.
+3. The bundle is not notarised, so macOS refuses it until the quarantine
+   attribute is removed:
 
    ```sh
    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NIListenIn.vst3
-   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/NIListenIn.component
    ```
 
 4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
@@ -94,7 +98,18 @@ new one is installed, the two can end up side by side, each saying it is
 listening, with nothing reaching the Spectrogram. Quitting Live fully makes
 every instance the new one.
 
-Every bundle carries `LICENSE` and `THIRD_PARTY_LICENSES.md` in
+**Sets saved with an earlier version open as they were saved**: the plugin
+keeps the identity, the Bus parameter and the saved state of every earlier
+VST3 build, so each NI Listen-In claims its bus again under its name, and Bus
+automation still follows its lane. One thing moved: the plugin's own **Bypass**
+parameter has a new number inside the plugin (1, where it was 65536). A set
+that never automated it notices nothing; an automation lane drawn on that
+Bypass in an earlier version may no longer reach it, and then wants drawing
+again.
+
+The licence notices travel with the plugin: the bundle carries `LICENSE`,
+`THIRD_PARTY_LICENSES.md`, the font's `OFL.txt` and the texts of the licences
+of what it is built with (`AGPL-3.0.txt`, `Apache-2.0.txt`) in
 `Contents/Resources/`.
 
 ## The background, and the Motion switch

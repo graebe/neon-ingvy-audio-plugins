@@ -7,7 +7,7 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 |---|---|---|
 | [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · a Schwung module for the Move | `engines/trance-gate` |
 | [NI Spectrogram](plugins/spectrogram/README.md) | VST3 | `engines/spectro` |
-| [NI Listen-In](plugins/listen-in/README.md) | VST3 · AU · CLAP | `engines/audio-bus` |
+| [NI Listen-In](plugins/listen-in/README.md) | VST3 | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · a Schwung module for the Move | `engines/side-chain` |
 
 ## How it is put together
@@ -118,7 +118,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `sg_processor`, `sg_host` | NI Spectrogram on the real analyzer: the iPlug2 sets reopened and saved back byte for byte, a tone drawn at its frequency straight into the editor's buffers, a Listen-In's bus from another process listed by its name and drawn, the audio through bit for bit — in the processor, and in the built VST3 as a DAW hosts it |
 | `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** `abus_ipc_rosetta` and `abus_ipc_rosetta_reader` do it between the x86_64 and arm64 slices, as Live under Rosetta and a native host would |
 | `abus_core` | the ring's wrap and overrun, the claim protocol, and a writer running flat out against a slow reader with every delivered block checked for continuity — a spliced buffer looks exactly like audio |
-| `listenin_wire`, `listenin_wire_js` | the state string and the label sanitiser, both sides pinned to one table the plugin's own C++ generates |
+| `li_processor`, `li_host` | NI Listen-In on the real bus: the iPlug2 sets reopened and saved back byte for byte, a claim released before the next is made, a held bus refused out loud, the audio through bit for bit and on the bus as it came — in the processor, and in the built VST3 as a DAW hosts it |
 | `ni_wire` | the pieces of plugin arithmetic where being wrong is silent — the scope quantiser, the message split, the editor height, the transport advance |
 | `tg_fade`, `tg_fade_js` | the fade's per-step level factors in both directions, against the engine's own *measured* gain — DC in with no envelope, so the gain during a step IS that factor. The editor mirrors the formula for the pads and the ring, so the mirror is pinned |
 

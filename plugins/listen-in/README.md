@@ -3,10 +3,10 @@ title: NI Listen-In
 tagline: A tap on any track — passes audio through, publishes it on a numbered bus.
 order: 3
 hosts: [live]
-formats: [VST3, AU, CLAP]
+formats: [VST3]
 engine: engines/audio-bus
 crates: [bus-core, bus-capi]
-tests: [abus_core, abus_roundtrip, abus_ipc, listenin_wire, listenin_wire_js]
+tests: [abus_core, abus_roundtrip, abus_ipc, li_processor, li_host]
 notOnMove: >-
   NI Listen-In is not a DSP — it is a transport between two plugins in one host,
   and the Move runs one module at a time with no second plugin to read the bus.
@@ -100,7 +100,17 @@ handle to it, so a crashed host takes its bus with it.
 
 If a host sandboxes the plugin on macOS, its shm names need an app-group prefix
 and this will not connect — the editor says `unavailable` rather than pretending.
-Live loads VST3 and AU in process, which is what it was built for.
+Live loads VST3 plugins in process, which is what it was built for.
+
+## The plugin around the bus
+
+NI Listen-In is a VST3 on the house JUCE shell (`cmake/NiJucePlugin.cmake`),
+with a native editor (`editor/`). It took over from the iPlug2 build without
+breaking a set: the same bundle name and VST3 class, Bus at the same parameter
+ID, and the same saved state, byte for byte (`tests/fixtures/iplug2/FORMAT.md`).
+`ListenIn.h` says which thread holds which half of a claim; `li_processor`,
+`li_rt` and `li_host` hold the processor, its audio callback and the built
+bundle to all of it.
 
 ## Seeing it work without a receiver
 
