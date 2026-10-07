@@ -21,7 +21,8 @@ include(${NI_SOURCE_DIR}/cmake/NiCorrosion.cmake)
 corrosion_import_crate(MANIFEST_PATH ${NI_SOURCE_DIR}/Cargo.toml
     CRATES ${NI_RUST_CRATES}
     CRATE_TYPES staticlib
-    PROFILE release)
+    PROFILE release
+    LOCKED)
 foreach(lib IN LISTS NI_RUST_LIBS)
     set_target_properties(${lib} PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${NI_RUST_SLICE_DIR})
     ni_rust_quiet_cargo(${lib})

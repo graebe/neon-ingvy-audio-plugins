@@ -119,10 +119,18 @@ function(ni_build_rust_engines)
     # share -- ni-dsp, ground, shell, audio-bus -- compile once rather than
     # once per product. Release always: it is the profile whose panic strategy
     # is abort (the root Cargo.toml says why), and the only one that ships.
+    #
+    # LOCKED: the crates linked are the ones Cargo.lock names, which are the
+    # ones cargo-deny held to the allowlist and cargo-about wrote notices for
+    # (both read the lock with --locked). Without it a manifest edited past its
+    # lock is re-resolved here, silently, and the lock rewritten before ctest's
+    # licence gate reads it -- so the gate would approve what the build chose.
+    # With it the build stops and says the lock is stale.
     corrosion_import_crate(MANIFEST_PATH ${CMAKE_SOURCE_DIR}/Cargo.toml
         CRATES ${crates}
         CRATE_TYPES staticlib
-        PROFILE release)
+        PROFILE release
+        LOCKED)
     foreach(lib IN LISTS libs)
         set_target_properties(${lib} PROPERTIES
             ARCHIVE_OUTPUT_DIRECTORY ${NI_RUST_LIB_DIR}/${Rust_CARGO_TARGET})

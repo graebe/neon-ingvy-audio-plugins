@@ -85,7 +85,12 @@ echo "Compiling the Schwung wrapper (Rust)..."
 # suite that tested it were never bit-identical to each other. Rust does not
 # contract, so the module and its tests compute the same numbers, and the
 # golden render pins the algorithm rather than a compiler flag.
-cargo build --release -p "$MODULE_CRATE" --target aarch64-unknown-linux-gnu
+#
+# --locked: the module links exactly the crates Cargo.lock names, the ones the
+# licence gate checked and the notices below list. A manifest edited past its
+# lock stops the build here, where cargo would otherwise re-resolve, rewrite
+# the lock and ship crates nothing has checked.
+cargo build --locked --release -p "$MODULE_CRATE" --target aarch64-unknown-linux-gnu
 
 # THE .so NAME IS LOAD-BEARING. For component_type audio_fx the chain host
 # builds the path itself as modules/audio_fx/<id>/<id>.so and never reads
