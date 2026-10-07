@@ -29,6 +29,9 @@
 #include "side-chain_fakes.h"
 #include "snapshot.h"
 
+#include "UvTokens.h"
+#include "UvType.h"
+
 #include <doctest.h>
 
 using namespace ni::sc;
@@ -382,6 +385,45 @@ TEST_CASE ("side-chain: a handle is a slider to a screen reader, named for what 
     CHECK (handler->getValueInterface()->getCurrentValueAsString() == "2.0 %, 100.0 %");
 }
 
+TEST_CASE ("side-chain: a handle reads and takes a stage in the unit its knob does")
+{
+    Rig rig;
+    rig.model.engine.msPerCycle = 500.0;
+    rig.frame();
+    rig.model.params.clear();
+
+    auto& end = rig.handle (Shaper::Which::end);
+    const auto handler = end.createAccessibilityHandler();
+    auto* value = handler->getValueInterface();
+    REQUIRE (value != nullptr);
+
+    /* In ms, as the Release knob says it. */
+    CHECK (value->getCurrentValueAsString() == "175 ms");
+    CHECK (value->getCurrentValueAsString() == rig.editor.knob (param::release).getValueText());
+
+    /* A bare number is the unit shown: 40 ms of a 500 ms cycle is 8 %. */
+    value->setValueAsString ("40");
+    CHECK (rig.model.plain (param::release) == doctest::Approx (8.0));
+    value->setValueAsString ("20 %");
+    CHECK (rig.model.plain (param::release) == doctest::Approx (20.0));
+
+    /* In % of the cycle, the knob's percentage, and a bare number is one. */
+    rig.model.params[param::timeMode].setValueNotifyingHost (1.0f);
+    CHECK (value->getCurrentValueAsString() == "20.0 %");
+    value->setValueAsString ("40");
+    CHECK (rig.model.plain (param::release) == doctest::Approx (40.0));
+
+    /* Text it cannot read changes nothing. */
+    rig.model.params.clear();
+    value->setValueAsString ("nonsense");
+    CHECK (rig.model.params.log() == "");
+
+    /* The bottom corner: Attack as its knob reads it, then Depth. */
+    rig.model.params[param::timeMode].setValueNotifyingHost (0.0f);
+    const auto bottom = rig.handle (Shaper::Which::bottom).createAccessibilityHandler();
+    CHECK (bottom->getValueInterface()->getCurrentValueAsString() == "10 ms, 100.0 %");
+}
+
 /* ------------------------------------------------------------------ plot -- */
 
 TEST_CASE ("side-chain: a shape longer than one cycle is marked, not accommodated")
@@ -398,18 +440,39 @@ TEST_CASE ("side-chain: a shape longer than one cycle is marked, not accommodate
 TEST_CASE ("side-chain: the caption names the picture and its span, or that nothing is arriving")
 {
     Rig rig;
-    CHECK (rig.shaper().getCaption() == "ONE CYCLE   INPUT IN GREY BEHIND");
+    CHECK (rig.shaper().getCaption() == "SHAPE   ONE CYCLE   INPUT IN GREY BEHIND");
 
     rig.model.engine.msPerCycle = 500.0;
+    rig.model.params[param::timeMode].setValueNotifyingHost (1.0f);
     rig.model.fillScope (512, 512, 0.0f);
     rig.frame();
     CHECK (rig.shaper().isQuiet());
-    CHECK (rig.shaper().getCaption() == "ONE CYCLE, 500 MS   NOTHING REACHING THE PLUGIN");
+    CHECK (rig.shaper().getCaption() == "SHAPE   ONE CYCLE, 500 MS   NOTHING REACHING THE PLUGIN");
 
     rig.model.fillScope (512, 100, 0.5f);
     rig.frame();
     CHECK_FALSE (rig.shaper().isQuiet());
-    CHECK (rig.shaper().getCaption() == "ONE CYCLE, 500 MS   INPUT IN GREY BEHIND");
+    CHECK (rig.shaper().getCaption() == "SHAPE   ONE CYCLE, 500 MS   INPUT IN GREY BEHIND");
+}
+
+TEST_CASE ("side-chain: while the stages read in ms, the caption carries their total")
+{
+    Rig rig;
+    rig.model.engine.msPerCycle = 500.0;
+    rig.frame();
+    /* 0 + 10 + 40 + 175 ms: the web hint's "225 ms total". */
+    CHECK (rig.shaper().getCaption() == "SHAPE   ONE CYCLE, 500 MS   STAGES 225 MS   INPUT IN GREY BEHIND");
+
+    /* In % of the cycle the stages read as their knobs do, and the caption
+     * drops the total at once, without waiting for a frame. */
+    rig.model.params[param::timeMode].setValueNotifyingHost (1.0f);
+    CHECK (rig.shaper().getCaption() == "SHAPE   ONE CYCLE, 500 MS   INPUT IN GREY BEHIND");
+    rig.model.params[param::timeMode].setValueNotifyingHost (0.0f);
+    CHECK (rig.shaper().getCaption().contains ("STAGES 225 MS"));
+
+    /* Before a tempo nothing reads in ms. */
+    CHECK (captionFor (true, 0.0) == "SHAPE   ONE CYCLE   INPUT IN GREY BEHIND");
+    CHECK (captionFor (false, 500.0, -12.4) == "SHAPE   ONE CYCLE, 500 MS   STAGES -12 MS   NOTHING REACHING THE PLUGIN");
 }
 
 TEST_CASE ("side-chain: the playhead is the sweep -- a cycle wraps, a one-shot duck stops at its end")
@@ -597,6 +660,51 @@ TEST_CASE ("side-chain: every line is held to 72 characters, in every source")
     NI_CHECK_INFO_LIMIT (rig.editor);
     CHECK (ni::ui::infoOf (rig.handle (Shaper::Which::end)).startsWith ("Release"));
     CHECK (ni::ui::infoOf (rig.editor.knob (param::delay)).startsWith ("Delay"));
+}
+
+TEST_CASE ("side-chain: the controls are named in words, as the manual names them, and each line by its label")
+{
+    Rig rig;
+    auto& e = rig.editor;
+    CHECK (e.select (param::source).getTitle() == "Source");
+    CHECK (e.knob (param::channel).getLabel() == "Channel");
+    CHECK (e.knob (param::velSens).getLabel() == "Velocity");
+    CHECK (e.knob (param::threshold).getLabel() == "Threshold");
+
+    /* Each line starts with the label it explains. */
+    for (const int i : { param::channel, param::velSens, param::threshold })
+    {
+        CAPTURE (i);
+        CHECK (ni::ui::infoOf (e.knob (i)).startsWith (e.knob (i).getLabel() + juce::String::fromUTF8 (" \xe2\x80\x94")));
+    }
+    CHECK (ni::ui::infoOf (e.select (param::source)).startsWith ("Source"));
+
+    /* The longest, THRESHOLD, fits its card at seven knobs, and SOURCE its
+     * label's width: neither runs into the next thing. */
+    rig.setSource (Source::sidechain);
+    const auto& style = uv::tok::type::label;
+    const auto font = uv::type::font (style);
+    CHECK (uv::type::width (font, uv::type::cased (style, "Threshold")) <= (float) e.knob (param::threshold).getWidth());
+    rig.setSource (Source::midi);
+    CHECK (uv::type::width (font, uv::type::cased (style, "Velocity")) <= (float) e.knob (param::velSens).getWidth());
+    CHECK (uv::type::width (font, uv::type::cased (style, "Source")) + 2.0f
+           <= (float) (e.select (param::source).idealWidth() - 128 - 8));
+}
+
+TEST_CASE ("side-chain: each source's catch has its remedy where the control is explained")
+{
+    Rig rig;
+    /* Live routes no MIDI to an audio track; a key is routed in Live. */
+    CHECK (ni::ui::infoOf (rig.editor.select (param::source)).contains ("MIDI needs a MIDI track"));
+    CHECK (ni::ui::infoOf (rig.editor.knob (param::threshold)).contains ("route it in Live's sidechain"));
+}
+
+TEST_CASE ("side-chain: no handle's line repeats the conventions' double-click")
+{
+    Rig rig;
+    for (const auto w : { Shaper::Which::start, Shaper::Which::bottom, Shaper::Which::holdEnd, Shaper::Which::end })
+        CHECK_FALSE (ni::ui::infoOf (rig.handle (w)).contains ("double-click"));
+    CHECK (rig.conventions().contains ("double-click to reset"));
 }
 
 TEST_CASE ("side-chain: the Motion switch is the model's")

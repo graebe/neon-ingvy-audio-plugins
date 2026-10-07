@@ -29,8 +29,6 @@ namespace c = uv::tok::colour;
 constexpr float lineWidth = 1.5f;
 constexpr float casingWidth = 4.0f;
 constexpr float casingAlpha = 0.65f;
-/* The playhead: an ink rule at 0.45, as the web editor's. */
-constexpr float playheadAlpha = 0.45f;
 
 juce::PathStrokeType roundStroke (float width)
 {
@@ -49,6 +47,9 @@ Shaper::Shaper (Model& m)
                              param::release, param::depth, param::curve })
         bindings[(size_t) index] = std::make_unique<ni::ui::ParamBinding> (
             model.parameter (index), [this] { rebuildShape(); layoutHandles(); repaint(); });
+    /* Time changes only how the stages read: the caption's total. */
+    bindings[(size_t) param::timeMode] = std::make_unique<ni::ui::ParamBinding> (
+        model.parameter (param::timeMode), [this] { refreshCaption(); });
 
     handles[0] = std::make_unique<Handle> (*this, Which::start, param::delay, -1);
     handles[1] = std::make_unique<Handle> (*this, Which::bottom, param::attack, param::depth);
@@ -64,10 +65,23 @@ Shaper::Shaper (Model& m)
     for (auto& h : handles)
         addAndMakeVisible (*h);
 
-    setCaption (captionFor (true, 0.0));
+    refreshCaption();
 }
 
 Shaper::~Shaper() = default;
+
+void Shaper::setStageText (StageText text, StageParse parse)
+{
+    textOfStage = std::move (text);
+    parseForStage = std::move (parse);
+}
+
+void Shaper::refreshCaption()
+{
+    const auto total = readsInMs (binding (param::timeMode).value(), spanMs) ? std::optional<double> (stagesMs)
+                                                                            : std::nullopt;
+    setCaption (captionFor (! quiet, spanMs, total));
+}
 
 ni::ui::ParamBinding& Shaper::binding (int index)
 {
@@ -113,10 +127,11 @@ void Shaper::update()
     const auto state = model.state();
     sweep = playheadOf (state);
     spanMs = state.msPerCycle;
+    stagesMs = model.stageMs().total();
 
     rebuildEnvelope();
     rebuildShape();
-    setCaption (captionFor (! quiet, spanMs));
+    refreshCaption();
     layoutHandles();
     repaint();
 }
@@ -249,10 +264,8 @@ void Shaper::paintPlot (juce::Graphics& g)
     g.setColour (c::ink);
     g.strokePath (intended, roundStroke (lineWidth));
 
-    /* The playhead. */
-    const float x = xOf (sweep * 100.0);
-    g.setColour (c::ink.withAlpha (playheadAlpha));
-    g.drawLine (x, top(), x, bottom(), uv::tok::stroke::strokeHair);
+    /* The playhead: a position mark, so the card's line-200 rule. */
+    plot::rule (g, xOf (sweep * 100.0), top(), bottom());
 
     /* A shape that cannot finish inside one cycle: the window's one amber
      * mark, at the edge it runs past. */
@@ -281,10 +294,19 @@ Shaper::Handle::Handle (Shaper& s, Which w, int xParam, int yParam)
 
 juce::String Shaper::Handle::valueText() const
 {
-    auto text = shaper.binding (xIndex).text();
+    auto text = shaper.textOfStage ? shaper.textOfStage (xIndex) : shaper.binding (xIndex).text();
     if (yIndex >= 0)
         text << ", " << shaper.binding (yIndex).text();
     return text;
+}
+
+void Shaper::Handle::typeValue (const juce::String& text)
+{
+    auto& x = shaper.binding (xIndex);
+    if (! shaper.parseForStage)
+        x.setText (text);
+    else if (const auto v = shaper.parseForStage (xIndex, text.trim()))
+        x.commit (*v);
 }
 
 bool Shaper::Handle::hitTest (int x, int y)
@@ -467,7 +489,7 @@ public:
     double getCurrentValue() const override { return x.value(); }
     juce::String getCurrentValueAsString() const override { return handle.valueText(); }
     void setValue (double v) override { x.commit ((float) juce::jlimit (0.0, 1.0, v)); }
-    void setValueAsString (const juce::String& text) override { x.setText (text); }
+    void setValueAsString (const juce::String& text) override { handle.typeValue (text); }
     AccessibleValueRange getRange() const override { return { { 0.0, 1.0 }, (double) ni::ui::keys::step }; }
 
 private:

@@ -29,9 +29,10 @@
  *                  four handles. Ink, not uv, because ink over uv is only
  *                  1.34:1 -- the two differ by kind and hue, not brightness.
  *
- * Over them the playhead (the capture's sweep), the overrun mark and the
- * millisecond ruler, with the cycle's length and the instant the duck reaches
- * its floor as the ruler's landmark.
+ * Over them the playhead (the capture's sweep, a line-200 rule: the PlotWell
+ * card's position mark), the overrun mark and the millisecond ruler, with the
+ * cycle's length and the instant the duck reaches its floor as the ruler's
+ * landmark.
  *
  * FOUR HANDLES, AND EACH IS A HOST PARAMETER (docs/live.md, "The shape well"):
  *
@@ -62,6 +63,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -107,6 +109,17 @@ public:
     /* Where a handle's dot is, in the well's pixels. */
     juce::Point<float> handlePoint (Which) const;
 
+    /*
+     * HOW A STAGE READS AND IS TYPED on its handle, by parameter index: the
+     * editor's, the same as the stage knobs', so a screen reader hears "175
+     * ms" on the Release handle when the Release knob says it, and typing
+     * "40" means the same on both. Unset, a handle reads and takes its
+     * parameter's own text.
+     */
+    using StageText = std::function<juce::String (int index)>;
+    using StageParse = std::function<std::optional<float> (int index, const juce::String& typed)>;
+    void setStageText (StageText, StageParse);
+
     /* What the well shows now, for the tests. */
     bool overruns() const noexcept { return marks.span > 100.0 + 1.0e-9; }
     const ShapeMarks& getMarks() const noexcept { return marks; }
@@ -124,6 +137,7 @@ private:
     void layoutHandles();
     void rebuildShape();
     void rebuildEnvelope();
+    void refreshCaption();
 
     ni::ui::ParamBinding& binding (int index);
 
@@ -137,7 +151,11 @@ private:
     ShapeMarks marks;
     double sweep = 0.0;
     double spanMs = 0.0;
+    double stagesMs = 0.0;
     bool quiet = false;
+
+    StageText textOfStage;
+    StageParse parseForStage;
 
     /* Kept from frame to frame, so a frame allocates nothing once warm. */
     std::vector<float> gains, lowest;
@@ -166,8 +184,13 @@ public:
     int xParameter() const noexcept { return xIndex; }
     int yParameter() const noexcept { return yIndex; }
 
-    /* What the readers' "value" is: the parameters' texts, joined. */
+    /* What the readers' "value" is: the stage's text as its knob reads it,
+     * then Depth's on the bottom corner, joined. */
     juce::String valueText() const;
+
+    /* Typed text, read as the stage's knob reads it: one committed edit, or
+     * nothing for text it cannot read. */
+    void typeValue (const juce::String&);
 
     bool hitTest (int x, int y) override;
     void paint (juce::Graphics&) override;

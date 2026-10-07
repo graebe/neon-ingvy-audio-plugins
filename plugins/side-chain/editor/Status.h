@@ -24,7 +24,6 @@
 #include <juce_core/juce_core.h>
 
 #include <optional>
-
 #include <vector>
 
 namespace ni::sc
@@ -76,18 +75,28 @@ juce::String stateLine (const juce::String& sourceName, const juce::String& rate
 /* The stage's word: idle, delay, attack, hold, release. */
 juce::String stageName (Stage);
 
-/* The plot's caption, in capitals: the picture and its span, then what the
- * grey is -- or, with nothing coming in, that. */
-juce::String captionFor (bool input, double msPerCycle);
+/*
+ * THE PLOT'S CAPTION, in capitals, in the PlotWell card's clauses three
+ * spaces apart: the picture's name and its span ("SHAPE   ONE CYCLE, 500 MS"),
+ * then the stages' total while they read in ms ("STAGES 225 MS" -- the web
+ * hint's "times 225 ms total", which the canvas moves into the caption), then
+ * what the grey is -- or, with nothing coming in, that.
+ */
+juce::String captionFor (bool input, double msPerCycle, std::optional<double> stagesMs = std::nullopt);
 
 /*
  * THE HINT'S THREE CONVENTIONS, and only conventions (Hint card): drag a
  * handle, Shift for fine, double-click to reset -- the layout canvas's words.
  * The web editor's bar also carried the source's catch and the stage times'
- * total; the total is a reading, and reads in the stage knobs now (Time), and
- * the catch is what the header's warning says when it bites.
+ * total; the total is a reading, and reads in the caption now, the stages
+ * themselves in their knobs (Time); the catch's remedy is in the info lines of
+ * Source and Threshold, and the header's warning says when it bites.
  */
 std::vector<ni::ui::Clause> conventions();
+
+/* Whether the stages read in ms: Time on its first option, and a tempo known
+ * -- before one the cycle has no length to read them in. */
+bool readsInMs (float timeModeNormalised, double msPerCycle);
 
 /*
  * A STAGE'S READOUT IN THE UNIT TIME ASKS FOR. The stages are percentages of

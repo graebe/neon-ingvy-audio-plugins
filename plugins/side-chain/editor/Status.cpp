@@ -85,19 +85,25 @@ juce::String stateLine (const juce::String& sourceName, const juce::String& rate
     return line + juce::String::fromUTF8 (" \xc2\xb7 ") + stageName (stage);
 }
 
-juce::String captionFor (bool input, double msPerCycle)
+juce::String captionFor (bool input, double msPerCycle, std::optional<double> stagesMs)
 {
-    /* The picture and its span, as the PlotWell card names one ("ONE CYCLE,
-     * 500 MS"); the span only once a tempo has given the cycle a length. */
-    juce::String span = "ONE CYCLE";
+    /* The span's length only once a tempo has given the cycle one. */
+    juce::String caption = "SHAPE   ONE CYCLE";
     if (msPerCycle > 0.0)
-        span << ", " << juce::roundToInt (msPerCycle) << " MS";
-    return span + (input ? "   INPUT IN GREY BEHIND" : "   NOTHING REACHING THE PLUGIN");
+        caption << ", " << juce::roundToInt (msPerCycle) << " MS";
+    if (stagesMs.has_value())
+        caption << "   STAGES " << juce::roundToInt (*stagesMs) << " MS";
+    return caption + (input ? "   INPUT IN GREY BEHIND" : "   NOTHING REACHING THE PLUGIN");
 }
 
 std::vector<ni::ui::Clause> conventions()
 {
     return { { "drag", "a handle to shape the duck" }, { "shift", "for fine" }, { "double-click", "to reset" } };
+}
+
+bool readsInMs (float timeModeNormalised, double msPerCycle)
+{
+    return timeModeNormalised < 0.5f && msPerCycle > 0.0;
 }
 
 juce::String stageText (double stageMs, bool inMs, const juce::String& percentText)

@@ -19,11 +19,12 @@
  *   260   the plot
  *    24
  *   106   the knobs: Depth, Delay, Attack, Hold, Release, then the source's
- *         own -- Note, Ch and Vel for MIDI, Thresh and Lockout for Sidechain
- *         -- sharing the row's width equally, as the web row's flex cards
- *         did: 120px each on Cycle, the artboard's measure
+ *         own -- Note, Channel and Velocity for MIDI, Threshold and Lockout
+ *         for Sidechain -- sharing the row's width equally, as the web row's
+ *         flex cards did: 120px each on Cycle, the artboard's measure
  *    18
- *    28   the trigger's row: Src, then Rate on Cycle or the Gate switch on MIDI
+ *    28   the trigger's row: Source, then Rate on Cycle or the Gate switch on
+ *         MIDI
  *     8
  *    28   the shape's row: Curve and the "% of cycle" switch
  *
@@ -42,13 +43,18 @@
  * o'clock (Knob card); Note (128 options) and Channel (17) are stepped knobs,
  * because a Select holds twelve at most (Select card); Mode and Time, two
  * options each, are switches ("two options are a Toggle"); the plot's caption
- * names its span ("ONE CYCLE, 500 MS", PlotWell card); the input behind the
- * output is plot-dry and the measured envelope plot-ghost, the data colours;
- * and the hint bar is the kit's, with the Motion switch and every control's
- * info line, stating conventions only (Hint card) -- so the stage times'
- * reading, which the web bar carried as "225 ms total", moved into the stage
- * knobs' readouts, which Time now switches between ms and % of the cycle, as
- * the canvas's proposed artboard draws them.
+ * names the picture and its span ("SHAPE   ONE CYCLE, 500 MS", PlotWell
+ * card); the input behind the output is plot-dry and the measured envelope
+ * plot-ghost, the data colours; the playhead is the card's line-200 rule; and
+ * the hint bar is the kit's, with the Motion switch and every control's info
+ * line, stating conventions only (Hint card) -- so the stage times' reading,
+ * which the web bar carried as "225 ms total", moved: into the stage knobs'
+ * readouts, which Time now switches between ms and % of the cycle, as the
+ * canvas's proposed artboard draws them, and, as a total, into the caption
+ * ("STAGES 225 MS"), where the canvas's SC1 puts it. And the labels are
+ * words, Source, Channel, Velocity and Threshold, not the web's Src, Ch, Vel
+ * and Thresh (canvas S8): they are what the manual calls the controls, and
+ * what a screen reader says.
  *
  * STATE LIVES IN THE MODEL AND THE CONTROLS. tick() reads the model's
  * snapshots and repaints; the editor's one FrameClock calls it on the display's
@@ -70,6 +76,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace ni::sc
@@ -122,6 +129,10 @@ private:
     /* The stages' readouts read again, in the unit Time asks for. */
     void refreshStages();
     bool stagesInMs() const;
+    /* A stage's text in that unit, and typing read into its parameter's
+     * normalised value -- the knobs' and the handles' both. */
+    juce::String stageReadout (int parameterIndex);
+    std::optional<float> stageTyped (int parameterIndex, const juce::String& typed);
 
     Model& model;
     ni::ui::EditorFrame window;

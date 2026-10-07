@@ -134,37 +134,29 @@ SideChainEditor::SideChainEditor (Model& m, ni::ui::EditorFrame::Clock clock)
     addKnob (knobFor (param::release, "Release"), info::release, info::releaseValue);
     addKnob (std::make_unique<ni::ui::ParamChoiceKnob> (model.parameter (param::note), "Note"),
              info::note, info::noteValue);
-    addKnob (std::make_unique<ni::ui::ParamChoiceKnob> (model.parameter (param::channel), "Ch"),
+    addKnob (std::make_unique<ni::ui::ParamChoiceKnob> (model.parameter (param::channel), "Channel"),
              info::channel, info::channelValue);
-    addKnob (knobFor (param::velSens, "Vel"), info::velSens, info::velSensValue);
-    addKnob (knobFor (param::threshold, "Thresh"), info::threshold, info::thresholdValue);
+    addKnob (knobFor (param::velSens, "Velocity"), info::velSens, info::velSensValue);
+    addKnob (knobFor (param::threshold, "Threshold"), info::threshold, info::thresholdValue);
     addKnob (knobFor (param::lockout, "Lockout"), info::lockout, info::lockoutValue);
 
     /* Delay runs both ways about no wait at all (Knob card, bipolar). */
     knob (param::delay).setBipolar (true);
 
-    /* THE STAGES READ IN THE UNIT TIME ASKS FOR, and take either. */
-    const auto stageMsOf = [this] (int index)
-    {
-        switch (index)
-        {
-            case param::delay:  return lastStages.delay;
-            case param::attack: return lastStages.attack;
-            case param::hold:   return lastStages.hold;
-            default:            return lastStages.release;
-        }
-    };
+    /* THE STAGES READ IN THE UNIT TIME ASKS FOR, and take either -- on the
+     * knobs and on the handles alike, so a stage says and takes one thing
+     * wherever it is reached. */
     for (const int index : { param::delay, param::attack, param::hold, param::release })
-    {
-        auto& k = knob (index);
-        k.setText ([this, &k, index, stageMsOf] { return stageText (stageMsOf (index), stagesInMs(), k.binding().text()); },
-                   [this, &k] (const juce::String& typed)
-                   { return parseStage (k.binding().parameter(), typed, stagesInMs(), lastState.msPerCycle); });
-    }
+        knob (index).setText ([this, index] { return stageReadout (index); },
+                              [this, index] (const juce::String& typed) { return stageTyped (index, typed); });
+    plot->setStageText ([this] (int index) { return stageReadout (index); },
+                        [this] (int index, const juce::String& typed) { return stageTyped (index, typed); });
 
     /* THE ROWS: the trigger's, then the shape's. */
     sourceSelect = std::make_unique<ni::ui::ParamSelect> (model.parameter (param::source));
-    sourceSelect->setLabel ("Src", 30);
+    /* SOURCE is 46px in the label style; the proposed artboard's 44 would
+     * run it into the field. */
+    sourceSelect->setLabel ("Source", 52);
     sourceSelect->setFieldWidth (128);   // the canvas's: "Sidechain" whole
     ni::ui::setInfo (*sourceSelect, info::source);
 
@@ -310,8 +302,27 @@ void SideChainEditor::layoutRows()
 
 bool SideChainEditor::stagesInMs() const
 {
-    /* Time's first option is ms; before a tempo the cycle has no length. */
-    return timeParam.value() < 0.5f && lastState.msPerCycle > 0.0;
+    return readsInMs (timeParam.value(), lastState.msPerCycle);
+}
+
+juce::String SideChainEditor::stageReadout (int index)
+{
+    const auto ms = [this, index]
+    {
+        switch (index)
+        {
+            case param::delay:  return lastStages.delay;
+            case param::attack: return lastStages.attack;
+            case param::hold:   return lastStages.hold;
+            default:            return lastStages.release;
+        }
+    }();
+    return stageText (ms, stagesInMs(), knob (index).binding().text());
+}
+
+std::optional<float> SideChainEditor::stageTyped (int index, const juce::String& typed)
+{
+    return parseStage (knob (index).binding().parameter(), typed, stagesInMs(), lastState.msPerCycle);
 }
 
 void SideChainEditor::refreshStages()
