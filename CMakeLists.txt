@@ -96,6 +96,14 @@ add_subdirectory(plugins/side-chain)
 set(NI_ROOT ${CMAKE_SOURCE_DIR})
 add_subdirectory(external/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 add_subdirectory(plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
+# Every product's editor as a library, as ui/CMakeLists.txt makes them, so the
+# kit's and the editors' tests (tests/ui) build here too, and the gallery they
+# draw their pages from.
+foreach(product trance-gate side-chain spectrogram listen-in chord-detector)
+    ni_ui_add_editor(${product})
+endforeach()
+target_include_directories(ni_editor_chord_detector INTERFACE ${CMAKE_SOURCE_DIR}/engines/chord-detector/include)
+add_subdirectory(plugins/_shared/ui/gallery ${CMAKE_BINARY_DIR}/gallery)
 include(cmake/NiJucePlugin.cmake)
 
 
