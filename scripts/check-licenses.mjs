@@ -64,6 +64,22 @@ const PLUGINS = readdirSync(join(ROOT, 'plugins'))
     cmake: read('plugins', d, 'CMakeLists.txt'),
   }));
 
+/* The products on the JUCE shell: a plugins/<p>/CMakeLists.txt that calls
+ * ni_add_juce_plugin (cmake/NiJucePlugin.cmake). What they ship follows from
+ * the call: the bundle is TARGET.vst3; an EDITOR embeds the kit's JetBrains
+ * Mono, so it carries OFL.txt; NI_UI_MUSIC_FONT_LICENSE among its NOTICES says
+ * it embeds Bravura too, and carries Bravura-OFL.txt. */
+const JUCE_PLUGINS = readdirSync(join(ROOT, 'plugins'))
+  .filter((d) => existsSync(join(ROOT, 'plugins', d, 'CMakeLists.txt')))
+  .map((d) => ({ dir: d, cmake: read('plugins', d, 'CMakeLists.txt') }))
+  .filter((p) => /ni_add_juce_plugin\s*\(/.test(p.cmake))
+  .map((p) => ({
+    dir: p.dir,
+    bundle: /\bTARGET\s+(\S+)/.exec(p.cmake)?.[1],
+    editor: /^\s*EDITOR\s*$/m.test(p.cmake),
+    music: p.cmake.includes('NI_UI_MUSIC_FONT_LICENSE'),
+  }));
+
 /* ------------------------------------------------------------ our own */
 /* GPL-3.0-or-later, and the licence text exactly as the FSF publishes it
  * (https://www.gnu.org/licenses/gpl-3.0.txt): the GPL forbids changing the
@@ -145,7 +161,14 @@ try {
       fail(`plugins/${p.dir}/ui draws the kit's font and has no public/fonts/OFL.txt`);
     shipped.add(`${p.bundle}.{vst3,clap,component}`);
   }
+  /* A JUCE editor draws with the kit's embedded faces (plugins/_shared/ui). */
+  for (const p of JUCE_PLUGINS)
+    if (p.editor) shipped.add(`${p.bundle}.vst3`);
   sameSet('font bundles', new Set(fonts.keys()), shipped);
+
+  const music = section(sections, 'Bundled music font');
+  sameSet('music font bundles', new Set(music.keys()),
+    new Set(JUCE_PLUGINS.filter((p) => p.music).map((p) => `${p.bundle}.vst3`)));
 } catch (e) { fail(e.message); }
 
 /* ------------------------------------------------------------ engines */
@@ -262,6 +285,13 @@ if (at > 0) {
       for (const f of ['LICENSE', 'THIRD_PARTY_LICENSES.md', 'web/assets/ui.js.LICENSE.txt', 'web/fonts/OFL.txt'])
         if (!existsSync(join(res, f))) fail(`${p.bundle}.${ext} ships without Contents/Resources/${f}`);
     }
+  }
+  for (const p of JUCE_PLUGINS) {
+    const res = join(out, `${p.bundle}.vst3`, 'Contents', 'Resources');
+    const files = ['LICENSE', 'THIRD_PARTY_LICENSES.md',
+      ...(p.editor ? ['OFL.txt'] : []), ...(p.music ? ['Bravura-OFL.txt'] : [])];
+    for (const f of files)
+      if (!existsSync(join(res, f))) fail(`${p.bundle}.vst3 ships without Contents/Resources/${f}`);
   }
 }
 

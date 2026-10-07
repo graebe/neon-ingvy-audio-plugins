@@ -296,6 +296,32 @@ if (APPLE)
     endforeach()
 endif()
 
+# ------------------------------------------------------------ the JUCE bundles
+
+# EVERY BUNDLE BUILT ON THE JUCE SHELL (cmake/NiJucePlugin.cmake), hosted as a
+# DAW hosts it: juce_host.cpp loads the .vst3 from build/out with JUCE's own
+# VST3 host, runs it with MIDI, round-trips its state through a second
+# instance and opens its editor. And its signature, checked as Live's scanner
+# checks it: a bundle JUCE wrote into after signing loads in pluginval and is
+# rejected by Live ("a sealed resource is missing or invalid").
+juce_add_console_app(juce_host PRODUCT_NAME juce_host)
+target_sources(juce_host PRIVATE juce_host.cpp)
+target_compile_definitions(juce_host PRIVATE
+    JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=0 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+    # It lets the editor's frame clock run for a moment: a test, not a plugin.
+    JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(juce_host PRIVATE
+    juce::juce_audio_utils juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+get_property(_ni_juce GLOBAL PROPERTY NI_JUCE_BUNDLES)
+foreach(bundle IN LISTS _ni_juce)
+    get_property(_name GLOBAL PROPERTY NI_JUCE_NAME_${bundle})
+    add_test(NAME juce_host_${bundle} COMMAND juce_host ${NI_BUNDLES}/${bundle}.vst3 "${_name}")
+    if (APPLE)
+        add_test(NAME codesign_${bundle}
+                 COMMAND codesign --verify --deep --strict ${NI_BUNDLES}/${bundle}.vst3)
+    endif()
+endforeach()
+
 # ---------------------------------------------------------------- Spectrogram
 
 # THE ANALYZER'S OWN TESTS, which are cargo's: the FFT against a naive DFT, the
@@ -757,6 +783,7 @@ ni_test_tiers(
         editor_host_SideChain_clap:host
         editor_host_ListenIn_vst3:host editor_host_ListenIn_au:host
         editor_host_ListenIn_clap:host
+        juce_host_NIChordDetector:host codesign_NIChordDetector:bundles
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         e2e:e2e coverage_floor:coverage)
