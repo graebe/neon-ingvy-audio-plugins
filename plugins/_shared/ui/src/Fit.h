@@ -61,6 +61,11 @@ public:
     int getDesignWidth() const noexcept { return width; }
     int getDesignHeight() const noexcept { return height; }
 
+    /* A design whose size follows its content -- the Trance Gate's rows of
+     * steps: lays the design out at the new size, at the scale it has now.
+     * The owner then asks its host for boundsAt (getScale()). */
+    void setDesignSize (int designWidth, int designHeight);
+
     /* This component's size at `scale`: what to ask the host for. */
     juce::Rectangle<int> boundsAt (float scale) const;
 
@@ -68,7 +73,7 @@ public:
 
 private:
     juce::Component& design;
-    const int width, height;
+    int width, height;
     float scale = 1.0f;
 
     JUCE_DECLARE_NON_COPYABLE (FixedDesign)

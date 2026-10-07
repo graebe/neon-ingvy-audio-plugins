@@ -99,6 +99,10 @@ private:
  *            transport. The button under the pointer, the focused one and a
  *            lit one are raised over their neighbours, so the shared hairline
  *            is theirs and their light falls over the buttons beside them.
+ *   column   joined top to bottom instead, each sharing its top hairline with
+ *            the bottom one of the button above: the icon verbs in a side
+ *            column too narrow for a row of them (the Trance Gate's six, 163px
+ *            tall). The Actions card's "left to right or top to bottom".
  *   stack    one above the other, space-2 apart, all as wide as the widest,
  *            glyph then word from the left: the labelled window verbs.
  *
@@ -110,7 +114,7 @@ class ButtonGroup : public juce::Component,
                     public PressableParent
 {
 public:
-    enum class Form { joined, stack };
+    enum class Form { joined, column, stack };
 
     explicit ButtonGroup (Form = Form::joined);
     ~ButtonGroup() override;
@@ -128,6 +132,7 @@ public:
     void pressableStateChanged (Pressable&) override;
 
 private:
+    bool isJoined() const noexcept { return form != Form::stack; }
     bool raised (const Button&) const;
     void restack();
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;

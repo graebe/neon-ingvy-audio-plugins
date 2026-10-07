@@ -40,6 +40,21 @@ TEST_CASE ("fit: the design keeps its size and is scaled from its top-left corne
     CHECK (fixed.boundsAt (1.5f) == juce::Rectangle<int> (0, 0, 1236, 900));
 }
 
+TEST_CASE ("fit: a design that grows is laid out at its new size, at the scale it had")
+{
+    juce::Component design;
+    FixedDesign fixed (design, 824, 600);
+    fixed.setSize (412, 300);
+
+    fixed.setDesignSize (824, 648);
+    CHECK (fixed.getDesignHeight() == 648);
+    CHECK (design.getBounds() == juce::Rectangle<int> (0, 0, 824, 648));
+    /* What the host is asked for next: the new height at the same scale. */
+    CHECK (fixed.boundsAt (fixed.getScale()) == juce::Rectangle<int> (0, 0, 412, 324));
+    fixed.setSize (412, 324);
+    CHECK (fixed.getScale() == doctest::Approx (0.5f));
+}
+
 TEST_CASE ("fit: a click lands where the design drew the control, at any scale")
 {
     juce::Component design;

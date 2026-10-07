@@ -188,12 +188,21 @@ juce::Rectangle<int> ButtonGroup::idealSize() const
     if (buttons.empty())
         return {};
 
+    const int hairline = (int) uv::tok::size::hairline;
     if (form == Form::joined)
     {
         int w = 0;
         for (auto* b : buttons)
-            w += b->idealWidth() - (int) uv::tok::size::hairline;
-        return { w + (int) uv::tok::size::hairline, controlH };
+            w += b->idealWidth() - hairline;
+        return { w + hairline, controlH };
+    }
+    if (form == Form::column)
+    {
+        int w = 0;
+        for (auto* b : buttons)
+            w = juce::jmax (w, b->idealWidth());
+        const int n = (int) buttons.size();
+        return { w, n * (controlH - hairline) + hairline };
     }
 
     int w = 0;
@@ -215,6 +224,21 @@ void ButtonGroup::resized()
             const int w = b->idealWidth();
             b->setBounds (x, 0, w, controlH);
             x += w - (int) uv::tok::size::hairline;
+        }
+        restack();
+        return;
+    }
+
+    if (form == Form::column)
+    {
+        /* The same sharing turned on its side: each button's top hairline is
+         * the bottom one of the button above. */
+        const int w = idealSize().getWidth();
+        int y = 0;
+        for (auto* b : buttons)
+        {
+            b->setBounds (0, y, w, controlH);
+            y += controlH - (int) uv::tok::size::hairline;
         }
         restack();
         return;
@@ -260,7 +284,7 @@ void ButtonGroup::paintOverChildren (juce::Graphics& g)
     /* A raised button's light falls over its neighbours, which CSS paints
      * under it. Its light is all outside its own box, so painting it over
      * every child leaves the button itself untouched. */
-    if (form != Form::joined)
+    if (! isJoined())
         return;
     for (auto* b : buttons)
         if (raised (*b))
@@ -274,7 +298,7 @@ void ButtonGroup::paintLight (juce::Graphics& g)
 
 void ButtonGroup::pressableStateChanged (Pressable&)
 {
-    if (form == Form::joined)
+    if (isJoined())
         restack();
     repaint();
 }
