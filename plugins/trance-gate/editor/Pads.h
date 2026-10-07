@@ -27,6 +27,10 @@
  * abandons it), and the engine swaps the two steps when the place is taken.
  * Its own component takes that press, so the pad under it is not toggled and
  * a drag is not measured from it, and it says what it does in the hint bar.
+ * FROM THE KEYBOARD, as 1.1.0 asks of every pointer control (the web pads
+ * had no way): a digit typed on a focused pad whose number shows opens the
+ * field with that digit in it, and the keyboard goes back to the pad when
+ * the field closes.
  *
  * EVERY GESTURE IS StepEdits'S: a press, a drag for the amount, the keys. The
  * pads' line follows Set order, because a click there names an arrival then.
@@ -73,10 +77,14 @@ public:
      * shows. */
     juce::Component* arrival (int index);
 
-    /* Opens the field on step `index`'s number, or closes it. */
-    void editArrival (int index);
+    /* Opens the field on step `index`'s number -- or, given `typed`, with
+     * that in it, the caret after it -- or closes it. */
+    void editArrival (int index, const juce::String& typed = {});
     int editingArrival() const noexcept { return editing; }
     ni::ui::EditField& arrivalField() noexcept { return field; }
+
+    /* A digit on a focused pad, which its grid passes on. */
+    bool keyPressed (const juce::KeyPress&) override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -92,6 +100,7 @@ private:
     std::array<std::unique_ptr<Arrival>, maxSteps> numbers;
     ni::ui::EditField field { uv::tok::type::hint };
     int editing = -1;
+    bool editingFromKeys = false;
 
     /* What the steps' names were made from. */
     std::array<StepMode, maxSteps> modes {};

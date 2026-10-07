@@ -332,8 +332,11 @@ void TranceGateEditor::refreshOrder()
 {
     const bool on = edits.ordering();
     order.setOn (on);
-    order.setText (on ? "Set order " + juce::String (edits.namedCount()) + "/" + juce::String (edits.arrivals())
-                      : juce::String ("Set order"));
+    const auto text = on ? "Set order " + juce::String (edits.namedCount()) + "/" + juce::String (edits.arrivals())
+                         : juce::String ("Set order");
+    /* Every frame asks; only a new count repaints. */
+    if (text != order.getText())
+        order.setText (text);
 
     const bool holes = edits.fadeOut();
     if (on != orderShown || (on && holes != orderHoles))

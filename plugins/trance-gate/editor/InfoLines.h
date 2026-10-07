@@ -124,11 +124,14 @@ inline std::vector<ni::ui::Clause> conventions()
 }
 
 /* While Set order is on: what a click names now, how to type one, how to
- * finish. `holes` under Fade Out, whose arrivals are the gaps. */
+ * finish. `holes` under Fade Out, whose arrivals are the gaps. The web bar's
+ * three said more ("... they should arrive", "-- they swap") and ran past the
+ * Motion switch with "Set order" for "ORDER"; what a taken number does is the
+ * arrival's own line now. */
 inline std::vector<ni::ui::Clause> orderConventions (bool holes)
 {
-    return { { "click", juce::String ("the ") + (holes ? "gaps" : "steps") + " in the order they should arrive" },
-             { "a number", juce::String::fromUTF8 ("to type one — they swap") },
+    return { { "click", juce::String ("the ") + (holes ? "gaps" : "steps") + " in arrival order" },
+             { "a number", "to type one" },
              { "Set order", "again to finish" } };
 }
 

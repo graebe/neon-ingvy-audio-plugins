@@ -355,6 +355,30 @@ TEST_CASE ("trance-gate pads: click a number to type one; Enter keeps it, Escape
     CHECK (rig.model.takeEdits().empty());
 }
 
+TEST_CASE ("trance-gate pads: a digit on a focused pad types its number, as a click on it does")
+{
+    Rig rig;
+    auto& pads = rig.editor.pads();
+    /* At rest no number shows, and a digit is not the pads'. */
+    rig.grid().moveFocus (6);
+    CHECK_FALSE (key (pads, '3'));
+    CHECK_FALSE (pads.arrivalField().isOpen());
+
+    rig.model.set (param::fade, 50.0f);
+    rig.frame();
+    CHECK (key (pads, '3'));
+    auto& field = pads.arrivalField();
+    CHECK (field.isOpen());
+    CHECK (pads.editingArrival() == 6);
+    CHECK (field.getText() == "3");
+    /* The digit is kept and the next one follows it. */
+    field.insertTextAtCaret ("1");
+    field.returnPressed();
+    CHECK (rig.model.takeEdits() == "order 6 31");
+    /* With a modifier it is a shortcut, not a number. */
+    CHECK_FALSE (key (pads, '2', juce::ModifierKeys::commandModifier));
+}
+
 TEST_CASE ("trance-gate pads: a number opened on one pad and then another keeps the first")
 {
     Rig rig;

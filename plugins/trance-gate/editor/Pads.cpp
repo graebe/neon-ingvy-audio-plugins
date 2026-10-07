@@ -154,7 +154,7 @@ void Pads::show (const Pattern& p, int playStep, bool fading)
         field.abandon();
 }
 
-void Pads::editArrival (int index)
+void Pads::editArrival (int index, const juce::String& typed)
 {
     if (index < 0 || index >= steps.getCount())
     {
@@ -164,18 +164,46 @@ void Pads::editArrival (int index)
     if (field.isOpen())
         field.commit();
     editing = index;
+    editingFromKeys = typed.isNotEmpty();
     const auto box = steps.stepBounds (index).translated (steps.getX(), steps.getY());
     field.setBounds (box.getX(), box.getY(), fieldWidth, fieldHeight);
     field.toFront (false);
-    field.open (juce::String (juce::jmax (1, steps.getState (index).number)));
+    field.open (editingFromKeys ? typed : juce::String (juce::jmax (1, steps.getState (index).number)));
+    if (editingFromKeys)
+        field.setCaretPosition (typed.length());
     field.setTitle ("Arrival of step " + juce::String (index + 1));
+}
+
+bool Pads::keyPressed (const juce::KeyPress& k)
+{
+    /* The digit by its key, on the row or the number pad: the text a key
+     * makes depends on the layout and on Shift. */
+    const int code = k.getKeyCode();
+    int digit = -1;
+    if (code >= '0' && code <= '9')
+        digit = code - '0';
+    else if (code >= juce::KeyPress::numberPad0 && code <= juce::KeyPress::numberPad9)
+        digit = code - juce::KeyPress::numberPad0;
+    const auto mods = k.getModifiers();
+    if (digit < 0 || mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown())
+        return false;
+    const int index = steps.focusedStep();
+    if (arrival (index) == nullptr)
+        return false;
+    editArrival (index, juce::String (digit));
+    return true;
 }
 
 void Pads::closeField()
 {
+    const int was = editing;
     editing = -1;
     field.setVisible (false);
     ni::ui::relight (*this);
+    /* Opened from the keyboard, the keyboard goes back where it was. */
+    if (editingFromKeys && was >= 0)
+        steps.moveFocus (was);
+    editingFromKeys = false;
 }
 
 void Pads::resized()

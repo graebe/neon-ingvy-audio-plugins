@@ -28,7 +28,8 @@
  * sweep -- is a line-200 rule, the step's edge amber when the release runs
  * past it. The envelope's stage dots are gone: the card draws no mark there.
  * Step numbers and the A/D/S/R letters are labels, in the hint style in
- * ink-dim, as the as-built artboard has them.
+ * ink-muted, as the web editor drew them (the artboard's ink-dim is lost
+ * where a number sits on the curve).
  *
  * Each plot rebuilds its paths only when what it draws from changes (a
  * render's serial, a setting, its size), and the moving marks repaint only

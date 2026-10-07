@@ -80,7 +80,7 @@ void floored (juce::Path& line, juce::Path& area, juce::Rectangle<float>& floorB
 void hintText (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> box,
                juce::Justification j = juce::Justification::centredLeft)
 {
-    uv::type::draw (g, text, box, uv::type::hint(), c::inkDim, j);
+    uv::type::draw (g, text, box, uv::type::hint(), c::inkMuted, j);
 }
 } // namespace
 

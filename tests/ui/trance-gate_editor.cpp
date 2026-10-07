@@ -400,15 +400,23 @@ TEST_CASE ("trance-gate: the hint states the Step card's conventions, and Set or
     CHECK (rig.conventions() == juce::String::fromUTF8 (
                "click a step to toggle | shift-click for a tie | drag up or down for its amount"));
     rig.editor.orderButton().onClick();
-    CHECK (rig.conventions() == juce::String::fromUTF8 (
-               "click the steps in the order they should arrive | a number to type one — they swap"
-               " | Set order again to finish"));
+    CHECK (rig.conventions() == "click the steps in arrival order | a number to type one"
+                                " | Set order again to finish");
     /* Under Fade Out the arrivals are the gaps. */
     rig.model.set (param::fadeDir, 1.0f);
     rig.frame();
-    CHECK (rig.conventions().startsWith ("click the gaps in the order"));
+    CHECK (rig.conventions().startsWith ("click the gaps in arrival order"));
     rig.editor.orderButton().onClick();
     CHECK (rig.conventions().startsWith ("click a step to toggle"));
+}
+
+TEST_CASE ("trance-gate: every set of conventions fits the bar whole, before the Motion switch")
+{
+    Rig rig;
+    const float room = (float) rig.editor.frame().hint().tipsBounds().getWidth();
+    CHECK (ni::ui::clausesWidth (info::conventions()) <= room);
+    CHECK (ni::ui::clausesWidth (info::orderConventions (false)) <= room);
+    CHECK (ni::ui::clausesWidth (info::orderConventions (true)) <= room);
 }
 
 TEST_CASE ("trance-gate: an outcome takes the bar's first place for six seconds; Set order clears it")
