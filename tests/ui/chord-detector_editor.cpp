@@ -179,12 +179,15 @@ TEST_CASE ("chord-detector: a reading lights the readout, the circle and the key
     FakeModel model;
     Editor editor (model);
     model.play ({ 52, 57, 60, 67 }, "Am7/E", "vi7", "A minor 7 · 2nd inversion", "E3 A3 C4 G4", 9, 1.0);
+    std::strcpy (model.now.alternatives[0], "C6/E");
+    model.now.alternative_count = 1;
     editor.tick();
 
     const auto& words = editor.chordReadout().getState();
     CHECK (words.name == "Am7/E");
     CHECK (words.degree == "vi7");
     CHECK (words.notes == "E3 A3 C4 G4");
+    CHECK (words.alternatives == juce::StringArray { "C6/E" });
     CHECK_FALSE (words.held);
 
     const auto& ring = editor.circleOfFifths().getState();
