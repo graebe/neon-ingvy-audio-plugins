@@ -3,21 +3,36 @@ section: live
 title: Ableton Live Interface
 ---
 
-The window is two pictures stacked on one axis, and the axis is **one cycle**.
-Above it, the shape you asked for. Below it, the audio you got. They line up on
-purpose: a dip in the waveform sits directly under the curve that made it.
+The window is one picture on one axis, and the axis is **one cycle**: the
+audio you got, and over it the shape you asked for. They line up on purpose: a
+dip in the waveform sits directly under the curve that made it.
+
+Below the picture sit the knobs, then two rows: the trigger's (**Source**, and
+**Rate** or **Gate** for the source you chose) and the shape's (**Curve** and
+**% of cycle**). The header above the picture says what the trigger is doing.
 
 ## The shape well
 
-The bright line is what the four stage controls describe — an idealised single
-duck, from open, down, held, and back.
+The line with four handles is what the stage controls describe — an idealised
+single duck, from open, down, held, and back. The plugin's engine draws it from
+the parameters as they are this moment, so a handle you drag is under the
+pointer at once.
 
-The filled region behind it is **what actually happened**: the gain the plugin
-applied, measured and captured. Most of the time the two agree and the line sits
-on the edge of the fill. When they part, something interrupted a duck — a
-trigger arriving part way through a recovery anchors on the level the envelope
-had actually reached rather than restarting from the top. That is the whole
-reason both are drawn.
+Behind it is the audio: the input dimmed, the output in front, so wherever the
+duck took something away the input shows as a halo around the output. The thin
+line mirrored about the centre is **what actually happened**: the gain the
+plugin applied, measured. Most of the time it sits on the shape and you do not
+see it. When it parts from the shape, something interrupted a duck — a trigger
+arriving part way through a recovery anchors on the level the envelope had
+actually reached rather than restarting from the top. That is the whole reason
+both are drawn.
+
+The vertical rule is the playhead, where in the cycle the plugin is now. The
+ruler under the well is in milliseconds: the cycle's length at the end, and a
+mark at the instant the duck reaches the bottom. The caption above names the
+picture and its span — `SHAPE   ONE CYCLE, 500 MS` — and, while the stage
+times read in milliseconds, their total: `STAGES 225 MS`. With nothing coming
+in, it says `NOTHING REACHING THE PLUGIN`.
 
 Four handles, and each one is a parameter:
 
@@ -51,11 +66,11 @@ An **amber line at the right edge** means the shape is longer than one cycle and
 cannot finish before the next trigger. That is allowed — the overlap is a real
 sound — but it is worth knowing you are hearing it.
 
-## The signal well
+### What the audio shows
 
-Input in grey, output in front. Both are drawn as the minimum and maximum of
-every column rather than an average, because a transient is a fraction of a
-column and averaging would show you a signal nobody is playing.
+Input and output are drawn as the minimum and maximum of every column rather
+than an average, because a transient is a fraction of a column and averaging
+would show you a signal nobody is playing.
 
 The columns are locked to the trigger rather than scrolling, which is what keeps
 them under the shape. One consequence is worth stating: a column is rewritten
@@ -63,19 +78,34 @@ once per cycle. At 1/4 and 120 bpm that is twice a second and reads as live; at
 1/1 and 60 bpm the picture really is four seconds old.
 
 A part-drawn picture is a picture still filling, not a signal that stopped — the
-trace simply ends where the sweep has got to.
+trace simply ends where the playhead has got to.
 
 ## Knobs and readouts
 
-The knobs below the wells work as in every Neon Ingvy editor: drag (Shift for
-fine), **double-click to reset** to the default, and **click the readout** to
-type a value — **Enter** commits, **Escape** leaves it as it was. With a knob
-focused, the arrow keys turn it by 1 % (Shift: 0.2 %), Page Up/Down by 10 %,
-Home/End go to the ends, and Enter opens the readout.
+The knobs work as in every Neon Ingvy editor: drag (Shift for fine),
+**double-click to reset** to the default, and **click the readout** to type a
+value — **Enter** commits, **Escape** leaves it as it was. With a knob focused,
+the arrow keys turn it by 1 % (Shift: 0.2 %), Page Up/Down by 10 %, Home/End go
+to the ends, and Enter opens the readout. Hover over any control, or Tab to it,
+and the hint bar at the bottom says what it does in one line.
 
-The stage readouts are always percentages of the cycle, so type a percentage:
-`25` into Release is a quarter of a cycle. Threshold's lowest setting reads
-`-inf dB`.
+| knob | what it sets |
+|---|---|
+| **Depth** | how far the signal is pushed down; 100 % is silence |
+| **Delay** | when the duck starts. Its arc grows from 12 o'clock both ways: left of it, on Cycle, the duck starts early |
+| **Attack**, **Hold**, **Release** | how fast the duck gets down, how long it stays, how long it takes to come back |
+| **Note**, **Channel**, **Velocity** | with Source on MIDI only: the trigger note, its channel, and how much velocity scales the depth |
+| **Threshold**, **Lockout** | with Source on Sidechain only: how loud the key must get, and how soon it may fire again |
+
+Only the knobs of the source you chose are there: a Threshold on a tempo-locked
+duck would invite turning it and concluding the plugin is broken. Note and
+Channel step one note or one channel at a time.
+
+The four stage readouts follow **% of cycle**: off, they read in milliseconds
+(`40 ms`); on, in percent of the cycle (`20.0 %`). Type either — the unit you
+type wins, so `40 ms` is milliseconds and `20 %` a percentage whatever the
+readout shows, and a bare number is in the unit shown. The same goes for the
+handles. Threshold's lowest setting reads `-inf dB`.
 
 ## Choosing a trigger
 
@@ -84,11 +114,17 @@ locked to the transport. It survives loop jumps and tempo ramps because the
 host's position is treated as something to follow rather than something to
 divide.
 
-**MIDI** takes a note (**Trigger**, C1 by default), a **Channel** (1 by
-default, or Omni), and **Mode**: in Trigger mode the Hold times out on its own;
-in Gate mode the duck stays down until the note is released. **Vel** lets
-velocity scale the depth. Only with Source on MIDI do notes duck — on the
-other two sources the plugin ignores them.
+**MIDI** takes a note (**Note**, C1 by default), a **Channel** (1 by default,
+or Omni), and the **Gate** switch: off, the Hold times out on its own; on, the
+duck stays down until the note is released. **Velocity** lets velocity scale
+the depth. Only with Source on MIDI do notes duck — on the other two sources
+the plugin ignores them. A note ducks from its own sample, not from the start
+of the buffer it arrived in.
+
+**All Notes Off and All Sound Off** (CC 123 and CC 120) open the duck at once,
+whatever note it listens to, when they arrive on its channel — on any channel
+with Omni — so a held Gate note can never leave the track down after a panic. The plugin hears them while it is bypassed
+too, and a note released while it is bypassed is released.
 
 > **Live does not route MIDI to a plugin on an audio track.** MIDI mode fires
 > when Side-Chain sits on a MIDI track after an instrument. If you are on an
@@ -109,24 +145,19 @@ snare 30 ms behind the kick firing a second duck.
    and where to take it from (Pre FX, Post FX or Post Mixer).
 4. Play. Every kick above Threshold now ducks the bass along the shape you drew.
 
-The plugin takes a stereo or mono main input and a stereo or mono key. The key
-arrives on **inputs 3 and 4**, after the main pair, which is how Live delivers
-a sidechain to a VST3 or AU. A mono track with a mono key works in VST3 and
-AU. In the CLAP build a key needs a stereo main — CLAP packs its inputs back to
-back, so on a mono track the key could not be told apart from the main.
+The plugin takes a stereo or mono main input and a stereo or mono key, on a
+sidechain input of its own, which is how Live delivers a key to a VST3.
 
-The header shows `no key routed` until something is patched, and `key is the
-input` if the host has handed over the track's own audio — which Logic and
-GarageBand do when the slot is empty.
+The header shows `no key routed` until something is patched.
 
 ## Times are percentages of the cycle
 
 All four stages are proportional to the cycle, always. Change the tempo or the
 rate and the shape keeps its proportions, which is what staying in time means.
 
-The `Time` control chooses whether you read them as percentages or as
-milliseconds; it changes the reading, not the sound. The hint bar shows the
-total in milliseconds as you work.
+The **% of cycle** switch chooses whether you read them as percentages or as
+milliseconds; it changes the reading, not the sound. While they read in
+milliseconds, the caption above the picture shows their total.
 
 ## What the header tells you
 
@@ -137,7 +168,6 @@ exactly like one set to zero depth:
 | mark | means |
 |---|---|
 | `no key routed` | Source is Sidechain and no key is patched |
-| `key is the input` | Source is Sidechain and the key is a copy of the track itself |
 | `no input` | the track is silent, so there is nothing to duck |
 | `transport stopped` | Source is Cycle and the transport is not running |
 | `no midi` | Source is MIDI and no trigger note has arrived |
@@ -150,20 +180,51 @@ second, so they do not flicker between hits.
 
 1. **Quit Live completely** — Live keeps every plugin it has loaded in memory
    until it quits, so a bundle replaced while it runs is not the one you hear.
-2. Copy `NISideChain.vst3`, `NISideChain.component` and `NISideChain.clap`
-   into `~/Library/Audio/Plug-Ins/VST3`, `…/Components` and `…/CLAP`.
-3. The bundles are unsigned, so clear the quarantine attribute:
+2. Copy `NISideChain.vst3` from the release into
+   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there. NI Side-Chain is a
+   VST3 only: the Audio Unit and the CLAP builds were discontinued with the
+   native editor. A set that used the Audio Unit opens with the VST3 in its
+   place once you insert it again.
+3. The bundle is not notarised, so macOS refuses it until the quarantine
+   attribute is removed:
 
    ```sh
    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NISideChain.vst3
-   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/NISideChain.component
    ```
 
 4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
    *Rescan Plug-Ins*. NI Side-Chain appears in the browser under **Neon Ingvy**.
 
-Every bundle carries `LICENSE` and `THIRD_PARTY_LICENSES.md` in
+Signing needs an Apple Developer ID and a notarytool round trip; until those
+exist, the `xattr` command is the difference. It is a property of the
+distribution, not of the plugin.
+
+The licence notices travel with the plugin: the bundle carries `LICENSE`,
+`THIRD_PARTY_LICENSES.md`, the font's `OFL.txt` and the texts of the licences
+of what it is built with (`AGPL-3.0.txt`, `Apache-2.0.txt`) in
 `Contents/Resources/`.
+
+### Coming from an earlier version
+
+**Sets saved with an earlier version open as they were saved**: the plugin
+keeps the identity, the fifteen parameters and the saved state of every earlier
+VST3 build, so the shape, the trigger and its automation come back.
+
+A few things look different to Live:
+
+- **Automation drawn on a MIDI controller does not come back.** The earlier
+  build listed 128 MIDI controllers, aftertouch and pitch bend as parameters of
+  their own (IDs 65538 to 65667). This build takes MIDI controllers as MIDI, so
+  those parameters are gone, and a lane drawn on one finds nothing to move.
+  Nothing in the plugin ever read them; the panic still works, because CC 120
+  and CC 123 still arrive.
+- The plugin's **Bypass** has a new ID (15, where it was 65536). Live treats
+  it as the plugin's bypass either way, and a set's bypass state comes back.
+- In Live's own panel for the plugin, the choices — Source, Rate, Time, Curve,
+  Channel, Trigger and Mode — may show as stepped sliders rather than menus.
+  They still step through the same values and show the same words.
+- Where Live shows a parameter's short name, it is the first eight letters of
+  its name.
 
 ## The background, and the Motion switch
 

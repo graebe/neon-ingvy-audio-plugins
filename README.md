@@ -8,7 +8,7 @@ Solid UI kit. A monorepo: everything that ships from here is in here.
 | [NI Trance Gate](plugins/trance-gate/README.md) | VST3 · a Schwung module for the Move | `engines/trance-gate` |
 | [NI Spectrogram](plugins/spectrogram/README.md) | VST3 | `engines/spectro` |
 | [NI Listen-In](plugins/listen-in/README.md) | VST3 · AU · CLAP | `engines/audio-bus` |
-| [NI Side-Chain](plugins/side-chain/README.md) | VST3 · AU · CLAP · a Schwung module for the Move | `engines/side-chain` |
+| [NI Side-Chain](plugins/side-chain/README.md) | VST3 · a Schwung module for the Move | `engines/side-chain` |
 
 ## How it is put together
 
@@ -113,7 +113,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `cargo_deny` | every crate in the Rust graph is under a licence on the allowlist in `deny.toml` and comes from crates.io |
 | `spdx` | every source file this repository owns opens with its licence and its copyright |
 | `e2e` | the four editors in Chrome, driven through their review harnesses against the mock hosts: gestures, keyboard, resize, the session handshake, and a screenshot each held to a committed baseline |
-| `tg_au`, `sc_au` | the AU from `build/out`, loaded by path and rendered by a host that supplies a transport. Nothing installed is read, and a missing bundle **fails** — it never skips |
+| `sc_processor`, `sc_host` | NI Side-Chain on the real engine: the iPlug2 sets reopened and saved back byte for byte, a note ducking from its own sample, CC 120 and CC 123 opening a held duck, a key ducking the track, the shape drawn against the duck played — in the processor, and in the built VST3 as a DAW hosts it, the engine's golden render bit for bit |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
 | `sg_processor`, `sg_host` | NI Spectrogram on the real analyzer: the iPlug2 sets reopened and saved back byte for byte, a tone drawn at its frequency straight into the editor's buffers, a Listen-In's bus from another process listed by its name and drawn, the audio through bit for bit — in the processor, and in the built VST3 as a DAW hosts it |
 | `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** `abus_ipc_rosetta` and `abus_ipc_rosetta_reader` do it between the x86_64 and arm64 slices, as Live under Rosetta and a native host would |
