@@ -26,8 +26,10 @@
  *                 over an older class answers getCompatibleParameterIds here
  *
  * THREADS. process() is the audio thread's: no allocation, no lock, no
- * system call, the engine reached only through its shell. The state calls and
- * nonParameterStateChanged() are the message thread's.
+ * system call, the engine reached only through its shell. The state calls
+ * come on whatever thread the host chooses -- hosts load a set's state off the
+ * main thread, which is why nothing in them may touch an editor -- and never
+ * on the audio thread. nonParameterStateChanged() is the message thread's.
  */
 #pragma once
 
@@ -87,8 +89,9 @@ protected:
     /* One block of the product. Audio thread. */
     virtual void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) = 0;
 
-    /* The state, both ways. Message thread. readState returns whether it
-     * understood what it was given; on false nothing was changed. */
+    /* The state, both ways, on any thread but the audio one: touch no
+     * component. readState returns whether it understood what it was given;
+     * on false nothing was changed. */
     virtual void writeState (juce::MemoryBlock&);
     virtual bool readState (const void* data, size_t size);
 
