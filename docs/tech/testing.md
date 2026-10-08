@@ -8,17 +8,106 @@ Two tiers, one entry point. The **quick** tier is the loop you run while
 working; the **full** tier is the verification before you call something done.
 
 ```sh
-scripts/test.sh quick [--build DIR]                  # npm run test:quick
-scripts/test.sh full [--build DIR] [--bundles DIR]   # npm run test:full
+scripts/test.sh quick [--build DIR]                                  # npm run test:quick
+scripts/test.sh full [--build DIR] [--bundles DIR] [--no-coverage]   # npm run test:full
 ```
 
-Both configure `build/` (or `--build DIR`, one per person or agent building at
-the same time) with `-DIPLUG_DEPLOY_PLUGINS=OFF` if it does not exist yet, so
-nothing is ever installed into `~/Library/Audio/Plug-Ins`.
+Each tier configures its build directory from a preset if it does not exist
+yet: quick from `dev` into `build-dev/`, full from `release` into `build/`
+(below). `--build DIR` names another one — one per person or agent building
+at the same time — and a directory that exists is used as it was configured.
+Every preset has `IPLUG_DEPLOY_PLUGINS=OFF`, so nothing is ever installed into
+`~/Library/Audio/Plug-Ins`.
+
+## Presets: which build when
+
+`CMakePresets.json` names the three builds this repository makes. All three
+use Ninja.
+
+| preset | directory | what it is | use it |
+|---|---|---|---|
+| `dev` | `build-dev/` | this machine's architecture only, `RelWithDebInfo`, no link-time optimisation (`NI_LTO=OFF`) | while you work: `scripts/test.sh quick`, and `full --no-coverage --build build-dev` to host and validate what you changed. Its bundles pass every test and pluginval, but are never the ones released |
+| `release` | `build/` | universal (arm64 and x86_64), `Release`, link-time optimisation — what ships | the gate: `scripts/test.sh full`, and every bundle that is installed or released |
+| `coverage` | `build-coverage/` | `Debug`, one architecture, instrumented | `scripts/coverage.sh` alone, which configures it |
+
+```sh
+cmake --preset dev && cmake --build --preset dev        # or: scripts/test.sh quick
+cmake --preset release && cmake --build --preset release
+```
+
+**Gates between steps run `scripts/test.sh full --no-coverage`**: everything
+in the full tier but the coverage stage, which builds the whole tree again
+instrumented. Coverage runs once, at the final gate, as plain
+`scripts/test.sh full`.
+
+## Build speed
+
+Every C, C++ and Objective-C compile goes through **ccache** when it is
+installed (`brew install ccache`; `-DNI_USE_CCACHE=OFF` turns it off), and its
+hits work across build directories and worktrees: `cmake/NiCcache.cmake` gives
+ccache the checkout as `base_dir`, so paths are hashed relative to the build
+directory, and maps the build directory to `.` in debug info, so the compile
+directory a `-g` build records is the same in every one. A debugger then finds
+the sources with `settings set target.source-map . <build dir>` (lldb). The
+coverage build keeps its absolute paths, because llvm-cov reads its sources
+back through them, and hits only in its own directory. `ccache -s` shows what
+the cache did; its default size, 5 GiB, holds the dev and release builds of a
+checkout several times over (both together take about 0.6 GiB).
+
+**The Rust side needs nothing more.** Within a checkout, ctest's cargo suites
+and a `cargo test` typed at the root already share the workspace's own
+`target/`, and each build directory keeps its own cargo target for the
+engines. Measured, a shared cache would buy little: sccache 0.18 took a fresh
+`cargo test --no-run --workspace` from 18 s to 15 s and the engines' release
+build from 17 s to 10 s, because the workspace's own crates compile
+incrementally and staticlibs, proc-macros and build scripts are not cached —
+not worth a resident server whose path settings are per user rather than per
+checkout. A shared `CARGO_TARGET_DIR` across checkouts would rebuild each
+checkout's own crates anyway and make every checkout's cargo runs wait on one
+lock.
+
+**Neither unity builds nor precompiled headers.** The bulk of a cold build
+is JUCE's modules, which are already one file per module, and ccache serves
+their repeats: each module is compiled into every plugin and test program
+that uses it, with the same flags in most, so two thirds of the compiles of a
+cold build with an empty cache are already hits. What is left for either to
+win is an edit's recompile, at most the seven seconds below; a unity file
+would recompile its neighbours with every edit, and a precompiled header
+needs a ccache configuration of its own to be cached at all.
+
+### Measured
+
+On a 10-core M1 Pro (16 GB, Apple clang 21), one run after another, with
+Ableton Live and a Docker VM running beside them throughout (load average
+35–50), so read the ratios rather than the seconds. "Before" is the old
+configuration on today's tree: Unix Makefiles, universal, `Release`, LTO, no
+ccache. Each "after" starts from an empty ccache.
+
+| | before | after: `dev` | after: `release` |
+|---|---|---|---|
+| cold build, everything (configure and build) | 3230 s | 692 s | 1045 s |
+| the same in a second new build directory | 3230 s | 127 s (98.8% hits) | 255 s (98.9% hits) |
+| rebuild after touching one kit file: everything | 104 s | 11 s | 92 s |
+| the same, the test programs only (`--target ni_tests`) | 19 s | 7 s | — |
+| quick tier, warm | 28 s | 16 s | — |
+| full tier `--no-coverage`, warm | 264 s¹ | 180 s | 182 s |
+
+¹ 102 s of it relinking the plugins after the kit file touched in the row
+above; the tests and validators take about the same time in every column,
+some 170 s.
+
+"Touching one kit file" is `plugins/_shared/ui/src/Button.cpp`, recompiled
+for real (`CCACHE_DISABLE=1`, since an unchanged file is a cache hit): the kit
+is compiled into every editor, plugin and test program that uses it, so one
+file is 18 compiles and a link per program, each of them twice over and
+each plugin's link with link-time optimisation in `release`. The second new build directory is the
+case of a new worktree, or a build directory wiped: a checkout elsewhere on
+disk hit 97.5% of the same compiles. The cache held 0.6 GiB after all of
+this, of its default 5 GiB.
 
 ## Quick — the developer loop
 
-`cmake --build build --target ni_tests` builds the test programs and the engine
+`cmake --build build-dev --target ni_tests` builds the test programs and the engine
 archives they link, and no plugin bundle; then `ctest -L quick` runs:
 
 - every Rust crate's unit tests (`cargo test`, crate by crate) — among them
@@ -48,7 +137,8 @@ archives they link, and no plugin bundle; then `ctest -L quick` runs:
   spelled), `validator_verdict` (the verdict logic over sample clap-validator
   output, and the manifest itself; no validator runs).
 
-No bundle, no host, no browser, no timing. Warm, it takes a few seconds.
+No bundle, no host, no browser, no timing. Warm, it takes under twenty
+seconds (Build speed, above).
 
 ## Full — final verification
 
@@ -65,7 +155,8 @@ Everything quick runs, and:
 | `coverage` | the coverage floor, in the instrumented build |
 
 `scripts/test.sh full` builds everything and the site, runs `ctest -L full`,
-then `scripts/coverage.sh` with the floor enforced, then `auval`, `pluginval`
+then `scripts/coverage.sh` with the floor enforced (skipped with
+`--no-coverage`, for the gates between steps), then `auval`, `pluginval`
 and `clap-validator` over the bundles in `build/out` (or `--bundles DIR`), and
 `pluginval` with its editor tests and Steinberg's VST3 `validator` over every
 bundle on the JUCE shell. `--build DIR` uses another build directory.

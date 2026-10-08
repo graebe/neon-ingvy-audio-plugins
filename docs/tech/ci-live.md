@@ -10,13 +10,15 @@ slug: ci-live
 git submodule update --init --recursive   # iPlug2. The engines are subtrees.
 scripts/fetch-sdks.sh                     # the VST3 and CLAP SDKs, at pinned versions
 npm ci                                    # the kit and every editor
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build                       # the macOS plugins, universal
+cmake --preset release                    # universal, Release, LTO: what ships (build/)
+cmake --build build                       # the macOS plugins
 ctest --test-dir build
 ```
 
-Artefacts land in `build/out/` and are copied into `~/Library/Audio/Plug-Ins/`.
-With `-DIPLUG_DEPLOY_PLUGINS=OFF` they stay in `build/out/`. The AU tests
+Artefacts land in `build/out/`. The presets in `CMakePresets.json` never
+deploy (Testing, below, says which one to use when); a build configured by
+hand copies them into `~/Library/Audio/Plug-Ins/` unless it is given
+`-DIPLUG_DEPLOY_PLUGINS=OFF`. The AU tests
 (`tg_au`, `sc_au` and the rest) load `build/out`'s bundles by path, never the
 installed ones, so they run the same either way; a missing bundle fails them,
 it never skips.
