@@ -184,20 +184,95 @@ mod tests {
     }
 
     #[test]
-    fn panic_opens_the_gate() {
-        /* The v2 vtable has no reset hook: CC 123 is the whole of a host panic. */
+    fn the_device_reads_the_declaration_these_tests_check() {
+        /*
+         * WHAT THE KNOB GRID DRAWS IS WHAT get_param SERVES, not the constant
+         * params.rs's tests read. Asked as the device asks -- and as the Trance
+         * Gate's tests/dump_params.c asks -- with a buffer far larger than the
+         * declaration, the vtable must hand back exactly that constant, so
+         * every check on it is a check on the device's view.
+         */
         let m = Module::new();
-        m.set("source", "1");
-        let on = [0x90u8, 36, 127];
-        move_audio_fx_on_midi(m.0, on.as_ptr(), 3, 0);
-        let mut buf = [10000i16; 256];
-        m.process(&mut buf);
-        assert!(m.get("duck").parse::<f64>().unwrap() > 0.0);
-        let cc = [0xB0u8, 123, 0];
-        move_audio_fx_on_midi(m.0, cc.as_ptr(), 3, 0);
-        let mut buf = [10000i16; 256];
-        m.process(&mut buf);
-        assert_eq!(m.get("duck"), "0.0000");
-        assert!(buf.iter().all(|&s| s == 10000));
+        let key = CString::new("chain_params").unwrap();
+        let mut buf = vec![0 as c_char; 65536];
+        let n = (api().get_param.unwrap())(m.0, key.as_ptr(), buf.as_mut_ptr(), buf.len() as c_int);
+        assert!(n >= 0, "chain_params is not served");
+        let served: Vec<u8> = buf[..n as usize].iter().map(|c| *c as u8).collect();
+        assert_eq!(served, params::CHAIN_PARAMS.as_bytes());
+        assert_eq!(buf[n as usize], 0, "and it is NUL-terminated");
+    }
+
+    #[test]
+    fn every_declared_default_is_what_the_engine_reads_back() {
+        /*
+         * A DELETE-TO-DEFAULT WRITES THE DECLARED `default` VERBATIM, through
+         * set_param, and the knob then shows what get_param answers. A default
+         * the engine clamps, rounds or refuses is a reset that lands somewhere
+         * else -- the bug `trigger_note` had. Every writable control, after a
+         * different value first, so a write that is ignored cannot pass.
+         */
+        let declared: Value = serde_json::from_str(params::CHAIN_PARAMS).unwrap();
+        let m = Module::new();
+        let mut checked = 0;
+        for e in declared.as_array().unwrap() {
+            let key = e["key"].as_str().unwrap();
+            if e["access"] == "read" || e["type"] == "canvas" {
+                continue;
+            }
+            let (default, other) = match e["type"].as_str().unwrap() {
+                "enum" => {
+                    let d = field(key, "default").unwrap();
+                    let other = if d == "0" { "1" } else { "0" };
+                    (d, other.to_string())
+                }
+                "float" => {
+                    let d = e["default"].as_f64().unwrap();
+                    let other = if d == e["min"].as_f64().unwrap() { e["max"].as_f64() } else { e["min"].as_f64() };
+                    (d.to_string(), other.unwrap().to_string())
+                }
+                t => panic!("\"{key}\" has a type the knob grid writes that this test does not know: {t}"),
+            };
+            m.set(key, &other);
+            m.set(key, &default);
+            let got = m.get(key);
+            match e["type"].as_str().unwrap() {
+                "enum" => assert_eq!(got, default, "{key}"),
+                _ => {
+                    let (g, d): (f64, f64) = (got.parse().unwrap(), default.parse().unwrap());
+                    let step = e["step"].as_f64().unwrap();
+                    assert!((g - d).abs() <= step / 2.0, "{key}: wrote {d}, reads back {g}");
+                }
+            }
+            checked += 1;
+        }
+        assert!(checked >= 13, "only {checked} writable controls");
+    }
+
+    #[test]
+    fn a_host_panic_on_cc_120_or_123_opens_the_gate() {
+        /*
+         * The v2 vtable has no reset hook: CC 120 (All Sound Off) or CC 123
+         * (All Notes Off) through on_midi is the whole of a host panic, and
+         * either must open the gate at once -- after a trigger, and in Gate
+         * mode with the note still held, where nothing else ever would.
+         */
+        for mode in ["0", "1"] {
+            for cc in [120u8, 123] {
+                let m = Module::new();
+                m.set("source", "1");
+                m.set("midi_mode", mode);
+                let on = [0x90u8, 36, 127];
+                move_audio_fx_on_midi(m.0, on.as_ptr(), 3, 0);
+                let mut buf = [10000i16; 256];
+                m.process(&mut buf);
+                assert!(m.get("duck").parse::<f64>().unwrap() > 0.0, "mode {mode}: the note did not duck");
+                let panic = [0xB0u8, cc, 0];
+                move_audio_fx_on_midi(m.0, panic.as_ptr(), 3, 0);
+                let mut buf = [10000i16; 256];
+                m.process(&mut buf);
+                assert_eq!(m.get("duck"), "0.0000", "mode {mode}, CC {cc}");
+                assert!(buf.iter().all(|&s| s == 10000), "mode {mode}, CC {cc}: the block was still ducked");
+            }
+        }
     }
 }

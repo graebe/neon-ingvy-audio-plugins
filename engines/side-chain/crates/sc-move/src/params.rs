@@ -163,14 +163,18 @@ mod tests {
          * THE OTHER DIRECTION: a parameter added to the engine and forgotten
          * here is a control that never appears on the device.
          *
-         * Three are absent ON PURPOSE, and naming them here is what makes that a
+         * Two are absent ON PURPOSE, and naming them here is what makes that a
          * decision rather than an oversight -- the Move has no aux input, so the
-         * sidechain source and its detector cannot do anything.
+         * sidechain detector they tune cannot do anything. (The Sidechain
+         * SOURCE is an option of `source`, not a key; the test below keeps it
+         * out.)
+         *
+         * Param::ALL, not a walk of the indices that skips one it cannot
+         * convert: every parameter the engine has, none passed over.
          */
-        const DELIBERATELY_ABSENT: [&str; 3] = ["threshold", "lockout", "source_sidechain"];
+        const DELIBERATELY_ABSENT: [&str; 2] = ["threshold", "lockout"];
         let declared = keys();
-        for i in 0..sc_core::params::PARAM_COUNT {
-            let Some(p) = Param::from_i32(i) else { continue };
+        for p in Param::ALL {
             let k = p.key();
             if DELIBERATELY_ABSENT.contains(&k) {
                 assert!(
