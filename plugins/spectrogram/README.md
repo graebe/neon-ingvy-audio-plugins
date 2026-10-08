@@ -19,7 +19,7 @@ still: media/spectrogram/live.png
 A rolling spectrogram: log frequency from **10 Hz to 20 kHz** on the vertical,
 256 bands — about two per semitone — time scrolling right to left, **thirteen
 seconds** of history. Audio passes through **bit for bit**: it is an analyzer,
-and its whole output is the picture. A VST3 for macOS, Windows and Linux with a native
+and its whole output is the picture. A VST3 for macOS (Linux and Windows follow) with a native
 editor.
 
 **No parameters**, and that is a statement rather than an omission: nothing about

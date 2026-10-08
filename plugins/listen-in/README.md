@@ -105,7 +105,7 @@ Live loads VST3 plugins in process, which is what it was built for.
 ## The plugin around the bus
 
 NI Listen-In is a VST3 on the house JUCE shell (`cmake/NiJucePlugin.cmake`),
-with a native editor (`editor/`), for macOS, Windows and Linux. It took over
+with a native editor (`editor/`), for macOS (Linux and Windows follow). It took over
 from the earlier builds without breaking a set: the same bundle name and VST3
 class, Bus at the same parameter ID, and the same saved state, byte for byte.
 `ListenIn.h` says which thread holds which half of a claim; `li_processor`,

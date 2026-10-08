@@ -14,7 +14,7 @@ still: media/trance-gate/live.png
 
 A tempo-locked step gate: rhythmic chopping locked to song position, per-step
 ADSR, ties, per-step amount, a fade-in that introduces the steps one at a time,
-and 8 slots, each a complete sound. A VST3 for macOS, Windows and Linux with a native
+and 8 slots, each a complete sound. A VST3 for macOS (Linux and Windows follow) with a native
 editor, and a Schwung module for the Ableton Move.
 
 **It is the same engine in both**, and that is asserted rather than claimed.

@@ -28,11 +28,12 @@ const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins';
  * scripts/release.mjs is the parser both workflows share, and its ZIP_OS the
  * OS labels. This used to put a second "v" in front of a version that already
  * begins with one, a link to trance-gate-vv2026.09.29.3.
+ *
+ * macOS only: Linux and Windows follow in a later release, and get their
+ * buttons back then.
  */
 const ZIPS = [
   { os: 'macOS', label: 'macOS · universal' },
-  { os: 'Windows', label: 'Windows · x64' },
-  { os: 'Linux', label: 'Linux · x64' },
 ];
 
 export function pluginDownloads(product) {

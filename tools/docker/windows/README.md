@@ -64,6 +64,6 @@ not only this one's):
 The plugins link the **static** C runtime (`CMAKE_MSVC_RUNTIME_LIBRARY` is
 `MultiThreaded`), so a Windows plugin carries Microsoft runtime code inside
 its DLL, as any statically linked MSVC program does; whether and how you may
-distribute such a binary is again a question for those licence terms. The
-release builds are not these: they come from the native Windows runner in
-GitHub Actions. The cross build is for building and checking locally.
+distribute such a binary is again a question for those licence terms. No
+Windows build is released for now (the releases are macOS only); the cross
+build is for building and checking locally.

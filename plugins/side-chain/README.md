@@ -12,7 +12,7 @@ tests: [sc_core, sc_core_rs, sc_shape, sc_envelope, sc_render_ab, sc_processor, 
 # NI Side-Chain
 
 Sidechain ducking without the compressor. A trigger arrives, the signal is
-pushed down along a shape you drew, and it comes back. A VST3 for macOS, Windows and Linux
+pushed down along a shape you drew, and it comes back. A VST3 for macOS (Linux and Windows follow)
 with a native editor, plus a Schwung module for the Ableton Move.
 
 ## Three ways to say "now"

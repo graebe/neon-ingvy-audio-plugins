@@ -74,18 +74,11 @@ names appear above the staff where each chord began.
 
 1. **Quit Live completely** — Live keeps every plugin it has loaded in memory
    until it quits, so a bundle replaced while it runs is not the one you see.
-2. Download the zip for your system from the release —
-   `chord-detector-<version>-macOS.zip` (universal: Apple silicon and Intel),
-   `-Windows.zip` or `-Linux.zip` (x64) — and copy `NIChordDetector.vst3` from
-   it into your VST3 folder, replacing the one there:
+2. Download `chord-detector-<version>-macOS.zip` from the release (universal: Apple
+   silicon and Intel) and copy `NIChordDetector.vst3` from it into
+   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there.
 
-   | System | VST3 folder |
-   |---|---|
-   | macOS | `~/Library/Audio/Plug-Ins/VST3` |
-   | Windows | `C:\Program Files\Common Files\VST3` |
-   | Linux | `~/.vst3` |
-
-3. **On macOS**, a bundle that is not notarised is refused until its quarantine
+3. A bundle that is not notarised is refused until its quarantine
    attribute is removed:
 
    ```sh
@@ -96,8 +89,8 @@ names appear above the staff where each chord began.
    Folders** if it is off, and press **Rescan**. NI Chord-Detector appears in
    the browser as an instrument under **Neon Ingvy**.
 
-NI Chord-Detector is a VST3. Live runs on macOS and Windows; on Linux it works
-in any VST3 host, such as Bitwig Studio or REAPER.
+NI Chord-Detector is a VST3, for macOS; Linux and Windows follow in a
+later release.
 
 The licence notices travel with the plugin: the bundle carries `LICENSE`,
 `THIRD_PARTY_LICENSES.md`, the font's `OFL.txt` and the texts of the licences

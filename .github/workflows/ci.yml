@@ -12,10 +12,10 @@
 # change the sound or break a set.
 #
 # macOS, because the snapshot goldens are macOS renders and the bundles ship
-# universal from there; release-plugins.yml builds and tests Windows and Linux
-# natively at publishing time. The runner image is pinned (macos-15, not
-# macos-latest) so an image rollover is a change somebody makes here rather
-# than a red build nobody caused.
+# universal from there. Linux and Windows are not built here or released for
+# now; they rejoin as part of the full build. The runner image is pinned
+# (macos-15, not macos-latest) so an image rollover is a change somebody makes
+# here rather than a red build nobody caused.
 #
 # The Schwung modules are Linux cross-builds in Docker and are NOT built here:
 # release-schwung.yml builds and verifies them on every module tag, and

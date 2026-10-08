@@ -192,14 +192,12 @@ test loads each to its exact parameters, `nist_fixtures` writes each back
 byte for byte, and each host test reopens each in the built VST3. They cannot
 be captured again from this tree: the README names the commit that can.
 
-**Windows and Linux.** The full tier runs on macOS. The cross-build kit
-(`scripts/build-all.sh`, [cross-build](cross-build.md)) builds the plugins
-for Linux in Docker and for Windows with clang-cl, and runs their ctest and
-pluginval there — Windows under Wine, which is an approximation, labelled as
-such. The first real Windows and Linux runs are the release's
-(`.github/workflows/release-plugins.yml`): the release build on
-`windows-2025` and `ubuntu-24.04`, the quick tier and the host tests, and the
-validators, before anything is published.
+**Windows and Linux.** Developer and standard builds are macOS only, and so
+are the releases. The cross-build kit (`scripts/build-all.sh`,
+[cross-build](cross-build.md)) still builds the plugins for Linux in Docker and
+for Windows with clang-cl, and runs their ctest and pluginval there — Windows
+under Wine, which is an approximation, labelled as such — but neither is
+released. They rejoin later, and then only as part of the full build.
 
 ## Licences
 

@@ -6,7 +6,12 @@ slug: cross-build
 
 A plugin is built and checked for all three desktop platforms on one Mac,
 before anything reaches GitHub: macOS natively, Linux and Windows in Docker.
-GitHub Actions only publishes. One command builds a JUCE plugin project for
+GitHub Actions only publishes.
+
+**Linux and Windows are not released for now.** Developer and standard builds
+are macOS only, and so are the releases (`release-plugins.yml`). This kit stays
+in the repository so they can rejoin later, and then only as part of the full
+build. One command builds a JUCE plugin project for
 each platform, runs its tests, validates every VST3 it produced with
 pluginval, and sums up. For the five products, which the repository's own
 CMake project builds:
@@ -242,13 +247,14 @@ through Wine's implementation of Windows, under x86_64 emulation.
 It is not Windows. Wine's Direct2D, DirectWrite and window management are its
 own, so a drawing or DPI fault on real Windows can pass here and a Wine
 shortcoming can fail here; there is no real audio device, no Windows host, and
-no code signing. The run that counts is the native Windows one in GitHub
-Actions at publishing time.
+no code signing. The run that counts will be a native Windows one, once
+Windows rejoins the releases.
 
 The run is set to strictness 10 with the editor tests, like the other two
 platforms; should Wine fail the editor tests on a plugin that passes them natively, the plan is to drop to
 `--skip-gui-tests` for Windows and say so in the verdict — the editor then
-being checked on macOS and Linux only, and natively on Windows in CI.
+being checked on macOS and Linux only, and natively on Windows once it is
+released.
 
 ## Timings
 

@@ -2,8 +2,9 @@
 
 Audio plugins for Ableton Live and Schwung modules for the Ableton Move, by
 Neon Ingvy, built from shared Rust engines, a JUCE shell and one native UI kit.
-Every plugin is a VST3 for macOS, Windows and Linux. A monorepo: everything that
-ships from here is in here. Free software under the GPL-3.0-or-later.
+Every plugin is a VST3 for macOS; Linux and Windows follow in a later release.
+A monorepo: everything that ships from here is in here. Free software under the
+GPL-3.0-or-later.
 
 | product | ships as | engine |
 |---|---|---|
@@ -45,7 +46,7 @@ modules/_shared/             the one Dockerfile, package.sh, test.sh and install
 site/                        the documentation site, from this repo's own Markdown
 docs/tech/                   how it is built, in prose
 tests/fixtures/iplug2/       what the earlier VST3 builds saved, which every build must open
-tools/docker/, tools/cross/  the cross-build kit: Linux and Windows build images, the JUCE smoke plugin
+tools/docker/, tools/cross/  the cross-build kit: Linux and Windows build images, the JUCE smoke plugin (not released)
 design/scheme/               the Ultraviolet design system, vendored
 design/designs/              the "NI Plugin Layouts" canvas, mirrored
 versions.json                one version per product
@@ -75,21 +76,11 @@ scripts/test.sh quick                     # the developer loop (build-dev/): sec
 scripts/test.sh full                      # everything: bundles, hosts, coverage, validators
 ```
 
-**Linux and Windows** are built from the same Mac in Docker by the cross-build
-kit ([docs/tech/cross-build.md](docs/tech/cross-build.md)), each running its
-tests and pluginval on every bundle:
-
-```sh
-scripts/build-linux.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'
-XWIN_ACCEPT_LICENSE=yes scripts/build-windows.sh . -- -L quick
-scripts/build-all.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'   # all three, and a summary
-```
-
-On a Linux or Windows machine the presets build natively too: `cmake --preset
-release` and `cmake --build build` (on Windows from a Visual Studio developer
-prompt). The Windows cross-build needs the owner's acceptance of Microsoft's
-licence for its C runtime and SDK (`XWIN_ACCEPT_LICENSE=yes`); every release
-builds all three systems natively on publishing.
+**Developer and standard builds are macOS only**, and so are the releases.
+Linux and Windows are not released: the cross-build kit that builds them from
+the same Mac in Docker stays in the repository
+([docs/tech/cross-build.md](docs/tech/cross-build.md)), and they rejoin later,
+then only as part of the full build.
 
 The Move modules are further targets, each a Linux cross-build in Docker:
 
@@ -111,8 +102,8 @@ and a bare toolchain use. Homebrew's keeps its shims in
 `/opt/homebrew/opt/rustup/bin`, which is not `~/.cargo/bin`.
 
 **Releasing** is a tag, `<product>-v<version>` (one product per tag):
-`release-plugins.yml` builds, tests and validates that product's VST3 on macOS,
-Windows and Linux and attaches one zip per system, and for a product with a
+`release-plugins.yml` builds, tests and validates that product's VST3 on macOS
+and attaches the macOS zip, and for a product with a
 Move module `release-schwung.yml` publishes the module from the same commit
 ([docs/tech/ci-live.md](docs/tech/ci-live.md)).
 

@@ -233,18 +233,11 @@ from the keyboard: Tab to them and press Enter or Space.
 1. **Quit Live completely** — not just the set. Live keeps every plugin it has
    loaded in memory until it quits, so a bundle replaced while it runs is not
    the one you hear.
-2. Download the zip for your system from the release —
-   `trance-gate-<version>-macOS.zip` (universal: Apple silicon and Intel),
-   `-Windows.zip` or `-Linux.zip` (x64) — and copy `NITranceGate.vst3` from it into your
-   VST3 folder, replacing the one there:
+2. Download `trance-gate-<version>-macOS.zip` from the release (universal: Apple
+   silicon and Intel) and copy `NITranceGate.vst3` from it into
+   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there.
 
-   | System | VST3 folder |
-   |---|---|
-   | macOS | `~/Library/Audio/Plug-Ins/VST3` |
-   | Windows | `C:\Program Files\Common Files\VST3` |
-   | Linux | `~/.vst3` |
-
-3. **On macOS**, a bundle that is not notarised is refused until its quarantine
+3. A bundle that is not notarised is refused until its quarantine
    attribute is removed:
 
    ```sh
@@ -255,10 +248,10 @@ from the keyboard: Tab to them and press Enter or Space.
    Folders** if it is off, and press **Rescan**. NI Trance Gate appears in the browser
    under **Neon Ingvy**.
 
-NI Trance Gate is a VST3, and only a VST3. Live runs on macOS and Windows; on Linux it
-works in any VST3 host, such as Bitwig Studio or REAPER. **Updating from a
-release before v2026.10.08.1?** The [changelog](../../../CHANGELOG.md) says
-which older bundles to delete, and what a set that used one of them needs.
+NI Trance Gate is a VST3, and only a VST3, for macOS; Linux and Windows follow in a
+later release. **Updating from a release before v2026.10.08.2?** The
+[changelog](../../../CHANGELOG.md) says which older bundles to delete, and what a set
+that used one of them needs.
 
 Signing needs an Apple Developer ID and a notarytool round trip; until those
 exist, the `xattr` command is the difference. It is a property of the

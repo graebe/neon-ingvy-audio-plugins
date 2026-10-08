@@ -18,10 +18,10 @@
 # drive it -- instantiation, audio at three sample rates and five block sizes,
 # state, parameters, buses, the editor -- but through Wine's implementation of
 # Windows, under x86_64 emulation on Apple silicon. A pass says the binary is
-# sound enough to be worth the real run, which is the native one in GitHub
-# Actions at publishing time. It has NOT RUN ON A PLUGIN YET: that waits for
-# the licence. docs/tech/cross-build.md lists what the Wine run does and does
-# not cover.
+# sound enough to be worth the real run on Windows, which comes when Windows
+# rejoins the releases (for now they are macOS only). It has NOT RUN ON A
+# PLUGIN YET: that waits for the licence. docs/tech/cross-build.md lists what
+# the Wine run does and does not cover.
 #
 # Build directory: <project>/build-windows-x64, with a Wine prefix of its own
 # in it. scripts/cross-common.sh has the contract every build-<platform>.sh

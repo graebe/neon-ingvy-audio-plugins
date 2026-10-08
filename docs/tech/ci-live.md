@@ -25,18 +25,10 @@ scripts/test.sh quick                     # the developer loop (build-dev/)
 scripts/test.sh full                      # everything, the validators included
 ```
 
-**Linux and Windows**, from the same Mac in Docker, with the cross-build kit
-(see **Cross-platform builds**):
-
-```sh
-scripts/build-linux.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'
-XWIN_ACCEPT_LICENSE=yes scripts/build-windows.sh . -- -L quick
-scripts/build-all.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'   # all three
-```
-
-On a Windows or Linux machine the same presets build natively:
-`cmake --preset release` and `cmake --build build`, on Windows from a Visual
-Studio developer prompt (Ninja needs the MSVC environment).
+**Developer and standard builds are macOS only**, and so are the releases.
+Linux and Windows are not released: the cross-build kit (see **Cross-platform
+builds**) stays in the repository, and they rejoin later, then only as part of
+the full build.
 
 Artefacts land in `build/out/`, where every test and validator loads them by
 path. No build copies a bundle into the system's VST3 folder unless it is
@@ -91,13 +83,13 @@ parsed by `scripts/release.mjs`, which both release workflows use and
 `ctest -R release` tests.
 
 `release-plugins.yml` checks the tag against the tree and builds that one
-product's VST3 natively on macOS, Windows and Linux. Each runs the suite again
-(a tag is the worst possible moment to discover the render A/B moved: the full
-tier on macOS, the quick tier and the hosted bundles on the other two), then
-the validators — pluginval at strictness 10 with its editor tests, Steinberg's
-VST3 validator and, on macOS, `codesign --verify --deep --strict` — stages the
-bundle with `LICENSE` and `THIRD_PARTY_LICENSES.md` beside it, and packs one
-zip per OS: `<product>-<version>-macOS.zip`, `-Windows.zip` and `-Linux.zip`.
+product's VST3 on macOS. It runs the full tier again (a tag is the worst
+possible moment to discover the render A/B moved), then the validators —
+pluginval at strictness 10 with its editor tests, Steinberg's VST3 validator
+and `codesign --verify --deep --strict` — stages the bundle with `LICENSE` and
+`THIRD_PARTY_LICENSES.md` beside it, and packs `<product>-<version>-macOS.zip`.
+Linux and Windows are not released for now; they rejoin as part of the full
+build.
 
 Because the asset name carries the version, this site composes its download links
 from `versions.json` rather than hard-coding them. That file is already checked

@@ -74,18 +74,11 @@ preferable to a silent second sender fighting the first.
 
 1. **Quit Live completely** — Live keeps every plugin it has loaded in memory
    until it quits, so a bundle replaced while it runs is not the one you hear.
-2. Download the zip for your system from the release —
-   `listen-in-<version>-macOS.zip` (universal: Apple silicon and Intel),
-   `-Windows.zip` or `-Linux.zip` (x64) — and copy `NIListenIn.vst3` from it into your
-   VST3 folder, replacing the one there:
+2. Download `listen-in-<version>-macOS.zip` from the release (universal: Apple
+   silicon and Intel) and copy `NIListenIn.vst3` from it into
+   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there.
 
-   | System | VST3 folder |
-   |---|---|
-   | macOS | `~/Library/Audio/Plug-Ins/VST3` |
-   | Windows | `C:\Program Files\Common Files\VST3` |
-   | Linux | `~/.vst3` |
-
-3. **On macOS**, a bundle that is not notarised is refused until its quarantine
+3. A bundle that is not notarised is refused until its quarantine
    attribute is removed:
 
    ```sh
@@ -96,10 +89,10 @@ preferable to a silent second sender fighting the first.
    Folders** if it is off, and press **Rescan**. NI Listen-In appears in the browser
    under **Neon Ingvy**.
 
-NI Listen-In is a VST3, and only a VST3. Live runs on macOS and Windows; on Linux it
-works in any VST3 host, such as Bitwig Studio or REAPER. **Updating from a
-release before v2026.10.08.1?** The [changelog](../../../CHANGELOG.md) says
-which older bundles to delete, and what a set that used one of them needs.
+NI Listen-In is a VST3, and only a VST3, for macOS; Linux and Windows follow in a
+later release. **Updating from a release before v2026.10.08.2?** The
+[changelog](../../../CHANGELOG.md) says which older bundles to delete, and what a set
+that used one of them needs.
 
 **This release changes the bus format, so update NI Listen-In and NI
 Spectrogram together and quit Live fully before you do.** An old and a new
