@@ -20,8 +20,8 @@
 #       Everything: the full build and the documentation site, `ctest -L
 #       full` (quick, plus the render goldens, the hosted bundles against the
 #       iPlug2 fixtures, the snapshot goldens, the bus across processes and
-#       architectures, every bundle's notices and signature, and the site's
-#       links), then scripts/coverage.sh with the 80% floor enforced, then the
+#       architectures, every bundle's notices and signature, the site's links,
+#       and the Move modules built and tested on aarch64 in Docker), then scripts/coverage.sh with the 80% floor enforced, then the
 #       validators over the bundles in <dir> (default <build>/out): pluginval
 #       at strictness 10 with its editor tests, Steinberg's validator and
 #       `codesign --verify --deep --strict`. A new <dir> is configured with the

@@ -162,6 +162,7 @@ Everything quick runs, and:
 | `bundles` | every built bundle carries its notices (`licenses_bundles`); every bundle's signature verifies as Live's scanner checks it (`codesign_*`: `codesign --verify --deep --strict`); the bundles' version spellings (`versions_bundles`); the release staging, dry-run against the bundles (`release_bundles`) |
 | `site` | every root-relative link on the built site resolves |
 | `coverage` | the coverage floor, in the instrumented build |
+| `move` | every Schwung module (`move_<module>`, one per `modules/<module>/module.env`), built and tested by `modules/_shared/test.sh` in the module image on aarch64 Linux: the tarball's `.so` is aarch64 and exports nothing of the plugin's shell or ground, it carries `LICENSE` and a notice for every crate it links, the module's crates' cargo tests (the vtable, `chain_params`, the host panic on CC 120/123) pass on the Move's architecture, and the Trance Gate's golden render (`engines/trance-gate/tests/run.sh`) keeps its md5 there. Needs Docker running as arm64 (Apple Silicon); not registered without Docker |
 
 `scripts/test.sh full` builds everything and the site, runs `ctest -L full`,
 then `scripts/coverage.sh` with the floor enforced (skipped with

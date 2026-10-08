@@ -7,7 +7,9 @@
 #   cmake --build build --target schwung-side-chain   NI Side-Chain
 #
 # Both run modules/_shared/package.sh with the module's directory name; what
-# differs between modules is in modules/<name>/module.env.
+# differs between modules is in modules/<name>/module.env. Their tests are
+# modules/_shared/test.sh, which tests/CMakeLists.txt registers for every
+# module in the full tier (`ctest -L move`).
 #
 # WHY THIS IS A CUSTOM TARGET AND NOT A CMAKE LIBRARY. It is an aarch64 LINUX
 # cross-build, produced in a container with a pinned toolchain, and packaged as

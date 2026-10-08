@@ -31,7 +31,7 @@ plugins/<product>/           the VST3 on the JUCE shell, and its native editor
 plugins/_shared/juce/        the JUCE shell every product derives from (ni::Processor)
 plugins/_shared/ui/          the native Ultraviolet kit every editor is made of
 modules/<product>/           a Schwung module: module.json, module.env, its UI
-modules/_shared/             the one Dockerfile, package.sh and install.sh for all of them
+modules/_shared/             the one Dockerfile, package.sh, test.sh and install.sh for all of them
 site/                        the documentation site, from this repo's own Markdown
 docs/tech/                   how it is built, in prose
 tests/fixtures/iplug2/       what the iPlug2 builds saved, which every JUCE build must open

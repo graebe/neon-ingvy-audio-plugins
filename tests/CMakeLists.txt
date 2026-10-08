@@ -649,6 +649,38 @@ foreach(t tg_core_rs spectro_core abus_core gnd_core shell_core ni_shared sc_cor
     set_property(TEST ${t} APPEND PROPERTY ENVIRONMENT "NIA_BUS_NS=${CMAKE_BINARY_DIR}/${t}")
 endforeach()
 
+# ============================================================ THE MOVE MODULES
+#
+# Every module under modules/ (one with a module.env), built and tested as the
+# Move runs it: modules/_shared/test.sh packages the tarball in the module
+# image, checks what it carries -- an aarch64 .so with nothing of the plugin's
+# shell or ground in it, the licence and the notices of every crate it links --
+# and runs the module's crates and test script on aarch64 Linux, the Trance
+# Gate's golden render among them. A new module is tested here by having a
+# module.env.
+#
+# Docker is the toolchain, so without it these are not registered (as the
+# Rosetta tests are not without Rosetta), and the configure says so. One at a
+# time: both build into target/aarch64-unknown-linux-gnu/ from one container
+# each, and two cargos in one target directory across two containers is not a
+# lock worth relying on.
+set(_ni_move_tiers)
+file(GLOB _ni_module_envs ${CMAKE_SOURCE_DIR}/modules/*/module.env)
+foreach(env IN LISTS _ni_module_envs)
+    get_filename_component(_dir ${env} DIRECTORY)
+    get_filename_component(_module ${_dir} NAME)
+    list(APPEND _ni_move_tiers move_${_module}:move)
+    if (SCHWUNG_DOCKER)
+        add_test(NAME move_${_module}
+                 COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/test.sh ${_module})
+        set_tests_properties(move_${_module} PROPERTIES RESOURCE_LOCK ni_move_target)
+    endif()
+endforeach()
+if (NOT SCHWUNG_DOCKER)
+    message(WARNING "docker not found: the Move modules' tests (move_*) are not "
+                    "registered, so the full tier does not build or test them.")
+endif()
+
 # =============================================================== THE TIERS
 #
 # cmake/NiTest.cmake says what the two mean and checks that this list is
@@ -674,7 +706,8 @@ ni_test_tiers(
         tg_host:host versions_bundles:bundles release_bundles:bundles
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
-        coverage_floor:coverage)
+        coverage_floor:coverage
+        ${_ni_move_tiers})
 
 # EVERYTHING A TEST RUNS, AND NOTHING THAT SHIPS: `cmake --build build --target
 # ni_tests` builds the test programs and the engine archives they link, and no

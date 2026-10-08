@@ -46,6 +46,35 @@ The tarball carries `LICENSE` and `THIRD_PARTY_LICENSES.md` beside the `.so`:
 what reaches a device has no repository near it, and the GPL asks that every
 copy come with the licence.
 
+## Testing on the Move's architecture
+
+```sh
+./modules/_shared/test.sh trance-gate    # or: ctest --test-dir build -L move
+./modules/_shared/test.sh side-chain
+```
+
+`test.sh` builds the module with `package.sh` in the same image, then tests it
+there, on aarch64 Linux — Docker on Apple Silicon runs the image as arm64; on
+an x86_64 host the script stops rather than test the wrong architecture:
+
+- **The tarball as a device receives it.** The `.so` is aarch64, exports
+  `move_audio_fx_init_v2` and the engine's C ABI and nothing of the plugin's
+  (`tg_shell_*`, `sc_shell_*`, `gnd_*`: the capi crates' `shell` feature is off
+  for the Move); `module.json` says GPL-3.0-or-later and the `ui_chain` it
+  names is in the tarball; `THIRD_PARTY_LICENSES.md` has a notice for every
+  crates.io crate `cargo tree` says the `.so` links.
+- **The module's crates** (`MODULE_TEST_CRATES` in `module.env`: the core and
+  the vtable crate) under `cargo test`: the `chain_params` contract — every
+  engine parameter declared, or deliberately absent and named as such — and
+  the host panic, CC 120 or CC 123, which resets the Side-Chain and which the
+  Trance Gate accepts without changing a sample.
+- **The module's test script** (`MODULE_TEST_SCRIPT`), the Trance Gate's
+  `engines/trance-gate/tests/run.sh`: its C suites against the engine's ABI and
+  the golden render's md5.
+
+The full tier runs it for every module (`ctest -L move`), one at a time, since
+both build into `target/aarch64-unknown-linux-gnu/`.
+
 `modules/_shared/install.sh <module>` scps the result to `ableton@move.local`.
 It refuses to create the base directory if it is not already there — a wrong
 path silently creating a tree is worse than an error — and leaves the module

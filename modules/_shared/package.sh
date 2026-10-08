@@ -42,27 +42,12 @@ fi
 # container nothing is, the host having timed the container's run as a whole.
 # shellcheck source=../../scripts/timing.sh
 . "$REPO_ROOT/scripts/timing.sh"
+# shellcheck source=./container.sh
+. "$SHARED_DIR/container.sh"
 
-# Its own name, not the "schwung-module-builder" the per-module scripts used:
-# an image tag is machine-wide, and a checkout still on the old scripts would
-# otherwise run this image with their older expectations of it.
-IMAGE_NAME="ni-schwung-module-builder"
-
-if [ -z "${CROSS_PREFIX:-}" ] && [ ! -f "/.dockerenv" ]; then
+if ! ni_in_module_container; then
     echo "=== $MODULE_TITLE module (via Docker) ==="
-    # `docker build` every time rather than only when the image is missing: it
-    # is a no-op when the Dockerfile has not changed, and the old "first time
-    # only" check kept building with a stale toolchain after the pin moved.
-    ni_time_stage "image" -- \
-        docker build -q -t "$IMAGE_NAME" -f "$SHARED_DIR/Dockerfile" "$SHARED_DIR" >/dev/null
-    # As the invoking user, so dist/ and target/ are not left owned by root.
-    # Group 0 is what the image made its toolchain writable to.
-    ni_time_stage "$MODULE" -- docker run --rm \
-        -v "$REPO_ROOT:/build" \
-        -u "$(id -u):$(id -g)" --group-add 0 \
-        -w /build \
-        "$IMAGE_NAME" \
-        ./modules/_shared/package.sh "$MODULE"
+    ni_module_container "$MODULE" modules/_shared/package.sh "$MODULE"
     echo "=== Done ==="
     exit 0
 fi

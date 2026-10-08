@@ -43,6 +43,7 @@ parameter contract.
     ./modules/_shared/package.sh side-chain  # from anywhere, via Docker
     cmake --build build --target schwung-side-chain
 
+    ./modules/_shared/test.sh side-chain     # build, then test on aarch64 in Docker
     ./modules/_shared/install.sh side-chain  # scp to move.local
 
 The build, packaging and install scripts are shared by every module (see

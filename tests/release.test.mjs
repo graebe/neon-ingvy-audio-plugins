@@ -69,6 +69,20 @@ for (const m of MODULES) {
     assert.match(toml, new RegExp(`^name\\s*=\\s*"${env.MODULE_CRATE}"`, 'm'));
     /* package.sh copies lib<crate with _>.so, which only a cdylib produces. */
     assert.match(toml, /crate-type\s*=\s*\[[^\]]*"cdylib"/, `${env.MODULE_CRATE} is not a cdylib`);
+
+    /* What modules/_shared/test.sh runs on aarch64: workspace members, the
+     * vtable crate among them, and never a capi crate -- asked for by name it
+     * is built with its plugin-only `shell` feature, which would then reach
+     * the vtable crate's test build too. */
+    const tested = (env.MODULE_TEST_CRATES ?? '').split(/\s+/).filter(Boolean);
+    assert.ok(tested.includes(env.MODULE_CRATE), `MODULE_TEST_CRATES must include ${env.MODULE_CRATE}`);
+    for (const c of tested) {
+      assert.ok(members.some((p) => p.endsWith(`/${c}`)), `MODULE_TEST_CRATES: ${c} is not a workspace member`);
+      assert.ok(!c.endsWith('-capi'), `MODULE_TEST_CRATES: ${c} would test the plugin's build of it`);
+    }
+    if (env.MODULE_TEST_SCRIPT) {
+      assert.ok(existsSync(join(ROOT, env.MODULE_TEST_SCRIPT)), `MODULE_TEST_SCRIPT ${env.MODULE_TEST_SCRIPT}`);
+    }
   });
 }
 
