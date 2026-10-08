@@ -90,7 +90,11 @@ fetch() {
     local got
     got=$(sha256 "$dir/pluginval.zip")
     [ "$got" = "$want" ] || { echo "pluginval.zip is $got, pinned $want" >&2; exit 1; }
-    unzip -q -o "$dir/pluginval.zip" -d "$dir"
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$dir/pluginval.zip" -d "$dir"
+    else
+        7z x -y -o"$dir" "$dir/pluginval.zip" >/dev/null
+    fi
     rm "$dir/pluginval.zip"
     chmod +x "$(pluginval_of "$dir")" 2>/dev/null || true
     "$(pluginval_of "$dir")" --version

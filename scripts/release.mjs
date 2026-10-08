@@ -21,10 +21,10 @@
  *
  * TAG = <product>-<version as versions.json spells it>, e.g.
  * trance-gate-v2026.09.29.3. The product is a key of versions.json; a product
- * with a plugin ships bundles (bundleOf: an iPlug2 config.h's BUNDLE_NAME, or
- * the TARGET of a JUCE build's ni_add_juce_plugin), one with
- * modules/<product>/module.env ships a Schwung module, and a tag releases both
- * when it has both -- they are one product in two shells.
+ * with a plugin ships its VST3 (bundleOf: the TARGET of its
+ * ni_add_juce_plugin), one zip per OS, and one with modules/<product>/module.env
+ * ships a Schwung module; a tag releases both when it has both -- they are
+ * one product in two shells.
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,17 +34,10 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /*
  * THE BUNDLE A PRODUCT SHIPS, or nothing for a product with no plugin: the
- * BUNDLE_NAME of plugins/<product>/config.h on iPlug2, or the TARGET its
- * CMakeLists.txt gives ni_add_juce_plugin on the JUCE shell. Throws for a
- * config.h without one, which is a plugin that cannot be named.
+ * TARGET its CMakeLists.txt gives ni_add_juce_plugin. Throws for a call
+ * without one, which is a plugin that cannot be named.
  */
 export function bundleOf(root, product) {
-  const config = join(root, 'plugins', product, 'config.h');
-  if (existsSync(config)) {
-    const bundle = /#define\s+BUNDLE_NAME\s+"([^"]+)"/.exec(readFileSync(config, 'utf8'))?.[1];
-    if (!bundle) throw new Error(`plugins/${product}/config.h has no BUNDLE_NAME`);
-    return bundle;
-  }
   const cmake = join(root, 'plugins', product, 'CMakeLists.txt');
   if (!existsSync(cmake)) return null;
   const text = readFileSync(cmake, 'utf8');
@@ -81,6 +74,9 @@ export function readModuleEnv(root, product) {
   return env;
 }
 
+/* The OS a release zip is for, as its name spells it. */
+export const ZIP_OS = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };
+
 export function resolve(tag, root = ROOT) {
   const versions = readJson(root, 'versions.json');
   const products = Object.keys(versions).filter((k) => !k.startsWith('__'));
@@ -102,7 +98,9 @@ export function resolve(tag, root = ROOT) {
   const bundle = bundleOf(root, product);
   if (bundle) {
     out.bundle = bundle;
-    out.zip = `${product}-${version}-macOS.zip`;
+    /* One zip per OS the release builds on (release-plugins.yml). */
+    for (const [os, label] of Object.entries(ZIP_OS))
+      out[`zip_${os}`] = `${product}-${version}-${label}.zip`;
   }
 
   const env = readModuleEnv(root, product);

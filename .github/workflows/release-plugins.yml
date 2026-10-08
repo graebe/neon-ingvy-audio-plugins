@@ -2,14 +2,20 @@
 # Copyright (C) 2026 Torben Gräber
 #
 # Tag <product>-v<version> for a product with a plugin -> build that ONE
-# product's macOS bundles, validate them, sign and notarise them when the
-# secrets exist, and attach them to the release.
+# product's VST3 natively on macOS, Windows and Linux, test it, validate it,
+# stage it with its notices, sign and notarise the macOS one when the secrets
+# exist, and attach one zip per OS to the release.
+#
+# GITHUB ACTIONS IS FOR PUBLISHING ONLY: everything here is built and tested
+# locally first (scripts/test.sh, the cross-build kit). The native Windows and
+# Linux runs are the first real-Windows and real-Linux confirmation of a
+# release, and are labelled so in docs/tech/testing.md.
 #
 # ONE PRODUCT PER TAG, and the prefix says which. A bare `v*` namespace would
 # make a Spectrogram tag publish a Trance Gate, which is the kind of mistake
 # that is only ever noticed by whoever downloads the wrong thing.
 # tests/release.test.mjs holds the tag list below to exactly the plugins that
-# exist.
+# exist, and the staging to what a built bundle holds.
 #
 # A tag for a product that also has a Schwung module (trance-gate, side-chain)
 # ALSO triggers release-schwung.yml, which builds the Move module from the same
@@ -18,10 +24,11 @@
 # SIGNING IS GATED ON SECRETS, and skipped cleanly without them. With all six
 # of MACOS_CERTIFICATE_P12 (base64 of a Developer ID Application .p12),
 # MACOS_CERTIFICATE_PASSWORD, MACOS_SIGNING_IDENTITY, NOTARY_APPLE_ID,
-# NOTARY_TEAM_ID and NOTARY_PASSWORD (an app-specific password), every bundle
-# is signed with the hardened runtime and a secure timestamp, notarised and
-# stapled. Without them the bundles ship unsigned and the release notes say
-# how to clear the quarantine. The build is the same either way.
+# NOTARY_TEAM_ID and NOTARY_PASSWORD (an app-specific password), the macOS
+# bundle is signed with the hardened runtime and a secure timestamp, notarised
+# and stapled. Without them it ships ad-hoc signed, as the build signs it, and
+# the release notes say how to clear the quarantine. Windows and Linux ship
+# unsigned. The build is the same either way.
 name: Release plugins
 
 on:
@@ -43,7 +50,23 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
+    # Every OS runs to its end, so one failure does not hide another's; the
+    # release job needs all three.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos
+            runner: macos-15
+          - os: windows
+            runner: windows-2025
+          - os: linux
+            runner: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
@@ -53,15 +76,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
 
       # WHICH PRODUCT, WHAT VERSION, AND DOES THE TREE AGREE. Parsed by
       # scripts/release.mjs, the one parser both release workflows share and
       # tests/release.test.mjs runs: the tag is <product>-<version exactly as
-      # versions.json spells it>, e.g. trance-gate-v2026.09.29.3. versions.json
-      # is where a version is decided and `ctest -R versions` holds config.h,
-      # the plists, module.json and every crate to it -- so checking the tag
-      # against versions.json checks it against all of them.
+      # versions.json spells it>, e.g. trance-gate-v2026.10.08.1. versions.json
+      # is where a version is decided and `ctest -R versions` holds the build,
+      # module.json and every crate to it -- so checking the tag against
+      # versions.json checks it against all of them.
       - name: Resolve the tag
         id: tag
         run: |
@@ -69,81 +91,89 @@ jobs:
           grep -q '^bundle=' "$GITHUB_OUTPUT" || {
             echo "::error::$GITHUB_REF_NAME names a product with no plugin"; exit 1; }
 
-      # The SDKs at their pins -- see scripts/fetch-sdks.sh and ci.yml.
-      - name: SDK cache key
-        id: sdk
-        run: echo "key=$(scripts/fetch-sdks.sh --cache-key)" >> "$GITHUB_OUTPUT"
+      # JUCE's Linux dependencies, without WebKit or curl (no product opens a
+      # page or a connection), Ninja, and Xvfb for the editors under test --
+      # the list tools/docker/linux/Dockerfile installs.
+      - name: Linux packages
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build pkgconf \
+            libasound2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxi-dev \
+            xvfb xauth fonts-dejavu-core
 
-      - name: Cache the iPlug2 SDKs
-        id: sdks
-        uses: actions/cache@v4
-        with:
-          path: |
-            external/iPlug2/Dependencies/IPlug/VST3_SDK
-            external/iPlug2/Dependencies/IPlug/CLAP_SDK
-            external/iPlug2/Dependencies/IPlug/CLAP_HELPERS
-          key: ${{ steps.sdk.outputs.key }}
-
-      - name: Download the iPlug2 SDKs
-        if: steps.sdks.outputs.cache-hit != 'true'
-        run: scripts/fetch-sdks.sh
-
-      - name: The SDKs are the pinned ones
-        run: scripts/fetch-sdks.sh --verify
+      - name: Ninja
+        if: matrix.os == 'macos'
+        run: command -v ninja || brew install ninja
 
       - name: Rust, with both Apple targets
+        if: matrix.os == 'macos'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       # The suite below includes the licence gate, ctest's cargo_deny.
       - name: cargo-deny, at its pin
         run: scripts/licence-tools.sh install cargo-deny
 
-      - run: npm ci
-
-      # Deploy on (the default): auval and pluginval need the installed AU.
+      # The release preset: Release, link-time optimisation, and on macOS the
+      # universal binary (CMakePresets.json).
       - name: Build
+        if: matrix.os != 'windows'
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j3
+          cmake --preset release -B build
+          cmake --build build
 
-      # The suite runs here too. A tag is the worst possible moment to discover
-      # that the render A/B moved, and it costs a couple of minutes. The AU
-      # tests load build/out's bundles by path, so they cannot skip.
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+      # Windows: the same, inside the MSVC environment Ninja needs, which
+      # vswhere finds on the runner.
+      - name: Build (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VS=%%i"
+          call "%VS%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          cmake --preset release -B build || exit /b 1
+          cmake --build build || exit /b 1
 
-      - name: Validate (auval, pluginval, clap-validator)
+      # The suite runs here too: a tag is the worst moment to discover that
+      # the render A/B moved. macOS runs the full tier (the snapshot goldens
+      # are macOS renders); Windows and Linux the quick tier and the hosted
+      # bundles, Linux under Xvfb.
+      - name: Test (macOS, the full tier)
+        if: matrix.os == 'macos'
+        run: ctest --test-dir build -L full --output-on-failure
+
+      - name: Test (Windows, quick and hosted)
+        if: matrix.os == 'windows'
+        run: |
+          ctest --test-dir build -L quick --output-on-failure
+          ctest --test-dir build -L host --output-on-failure
+
+      - name: Test (Linux, quick and hosted)
+        if: matrix.os == 'linux'
+        run: |
+          xvfb-run -a ctest --test-dir build -L quick --output-on-failure
+          xvfb-run -a ctest --test-dir build -L host --output-on-failure
+
+      # pluginval at strictness 10 with its editor tests, Steinberg's
+      # validator, and on macOS the signature as Live's scanner checks it.
+      - name: Validate
         run: |
           scripts/validate-plugins.sh fetch "$RUNNER_TEMP/validators"
           scripts/validate-plugins.sh run "$RUNNER_TEMP/validators" build/out
 
-      # THE BUNDLES ARE STAGED BEFORE ANYTHING IS SIGNED. A signature covers
-      # every file in the bundle, so the editor (Contents/Resources/web) and
-      # the notices (Contents/Resources/LICENSE, THIRD_PARTY_LICENSES.md) must
-      # already be inside -- they are, because CMake put them there -- and
-      # nothing may be added afterwards.
-      - name: Stage the bundles
+      # THE BUNDLE IS STAGED AS BUILT, BEFORE ANYTHING IS SIGNED. Everything
+      # it carries -- its notices, moduleinfo.json -- the build put there
+      # before it signed, and scripts/stage-release.mjs checks that each is,
+      # for this product and this OS, then copies it with LICENSE and
+      # THIRD_PARTY_LICENSES.md beside it.
+      - name: Stage the bundle
         env:
-          B: ${{ steps.tag.outputs.bundle }}
-        run: |
-          set -euo pipefail
-          mkdir -p stage
-          for f in vst3 component clap; do
-            src="build/out/$B.$f"
-            [ -d "$src" ] || { echo "::error::missing $src"; exit 1; }
-            lipo -archs "$src/Contents/MacOS/$B" | grep -q arm64
-            lipo -archs "$src/Contents/MacOS/$B" | grep -q x86_64
-            for n in LICENSE THIRD_PARTY_LICENSES.md web/index.html web/assets/ui.js.LICENSE.txt web/fonts/OFL.txt; do
-              [ -f "$src/Contents/Resources/$n" ] || { echo "::error::$B.$f has no Contents/Resources/$n"; exit 1; }
-            done
-            ditto "$src" "stage/$B.$f"
-          done
-          # And beside the bundles at the top of the zip, for whoever reads
-          # the download before installing it.
-          cp LICENSE THIRD_PARTY_LICENSES.md stage/
+          PRODUCT: ${{ steps.tag.outputs.product }}
+        run: node scripts/stage-release.mjs "$PRODUCT" build/out stage --os "${{ matrix.os }}"
 
       - name: Is signing configured?
         id: signing
+        if: matrix.os == 'macos'
         env:
           P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -158,13 +188,13 @@ jobs:
             echo "Signing and notarising."
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Signing secrets are not set; the bundles ship unsigned."
+            echo "::notice::Signing secrets are not set; the macOS bundle ships ad-hoc signed."
           fi
 
       # A throwaway keychain, so the certificate never touches the login one
       # and is gone with the runner.
       - name: Import the signing certificate
-        if: steps.signing.outputs.enabled == 'true'
+        if: matrix.os == 'macos' && steps.signing.outputs.enabled == 'true'
         env:
           P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -188,21 +218,22 @@ jobs:
           rm "$RUNNER_TEMP/cert.p12"
 
       # Hardened runtime and a secure timestamp: notarisation refuses anything
-      # without both. No --deep: each bundle has one executable and nothing
-      # nested, and --deep would paper over a nested item signed wrongly.
+      # without both. The signature replaces the build's ad-hoc one and is the
+      # LAST thing written into the bundle; --deep --strict is what Live's
+      # scanner checks.
       - name: Sign
-        if: steps.signing.outputs.enabled == 'true'
+        if: matrix.os == 'macos' && steps.signing.outputs.enabled == 'true'
         env:
           IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
-          for b in stage/*.vst3 stage/*.component stage/*.clap; do
+          for b in stage/*.vst3; do
             codesign --force --options runtime --timestamp --sign "$IDENTITY" "$b"
-            codesign --verify --strict --verbose=2 "$b"
+            codesign --verify --deep --strict --verbose=2 "$b"
           done
 
       - name: Notarise and staple
-        if: steps.signing.outputs.enabled == 'true'
+        if: matrix.os == 'macos' && steps.signing.outputs.enabled == 'true'
         env:
           APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
           TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
@@ -213,32 +244,76 @@ jobs:
           xcrun notarytool submit "$RUNNER_TEMP/notarise.zip" \
             --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD" \
             --wait --timeout 30m
-          for b in stage/*.vst3 stage/*.component stage/*.clap; do
+          for b in stage/*.vst3; do
             xcrun stapler staple "$b"
             xcrun stapler validate "$b"
+            codesign --verify --deep --strict --verbose=2 "$b"
           done
 
       - name: Remove the signing keychain
-        if: always() && steps.signing.outputs.enabled == 'true'
+        if: always() && matrix.os == 'macos' && steps.signing.outputs.enabled == 'true'
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
 
-      # ditto, not zip: it preserves the bundle structure, the resource forks a
-      # macOS plug-in bundle carries, and the stapled tickets.
+      # One zip per OS. On macOS ditto, not zip: it keeps the bundle's
+      # structure, its signature and the stapled ticket.
       - name: Package
         id: pack
         env:
-          OUT: ${{ steps.tag.outputs.zip }}
+          OUT: ${{ steps.tag.outputs[format('zip_{0}', matrix.os)] }}
         run: |
           set -euo pipefail
-          ( cd stage && ditto -c -k --sequesterRsrc --keepParent . "../$OUT" )
+          case "${{ matrix.os }}" in
+            macos)   ( cd stage && ditto -c -k --sequesterRsrc --keepParent . "../$OUT" ) ;;
+            windows) ( cd stage && 7z a -tzip -r "../$OUT" . >/dev/null ) ;;
+            linux)   ( cd stage && zip -qr "../$OUT" . ) ;;
+          esac
           unzip -l "$OUT" | grep -q 'THIRD_PARTY_LICENSES.md' || { echo "::error::no notices in $OUT"; exit 1; }
           echo "zip=$OUT" >> "$GITHUB_OUTPUT"
           ls -la "$OUT"
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          path: ${{ steps.pack.outputs.zip }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve the tag
+        id: tag
+        run: node scripts/release.mjs resolve "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: zips
+          merge-multiple: true
+
+      - name: Was the macOS bundle notarised?
+        id: signing
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          if [ -n "$P12" ] && [ -n "$IDENTITY" ] && [ -n "$NOTARY_PASSWORD" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # THE SOURCE IS LINKED FROM EVERY RELEASE. GPLv3 gives whoever receives a
       # build the right to the source it was made from (section 6), and that
-      # source is exactly the tagged tree: its scripts fetch the pinned
-      # submodule and SDKs.
+      # source is exactly the tagged tree: its JUCE submodule is pinned, and
+      # cargo builds from Cargo.lock.
       - name: Release notes
         env:
           BUNDLE: ${{ steps.tag.outputs.bundle }}
@@ -248,41 +323,46 @@ jobs:
           {
             echo "## $BUNDLE $VERSION"
             echo
-            echo "VST3, Audio Unit and CLAP, universal (arm64 + x86_64)."
+            echo "VST3 for macOS (universal: Apple silicon and Intel), Windows (x64) and Linux (x64)."
+            echo "Unzip the one for your system and copy \`$BUNDLE.vst3\` to:"
             echo
-            echo "Copy the bundles to:"
-            echo
-            echo "| format | destination |"
+            echo "| system | folder |"
             echo "|---|---|"
-            echo "| \`.vst3\` | \`~/Library/Audio/Plug-Ins/VST3/\` |"
-            echo "| \`.component\` | \`~/Library/Audio/Plug-Ins/Components/\` |"
-            echo "| \`.clap\` | \`~/Library/Audio/Plug-Ins/CLAP/\` |"
+            echo "| macOS | \`~/Library/Audio/Plug-Ins/VST3/\` |"
+            echo "| Windows | \`C:\\Program Files\\Common Files\\VST3\\\` |"
+            echo "| Linux | \`~/.vst3/\` |"
             echo
             if [ "$SIGNED" = true ]; then
-              echo "Signed with a Developer ID and notarised by Apple."
+              echo "The macOS bundle is signed with a Developer ID and notarised by Apple."
             else
-              echo "**These builds are not signed or notarised**, so macOS will refuse"
-              echo "to load them until the download quarantine is removed:"
+              echo "**The macOS bundle is not notarised**, so macOS will refuse to load it"
+              echo "until the download quarantine is removed:"
               echo
               echo '```sh'
               echo "xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/$BUNDLE.vst3"
               echo '```'
-              echo
-              echo "(and likewise for the other two)."
             fi
+            echo "The Windows and Linux bundles are not signed."
             echo
             echo "A host that has already scanned an older build needs to rescan."
+            echo "What changed is in [CHANGELOG.md]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md)."
             echo
             echo "Licence: GPL-3.0-or-later. This build's source is the tag"
             echo "[\`$GITHUB_REF_NAME\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME)."
             echo "The licence and the third-party notices, LICENSE and"
-            echo "THIRD_PARTY_LICENSES.md, are in the zip and inside every bundle."
+            echo "THIRD_PARTY_LICENSES.md, are in every zip and inside every bundle."
           } > "$RUNNER_TEMP/notes.md"
 
+      # A tag with both a plugin and a module is released by BOTH workflows.
+      # The action looks the release up by tag before creating one, so each
+      # attaches its files to the same release.
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
-          files: ${{ steps.pack.outputs.zip }}
+          files: |
+            zips/${{ steps.tag.outputs.zip_macos }}
+            zips/${{ steps.tag.outputs.zip_windows }}
+            zips/${{ steps.tag.outputs.zip_linux }}
           fail_on_unmatched_files: true
           prerelease: ${{ steps.tag.outputs.prerelease }}
           body_path: ${{ runner.temp }}/notes.md

@@ -141,6 +141,18 @@ if (TG_NODE)
     # and the workflows' tag lists against the real tree instead.
     add_test(NAME release
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/release.test.mjs)
+    # And the release staging dry-run against the bundles this build made,
+    # which needs them: every product's notices and binary where its zip
+    # expects them, and both slices when the build made both.
+    if ("arm64" IN_LIST CMAKE_OSX_ARCHITECTURES AND "x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)
+        set(_ni_universal 1)
+    else()
+        set(_ni_universal 0)
+    endif()
+    add_test(NAME release_bundles
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/release.test.mjs)
+    set_tests_properties(release_bundles PROPERTIES
+        ENVIRONMENT "NI_BUNDLES=${CMAKE_BINARY_DIR}/out;NI_UNIVERSAL=${_ni_universal}")
 
     # EVERYTHING THAT SHIPS HAS A NOTICE, AND EVERY NOTICE IS FOR SOMETHING
     # THAT SHIPS. THIRD_PARTY_LICENSES.md is held to the SDK pins, the
@@ -659,7 +671,7 @@ ni_test_tiers(
     FULL
         tg_render_ab:render sc_render_ab:render
         ${_ni_juce_tiers}
-        tg_host:host versions_bundles:bundles
+        tg_host:host versions_bundles:bundles release_bundles:bundles
         abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
         licenses_bundles:bundles site_links:site
         coverage_floor:coverage)

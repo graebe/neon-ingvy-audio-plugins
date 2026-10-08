@@ -11,8 +11,8 @@
 # all of them. tests/release.test.mjs holds the tag list below to exactly the
 # modules that exist, so a new module cannot build and never release.
 #
-# The same tag triggers release-plugins.yml for the macOS bundles: the module
-# and the plugin are one product in two shells, so one tag ships both and their
+# The same tag triggers release-plugins.yml for the VST3 zips: the module and
+# the plugin are one product in two shells, so one tag ships both and their
 # versions cannot drift apart.
 #
 # Adapted from schwung-ducker's, which is the house pattern for a catalog
@@ -53,7 +53,7 @@ jobs:
       # the one both release workflows use and tests/release.test.mjs runs.
       #
       # It checks the tag against versions.json -- which `ctest -R versions`
-      # holds config.h, the plists and every crate to -- and against
+      # holds the plugin builds, module.json and every crate to -- and against
       # module.json, so a release cannot claim a version the tree does not
       # build.
       - name: Resolve the tag

@@ -45,7 +45,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { ROOT, listedBySection, rowsOf, section } from './licenses-lib.mjs';
+import { ROOT, listedBySection, rowsOf, section, juceProducts, bundleResources } from './licenses-lib.mjs';
 
 const problems = [];
 const fail = (msg) => problems.push(msg);
@@ -61,21 +61,8 @@ const sameSet = (label, listed, shipped) => {
   for (const n of listed) if (!shipped.has(n)) fail(`${label}: \`${n}\` is listed and does not ship -- remove the row`);
 };
 
-/* The products: a plugins/<p>/CMakeLists.txt that calls ni_add_juce_plugin
- * (cmake/NiJucePlugin.cmake). What they ship follows from
- * the call: the bundle is TARGET.vst3; an EDITOR embeds the kit's JetBrains
- * Mono, so it carries OFL.txt; NI_UI_MUSIC_FONT_LICENSE among its NOTICES says
- * it embeds Bravura too, and carries Bravura-OFL.txt. */
-const JUCE_PLUGINS = readdirSync(join(ROOT, 'plugins'))
-  .filter((d) => existsSync(join(ROOT, 'plugins', d, 'CMakeLists.txt')))
-  .map((d) => ({ dir: d, cmake: read('plugins', d, 'CMakeLists.txt') }))
-  .filter((p) => /ni_add_juce_plugin\s*\(/.test(p.cmake))
-  .map((p) => ({
-    dir: p.dir,
-    bundle: /\bTARGET\s+(\S+)/.exec(p.cmake)?.[1],
-    editor: /^\s*EDITOR\s*$/m.test(p.cmake),
-    music: p.cmake.includes('NI_UI_MUSIC_FONT_LICENSE'),
-  }));
+/* The products, and what their bundles carry (scripts/licenses-lib.mjs). */
+const JUCE_PLUGINS = juceProducts();
 
 /* ------------------------------------------------------------ our own */
 /* GPL-3.0-or-later, and the licence text exactly as the FSF publishes it
@@ -402,9 +389,7 @@ if (at > 0) {
   const out = process.argv[at + 1];
   for (const p of JUCE_PLUGINS) {
     const res = join(out, `${p.bundle}.vst3`, 'Contents', 'Resources');
-    const files = ['LICENSE', 'THIRD_PARTY_LICENSES.md', ...Object.keys(LICENCE_FILES),
-      ...(p.editor ? ['OFL.txt'] : []), ...(p.music ? ['Bravura-OFL.txt'] : [])];
-    for (const f of files)
+    for (const f of bundleResources(p))
       if (!existsSync(join(res, f))) fail(`${p.bundle}.vst3 ships without Contents/Resources/${f}`);
   }
 }

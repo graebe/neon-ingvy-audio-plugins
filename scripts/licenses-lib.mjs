@@ -17,7 +17,7 @@
  * grouped by the `## ` heading above them, so a check can ask what one
  * section lists and hold it to what ships.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -89,3 +89,34 @@ export function section(sections, prefix) {
     throw new Error(`THIRD_PARTY_LICENSES.md: expected one "## ${prefix}..." section, found ${hits.length}`);
   return sections.get(hits[0]);
 }
+
+/*
+ * THE PRODUCTS, AND WHAT EACH BUNDLE CARRIES BESIDE ITS CODE: a
+ * plugins/<p>/CMakeLists.txt that calls ni_add_juce_plugin
+ * (cmake/NiJucePlugin.cmake), and what follows from the call. The bundle is
+ * TARGET.vst3; every one carries LICENSE, THIRD_PARTY_LICENSES.md and the
+ * AGPLv3 and Apache 2.0 texts (JUCE and what it compiles in); an EDITOR embeds
+ * the kit's JetBrains Mono, so it carries OFL.txt; NI_UI_MUSIC_FONT_LICENSE
+ * among its NOTICES says it embeds Bravura too, and carries Bravura-OFL.txt.
+ * JUCE writes moduleinfo.json beside them. scripts/check-licenses.mjs and
+ * scripts/stage-release.mjs both read this, so the licence check and the
+ * release cannot disagree about what a bundle must hold.
+ */
+export const LICENCE_TEXTS = ['AGPL-3.0.txt', 'Apache-2.0.txt'];
+
+export function juceProducts(root = ROOT) {
+  return readdirSync(join(root, 'plugins'))
+    .filter((d) => existsSync(join(root, 'plugins', d, 'CMakeLists.txt')))
+    .map((d) => ({ dir: d, cmake: readFileSync(join(root, 'plugins', d, 'CMakeLists.txt'), 'utf8') }))
+    .filter((p) => /ni_add_juce_plugin\s*\(/.test(p.cmake))
+    .map((p) => ({
+      dir: p.dir,
+      bundle: /\bTARGET\s+(\S+)/.exec(p.cmake)?.[1],
+      editor: /^\s*EDITOR\s*$/m.test(p.cmake),
+      music: p.cmake.includes('NI_UI_MUSIC_FONT_LICENSE'),
+    }));
+}
+
+/* What Contents/Resources of a product's bundle must hold. */
+export const bundleResources = (p) => ['LICENSE', 'THIRD_PARTY_LICENSES.md', ...LICENCE_TEXTS,
+  ...(p.editor ? ['OFL.txt'] : []), ...(p.music ? ['Bravura-OFL.txt'] : []), 'moduleinfo.json'];

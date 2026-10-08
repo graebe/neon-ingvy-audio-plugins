@@ -16,20 +16,24 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync, mkdtempSync, cpSync, writeFileSync } from 'node:fs';
+import {
+  readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, cpSync, writeFileSync, rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  ROOT, resolve, readModuleEnv, updateReleaseJson, schwungVersion, LEGACY_TOP_LEVEL, bundleOf,
+  ROOT, resolve, readModuleEnv, updateReleaseJson, schwungVersion, LEGACY_TOP_LEVEL, bundleOf, ZIP_OS,
 } from '../scripts/release.mjs';
+import { plan, stage, binaryOf } from '../scripts/stage-release.mjs';
+import { juceProducts, bundleResources } from '../scripts/licenses-lib.mjs';
 
 const read = (...p) => readFileSync(join(ROOT, ...p), 'utf8');
 const VERSIONS = JSON.parse(read('versions.json'));
 const PRODUCTS = Object.keys(VERSIONS).filter((k) => !k.startsWith('__'));
 const MODULES = readdirSync(join(ROOT, 'modules'))
   .filter((d) => existsSync(join(ROOT, 'modules', d, 'module.env')));
-/* A product with a plugin: an iPlug2 config.h, or a JUCE build's
- * ni_add_juce_plugin (scripts/release.mjs, bundleOf). */
+/* A product with a plugin: its build calls ni_add_juce_plugin
+ * (scripts/release.mjs, bundleOf). */
 const PLUGINS = readdirSync(join(ROOT, 'plugins'))
   .filter((d) => !d.startsWith('_') && bundleOf(ROOT, d));
 
@@ -81,7 +85,9 @@ for (const p of PRODUCTS) {
     assert.equal(r.version, VERSIONS[p]);
     if (PLUGINS.includes(p)) {
       assert.ok(r.bundle);
-      assert.equal(r.zip, `${p}-${VERSIONS[p]}-macOS.zip`);
+      assert.equal(r.zip_macos, `${p}-${VERSIONS[p]}-macOS.zip`);
+      assert.equal(r.zip_windows, `${p}-${VERSIONS[p]}-Windows.zip`);
+      assert.equal(r.zip_linux, `${p}-${VERSIONS[p]}-Linux.zip`);
     }
     if (MODULES.includes(p)) {
       assert.equal(r.module_version, schwungVersion(VERSIONS[p]));
@@ -174,4 +180,74 @@ test('a beta goes to its module\'s beta channel and moves nothing else', () => {
   assert.equal(beta2.modules['ni-side-chain'].version, '2026.10.01.1',
     'a beta must not move the version a channels-unaware manager reads');
   assert.equal(beta2.modules['ni-side-chain'].channels.beta.version, '2026.10.02.1-beta.1');
+});
+
+/* ------------------------------------------------------------ the staging */
+
+/*
+ * WHAT A RELEASE ZIP HOLDS, held to what a bundle is. The staging used to
+ * loop over three formats and ask every bundle for a web editor; once the
+ * bundles were VST3s with native editors, every release would have failed at
+ * that step, on the tag. So the staging is a script (scripts/stage-release.mjs)
+ * that reads what each product's build makes, and it is run here: on a bundle
+ * laid out as each OS's build lays it out, and -- given NI_BUNDLES, in the
+ * full tier -- as a dry run against the bundles this build made.
+ */
+const fakeBundle = (dir, p, os, { drop } = {}) => {
+  const contents = join(dir, `${p.bundle}.vst3`, 'Contents');
+  mkdirSync(join(contents, 'Resources'), { recursive: true });
+  const bin = join(contents, binaryOf(p.bundle, os));
+  mkdirSync(join(bin, '..'), { recursive: true });
+  writeFileSync(bin, 'binary');
+  for (const f of bundleResources(p)) if (f !== drop) writeFileSync(join(contents, 'Resources', f), f);
+};
+const universal = () => ['x86_64', 'arm64'];
+
+for (const os of Object.keys(ZIP_OS)) {
+  test(`every product stages for ${os}: the bundle as built, and the notices beside it`, () => {
+    for (const p of juceProducts()) {
+      const dir = mkdtempSync(join(tmpdir(), 'ni-stage-'));
+      fakeBundle(join(dir, 'out'), p, os);
+      const ok = plan(p.dir, join(dir, 'out'), { os, archs: universal });
+      assert.deepEqual(ok.problems, [], `${p.dir} on ${os}`);
+      assert.deepEqual(stage(ok, join(dir, 'stage')),
+        ['LICENSE', 'THIRD_PARTY_LICENSES.md', `${p.bundle}.vst3`].sort());
+      assert.ok(existsSync(join(dir, 'stage', `${p.bundle}.vst3`, 'Contents', binaryOf(p.bundle, os))));
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('a bundle without a notice, without its binary, or not universal on macOS is refused, by name', () => {
+  const p = juceProducts()[0];
+  const dir = mkdtempSync(join(tmpdir(), 'ni-stage-'));
+  fakeBundle(join(dir, 'a'), p, 'macos', { drop: 'AGPL-3.0.txt' });
+  assert.deepEqual(plan(p.dir, join(dir, 'a'), { os: 'macos', archs: universal }).problems,
+    [`${p.bundle}.vst3 has no Contents/Resources/AGPL-3.0.txt`]);
+  assert.match(plan(p.dir, join(dir, 'a'), { os: 'macos', archs: () => ['arm64'] }).problems.join('\n'),
+    /not universal: no x86_64 slice/);
+  assert.match(plan(p.dir, join(dir, 'a'), { os: 'windows' }).problems.join('\n'),
+    new RegExp(`no windows binary at Contents/x86_64-win/${p.bundle}\\.vst3`));
+  assert.match(plan(p.dir, join(dir, 'missing'), { os: 'linux' }).problems.join('\n'), /is missing/);
+  assert.match(plan('audio-bus', join(dir, 'a'), { os: 'linux' }).problems.join('\n'), /builds no plugin/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+/* NI_UNIVERSAL says the build made both macOS slices, as the release preset
+ * does; a one-slice build is checked for everything else. */
+const BUILT = process.env.NI_BUNDLES;
+test('every product stages from the bundles this build made (a dry run)', { skip: !BUILT && 'NI_BUNDLES is not set' }, () => {
+  const universal = process.platform === 'darwin' && process.env.NI_UNIVERSAL === '1';
+  for (const p of juceProducts())
+    assert.deepEqual(plan(p.dir, BUILT, { universal }).problems, [], `${p.dir} from ${BUILT}`);
+});
+
+test('release-plugins.yml stages with the script, on the three OSes, and asks for no other format', () => {
+  const y = read('.github', 'workflows', 'release-plugins.yml');
+  assert.match(y, /node scripts\/stage-release\.mjs/);
+  for (const runner of ['macos-15', 'windows-2025', 'ubuntu-24.04'])
+    assert.ok(y.includes(runner), `release-plugins.yml does not build on ${runner}`);
+  for (const os of Object.keys(ZIP_OS)) assert.ok(y.includes(`zip_${os}`), `no zip_${os} in the workflow`);
+  assert.doesNotMatch(y, /\.component\b|\.clap\b|web\/index\.html|ui\.js\.LICENSE/,
+    'release-plugins.yml still names a format or an editor no bundle has');
 });

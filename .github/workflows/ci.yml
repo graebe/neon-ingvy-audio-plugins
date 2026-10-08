@@ -1,19 +1,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Torben Gräber
 #
-# Build everything, run the suite, install the plugins and validate them.
+# The two tiers on a clean runner, and the C and C++ tests under
+# ThreadSanitizer.
 #
 # THE SUITE IS THE ASSET HERE. It is not a smoke test: tg_render_ab renders
 # four seconds through the plugin's audio path and hashes it against the Move
-# module's reference render, and the curve and envelope oracles hold the
-# editor's maths to the engine's own measured output. Those are the checks that
-# say a refactor did not change the sound, and they are worth more run
-# automatically than run when someone remembers.
+# module's reference render, the oracles hold the engines to their own
+# measured output, and the host tests reopen every saved set of the iPlug2
+# builds in the built VST3s. Those are the checks that say a refactor did not
+# change the sound or break a set.
 #
-# macOS because the plugins are macOS bundles (VST3, AU, CLAP, universal) and
-# auval and the AU host tests only exist there. The runner image is pinned
-# (macos-15, not macos-latest) so an image rollover is a change somebody makes
-# here rather than a red build nobody caused.
+# macOS, because the snapshot goldens are macOS renders and the bundles ship
+# universal from there; release-plugins.yml builds and tests Windows and Linux
+# natively at publishing time. The runner image is pinned (macos-15, not
+# macos-latest) so an image rollover is a change somebody makes here rather
+# than a red build nobody caused.
 #
 # The Schwung modules are Linux cross-builds in Docker and are NOT built here:
 # release-schwung.yml builds and verifies them on every module tag, and
@@ -23,23 +25,22 @@ name: CI
 # BY HAND ONLY. Every change is built and tested LOCALLY before it is pushed
 # (scripts/test.sh quick and full; docs/tech/testing.md): that is the gate, and
 # the owner's rule is that GitHub Actions publish rather than discover. This
-# workflow is kept as the hand crank for a check on a clean runner -- the same
-# two tiers, the full one on main -- and runs only when someone starts it.
+# workflow is kept as the hand crank for a check on a clean runner, and runs
+# only when someone starts it.
 on:
   workflow_dispatch:
 
-# A newer commit on the same PR (or main) makes the running build pointless.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  # THE QUICK TIER: every Rust crate's unit tests, the C/C++ wire, state and
-  # parameter tests, the oracles, the kit's and the editors' JavaScript and the
-  # lint-like checks. No bundle, no host, no browser.
+  # THE QUICK TIER: every Rust crate's tests, the C tests against the
+  # engines' ABIs and the oracles, the C++ units of the processors, the kit
+  # and the editors, and the lint-like checks. No bundle, no host.
   quick:
     runs-on: macos-15
 
@@ -48,30 +49,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: SDK cache key
-        id: sdk
-        run: echo "key=$(scripts/fetch-sdks.sh --cache-key)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache the iPlug2 SDKs
-        id: sdks
-        uses: actions/cache@v4
-        with:
-          path: |
-            external/iPlug2/Dependencies/IPlug/VST3_SDK
-            external/iPlug2/Dependencies/IPlug/CLAP_SDK
-            external/iPlug2/Dependencies/IPlug/CLAP_HELPERS
-          key: ${{ steps.sdk.outputs.key }}
-
-      - name: Download the iPlug2 SDKs
-        if: steps.sdks.outputs.cache-hit != 'true'
-        run: scripts/fetch-sdks.sh
-
-      - name: The SDKs are the pinned ones
-        run: scripts/fetch-sdks.sh --verify
-
-      - name: Rust, with both Apple targets
-        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
-
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
 
       # The licence gate (ctest's cargo_deny) is in every tier, so cargo-deny
@@ -79,116 +56,56 @@ jobs:
       # ~/.cargo/bin, so it compiles once per cache.
       - name: cargo-deny, at its pin
         run: scripts/licence-tools.sh install cargo-deny
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'      # node --test, which every check over the tree uses
+
+      - name: Ninja and ccache
+        run: brew install ninja ccache
+
+      - name: Quick tier
+        run: scripts/test.sh quick
+
+  # THE FULL TIER: the release preset's universal build and the site, every
+  # test, coverage with the 80% floor, and the validators -- pluginval at
+  # strictness 10 with its editor tests, Steinberg's validator, and every
+  # bundle's signature.
+  full:
+    needs: quick
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Rust, with both Apple targets, and the coverage tools
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          rustup component add llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
+
+      - name: cargo-deny and cargo-llvm-cov
+        run: |
+          scripts/licence-tools.sh install cargo-deny
+          cargo install cargo-llvm-cov --locked
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
 
+      # The documentation site's dependencies: the full tier builds it and
+      # checks its links.
       - run: npm ci
 
-      # The quick tier configures with the dev preset, whose generator is Ninja.
-      - name: Ninja
-        run: command -v ninja || brew install ninja
+      - name: Ninja and ccache
+        run: brew install ninja ccache
 
-      - name: Quick tier
-        run: scripts/test.sh quick
-
-  # THE FULL TIER, from here down: main and manual runs only.
-  build-and-test:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: macos-15
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive   # iPlug2; the engines are subtrees, not submodules
-
-      # iPlug2's SDKs ARE DOWNLOADED, NOT TRACKED, and scripts/fetch-sdks.sh
-      # fetches them at pinned versions. The cache key is the submodule's
-      # commit plus those pins -- it used to hash .gitmodules, which does not
-      # change when the submodule moves, so a stale SDK could be served forever.
-      - name: SDK cache key
-        id: sdk
-        run: echo "key=$(scripts/fetch-sdks.sh --cache-key)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache the iPlug2 SDKs
-        id: sdks
-        uses: actions/cache@v4
-        with:
-          path: |
-            external/iPlug2/Dependencies/IPlug/VST3_SDK
-            external/iPlug2/Dependencies/IPlug/CLAP_SDK
-            external/iPlug2/Dependencies/IPlug/CLAP_HELPERS
-          key: ${{ steps.sdk.outputs.key }}
-
-      - name: Download the iPlug2 SDKs
-        if: steps.sdks.outputs.cache-hit != 'true'
-        run: scripts/fetch-sdks.sh
-
-      # On a cache hit too: what was restored must be what is pinned.
-      - name: The SDKs are the pinned ones
-        run: scripts/fetch-sdks.sh --verify
-
-      # The toolchain the runner ships is fine; the targets are not installed
-      # by default and the plugins are universal.
-      - name: Rust, with both Apple targets
-        run: |
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
-          cargo --version && rustc --version
-
-      # ~/.cargo and target/. The workspace has no third-party crates today,
-      # so this saves little now; it is here so the first dependency does not
-      # also become the first slow build.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
-
-      # The licence gate (ctest's cargo_deny) is in every tier, so cargo-deny
-      # is installed at its pin (scripts/licence-tools.sh). rust-cache keeps
-      # ~/.cargo/bin, so it compiles once per cache.
-      - name: cargo-deny, at its pin
-        run: scripts/licence-tools.sh install cargo-deny
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'      # node --test, which every JS suite here uses
-          cache: npm
-
-      # ONE INSTALL FOR THE WHOLE WORKSPACE: the kit and every editor. The
-      # editors' built bundles are not tracked -- configuring runs vite -- so
-      # this has to come before cmake.
-      - name: Install the editors' dependencies
-        run: npm ci
-
-      # Deploy stays ON (iPlug2's default): the plugins are installed into
-      # ~/Library/Audio/Plug-Ins, which is what auval and pluginval's AU pass
-      # need. The AU tests in ctest do not: they load build/out by path.
-      - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: cmake --build build -j3
-
-      # site_links reads site/dist; built so it runs rather than skips.
-      - name: Build the documentation site
-        run: npm run build --workspace site
-
-      # -L full is every test: quick's, plus the render goldens, the AU
-      # renders and state stress (build/out's bundles, loaded by path), the bus
-      # across processes, the bundles' notices, the site's links and the
-      # Playwright e2e suite, in the runner's Google Chrome.
       - name: Full tier
-        run: ctest --test-dir build -L full -j3 --output-on-failure
-
-      # scripts/coverage.sh: an instrumented build of its own (build-coverage),
-      # the suite, cargo llvm-cov and the editors in Chrome, one report -- and
-      # coverage_floor fails the job below 80 % in any counted unit.
-      - name: Coverage tools
-        run: |
-          rustup component add llvm-tools-preview
-          cargo install cargo-llvm-cov --locked
-
-      - name: Coverage, with the floor enforced
-        run: scripts/coverage.sh
+        run: scripts/test.sh full
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -197,79 +114,14 @@ jobs:
           path: build/coverage
           retention-days: 14
 
-      # A build that produced no bundle passes every test above and ships
-      # nothing, so the artefacts are checked for rather than assumed.
-      - name: The bundles exist, and are universal
-        run: |
-          set -e
-          for b in NITranceGate NISpectrogram NIListenIn NISideChain; do
-            for f in vst3 component clap; do
-              path="build/out/$b.$f/Contents/MacOS/$b"
-              [ -f "$path" ] || { echo "missing: $path"; exit 1; }
-              lipo -archs "$path" | grep -q 'arm64' || { echo "$path is not arm64"; exit 1; }
-              lipo -archs "$path" | grep -q 'x86_64' || { echo "$path is not x86_64"; exit 1; }
-              echo "ok: $b.$f  ($(lipo -archs "$path"))"
-            done
-          done
-
-      # tar, because upload-artifact drops the executable bit and a bundle
-      # without it does not load.
-      - name: Keep the bundles for validation
-        run: cd build/out && tar -czf "$GITHUB_WORKSPACE/plugins.tar.gz" -- *.vst3 *.component *.clap
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: plugins
-          path: plugins.tar.gz
-          retention-days: 3
-
-  # THE HOSTS' OWN RULES. The suite checks what the plugins do; these check
-  # that they follow each format's contract -- state save/restore, parameter
-  # round trips, bus layouts, block-size changes -- which is what a host vendor
-  # runs before blaming the plugin. A job of its own so that its verdict and
-  # the suite's are separate signals.
-  validate:
-    needs: build-and-test
-    runs-on: macos-15
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: plugins
-
-      - name: Install the plugins
-        run: |
-          mkdir -p build/out ~/Library/Audio/Plug-Ins/{VST3,Components,CLAP}
-          tar -C build/out -xzf plugins.tar.gz
-          cp -R build/out/*.vst3      ~/Library/Audio/Plug-Ins/VST3/
-          cp -R build/out/*.component ~/Library/Audio/Plug-Ins/Components/
-          cp -R build/out/*.clap      ~/Library/Audio/Plug-Ins/CLAP/
-          # The AU registry is cached per login; this makes it rescan.
-          killall -9 AudioComponentRegistrar 2>/dev/null || true
-
-      - name: Fetch the validators (pinned, checksummed)
-        run: scripts/validate-plugins.sh fetch "$RUNNER_TEMP/validators"
-
-      - name: auval, pluginval, clap-validator
-        run: scripts/validate-plugins.sh run "$RUNNER_TEMP/validators" build/out
-
   # THE C AND C++ TESTS UNDER THREADSANITIZER. Every test in tests/ and
   # tests/cpp/ is built with -fsanitize=thread (cmake/Sanitize.cmake); the
   # plugins are not. One slice, because the sanitizer runtime is per-arch.
-  # Deploy is off: nothing reads an installed copy -- the bundle tests load
-  # build-tsan/out by path.
   #
-  # NOT THE HOST TESTS (-LE host). They load those bundles -- uninstrumented,
-  # by design -- and what they exist to exercise, the plugin's threads, is all
-  # inside them, where TSan sees no memory access at all. What it could watch
-  # is the harness: a render loop and a stop flag. For that it would miss
-  # every ordering the plugin's own atomics and WebKit's threads provide --
-  # the stuff false races are made of -- and add minutes of runs that
-  # build-and-test already makes.
+  # NOT THE HOST TESTS (-LE host). They load the bundles -- uninstrumented, by
+  # design -- and what they exist to exercise, the plugin's threads, is all
+  # inside them, where TSan sees no memory access at all.
   tsan:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: macos-15
 
     steps:
@@ -277,57 +129,30 @@ jobs:
         with:
           submodules: recursive
 
-      - name: SDK cache key
-        id: sdk
-        run: echo "key=$(scripts/fetch-sdks.sh --cache-key)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache the iPlug2 SDKs
-        id: sdks
-        uses: actions/cache@v4
-        with:
-          path: |
-            external/iPlug2/Dependencies/IPlug/VST3_SDK
-            external/iPlug2/Dependencies/IPlug/CLAP_SDK
-            external/iPlug2/Dependencies/IPlug/CLAP_HELPERS
-          key: ${{ steps.sdk.outputs.key }}
-
-      - name: Download the iPlug2 SDKs
-        if: steps.sdks.outputs.cache-hit != 'true'
-        run: scripts/fetch-sdks.sh
-
-      - name: The SDKs are the pinned ones
-        run: scripts/fetch-sdks.sh --verify
-
       - name: Rust, with the arm64 target
         run: rustup target add aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
 
-      # The licence gate (ctest's cargo_deny) is in every tier, so cargo-deny
-      # is installed at its pin (scripts/licence-tools.sh). rust-cache keeps
-      # ~/.cargo/bin, so it compiles once per cache.
       - name: cargo-deny, at its pin
         run: scripts/licence-tools.sh install cargo-deny
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
 
-      - run: npm ci
+      - name: Ninja
+        run: brew install ninja
 
       - name: Configure (thread sanitizer, arm64)
         run: >
-          cmake -B build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DNI_SANITIZE=thread -DCMAKE_OSX_ARCHITECTURES=arm64
-          -DIPLUG_DEPLOY_PLUGINS=OFF
 
       - name: Build
-        run: cmake --build build-tsan -j3
+        run: cmake --build build-tsan
 
-      # Not the e2e suite: it is JavaScript in Chrome, with nothing here to
-      # sanitize, and build-and-test runs it.
       - name: Test
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ctest --test-dir build-tsan -L full -LE 'e2e|host' --output-on-failure
+        run: ctest --test-dir build-tsan -L full -LE host --output-on-failure
