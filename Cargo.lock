@@ -55,7 +55,7 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
 name = "bus-capi"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "bus-core",
  "cbindgen",
@@ -65,7 +65,7 @@ dependencies = [
 
 [[package]]
 name = "bus-core"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "assert_no_alloc",
  "atomic_float",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "cd-capi"
-version = "2026.10.7+2"
+version = "2026.10.8+1"
 dependencies = [
  "assert_no_alloc",
  "cbindgen",
@@ -105,7 +105,7 @@ dependencies = [
 
 [[package]]
 name = "cd-core"
-version = "2026.10.7+2"
+version = "2026.10.8+1"
 dependencies = [
  "assert_no_alloc",
  "ground-core",
@@ -225,7 +225,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "ground-capi"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "cbindgen",
  "ground-core",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "ground-core"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "assert_no_alloc",
  "atomic_float",
@@ -350,7 +350,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "music-core"
-version = "2026.10.6+4"
+version = "2026.10.8+1"
 dependencies = [
  "divan",
  "proptest",
@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "ni-dsp"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "arrayvec",
  "assert_no_alloc",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "ni-schwung"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "ni-dsp",
 ]
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "sc-capi"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "cbindgen",
  "ground-capi",
@@ -632,7 +632,7 @@ dependencies = [
 
 [[package]]
 name = "sc-core"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "assert_no_alloc",
  "ni-dsp",
@@ -641,7 +641,7 @@ dependencies = [
 
 [[package]]
 name = "sc-move"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "ni-schwung",
  "sc-capi",
@@ -709,7 +709,7 @@ dependencies = [
 
 [[package]]
 name = "shell-capi"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "cbindgen",
  "shell-core",
@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "shell-core"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "assert_no_alloc",
  "basedrop",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "spectro-capi"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "cbindgen",
  "ground-capi",
@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "spectro-core"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "assert_no_alloc",
  "atomic_float",
@@ -751,7 +751,7 @@ dependencies = [
 
 [[package]]
 name = "spectro-recv"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "assert_no_alloc",
  "bus-core",
@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "tg-capi"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "atomic_float",
  "cbindgen",
@@ -815,7 +815,7 @@ dependencies = [
 
 [[package]]
 name = "tg-core"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "arrayvec",
  "assert_no_alloc",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "tg-move"
-version = "2026.10.6+5"
+version = "2026.10.8+1"
 dependencies = [
  "atomic_float",
  "ni-schwung",

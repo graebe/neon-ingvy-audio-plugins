@@ -1,18 +1,18 @@
 {
   "__": "The version of each PRODUCT in this repository, and the only place it is decided. Every other spelling -- each plugin's build (cmake/NiJucePlugin.cmake), the bundles' Info.plist and moduleinfo.json, module.json and each engine's crates -- is DERIVED from this and checked by `ctest -R versions`. The scheme is v<YYYY.MM.DD>.<subversion>; three of those consumers cannot hold that string literally, so the derivations are spelled out in tests/versions.test.mjs and asserted rather than left to a human. See tests/versions.test.mjs for what is checked and what is deliberately not.",
 
-  "trance-gate": "v2026.10.06.5",
-  "spectrogram": "v2026.10.06.5",
-  "listen-in": "v2026.10.06.5",
-  "side-chain": "v2026.10.06.5",
-  "chord-detector": "v2026.10.07.2",
+  "trance-gate": "v2026.10.08.1",
+  "spectrogram": "v2026.10.08.1",
+  "listen-in": "v2026.10.08.1",
+  "side-chain": "v2026.10.08.1",
+  "chord-detector": "v2026.10.08.1",
 
   "__audio-bus": "The house transport, not a plugin -- it has crates and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
-  "audio-bus": "v2026.10.06.5",
+  "audio-bus": "v2026.10.08.1",
 
-  "__ground": "The animated ground's beat clock. Not a plugin either, and not even a library of its own on disk: ground-capi is an rlib that each product's capi crate absorbs, because one static archive per plugin is an invariant here (see cmake/NiRust.cmake). It is versioned for audio-bus's reason and one more -- it ships inside ALL FOUR products, so a crate that disagreed with itself would disagree in four places at once.",
-  "ground": "v2026.10.06.5",
+  "__ground": "The animated ground's beat clock. Not a plugin either, and not even a library of its own on disk: ground-capi is an rlib that each product's capi crate absorbs, because one static archive per plugin is an invariant here (see cmake/NiRust.cmake). It is versioned for audio-bus's reason and one more -- it ships inside every product that animates the ground, so a crate that disagreed with itself would disagree in each of them at once.",
+  "ground": "v2026.10.08.1",
 
   "__music-core": "Music theory: pitches, chords, keys and modes. Not a plugin either -- a shared crate that NI Chord-Detector names chords with and that neo-riemann (codeberg.org/graebe/neo-riemann) builds on through a git dependency on this repository. Versioned here because a crate another repository pins by revision should say which release it is.",
-  "music-core": "v2026.10.06.4"
+  "music-core": "v2026.10.08.1"
 }
