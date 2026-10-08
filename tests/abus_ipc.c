@@ -139,16 +139,21 @@ int main(int argc, char** argv)
       _exit(send_audio());
   }
 
-  /* THE RECEIVER, in this one. The child has to get its claim in first. */
+  /* THE RECEIVER, in this one. The child has to get its claim in first --
+   * and a sender run as the x86_64 slice is translated by Rosetta on its
+   * first launch after a build, which under a loaded full tier takes
+   * seconds. So it waits up to ten of them, and no longer than the sender
+   * lives. */
   abus_reader_t* r = NULL;
-  for (int tries = 0; tries < 200 && r == NULL; tries++)
+  for (int tries = 0; tries < 2000 && r == NULL; tries++)
   {
     if (abus_reader_open(SLOT, &r) == ABUS_OK && r != NULL) break;
     r = NULL;
+    if (waitpid(child, NULL, WNOHANG) == child) { child = -1; break; }
     usleep(5000);
   }
   check(r != NULL, "a reader in THIS process opens a bus created in ANOTHER");
-  if (r == NULL) { waitpid(child, NULL, 0); return 1; }
+  if (r == NULL) { if (child > 0) waitpid(child, NULL, 0); return 1; }
 
   int32_t live = 0;
   uint32_t sr = 0;
