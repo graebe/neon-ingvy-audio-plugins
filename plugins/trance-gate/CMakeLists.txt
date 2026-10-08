@@ -8,7 +8,7 @@
 # class is the iPlug2 one (IPLUG2_CLASS), and the parameters keep their
 # iPlug2 indices as their VST3 IDs (LEGACY_PARAM_IDS). The editor is
 # editor/, on the native kit. The shell's numbers and its scope are
-# plugins/_shared/ni's, the plain C++ the iPlug2 shells shared.
+# plugins/_shared/ni's, the plain C++ every processor shares.
 ni_add_juce_plugin(trance-gate
     TARGET NITranceGate
     NAME "NI Trance Gate"

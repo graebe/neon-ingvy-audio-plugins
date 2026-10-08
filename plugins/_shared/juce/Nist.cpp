@@ -16,7 +16,7 @@ namespace
 {
 /* "NIst", then the tail that makes the eight bytes a quiet NaN when read as a
  * double -- which no parameter can be, so no headerless chunk looks like one
- * (engines/shell/include/shell_state.h). */
+ * (the layout tests/fixtures/iplug2/FORMAT.md records). */
 constexpr std::uint8_t magic[8] { 'N', 'I', 's', 't', 0x00, 0x00, 0xF8, 0x7F };
 constexpr std::size_t headerBytes = 16;
 

@@ -15,7 +15,7 @@
  *
  * Regenerate with
  *
- *     ./build/engines/side-chain/sc_envelope_table > plugins/side-chain/ui/test/envelope_table.txt
+ *     sc_envelope_table > engines/side-chain/tests/fixtures/envelope_table.txt
  *
  * Format: a "# case" line naming the settings, then one value per sample.
  */

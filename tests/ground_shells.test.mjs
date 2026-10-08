@@ -2,31 +2,24 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The ground's wiring, in the shared shell every plugin is built on.
+ * The ground's wiring, in every product's processor.
  *
- * A SOURCE CHECK, AND ONLY BECAUSE NOTHING ELSE CAN SEE THIS. ni::WebPlugin
- * derives from a format wrapper and cannot be linked into a test, and every
- * property below is the ORDER of a few calls, which no type checks. The
- * Spectrogram once sent its ground after six early returns and its background
- * almost never moved while every test stayed green.
+ * A SOURCE CHECK, AND ONLY BECAUSE NOTHING ELSE CAN SEE THIS: every property
+ * below is the ORDER of a few calls, which no type checks. The Spectrogram
+ * once sent its ground after six early returns and its background almost
+ * never moved while every test stayed green.
  *
- * What is asserted:
+ * What is asserted, for ni::GroundClock (plugins/_shared/juce) and each
+ * product that owns one:
  *
- *   - OnIdle's first statement is SendGround(), before anything can return
- *   - ProcessBlock ticks the clock exactly once, from the host's transport
- *     (position, tempo, meter, playing), before the product's audio runs --
- *     and hands it no audio: the ground keeps time, it does not listen
- *   - SendGround sends a frame tick every idle tick while, and only while,
- *     the editor says its ground is moving, and a closed editor gets none
- *   - OnReset re-rates and resets it; the constructor makes it, the
- *     destructor frees it
- *   - OnUIOpen switches it on; CloseWindow switches it off and chains to the
- *     base -- CloseWindow, because WebViewEditorDelegate never calls OnUIClose
- *   - those hooks are `final`, every plugin on iPlug2 derives from
- *     ni::WebPlugin, and no plugin touches the ground itself
- *   - on the JUCE shell, ni::GroundClock keeps the same order for a product
- *     that owns one: ticked before the audio, bypassed too, on only while a
- *     window is open
+ *   - the clock ticks from the host's transport (position, tempo, meter,
+ *     playing) and is handed no audio: the ground keeps time, it does not
+ *     listen
+ *   - a product ticks it before its audio runs and before anything can
+ *     return, and in a bypassed block too
+ *   - it is re-rated on prepare, on only while a window is open, and a
+ *     window opening forgets the rings counted while it was closed
+ *   - no product calls the ground's C ABI itself
  *
  *   node --test tests/ground_shells.test.mjs
  */
@@ -61,97 +54,8 @@ const statements = (b) =>
   b.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
     .split(/;|\{|\}/).map((s) => s.trim()).filter(Boolean);
 
-const HDR = read('plugins/_shared/ni/WebPlugin.h');
-const SRC = read('plugins/_shared/ni/WebPlugin.cpp');
-const at = (name) => {
-  const b = body(SRC, 'WebPlugin', name);
-  assert.ok(b, `WebPlugin::${name} not found`);
-  return b;
-};
-
-test('SendGround is the first thing OnIdle does', () => {
-  assert.equal(statements(at('OnIdle'))[0], 'SendGround()');
-});
-
-test('ProcessBlock ticks the clock once, from the host transport, before the audio', () => {
-  const b = at('ProcessBlock');
-  const ticks = b.match(/\bgnd_tick\(/g) ?? [];
-  assert.equal(ticks.length, 1, 'ProcessBlock must tick the ground exactly once a block');
-  const tick = b.indexOf('gnd_tick(mGround');
-  const audio = b.indexOf('ProcessAudio(');
-  assert.ok(tick >= 0, 'ProcessBlock does not tick the ground');
-  assert.ok(audio > tick, 'ProcessAudio runs before the ground is ticked');
-
-  /* The arguments, in the header's order: position, tempo, meter, playing,
-   * frames. Swapping two doubles compiles and rings on the wrong beats. */
-  const call = b.slice(tick, b.indexOf(';', tick));
-  assert.match(call,
-    /gnd_tick\(\s*mGround\s*,\s*GetPPQPos\(\)\s*,\s*GetTempo\(\)\s*,\s*num\s*,\s*den\s*,\s*GetTransportIsRunning\(\)[^,]*,\s*nFrames\s*\)/);
-  assert.match(b, /GetTimeSig\(\s*num\s*,\s*den\s*\)/, 'the meter comes from the host');
-});
-
-test('the ground is fed no audio, in the shell or anywhere', () => {
-  assert.doesNotMatch(SRC + HDR, /\bgnd_push\b/, 'gnd_push is gone: the ground keeps time');
-  assert.doesNotMatch(at('ProcessBlock').slice(0, at('ProcessBlock').indexOf('ProcessAudio(')),
-    /\binputs\b/, 'nothing before ProcessAudio reads the input');
-});
-
-test('while the editor reports its ground moving, every idle tick sends it a frame tick', () => {
-  const b = at('SendGround');
-  assert.match(b, /if\s*\(\s*mGroundRunning\s*\)\s*SendText\(\s*editor::kGroundTick/,
-    'the frame tick is gated on the editor\'s report and nothing else');
-  assert.match(HDR, /PortGroundRunning\(bool running\) override\s*\{\s*mGroundRunning = running;/);
-  assert.match(at('CloseWindow'), /mGroundRunning\s*=\s*false/, 'a closed editor gets no ticks');
-  assert.match(at('OnUIOpen'), /mGroundRunning\s*=\s*false/, 'a new page starts at rest');
-});
-
-test('a reset re-rates the clock and makes the next block a fresh start', () => {
-  const b = at('OnReset');
-  assert.match(b, /gnd_set_sample_rate\(\s*mGround/);
-  assert.match(b, /gnd_reset\(\s*mGround\s*\)/);
-});
-
-test('the ground is made once and freed once', () => {
-  assert.match(at('WebPlugin'), /mGround\s*=\s*gnd_new\(/);
-  assert.match(at('~WebPlugin'), /gnd_free\(\s*mGround\s*\)/);
-});
-
-test('opening the editor switches the ground on', () => {
-  assert.match(at('OnUIOpen'), /gnd_set_active\(\s*mGround\s*,\s*1\s*\)/);
-});
-
-test('closing the editor switches the ground off and tears the WebView down', () => {
-  const b = at('CloseWindow');
-  assert.match(b, /gnd_set_active\(\s*mGround\s*,\s*0\s*\)/);
-  assert.match(b, /iplug::Plugin::CloseWindow\(\)/, 'CloseWindow must chain to the base');
-});
-
-test('no product can reorder any of it', () => {
-  for (const hook of ['ProcessBlock', 'OnReset', 'OnIdle', 'OnUIOpen', 'CloseWindow']) {
-    assert.match(HDR, new RegExp(`\\b${hook}\\([^)]*\\)\\s*final\\s*;`), `${hook} is not final`);
-  }
-});
-
-/* The products on iPlug2: none any more. */
-const PLUGINS = {};
-
-for (const [cls, base] of Object.entries(PLUGINS)) {
-  test(`${cls} is built on the shared shell and leaves the ground to it`, () => {
-    const h = read(`${base}.h`);
-    const c = read(`${base}.cpp`);
-    assert.match(h, new RegExp(`class\\s+${cls}\\s+final\\s*:\\s*public\\s+ni::WebPlugin`));
-    assert.doesNotMatch(h + c, /\bgnd_\w+\(/, `${cls} calls the ground itself`);
-  });
-}
-
-/*
- * THE JUCE SHELL'S GROUND: ni::GroundClock (plugins/_shared/juce), which a
- * product on that shell owns. The same order holds there -- the clock ticked
- * from the host's transport before the product's audio, the bypassed block
- * included, on only while a window shows it -- and the same rule: no product
- * calls the ground's C ABI itself. Each product names the statement its
- * audio starts with: the engine taken for the block, or the bus's pusher.
- */
+/* Each product names the statement its audio starts with: the engine taken
+ * for the block, or the bus's pusher. */
 const JUCE_PLUGINS = {
   'NI Trance Gate': ['plugins/trance-gate/TranceGate.h', 'plugins/trance-gate/TranceGate.cpp', /tg_shell_begin/],
   'NI Listen-In': ['plugins/listen-in/ListenIn.h', 'plugins/listen-in/ListenIn.cpp', /shell_handoff_acquire/],
@@ -160,6 +64,12 @@ const JUCE_PLUGINS = {
   /* Its block, heard or bypassed, is one run() around sc_shell_begin. */
   'NI Side-Chain': ['plugins/side-chain/SideChain.h', 'plugins/side-chain/SideChain.cpp', /^run\s*\(/],
 };
+
+test('the ground is fed no audio, by the shell or by any product', () => {
+  const all = read('plugins/_shared/juce/GroundClock.h')
+    + Object.values(JUCE_PLUGINS).map(([h, cpp]) => read(h) + read(cpp)).join('');
+  assert.doesNotMatch(all, /\bgnd_push\b/, 'gnd_push is gone: the ground keeps time');
+});
 
 test('ni::GroundClock ticks from the host clock it is given, and forgets old rings when a window opens', () => {
   const g = read('plugins/_shared/juce/GroundClock.h');

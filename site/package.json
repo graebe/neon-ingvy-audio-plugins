@@ -13,9 +13,6 @@
     "preview": "astro preview",
     "check": "node scripts/check-links.mjs"
   },
-  "dependencies": {
-    "@ultraviolet/ui": "*"
-  },
   "devDependencies": {
     "astro": "^5.0.0",
     "unist-util-visit": "^5.0.0"

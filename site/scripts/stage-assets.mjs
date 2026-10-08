@@ -4,8 +4,8 @@
 /*
  * Copy the assets the site serves but does not own.
  *
- * THE FONT'S LICENCE. ui-kit/src/tokens.css names the kit's own WOFF files by a
- * relative URL, so the site's build resolves and emits them itself; what it
+ * THE FONT'S LICENCE. src/uv/tokens.css names its WOFF files by a relative
+ * URL, so the site's build resolves and emits them itself; what it
  * cannot know is that the SIL Open Font License has to travel with them.
  * OFL.txt is copied to /fonts/OFL.txt, where the licences page links it and
  * where THIRD_PARTY_LICENSES.md promises it is. This site is a bundle.
@@ -26,8 +26,8 @@ const need = (p, what) => {
   return p;
 };
 
-// The licence, from the kit that owns the font.
-const ofl = need(join(ROOT, 'ui-kit/src/fonts/OFL.txt'), 'the SIL Open Font License notice');
+// The licence, from beside the font files.
+const ofl = need(join(SITE, 'src/uv/fonts/OFL.txt'), 'the SIL Open Font License notice');
 rmSync(join(PUBLIC, 'fonts'), { recursive: true, force: true });
 mkdirSync(join(PUBLIC, 'fonts'), { recursive: true });
 cpSync(ofl, join(PUBLIC, 'fonts/OFL.txt'));

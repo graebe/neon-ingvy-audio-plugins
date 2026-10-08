@@ -48,7 +48,8 @@ offset     size   field
                                  total = 20 + B bytes
 ```
 
-- **Header**: `engines/shell/include/shell_state.h`. The magic decodes to a
+- **Header**: written by the iPlug2 builds' `shell_state.h` (removed with
+  them) and read by the JUCE shell's `plugins/_shared/juce/Nist.h`. The magic decodes to a
   NaN when it is read as a double. No parameter can hold a NaN, so a chunk
   with the header can never be mistaken for one without it.
 - **Parameters**: `IPluginBase::SerializeParams` (`IPlugPluginBase.cpp:109-122`)

@@ -6,8 +6,8 @@
  *
  * WHY MEASURED AND NOT DERIVED.
  *
- * The editor draws the envelope, so the stage machine exists TWICE -- once in
- * Rust and once in JavaScript. The JS copy had drifted in two ways at once:
+ * The web editor once drew the envelope with a second stage machine of its
+ * own, in JavaScript, and that copy had drifted in two ways at once:
  * it waited for attack+decay to finish before closing the gate, where the
  * engine closes it at `frac >= hold` WHATEVER stage is running; and it
  * released from `sustain`, where the engine releases from the level it had
@@ -246,8 +246,7 @@ int main(int argc, char **argv) {
     if (bad) {
         printf("  ENGINE ENVELOPE CHANGED: %d of %d points differ.\n",
                bad, ncases * PTS);
-        printf("  If that was intended, regenerate the fixture AND check\n");
-        printf("  ui/src/lib/curves.js still matches it.\n");
+        printf("  If that was intended, regenerate the fixture.\n");
         return 1;
     }
     printf("  %d envelopes x %d points, measured from the engine, match    ok\n",

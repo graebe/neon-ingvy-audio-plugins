@@ -5,27 +5,10 @@
  * The document layer: what a page needs that a plugin window does not.
  *
  * NOT A SECOND DESIGN SYSTEM. Every colour here is a var() reaching into
- * ui-kit/src/tokens.css, and `ctest -R ui_tokens` fails the build if a literal
+ * src/uv/tokens.css, and `ctest -R site_tokens` fails the build if a literal
  * appears in this directory. What this file adds is scale and flow -- the
  * things a scrolling document has and a fixed 856x660 editor does not.
  */
-
-/*
- * THE TOKEN FILE ENDS BY MAKING THE PAGE A PLUGIN WINDOW:
- *
- *   html, body { height: 100%; overflow: hidden; user-select: none; }
- *
- * which is right there and wrong here -- it would leave a documentation site
- * unscrollable and its text unselectable. Overridden rather than weakened: the
- * plugin rule is correct for the plugin, and this is the only consumer that is
- * a document.
- */
-html, body {
-  height: auto;
-  overflow: visible;
-  user-select: text;
-  -webkit-user-select: text;
-}
 
 /*
  * THE READING SCALE, AND IT IS AN EXTENSION -- stated here rather than

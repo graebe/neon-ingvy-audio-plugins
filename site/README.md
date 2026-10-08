@@ -2,9 +2,10 @@
 
 The public documentation site: <https://graebe.github.io/neon-ingvy-audio-plugins/>
 
-Astro, static, no framework islands. It draws the Ultraviolet design system by
-importing `@ultraviolet/ui/tokens.css` through the npm workspace — the same file
-both editors import, not a copy of it.
+Astro, static, no framework islands. It draws the Ultraviolet design system
+from `src/uv/tokens.css`, the system's tokens transcribed once and held to
+`design/scheme/project/tokens.json` by `ctest -R site_tokens`, with JetBrains
+Mono subset from the native kit's faces (`scripts/subset-fonts.sh`).
 
 ## It renders the repository's Markdown
 

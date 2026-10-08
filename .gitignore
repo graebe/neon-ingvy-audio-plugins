@@ -7,17 +7,6 @@ build-coverage/
 # single-slice, so never to be mistaken for a shipping build either.
 build-tsan/
 build-asan/
-# The JUCE spike's builds: the iPlug2 reference build the fixtures are captured
-# from, and the spike's own (tests/fixtures/iplug2/README.md, spike/UT2.md).
-# spike/out holds the built spike bundle for the manual Live test -- a build
-# product, rebuilt by the commands in spike/UT2.md, never a tracked file.
-build-spike/
-spike/out/
-# The native UI's own builds (ui/CMakeLists.txt): build-ui, and one
-# build-ui-<what> per agent or developer building at the same time, so no two
-# builds share a tree.
-build-ui/
-build-ui-*/
 # Any other build directory: one per person or agent building at the same
 # time (scripts/test.sh --build <dir>), never a source.
 build-*/
@@ -30,23 +19,22 @@ build-*/
 target/
 
 node_modules/
-# The review harness copies the built bundle in beside its page; the page,
-# the mock and the audit are source, the copies are not. Per-plugin paths were
-# spelled out here and went stale the moment a plugin was renamed.
-plugins/*/ui/test/harness/assets/
-plugins/*/ui/test/harness/fonts/
 
 # The Schwung module build (cmake --build build --target schwung)
 dist/
-
-# THE EDITORS' BUILD OUTPUT. vite writes each plugin's resources/web from its
-# ui/ at configure and build time; a tracked copy was a second source of truth
-# that could disagree with ui/src and that every UI change had to remember to
-# commit. cmake/EditorGuard.cmake stops a configure that has none.
-plugins/*/resources/web/
 
 # The cross-build kit's build directories (scripts/build-<platform>.sh), which
 # sit inside whichever project they build -- tools/cross/smoke has its own.
 build-macos-*/
 build-linux-*/
 build-windows-*/
+
+# WHAT THE iPLUG2 BUILD LEFT BEHIND in a checkout that had it. Git removes the
+# tracked files when such a checkout moves past the removal, but not what was
+# never tracked: the submodule's own checkout and the SDKs it downloaded into
+# it, vite's output in each plugin's resources/web, and the web editors'
+# harness copies. Ignored here so that none of it can be committed back by
+# accident; delete the directories to tidy such a checkout.
+external/iPlug2/
+plugins/*/resources/
+plugins/*/ui/

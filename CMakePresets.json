@@ -5,10 +5,7 @@
     {
       "name": "base",
       "hidden": true,
-      "generator": "Ninja",
-      "cacheVariables": {
-        "IPLUG_DEPLOY_PLUGINS": "OFF"
-      }
+      "generator": "Ninja"
     },
     {
       "name": "dev",

@@ -2,10 +2,11 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * ni::wire -- what every plugin shell does to a buffer or a message on its way
- * between the host, the engine and the editor.
+ * ni::wire -- what every product's processor does to a block, a clock or a
+ * number on its way between the host and the engine: the transport, the
+ * chunking, a plot's quantisers and locale-free numbers.
  *
- * No iPlug2 type and no engine: tests/cpp/ni_wire.cpp links this alone.
+ * No JUCE type and no engine: tests/cpp/ni_wire.cpp links this alone.
  *
  * NUMBERS ARE WRITTEN AND READ WITHOUT THE C LOCALE. printf and atof follow
  * LC_NUMERIC, and a host that sets a comma-decimal locale turns "0.5" into
@@ -15,19 +16,11 @@
  */
 #pragma once
 
-#include <cstring>
 #include <string>
 #include <string_view>
 
 namespace ni {
 namespace wire {
-
-/*
- * "<a>:<b>" -> a, b, split at the FIRST colon (a typed readout may hold
- * another). False when there is no colon, and then neither is touched: a
- * payload that fails to split is dropped, not half-applied.
- */
-bool split_pair(std::string_view arg, std::string& a, std::string& b);
 
 /* -1..1 -> 0..255 for a waveform bound. Clamped; a non-finite value is
  * mid-scale, where silence sits, rather than an undefined cast. */
@@ -36,17 +29,9 @@ unsigned char encode_bipolar(float v);
 /* 0..1 -> 0..255 for a gain. Clamped; a non-finite value is 0. */
 unsigned char encode_unipolar(float v);
 
-/* An editor's requested height, or 0 for one no real editor wants (the number
- * is the editor's arithmetic, and the host would honour 40 000 pixels). */
-int clamp_editor_height(int requested);
-
 /* `beats` advanced by `frames` at `bpm`. Unchanged for a non-positive frame
  * count, tempo or sample rate, rather than an infinity in a phase. */
 double advance_beats(double beats, int frames, double bpm, double sampleRate);
-
-/* What `nBytes` of payload cost on the WebView transport: base64's extra
- * third and the frame's fixed 32. The transport truncates past its cap. */
-constexpr int framed_size(int nBytes) { return nBytes * 4 / 3 + 32; }
 
 /* ------------------------------------------------------------- numbers */
 
@@ -90,21 +75,6 @@ struct Transport
 };
 Transport host_transport(bool running, double tempo, double ppq);
 
-/* A block from the host's sample type to the engines' float, and back. */
-template <class S>
-void to_float(const S* src, float* dst, int n)
-{
-  for (int i = 0; i < n; i++)
-    dst[i] = float(src[i]);
-}
-
-template <class S>
-void from_float(const float* src, S* dst, int n)
-{
-  for (int i = 0; i < n; i++)
-    dst[i] = S(src[i]);
-}
-
 /*
  * A host may hand over a longer block than it announced, and growing a buffer
  * on the audio thread allocates. So a block is processed in chunks of what was
@@ -117,21 +87,6 @@ void for_each_chunk(int frames, int cap, F&& f)
     return;
   for (int off = 0; off < frames; off += cap)
     f(off, frames - off < cap ? frames - off : cap);
-}
-
-/* Input to output, bit for bit; a mono input feeds every output. Nothing is
- * copied onto itself, since a host may hand over one buffer for both. */
-template <class S>
-void passthrough(S* const* in, int nIn, S* const* out, int nOut, int frames)
-{
-  if (nIn < 1 || frames <= 0)
-    return;
-  for (int c = 0; c < nOut; c++)
-  {
-    const int src = c < nIn ? c : nIn - 1;
-    if (out[c] != in[src])
-      std::memcpy(out[c], in[src], sizeof(S) * size_t(frames));
-  }
 }
 
 } // namespace wire

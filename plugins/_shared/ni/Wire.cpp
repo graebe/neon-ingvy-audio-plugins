@@ -13,16 +13,6 @@
 namespace ni {
 namespace wire {
 
-bool split_pair(std::string_view arg, std::string& a, std::string& b)
-{
-  const size_t colon = arg.find(':');
-  if (colon == std::string_view::npos)
-    return false;
-  a.assign(arg.substr(0, colon));
-  b.assign(arg.substr(colon + 1));
-  return true;
-}
-
 /* isfinite FIRST: a NaN passes through fmin/fmax rather than being pinned. */
 unsigned char encode_bipolar(float v)
 {
@@ -34,13 +24,6 @@ unsigned char encode_unipolar(float v)
 {
   const float c = std::isfinite(v) ? std::fmin(1.f, std::fmax(0.f, v)) : 0.f;
   return (unsigned char) int(c * 255.f + 0.5f);
-}
-
-/* Exclusive at both ends: 100 is below any editor with a control in it, 4000
- * past the tallest display. Both mean "the editor miscalculated". */
-int clamp_editor_height(int requested)
-{
-  return (requested > 100 && requested < 4000) ? requested : 0;
 }
 
 double advance_beats(double beats, int frames, double bpm, double sampleRate)

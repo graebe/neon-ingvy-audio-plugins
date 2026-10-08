@@ -17,7 +17,7 @@
 # and is rewritten only when its text changed. All of them land in one
 # directory because the ground's and the shell's crates are built inside every
 # product's cargo run: one value for all of them is what keeps their build
-# scripts from rerunning, and three plugin formats relinking, on every build.
+# scripts from rerunning, and every bundle relinking, on every build.
 # The directory sits beside cargo's target directory, under build/cargo, so the
 # two go together.
 #

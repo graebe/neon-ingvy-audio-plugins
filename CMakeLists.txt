@@ -34,16 +34,7 @@ if (CMAKE_HOST_APPLE)
     endif()
 endif()
 
-# OBJC/OBJCXX on Apple because iPlug2's macOS layer is Objective-C++ -- the
-# AUv2 entry, the WKWebView editor and the standalone's Cocoa shell are all
-# .mm. Without them CMake fails at generate time with a bare
-# "CMAKE_OBJCXX_COMPILE_OBJECT is not set", which names neither iPlug2 nor
-# Objective-C++.
-if (APPLE)
-    project(neon_ingvy_audio_plugins VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
-else()
-    project(neon_ingvy_audio_plugins VERSION 0.1.0 LANGUAGES C CXX)
-endif()
+project(neon_ingvy_audio_plugins VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -59,15 +50,8 @@ include(cmake/Sanitize.cmake)
 # Coverage.cmake, whose build it treats differently.
 include(cmake/NiCcache.cmake)
 
-# iPlug2, once for every plugin.
-set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/external/iPlug2 CACHE PATH "iPlug2 root")
-include(${IPLUG2_DIR}/iPlug2.cmake)
-find_package(iPlug2 REQUIRED)
-
-# ni_add_rust_engine (the engines, through Corrosion) and ni_add_plugin. See
-# the files.
+# ni_add_rust_engine: the engines, through Corrosion. See the file.
 include(cmake/NiRust.cmake)
-include(cmake/NiPlugin.cmake)
 
 # Each product's C ABI, one static library apiece, with the headers its
 # build.rs generates. audio-bus is the house transport rather than a product,
@@ -78,40 +62,37 @@ ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi)
 ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi)
 # The ground's beat clock and the shell plumbing (command queue, snapshot,
 # handoff) belong to no product: their C ABI rides inside every product's
-# archive, so they are headers here. The shell's state header and denormal
-# guard are C++ with no Rust behind them, and stay hand-written.
+# archive, so they are headers here.
 ni_add_rust_headers(ground_engine)
-ni_add_rust_headers(shell_engine INCLUDE ${CMAKE_SOURCE_DIR}/engines/shell/include)
+ni_add_rust_headers(shell_engine)
 ni_build_rust_engines()
 
 # The Trance Gate's and the Side-Chain's OTHER shell: the Schwung module for the
 # Move, an aarch64 Linux cross-build in a container -- see the note in the file.
 include(cmake/Schwung.cmake)
 
-# THE JUCE SHELL, beside iPlug2 while the refactor moves the four products
-# onto it (docs/adr/0002), and before them, since a product on it calls
-# ni_add_juce_plugin in its own directory: NI Trance Gate is there already,
-# the other three are still iPlug2's. JUCE as a subproject, excluded from
-# `all` so only what a plugin links is built; the native UI kit every editor
-# is made of (plugins/_shared/ui); and ni_add_juce_plugin
-# (cmake/NiJucePlugin.cmake).
+# THE JUCE SHELL (docs/adr/0002): JUCE as a subproject, excluded from `all`
+# so only what a plugin links is built; the native UI kit every editor is made
+# of (plugins/_shared/ui); every product's editor as a library, so the kit's
+# and the editors' tests (tests/ui) build without a plugin, and the gallery
+# they draw their pages from; and ni_add_juce_plugin
+# (cmake/NiJucePlugin.cmake), which each product calls in its own directory.
 set(NI_ROOT ${CMAKE_SOURCE_DIR})
 add_subdirectory(external/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 add_subdirectory(plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
-# Every product's editor as a library, as ui/CMakeLists.txt makes them, so the
-# kit's and the editors' tests (tests/ui) build here too, and the gallery they
-# draw their pages from.
-foreach(product trance-gate side-chain spectrogram listen-in)
+include(cmake/NiJucePlugin.cmake)
+
+# THE PRODUCTS, the one list a new product joins: its plugin
+# (plugins/<product>), its editor library and its tests (tests/<product>,
+# when it has a directory of its own there).
+set(NI_PRODUCTS trance-gate spectrogram listen-in side-chain)
+foreach(product IN LISTS NI_PRODUCTS)
     ni_ui_add_editor(${product})
 endforeach()
 add_subdirectory(plugins/_shared/ui/gallery ${CMAKE_BINARY_DIR}/gallery)
-include(cmake/NiJucePlugin.cmake)
-
-add_subdirectory(plugins/trance-gate)
-add_subdirectory(plugins/spectrogram)
-add_subdirectory(plugins/listen-in)
-add_subdirectory(plugins/side-chain)
-
+foreach(product IN LISTS NI_PRODUCTS)
+    add_subdirectory(plugins/${product})
+endforeach()
 
 enable_testing()
 # ni_test_tiers: every test is quick or full, and says which.

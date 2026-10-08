@@ -10,8 +10,9 @@ that replace iPlug2 must open those sets with the same settings, and these
 files are the test of that. [FORMAT.md](FORMAT.md) is the byte layout, with
 references to the source.
 
-`tests/vst3_capture.mm` wrote them. It asked the shipped bundles through the
-calls Live makes. Nothing here was written by hand.
+`tests/vst3_capture.mm` wrote them (it went with the iPlug2 build; see
+Regenerating). It asked the shipped bundles through the calls Live makes.
+Nothing here was written by hand.
 
 ## The files
 
@@ -56,27 +57,36 @@ A capture fails if any of these do not hold:
 - a second instance that loads the state reports the same parameters and
   saves the same chunk.
 
-`ctest -R iplug2_fixtures`, in the full tier, loads the committed states into
-the current build. Every parameter must read what was captured. It does not
-compare bytes, because a later engine may write the same patch differently.
-It runs while the iPlug2 builds exist. Once they are gone, the JUCE builds'
-own fixture tests take over.
+The JUCE builds are held to these files by their own tests, every product's:
+`nist_fixtures` decodes every chunk and writes it back byte for byte; each
+product's processor test (`tg_processor`, `sc_processor`, `sg_processor`,
+`li_processor`) loads every scenario to its exact parameters; and each host
+test (`tg_host`, `sc_host`, `sg_host`, `li_host`) reopens every scenario in the
+built VST3 as Live reopens a set and saves it back byte for byte.
 
 ## Regenerating
 
 Only regenerate on purpose. These files stand for what users' sets hold, and
 a later build that writes something else does not change those sets. Add a
-new scenario rather than rewriting an old one. The capture opens editors, so
-it needs a logged-in macOS session.
+new scenario rather than rewriting an old one.
+
+**This tree cannot regenerate them.** The iPlug2 build, its four bundles and
+the capture tool were removed after `8ed8ac9`, the last commit with
+`tests/vst3_capture.mm`; by then every product was on the JUCE shell, so no
+iPlug2 bundle was left to capture. The fixtures were captured at `52ac83c`, on
+top of v2026.10.06.5 (`488ad46`), and that commit builds all four iPlug2
+bundles and the tool. A new capture is made there, in a checkout of its own
+(the capture opens editors, so it needs a logged-in macOS session), and the
+files it writes are committed here:
 
 ```sh
-cmake -S . -B build-spike -DCMAKE_BUILD_TYPE=Release -DIPLUG_DEPLOY_PLUGINS=OFF
-cmake --build build-spike -j
-build-spike/tests/vst3_capture tests/fixtures/iplug2 \
-    build-spike/out/NITranceGate.vst3 build-spike/out/NISideChain.vst3 \
-    build-spike/out/NISpectrogram.vst3 build-spike/out/NIListenIn.vst3
+git worktree add ../capture 52ac83c && cd ../capture
+git submodule update --init external/iPlug2 && scripts/fetch-sdks.sh && npm ci
+cmake -S . -B build-capture -DCMAKE_BUILD_TYPE=Release -DIPLUG_DEPLOY_PLUGINS=OFF
+cmake --build build-capture -j
+build-capture/tests/vst3_capture tests/fixtures/iplug2 \
+    build-capture/out/NITranceGate.vst3 build-capture/out/NISideChain.vst3 \
+    build-capture/out/NISpectrogram.vst3 build-capture/out/NIListenIn.vst3
 ```
 
-The capture is deterministic: two runs write identical files. After iPlug2 is
-removed, these can only be regenerated from a commit that still has it. The
-fixtures were captured at 52ac83c, on top of v2026.10.06.5 (488ad46).
+The capture is deterministic: two runs write identical files.

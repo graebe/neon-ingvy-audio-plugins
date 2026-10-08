@@ -8,14 +8,13 @@
  *
  * The editor has to draw what you are about to hear -- which pads have arrived,
  * how far the one in flight has got, and the same thing again on the ring and in
- * the pattern plot -- so ui/src/lib/fade.js is a SECOND implementation of
- * something the DSP owns. That is the arrangement curves.js is already in, and
- * the reason it is tolerable is this file: the two are pinned to one table, and
- * the table is the engine's.
+ * the pattern plot. The web editor did it with a second implementation of the
+ * fade in JavaScript, pinned to this table; the native editor reads the
+ * engine's own levels, and the table keeps a change to them a decision.
  *
- *   tg_fade_table              writes it   (regenerate the fixture)
+ *   tg_fade_table              writes it   (regenerate the fixture,
+ *                              engines/trance-gate/tests/fixtures)
  *   tg_fade_table --verify F   the ENGINE still agrees with F
- *   node --test fade.test.mjs  the UI      still agrees with F
  *
  * MEASURED, LIKE THE ENVELOPE ORACLE AND FOR THE SAME REASON. The engine is run
  * with a DC input at amount 1 and no envelope at all -- attack, decay and
@@ -59,7 +58,7 @@ static const char *PATTERNS[] = {
 #define NPAT ((int)(sizeof(PATTERNS) / sizeof(PATTERNS[0])))
 
 /* The fade settings, as the exact strings the engine is given -- so the fixture
- * and the JS test read the same numbers rather than two roundings of one. */
+ * records the numbers the engine read rather than a rounding of them. */
 static const char *FADES[] = {
     "0", "0.0625", "0.125", "0.25", "0.3125", "0.375", "0.5",
     "0.625", "0.6875", "0.75", "0.875", "0.9375", "0.99", "0.99999994", "1",
@@ -110,7 +109,7 @@ static void weights(tg_core_t *c, double *out)
 /*
  * The drawn mask, out of the `ui` readout's first field. Needed since every step
  * carries a rank -- among its OWN KIND -- so the order can no longer say which
- * kind a step is, and the JS side has to be told the same thing the engine knows.
+ * kind a step is, and the table has to say the same thing the engine knows.
  */
 static void mask(tg_core_t *c, int *out)
 {
@@ -129,9 +128,9 @@ static void mask(tg_core_t *c, int *out)
     }
 }
 
-/* The arrival ranks, out of the `ui` readout's ninth field. The JS side is
- * given these rather than deriving them, because deriving them is the engine's
- * job and this fixture is about the WEIGHTS. */
+/* The arrival ranks, out of the `ui` readout's ninth field. The table records
+ * these rather than deriving them, because deriving them is the engine's job
+ * and this fixture is about the WEIGHTS. */
 static void ranks(tg_core_t *c, int *out)
 {
     char buf[4096];

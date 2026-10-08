@@ -9,8 +9,8 @@
 # iPlug2 indices as their VST3 IDs (LEGACY_PARAM_IDS). MIDI_IN is the
 # trigger's input; the sidechain bus is declared by the processor
 # (SideChain.cpp). The editor is editor/, on the native kit. The scope and
-# the shells' numbers are plugins/_shared/ni's, the plain C++ the iPlug2
-# shells shared.
+# the shells' numbers are plugins/_shared/ni's, the plain C++ every processor
+# shares.
 ni_add_juce_plugin(side-chain
     TARGET NISideChain
     NAME "NI Side-Chain"

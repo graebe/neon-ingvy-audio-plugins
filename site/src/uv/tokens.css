@@ -1,0 +1,346 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Torben Gräber */
+
+/*
+ * ULTRAVIOLET — the design system's tokens, transcribed once.
+ *
+ * Every value here is the design system's, transcribed from its tokens.json
+ * (design/scheme/project/tokens.json), and `ctest -R site_tokens` holds the
+ * two in agreement. The comments are the system's own, because they say what a
+ * token is FOR, which a hex triplet cannot.
+ *
+ * The system in one line: ultraviolet light on black glass. `uv` is THE
+ * SIGNAL -- spent ONLY where something is on or IS the current value: a lit
+ * step, a knob's value arc, the playhead, focus. Everything at rest is a
+ * shade of violet-black. If a screen has more signal than black, something
+ * is wrong.
+ */
+
+/*
+ * THE FACE: JetBrains Mono (SIL OFL 1.1, fonts/OFL.txt), the native kit's
+ * faces subset to what the pages draw and packed as WOFF by
+ * site/scripts/subset-fonts.sh -- ~49 KB a weight where the TTFs are 274 KB.
+ * The URL is relative to this file, so the site's build emits it as an asset.
+ */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/JetBrainsMono-Regular.woff') format('woff');
+  font-weight: 400; font-display: block;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/JetBrainsMono-Medium.woff') format('woff');
+  font-weight: 500; font-display: block;
+}
+
+:root {
+  --bg-000: #060410;   /* window ground */
+  --bg-100: #0c0818;   /* panel */
+  --bg-200: #140e24;   /* control well */
+  --bg-300: #1d1533;   /* raised well: hover, pressed */
+  --line-100: #1d1533; /* hairline: dividers, well borders */
+  --line-200: #3a2a66; /* rail: the unlit part of an arc */
+
+  --ink: #f3ecff;       /* values, readouts, titles */
+  --ink-muted: #b9a3e6; /* labels, units, the hint bar */
+  --ink-dim: #7a5fb5;   /* disabled text, inactive marks */
+
+  /*
+   * THE SIGNAL IS TWO TOKENS, AND THAT IS THE WHOLE IDEA.
+   *
+   * `uv` is the bright CORE of anything lit; `uvDeep` is the saturated violet
+   * that surrounds it. The colour lives in the halo.
+   *
+   * So --uv-deep IS NEVER A FILL. It is the glow around a lit element and the
+   * tint of the ground's noise, and nothing else. Reaching for it as a fill
+   * is how the two-tone collapses back into one flat hue.
+   */
+  --uv: #efe3ff;
+  --uv-deep: #a259ff;
+  --uv-glow: rgba(162, 89, 255, 0.5);
+  /* Text and glyphs on a uv fill: deep ultraviolet, uv-deep's hue darkened to
+   * 7:1 on uv, so a lit control keeps its violet in its own letters. Never on
+   * red, where it falls under 3:1. Ultraviolet 1.1's value; until then it was
+   * bg-000's black. */
+  --on-uv: #5d00d6;
+  --amber: #ffb000;
+  --red: #ff4d4d;
+  --bg-dot: #2a1e4a;
+
+  /*
+   * THE PLOTS' DATA COLOURS, Ultraviolet 1.1's. They paint pictures of a
+   * signal and nothing else: never a control, a panel or text.
+   *
+   * plot-dry is the dry input behind a processed trace, at half opacity, and
+   * the one deliberately achromatic value here. The editors had it first, as
+   * --scope-dry with this same value; plot-dry is the system's name for it,
+   * and the rename is the whole of the change. It was --ink-dim once, which
+   * is a VIOLET and which the system reserves for disabled text: the dry
+   * input read as a dim version of the signal rather than as something else
+   * entirely, and it carried the same hue as the gated trace in front of it,
+   * so the two blurred into one picture. Grey is the point. The dry is the
+   * input, the violet is what the plugin DID to it, and the difference
+   * between those two should not need a legend.
+   *
+   * plot-fill is the area under a curve in a PlotWell, the value of bg-300, so
+   * the curve's own 2px uv line is the only light in the well; plot-ghost is a
+   * reference curve behind the one that plays (the envelope as dialled), the
+   * value of line-200. NEITHER IS DRAWN YET. The Trance Gate's plots predate
+   * the PlotWell: they fill under the envelope with --uv-glow and draw the
+   * ghost in --ink-dim, which are other values, so moving them onto these is a
+   * change to the picture and not a rename. Defined here so that move is one
+   * var() each, and because the token test requires every system token here.
+   */
+  --plot-dry: #6b6b78;
+  --plot-fill: #1d1533;
+  --plot-ghost: #3a2a66;
+
+  /*
+   * THE PLAYHEAD CROSSING A PAD THAT IS ALREADY LIT: bg-000 at a quarter alpha,
+   * so it reads as a shadow moving across the row. NOT --uv-deep, which is
+   * never a fill, and no longer on-uv's value: that was this same black until
+   * Ultraviolet 1.1 made on-uv violet, and a violet wash over a lit pad would
+   * read as a tint, not a shadow. A token because the alternative is an rgba()
+   * in app.css, and an rgba() in app.css is precisely what the token guard
+   * exists to stop.
+   */
+  --dip: rgba(6, 4, 16, 0.25);
+
+  /*
+   * THE SPECTROGRAM'S RAMP: five stops from the window ground to the signal's
+   * brightest core, sampled between for the colour of a band's magnitude.
+   *
+   * It is a SEQUENCE and not five independent colours -- each stop only means
+   * anything as a position along it -- which is why they are numbered rather
+   * than named. bg-000 at the bottom and uv at the top are the same values the
+   * rest of the system uses, so a silent spectrogram is the window's own
+   * background and a loud one is lit in the system's own signal colour.
+   *
+   * The system's own spec-0..spec-4 since Ultraviolet 1.1
+   * (design/scheme/project/tokens.json), at the values the editors already
+   * drew with.
+   */
+  --spec-0: #060410;
+  --spec-1: #2a1e4a;
+  --spec-2: #6a2fd0;
+  --spec-3: #a259ff;
+  --spec-4: #efe3ff;
+
+  /* Everything sits on a 4px grid. */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
+
+  /* "Controls have one size each. Do not scale controls to fill a window;
+   * leave space instead." */
+  --knob: 48px;
+  --knob-lg: 64px;
+  --step: 40px;
+  --control-h: 28px;
+  --readout-w: 64px;
+  --rail: 2px;
+  /* The system calls this `hairline` in its size family and `stroke-hair` in
+   * its stroke family; the stylesheets here have always said --hair. Both
+   * names, one value, so neither the system nor the CSS has to move. */
+  --hairline: 1px;
+  --hair: var(--hairline);
+
+  /*
+   * THREE RADII, AS THE SYSTEM DEFINES THEM -- and it really is three, even
+   * though almost everything here uses the first.
+   *
+   * This was one `--radius: 0`, which is what the UI happens to need, and the
+   * token test caught it the moment the design file arrived: the system's
+   * radius-1 and radius-full were simply absent, so nothing could have used
+   * them without spelling a number. radius-1 is a slider thumb and an LED
+   * housing; radius-full is only what physically turns.
+   *
+   * --radius stays as the name the stylesheets already say, aliased to the
+   * system's radius-0 rather than repeating its value.
+   */
+  --radius-0: 0px;
+  --radius-1: 2px;
+  --radius-full: 999px;
+  --radius: var(--radius-0);
+}
+
+/*
+ * THE TWO GLOWS, and nothing else.
+ *
+ *   glow-led    0 0 10px uv-deep, 0 0 2px uv   -- a lit LED, the playhead
+ *   glow-focus  0 0 0 1px uv, 0 0 8px uv-glow  -- keyboard focus
+ *
+ * TWO HALOES, AND THE ORDER IS THE POINT. The wide one is the SATURATED
+ * violet -- that is where the hue lives now the fill is near white -- and the
+ * tight one is the core colour, which keeps the element's own edge from being
+ * eaten by the violet. One halo in `uv` alone leaves a white element with a
+ * white glow: no cast at all.
+ */
+/*
+ * DEFINED AS VALUES, NOT ONLY AS CLASSES, because a filter cannot always be a
+ * class: an SVG group takes one, a pseudo-element takes one, and a rule that
+ * already sets `filter` for another reason has to spell this one out.
+ *
+ * Every hand-retyped copy of these three lines was a token that had quietly
+ * stopped tracking the system -- .pad.on had the led glow inline, and
+ * .readout.editing had the focus ring inline at a different alpha. The JUCE
+ * editor this kit replaced had a ctest that failed if a colour literal
+ * appeared outside its token header, Uv.h; `ctest -R ui_tokens` is that check,
+ * restored.
+ */
+:root {
+  --glow-led: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55))
+              drop-shadow(0 0 2px rgba(239, 227, 255, 0.55));
+  /*
+   * THE ARC GLOW: `0 0 3px uv-deep`, three pixels of falloff and no more.
+   *
+   * For a near-white stroke that needs to read as violet without a halo wide
+   * enough to bloom -- the knob's value arc, the scope's gated trace. A
+   * 10px led halo on a full-width waveform is mud.
+   */
+  --glow-arc: drop-shadow(0 0 3px rgba(162, 89, 255, 0.45));
+  --glow-focus: 0 0 0 1px var(--uv), 0 0 8px var(--uv-glow);
+}
+.glow-led { filter: var(--glow-led); }
+.glow-arc { filter: var(--glow-arc); }
+.glow-focus { box-shadow: var(--glow-focus); }
+
+/*
+ * KEYBOARD FOCUS, which had no rule at all.
+ *
+ * .glow-focus was defined here and used nowhere, while the JUCE editor this
+ * kit replaced called glowFocus() from five places -- slider, readout, button,
+ * switch and combo box. So the web port was simply not focusable-looking: tab through it
+ * and nothing moved.
+ *
+ * :focus-visible rather than :focus, so a click does not leave a ring behind
+ * it; and `outline: none` only because the ring below replaces it.
+ */
+/*
+ * THE UA RING COMES OFF FIRST, AND ON :focus RATHER THAN :focus-visible.
+ *
+ * Clearing it only under :focus-visible was not enough: a MOUSE click matches
+ * :focus and NOT :focus-visible, so a clicked knob fell through to the
+ * browser's own ring -- a blue box, drawn over a design with no blue in it.
+ * It only appeared once the knob became focusable, which is what gave the
+ * focus glow somewhere to land.
+ *
+ * So: no ring on :focus, the system's glow on :focus-visible. A click shows
+ * nothing, the keyboard shows the halo. The tap highlight is the same story on
+ * a touch device.
+ */
+.knob:focus,
+.switch-row:focus,
+.btn:focus,
+.checklist-face:focus,
+.tab:focus,
+.pad:focus,
+.ring:focus,
+.handle:focus,
+.select select:focus {
+  outline: none;
+}
+.knob, .switch-row, .btn, .tab, .pad, .ring, .handle {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.knob:focus-visible,
+.switch-row:focus-visible,
+.btn:focus-visible,
+.checklist-face:focus-visible,
+.tab:focus-visible,
+.pad:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-focus);
+}
+/* SVG takes a filter, not a box-shadow: the ring and a shaper handle glow the
+ * way the knob does. */
+.ring:focus-visible,
+.handle:focus-visible { filter: var(--glow-arc); }
+/*
+ * THE SELECT WEARS ITS RING ON THE HOUSING, NOT ON THE CONTROL.
+ *
+ * A Select is a styled div with a real, invisible <select> stretched over it:
+ * that inner element is what the browser focuses, and it has no border of its
+ * own to ring. `:has()` puts the ring on the housing while still keying it to
+ * the thing actually focused.
+ *
+ * NOT `.select.open`, which was the first attempt. `open` is set from the inner
+ * select's onFocus, so it is true after a MOUSE click as well -- and the system
+ * reserves this glow for keyboard focus. The uv border below is the open-state
+ * mark and stays exactly as it was.
+ */
+.select:has(select:focus-visible) { box-shadow: var(--glow-focus); }
+
+/* An SVG takes a filter, not a box-shadow, so the knob's ring is a shadow on
+ * the disc rather than on a box that is 48px of mostly nothing. */
+.knob:focus-visible { box-shadow: none; filter: var(--glow-arc); }
+
+/*
+ * THE SIX TEXT STYLES. One family, JetBrains Mono. Monospace by construction
+ * means tabular digits, so a readout does not jitter while a knob turns.
+ *
+ * Three of the six are tracked, and it is doing real work: 11px uppercase
+ * mono at .1em is legible as a label, and the same text untracked reads as a
+ * word someone forgot to lowercase.
+ */
+.t-readout { font-size: 28px; font-weight: 500; letter-spacing: 0; }
+.t-title   { font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+.t-label   { font-size: 11px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; }
+.t-value   { font-size: 13px; font-weight: 400; letter-spacing: 0; }
+.t-button  { font-size: 12px; font-weight: 500; letter-spacing: 0.04em; }
+.t-hint    { font-size: 10px; font-weight: 400; letter-spacing: 0.02em; }
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg-000);
+  color: var(--ink);
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+/*
+ * THE GROUND: DOT PAPER UNDER NOISE, both from the system, and both exactly the
+ * design's `.ph-window` (design/scheme/project/components/bundle.css).
+ *
+ * Dots: --bg-dot, 1px with a 0.2px soft edge, on a space-3 pitch, offset half a
+ * pitch -- which puts them on the multiples of 12px, where the animated ground's
+ * canvas draws its own.
+ *
+ * Noise: UNIFORM WHITE NOISE, every pixel an independent draw at 0-10 % (mean
+ * 5 %), tinted --uv-deep. The design is explicit that it is not fractal, and
+ * that rules out SVG feTurbulence, which only makes fractal noise -- this used to
+ * be one. So the tile is the design's own 96px PNG, byte for byte (the ui-kit
+ * test compares them), used as a MASK over the token: the pixels come from the
+ * design, and the colour still comes from --uv-deep rather than from the PNG.
+ *
+ * A pseudo-element because a mask applies to a whole box, not to one background
+ * layer. `isolation: isolate` makes body a stacking context, and z-index -1 then
+ * paints the noise after body's own background (the dots) and before anything
+ * body contains -- the order the design's two layers have. Without the
+ * isolation the -1 lands in the root's context, BEHIND body's opaque
+ * background, and the grain silently disappears.
+ *
+ * This is the FALLBACK. The animated ground's canvas paints the same design over
+ * it; the two agree on dots, colours and grain density but not on individual
+ * grain pixels, because the canvas draws its own tile with Math.random exactly
+ * as the design's reference implementation does.
+ */
+body {
+  isolation: isolate;
+  background-image: radial-gradient(circle, var(--bg-dot) 1px, transparent 1.2px);
+  background-size: var(--s3) var(--s3);
+  background-position: calc(var(--s3) / 2) calc(var(--s3) / 2);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--uv-deep);
+  -webkit-mask-image: url("data:image/png;base64,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");
+  mask-image: url("data:image/png;base64,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");
+  -webkit-mask-size: 96px 96px;
+  mask-size: 96px 96px;
+}

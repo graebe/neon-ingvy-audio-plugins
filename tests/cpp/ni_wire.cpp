@@ -2,11 +2,12 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * ni::wire and ni::Scope: what every shell does to a buffer or a message on its
- * way between host, engine and editor -- the places being wrong is SILENT.
+ * ni::wire and ni::Scope: what every processor does to a block, a clock or a
+ * number on its way between host and engine -- the places being wrong is
+ * SILENT.
  *
- * A dropped edit looks like not clicking, a wrong byte like a plausible
- * waveform, a comma for a point like a zero; none of them errors.
+ * A wrong byte looks like a plausible waveform, a comma for a point like a
+ * zero, a stalled clock like a pause; none of them errors.
  */
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
@@ -22,41 +23,6 @@
 #include <vector>
 
 using namespace ni::wire;
-
-/* --------------------------------------------------------------- the split */
-
-TEST_CASE("a pair splits at the first colon, and keeps the second")
-{
-  std::string a, b;
-  REQUIRE(split_pair("7:2", a, b));
-  CHECK(a == "7");
-  CHECK(b == "2");
-  /* A typed readout may hold another colon; splitting at the last would put
-   * part of the text in the index. */
-  REQUIRE(split_pair("13:-24.0 dB : loud", a, b));
-  CHECK(a == "13");
-  CHECK(b == "-24.0 dB : loud");
-}
-
-TEST_CASE("a payload with no colon is dropped, and touches neither half")
-{
-  std::string a = "keep", b = "these";
-  CHECK_FALSE(split_pair("12", a, b));
-  CHECK_FALSE(split_pair("", a, b));
-  CHECK(a == "keep");
-  CHECK(b == "these");
-}
-
-TEST_CASE("an empty half is still a split")
-{
-  std::string a, b;
-  REQUIRE(split_pair("5:", a, b));
-  CHECK(a == "5");
-  CHECK(b.empty());
-  REQUIRE(split_pair(":5", a, b));
-  CHECK(a.empty());
-  CHECK(b == "5");
-}
 
 /* ---------------------------------------------------------- the quantisers */
 
@@ -109,27 +75,6 @@ TEST_CASE("both quantisers are monotone")
     lastB = b;
     lastU = u;
   }
-}
-
-TEST_CASE("framed_size accounts for base64's extra third")
-{
-  CHECK(framed_size(0) == 32);
-  CHECK(framed_size(3) == 36);
-  CHECK(framed_size(3000) == 4032);
-}
-
-/* ------------------------------------------------------------- the height */
-
-TEST_CASE("an editor height is honoured only when a real editor could want it")
-{
-  CHECK(clamp_editor_height(700) == 700);
-  CHECK(clamp_editor_height(101) == 101);
-  CHECK(clamp_editor_height(3999) == 3999);
-  CHECK(clamp_editor_height(100) == 0);
-  CHECK(clamp_editor_height(4000) == 0);
-  CHECK(clamp_editor_height(0) == 0);
-  CHECK(clamp_editor_height(-700) == 0);
-  CHECK(clamp_editor_height(40000) == 0);
 }
 
 /* ---------------------------------------------------------- the transport */
@@ -192,37 +137,6 @@ TEST_CASE("a long block is processed in chunks of what was reserved")
   got.clear();
   for_each_chunk(100, 0, [&](int off, int n) { got.emplace_back(off, n); });
   CHECK(got.empty());
-}
-
-TEST_CASE("float and back is the block, sample for sample")
-{
-  const double in[3] = {0.25, -1.0, 0.125};
-  float f[3];
-  double out[3];
-  to_float(in, f, 3);
-  from_float(f, out, 3);
-  CHECK(out[0] == 0.25);
-  CHECK(out[1] == -1.0);
-  CHECK(out[2] == 0.125);
-}
-
-TEST_CASE("the passthrough is bit for bit, and a mono input feeds both sides")
-{
-  double l[4] = {1, -0.0, 3e-310, 4}, r[4] = {5, 6, 7, 8};
-  double o0[4] = {}, o1[4] = {};
-  double* in[2] = {l, r};
-  double* out[2] = {o0, o1};
-  passthrough(in, 2, out, 2, 4);
-  CHECK(std::memcmp(o0, l, sizeof l) == 0);
-  CHECK(std::memcmp(o1, r, sizeof r) == 0);
-  double m0[4] = {}, m1[4] = {};
-  double* mono[2] = {m0, m1};
-  passthrough(in, 1, mono, 2, 4);
-  CHECK(std::memcmp(m1, l, sizeof l) == 0);
-  /* In place is left alone. */
-  double* same[2] = {l, r};
-  passthrough(in, 2, same, 2, 4);
-  CHECK(l[3] == 4);
 }
 
 /* ------------------------------------------------------------- the numbers */

@@ -48,15 +48,12 @@ const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins';
     <table>
       <tbody>
         <tr><td>this repository</td><td><strong>GPL-3.0-or-later</strong>, © 2026 Torben Gräber — the engines, the shells, the editors and the modules</td></tr>
-        <tr><td><a href="https://github.com/iPlug2/iPlug2">iPlug2</a></td><td><strong>zlib</strong>, with the parts of WDL it compiles in (zlib); its IGraphics and standalone-app libraries are linked into nothing that ships</td></tr>
-        <tr><td>VST3 SDK</td><td><strong>MIT</strong>, © 2026 Steinberg Media Technologies GmbH</td></tr>
-        <tr><td>CLAP, clap-helpers</td><td><strong>MIT</strong>, © 2021 Alexandre Bique</td></tr>
-        <tr><td>JSON for Modern C++</td><td><strong>MIT</strong>, © Niels Lohmann, compiled in by iPlug2's WebView editor; its Hedley header is <strong>CC0-1.0</strong></td></tr>
+        <tr><td><a href="https://juce.com">JUCE</a> 9</td><td><strong>AGPL-3.0</strong>, © Raw Material Software Limited — the shell every plugin is built on; the AGPLv3 text travels in every bundle as <code>AGPL-3.0.txt</code></td></tr>
+        <tr><td>what JUCE compiles in</td><td>zlib (<strong>Zlib</strong>), libpng (<strong>libpng-2.0</strong>), the IJG JPEG library (<strong>IJG</strong>), HarfBuzz (<strong>MIT-Modern-Variant</strong>), SheenBidi (<strong>Apache-2.0</strong>, its text travels as <code>Apache-2.0.txt</code>), LunaSVG and PlutoVG (<strong>MIT</strong>)</td></tr>
+        <tr><td>VST3 SDK, as JUCE bundles it</td><td><strong>MIT</strong>, © 2026 Steinberg Media Technologies GmbH</td></tr>
         <tr><td>the Rust standard library</td><td><strong>MIT OR Apache-2.0</strong>, in every plugin and every module, distributed here under MIT</td></tr>
         <tr><td>Rust crates from crates.io</td><td>each under a licence on the allowlist below; THIRD_PARTY_LICENSES.md lists every one that ships, with its notice</td></tr>
-        <tr><td>solid-js</td><td><strong>MIT</strong>, bundled into every editor</td></tr>
-        <tr><td>vite's module-preload polyfill</td><td><strong>MIT</strong>, a few hundred bytes at the top of every editor's script; the rest of vite is a build tool and ships in nothing</td></tr>
-        <tr><td>JetBrains Mono</td><td><strong>SIL OFL 1.1</strong> — this site serves <a href={url('fonts/OFL.txt')}>OFL.txt</a> with the font, and each plugin bundle carries it in <code>Contents/Resources/web/fonts/</code></td></tr>
+        <tr><td>JetBrains Mono</td><td><strong>SIL OFL 1.1</strong> — this site serves <a href={url('fonts/OFL.txt')}>OFL.txt</a> with the font, and each plugin bundle carries it in <code>Contents/Resources/OFL.txt</code></td></tr>
         <tr><td>NI Side-Chain's MIDI trigger</td><td>ported from <a href="https://github.com/charlesvestal/schwung-ducker">schwung-ducker</a>, <strong>MIT</strong>, © 2026 Charles Vestal — a port is a derivative work, so its notice stays beside ours</td></tr>
       </tbody>
     </table>
@@ -64,8 +61,9 @@ const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins';
     <h2>How they combine</h2>
 
     <p>
-      Every licence above is one GPLv3 can take in: MIT, zlib, Apache-2.0 and
-      the OFL ask for their notices to travel, and they do. A Rust crate is
+      Every licence above is one GPLv3 can take in: MIT, zlib, libpng-2.0,
+      IJG, Apache-2.0 and the OFL ask for their notices to travel, and they
+      do. A Rust crate is
       linked only if its licence is on the allowlist — MIT, Apache-2.0,
       BSD-1-Clause, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, MPL-2.0,
       Unicode-3.0, CC0-1.0, Unlicense or GPL-3.0. Nothing else is, GPL-2.0-only included: it cannot
@@ -73,7 +71,7 @@ const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins';
     </p>
 
     <p>
-      <strong>JUCE 9</strong>, the shell that replaces iPlug2, is
+      <strong>JUCE 9</strong>, the shell every plugin is built on, is
       <strong>AGPLv3</strong>. GPLv3's section 13 allows a GPLv3 work to be
       combined with an AGPLv3 one and the result conveyed: our part stays
       under GPLv3, and AGPLv3's own section 13, on interaction through a

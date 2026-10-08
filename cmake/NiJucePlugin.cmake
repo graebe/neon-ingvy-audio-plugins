@@ -33,8 +33,8 @@
 #   day apart), and the whole string is NI_VERSION_STRING for the editor.
 #
 #   THE NOTICES TRAVEL INSIDE THE BUNDLE: LICENSE and THIRD_PARTY_LICENSES.md
-#   (NI_BUNDLE_NOTICES, the iPlug2 bundles' list), the AGPLv3 and Apache 2.0
-#   texts of JUCE and what it compiles in (licenses/), the kit's font licence
+#   (NI_BUNDLE_NOTICES), the AGPLv3 and Apache 2.0 texts of JUCE and what it
+#   compiles in (licenses/), the kit's font licence
 #   (OFL.txt) for a product with an EDITOR -- the kit embeds the font -- and
 #   the NOTICES given.
 #
@@ -58,12 +58,21 @@
 #   ones recorded there, so a product taking over an iPlug2 bundle cannot be
 #   given a class that differs from it by a typo or a byte order.
 #
-#   OUT AND DEPLOYED as the iPlug2 bundles are: copied to build/out, and to
-#   ~/Library/Audio/Plug-Ins/VST3 when IPLUG_DEPLOY_PLUGINS is on (the root
-#   build's switch: -DIPLUG_DEPLOY_PLUGINS=OFF keeps them in build/out).
+#   OUT, AND DEPLOYED ONLY WHEN ASKED: copied to build/out, which the tests
+#   and the validators load by path, and to the system's VST3 folder
+#   (~/Library/Audio/Plug-Ins/VST3 on macOS) only with -DNI_DEPLOY_PLUGINS=ON.
+#   Off by default, so no build replaces what a host has installed.
 #
 # The C++ shell the processor derives from is plugins/_shared/juce
 # (ni::Processor, ni::PluginEditor): every product's sources get it.
+
+# The GPL asks that every copy come with the licence, the permissive licences
+# of what is compiled in ask the same of their notices, and a bundle is copied
+# on its own: so these two travel inside every one, and
+# scripts/check-licenses.mjs --bundles checks they arrived.
+set(NI_BUNDLE_NOTICES
+    ${CMAKE_SOURCE_DIR}/LICENSE
+    ${CMAKE_SOURCE_DIR}/THIRD_PARTY_LICENSES.md)
 
 set(NI_JUCE_SHELL_DIR ${CMAKE_SOURCE_DIR}/plugins/_shared/juce)
 file(GLOB NI_JUCE_SHELL_SOURCES CONFIGURE_DEPENDS ${NI_JUCE_SHELL_DIR}/*.cpp)
@@ -89,9 +98,7 @@ endif()
 # reach the Release configuration alone either way.
 option(NI_LTO "Link the plugins with link-time optimisation (Release)" ON)
 
-if (NOT DEFINED IPLUG_DEPLOY_PLUGINS)
-    option(IPLUG_DEPLOY_PLUGINS "Deploy built plugins to system directories" ON)
-endif()
+option(NI_DEPLOY_PLUGINS "Also copy each built bundle into the system's VST3 folder" OFF)
 if (APPLE)
     set(NI_JUCE_DEPLOY_VST3 "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
 elseif (WIN32)
@@ -312,7 +319,7 @@ function(ni_add_juce_plugin product)
     list(APPEND steps
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${NI_JUCE_OUT}/${ARG_TARGET}.vst3"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${bundle}" "${NI_JUCE_OUT}/${ARG_TARGET}.vst3")
-    if (IPLUG_DEPLOY_PLUGINS)
+    if (NI_DEPLOY_PLUGINS)
         list(APPEND steps
             COMMAND ${CMAKE_COMMAND} -E rm -rf "${NI_JUCE_DEPLOY_VST3}/${ARG_TARGET}.vst3"
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${bundle}" "${NI_JUCE_DEPLOY_VST3}/${ARG_TARGET}.vst3")

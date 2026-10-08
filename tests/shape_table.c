@@ -6,20 +6,18 @@
  *
  * WHY A TABLE AND NOT AN EYE.
  *
- * The editor draws the envelope, so it needs shape() in JavaScript, and that
- * is a SECOND implementation of something the DSP already owns. The copy in
- * ui/src/lib/curves.js had the S-curve's first half un-mirrored for as long as
- * it existed: every picture of an S-curve in the plugin left the floor
- * vertically, and nothing caught it because a wrong curve is still a curve.
+ * The web editor once drew the envelope with a second shape() of its own, in
+ * JavaScript, and that copy had the S-curve's first half un-mirrored for as
+ * long as it existed: every picture of an S-curve left the floor vertically,
+ * and nothing caught it because a wrong curve is still a curve. The native
+ * editor draws what the engine renders, so the engine is the one copy left --
+ * and this table is what keeps a change to it a decision:
  *
- * So the two are pinned to one table, and the table is the engine's:
- *
- *   tg_shape_table              writes it   (regenerate the fixture)
+ *   tg_shape_table              writes it   (regenerate the fixture,
+ *                               engines/trance-gate/tests/fixtures)
  *   tg_shape_table --verify F   the ENGINE still agrees with F
- *   node --test curves.test.mjs the UI      still agrees with F
  *
- * Either side drifting now turns a test red. tg_test_shape and
- * tg_test_shape_inv exist in the C ABI for exactly this.
+ * tg_test_shape and tg_test_shape_inv exist in the C ABI for exactly this.
  *
  * The sweep is deliberately fine and deliberately includes both ends and the
  * S-curve's join at t = 0.5, which is where a mirrored half and an
@@ -34,8 +32,9 @@
 #define STEPS 1000
 #define NCURVES 3
 
-/* Both use f64 exp/log, but not necessarily the SAME libm -- Rust's and
- * JavaScript's may land an ulp apart, and on a value near 1 that is ~1e-16.
+/* The table was written with one libm and is verified with whichever this
+ * platform has; two may land an ulp apart, and on a value near 1 that is
+ * ~1e-16.
  * Tight enough that a wrong formula cannot hide, loose enough that a
  * different libm is not a failure. */
 #define TOL 1e-12
@@ -95,8 +94,7 @@ int main(int argc, char **argv)
     {
         printf("  ENGINE CURVES CHANGED: %d of %d samples differ.\n",
                bad, NCURVES * (STEPS + 1));
-        printf("  If that was intended, regenerate the fixture AND check\n");
-        printf("  ui/src/lib/curves.js still matches it.\n");
+        printf("  If that was intended, regenerate the fixture.\n");
         return 1;
     }
     printf("  3 curves x %d samples, forward and inverse, match the table    ok\n",

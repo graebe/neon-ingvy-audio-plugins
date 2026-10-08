@@ -1,21 +1,14 @@
 {
   "name": "neon-ingvy-audio-plugins",
   "private": true,
-  "description": "Audio plugins and a Schwung module around shared Rust engines and one Solid UI kit.",
+  "description": "Audio plugins and Schwung modules around shared Rust engines; this workspace is the documentation site.",
   "license": "GPL-3.0-or-later",
   "workspaces": [
-    "ui-kit",
-    "plugins/*/ui",
     "site"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "test": "node --conditions=browser --test ui-kit/test/*.test.mjs plugins/*/ui/test/*.test.mjs",
+    "build": "npm run build --workspace site",
     "test:quick": "scripts/test.sh quick",
-    "test:full": "scripts/test.sh full",
-    "test:e2e": "playwright test --config tests/e2e/playwright.config.mjs"
-  },
-  "devDependencies": {
-    "@playwright/test": "1.63.0"
+    "test:full": "scripts/test.sh full"
   }
 }

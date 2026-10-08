@@ -186,11 +186,11 @@ fn every_refusal_has_words() {
 }
 
 #[test]
-fn the_editor_harness_fixtures_are_files_this_engine_reads() {
-    /* The mock host answers IMPORT with these; they must be real files, or the
-     * e2e suite is testing a format nobody writes. */
-    let slot = include_str!("../../../../../../plugins/trance-gate/ui/test/harness/fixtures/slot.nitgslot");
-    let bank = include_str!("../../../../../../plugins/trance-gate/ui/test/harness/fixtures/bank.nitgbank");
+fn the_harness_files_read_and_write_back_byte_for_byte() {
+    /* A slot and a bank as this engine writes them; they must read back to
+     * the same bytes, or an export and an import disagree about the format. */
+    let slot = include_str!("../../tests/fixtures/slot/harness.nitgslot");
+    let bank = include_str!("../../tests/fixtures/slot/harness.nitgbank");
     let mut p = Instance::new(SR);
     assert_eq!(p.import(slot), Ok(Kind::Slot));
     assert_eq!(export(&p, Kind::Slot), slot, "and byte for byte what this build writes");
