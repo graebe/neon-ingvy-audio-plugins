@@ -40,7 +40,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      # No submodules. The site needs no iPlug2, and pulling it would add
+      # No submodules. The site needs no JUCE, and pulling it would add
       # minutes and a large tree for a build that never looks at it.
       - uses: actions/checkout@v4
 

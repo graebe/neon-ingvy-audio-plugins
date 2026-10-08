@@ -100,7 +100,7 @@ fetch() {
     "$(pluginval_of "$dir")" --version
 
     rm -rf "$dir/vst3sdk" "$dir/vst3sdk-build"
-    git clone -q --depth 1 --branch "$VST3_SDK_TAG" https://github.com/steinbergmedia/vst3sdk "$dir/vst3sdk"
+    git -c advice.detachedHead=false clone -q --depth 1 --branch "$VST3_SDK_TAG" https://github.com/steinbergmedia/vst3sdk "$dir/vst3sdk"
     [ "$(git -C "$dir/vst3sdk" rev-parse HEAD)" = "$VST3_SDK_COMMIT" ] \
         || { echo "vst3sdk $VST3_SDK_TAG is not $VST3_SDK_COMMIT" >&2; exit 1; }
     git -C "$dir/vst3sdk" submodule update -q --init --depth 1 base cmake pluginterfaces public.sdk
