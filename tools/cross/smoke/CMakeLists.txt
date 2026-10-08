@@ -82,6 +82,20 @@ juce_add_plugin(NICrossSmoke
 
 target_sources(NICrossSmoke PRIVATE SmokePlugin.cpp)
 
+# SIGNED LAST, as every bundle here is (cmake/NiJucePlugin.cmake says why):
+# JUCE signs the bundle and then writes Contents/Resources/moduleinfo.json into
+# it, which breaks the seal, and Live's scanner rejects a bundle whose sealed
+# resources changed after signing while pluginval loads it happily. A
+# POST_BUILD step runs after JUCE's, which were added first, so this one signs
+# what is finally there; build-macos.sh checks it with codesign --strict.
+if (APPLE)
+    get_target_property(smoke_bundle NICrossSmoke_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
+    add_custom_command(TARGET NICrossSmoke_VST3 POST_BUILD
+        COMMAND codesign --force --sign - --timestamp=none "${smoke_bundle}"
+        COMMENT "NICrossSmoke.vst3: signed last"
+        VERBATIM)
+endif()
+
 target_compile_definitions(NICrossSmoke PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0

@@ -29,6 +29,7 @@ themselves join the kit with their move to JUCE.
 | Rust | `aarch64-` and `x86_64-apple-darwin`, joined with lipo | `x86_64-unknown-linux-gnu` | `x86_64-pc-windows-msvc`, static C runtime |
 | Artefact | universal `.vst3` | `.vst3` holding `x86_64-linux/*.so` | `.vst3` holding `x86_64-win/*.vst3` |
 | ctest | natively | in the container | under Wine |
+| Signature | ad hoc, signed last; `codesign --verify --deep --strict` on every bundle | none (Linux has no bundle signing) | none locally |
 | pluginval 1.0.4 | strictness 10, editor tests included | strictness 10, editor tests under Xvfb | `pluginval.exe` under Wine and Xvfb: a smoke test |
 | Build directory | `<project>/build-macos-universal` | `<project>/build-linux-amd64` | `<project>/build-windows-x64` |
 | Status | built and validated | built and validated | not built yet: waits for the owner's licence acceptance ([below](#the-microsoft-licence)) |
@@ -116,6 +117,16 @@ The snapshot service is HTTPS-only, and the base image has no root
 certificates to reach it with, so a throw-away stage takes `ca-certificates`
 from the live archive; its bundle is mounted for the one step that fetches the
 snapshot's own, and nothing of it lands in the image.
+
+### macOS: signed last
+
+JUCE signs a bundle ad hoc and then writes `Contents/Resources/moduleinfo.json`
+into it, which breaks the seal. pluginval loads such a bundle; Live's scanner
+rejects it ("a sealed resource is missing or invalid"). So a project signs as
+the last of its bundle's post-build steps — `ni_add_juce_plugin` does it for
+every product, and the smoke plugin does the same — and `build-macos.sh` holds
+every bundle to `codesign --verify --deep --strict` before pluginval runs, so a
+project that forgets fails here rather than in a host.
 
 ### Linux
 

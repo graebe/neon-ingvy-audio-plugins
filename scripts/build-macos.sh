@@ -3,8 +3,9 @@
 # Copyright (C) 2026 Torben Gräber
 #
 # Build a CMake plugin project natively on macOS as a universal binary (arm64
-# and x86_64), run its ctest, and validate every VST3 it built with pluginval
-# at strictness 10, editor tests included.
+# and x86_64), run its ctest, check every VST3 it built is universal and
+# validly signed (codesign --verify --deep --strict, as Live's scanner checks),
+# and validate each with pluginval at strictness 10, editor tests included.
 #
 #   scripts/build-macos.sh [--juce <dir>] <cmake-project-dir>
 #
@@ -56,10 +57,28 @@ check_universal() {
     done
 }
 
+# Every bundle's signature, checked as Live's scanner checks it: a bundle
+# written into after it was signed (JUCE writes moduleinfo.json after its own
+# ad-hoc signature) loads in pluginval and is rejected by Live ("a sealed
+# resource is missing or invalid"). The project must sign last.
+check_signatures() {
+    local bundle failed=0
+    ni_bundles "$BUILD" || return 1
+    for bundle in "${NI_BUNDLES[@]}"; do
+        if codesign --verify --deep --strict "$bundle"; then
+            echo "$(basename "$bundle"): signature valid"
+        else
+            failed=1
+        fi
+    done
+    return "$failed"
+}
+
 start=$SECONDS
 ni_result_begin "$BUILD"
 if ni_build_and_test "$BUILD" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"; then
     ni_stage universal check_universal || true
+    ni_stage codesign check_signatures || true
     if ni_stage pluginval-fetch fetch_pluginval; then
         ni_validate "$BUILD" ", editor tests included" "$PLUGINVAL" || true
     fi
