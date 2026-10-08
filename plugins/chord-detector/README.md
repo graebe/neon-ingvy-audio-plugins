@@ -112,8 +112,8 @@ Live is not offered them for automation.
 The engine is Rust (`engines/chord-detector`): which notes sound, what they are
 called and the history's clock. The names come from
 [music-core](../../engines/shared/crates/music-core/README.md), the repository's
-music theory library. The plugin around it is JUCE 9, its window built from the
-native Ultraviolet kit. Nothing on the audio thread allocates, and a panic
+music theory library. The plugin around it is a JUCE 9 VST3 for macOS, Windows
+and Linux, its window built from the native Ultraviolet kit. Nothing on the audio thread allocates, and a panic
 (All Notes Off) clears everything at once.
 
 See [NI Chord-Detector in Ableton Live](docs/live.md) for setting it up.

@@ -1,8 +1,9 @@
 # neon-ingvy-audio-plugins
 
-Audio plugins and Schwung modules, built from shared Rust engines, a JUCE
-shell and one native UI kit. A monorepo: everything that ships from here is in
-here.
+Audio plugins for Ableton Live and Schwung modules for the Ableton Move, by
+Neon Ingvy, built from shared Rust engines, a JUCE shell and one native UI kit.
+Every plugin is a VST3 for macOS, Windows and Linux. A monorepo: everything that
+ships from here is in here. Free software under the GPL-3.0-or-later.
 
 | product | ships as | engine |
 |---|---|---|
@@ -13,6 +14,14 @@ here.
 | [NI Chord-Detector](plugins/chord-detector/README.md) | VST3 | `engines/chord-detector` |
 
 ## How it is put together
+
+```
+Rust core        the DSP, on the shared ni-dsp and established crates
+  ├── C ABI      extern "C" with cbindgen headers, for the plugin
+  └── Schwung    the audio_fx vtable (ni-schwung), for the Move
+C++ shell        JUCE 9: the VST3 and the host plumbing (ni::Processor)
+Native editor    JUCE Components on the Ultraviolet 1.1.0 kit
+```
 
 **One core per product, and the wrappers around it are the only thing that
 differs.** The Trance Gate's DSP is a single Rust crate; `tg-capi` wraps it in
@@ -35,7 +44,7 @@ modules/<product>/           a Schwung module: module.json, module.env, its UI
 modules/_shared/             the one Dockerfile, package.sh, test.sh and install.sh for all of them
 site/                        the documentation site, from this repo's own Markdown
 docs/tech/                   how it is built, in prose
-tests/fixtures/iplug2/       what the iPlug2 builds saved, which every JUCE build must open
+tests/fixtures/iplug2/       what the earlier VST3 builds saved, which every build must open
 tools/docker/, tools/cross/  the cross-build kit: Linux and Windows build images, the JUCE smoke plugin
 design/scheme/               the Ultraviolet design system, vendored
 design/designs/              the "NI Plugin Layouts" canvas, mirrored
@@ -44,14 +53,43 @@ versions.json                one version per product
 
 ## Build
 
+**Local first.** Everything is built and tested on the developer's machine
+before it is pushed; GitHub Actions only publish releases (and the site), and
+the CI workflow runs by hand only. Three CMake presets
+([CMakePresets.json](CMakePresets.json)) are the builds:
+
+| preset | directory | what |
+|---|---|---|
+| `dev` | `build-dev/` | this machine's architecture, no LTO: the developer loop |
+| `release` | `build/` | Release with LTO, universal on macOS: what ships |
+| `coverage` | `build-coverage/` | instrumented, for `scripts/coverage.sh`; never shipped |
+
+**macOS** (Xcode command-line tools, CMake 3.22+, Ninja, Rust with both Apple
+targets):
+
 ```sh
-git submodule update --init --recursive   # JUCE. The engines are subtrees.
+git submodule update --init --recursive   # JUCE 9. The engines are subtrees.
 cmake --preset release                    # universal, LTO: what ships (build/)
-cmake --build build                       # the VST3s, into build/out
+cmake --build build                       # the five VST3s, into build/out
 scripts/test.sh quick                     # the developer loop (build-dev/): seconds, no bundles
 scripts/test.sh full                      # everything: bundles, hosts, coverage, validators
-npm ci                                    # only for the documentation site (site/)
 ```
+
+**Linux and Windows** are built from the same Mac in Docker by the cross-build
+kit ([docs/tech/cross-build.md](docs/tech/cross-build.md)), each running its
+tests and pluginval on every bundle:
+
+```sh
+scripts/build-linux.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'
+XWIN_ACCEPT_LICENSE=yes scripts/build-windows.sh . -- -L quick
+scripts/build-all.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'   # all three, and a summary
+```
+
+On a Linux or Windows machine the presets build natively too: `cmake --preset
+release` and `cmake --build build` (on Windows from a Visual Studio developer
+prompt). The Windows cross-build needs the owner's acceptance of Microsoft's
+licence for its C runtime and SDK (`XWIN_ACCEPT_LICENSE=yes`); every release
+builds all three systems natively on publishing.
 
 The Move modules are further targets, each a Linux cross-build in Docker:
 
@@ -63,21 +101,20 @@ cmake --build build --target schwung-side-chain   # -> dist/ni-side-chain-module
 Artefacts land in `build/out/`, where every test and validator loads them by
 path; `-DNI_DEPLOY_PLUGINS=ON` also copies them into the system's VST3 folder.
 Each bundle carries `LICENSE`, `THIRD_PARTY_LICENSES.md` and the licence texts
-of what it compiles in, in `Contents/Resources/`, and is signed as the last
-step of its build.
+of what it compiles in, in `Contents/Resources/`, and on macOS is signed as the
+last step of its build. `npm ci` is needed only for the documentation site
+(`site/`).
 
 **Needs cargo.** If it is installed and not found, the error names where it
 looked; `cmake/RustToolchain.cmake` searches every layout rustup.rs, Homebrew
 and a bare toolchain use. Homebrew's keeps its shims in
 `/opt/homebrew/opt/rustup/bin`, which is not `~/.cargo/bin`.
 
-**Linux is built locally too**, in Docker: `scripts/build-all.sh . -- -L full
--LE 'move|site' -E '^cargo_deny$'` builds the five VST3s for macOS (universal)
-and Linux (amd64), runs their tests and validates every bundle with pluginval
-at strictness 10 ([docs/tech/cross-build.md](docs/tech/cross-build.md)). The
-Windows cross-build waits for the owner's acceptance of Microsoft's licence;
-until then Windows is built natively on GitHub's runners at publishing time,
-as every release builds all three.
+**Releasing** is a tag, `<product>-v<version>` (one product per tag):
+`release-plugins.yml` builds, tests and validates that product's VST3 on macOS,
+Windows and Linux and attaches one zip per system, and for a product with a
+Move module `release-schwung.yml` publishes the module from the same commit
+([docs/tech/ci-live.md](docs/tech/ci-live.md)).
 
 ## What the tests are for
 
@@ -90,7 +127,7 @@ built VST3s hosted as a DAW hosts them, the snapshot goldens, the bus across
 processes and architectures, coverage with its floor and the validators. Every
 test carries a ctest label saying which tier it is in (`cmake/NiTest.cmake`);
 every stage is timed into a log outside the checkout
-(`scripts/build-timings.py` summarises it). CI runs both on demand.
+(`scripts/build-timings.py` summarises it). CI runs both, by hand only.
 
 Most of them are not smoke tests, and the repository leans on them hard:
 
@@ -104,13 +141,13 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `licenses`, `licenses_bundles` | everything that ships has a row in `THIRD_PARTY_LICENSES.md`, nothing listed has stopped shipping, and every built bundle carries the notices. The Rust crates' rows are generated by cargo-about and held to what `cargo metadata` says ships |
 | `cargo_deny` | every crate in the Rust graph is under a licence on the allowlist in `deny.toml` and comes from crates.io |
 | `spdx` | every source file this repository owns opens with its licence and its copyright |
-| `tg_host` | NI Trance Gate's built VST3 as a DAW hosts it: every iPlug2 set reopened and saved back byte for byte, the golden render, the host's Bypass, and the window under a running transport |
-| `sc_processor`, `sc_host` | NI Side-Chain on the real engine: the iPlug2 sets reopened and saved back byte for byte, a note ducking from its own sample, CC 120 and CC 123 opening a held duck, a key ducking the track, the shape drawn against the duck played — in the processor, and in the built VST3 as a DAW hosts it, the engine's golden render bit for bit |
+| `tg_host` | NI Trance Gate's built VST3 as a DAW hosts it: every set an earlier build saved reopened and saved back byte for byte, the golden render, the host's Bypass, and the window under a running transport |
+| `sc_processor`, `sc_host` | NI Side-Chain on the real engine: the sets earlier builds saved reopened and saved back byte for byte, a note ducking from its own sample, CC 120 and CC 123 opening a held duck, a key ducking the track, the shape drawn against the duck played — in the processor, and in the built VST3 as a DAW hosts it, the engine's golden render bit for bit |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
-| `sg_processor`, `sg_host` | NI Spectrogram on the real analyzer: the iPlug2 sets reopened and saved back byte for byte, a tone drawn at its frequency straight into the editor's buffers, a Listen-In's bus from another process listed by its name and drawn, the audio through bit for bit — in the processor, and in the built VST3 as a DAW hosts it |
+| `sg_processor`, `sg_host` | NI Spectrogram on the real analyzer: the sets earlier builds saved reopened and saved back byte for byte, a tone drawn at its frequency straight into the editor's buffers, a Listen-In's bus from another process listed by its name and drawn, the audio through bit for bit — in the processor, and in the built VST3 as a DAW hosts it |
 | `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** `abus_ipc_rosetta` and `abus_ipc_rosetta_reader` do it between the x86_64 and arm64 slices, as Live under Rosetta and a native host would |
 | `abus_core` | the ring's wrap and overrun, the claim protocol, and a writer running flat out against a slow reader with every delivered block checked for continuity — a spliced buffer looks exactly like audio |
-| `li_processor`, `li_host` | NI Listen-In on the real bus: the iPlug2 sets reopened and saved back byte for byte, a claim released before the next is made, a held bus refused out loud, the audio through bit for bit and on the bus as it came — in the processor, and in the built VST3 as a DAW hosts it |
+| `li_processor`, `li_host` | NI Listen-In on the real bus: the sets earlier builds saved reopened and saved back byte for byte, a claim released before the next is made, a held bus refused out loud, the audio through bit for bit and on the bus as it came — in the processor, and in the built VST3 as a DAW hosts it |
 | `ni_wire` | the pieces of plugin arithmetic where being wrong is silent — the scope quantiser, the message split, the editor height, the transport advance |
 | `tg_fade` | the fade's per-step level factors in both directions, pinned to the engine's own *measured* gain — DC in with no envelope, so the gain during a step IS that factor |
 
@@ -176,7 +213,7 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Trance Gate](plugins/trance-gate/README.md) | a tempo-locked step gate — [in Live](plugins/trance-gate/docs/live.md), [on the Move](plugins/trance-gate/docs/schwung.md) |
 | [NI Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
 | [NI Listen-In](plugins/listen-in/README.md) | a tap that publishes a track on a numbered bus — [in Live](plugins/listen-in/docs/live.md) |
-| [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input |
+| [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input — [in Live](plugins/side-chain/docs/live.md), [on the Move](plugins/side-chain/docs/schwung.md) |
 | [NI Chord-Detector](plugins/chord-detector/README.md) | names the note or chord a MIDI lane plays — [in Live](plugins/chord-detector/docs/live.md) |
 
 What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).

@@ -73,8 +73,8 @@ downbeat's. Measured in the field, at its peak a downbeat ring moves about 53 %
 of the window's dots two levels or more from rest, and a beat ring about 14 %:
 plainly there, plainly the lesser. 0.55 was the first candidate and moved 34 %,
 which at 120 BPM — where each ring is still swelling when the next one starts —
-read too close to the downbeat. `ui-kit/test/field.test.mjs` holds the field to
-this.
+read too close to the downbeat. `tests/ui/groundfield.cpp` holds the field
+linear in strength, at the design's beat strength.
 
 > **The design followed the plugins here.** Ultraviolet 1.0.0's Motion spec
 > drove the ground *by sound, not by time*: a 20–80 Hz onset detector on each
@@ -104,48 +104,41 @@ cannot override that.
 | | |
 |---|---|
 | `engines/ground` | the beat clock, in Rust, on the audio thread |
-| `plugins/_shared/ni/WebPlugin.cpp` | feeds it the host's transport once a block, and sends each ring to the editor |
-| `ui-kit/src/lib/field.js` | the wave field — a port of the design system's own reference implementation |
-| `ui-kit/src/components/Ground.jsx` | the canvas, its sizing and the panel measurement |
-| `ui-kit/src/lib/motion.js` | the Motion switch's remembered state |
-| `ui-kit/harness/beat.js` | a playing transport for the editors' review harnesses |
+| `plugins/_shared/juce/GroundClock.h` | feeds it the host's transport once a block, and hands its rings to the editor |
+| `plugins/_shared/ui/src/GroundField.h` | the wave field — a port of the design system's own reference implementation |
+| `plugins/_shared/ui/src/Ground.h` | the component: its timer, its sizing and the panels it reflects from |
+| `plugins/_shared/juce/MachineSettings.h` | the Motion switch's remembered state |
+| `plugins/_shared/ui/src/ReducedMotion.h` | the system's reduce-motion setting |
 | `design/scheme/project/README.md` | the design system's Motion section |
 
-The beat is found in Rust because a plugin editor is a WebView: it cannot see
-the host's transport, and its timers are neither sample-accurate nor running
-when the host renders offline. In every audio block `ni::WebPlugin` hands the
-clock the host's position, tempo, time signature and play state
-(`gnd_tick`); the clock counts the beats and downbeats that block crossed. The
-editor's side reads that count about fifty times a second and turns each new
-one into a ring. `engines/ground/crates/ground-capi/src/lib.rs`, which `ground.h`
-is generated from, spells out the whole contract, including why it is a count and not a flag, and
-`engines/ground/crates/ground-core/src/beat.rs` the rule, down to how a block
-tells a loop from rounding.
+The beat is found in Rust, on the audio thread, because only there is the
+host's transport exact: an editor's timers are neither sample-accurate nor
+running when the host renders offline. In every audio block the processor's
+`ni::GroundClock` hands the clock the host's position, tempo, time signature
+and play state (`gnd_tick`); the clock counts the beats and downbeats that block
+crossed. The editor's model takes that count on the message thread
+(`EditorModel::takeRings`) and the `Ground` turns each new one into a ring.
+`engines/ground/crates/ground-capi/src/lib.rs`, which `ground.h` is generated
+from, spells out the whole contract, including why it is a count and not a
+flag, and `engines/ground/crates/ground-core/src/beat.rs` the rule, down to how
+a block tells a loop from rounding.
 
-**The plugin is the field's clock — never animation frames, and it does not
-pause when the page says it is hidden.** In a real host WebKit treats a plugin
-editor as a hidden page for as long as it is open: `document.hidden` is true,
-the page gets about one animation frame in three seconds, and its own timers
-are throttled to a few hertz — while the plugin's messages arrive at once. A
-field clocked by animation frames, or one that paused while hidden, as this one
-once did, never moved in Live. So the editor tells the plugin when its field
-starts and stops moving (tag 123, `groundRun`), and in between the plugin sends
-an empty frame tick on every idle tick, about fifty a second (tag 114,
-`groundTick`). Each tick steps the simulation by the time that really passed
-and draws once. A page timer steps it only if the ticks stop coming, and in a
-host's hidden page that is slow by design. Work stops when the field rings out,
-and the plugin stops ringing it, and ticking it, when the window closes.
+**The field's clock is a timer — never a display frame.** A plugin window in a
+real host gets few or no display refreshes while it is open, and a field
+clocked by them never moved in Live. So the `Ground` runs its own timer at the
+design's frame rate, steps the simulation by the time that really passed, and
+stops once the field rings out; with the window closed, the plugin stops
+counting beats altogether.
 
 The physics is the damped 2D wave equation on a 6 px grid, one Ricker wavelet per
 ring, reflecting at every panel edge. The parameters — wave speed, damping,
-source strength, dot and grain response — all come from the design system and are
-checked against it by `node --test ui-kit/test/field.test.mjs`, which reads the
-reference implementation and diffs the numbers.
+source strength, dot and grain response — all come from the design system:
+`scripts/gen-tokens.mjs` reads them from its reference implementation into
+`UvTokens.h`, and `ui_tokens_native` checks them against it.
 
-To review it without a host, open any editor's harness
-(`plugins/<plugin>/ui/test/harness/index.html`, served over http from the
-repository root): it plays a transport at 120 BPM in 4/4. `?bpm=`, `?sig=7/8`
-and `?stopped` change that, and **T** starts and stops it.
+To review it without a host, open the kit's gallery
+(`plugins/_shared/ui/gallery`): its Ground page shows the ground at rest, after
+a downbeat and through a bar of 4/4 at 120 BPM.
 
 ## What moves, exactly
 

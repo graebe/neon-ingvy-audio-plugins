@@ -5,9 +5,8 @@ slug: native-ui
 ---
 
 The editors are native JUCE 9 Components, built to the published
-Ultraviolet 1.1.0 system (`design/scheme/project`), with the same look and
-behaviour as the web editors they replace. No WebView: nothing an editor does
-depends on a page's idea of whether it is visible.
+Ultraviolet 1.1.0 system (`design/scheme/project`). Nothing an editor does
+depends on a display refresh: every clock in it is a timer.
 
 ## Where things are
 
@@ -19,27 +18,26 @@ depends on a page's idea of whether it is visible.
 | `plugins/<product>/editor/` | one editor: `Model.h`, the editor, its parts (globbed) |
 | `tests/ui/` | the test programs, the snapshot harness, the fakes, `baselines/` |
 | `scripts/gen-tokens.mjs` | writes `UvTokens.h` and the grain tile from the design mirror |
-| `ui/CMakeLists.txt` | the native UI as a project of its own |
 
 ## Build and test
 
+The kit, every editor, the gallery and their tests are part of the root
+build, so the presets build them (see **Build & CI — Ableton Live**):
+
 ```sh
-cmake -S ui -B build-ui -G Ninja
-cmake --build build-ui
-ctest --test-dir build-ui -L quick    # unit tests and the token guard
-ctest --test-dir build-ui -L full     # and the snapshot goldens
+scripts/test.sh quick                 # unit tests and the token guard, build-dev/
+scripts/test.sh full --no-coverage    # and the snapshot goldens, build/
+cmake --build build-dev --target ni_ui_gallery   # the gallery app
 ```
 
-One build directory per person or agent building at the same time
-(`build-ui-<what>`); the sources are shared, a build tree never is. Every
-source list is a `CONFIGURE_DEPENDS` glob, so a new component, page, editor
-file or test is a new file and no CMake changes.
+Every source list is a `CONFIGURE_DEPENDS` glob, so a new component, page,
+editor file or test is a new file and no CMake changes.
 
 `ni_ui` and each `ni_editor_<product>` are interface libraries that carry
 their sources: a JUCE module is compiled once in each binary, with that
-binary's flags, and so is the kit. The plugin build will
-`add_subdirectory(plugins/_shared/ui)`, call `ni_ui_add_editor(<product>)` and
-link the editor exactly as `ui/CMakeLists.txt` does.
+binary's flags, and so is the kit. The root build
+`add_subdirectory(plugins/_shared/ui)`s it and calls
+`ni_ui_add_editor(<product>)` for each product, whose plugin links the editor.
 
 The tests are doctest, like every other C++ test here. `ni_ui_tests` is the
 kit's (every `tests/ui/*.cpp` that is not an editor's), `ni_ui_tests_<product>`
@@ -70,7 +68,7 @@ golden being any test case declared with `NI_SNAPSHOT_TEST`. The token guard,
 | `ParamBinding.h` | a host parameter as a control sees it |
 | `FrameClock.h` | the one display-rate tick of an editor |
 | `Fit.h` | `FixedDesign`, `fitScale`, `constrainToDesign` |
-| `Keys.h`, `Detents.h` | the keyboard map and the detents, as the web kit has them |
+| `Keys.h`, `Detents.h` | the keyboard map and the detents |
 | `Focus.h` | `FocusVisibility`: focus that shows only for the keyboard |
 | `Info.h` | the Hint's info: `setInfo`, `InfoText`, `InfoState`, `InfoTracker`, `InfoHost` |
 | `Luminous.h` | light past a component's edge, painted by its parent |
@@ -119,8 +117,8 @@ letter-spacing. Title and label are capitals (`uv::type::cased`).
 own SVG in the colour of its control: ink, on-uv on a lit button, ink-dim
 disabled, bg-000 on red.
 
-**Light is drawn as the web draws it.** glow-led and the arc glow are CSS
-`drop-shadow()` filters there, whose length is the standard deviation;
+**Light is drawn as the design system draws it.** glow-led and the arc glow
+are CSS `drop-shadow()` filters there, whose length is the standard deviation;
 glow-focus is a box-shadow, whose blur is a radius. `UvLight.h` reproduces
 both, the chain of glow-led's two filters included. A component cannot paint
 past its bounds, so a control whose light reaches past them is `Luminous`:
@@ -134,8 +132,8 @@ under its children.
 `plugins/<product>/editor/Model.h` derives from `ni::ui::EditorModel`:
 
 - **Parameters**: `parameter(index)` is a `juce::RangedAudioParameter&`, in
-  VST3 ID order, which is the iPlug2 builds' index (the spike's
-  `tests/fixtures/iplug2/<product>/parameters.json` lists them). A control
+  VST3 ID order, which is the earlier builds' index
+  (`tests/fixtures/iplug2/<product>/parameters.json` lists them). A control
   binds one with `ni::ui::ParamBinding`, over `juce::ParameterAttachment`:
   a drag is `begin()` on its first move, `input()` per move and `end()`; a
   click or a key is `commit()`, one complete gesture that writes nothing when
@@ -194,7 +192,7 @@ JUCE's software renderer and compares with
 differ by platform). A pixel differs when a channel is more than 4 of 255
 away; a picture fails when more than 0.01 % of its pixels do. A missing
 baseline fails. On a failure `<name>-<os>.actual.png` and `.diff.png` are
-written to `build-ui/tests/ui/snapshots/`. `NI_UPDATE_BASELINES=1` writes the
+written to `<build>/tests/ui/snapshots/`. `NI_UPDATE_BASELINES=1` writes the
 baselines of the snapshots that run instead; narrow it with doctest's
 `--test-case`, and look at every picture before committing it. An editor's
 baselines are named after it: `<product>-<state>`.

@@ -5,19 +5,19 @@
 /*
  * The download buttons. No version is typed here -- see src/lib/release.js.
  */
-import { pluginDownload, moduleDownload } from '../lib/release.js';
+import { pluginDownloads, moduleDownload } from '../lib/release.js';
 
 const { plugin } = Astro.props;
-const live = plugin.data.hosts.includes('live') ? pluginDownload(plugin.id) : null;
+const live = plugin.data.hosts.includes('live') ? pluginDownloads(plugin.id) : [];
 const move = plugin.data.hosts.includes('move') ? moduleDownload(plugin.id) : null;
 ---
 <div class="downloads">
-  {live && (
-    <a class="btn" href={live.url}>
-      <span class="t-button">Download for Live</span>
-      <span class="meta">{live.version} · macOS universal · {plugin.data.formats.join(' · ')}</span>
+  {live.map((d) => (
+    <a class="btn" href={d.url}>
+      <span class="t-button">VST3 for {d.label.split(' · ')[0]}</span>
+      <span class="meta">{d.version} · {d.label}</span>
     </a>
-  )}
+  ))}
   {move && (
     <a class="btn" href={move.url}>
       <span class="t-button">Download for Move</span>
@@ -25,11 +25,11 @@ const move = plugin.data.hosts.includes('move') ? moduleDownload(plugin.id) : nu
     </a>
   )}
 </div>
-{live && (
+{live.length > 0 && (
   <p class="note">
-    The bundles are <strong>unsigned</strong>. macOS will not load one until its
-    quarantine attribute is cleared — the release notes carry the command, and so
-    does the interface section below.
+    A macOS bundle that is not notarised will not load until its quarantine
+    attribute is cleared — the release notes say whether it is and carry the
+    command, and so does the installation section below.
   </p>
 )}
 

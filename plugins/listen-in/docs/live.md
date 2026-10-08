@@ -74,20 +74,32 @@ preferable to a silent second sender fighting the first.
 
 1. **Quit Live completely** — Live keeps every plugin it has loaded in memory
    until it quits, so a bundle replaced while it runs is not the one you hear.
-2. Copy `NIListenIn.vst3` from the release into
-   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there. NI Listen-In is a
-   VST3 only: the Audio Unit and the CLAP builds were discontinued with the
-   native editor. A set that used the Audio Unit opens with the VST3 in its
-   place once you insert it again.
-3. The bundle is not notarised, so macOS refuses it until the quarantine
+2. Download the zip for your system from the release —
+   `listen-in-<version>-macOS.zip` (universal: Apple silicon and Intel),
+   `-Windows.zip` or `-Linux.zip` (x64) — and copy `NIListenIn.vst3` from it into your
+   VST3 folder, replacing the one there:
+
+   | System | VST3 folder |
+   |---|---|
+   | macOS | `~/Library/Audio/Plug-Ins/VST3` |
+   | Windows | `C:\Program Files\Common Files\VST3` |
+   | Linux | `~/.vst3` |
+
+3. **On macOS**, a bundle that is not notarised is refused until its quarantine
    attribute is removed:
 
    ```sh
    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NIListenIn.vst3
    ```
 
-4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
-   *Rescan Plug-Ins*. NI Listen-In appears in the browser under **Neon Ingvy**.
+4. Start Live, open **Settings → Plug-Ins**, turn on **Use VST3 Plug-In System
+   Folders** if it is off, and press **Rescan**. NI Listen-In appears in the browser
+   under **Neon Ingvy**.
+
+NI Listen-In is a VST3, and only a VST3. Live runs on macOS and Windows; on Linux it
+works in any VST3 host, such as Bitwig Studio or REAPER. **Updating from a
+release before v2026.10.08.1?** The [changelog](../../../CHANGELOG.md) says
+which older bundles to delete, and what a set that used one of them needs.
 
 **This release changes the bus format, so update NI Listen-In and NI
 Spectrogram together and quit Live fully before you do.** An old and a new

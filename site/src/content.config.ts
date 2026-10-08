@@ -30,7 +30,7 @@ const plugins = defineCollection({
 
     // Which shells exist. The Spectrogram has one.
     hosts: z.array(z.enum(['live', 'move'])).min(1),
-    formats: z.array(z.enum(['VST3', 'AU', 'CLAP'])).default([]),
+    formats: z.array(z.enum(['VST3'])).default([]),
 
     // Provenance, rendered as a fact table.
     engine: z.string(),
@@ -44,7 +44,6 @@ const plugins = defineCollection({
     // Media, as public-relative strings. NOT image(): that resolves relative to
     // the entry file, and every entry here lives outside the Astro root.
     still: z.string().optional(),
-    harness: z.string().optional(),
     audio: z.string().optional(),
   }),
 });

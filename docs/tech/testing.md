@@ -126,8 +126,8 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   (`engines/<product>/tests/fixtures`: `tg_curves`, `tg_envelope`, `tg_fade`,
   `sc_shape`, `sc_envelope`),
 - the C++ units: the plain helpers every processor shares (`tests/cpp`:
-  `ni_wire`), the JUCE shell's state codec over every product's iPlug2
-  fixture (`nist_fixtures`), and each product's processor, model and editor in
+  `ni_wire`), the JUCE shell's state codec over every fixture an earlier
+  build saved (`nist_fixtures`), and each product's processor, model and editor in
   one program with its audio callback under an allocation guard (macOS) —
   NI Trance Gate's `tg_processor` and `tg_rt`, and in `tests/<product>`
   NI Spectrogram's (`sg_processor`, `sg_rt`, `spectro_state`,
@@ -162,7 +162,7 @@ Everything quick runs, and:
 | label | what |
 |---|---|
 | `render` | the render A/B goldens: four seconds through each engine's plugin audio path, hashed against the Move module's reference |
-| `host` | every VST3 from `build/out`, hosted by JUCE as a DAW hosts it. `juce_host_*` runs, saves and opens every bundle. NI Trance Gate's (`tg_host`): its iPlug2 class, its parameters through the controller, every iPlug2 fixture reopened as Live reopens a set and saved back byte for byte, the golden render through its audio path, the host's Bypass passing the audio through bit for bit, and the window under a running transport with a set loaded on another thread. NI Spectrogram's (`sg_host`) the same, its audio through bit for bit; NI Listen-In's (`li_host`) the same, its audio read back off the bus, a reopened set's bus claimed under its name, and nothing published while bypassed; NI Side-Chain's (`sc_host`) the same, the engine's golden render through it, a note, CC 120 and CC 123 through the host's event list and MIDI-CC mapping, the Bypass passing audio while the engine still hears the notes, and a key on its sidechain bus |
+| `host` | every VST3 from `build/out`, hosted by JUCE as a DAW hosts it. `juce_host_*` runs, saves and opens every bundle. NI Trance Gate's (`tg_host`): its earlier class, its parameters through the controller, every earlier build's fixture reopened as Live reopens a set and saved back byte for byte, the golden render through its audio path, the host's Bypass passing the audio through bit for bit, and the window under a running transport with a set loaded on another thread. NI Spectrogram's (`sg_host`) the same, its audio through bit for bit; NI Listen-In's (`li_host`) the same, its audio read back off the bus, a reopened set's bus claimed under its name, and nothing published while bypassed; NI Side-Chain's (`sc_host`) the same, the engine's golden render through it, a note, CC 120 and CC 123 through the host's event list and MIDI-CC mapping, the Bypass passing audio while the engine still hears the notes, and a key on its sidechain bus |
 | `snapshot` | the kit's and every editor's snapshot goldens (`tests/ui/baselines`), drawn with JUCE's `createComponentSnapshot`; they are macOS renders |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | every built bundle carries its notices (`licenses_bundles`); every bundle's signature verifies as Live's scanner checks it (`codesign_*`: `codesign --verify --deep --strict`); the bundles' version spellings (`versions_bundles`); the release staging, dry-run against the bundles (`release_bundles`) |
@@ -184,8 +184,8 @@ platform, and the script runs on macOS, Linux (under `xvfb-run` without a
 display) and Windows (Git Bash). Nothing they read is installed: every bundle
 is validated where the build left it.
 
-**The iPlug2 fixtures** in `tests/fixtures/iplug2` are what the last iPlug2
-builds (v2026.10.06.5) saved, captured through the calls Live makes
+**The compatibility fixtures** in `tests/fixtures/iplug2` are what the last
+builds before the JUCE shell (v2026.10.06.5) saved, captured through the calls Live makes
 ([README](../../tests/fixtures/iplug2/README.md),
 [FORMAT](../../tests/fixtures/iplug2/FORMAT.md)). Every product's processor
 test loads each to its exact parameters, `nist_fixtures` writes each back

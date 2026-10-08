@@ -6,42 +6,50 @@ slug: ci-live
 
 ## Locally
 
+Everything is built and tested on the developer's machine first; GitHub Actions
+only publish. The presets in `CMakePresets.json` are the builds:
+
+| preset | directory | what |
+|---|---|---|
+| `dev` | `build-dev/` | this machine's architecture, RelWithDebInfo, no LTO: the loop to iterate in |
+| `release` | `build/` | Release with LTO, universal on macOS: what ships |
+| `coverage` | `build-coverage/` | instrumented for llvm-cov, never shipped |
+
+**macOS**, natively:
+
 ```sh
-git submodule update --init --recursive   # iPlug2. The engines are subtrees.
-scripts/fetch-sdks.sh                     # the VST3 and CLAP SDKs, at pinned versions
-npm ci                                    # the kit and every editor
-cmake --preset release                    # universal, Release, LTO: what ships (build/)
-cmake --build build                       # the macOS plugins
-ctest --test-dir build
+git submodule update --init --recursive   # JUCE 9. The engines are subtrees.
+cmake --preset release                    # universal, LTO: what ships (build/)
+cmake --build build                       # the five VST3s, into build/out
+scripts/test.sh quick                     # the developer loop (build-dev/)
+scripts/test.sh full                      # everything, the validators included
 ```
 
-Artefacts land in `build/out/`. The presets in `CMakePresets.json` never
-deploy (Testing, below, says which one to use when); a build configured by
-hand copies them into `~/Library/Audio/Plug-Ins/` unless it is given
-`-DIPLUG_DEPLOY_PLUGINS=OFF`. The AU tests
-(`tg_au`, `sc_au` and the rest) load `build/out`'s bundles by path, never the
-installed ones, so they run the same either way; a missing bundle fails them,
-it never skips.
+**Linux and Windows**, from the same Mac in Docker, with the cross-build kit
+(see **Cross-platform builds**):
 
-**iPlug2's SDKs are downloaded rather than tracked.** A fresh clone needs
-`scripts/fetch-sdks.sh` before the first configure, or CMake stops on a
-non-existent include path in `iPlug2::VST3`. It fetches the VST3 SDK, CLAP and
-clap-helpers at the versions pinned in the script; iPlug2's own download
-scripts would clone whatever is on `master` today.
+```sh
+scripts/build-linux.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'
+XWIN_ACCEPT_LICENSE=yes scripts/build-windows.sh . -- -L quick
+scripts/build-all.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'   # all three
+```
 
-**The editors are built, not tracked.** `plugins/*/resources/web` is vite's
-output, written at configure and at build time; a configure that finds no
-editor stops and names `npm ci`.
+On a Windows or Linux machine the same presets build natively:
+`cmake --preset release` and `cmake --build build`, on Windows from a Visual
+Studio developer prompt (Ninja needs the MSVC environment).
 
-**`-DCMAKE_OSX_ARCHITECTURES` is honoured.** Universal is the default, not a
-decree: `-DCMAKE_OSX_ARCHITECTURES=arm64` builds one slice.
+Artefacts land in `build/out/`, where every test and validator loads them by
+path. No build copies a bundle into the system's VST3 folder unless it is
+configured with `-DNI_DEPLOY_PLUGINS=ON`, so a build never replaces what a host
+has installed.
 
 **`-DNI_SANITIZE=thread`** (or `address`, `undefined`) instruments every C and
 C++ test — never a plugin. It needs one slice:
 
 ```sh
-cmake -B build-tsan -DNI_SANITIZE=thread -DCMAKE_OSX_ARCHITECTURES=arm64 -DIPLUG_DEPLOY_PLUGINS=OFF
-cmake --build build-tsan && ctest --test-dir build-tsan
+cmake -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DNI_SANITIZE=thread -DCMAKE_OSX_ARCHITECTURES=arm64
+cmake --build build-tsan && ctest --test-dir build-tsan -L full -LE host
 ```
 
 **Needs cargo.** If it is installed and not found, the error names where it
@@ -54,24 +62,9 @@ and a bare toolchain use, because Homebrew's keeps its shims in
 `.github/workflows/ci.yml` runs **by hand only**. Every change is built and
 tested locally before it is pushed (`scripts/test.sh quick` and `full`); that
 is the gate, and Actions publish rather than discover. Started by hand, it
-checks a clean runner, with a newer run cancelling the older one. It runs
-on a pinned `macos-15` image: the plugins are macOS bundles and `auval` and the
-AU host tests only exist there. Three jobs:
-
-- **build-and-test** fetches the SDKs (cached on the iPlug2 submodule commit
-  plus the pins), runs `npm ci`, configures, builds — installing the plugins —
-  and runs the suite, `cargo test --workspace` and `npm test`. The AU render
-  tests must have *run*: a skip fails the job. It then checks that every bundle
-  exists and is genuinely universal.
-- **validate** installs those bundles on a fresh runner and runs the hosts'
-  own validators through `scripts/validate-plugins.sh`: `auval` on each AU (the
-  type, subtype and manufacturer are read from each AU plist), `pluginval` at
-  strictness 10 on each VST3 and AU, and `clap-validator` on each CLAP — all
-  pinned releases, checked against SHA-256 digests. Steinberg's own VST3
-  validator is not built separately: iPlug2's script builds it only through an
-  Xcode project whose deployment target current Xcode refuses, and pluginval's
-  VST3 checks cover the same ground from a host's side.
-- **tsan** builds arm64 with `-DNI_SANITIZE=thread` and runs the suite.
+checks a clean runner on a pinned `macos-15` image, with a newer run cancelling
+the older one. Three jobs: **quick** and **full** run `scripts/test.sh` in each
+tier, and **tsan** builds the tests under ThreadSanitizer and runs them.
 
 **The suite is the asset here**, and it is not a smoke test:
 
@@ -79,8 +72,8 @@ AU host tests only exist there. Three jobs:
 |---|---|
 | `tg_render_ab` | four seconds through the plugin's audio path, hashed against the Move module's reference render. **The check that a refactor did not change the sound.** |
 | `tg_curves`, `tg_envelope` | the editor's envelope maths against the engine's own *measured* output — the engine is run with a DC input at amount 1, where the gain it applies **is** the envelope |
-| `ui_tokens` | no colour is spelled outside `ui-kit/src/tokens.css`, and that file agrees with the vendored design system |
-| `versions` | every spelling of a product's version agrees with `versions.json`, and every AU plist agrees with its `config.h` |
+| `ui_tokens_native` | the kit's generated tokens agree with the vendored design system, and no colour is spelled anywhere else |
+| `versions` | every spelling of a product's version agrees with `versions.json`: the build, the bundle's plist and moduleinfo.json, module.json and every crate |
 | `release` | a tag means what the release workflows think it means |
 | `licenses` | everything that ships has a notice, and every bundle carries them |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
@@ -97,12 +90,14 @@ of mistake only ever noticed by whoever downloads the wrong thing. The tag is
 parsed by `scripts/release.mjs`, which both release workflows use and
 `ctest -R release` tests.
 
-`release-plugins.yml` checks the tag against the tree, builds, runs the suite
-again (a tag is the worst possible moment to discover the render A/B moved) and
-the validators, stages the three bundles — each already carrying its editor and
-`LICENSE`/`THIRD_PARTY_LICENSES.md` in `Contents/Resources/` — and packs them
-with `ditto`, which preserves the bundle structure and resource forks, into
-`<product>-<version>-macOS.zip` with the notices at its top level too.
+`release-plugins.yml` checks the tag against the tree and builds that one
+product's VST3 natively on macOS, Windows and Linux. Each runs the suite again
+(a tag is the worst possible moment to discover the render A/B moved: the full
+tier on macOS, the quick tier and the hosted bundles on the other two), then
+the validators — pluginval at strictness 10 with its editor tests, Steinberg's
+VST3 validator and, on macOS, `codesign --verify --deep --strict` — stages the
+bundle with `LICENSE` and `THIRD_PARTY_LICENSES.md` beside it, and packs one
+zip per OS: `<product>-<version>-macOS.zip`, `-Windows.zip` and `-Linux.zip`.
 
 Because the asset name carries the version, this site composes its download links
 from `versions.json` rather than hard-coding them. That file is already checked
@@ -120,12 +115,12 @@ Gated on six repository secrets, and skipped cleanly without them:
 | `MACOS_SIGNING_IDENTITY` | e.g. `Developer ID Application: Torben Gräber (TEAMID)` |
 | `NOTARY_APPLE_ID`, `NOTARY_TEAM_ID`, `NOTARY_PASSWORD` | the Apple ID, team and an app-specific password for `notarytool` |
 
-With them, every staged bundle is signed with `codesign --options runtime
---timestamp` *after* its web resources and notices are inside it (a signature
-seals every file in the bundle), submitted with `notarytool --wait`, and
-stapled. The certificate lives in a throwaway keychain that is deleted at the
-end of the job. Without them the release notes carry the one command that gets
-macOS to load an unsigned plugin:
+With them, the staged macOS bundle is signed with `codesign --options runtime
+--timestamp` *after* its notices are inside it (a signature seals every file in
+the bundle), submitted with `notarytool --wait`, and stapled. The certificate lives in a throwaway keychain that is deleted at the
+end of the job. Without them the bundle ships with the ad hoc signature the
+build gave it, and the release notes carry the one command that gets macOS to
+load it:
 
 ```sh
 xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NITranceGate.vst3

@@ -233,20 +233,32 @@ from the keyboard: Tab to them and press Enter or Space.
 1. **Quit Live completely** — not just the set. Live keeps every plugin it has
    loaded in memory until it quits, so a bundle replaced while it runs is not
    the one you hear.
-2. Copy `NITranceGate.vst3` from the release into
-   `~/Library/Audio/Plug-Ins/VST3`, replacing the one there. NI Trance Gate is
-   a VST3 only: the Audio Unit and the CLAP builds were discontinued with the
-   native editor. A set that used the Audio Unit opens with the VST3 in its
-   place once you insert it again.
-3. The bundle is not notarised, so macOS refuses it until the quarantine
+2. Download the zip for your system from the release —
+   `trance-gate-<version>-macOS.zip` (universal: Apple silicon and Intel),
+   `-Windows.zip` or `-Linux.zip` (x64) — and copy `NITranceGate.vst3` from it into your
+   VST3 folder, replacing the one there:
+
+   | System | VST3 folder |
+   |---|---|
+   | macOS | `~/Library/Audio/Plug-Ins/VST3` |
+   | Windows | `C:\Program Files\Common Files\VST3` |
+   | Linux | `~/.vst3` |
+
+3. **On macOS**, a bundle that is not notarised is refused until its quarantine
    attribute is removed:
 
    ```sh
    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/NITranceGate.vst3
    ```
 
-4. Start Live, open **Settings → Plug-Ins** and press **Rescan** beside
-   *Rescan Plug-Ins*. NI Trance Gate appears in the browser under **Neon Ingvy**.
+4. Start Live, open **Settings → Plug-Ins**, turn on **Use VST3 Plug-In System
+   Folders** if it is off, and press **Rescan**. NI Trance Gate appears in the browser
+   under **Neon Ingvy**.
+
+NI Trance Gate is a VST3, and only a VST3. Live runs on macOS and Windows; on Linux it
+works in any VST3 host, such as Bitwig Studio or REAPER. **Updating from a
+release before v2026.10.08.1?** The [changelog](../../../CHANGELOG.md) says
+which older bundles to delete, and what a set that used one of them needs.
 
 Signing needs an Apple Developer ID and a notarytool round trip; until those
 exist, the `xattr` command is the difference. It is a property of the
@@ -259,17 +271,19 @@ of what it is built with (`AGPL-3.0.txt`, `Apache-2.0.txt`) in
 
 **Sets saved with an earlier version open as they were saved**: the plugin
 keeps the identity, the parameters and the saved state of every earlier VST3
-build, so slots, patterns and automation come back.
+build, so slots, patterns and automation come back. One thing moved: the
+plugin's own **Bypass** has a new ID (15, where it was 65536). Live treats it as
+the plugin's bypass either way and a set's bypass state comes back; an
+automation lane drawn on that Bypass in an earlier version wants drawing again.
 
 **Coming from a bundle named `TranceGate`** (before v2026.09.29.1)? The plugin's
 identity did not change — Live stores the plugin's IDs, not the filename, so
 sets relink after a rescan — but an old bundle left beside the new one is two
-bundles claiming one ID. Delete the old ones:
+bundles claiming one ID. Delete the old one, and the other formats'
+`TranceGate` bundles beside it in `~/Library/Audio/Plug-Ins`:
 
 ```sh
-rm -rf ~/Library/Audio/Plug-Ins/VST3/TranceGate.vst3 \
-       ~/Library/Audio/Plug-Ins/CLAP/TranceGate.clap \
-       ~/Library/Audio/Plug-Ins/Components/TranceGate.component
+rm -rf ~/Library/Audio/Plug-Ins/VST3/TranceGate.vst3
 ```
 
 ## The background, and the Motion switch

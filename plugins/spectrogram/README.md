@@ -12,7 +12,6 @@ notOnMove: >-
   That is also why `engines/spectro` has no `tg-move` counterpart — a crate
   belongs to exactly one product, and this product has one shell.
 still: media/spectrogram/live.png
-harness: harness/spectrogram/
 ---
 
 # NI Spectrogram
@@ -20,7 +19,7 @@ harness: harness/spectrogram/
 A rolling spectrogram: log frequency from **10 Hz to 20 kHz** on the vertical,
 256 bands — about two per semitone — time scrolling right to left, **thirteen
 seconds** of history. Audio passes through **bit for bit**: it is an analyzer,
-and its whole output is the picture. A universal macOS VST3 with a native
+and its whole output is the picture. A VST3 for macOS, Windows and Linux with a native
 editor.
 
 **No parameters**, and that is a statement rather than an omission: nothing about

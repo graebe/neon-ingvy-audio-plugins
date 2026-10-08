@@ -4,7 +4,7 @@ title: On the Ableton Move
 ---
 
 The same Rust engine as the plugin, wrapped in Schwung's `audio_fx` vtable
-instead of iPlug2's. Not a port and not a reimplementation — one core, two
+instead of the VST3 shell. Not a port and not a reimplementation — one core, two
 shells, with a test that renders four seconds through both paths and compares
 them sample for sample.
 
@@ -30,7 +30,7 @@ to. A control that can never do anything reads as a broken module.
 
 **MIDI has no sample offset.** `move_audio_fx_on_midi` takes no offset, so a
 note lands at the top of the block it arrived in. The plugin does better because
-iPlug2 reports one. This is the one place the Move version is measurably behind,
+VST3 reports one. This is the one place the Move version is measurably behind,
 and it is also what makes the two comparable: drive the plugin at offset zero and
 the renders agree.
 

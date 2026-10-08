@@ -8,14 +8,13 @@ engine: engines/trance-gate
 crates: [tg-core, tg-capi, tg-move]
 tests: [tg_core, tg_render_ab, tg_curves, tg_envelope, tg_processor, tg_host]
 still: media/trance-gate/live.png
-harness: harness/trance-gate/
 ---
 
 # NI Trance Gate
 
 A tempo-locked step gate: rhythmic chopping locked to song position, per-step
 ADSR, ties, per-step amount, a fade-in that introduces the steps one at a time,
-and 8 slots, each a complete sound. A universal macOS VST3 with a native
+and 8 slots, each a complete sound. A VST3 for macOS, Windows and Linux with a native
 editor, and a Schwung module for the Ableton Move.
 
 **It is the same engine in both**, and that is asserted rather than claimed.

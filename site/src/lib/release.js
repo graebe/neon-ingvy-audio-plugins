@@ -23,19 +23,27 @@ import release from '../../../release.json' with { type: 'json' };
 const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins';
 
 /*
- * The macOS bundle zip for a product, as release-plugins.yml names it: the tag
- * is <product>-<version as versions.json spells it> -- scripts/release.mjs is
- * the parser both workflows share. This used to put a second "v" in front of a
- * version that already begins with one, a link to trance-gate-vv2026.09.29.3.
+ * The bundle zips for a product, one per OS, as release-plugins.yml names
+ * them: the tag is <product>-<version as versions.json spells it> --
+ * scripts/release.mjs is the parser both workflows share, and its ZIP_OS the
+ * OS labels. This used to put a second "v" in front of a version that already
+ * begins with one, a link to trance-gate-vv2026.09.29.3.
  */
-export function pluginDownload(product) {
+const ZIPS = [
+  { os: 'macOS', label: 'macOS · universal' },
+  { os: 'Windows', label: 'Windows · x64' },
+  { os: 'Linux', label: 'Linux · x64' },
+];
+
+export function pluginDownloads(product) {
   const version = versions[product];
-  if (!version) return null;
+  if (!version) return [];
   const tag = `${product}-${version}`;
-  return {
+  return ZIPS.map(({ os, label }) => ({
     version,
-    url: `${REPO}/releases/download/${tag}/${product}-${version}-macOS.zip`,
-  };
+    label,
+    url: `${REPO}/releases/download/${tag}/${product}-${version}-${os}.zip`,
+  }));
 }
 
 /*

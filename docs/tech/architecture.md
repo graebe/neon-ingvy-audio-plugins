@@ -10,17 +10,17 @@ Four layers, and each one exists because the layer above it cannot do the job.
 Rust core        the DSP, on the shared ni-dsp and established crates
   ├── C ABI      extern "C", for the plugin
   └── Schwung    the audio_fx vtable (ni-schwung), for the Move
-C++ glue         iPlug2 — the VST3/AU/CLAP shell and the host plumbing
-Solid editor     a WebView, drawing the Ultraviolet design system
+C++ shell        JUCE 9 — the VST3 for macOS, Windows and Linux, and the host plumbing
+Native editor    JUCE Components, drawing the Ultraviolet design system
 ```
 
-Three decisions are reshaping these layers. Each is recorded with its context
-and what it costs:
+Three decisions shaped these layers. Each is recorded with its context and
+what it costs:
 
 - [0001](../adr/0001-gpl-3.0-or-later.md): the licence is GPL-3.0-or-later
   rather than MIT.
 - [0002](../adr/0002-juce-native-editors.md): JUCE is the shell, and the
-  editors are native JUCE Components. They replace iPlug2 and the WebView.
+  editors are native JUCE Components.
 - [0003](../adr/0003-established-rust-crates.md): established Rust crates
   replace hand-written code.
 
@@ -73,11 +73,12 @@ declaration for declaration. Only C++ with no Rust behind it stays hand-written:
 `engines/shell/include`'s state header and denormal guard, and Schwung's own
 headers vendored for the Move-side tests.
 
-## The C++ glue
+## The JUCE shell
 
-The build recipe is two files. `cmake/NiRust.cmake` builds the engines through
+The build recipe is three files. `cmake/NiRust.cmake` builds the engines through
 [Corrosion](https://github.com/corrosion-rs/corrosion), pinned in
-`cmake/NiCorrosion.cmake`; `cmake/NiPlugin.cmake` builds the plugins around them.
+`cmake/NiCorrosion.cmake`; `cmake/NiJucePlugin.cmake` builds the plugins around
+them.
 
 `ni_add_rust_engine(<target> CRATE <crate> LIB <lib> [INCLUDE <dir>])` registers
 a product's C ABI, and `ni_build_rust_engines()` imports every registered crate
@@ -98,49 +99,47 @@ staticlib that absorbs the rlibs it depends on, because two Rust staticlibs in
 one binary each carry the Rust runtime. The cargo step always runs — cargo is the
 dependency scanner, not CMake — and Corrosion copies an archive out with
 `copy_if_different`, so an unchanged engine keeps its timestamp, `lipo` does not
-run again, and three plugin formats do not relink.
+run again, and the plugin does not relink.
 
-`ni_add_plugin(<NAME> SOURCES … LINK …)` builds the plugin's editor with vite
-(at configure time and at build time), refuses to configure without one
-(`cmake/EditorGuard.cmake`), and calls iPlug2's
-`iplug_add_plugin(... FORMATS VST3 CLAP AU UI WEBVIEW ...)` with the shared shell
-compiled in. There is no Standalone target: its `main()` and preferences dialog
-reference resource IDs that only exist for an IGraphics UI.
+A plugin's `CMakeLists.txt` is one `ni_add_juce_plugin(<product> TARGET … NAME …
+CODE … ENGINE … [EDITOR] SOURCES …)` call. It decides once, for every product:
+VST3 only, from Neon Ingvy; the version from `versions.json`; the licence
+notices copied into the bundle; on macOS an ad hoc signature as the bundle's
+last build step; the bundle collected in `build/out`, where every test and
+validator loads it, and copied into the system's VST3 folder only with
+`-DNI_DEPLOY_PLUGINS=ON`. A product that took over an earlier bundle keeps its
+VST3 class ID (`VST3_CLASS`, or `IPLUG2_CLASS` from
+`tests/fixtures/iplug2/ids.json`) and its parameter IDs (`LEGACY_PARAM_IDS`), so
+a saved set finds it exactly as it found the old one.
 
 ## The shared shell
 
-Every plugin class derives from `ni::WebPlugin` (`plugins/_shared/ni`), which
-owns everything the four used to repeat: the WebView bootstrap (a custom URL
-scheme per product, developer tools in debug builds only), the editor protocol,
-the animated ground's beat clock, flush-to-zero around every block, and `OnIdle`'s
-order — the ground first, then the product's host-facing work, then, only while
-an editor is open, its editor work. The iPlug2 hooks it owns are `final`; a
-product supplies `ProcessAudio`, `ResetAudio`, `OnHostIdle`, `OnEditorIdle`,
-`OnEditorReady` and `OnEditorMessage`, and its state chunk.
+Every processor derives from `ni::Processor` (`plugins/_shared/juce`), a
+`juce::AudioProcessor` with the house's answers to what every product would
+otherwise answer on its own:
 
-The protocol itself (`ni/Editor.h`) has no host in it and is tested without one.
-Tags `0..NParams()-1` carry a parameter's display string; each product's own
-tags are `64..111`; the shell's are the same in every plugin:
+- **The block.** `processBlock` is `final`: it runs the product's `process()`
+  under `juce::ScopedNoDenormals`, and a bypassed block — the host's bypass or
+  the product's own Bypass parameter — goes to `processBypassed()`, which a
+  product whose engine must keep hearing MIDI overrides.
+- **The clock.** `readClock()` reads the host's transport into a plain value,
+  allocation-free, for the engines' block clocks and the ground's beat clock
+  (`GroundClock.h`).
+- **The state.** `getStateInformation` and `setStateInformation` are `final`
+  and call `writeState` and `readState`. A product that took over an earlier
+  bundle reads and writes that bundle's chunk through `ni::nist` (`Nist.h`),
+  one codec for every product's layout; its parameters are a table
+  (`ParamSpec.h`) built into `ni::Parameter`s that hold plain values exactly, so
+  a fixture loaded and saved again is the same bytes.
+- **Dirty.** `nonParameterStateChanged()` tells the host that state it cannot
+  see changed — an import, a pasted pattern — so the set is marked unsaved.
 
-| tag | direction | payload |
-|---|---|---|
-| 112 `ground` | → editor | `<strength>`, 1 on a downbeat and 0.4 on a beat, three decimals; one message per ring |
-| 113 `defaults` | → editor | `<d0>:<d1>:…:<dN-1>`, every parameter's normalised default in index order |
-| 114 `groundTick` | → editor | none: the ground's frame clock, every idle tick while the editor reports it moving |
-| 120 `ready` | ← editor | none: mounted, send the whole state |
-| 121 `setText` | ← editor | `<paramIdx>:<typed text>` |
-| 122 `height` | ← editor | the height it needs, in viewport pixels |
-| 123 `groundRun` | ← editor | `1` while the ground's field is moving, `0` once at rest or switched off |
-
-Each product's own tags are listed with its editor: the Trance Gate's — and why
-its pattern travels as a state blob rather than as parameters — in
-[plugins/trance-gate/ui/README.md](../../plugins/trance-gate/ui/README.md), the
-Spectrogram's column format and the mount-ordering problem the `ready` tag
-solves in [plugins/spectrogram/ui/README.md](../../plugins/spectrogram/ui/README.md).
-
-`tests/editor_tags.test.mjs` holds every tag and parameter index in C++ to the
-editors' `msg.js` tables by name. Numbers on the wire are written and read with
-`'.'` whatever the host's locale (`ni/Wire.h`).
+`ni::PluginEditor` is the window a host opens: the product's editor at its
+design size, scaled by its Zoom, in the kit's look. `MachineSettings` keeps what
+belongs to the machine rather than the set, such as the Motion switch.
+`plugins/_shared/ni` holds the host-free helpers: `ni/Wire.h` (the float round
+trip, the passthrough, locale-free numbers) and `ni/Scope.h` (the capture a plot
+draws), which `tests/cpp` links without a host.
 
 ## Threads
 
@@ -159,7 +158,8 @@ built once in `engines/shell` and used by every product:
   nor frees.
 - **Out, as a snapshot.** The audio thread formats what readers need into
   preallocated text and publishes it through triple_buffer's triple buffer.
-  `OnIdle`, the copy button and `SerializeState` read that — never the engine.
+  The message thread's timers, the editor and the state calls read that —
+  never the engine.
 
 A save must be right even with the host's audio engine off, so an edit that has
 not been applied yet is still visible to readers: they are answered from the
@@ -232,15 +232,13 @@ of Listen-In's bus claim (its `abus_pusher_t`; the main thread keeps the
 go of it. The Spectrogram's receiver also owns a worker thread, which runs its
 transforms off both the audio and the UI thread; freeing the receiver joins it.
 Nothing that allocates, maps memory or talks to the editor runs on the audio thread;
-`OnParamChange` and `OnReset` only record what they want, and `OnIdle` does it.
+it only records what it wants, and a timer on the message thread does it.
 
 The host's state calls get the same treatment, because the host picks their
-thread: auval's stress test calls `SetState` from threads of its own, and so may a
-DAW restoring a session. `UnserializeState` therefore never calls a main-thread
-API, and neither does what iPlug2 calls after it on that thread: each
-parameter's `OnParamChangeUI` and the closing `OnRestoreState` only mark the
-editor stale (`editor::Stale` in `ni/Editor.h`), and the next `OnIdle` sends
-every value and display string once. NI Spectrogram, on the JUCE shell,
+thread: a DAW restoring a session may call `setStateInformation` from a thread
+of its own, and validators do. A state load therefore never calls a
+message-thread API and never touches an editor: it records the load, and the
+editor's model catches up on its next tick. NI Spectrogram
 records the load in its `Session` (`plugins/spectrogram/State.h`), and its
 processor's next service on the message thread hands the receiver whatever
 moved; `writeState` reads the same `Session`, so a save straight after a load
@@ -252,63 +250,23 @@ Every plugin's state chunk starts with `shell_state.h`'s versioned header. A
 chunk without it is an older build's and loads as that build wrote it. A chunk
 is read whole before any of it is applied, and one no build could have written
 -- empty, a parameter that is not a number of its kind, a string running off
-the end -- is refused and changes nothing. On iPlug2 the parameter
-declarations and the chunk code live outside the plugin class (`Params.cpp`,
-`State.cpp`) so `tests/cpp` can save and reload them the way a host does; on
-the JUCE shell the chunk is `ni::nist` (`plugins/_shared/juce/Nist.h`), one
-codec for every product's layout, and a product's parameters are a table
-(`ParamSpec`) built into `ni::Parameter`s that hold the plain values exactly,
-so a fixture loaded and saved again is the same bytes.
+the end -- is refused and changes nothing. The chunk is `ni::nist`
+(`plugins/_shared/juce/Nist.h`), and the processor tests save and reload it the
+way a host does.
 
-`ni::Processor::processBlock` (JUCE) runs a product's block under
-`juce::ScopedNoDenormals`; `ni::WebPlugin::ProcessBlock` (iPlug2) opens with
-`shell_denormals.h`'s guard:
-flush-to-zero for the block, the engines included, and the host's
-floating-point mode back on the way out.
+`ni::Processor::processBlock` runs a product's block under
+`juce::ScopedNoDenormals`: flush-to-zero for the block, the engines included,
+and the host's floating-point mode back on the way out.
 
 ## The editor
 
-Solid and Vite, built into `plugins/<product>/resources/web` and globbed into
-the bundle as web resources: `index.html`, one `assets/ui.js` with every module,
-one `assets/style.css` with every stylesheet and the kit's font inlined as a data
-URI (`assetsInlineLimit` is set absurdly high on purpose), the licence notices,
-and `fonts/OFL.txt`. Fixed names, never hashed: **a WKWebView over a custom
-scheme is not a web server**, and it serves exactly the files that are there.
-
-Every editor is drawn in the kit's `EditorFrame` (the ground, the Hint bar, the
-fit-to-viewport scale and the height it reports, and a window that cannot
-scroll: the body and the frame's `<main>` are `overflow: clip`, which is not a
-scroll container, so focusing a control past an edge moves nothing), reads
-its host parameters from one store (`@ultraviolet/ui/params`, defaults from the shell's message
-113), and speaks to the plugin through `useEditorBridge`. Binary payloads -- the
-plot captures, the rendered curves, the spectrogram's columns -- are an ASCII
-header and raw bytes, which the bridge decodes from base64 once (`onBytes`).
-
-**What a control does** is declared on it once, as `data-info` (the kit's
-controls take an `info` prop; anything else spreads `infoAttrs(text)`), and is
-also its `aria-description`. The frame listens on its `<main>` and lays the
-string of the control under the pointer, or of the one with visible keyboard
-focus, over the Hint bar's clauses: at once on entering, 150 ms after leaving,
-so moving along a row never flashes the clauses between two strings. An
-action's outcome (tag 68 in the Trance Gate) outranks it while shown, and the
-pointer outranks the focus. The clauses stay laid out underneath, hidden, so
-the bar's width and the Motion switch never move (`ui-kit/src/lib/info.js`).
-The Trance Gate's strings are all in `plugins/trance-gate/ui/src/lib/info.js`.
-
-CMake runs vite at configure time *and* at build time. Configure-only shipped
-stale bundles, and a stale editor looks exactly like a broken one.
-
-`resources/web` is **build output and is not tracked**. A committed copy was a
-second source of truth that could disagree with `ui/src`, and a fresh clone
-builds it anyway — so after `npm ci`, configuring is enough. If the editor did
-not build, configure stops with an error naming `npm ci`
-(`cmake/EditorGuard.cmake`) rather than producing a plugin with a blank window.
-The build also writes `assets/ui.js.LICENSE.txt` beside `ui.js`, with the
-licence text of every npm package the minified bundle contains.
-
-The editor and the plugin talk over numbered message tags rather than through
-parameters, which is what lets the Trance Gate's pattern travel as the engine's
-own state blob — the same text the Move module writes.
+Every editor is a native JUCE Component built from the Ultraviolet kit
+(`plugins/_shared/ui`), drawn to the published Ultraviolet 1.1.0 design system.
+An editor reads the processor through its model on the message thread and
+never touches the engine; its parameters are host parameters, and what is not a
+parameter — the Trance Gate's pattern, the Spectrogram's columns — travels
+through the engine's own snapshot. The kit, its components and its tests are on
+the **Native UI** page.
 
 ## One engine, two shells, and a test that says so
 

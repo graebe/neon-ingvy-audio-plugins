@@ -83,7 +83,7 @@ run has its own `pluginval-<name>.log` beside them.
 
 `-L full` is the full tier: every quick test, the render goldens, the five
 bundles hosted as a DAW hosts them (`juce_host_*`, and each product's
-`*_host` against the iPlug2 sets), the snapshot goldens, the bus across
+`*_host` against the sets earlier builds saved), the snapshot goldens, the bus across
 processes, and on macOS each bundle's signature. Three things are left out,
 because they are the tree's rather than the platform's, and `scripts/test.sh
 full` runs them:
