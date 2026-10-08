@@ -57,7 +57,8 @@ const statements = (b) =>
 /* Each product names the statement its audio starts with: the engine taken
  * for the block, or the bus's pusher. */
 const JUCE_PLUGINS = {
-  'NI Trance Gate': ['plugins/trance-gate/TranceGate.h', 'plugins/trance-gate/TranceGate.cpp', /tg_shell_begin/],
+  /* Its block, heard or bypassed, is one run() around tg_shell_begin. */
+  'NI Trance Gate': ['plugins/trance-gate/TranceGate.h', 'plugins/trance-gate/TranceGate.cpp', /^run\s*\(/],
   'NI Listen-In': ['plugins/listen-in/ListenIn.h', 'plugins/listen-in/ListenIn.cpp', /shell_handoff_acquire/],
   'NI Spectrogram': ['plugins/spectrogram/SpectrogramProcessor.h', 'plugins/spectrogram/SpectrogramProcessor.cpp',
     /shell_handoff_acquire/],

@@ -169,10 +169,11 @@ ni_time_stage() {
     t1=$(_ni_now)
     counts_after=$(_ni_ccache_counts)
     if [ -n "$counts_before" ] && [ -n "$counts_after" ]; then
-        # shellcheck disable=SC2086 # two numbers each, split on purpose
-        set -- $counts_before $counts_after
-        hits=$(( $3 - $1 ))
-        misses=$(( $4 - $2 ))
+        local h0 m0 h1 m1
+        read -r h0 m0 <<< "$counts_before"
+        read -r h1 m1 <<< "$counts_after"
+        hits=$(( h1 - h0 ))
+        misses=$(( m1 - m0 ))
     fi
 
     # The script that was run -- $0, so a helper sourced into it (this file,

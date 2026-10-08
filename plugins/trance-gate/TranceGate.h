@@ -106,6 +106,13 @@ protected:
 private:
     void timerCallback() override { followEngine(); }
 
+    /* One block through the engine. `heard`: the host's buffer is gated in
+     * place; otherwise the engine runs on a copy and the buffer is left as
+     * it came -- a bypassed block, which must still take every edit, slot
+     * switch and step of the transport, or a set saved while bypassed is not
+     * the one its host shows and the gate comes back out of time. */
+    void run (juce::AudioBuffer<float>&, const ni::HostClock&, bool heard);
+
     struct ShellDeleter
     {
         void operator() (tg_shell_t* s) const noexcept { tg_shell_destroy (s); }
@@ -119,10 +126,10 @@ private:
     ni::GroundClock beat;
     std::atomic<bool> capturing { false };
     double sampleRate = 44100.0;
-    /* The dry input and the engine's sweep, for the capture. Sized in
-     * prepareToPlay, never on the audio thread; a longer block is processed
-     * in chunks of this. */
-    std::vector<float> dry, sweep;
+    /* The dry input and the engine's sweep, for the capture, and the two
+     * channels a bypassed block is gated on. Sized in prepareToPlay, never on
+     * the audio thread; a longer block is processed in chunks of this. */
+    std::vector<float> dry, sweep, copyL, copyR;
 
     std::unique_ptr<EngineModel> editorModel;
 

@@ -96,6 +96,8 @@ void Processor::prepareToPlay (double rate, int maximumBlock)
     const auto n = (std::size_t) juce::jmax (maximumBlock, 1);
     dry.assign (n, 0.0f);
     sweep.assign (n, 0.0f);
+    copyL.assign (n, 0.0f);
+    copyR.assign (n, 0.0f);
     /* Or the first picture after a rate change is the last session's. */
     capture.Clear();
 }
@@ -115,9 +117,15 @@ void Processor::engineValues (double (&out)[kNumParams]) const noexcept
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const int frames = buffer.getNumSamples();
-    const int cap = (int) juce::jmin (dry.size(), sweep.size());
     const auto clock = readClock (getPlayHead());
     beat.tick (clock, frames);
+    run (buffer, clock, true);
+}
+
+void Processor::run (juce::AudioBuffer<float>& buffer, const ni::HostClock& clock, bool heard)
+{
+    const int frames = buffer.getNumSamples();
+    const int cap = (int) juce::jmin (juce::jmin (dry.size(), sweep.size()), juce::jmin (copyL.size(), copyR.size()));
     if (frames <= 0 || buffer.getNumChannels() < 2 || cap <= 0)
         return;
 
@@ -137,11 +145,21 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     float* right = buffer.getWritePointer (1);
     ni::wire::for_each_chunk (frames, cap, [&] (int off, int n)
     {
+        const auto bytes = sizeof (float) * (std::size_t) n;
+        float* l = left + off;
+        float* r = right + off;
+        if (! heard)
+        {
+            std::memcpy (copyL.data(), l, bytes);
+            std::memcpy (copyR.data(), r, bytes);
+            l = copyL.data();
+            r = copyR.data();
+        }
         if (tap)
-            std::memcpy (dry.data(), left + off, sizeof (float) * (std::size_t) n);
-        tg_core_process_f32_split_tap (core, left + off, right + off, tap ? sweep.data() : nullptr, n, &transport);
+            std::memcpy (dry.data(), l, bytes);
+        tg_core_process_f32_split_tap (core, l, r, tap ? sweep.data() : nullptr, n, &transport);
         if (tap)
-            capture.Push (dry.data(), left + off, nullptr, sweep.data(), n);
+            capture.Push (dry.data(), l, nullptr, sweep.data(), n);
         /* A chunk continues the block, so the transport moves with it. */
         if (transport.running)
             transport.beats = ni::wire::advance_beats (transport.beats, n, (double) transport.bpm, sampleRate);
@@ -150,11 +168,15 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     tg_shell_end (shell.get(), frames);
 }
 
-/* Bypassed, by the host or by the Bypass -- audio through -- while the Ground
- * keeps the host's time, so the window's beat does not stop with the sound. */
+/* Bypassed, by the host or by the Bypass: audio through, its own way, while
+ * the engine runs on a copy -- taking every edit and slot switch, keeping
+ * time -- and the Ground keeps the host's time, so the window's beat does not
+ * stop with the sound. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
+    const auto clock = readClock (getPlayHead());
+    beat.tick (clock, buffer.getNumSamples());
+    run (buffer, clock, false);
     ni::Processor::processBypassed (buffer, midi);
 }
 
