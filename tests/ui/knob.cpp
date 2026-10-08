@@ -16,6 +16,7 @@
 #include "Pointer.h"
 #include "checks.h"
 #include "fakes.h"
+#include "settle.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -23,14 +24,10 @@
 using ni::ui::Knob;
 using ni::ui::gallery::Pointer;
 using ni::ui::test::FakeParameters;
+using ni::ui::test::settle;
 
 namespace
 {
-void settle()
-{
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
-}
-
 /* A knob that writes down what it asked for, in order. */
 struct Recorded
 {

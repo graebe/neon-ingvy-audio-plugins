@@ -15,26 +15,23 @@
 #include "events.h"
 #include "fakes.h"
 #include "pages.h"
+#include "settle.h"
 #include "snapshot.h"
 
 #include <doctest.h>
 
 using ni::ui::Readout;
 using ni::ui::test::centreOf;
+using ni::ui::test::settle;
 namespace c = uv::tok::colour;
 
-namespace
-{
 /*
  * TextEditor posts Enter, Escape and a lost focus to itself as messages and
  * acts on them when the message loop delivers them -- as it does in a window.
- * The tests let it, for a moment.
+ * The tests settle() for them (settle.h).
  */
-void settle()
+namespace
 {
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
-}
-
 /* A readout that remembers what it was handed, and how often it closed. */
 struct Typed
 {

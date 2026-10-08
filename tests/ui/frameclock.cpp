@@ -10,6 +10,9 @@
 
 #include <doctest.h>
 
+#include <algorithm>
+#include <vector>
+
 using ni::ui::FrameClock;
 
 TEST_CASE ("frame clock: every subscriber is called once per tick, in order")
@@ -80,13 +83,21 @@ TEST_CASE ("frame clock: with no vblank, the timer stands in and the frames stil
     FrameClock clock (root);
     CHECK_FALSE (clock.isOnVBlank());
 
-    int ticks = 0;
-    auto sub = clock.subscribe ([&] (double) { ++ticks; });
+    std::vector<double> frames;
+    auto sub = clock.subscribe ([&] (double t) { frames.push_back (t); });
 
-    /* The timer is the message loop's: run it for a fifth of a second. */
-    const auto until = juce::Time::getMillisecondCounter() + 200;
-    while (ticks < 3 && juce::Time::getMillisecondCounter() < until)
+    /* The timer is the message loop's, and how many of its callbacks a busy
+     * machine delivers in a given time is the machine's business, not the
+     * clock's: a CI runner gave two in a fifth of a second. So the loop runs
+     * until three frames have come, or ten seconds have gone -- a bound only
+     * a stopped timer reaches -- and what is checked is that they came, one
+     * after another, from the stand-in. */
+    const auto until = juce::Time::getMillisecondCounter() + 10000;
+    while (frames.size() < 3 && juce::Time::getMillisecondCounter() < until)
         juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
 
-    CHECK (ticks >= 3);
+    REQUIRE (frames.size() >= 3);
+    CHECK (std::is_sorted (frames.begin(), frames.end()));
+    CHECK (frames.front() < frames.back());   // frames, not one frame repeated
+    CHECK_FALSE (clock.isOnVBlank());
 }

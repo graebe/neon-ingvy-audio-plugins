@@ -39,6 +39,7 @@
 #include "EngineModel.h"
 #include "TranceGate.h"
 #include "Window.h"
+#include "settle.h"
 #include "trance-gate_fakes.h"
 #include "ui/gallery/Pointer.h"
 
@@ -845,7 +846,7 @@ TEST_CASE ("the editor stays whole while a set loads on another thread")
     host.join();
     REQUIRE (done.load());
     /* The parameters' news reaches the controls on the message thread. */
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+    ni::ui::test::settle();
     a.block();
     e.tick (16.0);
     CHECK (e.ring().getCount() == 32);
@@ -884,7 +885,7 @@ TEST_CASE ("the Slot select on the real Slot: it shows the slot wherever it was 
     const auto slots = fixture ("slots");
     std::thread host ([&] { a.p.setStateInformation (slots.data(), (int) slots.size()); });
     host.join();
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+    ni::ui::test::settle();
     CHECK (a.value (kSlot) == 2.0);
     CHECK (shown() == "2");
 
@@ -938,19 +939,19 @@ TEST_CASE ("the window verbs copy, paste, export and import through the real eng
     e.tick (0.0);
 
     e.verbs().button (Verbs::Verb::copy).onClick();
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    ni::ui::test::settle();
     REQUIRE (clipboard.text.has_value());
     CHECK (*clipboard.text == a.model().exportText (false));
 
     a.automate (kSlot, 2.0);
     e.verbs().button (Verbs::Verb::paste).onClick();
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    ni::ui::test::settle();
     a.block();
     CHECK (a.follow());
     checkSound (a, 0);
 
     e.verbs().button (Verbs::Verb::exportAll).onClick();
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    ni::ui::test::settle();
     REQUIRE (panels.asked.has_value());
     const auto bankFile = test::testFolder().getChildFile ("verbs.nitgbank");
     panels.answer (bankFile);
@@ -962,7 +963,7 @@ TEST_CASE ("the window verbs copy, paste, export and import through the real eng
     b.block();
     TranceGateEditor f (b.model(), clipboard, panels, [] { return 0.0; });
     f.verbs().button (Verbs::Verb::import).onClick();
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    ni::ui::test::settle();
     REQUIRE (panels.asked.has_value());
     panels.answer (bankFile);
     b.block();
