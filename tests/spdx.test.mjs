@@ -68,7 +68,7 @@ const syntaxOf = (file) => BY_NAME[basename(file)] ?? BY_EXTENSION[extname(file)
  */
 const EXCLUDED = [
   [/^external\//,
-   'vendored code and the iPlug2 submodule: third-party code keeps its own notices'],
+   'vendored code and the JUCE submodule: third-party code keeps its own notices'],
   [/^design\//,
    'the mirrors of the two design artifacts, which stay byte for byte what was published'],
   [/^engines\/trance-gate\/include\/(plugin_api_v1|audio_fx_api_v2)\.h$/,
@@ -138,7 +138,7 @@ test('the schwung-ducker port keeps its upstream notice beside ours', () => {
 });
 
 /* An exclusion that matches nothing is a hole waiting for a file to fall
- * into: the day ui-kit/ is deleted, its entry goes too. */
+ * into: the day what it names is deleted, its entry goes too. */
 test('every exclusion still names something tracked', () => {
   const files = tracked();
   const stale = EXCLUDED.filter(([re]) => !files.some((f) => re.test(f)))

@@ -7,7 +7,7 @@
  *
  * AN ENTRY IS A TABLE ROW WHOSE FIRST CELL NAMES THE THING IN BACKTICKS:
  *
- *   | `solid-js` | **MIT**, © 2016-2025 Ryan Carniato |
+ *   | `zlib` | 1.3.2, in `juce_core` | **Zlib**, © 1995-2026 Jean-loup Gailly and Mark Adler |
  *   | `tg-core`, `tg-capi`, `tg-move` | `engines/trance-gate` | ... |
  *
  * Every backticked name in a first cell counts, so one row may list several

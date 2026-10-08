@@ -9,19 +9,23 @@
  *   node scripts/check-licenses.mjs [--bundles build/out]
  *
  * THIRD_PARTY_LICENSES.md was written by hand and had drifted both ways: it
- * named bundles by names they no longer had (TranceGate.*, Spectrogram.*),
- * missed two plugins' fonts and a whole engine, never mentioned the JSON
- * library iPlug2 compiles into every plugin, and still carried eighty crates
- * from a Rust plugin wrapper that had been gone for months. This derives what
- * ships from the tree and holds the file to it, section by section:
+ * named bundles by names they no longer had, missed fonts and a whole engine,
+ * never mentioned a JSON library a former framework compiled into every
+ * plugin, and still carried eighty crates from a Rust plugin wrapper that had
+ * been gone for months. This derives what ships from the tree and holds the
+ * file to it, section by section:
  *
- *   framework  the SDK pins in scripts/fetch-sdks.sh, iPlug2 and WDL, and the
- *              JSON library iPlug2's WebView bridge includes
+ *   framework  JUCE, at the submodule's version, and the VST3 SDK JUCE
+ *              compiles in, at the version of JUCE's copy
+ *   JUCE's     what juce_core and juce_graphics compile in, for the modules
+ *              and switches cmake/NiJucePlugin.cmake uses
+ *   allowlist  every licence in those two sections is on deny.toml's
+ *              allowlist -- the one policy, which the Rust crates are held to
+ *              as well -- but AGPL-3.0, which JUCE alone may carry
  *   Rust       the standard library, which every engine links
- *   editors    exactly the npm packages the editor builds bundled, read from
- *              the notice files scripts/vite-licenses.mjs writes
- *   font       one row per plugin bundle that carries the font, and OFL.txt
- *              beside every copy of it
+ *   font       one row per plugin bundle that embeds the kit's font, OFL.txt
+ *              beside every copy of it, and Bravura's for a product that
+ *              embeds that too
  *   engines    exactly the workspace's own crates, the path packages in
  *              Cargo.lock
  *   crates     exactly the crates from crates.io that ship, at their versions:
@@ -31,11 +35,11 @@
  *              targets to about.toml's, so the gate and the notices judge one
  *              graph by one rule
  *   test-only  doctest and Schwung's two module-API headers, while they are
- *              vendored, and JUCE while .gitmodules names it -- read there,
- *              not from the checkout, so a clone without submodules agrees
+ *              vendored
  *
  * With --bundles it also opens the built bundles and checks that each one
- * carries LICENSE, THIRD_PARTY_LICENSES.md and its editor's notice file.
+ * carries LICENSE, THIRD_PARTY_LICENSES.md, the AGPLv3 and Apache 2.0 texts
+ * and its fonts' licences.
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -57,16 +61,8 @@ const sameSet = (label, listed, shipped) => {
   for (const n of listed) if (!shipped.has(n)) fail(`${label}: \`${n}\` is listed and does not ship -- remove the row`);
 };
 
-const PLUGINS = readdirSync(join(ROOT, 'plugins'))
-  .filter((d) => existsSync(join(ROOT, 'plugins', d, 'config.h')))
-  .map((d) => ({
-    dir: d,
-    bundle: /#define\s+BUNDLE_NAME\s+"([^"]+)"/.exec(read('plugins', d, 'config.h'))?.[1],
-    cmake: read('plugins', d, 'CMakeLists.txt'),
-  }));
-
-/* The products on the JUCE shell: a plugins/<p>/CMakeLists.txt that calls
- * ni_add_juce_plugin (cmake/NiJucePlugin.cmake). What they ship follows from
+/* The products: a plugins/<p>/CMakeLists.txt that calls ni_add_juce_plugin
+ * (cmake/NiJucePlugin.cmake). What they ship follows from
  * the call: the bundle is TARGET.vst3; an EDITOR embeds the kit's JetBrains
  * Mono, so it carries OFL.txt; NI_UI_MUSIC_FONT_LICENSE among its NOTICES says
  * it embeds Bravura too, and carries Bravura-OFL.txt. */
@@ -108,34 +104,23 @@ if (JUCE_PLUGINS.length)
   }
 
 /* ------------------------------------------------------------ framework */
+/* JUCE at the version the submodule declares, and the VST3 SDK at the version
+ * of the copy JUCE vendors -- read from the checkout, so a submodule bump
+ * without a notice update fails here. */
 try {
   const fw = section(sections, 'The plugin framework');
-  if (PLUGINS.length) {
-    need(fw, 'iPlug2', 'a plugin is an iPlug2 plugin');
-    need(fw, 'WDL', 'iPlug2 compiles WDL in');
-  }
-  if (JUCE_PLUGINS.length) {
-    need(fw, 'JUCE', 'a plugin is built on the JUCE shell');
-    need(fw, "VST3 SDK (JUCE's copy)", 'JUCE compiles its own VST3 SDK into a bundle on the JUCE shell');
-  }
-  const pins = read('scripts', 'fetch-sdks.sh');
-  const pin = (k) => new RegExp(`^${k}=(\\S+)`, 'm').exec(pins)?.[1];
-  const formats = PLUGINS.map((p) => /FORMATS\s+([\s\S]*?)\n\s*UI/.exec(p.cmake)?.[1] ?? '').join(' ');
-  if (/\bVST3\b/.test(formats) && !need(fw, 'VST3 SDK', 'a plugin builds VST3').includes(pin('VST3_SDK_TAG')))
-    fail(`the VST3 SDK row does not name the pinned ${pin('VST3_SDK_TAG')}`);
-  if (/\bCLAP\b/.test(formats)) {
-    if (!need(fw, 'CLAP', 'a plugin builds CLAP').includes(pin('CLAP_SDK_TAG')))
-      fail(`the CLAP row does not name the pinned ${pin('CLAP_SDK_TAG')}`);
-    if (!need(fw, 'clap-helpers', 'iPlug2\'s CLAP wrapper includes it').includes(pin('CLAP_HELPERS_COMMIT').slice(0, 8)))
-      fail(`the clap-helpers row does not name the pinned commit ${pin('CLAP_HELPERS_COMMIT').slice(0, 8)}`);
-  }
-  const bridge = 'external/iPlug2/IPlug/Extras/WebView/IPlugWebViewEditorDelegate.h';
-  if (PLUGINS.some((p) => /UI\s+WEBVIEW/.test(p.cmake)) && existsSync(join(ROOT, bridge))
-      && read(bridge).includes('#include "json.hpp"')) {
-    const json = read('external/iPlug2/Dependencies/Extras/nlohmann/json.hpp');
-    const v = /version (\d+\.\d+\.\d+)/.exec(json)?.[1];
-    if (!need(fw, 'JSON for Modern C++', 'the WebView bridge compiles it into every plugin').includes(v))
-      fail(`the JSON for Modern C++ row does not name the vendored ${v}`);
+  const shipped = new Set(JUCE_PLUGINS.length ? ['JUCE', "VST3 SDK (JUCE's copy)"] : []);
+  sameSet('framework', new Set(fw.keys()), shipped);
+  const juce = join(ROOT, 'external', 'JUCE');
+  if (JUCE_PLUGINS.length && existsSync(join(juce, 'CMakeLists.txt'))) {
+    const v = /project\(JUCE VERSION (\S+)/.exec(read('external', 'JUCE', 'CMakeLists.txt'))?.[1];
+    if (!fw.get('JUCE')?.includes(`| ${v},`)) fail(`the JUCE row does not name the submodule's ${v}`);
+    const types = join(juce, 'modules', 'juce_audio_processors_headless', 'format_types', 'VST3_SDK',
+      'pluginterfaces', 'vst', 'vsttypes.h');
+    const sdk = existsSync(types) ? /kVstVersionString\s+"VST (\S+)"/.exec(readFileSync(types, 'utf8'))?.[1] : null;
+    if (!sdk) fail(`cannot read the VST3 SDK version JUCE vendors from ${types}`);
+    else if (!fw.get("VST3 SDK (JUCE's copy)")?.includes(`| ${sdk},`))
+      fail(`the VST3 SDK row does not name JUCE's copy, ${sdk}`);
   }
 } catch (e) { fail(e.message); }
 
@@ -150,51 +135,41 @@ try {
     sameSet("JUCE's dependencies", new Set(section(sections, "JUCE's own dependencies").keys()), shipped);
 } catch (e) { fail(e.message); }
 
+/* ------------------------------------------------------------ allowlist */
+/* The licence of every C and C++ library a bundle carries, held to the one
+ * allowlist (deny.toml, which the owner's AGENTS.md states): the row's first
+ * bold licence. AGPL-3.0 is allowed for JUCE and nothing else -- GPLv3
+ * section 13 is what lets the two combine, and it is not a licence a library
+ * should arrive under unnoticed. */
+try {
+  const allow = new Set(tomlArray('deny.toml', 'licenses', 'allow'));
+  for (const prefix of ['The plugin framework', "JUCE's own dependencies"]) {
+    for (const [name, row] of section(sections, prefix)) {
+      const licence = /\*\*([^*]+)\*\*/.exec(row.split('|').slice(-2, -1)[0] ?? '')?.[1];
+      const ok = licence && (allow.has(licence) || (name === 'JUCE' && licence === 'AGPL-3.0'));
+      if (!ok) fail(`\`${name}\` is under ${licence ?? 'no licence it names'}, which is not on the allowlist (deny.toml)`);
+    }
+  }
+} catch (e) { fail(e.message); }
+
 /* ------------------------------------------------------------ Rust std */
 try {
   need(section(sections, 'The Rust standard library'), 'Rust standard library',
     'every engine links it');
 } catch (e) { fail(e.message); }
 
-/* ------------------------------------------------------------ editors */
-try {
-  const editors = section(sections, 'The editors');
-  const shipped = new Set();
-  let built = 0;
-  for (const p of PLUGINS) {
-    const f = join(ROOT, 'plugins', p.dir, 'resources', 'web', 'assets', 'ui.js.LICENSE.txt');
-    if (!existsSync(f)) continue;
-    built++;
-    for (const m of readFileSync(f, 'utf8').matchAll(/^(@?[^@\s]+)@\S+ -- /gm)) shipped.add(m[1]);
-  }
-  if (built === PLUGINS.length) {
-    sameSet('editors', new Set(editors.keys()), shipped);
-  } else {
-    fail(`${PLUGINS.length - built} editor(s) not built, so what they bundle is unknown -- ` +
-         'run `npm ci` and build first (resources/web is build output)');
-  }
-} catch (e) { fail(e.message); }
-
 /* ------------------------------------------------------------ fonts */
 try {
   const fonts = section(sections, 'Bundled font');
   const shipped = new Set();
-  /* The font is the kit's (ui-kit/src/fonts), and every editor that imports
-   * the kit's tokens.css carries it in its stylesheet -- so each of those must
-   * ship OFL.txt in its fonts/ directory, and the kit must keep it beside the
-   * font files. */
-  const kitFonts = join(ROOT, 'ui-kit', 'src', 'fonts');
-  const kitHasFont = existsSync(kitFonts) && readdirSync(kitFonts).some((f) => /\.(ttf|otf|woff2?)$/.test(f));
-  if (kitHasFont && !existsSync(join(kitFonts, 'OFL.txt'))) fail('ui-kit/src/fonts has a font and no OFL.txt');
-  for (const p of PLUGINS) {
-    const ui = join(ROOT, 'plugins', p.dir, 'ui', 'src');
-    const usesKit = existsSync(ui) && readdirSync(ui).some((f) => /\.jsx?$/.test(f)
-      && readFileSync(join(ui, f), 'utf8').includes('@ultraviolet/ui/tokens.css'));
-    if (!kitHasFont || !usesKit) continue;
-    if (!existsSync(join(ROOT, 'plugins', p.dir, 'ui', 'public', 'fonts', 'OFL.txt')))
-      fail(`plugins/${p.dir}/ui draws the kit's font and has no public/fonts/OFL.txt`);
-    shipped.add(`${p.bundle}.{vst3,clap,component}`);
-  }
+  /* Wherever the faces are kept, their licence is kept beside them, and it
+   * is one text: the kit's (embedded in every editor) and the site's subset. */
+  const kitOfl = join(ROOT, 'plugins', '_shared', 'ui', 'fonts', 'OFL.txt');
+  const siteOfl = join(ROOT, 'site', 'src', 'uv', 'fonts', 'OFL.txt');
+  for (const f of [kitOfl, siteOfl])
+    if (!existsSync(f)) fail(`${f.slice(ROOT.length + 1)} is missing -- the font beside it needs it`);
+  if (existsSync(kitOfl) && existsSync(siteOfl) && !readFileSync(kitOfl).equals(readFileSync(siteOfl)))
+    fail('site/src/uv/fonts/OFL.txt is not the kit\'s plugins/_shared/ui/fonts/OFL.txt');
   /* A JUCE editor draws with the kit's embedded faces (plugins/_shared/ui). */
   for (const p of JUCE_PLUGINS)
     if (p.editor) shipped.add(`${p.bundle}.vst3`);
@@ -418,11 +393,6 @@ try {
   if (existsSync(join(ROOT, 'external', 'doctest', 'doctest.h'))) vendored.add('doctest');
   for (const h of ['plugin_api_v1.h', 'audio_fx_api_v2.h'])
     if (existsSync(join(ROOT, 'engines', 'trance-gate', 'include', h))) vendored.add(h);
-  /* JUCE is test-only until a product ships it; then its row is the
-   * framework's. */
-  if (!JUCE_PLUGINS.length
-      && /^\s*path\s*=\s*external\/JUCE\s*$/m.test(readFileSync(join(ROOT, '.gitmodules'), 'utf8')))
-    vendored.add('JUCE');
   sameSet('test-only', new Set(testOnly.keys()), vendored);
 } catch (e) { fail(e.message); }
 
@@ -430,13 +400,6 @@ try {
 const at = process.argv.indexOf('--bundles');
 if (at > 0) {
   const out = process.argv[at + 1];
-  for (const p of PLUGINS) {
-    for (const ext of ['vst3', 'component', 'clap']) {
-      const res = join(out, `${p.bundle}.${ext}`, 'Contents', 'Resources');
-      for (const f of ['LICENSE', 'THIRD_PARTY_LICENSES.md', 'web/assets/ui.js.LICENSE.txt', 'web/fonts/OFL.txt'])
-        if (!existsSync(join(res, f))) fail(`${p.bundle}.${ext} ships without Contents/Resources/${f}`);
-    }
-  }
   for (const p of JUCE_PLUGINS) {
     const res = join(out, `${p.bundle}.vst3`, 'Contents', 'Resources');
     const files = ['LICENSE', 'THIRD_PARTY_LICENSES.md', ...Object.keys(LICENCE_FILES),

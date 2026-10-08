@@ -4,12 +4,12 @@
 /*
  * One version per product, spelled once and checked everywhere.
  *
- * A PRODUCT'S VERSION APPEARS IN THREE OR FOUR FILES, in three languages:
- * config.h as a string AND as packed hex, module.json, and every crate of its
- * engine. Nothing held them together, and they had already come apart -- the
- * Spectrogram shipped `PLUG_VERSION_STR "1.0.0"` against crates that said
- * 0.1.0, so the plugin and the analyzer inside it disagreed about what they
- * were.
+ * A PRODUCT'S VERSION APPEARS IN SEVERAL PLACES, in several languages: the
+ * plugin's build, the bundle's Info.plist and moduleinfo.json, module.json,
+ * and every crate of its engine. Nothing held them together, and they had
+ * already come apart once -- the Spectrogram shipped "1.0.0" against crates
+ * that said 0.1.0, so the plugin and the analyzer inside it disagreed about
+ * what they were.
  *
  * versions.json decides; this asserts. Checked rather than GENERATED, which is
  * this repository's habit: the curve and envelope oracles pin the UI against
@@ -21,7 +21,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -30,17 +30,15 @@ const read = (...p) => readFileSync(join(ROOT, ...p), 'utf8');
 const VERSIONS = JSON.parse(read('versions.json'));
 
 /*
- * Every product, and everything that spells its version: an iPlug2 plugin's
- * config.h, a JUCE plugin's build (`juce`), a Schwung module's module.json
- * and its engine's crates. `crates` are that
- * product's engine -- a crate belongs to exactly one PRODUCT engine, which is
- * also why the two product engines never depend on each other.
+ * Every product, and everything that spells its version: its plugin's build
+ * (`juce`), a Schwung module's module.json and its engine's crates. `crates`
+ * are that product's engine -- a crate belongs to exactly one PRODUCT engine,
+ * which is also why the two product engines never depend on each other.
  *
- * BOTH `config` AND `crates` ARE OPTIONAL, and the two entries at the bottom
- * are why. Listen-In is a plugin whose engine is the house transport rather
- * than one of its own, so it has a config.h and no crates. audio-bus is that
- * transport: crates, and no config.h, no plists and no bundle, because it is
- * not a plugin at all -- it ships INSIDE two of them.
+ * BOTH `juce` AND `crates` ARE OPTIONAL, and two entries are why. Listen-In is
+ * a plugin whose engine is the house transport rather than one of its own, so
+ * it has a build and no crates. audio-bus is that transport: crates, and no
+ * bundle, because it is not a plugin at all -- it ships INSIDE two of them.
  *
  * It is versioned here anyway. A crate whose version nothing checks is a crate
  * that will eventually disagree with itself, which is the exact failure this
@@ -67,7 +65,7 @@ const PRODUCTS = {
      * because a Spectrogram will link the same library. */
   },
   'audio-bus': {
-    /* No config: not a plugin. */
+    /* No build: not a plugin. */
     crates: ['bus-core', 'bus-capi'].map(
       (c) => `engines/audio-bus/crates/${c}/Cargo.toml`),
   },
@@ -116,7 +114,7 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
  *   numeric  three integers: Cargo (semver) and CFBundleShortVersionString
  *   cargo    numeric plus the subversion as BUILD METADATA -- legal semver,
  *            ignored in comparison, and not lost
- *   packed   major<<16 | minor<<8 | patch, which is what a host compares
+ *   packed   major<<16 | minor<<8 | patch: the ordering the build number keeps
  *   bundle   the packed number's three fields in decimal, for CFBundleVersion
  *   schwung  display without its "v", for module.json and release.json
  *
@@ -130,8 +128,7 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
  * compare, and it had been the same "2026.9.29" for .2 and .3 -- two different
  * builds claiming one build number. It allows at most three integers, so the
  * subversion cannot be a fourth field; folding it into the third the way the
- * packed hex already does keeps it monotonic and makes it the SAME number the
- * AU's version and PLUG_VERSION_HEX carry, rather than a third encoding.
+ * packed form does keeps it monotonic.
  * CFBundleShortVersionString stays the human-facing date (2026.9.29).
  *
  * THE SCHWUNG SPELLING DROPS THE "v". Schwung Manager compares a module's
@@ -196,25 +193,9 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
   const want = VERSIONS[product];
 
   test(`${product}: it is either a bundle or a crate, and says which`, () => {
-    assert.ok(where.config || where.juce || where.crates,
-      `${product} names neither a config.h, a JUCE build nor any crates, so ` +
+    assert.ok(where.juce || where.crates,
+      `${product} names neither a plugin build nor any crates, so ` +
       `nothing about its version is actually checked`);
-  });
-
-  if (where.config)
-  test(`${product}: config.h agrees (${want})`, () => {
-    const h = read(where.config);
-    const str = /#define\s+PLUG_VERSION_STR\s+"([^"]+)"/.exec(h)?.[1];
-    assert.equal(str, spellings(want).display,
-      `PLUG_VERSION_STR in ${where.config}`);
-
-    /* The HEX is the one a host actually compares when deciding whether a
-     * saved project was made by an older build, so a stale one is worse than a
-     * stale string: it is silently wrong rather than visibly wrong. */
-    const hex = /#define\s+PLUG_VERSION_HEX\s+(0x[0-9a-fA-F]+)/.exec(h)?.[1];
-    assert.ok(hex, `no PLUG_VERSION_HEX in ${where.config}`);
-    assert.equal(Number(hex), packed(want),
-      `PLUG_VERSION_HEX is ${hex}; ${want} packs to 0x${packed(want).toString(16).padStart(8, '0')}`);
   });
 
   if (where.juce) {
@@ -226,9 +207,12 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
 
     /*
      * WHAT THE BUILT BUNDLE SAYS, when there is one: NI_BUNDLES names
-     * build/out in the full tier (versions_bundles). The same spellings as an
-     * iPlug2 plist -- the date for the Finder, the packed day for the build
-     * number -- and the date as the VST3 class's version.
+     * build/out in the full tier (versions_bundles). The NUMERIC forms, not
+     * the display one: both plist keys are up to three integers, the date
+     * for the Finder and the packed day for the build number, which the
+     * installer compares -- and the date as the VST3 class's version. The
+     * identifier and the executable are the bundle's name, which is what
+     * a host and the release staging find it by.
      */
     const out = process.env.NI_BUNDLES;
     if (out)
@@ -238,6 +222,9 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
       const key = (k) => new RegExp(`<key>${k}</key>\\s*<string>([^<]*)</string>`).exec(x)?.[1];
       assert.equal(key('CFBundleShortVersionString'), spellings(want).numeric, 'CFBundleShortVersionString');
       assert.equal(key('CFBundleVersion'), spellings(want).bundle, 'CFBundleVersion');
+      assert.equal(key('CFBundleExecutable'), where.juce.bundle, 'CFBundleExecutable');
+      assert.ok(key('CFBundleIdentifier')?.endsWith(`.${where.juce.bundle}`),
+        `CFBundleIdentifier "${key('CFBundleIdentifier')}" does not end in ".${where.juce.bundle}"`);
       const info = readFileSync(join(res, 'Resources', 'moduleinfo.json'), 'utf8');
       assert.match(info, new RegExp(`"Version":\\s*"${spellings(want).numeric.replaceAll('.', '\\.')}"`),
         'moduleinfo.json Version');
@@ -250,74 +237,6 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
         `${where.module}: the Schwung spelling has no "v" -- see spellings() above`);
     });
   }
-
-  /*
-   * THE Info.plists ARE A FOURTH SPELLING, and they are literal -- iPlug2
-   * substitutes nothing into them, so they stay at whatever they were
-   * generated with. They did: both products' plists still said 1.0.0 after
-   * versions.json moved, and the Spectrogram's had said 1.0.0 all along while
-   * its config.h said 0.1.0.
-   *
-   * This is what the OS and the Finder report, and `AudioUnit Version` is what
-   * an AU host compares -- so a stale plist is a plugin that tells the host one
-   * version and the user another.
-   */
-  if (where.config)
-  test(`${product}: every Info.plist agrees (${want})`, () => {
-    const dir = join(ROOT, dirname(where.config), 'resources');
-    const plists = readdirSync(dir).filter((f) => f.endsWith('.plist'));
-    assert.ok(plists.length, `no plists in ${dir}`);
-
-    for (const f of plists) {
-      const x = readFileSync(join(dir, f), 'utf8');
-      const key = (k) =>
-        new RegExp(`<key>${k}</key>\\s*<string>([^<]*)</string>`).exec(x)?.[1];
-
-      /*
-       * THE NUMERIC FORMS, NOT THE DISPLAY ONE. Both keys are specified as up
-       * to three integers, so "v2026.09.29.1" belongs in neither -- the Finder
-       * and the installer read these. The short string is the date; the build
-       * number carries the subversion too (see spellings() above).
-       */
-      const short = key('CFBundleShortVersionString');
-      if (short !== undefined)
-        assert.equal(short, spellings(want).numeric, `${f}: CFBundleShortVersionString`);
-      const build = key('CFBundleVersion');
-      if (build !== undefined)
-        assert.equal(build, spellings(want).bundle, `${f}: CFBundleVersion`);
-      const au = key('AudioUnit Version');
-      if (au !== undefined)
-        assert.equal(Number(au), packed(want),
-          `${f}: AudioUnit Version is ${au}; ${want} packs to 0x${packed(want).toString(16).padStart(8, '0')}`);
-
-      /*
-       * AND THE AudioComponents DICT'S OWN version, WHICH IS THE ONE A HOST
-       * READS.
-       *
-       * "AudioUnit Version" above is a second spelling of the same number and
-       * only this one reaches a host's component registry -- so the two can
-       * disagree, and they did: the dict said 65536 (0x00010000) while the key
-       * above it had been kept current through three version bumps. A stale
-       * number here is a plugin that tells Logic it is version 1.0.0 whatever
-       * else it says, which is the kind of wrong that shows up as "my host will
-       * not pick up the new build".
-       */
-      const comp = /<key>AudioComponents<\/key>[\s\S]*?<key>version<\/key>\s*<integer>(\d+)<\/integer>/
-        .exec(x)?.[1];
-      if (comp !== undefined)
-        assert.equal(Number(comp), packed(want),
-          `${f}: AudioComponents version is ${comp}, wanted ${packed(want)}`);
-
-      /* The human-readable one, so it carries the DISPLAY string as written --
-       * a date version already begins with its own "v". */
-      const info = key('CFBundleGetInfoString');
-      if (info !== undefined) {
-        const d = spellings(want).display;
-        const wanted = d.startsWith('v') ? d : `v${d}`;
-        assert.ok(info.includes(wanted), `${f}: CFBundleGetInfoString says "${info}"`);
-      }
-    }
-  });
 
   if (where.crates)
   test(`${product}: every crate of its engine agrees (${want})`, () => {
@@ -412,151 +331,22 @@ test('release.json: every published module entry is well formed and not ahead', 
 });
 
 /*
- * THE AU's FACTORY SYMBOL, WHICH IS NOT A VERSION BUT FAILS THE SAME WAY.
+ * AND THE PUBLISHER IS NEON INGVY, IN EVERY NAME A HOST SHOWS.
  *
- * The AudioComponents dict names the factory function the host calls, by symbol
- * name, and config.h's AUV2_FACTORY is what the binary exports. Nothing else
- * checks that those two agree: the build succeeds either way, and the failure is
- * a host that scans the component, lists it, and then cannot instantiate it.
- *
- * It was found by renaming the plugin -- config.h moved and the plist did not --
- * and the only reason it did not ship is that the AU render test happened to load
- * an older bundle still installed under the same four-character IDs. That is a
- * warning about the test, not a defence of it, so this is checked from the source
- * instead.
- */
-test('the AU plist names the factory the binary exports', () => {
-  for (const [product, where] of Object.entries(PRODUCTS)) {
-    /* audio-bus is crates-only -- no config.h, no plists, no bundle. */
-    if (!where.config) continue;
-    const dir = join(ROOT, dirname(where.config), 'resources');
-    const au = readdirSync(dir).filter((f) => f.endsWith('-AU-Info.plist'));
-    if (!au.length) continue;                      /* the Spectrogram has one too */
-    const h = read(where.config);
-    const factory = /#define\s+AUV2_FACTORY\s+(\w+)/.exec(h)?.[1];
-    assert.ok(factory, `${where.config}: no AUV2_FACTORY`);
-    for (const f of au) {
-      const x = readFileSync(join(dir, f), 'utf8');
-      const named = /<key>factoryFunction<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
-      assert.equal(named, factory,
-        `${f} calls ${named}, config.h exports ${factory} -- the host would list it and fail to open it`);
-    }
-  }
-});
-
-/*
- * AND THE VIEW CLASS THE AU PLIST NAMES IS THE ONE THE BINARY DEFINES.
- *
- * An AUv2 with a Cocoa editor is asked for its view by class NAME: the plist's
- * NSPrincipalClass is looked up in the bundle, and config.h's
- * AUV2_VIEW_CLASS_STR is what iPlug2 actually registers. The Trance Gate's
- * plist said TranceGate_View for as long as the bundle has been NITranceGate --
- * a rename that moved config.h and not the plist, exactly like the factory
- * above, and just as invisible to a build.
- */
-test('the AU plist names the view class the binary defines', () => {
-  for (const [, where] of Object.entries(PRODUCTS)) {
-    if (!where.config) continue;
-    const dir = join(ROOT, dirname(where.config), 'resources');
-    const h = read(where.config);
-    const view = /#define\s+AUV2_VIEW_CLASS_STR\s+"([^"]+)"/.exec(h)?.[1];
-    const sym = /#define\s+AUV2_VIEW_CLASS\s+(\w+)/.exec(h)?.[1];
-    for (const f of readdirSync(dir).filter((n) => n.endsWith('-AU-Info.plist'))) {
-      assert.ok(view, `${where.config}: no AUV2_VIEW_CLASS_STR`);
-      assert.equal(sym, view, `${where.config}: AUV2_VIEW_CLASS and its _STR disagree`);
-      const x = readFileSync(join(dir, f), 'utf8');
-      const principal = /<key>NSPrincipalClass<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
-      assert.equal(principal, view,
-        `${f}: NSPrincipalClass is ${principal}, config.h registers ${view}`);
-    }
-  }
-});
-
-/*
- * A PLUGIN ON THE SHARED-MEMORY TRANSPORT IS NOT sandboxSafe.
- *
- * sandboxSafe tells a host it may load the AU inside its sandboxed
- * out-of-process host (Logic, GarageBand, AUv3 hosts). audio-bus is POSIX
- * shared memory -- shm_open on a name every NI plugin agrees on -- and a
- * sandboxed process may not open a name outside its own app group. So in a
- * sandbox the send side publishes into nothing and the receive side reads an
- * empty bus, silently. Claiming sandboxSafe=true for those plugins promised a
- * host something that plugin cannot do; false makes the host load it in-process
- * (or not at all), which is the honest answer. An app-group name would be the
- * alternative, and it cannot be shared with hosts that do not sandbox.
- *
- * Which plugins are on the bus is read from the shells' own includes rather
- * than listed, so a new one cannot miss this.
- */
-const BUS_HEADERS = ['audio_bus.h', 'spectro_recv.h'];
-test('an AU that opens the shared-memory bus does not claim sandboxSafe', () => {
-  for (const [, where] of Object.entries(PRODUCTS)) {
-    if (!where.config) continue;
-    const pdir = join(ROOT, dirname(where.config));
-    const onBus = readdirSync(pdir)
-      .filter((n) => /\.(h|cpp)$/.test(n))
-      .some((n) => BUS_HEADERS.some((h) => readFileSync(join(pdir, n), 'utf8').includes(`#include "${h}"`)));
-    if (!onBus) continue;
-    const dir = join(pdir, 'resources');
-    for (const f of readdirSync(dir).filter((n) => n.endsWith('-AU-Info.plist'))) {
-      const x = readFileSync(join(dir, f), 'utf8');
-      const safe = /<key>sandboxSafe<\/key>\s*<(true|false)\/>/.exec(x)?.[1];
-      assert.equal(safe, 'false', `${f}: the plugin opens the shm bus, so it is not sandboxSafe`);
-    }
-  }
-});
-
-/*
- * AND THE BUNDLE IDENTIFIERS END IN BUNDLE_NAME.
- *
- * iPlug2 builds the identifier as DOMAIN.MFR.<type>.BUNDLE_NAME and the AU looks
- * its own bundle up by it to find the Cocoa view -- config.h says a mismatch
- * returns NULL from CFBundleCopyBundleURL and segfaults the host at "VERIFYING
- * CUSTOM UI". BUNDLE_NAME also has to equal the CMake target, because that is
- * what names these plists. One rename, four places, and nothing was checking.
- */
-test('every bundle identifier ends in BUNDLE_NAME', () => {
-  for (const [product, where] of Object.entries(PRODUCTS)) {
-    if (!where.config) continue;                   /* crates-only, see above */
-    const h = read(where.config);
-    const bundle = /#define\s+BUNDLE_NAME\s+"([^"]+)"/.exec(h)?.[1];
-    assert.ok(bundle, `${where.config}: no BUNDLE_NAME`);
-    const dir = join(ROOT, dirname(where.config), 'resources');
-    for (const f of readdirSync(dir).filter((n) => n.endsWith('.plist'))) {
-      /* The plists are named <target>-<FORMAT>-Info.plist, and the target IS
-       * BUNDLE_NAME -- so the filename is the first thing that must agree. */
-      assert.ok(f.startsWith(`${bundle}-`),
-        `${f} is not named for BUNDLE_NAME "${bundle}"`);
-      const x = readFileSync(join(dir, f), 'utf8');
-      const id = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
-      if (id !== undefined)
-        assert.ok(id.endsWith(`.${bundle}`),
-          `${f}: CFBundleIdentifier "${id}" does not end in ".${bundle}"`);
-      const exe = /<key>CFBundleExecutable<\/key>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
-      if (exe !== undefined) assert.equal(exe, bundle, `${f}: CFBundleExecutable`);
-    }
-  }
-});
-
-/*
- * AND THE PUBLISHER IS NEON INGVY, IN EVERY STRING A HOST SHOWS.
- *
- * AGENTS.md: the publisher is "Neon Ingvy" and a product is "NI <name>".
- * PLUG_MFR is what a DAW groups the plugin under and AAX_PLUG_MFR_STR is the
- * same thing for Pro Tools; the Side-Chain's AAX string still said "graebe"
- * after the others had moved. BUNDLE_MFR is deliberately NOT checked: it is a
- * component of the bundle identifier, and changing it would orphan every saved
- * project -- which is why a JUCE build's BUNDLE_ID keeps com.graebe too
- * (cmake/NiJucePlugin.cmake).
+ * AGENTS.md: the publisher is "Neon Ingvy" and a product is "NI <name>". The
+ * company is the shell's, once for every product (cmake/NiJucePlugin.cmake);
+ * the name a host lists and the bundle's are each product's. The bundle
+ * identifier keeps com.graebe deliberately: changing it would orphan every
+ * saved project.
  */
 test('every plugin is published by Neon Ingvy under an NI name', () => {
+  assert.match(read('cmake', 'NiJucePlugin.cmake'), /COMPANY_NAME\s+"Neon Ingvy"/,
+    'cmake/NiJucePlugin.cmake: COMPANY_NAME');
   for (const [, where] of Object.entries(PRODUCTS)) {
-    if (!where.config) continue;
-    const h = read(where.config);
-    const str = (k) => new RegExp(`#define\\s+${k}\\s+"([^"]*)"`).exec(h)?.[1];
-    assert.equal(str('PLUG_MFR'), 'Neon Ingvy', `${where.config}: PLUG_MFR`);
-    const aax = str('AAX_PLUG_MFR_STR');
-    if (aax !== undefined) assert.equal(aax, 'Neon Ingvy', `${where.config}: AAX_PLUG_MFR_STR`);
-    assert.match(str('PLUG_NAME') ?? '', /^NI /, `${where.config}: PLUG_NAME`);
+    if (!where.juce) continue;
+    const cmake = read(where.juce.cmake);
+    assert.match(/\bNAME\s+"([^"]*)"/.exec(cmake)?.[1] ?? '', /^NI /, `${where.juce.cmake}: NAME`);
+    assert.equal(/\bTARGET\s+(\S+)/.exec(cmake)?.[1], where.juce.bundle, `${where.juce.cmake}: TARGET`);
+    assert.match(where.juce.bundle, /^NI[A-Z]/, `${where.juce.bundle}: a bundle is NI<Name>`);
   }
 });

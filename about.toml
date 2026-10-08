@@ -21,6 +21,11 @@ accepted = [
     "Unlicense",
     "GPL-3.0-or-later",
     "GPL-3.0-only",
+    # What JUCE compiles into every bundle (THIRD_PARTY_LICENSES.md): no
+    # crate is under these today, and they are the same policy.
+    "libpng-2.0",
+    "IJG",
+    "MIT-Modern-Variant",
 ]
 
 # No target list, as in deny.toml and for its reason: every platform's

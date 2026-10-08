@@ -22,40 +22,21 @@ ships.
 | Schwung module tarballs (`*-module.tar.gz`) | the Rust standard library, the engines and the crates from crates.io they link; the Trance Gate's also carries its own `ui_chain.js` |
 | The documentation site | JetBrains Mono |
 
-## The plugin framework and SDKs — compiled into every plugin bundle
+## The plugin framework — compiled into every plugin bundle
 
 | Component | Version | Licence |
 |---|---|---|
-| `iPlug2` | the submodule's commit | **zlib**, © the iPlug 2 Developers; based on WDL-OL/iPlug by Oli Larkin (2011-2018) and iPlug v1 (2008) by John Schwartz / Cockos |
-| `WDL` (Cockos, the parts iPlug2 compiles in) | as vendored in iPlug2 | **zlib**, © 2005 and later Cockos Incorporated |
-| `VST3 SDK` | `v3.8.1_build_84` | **MIT**, © 2026 Steinberg Media Technologies GmbH |
-| `CLAP` | `1.2.10` | **MIT**, © 2021 Alexandre Bique |
-| `clap-helpers` | commit `55a5dd5d` | **MIT**, © 2021 Alexandre Bique |
-| `JSON for Modern C++` (nlohmann/json) | 3.12.0, as vendored in iPlug2 | **MIT**, © 2013-2026 Niels Lohmann; portions © 2008-2009 Björn Hoehrmann, © 2009 Florian Loitsch, © 2018 The Abseil Authors (all MIT); Hedley © 2016-2021 Evan Nemerson (**CC0-1.0**) |
 | `JUCE` | 9.0.3, the `external/JUCE` submodule | **AGPL-3.0**, taken here under the AGPLv3 (JUCE is also offered under the commercial JUCE 9 licence), © Raw Material Software Limited |
 | `VST3 SDK (JUCE's copy)` | 3.8.0, as vendored in JUCE | **MIT**, © 2026 Steinberg Media Technologies GmbH |
 
-The rows above JUCE were the bundles on iPlug2. Since NI Listen-In, the last
-of them, moved to the JUCE shell, no bundle links any of them: they stay
-listed only while the iPlug2 build itself is still in the tree, and go with
-it. JUCE and its copy of the VST3 SDK are the bundles on the JUCE shell, which
-link none of iPlug2's. JUCE's
-modules are AGPLv3, which GPLv3 section 13 lets this GPL-3.0-or-later work
-combine with ([ADR 0001](docs/adr/0001-gpl-3.0-or-later.md)); the full AGPLv3
-text travels in every bundle on the JUCE shell as `AGPL-3.0.txt`.
-
-The SDK versions are the pins in `scripts/fetch-sdks.sh`; nothing is fetched
-from a moving branch. The VST3 SDK is the one most often assumed to force
-copyleft and no longer does: Steinberg withdrew the GPLv3-or-proprietary dual
-licence with 3.8.0, and the pinned SDK's `LICENSE.txt` is plain MIT.
-
-JSON for Modern C++ is compiled in by iPlug2's WebView editor bridge
-(`IPlugWebViewEditorDelegate.h`), which every plugin here uses.
-
-iPlug2's other bundled libraries — NanoVG, NanoSVG, MetalNanoVG, yoga, RTAudio,
-RTMidi — belong to its IGraphics UI and its standalone app. These plugins use
-the WebView editor and build no app, so none of them is linked into anything
-that ships.
+Every plugin is a VST3 built on JUCE, which compiles its own copy of the VST3
+SDK into the bundle; nothing else is fetched or linked for the plugin format.
+JUCE's modules are AGPLv3, which GPLv3 section 13 lets this GPL-3.0-or-later
+work combine with ([ADR 0001](docs/adr/0001-gpl-3.0-or-later.md)); the full
+AGPLv3 text travels in every bundle as `AGPL-3.0.txt`. The VST3 SDK is the
+one most often assumed to force copyleft and no longer does: Steinberg
+withdrew the GPLv3-or-proprietary dual licence with 3.8.0, and JUCE's copy's
+`LICENSE.txt` is plain MIT.
 
 ## JUCE's own dependencies — compiled into every bundle on the JUCE shell
 
@@ -75,6 +56,11 @@ Ogg Vorbis, Opus) is in a bundle, and it switches the WebP decoder off
 | `LunaSVG` | 3.5.0, in `juce_graphics` | **MIT**, © 2020-2025 Samuel Ugochukwu |
 | `PlutoVG` | 1.3.2, in `juce_graphics` | **MIT**, © 2020-2025 Samuel Ugochukwu |
 
+Every licence in this section and the one above is on the allowlist the Rust
+crates are held to (`deny.toml`), which names libpng-2.0, IJG and
+MIT-Modern-Variant for these libraries; AGPL-3.0 is allowed for JUCE alone.
+`scripts/check-licenses.mjs` fails on a row whose licence is not.
+
 ## The Rust standard library — in every plugin and every module
 
 | Component | Licence |
@@ -84,32 +70,17 @@ Ogg Vorbis, Opus) is in a bundle, and it switches the WebP decoder off
 Each engine is a Rust static library (in a plugin) or shared object (in a
 module), so the parts of the standard library it uses are compiled into it.
 
-## The editors — no plugin bundle ships a web editor any more
-
-Every bundle's editor is native, drawn by the kit in `plugins/_shared/ui`, so
-no bundle carries `Contents/Resources/web/` and this section lists nothing.
-The web editors in `plugins/*/ui` are still built for their own tests until
-they go, and what they bundle is listed with the build tools below.
-
-When a web editor was built into a bundle, the minifier stripped comments, so each editor's build writes the full licence
-text of every package it bundled to `assets/ui.js.LICENSE.txt` beside `ui.js`,
-and marks `ui.js` with a comment pointing there. The build **fails** if it
-bundles a package that has no row in the table above
-(`scripts/vite-licenses.mjs`).
-
-`@ultraviolet/ui` (in `ui-kit/`) is this repository's own design-system kit,
-© 2026 Torben Gräber, GPL-3.0-or-later like the rest, and needs no row.
-
 ## Bundled font
 
 **JetBrains Mono** (© 2020 The JetBrains Mono Project Authors, **SIL Open Font
 License 1.1**), `Regular` and `Medium`. It is the design system's one typeface
-and everything that draws the design system bundles it. The copy is the kit's
-(`ui-kit/src/fonts`): subset to the characters the editors draw and converted to
-WOFF by `scripts/subset-fonts.sh`, which the OFL permits; each editor carries it
-inside its stylesheet (`web/assets/style.css`) and the site as an emitted asset.
-It keeps its name: the OFL's Reserved Font Name clause does not apply, JetBrains
-Mono declaring none.
+and everything that draws the design system bundles it: the native kit embeds
+the TTF faces whole in every plugin with an editor (`plugins/_shared/ui/fonts`,
+whose README has their provenance), and the documentation site serves them
+subset to what its pages draw and packed as WOFF by
+`site/scripts/subset-fonts.sh` (`site/src/uv/fonts`), which the OFL permits.
+It keeps its name: the OFL's Reserved Font Name clause does not apply,
+JetBrains Mono declaring none.
 
 | Bundle | The font | `OFL.txt` |
 |---|---|---|
@@ -119,15 +90,12 @@ Mono declaring none.
 | `NIListenIn.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | the documentation site | emitted by the build as a hashed asset under `/neon-ingvy-audio-plugins/_astro/` | `/neon-ingvy-audio-plugins/fonts/OFL.txt` |
 
-**The OFL requires its text to travel with the font**, so `OFL.txt` sits beside
-the kit's font files in `ui-kit/src/fonts`, and wherever the font ships: each
-web editor copies it from its own `ui/public/fonts/` into `web/fonts/`, so it is
-in every plugin bundle with the editor, and `site/scripts/stage-assets.mjs`
-copies the kit's into the site's `/fonts/`, failing the build if it is not
-there. The native kit keeps its own copy beside its faces
-(`plugins/_shared/ui/fonts`, whose README has their provenance), and every
-bundle on the JUCE shell with an editor carries it in `Contents/Resources`
-(`cmake/NiJucePlugin.cmake`). The OFL is permissive and GPL-compatible.
+**The OFL requires its text to travel with the font**, so `OFL.txt` sits
+beside the faces in both places, and wherever the font ships: every bundle on
+the JUCE shell with an editor carries it in `Contents/Resources`
+(`cmake/NiJucePlugin.cmake`), and `site/scripts/stage-assets.mjs` copies the
+site's into its `/fonts/`, failing the build if it is not there. The OFL is
+permissive and GPL-compatible.
 
 ## The engines — this repository's own
 
@@ -1049,26 +1017,19 @@ Move-side C tests include them (`engines/trance-gate/tests/test_gate.c`,
 vtable. The module itself is Rust, and `ni-schwung` declares the same
 structures for the host to call.
 
-JUCE, which the tests also build on (the JUCE host tests, the native UI's
-tests, the class-ID spike), ships in the bundles on the JUCE shell and is
-listed with the framework above.
+JUCE, which the tests also build on (the host tests and the native UI's
+tests), ships in every bundle and is listed with the framework above.
 
 No plugin, module or bundle links any of these, so they add nothing to any
 artefact's notices.
 
 The coverage tooling adds no row: `llvm-cov`, `llvm-profdata` and
 `cargo-llvm-cov` are developer tools that run *on* the build rather than inside
-it. Likewise the licence tools (`cargo-deny`, `cargo-about`), the CI
-validators (`pluginval`, `clap-validator`, `auval`, and Steinberg's VST3
-`validator`, **MIT**, built from the VST3 SDK by
-`scripts/validate-plugins.sh`) and the build tools (vite,
-astro, CMake, cargo, Corrosion, and the cross-build kit's, listed below) are
-run, not shipped; vite and the web editors it builds are listed below too.
-So is `@playwright/test`
-(**Apache-2.0**, © Microsoft Corporation), the root `devDependency` that drives
-the editors' end-to-end tests (`tests/e2e`) in the Google Chrome already
-installed: it is pinned in `package-lock.json`, downloads no browser, and no
-editor build bundles it.
+it. Likewise the licence tools (`cargo-deny`, `cargo-about`), the validators
+(`pluginval`, and Steinberg's VST3 `validator`, **MIT**, built from the VST3
+SDK by `scripts/validate-plugins.sh`) and the build tools (astro and the vite
+it builds the site with, CMake, Ninja, ccache, cargo, Corrosion, and the
+cross-build kit's, listed below) are run, not shipped.
 
 Corrosion 0.6.1 (**MIT**, © 2018 Andrew Gaspar), the CMake module that runs
 cargo for the engines, is downloaded at configure time by
@@ -1093,8 +1054,6 @@ is known.
 | `Wine` 9.0 | Windows image | **LGPL-2.1-or-later** |
 | `pluginval` 1.0.4 | all three platforms | **GPL-3.0** |
 | `JUCE` 9.0.3 | the smoke plugin (`tools/cross/smoke`), from the `external/JUCE` submodule; it ships in the bundles on the JUCE shell, and its row is with the framework above | **AGPL-3.0**, or the commercial JUCE licence |
-| `solid-js` | the web editors in plugins/*/ui, built for their own tests until they go; no bundle carries one | **MIT**, © 2016-2025 Ryan Carniato |
-| `vite` | builds those web editors, and its module-preload polyfill is the few hundred bytes at the top of each one's ui.js | **MIT**, © 2019-present VoidZero Inc. and Vite contributors |
 | `Microsoft C runtime` 14.44 and `Windows SDK` 10.0.26100 | Windows image, downloaded by xwin | **Microsoft's licence terms**, accepted by the owner alone ([tools/docker/windows/README.md](tools/docker/windows/README.md)) |
 
 The Microsoft row is the one exception to *nothing of theirs is linked*: a
@@ -1105,11 +1064,17 @@ will bring this row up into the shipped sections with it.
 
 ## No longer dependencies
 
+`iPlug2` and the parts of `WDL` it compiled in (zlib), the VST3 SDK it built
+against (MIT), `CLAP` and `clap-helpers` (MIT), `JSON for Modern C++`
+(nlohmann/json, MIT, with its CC0-1.0 Hedley header), and the web editors'
+`solid-js` and the `vite` module-preload polyfill (MIT) went with the iPlug2
+build, when every plugin moved to the JUCE shell with a native editor.
 `vst3-sys`, `vst3-com*` (GPL-3.0-or-later), `nih_plug*`/`nih_log` (ISC) and the
-crates.io dependencies they brought were removed when the nih-plug wrapper was
-replaced by iPlug2; JUCE (AGPLv3-or-commercial) went before that, and has
-come back under the AGPLv3 (with the framework, above). None of the rest is linked
-into anything, so their notices no longer apply and their rows were removed.
+crates.io dependencies they brought were removed earlier, when the nih-plug
+wrapper was replaced by iPlug2; JUCE (AGPLv3-or-commercial) went before that,
+and has come back under the AGPLv3 (with the framework, above). None of these
+is linked into anything, so their notices no longer apply and their rows were
+removed.
 
 ---
 
@@ -1138,7 +1103,7 @@ line as listed:
 > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 > SOFTWARE.
 
-### zlib (iPlug2, WDL, JUCE's zlib)
+### zlib (JUCE's zlib)
 
 > This software is provided 'as-is', without any express or implied warranty.
 > In no event will the authors be held liable for any damages arising from the
@@ -1271,6 +1236,6 @@ software is based in part on the work of the Independent JPEG Group.
 
 ### SIL Open Font License 1.1 (JetBrains Mono)
 
-The full text is `OFL.txt`, in `ui-kit/src/fonts` beside the font files and at
-the path the table under *Bundled font* gives for each artefact that ships the
-font.
+The full text is `OFL.txt`, beside the font files in `plugins/_shared/ui/fonts`
+and `site/src/uv/fonts`, and at the path the table under *Bundled font* gives
+for each artefact that ships the font.
