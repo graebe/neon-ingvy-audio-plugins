@@ -17,7 +17,9 @@
  *                   twelve-parameter builds opens
  *   the slots       a switch recalls a sound and the host follows; automation
  *                   writes the current slot alone; a save straight after a
- *                   switch keeps the slot switched to
+ *                   switch, or after its block and before the host follows,
+ *                   keeps the slot switched to; a save while blocks run on
+ *                   another thread reopens as it was saved
  *   the model       snapshots from the engine (the pattern, its fade levels,
  *                   the detents, the stages' text, the transport, the curves,
  *                   the capture, the Ground's rings) and commands into it
@@ -516,6 +518,67 @@ TEST_CASE ("a save straight after a switch keeps each slot's own sound")
     CHECK (b.value (kAmount) == 100.0);
     b.automate (kSlot, 1.0);
     checkSound (b, 0);
+}
+
+TEST_CASE ("a save after the block that switched, before the host follows, keeps each slot's own sound")
+{
+    /* The block has switched the engine to slot 2, which plays its own sound;
+     * the host learns of it when the message thread next runs the follow, and
+     * holds slot 1's sound until then. A save in between is what plays, and
+     * reopens as it was saved. */
+    Instance a;
+    a.block();
+    for (const auto& [i, v] : sound (0))
+        a.automate (i, v);
+    a.p.parameter (kSlot).setPlainNotifyingHost (2.0);
+    a.block();
+    CHECK (a.value (kAmount) == 40.0);
+    const auto saved = a.save();
+
+    Instance b;
+    b.load (saved);
+    CHECK (b.save() == saved);
+    CHECK (b.value (kSlot) == 2.0);
+    CHECK (b.value (kAmount) == 100.0);
+    b.block();
+    CHECK (b.save() == saved);
+    b.automate (kSlot, 1.0);
+    checkSound (b, 0);
+
+    REQUIRE (a.follow());
+    CHECK (a.save() == saved);
+}
+
+TEST_CASE ("every save made while the audio thread runs reopens as it was saved")
+{
+    /* Blocks on an audio thread of their own; on this one, the host's
+     * automation of Slot and Amount, its follow, and a save after each move.
+     * Each save is the values and the blob of one engine, so a fresh instance
+     * loads it and saves it back byte for byte. */
+    Instance a;
+    a.block();
+    std::atomic<bool> stop { false };
+    std::thread audio ([&]
+    {
+        while (! stop.load())
+            a.block (true);
+    });
+    for (int round = 0; round < 200; ++round)
+    {
+        if (round % 5 == 0)
+            a.p.parameter (kSlot).setPlainNotifyingHost (1.0 + (round / 5) % 3);
+        else
+            a.p.parameter (kAmount).setPlainNotifyingHost (round % 100);
+        if (round % 2 == 0)
+            a.follow();
+        const auto saved = a.save();
+        Instance b;
+        b.load (saved);
+        CAPTURE (round);
+        CHECK (b.save() == saved);
+    }
+    stop.store (true);
+    audio.join();
 }
 
 TEST_CASE ("an older project loads one sound into all eight slots")

@@ -221,30 +221,35 @@ void Processor::editorClosed()
 }
 
 /*
- * THE CHUNK THE iPlug2 BUILD WROTE, from what the engine published: the host's
- * values, and the blob as the next block will hold it, a queued edit included
- * (tg_shell_save) -- then the bypass after it, which iPlug2 needs to load it.
+ * THE CHUNK THE iPlug2 BUILD WROTE: the host's values and the blob, as the
+ * next block will hold them -- a queued edit or load included -- then the
+ * bypass after it, which iPlug2 needs to load it.
  *
- * THE VALUES AGREE WITH THE BLOB. Between a Slot the host moved and the block
- * that applies it, the host still holds the slot it left, and the blob is
- * already the new one's: written as they stand, a reopened set would put the
- * old slot's sound into the new slot. So a value the next block will replace
- * -- the one the host is about to follow -- is written as that.
+ * WHAT IS SAVED IS WHAT PLAYS. After a Slot switch the engine plays the new
+ * slot's own sound at once, and the host's parameters follow it only when the
+ * message thread next runs followEngine; until then they still hold the slot
+ * that was left. Written as they stand, beside the new slot's blob, a
+ * reopened set would put the old slot's sound into the new slot. So the
+ * values and the blob come from one snapshot of the engine
+ * (tg_shell_save_with_params), and a value the engine will not hold as the
+ * host does is written as the engine holds it. The host's values are read
+ * once, so automation moving one meanwhile cannot split the two.
  */
 void Processor::writeState (juce::MemoryBlock& out)
 {
-    nist::State state;
-    for (auto* p : params)
-        state.params.push_back (p->plain());
-    double values[kNumParams], next[kNumParams];
-    engineValues (values);
-    if (tg_shell_next_params (shell.get(), values, kNumParams, next) == 1)
-        for (int i = 0; i < kNumParams; ++i)
-            if (i != kSlot && ! sameInEngine (i, state.params[(std::size_t) i], next[i]))
-                state.params[(std::size_t) i] = fromEngine (i, next[i]);
+    double plain[kNumParams], values[kNumParams], next[kNumParams];
+    for (int i = 0; i < kNumParams; ++i)
+    {
+        plain[i] = params[(std::size_t) i]->plain();
+        values[i] = toEngine (i, plain[i]);
+    }
     std::string blob (TG_STATE_MAX, '\0');
-    const int length = tg_shell_save (shell.get(), values, kNumParams, blob.data(), (int) blob.size());
+    const int length = tg_shell_save_with_params (shell.get(), values, kNumParams, next, blob.data(), (int) blob.size());
     blob.resize (length > 0 ? (std::size_t) length : 0);
+
+    nist::State state;
+    for (int i = 0; i < kNumParams; ++i)
+        state.params.push_back (length < 0 || sameInEngine (i, plain[i], next[i]) ? plain[i] : fromEngine (i, next[i]));
     state.strings.push_back (std::move (blob));
     state.bypass = bypass->plain() >= 0.5;
     const auto bytes = nist::write (layout(), state);

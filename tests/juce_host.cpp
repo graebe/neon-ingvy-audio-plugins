@@ -13,10 +13,11 @@
  *   it runs          prepared, a second of blocks with MIDI in every one (an
  *                    instrument's notes, a pedal, a panic) at two block sizes,
  *                    released and prepared again at another rate
- *   it saves         every parameter set to a value of its own, a block
- *                    run and the message loop let through, the state saved,
- *                    a second instance loaded from it: the values the first
- *                    holds, and the same state saved back
+ *   it saves         every parameter set to a value of its own and a block
+ *                    run; saved at once, before the message loop has run, a
+ *                    second instance loaded from it saves the same state back;
+ *                    then, once the host has heard what the plugin moved, the
+ *                    values the first holds and the same state saved back
  *   it opens         its editor, at a size, created and destroyed twice
  *
  * Every product on the JUCE shell runs this (tests/CMakeLists.txt), so a
@@ -39,6 +40,24 @@ void check (bool ok, const juce::String& what)
         std::fprintf (stderr, "FAILED: %s\n", what.toRawUTF8());
         ++failures;
     }
+}
+
+/* Whether two instances hold the same parameter values. */
+bool sameValues (juce::AudioPluginInstance& a, juce::AudioPluginInstance& b)
+{
+    const auto& pa = a.getParameters();
+    const auto& pb = b.getParameters();
+    for (int i = 0; i < pa.size() && i < pb.size(); ++i)
+        if (std::abs (pa[i]->getValue() - pb[i]->getValue()) >= 1.0e-4f)
+            return false;
+    return pa.size() == pb.size();
+}
+
+juce::MemoryBlock stateOf (juce::AudioPluginInstance& p)
+{
+    juce::MemoryBlock m;
+    p.getStateInformation (m);
+    return m;
 }
 
 std::unique_ptr<juce::AudioPluginInstance> load (juce::VST3PluginFormat& format, const juce::PluginDescription& d,
@@ -114,26 +133,41 @@ int main (int argc, char** argv)
         const float v = (float) ((i % (steps - 1)) + 1) / (float) (steps - 1);
         p->setValueNotifyingHost (v);
     }
-    /* Then a block and a moment of the message loop before the save, as a
-     * host gives them: a plugin whose state answers a parameter -- the Trance
-     * Gate's Slot recalls a whole sound, and its other parameters follow --
-     * has settled, and what it saves is what it now holds. */
+    /* Then a block, and a save at once, before the message loop has run. A
+     * plugin whose state answers a parameter -- the Trance Gate's Slot
+     * recalls a whole sound -- has moved on in that block and tells the host
+     * on its message thread, so until then what it plays and what the host
+     * shows differ. What it saves is what it plays: a second instance loaded
+     * from it saves the same state back. */
     run (*first, 48000.0, 512, 0);
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
-    juce::MemoryBlock saved;
-    first->getStateInformation (saved);
-    check (saved.getSize() > 0, "the state is not empty");
-
     auto second = load (format, d, 48000.0, 512);
     if (second == nullptr)
         return 1;
-    second->setStateInformation (saved.getData(), (int) saved.getSize());
+    {
+        const auto early = stateOf (*first);
+        second->setStateInformation (early.getData(), (int) early.getSize());
+        check (stateOf (*second) == early, "a state saved before the message loop has run saves back as it was loaded");
+    }
+
+    /* The host hears what the plugin moved on the message loop, as the
+     * plugin's own timer posts it: the loop runs until the values the first
+     * shows are the values its state reopens to, bounded only for a plugin
+     * that never tells the host. */
+    juce::MemoryBlock saved;
+    const auto until = juce::Time::getMillisecondCounter() + 10000;
+    for (;;)
+    {
+        saved = stateOf (*first);
+        second->setStateInformation (saved.getData(), (int) saved.getSize());
+        if (sameValues (*first, *second) || juce::Time::getMillisecondCounter() >= until)
+            break;
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+    }
+    check (saved.getSize() > 0, "the state is not empty");
     for (int i = 0; i < params.size() && i < second->getParameters().size(); ++i)
         check (std::abs (second->getParameters()[i]->getValue() - params[i]->getValue()) < 1.0e-4f,
                "parameter " + juce::String (i) + " (" + params[i]->getName (32) + ") survives a round trip");
-    juce::MemoryBlock again;
-    second->getStateInformation (again);
-    check (again == saved, "the state saves back as it was loaded");
+    check (stateOf (*second) == saved, "the state saves back as it was loaded");
 
     /* It opens. */
     for (int round = 0; round < 2; ++round)
