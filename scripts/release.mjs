@@ -22,7 +22,7 @@
  * TAG = <product>-<version as versions.json spells it>, e.g.
  * trance-gate-v2026.09.29.3. The product is a key of versions.json; a product
  * with a plugin ships its VST3 (bundleOf: the TARGET of its
- * ni_add_juce_plugin), one zip per OS, and one with modules/<product>/module.env
+ * ni_add_juce_plugin), as a macOS zip, and one with modules/<product>/module.env
  * ships a Schwung module; a tag releases both when it has both -- they are
  * one product in two shells.
  */
@@ -74,8 +74,9 @@ export function readModuleEnv(root, product) {
   return env;
 }
 
-/* The OS a release zip is for, as its name spells it. */
-export const ZIP_OS = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };
+/* The OS a release zip is for, as its name spells it. macOS only: Linux and
+ * Windows rejoin the releases later, as part of the full build. */
+export const ZIP_OS = { macos: 'macOS' };
 
 export function resolve(tag, root = ROOT) {
   const versions = readJson(root, 'versions.json');

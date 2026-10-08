@@ -100,8 +100,8 @@ for (const p of PRODUCTS) {
     if (PLUGINS.includes(p)) {
       assert.ok(r.bundle);
       assert.equal(r.zip_macos, `${p}-${VERSIONS[p]}-macOS.zip`);
-      assert.equal(r.zip_windows, `${p}-${VERSIONS[p]}-Windows.zip`);
-      assert.equal(r.zip_linux, `${p}-${VERSIONS[p]}-Linux.zip`);
+      assert.deepEqual(Object.keys(r).filter((k) => k.startsWith('zip_')), ['zip_macos'],
+        'a release is the macOS zip only');
     }
     if (MODULES.includes(p)) {
       assert.equal(r.module_version, schwungVersion(VERSIONS[p]));
@@ -217,7 +217,10 @@ const fakeBundle = (dir, p, os, { drop } = {}) => {
 };
 const universal = () => ['x86_64', 'arm64'];
 
-for (const os of Object.keys(ZIP_OS)) {
+/* Every OS scripts/stage-release.mjs can stage, released or not: the
+ * cross-build kit stages Linux and Windows too, and they rejoin the releases
+ * later. */
+for (const os of ['macos', 'windows', 'linux']) {
   test(`every product stages for ${os}: the bundle as built, and the notices beside it`, () => {
     for (const p of juceProducts()) {
       const dir = mkdtempSync(join(tmpdir(), 'ni-stage-'));
@@ -256,12 +259,16 @@ test('every product stages from the bundles this build made (a dry run)', { skip
     assert.deepEqual(plan(p.dir, BUILT, { universal }).problems, [], `${p.dir} from ${BUILT}`);
 });
 
-test('release-plugins.yml stages with the script, on the three OSes, and asks for no other format', () => {
+test('release-plugins.yml stages with the script, on macOS only, and asks for no other format', () => {
   const y = read('.github', 'workflows', 'release-plugins.yml');
   assert.match(y, /node scripts\/stage-release\.mjs/);
-  for (const runner of ['macos-15', 'windows-2025', 'ubuntu-24.04'])
-    assert.ok(y.includes(runner), `release-plugins.yml does not build on ${runner}`);
-  for (const os of Object.keys(ZIP_OS)) assert.ok(y.includes(`zip_${os}`), `no zip_${os} in the workflow`);
+  /* The build runs on macOS; the release job that only publishes stays on
+   * Linux. */
+  assert.match(y, /\n  build:\n(?:    .*\n)*?    runs-on: macos-15\n/, 'the build job does not run on macos-15');
+  assert.doesNotMatch(y, /matrix\.|windows-2025/, 'release-plugins.yml still builds on more than macOS');
+  assert.deepEqual(Object.keys(ZIP_OS), ['macos'], 'a release is the macOS zip only');
+  assert.ok(y.includes('zip_macos'), 'no zip_macos in the workflow');
+  assert.doesNotMatch(y, /zip_windows|zip_linux/, 'release-plugins.yml still names a Windows or Linux zip');
   assert.doesNotMatch(y, /\.component\b|\.clap\b|web\/index\.html|ui\.js\.LICENSE/,
     'release-plugins.yml still names a format or an editor no bundle has');
 });
