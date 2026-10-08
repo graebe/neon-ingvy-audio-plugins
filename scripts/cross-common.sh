@@ -33,10 +33,14 @@
 # (bash 3.2 calls an empty one unbound under set -u).
 
 NI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Every stage is timed into the timing log as well as the result file.
+# shellcheck source=scripts/timing.sh
+. "$NI_ROOT/scripts/timing.sh"
 
 # Every platform validates at this strictness. The pluginval RELEASE is pinned
-# per platform where it is fetched: scripts/validate-plugins.sh (macOS, which
-# build-macos.sh reads) and the two Dockerfiles (Linux, Windows) -- one release.
+# in scripts/validate-plugins.sh for every platform (build-macos.sh reads the
+# macOS pin from there) and again in the two Dockerfiles, by the same digests
+# -- one release.
 NI_PLUGINVAL_STRICTNESS=10
 
 ni_die() { echo "error: $*" >&2; exit 2; }
@@ -90,12 +94,15 @@ ni_record() {
     echo "$*" >> "$NI_RESULT"
 }
 
-# ni_stage <name> <command...>: run it, time it, record whether it passed.
+# ni_stage <name> <command...>: run it, time it, record whether it passed --
+# in the result file and in the timing log (scripts/timing.sh), in this shell,
+# so a function it runs can set what its caller reads (ni_image's NI_IMAGE).
+# NI_STAGE_BUILD names the build directory a stage builds in, for the log.
 ni_stage() {
     local name=$1 start=$SECONDS status=passed
     shift
     echo "=== $name: $*"
-    "$@" || status=FAILED
+    ni_time_stage "$name" ${NI_STAGE_BUILD:+--build "$NI_STAGE_BUILD"} --here -- "$@" || status=FAILED
     ni_record stage "$name" "$status" "$((SECONDS - start))"
     [ "$status" = passed ]
 }
@@ -138,9 +145,9 @@ ni_jobs() {
 ni_build_and_test() {
     local build=$1
     shift
-    ni_stage configure cmake -S "$NI_PROJECT" -B "$build" -G Ninja \
+    NI_STAGE_BUILD=$build ni_stage configure cmake -S "$NI_PROJECT" -B "$build" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release -DNI_JUCE_DIR="$NI_JUCE" "$@" || return 1
-    ni_stage build cmake --build "$build" --parallel "$(ni_jobs)" || return 1
+    NI_STAGE_BUILD=$build ni_stage build cmake --build "$build" --parallel "$(ni_jobs)" || return 1
     ni_stage ctest ctest --test-dir "$build" --output-on-failure || true
 }
 
@@ -187,8 +194,8 @@ ni_validate() {
         start=$SECONDS
         # The verdict is pluginval's exit status AND its closing SUCCESS line:
         # a wrapper (xvfb-run, wine) must not turn a crash into a pass.
-        if "$@" --strictness-level "$NI_PLUGINVAL_STRICTNESS" --timeout-ms 300000 \
-                --validate "$arg" > "$log" 2>&1 && grep -q '^SUCCESS' "$log"; then
+        if ni_time_stage "pluginval $name" --here -- "$@" --strictness-level "$NI_PLUGINVAL_STRICTNESS" \
+                --timeout-ms 300000 --validate "$arg" > "$log" 2>&1 && grep -q '^SUCCESS' "$log"; then
             verdict="passed (strictness $NI_PLUGINVAL_STRICTNESS$note)"
         else
             verdict="FAILED (strictness $NI_PLUGINVAL_STRICTNESS$note)"
@@ -234,11 +241,25 @@ ni_image() {
 # a build image as the invoking user, the repository at /work and JUCE at
 # /juce (read-only). Everything a run writes -- objects, CARGO_HOME, HOME with
 # its caches and Wine prefix -- stays in the build directory, never the image.
+# The timing log's directory is mounted too, so the stages inside are logged
+# with the host's checkout, commit and machine rather than the container's.
 ni_docker_run() {
     local image=$1 platform=$2 build=$3
     shift 3
     local build_in=/work/${build#"$NI_ROOT"/}
+    local timing=() log
+    if log=$(ni_timing_log) && mkdir -p "$(dirname "$log")" 2>/dev/null; then
+        [ -n "${NI_TIMING_RUN:-}" ] || NI_TIMING_RUN="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+        timing=(-v "$(dirname "$log"):/ni-timing"
+                -e "NI_TIMING_LOG=/ni-timing/$(basename "$log")"
+                -e "NI_TIMING_RUN=$NI_TIMING_RUN"
+                -e "NI_TIMING_HOST=$(hostname -s 2>/dev/null || hostname)"
+                -e "NI_TIMING_SHA=$(git -C "$NI_ROOT" rev-parse --short=12 HEAD 2>/dev/null || true)"
+                -e "NI_TIMING_BRANCH=$(git -C "$NI_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+                -e "NI_TIMING_WORKTREE=$NI_ROOT")
+    fi
     docker run --rm --platform "$platform" \
+        ${timing[@]+"${timing[@]}"} \
         -u "$(id -u):$(id -g)" \
         -v "$NI_ROOT:/work" -v "$NI_JUCE:/juce:ro" -w /work \
         -e HOME="$build_in/home" -e CARGO_HOME="$build_in/cargo-home" \

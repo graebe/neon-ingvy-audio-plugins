@@ -175,6 +175,13 @@ if (TG_NODE)
     add_test(NAME site_tokens
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/site_tokens.test.mjs)
 
+    # THE TIMING LOG every build and test script appends to (scripts/timing.sh):
+    # a record per stage with every field, the wrapped command's status
+    # unchanged, the .ninja_log beside it, and scripts/build-timings.py's
+    # summary of it. Into a log of its own, never the real one.
+    add_test(NAME timing
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/timing.test.mjs)
+
     # Every path into design/ that a tracked file names exists, however it is
     # spelled: from the root, climbing from the naming file's own directory
     # with ../ (as the icon glob does), or as path.join() arguments. The
@@ -645,6 +652,7 @@ ni_test_tiers(
         capi_compat_tg capi_compat_tg_names
         # lint-like checks over the tree
         versions release licenses spdx ground_shells site_tokens design_paths
+        timing
         # the JUCE shell's state codec, and NI Trance Gate's processor, model
         # and editor in one program
         nist_fixtures tg_processor tg_rt

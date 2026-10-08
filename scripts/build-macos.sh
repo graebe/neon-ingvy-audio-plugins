@@ -24,7 +24,7 @@ BUILD="$NI_PROJECT/build-macos-universal"
 
 pin() { sed -n "s/^$1=//p" "$NI_ROOT/scripts/validate-plugins.sh"; }
 PLUGINVAL_VERSION=$(pin PLUGINVAL_VERSION)
-PLUGINVAL_SHA256=$(pin PLUGINVAL_SHA256)
+PLUGINVAL_SHA256=$(pin PLUGINVAL_SHA256_MACOS)
 TOOLS="$BUILD/tools"
 PLUGINVAL="$TOOLS/pluginval.app/Contents/MacOS/pluginval"
 

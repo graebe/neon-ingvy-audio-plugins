@@ -37,16 +37,13 @@ const OUT = process.env.COVERAGE_OUT ?? join(ROOT, 'build', 'coverage');
  * there are, and the figure goes UP when you add an untested feature with a
  * test file beside it.
  */
-const INCLUDE = [/^plugins\//, /^engines\//, /^ui-kit\/src\//, /^modules\//];
+const INCLUDE = [/^plugins\//, /^engines\//, /^modules\//];
 const EXCLUDE = [
   /^external\//, /^build/, /node_modules\//, /^target\//, /\/target\//,
-  /(^|\/)tests?\//, /\.test\.mjs$/, /(^|\/)dist\//, /(^|\/)resources\/web\//,
+  /(^|\/)tests?\//, /\.test\.mjs$/, /(^|\/)dist\//,
   /* A crate's unit tests, in the `#[cfg(test)] mod tests;` file beside the
    * code: test code, as surely as anything under tests/. */
   /(^|\/)tests\.rs$/,
-  /\.config\.[cm]?js$/,   /* vite.config.js and friends: build configuration,
-                              executed by the bundler and not by anything a
-                              test could reasonably drive */
 ];
 
 const LANG = (p) => {
@@ -73,10 +70,8 @@ const LANG = (p) => {
 const unitOf = (p) => {
   let m;
   if ((m = p.match(/^engines\/[^/]+\/crates\/[^/]+/))) return m[0];
-  if ((m = p.match(/^plugins\/[^/]+\/ui\/src/))) return m[0];
   if ((m = p.match(/^plugins\/[^/]+/))) return m[0];
   if ((m = p.match(/^modules\/[^/]+/))) return m[0];
-  if (p.startsWith('ui-kit/src')) return 'ui-kit/src';
   /* An engine's published ABI header carries static inline functions and is
    * part of that engine, not of a nameless remainder. Last, so the crate
    * patterns above win. */
@@ -206,7 +201,7 @@ function walk(dir, out = []) {
   return out;
 }
 
-const onDisk = ['plugins', 'engines', 'ui-kit/src', 'modules']
+const onDisk = ['plugins', 'engines', 'modules']
   .flatMap((d) => walk(join(ROOT, d)))
   .map((p) => norm(p))
   .filter(keep)
@@ -227,26 +222,10 @@ const exemptFile = (p) => !!FLOORS.exempt_files?.[p];
  * llvm-cov records every function it compiled, run or not -- so the only Rust
  * file missing from rust.info is one of declarations: `pub mod` lines, a table
  * of constants. Listing those as "never loaded" would teach the reader to skim
- * the list. The other languages get no such blanket pass: a C++ file is absent
- * exactly when nothing loaded it, and so is a JS module, but for the one case
- * below.
+ * the list. The other languages get no such blanket pass: a C or C++ file is
+ * absent exactly when nothing loaded it.
  */
-/*
- * THE JS EQUIVALENT IS A BARREL: a module that only re-exports (the kit's
- * index.js and params.js). It is loaded -- every editor imports through it --
- * but a bundler compiles it away, so there is no code for any tracefile to
- * mention. Recognised by its text, strictly: comments aside, nothing but
- * `export ... from '...'` statements.
- */
-const REEXPORT = /^(?:\s*export\s+(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+(['"])[^'"]+\1\s*;?)*\s*$/;
-const reexportsOnly = (p) => {
-  if (LANG(p) !== 'js') return false;
-  const text = readFileSync(join(ROOT, p), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  return REEXPORT.test(text);
-};
-
-const declarationsOnly = (p) => LANG(p) === 'rust' || reexportsOnly(p);
+const declarationsOnly = (p) => LANG(p) === 'rust';
 
 const absent = onDisk
   .filter((p) => !files.has(p) && !exemptFile(p) && !declarationsOnly(p))

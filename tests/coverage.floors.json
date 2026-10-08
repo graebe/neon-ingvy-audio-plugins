@@ -2,7 +2,7 @@
   "floor": 80.0,
 
   "enforcing": true,
-  "enforcing_note": "Enforcing since 2026-09-30: every counted unit is above the floor, so a unit below it, a total below it or a first-party file no test loads fails coverage_floor (full tier) and scripts/coverage.sh. Units are derived from the path, so a new crate, plugin or editor is judged from its first file. An exemption is for what cannot be instrumented at all, never for what is merely untested -- exempt for a unit, exempt_files for one file inside a counted unit -- and each is audited for a reason and a file that still exists.",
+  "enforcing_note": "Enforcing since 2026-09-30: every counted unit is above the floor, so a unit below it, a total below it or a first-party file no test loads fails coverage_floor (full tier) and scripts/coverage.sh. Units are derived from the path (an engine crate, a plugin directory, a module), so a new crate or plugin is judged from its first file; the C and C++ of every plugin and the native kit count, JUCE and the other submodules do not. An exemption is for what cannot be instrumented at all, never for what is merely untested -- exempt for a unit, exempt_files for one file inside a counted unit -- and each is audited for a reason and a file that still exists.",
 
   "units": {},
 
@@ -12,7 +12,6 @@
 
   "exempt_files": {
     "plugins/_shared/ui/src/ReducedMotion.cpp": "The system's reduced-motion setting where it is not Cocoa's: every line is inside #if ! JUCE_MAC, so a macOS build -- the one coverage runs on -- compiles it to nothing and no tracefile can name it. macOS's setting is ReducedMotion.mm, which is counted.",
-    "plugins/_shared/ui/gallery/Main.cpp": "The gallery application's entry point: a JUCEApplication that opens a desktop window and runs the event loop until a person closes it, so no test binary links it (tests/ui links the gallery's pages, not the app). Everything it shows is counted: every page, through the kit's tests and their snapshots (tests/ui), and the frame and registry in Gallery.cpp (tests/ui/gallery.cpp). The --shots mode it adds writes pictures for a person to look at, which the snapshot tests already hold.",
-    "plugins/_shared/ni/WebPlugin.cpp": "ni::WebPlugin derives from iplug::Plugin, and IPlug_include_in_plug_hdr.h stops with #error outside a plugin-format target while iplug_configure_target refuses any other kind -- so no test binary can link it, and only a host loading a bundle runs it (tg_au, sc_au, the validators), never an instrumented object. What it decides rather than forwards is counted where it was lifted to: the editor protocol in Editor.cpp (ni_editor, over a recording Port) and every quantiser, height and transport rule in Wire.cpp (ni_wire)."
+    "plugins/_shared/ui/gallery/Main.cpp": "The gallery application's entry point: a JUCEApplication that opens a desktop window and runs the event loop until a person closes it, so no test binary links it (tests/ui links the gallery's pages, not the app). Everything it shows is counted: every page, through the kit's tests and their snapshots (tests/ui), and the frame and registry in Gallery.cpp (tests/ui/gallery.cpp). The --shots mode it adds writes pictures for a person to look at, which the snapshot tests already hold."
   }
 }

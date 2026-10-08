@@ -7,47 +7,48 @@
 #
 #   scripts/test.sh quick [--build <dir>]
 #       Builds the test programs (cmake --target ni_tests: no plugin bundle)
-#       and runs `ctest -L quick` -- every Rust crate's unit tests, the C/C++
-#       wire, state and parameter tests, the oracles, all of the kit's and the
-#       editors' JavaScript, and the lint-like checks. A new <dir> is
-#       configured with the dev preset: this machine's architecture,
-#       RelWithDebInfo, no link-time optimisation. build-dev/ by default.
+#       and runs `ctest -L quick` -- every Rust crate's tests, the C tests
+#       against the engines' ABIs and their oracles, the C++ unit tests of the
+#       processors, the native kit and the editors, and the lint-like checks
+#       (SPDX, cargo-deny, the licences, the versions, the release plumbing,
+#       the design paths, the token guards, the hint lengths, the timing log).
+#       A new <dir> is configured with the dev preset: this machine's
+#       architecture, RelWithDebInfo, no link-time optimisation. build-dev/ by
+#       default.
 #
 #   scripts/test.sh full [--build <dir>] [--bundles <dir>] [--no-coverage]
-#       Everything: the full build and the documentation site, `ctest -L full`
-#       (quick, plus the render goldens, the hosted bundles, the bus across
-#       processes and across architectures, the bundles' notices and
-#       signatures, the site's links and the Playwright e2e suite), then
-#       scripts/coverage.sh with the floor enforced, then the validators over
-#       the bundles in <dir> (default <build>/out). A new <dir> is configured
-#       with the release preset: universal, Release, link-time optimisation --
-#       what ships. build/ by default. --no-coverage skips the coverage stage,
-#       for the gates between steps; the final gate runs it.
+#       Everything: the full build and the documentation site, `ctest -L
+#       full` (quick, plus the render goldens, the hosted bundles against the
+#       iPlug2 fixtures, the snapshot goldens, the bus across processes and
+#       architectures, every bundle's notices and signature, and the site's
+#       links), then scripts/coverage.sh with the 80% floor enforced, then the
+#       validators over the bundles in <dir> (default <build>/out): pluginval
+#       at strictness 10 with its editor tests, Steinberg's validator and
+#       `codesign --verify --deep --strict`. A new <dir> is configured with the
+#       release preset: universal, Release, link-time optimisation -- what
+#       ships. build/ by default. --no-coverage skips the coverage stage, for
+#       the gates between steps; the final gate runs it.
 #
 #   --build <dir> is the build directory: one per person or agent building at
 #   the same time, so no two share a tree. One that exists is used as it was
 #   configured.
 #
-# WHAT IT READS OUTSIDE THE CHECKOUT, and why. Nothing under ~/Library, with
-# one exception in the validator stage: auval and pluginval's AU pass find their
-# component through the system's registry, which lists INSTALLED components,
-# so they validate the installed AU, not <dir>'s. The ctest bundle tests load
-# build/out's bundles by path and never look at what is installed: the AU tests
-# (tg_au, sc_au, au_stress_*, au_ground_*) and editor_host_*'s AU runs register
-# theirs in their own process only (tests/au_bundle.h), and editor_host_*'s
-# VST3 and CLAP runs dlopen theirs. The VST3 and CLAP bundles are validated
-# from <dir>.
-# Nothing is ever written there: a build directory this script configures has
-# IPLUG_DEPLOY_PLUGINS=OFF, as every preset in CMakePresets.json does. The
-# validators themselves are downloaded, pinned and checksummed, into
-# <build>/validators (scripts/validate-plugins.sh).
+# NOTHING IS READ FROM OR WRITTEN TO WHERE PLUGINS ARE INSTALLED. Every test
+# that hosts a bundle loads it from <build>/out by path, and no preset copies a
+# bundle anywhere else (NI_DEPLOY_PLUGINS is off). The validators are
+# downloaded, pinned and checksummed, into <build>/validators
+# (scripts/validate-plugins.sh).
+#
+# EVERY STAGE IS TIMED into the timing log outside the checkout
+# (scripts/timing.sh), the whole run as the stage "total";
+# scripts/build-timings.py summarises it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 usage() {
-    sed -n '/^#   scripts\/test.sh quick/,/^#   the same time/p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '/^#   scripts\/test.sh quick/,/^#   configured\./p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -73,71 +74,73 @@ bundles="${bundles:-$BUILD/out}"
 
 # shellcheck source=./rust-env.sh
 . "$ROOT/scripts/rust-env.sh"
+# shellcheck source=./timing.sh
+. "$ROOT/scripts/timing.sh"
+export NI_TIMING_PRESET="$preset"
 
 jobs="$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
-t0=$SECONDS
 stage() { printf '==> %s\n' "$*"; }
-took() { printf '    %ss\n' "$(( SECONDS - $1 ))"; }
+# A stage, timed into the log and on the terminal. A failure ends the run.
+timed() {
+    local name=$1 s=$SECONDS rc=0
+    shift
+    stage "$name"
+    ni_time_stage "$name" "$@" || rc=$?
+    printf '    %ss\n' "$(( SECONDS - s ))"
+    [ "$rc" = 0 ] || { printf '\n%s failed (exit %s)\n' "$name" "$rc" >&2; exit "$rc"; }
+}
 
-# THE BUILD DIRECTORY IS CONFIGURED ONCE, FROM ITS TIER'S PRESET, WITH
-# DEPLOYMENT OFF. One that exists is used as it is -- CI configures its own
-# with deployment on, because its runner is where auval's components have to
-# be installed -- but it is named if it would deploy, so nobody is surprised
-# by a plugin in ~/Library.
-if [ ! -f "$BUILD/CMakeCache.txt" ]; then
-    stage "configuring $BUILD (preset $preset)"
-    cmake --preset "$preset" -B "$BUILD" >/dev/null
-elif grep -q '^IPLUG_DEPLOY_PLUGINS:BOOL=ON' "$BUILD/CMakeCache.txt"; then
-    echo "note: $BUILD deploys plugins into ~/Library on build (IPLUG_DEPLOY_PLUGINS=ON)" >&2
-fi
+# A command whose output goes to a log in the build directory, shown in part
+# when it fails: a build's thousand lines are noise until one of them is not.
+quietly() {
+    local log="$BUILD/$1.log"
+    shift
+    "$@" > "$log" 2>&1 || { local rc=$?; tail -n 60 "$log" >&2; echo "(all of it: $log)" >&2; return "$rc"; }
+}
 
-if [ "$tier" = quick ]; then
-    s=$SECONDS; stage "building the test programs"
-    cmake --build "$BUILD" --target ni_tests -j"$jobs" >/dev/null
-    took $s
-    s=$SECONDS; stage "ctest -L quick"
-    ctest --test-dir "$BUILD" -L quick -j"$jobs" --output-on-failure
-    took $s
-    printf '\nquick tier green in %ss\n' "$(( SECONDS - t0 ))"
-    exit 0
-fi
+quick() {
+    timed "build test programs" --build "$BUILD" -- \
+        quietly build-tests cmake --build "$BUILD" --target ni_tests -j"$jobs"
+    timed "ctest quick" -- ctest --test-dir "$BUILD" -L quick -j"$jobs" --output-on-failure
+}
 
-# ---------------------------------------------------------------- full
+full() {
+    timed "build everything" --build "$BUILD" -- quietly build cmake --build "$BUILD" -j"$jobs"
 
-s=$SECONDS; stage "building everything"
-cmake --build "$BUILD" -j"$jobs" >/dev/null
-took $s
+    # The site's link check reads site/dist; built here so it runs rather than
+    # skipping, as it does in a checkout that never built the site.
+    timed "build the documentation site" -- quietly site npm run build --workspace site
 
-# The site's link check reads site/dist; built here so it runs rather than
-# skipping, as it does in a checkout that never built the site.
-s=$SECONDS; stage "building the documentation site"
-npm run build --workspace site >/dev/null
-took $s
+    timed "ctest full" -- ctest --test-dir "$BUILD" -L full -j"$jobs" --output-on-failure
 
-# -j4, not -j<ncpu>: the e2e test takes four processors of its own.
-s=$SECONDS; stage "ctest -L full"
-ctest --test-dir "$BUILD" -L full -j4 --output-on-failure
-took $s
+    if [ "$coverage" = 1 ]; then
+        timed "coverage" -- "$ROOT/scripts/coverage.sh"
+    else
+        stage "coverage skipped (--no-coverage): the final gate runs it"
+    fi
 
-if [ "$coverage" = 1 ]; then
-    s=$SECONDS; stage "coverage, with the floor enforced"
-    "$ROOT/scripts/coverage.sh"
-    took $s
-else
-    stage "coverage skipped (--no-coverage): the final gate runs it"
-fi
+    local tools="$BUILD/validators"
+    if ! "$ROOT/scripts/validate-plugins.sh" fetched "$tools"; then
+        timed "fetch the validators" -- "$ROOT/scripts/validate-plugins.sh" fetch "$tools"
+    fi
+    timed "validators over $bundles" -- "$ROOT/scripts/validate-plugins.sh" run "$tools" "$bundles"
+}
 
-s=$SECONDS; stage "validators over $bundles"
-tools="$BUILD/validators"
-if [ ! -x "$tools/binaries/clap-validator" ] || [ ! -d "$tools/pluginval.app" ] \
-   || [ ! -x "$tools/binaries/vst3-validator" ]; then
-    "$ROOT/scripts/validate-plugins.sh" fetch "$tools" >/dev/null
-fi
-"$ROOT/scripts/validate-plugins.sh" run "$tools" "$bundles"
-took $s
+main() {
+    local t0=$SECONDS
+    # THE BUILD DIRECTORY IS CONFIGURED ONCE, FROM ITS TIER'S PRESET. One that
+    # exists is used as it is.
+    if [ ! -f "$BUILD/CMakeCache.txt" ]; then
+        mkdir -p "$BUILD"
+        timed "configure (preset $preset)" --build "$BUILD" -- \
+            quietly configure cmake --preset "$preset" -B "$BUILD"
+    fi
+    "$tier"
+    if [ "$tier" = full ] && [ "$coverage" = 0 ]; then
+        printf '\nfull tier green in %ss, without coverage\n' "$(( SECONDS - t0 ))"
+    else
+        printf '\n%s tier green in %ss\n' "$tier" "$(( SECONDS - t0 ))"
+    fi
+}
 
-if [ "$coverage" = 1 ]; then
-    printf '\nfull tier green in %ss\n' "$(( SECONDS - t0 ))"
-else
-    printf '\nfull tier green in %ss, without coverage\n' "$(( SECONDS - t0 ))"
-fi
+ni_time_stage total -- main

@@ -38,6 +38,10 @@ if [ -z "$MODULE" ] || [ ! -f "$MODULE_DIR/module.env" ]; then
 fi
 # MODULE_ID, MODULE_TITLE, MODULE_CRATE -- see the file for what each is.
 . "$MODULE_DIR/module.env"
+# Each stage is timed into the timing log (scripts/timing.sh); inside the
+# container nothing is, the host having timed the container's run as a whole.
+# shellcheck source=../../scripts/timing.sh
+. "$REPO_ROOT/scripts/timing.sh"
 
 # Its own name, not the "schwung-module-builder" the per-module scripts used:
 # an image tag is machine-wide, and a checkout still on the old scripts would
@@ -49,10 +53,11 @@ if [ -z "${CROSS_PREFIX:-}" ] && [ ! -f "/.dockerenv" ]; then
     # `docker build` every time rather than only when the image is missing: it
     # is a no-op when the Dockerfile has not changed, and the old "first time
     # only" check kept building with a stale toolchain after the pin moved.
-    docker build -q -t "$IMAGE_NAME" -f "$SHARED_DIR/Dockerfile" "$SHARED_DIR" >/dev/null
+    ni_time_stage "image" -- \
+        docker build -q -t "$IMAGE_NAME" -f "$SHARED_DIR/Dockerfile" "$SHARED_DIR" >/dev/null
     # As the invoking user, so dist/ and target/ are not left owned by root.
     # Group 0 is what the image made its toolchain writable to.
-    docker run --rm \
+    ni_time_stage "$MODULE" -- docker run --rm \
         -v "$REPO_ROOT:/build" \
         -u "$(id -u):$(id -g)" --group-add 0 \
         -w /build \
@@ -90,7 +95,8 @@ echo "Compiling the Schwung wrapper (Rust)..."
 # licence gate checked and the notices below list. A manifest edited past its
 # lock stops the build here, where cargo would otherwise re-resolve, rewrite
 # the lock and ship crates nothing has checked.
-cargo build --locked --release -p "$MODULE_CRATE" --target aarch64-unknown-linux-gnu
+ni_time_stage "cargo $MODULE_CRATE" -- \
+    cargo build --locked --release -p "$MODULE_CRATE" --target aarch64-unknown-linux-gnu
 
 # THE .so NAME IS LOAD-BEARING. For component_type audio_fx the chain host
 # builds the path itself as modules/audio_fx/<id>/<id>.so and never reads

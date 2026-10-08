@@ -9,8 +9,8 @@
  * `coverage` appeared nowhere in the repository until this file.
  *
  * WHY A TEST AND NOT A BADGE. A percentage printed at the end of a build is
- * read once and then stops being read. This is ui-kit/test/tokens.test.mjs's
- * argument, which the repository has already settled once:
+ * read once and then stops being read. This is the token guard's argument
+ * (tests/site_tokens.test.mjs), which the repository has already settled once:
  *
  *   "This asserts agreement rather than generating the CSS from it: the same
  *    habit as the curve and envelope oracles, and for the same reason -- a
@@ -38,9 +38,8 @@ const ROOT = join(here, '..');
 
 const FLOORS = JSON.parse(readFileSync(join(here, 'coverage.floors.json'), 'utf8'));
 
-/* The report, from the environment as every other fixture here is -- see
- * curves.test.mjs, which reads its table the same way so that it runs both
- * under ctest and under a bare `node --test`. */
+/* The report, from the environment, so that this runs both under ctest and
+ * under a bare `node --test`. */
 const REPORT = process.env.COVERAGE_JSON ?? join(ROOT, 'build', 'coverage', 'coverage.json');
 
 const HOW = 'Run ./scripts/coverage.sh to produce it.';

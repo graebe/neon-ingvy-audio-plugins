@@ -16,7 +16,8 @@
 #
 # Each platform's full output is also kept, as cross-build.log in its build
 # directory; the per-stage timings are in its cross-result.tsv
-# (scripts/cross-common.sh describes both).
+# (scripts/cross-common.sh describes both) and, with each platform's whole run,
+# in the timing log (scripts/timing.sh).
 set -euo pipefail
 
 # shellcheck source=scripts/cross-common.sh
@@ -37,7 +38,8 @@ for entry in $PLATFORMS; do
     echo "################ $id ($script)"
     start=$SECONDS
     status=0
-    "$NI_ROOT/scripts/$script" --juce "$NI_JUCE" "$NI_PROJECT" 2>&1 | tee "$build/cross-build.log" || status=$?
+    ni_time_stage "$id" -- "$NI_ROOT/scripts/$script" --juce "$NI_JUCE" "$NI_PROJECT" 2>&1 \
+        | tee "$build/cross-build.log" || status=$?
     wall=$((SECONDS - start))
     [ "$status" = 0 ] || failed=1
 

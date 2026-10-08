@@ -21,9 +21,15 @@
 # Missing tools are NAMED, with the command that installs them, rather than
 # failing somewhere inside llvm-cov -- the same courtesy scripts/rust-env.sh
 # does for cargo, and for the same reason.
+#
+# Each stage -- the instrumented build, the suite, the native and the Rust
+# reductions, the report -- is timed into the timing log (scripts/timing.sh).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=./timing.sh
+. "$ROOT/scripts/timing.sh"
+export NI_TIMING_PRESET=coverage
 BUILD="$ROOT/build-coverage"
 OUT="$ROOT/build/coverage"
 PROF="$BUILD/profraw"
@@ -42,13 +48,7 @@ need() {
 
 need cmake  "install CMake, or use the one your IDE ships"
 need ctest  "it comes with CMake"
-need node   "the UI's tests and the report generator are node's (22+)"
-
-if [ ! -f "$ROOT/node_modules/@playwright/test/cli.js" ]; then
-    echo "@playwright/test not found -- it runs the editors for their coverage." >&2
-    echo "  npm ci" >&2
-    missing=1
-fi
+need node   "the report generator and the checks over the tree are node's (22+)"
 
 # xcrun finds the toolchain's llvm-* on macOS, where they are not on PATH.
 if command -v xcrun >/dev/null 2>&1; then
@@ -90,20 +90,20 @@ mkdir -p "$OUT" "$PROF"
 # ------------------------------------------------------- the C and the C++
 
 echo "==> building instrumented (build-coverage)"
-# Deploy OFF: an instrumented plugin must never land in ~/Library/Audio/Plug-Ins,
-# where a running host would pick it up. Nothing here reads from there either:
-# the bundle tests load build-coverage/out's bundles by path (the AU ones
-# registered in their own process only, tests/au_bundle.h), never the installed
-# ones.
+# Nothing is deployed: an instrumented plugin must never land in
+# ~/Library/Audio/Plug-Ins, where a running host would pick it up, and
+# NI_DEPLOY_PLUGINS is off in every preset. Nothing here reads from there
+# either: the bundle tests load build-coverage/out's bundles by path.
 #
 # The coverage preset (CMakePresets.json) configures a new one; one that
 # exists is configured again as it was, whatever generator it was made with.
 if [ -f "$BUILD/CMakeCache.txt" ]; then
-    cmake -S "$ROOT" -B "$BUILD" >/dev/null
+    ni_time_stage configure --build "$BUILD" -- cmake -S "$ROOT" -B "$BUILD" >/dev/null
 else
-    cmake --preset coverage >/dev/null
+    ni_time_stage configure --build "$BUILD" -- cmake --preset coverage >/dev/null
 fi
-cmake --build "$BUILD" -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" >/dev/null
+ni_time_stage build --build "$BUILD" -- \
+    cmake --build "$BUILD" -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" >/dev/null
 
 echo "==> running the suite"
 # %p keeps one file per process and %m one per binary image, so the test
@@ -117,12 +117,9 @@ echo "==> running the suite"
 # so including it here would check the previous run's file, or fail on a
 # missing one. It is registered with ctest so `ctest -R coverage_floor` works
 # once a report exists, and it is run below, after there is one.
-#
-# -E e2e as well: the end-to-end suite is JavaScript in Chrome, and it runs
-# below with its own coverage switched on rather than here without it.
 suite_status=0
-LLVM_PROFILE_FILE="$PROF/%p-%m.profraw" \
-    ctest --test-dir "$BUILD" -E '^(coverage_floor|e2e)$' --output-on-failure \
+ni_time_stage ctest -- env LLVM_PROFILE_FILE="$PROF/%p-%m.profraw" \
+    ctest --test-dir "$BUILD" -E '^coverage_floor$' --output-on-failure \
         > "$OUT/ctest.log" 2>&1 || suite_status=$?
 tail -3 "$OUT/ctest.log" | sed 's/^/    /'
 
@@ -137,7 +134,8 @@ if [ ${#profraw[@]} -eq 0 ]; then
     exit 1
 fi
 
-"$LLVM_PROFDATA" merge -sparse "${profraw[@]}" -o "$PROF/merged.profdata"
+ni_time_stage "merge profiles" -- \
+    "$LLVM_PROFDATA" merge -sparse "${profraw[@]}" -o "$PROF/merged.profdata"
 
 # One -object per instrumented binary. The test executables are what ran, so
 # they are what carries the mapping for the code under test.
@@ -145,33 +143,38 @@ objects=()
 for f in "$BUILD"/tests/* "$BUILD"/tests/cpp/*; do
     [ -f "$f" ] && [ -x "$f" ] && objects+=( -object "$f" )
 done
-# JUCE puts a console app in <name>_artefacts/<config>/: the native kit's and
-# the editors' tests (tests/ui), and juce_host.
-for f in "$BUILD"/tests/*_artefacts/*/* "$BUILD"/tests/ui/*_artefacts/*/*; do
+# JUCE puts a console app in <name>_artefacts/<config>/: the host tests and
+# NI Trance Gate's processor tests here, the native kit's and the editors'
+# (tests/ui), and every other product's (tests/<product>).
+for f in "$BUILD"/tests/*_artefacts/*/* "$BUILD"/tests/*/*_artefacts/*/*; do
     [ -f "$f" ] && [ -x "$f" ] && objects+=( -object "$f" )
 done
-# And the code of a plugin on the JUCE shell runs inside its bundle, which
-# juce_host loads: each JUCE bundle (the one with JUCE's moduleinfo.json) is an
-# instrumented image of its own, writing its own profile.
+# And the code of a plugin runs inside its bundle, which the host tests
+# load: each bundle is an instrumented image of its own, writing its own
+# profile.
 for b in "$BUILD"/out/*.vst3; do
-    [ -f "$b/Contents/Resources/moduleinfo.json" ] || continue
     for f in "$b"/Contents/MacOS/*; do
         [ -f "$f" ] && objects+=( -object "$f" )
     done
 done
 
-"$LLVM_COV" export "${objects[@]}" \
+ni_time_stage "export native" -- "$LLVM_COV" export "${objects[@]}" \
     -instr-profile="$PROF/merged.profdata" \
     -format=lcov > "$OUT/native.info" 2>/dev/null
 
 # ------------------------------------------------------------------- Rust
 
 echo "==> rust"
-cargo llvm-cov --workspace --lcov --output-path "$OUT/rust.info" \
-    >/dev/null 2>&1 || {
-        echo "cargo llvm-cov failed -- rerunning verbosely so the error is visible" >&2
-        cargo llvm-cov --workspace --lcov --output-path "$OUT/rust.info"
+# Quiet, and run again verbosely when it fails, so the error is visible.
+llvm_cov() {
+    local out=$1
+    shift
+    cargo llvm-cov "$@" --lcov --output-path "$out" >/dev/null 2>&1 || {
+        echo "cargo llvm-cov $* failed -- rerunning verbosely" >&2
+        cargo llvm-cov "$@" --lcov --output-path "$out"
     }
+}
+ni_time_stage "rust workspace" -- llvm_cov "$OUT/rust.info" --workspace
 
 # EACH C ABI CRATE AGAIN, FROM ITS OWN TEST BINARY. A capi crate's #[no_mangle]
 # functions are also compiled into every product archive that links it -- the
@@ -189,52 +192,18 @@ cargo llvm-cov --workspace --lcov --output-path "$OUT/rust.info" \
 capi_info=()
 for dir in engines/*/crates/*-capi; do
     crate="$(basename "$dir")"
-    export CARGO_TARGET_DIR="$BUILD/cargo-capi/$crate"
-    cargo llvm-cov -p "$crate" --lcov --output-path "$OUT/rust-$crate.info" >/dev/null 2>&1 || {
-        echo "cargo llvm-cov -p $crate failed -- rerunning verbosely" >&2
-        cargo llvm-cov -p "$crate" --lcov --output-path "$OUT/rust-$crate.info"
-    }
-    unset CARGO_TARGET_DIR
+    CARGO_TARGET_DIR="$BUILD/cargo-capi/$crate" \
+        ni_time_stage "rust $crate" -- llvm_cov "$OUT/rust-$crate.info" -p "$crate"
     capi_info+=( "$OUT/rust-$crate.info" )
 done
-
-# --------------------------------------------------------------------- JS
-
-echo "==> the editors and the kit"
-# Node's own runner and its own coverage: no c8, no nyc, nothing added to a
-# dependency tree that the licence audit is the reason for keeping small.
-#
-# --conditions=browser, exactly as `npm test` and ctest's ui_unit run them:
-# solid-js's node build is its server renderer, under which the kit's
-# reactive stores never re-run and two of the kit's tests fail.
-js_status=0
-node --conditions=browser --test --experimental-test-coverage \
-     --test-reporter=lcov --test-reporter-destination="$OUT/js.info" \
-     --test-reporter=spec --test-reporter-destination=/dev/null \
-     ui-kit/test/*.test.mjs plugins/*/ui/test/*.test.mjs >/dev/null 2>&1 || js_status=$?
-
-# THE COMPONENTS, WHICH ONLY A BROWSER RUNS. Every .jsx file -- the kit's
-# controls, each editor's App -- is invisible to node's coverage above; the
-# end-to-end suite drives all of it in Chrome, so it is run again here with
-# V8's coverage on (tests/e2e/harness.mjs) and mapped back to the sources
-# through a source-mapped build of each harness (scripts/e2e-coverage.mjs).
-echo "==> the editors, in Chrome"
-e2e_status=0
-rm -rf "$ROOT/build/e2e/coverage"
-NI_E2E_COVERAGE=1 node "$ROOT/node_modules/@playwright/test/cli.js" test \
-    --config tests/e2e/playwright.config.mjs --reporter=dot \
-    > "$OUT/e2e.log" 2>&1 || e2e_status=$?
-tail -1 "$OUT/e2e.log" | sed 's/^/    /'
-node "$ROOT/scripts/e2e-coverage.mjs" "$ROOT/build/e2e/coverage" "$ROOT/build/e2e/web" \
-    "$OUT/e2e.info" | sed 's/^/    /'
 
 # ------------------------------------------------------------------ report
 
 echo "==> report"
-tracefiles=( "$OUT/native.info" "$OUT/rust.info" "${capi_info[@]}" "$OUT/js.info" "$OUT/e2e.info" )
+tracefiles=( "$OUT/native.info" "$OUT/rust.info" "${capi_info[@]}" )
 cat "${tracefiles[@]}" > "$OUT/lcov.info" 2>/dev/null || true
 
-COVERAGE_ROOT="$ROOT" COVERAGE_OUT="$OUT" COVERAGE_FLOOR="$FLOOR" \
+ni_time_stage report -- env COVERAGE_ROOT="$ROOT" COVERAGE_OUT="$OUT" COVERAGE_FLOOR="$FLOOR" \
     node "$ROOT/scripts/coverage-report.mjs" "${tracefiles[@]}"
 
 # ------------------------------------------------------------------- floor
@@ -246,14 +215,7 @@ COVERAGE_JSON="$OUT/coverage.json" node --test "$ROOT/tests/coverage_floor.test.
 if [ "$suite_status" -ne 0 ]; then
     echo "  NOTE: the suite itself failed (ctest exit $suite_status); see build/coverage/ctest.log" >&2
 fi
-if [ "$js_status" -ne 0 ]; then
-    echo "  NOTE: a UI test failed (node exit $js_status)" >&2
-fi
-if [ "$e2e_status" -ne 0 ]; then
-    echo "  NOTE: an end-to-end test failed (exit $e2e_status); see build/coverage/e2e.log" >&2
-fi
-
-for s in "$floor_status" "$suite_status" "$js_status" "$e2e_status"; do
+for s in "$floor_status" "$suite_status"; do
     [ "$s" -eq 0 ] || exit "$s"
 done
 exit 0
