@@ -1,5 +1,11 @@
 # What's new
 
+## v2026.10.08.2 — NI Trance Gate
+
+- **The Move module is published.** v2026.10.08.1's Move release stopped on
+  GitHub's build machine before it built anything; this release carries the fix
+  to how the module is built. The plugin itself is unchanged from v2026.10.08.1.
+
 ## v2026.10.08.1
 
 Every plugin is rebuilt on a new foundation. Your sets open as before; what

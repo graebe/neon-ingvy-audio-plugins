@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "tg-capi"
-version = "2026.10.8+1"
+version = "2026.10.8+2"
 dependencies = [
  "atomic_float",
  "cbindgen",
@@ -815,7 +815,7 @@ dependencies = [
 
 [[package]]
 name = "tg-core"
-version = "2026.10.8+1"
+version = "2026.10.8+2"
 dependencies = [
  "arrayvec",
  "assert_no_alloc",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "tg-move"
-version = "2026.10.8+1"
+version = "2026.10.8+2"
 dependencies = [
  "atomic_float",
  "ni-schwung",
