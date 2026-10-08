@@ -18,10 +18,18 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
 cd "$HERE/.."
 
-# The binaries below are written here, and a fresh checkout has no build/ at all
-# -- the linker then failed with errno=2 on the OUTPUT path, which reads like a
-# missing input and sent the last person looking for the wrong thing.
-mkdir -p build
+# CARGO_BUILD_TARGET NAMES THE PLATFORM, when it is not this machine's own.
+# modules/_shared/test.sh sets it to aarch64-unknown-linux-gnu to run this on
+# the Move's architecture in the module's container, against the same checkout
+# a macOS build uses: cargo then builds into target/<triple>/ -- the directory
+# package.sh ships from, with the Move's target-cpu -- and the binaries below
+# go to build/<triple>/, so neither run overwrites what the other built.
+TRIPLE="${CARGO_BUILD_TARGET:-}"
+OUT="build${TRIPLE:+/$TRIPLE}"
+# The binaries below are written there, and a fresh checkout has no build/ at
+# all -- the linker then failed with errno=2 on the OUTPUT path, which reads
+# like a missing input and sent the last person looking for the wrong thing.
+mkdir -p "$OUT"
 
 # cargo, wherever it is installed -- this file's own version of this searched
 # only via rustup, so a toolchain installed any other way was not found.
@@ -38,17 +46,21 @@ NI_CAPI_INCLUDE_DIR="$CAPI" cargo build --release -p tg-move
 # AT THE WORKSPACE ROOT, NOT BESIDE THE ENGINE. The engine was its own
 # repository when this was written; as a subtree in the monorepo it shares one
 # Cargo workspace, so the target directory is the root's.
-ENGINE=$ROOT/target/release/libtg_move.a
-cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude -I"$CAPI" \
-   tests/test_gate.c "$ENGINE" -o build/test_gate -lm
-./build/test_gate || exit 1
+ENGINE=$ROOT/target/${TRIPLE:+$TRIPLE/}release/libtg_move.a
+# gnu11, as CMake compiles these same files (CMAKE_C_STANDARD 11 with its
+# default extensions): strict c11 hides M_PI in glibc's math.h, which macOS's
+# does not, so -std=c11 compiled here and nowhere on Linux.
+CSTD=-std=gnu11
+cc $CSTD -Wall -Wextra -Wno-unused-parameter -Iinclude -I"$CAPI" \
+   tests/test_gate.c "$ENGINE" -o "$OUT/test_gate" -lm
+"./$OUT/test_gate" || exit 1
 
 # The portable engine's own tests: sample rate, the float paths and the
 # transport struct -- three freedoms the Schwung shell cannot exercise,
 # because it is always 44100, always int16 and always has a host.
-cc -std=c11 -Wall -Wextra -Iinclude -I"$CAPI" \
-   tests/test_core.c "$ENGINE" -o build/test_core -lm
-./build/test_core || exit 1
+cc $CSTD -Wall -Wextra -Iinclude -I"$CAPI" \
+   tests/test_core.c "$ENGINE" -o "$OUT/test_core" -lm
+"./$OUT/test_core" || exit 1
 
 # THE GOLDEN RENDER. Four seconds of audio through the whole engine, compared
 # by hash against a render captured before the engine was ever split out of
@@ -63,7 +75,7 @@ cc -std=c11 -Wall -Wextra -Iinclude -I"$CAPI" \
 # run; a check nobody is obliged to remember is not a check.
 #
 # If this fires and the change to the audio was DELIBERATE, re-record the
-# hash with `tests/render_ref > /tmp/ref.raw` and say so in the commit.
+# hash from `build/render_ref | md5` and say so in the commit.
 # Re-recorded 2026-09-23 when the per-step level became latched at gate-open.
 # The diff was confined to steps 2 and 6 -- the steps FOLLOWING the golden
 # patch's ties at 1 and 5, where the level used to jump mid-gate to the new
@@ -103,10 +115,10 @@ cc -std=c11 -Wall -Wextra -Iinclude -I"$CAPI" \
 # here. tests/render_plugin.c pins the same bytes through the plugin path.
 # Previous: 3992810c52d7962b4d25b3a30494ee2e
 GOLDEN=d8389d25abb3c44b34461f3029f6ab48
-cc -std=c11 -Wall -Wextra -Wno-unused-parameter -Iinclude -I"$CAPI" \
+cc $CSTD -Wall -Wextra -Wno-unused-parameter -Iinclude -I"$CAPI" \
    tests/render_ref.c "$ENGINE" \
-   -o build/render_ref -lm
-GOT=$(./build/render_ref | md5 -q 2>/dev/null || ./build/render_ref | md5sum | cut -d" " -f1)
+   -o "$OUT/render_ref" -lm
+GOT=$("./$OUT/render_ref" | md5 -q 2>/dev/null || "./$OUT/render_ref" | md5sum | cut -d" " -f1)
 echo
 echo "golden render:"
 if [ "$GOT" = "$GOLDEN" ]; then
@@ -140,10 +152,10 @@ if [ -d "$SHARED/param_pages" ]; then
   # against the PREVIOUS build's JSON, silently, for as long as the old
   # binary kept working. A stale fixture reports the old contract as the
   # current one, which is worse than no fixture at all.
-  cc -std=c11 -Iinclude -I"$CAPI" tests/dump_params.c "$ENGINE" \
-     -o build/dump_params -lm
-  ./build/dump_params > build/chain_params.json
-  TG_PARAMS=build/chain_params.json node tests/smoke_ui.mjs "$SHARED" build/.smoke
+  cc $CSTD -Iinclude -I"$CAPI" tests/dump_params.c "$ENGINE" \
+     -o "$OUT/dump_params" -lm
+  "./$OUT/dump_params" > "$OUT/chain_params.json"
+  TG_PARAMS="$OUT/chain_params.json" node tests/smoke_ui.mjs "$SHARED" "$OUT/.smoke"
 else
   echo
   echo "(ui smoke test skipped: $SHARED not found)"
