@@ -166,6 +166,10 @@ if (TG_NODE)
     # build. RUST_ENV, because the check asks cargo what ships.
     add_test(NAME licenses
              COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs)
+    # What the check counts as shipping, on a graph small enough to read: the
+    # feature resolver it uses instead of cargo metadata's unified features.
+    add_test(NAME licenses_resolve
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/licenses_resolve.test.mjs)
     add_test(NAME licenses_bundles
              COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
                      --bundles ${CMAKE_BINARY_DIR}/out)
@@ -444,6 +448,36 @@ add_test(NAME ni_shared
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung)
 
+# MUSIC-CORE, TWICE: with `std` and without it. The crate promises `no_std` and a
+# method set that only ever loses the two frequency methods without `std`, and
+# a build that is never made without it is a promise nobody checks. The README
+# runs as doctests in both, so the front page cannot drift either.
+add_test(NAME music_core_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p music-core)
+add_test(NAME music_core_no_std
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p music-core --no-default-features)
+
+# ------------------------------------------------------------ NI Chord-Detector
+
+# THE ENGINE'S OWN CLAIMS, which are cargo's: what is named for every kind of
+# voicing, the pedal, Hold, the panic, the history's clock that never goes
+# back, a counting allocator over everything the audio thread calls, and
+# property tests over arbitrary MIDI.
+# The C ABI from C: compiled against the header cbindgen writes
+# (cd-capi/build.rs) and linked to the real archive.
+add_executable(cd_core_tests ${CMAKE_SOURCE_DIR}/engines/chord-detector/tests/test_core.c)
+target_link_libraries(cd_core_tests PRIVATE cd_engine)
+if (NOT WIN32)
+    target_link_libraries(cd_core_tests PRIVATE m)
+endif()
+add_test(NAME cd_core COMMAND cd_core_tests)
+
+add_test(NAME cd_core_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p cd-core -p cd-capi)
+
 # The handoff's seam, holding a real bus writer the way NI Listen-In does.
 # The shell_handoff_* symbols ride in libbus_capi.a, so that is what it links.
 add_executable(shell_handoff shell_handoff.c)
@@ -689,14 +723,15 @@ ni_test_tiers(
     QUICK
         # Rust: every crate's unit tests, and the licence gate over its graph
         tg_core_rs spectro_core abus_core gnd_core shell_core ni_shared sc_core_rs
+        music_core_rs music_core_no_std cd_core_rs
         cargo_deny
         # C against the engines' ABIs, and the oracles that pin the sound
-        tg_core sc_core spectro_columns srecv_api abus_roundtrip gnd_roundtrip
+        tg_core sc_core cd_core spectro_columns srecv_api abus_roundtrip gnd_roundtrip
         shell_handoff tg_curves tg_envelope tg_fade sc_shape sc_envelope
         capi_compat_tg capi_compat_tg_names
         # lint-like checks over the tree
-        versions release licenses spdx ground_shells site_tokens design_paths
-        timing
+        versions release licenses licenses_resolve spdx ground_shells site_tokens
+        design_paths timing
         # the JUCE shell's state codec, and NI Trance Gate's processor, model
         # and editor in one program
         nist_fixtures tg_processor tg_rt

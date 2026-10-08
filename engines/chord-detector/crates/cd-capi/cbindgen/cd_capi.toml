@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# cd_capi.h, from src/lib.rs (build.rs, through
+# engines/shared/cbindgen/capi_header.rs).
+language = "C"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+//
+// NI Chord-Detector's engine, as C. GENERATED at build time by cbindgen from
+// engines/chord-detector/crates/cd-capi/src/lib.rs -- edit that, never this."""
+include_guard = "CD_CAPI_H"
+cpp_compat = true
+documentation = true
+documentation_style = "c99"
+usize_is_size_t = true
+sys_includes = ["stdbool.h", "stddef.h", "stdint.h"]
+no_includes = true
+
+[export]
+include = ["CdReading", "CdNoteEvent", "CdParamInfo", "CdWrittenNote", "CdKey"]
+
+[export.rename]
+"CdCore" = "CdCore"
+"CdShell" = "CdShell"
+
+[enum]
+prefix_with_name = true

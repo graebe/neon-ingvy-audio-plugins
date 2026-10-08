@@ -1,0 +1,35 @@
+[package]
+name = "music-core"
+version = "2026.10.6+4"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "General music theory primitives: pitch classes, intervals, notes, chords, keys and pitch-class sets"
+keywords = ["music", "music-theory", "pitch", "harmony", "midi"]
+categories = ["mathematics", "multimedia::audio", "no-std"]
+repository = "https://github.com/graebe/neon-ingvy-audio-plugins"
+publish.workspace = true
+
+# A SHARED CRATE, product-free like ni-dsp: the Chord-Detector names chords
+# with it, and neo-riemann (codeberg.org/graebe/neo-riemann) builds its PLR
+# group on it through a git dependency on this repository. It came here from
+# neo-riemann with its history (git subtree); its rules are in README.md.
+#
+# NO DEPENDENCIES, and `no_std` unless `std` is asked for. `std` gates only the
+# two methods that need floating-point maths `core` does not have.
+[features]
+default = ["std"]
+std = []
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dev-dependencies]
+divan = { workspace = true }
+proptest = { workspace = true, features = ["std"] }
+rstest = { workspace = true }
+
+[[bench]]
+name = "core"
+harness = false

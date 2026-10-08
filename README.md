@@ -10,6 +10,7 @@ here.
 | [NI Spectrogram](plugins/spectrogram/README.md) | VST3 | `engines/spectro` |
 | [NI Listen-In](plugins/listen-in/README.md) | VST3 | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · a Schwung module for the Move | `engines/side-chain` |
+| [NI Chord-Detector](plugins/chord-detector/README.md) | VST3 | `engines/chord-detector` |
 
 ## How it is put together
 
@@ -71,7 +72,7 @@ and a bare toolchain use. Homebrew's keeps its shims in
 `/opt/homebrew/opt/rustup/bin`, which is not `~/.cargo/bin`.
 
 **Linux is built locally too**, in Docker: `scripts/build-all.sh . -- -L full
--LE 'move|site' -E '^cargo_deny$'` builds the four VST3s for macOS (universal)
+-LE 'move|site' -E '^cargo_deny$'` builds the five VST3s for macOS (universal)
 and Linux (amd64), runs their tests and validates every bundle with pluginval
 at strictness 10 ([docs/tech/cross-build.md](docs/tech/cross-build.md)). The
 Windows cross-build waits for the owner's acceptance of Microsoft's licence;
@@ -176,6 +177,7 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Spectrogram](plugins/spectrogram/README.md) | a rolling STFT analyzer — [in Live](plugins/spectrogram/docs/live.md) |
 | [NI Listen-In](plugins/listen-in/README.md) | a tap that publishes a track on a numbered bus — [in Live](plugins/listen-in/docs/live.md) |
 | [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input |
+| [NI Chord-Detector](plugins/chord-detector/README.md) | names the note or chord a MIDI lane plays — [in Live](plugins/chord-detector/docs/live.md) |
 
 What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).
 

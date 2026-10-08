@@ -65,7 +65,10 @@ pub fn generate(headers: &[Header]) {
     println!("cargo:rerun-if-changed={}", crate_dir.join("src").display());
 
     for header in headers {
-        let stem = header.name.strip_suffix(".h").expect("a header's name ends in .h");
+        let stem = header
+            .name
+            .strip_suffix(".h")
+            .expect("a header's name ends in .h");
         let config_path = crate_dir.join("cbindgen").join(format!("{stem}.toml"));
         println!("cargo:rerun-if-changed={}", config_path.display());
         let config = cbindgen::Config::from_file(&config_path)

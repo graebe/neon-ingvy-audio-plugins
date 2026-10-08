@@ -114,10 +114,12 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
 
 - every Rust crate's tests (`cargo test`, crate by crate) — among them the
   no-allocation checks, the two-thread stress runs and the property tests,
-  whose seed is fixed so the tier's verdict never changes without a commit —
-  and `cargo_deny`, the licence gate over their dependency graph (below),
+  whose seed is fixed so the tier's verdict never changes without a commit;
+  music-core's twice, with `std` and without (`music_core_rs`,
+  `music_core_no_std`) — and `cargo_deny`, the licence gate over their
+  dependency graph (below),
 - the C tests against each engine's generated ABI (`tg_core`, `sc_core`,
-  `spectro_columns`, `srecv_api`, `abus_roundtrip`, `gnd_roundtrip`,
+  `cd_core`, `spectro_columns`, `srecv_api`, `abus_roundtrip`, `gnd_roundtrip`,
   `shell_handoff`), the Trance Gate's ABI held to its last hand-written
   headers (`capi_compat_tg*`), and the oracles that pin each engine's curves,
   envelopes and fades to a table it measured itself
@@ -138,7 +140,9 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   tier,
 - the lint-like checks over the tree: `versions`, `release` (the tag parser,
   release.json and the release staging), `licenses` (the tree, not the
-  bundles), `spdx` (every source file opens with its licence and copyright),
+  bundles), `licenses_resolve` (the feature resolution `licenses` decides what
+  ships with, on a graph small enough to read), `spdx` (every source file
+  opens with its licence and copyright),
   `design_paths` (every path into `design/` that a tracked file names
   exists), the token guards (`ui_tokens_native`: the generated `UvTokens.h`
   against the design system; `site_tokens`: the site's `tokens.css` against
@@ -199,13 +203,14 @@ validators, before anything is published.
 
 The project is GPL-3.0-or-later
 ([docs/adr/0001-gpl-3.0-or-later.md](../adr/0001-gpl-3.0-or-later.md)), and
-three quick-tier tests hold it to that:
+four quick-tier tests hold it to that:
 
 | test | what it holds |
 |---|---|
 | `spdx` | every source file this repository owns opens with `SPDX-License-Identifier: GPL-3.0-or-later` and `Copyright (C) 2026 Torben Gräber`, in its own comment syntax. `tests/spdx.test.mjs` lists what is excluded and why: external code, the design mirrors, Schwung's vendored headers |
 | `cargo_deny` | `cargo deny check licenses bans sources`: every crate in the graph is under a licence on `deny.toml`'s allowlist and comes from crates.io, and a crate in two versions is shown |
-| `licenses` | `LICENSE` is the unmodified GPLv3; `THIRD_PARTY_LICENSES.md` lists exactly what ships — JUCE at the submodule's version and the VST3 SDK at the version of JUCE's copy, what JUCE compiles in, the fonts, the engines, and exactly the crates and versions `cargo metadata` says ship; and every C and C++ library's licence is on the allowlist (AGPL-3.0 for JUCE alone) |
+| `licenses` | `LICENSE` is the unmodified GPLv3; `THIRD_PARTY_LICENSES.md` lists exactly what ships — JUCE at the submodule's version and the VST3 SDK at the version of JUCE's copy, what JUCE compiles in, the fonts, the engines, and exactly the crates and versions a build of the workspace links; and every C and C++ library's licence is on the allowlist (AGPL-3.0 for JUCE alone) |
+| `licenses_resolve` | how `licenses` decides what a build links: `cargo metadata` unifies each package's features over normal, build and dev edges alike, so a build dependency asking for serde's `derive` (cbindgen does) would make serde_derive look shipped. `resolveFeatures` (`scripts/licenses-lib.mjs`) resolves them again through normal edges only, as cargo's resolver does for a real build; this test holds it to each rule on a synthetic graph |
 
 The allowlist is `deny.toml`'s, the one policy: MIT, Apache-2.0, BSD-1/2/3,
 ISC, Zlib, MPL-2.0, Unicode-3.0, CC0, Unlicense, GPL-3.0, and libpng-2.0, IJG

@@ -76,7 +76,7 @@ list(REMOVE_ITEM _kit
 set(_quick ni_ui_tests_unit)
 set(_full ni_ui_tests_snapshots:snapshot)
 
-foreach(product trance-gate side-chain spectrogram listen-in)
+foreach(product IN LISTS NI_PRODUCTS)
     string(REPLACE "-" "_" id ${product})
     file(GLOB _mine CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${product}_*.cpp)
     if (_mine)

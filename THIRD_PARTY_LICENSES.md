@@ -89,6 +89,7 @@ JetBrains Mono declaring none.
 | `NISideChain.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | `NIListenIn.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | the documentation site | emitted by the build as a hashed asset under `/neon-ingvy-audio-plugins/_astro/` | `/neon-ingvy-audio-plugins/fonts/OFL.txt` |
+| `NIChordDetector.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits
 beside the faces in both places, and wherever the font ships: every bundle on
@@ -96,6 +97,25 @@ the JUCE shell with an editor carries it in `Contents/Resources`
 (`cmake/NiJucePlugin.cmake`), and `site/scripts/stage-assets.mjs` copies the
 site's into its `/fonts/`, failing the build if it is not there. The OFL is
 permissive and GPL-compatible.
+
+## Bundled music font
+
+**Bravura** 1.482 (© 2015 Steinberg Media Technologies GmbH, **SIL Open Font
+License 1.1**, Reserved Font Name "Bravura"), the reference font of SMuFL. The
+native kit draws its notation with it (`ni::ui::GrandStaff`: clefs,
+accidentals, noteheads) and embeds `Bravura.otf` whole and unmodified, as
+BinaryData of `ni_ui_assets` -- which is what lets it keep its reserved name;
+a subset would have to be renamed. The file and its licence (`Bravura-OFL.txt`,
+the release's `OFL.txt` renamed so it never replaces JetBrains Mono's) are at
+`plugins/_shared/ui/fonts/bravura/`, with their provenance in its `README.md`.
+
+**The OFL travels with the font**: a plugin whose editor draws notation copies
+`NI_UI_MUSIC_FONT_LICENSE` (that file) into its bundle's resources. The
+first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
+
+| Bundle | The font | Its licence |
+|---|---|---|
+| `NIChordDetector.vst3` | embedded whole, as OpenType, in the plugin binary | `Contents/Resources/Bravura-OFL.txt` |
 
 ## The engines — this repository's own
 
@@ -105,9 +125,11 @@ permissive and GPL-compatible.
 | `spectro-core`, `spectro-recv`, `spectro-capi` | `engines/spectro` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `bus-core`, `bus-capi` | `engines/audio-bus` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber, with a ported part — see below |
+| `cd-core`, `cd-capi` | `engines/chord-detector` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ground-core`, `ground-capi` | `engines/ground` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ni-dsp`, `ni-schwung` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `music-core` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — moved here from [neo-riemann](https://codeberg.org/graebe/neo-riemann), where it was MIT under the same owner |
 
 These are the workspace's members, each `publish = false`, and
 `scripts/check-licenses.mjs` holds this table to the path packages in

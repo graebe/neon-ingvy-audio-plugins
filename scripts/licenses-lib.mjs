@@ -120,3 +120,117 @@ export function juceProducts(root = ROOT) {
 /* What Contents/Resources of a product's bundle must hold. */
 export const bundleResources = (p) => ['LICENSE', 'THIRD_PARTY_LICENSES.md', ...LICENCE_TEXTS,
   ...(p.editor ? ['OFL.txt'] : []), ...(p.music ? ['Bravura-OFL.txt'] : []), 'moduleinfo.json'];
+
+/* Cargo's feature resolution, through normal edges only, as a build of the
+ * workspace does it: every member with its default features; a dependency
+ * with the features its declaration names, `default` unless it opted out, and
+ * what the depending package's own features ask of it (`x/f`, and `x?/f` once
+ * `x` is on). An optional dependency is on only when a feature enables it
+ * strongly -- `dep:x`, `x/f`, or the implicit feature `x` -- never `x?/f`.
+ *
+ * Returns every package reached, with the features asked of it -- before its
+ * own [features] table expands them, which happens here on each visit. Grows
+ * monotonically to a fixed point, so a package is revisited only when its set
+ * grew. */
+export function resolveFeatures(roots, packages, nodes) {
+  const bare = (t) => (t ?? '').replace(/\s+/g, '');
+  const features = new Map();
+  const todo = [];
+  const want = (id, asked) => {
+    let set = features.get(id);
+    const fresh = !set;
+    if (fresh) features.set(id, (set = new Set()));
+    const before = set.size;
+    for (const f of asked) set.add(f);
+    if (fresh || set.size > before) todo.push(id);
+  };
+  for (const id of roots) want(id, ['default']);
+
+  while (todo.length) {
+    const id = todo.pop();
+    const pkg = packages.get(id);
+    const node = nodes.get(id);
+    const table = pkg.features ?? {};
+    const optional = new Set(pkg.dependencies.filter((d) => d.optional)
+      .map((d) => d.rename ?? d.name));
+
+    /* This package's own features, closed over the table, and what they ask
+     * of its dependencies. */
+    const strong = new Set();
+    const asks = new Map();            // dependency -> features asked of it
+    const ask = (dep, f) => (asks.get(dep) ?? asks.set(dep, new Set()).get(dep)).add(f);
+    const own = new Set();
+    const stack = [...features.get(id)];
+    while (stack.length) {
+      const f = stack.pop();
+      if (own.has(f)) continue;
+      own.add(f);
+      if (!(f in table)) {
+        if (optional.has(f)) strong.add(f);   // the implicit feature of a dependency
+        continue;
+      }
+      for (const v of table[f]) {
+        if (v.startsWith('dep:')) {
+          strong.add(v.slice(4));
+        } else if (v.includes('/')) {
+          const [dep, feature] = v.split('/');
+          if (dep.endsWith('?')) {
+            ask(dep.slice(0, -1), feature);
+          } else {
+            strong.add(dep);
+            ask(dep, feature);
+          }
+        } else {
+          stack.push(v);
+        }
+      }
+    }
+
+    for (const d of node?.deps ?? []) {
+      const name = packages.get(d.pkg).name;
+      for (const k of d.dep_kinds) {
+        if (k.kind !== null || noPlatform(k.target)) continue;
+        const decls = pkg.dependencies.filter((dep) =>
+          dep.kind === null && dep.name === name && bare(dep.target) === bare(k.target));
+        if (!decls.length)
+          throw new Error(`cargo metadata resolves ${pkg.name} -> ${name} (${k.target ?? 'every platform'}), ` +
+                          `which ${pkg.name}'s manifest does not declare`);
+        for (const dep of decls) {
+          const local = dep.rename ?? dep.name;
+          if (dep.optional && !strong.has(local)) continue;
+          want(d.pkg, [
+            ...dep.features,
+            ...(dep.uses_default_features ? ['default'] : []),
+            ...(asks.get(local) ?? []),
+          ]);
+        }
+      }
+    }
+  }
+  return features;
+}
+
+/* Whether a dependency's target holds on no platform, by its shape alone: a
+ * cfg() with no predicate in it -- only all(), any() and not() of nothing --
+ * that comes out false, as `cfg(any())` does. krates draws the line at the
+ * same place. Anything that names a predicate is some platform's, and a bare
+ * target triple is one. */
+export function noPlatform(target) {
+  const cfg = /^cfg\((.*)\)$/s.exec(target ?? '');
+  const tokens = cfg?.[1].match(/[A-Za-z_][\w-]*|"[^"]*"|\S/g) ?? [];
+  if (!tokens.length || tokens.some((t) => !['all', 'any', 'not', '(', ')', ','].includes(t)))
+    return false;
+  let i = 0;
+  const expr = () => {
+    const op = tokens[i];
+    i += 2;                       // the operator and its '('
+    const args = [];
+    while (tokens[i] !== ')') {
+      args.push(expr());
+      if (tokens[i] === ',') i++;
+    }
+    i++;                          // its ')'
+    return op === 'all' ? args.every(Boolean) : op === 'any' ? args.some(Boolean) : !args[0];
+  };
+  return !expr();
+}

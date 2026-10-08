@@ -1,0 +1,462 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+//! Chords with arbitrary pitch content, and naming them.
+//!
+//! A chord here is a root plus any set of pitches, so most of these tests are
+//! about the relationship between that set and the vocabulary of names.
+
+use music_core::{Chord, ChordQuality, Interval, Pitch, PitchSet, Triad};
+
+// --- the vocabulary -------------------------------------------------------
+
+#[test]
+fn no_two_qualities_share_an_interval_set() {
+    // If two qualities had the same shape, `quality()` would pick between them
+    // arbitrarily and the choice would depend on declaration order. With a
+    // table this size that is easy to introduce by hand, so check it.
+    for (index, first) in ChordQuality::ALL.iter().enumerate() {
+        for second in ChordQuality::ALL.iter().skip(index + 1) {
+            assert_ne!(
+                first.interval_set(),
+                second.interval_set(),
+                "{first:?} and {second:?} have the same shape"
+            );
+        }
+    }
+}
+
+#[test]
+fn every_quality_starts_at_the_root() {
+    for quality in ChordQuality::ALL {
+        assert_eq!(
+            quality.intervals()[0],
+            0,
+            "{quality:?} does not start at its root"
+        );
+        assert!(
+            quality.interval_set().contains(Pitch::C),
+            "{quality:?} lost its root"
+        );
+    }
+}
+
+#[test]
+fn every_quality_is_named_back() {
+    // Build a chord from each quality, then ask what it is. The answer must be
+    // the quality we started from, on every root.
+    for root in Pitch::ALL {
+        for quality in ChordQuality::ALL {
+            let chord = Chord::from_quality(root, quality);
+            assert_eq!(chord.quality(), Some(quality), "{quality:?} on {root}");
+            assert_eq!(chord.root(), root);
+            assert_eq!(chord.size(), quality.size(), "{quality:?} on {root}");
+        }
+    }
+}
+
+#[test]
+fn quality_sizes_run_from_two_to_six() {
+    // Two, not three: the power chord has no third, and a bare fifth is the
+    // only quality in the table with fewer than three notes.
+    for quality in ChordQuality::ALL {
+        let size = quality.size();
+        assert!((2..=6).contains(&size), "{quality:?} has {size} notes");
+    }
+}
+
+#[test]
+fn a_bare_fifth_is_the_only_two_note_quality() {
+    let two_note: Vec<ChordQuality> = ChordQuality::ALL
+        .into_iter()
+        .filter(|q| q.size() == 2)
+        .collect();
+    assert_eq!(two_note, vec![ChordQuality::Fifth]);
+}
+
+#[test]
+fn a_bare_fifth_identifies_as_a_power_chord() {
+    let pitches = PitchSet::from_pitches(&[Pitch::C, Pitch::G]);
+
+    assert_eq!(pitches.identify(), Some(Chord::fifth(Pitch::C)));
+    // Only one way round: C over G is a fifth, G over C is a fourth, and a
+    // bare fourth has no name here.
+    assert_eq!(pitches.interpretations().count(), 1);
+}
+
+#[test]
+fn only_dyads_a_fifth_apart_have_a_name() {
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        if set.len() != 2 {
+            continue;
+        }
+        let mut notes = set.iter();
+        let (low, high) = (notes.next().unwrap(), notes.next().unwrap());
+        let a_fifth_apart = low.distance_to(high).value() == 5;
+
+        assert_eq!(
+            set.identify().is_some(),
+            a_fifth_apart,
+            "{set} was read wrongly"
+        );
+    }
+}
+
+#[test]
+fn a_seventh_with_a_suspended_fourth_has_one_reading() {
+    let pitches = Chord::dom7_sus4(Pitch::C).pitches();
+
+    assert_eq!(pitches.identify(), Some(Chord::dom7_sus4(Pitch::C)));
+    assert_eq!(pitches.interpretations().count(), 1);
+    assert_eq!(Chord::dom7_sus4(Pitch::C).to_string(), "C7sus4");
+}
+
+#[test]
+fn the_new_qualities_only_named_what_had_no_name() {
+    // Adding a two-note quality could in principle have stolen readings from
+    // bigger chords. It cannot: `quality` compares whole sets, so a two-note
+    // shape only ever matches a two-note set. Check the consequence directly.
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        for reading in set.interpretations() {
+            if reading.quality() == Some(ChordQuality::Fifth) {
+                assert_eq!(set.len(), 2, "{set} read as a power chord");
+            }
+        }
+    }
+
+    // And the answers that were already pinned have not moved.
+    let sixth = Chord::sixth(Pitch::C).pitches();
+    assert_eq!(sixth.identify(), Some(Chord::min7(Pitch::A)));
+    assert_eq!(Chord::dom7(Pitch::G).pitches().interpretations().count(), 1);
+}
+
+// --- the chord type -------------------------------------------------------
+
+#[test]
+fn a_chord_always_contains_its_root() {
+    // `new` inserts the root rather than refusing, because a chord contains its
+    // root by definition here.
+    let without_root = PitchSet::from_pitches(&[Pitch::E, Pitch::G]);
+    let chord = Chord::new(Pitch::C, without_root);
+
+    assert!(chord.contains(Pitch::C));
+    assert_eq!(chord.quality(), Some(ChordQuality::Major));
+}
+
+#[test]
+fn removing_the_root_is_refused() {
+    let c = Chord::major(Pitch::C);
+    assert_eq!(c.without(Pitch::C), c, "the root must survive");
+    assert!(!c.without(Pitch::E).contains(Pitch::E));
+}
+
+#[test]
+fn chords_hold_anything_from_one_note_to_twelve() {
+    let single = Chord::new(Pitch::C, PitchSet::EMPTY);
+    assert_eq!(single.size(), 1);
+    assert_eq!(single.quality(), None);
+
+    let everything = Chord::new(Pitch::C, PitchSet::CHROMATIC);
+    assert_eq!(everything.size(), 12);
+    assert_eq!(everything.quality(), None);
+}
+
+#[test]
+fn adding_a_note_can_change_the_name() {
+    let c = Chord::major(Pitch::C);
+    assert_eq!(c.quality(), Some(ChordQuality::Major));
+
+    let with_seventh = c.with(Pitch::B);
+    assert_eq!(with_seventh.quality(), Some(ChordQuality::Major7));
+
+    let with_ninth = with_seventh.with(Pitch::D);
+    assert_eq!(with_ninth.quality(), Some(ChordQuality::Major9));
+}
+
+#[test]
+fn transposing_keeps_the_shape() {
+    for root in Pitch::ALL {
+        for quality in ChordQuality::ALL {
+            let chord = Chord::from_quality(root, quality);
+            for semitones in [1i16, 5, 7, -3, 12] {
+                let moved = chord.transpose(Interval::new(semitones));
+                assert_eq!(moved.quality(), Some(quality), "{quality:?} on {root}");
+                assert_eq!(moved.intervals(), chord.intervals());
+            }
+        }
+    }
+}
+
+#[test]
+fn intervals_put_the_root_at_zero() {
+    for root in Pitch::ALL {
+        for quality in ChordQuality::ALL {
+            let chord = Chord::from_quality(root, quality);
+            assert!(
+                chord.intervals().contains(Pitch::C),
+                "{quality:?} on {root}"
+            );
+            assert_eq!(chord.intervals(), quality.interval_set());
+        }
+    }
+}
+
+#[test]
+fn voicing_a_chord_gives_one_note_per_pitch() {
+    for quality in ChordQuality::ALL {
+        let voiced = Chord::from_quality(Pitch::C, quality).voice(4);
+        assert_eq!(voiced.len(), quality.size(), "{quality:?}");
+        assert_eq!(voiced.pitch_set(), quality.interval_set(), "{quality:?}");
+    }
+}
+
+// --- naming and parsing ---------------------------------------------------
+
+#[test]
+fn named_chords_round_trip_through_text() {
+    for root in Pitch::ALL {
+        for quality in ChordQuality::ALL {
+            let chord = Chord::from_quality(root, quality);
+            let text = chord.to_string();
+            assert_eq!(text.parse::<Chord>().unwrap(), chord, "{text}");
+        }
+    }
+}
+
+#[test]
+fn unnamed_chords_round_trip_too() {
+    // The bracket form exists so that a chord with no name is still printable
+    // and still parses back. Walk a wide sample of shapes, not just a few.
+    let mut checked = 0;
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        let chord = Chord::new(Pitch::C, set);
+        if chord.quality().is_some() {
+            continue;
+        }
+        let text = chord.to_string();
+        assert_eq!(text.parse::<Chord>().unwrap(), chord, "{text}");
+        checked += 1;
+    }
+    assert!(checked > 4000, "only {checked} unnamed shapes were checked");
+}
+
+#[test]
+fn the_bracket_form_lists_offsets_from_the_root() {
+    let odd = Chord::new(
+        Pitch::C,
+        PitchSet::from_pitches(&[Pitch::C, Pitch::C_SHARP, Pitch::E, Pitch::F_SHARP]),
+    );
+    assert_eq!(odd.quality(), None);
+    assert_eq!(odd.to_string(), "C[0,1,4,6]");
+}
+
+#[test]
+fn constructors_agree_with_the_parser() {
+    assert_eq!(Chord::maj7(Pitch::C), "Cmaj7".parse().unwrap());
+    assert_eq!(Chord::dom9(Pitch::G), "G9".parse().unwrap());
+    assert_eq!(Chord::min11(Pitch::D), "Dm11".parse().unwrap());
+    assert_eq!(Chord::six_nine(Pitch::F), "F6/9".parse().unwrap());
+    assert_eq!(Chord::dom7_sharp11(Pitch::B), "B7#11".parse().unwrap());
+    assert_eq!(Chord::maj13(Pitch::E_FLAT), "Ebmaj13".parse().unwrap());
+}
+
+// --- identification -------------------------------------------------------
+
+#[test]
+fn a_set_of_pitches_can_be_read_several_ways() {
+    // C, E, G, A is a C6 and an A minor 7, and both readings are honest.
+    let pitches = Chord::sixth(Pitch::C).pitches();
+
+    let roots: Vec<Pitch> = pitches.interpretations().map(|c| c.root()).collect();
+    assert!(roots.contains(&Pitch::C), "C6 reading missing");
+    assert!(roots.contains(&Pitch::A), "Am7 reading missing");
+    assert_eq!(roots.len(), 2);
+}
+
+#[test]
+fn identify_prefers_the_lower_ranked_quality() {
+    // The documented heuristic: sevenths outrank sixths, so Am7 wins over C6.
+    // If this changes, it should change here first, deliberately.
+    let pitches = Chord::sixth(Pitch::C).pitches();
+    let best = pitches.identify().unwrap();
+
+    assert_eq!(best.root(), Pitch::A);
+    assert_eq!(best.quality(), Some(ChordQuality::Minor7));
+}
+
+#[test]
+fn symmetric_chords_have_a_reading_for_every_root() {
+    // A diminished seventh divides the octave evenly, so all four of its notes
+    // work equally well as the root. The augmented triad does the same in three.
+    let dim = Chord::dim7(Pitch::C).pitches();
+    assert_eq!(dim.interpretations().count(), 4);
+
+    let aug = Chord::aug(Pitch::C).pitches();
+    assert_eq!(aug.interpretations().count(), 3);
+
+    // Every reading really is that quality.
+    for reading in dim.interpretations() {
+        assert_eq!(reading.quality(), Some(ChordQuality::Diminished7));
+    }
+}
+
+#[test]
+fn every_named_chord_identifies_as_something() {
+    for root in Pitch::ALL {
+        for quality in ChordQuality::ALL {
+            let pitches = Chord::from_quality(root, quality).pitches();
+            assert!(
+                pitches.identify().is_some(),
+                "{quality:?} on {root} identified as nothing"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_shape_with_no_name_identifies_as_nothing() {
+    let cluster = PitchSet::from_pitches(&[Pitch::C, Pitch::C_SHARP, Pitch::D]);
+    assert_eq!(cluster.identify(), None);
+    assert_eq!(cluster.interpretations().count(), 0);
+}
+
+#[test]
+fn interpretations_only_yield_roots_from_the_set() {
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        for reading in set.interpretations() {
+            assert!(set.contains(reading.root()), "root outside the set");
+            assert_eq!(reading.pitches(), set, "reading changed the pitches");
+        }
+    }
+}
+
+// --- completions ----------------------------------------------------------
+
+#[test]
+fn a_fragment_completes_to_the_chords_that_contain_it() {
+    // A minor 9 as it is actually played, with the root left to the bass.
+    let played = PitchSet::from_pitches(&[Pitch::E_FLAT, Pitch::G, Pitch::B_FLAT, Pitch::D]);
+
+    let found: Vec<Chord> = played.completions().collect();
+    assert_eq!(
+        found,
+        vec![
+            Chord::min9(Pitch::C),
+            Chord::min11(Pitch::C),
+            Chord::maj7(Pitch::E_FLAT),
+            Chord::maj9(Pitch::E_FLAT),
+            Chord::maj13(Pitch::E_FLAT),
+        ]
+    );
+}
+
+#[test]
+fn a_completions_root_need_not_be_in_the_set() {
+    // The difference that makes this worth having: `interpretations` can only
+    // offer roots it can see.
+    let played = PitchSet::from_pitches(&[Pitch::E_FLAT, Pitch::G, Pitch::B_FLAT, Pitch::D]);
+
+    assert!(!played.contains(Pitch::C));
+    assert!(played.completions().any(|c| c.root() == Pitch::C));
+    assert!(played.interpretations().all(|c| c.root() != Pitch::C));
+}
+
+#[test]
+fn a_complete_match_is_a_completion() {
+    let ebmaj7 = Chord::maj7(Pitch::E_FLAT);
+    assert!(ebmaj7.pitches().completions().any(|c| c == ebmaj7));
+}
+
+#[test]
+fn every_interpretation_is_also_a_completion() {
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        let completions: Vec<Chord> = set.completions().collect();
+        for reading in set.interpretations() {
+            assert!(completions.contains(&reading), "{reading} went missing");
+        }
+    }
+}
+
+#[test]
+fn every_completion_really_contains_the_set() {
+    for bits in 0u16..4096 {
+        let set = PitchSet::from_bits(bits).unwrap();
+        for completion in set.completions() {
+            assert!(
+                completion.pitches().is_superset(set),
+                "{completion} does not contain {set}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_empty_set_completes_to_every_named_chord() {
+    // Nothing is contained in everything, so every root takes every quality.
+    let all = 12 * ChordQuality::ALL.len();
+    assert_eq!(PitchSet::EMPTY.completions().count(), all);
+    assert_eq!(all, 372);
+}
+
+#[test]
+fn completions_are_yielded_by_root_then_by_quality() {
+    // The documented order, which callers may reasonably lean on.
+    let fifth = PitchSet::from_pitches(&[Pitch::C, Pitch::G]);
+    let found: Vec<Chord> = fifth.completions().collect();
+
+    assert_eq!(found.first(), Some(&Chord::major(Pitch::C)));
+    let roots: Vec<u8> = found.iter().map(|c| c.root().value()).collect();
+    let mut sorted = roots.clone();
+    sorted.sort_unstable();
+    assert_eq!(roots, sorted, "roots came out of order");
+}
+
+#[test]
+fn a_chord_nobody_named_completes_to_nothing() {
+    // Three semitones in a row are in no named chord at all.
+    let cluster = PitchSet::from_pitches(&[Pitch::C, Pitch::C_SHARP, Pitch::D]);
+    assert_eq!(cluster.completions().count(), 0);
+}
+
+// --- triads ---------------------------------------------------------------
+
+#[test]
+fn triads_convert_to_chords_and_back() {
+    for triad in Triad::ALL {
+        let chord = Chord::from(triad);
+        assert_eq!(chord.pitches(), triad.pitch_set());
+        assert_eq!(chord.root(), triad.root);
+        assert_eq!(Triad::try_from(chord), Ok(triad));
+    }
+}
+
+#[test]
+fn only_consonant_chords_become_triads() {
+    for root in Pitch::ALL {
+        for quality in ChordQuality::ALL {
+            let chord = Chord::from_quality(root, quality);
+            match quality {
+                ChordQuality::Major => assert_eq!(Triad::try_from(chord), Ok(Triad::major(root))),
+                ChordQuality::Minor => assert_eq!(Triad::try_from(chord), Ok(Triad::minor(root))),
+                _ => assert_eq!(
+                    Triad::try_from(chord),
+                    Err(chord),
+                    "{quality:?} is not a consonant triad"
+                ),
+            }
+        }
+    }
+}
+
+#[test]
+fn identifying_a_triads_pitches_finds_the_triad() {
+    for triad in Triad::ALL {
+        let best = triad.pitch_set().identify().unwrap();
+        assert_eq!(Triad::try_from(best), Ok(triad), "{triad}");
+    }
+}

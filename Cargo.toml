@@ -50,6 +50,10 @@ members = [
     "engines/side-chain/crates/sc-core",      # the DSP
     "engines/side-chain/crates/sc-capi",      # the C ABI -> the plugin
     "engines/side-chain/crates/sc-move",      # the Schwung vtable -> the module
+    # NI Chord-Detector: one core, one wrapper. No Move target yet (the
+    # owner's call, 2026-10-06); the core keeps nothing that would stop one.
+    "engines/chord-detector/crates/cd-core",  # what is sounding, and its name
+    "engines/chord-detector/crates/cd-capi",  # the C ABI -> the plugin
     # The animated ground's beat clock. Like audio-bus it is not a
     # product: it ships inside EVERY editor, because the design system gives
     # every window the same ground. It depends on no product in return.
@@ -66,6 +70,7 @@ members = [
     # the same rule: a piece moves here only once it names no product.
     "engines/shared/crates/ni-dsp",           # C-compatible fmt, rates, curves, glides
     "engines/shared/crates/ni-schwung",       # the audio_fx v2 glue -> every module
+    "engines/shared/crates/music-core",       # pitches, chords, keys: the theory
 ]
 
 # NEVER PUBLISHED. These crates ship inside the products and nowhere else, so
@@ -117,6 +122,10 @@ fastrand = { version = "2.5.0", default-features = false }
 # Property tests: generated cases, shrunk to the smallest that fails. A
 # dev-dependency wherever it appears, so it ships in nothing.
 proptest = { version = "1.11.0", default-features = false }
+# Test and bench only, never linked into anything that ships: music-core's
+# table-driven cases and its benchmarks.
+rstest = { version = "0.27.0", default-features = false }
+divan = { version = "0.1.21", default-features = false }
 # The no-allocation guard every tests/no_alloc.rs installs: an allocator that
 # refuses, on the thread that asked, any allocation or free inside
 # assert_no_alloc(..). A dev-dependency wherever it appears. Without its

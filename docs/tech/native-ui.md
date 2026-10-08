@@ -75,6 +75,28 @@ golden being any test case declared with `NI_SNAPSHOT_TEST`. The token guard,
 | `Info.h` | the Hint's info: `setInfo`, `InfoText`, `InfoState`, `InfoTracker`, `InfoHost` |
 | `Luminous.h` | light past a component's edge, painted by its parent |
 
+## The music views
+
+Five components and a model, for any editor that shows notes (NI
+Chord-Detector's first). Each takes a plain value State and draws only from the
+tokens; the words and the spelling are always the owner's, from the engine.
+
+| Header | Gives |
+|---|---|
+| `Music.h` | `music::NoteSet` (128 bits), `isBlack`, Bravura and its SMuFL glyphs (`drawGlyph` at a glyph's own origin, the em four staff spaces) |
+| `Keyboard.h` | whole octaves from a C, held keys lit uv (uv-deep dimmed), the bass marked under; `lowestToShow` follows the notes. Display only |
+| `CircleOfFifths.h` | twelve keys clockwise in fifths: the key's seven tinted, sounding ones lit, the root filled, the tonic's amber ring; `onTonicSelected` from a click or the arrows (a fifth a step), one Tab stop; `centre()` for the owner's mode select. `Luminous` |
+| `ChordReadout.h` | the readout (28/32), the roman numeral chip, the HELD LED, the words in capitals, NOTES and ALSO. Display only |
+| `NoteHistory.h` | the model: notes with start and end on a clock that only goes forward, chord names at each change, the clock's tempo and bar lines; bounded |
+| `HistoryView.h` | what both views share: now at the right edge, `span` quarters across, the host's bar lines |
+| `GrandStaff.h` | proportional notation on a grand staff with the key signature: a head at each onset, a tail for its length, an accidental where the key differs; seconds side by side. Where a note sits is the owner's `Writer` (the engine's `cd_write_note`) |
+| `PianoRoll.h` | one numbered line per note over the played range (at least 24), a bar per note |
+
+Bravura is embedded as JetBrains Mono is (`fonts/bravura/README.md`), and a
+bundle that draws notation carries its `OFL.txt` (`NI_UI_MUSIC_FONT_LICENSE`).
+The gallery's Music section shows each in its states; `tests/ui/music.cpp`
+holds their behaviour and pictures.
+
 ## The design layer
 
 **Tokens are generated.** `node scripts/gen-tokens.mjs` reads `tokens.json`

@@ -8,7 +8,7 @@ A plugin is built and checked for all three desktop platforms on one Mac,
 before anything reaches GitHub: macOS natively, Linux and Windows in Docker.
 GitHub Actions only publishes. One command builds a JUCE plugin project for
 each platform, runs its tests, validates every VST3 it produced with
-pluginval, and sums up. For the four products, which the repository's own
+pluginval, and sums up. For the five products, which the repository's own
 CMake project builds:
 
 ```sh
@@ -81,7 +81,7 @@ run has its own `pluginval-<name>.log` beside them.
 
 ### Which tests, for the products
 
-`-L full` is the full tier: every quick test, the render goldens, the four
+`-L full` is the full tier: every quick test, the render goldens, the five
 bundles hosted as a DAW hosts them (`juce_host_*`, and each product's
 `*_host` against the iPlug2 sets), the snapshot goldens, the bus across
 processes, and on macOS each bundle's signature. Three things are left out,

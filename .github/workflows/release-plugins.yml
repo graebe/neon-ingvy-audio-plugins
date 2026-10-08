@@ -38,6 +38,7 @@ on:
       - 'spectrogram-v*'
       - 'listen-in-v*'
       - 'side-chain-v*'
+      - 'chord-detector-v*'
 
 permissions:
   contents: write
