@@ -17,6 +17,16 @@
           "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.2/trance-gate-module.tar.gz"
         }
       }
+    },
+    "ni-side-chain": {
+      "version": "2026.10.08.2",
+      "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/side-chain-v2026.10.08.2/ni-side-chain-module.tar.gz",
+      "channels": {
+        "stable": {
+          "version": "2026.10.08.2",
+          "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/side-chain-v2026.10.08.2/ni-side-chain-module.tar.gz"
+        }
+      }
     }
   }
 }
