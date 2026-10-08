@@ -13,6 +13,7 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y \
     gcc-aarch64-linux-gnu \
     g++-aarch64-linux-gnu \
+    gcc libc6-dev \
     curl ca-certificates make \
     && rm -rf /var/lib/apt/lists/*
 
