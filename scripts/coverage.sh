@@ -95,8 +95,14 @@ echo "==> building instrumented (build-coverage)"
 # the bundle tests load build-coverage/out's bundles by path (the AU ones
 # registered in their own process only, tests/au_bundle.h), never the installed
 # ones.
-cmake -S "$ROOT" -B "$BUILD" -DVST_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug \
-      -DIPLUG_DEPLOY_PLUGINS=OFF >/dev/null
+#
+# The coverage preset (CMakePresets.json) configures a new one; one that
+# exists is configured again as it was, whatever generator it was made with.
+if [ -f "$BUILD/CMakeCache.txt" ]; then
+    cmake -S "$ROOT" -B "$BUILD" >/dev/null
+else
+    cmake --preset coverage >/dev/null
+fi
 cmake --build "$BUILD" -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" >/dev/null
 
 echo "==> running the suite"

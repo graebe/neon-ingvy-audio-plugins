@@ -46,9 +46,9 @@ versions.json                one version per product
 git submodule update --init --recursive   # iPlug2 and JUCE. The engines are subtrees.
 scripts/fetch-sdks.sh                     # the VST3 and CLAP SDKs, at pinned versions
 npm ci                                    # the kit and every editor
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build                       # the macOS plugins, universal
-scripts/test.sh quick                     # the developer loop: seconds, no bundles
+cmake --preset release                   # universal, LTO: what ships (build/)
+cmake --build build                       # the macOS plugins
+scripts/test.sh quick                     # the developer loop (build-dev/): seconds, no bundles
 scripts/test.sh full                      # everything: bundles, hosts, browser, coverage
 ```
 

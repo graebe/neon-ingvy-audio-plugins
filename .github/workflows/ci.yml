@@ -87,6 +87,10 @@ jobs:
 
       - run: npm ci
 
+      # The quick tier configures with the dev preset, whose generator is Ninja.
+      - name: Ninja
+        run: command -v ninja || brew install ninja
+
       - name: Quick tier
         run: scripts/test.sh quick
 

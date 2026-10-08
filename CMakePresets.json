@@ -1,0 +1,54 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "IPLUG_DEPLOY_PLUGINS": "OFF"
+      }
+    },
+    {
+      "name": "dev",
+      "inherits": "base",
+      "displayName": "dev: the developer loop (this machine's architecture, no LTO)",
+      "description": "RelWithDebInfo for this machine's architecture alone and without link-time optimisation: the quick tier's build, and the one to iterate in. Builds plugins that pass their tests and pluginval, but never the ones that ship.",
+      "binaryDir": "${sourceDir}/build-dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_OSX_ARCHITECTURES": "",
+        "NI_LTO": "OFF"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "displayName": "release: what ships (universal, LTO)",
+      "description": "Release, universal (arm64 and x86_64) with link-time optimisation: the full tier's build, and the bundles that are released.",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64",
+        "NI_LTO": "ON"
+      }
+    },
+    {
+      "name": "coverage",
+      "inherits": "base",
+      "displayName": "coverage: instrumented for llvm-cov",
+      "description": "Debug, one architecture, instrumented: scripts/coverage.sh's build. Never shipped.",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VST_COVERAGE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "coverage", "configurePreset": "coverage" }
+  ]
+}

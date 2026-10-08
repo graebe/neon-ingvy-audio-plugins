@@ -83,6 +83,12 @@ elseif (UNIX)
         "{\n  global: GetPluginFactory; ModuleEntry; ModuleExit;\n  local: *;\n};\n")
 endif()
 
+# LINK-TIME OPTIMISATION, which JUCE recommends for a Release build and which
+# every bundle that ships has. It makes each plugin's link the slowest step of
+# a rebuild, so the dev preset turns it off (CMakePresets.json); JUCE's flags
+# reach the Release configuration alone either way.
+option(NI_LTO "Link the plugins with link-time optimisation (Release)" ON)
+
 if (NOT DEFINED IPLUG_DEPLOY_PLUGINS)
     option(IPLUG_DEPLOY_PLUGINS "Deploy built plugins to system directories" ON)
 endif()
@@ -275,8 +281,10 @@ function(ni_add_juce_plugin product)
     target_link_libraries(${ARG_TARGET}
         PRIVATE ${link}
         PUBLIC  juce::juce_recommended_config_flags
-                juce::juce_recommended_lto_flags
                 juce::juce_recommended_warning_flags)
+    if (NI_LTO)
+        target_link_libraries(${ARG_TARGET} PUBLIC juce::juce_recommended_lto_flags)
+    endif()
 
     # The bundle: notices in, signed last, then out and deployed.
     get_target_property(bundle ${ARG_TARGET}_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
