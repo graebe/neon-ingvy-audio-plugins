@@ -132,8 +132,10 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   NI Trance Gate's `tg_processor` and `tg_rt`, and in `tests/<product>`
   NI Spectrogram's (`sg_processor`, `sg_rt`, `spectro_state`,
   `spectro_wire`), NI Listen-In's (`li_processor`, `li_rt`, on a bus
-  namespace of its own) and NI Side-Chain's (`sc_processor`, `sc_rt`, its MIDI
-  and panic and its key bus included),
+  namespace of its own), NI Side-Chain's (`sc_processor`, `sc_rt`, its MIDI
+  and panic and its key bus included) and NI Chord-Detector's
+  (`cd_processor`: a chord named, silence out, and the lane still heard
+  while the host bypasses it),
 - the native kit's and the editors' unit tests (`tests/ui`:
   `ni_ui_tests_*_unit`) — every control, every editor on its fakes, and every
   info line held to 72 characters; their snapshot goldens are in the full
