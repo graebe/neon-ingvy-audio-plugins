@@ -9,6 +9,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 
 namespace ni {
 namespace wire {

@@ -8,16 +8,17 @@ A plugin is built and checked for all three desktop platforms on one Mac,
 before anything reaches GitHub: macOS natively, Linux and Windows in Docker.
 GitHub Actions only publishes. One command builds a JUCE plugin project for
 each platform, runs its tests, validates every VST3 it produced with
-pluginval, and sums up:
+pluginval, and sums up. For the four products, which the repository's own
+CMake project builds:
 
 ```sh
-scripts/build-all.sh --juce <JUCE 9.0.3> tools/cross/smoke
+scripts/build-all.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'
 ```
 
-`tools/cross/smoke` is the proof the kit is held to: a JUCE 9.0.3 VST3 whose
-`processBlock` hands every channel to a twenty-line Rust static library through
-a C ABI — the shape every product here has. It ships nowhere. The products
-themselves join the kit with their move to JUCE.
+`tools/cross/smoke` is the kit's own proof, small enough to try a toolchain
+change on: a JUCE 9.0.3 VST3 whose `processBlock` hands every channel to a
+twenty-line Rust static library through a C ABI — the shape every product
+here has. It ships nowhere.
 
 ## What runs where
 
@@ -53,18 +54,22 @@ themselves join the kit with their move to JUCE.
 ## Running it
 
 ```sh
-scripts/build-all.sh --juce <dir> <project>         # all three, then the summary
-scripts/build-macos.sh --juce <dir> <project>
-scripts/build-linux.sh [--arch arm64] --juce <dir> <project>
-XWIN_ACCEPT_LICENSE=yes scripts/build-windows.sh --juce <dir> <project>
+scripts/build-all.sh [--juce <dir>] <project> [-- <ctest args>]   # all three, then the summary
+scripts/build-macos.sh [--juce <dir>] <project> [-- <ctest args>]
+scripts/build-linux.sh [--arch arm64] [--juce <dir>] <project> [-- <ctest args>]
+XWIN_ACCEPT_LICENSE=yes scripts/build-windows.sh [--juce <dir>] <project> [-- <ctest args>]
 ```
 
 `<project>` is any CMake project inside the repository that takes its JUCE
-from `-DNI_JUCE_DIR` — the smoke plugin now, the repository itself once it has
-moved to JUCE. Each script configures `<project>/build-<platform>` (Release,
-Ninja), builds, runs `ctest`, then runs pluginval on every `.vst3` under the
-build directory and exits non-zero if any of that failed, having run all of
-it. `build-all.sh` runs the three in turn and ends with a table:
+from `-DNI_JUCE_DIR`: the repository itself (`.`), whose root build makes
+every product, or the smoke plugin. Each script configures
+`<project>/build-<platform>` (Release, Ninja), builds, runs `ctest` — all of
+it, or what the arguments after `--` select — then runs pluginval on every
+`.vst3` the build produced and exits non-zero if any of that failed, having
+run all of it. A project that collects its bundles in `<build>/out`, as
+`ni_add_juce_plugin` does, is validated there, so JUCE's own copy in the
+artefacts directory is not validated twice. `build-all.sh` runs the three in
+turn and ends with a table:
 
 ```text
 | Platform | Artefact | Size | ctest | pluginval | Wall time |
@@ -73,6 +78,29 @@ it. `build-all.sh` runs the three in turn and ends with a table:
 Each platform leaves its full output in `cross-build.log` and its per-stage
 timings in `cross-result.tsv`, both in its build directory; every pluginval
 run has its own `pluginval-<name>.log` beside them.
+
+### Which tests, for the products
+
+`-L full` is the full tier: every quick test, the render goldens, the four
+bundles hosted as a DAW hosts them (`juce_host_*`, and each product's
+`*_host` against the iPlug2 sets), the snapshot goldens, the bus across
+processes, and on macOS each bundle's signature. Three things are left out,
+because they are the tree's rather than the platform's, and `scripts/test.sh
+full` runs them:
+
+- `move`: the Move modules, built and tested on aarch64 in images of their
+  own — a container cannot start another;
+- `site`: the documentation site's links, which need the site built with
+  Node;
+- `cargo_deny`: the Rust licence gate, which needs cargo-deny at its pin, and
+  the images do not carry it. It answers for the dependency graph, which is
+  the same on every platform.
+
+The Linux image carries no Node either, so the tree checks written for Node
+(versions, licences, SPDX, tokens) are not registered there: the tests' own
+CMake skips them without Node, as it does for a C++ developer's checkout.
+On Linux ctest runs under one Xvfb server, since a hosted bundle's editor and
+the kit's pages open windows.
 
 ## How it works
 
@@ -83,11 +111,14 @@ configure-build-test sequence, pluginval over every bundle, the result file and
 the image handling. The Linux and Windows scripts run twice: on the host, where
 they make sure the image exists and start a container, and inside it, where
 they build. The container runs **as the invoking user** with the repository at
-`/work` and JUCE at `/juce` (read-only), and everything it writes — objects,
-`CARGO_HOME`, `HOME` with its caches, the Wine prefix — lands in the build
-directory, never in the image. Nothing is installed anywhere: pluginval loads
-each bundle where the build left it, and nothing is copied into
-`~/Library`.
+`/work/repo` and JUCE at `/juce` (read-only), and everything it writes —
+objects, `CARGO_HOME`, `HOME` with its caches, the Wine prefix — lands in the
+build directory, never in the image. The repository is one level below the
+root on purpose: Corrosion names cargo's target directory after the
+workspace's directory relative to its parent, and for a workspace at `/work`
+that name comes out absolute (`/work_<hash>`), where nobody may write.
+Nothing is installed anywhere: pluginval loads each bundle where the build
+left it, and nothing is copied into `~/Library`.
 
 ### Images: pinned, and built only when they change
 

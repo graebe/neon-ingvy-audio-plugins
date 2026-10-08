@@ -70,11 +70,13 @@ looked; `cmake/RustToolchain.cmake` searches every layout rustup.rs, Homebrew
 and a bare toolchain use. Homebrew's keeps its shims in
 `/opt/homebrew/opt/rustup/bin`, which is not `~/.cargo/bin`.
 
-**Linux and Windows are built locally too**, in Docker: `scripts/build-all.sh`
-builds a JUCE plugin project for macOS, Linux and Windows in turn, runs its
-tests and validates every VST3 with pluginval
-([docs/tech/cross-build.md](docs/tech/cross-build.md)). A release builds all
-three natively on GitHub's runners.
+**Linux is built locally too**, in Docker: `scripts/build-all.sh . -- -L full
+-LE 'move|site' -E '^cargo_deny$'` builds the four VST3s for macOS (universal)
+and Linux (amd64), runs their tests and validates every bundle with pluginval
+at strictness 10 ([docs/tech/cross-build.md](docs/tech/cross-build.md)). The
+Windows cross-build waits for the owner's acceptance of Microsoft's licence;
+until then Windows is built natively on GitHub's runners at publishing time,
+as every release builds all three.
 
 ## What the tests are for
 
