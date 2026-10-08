@@ -885,6 +885,16 @@ elseif (TG_NODE)
     message(STATUS "@playwright/test not installed (npm ci) -- the e2e test is not registered")
 endif()
 
+# EACH CARGO SUITE ON BUSES OF ITS OWN. The workspace's .cargo/config.toml
+# gives every `cargo test` the checkout's bus namespace, which keeps a suite
+# off a Live session's buses -- but ctest runs these suites side by side, and
+# two of them in one namespace claim and unlink each other's slots (abus_core
+# failed "slot 8 could not be claimed" so). Set here, the variable wins over
+# the config's, which never forces it.
+foreach(t tg_core_rs spectro_core abus_core gnd_core shell_core ni_shared sc_core_rs)
+    set_property(TEST ${t} APPEND PROPERTY ENVIRONMENT "NIA_BUS_NS=${CMAKE_BINARY_DIR}/${t}")
+endforeach()
+
 # =============================================================== THE TIERS
 #
 # cmake/NiTest.cmake says what the two mean and checks that this list is
