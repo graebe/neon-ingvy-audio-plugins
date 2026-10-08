@@ -102,5 +102,7 @@ add_test(NAME sg_host COMMAND sg_host ${NI_BUNDLES}/NISpectrogram.vst3 ${NI_FIXT
 set_tests_properties(sg_host PROPERTIES ENVIRONMENT "NIA_BUS_NS=${CMAKE_BINARY_DIR}")
 
 ni_test_tiers(
-    QUICK ${_sg_quick}
-    FULL sg_host:host)
+    PRODUCT spectrogram
+        PROGRAMS spectro_state spectro_wire sg_bus_sender sg_processor sg_rt sg_host
+        QUICK ${_sg_quick}
+        FULL sg_host:host)

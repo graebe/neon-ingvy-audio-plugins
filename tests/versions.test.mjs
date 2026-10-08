@@ -217,7 +217,8 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
 
     /*
      * WHAT THE BUILT BUNDLE SAYS, when there is one: NI_BUNDLES names
-     * build/out in the full tier (versions_bundles). The NUMERIC forms, not
+     * build/out in the full tier, and NI_PRODUCT the one product whose
+     * bundle is checked (versions_bundle_<bundle>). The NUMERIC forms, not
      * the display one: both plist keys are up to three integers, the date
      * for the Finder and the packed day for the build number, which the
      * installer compares -- and the date as the VST3 class's version. The
@@ -225,7 +226,7 @@ for (const [product, where] of Object.entries(PRODUCTS)) {
      * a host and the release staging find it by.
      */
     const out = process.env.NI_BUNDLES;
-    if (out)
+    if (out && (!process.env.NI_PRODUCT || process.env.NI_PRODUCT === product))
     test(`${product}: the built ${where.juce.bundle}.vst3 agrees (${want})`, () => {
       const res = join(out, `${where.juce.bundle}.vst3`, 'Contents');
       const x = readFileSync(join(res, 'Info.plist'), 'utf8');

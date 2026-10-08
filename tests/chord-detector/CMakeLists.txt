@@ -26,4 +26,4 @@ target_link_libraries(cd_processor PRIVATE
     juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 add_test(NAME cd_processor COMMAND cd_processor)
 
-ni_test_tiers(QUICK cd_processor)
+ni_test_tiers(PRODUCT chord-detector PROGRAMS cd_processor QUICK cd_processor)

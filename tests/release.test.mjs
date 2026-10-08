@@ -251,11 +251,16 @@ test('a bundle without a notice, without its binary, or not universal on macOS i
 });
 
 /* NI_UNIVERSAL says the build made both macOS slices, as the release preset
- * does; a one-slice build is checked for everything else. */
+ * does; a one-slice build is checked for everything else. NI_PRODUCT names the
+ * one product whose bundle is staged (release_bundle_<bundle>), as a product's
+ * release builds that one alone. */
 const BUILT = process.env.NI_BUNDLES;
-test('every product stages from the bundles this build made (a dry run)', { skip: !BUILT && 'NI_BUNDLES is not set' }, () => {
+const ONLY = process.env.NI_PRODUCT;
+test(`${ONLY ?? 'every product'} stages from the bundles this build made (a dry run)`, { skip: !BUILT && 'NI_BUNDLES is not set' }, () => {
   const universal = process.platform === 'darwin' && process.env.NI_UNIVERSAL === '1';
-  for (const p of juceProducts())
+  const products = juceProducts().filter((p) => !ONLY || p.dir === ONLY);
+  assert.ok(products.length, `NI_PRODUCT=${ONLY} builds no bundle`);
+  for (const p of products)
     assert.deepEqual(plan(p.dir, BUILT, { universal }).problems, [], `${p.dir} from ${BUILT}`);
 });
 

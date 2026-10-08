@@ -129,11 +129,9 @@ if (TG_NODE)
     # "1.0.0" against crates that said 0.1.0.
     add_test(NAME versions
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
-    # And what the built bundles say, which needs them: a JUCE build writes its
-    # Info.plist and moduleinfo.json itself, from versions.json.
-    add_test(NAME versions_bundles
-             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
-    set_tests_properties(versions_bundles PROPERTIES ENVIRONMENT "NI_BUNDLES=${CMAKE_BINARY_DIR}/out")
+    # And what each built bundle says, which needs it: a JUCE build writes its
+    # Info.plist and moduleinfo.json itself, from versions.json. Per bundle,
+    # below (versions_bundle_<bundle>).
 
     # WHAT A RELEASE TAG MEANS. Both release workflows parse their tag with
     # scripts/release.mjs, and a workflow only ever runs on the tag it is
@@ -141,18 +139,8 @@ if (TG_NODE)
     # and the workflows' tag lists against the real tree instead.
     add_test(NAME release
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/release.test.mjs)
-    # And the release staging dry-run against the bundles this build made,
-    # which needs them: every product's notices and binary where its zip
-    # expects them, and both slices when the build made both.
-    if ("arm64" IN_LIST CMAKE_OSX_ARCHITECTURES AND "x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)
-        set(_ni_universal 1)
-    else()
-        set(_ni_universal 0)
-    endif()
-    add_test(NAME release_bundles
-             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/release.test.mjs)
-    set_tests_properties(release_bundles PROPERTIES
-        ENVIRONMENT "NI_BUNDLES=${CMAKE_BINARY_DIR}/out;NI_UNIVERSAL=${_ni_universal}")
+    # And the release staging dry-run against each bundle this build made, per
+    # bundle below (release_bundle_<bundle>).
 
     # EVERYTHING THAT SHIPS HAS A NOTICE, AND EVERY NOTICE IS FOR SOMETHING
     # THAT SHIPS. THIRD_PARTY_LICENSES.md is held to the SDK pins, the
@@ -160,19 +148,17 @@ if (TG_NODE)
     # the editors' bundled packages and the fonts -- and, through --bundles, to
     # the built bundles themselves, which must carry the notices inside.
     #
-    # Two tests, because they need different things built: `licenses` reads the
-    # tree and the editors' build output (written at configure time), so it is
-    # a quick check; `licenses_bundles` opens the bundles, so it needs the full
-    # build. RUST_ENV, because the check asks cargo what ships.
+    # Two kinds of test, because they need different things built: `licenses`
+    # reads the tree and the editors' build output (written at configure
+    # time), so it is a quick check; `licenses_bundle_<bundle>` (below) opens a
+    # bundle, so it needs that bundle built. RUST_ENV, because the check asks
+    # cargo what ships.
     add_test(NAME licenses
              COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs)
     # What the check counts as shipping, on a graph small enough to read: the
     # feature resolver it uses instead of cargo metadata's unified features.
     add_test(NAME licenses_resolve
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/licenses_resolve.test.mjs)
-    add_test(NAME licenses_bundles
-             COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
-                     --bundles ${CMAKE_BINARY_DIR}/out)
 
     # EVERY SOURCE FILE SAYS WHOSE IT IS, AND UNDER WHAT LICENCE: the SPDX line
     # and the copyright line open every file this repository owns, in its own
@@ -253,18 +239,46 @@ target_link_libraries(juce_host PRIVATE
 # product that claims or reads a bus never meets a Live session's, or another
 # checkout's. Their tiers follow the list, so a product moving onto the shell
 # is tested here by being built.
+#
+# AND THE CHECKS OVER THE TREE THAT OPEN A BUNDLE, one test per bundle, so a
+# product's release opens its own bundle and needs no other built: what its
+# Info.plist and moduleinfo.json say (versions_bundle_*), the release staging
+# dry-run against it -- its notices and binary where its zip expects them,
+# and both slices when the build made both (release_bundle_*) -- and the
+# notices inside it (licenses_bundle_*). NI_PRODUCT, or --product, is the one
+# product a check looks at. Each belongs to its bundle's product.
+if ("arm64" IN_LIST CMAKE_OSX_ARCHITECTURES AND "x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)
+    set(_ni_universal 1)
+else()
+    set(_ni_universal 0)
+endif()
 get_property(_ni_juce GLOBAL PROPERTY NI_JUCE_BUNDLES)
 set(_ni_juce_tiers)
 foreach(bundle IN LISTS _ni_juce)
     get_property(_name GLOBAL PROPERTY NI_JUCE_NAME_${bundle})
+    get_property(_product GLOBAL PROPERTY NI_JUCE_PRODUCT_${bundle})
     add_test(NAME juce_host_${bundle} COMMAND juce_host ${NI_BUNDLES}/${bundle}.vst3 "${_name}")
     set_tests_properties(juce_host_${bundle} PROPERTIES ENVIRONMENT "NIA_BUS_NS=${CMAKE_BINARY_DIR}")
-    list(APPEND _ni_juce_tiers juce_host_${bundle}:host)
+    set(_full juce_host_${bundle}:host)
     if (APPLE)
         add_test(NAME codesign_${bundle}
                  COMMAND codesign --verify --deep --strict ${NI_BUNDLES}/${bundle}.vst3)
-        list(APPEND _ni_juce_tiers codesign_${bundle}:bundles)
+        list(APPEND _full codesign_${bundle}:bundles)
     endif()
+    if (TG_NODE)
+        add_test(NAME versions_bundle_${bundle}
+                 COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/versions.test.mjs)
+        add_test(NAME release_bundle_${bundle}
+                 COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/release.test.mjs)
+        set_tests_properties(versions_bundle_${bundle} release_bundle_${bundle} PROPERTIES
+            ENVIRONMENT "NI_BUNDLES=${NI_BUNDLES};NI_PRODUCT=${_product};NI_UNIVERSAL=${_ni_universal}")
+        add_test(NAME licenses_bundle_${bundle}
+                 COMMAND ${RUST_ENV} ${TG_NODE} ${CMAKE_SOURCE_DIR}/scripts/check-licenses.mjs
+                         --bundles ${NI_BUNDLES} --product ${_product})
+        list(APPEND _full versions_bundle_${bundle}:bundles release_bundle_${bundle}:bundles
+                          licenses_bundle_${bundle}:bundles)
+    endif()
+    list(APPEND _ni_juce_tiers PRODUCT ${_product} FULL ${_full})
 endforeach()
 
 # THE JUCE SHELL'S STATE CODEC (plugins/_shared/juce/Nist.h) against every
@@ -435,12 +449,12 @@ add_test(NAME gnd_core
 
 # THE SHELL PLUMBING'S OWN TESTS: the bridge and the handoff, the property
 # that holds the bridge to its round trip, the two-thread stress runs and the
-# no-allocation check -- and each product's bridge over it, which lives in that
-# product's capi crate.
+# no-allocation check. Each product's bridge over it lives in that product's
+# capi crate, and is tested with it (tg_core_rs, sc_core_rs: a capi crate's
+# default features include its `shell`).
 add_test(NAME shell_core
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p shell-core -p shell-capi
-                 -p tg-capi -p sc-capi)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p shell-core -p shell-capi)
 
 # THE SHARED CRATES' OWN TESTS. Every product's goldens cover them through the
 # products; these pin each piece on its own.
@@ -703,7 +717,7 @@ file(GLOB _ni_module_envs ${CMAKE_SOURCE_DIR}/modules/*/module.env)
 foreach(env IN LISTS _ni_module_envs)
     get_filename_component(_dir ${env} DIRECTORY)
     get_filename_component(_module ${_dir} NAME)
-    list(APPEND _ni_move_tiers move_${_module}:move)
+    list(APPEND _ni_move_tiers PRODUCT ${_module} FULL move_${_module}:move)
     if (SCHWUNG_DOCKER)
         add_test(NAME move_${_module}
                  COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/test.sh ${_module})
@@ -715,50 +729,53 @@ if (NOT SCHWUNG_DOCKER)
                     "registered, so the full tier does not build or test them.")
 endif()
 
-# =============================================================== THE TIERS
+# ====================================================== THE TIERS, BY PRODUCT
 #
-# cmake/NiTest.cmake says what the two mean and checks that this list is
-# exhaustive. tests/cpp places its own.
+# cmake/NiTest.cmake says what the tiers and the products mean, and checks that
+# this list is exhaustive: every test here in a tier and a product, every
+# program in the product whose tests run it. tests/ui, tests/cpp and
+# tests/<product> place their own.
 ni_test_tiers(
-    QUICK
-        # Rust: every crate's unit tests, and the licence gate over its graph
-        tg_core_rs spectro_core abus_core gnd_core shell_core ni_shared sc_core_rs
-        music_core_rs music_core_no_std cd_core_rs
-        cargo_deny
-        # C against the engines' ABIs, and the oracles that pin the sound
-        tg_core sc_core cd_core spectro_columns srecv_api abus_roundtrip gnd_roundtrip
-        shell_handoff tg_curves tg_envelope tg_fade sc_shape sc_envelope
-        capi_compat_tg capi_compat_tg_names
-        # lint-like checks over the tree
-        versions release licenses licenses_resolve spdx ground_shells site_tokens
-        design_paths timing
-        # the JUCE shell's state codec, and NI Trance Gate's processor, model
-        # and editor in one program
-        nist_fixtures tg_processor tg_rt
-    FULL
-        tg_render_ab:render sc_render_ab:render
-        ${_ni_juce_tiers}
-        tg_host:host versions_bundles:bundles release_bundles:bundles
-        abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
-        licenses_bundles:bundles site_links:site
-        coverage_floor:coverage
-        ${_ni_move_tiers})
+    PRODUCT shared
+        PROGRAMS juce_host nist_fixtures ni_alloc_guard abus_roundtrip abus_ipc abus_tap
+                 gnd_roundtrip shell_handoff
+        QUICK
+            # Rust: the shared crates' unit tests, and the licence gate over
+            # the whole graph
+            abus_core gnd_core shell_core ni_shared music_core_rs music_core_no_std
+            cargo_deny
+            # C against the shared ABIs: the bus, the ground, the handoff
+            abus_roundtrip gnd_roundtrip shell_handoff
+            # lint-like checks over the tree
+            versions release licenses licenses_resolve spdx ground_shells site_tokens
+            design_paths timing
+            # the JUCE shell's state codec, over every product's fixtures
+            nist_fixtures
+        FULL
+            abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
+            site_links:site coverage_floor:coverage
+    PRODUCT trance-gate
+        PROGRAMS tg_core_tests tg_render_plugin tg_shape_table tg_envelope_table tg_fade_table
+                 capi_compat_tg tg_processor tg_rt tg_host
+        QUICK
+            tg_core_rs tg_core tg_curves tg_envelope tg_fade capi_compat_tg capi_compat_tg_names
+            # its processor, model and editor in one program, and its audio
+            # callback under the allocation guard
+            tg_processor tg_rt
+        FULL tg_render_ab:render tg_host:host
+    PRODUCT spectrogram
+        PROGRAMS spectro_columns srecv_api
+        QUICK spectro_core spectro_columns srecv_api
+    PRODUCT side-chain
+        PROGRAMS sc_core_tests sc_shape_table sc_envelope_table sc_render_ab
+        QUICK sc_core_rs sc_core sc_shape sc_envelope
+        FULL sc_render_ab:render
+    PRODUCT chord-detector
+        PROGRAMS cd_core_tests
+        QUICK cd_core_rs cd_core
+    # every bundle's host, signature and tree checks, and every Move module
+    ${_ni_juce_tiers}
+    ${_ni_move_tiers})
 
-# EVERYTHING A TEST RUNS, AND NOTHING THAT SHIPS: `cmake --build build --target
-# ni_tests` builds the test programs and the engine archives they link, and no
-# plugin bundle -- which is what lets the quick tier skip the bundles entirely.
-set(_ni_test_bins)
-# Every subdirectory's programs too -- tests/ui's, a product's own: a quick
-# tier that had not built them ran none of them.
-get_property(_ni_test_dirs DIRECTORY PROPERTY SUBDIRECTORIES)
-foreach(dir ${CMAKE_CURRENT_SOURCE_DIR} ${_ni_test_dirs})
-    get_property(_b DIRECTORY ${dir} PROPERTY BUILDSYSTEM_TARGETS)
-    foreach(t ${_b})
-        get_target_property(_type ${t} TYPE)
-        if (NOT _type STREQUAL "INTERFACE_LIBRARY")
-            list(APPEND _ni_test_bins ${t})
-        endif()
-    endforeach()
-endforeach()
-add_custom_target(ni_tests)
-add_dependencies(ni_tests ${_ni_test_bins})
+# What builds them: ni_tests, and ni_tests_<product> for one product's run.
+ni_test_targets()

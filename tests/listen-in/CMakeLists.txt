@@ -72,5 +72,7 @@ target_link_libraries(li_host PRIVATE
 add_test(NAME li_host COMMAND li_host ${NI_BUNDLES}/NIListenIn.vst3 ${NI_FIXTURES})
 
 ni_test_tiers(
-    QUICK li_processor li_rt
-    FULL li_host:host)
+    PRODUCT listen-in
+        PROGRAMS li_processor li_rt li_host
+        QUICK li_processor li_rt
+        FULL li_host:host)

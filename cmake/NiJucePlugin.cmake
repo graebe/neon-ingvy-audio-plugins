@@ -328,8 +328,10 @@ function(ni_add_juce_plugin product)
         COMMENT "${ARG_TARGET}.vst3: notices, signature, build/out"
         VERBATIM)
 
-    # What the tests check: every JUCE bundle, by its place in build/out, and
-    # the name a host should list it by.
+    # What the tests check: every JUCE bundle, by its place in build/out, the
+    # name a host should list it by, and the product whose tests it belongs
+    # to (cmake/NiTest.cmake).
     set_property(GLOBAL APPEND PROPERTY NI_JUCE_BUNDLES "${ARG_TARGET}")
     set_property(GLOBAL PROPERTY NI_JUCE_NAME_${ARG_TARGET} "${ARG_NAME}")
+    set_property(GLOBAL PROPERTY NI_JUCE_PRODUCT_${ARG_TARGET} "${product}")
 endfunction()

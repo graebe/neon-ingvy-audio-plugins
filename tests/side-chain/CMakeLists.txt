@@ -71,5 +71,7 @@ target_link_libraries(sc_host PRIVATE
 add_test(NAME sc_host COMMAND sc_host ${NI_BUNDLES}/NISideChain.vst3 ${NI_FIXTURES})
 
 ni_test_tiers(
-    QUICK sc_processor sc_rt
-    FULL sc_host:host)
+    PRODUCT side-chain
+        PROGRAMS sc_processor sc_rt sc_host
+        QUICK sc_processor sc_rt
+        FULL sc_host:host)
