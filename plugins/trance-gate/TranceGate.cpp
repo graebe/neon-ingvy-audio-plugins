@@ -150,8 +150,8 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     tg_shell_end (shell.get(), frames);
 }
 
-/* Bypassed, the host's own way -- audio through -- while the Ground keeps the
- * host's time, so the window's beat does not stop with the sound. */
+/* Bypassed, by the host or by the Bypass -- audio through -- while the Ground
+ * keeps the host's time, so the window's beat does not stop with the sound. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     beat.tick (readClock (getPlayHead()), buffer.getNumSamples());

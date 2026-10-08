@@ -26,7 +26,8 @@
  *   the MIDI         a note through the VST3's event list holds a Gate duck,
  *                    and CC 123 and CC 120 -- through the host's MIDI-CC
  *                    mapping, as Live sends them -- open it: the panic; the
- *                    host's Bypass passes the audio through untouched
+ *                    host's Bypass passes the audio through untouched, the
+ *                    engine still hearing the notes released meanwhile
  *   the key          the sidechain bus, connected by the host, ducks the track
  *   the window       opened while the transport runs, at the design's size, a
  *                    set loaded on another thread while it is open, closed and
@@ -385,6 +386,28 @@ void checkMidi (VST3PluginFormat& format, const PluginDescription& d)
     bypass->setValueNotifyingHost (0.0f);
     run.blocks (60);
     check (run.lo < 0.05f, "... and back in, Cycle ducks", String (run.lo));
+
+    /* Bypassed, the engine still hears the MIDI: a Gate note held, the
+     * Bypass on, the note released while bypassed -- and with the Bypass off
+     * again the duck is not held down by a note that is no longer there. */
+    auto q = load (format, d, 48000.0, 512);
+    if (q == nullptr)
+        return;
+    apply (*q, setOf (gate));
+    Run held (*q);
+    held.blocks (20, one (MidiMessage::noteOn (1, 36, (uint8) 100)));
+    held.blocks (4);
+    check (held.hi < 0.05f, "a held trigger note holds the duck", String (held.hi));
+    q->getBypassParameter()->setValueNotifyingHost (1.0f);
+    held.blocks (2);
+    held.blocks (1, one (MidiMessage::noteOff (1, 36)));
+    held.blocks (60);
+    check (held.lo == 0.5f && held.hi == 0.5f, "bypassed, the audio passes untouched while the note is released",
+           String (held.lo) + " .. " + String (held.hi));
+    q->getBypassParameter()->setValueNotifyingHost (0.0f);
+    held.blocks (2);
+    held.blocks (4);
+    check (held.lo > 0.45f, "... and back in, the note released while bypassed holds no duck", String (held.lo));
 }
 
 void checkKey (VST3PluginFormat& format, const PluginDescription& d)

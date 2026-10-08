@@ -89,24 +89,14 @@ void Processor::prepareToPlay (double sampleRate, int)
  * the buffer, interleaved -- the bus is always stereo, so a lone channel is
  * published on both sides -- and pushed in chunks of what was reserved. The
  * buffer itself is not written: JUCE's input is its output, so the audio
- * passes through bit for bit by being left alone.
- *
- * THE HOST'S BYPASS IS READ HERE. JUCE's VST3 wrapper hands a processor with
- * a bypass parameter of its own every block through processBlock, that
- * parameter on or off, and leaves bypassing to it (processBlockBypassed comes
- * only from hosts that bypass a plugin themselves). Either way it is the
- * same: the audio left alone, nothing published, the meter falling.
+ * passes through bit for bit by being left alone. A bypassed block is
+ * processBypassed's (ni::Processor reads the Bypass).
  */
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const int frames = buffer.getNumSamples();
     const auto clock = readClock (getPlayHead());
     beat.tick (clock, frames);
-    if (bypass->getValue() >= 0.5f)
-    {
-        fall();
-        return;
-    }
     const int channels = buffer.getNumChannels();
     if (frames <= 0 || channels < 1)
         return;
@@ -135,7 +125,7 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     level.store (std::min (1.0f, std::max (peak, prev * peakDecay)), std::memory_order_relaxed);
 }
 
-/* Bypassed by a host that does it itself -- audio through, nothing
+/* Bypassed, by the host or by the Bypass -- audio through, nothing
  * published -- while the meter falls and the Ground keeps the host's time. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {

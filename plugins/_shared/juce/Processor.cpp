@@ -52,10 +52,21 @@ bool Processor::acceptsMidi() const
    #endif
 }
 
+/*
+ * THE HOST'S BYPASS ARRIVES HERE TOO. JUCE's VST3 wrapper calls
+ * processBlockBypassed only for a processor without a bypass parameter of its
+ * own; a product with one (getBypassParameter) gets every block here, that
+ * parameter on or off, and is trusted to bypass itself. So the parameter is
+ * read once, for every product: on, the block is processBypassed's, exactly
+ * as a host that bypasses the plugin itself would have it.
+ */
 void Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     const juce::ScopedNoDenormals noDenormals;
-    process (buffer, midi);
+    if (const auto* bypass = getBypassParameter(); bypass != nullptr && bypass->getValue() >= 0.5f)
+        processBypassed (buffer, midi);
+    else
+        process (buffer, midi);
 }
 
 void Processor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)

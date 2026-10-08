@@ -144,8 +144,9 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     shell_handoff_release (lend.get());
 }
 
-/* Bypassed, the host's own way -- audio through, nothing analysed -- while
- * the Ground keeps the host's time, so the window's beat does not stop. */
+/* Bypassed, by the host or by the Bypass -- audio through, nothing analysed
+ * -- while the Ground keeps the host's time, so the window's beat does not
+ * stop. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     beat.tick (readClock (getPlayHead()), buffer.getNumSamples());

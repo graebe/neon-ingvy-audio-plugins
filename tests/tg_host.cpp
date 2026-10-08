@@ -22,6 +22,8 @@
  *   the sound        the golden patch through the VST3's audio path: the Move
  *                    module's reference render, byte for byte
  *                    (tg_render_golden.h, as tg_render_ab holds the engine)
+ *   the bypass       the host's Bypass passes the audio through bit for bit,
+ *                    set through its parameter as a VST3 host sets it
  *   the window       opened while the transport runs, a set loaded on another
  *                    thread while it is open -- the window grows to the set's
  *                    32 steps -- closed and opened again at that size
@@ -316,6 +318,55 @@ void checkSound (VST3PluginFormat& format, const PluginDescription& d)
            String::toHexString ((int64) fnv) + " / " + String::toHexString ((int64) GOLDEN_FNV1A));
 }
 
+/* THE HOST'S BYPASS, as a VST3 host sets it: through the parameter, which
+ * JUCE's wrapper hands to processBlock rather than bypassing the plugin
+ * itself. The golden set gates a sine hard; bypassed, the sine comes out bit
+ * for bit, and with the Bypass off again the gate is back. */
+void checkBypass (VST3PluginFormat& format, const PluginDescription& d)
+{
+    std::printf (" the bypass\n");
+    auto p = load (format, d, TG_RENDER_SR, TG_RENDER_BLOCK);
+    if (p == nullptr)
+        return check (false, "the plugin loads");
+    const auto state = goldenState();
+    p->setStateInformation (state.getData(), (int) state.getSize());
+    Transport transport;
+    transport.rate = TG_RENDER_SR;
+    transport.bpm = TG_RENDER_BPM;
+    p->setPlayHead (&transport);
+
+    const double w = 2.0 * MathConstants<double>::pi * 220.0 / TG_RENDER_SR;
+    double phase = 0.0;
+    AudioBuffer<float> buffer (2, TG_RENDER_BLOCK), copy (2, TG_RENDER_BLOCK);
+    MidiBuffer midi;
+    /* Whether `blocks` blocks came out exactly as they went in. */
+    const auto untouched = [&] (int blocks)
+    {
+        bool same = true;
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < TG_RENDER_BLOCK; ++i, phase += w)
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.setSample (ch, i, (float) (0.5 * std::sin (phase)));
+            copy.makeCopyOf (buffer);
+            p->processBlock (buffer, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                same = same && std::memcmp (buffer.getReadPointer (ch), copy.getReadPointer (ch),
+                                            sizeof (float) * (size_t) TG_RENDER_BLOCK) == 0;
+            transport.advance (TG_RENDER_BLOCK);
+        }
+        return same;
+    };
+    const int twoSeconds = (int) (2.0 * TG_RENDER_SR) / TG_RENDER_BLOCK;
+
+    check (! untouched (twoSeconds), "the golden set gates the sine");
+    p->getBypassParameter()->setValueNotifyingHost (1.0f);
+    check (untouched (twoSeconds), "with the host's Bypass on, two seconds pass through bit for bit");
+    p->getBypassParameter()->setValueNotifyingHost (0.0f);
+    check (! untouched (twoSeconds), "... and with it off again, the gate is back");
+    p->setPlayHead (nullptr);
+}
+
 void checkWindow (VST3PluginFormat& format, const PluginDescription& d, const File& dir)
 {
     std::printf (" the window\n");
@@ -402,6 +453,7 @@ int main (int argc, char** argv)
     for (const char* scenario : { "default", "slots", "bypassed" })
         checkFixture (format, d, dir, scenario);
     checkSound (format, d);
+    checkBypass (format, d);
     checkWindow (format, d, dir);
 
     std::printf ("%s\n", failures ? "FAIL" : "ok");

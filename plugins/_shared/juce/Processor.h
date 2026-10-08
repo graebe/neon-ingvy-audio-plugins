@@ -12,9 +12,12 @@
  *   the block     processBlock is final: it runs the product's process()
  *                 under juce::ScopedNoDenormals, so no product forgets the
  *                 guard and no product pays for denormals. Bypassed blocks
- *                 (the host's bypass) go to processBypassed(), JUCE's own by
- *                 default; a product whose engine must keep hearing MIDI
- *                 while bypassed -- or its held notes stick -- overrides it
+ *                 go to processBypassed(), JUCE's own by default -- a host
+ *                 bypassing the plugin itself, and the product's own bypass
+ *                 parameter (getBypassParameter) on, which JUCE's VST3
+ *                 wrapper leaves to processBlock. A product whose engine must
+ *                 keep hearing MIDI while bypassed -- or its held notes
+ *                 stick -- overrides it
  *   the clock     readClock() reads the host's transport into a plain value,
  *                 allocation-free, for the engines' block clocks
  *   the state     getStateInformation and setStateInformation are final and
@@ -104,9 +107,9 @@ protected:
     /* One block of the product. Audio thread. */
     virtual void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) = 0;
 
-    /* One block while the host bypasses the plugin: JUCE's own handling
-     * (audio through, a latency kept) unless a product says otherwise. Audio
-     * thread. */
+    /* One block while the plugin is bypassed, by the host or by its own
+     * bypass parameter: JUCE's own handling (audio through, a latency kept)
+     * unless a product says otherwise. Audio thread. */
     virtual void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&);
 
     /* The state, both ways, on any thread but the audio one: touch no

@@ -33,8 +33,8 @@
  * interleaved into a staging buffer sized up front -- a mono input published
  * on both sides -- and pushed to the bus, the peak kept, and the audio left
  * exactly as it came, in place. Nothing there allocates, locks or makes a
- * system call. Bypassed -- the host's Bypass on, which the block reads itself,
- * or a host bypassing it -- nothing is published and the meter falls.
+ * system call. Bypassed -- the host's Bypass on, or a host bypassing it --
+ * nothing is published and the meter falls.
  */
 #pragma once
 
