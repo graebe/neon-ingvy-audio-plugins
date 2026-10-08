@@ -34,6 +34,9 @@ for entry in $PLATFORMS; do
     script=${entry#*:}
     build="$NI_PROJECT/build-$id"
     mkdir -p "$build"
+    # Each script starts its own result file; one that stops before it does
+    # must not be summed up from an earlier run's.
+    rm -f "$build/cross-result.tsv"
     echo
     echo "################ $id ($script)"
     start=$SECONDS

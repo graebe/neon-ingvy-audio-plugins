@@ -31,6 +31,7 @@ themselves join the kit with their move to JUCE.
 | ctest | natively | in the container | under Wine |
 | pluginval 1.0.4 | strictness 10, editor tests included | strictness 10, editor tests under Xvfb | `pluginval.exe` under Wine and Xvfb: a smoke test |
 | Build directory | `<project>/build-macos-universal` | `<project>/build-linux-amd64` | `<project>/build-windows-x64` |
+| Status | built and validated | built and validated | not built yet: waits for the owner's licence acceptance ([below](#the-microsoft-licence)) |
 
 ## Prerequisites
 
@@ -91,8 +92,12 @@ each bundle where the build left it, and nothing is copied into
 
 An image is tagged with a digest of its Dockerfile (and build arguments), so a
 missing tag means a changed Dockerfile: a moved pin builds a new image on the
-next run, and an unchanged one costs a `docker image inspect`. Everything in
-them is pinned:
+next run, and an unchanged one costs a `docker image inspect`. A build
+directory names the image it was built in, in `cross-image`, and the first run
+in a new image empties it: Ninja rebuilds what changed in the sources or the
+commands, and a new clang at the old one's path changes neither, so the old
+image's objects would otherwise be validated as the new one's. Everything in
+the images is pinned:
 
 | What | Pin | Where |
 |---|---|---|
@@ -179,12 +184,18 @@ only**: it is never pushed to a registry.
 
 ## What the Wine run covers, and what it does not
 
-`pluginval.exe` under Wine loads the real Windows DLL and drives it through
-the same strictness-10 suite as the other platforms: scanning and
-instantiation, audio at every sample rate and block size, state save and
-restore, automation and parameter fuzzing, bus layouts — and, with Xvfb, the
-editor tests. A pass means the binary loads and behaves through Wine's
-implementation of Windows, under x86_64 emulation.
+**It has not run on a plugin yet**: there is no Windows binary until the
+owner accepts the licence. All that is established is that `pluginval.exe`
+1.0.4 starts under the image's Wine and Rosetta and prints its version, which
+the image build checks. What follows is what the run is set up to do, not
+what it has been seen to do.
+
+`pluginval.exe` under Wine is to load the real Windows DLL and drive it
+through the same strictness-10 suite as the other platforms: scanning and
+instantiation, audio at 44.1, 48 and 96 kHz in blocks of 64 to 1024 samples,
+state save and restore, automation and parameter fuzzing, bus layouts — and,
+with Xvfb, the editor tests. A pass would mean the binary loads and behaves
+through Wine's implementation of Windows, under x86_64 emulation.
 
 It is not Windows. Wine's Direct2D, DirectWrite and window management are its
 own, so a drawing or DPI fault on real Windows can pass here and a Wine
@@ -192,11 +203,8 @@ shortcoming can fail here; there is no real audio device, no Windows host, and
 no code signing. The run that counts is the native Windows one in GitHub
 Actions at publishing time.
 
-**It has not yet run on a plugin**: that waits for the licence. What is
-established is that `pluginval.exe` 1.0.4 starts and runs its command line
-under the image's Wine and Rosetta. The run is set to strictness 10 with the
-editor tests, like the other two platforms; should Wine fail the editor tests
-on a plugin that passes them natively, the plan is to drop to
+The run is set to strictness 10 with the editor tests, like the other two
+platforms; should Wine fail the editor tests on a plugin that passes them natively, the plan is to drop to
 `--skip-gui-tests` for Windows and say so in the verdict — the editor then
 being checked on macOS and Linux only, and natively on Windows in CI.
 
@@ -232,8 +240,9 @@ JUCE's recommended flags turn on link-time optimisation.
 - **The Windows build is unproven until the owner accepts Microsoft's
   licence.** Everything before that gate is built and checked — the `tools`
   stage, the Rust static library for `x86_64-pc-windows-msvc`, `pluginval.exe`
-  starting under Wine — but compiling and linking JUCE with clang-cl, and the
-  Wine pluginval run on the result, wait for that first run.
+  starting under Wine — but compiling and linking JUCE with clang-cl, ctest
+  under Wine, and the Wine pluginval run on the result wait for that first
+  run.
 - **The Visual Studio channel manifest is read live.** The CRT toolset and the
   SDK line are pinned, and xwin checks every download against the manifest's
   digests, but Microsoft may service a pinned SDK under the same version, and

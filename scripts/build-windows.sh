@@ -14,13 +14,14 @@
 # It is needed only while the image is built (once per change to either
 # Dockerfile); without it, and without a built image, this stops and says so.
 #
-# WINE IS A SMOKE TEST, NOT WINDOWS. pluginval.exe really loads the DLL and
-# drives it -- instantiation, audio at every sample rate and block size,
+# WINE IS A SMOKE TEST, NOT WINDOWS. pluginval.exe is set to load the DLL and
+# drive it -- instantiation, audio at three sample rates and five block sizes,
 # state, parameters, buses, the editor -- but through Wine's implementation of
 # Windows, under x86_64 emulation on Apple silicon. A pass says the binary is
 # sound enough to be worth the real run, which is the native one in GitHub
-# Actions at publishing time. docs/tech/cross-build.md lists what the Wine run
-# does and does not cover.
+# Actions at publishing time. It has NOT RUN ON A PLUGIN YET: that waits for
+# the licence. docs/tech/cross-build.md lists what the Wine run does and does
+# not cover.
 #
 # Build directory: <project>/build-windows-x64, with a Wine prefix of its own
 # in it. scripts/cross-common.sh has the contract every build-<platform>.sh
@@ -57,6 +58,7 @@ if [ "${NI_INSIDE:-}" != 1 ]; then
             -t "$NI_IMAGE" --build-arg "BASE_IMAGE=$base" --build-arg XWIN_ACCEPT_LICENSE=yes \
             -f "$windows_dir/Dockerfile" "$windows_dir" || exit 1
     fi
+    ni_claim_build_dir "$BUILD"
     status=0
     ni_docker_run "$NI_IMAGE" "$PLATFORM" "$BUILD" \
         scripts/build-windows.sh --juce /juce "/work/$NI_PROJECT_REL" || status=$?

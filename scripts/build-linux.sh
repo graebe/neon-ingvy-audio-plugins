@@ -33,6 +33,7 @@ if [ "${NI_INSIDE:-}" != 1 ]; then
     start=$SECONDS
     ni_result_begin "$BUILD"
     ni_stage image ni_image ni-cross-linux "$PLATFORM" "$NI_ROOT/tools/docker/linux" || exit 1
+    ni_claim_build_dir "$BUILD"
     status=0
     ni_docker_run "$NI_IMAGE" "$PLATFORM" "$BUILD" \
         scripts/build-linux.sh --arch "$NI_ARCH" --juce /juce "/work/$NI_PROJECT_REL" || status=$?

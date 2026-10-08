@@ -24,6 +24,9 @@
 #       time    total  <seconds>
 #   - exits non-zero if any of it failed -- after running all of it, so one
 #     failure does not hide the next
+#   - in a container, names the image it built in, in
+#     <project>/build-<platform>/cross-image, and empties a build directory
+#     another image built first (see ni_claim_build_dir)
 #
 # The project must lie inside this repository: a container sees the repository
 # through one bind mount, at /work.
@@ -224,6 +227,24 @@ ni_image_tag() {
 }
 
 ni_image_exists() { docker image inspect "$1" >/dev/null 2>&1; }
+
+# ni_claim_build_dir <build-dir>: make the build directory NI_IMAGE's.
+#
+# A BUILD DIRECTORY BELONGS TO ONE IMAGE. Ninja rebuilds what changed in the
+# sources or in the commands, and a moved pin changes neither: the new image's
+# clang sits at the old one's path, so what the old image compiled would be
+# linked, tested and validated as the new one's work. A build directory that
+# names another image -- or none, from before it was named -- is emptied
+# first, all but this run's own logs.
+ni_claim_build_dir() {
+    local build=$1 stamp="$1/cross-image"
+    [ "$(cat "$stamp" 2>/dev/null)" != "$NI_IMAGE" ] || return 0
+    if [ -n "$(find "$build" -mindepth 1 -maxdepth 1 ! -name cross-result.tsv ! -name cross-build.log)" ]; then
+        echo "=== ${build#"$NI_ROOT"/} holds a build from another image: emptying it for $NI_IMAGE"
+        find "$build" -mindepth 1 -maxdepth 1 ! -name cross-result.tsv ! -name cross-build.log -exec rm -rf {} +
+    fi
+    echo "$NI_IMAGE" > "$stamp"
+}
 
 # ni_image <name> <platform> <dockerfile-dir> [docker build args...]: set
 # NI_IMAGE (see ni_image_tag), building the image first if it does not exist.

@@ -25,7 +25,11 @@ BUILD="$NI_PROJECT/build-macos-universal"
 pin() { sed -n "s/^$1=//p" "$NI_ROOT/scripts/validate-plugins.sh"; }
 PLUGINVAL_VERSION=$(pin PLUGINVAL_VERSION)
 PLUGINVAL_SHA256=$(pin PLUGINVAL_SHA256_MACOS)
-TOOLS="$BUILD/tools"
+[ -n "$PLUGINVAL_VERSION" ] && [ -n "$PLUGINVAL_SHA256" ] \
+    || ni_die "no PLUGINVAL_VERSION and PLUGINVAL_SHA256_MACOS pins in scripts/validate-plugins.sh"
+# One directory per pinned release, so a build directory that already holds
+# pluginval fetches the new one when the pin moves.
+TOOLS="$BUILD/tools/pluginval-$PLUGINVAL_VERSION-${PLUGINVAL_SHA256:0:12}"
 PLUGINVAL="$TOOLS/pluginval.app/Contents/MacOS/pluginval"
 
 fetch_pluginval() {
