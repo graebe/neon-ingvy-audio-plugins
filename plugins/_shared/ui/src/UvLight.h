@@ -36,8 +36,9 @@
  *   exactly that, blurring as browsers do (SVG's three box blurs).
  *
  * WHERE IT DIFFERS FROM THE TOKEN, ON PURPOSE: glow-led's colours are drawn at
- * 0.55 alpha, not 1, as tokens.css draws them -- the ui-kit token test's one
- * exemption ("a judgement about a blur, not a typo"); the arc glow at 0.45.
+ * 0.55 alpha, not 1, as the web kit's tokens.css drew them -- the token
+ * test's one exemption ("a judgement about a blur, not a typo",
+ * tests/site_tokens.test.mjs); the arc glow at 0.45.
  *
  * Call each BEFORE painting the element it surrounds: a halo lies under its
  * element. glowFocus is the exception that needs no order -- it paints only

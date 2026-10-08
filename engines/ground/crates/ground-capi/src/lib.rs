@@ -36,8 +36,9 @@ detector); this followed the tempo instead by the owner's decision, and
 Ultraviolet 1.1.0 made that the design's rule. docs/tech/ground.md says why.
 
 WHY IT IS DOWN HERE AT ALL, since the field itself is drawn in the editor.
-A plugin editor is a WebView: it cannot see the host's transport, and its
-timers are neither sample-accurate nor running when the host bounces. So
+A plugin editor lives on the message thread: it cannot see the host's
+transport, and its timers are neither sample-accurate nor running when the
+host bounces. So
 the beat is found on the audio thread, against the host's own clock, and
 what crosses to the editor is a ring: a count and a strength.
 
@@ -66,25 +67,24 @@ A NEW GROUND IS INACTIVE. It only drives an editor, so it does nothing --
 gnd_tick returns at once -- until gnd_set_active(g, 1), and a plugin turns it
 off again when the editor closes. Turning it on asks for a reset as well.
 
-HOW A PLUGIN USES IT -- the whole of it, and ni::WebPlugin does it for all
-four:
+HOW A PLUGIN USES IT -- the whole of it, and ni::GroundClock
+(plugins/_shared/juce/GroundClock.h) does it for every product:
 
 ```c
-// OnReset
-gnd_set_sample_rate(mGround, GetSampleRate());
+// prepareToPlay
+gnd_set_sample_rate(g, sampleRate);  gnd_reset(g);
 
-// OnUIOpen / when the editor window closes
-gnd_set_active(mGround, 1);   ...   gnd_set_active(mGround, 0);
+// when an editor opens / closes
+gnd_set_active(g, 1);   ...   gnd_set_active(g, 0);
 
-// ProcessBlock, once a block, from the host's transport
-gnd_tick(mGround, GetPPQPos(), GetTempo(), num, den,
-         GetTransportIsRunning(), nFrames);
+// every audio block, bypassed ones too, before the audio, from the host
+gnd_tick(g, ppq, bpm, numerator, denominator, playing, frames);
 
-// OnIdle -- FIRST, before anything in OnIdle can return early
-const uint32_t fires = gnd_fires(mGround);
-if (fires != mGroundFires) {          // != and not >, so a wrap is fine
-    mGroundFires = fires;
-    // send gnd_strength(mGround) to the editor
+// the editor's frame, on the message thread
+const uint32_t fires = gnd_fires(g);
+if (fires != seen) {          // != and not >, so a wrap is fine
+    seen = fires;
+    // ring the field with gnd_strength(g)
 }
 ```
 

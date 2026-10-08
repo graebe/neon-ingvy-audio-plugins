@@ -19,7 +19,8 @@ is ever asked, so a snapshot renders the same text on every machine of an OS.
 files the JUCE editor shipped until September 2026 (commit 7711ba2,
 `plugins/trance-gate/Resources/`).
 
-Not subset, unlike the WOFF copies in `ui-kit/src/fonts`: a user-typed name
+Not subset, unlike the documentation site's WOFF copies (`site/src/uv/fonts`,
+made from these by `site/scripts/subset-fonts.sh`): a user-typed name
 (Listen-In's bus labels) may use any character the face has, and the full
 face keeps that true.
 

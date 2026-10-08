@@ -12,8 +12,7 @@
  *   }
  *
  * THE BASELINE is tests/ui/baselines/<name>-<os>.png, <os> being darwin, linux
- * or windows: one set per platform, as the Playwright screenshots have,
- * because the platforms rasterise a glyph outline differently and a baseline
+ * or windows: one set per platform, because the platforms rasterise a glyph outline differently and a baseline
  * from one is not the truth on another. A test with no baseline for its
  * platform FAILS, saying so; it never passes by having nothing to compare.
  *

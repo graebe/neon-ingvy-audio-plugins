@@ -6,8 +6,8 @@
  * source of the native UI spells a colour.
  *
  * THE JUCE EDITOR HAD THIS ONCE, the web port lost it, and the web kit got it
- * back (ui-kit/test/tokens.test.mjs, with the four literals that had crept in
- * by then). This is the same rule for the JUCE kit and editors, and the reason
+ * back (its token test, now the site's: tests/site_tokens.test.mjs, with the
+ * four literals that had crept in by then). This is the same rule for the JUCE kit and editors, and the reason
  * has not changed: when the design system moves, the diff has to be against
  * ONE file. A colour typed into a paint routine is a value that has quietly
  * stopped tracking the system -- and it still looks right, which is why a

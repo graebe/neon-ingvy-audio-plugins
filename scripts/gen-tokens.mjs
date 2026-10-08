@@ -26,8 +26,9 @@
  *   plugins/_shared/ui/src/UvTokens.h          namespace uv::tok
  *   plugins/_shared/ui/assets/ground-grain.png the grain tile, byte for byte
  *
- * GENERATED, AND CHECKED IN, AND HELD TO THE GENERATOR. The ui-kit's tokens.css
- * is a transcription that a test compares with tokens.json; a C++ header has
+ * GENERATED, AND CHECKED IN, AND HELD TO THE GENERATOR. The site's tokens.css
+ * is a transcription that a test compares with tokens.json
+ * (tests/site_tokens.test.mjs); a C++ header has
  * no such second reader, and a transcription nobody compares drifts. So this
  * one is written by a program, committed so that a build needs no node, and
  * tests/ui_tokens_native.test.mjs fails while the committed files differ from

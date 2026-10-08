@@ -27,7 +27,7 @@ sets it in a host, so plugins use the real names.
 `docs/tech/structure.md` says a crate belongs to exactly one product and the
 engines never depend on each other. That rule is about **product** engines and
 it still holds. This one is the house transport — the Rust counterpart of
-`ui-kit` — and it exists so that two products can share one thing: NI Listen-In
+the native UI kit (`plugins/_shared/ui`) — and it exists so that two products can share one thing: NI Listen-In
 publishes, a Spectrogram will read. It depends on no product in return, which is
 the direction that matters.
 

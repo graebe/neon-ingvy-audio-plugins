@@ -7,7 +7,8 @@ editor.
 
 This crate exists because of one fact about the product: the design system's
 `Ground` is a wave field that rings, and what tells it WHEN lives on the audio
-thread -- the host's transport -- while the field lives in a WebView. `beat.rs`
+thread -- the host's transport -- while the field lives in the editor, on the
+message thread. `beat.rs`
 holds the clock and the musical rule; this file holds the one piece of plumbing
 that clock needs in order to be useful across a thread boundary.
 

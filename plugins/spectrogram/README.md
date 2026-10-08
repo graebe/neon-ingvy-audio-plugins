@@ -73,6 +73,7 @@ core, and the violet is the falloff between them. Look at one bright partial and
 you are looking at exactly the system's white core in a violet halo, drawn in
 pixels rather than in a box-shadow.
 
-The five stops are `--spec-0..4` in `ui-kit/src/tokens.css` and nowhere else, and
-`ctest -R spectro_ramp` fails if the ramp ever dips in luminance — a ramp that
-dips is a picture that lies about level.
+The five stops are the design system's `spec-0..4` tokens, generated into the
+native kit (`plugins/_shared/ui/src/UvTokens.h`) and nowhere else, and the
+kit's tests fail if the ramp ever dips in luminance — a ramp that dips is a
+picture that lies about level.

@@ -309,8 +309,8 @@ html, body {
  * Noise: UNIFORM WHITE NOISE, every pixel an independent draw at 0-10 % (mean
  * 5 %), tinted --uv-deep. The design is explicit that it is not fractal, and
  * that rules out SVG feTurbulence, which only makes fractal noise -- this used to
- * be one. So the tile is the design's own 96px PNG, byte for byte (the ui-kit
- * test compares them), used as a MASK over the token: the pixels come from the
+ * be one. So the tile is the design's own 96px PNG, byte for byte (the native
+ * kit's generator extracts the same one), used as a MASK over the token: the pixels come from the
  * design, and the colour still comes from --uv-deep rather than from the PNG.
  *
  * A pseudo-element because a mask applies to a whole box, not to one background

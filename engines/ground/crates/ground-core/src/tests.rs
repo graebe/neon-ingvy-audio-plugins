@@ -121,7 +121,7 @@ fn a_ring_is_published_as_a_count_and_the_last_strength() {
 #[test]
 fn the_strengths_are_the_documented_pair() {
     /* docs/tech/ground.md and ground.h state these numbers; the field's
-     * calibration (ui-kit/test/field.test.mjs) assumes them. */
+     * calibration (tests/ui/groundfield.cpp) assumes them. */
     assert_eq!(DOWNBEAT_STRENGTH, 1.0);
     assert_eq!(BEAT_STRENGTH, 0.4);
 }

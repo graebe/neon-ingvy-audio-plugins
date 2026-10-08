@@ -13,8 +13,8 @@
  * it on an editor's root and every child inherits it.
  *
  * PORTED FROM THE JUCE EDITOR (commit 7711ba2, UvLookAndFeel), brought up to
- * 1.1.0 and to what the web kit draws today (ui-kit/src/components.css and
- * tokens.css): on-uv is violet now, a hovered well's border rises to ink-dim,
+ * 1.1.0 and to what the web kit drew when it was replaced (its
+ * components.css and tokens.css): on-uv is violet now, a hovered well's border rises to ink-dim,
  * a disabled button drops to bg-100, the switch's lit square glows, the select
  * carries the design's chevron glyph, focus is glow-focus and only for the
  * keyboard (Focus.h), and the fonts are the CSS sizes (UvType.h).

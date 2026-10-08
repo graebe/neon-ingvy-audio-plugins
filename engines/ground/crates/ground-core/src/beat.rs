@@ -55,7 +55,7 @@ any meter with a denominator up to 32 -- so a jump small enough to pass for
 continuity can still never ring more than one beat it skipped.
 
 STRENGTHS. 1.0 for a downbeat, BEAT_STRENGTH for every other beat. The field
-(ui-kit/src/lib/field.js) is linear in strength, so 0.4 is a ring two fifths as
+(plugins/_shared/ui/src/GroundField.cpp) is linear in strength, so 0.4 is a ring two fifths as
 tall: clearly there, clearly the lesser. 0.55, the first candidate, was measured
 in the field at 120 BPM and read too close to the downbeat, because at that
 tempo each ring is still swelling when the next one starts; docs/tech/ground.md

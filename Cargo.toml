@@ -24,7 +24,7 @@
 # would be a coupling nobody asked for.
 #
 # audio-bus is the exception that names the rule. It is NOT a product engine --
-# it is the house transport, the Rust counterpart of ui-kit, and it exists
+# it is the house transport, the Rust counterpart of the native UI kit, and it exists
 # precisely so that two products can share one thing: a Listen-In publishes
 # audio and a Spectrogram reads it. It depends on no product in return, which is
 # the direction that actually matters.

@@ -13,7 +13,7 @@
  * NOT A PRODUCT ENGINE. `docs/tech/structure.md` says a crate belongs to
  * exactly one product and the engines never depend on each other -- and that
  * rule still holds, because it is about PRODUCT engines. This is the house
- * transport, the Rust counterpart of `ui-kit`: it exists so that two products
+ * transport, the Rust counterpart of the native UI kit: it exists so that two products
  * can share one thing, and it depends on no product in return.
  *
  * THE THREAD RULES ARE PART OF THE ABI, exactly as they are for spectro:
