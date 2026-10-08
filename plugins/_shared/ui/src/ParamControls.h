@@ -75,8 +75,8 @@ private:
 class ParamSelect : public Select
 {
 public:
-    /* `options` names the choices in order; empty takes the parameter's own
-     * (its getAllValueStrings, which a stepped integer has too). */
+    /* `options` names the choices in order; empty takes the parameter's own,
+     * each step's text (ParamBinding::choices), whatever its class. */
     explicit ParamSelect (juce::RangedAudioParameter&, const juce::StringArray& options = {});
     ~ParamSelect() override;
 

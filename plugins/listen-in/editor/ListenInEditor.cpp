@@ -25,20 +25,6 @@ constexpr int rowGap = (int) sp::space4;
  * field just wide enough for "16" and the chevron. */
 constexpr int busLabelWidth = 28;
 constexpr int busFieldWidth = 64;
-
-/*
- * The buses as the parameter prints them, one per step. Named here rather
- * than left to ParamSelect because a JUCE integer parameter is not discrete
- * (AudioProcessorParameter::isDiscrete), so getAllValueStrings() is empty for
- * it; the text is still the parameter's own, from the plugin.
- */
-juce::StringArray busOptions (juce::RangedAudioParameter& p)
-{
-    juce::StringArray out;
-    for (int i = 0; i < numBuses; ++i)
-        out.add (p.getText ((float) i / (float) (numBuses - 1), 0));
-    return out;
-}
 } // namespace
 
 float meterFraction (float peak)
@@ -68,7 +54,7 @@ ni::ui::Led::Status ledStatus (Status s)
 /* ============================================================= content == */
 
 ListenInEditor::Content::Content (Model& m)
-    : bus (m.parameter (param::bus), busOptions (m.parameter (param::bus)))
+    : bus (m.parameter (param::bus))
 {
     bus.setLabel ("Bus", busLabelWidth);
     bus.setFieldWidth (busFieldWidth);

@@ -273,6 +273,30 @@ TEST_CASE ("every value a host can hold reads back from its own text")
     CHECK (a.p.parameter (kLegato).getValueForText ("On") == 1.0f);
 }
 
+TEST_CASE ("every stepped parameter lists each step's text, an integer's included; a continuous one lists none")
+{
+    /* JUCE's contract for a discrete parameter, which a host may read for a
+     * list of values: one string per step, in order, each what getText shows
+     * there. Slot and Length are integers; Rate a choice; Legato a toggle. */
+    Instance a;
+    for (int i = 0; i < kNumParams; ++i)
+    {
+        auto& p = a.p.parameter (i);
+        CAPTURE (i);
+        const auto all = p.getAllValueStrings();
+        if (! p.isDiscrete())
+        {
+            CHECK (all.isEmpty());
+            continue;
+        }
+        REQUIRE (all.size() == p.getNumSteps());
+        for (int k = 0; k < all.size(); ++k)
+            CHECK (all[k] == p.getText ((float) k / (float) (all.size() - 1), 128));
+    }
+    CHECK (a.p.parameter (kSlot).getAllValueStrings() == juce::StringArray { "1", "2", "3", "4", "5", "6", "7", "8" });
+    CHECK (a.p.getBypassParameter()->getAllValueStrings() == juce::StringArray { "off", "on" });
+}
+
 /* ------------------------------------------------------------- fixtures -- */
 
 TEST_CASE ("every iPlug2 fixture loads to its exact parameters, blob and bypass")

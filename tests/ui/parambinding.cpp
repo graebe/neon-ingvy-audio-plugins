@@ -95,6 +95,24 @@ TEST_CASE ("parameter binding: a choice has its options as steps")
     CHECK (binding.text() == "S-Curve");
 }
 
+TEST_CASE ("parameter binding: a stepped parameter with no value-string list still has its steps as options")
+{
+    /* JUCE's own integer calls itself continuous (isDiscrete is false), so
+     * its getAllValueStrings is empty -- and it still has steps, each with
+     * its text. The options come from those, whatever the list says (UT3). */
+    FakeParameters params;
+    auto& bus = params.addInt ("bus", "Bus", 1, 4, 2);
+    REQUIRE (bus.getAllValueStrings().isEmpty());
+    ParamBinding binding (bus);
+
+    CHECK (binding.steps() == 4);
+    CHECK (binding.choices() == juce::StringArray { "1", "2", "3", "4" });
+
+    binding.commit (1.0f);
+    CHECK (bus.get() == 4);
+    CHECK (binding.text() == "4");
+}
+
 TEST_CASE ("parameter binding: a change from the host reaches the control")
 {
     FakeParameters params;

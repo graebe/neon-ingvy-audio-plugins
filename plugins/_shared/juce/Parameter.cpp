@@ -165,9 +165,18 @@ float Parameter::getValueForText (const juce::String& typed) const
     return (float) toNormalised (clampPlain (v));
 }
 
+/* Every step's text, as JUCE asks of a discrete parameter: a choice's and a
+ * toggle's words, an integer's numbers from its minimum up -- the strings
+ * getText gives at each step, so a host's list and the plugin's text agree.
+ * A continuous parameter has no steps to list. */
 juce::StringArray Parameter::getAllValueStrings() const
 {
-    return row.kind == ParamSpec::Kind::choice || row.kind == ParamSpec::Kind::toggle ? words : juce::StringArray();
+    if (row.kind != ParamSpec::Kind::integer)
+        return row.stepped() ? words : juce::StringArray();
+    juce::StringArray out;
+    for (auto v = (juce::int64) row.min; v <= (juce::int64) row.max; ++v)
+        out.add (juce::String (v));
+    return out;
 }
 
 } // namespace ni
