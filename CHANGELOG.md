@@ -1,21 +1,20 @@
 # What's new
 
-## v2026.10.08.2 — NI Trance Gate
-
-- **The Move module is published.** v2026.10.08.1's Move release stopped on
-  GitHub's build machine before it built anything; this release carries the fix
-  to how the module is built. The plugin itself is unchanged from v2026.10.08.1.
-
-## v2026.10.08.1
+## v2026.10.08.2
 
 Every plugin is rebuilt on a new foundation. Your sets open as before; what
 changes is how the plugins are made, what they are licensed under and which
 formats they come in.
 
+v2026.10.08.1 was never published: its releases stopped on GitHub's build
+machines before they built anything. This is that release, with the fixes that
+get it built, the Move modules' among them.
+
 ### Before you update
 
-- **VST3 only, on macOS, Windows and Linux.** The Audio Unit and CLAP versions
-  are discontinued. Quit Live, then delete the old bundles so a rescan does not
+- **VST3 only, for macOS** (universal: Apple silicon and Intel). Linux and
+  Windows follow in a later release. The Audio Unit and CLAP versions are
+  discontinued. Quit Live, then delete the old bundles so a rescan does not
   find them:
 
   ```sh
@@ -34,10 +33,9 @@ formats they come in.
 - **Old Live sets open unchanged.** Every plugin keeps the class ID, the
   parameters and the saved state of its earlier VST3, so patterns, settings and
   automation come back as they were saved.
-- Install as always: quit Live, copy the `.vst3` into your VST3 folder
-  (`~/Library/Audio/Plug-Ins/VST3`, `C:\Program Files\Common Files\VST3` or
-  `~/.vst3`), start Live and rescan (**Settings → Plug-Ins → Rescan**). Each
-  plugin's manual has the details for your system.
+- Install as always: quit Live, copy the `.vst3` into
+  `~/Library/Audio/Plug-Ins/VST3`, start Live and rescan (**Settings →
+  Plug-Ins → Rescan**). Each plugin's manual has the details.
 
 ### Native editors on Ultraviolet 1.1.0
 
@@ -76,8 +74,8 @@ manual, and the v2026.10.07.2 entry below.
 - **The Rust core is built on established crates** — realfft, rtrb,
   triple_buffer, basedrop, wmidi, serde_json and others, each under a licence
   that combines with the GPL — instead of hand-written replacements.
-- **One build for all three systems**, each bundle tested in a host and checked
-  by pluginval and Steinberg's validator before it is released.
+- **Every bundle is tested before it is released**: in a host, and by
+  pluginval and Steinberg's validator.
 
 ## v2026.10.07.2
 

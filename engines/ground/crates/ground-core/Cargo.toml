@@ -1,6 +1,6 @@
 [package]
 name = "ground-core"
-version = "2026.10.8+1"
+version = "2026.10.8+2"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "The beat clock behind the Ultraviolet design system's animated ground"

@@ -74,7 +74,7 @@ jobs:
       # WHICH PRODUCT, WHAT VERSION, AND DOES THE TREE AGREE. Parsed by
       # scripts/release.mjs, the one parser both release workflows share and
       # tests/release.test.mjs runs: the tag is <product>-<version exactly as
-      # versions.json spells it>, e.g. trance-gate-v2026.10.08.1. versions.json
+      # versions.json spells it>, e.g. trance-gate-v2026.10.08.2. versions.json
       # is where a version is decided and `ctest -R versions` holds the build,
       # module.json and every crate to it -- so checking the tag against
       # versions.json checks it against all of them.

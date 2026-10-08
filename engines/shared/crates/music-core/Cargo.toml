@@ -1,6 +1,6 @@
 [package]
 name = "music-core"
-version = "2026.10.8+1"
+version = "2026.10.8+2"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Torben Gräber"]
