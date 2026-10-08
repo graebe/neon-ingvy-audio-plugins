@@ -62,7 +62,7 @@ if [ "${NI_INSIDE:-}" != 1 ]; then
     ni_ctest_forward
     status=0
     ni_docker_run "$NI_IMAGE" "$PLATFORM" "$BUILD" \
-        scripts/build-windows.sh --juce /juce "/work/$NI_PROJECT_REL" \
+        scripts/build-windows.sh --juce /juce "$NI_MOUNT/$NI_PROJECT_REL" \
         ${NI_CTEST_FORWARD[@]+"${NI_CTEST_FORWARD[@]}"} || status=$?
     ni_record time total "$((SECONDS - start))"
     exit "$status"
@@ -82,7 +82,7 @@ fi
 windows_path() { winepath -w "$1"; }
 
 if ni_build_and_test "$BUILD" \
-        -DCMAKE_TOOLCHAIN_FILE=/work/tools/cross/windows-clang-cl.cmake \
+        -DCMAKE_TOOLCHAIN_FILE="$NI_MOUNT/tools/cross/windows-clang-cl.cmake" \
         -DCMAKE_CROSSCOMPILING_EMULATOR=wine; then
     NI_PLUGINVAL_PATH=windows_path
     ni_validate "$BUILD" ", editor tests included, under Wine + Xvfb" \

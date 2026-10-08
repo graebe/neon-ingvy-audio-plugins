@@ -29,10 +29,10 @@
 #     failure does not hide the next
 #   - in a container, names the image it built in, in
 #     <project>/build-<platform>/cross-image, and empties a build directory
-#     another image built first (see ni_claim_build_dir)
+#     another image (or another mount) built first (see ni_claim_build_dir)
 #
 # The project must lie inside this repository: a container sees the repository
-# through one bind mount, at /work.
+# through one bind mount, at NI_MOUNT.
 #
 # Runs under macOS's bash 3.2 as well as the containers' bash 5: no
 # associative arrays, and no array expanded before it is known not to be empty
@@ -48,6 +48,15 @@ NI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # macOS pin from there) and again in the two Dockerfiles, by the same digests
 # -- one release.
 NI_PLUGINVAL_STRICTNESS=10
+
+# Where a container sees the repository. NOT A DIRECTORY AT THE ROOT, such as
+# /work: Corrosion (0.6.1, and its master branch) names cargo's target
+# directory after the cargo workspace's directory relative to that one's
+# parent, and for a workspace at /work the parent is / and the name comes out
+# absolute -- cargo is then told to build in /work_<hash>, which no one may
+# write. One level deeper, the workspace is "repo" and the target directory
+# lands in the build directory as it does on a Mac.
+NI_MOUNT=/work/repo
 
 ni_die() { echo "error: $*" >&2; exit 2; }
 
@@ -253,22 +262,24 @@ ni_image_tag() {
 
 ni_image_exists() { docker image inspect "$1" >/dev/null 2>&1; }
 
-# ni_claim_build_dir <build-dir>: make the build directory NI_IMAGE's.
+# ni_claim_build_dir <build-dir>: make the build directory NI_IMAGE's, with
+# the repository at NI_MOUNT.
 #
 # A BUILD DIRECTORY BELONGS TO ONE IMAGE. Ninja rebuilds what changed in the
 # sources or in the commands, and a moved pin changes neither: the new image's
 # clang sits at the old one's path, so what the old image compiled would be
-# linked, tested and validated as the new one's work. A build directory that
-# names another image -- or none, from before it was named -- is emptied
-# first, all but this run's own logs.
+# linked, tested and validated as the new one's work. And to one mount: CMake
+# refuses a cache configured from another source path. A build directory that
+# names another image or mount -- or none, from before it was named -- is
+# emptied first, all but this run's own logs.
 ni_claim_build_dir() {
-    local build=$1 stamp="$1/cross-image"
-    [ "$(cat "$stamp" 2>/dev/null)" != "$NI_IMAGE" ] || return 0
+    local build=$1 stamp="$1/cross-image" owner="$NI_IMAGE at $NI_MOUNT"
+    [ "$(cat "$stamp" 2>/dev/null)" != "$owner" ] || return 0
     if [ -n "$(find "$build" -mindepth 1 -maxdepth 1 ! -name cross-result.tsv ! -name cross-build.log)" ]; then
-        echo "=== ${build#"$NI_ROOT"/} holds a build from another image: emptying it for $NI_IMAGE"
+        echo "=== ${build#"$NI_ROOT"/} holds a build from another image or mount: emptying it for $owner"
         find "$build" -mindepth 1 -maxdepth 1 ! -name cross-result.tsv ! -name cross-build.log -exec rm -rf {} +
     fi
-    echo "$NI_IMAGE" > "$stamp"
+    echo "$owner" > "$stamp"
 }
 
 # ni_image <name> <platform> <dockerfile-dir> [docker build args...]: set
@@ -284,7 +295,7 @@ ni_image() {
 }
 
 # ni_docker_run <image> <platform> <build-dir> <command...>: run a command in
-# a build image as the invoking user, the repository at /work and JUCE at
+# a build image as the invoking user, the repository at NI_MOUNT and JUCE at
 # /juce (read-only). Everything a run writes -- objects, CARGO_HOME, HOME with
 # its caches and Wine prefix -- stays in the build directory, never the image.
 # The timing log's directory is mounted too, so the stages inside are logged
@@ -292,7 +303,7 @@ ni_image() {
 ni_docker_run() {
     local image=$1 platform=$2 build=$3
     shift 3
-    local build_in=/work/${build#"$NI_ROOT"/}
+    local build_in=$NI_MOUNT/${build#"$NI_ROOT"/}
     local timing=() log
     if log=$(ni_timing_log) && mkdir -p "$(dirname "$log")" 2>/dev/null; then
         [ -n "${NI_TIMING_RUN:-}" ] || NI_TIMING_RUN="$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -307,7 +318,7 @@ ni_docker_run() {
     docker run --rm --platform "$platform" \
         ${timing[@]+"${timing[@]}"} \
         -u "$(id -u):$(id -g)" \
-        -v "$NI_ROOT:/work" -v "$NI_JUCE:/juce:ro" -w /work \
+        -v "$NI_ROOT:$NI_MOUNT" -v "$NI_JUCE:/juce:ro" -w "$NI_MOUNT" \
         -e HOME="$build_in/home" -e CARGO_HOME="$build_in/cargo-home" \
         ${CMAKE_BUILD_PARALLEL_LEVEL:+-e CMAKE_BUILD_PARALLEL_LEVEL="$CMAKE_BUILD_PARALLEL_LEVEL"} \
         -e NI_INSIDE=1 \

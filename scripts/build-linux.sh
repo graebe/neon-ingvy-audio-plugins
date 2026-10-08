@@ -37,7 +37,7 @@ if [ "${NI_INSIDE:-}" != 1 ]; then
     ni_ctest_forward
     status=0
     ni_docker_run "$NI_IMAGE" "$PLATFORM" "$BUILD" \
-        scripts/build-linux.sh --arch "$NI_ARCH" --juce /juce "/work/$NI_PROJECT_REL" \
+        scripts/build-linux.sh --arch "$NI_ARCH" --juce /juce "$NI_MOUNT/$NI_PROJECT_REL" \
         ${NI_CTEST_FORWARD[@]+"${NI_CTEST_FORWARD[@]}"} || status=$?
     ni_record time total "$((SECONDS - start))"
     exit "$status"
