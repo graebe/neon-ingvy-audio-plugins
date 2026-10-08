@@ -22,7 +22,8 @@
  * produced ONE page spanning all three languages, which is the only form in
  * which the total means anything.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
 
 const ROOT = process.env.COVERAGE_ROOT ?? process.cwd();
@@ -181,8 +182,14 @@ if (files.size === 0) {
  * Wire.cpp was linked into a test binary and TranceGate.cpp was not.
  *
  * A coverage figure that rises when you add an untested file is worse than no
- * figure, because it is trusted. So the tree is walked and anything missing
+ * figure, because it is trusted. So the tree is listed and anything missing
  * from every tracefile is named.
+ *
+ * THE TREE IS WHAT GIT SEES: the tracked files and the untracked ones it does
+ * not ignore, so a new file counts before its first commit. What .gitignore
+ * keeps out is not first-party -- build output, and what a removed build left
+ * behind in an older checkout (the iPlug2 web editors' output in each plugin's resources/)
+ * -- and a walk of the disk counted it as untested source.
  *
  * HEADERS ARE NOT COUNTED HERE. A header of declarations legitimately produces
  * no coverage record, so flagging them would be noise that teaches the reader
@@ -190,19 +197,13 @@ if (files.size === 0) {
  */
 const SOURCE = /\.(c|cpp|cc|cxx|mm|rs|js|jsx|mjs)$/;
 
-function walk(dir, out = []) {
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === 'target' || name === 'dist') continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (SOURCE.test(name)) out.push(p);
-  }
-  return out;
-}
-
-const onDisk = ['plugins', 'engines', 'modules']
-  .flatMap((d) => walk(join(ROOT, d)))
+const onDisk = execFileSync(
+  'git',
+  ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'plugins', 'engines', 'modules'],
+  { cwd: ROOT, encoding: 'utf8' },
+)
+  .split('\0')
+  .filter((p) => SOURCE.test(p) && existsSync(join(ROOT, p)))
   .map((p) => norm(p))
   .filter(keep)
   .sort();
