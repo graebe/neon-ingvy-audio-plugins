@@ -547,14 +547,20 @@ TEST_CASE ("a Listen-In's bus is listed by its name, its tone drawn, and its cla
     auto& m = a.model();
     a.p.editorOpened();
 
-    /* The bus appears at human speed: the list is looked at twice a second. */
+    /* The bus appears at human speed: the list is looked at twice a second.
+     * The deadline only bounds a hang -- the loop ends the moment the bus is
+     * listed, within a second or two on an idle machine. It is generous because the
+     * sender is a second process: in a cold build directory ctest starts it
+     * beside the cargo suites compiling their tests, and macOS scans a freshly
+     * linked binary on its first launch, which once took this past five
+     * seconds (the cross build's first ctest run, scripts/build-macos.sh). */
     const auto listed = [&] {
         for (const auto& s : m.sources())
             if (s.slot == slot && s.label == "Pad" && s.live && s.sampleRate == 48000)
                 return true;
         return false;
     };
-    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds (5);
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds (20);
     while (! listed() && std::chrono::steady_clock::now() < until)
     {
         a.play (2);

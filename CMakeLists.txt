@@ -7,8 +7,9 @@
 # module builds for the Move, so "it sounds different in Live" cannot happen by
 # construction. docs/tech/architecture.md has the layers.
 #
-# GPL-3.0-or-later, around dependencies GPLv3 can take in: iPlug2 is zlib, the
-# VST3 SDK and CLAP are MIT. THIRD_PARTY_LICENSES.md has their notices, and
+# GPL-3.0-or-later, around dependencies GPLv3 can take in: JUCE is AGPLv3,
+# which GPLv3's section 13 allows combining with, and what it compiles in is
+# permissive. THIRD_PARTY_LICENSES.md has their notices, and
 # docs/adr/0001-gpl-3.0-or-later.md the reasons.
 cmake_minimum_required(VERSION 3.22)
 
@@ -77,8 +78,24 @@ include(cmake/Schwung.cmake)
 # and the editors' tests (tests/ui) build without a plugin, and the gallery
 # they draw their pages from; and ni_add_juce_plugin
 # (cmake/NiJucePlugin.cmake), which each product calls in its own directory.
+#
+# JUCE is the submodule at external/JUCE unless NI_JUCE_DIR names another
+# checkout of the same tag: the cross-build kit (scripts/build-<platform>.sh)
+# hands every project its JUCE that way, read-only at /juce in a container.
+# The tag is checked, so a stray checkout cannot build a different JUCE.
 set(NI_ROOT ${CMAKE_SOURCE_DIR})
-add_subdirectory(external/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
+set(NI_JUCE_VERSION 9.0.3)
+set(NI_JUCE_DIR ${CMAKE_SOURCE_DIR}/external/JUCE CACHE PATH
+    "A JUCE checkout at tag ${NI_JUCE_VERSION}: the submodule by default")
+if (NOT EXISTS "${NI_JUCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "NI_JUCE_DIR is '${NI_JUCE_DIR}', which is not a JUCE checkout: "
+                        "`git submodule update --init external/JUCE`, or pass -DNI_JUCE_DIR=<dir>")
+endif()
+add_subdirectory(${NI_JUCE_DIR} ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
+get_directory_property(_ni_juce_version DIRECTORY ${NI_JUCE_DIR} DEFINITION JUCE_VERSION)
+if (NOT _ni_juce_version VERSION_EQUAL NI_JUCE_VERSION)
+    message(FATAL_ERROR "NI_JUCE_DIR holds JUCE ${_ni_juce_version}; this project is pinned to ${NI_JUCE_VERSION}")
+endif()
 add_subdirectory(plugins/_shared/ui ${CMAKE_BINARY_DIR}/ni_ui)
 include(cmake/NiJucePlugin.cmake)
 

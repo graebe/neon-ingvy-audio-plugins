@@ -7,7 +7,13 @@
 # their containers -- and sum up each artefact, its size, its pluginval
 # verdict and the wall time it took.
 #
-#   scripts/build-all.sh [--juce <dir>] <cmake-project-dir>
+#   scripts/build-all.sh [--juce <dir>] <cmake-project-dir> [-- <ctest args>]
+#
+# The <ctest args> go to every platform's ctest. For this repository:
+#
+#   scripts/build-all.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'
+#
+# (docs/tech/cross-build.md says why those three are left to scripts/test.sh).
 #
 # Every platform runs even after another has failed, and the exit status is
 # non-zero if any did. The first Windows build needs the owner's
@@ -23,6 +29,7 @@ set -euo pipefail
 # shellcheck source=scripts/cross-common.sh
 . "$(dirname "$0")/cross-common.sh"
 ni_parse_args "$@"
+ni_ctest_forward
 
 PLATFORMS="macos-universal:build-macos.sh linux-amd64:build-linux.sh windows-x64:build-windows.sh"
 failed=0
@@ -41,7 +48,8 @@ for entry in $PLATFORMS; do
     echo "################ $id ($script)"
     start=$SECONDS
     status=0
-    ni_time_stage "$id" -- "$NI_ROOT/scripts/$script" --juce "$NI_JUCE" "$NI_PROJECT" 2>&1 \
+    ni_time_stage "$id" -- "$NI_ROOT/scripts/$script" --juce "$NI_JUCE" "$NI_PROJECT" \
+        ${NI_CTEST_FORWARD[@]+"${NI_CTEST_FORWARD[@]}"} 2>&1 \
         | tee "$build/cross-build.log" || status=$?
     wall=$((SECONDS - start))
     [ "$status" = 0 ] || failed=1

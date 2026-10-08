@@ -7,7 +7,7 @@
 # validly signed (codesign --verify --deep --strict, as Live's scanner checks),
 # and validate each with pluginval at strictness 10, editor tests included.
 #
-#   scripts/build-macos.sh [--juce <dir>] <cmake-project-dir>
+#   scripts/build-macos.sh [--juce <dir>] <cmake-project-dir> [-- <ctest args>]
 #
 # Build directory: <project>/build-macos-universal. pluginval is the release
 # scripts/validate-plugins.sh pins for CI, read from there, downloaded into the

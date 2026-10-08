@@ -6,7 +6,7 @@
 # run its ctest under Wine, and smoke-test every VST3 it built with
 # pluginval.exe under Wine.
 #
-#   XWIN_ACCEPT_LICENSE=yes scripts/build-windows.sh [--juce <dir>] <cmake-project-dir>
+#   XWIN_ACCEPT_LICENSE=yes scripts/build-windows.sh [--juce <dir>] <cmake-project-dir> [-- <ctest args>]
 #
 # THE LICENCE. The image carries Microsoft's C runtime and Windows SDK, which
 # xwin downloads only once their licence is accepted -- by the owner, with
@@ -59,9 +59,11 @@ if [ "${NI_INSIDE:-}" != 1 ]; then
             -f "$windows_dir/Dockerfile" "$windows_dir" || exit 1
     fi
     ni_claim_build_dir "$BUILD"
+    ni_ctest_forward
     status=0
     ni_docker_run "$NI_IMAGE" "$PLATFORM" "$BUILD" \
-        scripts/build-windows.sh --juce /juce "/work/$NI_PROJECT_REL" || status=$?
+        scripts/build-windows.sh --juce /juce "/work/$NI_PROJECT_REL" \
+        ${NI_CTEST_FORWARD[@]+"${NI_CTEST_FORWARD[@]}"} || status=$?
     ni_record time total "$((SECONDS - start))"
     exit "$status"
 fi

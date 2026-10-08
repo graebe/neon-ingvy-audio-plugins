@@ -6,7 +6,7 @@
 # and validate every VST3 it built with pluginval at strictness 10 under Xvfb,
 # editor tests included.
 #
-#   scripts/build-linux.sh [--arch amd64|arm64] [--juce <dir>] <cmake-project-dir>
+#   scripts/build-linux.sh [--arch amd64|arm64] [--juce <dir>] <cmake-project-dir> [-- <ctest args>]
 #
 # amd64, the default, is the platform that is built and validated. arm64
 # builds and runs ctest from the same Dockerfile, but pluginval publishes no
@@ -34,15 +34,20 @@ if [ "${NI_INSIDE:-}" != 1 ]; then
     ni_result_begin "$BUILD"
     ni_stage image ni_image ni-cross-linux "$PLATFORM" "$NI_ROOT/tools/docker/linux" || exit 1
     ni_claim_build_dir "$BUILD"
+    ni_ctest_forward
     status=0
     ni_docker_run "$NI_IMAGE" "$PLATFORM" "$BUILD" \
-        scripts/build-linux.sh --arch "$NI_ARCH" --juce /juce "/work/$NI_PROJECT_REL" || status=$?
+        scripts/build-linux.sh --arch "$NI_ARCH" --juce /juce "/work/$NI_PROJECT_REL" \
+        ${NI_CTEST_FORWARD[@]+"${NI_CTEST_FORWARD[@]}"} || status=$?
     ni_record time total "$((SECONDS - start))"
     exit "$status"
 fi
 
 # ----------------------------------------------------- inside the container
 NI_RESULT="$BUILD/cross-result.tsv"
+# One X server for the whole ctest run: a test that opens an editor (a hosted
+# bundle's, a kit page's) needs a display, as pluginval's editor tests do.
+NI_CTEST_RUNNER=(xvfb-run -a -s "-screen 0 1920x1080x24")
 if ni_build_and_test "$BUILD"; then
     if [ -x /opt/pluginval/pluginval ]; then
         ni_validate "$BUILD" ", editor tests under Xvfb" \

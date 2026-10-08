@@ -9,13 +9,16 @@
 # EVERY build-<platform>.sh KEEPS ONE CONTRACT, so build-all.sh can line any of
 # them up:
 #
-#   build-<platform>.sh [--juce <dir>] <cmake-project-dir>
+#   build-<platform>.sh [--juce <dir>] <cmake-project-dir> [-- <ctest args>]
 #
 #   - configures the project into <project>/build-<platform>/ (Release, Ninja)
 #     with -DNI_JUCE_DIR=<dir>; <dir> defaults to external/JUCE, the
 #     repository's JUCE submodule
-#   - builds it, runs its ctest, and runs pluginval on every .vst3 bundle the
-#     build produced
+#   - builds it, runs its ctest -- all of it, or what the <ctest args> after
+#     `--` select (-L, -LE, -E ...) -- and runs pluginval on every .vst3
+#     bundle the build produced: the ones in <build>/out when the project
+#     collects them there (as this repository's ni_add_juce_plugin does),
+#     otherwise every one under the build directory
 #   - writes <project>/build-<platform>/cross-result.tsv, one tab-separated
 #     record per line:
 #       stage   <name>  passed|FAILED  <seconds>
@@ -48,14 +51,17 @@ NI_PLUGINVAL_STRICTNESS=10
 
 ni_die() { echo "error: $*" >&2; exit 2; }
 
-# ni_parse_args "$@": sets NI_PROJECT and NI_JUCE (absolute paths) and
-# NI_PROJECT_REL (from the repository root). --arch is accepted where the
-# script lists its choices in NI_ARCHES.
+# ni_parse_args "$@": sets NI_PROJECT and NI_JUCE (absolute paths),
+# NI_PROJECT_REL (from the repository root) and NI_CTEST_ARGS (what follows
+# `--`, for ctest). --arch is accepted where the script lists its choices in
+# NI_ARCHES.
 ni_parse_args() {
     NI_JUCE="$NI_ROOT/external/JUCE"
     NI_PROJECT=""
+    NI_CTEST_ARGS=()
     while [ $# -gt 0 ]; do
         case "$1" in
+            --) shift; NI_CTEST_ARGS=("$@"); break ;;
             --juce)
                 [ $# -ge 2 ] || ni_die "--juce needs a directory"
                 NI_JUCE=$2; shift 2 ;;
@@ -73,12 +79,14 @@ ni_parse_args() {
                 NI_PROJECT=$1; shift ;;
         esac
     done
-    [ -n "$NI_PROJECT" ] || ni_die "usage: $(basename "$0") [--juce <dir>] <cmake-project-dir>"
+    [ -n "$NI_PROJECT" ] || ni_die "usage: $(basename "$0") [--juce <dir>] <cmake-project-dir> [-- <ctest args>]"
     [ -f "$NI_PROJECT/CMakeLists.txt" ] || ni_die "$NI_PROJECT has no CMakeLists.txt"
     [ -f "$NI_JUCE/CMakeLists.txt" ] || ni_die "no JUCE checkout at $NI_JUCE (pass --juce <dir>)"
     NI_PROJECT="$(cd "$NI_PROJECT" && pwd)"
     NI_JUCE="$(cd "$NI_JUCE" && pwd)"
+    # The repository itself is a project too: its products are built by it.
     case "$NI_PROJECT/" in
+        "$NI_ROOT"/) NI_PROJECT_REL=. ;;
         "$NI_ROOT"/*) NI_PROJECT_REL=${NI_PROJECT#"$NI_ROOT"/} ;;
         *) ni_die "$NI_PROJECT is outside the repository ($NI_ROOT)" ;;
     esac
@@ -144,23 +152,40 @@ ni_jobs() {
 
 # ni_build_and_test <build-dir> [cmake args...]: configure, build, ctest. A
 # failed configure or build stops here (there is nothing to test); a failed
-# ctest is recorded and validation still runs.
+# ctest is recorded and validation still runs. ctest runs NI_CTEST_ARGS'
+# selection, as many at once as compiles (ni_jobs), under NI_CTEST_RUNNER
+# when the platform sets one (Xvfb on Linux, for the tests that open an
+# editor).
 ni_build_and_test() {
     local build=$1
     shift
     NI_STAGE_BUILD=$build ni_stage configure cmake -S "$NI_PROJECT" -B "$build" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release -DNI_JUCE_DIR="$NI_JUCE" "$@" || return 1
     NI_STAGE_BUILD=$build ni_stage build cmake --build "$build" --parallel "$(ni_jobs)" || return 1
-    ni_stage ctest ctest --test-dir "$build" --output-on-failure || true
+    ni_stage ctest ${NI_CTEST_RUNNER[@]+"${NI_CTEST_RUNNER[@]}"} \
+        ctest --test-dir "$build" --output-on-failure --parallel "$(ni_jobs)" \
+        ${NI_CTEST_ARGS[@]+"${NI_CTEST_ARGS[@]}"} || true
+}
+
+# ni_ctest_forward: `-- <ctest args>` again, for a script that hands its
+# arguments on (to the container, or build-all.sh to each platform). Sets
+# NI_CTEST_FORWARD, empty when there were none.
+ni_ctest_forward() {
+    NI_CTEST_FORWARD=()
+    if [ ${#NI_CTEST_ARGS[@]} -gt 0 ]; then NI_CTEST_FORWARD=(-- "${NI_CTEST_ARGS[@]}"); fi
 }
 
 # ni_bundles <build-dir>: set NI_BUNDLES to every .vst3 bundle the build
-# produced (a bundle is a directory, on Windows too); none is a failure.
+# produced (a bundle is a directory, on Windows too); none is a failure. A
+# project that collects its bundles in <build>/out (ni_add_juce_plugin copies
+# each there, signed) is taken at its word, so JUCE's own copy in the
+# artefacts directory is not validated twice.
 ni_bundles() {
-    local bundle
+    local bundle where=$1
     NI_BUNDLES=()
+    if [ -n "$(find "$1/out" -maxdepth 1 -name '*.vst3' -type d 2>/dev/null)" ]; then where=$1/out; fi
     while IFS= read -r -d '' bundle; do NI_BUNDLES+=("$bundle"); done \
-        < <(find "$1" -name '*.vst3' -type d -prune -print0 | sort -z)
+        < <(find "$where" -name '*.vst3' -type d -prune -print0 | sort -z)
     if [ ${#NI_BUNDLES[@]} -eq 0 ]; then
         echo "no .vst3 bundle under $1" >&2
         ni_record stage bundles FAILED 0
