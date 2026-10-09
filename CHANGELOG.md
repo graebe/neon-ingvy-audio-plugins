@@ -1,6 +1,6 @@
 # What's new
 
-## v2026.10.09.2 — NI Side-Chain, NI Listen-In, NI Spectrogram
+## v2026.10.10.2 — NI Side-Chain, NI Listen-In, NI Spectrogram
 
 ### Before you update
 

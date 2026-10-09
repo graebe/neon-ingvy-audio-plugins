@@ -319,7 +319,7 @@ later release. **Updating from a release before v2026.10.08.2?** The
 that used one of them needs.
 
 **Update NI Side-Chain, NI Listen-In and NI Spectrogram together** to
-v2026.10.09.2 or later, and quit Live fully first: the Listen-In bus format
+v2026.10.10.2 or later, and quit Live fully first: the Listen-In bus format
 changed so the kick can be lined up to the sample, and a plugin of one format
 does not see a bus written by the other.
 
