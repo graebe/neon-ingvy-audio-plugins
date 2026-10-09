@@ -91,8 +91,17 @@ test('a build stage leaves its .ninja_log beside the log', () => {
 const python = spawnSync('python3', ['--version']).status === 0;
 
 test('build-timings.py summarises the log, and its filters filter', { skip: !python && 'no python3' }, () => {
+  /* The summary is held to a log whose durations are FIXED. The real records
+   * above are timed, and on a loaded machine a stage that merely starts a
+   * process can outlast the short build -- so ranking the real log tested the
+   * machine's load, not the summariser, and failed now and then. The records
+   * are the real ones; only their durations are set. */
+  const fixed = { 'build': 5, 'ctest': 1, 'a "quoted" stage': 0.5 };
+  const RANKED = join(dir, 'logs', 'ranked.jsonl');
+  writeFileSync(RANKED, records().map((r) =>
+    JSON.stringify({ ...r, duration_s: fixed[r.stage] })).join('\n') + '\n');
   const summary = JSON.parse(execFileSync('python3',
-    ['-I', join(ROOT, 'scripts', 'build-timings.py'), '--log', LOG, '--json'], { encoding: 'utf8' }));
+    ['-I', join(ROOT, 'scripts', 'build-timings.py'), '--log', RANKED, '--json'], { encoding: 'utf8' }));
   assert.equal(summary.records, 3);
   assert.deepEqual(summary.per_stage.map((s) => s.stage), ['build', 'ctest', 'a "quoted" stage']);
   assert.equal(summary.per_stage[1].failed, 1);
