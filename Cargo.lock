@@ -910,6 +910,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tg-web"
+version = "2026.10.9+1"
+dependencies = [
+ "tg-capi",
+]
+
+[[package]]
 name = "toml"
 version = "0.9.12+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -128,7 +128,7 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 
 | Crates | Where | Licence |
 |---|---|---|
-| `tg-core`, `tg-capi`, `tg-move` | `engines/trance-gate` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `tg-core`, `tg-capi`, `tg-move`, `tg-web` | `engines/trance-gate` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `spectro-core`, `spectro-recv`, `spectro-capi` | `engines/spectro` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `bus-core`, `bus-capi` | `engines/audio-bus` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber, with a ported part — see below |

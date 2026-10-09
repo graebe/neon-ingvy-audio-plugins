@@ -38,6 +38,7 @@ members = [
     "engines/trance-gate/crates/tg-core",     # the DSP
     "engines/trance-gate/crates/tg-capi",     # the C ABI -> the plugin
     "engines/trance-gate/crates/tg-move",     # the Schwung vtable -> the module
+    "engines/trance-gate/crates/tg-web",      # the C ABI as wasm -> the Move's web editor
     # The Spectrogram: one core, one wrapper. No Move target -- the hardware
     # has no screen to draw a spectrogram on.
     "engines/spectro/crates/spectro-core",
