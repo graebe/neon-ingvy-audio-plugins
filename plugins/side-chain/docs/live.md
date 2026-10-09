@@ -86,18 +86,22 @@ The audio **zooms to fit the track**. Most material peaks well under full scale
 — a bass at −18 dBFS, a pad at −24 — and on a full-scale axis it would be a
 thin strip through the middle of the well. So the well draws the audio on a
 range that follows what is playing, and says which in its top-right corner:
-`−18 dB` means the well's top edge is −18 dBFS, so a peak that touches the edge
-is exactly that loud. The range moves in 6 dB steps, from `0 dB` (full scale)
-down to `−48 dB`:
+`−15 dB` means the well's top edge is −15 dBFS. The range sits **3 dB above the
+loudest peak of the last two seconds**, so the loudest moments reach about
+seven-tenths of the way to the edge and never touch it. It moves smoothly, never
+in jumps, and only the label is rounded, to whole decibels:
 
-- **Louder material widens it at once**, in the frame it arrives, so the
-  waveform is never cut off at the edges.
-- **Quieter material narrows it after a pause.** The well waits until nothing
-  as loud has been shown for two seconds, then glides in over about a second.
-  A track sitting close to a step does not flip back and forth: it has to stay
-  1.5 dB under the next step down before the range narrows to it.
+- **Louder material lifts it quickly** — most of the way in a few frames, past
+  the new peak within a tenth of a second. A sudden very loud hit can run off the
+  edge for that tenth of a second; it is cut at the edge, never drawn outside the
+  well.
+- **Quieter material lowers it slowly.** The well holds the range for two
+  seconds after the last loud moment, then eases down: two thirds of the way in
+  a second and a half, nearly all of it in about five. A track whose level stays
+  the same keeps the range perfectly still — nothing pumps with the beat.
 - **Silence stays silence.** The range never goes below `−48 dB`, so a track
-  that stops does not blow its noise floor up to fill the well.
+  that stops does not blow its noise floor up to fill the well. Over a
+  full-scale track it reads `+3 dB`: the headroom above 0 dBFS.
 
 **Only the audio zooms.** The shape and the measured gain are gains — how much of
 the input is let through — so they stay on their own scale, and so do the
@@ -105,10 +109,10 @@ handles. A fully open duck is on the ceiling at `−24 dB` as at `0 dB`; the aud
 under it is simply drawn larger.
 
 For example, with the plugin on a pad peaking at −20 dBFS the corner reads
-`−18 dB`, the pad fills the well, and you can see exactly where the duck bites.
-Turn the pad up by 12 dB and the range jumps to `−6 dB` the moment the louder pad
-arrives; turn it back down and, a couple of seconds later, the well eases back
-to `−18 dB`.
+`−17 dB`, the pad fills the well, and you can see exactly where the duck bites.
+Turn the pad up by 12 dB and the range rises to `−5 dB` as the louder pad
+arrives, in about a tenth of a second; turn it back down and, two seconds later,
+the well eases back to `−17 dB` over the next few.
 
 **Double-click the well** — anywhere but on a handle, where a double-click resets
 the handle — to hold the audio at full scale; the corner then reads

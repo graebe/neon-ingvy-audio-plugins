@@ -202,27 +202,31 @@ The Signal **zooms to fit the track**. A synth peaking at −15 dBFS would be a
 sliver a quarter of the band high on a full-scale axis, so the plot draws the dry
 and gated traces on a range that follows what is playing, and says which at the
 right end of its caption, just left of the tabs: `−12 dB` means the band's top
-edge is −12 dBFS, so a peak that touches it is exactly that loud. The range moves
-in 6 dB steps, from `0 dB` (full scale) down to `−48 dB`:
+edge is −12 dBFS. The range sits **3 dB above the loudest peak of the last two
+seconds** — the whole cycle on screen counts — so the loudest moments reach
+about seven-tenths of the way to the edge. It moves smoothly, never in jumps,
+and only the label is rounded, to whole decibels:
 
-- **Louder material widens it at once**, in the frame it arrives, so the trace is
-  never cut off at the edges.
-- **Quieter material narrows it after a pause.** The plot waits until nothing as
-  loud has been shown for two seconds — the whole cycle on screen counts — then
-  glides in over about a second. A track sitting close to a step does not flip
-  back and forth: it has to stay 1.5 dB under the next step down first.
+- **Louder material lifts it quickly** — past the new peak within a tenth of a
+  second. A sudden very loud cycle can run off the edge for that tenth of a
+  second; it is cut at the edge, never drawn outside the band.
+- **Quieter material lowers it slowly.** The plot holds the range for two
+  seconds after the last loud moment, then eases down: two thirds of the way in
+  a second and a half, nearly all of it in about five. A track whose level stays
+  the same keeps the range perfectly still — nothing pumps with the gate.
 - **Silence stays silence.** The range never goes below `−48 dB`, so a break in
-  the track does not blow its noise floor up to fill the band.
+  the track does not blow its noise floor up to fill the band. Over a
+  full-scale track it reads `+3 dB`: the headroom above 0 dBFS.
 
 **Only the audio zooms.** The envelope outline over the trace is the gate's gain,
 not a level, so it stays on its own scale: wherever the gate is fully open the
 outline runs along the band's edges whatever the range, and the trace, drawn
 larger, now reaches up towards it.
 
-For example, gate a pad peaking at −20 dBFS and the caption ends in `−18 dB`: the
+For example, gate a pad peaking at −20 dBFS and the caption ends in `−17 dB`: the
 pad fills the band and every step's attack and release is plain to see. Push the
-pad's fader up by 12 dB and the range jumps to `−6 dB` as the louder cycle is
-written.
+pad's fader up by 12 dB and the range rises to `−5 dB` as the louder cycle is
+written; pull it back and the band eases back to `−17 dB` a few seconds later.
 
 **Double-click the Signal plot** to hold it at full scale; the label then reads
 `0 dB fixed`. Double-click again to let it follow the track. The choice lasts as

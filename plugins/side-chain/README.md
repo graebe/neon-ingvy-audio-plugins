@@ -77,10 +77,11 @@ retrigger part way through a recovery anchors on the level the envelope actually
 reached. No drawing can predict that, which is why both are there.
 
 The audio **zooms to fit the track**, so a bass at −18 dBFS fills the well rather
-than a strip through its middle. The range follows the material in 6 dB steps,
-from full scale down to −48 dB — wider at once when something louder arrives, so
-nothing is ever cut off, narrower only after two quieter seconds — and the well's
-corner always says what it is (`−18 dB`: the top edge is −18 dBFS). The shape and
+than a strip through its middle. The range glides with the material, 3 dB above
+its loudest moments and never below −48 dB — up within a tenth of a second when
+something louder arrives, down slowly after two quieter seconds, still while the
+level is — and the well's corner always says what it is (`−15 dB`: the top edge
+is −15 dBFS). The shape and
 the measured gain are gains and do not zoom, so the handles stay put. A
 double-click on the well holds it at full scale (`0 dB fixed`) until the next
 one; [the manual](docs/live.md#how-loud-the-audio-is-drawn) has the details.

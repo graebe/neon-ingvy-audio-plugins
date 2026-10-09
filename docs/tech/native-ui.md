@@ -109,10 +109,12 @@ DSP.
 with the capture's peak (`plot::peak`); it builds its bands on
 `levelRange().fullScale()` (`BandGeometry::fullScale`) and again whenever
 `followLevel` says the range moved or `levelChanged()` is called.
-`plot::LevelRange` is the rule: the loudest level shown over the last two
-seconds, up to the next 6 dB rung between 0 and −48 dBFS, wider in the frame a
-louder peak arrives, narrower only after the window and 1.5 dB under the rung,
-gliding there with a 300 ms time constant. The well writes the range ("−12 dB")
+`plot::LevelRange` is the rule: one filtered level in dB, aiming 3 dB over the
+loudest level shown in the last two seconds (250 ms buckets), between −48 dBFS
+and +3 dB, gliding up with a 35 ms time constant and down with a 1.5 s one, so
+an overshoot is clipped at the edge for at most about 100 ms and steady material
+holds it still. Only the label rounds, to whole decibels. The well writes the
+range ("−12 dB")
 at the far end of its caption band, and a double-click — or an accessible press
 — holds it at full scale ("0 dB fixed") for the life of the editor. Only the
 audio zooms: a gain, gate or envelope over it stays on its own scale. The Side-Chain's

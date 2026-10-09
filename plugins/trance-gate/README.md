@@ -168,10 +168,11 @@ It does not touch the playhead, so it is safe to press mid-bar.
 
 The Signal tab draws your audio before and after the gate, and it **zooms to fit
 the track**: a pad peaking at −20 dBFS fills the band instead of a sliver through
-its middle. The range follows the material in 6 dB steps, from full scale down to
-−48 dB — wider at once when something louder arrives, so nothing is ever cut off,
-narrower only after two quieter seconds — and the end of the caption always says
-what it is (`−18 dB`: the top edge is −18 dBFS). The gate's outline is a gain and
+its middle. The range glides with the material, 3 dB above its loudest moments
+and never below −48 dB — up within a tenth of a second when something louder
+arrives, down slowly after two quieter seconds, still while the level is — and
+the end of the caption always says what it is (`−17 dB`: the top edge is
+−17 dBFS). The gate's outline is a gain and
 does not zoom. A double-click on the plot holds it at full scale (`0 dB fixed`)
 until the next one; [the manual](docs/live.md#how-loud-the-signal-is-drawn) has
 the details.
