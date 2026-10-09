@@ -22,9 +22,9 @@ void closeReader (void* r)
     abus_reader_close (static_cast<abus_reader_t*> (r));
 }
 
-/* How often a bus that is not there yet, or has gone quiet, is opened again:
- * a Listen-In inserted later, or one that quit and came back on a fresh
- * segment, which a reader of the old one never hears. */
+/* How often a bus is looked at again: one that is not there yet (a
+ * Listen-In inserted later), or one whose sender quit and came back on a
+ * fresh segment, which a reader of the old one never hears. */
 constexpr std::uint32_t retryMs = 500;
 } // namespace
 
@@ -79,11 +79,16 @@ void Kick::service (bool fresh)
     const int want = std::max (0, wanted.load (std::memory_order_relaxed));
     const auto now = juce::Time::getMillisecondCounter();
 
-    /* A silent bus may be one whose sender came back on a new segment; a
-     * missing one may have been inserted since. Both are opened again, now
-     * and then. */
-    const auto quiet = sc_kick_status (tap.get());
-    const bool stale = want > 0 && (! hasReader || quiet == SC_KICK_SILENT) && now - lastTry >= retryMs;
+    /* Now and then: a missing bus may have been inserted since, and one the
+     * reader maps may have been replaced under its name. A bus that is merely
+     * quiet -- its Listen-In bypassed -- keeps its reader, and says silent. */
+    bool stale = false;
+    if (want > 0 && want == openSlot && now - lastTry >= retryMs)
+    {
+        lastTry = now;
+        const auto current = abus_incarnation ((std::uint32_t) want);
+        stale = ! hasReader ? current != 0 : current != 0 && current != openedAs;
+    }
     if (want == openSlot && ! fresh && ! stale)
         return;
 
@@ -94,6 +99,8 @@ void Kick::service (bool fresh)
         if (abus_reader_open ((std::uint32_t) want, &r) != ABUS_OK)
             r = nullptr;
     }
+    /* Asked before it is lent: from here on the audio thread reads it. */
+    openedAs = abus_reader_incarnation (r);
     shell_handoff_set (handoff, r);
     openSlot = want;
     hasReader = r != nullptr;

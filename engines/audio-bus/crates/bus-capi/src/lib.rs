@@ -27,7 +27,9 @@ THE THREAD RULES ARE PART OF THE ABI:
   abus_reader_open / close / reattach    the main thread
   abus_reader_read / position /          one thread, the same one each time
     timeline_of
-  abus_probe                             the main thread
+  abus_probe / abus_incarnation          the main thread
+  abus_reader_incarnation                the main thread, before the reader
+                                         is lent to another
 
 push and read may overlap across any number of processes -- that is the whole
 point. TWO SENDERS ON ONE SLOT IS THE ONE THING THAT CANNOT HAPPEN, and it is
@@ -374,6 +376,25 @@ pub unsafe extern "C" fn abus_probe(
         *label.add(n) = 0;
     }
     1
+}
+
+/// Which segment slot `slot`'s name leads to now, or 0 when nobody has ever
+/// used it. A reader whose `abus_reader_incarnation` differs maps a segment
+/// that was replaced -- its sender quit and a new one created the bus -- and
+/// will never hear from it again: open the slot afresh.
+#[no_mangle]
+pub extern "C" fn abus_incarnation(slot: u32) -> u64 {
+    bus_core::probe(slot).map_or(0, |i| i.incarnation)
+}
+
+/// Which segment `r` maps (see `abus_incarnation`); 0 for NULL. Ask before
+/// lending the reader to the thread that reads it.
+///
+/// # Safety
+/// `r` must come from `abus_reader_open`, or be NULL.
+#[no_mangle]
+pub unsafe extern "C" fn abus_reader_incarnation(r: *const AbusReader) -> u64 {
+    r.as_ref().map_or(0, |r| r.0.incarnation())
 }
 
 /// # Safety

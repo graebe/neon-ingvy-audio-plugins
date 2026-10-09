@@ -233,8 +233,16 @@ fn a_shorter_segment_from_an_older_build_is_replaced() {
     }
     assert!(Reader::open(SLOT_FOREIGN).is_none(), "a reader refuses it");
 
-    let (_w, mut p) = Writer::claim(SLOT_FOREIGN, 48_000).expect("the claim replaces it");
+    let (w, mut p) = Writer::claim(SLOT_FOREIGN, 48_000).expect("the claim replaces it");
     let mut r = Reader::open(SLOT_FOREIGN).expect("readers find the new one");
     p.push(&vec![0.5f32; 16 * 2]);
     assert_eq!(r.read(&mut vec![0f32; 32 * 2]).frames, 16);
+
+    /* A reader can tell the bus it maps from the one the name leads to: the
+     * sender quits, a new one creates it afresh, and the incarnations part. */
+    assert_eq!(crate::probe(SLOT_FOREIGN).map(|i| i.incarnation), Some(r.incarnation()));
+    drop((w, p));
+    let (_w2, _p2) = Writer::claim(SLOT_FOREIGN, 48_000).expect("claimed again");
+    let now = crate::probe(SLOT_FOREIGN).expect("there").incarnation;
+    assert_ne!(now, r.incarnation(), "a replaced segment looks like the bus");
 }
