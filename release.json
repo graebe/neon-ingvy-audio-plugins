@@ -19,12 +19,12 @@
       }
     },
     "ni-side-chain": {
-      "version": "2026.10.09.1",
-      "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/side-chain-v2026.10.09.1/ni-side-chain-module.tar.gz",
+      "version": "2026.10.10.1",
+      "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/side-chain-v2026.10.10.1/ni-side-chain-module.tar.gz",
       "channels": {
         "stable": {
-          "version": "2026.10.09.1",
-          "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/side-chain-v2026.10.09.1/ni-side-chain-module.tar.gz"
+          "version": "2026.10.10.1",
+          "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/side-chain-v2026.10.10.1/ni-side-chain-module.tar.gz"
         }
       }
     }
