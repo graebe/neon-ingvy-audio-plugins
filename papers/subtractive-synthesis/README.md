@@ -9,6 +9,7 @@ with tested Rust implementations.
 | [references.md](references.md) | The bibliography, with notes on how each entry was verified |
 | [figures/](figures/) | Figures 1–4 (SVG, light and dark) and `results.md`, the measured tables |
 | [code/](code/) | `ni-paper-subsynth`, the crate every listing in the paper comes from |
+| [tex/](tex/) | The conference edition: `paper.pdf`, two-column (IEEEtran), generated from `paper.md` |
 
 ## Running the code
 
@@ -22,6 +23,18 @@ cargo bench -p ni-paper-subsynth                                 # the cost tabl
 
 `cargo test` includes `tests/snippets.rs`, which fails when a Rust listing in
 `paper.md` differs from the region of the crate it names.
+
+## The conference edition
+
+`tex/paper.tex` is generated from `paper.md` by `tex/md2tex.py`, which changes
+the layout and nothing else. Never edit it by hand: edit the Markdown and run
+
+```sh
+papers/subtractive-synthesis/tex/build.sh    # paper.tex, figures/*.pdf, paper.pdf
+```
+
+The build needs `rsvg-convert` (librsvg) for the figures and Tectonic
+(`brew install tectonic`) for the PDF.
 
 ## Editing the paper
 

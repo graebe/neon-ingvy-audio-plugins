@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+# The logs of tex/build.sh; paper.tex, the figure PDFs and paper.pdf are kept.
+build.log
+paper.log
