@@ -33,6 +33,33 @@ A press toggles the step *and* selects it. **Shift + press** sets a tie: the ste
 holds through the next one without retriggering. A white pad sweeps with the
 playhead while the transport runs.
 
+### Steps 33 to 128
+
+With **Len** above 32, the **left and right arrow buttons** page the pads
+through the pattern a block of 32 at a time: steps 1–32, 33–64, 65–96 and
+97–128. The selected step moves with the pads and keeps its place on the grid,
+so the third pad of one block becomes the third pad of the next, and paging
+back returns you to the pad you left. Where the screen showed the length, it
+now shows the block above it — **33-64** over **of 96**.
+
+For example, to silence the last step of a four-bar gate (64 steps at 1/16):
+press the right arrow once, so the screen reads 33-64 of 64, then press the
+bottom-right pad.
+
+A few details:
+
+- **The ends stop.** Right on the last block and left on the first do nothing;
+  the pads do not wrap round.
+- **A short last block** — 33–40 of a 40-step pattern — has fewer than 32 pads
+  lit. Paging into it from a pad past its end selects its last step.
+- **Shortening Len** below the block you are on moves the pads to the new last
+  block, with the selected step on the pattern's last step.
+- **The pads stay where you are editing** while the pattern plays: they do
+  not follow the playhead, because the knobs edit the selected step and it
+  would change under your fingers. The ring shows the playhead across the whole
+  pattern, and the white pad appears whenever it passes through your block.
+- At 32 steps or fewer the arrows do nothing.
+
 ## The ring page
 
 The page with the ring puts these under the eight encoders:
