@@ -389,6 +389,12 @@ impl Reader {
         got
     }
 
+    /// The stream position of the next frame `read` delivers: a read of `n`
+    /// frames delivered `position() - n ..`.
+    pub fn position(&self) -> u64 {
+        self.cursor.position()
+    }
+
     /// Where frame `frame` of the stream sits on the sender's timeline: the
     /// stamped run that holds it, if its stamp is still there. `frame` is a
     /// stream position, as `Read::first` gives. Loads only, no allocation --

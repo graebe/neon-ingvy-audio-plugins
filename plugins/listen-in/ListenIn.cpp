@@ -115,7 +115,9 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
             stage[(std::size_t) i * 2 + 1] = r;
             peak = std::max (peak, std::max (std::fabs (l), std::fabs (r)));
         }
-        abus_pusher_push (pusher, stage.data(), (std::uint32_t) n);
+        /* Stamped with where the chunk sits on the host's timeline, so a
+         * reader on another track can line it up with its own blocks. */
+        abus_pusher_push_at (pusher, stage.data(), (std::uint32_t) n, clock.timeInSamples + off, clock.timed ? 1 : 0);
     });
     shell_handoff_release (handoff);
 

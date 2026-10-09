@@ -46,7 +46,10 @@ namespace ni
 
 /* The host's transport for one block. `known` is false when the host gave
  * no position at all, which is not the same as a stopped transport; `ppq` is
- * NaN when it gave a position without a musical one. */
+ * NaN when it gave a position without a musical one. `timeInSamples` is the
+ * block's first sample on the host's timeline, meaningful only while
+ * `timed`: playing, with a position in samples -- the one clock two tracks'
+ * blocks share exactly (the audio bus stamps by it). */
 struct HostClock
 {
     bool known = false;
@@ -55,6 +58,8 @@ struct HostClock
     double bpm = 0.0;
     int numerator = 0;
     int denominator = 0;
+    bool timed = false;
+    std::int64_t timeInSamples = 0;
 };
 
 /* The transport from a play head, or an unknown clock for none. Audio thread;

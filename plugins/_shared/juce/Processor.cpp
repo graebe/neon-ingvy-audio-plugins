@@ -26,6 +26,13 @@ HostClock readClock (juce::AudioPlayHead* head)
      * every block would pin them to now. NaN is "none" to the engines. */
     clock.ppq = position->getPpqPosition().orFallback (std::numeric_limits<double>::quiet_NaN());
     clock.bpm = position->getBpm().orFallback (0.0);
+    /* A stopped transport's position is where it will start, not where this
+     * block sounds, so it is no stamp. */
+    if (const auto samples = position->getTimeInSamples(); samples.hasValue() && clock.playing)
+    {
+        clock.timed = true;
+        clock.timeInSamples = *samples;
+    }
     if (const auto meter = position->getTimeSignature())
     {
         clock.numerator = meter->numerator;
