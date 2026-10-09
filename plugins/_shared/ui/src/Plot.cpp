@@ -252,8 +252,10 @@ bool LevelRange::follow (float peakLevel, double nowMs)
     else
     {
         /* Release: towards the rung the window's peak fits under with the
-         * margin to spare -- never wider than now, which is the hysteresis. */
-        const float target = juce::jmax (now, fit (std::pow (10.0f, (windowPeakDb() + marginDb) / 20.0f)));
+         * margin to spare, and only ever narrower -- a rung above the range
+         * is the margin's doing, no reason to widen, and that is the
+         * hysteresis. */
+        const float target = fit (std::pow (10.0f, (windowPeakDb() + marginDb) / 20.0f));
         if (target < current)
         {
             current = target + (current - target) * (float) std::exp (-dt / releaseMs);
@@ -451,9 +453,11 @@ void PlotWell::enableLevelRange (float labelInset)
 
 bool PlotWell::followLevel (float peakLevel, double nowMs)
 {
-    const auto text = level.label();
+    /* The label is whole decibels: compared as those, so a frame builds no
+     * text it would only throw away. */
+    const int shown = juce::roundToInt (level.db());
     const bool moved = level.follow (peakLevel, nowMs);
-    if (levelShown && level.label() != text)
+    if (levelShown && juce::roundToInt (level.db()) != shown)
         repaint (0, 0, getWidth(), (int) plot::captionH);
     return moved;
 }

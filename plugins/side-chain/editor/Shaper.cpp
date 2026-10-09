@@ -192,10 +192,10 @@ void Shaper::rebuildShape()
 
 /*
  * WHAT HAPPENED: the input and output as min/max bands on the level range,
- * and the measured gain, on its own scale, as an outline -- the DEEPEST duck behind each pixel, the capture's own
- * minimum rule, because averaging would report a duck nobody heard. A column
- * the sweep has not reached is a gap, so a picture still filling reads as
- * unfinished.
+ * and the measured gain, on its own scale, as an outline -- the DEEPEST duck
+ * behind each pixel, the capture's own minimum rule, because averaging would
+ * report a duck nobody heard. A column the sweep has not reached is a gap, so
+ * a picture still filling reads as unfinished.
  */
 void Shaper::rebuildEnvelope (const Scope& scope)
 {
