@@ -1,5 +1,22 @@
 # What's new
 
+## v2026.10.09.1
+
+- **Space always reaches Live.** In every NI plugin window, Space starts and
+  stops Live's transport, and Shift+Space continues play, wherever you last
+  clicked. The only exception is typing in a text field, where Space is a
+  space. Buttons, switches, menus and pads are pressed with Enter now
+  (Shift+Enter sets a tie on a Trance Gate pad).
+- **The signal plots zoom with your material.** In NI Side-Chain and the
+  Trance Gate's Signal tab the audio fills the plot whatever the track's
+  level: the range rises quickly with a louder passage, holds for two seconds
+  and then eases down, and stays still on steady material. The range is shown
+  over the top edge ("-21 dB"); double-click the plot for a fixed full-scale
+  view. The shapes and the gate outline keep their true scale.
+- **NI Trance Gate on Ableton Move: every step up to 128 is reachable.** The
+  left and right arrows page the pads in blocks of 32 ("33-64 of 96"); the
+  arrows no longer change the slot - Slot stays on the first knob.
+
 ## v2026.10.08.3 — NI Trance Gate, NI Side-Chain, NI Chord-Detector
 
 - **NI Trance Gate: a set saved right after a Slot change keeps the right

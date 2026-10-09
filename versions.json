@@ -1,11 +1,11 @@
 {
   "__": "The version of each PRODUCT in this repository, and the only place it is decided. Every other spelling -- each plugin's build (cmake/NiJucePlugin.cmake), the bundles' Info.plist and moduleinfo.json, module.json and each engine's crates -- is DERIVED from this and checked by `ctest -R versions`. The scheme is v<YYYY.MM.DD>.<subversion>; three of those consumers cannot hold that string literally, so the derivations are spelled out in tests/versions.test.mjs and asserted rather than left to a human. See tests/versions.test.mjs for what is checked and what is deliberately not.",
 
-  "trance-gate": "v2026.10.08.3",
-  "spectrogram": "v2026.10.08.2",
-  "listen-in": "v2026.10.08.2",
-  "side-chain": "v2026.10.08.3",
-  "chord-detector": "v2026.10.08.3",
+  "trance-gate": "v2026.10.09.1",
+  "spectrogram": "v2026.10.09.1",
+  "listen-in": "v2026.10.09.1",
+  "side-chain": "v2026.10.09.1",
+  "chord-detector": "v2026.10.09.1",
 
   "__audio-bus": "The house transport, not a plugin -- it has crates and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
   "audio-bus": "v2026.10.08.2",

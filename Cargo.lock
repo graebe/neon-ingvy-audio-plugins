@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "cd-capi"
-version = "2026.10.8+3"
+version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "cbindgen",
@@ -105,7 +105,7 @@ dependencies = [
 
 [[package]]
 name = "cd-core"
-version = "2026.10.8+3"
+version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "ground-core",
@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "ni-dsp"
-version = "2026.10.8+1"
+version = "2026.10.9+1"
 dependencies = [
  "arrayvec",
  "assert_no_alloc",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "ni-schwung"
-version = "2026.10.8+1"
+version = "2026.10.9+1"
 dependencies = [
  "ni-dsp",
 ]
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "sc-capi"
-version = "2026.10.8+3"
+version = "2026.10.9+1"
 dependencies = [
  "cbindgen",
  "ground-capi",
@@ -632,7 +632,7 @@ dependencies = [
 
 [[package]]
 name = "sc-core"
-version = "2026.10.8+3"
+version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "ni-dsp",
@@ -641,7 +641,7 @@ dependencies = [
 
 [[package]]
 name = "sc-move"
-version = "2026.10.8+3"
+version = "2026.10.9+1"
 dependencies = [
  "ni-schwung",
  "sc-capi",
@@ -709,7 +709,7 @@ dependencies = [
 
 [[package]]
 name = "shell-capi"
-version = "2026.10.8+1"
+version = "2026.10.9+1"
 dependencies = [
  "cbindgen",
  "shell-core",
@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "shell-core"
-version = "2026.10.8+1"
+version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "basedrop",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "spectro-capi"
-version = "2026.10.8+2"
+version = "2026.10.9+1"
 dependencies = [
  "cbindgen",
  "ground-capi",
@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "spectro-core"
-version = "2026.10.8+2"
+version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "atomic_float",
@@ -751,7 +751,7 @@ dependencies = [
 
 [[package]]
 name = "spectro-recv"
-version = "2026.10.8+2"
+version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "bus-core",
@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "tg-capi"
-version = "2026.10.8+3"
+version = "2026.10.9+1"
 dependencies = [
  "cbindgen",
  "ground-capi",
@@ -814,7 +814,7 @@ dependencies = [
 
 [[package]]
 name = "tg-core"
-version = "2026.10.8+3"
+version = "2026.10.9+1"
 dependencies = [
  "arrayvec",
  "assert_no_alloc",
@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "tg-move"
-version = "2026.10.8+3"
+version = "2026.10.9+1"
 dependencies = [
  "atomic_float",
  "ni-schwung",
