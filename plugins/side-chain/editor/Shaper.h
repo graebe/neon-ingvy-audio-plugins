@@ -20,11 +20,19 @@
  *   the output     uv with the arc glow: the audio that left, and the
  *                  picture's mass.
  *   the envelope   the gain actually applied, measured, as a 1px plot-ghost
- *                  line mirrored about the centre -- the ceiling the output
- *                  could reach. There when the track is silent, and invisible
- *                  until it parts from the shape, which is when it matters: a
- *                  retrigger part way through a recovery anchors on the level
- *                  the envelope had reached, and no drawing can predict that.
+ *                  line mirrored about the centre -- the ceiling a full-scale
+ *                  output could reach. There when the track is silent, and
+ *                  invisible until it parts from the shape, which is when it
+ *                  matters: a retrigger part way through a recovery anchors
+ *                  on the level the envelope had reached, and no drawing can
+ *                  predict that.
+ *
+ * THE AUDIO IS ON ITS LEVEL RANGE (Plot.h), THE GAINS ON THEIR OWN SCALE. The
+ * input and the output zoom with the material, so a track at -18 dBFS fills
+ * the well rather than a strip of it, with the range over the top edge and a
+ * double-click on the well (not on a handle, where it resets) holding it at
+ * full scale. The envelope and the shape are gains, 0 to 1 of whatever came
+ * in, and stay where the handles are: zooming them would move the handles.
  *   the shape      what you ASKED for: an ink line on a bg-000 casing, with
  *                  four handles. Ink, not uv, because ink over uv is only
  *                  1.34:1 -- the two differ by kind and hue, not brightness.
@@ -90,8 +98,9 @@ public:
     ~Shaper() override;
 
     /* Reads the model again -- the shape, its marks, the capture, the sweep --
-     * and repaints. The editor's frame tick. */
-    void update();
+     * and repaints. The editor's frame tick, with its time in ms, which the
+     * level range follows on. */
+    void update (double nowMs);
 
     /* The audio area: bipolar, centred, under the caption, over the ruler. */
     float top() const;
@@ -134,9 +143,10 @@ private:
     friend class Handle;
 
     void paintPlot (juce::Graphics&) override;
+    void levelChanged() override;
     void layoutHandles();
     void rebuildShape();
-    void rebuildEnvelope();
+    void rebuildEnvelope (const Scope&);
     void refreshCaption();
 
     ni::ui::ParamBinding& binding (int index);

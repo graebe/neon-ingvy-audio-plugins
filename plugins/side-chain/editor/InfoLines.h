@@ -29,8 +29,9 @@ namespace ni::sc::info
 using ni::ui::InfoText;
 
 /* THE PLOT: the well, and its four handles. Resetting is the conventions'
- * ("double-click to reset"), so no handle's line repeats it. */
-inline constexpr InfoText plot { "Shape — the duck you asked for, over the audio it shaped." };
+ * ("double-click to reset"), so no handle's line repeats it; the well's own
+ * double-click, which holds the audio at full scale, is the well's line. */
+inline constexpr InfoText plot { "Shape — the duck over the audio it shaped; double-click for full scale." };
 inline constexpr InfoText handleStart { "Delay — drag sideways for when the duck starts." };
 inline constexpr InfoText handleBottom { "Attack and depth — drag sideways for how fast, up or down for how far." };
 inline constexpr InfoText handleHoldEnd { "Hold — drag sideways for how long the duck stays down." };

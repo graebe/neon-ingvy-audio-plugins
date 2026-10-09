@@ -201,6 +201,43 @@ difference between what the gate asked for and what the audio did. The dry is
 grey rather than a dimmer violet because the difference between the two should
 not need a legend.
 
+### How loud the Signal is drawn
+
+The Signal **zooms to fit the track**. A synth peaking at −15 dBFS would be a
+sliver a quarter of the band high on a full-scale axis, so the plot draws the dry
+and gated traces on a range that follows what is playing, and says which at the
+right end of its caption, just left of the tabs: `−12 dB` means the band's top
+edge is −12 dBFS. The range sits **3 dB above the loudest peak of the last two
+seconds** — the whole cycle on screen counts — so the loudest moments reach
+about seven-tenths of the way to the edge. It moves smoothly, never in jumps,
+and only the label is rounded, to whole decibels:
+
+- **Louder material lifts it quickly** — past the new peak within a tenth of a
+  second. A sudden very loud cycle can run off the edge for that tenth of a
+  second; it is cut at the edge, never drawn outside the band.
+- **Quieter material lowers it slowly.** The plot holds the range for two
+  seconds after the last loud moment, then eases down: two thirds of the way in
+  a second and a half, nearly all of it in about five. A track whose level stays
+  the same keeps the range perfectly still — nothing pumps with the gate.
+- **Silence stays silence.** The range never goes below `−48 dB`, so a break in
+  the track does not blow its noise floor up to fill the band. Over a
+  full-scale track it reads `+3 dB`: the headroom above 0 dBFS.
+
+**Only the audio zooms.** The envelope outline over the trace is the gate's gain,
+not a level, so it stays on its own scale: wherever the gate is fully open the
+outline runs along the band's edges whatever the range, and the trace, drawn
+larger, now reaches up towards it.
+
+For example, gate a pad peaking at −20 dBFS and the caption ends in `−17 dB`: the
+pad fills the band and every step's attack and release is plain to see. Push the
+pad's fader up by 12 dB and the range rises to `−5 dB` as the louder cycle is
+written; pull it back and the band eases back to `−17 dB` a few seconds later.
+
+**Double-click the Signal plot** to hold it at full scale; the label then reads
+`0 dB fixed`. Double-click again to let it follow the track. The choice lasts as
+long as the plugin window is open: closing and reopening it starts on the
+following range again. The Pattern plot is a gain throughout and never zooms.
+
 ## Copy and paste
 
 Right of the panels stands a column of six icons, the window's actions. The

@@ -65,6 +65,7 @@ Shaper::Shaper (Model& m)
     for (auto& h : handles)
         addAndMakeVisible (*h);
 
+    enableLevelRange();
     refreshCaption();
 }
 
@@ -122,14 +123,20 @@ juce::Point<float> Shaper::handlePoint (Which which) const
     return {};
 }
 
-void Shaper::update()
+void Shaper::update (double nowMs)
 {
     const auto state = model.state();
     sweep = playheadOf (state);
     spanMs = state.msPerCycle;
     stagesMs = model.stageMs().total();
 
-    rebuildEnvelope();
+    /* The range first, so the audio is built on the one it will be drawn on. */
+    const auto& scope = model.scope();
+    const auto seen = [&scope] (int column) { return scope.isSeen (column); };
+    followLevel (ni::ui::plot::peak ({ scope.data.data(), Scope::stride, scope.count },
+                                     { Scope::dryLo, Scope::dryHi, Scope::wetLo, Scope::wetHi }, seen),
+                 nowMs);
+    rebuildEnvelope (scope);
     rebuildShape();
     refreshCaption();
     layoutHandles();
@@ -139,8 +146,13 @@ void Shaper::update()
 void Shaper::resized()
 {
     rebuildShape();
-    rebuildEnvelope();
+    rebuildEnvelope (model.scope());
     layoutHandles();
+}
+
+void Shaper::levelChanged()
+{
+    rebuildEnvelope (model.scope());
 }
 
 void Shaper::layoutHandles()
@@ -179,20 +191,19 @@ void Shaper::rebuildShape()
 }
 
 /*
- * WHAT HAPPENED: the input and output as min/max bands, and the measured gain
- * as an outline -- the DEEPEST duck behind each pixel, the capture's own
- * minimum rule, because averaging would report a duck nobody heard. A column
- * the sweep has not reached is a gap, so a picture still filling reads as
- * unfinished.
+ * WHAT HAPPENED: the input and output as min/max bands on the level range,
+ * and the measured gain, on its own scale, as an outline -- the DEEPEST duck
+ * behind each pixel, the capture's own minimum rule, because averaging would
+ * report a duck nobody heard. A column the sweep has not reached is a gap, so
+ * a picture still filling reads as unfinished.
  */
-void Shaper::rebuildEnvelope()
+void Shaper::rebuildEnvelope (const Scope& scope)
 {
-    const auto& scope = model.scope();
     quiet = ! hasInput (scope);
 
     const ni::ui::plot::Capture capture { scope.data.data(), Scope::stride, scope.count };
     const ni::ui::plot::BandGeometry geometry { ni::ui::plot::inset, std::max (1, juce::roundToInt (plotWidth())),
-                                                top(), bottom() };
+                                                top(), bottom(), levelRange().fullScale() };
     const auto seen = [&scope] (int column) { return scope.isSeen (column); };
     ni::ui::plot::band (dryBand, capture, Scope::dryLo, Scope::dryHi, geometry, seen);
     ni::ui::plot::band (wetBand, capture, Scope::wetLo, Scope::wetHi, geometry, seen);

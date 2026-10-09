@@ -107,7 +107,8 @@ void band (juce::Path& out, const Capture& cap, int loIndex, int hiIndex, const 
 
     const float mid = (geom.top + geom.bottom) * 0.5f;
     const float half = (geom.bottom - geom.top) * 0.5f;
-    const auto y = [mid, half] (float v) { return mid - half * juce::jlimit (-1.0f, 1.0f, v); };
+    const float scale = geom.fullScale > 0.0f ? 1.0f / geom.fullScale : 1.0f;
+    const auto y = [mid, half, scale] (float v) { return mid - half * juce::jlimit (-1.0f, 1.0f, v * scale); };
 
     /*
      * RUNS OF DRAWN PIXELS, each its own closed sub-path, so a gap is a gap
@@ -149,6 +150,131 @@ void band (juce::Path& out, const Capture& cap, int loIndex, int hiIndex, const 
         }
         out.closeSubPath();
     }
+}
+
+/* --------------------------------------------------------------- level -- */
+
+float peak (const Capture& cap, std::initializer_list<int> fields, const std::function<bool (int)>& seen)
+{
+    float out = 0.0f;
+    if (cap.data == nullptr)
+        return out;
+    for (int i = 0; i < cap.count; ++i)
+    {
+        if (seen && ! seen (i))
+            continue;
+        const float* column = cap.data + (std::ptrdiff_t) i * cap.stride;
+        for (const int f : fields)
+            if (f >= 0 && f < cap.stride)
+                out = juce::jmax (out, std::abs (column[f]));
+    }
+    return out;
+}
+
+namespace
+{
+/* No level at all is lower than any rung. */
+constexpr float silenceDb = -1000.0f;
+
+float toDb (float level)
+{
+    return level > 0.0f && std::isfinite (level) ? 20.0f * std::log10 (level) : silenceDb;
+}
+} // namespace
+
+float LevelRange::targetFor (float peakLevel)
+{
+    return juce::jlimit (floorDb, ceilingDb, toDb (peakLevel) + headroomDb);
+}
+
+/*
+ * THE WINDOW'S PEAK IN BUCKETS: a quarter second each, the loudest peak in
+ * it, keyed by which quarter second of the clock it is. The window is the
+ * buckets of the last two seconds, so its peak is found without keeping
+ * every frame's -- and a bucket from a lap ago is recognised by its key and
+ * started again rather than read.
+ */
+void LevelRange::record (float peakDb, double nowMs)
+{
+    latest = (long long) std::floor (nowMs / bucketMs);
+    const auto slot = (std::size_t) (((latest % buckets) + buckets) % buckets);
+    if (heldIn[slot] != latest)
+    {
+        heldIn[slot] = latest;
+        held[slot] = silenceDb;
+    }
+    held[slot] = juce::jmax (held[slot], peakDb);
+}
+
+float LevelRange::windowPeakDb() const
+{
+    float out = silenceDb;
+    for (std::size_t i = 0; i < held.size(); ++i)
+        if (heldIn[i] > latest - buckets && heldIn[i] <= latest)
+            out = juce::jmax (out, held[i]);
+    return out;
+}
+
+/*
+ * ONE FILTER, TWO SPEEDS: the range glides towards headroomDb over the
+ * window's peak, quickly when that is above it and slowly when below, and
+ * lands on it once within a hundredth of a decibel, so material that keeps
+ * the window's peak where it is keeps the range exactly still. The hold is
+ * the window's: a peak keeps the target up for two seconds after it.
+ */
+bool LevelRange::follow (float peakLevel, double nowMs)
+{
+    const float before = db();
+
+    if (! started)
+    {
+        /* The first frame lands on its target: a well opened on quiet
+         * material is zoomed already, not zooming. */
+        held.fill (silenceDb);
+        heldIn.fill (std::numeric_limits<long long>::min());
+        record (toDb (peakLevel), nowMs);
+        started = true;
+        current = targetFor (peakLevel);
+        lastMs = nowMs;
+        return ! juce::exactlyEqual (before, db());
+    }
+
+    record (toDb (peakLevel), nowMs);
+    /* A clock that stands still moves nothing; one that jumps -- an editor
+     * hidden for a minute -- moves at most a second's worth. */
+    const double dt = juce::jlimit (0.0, 1000.0, nowMs - lastMs);
+    lastMs = nowMs;
+
+    constexpr float landed = 0.01f;
+    const float target = juce::jlimit (floorDb, ceilingDb, windowPeakDb() + headroomDb);
+    const double tau = target > current ? attackMs : releaseMs;
+    current = target + (current - target) * (float) std::exp (-dt / tau);
+    if (std::abs (current - target) < landed)
+        current = target;
+    return ! juce::exactlyEqual (before, db());
+}
+
+void LevelRange::setFixed (bool on)
+{
+    fixed = on;
+}
+
+float LevelRange::fullScale() const
+{
+    return std::pow (10.0f, db() / 20.0f);
+}
+
+juce::String LevelRange::label() const
+{
+    const int whole = juce::roundToInt (db());
+    /* U+2212, the minus sign, as the type has it; never a hyphen. */
+    auto text = whole < 0   ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")) + juce::String (-whole)
+              : whole > 0 ? "+" + juce::String (whole)
+                          : juce::String ("0");
+    text << " dB";
+    if (fixed)
+        text << " fixed";
+    return text;
 }
 
 /* --------------------------------------------------------------- ruler -- */
@@ -294,18 +420,60 @@ void PlotWell::paint (juce::Graphics& g)
         paintPlot (g);
     }
 
+    g.setFont (uv::type::hint());
+    g.setColour (c::inkMuted);
     if (caption.isNotEmpty())
-    {
-        g.setFont (uv::type::hint());
-        g.setColour (c::inkMuted);
         g.drawSingleLineText (caption, (int) plot::inset, (int) captionBaseline);
-    }
+
+    /* The range, on the caption's baseline at the far end: a label of the
+     * trace's top edge, which is just under it. */
+    if (levelShown)
+        g.drawSingleLineText (level.label(), juce::roundToInt ((float) getWidth() - plot::inset - levelInset),
+                              (int) captionBaseline, juce::Justification::right);
+}
+
+void PlotWell::enableLevelRange (float labelInset)
+{
+    levelShown = true;
+    levelInset = juce::jmax (0.0f, labelInset);
+    invalidateAccessibilityHandler();
+    repaint();
+}
+
+bool PlotWell::followLevel (float peakLevel, double nowMs)
+{
+    /* The label is whole decibels: compared as those, so a frame builds no
+     * text it would only throw away. */
+    const int shown = juce::roundToInt (level.db());
+    const bool moved = level.follow (peakLevel, nowMs);
+    if (levelShown && juce::roundToInt (level.db()) != shown)
+        repaint (0, 0, getWidth(), (int) plot::captionH);
+    return moved;
+}
+
+void PlotWell::setLevelFixed (bool on)
+{
+    if (on == level.isFixed())
+        return;
+    level.setFixed (on);
+    levelChanged();
+    repaint();
+}
+
+void PlotWell::mouseDoubleClick (const juce::MouseEvent&)
+{
+    if (levelShown)
+        setLevelFixed (! level.isFixed());
 }
 
 std::unique_ptr<juce::AccessibilityHandler> PlotWell::createAccessibilityHandler()
 {
-    /* A picture: the caption names it, the info line (setInfo) describes it. */
-    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::image);
+    /* A picture: the caption names it, the info line (setInfo) describes it.
+     * One with a level range takes a press, which is the double-click. */
+    juce::AccessibilityActions actions;
+    if (levelShown)
+        actions.addAction (juce::AccessibilityActionType::press, [this] { setLevelFixed (! level.isFixed()); });
+    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::image, std::move (actions));
 }
 
 } // namespace ni::ui

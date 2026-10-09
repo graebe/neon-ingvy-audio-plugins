@@ -34,7 +34,13 @@ build-windows-*/
 # never tracked: the submodule's own checkout and the SDKs it downloaded into
 # it, vite's output in each plugin's resources/web, and the web editors'
 # harness copies. Ignored here so that none of it can be committed back by
-# accident; delete the directories to tidy such a checkout.
+# accident; delete the directories to tidy such a checkout. The web editors
+# are named one by one -- the four products that had one -- because a
+# wildcard over plugins/*/ui/ also hides the native kit, plugins/_shared/ui,
+# and a new file there would never be committed.
 external/iPlug2/
 plugins/*/resources/
-plugins/*/ui/
+plugins/trance-gate/ui/
+plugins/side-chain/ui/
+plugins/spectrogram/ui/
+plugins/listen-in/ui/

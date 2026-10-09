@@ -37,9 +37,29 @@
  * plot::captionH), and a plot that lines up with a row of pads lines up the
  * same way it did. Nothing is stretched, so a caption keeps its shape.
  *
+ * THE LEVEL RANGE OF AN AUDIO TRACE. A trace drawn on a full-scale axis
+ * shows ordinary material -- peaks at -18 to -12 dBFS -- as a sliver a
+ * quarter of the well high or less. A well that draws one can opt in
+ * (enableLevelRange) and its trace is then drawn on a range that follows the
+ * material, plot::LevelRange: 3 dB over the loudest level the plot has shown
+ * in the last two seconds, never below -48 dBFS, as a filtered level in dB
+ * rather than a ladder of steps. Louder material pulls it up in a fast glide
+ * (a 35 ms time constant), so a sudden peak can pass the top edge for a few
+ * frames and is clipped there, inside the well, until the range has caught
+ * up; quieter material lets it down only once the two seconds have passed,
+ * and then slowly (1.5 s), so the picture breathes with the music rather
+ * than pumping with it, and steady material holds it still. ONLY THE AUDIO
+ * ZOOMS: a gain, a gate or an envelope drawn over the trace stays on its
+ * true scale, because it is a gain and not a level. The range is always on
+ * show, in whole decibels, right-aligned in the caption band over the
+ * trace's top edge ("-12 dB"), in the hint style the ruler's labels use, and
+ * a double-click on the well holds the trace at full scale ("0 dB fixed")
+ * until the next one -- for as long as the editor is open.
+ *
  * A well is solid to the Ground's rings (WaveSource.h). It takes the pointer
  * so the hint bar can say what the plot shows (setInfo on the well), and to
- * assistive technology it is an image named by its caption.
+ * assistive technology it is an image named by its caption; one with a level
+ * range also takes a press there, which is the double-click.
  */
 #pragma once
 
@@ -47,7 +67,9 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
 #include <functional>
+#include <initializer_list>
 #include <vector>
 
 namespace ni::ui
@@ -93,13 +115,15 @@ struct Capture
 };
 
 /* Where a band is drawn: `width` whole pixels from x0, mid-way between top
- * and bottom. */
+ * and bottom, with `fullScale` -- a level, 1 for 0 dBFS -- at the edges
+ * (LevelRange::fullScale for a well that follows its material). */
 struct BandGeometry
 {
     float x0 = 0.0f;
     int width = 0;
     float top = 0.0f;
     float bottom = 0.0f;
+    float fullScale = 1.0f;
 };
 
 /*
@@ -121,6 +145,76 @@ struct BandGeometry
  */
 void band (juce::Path& out, const Capture&, int loIndex, int hiIndex, const BandGeometry&,
            const std::function<bool (int column)>& seen = {});
+
+/* --------------------------------------------------------------- level -- */
+
+/*
+ * The largest magnitude in the given fields of every column `seen` accepts --
+ * the level a band of those fields reaches -- or 0 for none.
+ */
+float peak (const Capture&, std::initializer_list<int> fields,
+            const std::function<bool (int column)>& seen = {});
+
+/*
+ * THE RANGE AN AUDIO TRACE IS DRAWN ON, following the material (Plot.h has
+ * the rule). follow() is the frame: the peak of what the trace shows now and
+ * the frame's time, in ms of any monotonic clock -- a test brings its own.
+ * Message thread; a fixed set of buckets, so it allocates nothing.
+ */
+class LevelRange
+{
+public:
+    /* The lowest range, the room kept over the window's peak (and so the
+     * highest range, over a full-scale peak), and the window a lower range
+     * waits out. */
+    static constexpr float floorDb = -48.0f;
+    static constexpr float headroomDb = 3.0f;
+    static constexpr float ceilingDb = headroomDb;
+    static constexpr double windowMs = 2000.0;
+    /* The glides' time constants. Up: a jump to full scale from -24 dBFS is
+     * inside the edge in under 80 ms, from the floor in about 100 -- five or
+     * six frames at 60 Hz, enough to read as a movement and not a cut. Down:
+     * two thirds of the way in 1.5 s, so a quieter passage is eased into. */
+    static constexpr double attackMs = 35.0;
+    static constexpr double releaseMs = 1500.0;
+
+    /* Where a peak (a level, 1 for 0 dBFS) puts the range: headroomDb over
+     * it, between floorDb and ceilingDb. */
+    static float targetFor (float peakLevel);
+
+    /* One frame. True when the range drawn moved, and the trace with it. */
+    bool follow (float peakLevel, double nowMs);
+
+    /* Full scale, whatever the material: double-click's view. The range
+     * keeps following underneath, so turning it off lands where it would be. */
+    void setFixed (bool);
+    bool isFixed() const noexcept { return fixed; }
+
+    /* The edges, in dBFS (floorDb to ceilingDb), and as the level band()
+     * divides by. */
+    float db() const noexcept { return fixed ? 0.0f : current; }
+    float fullScale() const;
+
+    /* What the well writes over the trace's top edge: "-12 dB", "+3 dB", or
+     * "0 dB fixed" -- the range rounded to whole decibels, with a true minus
+     * sign. */
+    juce::String label() const;
+
+private:
+    static constexpr double bucketMs = 250.0;
+    static constexpr int buckets = (int) (windowMs / bucketMs);
+
+    void record (float peakDb, double nowMs);
+    float windowPeakDb() const;
+
+    std::array<float, buckets> held {};
+    std::array<long long, buckets> heldIn {};
+    long long latest = 0;
+    float current = 0.0f;
+    double lastMs = 0.0;
+    bool started = false;
+    bool fixed = false;
+};
 
 /* --------------------------------------------------------------- ruler -- */
 
@@ -184,7 +278,20 @@ public:
     /* The x of a fraction 0..1 of the content's width, clamped. */
     float xAt (float fraction) const;
 
+    /*
+     * THE LEVEL RANGE, for a well that draws an audio trace: its label over
+     * the trace's top edge, and the double-click (and the accessible press)
+     * that holds it at full scale. `labelInset` keeps the label clear of
+     * whatever is laid over the well's right edge -- the Trance Gate's tabs.
+     */
+    void enableLevelRange (float labelInset = 0.0f);
+    bool hasLevelRange() const noexcept { return levelShown; }
+    const plot::LevelRange& levelRange() const noexcept { return level; }
+    /* Full scale on or off, as a double-click would set it. */
+    void setLevelFixed (bool);
+
     void paint (juce::Graphics&) final;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 protected:
@@ -192,8 +299,20 @@ protected:
      * pixels. */
     virtual void paintPlot (juce::Graphics&) {}
 
+    /* One frame of the trace's peak: true when its range moved, and the
+     * trace must be built again on levelRange().fullScale(). Repaints the
+     * label when it changes. */
+    bool followLevel (float peakLevel, double nowMs);
+
+    /* The range was set from outside a frame (setLevelFixed): build the
+     * trace again. The well repaints after. */
+    virtual void levelChanged() {}
+
 private:
     juce::String caption;
+    plot::LevelRange level;
+    bool levelShown = false;
+    float levelInset = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE (PlotWell)
 };
