@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Torben Gräber
 #
 # The one entry point to the tests: the quick tier while you work, the full
-# tier before you call it done. docs/tech/testing.md has the whole picture.
+# tier before you call it done, and one product's run for its release.
+# docs/tech/testing.md has the whole picture.
 #
 #   scripts/test.sh quick [--build <dir>]
 #       Builds the test programs (cmake --target ni_tests: no plugin bundle)
@@ -29,6 +30,17 @@
 #       ships. build/ by default. --no-coverage skips the coverage stage, for
 #       the gates between steps; the final gate runs it.
 #
+#   scripts/test.sh product <product> [--build <dir>]
+#       One product, as its release builds and tests it: its bundle
+#       (<Bundle>_VST3) and the test programs of that product and the shared
+#       ones (ni_tests_<product>, ni_tests_shared: cmake/NiTest.cmake), then
+#       `ctest -L '^product:(<product>|shared)$'` over the quick and full
+#       tiers -- no other product's tests, no coverage -- then the validators
+#       over that one bundle. <product> is the versions.json key (trance-gate,
+#       side-chain ...). Configured with the release preset, as the full tier
+#       is; build/ by default. A failing test of another product never stops
+#       this one's release.
+#
 #   --build <dir> is the build directory: one per person or agent building at
 #   the same time, so no two share a tree. One that exists is used as it was
 #   configured.
@@ -53,19 +65,25 @@ usage() {
 }
 
 tier="${1:-}"
-[ "$tier" = quick ] || [ "$tier" = full ] || usage
+case "$tier" in quick|full|product) ;; *) usage ;; esac
 shift
+name=""
+if [ "$tier" = product ]; then
+    [ $# -ge 1 ] || usage
+    name=$1
+    shift
+fi
 # The preset a new build directory is configured with, and where it is.
 case "$tier" in
-    quick) preset=dev;     BUILD="$ROOT/build-dev" ;;
-    full)  preset=release; BUILD="$ROOT/build" ;;
+    quick)        preset=dev;     BUILD="$ROOT/build-dev" ;;
+    full|product) preset=release; BUILD="$ROOT/build" ;;
 esac
 bundles=""
 coverage=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --build) [ $# -ge 2 ] || usage; mkdir -p "$2"; BUILD="$(cd "$2" && pwd)"; shift 2 ;;
-        --bundles) [ $# -ge 2 ] || usage; bundles="$(cd "$2" && pwd)"; shift 2 ;;
+        --bundles) [ $# -ge 2 ] && [ "$tier" != product ] || usage; bundles="$(cd "$2" && pwd)"; shift 2 ;;
         --no-coverage) [ "$tier" = full ] || usage; coverage=0; shift ;;
         *) usage ;;
     esac
@@ -77,6 +95,13 @@ bundles="${bundles:-$BUILD/out}"
 # shellcheck source=./timing.sh
 . "$ROOT/scripts/timing.sh"
 export NI_TIMING_PRESET="$preset"
+
+# The bundle a product ships, as its release names it (scripts/release.mjs):
+# a product with no plugin, or no such product, stops here.
+bundle=""
+if [ "$tier" = product ]; then
+    bundle="$(node "$ROOT/scripts/release.mjs" bundle "$name")"
+fi
 
 jobs="$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
 stage() { printf '==> %s\n' "$*"; }
@@ -119,11 +144,31 @@ full() {
         stage "coverage skipped (--no-coverage): the final gate runs it"
     fi
 
-    local tools="$BUILD/validators"
+    validators "validators over $bundles" "$bundles"
+}
+
+# The product's bundle and its tests, and nothing of another product's: a
+# build of only those targets, and a ctest of only those labels. Every test
+# carries `full`, so the tier needs no -L of its own; coverage and e2e are the
+# kinds a product's run leaves out.
+product() {
+    timed "build $bundle and the $name and shared tests" --build "$BUILD" -- \
+        quietly "build-$name" cmake --build "$BUILD" \
+            --target "${bundle}_VST3" "ni_tests_$name" ni_tests_shared -j"$jobs"
+    timed "ctest $name and shared" -- ctest --test-dir "$BUILD" \
+        -L "^product:($name|shared)\$" -LE '^(coverage|e2e)$' -j"$jobs" --output-on-failure
+    validators "validators over $bundle" "$BUILD/out" "$bundle"
+}
+
+# The validators, fetched into the build directory once, over <dir> -- every
+# bundle in it, or the ones named.
+validators() {
+    local stage_name=$1 tools="$BUILD/validators"
+    shift
     if ! "$ROOT/scripts/validate-plugins.sh" fetched "$tools"; then
         timed "fetch the validators" -- "$ROOT/scripts/validate-plugins.sh" fetch "$tools"
     fi
-    timed "validators over $bundles" -- "$ROOT/scripts/validate-plugins.sh" run "$tools" "$bundles"
+    timed "$stage_name" -- "$ROOT/scripts/validate-plugins.sh" run "$tools" "$@"
 }
 
 main() {
@@ -136,7 +181,10 @@ main() {
             quietly configure cmake --preset "$preset" -B "$BUILD"
     fi
     "$tier"
-    if [ "$tier" = full ] && [ "$coverage" = 0 ]; then
+    if [ "$tier" = product ]; then
+        printf '\n%s green in %ss: %s.vst3 and the %s and shared tests\n' \
+            "$name" "$(( SECONDS - t0 ))" "$bundle" "$name"
+    elif [ "$tier" = full ] && [ "$coverage" = 0 ]; then
         printf '\nfull tier green in %ss, without coverage\n' "$(( SECONDS - t0 ))"
     else
         printf '\n%s tier green in %ss\n' "$tier" "$(( SECONDS - t0 ))"

@@ -13,6 +13,11 @@
  *   node scripts/release.mjs release-json <tag> <owner/repo> [path]
  *       Records a published Schwung module release in release.json.
  *
+ *   node scripts/release.mjs bundle <product>
+ *       Prints the bundle a product ships (NITranceGate for trance-gate), as
+ *       `scripts/test.sh product` builds and validates it. Exits non-zero for
+ *       a product with no plugin.
+ *
  * WHY THIS IS A SCRIPT AND NOT WORKFLOW SHELL. Both release workflows used to
  * parse the tag inline, and they parsed it differently: release-plugins.yml
  * kept the date scheme's leading "v" and release-schwung.yml stripped it with
@@ -176,6 +181,14 @@ function main([cmd, ...args]) {
     for (const [k, v] of Object.entries(r)) console.log(`${k}=${v}`);
     return;
   }
+  if (cmd === 'bundle' && args.length === 1) {
+    if (!Object.hasOwn(readJson(ROOT, 'versions.json'), args[0]) || args[0].startsWith('__'))
+      throw new Error(`${args[0]} is not a product in versions.json`);
+    const bundle = bundleOf(ROOT, args[0]);
+    if (!bundle) throw new Error(`${args[0]} has no plugin in plugins/${args[0]}`);
+    console.log(bundle);
+    return;
+  }
   if (cmd === 'release-json' && (args.length === 2 || args.length === 3)) {
     const [tag, repo, path = join(ROOT, 'release.json')] = args;
     const r = resolve(tag);
@@ -187,7 +200,8 @@ function main([cmd, ...args]) {
     return;
   }
   console.error('usage: release.mjs resolve <tag>\n' +
-                '       release.mjs release-json <tag> <owner/repo> [path]');
+                '       release.mjs release-json <tag> <owner/repo> [path]\n' +
+                '       release.mjs bundle <product>');
   process.exit(2);
 }
 

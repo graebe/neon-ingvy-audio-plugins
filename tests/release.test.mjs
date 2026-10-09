@@ -21,6 +21,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import {
   ROOT, resolve, readModuleEnv, updateReleaseJson, schwungVersion, LEGACY_TOP_LEVEL, bundleOf, ZIP_OS,
 } from '../scripts/release.mjs';
@@ -276,4 +277,17 @@ test('release-plugins.yml stages with the script, on macOS only, and asks for no
   assert.doesNotMatch(y, /zip_windows|zip_linux/, 'release-plugins.yml still names a Windows or Linux zip');
   assert.doesNotMatch(y, /\.component\b|\.clap\b|web\/index\.html|ui\.js\.LICENSE/,
     'release-plugins.yml still names a format or an editor no bundle has');
+});
+
+/*
+ * A PRODUCT'S BUNDLE, AS `scripts/test.sh product` BUILDS AND VALIDATES IT:
+ * the bundleOf the staging reads, so the run and the release name one bundle,
+ * and a product with no plugin stops the run before it builds anything.
+ */
+test('release.mjs names the bundle of every plugin, and of nothing else', () => {
+  const bundle = (p) => execFileSync(process.execPath, [join(ROOT, 'scripts', 'release.mjs'), 'bundle', p],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  for (const p of PLUGINS) assert.equal(bundle(p), bundleOf(ROOT, p));
+  assert.throws(() => bundle('audio-bus'), /has no plugin/);
+  assert.throws(() => bundle('..'), /not a product/);
 });
