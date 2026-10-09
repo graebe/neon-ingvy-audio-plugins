@@ -51,6 +51,7 @@ members = [
     "engines/side-chain/crates/sc-core",      # the DSP
     "engines/side-chain/crates/sc-capi",      # the C ABI -> the plugin
     "engines/side-chain/crates/sc-move",      # the Schwung vtable -> the module
+    "engines/side-chain/crates/sc-web",       # the C ABI as wasm -> the web editor's harness
     # NI Chord-Detector: one core, one wrapper. No Move target yet (the
     # owner's call, 2026-10-06); the core keeps nothing that would stop one.
     "engines/chord-detector/crates/cd-core",  # what is sounding, and its name

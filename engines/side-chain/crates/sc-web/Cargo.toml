@@ -1,0 +1,16 @@
+[package]
+name = "sc-web"
+version = "2026.10.9+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The sc_core_* C ABI for the browser: NI Side-Chain's engine behind its web editor's development harness and end-to-end tests"
+publish.workspace = true
+
+[lib]
+name = "sc_web"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The C ABI the plugin links, without its `shell` feature, as on the Move.
+sc-capi = { path = "../sc-capi", default-features = false }

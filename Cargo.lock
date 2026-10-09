@@ -722,6 +722,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-web"
+version = "2026.10.9+1"
+dependencies = [
+ "sc-capi",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -131,7 +131,7 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 | `tg-core`, `tg-capi`, `tg-move`, `tg-web` | `engines/trance-gate` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `spectro-core`, `spectro-recv`, `spectro-capi` | `engines/spectro` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `bus-core`, `bus-capi` | `engines/audio-bus` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
-| `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber, with a ported part — see below |
+| `sc-core`, `sc-capi`, `sc-move`, `sc-web` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `cd-core`, `cd-capi` | `engines/chord-detector` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `bc-core`, `bc-capi`, `bc-move` | `engines/bit-crusher` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `vz-core`, `vz-capi`, `vz-move` | `engines/vocalize` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
