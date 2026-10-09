@@ -12,7 +12,9 @@ and the C ABI in front of it.
 */
 
 use super::*;
+use assert_no_alloc::{assert_no_alloc, violation_count};
 use bus_core::Writer;
+use bus_capi::{abus_reader_close, abus_reader_open, ABUS_OK};
 use std::ptr::null_mut;
 
 const SR: u32 = 48_000;
@@ -246,7 +248,6 @@ fn a_bus_at_another_rate_is_read_and_not_drawn() {
 
 #[test]
 fn the_c_abi_files_through_a_reader_and_survives_nulls() {
-    use bus_capi::{abus_reader_close, abus_reader_open, ABUS_OK};
     unsafe {
         /* Nulls everywhere are nothing, not a crash. */
         sc_kick_destroy(null_mut());
@@ -286,6 +287,73 @@ fn the_c_abi_files_through_a_reader_and_survives_nulls() {
 
         abus_reader_close(r);
         abus_reader_close(r2);
+        sc_kick_destroy(k);
+    }
+}
+
+/* ---- the audio thread allocates nothing ----
+ *
+ * Asserted rather than claimed: sc_kick_note and sc_kick_drain run on the
+ * audio callback, here on a real bus through every path -- filed by timeline,
+ * waiting, by arrival, a loop, another rate. The guard is assert_no_alloc's,
+ * installed for this crate's tests in lib.rs; it watches only the thread inside
+ * the closure, and refuses frees too.
+ *
+ * In this binary, not one of its own: a second test binary compiles the whole
+ * crate again, unused, and cargo llvm-cov keeps whichever copy of a function
+ * it meets first -- the unused one, which read engine.rs as two-thirds
+ * untested (scripts/coverage.sh says more).
+ */
+
+/* Its own slot, clear of the ones above. */
+const SLOT_NO_ALLOC: u32 = 9;
+
+#[test]
+fn note_and_drain_allocate_nothing() {
+    let (mut writer, mut pusher) = Writer::claim(SLOT_NO_ALLOC, 48_000).expect("claim");
+    let k = sc_kick_create();
+    let mut r = std::ptr::null_mut();
+    unsafe {
+        sc_kick_prepare(k, 48_000);
+        assert_eq!(abus_reader_open(SLOT_NO_ALLOC, &mut r), ABUS_OK);
+    }
+    let block: Vec<f32> = (0..512 * 2).map(|i| (i as f32 * 0.01).sin()).collect();
+    let sweep: Vec<f32> = (0..512).map(|i| i as f32 / 512.0).collect();
+    let (mut kick, mut sw) = (vec![0f32; 1024], vec![0f32; 1024]);
+
+    assert_no_alloc(|| unsafe {
+        for b in 0..400i64 {
+            /* A loop every hundred blocks; the sender ahead every other block. */
+            let at = (b % 100) * 512;
+            if b % 2 == 0 {
+                pusher.push_at(&block, Some(at));
+            }
+            sc_kick_note(k, at, 1, sweep.as_ptr(), 512);
+            if b % 2 == 1 {
+                pusher.push_at(&block, Some(at));
+            }
+            while sc_kick_drain(k, r, kick.as_mut_ptr(), sw.as_mut_ptr(), 1024) == 1024 {}
+            core::hint::black_box(sc_kick_status(k));
+        }
+        /* Stopped: by arrival. */
+        for _ in 0..8 {
+            pusher.push(&block);
+            sc_kick_note(k, 0, 0, sweep.as_ptr(), 512);
+            sc_kick_drain(k, r, kick.as_mut_ptr(), sw.as_mut_ptr(), 1024);
+        }
+        /* Another rate, applied by the pusher. */
+        writer.set_sample_rate(44_100);
+        for _ in 0..4 {
+            pusher.push(&block);
+            sc_kick_drain(k, r, kick.as_mut_ptr(), sw.as_mut_ptr(), 1024);
+        }
+    });
+
+    let n = violation_count();
+    assert_eq!(n, 0, "the audio path allocated or freed {n} times");
+    unsafe {
+        assert_eq!(sc_kick_status(k), SC_KICK_OTHER_RATE);
+        abus_reader_close(r);
         sc_kick_destroy(k);
     }
 }
