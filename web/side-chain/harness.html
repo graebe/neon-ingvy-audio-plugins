@@ -1,0 +1,17 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Copyright (C) 2026 Torben Gräber -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NI Side-Chain — harness</title>
+  </head>
+  <body>
+    <!-- The same editor as web_ui.html, against a fake Move running the real
+         engine (src/harness/main.jsx). Development and e2e only: the build's
+         one input is web_ui.html, so this page never ships. -->
+    <div id="root"></div>
+    <script type="module" src="/src/harness/main.jsx"></script>
+  </body>
+</html>

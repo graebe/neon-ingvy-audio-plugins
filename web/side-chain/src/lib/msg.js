@@ -2,29 +2,24 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * This editor's message tags.
+ * This editor's vocabulary on the Move: its parameters, the chain key each one
+ * is, and the feeds it is drawn from.
  *
- * The shell's tags are the kit's (@ultraviolet/ui/shell), the same in every
- * plugin; the rest are this plugin's own vocabulary. tests/editor_tags.test.mjs
- * holds both to the C++.
+ * Plain JavaScript with no imports but the kit's shell tags, so `node --test`
+ * holds this table to the module's own declaration (test/bindings.test.mjs).
  */
 import { SHELL_MSG } from '@ultraviolet/ui/shell';
 
-/* EMsgTags in SideChain.h, after the shell's. Tags 0..14 are a parameter's own
- * display string, tagged with its index -- which is why this editor knows no
- * unit, precision or enum label. */
-export const MSG = {
-  ...SHELL_MSG,
-  /* plugin -> UI */
-  uiState: 64,
-  params: 65,
-  scope: 66,
-  stageMs: 67,
-  buses: 68,
-};
-
-/* The parameter indices, in SideChain.h's EParams order -- which is the engine's
- * sc_param_t order, so a host index is an engine index. */
+/*
+ * THE PARAMETER INDICES ARE THE ENGINE'S, in sc-core's `Param` order -- so the
+ * `params` feed, which lists the engine's values in that order, is read by the
+ * same index the controls use, and no second table stands between them.
+ *
+ * `Param` is append-only and the two the Move does not have, Threshold and
+ * Lockout, are its last two (13 and 14). So the Move's parameters are a PREFIX
+ * of the engine's, and this table simply stops before them: there is no index
+ * for a control the device cannot have, rather than an index bound to nothing.
+ */
 export const P = {
   source: 0,
   rate: 1,
@@ -39,65 +34,39 @@ export const P = {
   note: 10,
   midiMode: 11,
   velSens: 12,
-  threshold: 13,
-  lockout: 14,
 };
-export const NUM_PARAMS = 15;
+export const NUM_PARAMS = 13;
 
 /*
- * THE PARAMETER RANGES, MIRRORED FROM Params.cpp's InitDouble CALLS.
- *
- * A duplicated range is exactly the kind of thing that drifts silently -- the
- * handle would land in the wrong place and look like a drawing bug -- so
- * `test/ranges.test.mjs` parses Params.cpp and fails if these disagree.
- *
- * They are needed because a host parameter is a 0..1 number and the drawing is
- * in percent of the cycle. The `params` readout carries the engine's own values
- * and is what the SHAPE is drawn from; these are for the other direction, where
- * a pointer position has to become a normalised value to send back.
+ * THE BINDING TABLE: editor index -> the module's chain_params key, which is
+ * also sc-core's `Param::key()`. The transport writes and listens by these.
  */
-export const RANGES = {
-  /* BOTH WAYS. Negative is an early sidechain; see Params.cpp, which this
-   * mirrors and which test/ranges.test.mjs parses to keep the two in step. */
-  [P.delay]: [-100, 100],
-  [P.attack]: [0, 200],
-  [P.hold]: [0, 200],
-  [P.release]: [0, 200],
-  [P.depth]: [0, 100],
-  [P.velSens]: [0, 100],
-  [P.threshold]: [-60, 0],
-  [P.lockout]: [0, 200],
-};
+export const KEYS = [
+  'source', 'rate', 'time_mode', 'delay', 'attack', 'hold', 'release',
+  'depth', 'curve', 'channel', 'trigger_note', 'midi_mode', 'vel_sens',
+];
 
-/** A value in a parameter's own unit -> the 0..1 a host wants. */
-export const toNorm = (idx, v) => {
-  const [lo, hi] = RANGES[idx] ?? [0, 1];
-  if (hi === lo) return 0;
-  return Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
-};
-
-/** And back. */
-export const fromNorm = (idx, n) => {
-  const [lo, hi] = RANGES[idx] ?? [0, 1];
-  return lo + (hi - lo) * Math.min(1, Math.max(0, n));
-};
-
-/**
- * THE SHAPE AS THE HOST'S PARAMETERS HOLD IT, for the duration of a drag.
- *
- * The drawing normally follows the engine's `params` readout, which arrives on
- * the next idle tick -- so a handle being dragged trailed the pointer by up to
- * a tick. The normalised values are written locally the moment the pointer
- * moves; converted back through the same ranges, they put the handle under it.
- * `base` supplies what the handles do not move (curve, cycle).
+/*
+ * The editor's own message tags. The shell's are the kit's; these three are
+ * what the plugin's editor listened on, kept so the editor reads the same
+ * readouts by the same tags whichever host is on the other end.
  */
-export function shapeFromNorm(value, base) {
-  return {
-    ...base,
-    delay: fromNorm(P.delay, value(P.delay)),
-    attack: fromNorm(P.attack, value(P.attack)),
-    hold: fromNorm(P.hold, value(P.hold)),
-    release: fromNorm(P.release, value(P.release)),
-    depth: fromNorm(P.depth, value(P.depth)),
-  };
-}
+export const MSG = {
+  ...SHELL_MSG,
+  uiState: 64,
+  params: 65,
+  stageMs: 67,
+};
+
+/*
+ * THE FEEDS: the `extra_keys` of the module's trailing `web_ui` declaration
+ * (sc-move/src/params.rs), each to the tag the editor listens on. The manager
+ * re-reads them after any write and on its heartbeat, and sends them when
+ * they moved -- the only way a value the engine changes by itself, such as
+ * the playhead, reaches the page.
+ */
+export const FEEDS = {
+  ui: MSG.uiState,
+  params: MSG.params,
+  stage_ms: MSG.stageMs,
+};

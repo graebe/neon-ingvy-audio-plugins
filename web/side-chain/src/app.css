@@ -2,15 +2,15 @@
 /* Copyright (C) 2026 Torben Gräber */
 
 /*
- * NI Side-Chain's LAYOUT.
+ * NI Side-Chain's LAYOUT on the Move.
  *
  * ONLY WHERE THINGS SIT, and in normal flow from the top. What a control IS
- * lives in @ultraviolet/ui's components.css, and the window -- its size,
- * padding, transparent ground and the Hint bar at the bottom edge -- is the
- * kit's EditorFrame. Every colour is a var(); the token guard fails the build
- * on a literal.
+ * lives in @ultraviolet/ui's components.css, and the window -- its padding,
+ * transparent ground and the Hint bar at the bottom edge -- is the kit's
+ * EditorFrame. Every colour is a var().
  *
- * Top to bottom inside the 32px window padding, all on the 4px grid:
+ * Top to bottom inside the 32px window padding, all on the 4px grid, as the
+ * native editor (SideChainEditor.h) and the artboard place them:
  *
  *   16   the state line
  *    8   space-2
@@ -18,14 +18,53 @@
  *   24   space-6
  *  104   the knobs: label, 48px disc, readout -- not just the disc
  *   20
- *   28   the trigger's selects
+ *   28   the trigger's row, at 464 in the window
  *    8   space-2
- *   28   the shape's selects
+ *   28   the shape's row, at 500
  *        spare room, then the hint bar on the bottom edge
  *
- * DESIGN_W / DESIGN_H in App.jsx and PLUG_WIDTH / PLUG_HEIGHT in config.h have
- * to agree (760 x 604).
+ * DESIGN_W / DESIGN_H in App.jsx are the native designWidth / designHeight
+ * (760 x 604).
  */
+
+/* ------------------------------------------------------------ the page -- */
+
+/*
+ * A DOCUMENT IN AN IFRAME, NOT A PLUGIN WINDOW. The kit's tokens.css sets
+ * `html, body { height: 100% }`, which is right where the page IS the window.
+ * Here the manager sizes the iframe from the height the page reports, which
+ * its bridge measures as the BODY's scrollHeight -- and a body pinned to the
+ * frame's height reports the frame's height straight back, so the frame could
+ * only ever grow. The body takes its content's height instead: the .fit box.
+ */
+html,
+body {
+  height: auto;
+}
+
+/*
+ * The window's footprint at its scale (App.jsx). A transform does not shrink
+ * the box it scales, so the 604px layout box overhangs this one whenever the
+ * scale is below 1; clipped, it reaches neither the reported height nor the
+ * page's width.
+ */
+.fit {
+  overflow: hidden;
+  overflow: clip;
+}
+
+/* What the page says when there is no Move to talk to (boot.jsx). */
+.no-bridge {
+  max-width: 480px;
+  padding: var(--s8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.no-bridge .t-hint {
+  color: var(--ink-muted);
+}
 
 /* ------------------------------------------------------------ state line -- */
 
@@ -55,19 +94,27 @@
 
 /* ---------------------------------------------------------------- plot -- */
 
-/* ONE PLOT: the shape and the audio it shaped, on one axis. */
 .plot-slot {
   height: 260px;
   margin-bottom: var(--s6);
 }
 
-/* The handles read as grabbable before they are grabbed, and do not animate:
- * a handle that glides to its new position is one you cannot aim at. */
+/*
+ * The handles read as grabbable before they are grabbed, and do not animate:
+ * a handle that glides to its new position is one you cannot aim at. Under
+ * the pointer or with visible focus a handle lights uv with the arc's glow, as
+ * the native Handle paints it.
+ *
+ * `touch-action: none`, as the kit's knob has it: on a phone a drag that
+ * starts on a handle is the handle's, not a scroll of the manager's page.
+ */
 .shaper .handle {
   cursor: ew-resize;
+  touch-action: none;
 }
 
-.shaper .handle:hover circle:last-child {
+.shaper .handle:hover circle:last-child,
+.shaper .handle:focus-visible circle:last-child {
   fill: var(--uv);
   filter: var(--glow-arc);
 }
@@ -76,9 +123,9 @@
 
 /*
  * THE KNOBS SIT ON THE WINDOW, not in a panel: this window has one function,
- * and "a window with a single function has no panel at all". 104 tall is the
- * kit's knob-card (label, disc, readout), written down because this is the
- * one place that can be wrong about it.
+ * and "a window with a single function has no panel at all". They share the
+ * row's width equally (the kit's card is flex 1), as the native row does:
+ * 120px each on Cycle, 66 with MIDI's three.
  */
 .knob-row {
   flex: none;
@@ -89,7 +136,7 @@
   gap: var(--s6);
 }
 
-/* One row of 28px selects; the second follows the first at space-2. */
+/* One row of 28px controls; the second follows the first at space-2. */
 .selects-row {
   height: var(--control-h);
   display: flex;
@@ -99,8 +146,4 @@
 
 .selects-row + .selects-row {
   margin-top: var(--s2);
-}
-
-.shaper .handle:focus-visible circle:last-child {
-  fill: var(--uv);
 }

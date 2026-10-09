@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Torben Gräber
 
-/* The import order is the cascade: tokens, then what a component IS, then
- * where this editor puts it. */
-import '@ultraviolet/ui/tokens.css';
-import '@ultraviolet/ui/components.css';
-import './app.css';
-import { render } from 'solid-js/web';
-import App from './App.jsx';
+/*
+ * web_ui.html's entry: the editor against the Move it is served from.
+ *
+ * `window.schwungRemote` is the manager's bridge, defined by
+ * /static/schwung-remote-api.js, which web_ui.html loads as a classic script
+ * before this module runs. The declaration is the one this page was built
+ * with, sc-move's own (vite.editor.mjs reads it from params.rs) -- the same
+ * string the device serves, shipped in the same package.
+ */
+import chainParams from 'virtual:chain-params';
+import { boot } from './boot.jsx';
 
-render(() => <App />, document.getElementById('root'));
+boot(document.getElementById('root'), window.schwungRemote, chainParams);

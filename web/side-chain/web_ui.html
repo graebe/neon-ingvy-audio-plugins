@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Copyright (C) 2026 Torben Gräber -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NI Side-Chain</title>
+    <!-- The manager's bridge, window.schwungRemote. A classic script, so it has
+         run before the editor's module (deferred) starts; served by the
+         manager, not by this build, so vite-ignore leaves it as it is. -->
+    <script vite-ignore src="/static/schwung-remote-api.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
+</html>

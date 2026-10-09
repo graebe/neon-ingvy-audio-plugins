@@ -2,264 +2,270 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Side-Chain's editor.
+ * NI Side-Chain's editor, on the Move.
  *
- * ONE ALIGNMENT IS LOAD-BEARING: the shape you drag sits directly above the
- * audio it shaped, in one well spanning exactly one cycle. That is the whole
- * editor; the knobs and selects below it are the same parameters as numbers.
+ * THE NATIVE EDITOR'S WINDOW (plugins/side-chain/editor/SideChainEditor.h),
+ * 760 x 604, laid out as the layout canvas's "NI Side-Chain -- as built"
+ * artboard, and reached through Schwung's web manager instead of a VST3 host:
+ * the same rows in the same places, the same controls and words, less what the
+ * Move cannot have. Each of those is named where it was taken out:
  *
- * The window itself -- padding, ground, hint bar, scale, height -- is the kit's
- * EditorFrame; this file is content.
+ *   - the Sidechain source, Threshold and Lockout: the Move has no key input
+ *     (sc-move/src/params.rs), so its declaration has none of them;
+ *   - the audio in the well, and the "no input" warning read off it: the
+ *     manager carries values, not audio (lib/Shaper.jsx);
+ *   - "no key routed": there is no key to route.
+ *
+ * ONE ALIGNMENT IS LOAD-BEARING: the shape you drag spans exactly one cycle,
+ * and the playhead crosses it where the engine is. The knobs and selects below
+ * it are the same parameters as numbers.
+ *
+ * WHERE THE VALUES COME FROM. Every control is a parameter by index
+ * (lib/msg.js), normalised, through the kit's host vocabulary; the transport
+ * (web/kit/src/lib/schwung.js) turns that into the module's chain keys. The
+ * drawing reads the engine's own values from the module's feeds -- `params`,
+ * `ui`, `stage_ms` -- which the manager pushes when they move.
  */
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import { EditorFrame, useEditorBridge, createClock } from '@ultraviolet/ui';
-import { createParams, ParamKnob, ParamSelect } from '@ultraviolet/ui/params';
-import { MSG, P, NUM_PARAMS, shapeFromNorm } from './lib/msg.js';
-import { Shaper, SPAN } from './lib/Shaper.jsx';
-import { bounds as boundsOf } from './lib/shape.js';
-import { decodeScope, COL, STRIDE } from './lib/scope.js';
-import { NOTE_NAMES, hintFor } from './lib/text.js';
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { EditorFrame, useEditorBridge, createClock, createFit, scaledHeight } from '@ultraviolet/ui';
+import { createBeats } from '@ultraviolet/ui/beats';
+import { createParams, ParamKnob, ParamSelect, ParamToggle } from '@ultraviolet/ui/params';
+import { MSG, P, NUM_PARAMS } from './lib/msg.js';
+import { shapeFromNorm } from './lib/declaration.js';
+import { parseUi, parseParams, parseStageMs } from './lib/feeds.js';
+import { Shaper } from './lib/Shaper.jsx';
+import { StageKnob, ChoiceKnob } from './lib/Knobs.jsx';
+import { bounds } from './lib/shape.js';
+import { KNOBS, TRIGGER_ROW, SHAPE_ROW, showsFor } from './lib/layout.js';
+import { INFO, CONVENTIONS } from './lib/text.js';
+import {
+  CYCLE, TriggerWatch, warningFor, stateLine, captionFor, readsInMs, stageText, stageEdit,
+  playheadOf, landmarkMs,
+} from './lib/status.js';
 
-/* Mirrored by PLUG_WIDTH / PLUG_HEIGHT in config.h. */
+/* The native editor's designWidth / designHeight. */
 const DESIGN_W = 760;
 const DESIGN_H = 604;
 const PLOT_W = DESIGN_W - 64;
+const PLOT_H = 260;
 
-const SOURCES = ['Cycle', 'MIDI', 'Sidechain'];
-const TIME_MODES = ['ms', '% of cycle'];
-const CURVES = ['Linear', 'Exponential', 'S-Curve'];
-const RATES = ['1/1', '1/1T', '1/2', '1/2T', '1/4', '1/4T',
-  '1/8', '1/8T', '1/16', '1/16T', '1/32', '1/32T'];
-const CHANNELS = ['Omni', '1', '2', '3', '4', '5', '6', '7', '8',
-  '9', '10', '11', '12', '13', '14', '15', '16'];
-const MIDI_MODES = ['Trigger', 'Gate'];
+/* Where each stage sits in the `stage_ms` feed. */
+const STAGE_AT = { [P.delay]: 0, [P.attack]: 1, [P.hold]: 2, [P.release]: 3 };
 
-/* 0 Idle, 1 Delay, 2 Attack, 3 Hold, 4 Release -- params.rs's stage_index. */
-const STAGES = ['idle', 'delay', 'attack', 'hold', 'release'];
+/* How often the trigger's silence is looked at: the warning's resolution. */
+const WATCH_MS = 250;
 
-/*
- * IS ANYTHING COMING IN AT ALL? The floor is one encoding step: a sample
- * crosses the wire as one byte over -1..1, so below 0.0118 (~-38 dBFS) the
- * scope genuinely cannot tell a signal from silence.
- */
-const INPUT_FLOOR = 0.012;
+export default function App(props) {
+  const decl = props.declaration;
 
-export default function App() {
-  /* Every parameter's value, display string and default -- listening from here,
-   * before `ready` is sent. */
+  /* Every parameter's value, display string and default -- listening from
+   * here, before the transport is connected (boot.jsx). */
   const host = createParams(NUM_PARAMS);
-  /* The ENGINE's values, in their own units: what the drawing uses, so no
-   * range arithmetic stands between the picture and the DSP. */
+
+  /* The ENGINE's values, in their own units: what the drawing uses. */
   const [engine, setEngine] = createSignal(null);
   const [ui, setUi] = createSignal({
-    source: 0, rate: 4, msCycle: 0, sweep: 0, advancing: 0,
+    source: CYCLE, rate: 4, msCycle: 0, sweep: 0, advancing: 0,
     fires: 0, duck: 0, key: 0, connected: 0, stage: 0, phase: 0,
   });
-  /* The capture, decoded into one reused buffer -- so it never compares equal
-   * to itself and every frame repaints. */
-  const [scope, setScope] = createSignal(null, { equals: false });
   const [stageMs, setStageMs] = createSignal([0, 0, 0, 0]);
-  const [buses, setBuses] = createSignal({ key: 0, isMain: 0 });
 
   const bridge = useEditorBridge({
     onMessage: (tag, text) => {
-      switch (tag) {
-        case MSG.uiState: {
-          const f = text.split(':');
-          if (f.length < 11) return;
-          setUi({
-            source: +f[0], rate: +f[1], msCycle: +f[2], sweep: +f[3],
-            advancing: +f[4], fires: +f[5], duck: +f[6], key: +f[7],
-            connected: +f[8], stage: +f[9], phase: +f[10],
-          });
-          return;
-        }
-        case MSG.params: {
-          const f = text.split(':').map(Number);
-          if (f.length >= NUM_PARAMS) setEngine(f);
-          return;
-        }
-        case MSG.stageMs: {
-          const f = text.split(':').map(Number);
-          if (f.length >= 4) setStageMs(f);
-          return;
-        }
-        case MSG.buses: {
-          const f = text.split(':');
-          setBuses({ key: +f[0] || 0, isMain: +f[1] || 0 });
-          return;
-        }
-        default:
+      if (tag === MSG.uiState) {
+        const u = parseUi(text);
+        if (u) setUi(u);
+      } else if (tag === MSG.params) {
+        const f = parseParams(text);
+        if (f) setEngine(f);
+      } else if (tag === MSG.stageMs) {
+        const f = parseStageMs(text);
+        if (f) setStageMs(f);
       }
     },
-    /* The capture is BYTES, decoded from base64 once. */
-    bytes: {
-      [MSG.scope]: (bytes) => {
-        const s = decodeScope(bytes, scope()?.data);
-        if (s) setScope(s);
-      },
-    },
   });
+
+  /* An index from a choice's normalised value, over the module's options. */
+  const choice = (idx) => Math.round(host.value(idx) * Math.max(0, decl.options(idx).length - 1));
+
+  /*
+   * WHICH SOURCE'S CONTROLS SHOW follows the Source PARAMETER -- the control
+   * you just changed -- so the window answers the choice at once rather than
+   * when the engine's next feed says so.
+   */
+  const source = () => choice(P.source);
 
   /* ------------------------------------------------ the playhead's clock -- */
 
   /* The playhead moves when the SOURCE is moving, which is not the transport
-   * running: a MIDI duck advances with the timeline parked. */
+   * running: a MIDI duck advances with the transport parked. The manager
+   * pushes `ui` twice a second at most; the clock carries the position
+   * between pushes at the cycle's own rate. */
   const clock = createClock();
   createEffect(() => {
     const u = ui();
-    const moving = u.source === 0 ? u.advancing > 0 : u.sweep < 1;
+    const moving = u.source === CYCLE ? u.advancing > 0 : u.sweep < 1;
     clock.set(u.sweep, u.msCycle > 0 ? 1 / u.msCycle : 0, moving);
   });
-  /* A cycle wraps; a one-shot duck stops at its end. */
-  const playSweep = () => {
-    const s = clock.position();
-    return s >= 1 ? (ui().source === 0 ? s % 1 : 1) : s;
+  const playhead = () => playheadOf(clock.position(), ui().source);
+
+  /*
+   * THE GROUND RINGS ON THE BEAT, found in the playhead (the kit's
+   * lib/beats.js), as the Trance Gate's does: on Cycle the sweep is one step
+   * of the Rate, so a 1/4 cycle rings once a cycle and a 1/1 four times, full
+   * at the cycle's start. A MIDI duck has no beat to ring on.
+   */
+  let ground = null;
+  const frameBridge = {
+    setGround: (handle) => {
+      ground = handle;
+      bridge.setGround(handle);
+    },
   };
+  const beats = createBeats();
+  createEffect(() => {
+    const u = ui();
+    if (u.source !== CYCLE || !u.advancing) {
+      beats.reset();
+      return;
+    }
+    const ring = beats.next(playhead(), 1, decl.options(P.rate)[u.rate]);
+    if (ring !== null) ground?.trigger?.(ring);
+  });
 
   /* ---------------------------------------------------------- the warning -- */
 
-  /*
-   * ONE AMBER MARK. A ducker whose trigger is not arriving looks exactly like
-   * one set to zero depth, and there are three ways for that to happen: the
-   * transport stopped, MIDI Live will not route to an audio track, or a
-   * sidechain with nothing patched.
-   */
-  const [stale, setStale] = createSignal(false);
+  const watch = new TriggerWatch();
+  const [quiet, setQuiet] = createSignal(false);
   onMount(() => {
-    let lastFires = -1;
-    let lastSeen = performance.now();
     const t = setInterval(() => {
-      const f = ui().fires;
-      if (f !== lastFires) { lastFires = f; lastSeen = performance.now(); }
-      setStale(performance.now() - lastSeen > 800);
-    }, 250);
+      const now = performance.now();
+      watch.observe(ui().fires, now);
+      setQuiet(watch.isQuiet(now));
+    }, WATCH_MS);
     onCleanup(() => clearInterval(t));
   });
-
-  const seen = (i) => scope()?.data[i * STRIDE + COL.seen] === 1;
-
-  const hasInput = createMemo(() => {
-    const cap = scope();
-    if (!cap) return true; /* nothing pushed yet is not a verdict */
-    const { data, stride } = cap;
-    for (let i = 0; i < cap.count; i++) {
-      if (data[i * stride + COL.seen] !== 1) continue;
-      if (Math.abs(data[i * stride + COL.dryLo]) > INPUT_FLOOR
-          || Math.abs(data[i * stride + COL.dryHi]) > INPUT_FLOOR) return true;
-    }
-    return false;
-  });
-
-  const warning = createMemo(() => {
-    const u = ui();
-    if (u.source === 2 && !buses().key) return 'no key routed';
-    if (u.source === 2 && buses().isMain) return 'key is the input';
-    /* BEFORE the trigger warnings: a silent track is the more basic fact. */
-    if (!hasInput()) return 'no input';
-    if (!stale()) return '';
-    if (u.source === 0) return u.advancing ? '' : 'transport stopped';
-    if (u.source === 1) return 'no midi';
-    return 'no trigger';
-  });
+  const warning = () => warningFor(ui(), quiet());
 
   /* ------------------------------------------------------------ the shape -- */
 
-  /* DRAWN FROM THE ENGINE'S OWN VALUES, not the normalised ones: converting
-   * back would be a second copy of every range. */
+  /*
+   * DRAWN FROM THE ENGINE'S OWN VALUES, not the normalised ones. Until the
+   * first `params` feed the parameters stand in, through the declared ranges:
+   * the manager pushes the declared values on subscribing and the feeds on its
+   * next look, so this is a moment's difference, not a different picture.
+   */
   const shape = createMemo(() => {
     const e = engine();
-    if (!e) return { curve: 0, delay: 0, attack: 2, hold: 8, release: 35, depth: 100 };
+    if (!e) {
+      return shapeFromNorm(host.value,
+                           { curve: choice(P.curve), cycle: source() === CYCLE }, decl);
+    }
     return {
       curve: e[P.curve] | 0,
       delay: e[P.delay],
       attack: e[P.attack],
       hold: e[P.hold],
       release: e[P.release],
-      depth: e[P.depth] * 100, /* the engine holds 0..1, the display a percent */
-      /* On Cycle, Delay is a phase and wraps; anywhere else it is a wait. */
-      cycle: ui().source === 0,
+      depth: e[P.depth],
+      /* On Cycle, Delay is a phase and wraps; on MIDI it is a wait. */
+      cycle: e[P.source] === CYCLE,
     };
   });
 
-  /* The cycle in ms is the well's span; the landmark is the instant the duck
-   * reaches its floor, at its WRAPPED position. */
-  const spanMs = () => ui().msCycle;
-  const markMs = () => {
-    const bottom = boundsOf(shape()).bottom;
-    return bottom > 0 && bottom <= SPAN ? (bottom / SPAN) * spanMs() : 0;
+  /* The landmark is the instant the duck reaches its floor, at its WRAPPED
+   * position. */
+  const markMs = () => landmarkMs(bounds(shape()).bottom, ui().msCycle);
+
+  /* ------------------------------------------------------------ the stages -- */
+
+  const inMs = () => readsInMs(host.value(P.timeMode), ui().msCycle);
+  const stageReadout = (idx) => stageText(stageMs()[STAGE_AT[idx]], inMs(), host.text(idx));
+  const typeStage = (idx, text) => {
+    const edit = stageEdit(text, inMs(), ui().msCycle);
+    if (!edit) return;
+    if (edit.percent !== undefined) host.commit(idx, decl.toNorm(idx, edit.percent));
+    else host.sendText(idx, edit.text);
+  };
+  /* The handles read as the knobs do: the stage in Time's unit, Depth's own. */
+  const handleText = (idx) => (STAGE_AT[idx] !== undefined ? stageReadout(idx) : host.text(idx));
+
+  const caption = () => captionFor(ui().msCycle,
+                                   inMs() ? stageMs().reduce((a, b) => a + b, 0) : null);
+
+  /* ---------------------------------------------------------- the controls -- */
+
+  const knob = (k) => {
+    if (k.kind === 'stage') {
+      return <StageKnob params={host} idx={k.idx} label={k.label} info={k.info}
+                        readoutInfo={k.readoutInfo} display={stageReadout(k.idx)} bipolar={k.bipolar}
+                        onText={(text) => typeStage(k.idx, text)} />;
+    }
+    if (k.kind === 'choice') {
+      return <ChoiceKnob params={host} idx={k.idx} label={k.label} info={k.info}
+                         readoutInfo={k.readoutInfo} options={decl.options(k.idx).length} />;
+    }
+    return <ParamKnob params={host} idx={k.idx} label={k.label} info={k.info}
+                      readoutInfo={k.readoutInfo} />;
   };
 
-  const source = () => ui().source;
+  const control = (c) => (c.kind === 'toggle'
+    ? <ParamToggle params={host} idx={c.idx} label={c.label} info={c.info} />
+    : <ParamSelect params={host} idx={c.idx} label={c.label} options={decl.options(c.idx)}
+                   width={c.width} labelWidth={c.labelWidth} info={c.info} />);
+
+  const row = (controls) => (
+    <div class="selects-row">
+      <For each={controls}>{(c) => <Show when={showsFor(c, source())}>{control(c)}</Show>}</For>
+    </div>
+  );
+
+  /*
+   * THE PAGE IS AS TALL AS THE WINDOW IT SHOWS. The manager sizes the iframe
+   * from the height the page reports, and the bridge measures the body; the
+   * window is a fixed design scaled by a transform, which a layout box does
+   * not shrink with. So the window sits in a box of its SCALED size -- the same
+   * fit the frame applies -- and the body measures that.
+   */
+  const { scale } = createFit(DESIGN_W);
 
   return (
-    /* The shaper's well is the one solid box; the knobs sit on the window. */
-    <EditorFrame width={DESIGN_W} height={DESIGN_H} motionKey="side-chain"
-                 sources=".plot, [data-wave-source]" bridge={bridge}
-                 hint={hintFor(source(), stageMs(), host.value(P.timeMode))}>
-      {/* The trigger's state -- not the plugin's name, which the host shows. */}
-      <div class="state-line t-hint">
-        <span class="state">
-          {SOURCES[source()] ?? ''}
-          {source() === 0 ? ` ${RATES[ui().rate] ?? ''}` : ''}
-          {' · '}
-          {STAGES[ui().stage] ?? ''}
-        </span>
-        {/* The window's single amber mark. */}
-        <Show when={warning()}><span class="warn">{warning()}</span></Show>
-      </div>
+    <div class="fit" style={{ height: `${scaledHeight(DESIGN_H, scale())}px` }}>
+      <EditorFrame width={DESIGN_W} height={DESIGN_H} motionKey="side-chain"
+                   sources=".plot" bridge={frameBridge} hint={CONVENTIONS}
+                   motionInfo={INFO.motion} signatureInfo={INFO.signature}>
+        {/* The trigger's state -- not the module's name, which the manager
+          * shows -- and the window's single amber mark. */}
+        <div class="state-line t-hint">
+          <span class="state">
+            {stateLine(decl.options(P.source)[ui().source], decl.options(P.rate)[ui().rate],
+                       ui().source, ui().stage)}
+          </span>
+          <Show when={warning()}><span class="warn">{warning()}</span></Show>
+        </div>
 
-      <div class="plot-slot">
-        <Shaper w={PLOT_W} h={260}
-                shape={shape()}
-                heldShape={shapeFromNorm(host.value, shape())}
-                scope={scope()}
-                seen={seen}
-                quiet={!hasInput()}
-                sweep={playSweep()}
-                spanMs={spanMs()}
-                markMs={markMs()}
-                onReset={(idx) => host.reset(idx)}
-                value={host.value} text={host.text}
-                onCommit={(idx, v) => host.commit(idx, v)} />
-      </div>
+        <div class="plot-slot">
+          <Shaper w={PLOT_W} h={PLOT_H}
+                  shape={shape()}
+                  heldShape={shapeFromNorm(host.value, shape(), decl)}
+                  sweep={playhead()}
+                  spanMs={ui().msCycle}
+                  markMs={markMs()}
+                  caption={caption()}
+                  info={INFO.plot}
+                  toNorm={decl.toNorm}
+                  onReset={(idx) => host.reset(idx)}
+                  value={host.value} text={handleText}
+                  onCommit={(idx, v) => host.commit(idx, v)} />
+        </div>
 
-      <div class="knob-row">
-        <ParamKnob params={host} idx={P.depth} label="Depth" />
-        <ParamKnob params={host} idx={P.delay} label="Delay" />
-        <ParamKnob params={host} idx={P.attack} label="Attack" />
-        <ParamKnob params={host} idx={P.hold} label="Hold" />
-        <ParamKnob params={host} idx={P.release} label="Release" />
-        {/* THE SOURCE'S OWN KNOBS, AND ONLY THE ONES THAT APPLY: a Threshold
-          * on a tempo-locked duck invites turning it and concluding the plugin
-          * is broken. */}
-        <Show when={source() === 1}>
-          <ParamKnob params={host} idx={P.velSens} label="Vel" />
-        </Show>
-        <Show when={source() === 2}>
-          <ParamKnob params={host} idx={P.threshold} label="Thresh" />
-          <ParamKnob params={host} idx={P.lockout} label="Lockout" />
-        </Show>
-      </div>
+        <div class="knob-row">
+          <For each={KNOBS}>{(k) => <Show when={showsFor(k, source())}>{knob(k)}</Show>}</For>
+        </div>
 
-      {/* TWO ROWS, SPLIT BY SUBJECT: the trigger, then the shape every source
-        * has -- so the shape controls do not move when the source changes. */}
-      <div class="selects-row">
-        <ParamSelect params={host} idx={P.source} label="Src" options={SOURCES} width={104} labelWidth={30} />
-        <Show when={source() === 0}>
-          <ParamSelect params={host} idx={P.rate} label="Rate" options={RATES} width={84} labelWidth={38} />
-        </Show>
-        <Show when={source() === 1}>
-          <ParamSelect params={host} idx={P.note} label="Note" options={NOTE_NAMES} width={78} labelWidth={38} />
-          <ParamSelect params={host} idx={P.channel} label="Ch" options={CHANNELS} width={66} labelWidth={26} />
-          <ParamSelect params={host} idx={P.midiMode} label="Mode" options={MIDI_MODES} width={88} labelWidth={42} />
-        </Show>
-      </div>
-
-      <div class="selects-row">
-        <ParamSelect params={host} idx={P.curve} label="Curve" options={CURVES} width={118} labelWidth={42} />
-        <ParamSelect params={host} idx={P.timeMode} label="Time" options={TIME_MODES} width={92} labelWidth={38} />
-      </div>
-    </EditorFrame>
+        {row(TRIGGER_ROW)}
+        {row(SHAPE_ROW)}
+      </EditorFrame>
+    </div>
   );
 }
