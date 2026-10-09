@@ -24,6 +24,8 @@ const SLOT_PROBE: u32 = 13;
 const SLOT_RATE: u32 = 12;
 const SLOT_REATTACH: u32 = 6;
 const SLOT_ORPHAN: u32 = 5;
+const SLOT_STAMPED: u32 = 4;
+const SLOT_FOREIGN: u32 = 3;
 
 #[test]
 fn audio_crosses_a_real_segment() {
@@ -192,4 +194,47 @@ fn a_released_segment_cannot_be_mistaken_for_the_bus() {
     let mut r = Reader::open(SLOT_ORPHAN).expect("readers find it");
     p.push(&vec![0.5f32; 32 * 2]);
     assert_eq!(r.read(&mut vec![0f32; 64 * 2]).frames, 32);
+}
+
+#[test]
+fn the_timeline_crosses_a_real_segment() {
+    let (_w, mut p) = Writer::claim(SLOT_STAMPED, 48_000).expect("claim");
+    let mut r = Reader::open(SLOT_STAMPED).expect("open");
+    p.push_at(&vec![0.25f32; 64 * 2], Some(441_000));
+    p.push_at(&vec![0.25f32; 64 * 2], None);
+
+    let got = r.read(&mut vec![0f32; 256 * 2]);
+    assert_eq!(got.frames, 128);
+    let at = |f: u64| r.stamp_at(got.first + f).and_then(|s| s.timeline_of(got.first + f));
+    assert_eq!(at(0), Some(441_000));
+    assert_eq!(at(63), Some(441_063));
+    assert_eq!(at(64), None, "a stopped transport's run is unstamped");
+}
+
+/*
+ * AN OLDER FORMAT'S SEGMENT IS SHORTER, and a claim replaces it rather than
+ * refusing the slot until the next reboot. Built here by hand at the v2 size,
+ * which is what a crashed v2 Listen-In leaves behind.
+ */
+#[cfg(unix)]
+#[test]
+fn a_shorter_segment_from_an_older_build_is_replaced() {
+    use crate::header::DATA_OFFSET;
+    use std::ffi::CString;
+
+    let name = CString::new(crate::shm::Name::for_slot(SLOT_FOREIGN).as_str()).unwrap();
+    let v2 = DATA_OFFSET + crate::RING_FRAMES as usize * crate::CHANNELS as usize * 4;
+    unsafe {
+        libc::shm_unlink(name.as_ptr());
+        let fd = libc::shm_open(name.as_ptr(), libc::O_RDWR | libc::O_CREAT | libc::O_EXCL, 0o600);
+        assert!(fd >= 0, "the stale segment");
+        assert_eq!(libc::ftruncate(fd, v2 as libc::off_t), 0);
+        libc::close(fd);
+    }
+    assert!(Reader::open(SLOT_FOREIGN).is_none(), "a reader refuses it");
+
+    let (_w, mut p) = Writer::claim(SLOT_FOREIGN, 48_000).expect("the claim replaces it");
+    let mut r = Reader::open(SLOT_FOREIGN).expect("readers find the new one");
+    p.push(&vec![0.5f32; 16 * 2]);
+    assert_eq!(r.read(&mut vec![0f32; 32 * 2]).frames, 16);
 }

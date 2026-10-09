@@ -23,7 +23,9 @@
  *
  *   NAME_PREFIX              where the OS keeps shared-memory names
  *   create_or_open(name, n)  a read-write view of at least n bytes, and
- *                            whether THIS call made the segment (zero-filled)
+ *                            whether THIS call made the segment (zero-filled);
+ *                            Refused::Foreign for a shorter one, where the
+ *                            backend can tell
  *   open_existing(name, n)   a read-only view of at least n bytes of a segment
  *                            that exists; it never creates one
  *   unlink(name)             take the name away from its segment
@@ -45,7 +47,7 @@
 
 use atomic_float::AtomicF32;
 
-use crate::header::{segment_size, Header, DATA_OFFSET};
+use crate::header::{segment_size, Header, Stamp, DATA_OFFSET, STAMPS, STAMP_OFFSET};
 use crate::ring::RING_SAMPLES;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -179,7 +181,19 @@ impl Name {
     }
 }
 
-/// A slot's segment, mapped: the header, then the ring. Dropping it unmaps it.
+/// Why `create_or_open` mapped nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refused {
+    /// Nothing could be created or mapped.
+    Failed,
+    /// A segment is there, too short to be this format: an older build's,
+    /// left behind or still in use. A claimer replaces it, as it replaces one
+    /// it cannot interpret (POSIX only -- Windows cannot take a name away).
+    Foreign,
+}
+
+/// A slot's segment, mapped: the header, the ring, the stamps. Dropping it
+/// unmaps it.
 pub struct Shm {
     view: sys::View,
     slot: u32,
@@ -211,12 +225,12 @@ impl Shm {
     ///
     /// Returns `(segment, created)`. `created` is true for the ONE process
     /// whose open made the segment, which must therefore initialise the header.
-    pub fn create_or_open(slot: u32) -> Option<(Shm, bool)> {
+    pub fn create_or_open(slot: u32) -> Result<(Shm, bool), Refused> {
         if slot == 0 || slot > MAX_SLOT {
-            return None;
+            return Err(Refused::Failed);
         }
         let (view, created) = sys::create_or_open(&Name::for_slot(slot), segment_size())?;
-        Some((Shm { view, slot }, created))
+        Ok((Shm { view, slot }, created))
     }
 
     /// Open slot `slot` only if it already exists, READ-ONLY. Readers and
@@ -245,6 +259,16 @@ impl Shm {
         }
     }
 
+    /// The stamps after the ring (header::Stamp). Loads only in a reader.
+    pub fn stamps(&self) -> &[Stamp] {
+        unsafe {
+            core::slice::from_raw_parts(
+                self.view.base().add(STAMP_OFFSET) as *const Stamp,
+                STAMPS as usize,
+            )
+        }
+    }
+
     pub fn slot(&self) -> u32 {
         self.slot
     }
@@ -255,7 +279,12 @@ impl Shm {
     /// segment anybody still holds, and goes by itself with the last handle --
     /// see win32.rs.
     pub fn unlink(&self) {
-        sys::unlink(&Name::for_slot(self.slot));
+        Shm::unlink_slot(self.slot);
+    }
+
+    /// `unlink`, for a segment that could not be mapped (Refused::Foreign).
+    pub fn unlink_slot(slot: u32) {
+        sys::unlink(&Name::for_slot(slot));
     }
 }
 

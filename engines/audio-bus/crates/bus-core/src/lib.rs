@@ -19,10 +19,10 @@
  * THE THREAD RULES ARE PART OF THE ABI, exactly as they are for spectro:
  *
  *   Writer::claim / drop / set_label / set_sample_rate      the main thread
- *   Pusher::push                                            the audio thread, and only it
+ *   Pusher::push / push_at                                  the audio thread, and only it
  *   Reader::open / drop                                     the main thread
  *   Reader::reattach                                        any thread but the audio thread
- *   Reader::read                                            one thread, the same one each time
+ *   Reader::read / stamp_at                                 one thread, the same one each time
  *
  * A claim hands back TWO handles, and the split is what makes those rules the
  * compiler's business rather than a comment's: the audio thread owns the
@@ -47,7 +47,7 @@ mod slots;
 mod tests;
 
 pub use header::{segment_size, CHANNELS, LABEL_BYTES, RING_FRAMES};
-pub use ring::Read;
+pub use ring::{Read, Span};
 pub use shm::MAX_SLOT;
 
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -172,7 +172,17 @@ impl Writer {
          * claiming it. Each round opens the name afresh.
          */
         for _ in 0..4 {
-            let (map, created) = shm::Shm::create_or_open(slot).ok_or(ClaimError::Unavailable)?;
+            let (map, created) = match shm::Shm::create_or_open(slot) {
+                Ok(opened) => opened,
+                /* A SHORTER SEGMENT, an older format's -- the same case as the
+                 * one below, met before it could be mapped. Replaced the same
+                 * way: by taking its name. */
+                Err(shm::Refused::Foreign) => {
+                    shm::Shm::unlink_slot(slot);
+                    continue;
+                }
+                Err(shm::Refused::Failed) => return Err(ClaimError::Unavailable),
+            };
             let hdr = map.header();
 
             if created {
@@ -267,6 +277,13 @@ impl Pusher {
     /// THE AUDIO THREAD CALLS THIS. It allocates nothing, takes no lock and
     /// makes no system call.
     pub fn push(&mut self, src: &[f32]) {
+        self.push_at(src, None);
+    }
+
+    /// `push`, for a block whose first frame is the host's timeline sample
+    /// `timeline` -- `None` while the host gives no position. What lets a
+    /// reader on another track line a frame up with its own (header::Stamp).
+    pub fn push_at(&mut self, src: &[f32], timeline: Option<i64>) {
         let hdr = self.claim.map.header();
         if self.claim.pending_rate.load(Ordering::Relaxed) != 0 {
             let rate = self.claim.pending_rate.swap(0, Ordering::Acquire);
@@ -276,7 +293,7 @@ impl Pusher {
                 hdr.epoch.fetch_add(1, Ordering::Release);
             }
         }
-        ring::push(hdr, self.claim.map.data(), src);
+        ring::push(hdr, self.claim.map.data(), self.claim.map.stamps(), src, timeline);
     }
 }
 
@@ -370,6 +387,14 @@ impl Reader {
             got.resynced = true;
         }
         got
+    }
+
+    /// Where frame `frame` of the stream sits on the sender's timeline: the
+    /// stamped run that holds it, if its stamp is still there. `frame` is a
+    /// stream position, as `Read::first` gives. Loads only, no allocation --
+    /// the thread that reads may ask.
+    pub fn stamp_at(&self, frame: u64) -> Option<ring::Span> {
+        ring::stamp_at(self.map.header(), self.map.stamps(), self.cursor.epoch(), frame)
     }
 
     /*

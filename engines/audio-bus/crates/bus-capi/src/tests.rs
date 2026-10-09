@@ -34,6 +34,7 @@ const SLOT_NEVER: u32 = 1; /* never claimed by anything in this binary */
 const SLOT_BEHIND: u32 = 9;
 const SLOT_RATE: u32 = 8;
 const SLOT_LABEL: u32 = 7;
+const SLOT_STAMPED: u32 = 2;
 
 const SR: u32 = 48_000;
 const CH: usize = bus_core::CHANNELS as usize;
@@ -276,6 +277,31 @@ fn the_label_is_bounded_and_always_terminated() {
         abus_writer_set_label(w, null());
         assert_eq!(probe(SLOT_LABEL).map(|i| i.2), Some(String::new()));
 
+        abus_pusher_release(p);
+        abus_writer_release(w);
+    }
+}
+
+#[test]
+fn a_stamped_push_carries_the_timeline_and_a_null_one_is_silent() {
+    unsafe {
+        let (w, p) = claim(SLOT_STAMPED);
+        let r = open(SLOT_STAMPED);
+        let src = ramp(32);
+        abus_pusher_push_at(p, src.as_ptr(), 32, 96_000, 1);
+        abus_pusher_push_at(p, src.as_ptr(), 32, 0, 0);
+        /* The handle of a Listen-In whose slot was taken, and an empty block. */
+        abus_pusher_push_at(null_mut(), src.as_ptr(), 32, 0, 1);
+        abus_pusher_push_at(p, src.as_ptr(), 0, 0, 1);
+
+        let reader = (*r).reader_mut();
+        let got = reader.read(&mut vec![0f32; 128 * CH]);
+        assert_eq!(got.frames, 64);
+        let at = |f: u64| reader.stamp_at(got.first + f).and_then(|s| s.timeline_of(got.first + f));
+        assert_eq!(at(5), Some(96_005));
+        assert_eq!(at(40), None);
+
+        abus_reader_close(r);
         abus_pusher_release(p);
         abus_writer_release(w);
     }

@@ -17,7 +17,7 @@
  * atomically -- see `label` / `set_label` below for the seqlock that covers it.
  */
 
-use core::sync::atomic::{fence, AtomicU32, AtomicU64, AtomicU8, Ordering};
+use core::sync::atomic::{fence, AtomicI64, AtomicU32, AtomicU64, AtomicU8, Ordering};
 
 /* 'NIB1' -- Neon Ingvy Bus. Written LAST by whoever creates the segment, so a
  * reader that sees it knows every other field is already there. A reader that
@@ -33,8 +33,11 @@ pub const MAGIC: u32 = 0x4E49_4231;
  * different claim protocols.
  *
  * 2: ownership is one packed word (`owner`), the segment carries its
- *    `incarnation`, and the heartbeat is gone. */
-pub const ABI_VERSION: u32 = 2;
+ *    `incarnation`, and the heartbeat is gone.
+ * 3: every published run carries the host's timeline position (`Stamp`, after
+ *    the ring, and `stamp_runs` in the header), so a reader on another track
+ *    can line a frame up with its own -- the segment is longer. */
+pub const ABI_VERSION: u32 = 3;
 
 /* Always stereo, always interleaved. A mono source is duplicated by the sender
  * -- the same choice the Spectrogram's passthrough makes -- so that a reader
@@ -68,9 +71,55 @@ pub const DATA_OFFSET: usize = 128;
 
 pub const LABEL_BYTES: usize = 32;
 
-/// Total bytes in a segment: the header, then the interleaved ring.
+/*
+ * 1024 STAMPS, one per published run. A run is at most a host block, so even
+ * at 32-frame blocks they reach back 32768 frames -- 0.68 s at 48 kHz -- and a
+ * reader lining a kick up with its own blocks needs a few tens of
+ * milliseconds of it. A power of two, for the same reason as the ring.
+ */
+pub const STAMPS: u32 = 1024;
+
+/// Where the stamps start: right after the ring, which ends 8-aligned.
+pub const STAMP_OFFSET: usize =
+    DATA_OFFSET + (RING_FRAMES as usize) * (CHANNELS as usize) * core::mem::size_of::<f32>();
+
+/// Total bytes in a segment: the header, the interleaved ring, the stamps.
 pub const fn segment_size() -> usize {
-    DATA_OFFSET + (RING_FRAMES as usize) * (CHANNELS as usize) * core::mem::size_of::<f32>()
+    STAMP_OFFSET + (STAMPS as usize) * core::mem::size_of::<Stamp>()
+}
+
+/* The timeline of a run the host gave no position for: a stopped transport,
+ * or a host with no play head. */
+pub const UNSTAMPED: i64 = i64::MIN;
+
+/*
+ * ONE RUN'S PLACE ON THE HOST'S TIMELINE: frames `start .. start + frames`
+ * of the stream are the timeline's samples `timeline ..`, in this `epoch`.
+ *
+ * Live runs tracks on parallel threads, so a reader cannot tell from WHEN a
+ * frame arrived which of its own frames it sounded with -- the sender's block
+ * may have run before or after the reader's. The timeline answers that
+ * exactly, while the transport runs.
+ *
+ * EACH STAMP IS ITS OWN SEQLOCK, keyed on `start`: the writer parks `start` at
+ * `u64::MAX`, writes the rest, then publishes `start` with Release; a reader
+ * loads `start`, the rest, and `start` again, and keeps the stamp only if the
+ * two agree and neither is parked. `span` packs the epoch above the frame
+ * count, so a stamp left from before a restart -- whose `start` the new
+ * stream may reach again -- is never taken for one of the new stream's.
+ */
+#[repr(C)]
+pub struct Stamp {
+    pub start: AtomicU64,
+    pub span: AtomicU64,
+    pub timeline: AtomicI64,
+}
+
+/// `Stamp::start` while the writer is rewriting the stamp.
+pub const STAMP_PARKED: u64 = u64::MAX;
+
+pub const fn stamp_span(epoch: u32, frames: u32) -> u64 {
+    ((epoch as u64) << 32) | frames as u64
 }
 
 /*
@@ -134,10 +183,17 @@ pub struct Header {
      * 96 kHz; 32 would have wrapped in twelve hours. */
     pub write_frames: AtomicU64,
     pub label: [AtomicU8; LABEL_BYTES],
+    /* Runs ever stamped; run `n` is stamp `n % STAMPS`. Stored with Release
+     * after its stamp, so a reader scans back from the newest. Only the writer
+     * stores it, and never resets it: the epoch in each stamp is what tells a
+     * restart apart. */
+    pub stamp_runs: AtomicU64,
 }
 
 const _: () = assert!(core::mem::size_of::<Header>() <= DATA_OFFSET);
 const _: () = assert!(core::mem::align_of::<Header>() <= 8);
+const _: () = assert!(STAMP_OFFSET % core::mem::align_of::<Stamp>() == 0);
+const _: () = assert!(STAMPS.is_power_of_two());
 
 impl Header {
     /// Initialise a freshly created segment. The caller must have zeroed it and
@@ -153,6 +209,7 @@ impl Header {
         self.incarnation.store(incarnation, Ordering::Relaxed);
         self.owner.store(0, Ordering::Relaxed);
         self.write_frames.store(0, Ordering::Relaxed);
+        self.stamp_runs.store(0, Ordering::Relaxed);
         /* LAST, and with Release: everything above must be visible to whoever
          * sees the magic. */
         self.magic.store(MAGIC, Ordering::Release);

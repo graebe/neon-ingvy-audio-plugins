@@ -23,7 +23,7 @@ THE THREAD RULES ARE PART OF THE ABI:
   abus_writer_claim / release            the main thread
   abus_writer_set_label / sample_rate    the main thread
   abus_pusher_release                    the main thread
-  abus_pusher_push                       the audio thread, and only it
+  abus_pusher_push / push_at             the audio thread, and only it
   abus_reader_open / close / reattach    the main thread
   abus_reader_read                       one thread, the same one each time
   abus_probe                             the main thread
@@ -72,6 +72,14 @@ pub struct AbusWriter(Writer);
 pub struct AbusPusher(Pusher);
 /// One receiver's place in one slot's stream.
 pub struct AbusReader(Reader);
+
+impl AbusReader {
+    /// The reader inside, for a Rust crate that links this one (sc-capi's
+    /// kick tap) and reads it on its own thread, by the same rules.
+    pub fn reader_mut(&mut self) -> &mut Reader {
+        &mut self.0
+    }
+}
 
 /// What `abus_writer_claim` and `abus_reader_open` answer when they worked.
 pub const ABUS_OK: c_int = 0;
@@ -175,6 +183,32 @@ pub unsafe extern "C" fn abus_pusher_push(p: *mut AbusPusher, interleaved: *cons
     }
     let n = frames as usize * bus_core::CHANNELS as usize;
     p.0.push(core::slice::from_raw_parts(interleaved, n));
+}
+
+/// `abus_pusher_push`, for a block whose first frame is the host's timeline
+/// sample `timeline`; `has_timeline` 0 while the host gives no position (a
+/// stopped transport). A reader on another track lines its own frames up with
+/// these by it, whichever track the host ran first. THE AUDIO THREAD.
+///
+/// # Safety
+/// As `abus_pusher_push`.
+#[no_mangle]
+pub unsafe extern "C" fn abus_pusher_push_at(
+    p: *mut AbusPusher,
+    interleaved: *const f32,
+    frames: u32,
+    timeline: i64,
+    has_timeline: c_int,
+) {
+    let Some(p) = p.as_mut() else { return };
+    if interleaved.is_null() || frames == 0 {
+        return;
+    }
+    let n = frames as usize * bus_core::CHANNELS as usize;
+    p.0.push_at(
+        core::slice::from_raw_parts(interleaved, n),
+        (has_timeline != 0).then_some(timeline),
+    );
 }
 
 /// # Safety

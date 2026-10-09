@@ -8,7 +8,10 @@ publish.workspace = true
 
 [lib]
 name = "bus_capi"
-crate-type = ["staticlib"]
+# staticlib for NI Listen-In to link; rlib so a receiving plugin's own archive
+# (sc-capi) carries this surface too, without a second copy of the Rust
+# runtime -- the rule ground-capi/Cargo.toml states.
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 bus-core = { path = "../bus-core" }

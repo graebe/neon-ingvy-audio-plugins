@@ -48,9 +48,11 @@ fn push_and_read_allocate_nothing() {
     assert_no_alloc(|| {
         /* Two hundred blocks is 204,800 frames: more than a full ring, so the wrap
          * is inside the measured window rather than just after it. */
-        for _ in 0..200 {
-            pusher.push(&block);
-            reader.read(&mut out);
+        for b in 0..200i64 {
+            pusher.push_at(&block, Some(b * 1024));
+            let got = reader.read(&mut out);
+            /* And the stamps, which a reader on an audio thread looks up per run. */
+            core::hint::black_box(reader.stamp_at(got.first));
         }
         /* And the label path, which is the one place a string crosses into the
          * segment. It is a message-thread call, not an audio-thread one, but it

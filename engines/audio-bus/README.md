@@ -207,3 +207,18 @@ reader refuses a segment of another version; a writer replaces it. Version 2
 introduced the owner word and the incarnation and dropped the heartbeat, so a
 version-1 plugin and a version-2 plugin cannot share a slot — the second to
 claim replaces the first's segment.
+
+Version 3 adds the **timeline stamps**: every published run carries the host's
+timeline sample of its first frame (`Pusher::push_at`, `abus_pusher_push_at`),
+in a ring of 1024 stamps after the audio, each its own small seqlock. A reader
+asks `Reader::stamp_at(frame)` which run holds a frame it read, and so where
+that frame sat on the sender's timeline. Live runs tracks on parallel threads,
+so arrival time cannot say which of a reader's own frames a bus frame sounded
+with; the timeline can, exactly, while the transport runs. NI Side-Chain lines
+a kick up with its duck this way. A stopped transport publishes unstamped runs.
+
+The stamps make the segment longer. A v2 segment is therefore *shorter* than
+this build expects: a reader refuses it, and a claim replaces it (POSIX) the
+way it replaces any segment it cannot interpret. A v2 and a v3 plugin do not
+see each other's buses — NI Listen-In, NI Spectrogram and NI Side-Chain are
+updated together.
