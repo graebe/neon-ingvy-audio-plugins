@@ -41,17 +41,19 @@
  * shows ordinary material -- peaks at -18 to -12 dBFS -- as a sliver a
  * quarter of the well high or less. A well that draws one can opt in
  * (enableLevelRange) and its trace is then drawn on a range that follows the
- * material, plot::LevelRange: the loudest level the plot has shown over the
- * last two seconds, rounded up to the next 6 dB, never above full scale and
- * never below -48 dBFS. A louder peak widens the range in the frame it
- * arrives, so the trace is never clipped; a quieter stretch narrows it only
- * after the window has passed and with 1.5 dB to spare, gliding there over a
- * second or so, so the picture breathes with the music rather than pumping
- * with it. ONLY THE AUDIO ZOOMS: a gain, a gate or an envelope drawn over the
- * trace stays on its true scale, because it is a gain and not a level. The
- * range is always on show, right-aligned in the caption band over the trace's
- * top edge ("-12 dB"), in the hint style the ruler's labels use, and a
- * double-click on the well holds the trace at full scale ("0 dB fixed")
+ * material, plot::LevelRange: 3 dB over the loudest level the plot has shown
+ * in the last two seconds, never below -48 dBFS, as a filtered level in dB
+ * rather than a ladder of steps. Louder material pulls it up in a fast glide
+ * (a 35 ms time constant), so a sudden peak can pass the top edge for a few
+ * frames and is clipped there, inside the well, until the range has caught
+ * up; quieter material lets it down only once the two seconds have passed,
+ * and then slowly (1.5 s), so the picture breathes with the music rather
+ * than pumping with it, and steady material holds it still. ONLY THE AUDIO
+ * ZOOMS: a gain, a gate or an envelope drawn over the trace stays on its
+ * true scale, because it is a gain and not a level. The range is always on
+ * show, in whole decibels, right-aligned in the caption band over the
+ * trace's top edge ("-12 dB"), in the hint style the ruler's labels use, and
+ * a double-click on the well holds the trace at full scale ("0 dB fixed")
  * until the next one -- for as long as the editor is open.
  *
  * A well is solid to the Ground's rings (WaveSource.h). It takes the pointer
@@ -162,21 +164,23 @@ float peak (const Capture&, std::initializer_list<int> fields,
 class LevelRange
 {
 public:
-    /* The ladder, its lowest rung, and the window a narrower range waits out. */
-    static constexpr float stepDb = 6.0f;
+    /* The lowest range, the room kept over the window's peak (and so the
+     * highest range, over a full-scale peak), and the window a lower range
+     * waits out. */
     static constexpr float floorDb = -48.0f;
+    static constexpr float headroomDb = 3.0f;
+    static constexpr float ceilingDb = headroomDb;
     static constexpr double windowMs = 2000.0;
-    /* How far under the next rung down the window's peak must stay before
-     * the range narrows to it: the hysteresis that keeps material sitting on
-     * a rung from flipping between two. */
-    static constexpr float marginDb = 1.5f;
-    /* The glide's time constant: a 6 dB step is within 0.1 dB of its rung in
-     * a little over a second, a 48 dB one in under two. */
-    static constexpr double releaseMs = 300.0;
+    /* The glides' time constants. Up: a jump to full scale from -24 dBFS is
+     * inside the edge in under 80 ms, from the floor in about 100 -- five or
+     * six frames at 60 Hz, enough to read as a movement and not a cut. Down:
+     * two thirds of the way in 1.5 s, so a quieter passage is eased into. */
+    static constexpr double attackMs = 35.0;
+    static constexpr double releaseMs = 1500.0;
 
-    /* The rung a peak (a level, 1 for 0 dBFS) fits under: the smallest
-     * multiple of stepDb at or over it, between floorDb and 0. */
-    static float fit (float peakLevel);
+    /* Where a peak (a level, 1 for 0 dBFS) puts the range: headroomDb over
+     * it, between floorDb and ceilingDb. */
+    static float targetFor (float peakLevel);
 
     /* One frame. True when the range drawn moved, and the trace with it. */
     bool follow (float peakLevel, double nowMs);
@@ -186,12 +190,14 @@ public:
     void setFixed (bool);
     bool isFixed() const noexcept { return fixed; }
 
-    /* The edges, in dBFS (0 or under), and as the level band() divides by. */
+    /* The edges, in dBFS (floorDb to ceilingDb), and as the level band()
+     * divides by. */
     float db() const noexcept { return fixed ? 0.0f : current; }
     float fullScale() const;
 
-    /* What the well writes over the trace's top edge: "-12 dB", or
-     * "0 dB fixed" -- whole decibels, with a true minus sign. */
+    /* What the well writes over the trace's top edge: "-12 dB", "+3 dB", or
+     * "0 dB fixed" -- the range rounded to whole decibels, with a true minus
+     * sign. */
     juce::String label() const;
 
 private:

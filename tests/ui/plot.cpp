@@ -340,6 +340,12 @@ TEST_CASE ("plot: a band's full scale is the level drawn at its edges")
     plot::band (p, { data.data(), 2, 2 }, 0, 1, { 0.0f, 2, 0.0f, 100.0f });
     CHECK (p.getBounds().getY() == doctest::Approx (37.5f));
     CHECK (p.getBounds().getBottom() == doctest::Approx (62.5f));
+
+    /* A peak over the range -- an attack still gliding -- is clipped at the
+     * edges, never drawn outside them. */
+    plot::band (p, { data.data(), 2, 2 }, 0, 1, { 0.0f, 2, 10.0f, 90.0f, 0.1f });
+    CHECK (p.getBounds().getY() == doctest::Approx (10.0f));
+    CHECK (p.getBounds().getBottom() == doctest::Approx (90.0f));
 }
 
 TEST_CASE ("plot: a capture's peak is the largest magnitude in the fields asked for, of the columns seen")
@@ -357,89 +363,135 @@ TEST_CASE ("plot: a capture's peak is the largest magnitude in the fields asked 
     CHECK (plot::peak (cap, { 0, 1 }, [] (int) { return false; }) == 0.0f);
 }
 
-TEST_CASE ("plot: a peak fits under the next 6 dB rung, from full scale down to -48 dB")
+TEST_CASE ("plot: the range aims 3 dB over the peak, between -48 dBFS and 3 dB over full scale")
 {
-    CHECK (plot::LevelRange::fit (1.0f) == 0.0f);
-    CHECK (plot::LevelRange::fit (3.0f) == 0.0f);
-    CHECK (plot::LevelRange::fit (level (-3.0f)) == 0.0f);
-    CHECK (plot::LevelRange::fit (level (-7.0f)) == -6.0f);
-    CHECK (plot::LevelRange::fit (level (-15.0f)) == -12.0f);
-    /* On a rung is under it, a hair either side of the logarithm or not. */
-    CHECK (plot::LevelRange::fit (level (-24.0f)) == -24.0f);
-    CHECK (plot::LevelRange::fit (level (-23.995f)) == -24.0f);
-    CHECK (plot::LevelRange::fit (level (-23.9f)) == -18.0f);
+    CHECK (plot::LevelRange::targetFor (level (-20.0f)) == doctest::Approx (-17.0f));
+    CHECK (plot::LevelRange::targetFor (1.0f) == doctest::Approx (3.0f));
+    /* Past full scale is no further: the ceiling. */
+    CHECK (plot::LevelRange::targetFor (4.0f) == 3.0f);
     /* The floor: quiet is not zoomed into, and silence is silence. */
-    CHECK (plot::LevelRange::fit (level (-47.0f)) == -42.0f);
-    CHECK (plot::LevelRange::fit (level (-49.0f)) == -48.0f);
-    CHECK (plot::LevelRange::fit (level (-90.0f)) == -48.0f);
-    CHECK (plot::LevelRange::fit (0.0f) == -48.0f);
-    CHECK (plot::LevelRange::fit (std::numeric_limits<float>::quiet_NaN()) == -48.0f);
+    CHECK (plot::LevelRange::targetFor (level (-49.0f)) == doctest::Approx (-46.0f));
+    CHECK (plot::LevelRange::targetFor (level (-60.0f)) == -48.0f);
+    CHECK (plot::LevelRange::targetFor (0.0f) == -48.0f);
+    CHECK (plot::LevelRange::targetFor (std::numeric_limits<float>::quiet_NaN()) == -48.0f);
 }
 
-TEST_CASE ("plot: the level range lands on its first rung, and a louder peak widens it in the same frame")
+TEST_CASE ("plot: the level range lands on its first target, and then only glides")
 {
     plot::LevelRange range;
     CHECK (range.db() == 0.0f);
     CHECK (range.follow (level (-20.0f), 1000.0));
-    CHECK (range.db() == -18.0f);
-    CHECK (range.fullScale() == doctest::Approx (level (-18.0f)));
+    CHECK (range.db() == doctest::Approx (-17.0f));
+    CHECK (range.fullScale() == doctest::Approx (level (-17.0f)));
 
-    /* The attack: the frame the peak arrives in, whole rungs at a time. */
-    CHECK (range.follow (level (-3.0f), 1016.0));
-    CHECK (range.db() == 0.0f);
-    CHECK_FALSE (range.follow (level (-3.0f), 1033.0));
+    /* Louder: up, but in a glide -- one frame is not the whole way. */
+    CHECK (range.follow (level (-3.0f), 1000.0 + 1000.0 / 60.0));
+    CHECK (range.db() > -17.0f);
+    CHECK (range.db() < -3.0f);
 }
 
-TEST_CASE ("plot: the level range never clips the trace it follows")
+TEST_CASE ("plot: a jump to full scale passes the top edge for no more than 100 ms")
 {
-    plot::LevelRange range;
-    double ms = 0.0;
-    /* A gate's pattern of loud and quiet with a swell under it. */
-    for (int i = 0; i < 1200; ++i)
+    /* From a track at -24 dBFS, and from silence, the farthest it can come. */
+    for (const float from : { -24.0f, -200.0f })
     {
-        ms += 1000.0 / 60.0;
-        const float db = -30.0f + 25.0f * (float) std::sin (i * 0.013) * (i % 40 < 20 ? 1.0f : 0.4f);
-        range.follow (level (db), ms);
-        CHECK (range.fullScale() >= level (db) * 0.999f);
+        CAPTURE (from);
+        plot::LevelRange range;
+        Frames f { 0.0, range };
+        f.run (3.0, from);
+        const double step = f.ms;
+        double over = 0.0;
+        for (int i = 0; i < 60; ++i)
+        {
+            f.run (1.0 / 60.0, 0.0f);
+            if (range.db() < 0.0f)
+                over = f.ms - step;
+        }
+        /* The last frame still over the edge, at most 100 ms on. */
+        CHECK (over <= 100.0 + 1.0e-6);
+        CHECK (over > 0.0);
+        CHECK (range.db() == doctest::Approx (3.0f));
     }
 }
 
-TEST_CASE ("plot: the level range waits out its window, then narrows smoothly to the rung that fits")
+TEST_CASE ("plot: no frame moves the range far, but for the attack's glide")
+{
+    plot::LevelRange range;
+    double ms = 0.0;
+    std::vector<std::pair<double, float>> recent;   // the test's own window
+    for (int i = 0; i < 3600; ++i)
+    {
+        ms += 1000.0 / 60.0;
+        /* A gate's pattern of loud and quiet, a swell under it, and a break. */
+        const float db = (i / 600) % 3 == 2 ? -200.0f
+                       : -30.0f + 25.0f * (float) std::sin (i * 0.013) * (i % 40 < 20 ? 1.0f : 0.4f);
+        recent.emplace_back (ms, db);
+        float windowPeak = -1000.0f;
+        for (const auto& [at, peak] : recent)
+            if (at > ms - 2000.0)
+                windowPeak = std::max (windowPeak, peak);
+
+        const float before = range.db();
+        range.follow (level (db), ms);
+        const float moved = range.db() - before;
+        CAPTURE (i);
+        if (i == 0)
+            continue;   // the first frame lands, by design
+        if (moved > 0.0f)
+            /* Up only while a peak of the last two seconds wants it higher. */
+            CHECK (before < plot::LevelRange::targetFor (level (windowPeak)) + 1.0e-3f);
+        else
+            /* Down, never more than about half a decibel a frame at 60 Hz. */
+            CHECK (-moved < 0.6f);
+        CHECK (range.db() >= plot::LevelRange::floorDb);
+        CHECK (range.db() <= plot::LevelRange::ceilingDb);
+    }
+}
+
+TEST_CASE ("plot: steady material holds the range still, frame after frame")
+{
+    plot::LevelRange range;
+    double ms = 0.0;
+    const auto steady = [] (int i)
+    {
+        /* Peaks that come and go every frame and every half second, the
+         * loudest of them the same in any two seconds. */
+        return -20.0f - 6.0f * (float) (i % 2) - 9.0f * (float) ((i / 30) % 2) * (float) (i % 3 == 0);
+    };
+    int i = 0;
+    for (; i < 180; ++i)
+        range.follow (level (steady (i)), ms += 1000.0 / 60.0);
+    const float settled = range.db();
+    CHECK (settled == doctest::Approx (-17.0f));
+    for (; i < 1380; ++i)
+    {
+        range.follow (level (steady (i)), ms += 1000.0 / 60.0);
+        CHECK (range.db() == settled);
+    }
+}
+
+TEST_CASE ("plot: a quieter passage waits out the window, then eases down over the release")
 {
     plot::LevelRange range;
     Frames f { 0.0, range };
     f.run (1.0, -3.0f);
-    REQUIRE (range.db() == 0.0f);
+    REQUIRE (range.db() == doctest::Approx (0.0f));
 
     /* Quiet now, but the loud second is inside the window: held. */
-    f.run (1.7, -20.0f);
-    CHECK (range.db() == 0.0f);
+    f.run (1.7, -30.0f);
+    CHECK (range.db() == doctest::Approx (0.0f));
 
-    /* Past it, a glide: no frame moves it far, and it takes a while. */
-    const float largest = f.run (0.5, -20.0f);
-    CHECK (range.db() < 0.0f);
-    CHECK (range.db() > -18.0f);
-    CHECK (largest < 1.5f);
+    /* Past it, one time constant of the release takes it two thirds of the
+     * way to -27 (the window's last bucket leaves within a quarter second). */
+    f.run (0.3 + 1.5, -30.0f);
+    CHECK (range.db() < -27.0f + 27.0f * 0.45f);
+    CHECK (range.db() > -27.0f + 27.0f * 0.30f);
 
-    /* And it arrives, on the rung, inside two seconds. */
-    f.run (1.5, -20.0f);
-    CHECK (range.db() == -18.0f);
-    CHECK (range.label() == juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92" "18 dB")));
-}
-
-TEST_CASE ("plot: material sitting on a rung does not flip the range between two")
-{
-    plot::LevelRange range;
-    Frames f { 0.0, range };
-    /* -10 dBFS wants -6; then -12.5, which fits -12, but within the margin of
-     * it: the range stays where it is rather than pumping. */
-    f.run (1.0, -10.0f);
-    REQUIRE (range.db() == -6.0f);
-    f.run (6.0, -12.5f);
-    CHECK (range.db() == -6.0f);
-    /* -14 has the margin, and narrows it. */
-    f.run (6.0, -14.0f);
-    CHECK (range.db() == -12.0f);
+    /* Within half a decibel after five, and on it after a dozen seconds. */
+    f.run (6.0, -30.0f);
+    CHECK (range.db() == doctest::Approx (-27.0f).epsilon (0.02));
+    f.run (6.0, -30.0f);
+    CHECK (range.db() == -27.0f);
 }
 
 TEST_CASE ("plot: silence settles on the floor, and the floor is never passed")
@@ -447,39 +499,47 @@ TEST_CASE ("plot: silence settles on the floor, and the floor is never passed")
     plot::LevelRange range;
     Frames f { 0.0, range };
     f.run (0.5, -6.5f);
-    REQUIRE (range.db() == -6.0f);
-    f.run (6.0, -200.0f);
+    f.run (20.0, -200.0f);
     CHECK (range.db() == -48.0f);
     for (int i = 0; i < 60; ++i)
     {
         f.ms += 16.0;
         range.follow (0.0f, f.ms);
-        CHECK (range.db() >= plot::LevelRange::floorDb);
+        CHECK (range.db() == plot::LevelRange::floorDb);
     }
 }
 
 TEST_CASE ("plot: a clock that jumps or stands still neither stalls nor rushes the range")
 {
     plot::LevelRange range;
-    range.follow (level (-1.0f), 0.0);
+    range.follow (level (-3.0f), 0.0);
     /* No time passes: nothing moves, whatever the peak. */
-    range.follow (level (-33.0f), 0.0);
-    CHECK (range.db() == 0.0f);
+    range.follow (level (-30.0f), 0.0);
+    CHECK (range.db() == doctest::Approx (0.0f));
+    range.follow (level (-0.0f), 0.0);
+    CHECK (range.db() == doctest::Approx (0.0f));
     /* An editor hidden for a minute: the window has long passed, and the
-     * glide is a frame's step from a second, never a jump past its rung. */
-    range.follow (level (-33.0f), 60000.0);
-    CHECK (range.db() < 0.0f);
-    CHECK (range.db() >= -30.0f);
-    range.follow (level (-33.0f), 120000.0);
-    CHECK (range.db() == -30.0f);
+     * glide moves a second's worth, never past its target. */
+    range.follow (level (-30.0f), 60000.0);
+    CHECK (range.db() < -3.0f);
+    CHECK (range.db() > -27.0f);
 }
 
-TEST_CASE ("plot: the level label is whole decibels with a minus sign, and says when it is fixed")
+TEST_CASE ("plot: the level label rounds the range to whole decibels, and says when it is fixed")
 {
     plot::LevelRange range;
     CHECK (range.label() == "0 dB");
-    range.follow (level (-15.0f), 0.0);
-    CHECK (range.label() == juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92" "12 dB")));
+    range.follow (level (-19.6f), 0.0);   // -16.6
+    CHECK (range.label() == juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92" "17 dB")));
+    plot::LevelRange other;
+    other.follow (level (-20.4f), 0.0);   // -17.4
+    CHECK (other.label() == juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92" "17 dB")));
+    plot::LevelRange loud;
+    loud.follow (1.0f, 0.0);
+    CHECK (loud.label() == "+3 dB");
+    plot::LevelRange edge;
+    edge.follow (level (-3.2f), 0.0);     // -0.2
+    CHECK (edge.label() == "0 dB");
 
     /* Fixed is full scale, and the range follows on underneath it. */
     range.setFixed (true);
@@ -489,7 +549,7 @@ TEST_CASE ("plot: the level label is whole decibels with a minus sign, and says 
     CHECK (range.label() == "0 dB fixed");
     CHECK_FALSE (range.follow (level (-40.0f), 16.0));
     range.setFixed (false);
-    CHECK (range.db() == -12.0f);
+    CHECK (range.db() == doctest::Approx (-16.6f));
 }
 
 TEST_CASE ("plot: a well with a level range labels it over the trace, and a double-click holds full scale")

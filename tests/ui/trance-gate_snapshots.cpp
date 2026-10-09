@@ -13,8 +13,9 @@
  *   trance-gate-signal     the Signal tab, the sweep writing, an outcome in
  *                          the bar
  *   trance-gate-quiet      the Signal tab on a track at -24 dBFS, zoomed to
- *                          fill the band, its range over the top edge
- *   trance-gate-loud       the same at 0 dBFS, on full scale
+ *                          fill the band with 3 dB to spare, its range over
+ *                          the top edge
+ *   trance-gate-loud       the same at 0 dBFS: a range of +3 dB
  *   trance-gate-32         two rows of pads, the window grown by one
  *   trance-gate-settings   the settings row alone, slot 3 and Exponential
  *                          on their faces (UT3: the Slot select was empty)
@@ -135,6 +136,9 @@ NI_SNAPSHOT_TEST ("trance-gate: the Signal tab, the sweep writing, an outcome in
     s.frame();
     fillCapture (s.model, 256, 147, 2000.0);
     s.editor.band().tabs().onSelect (1);
+    /* A second of frames: the level range has glided up to the track. */
+    for (int i = 0; i < 60; ++i)
+        s.frame();
     s.editor.verbs().copy();
     s.frame();
     NI_CHECK_SNAPSHOT (s.editor, "trance-gate-signal");
@@ -151,23 +155,25 @@ void signalAt (Scene& s, float level)
     s.frame();
     fillCapture (s.model, 256, 147, 2000.0, level);
     s.editor.band().tabs().onSelect (1);
-    s.frame();
+    /* A second of frames: the level range has glided up to the track. */
+    for (int i = 0; i < 60; ++i)
+        s.frame();
 }
 } // namespace
 
-NI_SNAPSHOT_TEST ("trance-gate: the Signal tab on a quiet track, -24 dBFS, zoomed to fill the band")
+NI_SNAPSHOT_TEST ("trance-gate: the Signal tab on a quiet track, -24 dBFS, zoomed to fill the band with 3 dB to spare")
 {
     Scene s;
     signalAt (s, 0.063f);
-    REQUIRE (s.editor.band().signal().levelRange().db() == -24.0f);
+    REQUIRE (s.editor.band().signal().levelRange().label() == juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92" "21 dB")));
     NI_CHECK_SNAPSHOT (s.editor, "trance-gate-quiet");
 }
 
-NI_SNAPSHOT_TEST ("trance-gate: the Signal tab on a loud track, 0 dBFS, on full scale")
+NI_SNAPSHOT_TEST ("trance-gate: the Signal tab on a loud track, 0 dBFS, with 3 dB to spare")
 {
     Scene s;
     signalAt (s, 1.0f);
-    REQUIRE (s.editor.band().signal().levelRange().db() == 0.0f);
+    REQUIRE (s.editor.band().signal().levelRange().label() == "+3 dB");
     NI_CHECK_SNAPSHOT (s.editor, "trance-gate-loud");
 }
 

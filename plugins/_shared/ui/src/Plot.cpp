@@ -182,16 +182,9 @@ float toDb (float level)
 }
 } // namespace
 
-float LevelRange::fit (float peakLevel)
+float LevelRange::targetFor (float peakLevel)
 {
-    /* A peak within a hundredth of a decibel of a rung is on it: a level
-     * written as -24 dBFS comes back from the logarithm a hair either side,
-     * and must not land a whole rung up for the hair. */
-    constexpr float onRung = 0.01f;
-    const float peakDb = toDb (peakLevel);
-    if (peakDb >= -onRung)
-        return 0.0f;
-    return juce::jmax (floorDb, std::ceil ((peakDb - onRung) / stepDb) * stepDb);
+    return juce::jlimit (floorDb, ceilingDb, toDb (peakLevel) + headroomDb);
 }
 
 /*
@@ -222,47 +215,42 @@ float LevelRange::windowPeakDb() const
     return out;
 }
 
+/*
+ * ONE FILTER, TWO SPEEDS: the range glides towards headroomDb over the
+ * window's peak, quickly when that is above it and slowly when below, and
+ * lands on it once within a hundredth of a decibel, so material that keeps
+ * the window's peak where it is keeps the range exactly still. The hold is
+ * the window's: a peak keeps the target up for two seconds after it.
+ */
 bool LevelRange::follow (float peakLevel, double nowMs)
 {
     const float before = db();
-    const float now = fit (peakLevel);
 
     if (! started)
     {
-        /* The first frame lands on its rung: a well opened on quiet material
-         * is zoomed already, not zooming. */
+        /* The first frame lands on its target: a well opened on quiet
+         * material is zoomed already, not zooming. */
         held.fill (silenceDb);
         heldIn.fill (std::numeric_limits<long long>::min());
         record (toDb (peakLevel), nowMs);
         started = true;
-        current = now;
+        current = targetFor (peakLevel);
         lastMs = nowMs;
         return ! juce::exactlyEqual (before, db());
     }
 
     record (toDb (peakLevel), nowMs);
+    /* A clock that stands still moves nothing; one that jumps -- an editor
+     * hidden for a minute -- moves at most a second's worth. */
     const double dt = juce::jlimit (0.0, 1000.0, nowMs - lastMs);
     lastMs = nowMs;
 
-    if (now > current)
-    {
-        /* Attack: louder than the range, so wider at once. */
-        current = now;
-    }
-    else
-    {
-        /* Release: towards the rung the window's peak fits under with the
-         * margin to spare, and only ever narrower -- a rung above the range
-         * is the margin's doing, no reason to widen, and that is the
-         * hysteresis. */
-        const float target = fit (std::pow (10.0f, (windowPeakDb() + marginDb) / 20.0f));
-        if (target < current)
-        {
-            current = target + (current - target) * (float) std::exp (-dt / releaseMs);
-            if (current - target < 0.1f)
-                current = target;
-        }
-    }
+    constexpr float landed = 0.01f;
+    const float target = juce::jlimit (floorDb, ceilingDb, windowPeakDb() + headroomDb);
+    const double tau = target > current ? attackMs : releaseMs;
+    current = target + (current - target) * (float) std::exp (-dt / tau);
+    if (std::abs (current - target) < landed)
+        current = target;
     return ! juce::exactlyEqual (before, db());
 }
 
@@ -280,7 +268,8 @@ juce::String LevelRange::label() const
 {
     const int whole = juce::roundToInt (db());
     /* U+2212, the minus sign, as the type has it; never a hyphen. */
-    auto text = whole < 0 ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")) + juce::String (-whole)
+    auto text = whole < 0   ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92")) + juce::String (-whole)
+              : whole > 0 ? "+" + juce::String (whole)
                           : juce::String ("0");
     text << " dB";
     if (fixed)
