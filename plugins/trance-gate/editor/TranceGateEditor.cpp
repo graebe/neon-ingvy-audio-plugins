@@ -353,7 +353,6 @@ void TranceGateEditor::refreshOrder()
 
 void TranceGateEditor::tick (double nowMs)
 {
-    juce::ignoreUnused (nowMs);
     const auto& p = model.pattern();
     const int length = juce::jlimit (1, maxSteps, p.length);
     fitRows (length);
@@ -419,7 +418,7 @@ void TranceGateEditor::tick (double nowMs)
     const auto& gate = model.gate();
     plotBand->pattern().update (gate, length, amount);
     plotBand->pattern().setPlayhead (playStep);
-    plotBand->signal().update (model.capture(), gate, length, amount, transport.playing);
+    plotBand->signal().update (model.capture(), gate, length, amount, transport.playing, nowMs);
 
     /* The stages in ms follow the tempo and Width, which are not theirs. */
     for (const int i : { param::attack, param::decay, param::release })

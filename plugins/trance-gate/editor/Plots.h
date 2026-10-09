@@ -163,19 +163,27 @@ private:
 
 /* -------------------------------------------------------------- signal -- */
 
+/*
+ * THE SIGNAL ON ITS LEVEL RANGE (Plot.h): the dry and gated traces zoom with
+ * the material, labelled over the top edge, and a double-click holds them at
+ * full scale; the gate's outline over them is a gain and stays on its own
+ * scale. The label keeps clear of the tabs the Band lays over the right edge.
+ */
 class SignalPlot final : public ni::ui::PlotWell
 {
 public:
     SignalPlot();
 
-    /* The capture, the render it was gated by, the length and Amount, and
-     * whether the sweep is moving (the transport runs). */
-    void update (const Capture&, const GateCurve&, int length, float amount, bool moving);
+    /* The capture, the render it was gated by, the length and Amount,
+     * whether the sweep is moving (the transport runs), and the frame's time
+     * in ms, which the level range follows on. */
+    void update (const Capture&, const GateCurve&, int length, float amount, bool moving, double nowMs);
 
     void resized() override;
 
 protected:
     void paintPlot (juce::Graphics&) override;
+    void levelChanged() override;
 
 private:
     void rebuild();
@@ -187,6 +195,7 @@ private:
     std::vector<float> data;
     int columns = 0, head = 0;
     double cycleMs = 0.0;
+    float captured = 0.0f;   // the capture's peak, dry or gated
     GateCurve curve;
     int length = 16;
     float amount = 1.0f;

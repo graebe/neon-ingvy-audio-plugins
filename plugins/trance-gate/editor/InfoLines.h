@@ -87,7 +87,7 @@ inline constexpr InfoText envelopePlot { "Envelope plot — one gate as the engi
 inline constexpr InfoText patternTab { "Pattern — show one cycle of the gate as the engine renders it." };
 inline constexpr InfoText signalTab { "Signal — show your audio before and after the gate, one cycle." };
 inline constexpr InfoText patternPlot { "Pattern plot — one cycle of the gate, rendered by the engine." };
-inline constexpr InfoText signalPlot { "Signal plot — the dry input in grey, the gated output in violet." };
+inline constexpr InfoText signalPlot { "Signal plot — dry in grey, gated in violet; double-click for full scale." };
 
 /* The pads, one line for all of them -- and another while ORDER is on,
  * because a click there names an arrival instead of toggling. */

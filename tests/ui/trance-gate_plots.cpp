@@ -10,7 +10,9 @@
  *                  is amber when the release outlives the step; the letters
  *                  label what ran; the caption names the span and the step
  *   the pattern    its caption, its playhead in whole steps
- *   the signal     its caption carries the cycle in ms
+ *   the signal     its caption carries the cycle in ms; its traces zoom with
+ *                  the material, labelled clear of the tabs, and a
+ *                  double-click holds them at full scale
  *   the marks      a rule per step from 6px, bars and beats at any density
  */
 #include "Plots.h"
@@ -19,6 +21,9 @@
 #include "trance-gate_fakes.h"
 
 #include "Info.h"
+#include "Pointer.h"
+#include "UvTokens.h"
+#include "snapshot.h"
 
 #include <doctest.h>
 
@@ -116,12 +121,82 @@ TEST_CASE ("trance-gate plots: the signal's caption carries one cycle in ms")
     FakeModel model;
     renderCurves (model);
     fillCapture (model, 256, 10, 2000.0);
-    plot.update (model.signal, model.gateCurve, 16, 1.0f, true);
+    plot.update (model.signal, model.gateCurve, 16, 1.0f, true, 0.0);
     CHECK (plot.getCaption() == "SIGNAL   ONE CYCLE, 2000 MS   DRY IN GREY, GATED IN FRONT");
     model.signal.cycleMs = 1000.0;
     ++model.signal.serial;
-    plot.update (model.signal, model.gateCurve, 16, 1.0f, true);
+    plot.update (model.signal, model.gateCurve, 16, 1.0f, true, 0.0);
     CHECK (plot.getCaption().contains ("1000 MS"));
+}
+
+TEST_CASE ("trance-gate plots: the signal zooms with the material, at once when it is louder, after a while when quieter")
+{
+    SignalPlot plot;
+    plot.setSize (760, 92);
+    CHECK (plot.hasLevelRange());
+    FakeModel model;
+    renderCurves (model);
+
+    /* A quiet track, -24 dBFS: the first frame lands on its rung. */
+    fillCapture (model, 256, 10, 2000.0, 0.063f);
+    double ms = 0.0;
+    plot.update (model.signal, model.gateCurve, 16, 1.0f, true, ms);
+    CHECK (plot.levelRange().db() == -24.0f);
+
+    /* A loud one: widened in the same frame. */
+    fillCapture (model, 256, 11, 2000.0, 0.9f);
+    plot.update (model.signal, model.gateCurve, 16, 1.0f, true, ms += 16.0);
+    CHECK (plot.levelRange().db() == 0.0f);
+
+    /* Quiet again, and the transport stopped -- the capture holds still, and
+     * the range still glides in once the window has passed. */
+    fillCapture (model, 256, 12, 2000.0, 0.1f);
+    for (int i = 0; i < 300; ++i)
+        plot.update (model.signal, model.gateCurve, 16, 1.0f, false, ms += 16.0);
+    CHECK (plot.levelRange().db() == -18.0f);
+}
+
+TEST_CASE ("trance-gate plots: the signal's range is labelled over its top edge, clear of the tabs")
+{
+    SignalPlot plot;
+    plot.setSize (760, 92);
+    FakeModel model;
+    renderCurves (model);
+    fillCapture (model, 256, 10, 2000.0, 0.063f);
+    plot.update (model.signal, model.gateCurve, 16, 1.0f, true, 0.0);
+    CHECK (plot.levelRange().label() == juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92" "24 dB")));
+
+    const auto img = ni::ui::test::render (plot);
+    const auto inked = [&img] (int x0, int x1)
+    {
+        for (int y = 2; y < 13; ++y)
+            for (int x = x0; x < x1; ++x)
+                if (img.getPixelAt (x, y).getBrightness() > uv::tok::colour::bg000.getBrightness() + 0.2f)
+                    return true;
+        return false;
+    };
+    /* The tabs' 24px and the inset are left alone; the label ends just short. */
+    CHECK (inked (690, 730));
+    CHECK_FALSE (inked (731, 760));
+}
+
+TEST_CASE ("trance-gate plots: a double-click on the signal holds it at full scale, and another lets it go")
+{
+    SignalPlot plot;
+    plot.setSize (760, 92);
+    FakeModel model;
+    renderCurves (model);
+    fillCapture (model, 256, 10, 2000.0, 0.063f);
+    plot.update (model.signal, model.gateCurve, 16, 1.0f, true, 0.0);
+
+    ni::ui::gallery::Pointer p;
+    p.doubleClick (plot, { 300.0f, 50.0f });
+    CHECK (plot.levelRange().isFixed());
+    CHECK (plot.levelRange().fullScale() == 1.0f);
+    CHECK (plot.levelRange().label() == "0 dB fixed");
+    p.doubleClick (plot, { 300.0f, 50.0f });
+    CHECK_FALSE (plot.levelRange().isFixed());
+    CHECK (plot.levelRange().db() == -24.0f);
 }
 
 TEST_CASE ("trance-gate plots: the band's tabs say what each shows")

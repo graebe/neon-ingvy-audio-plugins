@@ -352,12 +352,14 @@ void PatternPlot::paintPlot (juce::Graphics& g)
 SignalPlot::SignalPlot()
 {
     ni::ui::setInfo (*this, info::signalPlot);
+    enableLevelRange ((float) ni::ui::Tabs::width);
 }
 
 float SignalPlot::top() const { return plot::captionH; }
 float SignalPlot::bottom() const { return (float) getHeight() - plot::inset - axisH; }
 
-void SignalPlot::update (const Capture& cap, const GateCurve& g, int steps, float level, bool isMoving)
+void SignalPlot::update (const Capture& cap, const GateCurve& g, int steps, float level, bool isMoving,
+                         double nowMs)
 {
     steps = juce::jlimit (1, maxSteps, steps);
     const bool gateChanged = g.serial != gateSerial || steps != length || ! juce::exactlyEqual (level, amount)
@@ -365,7 +367,16 @@ void SignalPlot::update (const Capture& cap, const GateCurve& g, int steps, floa
     const bool captureChanged = cap.serial != captureSerial || cap.columns != columns || cap.head != head
                              || ! juce::exactlyEqual (cap.cycleMs, cycleMs) || data.empty() != cap.data.empty();
     const bool movingChanged = isMoving != moving;
-    if (! gateChanged && ! captureChanged && ! movingChanged)
+
+    /* Every frame, changed or not: a range gliding in goes on gliding while
+     * the transport is stopped and the capture holds still. */
+    if (captureChanged)
+    {
+        const int usable = std::min (cap.columns, (int) (cap.data.size() / (std::size_t) Capture::stride));
+        captured = plot::peak ({ cap.data.data(), Capture::stride, usable }, { 0, 1, 2, 3 });
+    }
+    const bool rangeMoved = followLevel (captured, nowMs);
+    if (! gateChanged && ! captureChanged && ! movingChanged && ! rangeMoved)
         return;
 
     length = steps;
@@ -384,9 +395,15 @@ void SignalPlot::update (const Capture& cap, const GateCurve& g, int steps, floa
         head = cap.head;
         cycleMs = cap.cycleMs;
         data.assign (cap.data.begin(), cap.data.end());
-        rebuild();
     }
+    if (captureChanged || rangeMoved)
+        rebuild();
     repaint();
+}
+
+void SignalPlot::levelChanged()
+{
+    rebuild();
 }
 
 void SignalPlot::resized()
@@ -407,7 +424,7 @@ void SignalPlot::rebuild()
     const plot::Capture capture { data.data(), Capture::stride, usable };
     const plot::BandGeometry geometry { plot::inset,
                                         std::max (1, juce::roundToInt ((float) getWidth() - 2.0f * plot::inset)),
-                                        top(), bottom() };
+                                        top(), bottom(), levelRange().fullScale() };
     plot::band (dryBand, capture, 0, 1, geometry);
     plot::band (wetBand, capture, 2, 3, geometry);
 }
