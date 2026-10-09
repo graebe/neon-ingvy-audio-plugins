@@ -347,6 +347,9 @@ pub struct Info {
     pub live: bool,
     pub sample_rate: u32,
     pub label: String,
+    /// Which segment the slot's name leads to: a reader whose own
+    /// `incarnation` differs reads one that has been replaced.
+    pub incarnation: u64,
 }
 
 /// The receiving end. Any number of these, in any number of processes.
@@ -440,6 +443,13 @@ impl Reader {
         true
     }
 
+    /// Which segment this reader maps; `probe(slot).incarnation` is the one
+    /// the name leads to now. Two that differ mean the sender went and a new
+    /// one created the bus afresh: open the slot again.
+    pub fn incarnation(&self) -> u64 {
+        self.map.header().incarnation.load(Ordering::Relaxed)
+    }
+
     /// The rate the sender publishes at. Allocation-free, unlike `info`.
     pub fn sample_rate(&self) -> u32 {
         self.map.header().sample_rate.load(Ordering::Acquire)
@@ -465,6 +475,7 @@ fn info_from(hdr: &Header, slot: u32) -> Info {
         live,
         sample_rate: hdr.sample_rate.load(Ordering::Acquire),
         label,
+        incarnation: hdr.incarnation.load(Ordering::Relaxed),
     }
 }
 

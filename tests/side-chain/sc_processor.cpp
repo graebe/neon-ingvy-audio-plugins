@@ -48,6 +48,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -972,6 +973,52 @@ TEST_CASE ("a Listen-In's kick lands where the dry sounded with it, whichever tr
     }
 
     /* The sender gone: silent, then a bus that is no longer there. */
+    abus_pusher_release (p);
+    abus_writer_release (w);
+}
+
+TEST_CASE ("a quiet Listen-In says silent and stays so; one that comes back on a new bus is found again")
+{
+    constexpr unsigned slot = 5;
+    abus_writer_t* w = nullptr;
+    abus_pusher_t* p = nullptr;
+    REQUIRE (abus_writer_claim (slot, (std::uint32_t) rate, &w, &p) == ABUS_OK);
+
+    Instance a;
+    a.p.chooseKick ((int) slot);
+    a.p.editorOpened();
+    const auto run = [&] (int blocks, bool publishing)
+    {
+        for (int i = 0; i < blocks; ++i)
+        {
+            if (publishing)
+                publish (p, a.head.sample, a.head.sample + 100, true);
+            spikeBlock (a, -1, false, false);
+            a.model().kick();
+        }
+    };
+    run (20, true);
+    CHECK (a.model().kick().status == KickStatus::aligned);
+
+    /* Bypassed, say: nothing for over half a second, and then still nothing
+     * -- the reader is kept, the caption does not flicker. */
+    run (60, false);
+    CHECK (a.model().kick().status == KickStatus::silent);
+    std::this_thread::sleep_for (std::chrono::milliseconds (600));
+    run (10, false);
+    CHECK (a.model().kick().status == KickStatus::silent);
+
+    /* The Listen-In removed and inserted again: a new segment under the same
+     * number, which the old reader would never hear. */
+    abus_pusher_release (p);
+    abus_writer_release (w);
+    REQUIRE (abus_writer_claim (slot, (std::uint32_t) rate, &w, &p) == ABUS_OK);
+    std::this_thread::sleep_for (std::chrono::milliseconds (600));
+    a.model().kick();
+    run (20, true);
+    CHECK (a.model().kick().status == KickStatus::aligned);
+
+    a.p.editorClosed();
     abus_pusher_release (p);
     abus_writer_release (w);
 }

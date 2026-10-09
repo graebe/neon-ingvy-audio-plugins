@@ -100,10 +100,11 @@ private:
     Capture band;
     std::atomic<int> wanted { kick::off };
 
-    /* The message thread's: the slot whose reader is lent, and when the last
-     * open was tried. */
+    /* The message thread's: the slot whose reader is lent, the segment it
+     * maps (abus_reader_incarnation), and when the bus was last looked at. */
     int openSlot = 0;
     bool hasReader = false;
+    std::uint64_t openedAs = 0;
     std::uint32_t lastTry = 0;
 
     /* The audio thread's: a chunk's kick and its sweeps. */
