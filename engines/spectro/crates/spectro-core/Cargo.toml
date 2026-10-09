@@ -1,6 +1,6 @@
 [package]
 name = "spectro-core"
-version = "2026.10.9+1"
+version = "2026.10.9+2"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "A short-time Fourier analyzer that hands finished spectrogram columns to a UI"

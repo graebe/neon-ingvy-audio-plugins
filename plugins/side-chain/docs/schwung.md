@@ -39,6 +39,10 @@ gate immediately and forgets the trigger, whatever the note filter says — a
 ducker still holding a note after a panic leaves a track silent with nothing
 playing, which is the worst way this could fail.
 
+**No Kick picture.** The plugin can draw the kick you duck against behind its
+shape, from an NI Listen-In or its sidechain key. The Move has neither, and the
+module has no screen picture of the duck, so there is nothing to choose.
+
 ## Choosing the trigger note
 
 **Trigger** is a note *name*, stepped a semitone per detent: `C-2` up to `G8`,
