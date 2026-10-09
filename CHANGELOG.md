@@ -1,5 +1,15 @@
 # What's new
 
+## v2026.10.10.1 — NI Side-Chain
+
+- **NI Side-Chain on Ableton Move keeps its settings.** Schwung now saves the
+  Side-Chain's settings with the set and restores them when the set loads.
+  Until now it never could, and the other modules in the same slot weren't
+  saved either. Load a set saved before this update once more and set the
+  Side-Chain up again; from then on its settings are kept.
+- NI Side-Chain's MIDI trigger is now entirely our own code. It behaves
+  exactly as before.
+
 ## v2026.10.09.1
 
 - **Space always reaches Live.** In every NI plugin window, Space starts and

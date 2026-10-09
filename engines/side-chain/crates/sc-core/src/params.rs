@@ -72,6 +72,11 @@ pub enum Param {
 
 pub const PARAM_COUNT: i32 = 15;
 
+/// The first field of a `state` blob: the format and its version. A change
+/// that an older build would misread takes a new tag, never a new meaning for
+/// this one.
+pub const STATE_TAG: &str = "sc1";
+
 impl Param {
     /// Every parameter, in index order: `ALL[i] as i32 == i`, which a test
     /// holds it to.
@@ -254,6 +259,36 @@ impl Instance {
         self.env.pos = t_new * stage_len;
     }
 
+    /// Load a `state` blob, as [`get_param`](Self::get_param) writes it:
+    ///
+    /// ```text
+    /// sc1;source=0;rate=4;time_mode=0;delay=0;attack=2;...;lockout=0
+    /// ```
+    ///
+    /// Every value goes through [`set_num`](Self::set_num) -- the inverse of
+    /// [`num`](Self::num), so the blob round-trips exactly and every clamp
+    /// exists once. Keyed rather than positional, so a key this build does not
+    /// know is passed over and one the blob lacks keeps what the engine held:
+    /// a newer build's blob loads here, and this one loads in a newer build.
+    /// A text without the tag is no blob and loads nothing.
+    ///
+    /// Schwung calls this on its audio callback, which is the Move's only
+    /// thread, so it allocates nothing: `split` and `parse::<f64>` are both
+    /// allocation-free (and locale-free, unlike `atof`).
+    pub fn load_state(&mut self, text: &str) {
+        let Some(body) = text.strip_prefix(STATE_TAG) else {
+            return;
+        };
+        for field in body.split(';') {
+            let Some((k, v)) = field.split_once('=') else {
+                continue;
+            };
+            if let (Some(p), Ok(n)) = (Param::from_key(k), v.parse::<f64>()) {
+                self.set_num(p, n);
+            }
+        }
+    }
+
     /// The string door. Returns false for a key it does not own, so a shell
     /// can chain its own keys after these.
     pub fn set_param(&mut self, key: &str, val: &str) -> bool {
@@ -261,6 +296,10 @@ impl Instance {
          * Schwung module has for one. See midi.rs. */
         if key == "panic" {
             self.reset();
+            return true;
+        }
+        if key == "state" {
+            self.load_state(val);
             return true;
         }
         let Some(p) = Param::from_key(key) else {
@@ -396,6 +435,15 @@ impl Instance {
                         r = r.and_then(|_| write!(b, ":"));
                     }
                     r = r.and_then(|_| write!(b, "{}", self.num(p)));
+                }
+                r
+            }
+            /* THE WHOLE PATCH, for a host that saves one opaque blob per
+             * module -- Schwung's autosave and set files. See `load_state`. */
+            "state" => {
+                let mut r = write!(b, "{STATE_TAG}");
+                for p in Param::ALL {
+                    r = r.and_then(|_| write!(b, ";{}={}", p.key(), self.num(p)));
                 }
                 r
             }

@@ -50,6 +50,13 @@ const SETS: &[(&str, &str)] = &[
     ("threshold", "-18"),
     ("lockout", "30"),
     ("source", "Sidechain"),
+    /* A whole patch, as Schwung restores one: a known key, an unknown one,
+     * one with no value and one that is no number. */
+    (
+        "state",
+        "sc1;source=1;rate=6;depth=0.5;wobble=2;attack;release=fast;threshold=-18;lockout=30",
+    ),
+    ("state", "not a blob"),
     ("panic", "1"),
     ("source", "Cycle"),
 ];
@@ -66,7 +73,7 @@ const MIDI_IGNORED: &[&[u8]] = &[
 ];
 
 const GETS: &[&str] = &[
-    "ui", "params", "stage_ms", "phase", "sweep", "ms_per_cycle", "fires", "duck",
+    "state", "ui", "params", "stage_ms", "phase", "sweep", "ms_per_cycle", "fires", "duck",
     "key_level", "advancing", "dropped", "rate_label", "curve_label", "source_label",
     "source", "rate", "trigger_note", "threshold", "no-such-key",
 ];

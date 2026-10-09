@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "sc-capi"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 dependencies = [
  "cbindgen",
  "ground-capi",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "sc-core"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 dependencies = [
  "assert_no_alloc",
  "ni-dsp",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "sc-move"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 dependencies = [
  "ni-schwung",
  "sc-capi",

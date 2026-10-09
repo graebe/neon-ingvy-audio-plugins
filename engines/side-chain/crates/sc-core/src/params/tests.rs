@@ -3,7 +3,7 @@
 
 //! The parameter clamps, both doors, and the click-free curve change.
 
-use crate::params::{amp_to_db, db_to_amp, Param, PARAM_COUNT};
+use crate::params::{amp_to_db, db_to_amp, Param, PARAM_COUNT, STATE_TAG};
 use crate::shape::{Curve, Stage};
 use crate::tests::note_on;
 use crate::{rates, Instance, Source, Transport};
@@ -203,7 +203,12 @@ fn a_state_on_the_wire() -> Instance {
 
 #[test]
 fn every_readout_says_the_same_bytes() {
-    const WIRE: [(&str, &str); 29] = [
+    const WIRE: [(&str, &str); 30] = [
+        (
+            "state",
+            "sc1;source=1;rate=6;time_mode=1;delay=-12.5;attack=5;hold=10;release=25;depth=0.625;\
+             curve=0;channel=7;trigger_note=60;midi_mode=1;vel_sens=0.5;threshold=-60;lockout=33",
+        ),
         ("ui", "1:6:250.000:0.020500:1:1:0.3649:0.00000:0:2:0.500000"),
         ("params", "1:6:1:-12.5:5:10:25:0.625:0:7:60:1:0.5:-60:33"),
         ("stage_ms", "-31.250:12.500:25.000:62.500"),
@@ -381,4 +386,80 @@ fn changing_the_curve_mid_duck_does_not_move_the_gain() {
             );
         }
     }
+}
+
+/* ---------------------------------------------------------------- state */
+
+fn state_of(p: &Instance) -> String {
+    let mut out = [0u8; 512];
+    let n = p.get_param("state", &mut out);
+    assert!(n >= 0, "state is not served");
+    std::str::from_utf8(&out[..n as usize]).unwrap().to_string()
+}
+
+fn values(p: &Instance) -> Vec<f64> {
+    Param::ALL.into_iter().map(|q| p.num(q)).collect()
+}
+
+#[test]
+fn a_saved_state_restores_every_parameter_exactly() {
+    /*
+     * Schwung saves a module as ONE blob and restores it into a fresh
+     * instance; without one, its autosave abandoned the whole slot. Every
+     * parameter at a non-default value, compared bit for bit, so a value
+     * that rounds on the way out is caught as surely as one left behind.
+     */
+    let saved = a_state_on_the_wire();
+    let mut fresh = Instance::new(48000.0);
+    assert_ne!(values(&fresh), values(&saved), "the fixture must differ from the defaults");
+    assert!(fresh.set_param("state", &state_of(&saved)));
+    for (q, (got, want)) in Param::ALL.into_iter().zip(values(&fresh).into_iter().zip(values(&saved))) {
+        assert_eq!(got.to_bits(), want.to_bits(), "{}: {got} != {want}", q.key());
+    }
+    assert_eq!(state_of(&fresh), state_of(&saved));
+}
+
+#[test]
+fn a_value_that_needs_every_digit_survives_the_round_trip() {
+    let mut p = Instance::new(48000.0);
+    p.set_num(Param::Depth, 1.0 / 3.0);
+    p.set_num(Param::Threshold, -17.123456789012345);
+    let mut q = Instance::new(48000.0);
+    q.set_param("state", &state_of(&p));
+    assert_eq!(q.num(Param::Depth).to_bits(), p.num(Param::Depth).to_bits());
+    assert_eq!(q.num(Param::Threshold).to_bits(), p.num(Param::Threshold).to_bits());
+}
+
+#[test]
+fn a_key_the_blob_lacks_keeps_its_value_and_one_it_does_not_know_is_passed_over() {
+    let mut p = Instance::new(48000.0);
+    p.set_num(Param::Hold, 44.0);
+    /* An older build's blob (no hold), a newer build's key, a field with no
+     * value and one that is not a number: each costs only itself. */
+    p.set_param("state", &format!("{STATE_TAG};depth=0.25;wobble=3;attack;release=fast;lockout=12"));
+    assert_eq!(p.num(Param::Depth), 0.25);
+    assert_eq!(p.num(Param::Lockout), 12.0);
+    assert_eq!(p.num(Param::Hold), 44.0, "a key the blob lacks keeps what the engine held");
+    let defaults = Instance::new(48000.0);
+    assert_eq!(p.num(Param::Release), defaults.num(Param::Release), "a word is not a number");
+    assert_eq!(p.num(Param::Attack), defaults.num(Param::Attack));
+}
+
+#[test]
+fn a_text_without_the_tag_loads_nothing() {
+    for text in ["", "depth=0.25", "{\"depth\":0.25}", "sc2;depth=0.25", "SC1;depth=0.25"] {
+        let mut p = Instance::new(48000.0);
+        let before = values(&p);
+        assert!(p.set_param("state", text), "state is this engine's key, blob or not");
+        assert_eq!(values(&p), before, "{text:?} loaded something");
+    }
+}
+
+#[test]
+fn a_loaded_value_is_clamped_like_any_other() {
+    let mut p = Instance::new(48000.0);
+    p.set_param("state", &format!("{STATE_TAG};depth=7;attack=-3;lockout=NaN"));
+    assert_eq!(p.num(Param::Depth), 1.0);
+    assert_eq!(p.num(Param::Attack), 0.0);
+    assert_eq!(p.num(Param::Lockout), Instance::new(48000.0).num(Param::Lockout), "NaN is dropped");
 }

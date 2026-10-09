@@ -144,6 +144,29 @@ mod tests {
     }
 
     #[test]
+    fn a_state_saved_through_the_vtable_restores_in_a_new_instance() {
+        /*
+         * WHAT SCHWUNG'S AUTOSAVE DOES: read `state`, store it, and on the next
+         * load hand it to a fresh instance. A module that answered no `state`
+         * at all -- -1, which the host reads as a FAILED read rather than as
+         * "this module keeps none" -- made the autosave abandon its whole slot
+         * every five seconds, so nothing in that slot was ever saved.
+         */
+        let a = Module::new();
+        for (k, v) in [("source", "1"), ("rate", "7"), ("depth", "0.4"), ("release", "60"),
+                       ("curve", "2"), ("channel", "5"), ("trigger_note", "48"), ("vel_sens", "0.3")] {
+            a.set(k, v);
+        }
+        let blob = a.get("state");
+        assert!(blob.starts_with("sc1;"), "{blob}");
+        let b = Module::new();
+        assert_ne!(b.get("params"), a.get("params"));
+        b.set("state", &blob);
+        assert_eq!(b.get("params"), a.get("params"));
+        assert_eq!(b.get("state"), blob);
+    }
+
+    #[test]
     fn the_trigger_note_default_is_c1_on_the_device() {
         let m = Module::new();
         m.set("trigger_note", "60");

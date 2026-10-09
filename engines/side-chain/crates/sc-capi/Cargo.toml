@@ -1,6 +1,6 @@
 [package]
 name = "sc-capi"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
