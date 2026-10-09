@@ -19,5 +19,9 @@ fn main() {
             name: "sc_shell.h",
             sources: &["src/shell.rs"],
         },
+        Header {
+            name: "sc_kick.h",
+            sources: &["src/kick.rs"],
+        },
     ]);
 }

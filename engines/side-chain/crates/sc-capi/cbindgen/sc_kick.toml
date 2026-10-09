@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# sc_kick.h, from src/kick.rs (build.rs). The Trance Gate's
+# trance_gate_core.toml explains the settings every capi header shares.
+
+language = "C"
+style = "type"
+cpp_compat = true
+no_includes = true
+sys_includes = ["stdint.h"]
+# abus_reader_t, which sc_kick_drain reads, is the audio bus's header.
+includes = ["audio_bus.h"]
+documentation_style = "c99"
+include_guard = "SC_KICK_H"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+// sc_kick.h -- the kick behind NI Side-Chain's duck, `sc_kick_*`.
+//
+// GENERATED at build time by cbindgen from
+// engines/side-chain/crates/sc-capi/src/kick.rs, whose doc comments are the
+// comments below: edit that, not this."""
+
+after_includes = """
+
+typedef struct ScKick sc_kick_t;"""
+
+[export]
+exclude = ["ScKick", "AbusReader", "ScKickStatus", "Tap"]
+
+[export.rename]
+"ScKick" = "sc_kick_t"
+"AbusReader" = "abus_reader_t"
