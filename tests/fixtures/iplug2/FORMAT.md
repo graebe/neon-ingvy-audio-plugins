@@ -139,7 +139,7 @@ over, and the host's parameters follow (`tg_shell_take_params`).
 Every setting is a parameter (`PLUG_DOES_STATE_CHUNKS 0`). The state still
 passes through `SideChain::SerializeState`, which puts the header in front.
 
-Since v2026.10.09 the body may end in **one optional string**: the kick the
+Since v2026.10.10.2 the body may end in **one optional string**: the kick the
 plot draws behind the duck (`plugins/side-chain/Kick.h`), `key` for the
 sidechain key or `bus:<n>` for Listen-In bus n (1..16). It is written only
 when a kick is chosen, so a set without one is the same bytes every earlier

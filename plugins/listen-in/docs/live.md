@@ -109,7 +109,7 @@ later release. **Updating from a release before v2026.10.08.2?** The
 [changelog](../../../CHANGELOG.md) says which older bundles to delete, and what a set
 that used one of them needs.
 
-**v2026.10.09.2 changes the bus format, so update NI Listen-In, NI
+**v2026.10.10.2 changes the bus format, so update NI Listen-In, NI
 Spectrogram and NI Side-Chain together and quit Live fully before you do.** An old and a new
 build cannot share a slot: whichever claims a number second replaces the
 other's bus, and a Spectrogram does not list a bus written by a build other
