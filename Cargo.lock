@@ -904,6 +904,7 @@ version = "2026.10.10+1"
 dependencies = [
  "atomic_float",
  "ni-schwung",
+ "serde_json",
  "tg-capi",
  "tg-core",
 ]

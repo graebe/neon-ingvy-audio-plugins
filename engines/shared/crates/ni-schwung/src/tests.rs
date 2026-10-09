@@ -166,6 +166,8 @@ fn the_vtable_end_to_end() {
     assert_eq!(get(api, inst, "chain_params", 64), (13, Probe::CHAIN_PARAMS.to_string()));
     assert_eq!(get(api, inst, "chain_params", 13).0, -1, "no room for the terminator");
     assert_eq!(get(api, inst, "ui_hierarchy", 8), (0, String::new()));
+    assert_eq!(get(api, inst, WEB_UI_KEY, 8), (1, WEB_UI_VERSION.to_string()));
+    assert_eq!(get(api, inst, WEB_UI_KEY, 1).0, -1, "no room for the terminator");
     assert_eq!(get(api, inst, "other", 8).0, -1);
 
     let (k, v) = (CString::new("rate").unwrap(), CString::new("1/8").unwrap());
