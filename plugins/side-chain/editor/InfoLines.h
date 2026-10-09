@@ -61,6 +61,8 @@ inline constexpr InfoText rate { "Rate — how often the duck fires on Cycle, sy
 inline constexpr InfoText gate { "Gate — keep the duck down until the note ends; off, Hold times out." };
 inline constexpr InfoText curve { "Curve — the stages' shape: Linear, Exponential or S-Curve." };
 inline constexpr InfoText percent { "% of cycle — read the stage times in % of the cycle; off, in ms." };
+/* The kick behind the duck: a picture, never the trigger (Kick.h). */
+inline constexpr InfoText kick { "Kick — draw the key or a Listen-In behind the duck, to time it by." };
 
 /* Every knob's readout: the plugin reads what is typed, in its own units. */
 inline constexpr InfoText depthValue { "Depth value — click to type a percentage; Enter sets it." };

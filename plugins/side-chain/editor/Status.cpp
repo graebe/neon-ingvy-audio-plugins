@@ -83,7 +83,7 @@ juce::String stateLine (const juce::String& sourceName, const juce::String& rate
     return line + juce::String::fromUTF8 (" \xc2\xb7 ") + stageName (stage);
 }
 
-juce::String captionFor (bool input, double msPerCycle, std::optional<double> stagesMs)
+juce::String captionFor (bool input, double msPerCycle, std::optional<double> stagesMs, const juce::String& kick)
 {
     /* The span's length only once a tempo has given the cycle one. */
     juce::String caption = "SHAPE   ONE CYCLE";
@@ -91,7 +91,27 @@ juce::String captionFor (bool input, double msPerCycle, std::optional<double> st
         caption << ", " << juce::roundToInt (msPerCycle) << " MS";
     if (stagesMs.has_value())
         caption << "   STAGES " << juce::roundToInt (*stagesMs) << " MS";
-    return caption + (input ? "   INPUT IN GREY BEHIND" : "   NOTHING REACHING THE PLUGIN");
+    if (kick.isEmpty())
+        return caption + (input ? "   INPUT IN GREY BEHIND" : "   NOTHING REACHING THE PLUGIN");
+    return caption + "   " + kick + (input ? ", INPUT IN GREY" : "   NOTHING REACHING THE PLUGIN");
+}
+
+juce::String kickClause (const KickView& k)
+{
+    switch (k.status)
+    {
+        case KickStatus::off:       return {};
+        case KickStatus::aligned:   return "KICK IN AMBER";
+        case KickStatus::byArrival: return "KICK BY ARRIVAL";
+        case KickStatus::waiting:   return "KICK WAITING";
+        case KickStatus::silent:    return "KICK SILENT";
+        case KickStatus::otherRate:
+            for (const auto& bus : k.buses)
+                if (bus.slot == k.choice)
+                    return "KICK AT " + ni::ui::rateHint (bus.sampleRate).toUpperCase() + ", NOT DRAWN";
+            return "KICK AT ANOTHER RATE, NOT DRAWN";
+    }
+    return {};
 }
 
 std::vector<ni::ui::Clause> conventions()

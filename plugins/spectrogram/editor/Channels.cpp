@@ -10,20 +10,6 @@
 namespace ni::spectrogram
 {
 
-std::vector<Source> liveBuses (const std::vector<Source>& sources)
-{
-    std::vector<Source> out;
-    for (const auto& s : sources)
-        if (s.live)
-            out.push_back (s);
-    return out;
-}
-
-juce::String sourceName (const Source& s)
-{
-    return s.label.isNotEmpty() ? s.label : "Bus " + juce::String (s.slot);
-}
-
 juce::StringArray channelNames (const std::vector<Source>& sources)
 {
     juce::StringArray names { "input" };
@@ -64,7 +50,7 @@ std::vector<ni::ui::CheckList::Option> viewOptions (const std::vector<Source>& s
         const auto& bus = buses[i];
         const bool off = bus.sampleRate != rate;
         out.push_back ({ (int) i + 1, sourceName (bus),
-                         off ? juce::String ((int) std::floor (bus.sampleRate / 1000.0 + 0.5)) + "k" : juce::String(),
+                         off ? ni::ui::rateHint (bus.sampleRate) : juce::String(),
                          off });
     }
     return out;
