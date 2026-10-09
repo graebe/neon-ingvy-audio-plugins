@@ -35,6 +35,7 @@
  */
 #pragma once
 
+#include "BusSource.h"
 #include "EditorModel.h"
 
 #include <cstdint>
@@ -138,18 +139,50 @@ struct Buses
  * THE CAPTURE: one cycle, phase-locked to the trigger, `count` columns of
  * `stride` floats -- whether the sweep has reached the column yet, the input's
  * low and high, the output's low and high (all -1..1), and the gain applied
- * (0..1). Empty (count 0) before the plugin has captured anything, which is
+ * (0..1); then the kick's: whether one landed in the column, and its low and
+ * high. Empty (count 0) before the plugin has captured anything, which is
  * no verdict on the input.
  */
 struct Scope
 {
-    enum Column : int { seen = 0, dryLo, dryHi, wetLo, wetHi, gain, stride };
+    enum Column : int { seen = 0, dryLo, dryHi, wetLo, wetHi, gain, kickSeen, kickLo, kickHi, stride };
 
     std::vector<float> data;
     int count = 0;
 
     bool isSeen (int column) const { return data[(size_t) (column * stride + seen)] >= 0.5f; }
+    bool isKickSeen (int column) const { return data[(size_t) (column * stride + kickSeen)] >= 0.5f; }
     float at (int column, Column c) const { return data[(size_t) (column * stride + c)]; }
+};
+
+/*
+ * THE KICK BEHIND THE DUCK: what the plot shows of the signal the user ducks
+ * against, so Delay and Attack can be set against the transient itself. A
+ * picture only: it never touches the audio or the trigger.
+ *
+ *   choice   none, the host's sidechain key, or a Listen-In bus by slot:
+ *            kickOff, kickKey, or 1..16
+ *   status   what the picture of it is now
+ *   buses    the Listen-In buses there are to choose from, live or not
+ */
+inline constexpr int kickOff = 0;
+inline constexpr int kickKey = -1;
+
+enum class KickStatus : int
+{
+    off = 0,       // nothing chosen
+    waiting,       // chosen, nothing from it yet (no key routed, no bus)
+    aligned,       // drawn where it sounded, to the sample
+    byArrival,     // the transport is stopped: drawn as it arrived
+    silent,        // the bus has sent nothing for a while
+    otherRate,     // the bus runs at another sample rate: not drawn
+};
+
+struct KickView
+{
+    int choice = kickOff;
+    KickStatus status = KickStatus::off;
+    std::vector<ni::ui::BusSource> buses;
 };
 
 /*
@@ -182,6 +215,12 @@ public:
 
     /* The capture; valid until the next call. */
     virtual const Scope& scope() = 0;
+
+    /* The kick behind the duck. */
+    virtual KickView kick() = 0;
+
+    /* Another kick chosen: the set is changed (not a host parameter). */
+    virtual void chooseKick (int choice) = 0;
 
     /*
      * THE DUCK ONE TRIGGER MAKES, as the engine's shape() computes it from

@@ -11,6 +11,7 @@
 #include "SideChainEditor.h"
 #include "ni/Wire.h"
 
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -109,6 +110,7 @@ void Processor::prepareToPlay (double rate, int maximumBlock)
         v->assign (n, 0.0f);
     /* A column is a slice of a cycle, and the cycle may have changed length. */
     capture.Clear();
+    behind.prepare ((std::uint32_t) std::lround (sampleRate), (int) n);
 }
 
 /*
@@ -185,7 +187,11 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
         sc_core_process_f32_split_tap (core, l, r, tap ? gain.data() : nullptr, tap ? sweep.data() : nullptr, n,
                                        &transport);
         if (tap)
+        {
             capture.Push (dry.data(), l, gain.data(), sweep.data(), n);
+            behind.file (sweep.data(), n, clock.timed, clock.timeInSamples + off,
+                         keyL != nullptr ? keyL + off : nullptr, keyR != nullptr ? keyR + off : nullptr);
+        }
         /* A chunk continues the block, so the transport moves with it. */
         if (transport.running)
             transport.beats = ni::wire::advance_beats (transport.beats, n, (double) transport.bpm, sampleRate);
@@ -227,6 +233,9 @@ juce::AudioProcessorEditor* Processor::createEditor()
 void Processor::editorOpened()
 {
     capture.Retire();
+    behind.capture().Retire();
+    /* The bus has run on while nobody looked: read from its live edge. */
+    behind.service (true);
     capturing.store (true, std::memory_order_relaxed);
     beat.setActive (true);
 }
@@ -237,15 +246,25 @@ void Processor::editorClosed()
     beat.setActive (false);
 }
 
+void Processor::chooseKick (int choice)
+{
+    if (behind.choose (choice))
+        nonParameterStateChanged();
+    behind.service();
+}
+
 /* THE CHUNK THE iPlug2 BUILD WROTE: the fifteen plain values, then the bypass
- * after it, which iPlug2 needs to load it. */
+ * after it, which iPlug2 needs to load it -- and between them, when a kick is
+ * chosen, the one string saying which. */
 void Processor::writeState (juce::MemoryBlock& out)
 {
     nist::State state;
     for (auto* p : params)
         state.params.push_back (p->plain());
+    if (const auto text = kick::toText (behind.choice()); ! text.empty())
+        state.strings.push_back (text);
     state.bypass = bypass->plain() >= 0.5;
-    const auto bytes = nist::write (layout(), state);
+    const auto bytes = nist::write (state.strings.empty() ? layoutWithoutKick() : layout(), state);
     out.replaceAll (bytes.data(), bytes.size());
 }
 
@@ -260,6 +279,8 @@ bool Processor::readState (const void* data, size_t size)
         params[(std::size_t) i]->setPlainNotifyingHost (state->params[(std::size_t) i]);
     if (state->bypass)
         bypass->setPlainNotifyingHost (*state->bypass ? 1.0 : 0.0);
+    /* A set without one shows none: loading replaces what was shown. */
+    behind.choose (state->strings.empty() ? kick::off : kick::fromText (state->strings.front()));
     return true;
 }
 

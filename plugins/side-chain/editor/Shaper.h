@@ -12,8 +12,16 @@
  * cycle overruns the right edge and is MARKED, in amber, rather than
  * accommodated.
  *
- * FOUR LAYERS, BACK TO FRONT, AND EACH ANSWERS A DIFFERENT QUESTION:
+ * FIVE LAYERS, BACK TO FRONT, AND EACH ANSWERS A DIFFERENT QUESTION:
  *
+ *   the kick       plot-key, when one is chosen (Model::kick): what the
+ *                  duck is timed against -- the key, or a Listen-In's track,
+ *                  each sample where it sounded in this cycle. Filled at 30 %
+ *                  behind everything, its 1px edge at 90 % over the input and
+ *                  under the output, so it reads through the grey and gives
+ *                  way only to what the plugin did. On a level range of its
+ *                  own: it says WHEN, not how loud, so a quiet kick is as
+ *                  readable as a loud one.
  *   the input      plot-dry at half opacity: what arrived. Context, not the
  *                  subject, so it shows as a halo around the output wherever
  *                  the duck took something away.
@@ -135,6 +143,10 @@ public:
     double playhead() const noexcept { return sweep; }
     /* Whether nothing is reaching the plugin (Status.h's hasInput). */
     bool isQuiet() const noexcept { return quiet; }
+    /* The kick as the last update read it, and whether a band of it is drawn. */
+    const KickView& kick() const noexcept { return kickView; }
+    bool showsKick() const noexcept { return ! kickBand.isEmpty(); }
+    const ni::ui::plot::LevelRange& kickLevel() const noexcept { return kickRange; }
     const ni::ui::plot::Axis& axis() const noexcept { return ruler; }
 
     void resized() override;
@@ -169,7 +181,9 @@ private:
 
     /* Kept from frame to frame, so a frame allocates nothing once warm. */
     std::vector<float> gains, lowest;
-    juce::Path intended, envelope, dryBand, wetBand;
+    juce::Path intended, envelope, dryBand, wetBand, kickBand;
+    KickView kickView;
+    ni::ui::plot::LevelRange kickRange;
     ni::ui::plot::Axis ruler;
 
     JUCE_DECLARE_NON_COPYABLE (Shaper)

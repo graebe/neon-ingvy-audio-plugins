@@ -806,13 +806,120 @@ TEST_CASE ("side-chain: the Motion switch is the model's")
     CHECK_FALSE (rig.editor.frame().motionSwitch().isOn());
 }
 
+/* ---------------------------------------------------------------- kick -- */
+
+namespace
+{
+void playing (Rig& rig, float level);
+
+/* Three Listen-Ins: "Kick" live on 3, an unnamed one gone quiet on 5, an
+ * unnamed one at 44.1 kHz on 7. */
+std::vector<ni::ui::BusSource> threeListenIns()
+{
+    return { { 3, true, 48000, "Kick" }, { 5, false, 48000, {} }, { 7, true, 44100, {} } };
+}
+} // namespace
+
+TEST_CASE ("side-chain: the Kick picker offers off, the key while one is routed, and each live Listen-In")
+{
+    Rig rig;
+    rig.frame();
+    auto& picker = rig.editor.kickPicker();
+    CHECK (picker.getOptions() == juce::StringArray { "Off" });
+    CHECK (picker.getIndex() == 0);
+
+    rig.model.bus.keyConnected = true;
+    rig.model.kickView.buses = threeListenIns();
+    rig.frame();
+    CHECK (picker.getOptions() == juce::StringArray { "Off", "Sidechain key", "Kick", "Bus 7" });
+    CHECK (rig.editor.kickChoices() == std::vector<int> { kickOff, kickKey, 3, 7 });
+
+    /* A choice is the model's, and the picker shows what the model holds. */
+    picker.onChange (2);
+    CHECK (rig.model.kicksChosen == std::vector<int> { 3 });
+    rig.frame();
+    CHECK (picker.getIndex() == 2);
+
+    /* What is chosen stays listed when it goes: the key unrouted, a bus gone. */
+    rig.model.chooseKick (kickKey);
+    rig.model.bus.keyConnected = false;
+    rig.frame();
+    CHECK (picker.getOptions()[picker.getIndex()] == "Sidechain key");
+    rig.model.chooseKick (9);
+    rig.frame();
+    CHECK (picker.getOptions()[picker.getIndex()] == "Bus 9");
+    CHECK_FALSE (picker.getOptions().contains ("Sidechain key"));
+    rig.model.chooseKick (5);
+    rig.frame();
+    CHECK (picker.getOptions()[picker.getIndex()] == "Bus 5");
+}
+
+TEST_CASE ("side-chain: the Kick sits at the shape row's far end, clear of the switch")
+{
+    Rig rig;
+    rig.frame();
+    const auto& picker = rig.editor.kickPicker();
+    const auto row = rig.editor.toggle (param::timeMode).getBounds();
+    CHECK (picker.getY() == row.getY());
+    CHECK (picker.getRight() == rig.editor.content().getWidth());
+    CHECK (picker.getX() > row.getRight());
+    CHECK (ni::ui::infoOf (picker).startsWith ("Kick"));
+}
+
+TEST_CASE ("side-chain: the caption says what the kick in the picture is")
+{
+    Rig rig;
+    rig.model.engine.msPerCycle = 500.0;
+    rig.model.fillScope (512, 512, 0.5f);
+    rig.model.kickView.buses = threeListenIns();
+    const auto caption = [&rig] (KickStatus status, int choice = 3)
+    {
+        rig.model.kickView.status = status;
+        rig.model.kickView.choice = choice;
+        rig.frame();
+        return rig.shaper().getCaption();
+    };
+    CHECK (caption (KickStatus::off, kickOff).endsWith ("INPUT IN GREY BEHIND"));
+    CHECK (caption (KickStatus::aligned).endsWith ("KICK IN AMBER, INPUT IN GREY"));
+    CHECK (caption (KickStatus::byArrival).endsWith ("KICK BY ARRIVAL, INPUT IN GREY"));
+    CHECK (caption (KickStatus::waiting, kickKey).endsWith ("KICK WAITING, INPUT IN GREY"));
+    CHECK (caption (KickStatus::silent).endsWith ("KICK SILENT, INPUT IN GREY"));
+    CHECK (caption (KickStatus::otherRate, 7).endsWith ("KICK AT 44K, NOT DRAWN, INPUT IN GREY"));
+    CHECK (caption (KickStatus::otherRate, 12).endsWith ("KICK AT ANOTHER RATE, NOT DRAWN, INPUT IN GREY"));
+
+    rig.model.fillScope (512, 512, 0.0f);
+    CHECK (caption (KickStatus::aligned).endsWith ("KICK IN AMBER   NOTHING REACHING THE PLUGIN"));
+}
+
+TEST_CASE ("side-chain: the kick is drawn while it is filed, on a range of its own")
+{
+    Rig rig;
+    playing (rig, 0.8f);
+    rig.model.fillKick (0.06f);
+    rig.model.kickView = { 3, KickStatus::aligned, threeListenIns() };
+    rig.frames (60);
+    CHECK (rig.shaper().showsKick());
+    /* A quiet kick under a loud bass still fills the well: it says when. */
+    CHECK (rig.shaper().kickLevel().db() < rig.shaper().levelRange().db() - 12.0f);
+
+    for (const auto status : { KickStatus::off, KickStatus::waiting, KickStatus::otherRate })
+    {
+        rig.model.kickView.status = status;
+        rig.frame();
+        CHECK_FALSE (rig.shaper().showsKick());
+    }
+    rig.model.kickView.status = KickStatus::byArrival;
+    rig.frame();
+    CHECK (rig.shaper().showsKick());
+}
+
 /* ------------------------------------------------------------- pictures -- */
 
 namespace
 {
 /* A cycle at 120 bpm and 1/4 with a bass under it at `level`, the sweep part
  * way. */
-void playing (Rig& rig, float level = 0.8f)
+void playing (Rig& rig, float level)
 {
     rig.model.engine.msPerCycle = 500.0;
     rig.model.engine.sweep = 0.62;
@@ -827,7 +934,7 @@ void playing (Rig& rig, float level = 0.8f)
 NI_SNAPSHOT_TEST ("side-chain: Cycle, playing")
 {
     Rig rig;
-    playing (rig);
+    playing (rig, 0.8f);
     NI_CHECK_SNAPSHOT (rig.editor, "side-chain-cycle");
 }
 
@@ -851,7 +958,7 @@ NI_SNAPSHOT_TEST ("side-chain: MIDI, no note arriving")
 {
     Rig rig;
     rig.setSource (Source::midi);
-    playing (rig);
+    playing (rig, 0.8f);
     rig.model.engine.advancing = false;
     rig.model.engine.stage = Stage::idle;
     rig.frame (1000.0);
@@ -874,12 +981,27 @@ NI_SNAPSHOT_TEST ("side-chain: an early duck wrapping round the cycle, a handle 
     Rig rig;
     rig.model.params[param::delay].setValueNotifyingHost (0.45f);   // -10 %: from 90 %
     rig.model.params[param::timeMode].setValueNotifyingHost (1.0f);
-    playing (rig);
+    playing (rig, 0.8f);
     auto& h = rig.handle (Shaper::Which::bottom);
     h.focusGained (juce::Component::focusChangedByTabKey);
     rig.editor.frame().infoState().focus (ni::ui::infoOf (h), &h);
     rig.frame();
     NI_CHECK_SNAPSHOT (rig.editor, "side-chain-focus");
+}
+
+NI_SNAPSHOT_TEST ("side-chain: Cycle, the kick from a Listen-In in amber behind the bass")
+{
+    Rig rig;
+    rig.model.kickView = { 3, KickStatus::aligned, threeListenIns() };
+    rig.model.fillScope (512, 318, 0.5f);
+    rig.model.fillKick (0.9f, 0.09);
+    rig.model.engine.msPerCycle = 500.0;
+    rig.model.engine.sweep = 0.62;
+    rig.model.engine.advancing = true;
+    rig.model.engine.stage = Stage::release;
+    rig.frames (60);
+    REQUIRE (rig.shaper().showsKick());
+    NI_CHECK_SNAPSHOT (rig.editor, "side-chain-kick");
 }
 
 /* ---------------------------------------------------------------- Space -- */

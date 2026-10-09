@@ -148,6 +148,7 @@ Buses EngineModel::buses()
 const Scope& EngineModel::scope()
 {
     const auto& capture = processor.scope();
+    const auto& band = processor.kick().capture();
     constexpr int columns = Processor::scopeColumns;
     signal.data.resize ((std::size_t) (columns * Scope::stride));
     bool any = false;
@@ -164,9 +165,42 @@ const Scope& EngineModel::scope()
         out[Scope::wetLo] = column[2];
         out[Scope::wetHi] = column[3];
         out[Scope::gain] = column[4];
+        float kick[2];
+        band.ReadColumn (c, kick);
+        out[Scope::kickSeen] = band.Seen (c) ? 1.0f : 0.0f;
+        out[Scope::kickLo] = kick[0];
+        out[Scope::kickHi] = kick[1];
     }
     signal.count = any ? columns : 0;
     return signal;
+}
+
+/* Every slot a Listen-In has used, live or not, in slot order. */
+KickView EngineModel::kick()
+{
+    auto& k = processor.kick();
+    k.service();
+    const auto now = juce::Time::getMillisecondCounter();
+    if (listenIns.empty() || now - polled >= pollMs)
+    {
+        polled = now;
+        listenIns.clear();
+        for (int slot = 1; slot <= ABUS_MAX_SLOT; ++slot)
+        {
+            int live = 0;
+            std::uint32_t rate = 0;
+            char label[ABUS_LABEL_CAP] {};
+            if (abus_probe ((std::uint32_t) slot, &live, &rate, label, ABUS_LABEL_CAP) == 1)
+                listenIns.push_back ({ slot, live != 0, (int) rate, juce::String::fromUTF8 (label) });
+        }
+    }
+    static_assert (kickOff == kick::off && kickKey == kick::key, "one encoding of the choice");
+    return { k.choice(), (KickStatus) k.status (processor.keyConnected()), listenIns };
+}
+
+void EngineModel::chooseKick (int choice)
+{
+    processor.chooseKick (choice);
 }
 
 void EngineModel::shapeGain (float* out, int count)

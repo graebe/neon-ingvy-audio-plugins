@@ -23,9 +23,11 @@
 #include "SideChain.h"
 
 #include <dlfcn.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 namespace
@@ -69,6 +71,10 @@ int main (int argc, char* argv[])
         std::fprintf (stderr, "usage: sc_rt <fixtures-dir>\n");
         return 2;
     }
+    /* A bus namespace of this process's own, set before the first bus call. */
+    const auto ns = "sc_rt." + std::to_string ((long) getpid());
+    setenv ("NIA_BUS_NS", ns.c_str(), 1);
+
     const juce::ScopedJuceInitialiser_GUI gui;
     const auto fixtures = juce::File (argv[1]).getChildFile ("NISideChain");
     std::printf ("sc_rt\n");
@@ -154,6 +160,39 @@ int main (int argc, char* argv[])
     load ("custom");
     play (60, none);
     check (allocations == 0, "a key ducking on Sidechain", allocations);
+
+    /* THE KICK BEHIND THE DUCK, with the window open: the key filed beside the
+     * dry, then a Listen-In's bus drained and filed by its stamps. The
+     * reader is opened on this, the message, thread (the model's frame), and
+     * the sender publishes between the blocks, outside the watch. */
+    allocations = 0;
+    processor.chooseKick (ni::sc::kick::key);
+    play (60, none);
+    check (allocations == 0, "the key drawn behind the duck", allocations);
+
+    abus_writer_t* writer = nullptr;
+    abus_pusher_t* pusher = nullptr;
+    if (abus_writer_claim (4, (std::uint32_t) sampleRate, &writer, &pusher) != ABUS_OK)
+    {
+        std::printf ("  a bus to read the kick from  FAIL\n");
+        return 1;
+    }
+    std::vector<float> kick ((std::size_t) blockSize * 2, 0.25f);
+    processor.chooseKick (4);
+    processor.model().kick();
+    allocations = 0;
+    for (int k = 0; k < 120; ++k)
+    {
+        abus_pusher_push_at (pusher, kick.data(), (std::uint32_t) blockSize, transport.sample, k % 40 < 30 ? 1 : 0);
+        play (1, none);
+        if (k % 30 == 0)
+            processor.model().kick();
+    }
+    check (allocations == 0, "a Listen-In's kick drained and filed behind the duck", allocations);
+    processor.chooseKick (ni::sc::kick::off);
+    processor.model().kick();
+    abus_pusher_release (pusher);
+    abus_writer_release (writer);
 
     allocations = 0;
     processor.parameter (ni::sc::kSource).setPlainNotifyingHost (1.0);

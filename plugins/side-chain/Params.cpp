@@ -95,6 +95,13 @@ const ParamSpec* specs()
 
 const nist::Layout& layout()
 {
+    /* The one optional string is the kick the plot shows (Kick.h). */
+    static const nist::Layout l { table, kNumParams, { kNumParams }, 0, 1 };
+    return l;
+}
+
+const nist::Layout& layoutWithoutKick()
+{
     static const nist::Layout l { table, kNumParams, { kNumParams }, 0, 0 };
     return l;
 }

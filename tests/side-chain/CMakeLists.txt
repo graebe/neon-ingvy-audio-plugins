@@ -13,7 +13,7 @@
 
 set(NI_SC ${CMAKE_SOURCE_DIR}/plugins/side-chain)
 set(_sc_sources
-    ${NI_SC}/SideChain.cpp ${NI_SC}/Params.cpp ${NI_SC}/EngineModel.cpp
+    ${NI_SC}/SideChain.cpp ${NI_SC}/Params.cpp ${NI_SC}/EngineModel.cpp ${NI_SC}/Kick.cpp
     ${CMAKE_SOURCE_DIR}/plugins/_shared/ni/Wire.cpp)
 # What ni_add_juce_plugin gives the plugin's sources: its name, MIDI in, and
 # the product's versions.json key.

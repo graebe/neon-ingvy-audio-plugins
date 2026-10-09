@@ -178,11 +178,23 @@ SideChainEditor::SideChainEditor (Model& m, ni::ui::EditorFrame::Clock clock)
     percentSwitch = std::make_unique<ni::ui::ParamToggle> (model.parameter (param::timeMode), "% of cycle");
     ni::ui::setInfo (*percentSwitch, info::percent);
 
+    /* THE KICK: not a parameter, so a plain Select, its options the model's. */
+    kickSelect = std::make_unique<ni::ui::Select>();
+    kickSelect->setLabel ("Kick", 36);
+    kickSelect->setFieldWidth (136);
+    kickSelect->onChange = [this] (int index)
+    {
+        if (index >= 0 && index < (int) kickOptions.size())
+            model.chooseKick (kickOptions[(size_t) index]);
+    };
+    ni::ui::setInfo (*kickSelect, info::kick);
+
     view->addAndMakeVisible (*sourceSelect);
     view->addChildComponent (*rateSelect);
     view->addChildComponent (*gateSwitch);
     view->addAndMakeVisible (*curveSelect);
     view->addAndMakeVisible (*percentSwitch);
+    view->addAndMakeVisible (*kickSelect);
 
     /* THE WINDOW. */
     window.setConventions (conventions());
@@ -298,6 +310,9 @@ void SideChainEditor::layoutRows()
     x = 0;
     place (*curveSelect, curveSelect->idealWidth(), shapeRowY);
     place (*percentSwitch, percentSwitch->idealWidth(), shapeRowY);
+    /* The kick at the row's far end: it is about the picture, not the shape. */
+    const int kickW = kickSelect->idealWidth();
+    kickSelect->setBounds (width - kickW, shapeRowY, kickW, rowH);
 }
 
 bool SideChainEditor::stagesInMs() const
@@ -334,6 +349,7 @@ void SideChainEditor::refreshStages()
 void SideChainEditor::tick (double nowMs)
 {
     plot->update (nowMs);
+    refreshKick();
 
     lastState = model.state();
     lastStages = model.stageMs();
@@ -344,6 +360,46 @@ void SideChainEditor::tick (double nowMs)
     const auto& rate = rateSelect->binding();
     header->set (stateLine (sourceName, optionText (rate, lastState.rate), lastState.source, lastState.stage),
                  warningFor (lastState, model.buses(), ! plot->isQuiet(), watch.isQuiet (nowMs)));
+}
+
+/*
+ * THE KICK'S OPTIONS: off; the key while the host routes one; every live
+ * Listen-In, by its name. A choice that is not there now -- a key unrouted, a
+ * bus whose Listen-In went -- stays listed, so the picker never shows
+ * something it is not. Left alone while its list is open.
+ */
+void SideChainEditor::refreshKick()
+{
+    if (kickSelect->isOpen())
+        return;
+    const auto& k = plot->kick();
+    std::vector<int> choices { kickOff };
+    juce::StringArray names { "Off" };
+    if (model.buses().keyConnected || k.choice == kickKey)
+    {
+        choices.push_back (kickKey);
+        names.add ("Sidechain key");
+    }
+    bool listed = k.choice <= 0;
+    for (const auto& bus : k.buses)
+        if (bus.live || bus.slot == k.choice)
+        {
+            choices.push_back (bus.slot);
+            names.add (ni::ui::busName (bus));
+            listed = listed || bus.slot == k.choice;
+        }
+    if (! listed)
+    {
+        choices.push_back (k.choice);
+        names.add ("Bus " + juce::String (k.choice));
+    }
+    if (choices != kickOptions || names != kickSelect->getOptions())
+    {
+        kickOptions = std::move (choices);
+        kickSelect->setOptions (names);
+    }
+    const auto at = std::find (kickOptions.begin(), kickOptions.end(), k.choice);
+    kickSelect->setIndex (at != kickOptions.end() ? (int) (at - kickOptions.begin()) : -1);
 }
 
 void SideChainEditor::resized()

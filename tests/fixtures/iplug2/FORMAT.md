@@ -134,10 +134,16 @@ The parameters are **the current slot's**. Slot is the only one that does not
 belong to a slot. When Slot moves, the engine's values for the new slot take
 over, and the host's parameters follow (`tg_shell_take_params`).
 
-### NI Side-Chain: version 1, N = 15, no strings
+### NI Side-Chain: version 1, N = 15, one optional string
 
 Every setting is a parameter (`PLUG_DOES_STATE_CHUNKS 0`). The state still
 passes through `SideChain::SerializeState`, which puts the header in front.
+
+Since v2026.10.09 the body may end in **one optional string**: the kick the
+plot draws behind the duck (`plugins/side-chain/Kick.h`), `key` for the
+sidechain key or `bus:<n>` for Listen-In bus n (1..16). It is written only
+when a kick is chosen, so a set without one is the same bytes every earlier
+build wrote, and anything else in it reads as no kick.
 
 | ID | Parameter | Plain value | Default | stepCount |
 |---|---|---|---|---|

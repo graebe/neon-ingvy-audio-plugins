@@ -26,7 +26,9 @@
  *    28   the trigger's row: Source, then Rate on Cycle or the Gate switch on
  *         MIDI
  *     8
- *    28   the shape's row: Curve and the "% of cycle" switch
+ *    28   the shape's row: Curve and the "% of cycle" switch, and at its
+ *         right end the Kick the plot draws behind the duck: off, the
+ *         sidechain key (while the host routes one), or a live Listen-In bus
  *
  * The rows land where the web editor and the artboard put them, at 464 and
  * 500 in the window, both on the grid. The web's knob card was 104 tall with
@@ -72,6 +74,7 @@
 #include "Luminous.h"
 #include "ParamChoiceKnob.h"
 #include "ParamControls.h"
+#include "Select.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -117,6 +120,10 @@ public:
     ni::ui::ParamKnob& knob (int parameterIndex);
     ni::ui::ParamSelect& select (int parameterIndex);
     ni::ui::ParamToggle& toggle (int parameterIndex);
+    /* The Kick picker, and the choice each of its options stands for
+     * (Model.h: kickOff, kickKey, a bus's slot). */
+    ni::ui::Select& kickPicker() noexcept { return *kickSelect; }
+    const std::vector<int>& kickChoices() const noexcept { return kickOptions; }
 
     void resized() override;
 
@@ -126,6 +133,8 @@ private:
 
     void showSource();
     void layoutRows();
+    /* The Kick picker's options and choice, from the kick the plot read. */
+    void refreshKick();
     /* The stages' readouts read again, in the unit Time asks for. */
     void refreshStages();
     bool stagesInMs() const;
@@ -144,6 +153,8 @@ private:
     std::vector<std::unique_ptr<ni::ui::ParamKnob>> knobs;
     std::unique_ptr<ni::ui::ParamSelect> sourceSelect, rateSelect, curveSelect;
     std::unique_ptr<ni::ui::ParamToggle> gateSwitch, percentSwitch;
+    std::unique_ptr<ni::ui::Select> kickSelect;
+    std::vector<int> kickOptions;
 
     /* What says which source's controls show, and the hint's unit. */
     ni::ui::ParamBinding sourceParam, timeParam;

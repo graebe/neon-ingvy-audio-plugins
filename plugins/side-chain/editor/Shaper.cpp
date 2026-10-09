@@ -30,6 +30,9 @@ constexpr float lineWidth = 1.5f;
 constexpr float casingWidth = 4.0f;
 constexpr float casingAlpha = 0.65f;
 
+/* Below this share of its own range, the kick is silence and not drawn. */
+constexpr float kickFloor = 0.03f;
+
 juce::PathStrokeType roundStroke (float width)
 {
     return juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
@@ -81,7 +84,7 @@ void Shaper::refreshCaption()
 {
     const auto total = readsInMs (binding (param::timeMode).value(), spanMs) ? std::optional<double> (stagesMs)
                                                                             : std::nullopt;
-    setCaption (captionFor (! quiet, spanMs, total));
+    setCaption (captionFor (! quiet, spanMs, total, kickClause (kickView)));
 }
 
 ni::ui::ParamBinding& Shaper::binding (int index)
@@ -136,6 +139,12 @@ void Shaper::update (double nowMs)
     followLevel (ni::ui::plot::peak ({ scope.data.data(), Scope::stride, scope.count },
                                      { Scope::dryLo, Scope::dryHi, Scope::wetLo, Scope::wetHi }, seen),
                  nowMs);
+    /* The kick on its own range: it says when, not how loud. */
+    kickView = model.kick();
+    const auto kickSeen = [&scope] (int column) { return scope.isKickSeen (column); };
+    kickRange.follow (ni::ui::plot::peak ({ scope.data.data(), Scope::stride, scope.count },
+                                          { Scope::kickLo, Scope::kickHi }, kickSeen),
+                      nowMs);
     rebuildEnvelope (scope);
     rebuildShape();
     refreshCaption();
@@ -208,6 +217,27 @@ void Shaper::rebuildEnvelope (const Scope& scope)
     ni::ui::plot::band (dryBand, capture, Scope::dryLo, Scope::dryHi, geometry, seen);
     ni::ui::plot::band (wetBand, capture, Scope::wetLo, Scope::wetHi, geometry, seen);
 
+    /* The kick, while one is chosen and drawn: a bus at another rate files
+     * nothing, and a stale picture of a kick no longer chosen is none. */
+    kickBand.clear();
+    if (kickView.status == KickStatus::aligned || kickView.status == KickStatus::byArrival
+        || kickView.status == KickStatus::silent)
+    {
+        auto onRange = geometry;
+        onRange.fullScale = kickRange.fullScale();
+        /* Where the kick has died away it is not drawn at all: a hairline of
+         * amber along the zero line, across the cycle, would be a mark that
+         * says nothing -- and amber marks are for saying something. */
+        const float floor = kickFloor * onRange.fullScale;
+        const auto kickSeen = [&scope, floor] (int column)
+        {
+            return scope.isKickSeen (column)
+                && std::max (std::abs (scope.at (column, Scope::kickLo)), std::abs (scope.at (column, Scope::kickHi)))
+                       >= floor;
+        };
+        ni::ui::plot::band (kickBand, capture, Scope::kickLo, Scope::kickHi, onRange, kickSeen);
+    }
+
     envelope.clear();
     const int n = scope.count;
     if (n < 2)
@@ -264,8 +294,12 @@ void Shaper::paintPlot (juce::Graphics& g)
     g.setColour (c::line100);
     g.drawLine (plot::inset, mid(), w - plot::inset, mid(), uv::tok::stroke::strokeHair);
 
-    /* 1. What arrived; 2. what left; 3. the ceiling it was allowed. */
+    /* 0. What it is timed against; 1. what arrived; 2. what left; 3. the
+     * ceiling it was allowed. The kick's edge goes over the grey and under
+     * the violet: through the input, behind what the plugin did. */
+    plot::key (g, kickBand);
     plot::dry (g, dryBand);
+    plot::keyEdge (g, kickBand);
     plot::wet (g, wetBand);
     plot::ghost (g, envelope);
 
