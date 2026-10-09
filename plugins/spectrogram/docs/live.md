@@ -215,8 +215,9 @@ later release. **Updating from a release before v2026.10.08.2?** The
 [changelog](../../../CHANGELOG.md) says which older bundles to delete, and what a set
 that used one of them needs.
 
-Update NI Listen-In at the same time: a Spectrogram reads buses only from a
-Listen-In of the same release (see the NI Listen-In manual).
+Update NI Listen-In at the same time — and NI Side-Chain, which reads the same
+buses: a Spectrogram reads buses only from a Listen-In of the same bus format,
+which changed in v2026.10.09.2 (see the NI Listen-In manual).
 
 **On an Intel Mac**, reading Listen-In buses now works. Older builds could not
 open an existing bus there, so the View list stayed at `no Listen-In found`;

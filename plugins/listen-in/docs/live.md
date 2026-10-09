@@ -31,6 +31,19 @@ almost never what you meant.
 Repeat on a second track with a different bus number. That is the setup the
 overlaid spectra need.
 
+## Who reads it
+
+- **NI Spectrogram** draws a bus's spectrum beside its own track's, and
+  compares two for the frequencies they fight over.
+- **NI Side-Chain** draws a bus behind its duck: put an NI Listen-In on the
+  kick, choose it as the Side-Chain's **Kick**, and the kick appears in amber
+  under the shape, where it sounded
+  ([Seeing the kick](../../side-chain/docs/live.md#seeing-the-kick)).
+
+Every block it publishes carries its place on Live's timeline, so a reader on
+another track lines it up with its own audio to the sample while the transport
+runs. Stopped, there is no timeline, and a reader places it as it arrives.
+
 ## When the bus is not live
 
 The light says what is wrong, in its colour and its word, and pointing at it
@@ -96,8 +109,8 @@ later release. **Updating from a release before v2026.10.08.2?** The
 [changelog](../../../CHANGELOG.md) says which older bundles to delete, and what a set
 that used one of them needs.
 
-**This release changes the bus format, so update NI Listen-In and NI
-Spectrogram together and quit Live fully before you do.** An old and a new
+**v2026.10.09.2 changes the bus format, so update NI Listen-In, NI
+Spectrogram and NI Side-Chain together and quit Live fully before you do.** An old and a new
 build cannot share a slot: whichever claims a number second replaces the
 other's bus, and a Spectrogram does not list a bus written by a build other
 than its own. If Live is still running with the old plugin loaded while the

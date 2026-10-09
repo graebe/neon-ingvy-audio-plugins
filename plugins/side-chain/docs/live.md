@@ -9,7 +9,9 @@ dip in the waveform sits directly under the curve that made it.
 
 Below the picture sit the knobs, then two rows: the trigger's (**Source**, and
 **Rate** or **Gate** for the source you chose) and the shape's (**Curve** and
-**% of cycle**). The header above the picture says what the trigger is doing.
+**% of cycle**, and at its far end **Kick**, which draws the kick you duck
+against behind it all — [Seeing the kick](#seeing-the-kick)). The header above
+the picture says what the trigger is doing.
 
 ## The shape well
 
@@ -124,6 +126,77 @@ the handle — to hold the audio at full scale; the corner then reads
 long as the plugin window is open: closing and reopening it starts on the
 following range again. To a screen reader the well is a picture that takes a
 press, which does the same.
+
+### Seeing the kick
+
+The picture shows what the plugin did to the track. What it cannot show on its
+own is **what you are ducking against** — and that is what Delay, Attack and
+Hold are set by. Should the duck be at the bottom when the kick's transient
+hits, or a little after? Is the Release back up before the next kick, or still
+recovering? Choose a **Kick** and the plot draws it, in amber, behind
+everything else, in the same cycle as the duck:
+
+- **amber**, behind: the kick, where it sounded in the cycle
+- **grey**: the track's input, as before
+- **violet**, in front: what the plugin let through
+- **white**: the shape you asked for, with its handles
+
+The amber is filled faintly behind the grey and its outline is drawn through
+the grey, so the kick stays readable under a loud track; only the violet output
+covers it, which is exactly where the duck is letting the track through.
+
+**From a Listen-In — the usual way:**
+
+1. Put **NI Listen-In** on the kick's track, after anything that shapes the kick.
+   Pick a free **Bus** — 1, say — and name it `kick`
+   ([NI Listen-In](../../listen-in/docs/live.md#setting-it-up)).
+2. Open NI Side-Chain on the bass and set **Kick**, at the right of the shape's
+   row, to `kick`. The picker lists every live Listen-In by its name, or as
+   `Bus 1` if it has none.
+3. Press play. Within a cycle the kick appears in amber under the shape, and the
+   caption ends in `KICK IN AMBER, INPUT IN GREY`.
+
+**From the sidechain key:** if Live already routes the kick to the plugin's
+sidechain ([Routing a key in Live](#routing-a-key-in-live)), the picker offers
+**Sidechain key** too, and nothing else needs setting up. The key is available
+whatever **Source** is set to: you can trigger on Cycle and still see the kick
+the cycle is meant to follow.
+
+**Reading it — an example.** Bass on Cycle at 1/4, a four-on-the-floor kick,
+Kick set to the kick's Listen-In. With Delay at 0 the duck's first handle sits
+on the kick's onset, the left edge of the amber. With Attack at 2 % the duck
+reaches the bottom about 10 ms in, while the amber is still at its loudest — the
+bass is out of the way of the kick's body. Now look at where the amber dies
+away, say at 90 ms: if the Release handle is far past that, the bass is held
+down long after the kick has finished, and shortening Release brings it back
+sooner. Drag the handles and watch them against the amber, not against the
+millisecond ruler.
+
+**It is a picture, never the trigger.** Choosing a kick changes nothing you
+hear: the duck is still fired by **Source**. On a MIDI trigger, for instance,
+the amber shows you whether the note and the kick it doubles actually line up.
+
+**Exact, to the sample.** Live processes tracks side by side, so whether the
+kick's track or the bass's runs first changes from block to block. NI Listen-In
+stamps every block with its place on Live's timeline, and NI Side-Chain draws
+each kick sample where the bass was at that same moment — so the amber does not
+wander, and what you see between the kick and the duck is really there.
+
+The caption ends in what the kick is doing:
+
+| caption | what it means |
+|---|---|
+| `KICK IN AMBER` | drawn where it sounded, exact to the sample |
+| `KICK BY ARRIVAL` | Live's transport is stopped, so there is no timeline to line it up by: it is drawn as it arrived, which can be up to one audio buffer off. Press play for the exact picture |
+| `KICK WAITING` | nothing from it yet: no key is routed, or no NI Listen-In is on that bus |
+| `KICK SILENT` | the Listen-In has sent nothing for half a second: it is bypassed, or its track was removed |
+| `KICK AT 44K, NOT DRAWN` | the Listen-In runs at another sample rate than this plugin, so its samples cannot be placed on this cycle |
+
+The kick is drawn **to its own height**: it says *when*, not how loud, so a
+kick 20 dB quieter than the bass is as easy to read. Where it has died away it
+is not drawn at all. The choice is saved with the set; a set without one opens
+exactly as before. The Kick is a Live feature: the Move has no Listen-In, and
+its module has no picker.
 
 ## Knobs and readouts
 
@@ -244,6 +317,11 @@ NI Side-Chain is a VST3, and only a VST3, for macOS; Linux and Windows follow in
 later release. **Updating from a release before v2026.10.08.2?** The
 [changelog](../../../CHANGELOG.md) says which older bundles to delete, and what a set
 that used one of them needs.
+
+**Update NI Side-Chain, NI Listen-In and NI Spectrogram together** to
+v2026.10.09.2 or later, and quit Live fully first: the Listen-In bus format
+changed so the kick can be lined up to the sample, and a plugin of one format
+does not see a bus written by the other.
 
 Signing needs an Apple Developer ID and a notarytool round trip; until those
 exist, the `xattr` command is the difference. It is a property of the

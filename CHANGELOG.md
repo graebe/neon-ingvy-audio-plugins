@@ -1,5 +1,38 @@
 # What's new
 
+## v2026.10.09.2 — NI Side-Chain, NI Listen-In, NI Spectrogram
+
+### Before you update
+
+- **Update NI Side-Chain, NI Listen-In and NI Spectrogram together**, and quit
+  Live fully first. The Listen-In bus now carries Live's timeline, so a plugin
+  from before this release and one from this release do not see each other's
+  buses. Sets open unchanged.
+
+### NI Side-Chain
+
+- **See the kick you duck against.** A new **Kick** picker, at the right of
+  the shape's row, draws the kick behind the duck in amber: from the sidechain
+  key Live routes to the plugin, or from an NI Listen-In on the kick's track.
+  The grey input and the violet output are drawn over it as before, so you can
+  set Delay, Attack, Hold and Release against the kick's transient itself
+  instead of the millisecond ruler. It is a picture only — what you hear is
+  unchanged — and the choice is saved with the set.
+- **Exact to the sample.** The kick is drawn where each of its samples
+  sounded in the cycle, whichever track Live processed first. With the
+  transport stopped it is drawn as it arrives, and the caption says
+  `KICK BY ARRIVAL`.
+
+### NI Listen-In
+
+- **Every block is stamped with its place on Live's timeline**, so a reader on
+  another track can line it up with its own audio to the sample. NI Side-Chain
+  is the first to read a bus this way.
+
+### NI Spectrogram
+
+- Reads the new bus format; nothing else changes.
+
 ## v2026.10.10.1 — NI Side-Chain
 
 - **NI Side-Chain on Ableton Move keeps its settings.** Schwung now saves the
