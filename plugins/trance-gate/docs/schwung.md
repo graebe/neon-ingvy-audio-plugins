@@ -61,7 +61,18 @@ A few details:
   pattern, and the white pad appears whenever it passes through your block.
 - At 32 steps or fewer the arrows do nothing.
 
+> **The arrows need a newer Schwung than 1.7.3.** Up to 1.7.3 the host never
+> hands claimed buttons to a module that draws its own screen, so the arrows
+> keep doing Move's own thing and steps past 32 can't be reached from the
+> pads. The fix is
+> [schwung#633](https://github.com/charlesvestal/schwung/pull/633). Paging
+> works in the first Schwung release that includes it; update Schwung from the
+> web manager when that release is out.
+
 ## The ring page
+
+The editor has two pages, the ring page and the settings page. **Turn the jog
+wheel** to move between them; the arrows page the pads, not the knobs.
 
 The page with the ring puts these under the eight encoders:
 
