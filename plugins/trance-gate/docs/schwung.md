@@ -39,8 +39,9 @@ With **Len** above 32, the **left and right arrow buttons** page the pads
 through the pattern a block of 32 at a time: steps 1–32, 33–64, 65–96 and
 97–128. The selected step moves with the pads and keeps its place on the grid,
 so the third pad of one block becomes the third pad of the next, and paging
-back returns you to the pad you left. Where the screen showed the length, it
-now shows the block above it — **33-64** over **of 96**.
+back returns you to the pad you left. The screen says which block you are
+on: the top-left corner, which shows the length, reads **33-64** with
+**of 96** beneath it.
 
 For example, to silence the last step of a four-bar gate (64 steps at 1/16):
 press the right arrow once, so the screen reads 33-64 of 64, then press the
