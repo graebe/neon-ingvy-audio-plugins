@@ -17,7 +17,7 @@ use core::sync::atomic::Ordering;
 
 use atomic_float::AtomicF32;
 
-use crate::header::{Header, CHANNELS, DATA_OFFSET, RING_FRAMES};
+use crate::header::{Header, Stamp, CHANNELS, DATA_OFFSET, RING_FRAMES, STAMPS, STAMP_OFFSET};
 use crate::ring::{self, Cursor, RING_SAMPLES, USABLE_FRAMES};
 
 /// A segment on the heap: the same bytes shm would have handed us.
@@ -49,6 +49,14 @@ impl Segment {
             core::slice::from_raw_parts(
                 self.buf.as_ptr().add(DATA_OFFSET) as *const AtomicF32,
                 RING_SAMPLES,
+            )
+        }
+    }
+    fn stamps(&self) -> &[Stamp] {
+        unsafe {
+            core::slice::from_raw_parts(
+                self.buf.as_ptr().add(STAMP_OFFSET) as *const Stamp,
+                STAMPS as usize,
             )
         }
     }
@@ -89,7 +97,7 @@ fn a_block_comes_back_exactly() {
     let mut cur = Cursor::at_live_edge(seg.hdr());
     let src = ramp(0, 512);
 
-    ring::push(seg.hdr(), seg.data(), &src);
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &src, None);
 
     let mut out = vec![0f32; 512 * CHANNELS as usize];
     let got = ring::read(seg.hdr(), seg.data(), &mut cur, &mut out);
@@ -125,7 +133,7 @@ fn the_wrap_is_seamless() {
     let mut written = 0u64;
 
     for _ in 0..blocks {
-        ring::push(seg.hdr(), seg.data(), &ramp(written, block));
+        ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(written, block), None);
         written += block as u64;
 
         let mut out = vec![0f32; block * CHANNELS as usize];
@@ -148,7 +156,7 @@ fn falling_behind_is_reported_not_silently_papered_over() {
     let block = 4096usize;
     let n = (RING_FRAMES as usize / block) * 2;
     for b in 0..n {
-        ring::push(seg.hdr(), seg.data(), &ramp((b * block) as u64, block));
+        ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp((b * block) as u64, block), None);
     }
 
     let mut out = vec![0f32; block * CHANNELS as usize];
@@ -175,7 +183,7 @@ fn a_block_longer_than_the_ring_keeps_its_tail() {
     let mut cur = Cursor::at_live_edge(seg.hdr());
 
     let huge = RING_FRAMES as usize + 777;
-    ring::push(seg.hdr(), seg.data(), &ramp(0, huge));
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, huge), None);
 
     /* The whole block is published -- in runs of MAX_BLOCK_FRAMES -- but only
      * its last RING_FRAMES can still be in the ring, and only USABLE_FRAMES of
@@ -200,7 +208,7 @@ fn a_block_longer_than_the_ring_keeps_its_tail() {
 fn a_new_epoch_throws_the_cursor_away() {
     let seg = Segment::new();
     let mut cur = Cursor::at_live_edge(seg.hdr());
-    ring::push(seg.hdr(), seg.data(), &ramp(0, 256));
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, 256), None);
 
     /* A sender claims the slot: new epoch, counter reset. */
     seg.hdr().write_frames.store(0, Ordering::Release);
@@ -212,7 +220,7 @@ fn a_new_epoch_throws_the_cursor_away() {
     assert_eq!(got.frames, 0, "and must not splice across the seam");
 
     /* And carries on normally afterwards. */
-    ring::push(seg.hdr(), seg.data(), &ramp(9000, 128));
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(9000, 128), None);
     let got = ring::read(seg.hdr(), seg.data(), &mut cur, &mut out);
     assert!(!got.resynced);
     assert_eq!(got.frames, 128);
@@ -232,19 +240,19 @@ fn a_restart_during_the_copy_is_not_handed_out() {
      */
     let seg = Segment::new();
     let mut cur = Cursor::at_live_edge(seg.hdr());
-    ring::push(seg.hdr(), seg.data(), &ramp(0, 512));
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, 512), None);
 
     let mut out = vec![0f32; 512 * CHANNELS as usize];
     let got = ring::read_with(seg.hdr(), seg.data(), &mut cur, &mut out, || {
         seg.hdr().write_frames.store(0, Ordering::Relaxed);
         seg.hdr().epoch.fetch_add(1, Ordering::Release);
-        ring::push(seg.hdr(), seg.data(), &ramp(50_000, 256));
+        ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(50_000, 256), None);
     });
     assert_eq!(got.frames, 0, "a block that straddled a restart was handed out");
     assert!(got.resynced, "and the restart was not reported");
 
     /* It picks up the new stream at its live edge. */
-    ring::push(seg.hdr(), seg.data(), &ramp(60_000, 64));
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(60_000, 64), None);
     let got = ring::read(seg.hdr(), seg.data(), &mut cur, &mut out);
     assert_eq!(got.frames, 64);
     assert_eq!(frame_of(&out, 0), 60_000);
@@ -335,7 +343,7 @@ fn a_reader_is_never_handed_a_splice() {
             let mut written = 0u64;
             while !stop.load(Ordering::Relaxed) {
                 let block = 512usize;
-                ring::push(seg.hdr(), seg.data(), &ramp(written, block));
+                ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(written, block), None);
                 written += block as u64;
             }
         });
@@ -370,4 +378,106 @@ fn a_reader_is_never_handed_a_splice() {
         drop(stopping);
         writer.join().expect("the writer panicked");
     });
+}
+
+/* ---- the timeline stamps (ABI 3) ---- */
+
+#[test]
+fn every_frame_read_knows_its_timeline_sample() {
+    let seg = Segment::new();
+    let mut cur = Cursor::at_live_edge(seg.hdr());
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, 128), Some(48_000));
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(128, 64), Some(48_128));
+
+    let mut out = vec![0f32; 256 * CHANNELS as usize];
+    let got = ring::read(seg.hdr(), seg.data(), &mut cur, &mut out);
+    assert_eq!((got.frames, got.first), (192, 0));
+    for frame in [0u64, 1, 127, 128, 191] {
+        let span = ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), frame).expect("stamped");
+        assert_eq!(span.timeline_of(frame), Some(48_000 + frame as i64), "frame {frame}");
+    }
+    /* Not written yet: no run holds it. */
+    assert_eq!(ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), 192), None);
+}
+
+#[test]
+fn a_loop_is_two_runs_not_one_line() {
+    /* The host jumped back between the blocks: the stamps say so, and a frame
+     * after the jump is not extrapolated from the run before it. */
+    let seg = Segment::new();
+    let cur = Cursor::at_live_edge(seg.hdr());
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, 100), Some(96_000));
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(100, 100), Some(0));
+    let at = |f| ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), f).and_then(|s| s.timeline_of(f));
+    assert_eq!(at(99), Some(96_099));
+    assert_eq!(at(100), Some(0));
+    assert_eq!(at(150), Some(50));
+}
+
+#[test]
+fn a_stopped_transport_is_unstamped_not_zero() {
+    let seg = Segment::new();
+    let cur = Cursor::at_live_edge(seg.hdr());
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, 64), None);
+    let span = ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), 10).expect("the run is known");
+    assert_eq!((span.start, span.frames, span.timeline), (0, 64, None));
+    assert_eq!(span.timeline_of(10), None);
+}
+
+#[test]
+fn a_long_block_is_stamped_run_by_run() {
+    /* Published in runs of MAX_BLOCK_FRAMES, each with its own stamp, all on
+     * one line. */
+    let seg = Segment::new();
+    let cur = Cursor::at_live_edge(seg.hdr());
+    let n = ring::MAX_BLOCK_FRAMES as usize * 2 + 10;
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, n), Some(1_000));
+    assert_eq!(seg.hdr().stamp_runs.load(Ordering::Relaxed), 3);
+    for f in [0u64, 8191, 8192, (n - 1) as u64] {
+        let at = ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), f).and_then(|s| s.timeline_of(f));
+        assert_eq!(at, Some(1_000 + f as i64), "frame {f}");
+    }
+}
+
+#[test]
+fn a_stamp_from_before_a_restart_is_not_this_streams() {
+    /* After a restart the new stream reaches the old one's positions again;
+     * the epoch in the stamp keeps them apart. */
+    let seg = Segment::new();
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, 256), Some(5_000));
+    let old = Cursor::at_live_edge(seg.hdr()).epoch();
+    seg.hdr().write_frames.store(0, Ordering::Relaxed);
+    seg.hdr().epoch.fetch_add(1, Ordering::Release);
+    let new = Cursor::at_live_edge(seg.hdr()).epoch();
+    assert_ne!(old, new);
+    assert_eq!(ring::stamp_at(seg.hdr(), seg.stamps(), new, 10), None);
+
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, 32), Some(7));
+    let at = ring::stamp_at(seg.hdr(), seg.stamps(), new, 10).and_then(|s| s.timeline_of(10));
+    assert_eq!(at, Some(17));
+}
+
+#[test]
+fn a_stamp_reused_by_later_runs_is_gone() {
+    let seg = Segment::new();
+    let cur = Cursor::at_live_edge(seg.hdr());
+    for b in 0..(STAMPS as u64 + 5) {
+        ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(b * 4, 4), Some((b * 4) as i64));
+    }
+    /* The first five runs' stamps were taken by the last five. */
+    assert_eq!(ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), 0), None);
+    assert_eq!(ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), 19), None);
+    let f = 20u64;
+    let at = ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), f).and_then(|s| s.timeline_of(f));
+    assert_eq!(at, Some(20));
+}
+
+#[test]
+fn a_stamp_being_rewritten_is_skipped() {
+    /* A writer parked mid-rewrite: the reader takes nothing from it. */
+    let seg = Segment::new();
+    let cur = Cursor::at_live_edge(seg.hdr());
+    ring::push(seg.hdr(), seg.data(), seg.stamps(), &ramp(0, 16), Some(0));
+    seg.stamps()[0].start.store(crate::header::STAMP_PARKED, Ordering::Relaxed);
+    assert_eq!(ring::stamp_at(seg.hdr(), seg.stamps(), cur.epoch(), 3), None);
 }

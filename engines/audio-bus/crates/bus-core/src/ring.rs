@@ -26,7 +26,7 @@ use core::sync::atomic::{fence, AtomicU32, Ordering};
 
 use atomic_float::AtomicF32;
 
-use crate::header::{Header, CHANNELS, RING_FRAMES};
+use crate::header::{stamp_span, Header, Stamp, CHANNELS, RING_FRAMES, STAMPS, STAMP_PARKED, UNSTAMPED};
 
 /// What a read actually managed to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -37,6 +37,28 @@ pub struct Read {
     pub dropped: u64,
     /// The writer restarted (claimed the slot, or changed sample rate).
     pub resynced: bool,
+    /// The stream position of the first frame delivered -- what `stamp_at`
+    /// takes. Meaningful only when `frames` is not 0.
+    pub first: u64,
+}
+
+/// One published run's place on the host's timeline (see `header::Stamp`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    /// The stream position of the run's first frame.
+    pub start: u64,
+    pub frames: u32,
+    /// The host's timeline sample of `start`, or `None` when the host gave
+    /// no position (a stopped transport).
+    pub timeline: Option<i64>,
+}
+
+impl Span {
+    /// Frame `frame`'s timeline sample, if this run is stamped and holds it.
+    pub fn timeline_of(&self, frame: u64) -> Option<i64> {
+        let off = frame.checked_sub(self.start).filter(|&o| o < self.frames as u64)?;
+        self.timeline.map(|t| t.wrapping_add(off as i64))
+    }
 }
 
 /// A reader's place in the stream. It lives in the READER's memory, never in
@@ -115,13 +137,16 @@ const _: () = assert!(size_of::<AtomicF32>() == size_of::<AtomicU32>());
 const _: () = assert!(align_of::<AtomicF32>() == align_of::<AtomicU32>());
 const _: () = assert!(size_of::<AtomicF32>() == size_of::<f32>());
 
-/// Publish `src` (interleaved stereo, `src.len() / 2` frames).
+/// Publish `src` (interleaved stereo, `src.len() / 2` frames), whose first
+/// frame is the host's timeline sample `timeline`, if the host said.
 ///
-/// `data` is `hdr`'s ring, `RING_SAMPLES` long. The caller must be the slot's
-/// single writer: two concurrent pushers corrupt the stream (no undefined
-/// behaviour -- everything is atomic -- but no meaningful audio either).
-pub fn push(hdr: &Header, data: &[AtomicF32], src: &[f32]) {
+/// `data` is `hdr`'s ring, `RING_SAMPLES` long, and `stamps` its `STAMPS`
+/// stamps. The caller must be the slot's single writer: two concurrent
+/// pushers corrupt the stream (no undefined behaviour -- everything is atomic
+/// -- but no meaningful audio either).
+pub fn push(hdr: &Header, data: &[AtomicF32], stamps: &[Stamp], src: &[f32], timeline: Option<i64>) {
     assert_eq!(data.len(), RING_SAMPLES);
+    assert_eq!(stamps.len(), STAMPS as usize);
     let ch = CHANNELS as usize;
     let frames = src.len() / ch;
     if frames == 0 {
@@ -161,6 +186,9 @@ pub fn push(hdr: &Header, data: &[AtomicF32], src: &[f32]) {
         /* Only the writer stores this, so Relaxed is enough to read our own
          * value back. The Release below is what publishes the samples. */
         let w = hdr.write_frames.load(Ordering::Relaxed);
+        /* The run's stamp BEFORE its samples are counted: a reader that sees
+         * the frames (Acquire on write_frames) then sees their stamp too. */
+        stamp(hdr, stamps, w, n as u32, timeline.map(|t| t.wrapping_add(off as i64)));
         let start = (w & MASK) as usize;
         let first = core::cmp::min(n, RING_FRAMES as usize - start);
 
@@ -174,6 +202,58 @@ pub fn push(hdr: &Header, data: &[AtomicF32], src: &[f32]) {
         hdr.write_frames.store(w + n as u64, Ordering::Release);
         off += n;
     }
+}
+
+/* One run's stamp, under its seqlock (header::Stamp). */
+fn stamp(hdr: &Header, stamps: &[Stamp], start: u64, frames: u32, timeline: Option<i64>) {
+    let run = hdr.stamp_runs.load(Ordering::Relaxed);
+    let s = &stamps[(run & (STAMPS as u64 - 1)) as usize];
+    s.start.store(STAMP_PARKED, Ordering::Relaxed);
+    fence(Ordering::Release);
+    s.span.store(stamp_span(hdr.epoch.load(Ordering::Relaxed), frames), Ordering::Relaxed);
+    s.timeline.store(timeline.unwrap_or(UNSTAMPED), Ordering::Relaxed);
+    s.start.store(start, Ordering::Release);
+    hdr.stamp_runs.store(run + 1, Ordering::Release);
+}
+
+/*
+ * WHICH RUN HOLDS FRAME `frame` OF EPOCH `epoch`, scanning back from the
+ * newest stamp. A reader asks about frames it has just read, which are a few
+ * runs old, so the scan stops within a few steps; it never goes past STAMPS,
+ * and it stops at the first stamp of an older epoch -- everything behind that
+ * is older still. Loads only, no allocation: an audio thread may call it.
+ *
+ * `None`: the run was stamped so long ago that its stamp has been reused, or
+ * belongs to another epoch, or was being rewritten while we looked.
+ */
+pub fn stamp_at(hdr: &Header, stamps: &[Stamp], epoch: u32, frame: u64) -> Option<Span> {
+    assert_eq!(stamps.len(), STAMPS as usize);
+    let runs = hdr.stamp_runs.load(Ordering::Acquire);
+    for back in 0..core::cmp::min(runs, STAMPS as u64) {
+        let s = &stamps[((runs - 1 - back) & (STAMPS as u64 - 1)) as usize];
+        let start = s.start.load(Ordering::Acquire);
+        if start == STAMP_PARKED {
+            continue;
+        }
+        let span = s.span.load(Ordering::Relaxed);
+        let timeline = s.timeline.load(Ordering::Relaxed);
+        fence(Ordering::Acquire);
+        if s.start.load(Ordering::Relaxed) != start {
+            continue;
+        }
+        if (span >> 32) as u32 != epoch {
+            return None;
+        }
+        if frame >= start {
+            let frames = span as u32;
+            return (frame - start < frames as u64).then_some(Span {
+                start,
+                frames,
+                timeline: (timeline != UNSTAMPED).then_some(timeline),
+            });
+        }
+    }
+    None
 }
 
 fn store(dst: &[AtomicF32], src: &[f32]) {
@@ -290,7 +370,15 @@ pub(crate) fn read_with(
         return result;
     }
 
+    result.first = cur.frames;
     cur.frames += want as u64;
     result.frames = want as u32;
     result
+}
+
+impl Cursor {
+    /// The epoch this cursor reads in -- what `stamp_at` takes.
+    pub fn epoch(&self) -> u32 {
+        self.epoch
+    }
 }
