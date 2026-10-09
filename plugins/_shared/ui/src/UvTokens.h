@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * Ultraviolet 1.1.0 -- GENERATED, DO NOT EDIT.
+ * Ultraviolet 1.2.0 -- GENERATED, DO NOT EDIT.
  *
  * scripts/gen-tokens.mjs wrote this from design/scheme/project/tokens.json
  * and the motion constants of design/scheme/project/components/ground.js.
@@ -29,7 +29,7 @@ namespace uv::tok
 
 /* The system these values are, and its release. */
 inline constexpr const char* systemName = "Ultraviolet";
-inline constexpr const char* release = "1.1.0";
+inline constexpr const char* release = "1.2.0";
 
 /* ============================================================ colour == */
 
@@ -72,6 +72,7 @@ inline constexpr juce::uint32 spec4 = 0xffefe3ff;
 inline constexpr juce::uint32 plotFill = 0xff1d1533;
 inline constexpr juce::uint32 plotGhost = 0xff3a2a66;
 inline constexpr juce::uint32 plotDry = 0xff6b6b78;
+inline constexpr juce::uint32 plotKey = 0xffffb000;
 }
 }
 
@@ -151,7 +152,9 @@ inline const juce::Colour uvGlow { argb::ultraviolet::uvGlow };
 inline const juce::Colour onUv { argb::ultraviolet::onUv };
 /*
  * Warning state: record armed, clipping about to happen, an unsaved patch.
- * Small marks only, at most one per window.
+ * Small marks only, at most one per window. Also a signal: inside a PlotWell
+ * its value is plot-key, the reference a processor reacts to, drawn as a
+ * band. A band is the signal, a rule or a mark is still the warning.
  */
 inline const juce::Colour amber { argb::ultraviolet::amber };
 /* Error/clip: a meter past 0 dB, a failed paste. Never decorative. */
@@ -203,6 +206,14 @@ inline const juce::Colour plotGhost { argb::ultraviolet::plotGhost };
  * Data colour, only in a PlotWell.
  */
 inline const juce::Colour plotDry { argb::ultraviolet::plotDry };
+/*
+ * The reference a processor reacts to, behind everything it shows: the kick
+ * behind a ducker's input and output, at 30% opacity with a 1px edge at 90%
+ * over the dry. The value of amber, so the one warm colour in a well is the
+ * thing to time against. A band, never a rule: amber as a rule or a mark is a
+ * warning. Data colour, only in a PlotWell.
+ */
+inline const juce::Colour plotKey { argb::ultraviolet::plotKey };
 }
 
 namespace colour = ultraviolet;
