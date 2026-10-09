@@ -65,9 +65,9 @@ struct FakeModel final : public Model
         params.addFloat ("jitter", "Jitter", linear (0.0f, 100.0f), 0.0f, fixed (0, "%", false), number);
         params.addBool ("pre_filter", "Pre-Filter", false);
         params.addBool ("post_filter", "Post-Filter", false);
-        params.addFloat ("post_octave", "Octave", linear (-2.0f, 4.0f), 0.0f, fixed (1, "oct", true), number);
+        params.addFloat ("post_octave", "Octave", linear (-3.0f, 3.0f), 0.0f, fixed (1, "oct", true), number);
         params.addFloat ("mix", "Mix", linear (0.0f, 100.0f), 100.0f, fixed (0, "%", false), number);
-        params.addFloat ("output", "Output", linear (-24.0f, 12.0f), 0.0f, fixed (1, "dB", true), number);
+        params.addFloat ("output", "Output", linear (-24.0f, 24.0f), 0.0f, fixed (1, "dB", true), number);
     }
 
     int numParameters() const override { return params.size(); }

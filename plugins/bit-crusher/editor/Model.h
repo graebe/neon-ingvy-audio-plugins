@@ -50,9 +50,9 @@ enum : int
     jitter,      // 0..100 %
     preFilter,   // switch
     postFilter,  // switch
-    postOctave,  // -2..+4 octaves from Rate/2
+    postOctave,  // -3..+3 octaves from Rate/2
     mix,         // 0..100 %
-    output,      // -24..+12 dB
+    output,      // -24..+24 dB
     count
 };
 } // namespace param

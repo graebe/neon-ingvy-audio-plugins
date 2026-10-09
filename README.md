@@ -13,6 +13,7 @@ GPL-3.0-or-later.
 | [NI Listen-In](plugins/listen-in/README.md) | VST3 | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · a Schwung module for the Move | `engines/side-chain` |
 | [NI Chord-Detector](plugins/chord-detector/README.md) | VST3 | `engines/chord-detector` |
+| [NI Bit-Crusher](plugins/bit-crusher/README.md) | VST3 · a Schwung module for the Move | `engines/bit-crusher` |
 
 ## How it is put together
 
@@ -136,6 +137,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `spdx` | every source file this repository owns opens with its licence and its copyright |
 | `tg_host` | NI Trance Gate's built VST3 as a DAW hosts it: every set an earlier build saved reopened and saved back byte for byte, the golden render, the host's Bypass, and the window under a running transport |
 | `sc_processor`, `sc_host` | NI Side-Chain on the real engine: the sets earlier builds saved reopened and saved back byte for byte, a note ducking from its own sample, CC 120 and CC 123 opening a held duck, a key ducking the track, the shape drawn against the duck played — in the processor, and in the built VST3 as a DAW hosts it, the engine's golden render bit for bit |
+| `bc_processor`, `bc_host` | NI Bit-Crusher on the real engine: the parameters declared from the engine's table, a saved set reopened with every value exactly, a reactivation letting go of what was held, the window at its size — in the processor, and in the built VST3 as a DAW hosts it, the patch typed in and the engine's golden render bit for bit |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
 | `sg_processor`, `sg_host` | NI Spectrogram on the real analyzer: the sets earlier builds saved reopened and saved back byte for byte, a tone drawn at its frequency straight into the editor's buffers, a Listen-In's bus from another process listed by its name and drawn, the audio through bit for bit — in the processor, and in the built VST3 as a DAW hosts it |
 | `abus_ipc` | a bus written in one process and read in another. **The only test that would fail over a process-local ring, which is the whole reason the transport is shared memory.** `abus_ipc_rosetta` and `abus_ipc_rosetta_reader` do it between the x86_64 and arm64 slices, as Live under Rosetta and a native host would |
@@ -208,6 +210,7 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Listen-In](plugins/listen-in/README.md) | a tap that publishes a track on a numbered bus — [in Live](plugins/listen-in/docs/live.md) |
 | [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input — [in Live](plugins/side-chain/docs/live.md), [on the Move](plugins/side-chain/docs/schwung.md) |
 | [NI Chord-Detector](plugins/chord-detector/README.md) | names the note or chord a MIDI lane plays — [in Live](plugins/chord-detector/docs/live.md) |
+| [NI Bit-Crusher](plugins/bit-crusher/README.md) | a bit crusher: fewer levels, taken less often — [in Live](plugins/bit-crusher/docs/live.md), [on the Move](plugins/bit-crusher/docs/schwung.md) |
 
 What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).
 

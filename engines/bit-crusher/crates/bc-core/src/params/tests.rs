@@ -168,3 +168,16 @@ fn a_value_on_the_resolution_survives_a_float_round_trip() {
     assert_eq!(Param::AntiAlias.snap(0.7), 1.0);
     assert_eq!(Param::Rate.snap(1e9), 96_000.0);
 }
+
+#[test]
+fn a_bipolar_range_is_symmetric_so_its_centre_is_zero() {
+    /* A bipolar knob draws its arc from 12 o'clock, the middle of its
+     * travel: that has to be zero, or zero would show an arc. */
+    for p in Param::ALL {
+        if let Kind::Float { min, max, bipolar: true, travel, .. } = p.info().kind {
+            assert_eq!(min, -max, "{p:?}");
+            assert_eq!(travel, Travel::Linear, "{p:?}");
+            assert_eq!(p.denormalise(0.5), 0.0, "{p:?}");
+        }
+    }
+}

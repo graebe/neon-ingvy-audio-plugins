@@ -349,7 +349,10 @@ fn every_control_at_its_ends_renders_finite_audio() {
             e.set_num(p, p.denormalise(n));
             let (mut l, mut r) = (input.clone(), input.clone());
             e.process_f32(&mut l, Some(&mut r));
-            assert!(l.iter().chain(&r).all(|y| y.is_finite() && y.abs() <= 4.0), "{p:?} at {n}");
+            /* Full scale, a filter's overshoot on it, and the most Output
+             * can add: +24 dB. */
+            let ceiling = 1.1 * db_to_amp(24.0) as f32;
+            assert!(l.iter().chain(&r).all(|y| y.is_finite() && y.abs() <= ceiling), "{p:?} at {n}");
         }
     }
 }

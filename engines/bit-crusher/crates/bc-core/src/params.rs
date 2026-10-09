@@ -119,7 +119,8 @@ pub enum Kind {
         unit: Unit,
         travel: Travel,
         /// Whether the value runs both ways about zero, so a knob draws its
-        /// arc from the centre.
+        /// arc from the centre -- which is why every such range is symmetric:
+        /// the centre of the travel IS zero.
         bipolar: bool,
     },
     Toggle {
@@ -186,9 +187,9 @@ impl Param {
             Param::Jitter => ("jitter", "Jitter", float(0.0, 100.0, 0.0, Unit::Percent, Linear, false)),
             Param::PreFilter => ("pre_filter", "Pre-Filter", Kind::Toggle { default: false }),
             Param::PostFilter => ("post_filter", "Post-Filter", Kind::Toggle { default: false }),
-            Param::PostOctave => ("post_octave", "Octave", float(-2.0, 4.0, 0.0, Unit::Octaves, Linear, true)),
+            Param::PostOctave => ("post_octave", "Octave", float(-3.0, 3.0, 0.0, Unit::Octaves, Linear, true)),
             Param::Mix => ("mix", "Mix", float(0.0, 100.0, 100.0, Unit::Percent, Linear, false)),
-            Param::Output => ("output", "Output", float(-24.0, 12.0, 0.0, Unit::Db, Linear, true)),
+            Param::Output => ("output", "Output", float(-24.0, 24.0, 0.0, Unit::Db, Linear, true)),
         };
         Info { key, name, kind }
     }

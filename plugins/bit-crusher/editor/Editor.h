@@ -3,8 +3,8 @@
 
 /*
  * NI Bit-Crusher's window, 888 x 532 at its design size, on Ultraviolet: the
- * board "NI Bit-Crusher" on the NI Plugin Layouts canvas
- * (design/designs/BitCrusher.dc.html), built from the kit.
+ * board "NI Bit-Crusher — proposed" on the NI Plugin Layouts canvas
+ * (design/designs/BitCrusher-Proposed.dc.html), built from the kit.
  *
  * TWO PICTURES OVER THREE PANELS, on one grid of three 264px columns 16 apart --
  * as wide as a panel must be for its two switches, labels and all:

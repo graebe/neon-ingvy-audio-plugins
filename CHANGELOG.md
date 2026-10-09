@@ -1,5 +1,17 @@
 # What's new
 
+## v2026.10.10.1 — NI Bit-Crusher
+
+- **New: NI Bit-Crusher.** A bit crusher for Live and the Move: it keeps fewer
+  levels (Bits, 1 to 16, in fractions too, so a sweep glides) and keeps them
+  less often (Rate, 50 Hz to 96 kHz). Drive, Shape (µ-law steps), Dither,
+  Mid-Rise and Anti-Alias shape the steps; Jitter and the Pre and Post filters
+  shape the hold. Its window shows the staircase and the sound before and
+  after. Every control can be automated without clicks. On the Move: one page
+  of eight knobs.
+
+## Unreleased — NI Side-Chain, NI Listen-In, NI Spectrogram, NI Chord-Detector
+
 ## v2026.10.10.2 — NI Side-Chain, NI Listen-In, NI Spectrogram
 
 ### Before you update

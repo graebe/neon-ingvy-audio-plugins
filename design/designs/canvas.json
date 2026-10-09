@@ -66,6 +66,14 @@
       "w": 760,
       "x": 2984,
       "y": 1100
+    },
+    "BitCrusher-Proposed.dc.html": {
+      "h": 532,
+      "is_interactive": true,
+      "title": "NI Bit-Crusher — proposed",
+      "w": 888,
+      "x": 3824,
+      "y": 1100
     }
   },
   "createdOnFiles": {
@@ -156,6 +164,14 @@
       "x": 2984,
       "y": 1988,
       "text": "CHORD-DETECTOR — NEW WINDOW\n\nA silent instrument for a MIDI lane: it names what is sounding. Interactive: a progression loops (Am7, Dm7, G7/B, Cmaj7, the borrowed bVII, #ivø7). Click a key on the circle, step the mode, switch Staff/MIDI and the span, change Spelling, turn Hold off.\n\nCD1  Circle of fifths: twelve keys, clockwise in fifths. The key's seven notes tinted bg-200, sounding notes uv, the root filled uv. The chosen tonic is the window's one amber mark. Key + mode in its centre, with the signature.\nCD2  One readout: the chord as the key writes it (Bb in C major, not A#), its roman numeral beside it, the words under it, then the notes and the other readings of the same notes (ALSO).\nCD3  History, scrolling right to left in the host's bars, now at the right edge. Staff: proportional notation, a head at each onset and a tail for its length, the key signature, chord names at each change. MIDI: one line per note, numbered at each C.\nCD4  Keyboard: four octaves, held keys lit, the bass marked underneath.\nCD5  Hold keeps the last chord after release: the readout stays in ink with a HELD LED, the lit keys dim to uv-deep. The sustain pedal is reported by an LED.\nCD6  No animated Ground (a utility window, as Listen-In), so no Motion switch. Zoom (75–150 %) sits in the History header beside Span: the hint bar's one control slot is the Motion switch's, a text-line tall.\n\nAs built: plugins/chord-detector (JUCE 9, the native kit), v2026.10.07.1.\n\nEach view is its own reusable JUCE component: Keyboard, CircleOfFifths, ChordReadout, GrandStaff and PianoRoll over one NoteHistory.\n\nWindow: 760 × 616."
+    },
+    "bc-notes": {
+      "fill": "teal",
+      "maxH": 640,
+      "w": 888,
+      "x": 3824,
+      "y": 1988,
+      "text": "BIT-CRUSHER — NEW WINDOW\n\nA bit crusher: a continuous signal made discrete, in amplitude and in time. Interactive: set Bits, Hold (samples per held value) and Mid-Rise in its Tweaks; the staircase and the scope follow.\n\nBC1  Two pictures over three panels, on one grid of three 264px columns: the staircase sits over the panel that shapes it.\nBC2  STEPS: input across, output up. The diagonal (line-200) is the untouched signal; the uv curve is the engine's own grid (bc_transfer_render), never a second model of it. The caption repeats Bits in the engine's words.\nBC3  SIGNAL: the last 11 ms, triggered on an upward zero crossing so a tone stands still. Input in grey, the crushed output in front; flat tops are the hold, stairs are the bits. The level range follows the material.\nBC4  Three panels of three knobs, each with the switches that change how its knobs act. STEPS: Bits, Shape, Dither; Mid-Rise, Anti-Alias. HOLD: Rate, Jitter, Octave; Pre, Post (the filters, before and after the hold). LEVEL: Drive, Mix, Output.\nBC5  Drive, Octave and Output are bipolar with symmetric ranges, so their arcs start at 12 o'clock and zero shows none.\nBC6  Rate turns in equal ratios (50 Hz to 96 kHz); every readout is the engine's text (12.0 kHz, 7.5 bits, +6.0 dB) and reads what is typed (8k).\nBC7  Switch labels read Pre and Post in the window; the host lists Pre-Filter and Post-Filter. Both names do not fit one column.\nBC8  No amber: nothing in this window is a warning.\n\nAs built: plugins/bit-crusher (JUCE 9, the native kit), v2026.10.10.1.\n\nWindow: 888 × 532."
     }
   },
   "order": [
@@ -167,7 +183,8 @@
     "SideChain-Proposed.dc.html",
     "Spectrogram-Proposed.dc.html",
     "ListenIn-Proposed.dc.html",
-    "ChordDetector-Proposed.dc.html"
+    "ChordDetector-Proposed.dc.html",
+    "BitCrusher-Proposed.dc.html"
   ],
   "pages": [],
   "title": "NI Plugin Layouts"
