@@ -65,23 +65,12 @@ export function StepNumbers(props) {
 
 
 /*
- * ONE-SIDED, A FILLED REGION RISING FROM THE FLOOR.
- *
- * There were two renderers here: this one, and a MIRRORED `Gate` for drawing
- * the pattern's gate over the scope's waveform. The scope is a rolling window
- * of wall time now and carries no gate overlay, so the mirrored one is gone
- * with it.
- *
- * The distinction is worth keeping in mind if an overlay is ever wanted back:
- * using the mirrored renderer for the envelope is what once made the envelope
- * plot look like a waveform rather than an envelope.
- */
-
-/*
- * plot Curve: `under` filled in uv-glow, the `hull` stroked in uv at rail
- * weight, and below `floor` everything is lit whatever the gate does --
- * because the gate never closes past Amount, and an envelope drawn as though
- * it reached zero would be lying about what you hear.
+ * plot Curve: the gain rising from an Amount floor -- `under` filled in
+ * plot-fill, the `hull` the 2px uv line with the arc's glow, and below `floor`
+ * everything lit whatever the gate does, because the gate never closes past
+ * Amount and an envelope drawn as though it reached zero would be lying about
+ * what you hear. The PlotWell card's data colours, as the native editor draws
+ * them (plugins/_shared/ui Plot.cpp: under, curve).
  */
 export function Curve(props) {
   const geom = () => {
@@ -111,12 +100,25 @@ export function Curve(props) {
           {geom().hasFloor && (
             <rect x={INSET} y={geom().floorY} width={props.w - 2 * INSET}
                   height={Math.max(0, props.bottom - geom().floorY)}
-                  fill="var(--uv-glow)" />
+                  fill="var(--plot-fill)" />
           )}
-          <path d={geom().under} fill="var(--uv-glow)" stroke="none" />
-          <path d={geom().hull} fill="none" stroke="var(--uv)" stroke-width="2" />
+          <path d={geom().under} fill="var(--plot-fill)" stroke="none" />
+          <g class="glow-arc">
+            <path class="curve" d={geom().hull} fill="none" stroke="var(--uv)" stroke-width="2"
+                  stroke-linejoin="round" />
+          </g>
         </>
       )}
     </>
+  );
+}
+
+/* A position mark: where the gate closes, the step's edge, the playhead. A
+ * line-200 hairline, and amber at 2px for a warning -- plot::rule. */
+export function Rule(props) {
+  return (
+    <line class={props.class} x1={props.x} x2={props.x} y1={props.top} y2={props.bottom}
+          stroke={props.warn ? 'var(--amber)' : 'var(--line-200)'}
+          stroke-width={props.warn ? 2 : 1} />
   );
 }

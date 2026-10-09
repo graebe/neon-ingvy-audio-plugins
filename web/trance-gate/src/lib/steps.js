@@ -27,18 +27,36 @@
  *   - ZERO MEANS OFF. Dragging to the floor deactivates rather than leaving a
  *     step that is on and silent.
  */
-import { sendMessage } from '@ultraviolet/ui';
+import { sendMessage, startDrag, createCoalescer } from '@ultraviolet/ui';
 import { MSG } from './msg.js';
-import { startDrag, createCoalescer } from '@ultraviolet/ui';
 
 export const MODE = { off: 0, on: 1, tie: 2 };
 
-/** Off / On / Tie for one step. The cursor moves there first; see OnMessage. */
-export const setStep = (i, mode) => sendMessage(MSG.setStep, `${i}:${mode}`);
+/*
+ * THE EDIT IS SHOWN AS IT IS SENT. The module's `ui` readout comes back at
+ * most every 150 ms after a write, and further than that over a phone's
+ * Wi-Fi, so a pad that waited for it would light a beat late and a drag's
+ * amount would follow the pointer in jumps. Every step edit is told to the
+ * listeners here (the editor applies it to its picture: lib/readouts.js
+ * applyEdit) and the next readout confirms it -- or corrects it, as the
+ * engine's word is final.
+ */
+const editListeners = new Set();
+export const onStepEdit = (fn) => { editListeners.add(fn); return () => editListeners.delete(fn); };
+const told = (edit) => { for (const fn of editListeners) fn(edit); };
+
+/** Off / On / Tie for one step; the module's cursor moves there first. */
+export const setStep = (i, mode) => {
+  told({ i, mode });
+  sendMessage(MSG.setStep, `${i}:${mode}`);
+};
 
 /** A step's amount, 0..1. */
-export const setDepth = (i, amount) =>
-  sendMessage(MSG.setDepth, `${i}:${Math.max(0, Math.min(1, amount)).toFixed(4)}`);
+export const setDepth = (i, amount) => {
+  const a = Math.max(0, Math.min(1, amount));
+  told({ i, amount: a });
+  sendMessage(MSG.setDepth, `${i}:${a.toFixed(4)}`);
+};
 
 /*
  * A DRAG'S AMOUNTS, AT MOST ONCE PER ~16 MS. pointermove fires far faster than
@@ -80,7 +98,7 @@ export function pressStep(i, model, shiftKey) {
 }
 
 /**
- * ORDER MODE: a click names the next arrival rather than editing the step.
+ * SET ORDER: a click names the next arrival rather than editing the step.
  *
  * Tapping the pads in the order you want them to arrive is the whole gesture,
  * and it is a MODE rather than a modifier because both modifiers a pad has are

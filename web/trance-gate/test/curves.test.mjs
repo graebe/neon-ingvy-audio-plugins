@@ -21,7 +21,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { shape } from '../../kit/src/lib/curve.js';
+import { shape } from '@ultraviolet/ui/curve';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const TABLE = process.env.TG_SHAPE_TABLE ?? join(here, 'shape_table.txt');

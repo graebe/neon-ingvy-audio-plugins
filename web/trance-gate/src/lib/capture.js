@@ -2,39 +2,14 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The Trance Gate's two binary readouts: the Signal capture and the rendered
- * gate.
+ * The engine's two renders, decoded: the gate across one cycle and the
+ * envelope plot's curves (tg_core_render_gate, tg_core_render_envelope).
  *
- * Both arrive as bytes (the bridge's onBytes), an ASCII header and then one
- * byte a value. Plain JavaScript so node can test them.
+ * Each is an ASCII header and then one byte a value. In Live they arrived
+ * from the plugin; on the Move the page renders them itself (lib/renders.js).
+ * Plain JavaScript so node can test them.
  */
-import { readHeader, intField, bipolar, unipolar, reuse } from '@ultraviolet/ui/capture';
-
-/** Values per capture column: dry low, dry high, wet low, wet high. */
-export const SCOPE_STRIDE = 4;
-
-/**
- * "<cols>:<cycleMs>:<head>:" then four bytes a column, column k at pattern
- * phase k/cols -> { data, stride, count, windowMs, head } or null. `data` is
- * `into` when it is big enough -- the capture arrives every frame.
- */
-export function decodeScope(bytes, into) {
-  const h = readHeader(bytes, 3);
-  if (!h) return null;
-  const count = intField(h.fields[0]);
-  const windowMs = Number(h.fields[1]);
-  const head = intField(h.fields[2]);
-  if (!(count >= 1 && count <= 1024) || !Number.isFinite(windowMs)) return null;
-  const n = count * SCOPE_STRIDE;
-  /* Short is dropped whole: half a capture would read as a real signal. */
-  if (bytes.length - h.offset < n) return null;
-  const data = reuse(into, n);
-  for (let i = 0; i < n; i++) data[i] = bipolar(bytes[h.offset + i]);
-  return {
-    data, stride: SCOPE_STRIDE, count, windowMs,
-    head: Number.isInteger(head) ? Math.max(0, Math.min(count - 1, head)) : 0,
-  };
-}
+import { readHeader, intField, unipolar } from '@ultraviolet/ui/capture';
 
 /**
  * The gate across one cycle as the engine applies it: "<length>:<perStep>:"

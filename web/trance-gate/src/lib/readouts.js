@@ -22,7 +22,8 @@ export function hexToBits(hex, n) {
 }
 
 /**
- * The `ui` readout: "steps:ties:length:phase:msStep:moving:cursor:depths:orders"
+ * The `ui` readout:
+ * "steps:ties:length:phase:msStep:moving:cursor:depths:orders:slot"
  * -> an object, or null when it has too few fields.
  */
 export function decodeUi(text) {
@@ -46,7 +47,31 @@ export function decodeUi(text) {
     cursor: parseInt(f[6], 10) || 0,
     depths,
     orders,
+    /* Appended last by the engine; absent from an older one. */
+    slot: f.length > 9 ? parseInt(f[9], 10) || 0 : 0,
   };
+}
+
+/**
+ * A step edit the editor has sent, applied to a decoded `ui` readout ahead of
+ * the engine's next one: `{ i, mode }` (0 off, 1 on, 2 tie) or `{ i, amount }`
+ * (0..1, held as the engine holds it, a byte). A new object; the readout given
+ * is not touched, and an edit past the pattern's end changes nothing.
+ */
+export function applyEdit(u, edit) {
+  const i = edit?.i;
+  if (!u || !Number.isInteger(i) || i < 0 || i >= u.length) return u;
+  const next = { ...u };
+  if (edit.mode !== undefined) {
+    next.steps = u.steps.slice();
+    next.ties = u.ties.slice();
+    next.steps[i] = edit.mode !== 0;
+    next.ties[i] = edit.mode === 2;
+  } else if (edit.amount !== undefined) {
+    next.depths = u.depths.slice();
+    next.depths[i] = Math.round(Math.min(1, Math.max(0, edit.amount)) * 255) / 255;
+  }
+  return next;
 }
 
 /**

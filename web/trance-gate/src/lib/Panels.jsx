@@ -6,14 +6,15 @@
  *
  * THE TITLE RUNS UP THE LEFT EDGE, which is what pays for the third panel: a
  * heading above the knobs cost a 28px band that said one word.
+ *
+ * Laid out as the native editor's (TranceGateEditor.cpp, layoutPanels): four
+ * cells a panel, every knob the same size; the Fade panel's knob in the first
+ * cell and its two switches and two actions in two columns after it.
  */
 import { Button, infoAttrs } from '@ultraviolet/ui';
-import { ParamKnob, ParamSelect, ParamToggle } from '@ultraviolet/ui/params';
+import { ParamKnob, ParamToggle } from '@ultraviolet/ui/params';
 import { P } from './msg.js';
 import { INFO } from './info.js';
-
-/* Which end the pattern is built up from. 100% is the pattern either way. */
-const FADE_DIRS = ['In', 'Out'];
 
 export function Panels(props) {
   const host = () => props.host;
@@ -23,7 +24,8 @@ export function Panels(props) {
       <section class="panel">
         <h2 class="t-title" {...infoAttrs(INFO.gatePanel)}>GATE</h2>
         <div class="knob-row">
-          <ParamKnob params={host()} idx={P.rate} label="Rate"
+          {/* One division an arrow: thirteen of them, the declaration's. */}
+          <ParamKnob params={host()} idx={P.rate} label="Rate" steps={props.rateSteps}
                      info={INFO.rate} readoutInfo={INFO.readout.rate} />
           {/* Holds on half a bar to four bars at the Rate (the engine's list). */}
           <ParamKnob params={host()} idx={P.length} label="Length"
@@ -36,8 +38,8 @@ export function Panels(props) {
         </div>
       </section>
 
-      {/* The stages' readouts are the plugin's text in whichever unit Env Time
-        * asks for, and it parses what is typed into them the same way. */}
+      {/* The stages read in whichever unit Time asks for, and take either
+        * typed (lib/stages.js). */}
       <section class="panel">
         <h2 class="t-title" {...infoAttrs(INFO.envelopePanel)}>ENVELOPE</h2>
         <div class="knob-row">
@@ -52,28 +54,25 @@ export function Panels(props) {
         </div>
       </section>
 
-      {/* FADE: the knob, its shape, and the order it introduces steps in. The
-        * order controls live here because the order only means anything to
-        * this knob. */}
+      {/* FADE: the knob, its direction and shape, and the order it introduces
+        * steps in. The order controls live here because the order only means
+        * anything to this knob. */}
       <section class="panel">
         <h2 class="t-title" {...infoAttrs(INFO.fadePanel)}>FADE</h2>
         <div class="knob-row">
           <ParamKnob params={host()} idx={P.fade} label="Fade"
                      info={INFO.fade} readoutInfo={INFO.readout.fade} />
-          <div class="fade-actions">
-            <ParamSelect params={host()} idx={P.fadeDir} options={FADE_DIRS} label="Dir"
-                         labelWidth={28} width={76} info={INFO.dir} />
+          <div class="fade-switches">
+            <ParamToggle params={host()} idx={P.fadeDir} label="Out" info={INFO.out} />
             <ParamToggle params={host()} idx={P.fadeSoft} label="Soft" info={INFO.soft} />
-            {/* ORDER MODE. The count is the whole affordance: a sequence is
-              * being typed, and how far in you are. */}
-            <Button on={props.orderMode}
-                    info={INFO.order}
-                    onClick={props.onOrder}>
-              {props.orderMode ? `ORDER ${props.orderNext}/${props.hits}` : 'ORDER'}
+          </div>
+          <div class="fade-actions">
+            {/* The count is the whole affordance: a sequence is being typed,
+              * and how far in you are. */}
+            <Button on={props.orderMode} info={INFO.order} onClick={props.onOrder}>
+              {props.orderMode ? `Set order ${props.orderNext}/${props.hits}` : 'Set order'}
             </Button>
-            <Button info={INFO.shuffle} onClick={props.onShuffle}>
-              SHUFFLE
-            </Button>
+            <Button info={INFO.shuffle} onClick={props.onShuffle}>Shuffle order</Button>
           </div>
         </div>
       </section>

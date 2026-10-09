@@ -1,43 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Torben Gräber
 
-import { defineConfig } from 'vite';
-import solid from 'vite-plugin-solid';
-// The notices of every package bundled into ui.js, written beside it, and a
-// failed build for one THIRD_PARTY_LICENSES.md does not list.
-import licenses from '../../../scripts/vite-licenses.mjs';
-
 /*
- * WHAT THE BUILD WRITES, into ../resources/web -- which the plugin's CMake
- * globs into its bundle as web resources:
- *
- *   index.html                 the page
- *   assets/ui.js               every module, in one file (inlineDynamicImports)
- *   assets/style.css           every stylesheet, in one file (cssCodeSplit
- *                              off), with the kit's font INLINED as
- *                              a data URI -- assetsInlineLimit is absurd on
- *                              purpose, so nothing is emitted beside them
- *   assets/ui.js.LICENSE.txt   the notices of every bundled package
- *   fonts/OFL.txt              from public/, the font's licence
- *
- * Fixed file names rather than hashed ones, because the bundle is rebuilt
- * whole and a WKWebView over a custom scheme serves exactly the files that are
- * there.
+ * NI Trance Gate's page on the Move. The build, the dev server (port 47341,
+ * preview 47342) and the module's declaration for the harness are the kit's,
+ * shared by every Move editor: web/kit/vite.editor.mjs says what each does.
  */
-export default defineConfig({
-  plugins: [solid(), licenses()],
-  base: './',
-  build: {
-    outDir: '../resources/web',
-    emptyOutDir: true,
-    assetsInlineLimit: 100_000_000,
-    cssCodeSplit: false,
-    rollupOptions: {
-      output: {
-        inlineDynamicImports: true,
-        entryFileNames: 'assets/ui.js',
-        assetFileNames: 'assets/[name][extname]',
-      },
-    },
-  },
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { editorConfig } from '../kit/vite.editor.mjs';
+
+export default editorConfig({
+  dir: dirname(fileURLToPath(import.meta.url)),
+  module: 'trance-gate',
+  crate: 'tg-move',
+  port: 47341,
 });

@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Copyright (C) 2026 Torben Gräber -->
+<!--
+  NI Trance Gate's page in Schwung's web manager, served from the module's
+  folder into the slot's iframe. The manager's bridge first -- it sets
+  window.schwungRemote, which the editor connects to -- and it is the
+  manager's file, so the build leaves it alone (vite-ignore).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- No icon to fetch: the page lives in the manager's frame. -->
+    <link rel="icon" href="data:," />
+    <title>NI Trance Gate</title>
+    <script vite-ignore src="/static/schwung-remote-api.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.jsx"></script>
+  </body>
+</html>

@@ -33,6 +33,16 @@ export default function StepGrid(props) {
   let gridEl;
   const [focus, setFocus] = createSignal(0);
   const onKey = (i, e) => {
+    /* A DIGIT OPENS THE STEP'S ARRIVAL NUMBER with that digit typed, as the
+     * plugin's pads do (Pads::keyPressed): on the row or the number pad
+     * (e.code), never with a command modifier, and only on a numbered step. */
+    const digit = /^(Digit|Numpad)([0-9])$/.exec(e.code ?? '');
+    if (digit && !e.metaKey && !e.ctrlKey && !e.altKey && numbered(i)) {
+      e.preventDefault();
+      setTyped(digit[2]);
+      setEditing(i);
+      return;
+    }
     const k = padKey(e, i, n(), COLS);
     if (!k) return;
     e.preventDefault();
@@ -86,7 +96,7 @@ export default function StepGrid(props) {
       bar: !on && !tie && i % 4 === 0,
       cursor: props.cursor === i,
       pending: pending(i),
-      /* In ORDER mode, a step whose place has not been named yet. */
+      /* In Set order, a step whose place has not been named yet. */
       unnamed: !!props.orderMode && on && !props.named?.[i],
     };
   };
@@ -106,19 +116,21 @@ export default function StepGrid(props) {
    * TYPING A RANK. The number is the control -- click it and it becomes a field.
    *
    * It is editable whenever it is DRAWN, so re-numbering needs no mode of its
-   * own: ORDER mode is for laying a sequence down by tapping, this is for
+   * own: Set order is for laying a sequence down by tapping, this is for
    * changing one of them. The engine SWAPS on collision, so the step that held
    * the number you typed takes the one this step had, and nothing between them
    * moves.
    */
   const [editing, setEditing] = createSignal(-1);
+  /* The digit that opened the field from the keyboard; null when a click did. */
+  const [typed, setTyped] = createSignal(null);
   const commit = (i, text) => {
     const n = parseInt(text, 10);
     if (Number.isFinite(n) && n >= 1) props.onOrder?.(i, n);
   };
 
   /* ONE STRING FOR EVERY PAD, on the grid so the gaps between pads say it too;
-   * each pad carries it as its description. ORDER mode changes what a click
+   * each pad carries it as its description. Set order changes what a click
    * does, and so the string. */
   const info = () => (props.orderMode ? INFO.padsOrder : INFO.pads);
 
@@ -152,11 +164,13 @@ export default function StepGrid(props) {
                               onPointerDown={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
+                                setTyped(null);
                                 setEditing(i);
                               }}>{num(i)}</span>
                       }>
                   {/* Enter or a click away commits; Escape abandons. */}
-                  <EditField class="pad-order-edit t-hint" value={String(num(i))}
+                  <EditField class="pad-order-edit t-hint" value={typed() ?? String(num(i))}
+                             caretAtEnd={typed() !== null}
                              inputmode="numeric" ariaLabel={`Arrival of step ${i + 1}`}
                              info={INFO.arrival}
                              onCommit={(t) => commit(i, t)} onClose={() => setEditing(-1)} />

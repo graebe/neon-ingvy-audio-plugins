@@ -5,27 +5,43 @@
  * Layout.
  *
  * In normal flow, top to bottom, inside the kit's EditorFrame (which owns the
- * window's padding, its ground and the Hint bar on the bottom edge):
+ * window's padding, its ground and the Hint bar on the bottom edge), on the
+ * native editor's spacing (TranceGateEditor.h):
  *
  *   the top block     the ring column (240: ring 240, space-6, envelope 104)
- *                     beside three 488 x 140 panels, space-4 apart = 452
- *   space-4
+ *                     beside three 488 x 140 panels, space-6 apart = 468
+ *   space-6
  *   the settings row  28
- *   space-2
- *   the band          92, the plot with the tab strip over its right edge
+ *   space-4
+ *   the band          92, the Pattern plot
  *   space-4
  *   the pads          a row of 40 per 16 steps, space-2 apart
  *
  * 824 = space-8 * 2 + 760, and 760 is sixteen --step pads with --s2 between:
  * the pads decide the content width and everything lines up with them. The
- * pads start 644 below the window's top edge -- ABOVE_GRID in App.jsx, which
- * has to agree, as do PLUG_WIDTH / PLUG_HEIGHT in config.h.
+ * pads start 676 below the window's top edge -- ABOVE_GRID in App.jsx, which
+ * has to agree.
+ *
+ * The panels are the web editor's 488 and not the native 390: Live's window
+ * spends the difference on a column of window verbs -- copy, paste, export,
+ * import -- none of which a page on the Move can do.
  */
+
+/*
+ * THE PAGE IS AS TALL AS ITS CONTENT, NOT AS THE VIEWPORT. The kit sizes html
+ * and body to 100% of the viewport, which is right for a plugin window and
+ * wrong in Schwung's iframe: the manager sizes the frame from the body's
+ * height, and a body as tall as the frame reports the frame's own height back
+ * -- it can only ever grow. So the body takes the height of `.page`, which
+ * App.jsx sets to the height the window is drawn at, and clips the rest.
+ */
+html, body { height: auto; }
+.page { width: 100%; overflow: hidden; overflow: clip; }
 
 .top {
   display: flex;
   gap: var(--s8);
-  height: 452px;
+  height: 468px;
   flex: none;
 }
 
@@ -37,10 +53,6 @@
   gap: var(--s6);
 }
 .ring { display: block; }
-/* Flush with the panels' bottom edge, the three words across the column, each
- * button as wide as its word needs and the spare width shared out. */
-.slot-files { margin-top: auto; width: 100%; }
-.slot-files .btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; padding: 0 var(--s2); }
 .ring-centre { fill: var(--ink); }
 .ring-label  { fill: var(--ink-muted); }
 
@@ -49,7 +61,7 @@
   width: 488px;
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: var(--s6);
 }
 .panels .panel { height: 140px; }
 
@@ -57,49 +69,38 @@
 .plot { display: block; }
 /* Step numbers label the plot rather than being part of it. */
 .step-number { fill: var(--ink-muted); }
-/* Where the signal sweep is writing. Not a playhead: "current up to here". */
-.sweep { stroke-width: 1; }
 
-/* settings row: under the three panels, one line of 28px controls, space-4
- * apart as the design spaces controls in a row. At space-6 it came to ~795px
- * of 760 and pushed the copy/paste pair off the window's edge. */
+/* The settings row: under the three panels, one line of 28px controls,
+ * space-4 apart as the design spaces controls in a row. */
 .settings-row {
   flex: none;
-  margin-top: var(--s4);
+  margin-top: var(--s6);
   height: var(--control-h);
   display: flex; align-items: center; gap: var(--s4);
 }
 .spacer { flex: 1; }
 
-/*
- * THE BAND: the two plots occupy it one at a time, and the tab strip is laid
- * OVER the plot's right edge rather than taking a column -- which is what lets
- * the signal line up with the pads under it.
- */
+/* The band: the Pattern plot, the width of the pads. */
 .band {
-  position: relative;
   flex: none;
-  margin-top: var(--s2);
+  margin-top: var(--s4);
   width: 760px;
   height: 92px;
 }
-.band-plot { position: absolute; inset: 0; }
-.band .tabs {
-  position: absolute; right: 0; top: 0; height: 100%;
-  z-index: 1;
-}
 
 /*
- * THE FADE PANEL'S SECOND CELL: a switch and two actions, stacked, in the space
- * a knob-card would take, so every knob in the window stays the same size.
+ * THE FADE PANEL'S LAST THREE CELLS: two switches, and two actions, each pair
+ * stacked space-2 apart in the height a knob-card takes -- so every knob in the
+ * window stays the same size. The actions take two cells, so "Set order
+ * 128/128" fits without the button changing width as the count grows.
  */
-.fade-actions {
+.fade-switches, .fade-actions {
   display: flex; flex-direction: column; justify-content: center;
   gap: var(--s2); min-width: 0;
-  /* Two cells wide, so the worded buttons have room to be words. */
-  flex: 2;
 }
-.fade-actions .btn { width: 100%; }
+.fade-switches { flex: 1; }
+.fade-actions { flex: 2; }
+.fade-actions .btn { width: 100%; white-space: nowrap; }
 
 /* ------------------------------------------------------------ pads -- */
 .grid { flex: none; margin-top: var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
@@ -152,7 +153,7 @@
  * says it; this is a step's place in the FADE's arrival order, which nothing
  * about the picture could otherwise say.
  *
- * It is drawn only when it means something -- in ORDER mode, or while the fade
+ * It is drawn only when it means something -- in Set order, or while the fade
  * is part way in -- so the resting grid is exactly what it was.
  *
  * pointer-events: none, or the number becomes the event target and padGesture
@@ -203,7 +204,11 @@
  */
 .pad.filled { background: var(--bg-200); }
 .pad.filled .pad-lit { opacity: 0.55; }
-/* ORDER mode: the grid is being sequenced rather than edited, so the pads say
+/* Set order: the grid is being sequenced rather than edited, so the pads say
  * so. A step still waiting for its number is dimmed towards the ground, which
  * makes "what is left to tap" the thing the grid is showing. */
 .pad.unnamed { background: var(--bg-100); }
+
+/* web_ui.html opened with no Move behind it: one line, where the window would
+ * start, in the colour the system gives words that explain. */
+.no-bridge { margin: 0; padding: var(--s8); color: var(--ink-muted); }
