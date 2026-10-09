@@ -7,7 +7,7 @@
   "units": {},
 
   "exempt": {
-    "modules/trance-gate": "ui_chain.js, 1315 lines that run on the Move inside Schwung's shadow UI: it imports Schwung's own page controller, input filter and screen reader by their absolute paths on the device (/data/UserData/schwung/shared/...), which this repository does not carry, so nothing here can load it. engines/trance-gate/tests/smoke_ui.mjs runs every entry point against those shared sources in the module's own build (engines/trance-gate/tests/run.sh), outside this report. The module's DSP is tg-core and its C shell is tg-move, both counted. A real gap, stated rather than hidden."
+    "modules/trance-gate": "ui_chain.js, 1315 lines that run on the Move inside Schwung's shadow UI: it imports Schwung's own page controller, input filter and screen reader by their absolute paths on the device (/data/UserData/schwung/shared/...), which this repository does not carry, so nothing here can load it. engines/trance-gate/tests/smoke_ui.mjs runs every entry point against those shared sources (ctest tg_move_ui, engines/trance-gate/tests/ui.sh), outside this report. The module's DSP is tg-core and its C shell is tg-move, both counted. A real gap, stated rather than hidden."
   },
 
   "exempt_files": {

@@ -38,6 +38,10 @@ let uiPhase = 3.250;            /* where the playhead sits */
 let uiMoving = 1;               /* the `advancing` field, not "transport on" */
 let uiWithhold = 0;             /* reads of `ui` still to answer with null */
 let uiSlot = 0;                 /* the slot the `ui` readout reports, last field */
+/* Off: `ui` reports the cursor on step 3, whatever was written. On: it reports
+ * the written cursor, clamped to the length as the DSP clamps it -- which the
+ * paging tests need, because the pad window is derived from that cursor. */
+let uiCursorLive = false;
 let reads = 0;                  /* every host_module_get_param call */
 const litPads = Object.create(null);
 const params = Object.create(null);
@@ -64,7 +68,12 @@ globalThis.move_midi_internal_send = (pkt) => {
     if (pkt && pkt.length === 4) litPads[pkt[2]] = pkt[3];   /* note -> colour */
     return true;
 };
-globalThis.host_module_set_param = (k, v) => { params[k] = String(v); return true; };
+let cursorWrites = 0;           /* host_module_set_param("cursor", ...) calls */
+globalThis.host_module_set_param = (k, v) => {
+    if (k === 'cursor') cursorWrites++;
+    params[k] = String(v);
+    return true;
+};
 globalThis.host_module_get_param = (k) => {
     reads++;
     if (k in params) return params[k];
@@ -76,7 +85,12 @@ globalThis.host_module_get_param = (k) => {
          * after the first frame. This harness used to answer everything
          * instantly, which is precisely why it could not see the deadlock. */
         if (uiWithhold > 0) { uiWithhold--; return null; }
-        return `FFFFFFFF:0:${uiLength}:${uiPhase.toFixed(3)}:125.00:${uiMoving}:2:` + 'FF'.repeat(uiLength)
+        let cursor = 2;
+        if (uiCursorLive) {
+            cursor = Math.min(parseInt(params.cursor ?? '0', 10), uiLength - 1);
+            params.cursor = String(cursor);      /* the DSP's own clamp */
+        }
+        return `FFFFFFFF:0:${uiLength}:${uiPhase.toFixed(3)}:125.00:${uiMoving}:${cursor}:` + 'FF'.repeat(uiLength)
             + `::${uiSlot}`;
     }
     if (k === 'state')   return '{"sv":3}';
@@ -783,46 +797,252 @@ step('nothing drawn outside the frame', () => {
 }
 
 /*
- * ARROWS STEP THE SLOT. CC 62/63, claimed in module.json so the shim delivers
- * them here and withholds them from Move while this editor is up.
+ * THE ARROWS PAGE THE PADS. A pattern can be 128 steps and there are 32 pads,
+ * and a pad can only select a step in the block it shows -- so before the
+ * arrows paged it, steps 33-128 could not be selected on the device at all.
+ * CC 62/63 are claimed in module.json, so the shim delivers them here and
+ * withholds them from Move while this editor is up.
  */
 {
     const cc = (n, v) => new Uint8Array([0xB0, n, v]);
-    const slotNow = () => params.slot;
+    const LEFT = 62, RIGHT = 63;
+    const ticks = (n) => { for (let i = 0; i < n; i++) ui.tick(); };
+    /* Enough ticks for the read rotation to bring back the length and the
+     * cursor the test just set: the off-ring read is one tick in eight. */
+    const settle = () => ticks(40);
+    const cursorNow = () => parseInt(params.cursor, 10);
+    const pressPad = (step) => ui.onMidiMessageInternal(new Uint8Array([0x90, T.stepToNote(step % 32), 100]));
+    const at = (length, cursor) => {
+        uiLength = length;
+        params.cursor = String(cursor);
+        settle();
+    };
+    const block = () => {
+        const b = T.padBlock(T.parseUi(T.uiRaw()));
+        return b ? `${b.range} of ${b.length}` : 'all';
+    };
+    const savedSlot = params.slot;
 
-    step('right arrow advances the slot', () => {
-        params.slot = "0";
-        ui.onMidiMessageInternal(cc(63, 127));
-        if (slotNow() !== "1") throw new Error(`slot is ${slotNow()}`);
+    try {
+        uiCursorLive = true;
+        uiMoving = 0;                 /* no white pad crossing the colours below */
+
+        step('right arrow pages 1-32 -> 33-64, keeping the pad', () => {
+            at(96, 5);
+            ui.onMidiMessageInternal(cc(RIGHT, 127));
+            if (cursorNow() !== 37) throw new Error(`cursor ${cursorNow()}, expected 37`);
+            settle();
+            if (block() !== '33-64 of 96') throw new Error(`pads show ${block()}`);
+        });
+        step('left arrow pages back to the same pad', () => {
+            ui.onMidiMessageInternal(cc(LEFT, 127));
+            if (cursorNow() !== 5) throw new Error(`cursor ${cursorNow()}, expected 5`);
+        });
+        step('the release does nothing (the press already acted)', () => {
+            at(96, 5);
+            ui.onMidiMessageInternal(cc(RIGHT, 0));
+            if (cursorNow() !== 5) throw new Error(`release moved the cursor to ${cursorNow()}`);
+        });
+        step('the pads repaint with the new block', () => {
+            at(96, 0);
+            const note = T.stepToNote(1);
+            const before = litPads[note];
+            ui.onMidiMessageInternal(cc(RIGHT, 127));
+            ticks(4);
+            /* Steps 1-32 sound in this fixture and 33-96 are gaps, so the
+             * same pad goes from green to red. */
+            const want = T.padColour(T.parseUi(`FFFFFFFF:0:96:0:125:0:32:`), 33);
+            if (litPads[note] !== want) throw new Error(`pad 2 is ${litPads[note]}, expected step 34's ${want}`);
+            if (before === want) throw new Error('fixture: the two blocks look the same');
+        });
+        /* Not even a write of the same value: a cursor write re-reads the
+         * whole knob page, which is a cost with nothing to show for it. */
+        step('it CLAMPS rather than wrapping at the start', () => {
+            at(96, 5);
+            const writes = cursorWrites;
+            ui.onMidiMessageInternal(cc(LEFT, 127));
+            if (cursorNow() !== 5) throw new Error(`wrapped to ${cursorNow()}`);
+            if (cursorWrites !== writes) throw new Error('wrote the cursor anyway');
+        });
+        step('...and at the end', () => {
+            at(96, 70);
+            const writes = cursorWrites;
+            ui.onMidiMessageInternal(cc(RIGHT, 127));
+            if (cursorNow() !== 70) throw new Error(`wrapped to ${cursorNow()}`);
+            if (cursorWrites !== writes) throw new Error('wrote the cursor anyway');
+        });
+        step('a short last block clamps the cursor to the last step', () => {
+            at(40, 10);
+            ui.onMidiMessageInternal(cc(RIGHT, 127));
+            if (cursorNow() !== 39) throw new Error(`cursor ${cursorNow()}, expected 39`);
+            settle();
+            if (block() !== '33-40 of 40') throw new Error(`pads show ${block()}`);
+            ui.onMidiMessageInternal(cc(LEFT, 127));
+            if (cursorNow() !== 7) throw new Error(`back to ${cursorNow()}, expected 7`);
+        });
+        step('at 32 steps or fewer the arrows do nothing', () => {
+            for (const len of [1, 16, 32]) {
+                at(len, Math.min(5, len - 1));
+                const c = cursorNow(), writes = cursorWrites;
+                ui.onMidiMessageInternal(cc(RIGHT, 127));
+                ui.onMidiMessageInternal(cc(LEFT, 127));
+                if (cursorNow() !== c) throw new Error(`length ${len}: cursor moved to ${cursorNow()}`);
+                if (cursorWrites !== writes) throw new Error(`length ${len}: wrote the cursor`);
+            }
+        });
+        step('the arrows no longer touch the slot', () => {
+            params.slot = '3';
+            at(96, 40);
+            ui.onMidiMessageInternal(cc(RIGHT, 127));
+            ui.onMidiMessageInternal(cc(LEFT, 127));
+            if (params.slot !== '3') throw new Error(`slot is ${params.slot}`);
+        });
+        /* The DSP clamps the cursor when Len shrinks under it, and the window
+         * is derived from the cursor -- so it lands on the last block, never
+         * on a block past the pattern that would leave every pad dark. */
+        step('shrinking Len below the block moves the pads with it', () => {
+            at(128, 100);
+            if (block() !== '97-128 of 128') throw new Error(`pads show ${block()}`);
+            uiLength = 40;
+            settle();
+            if (block() !== '33-40 of 40') throw new Error(`pads show ${block()}`);
+            if (!litPads[T.stepToNote(7)]) throw new Error('step 40 is dark');
+            if (litPads[T.stepToNote(8)] !== 0) throw new Error('a pad past step 40 is lit');
+        });
+
+        /*
+         * EVERY STEP OF EVERY LENGTH IS REACHABLE, which is the bug as the
+         * owner met it: with Len past 32 the steps beyond the first block
+         * could not be selected at all. Walked as a user would, through the
+         * real entry points -- arrows to the step's block, then its pad --
+         * starting from wherever the previous step left the cursor, so both
+         * directions are exercised. Never more than three arrow presses.
+         */
+        step('steps 1..L are all selectable for Len 1..128', () => {
+            for (let len = 1; len <= 128; len++) {
+                at(len, 0);
+                const order = [];
+                for (let s = 0; s < len; s++) order.push(s);
+                for (let s = len - 1; s >= 0; s -= 7) order.push(s);    /* and back down */
+                for (const s of order) {
+                    const want = (s / 32) | 0;
+                    let presses = 0;
+                    while (((cursorNow() / 32) | 0) !== want) {
+                        if (++presses > 3)
+                            throw new Error(`length ${len}: step ${s + 1} needs more than 3 arrow presses`);
+                        ui.onMidiMessageInternal(cc(want > ((cursorNow() / 32) | 0) ? RIGHT : LEFT, 127));
+                        ui.tick();
+                    }
+                    pressPad(s);
+                    ui.tick();
+                    if (cursorNow() !== s)
+                        throw new Error(`length ${len}: step ${s + 1} selected ${cursorNow() + 1}`);
+                }
+            }
+        });
+    } finally {
+        uiCursorLive = false;
+        uiMoving = 1; uiLength = 16;
+        params.slot = savedSlot;
+        params.cursor = '4';
+        ticks(40);
+    }
+}
+
+/*
+ * THE BLOCK LABEL. Past 32 steps the ring page's left column reads "33-64"
+ * over "of 96" where it read "96", so the screen says which block the pads
+ * show. Rendered into pixels with every glyph's box recorded, so "the label
+ * never touches the ring" is measured rather than reasoned about.
+ *
+ * THE READING IS DELIVERED, NOT HANDED IN. drawRing draws from the module's
+ * own `ui` cache and ignores `values.ui` (it is a reader of that cache, never
+ * a writer), so the length and cursor under test go through the stubbed
+ * device and the tick loop, and the fixture checks they arrived before
+ * anything is asserted about the picture.
+ */
+{
+    const deliver = (length, cursor) => {
+        uiCursorLive = true;
+        uiMoving = 0;
+        uiLength = length;
+        params.cursor = String(cursor);
+        for (let i = 0; i < 40; i++) ui.tick();
+        const u = T.parseUi(T.uiRaw());
+        if (!u || u.length !== length || u.cursor !== cursor)
+            throw new Error(`fixture: the module holds ${T.uiRaw()}, not length ${length} cursor ${cursor}`);
+    };
+    const render = (length, cursor, W = 128, Hh = 46) => {
+        deliver(length, cursor);
+        const lit = Array.from({ length: Hh }, () => new Array(W).fill(0));
+        const boxes = [], texts = [];
+        let outside = 0;
+        const put = (x, y) => {
+            if (x >= 0 && x < W && y >= 0 && y < Hh) lit[y][x] = 1;
+            else outside++;
+        };
+        const parent = {
+            fillRect: (x, y, w, h, v) => { if (v) for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) put(x + i, y + j); },
+            print: (x, y, t) => {
+                const s = String(t);
+                texts.push(s);
+                boxes.push({ x0: x, y0: y, x1: x + s.length * 6 - 2, y1: y + 6 });
+                if (y < 0 || y + 6 >= Hh || x < 0 || x + s.length * 6 - 1 > W) outside++;
+            },
+            textWidth: (t) => String(t).length * 6,
+        };
+        const ctx = frameCtx(parent, { x: 0, y: 0, w: W, h: Hh });
+        T.drawRing(ctx, { values: { rate: '1/16T', step_amount: '1', amount: '0.5' }, nowMs: 0 });
+        /* Graphics pixels under each glyph box; the left column is the boxes
+         * that start at x = 0. */
+        let under = 0, underLeft = 0;
+        for (const b of boxes) {
+            let n = 0;
+            for (let y = Math.max(0, b.y0); y <= Math.min(Hh - 1, b.y1); y++)
+                for (let x = Math.max(0, b.x0); x <= Math.min(W - 1, b.x1); x++)
+                    if (lit[y][x]) n++;
+            under += n;
+            if (b.x0 === 0) underLeft += n;
+        }
+        return { texts, under, underLeft, outside, clipped: ctx.clipped() };
+    };
+
+    step('the label names the block the pads show', () => {
+        for (const [len, cur, a, b] of [[96, 40, '33-64', 'of 96'], [128, 127, '97-128', 'of 128'],
+                                        [33, 32, '33', 'of 33'], [64, 0, '1-32', 'of 64']]) {
+            const r = render(len, cur);
+            if (!r.texts.includes(a) || !r.texts.includes(b))
+                throw new Error(`length ${len}, cursor ${cur + 1}: drew ${JSON.stringify(r.texts)}`);
+        }
     });
-    step('left arrow goes back', () => {
-        ui.onMidiMessageInternal(cc(62, 127));
-        if (slotNow() !== "0") throw new Error(`slot is ${slotNow()}`);
+    step('at 32 steps or fewer it is the bare length, as before', () => {
+        const r = render(16, 3);
+        if (!r.texts.includes('16') || r.texts.some((t) => t.startsWith('of ')))
+            throw new Error(`drew ${JSON.stringify(r.texts)}`);
     });
-    step('it CLAMPS rather than wrapping at the bottom', () => {
-        params.slot = "0";
-        ui.onMidiMessageInternal(cc(62, 127));
-        if (slotNow() !== "0") throw new Error(`wrapped to ${slotNow()}`);
+    step('the label never shares a pixel with the ring or the meter', () => {
+        for (const Hh of [40, 46]) {
+            for (let len = 1; len <= 128; len++) {
+                const r = render(len, len - 1, 128, Hh);
+                if (r.under) throw new Error(`length ${len}, band ${Hh}: ${r.under} pixels drawn under text`);
+                if (r.outside || r.clipped) throw new Error(`length ${len}, band ${Hh}: drawn outside the band`);
+            }
+        }
     });
-    step('...and at the top', () => {
-        params.slot = "7";
-        ui.onMidiMessageInternal(cc(63, 127));
-        if (slotNow() !== "7") throw new Error(`wrapped to ${slotNow()}`);
+    step('a band too short for three rows keeps the range and drops the "of"', () => {
+        const r = render(96, 40, 128, 20);
+        if (!r.texts.includes('33-64') || r.texts.includes('of 96'))
+            throw new Error(`drew ${JSON.stringify(r.texts)}`);
+        /* The left column only: in a band this short the ring itself is
+         * smaller than the step number printed in its middle, which is the
+         * ring's business and not the label's. */
+        if (r.underLeft || r.outside) throw new Error('the left column overlaps in the short band');
     });
-    step('the release does nothing (the press already acted)', () => {
-        params.slot = "3";
-        ui.onMidiMessageInternal(cc(63, 0));
-        if (slotNow() !== "3") throw new Error(`release moved it to ${slotNow()}`);
-    });
-    /* A failed read is not a zero -- treating it as one would silently jump
-     * the user to slot 1 whenever the channel hiccuped. */
-    step('a failed slot read moves nothing', () => {
-        const keep = params.slot;
-        delete params.slot;
-        ui.onMidiMessageInternal(cc(63, 127));
-        if (params.slot !== undefined) throw new Error('acted on a failed read');
-        params.slot = keep;
-    });
+
+    uiCursorLive = false;
+    uiMoving = 1; uiLength = 16;
+    params.cursor = '4';
+    for (let i = 0; i < 40; i++) ui.tick();
 }
 
 /*

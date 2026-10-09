@@ -49,7 +49,7 @@ import {
 import {
     Black, BrightRed, DeepRed, RustRed, PaleSalmon,
     DullGreen, NeonGreen, TealGreen, PaleGreen,
-    White
+    White, MoveLeft, MoveRight
 } from '/data/UserData/schwung/shared/constants.mjs';
 
 /* The prefix WE choose. The controller asks getParam for "<prefix>:<key>";
@@ -68,15 +68,26 @@ const CURSOR_GAP = 2;
  */
 const PAD_FIRST = 68;
 const PAD_COUNT = 32;
-const TG_SLOTS = 8;
 
 /*
  * 32 PADS, UP TO 128 STEPS -- so the pads are a WINDOW, not the pattern.
  *
- * The window is the block of 32 containing the cursor, which means it needs
- * no control of its own: moving the Step knob past the edge pages it, and the
- * playhead is always visible in the block you are editing. A separate "page"
- * control would be a second thing to keep in sync with the cursor for no gain.
+ * The window is the block of 32 that holds the cursor, and the cursor is the
+ * only thing that moves it: a pad press selects a step inside the block, and
+ * the left and right arrows carry the cursor into the block beside it
+ * (pageCursor). Deriving the window from the cursor rather than keeping a page
+ * number next to it is what makes "the selected step is on the pads" true by
+ * construction. A page of its own would be a second thing to keep in sync, and
+ * the knobs that edit the selected step would then be editing one you cannot
+ * see.
+ *
+ * IT DOES NOT FOLLOW THE PLAYHEAD, for the same reason. Following it means
+ * either moving the cursor -- so Step Amount and Gate would switch to another
+ * step under your fingers every 32 steps -- or splitting the window from the
+ * cursor, which is the second thing to keep in sync again. The ring draws the
+ * whole pattern with its playhead, so where the gate is stays visible on the
+ * screen; the pads show where you are editing, and the playhead's white pad
+ * appears on them whenever it passes through that block.
  *
  * At 32 steps or fewer this is always 0 and nothing about the old behaviour
  * changes.
@@ -85,6 +96,44 @@ function padWindow(u) {
     if (!u || u.length <= PAD_COUNT) return 0;
     const c = (u.cursor >= 0 && u.cursor < u.length) ? u.cursor : 0;
     return ((c / PAD_COUNT) | 0) * PAD_COUNT;
+}
+
+/*
+ * Where the cursor lands when the window pages one block in `dir` (-1 or +1),
+ * or -1 when there is no block there.
+ *
+ * THE SAME PAD IN THE NEXT BLOCK, so the cursor keeps its place on the grid
+ * and paging there and back returns to the pad you left. The one exception is
+ * a short last block -- 33-40 of a 40-step pattern -- where that pad may lie
+ * past the end, and the cursor is clamped to the last step rather than sent
+ * somewhere the DSP would clamp it anyway.
+ *
+ * CLAMPED AT THE ENDS, NOT WRAPPED. Reaching for the next block and landing
+ * back on the first is a surprise, and the ends are where you notice you have
+ * run out. At 32 steps or fewer there is no other block, so the arrows do
+ * nothing at all.
+ */
+function pageCursor(u, dir) {
+    if (!u || u.length <= PAD_COUNT) return -1;
+    const c = (u.cursor >= 0 && u.cursor < u.length) ? u.cursor : 0;
+    const block = ((c / PAD_COUNT) | 0) + dir;
+    if (block < 0 || block * PAD_COUNT >= u.length) return -1;
+    return Math.min(block * PAD_COUNT + (c % PAD_COUNT), u.length - 1);
+}
+
+/*
+ * The steps the pads are showing, 1-based as the ring numbers them:
+ * { first, last, length, range }, or null when the pads show the whole pattern and
+ * there is nothing to say. One function for the screen and the screen reader,
+ * so the two cannot name different blocks.
+ */
+function padBlock(u) {
+    if (!u || u.length <= PAD_COUNT) return null;
+    const base = padWindow(u);
+    const first = base + 1, last = Math.min(base + PAD_COUNT, u.length);
+    /* A block of one step -- the 33rd of 33 -- is that step, not "33-33". */
+    const range = first === last ? String(first) : first + "-" + last;
+    return { first, last, length: u.length, range };
 }
 const PAD_COLS = 8;
 
@@ -172,7 +221,8 @@ const HIERARCHY = JSON.stringify({
          * gets them onto the first cells page; that needs a host feature that
          * is not released.
          *
-         * `cursor` and `step` have no knob at all -- a pad is the step.
+         * `cursor` and `step` have no knob at all -- a pad is the step, and
+         * the arrows page the pads through a pattern longer than 32.
          */
         root: {
             name: "Gate",
@@ -501,7 +551,19 @@ function drawRing(ctx, o) {
      * ring is centred in the gap between them, so the radius can only shrink
      * to make room -- they cannot overlap whatever the band turns out to be.
      */
-    const lenTxt  = String(u.length);
+    /*
+     * THE BLOCK THE PADS SHOW, where the length was.
+     *
+     * Past 32 steps the pads are a window, and nothing on the hardware says
+     * which one -- so the left column reads "33-64" over "of 96" instead of
+     * the bare length. The length is still there, as the "of", so the column
+     * keeps saying what it said before and adds the one thing that is new.
+     * Two short rows rather than one long one: "97-128 of 128" is 78 pixels,
+     * and the ring is centred in whatever the columns leave.
+     */
+    const blk = padBlock(u);
+    const lenTxt  = blk ? blk.range : String(u.length);
+    const ofTxt   = blk ? "of " + blk.length : "";
     const rateTxt = String(vals.rate === undefined || vals.rate === null ? "" : vals.rate);
 
     /*
@@ -525,7 +587,12 @@ function drawRing(ctx, o) {
         if (isFinite(n)) amtTxt = "S" + Math.round(n * 100);
     }
 
-    const leftW  = Math.max(ctx.textWidth(lenTxt), ctx.textWidth(amtTxt));
+    /* The second row needs its own gutter above the step amount's row; a band
+     * too short for three rows keeps the range and drops the "of". */
+    const ofY = TEXT_H + TEXT_GAP;
+    const showOf = ofTxt && ofY + TEXT_H + TEXT_GAP <= h - TEXT_H;
+    const leftW  = Math.max(ctx.textWidth(lenTxt), ctx.textWidth(amtTxt),
+                            showOf ? ctx.textWidth(ofTxt) : 0);
     /* The meter shares the right column with the rate, so the column is as
      * wide as the wider of the two -- otherwise the ring would be centred into
      * the bar. */
@@ -533,6 +600,7 @@ function drawRing(ctx, o) {
     const pad = 2;
 
     ctx.print(0, 0, lenTxt, 1);
+    if (showOf) ctx.print(0, ofY, ofTxt, 1);
     if (rateTxt) ctx.print(Math.max(0, w - ctx.textWidth(rateTxt)), 0, rateTxt, 1);
     /* Bottom-left, under the length: the two numbers that describe the
      * pattern on the left, the one that describes time on the right. */
@@ -899,7 +967,6 @@ function onPadPress(note) {
 
     if (typeof host_module_set_param !== "function") return true;
 
-    /* 1-based on the wire: the cursor is numbered the way the ring is. */
     /* The wire carries the option INDEX, which is 0-based and matches the
      *  readout. See the note in crates/tg-core/src/params.rs's set_param. */
     host_module_set_param("cursor", String(i));
@@ -935,6 +1002,32 @@ function onPadPress(note) {
     }
     markInput();
     return true;
+}
+
+/*
+ * An arrow press: carry the cursor into the next block of 32, which moves the
+ * window with it.
+ *
+ * The cursor goes through the same host_module_set_param a pad press uses,
+ * so there is still one write path for it, and the cache is moved at once so
+ * the pads, the ring and the label follow the finger rather than the next
+ * read. Nothing happens at the ends or at 32 steps or fewer -- there is no
+ * block to go to, and a write that changes nothing would still re-read the
+ * knob page.
+ */
+function onArrow(dir) {
+    const u = uiCache.parsed;
+    const next = pageCursor(u, dir);
+    if (next < 0) return;
+    if (typeof host_module_set_param !== "function") return;
+    /* The wire carries the option INDEX, 0-based, as onPadPress writes it. */
+    host_module_set_param("cursor", String(next));
+    u.cursor = next;
+    const blk = padBlock(u);
+    announce(blk.first === blk.last
+             ? "Step " + blk.first + " of " + blk.length
+             : "Steps " + blk.first + " to " + blk.last + " of " + blk.length);
+    markInput();
 }
 
 /*
@@ -1218,38 +1311,29 @@ function onMidiMessageInternal(data) {
     if (isHardwarePadPress(data)) { onPadPress(data[1]); return; }
 
     /*
-     * LEFT / RIGHT STEP THROUGH THE PATTERN SLOTS.
+     * LEFT / RIGHT PAGE THE PADS through a pattern longer than 32 steps.
      *
      * CC 62 and 63, claimed in module.json. A claimed button is delivered here
      * and withheld from Move firmware while this editor is on screen, and the
      * claim drops the moment we leave -- which is why claiming is opt-in at
      * all: #154 withheld Undo/Copy/Delete unconditionally and had to be
-     * reverted for stealing Move's own Undo during ordinary chain use.
+     * reverted for stealing Move's own Undo during ordinary chain use. The
+     * jog wheel, which would be the other candidate, is the host's and cannot
+     * be claimed; it turns the pages of this editor.
+     *
+     * Paging is what these two buttons do in Move's own step sequencer, so
+     * it is the meaning they already have under a Move user's hands. They
+     * used to step the slot, which knob 1 on the ring page does as well;
+     * without them steps 33-128 could not be selected at all, since a pad can
+     * only reach the block it shows.
      *
      * Shift+arrow never arrives (the host keeps Shift combinations), so there
-     * is no modifier case to handle. CLAMPED, not wrapped: reaching for the
-     * next variation and landing back on the first is a surprise, and the
-     * ends are where you notice you have run out.
+     * is no modifier case to handle. The release is ours too, and does
+     * nothing.
      */
     if (data && data.length >= 3 && (data[0] & 0xF0) === 0xB0 &&
-        (data[1] === 62 || data[1] === 63)) {
-        if (data[2] > 0) {                      /* press; the release is ours
-                                                 * too, and does nothing */
-            /* The `ui` readout does not carry the slot, so it is read here --
-             * once, on a key press, which is not the draw path. */
-            if (typeof host_module_get_param !== "function") return;
-            const raw = host_module_get_param("slot");
-            const cur = (raw === null || raw === undefined || raw === "")
-                      ? -1 : parseInt(raw, 10);
-            if (!isFinite(cur) || cur < 0) return;   /* a failed read is not a 0 */
-            const next = Math.max(0, Math.min(TG_SLOTS - 1,
-                                              cur + (data[1] === 63 ? 1 : -1)));
-            if (next !== cur && typeof host_module_set_param === "function") {
-                host_module_set_param("slot", String(next));
-                announce("Slot " + (next + 1));
-                markInput();
-            }
-        }
+        (data[1] === MoveLeft || data[1] === MoveRight)) {
+        if (data[2] > 0) onArrow(data[1] === MoveRight ? 1 : -1);
         return;
     }
 
@@ -1327,6 +1411,11 @@ globalThis.chain_ui_test = {
     PLAYHEAD_COLOUR: White,
     parseUi,
     drawRing,
+    /* The window and its paging, so a test can walk every step of every
+     * length without restating the arithmetic. */
+    padWindow,
+    pageCursor,
+    padBlock,
     padColour,
     stepToNote,
     noteToStep,
