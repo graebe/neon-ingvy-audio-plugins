@@ -46,3 +46,10 @@ pub mod kick;
 
 #[cfg(test)]
 mod tests;
+
+/* The no-allocation guard kick's tests assert with. It acts only inside an
+ * assert_no_alloc closure, on the thread that runs it, so the other tests here
+ * allocate as ever. */
+#[cfg(all(test, feature = "shell"))]
+#[global_allocator]
+static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;

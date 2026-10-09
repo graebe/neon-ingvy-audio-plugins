@@ -39,7 +39,7 @@ bus-capi = { path = "../../../audio-bus/crates/bus-capi", optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 
-# The no-allocation guard tests/kick_no_alloc.rs installs.
+# The no-allocation guard the kick tap's tests install (src/lib.rs).
 [dev-dependencies]
 assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
 
