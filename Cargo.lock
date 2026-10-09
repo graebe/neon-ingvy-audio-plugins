@@ -633,6 +633,9 @@ dependencies = [
 name = "sc-capi"
 version = "2026.10.10+1"
 dependencies = [
+ "assert_no_alloc",
+ "bus-capi",
+ "bus-core",
  "cbindgen",
  "ground-capi",
  "ni-dsp",

@@ -20,7 +20,7 @@ crate-type = ["staticlib", "rlib"]
 # amount of space.
 [features]
 default = ["shell"]
-shell = ["dep:shell-core", "dep:ground-capi"]
+shell = ["dep:shell-core", "dep:ground-capi", "dep:bus-core", "dep:bus-capi"]
 
 [dependencies]
 sc-core = { path = "../sc-core" }
@@ -31,9 +31,18 @@ sc-core = { path = "../sc-core" }
 ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 # The command queue and the published snapshot between the plugin's threads.
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
+# The kick behind the duck reads a Listen-In bus (kick.rs). bus-capi is an
+# rlib for this: its abus_* -- and the shell handoff it carries -- ride in
+# this one archive, as the ground's do, rather than a second staticlib.
+bus-core = { path = "../../../audio-bus/crates/bus-core", optional = true }
+bus-capi = { path = "../../../audio-bus/crates/bus-capi", optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 
-# sc_core.h and sc_shell.h, generated from src/ by build.rs.
+# The no-allocation guard tests/kick_no_alloc.rs installs.
+[dev-dependencies]
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+
+# sc_core.h, sc_shell.h and sc_kick.h, generated from src/ by build.rs.
 [build-dependencies]
 cbindgen = { workspace = true }
