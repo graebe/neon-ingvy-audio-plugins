@@ -991,32 +991,16 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 <!-- END Rust crates -->
 
-## Ported source, which carries a notice even though no library does
+## Ported source: none
 
-**A port is a derivative work.** Nothing below is linked, vendored or
-downloaded — the code was read and rewritten in another language — and that is
-exactly the case MIT's notice requirement covers.
-
-| Ported into | From | Licence |
-|---|---|---|
-| `engines/side-chain/crates/sc-core/src/midi.rs` | [`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)'s `src/dsp/ducker.c` | **MIT**, © 2026 Charles Vestal |
-
-What was taken: the MIDI trigger semantics — the channel filter, the note
-match, Trigger versus Gate, a note-on at velocity zero read as a note-off, and
-velocity scaling the depth. It ships in NI Side-Chain's plugin bundle and its
-Move module.
-
-What was not: the envelope's structure (this one has a Delay that goes negative
-and cycle-relative times, and its stage machine is a different one), the sample
-offsets (`ducker.c` applies a note at the top of its block), and every other
-trigger source. The file itself says which lines it came from, and carries the
-upstream notice beside its own GPL-3.0-or-later header: MIT allows the port in
-a GPLv3 work on exactly that condition.
-
-A second thing was taken and has since been removed: the `Pump` curve — linear
-going down, a cubic ease-out coming back — was ported into `shape.rs` and later
-dropped, along with the direction argument that existed only to serve it.
-Nothing of it remains, so it no longer needs a notice.
+Nothing that ships is a port of anyone else's code. NI Side-Chain's MIDI
+trigger (`engines/side-chain/crates/sc-core/src/midi.rs`) was first ported from
+[`schwung-ducker`](https://github.com/charlesvestal/schwung-ducker) (MIT,
+© 2026 Charles Vestal) and carried its notice. On 2026-10-09 it was rewritten
+clean-room — from a written behaviour specification, by an implementer who
+never saw the port or its source — and the recorded renders did not change.
+Its `Pump` curve had already been removed. Releases built before that date
+carry the notice, as they must.
 
 ## Test-only, and linked into nothing that ships
 

@@ -17,8 +17,7 @@ them sample for sample.
 
 The module id is `ni-side-chain`. That is deliberately not `ducker`:
 [`charlesvestal/schwung-ducker`](https://github.com/charlesvestal/schwung-ducker)
-already owns that id on the device, and its MIDI trigger semantics are what this
-engine's were ported from — see `THIRD_PARTY_LICENSES.md`.
+already owns that id on the device.
 
 ## What is different here
 

@@ -224,8 +224,8 @@ pub unsafe extern "C" fn sc_core_set_key_connected(c: *mut ScCore, connected: c_
 
 /// Queue a MIDI message at `at`, a sample offset within the next block.
 ///
-/// `at` IS NOT OPTIONAL TO GET RIGHT. Passing 0 for everything is what
-/// `ducker.c` does and it costs up to a full buffer of jitter on the one event
+/// `at` IS NOT OPTIONAL TO GET RIGHT. Passing 0 for everything -- applying each
+/// note at the top of its block -- costs up to a full buffer of jitter on the one event
 /// whose timing is the whole effect -- and it is jitter, not latency, so it
 /// cannot be compensated. iPlug2 has it in `IMidiMsg::mOffset`; the Schwung v2
 /// `on_midi` has no such field and passes 0, which is also what makes the

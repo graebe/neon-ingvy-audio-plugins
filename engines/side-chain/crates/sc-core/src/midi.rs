@@ -1,112 +1,107 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Torben Gräber
-//
-// Ported in part from https://github.com/charlesvestal/schwung-ducker
-// (src/dsp/ducker.c), MIT License, Copyright (c) 2026 Charles Vestal.
-// THIRD_PARTY_LICENSES.md carries that notice and the licence's text.
 
 /*!
-The MIDI trigger: what a note means, and when it means it.
+The MIDI trigger: what a message asks the envelope to do, and WHEN.
 
-Ported from `schwung-modules/graebe/schwung-ducker/src/dsp/ducker.c:306-345`
-(MIT, (c) 2026 Charles Vestal) -- the channel filter, the note match, Trigger
-vs Gate, and velocity scaling depth. See THIRD_PARTY_LICENSES.md.
+WHAT LIVE WILL AND WILL NOT ROUTE. Live hands MIDI to a plugin only on a MIDI
+track, after an instrument; on an audio track nothing arrives at all. The engine
+cannot tell "no routing" from "no notes", so it does not try -- the editor says
+`no midi` when nothing has come, and the user's guide says why.
 
-THE BYTES ARE `wmidi`'s; WHAT THEY MEAN IS OURS.
+THE BYTES ARE PARSED BY `wmidi`, NOT BY HAND. A decode that reads byte 1 as the
+note and byte 2 as the velocity accepts whatever sits there -- including a byte
+with its top bit set, which is not data at all but the next message's status.
+`[0x90, 36, 0x80]` is a note-on cut short, not a note-on at velocity 128, and
+`[0xB0, 123, 0x90]` is not an All Notes Off. The crate refuses both, and a
+refusal changes nothing here.
 
-`ducker.c` split the status byte into its nibbles and indexed the data bytes by
-hand, and this file did the same. Reading bytes into a message is the MIDI
-specification's business rather than a ducker's, so `wmidi` does it: the
-status, the channel, a note-on at velocity 0 read as the note-off it is, and a
-message cut short refused rather than indexed into. It borrows the slice and
-builds nothing, so it is as allocation-free as the code it replaced --
-`tests/no_alloc.rs` runs it armed. What is left here is what a message means
-to a ducker: the four things ported above, and the panic.
+THE CHANNEL FILTER COVERS EVERYTHING, PANICS INCLUDED. CC 120 (All Sound Off)
+and CC 123 (All Notes Off) are channel mode messages: each speaks for the
+channel it arrives on, so a ducker listening on channel 2 keeps its held note
+through channel 1's panic. Omni hears every channel, and so every channel's
+panic. The NOTE filter, on the other hand, never applies to a panic -- one that
+only worked when it arrived on the trigger note would not be a panic. It is
+also the only reset a Schwung host can deliver, which is why the engine honours
+it whatever the source (see `Instance::on_midi`).
 
-ONE INPUT READS DIFFERENTLY, ON PURPOSE: a data byte with its top bit set. That
-byte is a status byte, so `[0xB0, 123, 0x90]` is a message cut short, not an
-All Notes Off with a strange value -- yet the hand-written decode read it as a
-panic, and a note-on whose velocity byte was `0x80` as a full-depth trigger.
-`wmidi` refuses both. No host builds either message: a plugin shell fills the
-data bytes from 0..127 values, and the Move hands over what came off a MIDI
-wire.
+A NOTE-ON AT VELOCITY 0 IS A NOTE-OFF. That is MIDI's own rule, so running
+status can keep the same status byte for a whole phrase, and hosts and hardware
+both send it. Read as a trigger at zero depth it would leave Gate mode holding a
+note that was never pressed. `wmidi` already reports it as a note-off.
 
-WHAT IS ADDED HERE, AND WHY IT IS NOT A LUXURY: A SAMPLE OFFSET.
+TRIGGER VS GATE. In Trigger mode a note fires the shape and the hold stage times
+everything after it; a note-off means nothing. In Gate mode the duck stays down
+while any trigger note is held, and the LAST note-off releases it -- so `held`
+counts notes in both modes, and only Gate mode reads it.
 
-`ducker.c` applies a note the moment the host hands it over, which in a chain
-host means the top of the block it arrived in. At a 256-frame buffer that is up
-to 5 ms of jitter on the one event whose timing is the entire point of the
-effect -- and it is jitter, not latency, so it cannot be compensated: the same
-note lands on a different sample depending on where in the buffer it fell.
+THE QUEUE HONOURS SAMPLE OFFSETS. A note applied at the top of its block lands
+up to a whole buffer early or late depending on where in the buffer the host
+put it, and that is jitter, not latency: no delay compensation can take it out,
+and it falls on the one event whose timing is the whole effect. So each action
+waits in `Queue` until the sample loop reaches its offset.
 
-iPlug2 gives the offset in `IMidiMsg::mOffset` and it costs one queue to
-honour it, so it is honoured. The Schwung `audio_fx` v2 `on_midi` has no offset
-field, so that path passes 0 and gets `ducker.c`'s behaviour exactly -- which
-is also what makes the Live/Move render A/B meaningful: drive both with offset
-0 and they must agree bit for bit.
+AN OFFSET PAST THE BLOCK IS LATE, NOT LOST. The queue is emptied after every
+block, so an event the sample walk never reaches would be an event that never
+happened. `prepare` clamps it onto the block's last sample instead -- a host
+reporting offsets against a different buffer size is a real thing.
 
-CC 120 (All Sound Off) AND CC 123 (All Notes Off) OPEN THE GATE.
-
-The `audio_fx` v2 vtable has no reset hook, so `on_midi` is the only channel a
-host panic can reach a module through. A ducker that keeps a note held after a
-panic leaves the track quiet with nothing playing, which is the worst failure
-this plugin has: silence that looks like a broken session rather than a stuck
-effect.
+THE OVERFLOW IS COUNTED. The queue is a fixed array, because the audio thread
+does not allocate; a burst past `QUEUE_MAX` in one block loses the excess. A
+dropped note is a missing duck that sounds like a bug in the envelope, so
+`dropped` makes it visible -- the engine reports it as a diagnostic.
 */
 
-use wmidi::{Channel, ControlFunction, MidiMessage, Note};
+#![deny(clippy::indexing_slicing, clippy::unwrap_used, clippy::expect_used)]
+
+use wmidi::{ControlFunction, MidiMessage, Velocity};
 
 /// What a message asks the envelope to do.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Action {
-    /// Fire, with this depth multiplier (velocity already applied).
+    /// Fire the shape. The depth multiplier, 0..1, with velocity applied.
     Trigger(f64),
-    /// Begin the recovery -- Gate mode's last note-off.
+    /// Begin the recovery: Gate mode's last note-off.
     Release,
-    /// Open now and forget the trigger -- a panic.
+    /// Open now and forget the trigger: a panic.
     Reset,
 }
 
-/// A queued action and the sample within the block it belongs on.
+/// An action and the sample, within the coming block, it belongs on.
 #[derive(Clone, Copy, Debug)]
 pub struct Event {
     pub at: usize,
     pub action: Action,
 }
 
-/// How many events one block can carry.
-///
-/// A block holding more than this is a host misbehaving or a stuck arpeggiator,
-/// and the overflow is COUNTED rather than silently absorbed -- `dropped` is
-/// readable through `get_param("dropped")` for exactly the reason
-/// `spectro_dropped()` exists: a diagnostic you cannot read is a diagnostic you
-/// will misattribute.
+/// Events one block can hold. A drum pattern needs a handful; this is the
+/// headroom for a dense one plus a flurry of panics, not a target.
 pub const QUEUE_MAX: usize = 64;
 
-/*
- * SORTED ONCE PER BLOCK, WALKED WITH A CURSOR.
- *
- * The sample loop asks "what lands on sample i" for every i in order. Scanning
- * the whole queue for each answer was O(frames x events) -- 8192 x 64 scans at
- * the largest block, per block, on the audio thread, for what is almost always
- * zero or one event. `prepare` puts the events in offset order once, and the
- * walk then only ever looks at the next one.
- */
+/// One block's actions, in sample order. No allocation, ever.
+///
+/// The cycle per block is: `push` as messages arrive, `prepare` once at the
+/// top of the block, `pop_at` for every sample in order, `clear` at the end.
 pub struct Queue {
     events: [Event; QUEUE_MAX],
+    /// Events held, `events[..len]`.
     len: usize,
-    /// The first event the walk has not yet handed out.
+    /// Events already handed out by `pop_at`, `events[..next]`.
     next: usize,
+    /// Events lost to a full queue, over the queue's lifetime.
     dropped: u32,
 }
+
+/// What an unused slot holds. Never read: only `events[..len]` is live.
+const VACANT: Event = Event {
+    at: 0,
+    action: Action::Reset,
+};
 
 impl Default for Queue {
     fn default() -> Self {
         Queue {
-            events: [Event {
-                at: 0,
-                action: Action::Reset,
-            }; QUEUE_MAX],
+            events: [VACANT; QUEUE_MAX],
             len: 0,
             next: 0,
             dropped: 0,
@@ -115,97 +110,121 @@ impl Default for Queue {
 }
 
 impl Queue {
+    /// Append an action at a sample offset. A full queue drops it and counts.
     pub fn push(&mut self, at: usize, action: Action) {
-        if self.len >= QUEUE_MAX {
-            self.dropped = self.dropped.saturating_add(1);
-            return;
+        match self.events.get_mut(self.len) {
+            Some(slot) => {
+                *slot = Event { at, action };
+                self.len += 1;
+            }
+            None => self.dropped = self.dropped.saturating_add(1),
         }
-        self.events[self.len] = Event { at, action };
-        self.len += 1;
     }
 
+    /// Forget every queued event. The `dropped` count is kept: it is a
+    /// lifetime diagnostic, and a reset is exactly when it should survive.
     pub fn clear(&mut self) {
         self.len = 0;
         self.next = 0;
     }
 
+    /// Events lost to overflow since this queue was made.
     pub fn dropped(&self) -> u32 {
         self.dropped
     }
 
-    /// The next event landing on sample `i`, if any; call until `None`.
+    /// The next action due on or before sample `i`, if any.
     ///
-    /// The walk must visit samples in increasing order after `prepare`, which
-    /// the sample loop does by construction. Events on the same sample come
-    /// out in ARRIVAL order -- a note-on and its note-off at one offset must
-    /// trigger and then release, not the other way round.
-    #[inline]
+    /// Called for `i = 0, 1, 2, ...` and drained at each: several actions on
+    /// one sample come out in the order they arrived.
     pub fn pop_at(&mut self, i: usize) -> Option<Action> {
-        let e = self.events[..self.len].get(self.next)?;
-        if e.at != i {
-            return None;
+        let ev = *self.live().get(self.next)?;
+        if ev.at <= i {
+            self.next += 1;
+            Some(ev.action)
+        } else {
+            None
         }
-        self.next += 1;
-        Some(e.action)
     }
 
-    /// Get the queue ready for the block about to be rendered: clamp every
-    /// offset into it, then put the events in offset order.
+    /// Ready the queue for a block of `frames` samples. Called once, after the
+    /// block's pushes and before its first `pop_at`.
     ///
-    /// AN OFFSET PAST THE END WOULD BE DROPPED, NOT DEFERRED. The queue is
-    /// cleared per block, so an event the walk never reaches is an event that
-    /// never happens -- and a host that reports an offset against a different
-    /// buffer size is a real thing. Clamping makes it late by under a block
-    /// instead of lost.
-    ///
-    /// AN INSERTION SORT, because it is STABLE -- arrival order must survive
-    /// among equal offsets -- and allocation-free, which `slice::sort` is not
-    /// promised to be. Hosts deliver events in offset order, so this is one
-    /// comparison per event in practice; 64 events in reverse is the worst
-    /// case, and still only a couple of thousand moves.
+    /// Drops what was already handed out, clamps anything past the block onto
+    /// its last sample (late, not lost), and sorts by offset STABLY, so two
+    /// actions on one sample -- a release and a retrigger, say -- keep the order
+    /// they were sent in.
     pub fn prepare(&mut self, frames: usize) {
-        let last = frames.saturating_sub(1);
-        let ev = &mut self.events[..self.len];
-        for e in ev.iter_mut() {
-            if e.at > last {
-                e.at = last;
-            }
+        let done = self.next.min(self.len);
+        if let Some(held) = self.events.get_mut(..self.len) {
+            held.rotate_left(done);
         }
-        for i in 1..ev.len() {
-            let mut j = i;
-            while j > 0 && ev[j - 1].at > ev[j].at {
-                ev.swap(j - 1, j);
-                j -= 1;
-            }
-        }
+        self.len -= done;
         self.next = 0;
+
+        let Some(live) = self.events.get_mut(..self.len) else {
+            return;
+        };
+        if let Some(last) = frames.checked_sub(1) {
+            for ev in live.iter_mut() {
+                ev.at = ev.at.min(last);
+            }
+        }
+        sort_by_offset(live);
     }
 
+    /// Nothing left to hand out.
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.next >= self.len
+    }
+
+    fn live(&self) -> &[Event] {
+        self.events.get(..self.len).unwrap_or_default()
     }
 }
 
-/// The MIDI half of the parameter set, plus the held-note count.
+/// Binary insertion sort by offset, stable.
+///
+/// Sixty-four elements at most, usually a handful already in order, and no
+/// scratch buffer: the standard library's stable sort may want one, and the
+/// audio thread does not allocate.
+fn sort_by_offset(ev: &mut [Event]) {
+    for i in 1..ev.len() {
+        let Some(run) = ev.get_mut(..=i) else { return };
+        let Some((last, sorted)) = run.split_last() else {
+            return;
+        };
+        let at = last.at;
+        /* After every event at or before `at`: equal offsets keep arrival order. */
+        let p = sorted.partition_point(|e| e.at <= at);
+        if let Some(tail) = run.get_mut(p..) {
+            tail.rotate_right(1);
+        }
+    }
+}
+
+/// The MIDI trigger's settings and the one piece of state it keeps.
 #[derive(Clone, Copy, Debug)]
 pub struct Midi {
-    /// 0 = Omni, 1..16 = that channel only.
+    /// 0 is Omni; 1..=16 hears that channel only.
     pub channel: i32,
-    /// The note that triggers, 0..127.
+    /// The trigger note, 0..=127.
     pub note: i32,
-    /// Gate mode: hold while a note is down. Trigger mode: Hold times out.
+    /// `false` is Trigger mode, `true` is Gate mode.
     pub gate: bool,
-    /// How much velocity scales depth, 0..1. At 0 every note ducks fully.
+    /// How much velocity scales the depth, 0..1. At 0 every note ducks fully.
     pub vel_sens: f64,
-    /// Held matching notes. Gate mode releases when this reaches zero.
+    /// Trigger notes currently held. Counted in both modes, read in Gate mode.
     pub held: i32,
 }
 
 impl Default for Midi {
+    /// Channel 1, and note 36 -- C1 in Live's numbering, where a drum rack's
+    /// first pad, the kick, sits.
     fn default() -> Self {
         Midi {
             channel: 1,
-            note: 36, /* C1 -- Live's octave numbering, the kick pad */
+            note: 36,
             gate: false,
             vel_sens: 0.0,
             held: 0,
@@ -213,18 +232,62 @@ impl Default for Midi {
     }
 }
 
-/// A note NAME in Live's numbering -- `C-2` is 0, `C1` is 36, `G8` is 127 --
-/// or `None` if `s` is not one.
+impl Midi {
+    /// What one message asks for. `None` for anything that means nothing to a
+    /// ducker, and for anything that is not a well-formed message at all.
+    ///
+    /// The message is read from the FRONT of `msg`; bytes past it are ignored.
+    pub fn decode(&mut self, msg: &[u8]) -> Option<Action> {
+        match MidiMessage::try_from(msg).ok()? {
+            /* Any value: the controller number is the whole message. Reset All
+             * Controllers (121) and every other controller fall through. */
+            MidiMessage::ControlChange(
+                ch,
+                ControlFunction::ALL_SOUND_OFF | ControlFunction::ALL_NOTES_OFF,
+                _,
+            ) if self.hears(ch) => {
+                self.held = 0;
+                Some(Action::Reset)
+            }
+            MidiMessage::NoteOn(ch, note, vel) if self.hears(ch) && self.is_trigger(note) => {
+                self.held = self.held.saturating_add(1);
+                Some(Action::Trigger(self.scale(vel)))
+            }
+            /* Includes a note-on at velocity 0; `wmidi` reports it as this. */
+            MidiMessage::NoteOff(ch, note, _) if self.hears(ch) && self.is_trigger(note) => {
+                let was = self.held;
+                self.held = was.saturating_sub(1).max(0);
+                (self.gate && was > 0 && self.held == 0).then_some(Action::Release)
+            }
+            _ => None,
+        }
+    }
+
+    fn hears(&self, ch: wmidi::Channel) -> bool {
+        self.channel == 0 || self.channel == i32::from(ch.index()) + 1
+    }
+
+    fn is_trigger(&self, note: wmidi::Note) -> bool {
+        i32::from(u8::from(note)) == self.note
+    }
+
+    /// The depth multiplier: 1 at no sensitivity, `velocity / 127` at full,
+    /// and a straight line between.
+    fn scale(&self, vel: Velocity) -> f64 {
+        let v = f64::from(u8::from(vel)) / 127.0;
+        (1.0 - self.vel_sens * (1.0 - v)).clamp(0.0, 1.0)
+    }
+}
+
+/// A note name in Live's numbering -- `C-2` is 0, `C1` is 36, `G8` is 127 --
+/// or `None` for anything that is not one.
 ///
-/// THE LABEL IS ONE OF TWO SPELLINGS THE MOVE CAN SEND. The declaration wires
-/// `trigger_note` by index, but a hand-written patch and a host that has not
-/// yet learned the convention both send the option's name, and `atof` reads
-/// every name as 0 -- C-2, a note no kick pad sends. Sharps only, because the
-/// declared options are spelled with sharps. Byte parsing, no allocation: this
-/// runs on the audio callback.
+/// Sharps only, because that is how the parameter's own labels are spelled.
+/// Byte by byte and without allocating, because `set_param` reaches it on the
+/// audio callback too.
 pub fn note_from_name(s: &str) -> Option<i32> {
-    let b = s.trim().as_bytes();
-    let semitone = match b.first()? {
+    let (&letter, rest) = s.as_bytes().split_first()?;
+    let pitch = match letter {
         b'C' => 0,
         b'D' => 2,
         b'E' => 4,
@@ -234,77 +297,27 @@ pub fn note_from_name(s: &str) -> Option<i32> {
         b'B' => 11,
         _ => return None,
     };
-    let (sharp, rest) = match b.get(1) {
-        Some(b'#') => (1, &b[2..]),
-        _ => (0, &b[1..]),
+    let (pitch, rest) = match rest.split_first() {
+        Some((b'#', r)) => (pitch + 1, r),
+        _ => (pitch, rest),
     };
-    let (neg, digits) = match rest.first() {
-        Some(b'-') => (true, &rest[1..]),
+    let (negative, digits) = match rest.split_first() {
+        Some((b'-', r)) => (true, r),
         _ => (false, rest),
     };
-    if digits.is_empty() || digits.len() > 2 || !digits.iter().all(u8::is_ascii_digit) {
+    if digits.is_empty() {
         return None;
     }
-    let mut octave = digits.iter().fold(0i32, |a, d| a * 10 + (d - b'0') as i32);
-    if neg {
-        octave = -octave;
+    let magnitude = digits.iter().try_fold(0i32, |acc, &d| {
+        let d = char::from(d).to_digit(10)?;
+        acc.checked_mul(10)?.checked_add(d as i32)
+    })?;
+    let octave = if negative { -magnitude } else { magnitude };
+    if !(-2..=8).contains(&octave) {
+        return None;
     }
-    let note = (octave + 2) * 12 + semitone + sharp;
-    (0..=127).contains(&note).then_some(note)
-}
-
-impl Midi {
-    /// Decode one message into an action, or `None` if it is not ours.
-    ///
-    /// `msg` is raw MIDI bytes, as many as the host hands over: the message is
-    /// read from the front, and one that is cut short, starts mid-message
-    /// (running status) or is malformed is refused rather than indexed into.
-    pub fn decode(&mut self, msg: &[u8]) -> Option<Action> {
-        match MidiMessage::try_from(msg).ok()? {
-            /* Panic first, and regardless of the note filter: a panic that only
-             * arrived on the trigger note would not be a panic. The channel
-             * filter does apply, as it always has -- a channel mode message
-             * speaks for its own channel. */
-            MidiMessage::ControlChange(
-                ch,
-                ControlFunction::ALL_SOUND_OFF | ControlFunction::ALL_NOTES_OFF,
-                _,
-            ) if self.listens_to(ch) => {
-                self.held = 0;
-                Some(Action::Reset)
-            }
-            MidiMessage::NoteOn(ch, note, vel) if self.is_trigger(ch, note) => {
-                self.held += 1;
-                /* ducker.c:325-330: at sens 0 every note is full depth; at sens
-                 * 1 depth follows velocity linearly. */
-                let v = u8::from(vel) as f64 / 127.0;
-                let scale = 1.0 - self.vel_sens + self.vel_sens * v;
-                Some(Action::Trigger(scale.clamp(0.0, 1.0)))
-            }
-            /* A note-on at velocity 0 arrives here: `wmidi` reads it as the
-             * note-off it is. Hosts and hardware both send it, and reading it
-             * as a trigger at zero depth would leave Gate mode holding a note
-             * that was never pressed -- `a_note_on_at_velocity_zero_is_a_note_off`
-             * holds the crate to it. */
-            MidiMessage::NoteOff(ch, note, _) if self.is_trigger(ch, note) => {
-                if self.held > 0 {
-                    self.held -= 1;
-                }
-                (self.gate && self.held == 0).then_some(Action::Release)
-            }
-            _ => None,
-        }
-    }
-
-    /// The channel filter: 0 is Omni, 1..16 is that channel only.
-    fn listens_to(&self, ch: Channel) -> bool {
-        self.channel == 0 || i32::from(ch.number()) == self.channel
-    }
-
-    /// The trigger note, on a channel the filter lets through.
-    fn is_trigger(&self, ch: Channel, note: Note) -> bool {
-        self.listens_to(ch) && i32::from(u8::from(note)) == self.note
-    }
+    let n = (octave + 2) * 12 + pitch;
+    (0..=127).contains(&n).then_some(n)
 }
 
 #[cfg(test)]
