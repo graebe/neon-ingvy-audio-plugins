@@ -1,5 +1,14 @@
 # What's new
 
+## v2026.10.08.3 — NI Trance Gate, NI Side-Chain, NI Chord-Detector
+
+- **NI Trance Gate: a set saved right after a Slot change keeps the right
+  sound.** If Live saved in the moment between a Slot change during playback
+  and the plugin following it, the new slot could reopen with the previous
+  slot's sound. A save now always holds exactly what is playing.
+- **NI Side-Chain and NI Chord-Detector** are unchanged; this is their first
+  published macOS release, which v2026.10.08.2's build did not reach.
+
 ## v2026.10.08.2
 
 Every plugin is rebuilt on a new foundation. Your sets open as before; what
