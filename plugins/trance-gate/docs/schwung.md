@@ -119,6 +119,49 @@ The module renders the same samples as the plugin, rounded to the Move's 16-bit
 audio rather than cut off — quiet, gated passages keep their last bit of detail
 instead of losing it towards silence.
 
+## In your browser
+
+The module comes with its own editor page, which looks and works like the
+plugin's editor in Live. It runs in the browser on a laptop or phone on the
+same network as the Move, and it changes the NI Trance Gate that is running on
+the Move.
+
+1. Put NI Trance Gate on a track's audio effect slot.
+2. Open **http://move.local:7700/remote-ui** and choose that track's tab
+   (**Slot 1** to **Slot 4**).
+3. The editor appears in the module's section, in place of the generic
+   controls. **Interface: Default** switches back to them.
+
+Everything the ring page and the settings page do on the Move, the page does
+too, in Live's layout:
+
+- **The pads** hold the whole pattern, every step on screen at once. Click a
+  pad to switch it on, Shift-click for a tie, drag up or down for its amount.
+- **The ring** shows the pattern and the playhead. **Slot** switches between
+  the eight patterns, as it does on the Move.
+- **The envelope and pattern plots** are drawn by the engine itself, from the
+  current patch, so what you see is what the gate does.
+- **Randomize** rolls a new pattern for the current slot.
+- **Fade**, **Set order** and **Shuffle order** work as in Live. With a fade
+  under 100 %, each step shows the order in which it fades in. Click the
+  number, or focus the pad and type a digit, to change it.
+
+Changes go both ways. Turn a knob on the Move and the page follows. Recall
+another slot on the Move and the page shows that slot.
+
+What the page cannot do on the Move:
+
+- **No Signal plot.** The Move sends a page values, not sound.
+- **No copy, paste, export or import.** Schwung's web manager shows the page in
+  a frame that has no clipboard and cannot save or open files. Use the plugin in
+  Live for slot and bank files.
+- **Readouts can lag by a beat.** The page hears about the Move's own changes
+  up to twice a second, and moves the playhead smoothly in between.
+- **On Master FX the picture stands still.** Schwung sends a Master FX page
+  the values but not the live readouts, so the controls work and the playhead
+  does not move. On a track's slot it does.
+
+
 ## Installing
 
 Open the Web Manager on your Move — `http://move.local:7700` — go to

@@ -64,3 +64,40 @@ There is no custom canvas page in this version. That is a scope decision rather
 than an omission: a hand-written page would be a second editor to keep in step
 with the first, and the `shape` canvas entry is already declared so one can be
 added without changing the parameter contract.
+
+## In your browser
+
+The module comes with its own editor page, which looks and works like the
+plugin's editor in Live. It runs in the browser on a laptop or phone on the
+same network as the Move, and it changes the NI Side-Chain that is running on
+the Move.
+
+1. Put NI Side-Chain on a track's audio effect slot.
+2. Open **http://move.local:7700/remote-ui** and choose that track's tab
+   (**Slot 1** to **Slot 4**).
+3. The editor appears in the module's section, in place of the generic
+   controls. **Interface: Default** switches back to them.
+
+**Drag the shape** to set Delay, Attack, Hold, Release and Depth, as in Live.
+The knobs below are the same values as numbers: turn one, or click its readout
+and type. **Source** chooses between Cycle and MIDI, and only the chosen
+source's controls are shown: Rate for Cycle, and Note, Channel, Mode and Vel
+for MIDI.
+
+Changes go both ways. Turn a knob on the Move and the page follows. Drag on the
+page and the Move's knob moves. The playhead runs through the shape while the
+duck is moving, and the background ripples on the beat of a Cycle duck.
+
+What the page cannot do on the Move:
+
+- **No audio in the shape.** The Move sends a page values, not sound, so the
+  input and output that Live draws behind the shape are not shown, and neither
+  is the *no input* warning.
+- **No Sidechain source, Threshold or Lockout.** The Move has no key input
+  (see above).
+- **Readouts can lag by a beat.** The page hears about the Move's own changes
+  up to twice a second, and moves the playhead smoothly in between.
+- **On Master FX the picture stands still.** Schwung sends a Master FX page
+  the values but not the live readouts, so the controls work and the playhead
+  does not move. On a track's slot it does.
+
