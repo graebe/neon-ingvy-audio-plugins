@@ -54,6 +54,8 @@ members = [
     # owner's call, 2026-10-06); the core keeps nothing that would stop one.
     "engines/chord-detector/crates/cd-core",  # what is sounding, and its name
     "engines/chord-detector/crates/cd-capi",  # the C ABI -> the plugin
+    # NI Bit-Crusher: one core, two wrappers, the Side-Chain's shape.
+    "engines/bit-crusher/crates/bc-core",     # the DSP
     # The animated ground's beat clock. Like audio-bus it is not a
     # product: it ships inside EVERY editor, because the design system gives
     # every window the same ground. It depends on no product in return.
@@ -113,6 +115,8 @@ atomic_float = { version = "1.1.0", default-features = false }
 # The audio bus's shared memory: libc on macOS and Linux, windows-sys on Windows.
 libc = { version = "0.2.190", default-features = false }
 windows-sys = { version = "0.61.2", default-features = false }
+# Second-order filter sections: the Bit-Crusher's pre-, post- and DC filters.
+biquad = { version = "0.6.0", default-features = false }
 # MIDI bytes to messages, for the Side-Chain's trigger.
 wmidi = { version = "4.0.11", default-features = false }
 # Text: numbers read as C reads them, a string on the stack, and the Trance

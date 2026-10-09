@@ -1,0 +1,30 @@
+[package]
+name = "bc-core"
+version = "2026.10.9+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "NI Bit-Crusher DSP engine: a signal discretised in amplitude and in time"
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# The DSP the products share: the parameter glide and C-compatible text.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The pre-, post- and DC filters: second-order sections, retuned on the audio
+# thread without allocating. No std: it is a no_std crate.
+biquad = { workspace = true }
+# MIDI bytes to messages, for the panic (CC 120/123), as sc-core takes it:
+# core-only without its default `std` feature.
+wmidi = { workspace = true }
+# The seeded generator the jitter and the dither draw from, one per channel.
+fastrand = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+proptest = { workspace = true, features = ["std"] }
+# The aliasing measurement in src/tests.rs: a spectrum of a rendered sine.
+realfft = { workspace = true }
