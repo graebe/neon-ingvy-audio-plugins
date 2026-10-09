@@ -105,8 +105,8 @@ fn a_stopped_transport_opens_the_cycle_but_not_the_other_sources() {
 
 #[test]
 fn a_midi_event_lands_on_its_own_sample_not_the_block_boundary() {
-    /* The jitter this removes: `ducker.c` applies a note at the top of the
-     * block it arrived in, up to 5 ms early or late at a 256-frame buffer. */
+    /* The jitter this removes: a note applied at the top of the block it
+     * arrived in lands up to 5 ms early or late at a 256-frame buffer. */
     let sr = 48000.0;
     let mut p = Instance::new(sr);
     p.set_param("source", "MIDI");

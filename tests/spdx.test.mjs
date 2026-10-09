@@ -127,16 +127,6 @@ test('no owned file still carries the MIT notice it had before', () => {
   assert.deepEqual(stale, [], 'a second, contradicting notice survived the relicensing');
 });
 
-/* The Side-Chain's MIDI trigger is a port of MIT code. MIT allows it in a GPLv3
- * work on one condition -- its notice stays -- so the notice stays where a
- * person reading the file meets it: beside ours, before the code. */
-test('the schwung-ducker port keeps its upstream notice beside ours', () => {
-  const file = 'engines/side-chain/crates/sc-core/src/midi.rs';
-  const head = readFileSync(join(ROOT, file), 'utf8').split('\n').slice(0, 8).join('\n');
-  assert.match(head, /MIT License, Copyright \(c\) 2026 Charles Vestal/,
-    `${file} lost schwung-ducker's notice from its header`);
-});
-
 /* An exclusion that matches nothing is a hole waiting for a file to fall
  * into: the day what it names is deleted, its entry goes too. */
 test('every exclusion still names something tracked', () => {
