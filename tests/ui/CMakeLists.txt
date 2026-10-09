@@ -73,9 +73,8 @@ list(REMOVE_ITEM _kit
      ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
      ${CMAKE_CURRENT_SOURCE_DIR}/snapshot.cpp)
 
-set(_quick ni_ui_tests_unit)
-set(_full ni_ui_tests_snapshots:snapshot)
-
+# An editor's program is its product's; the kit's is shared.
+set(_editors)
 foreach(product IN LISTS NI_PRODUCTS)
     string(REPLACE "-" "_" id ${product})
     file(GLOB _mine CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${product}_*.cpp)
@@ -85,8 +84,10 @@ foreach(product IN LISTS NI_PRODUCTS)
     endif()
     # Listed whether or not they exist yet: the tiers allow a listed test that
     # is not registered, and an editor's first test file needs no edit here.
-    list(APPEND _quick ni_ui_tests_${id}_unit)
-    list(APPEND _full ni_ui_tests_${id}_snapshots:snapshot)
+    list(APPEND _editors PRODUCT ${product}
+        PROGRAMS ni_ui_tests_${id}
+        QUICK ni_ui_tests_${id}_unit
+        FULL ni_ui_tests_${id}_snapshots:snapshot)
 endforeach()
 
 ni_ui_add_tests(ni_ui_tests ${_kit})
@@ -103,5 +104,8 @@ else()
 endif()
 
 ni_test_tiers(
-    QUICK ${_quick} ui_tokens_native
-    FULL ${_full})
+    PRODUCT shared
+        PROGRAMS ni_ui_tests
+        QUICK ni_ui_tests_unit ui_tokens_native
+        FULL ni_ui_tests_snapshots:snapshot
+    ${_editors})

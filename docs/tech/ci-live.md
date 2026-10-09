@@ -23,6 +23,7 @@ cmake --preset release                    # universal, LTO: what ships (build/)
 cmake --build build                       # the five VST3s, into build/out
 scripts/test.sh quick                     # the developer loop (build-dev/)
 scripts/test.sh full                      # everything, the validators included
+scripts/test.sh product side-chain        # one product, as its release runs it
 ```
 
 **Developer and standard builds are macOS only**, and so are the releases.
@@ -67,7 +68,7 @@ tier, and **tsan** builds the tests under ThreadSanitizer and runs them.
 | `ui_tokens_native` | the kit's generated tokens agree with the vendored design system, and no colour is spelled anywhere else |
 | `versions` | every spelling of a product's version agrees with `versions.json`: the build, the bundle's plist and moduleinfo.json, module.json and every crate |
 | `release` | a tag means what the release workflows think it means |
-| `licenses` | everything that ships has a notice, and every bundle carries them |
+| `licenses` | everything that ships has a notice, and every bundle carries them (`licenses_bundle_*`) |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
 
 The JS suites skip rather than fail when node is absent: a C++ developer building
@@ -82,14 +83,25 @@ of mistake only ever noticed by whoever downloads the wrong thing. The tag is
 parsed by `scripts/release.mjs`, which both release workflows use and
 `ctest -R release` tests.
 
-`release-plugins.yml` checks the tag against the tree and builds that one
-product's VST3 on macOS. It runs the full tier again (a tag is the worst
-possible moment to discover the render A/B moved), then the validators —
-pluginval at strictness 10 with its editor tests, Steinberg's VST3 validator
-and `codesign --verify --deep --strict` — stages the bundle with `LICENSE` and
-`THIRD_PARTY_LICENSES.md` beside it, and packs `<product>-<version>-macOS.zip`.
+`release-plugins.yml` checks the tag against the tree and runs
+`scripts/test.sh product <product>` on macOS — the same command a developer
+runs locally ([Testing](testing.md)). It builds **that product alone**: its
+VST3 and the test programs of it and of the shared code, never another
+product's. It runs that product's tests and the shared ones of both tiers (a
+tag is the worst possible moment to discover the render A/B moved), then the
+validators over its one bundle — pluginval at strictness 10 with its editor
+tests, Steinberg's VST3 validator and `codesign --verify --deep --strict`. It
+stages the bundle with `LICENSE` and `THIRD_PARTY_LICENSES.md` beside it, and
+packs `<product>-<version>-macOS.zip`.
 Linux and Windows are not released for now; they rejoin as part of the full
 build.
+
+**One product's failing test holds that product's release and no other.**
+The job used to build everything and run the whole full tier, one to two
+hours on GitHub's runner, so a race in one product's state test held up the
+release of every product. A failing shared test still holds every release,
+because what it checks ships in all of them. The full tier remains the gate
+before anything is tagged.
 
 Because the asset name carries the version, this site composes its download links
 from `versions.json` rather than hard-coding them. That file is already checked

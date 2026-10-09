@@ -21,6 +21,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import {
   ROOT, resolve, readModuleEnv, updateReleaseJson, schwungVersion, LEGACY_TOP_LEVEL, bundleOf, ZIP_OS,
 } from '../scripts/release.mjs';
@@ -251,11 +252,16 @@ test('a bundle without a notice, without its binary, or not universal on macOS i
 });
 
 /* NI_UNIVERSAL says the build made both macOS slices, as the release preset
- * does; a one-slice build is checked for everything else. */
+ * does; a one-slice build is checked for everything else. NI_PRODUCT names the
+ * one product whose bundle is staged (release_bundle_<bundle>), as a product's
+ * release builds that one alone. */
 const BUILT = process.env.NI_BUNDLES;
-test('every product stages from the bundles this build made (a dry run)', { skip: !BUILT && 'NI_BUNDLES is not set' }, () => {
+const ONLY = process.env.NI_PRODUCT;
+test(`${ONLY ?? 'every product'} stages from the bundles this build made (a dry run)`, { skip: !BUILT && 'NI_BUNDLES is not set' }, () => {
   const universal = process.platform === 'darwin' && process.env.NI_UNIVERSAL === '1';
-  for (const p of juceProducts())
+  const products = juceProducts().filter((p) => !ONLY || p.dir === ONLY);
+  assert.ok(products.length, `NI_PRODUCT=${ONLY} builds no bundle`);
+  for (const p of products)
     assert.deepEqual(plan(p.dir, BUILT, { universal }).problems, [], `${p.dir} from ${BUILT}`);
 });
 
@@ -271,4 +277,40 @@ test('release-plugins.yml stages with the script, on macOS only, and asks for no
   assert.doesNotMatch(y, /zip_windows|zip_linux/, 'release-plugins.yml still names a Windows or Linux zip');
   assert.doesNotMatch(y, /\.component\b|\.clap\b|web\/index\.html|ui\.js\.LICENSE/,
     'release-plugins.yml still names a format or an editor no bundle has');
+});
+
+/*
+ * ONE PRODUCT'S RELEASE BUILDS AND TESTS THAT PRODUCT. The build job used to
+ * build everything and run the whole full tier, so one product's failing test
+ * blocked every release. It hands the tag's product to `scripts/test.sh
+ * product`, which builds that bundle and the tests labelled with it or
+ * product:shared (cmake/NiTest.cmake) -- and nothing in the job builds, tests
+ * or validates around it.
+ */
+test('release-plugins.yml builds, tests and validates the tagged product alone', () => {
+  const y = read('.github', 'workflows', 'release-plugins.yml');
+  const build = y.slice(y.indexOf('\n  build:\n'), y.indexOf('\n  release:\n'))
+    .split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.match(build, /node scripts\/release\.mjs resolve "\$GITHUB_REF_NAME"/,
+    'the build job does not resolve its tag with scripts/release.mjs');
+  assert.match(build,
+    /\n {8}env:\n {10}PRODUCT: \$\{\{ steps\.tag\.outputs\.product \}\}\n {8}run: scripts\/test\.sh product "\$PRODUCT"\n/,
+    'the build job does not run scripts/test.sh product on the tag\'s product');
+  assert.doesNotMatch(build, /cmake --(build|preset)|\bctest\b|validate-plugins\.sh/,
+    'the build job builds, tests or validates outside scripts/test.sh product');
+  assert.match(build, /node scripts\/stage-release\.mjs "\$PRODUCT" build\/out stage --os macos/,
+    'the build job does not stage the bundle scripts/test.sh product built');
+});
+
+/*
+ * A PRODUCT'S BUNDLE, AS `scripts/test.sh product` BUILDS AND VALIDATES IT:
+ * the bundleOf the staging reads, so the run and the release name one bundle,
+ * and a product with no plugin stops the run before it builds anything.
+ */
+test('release.mjs names the bundle of every plugin, and of nothing else', () => {
+  const bundle = (p) => execFileSync(process.execPath, [join(ROOT, 'scripts', 'release.mjs'), 'bundle', p],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  for (const p of PLUGINS) assert.equal(bundle(p), bundleOf(ROOT, p));
+  assert.throws(() => bundle('audio-bus'), /has no plugin/);
+  assert.throws(() => bundle('..'), /not a product/);
 });

@@ -6,7 +6,7 @@
  * Everything that ships has a notice, and every notice is for something that
  * ships.
  *
- *   node scripts/check-licenses.mjs [--bundles build/out]
+ *   node scripts/check-licenses.mjs [--bundles build/out [--product <product>]]
  *
  * THIRD_PARTY_LICENSES.md was written by hand and had drifted both ways: it
  * named bundles by names they no longer had, missed fonts and a whole engine,
@@ -39,7 +39,8 @@
  *
  * With --bundles it also opens the built bundles and checks that each one
  * carries LICENSE, THIRD_PARTY_LICENSES.md, the AGPLv3 and Apache 2.0 texts
- * and its fonts' licences.
+ * and its fonts' licences -- only <product>'s with --product, for a build
+ * that made that one.
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -387,7 +388,10 @@ try {
 const at = process.argv.indexOf('--bundles');
 if (at > 0) {
   const out = process.argv[at + 1];
-  for (const p of JUCE_PLUGINS) {
+  const pick = process.argv.indexOf('--product');
+  const only = pick > 0 ? process.argv[pick + 1] : null;
+  if (only && !JUCE_PLUGINS.some((p) => p.dir === only)) fail(`--product ${only} builds no bundle`);
+  for (const p of JUCE_PLUGINS.filter((x) => !only || x.dir === only)) {
     const res = join(out, `${p.bundle}.vst3`, 'Contents', 'Resources');
     for (const f of bundleResources(p))
       if (!existsSync(join(res, f))) fail(`${p.bundle}.vst3 ships without Contents/Resources/${f}`);

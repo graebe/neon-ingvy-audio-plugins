@@ -113,6 +113,6 @@ foreach(product IN LISTS NI_PRODUCTS)
 endforeach()
 
 enable_testing()
-# ni_test_tiers: every test is quick or full, and says which.
+# ni_test_tiers: every test is quick or full, and of one product or shared.
 include(cmake/NiTest.cmake)
 add_subdirectory(tests)

@@ -27,5 +27,5 @@ target_include_directories(ni_wire PRIVATE ${DOCTEST_DIR} ${NI_SHARED})
 add_test(NAME ni_wire COMMAND ni_wire)
 
 # Quick: a doctest binary over plain C++, with no bundle, host or second
-# process. cmake/NiTest.cmake.
-ni_test_tiers(QUICK ni_wire)
+# process; shared, as the code is. cmake/NiTest.cmake.
+ni_test_tiers(PRODUCT shared PROGRAMS ni_wire QUICK ni_wire)

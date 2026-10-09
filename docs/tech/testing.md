@@ -6,15 +6,18 @@ slug: testing
 
 Two tiers, one entry point. The **quick** tier is the loop you run while
 working; the **full** tier is the verification before you call something done.
+A **product run** is one product's share of the full tier: what its release
+builds and tests.
 
 ```sh
 scripts/test.sh quick [--build DIR]                                  # npm run test:quick
 scripts/test.sh full [--build DIR] [--bundles DIR] [--no-coverage]   # npm run test:full
+scripts/test.sh product PRODUCT [--build DIR]                        # npm run test:product -- PRODUCT
 ```
 
-Each tier configures its build directory from a preset if it does not exist
-yet: quick from `dev` into `build-dev/`, full from `release` into `build/`
-(below). `--build DIR` names another one — one per person or agent building
+Each configures its build directory from a preset if it does not exist yet:
+quick from `dev` into `build-dev/`, full and product from `release` into
+`build/` (below). `--build DIR` names another one — one per person or agent building
 at the same time — and a directory that exists is used as it was configured.
 No build installs anything: a bundle is copied into `<build>/out`, where every
 test and validator loads it by path, and into the system's VST3 folder only
@@ -165,7 +168,7 @@ Everything quick runs, and:
 | `host` | every VST3 from `build/out`, hosted by JUCE as a DAW hosts it. `juce_host_*` runs, saves and opens every bundle. NI Trance Gate's (`tg_host`): its earlier class, its parameters through the controller, every earlier build's fixture reopened as Live reopens a set and saved back byte for byte, the golden render through its audio path, the host's Bypass passing the audio through bit for bit, and the window under a running transport with a set loaded on another thread. NI Spectrogram's (`sg_host`) the same, its audio through bit for bit; NI Listen-In's (`li_host`) the same, its audio read back off the bus, a reopened set's bus claimed under its name, and nothing published while bypassed; NI Side-Chain's (`sc_host`) the same, the engine's golden render through it, a note, CC 120 and CC 123 through the host's event list and MIDI-CC mapping, the Bypass passing audio while the engine still hears the notes, and a key on its sidechain bus |
 | `snapshot` | the kit's and every editor's snapshot goldens (`tests/ui/baselines`), drawn with JUCE's `createComponentSnapshot`; they are macOS renders |
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
-| `bundles` | every built bundle carries its notices (`licenses_bundles`); every bundle's signature verifies as Live's scanner checks it (`codesign_*`: `codesign --verify --deep --strict`); the bundles' version spellings (`versions_bundles`); the release staging, dry-run against the bundles (`release_bundles`) |
+| `bundles` | per bundle: it carries its notices (`licenses_bundle_*`); its signature verifies as Live's scanner checks it (`codesign_*`: `codesign --verify --deep --strict`); its version spellings (`versions_bundle_*`); the release staging, dry-run against it (`release_bundle_*`) |
 | `site` | every root-relative link on the built site resolves |
 | `coverage` | the coverage floor, in the instrumented build |
 | `move` | every Schwung module (`move_<module>`, one per `modules/<module>/module.env`), built and tested by `modules/_shared/test.sh` in the module image on aarch64 Linux: the tarball's `.so` is aarch64 and exports nothing of the plugin's shell or ground, it carries `LICENSE` and a notice for every crate it links, the module's crates' cargo tests (the vtable, `chain_params`, the host panic on CC 120/123) pass on the Move's architecture, and the Trance Gate's golden render (`engines/trance-gate/tests/run.sh`) keeps its md5 there. Needs Docker running as arm64 (Apple Silicon); not registered without Docker |
@@ -179,7 +182,8 @@ bundles in `build/out` (or `--bundles DIR`).
 own rules rather than ours: `pluginval` at strictness 10 **with its editor
 tests**, Steinberg's VST3 `validator` built from the SDK at the tag JUCE
 vendors, and on macOS `codesign --verify --deep --strict` again, on exactly
-the bundles validated. pluginval is pinned to one release with a SHA-256 per
+the bundles validated — every one in the directory, or the ones named
+(`run <tools> build/out NISideChain`). pluginval is pinned to one release with a SHA-256 per
 platform, and the script runs on macOS, Linux (under `xvfb-run` without a
 display) and Windows (Git Bash). Nothing they read is installed: every bundle
 is validated where the build left it.
@@ -191,6 +195,33 @@ builds before the JUCE shell (v2026.10.06.5) saved, captured through the calls L
 test loads each to its exact parameters, `nist_fixtures` writes each back
 byte for byte, and each host test reopens each in the built VST3. They cannot
 be captured again from this tree: the README names the commit that can.
+
+## Product — one product, as its release runs it
+
+```sh
+scripts/test.sh product side-chain      # the versions.json key: trance-gate, spectrogram ...
+```
+
+Every test belongs to **one product**, or is **shared** (Labels, below).
+A product run builds that product's bundle and the test programs of that
+product and of the shared code — `<Bundle>_VST3`, `ni_tests_<product>` and
+`ni_tests_shared`, and nothing of another product's — then runs
+`ctest -L '^product:(<product>|shared)$'` over both tiers, and the validators
+over that one bundle. No coverage, no site, no other product's tests.
+
+| | belongs to |
+|---|---|
+| a product | its engine's cargo and C tests and oracles, its render A/B, its processor and audio-callback tests, its editor's units and snapshots, its Move module (`move_<product>`), and every test that opens its bundle: `juce_host_<Bundle>`, `codesign_<Bundle>`, its own host test (`sc_host` ...), and the tree checks run against the bundle (`versions_bundle_<Bundle>`, `release_bundle_<Bundle>`, `licenses_bundle_<Bundle>`) |
+| shared | what every product is built on: audio-bus, ground, the shell plumbing, `engines/shared` (`ni_shared`, `music_core_*`), the JUCE shell's state codec over every product's fixtures (`nist_fixtures`), the plain C++ (`ni_wire`), the kit's units and snapshots and its token guard, the bus across processes, and the checks over the tree — `cargo_deny`, `versions`, `release`, `licenses`, `spdx`, `design_paths` and the rest |
+
+**This is what a release runs** (`release-plugins.yml`, [Build & CI](ci-live.md)):
+a failing test of another product cannot hold a product's release, and a tag
+builds one bundle rather than all five. A shared test still holds every release, as it
+should: what it checks ships in all of them.
+
+**It is not the gate.** A change to shared code is verified by the full tier,
+which runs every product's tests against it; the product run is for releasing
+a product the full tier has already passed.
 
 **Windows and Linux.** Developer and standard builds are macOS only, and so
 are the releases. The cross-build kit (`scripts/build-all.sh`,
@@ -249,12 +280,27 @@ fetched at check time, so the verdict would change without a commit.
 
 ## Labels, not lists
 
-Every test is placed in a tier by `ni_test_tiers()` at the end of the
-`CMakeLists.txt` that registers it (`cmake/NiTest.cmake`). A quick test carries
-`quick;full`, so `ctest -L full` is literally everything; a full-only test
-carries `full` and a label saying why — `ctest -L host` runs one kind alone. A
-test registered in no tier stops the configure: a new test is placed on
-purpose, never by default.
+Every test is placed in a tier and a product by `ni_test_tiers()` at the end
+of the `CMakeLists.txt` that registers it (`cmake/NiTest.cmake`), in a
+`PRODUCT <product>` section — or `PRODUCT shared` — with the programs its
+tests run:
+
+```cmake
+ni_test_tiers(
+    PRODUCT side-chain
+        PROGRAMS sc_processor sc_rt sc_host
+        QUICK sc_processor sc_rt
+        FULL sc_host:host)
+```
+
+A quick test carries `quick;full`, so `ctest -L full` is literally
+everything; a full-only test carries `full` and a label saying why —
+`ctest -L host` runs one kind alone. Each also carries `product:<product>`
+or `product:shared`, and `ctest -L product:side-chain` runs one product's
+alone. The programs are what `ni_tests_<product>` builds. A test placed in no
+tier and product, a test placed twice, or a program in no product stops the
+configure: a new test is placed on purpose, never by default — and never
+into every product's release by accident.
 
 ## The timing log
 

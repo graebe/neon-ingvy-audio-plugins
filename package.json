@@ -9,6 +9,7 @@
   "scripts": {
     "build": "npm run build --workspace site",
     "test:quick": "scripts/test.sh quick",
-    "test:full": "scripts/test.sh full"
+    "test:full": "scripts/test.sh full",
+    "test:product": "scripts/test.sh product"
   }
 }

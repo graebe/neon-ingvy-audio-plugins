@@ -2,9 +2,16 @@
 # Copyright (C) 2026 Torben Gräber
 #
 # Tag <product>-v<version> for a product with a plugin -> build that ONE
-# product's VST3 on macOS, test it, validate it, stage it with its notices,
-# sign and notarise it when the secrets exist, and attach the macOS zip to the
-# release.
+# product's VST3 on macOS, run its tests and the shared ones, validate it,
+# stage it with its notices, sign and notarise it when the secrets exist, and
+# attach the macOS zip to the release.
+#
+# ONE PRODUCT'S BUILD AND TESTS, NOT EVERYONE'S. The build job used to build
+# every product and run the whole full tier, one to two hours, so one
+# product's failing test blocked every release. It runs `scripts/test.sh
+# product <product>` instead: that product's bundle and test programs and the
+# shared ones, and only the tests labelled product:<product> or
+# product:shared (cmake/NiTest.cmake). The full tier stays the local gate.
 #
 # MACOS ONLY, FOR NOW. The owner's decision of 2026-10-08: releases are VST3
 # for macOS, and Linux and Windows rejoin later, only as part of the full
@@ -91,29 +98,23 @@ jobs:
       - name: Rust, with both Apple targets
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      # The suite below includes the licence gate, ctest's cargo_deny.
+      # The shared tests include the licence gate, ctest's cargo_deny.
       - name: cargo-deny, at its pin
         run: scripts/licence-tools.sh install cargo-deny
 
-      # The release preset: Release, link-time optimisation and the universal
-      # binary (CMakePresets.json).
-      - name: Build
-        run: |
-          cmake --preset release -B build
-          cmake --build build
-
-      # The suite runs here too: a tag is the worst moment to discover that
-      # the render A/B moved. The full tier: the snapshot goldens are macOS
-      # renders.
-      - name: Test (the full tier)
-        run: ctest --test-dir build -L full --output-on-failure
-
+      # THE TAGGED PRODUCT, AND NOTHING ELSE, through the entry point the
+      # developer runs locally. The release preset (Release, link-time
+      # optimisation, the universal binary) into build/; its bundle and the
+      # test programs of it and of the shared code; its own and the shared
+      # tests of both tiers -- a tag is the worst moment to discover that the
+      # render A/B moved, and the snapshot goldens are macOS renders; then
       # pluginval at strictness 10 with its editor tests, Steinberg's
-      # validator, and the signature as Live's scanner checks it.
-      - name: Validate
-        run: |
-          scripts/validate-plugins.sh fetch "$RUNNER_TEMP/validators"
-          scripts/validate-plugins.sh run "$RUNNER_TEMP/validators" build/out
+      # validator and the signature as Live's scanner checks it, over its
+      # one bundle in build/out.
+      - name: Build, test and validate this product
+        env:
+          PRODUCT: ${{ steps.tag.outputs.product }}
+        run: scripts/test.sh product "$PRODUCT"
 
       # THE BUNDLE IS STAGED AS BUILT, BEFORE ANYTHING IS SIGNED. Everything
       # it carries -- its notices, moduleinfo.json -- the build put there

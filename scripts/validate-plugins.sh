@@ -9,11 +9,13 @@
 #       against the pinned SHA-256, and build Steinberg's VST3 validator from
 #       the VST3 SDK at a pinned tag and commit.
 #
-#   scripts/validate-plugins.sh run <tools-dir> [bundle-dir]
-#       Validate every .vst3 in bundle-dir (default build/out): pluginval at
-#       strictness 10 with its editor tests, Steinberg's validator, and -- on
-#       macOS -- `codesign --verify --deep --strict`, the check Live's scanner
-#       makes. Exits non-zero if any of them failed, after running all of them.
+#   scripts/validate-plugins.sh run <tools-dir> [bundle-dir [<bundle>...]]
+#       Validate every .vst3 in bundle-dir (default build/out), or only the
+#       named ones (NITranceGate for NITranceGate.vst3, as a product's release
+#       validates its own): pluginval at strictness 10 with its editor tests,
+#       Steinberg's validator, and -- on macOS -- `codesign --verify --deep
+#       --strict`, the check Live's scanner makes. Exits non-zero if any of
+#       them failed, after running all of them.
 #
 # macOS, Linux and Windows (Git Bash, as GitHub's runners have it). On Linux
 # without a display, pluginval's editor tests run under xvfb-run, which has to
@@ -126,6 +128,8 @@ fetched() {
 
 run() {
     local tools=$1 out=${2:-$ROOT/build/out}
+    shift
+    [ $# -gt 0 ] && shift
     local pluginval vst3val failed=()
     pluginval=$(pluginval_of "$tools")
     vst3val=$(vst3val_of "$tools")
@@ -141,9 +145,16 @@ run() {
     fi
 
     local bundles=() bundle
-    for bundle in "$out"/*.vst3; do
-        [ -d "$bundle" ] && bundles+=("$bundle")
-    done
+    if [ $# -gt 0 ]; then
+        for bundle in "$@"; do
+            [ -d "$out/$bundle.vst3" ] || { echo "no $bundle.vst3 in $out" >&2; exit 1; }
+            bundles+=("$out/$bundle.vst3")
+        done
+    else
+        for bundle in "$out"/*.vst3; do
+            [ -d "$bundle" ] && bundles+=("$bundle")
+        done
+    fi
     [ ${#bundles[@]} -gt 0 ] || { echo "no .vst3 bundle in $out" >&2; exit 1; }
 
     for bundle in "${bundles[@]}"; do
@@ -173,13 +184,14 @@ run() {
         printf '::error::validation failed: %s\n' "${failed[@]}"
         exit 1
     fi
-    echo "every validator passed on every bundle in $out"
+    echo "every validator passed on every bundle validated in $out"
 }
 
 case "${1:-}" in
     fetch) [ $# -eq 2 ] || { echo "usage: $0 fetch <tools-dir>" >&2; exit 2; }
            ni_time_stage fetch -- fetch "$2" ;;
     fetched) [ $# -eq 2 ] || { echo "usage: $0 fetched <tools-dir>" >&2; exit 2; }; fetched "$2" ;;
-    run)   [ $# -ge 2 ] || { echo "usage: $0 run <tools-dir> [bundle-dir]" >&2; exit 2; }; run "$2" "${3:-}" ;;
-    *)     echo "usage: $0 fetch <tools-dir> | fetched <tools-dir> | run <tools-dir> [bundle-dir]" >&2; exit 2 ;;
+    run)   [ $# -ge 2 ] || { echo "usage: $0 run <tools-dir> [bundle-dir [<bundle>...]]" >&2; exit 2; }
+           shift; run "$@" ;;
+    *)     echo "usage: $0 fetch <tools-dir> | fetched <tools-dir> | run <tools-dir> [bundle-dir [<bundle>...]]" >&2; exit 2 ;;
 esac
