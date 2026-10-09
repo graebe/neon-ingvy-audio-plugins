@@ -189,12 +189,14 @@ the fifteen host parameters are a window onto the current slot:
   project saved -- the blob holds them rounded -- so a project reopens bit for
   bit, and a blob from before slots had sounds of their own (state v6 and older)
   takes them in all eight slots.
-- **A save writes what the next block will hold** (`tg_shell_save`): the
-  engine's blob with the host's values applied the way the next push would apply
-  them, so a project saved before any audio has run still has the parameters the
-  host shows, in the slot they belong to -- and, between a Slot switch and the
-  block that applies it, the new slot's values beside the new slot's blob
-  (`tg_shell_next_params`), never the slot that was left.
+- **A save writes what the next block will hold** (`tg_shell_save_with_params`):
+  the engine's blob with the host's values applied the way the next push would
+  apply them, so a project saved before any audio has run still has the
+  parameters the host shows, in the slot they belong to. The parameters beside
+  the blob come from the same snapshot of the engine -- the latest frame, with
+  the record of what the engine last heard from the host published in it -- so
+  after a Slot switch, until the host has followed it, the save holds the new
+  slot's values beside the new slot's blob, never the slot that was left.
 
 **Slot files** (`.nitgslot`, one slot; `.nitgbank`, all eight) are the engine's
 text, written and strictly read by `tg-core`'s `slotfile.rs` -- the state blob's

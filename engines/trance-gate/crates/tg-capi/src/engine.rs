@@ -212,6 +212,10 @@ pub struct TgCore {
     /// must follow the engine.
     #[cfg(feature = "shell")]
     pub(crate) recalls: u32,
+    /// The host's values as the plugin shell last pushed them: the engine's
+    /// own record, published with it (src/shell.rs, `Pushed`).
+    #[cfg(feature = "shell")]
+    pub(crate) pushed: crate::shell::Pushed,
 }
 
 impl TgCore {
@@ -221,6 +225,8 @@ impl TgCore {
             sweep: CycleSweep::default(),
             #[cfg(feature = "shell")]
             recalls: 0,
+            #[cfg(feature = "shell")]
+            pushed: crate::shell::Pushed::NONE,
         }
     }
 }

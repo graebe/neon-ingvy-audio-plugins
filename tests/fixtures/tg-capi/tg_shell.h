@@ -100,11 +100,14 @@ double tg_shell_cycle_ms(tg_shell_t *s);
  * the archived Max for Live external; an addition breaks no caller. */
 int  tg_shell_levels(tg_shell_t *s, float *out, int n);
 
-/* The current slot's fifteen values as the next block will leave them, given
- * the host's: after a Slot switch no block has applied, the new slot's own.
- * What a save writes beside tg_shell_save's blob. Returns 1, or 0. ADDED with
- * tg_shell_levels, for the JUCE shell's save; not in the archived external. */
-int  tg_shell_next_params(tg_shell_t *s, const double *values, int n, double *out);
+/* Everything a save writes, from one snapshot of the engine: tg_shell_save's
+ * blob into `buf`, and beside it, into `params`, the current slot's fifteen
+ * values as the next block leaves them -- the host's own where the engine
+ * will hold them, the engine's where it will not (a Slot switch the host has
+ * not followed yet). Returns the blob's length, or -1. ADDED for the JUCE
+ * shell's save, replacing tg_shell_next_params, whose values came from
+ * another read than the blob's; not in the archived external. */
+int  tg_shell_save_with_params(tg_shell_t *s, const double *values, int n, double *params, char *buf, int buf_len);
 
 /*
  * THE HOST'S PARAMETERS MIRROR THE CURRENT SLOT. Every parameter but Slot is

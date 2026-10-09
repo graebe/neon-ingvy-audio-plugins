@@ -805,7 +805,6 @@ dependencies = [
 name = "tg-capi"
 version = "2026.10.8+2"
 dependencies = [
- "atomic_float",
  "cbindgen",
  "ground-capi",
  "ni-dsp",
