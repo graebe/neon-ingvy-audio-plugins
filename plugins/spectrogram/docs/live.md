@@ -155,6 +155,10 @@ pixel, ten with **Shift** held. **Home** and **End** jump to the left and right
 edges (in seconds, the oldest and the newest column), and **Escape** takes it
 away.
 
+**Space** always starts and stops Live's transport, also when the plugin window
+has focus. The menus, switches and buttons answer **Enter**: it opens a menu
+and chooses in it, flips a switch and presses a button such as Pause.
+
 ## Pause holds the view, not the analysis
 
 The columns keep arriving and keep filling the history behind the frozen

@@ -170,9 +170,28 @@ proportion. Nothing reflows and nothing scrolls.
 
 **Every pointer control takes the keyboard.** Arrows step (Shift fine),
 Page Up/Down take large steps or jump between detents, Home/End go to the
-ends, Space or Enter press, Enter types into a readout; a step grid is one
-Tab stop (`Keys.h`). Every keystroke is its own gesture. A control's focus ring
-(`glowFocus`) and its info show only for keyboard focus (`FocusVisibility`).
+ends, Enter presses, opens a menu and chooses in it, and types into a readout;
+a step grid is one Tab stop (`Keys.h`). Every keystroke is its own gesture. A
+control's focus ring (`glowFocus`) and its info show only for keyboard focus
+(`FocusVisibility`).
+
+**Space is the host's.** Space always starts and stops Live's transport, also
+when the plugin window has focus, so no control answers it, with or without a
+modifier: `Keys.h` has no Space key, and a `keyPressed` returns false for it.
+The mechanism is JUCE's own. The plugin's view is the first responder once it
+is clicked (`EDITOR_WANTS_KEYBOARD_FOCUS`, which typing needs); its peer gives
+a key to the focused component and then to each parent
+(`ComponentPeer::handleKeyPress`), and a key nobody uses goes back to Cocoa
+unused, where `keyDown:` passes it to the superclass and up the responder
+chain to the view the host gave the plugin, Live's. The VST3 view's
+`onKeyDown` answers `kResultFalse`, so a host that asks first is told the same.
+The exception is a text field being typed into (`TextField`, a `Readout`'s
+field, `EditField`): there Space is a character, and the field has the
+keyboard only while the edit lasts. A modal component would swallow every key
+(the macOS peer's rule), so only a field being typed into is ever modal.
+`tests/ui/hostkeys.h` walks a key through the window as the peer does; the kit
+sweeps every gallery page and each editor its window, before and after a click
+on every control.
 
 **Every control says what it does, in at most 72 characters.** One line,
 *Name — what it does*, set with `ni::ui::setInfo`; it is also the control's
