@@ -151,6 +151,12 @@ export function paramsWires(text) {
  * not move. A heartbeat that repeats the readout whole says nothing new, and
  * is not delivered again.
  *
+ * ONLY ONCE THERE IS A READOUT. A Master FX position gets no feeds at all --
+ * the manager pushes extra_keys for slot components only -- so there the
+ * declared values, sent on subscribe and echoed on every write, are all the
+ * page will ever hear, and they pass through as they are. The first readout
+ * switches to it, for good.
+ *
  * A decoration of the bridge rather than of the transport, so the kit's
  * transport stays the same for every editor: it sees the fields as the
  * declared values they are.
@@ -164,6 +170,8 @@ export function expandParams(bridge) {
   const told = new Map();
   /* The keys this page has written since the last readout. */
   const written = new Set();
+  /* Whether a readout has ever arrived: until one has, the echoes are it. */
+  let fed = false;
   return {
     ...bridge,
     setParam(full, value) {
@@ -173,11 +181,12 @@ export function expandParams(bridge) {
     },
     onParamChange(fn) {
       bridge.onParamChange((changes) => {
+        const text = changes?.[`${prefix}params`];
+        if (text !== undefined) fed = true;
         const out = {};
         for (const [full, value] of Object.entries(changes ?? {})) {
-          if (!FIELD_KEYS.has(keyOf(full))) out[full] = value;
+          if (!fed || !FIELD_KEYS.has(keyOf(full))) out[full] = value;
         }
-        const text = changes?.[`${prefix}params`];
         const wires = text === undefined ? null : paramsWires(text);
         for (const [key, wire] of Object.entries(wires ?? {})) {
           if (told.get(key) === wire && !written.has(key)) continue;

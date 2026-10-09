@@ -147,6 +147,20 @@ test('the sound\'s values come from the readout, and its echoes are dropped', ()
   assert.equal(seen.length, 4, 'an echo alone is no push at all');
 });
 
+/* A Master FX position gets no feeds: the declared values are all there is. */
+test('without a readout the echoes are the values, until the first readout', () => {
+  let push;
+  const bridge = { component: 'master_fx:fx1', onParamChange: (fn) => { push = fn; },
+                   setParam: () => {} };
+  const seen = [];
+  expandParams(bridge).onParamChange((c) => seen.push(c));
+  push({ 'master_fx:fx1:amount': '0.70', 'master_fx:fx1:rate': '1/8' });
+  assert.deepEqual(seen[0], { 'master_fx:fx1:amount': '0.70', 'master_fx:fx1:rate': '1/8' });
+  push({ 'master_fx:fx1:params': READOUT.replace(/^2:/, '0:') });
+  push({ 'master_fx:fx1:amount': '0.20' });
+  assert.equal(seen.length, 2, 'once there is a readout, an echo of the fifteen says nothing');
+});
+
 test('after the page writes a key, the next readout says where the engine put it', () => {
   let push = null;
   const out = [];
