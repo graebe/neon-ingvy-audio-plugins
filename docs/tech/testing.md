@@ -139,6 +139,11 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   and panic and its key bus included) and NI Chord-Detector's
   (`cd_processor`: a chord named, silence out, and the lane still heard
   while the host bypasses it),
+- the Move module's editor (`tg_move_ui`): `ui_chain.js` run against
+  Schwung's own shared modules and the module's real `chain_params` — every
+  step of every length reachable through the pads and the arrows, the ring,
+  the pad colours and the redraw gate. It needs a Schwung checkout beside this
+  one (or `SCHWUNG_SHARED`) and is reported Skipped without one,
 - the native kit's and the editors' unit tests (`tests/ui`:
   `ni_ui_tests_*_unit`) — every control, every editor on its fakes, and every
   info line held to 72 characters; their snapshot goldens are in the full
@@ -372,6 +377,6 @@ still exists:
 
 | exempt | why |
 |---|---|
-| `modules/trance-gate` (unit) | `ui_chain.js` runs on the Move inside Schwung's shadow UI and imports Schwung's own modules by their paths on the device, which this repository does not carry; `engines/trance-gate/tests/smoke_ui.mjs` runs every entry point in the module's own build. Its DSP and C shell are counted |
+| `modules/trance-gate` (unit) | `ui_chain.js` runs on the Move inside Schwung's shadow UI and imports Schwung's own modules by their paths on the device, which this repository does not carry; `engines/trance-gate/tests/smoke_ui.mjs` runs every entry point against them (`tg_move_ui`). Its DSP and C shell are counted |
 | `plugins/_shared/ui/src/ReducedMotion.cpp` (file) | every line is outside macOS (`#if ! JUCE_MAC`), and coverage runs on macOS; `ReducedMotion.mm` is counted |
 | `plugins/_shared/ui/gallery/Main.cpp` (file) | the gallery application's entry point, a window for a person to look at; every page it shows is counted through the kit's tests |

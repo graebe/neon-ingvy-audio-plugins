@@ -128,35 +128,11 @@ else
   exit 1
 fi
 
-# The UI smoke test needs the host's shared modules. SEARCH FOR THEM RATHER
-# THAN NAMING ONE PATH. A single "../schwung/src/shared" is right in a plain
-# checkout and wrong in a worktree, where .. is the worktree group directory --
-# so the 140 UI checks quietly skipped themselves for anyone working on a
-# branch, which is precisely the silent-no-fixture case the comment below
-# objects to. Set SCHWUNG_SHARED to override.
-if [ -n "$SCHWUNG_SHARED" ]; then
-  SHARED="$SCHWUNG_SHARED"
-else
-  SHARED=""
-  for d in ../schwung ../../schwung ../../../schwung/schwung ../../schwung/schwung; do
-    if [ -d "$d/src/shared/param_pages" ]; then
-      SHARED="$(cd "$d/src/shared" && pwd)"
-      break
-    fi
-  done
-fi
-if [ -d "$SHARED/param_pages" ]; then
-  echo
-  # ALWAYS REBUILD. This used to try the existing binary first and only
-  # compile if running it failed -- so an edit to chain_params was tested
-  # against the PREVIOUS build's JSON, silently, for as long as the old
-  # binary kept working. A stale fixture reports the old contract as the
-  # current one, which is worse than no fixture at all.
-  cc $CSTD -Iinclude -I"$CAPI" tests/dump_params.c "$ENGINE" \
-     -o "$OUT/dump_params" -lm
-  "./$OUT/dump_params" > "$OUT/chain_params.json"
-  TG_PARAMS="$OUT/chain_params.json" node tests/smoke_ui.mjs "$SHARED" "$OUT/.smoke"
-else
-  echo
-  echo "(ui smoke test skipped: $SHARED not found)"
+# The Move editor's test, which needs a Schwung checkout beside this one and
+# says so when there is none (tests/ui.sh; ctest runs it as tg_move_ui).
+echo
+status=0
+tests/ui.sh || status=$?
+if [ "$status" -ne 0 ] && [ "$status" -ne 77 ]; then
+  exit "$status"
 fi
