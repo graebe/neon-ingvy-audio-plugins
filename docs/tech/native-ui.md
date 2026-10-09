@@ -95,6 +95,30 @@ bundle that draws notation carries its `OFL.txt` (`NI_UI_MUSIC_FONT_LICENSE`).
 The gallery's Music section shows each in its states; `tests/ui/music.cpp`
 holds their behaviour and pictures.
 
+## The plots
+
+`Plot.h` is the PlotWell card: `ni::ui::PlotWell`, the well an editor's plot
+derives from and draws in (`paintPlot`), and in `ni::ui::plot` the marks the
+card allows inside it (`curve`, `under`, `ghost`, `dry`, `wet`, `rule`), the
+millisecond `Axis`, and `band`, the min/max envelope of an engine's capture.
+A plot draws what its engine rendered or captured, never a second model of the
+DSP.
+
+**An audio trace follows its material.** A well that draws one calls
+`enableLevelRange()` and feeds `followLevel(peak, nowMs)` from its frame tick,
+with the capture's peak (`plot::peak`); it builds its bands on
+`levelRange().fullScale()` (`BandGeometry::fullScale`) and again whenever
+`followLevel` says the range moved or `levelChanged()` is called.
+`plot::LevelRange` is the rule: the loudest level shown over the last two
+seconds, up to the next 6 dB rung between 0 and −48 dBFS, wider in the frame a
+louder peak arrives, narrower only after the window and 1.5 dB under the rung,
+gliding there with a 300 ms time constant. The well writes the range ("−12 dB")
+at the far end of its caption band, and a double-click — or an accessible press
+— holds it at full scale ("0 dB fixed") for the life of the editor. Only the
+audio zooms: a gain, gate or envelope over it stays on its own scale. The Side-Chain's
+well and the Trance Gate's Signal plot use it; `tests/ui/plot.cpp` holds the
+rule on a clock the test turns.
+
 ## The design layer
 
 **Tokens are generated.** `node scripts/gen-tokens.mjs` reads `tokens.json`

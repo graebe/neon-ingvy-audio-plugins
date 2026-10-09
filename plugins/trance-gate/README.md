@@ -164,6 +164,18 @@ full: they describe a pattern that no longer exists.
 
 It does not touch the playhead, so it is safe to press mid-bar.
 
+## Quiet tracks fill the Signal plot
+
+The Signal tab draws your audio before and after the gate, and it **zooms to fit
+the track**: a pad peaking at −20 dBFS fills the band instead of a sliver through
+its middle. The range follows the material in 6 dB steps, from full scale down to
+−48 dB — wider at once when something louder arrives, so nothing is ever cut off,
+narrower only after two quieter seconds — and the end of the caption always says
+what it is (`−18 dB`: the top edge is −18 dBFS). The gate's outline is a gain and
+does not zoom. A double-click on the plot holds it at full scale (`0 dB fixed`)
+until the next one; [the manual](docs/live.md#how-loud-the-signal-is-drawn) has
+the details.
+
 ## What the host can automate, and what it cannot
 
 Fifteen controls — Slot, Length, Rate, Amount, Width, the four envelope

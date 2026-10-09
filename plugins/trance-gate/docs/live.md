@@ -196,6 +196,39 @@ difference between what the gate asked for and what the audio did. The dry is
 grey rather than a dimmer violet because the difference between the two should
 not need a legend.
 
+### How loud the Signal is drawn
+
+The Signal **zooms to fit the track**. A synth peaking at −15 dBFS would be a
+sliver a quarter of the band high on a full-scale axis, so the plot draws the dry
+and gated traces on a range that follows what is playing, and says which at the
+right end of its caption, just left of the tabs: `−12 dB` means the band's top
+edge is −12 dBFS, so a peak that touches it is exactly that loud. The range moves
+in 6 dB steps, from `0 dB` (full scale) down to `−48 dB`:
+
+- **Louder material widens it at once**, in the frame it arrives, so the trace is
+  never cut off at the edges.
+- **Quieter material narrows it after a pause.** The plot waits until nothing as
+  loud has been shown for two seconds — the whole cycle on screen counts — then
+  glides in over about a second. A track sitting close to a step does not flip
+  back and forth: it has to stay 1.5 dB under the next step down first.
+- **Silence stays silence.** The range never goes below `−48 dB`, so a break in
+  the track does not blow its noise floor up to fill the band.
+
+**Only the audio zooms.** The envelope outline over the trace is the gate's gain,
+not a level, so it stays on its own scale: wherever the gate is fully open the
+outline runs along the band's edges whatever the range, and the trace, drawn
+larger, now reaches up towards it.
+
+For example, gate a pad peaking at −20 dBFS and the caption ends in `−18 dB`: the
+pad fills the band and every step's attack and release is plain to see. Push the
+pad's fader up by 12 dB and the range jumps to `−6 dB` as the louder cycle is
+written.
+
+**Double-click the Signal plot** to hold it at full scale; the label then reads
+`0 dB fixed`. Double-click again to let it follow the track. The choice lasts as
+long as the plugin window is open: closing and reopening it starts on the
+following range again. The Pattern plot is a gain throughout and never zooms.
+
 ## Copy and paste
 
 Right of the panels stands a column of six icons, the window's actions. The
