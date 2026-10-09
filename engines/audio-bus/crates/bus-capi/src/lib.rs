@@ -25,7 +25,8 @@ THE THREAD RULES ARE PART OF THE ABI:
   abus_pusher_release                    the main thread
   abus_pusher_push / push_at             the audio thread, and only it
   abus_reader_open / close / reattach    the main thread
-  abus_reader_read                       one thread, the same one each time
+  abus_reader_read / position /          one thread, the same one each time
+    timeline_of
   abus_probe                             the main thread
 
 push and read may overlap across any number of processes -- that is the whole
@@ -283,6 +284,37 @@ pub unsafe extern "C" fn abus_reader_read(
         *resynced = i32::from(res.resynced);
     }
     res.frames
+}
+
+/// The stream position of the next frame `abus_reader_read` delivers, so a
+/// read of `n` frames delivered positions `abus_reader_position(r) - n ..`.
+///
+/// # Safety
+/// `r` must come from `abus_reader_open`, or be NULL (0).
+#[no_mangle]
+pub unsafe extern "C" fn abus_reader_position(r: *const AbusReader) -> u64 {
+    r.as_ref().map_or(0, |r| r.0.position())
+}
+
+/// Where stream position `frame` -- one this reader has read -- sat on the
+/// sender's timeline. Returns 1 and writes `*timeline` when the sender
+/// stamped it; 0 when it did not (a stopped transport) or its stamp is gone.
+/// Loads only: the reading thread may ask, the audio thread included.
+///
+/// # Safety
+/// `r` must come from `abus_reader_open`, or be NULL; `timeline` writable.
+#[no_mangle]
+pub unsafe extern "C" fn abus_reader_timeline_of(r: *const AbusReader, frame: u64, timeline: *mut i64) -> c_int {
+    let Some(r) = r.as_ref() else { return 0 };
+    match r.0.stamp_at(frame).and_then(|s| s.timeline_of(frame)) {
+        Some(t) => {
+            if !timeline.is_null() {
+                *timeline = t;
+            }
+            1
+        }
+        None => 0,
+    }
 }
 
 /// Move a reader to the segment its slot's name leads to now, if a sender

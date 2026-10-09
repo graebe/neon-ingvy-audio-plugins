@@ -58,7 +58,10 @@ namespace ni
  * no position at all, which is not the same as a stopped transport; `ppq` is
  * NaN when it gave a position without a musical one. `looping` with the
  * cycle's start and end in beats, as the host reports them; what a cycle
- * that cannot be played means is ni::wire::host_loop's to decide. */
+ * that cannot be played means is ni::wire::host_loop's to decide.
+ * `timeInSamples` is the block's first sample on the host's timeline,
+ * meaningful only while `timed`: playing, with a position in samples -- the
+ * one clock two tracks' blocks share exactly (the audio bus stamps by it). */
 struct HostClock
 {
     bool known = false;
@@ -70,6 +73,8 @@ struct HostClock
     bool looping = false;
     double loopStart = 0.0;
     double loopEnd = 0.0;
+    bool timed = false;
+    std::int64_t timeInSamples = 0;
 };
 
 /* The transport from a play head, or an unknown clock for none. Audio thread;

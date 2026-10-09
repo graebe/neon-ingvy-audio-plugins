@@ -381,4 +381,9 @@ impl Cursor {
     pub fn epoch(&self) -> u32 {
         self.epoch
     }
+
+    /// The stream position of the next frame a read delivers.
+    pub fn position(&self) -> u64 {
+        self.frames
+    }
 }
