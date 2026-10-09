@@ -280,6 +280,29 @@ test('release-plugins.yml stages with the script, on macOS only, and asks for no
 });
 
 /*
+ * ONE PRODUCT'S RELEASE BUILDS AND TESTS THAT PRODUCT. The build job used to
+ * build everything and run the whole full tier, so one product's failing test
+ * blocked every release. It hands the tag's product to `scripts/test.sh
+ * product`, which builds that bundle and the tests labelled with it or
+ * product:shared (cmake/NiTest.cmake) -- and nothing in the job builds, tests
+ * or validates around it.
+ */
+test('release-plugins.yml builds, tests and validates the tagged product alone', () => {
+  const y = read('.github', 'workflows', 'release-plugins.yml');
+  const build = y.slice(y.indexOf('\n  build:\n'), y.indexOf('\n  release:\n'))
+    .split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.match(build, /node scripts\/release\.mjs resolve "\$GITHUB_REF_NAME"/,
+    'the build job does not resolve its tag with scripts/release.mjs');
+  assert.match(build,
+    /\n {8}env:\n {10}PRODUCT: \$\{\{ steps\.tag\.outputs\.product \}\}\n {8}run: scripts\/test\.sh product "\$PRODUCT"\n/,
+    'the build job does not run scripts/test.sh product on the tag\'s product');
+  assert.doesNotMatch(build, /cmake --(build|preset)|\bctest\b|validate-plugins\.sh/,
+    'the build job builds, tests or validates outside scripts/test.sh product');
+  assert.match(build, /node scripts\/stage-release\.mjs "\$PRODUCT" build\/out stage --os macos/,
+    'the build job does not stage the bundle scripts/test.sh product built');
+});
+
+/*
  * A PRODUCT'S BUNDLE, AS `scripts/test.sh product` BUILDS AND VALIDATES IT:
  * the bundleOf the staging reads, so the run and the release name one bundle,
  * and a product with no plugin stops the run before it builds anything.
