@@ -176,7 +176,12 @@ test('releasing every module on top of today\'s release.json keeps its shape', (
 });
 
 test('a beta goes to its module\'s beta channel and moves nothing else', () => {
+  /* The catalog as it would be BEFORE the Side-Chain's first release. The
+   * real release.json is rewritten by every published module release, so a
+   * test that read it as it stands would be testing the release history, not
+   * the rule -- it broke the day v2026.10.08.2 put the Side-Chain in it. */
   const before = JSON.parse(read('release.json'));
+  delete before.modules['ni-side-chain'];
   const r = { product: 'side-chain', module_id: 'ni-side-chain',
               module_version: '2026.10.01.1-beta.1', module_asset: 'ni-side-chain-module.tar.gz' };
   const first = updateReleaseJson(before, r, REPO, 'side-chain-v2026.10.01.1-beta.1');
