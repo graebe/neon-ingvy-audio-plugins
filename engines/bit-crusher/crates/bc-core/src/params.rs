@@ -77,6 +77,18 @@ pub enum Unit {
 }
 
 impl Unit {
+    /// The finest step a host keeps of a value in this unit: well below
+    /// what a knob's drag can tell apart, and coarse enough that a value on
+    /// it -- 5.5 bits, 7000 Hz -- survives a host's float normalisation and
+    /// comes back exactly, so a session reopens with the numbers it saved.
+    pub const fn resolution(self) -> f64 {
+        match self {
+            Unit::Db | Unit::Percent => 0.01,
+            Unit::Bits | Unit::Octaves => 0.001,
+            Unit::Hz => 0.1,
+        }
+    }
+
     /// The unit as a host lists it beside the value.
     pub const fn label(self) -> &'static str {
         match self {
@@ -195,6 +207,19 @@ impl Param {
         match self.info().kind {
             Kind::Float { min, max, .. } => v.clamp(min, max),
             Kind::Toggle { .. } => (v >= 0.5) as i32 as f64,
+        }
+    }
+
+    /// The nearest value on the unit's resolution, for a host that keeps a
+    /// value as a float; a toggle's 0 or 1. The engine itself takes any
+    /// value: this is the shells'.
+    pub fn snap(self, v: f64) -> f64 {
+        match self.info().kind {
+            Kind::Float { unit, .. } => {
+                let per = 1.0 / unit.resolution();
+                self.clamp((v * per).round() / per)
+            }
+            Kind::Toggle { .. } => self.clamp(v),
         }
     }
 

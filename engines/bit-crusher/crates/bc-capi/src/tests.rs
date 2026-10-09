@@ -20,6 +20,7 @@ fn info(index: i32) -> Option<BcParamInfo> {
         default_value: 0.0,
         log_travel: false,
         bipolar: false,
+        resolution: 0.0,
     };
     unsafe { bc_param_info(index, &mut out) }.then_some(out)
 }
@@ -44,6 +45,7 @@ fn the_table_describes_every_parameter_and_nothing_else() {
         assert!(text(|b, n| unsafe { bc_param_text(bad, 0.0, b, n) }).is_none());
         assert_eq!(bc_param_normalise(bad, 1.0), 0.0);
         assert_eq!(bc_param_denormalise(bad, 1.0), 0.0);
+        assert_eq!(bc_param_snap(bad, 1.0), 0.0);
     }
     assert!(unsafe { !bc_param_info(0, std::ptr::null_mut()) });
 }
@@ -53,6 +55,8 @@ fn kinds_travel_and_units_are_the_engines() {
     let rate = info(Param::Rate as i32).unwrap();
     assert_eq!(rate.kind, BcParamKind::Float);
     assert!(rate.log_travel);
+    assert_eq!(rate.resolution, 0.1);
+    assert_eq!(bc_param_snap(Param::Rate as i32, 7_000.04), 7_000.0);
     assert_eq!(text(|b, n| unsafe { bc_param_unit(Param::Rate as i32, b, n) }).unwrap(), "Hz");
     let aa = info(Param::AntiAlias as i32).unwrap();
     assert_eq!(aa.kind, BcParamKind::Toggle);

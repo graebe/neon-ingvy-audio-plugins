@@ -44,14 +44,14 @@
 namespace ni::bc
 {
 
-class BitCrusher final : public ni::Processor,
-                         public Model
+class Processor final : public ni::Processor,
+                        public Model
 {
 public:
     static constexpr int paramCount = param::count;
 
-    BitCrusher();
-    ~BitCrusher() override;
+    Processor();
+    ~Processor() override;
 
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void prepareToPlay (double sampleRate, int maximumBlockSize) override;
@@ -95,7 +95,7 @@ private:
     std::unique_ptr<BcScope> published;
     Scope latest;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BitCrusher)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Processor)
 };
 
 } // namespace ni::bc

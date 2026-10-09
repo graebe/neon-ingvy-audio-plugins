@@ -86,6 +86,13 @@ const PRODUCTS = {
     crates: ['cd-core', 'cd-capi'].map(
       (c) => `engines/chord-detector/crates/${c}/Cargo.toml`),
   },
+  /* The directory is `modules/bit-crusher`, the module ID `ni-bit-crusher`. */
+  'bit-crusher': {
+    juce: { cmake: 'plugins/bit-crusher/CMakeLists.txt', bundle: 'NIBitCrusher' },
+    module: 'modules/bit-crusher/module.json',
+    crates: ['bc-core', 'bc-capi', 'bc-move'].map(
+      (c) => `engines/bit-crusher/crates/${c}/Cargo.toml`),
+  },
   /* Music theory, shared like ni-dsp but versioned, because neo-riemann pins
    * it by revision from another repository. */
   'music-core': {

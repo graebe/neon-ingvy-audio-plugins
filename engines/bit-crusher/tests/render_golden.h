@@ -70,8 +70,8 @@ static inline void bc_render_input(float *l, float *r, int frames)
         const double tone = 0.45 * sin(2.0 * 3.14159265358979323846 * 220.0 * t);
         seed = seed * 1664525u + 1013904223u;
         const double click = (i % 1024 < 24) ? (double)((seed >> 9) & 0xFFFF) / 65535.0 * 0.4 - 0.2 : 0.0;
-        l[i] = (float)(lrint((tone + click) * 32768.0) / 32768.0);
-        r[i] = (float)(lrint((tone - click) * 32768.0) / 32768.0);
+        l[i] = (float)((double)lrint((tone + click) * 32768.0) / 32768.0);
+        r[i] = (float)((double)lrint((tone - click) * 32768.0) / 32768.0);
     }
 }
 

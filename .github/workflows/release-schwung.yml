@@ -33,6 +33,7 @@ on:
     tags:
       - 'trance-gate-v*'
       - 'side-chain-v*'
+      - 'bit-crusher-v*'
 
 permissions:
   contents: write

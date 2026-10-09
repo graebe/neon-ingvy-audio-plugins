@@ -147,3 +147,24 @@ fn units_and_flags_are_what_a_shell_shows() {
     assert!(bipolar(Param::Drive) && bipolar(Param::PostOctave) && bipolar(Param::Output));
     assert!(!bipolar(Param::Bits) && !bipolar(Param::Rate));
 }
+
+#[test]
+fn a_value_on_the_resolution_survives_a_float_round_trip() {
+    /* What a JUCE host does with a value: normalise it, keep it as an f32,
+     * and denormalise it -- then the shell snaps it back. */
+    for (p, v) in [
+        (Param::Bits, 5.5),
+        (Param::Rate, 7_000.0),
+        (Param::Rate, 12_345.6),
+        (Param::Shape, 30.0),
+        (Param::Mix, 80.0),
+        (Param::Output, -2.0),
+        (Param::PostOctave, 0.5),
+        (Param::Drive, 6.25),
+    ] {
+        let back = p.denormalise(f64::from(p.normalise(v) as f32));
+        assert_eq!(p.snap(back), v, "{p:?}");
+    }
+    assert_eq!(Param::AntiAlias.snap(0.7), 1.0);
+    assert_eq!(Param::Rate.snap(1e9), 96_000.0);
+}

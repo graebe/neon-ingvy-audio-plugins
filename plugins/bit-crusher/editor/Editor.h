@@ -2,18 +2,19 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Bit-Crusher's window, 840 x 532 at its design size, on Ultraviolet: the
+ * NI Bit-Crusher's window, 888 x 532 at its design size, on Ultraviolet: the
  * board "NI Bit-Crusher" on the NI Plugin Layouts canvas
  * (design/designs/BitCrusher.dc.html), built from the kit.
  *
- * TWO PICTURES OVER THREE PANELS, on one grid of three 248px columns 16 apart:
+ * TWO PICTURES OVER THREE PANELS, on one grid of three 264px columns 16 apart --
+ * as wide as a panel must be for its two switches, labels and all:
  *
  *    (32, 32)    STEPS, one column: the staircase, input across, output up
- *    (296, 32)   SIGNAL, two columns: the last ~11 ms, input and output
+ *    (312, 32)   SIGNAL, two columns: the last ~11 ms, input and output
  *    (32, 256)   three standard panels, a column each, 208 tall:
  *
  *                  STEPS   Bits, Shape, Dither        Mid-Rise, Anti-Alias
- *                  HOLD    Rate, Jitter, Octave       Pre-Filter, Post-Filter
+ *                  HOLD    Rate, Jitter, Octave       Pre, Post (the filters)
  *                  LEVEL   Drive, Mix, Output
  *
  *    (0, 488)    the Hint bar: three conventions, Motion, the Signature
@@ -23,7 +24,9 @@
  * driven into them and mixed back -- so there are three panels of three
  * knobs, each with the switches that change how that panel's knobs act.
  * Drive is a level, not a step: it decides how far up the staircase a signal
- * reaches, and lives with Mix and Output.
+ * reaches, and lives with Mix and Output. The filter switches read Pre and
+ * Post -- before and after the hold, in the Hold panel -- because the host's
+ * names, Pre-Filter and Post-Filter, do not both fit a column.
  *
  * STATE LIVES IN THE MODEL AND THE CONTROLS. tick() reads the model's
  * pictures and repaints what moved; the editor's one FrameClock calls it on
@@ -53,11 +56,11 @@ namespace ni::bc
 class Editor final : public juce::Component
 {
 public:
-    static constexpr int designWidth = 840;
+    static constexpr int designWidth = 888;
     static constexpr int designHeight = 532;
 
     /* The grid, in the content's own pixels (inside the window padding). */
-    static constexpr int column = 248;
+    static constexpr int column = 264;
     static constexpr int gutter = 16;
     static constexpr int plotH = 200;
     static constexpr int panelsY = plotH + 24;

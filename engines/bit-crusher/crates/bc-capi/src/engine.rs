@@ -216,6 +216,8 @@ pub struct BcParamInfo {
     pub log_travel: bool,
     /// True when the value runs both ways about zero.
     pub bipolar: bool,
+    /// The finest step a host should keep (bc_param_snap); 0 for a toggle.
+    pub resolution: f64,
 }
 
 /// How many parameters there are.
@@ -234,13 +236,14 @@ pub unsafe extern "C" fn bc_param_info(index: i32, out: *mut BcParamInfo) -> boo
         return false;
     };
     *out = match p.info().kind {
-        Kind::Float { min, max, default, travel, bipolar, .. } => BcParamInfo {
+        Kind::Float { min, max, default, travel, bipolar, unit } => BcParamInfo {
             kind: BcParamKind::Float,
             min,
             max,
             default_value: default,
             log_travel: travel == Travel::Log,
             bipolar,
+            resolution: unit.resolution(),
         },
         Kind::Toggle { default } => BcParamInfo {
             kind: BcParamKind::Toggle,
@@ -249,6 +252,7 @@ pub unsafe extern "C" fn bc_param_info(index: i32, out: *mut BcParamInfo) -> boo
             default_value: default as i32 as f64,
             log_travel: false,
             bipolar: false,
+            resolution: 0.0,
         },
     };
     true
@@ -336,6 +340,14 @@ pub unsafe extern "C" fn bc_param_parse(index: i32, text: *const c_char, out: *m
 #[no_mangle]
 pub extern "C" fn bc_param_normalise(index: i32, value: f64) -> f64 {
     Param::from_i32(index).map_or(0.0, |p| p.normalise(value))
+}
+
+/// `value` on parameter `index`'s resolution, inside its range: what a host
+/// that keeps values as floats should keep, so a value on it comes back
+/// exactly. 0 for an index out of range. Any thread.
+#[no_mangle]
+pub extern "C" fn bc_param_snap(index: i32, value: f64) -> f64 {
+    Param::from_i32(index).map_or(0.0, |p| p.snap(value))
 }
 
 /// The value at fraction `normalised` of parameter `index`'s travel: the

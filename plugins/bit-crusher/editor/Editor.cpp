@@ -65,8 +65,8 @@ Labels labelsOf (int index)
         case param::output:     return { "Output", info::output, info::dbValue };
         case param::midRise:    return { "Mid-Rise", info::midRise, info::midRise };
         case param::antiAlias:  return { "Anti-Alias", info::antiAlias, info::antiAlias };
-        case param::preFilter:  return { "Pre-Filter", info::preFilter, info::preFilter };
-        default:                return { "Post-Filter", info::postFilter, info::postFilter };
+        case param::preFilter:  return { "Pre", info::preFilter, info::preFilter };
+        default:                return { "Post", info::postFilter, info::postFilter };
     }
 }
 } // namespace

@@ -29,8 +29,10 @@ juce::String engineText (Read read)
 /*
  * A NUMBER ON THE ENGINE'S TRAVEL AND IN ITS WORDS. The range maps through
  * bc_param_normalise and _denormalise, so Rate turns in equal ratios as the
- * engine's table says; the text is bc_param_text, and typing is read by
- * bc_param_parse -- which refuses text with no number in it, and then the
+ * engine's table says, and lands on the table's resolution (bc_param_snap):
+ * a value a host keeps as a float comes back as the number that was set --
+ * 5.5 bits, not 5.50000000447. The text is bc_param_text, and typing is read
+ * by bc_param_parse -- which refuses text with no number in it, and then the
  * value stays where it is rather than going to the bottom of the range.
  */
 class EngineFloat final : public juce::AudioParameterFloat
@@ -43,7 +45,7 @@ public:
                   (float) info.min, (float) info.max,
                   [i] (float, float, float n) { return (float) bc_param_denormalise (i, (double) n); },
                   [i] (float, float, float v) { return (float) bc_param_normalise (i, (double) v); },
-                  [] (float, float, float v) { return v; }),
+                  [i] (float, float, float v) { return (float) bc_param_snap (i, (double) v); }),
               (float) info.default_value,
               juce::AudioParameterFloatAttributes().withStringFromValueFunction (
                   [i] (float v, int) { return engineText ([i, v] (char* b, int n) { return bc_param_text (i, (double) v, b, n); }); })),
@@ -83,7 +85,7 @@ bool monoOrStereo (const juce::AudioChannelSet& set)
 }
 } // namespace
 
-BitCrusher::BitCrusher()
+Processor::Processor()
     : ni::Processor (BusesProperties()
                          .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
@@ -99,15 +101,15 @@ BitCrusher::BitCrusher()
     }
 }
 
-BitCrusher::~BitCrusher() = default;
+Processor::~Processor() = default;
 
-bool BitCrusher::isBusesLayoutSupported (const BusesLayout& layout) const
+bool Processor::isBusesLayoutSupported (const BusesLayout& layout) const
 {
     const auto in = layout.getMainInputChannelSet();
     return monoOrStereo (in) && layout.getMainOutputChannelSet() == in;
 }
 
-void BitCrusher::prepareToPlay (double sampleRate, int)
+void Processor::prepareToPlay (double sampleRate, int)
 {
     const double rate = sampleRate > 0.0 ? sampleRate : 44100.0;
     bc_shell_post_sample_rate (shell.get(), rate);
@@ -117,16 +119,20 @@ void BitCrusher::prepareToPlay (double sampleRate, int)
     beat.prepare (rate);
 }
 
-double BitCrusher::plain (int index) const
+/* Snapped again in double: the float a parameter holds is the nearest to a
+ * value on the resolution, and this is that value -- 12345.6 Hz, not the
+ * float beside it. */
+double Processor::plain (int index) const
 {
     const auto* p = params[(size_t) index];
-    return (double) p->convertFrom0to1 (p->getValue());
+    return bc_param_snap (index, (double) p->convertFrom0to1 (p->getValue()));
 }
 
-void BitCrusher::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const int frames = buffer.getNumSamples();
-    beat.tick (readClock (getPlayHead()), frames);
+    const auto clock = readClock (getPlayHead());
+    beat.tick (clock, frames);
     if (frames <= 0 || buffer.getNumChannels() < 1)
         return;
 
@@ -139,7 +145,7 @@ void BitCrusher::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     bc_shell_end (shell.get(), (uint32_t) frames);
 }
 
-void BitCrusher::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
     ni::Processor::processBypassed (buffer, midi);
@@ -147,28 +153,28 @@ void BitCrusher::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBu
 
 /* ------------------------------------------------------------ the model -- */
 
-int BitCrusher::takeRings (float* strengths, int capacity)
+int Processor::takeRings (float* strengths, int capacity)
 {
     return beat.takeRings (strengths, capacity);
 }
 
-bool BitCrusher::motion() const
+bool Processor::motion() const
 {
     return ni::MachineSettings::motion ("bit-crusher");
 }
 
-void BitCrusher::setMotion (bool on)
+void Processor::setMotion (bool on)
 {
     ni::MachineSettings::setMotion ("bit-crusher", on);
 }
 
-bool BitCrusher::bipolar (int index) const
+bool Processor::bipolar (int index) const
 {
     BcParamInfo info {};
     return bc_param_info (index, &info) && info.bipolar;
 }
 
-void BitCrusher::steps (float* out, int count)
+void Processor::steps (float* out, int count)
 {
     if (out == nullptr || count <= 0)
         return;
@@ -176,7 +182,7 @@ void BitCrusher::steps (float* out, int count)
                         out, (uint32_t) count);
 }
 
-const Scope& BitCrusher::scope()
+const Scope& Processor::scope()
 {
     if (! bc_shell_read (shell.get(), published.get()) || published->serial == latest.serial)
         return latest;
@@ -188,17 +194,17 @@ const Scope& BitCrusher::scope()
     return latest;
 }
 
-juce::AudioProcessorEditor* BitCrusher::createEditor()
+juce::AudioProcessorEditor* Processor::createEditor()
 {
     return new ni::PluginEditor (*this, std::make_unique<Editor> (*this), ni::PluginEditor::FollowDesign {});
 }
 
-void BitCrusher::editorOpened()
+void Processor::editorOpened()
 {
     beat.setActive (true);
 }
 
-void BitCrusher::editorClosed()
+void Processor::editorClosed()
 {
     beat.setActive (false);
 }
@@ -207,5 +213,5 @@ void BitCrusher::editorClosed()
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new ni::bc::BitCrusher();
+    return new ni::bc::Processor();
 }

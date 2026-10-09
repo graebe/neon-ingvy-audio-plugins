@@ -41,8 +41,8 @@ inline constexpr InfoText antiAlias { "Anti-Alias — smooth each step's edge; t
 inline constexpr InfoText rate { "Rate — how many times a second a level is taken and held." };
 inline constexpr InfoText jitter { "Jitter — let the hold's clock wander; noisier, and wider in stereo." };
 inline constexpr InfoText octave { "Octave — where the post-filter sits, in octaves from half the Rate." };
-inline constexpr InfoText preFilter { "Pre-Filter — cut what Rate would fold back, before the hold." };
-inline constexpr InfoText postFilter { "Post-Filter — smooth the hold's steps after it, at Octave." };
+inline constexpr InfoText preFilter { "Pre — a filter before the hold: cut what Rate would fold back." };
+inline constexpr InfoText postFilter { "Post — a filter after the hold, at Octave: smooth its steps." };
 
 /* LEVEL. */
 inline constexpr InfoText drive { "Drive — gain into the crusher; past full scale the top step clips." };
