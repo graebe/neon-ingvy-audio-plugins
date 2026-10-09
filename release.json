@@ -1,20 +1,20 @@
 {
-  "version": "2026.10.08.2",
-  "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.2/trance-gate-module.tar.gz",
+  "version": "2026.10.08.3",
+  "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.3/trance-gate-module.tar.gz",
   "channels": {
     "stable": {
-      "version": "2026.10.08.2",
-      "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.2/trance-gate-module.tar.gz"
+      "version": "2026.10.08.3",
+      "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.3/trance-gate-module.tar.gz"
     }
   },
   "modules": {
     "trance-gate": {
-      "version": "2026.10.08.2",
-      "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.2/trance-gate-module.tar.gz",
+      "version": "2026.10.08.3",
+      "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.3/trance-gate-module.tar.gz",
       "channels": {
         "stable": {
-          "version": "2026.10.08.2",
-          "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.2/trance-gate-module.tar.gz"
+          "version": "2026.10.08.3",
+          "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/trance-gate-v2026.10.08.3/trance-gate-module.tar.gz"
         }
       }
     },
