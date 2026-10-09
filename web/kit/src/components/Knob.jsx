@@ -44,6 +44,8 @@ export function Knob(props) {
   let el;
   const [editing, setEditing] = createSignal(false);
   const norm = () => Math.min(1, Math.max(0, props.value ?? 0));
+  /* Where the value arc starts: the minimum, or 12 o'clock on a bipolar knob. */
+  const origin = () => (props.bipolar ? 0.5 : 0);
 
   /* THE PLUGIN PARSES IT, not the UI. "40 ms" needs the unit, the range and
    * the width the stage is measured against, and the UI holds none of them --
@@ -117,8 +119,11 @@ export function Knob(props) {
   };
 
   const onKeyDown = (e) => {
-    /* Shift is FINE here as it is in a drag, and the ratio is the same 5. */
-    const step = (e.shiftKey ? 0.002 : 0.01);
+    /* Shift is FINE here as it is in a drag, and the ratio is the same 5. A
+     * STEPPED knob (`steps` options) moves one option an arrow: a 1 % nudge
+     * on a thirteen-option Rate rounds back to where it was, and the key
+     * would seem dead. */
+    const step = props.steps > 1 ? 1 / (props.steps - 1) : (e.shiftKey ? 0.002 : 0.01);
     switch (e.key) {
       case 'ArrowUp': case 'ArrowRight': nudge(step); break;
       case 'ArrowDown': case 'ArrowLeft': nudge(-step); break;
@@ -200,12 +205,16 @@ export function Knob(props) {
           * disc and the knob has no cast at all. uv-deep underneath it, wider
           * and soft, is what makes it read as violet.
           */}
-        {norm() > 0.0001 && (
+        {/* FROM TWELVE O'CLOCK ON A BIPOLAR KNOB, either way, as the native kit's
+          * Knob draws it (plugins/_shared/ui/src/Knob.cpp): a Delay of -20 %
+          * is a short arc to the left of centre, not most of the way round.
+          * Not drawn where it starts. */}
+        {Math.abs(norm() - origin()) > 0.0001 && (
           /* --glow-arc, not a hand-typed rgba: this had drifted to alpha 0.75
            * against the system's 0.45, and a literal here is exactly what the
            * token guard now fails on. */
           <g class="glow-arc">
-            <path d={arc(0, norm())} fill="none" stroke="var(--uv)" stroke-width="2" stroke-linecap="butt" />
+            <path d={arc(Math.min(origin(), norm()), Math.max(origin(), norm()))} fill="none" stroke="var(--uv)" stroke-width="2" stroke-linecap="butt" />
           </g>
         )}
         {/* the pointer, inside the disc */}

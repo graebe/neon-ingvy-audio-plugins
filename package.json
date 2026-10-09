@@ -15,8 +15,8 @@
     "test:full": "scripts/test.sh full",
     "test:product": "scripts/test.sh product",
     "build:web": "scripts/build-web.sh",
-    "test:web": "node --conditions=browser --test web/kit/test/*.test.mjs web/trance-gate/test/*.test.mjs web/side-chain/test/*.test.mjs",
-    "test:e2e": "playwright test --config web/e2e/playwright.config.mjs"
+    "test:web": "scripts/test-web.sh unit kit && scripts/test-web.sh unit trance-gate && scripts/test-web.sh unit side-chain",
+    "test:e2e": "scripts/test-web.sh e2e trance-gate && scripts/test-web.sh e2e side-chain"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"

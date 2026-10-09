@@ -22,6 +22,8 @@ export function ParamKnob(props) {
     <Knob
       label={props.label}
       size={props.size}
+      bipolar={props.bipolar}
+      steps={props.steps}
       detents={props.detents}
       info={props.info}
       readoutInfo={props.readoutInfo}

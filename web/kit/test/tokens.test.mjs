@@ -36,14 +36,11 @@ import { dirname, join, relative, basename } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const TREES = [
   join(ROOT, 'web', 'kit', 'src'),
-  join(ROOT, 'plugins', 'trance-gate', 'ui', 'src'),
-  join(ROOT, 'plugins', 'spectrogram', 'ui', 'src'),
-  join(ROOT, 'plugins', 'side-chain', 'ui', 'src'),
-  /* NI Listen-In was outside this list until the ground went in, which is
-   * exactly the gap the guard exists to close: the newest editor is the one most
-   * likely to spell a colour, because it was written after the habit of not
-   * doing so stopped being visible. */
-  join(ROOT, 'plugins', 'listen-in', 'ui', 'src'),
+  /* The Move's web editors: every one of them, because the newest editor is
+   * the one most likely to spell a colour -- it was written after the habit of
+   * not doing so stopped being visible. */
+  join(ROOT, 'web', 'side-chain', 'src'),
+  join(ROOT, 'web', 'trance-gate', 'src'),
   /* The documentation site draws the same system, and is the consumer most
    * likely to reach for a #fff on a button hover. Its Markdown CONTENT is not
    * here and must not be: a product's README may quote a hex triplet in prose,

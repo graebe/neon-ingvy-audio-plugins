@@ -19,7 +19,10 @@ export function EditField(props) {
   const edit = createTextEdit({ onCommit: (v) => props.onCommit?.(v), onClose: () => props.onClose?.() });
   onMount(() => {
     el?.focus();
-    el?.select();
+    /* Selected, so typing replaces the value -- unless the field was opened
+     * BY a typed character, which `caretAtEnd` keeps rather than replaces. */
+    if (props.caretAtEnd) el?.setSelectionRange(el.value.length, el.value.length);
+    else el?.select();
   });
   return (
     <input
