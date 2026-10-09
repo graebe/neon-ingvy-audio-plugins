@@ -4,10 +4,13 @@
 /*
  * The plot primitives: the well's frame and caption, the ruler's ladder and
  * its landmark, the band's extremes and gaps, and the colours each mark may
- * use -- the web kit's Plot.jsx and its tests, natively.
+ * use -- the web kit's Plot.jsx and its tests, natively -- and the level range
+ * an audio trace is drawn on: its rungs, its attack, its release, its floor,
+ * its label and the well's full-scale view, on a clock the test turns.
  */
 #include "Plot.h"
 
+#include "Pointer.h"
 #include "UvTokens.h"
 #include "WaveSource.h"
 #include "pages.h"
@@ -15,6 +18,7 @@
 
 #include <doctest.h>
 
+#include <cmath>
 #include <vector>
 
 using namespace ni::ui;
@@ -49,6 +53,52 @@ struct MarkWell final : public PlotWell
             draw (g, *this);
     }
 };
+
+/* A level, from decibels full scale. */
+float level (float db)
+{
+    return std::pow (10.0f, db / 20.0f);
+}
+
+/* The test's clock: frames 60 a second, from wherever it stands. */
+struct Frames
+{
+    double ms = 0.0;
+    plot::LevelRange& range;
+
+    /* `seconds` of frames, each with a peak at `db`; the largest move of the
+     * range from one frame to the next. */
+    float run (double seconds, float db)
+    {
+        float largest = 0.0f;
+        for (const double end = ms + seconds * 1000.0; ms < end;)
+        {
+            ms += 1000.0 / 60.0;
+            const float before = range.db();
+            range.follow (level (db), ms);
+            largest = std::max (largest, std::abs (range.db() - before));
+        }
+        return largest;
+    }
+};
+
+/* A well with a level range, counting the rebuilds a range change asks for. */
+struct RangeWell final : public PlotWell
+{
+    int rebuilds = 0;
+    bool follow (float peak, double ms) { return followLevel (peak, ms); }
+    void levelChanged() override { ++rebuilds; }
+};
+
+/* Whether anything brighter than the well is drawn in `box`. */
+bool inked (const juce::Image& img, juce::Rectangle<int> box)
+{
+    for (int y = box.getY(); y < box.getBottom(); ++y)
+        for (int x = box.getX(); x < box.getRight(); ++x)
+            if (img.getPixelAt (x, y).getBrightness() > c::bg000.getBrightness() + 0.2f)
+                return true;
+    return false;
+}
 } // namespace
 
 TEST_CASE ("plot: the ruler picks the smallest interval whose ticks stay 38px apart")
@@ -276,6 +326,233 @@ TEST_CASE ("plot: assistive technology sees a picture named by its caption")
     REQUIRE (handler != nullptr);
     CHECK (handler->getRole() == juce::AccessibilityRole::image);
     CHECK (handler->getTitle() == "ENVELOPE");
+}
+
+TEST_CASE ("plot: a band's full scale is the level drawn at its edges")
+{
+    /* A -12 dBFS signal on a -12 dB range fills the band; on full scale, a
+     * quarter of it either side of the middle. */
+    std::vector<float> data { -0.25f, 0.25f, -0.25f, 0.25f };
+    juce::Path p;
+    plot::band (p, { data.data(), 2, 2 }, 0, 1, { 0.0f, 2, 0.0f, 100.0f, 0.25f });
+    CHECK (p.getBounds().getY() == doctest::Approx (0.0f));
+    CHECK (p.getBounds().getBottom() == doctest::Approx (100.0f));
+    plot::band (p, { data.data(), 2, 2 }, 0, 1, { 0.0f, 2, 0.0f, 100.0f });
+    CHECK (p.getBounds().getY() == doctest::Approx (37.5f));
+    CHECK (p.getBounds().getBottom() == doctest::Approx (62.5f));
+}
+
+TEST_CASE ("plot: a capture's peak is the largest magnitude in the fields asked for, of the columns seen")
+{
+    std::vector<float> data { -0.1f, 0.2f, -0.9f,
+                              -0.4f, 0.3f, 0.0f,
+                              -0.1f, 0.6f, 0.0f };
+    const plot::Capture cap { data.data(), 3, 3 };
+    CHECK (plot::peak (cap, { 0, 1 }) == doctest::Approx (0.6f));
+    CHECK (plot::peak (cap, { 0, 1, 2 }) == doctest::Approx (0.9f));
+    CHECK (plot::peak (cap, { 0, 1 }, [] (int column) { return column < 2; }) == doctest::Approx (0.4f));
+    /* A field the capture does not have is ignored; nothing at all is 0. */
+    CHECK (plot::peak (cap, { 0, 7 }) == doctest::Approx (0.4f));
+    CHECK (plot::peak ({ nullptr, 3, 3 }, { 0 }) == 0.0f);
+    CHECK (plot::peak (cap, { 0, 1 }, [] (int) { return false; }) == 0.0f);
+}
+
+TEST_CASE ("plot: a peak fits under the next 6 dB rung, from full scale down to -48 dB")
+{
+    CHECK (plot::LevelRange::fit (1.0f) == 0.0f);
+    CHECK (plot::LevelRange::fit (3.0f) == 0.0f);
+    CHECK (plot::LevelRange::fit (level (-3.0f)) == 0.0f);
+    CHECK (plot::LevelRange::fit (level (-7.0f)) == -6.0f);
+    CHECK (plot::LevelRange::fit (level (-15.0f)) == -12.0f);
+    /* On a rung is under it, a hair either side of the logarithm or not. */
+    CHECK (plot::LevelRange::fit (level (-24.0f)) == -24.0f);
+    CHECK (plot::LevelRange::fit (level (-23.995f)) == -24.0f);
+    CHECK (plot::LevelRange::fit (level (-23.9f)) == -18.0f);
+    /* The floor: quiet is not zoomed into, and silence is silence. */
+    CHECK (plot::LevelRange::fit (level (-47.0f)) == -42.0f);
+    CHECK (plot::LevelRange::fit (level (-49.0f)) == -48.0f);
+    CHECK (plot::LevelRange::fit (level (-90.0f)) == -48.0f);
+    CHECK (plot::LevelRange::fit (0.0f) == -48.0f);
+    CHECK (plot::LevelRange::fit (std::numeric_limits<float>::quiet_NaN()) == -48.0f);
+}
+
+TEST_CASE ("plot: the level range lands on its first rung, and a louder peak widens it in the same frame")
+{
+    plot::LevelRange range;
+    CHECK (range.db() == 0.0f);
+    CHECK (range.follow (level (-20.0f), 1000.0));
+    CHECK (range.db() == -18.0f);
+    CHECK (range.fullScale() == doctest::Approx (level (-18.0f)));
+
+    /* The attack: the frame the peak arrives in, whole rungs at a time. */
+    CHECK (range.follow (level (-3.0f), 1016.0));
+    CHECK (range.db() == 0.0f);
+    CHECK_FALSE (range.follow (level (-3.0f), 1033.0));
+}
+
+TEST_CASE ("plot: the level range never clips the trace it follows")
+{
+    plot::LevelRange range;
+    double ms = 0.0;
+    /* A gate's pattern of loud and quiet with a swell under it. */
+    for (int i = 0; i < 1200; ++i)
+    {
+        ms += 1000.0 / 60.0;
+        const float db = -30.0f + 25.0f * (float) std::sin (i * 0.013) * (i % 40 < 20 ? 1.0f : 0.4f);
+        range.follow (level (db), ms);
+        CHECK (range.fullScale() >= level (db) * 0.999f);
+    }
+}
+
+TEST_CASE ("plot: the level range waits out its window, then narrows smoothly to the rung that fits")
+{
+    plot::LevelRange range;
+    Frames f { 0.0, range };
+    f.run (1.0, -3.0f);
+    REQUIRE (range.db() == 0.0f);
+
+    /* Quiet now, but the loud second is inside the window: held. */
+    f.run (1.7, -20.0f);
+    CHECK (range.db() == 0.0f);
+
+    /* Past it, a glide: no frame moves it far, and it takes a while. */
+    const float largest = f.run (0.5, -20.0f);
+    CHECK (range.db() < 0.0f);
+    CHECK (range.db() > -18.0f);
+    CHECK (largest < 1.5f);
+
+    /* And it arrives, on the rung, inside two seconds. */
+    f.run (1.5, -20.0f);
+    CHECK (range.db() == -18.0f);
+    CHECK (range.label() == juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92" "18 dB")));
+}
+
+TEST_CASE ("plot: material sitting on a rung does not flip the range between two")
+{
+    plot::LevelRange range;
+    Frames f { 0.0, range };
+    /* -10 dBFS wants -6; then -12.5, which fits -12, but within the margin of
+     * it: the range stays where it is rather than pumping. */
+    f.run (1.0, -10.0f);
+    REQUIRE (range.db() == -6.0f);
+    f.run (6.0, -12.5f);
+    CHECK (range.db() == -6.0f);
+    /* -14 has the margin, and narrows it. */
+    f.run (6.0, -14.0f);
+    CHECK (range.db() == -12.0f);
+}
+
+TEST_CASE ("plot: silence settles on the floor, and the floor is never passed")
+{
+    plot::LevelRange range;
+    Frames f { 0.0, range };
+    f.run (0.5, -6.5f);
+    REQUIRE (range.db() == -6.0f);
+    f.run (6.0, -200.0f);
+    CHECK (range.db() == -48.0f);
+    for (int i = 0; i < 60; ++i)
+    {
+        f.ms += 16.0;
+        range.follow (0.0f, f.ms);
+        CHECK (range.db() >= plot::LevelRange::floorDb);
+    }
+}
+
+TEST_CASE ("plot: a clock that jumps or stands still neither stalls nor rushes the range")
+{
+    plot::LevelRange range;
+    range.follow (level (-1.0f), 0.0);
+    /* No time passes: nothing moves, whatever the peak. */
+    range.follow (level (-33.0f), 0.0);
+    CHECK (range.db() == 0.0f);
+    /* An editor hidden for a minute: the window has long passed, and the
+     * glide is a frame's step from a second, never a jump past its rung. */
+    range.follow (level (-33.0f), 60000.0);
+    CHECK (range.db() < 0.0f);
+    CHECK (range.db() >= -30.0f);
+    range.follow (level (-33.0f), 120000.0);
+    CHECK (range.db() == -30.0f);
+}
+
+TEST_CASE ("plot: the level label is whole decibels with a minus sign, and says when it is fixed")
+{
+    plot::LevelRange range;
+    CHECK (range.label() == "0 dB");
+    range.follow (level (-15.0f), 0.0);
+    CHECK (range.label() == juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92" "12 dB")));
+
+    /* Fixed is full scale, and the range follows on underneath it. */
+    range.setFixed (true);
+    CHECK (range.isFixed());
+    CHECK (range.db() == 0.0f);
+    CHECK (range.fullScale() == 1.0f);
+    CHECK (range.label() == "0 dB fixed");
+    CHECK_FALSE (range.follow (level (-40.0f), 16.0));
+    range.setFixed (false);
+    CHECK (range.db() == -12.0f);
+}
+
+TEST_CASE ("plot: a well with a level range labels it over the trace, and a double-click holds full scale")
+{
+    RangeWell well;
+    well.setSize (300, 104);
+    well.setCaption ("Signal");
+    const juce::Rectangle<int> labelBox { 200, 2, 94, 11 };
+
+    /* Not asked for: no label, and a double-click is nothing. */
+    CHECK_FALSE (well.hasLevelRange());
+    CHECK_FALSE (inked (test::render (well), labelBox));
+    gallery::Pointer p;
+    p.doubleClick (well, { 150.0f, 50.0f });
+    CHECK_FALSE (well.levelRange().isFixed());
+    CHECK (well.rebuilds == 0);
+
+    well.enableLevelRange();
+    CHECK (well.hasLevelRange());
+    CHECK (well.follow (level (-15.0f), 0.0));
+    CHECK (well.levelRange().db() == -12.0f);
+    /* Right-aligned to the content's edge, and not past it. */
+    const auto img = test::render (well);
+    CHECK (inked (img, { 280, 2, 14, 11 }));
+    CHECK_FALSE (inked (img, { 294, 2, 5, 11 }));
+
+    p.doubleClick (well, { 150.0f, 50.0f });
+    CHECK (well.levelRange().isFixed());
+    CHECK (well.rebuilds == 1);
+    p.doubleClick (well, { 150.0f, 50.0f });
+    CHECK_FALSE (well.levelRange().isFixed());
+    CHECK (well.rebuilds == 2);
+
+    /* The same, from outside: set to what it is already is no rebuild. */
+    well.setLevelFixed (false);
+    CHECK (well.rebuilds == 2);
+}
+
+TEST_CASE ("plot: the label keeps clear of a strip laid over the well's right edge")
+{
+    RangeWell well;
+    well.setSize (300, 104);
+    well.enableLevelRange (24.0f);
+    well.follow (level (-15.0f), 0.0);
+    const auto img = test::render (well);
+    CHECK (inked (img, { 200, 2, 70, 11 }));
+    CHECK_FALSE (inked (img, { 270, 2, 29, 11 }));
+}
+
+TEST_CASE ("plot: assistive technology presses a level range's well to hold it at full scale")
+{
+    RangeWell well;
+    well.enableLevelRange();
+    const auto handler = well.createAccessibilityHandler();
+    REQUIRE (handler != nullptr);
+    CHECK (handler->getRole() == juce::AccessibilityRole::image);
+    REQUIRE (handler->getActions().invoke (juce::AccessibilityActionType::press));
+    CHECK (well.levelRange().isFixed());
+
+    /* A well without one takes no press. */
+    PlotWell plain;
+    const auto none = plain.createAccessibilityHandler();
+    CHECK_FALSE (none->getActions().contains (juce::AccessibilityActionType::press));
 }
 
 NI_SNAPSHOT_TEST ("plot: envelope, signal, and a capture filling past its step")
