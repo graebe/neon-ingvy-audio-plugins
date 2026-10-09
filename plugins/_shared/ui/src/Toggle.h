@@ -21,7 +21,7 @@
  * reports, and saying it the other way round would tell the user the plugin is
  * reporting something when it is asking.
  *
- * IT DOES NOT FLIP ITSELF. A click, Space or Enter asks for the other state
+ * IT DOES NOT FLIP ITSELF. A click or Enter asks for the other state
  * (onChange (!isOn())); the owner sets it (setOn) from what the model now
  * holds -- ParamToggle from the host parameter -- so what it shows is always
  * the model's, never a guess that the model agreed.

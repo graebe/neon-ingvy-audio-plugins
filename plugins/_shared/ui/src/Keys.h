@@ -13,10 +13,20 @@
  *   arrows        step: 1 % of the range; Shift fine, 0.2 % (the drag's ratio of 5)
  *   Page Up/Down  a large step, 10 % -- or the next detent, where there is one
  *   Home / End    the ends of the range
- *   Enter         types into a knob's readout
- *   Space, Enter  press a button or a switch
- *   a step grid   one Tab stop: arrows move between steps, Space or Enter
- *                 toggles (Shift: a tie), Alt with Up or Down sets the amount
+ *   Enter         types into a knob's readout; presses a button or a
+ *                 switch, opens a menu and chooses in it
+ *   a step grid   one Tab stop: arrows move between steps, Enter toggles
+ *                 (Shift: a tie), Alt with Up or Down sets the amount
+ *
+ * SPACE IS THE HOST'S. In Live, Space starts and stops the transport wherever
+ * the keyboard is, and a plugin window is no exception: no control answers
+ * Space, with or without a modifier, so the window does not use it and JUCE's
+ * peer hands it back to the host (on macOS the plugin's view passes the
+ * keyDown it did not use up the responder chain, to the view Live gave it).
+ * The one exception is a text field being typed into -- a name, a value typed
+ * into a readout -- where Space is a character; it has the keyboard only for
+ * as long as the edit lasts. So a browser's "Space presses a button" is not
+ * kept here: Enter does it.
  *
  * Every keystroke is an edit of its own: one gesture per key (ParamBinding's
  * commit), so a host records one automation write per press rather than a
@@ -37,13 +47,14 @@ inline constexpr float step = 0.01f;
 inline constexpr float fineStep = 0.002f;
 inline constexpr float pageStep = 0.1f;
 
-/* The keys a control answers, by what they mean rather than their code. */
+/* The keys a control answers, by what they mean rather than their code.
+ * Space is none of them: it is the host's (above). */
 enum class Key
 {
     none,
     left, right, up, down,
     home, end, pageUp, pageDown,
-    space, enter, escape,
+    enter, escape,
 };
 
 Key keyOf (const juce::KeyPress&);
@@ -55,7 +66,7 @@ Key keyOf (const juce::KeyPress&);
  */
 std::optional<int> gridMove (Key, int index, int count, int cols);
 
-/* A step pad's keys: Space or Enter toggles (Shift: a tie); with Alt held the
+/* A step pad's keys: Enter toggles (Shift: a tie); with Alt held the
  * vertical arrows set its amount (Shift: finer); plain arrows move. */
 struct PadAction
 {

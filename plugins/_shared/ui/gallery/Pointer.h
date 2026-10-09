@@ -126,12 +126,4 @@ inline bool key (juce::Component& c, int code, juce::ModifierKeys mods = {})
     return c.keyPressed (juce::KeyPress (code, mods, 0));
 }
 
-/* Space as a person presses it: down, then up -- which is when a button
- * presses. */
-inline void space (juce::Component& c)
-{
-    c.keyPressed (juce::KeyPress (juce::KeyPress::spaceKey));
-    c.keyStateChanged (false);
-}
-
 } // namespace ni::ui::gallery

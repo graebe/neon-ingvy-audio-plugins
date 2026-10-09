@@ -10,6 +10,7 @@
 #include "Pointer.h"
 #include "Toggle.h"
 #include "checks.h"
+#include "hostkeys.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -65,16 +66,18 @@ TEST_CASE ("toggle: it does not flip itself -- a model that refuses keeps it whe
     CHECK_FALSE (t.isOn());
 }
 
-TEST_CASE ("toggle: Space and Enter flip it from the keyboard; disabled, nothing does")
+TEST_CASE ("toggle: Enter flips it from the keyboard, Space is the host's; disabled, nothing does")
 {
     Switched s;
-    ni::ui::gallery::space (s.toggle);
+    ni::ui::gallery::key (s.toggle, juce::KeyPress::returnKey);
+    CHECK (s.toggle.isOn());
+    CHECK_FALSE (ni::ui::test::windowUses (s.toggle, ni::ui::test::spaceKey));
     CHECK (s.toggle.isOn());
     ni::ui::gallery::key (s.toggle, juce::KeyPress::returnKey);
     CHECK_FALSE (s.toggle.isOn());
 
     s.toggle.setEnabled (false);
-    ni::ui::gallery::space (s.toggle);
+    ni::ui::gallery::key (s.toggle, juce::KeyPress::returnKey);
     Pointer p;
     p.click (s.toggle, { 10, 14 });
     CHECK (s.asked.size() == 2);

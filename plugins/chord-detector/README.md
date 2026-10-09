@@ -51,7 +51,9 @@ history still show every note.
 
 Click a key on the **circle of fifths**, or step around it a fifth at a time
 with the arrow keys, and pick a **mode** in its centre: Ionian (major), Dorian,
-Phrygian, Lydian, Mixolydian, Aeolian (natural minor) or Locrian.
+Phrygian, Lydian, Mixolydian, Aeolian (natural minor) or Locrian. From the
+keyboard, **Enter** opens the mode menu and chooses in it. **Space** always
+starts and stops Live's transport, also when the plugin window has focus.
 
 The key does two things:
 

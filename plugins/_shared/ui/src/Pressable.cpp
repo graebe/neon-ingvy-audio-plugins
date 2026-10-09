@@ -142,37 +142,10 @@ void Pressable::mouseUp (const juce::MouseEvent& e)
 
 bool Pressable::keyPressed (const juce::KeyPress& key)
 {
-    if (! isEnabled())
+    if (! isEnabled() || ! key.isKeyCode (juce::KeyPress::returnKey))
         return false;
 
-    if (key.isKeyCode (juce::KeyPress::returnKey))
-    {
-        focus.keyUsed();
-        stateChanged();
-        press();   // may delete this
-        return true;
-    }
-
-    if (key.isKeyCode (juce::KeyPress::spaceKey))
-    {
-        focus.keyUsed();
-        if (! spaceDown)
-        {
-            spaceDown = true;
-            stateChanged();
-        }
-        return true;   // a repeat while held: still the one press
-    }
-
-    return false;
-}
-
-bool Pressable::keyStateChanged (bool)
-{
-    if (! spaceDown || juce::KeyPress::isKeyCurrentlyDown (juce::KeyPress::spaceKey))
-        return false;
-
-    spaceDown = false;
+    focus.keyUsed();
     stateChanged();
     press();   // may delete this
     return true;
@@ -188,9 +161,6 @@ void Pressable::focusGained (FocusChangeType cause)
 
 void Pressable::focusLost (FocusChangeType)
 {
-    /* A Space held while the focus goes elsewhere presses nothing, as in a
-     * browser. */
-    spaceDown = false;
     focus.focusLost();
     stateChanged();
 }
@@ -198,10 +168,7 @@ void Pressable::focusLost (FocusChangeType)
 void Pressable::enablementChanged()
 {
     if (! isEnabled())
-    {
         pointerDown = false;
-        spaceDown = false;
-    }
     /* .btn:disabled { cursor: default } */
     setMouseCursor (isEnabled() ? juce::MouseCursor::PointingHandCursor
                                 : juce::MouseCursor::NormalCursor);

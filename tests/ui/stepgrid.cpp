@@ -181,7 +181,7 @@ TEST_CASE ("step grid: a press at once; a drag only after 4px, against the press
     CHECK (rig.grid.focusedStep() == 3);
 }
 
-TEST_CASE ("step grid: one Tab stop, the arrows move it, Space toggles, Alt the amount")
+TEST_CASE ("step grid: one Tab stop, the arrows move it, Enter toggles, Alt the amount")
 {
     Rig rig;
     auto& first = rig.grid.step (0);
@@ -194,7 +194,8 @@ TEST_CASE ("step grid: one Tab stop, the arrows move it, Space toggles, Alt the 
     CHECK_FALSE (first.getWantsKeyboardFocus());
 
     auto& second = rig.grid.step (1);
-    CHECK (key (second, juce::KeyPress::spaceKey));
+    CHECK_FALSE (key (second, juce::KeyPress::spaceKey));
+    CHECK (key (second, juce::KeyPress::returnKey));
     CHECK (key (second, juce::KeyPress::returnKey, juce::ModifierKeys::shiftModifier));
     CHECK (key (second, juce::KeyPress::downKey, juce::ModifierKeys::altModifier));
     CHECK (key (second, juce::KeyPress::upKey,

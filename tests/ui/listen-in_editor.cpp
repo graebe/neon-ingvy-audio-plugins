@@ -17,6 +17,7 @@
 
 #include "Pointer.h"
 #include "checks.h"
+#include "hostkeys.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -763,4 +764,33 @@ NI_SNAPSHOT_TEST ("listen-in: the name being typed, and the status line in the b
     rig.editor.nameField().focusGained (juce::Component::focusChangedByMouseClick);
     rig.editor.frame().infoState().enter (rig.line (rig.editor.statusLed()), &rig.editor.statusLed());
     NI_CHECK_SNAPSHOT (rig.editor, "listen-in-editing");
+}
+
+/* ---------------------------------------------------------------- Space -- */
+
+/* Space starts and stops Live's transport, also while this window has the
+ * keyboard (Keys.h): whatever a click left focused, nothing here uses it. */
+TEST_CASE ("listen-in: Space is the host's, wherever a click leaves the keyboard")
+{
+    Rig rig;
+    const auto users = ni::ui::test::spaceUsersAfterClicks (rig.editor);
+    CHECK_MESSAGE (users.isEmpty(), users.joinIntoString ("\n").toStdString());
+}
+
+TEST_CASE ("listen-in: Space is a character while the name is typed into, and the host's again after")
+{
+    Rig rig;
+    auto& name = rig.editor.nameField();
+    name.focusGained (juce::Component::focusChangedByMouseClick);
+    name.selectAll();
+    type (name, "kick");
+    CHECK (ni::ui::test::windowUses (name, ni::ui::test::spaceKey));
+    type (name, "bus");
+    key (name, juce::KeyPress::returnKey);
+    name.focusLost (juce::Component::focusChangedDirectly);
+    CHECK (rig.model.typedLabels == juce::StringArray { "kick bus" });
+
+    /* The edit over, the field lets the keyboard go: Space is the host's. */
+    CHECK_FALSE (name.isBeingEdited());
+    CHECK (ni::ui::test::spaceUsers (rig.editor).isEmpty());
 }

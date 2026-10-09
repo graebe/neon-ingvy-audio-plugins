@@ -139,6 +139,11 @@ step at a time, as before.
 Everything the pointer does, the keyboard does too. **Tab** moves between
 controls; a focused control shows a ring.
 
+**Space** always starts and stops Live's transport, also when the plugin window
+has focus — so the controls answer **Enter** instead. The one exception is
+typing: while you type a value into a readout or a new place into a pad's
+number, Space is a space.
+
 | on | key | what it does |
 |---|---|---|
 | a knob | ↑ / → and ↓ / ← | turns it by 1 % of its range (**Shift**: 0.2 %). Rate and Length: one division or one step |
@@ -146,19 +151,19 @@ controls; a focused control shows a ring.
 | | Home / End | to the minimum or the maximum |
 | | Enter | opens the readout to type a value |
 | the pads | arrow keys | move between pads (↑ and ↓ jump a row) |
-| | Space or Enter | toggles the focused step, like a click (with **Shift**: a tie) |
+| | Enter | toggles the focused step, like a click (with **Shift**: a tie) |
 | | **Alt** + ↑ / ↓ | raises or lowers that step's Amount by 10 % (**Shift** too: 1 %) |
 | | a digit | on a pad whose arrival number shows, opens it to type a new place (**Enter** keeps, **Escape** cancels) |
 | the ring | ↑ / → and ↓ / ← | Length, one step longer or shorter |
 | | Page Up / Page Down | Length to the next whole-bar length (four steps where there is none) |
 | | Home / End | Length 1 or 128 |
 | the Pattern / Signal tabs | arrow keys | switch tab |
-| a menu (Slot, Curve) | Space, Enter, ↑ or ↓ | opens it; the arrows choose, **Enter** keeps, **Escape** closes |
-| a switch (Out, Soft, Join Neighbors, Time in %) | Space or Enter | turns it on or off |
-| a button (Set order, Shuffle order, the icons) | Space or Enter | presses it |
+| a menu (Slot, Curve) | Enter, ↑ or ↓ | opens it; the arrows choose, **Enter** keeps, **Escape** closes |
+| a switch (Out, Soft, Join Neighbors, Time in %) | Enter | turns it on or off |
+| a button (Set order, Shuffle order, the icons) | Enter | presses it |
 
 For example, to tie step 9: Tab to the pads, press → until step 9 is focused,
-then **Shift + Space**. To thin it out, **Alt + ↓** twice takes it to 80 %.
+then **Shift + Enter**. To thin it out, **Alt + ↓** twice takes it to 80 %.
 
 ## Randomize
 
@@ -226,7 +231,7 @@ The next three icons in the column, **Export slot**, **Export all** and
 **Import**, save the current slot or all 8 slots to a file and load them back;
 see [Slot files](../README.md#slot-files). Point at an icon and the hint bar
 names it. The result shows in the hint bar for a few seconds. All three work
-from the keyboard: Tab to them and press Enter or Space.
+from the keyboard: Tab to them and press Enter.
 
 ## Installing and updating
 

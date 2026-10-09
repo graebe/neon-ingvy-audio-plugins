@@ -6,20 +6,21 @@
  * CheckList's face have in common -- hover, the pressed state, the keys that
  * press it, its focus ring and what a screen reader is told.
  *
- * NOT juce::Button, for three reasons that each show in a window. Its
+ * NOT juce::Button, for two reasons that each show in a window. Its
  * keyboard click is posted (triggerClick) and arrives a message later, with a
  * 100 ms "down" flash on a timer -- an animated control, and a state that
- * hangs off a timer. It does not answer Space, which the system's conventions
- * and every browser button do. And its hover is the real mouse's, so a test or
- * a gallery page cannot show the state at all. This is a browser <button>,
- * which is what the web kit's controls are:
+ * hangs off a timer. And its hover is the real mouse's, so a test or a
+ * gallery page cannot show the state at all. This is a browser <button>,
+ * which is what the web kit's controls are, but for Space:
  *
  *   pointer   pressed while the button is held down on it (CSS :active), a
  *             press when it is released over it; hover while it is over it
  *   Enter     a press, at once, every time the key repeats
- *   Space     pressed while held, a press on release -- so a held Space does
- *             not flick a switch back and forth as the key repeats
  *   a client  an accessibility client's press (and toggle) action
+ *
+ * SPACE IS NOT A PRESS. In a plugin window Space is the host's transport
+ * (Keys.h), so a focused button leaves it to the host, as every other control
+ * does.
  *
  * Every press is synchronous and on the message thread. A press may delete
  * the control (a press that closes the panel it is in), so nothing here
@@ -66,7 +67,7 @@ public:
 
     /* What it looks like now. */
     bool isHovered() const noexcept { return hovered; }
-    bool isPressed() const noexcept { return pointerDown || spaceDown; }
+    bool isPressed() const noexcept { return pointerDown; }
     bool isFocusShown() const { return isFocusVisible (*this); }
 
     /* Where the pointer was last seen over it, in its own coordinates. */
@@ -83,7 +84,6 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     bool keyPressed (const juce::KeyPress&) override;
-    bool keyStateChanged (bool isKeyDown) override;
     void focusGained (FocusChangeType) override;
     void focusLost (FocusChangeType) override;
     void enablementChanged() override;
@@ -115,7 +115,6 @@ private:
     const juce::AccessibilityRole role;
     bool hovered = false;
     bool pointerDown = false;
-    bool spaceDown = false;
     juce::Point<float> pointerAt;
 
     JUCE_DECLARE_NON_COPYABLE (Pressable)

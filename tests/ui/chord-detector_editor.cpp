@@ -10,6 +10,7 @@
 #include "Pointer.h"
 #include "checks.h"
 #include "fakes.h"
+#include "hostkeys.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -312,4 +313,17 @@ NI_SNAPSHOT_TEST ("chord-detector: the window, held, as MIDI lines")
     model.now.pedal = 1;
     editor.tick();
     NI_CHECK_SNAPSHOT (editor, "chord-detector-held-midi");
+}
+
+/* ---------------------------------------------------------------- Space -- */
+
+/* Space starts and stops Live's transport, also while this window has the
+ * keyboard (Keys.h): whatever a click left focused, nothing here uses it. */
+TEST_CASE ("chord-detector: Space is the host's, wherever a click leaves the keyboard")
+{
+    FakeModel model;
+    Editor editor (model);
+    editor.tick();
+    const auto users = ni::ui::test::spaceUsersAfterClicks (editor);
+    CHECK_MESSAGE (users.isEmpty(), users.joinIntoString ("\n").toStdString());
 }

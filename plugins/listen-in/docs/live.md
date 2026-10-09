@@ -21,7 +21,9 @@ almost never what you meant.
    set and you can automate it.
 2. Click the **Name** field and type, say, `bass`. **Enter** keeps it,
    **Escape** abandons the edit. Up to thirty-one bytes; a colon or a control
-   character such as a newline is dropped.
+   character such as a newline is dropped. While you type, Space is a space;
+   at any other time **Space** always starts and stops Live's transport, also
+   when the plugin window has focus.
 3. The meter moves when audio is passing. The light beside it is lit and says
    `listening` when the bus is live; point at it and the hint bar names the
    bus and its name.

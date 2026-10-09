@@ -25,7 +25,7 @@
  *
  * THE KEYBOARD: one Tab stop for the whole grid -- the step last touched --
  * and padKey's map (Keys.h): the arrows move between steps, a row at a time
- * up and down; Space or Enter is onToggle (step, tie) with Shift for a tie;
+ * up and down; Enter is onToggle (step, tie) with Shift for a tie;
  * Alt with Up or Down is onNudge (step, delta), 10 % (Shift: 1 %). Its focus
  * ring is glow-focus round the focused step, for the keyboard only.
  *

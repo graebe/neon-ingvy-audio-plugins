@@ -22,7 +22,6 @@ Key keyOf (const juce::KeyPress& k)
     if (code == juce::KeyPress::endKey)      return Key::end;
     if (code == juce::KeyPress::pageUpKey)   return Key::pageUp;
     if (code == juce::KeyPress::pageDownKey) return Key::pageDown;
-    if (code == juce::KeyPress::spaceKey)    return Key::space;
     if (code == juce::KeyPress::returnKey)   return Key::enter;
     if (code == juce::KeyPress::escapeKey)   return Key::escape;
     return Key::none;
@@ -42,7 +41,6 @@ std::optional<int> gridMove (Key key, int index, int count, int cols)
         case Key::none:
         case Key::pageUp:
         case Key::pageDown:
-        case Key::space:
         case Key::enter:
         case Key::escape:
             break;
@@ -56,7 +54,7 @@ PadAction padKey (const juce::KeyPress& k, int index, int count, int cols)
     const auto mods = k.getModifiers();
     PadAction a;
 
-    if (key == Key::space || key == Key::enter)
+    if (key == Key::enter)
     {
         a.kind = PadAction::Kind::toggle;
         a.tie = mods.isShiftDown();
@@ -99,7 +97,6 @@ SliderAction sliderKey (const juce::KeyPress& k, Axis axis)
         case Key::home:     return to (0.0f);
         case Key::end:      return to (1.0f);
         case Key::none:
-        case Key::space:
         case Key::enter:
         case Key::escape:
             break;
@@ -122,7 +119,6 @@ std::optional<int> tabMove (Key key, int index, int count)
         case Key::none:
         case Key::pageUp:
         case Key::pageDown:
-        case Key::space:
         case Key::enter:
         case Key::escape:
             break;
@@ -151,7 +147,6 @@ std::optional<int> countKey (const juce::KeyPress& k, int value, int min, int ma
         case Key::home:     return min;
         case Key::end:      return max;
         case Key::none:
-        case Key::space:
         case Key::enter:
         case Key::escape:
             break;

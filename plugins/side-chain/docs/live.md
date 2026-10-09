@@ -62,6 +62,10 @@ automation lane, exactly as turning the knob below it would.
 For example, to make the duck let go later: Tab to the last handle and press →
 a few times; each press is one undo step.
 
+**Space** always starts and stops Live's transport, also when the plugin window
+has focus. Switches and menus answer **Enter**; only while you type a value
+into a readout is Space a space.
+
 An **amber line at the right edge** means the shape is longer than one cycle and
 cannot finish before the next trigger. That is allowed — the overlap is a real
 sound — but it is worth knowing you are hearing it.
