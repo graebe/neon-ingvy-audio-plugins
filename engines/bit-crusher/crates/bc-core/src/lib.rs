@@ -498,10 +498,12 @@ fn usable_rate(sample_rate: f64) -> f64 {
 /// the grid and the clip -- what the quantiser does to each level, without
 /// the noise and the time. The engine's own grid and curve, so a plot drawn
 /// from it is the staircase the engine uses, never a second model of it.
+/// A NaN setting is the parameter's default.
 pub fn transfer(drive_db: f64, bits: f64, shape_pct: f64, mid_rise: bool, x: f64) -> f64 {
-    let grid = Grid::new(Param::Bits.clamp(bits), mid_rise);
-    let shape = Shape::new(Param::Shape.clamp(shape_pct) / 100.0);
-    let x = x * db_to_amp(Param::Drive.clamp(drive_db));
+    let value = |p: Param, v: f64| if v.is_nan() { p.default_value() } else { p.clamp(v) };
+    let grid = Grid::new(value(Param::Bits, bits), mid_rise);
+    let shape = Shape::new(value(Param::Shape, shape_pct) / 100.0);
+    let x = x * db_to_amp(value(Param::Drive, drive_db));
     shape.expand(grid.quantize(shape.compress(x)))
 }
 

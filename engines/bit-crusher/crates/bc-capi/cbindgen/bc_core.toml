@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# bc_core.h, from src/engine.rs (build.rs, through
+# engines/shared/cbindgen/capi_header.rs).
+language = "C"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+//
+// NI Bit-Crusher's engine, as C: the parameter table, the steps as a curve,
+// and one engine instance, `bc_*`. GENERATED at build time by cbindgen from
+// engines/bit-crusher/crates/bc-capi/src/engine.rs -- edit that, never this."""
+include_guard = "BC_CORE_H"
+cpp_compat = true
+documentation = true
+documentation_style = "c99"
+usize_is_size_t = true
+sys_includes = ["stdbool.h", "stddef.h", "stdint.h"]
+no_includes = true
+
+[export]
+include = ["BcParamInfo", "BcParamKind"]
+
+[enum]
+prefix_with_name = true

@@ -78,9 +78,13 @@ impl Grid {
     }
 
     /// The level index `x` falls on. Inputs past full scale take the top one.
+    /// Mid-rise takes the step above an edge, as floor() does -- so silence,
+    /// which sits on the edge at zero, is the half step up -- and mid-tread
+    /// rounds half away from zero, the same both ways.
     #[inline]
     pub fn index(&self, x: f64) -> f64 {
-        let m = (x / self.delta - self.offset).round() + self.offset;
+        let u = x / self.delta;
+        let m = if self.offset > 0.0 { u.floor() + self.offset } else { u.round() };
         m.clamp(-self.top, self.top)
     }
 

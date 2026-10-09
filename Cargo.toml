@@ -56,6 +56,8 @@ members = [
     "engines/chord-detector/crates/cd-capi",  # the C ABI -> the plugin
     # NI Bit-Crusher: one core, two wrappers, the Side-Chain's shape.
     "engines/bit-crusher/crates/bc-core",     # the DSP
+    "engines/bit-crusher/crates/bc-capi",     # the C ABI -> the plugin
+    "engines/bit-crusher/crates/bc-move",     # the Schwung vtable -> the module
     # The animated ground's beat clock. Like audio-bus it is not a
     # product: it ships inside EVERY editor, because the design system gives
     # every window the same ground. It depends on no product in return.

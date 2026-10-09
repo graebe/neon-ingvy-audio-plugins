@@ -336,6 +336,8 @@ fn the_transfer_curve_is_the_engines_staircase() {
     /* Shape keeps quiet levels. */
     assert!(transfer(0.0, 4.0, 100.0, false, 0.02) > 0.0);
     assert_eq!(transfer(0.0, 4.0, 0.0, false, 0.02), 0.0);
+    /* A NaN setting is its default: 8 bits, no shape, no drive. */
+    assert_eq!(transfer(f64::NAN, f64::NAN, f64::NAN, false, 0.3), transfer(0.0, 8.0, 0.0, false, 0.3));
 }
 
 #[test]

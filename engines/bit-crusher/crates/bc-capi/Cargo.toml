@@ -1,0 +1,40 @@
+[package]
+name = "bc-capi"
+version = "2026.10.9+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The bc_* C ABI over the NI Bit-Crusher engine"
+publish.workspace = true
+
+[lib]
+name = "bc_capi"
+# staticlib for the plugin to link; rlib so bc-move can carry this surface
+# too without a second copy of the Rust runtime.
+crate-type = ["staticlib", "rlib"]
+
+# THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (bc_shell_*, on
+# shell-core's bridge) and the ground's C ABI (gnd_*) that every plugin's one
+# archive carries. bc-move turns it off, for sc-capi's reason: the Move module
+# has one thread and no editor.
+[features]
+default = ["shell"]
+shell = ["dep:shell-core", "dep:ground-capi"]
+
+[dependencies]
+bc-core = { path = "../bc-core" }
+# The animated ground's beat clock, compiled INTO this archive (one archive
+# per plugin; see ground-capi/Cargo.toml).
+ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
+# The command queue and the published snapshot between the plugin's threads.
+shell-core = { path = "../../../shell/crates/shell-core", optional = true }
+# The C-string helpers every capi crate wraps its entry points in.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+
+# bc_core.h and bc_shell.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

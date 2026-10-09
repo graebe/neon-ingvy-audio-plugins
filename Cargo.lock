@@ -48,6 +48,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0cab808e4f26ab216811b4b759e85823f9630a4da86e90e207bdc99cf565d32"
 
 [[package]]
+name = "bc-capi"
+version = "2026.10.9+1"
+dependencies = [
+ "assert_no_alloc",
+ "bc-core",
+ "cbindgen",
+ "ground-capi",
+ "ni-dsp",
+ "shell-core",
+]
+
+[[package]]
 name = "bc-core"
 version = "2026.10.9+1"
 dependencies = [
@@ -58,6 +70,17 @@ dependencies = [
  "proptest",
  "realfft",
  "wmidi",
+]
+
+[[package]]
+name = "bc-move"
+version = "2026.10.9+1"
+dependencies = [
+ "bc-capi",
+ "bc-core",
+ "ni-dsp",
+ "ni-schwung",
+ "serde_json",
 ]
 
 [[package]]

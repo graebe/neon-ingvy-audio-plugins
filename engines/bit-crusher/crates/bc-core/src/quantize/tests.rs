@@ -31,6 +31,7 @@ fn mid_tread_keeps_silence_silent_and_mid_rise_makes_it_half_a_step() {
     assert_eq!(tread.quantize(1e-6), 0.0);
     assert_eq!(rise.quantize(1e-6), 0.5 * rise.delta());
     assert_eq!(rise.quantize(-1e-6), -0.5 * rise.delta());
+    assert_eq!(rise.quantize(0.0), 0.5 * rise.delta());
 }
 
 #[test]
