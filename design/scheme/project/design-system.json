@@ -150,9 +150,9 @@
  },
  "lastChange": {
   "by": "Torben",
-  "at": "2026-10-06T10:50:00Z",
+  "at": "2026-10-09T12:00:00Z",
   "via": "Claude Code",
-  "note": "Release 1.1.0: beat-driven ground, hover info, knob detents, export/import icons, PlotWell, Meter, TextField, data tokens; on-uv is deep ultraviolet",
-  "version": "1.1.0"
+  "note": "Release 1.2.0: plot-key, the reference behind a plot (the kick behind a duck); amber is also a signal colour",
+  "version": "1.2.0"
  }
 }

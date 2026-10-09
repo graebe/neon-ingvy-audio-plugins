@@ -28,6 +28,9 @@
  *   ghost()   a 1px plot-ghost line                 a reference behind it
  *   dry()     plot-dry at half opacity              the input behind a trace
  *   wet()     uv with the arc glow                  the processed trace
+ *   key()     plot-key at 30%                       the reference behind them all
+ *   keyEdge() its edge, 1px plot-key at 90%,        (the kick behind a duck),
+ *             over the dry, under the wet           read through the grey
  *   rule()    a line-200 rule, amber 2px when       a position mark; amber is
  *             something runs past it                the window's one amber mark
  *   Axis      a line-200 ruler with 3px ticks and hint labels about 38px apart
@@ -97,6 +100,11 @@ void under (juce::Graphics&, const juce::Path& area);
 void ghost (juce::Graphics&, const juce::Path& line);
 void dry (juce::Graphics&, const juce::Path& area);
 void wet (juce::Graphics&, const juce::Path& area);
+/* The reference band (the fill, first of all) and its edge (after dry(),
+ * before wet()): 1.2.0's plot-key. A band, never a rule -- amber as a rule is
+ * the warning. */
+void key (juce::Graphics&, const juce::Path& area);
+void keyEdge (juce::Graphics&, const juce::Path& area);
 
 /* A vertical position mark at `x`, from `top` to `bottom`. */
 void rule (juce::Graphics&, float x, float top, float bottom, bool warn = false);
