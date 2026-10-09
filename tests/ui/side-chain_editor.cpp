@@ -16,7 +16,9 @@
  *                     defaults, every key one edit
  *   the header        source, rate, stage, and the one amber warning in its
  *                     order, the trigger's only after most of a second
- *   the plot          its caption, playhead, landmark and overrun mark
+ *   the plot          its caption, playhead, landmark and overrun mark; the
+ *                     audio on its level range, the shape and the envelope
+ *                     on their own, a double-click on the well full scale
  *   the hint          the conventions, the times in the unit Time asks for
  *
  * and then its main states as pictures.
@@ -507,6 +509,68 @@ TEST_CASE ("side-chain: the ruler spans the cycle in ms, its landmark where the 
     CHECK (landmarkMs (m, 500.0) == 0.0);
 }
 
+TEST_CASE ("side-chain: the audio zooms with the material and says its range; the handles stay where they are")
+{
+    Rig rig;
+    rig.model.engine.msPerCycle = 500.0;
+    rig.model.fillScope (512, 512, 0.8f);
+    rig.frame();
+    auto& s = rig.shaper();
+    CHECK (s.hasLevelRange());
+    CHECK (s.levelRange().db() == 0.0f);
+    CHECK (s.levelRange().label() == "0 dB");
+    const auto bottom = s.handlePoint (Shaper::Which::bottom);
+    const auto end = s.handlePoint (Shaper::Which::end);
+
+    /* A track at -24 dBFS: widened at once when it is loud, narrowed after
+     * the window when it is quiet -- and the shape, a gain, never moves. */
+    rig.model.fillScope (512, 512, 0.063f);
+    for (int i = 0; i < 300; ++i)
+        rig.frame();
+    CHECK (s.levelRange().db() == -18.0f);
+    CHECK (s.handlePoint (Shaper::Which::bottom) == bottom);
+    CHECK (s.handlePoint (Shaper::Which::end) == end);
+
+    rig.model.fillScope (512, 512, 1.0f);
+    rig.frame();
+    CHECK (s.levelRange().db() == 0.0f);
+}
+
+TEST_CASE ("side-chain: only what has been seen counts towards the range")
+{
+    Rig rig;
+    rig.model.fillScope (512, 0, 0.8f);
+    rig.frame();
+    CHECK (rig.shaper().levelRange().db() == ni::ui::plot::LevelRange::floorDb);
+}
+
+TEST_CASE ("side-chain: a double-click on the well holds full scale; on a handle it resets the handle")
+{
+    Rig rig;
+    rig.model.fillScope (512, 512, 0.063f);
+    rig.frame();
+    auto& s = rig.shaper();
+    REQUIRE (s.levelRange().db() == -24.0f);
+
+    /* Away from every handle: the middle of the release's open stretch. */
+    Pointer p;
+    p.doubleClick (s, { s.xOf (80.0), s.mid() + 0.8f * s.half() });
+    CHECK (s.levelRange().isFixed());
+    CHECK (s.levelRange().label() == "0 dB fixed");
+    rig.frame();
+    CHECK (s.levelRange().fullScale() == 1.0f);
+
+    /* A handle's double-click is the handle's. */
+    rig.model.params[param::release].setValueNotifyingHost (0.4f);
+    p.doubleClick (rig.handle (Shaper::Which::end), { 16.0f, 16.0f });
+    CHECK (rig.model.params[param::release].getValue() == doctest::Approx (rig.model.params[param::release].getDefaultValue()));
+    CHECK (s.levelRange().isFixed());
+
+    p.doubleClick (s, { s.xOf (80.0), s.mid() + 0.8f * s.half() });
+    CHECK_FALSE (s.levelRange().isFixed());
+    CHECK (s.levelRange().db() == -24.0f);
+}
+
 TEST_CASE ("side-chain: no input is any seen column above the floor; an empty capture is no verdict")
 {
     Scope empty;
@@ -719,14 +783,15 @@ TEST_CASE ("side-chain: the Motion switch is the model's")
 
 namespace
 {
-/* A cycle at 120 bpm and 1/4 with a bass under it, the sweep part way. */
-void playing (Rig& rig)
+/* A cycle at 120 bpm and 1/4 with a bass under it at `level`, the sweep part
+ * way. */
+void playing (Rig& rig, float level = 0.8f)
 {
     rig.model.engine.msPerCycle = 500.0;
     rig.model.engine.sweep = 0.62;
     rig.model.engine.advancing = true;
     rig.model.engine.stage = Stage::release;
-    rig.model.fillScope (512, 318, 0.8f);
+    rig.model.fillScope (512, 318, level);
     rig.frame();
 }
 } // namespace
@@ -736,6 +801,22 @@ NI_SNAPSHOT_TEST ("side-chain: Cycle, playing")
     Rig rig;
     playing (rig);
     NI_CHECK_SNAPSHOT (rig.editor, "side-chain-cycle");
+}
+
+NI_SNAPSHOT_TEST ("side-chain: Cycle, a quiet track at -24 dBFS, zoomed to fill the well")
+{
+    Rig rig;
+    playing (rig, 0.063f);
+    REQUIRE (rig.shaper().levelRange().db() == -24.0f);
+    NI_CHECK_SNAPSHOT (rig.editor, "side-chain-quiet");
+}
+
+NI_SNAPSHOT_TEST ("side-chain: Cycle, a loud track at 0 dBFS, on full scale")
+{
+    Rig rig;
+    playing (rig, 1.0f);
+    REQUIRE (rig.shaper().levelRange().db() == 0.0f);
+    NI_CHECK_SNAPSHOT (rig.editor, "side-chain-loud");
 }
 
 NI_SNAPSHOT_TEST ("side-chain: MIDI, no note arriving")

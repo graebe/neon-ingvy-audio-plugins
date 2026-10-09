@@ -333,7 +333,7 @@ void SideChainEditor::refreshStages()
 
 void SideChainEditor::tick (double nowMs)
 {
-    plot->update();
+    plot->update (nowMs);
 
     lastState = model.state();
     lastStages = model.stageMs();
