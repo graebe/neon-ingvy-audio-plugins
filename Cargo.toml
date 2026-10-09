@@ -71,6 +71,10 @@ members = [
     "engines/shared/crates/ni-dsp",           # C-compatible fmt, rates, curves, glides
     "engines/shared/crates/ni-schwung",       # the audio_fx v2 glue -> every module
     "engines/shared/crates/music-core",       # pitches, chords, keys: the theory
+    # The code behind a paper (papers/<name>/code): every listing it prints is
+    # a tested region of the crate. No product links one; like the shared
+    # crates, it may use them and nothing uses it.
+    "papers/subtractive-synthesis/code",
 ]
 
 # NEVER PUBLISHED. These crates ship inside the products and nowhere else, so

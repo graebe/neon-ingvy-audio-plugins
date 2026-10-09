@@ -481,6 +481,14 @@ add_test(NAME music_core_no_std
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p music-core --no-default-features)
 
+# THE PAPERS' CODE (papers/<name>/code). Every Rust listing a paper prints is
+# a region of its crate, and the crate's snippet test fails when the two
+# differ -- so a paper whose code stopped compiling, or drifted from its text,
+# fails the quick tier like any engine would.
+add_test(NAME paper_subsynth
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-paper-subsynth)
+
 # ------------------------------------------------------------ NI Chord-Detector
 
 # THE ENGINE'S OWN CLAIMS, which are cargo's: what is named for every kind of
@@ -759,6 +767,8 @@ ni_test_tiers(
             design_paths timing
             # the JUCE shell's state codec, over every product's fixtures
             nist_fixtures
+            # the papers' code: every listing a paper prints, compiled and tested
+            paper_subsynth
         FULL
             abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
             site_links:site coverage_floor:coverage

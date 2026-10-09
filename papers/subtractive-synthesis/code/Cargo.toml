@@ -1,0 +1,33 @@
+[package]
+name = "ni-paper-subsynth"
+version = "2026.10.9+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The tested code behind the paper 'Subtractive Synthesis in Practice'"
+publish.workspace = true
+
+# THE PAPER'S CODE, NOT A PRODUCT'S. Every Rust listing in ../paper.md is a
+# marked region of this crate (tests/snippets.rs holds the two to each other),
+# so a listing in the paper is a listing that compiles and is tested. No
+# product links it; a future synth engine may lift from it.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# The one-pole coefficient the envelope's stages and the glide use.
+ni-dsp = { path = "../../../engines/shared/crates/ni-dsp" }
+# Band-limiting a wavetable frame (src/osc/wavetable.rs) and measuring a
+# spectrum (src/measure.rs). Both plan and allocate at construction, never
+# while rendering.
+realfft = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+# The cost-per-sample table in section 4 of the paper.
+divan = { workspace = true }
+
+[[bench]]
+name = "cost"
+harness = false
