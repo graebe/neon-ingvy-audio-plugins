@@ -1,0 +1,95 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+/*
+ * What NI Bit-Crusher's editor needs from its plugin, and all it may ask.
+ *
+ * EVERY CONTROL IS A HOST PARAMETER, the engine's thirteen in its table's
+ * order (bc_param_*): parameter(param::bits) is Bits. Their text is the
+ * engine's ("7.5 bits", "12.0 kHz", "+3.0 dB"), and the editor holds no unit,
+ * precision or range of its own. The window sends nothing back but parameter
+ * edits.
+ *
+ * TWO PICTURES, BOTH THE ENGINE'S:
+ *
+ *   steps()   the staircase, as the engine renders it from the parameters
+ *             NOW (bc_transfer_render) -- so a turned knob moves the picture
+ *             at once, and the picture is the engine's grid, never a second
+ *             model of it drawn here
+ *   scope()   the last few milliseconds of the left channel, dry and wet, as
+ *             the audio thread published them (bc_shell_read), starting on an
+ *             upward zero crossing when there is one
+ *
+ * MESSAGE THREAD, EVERY CALL (EditorModel.h). The processor implements this
+ * (BitCrusher.h); tests/ui/bit-crusher_fakes.h implements it with nothing
+ * behind it.
+ */
+#pragma once
+
+#include "EditorModel.h"
+
+#include <cstdint>
+#include <vector>
+
+namespace ni::bc
+{
+
+/* The host parameters' indices: the engine table's order, so the host index
+ * is the engine index. */
+namespace param
+{
+enum : int
+{
+    drive = 0,   // -24..+24 dB, before the crusher
+    bits,        // 1..16, fractional
+    shape,       // 0..100 %, even to µ-law steps
+    midRise,     // switch: no level at zero
+    dither,      // 0..100 %
+    antiAlias,   // switch: ADAA on the steps
+    rate,        // 50 Hz..96 kHz, equal ratios
+    jitter,      // 0..100 %
+    preFilter,   // switch
+    postFilter,  // switch
+    postOctave,  // -2..+4 octaves from Rate/2
+    mix,         // 0..100 %
+    output,      // -24..+12 dB
+    count
+};
+} // namespace param
+
+/*
+ * THE SCOPE: `dry` and `wet` the same length, -1..1 at full scale, oldest
+ * first, at `sampleRate`. Empty before the plugin has processed anything.
+ * `serial` changes whenever new audio arrived; `triggered` is false when the
+ * window could not start on an upward zero crossing (silence, DC, a very low
+ * tone), so the picture may crawl.
+ */
+struct Scope
+{
+    std::vector<float> dry, wet;
+    double sampleRate = 0.0;
+    bool triggered = false;
+    std::uint32_t serial = 0;
+
+    int count() const noexcept { return (int) dry.size(); }
+    /* The window's length in ms, or 0 before the rate is known. */
+    double ms() const noexcept { return sampleRate > 0.0 ? 1000.0 * (double) count() / sampleRate : 0.0; }
+};
+
+class Model : public ni::ui::EditorModel
+{
+public:
+    /* Whether parameter `index` runs both ways about zero, so its knob draws
+     * its arc from 12 o'clock: the engine's table says. */
+    virtual bool bipolar (int index) const = 0;
+
+    /* The staircase: `count` outputs, -1..1, for inputs evenly spaced from -1
+     * to 1, both ends included -- Drive, Bits, Shape and Mid-Rise as the host
+     * parameters hold them now. */
+    virtual void steps (float* out, int count) = 0;
+
+    /* The latest scope; valid until the next call. */
+    virtual const Scope& scope() = 0;
+};
+
+} // namespace ni::bc

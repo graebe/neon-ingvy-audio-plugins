@@ -49,7 +49,7 @@ checksum = "b0cab808e4f26ab216811b4b759e85823f9630a4da86e90e207bdc99cf565d32"
 
 [[package]]
 name = "bc-capi"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 dependencies = [
  "assert_no_alloc",
  "bc-core",
@@ -61,7 +61,7 @@ dependencies = [
 
 [[package]]
 name = "bc-core"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 dependencies = [
  "assert_no_alloc",
  "biquad",
@@ -74,7 +74,7 @@ dependencies = [
 
 [[package]]
 name = "bc-move"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 dependencies = [
  "bc-capi",
  "bc-core",

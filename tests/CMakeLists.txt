@@ -750,6 +750,37 @@ if (NOT WIN32)
 endif()
 add_test(NAME sc_render_ab COMMAND sc_render_ab)
 
+# --------------------------------------------------------------- NI Bit-Crusher
+
+# THE ENGINE'S OWN CLAIMS, which are cargo's: the staircase and its
+# antiderivative, the hold's clock, the filters, the glides and crossfades, the
+# panic, the parameter table and its text, the aliasing Anti-Alias takes out,
+# no allocation on any audio path -- and bc-move's `chain_params` held to the
+# engine's table, through the vtable the device calls.
+set(BC_ENGINE ${CMAKE_SOURCE_DIR}/engines/bit-crusher)
+add_test(NAME bc_core_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p bc-core -p bc-capi -p bc-move)
+
+# The C ABI from C: compiled against both headers cbindgen writes
+# (bc-capi/build.rs) and linked to the plugin's real archive.
+add_executable(bc_core_tests ${BC_ENGINE}/tests/test_core.c)
+target_link_libraries(bc_core_tests PRIVATE bc_engine)
+if (NOT WIN32)
+    target_link_libraries(bc_core_tests PRIVATE m)
+endif()
+add_test(NAME bc_core COMMAND bc_core_tests)
+
+# THE TWO PATHS, RENDERED SIDE BY SIDE AND PINNED, as the Side-Chain's are:
+# the plugin's float path and the Move's int16 path within one LSB of each
+# other, and the float render's hash recorded (render_golden.h).
+add_executable(bc_render_ab ${BC_ENGINE}/tests/render_ab.c)
+target_link_libraries(bc_render_ab PRIVATE bc_engine)
+if (NOT WIN32)
+    target_link_libraries(bc_render_ab PRIVATE m)
+endif()
+add_test(NAME bc_render_ab COMMAND bc_render_ab)
+
 # EACH CARGO SUITE ON BUSES OF ITS OWN. The workspace's .cargo/config.toml
 # gives every `cargo test` the checkout's bus namespace, which keeps a suite
 # off a Live session's buses -- but ctest runs these suites side by side, and
@@ -843,6 +874,10 @@ ni_test_tiers(
     PRODUCT chord-detector
         PROGRAMS cd_core_tests
         QUICK cd_core_rs cd_core
+    PRODUCT bit-crusher
+        PROGRAMS bc_core_tests bc_render_ab
+        QUICK bc_core_rs bc_core
+        FULL bc_render_ab:render
     # every bundle's host, signature and tree checks, and every Move module
     ${_ni_juce_tiers}
     ${_ni_move_tiers})
