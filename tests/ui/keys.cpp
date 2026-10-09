@@ -33,12 +33,12 @@ TEST_CASE ("keys: arrows move through a grid of 16 to a row and stop at its edge
     CHECK (gridMove (Key::down, 3, 16, 16) == 3);    // one row: nowhere to go
     CHECK (gridMove (Key::home, 21, 32, 16) == 16);
     CHECK (gridMove (Key::end, 17, 20, 16) == 19);   // a short last row ends early
-    CHECK_FALSE (gridMove (Key::space, 3, 32, 16).has_value());
+    CHECK_FALSE (gridMove (Key::enter, 3, 32, 16).has_value());
 }
 
-TEST_CASE ("keys: a pad toggles on Space and Enter, ties with shift, and alt-arrows its amount")
+TEST_CASE ("keys: a pad toggles on Enter, ties with shift, and alt-arrows its amount")
 {
-    auto a = padKey (press (juce::KeyPress::spaceKey), 0, 16, 16);
+    auto a = padKey (press (juce::KeyPress::returnKey), 0, 16, 16);
     CHECK (a.kind == PadAction::Kind::toggle);
     CHECK_FALSE (a.tie);
 

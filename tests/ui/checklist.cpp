@@ -14,6 +14,7 @@
 #include "Pointer.h"
 #include "Toggle.h"
 #include "checks.h"
+#include "hostkeys.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -142,10 +143,12 @@ TEST_CASE ("check list: a press elsewhere closes it; on the panel or the face it
     CHECK_FALSE (f.list.isOpen());
 }
 
-TEST_CASE ("check list: Space opens it, the arrows go through the switches past refused ones, Escape closes")
+TEST_CASE ("check list: Enter opens it, the arrows go through the switches past refused ones, Escape closes")
 {
     Fixture f;
-    ni::ui::gallery::space (f.face());
+    CHECK_FALSE (ni::ui::test::windowUses (f.face(), ni::ui::test::spaceKey));
+    CHECK_FALSE (f.list.isOpen());
+    CHECK (key (f.face(), juce::KeyPress::returnKey));
     CHECK (f.list.isOpen());
     CHECK (key (f.face(), juce::KeyPress::escapeKey));
     CHECK_FALSE (f.list.isOpen());

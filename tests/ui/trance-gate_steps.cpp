@@ -9,7 +9,8 @@
  *   a press       toggles fully, Shift cycles into a tie, a dead step comes
  *                 back at its full amount
  *   a drag        the amount, after 4px, against the pad; to the floor off
- *   the keys      Space or Enter a press, Alt with Up or Down the amount
+ *   the keys      Enter a press, Alt with Up or Down the amount; Space
+ *                 is the host's
  *   the fade      the border is what you drew, the fill is what you hear;
  *                 the numbers only while they mean something
  *   Set order     a press names the next arrival, of the arriving kind only
@@ -133,14 +134,16 @@ TEST_CASE ("trance-gate pads: a tie dragged keeps being a tie")
 
 /* ------------------------------------------------------------- the keys -- */
 
-TEST_CASE ("trance-gate pads: one Tab stop; arrows move, Space or Enter press, Alt with Up or Down the amount")
+TEST_CASE ("trance-gate pads: one Tab stop; arrows move, Enter presses, Alt with Up or Down the amount")
 {
     Rig rig;
     auto& grid = rig.grid();
     CHECK (grid.focusedStep() == 0);
     CHECK (key (rig.pad (0), juce::KeyPress::rightKey));
     CHECK (grid.focusedStep() == 1);
-    CHECK (key (rig.pad (1), juce::KeyPress::spaceKey));
+    CHECK_FALSE (key (rig.pad (1), juce::KeyPress::spaceKey));
+    CHECK (rig.model.takeEdits().empty());
+    CHECK (key (rig.pad (1), juce::KeyPress::returnKey));
     CHECK (rig.model.takeEdits() == "step 1 on, depth 1 1.00");
     CHECK (key (rig.pad (2), juce::KeyPress::returnKey, shift));
     CHECK (rig.model.takeEdits() == "step 2 tie");
@@ -287,7 +290,7 @@ TEST_CASE ("trance-gate Set order: a press names the next arrival; the button co
     p.up();
     CHECK (rig.model.takeEdits() == "order 10 4");
     /* The keyboard's press names as well. */
-    CHECK (key (rig.pad (12), juce::KeyPress::spaceKey));
+    CHECK (key (rig.pad (12), juce::KeyPress::returnKey));
     CHECK (rig.model.takeEdits() == "order 12 5");
 
     /* Pressed again, the mode ends; on again, a new pass from 1. */

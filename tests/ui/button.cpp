@@ -2,15 +2,16 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The Button: pressed by a click released over it, by Enter at once and by
- * Space on release; lit while pressed or on; the two shapes' sizes; and the
- * Actions groups, joined edge to edge or stacked. Then every state, as a
- * picture.
+ * The Button: pressed by a click released over it and by Enter at once, never
+ * by Space, which is the host's; lit while pressed or on; the two shapes'
+ * sizes; and the Actions groups, joined edge to edge or stacked. Then every
+ * state, as a picture.
  */
 #include "Button.h"
 #include "Gallery.h"
 #include "Pointer.h"
 #include "checks.h"
+#include "hostkeys.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -66,33 +67,21 @@ TEST_CASE ("button: the right button does not press it")
     CHECK (b.clicks == 0);
 }
 
-TEST_CASE ("button: Enter presses at once, Space on release, and a held Space once")
+TEST_CASE ("button: Enter presses at once; Space goes to the host and presses nothing")
 {
     Counted b;
 
     CHECK (ni::ui::gallery::key (b.button, juce::KeyPress::returnKey));
     CHECK (b.clicks == 1);
 
-    /* Space down, its repeats, then up. */
-    CHECK (ni::ui::gallery::key (b.button, juce::KeyPress::spaceKey));
-    CHECK (b.button.isPressed());
-    CHECK (ni::ui::gallery::key (b.button, juce::KeyPress::spaceKey));
-    CHECK (b.clicks == 1);
-    CHECK (b.button.keyStateChanged (false));
+    /* Space down, a repeat, then up: none of it is the button's. */
+    CHECK_FALSE (ni::ui::test::windowUses (b.button, ni::ui::test::spaceKey));
+    CHECK_FALSE (ni::ui::test::windowUses (b.button, ni::ui::test::spaceKey));
     CHECK_FALSE (b.button.isPressed());
-    CHECK (b.clicks == 2);
+    CHECK (b.clicks == 1);
 
     /* A key that is not a press is not taken: Tab goes through. */
     CHECK_FALSE (ni::ui::gallery::key (b.button, juce::KeyPress::tabKey));
-}
-
-TEST_CASE ("button: focus moving away while Space is held presses nothing")
-{
-    Counted b;
-    ni::ui::gallery::key (b.button, juce::KeyPress::spaceKey);
-    b.button.focusLost (juce::Component::focusChangedByTabKey);
-    b.button.keyStateChanged (false);
-    CHECK (b.clicks == 0);
 }
 
 TEST_CASE ("button: disabled, nothing presses it and it shows no hover")
@@ -103,7 +92,6 @@ TEST_CASE ("button: disabled, nothing presses it and it shows no hover")
 
     p.click (b.button, { 50, 14 });
     ni::ui::gallery::key (b.button, juce::KeyPress::returnKey);
-    ni::ui::gallery::space (b.button);
     b.button.press();
     CHECK (b.clicks == 0);
     CHECK_FALSE (b.button.isLit());

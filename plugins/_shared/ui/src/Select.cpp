@@ -177,7 +177,7 @@ bool SelectList::handleKey (const juce::KeyPress& key)
     else if (code == juce::KeyPress::endKey)      setHighlighted (last);
     else if (code == juce::KeyPress::pageUpKey)   setHighlighted (juce::jmax (0, from - numShown()));
     else if (code == juce::KeyPress::pageDownKey) setHighlighted (juce::jmin (last, from + numShown()));
-    else if (code == juce::KeyPress::returnKey || code == juce::KeyPress::spaceKey)
+    else if (code == juce::KeyPress::returnKey)
     {
         if (onChoose)
             onChoose (from);   // may delete this
@@ -488,8 +488,8 @@ bool Select::keyPressed (const juce::KeyPress& key)
         return list->handleKey (key);   // may delete the list
     }
 
-    if (code == juce::KeyPress::spaceKey || code == juce::KeyPress::returnKey
-        || code == juce::KeyPress::upKey || code == juce::KeyPress::downKey)
+    if (code == juce::KeyPress::returnKey || code == juce::KeyPress::upKey
+        || code == juce::KeyPress::downKey)
     {
         focus.keyUsed();
         relight (*this);
@@ -510,8 +510,8 @@ bool Select::keyPressed (const juce::KeyPress& key)
 
 int Select::typedOption (const juce::KeyPress& key)
 {
-    /* Not a character -- a shortcut, a navigation key, Space, which opens and
-     * chooses -- is no typing: -2. */
+    /* Not a character -- a shortcut, a navigation key, Space, which is the
+     * host's -- is no typing: -2. */
     const auto ch = key.getTextCharacter();
     const auto mods = key.getModifiers();
     if (ch <= ' ' || ch == 0x7f || mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown())

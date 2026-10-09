@@ -10,6 +10,7 @@
 #include "Pointer.h"
 #include "Tabs.h"
 #include "checks.h"
+#include "hostkeys.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -78,8 +79,10 @@ TEST_CASE ("tabs: the arrows move and choose, wrapping; Home and End go to the e
     CHECK (key (s.tabs.getTab (0), juce::KeyPress::endKey));
     CHECK (s.asked == std::vector<int> { 1, 2, 0, 2, 0, 2 });
 
-    /* Space or Enter on the focused tab chooses it. */
-    ni::ui::gallery::space (s.tabs.getTab (1));
+    /* Enter on the focused tab chooses it; Space is the host's. */
+    CHECK_FALSE (ni::ui::test::windowUses (s.tabs.getTab (1), ni::ui::test::spaceKey));
+    CHECK (s.tabs.getActive() == 2);
+    CHECK (key (s.tabs.getTab (1), juce::KeyPress::returnKey));
     CHECK (s.tabs.getActive() == 1);
 }
 

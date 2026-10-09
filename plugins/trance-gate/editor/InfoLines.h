@@ -91,7 +91,7 @@ inline constexpr InfoText signalPlot { "Signal plot — the dry input in grey, t
 
 /* The pads, one line for all of them -- and another while ORDER is on,
  * because a click there names an arrival instead of toggling. */
-inline constexpr InfoText pads { "Pads — click toggles, shift-click ties, drag sets amount; Space, Alt+↑↓." };
+inline constexpr InfoText pads { "Pads — click toggles, shift-click ties, drag sets amount; Enter, Alt+↑↓." };
 inline constexpr InfoText padsOrder { "Pads — click the steps in the order the fade should bring them in." };
 inline constexpr InfoText arrival { "Arrival — click to type a new place; a number in use swaps." };
 

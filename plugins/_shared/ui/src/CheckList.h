@@ -15,8 +15,8 @@
  * THE FACE is a button in the Select's field: 28px, bg-200 on line-200, the
  * summary ("Kick, Bass", "Kick +3") cut with an ellipsis, the chevron, bg-300
  * under the pointer, a uv hairline while open, glow-focus for the keyboard.
- * Space, Enter or a click opens and closes it; Down or Up opens it and goes
- * to its first or last switch.
+ * Enter or a click opens and closes it; Down or Up opens it and goes to its
+ * first or last switch. Space does neither: it is the host's (Keys.h).
  *
  * THE PANEL (.checklist-panel): space-1 under the face, its right edge on the
  * face's, at least 160 wide and as wide as its widest row, at most 220 tall
@@ -28,7 +28,7 @@
  *
  * INSIDE THE WINDOW (Popup.h): below the face, else above, else where it
  * fits. In it, Up and Down go from switch to switch, past the refused ones,
- * scrolling the panel as they go; Space or Enter flips one. A PRESS ANYWHERE
+ * scrolling the panel as they go; Enter flips one. A PRESS ANYWHERE
  * ELSE CLOSES IT AND STILL ARRIVES where it was aimed, as the web one's
  * document listener had it -- the next control can be used at once. Escape
  * closes it too, and the keyboard goes back to the face.

@@ -13,6 +13,7 @@
 #include "Popup.h"
 #include "Select.h"
 #include "checks.h"
+#include "hostkeys.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -132,7 +133,7 @@ TEST_CASE ("select: a press outside the list closes it and chooses nothing")
     CHECK (f.window.getNumChildComponents() == 1);   // the layer is gone with it
 }
 
-TEST_CASE ("select: Space, Enter, Up or Down open it; the arrows move; Enter chooses")
+TEST_CASE ("select: Enter, Up or Down open it; the arrows move; Enter chooses; Space is the host's")
 {
     Fixture f;
     CHECK (key (f.select, juce::KeyPress::downKey));
@@ -149,8 +150,15 @@ TEST_CASE ("select: Space, Enter, Up or Down open it; the arrows move; Enter cho
     CHECK (f.chosen == std::vector<int> { 0 });
     CHECK_FALSE (f.select.isOpen());
 
-    ni::ui::gallery::space (f.select);
+    CHECK_FALSE (ni::ui::test::windowUses (f.select, ni::ui::test::spaceKey));
+    CHECK_FALSE (f.select.isOpen());
+    CHECK (key (f.select, juce::KeyPress::returnKey));
+    REQUIRE (f.select.isOpen());
+
+    /* Open, Space chooses nothing and leaves it open. */
+    CHECK_FALSE (ni::ui::test::windowUses (f.select, ni::ui::test::spaceKey));
     CHECK (f.select.isOpen());
+    CHECK (f.chosen == std::vector<int> { 0 });
 }
 
 TEST_CASE ("select: Escape and Tab close it and choose nothing")

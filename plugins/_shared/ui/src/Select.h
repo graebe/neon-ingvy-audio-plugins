@@ -34,10 +34,12 @@
  *                           the list, so the second lands on the list or the
  *                           layer round it, wherever it opened -- and is the
  *                           select's whenever it is over the field
- *   keys, closed            Space, Enter, Up or Down open it; typing chooses
+ *   keys, closed            Enter, Up or Down open it; typing chooses
  *   keys, open              Up and Down move, Home and End go to the ends,
- *                           Page Up and Down a list's height, Enter or Space
- *                           choose, Escape or Tab close; typing moves
+ *                           Page Up and Down a list's height, Enter
+ *                           chooses, Escape or Tab close; typing moves
+ *   Space                   neither, open or closed: it is the host's
+ *                           transport (Keys.h)
  *
  * TYPING, as a focused <select> takes it: characters typed within typeAheadMs
  * of each other make one prefix, and the first option after the current one
@@ -105,7 +107,7 @@ public:
     /* The keys of an open list. True if it was one. */
     bool handleKey (const juce::KeyPress&);
 
-    /* A row was chosen: by a click, or Enter or Space on the highlighted one.
+    /* A row was chosen: by a click, or Enter on the highlighted one.
      * The list may be deleted from it. */
     std::function<void (int row)> onChoose;
 

@@ -19,8 +19,8 @@
  *
  * THE KEYBOARD, as a tab list has it: one Tab stop, the lit tab; the arrows
  * (Up and Down, and Left and Right) move to the next tab and choose it,
- * wrapping; Home and End go to the ends; Space or Enter chooses the tab with
- * the focus. Each tab says what it shows in its own info line.
+ * wrapping; Home and End go to the ends; Enter chooses the tab with the
+ * focus. Each tab says what it shows in its own info line.
  *
  * IT DOES NOT CHOOSE BY ITSELF: onSelect asks, and the owner says which is
  * lit with setActive.

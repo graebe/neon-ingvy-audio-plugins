@@ -25,6 +25,7 @@
 #include "Pointer.h"
 #include "UvType.h"
 #include "checks.h"
+#include "hostkeys.h"
 #include "trance-gate_fakes.h"
 
 #include <doctest.h>
@@ -554,4 +555,16 @@ TEST_CASE ("trance-gate: the Motion switch is the model's, and Randomize is the 
     CHECK_FALSE (rig.editor.frame().motionSwitch().isOn());
     rig.editor.verbs().button (Verbs::Verb::randomize).onClick();
     CHECK (rig.model.takeEdits() == "randomize");
+}
+
+/* ---------------------------------------------------------------- Space -- */
+
+/* Space starts and stops Live's transport, also while this window has the
+ * keyboard (Keys.h): whatever a click left focused, nothing here uses it. */
+TEST_CASE ("trance-gate: Space is the host's, wherever a click leaves the keyboard")
+{
+    Rig rig;
+    rig.frame();
+    const auto users = ni::ui::test::spaceUsersAfterClicks (rig.editor);
+    CHECK_MESSAGE (users.isEmpty(), users.joinIntoString ("\n").toStdString());
 }

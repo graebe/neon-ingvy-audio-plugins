@@ -67,7 +67,7 @@ public:
 
     /* ---- the keyboard: the pads */
 
-    /* Space or Enter: what a press does (Shift: a tie). */
+    /* Enter: what a press does (Shift: a tie). */
     void toggle (int index, bool tie);
     /* Alt with Up or Down: the amount by `delta`. */
     void nudge (int index, float delta);

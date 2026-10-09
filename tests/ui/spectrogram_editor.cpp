@@ -26,6 +26,7 @@
 #include "Pointer.h"
 #include "WaveSource.h"
 #include "checks.h"
+#include "hostkeys.h"
 #include "spectrogram_fake.h"
 
 #include <doctest.h>
@@ -33,7 +34,6 @@
 using namespace ni::spectrogram;
 using ni::ui::gallery::Pointer;
 using ni::ui::gallery::key;
-using ni::ui::gallery::space;
 using test::FakeModel;
 
 namespace
@@ -232,7 +232,7 @@ TEST_CASE ("spectrogram editor: pause holds the picture while the columns keep a
     CHECK (pause.getTitle() == "Pause the picture");
     CHECK (pause.getIcon() == "pause");
 
-    space (pause);
+    key (pause, juce::KeyPress::returnKey);
     CHECK (v.isPaused());
     CHECK (rig.picture().isPaused());
     CHECK (pause.isOn());
@@ -438,7 +438,7 @@ TEST_CASE ("spectrogram editor: the comparison is its own setting, and the clash
     CHECK (v.clashSwitch().isOn());
     CHECK (rig.picture().isClashShown());
 
-    space (v.clashSwitch());
+    key (v.clashSwitch(), juce::KeyPress::returnKey);
     CHECK_FALSE (rig.model.looks.back().clash);
     CHECK (rig.model.looks.back().listen.empty());
     CHECK_FALSE (rig.picture().isClashShown());
@@ -681,4 +681,16 @@ TEST_CASE ("spectrogram editor: no parameters -- nothing here changes what comes
     CHECK (rig.model.numParameters() == 0);
     rig.frame();
     CHECK (rig.model.base.params.events.empty());
+}
+
+/* ---------------------------------------------------------------- Space -- */
+
+/* Space starts and stops Live's transport, also while this window has the
+ * keyboard (Keys.h): whatever a click left focused, nothing here uses it. */
+TEST_CASE ("spectrogram editor: Space is the host's, wherever a click leaves the keyboard")
+{
+    Rig rig ([] (FakeModel& m) { m.buses = threeBuses(); });
+    rig.frame();
+    const auto users = ni::ui::test::spaceUsersAfterClicks (*rig.editor);
+    CHECK_MESSAGE (users.isEmpty(), users.joinIntoString ("\n").toStdString());
 }

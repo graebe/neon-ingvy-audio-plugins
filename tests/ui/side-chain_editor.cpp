@@ -26,6 +26,7 @@
 #include "Pointer.h"
 #include "checks.h"
 #include "events.h"
+#include "hostkeys.h"
 #include "side-chain_fakes.h"
 #include "snapshot.h"
 
@@ -771,4 +772,16 @@ NI_SNAPSHOT_TEST ("side-chain: an early duck wrapping round the cycle, a handle 
     rig.editor.frame().infoState().focus (ni::ui::infoOf (h), &h);
     rig.frame();
     NI_CHECK_SNAPSHOT (rig.editor, "side-chain-focus");
+}
+
+/* ---------------------------------------------------------------- Space -- */
+
+/* Space starts and stops Live's transport, also while this window has the
+ * keyboard (Keys.h): whatever a click left focused, nothing here uses it. */
+TEST_CASE ("side-chain: Space is the host's, wherever a click leaves the keyboard")
+{
+    Rig rig;
+    rig.frame();
+    const auto users = ni::ui::test::spaceUsersAfterClicks (rig.editor);
+    CHECK_MESSAGE (users.isEmpty(), users.joinIntoString ("\n").toStdString());
 }
