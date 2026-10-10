@@ -13,6 +13,7 @@ GPL-3.0-or-later.
 | [NI Listen-In](plugins/listen-in/README.md) | VST3 | `engines/audio-bus` |
 | [NI Side-Chain](plugins/side-chain/README.md) | VST3 · a Schwung module for the Move | `engines/side-chain` |
 | [NI Chord-Detector](plugins/chord-detector/README.md) | VST3 | `engines/chord-detector` |
+| [NI Vocalize](plugins/vocalize/README.md) | VST3 · a Schwung module for the Move | `engines/vocalize` |
 
 ## How it is put together
 
@@ -208,6 +209,7 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Listen-In](plugins/listen-in/README.md) | a tap that publishes a track on a numbered bus — [in Live](plugins/listen-in/docs/live.md) |
 | [NI Side-Chain](plugins/side-chain/README.md) | a ducker on the transport, a MIDI note or a key input — [in Live](plugins/side-chain/docs/live.md), [on the Move](plugins/side-chain/docs/schwung.md) |
 | [NI Chord-Detector](plugins/chord-detector/README.md) | names the note or chord a MIDI lane plays — [in Live](plugins/chord-detector/docs/live.md) |
+| [NI Vocalize](plugins/vocalize/README.md) | any sound, more and more a voice singing A, E, I, O or U — [in Live](plugins/vocalize/docs/live.md), [on the Move](plugins/vocalize/docs/schwung.md) |
 
 What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).
 

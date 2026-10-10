@@ -1,5 +1,18 @@
 # What's new
 
+## v2026.10.10.1 — NI Vocalize
+
+- **New: NI Vocalize.** Turns any sound, step by step, into a voice singing
+  A, E, I, O or U. **Vocal** says how far: at 0 % the sound is untouched, at
+  100 % it sings the vowel, and everything between is the sound on its way
+  there. **Vowel** sweeps smoothly from one vowel to the next, **Size** makes
+  the voice bigger or smaller, **Resonance** broad or whistling, and
+  **Excite** gives pure sounds like a sine bass something to sing with.
+- Two engines: **Time** has no latency and sounds like a talkbox;
+  **Spectral** is smoother and more sung, and about 21 ms late, which Live
+  compensates for.
+- On the Ableton Move as a Schwung module, with the Time engine.
+
 ## v2026.10.10.1 — NI Side-Chain
 
 - **NI Side-Chain on Ableton Move keeps its settings.** Schwung now saves the

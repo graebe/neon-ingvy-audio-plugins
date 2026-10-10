@@ -18,7 +18,7 @@ ships.
 
 | Artefact | What is in it |
 |---|---|
-| Plugin bundles on the JUCE shell (`NITranceGate.vst3`, `NISpectrogram.vst3`, `NISideChain.vst3`, `NIListenIn.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
+| Plugin bundles on the JUCE shell (`NITranceGate.vst3`, `NISpectrogram.vst3`, `NISideChain.vst3`, `NIListenIn.vst3`, `NIVocalize.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
 | Schwung module tarballs (`*-module.tar.gz`) | the Rust standard library, the engines and the crates from crates.io they link; the Trance Gate's also carries its own `ui_chain.js` |
 | The documentation site | JetBrains Mono |
 
@@ -90,6 +90,7 @@ JetBrains Mono declaring none.
 | `NIListenIn.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | the documentation site | emitted by the build as a hashed asset under `/neon-ingvy-audio-plugins/_astro/` | `/neon-ingvy-audio-plugins/fonts/OFL.txt` |
 | `NIChordDetector.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NIVocalize.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits
 beside the faces in both places, and wherever the font ships: every bundle on
@@ -126,6 +127,7 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 | `bus-core`, `bus-capi` | `engines/audio-bus` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber, with a ported part — see below |
 | `cd-core`, `cd-capi` | `engines/chord-detector` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `vz-core`, `vz-capi`, `vz-move` | `engines/vocalize` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ground-core`, `ground-capi` | `engines/ground` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ni-dsp`, `ni-schwung` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |

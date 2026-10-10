@@ -66,6 +66,22 @@
       "w": 760,
       "x": 2984,
       "y": 1100
+    },
+    "BitCrusher-Proposed.dc.html": {
+      "h": 532,
+      "is_interactive": true,
+      "title": "NI Bit-Crusher — proposed",
+      "w": 888,
+      "x": 3824,
+      "y": 1100
+    },
+    "Vocalize-Proposed.dc.html": {
+      "h": 532,
+      "is_interactive": true,
+      "title": "NI Vocalize — proposed",
+      "w": 888,
+      "x": 4792,
+      "y": 1100
     }
   },
   "createdOnFiles": {
@@ -141,6 +157,14 @@
       "x": 0,
       "y": 1988
     },
+    "sc-kick": {
+      "fill": "teal",
+      "maxH": 640,
+      "w": 760,
+      "x": 904,
+      "y": 2700,
+      "text": "SIDE-CHAIN — KICK (v2026.10.10.2, Ultraviolet 1.2.0)\n\nSC7  A Kick select at the right end of the shape row: Off, Sidechain key (while one is routed), or a live Listen-In by its name. A picture only: the audio and the trigger are untouched.\nSC8  The kick is drawn behind everything in plot-key (amber's value, new in 1.2.0): filled at 30 %, its 1px edge at 90 % over the grey input and under the violet output. Drawn to its own height (it says when, not how loud); silence in it is not drawn.\nSC9  Each kick sample sits where it sounded in the cycle, to the sample: Listen-In stamps every block with Live's timeline (bus ABI 3).\nSC10 The caption ends in the kick's state: KICK IN AMBER, KICK BY ARRIVAL (transport stopped), KICK WAITING, KICK SILENT, KICK AT 44K, NOT DRAWN.\n\nAmber now has two meanings, never confused: a band in a plot is the reference signal; a rule or a mark is the window's one warning.\n\nAs built: plugins/side-chain (Kick.h, editor/Shaper.cpp); the window stays 760 × 604."
+    },
     "cd-notes": {
       "fill": "teal",
       "maxH": 640,
@@ -148,6 +172,22 @@
       "x": 2984,
       "y": 1988,
       "text": "CHORD-DETECTOR — NEW WINDOW\n\nA silent instrument for a MIDI lane: it names what is sounding. Interactive: a progression loops (Am7, Dm7, G7/B, Cmaj7, the borrowed bVII, #ivø7). Click a key on the circle, step the mode, switch Staff/MIDI and the span, change Spelling, turn Hold off.\n\nCD1  Circle of fifths: twelve keys, clockwise in fifths. The key's seven notes tinted bg-200, sounding notes uv, the root filled uv. The chosen tonic is the window's one amber mark. Key + mode in its centre, with the signature.\nCD2  One readout: the chord as the key writes it (Bb in C major, not A#), its roman numeral beside it, the words under it, then the notes and the other readings of the same notes (ALSO).\nCD3  History, scrolling right to left in the host's bars, now at the right edge. Staff: proportional notation, a head at each onset and a tail for its length, the key signature, chord names at each change. MIDI: one line per note, numbered at each C.\nCD4  Keyboard: four octaves, held keys lit, the bass marked underneath.\nCD5  Hold keeps the last chord after release: the readout stays in ink with a HELD LED, the lit keys dim to uv-deep. The sustain pedal is reported by an LED.\nCD6  No animated Ground (a utility window, as Listen-In), so no Motion switch. Zoom (75–150 %) sits in the History header beside Span: the hint bar's one control slot is the Motion switch's, a text-line tall.\n\nAs built: plugins/chord-detector (JUCE 9, the native kit), v2026.10.07.1.\n\nEach view is its own reusable JUCE component: Keyboard, CircleOfFifths, ChordReadout, GrandStaff and PianoRoll over one NoteHistory.\n\nWindow: 760 × 616."
+    },
+    "bc-notes": {
+      "fill": "teal",
+      "maxH": 640,
+      "w": 888,
+      "x": 3824,
+      "y": 1988,
+      "text": "BIT-CRUSHER — NEW WINDOW\n\nA bit crusher: a continuous signal made discrete, in amplitude and in time. Interactive: set Bits, Hold (samples per held value) and Mid-Rise in its Tweaks; the staircase and the scope follow.\n\nBC1  Two pictures over three panels, on one grid of three 264px columns: the staircase sits over the panel that shapes it.\nBC2  STEPS: input across, output up. The diagonal (line-200) is the untouched signal; the uv curve is the engine's own grid (bc_transfer_render), never a second model of it. The caption repeats Bits in the engine's words.\nBC3  SIGNAL: the last 11 ms, triggered on an upward zero crossing so a tone stands still. Input in grey, the crushed output in front; flat tops are the hold, stairs are the bits. The level range follows the material.\nBC4  Three panels of three knobs, each with the switches that change how its knobs act. STEPS: Bits, Shape, Dither; Mid-Rise, Anti-Alias. HOLD: Rate, Jitter, Octave; Pre, Post (the filters, before and after the hold). LEVEL: Drive, Mix, Output.\nBC5  Drive, Octave and Output are bipolar with symmetric ranges, so their arcs start at 12 o'clock and zero shows none.\nBC6  Rate turns in equal ratios (50 Hz to 96 kHz); every readout is the engine's text (12.0 kHz, 7.5 bits, +6.0 dB) and reads what is typed (8k).\nBC7  Switch labels read Pre and Post in the window; the host lists Pre-Filter and Post-Filter. Both names do not fit one column.\nBC8  No amber: nothing in this window is a warning.\n\nAs built: plugins/bit-crusher (JUCE 9, the native kit), v2026.10.10.1.\n\nWindow: 888 × 532."
+    },
+    "vz-notes": {
+      "fill": "teal",
+      "maxH": 640,
+      "w": 888,
+      "x": 4792,
+      "y": 1988,
+      "text": "VOCALIZE — NEW WINDOW\n\nAny sound, more and more a voice singing A, E, I, O or U. Interactive: set Vowel, Vocal, Size and Mode (Spectral) in its Tweaks; the vowel chart and the envelope follow.\n\nVZ1  Two pictures over three panels, on Bit-Crusher's grid of three 264px columns: the vowel chart sits over the panel that moves it.\nVZ2  VOWEL: the vowel space as phoneticians draw it, F2 across (high on the left), F1 down: the mouth seen from the side. The five letters on the path the Vowel knob walks (line-200); the uv dot is the vowel now, from the engine's own model (vz_formants). Size slides the whole path along its diagonal. The caption repeats the vowel in the engine's words (E>I 30 %).\nVZ3  ENVELOPE: the sound's colour, 50 Hz to 10 kHz in equal steps of pitch, 0 to -48 dB. Coming in in grey, going out in front, F1 and F2 marked with rules. At Vocal 0 the two are one line. The caption names the engine drawing it, and Spectral's latency.\nVZ4  Three knob cells a panel in every panel, so the dials line up across the window; a panel of two leaves its third empty. VOWEL: Vowel, Size, Resonance. VOCAL: Vocal, Excite; Mode under them. LEVEL: Mix, Output.\nVZ5  The Vowel knob holds on the five vowels while dragged (detents, drawn as ticks) and moves freely between them; its readout reads a letter or a letter and a percentage (E 30).\nVZ6  Mode (Time / Spectral) is a select, not a switch: two engines, not on and off. It is not automatable; switching dips the sound 20 ms and tells the host the new latency.\nVZ7  Size and Output are bipolar with symmetric ranges: arcs from 12 o'clock.\nVZ8  No amber: nothing in this window is a warning.\n\nAs built: plugins/vocalize (JUCE 9, the native kit), v2026.10.10.1.\n\nWindow: 888 × 532."
     }
   },
   "order": [
@@ -159,7 +199,9 @@
     "SideChain-Proposed.dc.html",
     "Spectrogram-Proposed.dc.html",
     "ListenIn-Proposed.dc.html",
-    "ChordDetector-Proposed.dc.html"
+    "ChordDetector-Proposed.dc.html",
+    "BitCrusher-Proposed.dc.html",
+    "Vocalize-Proposed.dc.html"
   ],
   "pages": [],
   "title": "NI Plugin Layouts"

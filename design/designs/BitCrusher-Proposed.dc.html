@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NI Bit-Crusher</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="uv-tokens.css">
+<link rel="stylesheet" href="ds/ultraviolet/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#060410}
+</style>
+</helmet>
+<div class="ph" style="position: relative; width: 888px; height: 532px; overflow: hidden; font-family: var(--font-mono); color: var(--ink); background: var(--bg-000);">
+
+  <!-- STEPS (32, 32, 264 x 200): the staircase, input across, output up, over the panel that shapes it. The diagonal is the untouched signal. -->
+  <div style="position: absolute; left: 32px; top: 32px; width: 264px; height: 200px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
+    <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">Steps&#160;&#160;&#160;{{bitsText}} bits</span>
+    <svg viewBox="0 0 250 174" width="250" height="174" style="position: absolute; left: 6px; top: 20px; overflow: visible;" aria-hidden="true">
+      <path d="M0 174 L250 0" fill="none" stroke="var(--line-200)" stroke-width="1"></path>
+      <path d="{{stairs}}" fill="none" stroke="var(--uv)" stroke-width="2" stroke-linejoin="miter" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></path>
+    </svg>
+  </div>
+
+  <!-- SIGNAL (312, 32, 544 x 200): the last 11 ms of the left channel, starting on an upward zero crossing: the input in grey behind, the crushed output in front. The level range follows the material; its label sits at the top right. -->
+  <div style="position: absolute; left: 312px; top: 32px; width: 544px; height: 200px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
+    <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">Signal&#160;&#160;&#160;11 ms&#160;&#160;&#160;input in grey</span>
+    <span style="position: absolute; right: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; color: var(--ink-muted);">+1 dB</span>
+    <svg viewBox="0 0 530 174" width="530" height="174" style="position: absolute; left: 6px; top: 20px; overflow: visible;" aria-hidden="true">
+      <path d="{{dry}}" fill="none" stroke="var(--line-200)" stroke-width="1"></path>
+      <path d="{{wet}}" fill="none" stroke="var(--uv)" stroke-width="2" stroke-linejoin="miter" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></path>
+    </svg>
+  </div>
+
+  <!-- THREE PANELS (y 256, 208 tall), one column each: STEPS, HOLD, LEVEL. Three knobs a panel, then the switches that change how its knobs act. -->
+  <sc-for list="{{panels}}" as="p" hint-placeholder-count="3">
+    <section class="ph-panel" style="{{p.style}}" aria-label="{{p.title}}">
+      <h2 class="ph-title" style="margin: 0 0 12px;">{{p.title}}</h2>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px;">
+        <sc-for list="{{p.knobs}}" as="k" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+            <span class="ph-label">{{k.label}}</span>
+            <svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true">
+              <circle cx="24" cy="24" r="16" fill="var(--bg-200)" stroke="var(--line-100)" stroke-width="1"></circle>
+              <path d="{{k.rail}}" fill="none" stroke="var(--line-200)" stroke-width="2"></path>
+              <path d="{{k.arc}}" fill="none" stroke="var(--uv)" stroke-width="2" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></path>
+              <path d="{{k.ptr}}" fill="none" stroke="var(--uv)" stroke-width="2"></path>
+            </svg>
+            <span class="ph-readout" style="width: 100%;">{{k.value}}<span class="unit">{{k.unit}}</span></span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top: 12px; height: 28px; display: flex; align-items: center; gap: 16px;">
+        <sc-for list="{{p.switches}}" as="s" hint-placeholder-count="2">
+          <span class="{{s.cls}}"><span class="sw"></span><span class="ph-label">{{s.label}}</span></span>
+        </sc-for>
+      </div>
+    </section>
+  </sc-for>
+
+  <!-- THE HINT (0, 488, 888 x 28): three conventions, the Motion switch, the signature. -->
+  <div class="ph-hint" style="position: absolute; left: 0; top: 488px; width: 888px; height: 44px; box-sizing: border-box; padding: 0 32px 16px; align-items: center;">
+    <span class="tips"><b>drag</b> a knob to turn it<span class="sep">—</span><b>shift</b> for fine<span class="sep">—</span><b>double-click</b> to reset</span>
+    <span class="ph-toggle on"><span class="sw"></span><span class="ph-label">Motion</span></span>
+    <span class="ph-sig"><span class="mark"></span>Neon Ingvy</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"bits":{"editor":"range","min":1,"max":12,"step":0.5,"default":3,"section":"Crusher"},"hold":{"editor":"int","min":1,"max":32,"default":12,"section":"Crusher"},"midRise":{"editor":"boolean","default":false,"section":"Crusher"},"$preview":{"width":888,"height":532}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const bits = this.props.bits ?? 3;
+    const hold = Math.max(1, Math.round(this.props.hold ?? 12));
+    const midRise = this.props.midRise ?? false;
+
+    /* The engine's grid (bc-core quantize.rs): step 2^(1-b), mid-tread or
+     * mid-rise, the top level clipped to full scale. */
+    const delta = Math.pow(2, 1 - bits);
+    const offset = midRise ? 0.5 : 0;
+    const top = Math.ceil(1 / delta + 0.5 - offset) - 1 + offset;
+    const quantize = (x) => {
+      const u = x / delta;
+      let m = midRise ? Math.floor(u) + 0.5 : Math.round(u);
+      m = Math.max(-top, Math.min(top, m));
+      return Math.max(-1, Math.min(1, m * delta));
+    };
+
+    const path = (pts) => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+
+    /* The staircase, 241 points across the well. */
+    const stairs = [];
+    for (let i = 0; i < 241; i++) {
+      const x = -1 + 2 * i / 240;
+      stairs.push([250 * i / 240, 87 - 87 * quantize(x)]);
+    }
+
+    /* 512 samples of a 220 Hz tone at 48 kHz, held every `hold` samples. */
+    const dry = [], wet = [];
+    const tone = (n) => 0.7 * Math.sin(2 * Math.PI * 220 * n / 48000);
+    for (let i = 0; i < 512; i++) {
+      const x = 530 * i / 511;
+      dry.push([x, 87 - 87 / 1.12 * tone(i)]);
+      wet.push([x, 87 - 87 / 1.12 * quantize(tone(i - (i % hold)))]);
+    }
+
+    /* A knob's three paths for a value 0..1, from the minimum or, bipolar,
+     * from 12 o'clock: 270 degrees, the gap at the bottom. */
+    const knob = (label, n, value, unit, bipolar) => {
+      const at = (t, r) => {
+        const a = (-225 + 270 * t) * Math.PI / 180;
+        return [24 + r * Math.cos(a), 24 + r * Math.sin(a)];
+      };
+      const arc = (t0, t1) => {
+        if (Math.abs(t1 - t0) < 1e-3) return '';
+        const [a, b] = [Math.min(t0, t1), Math.max(t0, t1)];
+        const p0 = at(a, 20), p1 = at(b, 20);
+        const large = (b - a) * 270 > 180 ? 1 : 0;
+        return 'M' + p0[0].toFixed(2) + ' ' + p0[1].toFixed(2) + ' A20 20 0 ' + large + ' 1 ' + p1[0].toFixed(2) + ' ' + p1[1].toFixed(2);
+      };
+      const inner = at(n, 6), outer = at(n, 14);
+      return {
+        label, value, unit,
+        rail: arc(0, 1),
+        arc: bipolar ? arc(0.5, n) : arc(0, n),
+        ptr: 'M' + inner[0].toFixed(2) + ' ' + inner[1].toFixed(2) + ' L' + outer[0].toFixed(2) + ' ' + outer[1].toFixed(2),
+      };
+    };
+    const rate = 48000 / hold;
+    const rateLog = Math.log(rate / 50) / Math.log(96000 / 50);
+    const rateText = rate >= 10000 ? (rate / 1000).toFixed(1) : rate >= 1000 ? (rate / 1000).toFixed(2) : String(Math.round(rate));
+    const sw = (label, on) => ({ label, cls: on ? 'ph-toggle on' : 'ph-toggle' });
+
+    const panelStyle = (x) => 'position: absolute; left: ' + x + 'px; top: 256px; width: 264px; height: 208px; box-sizing: border-box; margin: 0;';
+    return {
+      bitsText: bits.toFixed(1),
+      stairs: path(stairs),
+      dry: path(dry),
+      wet: path(wet),
+      panels: [
+        { title: 'Steps', style: panelStyle(32),
+          knobs: [knob('Bits', (bits - 1) / 15, bits.toFixed(1), 'bits', false), knob('Shape', 0, '0', '%', false), knob('Dither', 0, '0', '%', false)],
+          switches: [sw('Mid-Rise', midRise), sw('Anti-Alias', true)] },
+        { title: 'Hold', style: panelStyle(312),
+          knobs: [knob('Rate', rateLog, rateText, rate >= 1000 ? 'kHz' : 'Hz', false), knob('Jitter', 0.25, '25', '%', false), knob('Octave', 0.5, '0.0', 'oct', true)],
+          switches: [sw('Pre', true), sw('Post', true)] },
+        { title: 'Level', style: panelStyle(592),
+          knobs: [knob('Drive', 30 / 48, '+6.0', 'dB', true), knob('Mix', 0.8, '80', '%', false), knob('Output', 0.5, '0.0', 'dB', true)],
+          switches: [] },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
