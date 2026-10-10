@@ -1,5 +1,17 @@
 # What's new
 
+## Unreleased — NI Side-Chain, NI Listen-In, NI Spectrogram, NI Chord-Detector
+
+These are already in the shared plugin shell and reach each plugin with its
+next release; that release's entry lists them and this section goes.
+
+- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
+  of jumping (NI Listen-In and NI Spectrogram pass audio through untouched, so
+  theirs still switches at once, with nothing to hear).
+- **Loops are exact.** When Live's loop wraps inside a buffer, a plugin that
+  follows the song position continues from the loop's start on that very
+  sample.
+
 ## v2026.10.10.1 — NI Trance Gate
 
 - **No more clicks from the gate itself.** No edge of the gate is shorter
@@ -13,8 +25,8 @@
 - **Tighter and cleaner edges.** Every edge starts and ends exactly where it
   falls, between samples, so the gate sounds the same at any buffer size and
   its edges are about 29 dB cleaner.
-- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
-  of jumping. This applies to every NI plugin.
+- **Bypass fades.** Switching the Trance Gate's Bypass on or off crossfades
+  over 10 ms instead of jumping.
 - **Loops are exact.** When Live's loop wraps inside a buffer, the gate starts
   again at the loop's start on that very sample.
 - **NI Trance Gate on Move** needs Schwung 1.5.0 or newer; paging past step 32
