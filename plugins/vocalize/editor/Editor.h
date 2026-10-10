@@ -14,17 +14,20 @@
  *    (312, 32)   ENVELOPE, two columns: the sound's colour, in and out
  *    (32, 256)   three standard panels, a column each, 208 tall:
  *
- *                  VOWEL   Vowel, Size, Resonance
- *                  VOCAL   Vocal, Excite               Mode
+ *                  VOWEL   Vowel, Size, Voice          Capture…, Forget
+ *                  VOCAL   Vocal, Resonance, Excite    Mode
  *                  LEVEL   Mix, Output
  *
  *    (0, 488)    the Hint bar: three conventions, Motion, the Signature
  *
  * The vowel chart sits over the panel that moves it. The knobs share one
- * cell width in every panel, so their dials line up across the window;
- * Mode, a choice of engine, is a select under the two knobs it changes the
- * working of. The Vowel knob holds on each of the five vowels as it is
- * dragged past (detents), and travels freely between them.
+ * cell width in every panel, so their dials line up across the window.
+ * VOWEL is which vowel and whose voice: its buttons capture a voice from a
+ * recording and forget it, and a recording dropped anywhere on the window is
+ * captured too. VOCAL is how far and how: Mode, a choice of engine, is a
+ * select under the knobs it changes the working of. The Vowel knob holds on
+ * each of the five vowels as it is dragged past (detents), and travels freely
+ * between them.
  *
  * STATE LIVES IN THE MODEL AND THE CONTROLS. tick() reads the model's
  * pictures and repaints what moved; the editor's one FrameClock calls it on
@@ -37,6 +40,7 @@
 #include "Model.h"
 #include "Plots.h"
 
+#include "Button.h"
 #include "EditorFrame.h"
 #include "Fit.h"
 #include "Panel.h"
@@ -45,13 +49,15 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <vector>
 
 namespace ni::vz
 {
 
-class Editor final : public juce::Component
+class Editor final : public juce::Component,
+                     public juce::FileDragAndDropTarget
 {
 public:
     static constexpr int designWidth = 888;
@@ -81,13 +87,31 @@ public:
     ni::ui::Panel& panel (int index) noexcept { return *panels[(size_t) index]; }
     ni::ui::ParamKnob& knob (int parameterIndex);
     ni::ui::ParamSelect& modeSelect() noexcept { return *mode; }
+    ni::ui::Button& captureButton() noexcept { return *captureVoice; }
+    ni::ui::Button& forgetButton() noexcept { return *forgetVoice; }
+
+    /* The system's open panel, for a recording to capture from. Replaceable,
+     * so a test can answer it without a panel: it is handed the wildcard and
+     * calls back with the file chosen, or none. */
+    using Chooser = std::function<void (const juce::String& wildcard, std::function<void (const juce::File&)>)>;
+    void setChooser (Chooser);
 
     void resized() override;
+
+    /* ---- a recording dropped on the window */
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray&, int, int) override;
+    void fileDragExit (const juce::StringArray&) override;
+    void filesDropped (const juce::StringArray& files, int, int) override;
 
 private:
     class View;
 
     void layout();
+    /* The buttons as the voice now has them. */
+    void showVoice();
+    /* The first of `files` that is a recording, if one is. */
+    juce::File recordingAmong (const juce::StringArray& files) const;
 
     Model& model;
     ni::ui::EditorFrame window;
@@ -97,6 +121,10 @@ private:
     std::array<std::unique_ptr<ni::ui::Panel>, 3> panels;
     std::vector<std::unique_ptr<ni::ui::ParamKnob>> knobs;
     std::unique_ptr<ni::ui::ParamSelect> mode;
+    std::unique_ptr<ni::ui::Button> captureVoice, forgetVoice;
+    Chooser chooser;
+    std::unique_ptr<juce::FileChooser> openPanel;
+    std::uint32_t voiceShown = ~0u;
 
     ni::ui::FixedDesign scaler { window, designWidth, designHeight };
     ni::ui::FrameClock::Subscription frames;

@@ -14,6 +14,7 @@
  * warn_release), so the assertion below can say how many.
  */
 
+use vz_core::model::VowelTable;
 use vz_core::{Engine, Param, PARAM_COUNT};
 
 use assert_no_alloc::{assert_no_alloc, violation_count, AllocDisabler};
@@ -32,6 +33,7 @@ const SETS: &[(&str, &str)] = &[
     ("mode", "0"),
     ("mix", "50"),
     ("output", "-3 dB"),
+    ("voice", "40"),
     ("vocal", "words"),
     ("panic", "1"),
 ];
@@ -68,6 +70,11 @@ fn process_params_rates_and_midi_allocate_nothing() {
             }
             if block == 120 {
                 e.set_sample_rate(96_000.0);
+            }
+            if block % 40 == 7 {
+                let mut voice = VowelTable::TEXTBOOK;
+                voice.freq[block % 5][1] *= 1.1;
+                e.set_voice(&voice);
             }
             for k in GETS {
                 e.get_param(k, &mut out);

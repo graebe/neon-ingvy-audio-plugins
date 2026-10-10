@@ -20,6 +20,14 @@
  *                   either engine; the host's bypass passes the audio, as
  *                   late as the latency reported
  *   the state       saved and reopened, every value exactly
+ *   the voice       captured from a recording on a thread of its own: the
+ *                   vowels sung measured, the rest filled in; sung by the
+ *                   engine as far as Voice says; kept in the set as numbers
+ *                   and reopened, a set without one -- or with one that is not
+ *                   one -- forgetting it; forgotten by hand; a recording that
+ *                   cannot be read, or has no vowels in it, saying so; a
+ *                   second capture ignored while one runs; the processor
+ *                   closed under a capture
  *   the model       the formants the engine's, at Size and Resonance now;
  *                   the picture after audio, saying which engine drew it;
  *                   the knobs that run both ways
@@ -35,6 +43,7 @@
 
 #include "Editor.h"
 #include "Vocalize.h"
+#include "vz_voices.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -127,15 +136,19 @@ float source (juce::int64 n, int channel)
     return (float) (0.35 * (2.0 * phase - 1.0) + 0.05 * (noise.nextDouble() - 0.5));
 }
 
-/* What the host is told: every latency change it was notified of. */
+/* What the host is told: every latency change it was notified of, and every
+ * time the set was marked unsaved. */
 struct HostListener final : juce::AudioProcessorListener
 {
     int latencyChanges = 0;
+    /* State the host cannot see changed: the set marked unsaved. */
+    int unsaved = 0;
 
     void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
     void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
     {
         latencyChanges += d.latencyChanged ? 1 : 0;
+        unsaved += d.nonParameterStateChanged ? 1 : 0;
     }
 };
 
@@ -170,7 +183,7 @@ TEST_CASE ("the parameters are the engine's table, in its order and words")
         CHECK (a.p.plain (i) == info.default_value);
         ids.insert (prm.getParameterID());
     }
-    CHECK (ids == std::set<juce::String> { "mode", "vocal", "vowel", "size", "resonance", "excite", "mix", "output" });
+    CHECK (ids == std::set<juce::String> { "mode", "vocal", "vowel", "size", "resonance", "excite", "mix", "output", "voice" });
 
     /* The words a host lists at the defaults. */
     const auto text = [&a] (int i) { return a.p.parameter (i).getCurrentValueAsText(); };
@@ -182,6 +195,7 @@ TEST_CASE ("the parameters are the engine's table, in its order and words")
     CHECK (text (param::excite) == "0 %");
     CHECK (text (param::mix) == "100 %");
     CHECK (text (param::output) == "0.0 dB");
+    CHECK (text (param::voice) == "100 %");
 }
 
 TEST_CASE ("Mode is a choice of the engine's two labels, which no host may automate")
@@ -478,6 +492,7 @@ TEST_CASE ("a saved state reopens with every value exactly")
     a.set (param::excite, 40.0);
     a.set (param::mix, 90.0);
     a.set (param::output, -3.0);
+    a.set (param::voice, 40.0);
     juce::MemoryBlock state;
     a.p.getStateInformation (state);
 
@@ -507,8 +522,9 @@ TEST_CASE ("the model: the formants are the engine's, at Size and Resonance now"
     for (const double v : { 0.0, 1.3, 2.0, 3.55, 4.0 })
     {
         CAPTURE (v);
+        /* No voice captured: the textbook's, whatever Voice says. */
         double want[VZ_FORMANTS] {};
-        vz_formants (v, 30.0, 65.0, want);
+        vz_formants (nullptr, 100.0, v, 30.0, 65.0, want);
         const auto f = a.p.formants (v);
         for (int k = 0; k < VZ_FORMANTS; ++k)
             CHECK (f[(size_t) k] == want[k]);
@@ -523,6 +539,7 @@ TEST_CASE ("the model: the formants are the engine's, at Size and Resonance now"
     CHECK_FALSE (a.p.bipolar (param::vocal));
     CHECK_FALSE (a.p.bipolar (param::vowel));
     CHECK_FALSE (a.p.bipolar (param::mode));
+    CHECK_FALSE (a.p.bipolar (param::voice));
     CHECK_FALSE (a.p.bipolar (99));
 }
 
@@ -563,6 +580,442 @@ TEST_CASE ("the model: the picture waits for audio, then says which engine drew 
     CHECK (pic.spectral);
     CHECK (pic.latency == frame);
     CHECK (pic.latencyMs() == doctest::Approx (1000.0 * frame / rate));
+}
+
+/* ------------------------------------------------------------ the voice -- */
+
+namespace
+{
+using ni::vz::Voice;
+using Status = ni::vz::Voice::Status;
+
+/* The singer every capture here hears: A, I and U at 140 Hz, 0.6 s each, a
+ * voice 1.15 times the textbook's -- E and O never sung. */
+constexpr double singerScale = 1.15;
+const std::vector<float>& singer()
+{
+    static const auto x = ni::vz::test::sing ({ 0, 2, 4 }, singerScale, 140.0, 0.6, rate);
+    return x;
+}
+
+/* What the engine measures from the singer, asked directly. */
+VzVoice measured()
+{
+    VzVoice v {};
+    REQUIRE (vz_voice_capture (singer().data(), singer().size(), rate, &v));
+    return v;
+}
+
+/* The message loop runs until a capture has answered, for 20 s at most. */
+bool awaitCapture (Processor& p)
+{
+    const auto until = juce::Time::getMillisecondCounter() + 20000;
+    while (p.voice().status == Status::capturing && juce::Time::getMillisecondCounter() < until)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (5);
+    return p.voice().status != Status::capturing;
+}
+
+/* The textbook's formants at `vowel`, Size and Resonance as `p` holds them. */
+ni::vz::Formants textbookAt (Processor& p, double vowel)
+{
+    ni::vz::Formants f {};
+    vz_formants (nullptr, 100.0, vowel, p.plain (param::size), p.plain (param::resonance), f.data());
+    return f;
+}
+
+/* A state as XML, and back. */
+std::unique_ptr<juce::XmlElement> xmlOf (const juce::MemoryBlock& state)
+{
+    return juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+}
+
+juce::MemoryBlock binaryOf (const juce::XmlElement& xml)
+{
+    juce::MemoryBlock out;
+    juce::AudioProcessor::copyXmlToBinary (xml, out);
+    return out;
+}
+
+juce::MemoryBlock stateOf (Processor& p)
+{
+    juce::MemoryBlock state;
+    p.getStateInformation (state);
+    return state;
+}
+
+void load (Processor& p, const juce::MemoryBlock& state)
+{
+    p.setStateInformation (state.getData(), (int) state.getSize());
+}
+
+/* A processor that has captured the singer, from `file`. */
+void captureSinger (Processor& p, const juce::File& file)
+{
+    REQUIRE (ni::vz::test::writeWav (file, singer(), rate));
+    p.capture (file);
+    REQUIRE (awaitCapture (p));
+    REQUIRE (p.voice().status == Status::captured);
+}
+
+/* The local peak of `out` between `lo` and `hi` Hz, by the picture's
+ * frequencies: where a formant is drawn. */
+double peakHz (const ni::vz::Picture& pic, double lo, double hi)
+{
+    double best = -1.0e9, at = 0.0;
+    for (int i = 1; i + 1 < pic.count(); ++i)
+    {
+        const auto k = (size_t) i;
+        if (pic.hz[k] < lo || pic.hz[k] > hi)
+            continue;
+        if (pic.output[k] > pic.output[k - 1] && pic.output[k] >= pic.output[k + 1] && pic.output[k] > best)
+        {
+            best = pic.output[k];
+            at = pic.hz[k];
+        }
+    }
+    return at;
+}
+} // namespace
+
+TEST_CASE ("a recording captures a voice: the vowels sung are measured, the rest filled in for that singer")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+    HostListener host;
+    a.p.addListener (&host);
+    CHECK (a.p.voice().status == Status::none);
+    CHECK (a.p.recordingWildcard().contains ("*.wav"));
+    CHECK (a.p.recordingWildcard().contains ("*.aif"));
+
+    const auto file = scratch / "My Voice.wav";
+    REQUIRE (ni::vz::test::writeWav (file, singer(), rate));
+    const auto before = a.p.voice().serial;
+    a.p.capture (file);
+    /* Under way at once, on a thread of its own. */
+    CHECK (a.p.voice().status == Status::capturing);
+    CHECK (a.p.voice().name == "My Voice.wav");
+    CHECK (a.p.voice().serial != before);
+    REQUIRE (awaitCapture (a.p));
+
+    const auto v = a.p.voice();
+    CHECK (v.status == Status::captured);
+    CHECK (v.name == "My Voice.wav");
+    CHECK (v.found == std::array<bool, 5> { true, false, true, false, true });
+    /* Captured by hand: the set is unsaved. */
+    CHECK (host.unsaved >= 1);
+
+    /* At Voice 100 the singer's vowels: the engine's measurement, exactly,
+     * and near enough the voice that was sung. */
+    const auto direct = measured();
+    for (const int vowel : { 0, 2, 4 })
+    {
+        CAPTURE (vowel);
+        double want[VZ_FORMANTS] {};
+        vz_formants (&direct, 100.0, vowel, 0.0, 50.0, want);
+        const auto f = a.p.formants (vowel);
+        for (int k = 0; k < VZ_FORMANTS; ++k)
+            CHECK (f[(size_t) k] == want[k]);
+        CHECK (f[0] / (ni::vz::test::textbook[vowel][0] * singerScale) == doctest::Approx (1.0).epsilon (0.1));
+        CHECK (f[1] / (ni::vz::test::textbook[vowel][1] * singerScale) == doctest::Approx (1.0).epsilon (0.06));
+    }
+    /* E, never sung: the textbook's, scaled to the singer. */
+    CHECK (a.p.formants (1.0)[1] == doctest::Approx (ni::vz::test::textbook[1][1] * direct.scale));
+
+    /* At Voice 0 the textbook's, exactly; between, between. */
+    a.set (param::voice, 0.0);
+    for (const double vowel : { 0.0, 1.5, 4.0 })
+        CHECK (a.p.formants (vowel) == textbookAt (a.p, vowel));
+    a.set (param::voice, 50.0);
+    const auto half = a.p.formants (0.0)[1];
+    CHECK (half > textbookAt (a.p, 0.0)[1]);
+    a.set (param::voice, 100.0);
+    CHECK (half < a.p.formants (0.0)[1]);
+    a.p.removeListener (&host);
+}
+
+TEST_CASE ("the engine sings the captured voice: its vowel drawn where it was sung, and none of it at Voice 0")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    const auto file = scratch / "singer.wav";
+
+    /* Vowel A, all the way: the picture's curve is the vowel's filter. */
+    Instance sung, book;
+    captureSinger (sung.p, file);
+    for (auto* i : { &sung, &book })
+    {
+        i->set (param::vocal, 100.0);
+        i->set (param::vowel, 0.0);
+    }
+    juce::int64 n = 0;
+    for (int b = 0; b < 100; ++b, n += block)
+        for (auto* i : { &sung, &book })
+            i->run ([n] (int c, int s) { return source (n + s, c); });
+    const double f2Book = peakHz (book.p.picture(), 1000.0, 2200.0);
+    const double f2Sung = peakHz (sung.p.picture(), 1000.0, 2200.0);
+    CAPTURE (f2Book);
+    CAPTURE (f2Sung);
+    CHECK (f2Book == doctest::Approx (ni::vz::test::textbook[0][1]).epsilon (0.06));
+    CHECK (f2Sung / f2Book == doctest::Approx (singerScale).epsilon (0.08));
+
+    /* At Voice 0 a captured voice is the textbook's, bit for bit, once the
+     * glide from Voice's default 100 % has landed and what it left in the
+     * filters has died away -- the first second is not compared; at 100 %
+     * it is not the textbook's. */
+    for (const double amount : { 0.0, 100.0 })
+    {
+        CAPTURE (amount);
+        Instance withVoice, without;
+        captureSinger (withVoice.p, file);
+        for (auto* i : { &withVoice, &without })
+        {
+            i->set (param::vocal, 100.0);
+            i->set (param::vowel, 1.5);
+            i->set (param::voice, amount);
+        }
+        bool same = true;
+        juce::int64 m = 0;
+        for (int b = 0; b < 200; ++b, m += block)
+        {
+            withVoice.run ([m] (int c, int s) { return source (m + s, c); });
+            without.run ([m] (int c, int s) { return source (m + s, c); });
+            if (b < 100)
+                continue;
+            for (int c = 0; c < 2; ++c)
+                for (int s = 0; s < block; ++s)
+                    same = same && juce::exactlyEqual (withVoice.buffer.getSample (c, s), without.buffer.getSample (c, s));
+        }
+        CHECK (same == (amount == 0.0));
+    }
+}
+
+TEST_CASE ("a saved set keeps the voice -- fifty numbers, not the recording -- and reopens it")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+    captureSinger (a.p, scratch / "My Voice.wav");
+    const auto state = stateOf (a.p);
+
+    const auto xml = xmlOf (state);
+    REQUIRE (xml != nullptr);
+    const auto* voice = xml->getChildByName ("voice");
+    REQUIRE (voice != nullptr);
+    CHECK (voice->getStringAttribute ("name") == "My Voice.wav");
+    CHECK (voice->getNumChildElements() == 5);
+    const char* names[] { "A", "E", "I", "O", "U" };
+    int row = 0;
+    for (const auto* vowel : voice->getChildWithTagNameIterator ("vowel"))
+    {
+        CAPTURE (row);
+        CHECK (vowel->getStringAttribute ("name") == names[row]);
+        CHECK (vowel->getIntAttribute ("found") == (row % 2 == 0 ? 1 : 0));
+        CHECK (juce::StringArray::fromTokens (vowel->getStringAttribute ("freq"), " ", "").size() == 5);
+        CHECK (juce::StringArray::fromTokens (vowel->getStringAttribute ("bandwidth"), " ", "").size() == 5);
+        ++row;
+    }
+    CHECK (state.getSize() < 4096);
+
+    /* A second instance -- a set reopened -- sings the same voice, to the
+     * six decimals written, and is not marked unsaved for it. */
+    Instance b;
+    HostListener host;
+    b.p.addListener (&host);
+    load (b.p, state);
+    CHECK (host.unsaved == 0);
+    const auto v = b.p.voice();
+    CHECK (v.status == Status::captured);
+    CHECK (v.name == "My Voice.wav");
+    CHECK (v.found == a.p.voice().found);
+    for (const double vowel : { 0.0, 1.0, 2.0, 2.5, 4.0 })
+        for (int k = 0; k < VZ_FORMANTS; ++k)
+            CHECK (b.p.formants (vowel)[(size_t) k] == doctest::Approx (a.p.formants (vowel)[(size_t) k]).epsilon (1.0e-8));
+    /* And saved again, the very same voice. */
+    const auto again = xmlOf (stateOf (b.p));
+    REQUIRE (again != nullptr);
+    REQUIRE (again->getChildByName ("voice") != nullptr);
+    CHECK (again->getChildByName ("voice")->isEquivalentTo (voice, false));
+    b.p.removeListener (&host);
+}
+
+TEST_CASE ("a set without a voice, or with one that is not a voice, forgets the voice held")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+    captureSinger (a.p, scratch / "My Voice.wav");
+    const auto good = stateOf (a.p);
+
+    /* `edit` done to the saved voice, the result loaded over the voice. */
+    const auto loadEdited = [&good] (const std::function<void (juce::XmlElement&)>& edit)
+    {
+        auto xml = xmlOf (good);
+        REQUIRE (xml != nullptr);
+        auto* voice = xml->getChildByName ("voice");
+        REQUIRE (voice != nullptr);
+        edit (*voice);
+        Instance b;
+        load (b.p, good);
+        REQUIRE (b.p.voice().status == Status::captured);
+        load (b.p, binaryOf (*xml));
+        return std::make_pair (b.p.voice(), b.p.formants (0.0) == textbookAt (b.p, 0.0));
+    };
+    const auto row = [] (juce::XmlElement& voice, int i) { return voice.getChildElement (i); };
+
+    SUBCASE ("no <voice> at all: a set saved before the capture")
+    {
+        Instance fresh;
+        Instance b;
+        load (b.p, good);
+        load (b.p, stateOf (fresh.p));
+        CHECK (b.p.voice().status == Status::none);
+        CHECK (b.p.voice().name.isEmpty());
+        CHECK (b.p.formants (0.0) == textbookAt (b.p, 0.0));
+        CHECK (xmlOf (stateOf (b.p))->getChildByName ("voice") == nullptr);
+    }
+    SUBCASE ("a number that is not a number")
+    {
+        const auto [v, textbook] = loadEdited ([&row] (juce::XmlElement& voice)
+                                               { row (voice, 1)->setAttribute ("freq", "nan 2089 2691 3500 4500"); });
+        CHECK (v.status == Status::none);
+        CHECK (textbook);
+    }
+    SUBCASE ("an infinite bandwidth")
+    {
+        const auto [v, textbook] = loadEdited ([&row] (juce::XmlElement& voice)
+                                               { row (voice, 3)->setAttribute ("bandwidth", "60 90 inf 200 250"); });
+        CHECK (v.status == Status::none);
+        CHECK (textbook);
+    }
+    SUBCASE ("words where the numbers were")
+    {
+        const auto [v, textbook] = loadEdited ([&row] (juce::XmlElement& voice)
+                                               { row (voice, 0)->setAttribute ("freq", "low middle high higher highest"); });
+        CHECK (v.status == Status::none);
+        CHECK (textbook);
+    }
+    SUBCASE ("a row short of a number")
+    {
+        const auto [v, textbook] = loadEdited ([&row] (juce::XmlElement& voice)
+                                               { row (voice, 2)->setAttribute ("freq", "342 2322 3000 3500"); });
+        CHECK (v.status == Status::none);
+        CHECK (textbook);
+    }
+    SUBCASE ("a vowel missing")
+    {
+        const auto [v, textbook] = loadEdited ([&row] (juce::XmlElement& voice)
+                                               { voice.removeChildElement (row (voice, 4), true); });
+        CHECK (v.status == Status::none);
+        CHECK (textbook);
+    }
+}
+
+TEST_CASE ("forgetting the voice by hand sings the textbook's again, and marks the set unsaved")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+    captureSinger (a.p, scratch / "My Voice.wav");
+    HostListener host;
+    a.p.addListener (&host);
+    const auto serial = a.p.voice().serial;
+    a.p.forgetVoice();
+    CHECK (a.p.voice().status == Status::none);
+    CHECK (a.p.voice().name.isEmpty());
+    CHECK (a.p.voice().found == std::array<bool, 5> {});
+    CHECK (a.p.voice().serial != serial);
+    CHECK (a.p.formants (2.0) == textbookAt (a.p, 2.0));
+    CHECK (host.unsaved == 1);
+    CHECK (xmlOf (stateOf (a.p))->getChildByName ("voice") == nullptr);
+    a.p.removeListener (&host);
+}
+
+TEST_CASE ("what cannot be read, and what has no vowels in it, capture nothing and say so")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+
+    const auto notes = scratch / "notes.wav";
+    REQUIRE (notes.replaceWithText ("a shopping list, not a recording"));
+    a.p.capture (notes);
+    REQUIRE (awaitCapture (a.p));
+    CHECK (a.p.voice().status == Status::unreadable);
+    CHECK (a.p.voice().name == "notes.wav");
+
+    a.p.capture (scratch / "nowhere.wav");
+    REQUIRE (awaitCapture (a.p));
+    CHECK (a.p.voice().status == Status::unreadable);
+
+    const auto silence = scratch / "silence.wav";
+    REQUIRE (ni::vz::test::writeWav (silence, std::vector<float> ((size_t) rate, 0.0f), rate));
+    a.p.capture (silence);
+    REQUIRE (awaitCapture (a.p));
+    CHECK (a.p.voice().status == Status::unsung);
+    CHECK (a.p.voice().name == "silence.wav");
+
+    CHECK (a.p.formants (0.0) == textbookAt (a.p, 0.0));
+    CHECK (xmlOf (stateOf (a.p))->getChildByName ("voice") == nullptr);
+}
+
+TEST_CASE ("a capture that fails after one that worked: what is sung is what is shown")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+    captureSinger (a.p, scratch / "My Voice.wav");
+    const auto notes = scratch / "notes.wav";
+    REQUIRE (notes.replaceWithText ("not a recording"));
+    a.p.capture (notes);
+    REQUIRE (awaitCapture (a.p));
+    CHECK (a.p.voice().status == Status::unreadable);
+
+    /* The voice before is still sung, and said to be -- under its own name,
+     * in the editor and in the set -- so it can still be forgotten; the
+     * failure is the latest capture's, and named for its recording. */
+    CHECK (a.p.voice().name == "notes.wav");
+    CHECK (a.p.voice().sung);
+    CHECK (a.p.voice().sungName == "My Voice.wav");
+    const auto xml = xmlOf (stateOf (a.p));
+    const auto* voice = xml->getChildByName ("voice");
+    REQUIRE (voice != nullptr);
+    CHECK (voice->getStringAttribute ("name") == "My Voice.wav");
+    CHECK (a.p.formants (0.0) != textbookAt (a.p, 0.0));
+    a.p.forgetVoice();
+    CHECK (! a.p.voice().sung);
+    CHECK (a.p.formants (0.0) == textbookAt (a.p, 0.0));
+}
+
+TEST_CASE ("a second capture while one runs is ignored")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+    const auto first = scratch / "first.wav";
+    const auto second = scratch / "second.wav";
+    REQUIRE (ni::vz::test::writeWav (first, singer(), rate));
+    REQUIRE (ni::vz::test::writeWav (second, std::vector<float> ((size_t) rate, 0.0f), rate));
+    a.p.capture (first);
+    const auto serial = a.p.voice().serial;
+    a.p.capture (second);
+    CHECK (a.p.voice().name == "first.wav");
+    CHECK (a.p.voice().serial == serial);
+    REQUIRE (awaitCapture (a.p));
+    CHECK (a.p.voice().status == Status::captured);
+    CHECK (a.p.voice().name == "first.wav");
+}
+
+TEST_CASE ("a processor closed while a capture runs goes safely, and its answer reaches no one")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    const auto file = scratch / "long.wav";
+    /* Thirty seconds of singing: the capture is still reading when the
+     * processor goes. */
+    std::vector<float> longTake;
+    while (longTake.size() < (size_t) (30.0 * rate))
+        longTake.insert (longTake.end(), singer().begin(), singer().end());
+    REQUIRE (ni::vz::test::writeWav (file, longTake, rate));
+
+    auto p = std::make_unique<Processor>();
+    p->prepareToPlay (rate, block);
+    p->capture (file);
+    CHECK (p->voice().status == Status::capturing);
+    p.reset();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
+    CHECK (true);
 }
 
 /* ----------------------------------------------------------- the window -- */

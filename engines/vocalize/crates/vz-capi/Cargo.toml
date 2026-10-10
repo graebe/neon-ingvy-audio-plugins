@@ -15,12 +15,14 @@ crate-type = ["staticlib", "rlib"]
 
 # THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (vz_shell_*, on
 # shell-core's bridge), the ground's C ABI (gnd_*) that every plugin's one
-# archive carries, and the core's Spectral engine. vz-move turns all three
-# off: the Move module has one thread, no editor and the Time engine only.
+# archive carries, the core's Spectral engine and its capture. vz-move turns
+# them all off: the Move module has one thread, no editor, no file to capture
+# from and the Time engine only.
 [features]
-default = ["shell", "spectral"]
+default = ["shell", "spectral", "capture"]
 shell = ["dep:shell-core", "dep:ground-capi"]
 spectral = ["vz-core/spectral"]
+capture = ["vz-core/capture"]
 
 [dependencies]
 # Without its default `spectral`: this crate's own feature asks for it, so the

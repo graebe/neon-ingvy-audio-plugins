@@ -10,9 +10,13 @@
  *                 at the bottom, U back at the top right. The five vowels are
  *                 letters on the path the Vowel knob walks (ghost); the dot
  *                 is where the vowel is now. Size slides the whole path along
- *                 its diagonal, so a turn of it is seen as well as heard. The
- *                 caption repeats the vowel in the engine's words ("VOWEL
- *                 E>I 30 %").
+ *                 its diagonal, so a turn of it is seen as well as heard; a
+ *                 captured voice moves each vowel to where the singer sang
+ *                 it, as far as Voice says. The caption repeats the vowel in
+ *                 the engine's words ("VOWEL   E>I 30 %") and names the
+ *                 recording a voice came from; the letters of vowels it
+ *                 measured are drawn in ink, the rest muted. A recording
+ *                 dragged over the window outlines the well: drop it there.
  *
  *   EnvelopePlot  THE SOUND'S COLOUR: the left channel's spectral envelope,
  *                 50 Hz to 10 kHz in equal steps of pitch, 0 to -48 dB --
@@ -51,6 +55,11 @@ public:
 
     void update();
 
+    /* While a recording is dragged over the window: the well says it will
+     * take it. */
+    void setDropping (bool);
+    bool isDropping() const noexcept { return dropping; }
+
     /* Where the dot is, and the five letters, in the well's coordinates:
      * for the tests. */
     juce::Point<float> dot() const noexcept { return now; }
@@ -63,7 +72,11 @@ private:
     void rebuild();
     juce::Point<float> at (const Formants&) const;
 
+    juce::String captionFor (const juce::String& vowelText) const;
+
     Model& model;
+    Voice voice;
+    bool dropping = false;
     double shownVowel = -1.0;
     std::vector<Formants> along;
     Formants current {};

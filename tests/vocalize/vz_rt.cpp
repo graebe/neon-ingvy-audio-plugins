@@ -12,23 +12,30 @@
  * session does to it: playback in either engine with the window open (the
  * picture and the Ground at work), every control automated while it plays,
  * a reactivation's reset, the host's bypass, a mono track, a block longer
- * than the host announced, and a set loaded. Each must count zero.
+ * than the host announced, a set loaded, and a captured voice arriving,
+ * morphed by Voice, restored with a set and forgotten. Each must count zero.
  *
  * MODE FROM THE AUDIO THREAD. A VST3 host's parameter changes arrive inside
  * process(), and JUCE's wrapper applies them there (setValueNotifyingHost),
- * so Mode's listener -- which asks the message thread for the new latency,
- * an AsyncUpdater -- runs on the audio thread. Those writes are made on the
- * watched thread here, as the wrapper makes them, and counted apart from the
- * blocks they precede, so a failure says which of the two allocated; the
- * message loop is let run between blocks, as it runs beside a host's audio
- * thread. A switch of engines mid-stream -- its dip, the other engine primed
- * -- and the request for the latency must each count zero.
+ * so whatever a parameter's write sets off runs on the audio thread. Those
+ * writes are made on the watched thread here, as the wrapper makes them, and
+ * counted apart from the blocks they precede, so a failure says which of the
+ * two allocated; the message loop is let run between blocks, as it runs
+ * beside a host's audio thread, where the latency follows Mode (a timer). A
+ * switch of engines mid-stream -- its dip, the other engine primed -- and the
+ * write that asks for it must each count zero.
+ *
+ * A VOICE ARRIVES BY THE SHELL'S QUEUE. A capture reads and analyses its
+ * recording on a thread of its own, which allocates as it likes and is not
+ * watched; its answer reaches the engine as a command applied at the top of a
+ * block, by value -- and so does a voice restored from a set, or forgotten.
  *
  * The guard is shown an allocation first, so a guard that was not inserted
  * -- and would count nothing ever -- fails rather than passes. macOS only:
  * the guard is a dyld interposer.
  */
 #include "Vocalize.h"
+#include "vz_voices.h"
 
 #include <dlfcn.h>
 
@@ -213,6 +220,52 @@ int main()
     processor.setStateInformation (saved.getData(), (int) saved.getSize());
     play (20);
     check (allocations == 0, "a set loaded while playing", allocations);
+
+    /* A VOICE CAPTURED WHILE IT PLAYS, with Vocal all the way so it is
+     * heard: read and measured on the capture's thread, applied at the top
+     * of a block, and glided in. */
+    using Status = ni::vz::Voice::Status;
+    ni::vz::test::Scratch scratch ("vz_rt");
+    const auto take = scratch / "take.wav";
+    const bool written = ni::vz::test::writeWav (
+        take, ni::vz::test::sing ({ 0, 2, 4 }, 1.15, 140.0, 0.6, sampleRate), sampleRate);
+    check (written, "a recording to capture a voice from", 0);
+    processor.parameter (ni::vz::param::vocal).setValueNotifyingHost (1.0f);
+    allocations = 0;
+    processor.capture (take);
+    int waited = 0;
+    while (processor.voice().status == Status::capturing && waited < 4000)
+    {
+        play (1);
+        ++waited;
+    }
+    check (processor.voice().status == Status::captured, "a voice captured while it plays", waited);
+    play (50);
+    check (allocations == 0, "... arriving through the shell and gliding in", allocations);
+
+    /* Voice automated, a voice captured: the morph remade as it moves. */
+    auto& amount = processor.parameter (ni::vz::param::voice);
+    allocations = 0;
+    play (40, false, nullptr, [&] (int k) { amount.setValueNotifyingHost ((float) (k % 5) / 4.0f); });
+    check (allocations == 0, "Voice automated while it plays", allocations);
+    allocations = 0;
+    writes = 0;
+    play (40, false, nullptr, {}, [&] (int k) { amount.setValueNotifyingHost ((float) (k % 5) / 4.0f); });
+    check (allocations == 0, "Voice automated from the audio thread: the blocks", allocations);
+    check (writes == 0, "... and the writes themselves", writes);
+
+    /* Forgotten, and restored with a set, while it plays. */
+    juce::MemoryBlock withVoice;
+    processor.getStateInformation (withVoice);
+    allocations = 0;
+    processor.forgetVoice();
+    play (20);
+    check (allocations == 0, "the voice forgotten while it plays", allocations);
+    allocations = 0;
+    processor.setStateInformation (withVoice.getData(), (int) withVoice.getSize());
+    play (20);
+    check (allocations == 0, "a set with a voice loaded while it plays", allocations);
+    check (processor.voice().status == Status::captured, "... which restored the voice", 0);
 
     processor.editorClosed();
     processor.releaseResources();

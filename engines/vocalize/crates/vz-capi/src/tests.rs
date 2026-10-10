@@ -94,11 +94,11 @@ fn text_goes_out_and_comes_back_in() {
 #[test]
 fn the_formants_and_the_latency_are_the_engines() {
     let mut f = [0.0f64; VZ_FORMANTS];
-    unsafe { vz_formants(0.0, 0.0, 50.0, f.as_mut_ptr()) };
+    unsafe { vz_formants(std::ptr::null(), 100.0, 0.0, 0.0, 50.0, f.as_mut_ptr()) };
     assert_eq!(f, vz_core::model::VOWELS[0]);
-    unsafe { vz_formants(4.0, 100.0, 50.0, f.as_mut_ptr()) };
+    unsafe { vz_formants(std::ptr::null(), 100.0, 4.0, 100.0, 50.0, f.as_mut_ptr()) };
     assert!((f[0] - vz_core::model::VOWELS[4][0] * 0.8).abs() < 1e-9);
-    unsafe { vz_formants(0.0, 0.0, 50.0, std::ptr::null_mut()) };
+    unsafe { vz_formants(std::ptr::null(), 0.0, 0.0, 0.0, 50.0, std::ptr::null_mut()) };
     assert_eq!(vz_latency(0.0, 48_000.0), 0);
     assert_eq!(vz_latency(1.0, 48_000.0), 1024);
     assert_eq!(vz_latency(1.0, 96_000.0), 2048);
@@ -166,6 +166,91 @@ fn the_wrapper_counts_what_it_processed() {
     assert_eq!(core.serial, 300);
     core.engine_mut().set_num(Param::Mix, 0.0);
     assert_eq!(core.engine().num(Param::Mix), 0.0);
+}
+
+/// The textbook voice with every formant times `scale`.
+fn scaled(scale: f64) -> VzVoice {
+    let mut v = std::mem::MaybeUninit::<VzVoice>::zeroed();
+    unsafe { vz_voice_textbook(v.as_mut_ptr()) };
+    let mut v = unsafe { v.assume_init() };
+    for f in v.freq.iter_mut() {
+        *f *= scale;
+    }
+    v
+}
+
+#[test]
+fn a_voice_is_drawn_checked_and_sung_with() {
+    let big = scaled(1.2);
+    assert_eq!(big.freq[1], 1333.0 * 1.2);
+    assert_eq!(big.scale, 1.0);
+    let mut f = [0.0f64; VZ_FORMANTS];
+    unsafe { vz_formants(&big, 100.0, 0.0, 0.0, 50.0, f.as_mut_ptr()) };
+    assert!((f[1] - 1333.0 * 1.2).abs() < 1e-9);
+    unsafe { vz_formants(&big, 0.0, 0.0, 0.0, 50.0, f.as_mut_ptr()) };
+    assert_eq!(f[1], 1333.0);
+
+    let mut bad = big;
+    bad.freq[7] = f64::NAN;
+    assert!(unsafe { !vz_voice_check(&mut bad) });
+    assert!(bad.freq[7].is_nan());
+    let mut odd = big;
+    odd.freq[0] = 1.0;
+    odd.scale = f64::NAN;
+    assert!(unsafe { vz_voice_check(&mut odd) });
+    assert_eq!((odd.freq[0], odd.scale), (50.0, 1.0));
+    assert!(unsafe { !vz_voice_check(std::ptr::null_mut()) });
+    unsafe { vz_voice_textbook(std::ptr::null_mut()) };
+
+    unsafe {
+        let core = vz_core_new(48_000.0);
+        assert!(vz_core_set_voice(core, &big));
+        assert!((*core).engine().voice().freq[0][1] == 1333.0 * 1.2);
+        assert!(!vz_core_set_voice(core, &bad));
+        assert!(vz_core_set_voice(core, std::ptr::null()));
+        assert_eq!((*core).engine().voice(), &vz_core::model::VowelTable::TEXTBOOK);
+        assert!(!vz_core_set_voice(std::ptr::null_mut(), &big));
+        vz_core_free(core);
+    }
+}
+
+#[test]
+fn a_capture_of_nothing_sung_writes_nothing() {
+    let silence = vec![0.0f32; 48_000];
+    let mut out = scaled(2.0);
+    assert!(unsafe { !vz_voice_capture(silence.as_ptr(), silence.len(), 48_000.0, &mut out) });
+    assert_eq!(out, scaled(2.0));
+    assert!(unsafe { !vz_voice_capture(std::ptr::null(), 10, 48_000.0, &mut out) });
+    assert!(unsafe { !vz_voice_capture(silence.as_ptr(), 10, 48_000.0, std::ptr::null_mut()) });
+}
+
+#[cfg(feature = "capture")]
+#[test]
+fn a_sung_vowel_is_captured() {
+    /* A: pulses at 130 Hz through the textbook's A, scaled up by a tenth. */
+    let fs = 48_000.0;
+    let a = vz_core::model::Formants::of(&{
+        let mut t = vz_core::model::VowelTable::TEXTBOOK;
+        t.freq[0].iter_mut().for_each(|f| *f *= 1.1);
+        t
+    }, 0.0, 0.0, 50.0);
+    let poles = a.poles(fs, 1.0);
+    let mut y = [[0.0; 2]; 5];
+    let mut tilt = 0.0;
+    let x: Vec<f32> = (0..fs as usize)
+        .map(|i| {
+            tilt = 0.97 * tilt + if (i as f64 % (fs / 130.0)) < 1.0 { 1.0 } else { 0.0 };
+            let mut s = tilt;
+            for (p, st) in poles.iter().zip(y.iter_mut()) {
+                s = p.run(s, st);
+            }
+            (s * 0.02) as f32
+        })
+        .collect();
+    let mut out = scaled(1.0);
+    assert!(unsafe { vz_voice_capture(x.as_ptr(), x.len(), fs, &mut out) });
+    assert!(out.found[0] && out.frames[0] >= 5);
+    assert!((out.freq[1] / (1333.0 * 1.1) - 1.0).abs() < 0.06, "{}", out.freq[1]);
 }
 
 #[cfg(feature = "shell")]
@@ -238,6 +323,22 @@ mod shell_tests {
             vz_shell_post_sample_rate(std::ptr::null(), 1.0);
             assert!(!vz_shell_read(std::ptr::null(), std::ptr::null_mut()));
             assert!(!vz_shell_read(shell, std::ptr::null_mut()));
+
+            /* A voice posted is the engine's from the next block. */
+            let big = scaled(1.2);
+            assert!(vz_shell_post_voice(shell, &big));
+            let mut bad = big;
+            bad.bandwidth[3] = f64::INFINITY;
+            assert!(!vz_shell_post_voice(shell, &bad));
+            assert!(!vz_shell_post_voice(std::ptr::null(), &big));
+            let core = vz_shell_begin(shell);
+            assert_eq!((*core).engine().voice().freq[2][2], 3000.0 * 1.2);
+            vz_shell_end(shell, 0);
+            assert!(vz_shell_post_voice(shell, std::ptr::null()));
+            let core = vz_shell_begin(shell);
+            assert_eq!((*core).engine().voice(), &vz_core::model::VowelTable::TEXTBOOK);
+            vz_shell_end(shell, 0);
+
             vz_shell_destroy(shell);
             vz_shell_destroy(std::ptr::null_mut());
         }

@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Vocalize's plugin, faked for its editor's tests: the eight host
+ * NI Vocalize's plugin, faked for its editor's tests: the nine host
  * parameters exactly as the engine's table declares them, and a model whose
- * pictures the test sets.
+ * pictures and captured voice the test sets.
  *
  * THE PARAMETERS are the engine's table (vz_param_*, vz-core's params.rs),
  * transcribed in its order with its ranges, defaults and words: "80 %",
@@ -15,8 +15,11 @@
  * five vowels' measurements, the same walk between two of them on the Bark
  * scale, the same Size scaling every formant by 1.25^(-Size/100). THE
  * PICTURE stands in for the engine's envelopes: a tilted input and the vowel
- * put on it, as far as Vocal says. Both are the test's stand-ins, not the
- * editor's: the editor draws whatever the model hands it.
+ * put on it, as far as Vocal says. THE VOICE stands in for a capture: the
+ * test says how it went (land()), and a captured voice is the textbook's
+ * scaled, as far as Voice says. All are the test's stand-ins, not the
+ * editor's: the editor draws whatever the model hands it, and asks it only to
+ * capture a file or forget.
  */
 #pragma once
 
@@ -24,7 +27,9 @@
 
 #include "fakes.h"
 
+#include <array>
 #include <cmath>
+#include <vector>
 
 namespace ni::vz::test
 {
@@ -51,7 +56,7 @@ inline juce::String vowelText (float v)
     return juce::String (letters[at]) + ">" + letters[at + 1] + " " + juce::String ((int) pct) + " %";
 }
 
-/* The eight, as the engine's table declares them. */
+/* The nine, as the engine's table declares them. */
 inline void addParameters (ni::ui::test::FakeParameters& p)
 {
     const auto number = [] (const juce::String& s) { return s.getFloatValue(); };
@@ -84,6 +89,7 @@ inline void addParameters (ni::ui::test::FakeParameters& p)
     p.addFloat ("excite", "Excite", linear (0.0f, 100.0f), 0.0f, percent (false), number);
     p.addFloat ("mix", "Mix", linear (0.0f, 100.0f), 100.0f, percent (false), number);
     p.addFloat ("output", "Output", linear (-24.0f, 24.0f), 0.0f, db, number);
+    p.addFloat ("voice", "Voice", linear (0.0f, 100.0f), 100.0f, percent (false), number);
 }
 
 /* -------------------------------------------- the formants, for tests -- */
@@ -128,8 +134,63 @@ public:
     void setMotion (bool on) override { common.setMotion (on); }
 
     bool bipolar (int i) const override { return i == param::size || i == param::output; }
-    Formants formants (double vowel) override { return formantsAt (vowel, plain (param::size)); }
     const Picture& picture() override { return shown; }
+
+    /* A captured voice: the textbook's times `capturedScale`, as far as
+     * Voice says. */
+    Formants formants (double vowel) override
+    {
+        auto f = formantsAt (vowel, plain (param::size));
+        if (held.sung)
+            for (auto& x : f)
+                x *= std::pow (capturedScale, plain (param::voice) / 100.0);
+        return f;
+    }
+
+    /* ---- the voice: what the editor asked, and what the test says came of
+     * it */
+    Voice held;
+    double capturedScale = 1.0;
+    std::vector<juce::File> captures;
+    int forgotten = 0;
+
+    Voice voice() const override { return held; }
+
+    void capture (const juce::File& recording) override
+    {
+        captures.push_back (recording);
+        if (held.status == Voice::Status::capturing)
+            return;
+        held.status = Voice::Status::capturing;
+        held.name = recording.getFileName();
+        ++held.serial;
+    }
+
+    void forgetVoice() override
+    {
+        ++forgotten;
+        land (Voice::Status::none, {}, {});
+    }
+
+    juce::String recordingWildcard() const override { return "*.wav;*.aif;*.aiff;*.m4a"; }
+
+    /* How a capture went: its status, the recording's name and the vowels
+     * it measured; a captured voice `scale` times the textbook's. As the
+     * processor does, a capture that failed keeps the voice sung before it,
+     * and forgetting (none) lets it go. */
+    void land (Voice::Status status, const juce::String& name, std::array<bool, 5> found, double scale = 1.15)
+    {
+        held.status = status;
+        held.name = name;
+        if (status == Voice::Status::captured || status == Voice::Status::none)
+        {
+            held.sung = status == Voice::Status::captured;
+            held.sungName = held.sung ? name : juce::String();
+            held.found = held.sung ? found : std::array<bool, 5> {};
+            capturedScale = held.sung ? scale : 1.0;
+        }
+        ++held.serial;
+    }
 
     double plain (int i) { return (double) params[i].convertFrom0to1 (params[i].getValue()); }
 

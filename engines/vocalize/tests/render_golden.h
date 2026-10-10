@@ -25,12 +25,14 @@
 /* An integer, not (int)(SR * SECONDS), so arrays sized by it are not VLAs. */
 #define VZ_RENDER_FRAMES (44100 * 4)
 
-/* THE PATCHES, as the host's eight plain values in the parameters' order
+/* THE PATCHES, as the host's nine plain values in the parameters' order
  * (vz_param_*): Mode, Vocal 85 %, Vowel E>I 70 %, Size +30 %, Resonance
- * 65 %, Excite 40 %, Mix 90 %, Output -3 dB. */
-#define VZ_RENDER_PARAMS_COUNT 8
-static const double VZ_RENDER_TIME[VZ_RENDER_PARAMS_COUNT] = { 0, 85, 1.7, 30, 65, 40, 90, -3 };
-static const double VZ_RENDER_SPECTRAL[VZ_RENDER_PARAMS_COUNT] = { 1, 85, 1.7, 30, 65, 40, 90, -3 };
+ * 65 %, Excite 40 %, Mix 90 %, Output -3 dB, Voice 100 % -- of the textbook
+ * voice, as no voice is captured: the renders were recorded before Voice
+ * existed, and did not move when it came. */
+#define VZ_RENDER_PARAMS_COUNT 9
+static const double VZ_RENDER_TIME[VZ_RENDER_PARAMS_COUNT] = { 0, 85, 1.7, 30, 65, 40, 90, -3, 100 };
+static const double VZ_RENDER_SPECTRAL[VZ_RENDER_PARAMS_COUNT] = { 1, 85, 1.7, 30, 65, 40, 90, -3, 100 };
 
 /*
  * FNV-1a over the left channel's float bytes, recorded 2026-10-10 at the

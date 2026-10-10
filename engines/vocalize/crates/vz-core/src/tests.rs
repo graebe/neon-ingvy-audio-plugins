@@ -8,7 +8,7 @@
  */
 
 use super::*;
-use crate::model::VOWELS;
+use crate::model::{VowelTable, VOWELS};
 use realfft::RealFftPlanner;
 
 const FS: f64 = 48_000.0;
@@ -403,4 +403,61 @@ fn timings() {
         let s = t.elapsed().as_secs_f64();
         println!("mode {mode}: {:.2} ms for {seconds} s of stereo, {:.3} % of real time", s * 1e3, 100.0 * s / seconds);
     }
+}
+
+/// The textbook voice with every formant times `scale`: a bigger or smaller
+/// singer, as a capture would find one.
+fn scaled_voice(scale: f64) -> VowelTable {
+    let mut t = VowelTable::TEXTBOOK;
+    for row in t.freq.iter_mut() {
+        for f in row.iter_mut() {
+            *f *= scale;
+        }
+    }
+    t
+}
+
+#[test]
+fn a_captured_voice_is_sung_as_far_as_voice_says() {
+    let x = noise(FS as usize, 21);
+    for &mode in MODES {
+        for (amount, want) in [(100.0, 1.2), (0.0, 1.0), (50.0, 0.0)] {
+            let mut e = Engine::new(FS);
+            assert!(e.set_voice(&scaled_voice(1.2)));
+            for (p, v) in [(Param::Mode, mode), (Param::Vocal, 100.0), (Param::Vowel, 1.0), (Param::Voice, amount)] {
+                e.set_num(p, v);
+            }
+            render(&mut e, &vec![0.0; FS as usize / 2], None);
+            let (y, _) = render(&mut e, &x, None);
+            let db = spectrum(&y[4096..]);
+            /* Halfway, each formant is halfway on the Bark scale. */
+            let f2 = VOWELS[1][1];
+            let target = if amount == 50.0 { model::hz(0.5 * (model::bark(f2) + model::bark(f2 * 1.2))) } else { f2 * want };
+            let got = peak_near(&db, target);
+            assert!((got / target - 1.0).abs() < 0.05, "mode {mode} voice {amount}: F2 at {got:.0}, not {target:.0}");
+        }
+    }
+}
+
+#[test]
+fn a_new_voice_glides_in_and_nonsense_is_refused() {
+    let mut e = engine(&[(Param::Vocal, 100.0), (Param::Resonance, 90.0)]);
+    assert_eq!(e.voice(), &VowelTable::TEXTBOOK);
+    let tone: Vec<f32> = (0..9600).map(|i| (0.3 * (core::f64::consts::TAU * 110.0 * i as f64 / FS).sin()) as f32).collect();
+    render(&mut e, &tone, None);
+    let (before, _) = render(&mut e, &tone, None);
+    let step = |y: &[f32]| y.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    assert!(e.set_voice(&scaled_voice(1.3)));
+    let (during, _) = render(&mut e, &tone, None);
+    /* No sample moves further than the music itself does. */
+    assert!(step(&during) < 1.5 * step(&before), "{} vs {}", step(&during), step(&before));
+    assert_eq!(e.voice(), &scaled_voice(1.3));
+    /* A voice set while another is still arriving starts from where it is. */
+    assert!(e.set_voice(&VowelTable::TEXTBOOK));
+    render(&mut e, &tone[..100], None);
+    assert!(e.set_voice(&scaled_voice(0.9)));
+    let mut bad = scaled_voice(1.1);
+    bad.bandwidth[4][4] = f64::NAN;
+    assert!(!e.set_voice(&bad));
+    assert_eq!(e.voice(), &scaled_voice(0.9));
 }

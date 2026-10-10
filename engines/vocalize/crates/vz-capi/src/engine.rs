@@ -10,7 +10,7 @@ calls what.
 use std::os::raw::{c_char, c_int};
 
 use ni_dsp::ffi::{copy_cstr, cstr};
-use vz_core::model::{Formants, FORMANTS};
+use vz_core::model::{Formants, VowelTable, FORMANTS};
 use vz_core::{latency, Engine, Kind, Mode, Param, PARAM_COUNT};
 
 /// How many formants `vz_formants` writes. A literal, so the header can
@@ -377,19 +377,30 @@ impl core::fmt::Write for TextBuf {
 
 /* ------------------------------------------------- the vowel, the latency */
 
-/// The vowel's formant frequencies in Hz, F1 first, at `vowel` (0..4, A..U),
-/// `size` (-100..100 %) and `resonance` (0..100 %) -- the engine's own model,
-/// for an editor's vowel chart. Writes `VZ_FORMANTS` values. Any thread;
-/// pure.
+/// The formant frequencies in Hz, F1 first, at `vowel` (0..4, A..U), `size`
+/// (-100..100 %) and `resonance` (0..100 %), of the voice the engine sings
+/// with at Voice `amount` (0..100 %): `voice` (null for the textbook's)
+/// morphed from the textbook's -- the engine's own model, for an editor's
+/// vowel chart. Writes `VZ_FORMANTS` values. Any thread; pure.
 ///
 /// # Safety
-/// `out` is null or has room for `VZ_FORMANTS` doubles.
+/// `voice` is null or readable; `out` is null or has room for `VZ_FORMANTS`
+/// doubles.
 #[no_mangle]
-pub unsafe extern "C" fn vz_formants(vowel: f64, size: f64, resonance: f64, out: *mut f64) {
+pub unsafe extern "C" fn vz_formants(
+    voice: *const VzVoice,
+    amount: f64,
+    vowel: f64,
+    size: f64,
+    resonance: f64,
+    out: *mut f64,
+) {
     if out.is_null() {
         return;
     }
-    let f = Formants::at(vowel, size, resonance);
+    let captured = voice.as_ref().and_then(VzVoice::table).unwrap_or(VowelTable::TEXTBOOK);
+    let table = VowelTable::TEXTBOOK.blend(&captured, amount / 100.0);
+    let f = Formants::of(&table, vowel, size, resonance);
     std::slice::from_raw_parts_mut(out, FORMANTS).copy_from_slice(&f.freq);
 }
 
@@ -398,4 +409,125 @@ pub unsafe extern "C" fn vz_formants(vowel: f64, size: f64, resonance: f64, out:
 #[no_mangle]
 pub extern "C" fn vz_latency(mode: f64, sample_rate: f64) -> u32 {
     latency(Mode::from_value(mode), sample_rate) as u32
+}
+
+/* ------------------------------------------------------------ the voice */
+
+/// A VOICE: five vowels' five formants and their bandwidths, in Hz, vowel
+/// by vowel (A E I O U), F1 first -- `freq[5 * vowel + formant]` -- and what
+/// a capture found. The textbook's (vz_voice_textbook) or a singer's
+/// (vz_voice_capture); a shell keeps one in its saved state.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VzVoice {
+    pub freq: [f64; 25],
+    pub bandwidth: [f64; 25],
+    /// Which vowels a capture measured; the rest are the textbook's, scaled.
+    pub found: [bool; 5],
+    /// How many frames each was measured from.
+    pub frames: [u32; 5],
+    /// The singer's size against the textbook voice (1 for the textbook).
+    pub scale: f64,
+}
+
+impl VzVoice {
+    fn of(table: &VowelTable) -> VzVoice {
+        VzVoice {
+            freq: core::array::from_fn(|i| table.freq[i / 5][i % 5]),
+            bandwidth: core::array::from_fn(|i| table.bandwidth[i / 5][i % 5]),
+            found: [false; 5],
+            frames: [0; 5],
+            scale: 1.0,
+        }
+    }
+
+    /// The table, made safe to sing from; `None` for one that is not.
+    pub fn table(&self) -> Option<VowelTable> {
+        VowelTable {
+            freq: core::array::from_fn(|v| core::array::from_fn(|k| self.freq[5 * v + k])),
+            bandwidth: core::array::from_fn(|v| core::array::from_fn(|k| self.bandwidth[5 * v + k])),
+        }
+        .sanitised()
+    }
+}
+
+/// The textbook voice, into `out`. Any thread.
+///
+/// # Safety
+/// `out` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn vz_voice_textbook(out: *mut VzVoice) {
+    if let Some(out) = out.as_mut() {
+        *out = VzVoice::of(&VowelTable::TEXTBOOK);
+    }
+}
+
+/// Make `voice` safe to sing from, in place: what a shell does with a voice
+/// read from a saved set. False, and nothing changed, for one with a number
+/// in it that is not a number, which is then no voice at all. Any thread.
+///
+/// # Safety
+/// `voice` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn vz_voice_check(voice: *mut VzVoice) -> bool {
+    let Some(voice) = voice.as_mut() else { return false };
+    match voice.table() {
+        Some(t) => {
+            let safe = VzVoice::of(&t);
+            voice.freq = safe.freq;
+            voice.bandwidth = safe.bandwidth;
+            voice.scale = if voice.scale.is_finite() && voice.scale > 0.0 { voice.scale } else { 1.0 };
+            true
+        }
+        None => false,
+    }
+}
+
+/// CAPTURE a voice from `frames` mono samples at `sample_rate`, into `out`:
+/// a singer's vowels, measured (vz-core's voice.rs). False, and nothing
+/// written, when nothing in it was sung -- or in a build without capture (the
+/// Move's). Slow and allocating: not the audio thread, nor one that must
+/// stay responsive.
+///
+/// # Safety
+/// `samples` is null or holds `frames` floats; `out` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn vz_voice_capture(samples: *const f32, frames: usize, sample_rate: f64, out: *mut VzVoice) -> bool {
+    if samples.is_null() || out.is_null() {
+        return false;
+    }
+    #[cfg(feature = "capture")]
+    {
+        let x = std::slice::from_raw_parts(samples, frames);
+        if let Some(c) = vz_core::voice::capture(x, sample_rate) {
+            let mut v = VzVoice::of(&c.table);
+            v.found = c.found;
+            v.frames = c.frames;
+            v.scale = c.scale;
+            *out = v;
+            return true;
+        }
+        false
+    }
+    #[cfg(not(feature = "capture"))]
+    {
+        let _ = (frames, sample_rate);
+        false
+    }
+}
+
+/// Sing with `voice` from now on (null: the textbook's); the vowels glide to
+/// it. False, and nothing changed, for a voice that is not one
+/// (vz_voice_check).
+///
+/// # Safety
+/// `core` is null or live, and this thread's; `voice` is null or readable.
+#[no_mangle]
+pub unsafe extern "C" fn vz_core_set_voice(core: *mut VzCore, voice: *const VzVoice) -> bool {
+    let Some(core) = core.as_mut() else { return false };
+    let table = match voice.as_ref() {
+        Some(v) => v.table(),
+        None => Some(VowelTable::TEXTBOOK),
+    };
+    table.is_some_and(|t| core.engine.set_voice(&t))
 }

@@ -36,7 +36,7 @@ static int param(const char *key) {
 }
 
 static void table(void) {
-    CHECK(vz_param_count() == 8);
+    CHECK(vz_param_count() == 9);
     char buf[32];
     for (int i = 0; i < vz_param_count(); i++) {
         VzParamInfo info;
@@ -46,7 +46,8 @@ static void table(void) {
         CHECK(vz_param_name(i, buf, sizeof buf) > 0);
         CHECK(vz_param_text(i, info.default_value, buf, sizeof buf) > 0);
     }
-    CHECK(!vz_param_info(8, NULL));
+    CHECK(!vz_param_info(9, NULL));
+    CHECK(param("voice") == 8);
 
     const int mode = param("mode");
     CHECK(mode == 0);
@@ -73,10 +74,25 @@ static void table(void) {
 
 static void model(void) {
     double f[VZ_FORMANTS];
-    vz_formants(0.0, 0.0, 50.0, f);
+    vz_formants(NULL, 100.0, 0.0, 0.0, 50.0, f);
     CHECK(f[0] == 768.0 && f[1] == 1333.0);
-    vz_formants(2.0, -100.0, 50.0, f);
+    vz_formants(NULL, 100.0, 2.0, -100.0, 50.0, f);
     CHECK(fabs(f[0] - 342.0 * 1.25) < 1e-9);
+
+    /* A voice: the textbook's, scaled, checked, and drawn. */
+    VzVoice voice;
+    vz_voice_textbook(&voice);
+    CHECK(voice.freq[5 * 1 + 1] == 2089.0 && voice.scale == 1.0);
+    for (int i = 0; i < 25; i++)
+        voice.freq[i] *= 1.2;
+    CHECK(vz_voice_check(&voice));
+    vz_formants(&voice, 100.0, 0.0, 0.0, 50.0, f);
+    CHECK(fabs(f[1] - 1333.0 * 1.2) < 1e-9);
+    VzVoice bad = voice;
+    bad.bandwidth[3] = NAN;
+    CHECK(!vz_voice_check(&bad));
+    static float silence[4800];
+    CHECK(!vz_voice_capture(silence, 4800, 48000.0, &voice));
     CHECK(vz_latency(0.0, 48000.0) == 0);
     CHECK(vz_latency(1.0, 48000.0) == 1024);
 }
@@ -86,6 +102,7 @@ static void instance(void) {
     CHECK(core != NULL);
     vz_core_set_num(core, param("vocal"), 0.0);
     CHECK(vz_core_num(core, param("vocal")) == 0.0);
+    CHECK(vz_core_set_voice(core, NULL));
     CHECK(isnan(vz_core_num(core, 99)));
     CHECK(vz_core_latency(core) == 0);
 

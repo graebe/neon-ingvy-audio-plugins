@@ -10,6 +10,7 @@
 #include "MachineSettings.h"
 #include "PluginEditor.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace ni::vz
@@ -109,6 +110,9 @@ Processor::Processor()
     }
     for (auto& line : bypassLine)
         line.assign ((size_t) bypassLength, 0.0f);
+    /* WAV and AIFF, and on macOS the system's decoders: the codecs JUCE would
+     * add are switched off (plugins/vocalize/CMakeLists.txt). */
+    formats.registerBasicFormats();
     setLatencySamples (latencyForMode());
     startTimer (latencyCheckMs);
 }
@@ -116,6 +120,8 @@ Processor::Processor()
 Processor::~Processor()
 {
     stopTimer();
+    /* A capture under way reads `formats`: it ends before they go. */
+    captures.removeAllJobs (true, 30000);
 }
 
 bool Processor::isBusesLayoutSupported (const BusesLayout& layout) const
@@ -229,9 +235,193 @@ bool Processor::bipolar (int index) const
 
 Formants Processor::formants (double vowel)
 {
+    std::optional<VzVoice> v;
+    {
+        const juce::ScopedLock lock (voiceLock);
+        v = held;
+    }
     Formants f {};
-    vz_formants (vowel, plain (param::size), plain (param::resonance), f.data());
+    vz_formants (v ? &*v : nullptr, plain (param::voice), vowel, plain (param::size), plain (param::resonance), f.data());
     return f;
+}
+
+/* ------------------------------------------------------------ the voice -- */
+
+Voice Processor::voice() const
+{
+    const juce::ScopedLock lock (voiceLock);
+    return state;
+}
+
+juce::String Processor::recordingWildcard() const
+{
+    return formats.getWildcardForAllFormats();
+}
+
+void Processor::capture (const juce::File& recording)
+{
+    {
+        const juce::ScopedLock lock (voiceLock);
+        if (state.status == Voice::Status::capturing)
+            return;
+        state.status = Voice::Status::capturing;
+        state.name = recording.getFileName();
+        ++state.serial;
+    }
+    /* Read, downmixed and analysed on the capture's thread; the answer goes
+     * back to the message thread, to a processor that may be gone by then. */
+    captures.addJob ([this, recording, self = juce::WeakReference<Processor> (this)]
+    {
+        const auto name = recording.getFileName();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (recording));
+        auto answer = [self, name] (std::optional<VzVoice> v, Voice::Status status)
+        {
+            juce::MessageManager::callAsync ([self, name, v, status]
+            {
+                if (auto* p = self.get())
+                    p->captured (v, status, name);
+            });
+        };
+        if (reader == nullptr || reader->sampleRate <= 0.0 || reader->numChannels == 0)
+            return answer (std::nullopt, Voice::Status::unreadable);
+
+        const auto frames = (int) juce::jmin (reader->lengthInSamples,
+                                              (juce::int64) (longestRecordingS * reader->sampleRate));
+        const int channels = (int) reader->numChannels;
+        juce::AudioBuffer<float> chunk (channels, 65536);
+        std::vector<float> mono;
+        mono.reserve ((size_t) juce::jmax (0, frames));
+        for (int at = 0; at < frames; at += chunk.getNumSamples())
+        {
+            const int n = juce::jmin (chunk.getNumSamples(), frames - at);
+            if (! reader->read (&chunk, 0, n, at, true, true))
+                return answer (std::nullopt, Voice::Status::unreadable);
+            for (int i = 0; i < n; ++i)
+            {
+                float sum = 0.0f;
+                for (int ch = 0; ch < channels; ++ch)
+                    sum += chunk.getSample (ch, i);
+                mono.push_back (sum / (float) channels);
+            }
+        }
+        VzVoice v {};
+        if (vz_voice_capture (mono.data(), mono.size(), reader->sampleRate, &v))
+            return answer (v, Voice::Status::captured);
+        answer (std::nullopt, Voice::Status::unsung);
+    });
+}
+
+/* A capture that failed changes what is said of the latest capture, never
+ * what is sung: the voice before it, if any, stays, under its own name. */
+void Processor::captured (std::optional<VzVoice> v, Voice::Status status, const juce::String& name)
+{
+    if (v)
+    {
+        useVoice (&*v, name, true);
+        return;
+    }
+    const juce::ScopedLock lock (voiceLock);
+    state.status = status;
+    state.name = name;
+    ++state.serial;
+}
+
+void Processor::forgetVoice()
+{
+    useVoice (nullptr, {}, true);
+}
+
+void Processor::useVoice (const VzVoice* v, const juce::String& name, bool byHand)
+{
+    {
+        const juce::ScopedLock lock (voiceLock);
+        held = v != nullptr ? std::optional<VzVoice> (*v) : std::nullopt;
+        state.status = v != nullptr ? Voice::Status::captured : Voice::Status::none;
+        state.name = v != nullptr ? name : juce::String();
+        state.sung = v != nullptr;
+        state.sungName = state.name;
+        for (size_t i = 0; i < state.found.size(); ++i)
+            state.found[i] = v != nullptr && v->found[i];
+        ++state.serial;
+        vz_shell_post_voice (shell.get(), v);
+    }
+    if (byHand)
+        nonParameterStateChanged();
+}
+
+/*
+ * <voice name="take3.wav" scale="1.17">
+ *   <vowel name="A" found="1" frames="48" freq="... five Hz ..." bandwidth="..."/>
+ *   ... E I O U
+ * </voice>
+ *
+ * Fifty numbers and what the capture found, never the recording.
+ */
+void Processor::writeExtraState (juce::XmlElement& root)
+{
+    const juce::ScopedLock lock (voiceLock);
+    if (! held)
+        return;
+    auto* e = root.createNewChildElement ("voice");
+    e->setAttribute ("name", state.sungName);
+    e->setAttribute ("scale", held->scale);
+    static const char* const names[] = { "A", "E", "I", "O", "U" };
+    for (int vowel = 0; vowel < 5; ++vowel)
+    {
+        auto* row = e->createNewChildElement ("vowel");
+        row->setAttribute ("name", names[vowel]);
+        row->setAttribute ("found", held->found[vowel] ? 1 : 0);
+        row->setAttribute ("frames", (int) held->frames[vowel]);
+        juce::StringArray freq, width;
+        for (int k = 0; k < VZ_FORMANTS; ++k)
+        {
+            freq.add (juce::String (held->freq[5 * vowel + k], 6));
+            width.add (juce::String (held->bandwidth[5 * vowel + k], 6));
+        }
+        row->setAttribute ("freq", freq.joinIntoString (" "));
+        row->setAttribute ("bandwidth", width.joinIntoString (" "));
+    }
+}
+
+/* A set without a voice, or with one that is not a voice, sings the
+ * textbook's: what was captured before it was read is forgotten either way. */
+void Processor::readExtraState (const juce::XmlElement& root)
+{
+    const auto* e = root.getChildByName ("voice");
+    if (e == nullptr)
+        return useVoice (nullptr, {}, false);
+    VzVoice v {};
+    vz_voice_textbook (&v);
+    v.scale = e->getDoubleAttribute ("scale", 1.0);
+    int vowel = 0;
+    for (const auto* row : e->getChildWithTagNameIterator ("vowel"))
+    {
+        if (vowel == 5)
+            break;
+        const auto freq = juce::StringArray::fromTokens (row->getStringAttribute ("freq"), " ", "");
+        const auto width = juce::StringArray::fromTokens (row->getStringAttribute ("bandwidth"), " ", "");
+        /* Numbers as written here, nothing else: a word would read as 0, and
+         * a voice of zeros is no voice. */
+        const auto numbers = [] (const juce::StringArray& tokens)
+        {
+            return tokens.size() == VZ_FORMANTS
+                   && std::all_of (tokens.begin(), tokens.end(), [] (const juce::String& t)
+                                   { return t.containsOnly ("0123456789.+-eE") && t.containsAnyOf ("0123456789"); });
+        };
+        if (! numbers (freq) || ! numbers (width))
+            return useVoice (nullptr, {}, false);
+        for (int k = 0; k < VZ_FORMANTS; ++k)
+        {
+            v.freq[5 * vowel + k] = freq[k].getDoubleValue();
+            v.bandwidth[5 * vowel + k] = width[k].getDoubleValue();
+        }
+        v.found[vowel] = row->getIntAttribute ("found") != 0;
+        v.frames[vowel] = (uint32_t) juce::jmax (0, row->getIntAttribute ("frames"));
+        ++vowel;
+    }
+    if (vowel != 5 || ! vz_voice_check (&v))
+        return useVoice (nullptr, {}, false);
+    useVoice (&v, e->getStringAttribute ("name"), false);
 }
 
 const Picture& Processor::picture()

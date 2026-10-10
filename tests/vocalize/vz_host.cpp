@@ -12,7 +12,7 @@
  *   the class        one class, NI Vocalize from Neon Ingvy, filed as
  *                    Fx|Filter; an effect with a main bus in and out, no
  *                    MIDI either way
- *   the parameters   through the VST3 controller: the engine's eight by
+ *   the parameters   through the VST3 controller: the engine's nine by
  *                    name and the host's Bypass, their default texts, typing
  *                    read by the engine, Mode not offered for automation
  *   the latency      Mode's, as the host learns it: none for Time, one frame
@@ -30,6 +30,11 @@
  *                    renders the same
  *   the bypass       the host's Bypass passes the audio, untouched in Time,
  *                    and as late as the latency reported in Spectral
+ *   the voice        a set holding a voice reopens with it, every formant as
+ *                    written, and the bundle sings it: at Voice 100 not the
+ *                    textbook's, at Voice 0 the textbook's bit for bit. A
+ *                    capture itself needs the plugin's window; vz_processor
+ *                    holds it
  *   the window       opened while it plays, at the design's size, closed and
  *                    opened again
  */
@@ -58,7 +63,7 @@ void check (bool ok, const String& what, const String& detail = {})
 }
 
 /* The engine's parameters by name, in its table's order (vz_param_name). */
-const char* const names[VZ_RENDER_PARAMS_COUNT] = { "Mode", "Vocal", "Vowel", "Size", "Resonance", "Excite", "Mix", "Output" };
+const char* const names[VZ_RENDER_PARAMS_COUNT] = { "Mode", "Vocal", "Vowel", "Size", "Resonance", "Excite", "Mix", "Output", "Voice" };
 /* Mode's labels (vz_param_label): a choice is typed by its label. */
 const char* const modes[] = { "Time", "Spectral" };
 
@@ -117,8 +122,9 @@ bool typePatch (AudioPluginInstance& p, const double* patch)
     return true;
 }
 
-/* Four seconds of the reference input; the hash of the left channel. */
-uint64 render (AudioPluginInstance& p)
+/* Four seconds of the reference input; the hash of the left channel, from
+ * frame `from` on. */
+uint64 render (AudioPluginInstance& p, int from = 0)
 {
     static float inL[VZ_RENDER_FRAMES], inR[VZ_RENDER_FRAMES];
     vz_render_input (inL, inR, VZ_RENDER_FRAMES);
@@ -132,7 +138,8 @@ uint64 render (AudioPluginInstance& p)
         buffer.copyFrom (0, 0, inL + done, n);
         buffer.copyFrom (1, 0, inR + done, n);
         p.processBlock (buffer, midi);
-        fnv = vz_render_fnv1a (fnv, buffer.getReadPointer (0), sizeof (float) * (size_t) n);
+        if (done >= from)
+            fnv = vz_render_fnv1a (fnv, buffer.getReadPointer (0), sizeof (float) * (size_t) n);
     }
     return fnv;
 }
@@ -203,7 +210,7 @@ void checkParameters (AudioPluginInstance& p)
     int found = 0;
     for (const auto* name : names)
         found += byName (p, name) != nullptr ? 1 : 0;
-    check (found == VZ_RENDER_PARAMS_COUNT, "the engine's eight, by name", String (found));
+    check (found == VZ_RENDER_PARAMS_COUNT, "the engine's nine, by name", String (found));
     check (p.getBypassParameter() != nullptr, "and the host's Bypass");
     if (found != VZ_RENDER_PARAMS_COUNT)
         return;
@@ -212,6 +219,8 @@ void checkParameters (AudioPluginInstance& p)
     check (text ("Vocal") == "80 %", "Vocal starts at 80 %", text ("Vocal"));
     check (text ("Vowel") == "A", "Vowel starts at A", text ("Vowel"));
     check (text ("Output") == "0.0 dB", "Output starts at 0.0 dB", text ("Output"));
+    check (text ("Voice") == "100 %", "Voice starts at 100 %", text ("Voice"));
+    check (byName (p, "Voice")->isAutomatable(), "Voice is offered for automation");
     check (! byName (p, "Mode")->isAutomatable(), "Mode is not offered for automation");
     check (byName (p, "Vowel")->isAutomatable(), "... and Vowel is");
     check (byName (p, "Mode")->getNumSteps() == 2, "Mode is a choice of two");
@@ -311,6 +320,163 @@ void checkBypass (VST3PluginFormat& format, const PluginDescription& d)
     }
 }
 
+/* ------------------------------------------------------------ the voice -- */
+
+/*
+ * A VOICE IN A SET, THROUGH THE BUNDLE. A capture needs a person and a file,
+ * so the voice here is written into a set by hand, where the plugin keeps it:
+ * the host's state ("VST3PluginState") holds the component's state, base64,
+ * which is the processor's own binary XML -- <voice> a child of its root --
+ * followed by JUCE's private data, kept as it was.
+ */
+
+/* The textbook voice (model.rs) times 1.15: a bigger singer. */
+constexpr double textbook[5][5] = {
+    { 768.0, 1333.0, 2522.0, 3500.0, 4500.0 },
+    { 476.0, 2089.0, 2691.0, 3500.0, 4500.0 },
+    { 342.0, 2322.0, 3000.0, 3500.0, 4500.0 },
+    { 497.0, 910.0, 2459.0, 3500.0, 4500.0 },
+    { 378.0, 997.0, 2343.0, 3500.0, 4500.0 },
+};
+constexpr double bandwidths[5] = { 60.0, 90.0, 120.0, 200.0, 250.0 };
+constexpr double handScale = 1.15;
+
+std::unique_ptr<XmlElement> handMadeVoice()
+{
+    auto voice = std::make_unique<XmlElement> ("voice");
+    voice->setAttribute ("name", "Hand Made.wav");
+    voice->setAttribute ("scale", handScale);
+    const char* const letters[] = { "A", "E", "I", "O", "U" };
+    for (int v = 0; v < 5; ++v)
+    {
+        auto* row = voice->createNewChildElement ("vowel");
+        row->setAttribute ("name", letters[v]);
+        row->setAttribute ("found", 1);
+        row->setAttribute ("frames", 50);
+        StringArray freq, width;
+        for (int k = 0; k < 5; ++k)
+        {
+            freq.add (String (textbook[v][k] * handScale, 6));
+            width.add (String (bandwidths[k], 6));
+        }
+        row->setAttribute ("freq", freq.joinIntoString (" "));
+        row->setAttribute ("bandwidth", width.joinIntoString (" "));
+    }
+    return voice;
+}
+
+/* The component's state in a host's state: the processor's XML and what
+ * follows it. */
+struct ComponentState
+{
+    std::unique_ptr<XmlElement> host, processor;
+    MemoryBlock rest;
+};
+
+ComponentState openState (const MemoryBlock& hostState)
+{
+    ComponentState s;
+    s.host = AudioProcessor::getXmlFromBinary (hostState.getData(), (int) hostState.getSize());
+    if (s.host == nullptr || s.host->getChildByName ("IComponent") == nullptr)
+        return s;
+    MemoryBlock component;
+    if (! component.fromBase64Encoding (s.host->getChildByName ("IComponent")->getAllSubText()))
+        return s;
+    s.processor = AudioProcessor::getXmlFromBinary (component.getData(), (int) component.getSize());
+    if (s.processor == nullptr || component.getSize() < 8)
+        return s;
+    /* JUCE's binary XML: magic, length, the text, a terminating zero. */
+    const auto length = (size_t) ByteOrder::littleEndianInt (addBytesToPointer (component.getData(), 4));
+    const size_t used = 9 + length;
+    if (used <= component.getSize())
+        s.rest.append (addBytesToPointer (component.getData(), (int) used), component.getSize() - used);
+    return s;
+}
+
+MemoryBlock closeState (const ComponentState& s)
+{
+    MemoryBlock component;
+    AudioProcessor::copyXmlToBinary (*s.processor, component);
+    component.append (s.rest.getData(), s.rest.getSize());
+    auto host = std::make_unique<XmlElement> (*s.host);
+    auto* c = host->getChildByName ("IComponent");
+    c->deleteAllTextElements();
+    c->addTextElement (component.toBase64Encoding());
+    MemoryBlock out;
+    AudioProcessor::copyXmlToBinary (*host, out);
+    return out;
+}
+
+void checkVoice (VST3PluginFormat& format, const PluginDescription& d)
+{
+    std::printf (" the voice\n");
+    auto plain = load (format, d, VZ_RENDER_SR, VZ_RENDER_BLOCK);
+    if (plain == nullptr)
+        return check (false, "the plugin loads");
+    MemoryBlock state;
+    plain->getStateInformation (state);
+    auto s = openState (state);
+    check (s.processor != nullptr && s.processor->hasTagName ("NeonIngvy"), "the processor's state, inside the host's");
+    if (s.processor == nullptr)
+        return;
+    check (s.processor->getChildByName ("voice") == nullptr, "no voice before one is captured");
+    s.processor->addChildElement (handMadeVoice().release());
+    const auto withVoice = closeState (s);
+
+    /* Reopened, the set's voice comes back out as it went in. */
+    auto sung = load (format, d, VZ_RENDER_SR, VZ_RENDER_BLOCK);
+    if (sung == nullptr)
+        return check (false, "a second instance loads");
+    sung->setStateInformation (withVoice.getData(), (int) withVoice.getSize());
+    MemoryBlock back;
+    sung->getStateInformation (back);
+    const auto reopened = openState (back);
+    const auto* voice = reopened.processor != nullptr ? reopened.processor->getChildByName ("voice") : nullptr;
+    check (voice != nullptr, "a set with a voice reopens with it");
+    if (voice == nullptr)
+        return;
+    check (voice->getStringAttribute ("name") == "Hand Made.wav", "... by its name", voice->getStringAttribute ("name"));
+    double worst = 0.0;
+    int row = 0;
+    for (const auto* vowel : voice->getChildWithTagNameIterator ("vowel"))
+    {
+        const auto freq = StringArray::fromTokens (vowel->getStringAttribute ("freq"), " ", "");
+        for (int k = 0; k < jmin (5, freq.size()); ++k)
+            worst = jmax (worst, std::abs (freq[k].getDoubleValue() - textbook[row][k] * handScale));
+        ++row;
+    }
+    check (row == 5 && worst < 1.0e-6, "... every formant as it was written", String (worst));
+
+    /* And the bundle sings it: the reference input through Vocal and Voice
+     * all the way, against the textbook voice; at Voice 0 the same -- once
+     * the glide from Voice's default 100 % has landed and died away in the
+     * filters, so the last two seconds are compared. */
+    const auto sing = [&] (AudioPluginInstance& p, const char* amount)
+    {
+        typePatch (p, VZ_RENDER_TIME);
+        byName (p, "Vocal")->setValue (byName (p, "Vocal")->getValueForText ("100"));
+        byName (p, "Voice")->setValue (byName (p, "Voice")->getValueForText (amount));
+        return render (p, VZ_RENDER_FRAMES / 2);
+    };
+    auto textbookVoice = load (format, d, VZ_RENDER_SR, VZ_RENDER_BLOCK);
+    auto again = load (format, d, VZ_RENDER_SR, VZ_RENDER_BLOCK);
+    if (textbookVoice == nullptr || again == nullptr)
+        return check (false, "more instances load");
+    again->setStateInformation (withVoice.getData(), (int) withVoice.getSize());
+    const auto heard = sing (*again, "100");
+    const auto book = sing (*textbookVoice, "100");
+    check (heard != book, "at Voice 100 the set's voice is sung, not the textbook's", hex (heard) + " / " + hex (book));
+
+    auto quiet = load (format, d, VZ_RENDER_SR, VZ_RENDER_BLOCK);
+    auto bookQuiet = load (format, d, VZ_RENDER_SR, VZ_RENDER_BLOCK);
+    if (quiet == nullptr || bookQuiet == nullptr)
+        return check (false, "more instances load");
+    quiet->setStateInformation (withVoice.getData(), (int) withVoice.getSize());
+    const auto none = sing (*quiet, "0");
+    const auto bookNone = sing (*bookQuiet, "0");
+    check (none == bookNone, "at Voice 0 the textbook's, bit for bit", hex (none) + " / " + hex (bookNone));
+}
+
 void checkWindow (VST3PluginFormat& format, const PluginDescription& d)
 {
     std::printf (" the window\n");
@@ -384,6 +550,7 @@ int main (int argc, char** argv)
     checkLatency (format, d);
     checkSound (format, d);
     checkBypass (format, d);
+    checkVoice (format, d);
     checkWindow (format, d);
 
     std::printf ("%s\n", failures ? "FAIL" : "ok");

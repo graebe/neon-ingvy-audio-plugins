@@ -108,6 +108,9 @@ publish = false
 # The Spectrogram's FFT, and the complex transform its test oracle runs.
 realfft = { version = "3.5.0", default-features = false }
 rustfft = { version = "6.4.1", default-features = false }
+# Complex numbers: NI Vocalize's capture finds a predictor's roots with them.
+# Already in the graph through rustfft, at this version.
+num-complex = { version = "0.4.6", default-features = false }
 # Between threads: a wait-free SPSC ring, the latest whole value from one
 # thread to another, an object the audio thread lets go of freed where freeing
 # is allowed, and floats an atomic can hold.

@@ -934,6 +934,7 @@ dependencies = [
  "assert_no_alloc",
  "fastrand",
  "ni-dsp",
+ "num-complex",
  "proptest",
  "realfft",
  "wmidi",

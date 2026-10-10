@@ -32,6 +32,7 @@ Ableton Move.
 | **Size** | the voice: up is a bigger, lower voice, down a smaller, higher one |
 | **Resonance** | the vowel's peaks broad and breathy, or sharp and whistling |
 | **Excite** | adds harmonics, for sounds too pure to have anything to shape — a sine, a sub |
+| **Capture…**, **Voice** | learn your own voice from a recording of you singing A E I O U — drag it onto the window — and morph from the textbook voice to yours |
 | **Mode** | **Time**: no latency, resonant and punchy, like a talkbox. **Spectral**: smoother and more sung, one frame (about 21 ms) late |
 | **Mix**, **Output** | dry against vowel, and the level after |
 
@@ -45,7 +46,7 @@ tells Live the new latency.
 
 | crate | what it is |
 |---|---|
-| `vz-core` | the DSP: the vowel model (five formants, Klatt resonators), linear prediction, the Spectral engine (`realfft`), Excite, the parameter table and its text |
+| `vz-core` | the DSP: the vowel model (five formants, Klatt resonators), linear prediction, the Spectral engine (`realfft`), Excite, the voice capture (linear prediction's roots, `num-complex`), the parameter table and its text |
 | `vz-capi` | the C ABI the plugin links (`vz_core.h`, `vz_shell.h`, written by cbindgen) |
 | `vz-move` | the Schwung `audio_fx` vtable, built without the Spectral engine |
 
@@ -57,10 +58,10 @@ each other.
 
 | test | what it holds |
 |---|---|
-| `vz_core_rs` | the engine's own claims: the identity at Vocal 0 (bit for bit in Time, within −120 dB in Spectral), each vowel's F1 and F2 on white noise within 5 % in both modes and at every Size, the envelope moving closer to the vowel at every step of Vocal, the level kept, the mode switch's dip and latency, the panic, Excite giving a sine a vowel, no allocation on any audio path |
+| `vz_core_rs` | the engine's own claims: a synthetic singer's five vowels and size measured back from a recording (F2 within 6 %), a captured voice heard as far as Voice says and gliding in without a click, the identity at Vocal 0 (bit for bit in Time, within −120 dB in Spectral), each vowel's F1 and F2 on white noise within 5 % in both modes and at every Size, the envelope moving closer to the vowel at every step of Vocal, the level kept, the mode switch's dip and latency, the panic, Excite giving a sine a vowel, no allocation on any audio path |
 | `vz_core_time_only`, `vz_move_rs` | the Move's build: the core without its Spectral engine, and the module's vtable and `chain_params` against the engine's table |
 | `vz_core` | the generated C headers, from C |
 | `vz_render_ab` | the plugin's float path and the Move's int16 path render a patch per engine within a sixteen-bit step, and each render's hash is pinned |
-| `vz_processor`, `vz_rt`, `vz_host` | the processor on the real engine, its audio callback under an allocation guard, and the built VST3 as a DAW hosts it — the latency it reports, and the engine's golden renders bit for bit |
+| `vz_processor`, `vz_rt`, `vz_host` | the processor on the real engine, its audio callback under an allocation guard, and the built VST3 as a DAW hosts it — the latency it reports, a voice captured from a recording, sung, saved with the set and restored (and a broken one refused), and the engine's golden renders bit for bit |
 
 Licence: GPL-3.0-or-later, © 2026 Torben Gräber.

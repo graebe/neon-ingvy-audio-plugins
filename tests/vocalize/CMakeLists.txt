@@ -27,10 +27,10 @@ target_include_directories(vz_processor PRIVATE ${NI_VZ} ${NI_JUCE_SHELL} ${CMAK
 target_include_directories(vz_processor SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/external/doctest)
 target_compile_definitions(vz_processor PRIVATE ${_vz_definitions}
     # A test lets the message loop run for a moment: the latency follows Mode
-    # there (an AsyncUpdater).
+    # there (a timer), and a capture's answer comes back there.
     JUCE_MODAL_LOOPS_PERMITTED=1 "NI_VERSION_STRING=\"vz_processor\"")
 target_link_libraries(vz_processor PRIVATE
-    vz_engine ni_editor_vocalize juce::juce_audio_processors
+    vz_engine vz_recordings ni_editor_vocalize juce::juce_audio_processors
     juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 add_test(NAME vz_processor COMMAND vz_processor)
 
@@ -43,7 +43,7 @@ if (APPLE)
     target_compile_definitions(vz_rt PRIVATE ${_vz_definitions}
         JUCE_MODAL_LOOPS_PERMITTED=1 "NI_VERSION_STRING=\"vz_rt\"")
     target_link_libraries(vz_rt PRIVATE
-        vz_engine ni_editor_vocalize juce::juce_audio_processors
+        vz_engine vz_recordings ni_editor_vocalize juce::juce_audio_processors
         juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
     add_dependencies(vz_rt ni_alloc_guard)
     add_test(NAME vz_rt COMMAND vz_rt)

@@ -21,6 +21,7 @@ namespace
 constexpr int knobGap = (int) uv::tok::space::space2;
 constexpr int rowGap = (int) uv::tok::space::space3;
 constexpr int rowH = (int) uv::tok::size::controlH;
+constexpr int buttonGap = (int) uv::tok::space::space2;
 
 /* What each panel holds, by parameter: its knobs, and Mode in Vocal's. */
 struct Group
@@ -33,8 +34,8 @@ struct Group
 const std::array<Group, 3>& groups()
 {
     static const std::array<Group, 3> g { {
-        { "Vowel", info::vowelPanel, { param::vowel, param::size, param::resonance } },
-        { "Vocal", info::vocalPanel, { param::vocal, param::excite } },
+        { "Vowel", info::vowelPanel, { param::vowel, param::size, param::voice } },
+        { "Vocal", info::vocalPanel, { param::vocal, param::resonance, param::excite } },
         { "Level", info::levelPanel, { param::mix, param::output } },
     } };
     return g;
@@ -53,6 +54,7 @@ Labels labelsOf (int index)
     {
         case param::vowel:     return { "Vowel", info::vowel, info::vowelValue };
         case param::size:      return { "Size", info::size, info::percentValue };
+        case param::voice:     return { "Voice", info::voice, info::percentValue };
         case param::resonance: return { "Resonance", info::resonance, info::percentValue };
         case param::vocal:     return { "Vocal", info::vocal, info::percentValue };
         case param::excite:    return { "Excite", info::excite, info::percentValue };
@@ -115,6 +117,31 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
     ni::ui::setInfo (*mode, info::mode);
     panels[1]->addAndMakeVisible (*mode);
 
+    /* THE VOICE: captured from a recording the system's panel chooses, or
+     * forgotten. */
+    captureVoice = std::make_unique<ni::ui::Button> (juce::String (juce::CharPointer_UTF8 ("Capture…")));
+    ni::ui::setInfo (*captureVoice, info::capture);
+    captureVoice->onClick = [this]
+    {
+        if (chooser)
+            chooser (model.recordingWildcard(), [this] (const juce::File& f)
+            {
+                if (f.existsAsFile())
+                    model.capture (f);
+            });
+    };
+    forgetVoice = std::make_unique<ni::ui::Button> ("Forget");
+    ni::ui::setInfo (*forgetVoice, info::forget);
+    forgetVoice->onClick = [this] { model.forgetVoice(); };
+    panels[0]->addAndMakeVisible (*captureVoice);
+    panels[0]->addAndMakeVisible (*forgetVoice);
+    chooser = [this] (const juce::String& wildcard, std::function<void (const juce::File&)> answer)
+    {
+        openPanel = std::make_unique<juce::FileChooser> ("Capture a voice", juce::File(), wildcard);
+        openPanel->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                [then = std::move (answer)] (const juce::FileChooser& c) { then (c.getResult()); });
+    };
+
     /* THE WINDOW. */
     window.setConventions ({ { "drag", "a knob to turn it" }, { "shift", "for fine" }, { "double-click", "to reset" } });
     window.setMotionInfo (info::motion);
@@ -172,10 +199,66 @@ void Editor::layout()
 
     const auto vocal = panels[1]->contentBounds();
     mode->setBounds (vocal.getX(), vocal.getY() + ni::ui::Knob::cardHeight + rowGap, mode->idealWidth(), rowH);
+
+    const auto vowel = panels[0]->contentBounds();
+    const int y = vowel.getY() + ni::ui::Knob::cardHeight + rowGap;
+    captureVoice->setBounds (vowel.getX(), y, captureVoice->idealWidth(), rowH);
+    forgetVoice->setBounds (captureVoice->getRight() + buttonGap, y, forgetVoice->idealWidth(), rowH);
+}
+
+void Editor::setChooser (Chooser c)
+{
+    chooser = std::move (c);
+}
+
+void Editor::showVoice()
+{
+    const auto v = model.voice();
+    if (v.serial == voiceShown)
+        return;
+    voiceShown = v.serial;
+    const bool busy = v.status == Voice::Status::capturing;
+    captureVoice->setText (juce::String (juce::CharPointer_UTF8 (busy ? "Capturing…" : "Capture…")));
+    captureVoice->setEnabled (! busy);
+    forgetVoice->setEnabled (v.sung);
+    layout();
+}
+
+juce::File Editor::recordingAmong (const juce::StringArray& files) const
+{
+    /* The wildcard's "*.wav;*.aif" as the extensions "wav;aif". */
+    const auto extensions = model.recordingWildcard().replace ("*.", "");
+    for (const auto& path : files)
+        if (const juce::File f (path); f.existsAsFile() && f.hasFileExtension (extensions))
+            return f;
+    return {};
+}
+
+bool Editor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    return recordingAmong (files) != juce::File();
+}
+
+void Editor::fileDragEnter (const juce::StringArray&, int, int)
+{
+    chart->setDropping (true);
+}
+
+void Editor::fileDragExit (const juce::StringArray&)
+{
+    chart->setDropping (false);
+}
+
+void Editor::filesDropped (const juce::StringArray& files, int, int)
+{
+    chart->setDropping (false);
+    if (const auto f = recordingAmong (files); f != juce::File())
+        model.capture (f);
 }
 
 void Editor::tick (double)
 {
+    showVoice();
     chart->update();
     envelope->update();
 }

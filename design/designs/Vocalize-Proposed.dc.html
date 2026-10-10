@@ -23,15 +23,15 @@ body{margin:0;background:#060410}
     <svg viewBox="0 0 250 174" width="250" height="174" style="position: absolute; left: 6px; top: 20px; overflow: visible;" aria-hidden="true">
       <path d="{{path}}" fill="none" stroke="var(--line-200)" stroke-width="1"></path>
       <circle cx="{{a.x}}" cy="{{a.y}}" r="2" fill="var(--line-200)"></circle>
-      <text x="{{a.tx}}" y="{{a.ty}}" fill="var(--ink-muted)" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{a.name}}</text>
+      <text x="{{a.tx}}" y="{{a.ty}}" fill="{{a.ink}}" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{a.name}}</text>
       <circle cx="{{e.x}}" cy="{{e.y}}" r="2" fill="var(--line-200)"></circle>
-      <text x="{{e.tx}}" y="{{e.ty}}" fill="var(--ink-muted)" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{e.name}}</text>
+      <text x="{{e.tx}}" y="{{e.ty}}" fill="{{e.ink}}" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{e.name}}</text>
       <circle cx="{{i.x}}" cy="{{i.y}}" r="2" fill="var(--line-200)"></circle>
-      <text x="{{i.tx}}" y="{{i.ty}}" fill="var(--ink-muted)" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{i.name}}</text>
+      <text x="{{i.tx}}" y="{{i.ty}}" fill="{{i.ink}}" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{i.name}}</text>
       <circle cx="{{o.x}}" cy="{{o.y}}" r="2" fill="var(--line-200)"></circle>
-      <text x="{{o.tx}}" y="{{o.ty}}" fill="var(--ink-muted)" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{o.name}}</text>
+      <text x="{{o.tx}}" y="{{o.ty}}" fill="{{o.ink}}" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{o.name}}</text>
       <circle cx="{{u.x}}" cy="{{u.y}}" r="2" fill="var(--line-200)"></circle>
-      <text x="{{u.tx}}" y="{{u.ty}}" fill="var(--ink-muted)" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{u.name}}</text>
+      <text x="{{u.tx}}" y="{{u.ty}}" fill="{{u.ink}}" font-family="var(--font-mono)" font-size="11" text-anchor="middle">{{u.name}}</text>
       <circle cx="{{dotX}}" cy="{{dotY}}" r="5" fill="var(--uv-deep)" stroke="var(--uv)" stroke-width="2" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></circle>
     </svg>
   </div>
@@ -66,10 +66,17 @@ body{margin:0;background:#060410}
           </div>
         </sc-for>
       </div>
-      <sc-if test="{{p.mode}}">
+      <sc-if value="{{p.mode}}">
         <div style="margin-top: 12px; height: 28px; display: flex; align-items: center; gap: 8px;">
           <span class="ph-label" style="width: 44px;">Mode</span>
           <div class="ph-select" style="min-width: 0; width: 112px;"><div class="field">{{modeText}}<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{p.capture}}">
+        <div style="margin-top: 12px; height: 28px; display: flex; align-items: center; gap: 8px;">
+          <button class="ph-btn">Capture…</button>
+          <sc-if value="{{captured}}"><button class="ph-btn">Forget</button></sc-if>
+          <sc-if value="{{nothingCaptured}}"><button class="ph-btn" disabled="">Forget</button></sc-if>
         </div>
       </sc-if>
     </section>
@@ -83,13 +90,15 @@ body{margin:0;background:#060410}
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"vowel":{"editor":"range","min":0,"max":4,"step":0.05,"default":1.3,"section":"Vocalize"},"vocal":{"editor":"range","min":0,"max":100,"step":1,"default":80,"section":"Vocalize"},"size":{"editor":"range","min":-100,"max":100,"step":5,"default":0,"section":"Vocalize"},"spectral":{"editor":"boolean","default":false,"section":"Vocalize"},"$preview":{"width":888,"height":532}}'>
+<script type="text/x-dc" data-dc-script data-props='{"captured":{"editor":"boolean","default":true,"section":"Voice"},"voice":{"editor":"range","min":0,"max":100,"step":5,"default":100,"section":"Voice"},"vowel":{"editor":"range","min":0,"max":4,"step":0.05,"default":1.3,"section":"Vocalize"},"vocal":{"editor":"range","min":0,"max":100,"step":1,"default":80,"section":"Vocalize"},"size":{"editor":"range","min":-100,"max":100,"step":5,"default":0,"section":"Vocalize"},"spectral":{"editor":"boolean","default":false,"section":"Vocalize"},"$preview":{"width":888,"height":532}}'>
 class Component extends DCLogic {
   renderVals() {
     const vowel = Math.max(0, Math.min(4, this.props.vowel ?? 1.3));
     const vocal = (this.props.vocal ?? 80) / 100;
     const size = this.props.size ?? 0;
     const spectral = this.props.spectral ?? false;
+    const captured = this.props.captured ?? true;
+    const amount = captured ? (this.props.voice ?? 100) / 100 : 0;
     const names = ['A', 'E', 'I', 'O', 'U'];
 
     /* The engine's model (vz-core model.rs): Hillenbrand 1995 men's F1..F3,
@@ -101,9 +110,14 @@ class Component extends DCLogic {
     const bark = (f) => 26.81 * f / (1960 + f) - 0.53;
     const hz = (z) => 1960 * (z + 0.53) / (26.28 - z);
     const scale = Math.pow(1.25, -size / 100);
+    /* A captured singer (a stand-in): a voice a sixth higher, with an open
+     * A, a forward I and a dark U of their own; E and O were not sung. */
+    const mine = table.map((row, v) => row.map((f, k) => f * 1.17 * ([[1.08, 1.04, 1, 1, 1], [1, 1, 1, 1, 1], [0.95, 1.07, 1.03, 1, 1], [1, 1, 1, 1, 1], [1.02, 0.9, 1, 1, 1]][v][k])));
+    const found = [true, false, true, false, true];
+    const voiced = table.map((row, v) => row.map((f, k) => hz(bark(f) + (bark(mine[v][k]) - bark(f)) * amount)));
     const formants = (v) => {
       const i = Math.min(3, Math.floor(v)), t = v - i;
-      return table[i].map((a, k) => hz(bark(a) + (bark(table[i + 1][k]) - bark(a)) * t) * scale);
+      return voiced[i].map((a, k) => hz(bark(a) + (bark(voiced[i + 1][k]) - bark(a)) * t) * scale);
     };
 
     const path = (pts) => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
@@ -116,7 +130,8 @@ class Component extends DCLogic {
     const letters = names.map((name, k) => {
       const [x, y] = at(formants(k));
       const dx = x < 125 ? -12 : 12;
-      return { name, x: x.toFixed(1), y: y.toFixed(1), tx: (x + dx).toFixed(1), ty: (y + 4).toFixed(1) };
+      const ink = captured && found[k] ? 'var(--ink)' : 'var(--ink-muted)';
+      return { name, ink, x: x.toFixed(1), y: y.toFixed(1), tx: (x + dx).toFixed(1), ty: (y + 4).toFixed(1) };
     });
     const now = formants(vowel);
     const [dotX, dotY] = at(now);
@@ -182,7 +197,9 @@ class Component extends DCLogic {
 
     const panelStyle = (x) => 'position: absolute; left: ' + x + 'px; top: 256px; width: 264px; height: 208px; box-sizing: border-box; margin: 0;';
     return {
-      vowelText: vowelWords[0] + (vowelWords[1] ? ' ' + vowelWords[1] : ''),
+      vowelText: vowelWords[0] + (vowelWords[1] ? ' ' + vowelWords[1] : '') + (captured ? '\u00a0\u00a0\u00a0MY VOWELS' : ''),
+      captured,
+      nothingCaptured: !captured,
       path: path(along),
       a: letters[0], e: letters[1], i: letters[2], o: letters[3], u: letters[4],
       dotX: dotX.toFixed(1),
@@ -194,14 +211,15 @@ class Component extends DCLogic {
       f2Rule: rule(now[1]),
       modeText: spectral ? 'Spectral' : 'Time',
       panels: [
-        { title: 'Vowel', style: panelStyle(32), mode: false,
+        { title: 'Vowel', style: panelStyle(32), mode: false, capture: true,
           knobs: [knob('Vowel', vowel / 4, vowelWords[0], vowelWords[1], false, [0, 0.25, 0.5, 0.75, 1]),
                   knob('Size', (size + 100) / 200, signed(size), '%', true),
-                  knob('Resonance', 0.5, '50', '%', false)] },
-        { title: 'Vocal', style: panelStyle(312), mode: true,
+                  knob('Voice', (this.props.voice ?? 100) / 100, String(Math.round(this.props.voice ?? 100)), '%', false)] },
+        { title: 'Vocal', style: panelStyle(312), mode: true, capture: false,
           knobs: [knob('Vocal', vocal, String(Math.round(vocal * 100)), '%', false),
+                  knob('Resonance', 0.5, '50', '%', false),
                   knob('Excite', 0, '0', '%', false)] },
-        { title: 'Level', style: panelStyle(592), mode: false,
+        { title: 'Level', style: panelStyle(592), mode: false, capture: false,
           knobs: [knob('Mix', 1, '100', '%', false), knob('Output', 0.5, '0.0', 'dB', true)] },
       ],
     };

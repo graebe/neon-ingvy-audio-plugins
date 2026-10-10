@@ -45,6 +45,11 @@ withdrew the GPLv3-or-proprietary dual licence with 3.8.0, and JUCE's copy's
 nothing of `juce_audio_utils`, so none of `juce_audio_formats`' codecs (FLAC,
 Ogg Vorbis, Opus) is in a bundle, and it switches the WebP decoder off
 (`JUCE_USE_WEBP=0`, `cmake/NiJucePlugin.cmake`), so libwebp is not either.
+NI Vocalize alone links `juce_audio_formats`, to read the recording a voice is
+captured from, with every third-party codec switched off -- FLAC, Ogg Vorbis,
+Opus, MP3 (`plugins/vocalize/CMakeLists.txt`): what it compiles in is JUCE's
+own WAV and AIFF readers, under JUCE's licence, and on macOS the system's own
+decoders, which ship with the system.
 
 | Component | Version | Licence |
 |---|---|---|

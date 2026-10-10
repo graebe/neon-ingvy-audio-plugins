@@ -9,7 +9,8 @@ THREE THREADS AND WHAT EACH MAY CALL:
 ```text
   construction   vz_shell_create, _destroy
   the message    vz_shell_post_sample_rate,   applied at the top of the
-  thread         vz_shell_post_reset          next block
+  thread         vz_shell_post_reset,         next block
+                 vz_shell_post_voice
                  vz_shell_read                the latest picture
   the audio      vz_shell_begin, vz_core_*,   one block, in that order
   thread         vz_shell_end
@@ -25,8 +26,9 @@ Everything else an editor shows is a host parameter, read by the editor from
 the host's side.
 */
 
-use crate::VzCore;
+use crate::{VzCore, VzVoice};
 use shell_core::{publish_every, Bridge, Model};
+use vz_core::model::VowelTable;
 use vz_core::Mode;
 
 /// How many frequencies the picture has.
@@ -76,12 +78,18 @@ impl VzPicture {
 }
 
 /// What another thread may ask of the engine.
+///
+/// A voice travels by value, 400 bytes in each of the queue's few slots:
+/// boxed, it would be freed on the audio thread that applies it.
 #[derive(Clone, Copy)]
+#[allow(clippy::large_enum_variant, reason = "nothing may be freed on the audio thread")]
 pub enum Command {
     SampleRate(f64),
     /// What a shell posts when the host (re)activates it: whatever was held
     /// from before lets go.
     Reset,
+    /// A voice captured, restored from a set, or forgotten (the textbook's).
+    Voice(VowelTable),
 }
 
 /// Commands between two blocks.
@@ -99,6 +107,9 @@ impl Model for VzCore {
         match *cmd {
             Command::SampleRate(rate) => self.engine.set_sample_rate(rate),
             Command::Reset => self.engine.reset(),
+            Command::Voice(table) => {
+                self.engine.set_voice(&table);
+            }
         }
     }
 
@@ -163,6 +174,28 @@ pub unsafe extern "C" fn vz_shell_post_sample_rate(shell: *const VzShell, sample
 pub unsafe extern "C" fn vz_shell_post_reset(shell: *const VzShell) {
     if let Some(shell) = shell.as_ref() {
         shell.bridge.post(Command::Reset);
+    }
+}
+
+/// Sing with `voice` (null: the textbook's), from the top of the next block.
+/// Not the audio thread. False, and nothing posted, for a voice that is not
+/// one (vz_voice_check).
+///
+/// # Safety
+/// `shell` is null or live; `voice` is null or readable.
+#[no_mangle]
+pub unsafe extern "C" fn vz_shell_post_voice(shell: *const VzShell, voice: *const VzVoice) -> bool {
+    let Some(shell) = shell.as_ref() else { return false };
+    let table = match voice.as_ref() {
+        Some(v) => v.table(),
+        None => Some(VowelTable::TEXTBOOK),
+    };
+    match table {
+        Some(t) => {
+            shell.bridge.post(Command::Voice(t));
+            true
+        }
+        None => false,
     }
 }
 

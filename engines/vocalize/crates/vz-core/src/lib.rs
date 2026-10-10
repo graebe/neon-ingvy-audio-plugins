@@ -44,6 +44,11 @@ NOTHING CLICKS WHEN A CONTROL MOVES. Every number glides (ni_dsp::smooth, 5
 ms); the vowel's resonators and the flattener's reach are remade from the
 glides every 16 samples.
 
+A VOICE OF ONE'S OWN. The vowels are the textbook's -- an average voice --
+until a recording of a singer is captured (voice.rs, the `capture` feature):
+then Voice morphs from the textbook's vowels to the singer's, every formant on
+the Bark scale, and a new capture glides in from the voice before it.
+
 THE MOVE GETS THE TIME ENGINE ONLY: without the `spectral` feature (vz-move
 builds without it) Mode is read but every value is Time, and the module
 carries no FFT.
@@ -59,11 +64,13 @@ pub mod params;
 mod ring;
 #[cfg(feature = "spectral")]
 pub mod spectral;
+#[cfg(feature = "capture")]
+pub mod voice;
 
 use core::fmt::Write;
 use excite::Excite;
 use lpc::{Analysis, Flattener, MAX_ORDER};
-use model::{Formants, Pole, FORMANTS};
+use model::{Formants, Pole, VowelTable, FORMANTS};
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
 pub use params::{Info, Kind, Param, Unit, MODE_LABELS, PARAM_COUNT, VOWEL_LABELS};
@@ -145,6 +152,11 @@ struct Glides {
     mix: f64,
     /// A gain.
     output: f64,
+    /// 0..1: the textbook's voice to the captured one.
+    voice: f64,
+    /// 0..1: how far a newly captured voice has arrived from the one before
+    /// (Engine::set_voice). Its target is always 1.
+    arrival: f64,
 }
 
 impl Glides {
@@ -158,6 +170,8 @@ impl Glides {
             excite: at(Param::Excite) / 100.0,
             mix: at(Param::Mix) / 100.0,
             output: db_to_amp(at(Param::Output)),
+            voice: at(Param::Voice) / 100.0,
+            arrival: 1.0,
         }
     }
 
@@ -170,14 +184,16 @@ impl Glides {
             (&mut self.excite, t.excite),
             (&mut self.mix, t.mix),
             (&mut self.output, t.output),
+            (&mut self.voice, t.voice),
+            (&mut self.arrival, t.arrival),
         ] {
             *x = glide(*x, target, c);
         }
     }
 
     /// What the vowel's resonators are made from.
-    fn shape(&self) -> [f64; 4] {
-        [self.vocal, self.vowel, self.size, self.resonance]
+    fn shape(&self) -> [f64; 6] {
+        [self.vocal, self.vowel, self.size, self.resonance, self.voice, self.arrival]
     }
 }
 
@@ -246,7 +262,11 @@ pub struct Engine {
     poles: [Pole; FORMANTS],
     full: [Pole; FORMANTS],
     powers: [f64; MAX_ORDER + 1],
-    shaped: [f64; 4],
+    shaped: [f64; 6],
+    /// The captured voice, and the one before it, which a capture glides
+    /// from (`Glides::arrival`). The textbook's until one is set.
+    voice: VowelTable,
+    previous: VowelTable,
     sub: usize,
     analysis: Analysis,
     /// Where in the analysis' hop.
@@ -282,7 +302,9 @@ impl Engine {
             poles: [Pole::NONE; FORMANTS],
             full: [Pole::NONE; FORMANTS],
             powers: [0.0; MAX_ORDER + 1],
-            shaped: [f64::NAN; 4],
+            shaped: [f64::NAN; 6],
+            voice: VowelTable::TEXTBOOK,
+            previous: VowelTable::TEXTBOOK,
             sub: 0,
             analysis: Analysis::new(fs),
             lpc_pos: 0,
@@ -319,7 +341,7 @@ impl Engine {
             ch.excite.set_rate(fs);
         }
         self.rates();
-        self.shaped = [f64::NAN; 4];
+        self.shaped = [f64::NAN; 6];
         self.reshape();
         self.reset();
     }
@@ -405,6 +427,26 @@ impl Engine {
         b.finish()
     }
 
+    /// A captured voice to sing with (voice.rs), from now on: the vowels
+    /// glide to it from where they were, as any control does. Voice says how
+    /// much of it is heard. A table with a number in it that is not a number
+    /// is refused (false) and changes nothing; the rest is held to a voice's
+    /// range (VowelTable::sanitised). Allocates nothing.
+    pub fn set_voice(&mut self, table: &VowelTable) -> bool {
+        let Some(t) = table.sanitised() else {
+            return false;
+        };
+        self.previous = if self.now.arrival >= 1.0 { self.voice } else { self.previous.blend(&self.voice, self.now.arrival) };
+        self.voice = t;
+        self.now.arrival = 0.0;
+        true
+    }
+
+    /// The captured voice: the textbook's until one is set.
+    pub fn voice(&self) -> &VowelTable {
+        &self.voice
+    }
+
     /// The engine running now: Mode's, once a switch has landed.
     pub fn mode(&self) -> Mode {
         self.mode
@@ -423,8 +465,14 @@ impl Engine {
             return;
         }
         self.shaped = shape;
-        let [vocal, vowel, size, resonance] = shape;
-        let f = Formants::at(vowel, size, resonance);
+        let [vocal, vowel, size, resonance, amount, arrival] = shape;
+        let captured = if arrival >= 1.0 { self.voice } else { self.previous.blend(&self.voice, arrival) };
+        let table = if amount <= 0.0 || captured == VowelTable::TEXTBOOK {
+            VowelTable::TEXTBOOK
+        } else {
+            VowelTable::TEXTBOOK.blend(&captured, amount)
+        };
+        let f = Formants::of(&table, vowel, size, resonance);
         let full = f.poles(self.sample_rate, 1.0);
         #[cfg(feature = "spectral")]
         if full != self.full {

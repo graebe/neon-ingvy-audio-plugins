@@ -10,7 +10,7 @@ vowel is and what it does to your sound; the panels are what you do to it.
   them, and a dot where the vowel is now.
 - **Envelope**, on the right, is your sound's colour as it comes in, and as it
   goes out.
-- Under them, three panels: **Vowel** (which vowel, and the voice that sings
+- Under them, three panels: **Vowel** (which vowel, and whose voice sings
   it), **Vocal** (how far, and how) and **Level** (what comes out).
 
 ## Part 1 — what makes a vowel
@@ -66,9 +66,10 @@ whole path slides along its diagonal.
 
 ### Resonance: how sharp
 
-**Resonance** sets how narrow the formants are. Low, they are broad hills: a
-soft, breathy, natural vowel. High, they are sharp peaks that whistle and ring
-— the sound of a talkbox or a wah pedal pushed hard. 50 % is a natural voice.
+**Resonance**, in the Vocal panel, sets how narrow the formants are. Low, they
+are broad hills: a soft, breathy, natural vowel. High, they are sharp peaks
+that whistle and ring — the sound of a talkbox or a wah pedal pushed hard.
+50 % is a natural voice.
 
 ## Part 2 — becoming the vowel
 
@@ -125,6 +126,57 @@ hands over to the other — it never clicks — and Live is told the new latency
 Mode cannot be automated: a latency that changed mid-song would move the track
 against the others.
 
+## Part 3 — your own voice
+
+### Why every voice is different
+
+The table in Part 1 is an average: many men, many vowels, one number each.
+Your vowels are yours. The size of your throat moves all of them together, and
+the way you shape each one — how far you open for A, how far forward your
+tongue goes for I — moves each on its own. That is a large part of why your
+voice sounds like you. Vocalize can learn it.
+
+### Capture: learning a voice from a recording
+
+Record yourself singing the five vowels, one after the other, a second or two
+each, on a comfortable note: **aaa — eee — iii — ooo — uuu**. A low or middle
+note works best. Then either:
+
+- **drag the recording onto the plugin window** — from Live's browser, an
+  audio clip or the Finder; the vowel chart lights up its outline while you
+  drag — or
+- click **Capture…** in the Vowel panel and choose the file.
+
+WAV and AIFF work, and on a Mac anything the system can play (m4a, mp3, caf).
+Vocalize reads the first two minutes, finds the moments where you sing a
+steady vowel — breaths, consonants and silence are skipped — and measures your
+formants there. It takes a moment; the button says **Capturing…** meanwhile.
+
+When it is done, the vowel chart moves to **your** vowels and its caption
+names the recording. The letters of the vowels it heard are drawn bright; a
+vowel you did not sing is filled in from the textbook, scaled to the size of
+your voice, and drawn dim. Capture again with a better take at any time.
+
+> **What is kept is your voice, not your recording.** The capture is saved
+> with the Live set as fifty numbers — five formants for each of five vowels —
+> so the set stays small and the recording can be moved or deleted.
+
+### Voice: how much of you
+
+**Voice**, in the Vowel panel, morphs from the textbook voice (0 %) to the
+captured one (100 %, the default). Between, every formant lies part of the way
+from one to the other, so a slow turn is the synth's voice slowly becoming
+yours. Everything else works on top of it: **Vowel** walks your five vowels,
+**Size** makes your voice bigger or smaller, **Resonance** sharpens or softens
+it. With nothing captured, Voice does nothing.
+
+**Forget** lets go of the captured voice: the textbook voice sings again.
+
+> **A clean capture.** One voice, no reverb or music behind it, every vowel
+> held steady. Singing high spreads a voice's harmonics so far apart that the
+> measurement is drawn towards them; if a capture sounds off, sing the vowels
+> an octave lower.
+
 ## Recipes
 
 | sound | settings |
@@ -136,6 +188,8 @@ against the others.
 | **Drums that say something** | A drum loop, Mode Time, Vocal 60 %, Vowel E, Mix 50 %: the hats and snare take the vowel's colour, the kick keeps its weight. |
 | **Fade into a voice** | Any sound, automate Vocal from 0 to 100 % over eight bars: the transformation is the arrangement. |
 | **Child's voice** | Mode Spectral, Size −80 %, Resonance 55 %, Vowel I or E. |
+| **Your choir** | Capture your own A-E-I-O-U, then a pad in Mode Spectral, Vocal 90 %, Voice 100 %: the pad sings with your vowels. |
+| **Becoming you** | After a capture, automate Voice from 0 to 100 % over a phrase while Vowel moves: the textbook voice turns into yours. |
 
 ## Controls
 
@@ -148,8 +202,10 @@ at the top.
 |---|---|---|---|
 | Vowel | **Vowel** | A – U (0 – 4) | A |
 | | **Size** | −100 – +100 % | 0 % |
-| | **Resonance** | 0 – 100 % | 50 % |
+| | **Voice** | 0 – 100 % (the textbook voice to the captured one) | 100 % |
+| | **Capture…**, **Forget** | learn a voice from a recording, or let it go | — |
 | Vocal | **Vocal** | 0 – 100 % | 80 % |
+| | **Resonance** | 0 – 100 % | 50 % |
 | | **Excite** | 0 – 100 % | 0 % |
 | | **Mode** | Time / Spectral (not automatable) | Time |
 | Level | **Mix** | 0 – 100 % | 100 % |

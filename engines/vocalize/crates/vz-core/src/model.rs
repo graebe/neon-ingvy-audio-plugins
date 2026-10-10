@@ -89,6 +89,78 @@ pub fn reach(rho: f64, v: f64) -> f64 {
     }
 }
 
+/// From `a` to `b` Hz, `t` (0..1) of the way on the Bark scale -- exactly `a`
+/// at 0 and `b` at 1, not a round trip's rounding.
+fn between(a: f64, b: f64, t: f64) -> f64 {
+    if t <= 0.0 {
+        a
+    } else if t >= 1.0 {
+        b
+    } else {
+        hz(bark(a) + (bark(b) - bark(a)) * t)
+    }
+}
+
+/// A VOICE: its five vowels' five formants, in Hz, and their bandwidths at
+/// Resonance 50 %. The textbook's, or one captured from a recording
+/// (voice.rs). Row `v` is vowel `v` (A E I O U), column `k` formant k+1.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VowelTable {
+    pub freq: [[f64; FORMANTS]; 5],
+    pub bandwidth: [[f64; FORMANTS]; 5],
+}
+
+/// The range a table's numbers are held to (`VowelTable::sanitised`).
+const LOWEST_HZ: f64 = 50.0;
+const HIGHEST_HZ: f64 = 8000.0;
+const NARROWEST_HZ: f64 = 20.0;
+const WIDEST_HZ: f64 = 1000.0;
+/// How far apart two formants of a vowel stay, at least.
+const APART_HZ: f64 = 50.0;
+
+impl VowelTable {
+    /// The textbook voice: Hillenbrand et al.'s men, Klatt's bandwidths.
+    pub const TEXTBOOK: VowelTable = VowelTable { freq: VOWELS, bandwidth: [BANDWIDTHS; 5] };
+
+    /// `t` (0..1) of the way from this voice to `other`: every formant on the
+    /// Bark scale, every bandwidth linearly. Exactly `self` at 0 and `other`
+    /// at 1.
+    pub fn blend(&self, other: &VowelTable, t: f64) -> VowelTable {
+        let t = if t.is_nan() { 0.0 } else { t.clamp(0.0, 1.0) };
+        let mut out = *self;
+        for v in 0..5 {
+            for k in 0..FORMANTS {
+                out.freq[v][k] = between(self.freq[v][k], other.freq[v][k], t);
+                let (a, b) = (self.bandwidth[v][k], other.bandwidth[v][k]);
+                out.bandwidth[v][k] = if t >= 1.0 { b } else { a + (b - a) * t };
+            }
+        }
+        out
+    }
+
+    /// The table made safe to sing from, or `None` for one with a number that
+    /// is not a number: frequencies within 50 Hz..8 kHz and rising through
+    /// each vowel at least 50 Hz apart, bandwidths within 20 Hz..1 kHz. What
+    /// a saved set or a C caller hands in passes through this first.
+    pub fn sanitised(&self) -> Option<VowelTable> {
+        let all = self.freq.iter().chain(self.bandwidth.iter()).flatten();
+        if !all.into_iter().all(|x| x.is_finite()) {
+            return None;
+        }
+        let mut out = *self;
+        for v in 0..5 {
+            let mut floor = LOWEST_HZ - APART_HZ;
+            for k in 0..FORMANTS {
+                let f = out.freq[v][k].clamp(LOWEST_HZ, HIGHEST_HZ).max(floor + APART_HZ);
+                out.freq[v][k] = f;
+                floor = f;
+                out.bandwidth[v][k] = out.bandwidth[v][k].clamp(NARROWEST_HZ, WIDEST_HZ);
+            }
+        }
+        Some(out)
+    }
+}
+
 /// One vowel's formants, in Hz.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Formants {
@@ -97,9 +169,17 @@ pub struct Formants {
 }
 
 impl Formants {
-    /// The formants at `vowel` (0..4, A..U), `size` (-100..100 %) and
-    /// `resonance` (0..100 %). Out-of-range values are clamped.
+    /// The textbook voice's formants at `vowel` (0..4, A..U), `size`
+    /// (-100..100 %) and `resonance` (0..100 %): [`Formants::of`] the
+    /// [`VowelTable::TEXTBOOK`].
     pub fn at(vowel: f64, size: f64, resonance: f64) -> Formants {
+        Formants::of(&VowelTable::TEXTBOOK, vowel, size, resonance)
+    }
+
+    /// The formants of `table`'s voice at `vowel` (0..4, A..U), `size`
+    /// (-100..100 %) and `resonance` (0..100 %). Out-of-range values are
+    /// clamped.
+    pub fn of(table: &VowelTable, vowel: f64, size: f64, resonance: f64) -> Formants {
         let vowel = if vowel.is_nan() { 0.0 } else { vowel.clamp(0.0, 4.0) };
         let from = (vowel.floor() as usize).min(3);
         let t = vowel - from as f64;
@@ -107,17 +187,10 @@ impl Formants {
         let widen = 4.0f64.powf(1.0 - 2.0 * resonance.clamp(0.0, 100.0) / 100.0);
         let mut f = Formants { freq: [0.0; FORMANTS], bandwidth: [0.0; FORMANTS] };
         for k in 0..FORMANTS {
-            let (a, b) = (VOWELS[from][k], VOWELS[from + 1][k]);
-            /* Exactly the table at a vowel, not a Bark round trip's rounding. */
-            let on = if t == 0.0 {
-                a
-            } else if t == 1.0 {
-                b
-            } else {
-                hz(bark(a) + (bark(b) - bark(a)) * t)
-            };
+            let on = between(table.freq[from][k], table.freq[from + 1][k], t);
+            let (wa, wb) = (table.bandwidth[from][k], table.bandwidth[from + 1][k]);
             f.freq[k] = on * scale;
-            f.bandwidth[k] = BANDWIDTHS[k] * widen;
+            f.bandwidth[k] = (wa + (wb - wa) * t) * widen;
         }
         f
     }
@@ -237,6 +310,43 @@ mod tests {
         /* Out of range, clamped; NaN is A. */
         assert_eq!(Formants::at(9.0, 0.0, 50.0).freq, VOWELS[4]);
         assert_eq!(Formants::at(f64::NAN, 0.0, 50.0).freq, VOWELS[0]);
+    }
+
+    #[test]
+    fn a_blend_is_exact_at_its_ends_and_even_on_the_bark_scale_between() {
+        let mut other = VowelTable::TEXTBOOK;
+        for (v, row) in other.freq.iter_mut().enumerate() {
+            for f in row.iter_mut() {
+                *f *= 1.1 + 0.02 * v as f64;
+            }
+        }
+        other.bandwidth[2][0] = 100.0;
+        let t = VowelTable::TEXTBOOK;
+        assert_eq!(t.blend(&other, 0.0), t);
+        assert_eq!(t.blend(&other, 1.0), other);
+        assert_eq!(t.blend(&other, f64::NAN), t);
+        let half = t.blend(&other, 0.5);
+        let f = half.freq[3][1];
+        assert!((bark(f) - 0.5 * (bark(t.freq[3][1]) + bark(other.freq[3][1]))).abs() < 1e-9);
+        assert_eq!(half.bandwidth[2][0], 80.0);
+        /* The textbook's formants at a vowel of a table are that table's. */
+        assert_eq!(Formants::of(&other, 3.0, 0.0, 50.0).freq, other.freq[3]);
+    }
+
+    #[test]
+    fn a_table_is_made_safe_or_refused() {
+        assert_eq!(VowelTable::TEXTBOOK.sanitised(), Some(VowelTable::TEXTBOOK));
+        let mut bad = VowelTable::TEXTBOOK;
+        bad.freq[1][2] = f64::NAN;
+        assert_eq!(bad.sanitised(), None);
+        bad.freq[1][2] = f64::INFINITY;
+        assert_eq!(bad.sanitised(), None);
+        let mut odd = VowelTable::TEXTBOOK;
+        odd.freq[0] = [10.0, 5.0, 3000.0, 2990.0, 99_999.0];
+        odd.bandwidth[0] = [0.0, 5.0, 2000.0, 100.0, -1.0];
+        let s = odd.sanitised().unwrap();
+        assert_eq!(s.freq[0], [50.0, 100.0, 3000.0, 3050.0, 8000.0]);
+        assert_eq!(s.bandwidth[0], [20.0, 20.0, 1000.0, 100.0, 20.0]);
     }
 
     #[test]

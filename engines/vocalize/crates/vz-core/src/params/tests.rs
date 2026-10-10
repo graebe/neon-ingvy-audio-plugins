@@ -47,6 +47,8 @@ fn the_defaults_are_a_vowel_that_is_heard() {
     assert_eq!(Param::Vowel.default_value(), 0.0);
     assert_eq!(Param::Mix.default_value(), 100.0);
     assert_eq!(Param::Excite.default_value(), 0.0);
+    /* A captured voice is heard whole as soon as there is one. */
+    assert_eq!(Param::Voice.default_value(), 100.0);
 }
 
 #[test]

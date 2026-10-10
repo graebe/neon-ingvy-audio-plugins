@@ -19,7 +19,13 @@ THE PARAMETER TABLE IS THE ENGINE'S. A shell declares its parameters from
 prints a value with `vz_param_text` and reads typing with `vz_param_parse`,
 so the plugin, the Move and the manual print the same words.
 
-THREADS. The table, `vz_formants` and `vz_latency` are pure: any thread. An
+A VOICE (`VzVoice`) is the engine's vowel table as C holds it: captured from
+a recording by `vz_voice_capture` -- offline, slow, allocating -- kept in a
+shell's saved state, checked on the way back in (`vz_voice_check`), and sung
+with through `vz_core_set_voice` or, on the plugin, `vz_shell_post_voice`.
+
+THREADS. The table, `vz_formants`, `vz_latency` and the voice functions but
+`vz_core_set_voice` are pure: any thread (a capture, a slow one). An
 instance belongs to one thread at a time -- on the plugin, the audio thread's
 between `vz_shell_begin` and `vz_shell_end`. Nothing an audio thread calls
 allocates, and the workspace aborts on panic, because unwinding out of

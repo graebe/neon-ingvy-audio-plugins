@@ -40,6 +40,9 @@ way, in the plugin's Time mode.
 latency; the module is built without the Spectral engine, which also keeps
 the FFT out of it. A Mode saved in a preset is read and changes nothing.
 
+**No capture.** The Move has nowhere to drop a recording, so it sings the
+textbook voice; Voice is not on its knobs.
+
 **Vowel is a number.** The knob turns from 0 to 4 and the screen shows the
 number: 0 is A, 1 E, 2 I, 3 O and 4 U, and 1.5 is halfway from E to I.
 

@@ -51,10 +51,13 @@ pub enum Param {
     Mix,
     /// Gain after the mix.
     Output,
+    /// Whose voice: the textbook's at 0 %, the one captured from a recording
+    /// at 100 % (voice.rs), and the way between.
+    Voice,
 }
 
 /// How many parameters there are.
-pub const PARAM_COUNT: usize = 8;
+pub const PARAM_COUNT: usize = 9;
 
 /// The vowels, in the order the path visits them.
 pub const VOWEL_LABELS: [&str; 5] = ["A", "E", "I", "O", "U"];
@@ -136,6 +139,7 @@ impl Param {
         Param::Excite,
         Param::Mix,
         Param::Output,
+        Param::Voice,
     ];
 
     /// The parameter at a host index, if there is one.
@@ -159,6 +163,7 @@ impl Param {
             Param::Excite => ("excite", "Excite", float(0.0, 100.0, 0.0, Unit::Percent, false)),
             Param::Mix => ("mix", "Mix", float(0.0, 100.0, 100.0, Unit::Percent, false)),
             Param::Output => ("output", "Output", float(-24.0, 24.0, 0.0, Unit::Db, true)),
+            Param::Voice => ("voice", "Voice", float(0.0, 100.0, 100.0, Unit::Percent, false)),
         };
         Info { key, name, kind }
     }

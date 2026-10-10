@@ -10,11 +10,14 @@ publish.workspace = true
 [lib]
 crate-type = ["rlib"]
 
-# THE SPECTRAL ENGINE, ON BY DEFAULT: the plugin's. vz-move builds without it,
-# so the Move module carries the Time engine only and no FFT (src/lib.rs).
+# THE SPECTRAL ENGINE AND CAPTURE, ON BY DEFAULT: the plugin's. vz-move builds
+# without either, so the Move module carries the Time engine only, no FFT and
+# no analysis (src/lib.rs).
 [features]
-default = ["spectral"]
+default = ["spectral", "capture"]
 spectral = ["dep:realfft"]
+# Capturing a voice from a recording (src/voice.rs): the plugin's, offline.
+capture = ["dep:num-complex"]
 
 [dependencies]
 # The DSP the products share: the parameter glide, C-compatible text, and the
@@ -26,6 +29,9 @@ wmidi = { workspace = true }
 # The Spectral engine's transforms (src/spectral.rs), with the SIMD paths
 # spectro-core takes: AVX and SSE on x86_64, NEON on aarch64.
 realfft = { workspace = true, optional = true, features = ["avx", "sse", "neon"] }
+# Complex numbers for the predictor's roots, which a capture reads formants
+# from (src/voice.rs). `std` for the transcendental functions.
+num-complex = { workspace = true, optional = true, features = ["std"] }
 
 [dev-dependencies]
 # The no-allocation guard tests/no_alloc.rs installs.

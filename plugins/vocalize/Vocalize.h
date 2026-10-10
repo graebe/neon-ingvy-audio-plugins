@@ -30,6 +30,14 @@
  *                 the Model, on the message thread; the Ground's clock runs
  *                 while a window is open
  *
+ * A VOICE OF ONE'S OWN. capture() reads a recording -- WAV, AIFF, and on
+ * macOS whatever the system decodes -- on a thread of its own, downmixes it,
+ * and has the engine's analysis (vz_voice_capture) find the singer's vowels;
+ * the answer comes back on the message thread, goes to the engine through the
+ * shell (vz_shell_post_voice) and marks the set unsaved. The voice is kept in
+ * the state as fifty numbers, never the audio, and checked on the way back in
+ * (vz_voice_check). Voice, a parameter, says how much of it is sung.
+ *
  * THE PANIC. On the Move, CC 120/123 reset the engine (vz-move); a VST3 in
  * Live is told to start afresh by being deactivated, which prepareToPlay
  * answers with the same reset.
@@ -44,9 +52,12 @@
 #include "Processor.h"
 #include "vz_shell.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
+
 #include <array>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace ni::vz
@@ -87,10 +98,20 @@ public:
     void setMotion (bool on) override;
     bool bipolar (int index) const override;
     Formants formants (double vowel) override;
+    Voice voice() const override;
+    void capture (const juce::File& recording) override;
+    void forgetVoice() override;
+    juce::String recordingWildcard() const override;
     const Picture& picture() override;
+
+    /* The longest part of a recording a capture reads, in seconds. */
+    static constexpr double longestRecordingS = 120.0;
 
 protected:
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    /* The captured voice beside the parameters, as <voice>; none, none. */
+    void writeExtraState (juce::XmlElement&) override;
+    void readExtraState (const juce::XmlElement&) override;
     /* Bypassed, the host's audio passes untouched but as late as the
      * latency the host compensates for -- JUCE's own bypass does not delay
      * -- and the Ground keeps the host's time. */
@@ -105,6 +126,12 @@ private:
 
     void timerCallback() override;
 
+    /* A voice in hand: kept, sent to the engine, the set marked unsaved when
+     * it is the person's doing (not a state being read). Null forgets. */
+    void useVoice (const VzVoice*, const juce::String& name, bool byHand);
+    /* What a capture on its thread found, back on the message thread. */
+    void captured (std::optional<VzVoice>, Voice::Status, const juce::String& name);
+
     struct ShellDeleter
     {
         void operator() (VzShell* s) const { vz_shell_destroy (s); }
@@ -118,10 +145,21 @@ private:
     std::array<std::vector<float>, 2> bypassLine;
     int bypassPos = 0;
 
+    /* THE CAPTURED VOICE, and what the editor is told of it. Read and
+     * written by the message thread and by a host's state calls, which may
+     * come on another: under the lock, never taken by the audio thread. */
+    mutable juce::CriticalSection voiceLock;
+    std::optional<VzVoice> held;
+    Voice state;
+    juce::AudioFormatManager formats;
+    /* The capture's one thread; waited for when the processor goes. */
+    juce::ThreadPool captures { juce::ThreadPoolOptions{}.withThreadName ("NI Vocalize capture").withNumberOfThreads (1) };
+
     /* The picture as the engine published it, and as the editor takes it. */
     std::unique_ptr<VzPicture> published;
     Picture latest;
 
+    JUCE_DECLARE_WEAK_REFERENCEABLE (Processor)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Processor)
 };
 

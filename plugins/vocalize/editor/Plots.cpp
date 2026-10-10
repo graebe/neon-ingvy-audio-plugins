@@ -61,14 +61,44 @@ void VowelChart::update()
     std::vector<Formants> fresh ((size_t) pathPoints);
     for (int i = 0; i < pathPoints; ++i)
         fresh[(size_t) i] = model.formants (4.0 * i / (pathPoints - 1));
-    const auto caption = "VOWEL   " + model.parameter (param::vowel).getCurrentValueAsText().toUpperCase();
-    if (fresh == along && juce::exactlyEqual (v, shownVowel) && caption == getCaption())
+    const auto latest = model.voice();
+    const bool voiceMoved = latest.serial != voice.serial;
+    voice = latest;
+    const auto caption = captionFor (model.parameter (param::vowel).getCurrentValueAsText());
+    if (fresh == along && juce::exactlyEqual (v, shownVowel) && caption == getCaption() && ! voiceMoved)
         return;
     along = std::move (fresh);
     shownVowel = v;
     current = model.formants (v);
     setCaption (caption);
     rebuild();
+    repaint();
+}
+
+/* The vowel, and where the voice came from: the recording's name, upper
+ * case without its extension, cut to fit the well. */
+juce::String VowelChart::captionFor (const juce::String& vowelText) const
+{
+    auto name = juce::File::createFileWithoutCheckingPath (voice.name).getFileNameWithoutExtension().toUpperCase();
+    if (name.length() > 14)
+        name = name.substring (0, 13) + juce::String (juce::CharPointer_UTF8 ("…"));
+    const auto vowelPart = "VOWEL   " + vowelText.toUpperCase();
+    switch (voice.status)
+    {
+        case Voice::Status::capturing:  return "VOWEL   CAPTURING " + name;
+        case Voice::Status::captured:   return vowelPart + "   " + name;
+        case Voice::Status::unreadable: return "VOWEL   CANNOT READ " + name;
+        case Voice::Status::unsung:     return "VOWEL   NO VOWELS IN " + name;
+        case Voice::Status::none:       break;
+    }
+    return vowelPart;
+}
+
+void VowelChart::setDropping (bool on)
+{
+    if (on == dropping)
+        return;
+    dropping = on;
     repaint();
 }
 
@@ -100,7 +130,8 @@ void VowelChart::paintPlot (juce::Graphics& g)
     {
         const auto p = letters[(size_t) k];
         const float dx = p.x < area.getCentreX() ? -12.0f : 12.0f;
-        g.setColour (c::inkMuted);
+        const bool measured = voice.sung && voice.found[(size_t) k];
+        g.setColour (measured ? c::ink : c::inkMuted);
         g.drawText (vowelLetters[k], juce::Rectangle<float> (p.x + dx - 8.0f, p.y - 8.0f, 16.0f, 16.0f),
                     juce::Justification::centred, false);
         g.setColour (c::line200);
@@ -110,6 +141,12 @@ void VowelChart::paintPlot (juce::Graphics& g)
     const auto d = dotPath (now, 5.0f);
     ni::ui::plot::under (g, d);
     ni::ui::plot::curve (g, d);
+
+    if (dropping)
+    {
+        g.setColour (c::uv);
+        g.drawRect (getLocalBounds().toFloat().reduced (1.0f), 1.0f);
+    }
 }
 
 /* ------------------------------------------------------------- envelope -- */
