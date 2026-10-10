@@ -64,6 +64,8 @@ const JUCE_PLUGINS = {
     /shell_handoff_acquire/],
   /* Its block, heard or bypassed, is one run() around sc_shell_begin. */
   'NI Side-Chain': ['plugins/side-chain/SideChain.h', 'plugins/side-chain/SideChain.cpp', /^run\s*\(/],
+  /* Its block is the engine taken, pushed, sung through and given back. */
+  'NI Vocalize': ['plugins/vocalize/Vocalize.h', 'plugins/vocalize/Vocalize.cpp', /vz_shell_begin/],
 };
 
 test('the ground is fed no audio, by the shell or by any product', () => {

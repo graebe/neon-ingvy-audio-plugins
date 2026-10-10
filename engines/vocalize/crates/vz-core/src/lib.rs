@@ -535,6 +535,12 @@ impl Engine {
         let c = self.level_coef;
         self.level[0] += c * (dry_power - self.level[0]);
         self.level[1] += c * (wet_power - self.level[1]);
+        /* With nothing to trade and nothing to excite the wet IS the dry: the
+         * followers are held equal, so the correction is 1 exactly from the
+         * first sample -- not once they have converged, a second later. */
+        if self.now.vocal == 0.0 && self.now.excite == 0.0 {
+            self.level[1] = self.level[0];
+        }
         let gain = if self.level[0] > 1e-20 && self.level[1] > 1e-20 {
             (self.level[0] / self.level[1]).sqrt().clamp(MIN_GAIN, MAX_GAIN)
         } else {

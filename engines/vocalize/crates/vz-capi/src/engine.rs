@@ -13,8 +13,10 @@ use ni_dsp::ffi::{copy_cstr, cstr};
 use vz_core::model::{Formants, FORMANTS};
 use vz_core::{latency, Engine, Kind, Mode, Param, PARAM_COUNT};
 
-/// How many formants `vz_formants` writes.
-pub const VZ_FORMANTS: usize = FORMANTS;
+/// How many formants `vz_formants` writes. A literal, so the header can
+/// state it; held to the model's count below.
+pub const VZ_FORMANTS: usize = 5;
+const _: () = assert!(VZ_FORMANTS == FORMANTS);
 
 /* ------------------------------------------------------------ the instance */
 

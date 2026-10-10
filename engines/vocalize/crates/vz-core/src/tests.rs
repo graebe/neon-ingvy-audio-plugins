@@ -78,7 +78,12 @@ fn peak_near(db: &[f64], hz: f64) -> f64 {
 
 #[test]
 fn at_vocal_zero_the_time_engine_is_the_input_bit_for_bit() {
-    let mut e = engine(&[(Param::Vocal, 0.0)]);
+    /* Turned down from 100 % while a sound plays: the identity as soon as
+     * the glide lands, whatever the level follower held. */
+    let mut e = engine(&[(Param::Vocal, 100.0)]);
+    render(&mut e, &noise(4800, 19), None);
+    e.set_num(Param::Vocal, 0.0);
+    render(&mut e, &noise(12_000, 20), None);
     let (l, r) = (noise(20_000, 1), noise(20_000, 2));
     let (ol, or) = render(&mut e, &l, Some(&r));
     assert_eq!(ol, l);
