@@ -5,10 +5,12 @@
 - **New: NI Bit-Crusher.** A bit crusher for Live and the Move: it keeps fewer
   levels (Bits, 1 to 16, in fractions too, so a sweep glides) and keeps them
   less often (Rate, 50 Hz to 96 kHz). Drive, Shape (µ-law steps), Dither,
-  Mid-Rise and Anti-Alias shape the steps; Jitter and the Pre and Post filters
-  shape the hold. Its window shows the staircase and the sound before and
-  after. Every control can be automated without clicks. On the Move: one page
-  of eight knobs.
+  Mid-Rise shape the steps; Jitter and the Pre and Post filters shape the
+  hold. Anti-Alias draws the crusher exactly, so the same settings sound the
+  same at every sample rate. Its window shows the staircase and the sound
+  before and after. Every control can be automated without clicks. The
+  plugin runs 32 samples (0.7 ms) late, which Live compensates. On the Move:
+  one page of eight knobs.
 
 ## Unreleased — NI Side-Chain, NI Listen-In, NI Spectrogram, NI Chord-Detector
 

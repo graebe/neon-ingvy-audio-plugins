@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 use super::*;
-use bc_core::{Param, PARAM_COUNT};
+use bc_core::{Param, LATENCY, PARAM_COUNT};
 use std::os::raw::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
@@ -116,13 +116,22 @@ fn an_instance_processes_both_layouts_and_the_panic() {
         bc_core_process_f32(core, l.as_mut_ptr(), r.as_mut_ptr(), l.len() as u32);
         assert_eq!(*l.last().unwrap(), 0.5);
         assert_eq!(l, r);
-        bc_core_process_f32(core, l.as_mut_ptr(), std::ptr::null_mut(), 16);
+        let mut mono = [0.3f32; 16];
+        bc_core_process_f32(core, mono.as_mut_ptr(), std::ptr::null_mut(), 16);
         bc_core_process_f32(core, std::ptr::null_mut(), r.as_mut_ptr(), 16);
 
         let mut i16s = [9_000i16; 512];
         bc_core_process_i16(core, i16s.as_mut_ptr(), 256);
-        assert!(i16s.iter().all(|s| *s == 16_384));
+        assert!(i16s.iter().all(|s| *s == 16_384), "{:?}", &i16s[..80]);
         bc_core_process_i16(core, std::ptr::null_mut(), 256);
+
+        assert_eq!(bc_latency() as usize, LATENCY);
+        bc_core_set_active(core, false);
+        bc_core_set_active(std::ptr::null_mut(), true);
+        let mut passing = vec![0.3f32; 48_000];
+        bc_core_process_f32(core, passing.as_mut_ptr(), std::ptr::null_mut(), 48_000);
+        assert_eq!(*passing.last().unwrap(), 0.3);
+        bc_core_set_active(core, true);
 
         bc_core_on_midi(core, [0xB0, 123, 0].as_ptr(), 3);
         bc_core_on_midi(core, std::ptr::null(), 3);
@@ -145,20 +154,21 @@ fn an_instance_processes_both_layouts_and_the_panic() {
 
 #[test]
 fn the_ring_keeps_the_last_samples_dry_and_wet() {
+    /* Each wet sample beside the dry one it was made from: LATENCY apart in
+     * time, side by side in the ring. */
     let mut core = BcCore::new(48_000.0);
     let mut block: Vec<f32> = (0..3000).map(|i| i as f32 / 3000.0).collect();
     core.process(&mut block, None);
     let recent: Vec<(f32, f32)> = core.recent(4).collect();
-    let dry: Vec<f32> = (2996..3000).map(|i| i as f32 / 3000.0).collect();
+    let dry: Vec<f32> = (2996 - LATENCY..3000 - LATENCY).map(|i| i as f32 / 3000.0).collect();
     assert_eq!(recent.iter().map(|r| r.0).collect::<Vec<_>>(), dry);
     assert_eq!(recent.iter().map(|r| r.1).collect::<Vec<_>>(), block[2996..].to_vec());
-    core.engine_mut().set_num(Param::Mix, 0.0);
-    let mut more = [5.0f32; 3];
+    let mut more = [5.0f32; LATENCY + 3];
     core.process(&mut more, None);
     let recent: Vec<(f32, f32)> = core.recent(4).collect();
     assert_eq!(recent[0].0, 2999.0 / 3000.0);
     assert_eq!(recent[3].0, 5.0);
-    assert_eq!(core.recent(99_999).count(), BC_SCOPE_RING);
+    assert_eq!(core.recent(99_999).count(), BC_SCOPE_RING - LATENCY);
 }
 
 #[cfg(feature = "shell")]

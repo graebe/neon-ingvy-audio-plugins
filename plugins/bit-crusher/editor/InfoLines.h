@@ -35,13 +35,13 @@ inline constexpr InfoText bits { "Bits — the number of steps, 2 to the power o
 inline constexpr InfoText shape { "Shape — from even steps to fine ones near silence, as µ-law has." };
 inline constexpr InfoText dither { "Dither — noise of up to a step before the steps; quiet detail survives." };
 inline constexpr InfoText midRise { "Mid-Rise — no step at zero, so silence becomes a half-step buzz." };
-inline constexpr InfoText antiAlias { "Anti-Alias — smooth each step's edge; the steps fold back less." };
+inline constexpr InfoText antiAlias { "Anti-Alias — exact, band-limited steps: the same at every sample rate." };
 
 /* HOLD. */
 inline constexpr InfoText rate { "Rate — how many times a second a level is taken and held." };
 inline constexpr InfoText jitter { "Jitter — let the hold's clock wander; noisier, and wider in stereo." };
 inline constexpr InfoText octave { "Octave — where the post-filter sits, in octaves from half the Rate." };
-inline constexpr InfoText preFilter { "Pre — a filter before the hold: cut what Rate would fold back." };
+inline constexpr InfoText preFilter { "Pre — a filter before the hold: what would fold back, 60 dB down." };
 inline constexpr InfoText postFilter { "Post — a filter after the hold, at Octave: smooth its steps." };
 
 /* LEVEL. */

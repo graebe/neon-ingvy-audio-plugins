@@ -74,15 +74,34 @@ either side of it. At 1 bit this turns any sound into a square wave — pure
 sign. Silence becomes a half-step offset, which the plugin's DC blocker takes
 out over a fraction of a second, so the output never sits off-centre.
 
-### Anti-Alias: smoother edges
+### Anti-Alias: the crusher, drawn exactly
 
-A staircase has sharp corners, and sharp corners mean overtones far above
-what the sample rate can hold. Those fold back down into the audible range as
-**aliasing** — inharmonic tones that do not belong to the note, the harsh,
-metallic part of a crushed sound. **Anti-Alias** smooths each corner by the
-exact amount the staircase moved between two samples (first-order
-antiderivative antialiasing), and takes out most of the fold-back while
-keeping the steps. Off is the raw, classic sound; on is cleaner and darker.
+A digital crusher works on your project's sample grid: it can only take a
+level, or jump to a new one, on one of the 44 100 or 48 000 sample ticks a
+second. Its staircase has sharp corners, and sharp corners mean overtones far
+above what the sample rate can hold; those fold back down as **aliasing** —
+inharmonic tones that do not belong to the note. Worse, the grid itself is in
+the sound: 12 kHz at 44.1 kHz holds for three samples and four by turns, which
+a 48 kHz project does not do, so the same settings sound different in two
+projects.
+
+**Anti-Alias** draws the crusher as if it ran in continuous time and you
+listened through your project's sample rate. Each level is taken at the exact
+instant the Rate says, read between the samples; each jump is drawn as a
+smooth, band-limited step at that instant. What a hold *should* add — the
+mirror images of the tone around every multiple of the Rate, the sound of the
+effect — is all there; what your project's grid added is gone, and nothing
+folds back past its Nyquist. The same settings sound the same at 44.1, 48 or
+96 kHz.
+
+Off is the raw digital crusher, grid and all — harsher, and the classic. On
+is the "ideal converter at Rate". The top octave is kept: within a decibel to
+15 kHz at 44.1 kHz.
+
+> **Latency.** Drawing a step smoothly needs a few samples before and after
+> it, so the plugin runs 32 samples late (0.7 ms at 44.1 kHz) — always, with
+> Anti-Alias on or off, so switching it never moves anything in time. Live
+> compensates for it automatically.
 
 ## Part 2 — keeping them less often
 
@@ -119,15 +138,18 @@ the stereo field. At 0 the two channels hold in lockstep.
 Two switches in the Hold panel put a low-pass filter on either side of the
 hold:
 
-- **Pre** filters *before* the hold, at half the Rate. It removes what would
-  fold back, so the result is band-limited and smooth — the sound of a real,
-  well-made old sampler. It also tames the stereo width Jitter adds.
+- **Pre** filters *before* the hold. Everything from half the Rate up — what
+  would fold back — comes out at least 60 dB down, so the result is
+  band-limited and smooth: the sound of a real, well-made old sampler. The
+  filter is steep, so it starts a little below half the Rate (it is 3 dB down
+  at about three quarters of it). It also tames the stereo width Jitter adds.
 - **Post** filters *after* the hold, at half the Rate moved by **Octave**. It
   rounds off the hold's flat tops — the sound of the reconstruction filter on
   an old converter. Octave moves it from three octaves below (dark, muffled)
   to three octaves above (open, edgy).
 
-Both off is the raw, aliasing crusher; both on is the polite one.
+Both off is the raw, aliasing crusher; both on is the polite one. With
+Anti-Alias as well, it is the polite one at any sample rate.
 
 ## Recipes
 
@@ -168,5 +190,7 @@ still fills it; its top right says by how much. Double-click it to hold it at
 full scale. The **Motion** switch in the bar at the bottom stops the
 background rippling on the beat; it is remembered on this computer.
 
-When Live switches the device off and on again, the crusher starts from
-silence: nothing it held before is heard again.
+When Live switches the device off and on again, or bypasses it, the crusher
+fades out to the plain signal and back in from silence: nothing it held
+before is heard again, and nothing clicks. Automation is followed smoothly
+whatever Live's buffer size.

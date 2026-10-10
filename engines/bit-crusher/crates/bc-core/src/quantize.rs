@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*!
-Discretising in amplitude: the staircase, its antiderivative, and the µ-law
+Discretising in amplitude: the staircase, and the µ-law
 curve the steps are bent by.
 
 THE STAIRCASE. With `b` bits the step is Δ = 2^(1-b), so 2^b steps span full
@@ -20,25 +20,11 @@ the top step is the short one and no level ever exceeds full scale. The
 highest index is the last whose step STARTS inside full scale, which keeps a
 full-scale input on the level below rather than on a phantom one above.
 
-ANTIALIASING (first-order ADAA, Parker, Zavalishin & Le Bivic, DAFx-16;
-Bilbao, Esqueda, Parker & Välimäki, IEEE SPL 2017). The staircase is a
-memoryless nonlinearity, so its harmonics fold back below Nyquist. Instead of
-Q(x[n]) the output is the mean of Q over the segment from x[n-1] to x[n]:
-
-```text
-y[n] = (F(x[n]) - F(x[n-1])) / (x[n] - x[n-1]),    F' = Q
-```
-
-F of a staircase is continuous and piecewise linear. On the step with level
-index m it is Δ·m·x - Δ²·m²/2 (which is (x² - (x - Δm)²)/2), and on the top
-step, whose level the clip moved, it continues from the step's lower edge with
-the clipped level as its slope. The paper's ill-conditioned case -- the two
-inputs too close to divide by -- is handled exactly: on one step the mean IS
-that step's level, and across steps the gap is never smaller than the distance
-to a boundary, so only an input that sits on a boundary to 1e-12 takes the
-fallback, the level at the midpoint. The result is clamped between the two
-endpoint levels, which the true mean always lies between, so rounding can
-never make it overshoot.
+Antialiasing is not the staircase's business: the staircase acts on each
+level a hold takes, and Anti-Alias draws the hold's jumps band-limited
+(hold.rs). A staircase acting on every host sample aliases at the host's rate;
+acting on the levels of a band-limited hold, it aliases only as a converter at
+Rate would.
 
 THE SHAPE (µ-law, as G.711 and Redux's Shape). The input is compressed, the
 compressed value quantised, and the result expanded again, so the steps are
@@ -56,9 +42,6 @@ pub struct Grid {
     /// The highest level index, whose step starts inside full scale.
     top: f64,
 }
-
-/// Closer than this and two ADAA inputs are one point.
-const ADAA_EPS: f64 = 1e-12;
 
 impl Grid {
     /// The grid for `bits` (at least 1), mid-tread or mid-rise.
@@ -98,38 +81,6 @@ impl Grid {
     #[inline]
     pub fn quantize(&self, x: f64) -> f64 {
         self.level(self.index(x))
-    }
-
-    /// F, the staircase's antiderivative, with F(0) = 0 on mid-tread.
-    #[inline]
-    pub fn antiderivative(&self, x: f64) -> f64 {
-        let m = self.index(x);
-        if m.abs() < self.top {
-            return self.delta * m * x - 0.5 * self.delta * self.delta * m * m;
-        }
-        /* The top step: from its lower edge, where the step below meets it
-         * and the open formula still holds, with the clipped level as the
-         * slope. */
-        let edge = m.signum() * self.delta * (self.top - 0.5);
-        let at_edge = self.delta * m * edge - 0.5 * self.delta * self.delta * m * m;
-        at_edge + self.level(m) * (x - edge)
-    }
-
-    /// The staircase's mean over the segment from `x0` to `x1`: first-order
-    /// ADAA. Equals `quantize(x1)` while both ends sit on one step.
-    #[inline]
-    pub fn mean(&self, x0: f64, x1: f64) -> f64 {
-        let (m0, m1) = (self.index(x0), self.index(x1));
-        if m0 == m1 {
-            return self.level(m1);
-        }
-        let dx = x1 - x0;
-        if dx.abs() < ADAA_EPS {
-            return self.quantize(0.5 * (x0 + x1));
-        }
-        let y = (self.antiderivative(x1) - self.antiderivative(x0)) / dx;
-        let (a, b) = (self.level(m0), self.level(m1));
-        y.clamp(a.min(b), a.max(b))
     }
 }
 

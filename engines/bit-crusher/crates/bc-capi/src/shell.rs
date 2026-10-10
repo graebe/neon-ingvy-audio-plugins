@@ -28,6 +28,7 @@ the host's side.
 */
 
 use crate::{BcCore, BC_SCOPE_RING};
+use bc_core::LATENCY;
 use shell_core::{publish_every, Bridge, Model};
 
 /// The scope's window, in samples: about 11 ms at 48 kHz, so a step of the
@@ -98,14 +99,15 @@ impl Model for BcCore {
     fn publish(&self, f: &mut BcScope) {
         f.serial = self.serial;
         f.sample_rate = self.engine.sample_rate();
-        let mut dry = [0.0f32; BC_SCOPE_RING];
-        for (slot, (d, _)) in dry.iter_mut().zip(self.recent(BC_SCOPE_RING)) {
+        const SPAN: usize = BC_SCOPE_RING - LATENCY;
+        let mut dry = [0.0f32; SPAN];
+        for (slot, (d, _)) in dry.iter_mut().zip(self.recent(SPAN)) {
             *slot = d;
         }
         let start = trigger(&dry);
         f.triggered = start.is_some();
-        let start = start.unwrap_or(BC_SCOPE_RING - BC_SCOPE);
-        for (i, (d, w)) in self.recent(BC_SCOPE_RING).skip(start).take(BC_SCOPE).enumerate() {
+        let start = start.unwrap_or(SPAN - BC_SCOPE);
+        for (i, (d, w)) in self.recent(SPAN).skip(start).take(BC_SCOPE).enumerate() {
             f.dry[i] = d;
             f.wet[i] = w;
         }

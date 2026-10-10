@@ -35,13 +35,17 @@ static const double BC_RENDER_PARAMS[BC_RENDER_PARAMS_COUNT] = { 6, 5.5, 30, 1, 
 
 /*
  * FNV-1a over the left channel's float bytes, recorded 2026-10-10 at the
- * first render.
+ * first render (0x766762EA46AB4609), and again the same day, after the DSP
+ * review: the crusher now runs 32 samples late (bc_latency), Anti-Alias --
+ * on in this patch -- is the band-limited hold instead of ADAA, and the
+ * pre-filter is a 10th-order inverse Chebyshev instead of a Butterworth. All
+ * three are meant to change the sound.
  *
  * If this fires, the DSP changed: re-run bc_render_ab with --dump, satisfy
  * yourself that the change was intended, and record the new value WITH A
  * REASON.
  */
-static const uint64_t BC_RENDER_GOLDEN = 0x766762EA46AB4609ull;
+static const uint64_t BC_RENDER_GOLDEN = 0x59C0F292549A3A50ull;
 
 static inline uint64_t bc_render_fnv1a(uint64_t h, const void *p, size_t n)
 {

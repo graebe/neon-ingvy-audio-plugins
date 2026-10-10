@@ -14,10 +14,13 @@
  *                 switches. The IDs are the engine's keys, the state the
  *                 default ni::Processor one (every parameter by its ID)
  *   the buses     mono in to mono out, or stereo to stereo; no MIDI, no
- *                 sidechain, no latency
- *   a block       the shell taken (bc_shell_begin), every parameter pushed
- *                 (cheap when unchanged), the channels crushed in place, the
- *                 shell given back -- which publishes the scope when one is due
+ *                 sidechain
+ *   a block       the shell taken (bc_shell_begin), every parameter pushed in
+ *                 32-frame steps, ramped across the block, the channels crushed
+ *                 in place, the shell given back -- which publishes the scope
+ *                 when one is due
+ *   latency       bc_latency, 32 samples, constant; bypassed, the engine passes
+ *                 the input delayed by as much and fades between the two
  *   activation    prepareToPlay posts the rate and a reset, so a host that
  *                 stopped and started the plugin hears nothing it held before
  *   the editor    reads the engine's scope and renders the staircase through
@@ -78,17 +81,28 @@ public:
 
 protected:
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-    /* Bypassed, the host's audio passes untouched and the Ground keeps the
-     * host's time. */
+    /* Bypassed, the engine passes the host's audio, delayed by the reported
+     * latency, and the Ground keeps the host's time. */
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
 private:
+    /* Parameters are pushed in steps this long, ramped across the block. */
+    static constexpr int rampFrames = 32;
+
+    void run (juce::AudioBuffer<float>&, bool heard);
+    double between (int index, double from, double to, double t) const;
+
     struct ShellDeleter
     {
         void operator() (BcShell* s) const { bc_shell_destroy (s); }
     };
     std::unique_ptr<BcShell, ShellDeleter> shell;
     std::array<juce::RangedAudioParameter*, paramCount> params {};
+    std::array<bool, paramCount> toggles {};
+    /* The values the last block ended on and this one ends on: the audio
+     * thread's alone. */
+    std::array<double, paramCount> last {}, target {};
+    bool ramping = false;
     ni::GroundClock beat;
 
     /* The scope as the engine published it, and as the editor takes it. */

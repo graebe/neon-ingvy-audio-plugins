@@ -8,51 +8,61 @@ in time.
 THE SIGNAL, one channel, one sample:
 
 ```text
-  in ─ Drive ─ Pre-Filter ─ Shape⁻¹ ─ + Dither ─ steps ─ Shape ─ hold ─ Post-Filter ─ DC ─┐
-   └───────────────────────────────── dry ──────────────────────────────────────── Mix ─┴─ Output ─ out
+  in ─ Drive ─ Pre-Filter ─┬─ steps ─ hold (on the host's grid) ── delay ─┐
+                           └─ hold (exact, band-limited) ─ steps ─────────┴─ Anti-Alias ─ Post-Filter ─ DC ─┐
+   └──────────────────────────────────── dry ─ delay ────────────────────────────────────────────── Mix ─┴─ Output ─ out
 ```
 
 - Drive pushes the signal up the staircase; past full scale the top step is a
   hard clip.
-- The pre-filter (Rate/2) takes out what the hold would fold back.
+- The pre-filter (stopband from Rate/2) takes out what the hold would fold
+  back.
 - The steps are quantize.rs's: Bits, mid-tread or mid-rise, the µ-law Shape
-  around them, Dither before them, and Anti-Alias on them.
-- The hold is hold.rs's: Rate, and Jitter on its clock.
+  around them and Dither before them -- applied to every level a hold takes.
+- The hold is hold.rs's, in two forms. Anti-Alias off: the raw digital
+  crusher, levels taken and jumps drawn on the host's sample grid. On: each
+  level taken at its exact instant and each jump drawn band-limited, so the
+  crusher sounds the same at every host rate and nothing folds back past the
+  project's Nyquist (hold.rs, blep.rs). Steps and hold commute -- a level is
+  quantised once, whenever it is taken -- so the two forms differ only in time.
 - The post-filter (Rate/2, moved by Octave) smooths the hold's steps.
 - The DC blocker takes out the half step a mid-rise grid adds to silence. It
   comes in with Mid-Rise: a mid-tread grid adds no DC, and is left its exact
   levels and its phase.
 
+LATENCY: blep::LATENCY samples (32), always. The band-limited hold needs it;
+the raw one and the dry signal are delayed by as much, so Anti-Alias can be
+crossfaded and the Mix stays phase-coherent. A host is told (bc_latency), and
+it never changes.
+
 NOTHING CLICKS WHEN A CONTROL MOVES. Every number glides (ni_dsp::smooth, 5
 ms): the gains linearly, Bits on bits -- already a logarithm of the step --
-and Rate on its logarithm, so a sweep moves evenly in pitch. The four
-switches glide too, as crossfades: Mid-Rise between the two grids (and in
-or out of the DC blocker), Anti-Alias
-between the plain and the antialiased staircase, the filters between the
-filtered and the unfiltered signal. Both sides of a crossfade are computed
-only while it runs; the filters run all the time, so one switched in has
-been listening already. Jitter and Dither are not glided: they scale noise,
-and a jump in noise is not a click.
+and Rate on its logarithm, so a sweep moves evenly in pitch. The switches
+glide too, as crossfades: Mid-Rise between the two grids (and in or out of the
+DC blocker), Anti-Alias between the two holds, the filters between the
+filtered and the unfiltered signal, and the host's bypass between the crusher
+and the delayed dry signal (set_active). Jitter and Dither are not glided:
+they scale noise, and a jump in noise is not a click.
 
-NO LATENCY. Anti-Alias delays the steps by half a sample, which is not worth
-reporting to a host.
-
-THE AUDIO THREAD ALLOCATES NOTHING: every buffer is the caller's, every state
-a field (tests/no_alloc.rs holds it to that).
+THE AUDIO THREAD ALLOCATES NOTHING: every buffer is the caller's or a fixed
+array, every state a field (tests/no_alloc.rs holds it to that).
 */
 
+pub mod blep;
 pub mod filters;
 pub mod hold;
 pub mod params;
 pub mod quantize;
 
 use core::fmt::Write;
-use filters::{DcBlock, Lowpass, LowpassCoefficients};
-use hold::Hold;
+use filters::{DcBlock, Lowpass, LowpassCoefficients, PreCoefficients, PreFilter};
+use hold::{BandLimitedHold, Hold};
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
 pub use params::{Info, Kind, Param, Travel, Unit, PARAM_COUNT, TOGGLE_LABELS};
 use quantize::{Grid, Shape};
+
+pub use blep::LATENCY;
 
 /// The generators' seeds, one per channel: fixed, so a render is the same
 /// render every time, and different, so jitter widens the stereo image.
@@ -93,10 +103,12 @@ struct Glides {
     post_octave: f64,
     mix: f64,
     output: f64,
+    /// 1 while the crusher is heard, 0 while the host bypasses it.
+    active: f64,
 }
 
 impl Glides {
-    fn targets(v: &[f64; PARAM_COUNT]) -> Glides {
+    fn targets(v: &[f64; PARAM_COUNT], active: bool) -> Glides {
         let at = |p: Param| v[p as usize];
         Glides {
             drive: db_to_amp(at(Param::Drive)),
@@ -110,6 +122,7 @@ impl Glides {
             post_octave: at(Param::PostOctave),
             mix: at(Param::Mix) / 100.0,
             output: db_to_amp(at(Param::Output)),
+            active: active as i32 as f64,
         }
     }
 
@@ -126,6 +139,7 @@ impl Glides {
             (&mut self.post_octave, t.post_octave),
             (&mut self.mix, t.mix),
             (&mut self.output, t.output),
+            (&mut self.active, t.active),
         ] {
             *x = glide(*x, target, c);
         }
@@ -147,54 +161,111 @@ struct Now {
     post: f64,
     mix: f64,
     output: f64,
+    active: f64,
+}
+
+impl Now {
+    /// THE STEPS: the level a value taken by a hold becomes -- Shape around
+    /// the grid, Dither before it, mid-tread or mid-rise or between.
+    #[inline]
+    fn level(&self, x: f64, dither: &mut fastrand::Rng) -> f64 {
+        let mut c = self.shape.compress(x);
+        if self.dither > 0.0 {
+            /* Triangular: two uniforms, so ±1 step at 100 %, and an error
+             * independent of the signal from 50 % up. */
+            c += (dither.f64() + dither.f64() - 1.0) * self.tread.delta() * self.dither;
+        }
+        let q = if self.mid_rise <= 0.0 {
+            self.tread.quantize(c)
+        } else if self.mid_rise >= 1.0 {
+            self.rise.quantize(c)
+        } else {
+            fade(self.tread.quantize(c), self.rise.quantize(c), self.mid_rise)
+        };
+        self.shape.expand(q)
+    }
+}
+
+/// A fixed delay of LATENCY samples.
+#[derive(Clone, Debug)]
+struct Delay {
+    ring: [f64; 64],
+    at: usize,
+}
+
+impl Default for Delay {
+    fn default() -> Self {
+        Delay { ring: [0.0; 64], at: 0 }
+    }
+}
+
+impl Delay {
+    #[inline]
+    fn push(&mut self, x: f64) -> f64 {
+        const _: () = assert!(LATENCY < 64);
+        self.ring[self.at] = x;
+        let out = self.ring[(self.at + 64 - LATENCY) % 64];
+        self.at = (self.at + 1) % 64;
+        out
+    }
 }
 
 /// One channel's state.
 #[derive(Clone, Debug)]
 struct Channel {
-    pre: Lowpass,
+    pre: PreFilter,
     post: Lowpass,
     dc: DcBlock,
+    /// The raw hold, its output delayed to the band-limited hold's.
     hold: Hold,
+    raw_late: Delay,
+    /// The band-limited hold, and its own generators: the two holds draw the
+    /// same jitter and dither sequences, so they agree on everything but time.
+    exact: BandLimitedHold,
     hold_rng: fastrand::Rng,
     dither_rng: fastrand::Rng,
-    /// The quantiser's last input, for Anti-Alias.
-    last: f64,
+    exact_hold_rng: fastrand::Rng,
+    exact_dither_rng: fastrand::Rng,
+    /// The input, delayed as the crushed signal is.
+    dry_late: Delay,
 }
 
 impl Channel {
-    fn new(index: usize, pre: &LowpassCoefficients, post: &LowpassCoefficients, sample_rate: f64) -> Channel {
+    fn new(index: usize, pre: &PreCoefficients, post: &LowpassCoefficients, sample_rate: f64) -> Channel {
         Channel {
-            pre: Lowpass::new(pre),
+            pre: PreFilter::new(pre),
             post: Lowpass::new(post),
             dc: DcBlock::new(sample_rate),
             hold: Hold::default(),
+            raw_late: Delay::default(),
+            exact: BandLimitedHold::default(),
             hold_rng: fastrand::Rng::with_seed(HOLD_SEEDS[index]),
             dither_rng: fastrand::Rng::with_seed(DITHER_SEEDS[index]),
-            last: 0.0,
+            exact_hold_rng: fastrand::Rng::with_seed(HOLD_SEEDS[index]),
+            exact_dither_rng: fastrand::Rng::with_seed(DITHER_SEEDS[index]),
+            dry_late: Delay::default(),
         }
     }
 
-    fn reset(&mut self, index: usize) {
+    /// Everything the crusher holds, but not the delayed dry signal: what a
+    /// return from the host's bypass starts from.
+    fn reset_wet(&mut self, index: usize) {
         self.pre.reset();
         self.post.reset();
         self.dc.reset();
         self.hold.reset();
+        self.raw_late = Delay::default();
+        self.exact.reset();
         self.hold_rng = fastrand::Rng::with_seed(HOLD_SEEDS[index]);
         self.dither_rng = fastrand::Rng::with_seed(DITHER_SEEDS[index]);
-        self.last = 0.0;
+        self.exact_hold_rng = fastrand::Rng::with_seed(HOLD_SEEDS[index]);
+        self.exact_dither_rng = fastrand::Rng::with_seed(DITHER_SEEDS[index]);
     }
 
-    /// The staircase on one grid, plain or antialiased or between the two.
-    #[inline]
-    fn steps(grid: &Grid, last: f64, x: f64, anti_alias: f64) -> f64 {
-        if anti_alias <= 0.0 {
-            grid.quantize(x)
-        } else if anti_alias >= 1.0 {
-            grid.mean(last, x)
-        } else {
-            fade(grid.quantize(x), grid.mean(last, x), anti_alias)
-        }
+    /// Everything: the panic.
+    fn reset(&mut self, index: usize) {
+        self.reset_wet(index);
+        self.dry_late = Delay::default();
     }
 
     #[inline]
@@ -202,30 +273,29 @@ impl Channel {
         /* A NaN or an infinity from a host would sit in the filters' state
          * for good; it is silence instead. */
         let dry = if dry.is_finite() { dry } else { 0.0 };
+        let dry_late = self.dry_late.push(dry);
+        if now.active <= 0.0 {
+            return dry_late;
+        }
+
         let x = dry * now.drive;
         let filtered = self.pre.run(x);
         let x = fade(x, filtered, now.pre);
 
-        let mut c = now.shape.compress(x);
-        if now.dither > 0.0 {
-            /* Triangular: two uniforms, so ±1 step at 100 %, and an error
-             * independent of the signal from 50 % up. */
-            let r = &mut self.dither_rng;
-            c += (r.f64() + r.f64() - 1.0) * now.tread.delta() * now.dither;
-        }
-        let tread = || Channel::steps(&now.tread, self.last, c, now.anti_alias);
-        let rise = || Channel::steps(&now.rise, self.last, c, now.anti_alias);
-        let q = if now.mid_rise <= 0.0 {
-            tread()
-        } else if now.mid_rise >= 1.0 {
-            rise()
+        /* The raw hold: steps on every host sample, then the hold -- which
+         * is the same as stepping only what it takes. */
+        let level = now.level(x, &mut self.dither_rng);
+        let raw = self.hold.step(level, now.step, now.jitter, &mut self.hold_rng);
+        let raw = self.raw_late.push(raw);
+        let held = if now.anti_alias > 0.0 {
+            let rng = &mut self.exact_dither_rng;
+            let exact = self.exact.step(x, now.step, now.jitter, &mut self.exact_hold_rng, |v| now.level(v, rng));
+            fade(raw, exact, now.anti_alias)
         } else {
-            fade(tread(), rise(), now.mid_rise)
+            self.exact.follow(x, self.hold.held(), self.hold.phase());
+            raw
         };
-        self.last = c;
-        let y = now.shape.expand(q);
 
-        let held = self.hold.step(y, now.step, now.jitter, &mut self.hold_rng);
         let smoothed = self.post.run(held);
         let wet = fade(held, smoothed, now.post);
         /* The DC blocker follows Mid-Rise in: a mid-tread grid is symmetric
@@ -234,7 +304,8 @@ impl Channel {
         let blocked = self.dc.run(wet);
         let wet = fade(wet, blocked, now.mid_rise);
 
-        (dry * (1.0 - now.mix) + wet * now.mix) * now.output
+        let heard = (dry_late * (1.0 - now.mix) + wet * now.mix) * now.output;
+        fade(dry_late, heard, now.active)
     }
 }
 
@@ -253,11 +324,13 @@ pub struct Engine {
     shape: Shape,
     /// The filters' coefficients, shared by both channels, and the cutoffs
     /// they were made for.
-    pre_coefficients: LowpassCoefficients,
+    pre_coefficients: PreCoefficients,
     post_coefficients: LowpassCoefficients,
     pre_hz: f64,
     post_hz: f64,
     channels: [Channel; 2],
+    /// Whether the host hears the crusher (set_active).
+    active: bool,
 }
 
 impl Engine {
@@ -266,9 +339,9 @@ impl Engine {
     pub fn new(sample_rate: f64) -> Engine {
         let sample_rate = usable_rate(sample_rate);
         let values = Param::ALL.map(Param::default_value);
-        let targets = Glides::targets(&values);
+        let targets = Glides::targets(&values, true);
         let (pre_hz, post_hz) = cutoffs(&targets);
-        let pre_coefficients = LowpassCoefficients::new(pre_hz, sample_rate);
+        let pre_coefficients = PreCoefficients::new(pre_hz, sample_rate);
         let post_coefficients = LowpassCoefficients::new(post_hz, sample_rate);
         Engine {
             sample_rate,
@@ -284,7 +357,30 @@ impl Engine {
             pre_hz,
             post_hz,
             channels: [0, 1].map(|i| Channel::new(i, &pre_coefficients, &post_coefficients, sample_rate)),
+            active: true,
         }
+    }
+
+    /// How late the output is, in samples: always LATENCY.
+    pub fn latency(&self) -> usize {
+        LATENCY
+    }
+
+    /// Whether the crusher is heard. Off -- the host's bypass -- it fades to
+    /// the delayed dry signal, so the latency a host compensates for stays the
+    /// same and nothing jumps; once faded out it only delays. Back on, it
+    /// starts from silence (nothing held from before the bypass) and fades in.
+    pub fn set_active(&mut self, active: bool) {
+        if active == self.active {
+            return;
+        }
+        if active && self.now.active <= 0.0 {
+            for (i, ch) in self.channels.iter_mut().enumerate() {
+                ch.reset_wet(i);
+            }
+        }
+        self.active = active;
+        self.targets = Glides::targets(&self.values, active);
     }
 
     pub fn sample_rate(&self) -> f64 {
@@ -339,7 +435,7 @@ impl Engine {
             return;
         }
         self.values[p as usize] = p.clamp(v);
-        self.targets = Glides::targets(&self.values);
+        self.targets = Glides::targets(&self.values, self.active);
     }
 
     /// The value as set, in the parameter's unit.
@@ -386,7 +482,7 @@ impl Engine {
         let moved = |a: f64, b: f64| force || (a / b - 1.0).abs() > 1e-4;
         if moved(pre_hz, self.pre_hz) {
             self.pre_hz = pre_hz;
-            self.pre_coefficients = LowpassCoefficients::new(pre_hz, self.sample_rate);
+            self.pre_coefficients = PreCoefficients::new(pre_hz, self.sample_rate);
             for ch in &mut self.channels {
                 ch.pre.retune(&self.pre_coefficients);
             }
@@ -432,6 +528,7 @@ impl Engine {
             post: n.post,
             mix: n.mix,
             output: n.output,
+            active: n.active,
         }
     }
 
@@ -478,8 +575,8 @@ impl Engine {
     }
 }
 
-/// The pre- and post-filter's cutoffs for a set of glides: Rate/2, and Rate/2
-/// moved by Octave.
+/// The pre-filter's stopband edge and the post-filter's cutoff for a set of
+/// glides: Rate/2, and Rate/2 moved by Octave.
 fn cutoffs(g: &Glides) -> (f64, f64) {
     let nyquist = 0.5 * g.log_rate.exp2();
     (nyquist, nyquist * g.post_octave.exp2())

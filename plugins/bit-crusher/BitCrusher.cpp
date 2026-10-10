@@ -98,7 +98,11 @@ Processor::Processor()
         auto p = fromEngine (i);
         params[(size_t) i] = p.get();
         addParameter (p.release());
+        BcParamInfo info {};
+        toggles[(size_t) i] = bc_param_info (i, &info) && info.kind == BcParamKind_Toggle;
     }
+    /* Constant: Anti-Alias on or off, at any rate (bc_latency). */
+    setLatencySamples ((int) bc_latency());
 }
 
 Processor::~Processor() = default;
@@ -117,6 +121,7 @@ void Processor::prepareToPlay (double sampleRate, int)
      * held from before: the held sample and the filters' tails let go. */
     bc_shell_post_reset (shell.get());
     beat.prepare (rate);
+    ramping = false;
 }
 
 /* Snapped again in double: the float a parameter holds is the nearest to a
@@ -128,27 +133,71 @@ double Processor::plain (int index) const
     return bc_param_snap (index, (double) p->convertFrom0to1 (p->getValue()));
 }
 
+/* Parameter `index` a fraction `t` of the way from `from` to `to`: along
+ * its knob's travel, so Rate ramps in equal ratios; a switch at once (the
+ * engine crossfades it). */
+double Processor::between (int index, double from, double to, double t) const
+{
+    if (toggles[(size_t) index] || juce::exactlyEqual (from, to) || t >= 1.0)
+        return to;
+    const double a = bc_param_normalise (index, from), b = bc_param_normalise (index, to);
+    return bc_param_denormalise (index, a + (b - a) * t);
+}
+
+/*
+ * ONE BLOCK, heard or bypassed. Every parameter is pushed in steps of
+ * rampFrames, ramped from where the last block left it to where the host has
+ * it now -- a host that sends 8192 frames at a time and automates Rate would
+ * otherwise move it in stairs 170 ms apart. The first block after
+ * prepareToPlay starts where the host is, with no ramp from a stale block.
+ */
+void Processor::run (juce::AudioBuffer<float>& buffer, bool heard)
+{
+    const int frames = buffer.getNumSamples();
+    if (frames <= 0 || buffer.getNumChannels() < 1)
+        return;
+    for (int i = 0; i < paramCount; ++i)
+        target[(size_t) i] = plain (i);
+    if (! ramping)
+    {
+        last = target;
+        ramping = true;
+    }
+
+    BcCore* core = bc_shell_begin (shell.get());
+    bc_core_set_active (core, heard);
+    float* left = buffer.getWritePointer (0);
+    float* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
+    const int steps = (frames + rampFrames - 1) / rampFrames;
+    for (int k = 0; k < steps; ++k)
+    {
+        const int at = k * rampFrames;
+        const int n = juce::jmin (rampFrames, frames - at);
+        const double t = (double) (k + 1) / (double) steps;
+        for (int i = 0; i < paramCount; ++i)
+            bc_core_set_num (core, i, between (i, last[(size_t) i], target[(size_t) i], t));
+        bc_core_process_f32 (core, left + at, right != nullptr ? right + at : nullptr, (uint32_t) n);
+    }
+    last = target;
+    bc_shell_end (shell.get(), (uint32_t) frames);
+}
+
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const int frames = buffer.getNumSamples();
     const auto clock = readClock (getPlayHead());
     beat.tick (clock, frames);
-    if (frames <= 0 || buffer.getNumChannels() < 1)
-        return;
-
-    BcCore* core = bc_shell_begin (shell.get());
-    for (int i = 0; i < paramCount; ++i)
-        bc_core_set_num (core, i, plain (i));
-    float* left = buffer.getWritePointer (0);
-    float* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
-    bc_core_process_f32 (core, left, right, (uint32_t) frames);
-    bc_shell_end (shell.get(), (uint32_t) frames);
+    run (buffer, true);
 }
 
-void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+/* Bypassed, the engine fades to the input, delayed by the latency the host
+ * compensates for -- JUCE's own bypass would pass it on time, and the track
+ * would jump ahead by that much -- and back from silence on the way out. */
+void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
-    ni::Processor::processBypassed (buffer, midi);
+    const auto clock = readClock (getPlayHead());
+    beat.tick (clock, buffer.getNumSamples());
+    run (buffer, false);
 }
 
 /* ------------------------------------------------------------ the model -- */

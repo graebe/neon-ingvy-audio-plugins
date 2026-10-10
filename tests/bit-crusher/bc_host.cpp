@@ -11,7 +11,7 @@
  *
  *   the class        one class, NI Bit-Crusher from Neon Ingvy, filed as
  *                    Fx|Distortion; an effect with a main bus in and out, no
- *                    MIDI either way
+ *                    MIDI either way, and its latency reported
  *   the parameters   through the VST3 controller: the engine's thirteen by
  *                    name, their default texts, typing read by the engine
  *   the sound        the golden patch, typed into the controller as a user
@@ -128,7 +128,7 @@ void checkBuses (AudioPluginInstance& p)
     check (! p.acceptsMidi() && ! p.producesMidi(), "no MIDI either way");
     check (p.getBusCount (true) == 1 && p.getBusCount (false) == 1, "one input, one output",
            String (p.getBusCount (true)) + " in, " + String (p.getBusCount (false)) + " out");
-    check (p.getLatencySamples() == 0, "no latency");
+    check (p.getLatencySamples() == 32, "32 samples of latency, reported", String (p.getLatencySamples()));
 }
 
 void checkParameters (AudioPluginInstance& p)

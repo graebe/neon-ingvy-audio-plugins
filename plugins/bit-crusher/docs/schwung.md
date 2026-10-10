@@ -44,8 +44,9 @@ of its travel above 10 kHz. So Rate offers twelve rates — 250, 500, 1k, 2k, 4k
 at all.
 
 **No switches.** Mid-Rise, Anti-Alias and the two filters stay off: hard
-steps, hard holds — the classic crusher, and the one a hardware box with no
-screen for a staircase is best at.
+steps, hard holds on the Move's own 44.1 kHz grid — the classic, raw digital
+crusher, and the one a hardware box with no screen for a staircase is best
+at. Like the plugin, the module runs 32 samples (0.7 ms) late.
 
 **Sixteen bits are the ceiling, as they are in the plugin.** The Move's audio
 is 16-bit, so that is also where Bits stops changing anything.

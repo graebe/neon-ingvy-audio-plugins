@@ -64,8 +64,8 @@ const JUCE_PLUGINS = {
     /shell_handoff_acquire/],
   /* Its block, heard or bypassed, is one run() around sc_shell_begin. */
   'NI Side-Chain': ['plugins/side-chain/SideChain.h', 'plugins/side-chain/SideChain.cpp', /^run\s*\(/],
-  /* Its block is the engine taken, pushed, crushed and given back. */
-  'NI Bit-Crusher': ['plugins/bit-crusher/BitCrusher.h', 'plugins/bit-crusher/BitCrusher.cpp', /bc_shell_begin/],
+  /* Its block, heard or bypassed, is one run() around bc_shell_begin. */
+  'NI Bit-Crusher': ['plugins/bit-crusher/BitCrusher.h', 'plugins/bit-crusher/BitCrusher.cpp', /^run\s*\(/],
 };
 
 test('the ground is fed no audio, by the shell or by any product', () => {

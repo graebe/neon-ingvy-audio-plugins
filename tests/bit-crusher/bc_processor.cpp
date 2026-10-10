@@ -180,13 +180,48 @@ TEST_CASE ("a reactivation lets go of what the hold held")
     CHECK (a.buffer.getMagnitude (0, block) == 0.0f);
 }
 
-TEST_CASE ("the host's bypass passes the audio untouched")
+TEST_CASE ("the latency is reported, constant, and the host's bypass keeps it")
 {
     Instance a;
+    CHECK (a.p.getLatencySamples() == (int) bc_latency());
+    CHECK (a.p.getLatencySamples() == 32);
+    a.set (param::antiAlias, 1.0);
+    CHECK (a.p.getLatencySamples() == 32);
+
+    /* Bypassed, the input comes out untouched once the crusher has faded
+     * out -- and a ramp in it comes out bc_latency() samples late. */
     a.set (param::bits, 1.0);
-    a.run (0.3f, 4, true);
-    CHECK (a.buffer.getSample (0, 0) == 0.3f);
-    CHECK (a.buffer.getSample (1, block - 1) == 0.3f);
+    a.run (0.3f, 20, true);
+    CHECK (a.buffer.getSample (0, block - 1) == 0.3f);
+    for (int i = 0; i < block; ++i)
+        a.buffer.setSample (0, i, (float) i / block);
+    a.buffer.copyFrom (1, 0, a.buffer, 0, 0, block);
+    juce::MidiBuffer midi;
+    static_cast<juce::AudioProcessor&> (a.p).processBlockBypassed (a.buffer, midi);
+    CHECK (a.buffer.getSample (0, 100) == (float) (100 - 32) / block);
+}
+
+TEST_CASE ("a long block's automation is ramped across it, not stepped at its start")
+{
+    Instance a;
+    a.set (param::bits, 16.0);
+    a.set (param::rate, 96000.0);
+    a.settle (0.5f);
+    /* Output from 0 to -24 dB in one 4096-frame block, on a steady 0.5. A
+     * value pushed once at the top would be most of the way down within the
+     * engine's glide (~100 samples); ramped across the block, a quarter in
+     * it has come down by about a quarter of the way in dB. */
+    juce::AudioBuffer<float> big (2, 4096);
+    for (int c = 0; c < 2; ++c)
+        juce::FloatVectorOperations::fill (big.getWritePointer (c), 0.5f, 4096);
+    a.set (param::output, -24.0);
+    juce::MidiBuffer midi;
+    static_cast<juce::AudioProcessor&> (a.p).processBlock (big, midi);
+    const auto db = [&] (int i) { return 20.0f * std::log10 (big.getSample (0, i) / 0.5f); };
+    CHECK (db (1024) > -9.0f);
+    CHECK (db (1024) < -3.0f);
+    CHECK (db (3072) < db (2048));
+    CHECK (db (2048) < db (1024));
 }
 
 TEST_CASE ("a saved state reopens with every value exactly")

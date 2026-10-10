@@ -35,10 +35,13 @@ fn mono(e: &mut Engine, input: &[f32]) -> Vec<f32> {
 const NO_HOLD: (Param, f64) = (Param::Rate, 96_000.0);
 
 #[test]
-fn mix_at_zero_is_the_dry_signal_bit_for_bit() {
+fn mix_at_zero_is_the_dry_signal_bit_for_bit_and_latency_late() {
     let input = sine(440.0, 0.8, 2048);
     let mut e = engine(&[(Param::Mix, 0.0), (Param::Bits, 2.0), (Param::Drive, 12.0)]);
-    assert_eq!(mono(&mut e, &input), input);
+    assert_eq!(e.latency(), LATENCY);
+    let out = mono(&mut e, &input);
+    assert!(out[..LATENCY].iter().all(|y| *y == 0.0));
+    assert_eq!(&out[LATENCY..], &input[..input.len() - LATENCY]);
 }
 
 #[test]
@@ -46,8 +49,8 @@ fn sixteen_bits_and_no_hold_are_close_to_transparent() {
     let input = sine(1_000.0, 0.5, 9600);
     let mut e = engine(&[(Param::Bits, 16.0), NO_HOLD]);
     let out = mono(&mut e, &input);
-    /* What is left is the 16-bit steps. */
-    let worst = out.iter().zip(&input).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+    /* What is left is the 16-bit steps, LATENCY samples late. */
+    let worst = out[LATENCY..].iter().zip(&input).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
     assert!(f64::from(worst) <= 2.0f64.powi(-16) + 1e-7, "{worst}");
 }
 
@@ -79,7 +82,7 @@ fn rate_makes_steps_in_time() {
 fn a_mid_rise_grid_on_silence_leaves_no_dc_at_the_output() {
     let mut e = engine(&[(Param::MidRise, 1.0), (Param::Bits, 3.0), NO_HOLD]);
     let out = mono(&mut e, &vec![0.0; SR as usize * 2]);
-    assert!(out[0].abs() > 0.05, "a half step at first: {}", out[0]);
+    assert!(out[LATENCY].abs() > 0.05, "a half step at first: {}", out[LATENCY]);
     assert!(out.last().unwrap().abs() < 1e-3);
 }
 
@@ -257,10 +260,16 @@ fn the_sixteen_bit_path_agrees_with_the_float_path() {
 #[test]
 fn the_sixteen_bit_path_clips_and_stops_at_frames() {
     let mut e = engine(&[(Param::Bits, 1.0), NO_HOLD, (Param::Output, 12.0)]);
-    let mut buf = [32_000i16, -32_000, 32_000, -32_000, 7, 7];
-    e.process_i16(&mut buf, 2);
-    assert_eq!(&buf[..2], &[32_767, -32_768]);
-    assert_eq!(&buf[4..], &[7, 7]);
+    let mut buf = [0i16; 2 * (LATENCY + 4) + 2];
+    for frame in buf.chunks_mut(2) {
+        frame.copy_from_slice(&[32_000, -32_000]);
+    }
+    let n = buf.len();
+    buf[n - 2] = 7;
+    buf[n - 1] = 7;
+    e.process_i16(&mut buf, LATENCY + 4);
+    assert_eq!(&buf[2 * LATENCY..2 * LATENCY + 2], &[32_767, -32_768]);
+    assert_eq!(&buf[n - 2..], &[7, 7]);
 }
 
 #[test]
@@ -276,41 +285,200 @@ fn a_new_sample_rate_retunes_and_absurd_ones_are_refused() {
     assert!(out.iter().all(|y| y.is_finite()));
 }
 
-/// The energy of a rendered tone outside its own harmonics: what aliasing
-/// put there.
-fn alias_energy(anti_alias: bool) -> f64 {
+/// A Hann-windowed spectrum in dB re. a full-scale sine, `n` a power of two.
+fn spectrum(x: &[f32]) -> Vec<f64> {
     use realfft::RealFftPlanner;
-    let n = 1 << 14;
-    let f0 = 4_987.0;
-    let mut e = engine(&[(Param::Bits, 3.0), NO_HOLD, (Param::AntiAlias, anti_alias as i32 as f64)]);
-    let rendered = mono(&mut e, &sine(f0, 0.9, n));
-    let mut x: Vec<f64> = rendered
+    let n = x.len();
+    let mut w: Vec<f64> = x
         .iter()
         .enumerate()
         .map(|(i, y)| f64::from(*y) * (0.5 - 0.5 * (2.0 * PI * i as f64 / n as f64).cos()))
         .collect();
     let fft = RealFftPlanner::<f64>::new().plan_fft_forward(n);
-    let mut spectrum = fft.make_output_vec();
-    fft.process(&mut x, &mut spectrum).unwrap();
-    let bin_hz = SR / n as f64;
-    let harmonic = |hz: f64| (1..=4).any(|k| (hz - f64::from(k) * f0).abs() < 4.0 * bin_hz);
-    spectrum
-        .iter()
+    let mut out = fft.make_output_vec();
+    fft.process(&mut w, &mut out).unwrap();
+    out.iter().map(|c| 20.0 * (c.norm() / (n as f64 / 4.0)).max(1e-12).log10()).collect()
+}
+
+/// The strongest component of `spec` below `top` Hz that `wanted` does not
+/// claim, in dB, and where.
+fn strongest_unwanted(spec: &[f64], sr: f64, top: f64, wanted: impl Fn(f64) -> bool) -> (f64, f64) {
+    let bin = sr / (2 * (spec.len() - 1)) as f64;
+    spec.iter()
         .enumerate()
-        .filter(|(i, _)| {
-            let hz = *i as f64 * bin_hz;
-            hz > 40.0 && !harmonic(hz)
-        })
-        .map(|(_, c)| c.norm_sqr())
-        .sum()
+        .map(|(i, db)| (i as f64 * bin, *db))
+        .filter(|(f, _)| *f > 50.0 && *f < top && !wanted(*f))
+        .fold((-300.0, 0.0), |m, (f, db)| if db > m.0 { (db, f) } else { m })
+}
+
+/// An engine at `sr` with every glide landed.
+fn engine_at(sr: f64, settings: &[(Param, f64)]) -> Engine {
+    let mut e = Engine::new(sr);
+    for &(p, v) in settings {
+        e.set_num(p, v);
+    }
+    let mut warm = vec![0.0f32; sr as usize];
+    e.process_f32(&mut warm, None);
+    e.reset();
+    e
+}
+
+fn tone(sr: f64, hz: f64, amp: f64, n: usize) -> Vec<f32> {
+    (0..n).map(|i| (amp * (2.0 * PI * hz * i as f64 / sr).sin()) as f32).collect()
 }
 
 #[test]
-fn anti_alias_takes_out_most_of_what_folded_back() {
-    let plain = alias_energy(false);
-    let clean = alias_energy(true);
-    let db = 10.0 * (plain / clean).log10();
-    assert!(db > 6.0, "only {db:.1} dB less aliasing");
+fn band_limited_a_crusher_at_96_khz_is_heard_the_same_in_a_48_or_a_96_khz_project() {
+    /* Three bits on a 4987 Hz tone, crushed at 96 kHz. Band-limited, the
+     * 48 kHz project hears below 15 kHz what the 96 kHz project hears: the
+     * same converter, through two host rates. Raw, the 48 kHz project hears
+     * its own rate in it instead: the staircase's harmonics fold at 48 kHz. */
+    let render = |sr: f64, aa: f64| {
+        let n = if sr > 50_000.0 { 1 << 16 } else { 1 << 15 };
+        let mut e = engine_at(sr, &[(Param::Bits, 3.0), NO_HOLD, (Param::AntiAlias, aa)]);
+        let mut x = tone(sr, 4_987.0, 0.9, n);
+        e.process_f32(&mut x, None);
+        spectrum(&x)
+    };
+    /* The same bin width at both rates: compare bin for bin below 15 kHz,
+     * wherever either is above -60 dB. (Below that, a captured value an
+     * interpolation's rounding moves across a step edge now and then makes
+     * the two differ by a few dB at -70 dB: noise, not a component.) */
+    let worst = |a: &[f64], b: &[f64]| {
+        let top = (15_000.0 / (48_000.0 / f64::from(1 << 15))) as usize;
+        (1..top)
+            .filter(|i| a[*i] > -60.0 || b[*i] > -60.0)
+            .map(|i| (a[i] - b[i]).abs())
+            .fold(0.0, f64::max)
+    };
+    let banded = worst(&render(48_000.0, 1.0), &render(96_000.0, 1.0));
+    assert!(banded < 3.0, "band-limited differs by {banded:.1} dB");
+    let raw = worst(&render(48_000.0, 0.0), &render(96_000.0, 0.0));
+    assert!(raw > 10.0, "raw differs by only {raw:.1} dB");
+}
+
+#[test]
+fn anti_alias_keeps_the_top_end() {
+    /* Bits 16 and the hold above the host's rate: the band-limited render
+     * must not dull what the raw one passes. Within 1 dB to 15 kHz at
+     * 44.1 kHz -- the hold's own droop at 96 kHz and the kernel's edge. */
+    let sr = 44_100.0;
+    for hz in [1_000.0, 5_000.0, 10_000.0, 15_000.0] {
+        let level = |aa: f64| {
+            let mut e = engine_at(sr, &[(Param::Bits, 16.0), NO_HOLD, (Param::AntiAlias, aa)]);
+            let mut x = tone(sr, hz, 0.5, 22_050);
+            e.process_f32(&mut x, None);
+            let tail = &x[11_025..];
+            (tail.iter().map(|y| f64::from(*y).powi(2)).sum::<f64>() / tail.len() as f64).sqrt()
+        };
+        let db = 20.0 * (level(1.0) / level(0.0)).log10();
+        assert!(db.abs() < 1.0, "{hz} Hz: {db:+.2} dB");
+    }
+}
+
+#[test]
+fn band_limited_the_hold_sounds_the_same_at_every_host_rate() {
+    /* 1 kHz through a 12 kHz hold: the tone and its images k·12k ± 1k, and
+     * nothing else above -60 dB, whatever the host's rate -- raw, a 44.1 kHz
+     * project hears its own grid in it. */
+    for sr in [44_100.0, 48_000.0, 88_200.0, 96_000.0, 192_000.0] {
+        let n = if sr > 100_000.0 { 1 << 17 } else { 1 << 16 };
+        let mut e = engine_at(sr, &[(Param::Bits, 16.0), (Param::Rate, 12_000.0), (Param::AntiAlias, 1.0)]);
+        let mut x = tone(sr, 1_000.0, 0.5, n);
+        e.process_f32(&mut x, None);
+        let bin = sr / n as f64;
+        let image = |f: f64| {
+            (f - 1_000.0).abs() < 10.0 * bin
+                || (1..4).any(|k| {
+                    let c = 12_000.0 * f64::from(k);
+                    (f - (c - 1_000.0)).abs() < 10.0 * bin || (f - (c + 1_000.0)).abs() < 10.0 * bin
+                })
+        };
+        let (db, at) = strongest_unwanted(&spectrum(&x), sr, 20_000.0, image);
+        assert!(db < -60.0, "{sr} Hz: {db:.1} dB at {at:.0} Hz");
+    }
+    /* And raw at 44.1 kHz it does not: the grid is audible. */
+    let mut e = engine_at(44_100.0, &[(Param::Bits, 16.0), (Param::Rate, 12_000.0)]);
+    let mut x = tone(44_100.0, 1_000.0, 0.5, 1 << 16);
+    e.process_f32(&mut x, None);
+    let bin = 44_100.0 / f64::from(1 << 16);
+    let image = |f: f64| (f - 1_000.0).abs() < 10.0 * bin || [11_000.0, 13_000.0].iter().any(|c| (f - c).abs() < 10.0 * bin);
+    assert!(strongest_unwanted(&spectrum(&x), 44_100.0, 20_000.0, image).0 > -50.0);
+}
+
+#[test]
+fn the_pre_filter_keeps_what_would_fold_back_sixty_db_down() {
+    /* A tone between Rate/2 and Rate, Rate 8 kHz: its image under Rate/2. */
+    let n = 1 << 15;
+    let bin = SR / n as f64;
+    for hz in [4_500.0, 6_000.0, 7_000.0] {
+        let image = |pre: f64| {
+            let mut e = engine_at(SR, &[(Param::Bits, 16.0), (Param::Rate, 8_000.0), (Param::PreFilter, pre)]);
+            let mut x = tone(SR, hz, 0.5, n);
+            e.process_f32(&mut x, None);
+            let s = spectrum(&x);
+            let b = ((8_000.0 - hz) / bin).round() as usize;
+            s[b - 3..=b + 3].iter().copied().fold(-300.0, f64::max)
+        };
+        /* The tone is -6 dBFS; its image ends at least 60 dB under it. */
+        assert!(image(1.0) < -66.0, "{hz} Hz: image at {:.1} dB", image(1.0));
+        assert!(image(0.0) > -20.0, "{hz} Hz: without the filter it folds");
+    }
+}
+
+#[test]
+fn the_block_size_changes_nothing() {
+    let set = [
+        (Param::Bits, 5.5),
+        (Param::Shape, 30.0),
+        (Param::MidRise, 1.0),
+        (Param::Dither, 20.0),
+        (Param::AntiAlias, 1.0),
+        (Param::Rate, 7_000.0),
+        (Param::Jitter, 25.0),
+        (Param::PreFilter, 1.0),
+        (Param::PostFilter, 1.0),
+        (Param::Mix, 80.0),
+    ];
+    let input = sine(220.0, 0.7, 9_000);
+    let render = |blocks: &[usize]| {
+        let mut e = engine(&set);
+        let mut y = input.clone();
+        let mut at = 0;
+        for b in blocks.iter().cycle() {
+            if at >= y.len() {
+                break;
+            }
+            let end = (at + b).min(y.len());
+            e.process_f32(&mut y[at..end], None);
+            at = end;
+        }
+        y
+    };
+    let whole = render(&[9_000]);
+    for blocks in [&[1][..], &[7], &[128], &[8_192], &[3, 500, 1, 64, 8_191]] {
+        assert!(render(blocks) == whole, "blocks {blocks:?}");
+    }
+}
+
+#[test]
+fn the_hosts_bypass_fades_to_the_delayed_input_and_back_from_silence() {
+    let input = sine(300.0, 0.5, 48_000);
+    let mut e = engine(&[(Param::Bits, 2.0), (Param::Rate, 1_000.0)]);
+    let crushed = mono(&mut e, &input[..4_800]);
+    /* The biggest jump the crusher itself makes: two bits, held. */
+    let jump = |v: &[f32]| v.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    let own = jump(&crushed[LATENCY..]);
+    e.set_active(false);
+    let out = mono(&mut e, &input[4_800..24_000]);
+    /* Faded out: the input, LATENCY samples late, exactly. */
+    assert_eq!(&out[out.len() - 100..], &input[24_000 - 100 - LATENCY..24_000 - LATENCY]);
+    /* No jump at either switch beyond what the crusher makes anyway. */
+    assert!(jump(&out) <= own + 1e-6, "{} > {own}", jump(&out));
+    e.set_active(true);
+    e.set_active(true);
+    let back = mono(&mut e, &input[24_000..]);
+    assert!(jump(&back) <= own + 1e-6, "{} > {own}", jump(&back));
 }
 
 #[test]

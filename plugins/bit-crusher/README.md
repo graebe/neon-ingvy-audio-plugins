@@ -43,14 +43,15 @@ Around those two, everything a crusher can usefully do:
 | **Shape** | bends the steps: from even (0 %) to µ-law (100 %), fine near silence and coarse near full scale, so quiet detail survives |
 | **Dither** | triangular noise of up to a step, added before the steps: it trades the gritty, signal-following distortion for an even hiss |
 | **Mid-Rise** | moves the grid half a step, so there is no level at zero and silence becomes a buzz |
-| **Anti-Alias** | smooths each step's edge (first-order ADAA), so the staircase folds back less |
+| **Anti-Alias** | draws the crusher exactly: each level taken at its true instant, each jump band-limited, so nothing folds back past the project's Nyquist and the sound is the same at every sample rate |
 | **Jitter** | lets the hold's clock wander — noisier, and wider in stereo |
-| **Pre** | a low-pass at half the Rate *before* the hold: takes out what would fold back |
+| **Pre** | a steep low-pass *before* the hold: everything from half the Rate up, what would fold back, at least 60 dB down |
 | **Post** and **Octave** | a low-pass *after* the hold, at half the Rate moved by Octave: smooths the hold's steps |
 | **Mix**, **Output** | dry against crushed, and the level after |
 
 Every control glides, the switches included, so automating any of them does
-not click. There is no latency.
+not click, and a long buffer's automation is ramped across it. The latency is
+32 samples, always, and reported to the host.
 
 ## The engine
 
@@ -58,7 +59,7 @@ not click. There is no latency.
 
 | crate | what it is |
 |---|---|
-| `bc-core` | the DSP: the staircase and its antiderivative, the hold, the filters (`biquad`), the parameter table and its text |
+| `bc-core` | the DSP: the staircase, the raw and the band-limited hold, the filters (`biquad`), the parameter table and its text |
 | `bc-capi` | the C ABI the plugin links (`bc_core.h`, `bc_shell.h`, written by cbindgen) |
 | `bc-move` | the Schwung `audio_fx` vtable |
 
@@ -70,7 +71,7 @@ the text every readout shows is the engine's.
 
 | test | what it holds |
 |---|---|
-| `bc_core_rs` | the engine's own claims: the grid's levels and error, the antiderivative, the hold's clock, the filters, the glides, the panic, no allocation on any audio path, and that Anti-Alias takes out most of the aliasing (measured with an FFT) |
+| `bc_core_rs` | the engine's own claims: the grid's levels and error, the hold's clock, the filters, the glides, the panic, no allocation on any audio path — and, measured with an FFT, that Anti-Alias sounds the same at 44.1 to 192 kHz (no spur above -60 dB), keeps the top end within 1 dB to 15 kHz, that the pre-filter keeps fold-back 60 dB down, and that the block size changes nothing |
 | `bc_core` | the generated C headers, from C |
 | `bc_render_ab` | the plugin's float path and the Move's int16 path render the same patch within half a sixteen-bit step, and the render's hash is pinned |
 | `bc_processor`, `bc_rt`, `bc_host` | the processor on the real engine, its audio callback under an allocation guard, and the built VST3 as a DAW hosts it — the engine's golden render, bit for bit |

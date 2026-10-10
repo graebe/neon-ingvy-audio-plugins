@@ -8,7 +8,7 @@ instance. lib.rs says what the crate may do and which thread calls what.
 
 use std::os::raw::{c_char, c_int};
 
-use bc_core::{transfer, Engine, Kind, Param, Travel, PARAM_COUNT};
+use bc_core::{transfer, Engine, Kind, Param, Travel, LATENCY, PARAM_COUNT};
 use ni_dsp::ffi::{copy_cstr, cstr};
 
 /// How many samples an instance keeps for the scope.
@@ -46,7 +46,9 @@ impl BcCore {
         &mut self.engine
     }
 
-    /// One block in place, the left channel's dry and wet kept for the scope.
+    /// One block in place, the left channel's dry and wet kept for the scope
+    /// -- side by side as they belong together: the wet sample that came out
+    /// LATENCY samples after the dry one it was made from.
     pub fn process(&mut self, left: &mut [f32], right: Option<&mut [f32]>) {
         /* Only the last ring's worth of a long block can be shown. */
         let keep = left.len().min(BC_SCOPE_RING);
@@ -56,18 +58,19 @@ impl BcCore {
             self.dry[(start + i) % BC_SCOPE_RING] = *x;
         }
         self.engine.process_f32(left, right);
+        let late = start + BC_SCOPE_RING - LATENCY;
         for (i, y) in left[from..].iter().enumerate() {
-            self.wet[(start + i) % BC_SCOPE_RING] = *y;
+            self.wet[(late + i) % BC_SCOPE_RING] = *y;
         }
         self.pos = (self.pos + left.len()) % BC_SCOPE_RING;
         self.serial = self.serial.wrapping_add(left.len() as u32);
     }
 
-    /// The last `n` samples (at most the ring), oldest first, as (dry, wet),
-    /// by age: `at(0)` is the oldest of them.
+    /// The last `n` pairs whose wet half is out (at most the ring less the
+    /// latency), oldest first, as (dry, wet).
     pub fn recent(&self, n: usize) -> impl Iterator<Item = (f32, f32)> + '_ {
-        let n = n.min(BC_SCOPE_RING);
-        let first = (self.pos + BC_SCOPE_RING - n) % BC_SCOPE_RING;
+        let n = n.min(BC_SCOPE_RING - LATENCY);
+        let first = (self.pos + 2 * BC_SCOPE_RING - LATENCY - n) % BC_SCOPE_RING;
         (0..n).map(move |i| {
             let k = (first + i) % BC_SCOPE_RING;
             (self.dry[k], self.wet[k])
@@ -101,6 +104,27 @@ pub unsafe extern "C" fn bc_core_set_sample_rate(core: *mut BcCore, sample_rate:
         if sample_rate > 0.0 {
             core.engine.set_sample_rate(sample_rate);
         }
+    }
+}
+
+/// How late the output is, in samples: constant, whatever the settings and
+/// the sample rate. What a shell reports to its host.
+#[no_mangle]
+pub extern "C" fn bc_latency() -> u32 {
+    LATENCY as u32
+}
+
+/// Whether the crusher is heard. False is the host's bypass: the output fades
+/// to the input, delayed by the same latency, and stays there; true fades the
+/// crusher back in, starting from silence. Cheap when nothing changes, so a
+/// shell may call it every block.
+///
+/// # Safety
+/// `core` is null or live, and this thread's.
+#[no_mangle]
+pub unsafe extern "C" fn bc_core_set_active(core: *mut BcCore, active: bool) {
+    if let Some(core) = core.as_mut() {
+        core.engine.set_active(active);
     }
 }
 

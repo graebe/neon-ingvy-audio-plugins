@@ -95,47 +95,6 @@ proptest! {
         };
         prop_assert!(err(bits + 1.0) <= err(bits) + 1e-9);
     }
-
-    #[test]
-    fn the_antiderivative_is_continuous_and_its_slope_is_the_staircase(
-        bits in 1.0f64..10.0, x in -1.5f64..1.5, mid_rise in any::<bool>()
-    ) {
-        let g = Grid::new(bits, mid_rise);
-        let h = 1e-7;
-        let slope = (g.antiderivative(x + h) - g.antiderivative(x - h)) / (2.0 * h);
-        /* Away from an edge the slope is the level; at an edge it lies
-         * between the two levels either side. */
-        let (a, b) = (g.quantize(x - h), g.quantize(x + h));
-        prop_assert!(slope >= a.min(b) - 1e-6 && slope <= a.max(b) + 1e-6, "{} at {}", slope, x);
-    }
-
-    #[test]
-    fn the_mean_lies_between_the_endpoint_levels(
-        bits in 1.0f64..16.0, x0 in -1.5f64..1.5, x1 in -1.5f64..1.5, mid_rise in any::<bool>()
-    ) {
-        let g = Grid::new(bits, mid_rise);
-        let y = g.mean(x0, x1);
-        let (a, b) = (g.quantize(x0), g.quantize(x1));
-        prop_assert!(y >= a.min(b) - 1e-12 && y <= a.max(b) + 1e-12);
-    }
-}
-
-#[test]
-fn the_mean_is_the_true_mean_of_the_staircase() {
-    let g = Grid::new(3.0, false);
-    /* From 0 to 0.25: level 0 up to the edge at Δ/2 = 0.125, level Δ after. */
-    let y = g.mean(0.0, 0.25);
-    assert!((y - 0.125).abs() < 1e-12, "{y}");
-    /* On one step it is that step's level, exactly. */
-    assert_eq!(g.mean(0.26, 0.3), g.quantize(0.3));
-    /* Two points closer than the threshold, either side of an edge: the
-     * level at their midpoint. */
-    let edge = 0.5 * g.delta();
-    assert_eq!(g.mean(edge - 1e-14, edge + 1e-14), g.quantize(edge));
-    /* Across the clipped top step of a fractional grid, beyond full scale. */
-    let f = Grid::new(2.5, false);
-    let y = f.mean(0.5, 2.0);
-    assert!(y > f.quantize(0.5) && y <= 1.0);
 }
 
 #[test]

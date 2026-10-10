@@ -91,9 +91,15 @@ static void instance(void) {
     bc_core_process_f32(core, l, r, 48000);
     CHECK(l[47999] == 0.5f && r[47999] == 0.5f);
 
-    int16_t frames[8] = {9000, 9000, -9000, -9000, 0, 0, 30000, 30000};
-    bc_core_process_i16(core, frames, 4);
-    CHECK(frames[0] == 16384 && frames[2] == -16384 && frames[4] == 0 && frames[6] == 32767);
+    /* The output is bc_latency() frames late: run past it. */
+    CHECK(bc_latency() == 32);
+    static int16_t frames[2 * 64];
+    for (int i = 0; i < 64; i++) {
+        frames[2 * i] = 9000;
+        frames[2 * i + 1] = (int16_t)(i < 40 ? 30000 : -9000);
+    }
+    bc_core_process_i16(core, frames, 64);
+    CHECK(frames[2 * 63] == 16384 && frames[2 * 63 + 1] == 32767);
 
     /* The panic: a held sample lets go at once. */
     bc_core_set_num(core, param("rate"), 50.0);
