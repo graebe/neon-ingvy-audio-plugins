@@ -243,11 +243,18 @@ jobs:
           unzip -l "$OUT" | grep -q 'THIRD_PARTY_LICENSES.md' || { echo "::error::no notices in $OUT"; exit 1; }
           echo "zip=$OUT" >> "$GITHUB_OUTPUT"
           ls -la "$OUT"
+          # WHAT THIS BUILD WAS TESTED WITH, published beside it: the summary
+          # scripts/test.sh wrote -- counts, what did not run and why, the
+          # toolchain.
+          cp build/test-summary.md "${OUT%.zip}-tests.md"
+          echo "tests=${OUT%.zip}-tests.md" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: macos
-          path: ${{ steps.pack.outputs.zip }}
+          path: |
+            ${{ steps.pack.outputs.zip }}
+            ${{ steps.pack.outputs.tests }}
           if-no-files-found: error
 
   release:
@@ -317,6 +324,9 @@ jobs:
             echo "[\`$GITHUB_REF_NAME\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME)."
             echo "The licence and the third-party notices, LICENSE and"
             echo "THIRD_PARTY_LICENSES.md, are in the zip and inside the bundle."
+            echo
+            echo "What this build was tested with, and what was not tested, is in the"
+            echo "\`-tests.md\` file attached to this release."
           } > "$RUNNER_TEMP/notes.md"
 
       # A tag with both a plugin and a module is released by BOTH workflows.
@@ -327,6 +337,7 @@ jobs:
         with:
           files: |
             zips/${{ steps.tag.outputs.zip_macos }}
+            zips/*-tests.md
           fail_on_unmatched_files: true
           prerelease: ${{ steps.tag.outputs.prerelease }}
           body_path: ${{ runner.temp }}/notes.md

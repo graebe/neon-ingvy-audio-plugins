@@ -261,6 +261,23 @@ there; the release on GitHub can stay, or be withdrawn as the plugin's is
 ahead of `versions.json`; a rollback only ever moves an entry backwards, so it
 passes.
 
+## Protecting `main` (the owner's step, not yet taken)
+
+`main` is not protected, and the release records each module in
+`release.json` by pushing to it as `github-actions[bot]` with the workflow's
+own token, beside the agent sessions that also push there. When it is
+protected, the protection must still admit that one push, or every module
+release publishes its tarball and then fails to record it (GH006; the step
+prints what to do by hand). In the repository's Settings → Rules → Rulesets, a
+ruleset on the default branch:
+
+- **block force pushes** and **restrict deletions** — these stop nothing the
+  workflow does;
+- if it also **requires a pull request**, add the **GitHub Actions** app to
+  the ruleset's bypass list, or the push is rejected. The alternative is for
+  the step to open a pull request instead of pushing, which is a workflow
+  change, not a setting.
+
 ## Outstanding: the catalog still names the old repository
 
 The Trance Gate module used to live in its own repository, and the Schwung

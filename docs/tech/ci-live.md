@@ -139,7 +139,10 @@ tag is the worst possible moment to discover the render A/B moved), then the
 validators over its one bundle — pluginval at strictness 10 with its editor
 tests, Steinberg's VST3 validator and `codesign --verify --deep --strict`. It
 stages the bundle with `LICENSE` and `THIRD_PARTY_LICENSES.md` beside it, and
-packs `<product>-<version>-macOS.zip`.
+packs `<product>-<version>-macOS.zip`. Beside the zip the release carries
+`<product>-<version>-macOS-tests.md`: the run's own summary of what it tested
+and what it did not ([Testing](testing.md), What a run did not test), so what
+a published build was tested with stays on the record.
 Linux and Windows are not released for now; they rejoin as part of the full
 build.
 

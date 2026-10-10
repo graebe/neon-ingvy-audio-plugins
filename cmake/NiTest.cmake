@@ -165,7 +165,26 @@ endfunction()
 #
 # None builds a plugin bundle; a test that hosts one needs its <Bundle>_VST3
 # too, which is what `scripts/test.sh product` adds.
+# WHAT THIS BUILD CANNOT TEST, SAID ONCE AND KEPT. A test that needs something
+# the machine does not have -- node, Docker, Rosetta -- is not registered, and
+# the configure says so in a line that scrolls away. Each such gap is recorded
+# here instead, and ni_test_targets writes them all to
+# <build>/ni-capabilities.txt, one per line: `<name> <what is not tested>`.
+# scripts/test.sh reads it: the full tier refuses to call itself green while a
+# capability is missing, unless the run waives it by name (--waive <name>).
+function(ni_missing_capability name what)
+    set_property(GLOBAL APPEND PROPERTY NI_MISSING_CAPABILITIES "${name} ${what}")
+    message(STATUS "${name} not found -- ${what}")
+endfunction()
+
 function(ni_test_targets)
+    get_property(missing GLOBAL PROPERTY NI_MISSING_CAPABILITIES)
+    set(text "")
+    foreach(line IN LISTS missing)
+        string(APPEND text "${line}\n")
+    endforeach()
+    file(WRITE ${CMAKE_BINARY_DIR}/ni-capabilities.txt "${text}")
+
     add_custom_target(ni_tests)
     foreach(product shared ${NI_PRODUCTS})
         get_property(programs GLOBAL PROPERTY NI_TEST_PROGRAMS_${product})

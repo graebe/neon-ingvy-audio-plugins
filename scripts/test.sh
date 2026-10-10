@@ -43,7 +43,19 @@
 #
 #   --build <dir> is the build directory: one per person or agent building at
 #   the same time, so no two share a tree. One that exists is used as it was
-#   configured.
+#   configured; one whose configure never finished is configured again.
+#
+#   --waive <name>[,<name>...] (repeatable; also NI_WAIVE in the environment)
+#   accepts a gap by name: a capability the build lacks (docker, rosetta,
+#   node) or a test that did not run (schwung_pin and tg_move_ui, offline
+#   with no cached Schwung).
+#
+# WHAT A RUN DID NOT TEST IS WRITTEN DOWN. Every tier writes
+# <build>/test-summary.md (scripts/test-summary.mjs): the counts, each test
+# that did not run and why, each capability the build lacked
+# (<build>/ni-capabilities.txt), and the toolchain. A release attaches it.
+# The full tier is the gate: it fails while any gap is not waived by name, so
+# a green full run means everything ran -- not that whatever ran was green.
 #
 # NOTHING IS READ FROM OR WRITTEN TO WHERE PLUGINS ARE INSTALLED. Every test
 # that hosts a bundle loads it from <build>/out by path, and no preset copies a
@@ -88,8 +100,10 @@ case "$tier" in
 esac
 bundles=""
 coverage=1
+waive="${NI_WAIVE:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
+        --waive) [ $# -ge 2 ] || usage; waive="${waive:+$waive,}$2"; shift 2 ;;
         --build) [ $# -ge 2 ] || usage; mkdir -p "$2"; BUILD="$(cd "$2" && pwd)"; shift 2 ;;
         --bundles) [ $# -ge 2 ] && [ "$tier" != product ] || usage; bundles="$(cd "$2" && pwd)"; shift 2 ;;
         --no-coverage) [ "$tier" = full ] || usage; coverage=0; shift ;;
@@ -135,10 +149,28 @@ quietly() {
     "$@" > "$log" 2>&1 || { local rc=$?; tail -n 60 "$log" >&2; echo "(all of it: $log)" >&2; return "$rc"; }
 }
 
+# ctest, with its JUnit report kept for the summary.
+ctest_report() {
+    ctest --test-dir "$BUILD" --output-junit "$BUILD/ctest-$tier.xml" "$@"
+}
+
+# The summary of what ran and what did not (scripts/test-summary.mjs), and in
+# the full tier the gate on it.
+summary() {
+    local title=$1
+    shift
+    stage "what this run did not test"
+    node "$ROOT/scripts/test-summary.mjs" --junit "$BUILD/ctest-$tier.xml" \
+        --capabilities "$BUILD/ni-capabilities.txt" --title "$title" \
+        --out "$BUILD/test-summary.md" --waive "$waive" "$@" \
+        || { printf '\n%s: not everything was tested (%s)\n' "$title" "$BUILD/test-summary.md" >&2; exit 1; }
+}
+
 quick() {
     timed "build test programs" --build "$BUILD" -- \
         quietly build-tests cmake --build "$BUILD" --target ni_tests -j"$jobs"
-    timed "ctest quick" -- ctest --test-dir "$BUILD" -L quick -j"$jobs" --output-on-failure
+    timed "ctest quick" -- ctest_report -L quick -j"$jobs" --output-on-failure
+    summary "quick tier"
 }
 
 full() {
@@ -148,7 +180,8 @@ full() {
     # skipping, as it does in a checkout that never built the site.
     timed "build the documentation site" -- quietly site npm run build --workspace site
 
-    timed "ctest full" -- ctest --test-dir "$BUILD" -L full -j"$jobs" --output-on-failure
+    timed "ctest full" -- ctest_report -L full -j"$jobs" --output-on-failure
+    summary "full tier" --gate
 
     if [ "$coverage" = 1 ]; then
         timed "coverage" -- "$ROOT/scripts/coverage.sh"
@@ -170,8 +203,9 @@ product() {
     timed "build $bundle and the $name and shared tests" --build "$BUILD" -- \
         quietly "build-$name" cmake --build "$BUILD" \
             --target "${bundle}_VST3" "ni_tests_$name" ni_tests_shared -j"$jobs"
-    timed "ctest $name and shared" -- ctest --test-dir "$BUILD" \
+    timed "ctest $name and shared" -- ctest_report \
         "${product_labels[@]}" -j"$jobs" --output-on-failure
+    summary "$bundle $name and shared tests"
     validators "validators over $bundle" "$BUILD/out" "$bundle"
 }
 
@@ -224,7 +258,7 @@ main() {
     local t0=$SECONDS
     # THE BUILD DIRECTORY IS CONFIGURED ONCE, FROM ITS TIER'S PRESET. One that
     # exists is used as it is.
-    if [ ! -f "$BUILD/CMakeCache.txt" ]; then
+    if [ ! -f "$BUILD/CMakeCache.txt" ] || [ ! -f "$BUILD/build.ninja" ]; then
         mkdir -p "$BUILD"
         timed "configure (preset $preset)" --build "$BUILD" -- \
             quietly configure cmake --preset "$preset" -B "$BUILD"

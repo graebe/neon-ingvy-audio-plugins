@@ -192,6 +192,18 @@ if (TG_NODE)
     add_test(NAME timing
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/timing.test.mjs)
 
+    # ONE RUST TOOLCHAIN: rust-toolchain.toml's pin, and the same version in
+    # the Move module's and the Linux cross-build's images, each on a base
+    # pinned by digest.
+    add_test(NAME toolchain
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/toolchain.test.mjs)
+
+    # WHAT A RUN DID NOT TEST: scripts/test-summary.mjs reads ctest's report
+    # and the build's missing capabilities, and the full tier's gate fails on
+    # any gap not waived by name.
+    add_test(NAME test_summary
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/test_summary.test.mjs)
+
     # Every path into design/ that a tracked file names exists, however it is
     # spelled: from the root, climbing from the naming file's own directory
     # with ../ (as the icon glob does), or as path.join() arguments. The
@@ -213,7 +225,7 @@ if (TG_NODE)
              COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/site/scripts/check-links.mjs)
     set_tests_properties(site_links PROPERTIES SKIP_RETURN_CODE 2)
 else()
-    message(STATUS "node not found -- skipping the checks over the tree (versions, licences, tokens)")
+    ni_missing_capability(node "the checks over the tree (versions, licences, tokens, the site) are not registered")
 endif()
 
 # The bundles this build wrote: every test that hosts one loads it from here,
@@ -573,7 +585,7 @@ if (APPLE AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64"
         set_tests_properties(abus_ipc_rosetta abus_ipc_rosetta_reader
                              PROPERTIES TIMEOUT 60)
     else()
-        message(STATUS "Rosetta not installed -- the cross-architecture bus tests are not registered")
+        ni_missing_capability(rosetta "the cross-architecture bus tests (abus_ipc_rosetta*) are not registered")
     endif()
 endif()
 
@@ -758,8 +770,7 @@ foreach(env IN LISTS _ni_module_envs)
     endif()
 endforeach()
 if (NOT SCHWUNG_DOCKER)
-    message(WARNING "docker not found: the Move modules' tests (move_*) are not "
-                    "registered, so the full tier does not build or test them.")
+    ni_missing_capability(docker "the Move modules' tests (move_*) are not registered or built")
 endif()
 
 # ====================================================== THE TIERS, BY PRODUCT
@@ -783,7 +794,7 @@ ni_test_tiers(
             abus_roundtrip gnd_roundtrip shell_handoff
             # lint-like checks over the tree
             versions release licenses licenses_resolve spdx ground_shells site_tokens
-            design_paths timing
+            design_paths timing toolchain test_summary
             # the JUCE shell's state codec, over every product's fixtures
             nist_fixtures
             # the papers' code: every listing a paper prints, compiled and tested

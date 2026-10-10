@@ -157,8 +157,10 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   exists), the token guards (`ui_tokens_native`: the generated `UvTokens.h`
   against the design system; `site_tokens`: the site's `tokens.css` against
   it, and no colour spelled anywhere else in the site), `ground_shells` (the
-  order of the ground's calls in every processor), and `timing` (the timing
-  log's helper and its summary).
+  order of the ground's calls in every processor), `timing` (the timing
+  log's helper and its summary), `toolchain` (the Move and Linux images
+  build with `rust-toolchain.toml`'s Rust, and every base image is pinned by
+  digest) and `test_summary` (the report below).
 
 No bundle, no host, no second process. Warm, it takes under twenty seconds
 (Build speed, above).
@@ -213,6 +215,34 @@ builds before the JUCE shell (v2026.10.06.5) saved, captured through the calls L
 test loads each to its exact parameters, `nist_fixtures` writes each back
 byte for byte, and each host test reopens each in the built VST3. They cannot
 be captured again from this tree: the README names the commit that can.
+
+## What a run did not test
+
+A green ctest says nothing that ran failed. It does not say what did not run:
+a test whose tool is missing is not registered at all (Docker for the `move`
+tests, Rosetta for the bus across architectures, node for the tree checks),
+and a test whose input is missing reports Skipped (`schwung_pin` and
+`tg_move_ui` when the pinned Schwung is neither cached nor fetchable). So
+every tier writes down what it covered.
+
+Configure records each missing capability in `<build>/ni-capabilities.txt`
+(`ni_missing_capability`, `cmake/NiTest.cmake`); ctest writes its JUnit report;
+and `scripts/test-summary.mjs` reads both into `<build>/test-summary.md`: the
+counts, every test that did not run and why, every capability the build
+lacked, by product, with the commit and the toolchain. A release attaches it
+beside its zip (`<product>-<version>-macOS-tests.md`).
+
+**The full tier is the gate on it.** It fails while anything did not run,
+unless the run waived it by name:
+
+```sh
+scripts/test.sh full --waive rosetta                 # a capability this Mac lacks
+scripts/test.sh full --waive schwung_pin,tg_move_ui  # several, comma-separated
+NI_WAIVE=rosetta scripts/test.sh full                # the same, from the environment
+```
+
+A waiver is written into the summary too, so a gap that was accepted is still
+a gap on the record. The quick tier and a product run report and do not gate.
 
 ## Product — one product, as its release runs it
 
