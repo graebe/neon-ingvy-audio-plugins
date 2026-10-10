@@ -65,7 +65,7 @@ mod tests {
         for e in declared() {
             assert_eq!(text(&e, "type"), "float");
             let p = Param::from_key(text(&e, "key")).unwrap();
-            let Kind::Float { min, max, default, unit, .. } = p.info().kind else {
+            let (Kind::Float { min, max, default, .. }, Some(unit)) = (p.info().kind, p.info().unit) else {
                 panic!("{p:?} is a float here and not in the engine");
             };
             let num = |f: &str| e[f].as_f64().unwrap_or_else(|| panic!("{p:?} has no {f}"));

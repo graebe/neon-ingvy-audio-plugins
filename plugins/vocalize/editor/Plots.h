@@ -15,7 +15,8 @@
  *                 it, as far as Voice says. The caption repeats the vowel in
  *                 the engine's words ("VOWEL   E>I 30 %") and names the
  *                 recording a voice came from; the letters of vowels it
- *                 measured are drawn in ink, the rest muted. A recording
+ *                 measured are drawn in ink, as bright as the capture was
+ *                 sure of each, the rest muted. A recording
  *                 dragged over the window outlines the well: drop it there.
  *
  *   EnvelopePlot  THE SOUND'S COLOUR: the left channel's spectral envelope,

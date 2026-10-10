@@ -132,9 +132,20 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
     };
     forgetVoice = std::make_unique<ni::ui::Button> ("Forget");
     ni::ui::setInfo (*forgetVoice, info::forget);
-    forgetVoice->onClick = [this] { model.forgetVoice(); };
+    forgetVoice->onClick = [this]
+    {
+        if (model.voice().sung)
+            model.forgetVoice();
+        else
+            model.restoreVoice();
+    };
     panels[0]->addAndMakeVisible (*captureVoice);
     panels[0]->addAndMakeVisible (*forgetVoice);
+
+    /* THE CEILING, a switch under Level's knobs. */
+    ceilingSwitch = std::make_unique<ni::ui::ParamToggle> (model.parameter (param::ceiling), "Ceiling");
+    ni::ui::setInfo (*ceilingSwitch, info::ceiling);
+    panels[2]->addAndMakeVisible (*ceilingSwitch);
     chooser = [this] (const juce::String& wildcard, std::function<void (const juce::File&)> answer)
     {
         openPanel = std::make_unique<juce::FileChooser> ("Capture a voice", juce::File(), wildcard);
@@ -200,6 +211,10 @@ void Editor::layout()
     const auto vocal = panels[1]->contentBounds();
     mode->setBounds (vocal.getX(), vocal.getY() + ni::ui::Knob::cardHeight + rowGap, mode->idealWidth(), rowH);
 
+    const auto level = panels[2]->contentBounds();
+    ceilingSwitch->setBounds (level.getX(), level.getY() + ni::ui::Knob::cardHeight + rowGap, ceilingSwitch->idealWidth(),
+                              rowH);
+
     const auto vowel = panels[0]->contentBounds();
     const int y = vowel.getY() + ni::ui::Knob::cardHeight + rowGap;
     captureVoice->setBounds (vowel.getX(), y, captureVoice->idealWidth(), rowH);
@@ -220,7 +235,9 @@ void Editor::showVoice()
     const bool busy = v.status == Voice::Status::capturing;
     captureVoice->setText (juce::String (juce::CharPointer_UTF8 (busy ? "Capturing…" : "Capture…")));
     captureVoice->setEnabled (! busy);
-    forgetVoice->setEnabled (v.sung);
+    /* Forget what is sung, or bring back what was just forgotten. */
+    forgetVoice->setText (! v.sung && v.restorable ? "Restore" : "Forget");
+    forgetVoice->setEnabled (v.sung || v.restorable);
     layout();
 }
 

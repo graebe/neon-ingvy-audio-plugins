@@ -152,10 +152,24 @@ Vocalize reads the first two minutes, finds the moments where you sing a
 steady vowel — breaths, consonants and silence are skipped — and measures your
 formants there. It takes a moment; the button says **Capturing…** meanwhile.
 
+**The order tells it which vowel is which.** If it hears exactly five sung
+stretches, it takes them as A, E, I, O and U in that order, however your
+vowels happen to sound — an Italian E, a Swedish U, your own way of singing
+them. If there are more or fewer stretches, or the order clearly does not fit
+(you sang U first, say), it decides by sound instead, comparing each moment
+with the textbook vowels.
+
 When it is done, the vowel chart moves to **your** vowels and its caption
-names the recording. The letters of the vowels it heard are drawn bright; a
-vowel you did not sing is filled in from the textbook, scaled to the size of
-your voice, and drawn dim. Capture again with a better take at any time.
+names the recording. The letters of the vowels it heard are drawn bright —
+**the brighter, the surer**: a vowel held steady is bright, one that wandered
+is fainter, a hint to sing it again. A vowel you did not sing is filled in
+from the textbook, scaled to the size of your voice, and drawn muted.
+Capture again with a better take at any time.
+
+If it finds nothing it can use, the chart says why: **NO SINGING IN** a file
+that holds only silence, noise or spoken consonants; **NO VOWELS IN** one
+that is sung but nowhere near a vowel; **CANNOT READ** a file that is not a
+recording it can open. The voice you had before stays.
 
 > **What is kept is your voice, not your recording.** The capture is saved
 > with the Live set as fifty numbers — five formants for each of five vowels —
@@ -171,11 +185,35 @@ yours. Everything else works on top of it: **Vowel** walks your five vowels,
 it. With nothing captured, Voice does nothing.
 
 **Forget** lets go of the captured voice: the textbook voice sings again.
+Changed your mind? The button now reads **Restore** and brings it back — until
+you capture or restore another voice, or open another set.
+
+> **What travels with a set.** A shared set carries the captured voice — a
+> coarse description of how your vowels sound — and the recording's file name,
+> not the audio. Rename the file before capturing if its name says more than
+> you want to share.
 
 > **A clean capture.** One voice, no reverb or music behind it, every vowel
 > held steady. Singing high spreads a voice's harmonics so far apart that the
 > measurement is drawn towards them; if a capture sounds off, sing the vowels
 > an octave lower.
+
+## Part 4 — the level
+
+### Ceiling: nothing past full scale
+
+Sharp formants ring, and a vowel can peak higher than the sound that went in.
+**Ceiling**, in the Level panel and on by default, leaves everything below
+−0.3 dBFS exactly as it is and bends anything louder smoothly towards full
+scale, so nothing that leaves Vocalize clips. Switch it off if you would
+rather catch the peaks with your own limiter.
+
+### Bypass
+
+Bypassing Vocalize lets the sound through — late by exactly the latency Live
+was told, so it stays in time — and Vocalize keeps listening meanwhile. When
+you switch it back on it takes up the sound as it is now, fading in over
+10 ms; nothing from before the bypass is heard again.
 
 ## Recipes
 
@@ -203,13 +241,14 @@ at the top.
 | Vowel | **Vowel** | A – U (0 – 4) | A |
 | | **Size** | −100 – +100 % | 0 % |
 | | **Voice** | 0 – 100 % (the textbook voice to the captured one) | 100 % |
-| | **Capture…**, **Forget** | learn a voice from a recording, or let it go | — |
+| | **Capture…**, **Forget** / **Restore** | learn a voice from a recording, let it go, bring it back | — |
 | Vocal | **Vocal** | 0 – 100 % | 80 % |
 | | **Resonance** | 0 – 100 % | 50 % |
 | | **Excite** | 0 – 100 % | 0 % |
 | | **Mode** | Time / Spectral (not automatable) | Time |
 | Level | **Mix** | 0 – 100 % | 100 % |
 | | **Output** | −24 – +24 dB | 0 dB |
+| | **Ceiling** | off / on (a soft limit at −0.3 dBFS) | on |
 
 The **Motion** switch in the bar at the bottom stops the background rippling
 on the beat; it is remembered on this computer.

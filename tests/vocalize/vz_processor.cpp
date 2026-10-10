@@ -25,11 +25,18 @@
  *                   engine as far as Voice says; kept in the set as numbers
  *                   and reopened, a set without one -- or with one that is not
  *                   one -- forgetting it; forgotten by hand; a recording that
- *                   cannot be read, or has no vowels in it, saying so; a
- *                   second capture ignored while one runs; the processor
- *                   closed under a capture
+ *                   cannot be read, has no singing or no vowels in it,
+ *                   saying which; each vowel's confidence and whether the
+ *                   order told them apart, kept; Forget and one Restore; a
+ *                   second capture ignored while one runs; a set read during
+ *                   a capture winning; the processor closed under a capture,
+ *                   at once
+ *   the ceiling     nothing past full scale with it on
+ *   the bypass      the engine listens through it and resumes from what it
+ *                   heard, in time
  *   the model       the formants the engine's, at Size and Resonance now;
- *                   the picture after audio, saying which engine drew it;
+ *                   the picture after audio, saying which engine drew it,
+ *                   its envelopes only while a window watches;
  *                   the knobs that run both ways
  *   the window      opens at the design's size; on the real model its
  *                   envelope names the engine and its latency
@@ -173,9 +180,10 @@ TEST_CASE ("the parameters are the engine's table, in its order and words")
     {
         auto& prm = a.p.parameter (i);
         CAPTURE (i);
-        VzParamInfo info {};
+        NiParamInfo info {};
         REQUIRE (vz_param_info (i, &info));
         CHECK (prm.getParameterIndex() == i);
+        CHECK (prm.isAutomatable() == info.automatable);
         CHECK (prm.getParameterID() == engineText (vz_param_key, i));
         CHECK (prm.getName (32) == engineText (vz_param_name, i));
         CHECK (prm.convertFrom0to1 (0.0f) == (float) info.min);
@@ -183,7 +191,7 @@ TEST_CASE ("the parameters are the engine's table, in its order and words")
         CHECK (a.p.plain (i) == info.default_value);
         ids.insert (prm.getParameterID());
     }
-    CHECK (ids == std::set<juce::String> { "mode", "vocal", "vowel", "size", "resonance", "excite", "mix", "output", "voice" });
+    CHECK (ids == std::set<juce::String> { "mode", "vocal", "vowel", "size", "resonance", "excite", "mix", "output", "voice", "ceiling" });
 
     /* The words a host lists at the defaults. */
     const auto text = [&a] (int i) { return a.p.parameter (i).getCurrentValueAsText(); };
@@ -196,15 +204,21 @@ TEST_CASE ("the parameters are the engine's table, in its order and words")
     CHECK (text (param::mix) == "100 %");
     CHECK (text (param::output) == "0.0 dB");
     CHECK (text (param::voice) == "100 %");
+    CHECK (text (param::ceiling) == "On");
 }
 
-TEST_CASE ("Mode is a choice of the engine's two labels, which no host may automate")
+TEST_CASE ("Mode is a choice of the engine's two labels, which no host may automate; Ceiling one it may")
 {
     Instance a;
     auto* mode = dynamic_cast<juce::AudioParameterChoice*> (&a.p.parameter (param::mode));
     REQUIRE (mode != nullptr);
     CHECK (mode->choices == juce::StringArray { "Time", "Spectral" });
     CHECK_FALSE (mode->isAutomatable());
+    auto* ceiling = dynamic_cast<juce::AudioParameterChoice*> (&a.p.parameter (param::ceiling));
+    REQUIRE (ceiling != nullptr);
+    CHECK (ceiling->choices == juce::StringArray { "Off", "On" });
+    CHECK (ceiling->getIndex() == 1);
+    CHECK (ceiling->isAutomatable());
     for (int i = 0; i < Processor::paramCount; ++i)
         if (i != param::mode)
             CHECK_MESSAGE (a.p.parameter (i).isAutomatable(), a.p.parameter (i).getParameterID());
@@ -344,16 +358,17 @@ TEST_CASE ("the latency reported is exactly how late the dry signal is heard")
         const int latency = a.p.getLatencySamples();
 
         /* One click, then silence: at Mix 0 it comes out once, whole, as
-         * late as the host was told. */
+         * late as the host was told. Half scale, under the ceiling's knee,
+         * which passes it bit for bit. */
         std::vector<float> out;
         for (int b = 0; b < 4; ++b)
         {
-            a.run ([b] (int, int i) { return b == 0 && i == 0 ? 1.0f : 0.0f; });
+            a.run ([b] (int, int i) { return b == 0 && i == 0 ? 0.5f : 0.0f; });
             out.insert (out.end(), a.buffer.getReadPointer (0), a.buffer.getReadPointer (0) + block);
         }
         const auto peak = std::max_element (out.begin(), out.end(), [] (float x, float y) { return std::abs (x) < std::abs (y); });
         CHECK (peak - out.begin() == latency);
-        CHECK (*peak == 1.0f);
+        CHECK (*peak == 0.5f);
         CHECK (std::count_if (out.begin(), out.end(), [] (float x) { return ! juce::exactlyEqual (x, 0.0f); }) == 1);
     }
 }
@@ -493,6 +508,7 @@ TEST_CASE ("a saved state reopens with every value exactly")
     a.set (param::mix, 90.0);
     a.set (param::output, -3.0);
     a.set (param::voice, 40.0);
+    a.set (param::ceiling, 0.0);
     juce::MemoryBlock state;
     a.p.getStateInformation (state);
 
@@ -546,6 +562,7 @@ TEST_CASE ("the model: the formants are the engine's, at Size and Resonance now"
 TEST_CASE ("the model: the picture waits for audio, then says which engine drew it")
 {
     Instance a;
+    a.p.editorOpened();
     CHECK (a.p.picture().count() == 0);
 
     juce::int64 n = 0;
@@ -580,6 +597,51 @@ TEST_CASE ("the model: the picture waits for audio, then says which engine drew 
     CHECK (pic.spectral);
     CHECK (pic.latency == frame);
     CHECK (pic.latencyMs() == doctest::Approx (1000.0 * frame / rate));
+    a.p.editorClosed();
+}
+
+TEST_CASE ("the model: the envelopes are worked out only while a window watches; the rest always")
+{
+    Instance a;
+    juce::int64 n = 0;
+    const auto play = [&a, &n] (int blocks)
+    {
+        for (int b = 0; b < blocks; ++b, n += block)
+            a.run ([n] (int c, int i) { return source (n + i, c); });
+    };
+    const auto flat = [] (const std::vector<double>& curve)
+    { return std::all_of (curve.begin(), curve.end(), [] (double x) { return juce::exactlyEqual (x, 0.0); }); };
+
+    /* No window: the picture says what runs, and draws nothing. */
+    play (100);
+    {
+        const auto& pic = a.p.picture();
+        REQUIRE (pic.count() == VZ_POINTS);
+        CHECK (pic.serial != 0);
+        CHECK (pic.sampleRate == rate);
+        CHECK (flat (pic.input));
+        CHECK (flat (pic.output));
+    }
+
+    /* A window opens: the envelopes come. */
+    a.p.editorOpened();
+    play (20);
+    const auto watched = a.p.picture().output;
+    CHECK_FALSE (flat (watched));
+
+    /* It closes: the envelopes stay as they were, while the rest goes on --
+     * the serial, and the engine running and its latency. */
+    a.p.editorClosed();
+    play (5);
+    const auto serial = a.p.picture().serial;
+    a.set (param::vowel, 3.0);
+    a.set (param::mode, 1.0);
+    play (100);
+    const auto& pic = a.p.picture();
+    CHECK (pic.serial != serial);
+    CHECK (pic.spectral);
+    CHECK (pic.latency == frame);
+    CHECK (pic.output == watched);
 }
 
 /* ------------------------------------------------------------ the voice -- */
@@ -598,12 +660,40 @@ const std::vector<float>& singer()
     return x;
 }
 
-/* What the engine measures from the singer, asked directly. */
+/* What the engine measures from `x`, asked directly: how it ended, and the
+ * voice when there is one. */
+std::pair<VzCaptured, VzVoice> measure (const std::vector<float>& x)
+{
+    const std::unique_ptr<VzCapture, void (*) (VzCapture*)> job (vz_capture_new(), vz_capture_free);
+    VzVoice v {};
+    const auto how = vz_capture_run (job.get(), x.data(), x.size(), rate, &v);
+    return { how, v };
+}
+
+/* What the engine measures from the singer. */
 VzVoice measured()
 {
-    VzVoice v {};
-    REQUIRE (vz_voice_capture (singer().data(), singer().size(), rate, &v));
+    const auto [how, v] = measure (singer());
+    REQUIRE (how == VzCaptured_Voice);
     return v;
+}
+
+/* Sung, but no vowel: the singer's pulses through formants at 1500, 1700,
+ * 2500, 3500 and 4500 Hz -- F1 and F2 far from any vowel's. */
+const std::vector<float>& noVowel()
+{
+    static const auto x = ni::vz::test::singFormants ({ { 1500.0, 1700.0, 2500.0, 3500.0, 4500.0 } }, 140.0, 1.5, rate);
+    return x;
+}
+
+/* A take long enough that its capture is still running when it is called
+ * off: the singer over and over, for `seconds`. */
+std::vector<float> longTake (double seconds)
+{
+    std::vector<float> x;
+    while (x.size() < (size_t) (seconds * rate))
+        x.insert (x.end(), singer().begin(), singer().end());
+    return x;
 }
 
 /* The message loop runs until a capture has answered, for 20 s at most. */
@@ -738,11 +828,13 @@ TEST_CASE ("the engine sings the captured voice: its vowel drawn where it was su
     ni::vz::test::Scratch scratch ("vz_processor");
     const auto file = scratch / "singer.wav";
 
-    /* Vowel A, all the way: the picture's curve is the vowel's filter. */
+    /* Vowel A, all the way: the picture's curve is the vowel's filter --
+     * drawn while a window watches. */
     Instance sung, book;
     captureSinger (sung.p, file);
     for (auto* i : { &sung, &book })
     {
+        i->p.editorOpened();
         i->set (param::vocal, 100.0);
         i->set (param::vowel, 0.0);
     }
@@ -905,6 +997,13 @@ TEST_CASE ("a set without a voice, or with one that is not a voice, forgets the 
         CHECK (v.status == Status::none);
         CHECK (textbook);
     }
+    SUBCASE ("a format newer than this build reads")
+    {
+        CHECK (xmlOf (good)->getChildByName ("voice")->getIntAttribute ("format") == 1);
+        const auto [v, textbook] = loadEdited ([] (juce::XmlElement& voice) { voice.setAttribute ("format", 2); });
+        CHECK (v.status == Status::none);
+        CHECK (textbook);
+    }
 }
 
 TEST_CASE ("forgetting the voice by hand sings the textbook's again, and marks the set unsaved")
@@ -926,7 +1025,7 @@ TEST_CASE ("forgetting the voice by hand sings the textbook's again, and marks t
     a.p.removeListener (&host);
 }
 
-TEST_CASE ("what cannot be read, and what has no vowels in it, capture nothing and say so")
+TEST_CASE ("what cannot be read, what has no singing in it and what has no vowels capture nothing, and say which")
 {
     ni::vz::test::Scratch scratch ("vz_processor");
     Instance a;
@@ -948,6 +1047,16 @@ TEST_CASE ("what cannot be read, and what has no vowels in it, capture nothing a
     REQUIRE (awaitCapture (a.p));
     CHECK (a.p.voice().status == Status::unsung);
     CHECK (a.p.voice().name == "silence.wav");
+
+    /* Sung, clearly -- a voice's pulses -- but through resonances at 1500
+     * and 1700 Hz, near no vowel at all. */
+    const auto hum = scratch / "hum.wav";
+    REQUIRE (ni::vz::test::writeWav (hum, noVowel(), rate));
+    a.p.capture (hum);
+    REQUIRE (awaitCapture (a.p));
+    CHECK (a.p.voice().status == Status::noVowels);
+    CHECK (a.p.voice().name == "hum.wav");
+    CHECK_FALSE (a.p.voice().sung);
 
     CHECK (a.p.formants (0.0) == textbookAt (a.p, 0.0));
     CHECK (xmlOf (stateOf (a.p))->getChildByName ("voice") == nullptr);
@@ -998,25 +1107,297 @@ TEST_CASE ("a second capture while one runs is ignored")
     CHECK (a.p.voice().name == "first.wav");
 }
 
-TEST_CASE ("a processor closed while a capture runs goes safely, and its answer reaches no one")
+TEST_CASE ("each vowel's confidence reaches the model and the set, and comes back with it")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+    captureSinger (a.p, scratch / "My Voice.wav");
+    const auto direct = measured();
+    const auto v = a.p.voice();
+    for (size_t k = 0; k < 5; ++k)
+    {
+        CAPTURE (k);
+        CHECK (v.confidence[k] == direct.confidence[k]);
+        if (v.found[k])
+        {
+            CHECK (v.confidence[k] > 0.0);
+            CHECK (v.confidence[k] <= 1.0);
+        }
+        else
+        {
+            CHECK (v.confidence[k] == 0.0);
+        }
+    }
+
+    /* Written to three places, and read back so. */
+    const auto state = stateOf (a.p);
+    const auto xml = xmlOf (state);
+    REQUIRE (xml != nullptr);
+    REQUIRE (xml->getChildByName ("voice") != nullptr);
+    int row = 0;
+    for (const auto* vowel : xml->getChildByName ("voice")->getChildWithTagNameIterator ("vowel"))
+    {
+        CAPTURE (row);
+        CHECK (std::abs (vowel->getDoubleAttribute ("confidence") - v.confidence[(size_t) row]) <= 0.0005);
+        ++row;
+    }
+    Instance b;
+    load (b.p, state);
+    for (size_t k = 0; k < 5; ++k)
+        CHECK (std::abs (b.p.voice().confidence[k] - v.confidence[k]) <= 0.0005);
+}
+
+TEST_CASE ("five vowels sung in order are told apart by their order, and the set says so")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+
+    /* A, E, I, O, U, one after the other: five stretches. */
+    const auto five = ni::vz::test::sing ({ 0, 1, 2, 3, 4 }, singerScale, 140.0, 0.6, rate);
+    const auto [how, direct] = measure (five);
+    REQUIRE (how == VzCaptured_Voice);
+    CHECK (direct.by_order);
+    CHECK_FALSE (measured().by_order);
+
+    const auto file = scratch / "AEIOU.wav";
+    REQUIRE (ni::vz::test::writeWav (file, five, rate));
+    Instance a;
+    a.p.capture (file);
+    REQUIRE (awaitCapture (a.p));
+    REQUIRE (a.p.voice().status == Status::captured);
+    CHECK (a.p.voice().found == std::array<bool, 5> { true, true, true, true, true });
+    const auto state = stateOf (a.p);
+    CHECK (xmlOf (state)->getChildByName ("voice")->getIntAttribute ("order") == 1);
+
+    /* Reopened and saved again, still by order. */
+    Instance b;
+    load (b.p, state);
+    CHECK (xmlOf (stateOf (b.p))->getChildByName ("voice")->getIntAttribute ("order") == 1);
+
+    /* The singer of A, I and U alone: three stretches, by likeness. */
+    Instance c;
+    captureSinger (c.p, scratch / "AIU.wav");
+    CHECK (xmlOf (stateOf (c.p))->getChildByName ("voice")->getIntAttribute ("order") == 0);
+}
+
+TEST_CASE ("Forget keeps the voice for one Restore -- until another voice is sung or a set is read")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    Instance a;
+    captureSinger (a.p, scratch / "My Voice.wav");
+    const auto sung = a.p.formants (0.0);
+    CHECK_FALSE (a.p.voice().restorable);
+
+    HostListener host;
+    a.p.addListener (&host);
+    a.p.forgetVoice();
+    CHECK_FALSE (a.p.voice().sung);
+    CHECK (a.p.voice().restorable);
+    CHECK (a.p.formants (0.0) == textbookAt (a.p, 0.0));
+
+    a.p.restoreVoice();
+    CHECK (a.p.voice().sung);
+    CHECK (a.p.voice().sungName == "My Voice.wav");
+    CHECK (a.p.voice().status == Status::captured);
+    CHECK (a.p.voice().found == std::array<bool, 5> { true, false, true, false, true });
+    CHECK_FALSE (a.p.voice().restorable);
+    CHECK (a.p.formants (0.0) == sung);
+    /* Both by hand: the set marked unsaved each time. */
+    CHECK (host.unsaved == 2);
+    a.p.removeListener (&host);
+
+    /* A restore with nothing to restore does nothing. */
+    const auto serial = a.p.voice().serial;
+    a.p.restoreVoice();
+    CHECK (a.p.voice().serial == serial);
+
+    /* Forgotten, then a new voice sung: the old one is gone for good. */
+    a.p.forgetVoice();
+    REQUIRE (a.p.voice().restorable);
+    const auto five = scratch / "AEIOU.wav";
+    REQUIRE (ni::vz::test::writeWav (five, ni::vz::test::sing ({ 0, 1, 2, 3, 4 }, 0.95, 120.0, 0.6, rate), rate));
+    a.p.capture (five);
+    REQUIRE (awaitCapture (a.p));
+    REQUIRE (a.p.voice().sung);
+    CHECK (a.p.voice().sungName == "AEIOU.wav");
+    CHECK_FALSE (a.p.voice().restorable);
+    a.p.restoreVoice();
+    CHECK (a.p.voice().sungName == "AEIOU.wav");
+
+    /* Forgotten, then a set read: nothing to restore either. */
+    a.p.forgetVoice();
+    REQUIRE (a.p.voice().restorable);
+    Instance fresh;
+    load (a.p, stateOf (fresh.p));
+    CHECK_FALSE (a.p.voice().restorable);
+    a.p.restoreVoice();
+    CHECK_FALSE (a.p.voice().sung);
+}
+
+TEST_CASE ("a set read while a capture runs wins: the capture's answer is dropped, and nothing says capturing")
+{
+    ni::vz::test::Scratch scratch ("vz_processor");
+    const auto take = scratch / "long.wav";
+    REQUIRE (ni::vz::test::writeWav (take, longTake (20.0), rate));
+
+    SUBCASE ("a set without a voice")
+    {
+        Instance a;
+        a.p.capture (take);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+        REQUIRE (a.p.voice().status == Status::capturing);
+        Instance fresh;
+        load (a.p, stateOf (fresh.p));
+        CHECK (a.p.voice().status == Status::none);
+        /* Long enough for the capture to have answered, had it not been
+         * called off. */
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (3000);
+        CHECK (a.p.voice().status == Status::none);
+        CHECK_FALSE (a.p.voice().sung);
+        CHECK (a.p.formants (0.0) == textbookAt (a.p, 0.0));
+
+        /* And a capture can be started again. */
+        captureSinger (a.p, scratch / "My Voice.wav");
+        CHECK (a.p.voice().sungName == "My Voice.wav");
+    }
+    SUBCASE ("a set with a voice of its own")
+    {
+        Instance other;
+        captureSinger (other.p, scratch / "From The Set.wav");
+        const auto set = stateOf (other.p);
+
+        Instance a;
+        a.p.capture (take);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+        REQUIRE (a.p.voice().status == Status::capturing);
+        load (a.p, set);
+        CHECK (a.p.voice().status == Status::captured);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (3000);
+        CHECK (a.p.voice().status == Status::captured);
+        CHECK (a.p.voice().sungName == "From The Set.wav");
+    }
+}
+
+TEST_CASE ("a processor closed while a capture runs calls it off, and closes at once")
 {
     ni::vz::test::Scratch scratch ("vz_processor");
     const auto file = scratch / "long.wav";
-    /* Thirty seconds of singing: the capture is still reading when the
-     * processor goes. */
-    std::vector<float> longTake;
-    while (longTake.size() < (size_t) (30.0 * rate))
-        longTake.insert (longTake.end(), singer().begin(), singer().end());
-    REQUIRE (ni::vz::test::writeWav (file, longTake, rate));
+    /* The longest recording a capture reads: two minutes. */
+    REQUIRE (ni::vz::test::writeWav (file, longTake (Processor::longestRecordingS), rate));
 
     auto p = std::make_unique<Processor>();
     p->prepareToPlay (rate, block);
     p->capture (file);
-    CHECK (p->voice().status == Status::capturing);
+    /* Well into it: reading, or analysing. */
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+    REQUIRE (p->voice().status == Status::capturing);
+    const auto start = juce::Time::getMillisecondCounterHiRes();
     p.reset();
+    const auto took = juce::Time::getMillisecondCounterHiRes() - start;
+    CAPTURE (took);
+    CHECK (took < 1000.0);
+    /* Its answer, if one was posted, reaches no one. */
     juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
-    CHECK (true);
 }
+
+/* ---------------------------------------------------------- the ceiling -- */
+
+TEST_CASE ("Ceiling: nothing passes full scale with it on; with it off, what is driven past it passes")
+{
+    for (const bool on : { true, false })
+    {
+        CAPTURE (on);
+        Instance a;
+        a.set (param::vocal, 0.0);
+        a.set (param::output, 12.0);
+        a.set (param::ceiling, on ? 1.0 : 0.0);
+        float peak = 0.0f;
+        for (int b = 0; b < 100; ++b)
+        {
+            a.run ([b] (int c, int i)
+                   { return 0.9f * (float) std::sin (0.013 * (double) (b * block + i) + 0.5 * c); });
+            if (b >= 50)
+                peak = std::max (peak, a.buffer.getMagnitude (0, block));
+        }
+        CAPTURE (peak);
+        if (on)
+        {
+            CHECK (peak <= 1.0f);
+            /* Bent, not cut at the knee. */
+            CHECK (peak > 0.9660508789898133f);
+        }
+        else
+        {
+            CHECK (peak > 3.0f);
+        }
+    }
+}
+
+/* ----------------------------------------------------------- the bypass -- */
+
+TEST_CASE ("after a bypass the engine resumes from what it heard, never from what it held")
+{
+    for (const double mode : { 0.0, 1.0 })
+    {
+        CAPTURE (mode);
+        Instance a;
+        a.set (param::mode, mode);
+        a.set (param::vocal, 100.0);
+        a.set (param::resonance, 100.0);
+        a.set (param::excite, 60.0);
+        REQUIRE (pumpUntil ([&a] { return a.p.getLatencySamples() == a.p.latencyForMode(); }));
+        juce::int64 n = 0;
+        for (int b = 0; b < 100; ++b, n += block)
+            a.run ([n] (int c, int i) { return 2.0f * source (n + i, c); });
+        REQUIRE (a.buffer.getMagnitude (0, block) > 0.0f);
+
+        /* A second of silence, bypassed; then silence played. */
+        a.run (0.0f, 100, true);
+        a.run (0.0f);
+        CHECK (a.buffer.getMagnitude (0, block) == 0.0f);
+        CHECK (a.buffer.getMagnitude (1, 0, block) == 0.0f);
+    }
+}
+
+TEST_CASE ("after a bypass the sound comes back in time, from the audio the bypass passed")
+{
+    /* Time, at Vocal 0, is the input; Spectral, at Mix 0, the input one
+     * frame late. Either way, once the 10 ms fade-in is over, the first
+     * block after a bypass is the input exactly as late as the latency --
+     * the bypass's audio included. */
+    for (const double mode : { 0.0, 1.0 })
+    {
+        CAPTURE (mode);
+        Instance a;
+        a.set (param::mode, mode);
+        a.set (param::vocal, 0.0);
+        a.set (param::mix, mode > 0.5 ? 0.0 : 100.0);
+        REQUIRE (pumpUntil ([&a] { return a.p.getLatencySamples() == a.p.latencyForMode(); }));
+        const int latency = a.p.getLatencySamples();
+        juce::int64 n = 0;
+        const auto play = [&a, &n] (int blocks, bool bypassed)
+        {
+            for (int b = 0; b < blocks; ++b, n += block)
+                a.run ([n] (int c, int i) { return source (n + i, c); }, 1, bypassed);
+        };
+        play (100, false);
+        play (50, true);
+
+        /* The first blocks after: the input, as late as the latency, from
+         * the end of the fade (10 ms, 480 samples) on. */
+        const int fade = (int) (0.01 * rate);
+        bool same = true;
+        for (int b = 0; b < 4; ++b)
+        {
+            const auto start = n;
+            play (1, false);
+            for (int c = 0; c < 2; ++c)
+                for (int i = b == 0 ? fade : 0; i < block; ++i)
+                    same = same && juce::exactlyEqual (a.buffer.getSample (c, i), source (start + i - latency, c));
+        }
+        CHECK (same);
+    }
+}
+
 
 /* ----------------------------------------------------------- the window -- */
 

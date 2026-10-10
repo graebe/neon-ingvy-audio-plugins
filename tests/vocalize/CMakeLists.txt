@@ -64,8 +64,26 @@ target_link_libraries(vz_host PRIVATE
     juce::juce_audio_processors juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 add_test(NAME vz_host COMMAND vz_host ${NI_BUNDLES}/NIVocalize.vst3)
 
+# THE INTEL SLICE TOO. A universal bundle carries two builds of the engine,
+# and the maths libraries under them are not the same: vz_host run under
+# Rosetta loads the x86_64 slice and holds it to the same golden renders, bit
+# for bit. Registered where that can run at all -- a universal build, on an
+# arm64 Mac with Rosetta -- as the bus's cross-slice tests are.
+set(_vz_rosetta_tier)
+if (APPLE AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64"
+    AND "arm64" IN_LIST CMAKE_OSX_ARCHITECTURES
+    AND "x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)
+    execute_process(COMMAND /usr/bin/arch -x86_64 /usr/bin/true
+                    RESULT_VARIABLE _vz_rosetta OUTPUT_QUIET ERROR_QUIET)
+    if (_vz_rosetta EQUAL 0)
+        add_test(NAME vz_host_rosetta
+                 COMMAND /usr/bin/arch -x86_64 $<TARGET_FILE:vz_host> ${NI_BUNDLES}/NIVocalize.vst3)
+        set(_vz_rosetta_tier vz_host_rosetta:host)
+    endif()
+endif()
+
 ni_test_tiers(
     PRODUCT vocalize
         PROGRAMS vz_processor vz_rt vz_host
         QUICK vz_processor vz_rt
-        FULL vz_host:host)
+        FULL vz_host:host ${_vz_rosetta_tier})

@@ -20,7 +20,7 @@ prints a value with `vz_param_text` and reads typing with `vz_param_parse`,
 so the plugin, the Move and the manual print the same words.
 
 A VOICE (`VzVoice`) is the engine's vowel table as C holds it: captured from
-a recording by `vz_voice_capture` -- offline, slow, allocating -- kept in a
+a recording by `vz_capture_run` -- offline, slow, allocating -- kept in a
 shell's saved state, checked on the way back in (`vz_voice_check`), and sung
 with through `vz_core_set_voice` or, on the plugin, `vz_shell_post_voice`.
 

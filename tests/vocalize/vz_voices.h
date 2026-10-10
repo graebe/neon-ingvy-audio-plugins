@@ -9,6 +9,8 @@
  *                times `scale` -- a glottal pulse train, tilted -6 dB an
  *                octave, through the vowel's five resonators, a breath of
  *                silence after each: vz-core's voice.rs tests' own singer
+ *   singFormants()  the same singer on any five formants -- a sound sung
+ *                that is no vowel at all
  *   writeWav()   a mono recording as a 32-bit float WAV, so what a capture
  *                reads back is exactly what was sung
  *   Scratch      a directory of its own under the system's temporary one,
@@ -22,6 +24,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <initializer_list>
 #include <memory>
@@ -41,12 +44,13 @@ inline constexpr double textbook[5][5] = {
 };
 inline constexpr double textbookBandwidths[5] = { 60.0, 90.0, 120.0, 200.0, 250.0 };
 
-/* `vowels` (0..4) sung in turn for `seconds` each at `pitch`, by a voice
- * `scale` times the textbook's, at `fs`; peaking at 0.8. */
-inline std::vector<float> sing (std::initializer_list<int> vowels, double scale, double pitch, double seconds, double fs)
+/* Each of `sounds` -- five formants in Hz -- sung in turn for `seconds` at
+ * `pitch`, at `fs`, a breath of silence after each; peaking at 0.8. */
+inline std::vector<float> singFormants (const std::vector<std::array<double, 5>>& sounds, double pitch, double seconds,
+                                        double fs)
 {
     std::vector<double> out;
-    for (const int v : vowels)
+    for (const auto& formants : sounds)
     {
         /* Klatt's resonator, unity gain at DC: model.rs's Pole. */
         struct Pole
@@ -61,9 +65,9 @@ inline std::vector<float> sing (std::initializer_list<int> vowels, double scale,
             }
         };
         Pole poles[5];
-        for (int k = 0; k < 5; ++k)
+        for (size_t k = 0; k < 5; ++k)
         {
-            const double f = textbook[v][k] * scale;
+            const double f = formants[k];
             if (f >= 0.45 * fs)
                 continue;
             const double rho = std::exp (-juce::MathConstants<double>::pi * textbookBandwidths[k] / fs);
@@ -93,6 +97,21 @@ inline std::vector<float> sing (std::initializer_list<int> vowels, double scale,
     for (const auto x : out)
         scaled.push_back ((float) (x / peak * 0.8));
     return scaled;
+}
+
+/* `vowels` (0..4) sung in turn for `seconds` each at `pitch`, by a voice
+ * `scale` times the textbook's, at `fs`. */
+inline std::vector<float> sing (std::initializer_list<int> vowels, double scale, double pitch, double seconds, double fs)
+{
+    std::vector<std::array<double, 5>> sounds;
+    for (const int v : vowels)
+    {
+        std::array<double, 5> f {};
+        for (size_t k = 0; k < 5; ++k)
+            f[k] = textbook[v][k] * scale;
+        sounds.push_back (f);
+    }
+    return singFormants (sounds, pitch, seconds, fs);
 }
 
 /* `samples` as a mono 32-bit float WAV at `fs`. */

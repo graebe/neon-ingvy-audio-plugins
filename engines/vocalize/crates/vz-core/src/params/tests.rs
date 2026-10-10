@@ -49,6 +49,12 @@ fn the_defaults_are_a_vowel_that_is_heard() {
     assert_eq!(Param::Excite.default_value(), 0.0);
     /* A captured voice is heard whole as soon as there is one. */
     assert_eq!(Param::Voice.default_value(), 100.0);
+    /* The ceiling is on, and a host may switch it. */
+    assert_eq!(Param::Ceiling.default_value(), 1.0);
+    assert!(matches!(Param::Ceiling.info().kind, Kind::Choice { automatable: true, .. }));
+    assert!(matches!(Param::Mode.info().kind, Kind::Choice { automatable: false, .. }));
+    assert_eq!(text(Param::Ceiling, 0.0), "Off");
+    assert_eq!(Param::Ceiling.parse_value("on"), Some(1.0));
 }
 
 #[test]

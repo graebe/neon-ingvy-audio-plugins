@@ -468,7 +468,7 @@ add_test(NAME shell_core
 # products; these pin each piece on its own.
 add_test(NAME ni_shared
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung -p ni-params)
 
 # MUSIC-CORE, TWICE: with `std` and without it. The crate promises `no_std` and a
 # method set that only ever loses the two frequency methods without `std`, and

@@ -35,7 +35,7 @@ inline constexpr InfoText vowel { "Vowel — A, E, I, O, U; between two, the way
 inline constexpr InfoText size { "Size — the voice: up is bigger and lower, down smaller and higher." };
 inline constexpr InfoText voice { "Voice — from the textbook voice to the one captured; 100 % is all yours." };
 inline constexpr InfoText capture { "Capture — learn a voice from a recording of it singing A, E, I, O, U." };
-inline constexpr InfoText forget { "Forget — let go of the captured voice; the textbook voice sings again." };
+inline constexpr InfoText forget { "Forget — let go of the captured voice; Restore brings it back." };
 
 /* VOCAL. */
 inline constexpr InfoText resonance { "Resonance — broad and breathy, or sharp and whistling formants." };
@@ -46,6 +46,7 @@ inline constexpr InfoText mode { "Mode — Time has no latency; Spectral is smoo
 /* LEVEL. */
 inline constexpr InfoText mix { "Mix — the vowel against the dry sound; 100 % is all vowel." };
 inline constexpr InfoText output { "Output — the level after the mix." };
+inline constexpr InfoText ceiling { "Ceiling — bend peaks above -0.3 dBFS, so nothing passes full scale." };
 
 /* Every knob's readout: the engine reads what is typed, in its own units. */
 inline constexpr InfoText vowelValue { "Vowel value — type a vowel, such as E, or a way between, E 30." };

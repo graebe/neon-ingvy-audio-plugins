@@ -36,6 +36,8 @@ ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The C-string helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The parameter table's C struct and the helpers its entry points are made of.
+ni-params = { path = "../../../shared/crates/ni-params" }
 
 # vz_core.h and vz_shell.h, generated from src/ by build.rs.
 [build-dependencies]

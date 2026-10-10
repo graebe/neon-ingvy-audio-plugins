@@ -377,6 +377,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ni-params"
+version = "2026.10.10+1"
+dependencies = [
+ "ni-dsp",
+]
+
+[[package]]
 name = "ni-schwung"
 version = "2026.10.9+1"
 dependencies = [
@@ -923,6 +930,7 @@ dependencies = [
  "cbindgen",
  "ground-capi",
  "ni-dsp",
+ "ni-params",
  "shell-core",
  "vz-core",
 ]
@@ -934,6 +942,7 @@ dependencies = [
  "assert_no_alloc",
  "fastrand",
  "ni-dsp",
+ "ni-params",
  "num-complex",
  "proptest",
  "realfft",

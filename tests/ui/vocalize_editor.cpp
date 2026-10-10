@@ -93,6 +93,7 @@ TEST_CASE ("vocalize: the window is its design's size, on its grid, and every li
     controls.push_back (&e.modeSelect());
     controls.push_back (&e.captureButton());
     controls.push_back (&e.forgetButton());
+    controls.push_back (&e.ceilingToggle());
     for (auto* c : controls)
     {
         const auto* panel = dynamic_cast<ni::ui::Panel*> (c->getParentComponent());
@@ -106,7 +107,8 @@ TEST_CASE ("vocalize: the window is its design's size, on its grid, and every li
 
     /* Which vowel and whose voice in the Vowel panel, the voice's buttons
      * under its knobs; how far and how in Vocal, Mode under its knobs; the
-     * level's in Level: and the dials on one line across the window. */
+     * level's in Level, the Ceiling under them: and the dials on one line
+     * across the window, the rows under them on another. */
     CHECK (e.knob (param::vowel).getParentComponent() == &e.panel (0));
     CHECK (e.knob (param::voice).getParentComponent() == &e.panel (0));
     CHECK (e.captureButton().getParentComponent() == &e.panel (0));
@@ -119,6 +121,9 @@ TEST_CASE ("vocalize: the window is its design's size, on its grid, and every li
     CHECK (e.modeSelect().getParentComponent() == &e.panel (1));
     CHECK (e.modeSelect().getY() > e.knob (param::vocal).getBottom());
     CHECK (e.knob (param::output).getParentComponent() == &e.panel (2));
+    CHECK (e.ceilingToggle().getParentComponent() == &e.panel (2));
+    CHECK (e.ceilingToggle().getY() > e.knob (param::mix).getBottom());
+    CHECK (e.ceilingToggle().getY() == e.modeSelect().getY());
     for (const int i : knobs)
         CHECK (e.knob (i).getY() == e.knob (param::vowel).getY());
 }
@@ -309,7 +314,7 @@ TEST_CASE ("vocalize: every line the window writes is in it, each where it belon
     const auto has = [&lines] (const juce::String& line) { return std::find (lines.begin(), lines.end(), line) != lines.end(); };
     for (const auto& line : { info::vowelPanel, info::vocalPanel, info::levelPanel, info::vowelChart, info::envelopePlot,
                               info::vowel, info::size, info::voice, info::capture, info::forget, info::resonance,
-                              info::vocal, info::excite, info::mode, info::mix,
+                              info::vocal, info::excite, info::mode, info::mix, info::ceiling,
                               info::output, info::vowelValue, info::percentValue, info::dbValue, info::motion,
                               info::signature })
         CHECK_MESSAGE (has (line), line.str());
@@ -321,6 +326,7 @@ TEST_CASE ("vocalize: every line the window writes is in it, each where it belon
     CHECK (ni::ui::infoOf (e.knob (param::voice)) == info::voice.str());
     CHECK (ni::ui::infoOf (e.captureButton()) == info::capture.str());
     CHECK (ni::ui::infoOf (e.forgetButton()) == info::forget.str());
+    CHECK (ni::ui::infoOf (e.ceilingToggle()) == info::ceiling.str());
     CHECK (ni::ui::infoOf (e.vowelChart()) == info::vowelChart.str());
     CHECK (ni::ui::infoOf (e.envelopePlot()) == info::envelopePlot.str());
 
@@ -335,6 +341,25 @@ TEST_CASE ("vocalize: every line the window writes is in it, each where it belon
 }
 
 
+TEST_CASE ("vocalize: Ceiling is a switch bound to its parameter, on by default")
+{
+    Rig rig;
+    auto& t = rig.editor.ceilingToggle();
+    CHECK (t.binding().parameter().getParameterIndex() == param::ceiling);
+    CHECK (t.getLabel() == "Ceiling");
+    CHECK (t.isOn());
+
+    Pointer p;
+    p.click (t, t.housing().getCentre());
+    CHECK (rig.model.plain (param::ceiling) == 0.0);
+    CHECK_FALSE (t.isOn());
+    CHECK (rig.model.params.log().startsWith ("begin " + juce::String (param::ceiling)));
+
+    /* And from the host's side. */
+    rig.model.set (param::ceiling, 1.0);
+    CHECK (t.isOn());
+}
+
 /* ------------------------------------------------------------ the voice -- */
 
 TEST_CASE ("vocalize: the voice's buttons say where a capture is, and offer only what can be done")
@@ -342,39 +367,66 @@ TEST_CASE ("vocalize: the voice's buttons say where a capture is, and offer only
     Rig rig;
     auto& capture = rig.editor.captureButton();
     auto& forget = rig.editor.forgetButton();
-    const auto shows = [&] (const char* text, bool captureOn, bool forgetOn)
+    const auto shows = [&] (const char* text, bool captureOn, const char* second, bool secondOn)
     {
         /* The words as the editor's source spells them, in UTF-8. */
         CHECK (capture.getText() == juce::String::fromUTF8 (text));
         CHECK (capture.isEnabled() == captureOn);
-        CHECK (forget.getText() == "Forget");
-        CHECK (forget.isEnabled() == forgetOn);
+        CHECK (forget.getText() == second);
+        CHECK (forget.isEnabled() == secondOn);
     };
 
-    shows ("Capture…", true, false);
+    shows ("Capture…", true, "Forget", false);
     rig.model.capture (juce::File ("/recordings/My Voice.wav"));
     rig.frames (1);
-    shows ("Capturing…", false, false);
+    shows ("Capturing…", false, "Forget", false);
     rig.model.land (Voice::Status::captured, "My Voice.wav", sungAIU);
     rig.frames (1);
-    shows ("Capture…", true, true);
+    shows ("Capture…", true, "Forget", true);
     /* A capture that fails keeps the voice sung before it, which can still
      * be forgotten. */
     rig.model.land (Voice::Status::unreadable, "notes.wav", {});
     rig.frames (1);
-    shows ("Capture…", true, true);
+    shows ("Capture…", true, "Forget", true);
     rig.model.land (Voice::Status::unsung, "silence.wav", {});
     rig.frames (1);
-    shows ("Capture…", true, true);
+    shows ("Capture…", true, "Forget", true);
+    rig.model.land (Voice::Status::noVowels, "hum.wav", {});
+    rig.frames (1);
+    shows ("Capture…", true, "Forget", true);
 
-    /* Forget asks the model, and only when there is a voice to forget. */
+    /* Forget asks the model, and then offers the voice back: Restore. */
     rig.model.land (Voice::Status::captured, "My Voice.wav", sungAIU);
     rig.frames (1);
     Pointer p;
     p.click (forget, forget.getLocalBounds().getCentre().toFloat());
     CHECK (rig.model.forgotten == 1);
     rig.frames (1);
-    shows ("Capture…", true, false);
+    shows ("Capture…", true, "Restore", true);
+
+    /* Restore asks the model to bring it back, and Forget is Forget again. */
+    p.click (forget, forget.getLocalBounds().getCentre().toFloat());
+    CHECK (rig.model.restored == 1);
+    CHECK (rig.model.forgotten == 1);
+    rig.frames (1);
+    CHECK (rig.model.voice().sungName == "My Voice.wav");
+    shows ("Capture…", true, "Forget", true);
+
+    /* Forgotten, then another voice sung: nothing to restore, only to
+     * forget. */
+    p.click (forget, forget.getLocalBounds().getCentre().toFloat());
+    rig.frames (1);
+    shows ("Capture…", true, "Restore", true);
+    rig.model.land (Voice::Status::captured, "Take Two.wav", sungAIU);
+    rig.frames (1);
+    shows ("Capture…", true, "Forget", true);
+    p.click (forget, forget.getLocalBounds().getCentre().toFloat());
+    rig.frames (1);
+    /* ... and once that one is forgotten too, it is the one offered back. */
+    shows ("Capture…", true, "Restore", true);
+    rig.model.forgetVoice();
+    rig.frames (1);
+    shows ("Capture…", true, "Forget", false);
 }
 
 TEST_CASE ("vocalize: Capture… opens the panel on the recordings the plugin reads, and captures the one chosen")
@@ -492,7 +544,10 @@ TEST_CASE ("vocalize: the chart's caption names the voice -- capturing, captured
     CHECK (chart.getCaption() == "VOWEL   CANNOT READ NOTES");
     rig.model.land (Voice::Status::unsung, "silence.aif", {});
     rig.frames (1);
-    CHECK (chart.getCaption() == "VOWEL   NO VOWELS IN SILENCE");
+    CHECK (chart.getCaption() == "VOWEL   NO SINGING IN SILENCE");
+    rig.model.land (Voice::Status::noVowels, "hum.wav", {});
+    rig.frames (1);
+    CHECK (chart.getCaption() == "VOWEL   NO VOWELS IN HUM");
     rig.model.forgetVoice();
     rig.frames (1);
     CHECK (chart.getCaption() == "VOWEL   I");
@@ -546,6 +601,27 @@ TEST_CASE ("vocalize: a captured voice moves the chart's vowels, as far as Voice
             CAPTURE (unsung);
             CHECK (brightest (sung) > brightest (unsung) + 0.05f);
         }
+
+    /* As bright as the capture was sure of each: I measured from frames that
+     * disagreed is dimmer than A and U, which were sure. */
+    rig.model.land (Voice::Status::captured, "My Voice.wav", sungAIU, 0.85, { 1.0, 0.0, 0.05, 0.0, 1.0 });
+    rig.frames (1);
+    const auto unsure = ni::ui::test::render (chart);
+    const auto brightestIn = [&] (const juce::Image& img, int k)
+    {
+        const auto p = chart.letter (k);
+        const float dx = p.x < centre ? -12.0f : 12.0f;
+        const auto box = juce::Rectangle<float> (p.x + dx - 8.0f, p.y - 8.0f, 16.0f, 16.0f).getSmallestIntegerContainer()
+                             .getIntersection (img.getBounds());
+        float most = 0.0f;
+        for (int y = box.getY(); y < box.getBottom(); ++y)
+            for (int x = box.getX(); x < box.getRight(); ++x)
+                most = std::max (most, img.getPixelAt (x, y).getPerceivedBrightness());
+        return most;
+    };
+    CHECK (brightestIn (unsure, 2) + 0.05f < brightestIn (unsure, 0));
+    CHECK (brightestIn (unsure, 2) + 0.05f < brightestIn (unsure, 4));
+    CHECK (brightestIn (unsure, 2) + 0.05f < brightest (2));
 }
 
 NI_SNAPSHOT_TEST ("vocalize: the defaults, a sound playing through Time")

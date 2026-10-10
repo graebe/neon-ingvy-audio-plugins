@@ -11,9 +11,10 @@
  * shell's C++, JUCE's, and the Rust engine's alike. The blocks cover what a
  * session does to it: playback in either engine with the window open (the
  * picture and the Ground at work), every control automated while it plays,
- * a reactivation's reset, the host's bypass, a mono track, a block longer
- * than the host announced, a set loaded, and a captured voice arriving,
- * morphed by Voice, restored with a set and forgotten. Each must count zero.
+ * a reactivation's reset, the host's bypass and the resume after it, the
+ * ceiling switched, a mono track, a block longer than the host announced, a
+ * set loaded, and a captured voice arriving, morphed by Voice, restored
+ * with a set and forgotten. Each must count zero.
  *
  * MODE FROM THE AUDIO THREAD. A VST3 host's parameter changes arrive inside
  * process(), and JUCE's wrapper applies them there (setValueNotifyingHost),
@@ -210,7 +211,24 @@ int main()
 
     allocations = 0;
     play (20, true);
-    check (allocations == 0, "the host's bypass", allocations);
+    check (allocations == 0, "the host's bypass: the engine listening", allocations);
+
+    /* In and out of the bypass, block by block: every way back a resume. */
+    allocations = 0;
+    for (int k = 0; k < 20; ++k)
+        play (1, k % 2 == 0);
+    check (allocations == 0, "bypassed and back, again and again", allocations);
+
+    /* The ceiling switched while it plays, from either side. */
+    auto& ceiling = processor.parameter (ni::vz::param::ceiling);
+    allocations = 0;
+    play (20, false, nullptr, [&] (int k) { ceiling.setValueNotifyingHost ((float) (k % 2)); });
+    check (allocations == 0, "Ceiling switched while it plays", allocations);
+    allocations = 0;
+    writes = 0;
+    play (20, false, nullptr, {}, [&] (int k) { ceiling.setValueNotifyingHost ((float) (k % 2)); });
+    check (allocations == 0, "Ceiling switched from the audio thread: the blocks", allocations);
+    check (writes == 0, "... and the writes themselves", writes);
 
     allocations = 0;
     play (4, false, &longer);

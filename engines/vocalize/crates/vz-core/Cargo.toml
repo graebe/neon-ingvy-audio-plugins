@@ -23,6 +23,9 @@ capture = ["dep:num-complex"]
 # The DSP the products share: the parameter glide, C-compatible text, and the
 # antialiased soft clip Excite is made of.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# What a parameter is, and the arithmetic every shell reads one with: the
+# table's shape, shared by every product.
+ni-params = { path = "../../../shared/crates/ni-params" }
 # MIDI bytes to messages, for the panic (CC 120/123), as sc-core takes it:
 # core-only without its default `std` feature.
 wmidi = { workspace = true }

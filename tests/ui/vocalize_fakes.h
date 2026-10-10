@@ -2,13 +2,14 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Vocalize's plugin, faked for its editor's tests: the nine host
+ * NI Vocalize's plugin, faked for its editor's tests: the ten host
  * parameters exactly as the engine's table declares them, and a model whose
  * pictures and captured voice the test sets.
  *
  * THE PARAMETERS are the engine's table (vz_param_*, vz-core's params.rs),
  * transcribed in its order with its ranges, defaults and words: "80 %",
- * "+30 %", "-3.0 dB", "E>I 30 %", and Mode a choice of Time and Spectral. A
+ * "+30 %", "-3.0 dB", "E>I 30 %", Mode a choice of Time and Spectral and
+ * Ceiling one of Off and On. A
  * fake in another order would test another plugin.
  *
  * THE FORMANTS stand in for the engine's (vz_formants, model.rs): the same
@@ -56,7 +57,7 @@ inline juce::String vowelText (float v)
     return juce::String (letters[at]) + ">" + letters[at + 1] + " " + juce::String ((int) pct) + " %";
 }
 
-/* The nine, as the engine's table declares them. */
+/* The ten, as the engine's table declares them. */
 inline void addParameters (ni::ui::test::FakeParameters& p)
 {
     const auto number = [] (const juce::String& s) { return s.getFloatValue(); };
@@ -90,6 +91,7 @@ inline void addParameters (ni::ui::test::FakeParameters& p)
     p.addFloat ("mix", "Mix", linear (0.0f, 100.0f), 100.0f, percent (false), number);
     p.addFloat ("output", "Output", linear (-24.0f, 24.0f), 0.0f, db, number);
     p.addFloat ("voice", "Voice", linear (0.0f, 100.0f), 100.0f, percent (false), number);
+    p.addChoice ("ceiling", "Ceiling", { "Off", "On" }, 1);
 }
 
 /* -------------------------------------------- the formants, for tests -- */
@@ -152,7 +154,10 @@ public:
     Voice held;
     double capturedScale = 1.0;
     std::vector<juce::File> captures;
-    int forgotten = 0;
+    int forgotten = 0, restored = 0;
+    /* The voice Forget let go, for one Restore. */
+    Voice kept;
+    double keptScale = 1.0;
 
     Voice voice() const override { return held; }
 
@@ -166,19 +171,38 @@ public:
         ++held.serial;
     }
 
+    /* As the processor does: Forget keeps what was sung for one Restore,
+     * which a voice sung since takes away. */
     void forgetVoice() override
     {
         ++forgotten;
+        const bool had = held.sung;
+        if (had)
+        {
+            kept = held;
+            keptScale = capturedScale;
+        }
         land (Voice::Status::none, {}, {});
+        held.restorable = had;
+    }
+
+    void restoreVoice() override
+    {
+        ++restored;
+        if (held.sung || ! held.restorable)
+            return;
+        land (Voice::Status::captured, kept.sungName, kept.found, keptScale, kept.confidence);
     }
 
     juce::String recordingWildcard() const override { return "*.wav;*.aif;*.aiff;*.m4a"; }
 
-    /* How a capture went: its status, the recording's name and the vowels
-     * it measured; a captured voice `scale` times the textbook's. As the
-     * processor does, a capture that failed keeps the voice sung before it,
-     * and forgetting (none) lets it go. */
-    void land (Voice::Status status, const juce::String& name, std::array<bool, 5> found, double scale = 1.15)
+    /* How a capture went: its status, the recording's name, the vowels it
+     * measured and how sure it was of each (all of them, unless said); a
+     * captured voice `scale` times the textbook's. As the processor does, a
+     * capture that failed keeps the voice sung before it, forgetting (none)
+     * lets it go, and a voice sung leaves nothing to restore. */
+    void land (Voice::Status status, const juce::String& name, std::array<bool, 5> found, double scale = 1.15,
+               std::array<double, 5> confidence = { 1.0, 1.0, 1.0, 1.0, 1.0 })
     {
         held.status = status;
         held.name = name;
@@ -187,7 +211,10 @@ public:
             held.sung = status == Voice::Status::captured;
             held.sungName = held.sung ? name : juce::String();
             held.found = held.sung ? found : std::array<bool, 5> {};
+            for (size_t k = 0; k < 5; ++k)
+                held.confidence[k] = held.found[k] ? confidence[k] : 0.0;
             capturedScale = held.sung ? scale : 1.0;
+            held.restorable = false;
         }
         ++held.serial;
     }

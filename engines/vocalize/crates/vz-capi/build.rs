@@ -13,7 +13,8 @@ fn main() {
     capi_header::generate(&[
         Header {
             name: "vz_core.h",
-            sources: &["src/engine.rs"],
+            /* NiParamInfo, which a table is declared with, is ni-params'. */
+            sources: &["src/engine.rs", "../../../shared/crates/ni-params/src/lib.rs"],
         },
         Header {
             name: "vz_shell.h",

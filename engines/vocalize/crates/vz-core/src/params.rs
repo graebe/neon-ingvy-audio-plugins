@@ -9,11 +9,11 @@ ONE TABLE, THREE READERS. The JUCE shell declares its host parameters from it
 (vz-move), and the engine clamps with it. A range, a default or a unit is
 written here and nowhere else.
 
-THREE KINDS. A `Float` runs from `min` to `max` in its own unit -- %, dB, or
-the vowel path's own; a `Choice` is one of its labels, by index. Mode is the
-only choice, and it is the one parameter a host may not automate: switching
-engines changes the plugin's latency, which a host takes note of between
-blocks, not inside one.
+TWO KINDS. A `Float` runs from `min` to `max` in its own unit -- %, dB, or
+the vowel path's own; a `Choice` is one of its labels, by index, and says
+whether a host may automate it. Mode may not: switching engines changes the
+plugin's latency, which a host takes note of between blocks, not inside one.
+Ceiling may: it glides.
 
 THE VOWEL IS A PLACE ON A PATH. 0 is A, 1 E, 2 I, 3 O, 4 U, and every value
 between is on the way from one to the next: 1.3 is "E>I 30 %". Typing a letter
@@ -29,6 +29,7 @@ parameter would re-point every set saved before it.
 
 use core::fmt::{self, Write};
 use ni_dsp::fmt::{atof, f};
+pub use ni_params::{Kind, Travel};
 
 /// The parameters, in the order the shell declares them: a host index IS this
 /// value.
@@ -54,16 +55,22 @@ pub enum Param {
     /// Whose voice: the textbook's at 0 %, the one captured from a recording
     /// at 100 % (voice.rs), and the way between.
     Voice,
+    /// A soft ceiling after Output: below -0.3 dBFS nothing, above it a curve
+    /// that never passes full scale.
+    Ceiling,
 }
 
 /// How many parameters there are.
-pub const PARAM_COUNT: usize = 9;
+pub const PARAM_COUNT: usize = 10;
 
 /// The vowels, in the order the path visits them.
 pub const VOWEL_LABELS: [&str; 5] = ["A", "E", "I", "O", "U"];
 
 /// Mode's labels, by index.
 pub const MODE_LABELS: [&str; 2] = ["Time", "Spectral"];
+
+/// A switch's labels, by index.
+pub const SWITCH_LABELS: [&str; 2] = ["Off", "On"];
 
 /// A float's unit: what it is printed with and how typing is read.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -95,26 +102,10 @@ impl Unit {
     }
 }
 
-/// What a parameter is.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Kind {
-    Float {
-        min: f64,
-        max: f64,
-        default: f64,
-        unit: Unit,
-        /// Whether the value runs both ways about zero, so a knob draws its
-        /// arc from the centre -- which is why every such range is symmetric.
-        bipolar: bool,
-    },
-    /// One of `labels`, by index; never automated (see the module note).
-    Choice {
-        labels: &'static [&'static str],
-        default: usize,
-    },
-}
-
-/// What a shell needs to declare one parameter.
+/// What a shell needs to declare one parameter. What it IS -- a number on a
+/// travel or a choice of labels, its range, default and resolution -- is the
+/// shared [`Kind`] (ni-params); what is this product's own is the unit a
+/// number is printed and read in.
 #[derive(Clone, Copy, Debug)]
 pub struct Info {
     /// The stable identifier: what a saved state and the Move call it.
@@ -122,10 +113,19 @@ pub struct Info {
     /// The name a host shows.
     pub name: &'static str,
     pub kind: Kind,
+    /// A number's unit; `None` for a choice.
+    pub unit: Option<Unit>,
 }
 
-const fn float(min: f64, max: f64, default: f64, unit: Unit, bipolar: bool) -> Kind {
-    Kind::Float { min, max, default, unit, bipolar }
+/// A number: every one here travels linearly, kept to its unit's resolution;
+/// `bipolar` when it runs both ways about zero, so a knob draws its arc from
+/// the centre -- which is why every such range is symmetric.
+const fn float(min: f64, max: f64, default: f64, unit: Unit, bipolar: bool) -> (Kind, Option<Unit>) {
+    (Kind::Float { min, max, default, resolution: unit.resolution(), travel: Travel::Linear, bipolar }, Some(unit))
+}
+
+const fn choice(labels: &'static [&'static str], default: usize, automatable: bool) -> (Kind, Option<Unit>) {
+    (Kind::Choice { labels, default, automatable }, None)
 }
 
 impl Param {
@@ -140,6 +140,7 @@ impl Param {
         Param::Mix,
         Param::Output,
         Param::Voice,
+        Param::Ceiling,
     ];
 
     /// The parameter at a host index, if there is one.
@@ -154,8 +155,8 @@ impl Param {
 
     /// Everything a shell declares this parameter with.
     pub const fn info(self) -> Info {
-        let (key, name, kind) = match self {
-            Param::Mode => ("mode", "Mode", Kind::Choice { labels: &MODE_LABELS, default: 0 }),
+        let (key, name, (kind, unit)) = match self {
+            Param::Mode => ("mode", "Mode", choice(&MODE_LABELS, 0, false)),
             Param::Vocal => ("vocal", "Vocal", float(0.0, 100.0, 80.0, Unit::Percent, false)),
             Param::Vowel => ("vowel", "Vowel", float(0.0, 4.0, 0.0, Unit::Vowel, false)),
             Param::Size => ("size", "Size", float(-100.0, 100.0, 0.0, Unit::Percent, true)),
@@ -164,67 +165,50 @@ impl Param {
             Param::Mix => ("mix", "Mix", float(0.0, 100.0, 100.0, Unit::Percent, false)),
             Param::Output => ("output", "Output", float(-24.0, 24.0, 0.0, Unit::Db, true)),
             Param::Voice => ("voice", "Voice", float(0.0, 100.0, 100.0, Unit::Percent, false)),
+            Param::Ceiling => ("ceiling", "Ceiling", choice(&SWITCH_LABELS, 1, true)),
         };
-        Info { key, name, kind }
+        Info { key, name, kind, unit }
     }
 
     /// The value a new instance starts at, in the parameter's unit.
     pub const fn default_value(self) -> f64 {
-        match self.info().kind {
-            Kind::Float { default, .. } => default,
-            Kind::Choice { default, .. } => default as f64,
-        }
+        self.info().kind.default_value()
     }
 
-    /// The nearest value the parameter can hold: a float inside its range, a
-    /// choice's nearest index. NaN is not a value; callers drop it first.
+    /// The nearest value the parameter can hold (ni-params). NaN is not a
+    /// value; callers drop it first.
     pub fn clamp(self, v: f64) -> f64 {
-        match self.info().kind {
-            Kind::Float { min, max, .. } => v.clamp(min, max),
-            Kind::Choice { labels, .. } => v.round().clamp(0.0, (labels.len() - 1) as f64),
-        }
+        self.info().kind.clamp(v)
     }
 
     /// The nearest value on the unit's resolution, for a host that keeps a
     /// value as a float; a choice's index. The engine itself takes any value:
     /// this is the shells'.
     pub fn snap(self, v: f64) -> f64 {
-        match self.info().kind {
-            Kind::Float { unit, .. } => {
-                let per = 1.0 / unit.resolution();
-                self.clamp((v * per).round() / per)
-            }
-            Kind::Choice { .. } => self.clamp(v),
-        }
+        self.info().kind.snap(v)
     }
 
-    /// The value as a fraction of the knob's travel, 0..1. Every float
-    /// travels linearly.
+    /// The value as a fraction of the knob's travel, 0..1.
     pub fn normalise(self, v: f64) -> f64 {
-        match self.info().kind {
-            Kind::Float { min, max, .. } => (v.clamp(min, max) - min) / (max - min),
-            Kind::Choice { labels, .. } => self.clamp(v) / (labels.len() - 1) as f64,
-        }
+        self.info().kind.normalise(v)
     }
 
-    /// The value at a fraction 0..1 of the knob's travel. The inverse of
-    /// `normalise`; out-of-range fractions land on the ends.
+    /// The value at a fraction 0..1 of the knob's travel: the inverse of
+    /// `normalise`.
     pub fn denormalise(self, n: f64) -> f64 {
-        let n = if n.is_nan() { 0.0 } else { n.clamp(0.0, 1.0) };
-        match self.info().kind {
-            Kind::Float { min, max, .. } => (min + n * (max - min)).clamp(min, max),
-            Kind::Choice { labels, .. } => self.clamp(n * (labels.len() - 1) as f64),
-        }
+        self.info().kind.denormalise(n)
     }
 
     /// The value as every shell prints it: "80 %", "+40 %", "-6.0 dB", "E",
     /// "E>I 30 %", "Spectral".
     pub fn write_value(self, out: &mut dyn Write, v: f64) -> fmt::Result {
         let v = if v.is_nan() { self.default_value() } else { self.clamp(v) };
-        let (unit, bipolar) = match self.info().kind {
-            Kind::Choice { labels, .. } => return out.write_str(labels[v as usize]),
-            Kind::Float { unit, bipolar, .. } => (unit, bipolar),
-        };
+        let info = self.info();
+        if let Some(label) = info.kind.choice_text(v) {
+            return out.write_str(label);
+        }
+        let bipolar = matches!(info.kind, Kind::Float { bipolar: true, .. });
+        let unit = info.unit.unwrap_or(Unit::Percent);
         match unit {
             Unit::Percent => {
                 let r = v.round();
@@ -265,10 +249,8 @@ impl Param {
     /// printed). `None` for text with no value in it, which changes nothing.
     pub fn parse_value(self, text: &str) -> Option<f64> {
         let t = text.trim();
-        if let Kind::Choice { labels, .. } = self.info().kind {
-            if let Some(i) = labels.iter().position(|l| l.eq_ignore_ascii_case(t)) {
-                return Some(i as f64);
-            }
+        if let Some(i) = self.info().kind.choice_of(t) {
+            return Some(i);
         }
         if self == Param::Vowel {
             if let Some(i) = VOWEL_LABELS.iter().position(|l| t.get(..1).is_some_and(|c| c.eq_ignore_ascii_case(l))) {

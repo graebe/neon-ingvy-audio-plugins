@@ -36,30 +36,33 @@ static int param(const char *key) {
 }
 
 static void table(void) {
-    CHECK(vz_param_count() == 9);
+    CHECK(vz_param_count() == 10);
     char buf[32];
     for (int i = 0; i < vz_param_count(); i++) {
-        VzParamInfo info;
+        NiParamInfo info;
         memset(&info, 0, sizeof info);
         CHECK(vz_param_info(i, &info));
         CHECK(info.min <= info.default_value && info.default_value <= info.max);
         CHECK(vz_param_name(i, buf, sizeof buf) > 0);
         CHECK(vz_param_text(i, info.default_value, buf, sizeof buf) > 0);
     }
-    CHECK(!vz_param_info(9, NULL));
+    CHECK(!vz_param_info(10, NULL));
     CHECK(param("voice") == 8);
+    CHECK(param("ceiling") == 9);
 
     const int mode = param("mode");
     CHECK(mode == 0);
-    VzParamInfo info;
+    NiParamInfo info;
     CHECK(vz_param_info(mode, &info));
-    CHECK(info.kind == VzParamKind_Choice && info.max == 1.0 && info.default_value == 0.0);
+    CHECK(info.kind == NiParamKind_Choice && info.max == 1.0 && info.default_value == 0.0 && !info.automatable);
+    NiParamInfo ceiling;
+    CHECK(vz_param_info(param("ceiling"), &ceiling) && ceiling.automatable && ceiling.default_value == 1.0);
     CHECK(vz_param_label(mode, 1, buf, sizeof buf) == 8 && strcmp(buf, "Spectral") == 0);
     CHECK(vz_param_label(mode, 2, buf, sizeof buf) == -1);
 
     const int vowel = param("vowel");
     CHECK(vowel == 2);
-    CHECK(vz_param_info(vowel, &info) && info.kind == VzParamKind_Float && !info.bipolar);
+    CHECK(vz_param_info(vowel, &info) && info.kind == NiParamKind_Float && !info.bipolar);
     CHECK(vz_param_text(vowel, 3.5, buf, sizeof buf) > 0 && strcmp(buf, "O>U 50 %") == 0);
     double v = 0.0;
     CHECK(vz_param_parse(vowel, "i", &v) && v == 2.0);
@@ -92,7 +95,10 @@ static void model(void) {
     bad.bandwidth[3] = NAN;
     CHECK(!vz_voice_check(&bad));
     static float silence[4800];
-    CHECK(!vz_voice_capture(silence, 4800, 48000.0, &voice));
+    VzCapture *capture = vz_capture_new();
+    CHECK(vz_capture_run(capture, silence, 4800, 48000.0, &voice) == VzCaptured_Unsung);
+    vz_capture_cancel(capture);
+    vz_capture_free(capture);
     CHECK(vz_latency(0.0, 48000.0) == 0);
     CHECK(vz_latency(1.0, 48000.0) == 1024);
 }
@@ -138,6 +144,15 @@ static void instance(void) {
     const uint8_t panic[3] = {0xB5, 120, 0};
     vz_core_on_midi(core, panic, 3);
     float silence[64] = {0};
+    vz_core_process_f32(core, silence, NULL, 64);
+    for (int i = 0; i < 64; i++)
+        CHECK(silence[i] == 0.0f);
+
+    /* Bypassed, it listens; back, it resumes from what it heard -- here a
+     * second of silence, so silence. */
+    static float quiet[48000];
+    vz_core_listen_f32(core, quiet, NULL, 48000);
+    vz_core_resume(core);
     vz_core_process_f32(core, silence, NULL, 64);
     for (int i = 0; i < 64; i++)
         CHECK(silence[i] == 0.0f);

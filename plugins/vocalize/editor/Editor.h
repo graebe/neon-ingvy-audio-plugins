@@ -14,9 +14,9 @@
  *    (312, 32)   ENVELOPE, two columns: the sound's colour, in and out
  *    (32, 256)   three standard panels, a column each, 208 tall:
  *
- *                  VOWEL   Vowel, Size, Voice          Capture…, Forget
+ *                  VOWEL   Vowel, Size, Voice          Capture…, Forget (Restore)
  *                  VOCAL   Vocal, Resonance, Excite    Mode
- *                  LEVEL   Mix, Output
+ *                  LEVEL   Mix, Output                 Ceiling
  *
  *    (0, 488)    the Hint bar: three conventions, Motion, the Signature
  *
@@ -89,6 +89,7 @@ public:
     ni::ui::ParamSelect& modeSelect() noexcept { return *mode; }
     ni::ui::Button& captureButton() noexcept { return *captureVoice; }
     ni::ui::Button& forgetButton() noexcept { return *forgetVoice; }
+    ni::ui::ParamToggle& ceilingToggle() noexcept { return *ceilingSwitch; }
 
     /* The system's open panel, for a recording to capture from. Replaceable,
      * so a test can answer it without a panel: it is handed the wildcard and
@@ -122,6 +123,7 @@ private:
     std::vector<std::unique_ptr<ni::ui::ParamKnob>> knobs;
     std::unique_ptr<ni::ui::ParamSelect> mode;
     std::unique_ptr<ni::ui::Button> captureVoice, forgetVoice;
+    std::unique_ptr<ni::ui::ParamToggle> ceilingSwitch;
     Chooser chooser;
     std::unique_ptr<juce::FileChooser> openPanel;
     std::uint32_t voiceShown = ~0u;

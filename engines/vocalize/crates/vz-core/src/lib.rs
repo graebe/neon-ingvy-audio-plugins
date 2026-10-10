@@ -89,8 +89,10 @@ const SUB: usize = 16;
 /// The Time engine's level follower, in ms.
 const LEVEL_MS: f64 = 50.0;
 
-/// The Time engine's level correction stays within +24 / -48 dB.
-const MAX_GAIN: f64 = 16.0;
+/// The Time engine's level correction stays within +12 / -48 dB: enough to
+/// bring a flattened input back to its level, not enough to make a resonance
+/// that rings up a danger.
+const MAX_GAIN: f64 = 4.0;
 const MIN_GAIN: f64 = 1.0 / 256.0;
 
 /// Each half of a mode switch's dip, in ms.
@@ -157,6 +159,8 @@ struct Glides {
     /// 0..1: how far a newly captured voice has arrived from the one before
     /// (Engine::set_voice). Its target is always 1.
     arrival: f64,
+    /// 0..1: the ceiling, off to on.
+    ceiling: f64,
 }
 
 impl Glides {
@@ -172,6 +176,7 @@ impl Glides {
             output: db_to_amp(at(Param::Output)),
             voice: at(Param::Voice) / 100.0,
             arrival: 1.0,
+            ceiling: at(Param::Ceiling),
         }
     }
 
@@ -186,6 +191,7 @@ impl Glides {
             (&mut self.output, t.output),
             (&mut self.voice, t.voice),
             (&mut self.arrival, t.arrival),
+            (&mut self.ceiling, t.ceiling),
         ] {
             *x = glide(*x, target, c);
         }
@@ -630,12 +636,48 @@ impl Engine {
             #[cfg(not(feature = "spectral"))]
             Mode::Spectral => self.run_time(count),
         };
-        let Glides { mix, output, .. } = self.now;
+        let Glides { mix, output, ceiling, .. } = self.now;
         let mut out = [0.0; 2];
         for ((o, ch), w) in out.iter_mut().zip(&self.channels[..count]).zip(wet) {
-            *o = (ch.dry.at(self.delay) * (1.0 - mix) + w * mix) * output * dip;
+            let y = (ch.dry.at(self.delay) * (1.0 - mix) + w * mix) * output * dip;
+            /* Exact at both ends -- `y + 1 * (y - y)` would turn a -0.0 into
+             * a +0.0 -- and blended only while the switch glides. */
+            *o = if ceiling <= 0.0 {
+                y
+            } else if ceiling >= 1.0 {
+                soft_ceiling(y)
+            } else {
+                y + ceiling * (soft_ceiling(y) - y)
+            };
         }
         out
+    }
+
+    /// WHILE BYPASSED: the input heard, nothing made of it. The history both
+    /// engines read and the glides go on, so `resume` can start the engine
+    /// running as if it had been all along -- not from what it held before
+    /// the bypass. Nothing is written to the buffers.
+    pub fn listen_f32(&mut self, left: &[f32], right: Option<&[f32]>) {
+        for (i, l) in left.iter().enumerate() {
+            self.advance();
+            let r = right.and_then(|r| r.get(i));
+            for (ch, x) in self.channels.iter_mut().zip([Some(l), r]) {
+                let Some(&x) = x else { continue };
+                let x = f64::from(x);
+                let x = if x.is_finite() { x } else { 0.0 };
+                ch.dry.push(x);
+                let s = ch.excite.run(x, self.now.excite);
+                ch.src.push(s);
+            }
+        }
+    }
+
+    /// AFTER A BYPASS: the engine running now starts again from the history
+    /// `listen_f32` kept -- primed, as a mode switch primes it -- and fades in
+    /// over 10 ms, so what it held from before the bypass is never heard.
+    pub fn resume(&mut self) {
+        self.enter(self.mode);
+        self.switch = Switch::In(0.0);
     }
 
     /// One block of host floats, in place: `left`, and `right` for a stereo
@@ -708,6 +750,23 @@ impl Engine {
             }
         }
     }
+}
+
+/// Where the ceiling starts to bend: -0.3 dBFS.
+pub const CEILING_KNEE: f64 = 0.9660508789898133;
+
+/// THE CEILING: the identity up to [`CEILING_KNEE`], and above it a tanh
+/// that leaves the knee at the same slope and rises towards full scale --
+/// so anything at or below -0.3 dBFS passes bit for bit, and nothing passes
+/// 0 dBFS (a far louder input lands on it, where tanh rounds to 1).
+#[inline]
+pub fn soft_ceiling(x: f64) -> f64 {
+    let a = x.abs();
+    if a <= CEILING_KNEE {
+        return x;
+    }
+    let room = 1.0 - CEILING_KNEE;
+    (CEILING_KNEE + room * ((a - CEILING_KNEE) / room).tanh()).copysign(x)
 }
 
 #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the default")]

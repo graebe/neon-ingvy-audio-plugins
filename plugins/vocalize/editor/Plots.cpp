@@ -88,7 +88,8 @@ juce::String VowelChart::captionFor (const juce::String& vowelText) const
         case Voice::Status::capturing:  return "VOWEL   CAPTURING " + name;
         case Voice::Status::captured:   return vowelPart + "   " + name;
         case Voice::Status::unreadable: return "VOWEL   CANNOT READ " + name;
-        case Voice::Status::unsung:     return "VOWEL   NO VOWELS IN " + name;
+        case Voice::Status::unsung:     return "VOWEL   NO SINGING IN " + name;
+        case Voice::Status::noVowels:   return "VOWEL   NO VOWELS IN " + name;
         case Voice::Status::none:       break;
     }
     return vowelPart;
@@ -130,8 +131,11 @@ void VowelChart::paintPlot (juce::Graphics& g)
     {
         const auto p = letters[(size_t) k];
         const float dx = p.x < area.getCentreX() ? -12.0f : 12.0f;
+        /* A measured vowel in ink, as bright as its capture was sure of it;
+         * one filled in from the textbook muted. */
         const bool measured = voice.sung && voice.found[(size_t) k];
-        g.setColour (measured ? c::ink : c::inkMuted);
+        const auto sure = (float) juce::jlimit (0.0, 1.0, voice.confidence[(size_t) k]);
+        g.setColour (measured ? c::ink.withAlpha (0.45f + 0.55f * sure) : c::inkMuted);
         g.drawText (vowelLetters[k], juce::Rectangle<float> (p.x + dx - 8.0f, p.y - 8.0f, 16.0f, 16.0f),
                     juce::Justification::centred, false);
         g.setColour (c::line200);

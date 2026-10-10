@@ -150,7 +150,8 @@ fn vocal_moves_the_sound_towards_the_vowel_step_by_step() {
     for &mode in MODES {
         let mut last = f64::MAX;
         for vocal in [0.0, 25.0, 50.0, 75.0, 100.0] {
-            let mut e = engine(&[(Param::Mode, mode), (Param::Vocal, vocal)]);
+            /* The ceiling off: this measures the morph, not the ceiling. */
+            let mut e = engine(&[(Param::Mode, mode), (Param::Vocal, vocal), (Param::Ceiling, 0.0)]);
             let (out, _) = render(&mut e, &x, None);
             let db = spectrum(&out[4096..]);
             let diff: Vec<f64> = bands
@@ -460,4 +461,77 @@ fn a_new_voice_glides_in_and_nonsense_is_refused() {
     bad.bandwidth[4][4] = f64::NAN;
     assert!(!e.set_voice(&bad));
     assert_eq!(e.voice(), &scaled_voice(0.9));
+}
+
+#[test]
+fn the_ceiling_bends_only_above_its_knee_and_never_passes_full_scale() {
+    assert!((CEILING_KNEE - 10f64.powf(-0.3 / 20.0)).abs() < 1e-15);
+    for x in [0.0, 0.25, -0.5, 0.9, CEILING_KNEE, -CEILING_KNEE] {
+        assert_eq!(soft_ceiling(x), x);
+    }
+    let mut last = CEILING_KNEE;
+    for i in 1..200 {
+        let x = CEILING_KNEE + i as f64 * 0.05;
+        let y = soft_ceiling(x);
+        assert!(y >= last && y <= 1.0, "{x} -> {y}");
+        assert_eq!(soft_ceiling(-x), -y);
+        last = y;
+    }
+    /* The same slope on both sides of the knee: no corner to hear. */
+    assert!(soft_ceiling(1.0) < 1.0 && soft_ceiling(1.0) > CEILING_KNEE);
+    let h = 1e-7;
+    assert!(((soft_ceiling(CEILING_KNEE + h) - CEILING_KNEE) / h - 1.0).abs() < 1e-4);
+}
+
+#[test]
+fn with_the_ceiling_on_nothing_passes_full_scale() {
+    let loud: Vec<f32> = noise(FS as usize / 2, 22).iter().map(|v| v * 1.8).collect();
+    for &mode in MODES {
+        let mut on = engine(&[(Param::Mode, mode), (Param::Vocal, 100.0), (Param::Resonance, 100.0), (Param::Output, 12.0)]);
+        let (y, _) = render(&mut on, &loud, None);
+        /* Below full scale in f64; a float a hair under it may round to it. */
+        assert!(y.iter().all(|s| s.abs() <= 1.0), "mode {mode}");
+        let mut off = engine(&[
+            (Param::Mode, mode),
+            (Param::Vocal, 100.0),
+            (Param::Resonance, 100.0),
+            (Param::Output, 12.0),
+            (Param::Ceiling, 0.0),
+        ]);
+        let (z, _) = render(&mut off, &loud, None);
+        assert!(z.iter().any(|s| s.abs() > 1.0), "mode {mode}: off, the peaks are the peaks");
+    }
+}
+
+#[test]
+fn after_a_bypass_nothing_from_before_it_is_heard() {
+    for &mode in MODES {
+        let mut e = engine(&[(Param::Mode, mode), (Param::Vocal, 100.0), (Param::Resonance, 100.0)]);
+        render(&mut e, &noise(FS as usize / 2, 23), None);
+        /* Bypassed through a second of silence, then back. */
+        e.listen_f32(&vec![0.0; FS as usize], None);
+        e.resume();
+        let (y, _) = render(&mut e, &vec![0.0; 4096], None);
+        assert!(y.iter().all(|&s| s == 0.0), "mode {mode}: the bypassed engine replayed what it held");
+    }
+}
+
+#[test]
+fn after_a_bypass_the_engine_takes_up_the_sound_it_listened_to() {
+    let tone: Vec<f32> = (0..FS as usize).map(|i| (0.4 * (core::f64::consts::TAU * 220.0 * i as f64 / FS).sin()) as f32).collect();
+    for &mode in MODES {
+        let mut running = engine(&[(Param::Mode, mode), (Param::Vocal, 0.0)]);
+        let mut bypassed = engine(&[(Param::Mode, mode), (Param::Vocal, 0.0)]);
+        let (a, _) = render(&mut running, &tone, None);
+        bypassed.listen_f32(&tone[..tone.len() / 2], None);
+        bypassed.resume();
+        let (b, _) = render(&mut bypassed, &tone[tone.len() / 2..], None);
+        /* Once the 10 ms fade-in is over, the two are the same sound. */
+        let half = tone.len() / 2;
+        for i in 1000..half {
+            assert!((a[half + i] - b[i]).abs() < 1e-5, "mode {mode} sample {i}: {} vs {}", a[half + i], b[i]);
+        }
+        /* And the fade-in starts from nothing. */
+        assert!(b[0].abs() < 0.01);
+    }
 }

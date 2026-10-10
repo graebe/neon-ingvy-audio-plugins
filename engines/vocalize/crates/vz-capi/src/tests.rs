@@ -12,14 +12,16 @@ fn text(f: impl Fn(*mut c_char, c_int) -> c_int) -> Option<String> {
     (n >= 0).then(|| unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap().to_string())
 }
 
-fn info(index: i32) -> Option<VzParamInfo> {
-    let mut out = VzParamInfo {
-        kind: VzParamKind::Float,
+fn info(index: i32) -> Option<NiParamInfo> {
+    let mut out = NiParamInfo {
+        kind: NiParamKind::Float,
         min: 0.0,
         max: 0.0,
         default_value: 0.0,
+        log_travel: false,
         bipolar: false,
         resolution: 0.0,
+        automatable: false,
     };
     unsafe { vz_param_info(index, &mut out) }.then_some(out)
 }
@@ -55,8 +57,11 @@ fn the_table_describes_every_parameter_and_nothing_else() {
 fn mode_is_a_choice_and_its_labels_are_the_engines() {
     let m = Param::Mode as i32;
     let d = info(m).unwrap();
-    assert_eq!(d.kind, VzParamKind::Choice);
-    assert_eq!((d.min, d.max, d.default_value, d.resolution), (0.0, 1.0, 0.0, 1.0));
+    assert_eq!(d.kind, NiParamKind::Choice);
+    assert_eq!((d.min, d.max, d.default_value, d.resolution, d.automatable), (0.0, 1.0, 0.0, 1.0, false));
+    let c = info(Param::Ceiling as i32).unwrap();
+    assert_eq!((c.kind, c.default_value, c.automatable), (NiParamKind::Choice, 1.0, true));
+    assert_eq!(text(|b, n| unsafe { vz_param_label(Param::Ceiling as i32, 0, b, n) }).as_deref(), Some("Off"));
     assert_eq!(text(|b, n| unsafe { vz_param_label(m, 0, b, n) }).as_deref(), Some("Time"));
     assert_eq!(text(|b, n| unsafe { vz_param_label(m, 1, b, n) }).as_deref(), Some("Spectral"));
     assert!(text(|b, n| unsafe { vz_param_label(m, 2, b, n) }).is_none());
@@ -65,7 +70,7 @@ fn mode_is_a_choice_and_its_labels_are_the_engines() {
     assert_eq!(text(|b, n| unsafe { vz_param_unit(m, b, n) }).as_deref(), Some(""));
     assert_eq!(text(|b, n| unsafe { vz_param_text(m, 1.0, b, n) }).as_deref(), Some("Spectral"));
     let size = info(Param::Size as i32).unwrap();
-    assert_eq!(size.kind, VzParamKind::Float);
+    assert_eq!(size.kind, NiParamKind::Float);
     assert!(size.bipolar);
 }
 
@@ -218,17 +223,22 @@ fn a_voice_is_drawn_checked_and_sung_with() {
 fn a_capture_of_nothing_sung_writes_nothing() {
     let silence = vec![0.0f32; 48_000];
     let mut out = scaled(2.0);
-    assert!(unsafe { !vz_voice_capture(silence.as_ptr(), silence.len(), 48_000.0, &mut out) });
-    assert_eq!(out, scaled(2.0));
-    assert!(unsafe { !vz_voice_capture(std::ptr::null(), 10, 48_000.0, &mut out) });
-    assert!(unsafe { !vz_voice_capture(silence.as_ptr(), 10, 48_000.0, std::ptr::null_mut()) });
+    unsafe {
+        let c = vz_capture_new();
+        assert_eq!(vz_capture_run(c, silence.as_ptr(), silence.len(), 48_000.0, &mut out), VzCaptured::Unsung);
+        assert_eq!(out, scaled(2.0));
+        assert_eq!(vz_capture_run(c, std::ptr::null(), 10, 48_000.0, &mut out), VzCaptured::Unsung);
+        assert_eq!(vz_capture_run(c, silence.as_ptr(), 10, 48_000.0, std::ptr::null_mut()), VzCaptured::Unsung);
+        assert_eq!(vz_capture_run(std::ptr::null(), silence.as_ptr(), 10, 48_000.0, &mut out), VzCaptured::Unsung);
+        vz_capture_cancel(std::ptr::null());
+        vz_capture_free(c);
+        vz_capture_free(std::ptr::null_mut());
+    }
 }
 
+/// A: pulses at 130 Hz through the textbook's A, scaled up by a tenth.
 #[cfg(feature = "capture")]
-#[test]
-fn a_sung_vowel_is_captured() {
-    /* A: pulses at 130 Hz through the textbook's A, scaled up by a tenth. */
-    let fs = 48_000.0;
+fn sung_a(fs: f64) -> Vec<f32> {
     let a = vz_core::model::Formants::of(&{
         let mut t = vz_core::model::VowelTable::TEXTBOOK;
         t.freq[0].iter_mut().for_each(|f| *f *= 1.1);
@@ -237,7 +247,7 @@ fn a_sung_vowel_is_captured() {
     let poles = a.poles(fs, 1.0);
     let mut y = [[0.0; 2]; 5];
     let mut tilt = 0.0;
-    let x: Vec<f32> = (0..fs as usize)
+    (0..fs as usize)
         .map(|i| {
             tilt = 0.97 * tilt + if (i as f64 % (fs / 130.0)) < 1.0 { 1.0 } else { 0.0 };
             let mut s = tilt;
@@ -246,11 +256,52 @@ fn a_sung_vowel_is_captured() {
             }
             (s * 0.02) as f32
         })
-        .collect();
+        .collect()
+}
+
+#[cfg(feature = "capture")]
+#[test]
+fn a_sung_vowel_is_captured_and_a_cancelled_capture_is_not() {
+    let fs = 48_000.0;
+    let x = sung_a(fs);
     let mut out = scaled(1.0);
-    assert!(unsafe { vz_voice_capture(x.as_ptr(), x.len(), fs, &mut out) });
+    unsafe {
+        let c = vz_capture_new();
+        assert_eq!(vz_capture_run(c, x.as_ptr(), x.len(), fs, &mut out), VzCaptured::Voice);
+        vz_capture_free(c);
+    }
     assert!(out.found[0] && out.frames[0] >= 5);
+    assert!(out.confidence[0] > 0.5 && out.confidence[1] == 0.0, "{:?}", out.confidence);
+    assert!(!out.by_order);
     assert!((out.freq[1] / (1333.0 * 1.1) - 1.0).abs() < 0.06, "{}", out.freq[1]);
+
+    let mut untouched = scaled(3.0);
+    unsafe {
+        let c = vz_capture_new();
+        vz_capture_cancel(c);
+        assert_eq!(vz_capture_run(c, x.as_ptr(), x.len(), fs, &mut untouched), VzCaptured::Cancelled);
+        vz_capture_free(c);
+    }
+    assert_eq!(untouched, scaled(3.0));
+}
+
+#[test]
+fn a_bypassed_engine_listens_and_resumes_from_what_it_heard() {
+    unsafe {
+        let core = vz_core_new(48_000.0);
+        let mut loud = vec![0.5f32; 4800];
+        vz_core_process_f32(core, loud.as_mut_ptr(), std::ptr::null_mut(), 4800);
+        let silence = vec![0.0f32; 48_000];
+        vz_core_listen_f32(core, silence.as_ptr(), silence.as_ptr(), 48_000);
+        vz_core_listen_f32(core, std::ptr::null(), std::ptr::null(), 10);
+        vz_core_listen_f32(std::ptr::null_mut(), silence.as_ptr(), std::ptr::null(), 10);
+        vz_core_resume(core);
+        vz_core_resume(std::ptr::null_mut());
+        let mut after = vec![0.0f32; 4096];
+        vz_core_process_f32(core, after.as_mut_ptr(), std::ptr::null_mut(), 4096);
+        assert!(after.iter().all(|&s| s == 0.0));
+        vz_core_free(core);
+    }
 }
 
 #[cfg(feature = "shell")]
@@ -279,6 +330,7 @@ mod shell_tests {
     fn the_picture_shows_the_vowel_put_on_noise() {
         unsafe {
             let shell = vz_shell_create(48_000.0);
+            vz_shell_post_watching(shell, true);
             let core = vz_shell_begin(shell);
             vz_core_set_num(core, Param::Vocal as i32, 100.0);
             vz_shell_end(shell, 0);
@@ -323,6 +375,14 @@ mod shell_tests {
             vz_shell_post_sample_rate(std::ptr::null(), 1.0);
             assert!(!vz_shell_read(std::ptr::null(), std::ptr::null_mut()));
             assert!(!vz_shell_read(shell, std::ptr::null_mut()));
+            vz_shell_post_watching(std::ptr::null(), true);
+
+            /* Unwatched, the picture keeps its envelopes and moves on. */
+            let before = read(shell);
+            run(shell, 5, |i| (i as f32 * 0.01).sin());
+            let after = read(shell);
+            assert_ne!(after.serial, before.serial);
+            assert_eq!(after.output_db, before.output_db);
 
             /* A voice posted is the engine's from the next block. */
             let big = scaled(1.2);

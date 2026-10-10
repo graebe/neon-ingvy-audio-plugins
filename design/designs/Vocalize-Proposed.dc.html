@@ -72,11 +72,17 @@ body{margin:0;background:#060410}
           <div class="ph-select" style="min-width: 0; width: 112px;"><div class="field">{{modeText}}<svg class="ph-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"></path></svg></div></div>
         </div>
       </sc-if>
+      <sc-if value="{{p.ceiling}}">
+        <div style="margin-top: 12px; height: 28px; display: flex; align-items: center; gap: 16px;">
+          <span class="ph-toggle on"><span class="sw"></span><span class="ph-label">Ceiling</span></span>
+        </div>
+      </sc-if>
       <sc-if value="{{p.capture}}">
         <div style="margin-top: 12px; height: 28px; display: flex; align-items: center; gap: 8px;">
           <button class="ph-btn">Capture…</button>
           <sc-if value="{{captured}}"><button class="ph-btn">Forget</button></sc-if>
-          <sc-if value="{{nothingCaptured}}"><button class="ph-btn" disabled="">Forget</button></sc-if>
+          <sc-if value="{{restorable}}"><button class="ph-btn">Restore</button></sc-if>
+          <sc-if value="{{nothingToForget}}"><button class="ph-btn" disabled="">Forget</button></sc-if>
         </div>
       </sc-if>
     </section>
@@ -90,7 +96,7 @@ body{margin:0;background:#060410}
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"captured":{"editor":"boolean","default":true,"section":"Voice"},"voice":{"editor":"range","min":0,"max":100,"step":5,"default":100,"section":"Voice"},"vowel":{"editor":"range","min":0,"max":4,"step":0.05,"default":1.3,"section":"Vocalize"},"vocal":{"editor":"range","min":0,"max":100,"step":1,"default":80,"section":"Vocalize"},"size":{"editor":"range","min":-100,"max":100,"step":5,"default":0,"section":"Vocalize"},"spectral":{"editor":"boolean","default":false,"section":"Vocalize"},"$preview":{"width":888,"height":532}}'>
+<script type="text/x-dc" data-dc-script data-props='{"captured":{"editor":"boolean","default":true,"section":"Voice"},"forgotten":{"editor":"boolean","default":false,"section":"Voice"},"voice":{"editor":"range","min":0,"max":100,"step":5,"default":100,"section":"Voice"},"vowel":{"editor":"range","min":0,"max":4,"step":0.05,"default":1.3,"section":"Vocalize"},"vocal":{"editor":"range","min":0,"max":100,"step":1,"default":80,"section":"Vocalize"},"size":{"editor":"range","min":-100,"max":100,"step":5,"default":0,"section":"Vocalize"},"spectral":{"editor":"boolean","default":false,"section":"Vocalize"},"$preview":{"width":888,"height":532}}'>
 class Component extends DCLogic {
   renderVals() {
     const vowel = Math.max(0, Math.min(4, this.props.vowel ?? 1.3));
@@ -114,6 +120,9 @@ class Component extends DCLogic {
      * A, a forward I and a dark U of their own; E and O were not sung. */
     const mine = table.map((row, v) => row.map((f, k) => f * 1.17 * ([[1.08, 1.04, 1, 1, 1], [1, 1, 1, 1, 1], [0.95, 1.07, 1.03, 1, 1], [1, 1, 1, 1, 1], [1.02, 0.9, 1, 1, 1]][v][k])));
     const found = [true, false, true, false, true];
+    /* How sure the capture was of each measured vowel: I held steady, U
+     * wandered. */
+    const sure = [0.9, 0, 0.95, 0, 0.45];
     const voiced = table.map((row, v) => row.map((f, k) => hz(bark(f) + (bark(mine[v][k]) - bark(f)) * amount)));
     const formants = (v) => {
       const i = Math.min(3, Math.floor(v)), t = v - i;
@@ -130,7 +139,9 @@ class Component extends DCLogic {
     const letters = names.map((name, k) => {
       const [x, y] = at(formants(k));
       const dx = x < 125 ? -12 : 12;
-      const ink = captured && found[k] ? 'var(--ink)' : 'var(--ink-muted)';
+      const ink = captured && found[k]
+        ? 'color-mix(in srgb, var(--ink) ' + Math.round(100 * (0.45 + 0.55 * sure[k])) + '%, transparent)'
+        : 'var(--ink-muted)';
       return { name, ink, x: x.toFixed(1), y: y.toFixed(1), tx: (x + dx).toFixed(1), ty: (y + 4).toFixed(1) };
     });
     const now = formants(vowel);
@@ -199,7 +210,8 @@ class Component extends DCLogic {
     return {
       vowelText: vowelWords[0] + (vowelWords[1] ? ' ' + vowelWords[1] : '') + (captured ? '\u00a0\u00a0\u00a0MY VOWELS' : ''),
       captured,
-      nothingCaptured: !captured,
+      restorable: !captured && (this.props.forgotten ?? false),
+      nothingToForget: !captured && !(this.props.forgotten ?? false),
       path: path(along),
       a: letters[0], e: letters[1], i: letters[2], o: letters[3], u: letters[4],
       dotX: dotX.toFixed(1),
@@ -211,15 +223,15 @@ class Component extends DCLogic {
       f2Rule: rule(now[1]),
       modeText: spectral ? 'Spectral' : 'Time',
       panels: [
-        { title: 'Vowel', style: panelStyle(32), mode: false, capture: true,
+        { title: 'Vowel', style: panelStyle(32), mode: false, capture: true, ceiling: false,
           knobs: [knob('Vowel', vowel / 4, vowelWords[0], vowelWords[1], false, [0, 0.25, 0.5, 0.75, 1]),
                   knob('Size', (size + 100) / 200, signed(size), '%', true),
                   knob('Voice', (this.props.voice ?? 100) / 100, String(Math.round(this.props.voice ?? 100)), '%', false)] },
-        { title: 'Vocal', style: panelStyle(312), mode: true, capture: false,
+        { title: 'Vocal', style: panelStyle(312), mode: true, capture: false, ceiling: false,
           knobs: [knob('Vocal', vocal, String(Math.round(vocal * 100)), '%', false),
                   knob('Resonance', 0.5, '50', '%', false),
                   knob('Excite', 0, '0', '%', false)] },
-        { title: 'Level', style: panelStyle(592), mode: false, capture: false,
+        { title: 'Level', style: panelStyle(592), mode: false, capture: false, ceiling: true,
           knobs: [knob('Mix', 1, '100', '%', false), knob('Output', 0.5, '0.0', 'dB', true)] },
       ],
     };

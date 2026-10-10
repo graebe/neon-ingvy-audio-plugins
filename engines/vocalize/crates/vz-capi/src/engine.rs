@@ -8,10 +8,12 @@ calls what.
 */
 
 use std::os::raw::{c_char, c_int};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use ni_dsp::ffi::{copy_cstr, cstr};
+use ni_dsp::ffi::cstr;
+pub use ni_params::{NiParamInfo, NiParamKind};
 use vz_core::model::{Formants, VowelTable, FORMANTS};
-use vz_core::{latency, Engine, Kind, Mode, Param, PARAM_COUNT};
+use vz_core::{latency, Engine, Mode, Param, PARAM_COUNT};
 
 /// How many formants `vz_formants` writes. A literal, so the header can
 /// state it; held to the model's count below.
@@ -25,11 +27,14 @@ pub struct VzCore {
     pub(crate) engine: Engine,
     /// Samples processed, wrapping: what says a picture is new.
     pub(crate) serial: u32,
+    /// Whether a window shows the picture: the envelopes are worked out only
+    /// then (shell.rs).
+    pub(crate) watching: bool,
 }
 
 impl VzCore {
     pub fn new(sample_rate: f64) -> VzCore {
-        VzCore { engine: Engine::new(sample_rate), serial: 0 }
+        VzCore { engine: Engine::new(sample_rate), serial: 0, watching: false }
     }
 
     pub fn engine(&self) -> &Engine {
@@ -161,6 +166,35 @@ pub unsafe extern "C" fn vz_core_on_midi(core: *mut VzCore, bytes: *const u8, le
     core.engine.on_midi(std::slice::from_raw_parts(bytes, len));
 }
 
+/// WHILE BYPASSED, one block of `frames` host floats heard and not changed:
+/// the engine keeps its history and its glides, so `vz_core_resume` can start
+/// it from the sound it missed rather than from what it held before.
+///
+/// # Safety
+/// As `vz_core_process_f32`; nothing is written.
+#[no_mangle]
+pub unsafe extern "C" fn vz_core_listen_f32(core: *mut VzCore, left: *const f32, right: *const f32, frames: u32) {
+    let Some(core) = core.as_mut() else { return };
+    if left.is_null() || frames == 0 {
+        return;
+    }
+    let l = std::slice::from_raw_parts(left, frames as usize);
+    let r = (!right.is_null()).then(|| std::slice::from_raw_parts(right, frames as usize));
+    core.engine.listen_f32(l, r);
+}
+
+/// AFTER A BYPASS: the engine starts again from the history it listened to,
+/// primed, and fades in over 10 ms.
+///
+/// # Safety
+/// `core` is null or live, and this thread's.
+#[no_mangle]
+pub unsafe extern "C" fn vz_core_resume(core: *mut VzCore) {
+    if let Some(core) = core.as_mut() {
+        core.engine.resume();
+    }
+}
+
 /// The panic: everything held lets go; the settings stay.
 ///
 /// # Safety
@@ -174,30 +208,12 @@ pub unsafe extern "C" fn vz_core_reset(core: *mut VzCore) {
 
 /* ------------------------------------------------------ the parameter table */
 
-/// What a parameter is.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum VzParamKind {
-    /// A number from `min` to `max` in its unit.
-    Float = 0,
-    /// One of `max + 1` labels (vz_param_label), by index from 0; never
-    /// automated.
-    Choice = 1,
-}
+/* What a parameter is, in C, is ni-params' `NiParamInfo`, shared by every
+ * product: build.rs names its source beside this file's. Every entry point
+ * below is one line around a ni-params helper. */
 
-/// What a shell declares one parameter with. Values are in the parameter's
-/// own unit (vz_param_unit); a choice's range is its indices.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct VzParamInfo {
-    pub kind: VzParamKind,
-    pub min: f64,
-    pub max: f64,
-    pub default_value: f64,
-    /// True when the value runs both ways about zero.
-    pub bipolar: bool,
-    /// The finest step a host should keep (vz_param_snap); 1 for a choice.
-    pub resolution: f64,
+fn kind(index: i32) -> Option<ni_params::Kind> {
+    Param::from_i32(index).map(|p| p.info().kind)
 }
 
 /// How many parameters there are.
@@ -206,34 +222,15 @@ pub extern "C" fn vz_param_count() -> i32 {
     PARAM_COUNT as i32
 }
 
-/// Describe parameter `index`. Any thread. False for an index out of range.
+/// Describe parameter `index`: its kind, range, default, resolution, and
+/// whether a host may automate it. Any thread. False for an index out of
+/// range.
 ///
 /// # Safety
 /// `out` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn vz_param_info(index: i32, out: *mut VzParamInfo) -> bool {
-    let (Some(p), Some(out)) = (Param::from_i32(index), out.as_mut()) else {
-        return false;
-    };
-    *out = match p.info().kind {
-        Kind::Float { min, max, default, bipolar, unit } => VzParamInfo {
-            kind: VzParamKind::Float,
-            min,
-            max,
-            default_value: default,
-            bipolar,
-            resolution: unit.resolution(),
-        },
-        Kind::Choice { labels, default } => VzParamInfo {
-            kind: VzParamKind::Choice,
-            min: 0.0,
-            max: (labels.len() - 1) as f64,
-            default_value: default as f64,
-            bipolar: false,
-            resolution: 1.0,
-        },
-    };
-    true
+pub unsafe extern "C" fn vz_param_info(index: i32, out: *mut NiParamInfo) -> bool {
+    ni_params::c_info(kind(index), out)
 }
 
 /// Parameter `index`'s stable key, as a saved state and the Move name it,
@@ -244,10 +241,7 @@ pub unsafe extern "C" fn vz_param_info(index: i32, out: *mut VzParamInfo) -> boo
 /// `out` is null or has room for `cap` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn vz_param_key(index: i32, out: *mut c_char, cap: c_int) -> c_int {
-    match Param::from_i32(index) {
-        Some(p) => copy_cstr(p.info().key, out, cap),
-        None => -1,
-    }
+    ni_params::c_text(Param::from_i32(index).map(|p| p.info().key), out, cap)
 }
 
 /// Parameter `index`'s display name, as `vz_param_key`.
@@ -256,10 +250,7 @@ pub unsafe extern "C" fn vz_param_key(index: i32, out: *mut c_char, cap: c_int) 
 /// As `vz_param_key`.
 #[no_mangle]
 pub unsafe extern "C" fn vz_param_name(index: i32, out: *mut c_char, cap: c_int) -> c_int {
-    match Param::from_i32(index) {
-        Some(p) => copy_cstr(p.info().name, out, cap),
-        None => -1,
-    }
+    ni_params::c_text(Param::from_i32(index).map(|p| p.info().name), out, cap)
 }
 
 /// Parameter `index`'s unit ("%", "dB"; "" for the vowel and a choice), as
@@ -269,30 +260,17 @@ pub unsafe extern "C" fn vz_param_name(index: i32, out: *mut c_char, cap: c_int)
 /// As `vz_param_key`.
 #[no_mangle]
 pub unsafe extern "C" fn vz_param_unit(index: i32, out: *mut c_char, cap: c_int) -> c_int {
-    match Param::from_i32(index) {
-        Some(p) => match p.info().kind {
-            Kind::Float { unit, .. } => copy_cstr(unit.label(), out, cap),
-            Kind::Choice { .. } => copy_cstr("", out, cap),
-        },
-        None => -1,
-    }
+    ni_params::c_text(Param::from_i32(index).map(|p| p.info().unit.map_or("", |u| u.label())), out, cap)
 }
 
-/// Choice parameter `index`'s label number `option` ("Time", "Spectral"),
-/// as `vz_param_key`; -1 for a float or an option out of range.
+/// Choice parameter `index`'s label number `option` ("Time", "Spectral",
+/// "Off", "On"), as `vz_param_key`; -1 for a number or an option out of range.
 ///
 /// # Safety
 /// As `vz_param_key`.
 #[no_mangle]
 pub unsafe extern "C" fn vz_param_label(index: i32, option: i32, out: *mut c_char, cap: c_int) -> c_int {
-    let label = Param::from_i32(index).and_then(|p| match p.info().kind {
-        Kind::Choice { labels, .. } => usize::try_from(option).ok().and_then(|o| labels.get(o)).copied(),
-        Kind::Float { .. } => None,
-    });
-    match label {
-        Some(l) => copy_cstr(l, out, cap),
-        None => -1,
-    }
+    ni_params::c_text(kind(index).and_then(|k| k.label(option)), out, cap)
 }
 
 /// `value` of parameter `index` as every shell prints it ("80 %", "-6.0 dB",
@@ -302,12 +280,7 @@ pub unsafe extern "C" fn vz_param_label(index: i32, option: i32, out: *mut c_cha
 /// As `vz_param_key`.
 #[no_mangle]
 pub unsafe extern "C" fn vz_param_text(index: i32, value: f64, out: *mut c_char, cap: c_int) -> c_int {
-    let Some(p) = Param::from_i32(index) else { return -1 };
-    let mut text = TextBuf::default();
-    if p.write_value(&mut text, value).is_err() {
-        return -1;
-    }
-    copy_cstr(text.as_str(), out, cap)
+    ni_params::c_written(Param::from_i32(index).map(|p| move |w: &mut dyn core::fmt::Write| p.write_value(w, value)), out, cap)
 }
 
 /// What a user typed, read as parameter `index`'s value into `out`, clamped
@@ -334,7 +307,7 @@ pub unsafe extern "C" fn vz_param_parse(index: i32, text: *const c_char, out: *m
 /// an index out of range. Any thread.
 #[no_mangle]
 pub extern "C" fn vz_param_normalise(index: i32, value: f64) -> f64 {
-    Param::from_i32(index).map_or(0.0, |p| p.normalise(value))
+    kind(index).map_or(0.0, |k| k.normalise(value))
 }
 
 /// `value` on parameter `index`'s resolution, inside its range: what a host
@@ -342,37 +315,14 @@ pub extern "C" fn vz_param_normalise(index: i32, value: f64) -> f64 {
 /// exactly. 0 for an index out of range. Any thread.
 #[no_mangle]
 pub extern "C" fn vz_param_snap(index: i32, value: f64) -> f64 {
-    Param::from_i32(index).map_or(0.0, |p| p.snap(value))
+    kind(index).map_or(0.0, |k| k.snap(value))
 }
 
 /// The value at fraction `normalised` of parameter `index`'s travel: the
 /// inverse of `vz_param_normalise`. 0 for an index out of range.
 #[no_mangle]
 pub extern "C" fn vz_param_denormalise(index: i32, normalised: f64) -> f64 {
-    Param::from_i32(index).map_or(0.0, |p| p.denormalise(normalised))
-}
-
-/// A short text on the stack, for a value before it is copied out.
-#[derive(Default)]
-struct TextBuf {
-    buf: [u8; 32],
-    len: usize,
-}
-
-impl TextBuf {
-    fn as_str(&self) -> &str {
-        core::str::from_utf8(&self.buf[..self.len]).unwrap_or("")
-    }
-}
-
-impl core::fmt::Write for TextBuf {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let end = self.len + s.len();
-        let dst = self.buf.get_mut(self.len..end).ok_or(core::fmt::Error)?;
-        dst.copy_from_slice(s.as_bytes());
-        self.len = end;
-        Ok(())
-    }
+    kind(index).map_or(0.0, |k| k.denormalise(normalised))
 }
 
 /* ------------------------------------------------- the vowel, the latency */
@@ -416,7 +366,7 @@ pub extern "C" fn vz_latency(mode: f64, sample_rate: f64) -> u32 {
 /// A VOICE: five vowels' five formants and their bandwidths, in Hz, vowel
 /// by vowel (A E I O U), F1 first -- `freq[5 * vowel + formant]` -- and what
 /// a capture found. The textbook's (vz_voice_textbook) or a singer's
-/// (vz_voice_capture); a shell keeps one in its saved state.
+/// (vz_capture_run); a shell keeps one in its saved state.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VzVoice {
@@ -428,6 +378,10 @@ pub struct VzVoice {
     pub frames: [u32; 5],
     /// The singer's size against the textbook voice (1 for the textbook).
     pub scale: f64,
+    /// How far each vowel's frames agreed, 0 (unmeasured) to 1.
+    pub confidence: [f64; 5],
+    /// Whether the vowels were told apart by the order they were sung in.
+    pub by_order: bool,
 }
 
 impl VzVoice {
@@ -438,6 +392,8 @@ impl VzVoice {
             found: [false; 5],
             frames: [0; 5],
             scale: 1.0,
+            confidence: [0.0; 5],
+            by_order: false,
         }
     }
 
@@ -477,42 +433,111 @@ pub unsafe extern "C" fn vz_voice_check(voice: *mut VzVoice) -> bool {
             voice.freq = safe.freq;
             voice.bandwidth = safe.bandwidth;
             voice.scale = if voice.scale.is_finite() && voice.scale > 0.0 { voice.scale } else { 1.0 };
+            for c in voice.confidence.iter_mut() {
+                *c = if c.is_finite() { c.clamp(0.0, 1.0) } else { 0.0 };
+            }
             true
         }
         None => false,
     }
 }
 
-/// CAPTURE a voice from `frames` mono samples at `sample_rate`, into `out`:
-/// a singer's vowels, measured (vz-core's voice.rs). False, and nothing
-/// written, when nothing in it was sung -- or in a build without capture (the
-/// Move's). Slow and allocating: not the audio thread, nor one that must
-/// stay responsive.
+/// How a capture ended.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VzCaptured {
+    /// A voice: written to `out`.
+    Voice = 0,
+    /// Called off (vz_capture_cancel) before it finished.
+    Cancelled = 1,
+    /// Nothing in the recording was sung: silence, noise, too short, a rate
+    /// below 8 kHz -- or a build without capture (the Move's).
+    Unsung = 2,
+    /// Something was sung, but none of it near enough any vowel.
+    NoVowels = 3,
+}
+
+/// One capture that can be called off from another thread: made by the
+/// thread that starts it, run by the thread that does the work, cancelled by
+/// whoever must stop waiting.
+pub struct VzCapture {
+    cancel: AtomicBool,
+}
+
+/// A capture, ready to run. Allocates.
+#[no_mangle]
+pub extern "C" fn vz_capture_new() -> *mut VzCapture {
+    Box::into_raw(Box::new(VzCapture { cancel: AtomicBool::new(false) }))
+}
+
+/// # Safety
+/// `capture` is null or from `vz_capture_new`, no longer running, and not
+/// used after.
+#[no_mangle]
+pub unsafe extern "C" fn vz_capture_free(capture: *mut VzCapture) {
+    if !capture.is_null() {
+        drop(Box::from_raw(capture));
+    }
+}
+
+/// Call `capture` off: a run under way ends within a frame of the
+/// analysis, as `Cancelled`. Any thread.
 ///
 /// # Safety
-/// `samples` is null or holds `frames` floats; `out` is null or writable.
+/// `capture` is null or live.
 #[no_mangle]
-pub unsafe extern "C" fn vz_voice_capture(samples: *const f32, frames: usize, sample_rate: f64, out: *mut VzVoice) -> bool {
-    if samples.is_null() || out.is_null() {
-        return false;
+pub unsafe extern "C" fn vz_capture_cancel(capture: *const VzCapture) {
+    if let Some(c) = capture.as_ref() {
+        c.cancel.store(true, Ordering::Relaxed);
+    }
+}
+
+/// RUN `capture` over `frames` mono samples at `sample_rate`: a singer's
+/// vowels, measured (vz-core's voice.rs), into `out` when it is a voice --
+/// nothing is written otherwise. Slow and allocating: not the audio thread,
+/// nor one that must stay responsive.
+///
+/// # Safety
+/// `capture` is null or live; `samples` is null or holds `frames` floats;
+/// `out` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn vz_capture_run(
+    capture: *const VzCapture,
+    samples: *const f32,
+    frames: usize,
+    sample_rate: f64,
+    out: *mut VzVoice,
+) -> VzCaptured {
+    let (Some(capture), Some(out)) = (capture.as_ref(), out.as_mut()) else {
+        return VzCaptured::Unsung;
+    };
+    if samples.is_null() {
+        return VzCaptured::Unsung;
     }
     #[cfg(feature = "capture")]
     {
+        use vz_core::voice::{capture_cancellable, Failure};
         let x = std::slice::from_raw_parts(samples, frames);
-        if let Some(c) = vz_core::voice::capture(x, sample_rate) {
-            let mut v = VzVoice::of(&c.table);
-            v.found = c.found;
-            v.frames = c.frames;
-            v.scale = c.scale;
-            *out = v;
-            return true;
+        match capture_cancellable(x, sample_rate, &capture.cancel) {
+            Ok(c) => {
+                let mut v = VzVoice::of(&c.table);
+                v.found = c.found;
+                v.frames = c.frames;
+                v.scale = c.scale;
+                v.confidence = c.confidence;
+                v.by_order = c.by_order;
+                *out = v;
+                VzCaptured::Voice
+            }
+            Err(Failure::Cancelled) => VzCaptured::Cancelled,
+            Err(Failure::Unsung) => VzCaptured::Unsung,
+            Err(Failure::NoVowels) => VzCaptured::NoVowels,
         }
-        false
     }
     #[cfg(not(feature = "capture"))]
     {
-        let _ = (frames, sample_rate);
-        false
+        let _ = (capture, frames, sample_rate, out);
+        VzCaptured::Unsung
     }
 }
 

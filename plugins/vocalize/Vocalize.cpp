@@ -7,6 +7,7 @@
 #include "Vocalize.h"
 
 #include "Editor.h"
+#include "EngineParameter.h"
 #include "MachineSettings.h"
 #include "PluginEditor.h"
 
@@ -18,75 +19,24 @@ namespace ni::vz
 
 namespace
 {
-/* One of the engine's texts for a parameter: vz_param_key, _name or _text. */
-template <typename Read>
-juce::String engineText (Read read)
+/* The engine's table, as the shared adapter reads it (EngineParameter.h):
+ * every number on the engine's travel and in its words, every choice of its
+ * labels, automatable as the table says -- Mode not, since switching engines
+ * changes the latency, which a host takes note of between blocks. */
+struct Table
 {
-    char buf[64] {};
-    return read (buf, (int) sizeof buf) >= 0 ? juce::String::fromUTF8 (buf) : juce::String();
-}
-
-/*
- * A NUMBER ON THE ENGINE'S TRAVEL AND IN ITS WORDS. The range maps through
- * vz_param_normalise and _denormalise and lands on the table's resolution
- * (vz_param_snap): a value a host keeps as a float comes back as the number
- * that was set -- 1.3, not 1.29999995. The text is vz_param_text ("E>I 30 %"),
- * and typing is read by vz_param_parse -- which takes a vowel's letter, and
- * refuses text with no value in it, and then the value stays where it is.
- */
-class EngineFloat final : public juce::AudioParameterFloat
-{
-public:
-    EngineFloat (int i, const juce::String& key, const juce::String& title, const VzParamInfo& info)
-        : juce::AudioParameterFloat (
-              juce::ParameterID { key, 1 }, title,
-              juce::NormalisableRange<float> (
-                  (float) info.min, (float) info.max,
-                  [i] (float, float, float n) { return (float) vz_param_denormalise (i, (double) n); },
-                  [i] (float, float, float v) { return (float) vz_param_normalise (i, (double) v); },
-                  [i] (float, float, float v) { return (float) vz_param_snap (i, (double) v); }),
-              (float) info.default_value,
-              juce::AudioParameterFloatAttributes().withStringFromValueFunction (
-                  [i] (float v, int) { return engineText ([i, v] (char* b, int n) { return vz_param_text (i, (double) v, b, n); }); })),
-          index (i)
-    {
-    }
-
-    float getValueForText (const juce::String& text) const override
-    {
-        double v = 0.0;
-        if (! vz_param_parse (index, text.toRawUTF8(), &v))
-            return convertTo0to1 (get());
-        return convertTo0to1 ((float) v);
-    }
-
-private:
-    const int index;
+    using Info = NiParamInfo;
+    static bool info (int i, Info* out) { return vz_param_info (i, out); }
+    static bool isChoice (const Info& i) { return i.kind == NiParamKind_Choice; }
+    static int key (int i, char* b, int n) { return vz_param_key (i, b, n); }
+    static int name (int i, char* b, int n) { return vz_param_name (i, b, n); }
+    static int label (int i, int option, char* b, int n) { return vz_param_label (i, option, b, n); }
+    static int text (int i, double v, char* b, int n) { return vz_param_text (i, v, b, n); }
+    static bool parse (int i, const char* t, double* out) { return vz_param_parse (i, t, out); }
+    static double normalise (int i, double v) { return vz_param_normalise (i, v); }
+    static double denormalise (int i, double n) { return vz_param_denormalise (i, n); }
+    static double snap (int i, double v) { return vz_param_snap (i, v); }
 };
-
-std::unique_ptr<juce::RangedAudioParameter> fromEngine (int index)
-{
-    VzParamInfo info {};
-    const bool known = vz_param_info (index, &info);
-    jassert (known);
-    juce::ignoreUnused (known);
-
-    const auto key = engineText ([index] (char* b, int n) { return vz_param_key (index, b, n); });
-    const auto name = engineText ([index] (char* b, int n) { return vz_param_name (index, b, n); });
-    if (info.kind == VzParamKind_Choice)
-    {
-        /* A choice's labels are the engine's; switching engines changes the
-         * latency, which a host takes note of between blocks, so it is not
-         * offered for automation. */
-        juce::StringArray labels;
-        for (int option = 0; option <= (int) info.max; ++option)
-            labels.add (engineText ([index, option] (char* b, int n) { return vz_param_label (index, option, b, n); }));
-        return std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { key, 1 }, name, labels,
-                                                             (int) info.default_value,
-                                                             juce::AudioParameterChoiceAttributes().withAutomatable (false));
-    }
-    return std::make_unique<EngineFloat> (index, key, name, info);
-}
 
 bool monoOrStereo (const juce::AudioChannelSet& set)
 {
@@ -104,7 +54,7 @@ Processor::Processor()
     jassert (vz_param_count() == paramCount);
     for (int i = 0; i < paramCount; ++i)
     {
-        auto p = fromEngine (i);
+        auto p = ni::engineParameter<Table> (i);
         params[(size_t) i] = p.get();
         addParameter (p.release());
     }
@@ -120,8 +70,17 @@ Processor::Processor()
 Processor::~Processor()
 {
     stopTimer();
-    /* A capture under way reads `formats`: it ends before they go. */
-    captures.removeAllJobs (true, 30000);
+    /* A capture under way reads `formats`: it is called off -- the analysis
+     * within a frame, the read between chunks -- and waited for before they
+     * go. */
+    closing.store (true);
+    {
+        const juce::ScopedLock lock (voiceLock);
+        if (running != nullptr)
+            vz_capture_cancel (running.get());
+    }
+    if (captures != nullptr)
+        captures->removeAllJobs (true, 30000);
 }
 
 bool Processor::isBusesLayoutSupported (const BusesLayout& layout) const
@@ -176,6 +135,11 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     VzCore* core = vz_shell_begin (shell.get());
     for (int i = 0; i < paramCount; ++i)
         vz_core_set_num (core, i, plain (i));
+    if (resumeNext)
+    {
+        vz_core_resume (core);
+        resumeNext = false;
+    }
     float* left = buffer.getWritePointer (0);
     float* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
     vz_core_process_f32 (core, left, right, (uint32_t) frames);
@@ -186,6 +150,18 @@ void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 {
     const int frames = buffer.getNumSamples();
     beat.tick (readClock (getPlayHead()), frames);
+    /* The engine listens on, so the block after the bypass resumes from the
+     * sound it missed. */
+    if (frames > 0 && buffer.getNumChannels() > 0)
+    {
+        VzCore* core = vz_shell_begin (shell.get());
+        for (int i = 0; i < paramCount; ++i)
+            vz_core_set_num (core, i, plain (i));
+        vz_core_listen_f32 (core, buffer.getReadPointer (0),
+                            buffer.getNumChannels() > 1 ? buffer.getReadPointer (1) : nullptr, (uint32_t) frames);
+        vz_shell_end (shell.get(), (uint32_t) frames);
+        resumeNext = true;
+    }
     const int latency = getLatencySamples();
     if (latency <= 0)
     {
@@ -229,7 +205,7 @@ void Processor::setMotion (bool on)
 
 bool Processor::bipolar (int index) const
 {
-    VzParamInfo info {};
+    NiParamInfo info {};
     return vz_param_info (index, &info) && info.bipolar;
 }
 
@@ -260,6 +236,8 @@ juce::String Processor::recordingWildcard() const
 
 void Processor::capture (const juce::File& recording)
 {
+    auto job = std::shared_ptr<VzCapture> (vz_capture_new(), vz_capture_free);
+    std::uint32_t startedIn = 0;
     {
         const juce::ScopedLock lock (voiceLock);
         if (state.status == Voice::Status::capturing)
@@ -267,21 +245,27 @@ void Processor::capture (const juce::File& recording)
         state.status = Voice::Status::capturing;
         state.name = recording.getFileName();
         ++state.serial;
+        startedIn = generation;
+        running = job;
     }
+    if (captures == nullptr)
+        captures = std::make_unique<juce::ThreadPool> (
+            juce::ThreadPoolOptions {}.withThreadName ("NI Vocalize capture").withNumberOfThreads (1));
+
     /* Read, downmixed and analysed on the capture's thread; the answer goes
      * back to the message thread, to a processor that may be gone by then. */
-    captures.addJob ([this, recording, self = juce::WeakReference<Processor> (this)]
+    captures->addJob ([this, recording, job, startedIn, self = juce::WeakReference<Processor> (this)]
     {
         const auto name = recording.getFileName();
-        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (recording));
-        auto answer = [self, name] (std::optional<VzVoice> v, Voice::Status status)
+        auto answer = [self, name, startedIn] (std::optional<VzVoice> v, Voice::Status status)
         {
-            juce::MessageManager::callAsync ([self, name, v, status]
+            juce::MessageManager::callAsync ([self, name, v, status, startedIn]
             {
                 if (auto* p = self.get())
-                    p->captured (v, status, name);
+                    p->captured (v, status, name, startedIn);
             });
         };
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (recording));
         if (reader == nullptr || reader->sampleRate <= 0.0 || reader->numChannels == 0)
             return answer (std::nullopt, Voice::Status::unreadable);
 
@@ -293,6 +277,8 @@ void Processor::capture (const juce::File& recording)
         mono.reserve ((size_t) juce::jmax (0, frames));
         for (int at = 0; at < frames; at += chunk.getNumSamples())
         {
+            if (closing.load())
+                return;
             const int n = juce::jmin (chunk.getNumSamples(), frames - at);
             if (! reader->read (&chunk, 0, n, at, true, true))
                 return answer (std::nullopt, Voice::Status::unreadable);
@@ -305,16 +291,29 @@ void Processor::capture (const juce::File& recording)
             }
         }
         VzVoice v {};
-        if (vz_voice_capture (mono.data(), mono.size(), reader->sampleRate, &v))
-            return answer (v, Voice::Status::captured);
-        answer (std::nullopt, Voice::Status::unsung);
+        switch (vz_capture_run (job.get(), mono.data(), mono.size(), reader->sampleRate, &v))
+        {
+            case VzCaptured_Voice:     return answer (v, Voice::Status::captured);
+            case VzCaptured_Unsung:    return answer (std::nullopt, Voice::Status::unsung);
+            case VzCaptured_NoVowels:  return answer (std::nullopt, Voice::Status::noVowels);
+            case VzCaptured_Cancelled: return;
+        }
     });
 }
 
 /* A capture that failed changes what is said of the latest capture, never
- * what is sung: the voice before it, if any, stays, under its own name. */
-void Processor::captured (std::optional<VzVoice> v, Voice::Status status, const juce::String& name)
+ * what is sung: the voice before it, if any, stays, under its own name. A
+ * capture started before the last set was read answers for a set that is
+ * gone, and is dropped. */
+void Processor::captured (std::optional<VzVoice> v, Voice::Status status, const juce::String& name,
+                          std::uint32_t startedIn)
 {
+    {
+        const juce::ScopedLock lock (voiceLock);
+        if (startedIn != generation)
+            return;
+        running.reset();
+    }
     if (v)
     {
         useVoice (&*v, name, true);
@@ -328,7 +327,29 @@ void Processor::captured (std::optional<VzVoice> v, Voice::Status status, const 
 
 void Processor::forgetVoice()
 {
+    {
+        const juce::ScopedLock lock (voiceLock);
+        if (held)
+        {
+            forgotten = held;
+            forgottenName = state.sungName;
+        }
+    }
     useVoice (nullptr, {}, true);
+}
+
+void Processor::restoreVoice()
+{
+    std::optional<VzVoice> back;
+    juce::String name;
+    {
+        const juce::ScopedLock lock (voiceLock);
+        if (! forgotten || held)
+            return;
+        back = forgotten;
+        name = forgottenName;
+    }
+    useVoice (&*back, name, true);
 }
 
 void Processor::useVoice (const VzVoice* v, const juce::String& name, bool byHand)
@@ -336,12 +357,18 @@ void Processor::useVoice (const VzVoice* v, const juce::String& name, bool byHan
     {
         const juce::ScopedLock lock (voiceLock);
         held = v != nullptr ? std::optional<VzVoice> (*v) : std::nullopt;
+        if (v != nullptr)
+            forgotten.reset();
         state.status = v != nullptr ? Voice::Status::captured : Voice::Status::none;
         state.name = v != nullptr ? name : juce::String();
         state.sung = v != nullptr;
         state.sungName = state.name;
         for (size_t i = 0; i < state.found.size(); ++i)
+        {
             state.found[i] = v != nullptr && v->found[i];
+            state.confidence[i] = v != nullptr ? v->confidence[i] : 0.0;
+        }
+        state.restorable = forgotten.has_value() && v == nullptr;
         ++state.serial;
         vz_shell_post_voice (shell.get(), v);
     }
@@ -350,21 +377,28 @@ void Processor::useVoice (const VzVoice* v, const juce::String& name, bool byHan
 }
 
 /*
- * <voice name="take3.wav" scale="1.17">
- *   <vowel name="A" found="1" frames="48" freq="... five Hz ..." bandwidth="..."/>
+ * <voice format="1" name="take3.wav" scale="1.17" order="1">
+ *   <vowel name="A" found="1" frames="48" confidence="0.82"
+ *          freq="... five Hz ..." bandwidth="..."/>
  *   ... E I O U
  * </voice>
  *
- * Fifty numbers and what the capture found, never the recording.
+ * Fifty numbers and what the capture found, never the recording. `format`
+ * says which shape this is: a build that meets a newer one refuses it rather
+ * than misread it.
  */
+static constexpr int voiceFormat = 1;
+
 void Processor::writeExtraState (juce::XmlElement& root)
 {
     const juce::ScopedLock lock (voiceLock);
     if (! held)
         return;
     auto* e = root.createNewChildElement ("voice");
+    e->setAttribute ("format", voiceFormat);
     e->setAttribute ("name", state.sungName);
     e->setAttribute ("scale", held->scale);
+    e->setAttribute ("order", held->by_order ? 1 : 0);
     static const char* const names[] = { "A", "E", "I", "O", "U" };
     for (int vowel = 0; vowel < 5; ++vowel)
     {
@@ -372,6 +406,7 @@ void Processor::writeExtraState (juce::XmlElement& root)
         row->setAttribute ("name", names[vowel]);
         row->setAttribute ("found", held->found[vowel] ? 1 : 0);
         row->setAttribute ("frames", (int) held->frames[vowel]);
+        row->setAttribute ("confidence", juce::String (held->confidence[vowel], 3));
         juce::StringArray freq, width;
         for (int k = 0; k < VZ_FORMANTS; ++k)
         {
@@ -383,16 +418,28 @@ void Processor::writeExtraState (juce::XmlElement& root)
     }
 }
 
-/* A set without a voice, or with one that is not a voice, sings the
- * textbook's: what was captured before it was read is forgotten either way. */
+/* A set without a voice, with one that is not a voice, or with one of a
+ * format newer than this build reads, sings the textbook's: what was captured
+ * before it was read is forgotten either way, and a capture under way answers
+ * for a set that is gone. */
 void Processor::readExtraState (const juce::XmlElement& root)
 {
+    {
+        const juce::ScopedLock lock (voiceLock);
+        ++generation;
+        forgotten.reset();
+        /* Its answer would be dropped: it need not finish. */
+        if (running != nullptr)
+            vz_capture_cancel (running.get());
+        running.reset();
+    }
     const auto* e = root.getChildByName ("voice");
-    if (e == nullptr)
+    if (e == nullptr || e->getIntAttribute ("format", voiceFormat) > voiceFormat)
         return useVoice (nullptr, {}, false);
     VzVoice v {};
     vz_voice_textbook (&v);
     v.scale = e->getDoubleAttribute ("scale", 1.0);
+    v.by_order = e->getIntAttribute ("order") != 0;
     int vowel = 0;
     for (const auto* row : e->getChildWithTagNameIterator ("vowel"))
     {
@@ -417,6 +464,7 @@ void Processor::readExtraState (const juce::XmlElement& root)
         }
         v.found[vowel] = row->getIntAttribute ("found") != 0;
         v.frames[vowel] = (uint32_t) juce::jmax (0, row->getIntAttribute ("frames"));
+        v.confidence[vowel] = row->getDoubleAttribute ("confidence", 0.0);
         ++vowel;
     }
     if (vowel != 5 || ! vz_voice_check (&v))
@@ -446,11 +494,13 @@ juce::AudioProcessorEditor* Processor::createEditor()
 void Processor::editorOpened()
 {
     beat.setActive (true);
+    vz_shell_post_watching (shell.get(), true);
 }
 
 void Processor::editorClosed()
 {
     beat.setActive (false);
+    vz_shell_post_watching (shell.get(), false);
 }
 
 } // namespace ni::vz

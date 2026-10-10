@@ -52,6 +52,7 @@ enum : int
     mix,        // 0..100 %
     output,     // -24..+24 dB
     voice,      // 0..100 %, the textbook voice to the captured one
+    ceiling,    // switch: a soft ceiling at -0.3 dBFS
     count
 };
 } // namespace param
@@ -86,9 +87,10 @@ struct Picture
  *
  * WHAT IS SUNG is said apart from it, because a capture that fails keeps the
  * voice before it: `sung` is whether a captured voice is sung, `sungName` the
- * recording it came from, and `found` which of its vowels (A E I O U) were
- * measured rather than filled in from the textbook. `serial` changes
- * whenever any of it does.
+ * recording it came from, `found` which of its vowels (A E I O U) were
+ * measured rather than filled in from the textbook, and `confidence` how far
+ * each one's moments agreed, 0 to 1. `restorable` says a voice just
+ * forgotten can be brought back. `serial` changes whenever any of it does.
  */
 struct Voice
 {
@@ -98,13 +100,16 @@ struct Voice
         capturing,
         captured,
         unreadable,   // not a recording this plugin can read
-        unsung        // read, and nothing in it was a sung vowel
+        unsung,       // read, and nothing in it was sung
+        noVowels      // sung, but nothing near enough a vowel
     };
     Status status = Status::none;
     juce::String name;
     bool sung = false;
     juce::String sungName;
     std::array<bool, 5> found {};
+    std::array<double, 5> confidence {};
+    bool restorable = false;
     std::uint32_t serial = 0;
 };
 
@@ -129,6 +134,9 @@ public:
 
     /* Forget the captured voice: the textbook's is sung again. */
     virtual void forgetVoice() = 0;
+
+    /* Bring back the voice just forgotten, if voice().restorable. */
+    virtual void restoreVoice() = 0;
 
     /* The files a voice can be captured from, as a wildcard ("*.wav;*.aif"). */
     virtual juce::String recordingWildcard() const = 0;

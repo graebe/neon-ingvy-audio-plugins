@@ -14,7 +14,10 @@
 - **Your own voice.** Drag a recording of yourself singing A, E, I, O, U onto
   the window, or click **Capture…**: Vocalize learns your vowels and sings
   with them. **Voice** morphs from the textbook voice to yours. The captured
-  voice is saved with the set; the recording is not needed afterwards.
+  voice is saved with the set; the recording is not needed afterwards. Sung
+  A-E-I-O-U in order, each vowel is taken by its place; the chart shows how
+  sure each one is, and **Restore** brings back a voice forgotten by mistake.
+- **Ceiling**, on by default: nothing that leaves Vocalize passes full scale.
 - On the Ableton Move as a Schwung module, with the Time engine.
 
 ## v2026.10.10.1 — NI Side-Chain

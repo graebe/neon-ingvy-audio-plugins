@@ -10,7 +10,8 @@ THREE THREADS AND WHAT EACH MAY CALL:
   construction   vz_shell_create, _destroy
   the message    vz_shell_post_sample_rate,   applied at the top of the
   thread         vz_shell_post_reset,         next block
-                 vz_shell_post_voice
+                 vz_shell_post_voice,
+                 vz_shell_post_watching
                  vz_shell_read                the latest picture
   the audio      vz_shell_begin, vz_core_*,   one block, in that order
   thread         vz_shell_end
@@ -21,6 +22,11 @@ in and as the engine makes it, at `VZ_POINTS` frequencies from 50 Hz to
 10 kHz, equally spaced in pitch -- vz_core's `Engine::envelopes`, published
 about a hundred times a second (shell-core's cadence). With it the mode
 running and its latency, so an editor can say which engine it is drawing.
+
+ONLY WHILE WATCHED. The envelopes cost a few thousand sines a publish, so
+they are worked out only while a window shows them (vz_shell_post_watching);
+otherwise the picture keeps the last ones and says only the mode, the latency
+and that audio arrived.
 
 Everything else an editor shows is a host parameter, read by the editor from
 the host's side.
@@ -90,6 +96,8 @@ pub enum Command {
     Reset,
     /// A voice captured, restored from a set, or forgotten (the textbook's).
     Voice(VowelTable),
+    /// Whether a window shows the picture.
+    Watching(bool),
 }
 
 /// Commands between two blocks.
@@ -110,6 +118,7 @@ impl Model for VzCore {
             Command::Voice(table) => {
                 self.engine.set_voice(&table);
             }
+            Command::Watching(on) => self.watching = on,
         }
     }
 
@@ -118,7 +127,9 @@ impl Model for VzCore {
         f.mode = (self.engine.mode() == Mode::Spectral) as u32;
         f.latency = self.engine.latency() as u32;
         f.sample_rate = self.engine.sample_rate();
-        self.engine.envelopes(&f.hz, &mut f.input_db, &mut f.output_db);
+        if self.watching {
+            self.engine.envelopes(&f.hz, &mut f.input_db, &mut f.output_db);
+        }
     }
 
     /* Every parameter reaches the engine from the shell on the audio
@@ -196,6 +207,18 @@ pub unsafe extern "C" fn vz_shell_post_voice(shell: *const VzShell, voice: *cons
             true
         }
         None => false,
+    }
+}
+
+/// Whether a window shows the picture, from the top of the next block: the
+/// envelopes are worked out only while one does. Not the audio thread.
+///
+/// # Safety
+/// `shell` is null or live.
+#[no_mangle]
+pub unsafe extern "C" fn vz_shell_post_watching(shell: *const VzShell, watching: bool) {
+    if let Some(shell) = shell.as_ref() {
+        shell.bridge.post(Command::Watching(watching));
     }
 }
 

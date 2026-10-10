@@ -31,12 +31,24 @@
  *                 while a window is open
  *
  * A VOICE OF ONE'S OWN. capture() reads a recording -- WAV, AIFF, and on
- * macOS whatever the system decodes -- on a thread of its own, downmixes it,
- * and has the engine's analysis (vz_voice_capture) find the singer's vowels;
- * the answer comes back on the message thread, goes to the engine through the
- * shell (vz_shell_post_voice) and marks the set unsaved. The voice is kept in
- * the state as fifty numbers, never the audio, and checked on the way back in
- * (vz_voice_check). Voice, a parameter, says how much of it is sung.
+ * macOS whatever the system decodes -- on a thread made for the first
+ * capture, downmixes it, and has the engine's analysis (vz_capture_run) find
+ * the singer's vowels; the answer comes back on the message thread, goes to
+ * the engine through the shell (vz_shell_post_voice) and marks the set
+ * unsaved. The voice is kept in the state as fifty numbers and their
+ * confidences, never the audio, under a format number, and checked on the way
+ * back in (vz_voice_check). Voice, a parameter, says how much of it is sung.
+ *
+ *   closing     a capture under way is called off (vz_capture_cancel) and the
+ *               read stops between chunks, so a set closes within a frame
+ *   a set read  while a capture runs wins: the capture's answer is from
+ *               before it (a generation) and is dropped
+ *   Forget      keeps the voice for one Restore, until another is sung
+ *
+ * WHILE BYPASSED the engine still listens (vz_core_listen_f32), and the first
+ * block after resumes it from what it heard (vz_core_resume) -- never from
+ * what it held before the bypass. The picture's envelopes are worked out only
+ * while a window is open (vz_shell_post_watching).
  *
  * THE PANIC. On the Move, CC 120/123 reset the engine (vz-move); a VST3 in
  * Live is told to start afresh by being deactivated, which prepareToPlay
@@ -101,6 +113,7 @@ public:
     Voice voice() const override;
     void capture (const juce::File& recording) override;
     void forgetVoice() override;
+    void restoreVoice() override;
     juce::String recordingWildcard() const override;
     const Picture& picture() override;
 
@@ -129,8 +142,9 @@ private:
     /* A voice in hand: kept, sent to the engine, the set marked unsaved when
      * it is the person's doing (not a state being read). Null forgets. */
     void useVoice (const VzVoice*, const juce::String& name, bool byHand);
-    /* What a capture on its thread found, back on the message thread. */
-    void captured (std::optional<VzVoice>, Voice::Status, const juce::String& name);
+    /* What a capture on its thread found, back on the message thread, for
+     * the generation it was started in. */
+    void captured (std::optional<VzVoice>, Voice::Status, const juce::String& name, std::uint32_t generation);
 
     struct ShellDeleter
     {
@@ -151,9 +165,23 @@ private:
     mutable juce::CriticalSection voiceLock;
     std::optional<VzVoice> held;
     Voice state;
+    /* The voice Forget let go, for one Restore. */
+    std::optional<VzVoice> forgotten;
+    juce::String forgottenName;
+    /* Bumped by every set read: a capture's answer from an older one is
+     * dropped. */
+    std::uint32_t generation = 0;
+    /* The capture under way, to be called off. */
+    std::shared_ptr<VzCapture> running;
     juce::AudioFormatManager formats;
-    /* The capture's one thread; waited for when the processor goes. */
-    juce::ThreadPool captures { juce::ThreadPoolOptions{}.withThreadName ("NI Vocalize capture").withNumberOfThreads (1) };
+    /* The capture's one thread, made by the first capture -- an instance
+     * nobody captures with has none -- and waited for when the processor
+     * goes, after it is told to stop. */
+    std::unique_ptr<juce::ThreadPool> captures;
+    std::atomic<bool> closing { false };
+
+    /* The audio thread's: the next block resumes the engine after a bypass. */
+    bool resumeNext = false;
 
     /* The picture as the engine published it, and as the editor takes it. */
     std::unique_ptr<VzPicture> published;

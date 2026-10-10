@@ -12,9 +12,10 @@
  *   the class        one class, NI Vocalize from Neon Ingvy, filed as
  *                    Fx|Filter; an effect with a main bus in and out, no
  *                    MIDI either way
- *   the parameters   through the VST3 controller: the engine's nine by
+ *   the parameters   through the VST3 controller: the engine's ten by
  *                    name and the host's Bypass, their default texts, typing
  *                    read by the engine, Mode not offered for automation
+ *                    and Ceiling offered
  *   the latency      Mode's, as the host learns it: none for Time, one frame
  *                    for Spectral, two at 96 kHz -- the host told through
  *                    the controller's restart, on the message thread
@@ -63,9 +64,13 @@ void check (bool ok, const String& what, const String& detail = {})
 }
 
 /* The engine's parameters by name, in its table's order (vz_param_name). */
-const char* const names[VZ_RENDER_PARAMS_COUNT] = { "Mode", "Vocal", "Vowel", "Size", "Resonance", "Excite", "Mix", "Output", "Voice" };
+const char* const names[VZ_RENDER_PARAMS_COUNT] = { "Mode", "Vocal", "Vowel", "Size", "Resonance", "Excite", "Mix", "Output", "Voice", "Ceiling" };
 /* Mode's labels (vz_param_label): a choice is typed by its label. */
 const char* const modes[] = { "Time", "Spectral" };
+/* Ceiling's (vz_param_label). */
+const char* const switches[] = { "Off", "On" };
+/* The two choices' places in the table (vz_param_*). */
+constexpr int modeIndex = 0, ceilingIndex = 9;
 
 /* One frame of the Spectral engine at 44.1 and 48 kHz, and at 96 kHz. */
 constexpr int frame = 1024;
@@ -107,8 +112,8 @@ bool setMode (AudioPluginInstance& p, int mode)
     return true;
 }
 
-/* A patch, each value typed as text, as a user types it: Mode by its label,
- * every number as it is written in render_golden.h. */
+/* A patch, each value typed as text, as a user types it: Mode and Ceiling
+ * by their labels, every number as it is written in render_golden.h. */
 bool typePatch (AudioPluginInstance& p, const double* patch)
 {
     for (int i = 0; i < VZ_RENDER_PARAMS_COUNT; ++i)
@@ -116,7 +121,9 @@ bool typePatch (AudioPluginInstance& p, const double* patch)
         auto* param = byName (p, names[i]);
         if (param == nullptr)
             return false;
-        const auto text = i == 0 ? String (modes[(int) patch[0]]) : String (patch[i]);
+        const auto text = i == modeIndex      ? String (modes[(int) patch[i]])
+                          : i == ceilingIndex ? String (switches[(int) patch[i]])
+                                              : String (patch[i]);
         param->setValue (param->getValueForText (text));
     }
     return true;
@@ -210,7 +217,7 @@ void checkParameters (AudioPluginInstance& p)
     int found = 0;
     for (const auto* name : names)
         found += byName (p, name) != nullptr ? 1 : 0;
-    check (found == VZ_RENDER_PARAMS_COUNT, "the engine's nine, by name", String (found));
+    check (found == VZ_RENDER_PARAMS_COUNT, "the engine's ten, by name", String (found));
     check (p.getBypassParameter() != nullptr, "and the host's Bypass");
     if (found != VZ_RENDER_PARAMS_COUNT)
         return;
@@ -224,6 +231,9 @@ void checkParameters (AudioPluginInstance& p)
     check (! byName (p, "Mode")->isAutomatable(), "Mode is not offered for automation");
     check (byName (p, "Vowel")->isAutomatable(), "... and Vowel is");
     check (byName (p, "Mode")->getNumSteps() == 2, "Mode is a choice of two");
+    check (text ("Ceiling") == "On", "Ceiling starts On", text ("Ceiling"));
+    check (byName (p, "Ceiling")->getNumSteps() == 2, "Ceiling is a choice of two");
+    check (byName (p, "Ceiling")->isAutomatable(), "Ceiling is offered for automation");
 
     auto* vowel = byName (p, "Vowel");
     const auto typed = vowel->getText (vowel->getValueForText ("i"), 32);
@@ -344,6 +354,7 @@ constexpr double handScale = 1.15;
 std::unique_ptr<XmlElement> handMadeVoice()
 {
     auto voice = std::make_unique<XmlElement> ("voice");
+    voice->setAttribute ("format", 1);
     voice->setAttribute ("name", "Hand Made.wav");
     voice->setAttribute ("scale", handScale);
     const char* const letters[] = { "A", "E", "I", "O", "U" };

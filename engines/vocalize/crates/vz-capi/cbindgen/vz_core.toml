@@ -20,7 +20,8 @@ sys_includes = ["stdbool.h", "stddef.h", "stdint.h"]
 no_includes = true
 
 [export]
-include = ["VzParamInfo", "VzParamKind", "VzVoice"]
+include = ["NiParamInfo", "NiParamKind", "VzVoice", "VzCaptured"]
+exclude = ["ShortText"]
 
 [enum]
 prefix_with_name = true

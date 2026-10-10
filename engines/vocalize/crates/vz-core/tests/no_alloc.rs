@@ -34,6 +34,8 @@ const SETS: &[(&str, &str)] = &[
     ("mix", "50"),
     ("output", "-3 dB"),
     ("voice", "40"),
+    ("ceiling", "Off"),
+    ("ceiling", "On"),
     ("vocal", "words"),
     ("panic", "1"),
 ];
@@ -80,6 +82,10 @@ fn process_params_rates_and_midi_allocate_nothing() {
                 e.get_param(k, &mut out);
             }
             e.envelopes(&hz, &mut din, &mut dout);
+            if block % 30 == 11 {
+                e.listen_f32(&l, Some(&r));
+                e.resume();
+            }
         }
     });
 

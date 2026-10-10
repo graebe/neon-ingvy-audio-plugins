@@ -35,6 +35,7 @@ Ableton Move.
 | **Capture…**, **Voice** | learn your own voice from a recording of you singing A E I O U — drag it onto the window — and morph from the textbook voice to yours |
 | **Mode** | **Time**: no latency, resonant and punchy, like a talkbox. **Spectral**: smoother and more sung, one frame (about 21 ms) late |
 | **Mix**, **Output** | dry against vowel, and the level after |
+| **Ceiling** | a soft limit at −0.3 dBFS, on by default: nothing that leaves Vocalize clips |
 
 Every control glides, so automating any of them does not click — Vocal and
 Vowel are made to be automated. Switching Mode dips the sound for 20 ms and

@@ -25,25 +25,28 @@
 /* An integer, not (int)(SR * SECONDS), so arrays sized by it are not VLAs. */
 #define VZ_RENDER_FRAMES (44100 * 4)
 
-/* THE PATCHES, as the host's nine plain values in the parameters' order
+/* THE PATCHES, as the host's ten plain values in the parameters' order
  * (vz_param_*): Mode, Vocal 85 %, Vowel E>I 70 %, Size +30 %, Resonance
  * 65 %, Excite 40 %, Mix 90 %, Output -3 dB, Voice 100 % -- of the textbook
- * voice, as no voice is captured: the renders were recorded before Voice
- * existed, and did not move when it came. */
-#define VZ_RENDER_PARAMS_COUNT 9
-static const double VZ_RENDER_TIME[VZ_RENDER_PARAMS_COUNT] = { 0, 85, 1.7, 30, 65, 40, 90, -3, 100 };
-static const double VZ_RENDER_SPECTRAL[VZ_RENDER_PARAMS_COUNT] = { 1, 85, 1.7, 30, 65, 40, 90, -3, 100 };
+ * voice, as no voice is captured -- and the Ceiling on, as it starts. */
+#define VZ_RENDER_PARAMS_COUNT 10
+static const double VZ_RENDER_TIME[VZ_RENDER_PARAMS_COUNT] = { 0, 85, 1.7, 30, 65, 40, 90, -3, 100, 1 };
+static const double VZ_RENDER_SPECTRAL[VZ_RENDER_PARAMS_COUNT] = { 1, 85, 1.7, 30, 65, 40, 90, -3, 100, 1 };
 
 /*
  * FNV-1a over the left channel's float bytes, recorded 2026-10-10 at the
- * first render.
+ * first render, and again the same day for one reason: the Time engine's
+ * level correction was capped at +12 dB (it was +24), which changes both
+ * renders where the correction rises at the onset -- the Spectral patch
+ * starts in Time and dips over. The new Ceiling, on in both patches, does not
+ * act on them: their peaks (0.92, 0.89) stay below its -0.3 dBFS knee.
  *
  * If one fires, the DSP changed: re-run vz_render_ab with --dump, satisfy
  * yourself that the change was intended, and record the new value WITH A
  * REASON.
  */
-static const uint64_t VZ_RENDER_GOLDEN_TIME = 0xBD9CEE92AE266486ull;
-static const uint64_t VZ_RENDER_GOLDEN_SPECTRAL = 0x68AE64588DDF0663ull;
+static const uint64_t VZ_RENDER_GOLDEN_TIME = 0x0DFA8145EA8542E3ull;
+static const uint64_t VZ_RENDER_GOLDEN_SPECTRAL = 0x6A472BBB3C2A375Eull;
 
 static inline uint64_t vz_render_fnv1a(uint64_t h, const void *p, size_t n)
 {
