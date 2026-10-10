@@ -71,10 +71,10 @@ rather than test the wrong architecture:
   the vtable crate) under `cargo test`: the `chain_params` contract — every
   engine parameter declared, or deliberately absent and named as such — the
   host panic, CC 120 or CC 123, which resets the Side-Chain and which the
-  Trance Gate accepts without changing a sample.
+  Trance Gate accepts without changing a sample, and the render A/B (below).
 - **The module's test script** (`MODULE_TEST_SCRIPT`), the Trance Gate's
   `engines/trance-gate/tests/run.sh`: its C suites against the engine's ABI,
-  and the golden render's md5.
+  the golden render's md5, and the state blob's time budget (below).
 
 The full tier runs it for every module (`ctest -L move`), one at a time, since
 both build into `target/aarch64-unknown-linux-gnu/`.
@@ -99,7 +99,7 @@ SCHWUNG_COMMIT=a6f7ec9e5cf4d0df172a1dbc00b29d0b5eb67124
 
 The format is deliberately trivial, for scripts and CI to read: `KEY=VALUE`
 lines, no quotes or spaces, `#` comment lines — split on the first `=`, or
-source it from a POSIX shell.
+source it from a POSIX shell. `ctest -R schwung_versions` holds it to that.
 
 `modules/_shared/schwung.sh` is the only way in:
 
@@ -129,9 +129,8 @@ Mac side before the container. They used to search for any `schwung/` checkout
 above the repository and test against whatever version it was on.
 
 To move the pin: change all three keys, run `schwung.sh headers` and vendor
-what it reports, then check the offsets in ni-schwung's
-`the_host_table_matches_the_c_layout` against the new headers. They are
-copied from `plugin_api_v1.h` by hand, so nothing compares them for you.
+what it reports, then the quick tier — `ni_schwung_abi` says whether the
+tables still match the Rust (below).
 
 ### The host's tables
 
