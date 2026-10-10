@@ -1,0 +1,1 @@
+{"tier":"full","products":[],"sha":"7cf0fa20d0054742e98c494619b88cc08df8ae4f","date":"2026-10-10T23:30:57.683Z","host":"MacBookPro.localdomain","rustc":"rustc 1.99.0 (b940084d7 2026-09-28)","result":"pass","results":{"tests":104,"duration_s":678,"build_type":"Release","archs":"arm64;x86_64","gaps":0,"waived":"none","untested":"none"}}
