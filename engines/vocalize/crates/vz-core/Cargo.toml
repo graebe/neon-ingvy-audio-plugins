@@ -1,0 +1,37 @@
+[package]
+name = "vz-core"
+version = "2026.10.10+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "NI Vocalize DSP engine: any sound, more and more a voice singing a vowel"
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+# THE SPECTRAL ENGINE, ON BY DEFAULT: the plugin's. vz-move builds without it,
+# so the Move module carries the Time engine only and no FFT (src/lib.rs).
+[features]
+default = ["spectral"]
+spectral = ["dep:realfft"]
+
+[dependencies]
+# The DSP the products share: the parameter glide, C-compatible text, and the
+# antialiased soft clip Excite is made of.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# MIDI bytes to messages, for the panic (CC 120/123), as sc-core takes it:
+# core-only without its default `std` feature.
+wmidi = { workspace = true }
+# The Spectral engine's transforms (src/spectral.rs), with the SIMD paths
+# spectro-core takes: AVX and SSE on x86_64, NEON on aarch64.
+realfft = { workspace = true, optional = true, features = ["avx", "sse", "neon"] }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+proptest = { workspace = true, features = ["std"] }
+# The tests' noise, seeded.
+fastrand = { workspace = true }
+# The tests' spectra, with or without the Spectral engine.
+realfft = { workspace = true }

@@ -54,6 +54,11 @@ members = [
     # owner's call, 2026-10-06); the core keeps nothing that would stop one.
     "engines/chord-detector/crates/cd-core",  # what is sounding, and its name
     "engines/chord-detector/crates/cd-capi",  # the C ABI -> the plugin
+    # NI Vocalize: one core, two wrappers, the Side-Chain's shape. The Move's
+    # wrapper builds the core without its Spectral engine.
+    "engines/vocalize/crates/vz-core",        # the DSP
+    "engines/vocalize/crates/vz-capi",        # the C ABI -> the plugin
+    "engines/vocalize/crates/vz-move",        # the Schwung vtable -> the module
     # The animated ground's beat clock. Like audio-bus it is not a
     # product: it ships inside EVERY editor, because the design system gives
     # every window the same ground. It depends on no product in return.

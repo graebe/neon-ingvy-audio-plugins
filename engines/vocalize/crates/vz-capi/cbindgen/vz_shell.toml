@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# vz_shell.h, from src/shell.rs (build.rs, through
+# engines/shared/cbindgen/capi_header.rs).
+language = "C"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+//
+// NI Vocalize's engine as a plugin shell holds it, `vz_shell_*`.
+// GENERATED at build time by cbindgen from
+// engines/vocalize/crates/vz-capi/src/shell.rs -- edit that, never this."""
+include_guard = "VZ_SHELL_H"
+cpp_compat = true
+documentation = true
+documentation_style = "c99"
+usize_is_size_t = true
+sys_includes = ["stdbool.h", "stddef.h", "stdint.h"]
+no_includes = true
+# VzCore, which vz_shell_begin lends, is the core header's.
+includes = ["vz_core.h"]
+
+[export]
+include = ["VzPicture"]
+exclude = ["VzCore"]
+
+[enum]
+prefix_with_name = true

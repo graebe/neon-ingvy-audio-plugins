@@ -1,0 +1,29 @@
+[package]
+name = "vz-move"
+version = "2026.10.10+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The Schwung audio_fx v2 shell for NI Vocalize"
+publish.workspace = true
+
+[lib]
+name = "vz_move"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# Without the Spectral engine: the stripped-down module is the Time engine,
+# with no latency and no FFT (vz-core's src/lib.rs).
+vz-core = { path = "../vz-core", default-features = false }
+# Pulled in so ONE staticlib carries both surfaces: the Schwung vtable and the
+# vz_core_* ABI the C tests link. Without its `shell` and `spectral`
+# features: the plugin shell, the ground and the FFT are the plugin's.
+vz-capi = { path = "../vz-capi", default-features = false }
+# The Schwung audio_fx v2 glue, shared with every module.
+ni-schwung = { path = "../../../shared/crates/ni-schwung" }
+# The transport the vtable hands over.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+
+[dev-dependencies]
+# The chain_params tests read the declaration as JSON (src/params.rs).
+serde_json = { workspace = true, features = ["alloc"] }
