@@ -45,7 +45,19 @@ static const double VZ_RENDER_SPECTRAL[VZ_RENDER_PARAMS_COUNT] = { 1, 85, 1.7, 3
  * yourself that the change was intended, and record the new value WITH A
  * REASON.
  */
+/*
+ * EACH SLICE OF A UNIVERSAL BUILD IS PINNED ON ITS OWN. The x86_64 slice's Time
+ * render differs from arm64's in one sample of 176 400, by one float step
+ * (1.9e-9): the two platforms' maths libraries round one result differently.
+ * The sound is the same; bit for bit, it is two renders, so each slice is held
+ * to its own (measured 2026-10-10 under Rosetta, vz_host_rosetta). The
+ * Spectral render is the same on both.
+ */
+#if defined(__x86_64__)
+static const uint64_t VZ_RENDER_GOLDEN_TIME = 0x414FBDEA2A437C04ull;
+#else
 static const uint64_t VZ_RENDER_GOLDEN_TIME = 0x0DFA8145EA8542E3ull;
+#endif
 static const uint64_t VZ_RENDER_GOLDEN_SPECTRAL = 0x6A472BBB3C2A375Eull;
 
 static inline uint64_t vz_render_fnv1a(uint64_t h, const void *p, size_t n)
