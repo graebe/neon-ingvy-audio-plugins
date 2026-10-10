@@ -7,6 +7,7 @@
  *
  *   node scripts/test-summary.mjs --junit <ctest.xml> --capabilities <file>
  *        --title <text> [--waive <name>]... [--gate] [--out <file.md>]
+ *        [--record <file>]
  *
  * A green ctest says that nothing which RAN failed. It says nothing about what
  * did not run: a test Docker was needed for, and Docker was missing, is simply
@@ -21,9 +22,20 @@
  * waived it by name: a capability (`docker`, `rosetta`, `node`) or a test
  * (`schwung_pin`). A waiver is written into the summary too, so a gap that was
  * accepted is still a gap on the record. Without --gate it only reports.
+ *
+ * NOTHING TO READ IS NOT "NOTHING MISSING". A report with no test cases in it,
+ * or a build with no capabilities file, says nothing about what ran -- a
+ * configure that never wrote one, a ctest that never wrote its report -- so
+ * under --gate either is an error rather than a clean slate.
+ *
+ * --record writes the verdict as key=value lines for scripts/test.sh, which
+ * puts them in the run's note (scripts/release.mjs attest): `gaps` (how many
+ * were not waived), `waived` and `untested` (names, comma-separated, or
+ * `none`). So a release shows what its run did not test, gated or not.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 /** The test cases in a ctest JUnit report: name, status, why it did not run,
  * and its labels. */
@@ -100,6 +112,16 @@ export function render({ title, cases, found, toolchain }) {
   return lines.join('\n') + '\n';
 }
 
+/** The verdict as key=value lines, for the run's note. */
+export function record(found) {
+  const names = (gs) => (gs.length ? gs.map((g) => g.name).join(',') : 'none');
+  return [
+    `gaps=${found.filter((g) => !g.waived).length}`,
+    `waived=${names(found.filter((g) => g.waived))}`,
+    `untested=${names(found)}`,
+  ].join('\n') + '\n';
+}
+
 function tool(cmd, args) {
   try {
     return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')[0].trim();
@@ -117,10 +139,15 @@ function main(argv) {
     else if (a.startsWith('--')) opt[a.slice(2)] = argv[++i];
   }
   if (!opt.junit || !opt.title) {
-    process.stderr.write('usage: test-summary.mjs --junit <xml> --title <text> [--capabilities <file>] [--waive <name>]... [--gate] [--out <md>]\n');
+    process.stderr.write('usage: test-summary.mjs --junit <xml> --title <text> [--capabilities <file>] '
+      + '[--waive <name>]... [--gate] [--out <md>] [--record <file>]\n');
     return 2;
   }
-  const cases = parseJunit(readFileSync(opt.junit, 'utf8'));
+  const unreadable = [];
+  const cases = existsSync(opt.junit) ? parseJunit(readFileSync(opt.junit, 'utf8')) : [];
+  if (!cases.length) unreadable.push(`${opt.junit} holds no test cases`);
+  if (opt.capabilities && !existsSync(opt.capabilities))
+    unreadable.push(`${opt.capabilities} is missing: configure did not record what the build lacks`);
   const capabilities = opt.capabilities && existsSync(opt.capabilities)
     ? parseCapabilities(readFileSync(opt.capabilities, 'utf8')) : [];
   const found = gaps(cases, capabilities, opt.waive);
@@ -132,6 +159,12 @@ function main(argv) {
   const md = render({ title: opt.title, cases, found, toolchain });
   if (opt.out) writeFileSync(opt.out, md);
   const open = found.filter((g) => !g.waived);
+  if (opt.record) writeFileSync(opt.record, record(found));
+  for (const u of unreadable) process.stderr.write(`  CANNOT TELL ${u}\n`);
+  if (opt.gate && unreadable.length) {
+    process.stderr.write('\nWhat this run did not test cannot be told, so it is not passed as complete.\n');
+    return 1;
+  }
   for (const g of found) {
     process.stdout.write(`  ${g.waived ? 'waived ' : 'MISSING'} ${g.kind} ${g.name}: ${g.why}\n`);
   }
@@ -143,6 +176,9 @@ function main(argv) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+/* Run as a script, however it was named: through a symlink (/tmp is
+ * /private/tmp) or a path with a space in it, comparing URLs as strings
+ * never matched, main() never ran, and the gate passed by exiting 0. */
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   process.exit(main(process.argv.slice(2)));
 }

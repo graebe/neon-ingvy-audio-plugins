@@ -8,12 +8,12 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, symlinkSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseJunit, parseCapabilities, gaps, render } from '../scripts/test-summary.mjs';
+import { parseJunit, parseCapabilities, gaps, render, record } from '../scripts/test-summary.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'test-summary.mjs');
 
@@ -75,4 +75,35 @@ test('the gate fails on an unwaived gap, passes once each is waived, and writes 
   const report = spawnSync(process.execPath, [SCRIPT, '--junit', join(dir, 'j.xml'), '--title', 'x'], { encoding: 'utf8' });
   assert.equal(report.status, 0);
   assert.equal(spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }).status, 2);
+});
+
+test('nothing to read is no verdict: under the gate, an empty report or no capabilities file fails', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ni-summary-'));
+  writeFileSync(join(dir, 'j.xml'), JUNIT);
+  writeFileSync(join(dir, 'empty.xml'), '<?xml version="1.0"?>\n<testsuite tests="0"></testsuite>\n');
+  writeFileSync(join(dir, 'caps.txt'), '');
+  const run = (junit, caps) => spawnSync(process.execPath, [SCRIPT, '--junit', join(dir, junit),
+    '--capabilities', join(dir, caps), '--title', 'full', '--gate', '--waive', 'site_links'], { encoding: 'utf8' });
+  assert.equal(run('j.xml', 'caps.txt').status, 0, 'a report and an empty capabilities file: all ran');
+  assert.equal(run('empty.xml', 'caps.txt').status, 1, 'a report with no test cases');
+  assert.equal(run('missing.xml', 'caps.txt').status, 1, 'no report at all');
+  assert.equal(run('j.xml', 'missing.txt').status, 1, 'no capabilities file');
+});
+
+test('run through a symlink and a path with a space, the gate still runs', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ni summary '));
+  mkdirSync(join(dir, 'a b'));
+  const link = join(dir, 'a b', 'test-summary.mjs');
+  symlinkSync(SCRIPT, link);
+  writeFileSync(join(dir, 'j.xml'), JUNIT);
+  writeFileSync(join(dir, 'caps.txt'), '');
+  const r = spawnSync(process.execPath, [link, '--junit', join(dir, 'j.xml'), '--capabilities',
+    join(dir, 'caps.txt'), '--title', 'full', '--gate'], { encoding: 'utf8' });
+  assert.equal(r.status, 1, 'site_links did not run and is not waived');
+});
+
+test('the record names what was waived and what did not run, for the run\'s note', () => {
+  const found = gaps(parseJunit(JUNIT), parseCapabilities('docker the Move tests\n'), ['docker']);
+  assert.equal(record(found), 'gaps=1\nwaived=docker\nuntested=docker,site_links\n');
+  assert.equal(record([]), 'gaps=0\nwaived=none\nuntested=none\n');
 });

@@ -222,7 +222,8 @@ A green ctest says nothing that ran failed. It does not say what did not run:
 a test whose tool is missing is not registered at all (Docker for the `move`
 tests, Rosetta for the bus across architectures, node for the tree checks),
 and a test whose input is missing reports Skipped (`schwung_pin` and
-`tg_move_ui` when the pinned Schwung is neither cached nor fetchable). So
+`tg_move_ui` when the pinned Schwung is neither cached nor fetchable;
+`shell_handoff` while a Listen-In in Live holds the bus slot it tests on). So
 every tier writes down what it covered.
 
 Configure records each missing capability in `<build>/ni-capabilities.txt`
@@ -243,6 +244,12 @@ NI_WAIVE=rosetta scripts/test.sh full                # the same, from the enviro
 
 A waiver is written into the summary too, so a gap that was accepted is still
 a gap on the record. The quick tier and a product run report and do not gate.
+Nothing to read is not a clean slate: under the gate, a JUnit report with no
+test cases in it, or a build with no `ni-capabilities.txt`, fails the run,
+because neither can say what ran. A full or product run's note
+(`refs/notes/ni-tests`, [Build & CI](ci-live.md)) carries the verdict as
+well -- `gaps`, `waived` and `untested` -- so a release shows what the run it
+relies on did not test.
 
 ## Product — one product, as its release runs it
 

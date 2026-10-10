@@ -51,3 +51,17 @@ if ! command -v cargo >/dev/null 2>&1; then
     export PATH
     unset _tg_cargo _tg_dir
 fi
+
+# THE PINNED TOOLCHAIN, WHEREVER CARGO RUNS. rustup finds rust-toolchain.toml
+# by walking up from the current directory, so cargo run from a build
+# directory outside the checkout used the default toolchain while every record
+# of the run named the pin. RUSTUP_TOOLCHAIN says it from anywhere. An
+# environment that already sets it -- the module image does -- is left alone.
+if [ -z "${RUSTUP_TOOLCHAIN:-}" ]; then
+    _tg_toml="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)/rust-toolchain.toml"
+    if [ -f "$_tg_toml" ]; then
+        RUSTUP_TOOLCHAIN="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$_tg_toml")"
+        [ -n "$RUSTUP_TOOLCHAIN" ] && export RUSTUP_TOOLCHAIN || unset RUSTUP_TOOLCHAIN
+    fi
+    unset _tg_toml
+fi

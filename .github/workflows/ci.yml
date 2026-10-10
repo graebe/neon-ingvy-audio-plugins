@@ -107,7 +107,13 @@ jobs:
       - name: Ninja and ccache
         run: brew install ninja ccache
 
+      # WHAT A RUNNER CANNOT TEST, WAIVED BY NAME (scripts/test.sh, --waive):
+      # GitHub's macOS image has no Docker, so the Move modules' tests are not
+      # registered, and Rosetta is not promised. Without these the full tier's
+      # gate fails every run here; with them the summary still lists both.
       - name: Full tier
+        env:
+          NI_WAIVE: docker,rosetta
         run: scripts/test.sh full
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2

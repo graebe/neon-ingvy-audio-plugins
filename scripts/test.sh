@@ -35,8 +35,8 @@
 #       (<Bundle>_VST3) and the test programs of that product and the shared
 #       ones (ni_tests_<product>, ni_tests_shared: cmake/NiTest.cmake), then
 #       `ctest -L '^product:(<product>|shared)$'` over the quick and full
-#       tiers -- no other product's tests, no coverage -- then the validators
-#       over that one bundle. <product> is the versions.json key (trance-gate,
+#       tiers -- no other product's tests, no coverage, no site -- then the
+#       validators over that one bundle. <product> is the versions.json key (trance-gate,
 #       side-chain ...). Configured with the release preset, as the full tier
 #       is; build/ by default. A failing test of another product never stops
 #       this one's release.
@@ -47,8 +47,9 @@
 #
 #   --waive <name>[,<name>...] (repeatable; also NI_WAIVE in the environment)
 #   accepts a gap by name: a capability the build lacks (docker, rosetta,
-#   node) or a test that did not run (schwung_pin and tg_move_ui, offline
-#   with no cached Schwung).
+#   node) or a test that did not run: schwung_pin and tg_move_ui offline
+#   with no cached Schwung, shell_handoff while a Listen-In in Live holds the
+#   bus slot it tests on.
 #
 # WHAT A RUN DID NOT TEST IS WRITTEN DOWN. Every tier writes
 # <build>/test-summary.md (scripts/test-summary.mjs): the counts, each test
@@ -56,6 +57,8 @@
 # (<build>/ni-capabilities.txt), and the toolchain. A release attaches it.
 # The full tier is the gate: it fails while any gap is not waived by name, so
 # a green full run means everything ran -- not that whatever ran was green.
+# A full or product run's note (below) carries its gaps and waivers too, gated
+# or not, so a release shows what its run did not test.
 #
 # NOTHING IS READ FROM OR WRITTEN TO WHERE PLUGINS ARE INSTALLED. Every test
 # that hosts a bundle loads it from <build>/out by path, and no preset copies a
@@ -80,7 +83,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 usage() {
-    sed -n '/^#   scripts\/test.sh quick/,/^#   configured\./p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '/^#   scripts\/test.sh quick/,/^# WHAT A RUN DID NOT TEST/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -162,7 +165,7 @@ summary() {
     stage "what this run did not test"
     node "$ROOT/scripts/test-summary.mjs" --junit "$BUILD/ctest-$tier.xml" \
         --capabilities "$BUILD/ni-capabilities.txt" --title "$title" \
-        --out "$BUILD/test-summary.md" --waive "$waive" "$@" \
+        --out "$BUILD/test-summary.md" --record "$BUILD/test-gaps.env" --waive "$waive" "$@" \
         || { printf '\n%s: not everything was tested (%s)\n' "$title" "$BUILD/test-summary.md" >&2; exit 1; }
 }
 
@@ -193,12 +196,12 @@ full() {
 }
 
 # What a product run selects, for the run and for its record.
-product_labels=(-L "^product:($name|shared)\$" -LE '^(coverage|e2e)$')
+product_labels=(-L "^product:($name|shared)\$" -LE '^(coverage|e2e|site)$')
 
 # The product's bundle and its tests, and nothing of another product's: a
 # build of only those targets, and a ctest of only those labels. Every test
-# carries `full`, so the tier needs no -L of its own; coverage and e2e are the
-# kinds a product's run leaves out.
+# carries `full`, so the tier needs no -L of its own; coverage, e2e and the
+# site's links (it builds no site) are the kinds a product's run leaves out.
 product() {
     timed "build $bundle and the $name and shared tests" --build "$BUILD" -- \
         quietly "build-$name" cmake --build "$BUILD" \
@@ -251,6 +254,7 @@ record() {
         --result "duration_s=$(( SECONDS - $1 ))" \
         --result "build_type=$(sed -n 's/^CMAKE_BUILD_TYPE:[A-Z]*=//p' "$cache")" \
         --result "archs=$(sed -n 's/^CMAKE_OSX_ARCHITECTURES:[A-Z]*=//p' "$cache")" \
+        $(sed 's/^/--result /' "$BUILD/test-gaps.env") \
         || printf '\nNOT RECORDED (above): the run passed, and no release can rely on it.\n' >&2
 }
 

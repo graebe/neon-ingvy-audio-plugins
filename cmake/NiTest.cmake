@@ -156,15 +156,6 @@ function(ni_test_tiers)
     endforeach()
 endfunction()
 
-# What builds the tests, once every directory has placed its programs: called
-# at the end of tests/CMakeLists.txt.
-#
-#   ni_tests_<product>  that product's test programs (product:<product>)
-#   ni_tests_shared     the shared ones (product:shared)
-#   ni_tests            all of them
-#
-# None builds a plugin bundle; a test that hosts one needs its <Bundle>_VST3
-# too, which is what `scripts/test.sh product` adds.
 # WHAT THIS BUILD CANNOT TEST, SAID ONCE AND KEPT. A test that needs something
 # the machine does not have -- node, Docker, Rosetta -- is not registered, and
 # the configure says so in a line that scrolls away. Each such gap is recorded
@@ -177,6 +168,15 @@ function(ni_missing_capability name what)
     message(STATUS "${name} not found -- ${what}")
 endfunction()
 
+# What builds the tests, once every directory has placed its programs: called
+# at the end of tests/CMakeLists.txt.
+#
+#   ni_tests_<product>  that product's test programs (product:<product>)
+#   ni_tests_shared     the shared ones (product:shared)
+#   ni_tests            all of them
+#
+# None builds a plugin bundle; a test that hosts one needs its <Bundle>_VST3
+# too, which is what `scripts/test.sh product` adds.
 function(ni_test_targets)
     get_property(missing GLOBAL PROPERTY NI_MISSING_CAPABILITIES)
     set(text "")

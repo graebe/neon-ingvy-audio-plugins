@@ -61,3 +61,14 @@ for (const image of IMAGES) {
     }
   });
 }
+
+test('cargo runs the pin from anywhere: CMake and the shell both export it', () => {
+  /* rustup finds rust-toolchain.toml from the current directory, and ctest
+   * runs cargo from the build directory, which may be outside the checkout. */
+  const cmake = read('cmake/RustToolchain.cmake');
+  assert.match(cmake, /rust-toolchain\.toml/, 'RustToolchain.cmake reads the pin');
+  assert.match(cmake, /list\(APPEND RUST_ENV RUSTUP_TOOLCHAIN=\$\{RUST_TOOLCHAIN\}\)/, 'RUST_ENV carries it');
+  const sh = read('scripts/rust-env.sh');
+  assert.match(sh, /rust-toolchain\.toml/, 'rust-env.sh reads the pin');
+  assert.match(sh, /export RUSTUP_TOOLCHAIN/, 'rust-env.sh exports it');
+});

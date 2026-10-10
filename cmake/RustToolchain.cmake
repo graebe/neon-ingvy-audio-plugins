@@ -90,4 +90,24 @@ if (CMAKE_OSX_DEPLOYMENT_TARGET)
     list(APPEND RUST_ENV MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET})
 endif()
 
+# THE PINNED TOOLCHAIN, WHEREVER CARGO RUNS. ctest runs cargo from the build
+# directory, and rustup finds rust-toolchain.toml by walking up from the
+# current directory -- so a build directory outside the checkout ran the
+# default toolchain while every record of the run named the pin. RUST_ENV
+# carries it explicitly. An environment that already sets RUSTUP_TOOLCHAIN --
+# the module image does -- keeps its own.
+set(_rust_toolchain_file ${CMAKE_CURRENT_LIST_DIR}/../rust-toolchain.toml)
+if (EXISTS ${_rust_toolchain_file})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_rust_toolchain_file})
+endif()
+if (DEFINED ENV{RUSTUP_TOOLCHAIN})
+    set(RUST_TOOLCHAIN $ENV{RUSTUP_TOOLCHAIN})
+elseif (EXISTS ${_rust_toolchain_file})
+    file(STRINGS ${_rust_toolchain_file} _rust_channel REGEX "^channel *= *\"")
+    string(REGEX REPLACE "^channel *= *\"([^\"]*)\".*" "\\1" RUST_TOOLCHAIN "${_rust_channel}")
+endif()
+if (RUST_TOOLCHAIN)
+    list(APPEND RUST_ENV RUSTUP_TOOLCHAIN=${RUST_TOOLCHAIN})
+endif()
+
 message(STATUS "cargo: ${RUST_CARGO}")
