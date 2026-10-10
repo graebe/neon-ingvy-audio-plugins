@@ -428,21 +428,45 @@ function parseUiCached(raw) {
     return parsed;
 }
 
+/*
+ * WHERE EACH FIELD OF THE `ui` READOUT SITS, BY NAME.
+ *
+ * The DSP names its fields (`ui_fields`, tg-core's params.rs), so this reads
+ * them by name rather than by a count that only agreed by convention. A DSP
+ * from before the names answers nothing, and the positions it always had are
+ * the fallback. Asked once: the layout cannot change while the module runs.
+ */
+const UI_FIELDS_BEFORE_NAMES = ["steps", "ties", "length", "phase", "ms_step",
+                                "moving", "cursor", "depths", "orders", "slot"];
+let uiAt = null;
+
+function uiFieldIndex() {
+    if (uiAt) return uiAt;
+    const raw = typeof host_module_get_param === "function"
+        ? host_module_get_param("ui_fields") : null;
+    const names = typeof raw === "string" && raw ? raw.split(":") : UI_FIELDS_BEFORE_NAMES;
+    uiAt = {};
+    names.forEach((n, i) => { uiAt[n] = i; });
+    return uiAt;
+}
+
 function parseUi(raw) {
     if (typeof raw !== "string" || !raw) return null;
-    const f = raw.split(":");
-    if (f.length < 7) return null;
-    const steps  = maskFromHex(f[0]);
-    const ties   = maskFromHex(f[1]);
-    const length = parseInt(f[2], 10);
-    const phase  = parseFloat(f[3]);
-    const msStep = parseFloat(f[4]);
-    const moving  = f[5] === "1";
+    const all = raw.split(":");
+    if (all.length < 7) return null;
+    const at = uiFieldIndex();
+    const field = (name) => (at[name] === undefined ? undefined : all[at[name]]);
+    const steps  = maskFromHex(field("steps"));
+    const ties   = maskFromHex(field("ties"));
+    const length = parseInt(field("length"), 10);
+    const phase  = parseFloat(field("phase"));
+    const msStep = parseFloat(field("ms_step"));
+    const moving  = field("moving") === "1";
     if (!steps || !isFinite(length) || length < 1) return null;
-    const cursor = parseInt(f[6], 10);
+    const cursor = parseInt(field("cursor"), 10);
     /* Per-step depths, two hex digits each. Absent (an older DSP) means full,
      * never zero -- a missing read must not draw a ring of silent steps. */
-    const dRaw = f[7] || "";
+    const dRaw = field("depths") || "";
     const depths = new Array(length);
     for (let i = 0; i < length; i++) {
         const v = parseInt(dRaw.substr(i * 2, 2), 16);
@@ -463,7 +487,7 @@ function parseUi(raw) {
          * step number. The two spellings meet only in the DSP. */
         cursor: isFinite(cursor) ? cursor : 0,
         /* Appended by the DSP after the orders; absent from an older one. */
-        slot: f.length > 9 && isFinite(parseInt(f[9], 10)) ? parseInt(f[9], 10) : -1
+        slot: isFinite(parseInt(field("slot"), 10)) ? parseInt(field("slot"), 10) : -1
     };
 }
 

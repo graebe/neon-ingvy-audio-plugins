@@ -588,10 +588,12 @@ TEST_CASE ("bypassed, by the host or by its own Bypass, the audio passes untouch
     CHECK (lowest (a.block()) > 0.45f);
 
     /* The plugin's own Bypass, as JUCE's VST3 wrapper hands it over: every
-     * block through processBlock, the parameter on. */
+     * block through processBlock, the parameter on -- faded in over its first
+     * 10 ms (ni::Processor), so from the next block on. */
     Instance b;
     holdGate (b);
     b.p.getBypassParameter()->setValueNotifyingHost (1.0f);
+    b.block();
     const auto own = b.block (message (juce::MidiMessage::noteOff (1, 36)));
     CHECK (lowest (own) == 0.5f);
     CHECK (highest (own) == 0.5f);

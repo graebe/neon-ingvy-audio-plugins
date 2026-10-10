@@ -131,6 +131,30 @@ fn with_no_audio_thread_a_read_applies_only_what_the_view_has_not_seen() {
 }
 
 #[test]
+fn the_serial_moves_with_a_post_or_a_frame_and_with_nothing_else() {
+    let b = tally();
+    let serial = |b: &Bridge<Tally>| b.read(|r| r.serial);
+    let first = serial(&b);
+    assert_eq!(serial(&b), first, "reading moves nothing");
+    b.post(3);
+    let posted = serial(&b);
+    assert_ne!(posted, first, "a post changes what the view holds");
+    assert_eq!(serial(&b), posted);
+    /* A block that publishes nothing new is no new frame ... */
+    unsafe { b.begin() };
+    assert_eq!(serial(&b), posted, "not until the block ends");
+    unsafe { b.end(1) };
+    let framed = serial(&b);
+    assert_ne!(framed, posted, "a frame, with the post confirmed");
+    /* ... and one off the cadence publishes nothing at all. */
+    unsafe {
+        b.begin();
+        b.end(1);
+    }
+    assert_eq!(serial(&b), framed);
+}
+
+#[test]
 fn a_full_ring_holds_commands_back_rather_than_losing_them() {
     let b = tally();
     for v in 1..=100u64 {

@@ -77,7 +77,7 @@ bool Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
 }
 
 /* Recorded, not acted on: a host may prepare on any thread. */
-void Processor::prepareToPlay (double sampleRate, int)
+void Processor::prepare (double sampleRate, int)
 {
     rate.store ((std::uint32_t) std::lround (sampleRate > 0.0 ? sampleRate : 48000.0), std::memory_order_release);
     resetSeen.store (true, std::memory_order_release);

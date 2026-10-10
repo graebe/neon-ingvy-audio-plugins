@@ -394,3 +394,27 @@ fn g_and_f_write_what_printf_writes() {
         check(k + 1, -(k as f64) / 64.0);
     }
 }
+
+#[test]
+fn finish_whole_hands_back_all_of_a_text_or_none_of_it() {
+    use core::fmt::Write;
+    /* Fits, with the terminator: the same as `finish`. */
+    let mut out = [0xAAu8; 6];
+    let mut b = Buf::new(&mut out);
+    let _ = write!(b, "hello");
+    assert_eq!(b.finish_whole(), 5);
+    assert_eq!(&out, b"hello\0");
+    /* One byte short of the terminator: no answer, and no half text. */
+    let mut out = [0xAAu8; 5];
+    let mut b = Buf::new(&mut out);
+    let _ = write!(b, "hello");
+    assert_eq!(b.finish_whole(), -1);
+    assert_eq!(out[0], 0);
+    /* No buffer at all. */
+    let mut b = Buf::new(&mut []);
+    let _ = write!(b, "x");
+    assert_eq!(b.finish_whole(), -1);
+    /* An empty text fits anything with room for the terminator. */
+    let mut out = [0xAAu8; 1];
+    assert_eq!(Buf::new(&mut out).finish_whole(), 0);
+}

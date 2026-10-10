@@ -71,7 +71,7 @@ public:
     /* Stereo in, stereo out, as the iPlug2 build's "2-2"; a mono track's
      * stereo pair is published as it comes. */
     bool isBusesLayoutSupported (const BusesLayout&) const override;
-    void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void prepare (double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void releaseResources() override {}
 
     juce::AudioProcessorEditor* createEditor() override;
@@ -106,6 +106,9 @@ public:
 protected:
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    /* A tap: the audio passes untouched, so the Bypass has nothing to fade,
+     * and a bypassed block publishes nothing. */
+    bool passesAudioThrough() const noexcept override { return true; }
     void writeState (juce::MemoryBlock&) override;
     bool readState (const void* data, size_t size) override;
 
@@ -121,7 +124,7 @@ private:
 
     /* The pusher, lent to process(). */
     shell_handoff_t* const handoff;
-    std::atomic<std::uint32_t> rate { 0 };      /* the host's, from prepareToPlay */
+    std::atomic<std::uint32_t> rate { 0 };      /* the host's, from prepare */
     std::atomic<bool> resetSeen { false };      /* a prepare: retry, or retune */
     Session session;
     std::atomic<float> level { 0.0f };

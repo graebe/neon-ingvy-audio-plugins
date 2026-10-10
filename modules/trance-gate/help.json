@@ -27,7 +27,14 @@
     "While the fade is",
     "part way in, a step",
     "that has not arrived",
-    "is a HOLLOW arc."
+    "is a HOLLOW arc.",
+    "",
+    "Runs on Schwung",
+    "1.5.0 or newer.",
+    "Paging the pads",
+    "past step 32 needs",
+    "one newer than",
+    "1.7.3 (see Pads)."
    ]
   },
   {

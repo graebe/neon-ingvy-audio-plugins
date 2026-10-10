@@ -5,10 +5,11 @@
 The rate table: beats per step. The parsing is `ni_dsp::rate`'s; the list is
 this product's, and its order is the wire.
 
-`rate` is declared to the host as type "rate", whose option list the host
-GENERATES from include_bars / include_triplets -- so the label, not the index,
-is what is reported. The triplets match the host's LFO table. Bars are
-excluded: a bar-long step is not a gate.
+`rate` is declared to the Move's knob grid as an enum whose options are these
+labels (tg-move's `chain_params`, written from `tg_core::schema`), and its
+wire is the LABEL, not the index -- the one value the engine reads either way.
+To the plugin's host it is a choice whose words come from
+`tg_core_rate_label`. Bars are excluded: a bar-long step is not a gate.
 */
 
 pub use ni_dsp::rate::Rate;

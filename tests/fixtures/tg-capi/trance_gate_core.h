@@ -129,6 +129,25 @@ void tg_core_set_meter(tg_core_t *c, int num, int den);
 int tg_core_rate_label(int index, char *buf, int buf_len);
 int tg_core_rate_default(void);
 
+/* ADDED 2026-10-10, after the archive: appended, so the Max for Live external's
+ * calls are untouched. One host parameter as the engine's schema declares it,
+ * in host units (host = engine * scale + offset); `kind` 0 integer, 1 choice,
+ * 2 toggle, 3 continuous; `texts` null for Rate. Null past the end. */
+typedef struct {
+    const char        *id;
+    const char        *name;
+    int                kind;
+    double             min;
+    double             max;
+    double             def;
+    const char        *units;
+    const char *const *texts;
+    int                num_texts;
+    double             scale;
+    double             offset;
+} tg_param_spec_t;
+const tg_param_spec_t *tg_core_param_spec(int index);
+
 /*
  * The pattern plot's curve for the patch in `state`, rendered through a
  * scratch engine with a DC input so the samples ARE the gate:

@@ -91,7 +91,7 @@ for (const [name, [h, cpp, audioStarts]] of Object.entries(JUCE_PLUGINS)) {
     assert.ok(tick >= 0 && audio > tick, 'the ground is ticked before the engine runs, and before an early return');
     assert.ok(process.slice(0, tick).every((st) => !/return/.test(st)), 'nothing returns before the tick');
     assert.match(body(src, 'Processor', 'processBypassed'), /\.tick\s*\(\s*(readClock\s*\(|clock\s*,)/);
-    assert.match(body(src, 'Processor', 'prepareToPlay'), /\.prepare\s*\(/);
+    assert.match(body(src, 'Processor', 'prepare'), /\.prepare\s*\(/);
     assert.match(body(src, 'Processor', 'editorOpened'), /\.setActive\s*\(\s*true\s*\)/);
     assert.match(body(src, 'Processor', 'editorClosed'), /\.setActive\s*\(\s*false\s*\)/);
   });

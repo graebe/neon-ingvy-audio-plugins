@@ -80,15 +80,20 @@ impl Refused {
     }
 }
 
-/// Every top-level key a state blob has carried that is a plain number --
+/// The top-level number keys only an older blob has --
 /// `mix` and `depth` are v2's, folded into `amount` since, and `stopped` is
 /// the early v3 builds' Stop mode, which was removed and is read by nothing.
 /// A key on this list is a patch's even where no reader uses it: a v3 blob
 /// with its Stop setting is still a v3 blob.
-const NUMBER_KEYS: [&str; 15] = [
-    "attack", "decay", "sustain", "release", "hold", "amount", "mix", "depth", "fade", "fsoft", "fdir",
-    "legato", "tmode", "curve", "stopped",
-];
+const LEGACY_NUMBER_KEYS: [&str; 3] = ["mix", "depth", "stopped"];
+
+/// Whether `key` is a number a blob carries: a parameter's saved key from the
+/// schema (`slot` and `rate` are checked on their own, above), or one only an
+/// older blob has.
+fn number_key(key: &str) -> bool {
+    let current = crate::schema::PARAMS.iter().any(|s| s.blob == Some(key) && !matches!(key, "slot" | "rate"));
+    current || LEGACY_NUMBER_KEYS.contains(&key)
+}
 
 /// A whole number of nine digits at most, as a version, a slot and a rate
 /// index are written.
@@ -117,14 +122,14 @@ fn patch(o: &Object<'_>) -> Result<(), Refused> {
             ("slot", v) if number => whole(v).is_some_and(|s| (s as usize) < SLOTS),
             ("rate", Scalar::Str(v)) => rates::RATES.iter().any(|r| r.label == &**v),
             ("rate", v) if number => whole(v).is_some_and(|i| (i as usize) < rates::RATES.len()),
-            (k, _) if number && NUMBER_KEYS.contains(&k) => true,
+            (k, _) if number && number_key(k) => true,
             (k, v) if slot_field(k, b'p').is_some() => {
                 is_patch = true;
                 matches!(v, Scalar::Str(p) if pattern_ok(p))
             }
             (k, v) if slot_field(k, b's').is_some() => matches!(v, Scalar::Str(s) if sound_ok(s)),
             ("sv" | "slot", _) => false,
-            (k, _) if NUMBER_KEYS.contains(&k) => false,
+            (k, _) if number_key(k) => false,
             /* A key no blob has ever had: not a damaged patch, not a patch. */
             _ => return Err(Refused::NotTranceGate),
         };

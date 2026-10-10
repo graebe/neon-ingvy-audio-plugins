@@ -209,6 +209,17 @@ the tempo changes: a Decay of 50 % is half the gate at 90 BPM and at 140 BPM.
 **Env Time** only chooses how the readouts show it, as milliseconds at the
 current tempo or as that percentage; the sound is the same either way.
 
+**No edge is shorter than 1 ms.** A stage of 0 %, or a short one at a fast rate
+or a narrow Width, still takes a millisecond: an instant jump in gain clicks on
+any sustained sound. The slow rates are unchanged — at 1/16 and 120 BPM the
+default attack is already 2 ms. Every edge also starts and ends exactly where it
+falls, between samples, so the gate sounds the same whatever buffer size Live
+runs at.
+
+**A step at level 0 is a gap.** Dragging a step's level to the bottom closes the
+gate there, exactly as an off step does, and the step after it opens again —
+with Join Neighbors too. Switching a step on brings it back at full level.
+
 **Changes are smooth.** Amount and Sustain glide to a new value over about
 5 ms instead of jumping, so turning or automating them mid-note does not click.
 Starting the transport picks up from the level the gate is already at, and

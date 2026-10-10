@@ -380,6 +380,8 @@ void checkMidi (VST3PluginFormat& format, const PluginDescription& d)
     Run run (*p);
     auto* bypass = p->getBypassParameter();
     bypass->setValueNotifyingHost (1.0f);
+    /* The Bypass fades in over its first 10 ms (ni::Processor). */
+    run.blocks (1);
     run.blocks (60);
     check (run.lo == 0.5f && run.hi == 0.5f, "the host's Bypass passes the audio through untouched",
            String (run.lo) + " .. " + String (run.hi));

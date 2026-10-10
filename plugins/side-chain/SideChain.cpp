@@ -98,7 +98,7 @@ bool Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
     return key.isDisabled() || monoOrStereo (key);
 }
 
-void Processor::prepareToPlay (double rate, int maximumBlock)
+void Processor::prepare (double rate, int maximumBlock)
 {
     sampleRate = rate > 0.0 ? rate : 44100.0;
     sc_shell_post_sample_rate (shell.get(), sampleRate);
@@ -147,12 +147,15 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
 
     /* What a missing tempo or position means is decided once, for every
      * shell: a NaN position is none (ni::readClock). */
-    const auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
-    sc_transport_t transport { host.running, host.beats, host.bpm };
+    auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
+    const auto loop = ni::wire::host_loop (clock.looping, clock.loopStart, clock.loopEnd);
 
     const bool tap = heard && capturing.load (std::memory_order_relaxed);
-    ni::wire::for_each_chunk (frames, cap, [&] (int off, int n)
+    /* In chunks of what was reserved, each split again where the host's loop
+     * wraps: the frames after its end duck from its start. */
+    ni::wire::for_each_span (frames, cap, host, loop, sampleRate, [&] (int off, int n)
     {
+        sc_transport_t transport { host.running, host.beats, host.bpm };
         /* The messages that fall in this chunk, at their offset in it; one
          * the host placed outside the block lands at its nearer end. */
         for (const auto m : midi)
@@ -186,9 +189,6 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
                                        &transport);
         if (tap)
             capture.Push (dry.data(), l, gain.data(), sweep.data(), n);
-        /* A chunk continues the block, so the transport moves with it. */
-        if (transport.running)
-            transport.beats = ni::wire::advance_beats (transport.beats, n, (double) transport.bpm, sampleRate);
     });
 
     sc_shell_end (shell.get(), frames);

@@ -8,6 +8,7 @@
 
 #include "ni/Wire.h"
 
+#include <array>
 #include <cstring>
 
 namespace ni::tg
@@ -15,43 +16,31 @@ namespace ni::tg
 
 namespace
 {
-using Kind = ParamSpec::Kind;
+static_assert ((int) ParamSpec::Kind::integer == 0 && (int) ParamSpec::Kind::choice == 1
+                   && (int) ParamSpec::Kind::toggle == 2 && (int) ParamSpec::Kind::continuous == 3,
+               "tg_param_spec_t's kinds are ParamSpec's, in order");
 
-const char* const offOn[] { "Off", "On" };
-/* "%", not "% Step": what the percentage is OF is said once, by the name. */
-const char* const envTime[] { "ms", "%" };
-const char* const curves[] { "Linear", "Exponential", "S-Curve" };
-/* The switch does not turn the fade on; it chooses whether an arriving step
- * ramps or jumps. */
-const char* const hardSoft[] { "Hard", "Soft" };
-/* Which end the pattern is built up from; In is what the gate did before the
- * direction existed. */
-const char* const inOut[] { "In", "Out" };
-
-/* The iPlug2 build's Params.cpp Declare, row for row. */
-const ParamSpec table[kNumParams] {
-    { "slot", "Slot", Kind::integer, 1, TG_SLOTS, 1, "" },
-    { "length", "Length", Kind::integer, 1, TG_MAX_STEPS, 16, "steps" },
-    { "rate", "Rate", Kind::choice, 0, TG_NUM_RATES - 1, TG_RATE_DEFAULT, "" },
-    { "legato", "Join Neighbors", Kind::toggle, 0, 1, 0, "", offOn, 2 },
-    { "timeMode", "Env Time", Kind::choice, 0, 1, 0, "", envTime, 2 },
-    { "curve", "Env Curve", Kind::choice, 0, 2, 0, "", curves, 3 },
-    { "amount", "Amount", Kind::continuous, 0, 100, 100, "" },
-    { "width", "Width", Kind::continuous, 5, 100, 100, "" },
-    { "attack", "Attack", Kind::continuous, 0, TG_STAGE_MAX_PCT, 1.6, "" },
-    { "decay", "Decay", Kind::continuous, 0, TG_STAGE_MAX_PCT, 16, "" },
-    { "sustain", "Sustain", Kind::continuous, 0, 100, 100, "" },
-    { "release", "Release", Kind::continuous, 0, TG_STAGE_MAX_PCT, 16, "" },
-    /* 100 IS THE DEFAULT AND HAS TO BE: Fade is how much of the pattern has
-     * arrived, so zero is silence -- which a fresh instance must not be. */
-    { "fade", "Fade", Kind::continuous, 0, 100, 100, "" },
-    { "fadeSoft", "Fade Shape", Kind::toggle, 0, 1, 0, "", hardSoft, 2 },
-    { "fadeDir", "Fade Dir", Kind::choice, 0, 1, 0, "", inOut, 2 },
-};
-
-bool isPercent (int index)
+/*
+ * THE ENGINE'S SCHEMA, ROW FOR ROW (tg_core_param_spec). This file used to
+ * hold its own copy of the fifteen rows -- the iPlug2 build's Declare -- and
+ * the engine and the Move held theirs; now all three are tg_core::schema's.
+ * The rows are still the iPlug2 build's, held to its parameters.json by the
+ * schema's own test and by this product's (tests/tg_processor.cpp).
+ */
+const ParamSpec* table()
 {
-    return index == kAmount || index == kWidth || index == kSustain || index == kFade;
+    static const auto rows = []
+    {
+        std::array<ParamSpec, kNumParams> t {};
+        for (int i = 0; i < kNumParams; ++i)
+        {
+            const auto& r = *tg_core_param_spec (i);
+            t[(std::size_t) i] = ParamSpec { r.id, r.name, (ParamSpec::Kind) r.kind, r.min, r.max, r.def,
+                                             r.units, r.texts, r.num_texts };
+        }
+        return t;
+    }();
+    return rows.data();
 }
 
 /* Whether `s` starts with a number, as parse_number would read one. */
@@ -70,32 +59,31 @@ bool startsWithNumber (const std::string& s)
 
 const ParamSpec& specOf (int index)
 {
-    return table[index];
+    return table()[index];
 }
 
 const ParamSpec* specs()
 {
-    return table;
+    return table();
 }
 
 const nist::Layout& layout()
 {
-    static const nist::Layout l { table, kNumParams, { 15, 14, 12 }, 1, 1 };
+    static const nist::Layout l { table(), kNumParams, { 15, 14, 12 }, 1, 1 };
     return l;
 }
 
+/* The schema's own conversion: host = engine * scale + offset. */
 double toEngine (int index, double plain)
 {
-    if (index == kSlot || index == kLength)
-        return plain - 1.0;
-    return isPercent (index) ? plain / 100.0 : plain;
+    const auto& r = *tg_core_param_spec (index);
+    return (plain - r.offset) / r.scale;
 }
 
 double fromEngine (int index, double engine)
 {
-    if (index == kSlot || index == kLength)
-        return engine + 1.0;
-    return isPercent (index) ? engine * 100.0 : engine;
+    const auto& r = *tg_core_param_spec (index);
+    return engine * r.scale + r.offset;
 }
 
 /*

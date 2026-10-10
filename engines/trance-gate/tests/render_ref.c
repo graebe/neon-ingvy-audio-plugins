@@ -34,8 +34,13 @@ static double fake_beats(void) { return g_beats; }
 int main(int argc, char **argv) {
     double seconds = (argc > 1) ? atof(argv[1]) : 4.0;
 
+    /* A table as the Move fills one: init refuses any other version, and the
+     * rate is what the instance runs at. */
     host_api_v1_t host;
     memset(&host, 0, sizeof(host));
+    host.api_version = MOVE_PLUGIN_API_VERSION;
+    host.sample_rate = MOVE_SAMPLE_RATE;
+    host.frames_per_block = MOVE_FRAMES_PER_BLOCK;
     host.get_bpm = fake_bpm;
     host.get_beat_position = fake_beats;
 

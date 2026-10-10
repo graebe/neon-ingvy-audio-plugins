@@ -139,6 +139,136 @@ TEST_CASE("a long block is processed in chunks of what was reserved")
   CHECK(got.empty());
 }
 
+/* ---------------------------------------------------------------- the loop */
+
+TEST_CASE("a loop is the host's only when it can be played")
+{
+  CHECK(host_loop(true, 4.0, 8.0).on);
+  CHECK(host_loop(true, 0.0, 0.25).on);
+  CHECK_FALSE(host_loop(false, 4.0, 8.0).on);
+  /* Looping with no points, backwards, empty, or nowhere. */
+  CHECK_FALSE(host_loop(true, 0.0, 0.0).on);
+  CHECK_FALSE(host_loop(true, 8.0, 4.0).on);
+  CHECK_FALSE(host_loop(true, 4.0, 4.0 + loop_edge / 2).on);
+  CHECK_FALSE(host_loop(true, -1.0, 4.0).on);
+  CHECK_FALSE(host_loop(true, std::numeric_limits<double>::quiet_NaN(), 4.0).on);
+  CHECK_FALSE(host_loop(true, 4.0, std::numeric_limits<double>::infinity()).on);
+}
+
+/* The spans of one block, and where each starts. */
+struct Span
+{
+  int off, n;
+  double beats;
+};
+
+static std::vector<Span> spans(int frames, int cap, Transport& t, Loop loop, double rate)
+{
+  std::vector<Span> out;
+  for_each_span(frames, cap, t, loop, rate, [&](int off, int n) { out.push_back({off, n, t.beats}); });
+  return out;
+}
+
+TEST_CASE("a block is split where the loop's end falls exactly on a frame")
+{
+  /* 120 BPM at 32768 Hz: a frame is 2^-14 beats exactly, and the end is
+   * frame 100 of the block, to the bit. */
+  const double rate = 32768.0, frame = 1.0 / 16384.0;
+  Transport t{1, 8.0 - 100 * frame, 120.0f};
+  const auto got = spans(512, 512, t, host_loop(true, 4.0, 8.0), rate);
+  REQUIRE(got.size() == 2);
+  CHECK(got[0].off == 0);
+  CHECK(got[0].n == 100);
+  CHECK(got[0].beats == 8.0 - 100 * frame);
+  CHECK(got[1].off == 100);
+  CHECK(got[1].n == 412);
+  CHECK(got[1].beats == 4.0);
+  CHECK(t.beats == 4.0 + 412 * frame);
+
+  /* An end a hair either side of the frame, as a host's rounding leaves it,
+   * is the same frame. */
+  for (const double hair : {-1e-12, 1e-12})
+  {
+    Transport h{1, 8.0 - 100 * frame + hair, 120.0f};
+    const auto split = spans(512, 512, h, host_loop(true, 4.0, 8.0), rate);
+    REQUIRE(split.size() == 2);
+    CHECK(split[0].n == 100);
+    CHECK(split[1].beats == doctest::Approx(4.0).epsilon(1e-12));
+  }
+}
+
+TEST_CASE("a loop's end inside a chunk splits it; no loop, a stopped clock or a position past the end does not")
+{
+  /* 120 BPM at 48 kHz, from 7.99: the end is 240 frames in. */
+  Transport t{1, 7.99, 120.0f};
+  auto got = spans(1100, 512, t, host_loop(true, 4.0, 8.0), 48000.0);
+  REQUIRE(got.size() == 4);
+  CHECK((got[0].off == 0 && got[0].n == 240));
+  CHECK((got[1].off == 240 && got[1].n == 272));
+  CHECK(got[1].beats == doctest::Approx(4.0));
+  CHECK((got[2].off == 512 && got[2].n == 512));
+  CHECK((got[3].off == 1024 && got[3].n == 76));
+  CHECK(t.beats == doctest::Approx(4.0 + 860 / 24000.0));
+
+  for (const Loop loop : {Loop{}, host_loop(true, 1.0, 2.0)})
+  {
+    Transport past{1, 7.99, 120.0f};
+    CHECK(spans(1100, 512, past, loop, 48000.0).size() == 3);
+    CHECK(past.beats == doctest::Approx(7.99 + 1100 / 24000.0));
+  }
+  Transport stopped{0, -1.0, 120.0f};
+  CHECK(spans(1100, 512, stopped, host_loop(true, 0.0, 0.001), 48000.0).size() == 3);
+  CHECK(stopped.beats == -1.0);
+}
+
+TEST_CASE("a loop shorter than a frame wraps every frame, and the block still ends")
+{
+  /* A frame is 1/24000 beat; the loop a third of one. */
+  const Loop loop = host_loop(true, 2.0, 2.0 + 1.0 / 72000.0);
+  Transport t{1, 2.0, 120.0f};
+  const auto got = spans(64, 512, t, loop, 48000.0);
+  REQUIRE(got.size() == 64);
+  for (const auto& s : got)
+  {
+    CHECK(s.n == 1);
+    CHECK(s.beats >= loop.start);
+    CHECK(s.beats < loop.end);
+  }
+}
+
+TEST_CASE("at every tempo a host plays, each span starts where the host would say the position is")
+{
+  /* The host's own position for frame k of a block that starts at p0: on
+   * past p0 until the end, then round the loop. */
+  const auto host = [](double p0, long k, double perFrame, Loop loop) {
+    const double u = p0 + double(k) * perFrame;
+    return u < loop.end - loop_edge ? u : loop.start + std::fmod(u - loop.end, loop.end - loop.start);
+  };
+  const Loop loop = host_loop(true, 3.0, 4.5);
+  for (int bpm = 1; bpm <= 999; ++bpm)
+    for (const double rate : {44100.0, 96000.0})
+    {
+      CAPTURE(bpm);
+      CAPTURE(rate);
+      const double perFrame = bpm / 60.0 / rate;
+      const double p0 = 4.5 - 300.25 * perFrame;
+      Transport t{1, p0, float(bpm)};
+      const auto got = spans(8192, 1024, t, loop, rate);
+      int frames = 0;
+      bool wrapped = false;
+      for (const auto& s : got)
+      {
+        CHECK(s.off == frames);
+        CHECK(s.beats == doctest::Approx(host(p0, s.off, perFrame, loop)).epsilon(1e-9));
+        wrapped = wrapped || s.off == 301;
+        frames += s.n;
+      }
+      CHECK(frames == 8192);
+      CHECK(wrapped);
+      CHECK(t.beats == doctest::Approx(host(p0, 8192, perFrame, loop)).epsilon(1e-9));
+    }
+}
+
 /* ------------------------------------------------------------- the numbers */
 
 static std::string fixed(double v, int d)

@@ -13,6 +13,7 @@
  * block), playback under a running transport with the window open (the scope
  * and the Ground at work), the host moving Slot (the switch, and the follow
  * it publishes), the editor's edits and a paste landing, the host's bypass,
+ * the plugin's own Bypass fading either way, a loop wrapping inside blocks,
  * and a second load. Each must count zero.
  *
  * The guard is shown an allocation first, so a guard that was not inserted
@@ -24,6 +25,7 @@
 
 #include <dlfcn.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -48,6 +50,8 @@ constexpr int blockSize = 512;
 struct Transport final : juce::AudioPlayHead
 {
     juce::int64 sample = 0;
+    /* Looping from 0 over this many beats; 0 for no loop. */
+    double loopBeats = 0.0;
 
     juce::Optional<PositionInfo> getPosition() const override
     {
@@ -56,7 +60,11 @@ struct Transport final : juce::AudioPlayHead
         p.setBpm (120.0);
         p.setTimeSignature (TimeSignature { 4, 4 });
         p.setTimeInSamples (sample);
-        p.setPpqPosition ((double) sample / sampleRate * 2.0);
+        const double beats = (double) sample / sampleRate * 2.0;
+        p.setPpqPosition (loopBeats > 0.0 ? std::fmod (beats, loopBeats) : beats);
+        p.setIsLooping (loopBeats > 0.0);
+        if (loopBeats > 0.0)
+            p.setLoopPoints (LoopPoints { 0.0, loopBeats });
         return p;
     }
 };
@@ -151,6 +159,31 @@ int main (int argc, char* argv[])
     allocations = 0;
     play (20, true);
     check (allocations == 0, "the host's bypass", allocations);
+
+    allocations = 0;
+    auto* bypass = processor.getBypassParameter();
+    bypass->setValueNotifyingHost (1.0f);
+    play (3);
+    bypass->setValueNotifyingHost (0.0f);
+    play (3);
+    /* Turned back while the fade still runs: a block of 64 frames is an
+     * eighth of the fade's 480. */
+    bypass->setValueNotifyingHost (1.0f);
+    {
+        juce::AudioBuffer<float> shortBlock (2, 64);
+        begin();
+        processor.processBlock (shortBlock, midi);
+        allocations += end();
+    }
+    bypass->setValueNotifyingHost (0.0f);
+    play (3);
+    check (allocations == 0, "the plugin's own Bypass, faded on and off, and turned back", allocations);
+
+    allocations = 0;
+    transport.loopBeats = 1.3;
+    play (40);
+    transport.loopBeats = 0.0;
+    check (allocations == 0, "a loop that wraps inside a block", allocations);
 
     allocations = 0;
     load ("default");

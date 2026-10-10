@@ -99,6 +99,11 @@ pub struct Frame<F> {
 pub struct Read<'a, M: Model> {
     pub frame: &'a M::Frame,
     pub pending: Option<&'a M>,
+    /// Moves whenever what a reader is given can have: a new frame, or a
+    /// command posted. Two reads with the same serial were given the same
+    /// frame and the same view, so whatever a reader works out from them it
+    /// may keep until the serial moves.
+    pub serial: u64,
 }
 
 /// How often a bridge republishes when nothing was posted: faster than any
@@ -142,6 +147,8 @@ struct Main<M: Model> {
     /// The newest command the view has applied since it was restored from
     /// the latest frame; `None` when it has to be restored first.
     view_upto: Option<u64>,
+    /// `Read::serial`.
+    serial: u64,
 }
 
 pub struct Bridge<M: Model> {
@@ -189,6 +196,7 @@ impl<M: Model> Bridge<M> {
                 sent: 0,
                 next_seq: 1,
                 view_upto: None,
+                serial: 0,
             }),
             publish_every: AtomicU32::new(publish_every.max(1)),
             reclaim: Reclaim::new(),
@@ -280,6 +288,7 @@ impl<M: Model> Bridge<M> {
         let seq = m.next_seq;
         m.next_seq += 1;
         m.outbox.push_back(Posted { seq, cmd });
+        m.serial += 1;
         m.flush();
     }
 
@@ -289,12 +298,13 @@ impl<M: Model> Bridge<M> {
         let mut guard = self.lock();
         guard.sync();
         self.reclaim.collect();
-        let Main { frames, view, outbox, view_upto, .. } = &mut *guard;
+        let Main { frames, view, outbox, view_upto, serial, .. } = &mut *guard;
+        let serial = *serial;
         let frame = frames.output_buffer();
 
         let Some(view) = view.as_mut().filter(|_| !outbox.is_empty()) else {
             *view_upto = None;
-            return f(Read { frame: &frame.data, pending: None });
+            return f(Read { frame: &frame.data, pending: None, serial });
         };
         /*
          * BROUGHT FORWARD, NOT REBUILT, for as long as the frame it was
@@ -316,7 +326,7 @@ impl<M: Model> Bridge<M> {
             view.apply(&posted.cmd);
         }
         *view_upto = outbox.back().map(|p| p.seq);
-        f(Read { frame: &frame.data, pending: Some(view) })
+        f(Read { frame: &frame.data, pending: Some(view), serial })
     }
 
     /// Commands posted but not yet reported applied by a published frame.
@@ -346,6 +356,7 @@ impl<M: Model> Main<M> {
     fn sync(&mut self) {
         if self.frames.update() {
             self.view_upto = None;
+            self.serial += 1;
         }
         let applied = self.frames.output_buffer().applied;
         while self.outbox.front().is_some_and(|p| p.seq <= applied) {

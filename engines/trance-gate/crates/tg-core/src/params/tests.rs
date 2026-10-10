@@ -46,6 +46,25 @@ fn out_of_range_is_clamped() {
 }
 
 /*
+ * AN INFINITE LENGTH CLAMPS LIKE ANY OTHER. `value as i64` saturates +inf to
+ * i64::MAX, and the `+ 1` that turns an option index into a length then
+ * overflowed: an abort in a debug build, a one-step pattern in a release one.
+ */
+#[test]
+fn an_infinite_or_huge_length_clamps_to_the_ends_of_the_range() {
+    let length = |p: &Instance| {
+        let mut buf = [0u8; 16];
+        let n = p.get_param("length", &mut buf);
+        String::from_utf8(buf[..n as usize].to_vec()).unwrap()
+    };
+    for (value, want) in [(f64::INFINITY, "127"), (1e30, "127"), (f64::NEG_INFINITY, "0"), (-1e30, "0"), (15.7, "15")] {
+        let mut p = Instance::new(44100.0);
+        p.set_num(Param::Length, value);
+        assert_eq!(length(&p), want, "Length <- {value:e}");
+    }
+}
+
+/*
  * THE LENGTH DETENTS RIDE ON THE `params` READOUT, appended as field 16: the
  * current slot's Rate in the host's meter, recomputed whenever either moves.
  */
@@ -87,4 +106,29 @@ fn a_mirror_counts_the_detents_in_the_engines_meter() {
     m.mirror(core::str::from_utf8(&state[..n]).unwrap(), &p.playhead());
     assert_eq!(m.meter(), p.meter());
     assert_eq!(params(&m), params(&p));
+}
+
+/*
+ * THE NAMED FIELDS ARE THE READOUTS' FIELDS: one name per field, in order, so
+ * a reader that looks a field up by name finds what a reader that counts does.
+ */
+#[test]
+fn the_field_names_count_the_readouts_fields() {
+    use crate::params::{PARAMS_FIELDS, UI_FIELDS};
+    let read = |p: &Instance, key: &str| {
+        let mut buf = [0u8; 2048];
+        let n = p.get_param(key, &mut buf);
+        String::from_utf8(buf[..n as usize].to_vec()).unwrap()
+    };
+    let p = Instance::new(44100.0);
+    assert_eq!(read(&p, "ui").split(':').count(), UI_FIELDS.len());
+    assert_eq!(read(&p, "params").split(':').count(), PARAMS_FIELDS.len());
+    assert_eq!(read(&p, "ui_fields"), UI_FIELDS.join(":"));
+    assert_eq!(read(&p, "params_fields"), PARAMS_FIELDS.join(":"));
+    /* Spot checks that the names are the right fields, not only enough. */
+    let params = read(&p, "params");
+    let at = |name: &str| PARAMS_FIELDS.iter().position(|n| *n == name).unwrap();
+    assert_eq!(params.split(':').nth(at("rate")), Some("1/16"));
+    assert_eq!(params.split(':').nth(at("hold")), Some("1"));
+    assert_eq!(read(&p, "ui").split(':').nth(UI_FIELDS.iter().position(|n| *n == "length").unwrap()), Some("16"));
 }

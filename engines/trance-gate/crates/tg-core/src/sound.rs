@@ -40,7 +40,8 @@ pays for: allocation-free, on the audio thread.
 use crate::envelope::Curve;
 use crate::fmt::{self, Buf};
 use crate::params::Param;
-use crate::{rates, FadeDir, Instance, TimeMode, STAGE_MAX_PCT};
+use crate::schema::{held, PARAMS};
+use crate::{rates, FadeDir, Instance, TimeMode};
 use core::fmt::Write;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -85,11 +86,6 @@ pub(crate) struct Sound {
     pub(crate) fade_dir: FadeDir,
 }
 
-#[inline]
-fn clampf(x: f32, lo: f32, hi: f32) -> f32 {
-    if x < lo { lo } else if x > hi { hi } else { x }
-}
-
 impl Sound {
     /*
      * The percentages that reproduce the old 2 / 20 / 20 ms defaults against a
@@ -97,18 +93,18 @@ impl Sound {
      * did; the fade whole, which is every version before it existed.
      */
     pub(crate) const DEFAULT: Sound = Sound {
-        rate_idx: rates::RATE_DEFAULT,
-        attack: 1.6,
-        decay: 16.0,
-        sustain: 1.0,
-        release: 16.0,
-        hold: 1.0,
-        amount: 1.0,
-        legato: false,
+        rate_idx: PARAMS[Param::Rate as usize].default as usize,
+        attack: PARAMS[Param::Attack as usize].default as f32,
+        decay: PARAMS[Param::Decay as usize].default as f32,
+        sustain: PARAMS[Param::Sustain as usize].default as f32,
+        release: PARAMS[Param::Release as usize].default as f32,
+        hold: PARAMS[Param::Hold as usize].default as f32,
+        amount: PARAMS[Param::Amount as usize].default as f32,
+        legato: PARAMS[Param::Legato as usize].default != 0.0,
         time_mode: TimeMode::Ms,
         curve: Curve::Linear,
-        fade: 1.0,
-        fade_soft: false,
+        fade: PARAMS[Param::Fade as usize].default as f32,
+        fade_soft: PARAMS[Param::FadeSoft as usize].default != 0.0,
         fade_dir: FadeDir::In,
     };
 
@@ -188,13 +184,13 @@ impl Sound {
         let on = |i: usize| fmt::atof(f[i]) >= 0.5;
         Some(Sound {
             rate_idx: rates::index_from(f[0]),
-            attack: clampf(num(1), 0.0, STAGE_MAX_PCT),
-            decay: clampf(num(2), 0.0, STAGE_MAX_PCT),
-            sustain: clampf(num(3), 0.0, 1.0),
-            release: clampf(num(4), 0.0, STAGE_MAX_PCT),
-            hold: clampf(num(5), 0.0, 1.0),
-            amount: clampf(num(6), 0.0, 1.0),
-            fade: clampf(num(7), 0.0, 1.0),
+            attack: held(Param::Attack, num(1)),
+            decay: held(Param::Decay, num(2)),
+            sustain: held(Param::Sustain, num(3)),
+            release: held(Param::Release, num(4)),
+            hold: held(Param::Hold, num(5)),
+            amount: held(Param::Amount, num(6)),
+            fade: held(Param::Fade, num(7)),
             fade_soft: on(8),
             fade_dir: if on(9) { FadeDir::Out } else { FadeDir::In },
             legato: on(10),

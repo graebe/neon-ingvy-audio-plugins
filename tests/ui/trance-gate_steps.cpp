@@ -72,9 +72,10 @@ TEST_CASE ("trance-gate pads: a click toggles a step fully, wherever on the pad 
 {
     Rig rig;
     Pointer p;
-    /* Step 1 is off: on, at its full amount, however low on the pad. */
+    /* Step 1 is off: on -- which the engine brings in at its full amount --
+     * however low on the pad. */
     p.click (rig.pad (1), { 20.0f, 38.0f });
-    CHECK (rig.model.takeEdits() == "step 1 on, depth 1 1.00");
+    CHECK (rig.model.takeEdits() == "step 1 on");
     /* Step 0 is on: off. */
     p.click (rig.pad (0), { 20.0f, 2.0f });
     CHECK (rig.model.takeEdits() == "step 0 off");
@@ -91,7 +92,7 @@ TEST_CASE ("trance-gate pads: Shift turns an on step into a tie, and a tie or an
     p.click (rig.pad (4), { 20.0f, 20.0f }, shift);
     CHECK (rig.model.takeEdits() == "step 4 on");
     p.click (rig.pad (3), { 20.0f, 20.0f }, shift);
-    CHECK (rig.model.takeEdits() == "step 3 on, depth 3 1.00");
+    CHECK (rig.model.takeEdits() == "step 3 on");
     /* A plain click on a tie turns it off. */
     rig.model.next.steps[6] = StepMode::tie;
     rig.frame();
@@ -144,7 +145,7 @@ TEST_CASE ("trance-gate pads: one Tab stop; arrows move, Enter presses, Alt with
     CHECK_FALSE (key (rig.pad (1), juce::KeyPress::spaceKey));
     CHECK (rig.model.takeEdits().empty());
     CHECK (key (rig.pad (1), juce::KeyPress::returnKey));
-    CHECK (rig.model.takeEdits() == "step 1 on, depth 1 1.00");
+    CHECK (rig.model.takeEdits() == "step 1 on");
     CHECK (key (rig.pad (2), juce::KeyPress::returnKey, shift));
     CHECK (rig.model.takeEdits() == "step 2 tie");
 
@@ -417,5 +418,5 @@ TEST_CASE ("trance-gate pads: the editor never reads an edit back before the eng
     p.up();
     /* One press read the step it pressed; the drag read nothing. */
     CHECK (rig.model.patternReads - before <= 2);
-    CHECK (rig.model.takeEdits() == "step 1 on, depth 1 1.00, depth 1 0.90, depth 1 0.80");
+    CHECK (rig.model.takeEdits() == "step 1 on, depth 1 0.90, depth 1 0.80");
 }

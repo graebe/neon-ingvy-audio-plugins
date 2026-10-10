@@ -80,3 +80,31 @@ fn an_edit_moves_the_revision_and_a_non_edit_does_not() {
     p.set_param("randomize", "Hold");
     assert_eq!(p.state_rev(), rev, "nothing the blob carries can have changed");
 }
+
+/*
+ * "ON" MEANS THE SAME FROM EVERY EDITOR: a step switched on starts at full
+ * level, whatever it held while it was off. On <-> Tie and a step already on
+ * keep their level.
+ */
+#[test]
+fn a_step_switched_on_starts_at_full_level() {
+    let level = |p: &Instance, i: usize| {
+        let mut buf = [0u8; 2048];
+        let n = p.get_param("ui", &mut buf);
+        let ui = String::from_utf8(buf[..n as usize].to_vec()).unwrap();
+        let depths = ui.split(':').nth(7).unwrap().to_owned();
+        u8::from_str_radix(&depths[i * 2..i * 2 + 2], 16).unwrap()
+    };
+    let mut p = Instance::new(44100.0);
+    p.set_param("pattern", "0001");
+    p.set_param("cursor", "4");
+    p.set_param("step_amount", "0");
+    assert_eq!(level(&p, 4), 0);
+    p.set_param("step", "On");
+    assert_eq!(level(&p, 4), 255, "switched on: full");
+    p.set_param("step_amount", "0.5");
+    p.set_param("step", "Tie");
+    assert_eq!(level(&p, 4), 128, "on to tie keeps the level");
+    p.set_param("step", "On");
+    assert_eq!(level(&p, 4), 128, "already on keeps the level");
+}

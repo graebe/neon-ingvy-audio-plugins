@@ -67,9 +67,10 @@ the writer is `core::fmt`, as it was.
 use crate::envelope::Curve;
 use crate::fmt::{self, Buf};
 use crate::json::{self, Scalar, Sink};
-use crate::params::set_pattern_hex;
+use crate::params::{set_pattern_hex, Param};
+use crate::schema::held;
 use crate::sound::Sound;
-use crate::{rates, FadeDir, Instance, Pattern, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
+use crate::{rates, FadeDir, Instance, Pattern, TimeMode, DEPTH_FULL, MAX_STEPS, SLOTS};
 use core::fmt::Write;
 use std::borrow::Cow;
 
@@ -371,7 +372,7 @@ impl Patch {
             sustain: num(&f.sustain).map(unit),
             /* Absent in v1 and v2 blobs, where the gate always ran the whole
              * step; 1.0 is that behaviour, so an old patch is unchanged. */
-            hold: num(&f.hold).map_or(1.0, unit),
+            hold: num(&f.hold).map_or(1.0, |n| held(Param::Hold, n as f32)),
             amount,
             /* Absent in a pre-legato blob, and off is what those patches did. */
             legato: on(&f.legato),
@@ -480,15 +481,15 @@ impl Instance {
         self.recalc_ms_per_step();
         let w = self.width_ms();
         let to_pct = if patch.version().stages_in_ms() && w > 1.0e-6 { 100.0 / w } else { 1.0 };
-        let stage = |v: f64| clampf((v * to_pct) as f32, 0.0, STAGE_MAX_PCT);
+        let stage = |p: Param, v: f64| held(p, (v * to_pct) as f32);
         if let Some(v) = patch.attack {
-            top.attack = stage(v);
+            top.attack = stage(Param::Attack, v);
         }
         if let Some(v) = patch.decay {
-            top.decay = stage(v);
+            top.decay = stage(Param::Decay, v);
         }
         if let Some(v) = patch.release {
-            top.release = stage(v);
+            top.release = stage(Param::Release, v);
         }
         if let Some(amount) = patch.amount {
             top.amount = amount;
@@ -723,7 +724,7 @@ pub fn save(inst: &Instance, mut b: Buf) -> i32 {
         }
     }
     let _ = write!(b, "}}");
-    b.finish()
+    b.finish_whole()
 }
 
 #[cfg(test)]

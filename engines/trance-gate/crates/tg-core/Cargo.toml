@@ -1,6 +1,6 @@
 [package]
 name = "tg-core"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
@@ -36,3 +36,6 @@ assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] 
 # runner; fork, timeout and bit-set -- a process per case, a watchdog, a
 # bit-set strategy -- are features nothing here uses.
 proptest = { workspace = true, features = ["std"] }
+# The aliasing floor in tests/quality.rs: one FFT of an exactly periodic render.
+# A dev-dependency like the two above, so it ships in nothing.
+realfft = { workspace = true }

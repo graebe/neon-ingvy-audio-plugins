@@ -1,5 +1,25 @@
 # What's new
 
+## v2026.10.10.1 — NI Trance Gate
+
+- **No more clicks from the gate itself.** No edge of the gate is shorter
+  than 1 ms, so an Attack, Decay or Release of 0 %, or a very fast rate, no
+  longer jumps the volume in one sample. The slow rates sound exactly as
+  before.
+- **A step at level 0 is silent, without a click.** Dragging a step's level to
+  the bottom now closes the gate there like an off step, and the next step
+  opens again. Switching a step on brings it back at full level, in the plugin
+  and on Move alike.
+- **Tighter and cleaner edges.** Every edge starts and ends exactly where it
+  falls, between samples, so the gate sounds the same at any buffer size and
+  its edges are about 29 dB cleaner.
+- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
+  of jumping. This applies to every NI plugin.
+- **Loops are exact.** When Live's loop wraps inside a buffer, the gate starts
+  again at the loop's start on that very sample.
+- **NI Trance Gate on Move** needs Schwung 1.5.0 or newer; paging past step 32
+  with the arrows needs a Schwung newer than 1.7.3.
+
 ## v2026.10.10.1 — NI Side-Chain
 
 - **NI Side-Chain on Ableton Move keeps its settings.** Schwung now saves the

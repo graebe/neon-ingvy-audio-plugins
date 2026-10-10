@@ -1,6 +1,6 @@
 [package]
 name = "tg-move"
-version = "2026.10.9+1"
+version = "2026.10.10+1"
 edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
@@ -21,6 +21,11 @@ tg-core = { path = "../tg-core" }
 tg-capi = { path = "../tg-capi", default-features = false }
 # The Schwung audio_fx v2 glue, shared with every module.
 ni-schwung = { path = "../../../shared/crates/ni-schwung" }
+
+[build-dependencies]
+# build.rs writes `chain_params` from tg-core's parameter schema, so the knob
+# grid's ranges, defaults and options are the engine's own (src/params.rs).
+tg-core = { path = "../tg-core" }
 
 [dev-dependencies]
 # The tests' stand-in for the host's clock, a double the vtable's callback

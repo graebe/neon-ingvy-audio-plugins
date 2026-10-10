@@ -14,7 +14,8 @@ use crate::edit::Edit;
 use crate::envelope::{Curve, Stage};
 use crate::fmt::{self, Buf};
 use crate::mask::Mask;
-use crate::{rates, Instance, TimeMode, DEPTH_FULL, MAX_STEPS, STAGE_MAX_PCT};
+use crate::schema::held;
+use crate::{rates, Instance, TimeMode, DEPTH_FULL, MAX_STEPS};
 use core::fmt::Write;
 
 #[inline]
@@ -25,8 +26,30 @@ pub fn randomize_holds(val: &str) -> bool {
     matches!(val, "Hold" | "hold" | "0" | "Off" | "off")
 }
 
-fn clampf(x: f32, lo: f32, hi: f32) -> f32 {
-    if x < lo { lo } else if x > hi { hi } else { x }
+/*
+ * THE READOUTS' FIELDS, BY NAME.
+ *
+ * `ui` and `params` are colon-separated and read by POSITION -- by the
+ * plugin's editor (C++), by the Move's ui_chain.js and by tests -- and a
+ * position is a contract nobody can see. These lists are those positions,
+ * named, and `get_param("ui_fields")` / `get_param("params_fields")` answer
+ * them, so a reader can find a field by name instead of by count. Fields are
+ * still only ever APPENDED: an older reader that counts keeps working.
+ */
+pub const UI_FIELDS: [&str; 10] = ["steps", "ties", "length", "phase", "ms_step", "moving", "cursor", "depths", "orders", "slot"];
+pub const PARAMS_FIELDS: [&str; 17] = [
+    "slot", "legato", "time_mode", "curve", "rate", "length", "amount", "hold", "attack", "decay", "sustain",
+    "release", "width_ms", "fade", "fade_soft", "fade_dir", "detents",
+];
+
+fn write_names(b: &mut Buf, names: &[&str]) -> core::fmt::Result {
+    for (i, n) in names.iter().enumerate() {
+        if i > 0 {
+            b.write_char(':')?;
+        }
+        b.write_str(n)?;
+    }
+    Ok(())
 }
 
 /*
@@ -190,7 +213,10 @@ impl Instance {
             Param::Length => {
                 /* Option INDEX, as for `cursor`: index 15 is the option named
                  * "16", which is a length of 16. */
-                let n = (value as i64 + 1).clamp(1, MAX_STEPS as i64) as usize;
+                /* Clamped as a DOUBLE, then cast: `value as i64` saturates
+                 * +inf to i64::MAX, and the `+ 1` after it overflowed -- an
+                 * abort in a debug build, a length of 1 in a release one. */
+                let n = (value + 1.0).clamp(1.0, MAX_STEPS as f64) as usize;
                 let slot = self.slot;
                 /*
                  * THE LENGTH IT ALREADY HAS IS NOT A CHANGE, and PushParams
@@ -246,12 +272,13 @@ impl Instance {
                 self.snd_mut().curve = c;
                 self.reanchor(from);
             }
-            Param::Amount => self.snd_mut().amount = clampf(value as f32, 0.0, 1.0),
-            Param::Hold => self.snd_mut().hold = clampf(value as f32, 0.0, 1.0),
-            Param::Sustain => self.snd_mut().sustain = clampf(value as f32, 0.0, 1.0),
-            Param::Attack => self.snd_mut().attack = clampf(value as f32, 0.0, STAGE_MAX_PCT),
-            Param::Decay => self.snd_mut().decay = clampf(value as f32, 0.0, STAGE_MAX_PCT),
-            Param::Release => self.snd_mut().release = clampf(value as f32, 0.0, STAGE_MAX_PCT),
+            /* The ranges are the schema's: one table for every surface. */
+            Param::Amount => self.snd_mut().amount = held(param, value as f32),
+            Param::Hold => self.snd_mut().hold = held(param, value as f32),
+            Param::Sustain => self.snd_mut().sustain = held(param, value as f32),
+            Param::Attack => self.snd_mut().attack = held(param, value as f32),
+            Param::Decay => self.snd_mut().decay = held(param, value as f32),
+            Param::Release => self.snd_mut().release = held(param, value as f32),
             /*
              * COMPARED BEFORE RECOMPUTED, AND THAT IS NOT AN OPTIMISATION.
              *
@@ -261,7 +288,7 @@ impl Instance {
              * on the audio thread, to produce the table it already had.
              */
             Param::Fade => {
-                let v = clampf(value as f32, 0.0, 1.0);
+                let v = held(param, value as f32);
                 if v != self.snd().fade {
                     self.snd_mut().fade = v;
                     self.recalc_fade();
@@ -445,10 +472,12 @@ impl Instance {
                 })
             }
             "ui" => return self.ui_readout(b),
+            "ui_fields" => write_names(&mut b, &UI_FIELDS),
+            "params_fields" => write_names(&mut b, &PARAMS_FIELDS),
             "state" => return crate::state::save(self, b),
             _ => return -1,
         };
-        b.finish()
+        b.finish_whole()
     }
 
     /*
@@ -499,7 +528,7 @@ impl Instance {
             let _ = write!(b, "{:02X}", p.order[i]);
         }
         let _ = write!(b, ":{}", self.slot);
-        b.finish()
+        b.finish_whole()
     }
 
     /// The envelope's stage, for a shell that wants to know whether a gate is

@@ -3,8 +3,8 @@
 
 /*
  * ni::wire -- what every product's processor does to a block, a clock or a
- * number on its way between the host and the engine: the transport, the
- * chunking, a plot's quantisers and locale-free numbers.
+ * number on its way between the host and the engine: the transport and its
+ * loop, the chunking, a plot's quantisers and locale-free numbers.
  *
  * No JUCE type and no engine: tests/cpp/ni_wire.cpp links this alone.
  *
@@ -87,6 +87,68 @@ void for_each_chunk(int frames, int cap, F&& f)
     return;
   for (int off = 0; off < frames; off += cap)
     f(off, frames - off < cap ? frames - off : cap);
+}
+
+/* ---------------------------------------------------------------- loops */
+
+/*
+ * THE HOST'S LOOP. A host reports one position per block, and a loop's end
+ * can fall anywhere inside the block: the frames after it are back at the
+ * loop's start, which the block's position does not say. A product that
+ * carries the position on through the block from the host's -- every chunk
+ * of for_each_chunk -- has to wrap it there, or it plays on past the end
+ * until the next block corrects it: up to a whole block of wrong beat.
+ *
+ * WHERE THE END FALLS. A frame is past the end when its position is within
+ * `loop_edge` beats of it or beyond: an end that falls exactly on a frame is
+ * that frame, whichever way the host's ppq was rounded. A billionth of a beat
+ * is far below a frame at any tempo and rate a host plays, and far above the
+ * rounding of a position in a long set.
+ */
+constexpr double loop_edge = 1e-9;
+
+/* The host's cycle, in beats. Off for none, and for one that cannot be
+ * played: a start that is not a finite position at or after 0, or an end not
+ * past it. */
+struct Loop
+{
+  bool on = false;
+  double start = 0.0;
+  double end = 0.0;
+};
+Loop host_loop(bool looping, double start, double end);
+
+/* How many of `frames` from `beats` at `bpm` play before the loop's end: the
+ * first frame at or past it starts the next span. All of them while there is
+ * no loop, no tempo or rate, or the position is already at or past the end --
+ * a host plays on past a loop the playhead was set beyond. At least 1 for a
+ * positive frame count. */
+int frames_before_loop_end(double beats, int frames, double bpm, double sampleRate, Loop loop);
+
+/* `beats` advanced by `frames`, wrapped back to the loop's start, plus what it
+ * overshot the end by, when it reaches the end: where the host's own position
+ * would be. As advance_beats while the position is not before the end. */
+double advance_beats(double beats, int frames, double bpm, double sampleRate, Loop loop);
+
+/*
+ * A block in chunks of `cap`, and each chunk split again where a running
+ * transport reaches the loop's end: f(offset, frames) for each span, with
+ * `t.beats` where that span starts. `t` is left where the block ends.
+ */
+template <class F>
+void for_each_span(int frames, int cap, Transport& t, Loop loop, double sampleRate, F&& f)
+{
+  for_each_chunk(frames, cap, [&](int off, int n) {
+    while (n > 0)
+    {
+      const int span = t.running ? frames_before_loop_end(t.beats, n, double(t.bpm), sampleRate, loop) : n;
+      f(off, span);
+      if (t.running)
+        t.beats = advance_beats(t.beats, span, double(t.bpm), sampleRate, loop);
+      off += span;
+      n -= span;
+    }
+  });
 }
 
 } // namespace wire

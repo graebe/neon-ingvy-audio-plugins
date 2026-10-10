@@ -44,7 +44,7 @@ Processor::Processor()
     bypass = b.get();
     addParameter (b.release());
 
-    /* Configured for real once the host has named a rate (prepareToPlay);
+    /* Configured for real once the host has named a rate (prepare);
      * this one lets a window opened before that draw an axis. */
     recv = newReceiver (48000.0f);
     if (recv != nullptr)
@@ -76,7 +76,7 @@ bool Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
  * and starts a thread, so it happens in service(); this may not be the
  * message thread.
  */
-void Processor::prepareToPlay (double rate, int maximumBlock)
+void Processor::prepare (double rate, int maximumBlock)
 {
     sampleRate = rate > 0.0 ? rate : 44100.0;
     const auto sr = (float) sampleRate;
@@ -210,7 +210,7 @@ void Processor::rebuild()
      * thread. */
     srecv_start (fresh);
     /* Cleared last: the audio thread feeds the new receiver only now --
-     * unless prepareToPlay asked again meanwhile, and then the next tick
+     * unless prepare asked again meanwhile, and then the next tick
      * rebuilds. */
     if (juce::exactlyEqual (recvRate.load (std::memory_order_relaxed), sr))
         stale.store (false, std::memory_order_release);

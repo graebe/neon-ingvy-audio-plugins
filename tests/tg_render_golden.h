@@ -85,6 +85,27 @@
  * The parameter glides (Amount, Sustain) moved nothing either: this patch
  * does not move a parameter mid-render, and the glides are inert at rest.
  * Previous: 0x13190E03DAB19715 */
-#define GOLDEN_FNV1A 0xA364399720461935ULL
+/*
+ * Re-recorded 2026-10-10 for two INTENDED sound changes from the DSP review,
+ * together with the Move reference in engines/trance-gate/tests/run.sh (the
+ * same bytes: md5 0d33760ad2d80dd434b2d1e475fb7533):
+ *
+ *   1. Envelope stages start where their boundary falls BETWEEN samples, and
+ *      end there, carrying the remainder into the next stage -- they used to
+ *      start on the first whole sample past it (up to a sample late) and to
+ *      write the end value one sample early.
+ *   2. No stage is shorter than 1 ms (EDGE_MIN_MS). This patch's stages are
+ *      3.5 ms and longer, so this one moved nothing here -- stated so nobody
+ *      has to wonder.
+ *
+ * Verified rather than assumed: 116056 of the 352800 samples differ, by at
+ * most 72 LSB, all inside the gain's ramps; the gain (output / the known input
+ * sine) of every sample where the input is large enough to divide by differs
+ * by at most 0.0034, and never by more than the gain's own movement over two
+ * samples -- a timing shift of the ramps, no change of level or shape. The
+ * first difference is the first step's attack starting 0.95 of a sample
+ * earlier: 5378.05 frames per step at 123 BPM.
+ * Previous: 0xA364399720461935 (md5 d8389d25abb3c44b34461f3029f6ab48) */
+#define GOLDEN_FNV1A 0x4ABE0A4A7B500DA5ULL
 
 #endif /* TG_RENDER_GOLDEN_H */

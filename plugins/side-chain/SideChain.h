@@ -88,7 +88,7 @@ public:
     /* Main in mono or stereo, the output the same; the key off, mono or
      * stereo. */
     bool isBusesLayoutSupported (const BusesLayout&) const override;
-    void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void prepare (double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void releaseResources() override {}
 
     juce::AudioProcessorEditor* createEditor() override;
@@ -135,7 +135,7 @@ private:
     double sampleRate = 44100.0;
     /* The dry input, the engine's gain and sweep for the capture, and the
      * copies a bypassed block or a mono track's second channel run on. Sized
-     * in prepareToPlay, never on the audio thread; a longer block is
+     * in prepare, never on the audio thread; a longer block is
      * processed in chunks of this. */
     std::vector<float> dry, gain, sweep, copyL, copyR;
 

@@ -57,8 +57,6 @@ StepMode StepEdits::cycle (int index, bool tie)
     const auto mode = tie ? (was == StepMode::on ? StepMode::tie : StepMode::on)
                           : (on ? StepMode::off : StepMode::on);
     model.setStep (index, mode);
-    if (! on && mode != StepMode::off)
-        model.setDepth (index, 1.0f);
     return mode;
 }
 
@@ -92,22 +90,20 @@ void StepEdits::drag (int index, float amount)
         dragOn = false;
         return;
     }
-    if (! dragOn)
+    const float level = juce::jlimit (0.0f, 1.0f, amount);
+    if (dragOn)
     {
-        model.setStep (index, StepMode::on);
-        dragOn = true;
+        model.setDepth (index, level);
+        return;
     }
-    model.setDepth (index, juce::jlimit (0.0f, 1.0f, amount));
+    model.setStepWithDepth (index, StepMode::on, level);
+    dragOn = true;
 }
 
 void StepEdits::sweep (int index)
 {
-    if (orderMode)
-        return;
-    const bool wasOff = modeOf (index) == StepMode::off;
-    model.setStep (index, pressed);
-    if (pressed != StepMode::off && wasOff)
-        model.setDepth (index, 1.0f);
+    if (! orderMode)
+        model.setStep (index, pressed);
 }
 
 void StepEdits::toggle (int index, bool tie)
@@ -127,8 +123,9 @@ void StepEdits::nudge (int index, float delta)
         return;
     }
     if (modeOf (index) == StepMode::off)
-        model.setStep (index, StepMode::on);
-    model.setDepth (index, amount);
+        model.setStepWithDepth (index, StepMode::on, amount);
+    else
+        model.setDepth (index, amount);
 }
 
 void StepEdits::typeRank (int index, const juce::String& typed)

@@ -27,7 +27,7 @@ callback, as it always has.
 use crate::fmt;
 use crate::mask::Mask;
 use crate::params::{randomize_holds, set_pattern_hex, Param};
-use crate::{rates, Instance, MAX_STEPS};
+use crate::{rates, Instance, DEPTH_FULL, MAX_STEPS};
 
 /// One `set_param` key and value, read: ready for [`Instance::apply_edit`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -195,6 +195,17 @@ impl Instance {
                         self.pat[slot].order_append(c);
                     } else {
                         self.pat[slot].renumber();
+                    }
+                    /*
+                     * A STEP SWITCHED ON STARTS AT FULL LEVEL, whatever it held
+                     * while it was off. The plugin's editor did this itself
+                     * and the Move's did not, so one engine's pads and the
+                     * other's disagreed -- and a step at level 0 is a gap, so on
+                     * the Move it could be switched on and stay silent. Once
+                     * here, every editor's "on" means the same.
+                     */
+                    if mode != 0 && !was {
+                        self.pat[slot].depth[c] = DEPTH_FULL;
                     }
                     self.recalc_fade();
                 }

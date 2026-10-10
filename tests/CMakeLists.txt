@@ -174,6 +174,13 @@ if (TG_NODE)
     add_test(NAME spdx
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/spdx.test.mjs)
 
+    # THE SCHWUNG VERSIONS A MODULE NAMES, HELD TO EACH OTHER: the pinned
+    # version it is tested against (modules/_shared/schwung.version, in the
+    # format it documents), module.json's min_host_version, and what the
+    # module's help and docs tell the user about both.
+    add_test(NAME schwung_versions
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/schwung_versions.test.mjs)
+
     # THE GROUND'S WIRING IN EVERY PROCESSOR: the order of a few calls, which
     # the Spectrogram once got wrong and no type checks.
     add_test(NAME ground_shells
@@ -482,7 +489,18 @@ add_test(NAME ni_shared
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung)
 
-# THE VENDORED SCHWUNG HEADERS ARE THE PINNED SCHWUNG'S, byte for byte: the version
+# THE SCHWUNG HOST'S TABLES, FROM ITS OWN HEADERS. ni-schwung mirrors
+# host_api_v1_t and audio_fx_api_v2_t in Rust; abi/layout.def writes their
+# offsets, sizes and version numbers down once, ni_shared holds the mirrors to
+# it and this holds the vendored C headers to it -- every entry a
+# _Static_assert, so a disagreeing header does not build.
+set(NI_SCHWUNG ${CMAKE_SOURCE_DIR}/engines/shared/crates/ni-schwung)
+add_executable(ni_schwung_abi ${NI_SCHWUNG}/abi/layout.c)
+target_include_directories(ni_schwung_abi PRIVATE ${TG_ENGINE}/include ${NI_SCHWUNG}/abi)
+add_test(NAME ni_schwung_abi COMMAND ni_schwung_abi)
+set_tests_properties(ni_schwung_abi PROPERTIES SKIP_RETURN_CODE 77)
+
+# ...AND THOSE HEADERS ARE THE PINNED SCHWUNG'S, byte for byte: the version
 # modules/_shared/schwung.version names, fetched once into a cache outside the
 # checkout and verified on every run. 77, Skipped, when it is not cached and
 # cannot be fetched; a moved tag or an edited cache fails.
@@ -782,14 +800,15 @@ endif()
 ni_test_tiers(
     PRODUCT shared
         PROGRAMS juce_host nist_fixtures ni_alloc_guard abus_roundtrip abus_ipc abus_tap
-                 gnd_roundtrip shell_handoff
+                 gnd_roundtrip shell_handoff ni_schwung_abi
         QUICK
             # Rust: the shared crates' unit tests, and the licence gate over
             # the whole graph
             abus_core gnd_core shell_core ni_shared music_core_rs music_core_no_std
             cargo_deny
-            # the vendored Schwung headers against the pinned host's
-            schwung_pin
+            # the Schwung host's tables: the vendored headers against the
+            # layout the Rust mirrors are held to, and against the pinned host
+            ni_schwung_abi schwung_pin schwung_versions
             # C against the shared ABIs: the bus, the ground, the handoff
             abus_roundtrip gnd_roundtrip shell_handoff
             # lint-like checks over the tree

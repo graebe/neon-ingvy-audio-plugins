@@ -47,7 +47,7 @@ public:
     ~ChordDetector() override;
 
     bool isBusesLayoutSupported (const BusesLayout&) const override;
-    void prepareToPlay (double sampleRate, int maximumBlockSize) override;
+    void prepare (double sampleRate, int maximumBlockSize) override;
     void releaseResources() override {}
 
     bool hasEditor() const override { return true; }

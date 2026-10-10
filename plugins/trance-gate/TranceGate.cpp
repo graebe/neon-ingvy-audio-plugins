@@ -88,7 +88,7 @@ bool Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
         && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
 
-void Processor::prepareToPlay (double rate, int maximumBlock)
+void Processor::prepare (double rate, int maximumBlock)
 {
     sampleRate = rate > 0.0 ? rate : 44100.0;
     tg_shell_post_sample_rate (shell.get(), sampleRate);
@@ -112,7 +112,9 @@ void Processor::engineValues (double (&out)[kNumParams]) const noexcept
  * THE iPlug2 SHELL'S BLOCK, on JUCE's float buffers in place: every edit
  * posted since the last block lands at begin, the host's values are pushed
  * over it, the transport and meter go in, and the engine gates the two
- * channels -- in chunks of what was reserved, should a host hand over more.
+ * channels -- in chunks of what was reserved, should a host hand over more,
+ * and split again where the host's loop wraps, so the frames after its end
+ * are gated from its start (ni::wire::for_each_span).
  */
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
@@ -136,15 +138,16 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const ni::HostClock& cloc
 
     /* What a missing tempo or position means is decided once, for every
      * shell: a NaN position is none (ni::readClock), a missing meter 4/4. */
-    const auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
-    tg_transport_t transport { host.running, host.beats, host.bpm };
+    auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
+    const auto loop = ni::wire::host_loop (clock.looping, clock.loopStart, clock.loopEnd);
     tg_core_set_meter (core, clock.numerator > 0 ? clock.numerator : 4, clock.denominator > 0 ? clock.denominator : 4);
 
     const bool tap = capturing.load (std::memory_order_relaxed);
     float* left = buffer.getWritePointer (0);
     float* right = buffer.getWritePointer (1);
-    ni::wire::for_each_chunk (frames, cap, [&] (int off, int n)
+    ni::wire::for_each_span (frames, cap, host, loop, sampleRate, [&] (int off, int n)
     {
+        tg_transport_t transport { host.running, host.beats, host.bpm };
         const auto bytes = sizeof (float) * (std::size_t) n;
         float* l = left + off;
         float* r = right + off;
@@ -159,10 +162,7 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const ni::HostClock& cloc
             std::memcpy (dry.data(), l, bytes);
         tg_core_process_f32_split_tap (core, l, r, tap ? sweep.data() : nullptr, n, &transport);
         if (tap)
-            capture.Push (dry.data(), l, nullptr, sweep.data(), n);
-        /* A chunk continues the block, so the transport moves with it. */
-        if (transport.running)
-            transport.beats = ni::wire::advance_beats (transport.beats, n, (double) transport.bpm, sampleRate);
+            capture.Push (dry.data(), heard ? l : dry.data(), nullptr, sweep.data(), n);
     });
 
     tg_shell_end (shell.get(), frames);

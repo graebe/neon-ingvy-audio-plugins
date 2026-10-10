@@ -75,3 +75,4 @@ exclude = ["TgParamArg", "TgCore"]
 "TgMask" = "tg_mask_t"
 "TgParam" = "tg_param_t"
 "TgParamArg" = "tg_param_t"
+"TgParamSpec" = "tg_param_spec_t"

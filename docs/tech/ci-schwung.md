@@ -133,6 +133,74 @@ what it reports, then check the offsets in ni-schwung's
 `the_host_table_matches_the_c_layout` against the new headers. They are
 copied from `plugin_api_v1.h` by hand, so nothing compares them for you.
 
+### The host's tables
+
+`ni-schwung` mirrors `host_api_v1_t` and `audio_fx_api_v2_t` in Rust.
+Their LP64 offsets, sizes and version numbers are written down once, in
+`engines/shared/crates/ni-schwung/abi/layout.def`, an X-macro both sides read:
+`ni_schwung_abi` compiles every entry as a `_Static_assert` against the
+vendored headers (`engines/trance-gate/include`), and `ni_shared`'s cargo test
+holds the Rust mirrors to the same entries — every field, in order, with a
+destructuring that makes a field missing from the list a compile error.
+
+What init believes of the table:
+
+- **`api_version` must be 1** (`MOVE_PLUGIN_API_VERSION`). Anything else is a
+  table this mirror cannot read, and init returns null — the failure every
+  loader on the device handles (the chain logs "V2 API version mismatch" and
+  dlcloses). A refused init changes nothing already kept.
+- **`sample_rate`** is the instances' rate when it is 8 kHz to 384 kHz;
+  otherwise, and with no table, 44.1 kHz.
+
+### The minimum host
+
+`module.json`'s `min_host_version` is the oldest Schwung a module runs on — for
+the Trance Gate **1.5.0**, found by running its editor's smoke test against
+every release from 1.0.0: before 1.3.0 `ui_chain.js` does not load
+(`isHardwarePadPress` and `claims_ccs` arrive in 1.3.0); on 1.3.x and 1.4.x it
+loads, but the controller's page carries no `canvas`, so the editor's redraw
+gate cannot see its extra keys (`ui`, `rate`) and the ring can sit stale until
+the next input; from 1.5.0 every check passes. The DSP itself needs nothing
+newer than 1.0.0 (`get_beat_position` is in every 1.x). Paging past step 32
+needs more than any release has (schwung#633), and is documented as such
+rather than encoded here. The Side-Chain declares none: it is not in the
+catalog, and has only been tested on the pin.
+
+**What enforces it is the catalog, not this file.** Schwung Manager checks
+`min_host_version` from the catalog entry (`checkHostCompat`, and the on-device
+store's `installModule`); an install from a GitHub URL reads only `id` and
+`component_type` from `module.json`. Schwung's own MODULES.md asks for the
+field in both places, so it is declared here and the catalog entry must carry
+the same number — at the time of writing it says 1.3.0.
+
+`ctest -R schwung_versions` holds `min_host_version` to no newer than the pin,
+and the module's help and docs to both numbers.
+
+### The plugin and the Move, in one test
+
+`tg-move`'s `render_ab` renders the same patch, input and transport through
+the plugin's path (`tg_core_process_f32_split_tap`, float, split channels, its
+output rounded half away from zero) and the Move's (`move_audio_fx_init_v2`'s
+vtable, int16 interleaved, the clock behind the host's callbacks) **in one
+process**, and requires byte-identical int16 — no golden, so an intended
+change to the sound changes nothing here. Two scripts: the golden patch, and a
+set played live (stopped transport, a mid-bar start, tempo changes, a jump
+back, slot switches and edits while playing, the fade, ms stages, every
+curve). It runs in the quick tier on the Mac (`tg_core_rs`) and on aarch64 in
+`test.sh`.
+
+### The state blob's time budget
+
+`engines/trance-gate/tests/state_budget.c` (run by `run.sh`, so on aarch64 in
+`test.sh`) times `set_param("state")` and `get_param("state")` through the
+vtable on the largest realistic patch — eight slots of 128 steps, shuffled
+orders, every depth, tie and sound value off its default, ~5.3 KB — and holds
+the **median to 5%** and the **90th percentile to 25%** of a 128-frame block
+(2902 µs). The margin is for the Move's Cortex-A72 being several times slower
+than the Apple core Docker runs on; the worst call is printed but not held to
+anything, since on a shared machine it is the scheduler's number. Release
+build, as shipped.
+
 ## Releasing
 
 A tag `<product>-<version>` for a product with a module — `trance-gate-v*` or
@@ -279,14 +347,12 @@ ruleset on the default branch:
   the step to open a pull request instead of pushing, which is a workflow
   change, not a setting.
 
-## Outstanding: the catalog still names the old repository
+## The upstream catalog entry
 
-The Trance Gate module used to live in its own repository, and the Schwung
-catalog entry in `charlesvestal/schwung` still points there. Until that entry's
-`github_repo` is updated to `graebe/neon-ingvy-audio-plugins` and a `trance-gate-v*` tag has
-published a release here, installing by catalog resolves against the old
-repository.
-
-`release.json` in this repository has already been repointed, so the two are
-briefly out of step. That is stated here rather than left to be discovered: the
-fix is a one-line upstream pull request plus the first tag from this repository.
+`charlesvestal/schwung`'s `module-catalog.json` names this repository for the
+Trance Gate (`github_repo: graebe/neon-ingvy-audio-plugins`, checked
+2026-10-10), so installing from the catalog resolves against the releases
+here. Its `min_host_version` still says 1.3.0. The module declares 1.5.0
+(`module.json`, see "Host compatibility"), and only the catalog's value is
+enforced, so raising it is a one-line upstream pull request (the owner's
+call). NI Side-Chain is not in the catalog yet.

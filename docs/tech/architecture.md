@@ -118,13 +118,23 @@ Every processor derives from `ni::Processor` (`plugins/_shared/juce`), a
 `juce::AudioProcessor` with the house's answers to what every product would
 otherwise answer on its own:
 
+- **Prepare.** `prepareToPlay` is `final`: it calls the product's `prepare()`,
+  then sizes what the shell itself needs for the host's longest block.
 - **The block.** `processBlock` is `final`: it runs the product's `process()`
   under `juce::ScopedNoDenormals`, and a bypassed block — the host's bypass or
   the product's own Bypass parameter — goes to `processBypassed()`, which a
   product whose engine must keep hearing MIDI overrides.
+- **The Bypass fade.** The product's own Bypass moving is a 10 ms linear
+  crossfade between `process()` and the input, never a jump; at rest a
+  bypassed block is the input bit for bit. A product whose `process()` leaves
+  the audio as it came (an analyser) says so with `passesAudioThrough()` and
+  switches at the block. The input is faded undelayed, so a product that
+  reports latency gets no fade until it delays that input to match.
 - **The clock.** `readClock()` reads the host's transport into a plain value,
   allocation-free, for the engines' block clocks and the ground's beat clock
-  (`GroundClock.h`).
+  (`GroundClock.h`) — its loop included: `ni::wire::for_each_span` splits a
+  block where the loop wraps, so an engine fed the transport chunk by chunk
+  hears the loop's start the frame after its end.
 - **The state.** `getStateInformation` and `setStateInformation` are `final`
   and call `writeState` and `readState`. A product that took over an earlier
   bundle reads and writes that bundle's chunk through `ni::nist` (`Nist.h`),

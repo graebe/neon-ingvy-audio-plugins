@@ -35,7 +35,7 @@
  * THE RECEIVER IS THE MESSAGE THREAD'S: built, configured, drained and freed
  * there, and freeing it joins its worker. The audio thread reaches it only
  * through a handoff (shell_handoff.h), which frees a replaced one once the
- * audio thread has let go. prepareToPlay -- which a host may call off the
+ * audio thread has let go. prepare -- which a host may call off the
  * message thread -- records the rate and asks for a rebuild; until service()
  * has made it, the audio thread feeds nothing rather than a receiver built
  * for the old rate.
@@ -73,7 +73,7 @@ public:
 
     /* Stereo in, stereo out, and nothing else: the iPlug2 build's "2-2". */
     bool isBusesLayoutSupported (const BusesLayout&) const override;
-    void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void prepare (double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void releaseResources() override {}
 
     juce::AudioProcessorEditor* createEditor() override;
@@ -115,13 +115,16 @@ public:
 protected:
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    /* An analyser: the audio passes untouched, so the Bypass has nothing to
+     * fade, and a bypassed block is analysed by nobody. */
+    bool passesAudioThrough() const noexcept override { return true; }
     void writeState (juce::MemoryBlock&) override;
     bool readState (const void* data, size_t size) override;
 
 private:
     void timerCallback() override { service(); }
 
-    /* The receiver, built for the rate prepareToPlay recorded. */
+    /* The receiver, built for the rate prepare recorded. */
     void rebuild();
 
     /* Session::Sink: the receiver calls, message thread only (they allocate,
@@ -143,7 +146,7 @@ private:
     std::atomic<float> recvRate { 0.0f };
     std::atomic<bool> stale { false };
 
-    /* The mono sum, sized in prepareToPlay; a longer block goes in chunks. */
+    /* The mono sum, sized in prepare; a longer block goes in chunks. */
     std::vector<float> mono;
     /* The analyzer's hop at the host's rate, for ppqPerColumn. */
     std::atomic<int> hop { 0 };

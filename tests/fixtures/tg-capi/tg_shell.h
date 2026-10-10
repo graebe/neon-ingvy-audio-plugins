@@ -109,6 +109,13 @@ int  tg_shell_levels(tg_shell_t *s, float *out, int n);
  * another read than the blob's; not in the archived external. */
 int  tg_shell_save_with_params(tg_shell_t *s, const double *values, int n, double *params, char *buf, int buf_len);
 
+/* tg_shell_read and tg_shell_levels as the next block will leave the engine:
+ * the host's TG_P_COUNT `values` applied as that block will apply them, so an
+ * editor shows a value the host moved while no audio runs. ADDED for the JUCE
+ * shell's editor; not in the archived external. */
+int  tg_shell_read_next(tg_shell_t *s, const char *key, const double *values, int n, char *buf, int buf_len);
+int  tg_shell_levels_next(tg_shell_t *s, const double *values, int n, float *out, int count);
+
 /*
  * THE HOST'S PARAMETERS MIRROR THE CURRENT SLOT. Every parameter but Slot is
  * per slot in the engine, so on the block the Slot moves (or a paste lands)
