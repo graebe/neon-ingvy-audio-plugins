@@ -1056,7 +1056,7 @@ is known.
 |---|---|---|
 | `Ubuntu 24.04` packages: the base image, build-essential, CMake, Ninja, pkgconf, the X11, ALSA, FreeType and Fontconfig development packages, Xvfb, DejaVu fonts | both build images, from one Ubuntu archive snapshot | each its own free-software licence (GPL, LGPL, MIT/X11, BSD and the like, per Ubuntu's archive policy) |
 | `LLVM` 20: clang, clang-cl, lld, llvm-lib, llvm-rc, llvm-mt | both build images | **Apache-2.0 WITH LLVM-exception** |
-| `rustup` 1.29.1 and the Rust 1.98.1 toolchain | both build images | **MIT OR Apache-2.0** |
+| `rustup` 1.29.1 and the Rust 1.99.0 toolchain | both build images | **MIT OR Apache-2.0** |
 | `xwin` 0.10.0 | Windows image | **MIT OR Apache-2.0** |
 | `Wine` 9.0 | Windows image | **LGPL-2.1-or-later** |
 | `pluginval` 1.0.4 | all three platforms | **GPL-3.0** |

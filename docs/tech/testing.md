@@ -175,6 +175,7 @@ Everything quick runs, and:
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | per bundle: it carries its notices (`licenses_bundle_*`); its signature verifies as Live's scanner checks it (`codesign_*`: `codesign --verify --deep --strict`); its version spellings (`versions_bundle_*`); the release staging, dry-run against it (`release_bundle_*`) |
 | `site` | every root-relative link on the built site resolves |
+| `advisories` | `cargo_deny_advisories`: `cargo deny check advisories` against RustSec's database as it is today — a vulnerable, unsound or unmaintained crate, or a yanked version, anywhere in the graph. Fetched at run time, so it is here and not in quick (**Licences**, below) |
 | `coverage` | the coverage floor, in the instrumented build |
 | `move` | every Schwung module (`move_<module>`, one per `modules/<module>/module.env`), built and tested by `modules/_shared/test.sh` in the module image on aarch64 Linux: the tarball's `.so` is aarch64 and exports nothing of the plugin's shell or ground, it carries `LICENSE` and a notice for every crate it links, the module's crates' cargo tests (the vtable, `chain_params`, the host panic on CC 120/123) pass on the Move's architecture, and the Trance Gate's golden render (`engines/trance-gate/tests/run.sh`) keeps its md5 there. Needs Docker running as arm64 (Apple Silicon); not registered without Docker |
 
@@ -182,6 +183,18 @@ Everything quick runs, and:
 then `scripts/coverage.sh` with the floor enforced (skipped with
 `--no-coverage`, for the gates between steps), then the validators over the
 bundles in `build/out` (or `--bundles DIR`).
+
+**A passing run is recorded on the commit it tested.** `full` (with
+coverage) and `product <product>` append one JSON line — tier, products,
+commit, date, host, `rustc --version`, and the run's test count, duration and
+build — to a git note on `HEAD` under `refs/notes/ni-tests`
+(`scripts/release.mjs attest`). The release workflows refuse a tag whose
+commit carries no passing note for its product
+([Build & CI — Live](ci-live.md), **The order of a release**), so a run is
+only recorded when it tested exactly a commit: not with uncommitted or
+untracked changes at its start or end, not when `HEAD` moved under it, not
+with `--no-coverage`, and not on a GitHub runner. The run stays green either
+way and says in its last lines why it was not recorded.
 
 **The validators** (`scripts/validate-plugins.sh`, VST3 only) are the hosts'
 own rules rather than ours: `pluginval` at strictness 10 **with its editor
@@ -281,7 +294,10 @@ the pinned one.
 
 **Advisories are not part of the quick tier.** They come from a database
 fetched at check time, so the verdict would change without a commit.
-`cargo deny check advisories` is the separate question, asked on demand.
+`cargo deny check advisories` is the separate question: `cargo_deny_advisories`
+in the full tier and each product's run, and both release workflows on the
+day they publish. `deny.toml`'s `[advisories]` says what fails it: any
+vulnerability, a crate declared unmaintained or unsound, a yanked version.
 
 ## Labels, not lists
 

@@ -109,14 +109,30 @@ endif()
 
 # The version versions.json gives a product, as { "v2026.10.07.1", 2026.10.7,
 # 2026.10.57 }.
+#
+# A BETA, v2026.10.07.1-beta.2, keeps its suffix in the string alone: both
+# numeric forms are three integers (Info.plist allows nothing else), so a beta
+# and the release it precedes share them, and tests/versions.test.mjs derives
+# the same. Only the string the editor shows says "beta".
+#
+# SEVEN RELEASES A DAY IS THE CEILING. The subversion is folded into the
+# build number's last field as day*8+n, so n is three bits, .1 to .7 (the
+# scheme counts from 1): an eighth release would wrap into the next day's
+# number and read as older than it is. Refused here, at configure, rather
+# than shipped mis-ordered.
 function(ni_juce_version product out_string out_numbers out_build)
     file(READ ${CMAKE_SOURCE_DIR}/versions.json versions)
     string(JSON v ERROR_VARIABLE err GET "${versions}" "${product}")
     if (err)
         message(FATAL_ERROR "versions.json has no version for '${product}'")
     endif()
-    if (NOT v MATCHES "^v([0-9][0-9][0-9][0-9])\\.([0-9][0-9])\\.([0-9][0-9])\\.([0-9]+)$")
-        message(FATAL_ERROR "${product}: '${v}' is not v<YYYY.MM.DD>.<n>")
+    if (NOT v MATCHES "^v([0-9][0-9][0-9][0-9])\\.([0-9][0-9])\\.([0-9][0-9])\\.([0-9]+)(-beta\\.[1-9][0-9]*)?$")
+        message(FATAL_ERROR "${product}: '${v}' is not v<YYYY.MM.DD>.<n> or v<YYYY.MM.DD>.<n>-beta.<k>")
+    endif()
+    if (CMAKE_MATCH_4 GREATER 7)
+        message(FATAL_ERROR "${product}: '${v}' has subversion ${CMAKE_MATCH_4}, and "
+            "CFBundleVersion is y.m.(day*8+n), so n is at most 7 -- .1 to .7, seven "
+            "releases a day. Release it as the next day's .1 instead.")
     endif()
     math(EXPR month "${CMAKE_MATCH_2}")
     math(EXPR day "${CMAKE_MATCH_3}")

@@ -4,12 +4,16 @@
 /*
  * What to download, without a version typed on a web page.
  *
- * TWO SOURCES, AND NEITHER IS THIS FILE.
+ * THREE SOURCES, AND NONE OF THEM IS THIS FILE.
  *
- * versions.json decides every product's version and `ctest -R versions` holds
- * config.h, module.json and every crate to it -- so composing the plugin's
- * download URL from it means this page cannot offer a version the tree does not
- * build.
+ * The plugin's download is the newest PUBLISHED, STABLE release of the
+ * product that is not ahead of versions.json (scripts/release.mjs,
+ * latestStableRelease). It used to be versions.json's version as it stood,
+ * which runs ahead of what is released whenever a bump is not tagged yet and
+ * may be a beta -- a link to a release that did not exist, or a beta offered
+ * as the download. The releases are GitHub's on the Pages runner
+ * (NI_RELEASES, .github/workflows/pages.yml) and the checkout's tags in a
+ * local build.
  *
  * release.json is the Move module's contract with the Schwung catalog: the
  * catalog carries no version and the manager resolves the download from that
@@ -19,6 +23,7 @@
  */
 import versions from '../../../versions.json' with { type: 'json' };
 import release from '../../../release.json' with { type: 'json' };
+import { latestStableRelease, publishedReleases } from '../../../scripts/release.mjs';
 
 const REPO = 'https://github.com/graebe/neon-ingvy-audio-plugins';
 
@@ -36,8 +41,10 @@ const ZIPS = [
   { os: 'macOS', label: 'macOS · universal' },
 ];
 
+const RELEASES = publishedReleases();
+
 export function pluginDownloads(product) {
-  const version = versions[product];
+  const version = latestStableRelease(product, RELEASES, versions[product]);
   if (!version) return [];
   const tag = `${product}-${version}`;
   return ZIPS.map(({ os, label }) => ({
@@ -57,10 +64,9 @@ const moduleIds = Object.fromEntries(
     .map(([path, json]) => [path.split('/').at(-2), json.id]));
 
 /*
- * A product's Move module. A beta is offered ONLY when it is strictly newer
- * than stable -- the same rule the Schwung manager applies, applied here rather
- * than trusted, so the site cannot advertise a beta that has fallen behind.
- * Only stable is shown, so that rule has nothing to do yet.
+ * A product's Move module: release.json's STABLE entry, never its beta
+ * channel. release.json records only what has been published (the release
+ * workflow writes it), so there is nothing untagged to leave out.
  */
 export function moduleDownload(product) {
   const entry = release.modules?.[moduleIds[product]];

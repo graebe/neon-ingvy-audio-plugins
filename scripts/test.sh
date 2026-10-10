@@ -51,6 +51,14 @@
 # downloaded, pinned and checksummed, into <build>/validators
 # (scripts/validate-plugins.sh).
 #
+# A PASSING `full` OR `product` RUN IS RECORDED ON THE COMMIT it tested: one
+# JSON line in a git note under refs/notes/ni-tests (scripts/release.mjs
+# attest), which the release workflows require before they build a tag. Not
+# recorded: a tree with uncommitted changes (at the start or the end), a HEAD
+# that moved during the run, `full --no-coverage`, and a run on a GitHub
+# runner. Push it with `git push origin refs/notes/ni-tests` before the tag
+# (docs/tech/ci-live.md).
+#
 # EVERY STAGE IS TIMED into the timing log outside the checkout
 # (scripts/timing.sh), the whole run as the stage "total";
 # scripts/build-timings.py summarises it.
@@ -104,6 +112,10 @@ if [ "$tier" = product ]; then
 fi
 
 jobs="$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
+
+# What the run starts from, for the record it leaves (record, below).
+start_sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+start_dirty="$(git -C "$ROOT" status --porcelain 2>/dev/null || echo unknown)"
 stage() { printf '==> %s\n' "$*"; }
 # A stage, timed into the log and on the terminal. A failure ends the run.
 timed() {
@@ -147,6 +159,9 @@ full() {
     validators "validators over $bundles" "$bundles"
 }
 
+# What a product run selects, for the run and for its record.
+product_labels=(-L "^product:($name|shared)\$" -LE '^(coverage|e2e)$')
+
 # The product's bundle and its tests, and nothing of another product's: a
 # build of only those targets, and a ctest of only those labels. Every test
 # carries `full`, so the tier needs no -L of its own; coverage and e2e are the
@@ -156,7 +171,7 @@ product() {
         quietly "build-$name" cmake --build "$BUILD" \
             --target "${bundle}_VST3" "ni_tests_$name" ni_tests_shared -j"$jobs"
     timed "ctest $name and shared" -- ctest --test-dir "$BUILD" \
-        -L "^product:($name|shared)\$" -LE '^(coverage|e2e)$' -j"$jobs" --output-on-failure
+        "${product_labels[@]}" -j"$jobs" --output-on-failure
     validators "validators over $bundle" "$BUILD/out" "$bundle"
 }
 
@@ -171,6 +186,40 @@ validators() {
     timed "$stage_name" -- "$ROOT/scripts/validate-plugins.sh" run "$tools" "$@"
 }
 
+# THE RECORD A RELEASE ASKS FOR (scripts/release.mjs attest; header above).
+# The run is green whether or not it is recorded, so a refusal is said, loudly,
+# and does not turn the run red.
+record() {
+    local labels=() cache="$BUILD/CMakeCache.txt" tests
+    case "$tier" in
+        full)    labels=(-L full) ;;
+        product) labels=("${product_labels[@]}") ;;
+        *)       return 0 ;;
+    esac
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        stage "not recorded: a runner's run is the release itself, not the local proof it asks for"
+        return 0
+    fi
+    if [ "$tier" = full ] && [ "$coverage" = 0 ]; then
+        stage "not recorded: --no-coverage is a gate between steps, not the final one"
+        return 0
+    fi
+    if [ -n "$start_dirty" ]; then
+        printf '\nNOT RECORDED: the tree had uncommitted changes when the run started, so it\n' >&2
+        printf 'tested something no commit holds. Commit, and run it again.\n' >&2
+        return 0
+    fi
+    tests="$(ctest --test-dir "$BUILD" -N "${labels[@]}" | sed -n 's/^Total Tests: //p')"
+    stage "record the pass on ${start_sha:0:12} (refs/notes/ni-tests)"
+    node "$ROOT/scripts/release.mjs" attest --tier "$tier" ${name:+--product "$name"} \
+        --expect-sha "$start_sha" \
+        --result "tests=$tests" \
+        --result "duration_s=$(( SECONDS - $1 ))" \
+        --result "build_type=$(sed -n 's/^CMAKE_BUILD_TYPE:[A-Z]*=//p' "$cache")" \
+        --result "archs=$(sed -n 's/^CMAKE_OSX_ARCHITECTURES:[A-Z]*=//p' "$cache")" \
+        || printf '\nNOT RECORDED (above): the run passed, and no release can rely on it.\n' >&2
+}
+
 main() {
     local t0=$SECONDS
     # THE BUILD DIRECTORY IS CONFIGURED ONCE, FROM ITS TIER'S PRESET. One that
@@ -181,6 +230,7 @@ main() {
             quietly configure cmake --preset "$preset" -B "$BUILD"
     fi
     "$tier"
+    record "$t0"
     if [ "$tier" = product ]; then
         printf '\n%s green in %ss: %s.vst3 and the %s and shared tests\n' \
             "$name" "$(( SECONDS - t0 ))" "$bundle" "$name"

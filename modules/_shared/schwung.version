@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# THE SCHWUNG EVERY MOVE MODULE HERE IS TESTED AGAINST -- one version, named
+# once. modules/_shared/schwung.sh fetches exactly this into a cache and
+# verifies it; the vendored host headers (engines/trance-gate/include) must be
+# its headers byte for byte, and the editor's smoke test runs on its shared
+# modules. Release tooling reads it too.
+#
+# FORMAT: KEY=VALUE lines, nothing else; `#` starts a comment line. No quotes,
+# no spaces around `=`, no expansion -- read it with a line split on the first
+# `=`, or source it from a POSIX shell.
+#
+#   SCHWUNG_REPO    the GitHub owner/repo the version is fetched from
+#   SCHWUNG_TAG     its release tag
+#   SCHWUNG_COMMIT  the full commit SHA that tag named when it was pinned.
+#                   The fetch fails if the tag names anything else now: a
+#                   moved tag is a different Schwung under the same name.
+#
+# TO MOVE IT: set all three, run `modules/_shared/schwung.sh headers`, vendor
+# the headers it reports as different, and run the quick tier.
+SCHWUNG_REPO=charlesvestal/schwung
+SCHWUNG_TAG=v1.7.3
+SCHWUNG_COMMIT=a6f7ec9e5cf4d0df172a1dbc00b29d0b5eb67124

@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# THE ONE RUST TOOLCHAIN every build here uses: the Mac, a GitHub runner, and
+# the Move module's image (modules/_shared/Dockerfile, whose RUST_TOOLCHAIN
+# follows this; ctest's `release` holds the two equal).
+#
+# Pinned, not "stable": the render goldens hash floating-point output, and two
+# compilers are two chances for the same source to render two hashes. Moving
+# it is a deliberate change: bump the channel here and in the Dockerfile,
+# re-run the full tier, and re-record a golden only if it moved, with that
+# reason.
+#
+# The two Apple targets are the universal build's (cmake/NiRust.cmake); llvm-
+# tools is coverage's (scripts/coverage.sh); clippy and rustfmt are the
+# developer's, so `cargo clippy` works in a checkout of this pinned toolchain. rustup installs what is missing on
+# first use. The module image sets RUSTUP_TOOLCHAIN, which overrides this file
+# inside it, so a container never fetches the Apple targets.
+[toolchain]
+channel = "1.99.0"
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+components = ["llvm-tools", "clippy", "rustfmt"]
+profile = "minimal"

@@ -470,6 +470,13 @@ add_test(NAME ni_shared
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung)
 
+# THE VENDORED SCHWUNG HEADERS ARE THE PINNED SCHWUNG'S, byte for byte: the version
+# modules/_shared/schwung.version names, fetched once into a cache outside the
+# checkout and verified on every run. 77, Skipped, when it is not cached and
+# cannot be fetched; a moved tag or an edited cache fails.
+add_test(NAME schwung_pin COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/schwung.sh headers)
+set_tests_properties(schwung_pin PROPERTIES SKIP_RETURN_CODE 77)
+
 # MUSIC-CORE, TWICE: with `std` and without it. The crate promises `no_std` and a
 # method set that only ever loses the two frequency methods without `std`, and
 # a build that is never made without it is a promise nobody checks. The README
@@ -611,6 +618,16 @@ if (NOT _ni_cargo_deny EQUAL 0)
     message(WARNING "cargo-deny is not installed, so the cargo_deny test will fail. "
                     "Install it at its pin: scripts/licence-tools.sh install cargo-deny")
 endif()
+
+# THE ADVISORIES, ASKED SEPARATELY: RustSec's database, fetched when the test
+# runs (deny.toml's [advisories]), so its verdict can change without a commit.
+# That keeps it out of the quick tier and puts it in the full one and in each
+# product's run -- what a release is attested by -- and both release workflows
+# ask it again on the day they publish.
+add_test(NAME cargo_deny_advisories
+         COMMAND ${RUST_ENV} ${RUST_CARGO} deny --manifest-path ${CMAKE_SOURCE_DIR}/Cargo.toml
+                 --config ${CMAKE_SOURCE_DIR}/deny.toml --locked
+                 check advisories)
 
 # THE TRANCE GATE'S RUST, which was the one suite nobody ran.
 #
@@ -760,6 +777,8 @@ ni_test_tiers(
             # the whole graph
             abus_core gnd_core shell_core ni_shared music_core_rs music_core_no_std
             cargo_deny
+            # the vendored Schwung headers against the pinned host's
+            schwung_pin
             # C against the shared ABIs: the bus, the ground, the handoff
             abus_roundtrip gnd_roundtrip shell_handoff
             # lint-like checks over the tree
@@ -772,6 +791,7 @@ ni_test_tiers(
         FULL
             abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
             site_links:site coverage_floor:coverage
+            cargo_deny_advisories:advisories
     PRODUCT trance-gate
         PROGRAMS tg_core_tests tg_render_plugin tg_shape_table tg_envelope_table tg_fade_table
                  capi_compat_tg tg_processor tg_rt tg_host

@@ -79,24 +79,29 @@
  * If you must do work at create time, prefer doing it lazily on the worker and
  * rendering silence until it lands.
  *
- * ONE QUALIFICATION, and it does not weaken any rule above. An audio FX loaded
- * into a chain SLOT is created, configured and processed on the callback, as
- * described. An audio FX loaded into a chain BUS insert position is loaded by
- * the chain's bus worker (SCHED_OTHER, cores 0-2): its dlopen, create_instance,
- * destroy_instance and the set_param that restores its saved state run THERE,
- * while process_block, on_midi and every live set_param/get_param still run on
- * the callback. So:
+ * ONE QUALIFICATION, and it does not weaken any rule above: a module is LOADED
+ * off the callback. Its dlopen, create_instance, destroy_instance and the
+ * set_param that restores its saved state run on a SCHED_OTHER thread on cores
+ * 0-2 — the shim's slot loader for a chain SLOT (a `synth:module`,
+ * `fxN:module`, `midi_fxN:module`, `load_file`, `load_patch` or `clear`
+ * write), the chain's bus worker for a BUS insert. process_block, render_block,
+ * on_midi and every live set_param/get_param still run on the callback. So:
  *
  *   - You still may not do any of the forbidden things above at create time.
- *     You have no way to know which of the two you were loaded as, and the slot
- *     case — the common one — is the callback.
+ *     The live entry points are the callback, and a slow create_instance is a
+ *     module pick that takes that long to be heard.
  *   - Process-global initialisation must be thread-safe. The same module can be
- *     constructed on the worker for a bus and on the callback for a slot AT THE
- *     SAME TIME. Per-instance state is unaffected; a shared static table, a
- *     lazily-built wavetable or a library init that is not reentrant is not.
+ *     constructed on the loader for one slot while another instance of it
+ *     renders on the callback in the next. Per-instance state is unaffected; a
+ *     shared static table, a lazily-built wavetable or a library init that is
+ *     not reentrant is not.
+ *   - A thread you create from create_instance inherits SCHED_OTHER, not the
+ *     callback's SCHED_FIFO 70. If it produces audio, set its policy and
+ *     priority explicitly (pthread_attr_setinheritsched(PTHREAD_EXPLICIT_SCHED)),
+ *     which was always the rule.
  *
- * "There is no control thread" remains the rule to write code against. This is
- * the one place the host does not hold still, and it buys you nothing.
+ * "There is no control thread" remains the rule to write code against. Loading
+ * is the one place the host does not hold still, and it buys you nothing.
  *
  * See docs/REALTIME_SAFETY.md for the measurements behind all of this.
  * ===========================================================================
@@ -106,6 +111,7 @@
 #define MOVE_PLUGIN_API_V1_H
 
 #include <stdint.h>
+#include <stddef.h>   /* offsetof, for the reserved-tail static assert below */
 
 #define MOVE_PLUGIN_API_VERSION 1
 
@@ -121,6 +127,12 @@
 #define MOVE_MIDI_SOURCE_EXTERNAL 2
 #define MOVE_MIDI_SOURCE_HOST 3  /* Host-generated (clock, etc) */
 #define MOVE_MIDI_SOURCE_FX_BROADCAST 4  /* Broadcast to audio FX only (skip synth) */
+/* A physical knob (notes 0-7) or jog (note 9) capacitive-touch edge, sent
+ * ONLY to a sound generator that declared capabilities.touch_observe. It skips
+ * the MIDI FX, the LFO retrigger, Pre-mode injection and the audio FX, so a
+ * touch is never mistaken for a played note 0-9 by anything else in the slot;
+ * this source value is how the generator tells the two apart. */
+#define MOVE_MIDI_SOURCE_TOUCH 5
 
 /* Clock status identifiers for host_api_v1.get_clock_status() */
 #define MOVE_CLOCK_STATUS_UNAVAILABLE 0  /* Clock output not available/configured */
@@ -285,12 +297,36 @@ typedef struct host_api_v1 {
      *
      * This does NOT make the ABI extensible. Appending a real field still
      * requires modules to be rebuilt; the reserved run only buys a safe
-     * failure instead of a crash. Shrink it and old binaries start reaching
-     * past it again — so consume from the FRONT when adding a field, and
-     * never reduce the total. */
+     * failure instead of a crash.
+     *
+     * SO DO NOT CONSUME THIS RUN — not from the front, and not from the back.
+     * Its FRONT IS +120: replacing reserved[0] with a real field puts a live
+     * pointer at exactly the offset breakbeat calls, breakbeat's own
+     * `if (host->fn)` guard passes, and the device boot-loops again. Taking
+     * from the back shortens the run instead, and old binaries start reaching
+     * past it. A new host capability goes through a dlsym'd export
+     * (move_plugin_render_split, chain_take_midi_tick_wake,
+     * chain_set_clip_phase), which is what that precedent is for.
+     *
+     * The static assert below is the enforcement. test_host_api_reserved_tail
+     * cannot be: it inspects a memset-zeroed struct, so a real field inserted
+     * here reads NULL there and passes. */
     void *reserved[8];
 
 } host_api_v1_t;
+
+/* The front of `reserved` must stay at +120 — the offset a shipped breakbeat
+ * build over-reads and calls as get_project_bpm(). Inserting any field before
+ * `reserved` moves the run to +128 and leaves that live pointer at +120:
+ * SIGSEGV on the SPI callback at slot restore, which boot-loops the device.
+ *
+ * A _Static_assert emits no storage and cannot change the layout it measures,
+ * so this is free. */
+_Static_assert(offsetof(host_api_v1_t, reserved) == 120,
+               "host_api_v1_t::reserved must start at +120: breakbeat's "
+               "over-read lands there, so a live pointer at that offset "
+               "passes its guard and boot-loops the device. Add host "
+               "capabilities as dlsym'd exports, not as fields here.");
 
 /*
  * Plugin API - implemented by plugin, returned to host

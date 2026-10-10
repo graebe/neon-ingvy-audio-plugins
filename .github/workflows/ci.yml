@@ -45,9 +45,12 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           submodules: recursive
+
+      - name: Rust, at its pin
+        run: rustup toolchain install && rustc --version
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
 
@@ -57,7 +60,7 @@ jobs:
       - name: cargo-deny, at its pin
         run: scripts/licence-tools.sh install cargo-deny
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: '22'      # node --test, which every check over the tree uses
 
@@ -76,14 +79,14 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           submodules: recursive
 
-      - name: Rust, with both Apple targets, and the coverage tools
-        run: |
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
-          rustup component add llvm-tools-preview
+      # rust-toolchain.toml's: its version, both Apple targets and llvm-tools,
+      # which coverage needs.
+      - name: Rust, at its pin
+        run: rustup toolchain install && rustc --version
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
 
@@ -92,7 +95,7 @@ jobs:
           scripts/licence-tools.sh install cargo-deny
           cargo install cargo-llvm-cov --locked
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: '22'
           cache: npm
@@ -107,7 +110,7 @@ jobs:
       - name: Full tier
         run: scripts/test.sh full
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: always()
         with:
           name: coverage
@@ -125,19 +128,19 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           submodules: recursive
 
-      - name: Rust, with the arm64 target
-        run: rustup target add aarch64-apple-darwin
+      - name: Rust, at its pin
+        run: rustup toolchain install && rustc --version
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
 
       - name: cargo-deny, at its pin
         run: scripts/licence-tools.sh install cargo-deny
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: '22'
 

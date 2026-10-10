@@ -110,7 +110,10 @@ const PRODUCTS = {
  * rather than the repository being converted in one go, because converting the
  * Spectrogram means touching files another branch is working in.
  */
-const DATE_RE = /^v(\d{4})\.(\d{2})\.(\d{2})\.(\d+)$/;
+/* A BETA is v<YYYY.MM.DD>.<n>-beta.<k>: a prerelease OF v<YYYY.MM.DD>.<n>,
+ * ordered below it (see spellings()). scripts/release.mjs routes it to the
+ * Schwung catalog's beta channel and publishes it as a GitHub prerelease. */
+const DATE_RE = /^v(\d{4})\.(\d{2})\.(\d{2})\.(\d+)(?:-beta\.([1-9]\d*))?$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
 
 /*
@@ -130,8 +133,9 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
  *
  * THE SUBVERSION LIVES IN THE LOW BITS OF THE PATCH: day*8+sub. A second
  * release on one day has to move the packed number or a host cannot tell it
- * from the first, and there is no fourth field. Eight a day is the ceiling and
- * a ninth is refused below rather than wrapping into the next day.
+ * from the first, and there is no fourth field. n is three bits, .1 to .7 --
+ * seven a day is the ceiling -- and an eighth is refused below (and by
+ * cmake/NiJucePlugin.cmake) rather than wrapping into the next day.
  *
  * CFBundleVersion IS THE PACKED NUMBER, SPELLED OUT: y.m.(day*8+sub), so
  * v2026.09.29.3 is 2026.9.235. It is the build number macOS and the installer
@@ -140,6 +144,13 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
  * subversion cannot be a fourth field; folding it into the third the way the
  * packed form does keeps it monotonic.
  * CFBundleShortVersionString stays the human-facing date (2026.9.29).
+ *
+ * A BETA KEEPS ITS SUFFIX WHERE A SPELLING CAN HOLD ONE. v2026.10.10.1-beta.2
+ * is display and schwung with the suffix, cargo 2026.10.10-beta.2+1 (a semver
+ * prerelease, which orders below 2026.10.10), and the SAME numeric, packed and
+ * bundle forms as v2026.10.10.1: those are three integers, with no room for a
+ * fourth, so a beta and the release it precedes share a CFBundleVersion. Only
+ * the string the editor shows (NI_VERSION_STRING) tells them apart in a host.
  *
  * THE SCHWUNG SPELLING DROPS THE "v". Schwung Manager compares a module's
  * installed module.json version with release.json's by parseInt() on each
@@ -154,17 +165,19 @@ const spellings = (v) => {
     return { display: v, numeric: v, cargo: v, packed: (a << 16) | (b << 8) | c,
              bundle: v, schwung: v };
   }
-  const [, y, mo, day, sub] = d.map(Number);
+  const [, y, mo, day, sub] = d.slice(0, 5).map(Number);
+  const beta = d[5] === undefined ? undefined : Number(d[5]);
   const numeric = `${y}.${mo}.${day}`;
   return {
     display: v,
     numeric,
-    cargo: `${numeric}+${sub}`,
+    cargo: beta === undefined ? `${numeric}+${sub}` : `${numeric}-beta.${beta}+${sub}`,
     packed: (y << 16) | (mo << 8) | (day * 8 + sub),
     bundle: `${y}.${mo}.${day * 8 + sub}`,
     schwung: v.slice(1),
     sub,
     day,
+    beta,
   };
 };
 const packed = (v) => spellings(v).packed;
@@ -180,9 +193,23 @@ test('versions.json names every product and nothing else', () => {
   }
 });
 
+test('a beta is spelled as a prerelease of the release it precedes', () => {
+  const beta = spellings('v2026.10.10.1-beta.2');
+  const release = spellings('v2026.10.10.1');
+  assert.equal(beta.display, 'v2026.10.10.1-beta.2');
+  assert.equal(beta.schwung, '2026.10.10.1-beta.2', 'module.json and release.json: no "v", suffix kept');
+  assert.equal(beta.cargo, '2026.10.10-beta.2+1', 'a semver prerelease, the subversion as build metadata');
+  /* Three integers each, so the beta cannot be told from its release here. */
+  assert.equal(beta.numeric, release.numeric);
+  assert.equal(beta.bundle, release.bundle);
+  assert.equal(beta.packed, release.packed);
+  for (const bad of ['v2026.10.10.1-beta', 'v2026.10.10.1-beta.0', 'v2026.10.10.1-rc.1', 'v2026.10.10.1beta.1'])
+    assert.ok(!DATE_RE.test(bad), `${bad} is not a version`);
+});
+
 /*
  * THE CEILING, ASSERTED RATHER THAN COMMENTED. day*8+sub has to stay inside a
- * byte, so the subversion cannot exceed 7 -- and a ninth release in one day
+ * byte, so the subversion cannot exceed 7 -- and an eighth release in one day
  * would otherwise wrap into the next day's number and read as OLDER than it is.
  * Refusing it here is the difference between a build that fails and a version a
  * host quietly mis-orders.
@@ -193,7 +220,7 @@ test('a date version fits the packed form it has to produce', () => {
     const s = spellings(v);
     if (s.sub === undefined) continue;
     assert.ok(s.sub <= 7,
-      `${name}: subversion ${s.sub} cannot be packed -- eight releases a day is the ceiling`);
+      `${name}: subversion ${s.sub} cannot be packed -- .1 to .7, seven releases a day, is the ceiling`);
     const patch = s.day * 8 + s.sub;
     assert.ok(patch <= 255, `${name}: patch byte ${patch} overflows`);
   }

@@ -1,7 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Torben Gräber
 
-FROM ubuntu:22.04
+# Pinned by digest, not only by tag: a tag moves when Ubuntu rebuilds it, and
+# the image is the toolchain the modules ship from. To move it:
+# `docker buildx imagetools inspect ubuntu:22.04` and take the index digest
+# (one digest for every architecture: Docker on Apple Silicon and an arm64
+# runner pull arm64 from it, an x86_64 host amd64).
+FROM ubuntu:22.04@sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02
 
 # ONE IMAGE FOR EVERY SCHWUNG MODULE. The modules differ in which crate they
 # build and what they are called (modules/<name>/module.env), never in the
@@ -22,8 +27,8 @@ RUN apt-get update && apt-get install -y \
 # This used to be `curl https://sh.rustup.rs | sh`: whatever that URL served on
 # the day the image was built ran as root with no check at all. rustup-init is
 # now fetched from rustup's versioned archive and refused unless it matches the
-# digest written here. Both architectures, because Docker on Apple Silicon runs
-# this image as arm64 and a CI runner runs it as x86_64.
+# digest written here. Both architectures: Docker on Apple Silicon and the
+# release's arm64 runner run this image as arm64, an x86_64 host as x86_64.
 #
 # To move it: take RUSTUP_VERSION from
 # https://static.rust-lang.org/rustup/release-stable.toml and each digest from
@@ -31,7 +36,8 @@ RUN apt-get update && apt-get install -y \
 ARG RUSTUP_VERSION=1.29.1
 ARG RUSTUP_SHA256_X86_64=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71
 ARG RUSTUP_SHA256_AARCH64=15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433
-ARG RUST_TOOLCHAIN=1.98.1
+# rust-toolchain.toml's channel (ctest's `release` holds the two equal).
+ARG RUST_TOOLCHAIN=1.99.0
 
 # package.sh runs as the invoking user (docker run -u), not root, and cargo
 # writes its lock and cache under CARGO_HOME -- so the toolchain is made
@@ -39,6 +45,10 @@ ARG RUST_TOOLCHAIN=1.98.1
 # `chmod -R a+rwX`, world-writable, for the same reason.
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
 ENV PATH=/opt/cargo/bin:$PATH
+# Overrides the checkout's rust-toolchain.toml inside the image: the same
+# version, without its Apple targets and components, which a module build has
+# no use for and would otherwise download on every run.
+ENV RUSTUP_TOOLCHAIN=$RUST_TOOLCHAIN
 RUN set -eu; \
     case "$(uname -m)" in \
       x86_64)  triple=x86_64-unknown-linux-gnu;  sha="$RUSTUP_SHA256_X86_64" ;; \

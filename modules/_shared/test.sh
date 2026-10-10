@@ -21,7 +21,17 @@
 #      architecture they ship to rather than only on the Mac.
 #   3. MODULE_TEST_SCRIPT, when the module has one: the Trance Gate's
 #      engines/trance-gate/tests/run.sh, whose golden render is held to its
-#      recorded md5 here, on arm64.
+#      recorded md5 here, on arm64, and whose state blob is timed against the
+#      callback's block on the CPU nearest the Move's.
+#
+# Before the container, on this side: THE PINNED SCHWUNG. Every module is
+# tested against the version modules/_shared/schwung.version names, and its
+# vtable is built on the host headers vendored in engines/trance-gate/include
+# (ni-schwung mirrors them for every module). modules/_shared/schwung.sh
+# fetches that version once, verifies it, and holds the vendored headers to
+# it byte for byte. Here, not in the container, because the image has no git
+# to verify a checkout with; and it fails rather than skips -- this is the
+# final verification, and a cached copy keeps it working offline.
 #
 # AARCH64 OR NOTHING. Docker on Apple Silicon runs the image as arm64, which is
 # the point; on an x86_64 host it would run x86_64 and test a machine the Move
@@ -48,6 +58,15 @@ fi
 . "$SHARED_DIR/container.sh"
 
 if ! ni_in_module_container; then
+    status=0
+    ni_time_stage "schwung pin" -- "$SHARED_DIR/schwung.sh" headers || status=$?
+    if [ "$status" -eq 77 ]; then
+        echo "FAIL: the pinned Schwung ($SHARED_DIR/schwung.version) is not cached and could not be fetched;" \
+             "the modules cannot be verified against the host they are tested against" >&2
+        exit 1
+    elif [ "$status" -ne 0 ]; then
+        exit "$status"
+    fi
     ni_module_container "test $MODULE" modules/_shared/test.sh "$MODULE"
     exit 0
 fi
@@ -85,6 +104,10 @@ ui="$(sed -n 's/.*"ui_chain": *"\([^"]*\)".*/\1/p' "$PKG/module.json")"
     || fail "$MODULE_ID.so is not an aarch64 build"
 exports="$("${CROSS_PREFIX}nm" -D --defined-only "$SO" | awk '{print $3}')"
 grep -qx move_audio_fx_init_v2 <<<"$exports" || fail "$MODULE_ID.so does not export move_audio_fx_init_v2"
+# THE PANIC'S ONLY WAY IN. The v2 table has no MIDI field the host reads; it
+# dlsym's this symbol, and a host panic (CC 120/123) reaches the module through
+# it or not at all -- a missing export is a module that never hears one.
+grep -qx move_audio_fx_on_midi <<<"$exports" || fail "$MODULE_ID.so does not export move_audio_fx_on_midi"
 plugin_only="$(grep -E '^[a-z]+_shell_|^gnd_' <<<"$exports" || true)"
 [ -z "$plugin_only" ] || fail "$MODULE_ID.so exports the plugin's shell or ground:
 $plugin_only"
