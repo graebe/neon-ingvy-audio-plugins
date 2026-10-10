@@ -44,7 +44,8 @@ const ZIPS = [
 const RELEASES = publishedReleases();
 
 export function pluginDownloads(product) {
-  const version = latestStableRelease(product, RELEASES, versions[product]);
+  /* Only a release that carries every zip linked below. */
+  const version = latestStableRelease(product, RELEASES, versions[product], ZIPS.map(({ os }) => `-${os}.zip`));
   if (!version) return [];
   const tag = `${product}-${version}`;
   return ZIPS.map(({ os, label }) => ({

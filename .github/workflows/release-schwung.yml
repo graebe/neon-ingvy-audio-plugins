@@ -79,6 +79,7 @@ jobs:
       - name: Resolve the tag
         id: tag
         run: |
+          set -o pipefail   # a refused tag must fail here, not vanish into tee
           node scripts/release.mjs resolve "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
           grep -q '^module_id=' "$GITHUB_OUTPUT" || {
             echo "::error::$GITHUB_REF_NAME names a product with no Schwung module"; exit 1; }
@@ -228,6 +229,14 @@ jobs:
       # branch-protected; a bot push is rejected GH006 and would fail the whole
       # release". If that ever becomes true here, this step goes red and the
       # message below says exactly what to do by hand.
+      #
+      # AND MAIN MAY MOVE UNDER IT. Two modules released together push here at
+      # once (each tag has its own concurrency group, and they must not share
+      # one that cancels: a cancelled run is a release the catalog never
+      # hears of), and so does anyone pushing to main. A rejected push is
+      # retried from the new main, the entry written again onto ITS
+      # release.json, so neither release overwrites the other. Only GH006 is
+      # final: protection does not go away by retrying.
       - name: Commit release.json
         env:
           MODULE_ID: ${{ needs.check.outputs.module_id }}
@@ -236,20 +245,30 @@ jobs:
           set -euo pipefail
           trap 'echo "::error::release.json was NOT updated. The release is published but the catalog will keep offering the previous version. Fix by hand: node scripts/release.mjs release-json ${GITHUB_REF_NAME} ${GITHUB_REPOSITORY} on main, commit, push. If this failed with GH006, main is branch-protected against bot pushes."' ERR
 
-          # Written from the TAGGED tree, which knows this tag's module and
-          # version, onto MAIN's release.json, which may have moved on since
-          # the tag was cut -- another module's release, say.
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          git show origin/main:release.json > "$RUNNER_TEMP/release.json"
-          node scripts/release.mjs release-json "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" "$RUNNER_TEMP/release.json"
-
-          git checkout -f -B main origin/main
-          cp "$RUNNER_TEMP/release.json" release.json
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add release.json
-          git commit -m "Schwung catalog: $MODULE_ID $MODULE_VERSION" || echo "No changes to commit"
-          git push origin main
+          # Written by the TAGGED tree, which knows this tag's module and
+          # version, onto MAIN's release.json, in a second checkout of main so
+          # the script that writes is always the tagged one.
+          main="$RUNNER_TEMP/main"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            rm -rf "$main"; git worktree prune
+            git worktree add --detach "$main" origin/main
+            node scripts/release.mjs release-json "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" "$main/release.json"
+            if git -C "$main" diff --quiet -- release.json; then
+              echo "release.json on main already names $MODULE_ID $MODULE_VERSION"; exit 0
+            fi
+            git -C "$main" commit -q -m "Schwung catalog: $MODULE_ID $MODULE_VERSION" -- release.json
+            if out=$(git -C "$main" push origin HEAD:refs/heads/main 2>&1); then
+              echo "$out"; exit 0
+            fi
+            echo "$out"
+            if grep -q GH006 <<<"$out"; then false; fi
+            echo "::warning::push $attempt of 5 rejected; main moved, writing the entry again onto the new main"
+            sleep $(( attempt * 5 ))
+          done
+          false
 
   # THE SITE, from main, now that release.json there names this module
   # release. After the push above, so the site reads it.

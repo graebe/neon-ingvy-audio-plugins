@@ -43,9 +43,14 @@ jobs:
     # ONE DEPLOY AT A TIME, ACROSS EVERY CALLER. A tag for a product with a
     # plugin and a module runs both release workflows, and both call this. NOT
     # cancel-in-progress: cancelling a deploy mid-flight can leave the site on
-    # a half-uploaded artifact. The build is in this job, not a job of its
-    # own, so the run that deploys last also built last -- from the newest
-    # main.
+    # a half-uploaded artifact. That protects the RUNNING deploy only: the
+    # group holds one running and one pending run, and a third run cancels
+    # the pending one -- which is harmless, because every run builds the same
+    # thing, main and the published releases as they are when it starts. (The
+    # release run whose call was cancelled shows its pages job cancelled; its
+    # release is published all the same, and the newer run deploys it.) The
+    # build is in this job, not a job of its own, so the run that deploys
+    # last also built last, from the newest of both.
     concurrency:
       group: pages
       cancel-in-progress: false
@@ -69,14 +74,21 @@ jobs:
       - run: npm ci
 
       # Drafts are left out by the script; a failed release has no entry at
-      # all, so its tag is never linked.
+      # all, so its tag is never linked. With each release's assets, an asset
+      # once its upload finished: a release the module's workflow published
+      # while the plugin's build failed has no zip, and is not linked either
+      # (scripts/release.mjs, latestStableRelease). `gh release list` cannot
+      # say what a release carries, so this reads the API it wraps.
       - name: What has been released
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 \
-            --json tagName,isPrerelease,isDraft > "$RUNNER_TEMP/releases.json"
-          echo "$(node -p "require(process.argv[1]).length" "$RUNNER_TEMP/releases.json") releases"
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | {
+              tagName: .tag_name, isPrerelease: .prerelease, isDraft: .draft,
+              assets: [.assets[] | select(.state == "uploaded") | .name] }' \
+            | jq -s . > "$RUNNER_TEMP/releases.json"
+          echo "$(jq length "$RUNNER_TEMP/releases.json") releases"
 
       - name: Build
         env:

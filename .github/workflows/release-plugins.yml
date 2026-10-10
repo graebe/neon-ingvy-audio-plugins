@@ -71,6 +71,9 @@ jobs:
     # Linux and Windows come back here when the full build carries them
     # (docs/tech/cross-build.md).
     runs-on: macos-15
+    # Reads the tree and uploads an artifact; only the release job writes.
+    permissions:
+      contents: read
     defaults:
       run:
         shell: bash

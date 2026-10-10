@@ -343,6 +343,8 @@ function scratchRepo(files = { 'README.md': 'scratch\n' }) {
   return dir;
 }
 const FIXED = { rustc: 'rustc 1.99.0 (test)', host: 'test-host', date: new Date('2026-10-10T12:00:00Z') };
+/* What scripts/test.sh records for a run that left no unwaived gap. */
+const CLEAN = { gaps: 0, waived: 'none', untested: 'none' };
 
 /* ---------------------------------------------------------------- betas */
 
@@ -410,10 +412,20 @@ test('a beta the manager would never offer is refused before it is built', () =>
   const v = 'v2026.10.10.2-beta.1';
   const dir = scratchTree('side-chain', v, stableAt('ni-side-chain', '2026.10.10.1'));
   assert.throws(() => resolve(`side-chain-${v}`, dir), /would order 2026\.10\.10\.2-beta\.1 below the stable/);
-  /* The beta of the stable's own subversion, or with no stable at all, is fine. */
+  /* Over an earlier day's stable, or with no stable at all, it is offered. */
   writeFileSync(join(dir, 'release.json'), JSON.stringify(stableAt('ni-side-chain', '2026.10.09.1')));
   assert.equal(resolve(`side-chain-${v}`, dir).prerelease, true);
+  rmSync(join(dir, 'release.json'));
+  assert.equal(resolve(`side-chain-${v}`, dir).prerelease, true);
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('a beta at or below the stable the catalog offers is refused', () => {
+  for (const [v, stable] of [['v2026.10.10.1-beta.1', '2026.10.10.1'], ['v2026.10.09.1-beta.3', '2026.10.10.1']]) {
+    const dir = scratchTree('side-chain', v, stableAt('ni-side-chain', stable));
+    assert.throws(() => resolve(`side-chain-${v}`, dir), /is not above the stable/, v);
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /* ------------------------------------------------- the site's downloads */
@@ -434,24 +446,39 @@ test('the site links the newest published stable release, never a beta or an unt
   assert.equal(latestStableRelease('spectrogram', releases, 'v2026.10.09.1'), null);
 });
 
+test('the site links only a release that carries the zip it links', () => {
+  const zip = '-macOS.zip';
+  const rel = (v, assets) => ({ tag: `side-chain-${v}`, prerelease: false, assets });
+  const releases = [
+    rel('v2026.10.09.1', ['side-chain-v2026.10.09.1-macOS.zip', 'ni-side-chain-module.tar.gz']),
+    /* The module's workflow published, the plugin's build failed. */
+    rel('v2026.10.10.1', ['ni-side-chain-module.tar.gz']),
+  ];
+  assert.equal(latestStableRelease('side-chain', releases, 'v2026.10.10.1', [zip]), 'v2026.10.09.1');
+  assert.equal(latestStableRelease('side-chain', releases, 'v2026.10.10.1'), 'v2026.10.10.1', 'nothing needed');
+  /* A local build knows tags, not assets, and links them as it always did. */
+  const local = releases.map((r) => ({ ...r, assets: null }));
+  assert.equal(latestStableRelease('side-chain', local, 'v2026.10.10.1', [zip]), 'v2026.10.10.1');
+});
+
 test('published releases come from GitHub on the Pages runner, and from the tags elsewhere', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ni-releases-'));
   const list = join(dir, 'releases.json');
   writeFileSync(list, JSON.stringify([
-    { tagName: 'side-chain-v2026.10.10.1', isPrerelease: false, isDraft: false },
-    { tagName: 'side-chain-v2026.10.11.1-beta.1', isPrerelease: true, isDraft: false },
-    { tagName: 'side-chain-v2026.10.11.1', isPrerelease: false, isDraft: true },
+    { tagName: 'side-chain-v2026.10.10.1', isPrerelease: false, isDraft: false, assets: ['a.zip'] },
+    { tagName: 'side-chain-v2026.10.11.1-beta.1', isPrerelease: true, isDraft: false, assets: [] },
+    { tagName: 'side-chain-v2026.10.11.1', isPrerelease: false, isDraft: true, assets: ['b.zip'] },
   ]));
   assert.deepEqual(publishedReleases({ env: { NI_RELEASES: list } }), [
-    { tag: 'side-chain-v2026.10.10.1', prerelease: false },
-    { tag: 'side-chain-v2026.10.11.1-beta.1', prerelease: true },
+    { tag: 'side-chain-v2026.10.10.1', prerelease: false, assets: ['a.zip'] },
+    { tag: 'side-chain-v2026.10.11.1-beta.1', prerelease: true, assets: [] },
   ]);
   const repo = scratchRepo();
   git(repo, 'tag', 'side-chain-v2026.10.10.1');
   git(repo, 'tag', 'side-chain-v2026.10.11.1-beta.1');
   assert.deepEqual(publishedReleases({ env: {}, cwd: repo }), [
-    { tag: 'side-chain-v2026.10.10.1', prerelease: false },
-    { tag: 'side-chain-v2026.10.11.1-beta.1', prerelease: true },
+    { tag: 'side-chain-v2026.10.10.1', prerelease: false, assets: null },
+    { tag: 'side-chain-v2026.10.11.1-beta.1', prerelease: true, assets: null },
   ]);
   assert.deepEqual(publishedReleases({ env: {}, cwd: dir }), [], 'no checkout, no releases');
   rmSync(dir, { recursive: true, force: true });
@@ -465,10 +492,10 @@ test('a passing run is recorded on the commit it tested, one line per run', () =
   const repo = scratchRepo();
   const sha = git(repo, 'rev-parse', 'HEAD');
   const first = attest({ tier: 'product', products: ['side-chain'], expectSha: sha,
-                         results: { tests: 120 }, cwd: repo, ...FIXED });
+                         results: { tests: 120, gaps: 0 }, cwd: repo, ...FIXED });
   assert.deepEqual(first, { tier: 'product', products: ['side-chain'], sha, date: '2026-10-10T12:00:00.000Z',
-    host: 'test-host', rustc: 'rustc 1.99.0 (test)', result: 'pass', results: { tests: 120 } });
-  attest({ tier: 'full', cwd: repo, ...FIXED });
+    host: 'test-host', rustc: 'rustc 1.99.0 (test)', result: 'pass', results: { tests: 120, gaps: 0 } });
+  attest({ tier: 'full', results: CLEAN, cwd: repo, ...FIXED });
   assert.match(git(repo, 'for-each-ref', '--format=%(refname)', 'refs/notes/'), new RegExp(`^${NOTES_REF}$`));
   const records = attestations(sha, repo);
   assert.deepEqual(records.map((r) => r.tier), ['product', 'full']);
@@ -479,6 +506,16 @@ test('a passing run is recorded on the commit it tested, one line per run', () =
   assert.equal(attestationFor(records, 'f'.repeat(40), 'side-chain'), null, 'another commit');
   assert.equal(attestationFor([{ ...first, result: 'fail' }], sha, 'side-chain'), null);
   rmSync(repo, { recursive: true, force: true });
+});
+
+test('a run with gaps nobody waived does not release, and one with waived gaps does', () => {
+  const sha = 'a'.repeat(40);
+  const run = (results) => ({ tier: 'product', products: ['side-chain'], sha, result: 'pass', results });
+  assert.equal(attestationFor([run({ gaps: 2, untested: 'docker,rosetta' })], sha, 'side-chain'), null);
+  assert.equal(attestationFor([run({ tests: 120 })], sha, 'side-chain'), null, 'gaps not recorded');
+  assert.equal(attestationFor([run({ gaps: '1' })], sha, 'side-chain'), null, 'as a string too');
+  assert.ok(attestationFor([run({ gaps: 0, waived: 'docker', untested: 'docker' })], sha, 'side-chain'));
+  assert.ok(attestationFor([run({ gaps: 2 }), run({ gaps: '0' })], sha, 'side-chain'), 'one clean run is enough');
 });
 
 test('a run is not recorded on a dirty tree, or when HEAD moved under it', () => {
@@ -505,9 +542,11 @@ test('a tag is released only from a commit with a passing run of its product', (
   const repo = scratchRepo(files);
   const tag = tagOf('side-chain');
   assert.throws(() => attested(tag, 'HEAD', repo), /carries no passing test run for side-chain/);
-  attest({ tier: 'product', products: ['trance-gate'], cwd: repo, ...FIXED });
+  attest({ tier: 'product', products: ['trance-gate'], results: CLEAN, cwd: repo, ...FIXED });
   assert.throws(() => attested(tag, 'HEAD', repo), /no passing test run for side-chain under \S+ \(1 note line/);
-  attest({ tier: 'product', products: ['side-chain'], cwd: repo, ...FIXED });
+  attest({ tier: 'product', products: ['side-chain'], results: { gaps: 1, untested: 'docker' }, cwd: repo, ...FIXED });
+  assert.throws(() => attested(tag, 'HEAD', repo), /none without unwaived gaps: product on test-host, gaps=1, untested=docker/);
+  attest({ tier: 'product', products: ['side-chain'], results: CLEAN, cwd: repo, ...FIXED });
   assert.deepEqual(attested(tag, 'HEAD', repo).products, ['side-chain']);
   /* A note on the parent says nothing about its child. */
   writeFileSync(join(repo, 'next.txt'), 'next\n');

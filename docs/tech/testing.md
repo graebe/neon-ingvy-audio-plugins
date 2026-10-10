@@ -249,7 +249,9 @@ test cases in it, or a build with no `ni-capabilities.txt`, fails the run,
 because neither can say what ran. A full or product run's note
 (`refs/notes/ni-tests`, [Build & CI](ci-live.md)) carries the verdict as
 well -- `gaps`, `waived` and `untested` -- so a release shows what the run it
-relies on did not test.
+relies on did not test, and a release refuses a run with `gaps` above 0: the
+product run passes, but it releases nothing until every gap is waived or
+closed.
 
 ## Product — one product, as its release runs it
 

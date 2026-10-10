@@ -21,8 +21,7 @@
 #      architecture they ship to rather than only on the Mac.
 #   3. MODULE_TEST_SCRIPT, when the module has one: the Trance Gate's
 #      engines/trance-gate/tests/run.sh, whose golden render is held to its
-#      recorded md5 here, on arm64, and whose state blob is timed against the
-#      callback's block on the CPU nearest the Move's.
+#      recorded md5 here, on arm64.
 #
 # Before the container, on this side: THE PINNED SCHWUNG. Every module is
 # tested against the version modules/_shared/schwung.version names, and its

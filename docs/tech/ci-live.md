@@ -94,6 +94,29 @@ git tag side-chain-v2026.10.10.2
 git push origin side-chain-v2026.10.10.2
 ```
 
+**When main has moved by a catalog commit only.** A module release commits
+`Schwung catalog: <module> <version>` to main, so `git push origin main` can
+be refused after a test run that took an hour. Do not rebase onto it: that
+makes a new commit, and the note is on the old one. Merge it, and tag the
+commit you tested:
+
+```sh
+tested=$(git rev-parse HEAD)
+git pull --no-rebase origin main          # brings in release.json, nothing else
+git push origin main
+git push origin refs/notes/ni-tests
+git tag side-chain-v2026.10.10.2 "$tested"
+git push origin side-chain-v2026.10.10.2
+```
+
+That is safe because the tagged tree's `release.json` is never what gets
+published. The catalog step writes the new entry onto **main's** `release.json`,
+whatever main has gained since. The beta check reads the tagged tree's copy,
+and an older copy is only wrong if it predates a release of the **same**
+module, which a catalog commit for another module cannot be. If main gained
+anything else, the commit you tested is not the one main will hold; test the
+merge, and tag that.
+
 **A release proves its tests.** The owner's rule is that everything is built
 and tested locally and GitHub Actions publish, and a workflow cannot see a
 local run — so the run leaves its proof on the commit. When
@@ -104,7 +127,8 @@ under its own ref, `refs/notes/ni-tests`:
 ```json
 {"tier":"product","products":["side-chain"],"sha":"…","date":"…","host":"…",
  "rustc":"rustc 1.99.0 (…)","result":"pass",
- "results":{"tests":131,"duration_s":1650,"build_type":"Release","archs":"arm64;x86_64"}}
+ "results":{"duration_s":1650,"build_type":"Release","archs":"arm64;x86_64",
+            "gaps":0,"waived":"docker","untested":"docker"}}
 ```
 
 `git notes --ref=ni-tests show HEAD` prints them. Nothing is recorded for a
@@ -113,8 +137,17 @@ run), a `HEAD` that moved during it, `full --no-coverage`, or a run on a
 GitHub runner; the run says so in its last lines and stays green. Both release
 workflows fetch the notes first and stop, **before they build anything**,
 unless the tagged commit carries a passing `product` run of the tag's product
-or a `full` run (`scripts/release.mjs attested`). There is no override: a
-commit that has not been tested is tested, then tagged.
+or a `full` run (`scripts/release.mjs attested`), **with no gap left unwaived**.
+`gaps` counts the tests that could not run on that machine, Docker's or
+Rosetta's say, less the ones waived by name with `--waive` (see
+[Testing](testing.md)). A product run passes with gaps, but it does not release
+with them: run it where the capability exists, or waive the gap so it is on the
+record. A note from before gaps were recorded does not count. There is no
+override: a commit that has not been tested is tested, then tagged.
+
+If a release stops here, push the missing note and **re-run the failed jobs**
+in the Actions tab. The tag is already on GitHub, so pushing it again starts
+nothing.
 
 The notes push is refused only if notes were recorded on two machines. Join
 them, then push again — each line is one run, so concatenating is the whole

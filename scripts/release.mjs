@@ -202,10 +202,12 @@ export function resolve(tag, root = ROOT) {
 /*
  * A BETA THE MANAGER WOULD NOT OFFER IS REFUSED BEFORE IT IS BUILT. The beta
  * channel offers a beta only when schwungManagerNewer() puts it above the
- * stable entry, and it misorders one case: a beta of a later subversion on
- * the SAME DAY as the current stable (v2026.10.10.2-beta.1 over
- * 2026.10.10.1). Published, it would be a beta nobody is offered. Judged
- * against the release.json of the tagged tree, which is main's as of the tag.
+ * stable entry. Two kinds never get there: a beta at or below the stable
+ * (v2026.10.10.1-beta.1 once 2026.10.10.1 is out), and the one case the
+ * manager misorders, a beta of a later subversion on the SAME DAY as the
+ * stable (v2026.10.10.2-beta.1 over 2026.10.10.1). Published, either is a
+ * beta nobody is offered. Judged against the release.json of the tagged tree,
+ * which is main's as of the tag.
  */
 function betaReachesItsChannel(root, r, tag) {
   const p = join(root, 'release.json');
@@ -213,10 +215,13 @@ function betaReachesItsChannel(root, r, tag) {
   const entry = JSON.parse(readFileSync(p, 'utf8')).modules?.[r.module_id];
   const stable = entry?.channels?.stable?.version ?? entry?.version;
   if (!stable || !VERSION_RE.test(`v${stable}`)) return;
-  if (compareVersions(r.version, `v${stable}`) > 0 && !schwungManagerNewer(r.module_version, stable))
-    throw new Error(`tag ${tag}: Schwung Manager would order ${r.module_version} below the stable ` +
-      `${stable} (its version compare reads a beta's subversion as 0), so the beta channel would never ` +
-      'offer it. Release the beta under the next day\'s date, or release it as stable.');
+  if (schwungManagerNewer(r.module_version, stable)) return;
+  if (compareVersions(r.version, `v${stable}`) <= 0)
+    throw new Error(`tag ${tag}: ${r.module_version} is not above the stable ${stable} the catalog ` +
+      'already offers, so the beta channel would never offer it. Tag a version above it.');
+  throw new Error(`tag ${tag}: Schwung Manager would order ${r.module_version} below the stable ` +
+    `${stable} (its version compare reads a beta's subversion as 0), so the beta channel would never ` +
+    'offer it. Release the beta under the next day\'s date, or release it as stable.');
 }
 
 /*
@@ -277,12 +282,20 @@ export function updateReleaseJson(rel, { product, module_id, module_version, mod
  * not a prerelease, not a beta by name, and not ahead of versions.json (a tag
  * from a branch main never took).
  *
- * `releases` is [{ tag, prerelease }], from publishedReleases().
+ * AND THAT CARRIES WHAT THE LINK POINTS AT. One tag runs two workflows, and the
+ * Move module's can publish the release while the plugin's build fails: a
+ * release with no zip, whose download link is a 404. `needs` are the asset
+ * names the link is composed from, as suffixes of the tag ("-macOS.zip"); a
+ * release whose assets are known must carry every one. A local build knows
+ * the tags only (assets: null), and links them as before.
+ *
+ * `releases` is [{ tag, prerelease, assets }], from publishedReleases().
  */
-export function latestStableRelease(product, releases, ceiling) {
+export function latestStableRelease(product, releases, ceiling, needs = []) {
   let best = null;
-  for (const { tag, prerelease } of releases) {
+  for (const { tag, prerelease, assets } of releases) {
     if (prerelease || !tag.startsWith(`${product}-`)) continue;
+    if (assets && !needs.every((n) => assets.includes(`${tag}${n}`))) continue;
     const v = tag.slice(product.length + 1);
     if (!VERSION_RE.test(v) || isPrerelease(v)) continue;
     if (ceiling && VERSION_RE.test(ceiling) && compareVersions(v, ceiling) > 0) continue;
@@ -293,20 +306,21 @@ export function latestStableRelease(product, releases, ceiling) {
 
 /*
  * WHAT HAS BEEN RELEASED. On the Pages runner, NI_RELEASES names the JSON
- * `gh release list --json tagName,isPrerelease,isDraft` wrote: the releases
- * as GitHub publishes them, so a tag whose release failed is not one.
- * Anywhere else -- a local build of the site, the full tier's link check --
- * the checkout's tags, a beta being one by its name.
+ * pages.yml wrote from GitHub's releases API: [{ tagName, isPrerelease,
+ * isDraft, assets: [name] }], an asset listed once its upload finished. The
+ * releases as GitHub publishes them, so a tag whose release failed is not
+ * one. Anywhere else -- a local build of the site, the full tier's link check
+ * -- the checkout's tags, a beta being one by its name, and no assets known.
  */
 export function publishedReleases({ env = process.env, cwd = process.cwd() } = {}) {
   if (env.NI_RELEASES) {
     return JSON.parse(readFileSync(env.NI_RELEASES, 'utf8'))
       .filter((r) => !r.isDraft)
-      .map((r) => ({ tag: r.tagName, prerelease: Boolean(r.isPrerelease) }));
+      .map((r) => ({ tag: r.tagName, prerelease: Boolean(r.isPrerelease), assets: r.assets ?? [] }));
   }
   try {
     return git(cwd, 'tag', '--list').split('\n').filter(Boolean)
-      .map((tag) => ({ tag, prerelease: isPrerelease(tag) }));
+      .map((tag) => ({ tag, prerelease: isPrerelease(tag), assets: null }));
   } catch {
     return [];
   }
@@ -346,10 +360,24 @@ export function attestations(rev, cwd = ROOT) {
   });
 }
 
+/* A run of <product> on <sha> that passed. */
+const runOf = (r, sha, product) => r.result === 'pass' && r.sha === sha &&
+  (r.tier === 'full' || (r.tier === 'product' && r.products?.includes(product)));
+
+/*
+ * A RUN THAT LEFT GAPS NOBODY WAIVED DID NOT TEST THE PRODUCT. scripts/test.sh
+ * records `gaps` -- the tests that did not run for want of a capability, less
+ * the ones waived by name (scripts/test-summary.mjs) -- on every run, gated or
+ * not, so a product run passes with them. It does not release with them: a
+ * gap is waived on purpose or the run is repeated where the capability is. A
+ * note from before the count was recorded says nothing about it, so it does
+ * not count as none.
+ */
+const clean = (r) => String(r.results?.gaps) === '0';
+
 /* The note that lets <product> be released from <sha>, or null. */
-export const attestationFor = (records, sha, product) => records.find((r) =>
-  r.result === 'pass' && r.sha === sha &&
-  (r.tier === 'full' || (r.tier === 'product' && r.products?.includes(product)))) ?? null;
+export const attestationFor = (records, sha, product) =>
+  records.find((r) => runOf(r, sha, product) && clean(r)) ?? null;
 
 export function attest({ tier, products = [], expectSha, results = {}, cwd = ROOT,
                          rustc, host = hostname(), date = new Date() }) {
@@ -377,11 +405,20 @@ export function attested(tag, rev = 'HEAD', cwd = ROOT) {
   const sha = git(cwd, 'rev-parse', `${rev}^{commit}`);
   const records = attestations(sha, cwd);
   const ok = attestationFor(records, sha, product);
+  const gapped = records.filter((r) => runOf(r, sha, product) && !clean(r));
+  if (!ok && gapped.length)
+    throw new Error(`${sha.slice(0, 12)} passed ${gapped.length} run(s) of ${product}, none without unwaived ` +
+      `gaps: ${gapped.map((r) => `${r.tier} on ${r.host}, gaps=${r.results?.gaps ?? 'not recorded'}, ` +
+        `untested=${r.results?.untested ?? 'not recorded'}`).join('; ')}. Run it again where those ` +
+      'capabilities exist, or waive each by name (`scripts/test.sh product ' + product + ' --waive <name>`) ' +
+      `so the gap is on the record, then \`git push origin ${NOTES_REF}\` and re-run the workflow's ` +
+      'failed jobs (docs/tech/ci-live.md).');
   if (!ok)
     throw new Error(`${sha.slice(0, 12)} carries no passing test run for ${product} under ${NOTES_REF} ` +
       `(${records.length} note line(s) on it). Run \`scripts/test.sh product ${product}\` or ` +
       '`scripts/test.sh full` on that commit with a clean tree, then ' +
-      `\`git push origin ${NOTES_REF}\`, and push the tag again (docs/tech/ci-live.md).`);
+      `\`git push origin ${NOTES_REF}\`, and re-run the workflow's failed jobs -- the tag is already ` +
+      'on GitHub, and pushing it again starts nothing (docs/tech/ci-live.md).');
   return ok;
 }
 
