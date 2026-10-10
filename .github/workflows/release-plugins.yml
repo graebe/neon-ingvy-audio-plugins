@@ -27,7 +27,7 @@
 # tests/release.test.mjs holds the tag list below to exactly the plugins that
 # exist, and the staging to what a built bundle holds.
 #
-# A tag for a product that also has a Schwung module (trance-gate, side-chain)
+# A tag for a product that also has a Schwung module (trance-gate, side-chain, vocalize)
 # ALSO triggers release-schwung.yml, which builds the Move module from the same
 # commit. One tag ships both shells, so their versions cannot drift apart.
 #
@@ -49,6 +49,7 @@ on:
       - 'listen-in-v*'
       - 'side-chain-v*'
       - 'chord-detector-v*'
+      - 'vocalize-v*'
 
 permissions:
   contents: write

@@ -107,14 +107,15 @@ Processor::Processor()
         params[(size_t) i] = p.get();
         addParameter (p.release());
     }
-    params[(size_t) param::mode]->addListener (this);
+    for (auto& line : bypassLine)
+        line.assign ((size_t) bypassLength, 0.0f);
     setLatencySamples (latencyForMode());
+    startTimer (latencyCheckMs);
 }
 
 Processor::~Processor()
 {
-    params[(size_t) param::mode]->removeListener (this);
-    cancelPendingUpdate();
+    stopTimer();
 }
 
 bool Processor::isBusesLayoutSupported (const BusesLayout& layout) const
@@ -132,6 +133,9 @@ void Processor::prepareToPlay (double sampleRate, int)
      * held from before: the history and the resonators let go. */
     vz_shell_post_reset (shell.get());
     setLatencySamples (latencyForMode());
+    for (auto& line : bypassLine)
+        std::fill (line.begin(), line.end(), 0.0f);
+    bypassPos = 0;
     beat.prepare (r);
 }
 
@@ -148,16 +152,11 @@ int Processor::latencyForMode() const
     return (int) vz_latency (plain (param::mode), rate.load());
 }
 
-/* Any thread, the audio one included: only a request for the message
- * thread, which allocates nothing. */
-void Processor::parameterValueChanged (int, float)
+/* The message thread's: a host told only when the latency moved. */
+void Processor::timerCallback()
 {
-    triggerAsyncUpdate();
-}
-
-void Processor::handleAsyncUpdate()
-{
-    setLatencySamples (latencyForMode());
+    if (const int want = latencyForMode(); want != getLatencySamples())
+        setLatencySamples (want);
 }
 
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -179,8 +178,30 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
-    ni::Processor::processBypassed (buffer, midi);
+    const int frames = buffer.getNumSamples();
+    beat.tick (readClock (getPlayHead()), frames);
+    const int latency = getLatencySamples();
+    if (latency <= 0)
+    {
+        ni::Processor::processBypassed (buffer, midi);
+        return;
+    }
+    /* Each channel through its own line, `latency` samples late; the mask
+     * wraps, the line being a power of two longer than any latency. */
+    constexpr int mask = bypassLength - 1;
+    const int channels = juce::jmin (buffer.getNumChannels(), (int) bypassLine.size());
+    for (int ch = 0; ch < channels; ++ch)
+    {
+        auto& line = bypassLine[(size_t) ch];
+        float* x = buffer.getWritePointer (ch);
+        int pos = bypassPos;
+        for (int i = 0; i < frames; ++i, pos = (pos + 1) & mask)
+        {
+            line[(size_t) pos] = x[i];
+            x[i] = line[(size_t) ((pos - latency) & mask)];
+        }
+    }
+    bypassPos = (bypassPos + frames) & mask;
 }
 
 /* ------------------------------------------------------------ the model -- */

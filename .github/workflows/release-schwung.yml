@@ -24,6 +24,7 @@ on:
     tags:
       - 'trance-gate-v*'
       - 'side-chain-v*'
+      - 'vocalize-v*'
 
 permissions:
   contents: write

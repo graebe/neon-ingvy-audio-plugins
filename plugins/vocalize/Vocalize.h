@@ -16,10 +16,10 @@
  *   the buses     mono in to mono out, or stereo to stereo; no MIDI, no
  *                 sidechain
  *   the latency   Mode's (vz_latency): none for Time, one frame for Spectral.
- *                 Set in prepareToPlay, and again on the message thread
- *                 whenever Mode changes -- the parameter's listener only asks
- *                 for that (an AsyncUpdater), since it may be called on the
- *                 audio thread
+ *                 Set in prepareToPlay, and on the message thread by a timer
+ *                 that compares it with Mode's: a host may write Mode on the
+ *                 audio thread, and nothing there may post a message (an
+ *                 AsyncUpdater's post allocates)
  *   a block       the shell taken (vz_shell_begin), every parameter pushed
  *                 (cheap when unchanged), the channels processed in place, the
  *                 shell given back -- which publishes the picture when one is
@@ -47,14 +47,14 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <vector>
 
 namespace ni::vz
 {
 
 class Processor final : public ni::Processor,
                         public Model,
-                        private juce::AudioProcessorParameter::Listener,
-                        private juce::AsyncUpdater
+                        private juce::Timer
 {
 public:
     static constexpr int paramCount = param::count;
@@ -91,14 +91,19 @@ public:
 
 protected:
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-    /* Bypassed, the host's audio passes untouched -- delayed by the latency,
-     * which JUCE's own bypass keeps -- and the Ground keeps the host's time. */
+    /* Bypassed, the host's audio passes untouched but as late as the
+     * latency the host compensates for -- JUCE's own bypass does not delay
+     * -- and the Ground keeps the host's time. */
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
 private:
-    void parameterValueChanged (int index, float) override;
-    void parameterGestureChanged (int, bool) override {}
-    void handleAsyncUpdate() override;
+    /* How often the message thread checks the latency against Mode's. */
+    static constexpr int latencyCheckMs = 50;
+    /* The bypass delay's length: a power of two above the longest latency
+     * (vz_latency's 4096 at 192 kHz). */
+    static constexpr int bypassLength = 8192;
+
+    void timerCallback() override;
 
     struct ShellDeleter
     {
@@ -108,6 +113,10 @@ private:
     std::array<juce::RangedAudioParameter*, paramCount> params {};
     ni::GroundClock beat;
     std::atomic<double> rate { 44100.0 };
+
+    /* The bypassed signal, delayed: made here, emptied by prepareToPlay. */
+    std::array<std::vector<float>, 2> bypassLine;
+    int bypassPos = 0;
 
     /* The picture as the engine published it, and as the editor takes it. */
     std::unique_ptr<VzPicture> published;
