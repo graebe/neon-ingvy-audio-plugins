@@ -50,7 +50,7 @@ void check (bool ok, const String& what, const String& detail = {})
 /* The engine's parameters by name, in its table's order (bc_param_name). */
 const char* const names[BC_RENDER_PARAMS_COUNT] = { "Drive", "Bits", "Shape", "Mid-Rise", "Dither", "Anti-Alias", "Rate",
                                                     "Jitter", "Pre-Filter", "Post-Filter", "Octave", "Mix", "Output",
-                                                    "Refresh" };
+                                                    "Refresh", "Filter", "Cutoff", "Peak", "Slope" };
 
 std::unique_ptr<AudioPluginInstance> load (VST3PluginFormat& format, const PluginDescription& d, double rate, int block)
 {

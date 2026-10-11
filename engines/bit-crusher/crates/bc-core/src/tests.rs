@@ -652,3 +652,61 @@ fn with_anti_alias_the_takes_are_at_their_exact_instants() {
     e.process_f32_probed(&mut input, None, |_, p| any |= p.exact_take.is_some());
     assert!(!any);
 }
+
+#[test]
+fn the_filter_is_flat_then_its_slope_and_peak_rises_by_exactly_peak() {
+    use filters::ToneCoefficients;
+    let sr = 48_000.0;
+    for (i, slope_db) in [12.0, 24.0, 48.0].into_iter().enumerate() {
+        let c = ToneCoefficients::new(1_000.0, 0.0, sr);
+        /* Butterworth: flat below, -3 dB at the cutoff, the slope above. */
+        assert!(c.response_db(i, 100.0, sr).abs() < 0.01, "{slope_db}: flat");
+        assert!((c.response_db(i, 1_000.0, sr) + 3.01).abs() < 0.05, "{slope_db}: -3 dB at the cutoff");
+        let octave = c.response_db(i, 4_000.0, sr) - c.response_db(i, 8_000.0, sr);
+        assert!((octave - slope_db).abs() < 0.15 * slope_db, "{slope_db}: {octave} dB an octave up");
+        /* Peak: the response at the cutoff, exactly that many dB higher. */
+        for peak in [6.0, 12.0, 24.0] {
+            let p = ToneCoefficients::new(1_000.0, peak, sr);
+            let rise = p.response_db(i, 1_000.0, sr) - c.response_db(i, 1_000.0, sr);
+            assert!((rise - peak).abs() < 0.05, "{slope_db}, peak {peak}: rose {rise}");
+            assert!(p.response_db(i, 100.0, sr).abs() < 0.2, "{slope_db}, peak {peak}: passband");
+        }
+    }
+}
+
+#[test]
+fn the_filter_is_off_by_default_and_on_it_is_heard_at_its_response() {
+    /* A transparent crusher -- 16 bits, no hold -- so the filter is all
+     * that acts: a 4 kHz tone through a 1 kHz, 24 dB filter comes out about
+     * 48 dB down. */
+    let tone = sine(4_000.0, 0.5, 48_000);
+    let open = [(Param::Bits, 16.0), NO_HOLD];
+    let rms = |v: &[f32]| (v[24_000..].iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / 24_000.0).sqrt();
+    let off = mono(&mut engine(&open), &tone);
+    assert!((rms(&off) - 0.5 / 2f64.sqrt()).abs() < 0.01, "off by default: {}", rms(&off));
+    let mut e = engine(&[(Param::Bits, 16.0), NO_HOLD, (Param::Filter, 1.0), (Param::Cutoff, 1_000.0)]);
+    let on = mono(&mut e, &tone);
+    let want = filters::ToneCoefficients::new(1_000.0, 0.0, SR).response_db(1, 4_000.0, SR);
+    let got = 20.0 * (rms(&on) / rms(&off)).log10();
+    assert!((got - want).abs() < 1.0, "{got} dB, the response says {want}");
+}
+
+#[test]
+fn moving_slope_or_switching_the_filter_does_not_click() {
+    let mut e = engine(&[(Param::Bits, 16.0), NO_HOLD, (Param::Filter, 1.0), (Param::Cutoff, 2_000.0)]);
+    let tone = sine(220.0, 0.5, 48_000);
+    let mut out = Vec::new();
+    for (k, block) in tone.chunks(4_800).enumerate() {
+        match k {
+            2 => e.set_num(Param::Slope, 2.0),
+            4 => e.set_num(Param::Slope, 0.0),
+            6 => e.set_num(Param::Filter, 0.0),
+            8 => e.set_num(Param::Peak, 24.0),
+            _ => {}
+        }
+        out.extend(mono(&mut e, block));
+    }
+    /* A 220 Hz tone at 0.5 moves at most 0.0145 a sample; a click is a jump. */
+    let worst = out[4_800..].windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    assert!(worst < 0.03, "{worst}");
+}

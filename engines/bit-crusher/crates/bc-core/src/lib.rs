@@ -55,11 +55,11 @@ pub mod params;
 pub mod quantize;
 
 use core::fmt::Write;
-use filters::{DcBlock, Lowpass, LowpassCoefficients, PreCoefficients, PreFilter};
+use filters::{DcBlock, Lowpass, LowpassCoefficients, PreCoefficients, PreFilter, Tone, ToneCoefficients};
 use hold::{BandLimitedHold, Hold};
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
-pub use params::{Info, Kind, Param, Travel, Unit, PARAM_COUNT, REFRESH_LABELS, REFRESH_PERIOD_MS, TOGGLE_LABELS};
+pub use params::{Info, Kind, Param, Travel, Unit, PARAM_COUNT, REFRESH_LABELS, REFRESH_PERIOD_MS, SLOPE_LABELS, TOGGLE_LABELS};
 use quantize::{Grid, Shape};
 
 pub use blep::LATENCY;
@@ -105,6 +105,12 @@ struct Glides {
     output: f64,
     /// 1 while the crusher is heard, 0 while the host bypasses it.
     active: f64,
+    /// The filter: in or out, log2 of its cutoff, its peak in dB, and one
+    /// weight a slope -- 1 on the chosen one -- so Slope crossfades.
+    filter: f64,
+    log_cutoff: f64,
+    peak: f64,
+    slope: [f64; 3],
 }
 
 impl Glides {
@@ -123,6 +129,10 @@ impl Glides {
             mix: at(Param::Mix) / 100.0,
             output: db_to_amp(at(Param::Output)),
             active: active as i32 as f64,
+            filter: at(Param::Filter),
+            log_cutoff: at(Param::Cutoff).log2(),
+            peak: at(Param::Peak),
+            slope: core::array::from_fn(|i| (at(Param::Slope) as usize == i) as i32 as f64),
         }
     }
 
@@ -140,7 +150,13 @@ impl Glides {
             (&mut self.mix, t.mix),
             (&mut self.output, t.output),
             (&mut self.active, t.active),
+            (&mut self.filter, t.filter),
+            (&mut self.log_cutoff, t.log_cutoff),
+            (&mut self.peak, t.peak),
         ] {
+            *x = glide(*x, target, c);
+        }
+        for (x, target) in self.slope.iter_mut().zip(t.slope) {
             *x = glide(*x, target, c);
         }
     }
@@ -162,6 +178,8 @@ struct Now {
     mix: f64,
     output: f64,
     active: f64,
+    filter: f64,
+    slope: [f64; 3],
 }
 
 impl Now {
@@ -215,6 +233,8 @@ impl Delay {
 struct Channel {
     pre: PreFilter,
     post: Lowpass,
+    /// The resonant low-pass after the crusher (the Filter panel).
+    tone: Tone,
     dc: DcBlock,
     /// The raw hold, its output delayed to the band-limited hold's.
     hold: Hold,
@@ -253,10 +273,17 @@ pub struct Probe {
 }
 
 impl Channel {
-    fn new(index: usize, pre: &PreCoefficients, post: &LowpassCoefficients, sample_rate: f64) -> Channel {
+    fn new(
+        index: usize,
+        pre: &PreCoefficients,
+        post: &LowpassCoefficients,
+        tone: &ToneCoefficients,
+        sample_rate: f64,
+    ) -> Channel {
         Channel {
             pre: PreFilter::new(pre),
             post: Lowpass::new(post),
+            tone: Tone::new(tone),
             dc: DcBlock::new(sample_rate),
             hold: Hold::default(),
             raw_late: Delay::default(),
@@ -276,6 +303,7 @@ impl Channel {
         self.pre.reset();
         self.post.reset();
         self.dc.reset();
+        self.tone.reset();
         self.hold.reset();
         self.raw_late = Delay::default();
         self.exact.reset();
@@ -332,6 +360,13 @@ impl Channel {
         let blocked = self.dc.run(wet);
         let wet = fade(wet, blocked, now.mid_rise);
 
+        /* THE FILTER, on the crushed signal only, so Mix still brings the dry
+         * one in clean. All three slopes run; their weights crossfade. Off,
+         * it still runs, ready for the switch. */
+        let (y12, y24, y48) = self.tone.run(wet);
+        let toned = y12 * now.slope[0] + y24 * now.slope[1] + y48 * now.slope[2];
+        let wet = fade(wet, toned, now.filter);
+
         let heard = (dry_late * (1.0 - now.mix) + wet * now.mix) * now.output;
         fade(dry_late, heard, now.active)
     }
@@ -356,6 +391,10 @@ pub struct Engine {
     post_coefficients: LowpassCoefficients,
     pre_hz: f64,
     post_hz: f64,
+    /// The filter's coefficients, and the cutoff and peak they were made for.
+    tone_coefficients: ToneCoefficients,
+    tone_hz: f64,
+    tone_peak: f64,
     channels: [Channel; 2],
     /// Whether the host hears the crusher (set_active).
     active: bool,
@@ -372,6 +411,8 @@ impl Engine {
         let values = Param::ALL.map(Param::default_value);
         let targets = Glides::targets(&values, true);
         let (pre_hz, post_hz) = cutoffs(&targets);
+        let (tone_hz, tone_peak) = (targets.log_cutoff.exp2(), targets.peak);
+        let tone_coefficients = ToneCoefficients::new(tone_hz, tone_peak, sample_rate);
         let pre_coefficients = PreCoefficients::new(pre_hz, sample_rate);
         let post_coefficients = LowpassCoefficients::new(post_hz, sample_rate);
         Engine {
@@ -387,15 +428,19 @@ impl Engine {
             post_coefficients,
             pre_hz,
             post_hz,
-            channels: [0, 1].map(|i| Channel::new(i, &pre_coefficients, &post_coefficients, sample_rate)),
+            tone_coefficients,
+            tone_hz,
+            tone_peak,
+            channels: [0, 1].map(|i| Channel::new(i, &pre_coefficients, &post_coefficients, &tone_coefficients, sample_rate)),
             active: true,
             settled: 0,
         }
     }
 
-    /// Samples processed since a parameter of the sound last changed
-    /// (Refresh, the window's, is not one), saturating. A look whose window
-    /// is shorter was made with these settings throughout.
+    /// Samples processed since a parameter that shapes an editor's looks --
+    /// the quantiser's and the hold's (Param::shapes_the_looks) -- last
+    /// changed, saturating. A look whose window is shorter was made with
+    /// these settings throughout.
     pub fn settled(&self) -> u32 {
         self.settled
     }
@@ -474,7 +519,7 @@ impl Engine {
             return;
         }
         let v = p.clamp(v);
-        if v != self.values[p as usize] && p != Param::Refresh {
+        if v != self.values[p as usize] && p.shapes_the_looks() {
             self.settled = 0;
         }
         self.values[p as usize] = v;
@@ -537,6 +582,15 @@ impl Engine {
                 ch.post.retune(&self.post_coefficients);
             }
         }
+        let (tone_hz, tone_peak) = (self.now.log_cutoff.exp2(), self.now.peak);
+        if moved(tone_hz, self.tone_hz) || force || (tone_peak - self.tone_peak).abs() > 1e-3 {
+            self.tone_hz = tone_hz;
+            self.tone_peak = tone_peak;
+            self.tone_coefficients = ToneCoefficients::new(tone_hz, tone_peak, self.sample_rate);
+            for ch in &mut self.channels {
+                ch.tone.retune(&self.tone_coefficients);
+            }
+        }
     }
 
     /// One sample of every glide, and what the channels use for it.
@@ -552,7 +606,11 @@ impl Engine {
             if self.now.shape != before.shape {
                 self.shape = Shape::new(self.now.shape);
             }
-            if self.now.log_rate != before.log_rate || self.now.post_octave != before.post_octave {
+            if self.now.log_rate != before.log_rate
+                || self.now.post_octave != before.post_octave
+                || self.now.log_cutoff != before.log_cutoff
+                || self.now.peak != before.peak
+            {
                 self.retune(false);
             }
         }
@@ -572,6 +630,8 @@ impl Engine {
             mix: n.mix,
             output: n.output,
             active: n.active,
+            filter: n.filter,
+            slope: n.slope,
         }
     }
 

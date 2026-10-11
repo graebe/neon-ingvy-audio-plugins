@@ -71,7 +71,7 @@
       "h": 532,
       "is_interactive": true,
       "title": "NI Bit-Crusher — proposed",
-      "w": 888,
+      "w": 1168,
       "x": 3824,
       "y": 1100
     }
@@ -168,10 +168,10 @@
     "bc-notes": {
       "fill": "teal",
       "maxH": 640,
-      "w": 888,
+      "w": 1168,
       "x": 3824,
       "y": 1988,
-      "text": "BIT-CRUSHER — NEW WINDOW\n\nA bit crusher: a continuous signal made discrete, in amplitude and in time. Interactive: set Bits, Hold (samples per held value) and Mid-Rise in its Tweaks; the staircase and the scope follow.\n\nBC1  Two pictures over three panels, on one grid of three 264px columns: the staircase sits over the panel that shapes it.\nBC2  STEPS: input across, output up. The diagonal (line-200) is the untouched signal; the uv curve is the engine's own grid (bc_transfer_render), never a second model of it. The caption repeats Bits in the engine's words.\nBC3  SIGNAL: the last 11 ms, triggered on an upward zero crossing so a tone stands still. Input in grey, the crushed output in front; flat tops are the hold, stairs are the bits. The level range follows the material.\nBC4  Three panels of three knobs, each with the switches that change how its knobs act. STEPS: Bits, Shape, Dither; Mid-Rise, Anti-Alias. HOLD: Rate, Jitter, Octave; Pre, Post (the filters, before and after the hold). LEVEL: Drive, Mix, Output.\nBC5  Drive, Octave and Output are bipolar with symmetric ranges, so their arcs start at 12 o'clock and zero shows none.\nBC6  Rate turns in equal ratios (50 Hz to 96 kHz); every readout is the engine's text (12.0 kHz, 7.5 bits, +6.0 dB) and reads what is typed (8k).\nBC7  Switch labels read Pre and Post in the window; the host lists Pre-Filter and Post-Filter. Both names do not fit one column.\nBC8  No amber: nothing in this window is a warning.\n\nAs built: plugins/bit-crusher (JUCE 9, the native kit), v2026.10.10.1.\n\nWindow: 888 × 532."
+      "text": "BIT-CRUSHER — NEW WINDOW\n\nA bit crusher: a continuous signal made discrete, in amplitude and in time, then a low-pass of its own. Interactive: set Bits, Hold (samples per held value) and Mid-Rise, and the Filter's switch, Cutoff, Peak and Slope in its Tweaks; the pictures follow.\n\nBC1  Four pictures over four panels, on one grid of four 264px columns: each picture sits over the panel that shapes it.\nBC2  AMPLITUDE CRUSH: the staircase, zoomed until the steps show (×16 in the caption), both axes the level going into the quantiser after Drive, so the diagonal (grey) runs corner to corner. The staircase is the engine's own grid (bc_transfer_render); while a look is shown it is unlit and the signal lights it as uv dots. The caption counts the levels: 2^b + 1, 2^b with Mid-Rise.\nBC3  TIME CRUSH: the hold's last sixteen periods: what the hold takes in grey, the held level in front, a dot at each take (at its exact instant with Anti-Alias). Nothing held, it says NO HOLD.\nBC4  SIGNAL: the last 11 ms, triggered on an upward zero crossing. Input in grey, the crushed output in front. The level range follows the material.\nBC5  FILTER: the low-pass's response, 20 Hz to 20 kHz, +24 to -48 dB; grey is 0 dB, the curve the engine's own (bc_filter_response), lit while the Filter is on, unlit (the map of what it would do) while it is off. The caption names cutoff, slope and peak, or FILTER OFF.\nBC6  Rulers on every picture (level up, ms or Hz across); the two discretizations put their grid on the axes as minor ticks.\nBC7  Four panels of three knobs, each with the switches that change how its knobs act. AMPLITUDE CRUSH: Bits, Shape, Dither; Mid-Rise, Anti-Alias. TIME CRUSH: Rate, Jitter, Octave; Pre, Post. LEVEL: Drive, Mix, Output; Refresh and Pause (the pictures' pace, never the sound). FILTER: Cutoff, Peak, Slope; Filter (off by default).\nBC8  Slope is a three-step knob (12, 24, 48 dB/oct), not a select: it sits in the knob row with the others it shapes. Peak tops out at +24 dB and never self-oscillates.\nBC9  Drive, Octave and Output are bipolar: arcs from 12 o'clock.\nBC10 No amber: nothing in this window is a warning.\n\nAs built: plugins/bit-crusher (JUCE 9, the native kit), feature/bit-crusher-plots.\n\nWindow: 1168 × 532 (was 888)."
     }
   },
   "order": [

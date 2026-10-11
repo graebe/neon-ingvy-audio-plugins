@@ -148,6 +148,46 @@ private:
     std::vector<juce::Point<float>> dotsAt;
 };
 
+/*
+ *   FilterPlot     THE FILTER: its response, frequency across (20 Hz to 20
+ *                  kHz, in octaves) and gain up (+24 to -48 dB), from the
+ *                  engine's own sections (bc_filter_response) at Cutoff, Peak
+ *                  and Slope now. The grey line is 0 dB, the untouched
+ *                  signal; the curve is lit while the Filter is on and unlit
+ *                  -- what it would do -- while it is off. Caption: "FILTER
+ *                  2.00 KHZ   24 DB/OCT   +6.0 DB", or "FILTER   OFF".
+ */
+class FilterPlot final : public ni::ui::PlotWell
+{
+public:
+    static constexpr int points = 220;
+    static constexpr double loHz = 20.0, hiHz = 20000.0;
+    static constexpr float topDb = 24.0f, bottomDb = -48.0f;
+
+    explicit FilterPlot (Model&);
+
+    /* The response from the knobs, every frame. */
+    void update();
+
+    /* What it drew, for the tests. */
+    const std::vector<float>& responseDb() const noexcept { return db; }
+    bool isOn() const noexcept { return on; }
+    const std::vector<ni::ui::plot::Mark>& frequencyMarks() const noexcept { return xMarks; }
+
+    void resized() override { rebuild(); }
+
+private:
+    void paintPlot (juce::Graphics&) override;
+    void rebuild();
+    juce::Rectangle<float> plotArea() const;
+
+    Model& model;
+    std::vector<float> db, freshDb;
+    bool on = false;
+    juce::Path curve, flat;
+    std::vector<ni::ui::plot::Mark> xMarks, yMarks;
+};
+
 class SignalPlot final : public ni::ui::PlotWell
 {
 public:

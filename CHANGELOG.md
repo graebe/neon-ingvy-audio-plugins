@@ -20,6 +20,12 @@
 - **Rulers on every picture.** Level and time are marked on the axes, and the
   two discretizations show their grid as ticks: every step of the staircase,
   every take of the hold.
+- **New: a Filter.** A resonant low-pass on the crushed sound, before Mix,
+  in a fourth panel with its own picture: **Cutoff** (20 Hz to 20 kHz),
+  **Peak** (up to +24 dB at the cutoff, never self-oscillating) and **Slope**
+  (12, 24 or 48 dB per octave). Off by default, so existing sets sound as
+  they did. Every change glides, the slope included. On the Move it is the
+  second knob page.
 - **Refresh and Pause.** The pictures take a new look once a second by
   default, all three at the same moment; **Refresh** sets 1/s, 4/s, 10/s or
   Live and is saved with the set (it is not automatable). **Pause** holds all

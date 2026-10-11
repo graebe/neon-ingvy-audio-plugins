@@ -363,6 +363,38 @@ pub unsafe extern "C" fn bc_param_choice(index: i32, choice: i32, out: *mut c_ch
     }
 }
 
+/// THE FILTER'S RESPONSE, for an editor's plot: `count` gains in dB at
+/// frequencies evenly spaced in log from `lo_hz` to `hi_hz` (both included),
+/// of the low-pass at `cutoff_hz` with `peak_db` and slope `slope` (0, 1, 2:
+/// 12, 24, 48 dB per octave) at `sample_rate` -- the engine's own sections,
+/// never a second model of them. Any thread; pure.
+///
+/// # Safety
+/// `out` is null or has room for `count` floats.
+#[no_mangle]
+pub unsafe extern "C" fn bc_filter_response(
+    cutoff_hz: f64,
+    peak_db: f64,
+    slope: i32,
+    sample_rate: f64,
+    lo_hz: f64,
+    hi_hz: f64,
+    out: *mut f32,
+    count: u32,
+) {
+    if out.is_null() || count == 0 || !(sample_rate > 0.0) || !(lo_hz > 0.0) || !(hi_hz > lo_hz) {
+        return;
+    }
+    let out = std::slice::from_raw_parts_mut(out, count as usize);
+    let c = bc_core::filters::ToneCoefficients::new(cutoff_hz, peak_db, sample_rate);
+    let slope = slope.clamp(0, 2) as usize;
+    let last = (count.max(2) - 1) as f64;
+    for (i, y) in out.iter_mut().enumerate() {
+        let hz = lo_hz * (hi_hz / lo_hz).powf(i as f64 / last);
+        *y = c.response_db(slope, hz.min(0.499 * sample_rate), sample_rate) as f32;
+    }
+}
+
 /// How many levels the staircase has at `bits`, mid-tread or mid-rise: 2^b + 1
 /// and 2^b at whole Bits (bc_core::level_count). Any thread; pure.
 #[no_mangle]

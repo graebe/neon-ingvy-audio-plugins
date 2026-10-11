@@ -4,7 +4,7 @@
 /*
  * What NI Bit-Crusher's editor needs from its plugin, and all it may ask.
  *
- * EVERY CONTROL IS A HOST PARAMETER, the engine's fourteen in its table's
+ * EVERY CONTROL IS A HOST PARAMETER, the engine's eighteen in its table's
  * order (bc_param_*): parameter(param::bits) is Bits. Their text is the
  * engine's ("7.5 bits", "12.0 kHz", "+3.0 dB"), and the editor holds no unit,
  * precision or range of its own. The window sends nothing back but parameter
@@ -59,6 +59,10 @@ enum : int
     mix,         // 0..100 %
     output,      // -24..+24 dB
     refresh,     // Live, 10/s, 4/s, 1/s: the window's, not automated
+    filter,      // switch: the resonant low-pass after the crusher, off by default
+    cutoff,      // 20 Hz..20 kHz, equal ratios
+    peak,        // 0..+24 dB at the cutoff
+    slope,       // 12, 24, 48 dB per octave
     count
 };
 } // namespace param
@@ -139,6 +143,12 @@ public:
     /* How many levels the staircase has now: 2^Bits + 1 mid-tread, 2^Bits
      * with Mid-Rise (bc_level_count). */
     virtual int levelCount() const = 0;
+
+    /* The filter's response NOW, as the engine's sections have it
+     * (bc_filter_response): `count` gains in dB at frequencies evenly spaced
+     * in log from `loHz` to `hiHz`, at Cutoff, Peak and Slope as the host
+     * parameters hold them, whether the Filter is on or not. */
+    virtual void filterResponse (float* outDb, int count, double loHz, double hiHz) const = 0;
 };
 
 } // namespace ni::bc

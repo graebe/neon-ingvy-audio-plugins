@@ -36,7 +36,7 @@ static int param(const char *key) {
 }
 
 static void table(void) {
-    CHECK(bc_param_count() == 14);
+    CHECK(bc_param_count() == 18);
     char buf[32];
     for (int i = 0; i < bc_param_count(); i++) {
         BcParamInfo info;
@@ -46,7 +46,17 @@ static void table(void) {
         CHECK(bc_param_name(i, buf, sizeof buf) > 0);
         CHECK(bc_param_text(i, info.default_value, buf, sizeof buf) > 0);
     }
-    CHECK(!bc_param_info(14, NULL));
+    CHECK(!bc_param_info(18, NULL));
+
+    /* The filter, appended after Refresh: off by default, Slope a choice. */
+    CHECK(param("filter") == 14 && param("cutoff") == 15 && param("peak") == 16 && param("slope") == 17);
+    BcParamInfo f;
+    CHECK(bc_param_info(param("filter"), &f) && f.kind == BcParamKind_Toggle && f.default_value == 0.0);
+    CHECK(bc_param_info(param("slope"), &f) && f.kind == BcParamKind_Choice && f.choice_count == 3);
+    CHECK(bc_param_choice(param("slope"), 2, buf, sizeof buf) == 5 && strcmp(buf, "48 dB") == 0);
+    CHECK(bc_param_info(param("cutoff"), &f) && f.log_travel && f.default_value == 2000.0);
+    double hz = 0.0;
+    CHECK(bc_param_parse(param("cutoff"), "1.5k", &hz) && hz == 1500.0);
 
     /* The window's Refresh: a choice, saved but not automated, appended. */
     const int refresh = param("refresh");

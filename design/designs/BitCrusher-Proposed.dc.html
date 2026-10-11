@@ -15,9 +15,9 @@
 body{margin:0;background:#060410}
 </style>
 </helmet>
-<div class="ph" style="position: relative; width: 888px; height: 532px; overflow: hidden; font-family: var(--font-mono); color: var(--ink); background: var(--bg-000);">
+<div class="ph" style="position: relative; width: 1168px; height: 532px; overflow: hidden; font-family: var(--font-mono); color: var(--ink); background: var(--bg-000);">
 
-  <!-- THREE WELLS (y 32, 264 x 200 each), one over each panel: the two discretizations, then the sound. Each plot sits in its own area (a 30px column of level labels at the left, a 14px row under it) framed by rulers (plot::ruler, line-200, 3px ticks, 9px ink-muted hint labels): level in full scale (a zoomed window as its fraction, "1/16"; a range that follows the material in round levels), time in ms; and the discretizations' grids as 2px minor ticks -- every step across and every level up, every take of the hold. Grey (plot-dry, #6b6b78, 1.5px) is always what came in. In the two discretizations the crusher's map -- the staircase, the hold -- is unlit (ink-dim, 1.5px) while a look is shown, and the samples are lit: 3px uv dots, no glow (uv is what is lit). With no audio the staircase is lit uv, as before. All three show the same look, taken at Refresh's pace (1/s by default) and held while paused. -->
+  <!-- FOUR WELLS (y 32, 264 x 200 each), one over each panel: the two discretizations, the sound, the filter. Each plot sits in its own area (a 30px column of level labels at the left, a 14px row under it) framed by rulers (plot::ruler, line-200, 3px ticks, 9px ink-muted hint labels): level in full scale (a zoomed window as its fraction, "1/16"; a range that follows the material in round levels), time in ms; and the discretizations' grids as 2px minor ticks -- every step across and every level up, every take of the hold. Grey (plot-dry, #6b6b78, 1.5px) is always what came in. In the two discretizations the crusher's map -- the staircase, the hold -- is unlit (ink-dim, 1.5px) while a look is shown, and the samples are lit: 3px uv dots, no glow (uv is what is lit). With no audio the staircase is lit uv, as before. The three signal wells show the same look, taken at Refresh's pace (1/s by default) and held while paused; the filter well is the knobs' response, never a look. -->
 
   <!-- AMPLITUDE CRUSH (32, 32): the staircase, input across, output up. ZOOMED UNTIL THE STEPS SHOW: the window around silence, a power of two from full scale down, holding at most 16 steps (the engine's bc_transfer_span); the caption says by how much. Both axes are the level going into the quantiser, after Drive, on one scale: the diagonal runs corner to corner at any zoom, the staircase along it, and Drive moves the signal's dots up the stairs. The dots are the look's samples inside the window: on the stairs, or beside them by Dither. -->
   <div style="position: absolute; left: 32px; top: 32px; width: 264px; height: 200px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
@@ -68,8 +68,26 @@ body{margin:0;background:#060410}
     </svg>
   </div>
 
-  <!-- THREE PANELS (y 256, 208 tall), one column each: AMPLITUDE CRUSH, TIME CRUSH, LEVEL. Three knobs a panel, then the switches that change how its knobs act. The Level panel's row holds the window's own controls instead: Refresh (Live, 10/s, 4/s, 1/s; saved, not automated) from the left, Pause (not saved) at the right. -->
-  <sc-for list="{{panels}}" as="p" hint-placeholder-count="3">
+  <!-- FILTER (872, 32): the low-pass's response, 20 Hz to 20 kHz in equal steps of pitch across, +24 to -48 dB up. The grey line is 0 dB, the signal untouched; the curve is the engine's own response (bc_filter_response), lit uv while the Filter is on and unlit (ink-dim) while it is off -- the map of what it would do. The caption names cutoff, slope and peak (no peak at 0), or FILTER OFF. Rulers: 100, 1k and 10k named with a minor tick at every whole multiple; gain named every 24 dB, minor every 12. -->
+  <div style="position: absolute; left: 872px; top: 32px; width: 264px; height: 200px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
+    <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">{{filterCaption}}</span>
+    <svg viewBox="0 0 250 174" width="250" height="174" style="position: absolute; left: 6px; top: 20px; overflow: visible;" aria-hidden="true">
+      <path d="{{filterTicks}}" fill="none" stroke="var(--line-200)" stroke-width="1"></path>
+      <sc-for list="{{filterLabels}}" as="l" hint-placeholder-count="3">
+        <text x="{{l.x}}" y="{{l.y}}" text-anchor="{{l.anchor}}" fill="var(--ink-muted)" style="font: 400 9px var(--font-mono);">{{l.text}}</text>
+      </sc-for>
+      <path d="{{filterFlat}}" fill="none" stroke="#6b6b78" stroke-width="1.5"></path>
+      <sc-if value="{{filterOn}}" hint-placeholder-val="{{true}}">
+        <path d="{{filterCurve}}" fill="none" stroke="var(--uv)" stroke-width="2" stroke-linejoin="round" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></path>
+      </sc-if>
+      <sc-if value="{{filterOff}}" hint-placeholder-val="{{false}}">
+        <path d="{{filterCurve}}" fill="none" stroke="var(--ink-dim)" stroke-width="1.5" stroke-linejoin="round"></path>
+      </sc-if>
+    </svg>
+  </div>
+
+  <!-- FOUR PANELS (y 256, 208 tall), one column each: AMPLITUDE CRUSH, TIME CRUSH, LEVEL, FILTER. Three knobs a panel, then the switches that change how its knobs act. The Level panel's row holds the window's own controls instead: Refresh (Live, 10/s, 4/s, 1/s; saved, not automated) from the left, Pause (not saved) at the right. -->
+  <sc-for list="{{panels}}" as="p" hint-placeholder-count="4">
     <section class="ph-panel" style="{{p.style}}" aria-label="{{p.title}}">
       <h2 class="ph-title" style="margin: 0 0 12px;">{{p.title}}</h2>
       <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px;">
@@ -101,15 +119,15 @@ body{margin:0;background:#060410}
     </section>
   </sc-for>
 
-  <!-- THE HINT (0, 488, 888 x 28): three conventions, the Motion switch, the signature. -->
-  <div class="ph-hint" style="position: absolute; left: 0; top: 488px; width: 888px; height: 44px; box-sizing: border-box; padding: 0 32px 16px; align-items: center;">
+  <!-- THE HINT (0, 488, 1168 x 28): three conventions, the Motion switch, the signature. -->
+  <div class="ph-hint" style="position: absolute; left: 0; top: 488px; width: 1168px; height: 44px; box-sizing: border-box; padding: 0 32px 16px; align-items: center;">
     <span class="tips"><b>drag</b> a knob to turn it<span class="sep">—</span><b>shift</b> for fine<span class="sep">—</span><b>double-click</b> to reset</span>
     <span class="ph-toggle on"><span class="sw"></span><span class="ph-label">Motion</span></span>
     <span class="ph-sig"><span class="mark"></span>Neon Ingvy</span>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"bits":{"editor":"range","min":1,"max":12,"step":0.5,"default":3,"section":"Crusher"},"hold":{"editor":"int","min":1,"max":32,"default":12,"section":"Crusher"},"midRise":{"editor":"boolean","default":false,"section":"Crusher"},"$preview":{"width":888,"height":532}}'>
+<script type="text/x-dc" data-dc-script data-props='{"bits":{"editor":"range","min":1,"max":12,"step":0.5,"default":3,"section":"Crusher"},"hold":{"editor":"int","min":1,"max":32,"default":12,"section":"Crusher"},"midRise":{"editor":"boolean","default":false,"section":"Crusher"},"filter":{"editor":"boolean","default":true,"section":"Filter"},"cutoff":{"editor":"range","min":100,"max":16000,"step":100,"default":2000,"unit":"Hz","section":"Filter"},"peak":{"editor":"range","min":0,"max":24,"step":0.5,"default":6,"unit":"dB","section":"Filter"},"slope":{"editor":"enum","options":["12 dB","24 dB","48 dB"],"default":"24 dB","section":"Filter"},"$preview":{"width":1168,"height":532}}'>
 class Component extends DCLogic {
   renderVals() {
     const bits = this.props.bits ?? 3;
@@ -237,10 +255,65 @@ class Component extends DCLogic {
     const timeRuler = rulerOf(msMarks((n - 1) / 48), takes.map(([x]) => [AX + 0.88 * x, AH, 0, 2]));
     const signalRuler = rulerOf(msMarks(511 / 48), []);
 
+    /* THE FILTER (bc-core filters.rs): Butterworth sections at the cutoff,
+     * the sharpest one's Q raised by the Peak, so the response at the cutoff
+     * rises by exactly Peak dB; each section's response at 48 kHz (RBJ). */
+    const filterOn = this.props.filter ?? true;
+    const cutoff = Math.max(20, Math.min(20000, this.props.cutoff ?? 2000));
+    const peak = Math.max(0, Math.min(24, this.props.peak ?? 6));
+    const slopeIndex = Math.max(0, ['12 dB', '24 dB', '48 dB'].indexOf(this.props.slope ?? '24 dB'));
+    const qs = [[0.7071], [0.5412, 1.3066], [0.5098, 0.6013, 0.9000, 2.5629]][slopeIndex].slice();
+    qs[qs.length - 1] *= Math.pow(10, peak / 20);
+    const fsF = 48000, w0 = 2 * Math.PI * Math.min(cutoff, 0.45 * fsF) / fsF;
+    const responseDb = (hz) => {
+      const w = 2 * Math.PI * hz / fsF;
+      let db = 0;
+      qs.forEach((q) => {
+        const alpha = Math.sin(w0) / (2 * q), c = Math.cos(w0);
+        const b = [(1 - c) / 2, 1 - c, (1 - c) / 2], a = [1 + alpha, -2 * c, 1 - alpha];
+        const mag = (k) => Math.hypot(k[0] + k[1] * Math.cos(w) + k[2] * Math.cos(2 * w), k[1] * Math.sin(w) + k[2] * Math.sin(2 * w));
+        db += 20 * Math.log10(mag(b) / mag(a));
+      });
+      return db;
+    };
+    const fx = (hz) => AX + AW * Math.log(hz / 20) / Math.log(1000);
+    const fy = (db) => AH * (24 - Math.max(-48, Math.min(24, db))) / 72;
+    const response = [];
+    for (let i = 0; i < 220; i++) {
+      const hz = 20 * Math.pow(1000, i / 219);
+      response.push([fx(hz), fy(responseDb(hz))]);
+    }
+    const fMinor = [], fLabels = [];
+    for (let decade = 10; decade <= 20000; decade *= 10) {
+      for (let k = 1; k <= 9; k++) {
+        const hz = decade * k;
+        if (hz < 20 || hz > 20000) continue;
+        const named = k === 1 && decade >= 100;
+        fMinor.push([fx(hz), AH, 0, named ? 3 : 2]);
+        if (named) fLabels.push(xLabel(fx(hz), decade >= 1000 ? (decade / 1000) + 'k' : String(decade)));
+      }
+    }
+    for (let g = 24; g >= -48; g -= 12) {
+      const named = g % 24 === 0;
+      fMinor.push([AX, fy(g), named ? -3 : -2, 0]);
+      if (named) fLabels.push(yLabel(fy(g), (g > 0 ? '+' : '') + g));
+    }
+    const cutoffText = cutoff >= 10000 ? (cutoff / 1000).toFixed(1) : cutoff >= 1000 ? (cutoff / 1000).toFixed(2) : String(Math.round(cutoff));
+    const cutoffUnit = cutoff >= 1000 ? 'kHz' : 'Hz';
+    const slopeText = ['12', '24', '48'][slopeIndex];
+    const peakText = peak > 0 ? '+' + peak.toFixed(1) : '0.0';
+    const filterCaption = filterOn
+      ? ['Filter', cutoffText + ' ' + cutoffUnit, slopeText + ' dB/oct'].concat(peak > 0 ? [peakText + ' dB'] : []).join('\u00a0\u00a0\u00a0')
+      : 'Filter\u00a0\u00a0\u00a0off';
+
     return {
       ampTicks, ampLabels,
       timeTicks: timeRuler.ticks, timeLabels: timeRuler.labels,
       signalTicks: signalRuler.ticks, signalLabels: signalRuler.labels,
+      filterTicks: frame + tick(fMinor), filterLabels: fLabels,
+      filterFlat: 'M' + AX + ' ' + fy(0).toFixed(1) + 'H' + (AX + AW),
+      filterCurve: path(response),
+      filterOn, filterOff: !filterOn, filterCaption,
       bitsText: bits.toFixed(1),
       levelsText: String(2 * top + 1),
       diagonal,
@@ -263,6 +336,9 @@ class Component extends DCLogic {
         { title: 'Level', style: panelStyle(592),
           knobs: [knob('Drive', 30 / 48, '+6.0', 'dB', true), knob('Mix', 0.8, '80', '%', false), knob('Output', 0.5, '0.0', 'dB', true)],
           switches: [], view: true },
+        { title: 'Filter', style: panelStyle(872),
+          knobs: [knob('Cutoff', Math.log(cutoff / 20) / Math.log(1000), cutoffText, cutoffUnit, false), knob('Peak', peak / 24, peakText, 'dB', false), knob('Slope', slopeIndex / 2, slopeText, 'dB', false)],
+          switches: [sw('Filter', filterOn)] },
       ],
     };
   }

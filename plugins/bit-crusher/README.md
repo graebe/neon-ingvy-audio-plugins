@@ -52,8 +52,9 @@ Around those two, everything a crusher can usefully do:
 | **Jitter** | lets the hold's clock wander — noisier, and wider in stereo |
 | **Pre** | a steep low-pass *before* the hold: everything from half the Rate up, what would fold back, at least 60 dB down |
 | **Post** and **Octave** | a low-pass *after* the hold, at half the Rate moved by Octave: smooths the hold's steps |
+| **Filter** | a resonant low-pass on the crushed sound, before Mix — off by default: **Cutoff** 20 Hz to 20 kHz, **Peak** up to +24 dB at the cutoff (never self-oscillating), **Slope** 12, 24 or 48 dB per octave |
 | **Mix**, **Output** | dry against crushed, and the level after |
-| **Refresh**, **Pause** | how often the three pictures take a new look at the signal (once a second by default), and holding them still; the window's alone, never the sound's |
+| **Refresh**, **Pause** | how often the three signal pictures take a new look at the signal (once a second by default), and holding them still; the window's alone, never the sound's |
 
 Every control glides, the switches included, so automating any of them does
 not click, and a long buffer's automation is ramped across it. The latency is

@@ -9,6 +9,9 @@ ONE TABLE, THREE READERS. The JUCE shell declares its host parameters from it
 (bc-move), and the engine clamps with it. A range, a default or a unit is
 written here and nowhere else.
 
+THE FILTER is the last four, appended: a resonant low-pass after the crusher,
+off by default, so a set saved before it existed sounds as it did.
+
 THREE KINDS. A `Float` runs from `min` to `max` in its own unit -- dB, bits,
 %, Hz, octaves -- on a linear or a logarithmic travel; a `Toggle` is off or
 on; a `Choice` is one of its words, by index. The engine takes every value in
@@ -69,10 +72,21 @@ pub enum Param {
     Output,
     /// How often the editor's pictures take a new look. The window's alone.
     Refresh,
+    /// The resonant low-pass after the crusher, before the mix: on or off.
+    Filter,
+    /// Its cutoff.
+    Cutoff,
+    /// How far its response rises at the cutoff over a flat (Butterworth) one.
+    Peak,
+    /// Its slope: 12, 24 or 48 dB per octave.
+    Slope,
 }
 
 /// How many parameters there are.
-pub const PARAM_COUNT: usize = 14;
+pub const PARAM_COUNT: usize = 18;
+
+/// Slope's choices, in index order: two, four and eight poles.
+pub const SLOPE_LABELS: [&str; 3] = ["12 dB", "24 dB", "48 dB"];
 
 /// Refresh's choices, in index order, and the pictures' period for each in
 /// milliseconds -- 0 is every frame the editor draws.
@@ -183,6 +197,10 @@ impl Param {
         Param::Mix,
         Param::Output,
         Param::Refresh,
+        Param::Filter,
+        Param::Cutoff,
+        Param::Peak,
+        Param::Slope,
     ];
 
     /// The parameter at a host index, if there is one.
@@ -213,8 +231,32 @@ impl Param {
             Param::Mix => ("mix", "Mix", float(0.0, 100.0, 100.0, Unit::Percent, Linear, false)),
             Param::Output => ("output", "Output", float(-24.0, 24.0, 0.0, Unit::Db, Linear, true)),
             Param::Refresh => ("refresh", "Refresh", Kind::Choice { choices: &REFRESH_LABELS, default: 3 }),
+            Param::Filter => ("filter", "Filter", Kind::Toggle { default: false }),
+            Param::Cutoff => ("cutoff", "Cutoff", float(20.0, 20_000.0, 2_000.0, Unit::Hz, Log, false)),
+            Param::Peak => ("peak", "Peak", float(0.0, 24.0, 0.0, Unit::Db, Linear, false)),
+            Param::Slope => ("slope", "Slope", Kind::Choice { choices: &SLOPE_LABELS, default: 1 }),
         };
         Info { key, name, kind, automatable: !matches!(self, Param::Refresh) }
+    }
+
+    /// Whether it shapes what an editor's live pictures of the two
+    /// discretizations show -- the quantiser's input and levels, the hold's
+    /// takes -- so a look made before it moved is not shown on the new
+    /// settings. The filters after the hold, the mix and the window's own do
+    /// not.
+    pub fn shapes_the_looks(self) -> bool {
+        matches!(
+            self,
+            Param::Drive
+                | Param::Bits
+                | Param::Shape
+                | Param::MidRise
+                | Param::Dither
+                | Param::AntiAlias
+                | Param::Rate
+                | Param::Jitter
+                | Param::PreFilter
+        )
     }
 
     /// The value a new instance starts at, in the parameter's unit.
@@ -339,7 +381,7 @@ impl Param {
             return None;
         }
         let mut v = atof(t);
-        if self == Param::Rate {
+        if matches!(self.info().kind, Kind::Float { unit: Unit::Hz, .. }) {
             /* The first letter after the number, whatever spacing: "12k",
              * "12 kHz", "12.5K". */
             let unit = t.trim_start_matches(|c: char| c.is_ascii_digit() || matches!(c, '.' | '+' | '-' | ' '));

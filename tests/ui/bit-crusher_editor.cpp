@@ -17,6 +17,7 @@
  */
 #include "Editor.h"
 #include "InfoLines.h"
+#include "ParamChoiceKnob.h"
 #include "Pointer.h"
 #include "checks.h"
 #include "fakes.h"
@@ -70,6 +71,30 @@ struct FakeModel final : public Model
         params.addFloat ("mix", "Mix", linear (0.0f, 100.0f), 100.0f, fixed (0, "%", false), number);
         params.addFloat ("output", "Output", linear (-24.0f, 24.0f), 0.0f, fixed (1, "dB", true), number);
         params.addChoice ("refresh", "Refresh", { "Live", "10/s", "4/s", "1/s" }, 3);
+        /* The filter, off by default; Cutoff turns in equal ratios. */
+        juce::NormalisableRange<float> octaves (
+            20.0f, 20000.0f, [] (float lo, float hi, float n) { return lo * std::pow (hi / lo, n); },
+            [] (float lo, float hi, float v) { return std::log (v / lo) / std::log (hi / lo); });
+        params.addBool ("filter", "Filter", false);
+        params.addFloat ("cutoff", "Cutoff", octaves, 2000.0f, hz, number);
+        params.addFloat ("peak", "Peak", linear (0.0f, 24.0f), 0.0f, fixed (1, "dB", true), number);
+        params.addChoice ("slope", "Slope", { "12 dB", "24 dB", "48 dB" }, 1);
+    }
+
+    /* A Butterworth of the slope's order at the cutoff, raised by Peak there:
+     * the shape the engine draws (bc_filter_response), for the picture's
+     * tests -- not its numbers. */
+    void filterResponse (float* out, int count, double lo, double hi) const override
+    {
+        const double fc = setting (param::cutoff), peakDb = setting (param::peak);
+        const int order = 2 << (int) setting (param::slope);
+        for (int i = 0; i < count; ++i)
+        {
+            const double f = lo * std::pow (hi / lo, (double) i / (count - 1));
+            const double r = f / fc;
+            const double bump = peakDb * std::exp (-std::pow (std::log2 (r) * 4.0, 2.0));
+            out[i] = (float) (-10.0 * std::log10 (1.0 + std::pow (r, 2 * order)) + bump);
+        }
     }
 
     int numParameters() const override { return params.size(); }
@@ -204,13 +229,16 @@ TEST_CASE ("bit-crusher: the window is its design's size, on its grid, and every
     CHECK (e.getHeight() == Editor::designHeight);
     NI_CHECK_INFO_LIMIT (e);
 
-    /* A well over each panel, on the same three columns. */
-    const juce::Component* wells[] { &e.amplitudePlot(), &e.timePlot(), &e.signalPlot() };
-    for (int p = 0; p < 3; ++p)
+    /* A well over each panel, on the same four columns. */
+    const juce::Component* wells[] { &e.amplitudePlot(), &e.timePlot(), &e.signalPlot(), &e.filterPlot() };
+    for (int p = 0; p < 4; ++p)
         CHECK (wells[p]->getBounds() == juce::Rectangle<int> (e.panel (p).getX(), 0, Editor::column, Editor::plotH));
     CHECK (e.panel (0).getTitleText() == "Amplitude Crush");
     CHECK (e.panel (1).getTitleText() == "Time Crush");
     CHECK (e.panel (2).getTitleText() == "Level");
+    CHECK (e.panel (3).getTitleText() == "Filter");
+    /* The four columns fill the content, the window less its 32px padding. */
+    CHECK (e.panel (3).getRight() == Editor::designWidth - 2 * 32);
 
     /* Refresh and Pause in the Level panel's free row, under its knobs. */
     for (juce::Component* c : { static_cast<juce::Component*> (&e.refreshSelect()), static_cast<juce::Component*> (&e.pauseButton()) })
@@ -222,15 +250,18 @@ TEST_CASE ("bit-crusher: the window is its design's size, on its grid, and every
     }
     CHECK_FALSE (e.refreshSelect().getBounds().intersects (e.pauseButton().getBounds()));
     CHECK (e.refreshSelect().getIndex() == 3);
-    for (int p = 0; p < 3; ++p)
+    for (int p = 0; p < 4; ++p)
         CHECK (e.panel (p).getBounds() == juce::Rectangle<int> (p * (Editor::column + Editor::gutter), Editor::panelsY,
                                                                  Editor::column, Editor::panelH));
 
     /* Every control inside its panel, none overlapping another. */
     std::vector<juce::Component*> controls;
-    for (int i = 0; i < param::refresh; ++i)
+    for (int i = 0; i < param::count; ++i)
     {
-        const bool isSwitch = i == param::midRise || i == param::antiAlias || i == param::preFilter || i == param::postFilter;
+        if (i == param::refresh)
+            continue;
+        const bool isSwitch = i == param::midRise || i == param::antiAlias || i == param::preFilter
+                              || i == param::postFilter || i == param::filter;
         juce::Component& c = isSwitch ? static_cast<juce::Component&> (e.toggle (i)) : e.knob (i);
         /* Inside the panel's padding, not only its hairline. */
         const auto* panel = dynamic_cast<ni::ui::Panel*> (c.getParentComponent());
@@ -557,6 +588,34 @@ TEST_CASE ("bit-crusher: the axes are ruled, and the discretizations' grids are 
         CHECK_MESSAGE ((m.text == "0" || m.text == "-0.5" || m.text == "0.5" || m.text == "-1" || m.text == "1"), m.text);
 }
 
+TEST_CASE ("bit-crusher: the filter's picture is its response, lit only while it is on")
+{
+    Rig rig;
+    auto& f = rig.editor.filterPlot();
+    /* Off by default: the curve is drawn, unlit, and the caption says so. */
+    CHECK_FALSE (f.isOn());
+    CHECK (f.getCaption() == "FILTER   OFF");
+    rig.model.set (param::filter, 1.0f);
+    rig.model.set (param::peak, 6.0f);
+    rig.frames (1);
+    CHECK (f.isOn());
+    CHECK (f.getCaption() == "FILTER   2.00 KHZ   24 DB/OCT   +6.0 DB");
+    /* Flat at 20 Hz, cut far above the cutoff. */
+    CHECK (std::abs (f.responseDb().front()) < 0.5f);
+    CHECK (f.responseDb().back() < -40.0f);
+    /* Octaves across: 100, 1k and 10k named. */
+    juce::StringArray named;
+    for (const auto& m : f.frequencyMarks())
+        if (m.text.isNotEmpty())
+            named.add (m.text);
+    CHECK (named == juce::StringArray { "100", "1k", "10k" });
+    /* Slope turns option by option, on its own knob. */
+    CHECK (dynamic_cast<ni::ui::ParamChoiceKnob*> (&rig.editor.knob (param::slope)) != nullptr);
+    rig.model.set (param::slope, 2.0f);
+    rig.frames (1);
+    CHECK (f.getCaption() == "FILTER   2.00 KHZ   48 DB/OCT   +6.0 DB");
+}
+
 TEST_CASE ("bit-crusher: the scope waits for audio, then shows its window's length")
 {
     Rig rig;
@@ -585,8 +644,11 @@ NI_SNAPSHOT_TEST ("bit-crusher: crushed hard, every switch on")
     rig.model.set (param::rate, 4000.0f);
     rig.model.set (param::jitter, 25.0f);
     rig.model.set (param::mix, 80.0f);
-    for (const int s : { param::midRise, param::antiAlias, param::preFilter, param::postFilter })
+    for (const int s : { param::midRise, param::antiAlias, param::preFilter, param::postFilter, param::filter })
         rig.model.set (s, 1.0f);
+    rig.model.set (param::cutoff, 3000.0f);
+    rig.model.set (param::peak, 12.0f);
+    rig.model.set (param::slope, 2.0f);
     rig.model.play (220.0, 0.7f, 3.0, 12);
     rig.frames (60);
     NI_CHECK_SNAPSHOT (rig.editor, "bit-crusher-crushed");

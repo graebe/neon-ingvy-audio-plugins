@@ -6,7 +6,7 @@ title: Ableton Live Interface
 A bit crusher makes a continuous signal discrete twice over: in **amplitude**
 (it keeps fewer levels) and in **time** (it keeps them less often). Those are
 the plugin's two halves, **Amplitude Crush** and **Time Crush**, and the
-window is built around them: three pictures over three panels, each picture
+window is built around them: four pictures over four panels, each picture
 over the panel that shapes it.
 
 - **Amplitude Crush**, on the left, is the staircase: every input level
@@ -15,21 +15,25 @@ over the panel that shapes it.
   lights it up as dots: the stairs it is on right now.
 - **Time Crush**, in the middle, is the hold: your signal in grey, the held
   level as a dim line — flat between takes — and each take lit as a dot.
-- **Signal**, on the right, is the sound itself, the last eleven
-  milliseconds of it: the input in grey, the crushed output in front.
+- **Signal**, third, is the sound itself, the last eleven milliseconds of
+  it: the input in grey, the crushed output in front.
+- **Filter**, on the right, is the low-pass after the crusher: how loud each
+  frequency comes out, from 20 Hz to 20 kHz. The grey line is 0 dB, the
+  signal untouched; the curve lights up while the Filter is on.
 - Every picture has rulers: level in full scale up the left (and across, in
   Amplitude Crush), time in milliseconds across the bottom. The two
   discretizations also put their grid on the axes as small ticks — a tick at
   every step of the staircase, both ways, and at every take of the hold — so
   you can count the steps and the takes.
-- Under them, three panels: **Amplitude Crush** (how finely a level is kept),
-  **Time Crush** (how often a level is taken) and **Level** (how hard it is
-  driven in, and what comes out).
+- Under them, four panels: **Amplitude Crush** (how finely a level is kept),
+  **Time Crush** (how often a level is taken), **Level** (how hard it is
+  driven in, and what comes out) and **Filter** (what the crushed sound keeps
+  of its top end).
 
 ### Refresh and Pause
 
-The three pictures take a new look at your signal once a second by default,
-all three at the same moment, so they can be read rather than chased.
+The three signal pictures take a new look at your signal once a second by
+default, all three at the same moment, so they can be read rather than chased.
 **Refresh**, at the bottom of the Level panel, sets how often: **1/s**, **4/s**,
 **10/s** or **Live** (every frame the screen draws). It is saved with your set,
 and Live does not offer it for automation: it changes the pictures, never the
@@ -217,6 +221,48 @@ the hold:
 Both off is the raw, aliasing crusher; both on is the polite one. With
 Anti-Alias as well, it is the polite one at any sample rate.
 
+## Part 3 — Filter: taming the top
+
+A crusher's steps are made of high frequencies: every jump of the staircase,
+every edge of the hold, is a burst of them. Pre and Post filter at the Rate,
+because they belong to the hold. The **Filter** panel is a low-pass of your
+own, anywhere you like, on the crushed sound before it meets the dry one at
+Mix — so a parallel crunch can be dark while the dry signal stays bright.
+
+It is **off by default**: switch **Filter** on under its knobs. The Filter
+picture lights up, and what it draws is what you hear.
+
+### Cutoff: where it starts
+
+**Cutoff**, 20 Hz to 20 kHz, is where the filter starts to cut: with Peak at
+0 the sound is 3 dB down there, and falls away above it. Turn it down to
+bury the grit under a warm, muffled tone; sweep it with automation for the
+classic filter rise. Type `800` or `1.2k` into its readout to set it exactly.
+
+### Slope: how steeply
+
+**Slope** sets how fast the sound falls away above the cutoff: **12 dB**,
+**24 dB** or **48 dB** per octave. 12 dB is gentle — the steps soften but
+stay audible; 48 dB is a wall — above the cutoff, they are gone. In the
+picture the curve's right-hand side tilts steeper with each. Switching it
+while playing crossfades rather than clicks.
+
+### Peak: a resonant bump
+
+**Peak** lifts the sound right at the cutoff, up to **+24 dB**: at 0 the
+filter is flat up to where it bends, at +12 dB it rings, at +24 dB it sings
+the cutoff's note. The picture shows the bump growing, and its height is
+exactly what you set. It never runs away into a self-oscillating whistle, so
+it is safe to automate. Higher Peak means more level at the cutoff, so watch
+Output when you push it.
+
+### Recipes with the filter
+
+- **Lo-fi drums, warm:** Bits 6, Rate 11 kHz, Filter on at 4 kHz, 24 dB, Peak 0.
+- **Acid crunch:** Bits 4, Drive +9 dB, Filter on at 800 Hz, 24 dB, Peak +15 dB;
+  automate Cutoff from 300 Hz to 5 kHz.
+- **Radio through a wall:** Bits 8, Rate 8 kHz, Filter on at 1.5 kHz, 48 dB.
+
 ## Recipes
 
 | sound | settings |
@@ -252,6 +298,10 @@ arcs start at the top.
 | | **Output** | −24 – +24 dB | 0 dB |
 | | **Refresh** (not automatable) | Live, 10/s, 4/s, 1/s | 1/s |
 | | **Pause** (not saved) | off / on | off |
+| Filter | **Filter** | off / on | off |
+| | **Cutoff** | 20 Hz – 20 kHz | 2.00 kHz |
+| | **Peak** | 0 – +24 dB | 0 dB |
+| | **Slope** | 12, 24, 48 dB/oct | 24 dB |
 
 The **Signal** and **Time Crush** pictures zoom to the level of what is
 playing, so a quiet track still fills them; their top right says by how much.

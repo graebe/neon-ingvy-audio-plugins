@@ -46,9 +46,20 @@ fn refresh_is_a_choice_of_the_window_saved_but_not_automated() {
     for i in (0..bc_param_count()).filter(|&i| i != r) {
         let d = info(i).unwrap();
         assert!(d.automatable, "{i}");
-        assert_eq!(d.choice_count, 0);
+        assert_eq!(d.choice_count, if d.kind == BcParamKind::Choice { 3 } else { 0 }, "{i}");
     }
+    /* Slope, the other choice: the filter's three, by their words. */
+    let s = Param::Slope as i32;
+    let words: Vec<String> = (0..3).map(|c| text(|b, n| unsafe { bc_param_choice(s, c, b, n) }).unwrap()).collect();
+    assert_eq!(words, ["12 dB", "24 dB", "48 dB"]);
     assert_eq!([0, 1, 2, 3].map(|c| bc_refresh_period_ms(c)), [0.0, 100.0, 250.0, 1000.0]);
+    /* The filter's response: flat, -3 dB at the cutoff, the slope, the peak. */
+    let mut db = [0.0f32; 3];
+    unsafe { bc_filter_response(1_000.0, 0.0, 1, 48_000.0, 100.0, 10_000.0, db.as_mut_ptr(), 3) };
+    assert!(db[0].abs() < 0.01 && (db[1] + 3.01).abs() < 0.05 && db[2] < -75.0, "{db:?}");
+    unsafe { bc_filter_response(1_000.0, 12.0, 1, 48_000.0, 100.0, 10_000.0, db.as_mut_ptr(), 3) };
+    assert!((db[1] - 8.99).abs() < 0.05, "{db:?}");
+    unsafe { bc_filter_response(1_000.0, 0.0, 1, 0.0, 100.0, 10_000.0, std::ptr::null_mut(), 3) };
     /* The levels Bits makes, both grids: one more than 2^b mid-tread. */
     assert_eq!((bc_level_count(8.0, false), bc_level_count(8.0, true)), (257, 256));
     assert_eq!((bc_level_count(1.0, false), bc_level_count(1.0, true)), (3, 2));

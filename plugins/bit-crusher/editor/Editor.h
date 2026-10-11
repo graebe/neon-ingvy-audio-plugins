@@ -2,22 +2,27 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Bit-Crusher's window, 888 x 532 at its design size, on Ultraviolet: the
+ * NI Bit-Crusher's window, 1168 x 532 at its design size, on Ultraviolet: the
  * board "NI Bit-Crusher — proposed" on the NI Plugin Layouts canvas
  * (design/designs/BitCrusher-Proposed.dc.html), built from the kit.
  *
- * THREE PICTURES OVER THREE PANELS, on one grid of three 264px columns 16
+ * FOUR PICTURES OVER FOUR PANELS, on one grid of four 264px columns 16
  * apart -- as wide as a panel must be for its two switches, labels and all --
- * each picture over the panel that shapes it:
+ * each picture over the panel that shapes it, in the order of the signal:
  *
  *    (32, 32)    AMPLITUDE CRUSH: the staircase, input across, output up
  *    (312, 32)   TIME CRUSH: the hold's last sixteen periods
  *    (592, 32)   SIGNAL: the last ~11 ms, input and output
- *    (32, 256)   three standard panels, a column each, 208 tall:
+ *    (872, 32)   FILTER: its response, frequency across, gain up
+ *    (32, 256)   four standard panels, a column each, 208 tall:
  *
  *                  AMPLITUDE CRUSH  Bits, Shape, Dither    Mid-Rise, Anti-Alias
  *                  TIME CRUSH       Rate, Jitter, Octave   Pre, Post
  *                  LEVEL            Drive, Mix, Output     Refresh, Pause
+ *                  FILTER           Cutoff, Peak, Slope    Filter (on/off)
+ *
+ * The Filter acts on the crushed signal before the Mix (bc-core), and is off
+ * by default.
  *
  *    (0, 488)    the Hint bar: three conventions, Motion, the Signature
  *
@@ -75,7 +80,7 @@ namespace ni::bc
 class Editor final : public juce::Component
 {
 public:
-    static constexpr int designWidth = 888;
+    static constexpr int designWidth = 1168;
     static constexpr int designHeight = 532;
 
     /* The grid, in the content's own pixels (inside the window padding). */
@@ -107,6 +112,7 @@ public:
     juce::Component& content() noexcept;
     AmplitudePlot& amplitudePlot() noexcept { return *amplitude; }
     TimePlot& timePlot() noexcept { return *timeCrush; }
+    FilterPlot& filterPlot() noexcept { return *filterResponse; }
     SignalPlot& signalPlot() noexcept { return *signal; }
     ni::ui::ParamSelect& refreshSelect() noexcept { return *refresh; }
     ni::ui::Button& pauseButton() noexcept { return pause; }
@@ -127,7 +133,8 @@ private:
     std::unique_ptr<AmplitudePlot> amplitude;
     std::unique_ptr<TimePlot> timeCrush;
     std::unique_ptr<SignalPlot> signal;
-    std::array<std::unique_ptr<ni::ui::Panel>, 3> panels;
+    std::unique_ptr<FilterPlot> filterResponse;
+    std::array<std::unique_ptr<ni::ui::Panel>, 4> panels;
     std::vector<std::unique_ptr<ni::ui::ParamKnob>> knobs;
     std::vector<std::unique_ptr<ni::ui::ParamToggle>> toggles;
     std::unique_ptr<ni::ui::ParamSelect> refresh;

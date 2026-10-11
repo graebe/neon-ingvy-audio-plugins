@@ -349,6 +349,94 @@ void TimePlot::paintPlot (juce::Graphics& g)
     ni::ui::plot::dots (g, dotsAt);
 }
 
+/* --------------------------------------------------------------- filter -- */
+
+FilterPlot::FilterPlot (Model& m)
+    : model (m), db ((size_t) points, 0.0f), freshDb ((size_t) points, 0.0f)
+{
+    ni::ui::setInfo (*this, info::filterPlot);
+    update();
+    rebuild();
+}
+
+void FilterPlot::update()
+{
+    model.filterResponse (freshDb.data(), points, loHz, hiHz);
+    const bool freshOn = model.setting (param::filter) >= 0.5;
+    const double peak = model.setting (param::peak);
+    const auto caption = freshOn
+        ? clauses ({ "FILTER", model.parameter (param::cutoff).getCurrentValueAsText().toUpperCase(),
+                     model.parameter (param::slope).getCurrentValueAsText().toUpperCase() + "/OCT",
+                     peak > 0.0 ? model.parameter (param::peak).getCurrentValueAsText().toUpperCase() : juce::String() })
+        : juce::String ("FILTER   OFF");
+    if (freshDb == db && freshOn == on && caption == getCaption())
+        return;
+    db = freshDb;
+    on = freshOn;
+    setCaption (caption);
+    rebuild();
+    repaint();
+}
+
+juce::Rectangle<float> FilterPlot::plotArea() const
+{
+    return contentBounds().withTrimmedLeft (rulerW).withTrimmedBottom (rulerH);
+}
+
+void FilterPlot::rebuild()
+{
+    const auto area = plotArea();
+    const auto x = [&] (double hz) { return area.getX() + area.getWidth() * (float) (std::log (hz / loHz) / std::log (hiHz / loHz)); };
+    const auto y = [&] (float g)
+    { return area.getY() + area.getHeight() * (topDb - juce::jlimit (bottomDb, topDb, g)) / (topDb - bottomDb); };
+
+    curve.clear();
+    for (int i = 0; i < points; ++i)
+    {
+        const float px = area.getX() + area.getWidth() * (float) i / (float) (points - 1);
+        if (i == 0)
+            curve.startNewSubPath (px, y (db[(size_t) i]));
+        else
+            curve.lineTo (px, y (db[(size_t) i]));
+    }
+    flat.clear();
+    flat.startNewSubPath (area.getX(), y (0.0f));
+    flat.lineTo (area.getRight(), y (0.0f));
+
+    /* THE RULERS: octaves across, 100 Hz, 1k and 10k named, a minor tick at
+     * each whole multiple between; gain up every 24 dB, minor every 12. */
+    xMarks.clear();
+    for (double decade = 10.0; decade <= hiHz; decade *= 10.0)
+        for (int k = 1; k <= 9; ++k)
+        {
+            const double hz = decade * k;
+            if (hz < loHz || hz > hiHz)
+                continue;
+            juce::String text;
+            if (k == 1 && decade >= 100.0)
+                text = decade >= 1000.0 ? juce::String ((int) (decade / 1000.0)) + "k" : juce::String ((int) decade);
+            xMarks.push_back ({ x (hz), text });
+        }
+    yMarks.clear();
+    for (float g = topDb; g >= bottomDb; g -= 12.0f)
+    {
+        const bool named = std::fmod (std::abs (g), 24.0f) < 0.01f;
+        yMarks.push_back ({ y (g), named ? (g > 0.0f ? "+" : "") + juce::String ((int) g) : juce::String() });
+    }
+}
+
+void FilterPlot::paintPlot (juce::Graphics& g)
+{
+    ni::ui::plot::ruler (g, plotArea(), ni::ui::plot::Side::bottom, xMarks);
+    ni::ui::plot::ruler (g, plotArea(), ni::ui::plot::Side::left, yMarks);
+    ni::ui::plot::dryLine (g, flat);
+    /* Lit while it acts on the sound; off, the map of what it would do. */
+    if (on)
+        ni::ui::plot::curve (g, curve);
+    else
+        ni::ui::plot::unlit (g, curve);
+}
+
 /* --------------------------------------------------------------- signal -- */
 
 SignalPlot::SignalPlot()

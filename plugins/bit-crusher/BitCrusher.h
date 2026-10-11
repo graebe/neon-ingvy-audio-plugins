@@ -80,6 +80,7 @@ public:
     double refreshPeriodMs() const override;
     double setting (int index) const override { return plain (index); }
     int levelCount() const override;
+    void filterResponse (float* outDb, int count, double loHz, double hiHz) const override;
 
 protected:
     /* The shell's prepareToPlay calls it: the rate and a reset posted. */

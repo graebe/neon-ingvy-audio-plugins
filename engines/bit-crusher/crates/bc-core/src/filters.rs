@@ -105,6 +105,111 @@ impl Lowpass {
 }
 
 /*
+ * THE FILTER: the resonant low-pass after the crusher, the owner's Filter
+ * panel -- Cutoff, Peak, and a Slope of 12, 24 or 48 dB per octave.
+ *
+ * Each slope is a Butterworth of that order -- two, four or eight poles, one,
+ * two or four sections -- so at Peak 0 dB it is flat up to the cutoff and -3
+ * dB there. PEAK RAISES THE RESPONSE AT THE CUTOFF BY EXACTLY THAT MANY dB:
+ * a two-pole section's gain at its own corner is its Q, so multiplying the
+ * Q of the chain's sharpest section by 10^(Peak/20) multiplies the whole
+ * response at the cutoff by just that, and leaves the passband and the slope
+ * as they were. Up to +24 dB: a resonant bump, never a filter that rings on
+ * its own (the sections stay stable at any Q).
+ *
+ * ALL THREE SLOPES RUN, every sample, so moving Slope is a crossfade between
+ * them (lib.rs), never a click -- seven sections a channel, a few hundred
+ * nanoseconds a sample.
+ */
+
+/// The Qs of Butterworth sections: one for 12 dB, two for 24, four for 48,
+/// the sharpest last.
+const BUTTERWORTH_2: [f64; 1] = [core::f64::consts::FRAC_1_SQRT_2];
+const BUTTERWORTH_8: [f64; 4] = [0.509_795_579_104_159, 0.601_344_886_935_045, 0.899_976_223_136_415, 2.562_915_447_741_505];
+
+/// The three chains' coefficients at one cutoff and peak.
+#[derive(Clone, Copy, Debug)]
+pub struct ToneCoefficients {
+    c12: [Coefficients<f64>; 1],
+    c24: [Coefficients<f64>; 2],
+    c48: [Coefficients<f64>; 4],
+}
+
+impl ToneCoefficients {
+    pub fn new(hz: f64, peak_db: f64, sample_rate: f64) -> Self {
+        let hz = usable_cutoff(hz, sample_rate);
+        let k = if peak_db.is_nan() { 1.0 } else { 10f64.powf(peak_db.max(0.0) / 20.0) };
+        fn chain<const N: usize>(qs: [f64; N], hz: f64, k: f64, sample_rate: f64) -> [Coefficients<f64>; N] {
+            core::array::from_fn(|i| section(Type::LowPass, hz, sample_rate, if i == N - 1 { qs[i] * k } else { qs[i] }))
+        }
+        ToneCoefficients {
+            c12: chain(BUTTERWORTH_2, hz, k, sample_rate),
+            c24: chain(BUTTERWORTH_4, hz, k, sample_rate),
+            c48: chain(BUTTERWORTH_8, hz, k, sample_rate),
+        }
+    }
+
+    /// The response at `hz` of the chain for slope `index` (0, 1, 2 for 12,
+    /// 24, 48 dB), in dB: what an editor draws the filter with.
+    pub fn response_db(&self, index: usize, hz: f64, sample_rate: f64) -> f64 {
+        let w = core::f64::consts::TAU * hz / sample_rate;
+        let gain = |c: &Coefficients<f64>| {
+            /* |H(e^jw)| of b0 + b1 z^-1 + b2 z^-2 over 1 + a1 z^-1 + a2 z^-2. */
+            let (c1, s1, c2, s2) = (w.cos(), w.sin(), (2.0 * w).cos(), (2.0 * w).sin());
+            let (nr, ni) = (c.b0 + c.b1 * c1 + c.b2 * c2, -(c.b1 * s1 + c.b2 * s2));
+            let (dr, di) = (1.0 + c.a1 * c1 + c.a2 * c2, -(c.a1 * s1 + c.a2 * s2));
+            ((nr * nr + ni * ni) / (dr * dr + di * di)).sqrt()
+        };
+        let sections: &[Coefficients<f64>] = match index {
+            0 => &self.c12,
+            1 => &self.c24,
+            _ => &self.c48,
+        };
+        20.0 * sections.iter().map(gain).product::<f64>().max(1e-12).log10()
+    }
+}
+
+/// One channel's three chains.
+#[derive(Clone, Copy, Debug)]
+pub struct Tone {
+    s12: [DirectForm1<f64>; 1],
+    s24: [DirectForm1<f64>; 2],
+    s48: [DirectForm1<f64>; 4],
+}
+
+impl Tone {
+    pub fn new(c: &ToneCoefficients) -> Self {
+        Tone { s12: c.c12.map(DirectForm1::new), s24: c.c24.map(DirectForm1::new), s48: c.c48.map(DirectForm1::new) }
+    }
+
+    /// Take new coefficients, keeping the state.
+    pub fn retune(&mut self, c: &ToneCoefficients) {
+        for (s, k) in self.s12.iter_mut().zip(c.c12) {
+            s.update_coefficients(k);
+        }
+        for (s, k) in self.s24.iter_mut().zip(c.c24) {
+            s.update_coefficients(k);
+        }
+        for (s, k) in self.s48.iter_mut().zip(c.c48) {
+            s.update_coefficients(k);
+        }
+    }
+
+    /// One sample through all three: (12, 24, 48 dB).
+    #[inline]
+    pub fn run(&mut self, x: f64) -> (f64, f64, f64) {
+        let y12 = self.s12[0].run(x);
+        let y24 = self.s24.iter_mut().fold(x, |y, s| s.run(y));
+        let y48 = self.s48.iter_mut().fold(x, |y, s| s.run(y));
+        (y12, y24, y48)
+    }
+
+    pub fn reset(&mut self) {
+        self.s12.iter_mut().chain(self.s24.iter_mut()).chain(self.s48.iter_mut()).for_each(|s| s.reset_state());
+    }
+}
+
+/*
  * THE PRE-FILTER: a 10th-order inverse Chebyshev (Chebyshev type II) low-pass
  * whose stopband STARTS at Rate/2 and is 60 dB deep from there on, flat in its
  * passband (-3 dB at 0.77·Rate/2). A Butterworth at Rate/2 is only 3 dB down

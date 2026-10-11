@@ -277,6 +277,16 @@ const Scope& Processor::scope()
     return latest;
 }
 
+void Processor::filterResponse (float* outDb, int count, double loHz, double hiHz) const
+{
+    /* At the host's rate, or 48 kHz before there is one: the curve near
+     * Nyquist is where the two differ. */
+    const double rate = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+    if (outDb != nullptr && count > 0)
+        bc_filter_response (plain (param::cutoff), plain (param::peak), (int) plain (param::slope), rate, loHz, hiHz,
+                            outDb, (uint32_t) count);
+}
+
 int Processor::levelCount() const
 {
     return (int) bc_level_count (plain (param::bits), plain (param::midRise) >= 0.5);

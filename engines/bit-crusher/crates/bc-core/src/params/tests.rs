@@ -185,7 +185,7 @@ fn a_bipolar_range_is_symmetric_so_its_centre_is_zero() {
 #[test]
 fn refresh_is_a_choice_of_the_window_that_a_host_does_not_automate() {
     let r = Param::Refresh;
-    assert_eq!(r as usize, PARAM_COUNT - 1, "appended: no saved index moves");
+    assert_eq!(r as usize, 13, "appended after Output: no saved index moved");
     assert_eq!(r.info().key, "refresh");
     assert!(!r.info().automatable);
     assert!(Param::ALL.iter().filter(|&&p| p != r).all(|p| p.info().automatable));

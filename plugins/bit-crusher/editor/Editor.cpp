@@ -11,6 +11,7 @@
 #include "ChildLights.h"
 #include "Info.h"
 #include "Luminous.h"
+#include "ParamChoiceKnob.h"
 #include "UvTokens.h"
 
 namespace ni::bc
@@ -35,12 +36,13 @@ struct Group
     std::vector<int> toggles;
 };
 
-const std::array<Group, 3>& groups()
+const std::array<Group, 4>& groups()
 {
-    static const std::array<Group, 3> g { {
+    static const std::array<Group, 4> g { {
         { "Amplitude Crush", info::amplitudePanel, { param::bits, param::shape, param::dither }, { param::midRise, param::antiAlias } },
         { "Time Crush", info::timePanel, { param::rate, param::jitter, param::postOctave }, { param::preFilter, param::postFilter } },
         { "Level", info::levelPanel, { param::drive, param::mix, param::output }, {} },
+        { "Filter", info::filterPanel, { param::cutoff, param::peak, param::slope }, { param::filter } },
     } };
     return g;
 }
@@ -69,6 +71,10 @@ Labels labelsOf (int index)
         case param::midRise:    return { "Mid-Rise", info::midRise, info::midRise };
         case param::antiAlias:  return { "Anti-Alias", info::antiAlias, info::antiAlias };
         case param::preFilter:  return { "Pre", info::preFilter, info::preFilter };
+        case param::cutoff:     return { "Cutoff", info::cutoff, info::cutoffValue };
+        case param::peak:       return { "Peak", info::peak, info::dbValue };
+        case param::slope:      return { "Slope", info::slope, info::slopeValue };
+        case param::filter:     return { "Filter", info::filter, info::filter };
         default:                return { "Post", info::postFilter, info::postFilter };
     }
 }
@@ -96,11 +102,13 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
       view (std::make_unique<View>()),
       amplitude (std::make_unique<AmplitudePlot> (m)),
       timeCrush (std::make_unique<TimePlot> (m)),
-      signal (std::make_unique<SignalPlot>())
+      signal (std::make_unique<SignalPlot>()),
+      filterResponse (std::make_unique<FilterPlot> (m))
 {
     view->addAndMakeVisible (*amplitude);
     view->addAndMakeVisible (*timeCrush);
     view->addAndMakeVisible (*signal);
+    view->addAndMakeVisible (*filterResponse);
 
     for (size_t p = 0; p < groups().size(); ++p)
     {
@@ -112,7 +120,13 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
         for (const int index : group.knobs)
         {
             const auto words = labelsOf (index);
-            auto k = std::make_unique<ni::ui::ParamKnob> (model.parameter (index), words.label);
+            /* A choice -- Slope -- turns option by option. */
+            auto& parameter = model.parameter (index);
+            std::unique_ptr<ni::ui::ParamKnob> k;
+            if (dynamic_cast<juce::AudioParameterChoice*> (&parameter) != nullptr)
+                k = std::make_unique<ni::ui::ParamChoiceKnob> (parameter, words.label);
+            else
+                k = std::make_unique<ni::ui::ParamKnob> (parameter, words.label);
             k->setBipolar (model.bipolar (index));
             ni::ui::setInfo (*k, words.line);
             k->setReadoutInfo (words.value);
@@ -190,6 +204,7 @@ void Editor::layout()
     amplitude->setBounds (0, 0, column, plotH);
     timeCrush->setBounds (x1, 0, column, plotH);
     signal->setBounds (2 * x1, 0, column, plotH);
+    filterResponse->setBounds (3 * x1, 0, column, plotH);
 
     for (size_t p = 0; p < panels.size(); ++p)
     {
@@ -244,6 +259,7 @@ void Editor::tick (double nowMs)
     amplitude->update (look, fresh, live);
     timeCrush->update (look, fresh, live, nowMs);
     signal->update (look, fresh, nowMs);
+    filterResponse->update();
 }
 
 bool Editor::current (const Scope& candidate) const

@@ -26,14 +26,16 @@
 /* An integer, not (int)(SR * SECONDS), so arrays sized by it are not VLAs. */
 #define BC_RENDER_FRAMES (44100 * 4)
 
-/* THE PATCH, as the host's fourteen plain values in the parameters' order
+/* THE PATCH, as the host's eighteen plain values in the parameters' order
  * (bc_param_*): Drive +6 dB, 5.5 bits, Shape 30 %, Mid-Rise on, Dither 20 %,
  * Anti-Alias on, Rate 7 kHz, Jitter 25 %, both filters on, Octave +0.5,
- * Mix 80 %, Output -2 dB -- and Refresh at its default, choice 3 ("1/s"):
- * the window's, which the engine ignores, so the golden did not move when it
- * was appended. */
-#define BC_RENDER_PARAMS_COUNT 14
-static const double BC_RENDER_PARAMS[BC_RENDER_PARAMS_COUNT] = { 6, 5.5, 30, 1, 20, 1, 7000, 25, 1, 1, 0.5, 80, -2, 3 };
+ * Mix 80 %, Output -2 dB -- then what was appended since, each at its
+ * default: Refresh choice 3 ("1/s"), the window's, which the engine ignores;
+ * and the Filter off (Cutoff 2 kHz, Peak 0 dB, Slope choice 1, "24 dB"). So
+ * the golden did not move when either was appended. */
+#define BC_RENDER_PARAMS_COUNT 18
+static const double BC_RENDER_PARAMS[BC_RENDER_PARAMS_COUNT] = { 6, 5.5, 30, 1, 20, 1, 7000, 25, 1, 1, 0.5, 80, -2,
+                                                                 3, 0, 2000, 0, 1 };
 
 /*
  * FNV-1a over the left channel's float bytes, recorded 2026-10-10 at the

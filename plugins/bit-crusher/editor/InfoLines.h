@@ -26,10 +26,12 @@ using ni::ui::InfoText;
 inline constexpr InfoText amplitudePanel { "Amplitude Crush — amplitude discretization: how finely levels are kept." };
 inline constexpr InfoText timePanel { "Time Crush — time discretization: how often a level is taken and held." };
 inline constexpr InfoText levelPanel { "Level — how hard it is driven in, and what comes out." };
+inline constexpr InfoText filterPanel { "Filter — a resonant low-pass on the crushed signal, before the Mix." };
 
 /* THE PLOTS, one over each panel, and what holds them still. */
 inline constexpr InfoText amplitudePlot { "Amplitude Crush — level in across, out up; lit dots: the signal now." };
 inline constexpr InfoText timePlot { "Time Crush — what the hold takes in grey, the hold dim; a dot per take." };
+inline constexpr InfoText filterPlot { "Filter — its response: grey is untouched; lit while the Filter is on." };
 inline constexpr InfoText signalPlot { "Signal — the input in grey, the crushed output in front." };
 inline constexpr InfoText refresh { "Refresh — how often the three pictures take a new look; 1/s is calm." };
 inline constexpr InfoText pause { "Pause — hold the three pictures still; the sound goes on." };
@@ -57,6 +59,14 @@ inline constexpr InfoText postFilter { "Post — a filter after the hold, at Oct
 inline constexpr InfoText drive { "Drive — gain into the crusher; past full scale the top step clips." };
 inline constexpr InfoText mix { "Mix — the crushed signal against the dry one; 100 % is all crushed." };
 inline constexpr InfoText output { "Output — the level after the mix." };
+
+/* FILTER. */
+inline constexpr InfoText filter { "Filter — switch the low-pass in or out; off, the crush is unfiltered." };
+inline constexpr InfoText cutoff { "Cutoff — where the filter starts to cut, 20 Hz to 20 kHz." };
+inline constexpr InfoText peak { "Peak — a resonant rise at the cutoff, up to +24 dB; 0 is flat." };
+inline constexpr InfoText slope { "Slope — how steeply it cuts above the cutoff: 12, 24 or 48 dB/octave." };
+inline constexpr InfoText cutoffValue { "Cutoff value — click to type a frequency, such as 800 or 1.2k." };
+inline constexpr InfoText slopeValue { "Slope value — turn for 12, 24 or 48 dB per octave." };
 
 /* Every knob's readout: the engine reads what is typed, in its own units. */
 inline constexpr InfoText bitsValue { "Bits value — click to type a bit depth, such as 7.5." };
