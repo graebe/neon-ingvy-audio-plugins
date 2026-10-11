@@ -376,20 +376,21 @@ TEST_CASE ("trance-gate: a press on a wedge toggles its step; a sweep paints the
     auto& ring = rig.editor.ring();
     Pointer p;
     p.down (ring, rig.wedge (1));
-    CHECK (rig.model.takeEdits() == "step 1 on, depth 1 1.00");
+    CHECK (rig.model.takeEdits() == "step 1 on");
     p.drag (rig.wedge (2));
     p.drag (rig.wedge (3));
     p.drag (rig.wedge (2));
     p.up();
     /* Step 2 was on and is painted on, without its amount touched; step 3
-     * was off and comes on at its full amount. Back over 2, nothing. */
-    CHECK (rig.model.takeEdits() == "step 2 on, step 3 on, depth 3 1.00");
+     * was off and comes on -- at its full amount, the engine's doing. Back
+     * over 2, nothing. */
+    CHECK (rig.model.takeEdits() == "step 2 on, step 3 on");
 
     /* Shift is a tie, painted too. */
     p.down (ring, rig.wedge (4), juce::ModifierKeys::shiftModifier);
     p.drag (rig.wedge (5));
     p.up();
-    CHECK (rig.model.takeEdits() == "step 4 tie, step 5 tie, depth 5 1.00");
+    CHECK (rig.model.takeEdits() == "step 4 tie, step 5 tie");
 }
 
 /* ---------------------------------------------------------------- stages -- */

@@ -89,7 +89,7 @@ bool Processor::isBusesLayoutSupported (const BusesLayout& layout) const
     return monoOrStereo (in) && layout.getMainOutputChannelSet() == in;
 }
 
-void Processor::prepareToPlay (double sampleRate, int)
+void Processor::prepare (double sampleRate, int)
 {
     const double r = sampleRate > 0.0 ? sampleRate : 44100.0;
     rate.store (r);

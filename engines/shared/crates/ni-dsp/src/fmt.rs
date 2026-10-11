@@ -68,6 +68,21 @@ impl<'a> Buf<'a> {
         }
         n as i32
     }
+
+    /// Like [`Buf::finish`], but a text that did not fit is not handed back
+    /// at all: the buffer is left empty and the result is -1, the C ABI's
+    /// "no answer". For a text that MEANS something only whole -- a saved
+    /// state, a slot file -- a cut one is worse than none: it reloads as a
+    /// different pattern and nothing says so.
+    pub fn finish_whole(self) -> i32 {
+        if self.wanted >= self.out.len() {
+            if let Some(first) = self.out.first_mut() {
+                *first = 0;
+            }
+            return -1;
+        }
+        self.finish()
+    }
 }
 
 impl Write for Buf<'_> {

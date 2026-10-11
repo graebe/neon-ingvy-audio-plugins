@@ -44,8 +44,11 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -77,6 +80,9 @@ struct Playhead final : juce::AudioPlayHead
 {
     juce::int64 sample = 0;
     bool playing = true;
+    /* A cycle, in beats, when `looping`. */
+    bool looping = false;
+    double loopStart = 0.0, loopEnd = 0.0;
 
     juce::Optional<PositionInfo> getPosition() const override
     {
@@ -86,6 +92,9 @@ struct Playhead final : juce::AudioPlayHead
         p.setTimeSignature (TimeSignature { 4, 4 });
         p.setTimeInSamples (sample);
         p.setPpqPosition ((double) sample / rate * 2.0);
+        p.setIsLooping (looping);
+        if (looping)
+            p.setLoopPoints (LoopPoints { loopStart, loopEnd });
         return p;
     }
 };
@@ -588,10 +597,12 @@ TEST_CASE ("bypassed, by the host or by its own Bypass, the audio passes untouch
     CHECK (lowest (a.block()) > 0.45f);
 
     /* The plugin's own Bypass, as JUCE's VST3 wrapper hands it over: every
-     * block through processBlock, the parameter on. */
+     * block through processBlock, the parameter on -- faded in over its first
+     * 10 ms (ni::Processor), so from the next block on. */
     Instance b;
     holdGate (b);
     b.p.getBypassParameter()->setValueNotifyingHost (1.0f);
+    b.block();
     const auto own = b.block (message (juce::MidiMessage::noteOff (1, 36)));
     CHECK (lowest (own) == 0.5f);
     CHECK (highest (own) == 0.5f);
@@ -798,8 +809,277 @@ TEST_CASE ("the plugin's window is the design's, and stays whole while a set loa
     CHECK (a.model().scope().data == before);
 }
 
+/* ---------------------------------------------------------------- kick -- */
+
+namespace
+{
+/* The column a capture's field peaks in, or -1 for none seen. */
+int peakColumn (const Scope& s, Scope::Column hi, bool kick)
+{
+    int at = -1;
+    float best = 0.0f;
+    for (int c = 0; c < s.count; ++c)
+        if ((kick ? s.isKickSeen (c) : s.isSeen (c)) && s.at (c, hi) > best)
+        {
+            best = s.at (c, hi);
+            at = c;
+        }
+    return at;
+}
+
+/* One block of silence on the main input, but for an impulse at timeline
+ * sample `spike` -- in the main channels when `dry`, in the key's when `key`
+ * -- under the playing transport. */
+void spikeBlock (Instance& a, juce::int64 spike, bool dry, bool key, bool playing = true)
+{
+    auto b = a.buffer (0.0f);
+    const auto at = spike - a.head.sample;
+    if (at >= 0 && at < blockSize)
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+        {
+            const bool isKey = ch >= a.p.getMainBusNumInputChannels();
+            if ((isKey && key) || (! isKey && dry))
+                b.setSample (ch, (int) at, 0.9f);
+        }
+    a.head.playing = playing;
+    a.p.setPlayHead (&a.head);
+    juce::MidiBuffer none;
+    a.p.processBlock (b, none);
+    a.p.setPlayHead (nullptr);
+    a.head.sample += blockSize;
+}
+
+/* A Listen-In's block, as NI Listen-In publishes it: an impulse at timeline
+ * sample `spike`, stamped when `stamped`. */
+void publish (abus_pusher_t* p, juce::int64 from, juce::int64 spike, bool stamped)
+{
+    std::vector<float> stereo ((std::size_t) blockSize * 2, 0.0f);
+    const auto at = spike - from;
+    if (at >= 0 && at < blockSize)
+        stereo[(std::size_t) at * 2] = stereo[(std::size_t) at * 2 + 1] = 0.9f;
+    abus_pusher_push_at (p, stereo.data(), (std::uint32_t) blockSize, from, stamped ? 1 : 0);
+}
+} // namespace
+
+TEST_CASE ("the kick chosen is kept in the set, and a set without one is the bytes it always was")
+{
+    Instance a;
+    const auto plain = a.save();
+    CHECK (a.p.kick().choice() == kick::off);
+
+    a.p.chooseKick (kick::key);
+    const auto keyed = a.save();
+    CHECK (keyed != plain);
+    CHECK (std::search (keyed.begin(), keyed.end(), std::begin ("key"), std::end ("key") - 1) != keyed.end());
+    Instance b;
+    b.load (keyed);
+    CHECK (b.p.kick().choice() == kick::key);
+    CHECK (b.save() == keyed);
+
+    a.p.chooseKick (7);
+    Instance c;
+    c.load (a.save());
+    CHECK (c.p.kick().choice() == 7);
+
+    /* Off again: the bytes every earlier build wrote, and a set without a
+     * kick loaded over one that had it shows none. */
+    a.p.chooseKick (kick::off);
+    CHECK (a.save() == plain);
+    c.load (plain);
+    CHECK (c.p.kick().choice() == kick::off);
+
+    /* What no build wrote is no kick; a slot past the sixteen is none. */
+    ni::nist::State odd = ni::nist::defaults (layout());
+    odd.strings = { "bus:17" };
+    const auto bytes = ni::nist::write (layout(), odd);
+    c.p.chooseKick (kick::key);
+    c.load (bytes);
+    CHECK (c.p.kick().choice() == kick::off);
+    CHECK (kick::fromText ("bus:3") == 3);
+    CHECK (kick::fromText ("bus:x") == kick::off);
+    CHECK (kick::toText (kick::off).empty());
+    CHECK_FALSE (a.p.kick().choose (99));
+}
+
+TEST_CASE ("the key is drawn under the sweep it sounded at, beside the dry")
+{
+    for (const auto& key : { juce::AudioChannelSet::stereo(), juce::AudioChannelSet::mono() })
+    {
+        CAPTURE (key.getDescription());
+        Instance a (key);
+        a.p.chooseKick (kick::key);
+        a.p.editorOpened();
+        /* The impulse half a cycle in, in the second cycle, on both. */
+        for (int i = 0; i < 100; ++i)
+            spikeBlock (a, 24000 + 12000 + 100, true, true);
+        const auto& s = a.model().scope();
+        REQUIRE (s.count == Processor::scopeColumns);
+        const int dry = peakColumn (s, Scope::dryHi, false);
+        CHECK (dry >= 0);
+        CHECK (peakColumn (s, Scope::kickHi, true) == dry);
+        CHECK (a.model().kick().status == KickStatus::aligned);
+        a.p.editorClosed();
+    }
+
+    /* Chosen with no key routed: waiting, and nothing drawn. */
+    Instance unkeyed;
+    unkeyed.p.chooseKick (kick::key);
+    unkeyed.p.editorOpened();
+    unkeyed.play (10);
+    CHECK (unkeyed.model().kick().status == KickStatus::waiting);
+    CHECK (peakColumn (unkeyed.model().scope(), Scope::kickHi, true) < 0);
+    unkeyed.p.editorClosed();
+}
+
+TEST_CASE ("a Listen-In's kick lands where the dry sounded with it, whichever track ran first")
+{
+    constexpr unsigned slot = 3;
+    abus_writer_t* w = nullptr;
+    abus_pusher_t* p = nullptr;
+    REQUIRE (abus_writer_claim (slot, (std::uint32_t) rate, &w, &p) == ABUS_OK);
+    abus_writer_set_label (w, "Kick");
+
+    for (const bool kickFirst : { true, false })
+    {
+        CAPTURE (kickFirst);
+        Instance a;
+        a.p.chooseKick ((int) slot);
+        a.p.editorOpened();
+        const auto view = a.model().kick();
+        CHECK (view.choice == (int) slot);
+        const auto listed = std::find_if (view.buses.begin(), view.buses.end(),
+                                          [] (const auto& b) { return b.slot == (int) slot; });
+        REQUIRE (listed != view.buses.end());
+        CHECK (listed->live);
+        CHECK (listed->label == "Kick");
+
+        const juce::int64 spike = 24000 + 6000 + 37;
+        for (int i = 0; i < 100; ++i)
+        {
+            const auto from = a.head.sample;
+            if (kickFirst)
+                publish (p, from, spike, true);
+            spikeBlock (a, spike, true, false);
+            if (! kickFirst)
+                publish (p, from, spike, true);
+            a.model().kick();
+        }
+        const auto& s = a.model().scope();
+        const int dry = peakColumn (s, Scope::dryHi, false);
+        CHECK (dry >= 0);
+        CHECK (peakColumn (s, Scope::kickHi, true) == dry);
+        CHECK (a.model().kick().status == KickStatus::aligned);
+
+        /* Stopped: unstamped on both sides, filed as it arrived, and said so. */
+        for (int i = 0; i < 10; ++i)
+        {
+            publish (p, a.head.sample, -1, false);
+            spikeBlock (a, -1, false, false, false);
+        }
+        CHECK (a.model().kick().status == KickStatus::byArrival);
+        a.p.editorClosed();
+    }
+
+    /* The sender gone: silent, then a bus that is no longer there. */
+    abus_pusher_release (p);
+    abus_writer_release (w);
+}
+
+TEST_CASE ("a loop that wraps inside a block: the kick after the wrap lands where the dry did")
+{
+    constexpr unsigned slot = 6;
+    abus_writer_t* w = nullptr;
+    abus_pusher_t* p = nullptr;
+    REQUIRE (abus_writer_claim (slot, (std::uint32_t) rate, &w, &p) == ABUS_OK);
+    Instance a;
+    a.p.chooseKick ((int) slot);
+    a.p.editorOpened();
+    a.model().kick();
+
+    /* The cycle 4..8 beats is samples 96000..192000; the block starts 100
+     * frames before its end, so its frame 100 is the loop's start again. A
+     * Listen-In on the kick publishes the block in two runs, as it splits it,
+     * the second stamped with the loop's start, a kick on its first frame. */
+    a.head.looping = true;
+    a.head.loopStart = 4.0;
+    a.head.loopEnd = 8.0;
+    a.head.sample = 192000 - 100;
+    std::vector<float> before (100 * 2, 0.0f), after (412 * 2, 0.0f);
+    after[0] = after[1] = 0.9f;
+    abus_pusher_push_at (p, before.data(), 100, 192000 - 100, 1);
+    abus_pusher_push_at (p, after.data(), 412, 96000, 1);
+
+    /* The dry's impulse on the same frame: frame 100 of the block. */
+    auto b = a.buffer (0.0f);
+    for (int ch = 0; ch < a.p.getMainBusNumInputChannels(); ++ch)
+        b.setSample (ch, 100, 0.9f);
+    a.p.setPlayHead (&a.head);
+    juce::MidiBuffer none;
+    a.p.processBlock (b, none);
+    a.p.setPlayHead (nullptr);
+
+    const auto& s = a.model().scope();
+    const int dry = peakColumn (s, Scope::dryHi, false);
+    CHECK (dry >= 0);
+    CHECK (peakColumn (s, Scope::kickHi, true) == dry);
+    a.p.editorClosed();
+    abus_pusher_release (p);
+    abus_writer_release (w);
+}
+
+TEST_CASE ("a quiet Listen-In says silent and stays so; one that comes back on a new bus is found again")
+{
+    constexpr unsigned slot = 5;
+    abus_writer_t* w = nullptr;
+    abus_pusher_t* p = nullptr;
+    REQUIRE (abus_writer_claim (slot, (std::uint32_t) rate, &w, &p) == ABUS_OK);
+
+    Instance a;
+    a.p.chooseKick ((int) slot);
+    a.p.editorOpened();
+    const auto run = [&] (int blocks, bool publishing)
+    {
+        for (int i = 0; i < blocks; ++i)
+        {
+            if (publishing)
+                publish (p, a.head.sample, a.head.sample + 100, true);
+            spikeBlock (a, -1, false, false);
+            a.model().kick();
+        }
+    };
+    run (20, true);
+    CHECK (a.model().kick().status == KickStatus::aligned);
+
+    /* Bypassed, say: nothing for over half a second, and then still nothing
+     * -- the reader is kept, the caption does not flicker. */
+    run (60, false);
+    CHECK (a.model().kick().status == KickStatus::silent);
+    std::this_thread::sleep_for (std::chrono::milliseconds (600));
+    run (10, false);
+    CHECK (a.model().kick().status == KickStatus::silent);
+
+    /* The Listen-In removed and inserted again: a new segment under the same
+     * number, which the old reader would never hear. */
+    abus_pusher_release (p);
+    abus_writer_release (w);
+    REQUIRE (abus_writer_claim (slot, (std::uint32_t) rate, &w, &p) == ABUS_OK);
+    std::this_thread::sleep_for (std::chrono::milliseconds (600));
+    a.model().kick();
+    run (20, true);
+    CHECK (a.model().kick().status == KickStatus::aligned);
+
+    a.p.editorClosed();
+    abus_pusher_release (p);
+    abus_writer_release (w);
+}
+
 int main (int argc, char** argv)
 {
+    /* A bus namespace of this process's own: never a Live session's buses,
+     * nor another test's. Set before the first bus call. */
+    const auto ns = "sc_processor." + std::to_string ((long) getpid());
+    setenv ("NIA_BUS_NS", ns.c_str(), 1);
+
     const juce::ScopedJuceInitialiser_GUI gui;
     doctest::Context context (argc, argv);
     return context.run();

@@ -1,0 +1,27 @@
+[package]
+name = "bc-move"
+version = "2026.10.11+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The Schwung audio_fx v2 shell for NI Bit-Crusher"
+publish.workspace = true
+
+[lib]
+name = "bc_move"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+bc-core = { path = "../bc-core" }
+# Pulled in so ONE staticlib carries both surfaces: the Schwung vtable and the
+# bc_core_* ABI the C tests link. Without its `shell` feature: the plugin shell
+# and the ground are the plugin's, and nothing on the Move calls them.
+bc-capi = { path = "../bc-capi", default-features = false }
+# The transport the vtable hands over, and the C-string writer.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The Schwung audio_fx v2 glue, shared with every module.
+ni-schwung = { path = "../../../shared/crates/ni-schwung" }
+
+[dev-dependencies]
+# The chain_params tests read the declaration as JSON (src/params.rs).
+serde_json = { workspace = true, features = ["alloc"] }

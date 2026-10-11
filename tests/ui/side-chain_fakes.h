@@ -152,6 +152,9 @@ public:
     Buses bus;
     Scope capture;
     int scopeReads = 0;
+    /* The kick, as the test sets it, and every choice the editor made. */
+    KickView kickView;
+    std::vector<int> kicksChosen;
 
     int numParameters() const override { return common.numParameters(); }
     juce::RangedAudioParameter& parameter (int index) override { return common.parameter (index); }
@@ -172,6 +175,12 @@ public:
     {
         ++scopeReads;
         return capture;
+    }
+    KickView kick() override { return kickView; }
+    void chooseKick (int choice) override
+    {
+        kicksChosen.push_back (choice);
+        kickView.choice = choice;
     }
 
     /* The shape from the host parameters now, as the processor will ask the
@@ -231,6 +240,21 @@ public:
             col[Scope::wetLo] = -in * g;
             col[Scope::wetHi] = in * g;
             col[Scope::gain] = g;
+        }
+    }
+
+    /* A kick in every column, a thump at the cycle's start falling over
+     * `decay` of it, `level` at its peak: what the kick tap would file. */
+    void fillKick (float level, double decay = 0.1)
+    {
+        for (int i = 0; i < capture.count; ++i)
+        {
+            const double t = (double) i / capture.count;
+            const float x = level * (float) (std::exp (-t / decay) * std::abs (std::sin (t * 300.0)));
+            auto* col = capture.data.data() + i * Scope::stride;
+            col[Scope::kickSeen] = 1.0f;
+            col[Scope::kickLo] = -x;
+            col[Scope::kickHi] = x;
         }
     }
 };

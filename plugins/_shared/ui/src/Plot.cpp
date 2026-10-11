@@ -55,11 +55,31 @@ void dry (juce::Graphics& g, const juce::Path& area)
     g.fillPath (area);
 }
 
+void dryLine (juce::Graphics& g, const juce::Path& line)
+{
+    g.setColour (c::plotDry);
+    g.strokePath (line, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+}
+
 void wet (juce::Graphics& g, const juce::Path& area)
 {
     uv::light::glowArc (g, area);
     g.setColour (c::uv);
     g.fillPath (area);
+}
+
+void key (juce::Graphics& g, const juce::Path& area)
+{
+    /* .key { fill: plot-key; opacity: .3 } */
+    g.setColour (c::plotKey.withMultipliedAlpha (0.3f));
+    g.fillPath (area);
+}
+
+void keyEdge (juce::Graphics& g, const juce::Path& area)
+{
+    /* .key-edge { stroke: plot-key; stroke-width: 1; opacity: .9 } */
+    g.setColour (c::plotKey.withMultipliedAlpha (0.9f));
+    g.strokePath (area, juce::PathStrokeType (uv::tok::stroke::strokeHair));
 }
 
 void rule (juce::Graphics& g, float x, float top, float bottom, bool warn)

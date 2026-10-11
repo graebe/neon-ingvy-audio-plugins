@@ -138,19 +138,26 @@ struct HostEar final : juce::AudioProcessorListener
     }
 };
 
-/* A transport playing at 120 BPM in 4/4 from bar 1. */
+/* A transport playing at 120 BPM in 4/4 from bar 1, or stopped there. */
 struct Playhead final : juce::AudioPlayHead
 {
     juce::int64 sample = 0;
+    bool playing = true;
+    /* A cycle, in beats, when `looping`. */
+    bool looping = false;
+    double loopStart = 0.0, loopEnd = 0.0;
 
     juce::Optional<PositionInfo> getPosition() const override
     {
         PositionInfo p;
-        p.setIsPlaying (true);
+        p.setIsPlaying (playing);
         p.setBpm (120.0);
         p.setTimeSignature (TimeSignature { 4, 4 });
         p.setTimeInSamples (sample);
         p.setPpqPosition ((double) sample / 48000.0 * 2.0);
+        p.setIsLooping (looping);
+        if (looping)
+            p.setLoopPoints (LoopPoints { loopStart, loopEnd });
         return p;
     }
 };
@@ -556,6 +563,64 @@ TEST_CASE ("the audio passes through bit for bit and is published on the bus as 
     CHECK (same (a.run (mono), mono));
     CHECK (reader.drain (&dropped) == interleaved (mono));
     CHECK (dropped == 0);
+}
+
+TEST_CASE ("every chunk is stamped with where it sits on the host's timeline, and a stopped one is not")
+{
+    Instance a;
+    a.moveTo (6);
+    Reader reader (6);
+    Playhead head;
+    head.sample = 96000;
+    a.p.setPlayHead (&head);
+
+    /* Longer than the stage, so the second chunk's stamp is the first's
+     * plus the stage. */
+    const int frames = Processor::stageFrames + 100;
+    a.run (noise (frames, 8));
+    const auto got = reader.drain();
+    REQUIRE (got.size() == (std::size_t) frames * 2);
+    const auto first = abus_reader_position (reader.r) - (std::uint64_t) frames;
+    for (const int i : { 0, 1, Processor::stageFrames - 1, Processor::stageFrames, frames - 1 })
+    {
+        std::int64_t t = -1;
+        REQUIRE (abus_reader_timeline_of (reader.r, first + (std::uint64_t) i, &t) == 1);
+        CHECK (t == 96000 + i);
+    }
+
+    /* Stopped: where it will start is no stamp. */
+    head.playing = false;
+    a.run (noise (64, 9));
+    reader.drain();
+    std::int64_t t = -1;
+    CHECK (abus_reader_timeline_of (reader.r, abus_reader_position (reader.r) - 1, &t) == 0);
+    a.p.setPlayHead (nullptr);
+}
+
+TEST_CASE ("a loop that wraps inside a block: the run after the wrap is stamped with the loop's start")
+{
+    Instance a;
+    a.moveTo (7);
+    Reader reader (7);
+    /* 120 BPM at 48 kHz, a beat 24000 samples; the cycle 4..8 beats is
+     * samples 96000..192000, and the block starts 100 frames before its end. */
+    Playhead head;
+    head.looping = true;
+    head.loopStart = 4.0;
+    head.loopEnd = 8.0;
+    head.sample = 192000 - 100;
+    a.p.setPlayHead (&head);
+    a.run (noise (512, 10));
+    REQUIRE (reader.drain().size() == 512 * 2);
+    const auto first = abus_reader_position (reader.r) - 512;
+    std::int64_t t = -1;
+    REQUIRE (abus_reader_timeline_of (reader.r, first + 99, &t) == 1);
+    CHECK (t == 192000 - 1);
+    REQUIRE (abus_reader_timeline_of (reader.r, first + 100, &t) == 1);
+    CHECK (t == 96000);
+    REQUIRE (abus_reader_timeline_of (reader.r, first + 511, &t) == 1);
+    CHECK (t == 96000 + 411);
+    a.p.setPlayHead (nullptr);
 }
 
 TEST_CASE ("bypassed, the host's way: the audio through, nothing published, and the meter falls")

@@ -15,7 +15,11 @@
  *   - ACTIVATING A DEAD STEP RESTORES ITS FULL AMOUNT. The amount is kept
  *     apart from the mask, so a step dragged down to 20 % would come back at
  *     20 %. Off to on only: on and tie are both live, and an amount set on
- *     purpose stays.
+ *     purpose stays. The engine does this itself (a `step` edit from off),
+ *     so every editor's "on" means the same.
+ *   - ONE GESTURE IS ONE EDIT. A step switched on at an amount of its own --
+ *     a drag up from off, Alt+Up on an off step -- goes as one edit
+ *     (setStepWithDepth), or a block between the two would play it at full.
  *   - A DRAG SETS THE AMOUNT, after the StepGrid's 4px of dead zone; ZERO
  *     MEANS OFF -- at 2 % or less the step goes off rather than staying on
  *     and silent, and coming back up switches it on again.

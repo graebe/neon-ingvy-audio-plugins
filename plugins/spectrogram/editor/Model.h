@@ -40,6 +40,7 @@
  */
 #pragma once
 
+#include "BusSource.h"
 #include "EditorModel.h"
 
 #include <cstdint>
@@ -75,21 +76,8 @@ struct Transport
     }
 };
 
-/* A Listen-In bus that exists, sending or not: a muted one is still where the
- * user put it. */
-struct Source
-{
-    int slot = 0;            // 1-based, the bus's identity
-    bool live = false;       // publishing now
-    int sampleRate = 0;      // the sender's
-    juce::String label;      // what was typed into the Listen-In; may be empty
-
-    bool operator== (const Source& o) const
-    {
-        return slot == o.slot && live == o.live && sampleRate == o.sampleRate && label == o.label;
-    }
-    bool operator!= (const Source& o) const { return ! (*this == o); }
-};
+/* A Listen-In bus that exists, sending or not: the kit's (BusSource.h). */
+using Source = ni::ui::BusSource;
 
 /*
  * What the session is looking at. A CHANNEL is an index into the editor's

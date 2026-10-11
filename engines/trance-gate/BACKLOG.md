@@ -53,7 +53,8 @@ whole sequence. So the per-step value is an accent and the global one is the
 master amount.
 
 - [x] DSP: gain becomes `1 - (stepDepth[i] * depth) * (1 - env)`. Per-step
-      stored as one byte each (0–255), 32 per slot × 8 slots = 256 bytes.
+      stored as one byte each (0–255), 128 per slot × 8 slots = 1 KB
+      (32 per slot when this was written; the ceiling is now 128 steps).
 - [x] State blob: extend the `p<N>` triple to carry the depth array as hex.
       **Bump `TG_STATE_VERSION` to 2** — a v1 blob has no depths and must load
       as "all full", not as "all zero", which would silently mute every gate.
@@ -202,8 +203,8 @@ Per-step depth needs a ninth. Ways out, cheapest first:
 
 - Gate engine: bar-aligned from `get_beat_position()`, block-anchored with a
   per-sample local advance, survives seeks and tempo changes.
-- Ties suppress the retrigger; `state` round-trips; 34 headless tests in
-  `tests/run.sh`, no device needed.
+- Ties suppress the retrigger; `state` round-trips; the headless suites in
+  `tests/run.sh` (test_core, test_gate, the golden render), no device needed.
 - `ui_chain.js` + `createController` gives the real knob grid, enum peek,
   section picker, screen reader and the host's My Presets / Module pages.
 - The ring is an `as_page` canvas: host draws the chrome, the drawer gets a
@@ -249,9 +250,11 @@ Eight bugs found and fixed; see the commit messages for the reasoning.
 - [x] ~~Release workflow + first tag~~ — workflow added
       (`.github/workflows/release.yml`, adapted from schwung-ducker's, plus an
       artifact check because softprops *warns* rather than fails on a missing
-      file). **No tag yet**, and the catalog entry stays blocked: the module
-      needs a host carrying `page_knobs` and the enum-wire fix, and that host
-      exists only in the fork (`min_host_version` is set to 1.5.0 against that).
+      file). *Since superseded:* the module is tagged and released
+      (`trance-gate-v2026.10.08.1` onwards) and listed in the upstream catalog
+      (minimum host 1.3.0 there); the minimum it declares itself is in
+      `modules/trance-gate/module.json`, and the version its tests run against
+      is pinned in `modules/_shared/schwung.version`.
 
 - [ ] **HOST — `frameCtx.print()` does not bound a glyph VERTICALLY.** It
       checks the origin is inside the frame and truncates to the horizontal

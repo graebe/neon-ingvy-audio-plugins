@@ -5,6 +5,7 @@
 #
 #   cmake --build build --target schwung              NI Trance Gate
 #   cmake --build build --target schwung-side-chain   NI Side-Chain
+#   cmake --build build --target schwung-bit-crusher  NI Bit-Crusher
 #   cmake --build build --target schwung-vocalize     NI Vocalize
 #
 # Each runs modules/_shared/package.sh with the module's directory name; what
@@ -42,6 +43,13 @@ add_custom_target(schwung-side-chain
     COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh side-chain
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building the NI Side-Chain module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-bit-crusher
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh bit-crusher
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Bit-Crusher module for Schwung (aarch64 Linux, via Docker)"
     USES_TERMINAL
     VERBATIM)
 

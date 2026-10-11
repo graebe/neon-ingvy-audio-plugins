@@ -2,6 +2,19 @@
 
 All notable changes to Ultraviolet, newest first. Versions follow the rules under Versioning.
 
+## 1.2.0 — 2026-10-09
+
+A plot can show the signal a processor reacts to, behind everything else: the kick a ducker ducks against.
+
+**Added**
+
+- `plot-key` (#ffb000): the reference a processor reacts to, drawn as a band behind the dry input — filled at 30% opacity under it, its 1px edge at 90% over it and under the processed trace (`ph-plot .key`, `.key-edge`). Drawn to its own height: it says when, not how loud. A data colour, only in a PlotWell.
+- PlotWell: the duck example — the kick in amber, the input in grey, the ducked output in violet.
+
+**Changed**
+
+- `amber` is also a signal colour: its value is `plot-key`'s. A band inside a PlotWell is the reference signal; a rule or a mark is still the window's one warning, so the two never mean the same thing.
+
 ## 1.1.0 — 2026-10-06
 
 The system now describes the plugins as they are built: the components the kit already ships, the ground on the host's beat, info on hover, knob detents and the window rules the editors keep.

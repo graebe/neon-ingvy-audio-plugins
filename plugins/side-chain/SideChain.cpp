@@ -11,6 +11,7 @@
 #include "SideChainEditor.h"
 #include "ni/Wire.h"
 
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -98,7 +99,7 @@ bool Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
     return key.isDisabled() || monoOrStereo (key);
 }
 
-void Processor::prepareToPlay (double rate, int maximumBlock)
+void Processor::prepare (double rate, int maximumBlock)
 {
     sampleRate = rate > 0.0 ? rate : 44100.0;
     sc_shell_post_sample_rate (shell.get(), sampleRate);
@@ -109,6 +110,7 @@ void Processor::prepareToPlay (double rate, int maximumBlock)
         v->assign (n, 0.0f);
     /* A column is a slice of a cycle, and the cycle may have changed length. */
     capture.Clear();
+    behind.prepare ((std::uint32_t) std::lround (sampleRate), (int) n);
 }
 
 /*
@@ -147,12 +149,16 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
 
     /* What a missing tempo or position means is decided once, for every
      * shell: a NaN position is none (ni::readClock). */
-    const auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
-    sc_transport_t transport { host.running, host.beats, host.bpm };
+    auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
+    const auto loop = ni::wire::host_loop (clock.looping, clock.loopStart, clock.loopEnd);
 
     const bool tap = heard && capturing.load (std::memory_order_relaxed);
-    ni::wire::for_each_chunk (frames, cap, [&] (int off, int n)
+    const auto block = host;
+    /* In chunks of what was reserved, each split again where the host's loop
+     * wraps: the frames after its end duck from its start. */
+    ni::wire::for_each_span (frames, cap, host, loop, sampleRate, [&] (int off, int n)
     {
+        sc_transport_t transport { host.running, host.beats, host.bpm };
         /* The messages that fall in this chunk, at their offset in it; one
          * the host placed outside the block lands at its nearer end. */
         for (const auto m : midi)
@@ -185,11 +191,18 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
         sc_core_process_f32_split_tap (core, l, r, tap ? gain.data() : nullptr, tap ? sweep.data() : nullptr, n,
                                        &transport);
         if (tap)
+        {
             capture.Push (dry.data(), l, gain.data(), sweep.data(), n);
-        /* A chunk continues the block, so the transport moves with it. */
-        if (transport.running)
-            transport.beats = ni::wire::advance_beats (transport.beats, n, (double) transport.bpm, sampleRate);
+            /* Where this span sounds on the host's timeline -- after a loop
+             * wrapped, back at its start -- so a Listen-In's kick that sounded
+             * with it is filed here (Kick.h). */
+            const auto at = ni::wire::span_timeline (clock.timeInSamples, block, off, host.beats, sampleRate);
+            behind.note (sweep.data(), n, clock.timed, at, keyL != nullptr ? keyL + off : nullptr,
+                         keyR != nullptr ? keyR + off : nullptr);
+        }
     });
+    if (tap)
+        behind.drain();
 
     sc_shell_end (shell.get(), frames);
 }
@@ -227,6 +240,9 @@ juce::AudioProcessorEditor* Processor::createEditor()
 void Processor::editorOpened()
 {
     capture.Retire();
+    behind.capture().Retire();
+    /* The bus has run on while nobody looked: read from its live edge. */
+    behind.service (true);
     capturing.store (true, std::memory_order_relaxed);
     beat.setActive (true);
 }
@@ -237,15 +253,25 @@ void Processor::editorClosed()
     beat.setActive (false);
 }
 
+void Processor::chooseKick (int choice)
+{
+    if (behind.choose (choice))
+        nonParameterStateChanged();
+    behind.service();
+}
+
 /* THE CHUNK THE iPlug2 BUILD WROTE: the fifteen plain values, then the bypass
- * after it, which iPlug2 needs to load it. */
+ * after it, which iPlug2 needs to load it -- and between them, when a kick is
+ * chosen, the one string saying which. */
 void Processor::writeState (juce::MemoryBlock& out)
 {
     nist::State state;
     for (auto* p : params)
         state.params.push_back (p->plain());
+    if (const auto text = kick::toText (behind.choice()); ! text.empty())
+        state.strings.push_back (text);
     state.bypass = bypass->plain() >= 0.5;
-    const auto bytes = nist::write (layout(), state);
+    const auto bytes = nist::write (state.strings.empty() ? layoutWithoutKick() : layout(), state);
     out.replaceAll (bytes.data(), bytes.size());
 }
 
@@ -260,6 +286,8 @@ bool Processor::readState (const void* data, size_t size)
         params[(std::size_t) i]->setPlainNotifyingHost (state->params[(std::size_t) i]);
     if (state->bypass)
         bypass->setPlainNotifyingHost (*state->bypass ? 1.0 : 0.0);
+    /* A set without one shows none: loading replaces what was shown. */
+    behind.choose (state->strings.empty() ? kick::off : kick::fromText (state->strings.front()));
     return true;
 }
 

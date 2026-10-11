@@ -11,9 +11,11 @@ product's `*-move` crate is its `chain_params` and a thin impl.
 Every entry point runs on the SPI audio callback (SCHED_FIFO 70, core 3,
 ~2370us per 128-frame block): no allocation outside `create_instance`, no
 I/O, no locks, and no logging, including the host's. The one exception is
-the host's, not ours: a chain loads a module into a bus position on its
-worker thread, so init and `create_instance` may also run there, at the same
-time as a slot's on the callback. Nothing they share is written without
+the host's, not ours: a module is LOADED off the callback -- by the shim's
+slot loader or a chain's bus worker (plugin_api_v1.h, as of the pinned
+Schwung in modules/_shared/schwung.version) -- so init, `create_instance` and
+the `state` restore may run there, at the same time as another instance of
+the module renders on the callback. Nothing they share is written without
 synchronisation.
 */
 
@@ -21,12 +23,34 @@ use ni_dsp::ffi::cstr;
 use ni_dsp::Transport;
 use std::ffi::{c_char, c_int, c_void};
 use std::marker::PhantomData;
+use std::ops::RangeInclusive;
 use std::os::raw::c_uchar;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicPtr, Ordering};
 
-/// The Move's mailbox rate. The engines take a rate only so a DAW can differ.
-pub const SAMPLE_RATE: f64 = 44100.0;
+/*
+ * THE CONTRACT'S NUMBERS, each the C header's. abi/layout.def holds them and
+ * the tables' layout as the one list both sides are checked against: the
+ * Rust in src/tests.rs, the vendored headers in abi/layout.c.
+ */
+
+/// The host table this crate mirrors: `MOVE_PLUGIN_API_VERSION`. Every table
+/// the Move builds says 1 (module_manager.c, shadow_chain_mgmt.c,
+/// schwung_shim.c, and the chain's copy of its own); init refuses any other.
+pub const HOST_API_VERSION: u32 = 1;
+
+/// The table init returns: `AUDIO_FX_API_VERSION_2`, which every loader
+/// checks before it calls through it.
+pub const AUDIO_FX_API_VERSION: u32 = 2;
+
+/// The Move's mailbox rate, `MOVE_SAMPLE_RATE`: what an instance runs at when
+/// the host table names no rate worth believing, or there is no table.
+pub const DEFAULT_SAMPLE_RATE: f64 = 44100.0;
+
+/// The rates a host table's `sample_rate` is taken at its word for. Outside
+/// it -- zero from a table nobody filled in, a negative, a nonsense value --
+/// the table says nothing about the rate, and [`DEFAULT_SAMPLE_RATE`] stands.
+pub const SAMPLE_RATES: RangeInclusive<i32> = 8_000..=384_000;
 
 /// What a product supplies to become a Schwung audio_fx module.
 pub trait Module: Sized + 'static {
@@ -44,11 +68,15 @@ pub trait Module: Sized + 'static {
 }
 
 /*
- * THE HOST'S VTABLE, MIRRORED FIELD FOR FIELD. Only `get_bpm` and
- * `get_beat_position` are read, but every field before them must be here and
- * the right size or they are read from the wrong offsets -- no crash, just a
- * tempo nobody chose. Scalars are interleaved with pointers, so this cannot be
- * a table of pointers.
+ * THE HOST'S VTABLE, MIRRORED FIELD FOR FIELD. Only `api_version`,
+ * `sample_rate`, `get_bpm` and `get_beat_position` are read, but every field
+ * before them must be here and the right size or they are read from the wrong
+ * offsets -- no crash, just a tempo nobody chose. Scalars are interleaved
+ * with pointers, so this cannot be a table of pointers.
+ *
+ * Every offset and size is written down once, in abi/layout.def, and held to
+ * both sides: to these structs by src/tests.rs and to the vendored C headers
+ * by abi/layout.c (ctest ni_schwung_abi).
  */
 #[repr(C)]
 pub struct HostApiV1 {
@@ -77,8 +105,8 @@ impl HostApiV1 {
     pub fn with_clock(get_bpm: extern "C" fn() -> f32, get_beat_position: extern "C" fn() -> f64) -> Self {
         let null = std::ptr::null_mut();
         HostApiV1 {
-            api_version: 1,
-            sample_rate: SAMPLE_RATE as c_int,
+            api_version: HOST_API_VERSION,
+            sample_rate: DEFAULT_SAMPLE_RATE as c_int,
             frames_per_block: 128,
             mapped_memory: null as *mut u8,
             audio_out_offset: 0,
@@ -119,9 +147,10 @@ pub struct AudioFxApiV2 {
  * so a pointer kept past init can outlive what it points at -- and the
  * `static mut` this replaced kept the LAST caller's, whichever chain that was.
  *
- * INIT CAN RUN ON TWO THREADS AT ONCE. A slot loads on the SPI callback and a
- * bus position on the chain's worker (chain_bus.c), so the same module in both
- * is two inits racing, and a `static mut` both of them write is a data race.
+ * INIT CAN RUN ON TWO THREADS AT ONCE. A slot loads on the shim's slot loader
+ * (chain_fx_load.c) and a bus position on the chain's worker (chain_bus.c), so
+ * the same module in both is two inits racing, and a `static mut` both of them
+ * write is a data race.
  *
  * What a module needs from the table is two functions, and every table the
  * Move builds carries the same two: the shim's `shim_get_bpm` and
@@ -139,27 +168,53 @@ pub struct AudioFxApiV2 {
 static HOST_BPM: AtomicPtr<()> = AtomicPtr::new(null_mut());
 static HOST_BEATS: AtomicPtr<()> = AtomicPtr::new(null_mut());
 
+/*
+ * THE HOST'S SAMPLE RATE, COPIED AT INIT FOR THE SAME REASONS, and read by
+ * `create_instance`, which is handed no table of its own. Every table the
+ * Move builds says MOVE_SAMPLE_RATE, so the latest init winning is the same
+ * rate whoever won; what this buys is that a host which says otherwise is
+ * believed rather than overruled by a constant.
+ */
+static HOST_RATE: AtomicI32 = AtomicI32::new(DEFAULT_SAMPLE_RATE as i32);
+
 type GetBpm = extern "C" fn() -> f32;
 type GetBeatPosition = extern "C" fn() -> f64;
 
-/// Copy the clock out of `host`. No table, or a table without a clock, is a
-/// host that tells us nothing: a stopped transport at 120.
-fn keep_clock(host: Option<&HostApiV1>) {
+/// What a table's `sample_rate` means: its value inside [`SAMPLE_RATES`],
+/// [`DEFAULT_SAMPLE_RATE`] otherwise.
+fn sample_rate_of(host: Option<&HostApiV1>) -> f64 {
+    match host.map(|h| h.sample_rate) {
+        Some(sr) if SAMPLE_RATES.contains(&sr) => f64::from(sr),
+        _ => DEFAULT_SAMPLE_RATE,
+    }
+}
+
+/// Copy the clock and the rate out of `host`. No table, or a table without a
+/// clock, is a host that tells us nothing: a stopped transport at 120, at
+/// [`DEFAULT_SAMPLE_RATE`].
+fn keep_host(host: Option<&HostApiV1>) {
     let bpm = host.and_then(|h| h.get_bpm).map_or(null_mut(), |f| f as *mut ());
     let beats = host.and_then(|h| h.get_beat_position).map_or(null_mut(), |f| f as *mut ());
     HOST_BPM.store(bpm, Ordering::Relaxed);
     HOST_BEATS.store(beats, Ordering::Relaxed);
+    /* An integer in range, so exact as an i32 and back. */
+    HOST_RATE.store(sample_rate_of(host) as i32, Ordering::Relaxed);
+}
+
+/// The sample rate the next instance is created at: the latest init's.
+fn host_sample_rate() -> f64 {
+    f64::from(HOST_RATE.load(Ordering::Relaxed))
 }
 
 fn host_bpm() -> Option<GetBpm> {
     let p = HOST_BPM.load(Ordering::Relaxed);
-    /* SAFETY: `keep_clock` stores a GetBpm here, or null, and nothing else. */
+    /* SAFETY: `keep_host` stores a GetBpm here, or null, and nothing else. */
     (!p.is_null()).then(|| unsafe { std::mem::transmute::<*mut (), GetBpm>(p) })
 }
 
 fn host_beat_position() -> Option<GetBeatPosition> {
     let p = HOST_BEATS.load(Ordering::Relaxed);
-    /* SAFETY: `keep_clock` stores a GetBeatPosition here, or null. */
+    /* SAFETY: `keep_host` stores a GetBeatPosition here, or null. */
     (!p.is_null()).then(|| unsafe { std::mem::transmute::<*mut (), GetBeatPosition>(p) })
 }
 
@@ -193,7 +248,7 @@ struct Vtable<M>(PhantomData<M>);
 
 impl<M: Module> Vtable<M> {
     const API: AudioFxApiV2 = AudioFxApiV2 {
-        api_version: 2,
+        api_version: AUDIO_FX_API_VERSION,
         create_instance: Some(create::<M>),
         destroy_instance: Some(destroy::<M>),
         process_block: Some(process_block::<M>),
@@ -204,7 +259,7 @@ impl<M: Module> Vtable<M> {
 }
 
 extern "C" fn create<M: Module>(_dir: *const c_char, _cfg: *const c_char) -> *mut c_void {
-    Box::into_raw(Box::new(M::new(SAMPLE_RATE))) as *mut c_void
+    Box::into_raw(Box::new(M::new(host_sample_rate()))) as *mut c_void
 }
 
 extern "C" fn destroy<M: Module>(inst: *mut c_void) {
@@ -273,11 +328,28 @@ extern "C" fn get_param<M: Module>(
 /// struct reads it off the end of its own idea of the table. The host dlsym's
 /// the free symbol `move_audio_fx_on_midi` instead.
 ///
+/// A TABLE OF ANOTHER VERSION IS REFUSED, with null -- the failure every
+/// loader on the Move already handles: the chain's (chain_host.c,
+/// chain_fx_load.c, chain_bus.c) logs "V2 API version mismatch" and
+/// dlcloses, the master FX's (shadow_chain_mgmt.c) and the overtake's
+/// (schwung_shim.c) report an init failure. `api_version` is the one field
+/// every version of the table shares, so it is read before anything else is
+/// believed: read through this mirror, a table of another layout yields a
+/// clock at the wrong offsets, which is a call into whatever lies there. The
+/// chain's own init refuses a mismatched host table the same way. A refused
+/// init changes nothing: the clock and the rate stay the last accepted
+/// host's. A null `host` is no table rather than a wrong one, and is a host
+/// that tells us nothing (`keep_host`).
+///
 /// # Safety
 /// `host` is null or a host table that is valid for the call -- which is as
 /// long as this reads it.
 pub unsafe fn init<M: Module>(host: *const HostApiV1) -> *mut AudioFxApiV2 {
-    keep_clock(unsafe { host.as_ref() });
+    let host = unsafe { host.as_ref() };
+    if host.is_some_and(|h| h.api_version != HOST_API_VERSION) {
+        return null_mut();
+    }
+    keep_host(host);
     let api: &'static AudioFxApiV2 = &Vtable::<M>::API;
     (api as *const AudioFxApiV2).cast_mut()
 }

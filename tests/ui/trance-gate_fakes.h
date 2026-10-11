@@ -261,17 +261,28 @@ public:
     std::vector<std::string> edits;
     int patternReads = 0;
 
+    /* As the engine does: a step switched on from off comes on at full. */
     void setStep (int index, StepMode mode) override
     {
         const char* names[] { "off", "on", "tie" };
         edits.push_back ("step " + std::to_string (index) + " " + names[(int) mode]);
-        next.steps[(std::size_t) index] = mode;
+        const auto at = (std::size_t) index;
+        if (next.steps[at] == StepMode::off && mode != StepMode::off)
+            next.depths[at] = 1.0f;
+        next.steps[at] = mode;
         next.cursor = index;
     }
     void setDepth (int index, float amount) override
     {
         edits.push_back ("depth " + std::to_string (index) + " " + juce::String (amount, 2).toStdString());
         next.depths[(std::size_t) index] = amount;
+    }
+    /* Logged as its two halves; that they are ONE edit is the real model's
+     * to show (tests/tg_processor.cpp). */
+    void setStepWithDepth (int index, StepMode mode, float amount) override
+    {
+        setStep (index, mode);
+        setDepth (index, amount);
     }
     void setOrder (int index, int rank) override
     {

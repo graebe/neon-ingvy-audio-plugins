@@ -356,3 +356,83 @@ fn the_meter_reaches_the_detents_and_a_null_is_ignored() {
         tg_core_destroy(c);
     }
 }
+
+/*
+ * THE LARGEST PATCH THE ENGINE CAN WRITE FITS TG_STATE_MAX, WITH ROOM.
+ *
+ * test_core.c measures every step accented, which is not the worst case: an
+ * arrival order that is not position order is written too, and so is every
+ * slot whose sound differs from the current one. All three at once -- 8 slots
+ * of 128 steps, accented, reordered, eight different sounds -- measured 5126
+ * bytes when this was written. TG_STATE_MAX is also Schwung's whole budget, so
+ * the margin is asserted rather than assumed: the next field added to a
+ * pattern has to fit inside it, or the format has to get denser first.
+ */
+#[test]
+fn the_largest_patch_fits_tg_state_max_with_a_quarter_to_spare() {
+    let mut p = tg_core::Instance::new(48_000.0);
+    for s in 0..8 {
+        p.set_num(Param::Slot, s as f64);
+        p.set_num(Param::Length, 127.0);
+        p.set_param("pattern", "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+        for c in 0..128 {
+            p.set_param("cursor", &c.to_string());
+            p.set_param("step_amount", "0.5");
+            p.set_param("step_order", &(128 - c).to_string());
+        }
+        for (param, v) in [
+            (Param::Rate, 9.0 - s as f64),
+            (Param::Attack, 13.37 + s as f64),
+            (Param::Decay, 47.11),
+            (Param::Sustain, 0.4321),
+            (Param::Release, 123.45),
+            (Param::Hold, 0.8765),
+            (Param::Amount, 0.777),
+            (Param::Curve, 2.0),
+            (Param::Legato, 1.0),
+            (Param::TimeMode, 1.0),
+            (Param::Fade, 0.1234),
+            (Param::FadeSoft, 1.0),
+            (Param::FadeDir, 1.0),
+        ] {
+            p.set_num(param, v);
+        }
+    }
+    let mut buf = vec![0u8; 4 * STATE_MAX];
+    let n = p.get_param("state", &mut buf);
+    assert!(n > 0 && (n as usize) <= STATE_MAX * 3 / 4, "worst-case patch is {n} bytes of {STATE_MAX}");
+    /* And a buffer too small for it gets no answer, never a cut patch. */
+    let mut small = vec![0xAAu8; n as usize];
+    assert_eq!(p.get_param("state", &mut small), -1);
+    assert_eq!(small[0], 0);
+}
+
+/*
+ * THE HOST'S TABLE, AS C READS IT: every row the schema's, in host units, its
+ * strings and words NUL-terminated and living as long as the program, and
+ * nothing past the end.
+ */
+#[test]
+fn the_param_spec_rows_are_the_schemas_in_host_units() {
+    use std::ffi::CStr;
+    use tg_core::schema::{text, PARAMS};
+    for (i, p) in PARAMS.iter().enumerate() {
+        let row = unsafe { &*tg_core_param_spec(i as c_int) };
+        let c = |ptr: *const c_char| unsafe { CStr::from_ptr(ptr) }.to_str().unwrap();
+        assert_eq!(c(row.id), text(p.host.id));
+        assert_eq!(c(row.name), text(p.host.name));
+        assert_eq!(c(row.units), text(p.host.units));
+        assert_eq!(row.kind, p.host.kind as c_int);
+        assert_eq!((row.min, row.max, row.def), (p.host_min(), p.host_max(), p.host_default()), "{}", p.key);
+        assert_eq!((row.scale, row.offset), (p.host.scale, p.host.offset));
+        assert_eq!(row.num_texts as usize, p.host.options.len());
+        for (k, word) in p.host.options.iter().enumerate() {
+            assert_eq!(c(unsafe { *row.texts.add(k) }), text(word));
+        }
+        if p.host.options.is_empty() {
+            assert!(row.texts.is_null());
+        }
+    }
+    assert!(tg_core_param_spec(PARAMS.len() as c_int).is_null());
+    assert!(tg_core_param_spec(-1).is_null());
+}

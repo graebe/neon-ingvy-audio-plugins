@@ -78,8 +78,8 @@ pub struct StageLens {
 
 impl Env {
     /*
-     * Entering a stage, with zero-length stages walked THROUGH rather than
-     * recursed through.
+     * Entering a stage, with stages that are already over walked THROUGH
+     * rather than recursed through.
      *
      * This was env_enter calling env_settle calling env_enter: bounded in
      * fact (attack -> decay -> sustain is the longest chain a zero can open)
@@ -87,11 +87,20 @@ impl Env {
      * unbounded. A 0 ms attack must not spend a sample reporting env == 0 --
      * that is an audible click at the step edge -- which is the whole reason
      * the walk exists.
+     *
+     * THE STAGE BEGAN `elapsed` SAMPLES AGO, not on this sample. A step
+     * boundary falls between samples -- a 1/16 at 140 bpm is 5142.86 of them
+     * -- and starting every stage at t = 0 on the first sample past it put
+     * each edge up to a sample late. That rounding is periodic, so it is not
+     * noise: it was the gate's alias floor (67.8 dB, against 96.8 dB for the
+     * same edges placed exactly), and it made the output depend on the host's
+     * block size wherever a boundary fell exactly on a sample. A stage that
+     * would already be over is walked through with what is left, the same way
+     * a zero-length one is.
      */
-    pub fn enter(&mut self, mut stage: Stage, l: &StageLens) {
+    pub fn enter(&mut self, mut stage: Stage, l: &StageLens, mut elapsed: f64) {
         loop {
             self.stage = stage;
-            self.t = 0.0;
 
             let len = match stage {
                 Stage::Attack => {
@@ -110,14 +119,16 @@ impl Env {
              * sample. Guarded by the zero-length walk below, so it is only
              * ever taken on a positive length. */
             self.inc = if len > 0.0 { 1.0 / len } else { 0.0 };
+            self.t = elapsed.max(0.0) * self.inc;
 
             /* SUSTAIN and IDLE have no length and are where the walk stops. */
             if !matches!(stage, Stage::Attack | Stage::Decay | Stage::Release) {
                 return;
             }
-            if len > 0.0 {
+            if len > 0.0 && self.t < 1.0 {
                 return;
             }
+            elapsed -= len;
 
             stage = match stage {
                 Stage::Attack => {
@@ -136,6 +147,16 @@ impl Env {
         }
     }
 
+    /*
+     * One sample: the level at `t`, then `t` moves on.
+     *
+     * A STAGE ENDS BETWEEN SAMPLES TOO. This sample keeps the level its own
+     * `t` gives; when the step past it crosses the end, the next stage is
+     * entered with the part of a sample that is already behind it, and the
+     * next sample reads that stage. Writing the end value here instead -- as
+     * this did -- finished every stage up to a sample early, with a last step
+     * up to twice the ramp's own slope.
+     */
     #[inline]
     pub fn advance(&mut self, curve: Curve, l: &StageLens) {
         /* The shape, evaluated once and substituted for env_t below. Linear
@@ -143,37 +164,46 @@ impl Env {
          * they were. */
         let w = shape(curve, self.t);
 
-        match self.stage {
+        let next = match self.stage {
+            /* FROM WHERE IT IS, not from zero -- the same thing RELEASE does
+             * with rel_from. It still REACHES 1.0 and still takes attack_ms to
+             * get there; it simply does not fall off a cliff first. */
             Stage::Attack => {
-                /* FROM WHERE IT IS, not from zero -- the same thing RELEASE
-                 * does with rel_from. It still REACHES 1.0 and still takes
-                 * attack_ms to get there; it simply does not fall off a cliff
-                 * first. */
                 self.level = (self.att_from as f64 + (1.0 - self.att_from as f64) * w) as f32;
-                self.t += self.inc;
-                if self.t >= 1.0 {
-                    self.level = 1.0;
-                    self.enter(Stage::Decay, l);
-                }
+                Stage::Decay
             }
             Stage::Decay => {
                 self.level = (1.0 - (1.0 - l.sustain as f64) * w) as f32;
-                self.t += self.inc;
-                if self.t >= 1.0 {
-                    self.level = l.sustain;
-                    self.enter(Stage::Sustain, l);
-                }
+                Stage::Sustain
             }
-            Stage::Sustain => self.level = l.sustain,
             Stage::Release => {
                 self.level = (self.rel_from as f64 * (1.0 - w)) as f32;
-                self.t += self.inc;
-                if self.t >= 1.0 {
-                    self.level = 0.0;
-                    self.enter(Stage::Idle, l);
-                }
+                Stage::Idle
             }
-            Stage::Idle => self.level = 0.0,
+            Stage::Sustain => {
+                self.level = l.sustain;
+                return;
+            }
+            Stage::Idle => {
+                self.level = 0.0;
+                return;
+            }
+        };
+        self.t += self.inc;
+        if self.t >= 1.0 {
+            /* Samples already past the end: (t - 1) of the stage, in samples. */
+            let over = (self.t - 1.0) / self.inc;
+            let level = self.level;
+            /* The stage's end value, for whatever the next one reads from it
+             * (release's `rel_from`, attack's `att_from`), then this sample's
+             * own level back. */
+            self.level = match next {
+                Stage::Decay => 1.0,
+                Stage::Sustain => l.sustain,
+                _ => 0.0,
+            };
+            self.enter(next, l, over);
+            self.level = level;
         }
     }
 }

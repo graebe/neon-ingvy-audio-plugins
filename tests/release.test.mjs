@@ -24,6 +24,8 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
   ROOT, resolve, readModuleEnv, updateReleaseJson, schwungVersion, LEGACY_TOP_LEVEL, bundleOf, ZIP_OS,
+  VERSION_RE, compareVersions, schwungManagerNewer, latestStableRelease, publishedReleases,
+  NOTES_REF, attest, attestations, attestationFor, attested,
 } from '../scripts/release.mjs';
 import { plan, stage, binaryOf } from '../scripts/stage-release.mjs';
 import { juceProducts, bundleResources } from '../scripts/licenses-lib.mjs';
@@ -318,4 +320,330 @@ test('release.mjs names the bundle of every plugin, and of nothing else', () => 
   for (const p of PLUGINS) assert.equal(bundle(p), bundleOf(ROOT, p));
   assert.throws(() => bundle('audio-bus'), /has no plugin/);
   assert.throws(() => bundle('..'), /not a product/);
+});
+
+/* ------------------------------------------------------ scratch repos */
+
+const git = (cwd, ...args) => execFileSync('git', args,
+  { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+/* A repository of its own, so nothing here writes a note into this one. */
+function scratchRepo(files = { 'README.md': 'scratch\n' }) {
+  const dir = mkdtempSync(join(tmpdir(), 'ni-attest-'));
+  git(dir, 'init', '-q', '-b', 'main');
+  git(dir, 'config', 'user.name', 'Release Test');
+  git(dir, 'config', 'user.email', 'release-test@invalid');
+  git(dir, 'config', 'commit.gpgsign', 'false');
+  for (const [p, text] of Object.entries(files)) {
+    mkdirSync(join(dir, p, '..'), { recursive: true });
+    writeFileSync(join(dir, p), text);
+  }
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'scratch');
+  return dir;
+}
+const FIXED = { rustc: 'rustc 1.99.0 (test)', host: 'test-host', date: new Date('2026-10-10T12:00:00Z') };
+/* What scripts/test.sh records for a run that left no unwaived gap. */
+const CLEAN = { gaps: 0, waived: 'none', untested: 'none' };
+
+/* ---------------------------------------------------------------- betas */
+
+test('a beta orders below the release it precedes and above everything before', () => {
+  const order = ['v2026.10.09.3', 'v2026.10.10.1-beta.1', 'v2026.10.10.1-beta.2', 'v2026.10.10.1',
+                 'v2026.10.10.2-beta.1', 'v2026.10.10.2', 'v2026.10.11.1-beta.1'];
+  for (let i = 0; i < order.length; i++)
+    for (let j = 0; j < order.length; j++)
+      assert.equal(compareVersions(order[i], order[j]), Math.sign(i - j), `${order[i]} vs ${order[j]}`);
+  for (const bad of ['v2026.10.10.1-beta.0', 'v2026.10.10.1-rc.1', '2026.10.10.1', 'v1.0.1'])
+    assert.ok(!VERSION_RE.test(bad), bad);
+});
+
+/*
+ * SCHWUNG MANAGER'S ORDER, held to its own documentation
+ * (docs/MODULE_CHANNELS.md: 1.3.0 > 1.3.0-beta.2 > 1.3.0-beta.1 > 1.2.3) and
+ * to what it does with this repository's spelling -- right everywhere but a
+ * later subversion's beta on the stable's own day, which resolve() refuses.
+ */
+test('Schwung Manager orders our betas as its versionNewer does', () => {
+  const newer = [
+    ['1.3.0', '1.3.0-beta.2'], ['1.3.0-beta.2', '1.3.0-beta.1'], ['1.3.0-beta.1', '1.2.3'],
+    ['2026.10.10.1', '2026.10.10.1-beta.2'],          /* a beta user lands on stable */
+    ['2026.10.10.1-beta.2', '2026.10.10.1-beta.1'],
+    ['2026.10.11.1-beta.1', '2026.10.10.3'],          /* a later day's beta is offered */
+    ['2026.10.10.2', '2026.10.10.1-beta.1'],
+  ];
+  for (const [a, b] of newer) {
+    assert.ok(schwungManagerNewer(a, b), `${a} > ${b}`);
+    assert.ok(!schwungManagerNewer(b, a), `${b} < ${a}`);
+  }
+  assert.ok(!schwungManagerNewer('2026.10.10.1', '2026.10.10.1'));
+  /* The one it gets wrong: "2-beta" is not an integer to strconv.Atoi. */
+  assert.ok(!schwungManagerNewer('2026.10.10.2-beta.1', '2026.10.10.1'));
+});
+
+/* A tree as resolve() reads it, with one product moved to `version`. */
+const scratchTree = (product, version, release) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ni-beta-'));
+  writeFileSync(join(dir, 'versions.json'), JSON.stringify({ ...VERSIONS, [product]: version }));
+  cpSync(join(ROOT, 'modules'), join(dir, 'modules'), { recursive: true });
+  mkdirSync(join(dir, 'plugins', product), { recursive: true });
+  cpSync(join(ROOT, 'plugins', product, 'CMakeLists.txt'), join(dir, 'plugins', product, 'CMakeLists.txt'));
+  const mj = join(dir, 'modules', product, 'module.json');
+  writeFileSync(mj, JSON.stringify({ ...JSON.parse(readFileSync(mj, 'utf8')), version: schwungVersion(version) }));
+  if (release) writeFileSync(join(dir, 'release.json'), JSON.stringify(release));
+  return dir;
+};
+const stableAt = (id, version) => ({ modules: { [id]: { version, download_url: 'x', channels: { stable: { version, download_url: 'x' } } } } });
+
+test('a beta tag resolves end to end: prerelease, its zip, its module version', () => {
+  const v = 'v2026.10.11.1-beta.2';
+  const dir = scratchTree('side-chain', v, stableAt('ni-side-chain', '2026.10.10.1'));
+  const r = resolve(`side-chain-${v}`, dir);
+  assert.equal(r.prerelease, true);
+  assert.equal(r.zip_macos, `side-chain-${v}-macOS.zip`);
+  assert.equal(r.module_version, '2026.10.11.1-beta.2');
+  const rel = updateReleaseJson(stableAt('ni-side-chain', '2026.10.10.1'), r, REPO, `side-chain-${v}`);
+  assert.equal(rel.modules['ni-side-chain'].channels.beta.version, '2026.10.11.1-beta.2');
+  assert.equal(rel.modules['ni-side-chain'].version, '2026.10.10.1', 'a beta moves no stable field');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a beta the manager would never offer is refused before it is built', () => {
+  const v = 'v2026.10.10.2-beta.1';
+  const dir = scratchTree('side-chain', v, stableAt('ni-side-chain', '2026.10.10.1'));
+  assert.throws(() => resolve(`side-chain-${v}`, dir), /would order 2026\.10\.10\.2-beta\.1 below the stable/);
+  /* Over an earlier day's stable, or with no stable at all, it is offered. */
+  writeFileSync(join(dir, 'release.json'), JSON.stringify(stableAt('ni-side-chain', '2026.10.09.1')));
+  assert.equal(resolve(`side-chain-${v}`, dir).prerelease, true);
+  rmSync(join(dir, 'release.json'));
+  assert.equal(resolve(`side-chain-${v}`, dir).prerelease, true);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('a beta at or below the stable the catalog offers is refused', () => {
+  for (const [v, stable] of [['v2026.10.10.1-beta.1', '2026.10.10.1'], ['v2026.10.09.1-beta.3', '2026.10.10.1']]) {
+    const dir = scratchTree('side-chain', v, stableAt('ni-side-chain', stable));
+    assert.throws(() => resolve(`side-chain-${v}`, dir), /is not above the stable/, v);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------- the site's downloads */
+
+test('the site links the newest published stable release, never a beta or an untagged bump', () => {
+  const rel = (tag, prerelease = false) => ({ tag, prerelease });
+  const releases = [
+    rel('trance-gate-v1.0.1'),                     /* the semver legacy: not a date release */
+    rel('trance-gate-v2026.10.08.3'),
+    rel('trance-gate-v2026.10.09.1'),
+    rel('trance-gate-v2026.10.10.1-beta.1', true),
+    rel('trance-gate-v2026.10.10.2', true),        /* published as a prerelease */
+    rel('trance-gate-v2026.10.12.1'),              /* ahead of the tree: a branch's tag */
+    rel('trance-gate-extra-v2026.10.11.1'),        /* another product's prefix */
+  ];
+  assert.equal(latestStableRelease('trance-gate', releases, 'v2026.10.11.1'), 'v2026.10.09.1');
+  assert.equal(latestStableRelease('trance-gate', releases, 'v2026.10.10.1-beta.1'), 'v2026.10.09.1');
+  assert.equal(latestStableRelease('spectrogram', releases, 'v2026.10.09.1'), null);
+});
+
+test('the site links only a release that carries the zip it links', () => {
+  const zip = '-macOS.zip';
+  const rel = (v, assets) => ({ tag: `side-chain-${v}`, prerelease: false, assets });
+  const releases = [
+    rel('v2026.10.09.1', ['side-chain-v2026.10.09.1-macOS.zip', 'ni-side-chain-module.tar.gz']),
+    /* The module's workflow published, the plugin's build failed. */
+    rel('v2026.10.10.1', ['ni-side-chain-module.tar.gz']),
+  ];
+  assert.equal(latestStableRelease('side-chain', releases, 'v2026.10.10.1', [zip]), 'v2026.10.09.1');
+  assert.equal(latestStableRelease('side-chain', releases, 'v2026.10.10.1'), 'v2026.10.10.1', 'nothing needed');
+  /* A local build knows tags, not assets, and links them as it always did. */
+  const local = releases.map((r) => ({ ...r, assets: null }));
+  assert.equal(latestStableRelease('side-chain', local, 'v2026.10.10.1', [zip]), 'v2026.10.10.1');
+});
+
+test('published releases come from GitHub on the Pages runner, and from the tags elsewhere', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ni-releases-'));
+  const list = join(dir, 'releases.json');
+  writeFileSync(list, JSON.stringify([
+    { tagName: 'side-chain-v2026.10.10.1', isPrerelease: false, isDraft: false, assets: ['a.zip'] },
+    { tagName: 'side-chain-v2026.10.11.1-beta.1', isPrerelease: true, isDraft: false, assets: [] },
+    { tagName: 'side-chain-v2026.10.11.1', isPrerelease: false, isDraft: true, assets: ['b.zip'] },
+  ]));
+  assert.deepEqual(publishedReleases({ env: { NI_RELEASES: list } }), [
+    { tag: 'side-chain-v2026.10.10.1', prerelease: false, assets: ['a.zip'] },
+    { tag: 'side-chain-v2026.10.11.1-beta.1', prerelease: true, assets: [] },
+  ]);
+  const repo = scratchRepo();
+  git(repo, 'tag', 'side-chain-v2026.10.10.1');
+  git(repo, 'tag', 'side-chain-v2026.10.11.1-beta.1');
+  assert.deepEqual(publishedReleases({ env: {}, cwd: repo }), [
+    { tag: 'side-chain-v2026.10.10.1', prerelease: false, assets: null },
+    { tag: 'side-chain-v2026.10.11.1-beta.1', prerelease: true, assets: null },
+  ]);
+  assert.deepEqual(publishedReleases({ env: {}, cwd: dir }), [], 'no checkout, no releases');
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(repo, { recursive: true, force: true });
+});
+
+/* ----------------------------------------------- the tested-commit note */
+
+
+test('a passing run is recorded on the commit it tested, one line per run', () => {
+  const repo = scratchRepo();
+  const sha = git(repo, 'rev-parse', 'HEAD');
+  const first = attest({ tier: 'product', products: ['side-chain'], expectSha: sha,
+                         results: { tests: 120, gaps: 0 }, cwd: repo, ...FIXED });
+  assert.deepEqual(first, { tier: 'product', products: ['side-chain'], sha, date: '2026-10-10T12:00:00.000Z',
+    host: 'test-host', rustc: 'rustc 1.99.0 (test)', result: 'pass', results: { tests: 120, gaps: 0 } });
+  attest({ tier: 'full', results: CLEAN, cwd: repo, ...FIXED });
+  assert.match(git(repo, 'for-each-ref', '--format=%(refname)', 'refs/notes/'), new RegExp(`^${NOTES_REF}$`));
+  const records = attestations(sha, repo);
+  assert.deepEqual(records.map((r) => r.tier), ['product', 'full']);
+
+  assert.equal(attestationFor(records, sha, 'side-chain').tier, 'product');
+  assert.equal(attestationFor(records.slice(0, 1), sha, 'trance-gate'), null, 'another product\'s run');
+  assert.equal(attestationFor(records.slice(1), sha, 'trance-gate').tier, 'full', 'a full run covers all');
+  assert.equal(attestationFor(records, 'f'.repeat(40), 'side-chain'), null, 'another commit');
+  assert.equal(attestationFor([{ ...first, result: 'fail' }], sha, 'side-chain'), null);
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test('a run with gaps nobody waived does not release, and one with waived gaps does', () => {
+  const sha = 'a'.repeat(40);
+  const run = (results) => ({ tier: 'product', products: ['side-chain'], sha, result: 'pass', results });
+  assert.equal(attestationFor([run({ gaps: 2, untested: 'docker,rosetta' })], sha, 'side-chain'), null);
+  assert.equal(attestationFor([run({ tests: 120 })], sha, 'side-chain'), null, 'gaps not recorded');
+  assert.equal(attestationFor([run({ gaps: '1' })], sha, 'side-chain'), null, 'as a string too');
+  assert.ok(attestationFor([run({ gaps: 0, waived: 'docker', untested: 'docker' })], sha, 'side-chain'));
+  assert.ok(attestationFor([run({ gaps: 2 }), run({ gaps: '0' })], sha, 'side-chain'), 'one clean run is enough');
+});
+
+test('a run is not recorded on a dirty tree, or when HEAD moved under it', () => {
+  const repo = scratchRepo();
+  const sha = git(repo, 'rev-parse', 'HEAD');
+  writeFileSync(join(repo, 'README.md'), 'edited\n');
+  assert.throws(() => attest({ tier: 'full', cwd: repo, ...FIXED }), /uncommitted changes/);
+  git(repo, 'commit', '-q', '-am', 'moved');
+  assert.throws(() => attest({ tier: 'full', expectSha: sha, cwd: repo, ...FIXED }), /HEAD moved/);
+  writeFileSync(join(repo, 'new.txt'), 'untracked\n');
+  assert.throws(() => attest({ tier: 'full', cwd: repo, ...FIXED }), /uncommitted changes/, 'untracked too');
+  assert.throws(() => attest({ tier: 'quick', cwd: repo, ...FIXED }), /not one a release accepts/);
+  assert.throws(() => attest({ tier: 'product', cwd: repo, ...FIXED }), /names its product/);
+  assert.equal(git(repo, 'for-each-ref', 'refs/notes/'), '', 'nothing was recorded');
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test('a tag is released only from a commit with a passing run of its product', () => {
+  /* What resolve() reads, committed, so the tree is clean. */
+  const files = {};
+  for (const p of ['versions.json', 'release.json', 'plugins/side-chain/CMakeLists.txt',
+                   'modules/side-chain/module.env', 'modules/side-chain/module.json'])
+    files[p] = read(...p.split('/'));
+  const repo = scratchRepo(files);
+  const tag = tagOf('side-chain');
+  assert.throws(() => attested(tag, 'HEAD', repo), /carries no passing test run for side-chain/);
+  attest({ tier: 'product', products: ['trance-gate'], results: CLEAN, cwd: repo, ...FIXED });
+  assert.throws(() => attested(tag, 'HEAD', repo), /no passing test run for side-chain under \S+ \(1 note line/);
+  attest({ tier: 'product', products: ['side-chain'], results: { gaps: 1, untested: 'docker' }, cwd: repo, ...FIXED });
+  assert.throws(() => attested(tag, 'HEAD', repo), /none without unwaived gaps: product on test-host, gaps=1, untested=docker/);
+  attest({ tier: 'product', products: ['side-chain'], results: CLEAN, cwd: repo, ...FIXED });
+  assert.deepEqual(attested(tag, 'HEAD', repo).products, ['side-chain']);
+  /* A note on the parent says nothing about its child. */
+  writeFileSync(join(repo, 'next.txt'), 'next\n');
+  git(repo, 'add', '-A');
+  git(repo, 'commit', '-q', '-m', 'next');
+  assert.throws(() => attested(tag, 'HEAD', repo), /no passing test run/);
+  rmSync(repo, { recursive: true, force: true });
+});
+
+/* -------------------------------------------------- the workflows' pins */
+
+const WORKFLOWS = readdirSync(join(ROOT, '.github', 'workflows')).filter((f) => f.endsWith('.yml'));
+const code = (wf) => read('.github', 'workflows', wf).split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+/*
+ * EVERY ACTION BY COMMIT. A tag is a pointer its owner can move, so a pinned
+ * tag is still whatever that repository says today; a full commit SHA is the
+ * code that was reviewed. The comment beside it says which release it is, for
+ * the person who moves it.
+ */
+test('every action is pinned by a full commit SHA, with its version beside it', () => {
+  for (const wf of WORKFLOWS) {
+    for (const m of read('.github', 'workflows', wf).matchAll(/^\s*(?:-\s*)?uses:\s*(\S+)(.*)$/gm)) {
+      const [, ref, rest] = m;
+      if (ref.startsWith('./')) continue;   /* this repository's own reusable workflow */
+      assert.match(ref, /^[\w.-]+\/[\w.-]+(?:\/[\w./-]+)?@[0-9a-f]{40}$/, `${wf}: ${ref} is not pinned by SHA`);
+      assert.match(rest, /^\s+#\s*v\d+(\.\d+)*\s*$/, `${wf}: ${ref} has no "# vX.Y.Z" comment`);
+    }
+  }
+});
+
+test('one Rust toolchain: rust-toolchain.toml pins it and the module image installs it', () => {
+  const channel = /^\s*channel\s*=\s*"([^"]+)"/m.exec(read('rust-toolchain.toml'))?.[1];
+  assert.match(channel ?? '', /^\d+\.\d+\.\d+$/, 'an exact version, not "stable"');
+  const docker = read('modules', '_shared', 'Dockerfile');
+  assert.equal(/^ARG RUST_TOOLCHAIN=(\S+)$/m.exec(docker)?.[1], channel, 'the Dockerfile\'s RUST_TOOLCHAIN');
+  assert.match(docker, /^ENV RUSTUP_TOOLCHAIN=\$RUST_TOOLCHAIN$/m);
+  for (const from of docker.split('\n').filter((l) => /^FROM\s/.test(l)))
+    assert.match(from, /@sha256:[0-9a-f]{64}(\s|$)/, `${from} is not pinned by digest`);
+});
+
+/* ---------------------------------------------- what a release proves */
+
+/* Each job's lines, by its id. */
+const jobs = (wf) => {
+  const y = code(wf);
+  const out = {};
+  let job = null;
+  for (const line of y.slice(y.indexOf('\njobs:\n') + 7).split('\n')) {
+    const m = /^ {2}([\w-]+):\s*$/.exec(line);
+    if (m) { job = m[1]; out[job] = ''; continue; }
+    if (/^\S/.test(line)) job = null;
+    if (job) out[job] += `${line}\n`;
+  }
+  return out;
+};
+
+for (const wf of ['release-plugins.yml', 'release-schwung.yml']) {
+  test(`${wf} refuses an untested commit before it builds anything`, () => {
+    const y = code(wf);
+    const check = y.indexOf('node scripts/release.mjs attested "$GITHUB_REF_NAME"');
+    assert.ok(check > 0, 'no attestation check');
+    assert.match(y, /git fetch [^\n]*refs\/notes\/ni-tests:refs\/notes\/ni-tests/, 'the notes are not fetched');
+    for (const build of ['scripts/test.sh product', 'modules/_shared/test.sh', 'modules/_shared/package.sh']) {
+      const at = y.indexOf(build);
+      if (at > 0) assert.ok(check < at, `${build} runs before the attestation check`);
+    }
+  });
+
+  test(`${wf} checks the supply chain: advisories, licences, bans, sources`, () => {
+    assert.match(code(wf), /cargo deny [^\n]*check advisories licenses bans sources/);
+  });
+
+  test(`${wf} deploys the site after it has published`, () => {
+    const j = jobs(wf);
+    const pages = Object.entries(j).find(([, b]) => /uses: \.\/\.github\/workflows\/pages\.yml/.test(b));
+    assert.ok(pages, 'no job calls pages.yml');
+    assert.match(pages[1], /needs: release\b/);
+    assert.match(pages[1], /pages: write/);
+    assert.match(pages[1], /id-token: write/);
+  });
+}
+
+test('pages.yml is reusable, by hand and from a release, and never two deploys at once', () => {
+  const y = code('pages.yml');
+  assert.match(y, /\n  workflow_call:/);
+  assert.match(y, /\n  workflow_dispatch:/);
+  assert.doesNotMatch(y, /\n  release:/, 'a release published with GITHUB_TOKEN starts no workflow');
+  assert.match(y, /concurrency:\n\s+group: pages\n\s+cancel-in-progress: false/);
+  assert.match(y, /NI_RELEASES/, 'the download links do not come from the published releases');
+});
+
+test('release-schwung.yml tests the module on arm64 and releases the tarball it tested', () => {
+  const j = jobs('release-schwung.yml');
+  assert.match(j.test ?? '', /runs-on: ubuntu-24\.04-arm/);
+  assert.match(j.test, /modules\/_shared\/test\.sh "\$PRODUCT"/);
+  assert.match(j.test, /engines\/\$PRODUCT\/tests\/ui\.sh/, 'the Move editor is not tested');
+  assert.match(j.release ?? '', /needs: \[?[^\n]*\btest\b/);
+  assert.doesNotMatch(j.release, /package\.sh/, 'the release builds a tarball nobody tested');
 });

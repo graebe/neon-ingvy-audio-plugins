@@ -129,8 +129,18 @@ graebe/neon-ingvy-audio-plugins
 ```
 
 It installs to `modules/audio_fx/trance-gate/` and is added to a chain slot as
-an Audio FX. **Nothing else is required** — it runs on released Schwung, 1.3.0
-or newer.
+an Audio FX. **Nothing else is required** — it runs on released Schwung,
+**1.5.0 or newer**:
+
+- **1.5.0** is the first release on which the whole editor works. On 1.3.x
+  and 1.4.x it opens and edits, but the ring can stay stale until your next
+  touch when a value changes without one — those versions do not hand the
+  editor the extra values the ring draws from. Before 1.3.0 the editor does
+  not open at all.
+- **Paging past step 32** with the arrows needs a Schwung newer than 1.7.3
+  (see *Steps 33 to 128* above). Everything else works without it.
+
+Each release of the module is tested against Schwung 1.7.3.
 
 > If the Schwung catalog listing points somewhere other than this repository,
 > install from the URL above rather than from the listing.

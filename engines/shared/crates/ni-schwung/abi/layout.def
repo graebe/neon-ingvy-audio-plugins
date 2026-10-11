@@ -1,0 +1,66 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 Torben Gräber */
+
+/*
+ * THE HOST'S TABLES AS THE MOVE LAYS THEM OUT -- the one place their numbers
+ * are written down, held to BOTH sides of the contract:
+ *
+ *   abi/layout.c   each line a _Static_assert against the vendored C headers
+ *                  (engines/trance-gate/include, Schwung's own), ctest
+ *                  ni_schwung_abi
+ *   src/tests.rs   each line against the Rust mirrors in src/lib.rs, which
+ *                  must also list every field the mirror has, in order
+ *
+ * So a header that moves a field fails the C build, a mirror that moves one
+ * fails cargo test, and neither can be "fixed" by editing the other's
+ * constant: there is no other constant.
+ *
+ * OFFSETS ARE LP64 -- aarch64 Linux, the Move, and the 64-bit Macs and Linux
+ * boxes the tests run on. Both checks skip on a 32-bit target, where these
+ * numbers are not the layout and no Move module is built.
+ *
+ * THE FORMAT IS AN X-MACRO, so C includes this file as it stands and Rust
+ * reads it as text. One entry per line, nothing else on it:
+ *
+ *   NI_ABI_FIELD(<C struct>, <Rust struct>, <field>, <offset>)  in declaration order
+ *   NI_ABI_SIZE(<C struct>, <Rust struct>, <sizeof>)
+ *   NI_ABI_CONST(<C macro>, <Rust const>, <value>)
+ *
+ * Fields have the same name on both sides. When Schwung changes a table:
+ * vendor its headers (modules/_shared/schwung.version names the version),
+ * change the mirror, then this -- and let the two checks say whether all
+ * three agree.
+ */
+
+NI_ABI_CONST(MOVE_PLUGIN_API_VERSION, HOST_API_VERSION, 1)
+NI_ABI_CONST(AUDIO_FX_API_VERSION_2, AUDIO_FX_API_VERSION, 2)
+NI_ABI_CONST(MOVE_SAMPLE_RATE, DEFAULT_SAMPLE_RATE, 44100)
+
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, api_version, 0)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, sample_rate, 4)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, frames_per_block, 8)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, mapped_memory, 16)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, audio_out_offset, 24)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, audio_in_offset, 28)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, log, 32)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, midi_send_internal, 40)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, midi_send_external, 48)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, get_clock_status, 56)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, mod_emit_value, 64)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, mod_clear_source, 72)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, mod_host_ctx, 80)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, get_bpm, 88)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, midi_inject_to_move, 96)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, slot_recv_channel, 104)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, get_beat_position, 112)
+NI_ABI_FIELD(host_api_v1_t, HostApiV1, reserved, 120)
+NI_ABI_SIZE(host_api_v1_t, HostApiV1, 184)
+
+NI_ABI_FIELD(audio_fx_api_v2_t, AudioFxApiV2, api_version, 0)
+NI_ABI_FIELD(audio_fx_api_v2_t, AudioFxApiV2, create_instance, 8)
+NI_ABI_FIELD(audio_fx_api_v2_t, AudioFxApiV2, destroy_instance, 16)
+NI_ABI_FIELD(audio_fx_api_v2_t, AudioFxApiV2, process_block, 24)
+NI_ABI_FIELD(audio_fx_api_v2_t, AudioFxApiV2, set_param, 32)
+NI_ABI_FIELD(audio_fx_api_v2_t, AudioFxApiV2, get_param, 40)
+NI_ABI_FIELD(audio_fx_api_v2_t, AudioFxApiV2, on_midi, 48)
+NI_ABI_SIZE(audio_fx_api_v2_t, AudioFxApiV2, 56)

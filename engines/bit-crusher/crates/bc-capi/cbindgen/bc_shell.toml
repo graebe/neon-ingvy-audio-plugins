@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# bc_shell.h, from src/shell.rs (build.rs, through
+# engines/shared/cbindgen/capi_header.rs).
+language = "C"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+//
+// NI Bit-Crusher's engine as a plugin shell holds it, `bc_shell_*`.
+// GENERATED at build time by cbindgen from
+// engines/bit-crusher/crates/bc-capi/src/shell.rs -- edit that, never this."""
+include_guard = "BC_SHELL_H"
+cpp_compat = true
+documentation = true
+documentation_style = "c99"
+usize_is_size_t = true
+sys_includes = ["stdbool.h", "stddef.h", "stdint.h"]
+no_includes = true
+# BcCore, which bc_shell_begin lends, is the core header's.
+includes = ["bc_core.h"]
+
+[export]
+include = ["BcScope"]
+exclude = ["BcCore"]
+
+[enum]
+prefix_with_name = true

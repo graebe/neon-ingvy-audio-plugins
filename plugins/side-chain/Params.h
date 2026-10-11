@@ -68,6 +68,9 @@ const ParamSpec* specs();
 /* FORMAT.md's Side-Chain: fifteen parameters, no strings, and headerless
  * chunks that always had fifteen. */
 const nist::Layout& layout();
+/* The same without the string: what a set with no kick chosen is written as,
+ * so it stays the bytes it always was (FORMAT.md). */
+const nist::Layout& layoutWithoutKick();
 
 /* A host value to the engine's numeric wire (sc_core_set_num), as the iPlug2
  * build converted: Depth and Vel are percentages at the host, 0..1 in the

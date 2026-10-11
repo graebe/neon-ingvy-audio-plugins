@@ -1,6 +1,6 @@
 # What's new
 
-## v2026.10.10.1 — NI Vocalize
+## v2026.10.11.1 — NI Vocalize
 
 - **New: NI Vocalize.** Turns any sound, step by step, into a voice singing
   A, E, I, O or U. **Vocal** says how far: at 0 % the sound is untouched, at
@@ -19,6 +19,90 @@
   sure each one is, and **Restore** brings back a voice forgotten by mistake.
 - **Ceiling**, on by default: nothing that leaves Vocalize passes full scale.
 - On the Ableton Move as a Schwung module, with the Time engine.
+
+## v2026.10.11.1 — NI Bit-Crusher
+
+- **New: NI Bit-Crusher.** A bit crusher for Live and the Move: it keeps fewer
+  levels (Bits, 1 to 16, in fractions too, so a sweep glides) and keeps them
+  less often (Rate, 50 Hz to 96 kHz). Drive, Shape (µ-law steps), Dither,
+  Mid-Rise shape the steps; Jitter and the Pre and Post filters shape the
+  hold. Anti-Alias draws the crusher exactly, so the same settings sound the
+  same at every sample rate. Its window shows the staircase and the sound
+  before and after. Every control can be automated without clicks. The
+  plugin runs 32 samples (0.7 ms) late, which Live compensates. On the Move:
+  one page of eight knobs.
+
+## v2026.10.10.2 — NI Side-Chain, NI Listen-In, NI Spectrogram
+
+### Before you update
+
+- **Update NI Side-Chain, NI Listen-In and NI Spectrogram together**, and quit
+  Live fully first. The Listen-In bus now carries Live's timeline, so a plugin
+  from before this release and one from this release do not see each other's
+  buses. Sets open unchanged.
+
+### NI Side-Chain
+
+- **See the kick you duck against.** A new **Kick** picker, at the right of
+  the shape's row, draws the kick behind the duck in amber: from the sidechain
+  key Live routes to the plugin, or from an NI Listen-In on the kick's track.
+  The grey input and the violet output are drawn over it as before, so you can
+  set Delay, Attack, Hold and Release against the kick's transient itself
+  instead of the millisecond ruler. It is a picture only — what you hear is
+  unchanged — and the choice is saved with the set.
+- **Exact to the sample.** The kick is drawn where each of its samples
+  sounded in the cycle, whichever track Live processed first. With the
+  transport stopped it is drawn as it arrives, and the caption says
+  `KICK BY ARRIVAL`.
+- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
+  of jumping.
+- **Loops are exact.** When Live's loop wraps inside a buffer, the duck — and
+  the kick drawn behind it — continue from the loop's start on that very
+  sample.
+
+### NI Listen-In
+
+- **Every block is stamped with its place on Live's timeline**, so a reader on
+  another track can line it up with its own audio to the sample — also across
+  a loop that wraps inside a buffer. NI Side-Chain is the first to read a bus
+  this way.
+- Its Bypass still switches at once: it passes audio through untouched, so
+  there is nothing to fade.
+
+### NI Spectrogram
+
+- Reads the new bus format. Its Bypass still switches at once, for Listen-In's
+  reason.
+
+## Unreleased — NI Chord-Detector
+
+These are already in the shared plugin shell and reach NI Chord-Detector with its
+next release; that release's entry lists them and this section goes.
+
+- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
+  of jumping.
+- **Loops are exact.** When Live's loop wraps inside a buffer, it continues
+  from the loop's start on that very sample.
+
+## v2026.10.10.1 — NI Trance Gate
+
+- **No more clicks from the gate itself.** No edge of the gate is shorter
+  than 1 ms, so an Attack, Decay or Release of 0 %, or a very fast rate, no
+  longer jumps the volume in one sample. The slow rates sound exactly as
+  before.
+- **A step at level 0 is silent, without a click.** Dragging a step's level to
+  the bottom now closes the gate there like an off step, and the next step
+  opens again. Switching a step on brings it back at full level, in the plugin
+  and on Move alike.
+- **Tighter and cleaner edges.** Every edge starts and ends exactly where it
+  falls, between samples, so the gate sounds the same at any buffer size and
+  its edges are about 29 dB cleaner.
+- **Bypass fades.** Switching the Trance Gate's Bypass on or off crossfades
+  over 10 ms instead of jumping.
+- **Loops are exact.** When Live's loop wraps inside a buffer, the gate starts
+  again at the loop's start on that very sample.
+- **NI Trance Gate on Move** needs Schwung 1.5.0 or newer; paging past step 32
+  with the arrows needs a Schwung newer than 1.7.3.
 
 ## v2026.10.10.1 — NI Side-Chain
 

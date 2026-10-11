@@ -7,6 +7,8 @@ NI Side-Chain's C ABI, in two headers that build.rs writes from this crate.
   sc_core.h    `sc_core_*`, the engine itself              src/engine.rs
   sc_shell.h   `sc_shell_*`, the engine as a plugin's      src/shell.rs
                threads hold it
+  sc_kick.h    `sc_kick_*`, a Listen-In's kick filed       src/kick.rs
+               under the ducker's own sweep
 
 EVERY ENTRY POINT RUNS ON AN AUDIO CALLBACK. No allocation, no locking, no
 panicking -- the workspace sets `panic = "abort"` because unwinding out of
@@ -38,6 +40,16 @@ pub use engine::*;
 mod shell;
 #[cfg(feature = "shell")]
 pub use shell::ScShell;
+/* The kick behind the duck, from a Listen-In bus; see kick.rs. */
+#[cfg(feature = "shell")]
+pub mod kick;
 
 #[cfg(test)]
 mod tests;
+
+/* The no-allocation guard kick's tests assert with. It acts only inside an
+ * assert_no_alloc closure, on the thread that runs it, so the other tests here
+ * allocate as ever. */
+#[cfg(all(test, feature = "shell"))]
+#[global_allocator]
+static ALLOCATOR: assert_no_alloc::AllocDisabler = assert_no_alloc::AllocDisabler;

@@ -81,7 +81,22 @@ juce::String stageName (Stage);
  * hint's "times 225 ms total", which the canvas moves into the caption), then
  * what the grey is -- or, with nothing coming in, that.
  */
-juce::String captionFor (bool input, double msPerCycle, std::optional<double> stagesMs = std::nullopt);
+juce::String captionFor (bool input, double msPerCycle, std::optional<double> stagesMs = std::nullopt,
+                         const juce::String& kick = {});
+
+/*
+ * WHAT THE KICK IN THE PICTURE IS, as the caption's clause, or empty with no
+ * kick chosen -- the grey's clause then stands alone, as it always did:
+ *
+ *   "KICK IN AMBER"       drawn where it sounded, to the sample
+ *   "KICK BY ARRIVAL"     the transport is stopped: drawn as it arrived, which
+ *                         can be a block off
+ *   "KICK WAITING"        chosen, nothing from it yet: no key routed, no
+ *                         Listen-In on the bus
+ *   "KICK SILENT"         the bus has sent nothing for half a second
+ *   "KICK AT 44K, NOT DRAWN"  the bus runs at another rate
+ */
+juce::String kickClause (const KickView&);
 
 /*
  * THE HINT'S THREE CONVENTIONS, and only conventions (Hint card): drag a

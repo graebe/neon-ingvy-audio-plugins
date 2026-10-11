@@ -25,6 +25,12 @@
  *                   the capture, the Ground's rings) and commands into it
  *                   (steps, files, pastes) -- each of which marks the set
  *                   unsaved, as no load or automation does
+ *   the shell       the Bypass fades over 10 ms either way and rests bit
+ *                   for bit; a loop wrapping inside a block is gated from
+ *                   its start; a gesture is one edit, applied in one block;
+ *                   with no audio running the model shows what the host
+ *                   holds; bypassed, the scope shows what is heard; the
+ *                   readouts' fields are where the engine names them
  *   the editor      on the real model: the window, its rows growing with
  *                   Length, the ring's playhead moving under a running
  *                   transport, a set loaded on another thread while it is
@@ -39,6 +45,7 @@
 #include <doctest.h>
 
 #include "EngineModel.h"
+#include "StepEdits.h"
 #include "TranceGate.h"
 #include "Window.h"
 #include "settle.h"
@@ -47,8 +54,10 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <random>
 #include <string>
@@ -849,6 +858,319 @@ TEST_CASE ("shuffle deals the arriving steps a fresh order, the pattern left as 
     std::sort (ranks.begin(), ranks.end());
     for (std::size_t k = 0; k < ranks.size(); ++k)
         CHECK (ranks[k] == (int) k + 1);
+}
+
+/* ---------------------------------------------------------------- shell -- */
+
+namespace
+{
+/* Every step off: with Amount at 100 % the gate is shut, and what goes in
+ * comes out as silence. */
+void shut (Instance& a)
+{
+    for (int i = 0; i < 16; ++i)
+        a.model().setStep (i, StepMode::off);
+    a.block();
+}
+
+/* `blocks` blocks of `frames`, input(frame) on both channels, through
+ * processBlock under the running transport: the left channel out. */
+std::vector<float> run (Instance& a, int blocks, const std::function<float (juce::int64)>& input, int frames = 512)
+{
+    std::vector<float> out;
+    a.p.setPlayHead (&a.head);
+    juce::AudioBuffer<float> buffer (2, frames);
+    juce::MidiBuffer midi;
+    for (int b = 0; b < blocks; ++b)
+    {
+        for (int i = 0; i < frames; ++i)
+            for (int ch = 0; ch < 2; ++ch)
+                buffer.setSample (ch, i, input (a.head.sample + i));
+        a.p.processBlock (buffer, midi);
+        for (int i = 0; i < frames; ++i)
+            out.push_back (buffer.getSample (0, i));
+        a.head.sample += frames;
+    }
+    a.p.setPlayHead (nullptr);
+    return out;
+}
+
+/* The largest change from one sample to the next, `from` before the first. */
+float steepest (float from, const std::vector<float>& v)
+{
+    float most = 0.0f;
+    for (const float x : v)
+    {
+        most = std::max (most, std::abs (x - from));
+        from = x;
+    }
+    return most;
+}
+
+float peak (const std::vector<float>& v, std::size_t from = 0)
+{
+    float most = 0.0f;
+    for (std::size_t i = from; i < v.size(); ++i)
+        most = std::max (most, std::abs (v[i]));
+    return most;
+}
+
+std::vector<std::string> split (const std::string& text)
+{
+    std::vector<std::string> out (1);
+    for (const char c : text)
+    {
+        if (c == ':')
+            out.emplace_back();
+        else
+            out.back() += c;
+    }
+    return out;
+}
+
+/* What a `ui` readout says of the pattern: the masks, the depths, the order. */
+std::string patternOf (const std::string& ui)
+{
+    const auto f = split (ui);
+    REQUIRE ((int) f.size() > UiField::orders);
+    return f[(std::size_t) UiField::steps] + ":" + f[(std::size_t) UiField::ties] + ":"
+           + f[(std::size_t) UiField::depths] + ":" + f[(std::size_t) UiField::orders];
+}
+
+/* One block's top as the audio thread runs it -- every queued edit that is in
+ * the ring applied -- and the engine's own `ui` readout then. */
+std::string blockUi (Instance& a)
+{
+    tg_core_t* core = tg_shell_begin (a.p.engine());
+    std::string text (TG_STATE_MAX, '\0');
+    const int n = tg_core_get_param (core, "ui", text.data(), (int) text.size());
+    tg_shell_end (a.p.engine(), 0);
+    text.resize (n > 0 ? (std::size_t) n : 0);
+    return text;
+}
+
+/* Blocks and reads until every queued edit has landed. */
+void drain (Instance& a)
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        a.block();
+        a.read ("ui");
+    }
+}
+} // namespace
+
+TEST_CASE ("the Bypass fades over 10 ms either way, turns back from where it stood, and at rest is the input bit for bit")
+{
+    Instance a;
+    shut (a);
+    const auto dc = [] (juce::int64) { return 0.5f; };
+    CHECK (peak (run (a, 20, dc), 19 * 512) < 1.0e-6f);
+
+    /* 10 ms at 48 kHz is 480 frames: the gate's 0 to the input's 0.5 in 480
+     * equal steps, never a jump. */
+    const float slope = 0.5f / 480.0f * 1.001f;
+    auto& bypass = *a.p.getBypassParameter();
+    bypass.setValueNotifyingHost (1.0f);
+    auto out = run (a, 4, dc);
+    CHECK (steepest (0.0f, out) <= slope);
+    CHECK (std::all_of (out.begin() + 480, out.end(), [] (float v) { return juce::exactlyEqual (v, 0.5f); }));
+
+    /* At rest, a sine passes bit for bit. */
+    const double w = 2.0 * juce::MathConstants<double>::pi * 440.0 / 48000.0;
+    const auto sine = [w] (juce::int64 n) { return (float) (0.5 * std::sin (w * (double) n)); };
+    const auto first = a.head.sample;
+    out = run (a, 8, sine);
+    bool exact = true;
+    for (std::size_t i = 0; i < out.size(); ++i)
+        exact = exact && juce::exactlyEqual (out[i], sine (first + (juce::int64) i));
+    CHECK (exact);
+
+    /* Off again: back down to the shut gate as smoothly. */
+    bypass.setValueNotifyingHost (0.0f);
+    out = run (a, 4, dc);
+    CHECK (steepest (0.5f, out) <= slope);
+    CHECK (peak (out, 480) < 1.0e-6f);
+
+    /* Turned back half way through, the fade turns back from where it
+     * stood: a sine never moves faster than itself plus the fade. */
+    const float sineSlope = (float) (0.5 * w) + 0.5f / 480.0f + 1.0e-5f;
+    bypass.setValueNotifyingHost (1.0f);
+    out = run (a, 1, sine, 240);
+    bypass.setValueNotifyingHost (0.0f);
+    const auto back = run (a, 4, sine);
+    out.insert (out.end(), back.begin(), back.end());
+    CHECK (steepest (0.0f, out) <= sineSlope);
+    CHECK (peak (out) <= 0.25f + 1.0e-3f);
+    CHECK (peak (out, 480) < 1.0e-6f);
+}
+
+TEST_CASE ("a loop that wraps inside a block gates the frames past its end from its start")
+{
+    /* A host looping the first beat, the block starting a hundredth of a
+     * beat before its end. */
+    struct Looping final : juce::AudioPlayHead
+    {
+        juce::Optional<PositionInfo> getPosition() const override
+        {
+            PositionInfo p;
+            p.setIsPlaying (true);
+            p.setBpm (120.0);
+            p.setTimeSignature (TimeSignature { 4, 4 });
+            p.setPpqPosition (0.99);
+            p.setIsLooping (true);
+            p.setLoopPoints (LoopPoints { 0.0, 1.0 });
+            return p;
+        }
+    } looping;
+    Instance a;
+    a.block();
+    a.p.setPlayHead (&looping);
+    juce::AudioBuffer<float> buffer (2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    a.p.processBlock (buffer, midi);
+    a.p.setPlayHead (nullptr);
+    /* 240 frames to the end at 120 BPM and 48 kHz; the other 272 from the
+     * start, into the first 1/16 -- not 4.04 steps on, past the end. */
+    const auto t = a.model().transport();
+    CHECK (t.playing);
+    CHECK (t.phase == doctest::Approx (272.0 / 24000.0 / 0.25).epsilon (0.05));
+}
+
+TEST_CASE ("a gesture is one edit: whatever the queue holds, a block applies all of it or none of it")
+{
+    /* The queue between two blocks holds a few hundred edits, and what does
+     * not fit waits for the next block: an edit posted in two halves can be
+     * split across blocks there. Filled up to every depth around that edge,
+     * one block takes a step switched on at an amount, and a shuffle, whole
+     * or not at all. */
+    Instance a;
+    a.block();
+    auto& m = a.model();
+    StepEdits edits (m);
+    const char* filler[] { "cursor", "0" };
+    for (int fill = 0; fill < 300; ++fill)
+    {
+        CAPTURE (fill);
+        /* Step 5 off, kept at 20 %: Alt+Up brings it on at 30 %. */
+        m.setStepWithDepth (5, StepMode::on, 0.2f);
+        m.setStep (5, StepMode::off);
+        drain (a);
+        for (int k = 0; k < fill; ++k)
+            tg_shell_post (a.p.engine(), filler, 1);
+        auto before = patternOf (a.read ("ui"));
+        edits.nudge (5, 0.1f);
+        auto after = patternOf (a.read ("ui"));
+        REQUIRE (after != before);
+        auto applied = patternOf (blockUi (a));
+        CHECK ((applied == before || applied == after));
+
+        drain (a);
+        for (int k = 0; k < fill; ++k)
+            tg_shell_post (a.p.engine(), filler, 1);
+        before = patternOf (a.read ("ui"));
+        m.shuffleOrder();
+        after = patternOf (a.read ("ui"));
+        applied = patternOf (blockUi (a));
+        CHECK ((applied == before || applied == after));
+    }
+}
+
+TEST_CASE ("with no audio running, the model shows what the host holds, as the next block will")
+{
+    Instance a;
+    a.block();
+    auto& m = a.model();
+    CHECK (m.lengthDetents() == std::vector<int> { 8, 16, 32, 64 });
+    CHECK (m.stageText (kAttack) == "2.0 ms");
+    const auto gate = m.gate().serial;
+
+    /* The host's knobs, turned with no block to push them. */
+    a.p.parameter (kRate).setPlainNotifyingHost (5.0); /* 1/8 */
+    a.p.parameter (kLength).setPlainNotifyingHost (32.0);
+    a.p.parameter (kWidth).setPlainNotifyingHost (40.0);
+    a.p.parameter (kFade).setPlainNotifyingHost (50.0);
+    const auto detents = m.lengthDetents();
+    CHECK (detents == std::vector<int> { 4, 8, 16, 32 });
+    /* 1.6 % of 40 % of a 250 ms gate. */
+    CHECK (m.stageText (kAttack) == "1.6 ms");
+    CHECK (m.gate().serial != gate);
+    const auto pattern = m.pattern();
+    CHECK (pattern.length == 32);
+    int on = 0, sounding = 0;
+    for (int i = 0; i < pattern.length; ++i)
+    {
+        on += pattern.steps[(std::size_t) i] != StepMode::off ? 1 : 0;
+        sounding += pattern.levels[(std::size_t) i] > 0.0f ? 1 : 0;
+    }
+    CHECK (sounding == on / 2);
+
+    /* And the block, when it comes, leaves just that. */
+    const auto levels = pattern.levels;
+    const auto curve = m.gate().values;
+    a.block();
+    CHECK (m.lengthDetents() == detents);
+    CHECK (m.stageText (kAttack) == "1.6 ms");
+    CHECK (m.pattern().length == 32);
+    CHECK (m.pattern().levels == levels);
+    CHECK (m.gate().values == curve);
+}
+
+TEST_CASE ("bypassed, the scope shows what is heard: the input, not the gate")
+{
+    Instance a;
+    shut (a);
+    a.p.editorOpened();
+    a.p.getBypassParameter()->setValueNotifyingHost (1.0f);
+    /* Past the fade, and round a whole cycle -- sixteen 1/16 at 120 BPM, two
+     * seconds -- so every column was drawn bypassed. */
+    a.play (200);
+    const auto& capture = a.model().capture();
+    int drawn = 0;
+    for (int c = 0; c < capture.columns; ++c)
+    {
+        const auto* column = capture.data.data() + c * Capture::stride;
+        if (column[1] < 0.25f)
+            continue;
+        ++drawn;
+        CAPTURE (c);
+        CHECK (juce::exactlyEqual (column[2], column[0]));
+        CHECK (juce::exactlyEqual (column[3], column[1]));
+    }
+    CHECK (drawn > capture.columns / 2);
+    a.p.editorClosed();
+}
+
+TEST_CASE ("the model reads each readout field where the engine names it")
+{
+    tg_core_t* core = tg_core_create (48000.0);
+    const auto names = [core] (const char* key)
+    {
+        std::string text (1024, '\0');
+        const int n = tg_core_get_param (core, key, text.data(), (int) text.size());
+        text.resize (n > 0 ? (std::size_t) n : 0);
+        return split (text);
+    };
+    const auto at = [] (const std::vector<std::string>& fields, const char* name)
+    {
+        const auto it = std::find (fields.begin(), fields.end(), name);
+        return it == fields.end() ? -1 : (int) (it - fields.begin());
+    };
+    const auto ui = names ("ui_fields");
+    CHECK (at (ui, "steps") == UiField::steps);
+    CHECK (at (ui, "ties") == UiField::ties);
+    CHECK (at (ui, "length") == UiField::length);
+    CHECK (at (ui, "phase") == UiField::phase);
+    CHECK (at (ui, "ms_step") == UiField::msStep);
+    CHECK (at (ui, "moving") == UiField::moving);
+    CHECK (at (ui, "cursor") == UiField::cursor);
+    CHECK (at (ui, "depths") == UiField::depths);
+    CHECK (at (ui, "orders") == UiField::orders);
+    const auto params = names ("params_fields");
+    CHECK (at (params, "width_ms") == ParamsField::widthMs);
+    CHECK (at (params, "detents") == ParamsField::detents);
+    tg_core_destroy (core);
 }
 
 /* --------------------------------------------------------------- editor -- */

@@ -1,4 +1,4 @@
-/* Ultraviolet Ground 1.1.0 — the dot-paper ground as a wave field that keeps the host's musical time.
+/* Ultraviolet Ground 1.2.0 — the dot-paper ground as a wave field that keeps the host's musical time.
  * Reference implementation, no dependencies. Two parts:
  *   UVGround.Field      simulates and renders the ground (dots + grain) into a <canvas>
  *   UVGround.BeatClock  turns the host's transport into rings: one on every quarter note while it
@@ -314,5 +314,5 @@
     return rings.length;
   };
 
-  root.UVGround = { version: '1.1.0', Field: Field, BeatClock: BeatClock, defaults: DEFAULTS, beatDefaults: BEAT };
+  root.UVGround = { version: '1.2.0', Field: Field, BeatClock: BeatClock, defaults: DEFAULTS, beatDefaults: BEAT };
 })(window);

@@ -23,10 +23,13 @@ THE THREAD RULES ARE PART OF THE ABI:
   abus_writer_claim / release            the main thread
   abus_writer_set_label / sample_rate    the main thread
   abus_pusher_release                    the main thread
-  abus_pusher_push                       the audio thread, and only it
+  abus_pusher_push / push_at             the audio thread, and only it
   abus_reader_open / close / reattach    the main thread
-  abus_reader_read                       one thread, the same one each time
-  abus_probe                             the main thread
+  abus_reader_read / position /          one thread, the same one each time
+    timeline_of
+  abus_probe / abus_incarnation          the main thread
+  abus_reader_incarnation                the main thread, before the reader
+                                         is lent to another
 
 push and read may overlap across any number of processes -- that is the whole
 point. TWO SENDERS ON ONE SLOT IS THE ONE THING THAT CANNOT HAPPEN, and it is
@@ -72,6 +75,14 @@ pub struct AbusWriter(Writer);
 pub struct AbusPusher(Pusher);
 /// One receiver's place in one slot's stream.
 pub struct AbusReader(Reader);
+
+impl AbusReader {
+    /// The reader inside, for a Rust crate that links this one (sc-capi's
+    /// kick tap) and reads it on its own thread, by the same rules.
+    pub fn reader_mut(&mut self) -> &mut Reader {
+        &mut self.0
+    }
+}
 
 /// What `abus_writer_claim` and `abus_reader_open` answer when they worked.
 pub const ABUS_OK: c_int = 0;
@@ -177,6 +188,32 @@ pub unsafe extern "C" fn abus_pusher_push(p: *mut AbusPusher, interleaved: *cons
     p.0.push(core::slice::from_raw_parts(interleaved, n));
 }
 
+/// `abus_pusher_push`, for a block whose first frame is the host's timeline
+/// sample `timeline`; `has_timeline` 0 while the host gives no position (a
+/// stopped transport). A reader on another track lines its own frames up with
+/// these by it, whichever track the host ran first. THE AUDIO THREAD.
+///
+/// # Safety
+/// As `abus_pusher_push`.
+#[no_mangle]
+pub unsafe extern "C" fn abus_pusher_push_at(
+    p: *mut AbusPusher,
+    interleaved: *const f32,
+    frames: u32,
+    timeline: i64,
+    has_timeline: c_int,
+) {
+    let Some(p) = p.as_mut() else { return };
+    if interleaved.is_null() || frames == 0 {
+        return;
+    }
+    let n = frames as usize * bus_core::CHANNELS as usize;
+    p.0.push_at(
+        core::slice::from_raw_parts(interleaved, n),
+        (has_timeline != 0).then_some(timeline),
+    );
+}
+
 /// # Safety
 /// `w` must come from `abus_writer_claim`.
 #[no_mangle]
@@ -251,6 +288,37 @@ pub unsafe extern "C" fn abus_reader_read(
     res.frames
 }
 
+/// The stream position of the next frame `abus_reader_read` delivers, so a
+/// read of `n` frames delivered positions `abus_reader_position(r) - n ..`.
+///
+/// # Safety
+/// `r` must come from `abus_reader_open`, or be NULL (0).
+#[no_mangle]
+pub unsafe extern "C" fn abus_reader_position(r: *const AbusReader) -> u64 {
+    r.as_ref().map_or(0, |r| r.0.position())
+}
+
+/// Where stream position `frame` -- one this reader has read -- sat on the
+/// sender's timeline. Returns 1 and writes `*timeline` when the sender
+/// stamped it; 0 when it did not (a stopped transport) or its stamp is gone.
+/// Loads only: the reading thread may ask, the audio thread included.
+///
+/// # Safety
+/// `r` must come from `abus_reader_open`, or be NULL; `timeline` writable.
+#[no_mangle]
+pub unsafe extern "C" fn abus_reader_timeline_of(r: *const AbusReader, frame: u64, timeline: *mut i64) -> c_int {
+    let Some(r) = r.as_ref() else { return 0 };
+    match r.0.stamp_at(frame).and_then(|s| s.timeline_of(frame)) {
+        Some(t) => {
+            if !timeline.is_null() {
+                *timeline = t;
+            }
+            1
+        }
+        None => 0,
+    }
+}
+
 /// Move a reader to the segment its slot's name leads to now, if a sender
 /// replaced the one it has. Returns 1 if it moved (the next read reports
 /// `resynced`), 0 otherwise. Main thread: it makes system calls.
@@ -308,6 +376,25 @@ pub unsafe extern "C" fn abus_probe(
         *label.add(n) = 0;
     }
     1
+}
+
+/// Which segment slot `slot`'s name leads to now, or 0 when nobody has ever
+/// used it. A reader whose `abus_reader_incarnation` differs maps a segment
+/// that was replaced -- its sender quit and a new one created the bus -- and
+/// will never hear from it again: open the slot afresh.
+#[no_mangle]
+pub extern "C" fn abus_incarnation(slot: u32) -> u64 {
+    bus_core::probe(slot).map_or(0, |i| i.incarnation)
+}
+
+/// Which segment `r` maps (see `abus_incarnation`); 0 for NULL. Ask before
+/// lending the reader to the thread that reads it.
+///
+/// # Safety
+/// `r` must come from `abus_reader_open`, or be NULL.
+#[no_mangle]
+pub unsafe extern "C" fn abus_reader_incarnation(r: *const AbusReader) -> u64 {
+    r.as_ref().map_or(0, |r| r.0.incarnation())
 }
 
 /// # Safety

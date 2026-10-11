@@ -320,8 +320,9 @@ void checkSound (VST3PluginFormat& format, const PluginDescription& d)
 
 /* THE HOST'S BYPASS, as a VST3 host sets it: through the parameter, which
  * JUCE's wrapper hands to processBlock rather than bypassing the plugin
- * itself. The golden set gates a sine hard; bypassed, the sine comes out bit
- * for bit, and with the Bypass off again the gate is back. */
+ * itself. The golden set gates a sine hard; bypassed -- once the 10 ms fade
+ * in is over -- the sine comes out bit for bit, and with the Bypass off again
+ * the gate is back. */
 void checkBypass (VST3PluginFormat& format, const PluginDescription& d)
 {
     std::printf (" the bypass\n");
@@ -359,8 +360,10 @@ void checkBypass (VST3PluginFormat& format, const PluginDescription& d)
     };
     const int twoSeconds = (int) (2.0 * TG_RENDER_SR) / TG_RENDER_BLOCK;
 
+    const int fade = (int) std::ceil (0.010 * TG_RENDER_SR / TG_RENDER_BLOCK);
     check (! untouched (twoSeconds), "the golden set gates the sine");
     p->getBypassParameter()->setValueNotifyingHost (1.0f);
+    untouched (fade);
     check (untouched (twoSeconds), "with the host's Bypass on, two seconds pass through bit for bit");
     p->getBypassParameter()->setValueNotifyingHost (0.0f);
     check (! untouched (twoSeconds), "... and with it off again, the gate is back");

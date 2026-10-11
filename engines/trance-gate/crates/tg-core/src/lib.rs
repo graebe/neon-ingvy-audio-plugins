@@ -34,6 +34,7 @@ pub mod mask;
 pub mod params;
 pub mod paste;
 pub mod rates;
+pub mod schema;
 pub mod slotfile;
 pub mod state;
 
@@ -57,6 +58,20 @@ pub const DEPTH_FULL: u8 = 255;
 /// cannot finish under any Width, so the extra range would be knob travel
 /// with nothing on the end of it.
 pub const STAGE_MAX_PCT: f32 = 200.0;
+
+/*
+ * NO EDGE IS SHORTER THAN A MILLISECOND.
+ *
+ * Stages are a share of the gate's width, so they shrink with the rate and
+ * with Width: the default 1.6 % attack is 1.8 ms at 1/16 but 0.46 ms at 1/64,
+ * and 0 % was an instant edge -- a full-scale jump in gain, which clicks on
+ * any sustained sound and aliases at about 45 dB whatever the signal. Below
+ * about a millisecond an edge's length is what decides its splatter, and its
+ * shape hardly matters. 1 ms keeps the slow rates exactly as they were and
+ * gives the fastest ones, and 0 %, the shortest edge that does not click.
+ * (Paper "The Trance Gate in Practice", sections 4.2-4.3 and 4.6.)
+ */
+pub const EDGE_MIN_MS: f64 = 1.0;
 
 /// What the envelope's three time values MEAN to a shell showing them. The
 /// engine does not consult it: ms and % are two readings of one number.
@@ -367,10 +382,11 @@ impl Instance {
     }
 
     /// How long a stage lasts, in samples. `value` is a percentage of the
-    /// gate's WIDTH, 0..200.
+    /// gate's WIDTH, 0..200, and no stage is shorter than [`EDGE_MIN_MS`].
     #[inline]
     fn stage_samples(&self, value: f32) -> f64 {
-        value as f64 * 0.01 * self.width_ms() * (self.sample_rate / 1000.0)
+        let ms = (value as f64 * 0.01 * self.width_ms()).max(EDGE_MIN_MS);
+        ms * (self.sample_rate / 1000.0)
     }
 
     #[inline]

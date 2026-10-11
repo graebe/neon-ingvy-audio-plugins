@@ -68,7 +68,7 @@ bool ChordDetector::isBusesLayoutSupported (const BusesLayout& layout) const
     return layout.inputBuses.isEmpty() && (out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono());
 }
 
-void ChordDetector::prepareToPlay (double sampleRate, int)
+void ChordDetector::prepare (double sampleRate, int)
 {
     /* A host that deactivated the plugin sent no note-offs for what was held
      * then, so it starts again from silence. */

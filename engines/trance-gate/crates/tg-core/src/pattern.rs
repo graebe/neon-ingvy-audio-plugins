@@ -75,12 +75,15 @@ impl Pattern {
      * They are what a step switched back on -- or a Length turned back up --
      * returns to, and they cost nothing because nothing reads them.
      *
-     * A COUNTING RANK, NOT A SORT. The rank of step i is "how many on steps
-     * carry a lower key", which is O(length^2) at worst -- 16k integer
-     * comparisons at 128 steps -- and needs no scratch array. `set_param` runs
-     * on the audio callback, so an allocation here would be the real cost, not
-     * the comparisons. Ties in the key break by index, which is what keeps
-     * this a total order and the result a permutation.
+     * A COUNTING RANK, NOT A SORT. The rank of step i is "how many steps of
+     * its kind carry a lower key, plus those with the same key and a lower
+     * index" -- ties break by index, which is what keeps this a total order
+     * and the result a permutation. The keys are bytes, so the count is a
+     * histogram over 256 values: O(length) with two stack arrays, no
+     * allocation. It was O(length^2) once, 16k comparisons per kind at 128
+     * steps, and a state load renumbers all eight slots -- on the Move, on
+     * the audio callback, where that cost 170 us of a 2.9 ms block (median,
+     * on an M1; the device is slower).
      */
     pub fn renumber(&mut self) {
         self.renumber_kind(true);
@@ -102,26 +105,23 @@ impl Pattern {
      */
     fn renumber_kind(&mut self, want_on: bool) {
         let n = self.length.min(MAX_STEPS);
-        let mut rank = [0u8; MAX_STEPS];
-        for (i, rank_i) in rank.iter_mut().enumerate().take(n) {
-            if self.on(i) != want_on {
-                continue;
-            }
-            let mut r = 1u32;
-            for j in 0..n {
-                if j == i || self.on(j) != want_on {
-                    continue;
-                }
-                let (a, b) = (self.order[j], self.order[i]);
-                if a < b || (a == b && j < i) {
-                    r += 1;
-                }
-            }
-            *rank_i = r.min(255) as u8;
-        }
-        for (i, &r) in rank.iter().enumerate().take(n) {
+        /* How many steps of this kind hold each key... */
+        let mut first = [0u16; 257];
+        for i in 0..n {
             if self.on(i) == want_on {
-                self.order[i] = r;
+                first[self.order[i] as usize + 1] += 1;
+            }
+        }
+        /* ...turned into the rank, less one, of the first step with each key. */
+        for k in 1..257 {
+            first[k] += first[k - 1];
+        }
+        /* In index order, so equal keys rank by index. */
+        for i in 0..n {
+            if self.on(i) == want_on {
+                let key = self.order[i] as usize;
+                first[key] += 1;
+                self.order[i] = first[key].min(255) as u8;
             }
         }
     }
@@ -341,9 +341,16 @@ impl Instance {
      * audio path goes through here, and hard mode is then literally the
      * pattern with the later steps removed.
      */
+    /*
+     * AND A STEP AT LEVEL 0 IS A GAP TOO, for the same reason: it is silent,
+     * and holding a neighbour's gate open through it -- or letting it count
+     * as the "previous ON step" a tie or Join Neighbors carries on from --
+     * would leave the next step's gate unopened. Before this, an ON step at
+     * level 0 cut the gain to nothing in one sample.
+     */
     #[inline]
     pub(crate) fn sounds(&self, i: usize) -> bool {
-        i < MAX_STEPS && self.fade_w[i] > 0.0
+        i < MAX_STEPS && self.fade_w[i] > 0.0 && self.pat[self.slot].depth[i] > 0
     }
 
     /*
@@ -428,3 +435,6 @@ impl Instance {
         self.recalc_fade();
     }
 }
+
+#[cfg(test)]
+mod tests;

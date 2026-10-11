@@ -110,8 +110,12 @@ RUN set -eu; \
 ARG RUSTUP_VERSION=1.29.1
 ARG RUSTUP_SHA256_X86_64=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71
 ARG RUSTUP_SHA256_AARCH64=15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433
-ARG RUST_TOOLCHAIN=1.98.1
+# rust-toolchain.toml's channel, as modules/_shared/Dockerfile installs it.
+ARG RUST_TOOLCHAIN=1.99.0
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
+# The checkout's rust-toolchain.toml names this version too; set here so the
+# image never fetches that file's Apple targets.
+ENV RUSTUP_TOOLCHAIN=$RUST_TOOLCHAIN
 ENV PATH=/opt/cargo/bin:$PATH
 RUN set -eu; \
     case "$(uname -m)" in \

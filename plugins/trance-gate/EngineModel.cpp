@@ -109,10 +109,14 @@ double nowMs()
     return juce::Time::getMillisecondCounterHiRes();
 }
 
-std::string readout (tg_shell_t* shell, const char* key)
+/* A readout as the next block will leave the engine, the host's values in
+ * it. */
+std::string readout (const Processor& processor, const char* key)
 {
+    double values[kNumParams];
+    processor.engineValues (values);
     std::string text (TG_STATE_MAX, '\0');
-    const int n = tg_shell_read (shell, key, text.data(), (int) text.size());
+    const int n = tg_shell_read_next (processor.engine(), key, values, kNumParams, text.data(), (int) text.size());
     text.resize (n > 0 ? (std::size_t) n : 0);
     return text;
 }
@@ -155,37 +159,37 @@ int EngineModel::currentSlot() const
 /* ------------------------------------------------------------ snapshots -- */
 
 /*
- * "steps:ties:length:phase:ms_step:advancing:cursor:depths:orders:slot", the
- * engine's `ui` readout (tg-core params.rs): masks in hex, the depths and the
+ * The engine's `ui` readout (UiField): masks in hex, the depths and the
  * arrival ranks two hex digits a step.
  */
 bool EngineModel::readUi()
 {
-    auto text = readout (processor.engine(), "ui");
+    auto text = readout (processor, "ui");
     if (text == uiText)
         return false;
     uiText = std::move (text);
     const auto f = fields (uiText);
-    if (f.size() < 9)
+    if ((int) f.size() <= UiField::orders)
         return true;
+    const auto field = [&f] (int at) -> const std::string& { return f[(std::size_t) at]; };
 
     Pattern p;
-    p.length = juce::jlimit (1, maxSteps, std::atoi (f[2].c_str()));
-    p.cursor = std::atoi (f[6].c_str());
+    p.length = juce::jlimit (1, maxSteps, std::atoi (field (UiField::length).c_str()));
+    p.cursor = std::atoi (field (UiField::cursor).c_str());
     for (int i = 0; i < maxSteps; ++i)
     {
         const auto at = (std::size_t) i;
-        const bool on = bitOf (f[0], i);
-        p.steps[at] = ! on ? StepMode::off : bitOf (f[1], i) ? StepMode::tie : StepMode::on;
-        p.depths[at] = i < p.length ? (float) byteAt (f[7], i) / 255.0f : 0.0f;
-        p.orders[at] = i < p.length ? byteAt (f[8], i) : 0;
+        const bool on = bitOf (field (UiField::steps), i);
+        p.steps[at] = ! on ? StepMode::off : bitOf (field (UiField::ties), i) ? StepMode::tie : StepMode::on;
+        p.depths[at] = i < p.length ? (float) byteAt (field (UiField::depths), i) / 255.0f : 0.0f;
+        p.orders[at] = i < p.length ? byteAt (field (UiField::orders), i) : 0;
     }
     p.levels = shown.levels;
     shown = p;
 
-    phase = ni::wire::parse_number (f[3]);
-    msPerStep = ni::wire::parse_number (f[4]);
-    advancing = f[5] == "1";
+    phase = ni::wire::parse_number (field (UiField::phase));
+    msPerStep = ni::wire::parse_number (field (UiField::msStep));
+    advancing = field (UiField::moving) == "1";
     phaseAt = nowMs();
     return true;
 }
@@ -195,7 +199,9 @@ const Pattern& EngineModel::pattern()
     readUi();
     /* The levels move with Fade and its switches, which are not in the `ui`
      * readout: read every time, a copy of a fixed array. */
-    tg_shell_levels (processor.engine(), shown.levels.data(), maxSteps);
+    double values[kNumParams];
+    processor.engineValues (values);
+    tg_shell_levels_next (processor.engine(), values, kNumParams, shown.levels.data(), maxSteps);
     for (int i = shown.length; i < maxSteps; ++i)
         shown.levels[(std::size_t) i] = 0.0f;
     return shown;
@@ -217,23 +223,24 @@ Transport EngineModel::transport()
 }
 
 /*
- * "slot:legato:time_mode:curve:rate:length:amount:hold:attack:decay:sustain:
- * release:width_ms:fade:fade_soft:fade_dir:detents", the `params` readout.
+ * The `params` readout (ParamsField): the gate's width in ms, and the Length
+ * detents as a comma list.
  */
 bool EngineModel::readParams()
 {
-    auto text = readout (processor.engine(), "params");
+    auto text = readout (processor, "params");
     if (text == paramsText)
         return false;
     paramsText = std::move (text);
     const auto f = fields (paramsText);
-    widthMs = f.size() > 12 ? ni::wire::parse_number (f[12]) : 0.0;
+    const auto has = [&f] (int at) { return (int) f.size() > at; };
+    widthMs = has (ParamsField::widthMs) ? ni::wire::parse_number (f[(std::size_t) ParamsField::widthMs]) : 0.0;
     detents.clear();
-    if (f.size() > 16)
+    if (has (ParamsField::detents))
     {
         int value = 0;
         bool any = false;
-        for (const char c : f[16] + ",")
+        for (const char c : f[(std::size_t) ParamsField::detents] + ",")
         {
             if (c >= '0' && c <= '9')
             {
@@ -282,7 +289,7 @@ std::optional<float> EngineModel::stageValue (int stageParam, const juce::String
  */
 void EngineModel::readRenders()
 {
-    auto text = readout (processor.engine(), "state");
+    auto text = readout (processor, "state");
     if (text == stateText)
         return;
     stateText = std::move (text);
@@ -360,7 +367,7 @@ const Capture& EngineModel::capture()
 
 /* ------------------------------------------------------------- commands -- */
 
-bool EngineModel::post (std::initializer_list<std::string> pairs)
+bool EngineModel::post (const std::vector<std::string>& pairs)
 {
     std::vector<const char*> kv;
     for (const auto& s : pairs)
@@ -386,6 +393,15 @@ void EngineModel::setDepth (int index, float amount)
         processor.stateChanged();
 }
 
+/* The step and then its amount, the cursor moved once for both. */
+void EngineModel::setStepWithDepth (int index, StepMode mode, float amount)
+{
+    std::string value;
+    ni::wire::append_decimal (value, juce::jlimit (0.0f, 1.0f, amount), 9);
+    if (post ({ "cursor", std::to_string (index), "step", std::to_string ((int) mode), "step_amount", value }))
+        processor.stateChanged();
+}
+
 void EngineModel::setOrder (int index, int rank)
 {
     if (post ({ "cursor", std::to_string (index), "step_order", std::to_string (std::max (1, rank)) }))
@@ -404,7 +420,8 @@ void EngineModel::randomize()
  * SHUFFLE, as a run of ranks down a shuffled list -- the web editor's way:
  * each rank inserts and shifts, so the engine needs nothing Set order does
  * not already use. The steps it deals are the ones the fade brings in: the
- * hits, or under Fade Out the holes.
+ * hits, or under Fade Out the holes. The whole run is one post: a block that
+ * landed between two ranks would play an order nobody dealt.
  */
 void EngineModel::shuffleOrder()
 {
@@ -417,10 +434,10 @@ void EngineModel::shuffleOrder()
     auto& random = juce::Random::getSystemRandom();
     for (int i = (int) arriving.size() - 1; i > 0; --i)
         std::swap (arriving[(std::size_t) i], arriving[(std::size_t) random.nextInt (i + 1)]);
-    bool any = false;
+    std::vector<std::string> pairs;
     for (std::size_t k = 0; k < arriving.size(); ++k)
-        any = post ({ "cursor", std::to_string (arriving[k]), "step_order", std::to_string (k + 1) }) || any;
-    if (any)
+        pairs.insert (pairs.end(), { "cursor", std::to_string (arriving[k]), "step_order", std::to_string (k + 1) });
+    if (! pairs.empty() && post (pairs))
         processor.stateChanged();
 }
 

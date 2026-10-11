@@ -40,6 +40,9 @@ impl Module for Gate {
 
 ni_schwung::export_audio_fx!(Gate);
 
+#[cfg(test)]
+mod render_ab;
+
 /*
  * THE PANIC, ON THE GATE. A host panic arrives as CC 120/123 through
  * `move_audio_fx_on_midi`. The gate holds no note -- its gain is a function of
@@ -53,31 +56,45 @@ mod tests {
     use ni_schwung::{AudioFxApiV2, HostApiV1};
     use std::ffi::CString;
     use std::sync::atomic::Ordering;
+    use std::sync::{Mutex, MutexGuard};
 
-    /* The host's clock. A RUNNING transport, or the gate is open and the
-     * comparison proves nothing. */
-    static BEATS: AtomicF64 = AtomicF64::new(0.0);
+    /* The host's clock, which every test here shares: init keeps the clock
+     * process-wide, as the device does. A RUNNING transport, or the gate is
+     * open and a comparison proves nothing. */
+    pub(crate) static BEATS: AtomicF64 = AtomicF64::new(0.0);
+    pub(crate) static BPM: AtomicF64 = AtomicF64::new(120.0);
     extern "C" fn bpm() -> f32 {
-        120.0
+        BPM.load(Ordering::SeqCst) as f32
     }
-    extern "C" fn beats() -> f64 {
+    pub(crate) extern "C" fn beats() -> f64 {
         BEATS.load(Ordering::SeqCst)
+    }
+
+    /// THE CLOCK IS ONE PER PROCESS AND CARGO RUNS TESTS ON THREADS, so a test
+    /// that renders through the vtable holds this for as long as it moves
+    /// the clock. A test that failed while holding it leaves the clock as
+    /// any other would, so poisoning is ignored.
+    pub(crate) fn hold_the_clock() -> MutexGuard<'static, ()> {
+        static CLOCK: Mutex<()> = Mutex::new(());
+        CLOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /* The vtable, from the init the device calls, with this file's clock.
      * The table is a constant, and init copies the host's two clock functions
-     * and keeps nothing else (ni_schwung's keep_clock) -- so the host table
-     * can be a local, every test asks, and two asking at once store the same
-     * clock. */
-    fn api() -> &'static AudioFxApiV2 {
+     * and its rate and keeps nothing else (ni_schwung's keep_host) -- so the
+     * host table can be a local, every test asks, and two asking at once
+     * store the same clock. */
+    pub(crate) fn api() -> &'static AudioFxApiV2 {
         let host = HostApiV1::with_clock(bpm, beats);
         /* SAFETY: `host` is valid for the call, which is as long as init
          * reads it; init returns its module type's table, a constant that
-         * lives as long as the process. */
+         * lives as long as the process. A table of the version init expects
+         * is never refused. */
         unsafe { &*move_audio_fx_init_v2(&host) }
     }
 
     fn render(api: &AudioFxApiV2, panic: bool) -> Vec<i16> {
+        BPM.store(120.0, Ordering::SeqCst);
         BEATS.store(0.0, Ordering::SeqCst);
         let inst = (api.create_instance.unwrap())(std::ptr::null(), std::ptr::null());
         let set = |k: &str, v: &str| {
@@ -167,6 +184,7 @@ mod tests {
 
     #[test]
     fn a_host_panic_is_accepted_and_changes_nothing() {
+        let _clock = hold_the_clock();
         let api = api();
         let with = render(api, true);
         assert!(with.iter().any(|&v| v < 5000), "the gate never gated -- no transport?");

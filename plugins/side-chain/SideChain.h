@@ -20,7 +20,10 @@
  *   the state        the iPlug2 chunk, fifteen values and the bypass after
  *                    them (ni::nist, Params.h's layout), read and written
  *                    byte for byte; the bypass is restored too, which iPlug2
- *                    left in its controller
+ *                    left in its controller. The kick the plot shows (Kick.h)
+ *                    rides after the values as the chunk's one string, and
+ *                    only when one is chosen -- so a set without one is the
+ *                    same bytes it always was
  *
  * WHAT DOES NOT CARRY ACROSS, and is said to the user (docs/live.md): the
  * iPlug2 build exported 130 MIDI-CC parameters (VST3 IDs 65538-65667) for
@@ -47,7 +50,7 @@
  * between sc_shell_begin and sc_shell_end: the host's values are pushed, the
  * key and the MIDI go in, the main channels are ducked in place, and -- while
  * an editor is open -- the dry signal, the gain and the sweep go to the
- * scope. Nothing there allocates, locks or parses. Bypassed, the engine still
+ * scope, and the kick (Kick.h) is filed under the same sweep. Nothing there allocates, locks or parses. Bypassed, the engine still
  * runs, on a copy, so it keeps time and hears every MIDI message -- a Gate
  * note released while bypassed does not hold the duck down afterwards, and a
  * panic is a panic -- and the host's audio passes untouched.
@@ -55,6 +58,7 @@
 #pragma once
 
 #include "GroundClock.h"
+#include "Kick.h"
 #include "Parameter.h"
 #include "Params.h"
 #include "Processor.h"
@@ -81,6 +85,7 @@ public:
      */
     static constexpr int scopeColumns = 512;
     using Scope = ni::Scope<scopeColumns>;
+    static_assert (Kick::columns == scopeColumns, "the kick is drawn on the scope's columns");
 
     Processor();
     ~Processor() override;
@@ -88,7 +93,7 @@ public:
     /* Main in mono or stereo, the output the same; the key off, mono or
      * stereo. */
     bool isBusesLayoutSupported (const BusesLayout&) const override;
-    void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
+    void prepare (double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void releaseResources() override {}
 
     juce::AudioProcessorEditor* createEditor() override;
@@ -103,6 +108,10 @@ public:
     sc_shell_t* engine() const noexcept { return shell.get(); }
     ni::Parameter& parameter (int index) const noexcept { return *params[(std::size_t) index]; }
     const Scope& scope() const noexcept { return capture; }
+    Kick& kick() noexcept { return behind; }
+    const Kick& kick() const noexcept { return behind; }
+    /* A kick chosen in the window: the set is changed, and the host told. */
+    void chooseKick (int choice);
     ni::GroundClock& ground() noexcept { return beat; }
     EngineModel& model() noexcept { return *editorModel; }
     /* Whether the host connected a key, as of the last block. Any thread. */
@@ -129,13 +138,14 @@ private:
     ni::Parameter* bypass = nullptr;
 
     Scope capture;
+    Kick behind;
     ni::GroundClock beat;
     std::atomic<bool> capturing { false };
     std::atomic<bool> keyed { false };
     double sampleRate = 44100.0;
     /* The dry input, the engine's gain and sweep for the capture, and the
      * copies a bypassed block or a mono track's second channel run on. Sized
-     * in prepareToPlay, never on the audio thread; a longer block is
+     * in prepare, never on the audio thread; a longer block is
      * processed in chunks of this. */
     std::vector<float> dry, gain, sweep, copyL, copyR;
 

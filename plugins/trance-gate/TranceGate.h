@@ -24,8 +24,9 @@
  *
  * THE ENGINE BELONGS TO THE AUDIO THREAD (tg_shell.h). process() takes it for
  * one block between tg_shell_begin and tg_shell_end: the host's values are
- * pushed, the transport and meter go in, the two channels are gated in place,
- * and -- while an editor is open -- the dry and gated signal go to the scope.
+ * pushed, the transport and meter go in, the two channels are gated in place
+ * -- split where the host's loop wraps -- and, while an editor is open, the
+ * dry signal and what is heard go to the scope.
  * Nothing there allocates, locks or parses. Every other thread posts edits and
  * reads what the engine published: the state calls (any thread but the audio
  * one), the slot follow and the editor's model (the message thread).
@@ -67,7 +68,6 @@ public:
 
     /* Stereo in, stereo out, and nothing else: the iPlug2 build's "2-2". */
     bool isBusesLayoutSupported (const BusesLayout&) const override;
-    void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void releaseResources() override {}
 
     juce::AudioProcessorEditor* createEditor() override;
@@ -98,6 +98,7 @@ public:
     bool followEngine();
 
 protected:
+    void prepare (double sampleRate, int maximumExpectedSamplesPerBlock) override;
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void writeState (juce::MemoryBlock&) override;
@@ -110,7 +111,8 @@ private:
      * place; otherwise the engine runs on a copy and the buffer is left as
      * it came -- a bypassed block, which must still take every edit, slot
      * switch and step of the transport, or a set saved while bypassed is not
-     * the one its host shows and the gate comes back out of time. */
+     * the one its host shows and the gate comes back out of time. The scope
+     * shows what is heard: the gated signal, or bypassed the dry one. */
     void run (juce::AudioBuffer<float>&, const ni::HostClock&, bool heard);
 
     struct ShellDeleter
@@ -127,8 +129,8 @@ private:
     std::atomic<bool> capturing { false };
     double sampleRate = 44100.0;
     /* The dry input and the engine's sweep, for the capture, and the two
-     * channels a bypassed block is gated on. Sized in prepareToPlay, never on
-     * the audio thread; a longer block is processed in chunks of this. */
+     * channels a bypassed block is gated on. Sized in prepare, never on the
+     * audio thread; a longer block is processed in chunks of this. */
     std::vector<float> dry, sweep, copyL, copyR;
 
     std::unique_ptr<EngineModel> editorModel;

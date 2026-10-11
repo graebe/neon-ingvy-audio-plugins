@@ -25,5 +25,6 @@ ni_add_juce_plugin(side-chain
         SideChain.cpp SideChain.h
         Params.cpp Params.h
         EngineModel.cpp EngineModel.h
+        Kick.cpp Kick.h
         ${CMAKE_SOURCE_DIR}/plugins/_shared/ni/Wire.cpp)
 target_include_directories(NISideChain PRIVATE ${CMAKE_SOURCE_DIR}/plugins/_shared)

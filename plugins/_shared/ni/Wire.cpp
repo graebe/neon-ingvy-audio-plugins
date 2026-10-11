@@ -228,5 +228,59 @@ Transport host_transport(bool running, double tempo, double ppq)
   return t;
 }
 
+/* ---------------------------------------------------------------- loops */
+
+Loop host_loop(bool looping, double start, double end)
+{
+  Loop loop;
+  if (looping && std::isfinite(start) && std::isfinite(end) && start >= 0.0 && end - start > loop_edge)
+  {
+    loop.on = true;
+    loop.start = start;
+    loop.end = end;
+  }
+  return loop;
+}
+
+/* The loop's end as the frames see it: within the edge counts as there. */
+static bool before_end(double beats, Loop loop)
+{
+  return loop.on && beats < loop.end - loop_edge;
+}
+
+int frames_before_loop_end(double beats, int frames, double bpm, double sampleRate, Loop loop)
+{
+  if (frames <= 0 || !(bpm > 0.0) || !(sampleRate > 0.0) || !before_end(beats, loop))
+    return frames;
+  /* The first frame k with beats + k * perFrame at the end's edge: before_end
+   * makes the distance positive, so k is at least 1. */
+  const double perFrame = bpm / 60.0 / sampleRate;
+  const double k = std::ceil((loop.end - loop_edge - beats) / perFrame);
+  return k < double(frames) ? int(k) : frames;
+}
+
+double advance_beats(double beats, int frames, double bpm, double sampleRate, Loop loop)
+{
+  const double next = advance_beats(beats, frames, bpm, sampleRate);
+  if (!before_end(beats, loop) || before_end(next, loop))
+    return next;
+  /* Wrapped by however far it went past the end: less than a frame as
+   * for_each_span splits, round and round for a loop shorter than that --
+   * where a lap that ends at the edge is back at the start. */
+  const double length = loop.end - loop.start;
+  const double over = std::fmod(std::fmax(0.0, next - loop.end), length);
+  return loop.start + (over < length - loop_edge ? over : 0.0);
+}
+
+std::int64_t span_timeline(std::int64_t blockSample, const Transport& block, int offset, double spanBeats,
+                           double sampleRate)
+{
+  if (!block.running || !(block.bpm > 0.0f) || !(sampleRate > 0.0) || !std::isfinite(spanBeats)
+      || !std::isfinite(block.beats))
+    return blockSample + offset;
+  const double frames = (spanBeats - block.beats) * 60.0 / double(block.bpm) * sampleRate;
+  return blockSample + std::llround(frames);
+}
+
 } // namespace wire
 } // namespace ni

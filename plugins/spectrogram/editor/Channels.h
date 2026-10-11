@@ -27,12 +27,10 @@ namespace ni::spectrogram
  * SRECV_MAX_SOURCES less the own channel. */
 inline constexpr int maxListen = 3;
 
-/* The live buses, in slot order: channel n is the (n-1)-th of these. */
-std::vector<Source> liveBuses (const std::vector<Source>& sources);
-
-/* A bus's name in the picker: its label, or "Bus <slot>" for a Listen-In
- * nobody named -- it is still a bus somebody inserted. */
-juce::String sourceName (const Source&);
+/* The live buses, in slot order: channel n is the (n-1)-th of these; and a
+ * bus's name in the picker (BusSource.h). */
+using ni::ui::liveBuses;
+inline juce::String sourceName (const Source& s) { return ni::ui::busName (s); }
 
 /* "input", then each live bus: "input" rather than "this track", because it
  * has to fit a 112 px field. */

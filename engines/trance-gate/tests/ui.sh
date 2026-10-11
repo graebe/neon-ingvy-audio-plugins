@@ -6,11 +6,9 @@
 # tests/smoke_ui.mjs against Schwung's own shared modules and this engine's
 # real chain_params.
 #
-#   engines/trance-gate/tests/ui.sh            finds a Schwung checkout
-#   SCHWUNG_SHARED=<schwung>/src/shared ...    names one
-#
 # ctest runs it as tg_move_ui (quick tier), and tests/run.sh runs it after
-# the C suites. Exit 77 is "skipped": no Schwung checkout, or no node.
+# the C suites. Exit 77 is "skipped": no node, or the pinned Schwung is not
+# cached and cannot be fetched (no git, no network).
 #
 # WHY A SCHWUNG CHECKOUT. ui_chain.js imports the host's page controller,
 # input filter and screen reader by their paths on the device
@@ -18,43 +16,37 @@
 # The test points those imports at real sources rather than at stubs, so it
 # fails when the module and the host it runs on stop agreeing.
 #
-# SKIPPED ALOUD, NOT SILENTLY. The search below used to sit at the end of
-# run.sh as four fixed relative paths, written when the engine was its own
-# repository; none of them matches this checkout or its worktrees, so every
-# check in smoke_ui.mjs was skipped, with one line of output, inside a run
-# that passed -- and no ctest ran it at all. Exit 77 makes ctest say Skipped.
+# THE PINNED SCHWUNG, AND ONLY IT. modules/_shared/schwung.version names the
+# version the modules are tested against, and modules/_shared/schwung.sh
+# fetches it once into a cache outside the checkout and verifies it on every
+# run -- a moved tag or an edited cache fails here rather than testing some
+# other host. This used to take any schwung/ checkout it found above the
+# repository, so the test ran on whatever version that checkout was on.
+#
+# SKIPPED ALOUD, NOT SILENTLY. Exit 77 makes ctest say Skipped: a test that
+# could not run must not read as one that passed.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
 cd "$HERE/.."
 
-# A Schwung checkout beside this one, or beside any directory above it -- the
-# worktrees sit a few levels below the checkout's own parent, so the search
-# walks up rather than naming depths. `schwung/schwung` is the layout with
-# the clone inside a directory of the same name.
-SHARED="${SCHWUNG_SHARED:-}"
-if [ -z "$SHARED" ]; then
-    dir="$ROOT"
-    while [ -z "$SHARED" ] && [ "$dir" != "/" ]; do
-        dir=$(dirname "$dir")
-        for c in "$dir/schwung" "$dir/schwung/schwung"; do
-            if [ -d "$c/src/shared/param_pages" ]; then
-                SHARED="$c/src/shared"
-                break
-            fi
-        done
-    done
-fi
-if [ ! -d "$SHARED/param_pages" ]; then
-    echo "ui smoke test skipped: no Schwung checkout found above $ROOT (set SCHWUNG_SHARED)"
-    exit 77
-fi
+# Node first: without it there is nothing to run the editor in, and nothing
+# to fetch Schwung for (the module image has none).
 if ! command -v node >/dev/null 2>&1; then
     echo "ui smoke test skipped: node is not installed"
     exit 77
 fi
-echo "ui smoke test against $SHARED"
+status=0
+SCHWUNG=$("$ROOT/modules/_shared/schwung.sh" checkout) || status=$?
+if [ "$status" -eq 77 ]; then
+    echo "ui smoke test skipped: the pinned Schwung is not cached and could not be fetched"
+    exit 77
+elif [ "$status" -ne 0 ]; then
+    exit "$status"
+fi
+SHARED="$SCHWUNG/src/shared"
+echo "ui smoke test against Schwung $(sed -n 's/^SCHWUNG_TAG=//p' "$ROOT/modules/_shared/schwung.version"), $SHARED"
 
 # The contract the editor plans its pages from, as the module's own vtable
 # answers it. ALWAYS REBUILT: this used to try an existing binary first, so

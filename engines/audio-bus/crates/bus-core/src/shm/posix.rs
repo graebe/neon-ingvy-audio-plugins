@@ -30,7 +30,7 @@
 
 use core::ffi::{c_int, c_uint, c_void, CStr};
 
-use super::Name;
+use super::{Name, Refused};
 
 /// A POSIX shm name is one leading slash and no other.
 pub const NAME_PREFIX: &str = "/";
@@ -90,7 +90,7 @@ fn map(fd: c_int, size: usize, prot: c_int) -> Option<View> {
     Some(View { base, len: size })
 }
 
-pub fn create_or_open(name: &Name, size: usize) -> Option<(View, bool)> {
+pub fn create_or_open(name: &Name, size: usize) -> Result<(View, bool), Refused> {
     let path = path(name);
 
     /*
@@ -109,27 +109,31 @@ pub fn create_or_open(name: &Name, size: usize) -> Option<(View, bool)> {
                 libc::close(fd);
                 libc::shm_unlink(path.as_ptr());
             }
-            return None;
+            return Err(Refused::Failed);
         }
         let Some(view) = map(fd, size, libc::PROT_READ | libc::PROT_WRITE) else {
             unsafe { libc::shm_unlink(path.as_ptr()) };
-            return None;
+            return Err(Refused::Failed);
         };
-        return Some((view, true));
+        return Ok((view, true));
     }
     if errno() != libc::EEXIST {
-        return None;
+        return Err(Refused::Failed);
     }
 
     let fd = unsafe { libc::shm_open(path.as_ptr(), libc::O_RDWR, MODE) };
     if fd < 0 {
-        return None;
+        return Err(Refused::Failed);
     }
+    /* Too short is an older format's segment, which the claimer replaces --
+     * see Refused::Foreign. */
     if !holds(fd, size) {
         unsafe { libc::close(fd) };
-        return None;
+        return Err(Refused::Foreign);
     }
-    Some((map(fd, size, libc::PROT_READ | libc::PROT_WRITE)?, false))
+    map(fd, size, libc::PROT_READ | libc::PROT_WRITE)
+        .map(|v| (v, false))
+        .ok_or(Refused::Failed)
 }
 
 pub fn open_existing(name: &Name, size: usize) -> Option<View> {

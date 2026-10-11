@@ -86,7 +86,6 @@ public:
     ~Processor() override;
 
     bool isBusesLayoutSupported (const BusesLayout&) const override;
-    void prepareToPlay (double sampleRate, int maximumBlockSize) override;
     void releaseResources() override {}
 
     bool hasEditor() const override { return true; }
@@ -121,6 +120,8 @@ public:
     static constexpr double longestRecordingS = 120.0;
 
 protected:
+    /* The shell's prepareToPlay calls this first (ni::Processor). */
+    void prepare (double sampleRate, int maximumBlockSize) override;
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     /* The captured voice beside the parameters, as <voice>; none, none. */
     void writeExtraState (juce::XmlElement&) override;

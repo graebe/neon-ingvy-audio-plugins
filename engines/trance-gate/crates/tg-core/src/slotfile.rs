@@ -121,7 +121,7 @@ impl Instance {
     pub fn export(&self, kind: Kind, out: &mut [u8]) -> i32 {
         let mut b = Buf::new(out);
         let _ = write_file(self, kind, &mut b);
-        b.finish()
+        b.finish_whole()
     }
 }
 

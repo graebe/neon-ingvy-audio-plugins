@@ -11,7 +11,9 @@
 # ADVISORIES ARE NOT PART OF THAT RUN, deliberately. They come from a database
 # fetched at check time, so the verdict would change without a commit -- the
 # one property a quick tier must not have. `cargo deny check advisories` is
-# the separate question, asked on demand.
+# the separate question: ctest's `cargo_deny_advisories` in the full tier and
+# each product's run, and both release workflows on the day they publish
+# ([advisories] below).
 
 # EVERY PLATFORM'S DEPENDENCIES ARE CHECKED, not only those of the targets a
 # product ships for. Narrowing by target was tried and does not hold:
@@ -65,3 +67,16 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []
+
+[advisories]
+# RustSec's database, fetched (into cargo's home) when the check runs. A
+# vulnerability is always an error. So is a crate its maintainers have
+# declared unmaintained or unsound, anywhere in the graph -- this code runs in
+# other people's audio threads -- and a version yanked from crates.io. An
+# advisory accepted rather than fixed goes in `ignore`, by id, with its reason
+# beside it; there is none today.
+db-urls = ["https://github.com/rustsec/advisory-db"]
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+ignore = []

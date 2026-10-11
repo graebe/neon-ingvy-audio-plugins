@@ -31,7 +31,7 @@ outline. The pads say the same things the same way.
 
 | gesture | what it does |
 |---|---|
-| click a pad | toggles the step, and selects it |
+| click a pad | toggles the step, and selects it. A step you switch on starts at full Amount |
 | shift-click a pad | sets a **tie** — the step holds through the next one without retriggering |
 | drag up/down on a pad | sets that step's Amount. Drag to the bottom and the step turns off |
 | click a wedge on the ring | toggles that step, like its pad |
@@ -93,6 +93,18 @@ Below those, four controls decide how the rest is read:
 These fifteen are ordinary host parameters and automate normally. The pattern and
 its arrival order are not among them — see
 [what the host can automate](../README.md#what-the-host-can-automate-and-what-it-cannot).
+Turned with Live's transport stopped, they still show at once: the Length
+detents, the stages' milliseconds and the Pattern plot follow the knob, as the
+sound will when playback starts.
+
+**Bypass** (Live's own switch on the device) fades over 10 ms either way, so
+switching it while the gate is shut is not a click; once the fade is over, the
+audio passes untouched, bit for bit. The gate keeps running while bypassed, so
+it comes back in time.
+
+**Loops.** In a looped region the gate follows Live's loop to the sample: the
+audio after the loop's end is gated from the loop's start, in the very block
+the loop wraps in.
 
 ## Working with knobs and readouts
 
@@ -199,7 +211,8 @@ right and a thin grey line marking where it is being written. The envelope is dr
 over it as an outline, so the gap between the outline and the trace is the
 difference between what the gate asked for and what the audio did. The dry is
 grey rather than a dimmer violet because the difference between the two should
-not need a legend.
+not need a legend. Bypassed, the Signal shows what you hear: the trace is the
+input itself, lying on the dry.
 
 ### How loud the Signal is drawn
 

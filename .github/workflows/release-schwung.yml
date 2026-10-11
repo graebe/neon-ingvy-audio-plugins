@@ -1,22 +1,31 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Torben Gräber
 #
-# Tag <product>-v<version> for a product with a Schwung module -> build that
-# module in Docker -> attach dist/<id>-module.tar.gz -> record it in
-# release.json on main, which is where Schwung Manager reads it.
+# Tag <product>-v<version> for a product with a Schwung module -> check the
+# commit was tested and its dependencies -> build and test the module on
+# arm64 Linux, the Move's architecture -> attach the tarball it tested ->
+# record it in release.json on main, which is where Schwung Manager reads it
+# -> redeploy the site.
 #
 # ONE WORKFLOW, EVERY MODULE. The tag's product prefix names a directory under
 # modules/, and everything that differs between modules is in that directory's
-# module.env -- the build and the packaging are modules/_shared/package.sh for
-# all of them. tests/release.test.mjs holds the tag list below to exactly the
-# modules that exist, so a new module cannot build and never release.
+# module.env -- the build, the packaging and the tests are modules/_shared/
+# for all of them. tests/release.test.mjs holds the tag list below to exactly
+# the modules that exist, so a new module cannot build and never release.
 #
 # The same tag triggers release-plugins.yml for the VST3 zips: the module and
 # the plugin are one product in two shells, so one tag ships both and their
 # versions cannot drift apart.
 #
+# THE TARBALL RELEASED IS THE TARBALL TESTED. It used to be built here on an
+# x86_64 runner and never run: the module's tests (modules/_shared/test.sh --
+# the .so's exports, its notices, its crates' tests and the golden render on
+# aarch64) ran only in a developer's full tier. They run here now, on an arm64
+# runner, and what they built and passed is what is published.
+#
 # Adapted from schwung-ducker's, which is the house pattern for a catalog
-# module. The additions are the artifact check and the licence check below.
+# module. The additions are the gate, the tests, the artifact check and the
+# licence check below.
 name: Release Schwung module
 
 on:
@@ -24,12 +33,13 @@ on:
     tags:
       - 'trance-gate-v*'
       - 'side-chain-v*'
+      - 'bit-crusher-v*'
       - 'vocalize-v*'
 
 permissions:
   contents: write
 
-# One release per tag at a time. NOT cancel-in-progress: the last step pushes
+# One release per tag at a time. NOT cancel-in-progress: the release job pushes
 # to main, and cancelling it half way would leave a release the catalog cannot
 # see.
 concurrency:
@@ -37,13 +47,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  # WHAT HAS TO BE TRUE BEFORE ANYTHING IS BUILT: the tag matches the tree,
+  # the commit was tested locally, and its dependencies pass the supply-chain
+  # checks today.
+  check:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      product: ${{ steps.tag.outputs.product }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      module_id: ${{ steps.tag.outputs.module_id }}
+      module_version: ${{ steps.tag.outputs.module_version }}
+      module_asset: ${{ steps.tag.outputs.module_asset }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: '22'
 
@@ -56,29 +77,117 @@ jobs:
       # It checks the tag against versions.json -- which `ctest -R versions`
       # holds the plugin builds, module.json and every crate to -- and against
       # module.json, so a release cannot claim a version the tree does not
-      # build.
+      # build; and it refuses a beta Schwung Manager would never offer.
       - name: Resolve the tag
         id: tag
         run: |
+          set -o pipefail   # a refused tag must fail here, not vanish into tee
           node scripts/release.mjs resolve "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
           grep -q '^module_id=' "$GITHUB_OUTPUT" || {
             echo "::error::$GITHUB_REF_NAME names a product with no Schwung module"; exit 1; }
 
-      - name: Build with Docker
-        run: ./modules/_shared/package.sh "${{ steps.tag.outputs.product }}"
+      # TESTED LOCALLY, ON THIS COMMIT: a passing `scripts/test.sh product
+      # <product>` or `full`, recorded by scripts/test.sh as a note under
+      # refs/notes/ni-tests and pushed before the tag (docs/tech/ci-live.md).
+      - name: Was this commit tested?
+        run: |
+          git fetch --no-tags origin '+refs/notes/ni-tests:refs/notes/ni-tests' || {
+            echo "::error::origin has no refs/notes/ni-tests: run scripts/test.sh, then git push origin refs/notes/ni-tests (docs/tech/ci-live.md)"; exit 1; }
+          node scripts/release.mjs attested "$GITHUB_REF_NAME"
 
-      # A build step that can be skipped silently defeats every bisect after
-      # it. The release action warns on a missing file rather than failing, so
-      # a build that produced nothing would publish an EMPTY release that the
-      # catalog happily points at -- a 404 on install, reported as "the module
-      # is broken" rather than as a release that was never built.
+      # rust-toolchain.toml's, for cargo-deny's build.
+      - name: Rust, at its pin
+        run: rustup toolchain install && rustc --version
+
+      - name: cargo-deny, at its pin
+        run: scripts/licence-tools.sh install cargo-deny
+
+      # THE SUPPLY CHAIN: deny.toml's licence allowlist, bans and sources --
+      # the gate every local tier runs as cargo_deny -- and RustSec's
+      # advisories as of the release. The .so links crates.io code, and this
+      # workflow used to ship it without asking either question.
+      - name: Advisories, licences, bans and sources
+        run: cargo deny --manifest-path Cargo.toml --config deny.toml --locked check advisories licenses bans sources
+
+  # THE MODULE ON THE MOVE'S ARCHITECTURE. modules/_shared/test.sh builds the
+  # tarball with package.sh in the module image and tests it there, exactly as
+  # `ctest -L move` does on an Apple Silicon Mac: an arm64 host is what it
+  # needs, and it refuses any other.
+  test:
+    needs: check
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - name: Build and test the module in its image
+        env:
+          PRODUCT: ${{ needs.check.outputs.product }}
+        run: modules/_shared/test.sh "$PRODUCT"
+
+      # THE MOVE EDITOR, against the Schwung it runs in. A module that ships a
+      # ui_chain.js is tested by its engine's tests/ui.sh (tg_move_ui), which
+      # imports Schwung's own shared modules from the release pinned in
+      # modules/_shared/schwung.version -- fetched and verified against its
+      # pinned commit by modules/_shared/schwung.sh, as on a developer's Mac.
+      # The module test above has already held the vendored host headers to
+      # that same release. On the runner a skip (exit 77) is a failure: node
+      # and the network are always here, so a skip means something broke.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: The Move editor against the pinned Schwung
+        env:
+          PRODUCT: ${{ needs.check.outputs.product }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "modules/$PRODUCT/ui_chain.js" ]; then
+            echo "modules/$PRODUCT ships no ui_chain.js: nothing to test"; exit 0
+          fi
+          ui="engines/$PRODUCT/tests/ui.sh"
+          [ -x "$ui" ] || { echo "::error::modules/$PRODUCT ships a ui_chain.js and $ui does not exist"; exit 1; }
+          rustup toolchain install
+          rc=0
+          "$ui" || rc=$?
+          [ "$rc" = 0 ] || { echo "::error::$ui exited $rc (77 is a skip, which a release does not accept)"; exit 1; }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: module
+          path: dist/${{ needs.check.outputs.module_asset }}
+          if-no-files-found: error
+
+  release:
+    needs: [check, test]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: '22'
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: module
+          path: dist
+
+      # WHAT IS PUBLISHED, CHECKED AS IT IS PUBLISHED. The release action warns
+      # on a missing file rather than failing, so a tarball that went missing
+      # would publish an EMPTY release that the catalog happily points at --
+      # a 404 on install, reported as "the module is broken" rather than as a
+      # release that was never built.
       #
       # AND THE NOTICES ARE IN IT. The GPL asks that every copy come with the
       # licence, and a tarball is the only thing that reaches a device.
       - name: Verify the artifact
         env:
-          ID: ${{ steps.tag.outputs.module_id }}
-          TARBALL: dist/${{ steps.tag.outputs.module_asset }}
+          ID: ${{ needs.check.outputs.module_id }}
+          TARBALL: dist/${{ needs.check.outputs.module_asset }}
         run: |
           set -euo pipefail
           [ -f "$TARBALL" ] || { echo "::error::$TARBALL was not produced"; exit 1; }
@@ -103,8 +212,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
         with:
-          files: dist/${{ steps.tag.outputs.module_asset }}
-          prerelease: ${{ steps.tag.outputs.prerelease }}
+          files: dist/${{ needs.check.outputs.module_asset }}
+          prerelease: ${{ needs.check.outputs.prerelease }}
           fail_on_unmatched_files: true
 
       # Record the release where Schwung Manager looks for it. The shape --
@@ -122,22 +231,53 @@ jobs:
       # branch-protected; a bot push is rejected GH006 and would fail the whole
       # release". If that ever becomes true here, this step goes red and the
       # message below says exactly what to do by hand.
+      #
+      # AND MAIN MAY MOVE UNDER IT. Two modules released together push here at
+      # once (each tag has its own concurrency group, and they must not share
+      # one that cancels: a cancelled run is a release the catalog never
+      # hears of), and so does anyone pushing to main. A rejected push is
+      # retried from the new main, the entry written again onto ITS
+      # release.json, so neither release overwrites the other. Only GH006 is
+      # final: protection does not go away by retrying.
       - name: Commit release.json
+        env:
+          MODULE_ID: ${{ needs.check.outputs.module_id }}
+          MODULE_VERSION: ${{ needs.check.outputs.module_version }}
         run: |
           set -euo pipefail
           trap 'echo "::error::release.json was NOT updated. The release is published but the catalog will keep offering the previous version. Fix by hand: node scripts/release.mjs release-json ${GITHUB_REF_NAME} ${GITHUB_REPOSITORY} on main, commit, push. If this failed with GH006, main is branch-protected against bot pushes."' ERR
 
-          # Written from the TAGGED tree, which knows this tag's module and
-          # version, onto MAIN's release.json, which may have moved on since
-          # the tag was cut -- another module's release, say.
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          git show origin/main:release.json > "$RUNNER_TEMP/release.json"
-          node scripts/release.mjs release-json "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" "$RUNNER_TEMP/release.json"
+          # Written by the TAGGED tree, which knows this tag's module and
+          # version, onto MAIN's release.json, in a second checkout of main so
+          # the script that writes is always the tagged one.
+          main="$RUNNER_TEMP/main"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            rm -rf "$main"; git worktree prune
+            git worktree add --detach "$main" origin/main
+            node scripts/release.mjs release-json "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" "$main/release.json"
+            if git -C "$main" diff --quiet -- release.json; then
+              echo "release.json on main already names $MODULE_ID $MODULE_VERSION"; exit 0
+            fi
+            git -C "$main" commit -q -m "Schwung catalog: $MODULE_ID $MODULE_VERSION" -- release.json
+            if out=$(git -C "$main" push origin HEAD:refs/heads/main 2>&1); then
+              echo "$out"; exit 0
+            fi
+            echo "$out"
+            if grep -q GH006 <<<"$out"; then false; fi
+            echo "::warning::push $attempt of 5 rejected; main moved, writing the entry again onto the new main"
+            sleep $(( attempt * 5 ))
+          done
+          false
 
-          git checkout -f -B main origin/main
-          cp "$RUNNER_TEMP/release.json" release.json
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add release.json
-          git commit -m "Schwung catalog: ${{ steps.tag.outputs.module_id }} ${{ steps.tag.outputs.module_version }}" || echo "No changes to commit"
-          git push origin main
+  # THE SITE, from main, now that release.json there names this module
+  # release. After the push above, so the site reads it.
+  pages:
+    needs: release
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

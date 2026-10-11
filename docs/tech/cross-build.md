@@ -142,7 +142,7 @@ the images is pinned:
 | Base | `ubuntu:24.04` by index digest | `tools/docker/linux/Dockerfile` |
 | Every Ubuntu package (clang, CMake, Ninja, the -dev packages, Xvfb, Wine, the root certificates) | one archive snapshot, `20261001T000000Z`, from `snapshot.ubuntu.com` | the same |
 | LLVM | 20 (20.1.2 in that snapshot) | the same, `LLVM_MAJOR` |
-| Rust | rustup-init 1.29.1 by SHA-256, toolchain 1.98.1 | the same, and `modules/_shared/Dockerfile`, which move together |
+| Rust | rustup-init 1.29.1 by SHA-256, toolchain 1.99.0 (`rust-toolchain.toml`) | the same, and `modules/_shared/Dockerfile`, which move together |
 | pluginval | 1.0.4 by SHA-256, per platform | the Linux and Windows Dockerfiles; `scripts/validate-plugins.sh` for macOS |
 | xwin | 0.10.0 by SHA-256 | `tools/docker/windows/Dockerfile` |
 | MSVC C runtime, Windows SDK | 14.44.17.14 and 10.0.26100, from the Visual Studio 2022 channel | the same |

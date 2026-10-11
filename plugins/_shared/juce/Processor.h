@@ -9,6 +9,8 @@
  *   identity      the name is the build's (ni_add_juce_plugin: NAME); MIDI
  *                 in is the build's too (MIDI_IN); no MIDI out, no tail, one
  *                 program
+ *   prepare       prepareToPlay is final: it sizes what the shell itself
+ *                 needs, then calls the product's prepare()
  *   the block     processBlock is final: it runs the product's process()
  *                 under juce::ScopedNoDenormals, so no product forgets the
  *                 guard and no product pays for denormals. Bypassed blocks
@@ -18,8 +20,14 @@
  *                 wrapper leaves to processBlock. A product whose engine must
  *                 keep hearing MIDI while bypassed -- or its held notes
  *                 stick -- overrides it
+ *   the fade      the product's own Bypass moving is a 10 ms crossfade
+ *                 between what process() makes and the input, never a jump
+ *                 (processBlock); a product whose process() leaves the audio
+ *                 as it came says so (passesAudioThrough) and switches at the
+ *                 block
  *   the clock     readClock() reads the host's transport into a plain value,
- *                 allocation-free, for the engines' block clocks
+ *                 allocation-free, for the engines' block clocks: the
+ *                 position, the tempo, the meter and the loop
  *   the state     getStateInformation and setStateInformation are final and
  *                 call writeState / readState, which a product overrides when
  *                 it must read an older build's format (the iPlug2 chunk);
@@ -43,12 +51,19 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <vector>
+
 namespace ni
 {
 
 /* The host's transport for one block. `known` is false when the host gave
  * no position at all, which is not the same as a stopped transport; `ppq` is
- * NaN when it gave a position without a musical one. */
+ * NaN when it gave a position without a musical one. `looping` with the
+ * cycle's start and end in beats, as the host reports them; what a cycle
+ * that cannot be played means is ni::wire::host_loop's to decide.
+ * `timeInSamples` is the block's first sample on the host's timeline,
+ * meaningful only while `timed`: playing, with a position in samples -- the
+ * one clock two tracks' blocks share exactly (the audio bus stamps by it). */
 struct HostClock
 {
     bool known = false;
@@ -57,6 +72,11 @@ struct HostClock
     double bpm = 0.0;
     int numerator = 0;
     int denominator = 0;
+    bool looping = false;
+    double loopStart = 0.0;
+    double loopEnd = 0.0;
+    bool timed = false;
+    std::int64_t timeInSamples = 0;
 };
 
 /* The transport from a play head, or an unknown clock for none. Audio thread;
@@ -85,6 +105,7 @@ public:
     const juce::String getProgramName (int) override { return "Default"; }
     void changeProgramName (int, const juce::String&) override {}
 
+    void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) final;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) final;
     using juce::AudioProcessor::processBlock;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) final;
@@ -106,6 +127,11 @@ public:
     static constexpr int stateFormat = 1;
 
 protected:
+    /* The host's rate and longest block, before the first block at them: what
+     * a product sizes its buffers by. The host's thread, never the audio
+     * one. */
+    virtual void prepare (double sampleRate, int maximumExpectedSamplesPerBlock) = 0;
+
     /* One block of the product. Audio thread. */
     virtual void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) = 0;
 
@@ -113,6 +139,11 @@ protected:
      * bypass parameter: JUCE's own handling (audio through, a latency kept)
      * unless a product says otherwise. Audio thread. */
     virtual void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&);
+
+    /* Whether process() leaves the audio exactly as it came -- an analyser,
+     * a tap. Its Bypass then has nothing to fade: it switches at the block,
+     * and process() is never run for a block that is bypassed. */
+    virtual bool passesAudioThrough() const noexcept { return false; }
 
     /* The state, both ways, on any thread but the audio one: touch no
      * component. readState returns whether it understood what it was given;
@@ -135,6 +166,22 @@ protected:
     void nonParameterStateChanged();
 
 private:
+    /*
+     * THE BYPASS FADE: where the output stands between what process() makes
+     * (0) and the input (1), moved by `step` a sample towards wherever the
+     * Bypass is. The input is kept in `dry` -- `dryChannels` channels of
+     * `dryFrames`, allocated in prepareToPlay -- while a fade runs, since
+     * process() writes over it in place.
+     */
+    static constexpr double bypassFadeSeconds = 0.010;
+    std::vector<float> dry;
+    int dryChannels = 0, dryFrames = 0;
+    float bypassMix = 0.0f, bypassStep = 1.0f;
+
+    bool bypassParameterOn() const;
+    /* One block while the fade runs: process(), then the input mixed in. */
+    void processFading (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool bypassed);
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Processor)
 };
 

@@ -64,6 +64,8 @@ const JUCE_PLUGINS = {
     /shell_handoff_acquire/],
   /* Its block, heard or bypassed, is one run() around sc_shell_begin. */
   'NI Side-Chain': ['plugins/side-chain/SideChain.h', 'plugins/side-chain/SideChain.cpp', /^run\s*\(/],
+  /* Its block, heard or bypassed, is one run() around bc_shell_begin. */
+  'NI Bit-Crusher': ['plugins/bit-crusher/BitCrusher.h', 'plugins/bit-crusher/BitCrusher.cpp', /^run\s*\(/],
   /* Its block is the engine taken, pushed, sung through and given back. */
   'NI Vocalize': ['plugins/vocalize/Vocalize.h', 'plugins/vocalize/Vocalize.cpp', /vz_shell_begin/],
 };
@@ -93,7 +95,7 @@ for (const [name, [h, cpp, audioStarts]] of Object.entries(JUCE_PLUGINS)) {
     assert.ok(tick >= 0 && audio > tick, 'the ground is ticked before the engine runs, and before an early return');
     assert.ok(process.slice(0, tick).every((st) => !/return/.test(st)), 'nothing returns before the tick');
     assert.match(body(src, 'Processor', 'processBypassed'), /\.tick\s*\(\s*(readClock\s*\(|clock\s*,)/);
-    assert.match(body(src, 'Processor', 'prepareToPlay'), /\.prepare\s*\(/);
+    assert.match(body(src, 'Processor', 'prepare'), /\.prepare\s*\(/);
     assert.match(body(src, 'Processor', 'editorOpened'), /\.setActive\s*\(\s*true\s*\)/);
     assert.match(body(src, 'Processor', 'editorClosed'), /\.setActive\s*\(\s*false\s*\)/);
   });

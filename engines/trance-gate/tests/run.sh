@@ -114,7 +114,11 @@ cc $CSTD -Wall -Wextra -Iinclude -I"$CAPI" \
 # The phase-loop and parameter-glide changes of the same series move nothing
 # here. tests/render_plugin.c pins the same bytes through the plugin path.
 # Previous: 3992810c52d7962b4d25b3a30494ee2e
-GOLDEN=d8389d25abb3c44b34461f3029f6ab48
+# Re-recorded 2026-10-10 with tests/tg_render_golden.h (FNV 0x4ABE0A4A7B500DA5):
+# stage starts/ends between samples, 1 ms edge floor; see that header for the
+# verification.
+# Previous: d8389d25abb3c44b34461f3029f6ab48
+GOLDEN=0d33760ad2d80dd434b2d1e475fb7533
 cc $CSTD -Wall -Wextra -Wno-unused-parameter -Iinclude -I"$CAPI" \
    tests/render_ref.c "$ENGINE" \
    -o "$OUT/render_ref" -lm
@@ -128,8 +132,20 @@ else
   exit 1
 fi
 
-# The Move editor's test, which needs a Schwung checkout beside this one and
-# says so when there is none (tests/ui.sh; ctest runs it as tg_move_ui).
+# THE STATE BLOB AGAINST THE CALLBACK'S BLOCK: set_param("state") and
+# get_param("state") on the largest realistic patch, timed through the vtable
+# and held to a share of one 128-frame block (tests/state_budget.c says why
+# those shares). Here rather than in ctest's quick tier because it is a timing,
+# and because modules/_shared/test.sh runs this script on aarch64, the nearest
+# a test machine gets to the Move's CPU.
+echo
+cc $CSTD -Wall -Wextra -Wno-unused-parameter -Iinclude \
+   tests/state_budget.c "$ENGINE" -o "$OUT/state_budget" -lm
+"./$OUT/state_budget" || exit 1
+
+# The Move editor's test, against the Schwung the modules are pinned to
+# (modules/_shared/schwung.version; tests/ui.sh; ctest runs it as tg_move_ui).
+# It skips without node, which the module image does not have.
 echo
 status=0
 tests/ui.sh || status=$?

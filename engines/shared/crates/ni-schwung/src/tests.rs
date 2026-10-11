@@ -17,7 +17,8 @@ struct Probe {
 impl Module for Probe {
     const CHAIN_PARAMS: &'static str = r#"[{"key":"x"}]"#;
     fn new(sample_rate: f64) -> Self {
-        assert_eq!(sample_rate, SAMPLE_RATE);
+        /* Every host table in this file is at the Move's rate, or absent. */
+        assert_eq!(sample_rate, DEFAULT_SAMPLE_RATE);
         Probe::default()
     }
     fn process_i16(&mut self, buf: &mut [i16], frames: usize, t: Option<&Transport>) {
@@ -64,14 +65,80 @@ extern "C" fn other_beats() -> f64 {
     9.0
 }
 
+/*
+ * THE MIRRORS, LISTED FIELD BY FIELD AND HELD TO abi/layout.def -- the table
+ * abi/layout.c holds the vendored C headers to, so this and the C agree
+ * through one list rather than through two copies of its numbers.
+ *
+ * Each list is also EXHAUSTIVE BY CONSTRUCTION: the closure destructures the
+ * struct without `..`, so a field added to a mirror and not listed here is a
+ * compile error, not a field nobody checks.
+ */
+macro_rules! fields {
+    ($s:ident { $($f:ident),* $(,)? }) => {{
+        let _every_field = |v: $s| {
+            let $s { $($f: _),* } = v;
+        };
+        vec![$((stringify!($s), stringify!($f), offset_of!($s, $f))),*]
+    }};
+}
+
+/// One `NI_ABI_*(a, b, ...)` line of abi/layout.def, its arguments split.
+fn layout_entries(kind: &str) -> Vec<Vec<String>> {
+    let def = include_str!("../abi/layout.def");
+    let head = format!("NI_ABI_{kind}(");
+    def.lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix(head.as_str()))
+        .map(|rest| {
+            let args = rest.strip_suffix(')').unwrap_or_else(|| panic!("{kind}({rest}: one entry per line"));
+            args.split(',').map(|a| a.trim().to_string()).collect()
+        })
+        .collect()
+}
+
 #[test]
-fn the_host_table_matches_the_c_layout() {
-    /* 64-bit offsets of the two fields read, from plugin_api_v1.h. */
-    if std::mem::size_of::<*const u8>() == 8 {
-        assert_eq!(offset_of!(HostApiV1, get_bpm), 88);
-        assert_eq!(offset_of!(HostApiV1, get_beat_position), 112);
-        assert_eq!(std::mem::size_of::<HostApiV1>(), 184);
+fn the_mirrors_are_the_layout_the_c_headers_are_held_to() {
+    if std::mem::size_of::<*const u8>() != 8 {
+        return; /* the table is LP64 (abi/layout.def) */
     }
+    let mut ours = fields!(HostApiV1 {
+        api_version, sample_rate, frames_per_block, mapped_memory, audio_out_offset,
+        audio_in_offset, log, midi_send_internal, midi_send_external, get_clock_status,
+        mod_emit_value, mod_clear_source, mod_host_ctx, get_bpm, midi_inject_to_move,
+        slot_recv_channel, get_beat_position, reserved,
+    });
+    ours.extend(fields!(AudioFxApiV2 {
+        api_version, create_instance, destroy_instance, process_block, set_param, get_param, on_midi,
+    }));
+    let table: Vec<(String, String, usize)> = layout_entries("FIELD")
+        .into_iter()
+        .map(|a| (a[1].clone(), a[2].clone(), a[3].parse().unwrap()))
+        .collect();
+    let ours: Vec<(String, String, usize)> =
+        ours.into_iter().map(|(s, f, o)| (s.to_string(), f.to_string(), o)).collect();
+    assert_eq!(ours, table, "the Rust mirrors and abi/layout.def disagree");
+
+    let sizes: Vec<(String, usize)> =
+        layout_entries("SIZE").into_iter().map(|a| (a[1].clone(), a[2].parse().unwrap())).collect();
+    assert_eq!(
+        sizes,
+        [
+            ("HostApiV1".to_string(), std::mem::size_of::<HostApiV1>()),
+            ("AudioFxApiV2".to_string(), std::mem::size_of::<AudioFxApiV2>()),
+        ]
+    );
+
+    let consts: Vec<(String, f64)> =
+        layout_entries("CONST").into_iter().map(|a| (a[1].clone(), a[2].parse().unwrap())).collect();
+    assert_eq!(
+        consts,
+        [
+            ("HOST_API_VERSION".to_string(), f64::from(HOST_API_VERSION)),
+            ("AUDIO_FX_API_VERSION".to_string(), f64::from(AUDIO_FX_API_VERSION)),
+            ("DEFAULT_SAMPLE_RATE".to_string(), DEFAULT_SAMPLE_RATE),
+        ]
+    );
 }
 
 /* ONE TEST drives the vtable: the host's clock is process-wide, as on the

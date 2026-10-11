@@ -4,25 +4,32 @@
 # Build site/ and deploy it to GitHub Pages.
 #
 # THE SITE RENDERS THE REPOSITORY'S OWN MARKDOWN -- a product's README and its
-# two interface documents, and docs/tech/ -- so the trigger has to watch those
-# as well as site/ itself. A doc fix that did not redeploy would leave the site
-# quietly stale, which is worse than not having one.
+# two interface documents, and docs/tech/ -- and its download links name
+# released versions. So it is deployed when a release has been published, and
+# built from main: main is where release-schwung.yml records a module release
+# in release.json, and the docs a release ships with.
 #
-# `release: published` is here because the download links are composed from
-# versions.json and release.json rather than typed: publishing a release is what
-# changes them, and it happens without a push to main.
+# CALLED BY THE RELEASE WORKFLOWS, NOT TRIGGERED BY THE RELEASE. This used to
+# listen for `release: published`, and never once ran for one: both release
+# workflows publish with the default GITHUB_TOKEN, and GitHub starts no
+# workflow from an event that token caused. So each release workflow calls
+# this one as its last job, after its release is published (workflow_call).
+#
+# THE DOWNLOAD LINKS ARE THE PUBLISHED RELEASES. versions.json is what the
+# tree builds, which runs ahead of what is released and may be a beta; the
+# site links each product's newest published, non-prerelease release
+# (scripts/release.mjs, latestStableRelease), read here from GitHub as
+# NI_RELEASES.
 name: Pages
 
 on:
-  # THE SITE FOLLOWS A RELEASE. Its download links name release tags, so it is
-  # deployed when a release is published -- never by a push to main, which would
-  # link a version nobody has released yet.
-  release:
-    types: [published]
-  # THE HAND CRANK. Everything above is a consequence of something else, and
-  # Pages has to be switched on in the repository's settings before this can
-  # deploy at all -- so the run that discovers it is NOT on takes the failure
-  # with it, and this is what retries once the setting is corrected.
+  # From release-plugins.yml and release-schwung.yml, once they have
+  # published.
+  workflow_call:
+  # THE HAND CRANK: a redeploy after a fix to the site or a doc, or after a
+  # release has been rolled back (docs/tech/ci-live.md). Pages has to be
+  # switched on in the repository's settings before this can deploy at all,
+  # and this is what retries once it is.
   workflow_dispatch:
 
 permissions:
@@ -30,28 +37,62 @@ permissions:
   pages: write
   id-token: write
 
-# NOT cancel-in-progress. Cancelling a deploy mid-flight can leave the site on a
-# half-uploaded artifact, and the thing being raced here takes seconds.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-24.04
+    # ONE DEPLOY AT A TIME, ACROSS EVERY CALLER. A tag for a product with a
+    # plugin and a module runs both release workflows, and both call this. NOT
+    # cancel-in-progress: cancelling a deploy mid-flight can leave the site on
+    # a half-uploaded artifact. That protects the RUNNING deploy only: the
+    # group holds one running and one pending run, and a third run cancels
+    # the pending one -- which is harmless, because every run builds the same
+    # thing, main and the published releases as they are when it starts. (The
+    # release run whose call was cancelled shows its pages job cancelled; its
+    # release is published all the same, and the newer run deploys it.) The
+    # build is in this job, not a job of its own, so the run that deploys
+    # last also built last, from the newest of both.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    # A run started by a tag deploys from that tag's ref: the github-pages
+    # environment must allow the release tags (docs/tech/ci-live.md).
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       # No submodules. The site needs no JUCE, and pulling it would add
       # minutes and a large tree for a build that never looks at it.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: '22'
           cache: npm
 
       - run: npm ci
 
+      # Drafts are left out by the script; a failed release has no entry at
+      # all, so its tag is never linked. With each release's assets, an asset
+      # once its upload finished: a release the module's workflow published
+      # while the plugin's build failed has no zip, and is not linked either
+      # (scripts/release.mjs, latestStableRelease). `gh release list` cannot
+      # say what a release carries, so this reads the API it wraps.
+      - name: What has been released
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | {
+              tagName: .tag_name, isPrerelease: .prerelease, isDraft: .draft,
+              assets: [.assets[] | select(.state == "uploaded") | .name] }' \
+            | jq -s . > "$RUNNER_TEMP/releases.json"
+          echo "$(jq length "$RUNNER_TEMP/releases.json") releases"
+
       - name: Build
+        env:
+          NI_RELEASES: ${{ runner.temp }}/releases.json
         run: npm run build --workspace site
 
       # Before upload, not after: a broken internal link should stop the deploy
@@ -65,19 +106,12 @@ jobs:
       # enabled and configured to build using GitHub Actions". With this it
       # turns itself on the first time instead, which is one less setting that
       # has to be remembered when a repository is forked or recreated.
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5.0.0
         with:
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3.0.1
         with:
           path: site/dist
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-24.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4.0.5

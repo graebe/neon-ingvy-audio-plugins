@@ -49,7 +49,7 @@ use windows_sys::Win32::System::Threading::{
     GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 
-use super::{Name, NAME_CAP};
+use super::{Name, Refused, NAME_CAP};
 
 /// The session's own namespace. "Global\" would reach every session, and
 /// creating there takes a privilege a plugin host does not have.
@@ -100,7 +100,10 @@ fn map(handle: HANDLE, access: FILE_MAP, size: usize) -> Option<MEMORY_MAPPED_VI
     (!base.Value.is_null()).then_some(base)
 }
 
-pub fn create_or_open(name: &Name, size: usize) -> Option<(View, bool)> {
+/* A shorter section under the name fails to map and is `Failed`, not
+ * `Foreign`: Windows cannot take a name from a section somebody holds, so
+ * there is nothing a claimer could do with the difference. */
+pub fn create_or_open(name: &Name, size: usize) -> Result<(View, bool), Refused> {
     let wide = wide(name);
     let size = size as u64;
 
@@ -122,15 +125,15 @@ pub fn create_or_open(name: &Name, size: usize) -> Option<(View, bool)> {
         )
     };
     if handle.is_null() {
-        return None;
+        return Err(Refused::Failed);
     }
     let created = unsafe { GetLastError() } != ERROR_ALREADY_EXISTS;
 
     match map(handle, FILE_MAP_READ | FILE_MAP_WRITE, size as usize) {
-        Some(base) => Some((View { base, name: Some(handle) }, created)),
+        Some(base) => Ok((View { base, name: Some(handle) }, created)),
         None => {
             unsafe { CloseHandle(handle) };
-            None
+            Err(Refused::Failed)
         }
     }
 }

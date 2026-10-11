@@ -197,14 +197,20 @@ int main(void) {
      * wrong tempo, which is the one bug nobody would file as "a bug".
      */
     printf("sample rate:\n");
+    /*
+     * The step is 0.125 s; the gate SHUTS -- falls through half -- half of
+     * the shortest edge after it: a 0 % release still takes the engine's
+     * 1 ms floor (EDGE_MIN_MS in tg-core), so 0.5 ms more at every rate.
+     */
     struct { double sr; int want; } cases[] = {
-        { 44100.0, 5512 }, { 48000.0, 6000 }, { 96000.0, 12000 },
+        { 44100.0, 5512 + 22 }, { 48000.0, 6000 + 24 }, { 96000.0, 12000 + 48 },
     };
     for (unsigned i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
         char what[80];
         snprintf(what, sizeof(what), "%.0f Hz: one 1/16 step at 120 BPM", cases[i].sr);
         int got = frames_until_gate_shuts(cases[i].sr, 120.0f);
-        /* +-1 frame: the boundary can land mid-sample. */
+        /* +-1 frame: the boundary can land mid-sample, and the count is of
+         * the first frame BELOW half. */
         check_near(what, got, cases[i].want, 1.0);
     }
     {
@@ -1848,7 +1854,9 @@ int main(void) {
         tg_core_t *b = mk_flat(15, "0");
         tg_core_set_param(a, "randomize", "12345");
         tg_core_set_param(b, "randomize", "12345");
-        char pa[256], pb[256];
+        /* TG_STATE_MAX, as every embedder sizes it: a smaller buffer gets
+         * no patch at all rather than the first 255 bytes of one. */
+        char pa[TG_STATE_MAX], pb[TG_STATE_MAX];
         tg_core_get_param(a, "state", pa, sizeof(pa));
         tg_core_get_param(b, "state", pb, sizeof(pb));
         check("the same seed gives the same pattern", strcmp(pa, pb) == 0);

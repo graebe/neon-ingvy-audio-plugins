@@ -94,6 +94,11 @@
   --plot-dry: #6b6b78;
   --plot-fill: #1d1533;
   --plot-ghost: #3a2a66;
+  /* plot-key, Ultraviolet 1.2's: the reference a processor reacts to -- the
+   * kick behind NI Side-Chain's duck -- as a band behind the dry input. The
+   * value of amber: a band in a plot is that signal, a rule or a mark is still
+   * the warning. */
+  --plot-key: #ffb000;
 
   /*
    * THE PLAYHEAD CROSSING A PAD THAT IS ALREADY LIT: bg-000 at a quarter alpha,

@@ -157,8 +157,10 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   exists), the token guards (`ui_tokens_native`: the generated `UvTokens.h`
   against the design system; `site_tokens`: the site's `tokens.css` against
   it, and no colour spelled anywhere else in the site), `ground_shells` (the
-  order of the ground's calls in every processor), and `timing` (the timing
-  log's helper and its summary).
+  order of the ground's calls in every processor), `timing` (the timing
+  log's helper and its summary), `toolchain` (the Move and Linux images
+  build with `rust-toolchain.toml`'s Rust, and every base image is pinned by
+  digest) and `test_summary` (the report below).
 
 No bundle, no host, no second process. Warm, it takes under twenty seconds
 (Build speed, above).
@@ -175,6 +177,7 @@ Everything quick runs, and:
 | `ipc` | the bus written in one process and read in another — and, on an arm64 Mac with Rosetta, between the x86_64 and arm64 slices both ways round |
 | `bundles` | per bundle: it carries its notices (`licenses_bundle_*`); its signature verifies as Live's scanner checks it (`codesign_*`: `codesign --verify --deep --strict`); its version spellings (`versions_bundle_*`); the release staging, dry-run against it (`release_bundle_*`) |
 | `site` | every root-relative link on the built site resolves |
+| `advisories` | `cargo_deny_advisories`: `cargo deny check advisories` against RustSec's database as it is today — a vulnerable, unsound or unmaintained crate, or a yanked version, anywhere in the graph. Fetched at run time, so it is here and not in quick (**Licences**, below) |
 | `coverage` | the coverage floor, in the instrumented build |
 | `move` | every Schwung module (`move_<module>`, one per `modules/<module>/module.env`), built and tested by `modules/_shared/test.sh` in the module image on aarch64 Linux: the tarball's `.so` is aarch64 and exports nothing of the plugin's shell or ground, it carries `LICENSE` and a notice for every crate it links, the module's crates' cargo tests (the vtable, `chain_params`, the host panic on CC 120/123) pass on the Move's architecture, and the Trance Gate's golden render (`engines/trance-gate/tests/run.sh`) keeps its md5 there. Needs Docker running as arm64 (Apple Silicon); not registered without Docker |
 
@@ -182,6 +185,18 @@ Everything quick runs, and:
 then `scripts/coverage.sh` with the floor enforced (skipped with
 `--no-coverage`, for the gates between steps), then the validators over the
 bundles in `build/out` (or `--bundles DIR`).
+
+**A passing run is recorded on the commit it tested.** `full` (with
+coverage) and `product <product>` append one JSON line — tier, products,
+commit, date, host, `rustc --version`, and the run's test count, duration and
+build — to a git note on `HEAD` under `refs/notes/ni-tests`
+(`scripts/release.mjs attest`). The release workflows refuse a tag whose
+commit carries no passing note for its product
+([Build & CI — Live](ci-live.md), **The order of a release**), so a run is
+only recorded when it tested exactly a commit: not with uncommitted or
+untracked changes at its start or end, not when `HEAD` moved under it, not
+with `--no-coverage`, and not on a GitHub runner. The run stays green either
+way and says in its last lines why it was not recorded.
 
 **The validators** (`scripts/validate-plugins.sh`, VST3 only) are the hosts'
 own rules rather than ours: `pluginval` at strictness 10 **with its editor
@@ -200,6 +215,43 @@ builds before the JUCE shell (v2026.10.06.5) saved, captured through the calls L
 test loads each to its exact parameters, `nist_fixtures` writes each back
 byte for byte, and each host test reopens each in the built VST3. They cannot
 be captured again from this tree: the README names the commit that can.
+
+## What a run did not test
+
+A green ctest says nothing that ran failed. It does not say what did not run:
+a test whose tool is missing is not registered at all (Docker for the `move`
+tests, Rosetta for the bus across architectures, node for the tree checks),
+and a test whose input is missing reports Skipped (`schwung_pin` and
+`tg_move_ui` when the pinned Schwung is neither cached nor fetchable;
+`shell_handoff` while a Listen-In in Live holds the bus slot it tests on). So
+every tier writes down what it covered.
+
+Configure records each missing capability in `<build>/ni-capabilities.txt`
+(`ni_missing_capability`, `cmake/NiTest.cmake`); ctest writes its JUnit report;
+and `scripts/test-summary.mjs` reads both into `<build>/test-summary.md`: the
+counts, every test that did not run and why, every capability the build
+lacked, by product, with the commit and the toolchain. A release attaches it
+beside its zip (`<product>-<version>-macOS-tests.md`).
+
+**The full tier is the gate on it.** It fails while anything did not run,
+unless the run waived it by name:
+
+```sh
+scripts/test.sh full --waive rosetta                 # a capability this Mac lacks
+scripts/test.sh full --waive schwung_pin,tg_move_ui  # several, comma-separated
+NI_WAIVE=rosetta scripts/test.sh full                # the same, from the environment
+```
+
+A waiver is written into the summary too, so a gap that was accepted is still
+a gap on the record. The quick tier and a product run report and do not gate.
+Nothing to read is not a clean slate: under the gate, a JUnit report with no
+test cases in it, or a build with no `ni-capabilities.txt`, fails the run,
+because neither can say what ran. A full or product run's note
+(`refs/notes/ni-tests`, [Build & CI](ci-live.md)) carries the verdict as
+well -- `gaps`, `waived` and `untested` -- so a release shows what the run it
+relies on did not test, and a release refuses a run with `gaps` above 0: the
+product run passes, but it releases nothing until every gap is waived or
+closed.
 
 ## Product — one product, as its release runs it
 
@@ -281,7 +333,10 @@ the pinned one.
 
 **Advisories are not part of the quick tier.** They come from a database
 fetched at check time, so the verdict would change without a commit.
-`cargo deny check advisories` is the separate question, asked on demand.
+`cargo deny check advisories` is the separate question: `cargo_deny_advisories`
+in the full tier and each product's run, and both release workflows on the
+day they publish. `deny.toml`'s `[advisories]` says what fails it: any
+vulnerability, a crate declared unmaintained or unsound, a yanked version.
 
 ## Labels, not lists
 

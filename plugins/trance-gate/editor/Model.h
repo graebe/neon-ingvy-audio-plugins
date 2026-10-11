@@ -217,10 +217,14 @@ public:
 
     /* ---- the pattern's edits: none is a host parameter */
 
-    /* Off, on or tie for one step; the engine moves the cursor there. */
+    /* Off, on or tie for one step; the engine moves the cursor there. A step
+     * switched on from off comes on at its full amount. */
     virtual void setStep (int index, StepMode) = 0;
     /* A step's amount, 0..1. */
     virtual void setDepth (int index, float amount) = 0;
+    /* Both at once, as ONE edit: the engine applies them in the same block,
+     * so no block plays the step at an amount it was never given. */
+    virtual void setStepWithDepth (int index, StepMode, float amount) = 0;
     /* A step's place in the fade's order, 1..n among its kind; the engine
      * swaps it with the step that held that place and keeps a permutation. */
     virtual void setOrder (int index, int rank) = 0;
@@ -229,8 +233,9 @@ public:
     virtual void randomize() = 0;
     /* A random arrival order for the steps the fade is bringing in (the hits,
      * or under Fade Out the holes), the pattern left as it is: the plugin
-     * deals a permutation and ranks the steps down it with setOrder, as the
-     * web editor did, so two presses differ and the editor holds no dice. */
+     * deals a permutation and ranks the steps down it as setOrder does, as
+     * the web editor did -- all of it ONE edit, applied in one block -- so
+     * two presses differ and the editor holds no dice. */
     virtual void shuffleOrder() = 0;
 
     /* ---- slots as text: what a file and the clipboard carry */

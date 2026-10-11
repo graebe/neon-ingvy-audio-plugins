@@ -95,6 +95,7 @@ JetBrains Mono declaring none.
 | `NIListenIn.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | the documentation site | emitted by the build as a hashed asset under `/neon-ingvy-audio-plugins/_astro/` | `/neon-ingvy-audio-plugins/fonts/OFL.txt` |
 | `NIChordDetector.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NIBitCrusher.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | `NIVocalize.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits
@@ -132,6 +133,7 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 | `bus-core`, `bus-capi` | `engines/audio-bus` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber, with a ported part — see below |
 | `cd-core`, `cd-capi` | `engines/chord-detector` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `bc-core`, `bc-capi`, `bc-move` | `engines/bit-crusher` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `vz-core`, `vz-capi`, `vz-move` | `engines/vocalize` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ground-core`, `ground-capi` | `engines/ground` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
@@ -181,6 +183,7 @@ from `Cargo.lock`; scripts/gen-rust-notices.sh rewrites it.
 | `arrayvec` | 0.7.8 | MIT OR Apache-2.0 |
 | `atomic_float` | 1.1.0 | Apache-2.0 OR MIT OR Unlicense |
 | `basedrop` | 0.1.3 | MIT OR Apache-2.0 |
+| `biquad` | 0.6.0 | MIT OR Apache-2.0 |
 | `crossbeam-utils` | 0.8.23 | MIT OR Apache-2.0 |
 | `fastrand` | 2.5.0 | Apache-2.0 OR MIT |
 | `itoa` | 1.0.18 | MIT OR Apache-2.0 |
@@ -189,6 +192,7 @@ from `Cargo.lock`; scripts/gen-rust-notices.sh rewrites it.
 | `lexical-parse-integer` | 1.0.6 | MIT OR Apache-2.0 |
 | `lexical-util` | 1.0.7 | MIT OR Apache-2.0 |
 | `libc` | 0.2.190 | MIT OR Apache-2.0 |
+| `libm` | 0.2.16 | MIT |
 | `memchr` | 2.8.3 | Unlicense OR MIT |
 | `num-complex` | 0.4.6 | MIT OR Apache-2.0 |
 | `num-integer` | 0.1.47 | MIT OR Apache-2.0 |
@@ -321,6 +325,37 @@ SOFTWARE.
 
 ```
 
+### MIT License: `biquad` 0.6.0
+
+```text
+Copyright (c) 2018
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+```
+
 ### MIT License: `transpose` 0.2.3
 
 ```text
@@ -445,8 +480,9 @@ DEALINGS IN THE SOFTWARE.
 
 ```
 
-### MIT License: `realfft` 3.5.0
+### MIT License: `libm` 0.2.16, `realfft` 3.5.0
 
+`libm` 0.2.16 ships no licence file. Its manifest declares MIT and names `Alex Crichton <alex@alexcrichton.com>`, `Amanieu d'Antras <amanieu@gmail.com>`, `Jorge Aparicio <japaricious@gmail.com>`, `Trevor Gross <tg@trevorgross.com>` as its author; its source is at <https://github.com/rust-lang/compiler-builtins>.
 `realfft` 3.5.0 ships no licence file. Its manifest declares MIT and names `HEnquist <henrik.enquist@gmail.com>` as its author; its source is at <https://github.com/HEnquist/realfft>.
 The text below is therefore the licence as SPDX publishes it, whose copyright
 line is a placeholder for the authorship stated above.
@@ -1063,7 +1099,7 @@ is known.
 |---|---|---|
 | `Ubuntu 24.04` packages: the base image, build-essential, CMake, Ninja, pkgconf, the X11, ALSA, FreeType and Fontconfig development packages, Xvfb, DejaVu fonts | both build images, from one Ubuntu archive snapshot | each its own free-software licence (GPL, LGPL, MIT/X11, BSD and the like, per Ubuntu's archive policy) |
 | `LLVM` 20: clang, clang-cl, lld, llvm-lib, llvm-rc, llvm-mt | both build images | **Apache-2.0 WITH LLVM-exception** |
-| `rustup` 1.29.1 and the Rust 1.98.1 toolchain | both build images | **MIT OR Apache-2.0** |
+| `rustup` 1.29.1 and the Rust 1.99.0 toolchain | both build images | **MIT OR Apache-2.0** |
 | `xwin` 0.10.0 | Windows image | **MIT OR Apache-2.0** |
 | `Wine` 9.0 | Windows image | **LGPL-2.1-or-later** |
 | `pluginval` 1.0.4 | all three platforms | **GPL-3.0** |

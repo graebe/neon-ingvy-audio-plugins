@@ -10,20 +10,53 @@ use crate::clock::Run;
 use crate::envelope::{Stage, StageLens};
 use crate::{Instance, Transport, MAX_STEPS};
 
+/*
+ * How many samples ago a point `past` steps behind the playhead was, when the
+ * playhead moves `inc` steps a sample -- if it was crossed within the last
+ * sample. Anything further back was not crossed but arrived at (Width turned
+ * down past the playhead, a boundary after a seek), and begins now.
+ */
+#[inline]
+fn since(past: f64, inc: f64) -> f64 {
+    if inc > 0.0 && past >= 0.0 && past < inc {
+        past / inc
+    } else {
+        0.0
+    }
+}
+
 impl Instance {
     /*
      * A step boundary. This is the whole of what a tie means: an ON step
      * arriving on top of a held ON step does NOT restart the envelope.
      */
-    fn on_step_boundary(&mut self, prev_step: Option<usize>, new_step: usize, l: &StageLens) {
+    /*
+     * `elapsed` is how long ago, in samples, the boundary actually was: it
+     * falls between samples, and the stage it opens is entered that far in --
+     * see `Env::enter`.
+     */
+    fn on_step_boundary(&mut self, prev_step: Option<usize>, new_step: usize, l: &StageLens, elapsed: f64) {
         /* THE FADE'S WEIGHTS ARE READ BEFORE THE PATTERN IS BORROWED, not
          * because the borrow checker insists but because `sounds` consults
          * `self` and `p` holds a shared borrow of it. Three reads, named. */
-        let on_now = self.sounds(new_step);
         let on_prev = prev_step.is_some_and(|s| self.sounds(s));
         let w_now = if new_step < MAX_STEPS { self.fade_w[new_step] } else { 0.0 };
         let p = &self.pat[self.slot];
         let tied = prev_step.is_some_and(|s| p.tied(s));
+        /* THE FADE SCALES THE STEP'S LEVEL, AND IT SCALES IT HERE. This is the
+         * one place the struck step's level is read, and it is latched for the
+         * whole gate -- so a step whose arrival completes mid-gate does not
+         * step its own level and click. The knob is smooth ACROSS steps rather
+         * than within one, which is what "the fields are introduced one by
+         * one" means.
+         *
+         * A LEVEL THAT ROUNDS TO NOTHING IS A GAP. `sounds` already says so
+         * for a level of 0; a soft fade can still hand a step a weight of a
+         * millionth, and the attack below divides by the level. Either way the
+         * step closes the gate the way a gap does, with a release from where
+         * the gain is. */
+        let lvl = if new_step < MAX_STEPS { p.depth[new_step] as f32 * (1.0 / 255.0) * w_now } else { 0.0 };
+        let on_now = self.sounds(new_step) && lvl > 1.0e-6;
 
         if on_now {
             /*
@@ -35,18 +68,6 @@ impl Instance {
              * BELOW 100%, which is where a retrigger actually re-articulates.
              */
             if !(on_prev && (tied || self.snd().legato)) {
-                /* THE FADE SCALES THE STEP'S LEVEL, AND IT SCALES IT HERE.
-                 *
-                 * This is the one place the struck step's level is read, and
-                 * it is latched for the whole gate -- so a step whose arrival
-                 * completes mid-gate does not step its own level and click.
-                 * The knob is smooth ACROSS steps rather than within one,
-                 * which is what "the fields are introduced one by one" means.
-                 *
-                 * A weight of 0 never reaches this line: `on_now` is already
-                 * false there, so the step is a gap. */
-                let lvl = p.depth[new_step] as f32 * (1.0 / 255.0) * w_now;
-
                 /*
                  * THE ATTACK STARTS WHERE THE GAIN IS, NOT WHERE `env` IS.
                  *
@@ -64,15 +85,11 @@ impl Instance {
                  */
                 let gain_now = self.env.level as f64 * self.step_level as f64;
                 self.step_level = lvl;
-                self.env.level = if lvl > 1.0e-6 {
-                    (gain_now / lvl as f64) as f32
-                } else {
-                    0.0
-                };
-                self.env.enter(Stage::Attack, l);
+                self.env.level = (gain_now / lvl as f64) as f32;
+                self.env.enter(Stage::Attack, l, elapsed);
             }
         } else if on_prev || self.env.stage != Stage::Idle {
-            self.env.enter(Stage::Release, l);
+            self.env.enter(Stage::Release, l, elapsed);
         }
     }
 
@@ -103,7 +120,11 @@ impl Instance {
 
         if Some(r.step) != self.last_step {
             let prev = self.last_step;
-            self.on_step_boundary(prev, r.step, &l);
+            /* A step CROSSED in the last sample began `frac / inc` samples
+             * ago. A boundary forced by a start, a seek or a jump (no previous
+             * step) begins now: the gate picks up where the playhead landed. */
+            let elapsed = if prev.is_some() { since(r.frac, r.inc) } else { 0.0 };
+            self.on_step_boundary(prev, r.step, &l, elapsed);
             self.last_step = Some(r.step);
         }
 
@@ -141,7 +162,8 @@ impl Instance {
             let p = &self.pat[self.slot];
             let held = here && (p.tied(r.step) || (snd.legato && there));
             if r.frac >= snd.hold as f64 && !held {
-                self.env.enter(Stage::Release, &l);
+                let elapsed = since(r.frac - snd.hold as f64, r.inc);
+                self.env.enter(Stage::Release, &l, elapsed);
             }
         }
 

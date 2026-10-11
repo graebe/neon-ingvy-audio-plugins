@@ -64,6 +64,10 @@ One well, **one axis**, and that is the whole editor:
   itself from the parameters, never by a second copy of its maths
 - the **signal** behind it: the input dimmed, the output in front, and the gain
   the plugin actually applied as a thin line
+- the **kick** you duck against, if you choose one: in amber, behind it all,
+  from the sidechain key or from an NI Listen-In on the kick's track — drawn
+  where each sample sounded in the cycle, to the sample, whichever track Live
+  ran first ([Seeing the kick](docs/live.md#seeing-the-kick))
 
 They line up because the capture is phase-locked to the trigger rather than
 rolling on wall time — so a dip in the waveform sits under the curve that made

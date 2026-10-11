@@ -9,7 +9,8 @@
 # its VST3 ID (LEGACY_PARAM_IDS). Fx|Tools, as the iPlug2 build filed it: a
 # utility, not an analyzer. It has no DSP: the house transport, audio-bus, is
 # its whole engine, and carries the Ground's and the shell handoff's C ABI.
-# The editor is editor/, on the native kit.
+# The editor is editor/, on the native kit. ni/Wire.cpp is the shells' own
+# transport and loop arithmetic, which stamps the bus by the host's timeline.
 ni_add_juce_plugin(listen-in
     TARGET NIListenIn
     NAME "NI Listen-In"
@@ -23,5 +24,6 @@ ni_add_juce_plugin(listen-in
         ListenIn.cpp ListenIn.h
         EngineModel.cpp EngineModel.h
         State.cpp State.h
-        Wire.cpp Wire.h)
+        Wire.cpp Wire.h
+        ${CMAKE_SOURCE_DIR}/plugins/_shared/ni/Wire.cpp)
 target_include_directories(NIListenIn PRIVATE ${CMAKE_SOURCE_DIR}/plugins/_shared)

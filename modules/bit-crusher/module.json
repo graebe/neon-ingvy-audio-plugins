@@ -1,0 +1,16 @@
+{
+  "id": "ni-bit-crusher",
+  "name": "NI Bit-Crusher",
+  "abbrev": "BC",
+  "version": "2026.10.11.1",
+  "description": "Bit crusher: fewer levels, taken less often",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-bit-crusher.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}

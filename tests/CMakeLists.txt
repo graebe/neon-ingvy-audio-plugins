@@ -174,6 +174,13 @@ if (TG_NODE)
     add_test(NAME spdx
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/spdx.test.mjs)
 
+    # THE SCHWUNG VERSIONS A MODULE NAMES, HELD TO EACH OTHER: the pinned
+    # version it is tested against (modules/_shared/schwung.version, in the
+    # format it documents), module.json's min_host_version, and what the
+    # module's help and docs tell the user about both.
+    add_test(NAME schwung_versions
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/schwung_versions.test.mjs)
+
     # THE GROUND'S WIRING IN EVERY PROCESSOR: the order of a few calls, which
     # the Spectrogram once got wrong and no type checks.
     add_test(NAME ground_shells
@@ -191,6 +198,18 @@ if (TG_NODE)
     # summary of it. Into a log of its own, never the real one.
     add_test(NAME timing
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/timing.test.mjs)
+
+    # ONE RUST TOOLCHAIN: rust-toolchain.toml's pin, and the same version in
+    # the Move module's and the Linux cross-build's images, each on a base
+    # pinned by digest.
+    add_test(NAME toolchain
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/toolchain.test.mjs)
+
+    # WHAT A RUN DID NOT TEST: scripts/test-summary.mjs reads ctest's report
+    # and the build's missing capabilities, and the full tier's gate fails on
+    # any gap not waived by name.
+    add_test(NAME test_summary
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/test_summary.test.mjs)
 
     # Every path into design/ that a tracked file names exists, however it is
     # spelled: from the root, climbing from the naming file's own directory
@@ -213,7 +232,7 @@ if (TG_NODE)
              COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/site/scripts/check-links.mjs)
     set_tests_properties(site_links PROPERTIES SKIP_RETURN_CODE 2)
 else()
-    message(STATUS "node not found -- skipping the checks over the tree (versions, licences, tokens)")
+    ni_missing_capability(node "the checks over the tree (versions, licences, tokens, the site) are not registered")
 endif()
 
 # The bundles this build wrote: every test that hosts one loads it from here,
@@ -470,6 +489,24 @@ add_test(NAME ni_shared
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung -p ni-params)
 
+# THE SCHWUNG HOST'S TABLES, FROM ITS OWN HEADERS. ni-schwung mirrors
+# host_api_v1_t and audio_fx_api_v2_t in Rust; abi/layout.def writes their
+# offsets, sizes and version numbers down once, ni_shared holds the mirrors to
+# it and this holds the vendored C headers to it -- every entry a
+# _Static_assert, so a disagreeing header does not build.
+set(NI_SCHWUNG ${CMAKE_SOURCE_DIR}/engines/shared/crates/ni-schwung)
+add_executable(ni_schwung_abi ${NI_SCHWUNG}/abi/layout.c)
+target_include_directories(ni_schwung_abi PRIVATE ${TG_ENGINE}/include ${NI_SCHWUNG}/abi)
+add_test(NAME ni_schwung_abi COMMAND ni_schwung_abi)
+set_tests_properties(ni_schwung_abi PROPERTIES SKIP_RETURN_CODE 77)
+
+# ...AND THOSE HEADERS ARE THE PINNED SCHWUNG'S, byte for byte: the version
+# modules/_shared/schwung.version names, fetched once into a cache outside the
+# checkout and verified on every run. 77, Skipped, when it is not cached and
+# cannot be fetched; a moved tag or an edited cache fails.
+add_test(NAME schwung_pin COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/schwung.sh headers)
+set_tests_properties(schwung_pin PROPERTIES SKIP_RETURN_CODE 77)
+
 # MUSIC-CORE, TWICE: with `std` and without it. The crate promises `no_std` and a
 # method set that only ever loses the two frequency methods without `std`, and
 # a build that is never made without it is a promise nobody checks. The README
@@ -566,7 +603,7 @@ if (APPLE AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64"
         set_tests_properties(abus_ipc_rosetta abus_ipc_rosetta_reader
                              PROPERTIES TIMEOUT 60)
     else()
-        message(STATUS "Rosetta not installed -- the cross-architecture bus tests are not registered")
+        ni_missing_capability(rosetta "the cross-architecture bus tests (abus_ipc_rosetta*) are not registered")
     endif()
 endif()
 
@@ -611,6 +648,16 @@ if (NOT _ni_cargo_deny EQUAL 0)
     message(WARNING "cargo-deny is not installed, so the cargo_deny test will fail. "
                     "Install it at its pin: scripts/licence-tools.sh install cargo-deny")
 endif()
+
+# THE ADVISORIES, ASKED SEPARATELY: RustSec's database, fetched when the test
+# runs (deny.toml's [advisories]), so its verdict can change without a commit.
+# That keeps it out of the quick tier and puts it in the full one and in each
+# product's run -- what a release is attested by -- and both release workflows
+# ask it again on the day they publish.
+add_test(NAME cargo_deny_advisories
+         COMMAND ${RUST_ENV} ${RUST_CARGO} deny --manifest-path ${CMAKE_SOURCE_DIR}/Cargo.toml
+                 --config ${CMAKE_SOURCE_DIR}/deny.toml --locked
+                 check advisories)
 
 # THE TRANCE GATE'S RUST, which was the one suite nobody ran.
 #
@@ -703,6 +750,37 @@ if (NOT WIN32)
 endif()
 add_test(NAME sc_render_ab COMMAND sc_render_ab)
 
+# --------------------------------------------------------------- NI Bit-Crusher
+
+# THE ENGINE'S OWN CLAIMS, which are cargo's: the staircase and its
+# antiderivative, the hold's clock, the filters, the glides and crossfades, the
+# panic, the parameter table and its text, the aliasing Anti-Alias takes out,
+# no allocation on any audio path -- and bc-move's `chain_params` held to the
+# engine's table, through the vtable the device calls.
+set(BC_ENGINE ${CMAKE_SOURCE_DIR}/engines/bit-crusher)
+add_test(NAME bc_core_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p bc-core -p bc-capi -p bc-move)
+
+# The C ABI from C: compiled against both headers cbindgen writes
+# (bc-capi/build.rs) and linked to the plugin's real archive.
+add_executable(bc_core_tests ${BC_ENGINE}/tests/test_core.c)
+target_link_libraries(bc_core_tests PRIVATE bc_engine)
+if (NOT WIN32)
+    target_link_libraries(bc_core_tests PRIVATE m)
+endif()
+add_test(NAME bc_core COMMAND bc_core_tests)
+
+# THE TWO PATHS, RENDERED SIDE BY SIDE AND PINNED, as the Side-Chain's are:
+# the plugin's float path and the Move's int16 path within one LSB of each
+# other, and the float render's hash recorded (render_golden.h).
+add_executable(bc_render_ab ${BC_ENGINE}/tests/render_ab.c)
+target_link_libraries(bc_render_ab PRIVATE bc_engine)
+if (NOT WIN32)
+    target_link_libraries(bc_render_ab PRIVATE m)
+endif()
+add_test(NAME bc_render_ab COMMAND bc_render_ab)
+
 # ----------------------------------------------------------------- NI Vocalize
 
 # THE ENGINE'S OWN CLAIMS, which are cargo's: the vowel model and its filter
@@ -788,8 +866,7 @@ foreach(env IN LISTS _ni_module_envs)
     endif()
 endforeach()
 if (NOT SCHWUNG_DOCKER)
-    message(WARNING "docker not found: the Move modules' tests (move_*) are not "
-                    "registered, so the full tier does not build or test them.")
+    ni_missing_capability(docker "the Move modules' tests (move_*) are not registered or built")
 endif()
 
 # ====================================================== THE TIERS, BY PRODUCT
@@ -801,17 +878,20 @@ endif()
 ni_test_tiers(
     PRODUCT shared
         PROGRAMS juce_host nist_fixtures ni_alloc_guard abus_roundtrip abus_ipc abus_tap
-                 gnd_roundtrip shell_handoff
+                 gnd_roundtrip shell_handoff ni_schwung_abi
         QUICK
             # Rust: the shared crates' unit tests, and the licence gate over
             # the whole graph
             abus_core gnd_core shell_core ni_shared music_core_rs music_core_no_std
             cargo_deny
+            # the Schwung host's tables: the vendored headers against the
+            # layout the Rust mirrors are held to, and against the pinned host
+            ni_schwung_abi schwung_pin schwung_versions
             # C against the shared ABIs: the bus, the ground, the handoff
             abus_roundtrip gnd_roundtrip shell_handoff
             # lint-like checks over the tree
             versions release licenses licenses_resolve spdx ground_shells site_tokens
-            design_paths timing
+            design_paths timing toolchain test_summary
             # the JUCE shell's state codec, over every product's fixtures
             nist_fixtures
             # the papers' code: every listing a paper prints, compiled and tested
@@ -819,6 +899,7 @@ ni_test_tiers(
         FULL
             abus_ipc:ipc abus_ipc_rosetta:ipc abus_ipc_rosetta_reader:ipc
             site_links:site coverage_floor:coverage
+            cargo_deny_advisories:advisories
     PRODUCT trance-gate
         PROGRAMS tg_core_tests tg_render_plugin tg_shape_table tg_envelope_table tg_fade_table
                  capi_compat_tg tg_processor tg_rt tg_host
@@ -840,6 +921,10 @@ ni_test_tiers(
     PRODUCT chord-detector
         PROGRAMS cd_core_tests
         QUICK cd_core_rs cd_core
+    PRODUCT bit-crusher
+        PROGRAMS bc_core_tests bc_render_ab
+        QUICK bc_core_rs bc_core
+        FULL bc_render_ab:render
     PRODUCT vocalize
         PROGRAMS vz_core_tests vz_render_ab
         QUICK vz_core_rs vz_core_time_only vz_move_rs vz_core
