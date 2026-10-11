@@ -16,13 +16,23 @@ every window.
 ## What you see
 
 Press play in Live and watch the background rather than the controls. Every
-beat makes each panel edge — and the window border itself — emit one slow ring.
-The rings travel outward through the background, bounce off the panels and off
-the border, cross each other, and fade out over about twenty seconds. Where a
-ring peaks the dots grow a little and brighten and the grain thickens; in the
-trough between two rings they shrink and dim and it thins. The ring on a bar's
-downbeat is the tall one; the others are visibly smaller, so the bar reads in
-the background as one strong pulse and its lighter beats.
+beat drops one slow ring onto the background, like a drop onto still water,
+just off the corner of a panel. The ring spreads as a circle and grows fainter
+as it widens; it bends around the panel's corner, echoes off panel edges —
+again and again, between two panels — and crosses the other rings. The window
+border lets about half of a ring go, so the window never fills up; after the
+last beat the water settles over about ten seconds.
+
+The beats walk the corners. The downbeat always falls at the same corner, the
+one nearest the middle of the window, so every bar starts from the same place;
+the bar's other beats fall at the next corners clockwise. The downbeat's ring
+is the tall one, the others are visibly smaller, and no two rings are quite
+alike, so the bar reads in the background as one strong pulse and its lighter
+beats — never as a machine.
+
+The surface is lit from the top left. Where it rises towards the light the dots
+grow a little and brighten and the grain thickens; where it falls away they
+shrink and dim and it thins — so each ring shows a bright side and a shaded one.
 
 Three things it deliberately does **not** do:
 
@@ -130,23 +140,29 @@ design's frame rate, steps the simulation by the time that really passed, and
 stops once the field rings out; with the window closed, the plugin stops
 counting beats altogether.
 
-The physics is the damped 2D wave equation on a 6 px grid, one Ricker wavelet per
-ring, reflecting at every panel edge. The parameters — wave speed, damping,
-source strength, dot and grain response — all come from the design system:
+The physics is the damped 2D wave equation on a 6 px grid, with a viscous term
+that smooths out fine ripple while the long wave lives on, and a 9-point
+Laplacian that keeps a ring round on the square grid. Each ring is a Ricker
+wavelet under a small Gaussian at one corner; panel edges reflect it fully and
+the window border reflects half. The parameters — wave speed, damping,
+viscosity, source strength, where the corners are, the light, dot and grain
+response — all come from the design system:
 `scripts/gen-tokens.mjs` reads them from its reference implementation into
 `UvTokens.h`, and `ui_tokens_native` checks them against it.
 
 To review it without a host, open the kit's gallery
-(`plugins/_shared/ui/gallery`): its Ground page shows the ground at rest, after
-a downbeat and through a bar of 4/4 at 120 BPM.
+(`plugins/_shared/ui/gallery`): its Ground page shows the ground at rest, a
+downbeat's ring leaving a panel's corner, and a bar of 4/4 at 120 BPM walking
+the corners. The design system's Ground card is livelier: press play there, or
+click the ground to drop a ring wherever you like.
 
 ## What moves, exactly
 
 Both the dots and the grain respond, and neither of them travels.
 
-As a ring passes, the dots grow from 1.0 px to about 1.3 px and brighten by
-roughly a fifth, and the grain thickens from 5 % to about 9 %; in the trough
-behind it they shrink, dim and thin.
+As the lit side of a ring passes, the dots grow from 1.0 px to about 1.4 px and
+brighten by up to a third, and the grain thickens from 5 % to about 9 %; on the
+shaded side they shrink, dim and thin.
 
 The grain **tile itself never moves** — only its local density changes. That is a
 design rule rather than an optimisation: grain that travels reads as television

@@ -1,16 +1,31 @@
-/* Ultraviolet Ground 1.2.0 — the dot-paper ground as a wave field that keeps the host's musical time.
+/* Ultraviolet Ground 1.3.0 — the dot-paper ground as a wave field that keeps the host's musical time.
  * Reference implementation, no dependencies. Two parts:
  *   UVGround.Field      simulates and renders the ground (dots + grain) into a <canvas>
  *   UVGround.BeatClock  turns the host's transport into rings: one on every quarter note while it
  *                       plays, a stronger one on each bar's downbeat, none while it is stopped
  *
- * Model: the damped 2D wave equation  u_tt = c²∇²u − γ·u_t + A·s·ψ(t − t₀)·S(x)
- * on a 6 px grid (every second node is a dot). S marks the sources: every open node next to a
- * box edge and every node on the window border. ψ is a Ricker wavelet (peak f₀), so each ring
- * is one slow wave of wavelength c/f₀, s its strength. Box edges and the window border reflect
- * (Neumann, no phase flip), waves superpose linearly, so they interfere, and γ = 2/τ lets the whole
- * field, reflections included, ring out over ~20 s. The field is soft-clipped with tanh for display.
- * Peaks (u > 0): bigger, brighter dots and more grain. Valleys (u < 0): smaller, dimmer dots, less grain.
+ * Model: the damped 2D wave equation  u_tt = c²∇²u − γ·u_t + ν·∇²u_t + A·s·ψ(t − t₀)·G(x − e)
+ * on a 6 px grid (every second node is a dot). A ring is a drop: ψ a Ricker wavelet (peak f₀, so
+ * one slow wave of wavelength c/f₀), G a small Gaussian around one emitter e, s its strength, so
+ * every ring is a circle that spreads, thins with distance and meets the boxes.
+ *
+ * Emitters sit just off the outer corners of the boxes, where a box leaves open ground around
+ * them (none in a gutter narrower than `clear`); with no box, the window centre is one. The one
+ * nearest the window centre is the anchor: every downbeat falls there, so each bar starts from the
+ * same place, and the bar's other beats walk the other emitters clockwise from it. Each ring varies
+ * a little in frequency and strength, the same way every time (a hash of the ring's count).
+ *
+ * Boxes reflect totally (Neumann, no phase flip), so rings echo between the boxes and bend around
+ * their corners; the window border reflects only `borderR` of what reaches it (an impedance edge),
+ * so the window never fills with its own standing waves. γ = 2/τ fades
+ * every wave alike; ν fades a wave by its wavenumber squared, so ripple at the grid's scale dies at
+ * once while the long wave softens as it goes and rings out slowly. ∇² is the isotropic 9-point
+ * stencil, so a ring stays round on the square grid.
+ *
+ * Display: each dot shows tanh(u + slope·(λ/2π)·∂u/∂ℓ), the height plus the slope facing a light
+ * at the top left, so a crest lights on its side towards the light and shades on the other.
+ * Up (towards the light): bigger, brighter dots and more grain; down: smaller, dimmer, less grain.
+ * At rest u = 0 everywhere and the ground is exactly the static design.
  *
  * Clock: the field steps on a timer at its frame rate, never on requestAnimationFrame, and page
  * visibility does not pause it: plugin hosts report their editor pages as hidden while they are on
@@ -25,9 +40,16 @@
     cell: 6,            // simulation grid, px (half a pitch)
     speed: 100,         // c, px/s
     freq: 1.5,          // f₀ of the source wavelet, Hz → wavelength c/f₀ ≈ 67 px; a ring on every beat (90–140 BPM) does not cancel the last
-    tau: 3.5,           // amplitude e-folding time, s (γ = 2/τ); the field rings out in ~20 s
-    gain: 65,           // source strength A: one downbeat peaks near u ≈ 0.9
-    border: true,       // the window border emits as well as reflects
+    tau: 10,            // amplitude e-folding time, s (γ = 2/τ); with the border and the spreading, ~10 s from the last ring to rest
+    visc: 22,           // ν, px²/s: fades a wave by its wavenumber squared; grid-scale ripple dies within a second, the ring lives on
+    gain: 220,          // source strength A: a downbeat lifts the dots ~300 px from its emitter, soft-clipped at the drop
+    spot: 16,           // σ of a drop's Gaussian footprint, px: wide enough that the drop itself is a soft splash, not a clipped block
+    inset: 9,           // an emitter sits this far off its box's corner, along both edges, px
+    clear: 18,          // no other box within this of an emitter, px: a narrower gutter has none
+    borderR: 0.5,       // share of a wave the window border reflects head on: 0 lets it leave, 1 reflects it all
+    varyF: 0.08,        // ± relative frequency from ring to ring
+    varyS: 0.12,        // ± relative strength from ring to ring
+    slope: 0.7,         // display: weight of the slope facing the light (top left) against the height
     dt: 1 / 60,         // fixed simulation step, s
     maxSteps: 6,        // per frame, after a stall
     rest: 0.004,        // below this everywhere (and no ring active) the field is reset and the timer stops
@@ -71,6 +93,21 @@
     return (1 - 2 * a) * Math.exp(-a);
   }
 
+  // a ring's count → two numbers in −1..1, the same every time (a 32-bit integer mix)
+  function vary(n) {
+    var h = n >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    h = (h ^ (h >>> 16)) >>> 0;
+    return [(h & 0xffff) / 32767.5 - 1, (h >>> 16) / 32767.5 - 1];
+  }
+
+  // distance from (x, y) to a box, 0 inside it
+  function toBox(x, y, b) {
+    var dx = Math.max(b.x - x, 0, x - b.x - b.w), dy = Math.max(b.y - y, 0, y - b.y - b.h);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   function Field(canvas, opts) {
     var o = this.o = {};
     for (var k in DEFAULTS) o[k] = DEFAULTS[k];
@@ -100,41 +137,82 @@
     this.draw();
   };
 
-  // rects: [{x, y, w, h}] in CSS px relative to the canvas — the boxes that emit and reflect
+  // rects: [{x, y, w, h}] in CSS px relative to the canvas — the boxes that reflect and carry the emitters
   Field.prototype.setSources = function (rects) {
     this.rects = rects || [];
     this._grid();
     this.draw();
   };
 
-  // simulation grid: walls (inside a box), sources (open, next to a wall or on the border)
+  // a drop's footprint around (x, y): the open nodes within 3σ and their Gaussian weights
+  Field.prototype._footprint = function (x, y) {
+    var o = this.o, h = o.cell, s = o.spot, r = Math.ceil(3 * s / h), fp = [];
+    var ci = Math.round(x / h), cj = Math.round(y / h);
+    for (var j = cj - r; j <= cj + r; j++) for (var i = ci - r; i <= ci + r; i++) {
+      if (i < 0 || j < 0 || i >= this.nx || j >= this.ny) continue;
+      var q = j * this.nx + i, dx = i * h - x, dy = j * h - y, d2 = dx * dx + dy * dy;
+      if (!this.wall[q] && d2 <= 9 * s * s) fp.push(q, Math.exp(-d2 / (2 * s * s)));
+    }
+    return fp;
+  };
+
+  // simulation grid: walls (inside a box), the emitters (anchor first, then clockwise)
   Field.prototype._grid = function () {
     var o = this.o, h = o.cell, nx = this.nx = Math.floor(this.w / h) + 1, ny = this.ny = Math.floor(this.h / h) + 1, n = nx * ny;
     this.u = new Float32Array(n); this.up = new Float32Array(n); this.un = new Float32Array(n);
-    var wall = this.wall = new Uint8Array(n), i, j, r;
+    var wall = this.wall = new Uint8Array(n), rects = this.rects, i, j, r;
     for (j = 0; j < ny; j++) for (i = 0; i < nx; i++) {
       var x = i * h, y = j * h;
-      for (r = 0; r < this.rects.length; r++) {
-        var b = this.rects[r];
+      for (r = 0; r < rects.length; r++) {
+        var b = rects[r];
         if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { wall[j * nx + i] = 1; break; }
       }
     }
-    var src = [];
-    for (j = 0; j < ny; j++) for (i = 0; i < nx; i++) {
-      var q = j * nx + i;
-      if (wall[q]) continue;
-      var edge = i === 0 || j === 0 || i === nx - 1 || j === ny - 1;
-      var near = (i > 0 && wall[q - 1]) || (i < nx - 1 && wall[q + 1]) || (j > 0 && wall[q - nx]) || (j < ny - 1 && wall[q + nx]);
-      if (near || (o.border && edge)) src.push(q);
+
+    // a corner's emitter stands where open ground surrounds it: off every other box by `clear`,
+    // inside the window by `clear`, and not on top of an emitter already standing
+    var em = [], e = o.inset;
+    for (r = 0; r < rects.length; r++) {
+      b = rects[r];
+      var corners = [[b.x - e, b.y - e], [b.x + b.w + e, b.y - e], [b.x + b.w + e, b.y + b.h + e], [b.x - e, b.y + b.h + e]];
+      for (var c = 0; c < 4; c++) {
+        var px = corners[c][0], py = corners[c][1], ok = px >= o.clear && py >= o.clear && px <= this.w - o.clear && py <= this.h - o.clear;
+        for (var s = 0; ok && s < rects.length; s++) if (s !== r && toBox(px, py, rects[s]) < o.clear) ok = false;
+        for (s = 0; ok && s < em.length; s++) if (Math.hypot(px - em[s].x, py - em[s].y) < o.clear) ok = false;
+        if (ok) em.push({ x: px, y: py });
+      }
     }
-    this.src = new Int32Array(src);
-    this.rings = []; this.t = 0;
+    var cx = this.w / 2, cy = this.h / 2;
+    if (!em.length && !rects.some(function (b) { return toBox(cx, cy, b) < o.clear; })) em.push({ x: cx, y: cy });
+
+    // the anchor is the emitter nearest the centre; the others follow it clockwise around the centre
+    if (em.length) {
+      var near = function (p) { return Math.hypot(p.x - cx, p.y - cy); };
+      var first = function (p, q) { var d = near(p) - near(q); return Math.abs(d) > 1e-6 ? d : p.y - q.y || p.x - q.x; };   // ties: reading order
+      var at = em.reduce(function (best, p) { return first(p, best) < 0 ? p : best; }, em[0]);
+      var turn = function (p) { var a = Math.atan2(p.y - cy, p.x - cx) - Math.atan2(at.y - cy, at.x - cx); return a < 0 ? a + 2 * Math.PI : a; };
+      em = [at].concat(em.filter(function (p) { return p !== at; }).sort(function (p, q) { return turn(p) - turn(q); }));
+    }
+    for (r = 0; r < em.length; r++) em[r].fp = this._footprint(em[r].x, em[r].y);
+    this.emitters = em;
+    this.rings = []; this.t = 0; this.count = 0; this.walk = 0;
   };
 
-  // one ring; s in 0..1 (1 on a downbeat, about half on any other beat)
-  Field.prototype.trigger = function (s) {
-    if (this.reduced || !this.enabled || !this.src.length) return;
-    this.rings.push({ t0: this.t, s: clamp(s == null ? 1 : s, 0, 1) });
+  // One ring; s in 0..1 (1 on a downbeat, about half on any other beat). A downbeat falls at the
+  // anchor and starts the bar's walk; every other beat falls at the next emitter. `at` ({x, y})
+  // drops it there instead, as a click on the preview does.
+  Field.prototype.trigger = function (s, at) {
+    var em = this.emitters;
+    if (this.reduced || !this.enabled || !em.length) return;
+    s = clamp(s == null ? 1 : s, 0, 1);
+    this.walk = s >= 1 ? 0 : this.walk + 1;
+    var v = vary(this.count++);
+    this.rings.push({
+      t0: this.t,
+      s: s * (1 + this.o.varyS * v[1]),
+      f: this.o.freq * (1 + this.o.varyF * v[0]),
+      fp: at ? this._footprint(at.x, at.y) : em[this.walk % em.length].fp
+    });
     this._start();
   };
 
@@ -153,35 +231,51 @@
     this.timer = 0;
   };
 
-  // one explicit step of the damped wave equation, Neumann at walls and at the border
+  // h²∇² at node q of field v, the isotropic 9-point stencil; a neighbour inside a wall or off the
+  // grid reads as the node itself (Neumann)
+  function lap(v, wall, q, i, j, nx, ny) {
+    var c = v[q], L = i > 0, R = i < nx - 1, T = j > 0, B = j < ny - 1;
+    var l = L && !wall[q - 1] ? v[q - 1] : c, r = R && !wall[q + 1] ? v[q + 1] : c;
+    var t = T && !wall[q - nx] ? v[q - nx] : c, d = B && !wall[q + nx] ? v[q + nx] : c;
+    var tl = L && T && !wall[q - nx - 1] ? v[q - nx - 1] : c, tr = R && T && !wall[q - nx + 1] ? v[q - nx + 1] : c;
+    var bl = L && B && !wall[q + nx - 1] ? v[q + nx - 1] : c, br = R && B && !wall[q + nx + 1] ? v[q + nx + 1] : c;
+    return (4 * (l + r + t + d) + tl + tr + bl + br - 20 * c) / 6;
+  }
+
+  // one explicit step: the damped, viscous wave equation, Neumann at the walls, the border partly absorbing
   Field.prototype._step = function () {
     var o = this.o, nx = this.nx, ny = this.ny, u = this.u, up = this.up, un = this.un, wall = this.wall;
-    var dt = o.dt, k2 = (o.speed * dt / o.cell) * (o.speed * dt / o.cell), g = (2 / o.tau) * dt / 2;
-    var a = 1 / (1 + g), b = 1 - g;
-    for (var j = 0; j < ny; j++) {
+    var dt = o.dt, k = o.speed * dt / o.cell, k2 = k * k, nu = o.visc * dt / (o.cell * o.cell);
+    var g = (2 / o.tau) * dt / 2, a = 1 / (1 + g), b = 1 - g, i, j, q;
+    for (j = 0; j < ny; j++) {
       var row = j * nx;
-      for (var i = 0; i < nx; i++) {
-        var q = row + i;
+      for (i = 0; i < nx; i++) {
+        q = row + i;
         if (wall[q]) { un[q] = 0; continue; }
-        var c = u[q];
-        var l = (i > 0 && !wall[q - 1]) ? u[q - 1] : c;
-        var r = (i < nx - 1 && !wall[q + 1]) ? u[q + 1] : c;
-        var t = (j > 0 && !wall[q - nx]) ? u[q - nx] : c;
-        var d = (j < ny - 1 && !wall[q + nx]) ? u[q + nx] : c;
-        un[q] = (2 * c - b * up[q] + k2 * (l + r + t + d - 4 * c)) * a;
+        var lu = lap(u, wall, q, i, j, nx, ny), lp = lap(up, wall, q, i, j, nx, ny);
+        un[q] = (2 * u[q] - b * up[q] + k2 * lu + nu * (lu - lp)) * a;
       }
     }
-    // sources: the sum of every active ring's wavelet
-    var F = 0, live = [], span = 2.5 / o.freq;
-    for (var k = 0; k < this.rings.length; k++) {
-      var age = this.t - this.rings[k].t0;
-      if (age < span) { F += this.rings[k].s * ricker(age, o.freq); live.push(this.rings[k]); }
+
+    // the border: an impedance edge, Mur's one-way update at the speed αc, α = (1 − R)/(1 + R), which
+    // sends back R of a wave meeting it head on (α = 1 lets it all leave, α → 0 reflects it all)
+    var R = o.borderR, ka = k * (1 - R) / (1 + R), m = (ka - 1) / (ka + 1);
+    if (R < 1) {
+      var edge = function (q, n) { if (!wall[q] && !wall[n]) un[q] = u[n] + m * (un[n] - u[q]); };
+      for (j = 0; j < ny; j++) { edge(j * nx, j * nx + 1); edge(j * nx + nx - 1, j * nx + nx - 2); }
+      for (i = 0; i < nx; i++) { edge(i, i + nx); edge((ny - 1) * nx + i, (ny - 2) * nx + i); }
+    }
+
+    // the drops: every ring still inside its wavelet, at its own emitter
+    var live = [], f0 = dt * dt * o.gain * a;
+    for (var r = 0; r < this.rings.length; r++) {
+      var ring = this.rings[r], age = this.t - ring.t0;
+      if (age >= 2.5 / ring.f) continue;
+      live.push(ring);
+      var f = f0 * ring.s * ricker(age, ring.f), fp = ring.fp;
+      for (var p = 0; p < fp.length; p += 2) un[fp[p]] += f * fp[p + 1];
     }
     this.rings = live;
-    if (F !== 0) {
-      var f = dt * dt * o.gain * F * a, S = this.src;
-      for (k = 0; k < S.length; k++) un[S[k]] += f;
-    }
     this.up = u; this.u = un; this.un = up;
     this.t += dt;
   };
@@ -203,6 +297,17 @@
     var m = 0, u = this.u;
     for (var q = 0; q < u.length; q++) { var v = u[q] < 0 ? -u[q] : u[q]; if (v > m) m = v; }
     return m;
+  };
+
+  // what a dot shows: the height plus the slope facing the light at the top left, before tanh
+  Field.prototype._lit = function (gi, gj) {
+    var o = this.o, nx = this.nx, ny = this.ny, u = this.u, wall = this.wall, q = gj * nx + gi, c = u[q];
+    var l = gi > 0 && !wall[q - 1] ? u[q - 1] : c, r = gi < nx - 1 && !wall[q + 1] ? u[q + 1] : c;
+    var t = gj > 0 && !wall[q - nx] ? u[q - nx] : c, d = gj < ny - 1 && !wall[q + nx] ? u[q + nx] : c;
+    // a surface rising towards the bottom right faces the top left: (∂x + ∂y)/√2, times λ/2π so
+    // a wave's slope and its height have the same scale
+    var dl = (r - l + d - t) / (2 * o.cell) * Math.SQRT1_2;
+    return c + o.slope * (o.speed / o.freq) / (2 * Math.PI) * dl;
   };
 
   // Sprite atlas: every cell state rendered once — 8×8 grain positions × LEVELS wave values.
@@ -244,7 +349,7 @@
   // blit the baked ground, then one atlas sprite per dot the field has moved; returns the peak |u|
   Field.prototype.draw = function () {
     if (!this.baked || !this.u) return 0;
-    var x = this.ctx, u = this.u, wall = this.wall, nx = this.nx, step = Math.round(this.o.pitch / this.o.cell);
+    var x = this.ctx, wall = this.wall, nx = this.nx, step = Math.round(this.o.pitch / this.o.cell);
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.globalAlpha = 1;
     x.drawImage(this.baked, 0, 0);
@@ -252,9 +357,8 @@
       var gj = j * step; if (gj >= this.ny) break;
       for (var i = 0; i < this.cols; i++) {
         var gi = i * step; if (gi >= nx) break;
-        var q = gj * nx + gi;
-        if (wall[q]) continue;
-        var level = Math.round((Math.tanh(u[q]) + 1) * MID);
+        if (wall[gj * nx + gi]) continue;
+        var level = Math.round((Math.tanh(this._lit(gi, gj)) + 1) * MID);
         if (level !== MID) this._blit(x, i, j, level);
       }
     }
@@ -314,5 +418,5 @@
     return rings.length;
   };
 
-  root.UVGround = { version: '1.2.0', Field: Field, BeatClock: BeatClock, defaults: DEFAULTS, beatDefaults: BEAT };
+  root.UVGround = { version: '1.3.0', Field: Field, BeatClock: BeatClock, defaults: DEFAULTS, beatDefaults: BEAT };
 })(window);

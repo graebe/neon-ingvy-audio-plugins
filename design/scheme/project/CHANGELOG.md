@@ -2,6 +2,24 @@
 
 All notable changes to Ultraviolet, newest first. Versions follow the rules under Versioning.
 
+## 1.3.0 — 2026-10-11
+
+The ground looks like water: every ring is a drop at a point, so it spreads as a circle, bends around the boxes, echoes between them and fades slowly, where 1.2.0's rings rose from whole edges at once and travelled as straight, mechanical bands.
+
+**Changed**
+
+- Ground: a ring is a drop at one emitter, a Gaussian (σ 16 px) driven by the Ricker wavelet, not every box edge and the whole window border at once. Emitters stand just off the boxes' outer corners where open ground surrounds them; the downbeat falls at the anchor, the emitter nearest the window centre, and the bar's other beats at the next emitters clockwise. Each ring varies a little in frequency (± 8 %) and strength (± 12 %), the same way every time.
+- Ground: the window border no longer emits, and reflects half of a wave meeting it head on (an impedance edge, `borderR`); box edges still reflect totally, so rings echo between the boxes.
+- Ground: a viscous term ν·∇²u_t (`visc`, 22 px²/s) fades a wave by its wavenumber squared, so grid ripple dies at once and a ring softens as it goes; τ is 10 s and the field comes to rest about ten seconds after the last ring. `gain` is 220.
+- Ground: ∇² is the isotropic 9-point stencil, so a ring stays round on the square grid.
+- Ground: a dot shows the height plus the slope towards a light at the top left (`slope`, 0.7), so a crest lights on one side and shades on the other. At rest the ground is still exactly the static design.
+- Ground: `trigger(strength, at)` takes an optional point; the preview drops a ring where it is clicked.
+- Brand book: Motion describes the drops, the emitters, the border, the damping and the light; the Ground guidelines follow.
+
+**Removed**
+
+- Ground: the `border` option (the window border emitting).
+
 ## 1.2.0 — 2026-10-09
 
 A plot can show the signal a processor reacts to, behind everything else: the kick a ducker ducks against.

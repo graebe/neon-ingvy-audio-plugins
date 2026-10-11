@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * Ultraviolet 1.2.0 -- GENERATED, DO NOT EDIT.
+ * Ultraviolet 1.3.0 -- GENERATED, DO NOT EDIT.
  *
  * scripts/gen-tokens.mjs wrote this from design/scheme/project/tokens.json
  * and the motion constants of design/scheme/project/components/ground.js.
@@ -29,7 +29,7 @@ namespace uv::tok
 
 /* The system these values are, and its release. */
 inline constexpr const char* systemName = "Ultraviolet";
-inline constexpr const char* release = "1.2.0";
+inline constexpr const char* release = "1.3.0";
 
 /* ============================================================ colour == */
 
@@ -388,9 +388,16 @@ inline constexpr float pitch = 12.0f;  // dot pitch, px (space-3)
 inline constexpr float cell = 6.0f;  // simulation grid, px (half a pitch)
 inline constexpr float speed = 100.0f;  // c, px/s
 inline constexpr float freq = 1.5f;  // f₀ of the source wavelet, Hz → wavelength c/f₀ ≈ 67 px; a ring on every beat (90–140 BPM) does not cancel the last
-inline constexpr float tau = 3.5f;  // amplitude e-folding time, s (γ = 2/τ); the field rings out in ~20 s
-inline constexpr float gain = 65.0f;  // source strength A: one downbeat peaks near u ≈ 0.9
-inline constexpr bool border = true;  // the window border emits as well as reflects
+inline constexpr float tau = 10.0f;  // amplitude e-folding time, s (γ = 2/τ); with the border and the spreading, ~10 s from the last ring to rest
+inline constexpr float visc = 22.0f;  // ν, px²/s: fades a wave by its wavenumber squared; grid-scale ripple dies within a second, the ring lives on
+inline constexpr float gain = 220.0f;  // source strength A: a downbeat lifts the dots ~300 px from its emitter, soft-clipped at the drop
+inline constexpr float spot = 16.0f;  // σ of a drop's Gaussian footprint, px: wide enough that the drop itself is a soft splash, not a clipped block
+inline constexpr float inset = 9.0f;  // an emitter sits this far off its box's corner, along both edges, px
+inline constexpr float clear = 18.0f;  // no other box within this of an emitter, px: a narrower gutter has none
+inline constexpr float borderR = 0.5f;  // share of a wave the window border reflects head on: 0 lets it leave, 1 reflects it all
+inline constexpr float varyF = 0.08f;  // ± relative frequency from ring to ring
+inline constexpr float varyS = 0.12f;  // ± relative strength from ring to ring
+inline constexpr float slope = 0.7f;  // display: weight of the slope facing the light (top left) against the height
 inline constexpr float dt = 0.016666666666666666f;  // fixed simulation step, s
 inline constexpr float maxSteps = 6.0f;  // per frame, after a stall
 inline constexpr float rest = 0.004f;  // below this everywhere (and no ring active) the field is reset and the timer stops

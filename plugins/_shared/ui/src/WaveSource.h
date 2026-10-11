@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The boxes the Ground's rings come from and break against.
+ * The boxes the Ground's rings fall beside and break against.
  *
- * "Every box edge and the window border emit one slow ring ... The rings
+ * "A ring falls at a point just off a box's outer corner ... The rings
  * travel through the background only; panels, wells and the step grid are
  * solid to them" (README, Motion). Which boxes those are is the window's
  * layout, so they are marked on the components themselves -- the web kit's

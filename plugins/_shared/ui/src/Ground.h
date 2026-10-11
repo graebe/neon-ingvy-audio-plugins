@@ -2,17 +2,19 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The animated window ground -- the Ground card of Ultraviolet 1.1.0, and the
- * web kit's Ground.jsx: the dot paper and its grain as the surface of a slow,
- * damped wave field that keeps the host's musical time.
+ * The animated window ground -- the Ground card of Ultraviolet 1.3.0: the dot
+ * paper and its grain as the surface of a slow, damped wave field that keeps
+ * the host's musical time.
  *
- * WHAT IT DOES. While the transport plays, every quarter note makes every box
- * edge and the window border emit a ring, each bar's downbeat a stronger one;
+ * WHAT IT DOES. While the transport plays, every quarter note drops a ring
+ * just off a box's corner, each bar's downbeat a stronger one at the anchor;
  * nothing rings while the transport is stopped. Rings travel through the
- * background only -- panels, wells and grids are solid to them -- reflect,
- * interfere and ring out over about 20 s. On a peak the dots grow and
- * brighten and the grain thickens; in a valley they shrink, dim and thin. The
- * grain itself never moves, only its density. GroundField.h is the model.
+ * background only -- panels, wells and grids are solid to them -- spread as
+ * circles, bend around the boxes, echo between them, interfere and come to
+ * rest about ten seconds after the last ring. The ground is lit from the top
+ * left: where it rises towards the light the dots grow and brighten and the
+ * grain thickens; where it falls away they shrink, dim and thin. The grain
+ * itself never moves, only its density. GroundField.h is the model.
  *
  * WHERE THE RINGS COME FROM. The plugin counts them from the host's transport
  * on the audio thread (EditorModel::takeRings); the Ground polls that source
