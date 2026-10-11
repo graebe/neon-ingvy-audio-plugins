@@ -1,0 +1,1 @@
+{"tier":"product","products":["vocal-tuner"],"sha":"007585cde4e6c6f61eafc6bf033b1bcb225916b5","date":"2026-10-11T19:05:23.680Z","host":"MacBookPro.localdomain","rustc":"rustc 1.99.0 (b940084d7 2026-09-28)","result":"pass","results":{"tests":46,"duration_s":160,"build_type":"Release","archs":"arm64;x86_64","gaps":0,"waived":"none","untested":"none"}}
