@@ -176,9 +176,10 @@ mod tests {
         for (k, _, b) in keys {
             assert_eq!(get(k), b, "{k} in slot 5");
         }
-        /* The ui readout's last field is the slot: the editor's cue to re-read
-         * the grid. */
-        assert!(get("ui").ends_with(":4"), "{}", get("ui"));
+        /* The ui readout's `slot` field is the editor's cue to re-read the
+         * grid -- found by its name, as every reader may now. */
+        let at = tg_core::params::UI_FIELDS.iter().position(|f| *f == "slot").unwrap();
+        assert_eq!(get("ui").split(':').nth(at), Some("4"), "{}", get("ui"));
         (api.destroy_instance.unwrap())(inst);
     }
 

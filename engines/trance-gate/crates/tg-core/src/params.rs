@@ -36,7 +36,7 @@ pub fn randomize_holds(val: &str) -> bool {
  * them, so a reader can find a field by name instead of by count. Fields are
  * still only ever APPENDED: an older reader that counts keeps working.
  */
-pub const UI_FIELDS: [&str; 10] = ["steps", "ties", "length", "phase", "ms_step", "moving", "cursor", "depths", "orders", "slot"];
+pub const UI_FIELDS: [&str; 11] = ["steps", "ties", "length", "phase", "ms_step", "moving", "cursor", "depths", "orders", "slot", "devms"];
 pub const PARAMS_FIELDS: [&str; 17] = [
     "slot", "legato", "time_mode", "curve", "rate", "length", "amount", "hold", "attack", "decay", "sustain",
     "release", "width_ms", "fade", "fade_soft", "fade_dir", "detents",
@@ -501,6 +501,12 @@ impl Instance {
      * other value a shell shows, and on the Move the knob grid caches them: the
      * module's editor watches this field and re-reads the grid when it moves,
      * whoever moved it -- the Slot knob, the arrows, a preset.
+     *
+     * `devms` is appended after it: the engine's own clock (`clock_ms`), the
+     * time it had processed when this readout was true. The Move's web editor
+     * is told the readout up to ~400 ms later, by a different amount each
+     * time; with this it carries the playhead from when the phase WAS the
+     * phase, not from when it heard about it.
      */
     fn ui_readout(&self, mut b: Buf) -> i32 {
         let p = self.pattern();
@@ -527,7 +533,8 @@ impl Instance {
         for i in 0..length {
             let _ = write!(b, "{:02X}", p.order[i]);
         }
-        let _ = write!(b, ":{}", self.slot);
+        let _ = write!(b, ":{}:", self.slot);
+        let _ = fmt::f(&mut b, self.clock_ms(), 3);
         b.finish_whole()
     }
 
