@@ -21,6 +21,13 @@ export function hexToBits(hex, n) {
   return bits;
 }
 
+/*
+ * The `ui` readout's fields, in the engine's order -- tg-core's UI_FIELDS,
+ * which `get_param("ui_fields")` answers and test/fields.test.mjs holds this
+ * to. Read by position, as every reader does; the engine only ever appends.
+ */
+export const UI_FIELDS = ['steps', 'ties', 'length', 'phase', 'ms_step', 'moving', 'cursor', 'depths', 'orders', 'slot'];
+
 /**
  * The `ui` readout:
  * "steps:ties:length:phase:msStep:moving:cursor:depths:orders:slot"

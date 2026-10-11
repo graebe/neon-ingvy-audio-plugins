@@ -86,9 +86,10 @@ than showing a control that does nothing:
 - **No Sidechain source, Threshold or Lockout.** The Move hands an effect one
   stereo buffer and no key input, so the module declares Cycle and MIDI only.
 - **No audio in the well.** The manager carries parameter values to the page,
-  not audio. The plugin draws the input and output behind the shape; here the
-  shape is the whole picture. The plugin's `NO INPUT` warning, which was read
-  from that audio, goes with it.
+  not audio. The plugin draws the input and output behind the shape, and the
+  kick it ducks to -- the sidechain key or a Listen-In bus, to the sample;
+  here the shape is the whole picture. The plugin's `NO INPUT` warning, which
+  was read from that audio, goes with it.
 - **The background's beat is the cycle's.** In Live the ground ripples on the
   host's beat. The Move sends the page no beat, so on Cycle it rings on the
   quarter notes the sweep crosses, full at the cycle's start; on MIDI it stays

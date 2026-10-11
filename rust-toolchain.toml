@@ -11,13 +11,15 @@
 # re-run the full tier, and re-record a golden only if it moved, with that
 # reason.
 #
-# The two Apple targets are the universal build's (cmake/NiRust.cmake); llvm-
+# The two Apple targets are the universal build's (cmake/NiRust.cmake);
+# wasm32-unknown-unknown is the engines' browser builds (tg-web, sc-web: the
+# Move web editors, scripts/build-web.sh); llvm-
 # tools is coverage's (scripts/coverage.sh); clippy and rustfmt are the
 # developer's, so `cargo clippy` works in a checkout of this pinned toolchain. rustup installs what is missing on
 # first use. The module image sets RUSTUP_TOOLCHAIN, which overrides this file
 # inside it, so a container never fetches the Apple targets.
 [toolchain]
 channel = "1.99.0"
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "wasm32-unknown-unknown"]
 components = ["llvm-tools", "clippy", "rustfmt"]
 profile = "minimal"
