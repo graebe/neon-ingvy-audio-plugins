@@ -78,13 +78,11 @@ void AmplitudePlot::rebuild()
 {
     const auto area = contentBounds();
 
-    /* THE OUTPUT AXIS FITS THE OUTPUTS. Drive tilts the staircase past the
-     * diagonal; on the input's own scale its ends would be cut flat at the
-     * well's edge, a clip that does not happen. */
-    float peak = 0.0f;
-    for (const float v : levels)
-        peak = std::max (peak, std::abs (v));
-    outSpan = std::max (span, (double) peak);
+    /* ONE SCALE BOTH WAYS, so the untouched signal is the well's diagonal,
+     * corner to corner, at any zoom. The axis is the quantiser's own input,
+     * after Drive: the staircase runs along the diagonal whatever Drive is,
+     * and Drive moves the signal's dots up it (Model::steps). */
+    outSpan = span;
     const auto in = (float) span, out = (float) outSpan;
     const auto xOf = [&] (float level) { return xAt (0.5f * (level / in + 1.0f)); };
 

@@ -69,8 +69,10 @@ the grey wave that came in becomes a stack of flat stairs.
 > `AMPLITUDE CRUSH 257 LEVELS ×16` is a sixteenth of full scale. Zoomed in, the
 > dots you see are the parts of your signal near silence — the quiet ones,
 > where crushing is loudest relative to the sound. From 4 bits down every step
-> fits, the zoom disappears, and every dot is in view. Drive and Shape move
-> the zoom too, because they change how wide the steps are.
+> fits, the zoom disappears, and every dot is in view. Shape moves the zoom
+> too, because it changes how wide the steps near silence are. The grey
+> diagonal always runs corner to corner: both axes are the level going into
+> the crusher, on the same scale, at any zoom.
 
 > **Bits is continuous.** 4.5 bits is a real setting, between 16 and 32
 > steps, and the top step is simply shorter. So a slow sweep of Bits — or an
@@ -86,10 +88,11 @@ is loud, gone where it is silent.
 
 A quiet signal only ever reaches the bottom few steps, so it sounds more
 crushed than a loud one. **Drive** pushes it up the staircase before it is
-crushed — and past the top step, it clips. Turn Drive up and the staircase
-tilts steeper than the diagonal: the same input reaches further, and the
-picture's level-out axis grows to keep the whole tilt in view. Mix and Output
-bring the level back down afterwards.
+crushed — and past the top step, it clips. The Amplitude Crush picture is
+drawn on the level going *into* the crusher, after Drive, so the staircase
+stays on the diagonal and Drive moves your signal instead: turn it up and the
+dots spread further up the stairs, and the loudest ones gather on the top and
+bottom steps — the clip. Mix and Output bring the level back down afterwards.
 
 ### Shape: steps where they matter
 

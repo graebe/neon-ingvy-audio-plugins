@@ -72,7 +72,7 @@ enum : int
  *
  * THE SAME LOOK IN THE TWO DISCRETIZATIONS. `ampIn` and `ampOut` are the same
  * samples as `dry` in the quantiser: its input on the staircase's input axis
- * (Drive taken back out) and the level it became, Dither in it. `holdIn` and
+ * (after Drive) and the level it became, Dither in it. `holdIn` and
  * `holdTook` are the hold's own window, oldest first: the quantiser's input
  * and whether the hold took a level in each sample, `holdAt` past its start
  * (0..1: 0 on the host's grid, the exact instant with Anti-Alias on) -- the
@@ -115,8 +115,11 @@ public:
     virtual bool bipolar (int index) const = 0;
 
     /* The staircase: `count` outputs for inputs evenly spaced from -span to
-     * span, both ends included -- Drive, Bits, Shape and Mid-Rise as the host
-     * parameters hold them now. Returns the span, the engine's
+     * span, both ends included -- on the quantiser's own input, after Drive,
+     * so it always runs along the diagonal: Bits, Shape and Mid-Rise as the
+     * host parameters hold them now. Drive is in the look's samples instead
+     * (Scope::ampIn), where it moves the signal up the staircase. Returns
+     * the span, the engine's
      * (bc_transfer_span): the window around silence, a power of two from 1
      * down, that shows at most 16 of the steps, so each is wide enough to see.
      * Outputs are in full-scale units, as the inputs are. */

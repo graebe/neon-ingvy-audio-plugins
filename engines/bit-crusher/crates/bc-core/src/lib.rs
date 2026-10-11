@@ -233,10 +233,11 @@ struct Channel {
 }
 
 /// WHAT ONE SAMPLE DID, for an editor's pictures of the two discretizations:
-/// the level the quantiser was given, in the input's own units (after Drive
-/// and the pre-filter, Drive taken back out, so it sits on the same axis as
-/// `transfer`'s input), the level it became (Dither in it), and whether the
-/// hold took that level. Bypassed, the input passes and nothing is taken.
+/// the level the quantiser was given -- after Drive and the pre-filter, so
+/// Drive is in it: the axis `transfer` at 0 dB draws the staircase on, where
+/// a staircase always runs along the diagonal and Drive moves the signal up
+/// it -- the level it became (Dither in it), and whether the hold took that
+/// level. Bypassed, the input passes and nothing is taken.
 ///
 /// With Anti-Alias on, the band-limited hold takes its levels at exact
 /// instants between samples, and a little later than the plain one (it reads
@@ -309,7 +310,7 @@ impl Channel {
          * is the same as stepping only what it takes. */
         let level = now.level(x, &mut self.dither_rng);
         let raw = self.hold.step(level, now.step, now.jitter, &mut self.hold_rng);
-        self.probe = Probe { input: x / now.drive, level, took: self.hold.took(), exact_take: None };
+        self.probe = Probe { input: x, level, took: self.hold.took(), exact_take: None };
         let raw = self.raw_late.push(raw);
         let mut exact_take = None;
         let held = if now.anti_alias > 0.0 {

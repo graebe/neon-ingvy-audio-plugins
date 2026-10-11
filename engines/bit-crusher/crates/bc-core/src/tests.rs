@@ -561,10 +561,13 @@ fn the_probe_tells_the_level_the_staircase_gives_and_the_hold_takes() {
     e.process_f32_probed(&mut input, None, |i, p| seen.push((i, p)));
     assert_eq!(seen.len(), 4800);
     assert!(seen.iter().enumerate().all(|(n, &(i, _))| i == n), "every index, in order");
-    /* No dither, no pre-filter: the level is the staircase at the input. */
+    /* No dither, no pre-filter: the level is the staircase at the input,
+     * which has Drive in it -- 6 dB up on the dry tone. */
     for &(_, p) in &seen {
-        assert_eq!(p.level, transfer(6.0, 3.0, 0.0, false, p.input), "{p:?}");
+        assert_eq!(p.level, transfer(0.0, 3.0, 0.0, false, p.input), "{p:?}");
     }
+    let peak = seen.iter().map(|(_, p)| p.input.abs()).fold(0.0, f64::max);
+    assert!((peak - 0.7 * 10f64.powf(6.0 / 20.0)).abs() < 0.01, "{peak}");
     /* 12 kHz at 48 kHz: a take every fourth sample, from the first. */
     let takes: Vec<usize> = seen.iter().filter(|(_, p)| p.took).map(|&(i, _)| i).collect();
     assert_eq!(takes[0], 0);

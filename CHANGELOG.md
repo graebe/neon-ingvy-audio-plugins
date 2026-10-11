@@ -8,8 +8,9 @@
 - **Three pictures, one over each panel.** A new **Time Crush** picture shows
   the hold itself: your signal in grey, the held level as a dim line, each
   take lit as a dot, sixteen holds wide. The **Amplitude Crush** picture now
-  shows your signal live, lighting up the stairs it is on, and keeps Drive's
-  tilt in view instead of cutting it off at the edge as if it clipped.
+  shows your signal live, lighting up the stairs it is on. It is drawn on the
+  level going into the crusher, after Drive, so its diagonal always runs
+  corner to corner and Drive moves your signal up the stairs.
 - **The pictures say exactly what you hear.** The Amplitude Crush caption
   counts the levels (257 at 8 bits, 256 with Mid-Rise: the level at zero is
   the one more); its dots only ever sit on the staircase that made them, and

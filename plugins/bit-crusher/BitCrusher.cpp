@@ -235,13 +235,15 @@ bool Processor::bipolar (int index) const
     return bc_param_info (index, &info) && info.bipolar;
 }
 
+/* On the quantiser's own input, after Drive: Drive moves the signal up the
+ * staircase, never the staircase off the diagonal. */
 double Processor::steps (float* out, int count)
 {
-    const double drive = plain (param::drive), bits = plain (param::bits), shape = plain (param::shape);
+    const double bits = plain (param::bits), shape = plain (param::shape);
     const bool midRise = plain (param::midRise) >= 0.5;
-    const double span = bc_transfer_span (drive, bits, shape, midRise);
+    const double span = bc_transfer_span (0.0, bits, shape, midRise);
     if (out != nullptr && count > 0)
-        bc_transfer_render (drive, bits, shape, midRise, span, out, (uint32_t) count);
+        bc_transfer_render (0.0, bits, shape, midRise, span, out, (uint32_t) count);
     return span;
 }
 

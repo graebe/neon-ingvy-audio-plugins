@@ -10,12 +10,13 @@
  *                  its steps show -- at most 16 of them, so 8 bits is seen at
  *                  1/16 of full scale rather than as 256 steps narrower than
  *                  a pixel. The untouched signal is the grey diagonal (out =
- *                  in); the staircase the engine renders from the parameters
- *                  now is the curve in front: Drive tilts it, Bits sets its
- *                  steps, Shape bunches them near zero, Mid-Rise lifts it off
- *                  zero. The output axis fits what the window's inputs come
- *                  out as, so Drive's tilt is drawn rather than cut off at
- *                  the well's edge as a clip that does not happen. THE LIVE
+ *                  in), corner to corner at any zoom: both axes are the
+ *                  quantiser's own level, after Drive, on one scale. The
+ *                  staircase the engine renders from the parameters now is
+ *                  the curve in front, always along the diagonal: Bits sets
+ *                  its steps, Shape bunches them near zero, Mid-Rise lifts it
+ *                  off zero. Drive moves the signal up it -- the dots spread
+ *                  further -- and past full scale into the clip. THE LIVE
  *                  VIEW: a dot for each sample of the look the quantiser saw,
  *                  where its input and its level put it -- on the staircase,
  *                  or beside it by Dither's noise. While there are dots the

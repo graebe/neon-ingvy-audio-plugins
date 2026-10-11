@@ -25,8 +25,7 @@ or so) it is simply the latest samples, and `triggered` says so.
 
 THE SAME LOOK FEEDS THE TWO DISCRETIZATIONS' PICTURES, so all three show one
 moment. For the amplitude: the window's samples as the quantiser saw them --
-its input, Drive taken back out, and the level it became (`amp_in`,
-`amp_out`). For the time: the hold's own window (`hold_in`, `hold_took`), the
+its input, Drive in it, and the level it became (`amp_in`, `amp_out`). For the time: the hold's own window (`hold_in`, `hold_took`), the
 latest samples back to the take `HOLD_PERIODS` takes ago, so it shows that
 many periods at any Rate, or as many as the ring holds at a slow one.
 
@@ -63,8 +62,8 @@ pub struct BcScope {
     /// The left channel before and after, -1..1 at full scale.
     pub dry: [f32; BC_SCOPE],
     pub wet: [f32; BC_SCOPE],
-    /// The same samples in the quantiser: its input in the input's units
-    /// (Drive taken back out: bc_transfer_render's axis) and its level.
+    /// The same samples in the quantiser: its input, after Drive and the
+    /// pre-filter (bc_transfer_render's axis at 0 dB), and its level.
     pub amp_in: [f32; BC_SCOPE],
     pub amp_out: [f32; BC_SCOPE],
     /// The hold's window, oldest first: `hold_len` samples of the

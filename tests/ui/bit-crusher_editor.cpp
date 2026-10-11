@@ -81,19 +81,19 @@ struct FakeModel final : public Model
 
     float plain (int i) { return params[i].convertFrom0to1 (params[i].getValue()); }
 
+    /* On the quantiser's own input, after Drive: no Drive in it. */
     double steps (float* out, int count) override
     {
         const double delta = std::exp2 (1.0 - (double) plain (param::bits));
-        const double gain = std::pow (10.0, (double) plain (param::drive) / 20.0);
         /* The window: halved from full scale while it would hold more than
          * 16 steps, as bc_transfer_span counts them. */
         double span = 1.0;
-        while (span > 1.0 / 65536.0 && 2.0 * span * gain / delta > 16.0)
+        while (span > 1.0 / 65536.0 && 2.0 * span / delta > 16.0)
             span *= 0.5;
         for (int i = 0; i < count; ++i)
         {
             const double x = span * (-1.0 + 2.0 * i / (count - 1));
-            out[i] = (float) juce::jlimit (-1.0, 1.0, delta * std::round (x * gain / delta));
+            out[i] = (float) juce::jlimit (-1.0, 1.0, delta * std::round (x / delta));
         }
         return span;
     }
@@ -134,17 +134,17 @@ struct FakeModel final : public Model
         const double delta = std::exp2 (1.0 - bits);
         const auto at = [&] (int n) { return level * std::sin (2.0 * juce::MathConstants<double>::pi * hz * n / 48000.0); };
         const auto step = [&] (double x) { return (float) (delta * std::round (x / delta)); };
-        /* The quantiser's level is the staircase's, Drive and all, as the
-         * engine reports it: the same as steps() draws. */
+        /* In the quantiser, as the engine reports it: its input after Drive,
+         * and the level steps() draws for it. */
         const double gridStep = std::exp2 (1.0 - (double) plain (param::bits));
         const double gain = std::pow (10.0, (double) plain (param::drive) / 20.0);
-        const auto level_ = [&] (double x) { return (float) juce::jlimit (-1.0, 1.0, gridStep * std::round (x * gain / gridStep)); };
+        const auto level_ = [&] (double x) { return (float) juce::jlimit (-1.0, 1.0, gridStep * std::round (x / gridStep)); };
         for (int i = 0; i < 512; ++i)
         {
             audio.dry[(size_t) i] = (float) at (i);
             audio.wet[(size_t) i] = step (at (i - i % hold));
-            audio.ampIn[(size_t) i] = (float) at (i);
-            audio.ampOut[(size_t) i] = level_ (at (i));
+            audio.ampIn[(size_t) i] = (float) (gain * at (i));
+            audio.ampOut[(size_t) i] = level_ (gain * at (i));
         }
         const int len = 16 * hold + 1;
         audio.holdIn.resize ((size_t) len);
@@ -306,22 +306,36 @@ TEST_CASE ("bit-crusher: the staircase follows the parameters at once")
     CHECK (distinct (after) == std::vector<float> { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f });
 }
 
-TEST_CASE ("bit-crusher: Drive tilts the staircase inside the well, not cut flat at its edge")
+TEST_CASE ("bit-crusher: the diagonal stays the diagonal; Drive moves the signal up the stairs")
 {
     Rig rig;
     auto& steps = rig.editor.amplitudePlot();
+    rig.model.set (param::refresh, 0.0f);
+    const auto at0 = steps.outputs();
+    const double span0 = steps.inputSpan();
+    rig.model.play (220.0, 0.1f, 8.0, 4);
+    rig.frames (1);
+    const auto quiet = steps.liveDots().size();
+
+    /* Drive leaves the staircase, its zoom and its scale where they were... */
+    for (const float drive : { 12.0f, -12.0f, 24.0f })
+    {
+        rig.model.set (param::drive, drive);
+        rig.frames (1);
+        CHECK (steps.outputs() == at0);
+        CHECK (steps.inputSpan() == span0);
+        CHECK (steps.outputSpan() == steps.inputSpan());
+    }
+    /* ...and pushes the signal's samples further up it: at +12 dB fewer of
+     * them stay near silence, inside the window. */
     rig.model.set (param::drive, 12.0f);
+    rig.model.play (220.0, 0.1f, 8.0, 4);
     rig.frames (1);
-    float peak = 0.0f;
-    for (const float v : steps.outputs())
-        peak = std::max (peak, std::abs (v));
-    /* The outputs reach about four times the window's inputs, and the
-     * output axis spans them all. */
-    CHECK (peak > 3.0f * (float) steps.inputSpan());
-    CHECK (steps.outputSpan() >= (double) peak);
-    rig.model.set (param::drive, -12.0f);
-    rig.frames (1);
-    CHECK (steps.outputSpan() == steps.inputSpan());
+    CHECK (steps.liveDots().size() < quiet);
+    /* Every dot is on the staircase, so on or within a step of the diagonal. */
+    const auto area = steps.getLocalBounds().toFloat();
+    for (const auto& d : steps.liveDots())
+        CHECK (area.contains (d));
 }
 
 TEST_CASE ("bit-crusher: the live dots sit where the look's samples are on the staircase")
