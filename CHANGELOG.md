@@ -22,28 +22,35 @@
   sounded in the cycle, whichever track Live processed first. With the
   transport stopped it is drawn as it arrives, and the caption says
   `KICK BY ARRIVAL`.
+- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
+  of jumping.
+- **Loops are exact.** When Live's loop wraps inside a buffer, the duck — and
+  the kick drawn behind it — continue from the loop's start on that very
+  sample.
 
 ### NI Listen-In
 
 - **Every block is stamped with its place on Live's timeline**, so a reader on
-  another track can line it up with its own audio to the sample. NI Side-Chain
-  is the first to read a bus this way.
+  another track can line it up with its own audio to the sample — also across
+  a loop that wraps inside a buffer. NI Side-Chain is the first to read a bus
+  this way.
+- Its Bypass still switches at once: it passes audio through untouched, so
+  there is nothing to fade.
 
 ### NI Spectrogram
 
-- Reads the new bus format; nothing else changes.
+- Reads the new bus format. Its Bypass still switches at once, for Listen-In's
+  reason.
 
-## Unreleased — NI Side-Chain, NI Listen-In, NI Spectrogram, NI Chord-Detector
+## Unreleased — NI Chord-Detector
 
-These are already in the shared plugin shell and reach each plugin with its
+These are already in the shared plugin shell and reach NI Chord-Detector with its
 next release; that release's entry lists them and this section goes.
 
 - **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
-  of jumping (NI Listen-In and NI Spectrogram pass audio through untouched, so
-  theirs still switches at once, with nothing to hear).
-- **Loops are exact.** When Live's loop wraps inside a buffer, a plugin that
-  follows the song position continues from the loop's start on that very
-  sample.
+  of jumping.
+- **Loops are exact.** When Live's loop wraps inside a buffer, it continues
+  from the loop's start on that very sample.
 
 ## v2026.10.10.1 — NI Trance Gate
 
