@@ -55,6 +55,12 @@ void dry (juce::Graphics& g, const juce::Path& area)
     g.fillPath (area);
 }
 
+void dryLine (juce::Graphics& g, const juce::Path& line)
+{
+    g.setColour (c::plotDry);
+    g.strokePath (line, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+}
+
 void wet (juce::Graphics& g, const juce::Path& area)
 {
     uv::light::glowArc (g, area);

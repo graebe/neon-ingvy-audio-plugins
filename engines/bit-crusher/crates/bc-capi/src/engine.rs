@@ -8,7 +8,7 @@ instance. lib.rs says what the crate may do and which thread calls what.
 
 use std::os::raw::{c_char, c_int};
 
-use bc_core::{transfer, Engine, Kind, Param, Travel, LATENCY, PARAM_COUNT};
+use bc_core::{transfer, transfer_span, Engine, Kind, Param, Travel, LATENCY, PARAM_COUNT};
 use ni_dsp::ffi::{copy_cstr, cstr};
 
 /// How many samples an instance keeps for the scope.
@@ -406,10 +406,22 @@ impl core::fmt::Write for TextBuf {
 
 /* ------------------------------------------------------- the steps, drawn */
 
+/// THE INPUT RANGE AN EDITOR'S PLOT OF THE STEPS SHOULD SHOW: the half-width
+/// of -span..span, a power of two from 1 down, holding at most 16 steps of
+/// the staircase these settings make (bc_core::transfer_span). Without it, 8
+/// bits is 256 steps across a well narrower than that in pixels: a diagonal.
+/// Any thread; pure.
+#[no_mangle]
+pub extern "C" fn bc_transfer_span(drive_db: f64, bits: f64, shape_pct: f64, mid_rise: bool) -> f64 {
+    transfer_span(drive_db, bits, shape_pct, mid_rise)
+}
+
 /// THE STEPS AS A CURVE, for an editor's plot: `count` outputs for inputs
-/// evenly spaced from -1 to 1 (both included), through Drive (dB), the grid
-/// of `bits`, Shape (%) and mid-rise or not -- the engine's own staircase,
-/// without the noise and the time. Any thread; pure.
+/// evenly spaced from -span to span (both included), through Drive (dB), the
+/// grid of `bits`, Shape (%) and mid-rise or not -- the engine's own
+/// staircase, without the noise and the time. `span` is bc_transfer_span's,
+/// or 1 for the whole range; one that is not a positive number is 1. Any
+/// thread; pure.
 ///
 /// # Safety
 /// `out` is null or has room for `count` floats.
@@ -419,16 +431,18 @@ pub unsafe extern "C" fn bc_transfer_render(
     bits: f64,
     shape_pct: f64,
     mid_rise: bool,
+    span: f64,
     out: *mut f32,
     count: u32,
 ) {
     if out.is_null() || count == 0 {
         return;
     }
+    let span = if span > 0.0 && span.is_finite() { span.min(1.0) } else { 1.0 };
     let out = std::slice::from_raw_parts_mut(out, count as usize);
     let last = (count.max(2) - 1) as f64;
     for (i, y) in out.iter_mut().enumerate() {
-        let x = if count == 1 { 0.0 } else { -1.0 + 2.0 * i as f64 / last };
+        let x = if count == 1 { 0.0 } else { span * (-1.0 + 2.0 * i as f64 / last) };
         *y = transfer(drive_db, bits, shape_pct, mid_rise, x) as f32;
     }
 }

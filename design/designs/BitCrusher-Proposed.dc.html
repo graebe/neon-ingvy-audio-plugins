@@ -17,21 +17,21 @@ body{margin:0;background:#060410}
 </helmet>
 <div class="ph" style="position: relative; width: 888px; height: 532px; overflow: hidden; font-family: var(--font-mono); color: var(--ink); background: var(--bg-000);">
 
-  <!-- STEPS (32, 32, 264 x 200): the staircase, input across, output up, over the panel that shapes it. The diagonal is the untouched signal. -->
+  <!-- STEPS (32, 32, 264 x 200): the staircase, input across, output up, over the panel that shapes it. The grey diagonal (plot-dry, #6b6b78) is the untouched signal. ZOOMED UNTIL THE STEPS SHOW: the well spans the window around silence, a power of two from full scale down, that holds at most 16 steps (the engine's bc_transfer_span), and the caption says by how much ("Steps 8.0 bits x16"); at 8 bits the whole range would be 256 steps narrower than a pixel, a plain diagonal. -->
   <div style="position: absolute; left: 32px; top: 32px; width: 264px; height: 200px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
-    <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">Steps&#160;&#160;&#160;{{bitsText}} bits</span>
+    <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">Steps&#160;&#160;&#160;{{bitsText}} bits{{zoomText}}</span>
     <svg viewBox="0 0 250 174" width="250" height="174" style="position: absolute; left: 6px; top: 20px; overflow: visible;" aria-hidden="true">
-      <path d="M0 174 L250 0" fill="none" stroke="var(--line-200)" stroke-width="1"></path>
+      <path d="M0 174 L250 0" fill="none" stroke="#6b6b78" stroke-width="1.5"></path>
       <path d="{{stairs}}" fill="none" stroke="var(--uv)" stroke-width="2" stroke-linejoin="miter" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></path>
     </svg>
   </div>
 
-  <!-- SIGNAL (312, 32, 544 x 200): the last 11 ms of the left channel, starting on an upward zero crossing: the input in grey behind, the crushed output in front. The level range follows the material; its label sits at the top right. -->
+  <!-- SIGNAL (312, 32, 544 x 200): the last 11 ms of the left channel, starting on an upward zero crossing: the input in grey behind (plot-dry, #6b6b78, a 1.5px line), the crushed output in front. The level range follows the material; its label sits at the top right. -->
   <div style="position: absolute; left: 312px; top: 32px; width: 544px; height: 200px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
     <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">Signal&#160;&#160;&#160;11 ms&#160;&#160;&#160;input in grey</span>
     <span style="position: absolute; right: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; color: var(--ink-muted);">+1 dB</span>
     <svg viewBox="0 0 530 174" width="530" height="174" style="position: absolute; left: 6px; top: 20px; overflow: visible;" aria-hidden="true">
-      <path d="{{dry}}" fill="none" stroke="var(--line-200)" stroke-width="1"></path>
+      <path d="{{dry}}" fill="none" stroke="#6b6b78" stroke-width="1.5"></path>
       <path d="{{wet}}" fill="none" stroke="var(--uv)" stroke-width="2" stroke-linejoin="miter" style="filter: drop-shadow(0 0 3px var(--uv-deep));"></path>
     </svg>
   </div>
@@ -91,11 +91,24 @@ class Component extends DCLogic {
 
     const path = (pts) => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
 
-    /* The staircase, 241 points across the well. */
+    /* The window the engine shows the staircase in (bc_transfer_span): from
+     * full scale, halved while it holds more than 16 steps. */
+    const stepsWithin = (r) => {
+      let n = 0, last = quantize(-r);
+      for (let i = 1; i < 1024; i++) {
+        const y = quantize(-r + 2 * r * i / 1023);
+        if (y !== last) { n++; last = y; }
+      }
+      return n;
+    };
+    let span = 1;
+    while (span > 1 / 65536 && stepsWithin(span) > 16) span /= 2;
+
+    /* The staircase, 241 points across the well, over that window. */
     const stairs = [];
     for (let i = 0; i < 241; i++) {
-      const x = -1 + 2 * i / 240;
-      stairs.push([250 * i / 240, 87 - 87 * quantize(x)]);
+      const x = span * (-1 + 2 * i / 240);
+      stairs.push([250 * i / 240, 87 - 87 * quantize(x) / span]);
     }
 
     /* 512 samples of a 220 Hz tone at 48 kHz, held every `hold` samples. */
@@ -137,6 +150,7 @@ class Component extends DCLogic {
     const panelStyle = (x) => 'position: absolute; left: ' + x + 'px; top: 256px; width: 264px; height: 208px; box-sizing: border-box; margin: 0;';
     return {
       bitsText: bits.toFixed(1),
+      zoomText: span < 1 ? '\u00a0\u00a0\u00a0\u00d7' + Math.round(1 / span) : '',
       stairs: path(stairs),
       dry: path(dry),
       wet: path(wet),

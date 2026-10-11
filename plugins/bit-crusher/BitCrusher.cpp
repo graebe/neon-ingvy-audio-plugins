@@ -223,12 +223,14 @@ bool Processor::bipolar (int index) const
     return bc_param_info (index, &info) && info.bipolar;
 }
 
-void Processor::steps (float* out, int count)
+double Processor::steps (float* out, int count)
 {
-    if (out == nullptr || count <= 0)
-        return;
-    bc_transfer_render (plain (param::drive), plain (param::bits), plain (param::shape), plain (param::midRise) >= 0.5,
-                        out, (uint32_t) count);
+    const double drive = plain (param::drive), bits = plain (param::bits), shape = plain (param::shape);
+    const bool midRise = plain (param::midRise) >= 0.5;
+    const double span = bc_transfer_span (drive, bits, shape, midRise);
+    if (out != nullptr && count > 0)
+        bc_transfer_render (drive, bits, shape, midRise, span, out, (uint32_t) count);
+    return span;
 }
 
 const Scope& Processor::scope()

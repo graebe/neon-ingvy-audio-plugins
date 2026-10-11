@@ -87,14 +87,25 @@ fn text_goes_out_and_comes_back_in() {
 }
 
 #[test]
-fn the_curve_is_the_staircase_from_minus_one_to_one() {
+fn the_curve_is_the_staircase_over_the_span_it_is_given() {
     let mut out = [0.0f32; 5];
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, out.as_mut_ptr(), 5) };
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, 1.0, out.as_mut_ptr(), 5) };
     assert_eq!(out, [-1.0, -1.0, 0.0, 1.0, 1.0]);
     let mut one = [9.0f32; 1];
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, one.as_mut_ptr(), 1) };
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, 1.0, one.as_mut_ptr(), 1) };
     assert_eq!(one, [0.5]);
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, std::ptr::null_mut(), 5) };
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, 1.0, std::ptr::null_mut(), 5) };
+    /* 8 bits over its span: the steps of 1/128 from -1/16 to 1/16. */
+    let span = bc_transfer_span(0.0, 8.0, 0.0, false);
+    assert_eq!(span, 1.0 / 16.0);
+    let mut zoomed = [0.0f32; 3];
+    unsafe { bc_transfer_render(0.0, 8.0, 0.0, false, span, zoomed.as_mut_ptr(), 3) };
+    assert_eq!(zoomed, [-0.0625, 0.0, 0.0625]);
+    /* A span that is no number, or none, is the whole range. */
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, bad, out.as_mut_ptr(), 5) };
+        assert_eq!(out, [-1.0, -1.0, 0.0, 1.0, 1.0], "span {bad}");
+    }
 }
 
 #[test]

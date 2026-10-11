@@ -27,6 +27,9 @@
  *   under()   plot-fill                             the area under it
  *   ghost()   a 1px plot-ghost line                 a reference behind it
  *   dry()     plot-dry at half opacity              the input behind a trace
+ *   dryLine() a 1.5px plot-dry line                 the input as a line: the
+ *             same grey at its whole strength, as a line has none of an
+ *             area's mass and at half it vanishes into the well
  *   wet()     uv with the arc glow                  the processed trace
  *   key()     plot-key at 30%                       the reference behind them all
  *   keyEdge() its edge, 1px plot-key at 90%,        (the kick behind a duck),
@@ -99,6 +102,7 @@ void curve (juce::Graphics&, const juce::Path& line);
 void under (juce::Graphics&, const juce::Path& area);
 void ghost (juce::Graphics&, const juce::Path& line);
 void dry (juce::Graphics&, const juce::Path& area);
+void dryLine (juce::Graphics&, const juce::Path& line);
 void wet (juce::Graphics&, const juce::Path& area);
 /* The reference band (the fill, first of all) and its edge (after dry(),
  * before wet()): 1.2.0's plot-key. A band, never a rule -- amber as a rule is

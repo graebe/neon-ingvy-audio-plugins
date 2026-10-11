@@ -254,8 +254,15 @@ TEST_CASE ("the model: the staircase now, the scope after audio, the bipolar kno
     CHECK (out[2] == 0.0f);
     CHECK (out[4] == 1.0f);
     a.set (param::midRise, 1.0);
-    a.p.steps (out, 5);
+    CHECK (a.p.steps (out, 5) == 1.0);
     CHECK (out[2] == 0.5f);
+    /* 8 bits: the engine's window, a sixteenth of full scale, so the plot
+     * shows 16 steps rather than 256 narrower than a pixel. */
+    a.set (param::midRise, 0.0);
+    a.set (param::bits, 8.0);
+    CHECK (a.p.steps (out, 5) == 1.0 / 16.0);
+    CHECK (out[0] == -0.0625f);
+    CHECK (out[4] == 0.0625f);
 
     CHECK (a.p.scope().count() == 0);
     for (int b = 0; b < 20; ++b)

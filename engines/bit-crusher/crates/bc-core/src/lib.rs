@@ -604,5 +604,40 @@ pub fn transfer(drive_db: f64, bits: f64, shape_pct: f64, mid_rise: bool, x: f64
     shape.expand(grid.quantize(shape.compress(x)))
 }
 
+/// How many steps a plot of the staircase shows at most: enough to read as a
+/// staircase, few enough that each is several pixels wide in an editor's well.
+pub const SPAN_STEPS: usize = 16;
+
+/// THE INPUT RANGE A PLOT OF THE STEPS SHOULD SHOW: the half-width `r` of the
+/// window -r..r, a power of two from 1 down, that holds at most [`SPAN_STEPS`]
+/// steps of the staircase [`transfer`] draws. At 8 bits the whole -1..1
+/// holds 256 steps, each narrower than a pixel, and the plot is a diagonal;
+/// zoomed to 1/16 of full scale, 16 steps fill it.
+///
+/// The steps are COUNTED on the engine's own curve rather than worked out from
+/// Bits, so Drive (which stretches them), Shape (which bunches them near zero)
+/// and Mid-Rise are all in the answer. Never below 2^-16, where even 16 bits
+/// shows its steps. A NaN setting is the parameter's default, as in `transfer`.
+pub fn transfer_span(drive_db: f64, bits: f64, shape_pct: f64, mid_rise: bool) -> f64 {
+    const PROBES: usize = 1024;
+    let steps_within = |r: f64| {
+        let mut last = transfer(drive_db, bits, shape_pct, mid_rise, -r);
+        let mut steps = 0;
+        for i in 1..PROBES {
+            let y = transfer(drive_db, bits, shape_pct, mid_rise, -r + 2.0 * r * i as f64 / (PROBES - 1) as f64);
+            if y != last {
+                steps += 1;
+                last = y;
+            }
+        }
+        steps
+    };
+    let mut r = 1.0;
+    while r > 1.0 / 65_536.0 && steps_within(r) > SPAN_STEPS {
+        r *= 0.5;
+    }
+    r
+}
+
 #[cfg(test)]
 mod tests;

@@ -27,7 +27,7 @@ inline constexpr InfoText holdPanel { "Hold — how often a level is taken: time
 inline constexpr InfoText levelPanel { "Level — how hard it is driven in, and what comes out." };
 
 /* THE PLOTS. */
-inline constexpr InfoText stepsPlot { "Steps — input level across, the level it becomes up; grey is untouched." };
+inline constexpr InfoText stepsPlot { "Steps — input across, output up, zoomed so steps show; grey: untouched." };
 inline constexpr InfoText signalPlot { "Signal — the input in grey, the crushed output in front." };
 
 /* STEPS. */

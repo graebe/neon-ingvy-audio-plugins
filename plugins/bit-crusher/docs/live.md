@@ -6,10 +6,10 @@ title: Ableton Live Interface
 The window is two pictures over three panels. The pictures show what the
 crusher does; the panels are what you do to it.
 
-- **Steps**, on the left, is the staircase: every input level, and the level
-  it becomes.
+- **Steps**, on the left, is the staircase: every input level across, and
+  the level it becomes up. The grey diagonal is the untouched signal.
 - **Signal**, on the right, is the sound itself, the last eleven
-  milliseconds of it, before and after.
+  milliseconds of it: the input in grey, the crushed output in front.
 - Under them, three panels: **Steps** (how finely a level is kept), **Hold**
   (how often a level is taken) and **Level** (how hard it is driven in, and
   what comes out).
@@ -24,11 +24,19 @@ steps between them are far too small to hear. Take bits away and the levels
 get fewer and the steps bigger: with 8 bits there are 256, with 4 bits 16,
 with 2 bits only 4.
 
-Set **Bits** to 4 and watch the Steps picture. The straight diagonal behind is
+Set **Bits** to 4 and watch the Steps picture. The grey diagonal behind is
 the untouched signal: output equals input. The bright line in front is what
 the crusher does to it: a staircase. Every input between two steps comes out
-as the nearest step. The Signal picture shows the same thing in time: the wave
-becomes a stack of flat stairs.
+as the nearest step. The Signal picture shows the same thing in time: the
+grey wave that came in becomes a stack of flat stairs.
+
+> **The Steps picture zooms in.** At 8 bits there are 256 steps from bottom
+> to top, each far narrower than a pixel, so drawn whole they would look like
+> a plain diagonal. The picture shows the part around silence where about 16
+> steps fit, and its caption says by how much: `STEPS 8.0 BITS ×16` is a
+> sixteenth of full scale. From 4 bits down every step fits, and the zoom
+> disappears. Drive and Shape move the zoom too, because they change how
+> wide the steps are.
 
 > **Bits is continuous.** 4.5 bits is a real setting, between 16 and 32
 > levels, and the top step is simply shorter. So a slow sweep of Bits — or an

@@ -13,8 +13,9 @@
  * TWO PICTURES, BOTH THE ENGINE'S:
  *
  *   steps()   the staircase, as the engine renders it from the parameters
- *             NOW (bc_transfer_render) -- so a turned knob moves the picture
- *             at once, and the picture is the engine's grid, never a second
+ *             NOW (bc_transfer_render), over the window the engine picks for
+ *             it (bc_transfer_span) -- so a turned knob moves the picture at
+ *             once, and the picture is the engine's grid, never a second
  *             model of it drawn here
  *   scope()   the last few milliseconds of the left channel, dry and wet, as
  *             the audio thread published them (bc_shell_read), starting on an
@@ -83,10 +84,13 @@ public:
      * its arc from 12 o'clock: the engine's table says. */
     virtual bool bipolar (int index) const = 0;
 
-    /* The staircase: `count` outputs, -1..1, for inputs evenly spaced from -1
-     * to 1, both ends included -- Drive, Bits, Shape and Mid-Rise as the host
-     * parameters hold them now. */
-    virtual void steps (float* out, int count) = 0;
+    /* The staircase: `count` outputs for inputs evenly spaced from -span to
+     * span, both ends included -- Drive, Bits, Shape and Mid-Rise as the host
+     * parameters hold them now. Returns the span, the engine's
+     * (bc_transfer_span): the window around silence, a power of two from 1
+     * down, that shows at most 16 of the steps, so each is wide enough to see.
+     * Outputs are in full-scale units, as the inputs are. */
+    virtual double steps (float* out, int count) = 0;
 
     /* The latest scope; valid until the next call. */
     virtual const Scope& scope() = 0;

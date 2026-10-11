@@ -10,8 +10,9 @@
  * THE PARAMETERS are the engine's table (bc_param_*), transcribed in its
  * order with its ranges, travel and words; a fake in another order would test
  * another plugin. THE STAIRCASE is a stand-in for the engine's
- * (bc_transfer_render): a mid-tread grid of 2^(1-Bits) under Drive, which is
- * what the engine draws with Shape at 0 -- the test's, not the editor's, which
+ * (bc_transfer_render, over bc_transfer_span's window): a mid-tread grid of
+ * 2^(1-Bits) under Drive, zoomed until at most 16 steps show, which is what
+ * the engine draws with Shape at 0 -- the test's, not the editor's, which
  * draws whatever the model hands it.
  */
 #include "Editor.h"
@@ -79,15 +80,21 @@ struct FakeModel final : public Model
 
     float plain (int i) { return params[i].convertFrom0to1 (params[i].getValue()); }
 
-    void steps (float* out, int count) override
+    double steps (float* out, int count) override
     {
         const double delta = std::exp2 (1.0 - (double) plain (param::bits));
         const double gain = std::pow (10.0, (double) plain (param::drive) / 20.0);
+        /* The window: halved from full scale while it would hold more than
+         * 16 steps, as bc_transfer_span counts them. */
+        double span = 1.0;
+        while (span > 1.0 / 65536.0 && 2.0 * span * gain / delta > 16.0)
+            span *= 0.5;
         for (int i = 0; i < count; ++i)
         {
-            const double x = -1.0 + 2.0 * i / (count - 1) * 1.0;
+            const double x = span * (-1.0 + 2.0 * i / (count - 1));
             out[i] = (float) juce::jlimit (-1.0, 1.0, delta * std::round (x * gain / delta));
         }
+        return span;
     }
 
     const Scope& scope() override { return audio; }
@@ -215,18 +222,28 @@ TEST_CASE ("bit-crusher: the staircase follows the parameters at once")
 {
     Rig rig;
     auto& steps = rig.editor.stepsPlot();
-    CHECK (steps.getCaption() == "STEPS   8.0 BITS");
+    const auto distinct = [] (const std::vector<float>& v)
+    {
+        std::vector<float> levels (v.begin(), v.end());
+        std::sort (levels.begin(), levels.end());
+        levels.erase (std::unique (levels.begin(), levels.end()), levels.end());
+        return levels;
+    };
+    /* 8 bits is 256 steps: the well shows a sixteenth of full scale, says so,
+     * and holds 16 steps there -- a staircase, not a diagonal. */
+    CHECK (steps.getCaption() == juce::String::fromUTF8 ("STEPS   8.0 BITS   \xc3\x97" "16"));
+    CHECK (steps.inputSpan() == 1.0 / 16.0);
+    CHECK (distinct (steps.outputs()).size() == 17);
     const auto before = steps.outputs();
 
+    /* 2 bits fits whole: no zoom, and no zoom in the caption. */
     rig.model.set (param::bits, 2.0f);
     rig.frames (1);
     CHECK (steps.getCaption() == "STEPS   2.0 BITS");
+    CHECK (steps.inputSpan() == 1.0);
     const auto& after = steps.outputs();
     CHECK (after != before);
-    std::vector<float> levels (after.begin(), after.end());
-    std::sort (levels.begin(), levels.end());
-    levels.erase (std::unique (levels.begin(), levels.end()), levels.end());
-    CHECK (levels == std::vector<float> { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f });
+    CHECK (distinct (after) == std::vector<float> { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f });
 }
 
 TEST_CASE ("bit-crusher: the scope waits for audio, then shows its window's length")

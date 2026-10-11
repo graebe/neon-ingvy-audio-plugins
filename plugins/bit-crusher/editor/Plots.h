@@ -4,18 +4,23 @@
 /*
  * NI Bit-Crusher's two wells, side by side over the panels:
  *
- *   StepsPlot   THE STAIRCASE: input level across, output level up, -1..1
- *               both ways. The untouched signal is the diagonal behind it
- *               (ghost); the staircase the engine renders from the parameters
- *               now is the curve in front. Drive tilts it, Bits sets its
- *               steps, Shape bunches them near zero, Mid-Rise lifts it off
- *               zero. The caption repeats Bits in the engine's words
- *               ("STEPS   7.5 BITS"), so the picture says what it is of.
+ *   StepsPlot   THE STAIRCASE: input level across, output level up, over
+ *               the window around silence the engine picks so that its steps
+ *               show -- at most 16 of them, so 8 bits is seen at 1/16 of full
+ *               scale rather than as 256 steps narrower than a pixel. The
+ *               untouched signal is the grey diagonal behind it (dryLine, the
+ *               input's colour in both wells); the staircase the engine
+ *               renders from the parameters now is the curve in front. Drive
+ *               tilts it, Bits sets its steps, Shape bunches them near zero,
+ *               Mid-Rise lifts it off zero. The caption repeats Bits in the
+ *               engine's words and the zoom ("STEPS   8 BITS   ×16"), so
+ *               the picture says what it is of.
  *
  *   SignalPlot  THE SOUND: the last ~11 ms of the left channel -- the input
- *               as a ghost line, the crushed output as the curve in front --
- *               so the steps in both directions are seen where they land: the
- *               flat tops of a low Rate, the stairs of few Bits. It starts on
+ *               as a grey line (dryLine, as in the Steps well), the crushed
+ *               output as the curve in front -- so the steps in both
+ *               directions are seen where they land: the flat tops of a low
+ *               Rate, the stairs of few Bits. It starts on
  *               an upward zero crossing, so a steady tone stands still. The
  *               level range follows the material (Plot.h), so a quiet track
  *               still fills the well; double-click holds it at full scale.
@@ -44,8 +49,10 @@ public:
 
     void update();
 
-    /* What it drew, for the tests. */
+    /* What it drew, for the tests: the outputs, and the input range they
+     * span either side of silence. */
     const std::vector<float>& outputs() const noexcept { return levels; }
+    double inputSpan() const noexcept { return span; }
 
     void resized() override { rebuild(); }
 
@@ -55,6 +62,7 @@ private:
 
     Model& model;
     std::vector<float> levels, fresh;
+    double span = 1.0;
     juce::Path curve, diagonal;
 };
 

@@ -70,10 +70,13 @@ static void table(void) {
 
 static void curve(void) {
     float out[5];
-    bc_transfer_render(0.0, 1.0, 0.0, false, out, 5);
+    bc_transfer_render(0.0, 1.0, 0.0, false, 1.0, out, 5);
     CHECK(out[0] == -1.0f && out[2] == 0.0f && out[4] == 1.0f);
-    bc_transfer_render(0.0, 1.0, 0.0, true, out, 5);
+    bc_transfer_render(0.0, 1.0, 0.0, true, 1.0, out, 5);
     CHECK(out[2] == 0.5f);
+    /* Zoomed until the steps show: 8 bits, 1/16 of full scale. */
+    CHECK(bc_transfer_span(0.0, 8.0, 0.0, false) == 1.0 / 16.0);
+    CHECK(bc_transfer_span(0.0, 4.0, 0.0, false) == 1.0);
 }
 
 static void instance(void) {

@@ -524,3 +524,31 @@ fn every_control_at_its_ends_renders_finite_audio() {
         }
     }
 }
+
+#[test]
+fn the_plot_is_zoomed_until_the_steps_show() {
+    let steps = |r: f64, drive: f64, bits: f64, shape: f64| {
+        (1..4096)
+            .filter(|&i| {
+                let x = |i: i32| -r + 2.0 * r * f64::from(i) / 4095.0;
+                transfer(drive, bits, shape, false, x(i)) != transfer(drive, bits, shape, false, x(i - 1))
+            })
+            .count()
+    };
+    /* Few bits fit whole: 4 bits is 16 steps across -1..1. */
+    assert_eq!(transfer_span(0.0, 1.0, 0.0, false), 1.0);
+    assert_eq!(transfer_span(0.0, 4.0, 0.0, false), 1.0);
+    /* 8 bits, 256 steps: a sixteenth of full scale holds 16 of them. */
+    assert_eq!(transfer_span(0.0, 8.0, 0.0, false), 1.0 / 16.0);
+    assert_eq!(transfer_span(0.0, 16.0, 0.0, false), 1.0 / 4096.0);
+    /* Whatever the settings, the window shows steps, and no more than 16. */
+    for &(drive, bits, shape) in &[(0.0, 5.5, 0.0), (12.0, 8.0, 0.0), (-24.0, 12.0, 50.0), (0.0, 10.0, 100.0)] {
+        let r = transfer_span(drive, bits, shape, false);
+        let n = steps(r, drive, bits, shape);
+        assert!(n >= 2 && n <= SPAN_STEPS, "drive {drive}, bits {bits}, shape {shape}: {n} steps in ±{r}");
+        assert_eq!(r.log2().fract(), 0.0, "a power of two: {r}");
+    }
+    /* Drive stretches the steps, so it needs a narrower window. */
+    assert!(transfer_span(12.0, 8.0, 0.0, false) < transfer_span(0.0, 8.0, 0.0, false));
+    assert_eq!(transfer_span(f64::NAN, f64::NAN, f64::NAN, false), transfer_span(0.0, 8.0, 0.0, false));
+}

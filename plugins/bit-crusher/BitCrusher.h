@@ -76,7 +76,7 @@ public:
     bool motion() const override;
     void setMotion (bool on) override;
     bool bipolar (int index) const override;
-    void steps (float* out, int count) override;
+    double steps (float* out, int count) override;
     const Scope& scope() override;
 
 protected:

@@ -35,11 +35,16 @@ StepsPlot::StepsPlot (Model& m) : model (m), levels ((size_t) points, 0.0f), fre
 
 void StepsPlot::update()
 {
-    model.steps (fresh.data(), points);
-    const auto caption = "STEPS   " + model.parameter (param::bits).getCurrentValueAsText().toUpperCase();
-    if (fresh == levels && caption == getCaption())
+    const double freshSpan = model.steps (fresh.data(), points);
+    auto caption = "STEPS   " + model.parameter (param::bits).getCurrentValueAsText().toUpperCase();
+    /* Zoomed in, the caption says by how much: the well is no longer the
+     * whole range, and a picture that does not say so misleads. */
+    if (freshSpan < 1.0)
+        caption << juce::String::fromUTF8 ("   \xc3\x97") << juce::roundToInt (1.0 / freshSpan);
+    if (fresh == levels && freshSpan == span && caption == getCaption())
         return;
     levels = fresh;
+    span = freshSpan;
     setCaption (caption);
     rebuild();
     repaint();
@@ -59,7 +64,7 @@ void StepsPlot::rebuild()
     for (int i = 0; i < points; ++i)
     {
         const float x = xAt ((float) i / (float) (points - 1));
-        const float y = yOf (area, levels[(size_t) i]);
+        const float y = yOf (area, levels[(size_t) i], (float) span);
         if (i == 0)
             curve.startNewSubPath (x, y);
         else
@@ -69,7 +74,7 @@ void StepsPlot::rebuild()
 
 void StepsPlot::paintPlot (juce::Graphics& g)
 {
-    ni::ui::plot::ghost (g, diagonal);
+    ni::ui::plot::dryLine (g, diagonal);
     ni::ui::plot::curve (g, curve);
 }
 
@@ -133,7 +138,7 @@ void SignalPlot::rebuild()
 
 void SignalPlot::paintPlot (juce::Graphics& g)
 {
-    ni::ui::plot::ghost (g, dryLine);
+    ni::ui::plot::dryLine (g, dryLine);
     ni::ui::plot::curve (g, wetLine);
 }
 
