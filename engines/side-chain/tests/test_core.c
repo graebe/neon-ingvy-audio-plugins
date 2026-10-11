@@ -188,8 +188,8 @@ int main(void)
         int n = sc_core_get_param(c, "ui", buf, sizeof buf);
         check("`ui` returns a length", n > 0);
         check("`ui` is null-terminated at that length", buf[n] == '\0');
-        check_near("`ui` has eleven fields (App.jsx parses by position)",
-                   count_fields(buf), 11, 0);
+        check_near("`ui` has twelve fields (positional, append only)",
+                   count_fields(buf), 12, 0);
 
         n = sc_core_get_param(c, "params", buf, sizeof buf);
         check_near("`params` has one field per parameter",
