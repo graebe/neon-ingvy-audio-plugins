@@ -26,6 +26,7 @@
  * all.
  */
 import { createSignal, getOwner, onCleanup } from 'solid-js';
+import { createPlayhead } from './clocksync.js';
 
 /** The tick between anchors: about one display frame. */
 export const TICK_MS = 16;
@@ -37,14 +38,22 @@ export function positionAt(a, now) {
 }
 
 /**
- * `set(pos, perMs, moving)` re-anchors; `position()` is reactive and ticks
- * every TICK_MS while moving; `running()` says whether the tick is armed.
+ * `set(pos, perMs, moving, devMs)` re-anchors; `position()` is reactive and
+ * ticks every TICK_MS while moving; `running()` says whether the tick is armed.
  * `every`, `cancel` and `now` are injectable for tests.
+ *
+ * WITH `devMs` -- the engine's own time when `pos` was true -- the position is
+ * carried from THAT time, the engine's clock learnt from the readouts as they
+ * arrive, and corrections are eased rather than stepped (lib/clocksync.js):
+ * how late a readout arrived no longer moves the playhead. `snap` is the
+ * difference, in the position's own unit, that is a jump to draw at once.
+ * Without it the position is carried from the readout's arrival, as before.
  */
 export function createClock({
   every = (f, ms) => globalThis.setInterval(f, ms),
   cancel = (id) => globalThis.clearInterval(id),
   now = () => globalThis.performance.now(),
+  snap = 1,
 } = {}) {
   const [anchor, setAnchor] = createSignal({ pos: 0, perMs: 0, moving: false, at: 0 });
   const [tick, setTick] = createSignal(0);
@@ -59,9 +68,16 @@ export function createClock({
     if (anchor().moving) setTick((n) => n + 1);
   };
 
-  const set = (pos, perMs, moving) => {
+  const playhead = createPlayhead({ snapBeats: snap });
+  const set = (pos, perMs, moving, devMs) => {
     const live = !!moving && perMs > 0;
-    setAnchor({ pos, perMs, moving: live, at: now() });
+    const at = now();
+    const stamped = Number.isFinite(devMs);
+    if (stamped) {
+      playhead.anchor({ beats: pos, t: devMs, perBeatMs: perMs > 0 ? 1 / perMs : 0,
+                        running: live, paused: false, blocked: false, waitAt: null }, at);
+    }
+    setAnchor({ pos, perMs, moving: live, at, stamped });
     if (live && !id) id = every(onTick, TICK_MS);
     else if (!live) stop();
   };
@@ -69,7 +85,7 @@ export function createClock({
   const position = () => {
     const a = anchor();
     if (a.moving) tick();             /* the dependency that makes it tick */
-    return positionAt(a, now());
+    return a.stamped ? playhead.at(now()) : positionAt(a, now());
   };
 
   if (getOwner()) onCleanup(stop);

@@ -12,8 +12,13 @@
  *                         advance(ms) } -- the real engine, as wasm, behind
  *                       the module's own get/set (see web/<p>/harness)
  *     component,        'fx1' by default
- *     timers,           { setInterval, clearInterval } -- a test's own clock
+ *     timers,           { setInterval, clearInterval, setTimeout } -- a
+ *                       test's own clock
  *     frameMs,          how often the engine is advanced, 20 by default
+ *     latency,          () -> ms: how late each push reaches the page, or
+ *                       null for at once. The real one is 20 to 400 ms and
+ *                       different every time (the manager, the shim, WiFi,
+ *                       the iframe) -- which is what a playhead has to survive
  *   }) -> { bridge, device(key, value), stop() }
  *
  * `bridge` is what /static/schwung-remote-api.js gives a page in an iframe
@@ -54,7 +59,7 @@ export function feedsOf(chainParams) {
 }
 
 export function createFakeSchwung({
-  chainParams, engine, component = 'fx1', timers = globalThis, frameMs = 20,
+  chainParams, engine, component = 'fx1', timers = globalThis, frameMs = 20, latency = null,
 }) {
   const prefix = `${component}:`;
   const feeds = feedsOf(chainParams);
@@ -68,8 +73,11 @@ export function createFakeSchwung({
   let subscribed = false;
   let pendingFeeds = false;
 
+  const deliver = (params) => { for (const fn of listeners) fn(params); };
   const emit = (params) => {
-    if (Object.keys(params).length) for (const fn of listeners) fn(params);
+    if (!Object.keys(params).length) return;
+    if (latency) timers.setTimeout(() => deliver(params), latency());
+    else deliver(params);
   };
 
   function pushFeeds(all = false) {

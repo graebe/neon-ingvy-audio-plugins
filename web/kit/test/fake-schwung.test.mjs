@@ -86,3 +86,24 @@ test('nothing is pushed before a page subscribes', () => {
   fake.stop();
   run(100);
 });
+
+test('with a latency, every push arrives that much later, in its own time', () => {
+  const later = [];
+  const timers = {
+    setInterval: () => 1, clearInterval: () => {},
+    setTimeout: (fn, ms) => later.push([ms, fn]),
+  };
+  const values = { depth: '1', web_ui: '1', rate: '4' };
+  const engine = { set: (k, v) => { values[k] = v; }, get: (k) => values[k] ?? null, advance: () => {} };
+  let n = 0;
+  const fake = createFakeSchwung({ chainParams: CHAIN, engine, timers, latency: () => [300, 40][n++ % 2] });
+  const seen = [];
+  fake.bridge.onParamChange((p) => seen.push(p));
+  assert.deepEqual(seen, [], 'nothing arrives at once');
+  /* The feeds went out first, 300 ms late; the values second, 40 ms late --
+   * and so arrive first, as two pushes do on a real network. */
+  assert.deepEqual(later.map(([ms]) => ms), [300, 40]);
+  later.sort((a, b) => a[0] - b[0]).forEach(([, fn]) => fn());
+  assert.deepEqual(seen, [{ 'fx1:depth': '1', 'fx1:web_ui': '1' }, { 'fx1:rate': '4' }]);
+  fake.stop();
+});

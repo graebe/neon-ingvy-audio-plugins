@@ -16,9 +16,12 @@ const numbers = (text) => String(text ?? '').split(':').map(Number);
 
 /**
  * `ui`: source:rate:ms_cycle:sweep:advancing:fires:duck:key:connected:stage:phase
- * -- eleven fields -- or null. `key` and `connected` are the sidechain
- * detector's and mean nothing on the Move, which has no key input; they are
- * read only because the format is positional.
+ * :devms -- eleven fields and the engine's clock after them -- or null. `key`
+ * and `connected` are the sidechain detector's and mean nothing on the Move,
+ * which has no key input; they are read only because the format is
+ * positional. `devms` is the time the engine had processed when the readout
+ * was true (null from an engine older than it), which the playhead is carried
+ * from.
  */
 export function parseUi(text) {
   const f = numbers(text);
@@ -26,6 +29,7 @@ export function parseUi(text) {
   return {
     source: f[0], rate: f[1], msCycle: f[2], sweep: f[3], advancing: f[4],
     fires: f[5], duck: f[6], key: f[7], connected: f[8], stage: f[9], phase: f[10],
+    devms: f.length > 11 ? f[11] : null,
   };
 }
 

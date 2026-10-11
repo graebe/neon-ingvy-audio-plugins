@@ -73,8 +73,10 @@ export default function App(props) {
   const [named, setNamed] = createSignal({});
   const orderNext = () => Object.keys(named()).length;
 
-  /* THE PLAYHEAD'S CLOCK IS THE ENGINE'S: each `ui` readout re-anchors it,
-   * and between them -- half a second while playing -- it runs on. */
+  /* THE PLAYHEAD'S CLOCK IS THE ENGINE'S: each `ui` readout re-anchors it
+   * from the engine's own time of that readout (`devms`) -- not from when it
+   * arrived, which is later by a different amount each time -- and between
+   * them, half a second while playing, it runs on. */
   const clock = createClock();
 
   let ground = null;
@@ -83,7 +85,7 @@ export default function App(props) {
       if (tag === MSG.uiState) {
         const u = decodeUi(msg);
         if (!u) return;
-        clock.set(u.phase, u.msStep > 0 ? 1 / u.msStep : 0, u.moving);
+        clock.set(u.phase, u.msStep > 0 ? 1 / u.msStep : 0, u.moving, u.devms ?? undefined);
         setUi(u);
       } else if (tag === MSG.params) {
         const p = decodeEngineParams(msg);

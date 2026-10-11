@@ -163,3 +163,26 @@ test('the plugin\'s frame ticks reach the ground, and its running state reaches 
   assert.deepEqual(run, ['1', '0']);
   dispose();
 });
+
+/*
+ * WITH THE ENGINE'S TIME: a readout that arrives late still puts the playhead
+ * where the engine is now. Engine time 10000 is page time 20 (a 20 ms delay
+ * on the first readout); the second, true at engine time 10500, arrives 300 ms
+ * late -- and the playhead is carried from 10500, not from its arrival.
+ */
+test('a stamped readout is carried from the engine\'s time, however late it came', () => {
+  let t = 0;
+  createRoot((dispose) => {
+    const c = createClock({ every: () => 1, cancel: () => {}, now: () => t });
+    t = 20;
+    c.set(0, 1 / 125, true, 10000);
+    t = 820;
+    c.set(4, 1 / 125, true, 10500);
+    assert.ok(Math.abs(c.position() - (4 + 300 / 125)) < 0.01, `at ${c.position()}`);
+    t = 1020;
+    assert.ok(Math.abs(c.position() - (4 + 500 / 125)) < 0.01, `at ${c.position()}`);
+    c.set(4.2, 0, false, 10600);
+    assert.equal(c.position(), 4.2, 'stopped is where it stopped');
+    dispose();
+  });
+});

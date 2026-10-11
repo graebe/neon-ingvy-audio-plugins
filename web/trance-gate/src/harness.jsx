@@ -31,7 +31,11 @@ import wasmUrl from '../../../target/wasm32-unknown-unknown/release/tg_web.wasm?
 
 const capi = await loadCapi(wasmUrl, 'tg');
 const engine = wasmEngine(capi);
-const fake = createFakeSchwung({ chainParams, engine, component: 'fx1' });
+/* ?jitter: every push reaches the page 20 to 400 ms late, a different
+ * amount each time, as on a real Move over WiFi -- what the playhead must
+ * draw through without a wobble. */
+const jitter = new URLSearchParams(location.search).has('jitter') ? () => 20 + Math.random() * 380 : null;
+const fake = createFakeSchwung({ chainParams, engine, component: 'fx1', latency: jitter });
 
 /* Every write the page makes, recorded on its way to the fake manager. */
 const writes = [];

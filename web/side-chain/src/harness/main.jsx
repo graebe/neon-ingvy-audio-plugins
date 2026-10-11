@@ -34,7 +34,11 @@ import { boot } from '../boot.jsx';
 
 const stopped = new URLSearchParams(location.search).has('stopped');
 const engine = createEngine(await loadCapi(wasmUrl, 'sc'), { running: !stopped });
-const fake = createFakeSchwung({ chainParams, engine, component: 'fx1' });
+/* ?jitter: every push reaches the page 20 to 400 ms late, a different
+ * amount each time, as on a real Move over WiFi -- what the playhead must
+ * draw through without a wobble. */
+const jitter = new URLSearchParams(location.search).has('jitter') ? () => 20 + Math.random() * 380 : null;
+const fake = createFakeSchwung({ chainParams, engine, component: 'fx1', latency: jitter });
 
 const writes = [];
 const bridge = {

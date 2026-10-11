@@ -26,7 +26,7 @@ export function hexToBits(hex, n) {
  * which `get_param("ui_fields")` answers and test/fields.test.mjs holds this
  * to. Read by position, as every reader does; the engine only ever appends.
  */
-export const UI_FIELDS = ['steps', 'ties', 'length', 'phase', 'ms_step', 'moving', 'cursor', 'depths', 'orders', 'slot'];
+export const UI_FIELDS = ['steps', 'ties', 'length', 'phase', 'ms_step', 'moving', 'cursor', 'depths', 'orders', 'slot', 'devms'];
 
 /**
  * The `ui` readout:
@@ -54,8 +54,10 @@ export function decodeUi(text) {
     cursor: parseInt(f[6], 10) || 0,
     depths,
     orders,
-    /* Appended last by the engine; absent from an older one. */
+    /* Appended by the engine; absent from an older one. */
     slot: f.length > 9 ? parseInt(f[9], 10) || 0 : 0,
+    /* The engine's clock when this was true: the playhead is carried from it. */
+    devms: f.length > 10 && Number.isFinite(parseFloat(f[10])) ? parseFloat(f[10]) : null,
   };
 }
 

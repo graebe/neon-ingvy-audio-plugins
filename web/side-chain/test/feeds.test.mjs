@@ -13,12 +13,15 @@ import { parseUi, parseParams, parseStageMs } from '../src/lib/feeds.js';
 import { P, NUM_PARAMS } from '../src/lib/msg.js';
 import { NO_WASM, realEngine } from './support/engine.mjs';
 
-test('ui: eleven positional fields, or nothing', () => {
-  const u = parseUi('1:4:500.000:0.250000:1:7:0.5000:0.00000:0:2:0.125000');
+test('ui: eleven positional fields and the engine\'s clock, or nothing', () => {
+  const u = parseUi('1:4:500.000:0.250000:1:7:0.5000:0.00000:0:2:0.125000:1234.500');
   assert.deepEqual(u, {
     source: 1, rate: 4, msCycle: 500, sweep: 0.25, advancing: 1, fires: 7,
-    duck: 0.5, key: 0, connected: 0, stage: 2, phase: 0.125,
+    duck: 0.5, key: 0, connected: 0, stage: 2, phase: 0.125, devms: 1234.5,
   });
+  /* An engine older than the clock: no devms, and the playhead is carried
+   * from arrival as before. */
+  assert.equal(parseUi('1:4:500.000:0.250000:1:7:0.5000:0.00000:0:2:0.125000').devms, null);
   assert.equal(parseUi('1:4:500'), null, 'a short ui is dropped whole');
   assert.equal(parseUi('1:4:x:0:1:7:0:0:0:2:0'), null);
   assert.equal(parseUi(undefined), null);
