@@ -3,9 +3,10 @@
 
 /*
  * The Ground as its card describes it, held still at three moments: at rest,
- * where it is the static ground; one downbeat 0.6 s on, a ring leaving the
- * border and the panel's edges; and a 4/4 bar at 120 BPM 2.5 s on, the rings
- * crossing and interfering, breaking around the panel and never through it.
+ * where it is the static ground; one downbeat 1.2 s on, a ring spreading from
+ * the panel's corner; and a 4/4 bar at 120 BPM 2.5 s on, the bar's rings
+ * walking the panel's corners, crossing and interfering, echoing off the
+ * panel and never passing through it.
  *
  * Each ground runs on a clock of its own that this page moves by hand, frame
  * by frame at the design's rate, so the pictures are the same every time.
@@ -52,7 +53,7 @@ struct GroundPage final : public gallery::DisplayPage
     GroundPage()
     {
         setSize (wide, 3 * row - 16);
-        const char* names[] { "at rest", "a downbeat, 0.6 s on", "a bar of 4/4 at 120 bpm, 2.5 s on" };
+        const char* names[] { "at rest", "a downbeat, 1.2 s on", "a bar of 4/4 at 120 bpm, 2.5 s on" };
         for (int i = 0; i < 3; ++i)
         {
             auto& m = moments[(size_t) i];
@@ -68,7 +69,7 @@ struct GroundPage final : public gallery::DisplayPage
             m.ground.setWalls ({ m.panel.getBounds().toFloat() - m.ground.getPosition().toFloat() });
         }
 
-        moments[1].play ({ { 1.0f, 0.0 } }, 600.0);
+        moments[1].play ({ { 1.0f, 0.0 } }, 1200.0);
         const float beat = uv::tok::motion::beat::beat;
         moments[2].play ({ { 1.0f, 0.0 }, { beat, 500.0 }, { beat, 1000.0 }, { beat, 1500.0 }, { 1.0f, 2000.0 } }, 2500.0);
     }
