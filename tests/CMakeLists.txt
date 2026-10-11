@@ -487,7 +487,7 @@ add_test(NAME shell_core
 # products; these pin each piece on its own.
 add_test(NAME ni_shared
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung -p ni-params)
 
 # THE SCHWUNG HOST'S TABLES, FROM ITS OWN HEADERS. ni-schwung mirrors
 # host_api_v1_t and audio_fx_api_v2_t in Rust; abi/layout.def writes their
@@ -781,6 +781,53 @@ if (NOT WIN32)
 endif()
 add_test(NAME bc_render_ab COMMAND bc_render_ab)
 
+# ----------------------------------------------------------------- NI Vocalize
+
+# THE ENGINE'S OWN CLAIMS, which are cargo's: the vowel model and its filter
+# measured against its curve, linear prediction against a known process, the
+# Spectral engine's reconstruction, the identity at Vocal 0, the vowel on
+# white noise in both modes, the morph moving step by step, the switch's dip,
+# the panic, the parameter table and its text, no allocation on any audio
+# path. Three runs, because each is a different build of the same core:
+#
+#   vz_core_rs        the plugin's: the core with its Spectral engine, and the
+#                     C ABI over it
+#   vz_core_time_only the Move's core, without it: every Mode is Time
+#   vz_move_rs        the module's crate ALONE, so Cargo builds it as it
+#                     ships -- named beside the others it would be built with
+#                     their features -- its `chain_params` held to the
+#                     engine's table through the vtable the device calls
+set(VZ_ENGINE ${CMAKE_SOURCE_DIR}/engines/vocalize)
+add_test(NAME vz_core_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p vz-core -p vz-capi)
+add_test(NAME vz_core_time_only
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p vz-core --no-default-features)
+add_test(NAME vz_move_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p vz-move)
+
+# The C ABI from C: compiled against both headers cbindgen writes
+# (vz-capi/build.rs) and linked to the plugin's real archive.
+add_executable(vz_core_tests ${VZ_ENGINE}/tests/test_core.c)
+target_link_libraries(vz_core_tests PRIVATE vz_engine)
+if (NOT WIN32)
+    target_link_libraries(vz_core_tests PRIVATE m)
+endif()
+add_test(NAME vz_core COMMAND vz_core_tests)
+
+# THE TWO PATHS, RENDERED SIDE BY SIDE AND PINNED, as the Side-Chain's are:
+# the plugin's float path and the Move's int16 path within one LSB of each
+# other, a patch for each engine, and the float renders' hashes recorded
+# (render_golden.h).
+add_executable(vz_render_ab ${VZ_ENGINE}/tests/render_ab.c)
+target_link_libraries(vz_render_ab PRIVATE vz_engine)
+if (NOT WIN32)
+    target_link_libraries(vz_render_ab PRIVATE m)
+endif()
+add_test(NAME vz_render_ab COMMAND vz_render_ab)
+
 # EACH CARGO SUITE ON BUSES OF ITS OWN. The workspace's .cargo/config.toml
 # gives every `cargo test` the checkout's bus namespace, which keeps a suite
 # off a Live session's buses -- but ctest runs these suites side by side, and
@@ -878,6 +925,10 @@ ni_test_tiers(
         PROGRAMS bc_core_tests bc_render_ab
         QUICK bc_core_rs bc_core
         FULL bc_render_ab:render
+    PRODUCT vocalize
+        PROGRAMS vz_core_tests vz_render_ab
+        QUICK vz_core_rs vz_core_time_only vz_move_rs vz_core
+        FULL vz_render_ab:render
     # every bundle's host, signature and tree checks, and every Move module
     ${_ni_juce_tiers}
     ${_ni_move_tiers})

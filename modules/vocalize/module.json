@@ -1,0 +1,16 @@
+{
+  "id": "ni-vocalize",
+  "name": "NI Vocalize",
+  "abbrev": "VZ",
+  "version": "2026.10.11.1",
+  "description": "Any sound, more and more a voice singing A, E, I, O or U",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-vocalize.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}

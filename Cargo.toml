@@ -58,6 +58,11 @@ members = [
     "engines/bit-crusher/crates/bc-core",     # the DSP
     "engines/bit-crusher/crates/bc-capi",     # the C ABI -> the plugin
     "engines/bit-crusher/crates/bc-move",     # the Schwung vtable -> the module
+    # NI Vocalize: one core, two wrappers, the Side-Chain's shape. The Move's
+    # wrapper builds the core without its Spectral engine.
+    "engines/vocalize/crates/vz-core",        # the DSP
+    "engines/vocalize/crates/vz-capi",        # the C ABI -> the plugin
+    "engines/vocalize/crates/vz-move",        # the Schwung vtable -> the module
     # The animated ground's beat clock. Like audio-bus it is not a
     # product: it ships inside EVERY editor, because the design system gives
     # every window the same ground. It depends on no product in return.
@@ -74,6 +79,7 @@ members = [
     # the same rule: a piece moves here only once it names no product.
     "engines/shared/crates/ni-dsp",           # C-compatible fmt, rates, curves, glides
     "engines/shared/crates/ni-schwung",       # the audio_fx v2 glue -> every module
+    "engines/shared/crates/ni-params",        # a parameter table's shape and arithmetic
     "engines/shared/crates/music-core",       # pitches, chords, keys: the theory
     # The code behind a paper (papers/<name>/code): every listing it prints is
     # a tested region of the crate. No product links one; like the shared
@@ -107,6 +113,9 @@ publish = false
 # The Spectrogram's FFT, and the complex transform its test oracle runs.
 realfft = { version = "3.5.0", default-features = false }
 rustfft = { version = "6.4.1", default-features = false }
+# Complex numbers: NI Vocalize's capture finds a predictor's roots with them.
+# Already in the graph through rustfft, at this version.
+num-complex = { version = "0.4.6", default-features = false }
 # Between threads: a wait-free SPSC ring, the latest whole value from one
 # thread to another, an object the audio thread lets go of freed where freeing
 # is allowed, and floats an atomic can hold.

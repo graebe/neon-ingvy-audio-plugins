@@ -1,0 +1,195 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+/*
+ * NI Vocalize: any sound, more and more a voice singing A, E, I, O or U.
+ *
+ * THE ENGINE IS RUST (engines/vocalize): the vowel, both engines, the
+ * parameter table and its text. This file is the shell around it, and does
+ * what a shell does:
+ *
+ *   parameters    declared from the engine's table (vz_param_*): seven
+ *                 numbers printed and read in the engine's words, and Mode, a
+ *                 choice of its labels that a host may not automate. The IDs
+ *                 are the engine's keys, the state the default ni::Processor
+ *                 one (every parameter by its ID)
+ *   the buses     mono in to mono out, or stereo to stereo; no MIDI, no
+ *                 sidechain
+ *   the latency   Mode's (vz_latency): none for Time, one frame for Spectral.
+ *                 Set in prepareToPlay, and on the message thread by a timer
+ *                 that compares it with Mode's: a host may write Mode on the
+ *                 audio thread, and nothing there may post a message (an
+ *                 AsyncUpdater's post allocates)
+ *   a block       the shell taken (vz_shell_begin), every parameter pushed
+ *                 (cheap when unchanged), the channels processed in place, the
+ *                 shell given back -- which publishes the picture when one is
+ *                 due
+ *   activation    prepareToPlay posts the rate and a reset, so a host that
+ *                 stopped and started the plugin hears nothing it held before
+ *   the editor    reads the engine's picture and the vowel's formants through
+ *                 the Model, on the message thread; the Ground's clock runs
+ *                 while a window is open
+ *
+ * A VOICE OF ONE'S OWN. capture() reads a recording -- WAV, AIFF, and on
+ * macOS whatever the system decodes -- on a thread made for the first
+ * capture, downmixes it, and has the engine's analysis (vz_capture_run) find
+ * the singer's vowels; the answer comes back on the message thread, goes to
+ * the engine through the shell (vz_shell_post_voice) and marks the set
+ * unsaved. The voice is kept in the state as fifty numbers and their
+ * confidences, never the audio, under a format number, and checked on the way
+ * back in (vz_voice_check). Voice, a parameter, says how much of it is sung.
+ *
+ *   closing     a capture under way is called off (vz_capture_cancel) and the
+ *               read stops between chunks, so a set closes within a frame
+ *   a set read  while a capture runs wins: the capture's answer is from
+ *               before it (a generation) and is dropped
+ *   Forget      keeps the voice for one Restore, until another is sung
+ *
+ * WHILE BYPASSED the engine still listens (vz_core_listen_f32), and the first
+ * block after resumes it from what it heard (vz_core_resume) -- never from
+ * what it held before the bypass. The picture's envelopes are worked out only
+ * while a window is open (vz_shell_post_watching).
+ *
+ * THE PANIC. On the Move, CC 120/123 reset the engine (vz-move); a VST3 in
+ * Live is told to start afresh by being deactivated, which prepareToPlay
+ * answers with the same reset.
+ *
+ * The audio thread allocates nothing: the engine does not, and nothing here
+ * does on its way there (tests/vocalize/vz_rt.cpp holds it to that).
+ */
+#pragma once
+
+#include "GroundClock.h"
+#include "Model.h"
+#include "Processor.h"
+#include "vz_shell.h"
+
+#include <juce_audio_formats/juce_audio_formats.h>
+
+#include <array>
+#include <atomic>
+#include <memory>
+#include <optional>
+#include <vector>
+
+namespace ni::vz
+{
+
+class Processor final : public ni::Processor,
+                        public Model,
+                        private juce::Timer
+{
+public:
+    static constexpr int paramCount = param::count;
+
+    Processor();
+    ~Processor() override;
+
+    bool isBusesLayoutSupported (const BusesLayout&) const override;
+    void releaseResources() override {}
+
+    bool hasEditor() const override { return true; }
+    juce::AudioProcessorEditor* createEditor() override;
+    void editorOpened() override;
+    void editorClosed() override;
+
+    /* A parameter's value in its own unit, as the engine takes it. Any
+     * thread. */
+    double plain (int index) const;
+
+    /* The latency Mode asks for now, at the rate last prepared: what
+     * getLatencySamples() becomes once the message thread has caught up. */
+    int latencyForMode() const;
+
+    /* ---- the Model, for the editor: message thread */
+    int numParameters() const override { return paramCount; }
+    juce::RangedAudioParameter& parameter (int index) override { return *params[(size_t) index]; }
+    int takeRings (float* strengths, int capacity) override;
+    bool motion() const override;
+    void setMotion (bool on) override;
+    bool bipolar (int index) const override;
+    Formants formants (double vowel) override;
+    Voice voice() const override;
+    void capture (const juce::File& recording) override;
+    void forgetVoice() override;
+    void restoreVoice() override;
+    juce::String recordingWildcard() const override;
+    const Picture& picture() override;
+
+    /* The longest part of a recording a capture reads, in seconds. */
+    static constexpr double longestRecordingS = 120.0;
+
+protected:
+    /* The shell's prepareToPlay calls this first (ni::Processor). */
+    void prepare (double sampleRate, int maximumBlockSize) override;
+    void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    /* The captured voice beside the parameters, as <voice>; none, none. */
+    void writeExtraState (juce::XmlElement&) override;
+    void readExtraState (const juce::XmlElement&) override;
+    /* Bypassed, the host's audio passes untouched but as late as the
+     * latency the host compensates for -- JUCE's own bypass does not delay
+     * -- and the Ground keeps the host's time. */
+    void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+
+private:
+    /* How often the message thread checks the latency against Mode's. */
+    static constexpr int latencyCheckMs = 50;
+    /* The bypass delay's length: a power of two above the longest latency
+     * (vz_latency's 4096 at 192 kHz). */
+    static constexpr int bypassLength = 8192;
+
+    void timerCallback() override;
+
+    /* A voice in hand: kept, sent to the engine, the set marked unsaved when
+     * it is the person's doing (not a state being read). Null forgets. */
+    void useVoice (const VzVoice*, const juce::String& name, bool byHand);
+    /* What a capture on its thread found, back on the message thread, for
+     * the generation it was started in. */
+    void captured (std::optional<VzVoice>, Voice::Status, const juce::String& name, std::uint32_t generation);
+
+    struct ShellDeleter
+    {
+        void operator() (VzShell* s) const { vz_shell_destroy (s); }
+    };
+    std::unique_ptr<VzShell, ShellDeleter> shell;
+    std::array<juce::RangedAudioParameter*, paramCount> params {};
+    ni::GroundClock beat;
+    std::atomic<double> rate { 44100.0 };
+
+    /* The bypassed signal, delayed: made here, emptied by prepareToPlay. */
+    std::array<std::vector<float>, 2> bypassLine;
+    int bypassPos = 0;
+
+    /* THE CAPTURED VOICE, and what the editor is told of it. Read and
+     * written by the message thread and by a host's state calls, which may
+     * come on another: under the lock, never taken by the audio thread. */
+    mutable juce::CriticalSection voiceLock;
+    std::optional<VzVoice> held;
+    Voice state;
+    /* The voice Forget let go, for one Restore. */
+    std::optional<VzVoice> forgotten;
+    juce::String forgottenName;
+    /* Bumped by every set read: a capture's answer from an older one is
+     * dropped. */
+    std::uint32_t generation = 0;
+    /* The capture under way, to be called off. */
+    std::shared_ptr<VzCapture> running;
+    juce::AudioFormatManager formats;
+    /* The capture's one thread, made by the first capture -- an instance
+     * nobody captures with has none -- and waited for when the processor
+     * goes, after it is told to stop. */
+    std::unique_ptr<juce::ThreadPool> captures;
+    std::atomic<bool> closing { false };
+
+    /* The audio thread's: the next block resumes the engine after a bypass. */
+    bool resumeNext = false;
+
+    /* The picture as the engine published it, and as the editor takes it. */
+    std::unique_ptr<VzPicture> published;
+    Picture latest;
+
+    JUCE_DECLARE_WEAK_REFERENCEABLE (Processor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Processor)
+};
+
+} // namespace ni::vz

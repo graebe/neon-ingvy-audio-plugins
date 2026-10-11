@@ -1,0 +1,46 @@
+[package]
+name = "vz-core"
+version = "2026.10.11+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "NI Vocalize DSP engine: any sound, more and more a voice singing a vowel"
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+# THE SPECTRAL ENGINE AND CAPTURE, ON BY DEFAULT: the plugin's. vz-move builds
+# without either, so the Move module carries the Time engine only, no FFT and
+# no analysis (src/lib.rs).
+[features]
+default = ["spectral", "capture"]
+spectral = ["dep:realfft"]
+# Capturing a voice from a recording (src/voice.rs): the plugin's, offline.
+capture = ["dep:num-complex"]
+
+[dependencies]
+# The DSP the products share: the parameter glide, C-compatible text, and the
+# antialiased soft clip Excite is made of.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# What a parameter is, and the arithmetic every shell reads one with: the
+# table's shape, shared by every product.
+ni-params = { path = "../../../shared/crates/ni-params" }
+# MIDI bytes to messages, for the panic (CC 120/123), as sc-core takes it:
+# core-only without its default `std` feature.
+wmidi = { workspace = true }
+# The Spectral engine's transforms (src/spectral.rs), with the SIMD paths
+# spectro-core takes: AVX and SSE on x86_64, NEON on aarch64.
+realfft = { workspace = true, optional = true, features = ["avx", "sse", "neon"] }
+# Complex numbers for the predictor's roots, which a capture reads formants
+# from (src/voice.rs). `std` for the transcendental functions.
+num-complex = { workspace = true, optional = true, features = ["std"] }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+proptest = { workspace = true, features = ["std"] }
+# The tests' noise, seeded.
+fastrand = { workspace = true }
+# The tests' spectra, with or without the Spectral engine.
+realfft = { workspace = true }

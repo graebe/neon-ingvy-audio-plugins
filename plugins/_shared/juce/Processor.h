@@ -32,7 +32,9 @@
  *                 call writeState / readState, which a product overrides when
  *                 it must read an older build's format (the iPlug2 chunk);
  *                 the default is every parameter by its ID, plain values, in
- *                 JUCE's binary XML -- robust to a parameter added later
+ *                 JUCE's binary XML -- robust to a parameter added later --
+ *                 and whatever the product adds beside them
+ *                 (writeExtraState / readExtraState)
  *   dirty         nonParameterStateChanged() tells the host that state it
  *                 cannot see changed -- an import, a pasted pattern -- so the
  *                 set is marked unsaved
@@ -148,6 +150,13 @@ protected:
      * on false nothing was changed. */
     virtual void writeState (juce::MemoryBlock&);
     virtual bool readState (const void* data, size_t size);
+
+    /* What a product keeps beside its parameters in the default state: its
+     * own children of the root, written after the parameters and handed back
+     * after they are read -- a set saved without them reads them as absent.
+     * The state's threads (above). */
+    virtual void writeExtraState (juce::XmlElement&) {}
+    virtual void readExtraState (const juce::XmlElement&) {}
 
     /* The host's parameters by their IDs: what the default state carries. */
     juce::RangedAudioParameter* parameterWithId (const juce::String& id) const;

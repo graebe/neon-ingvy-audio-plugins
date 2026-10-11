@@ -1,0 +1,17 @@
+[package]
+name = "ni-params"
+version = "2026.10.10+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The parameter table every Neon Ingvy engine declares, and the arithmetic every shell reads it with"
+publish.workspace = true
+
+# AN RLIB, for ni-dsp's reason: each product's crates absorb it into that
+# product's single archive.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# The C-string copy a table's text crosses the C ABI with.
+ni-dsp = { path = "../ni-dsp" }

@@ -74,6 +74,22 @@
       "w": 888,
       "x": 3824,
       "y": 1100
+    },
+    "Vocalize-Proposed.dc.html": {
+      "h": 532,
+      "is_interactive": true,
+      "title": "NI Vocalize — proposed",
+      "w": 888,
+      "x": 4792,
+      "y": 1100
+    },
+    "VocalTuner-Proposed.dc.html": {
+      "h": 720,
+      "is_interactive": true,
+      "title": "NI Vocal Tuner — proposed",
+      "w": 1200,
+      "x": 5760,
+      "y": 1100
     }
   },
   "createdOnFiles": {
@@ -172,6 +188,22 @@
       "x": 3824,
       "y": 1988,
       "text": "BIT-CRUSHER — NEW WINDOW\n\nA bit crusher: a continuous signal made discrete, in amplitude and in time. Interactive: set Bits, Hold (samples per held value) and Mid-Rise in its Tweaks; the staircase and the scope follow.\n\nBC1  Two pictures over three panels, on one grid of three 264px columns: the staircase sits over the panel that shapes it.\nBC2  STEPS: input across, output up. The diagonal (line-200) is the untouched signal; the uv curve is the engine's own grid (bc_transfer_render), never a second model of it. The caption repeats Bits in the engine's words.\nBC3  SIGNAL: the last 11 ms, triggered on an upward zero crossing so a tone stands still. Input in grey, the crushed output in front; flat tops are the hold, stairs are the bits. The level range follows the material.\nBC4  Three panels of three knobs, each with the switches that change how its knobs act. STEPS: Bits, Shape, Dither; Mid-Rise, Anti-Alias. HOLD: Rate, Jitter, Octave; Pre, Post (the filters, before and after the hold). LEVEL: Drive, Mix, Output.\nBC5  Drive, Octave and Output are bipolar with symmetric ranges, so their arcs start at 12 o'clock and zero shows none.\nBC6  Rate turns in equal ratios (50 Hz to 96 kHz); every readout is the engine's text (12.0 kHz, 7.5 bits, +6.0 dB) and reads what is typed (8k).\nBC7  Switch labels read Pre and Post in the window; the host lists Pre-Filter and Post-Filter. Both names do not fit one column.\nBC8  No amber: nothing in this window is a warning.\n\nAs built: plugins/bit-crusher (JUCE 9, the native kit), v2026.10.10.1.\n\nWindow: 888 × 532."
+    },
+    "vz-notes": {
+      "fill": "teal",
+      "maxH": 640,
+      "w": 888,
+      "x": 4792,
+      "y": 1988,
+      "text": "VOCALIZE — NEW WINDOW\n\nAny sound, more and more a voice singing A, E, I, O or U, in the textbook voice or one captured from a recording. Interactive: set Captured, Forgotten, Voice, Vowel, Vocal, Size and Mode (Spectral) in its Tweaks; the vowel chart and the envelope follow.\n\nVZ1  Two pictures over three panels, on Bit-Crusher's grid of three 264px columns: the vowel chart sits over the panel that moves it.\nVZ2  VOWEL: the vowel space as phoneticians draw it, F2 across (high on the left), F1 down: the mouth seen from the side. The five letters on the path the Vowel knob walks (line-200); the uv dot is the vowel now, from the engine's own model (vz_formants). Size slides the whole path along its diagonal. The caption repeats the vowel in the engine's words (E>I 30 %) and names the recording a voice was captured from.\nVZ3  ENVELOPE: the sound's colour, 50 Hz to 10 kHz in equal steps of pitch, 0 to -48 dB. Coming in in grey, going out in front, F1 and F2 marked with rules. At Vocal 0 the two are one line. The caption names the engine drawing it, and Spectral's latency.\nVZ4  Three knob cells a panel in every panel, so the dials line up across the window. VOWEL (which vowel, whose voice): Vowel, Size, Voice; Capture… and Forget under them. VOCAL (how far, how): Vocal, Resonance, Excite; Mode under them. LEVEL: Mix, Output; Ceiling under them.\nVZ5  The Vowel knob holds on the five vowels while dragged (detents, drawn as ticks) and moves freely between them; its readout reads a letter or a letter and a percentage (E 30).\nVZ6  Mode (Time / Spectral) is a select, not a switch: two engines, not on and off. It is not automatable; switching dips the sound 20 ms and tells the host the new latency.\nVZ7  Size and Output are bipolar with symmetric ranges: arcs from 12 o'clock.\nVZ8  No amber: nothing in this window is a warning.\nVZ9  CAPTURE: a recording dropped anywhere on the window (the vowel well outlines in uv while one is dragged), or chosen with Capture…, is analysed in the background (the button reads Capturing…). The chart moves to the singer's vowels; the letters of vowels the recording held are ink, as opaque as the capture was sure of each (45 % to 100 %), those filled in from the textbook (scaled to the singer) ink-muted. Voice morphs textbook to captured. Forget lets the voice go and then reads Restore, which brings it back; with neither to do it is a disabled Forget. A failed capture names why: NO SINGING IN, NO VOWELS IN, CANNOT READ.\nVZ10 CEILING: a switch under Level's knobs, on by default: a soft limit at -0.3 dBFS, so nothing that leaves the plugin passes full scale. A switch, not a knob: there is nothing to set but whether.\n\nAs built: plugins/vocalize (JUCE 9, the native kit), v2026.10.10.1.\n\nWindow: 888 × 532."
+    },
+    "vt-notes": {
+      "fill": "teal",
+      "maxH": 900,
+      "w": 1200,
+      "x": 5760,
+      "y": 1988,
+      "text": "VOCAL TUNER — NEW WINDOW (for approval)\n\nThe pitch and timing of a sung vocal, corrected automatically or note by note, over the complete vocal of a song. The vocal is transferred into the plugin (recorded while Live plays, rendered through it by freezing the track, or imported) and analysed into notes. Interactive: pick a tool, click a note to inspect it, press Apply under Correct pitch, flip Compare; Tweaks set Transfer armed and Take out of sync.\n\nVT1  NOTES: the editor's well, 828 × 488. Bars on top (the host's), pitch on the left with the key's notes on bg-200 and C rules in line-200. Each note is a blob drawn by its level, with the sung pitch inside it as a line; the selected note in uv with its timing handles; under an edited note the original pitch ghosted, dashed.\nVT2  THE WELL PANS AND ZOOMS (ADR 0006, for approval): wheel scrolls, ⌘-wheel or pinch zooms about the pointer, the rulers and the song strip keep the place. The window keeps its fixed size and never scrolls.\nVT3  TOOLS, one column of 28 px icon buttons: Main (pitch and time), Pitch drift, Vibrato, Transition, Timing, Level, Consonant, Formant, Note boundary, Split and join. One is active, lit.\nVT4  SONG: the complete vocal from bar 1, takes as blocks, notes as ticks, the view as a uv rectangle that drags.\nVT5  NOTE: the selected note's values, each typed in its readout: pitch, how far off, drift, vibrato rate and depth, level, start, length.\nVT6  MACROS: Correct pitch (Centre %, Drift %), Quantize time (grid, strength), Normalise level; on the selection, or everything with none. Each Apply is one undo step.\nVT7  TOP BAR: Transfer is the system's record button (red when armed); Import…; Compare switches Corrected and Original (automatable); the key is detected and can be changed; Undo and Redo as joined icons, and ⌘Z / ⇧⌘Z while the window has focus (ADR 0007, for approval).\nVT8  ONE AMBER MARK at most: 'Take out of sync' when the live input stops matching the recording (a clip moved, the tempo changed, a plugin with latency added before this one). Otherwise the LED reads Rendered (or Transfer armed, uv).\nVT9  No animated Ground (an editor window, as the Chord-Detector), so no Motion switch.\n\nAs built: plugins/vocal-tuner (JUCE 9, the native kit), to come.\n\nWindow: 1200 × 720."
     }
   },
   "order": [
@@ -184,7 +216,9 @@
     "Spectrogram-Proposed.dc.html",
     "ListenIn-Proposed.dc.html",
     "ChordDetector-Proposed.dc.html",
-    "BitCrusher-Proposed.dc.html"
+    "BitCrusher-Proposed.dc.html",
+    "Vocalize-Proposed.dc.html",
+    "VocalTuner-Proposed.dc.html"
   ],
   "pages": [],
   "title": "NI Plugin Layouts"
