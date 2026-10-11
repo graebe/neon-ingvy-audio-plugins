@@ -100,6 +100,18 @@ struct FakeModel final : public Model
 
     const Scope& scope() override { return audio; }
 
+    double setting (int i) const override
+    {
+        auto& p = params[i];
+        return (double) p.convertFrom0to1 (p.getValue());
+    }
+
+    int levelCount() const override
+    {
+        const double n = std::exp2 (setting (param::bits) - 1.0);
+        return setting (param::midRise) >= 0.5 ? (int) std::round (2.0 * n) : (int) std::round (2.0 * n + 1.0);
+    }
+
     double refreshPeriodMs() const override
     {
         static constexpr double periods[] { 0.0, 100.0, 250.0, 1000.0 };
@@ -137,12 +149,17 @@ struct FakeModel final : public Model
         const int len = 16 * hold + 1;
         audio.holdIn.resize ((size_t) len);
         audio.holdTook.resize ((size_t) len);
+        audio.holdAt.assign ((size_t) len, 0.0f);
         for (int i = 0; i < len; ++i)
         {
             audio.holdIn[(size_t) i] = (float) at (i);
             audio.holdTook[(size_t) i] = i % hold == 0 ? 1 : 0;
         }
         audio.holdTakes = 17;
+        /* Made with the knobs as they are, long enough ago. */
+        audio.settled = Scope::settledWindow;
+        for (int i = 0; i < param::count; ++i)
+            audio.settings[(size_t) i] = setting (i);
     }
 
     void set (int i, float value)
@@ -269,7 +286,7 @@ TEST_CASE ("bit-crusher: the staircase follows the parameters at once")
     };
     /* 8 bits is 256 steps: the well shows a sixteenth of full scale, says so,
      * and holds 16 steps there -- a staircase, not a diagonal. */
-    CHECK (steps.getCaption() == juce::String::fromUTF8 ("AMPLITUDE CRUSH   8.0 BITS   \xc3\x97" "16"));
+    CHECK (steps.getCaption() == juce::String::fromUTF8 ("AMPLITUDE CRUSH   257 LEVELS   \xc3\x97" "16"));
     CHECK (steps.inputSpan() == 1.0 / 16.0);
     CHECK (distinct (steps.outputs()).size() == 17);
     const auto before = steps.outputs();
@@ -277,8 +294,13 @@ TEST_CASE ("bit-crusher: the staircase follows the parameters at once")
     /* 2 bits fits whole: no zoom, and no zoom in the caption. */
     rig.model.set (param::bits, 2.0f);
     rig.frames (1);
-    CHECK (steps.getCaption() == "AMPLITUDE CRUSH   2.0 BITS");
+    CHECK (steps.getCaption() == "AMPLITUDE CRUSH   5 LEVELS");
     CHECK (steps.inputSpan() == 1.0);
+    rig.model.set (param::midRise, 1.0f);
+    rig.frames (1);
+    CHECK (steps.getCaption() == "AMPLITUDE CRUSH   4 LEVELS");
+    rig.model.set (param::midRise, 0.0f);
+    rig.frames (1);
     const auto& after = steps.outputs();
     CHECK (after != before);
     CHECK (distinct (after) == std::vector<float> { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f });
@@ -385,20 +407,92 @@ TEST_CASE ("bit-crusher: Pause holds all three pictures; the staircase still fol
     CHECK (e.timePlot().takeDots().size() == 17);
     const auto heldDots = e.timePlot().takeDots();
 
-    /* The knobs still move the staircase -- and the held look is framed in
-     * its new window: at 2 bits all of its samples are in view. */
+    /* The knobs still move the staircase; the held look was made at 8 bits,
+     * so its samples are not shown on a 2-bit staircase -- nor the hold. */
     rig.model.set (param::bits, 2.0f);
     rig.frames (1);
-    CHECK (e.amplitudePlot().getCaption() == "AMPLITUDE CRUSH   2.0 BITS");
-    CHECK (e.amplitudePlot().liveDots().size() == 512);
+    CHECK (e.amplitudePlot().getCaption() == "AMPLITUDE CRUSH   5 LEVELS");
+    CHECK (e.amplitudePlot().liveDots().empty());
+    CHECK_FALSE (e.timePlot().hasSignal());
     CHECK (e.signalPlot().shownSerial() == held);
+    /* Back to the settings that made it: it is theirs again. */
+    rig.model.set (param::bits, 8.0f);
+    rig.frames (1);
+    CHECK (e.amplitudePlot().liveDots().size() == dots);
     CHECK (e.timePlot().takeDots() == heldDots);
+    rig.model.set (param::bits, 2.0f);
 
     /* Let go: the latest look at once. */
     p.click (e.pauseButton(), e.pauseButton().getLocalBounds().toFloat().getCentre());
     CHECK_FALSE (e.isPaused());
     rig.frames (1);
     CHECK (e.signalPlot().shownSerial() == rig.model.audio.serial);
+}
+
+TEST_CASE ("bit-crusher: a knob turned between refreshes hides the dots until a look made with it")
+{
+    Rig rig;
+    auto& amp = rig.editor.amplitudePlot();
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    rig.frames (1);
+    REQUIRE_FALSE (amp.liveDots().empty());
+    const auto shown = rig.editor.signalPlot().shownSerial();
+
+    /* At 1/s: Bits moves, the look is a second from due -- the dots go now. */
+    rig.model.set (param::bits, 4.0f);
+    rig.frames (1);
+    CHECK (amp.liveDots().empty());
+    /* The engine's next look is still the old settings' (not yet settled)... */
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    rig.model.audio.settled = 100;
+    rig.frames (1);
+    CHECK (amp.liveDots().empty());
+    /* ...then one made with them throughout: taken at once, not a second on. */
+    rig.model.play (220.0, 0.7f, 4.0, 4);
+    rig.frames (1);
+    CHECK (rig.editor.signalPlot().shownSerial() != shown);
+    CHECK_FALSE (amp.liveDots().empty());
+}
+
+TEST_CASE ("bit-crusher: the hold is drawn at its takes' exact instants, and not without takes")
+{
+    Rig rig;
+    auto& time = rig.editor.timePlot();
+    rig.model.set (param::refresh, 0.0f);
+    /* Anti-Alias at 12 kHz in 44.1 kHz: takes 3.675 samples apart. */
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    auto& a = rig.model.audio;
+    const int len = 60;
+    a.holdIn.assign ((size_t) len, 0.25f);
+    a.holdTook.assign ((size_t) len, 0);
+    a.holdAt.assign ((size_t) len, 0.0f);
+    int takes = 0;
+    for (double t = 0.0; t < len - 1; t += 3.675, ++takes)
+    {
+        a.holdTook[(size_t) t] = 1;
+        a.holdAt[(size_t) t] = (float) (t - std::floor (t));
+    }
+    a.holdTakes = takes;
+    rig.frames (1);
+    const auto& d = time.takeDots();
+    REQUIRE ((int) d.size() == takes);
+    const float gap = d[1].x - d[0].x;
+    for (size_t i = 2; i < d.size(); ++i)
+        CHECK (std::abs ((d[i].x - d[i - 1].x) - gap) < 0.01f);
+
+    /* No take in the window -- bypassed, say: nothing drawn as held. */
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    rig.model.audio.holdTook.assign (rig.model.audio.holdTook.size(), 0);
+    rig.model.audio.holdTakes = 0;
+    rig.frames (1);
+    CHECK (time.takeDots().empty());
+    CHECK (time.getCaption() == "TIME CRUSH   12.0 KHZ");
+
+    /* At the host's own rate or above, nothing is held, and it says so. */
+    rig.model.set (param::rate, 96000.0f);
+    rig.model.play (220.0, 0.7f, 8.0, 1);
+    rig.frames (1);
+    CHECK (time.getCaption() == "TIME CRUSH   96.0 KHZ   NO HOLD");
 }
 
 TEST_CASE ("bit-crusher: the scope waits for audio, then shows its window's length")

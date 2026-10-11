@@ -27,6 +27,10 @@ pub struct BcCore {
     amp_in: Box<[f32; BC_SCOPE_RING]>,
     amp_out: Box<[f32; BC_SCOPE_RING]>,
     took: Box<[bool; BC_SCOPE_RING]>,
+    /// The band-limited hold's take (Anti-Alias): where in the sample it
+    /// fell, 0..1 past it, or negative for none. Written about HALF_WIDTH
+    /// samples after the sample it belongs to, which the hold reads ahead.
+    exact_at: Box<[f32; BC_SCOPE_RING]>,
     /// Where the next sample goes.
     pos: usize,
     /// Samples processed, wrapping: what says a scope is new.
@@ -42,6 +46,7 @@ impl BcCore {
             amp_in: Box::new([0.0; BC_SCOPE_RING]),
             amp_out: Box::new([0.0; BC_SCOPE_RING]),
             took: Box::new([false; BC_SCOPE_RING]),
+            exact_at: Box::new([-1.0; BC_SCOPE_RING]),
             pos: 0,
             serial: 0,
         }
@@ -68,13 +73,20 @@ impl BcCore {
         for (i, x) in left[from..].iter().enumerate() {
             self.dry[(start + i) % BC_SCOPE_RING] = *x;
         }
-        let (amp_in, amp_out, took) = (&mut self.amp_in, &mut self.amp_out, &mut self.took);
+        let (amp_in, amp_out, took, exact_at) = (&mut self.amp_in, &mut self.amp_out, &mut self.took, &mut self.exact_at);
         self.engine.process_f32_probed(left, right, |i, p| {
             if i >= from {
-                let k = (start + i - from) % BC_SCOPE_RING;
-                amp_in[k] = p.input as f32;
-                amp_out[k] = p.level as f32;
-                took[k] = p.took;
+                let k = start + i - from;
+                amp_in[k % BC_SCOPE_RING] = p.input as f32;
+                amp_out[k % BC_SCOPE_RING] = p.level as f32;
+                took[k % BC_SCOPE_RING] = p.took;
+                exact_at[k % BC_SCOPE_RING] = -1.0;
+                /* The band-limited hold's take, at the sample it fell after. */
+                if let Some(at) = p.exact_take {
+                    let t = (k + 2 * BC_SCOPE_RING) as f64 + at;
+                    let j = t.floor();
+                    exact_at[j as usize % BC_SCOPE_RING] = (t - j) as f32;
+                }
             }
         });
         let late = start + BC_SCOPE_RING - LATENCY;
@@ -97,13 +109,14 @@ impl BcCore {
     }
 
     /// What the same samples as `recent(n)` did, in the same order: (the
-    /// quantiser's input, its level, whether the hold took it).
-    pub fn recent_probes(&self, n: usize) -> impl Iterator<Item = (f32, f32, bool)> + '_ {
+    /// quantiser's input, its level, whether the plain hold took it, and
+    /// where in it the band-limited hold took one, 0..1, or negative).
+    pub fn recent_probes(&self, n: usize) -> impl Iterator<Item = (f32, f32, bool, f32)> + '_ {
         let n = n.min(BC_SCOPE_RING - LATENCY);
         let first = (self.pos + 2 * BC_SCOPE_RING - LATENCY - n) % BC_SCOPE_RING;
         (0..n).map(move |i| {
             let k = (first + i) % BC_SCOPE_RING;
-            (self.amp_in[k], self.amp_out[k], self.took[k])
+            (self.amp_in[k], self.amp_out[k], self.took[k], self.exact_at[k])
         })
     }
 }
@@ -348,6 +361,13 @@ pub unsafe extern "C" fn bc_param_choice(index: i32, choice: i32, out: *mut c_ch
         Some(word) => copy_cstr(word, out, cap),
         None => -1,
     }
+}
+
+/// How many levels the staircase has at `bits`, mid-tread or mid-rise: 2^b + 1
+/// and 2^b at whole Bits (bc_core::level_count). Any thread; pure.
+#[no_mangle]
+pub extern "C" fn bc_level_count(bits: f64, mid_rise: bool) -> u32 {
+    bc_core::level_count(bits, mid_rise)
 }
 
 /// How long the editor's pictures hold one look at Refresh choice `choice`,

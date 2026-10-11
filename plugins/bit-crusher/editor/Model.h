@@ -32,6 +32,7 @@
 
 #include "EditorModel.h"
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -73,8 +74,15 @@ enum : int
  * samples as `dry` in the quantiser: its input on the staircase's input axis
  * (Drive taken back out) and the level it became, Dither in it. `holdIn` and
  * `holdTook` are the hold's own window, oldest first: the quantiser's input
- * and whether the hold took each sample -- the latest `holdTakes` takes, 17
- * when the window had room for them (16 periods).
+ * and whether the hold took a level in each sample, `holdAt` past its start
+ * (0..1: 0 on the host's grid, the exact instant with Anti-Alias on) -- the
+ * latest `holdTakes` takes, 17 when the window had room for them.
+ *
+ * WHICH SETTINGS MADE IT. `settings` are the engine's values the look was
+ * made with, by parameter index, and `settled` how many samples they had held
+ * when it was taken: past `settledWindow`, the whole look is theirs. A
+ * picture of the staircase NOW shows a look's samples only when the look is
+ * the staircase's (Editor::current).
  */
 struct Scope
 {
@@ -82,7 +90,14 @@ struct Scope
     std::vector<float> ampIn, ampOut;
     std::vector<float> holdIn;
     std::vector<std::uint8_t> holdTook;
+    std::vector<float> holdAt;
     int holdTakes = 0;
+    std::uint32_t settled = 0;
+    std::array<double, param::count> settings {};
+
+    /* Samples a look's settings must have held for all of it to be theirs:
+     * the ring the windows are cut from. */
+    static constexpr std::uint32_t settledWindow = 2048;
     double sampleRate = 0.0;
     bool triggered = false;
     std::uint32_t serial = 0;
@@ -113,6 +128,14 @@ public:
     /* How long the pictures keep one look before taking the next, in ms, as
      * Refresh says now: 0 for Live, every frame. */
     virtual double refreshPeriodMs() const = 0;
+
+    /* Parameter `index` as the engine is given it now -- on its resolution,
+     * the number a look's `settings` hold when it was made with it. */
+    virtual double setting (int index) const = 0;
+
+    /* How many levels the staircase has now: 2^Bits + 1 mid-tread, 2^Bits
+     * with Mid-Rise (bc_level_count). */
+    virtual int levelCount() const = 0;
 };
 
 } // namespace ni::bc

@@ -259,8 +259,25 @@ const Scope& Processor::scope()
     const auto holdLen = (size_t) juce::jmin ((int) published->hold_len, (int) BC_HOLD);
     latest.holdIn.assign (published->hold_in, published->hold_in + holdLen);
     latest.holdTook.assign (published->hold_took, published->hold_took + holdLen);
+    latest.holdAt.assign (published->hold_at, published->hold_at + holdLen);
     latest.holdTakes = (int) published->hold_takes;
+    latest.settled = published->settled;
+    latest.settings = {};
+    latest.settings[param::drive] = published->drive_db;
+    latest.settings[param::bits] = published->bits;
+    latest.settings[param::shape] = published->shape;
+    latest.settings[param::midRise] = published->mid_rise;
+    latest.settings[param::dither] = published->dither;
+    latest.settings[param::antiAlias] = published->anti_alias;
+    latest.settings[param::rate] = published->rate;
+    latest.settings[param::jitter] = published->jitter;
+    latest.settings[param::preFilter] = published->pre_filter;
     return latest;
+}
+
+int Processor::levelCount() const
+{
+    return (int) bc_level_count (plain (param::bits), plain (param::midRise) >= 0.5);
 }
 
 double Processor::refreshPeriodMs() const

@@ -36,6 +36,16 @@
  * one moment. Pause is the window's alone and not saved; Refresh is a host
  * parameter saved with the set and never automated.
  *
+ * A LOOK IS SHOWN ON THE SETTINGS THAT MADE IT. The staircase follows the
+ * knobs every frame; a look's samples were made with whatever the knobs were
+ * then. So the two discretizations' live views are drawn only while the look
+ * is current (current()): made with the settings the knobs hold now, and with
+ * them throughout. Turn Bits and the dots go; unpaused, the first current look
+ * is taken the moment there is one, whatever Refresh says, so they come back
+ * on the new staircase a few dozen milliseconds later. Paused, they stay away
+ * until the knobs are back or the pause ends. The Signal is the sound, and
+ * shows any look.
+ *
  * STATE LIVES IN THE MODEL AND THE CONTROLS. tick() reads the model's
  * pictures and repaints what moved; the editor's one FrameClock calls it on
  * the display's frames. Every control but Pause is a host parameter, bound
@@ -86,6 +96,10 @@ public:
     /* Hold the three pictures still, or let them go. */
     void setPaused (bool);
     bool isPaused() const noexcept { return paused; }
+
+    /* Whether `look` was made with the settings the knobs hold now, all of
+     * it (Model.h: settings, settled). */
+    bool current (const Scope& candidate) const;
 
     /* ---- what the tests reach */
     ni::ui::EditorFrame& frame() noexcept { return window; }

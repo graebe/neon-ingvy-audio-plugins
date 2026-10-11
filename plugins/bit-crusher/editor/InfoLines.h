@@ -29,7 +29,7 @@ inline constexpr InfoText levelPanel { "Level — how hard it is driven in, and 
 
 /* THE PLOTS, one over each panel, and what holds them still. */
 inline constexpr InfoText amplitudePlot { "Amplitude Crush — level in across, out up; lit dots: the signal now." };
-inline constexpr InfoText timePlot { "Time Crush — input in grey, the hold dim; a lit dot at each take." };
+inline constexpr InfoText timePlot { "Time Crush — what the hold takes in grey, the hold dim; a dot per take." };
 inline constexpr InfoText signalPlot { "Signal — the input in grey, the crushed output in front." };
 inline constexpr InfoText refresh { "Refresh — how often the three pictures take a new look; 1/s is calm." };
 inline constexpr InfoText pause { "Pause — hold the three pictures still; the sound goes on." };
@@ -40,7 +40,7 @@ inline constexpr InfoText pauseTitle { "Pause the pictures" };
 inline constexpr InfoText resumeTitle { "Resume the pictures" };
 
 /* AMPLITUDE CRUSH. */
-inline constexpr InfoText bits { "Bits — the number of steps, 2 to the power of Bits; fractions sweep." };
+inline constexpr InfoText bits { "Bits — 2^Bits steps: 257 levels at 8 bits, 256 with Mid-Rise." };
 inline constexpr InfoText shape { "Shape — from even steps to fine ones near silence, as µ-law has." };
 inline constexpr InfoText dither { "Dither — noise of up to a step before the steps; quiet detail survives." };
 inline constexpr InfoText midRise { "Mid-Rise — no step at zero, so silence becomes a half-step buzz." };

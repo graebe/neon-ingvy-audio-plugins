@@ -301,6 +301,12 @@ TEST_CASE ("the model: the staircase now, the scope after audio, the bipolar kno
     CHECK (s.holdIn.size() == s.holdTook.size());
     CHECK (s.holdIn.size() > 64);
     CHECK (s.holdTook.front() == 1);
+    CHECK (s.holdAt.size() == s.holdIn.size());
+    /* The settings that made it, settled through all of it. */
+    CHECK (s.settings[param::bits] == a.p.setting (param::bits));
+    CHECK (s.settings[param::rate] == 12000.0);
+    CHECK (s.settled >= ni::bc::Scope::settledWindow);
+    CHECK (a.p.levelCount() == 257);
 
     CHECK (a.p.bipolar (param::drive));
     CHECK (a.p.bipolar (param::postOctave));

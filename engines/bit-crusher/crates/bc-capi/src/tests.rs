@@ -49,6 +49,9 @@ fn refresh_is_a_choice_of_the_window_saved_but_not_automated() {
         assert_eq!(d.choice_count, 0);
     }
     assert_eq!([0, 1, 2, 3].map(|c| bc_refresh_period_ms(c)), [0.0, 100.0, 250.0, 1000.0]);
+    /* The levels Bits makes, both grids: one more than 2^b mid-tread. */
+    assert_eq!((bc_level_count(8.0, false), bc_level_count(8.0, true)), (257, 256));
+    assert_eq!((bc_level_count(1.0, false), bc_level_count(1.0, true)), (3, 2));
     assert_eq!(bc_refresh_period_ms(9), 1000.0, "out of range: the default's");
 }
 
@@ -290,6 +293,38 @@ mod shell_tests {
         assert!(slow.hold_takes as usize <= 3 && slow.hold_takes >= 2, "{}", slow.hold_takes);
         assert!(slow.hold_len as usize <= BC_HOLD);
         assert!(slow.hold_took[0]);
+    }
+
+    #[test]
+    fn the_look_says_which_settings_made_it_and_since_when() {
+        let s = unsafe { tone_through(|c| bc_core_set_num(c, Param::Bits as i32, 5.5)) };
+        assert_eq!((s.bits, s.drive_db, s.mid_rise, s.rate), (5.5, 0.0, 0.0, 12_000.0));
+        assert_eq!(s.settled, 20 * 480, "set before the first block, the same value every block after");
+    }
+
+    #[test]
+    fn with_anti_alias_the_holds_window_marks_the_exact_instants() {
+        unsafe {
+            let shell = bc_shell_create(44_100.0);
+            for block in 0..40 {
+                let core = bc_shell_begin(shell);
+                bc_core_set_num(core, Param::AntiAlias as i32, 1.0);
+                let mut l: Vec<f32> =
+                    (0..441).map(|i| (0.5 * ((block * 441 + i) as f64 * 0.01).sin()) as f32).collect();
+                bc_core_process_f32(core, l.as_mut_ptr(), std::ptr::null_mut(), 441);
+                bc_shell_end(shell, 441);
+            }
+            let s = read(shell);
+            bc_shell_destroy(shell);
+            assert_eq!(s.anti_alias, 1.0);
+            assert_eq!(s.hold_takes as usize, BC_HOLD_PERIODS + 1);
+            let at: Vec<f64> = (0..s.hold_len as usize)
+                .filter(|&i| s.hold_took[i])
+                .map(|i| i as f64 + f64::from(s.hold_at[i]))
+                .collect();
+            /* 12 kHz at 44.1 kHz: 3.675 samples apart, not 3 and 4. */
+            assert!(at.windows(2).all(|w| (w[1] - w[0] - 3.675).abs() < 1e-4), "{at:?}");
+        }
     }
 
     #[test]

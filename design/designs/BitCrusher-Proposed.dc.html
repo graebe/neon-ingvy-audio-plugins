@@ -21,7 +21,7 @@ body{margin:0;background:#060410}
 
   <!-- AMPLITUDE CRUSH (32, 32): the staircase, input across, output up. ZOOMED UNTIL THE STEPS SHOW: the window around silence, a power of two from full scale down, holding at most 16 steps (the engine's bc_transfer_span); the caption says by how much. The output axis fits the window's outputs, so Drive's tilt is drawn, not cut flat at the edge. The dots are the look's samples inside the window: on the stairs, or beside them by Dither. -->
   <div style="position: absolute; left: 32px; top: 32px; width: 264px; height: 200px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
-    <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">Amplitude Crush&#160;&#160;&#160;{{bitsText}} bits{{zoomText}}</span>
+    <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">Amplitude Crush&#160;&#160;&#160;{{levelsText}} levels{{zoomText}}</span>
     <svg viewBox="0 0 250 174" width="250" height="174" style="position: absolute; left: 6px; top: 20px; overflow: visible;" aria-hidden="true">
       <path d="{{diagonal}}" fill="none" stroke="#6b6b78" stroke-width="1.5"></path>
       <path d="{{stairs}}" fill="none" stroke="var(--ink-dim)" stroke-width="1.5" stroke-linejoin="miter"></path>
@@ -189,6 +189,7 @@ class Component extends DCLogic {
     const panelStyle = (x) => 'position: absolute; left: ' + x + 'px; top: 256px; width: 264px; height: 208px; box-sizing: border-box; margin: 0;';
     return {
       bitsText: bits.toFixed(1),
+      levelsText: String(2 * top + 1),
       diagonal,
       ampDots: dotsPath(amp),
       holdIn: path(holdIn),

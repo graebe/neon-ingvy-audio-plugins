@@ -35,7 +35,7 @@ the host's side.
 */
 
 use crate::{BcCore, BC_SCOPE_RING};
-use bc_core::LATENCY;
+use bc_core::{Param, LATENCY};
 use shell_core::{publish_every, Bridge, Model};
 
 /// The scope's window, in samples: about 11 ms at 48 kHz, so a step of the
@@ -68,12 +68,28 @@ pub struct BcScope {
     pub amp_in: [f32; BC_SCOPE],
     pub amp_out: [f32; BC_SCOPE],
     /// The hold's window, oldest first: `hold_len` samples of the
-    /// quantiser's input, and whether the hold took each. `hold_takes` is
-    /// how many it took there: BC_HOLD_PERIODS + 1 when the ring had them.
+    /// quantiser's input, and whether the hold took a level in each --
+    /// `hold_at` past its start, 0..1: 0 on the host's grid (the plain hold),
+    /// or the exact instant with Anti-Alias on. `hold_takes` is how many it
+    /// took there: BC_HOLD_PERIODS + 1 when the ring had them.
     pub hold_len: u32,
     pub hold_takes: u32,
     pub hold_in: [f32; BC_HOLD],
     pub hold_took: [bool; BC_HOLD],
+    pub hold_at: [f32; BC_HOLD],
+    /// The settings the look was made with, the engine's own values, and
+    /// how long they had held when it was taken (bc_core::Engine::settled):
+    /// a look with `settled` past its window was made with them throughout.
+    pub settled: u32,
+    pub drive_db: f64,
+    pub bits: f64,
+    pub shape: f64,
+    pub mid_rise: f64,
+    pub dither: f64,
+    pub anti_alias: f64,
+    pub rate: f64,
+    pub jitter: f64,
+    pub pre_filter: f64,
 }
 
 impl BcScope {
@@ -90,6 +106,17 @@ impl BcScope {
             hold_takes: 0,
             hold_in: [0.0; BC_HOLD],
             hold_took: [false; BC_HOLD],
+            hold_at: [0.0; BC_HOLD],
+            settled: 0,
+            drive_db: 0.0,
+            bits: 0.0,
+            shape: 0.0,
+            mid_rise: 0.0,
+            dither: 0.0,
+            anti_alias: 0.0,
+            rate: 0.0,
+            jitter: 0.0,
+            pre_filter: 0.0,
         }
     }
 }
@@ -156,22 +183,39 @@ impl Model for BcCore {
             f.dry[i] = d;
             f.wet[i] = w;
         }
-        for (i, (a, q, _)) in self.recent_probes(SPAN).skip(start).take(BC_SCOPE).enumerate() {
+        for (i, (a, q, _, _)) in self.recent_probes(SPAN).skip(start).take(BC_SCOPE).enumerate() {
             f.amp_in[i] = a;
             f.amp_out[i] = q;
         }
 
+        /* The takes the sound has: the band-limited hold's exact instants
+         * with Anti-Alias on, the plain hold's grid otherwise. */
+        let e = &self.engine;
+        let exact = e.num(Param::AntiAlias) >= 0.5;
         let mut took = [false; SPAN];
-        for (slot, (_, _, t)) in took.iter_mut().zip(self.recent_probes(SPAN)) {
-            *slot = t;
+        let mut at = [0.0f32; SPAN];
+        for (i, (_, _, t, x)) in self.recent_probes(SPAN).enumerate() {
+            (took[i], at[i]) = if exact { (x >= 0.0, x.max(0.0)) } else { (t, 0.0) };
         }
         let from = hold_start(&took);
         f.hold_len = (SPAN - from) as u32;
         f.hold_takes = took[from..].iter().filter(|&&t| t).count() as u32;
-        for (i, (a, _, t)) in self.recent_probes(SPAN).skip(from).enumerate() {
+        for (i, (a, _, _, _)) in self.recent_probes(SPAN).skip(from).enumerate() {
             f.hold_in[i] = a;
-            f.hold_took[i] = t;
+            f.hold_took[i] = took[from + i];
+            f.hold_at[i] = at[from + i];
         }
+
+        f.settled = e.settled();
+        f.drive_db = e.num(Param::Drive);
+        f.bits = e.num(Param::Bits);
+        f.shape = e.num(Param::Shape);
+        f.mid_rise = e.num(Param::MidRise);
+        f.dither = e.num(Param::Dither);
+        f.anti_alias = e.num(Param::AntiAlias);
+        f.rate = e.num(Param::Rate);
+        f.jitter = e.num(Param::Jitter);
+        f.pre_filter = e.num(Param::PreFilter);
     }
 
     /* Every parameter reaches the engine from the shell on the audio

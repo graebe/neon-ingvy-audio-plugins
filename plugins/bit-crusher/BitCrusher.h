@@ -78,6 +78,8 @@ public:
     double steps (float* out, int count) override;
     const Scope& scope() override;
     double refreshPeriodMs() const override;
+    double setting (int index) const override { return plain (index); }
+    int levelCount() const override;
 
 protected:
     /* The shell's prepareToPlay calls it: the rate and a reset posted. */

@@ -225,21 +225,36 @@ void Editor::layout()
 void Editor::tick (double nowMs)
 {
     /* A new look at Refresh's pace -- Live takes every one -- and none while
-     * paused; all three wells get the same one. */
+     * paused; all three wells get the same one. A look made with other
+     * settings than the knobs' is replaced the moment a current one exists. */
     bool fresh = false;
     if (! paused)
     {
         const auto& latest = model.scope();
-        if (latest.count() > 0 && latest.serial != look.serial && nowMs - lookedAt >= model.refreshPeriodMs())
+        const bool due = nowMs - lookedAt >= model.refreshPeriodMs();
+        const bool catchUp = ! current (look) && current (latest);
+        if (latest.count() > 0 && latest.serial != look.serial && (due || catchUp))
         {
             look = latest;
             lookedAt = nowMs;
             fresh = true;
         }
     }
-    amplitude->update (look, fresh);
-    timeCrush->update (look, fresh, nowMs);
+    const bool live = current (look);
+    amplitude->update (look, fresh, live);
+    timeCrush->update (look, fresh, live, nowMs);
     signal->update (look, fresh, nowMs);
+}
+
+bool Editor::current (const Scope& candidate) const
+{
+    if (candidate.count() == 0 || candidate.settled < Scope::settledWindow)
+        return false;
+    for (const int i : { param::drive, param::bits, param::shape, param::midRise, param::dither,
+                         param::antiAlias, param::rate, param::jitter, param::preFilter })
+        if (! juce::exactlyEqual (candidate.settings[(size_t) i], model.setting (i)))
+            return false;
+    return true;
 }
 
 void Editor::setPaused (bool on)

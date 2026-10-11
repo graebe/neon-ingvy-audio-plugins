@@ -38,9 +38,17 @@ knobs while paused — it is your settings, not your signal.
 
 Digital audio stores each moment of a wave as a number. With 16 bits there
 are 65 536 possible numbers, so a wave has 65 536 levels to land on and the
-steps between them are far too small to hear. Take bits away and the levels
-get fewer and the steps bigger: with 8 bits there are 256, with 4 bits 16,
-with 2 bits only 4.
+steps between them are far too small to hear. Take bits away and the steps
+get fewer and bigger: 2 to the power of Bits of them from bottom to top — 256
+at 8 bits, 16 at 4 bits, 4 at 2 bits.
+
+> **Steps and levels.** The crusher keeps a level at zero, so silence stays
+> silent, and both ends of the range: one more level than steps. At 8 bits
+> that is **257 levels**, at 2 bits 5 (−1, −½, 0, +½, +1), at 1 bit 3 (−1, 0,
+> +1). With **Mid-Rise** (below) there is no level at zero and exactly 2 to
+> the power of Bits levels: 256, 4, 2 — what a real converter of that many
+> bits has. The Amplitude Crush picture's caption counts them for you:
+> `257 LEVELS`.
 
 This is **amplitude discretization**. Set **Bits** to 4 and watch the
 Amplitude Crush picture. The grey diagonal behind is the untouched signal:
@@ -48,21 +56,24 @@ output equals input. The bright line in front is what the crusher does to it:
 a staircase. Every input between two steps comes out as the nearest step.
 While audio plays, the staircase dims and the samples of your signal light it
 up as dots, each where its level in and its level out put it — all on the
-stairs. The Signal picture shows the same thing in time:
+stairs. The dots always belong to the staircase drawn: turn a knob and they
+disappear until the signal has passed through the new settings, a moment
+later (or, paused, until you let the pictures go). The Signal picture shows
+the same thing in time:
 the grey wave that came in becomes a stack of flat stairs.
 
 > **The Amplitude Crush picture zooms in.** At 8 bits there are 256 steps
 > from bottom to top, each far narrower than a pixel, so drawn whole they
 > would look like a plain diagonal. The picture shows the part around silence
 > where about 16 steps fit, and its caption says by how much:
-> `AMPLITUDE CRUSH 8.0 BITS ×16` is a sixteenth of full scale. Zoomed in, the
+> `AMPLITUDE CRUSH 257 LEVELS ×16` is a sixteenth of full scale. Zoomed in, the
 > dots you see are the parts of your signal near silence — the quiet ones,
 > where crushing is loudest relative to the sound. From 4 bits down every step
 > fits, the zoom disappears, and every dot is in view. Drive and Shape move
 > the zoom too, because they change how wide the steps are.
 
 > **Bits is continuous.** 4.5 bits is a real setting, between 16 and 32
-> levels, and the top step is simply shorter. So a slow sweep of Bits — or an
+> steps, and the top step is simply shorter. So a slow sweep of Bits — or an
 > automation lane on it — glides down the staircase rather than clicking from
 > one count to the next.
 
@@ -104,9 +115,11 @@ or below where the staircase would put it, at random.
 Normally there is a step exactly at zero, so silence stays silent (this is
 called **mid-tread**). Switch on **Mid-Rise** and the grid moves half a step:
 there is no zero any more, and the quietest signal flips between two steps
-either side of it. At 1 bit this turns any sound into a square wave — pure
-sign. Silence becomes a half-step offset, which the plugin's DC blocker takes
-out over a fraction of a second, so the output never sits off-centre.
+either side of it. It also has exactly 2 to the power of Bits levels, one
+fewer than mid-tread (the caption goes from `257 LEVELS` to `256 LEVELS`). At
+1 bit this turns any sound into a square wave — pure sign, two levels. Silence
+becomes a half-step offset, which the plugin's DC blocker takes out over a
+fraction of a second, so the output never sits off-centre.
 
 ### Anti-Alias: the crusher, drawn exactly
 
@@ -144,7 +157,10 @@ is the "ideal converter at Rate". The top octave is kept: within a decibel to
 The second half of crushing is **time discretization**. **Rate** sets how many
 times a second the crusher takes the signal's level; between takes, it *holds*
 the last one. The Time Crush picture shows exactly that: your signal in grey,
-the held level as a dim line, and each take lit as a dot. It shows sixteen
+the held level as a dim line, and each take lit as a dot. With Anti-Alias on,
+the takes are drawn at their exact instants, between samples, as you hear
+them. The grey is what the hold takes: your signal after Drive and, with Pre
+on, after the pre-filter. It shows sixteen
 holds — under a millisecond at a high Rate, tens of milliseconds at a low one,
 and as many as fit in the last forty milliseconds or so at the very lowest —
 and its caption names the Rate (`TIME CRUSH 12.0 KHZ 16 HOLDS`). It shows the

@@ -237,11 +237,18 @@ struct Channel {
 /// and the pre-filter, Drive taken back out, so it sits on the same axis as
 /// `transfer`'s input), the level it became (Dither in it), and whether the
 /// hold took that level. Bypassed, the input passes and nothing is taken.
+///
+/// With Anti-Alias on, the band-limited hold takes its levels at exact
+/// instants between samples, and a little later than the plain one (it reads
+/// HALF_WIDTH samples ahead): `exact_take` is the instant of the first level
+/// it took during this sample, in samples relative to this one (negative,
+/// about HALF_WIDTH back), or None.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Probe {
     pub input: f64,
     pub level: f64,
     pub took: bool,
+    pub exact_take: Option<f64>,
 }
 
 impl Channel {
@@ -290,7 +297,7 @@ impl Channel {
         let dry = if dry.is_finite() { dry } else { 0.0 };
         let dry_late = self.dry_late.push(dry);
         if now.active <= 0.0 {
-            self.probe = Probe { input: dry, level: dry, took: false };
+            self.probe = Probe { input: dry, level: dry, took: false, exact_take: None };
             return dry_late;
         }
 
@@ -302,16 +309,19 @@ impl Channel {
          * is the same as stepping only what it takes. */
         let level = now.level(x, &mut self.dither_rng);
         let raw = self.hold.step(level, now.step, now.jitter, &mut self.hold_rng);
-        self.probe = Probe { input: x / now.drive, level, took: self.hold.took() };
+        self.probe = Probe { input: x / now.drive, level, took: self.hold.took(), exact_take: None };
         let raw = self.raw_late.push(raw);
+        let mut exact_take = None;
         let held = if now.anti_alias > 0.0 {
             let rng = &mut self.exact_dither_rng;
             let exact = self.exact.step(x, now.step, now.jitter, &mut self.exact_hold_rng, |v| now.level(v, rng));
+            exact_take = self.exact.first_take();
             fade(raw, exact, now.anti_alias)
         } else {
             self.exact.follow(x, self.hold.held(), self.hold.phase());
             raw
         };
+        self.probe.exact_take = exact_take;
 
         let smoothed = self.post.run(held);
         let wet = fade(held, smoothed, now.post);
@@ -348,6 +358,9 @@ pub struct Engine {
     channels: [Channel; 2],
     /// Whether the host hears the crusher (set_active).
     active: bool,
+    /// Samples processed since a parameter of the sound last changed: what
+    /// says an editor's look was made with the settings it shows.
+    settled: u32,
 }
 
 impl Engine {
@@ -375,7 +388,15 @@ impl Engine {
             post_hz,
             channels: [0, 1].map(|i| Channel::new(i, &pre_coefficients, &post_coefficients, sample_rate)),
             active: true,
+            settled: 0,
         }
+    }
+
+    /// Samples processed since a parameter of the sound last changed
+    /// (Refresh, the window's, is not one), saturating. A look whose window
+    /// is shorter was made with these settings throughout.
+    pub fn settled(&self) -> u32 {
+        self.settled
     }
 
     /// How late the output is, in samples: always LATENCY.
@@ -451,7 +472,11 @@ impl Engine {
         if v.is_nan() {
             return;
         }
-        self.values[p as usize] = p.clamp(v);
+        let v = p.clamp(v);
+        if v != self.values[p as usize] && p != Param::Refresh {
+            self.settled = 0;
+        }
+        self.values[p as usize] = v;
         self.targets = Glides::targets(&self.values, self.active);
     }
 
@@ -584,6 +609,7 @@ impl Engine {
             let now = self.advance();
             *l = self.channels[0].run(f64::from(*l), &now) as f32;
             probe(i, self.channels[0].probe);
+            self.settled = self.settled.saturating_add(1);
             if let Some(r) = right.as_deref_mut().and_then(|r| r.get_mut(i)) {
                 *r = self.channels[1].run(f64::from(*r), &now) as f32;
             }
@@ -598,6 +624,7 @@ impl Engine {
         let to_i16 = |y: f64| (y * SCALE).round().clamp(-SCALE, SCALE - 1.0) as i16;
         for frame in buf.as_chunks_mut::<2>().0.iter_mut().take(frames) {
             let now = self.advance();
+            self.settled = self.settled.saturating_add(1);
             let l = self.channels[0].run(f64::from(frame[0]) / SCALE, &now);
             let r = self.channels[1].run(f64::from(frame[1]) / SCALE, &now);
             frame[0] = to_i16(l);
@@ -633,6 +660,13 @@ pub fn transfer(drive_db: f64, bits: f64, shape_pct: f64, mid_rise: bool, x: f64
     let shape = Shape::new(value(Param::Shape, shape_pct) / 100.0);
     let x = x * db_to_amp(value(Param::Drive, drive_db));
     shape.expand(grid.quantize(shape.compress(x)))
+}
+
+/// How many levels the staircase has at `bits`, mid-tread or mid-rise
+/// (quantize.rs: 2^b + 1 and 2^b at whole Bits). A NaN Bits is its default.
+pub fn level_count(bits: f64, mid_rise: bool) -> u32 {
+    let bits = if bits.is_nan() { Param::Bits.default_value() } else { Param::Bits.clamp(bits) };
+    Grid::new(bits, mid_rise).levels()
 }
 
 /// How many steps a plot of the staircase shows at most: enough to read as a

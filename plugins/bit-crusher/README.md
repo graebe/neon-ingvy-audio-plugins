@@ -29,9 +29,12 @@ plus a Schwung module for the Ableton Move.
 
 ## What it does
 
-**Bits** sets how many levels there are: 2 to the power of Bits. It is a
-continuous control — 7.5 bits is a real setting — so sweeping it is a smooth
-ride down the staircase rather than a jump from 256 steps to 128.
+**Bits** sets how many steps there are from bottom to top: 2 to the power of
+Bits. The levels between them are one more — a level at zero and both ends,
+257 at 8 bits — or exactly 2 to the power of Bits with Mid-Rise, as a real
+converter has; the window counts them. It is a continuous control — 7.5 bits
+is a real setting — so sweeping it is a smooth ride down the staircase rather
+than a jump from 256 steps to 128.
 
 **Rate** sets how often a level is taken. It does not have to divide your
 project's sample rate: 12 kHz at 44.1 kHz holds for three samples and four in

@@ -40,20 +40,23 @@ AmplitudePlot::AmplitudePlot (Model& m)
     : model (m), levels ((size_t) points, 0.0f), freshLevels ((size_t) points, 0.0f)
 {
     ni::ui::setInfo (*this, info::amplitudePlot);
-    update ({}, false);
+    update ({}, false, false);
     rebuild();
 }
 
-void AmplitudePlot::update (const Scope& look, bool fresh)
+void AmplitudePlot::update (const Scope& look, bool fresh, bool live)
 {
     const double freshSpan = model.steps (freshLevels.data(), points);
-    /* Zoomed in, the caption says by how much: the well is no longer the
-     * whole range, and a picture that does not say so misleads. */
-    const auto caption = clauses ({ "AMPLITUDE CRUSH",
-                                    model.parameter (param::bits).getCurrentValueAsText().toUpperCase(),
+    /* The levels the staircase has, as many as there are -- 2^Bits + 1, or
+     * 2^Bits with Mid-Rise -- not 2^Bits by implication. Zoomed in, the
+     * caption says by how much: the well is no longer the whole range, and a
+     * picture that does not say so misleads. */
+    const auto caption = clauses ({ "AMPLITUDE CRUSH", juce::String (model.levelCount()) + " LEVELS",
                                     freshSpan < 1.0 ? juce::String::fromUTF8 ("\xc3\x97") + juce::String (juce::roundToInt (1.0 / freshSpan))
                                                     : juce::String() });
-    const bool moved = freshLevels != levels || ! juce::exactlyEqual (freshSpan, span) || caption != getCaption();
+    const bool moved = freshLevels != levels || ! juce::exactlyEqual (freshSpan, span) || caption != getCaption()
+                       || live != shownLive;
+    shownLive = live;
     if (! moved && ! fresh)
         return;
     if (moved)
@@ -103,9 +106,9 @@ void AmplitudePlot::rebuild()
             curve.lineTo (x, y);
     }
 
-    /* The look's samples inside the window. */
+    /* The look's samples inside the window, while the look is the knobs'. */
     dotsAt.clear();
-    const auto n = std::min (liveIn.size(), liveOut.size());
+    const auto n = shownLive ? std::min (liveIn.size(), liveOut.size()) : (size_t) 0;
     for (size_t i = 0; i < n; ++i)
         if (std::abs (liveIn[i]) <= in)
             dotsAt.emplace_back (xOf (liveIn[i]), yOf (area, liveOut[i], out));
@@ -131,30 +134,42 @@ TimePlot::TimePlot (Model& m) : model (m)
 {
     ni::ui::setInfo (*this, info::timePlot);
     enableLevelRange();
-    update ({}, false, 0.0);
+    update ({}, false, false, 0.0);
 }
 
-void TimePlot::update (const Scope& look, bool fresh, double nowMs)
+void TimePlot::update (const Scope& look, bool fresh, bool live, double nowMs)
 {
     if (fresh)
     {
         in = look.holdIn;
         took = look.holdTook;
+        at = look.holdAt;
         takes = look.holdTakes;
+        sampleRate = look.sampleRate;
     }
-    /* The holds the window spans: one fewer than the takes that bound them. */
-    const auto caption = clauses ({ "TIME CRUSH",
-                                    model.parameter (param::rate).getCurrentValueAsText().toUpperCase(),
-                                    takes > 1 ? juce::String (takes - 1) + " HOLDS" : juce::String() });
+    const bool liveMoved = live != shownLive;
+    shownLive = live;
+
+    /* The holds the window spans: one fewer than the takes that bound them.
+     * At a Rate of the host's own or above, every sample is taken and
+     * nothing is held. */
+    const double rate = model.setting (param::rate);
+    juce::String holds;
+    if (sampleRate > 0.0 && rate >= sampleRate)
+        holds = "NO HOLD";
+    else if (shownLive && takes > 1)
+        holds = juce::String (takes - 1) + " HOLDS";
+    const auto caption = clauses ({ "TIME CRUSH", model.parameter (param::rate).getCurrentValueAsText().toUpperCase(), holds });
     const bool captioned = caption != getCaption();
     if (captioned)
         setCaption (caption);
 
     float peak = 0.0f;
-    for (const float v : in)
-        peak = std::max (peak, std::abs (v));
+    if (shownLive)
+        for (const float v : in)
+            peak = std::max (peak, std::abs (v));
     const bool moved = followLevel (peak, nowMs);
-    if (fresh || moved)
+    if (fresh || moved || liveMoved)
     {
         rebuild();
         repaint();
@@ -168,33 +183,46 @@ void TimePlot::rebuild()
     inputLine.clear();
     heldLine.clear();
     dotsAt.clear();
-    const int n = (int) std::min (in.size(), took.size());
-    if (n < 2)
+    const int n = shownLive ? (int) std::min ({ in.size(), took.size(), at.size() }) : 0;
+    if (n < 2 || takes == 0)
         return;
     const auto area = contentBounds();
     const float fullScale = levelRange().fullScale();
-    const auto x = [&] (int i) { return xAt ((float) i / (float) (n - 1)); };
+    /* Time in samples from the window's start, fractions and all. */
+    const auto x = [&] (double t) { return xAt ((float) (t / (double) (n - 1))); };
     const auto y = [&] (float v) { return yOf (area, v, fullScale); };
+    /* The input between two samples, for a take that fell between them. */
+    const auto inputAt = [&] (int i, float f)
+    { return i + 1 < n ? in[(size_t) i] + f * (in[(size_t) i + 1] - in[(size_t) i]) : in[(size_t) i]; };
 
-    /* The window starts on a take (bc_shell_read), so there is a level to
-     * hold from its first sample. */
-    float held = in[0];
-    inputLine.startNewSubPath (x (0), y (in[0]));
-    heldLine.startNewSubPath (x (0), y (held));
     for (int i = 0; i < n; ++i)
     {
-        if (i > 0)
+        if (i == 0)
+            inputLine.startNewSubPath (x (0), y (in[0]));
+        else
             inputLine.lineTo (x (i), y (in[(size_t) i]));
-        if (took[(size_t) i] != 0)
+    }
+    /* The hold: from each take -- on the host's grid, or at its exact
+     * instant with Anti-Alias -- flat until the next. The window starts on
+     * one (bc_shell_read). */
+    bool started = false;
+    float held = 0.0f;
+    for (int i = 0; i < n; ++i)
+    {
+        if (took[(size_t) i] == 0)
+            continue;
+        const double t = i + (double) at[(size_t) i];
+        const float level = inputAt (i, at[(size_t) i]);
+        if (! started)
+            heldLine.startNewSubPath (x (t), y (level));
+        else
         {
-            if (i > 0)
-            {
-                heldLine.lineTo (x (i), y (held));
-                held = in[(size_t) i];
-                heldLine.lineTo (x (i), y (held));
-            }
-            dotsAt.emplace_back (x (i), y (held));
+            heldLine.lineTo (x (t), y (held));
+            heldLine.lineTo (x (t), y (level));
         }
+        started = true;
+        held = level;
+        dotsAt.emplace_back (x (t), y (level));
     }
     heldLine.lineTo (x (n - 1), y (held));
 }

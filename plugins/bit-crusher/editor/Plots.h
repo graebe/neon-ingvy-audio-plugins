@@ -72,8 +72,9 @@ public:
     explicit AmplitudePlot (Model&);
 
     /* The staircase from the knobs, every frame; the live dots from `look`
-     * when it is `fresh`. */
-    void update (const Scope& look, bool fresh);
+     * when it is `fresh`, shown while it is `live` (made with the knobs'
+     * settings: Editor::current). */
+    void update (const Scope& look, bool fresh, bool live);
 
     /* What it drew, for the tests: the curve's outputs, the input range they
      * span either side of silence, the output range the well shows either
@@ -93,6 +94,7 @@ private:
     std::vector<float> levels, freshLevels;
     double span = 1.0, outSpan = 1.0;
     std::vector<float> liveIn, liveOut;
+    bool shownLive = false;
     juce::Path curve, diagonal;
     std::vector<juce::Point<float>> dotsAt;
 };
@@ -102,10 +104,12 @@ class TimePlot final : public ni::ui::PlotWell
 public:
     explicit TimePlot (Model&);
 
-    void update (const Scope& look, bool fresh, double nowMs);
+    /* `look`'s hold window when it is `fresh`, shown while it is `live`. */
+    void update (const Scope& look, bool fresh, bool live, double nowMs);
 
-    /* Whether there is a picture yet: false before any audio. */
-    bool hasSignal() const noexcept { return ! in.empty(); }
+    /* Whether there is a picture: false before any audio, and while the
+     * look is not the knobs'. */
+    bool hasSignal() const noexcept { return shownLive && ! in.empty(); }
     /* The takes it marks, for the tests. */
     const std::vector<juce::Point<float>>& takeDots() const noexcept { return dotsAt; }
 
@@ -119,7 +123,10 @@ private:
     Model& model;
     std::vector<float> in;
     std::vector<std::uint8_t> took;
+    std::vector<float> at;
     int takes = 0;
+    double sampleRate = 0.0;
+    bool shownLive = false;
     juce::Path inputLine, heldLine;
     std::vector<juce::Point<float>> dotsAt;
 };

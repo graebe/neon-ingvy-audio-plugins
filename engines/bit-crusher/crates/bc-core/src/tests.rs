@@ -578,5 +578,74 @@ fn the_probe_tells_the_level_the_staircase_gives_and_the_hold_takes() {
     let mut quiet = vec![0.25f32; SR as usize];
     let mut last = Probe::default();
     e.process_f32_probed(&mut quiet, None, |_, p| last = p);
-    assert_eq!(last, Probe { input: 0.25, level: 0.25, took: false });
+    assert_eq!(last, Probe { input: 0.25, level: 0.25, took: false, exact_take: None });
+}
+
+#[test]
+fn the_level_count_is_what_the_staircase_has() {
+    /* Counted by sweeping the engine's own staircase past full scale. */
+    let counted = |bits: f64, mid_rise: bool| {
+        let mut v: Vec<f64> = (0..=200_000).map(|i| transfer(0.0, bits, 0.0, mid_rise, -1.2 + 2.4 * i as f64 / 200_000.0)).collect();
+        v.sort_by(f64::total_cmp);
+        v.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
+        v.len() as u32
+    };
+    for (bits, tread, rise) in [(1.0, 3, 2), (2.0, 5, 4), (3.0, 9, 8), (4.0, 17, 16), (4.5, 23, 24), (8.0, 257, 256)] {
+        assert_eq!(level_count(bits, false), tread, "{bits} bits mid-tread");
+        assert_eq!(level_count(bits, true), rise, "{bits} bits mid-rise");
+        assert_eq!(counted(bits, false), tread, "{bits} bits mid-tread, counted");
+        assert_eq!(counted(bits, true), rise, "{bits} bits mid-rise, counted");
+    }
+    assert_eq!(level_count(f64::NAN, false), 257);
+}
+
+#[test]
+fn settled_counts_samples_since_a_setting_of_the_sound_last_changed() {
+    let mut e = Engine::new(SR);
+    let mut block = vec![0.0f32; 480];
+    e.process_f32(&mut block, None);
+    assert_eq!(e.settled(), 480);
+    /* The same value again, or the window's Refresh, changes nothing. */
+    e.set_num(Param::Bits, 8.0);
+    e.set_num(Param::Refresh, 0.0);
+    e.process_f32(&mut block, None);
+    assert_eq!(e.settled(), 960);
+    e.set_num(Param::Bits, 6.0);
+    assert_eq!(e.settled(), 0);
+    e.process_i16(&mut [0i16; 64], 32);
+    assert_eq!(e.settled(), 32);
+}
+
+#[test]
+fn with_anti_alias_the_takes_are_at_their_exact_instants() {
+    /* 12 kHz at 44.1 kHz: a period of 3.675 samples. The plain hold takes on
+     * the grid, three and four samples apart; the band-limited one at each
+     * exact instant, HALF_WIDTH behind the sample it was given. */
+    let sr = 44_100.0;
+    let mut e = Engine::new(sr);
+    e.set_num(Param::AntiAlias, 1.0);
+    let mut warm = vec![0.0f32; sr as usize];
+    e.process_f32(&mut warm, None);
+    let mut input: Vec<f32> = (0..4410).map(|i| (0.5 * (i as f64 * 0.01).sin()) as f32).collect();
+    let (mut exact, mut grid) = (Vec::new(), Vec::new());
+    e.process_f32_probed(&mut input, None, |i, p| {
+        if let Some(at) = p.exact_take {
+            assert!(at > -(blep::HALF_WIDTH as f64) - 1.0 && at <= -(blep::HALF_WIDTH as f64), "{at}");
+            exact.push(i as f64 + at);
+        }
+        if p.took {
+            grid.push(i);
+        }
+    });
+    let period = sr / 12_000.0;
+    assert!(exact.len() > 1000);
+    assert!(exact.windows(2).all(|w| (w[1] - w[0] - period).abs() < 1e-6), "{:?}", &exact[..4]);
+    assert!(grid.windows(2).all(|w| matches!(w[1] - w[0], 3 | 4)));
+    /* Off, there is no exact hold to ask. */
+    e.set_num(Param::AntiAlias, 0.0);
+    let mut warm = vec![0.0f32; sr as usize];
+    e.process_f32(&mut warm, None);
+    let mut any = false;
+    e.process_f32_probed(&mut input, None, |_, p| any |= p.exact_take.is_some());
+    assert!(!any);
 }

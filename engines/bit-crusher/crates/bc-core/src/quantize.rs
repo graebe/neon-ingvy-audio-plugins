@@ -13,6 +13,13 @@ scale (-1..1). A level is Δ·m for a level index m:
   mid-rise    m is a whole number and a half, so there is a step boundary at
               zero and the smallest signal becomes ±Δ/2: y = Δ·(floor(x/Δ)+½)
 
+HOW MANY LEVELS, which is not the same in the two. Mid-rise has exactly 2^b
+(1 bit: ±½), as a b-bit converter does. Mid-tread has 2^b + 1: the level at
+zero, and both full scales (1 bit: -1, 0, +1; 8 bits: 257) -- symmetric, as
+the common crusher formula round(x·2^(b-1)) is, and one level more than a
+b-bit converter, which drops one of the full scales. `Grid::levels` says how
+many, and every shell says it beside Bits rather than implying 2^b.
+
 `b` is any real number, not only a whole one, so a sweep of Bits moves the
 steps continuously instead of jumping from 256 to 128. Between whole numbers
 the top level falls outside full scale; it is drawn back to ±1 (the clip), so
@@ -58,6 +65,12 @@ impl Grid {
     /// The step, Δ.
     pub fn delta(&self) -> f64 {
         self.delta
+    }
+
+    /// How many levels there are: every index from -top to top, a whole
+    /// number apart -- 2^b + 1 mid-tread, 2^b mid-rise, at whole Bits.
+    pub fn levels(&self) -> u32 {
+        (2.0 * self.top + 1.0).round() as u32
     }
 
     /// The level index `x` falls on. Inputs past full scale take the top one.

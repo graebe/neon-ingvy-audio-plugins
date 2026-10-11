@@ -10,6 +10,12 @@
   take lit as a dot, sixteen holds wide. The **Amplitude Crush** picture now
   shows your signal live, lighting up the stairs it is on, and keeps Drive's
   tilt in view instead of cutting it off at the edge as if it clipped.
+- **The pictures say exactly what you hear.** The Amplitude Crush caption
+  counts the levels (257 at 8 bits, 256 with Mid-Rise: the level at zero is
+  the one more); its dots only ever sit on the staircase that made them, and
+  come back a moment after a knob moves; with Anti-Alias the Time Crush
+  picture marks each take at its exact instant; and with nothing held it
+  draws no hold.
 - **Refresh and Pause.** The pictures take a new look once a second by
   default, all three at the same moment; **Refresh** sets 1/s, 4/s, 10/s or
   Live and is saved with the set (it is not automatable). **Pause** holds all
