@@ -272,5 +272,15 @@ double advance_beats(double beats, int frames, double bpm, double sampleRate, Lo
   return loop.start + (over < length - loop_edge ? over : 0.0);
 }
 
+std::int64_t span_timeline(std::int64_t blockSample, const Transport& block, int offset, double spanBeats,
+                           double sampleRate)
+{
+  if (!block.running || !(block.bpm > 0.0f) || !(sampleRate > 0.0) || !std::isfinite(spanBeats)
+      || !std::isfinite(block.beats))
+    return blockSample + offset;
+  const double frames = (spanBeats - block.beats) * 60.0 / double(block.bpm) * sampleRate;
+  return blockSample + std::llround(frames);
+}
+
 } // namespace wire
 } // namespace ni

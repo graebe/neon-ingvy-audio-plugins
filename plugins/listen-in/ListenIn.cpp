@@ -106,7 +106,13 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     float peak = 0.0f;
     /* Held for the block; null while no bus is claimed, which push ignores. */
     auto* pusher = static_cast<abus_pusher_t*> (shell_handoff_acquire (handoff));
-    ni::wire::for_each_chunk (frames, stageFrames, [&] (int off, int n)
+    /* In chunks of the stage, each split again where the host's loop wraps,
+     * so every run is stamped with where it really sits on the timeline. */
+    auto host = ni::wire::host_transport (clock.known && clock.playing, clock.bpm, clock.ppq);
+    const auto block = host;
+    const auto loop = ni::wire::host_loop (clock.looping, clock.loopStart, clock.loopEnd);
+    const double hz = (double) rate.load (std::memory_order_relaxed);
+    ni::wire::for_each_span (frames, stageFrames, host, loop, hz, [&] (int off, int n)
     {
         for (int i = 0; i < n; ++i)
         {
@@ -115,9 +121,11 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
             stage[(std::size_t) i * 2 + 1] = r;
             peak = std::max (peak, std::max (std::fabs (l), std::fabs (r)));
         }
-        /* Stamped with where the chunk sits on the host's timeline, so a
-         * reader on another track can line it up with its own blocks. */
-        abus_pusher_push_at (pusher, stage.data(), (std::uint32_t) n, clock.timeInSamples + off, clock.timed ? 1 : 0);
+        /* Stamped with where the span sits on the host's timeline -- after a
+         * loop wrapped, back at its start -- so a reader on another track can
+         * line it up with its own blocks. */
+        const auto at = ni::wire::span_timeline (clock.timeInSamples, block, off, host.beats, hz);
+        abus_pusher_push_at (pusher, stage.data(), (std::uint32_t) n, at, clock.timed ? 1 : 0);
     });
     shell_handoff_release (handoff);
 

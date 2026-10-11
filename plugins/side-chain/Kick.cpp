@@ -128,7 +128,7 @@ void Kick::prepare (std::uint32_t sampleRate, int maximumBlock)
     band.Clear();
 }
 
-void Kick::file (const float* sweep, int frames, bool timed, std::int64_t timeline, const float* keyL,
+void Kick::note (const float* sweep, int frames, bool timed, std::int64_t timeline, const float* keyL,
                  const float* keyR)
 {
     const int c = wanted.load (std::memory_order_relaxed);
@@ -153,6 +153,20 @@ void Kick::file (const float* sweep, int frames, bool timed, std::int64_t timeli
     }
 
     sc_kick_note (tap.get(), timeline, timed ? 1 : 0, sweep, frames);
+}
+
+/*
+ * ONCE A BLOCK, AFTER ITS SPANS: the bus drained, every kick frame whose
+ * sample this track has noted filed under its sweep. Not per span -- a loop
+ * that wraps inside the block puts the kick's frames after the wrap back at
+ * the loop's start, and those find their place only once this track's own
+ * span after the wrap has been noted too.
+ */
+void Kick::drain()
+{
+    const int cap = (int) x.size();
+    if (wanted.load (std::memory_order_relaxed) <= kick::off || cap <= 0)
+        return;
     auto* reader = static_cast<abus_reader_t*> (shell_handoff_acquire (handoff));
     for (;;)
     {

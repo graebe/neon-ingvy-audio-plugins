@@ -143,6 +143,9 @@ struct Playhead final : juce::AudioPlayHead
 {
     juce::int64 sample = 0;
     bool playing = true;
+    /* A cycle, in beats, when `looping`. */
+    bool looping = false;
+    double loopStart = 0.0, loopEnd = 0.0;
 
     juce::Optional<PositionInfo> getPosition() const override
     {
@@ -152,6 +155,9 @@ struct Playhead final : juce::AudioPlayHead
         p.setTimeSignature (TimeSignature { 4, 4 });
         p.setTimeInSamples (sample);
         p.setPpqPosition ((double) sample / 48000.0 * 2.0);
+        p.setIsLooping (looping);
+        if (looping)
+            p.setLoopPoints (LoopPoints { loopStart, loopEnd });
         return p;
     }
 };
@@ -588,6 +594,32 @@ TEST_CASE ("every chunk is stamped with where it sits on the host's timeline, an
     reader.drain();
     std::int64_t t = -1;
     CHECK (abus_reader_timeline_of (reader.r, abus_reader_position (reader.r) - 1, &t) == 0);
+    a.p.setPlayHead (nullptr);
+}
+
+TEST_CASE ("a loop that wraps inside a block: the run after the wrap is stamped with the loop's start")
+{
+    Instance a;
+    a.moveTo (7);
+    Reader reader (7);
+    /* 120 BPM at 48 kHz, a beat 24000 samples; the cycle 4..8 beats is
+     * samples 96000..192000, and the block starts 100 frames before its end. */
+    Playhead head;
+    head.looping = true;
+    head.loopStart = 4.0;
+    head.loopEnd = 8.0;
+    head.sample = 192000 - 100;
+    a.p.setPlayHead (&head);
+    a.run (noise (512, 10));
+    REQUIRE (reader.drain().size() == 512 * 2);
+    const auto first = abus_reader_position (reader.r) - 512;
+    std::int64_t t = -1;
+    REQUIRE (abus_reader_timeline_of (reader.r, first + 99, &t) == 1);
+    CHECK (t == 192000 - 1);
+    REQUIRE (abus_reader_timeline_of (reader.r, first + 100, &t) == 1);
+    CHECK (t == 96000);
+    REQUIRE (abus_reader_timeline_of (reader.r, first + 511, &t) == 1);
+    CHECK (t == 96000 + 411);
     a.p.setPlayHead (nullptr);
 }
 

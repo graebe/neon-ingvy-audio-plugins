@@ -80,6 +80,9 @@ struct Playhead final : juce::AudioPlayHead
 {
     juce::int64 sample = 0;
     bool playing = true;
+    /* A cycle, in beats, when `looping`. */
+    bool looping = false;
+    double loopStart = 0.0, loopEnd = 0.0;
 
     juce::Optional<PositionInfo> getPosition() const override
     {
@@ -89,6 +92,9 @@ struct Playhead final : juce::AudioPlayHead
         p.setTimeSignature (TimeSignature { 4, 4 });
         p.setTimeInSamples (sample);
         p.setPpqPosition ((double) sample / rate * 2.0);
+        p.setIsLooping (looping);
+        if (looping)
+            p.setLoopPoints (LoopPoints { loopStart, loopEnd });
         return p;
     }
 };
@@ -975,6 +981,48 @@ TEST_CASE ("a Listen-In's kick lands where the dry sounded with it, whichever tr
     }
 
     /* The sender gone: silent, then a bus that is no longer there. */
+    abus_pusher_release (p);
+    abus_writer_release (w);
+}
+
+TEST_CASE ("a loop that wraps inside a block: the kick after the wrap lands where the dry did")
+{
+    constexpr unsigned slot = 6;
+    abus_writer_t* w = nullptr;
+    abus_pusher_t* p = nullptr;
+    REQUIRE (abus_writer_claim (slot, (std::uint32_t) rate, &w, &p) == ABUS_OK);
+    Instance a;
+    a.p.chooseKick ((int) slot);
+    a.p.editorOpened();
+    a.model().kick();
+
+    /* The cycle 4..8 beats is samples 96000..192000; the block starts 100
+     * frames before its end, so its frame 100 is the loop's start again. A
+     * Listen-In on the kick publishes the block in two runs, as it splits it,
+     * the second stamped with the loop's start, a kick on its first frame. */
+    a.head.looping = true;
+    a.head.loopStart = 4.0;
+    a.head.loopEnd = 8.0;
+    a.head.sample = 192000 - 100;
+    std::vector<float> before (100 * 2, 0.0f), after (412 * 2, 0.0f);
+    after[0] = after[1] = 0.9f;
+    abus_pusher_push_at (p, before.data(), 100, 192000 - 100, 1);
+    abus_pusher_push_at (p, after.data(), 412, 96000, 1);
+
+    /* The dry's impulse on the same frame: frame 100 of the block. */
+    auto b = a.buffer (0.0f);
+    for (int ch = 0; ch < a.p.getMainBusNumInputChannels(); ++ch)
+        b.setSample (ch, 100, 0.9f);
+    a.p.setPlayHead (&a.head);
+    juce::MidiBuffer none;
+    a.p.processBlock (b, none);
+    a.p.setPlayHead (nullptr);
+
+    const auto& s = a.model().scope();
+    const int dry = peakColumn (s, Scope::dryHi, false);
+    CHECK (dry >= 0);
+    CHECK (peakColumn (s, Scope::kickHi, true) == dry);
+    a.p.editorClosed();
     abus_pusher_release (p);
     abus_writer_release (w);
 }

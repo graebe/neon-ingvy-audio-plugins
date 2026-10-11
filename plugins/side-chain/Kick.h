@@ -20,8 +20,8 @@
  * through a handoff (shell_handoff.h), which frees a replaced one only once no
  * block holds it. `service` is the message thread's -- the editor's model
  * calls it every frame, and nothing needs a reader while no window shows the
- * plot. `prepare` is the host's prepare; `file` the audio thread's, between
- * the engine's tap and the next chunk, allocating nothing.
+ * plot. `prepare` is the host's prepare; `note` (each span) and `drain` (each
+ * block) the audio thread's, allocating nothing.
  */
 #pragma once
 
@@ -82,10 +82,16 @@ public:
 
     void prepare (std::uint32_t sampleRate, int maximumBlock);
 
-    /* ---- the audio thread, one chunk of `frames` after the engine's tap */
+    /* ---- the audio thread */
 
-    void file (const float* sweep, int frames, bool timed, std::int64_t timeline, const float* keyL,
+    /* One span of `frames`, after the engine's tap: its sweep, where it sits
+     * on the host's timeline, and the key's samples. The key is filed here,
+     * beside the dry; a bus's frames wait for drain(). */
+    void note (const float* sweep, int frames, bool timed, std::int64_t timeline, const float* keyL,
                const float* keyR);
+
+    /* Once a block, after all of its spans: the bus's frames filed. */
+    void drain();
 
     const Capture& capture() const noexcept { return band; }
     Capture& capture() noexcept { return band; }

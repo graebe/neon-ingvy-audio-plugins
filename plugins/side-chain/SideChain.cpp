@@ -153,6 +153,7 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
     const auto loop = ni::wire::host_loop (clock.looping, clock.loopStart, clock.loopEnd);
 
     const bool tap = heard && capturing.load (std::memory_order_relaxed);
+    const auto block = host;
     /* In chunks of what was reserved, each split again where the host's loop
      * wraps: the frames after its end duck from its start. */
     ni::wire::for_each_span (frames, cap, host, loop, sampleRate, [&] (int off, int n)
@@ -192,10 +193,16 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
         if (tap)
         {
             capture.Push (dry.data(), l, gain.data(), sweep.data(), n);
-            behind.file (sweep.data(), n, clock.timed, clock.timeInSamples + off,
-                         keyL != nullptr ? keyL + off : nullptr, keyR != nullptr ? keyR + off : nullptr);
+            /* Where this span sounds on the host's timeline -- after a loop
+             * wrapped, back at its start -- so a Listen-In's kick that sounded
+             * with it is filed here (Kick.h). */
+            const auto at = ni::wire::span_timeline (clock.timeInSamples, block, off, host.beats, sampleRate);
+            behind.note (sweep.data(), n, clock.timed, at, keyL != nullptr ? keyL + off : nullptr,
+                         keyR != nullptr ? keyR + off : nullptr);
         }
     });
+    if (tap)
+        behind.drain();
 
     sc_shell_end (shell.get(), frames);
 }

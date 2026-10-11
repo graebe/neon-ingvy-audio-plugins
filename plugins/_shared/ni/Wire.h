@@ -16,6 +16,7 @@
  */
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -150,6 +151,23 @@ void for_each_span(int frames, int cap, Transport& t, Loop loop, double sampleRa
     }
   });
 }
+
+/*
+ * WHERE A SPAN STARTS ON THE HOST'S TIMELINE, in samples: what the audio bus
+ * stamps a run with (ni::HostClock::timeInSamples), so a reader on another
+ * track lines it up with its own audio.
+ *
+ * The block's first sample `blockSample` sits at `block.beats`; a span of
+ * for_each_span starts at `spanBeats`. Until the loop wraps that is the block's
+ * sample plus the span's offset; after it, the loop start's sample plus what
+ * the span overshot the start by -- where the host's own timeline says that
+ * frame is. Both come from the beats, converted once at the block's tempo,
+ * which for a span before the wrap is exactly blockSample + offset. With no
+ * running transport, tempo or rate there are no beats to go by, and it is
+ * blockSample + offset.
+ */
+std::int64_t span_timeline(std::int64_t blockSample, const Transport& block, int offset, double spanBeats,
+                           double sampleRate);
 
 } // namespace wire
 } // namespace ni

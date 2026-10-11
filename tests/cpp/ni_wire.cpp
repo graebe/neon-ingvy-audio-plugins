@@ -269,6 +269,40 @@ TEST_CASE("at every tempo a host plays, each span starts where the host would sa
     }
 }
 
+TEST_CASE("a span's timeline sample is the block's plus its offset, and after a wrap the loop start's")
+{
+  /* 120 BPM at 48 kHz, a beat 24000 samples: from 7.99 beats at timeline
+   * sample 191760, the loop's end is 240 frames in, and its start, 4 beats,
+   * is sample 96000. */
+  const Loop loop = host_loop(true, 4.0, 8.0);
+  const Transport block{1, 7.99, 120.0f};
+  Transport t = block;
+  const std::int64_t blockSample = 191760;
+  std::vector<std::int64_t> stamps;
+  for_each_span(1100, 512, t, loop, 48000.0,
+                [&](int off, int) { stamps.push_back(span_timeline(blockSample, block, off, t.beats, 48000.0)); });
+  REQUIRE(stamps.size() == 4);
+  CHECK(stamps[0] == blockSample);
+  CHECK(stamps[1] == 96000);           // the loop's start, on the frame after its end
+  CHECK(stamps[2] == 96000 + 272);     // then on from there
+  CHECK(stamps[3] == 96000 + 784);
+
+  /* No running transport, tempo or rate: the block's sample plus the offset. */
+  for (const Transport none : {Transport{0, 7.99, 120.0f}, Transport{1, 7.99, 0.0f}})
+    CHECK(span_timeline(blockSample, none, 300, 4.0, 48000.0) == blockSample + 300);
+  CHECK(span_timeline(blockSample, block, 300, 4.0, 0.0) == blockSample + 300);
+
+  /* Before any wrap, exactly the offset at every tempo a host plays. */
+  for (int bpm = 1; bpm <= 999; bpm += 7)
+  {
+    Transport b{1, 1234.5678, float(bpm)};
+    Transport run = b;
+    for_each_span(4096, 1024, run, Loop{}, 44100.0, [&](int off, int) {
+      CHECK(span_timeline(98765, b, off, run.beats, 44100.0) == 98765 + off);
+    });
+  }
+}
+
 /* ------------------------------------------------------------- the numbers */
 
 static std::string fixed(double v, int d)
