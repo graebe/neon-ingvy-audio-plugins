@@ -1,0 +1,1 @@
+{"tier":"product","products":["bit-crusher"],"sha":"44feae583d7a88427992733871cf29a131b9f75d","date":"2026-10-11T18:56:09.276Z","host":"MacBookPro.localdomain","rustc":"rustc 1.99.0 (b940084d7 2026-09-28)","result":"pass","results":{"tests":48,"duration_s":171,"build_type":"Release","archs":"arm64;x86_64","gaps":0,"waived":"none","untested":"none"}}
