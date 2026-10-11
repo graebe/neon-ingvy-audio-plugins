@@ -27,6 +27,16 @@
           "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/side-chain-v2026.10.10.2/ni-side-chain-module.tar.gz"
         }
       }
+    },
+    "ni-bit-crusher": {
+      "version": "2026.10.11.1",
+      "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/bit-crusher-v2026.10.11.1/ni-bit-crusher-module.tar.gz",
+      "channels": {
+        "stable": {
+          "version": "2026.10.11.1",
+          "download_url": "https://github.com/graebe/neon-ingvy-audio-plugins/releases/download/bit-crusher-v2026.10.11.1/ni-bit-crusher-module.tar.gz"
+        }
+      }
     }
   }
 }
