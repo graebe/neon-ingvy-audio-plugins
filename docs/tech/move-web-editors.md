@@ -58,6 +58,30 @@ its own. Editor messages that are not parameters become writes. For example,
 the Trance Gate's "set step 5 to On" becomes `cursor` = 4 and then `step` =
 `On`.
 
+## The playhead
+
+A feed reaches the page anything from about 20 to 400 ms after it was true,
+and each one is late by a different amount: the manager's re-read and
+heartbeat, the shim, WiFi, the iframe. A playhead carried from each feed's
+arrival is pulled back by that feed's delay, so it wobbles and lurches.
+
+So each engine stamps its `ui` readout with its own clock: `devms`, the time
+it had processed when the readout was true. It counts frames as a `u64` and
+appends the field, never reordering. The page's clock (`web/kit/src/lib/clock.js`
+on `lib/clocksync.js`, the same estimator as Piano Practice's) learns the
+offset between the engine's clock and its own from the smallest delay it has
+seen; a readout can be late but never early. It then draws:
+
+- where the engine is *now*;
+- corrections eased over about 100 ms;
+- a moving playhead that never steps back;
+- a real jump, such as a wrap or a restart, at once.
+
+What remains is a steady lag the size of the smallest delay, which does not
+move. Each harness's `?jitter` delays every push by 20–400 ms. Each editor's
+`e2e/sync.spec.mjs` holds the drawn playhead to the engine through that, and
+fails without `devms`.
+
 ## The engine in the browser
 
 Some things the plugin's editor draws come from the engine, not from a
