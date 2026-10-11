@@ -49,7 +49,8 @@ void check (bool ok, const String& what, const String& detail = {})
 
 /* The engine's parameters by name, in its table's order (bc_param_name). */
 const char* const names[BC_RENDER_PARAMS_COUNT] = { "Drive", "Bits", "Shape", "Mid-Rise", "Dither", "Anti-Alias", "Rate",
-                                                    "Jitter", "Pre-Filter", "Post-Filter", "Octave", "Mix", "Output" };
+                                                    "Jitter", "Pre-Filter", "Post-Filter", "Octave", "Mix", "Output",
+                                                    "Refresh" };
 
 std::unique_ptr<AudioPluginInstance> load (VST3PluginFormat& format, const PluginDescription& d, double rate, int block)
 {
@@ -76,7 +77,12 @@ bool typePatch (AudioPluginInstance& p)
         auto* param = byName (p, names[i]);
         if (param == nullptr)
             return false;
-        param->setValue (param->getValueForText (String (BC_RENDER_PARAMS[i])));
+        /* A number as its digits; a choice as its word ("1/s"), which is what
+         * a user picks. */
+        const bool choice = param->isDiscrete() && ! param->isBoolean() && param->getNumSteps() > 2;
+        const auto text = choice ? param->getText ((float) BC_RENDER_PARAMS[i] / (float) (param->getNumSteps() - 1), 64)
+                                 : String (BC_RENDER_PARAMS[i]);
+        param->setValue (param->getValueForText (text));
     }
     return true;
 }
