@@ -2,7 +2,7 @@
   "id": "ni-bit-crusher",
   "name": "NI Bit-Crusher",
   "abbrev": "BC",
-  "version": "2026.10.10.1",
+  "version": "2026.10.11.1",
   "description": "Bit crusher: fewer levels, taken less often",
   "author": "Neon Ingvy",
   "license": "GPL-3.0-or-later",

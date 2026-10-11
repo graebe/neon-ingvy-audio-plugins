@@ -1,6 +1,6 @@
 # What's new
 
-## v2026.10.10.1 — NI Bit-Crusher
+## v2026.10.11.1 — NI Bit-Crusher
 
 - **New: NI Bit-Crusher.** A bit crusher for Live and the Move: it keeps fewer
   levels (Bits, 1 to 16, in fractions too, so a sweep glides) and keeps them
@@ -11,8 +11,6 @@
   before and after. Every control can be automated without clicks. The
   plugin runs 32 samples (0.7 ms) late, which Live compensates. On the Move:
   one page of eight knobs.
-
-## Unreleased — NI Side-Chain, NI Listen-In, NI Spectrogram, NI Chord-Detector
 
 ## v2026.10.10.2 — NI Side-Chain, NI Listen-In, NI Spectrogram
 

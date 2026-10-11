@@ -21,7 +21,7 @@
  *                 when one is due
  *   latency       bc_latency, 32 samples, constant; bypassed, the engine passes
  *                 the input delayed by as much and fades between the two
- *   activation    prepareToPlay posts the rate and a reset, so a host that
+ *   activation    prepare() posts the rate and a reset, so a host that
  *                 stopped and started the plugin hears nothing it held before
  *   the editor    reads the engine's scope and renders the staircase through
  *                 the Model, on the message thread; the Ground's clock runs
@@ -57,7 +57,6 @@ public:
     ~Processor() override;
 
     bool isBusesLayoutSupported (const BusesLayout&) const override;
-    void prepareToPlay (double sampleRate, int maximumBlockSize) override;
     void releaseResources() override {}
 
     bool hasEditor() const override { return true; }
@@ -80,6 +79,8 @@ public:
     const Scope& scope() override;
 
 protected:
+    /* The shell's prepareToPlay calls it: the rate and a reset posted. */
+    void prepare (double sampleRate, int maximumBlockSize) override;
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     /* Bypassed, the engine passes the host's audio, delayed by the reported
      * latency, and the Ground keeps the host's time. */
