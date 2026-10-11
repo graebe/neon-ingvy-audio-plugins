@@ -17,6 +17,9 @@
   come back a moment after a knob moves; with Anti-Alias the Time Crush
   picture marks each take at its exact instant; and with nothing held it
   draws no hold.
+- **Rulers on every picture.** Level and time are marked on the axes, and the
+  two discretizations show their grid as ticks: every step of the staircase,
+  every take of the hold.
 - **Refresh and Pause.** The pictures take a new look once a second by
   default, all three at the same moment; **Refresh** sets 1/s, 4/s, 10/s or
   Live and is saved with the set (it is not automatable). **Pause** holds all

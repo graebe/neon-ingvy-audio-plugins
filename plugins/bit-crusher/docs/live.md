@@ -17,6 +17,11 @@ over the panel that shapes it.
   level as a dim line — flat between takes — and each take lit as a dot.
 - **Signal**, on the right, is the sound itself, the last eleven
   milliseconds of it: the input in grey, the crushed output in front.
+- Every picture has rulers: level in full scale up the left (and across, in
+  Amplitude Crush), time in milliseconds across the bottom. The two
+  discretizations also put their grid on the axes as small ticks — a tick at
+  every step of the staircase, both ways, and at every take of the hold — so
+  you can count the steps and the takes.
 - Under them, three panels: **Amplitude Crush** (how finely a level is kept),
   **Time Crush** (how often a level is taken) and **Level** (how hard it is
   driven in, and what comes out).

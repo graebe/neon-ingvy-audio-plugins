@@ -509,6 +509,54 @@ TEST_CASE ("bit-crusher: the hold is drawn at its takes' exact instants, and not
     CHECK (time.getCaption() == "TIME CRUSH   96.0 KHZ   NO HOLD");
 }
 
+TEST_CASE ("bit-crusher: the axes are ruled, and the discretizations' grids are on them")
+{
+    Rig rig;
+    auto& amp = rig.editor.amplitudePlot();
+    const auto labelled = [] (const std::vector<ni::ui::plot::Mark>& marks)
+    {
+        juce::StringArray s;
+        for (const auto& m : marks)
+            if (m.text.isNotEmpty())
+                s.add (m.text);
+        return s;
+    };
+    const auto minor = [] (const std::vector<ni::ui::plot::Mark>& marks)
+    { return (int) std::count_if (marks.begin(), marks.end(), [] (const auto& m) { return m.text.isEmpty(); }); };
+
+    /* 8 bits, a sixteenth of full scale: its ends and silence named, and a
+     * minor tick at each of the 16 steps across and the 17 levels up. */
+    CHECK (labelled (amp.inputMarks()) == juce::StringArray { "-1/16", "0", "1/16" });
+    CHECK (labelled (amp.outputMarks()) == juce::StringArray { "-1/16", "0", "1/16" });
+    CHECK (minor (amp.inputMarks()) == 16);
+    CHECK (minor (amp.outputMarks()) == 17);
+    /* 2 bits, the whole range: -1 to 1, four steps, five levels. */
+    rig.model.set (param::bits, 2.0f);
+    rig.frames (1);
+    CHECK (labelled (amp.inputMarks()) == juce::StringArray { "-1", "0", "1" });
+    CHECK (minor (amp.inputMarks()) == 4);
+    CHECK (minor (amp.outputMarks()) == 5);
+    /* The diagonal still corner to corner of the area the rulers frame. */
+    const auto& xs = amp.inputMarks();
+    CHECK (xs.front().at < xs[2].at);
+
+    /* Time: milliseconds across, a minor tick at each of the 17 takes; the
+     * Signal: its 11 ms. */
+    rig.model.play (220.0, 0.7f, 2.0, 4);
+    rig.frames (1);
+    const auto& t = rig.editor.timePlot().timeMarks();
+    CHECK (minor (t) == 17);
+    CHECK (labelled (t).contains ("0"));
+    CHECK (labelled (t).contains ("1"));
+    const auto s = labelled (rig.editor.signalPlot().timeMarks());
+    CHECK (s.contains ("0"));
+    CHECK (s.contains ("10"));
+    /* Level up in round numbers, whatever the range that follows the
+     * material ends on. */
+    for (const auto& m : rig.editor.signalPlot().levelMarks())
+        CHECK_MESSAGE ((m.text == "0" || m.text == "-0.5" || m.text == "0.5" || m.text == "-1" || m.text == "1"), m.text);
+}
+
 TEST_CASE ("bit-crusher: the scope waits for audio, then shows its window's length")
 {
     Rig rig;

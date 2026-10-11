@@ -23,6 +23,78 @@ float yOf (const juce::Rectangle<float>& area, float level, float fullScale = 1.
     return area.getCentreY() - v * 0.5f * area.getHeight();
 }
 
+using ni::ui::plot::Mark;
+
+/* Room for the rulers: a column of level labels at the left, a row of
+ * labels under the area. */
+constexpr float rulerW = 30.0f;
+constexpr float rulerH = 14.0f;
+
+/* A level as a ruler names it, in full scale: a power of two below 1 as the
+ * fraction it is ("1/16"), anything else to two places ("0.71"). */
+juce::String levelText (double v)
+{
+    if (juce::exactlyEqual (v, 0.0))
+        return "0";
+    const juce::String sign = v < 0.0 ? "-" : "";
+    const double a = std::abs (v);
+    const double inv = 1.0 / a;
+    if (a < 1.0 && juce::exactlyEqual (inv, std::round (inv)) && juce::isPowerOfTwo ((int) inv))
+        return sign + "1/" + juce::String ((int) inv);
+    if (juce::exactlyEqual (a, std::round (a)))
+        return sign + juce::String ((int) a);
+    return sign + juce::String (a, 2);
+}
+
+/* A level ruler's labelled marks: the area's ends and its middle, ±fullScale
+ * and 0, for an axis running `from`..`to` in pixels (low level first). */
+std::vector<Mark> levelMarks (float from, float to, double fullScale)
+{
+    const auto at = [&] (double f) { return from + (to - from) * (float) f; };
+    return { { at (0.0), levelText (-fullScale) }, { at (0.5), "0" }, { at (1.0), levelText (fullScale) } };
+}
+
+/* A level ruler for a range that follows the material (±fullScale, any
+ * number): round levels inside it, the smallest step of 0.05, 0.1, 0.2, 0.25,
+ * 0.5 or 1 whose ticks stay the kit's spacing apart -- so it reads "-0.5 0
+ * 0.5", not the range's own odd ends. */
+std::vector<Mark> roundLevelMarks (float from, float to, double fullScale)
+{
+    std::vector<Mark> out;
+    if (! (fullScale > 0.0))
+        return out;
+    const float perUnit = std::abs (to - from) / (float) (2.0 * fullScale);
+    double step = 1.0;
+    for (const double s : { 0.05, 0.1, 0.2, 0.25, 0.5, 1.0 })
+        if (perUnit * (float) s >= ni::ui::plot::tickSpacing)
+        {
+            step = s;
+            break;
+        }
+    const auto at = [&] (double v) { return from + (to - from) * (float) (0.5 * (v / fullScale + 1.0)); };
+    const int most = (int) std::floor (fullScale / step + 1.0e-9);
+    for (int k = -most; k <= most; ++k)
+    {
+        const double v = k * step;
+        const bool whole = std::abs (v - std::round (v)) < 1.0e-9;
+        out.push_back ({ at (v), whole ? juce::String (juce::roundToInt (v)) : juce::String (v, step < 0.1 ? 2 : 1) });
+    }
+    return out;
+}
+
+/* A time ruler over `count` samples at `sampleRate` across `area`: the kit's
+ * millisecond ticks (axisTicks), in the area's pixels. */
+std::vector<Mark> millisecondMarks (const juce::Rectangle<float>& area, int count, double sampleRate)
+{
+    std::vector<Mark> out;
+    if (count < 2 || ! (sampleRate > 0.0))
+        return out;
+    const double spanMs = 1000.0 * (double) (count - 1) / sampleRate;
+    for (const auto& t : ni::ui::plot::axisTicks (area.getWidth(), spanMs))
+        out.push_back ({ area.getX() + area.getWidth() * (float) (t.ms / spanMs), t.text });
+    return out;
+}
+
 /* A caption's clauses, three spaces apart (Plot.h). */
 juce::String clauses (std::initializer_list<juce::String> parts)
 {
@@ -74,9 +146,14 @@ void AmplitudePlot::update (const Scope& look, bool fresh, bool live)
     repaint();
 }
 
+juce::Rectangle<float> AmplitudePlot::plotArea() const
+{
+    return contentBounds().withTrimmedLeft (rulerW).withTrimmedBottom (rulerH);
+}
+
 void AmplitudePlot::rebuild()
 {
-    const auto area = contentBounds();
+    const auto area = plotArea();
 
     /* ONE SCALE BOTH WAYS, so the untouched signal is the well's diagonal,
      * corner to corner, at any zoom. The axis is the quantiser's own input,
@@ -84,7 +161,7 @@ void AmplitudePlot::rebuild()
      * and Drive moves the signal's dots up it (Model::steps). */
     outSpan = span;
     const auto in = (float) span, out = (float) outSpan;
-    const auto xOf = [&] (float level) { return xAt (0.5f * (level / in + 1.0f)); };
+    const auto xOf = [&] (float level) { return area.getX() + area.getWidth() * 0.5f * (level / in + 1.0f); };
 
     diagonal.clear();
     diagonal.startNewSubPath (area.getX(), yOf (area, -in, out));
@@ -94,15 +171,32 @@ void AmplitudePlot::rebuild()
      * well's pixels allow, which is what a staircase drawn from samples
      * looks like. */
     curve.clear();
+    const auto xAtPoint = [&] (float i) { return area.getX() + area.getWidth() * i / (float) (points - 1); };
     for (int i = 0; i < points; ++i)
     {
-        const float x = xAt ((float) i / (float) (points - 1));
+        const float x = xAtPoint ((float) i);
         const float y = yOf (area, levels[(size_t) i], out);
         if (i == 0)
             curve.startNewSubPath (x, y);
         else
             curve.lineTo (x, y);
     }
+
+    /* THE RULERS: level in across, level out up, in full scale -- the
+     * window's ends and silence labelled -- and a minor tick at every step:
+     * across where the staircase rises, up at every level it has. The grid
+     * the signal is made discrete on, on the axes. */
+    xMarks = levelMarks (area.getX(), area.getRight(), span);
+    yMarks = levelMarks (area.getBottom(), area.getY(), outSpan);
+    std::vector<float> seen;
+    for (int i = 1; i < points; ++i)
+        if (! juce::exactlyEqual (levels[(size_t) i], levels[(size_t) i - 1]))
+            xMarks.push_back ({ xAtPoint ((float) i - 0.5f), {} });
+    for (const float v : levels)
+        if (std::abs (v) <= out && std::find (seen.begin(), seen.end(), v) == seen.end())
+            seen.push_back (v);
+    for (const float v : seen)
+        yMarks.push_back ({ yOf (area, v, out), {} });
 
     /* The look's samples inside the window, while the look is the knobs'. */
     dotsAt.clear();
@@ -114,6 +208,8 @@ void AmplitudePlot::rebuild()
 
 void AmplitudePlot::paintPlot (juce::Graphics& g)
 {
+    ni::ui::plot::ruler (g, plotArea(), ni::ui::plot::Side::bottom, xMarks);
+    ni::ui::plot::ruler (g, plotArea(), ni::ui::plot::Side::left, yMarks);
     ni::ui::plot::dryLine (g, diagonal);
     /* With nothing playing the staircase is lit; with a look, it is the map
      * and the dots light the stairs the signal is on. */
@@ -176,18 +272,25 @@ void TimePlot::update (const Scope& look, bool fresh, bool live, double nowMs)
         repaint();
 }
 
+juce::Rectangle<float> TimePlot::plotArea() const
+{
+    return contentBounds().withTrimmedLeft (rulerW).withTrimmedBottom (rulerH);
+}
+
 void TimePlot::rebuild()
 {
     inputLine.clear();
     heldLine.clear();
     dotsAt.clear();
+    xMarks.clear();
+    yMarks.clear();
     const int n = shownLive ? (int) std::min ({ in.size(), took.size(), at.size() }) : 0;
     if (n < 2 || takes == 0)
         return;
-    const auto area = contentBounds();
+    const auto area = plotArea();
     const float fullScale = levelRange().fullScale();
     /* Time in samples from the window's start, fractions and all. */
-    const auto x = [&] (double t) { return xAt ((float) (t / (double) (n - 1))); };
+    const auto x = [&] (double t) { return area.getX() + area.getWidth() * (float) (t / (double) (n - 1)); };
     const auto y = [&] (float v) { return yOf (area, v, fullScale); };
     /* The input between two samples, for a take that fell between them. */
     const auto inputAt = [&] (int i, float f)
@@ -221,12 +324,24 @@ void TimePlot::rebuild()
         started = true;
         held = level;
         dotsAt.emplace_back (x (t), y (level));
+        /* A minor tick at every take: the grid time is made discrete on. */
+        xMarks.push_back ({ x (t), {} });
     }
     heldLine.lineTo (x (n - 1), y (held));
+
+    /* THE RULERS: milliseconds across the window, level up. */
+    for (auto& m : millisecondMarks (area, n, sampleRate))
+        xMarks.push_back (std::move (m));
+    yMarks = roundLevelMarks (area.getBottom(), area.getY(), fullScale);
 }
 
 void TimePlot::paintPlot (juce::Graphics& g)
 {
+    if (! xMarks.empty())
+    {
+        ni::ui::plot::ruler (g, plotArea(), ni::ui::plot::Side::bottom, xMarks);
+        ni::ui::plot::ruler (g, plotArea(), ni::ui::plot::Side::left, yMarks);
+    }
     /* As in the amplitude well: what was taken is lit, the hold between is
      * the map. */
     ni::ui::plot::dryLine (g, inputLine);
@@ -263,18 +378,28 @@ void SignalPlot::update (const Scope& look, bool fresh, double nowMs)
     }
 }
 
+juce::Rectangle<float> SignalPlot::plotArea() const
+{
+    return contentBounds().withTrimmedLeft (rulerW).withTrimmedBottom (rulerH);
+}
+
 void SignalPlot::rebuild()
 {
     dryLine.clear();
     wetLine.clear();
+    xMarks.clear();
+    yMarks.clear();
     const int n = shown.count();
     if (n < 2)
         return;
-    const auto area = contentBounds();
+    const auto area = plotArea();
     const float fullScale = levelRange().fullScale();
+    /* THE RULERS: milliseconds across, level up. */
+    xMarks = millisecondMarks (area, n, shown.sampleRate);
+    yMarks = roundLevelMarks (area.getBottom(), area.getY(), fullScale);
     for (int i = 0; i < n; ++i)
     {
-        const float x = xAt ((float) i / (float) (n - 1));
+        const float x = area.getX() + area.getWidth() * (float) i / (float) (n - 1);
         const float yd = yOf (area, shown.dry[(size_t) i], fullScale);
         const float yw = yOf (area, shown.wet[(size_t) i], fullScale);
         if (i == 0)
@@ -292,6 +417,11 @@ void SignalPlot::rebuild()
 
 void SignalPlot::paintPlot (juce::Graphics& g)
 {
+    if (! xMarks.empty())
+    {
+        ni::ui::plot::ruler (g, plotArea(), ni::ui::plot::Side::bottom, xMarks);
+        ni::ui::plot::ruler (g, plotArea(), ni::ui::plot::Side::left, yMarks);
+    }
     ni::ui::plot::dryLine (g, dryLine);
     ni::ui::plot::curve (g, wetLine);
 }

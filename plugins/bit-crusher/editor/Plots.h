@@ -49,6 +49,13 @@
  * they always show the same moment. The staircase itself follows the knobs
  * every frame, paused or not: it is the settings, not the sound.
  *
+ * THE RULERS (plot::ruler) sit along the bottom and the left of each
+ * picture's own area, labels outside it: level in full scale, the ends and
+ * silence named (a zoomed window as the fraction it is, "1/16"), time in
+ * milliseconds. The two discretizations put their grid on the axes too, as
+ * minor ticks: every step of the staircase, both ways, and every take of
+ * the hold.
+ *
  * All draw what the model hands them; none knows what a step is (Plot.h:
  * "draw what the engine renders"). update() is the editor's frame: it repaints
  * only when the picture changed. Message thread.
@@ -84,14 +91,20 @@ public:
     double inputSpan() const noexcept { return span; }
     double outputSpan() const noexcept { return outSpan; }
     const std::vector<juce::Point<float>>& liveDots() const noexcept { return dotsAt; }
+    /* Its rulers' marks, labelled and minor: level in, level out. */
+    const std::vector<ni::ui::plot::Mark>& inputMarks() const noexcept { return xMarks; }
+    const std::vector<ni::ui::plot::Mark>& outputMarks() const noexcept { return yMarks; }
 
     void resized() override { rebuild(); }
 
 private:
     void paintPlot (juce::Graphics&) override;
     void rebuild();
+    /* The plot inside the well, clear of its rulers' labels. */
+    juce::Rectangle<float> plotArea() const;
 
     Model& model;
+    std::vector<ni::ui::plot::Mark> xMarks, yMarks;
     std::vector<float> levels, freshLevels;
     double span = 1.0, outSpan = 1.0;
     std::vector<float> liveIn, liveOut;
@@ -111,8 +124,9 @@ public:
     /* Whether there is a picture: false before any audio, and while the
      * look is not the knobs'. */
     bool hasSignal() const noexcept { return shownLive && ! in.empty(); }
-    /* The takes it marks, for the tests. */
+    /* The takes it marks, and its rulers' marks, for the tests. */
     const std::vector<juce::Point<float>>& takeDots() const noexcept { return dotsAt; }
+    const std::vector<ni::ui::plot::Mark>& timeMarks() const noexcept { return xMarks; }
 
     void resized() override { rebuild(); }
 
@@ -120,8 +134,10 @@ private:
     void paintPlot (juce::Graphics&) override;
     void levelChanged() override { rebuild(); }
     void rebuild();
+    juce::Rectangle<float> plotArea() const;
 
     Model& model;
+    std::vector<ni::ui::plot::Mark> xMarks, yMarks;
     std::vector<float> in;
     std::vector<std::uint8_t> took;
     std::vector<float> at;
@@ -142,8 +158,10 @@ public:
 
     /* Whether there is a picture yet: false before any audio. */
     bool hasSignal() const noexcept { return shown.count() > 0; }
-    /* The serial of the look it shows, for the tests. */
+    /* The serial of the look it shows, and its time ruler, for the tests. */
     std::uint32_t shownSerial() const noexcept { return shown.serial; }
+    const std::vector<ni::ui::plot::Mark>& timeMarks() const noexcept { return xMarks; }
+    const std::vector<ni::ui::plot::Mark>& levelMarks() const noexcept { return yMarks; }
 
     void resized() override { rebuild(); }
 
@@ -151,8 +169,10 @@ private:
     void paintPlot (juce::Graphics&) override;
     void levelChanged() override { rebuild(); }
     void rebuild();
+    juce::Rectangle<float> plotArea() const;
 
     Scope shown;
+    std::vector<ni::ui::plot::Mark> xMarks, yMarks;
     juce::Path dryLine, wetLine;
 };
 
