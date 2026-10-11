@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 use super::*;
-use bc_core::{Param, LATENCY, PARAM_COUNT};
+use bc_core::{transfer, Param, LATENCY, PARAM_COUNT};
 use std::os::raw::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
@@ -21,8 +21,35 @@ fn info(index: i32) -> Option<BcParamInfo> {
         log_travel: false,
         bipolar: false,
         resolution: 0.0,
+        choice_count: 0,
+        automatable: false,
     };
     unsafe { bc_param_info(index, &mut out) }.then_some(out)
+}
+
+#[test]
+fn refresh_is_a_choice_of_the_window_saved_but_not_automated() {
+    let r = Param::Refresh as i32;
+    let d = info(r).unwrap();
+    assert_eq!(d.kind, BcParamKind::Choice);
+    assert_eq!((d.choice_count, d.min, d.max, d.default_value), (4, 0.0, 3.0, 3.0));
+    assert!(!d.automatable);
+    let words: Vec<String> = (0..4).map(|c| text(|b, n| unsafe { bc_param_choice(r, c, b, n) }).unwrap()).collect();
+    assert_eq!(words, ["Live", "10/s", "4/s", "1/s"]);
+    assert_eq!(text(|b, n| unsafe { bc_param_text(r, 3.0, b, n) }).unwrap(), "1/s");
+    assert_eq!(text(|b, n| unsafe { bc_param_unit(r, b, n) }).unwrap(), "");
+    /* No word past the end, and none for a parameter that is no choice. */
+    assert!(text(|b, n| unsafe { bc_param_choice(r, 4, b, n) }).is_none());
+    assert!(text(|b, n| unsafe { bc_param_choice(r, -1, b, n) }).is_none());
+    assert!(text(|b, n| unsafe { bc_param_choice(Param::Bits as i32, 0, b, n) }).is_none());
+    /* Every control of the sound is automatable. */
+    for i in (0..bc_param_count()).filter(|&i| i != r) {
+        let d = info(i).unwrap();
+        assert!(d.automatable, "{i}");
+        assert_eq!(d.choice_count, 0);
+    }
+    assert_eq!([0, 1, 2, 3].map(|c| bc_refresh_period_ms(c)), [0.0, 100.0, 250.0, 1000.0]);
+    assert_eq!(bc_refresh_period_ms(9), 1000.0, "out of range: the default's");
 }
 
 #[test]
@@ -213,6 +240,56 @@ mod shell_tests {
             assert_ne!(s.serial, 0);
             bc_shell_destroy(shell);
         }
+    }
+
+    /// Twenty blocks of a 200 Hz tone through a shell at 48 kHz, after `set`.
+    unsafe fn tone_through(set: impl Fn(*mut BcCore)) -> BcScope {
+        let shell = bc_shell_create(48_000.0);
+        for block in 0..20 {
+            let core = bc_shell_begin(shell);
+            set(core);
+            let mut l: Vec<f32> = (0..480)
+                .map(|i| 0.8 * (2.0 * std::f32::consts::PI * 200.0 * (block * 480 + i) as f32 / 48_000.0).sin())
+                .collect();
+            bc_core_process_f32(core, l.as_mut_ptr(), std::ptr::null_mut(), 480);
+            bc_shell_end(shell, 480);
+        }
+        let s = read(shell);
+        bc_shell_destroy(shell);
+        s
+    }
+
+    #[test]
+    fn the_window_says_what_the_quantiser_saw_and_made_of_it() {
+        let s = unsafe { tone_through(|_| {}) };
+        /* The defaults: 8 bits, no Drive, Shape, Dither or pre-filter -- the
+         * level is the staircase at the input, beside the very same sample. */
+        let mut exact = 0;
+        for i in 0..BC_SCOPE {
+            let want = transfer(0.0, 8.0, 0.0, false, f64::from(s.amp_in[i])) as f32;
+            assert!((s.amp_out[i] - want).abs() <= 1.0 / 128.0 + 1e-6, "{i}");
+            exact += usize::from(s.amp_out[i] == want);
+            assert_eq!(s.amp_in[i], s.dry[i], "the input, Drive at 0 dB, is the dry sample");
+        }
+        assert!(exact > BC_SCOPE * 99 / 100, "{exact}");
+    }
+
+    #[test]
+    fn the_holds_window_is_sixteen_periods_at_any_rate_the_ring_holds() {
+        /* 12 kHz at 48 kHz: a take every fourth sample, seventeen takes. */
+        let s = unsafe { tone_through(|_| {}) };
+        let (len, takes) = (s.hold_len as usize, s.hold_takes as usize);
+        assert_eq!(takes, BC_HOLD_PERIODS + 1);
+        assert!(s.hold_took[0], "it starts on a take");
+        let at: Vec<usize> = (0..len).filter(|&i| s.hold_took[i]).collect();
+        assert_eq!(at.len(), takes);
+        assert!(at.windows(2).all(|w| w[1] - w[0] == 4), "{at:?}");
+        assert!(len > 64 && len <= 68, "{len}");
+        /* 50 Hz: a period of 960 samples, so the ring holds three takes at most. */
+        let slow = unsafe { tone_through(|c| bc_core_set_num(c, Param::Rate as i32, 50.0)) };
+        assert!(slow.hold_takes as usize <= 3 && slow.hold_takes >= 2, "{}", slow.hold_takes);
+        assert!(slow.hold_len as usize <= BC_HOLD);
+        assert!(slow.hold_took[0]);
     }
 
     #[test]

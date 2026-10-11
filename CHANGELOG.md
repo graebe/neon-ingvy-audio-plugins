@@ -1,5 +1,20 @@
 # What's new
 
+## Unreleased — NI Bit-Crusher
+
+- **Amplitude Crush and Time Crush.** The two panels are named for what they
+  do: the first makes the signal's amplitude discrete (Bits, Shape, Dither),
+  the second makes time discrete (Rate, Jitter and the filters).
+- **Three pictures, one over each panel.** A new **Time Crush** picture shows
+  the hold itself: your signal in grey, the held level as a dim line, each
+  take lit as a dot, sixteen holds wide. The **Amplitude Crush** picture now
+  shows your signal live, lighting up the stairs it is on, and keeps Drive's
+  tilt in view instead of cutting it off at the edge as if it clipped.
+- **Refresh and Pause.** The pictures take a new look once a second by
+  default, all three at the same moment; **Refresh** sets 1/s, 4/s, 10/s or
+  Live and is saved with the set (it is not automatable). **Pause** holds all
+  three still while the sound goes on.
+
 ## v2026.10.11.1 — NI Bit-Crusher
 
 - **New: NI Bit-Crusher.** A bit crusher for Live and the Move: it keeps fewer

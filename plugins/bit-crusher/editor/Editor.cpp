@@ -22,6 +22,9 @@ constexpr int knobGap = (int) uv::tok::space::space2;
 constexpr int rowGap = (int) uv::tok::space::space3;
 constexpr int toggleGap = (int) uv::tok::space::space4;
 constexpr int rowH = (int) uv::tok::size::controlH;
+/* Refresh's words are short: "Live", "10/s", "4/s", "1/s". */
+constexpr int refreshLabelW = 56;
+constexpr int refreshFieldW = 72;
 
 /* What each panel holds, by parameter: three knobs, then its switches. */
 struct Group
@@ -35,8 +38,8 @@ struct Group
 const std::array<Group, 3>& groups()
 {
     static const std::array<Group, 3> g { {
-        { "Steps", info::stepsPanel, { param::bits, param::shape, param::dither }, { param::midRise, param::antiAlias } },
-        { "Hold", info::holdPanel, { param::rate, param::jitter, param::postOctave }, { param::preFilter, param::postFilter } },
+        { "Amplitude Crush", info::amplitudePanel, { param::bits, param::shape, param::dither }, { param::midRise, param::antiAlias } },
+        { "Time Crush", info::timePanel, { param::rate, param::jitter, param::postOctave }, { param::preFilter, param::postFilter } },
         { "Level", info::levelPanel, { param::drive, param::mix, param::output }, {} },
     } };
     return g;
@@ -91,10 +94,12 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
     : model (m),
       window (m, std::move (clock)),
       view (std::make_unique<View>()),
-      steps (std::make_unique<StepsPlot> (m)),
-      signal (std::make_unique<SignalPlot> (m))
+      amplitude (std::make_unique<AmplitudePlot> (m)),
+      timeCrush (std::make_unique<TimePlot> (m)),
+      signal (std::make_unique<SignalPlot>())
 {
-    view->addAndMakeVisible (*steps);
+    view->addAndMakeVisible (*amplitude);
+    view->addAndMakeVisible (*timeCrush);
     view->addAndMakeVisible (*signal);
 
     for (size_t p = 0; p < groups().size(); ++p)
@@ -123,6 +128,18 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
             toggles.push_back (std::move (t));
         }
     }
+
+    /* WHAT THE PICTURES SHOW, AND HOW OFTEN: in the Level panel's free row. */
+    refresh = std::make_unique<ni::ui::ParamSelect> (model.parameter (param::refresh));
+    refresh->setLabel ("Refresh", refreshLabelW);
+    refresh->setFieldWidth (refreshFieldW);
+    ni::ui::setInfo (*refresh, info::refresh);
+    panels[2]->addAndMakeVisible (*refresh);
+    pause.setTitle (info::pauseTitle);
+    ni::ui::setInfo (pause, info::pause);
+    pause.setOn (false);
+    pause.onClick = [this] { setPaused (! paused); };
+    panels[2]->addAndMakeVisible (pause);
 
     /* THE WINDOW. */
     window.setConventions ({ { "drag", "a knob to turn it" }, { "shift", "for fine" }, { "double-click", "to reset" } });
@@ -170,8 +187,9 @@ ni::ui::ParamToggle& Editor::toggle (int parameterIndex)
 void Editor::layout()
 {
     const int x1 = column + gutter;
-    steps->setBounds (0, 0, column, plotH);
-    signal->setBounds (x1, 0, 2 * column + gutter, plotH);
+    amplitude->setBounds (0, 0, column, plotH);
+    timeCrush->setBounds (x1, 0, column, plotH);
+    signal->setBounds (2 * x1, 0, column, plotH);
 
     for (size_t p = 0; p < panels.size(); ++p)
     {
@@ -196,12 +214,43 @@ void Editor::layout()
             x += t.idealWidth() + toggleGap;
         }
     }
+
+    /* Refresh from the left of the Level panel's row, Pause at its right. */
+    const auto level = panels[2]->contentBounds();
+    const int y = level.getY() + ni::ui::Knob::cardHeight + rowGap;
+    refresh->setBounds (level.getX(), y, refresh->idealWidth(), rowH);
+    pause.setBounds (level.getRight() - rowH, y, rowH, rowH);
 }
 
 void Editor::tick (double nowMs)
 {
-    steps->update();
-    signal->update (nowMs);
+    /* A new look at Refresh's pace -- Live takes every one -- and none while
+     * paused; all three wells get the same one. */
+    bool fresh = false;
+    if (! paused)
+    {
+        const auto& latest = model.scope();
+        if (latest.count() > 0 && latest.serial != look.serial && nowMs - lookedAt >= model.refreshPeriodMs())
+        {
+            look = latest;
+            lookedAt = nowMs;
+            fresh = true;
+        }
+    }
+    amplitude->update (look, fresh);
+    timeCrush->update (look, fresh, nowMs);
+    signal->update (look, fresh, nowMs);
+}
+
+void Editor::setPaused (bool on)
+{
+    paused = on;
+    pause.setOn (on);
+    pause.setTitle (on ? info::resumeTitle : info::pauseTitle);
+    ni::ui::setInfo (pause, on ? info::resume : info::pause);
+    /* Let go, the next look is taken at once. */
+    if (! on)
+        lookedAt = -1.0e300;
 }
 
 void Editor::resized()

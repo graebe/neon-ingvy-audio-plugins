@@ -3,18 +3,36 @@ section: live
 title: Ableton Live Interface
 ---
 
-The window is two pictures over three panels. The pictures show what the
-crusher does; the panels are what you do to it.
+A bit crusher makes a continuous signal discrete twice over: in **amplitude**
+(it keeps fewer levels) and in **time** (it keeps them less often). Those are
+the plugin's two halves, **Amplitude Crush** and **Time Crush**, and the
+window is built around them: three pictures over three panels, each picture
+over the panel that shapes it.
 
-- **Steps**, on the left, is the staircase: every input level across, and
-  the level it becomes up. The grey diagonal is the untouched signal.
+- **Amplitude Crush**, on the left, is the staircase: every input level
+  across, and the level it becomes up. The grey diagonal is the untouched
+  signal. While something plays, the staircase dims to a map and your signal
+  lights it up as dots: the stairs it is on right now.
+- **Time Crush**, in the middle, is the hold: your signal in grey, the held
+  level as a dim line — flat between takes — and each take lit as a dot.
 - **Signal**, on the right, is the sound itself, the last eleven
   milliseconds of it: the input in grey, the crushed output in front.
-- Under them, three panels: **Steps** (how finely a level is kept), **Hold**
-  (how often a level is taken) and **Level** (how hard it is driven in, and
-  what comes out).
+- Under them, three panels: **Amplitude Crush** (how finely a level is kept),
+  **Time Crush** (how often a level is taken) and **Level** (how hard it is
+  driven in, and what comes out).
 
-## Part 1 — keeping fewer levels
+### Refresh and Pause
+
+The three pictures take a new look at your signal once a second by default,
+all three at the same moment, so they can be read rather than chased.
+**Refresh**, at the bottom of the Level panel, sets how often: **1/s**, **4/s**,
+**10/s** or **Live** (every frame the screen draws). It is saved with your set,
+and Live does not offer it for automation: it changes the pictures, never the
+sound. **Pause**, beside it, holds all three pictures still while the audio
+goes on; press it again to let them go. The staircase itself still follows the
+knobs while paused — it is your settings, not your signal.
+
+## Part 1 — Amplitude Crush: keeping fewer levels
 
 ### What a bit is
 
@@ -24,19 +42,24 @@ steps between them are far too small to hear. Take bits away and the levels
 get fewer and the steps bigger: with 8 bits there are 256, with 4 bits 16,
 with 2 bits only 4.
 
-Set **Bits** to 4 and watch the Steps picture. The grey diagonal behind is
-the untouched signal: output equals input. The bright line in front is what
-the crusher does to it: a staircase. Every input between two steps comes out
-as the nearest step. The Signal picture shows the same thing in time: the
-grey wave that came in becomes a stack of flat stairs.
+This is **amplitude discretization**. Set **Bits** to 4 and watch the
+Amplitude Crush picture. The grey diagonal behind is the untouched signal:
+output equals input. The bright line in front is what the crusher does to it:
+a staircase. Every input between two steps comes out as the nearest step.
+While audio plays, the staircase dims and the samples of your signal light it
+up as dots, each where its level in and its level out put it — all on the
+stairs. The Signal picture shows the same thing in time:
+the grey wave that came in becomes a stack of flat stairs.
 
-> **The Steps picture zooms in.** At 8 bits there are 256 steps from bottom
-> to top, each far narrower than a pixel, so drawn whole they would look like
-> a plain diagonal. The picture shows the part around silence where about 16
-> steps fit, and its caption says by how much: `STEPS 8.0 BITS ×16` is a
-> sixteenth of full scale. From 4 bits down every step fits, and the zoom
-> disappears. Drive and Shape move the zoom too, because they change how
-> wide the steps are.
+> **The Amplitude Crush picture zooms in.** At 8 bits there are 256 steps
+> from bottom to top, each far narrower than a pixel, so drawn whole they
+> would look like a plain diagonal. The picture shows the part around silence
+> where about 16 steps fit, and its caption says by how much:
+> `AMPLITUDE CRUSH 8.0 BITS ×16` is a sixteenth of full scale. Zoomed in, the
+> dots you see are the parts of your signal near silence — the quiet ones,
+> where crushing is loudest relative to the sound. From 4 bits down every step
+> fits, the zoom disappears, and every dot is in view. Drive and Shape move
+> the zoom too, because they change how wide the steps are.
 
 > **Bits is continuous.** 4.5 bits is a real setting, between 16 and 32
 > levels, and the top step is simply shorter. So a slow sweep of Bits — or an
@@ -52,17 +75,18 @@ is loud, gone where it is silent.
 
 A quiet signal only ever reaches the bottom few steps, so it sounds more
 crushed than a loud one. **Drive** pushes it up the staircase before it is
-crushed — and past the top step, it clips. Turn Drive up and the Steps picture
-tilts steeper: the same input reaches further. Mix and Output bring the level
-back down afterwards.
+crushed — and past the top step, it clips. Turn Drive up and the staircase
+tilts steeper than the diagonal: the same input reaches further, and the
+picture's level-out axis grows to keep the whole tilt in view. Mix and Output
+bring the level back down afterwards.
 
 ### Shape: steps where they matter
 
 Even steps waste most of their resolution on loud signals. **Shape** bends the
 grid toward µ-law — the curve telephones use — so the steps are fine near
 silence and coarse near full scale. At 100 % a quiet tail keeps its detail at
-the same Bits that turns it to silence at 0 %. Watch the Steps picture: the
-stairs bunch up around the middle.
+the same Bits that turns it to silence at 0 %. Watch the Amplitude Crush picture:
+the stairs bunch up around the middle.
 
 ### Dither: noise instead of grit
 
@@ -71,7 +95,9 @@ staircase. It sounds backwards, but it works: the noise moves the signal
 across the step edges at random, so on average the output follows the input
 even below a single step. The gritty distortion becomes an even hiss, and a
 fade-out fades out instead of stopping dead. Leave it at 0 for the classic
-crunch; turn it up for a cleaner, tape-like low-fi.
+crunch; turn it up for a cleaner, tape-like low-fi. In the Amplitude Crush
+picture, Dither is the dots leaving the stairs: each sample lands a step above
+or below where the staircase would put it, at random.
 
 ### Mid-Rise: no step at zero
 
@@ -111,14 +137,20 @@ is the "ideal converter at Rate". The top octave is kept: within a decibel to
 > Anti-Alias on or off, so switching it never moves anything in time. Live
 > compensates for it automatically.
 
-## Part 2 — keeping them less often
+## Part 2 — Time Crush: keeping them less often
 
 ### Rate: the sample-and-hold
 
-The second half of crushing is in time. **Rate** sets how many times a second
-the crusher takes the signal's level; between takes, it *holds* the last one.
-The Signal picture shows it as flat tops: at 4 kHz each level is held for
-twelve samples at 48 kHz.
+The second half of crushing is **time discretization**. **Rate** sets how many
+times a second the crusher takes the signal's level; between takes, it *holds*
+the last one. The Time Crush picture shows exactly that: your signal in grey,
+the held level as a dim line, and each take lit as a dot. It shows sixteen
+holds — under a millisecond at a high Rate, tens of milliseconds at a low one,
+and as many as fit in the last forty milliseconds or so at the very lowest —
+and its caption names the Rate (`TIME CRUSH 12.0 KHZ 16 HOLDS`). It shows the
+hold on its own, before the amplitude steps. The Signal picture shows both
+together as flat tops: at 4 kHz each level is held for twelve samples at
+48 kHz.
 
 Anything in the signal above **half the Rate** cannot be held faithfully and
 folds back down as aliasing — at a low Rate, a hi-hat becomes a metallic
@@ -132,19 +164,21 @@ value works, and the hold's clock never drifts.
 > are all 8 kHz.
 
 At or above your project's sample rate, nothing is held: Rate is out of the
-way and only the Steps panel is heard.
+way and only the Amplitude Crush panel is heard.
 
 ### Jitter: an unsteady clock
 
 **Jitter** lets each hold last a little longer or shorter, at random. The
-steps in time become irregular: noisier, rougher, less like a clean tone. Each
+steps in time become irregular: noisier, rougher, less like a clean tone. In
+the Time Crush picture the dots space out unevenly and the treads change
+length. Each
 channel's clock wanders on its own, so jitter also spreads a mono sound across
 the stereo field. At 0 the two channels hold in lockstep.
 
 ### Pre and Post: the two filters
 
-Two switches in the Hold panel put a low-pass filter on either side of the
-hold:
+Two switches in the Time Crush panel put a low-pass filter on either side of
+the hold:
 
 - **Pre** filters *before* the hold. Everything from half the Rate up — what
   would fold back — comes out at least 60 dB down, so the result is
@@ -179,12 +213,12 @@ arcs start at the top.
 
 | panel | control | range | default |
 |---|---|---|---|
-| Steps | **Bits** | 1 – 16 bits | 8.0 |
+| Amplitude Crush | **Bits** | 1 – 16 bits | 8.0 |
 | | **Shape** | 0 – 100 % | 0 % |
 | | **Dither** | 0 – 100 % | 0 % |
 | | **Mid-Rise** | off / on | off |
 | | **Anti-Alias** | off / on | off |
-| Hold | **Rate** | 50 Hz – 96 kHz | 12 kHz |
+| Time Crush | **Rate** | 50 Hz – 96 kHz | 12 kHz |
 | | **Jitter** | 0 – 100 % | 0 % |
 | | **Octave** | −3 – +3 oct | 0 |
 | | **Pre** (Pre-Filter in Live's list) | off / on | off |
@@ -192,10 +226,12 @@ arcs start at the top.
 | Level | **Drive** | −24 – +24 dB | 0 dB |
 | | **Mix** | 0 – 100 % | 100 % |
 | | **Output** | −24 – +24 dB | 0 dB |
+| | **Refresh** (not automatable) | Live, 10/s, 4/s, 1/s | 1/s |
+| | **Pause** (not saved) | off / on | off |
 
-The **Signal** picture zooms to the level of what is playing, so a quiet track
-still fills it; its top right says by how much. Double-click it to hold it at
-full scale. The **Motion** switch in the bar at the bottom stops the
+The **Signal** and **Time Crush** pictures zoom to the level of what is
+playing, so a quiet track still fills them; their top right says by how much.
+Double-click either to hold it at full scale. The **Motion** switch in the bar at the bottom stops the
 background rippling on the beat; it is remembered on this computer.
 
 When Live switches the device off and on again, or bypasses it, the crusher

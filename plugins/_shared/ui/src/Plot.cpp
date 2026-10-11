@@ -61,6 +61,22 @@ void dryLine (juce::Graphics& g, const juce::Path& line)
     g.strokePath (line, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
 }
 
+void dots (juce::Graphics& g, const std::vector<juce::Point<float>>& at)
+{
+    constexpr float d = 3.0f;
+    juce::Path all;
+    for (const auto& p : at)
+        all.addEllipse (p.x - 0.5f * d, p.y - 0.5f * d, d, d);
+    g.setColour (c::uv);
+    g.fillPath (all);
+}
+
+void unlit (juce::Graphics& g, const juce::Path& line)
+{
+    g.setColour (c::inkDim);
+    g.strokePath (line, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+}
+
 void wet (juce::Graphics& g, const juce::Path& area)
 {
     uv::light::glowArc (g, area);

@@ -8,7 +8,7 @@ instance. lib.rs says what the crate may do and which thread calls what.
 
 use std::os::raw::{c_char, c_int};
 
-use bc_core::{transfer, transfer_span, Engine, Kind, Param, Travel, LATENCY, PARAM_COUNT};
+use bc_core::{transfer, transfer_span, Engine, Kind, Param, Travel, LATENCY, PARAM_COUNT, REFRESH_PERIOD_MS};
 use ni_dsp::ffi::{copy_cstr, cstr};
 
 /// How many samples an instance keeps for the scope.
@@ -21,6 +21,12 @@ pub struct BcCore {
     pub(crate) engine: Engine,
     dry: Box<[f32; BC_SCOPE_RING]>,
     wet: Box<[f32; BC_SCOPE_RING]>,
+    /// What each of those samples did (bc_core::Probe): the level the
+    /// quantiser was given, the level it became, and whether the hold took
+    /// it -- beside the dry sample they belong to.
+    amp_in: Box<[f32; BC_SCOPE_RING]>,
+    amp_out: Box<[f32; BC_SCOPE_RING]>,
+    took: Box<[bool; BC_SCOPE_RING]>,
     /// Where the next sample goes.
     pos: usize,
     /// Samples processed, wrapping: what says a scope is new.
@@ -33,6 +39,9 @@ impl BcCore {
             engine: Engine::new(sample_rate),
             dry: Box::new([0.0; BC_SCOPE_RING]),
             wet: Box::new([0.0; BC_SCOPE_RING]),
+            amp_in: Box::new([0.0; BC_SCOPE_RING]),
+            amp_out: Box::new([0.0; BC_SCOPE_RING]),
+            took: Box::new([false; BC_SCOPE_RING]),
             pos: 0,
             serial: 0,
         }
@@ -48,7 +57,9 @@ impl BcCore {
 
     /// One block in place, the left channel's dry and wet kept for the scope
     /// -- side by side as they belong together: the wet sample that came out
-    /// LATENCY samples after the dry one it was made from.
+    /// LATENCY samples after the dry one it was made from -- and what each
+    /// did in the quantiser and the hold, beside its dry sample. Five stores
+    /// a sample, window open or not: not worth a switch.
     pub fn process(&mut self, left: &mut [f32], right: Option<&mut [f32]>) {
         /* Only the last ring's worth of a long block can be shown. */
         let keep = left.len().min(BC_SCOPE_RING);
@@ -57,7 +68,15 @@ impl BcCore {
         for (i, x) in left[from..].iter().enumerate() {
             self.dry[(start + i) % BC_SCOPE_RING] = *x;
         }
-        self.engine.process_f32(left, right);
+        let (amp_in, amp_out, took) = (&mut self.amp_in, &mut self.amp_out, &mut self.took);
+        self.engine.process_f32_probed(left, right, |i, p| {
+            if i >= from {
+                let k = (start + i - from) % BC_SCOPE_RING;
+                amp_in[k] = p.input as f32;
+                amp_out[k] = p.level as f32;
+                took[k] = p.took;
+            }
+        });
         let late = start + BC_SCOPE_RING - LATENCY;
         for (i, y) in left[from..].iter().enumerate() {
             self.wet[(late + i) % BC_SCOPE_RING] = *y;
@@ -74,6 +93,17 @@ impl BcCore {
         (0..n).map(move |i| {
             let k = (first + i) % BC_SCOPE_RING;
             (self.dry[k], self.wet[k])
+        })
+    }
+
+    /// What the same samples as `recent(n)` did, in the same order: (the
+    /// quantiser's input, its level, whether the hold took it).
+    pub fn recent_probes(&self, n: usize) -> impl Iterator<Item = (f32, f32, bool)> + '_ {
+        let n = n.min(BC_SCOPE_RING - LATENCY);
+        let first = (self.pos + 2 * BC_SCOPE_RING - LATENCY - n) % BC_SCOPE_RING;
+        (0..n).map(move |i| {
+            let k = (first + i) % BC_SCOPE_RING;
+            (self.amp_in[k], self.amp_out[k], self.took[k])
         })
     }
 }
@@ -225,6 +255,8 @@ pub enum BcParamKind {
     Float = 0,
     /// Off (0) or on (1).
     Toggle = 1,
+    /// One of `choice_count` words (bc_param_choice), by index 0..count-1.
+    Choice = 2,
 }
 
 /// What a shell declares one parameter with. Values are in the parameter's
@@ -240,8 +272,14 @@ pub struct BcParamInfo {
     pub log_travel: bool,
     /// True when the value runs both ways about zero.
     pub bipolar: bool,
-    /// The finest step a host should keep (bc_param_snap); 0 for a toggle.
+    /// The finest step a host should keep (bc_param_snap); 0 for a toggle
+    /// or a choice.
     pub resolution: f64,
+    /// A choice's number of words; 0 otherwise.
+    pub choice_count: i32,
+    /// Whether a host should offer it for automation: false for a setting
+    /// of the window (Refresh), which is saved but not automated.
+    pub automatable: bool,
 }
 
 /// How many parameters there are.
@@ -259,6 +297,7 @@ pub unsafe extern "C" fn bc_param_info(index: i32, out: *mut BcParamInfo) -> boo
     let (Some(p), Some(out)) = (Param::from_i32(index), out.as_mut()) else {
         return false;
     };
+    let automatable = p.info().automatable;
     *out = match p.info().kind {
         Kind::Float { min, max, default, travel, bipolar, unit } => BcParamInfo {
             kind: BcParamKind::Float,
@@ -268,6 +307,8 @@ pub unsafe extern "C" fn bc_param_info(index: i32, out: *mut BcParamInfo) -> boo
             log_travel: travel == Travel::Log,
             bipolar,
             resolution: unit.resolution(),
+            choice_count: 0,
+            automatable,
         },
         Kind::Toggle { default } => BcParamInfo {
             kind: BcParamKind::Toggle,
@@ -277,9 +318,45 @@ pub unsafe extern "C" fn bc_param_info(index: i32, out: *mut BcParamInfo) -> boo
             log_travel: false,
             bipolar: false,
             resolution: 0.0,
+            choice_count: 0,
+            automatable,
+        },
+        Kind::Choice { choices, default } => BcParamInfo {
+            kind: BcParamKind::Choice,
+            min: 0.0,
+            max: (choices.len() - 1) as f64,
+            default_value: f64::from(default),
+            log_travel: false,
+            bipolar: false,
+            resolution: 0.0,
+            choice_count: choices.len() as i32,
+            automatable,
         },
     };
     true
+}
+
+/// Choice `choice` of parameter `index` ("1/s"), as `bc_param_key`: -1 for
+/// a parameter that is no choice, or a choice it does not have.
+///
+/// # Safety
+/// As `bc_param_key`.
+#[no_mangle]
+pub unsafe extern "C" fn bc_param_choice(index: i32, choice: i32, out: *mut c_char, cap: c_int) -> c_int {
+    let Some(Kind::Choice { choices, .. }) = Param::from_i32(index).map(|p| p.info().kind) else { return -1 };
+    match usize::try_from(choice).ok().and_then(|c| choices.get(c)) {
+        Some(word) => copy_cstr(word, out, cap),
+        None => -1,
+    }
+}
+
+/// How long the editor's pictures hold one look at Refresh choice `choice`,
+/// in milliseconds: 0 for Live (every frame the editor draws); Refresh's
+/// default for a choice out of range. Any thread.
+#[no_mangle]
+pub extern "C" fn bc_refresh_period_ms(choice: i32) -> f64 {
+    let default = Param::Refresh.default_value() as usize;
+    REFRESH_PERIOD_MS[usize::try_from(choice).ok().filter(|&c| c < REFRESH_PERIOD_MS.len()).unwrap_or(default)]
 }
 
 /// Parameter `index`'s stable key, as a saved state and the Move name it,
@@ -309,7 +386,7 @@ pub unsafe extern "C" fn bc_param_name(index: i32, out: *mut c_char, cap: c_int)
 }
 
 /// Parameter `index`'s unit ("dB", "bits", "%", "Hz", "oct"; "" for a
-/// toggle), as `bc_param_key`.
+/// toggle or a choice), as `bc_param_key`.
 ///
 /// # Safety
 /// As `bc_param_key`.
@@ -318,7 +395,7 @@ pub unsafe extern "C" fn bc_param_unit(index: i32, out: *mut c_char, cap: c_int)
     match Param::from_i32(index) {
         Some(p) => match p.info().kind {
             Kind::Float { unit, .. } => copy_cstr(unit.label(), out, cap),
-            Kind::Toggle { .. } => copy_cstr("", out, cap),
+            Kind::Toggle { .. } | Kind::Choice { .. } => copy_cstr("", out, cap),
         },
         None => -1,
     }

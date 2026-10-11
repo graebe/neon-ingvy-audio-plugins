@@ -59,7 +59,7 @@ use filters::{DcBlock, Lowpass, LowpassCoefficients, PreCoefficients, PreFilter}
 use hold::{BandLimitedHold, Hold};
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
-pub use params::{Info, Kind, Param, Travel, Unit, PARAM_COUNT, TOGGLE_LABELS};
+pub use params::{Info, Kind, Param, Travel, Unit, PARAM_COUNT, REFRESH_LABELS, REFRESH_PERIOD_MS, TOGGLE_LABELS};
 use quantize::{Grid, Shape};
 
 pub use blep::LATENCY;
@@ -228,6 +228,20 @@ struct Channel {
     exact_dither_rng: fastrand::Rng,
     /// The input, delayed as the crushed signal is.
     dry_late: Delay,
+    /// What the last sample did, for an editor's pictures.
+    probe: Probe,
+}
+
+/// WHAT ONE SAMPLE DID, for an editor's pictures of the two discretizations:
+/// the level the quantiser was given, in the input's own units (after Drive
+/// and the pre-filter, Drive taken back out, so it sits on the same axis as
+/// `transfer`'s input), the level it became (Dither in it), and whether the
+/// hold took that level. Bypassed, the input passes and nothing is taken.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Probe {
+    pub input: f64,
+    pub level: f64,
+    pub took: bool,
 }
 
 impl Channel {
@@ -244,6 +258,7 @@ impl Channel {
             exact_hold_rng: fastrand::Rng::with_seed(HOLD_SEEDS[index]),
             exact_dither_rng: fastrand::Rng::with_seed(DITHER_SEEDS[index]),
             dry_late: Delay::default(),
+            probe: Probe::default(),
         }
     }
 
@@ -275,6 +290,7 @@ impl Channel {
         let dry = if dry.is_finite() { dry } else { 0.0 };
         let dry_late = self.dry_late.push(dry);
         if now.active <= 0.0 {
+            self.probe = Probe { input: dry, level: dry, took: false };
             return dry_late;
         }
 
@@ -286,6 +302,7 @@ impl Channel {
          * is the same as stepping only what it takes. */
         let level = now.level(x, &mut self.dither_rng);
         let raw = self.hold.step(level, now.step, now.jitter, &mut self.hold_rng);
+        self.probe = Probe { input: x / now.drive, level, took: self.hold.took() };
         let raw = self.raw_late.push(raw);
         let held = if now.anti_alias > 0.0 {
             let rng = &mut self.exact_dither_rng;
@@ -549,10 +566,24 @@ impl Engine {
     /// One block of host floats, in place: `left`, and `right` for a stereo
     /// track. A right channel shorter than the left is processed as far as
     /// it goes.
-    pub fn process_f32(&mut self, left: &mut [f32], mut right: Option<&mut [f32]>) {
+    pub fn process_f32(&mut self, left: &mut [f32], right: Option<&mut [f32]>) {
+        self.process_f32_probed(left, right, |_, _| {});
+    }
+
+    /// `process_f32`, telling `probe` what each left-channel sample did (its
+    /// index in the block, and the [`Probe`]): the editor's pictures, kept by
+    /// the caller. Inlined, so `process_f32`'s empty probe costs nothing.
+    #[inline]
+    pub fn process_f32_probed(
+        &mut self,
+        left: &mut [f32],
+        mut right: Option<&mut [f32]>,
+        mut probe: impl FnMut(usize, Probe),
+    ) {
         for (i, l) in left.iter_mut().enumerate() {
             let now = self.advance();
             *l = self.channels[0].run(f64::from(*l), &now) as f32;
+            probe(i, self.channels[0].probe);
             if let Some(r) = right.as_deref_mut().and_then(|r| r.get_mut(i)) {
                 *r = self.channels[1].run(f64::from(*r), &now) as f32;
             }

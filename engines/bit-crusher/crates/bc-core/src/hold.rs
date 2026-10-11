@@ -32,11 +32,13 @@ pub struct Hold {
     /// This period's factor on the step: 1 without jitter.
     stretch: f64,
     held: f64,
+    /// Whether the last `step` took its input.
+    took: bool,
 }
 
 impl Default for Hold {
     fn default() -> Self {
-        Hold { phase: 1.0, stretch: 1.0, held: 0.0 }
+        Hold { phase: 1.0, stretch: 1.0, held: 0.0, took: false }
     }
 }
 
@@ -51,7 +53,8 @@ impl Hold {
     /// whatever the jitter, so the sequence does not depend on it.
     #[inline]
     pub fn step(&mut self, x: f64, step: f64, jitter: f64, rng: &mut fastrand::Rng) -> f64 {
-        if self.phase >= 1.0 {
+        self.took = self.phase >= 1.0;
+        if self.took {
             self.phase = self.phase.fract();
             self.held = x;
             let r = 2.0 * rng.f64() - 1.0;
@@ -64,6 +67,12 @@ impl Hold {
     /// What it holds now.
     pub fn held(&self) -> f64 {
         self.held
+    }
+
+    /// Whether the last sample was one it took -- the instants an editor's
+    /// picture of the hold marks.
+    pub fn took(&self) -> bool {
+        self.took
     }
 
     /// Where its clock is in the current period, 0..1 (1 or more: a level is

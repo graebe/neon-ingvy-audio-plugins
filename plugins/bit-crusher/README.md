@@ -22,7 +22,9 @@ twice over:
   or fewer, so the staircase gets flat tops.
 
 Both are what made early samplers, game consoles and telephones sound the way
-they did. A VST3 for macOS (Linux and Windows follow) with a native editor,
+they did. The window is built around the two: **Amplitude Crush** and **Time
+Crush**, each a panel of controls under a picture of what it does to your
+signal right now, beside a picture of the sound. A VST3 for macOS (Linux and Windows follow) with a native editor,
 plus a Schwung module for the Ableton Move.
 
 ## What it does
@@ -48,6 +50,7 @@ Around those two, everything a crusher can usefully do:
 | **Pre** | a steep low-pass *before* the hold: everything from half the Rate up, what would fold back, at least 60 dB down |
 | **Post** and **Octave** | a low-pass *after* the hold, at half the Rate moved by Octave: smooths the hold's steps |
 | **Mix**, **Output** | dry against crushed, and the level after |
+| **Refresh**, **Pause** | how often the three pictures take a new look at the signal (once a second by default), and holding them still; the window's alone, never the sound's |
 
 Every control glides, the switches included, so automating any of them does
 not click, and a long buffer's automation is ramped across it. The latency is

@@ -552,3 +552,31 @@ fn the_plot_is_zoomed_until_the_steps_show() {
     assert!(transfer_span(12.0, 8.0, 0.0, false) < transfer_span(0.0, 8.0, 0.0, false));
     assert_eq!(transfer_span(f64::NAN, f64::NAN, f64::NAN, false), transfer_span(0.0, 8.0, 0.0, false));
 }
+
+#[test]
+fn the_probe_tells_the_level_the_staircase_gives_and_the_hold_takes() {
+    let mut e = engine(&[(Param::Bits, 3.0), (Param::Drive, 6.0), (Param::Rate, 12_000.0)]);
+    let mut input = sine(220.0, 0.7, 4800);
+    let mut seen = Vec::new();
+    e.process_f32_probed(&mut input, None, |i, p| seen.push((i, p)));
+    assert_eq!(seen.len(), 4800);
+    assert!(seen.iter().enumerate().all(|(n, &(i, _))| i == n), "every index, in order");
+    /* No dither, no pre-filter: the level is the staircase at the input. */
+    for &(_, p) in &seen {
+        assert_eq!(p.level, transfer(6.0, 3.0, 0.0, false, p.input), "{p:?}");
+    }
+    /* 12 kHz at 48 kHz: a take every fourth sample, from the first. */
+    let takes: Vec<usize> = seen.iter().filter(|(_, p)| p.took).map(|&(i, _)| i).collect();
+    assert_eq!(takes[0], 0);
+    assert!(takes.windows(2).all(|w| w[1] - w[0] == 4), "{:?}", &takes[..8]);
+    /* The probe changes nothing it watches. */
+    let mut a = engine(&[(Param::Bits, 3.0), (Param::Drive, 6.0), (Param::Rate, 12_000.0)]);
+    assert_eq!(mono(&mut a, &sine(220.0, 0.7, 4800)), input);
+    /* Bypassed, once the fade has landed: the input passes into the probe, and
+     * nothing is taken. */
+    e.set_active(false);
+    let mut quiet = vec![0.25f32; SR as usize];
+    let mut last = Probe::default();
+    e.process_f32_probed(&mut quiet, None, |_, p| last = p);
+    assert_eq!(last, Probe { input: 0.25, level: 0.25, took: false });
+}

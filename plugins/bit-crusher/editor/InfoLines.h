@@ -21,23 +21,32 @@ namespace ni::bc::info
 
 using ni::ui::InfoText;
 
-/* THE PANELS: the three things a crusher does to a signal. */
-inline constexpr InfoText stepsPanel { "Steps — how finely each level is kept: the amplitude made discrete." };
-inline constexpr InfoText holdPanel { "Hold — how often a level is taken: time made discrete." };
+/* THE PANELS: the three things a crusher does to a signal -- it makes the
+ * amplitude discrete, it makes time discrete, and it is driven and mixed. */
+inline constexpr InfoText amplitudePanel { "Amplitude Crush — amplitude discretization: how finely levels are kept." };
+inline constexpr InfoText timePanel { "Time Crush — time discretization: how often a level is taken and held." };
 inline constexpr InfoText levelPanel { "Level — how hard it is driven in, and what comes out." };
 
-/* THE PLOTS. */
-inline constexpr InfoText stepsPlot { "Steps — input across, output up, zoomed so steps show; grey: untouched." };
+/* THE PLOTS, one over each panel, and what holds them still. */
+inline constexpr InfoText amplitudePlot { "Amplitude Crush — level in across, out up; lit dots: the signal now." };
+inline constexpr InfoText timePlot { "Time Crush — input in grey, the hold dim; a lit dot at each take." };
 inline constexpr InfoText signalPlot { "Signal — the input in grey, the crushed output in front." };
+inline constexpr InfoText refresh { "Refresh — how often the three pictures take a new look; 1/s is calm." };
+inline constexpr InfoText pause { "Pause — hold the three pictures still; the sound goes on." };
+inline constexpr InfoText resume { "Pause — let the three pictures move again." };
 
-/* STEPS. */
+/* The accessible titles of the pause button. */
+inline constexpr InfoText pauseTitle { "Pause the pictures" };
+inline constexpr InfoText resumeTitle { "Resume the pictures" };
+
+/* AMPLITUDE CRUSH. */
 inline constexpr InfoText bits { "Bits — the number of steps, 2 to the power of Bits; fractions sweep." };
 inline constexpr InfoText shape { "Shape — from even steps to fine ones near silence, as µ-law has." };
 inline constexpr InfoText dither { "Dither — noise of up to a step before the steps; quiet detail survives." };
 inline constexpr InfoText midRise { "Mid-Rise — no step at zero, so silence becomes a half-step buzz." };
 inline constexpr InfoText antiAlias { "Anti-Alias — exact, band-limited steps: the same at every sample rate." };
 
-/* HOLD. */
+/* TIME CRUSH. */
 inline constexpr InfoText rate { "Rate — how many times a second a level is taken and held." };
 inline constexpr InfoText jitter { "Jitter — let the hold's clock wander; noisier, and wider in stereo." };
 inline constexpr InfoText octave { "Octave — where the post-filter sits, in octaves from half the Rate." };

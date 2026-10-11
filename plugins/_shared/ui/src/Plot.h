@@ -31,6 +31,12 @@
  *             same grey at its whole strength, as a line has none of an
  *             area's mass and at half it vanishes into the well
  *   wet()     uv with the arc glow                  the processed trace
+ *   dots()    3px uv dots, no glow                  where samples are now: a
+ *             live view on a curve, or the instants a hold takes -- a glow
+ *             on hundreds of them would be a cloud
+ *   unlit()   a 1.5px ink-dim line                  a curve as a map, while
+ *             dots light the part of it that is playing: uv is what is lit,
+ *             and the rest of the curve is what could be
  *   key()     plot-key at 30%                       the reference behind them all
  *   keyEdge() its edge, 1px plot-key at 90%,        (the kick behind a duck),
  *             over the dry, under the wet           read through the grey
@@ -103,6 +109,8 @@ void under (juce::Graphics&, const juce::Path& area);
 void ghost (juce::Graphics&, const juce::Path& line);
 void dry (juce::Graphics&, const juce::Path& area);
 void dryLine (juce::Graphics&, const juce::Path& line);
+void dots (juce::Graphics&, const std::vector<juce::Point<float>>& at);
+void unlit (juce::Graphics&, const juce::Path& line);
 void wet (juce::Graphics&, const juce::Path& area);
 /* The reference band (the fill, first of all) and its edge (after dry(),
  * before wet()): 1.2.0's plot-key. A band, never a rule -- amber as a rule is

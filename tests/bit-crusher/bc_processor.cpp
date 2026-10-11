@@ -244,6 +244,21 @@ TEST_CASE ("a saved state reopens with every value exactly")
     CHECK (b.p.plain (param::rate) == 7000.0);
 }
 
+TEST_CASE ("Refresh is the window's: saved with the set, not automated, a period per choice")
+{
+    Instance a;
+    auto& r = a.p.parameter (param::refresh);
+    CHECK (r.getParameterID() == "refresh");
+    CHECK_FALSE (r.isAutomatable());
+    for (int i = 0; i < param::refresh; ++i)
+        CHECK_MESSAGE (a.p.parameter (i).isAutomatable(), a.p.parameter (i).getParameterID());
+    CHECK (r.getCurrentValueAsText() == "1/s");
+    CHECK (a.p.refreshPeriodMs() == 1000.0);
+    r.setValueNotifyingHost (0.0f);
+    CHECK (r.getCurrentValueAsText() == "Live");
+    CHECK (a.p.refreshPeriodMs() == 0.0);
+}
+
 TEST_CASE ("the model: the staircase now, the scope after audio, the bipolar knobs")
 {
     Instance a;
@@ -278,6 +293,14 @@ TEST_CASE ("the model: the staircase now, the scope after audio, the bipolar kno
     CHECK (s.triggered);
     CHECK (s.sampleRate == rate);
     CHECK (s.ms() > 10.0);
+    /* The same look in the quantiser, and the hold's window: Rate's default,
+     * 12 kHz at 48 kHz, sixteen periods of four samples. */
+    CHECK (s.ampIn.size() == (size_t) BC_SCOPE);
+    CHECK (s.ampOut.size() == (size_t) BC_SCOPE);
+    CHECK (s.holdTakes == 17);
+    CHECK (s.holdIn.size() == s.holdTook.size());
+    CHECK (s.holdIn.size() > 64);
+    CHECK (s.holdTook.front() == 1);
 
     CHECK (a.p.bipolar (param::drive));
     CHECK (a.p.bipolar (param::postOctave));

@@ -76,6 +76,17 @@ std::unique_ptr<juce::RangedAudioParameter> fromEngine (int index)
     const auto name = engineText ([index] (char* b, int n) { return bc_param_name (index, b, n); });
     if (info.kind == BcParamKind_Toggle)
         return std::make_unique<juce::AudioParameterBool> (juce::ParameterID { key, 1 }, name, info.default_value >= 0.5);
+    /* A choice in the engine's words; one of the window's (Refresh) is saved
+     * with the set and not offered for automation. */
+    if (info.kind == BcParamKind_Choice)
+    {
+        juce::StringArray choices;
+        for (int c = 0; c < info.choice_count; ++c)
+            choices.add (engineText ([index, c] (char* b, int n) { return bc_param_choice (index, c, b, n); }));
+        return std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { key, 1 }, name, choices, (int) info.default_value,
+            juce::AudioParameterChoiceAttributes().withAutomatable (info.automatable));
+    }
     return std::make_unique<EngineFloat> (index, key, name, info);
 }
 
@@ -99,7 +110,8 @@ Processor::Processor()
         params[(size_t) i] = p.get();
         addParameter (p.release());
         BcParamInfo info {};
-        toggles[(size_t) i] = bc_param_info (i, &info) && info.kind == BcParamKind_Toggle;
+        /* Only a number glides across a block; a switch or a choice jumps. */
+        toggles[(size_t) i] = bc_param_info (i, &info) && info.kind != BcParamKind_Float;
     }
     /* Constant: Anti-Alias on or off, at any rate (bc_latency). */
     setLatencySamples ((int) bc_latency());
@@ -242,7 +254,18 @@ const Scope& Processor::scope()
     latest.sampleRate = published->sample_rate;
     latest.dry.assign (published->dry, published->dry + BC_SCOPE);
     latest.wet.assign (published->wet, published->wet + BC_SCOPE);
+    latest.ampIn.assign (published->amp_in, published->amp_in + BC_SCOPE);
+    latest.ampOut.assign (published->amp_out, published->amp_out + BC_SCOPE);
+    const auto holdLen = (size_t) juce::jmin ((int) published->hold_len, (int) BC_HOLD);
+    latest.holdIn.assign (published->hold_in, published->hold_in + holdLen);
+    latest.holdTook.assign (published->hold_took, published->hold_took + holdLen);
+    latest.holdTakes = (int) published->hold_takes;
     return latest;
+}
+
+double Processor::refreshPeriodMs() const
+{
+    return bc_refresh_period_ms ((int) plain (param::refresh));
 }
 
 juce::AudioProcessorEditor* Processor::createEditor()

@@ -23,6 +23,13 @@ after it -- an oscilloscope's trigger -- so a steady tone stands still on the
 screen instead of crawling. With no crossing (silence, DC, a tone below 25 Hz
 or so) it is simply the latest samples, and `triggered` says so.
 
+THE SAME LOOK FEEDS THE TWO DISCRETIZATIONS' PICTURES, so all three show one
+moment. For the amplitude: the window's samples as the quantiser saw them --
+its input, Drive taken back out, and the level it became (`amp_in`,
+`amp_out`). For the time: the hold's own window (`hold_in`, `hold_took`), the
+latest samples back to the take `HOLD_PERIODS` takes ago, so it shows that
+many periods at any Rate, or as many as the ring holds at a slow one.
+
 Everything else an editor shows is a host parameter, read by the editor from
 the host's side.
 */
@@ -34,6 +41,14 @@ use shell_core::{publish_every, Bridge, Model};
 /// The scope's window, in samples: about 11 ms at 48 kHz, so a step of the
 /// hold is a few pixels wide.
 pub const BC_SCOPE: usize = 512;
+
+/// The longest window of the hold's picture: every sample the ring has whose
+/// wet half is out. A number, not the sum, so the C header can say it.
+pub const BC_HOLD: usize = 2016;
+const _: () = assert!(BC_HOLD == BC_SCOPE_RING - LATENCY);
+
+/// How many of the hold's periods its picture shows, when the ring has them.
+pub const BC_HOLD_PERIODS: usize = 16;
 
 /// What the editor draws from, published by the audio thread.
 #[repr(C)]
@@ -48,6 +63,17 @@ pub struct BcScope {
     /// The left channel before and after, -1..1 at full scale.
     pub dry: [f32; BC_SCOPE],
     pub wet: [f32; BC_SCOPE],
+    /// The same samples in the quantiser: its input in the input's units
+    /// (Drive taken back out: bc_transfer_render's axis) and its level.
+    pub amp_in: [f32; BC_SCOPE],
+    pub amp_out: [f32; BC_SCOPE],
+    /// The hold's window, oldest first: `hold_len` samples of the
+    /// quantiser's input, and whether the hold took each. `hold_takes` is
+    /// how many it took there: BC_HOLD_PERIODS + 1 when the ring had them.
+    pub hold_len: u32,
+    pub hold_takes: u32,
+    pub hold_in: [f32; BC_HOLD],
+    pub hold_took: [bool; BC_HOLD],
 }
 
 impl BcScope {
@@ -58,8 +84,27 @@ impl BcScope {
             sample_rate: 0.0,
             dry: [0.0; BC_SCOPE],
             wet: [0.0; BC_SCOPE],
+            amp_in: [0.0; BC_SCOPE],
+            amp_out: [0.0; BC_SCOPE],
+            hold_len: 0,
+            hold_takes: 0,
+            hold_in: [0.0; BC_HOLD],
+            hold_took: [false; BC_HOLD],
         }
     }
+}
+
+/// Where the hold's window starts among `took` (oldest first, ending now):
+/// at the take BC_HOLD_PERIODS before the latest, or the oldest take there
+/// is, or the oldest sample when none was taken.
+fn hold_start(took: &[bool]) -> usize {
+    took.iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, &t)| t)
+        .take(BC_HOLD_PERIODS + 1)
+        .last()
+        .map_or(0, |(i, _)| i)
 }
 
 /// What another thread may ask of the engine.
@@ -110,6 +155,22 @@ impl Model for BcCore {
         for (i, (d, w)) in self.recent(SPAN).skip(start).take(BC_SCOPE).enumerate() {
             f.dry[i] = d;
             f.wet[i] = w;
+        }
+        for (i, (a, q, _)) in self.recent_probes(SPAN).skip(start).take(BC_SCOPE).enumerate() {
+            f.amp_in[i] = a;
+            f.amp_out[i] = q;
+        }
+
+        let mut took = [false; SPAN];
+        for (slot, (_, _, t)) in took.iter_mut().zip(self.recent_probes(SPAN)) {
+            *slot = t;
+        }
+        let from = hold_start(&took);
+        f.hold_len = (SPAN - from) as u32;
+        f.hold_takes = took[from..].iter().filter(|&&t| t).count() as u32;
+        for (i, (a, _, t)) in self.recent_probes(SPAN).skip(from).enumerate() {
+            f.hold_in[i] = a;
+            f.hold_took[i] = t;
         }
     }
 

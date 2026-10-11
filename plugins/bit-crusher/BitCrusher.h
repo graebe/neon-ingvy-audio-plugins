@@ -77,6 +77,7 @@ public:
     bool bipolar (int index) const override;
     double steps (float* out, int count) override;
     const Scope& scope() override;
+    double refreshPeriodMs() const override;
 
 protected:
     /* The shell's prepareToPlay calls it: the rate and a reset posted. */

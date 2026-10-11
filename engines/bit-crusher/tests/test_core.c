@@ -36,7 +36,7 @@ static int param(const char *key) {
 }
 
 static void table(void) {
-    CHECK(bc_param_count() == 13);
+    CHECK(bc_param_count() == 14);
     char buf[32];
     for (int i = 0; i < bc_param_count(); i++) {
         BcParamInfo info;
@@ -46,7 +46,18 @@ static void table(void) {
         CHECK(bc_param_name(i, buf, sizeof buf) > 0);
         CHECK(bc_param_text(i, info.default_value, buf, sizeof buf) > 0);
     }
-    CHECK(!bc_param_info(13, NULL));
+    CHECK(!bc_param_info(14, NULL));
+
+    /* The window's Refresh: a choice, saved but not automated, appended. */
+    const int refresh = param("refresh");
+    CHECK(refresh == 13);
+    BcParamInfo r;
+    CHECK(bc_param_info(refresh, &r));
+    CHECK(r.kind == BcParamKind_Choice && r.choice_count == 4 && !r.automatable && r.default_value == 3.0);
+    CHECK(bc_param_choice(refresh, 0, buf, sizeof buf) == 4 && strcmp(buf, "Live") == 0);
+    CHECK(bc_param_choice(refresh, 3, buf, sizeof buf) == 3 && strcmp(buf, "1/s") == 0);
+    CHECK(bc_param_choice(refresh, 4, buf, sizeof buf) == -1);
+    CHECK(bc_refresh_period_ms(3) == 1000.0 && bc_refresh_period_ms(0) == 0.0);
 
     const int rate = param("rate");
     CHECK(rate == 6);

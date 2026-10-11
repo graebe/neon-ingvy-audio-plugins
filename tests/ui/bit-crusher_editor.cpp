@@ -69,6 +69,7 @@ struct FakeModel final : public Model
         params.addFloat ("post_octave", "Octave", linear (-3.0f, 3.0f), 0.0f, fixed (1, "oct", true), number);
         params.addFloat ("mix", "Mix", linear (0.0f, 100.0f), 100.0f, fixed (0, "%", false), number);
         params.addFloat ("output", "Output", linear (-24.0f, 24.0f), 0.0f, fixed (1, "dB", true), number);
+        params.addChoice ("refresh", "Refresh", { "Live", "10/s", "4/s", "1/s" }, 3);
     }
 
     int numParameters() const override { return params.size(); }
@@ -99,23 +100,49 @@ struct FakeModel final : public Model
 
     const Scope& scope() override { return audio; }
 
+    double refreshPeriodMs() const override
+    {
+        static constexpr double periods[] { 0.0, 100.0, 250.0, 1000.0 };
+        return periods[juce::jlimit (0, 3, juce::roundToInt (params[param::refresh].convertFrom0to1 (params[param::refresh].getValue())))];
+    }
+
     /* A tone of `hz` at `level` through `bits` and a hold of `hold` samples,
-     * as the engine would publish it: dry and crushed, 512 samples at 48 kHz,
-     * starting on an upward crossing. */
+     * as the engine would publish it at Drive 0 dB: dry and crushed, 512
+     * samples at 48 kHz starting on an upward crossing, the same samples in
+     * the quantiser, and the hold's window of sixteen periods. */
     void play (double hz, float level, double bits, int hold)
     {
         audio.dry.resize (512);
         audio.wet.resize (512);
+        audio.ampIn.resize (512);
+        audio.ampOut.resize (512);
         audio.sampleRate = 48000.0;
         audio.triggered = true;
         ++audio.serial;
         const double delta = std::exp2 (1.0 - bits);
+        const auto at = [&] (int n) { return level * std::sin (2.0 * juce::MathConstants<double>::pi * hz * n / 48000.0); };
+        const auto step = [&] (double x) { return (float) (delta * std::round (x / delta)); };
+        /* The quantiser's level is the staircase's, Drive and all, as the
+         * engine reports it: the same as steps() draws. */
+        const double gridStep = std::exp2 (1.0 - (double) plain (param::bits));
+        const double gain = std::pow (10.0, (double) plain (param::drive) / 20.0);
+        const auto level_ = [&] (double x) { return (float) juce::jlimit (-1.0, 1.0, gridStep * std::round (x * gain / gridStep)); };
         for (int i = 0; i < 512; ++i)
         {
-            const auto at = [&] (int n) { return level * std::sin (2.0 * juce::MathConstants<double>::pi * hz * n / 48000.0); };
             audio.dry[(size_t) i] = (float) at (i);
-            audio.wet[(size_t) i] = (float) (delta * std::round (at (i - i % hold) / delta));
+            audio.wet[(size_t) i] = step (at (i - i % hold));
+            audio.ampIn[(size_t) i] = (float) at (i);
+            audio.ampOut[(size_t) i] = level_ (at (i));
         }
+        const int len = 16 * hold + 1;
+        audio.holdIn.resize ((size_t) len);
+        audio.holdTook.resize ((size_t) len);
+        for (int i = 0; i < len; ++i)
+        {
+            audio.holdIn[(size_t) i] = (float) at (i);
+            audio.holdTook[(size_t) i] = i % hold == 0 ? 1 : 0;
+        }
+        audio.holdTakes = 17;
     }
 
     void set (int i, float value)
@@ -160,20 +187,31 @@ TEST_CASE ("bit-crusher: the window is its design's size, on its grid, and every
     CHECK (e.getHeight() == Editor::designHeight);
     NI_CHECK_INFO_LIMIT (e);
 
-    /* The wells over the panels, on the same three columns. */
-    CHECK (e.stepsPlot().getBounds() == juce::Rectangle<int> (0, 0, Editor::column, Editor::plotH));
-    CHECK (e.signalPlot().getX() == e.panel (1).getX());
-    CHECK (e.signalPlot().getRight() == e.panel (2).getRight());
-    CHECK (e.panel (0).getTitleText() == "Steps");
-    CHECK (e.panel (1).getTitleText() == "Hold");
+    /* A well over each panel, on the same three columns. */
+    const juce::Component* wells[] { &e.amplitudePlot(), &e.timePlot(), &e.signalPlot() };
+    for (int p = 0; p < 3; ++p)
+        CHECK (wells[p]->getBounds() == juce::Rectangle<int> (e.panel (p).getX(), 0, Editor::column, Editor::plotH));
+    CHECK (e.panel (0).getTitleText() == "Amplitude Crush");
+    CHECK (e.panel (1).getTitleText() == "Time Crush");
     CHECK (e.panel (2).getTitleText() == "Level");
+
+    /* Refresh and Pause in the Level panel's free row, under its knobs. */
+    for (juce::Component* c : { static_cast<juce::Component*> (&e.refreshSelect()), static_cast<juce::Component*> (&e.pauseButton()) })
+    {
+        REQUIRE (c->getParentComponent() == &e.panel (2));
+        CHECK (e.panel (2).contentBounds().contains (c->getBounds()));
+        for (const int k : { param::drive, param::mix, param::output })
+            CHECK_FALSE (c->getBounds().intersects (e.knob (k).getBounds()));
+    }
+    CHECK_FALSE (e.refreshSelect().getBounds().intersects (e.pauseButton().getBounds()));
+    CHECK (e.refreshSelect().getIndex() == 3);
     for (int p = 0; p < 3; ++p)
         CHECK (e.panel (p).getBounds() == juce::Rectangle<int> (p * (Editor::column + Editor::gutter), Editor::panelsY,
                                                                  Editor::column, Editor::panelH));
 
     /* Every control inside its panel, none overlapping another. */
     std::vector<juce::Component*> controls;
-    for (int i = 0; i < param::count; ++i)
+    for (int i = 0; i < param::refresh; ++i)
     {
         const bool isSwitch = i == param::midRise || i == param::antiAlias || i == param::preFilter || i == param::postFilter;
         juce::Component& c = isSwitch ? static_cast<juce::Component&> (e.toggle (i)) : e.knob (i);
@@ -221,7 +259,7 @@ TEST_CASE ("bit-crusher: a knob shows the host's value in the engine's words")
 TEST_CASE ("bit-crusher: the staircase follows the parameters at once")
 {
     Rig rig;
-    auto& steps = rig.editor.stepsPlot();
+    auto& steps = rig.editor.amplitudePlot();
     const auto distinct = [] (const std::vector<float>& v)
     {
         std::vector<float> levels (v.begin(), v.end());
@@ -231,7 +269,7 @@ TEST_CASE ("bit-crusher: the staircase follows the parameters at once")
     };
     /* 8 bits is 256 steps: the well shows a sixteenth of full scale, says so,
      * and holds 16 steps there -- a staircase, not a diagonal. */
-    CHECK (steps.getCaption() == juce::String::fromUTF8 ("STEPS   8.0 BITS   \xc3\x97" "16"));
+    CHECK (steps.getCaption() == juce::String::fromUTF8 ("AMPLITUDE CRUSH   8.0 BITS   \xc3\x97" "16"));
     CHECK (steps.inputSpan() == 1.0 / 16.0);
     CHECK (distinct (steps.outputs()).size() == 17);
     const auto before = steps.outputs();
@@ -239,11 +277,128 @@ TEST_CASE ("bit-crusher: the staircase follows the parameters at once")
     /* 2 bits fits whole: no zoom, and no zoom in the caption. */
     rig.model.set (param::bits, 2.0f);
     rig.frames (1);
-    CHECK (steps.getCaption() == "STEPS   2.0 BITS");
+    CHECK (steps.getCaption() == "AMPLITUDE CRUSH   2.0 BITS");
     CHECK (steps.inputSpan() == 1.0);
     const auto& after = steps.outputs();
     CHECK (after != before);
     CHECK (distinct (after) == std::vector<float> { -1.0f, -0.5f, 0.0f, 0.5f, 1.0f });
+}
+
+TEST_CASE ("bit-crusher: Drive tilts the staircase inside the well, not cut flat at its edge")
+{
+    Rig rig;
+    auto& steps = rig.editor.amplitudePlot();
+    rig.model.set (param::drive, 12.0f);
+    rig.frames (1);
+    float peak = 0.0f;
+    for (const float v : steps.outputs())
+        peak = std::max (peak, std::abs (v));
+    /* The outputs reach about four times the window's inputs, and the
+     * output axis spans them all. */
+    CHECK (peak > 3.0f * (float) steps.inputSpan());
+    CHECK (steps.outputSpan() >= (double) peak);
+    rig.model.set (param::drive, -12.0f);
+    rig.frames (1);
+    CHECK (steps.outputSpan() == steps.inputSpan());
+}
+
+TEST_CASE ("bit-crusher: the live dots sit where the look's samples are on the staircase")
+{
+    Rig rig;
+    auto& steps = rig.editor.amplitudePlot();
+    CHECK (steps.liveDots().empty());
+    /* Two bits: the whole range is in view, so every sample is a dot. */
+    rig.model.set (param::bits, 2.0f);
+    rig.model.play (220.0, 0.7f, 2.0, 4);
+    rig.frames (1);
+    CHECK (steps.liveDots().size() == 512);
+    const auto area = steps.getLocalBounds().toFloat();
+    for (const auto& d : steps.liveDots())
+        CHECK (area.contains (d));
+    /* Eight bits, a sixteenth of full scale: only the samples near silence. */
+    rig.model.set (param::bits, 8.0f);
+    rig.model.set (param::refresh, 0.0f);
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    rig.frames (1);
+    CHECK (steps.liveDots().size() > 0);
+    CHECK (steps.liveDots().size() < 100);
+}
+
+TEST_CASE ("bit-crusher: the time plot marks every take, sixteen holds of them")
+{
+    Rig rig;
+    auto& time = rig.editor.timePlot();
+    CHECK_FALSE (time.hasSignal());
+    CHECK (time.getCaption() == "TIME CRUSH   12.0 KHZ");
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    rig.frames (1);
+    CHECK (time.hasSignal());
+    CHECK (time.takeDots().size() == 17);
+    CHECK (time.getCaption() == "TIME CRUSH   12.0 KHZ   16 HOLDS");
+    /* The takes are evenly spaced across the well. */
+    const auto& d = time.takeDots();
+    for (size_t i = 2; i < d.size(); ++i)
+        CHECK (std::abs ((d[i].x - d[i - 1].x) - (d[1].x - d[0].x)) < 0.01f);
+}
+
+TEST_CASE ("bit-crusher: the pictures take a new look at Refresh's pace, all three the same")
+{
+    Rig rig;
+    auto& signal = rig.editor.signalPlot();
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    rig.frames (1);
+    const auto first = signal.shownSerial();
+    CHECK (first == rig.model.audio.serial);
+
+    /* 1/s, the default: a newer look a tenth of a second later waits. */
+    rig.model.play (330.0, 0.5f, 8.0, 4);
+    rig.frames (6);
+    CHECK (signal.shownSerial() == first);
+    rig.frames (60);
+    CHECK (signal.shownSerial() == rig.model.audio.serial);
+
+    /* Live: every new look, at the next frame. */
+    rig.model.set (param::refresh, 0.0f);
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    rig.frames (1);
+    CHECK (signal.shownSerial() == rig.model.audio.serial);
+}
+
+TEST_CASE ("bit-crusher: Pause holds all three pictures; the staircase still follows the knobs")
+{
+    Rig rig;
+    auto& e = rig.editor;
+    rig.model.set (param::refresh, 0.0f);
+    rig.model.play (220.0, 0.7f, 8.0, 4);
+    rig.frames (1);
+    const auto held = e.signalPlot().shownSerial();
+    const auto dots = e.amplitudePlot().liveDots().size();
+
+    Pointer p;
+    p.click (e.pauseButton(), e.pauseButton().getLocalBounds().toFloat().getCentre());
+    CHECK (e.isPaused());
+    CHECK (e.pauseButton().isOn());
+    rig.model.play (330.0, 0.9f, 8.0, 8);
+    rig.frames (120);
+    CHECK (e.signalPlot().shownSerial() == held);
+    CHECK (e.amplitudePlot().liveDots().size() == dots);
+    CHECK (e.timePlot().takeDots().size() == 17);
+    const auto heldDots = e.timePlot().takeDots();
+
+    /* The knobs still move the staircase -- and the held look is framed in
+     * its new window: at 2 bits all of its samples are in view. */
+    rig.model.set (param::bits, 2.0f);
+    rig.frames (1);
+    CHECK (e.amplitudePlot().getCaption() == "AMPLITUDE CRUSH   2.0 BITS");
+    CHECK (e.amplitudePlot().liveDots().size() == 512);
+    CHECK (e.signalPlot().shownSerial() == held);
+    CHECK (e.timePlot().takeDots() == heldDots);
+
+    /* Let go: the latest look at once. */
+    p.click (e.pauseButton(), e.pauseButton().getLocalBounds().toFloat().getCentre());
+    CHECK_FALSE (e.isPaused());
+    rig.frames (1);
+    CHECK (e.signalPlot().shownSerial() == rig.model.audio.serial);
 }
 
 TEST_CASE ("bit-crusher: the scope waits for audio, then shows its window's length")
