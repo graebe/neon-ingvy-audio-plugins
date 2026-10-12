@@ -237,14 +237,11 @@ bool Processor::bipolar (int index) const
 
 /* On the quantiser's own input, after Drive: Drive moves the signal up the
  * staircase, never the staircase off the diagonal. */
-double Processor::steps (float* out, int count)
+void Processor::steps (float* out, int count)
 {
-    const double bits = plain (param::bits), shape = plain (param::shape);
-    const bool midRise = plain (param::midRise) >= 0.5;
-    const double span = bc_transfer_span (0.0, bits, shape, midRise);
     if (out != nullptr && count > 0)
-        bc_transfer_render (0.0, bits, shape, midRise, span, out, (uint32_t) count);
-    return span;
+        bc_transfer_render (0.0, plain (param::bits), plain (param::shape), plain (param::midRise) >= 0.5, out,
+                            (uint32_t) count);
 }
 
 const Scope& Processor::scope()
@@ -277,14 +274,23 @@ const Scope& Processor::scope()
     return latest;
 }
 
+/* At the host's rate, or 48 kHz before there is one: the curve near Nyquist
+ * is where the two differ. */
+double Processor::filterRate() const
+{
+    return getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+}
+
 void Processor::filterResponse (float* outDb, int count, double loHz, double hiHz) const
 {
-    /* At the host's rate, or 48 kHz before there is one: the curve near
-     * Nyquist is where the two differ. */
-    const double rate = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
     if (outDb != nullptr && count > 0)
-        bc_filter_response (plain (param::cutoff), plain (param::peak), (int) plain (param::slope), rate, loHz, hiHz,
-                            outDb, (uint32_t) count);
+        bc_filter_response (plain (param::cutoff), plain (param::peak), (int) plain (param::slope), filterRate(), loHz,
+                            hiHz, outDb, (uint32_t) count);
+}
+
+float Processor::filterGain (double hz) const
+{
+    return bc_filter_gain (plain (param::cutoff), plain (param::peak), (int) plain (param::slope), filterRate(), hz);
 }
 
 int Processor::levelCount() const

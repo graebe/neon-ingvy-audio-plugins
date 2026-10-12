@@ -14,10 +14,11 @@
  * THE PICTURES ARE THE ENGINE'S:
  *
  *   steps()   the staircase, as the engine renders it from the parameters
- *             NOW (bc_transfer_render), over the window the engine picks for
- *             it (bc_transfer_span) -- so a turned knob moves the picture at
- *             once, and the picture is the engine's grid, never a second
- *             model of it drawn here
+ *             NOW (bc_transfer_render), over the whole range -- so a turned
+ *             knob moves the picture at once, and the picture is the
+ *             engine's grid, never a second model of it drawn here
+ *   filterResponse(), filterGain()  the filter's curve, and one point of it
+ *             (bc_filter_response, bc_filter_gain)
  *   scope()   one look at the left channel, as the audio thread published it
  *             (bc_shell_read): the last few milliseconds dry and wet,
  *             starting on an upward zero crossing when there is one; the same
@@ -118,16 +119,13 @@ public:
      * its arc from 12 o'clock: the engine's table says. */
     virtual bool bipolar (int index) const = 0;
 
-    /* The staircase: `count` outputs for inputs evenly spaced from -span to
-     * span, both ends included -- on the quantiser's own input, after Drive,
-     * so it always runs along the diagonal: Bits, Shape and Mid-Rise as the
-     * host parameters hold them now. Drive is in the look's samples instead
-     * (Scope::ampIn), where it moves the signal up the staircase. Returns
-     * the span, the engine's
-     * (bc_transfer_span): the window around silence, a power of two from 1
-     * down, that shows at most 16 of the steps, so each is wide enough to see.
-     * Outputs are in full-scale units, as the inputs are. */
-    virtual double steps (float* out, int count) = 0;
+    /* The staircase: `count` outputs for inputs evenly spaced over the whole
+     * range, -1 to 1, both ends included -- on the quantiser's own input,
+     * after Drive, so it always runs along the diagonal: Bits, Shape and
+     * Mid-Rise as the host parameters hold them now. Drive is in the look's
+     * samples instead (Scope::ampIn), where it moves the signal up the
+     * staircase. Outputs are in full-scale units, as the inputs are. */
+    virtual void steps (float* out, int count) = 0;
 
     /* The latest scope; valid until the next call. */
     virtual const Scope& scope() = 0;
@@ -149,6 +147,10 @@ public:
      * in log from `loHz` to `hiHz`, at Cutoff, Peak and Slope as the host
      * parameters hold them, whether the Filter is on or not. */
     virtual void filterResponse (float* outDb, int count, double loHz, double hiHz) const = 0;
+
+    /* One point of that response: the gain in dB at `hz` (bc_filter_gain),
+     * where the handle sits on the curve. */
+    virtual float filterGain (double hz) const = 0;
 };
 
 } // namespace ni::bc

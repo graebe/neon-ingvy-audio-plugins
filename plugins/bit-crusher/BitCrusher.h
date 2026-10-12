@@ -75,12 +75,13 @@ public:
     bool motion() const override;
     void setMotion (bool on) override;
     bool bipolar (int index) const override;
-    double steps (float* out, int count) override;
+    void steps (float* out, int count) override;
     const Scope& scope() override;
     double refreshPeriodMs() const override;
     double setting (int index) const override { return plain (index); }
     int levelCount() const override;
     void filterResponse (float* outDb, int count, double loHz, double hiHz) const override;
+    float filterGain (double hz) const override;
 
 protected:
     /* The shell's prepareToPlay calls it: the rate and a reset posted. */
@@ -96,6 +97,9 @@ private:
 
     void run (juce::AudioBuffer<float>&, bool heard);
     double between (int index, double from, double to, double t) const;
+    /* The rate the filter's pictures are drawn at: the host's, or 48 kHz
+     * before there is one. */
+    double filterRate() const;
 
     struct ShellDeleter
     {

@@ -10,10 +10,9 @@
  * THE PARAMETERS are the engine's table (bc_param_*), transcribed in its
  * order with its ranges, travel and words; a fake in another order would test
  * another plugin. THE STAIRCASE is a stand-in for the engine's
- * (bc_transfer_render, over bc_transfer_span's window): a mid-tread grid of
- * 2^(1-Bits) under Drive, zoomed until at most 16 steps show, which is what
- * the engine draws with Shape at 0 -- the test's, not the editor's, which
- * draws whatever the model hands it.
+ * (bc_transfer_render): a mid-tread grid of 2^(1-Bits) over the whole range,
+ * which is what the engine draws with Shape at 0 -- the test's, not the
+ * editor's, which draws whatever the model hands it.
  */
 #include "Editor.h"
 #include "InfoLines.h"
@@ -83,18 +82,21 @@ struct FakeModel final : public Model
 
     /* A Butterworth of the slope's order at the cutoff, raised by Peak there:
      * the shape the engine draws (bc_filter_response), for the picture's
-     * tests -- not its numbers. */
-    void filterResponse (float* out, int count, double lo, double hi) const override
+     * tests -- not its numbers. At the cutoff, -3 dB + Peak, as the
+     * engine's. */
+    float filterGain (double f) const override
     {
         const double fc = setting (param::cutoff), peakDb = setting (param::peak);
         const int order = 2 << (int) setting (param::slope);
+        const double r = f / fc;
+        const double bump = peakDb * std::exp (-std::pow (std::log2 (r) * 4.0, 2.0));
+        return (float) (-10.0 * std::log10 (1.0 + std::pow (r, 2 * order)) + bump);
+    }
+
+    void filterResponse (float* out, int count, double lo, double hi) const override
+    {
         for (int i = 0; i < count; ++i)
-        {
-            const double f = lo * std::pow (hi / lo, (double) i / (count - 1));
-            const double r = f / fc;
-            const double bump = peakDb * std::exp (-std::pow (std::log2 (r) * 4.0, 2.0));
-            out[i] = (float) (-10.0 * std::log10 (1.0 + std::pow (r, 2 * order)) + bump);
-        }
+            out[i] = filterGain (lo * std::pow (hi / lo, (double) i / (count - 1)));
     }
 
     int numParameters() const override { return params.size(); }
@@ -107,20 +109,14 @@ struct FakeModel final : public Model
     float plain (int i) { return params[i].convertFrom0to1 (params[i].getValue()); }
 
     /* On the quantiser's own input, after Drive: no Drive in it. */
-    double steps (float* out, int count) override
+    void steps (float* out, int count) override
     {
         const double delta = std::exp2 (1.0 - (double) plain (param::bits));
-        /* The window: halved from full scale while it would hold more than
-         * 16 steps, as bc_transfer_span counts them. */
-        double span = 1.0;
-        while (span > 1.0 / 65536.0 && 2.0 * span / delta > 16.0)
-            span *= 0.5;
         for (int i = 0; i < count; ++i)
         {
-            const double x = span * (-1.0 + 2.0 * i / (count - 1));
+            const double x = -1.0 + 2.0 * i / (count - 1);
             out[i] = (float) juce::jlimit (-1.0, 1.0, delta * std::round (x / delta));
         }
-        return span;
     }
 
     const Scope& scope() override { return audio; }
@@ -315,18 +311,19 @@ TEST_CASE ("bit-crusher: the staircase follows the parameters at once")
         levels.erase (std::unique (levels.begin(), levels.end()), levels.end());
         return levels;
     };
-    /* 8 bits is 256 steps: the well shows a sixteenth of full scale, says so,
-     * and holds 16 steps there -- a staircase, not a diagonal. */
-    CHECK (steps.getCaption() == juce::String::fromUTF8 ("AMPLITUDE CRUSH   257 LEVELS   \xc3\x97" "16"));
-    CHECK (steps.inputSpan() == 1.0 / 16.0);
-    CHECK (distinct (steps.outputs()).size() == 17);
+    /* 8 bits is 256 steps over the whole range, never zoomed: finer than
+     * the well's points, so nearly every point is a level of its own -- the
+     * diagonal, as it sounds -- from full scale down to full scale up. */
+    CHECK (steps.getCaption() == "AMPLITUDE CRUSH   257 LEVELS");
+    CHECK (distinct (steps.outputs()).size() > 200);
+    CHECK (steps.outputs().front() == -1.0f);
+    CHECK (steps.outputs().back() == 1.0f);
     const auto before = steps.outputs();
 
-    /* 2 bits fits whole: no zoom, and no zoom in the caption. */
+    /* 2 bits: four steps across the same range. */
     rig.model.set (param::bits, 2.0f);
     rig.frames (1);
     CHECK (steps.getCaption() == "AMPLITUDE CRUSH   5 LEVELS");
-    CHECK (steps.inputSpan() == 1.0);
     rig.model.set (param::midRise, 1.0f);
     rig.frames (1);
     CHECK (steps.getCaption() == "AMPLITUDE CRUSH   4 LEVELS");
@@ -343,26 +340,39 @@ TEST_CASE ("bit-crusher: the diagonal stays the diagonal; Drive moves the signal
     auto& steps = rig.editor.amplitudePlot();
     rig.model.set (param::refresh, 0.0f);
     const auto at0 = steps.outputs();
-    const double span0 = steps.inputSpan();
+    const auto spread = [&]
+    {
+        float lo = 1.0e9f, hi = -1.0e9f;
+        for (const auto& d : steps.liveDots())
+        {
+            lo = std::min (lo, d.x);
+            hi = std::max (hi, d.x);
+        }
+        return hi - lo;
+    };
     rig.model.play (220.0, 0.1f, 8.0, 4);
     rig.frames (1);
-    const auto quiet = steps.liveDots().size();
+    const float quiet = spread();
 
-    /* Drive leaves the staircase, its zoom and its scale where they were... */
+    /* Drive leaves the staircase where it was... */
     for (const float drive : { 12.0f, -12.0f, 24.0f })
     {
         rig.model.set (param::drive, drive);
         rig.frames (1);
         CHECK (steps.outputs() == at0);
-        CHECK (steps.inputSpan() == span0);
-        CHECK (steps.outputSpan() == steps.inputSpan());
     }
-    /* ...and pushes the signal's samples further up it: at +12 dB fewer of
-     * them stay near silence, inside the window. */
+    /* ...and pushes the signal's samples further up it: +12 dB is four
+     * times the level, so the dots spread four times as wide. */
     rig.model.set (param::drive, 12.0f);
     rig.model.play (220.0, 0.1f, 8.0, 4);
     rig.frames (1);
-    CHECK (steps.liveDots().size() < quiet);
+    CHECK (spread() == doctest::Approx (3.98f * quiet).epsilon (0.02));
+    /* Past full scale they leave the well: +24 dB takes a 0.1 tone to 1.6. */
+    const auto all = steps.liveDots().size();
+    rig.model.set (param::drive, 24.0f);
+    rig.model.play (220.0, 0.1f, 8.0, 4);
+    rig.frames (1);
+    CHECK (steps.liveDots().size() < all);
     /* Every dot is on the staircase, so on or within a step of the diagonal. */
     const auto area = steps.getLocalBounds().toFloat();
     for (const auto& d : steps.liveDots())
@@ -382,13 +392,12 @@ TEST_CASE ("bit-crusher: the live dots sit where the look's samples are on the s
     const auto area = steps.getLocalBounds().toFloat();
     for (const auto& d : steps.liveDots())
         CHECK (area.contains (d));
-    /* Eight bits, a sixteenth of full scale: only the samples near silence. */
+    /* Eight bits: the same whole range, so again every sample. */
     rig.model.set (param::bits, 8.0f);
     rig.model.set (param::refresh, 0.0f);
     rig.model.play (220.0, 0.7f, 8.0, 4);
     rig.frames (1);
-    CHECK (steps.liveDots().size() > 0);
-    CHECK (steps.liveDots().size() < 100);
+    CHECK (steps.liveDots().size() == 512);
 }
 
 TEST_CASE ("bit-crusher: the time plot marks every take, sixteen holds of them")
@@ -555,13 +564,18 @@ TEST_CASE ("bit-crusher: the axes are ruled, and the discretizations' grids are 
     const auto minor = [] (const std::vector<ni::ui::plot::Mark>& marks)
     { return (int) std::count_if (marks.begin(), marks.end(), [] (const auto& m) { return m.text.isEmpty(); }); };
 
-    /* 8 bits, a sixteenth of full scale: its ends and silence named, and a
-     * minor tick at each of the 16 steps across and the 17 levels up. */
-    CHECK (labelled (amp.inputMarks()) == juce::StringArray { "-1/16", "0", "1/16" });
-    CHECK (labelled (amp.outputMarks()) == juce::StringArray { "-1/16", "0", "1/16" });
-    CHECK (minor (amp.inputMarks()) == 16);
-    CHECK (minor (amp.outputMarks()) == 17);
-    /* 2 bits, the whole range: -1 to 1, four steps, five levels. */
+    /* 8 bits: full scale's ends and silence named, and no grid: 256 steps
+     * are finer than the pixels, a band of ticks, not a grid. */
+    CHECK (labelled (amp.inputMarks()) == juce::StringArray { "-1", "0", "1" });
+    CHECK (labelled (amp.outputMarks()) == juce::StringArray { "-1", "0", "1" });
+    CHECK (minor (amp.inputMarks()) == 0);
+    CHECK (minor (amp.outputMarks()) == 0);
+    /* 5 bits, 32 steps: each clear of the next, so all of them ticked. */
+    rig.model.set (param::bits, 5.0f);
+    rig.frames (1);
+    CHECK (minor (amp.inputMarks()) == 32);
+    CHECK (minor (amp.outputMarks()) == 33);
+    /* 2 bits: four steps, five levels. */
     rig.model.set (param::bits, 2.0f);
     rig.frames (1);
     CHECK (labelled (amp.inputMarks()) == juce::StringArray { "-1", "0", "1" });
@@ -614,6 +628,56 @@ TEST_CASE ("bit-crusher: the filter's picture is its response, lit only while it
     rig.model.set (param::slope, 2.0f);
     rig.frames (1);
     CHECK (f.getCaption() == "FILTER   2.00 KHZ   48 DB/OCT   +6.0 DB");
+}
+
+TEST_CASE ("bit-crusher: the filter's dot sits on the curve at the cutoff, and drags Cutoff and Peak")
+{
+    Rig rig;
+    auto& f = rig.editor.filterPlot();
+    auto& h = f.cutoffHandle();
+    const auto area = f.plotArea();
+    const auto xOf = [&] (double hz) { return area.getX() + area.getWidth() * (float) (std::log (hz / 20.0) / std::log (1000.0)); };
+    const auto yOf = [&] (double db) { return area.getY() + area.getHeight() * (float) ((24.0 - db) / 72.0); };
+    const auto centre = [&] { return h.getBounds().toFloat().getCentre(); };
+
+    /* At 2 kHz and Peak 0: Butterworth's -3 dB, on the curve -- and there
+     * while the Filter is off, to shape it before it is heard. */
+    CHECK_FALSE (f.isOn());
+    CHECK (centre().x == doctest::Approx (xOf (2000.0)).epsilon (0.01));
+    CHECK (centre().y == doctest::Approx (yOf (-3.01)).epsilon (0.01));
+
+    /* A tenth of the width right is a tenth of the three decades: 2 kHz
+     * times 10^0.3. A sixth of the height up is 12 dB of Peak. One drag,
+     * one gesture on both. */
+    const auto from = centre();
+    {
+        Pointer p;
+        p.down (h, h.getLocalPoint (&f, from));
+        p.drag (h.getLocalPoint (&f, from + juce::Point<float> (0.1f * area.getWidth(), -area.getHeight() / 6.0f)));
+        p.up();
+    }
+    CHECK (rig.model.setting (param::cutoff) == doctest::Approx (2000.0 * std::pow (10.0, 0.3)).epsilon (0.01));
+    CHECK (rig.model.setting (param::peak) == doctest::Approx (12.0).epsilon (0.01));
+    CHECK (rig.model.params.log().startsWith ("begin 15, begin 16, value 15"));
+    CHECK (rig.model.params.log().endsWith ("end 15, end 16"));
+
+    /* The dot follows: at the new cutoff, 12 dB higher on the curve. */
+    rig.frames (1);
+    CHECK (centre().x == doctest::Approx (xOf (2000.0 * std::pow (10.0, 0.3))).epsilon (0.01));
+    CHECK (centre().y == doctest::Approx (yOf (12.0 - 3.01)).epsilon (0.01));
+
+    /* Up on the keyboard raises the Peak, as dragging up does. */
+    rig.model.params.clear();
+    CHECK (h.keyPressed (juce::KeyPress (juce::KeyPress::upKey)));
+    CHECK (rig.model.setting (param::peak) > 12.0);
+
+    /* A double-click puts both back to the plugin's defaults. */
+    {
+        Pointer p;
+        p.doubleClick (h, h.getLocalBounds().toFloat().getCentre());
+    }
+    CHECK (rig.model.setting (param::cutoff) == doctest::Approx (2000.0));
+    CHECK (rig.model.setting (param::peak) == doctest::Approx (0.0));
 }
 
 TEST_CASE ("bit-crusher: the scope waits for audio, then shows its window's length")

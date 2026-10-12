@@ -60,6 +60,15 @@ fn refresh_is_a_choice_of_the_window_saved_but_not_automated() {
     unsafe { bc_filter_response(1_000.0, 12.0, 1, 48_000.0, 100.0, 10_000.0, db.as_mut_ptr(), 3) };
     assert!((db[1] - 8.99).abs() < 0.05, "{db:?}");
     unsafe { bc_filter_response(1_000.0, 0.0, 1, 0.0, 100.0, 10_000.0, std::ptr::null_mut(), 3) };
+    /* One point of it, where a handle sits: the same gain, to the bit. */
+    for (cutoff, peak, slope) in [(1_000.0, 0.0, 0), (1_000.0, 24.0, 2), (20_000.0, 6.0, 1)] {
+        let mut curve = [0.0f32; 2];
+        unsafe { bc_filter_response(cutoff, peak, slope, 44_100.0, cutoff, 2.0 * cutoff, curve.as_mut_ptr(), 2) };
+        assert_eq!(bc_filter_gain(cutoff, peak, slope, 44_100.0, cutoff), curve[0], "{cutoff} {peak} {slope}");
+    }
+    assert!((bc_filter_gain(1_000.0, 24.0, 2, 48_000.0, 1_000.0) - (24.0 - 3.0103)).abs() < 0.01);
+    assert_eq!(bc_filter_gain(1_000.0, 6.0, 1, f64::NAN, 1_000.0), 0.0);
+    assert_eq!(bc_filter_gain(1_000.0, 6.0, 1, 48_000.0, 0.0), 0.0);
     /* The levels Bits makes, both grids: one more than 2^b mid-tread. */
     assert_eq!((bc_level_count(8.0, false), bc_level_count(8.0, true)), (257, 256));
     assert_eq!((bc_level_count(1.0, false), bc_level_count(1.0, true)), (3, 2));
@@ -128,25 +137,18 @@ fn text_goes_out_and_comes_back_in() {
 }
 
 #[test]
-fn the_curve_is_the_staircase_over_the_span_it_is_given() {
+fn the_curve_is_the_staircase_over_the_whole_range() {
     let mut out = [0.0f32; 5];
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, 1.0, out.as_mut_ptr(), 5) };
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, out.as_mut_ptr(), 5) };
     assert_eq!(out, [-1.0, -1.0, 0.0, 1.0, 1.0]);
     let mut one = [9.0f32; 1];
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, 1.0, one.as_mut_ptr(), 1) };
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, one.as_mut_ptr(), 1) };
     assert_eq!(one, [0.5]);
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, 1.0, std::ptr::null_mut(), 5) };
-    /* 8 bits over its span: the steps of 1/128 from -1/16 to 1/16. */
-    let span = bc_transfer_span(0.0, 8.0, 0.0, false);
-    assert_eq!(span, 1.0 / 16.0);
-    let mut zoomed = [0.0f32; 3];
-    unsafe { bc_transfer_render(0.0, 8.0, 0.0, false, span, zoomed.as_mut_ptr(), 3) };
-    assert_eq!(zoomed, [-0.0625, 0.0, 0.0625]);
-    /* A span that is no number, or none, is the whole range. */
-    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, bad, out.as_mut_ptr(), 5) };
-        assert_eq!(out, [-1.0, -1.0, 0.0, 1.0, 1.0], "span {bad}");
-    }
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, std::ptr::null_mut(), 5) };
+    /* 8 bits over the whole range, never zoomed: its ends and silence. */
+    let mut eight = [9.0f32; 3];
+    unsafe { bc_transfer_render(0.0, 8.0, 0.0, false, eight.as_mut_ptr(), 3) };
+    assert_eq!(eight, [-1.0, 0.0, 1.0]);
 }
 
 #[test]

@@ -19,7 +19,8 @@ over the panel that shapes it.
   it: the input in grey, the crushed output in front.
 - **Filter**, on the right, is the low-pass after the crusher: how loud each
   frequency comes out, from 20 Hz to 20 kHz. The grey line is 0 dB, the
-  signal untouched; the curve lights up while the Filter is on.
+  signal untouched; the curve lights up while the Filter is on. Drag the
+  dot on it to set Cutoff and Peak.
 - Every picture has rulers: level in full scale up the left (and across, in
   Amplitude Crush), time in milliseconds across the bottom. The two
   discretizations also put their grid on the axes as small ticks — a tick at
@@ -71,17 +72,15 @@ later (or, paused, until you let the pictures go). The Signal picture shows
 the same thing in time:
 the grey wave that came in becomes a stack of flat stairs.
 
-> **The Amplitude Crush picture zooms in.** At 8 bits there are 256 steps
-> from bottom to top, each far narrower than a pixel, so drawn whole they
-> would look like a plain diagonal. The picture shows the part around silence
-> where about 16 steps fit, and its caption says by how much:
-> `AMPLITUDE CRUSH 257 LEVELS ×16` is a sixteenth of full scale. Zoomed in, the
-> dots you see are the parts of your signal near silence — the quiet ones,
-> where crushing is loudest relative to the sound. From 4 bits down every step
-> fits, the zoom disappears, and every dot is in view. Shape moves the zoom
-> too, because it changes how wide the steps near silence are. The grey
-> diagonal always runs corner to corner: both axes are the level going into
-> the crusher, on the same scale, at any zoom.
+> **The Amplitude Crush picture is always the whole range**, −1 to 1, so you
+> see the staircase exactly as coarse as it is. At a few bits the steps are
+> plain, and the axes tick each one. At 8 bits there are 256 of them, each
+> narrower than a pixel, and the staircase looks like the diagonal — which is
+> also roughly how it sounds: fine enough that you hear a faint grain, not
+> stairs. The caption still counts the levels (`257 LEVELS`), and the axes
+> stop ticking steps once they are too close to tell apart. The grey diagonal
+> runs corner to corner: both axes are the level going into the crusher, on
+> the same scale.
 
 > **Bits is continuous.** 4.5 bits is a real setting, between 16 and 32
 > steps, and the top step is simply shorter. So a slow sweep of Bits — or an
@@ -231,6 +230,14 @@ Mix — so a parallel crunch can be dark while the dry signal stays bright.
 
 It is **off by default**: switch **Filter** on under its knobs. The Filter
 picture lights up, and what it draws is what you hear.
+
+**Drag the dot.** The white dot on the curve sits at the cutoff. Drag it
+sideways to move **Cutoff**, up and down to set **Peak** — both at once, as
+one move in Live's undo and automation, the same as turning the two knobs.
+Hold **Shift** for fine control; **double-click** the dot to put both back to
+their defaults. It works while the Filter is off too, so you can shape the
+curve before you switch it on. With the dot selected, the arrow keys move it:
+left and right for Cutoff, up and down for Peak.
 
 ### Cutoff: where it starts
 

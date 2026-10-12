@@ -30,28 +30,27 @@ using ni::ui::plot::Mark;
 constexpr float rulerW = 30.0f;
 constexpr float rulerH = 14.0f;
 
-/* A level as a ruler names it, in full scale: a power of two below 1 as the
- * fraction it is ("1/16"), anything else to two places ("0.71"). */
-juce::String levelText (double v)
+/* Full scale's ruler: its ends and silence, -1, 0 and 1, for an axis running
+ * `from`..`to` in pixels (low level first). */
+std::vector<Mark> fullScaleMarks (float from, float to)
 {
-    if (juce::exactlyEqual (v, 0.0))
-        return "0";
-    const juce::String sign = v < 0.0 ? "-" : "";
-    const double a = std::abs (v);
-    const double inv = 1.0 / a;
-    if (a < 1.0 && juce::exactlyEqual (inv, std::round (inv)) && juce::isPowerOfTwo ((int) inv))
-        return sign + "1/" + juce::String ((int) inv);
-    if (juce::exactlyEqual (a, std::round (a)))
-        return sign + juce::String ((int) a);
-    return sign + juce::String (a, 2);
+    const auto at = [&] (float f) { return from + (to - from) * f; };
+    return { { at (0.0f), "-1" }, { at (0.5f), "0" }, { at (1.0f), "1" } };
 }
 
-/* A level ruler's labelled marks: the area's ends and its middle, ±fullScale
- * and 0, for an axis running `from`..`to` in pixels (low level first). */
-std::vector<Mark> levelMarks (float from, float to, double fullScale)
+/* A grid's ticks are drawn only while every one stands clear of the next:
+ * finer, they are a solid band that says nothing the caption's count does
+ * not. */
+constexpr float gridTickMin = 3.0f;
+
+/* Whether ticks at `at` stand that far apart, every one. */
+bool readable (std::vector<float> at)
 {
-    const auto at = [&] (double f) { return from + (to - from) * (float) f; };
-    return { { at (0.0), levelText (-fullScale) }, { at (0.5), "0" }, { at (1.0), levelText (fullScale) } };
+    std::sort (at.begin(), at.end());
+    for (size_t i = 1; i < at.size(); ++i)
+        if (at[i] - at[i - 1] < gridTickMin)
+            return false;
+    return true;
 }
 
 /* A level ruler for a range that follows the material (±fullScale, any
@@ -118,23 +117,17 @@ AmplitudePlot::AmplitudePlot (Model& m)
 
 void AmplitudePlot::update (const Scope& look, bool fresh, bool live)
 {
-    const double freshSpan = model.steps (freshLevels.data(), points);
+    model.steps (freshLevels.data(), points);
     /* The levels the staircase has, as many as there are -- 2^Bits + 1, or
-     * 2^Bits with Mid-Rise -- not 2^Bits by implication. Zoomed in, the
-     * caption says by how much: the well is no longer the whole range, and a
-     * picture that does not say so misleads. */
-    const auto caption = clauses ({ "AMPLITUDE CRUSH", juce::String (model.levelCount()) + " LEVELS",
-                                    freshSpan < 1.0 ? juce::String::fromUTF8 ("\xc3\x97") + juce::String (juce::roundToInt (1.0 / freshSpan))
-                                                    : juce::String() });
-    const bool moved = freshLevels != levels || ! juce::exactlyEqual (freshSpan, span) || caption != getCaption()
-                       || live != shownLive;
+     * 2^Bits with Mid-Rise -- not 2^Bits by implication. */
+    const auto caption = clauses ({ "AMPLITUDE CRUSH", juce::String (model.levelCount()) + " LEVELS" });
+    const bool moved = freshLevels != levels || caption != getCaption() || live != shownLive;
     shownLive = live;
     if (! moved && ! fresh)
         return;
     if (moved)
     {
         levels = freshLevels;
-        span = freshSpan;
         setCaption (caption);
     }
     if (fresh)
@@ -155,17 +148,17 @@ void AmplitudePlot::rebuild()
 {
     const auto area = plotArea();
 
-    /* ONE SCALE BOTH WAYS, so the untouched signal is the well's diagonal,
-     * corner to corner, at any zoom. The axis is the quantiser's own input,
-     * after Drive: the staircase runs along the diagonal whatever Drive is,
-     * and Drive moves the signal's dots up it (Model::steps). */
-    outSpan = span;
-    const auto in = (float) span, out = (float) outSpan;
-    const auto xOf = [&] (float level) { return area.getX() + area.getWidth() * 0.5f * (level / in + 1.0f); };
+    /* THE WHOLE RANGE, ONE SCALE BOTH WAYS, so the untouched signal is the
+     * well's diagonal, corner to corner. Never zoomed: at many bits the steps
+     * are finer than the pixels, and the staircase is the diagonal -- which
+     * is what it sounds like. The axis is the quantiser's own input, after
+     * Drive: the staircase runs along the diagonal whatever Drive is, and
+     * Drive moves the signal's dots up it (Model::steps). */
+    const auto xOf = [&] (float level) { return area.getX() + area.getWidth() * 0.5f * (level + 1.0f); };
 
     diagonal.clear();
-    diagonal.startNewSubPath (area.getX(), yOf (area, -in, out));
-    diagonal.lineTo (area.getRight(), yOf (area, in, out));
+    diagonal.startNewSubPath (area.getX(), yOf (area, -1.0f));
+    diagonal.lineTo (area.getRight(), yOf (area, 1.0f));
 
     /* One point a sample of the curve: the risers are as steep as the
      * well's pixels allow, which is what a staircase drawn from samples
@@ -175,35 +168,43 @@ void AmplitudePlot::rebuild()
     for (int i = 0; i < points; ++i)
     {
         const float x = xAtPoint ((float) i);
-        const float y = yOf (area, levels[(size_t) i], out);
+        const float y = yOf (area, levels[(size_t) i]);
         if (i == 0)
             curve.startNewSubPath (x, y);
         else
             curve.lineTo (x, y);
     }
 
-    /* THE RULERS: level in across, level out up, in full scale -- the
-     * window's ends and silence labelled -- and a minor tick at every step:
-     * across where the staircase rises, up at every level it has. The grid
-     * the signal is made discrete on, on the axes. */
-    xMarks = levelMarks (area.getX(), area.getRight(), span);
-    yMarks = levelMarks (area.getBottom(), area.getY(), outSpan);
-    std::vector<float> seen;
+    /* THE RULERS: level in across, level out up, in full scale -- its ends
+     * and silence labelled -- and, while they stand apart, a minor tick at
+     * every step: across where the staircase rises, up at every level it
+     * has. The grid the signal is made discrete on, on the axes. */
+    xMarks = fullScaleMarks (area.getX(), area.getRight());
+    yMarks = fullScaleMarks (area.getBottom(), area.getY());
+    std::vector<float> risers, treads;
     for (int i = 1; i < points; ++i)
         if (! juce::exactlyEqual (levels[(size_t) i], levels[(size_t) i - 1]))
-            xMarks.push_back ({ xAtPoint ((float) i - 0.5f), {} });
+            risers.push_back (xAtPoint ((float) i - 0.5f));
     for (const float v : levels)
-        if (std::abs (v) <= out && std::find (seen.begin(), seen.end(), v) == seen.end())
-            seen.push_back (v);
-    for (const float v : seen)
-        yMarks.push_back ({ yOf (area, v, out), {} });
+    {
+        const float y = yOf (area, v);
+        if (std::find (treads.begin(), treads.end(), y) == treads.end())
+            treads.push_back (y);
+    }
+    if (readable (risers))
+        for (const float x : risers)
+            xMarks.push_back ({ x, {} });
+    if (readable (treads))
+        for (const float y : treads)
+            yMarks.push_back ({ y, {} });
 
-    /* The look's samples inside the window, while the look is the knobs'. */
+    /* The look's samples, while the look is the knobs'; Drive can push them
+     * past full scale, out of the well. */
     dotsAt.clear();
     const auto n = shownLive ? std::min (liveIn.size(), liveOut.size()) : (size_t) 0;
     for (size_t i = 0; i < n; ++i)
-        if (std::abs (liveIn[i]) <= in)
-            dotsAt.emplace_back (xOf (liveIn[i]), yOf (area, liveOut[i], out));
+        if (std::abs (liveIn[i]) <= 1.0f)
+            dotsAt.emplace_back (xOf (liveIn[i]), yOf (area, liveOut[i]));
 }
 
 void AmplitudePlot::paintPlot (juce::Graphics& g)
@@ -352,9 +353,20 @@ void TimePlot::paintPlot (juce::Graphics& g)
 /* --------------------------------------------------------------- filter -- */
 
 FilterPlot::FilterPlot (Model& m)
-    : model (m), db ((size_t) points, 0.0f), freshDb ((size_t) points, 0.0f)
+    : model (m),
+      db ((size_t) points, 0.0f),
+      freshDb ((size_t) points, 0.0f),
+      cutoff (m.parameter (param::cutoff)),
+      peak (m.parameter (param::peak)),
+      /* Sideways in octaves of the well's frequency axis, up and down in
+       * its decibels: the dot stays under the pointer. */
+      handle (*this, cutoff, [this] (float hz, float px) { return hz * (float) std::pow (hiHz / loHz, px / plotArea().getWidth()); },
+              &peak, [this] (float gainDb, float px) { return gainDb - px / plotArea().getHeight() * (topDb - bottomDb); })
 {
     ni::ui::setInfo (*this, info::filterPlot);
+    handle.setTitle ("Cutoff and peak");
+    ni::ui::setInfo (handle, info::filterHandle);
+    addAndMakeVisible (handle);
     update();
     rebuild();
 }
@@ -363,11 +375,11 @@ void FilterPlot::update()
 {
     model.filterResponse (freshDb.data(), points, loHz, hiHz);
     const bool freshOn = model.setting (param::filter) >= 0.5;
-    const double peak = model.setting (param::peak);
+    const double peakDb = model.setting (param::peak);
     const auto caption = freshOn
         ? clauses ({ "FILTER", model.parameter (param::cutoff).getCurrentValueAsText().toUpperCase(),
                      model.parameter (param::slope).getCurrentValueAsText().toUpperCase() + "/OCT",
-                     peak > 0.0 ? model.parameter (param::peak).getCurrentValueAsText().toUpperCase() : juce::String() })
+                     peakDb > 0.0 ? model.parameter (param::peak).getCurrentValueAsText().toUpperCase() : juce::String() })
         : juce::String ("FILTER   OFF");
     if (freshDb == db && freshOn == on && caption == getCaption())
         return;
@@ -390,14 +402,28 @@ void FilterPlot::rebuild()
     const auto y = [&] (float g)
     { return area.getY() + area.getHeight() * (topDb - juce::jlimit (bottomDb, topDb, g)) / (topDb - bottomDb); };
 
+    /* THE HANDLE sits on the curve at the cutoff, where the engine has the
+     * gain -- Butterworth's -3 dB raised by Peak. The curve passes through
+     * that point too: evenly spaced points can step over the top of a
+     * narrow bump, and the dot would float above a curve that missed it. */
+    const double cutoffHz = juce::jlimit (loHz, hiHz, model.setting (param::cutoff));
+    const juce::Point<float> knee { x (cutoffHz), y (model.filterGain (cutoffHz)) };
+    handle.setBounds (juce::Rectangle<int> (ni::ui::PlotHandle::size, ni::ui::PlotHandle::size).withCentre (knee.roundToInt()));
+
     curve.clear();
+    bool passed = false;
     for (int i = 0; i < points; ++i)
     {
         const float px = area.getX() + area.getWidth() * (float) i / (float) (points - 1);
         if (i == 0)
             curve.startNewSubPath (px, y (db[(size_t) i]));
         else
+        {
+            if (! passed && knee.x > curve.getCurrentPosition().x && knee.x < px)
+                curve.lineTo (knee);
             curve.lineTo (px, y (db[(size_t) i]));
+        }
+        passed = passed || px >= knee.x;
     }
     flat.clear();
     flat.startNewSubPath (area.getX(), y (0.0f));

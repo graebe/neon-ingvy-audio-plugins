@@ -32,6 +32,7 @@ inline constexpr InfoText filterPanel { "Filter — a resonant low-pass on the c
 inline constexpr InfoText amplitudePlot { "Amplitude Crush — level in across, out up; lit dots: the signal now." };
 inline constexpr InfoText timePlot { "Time Crush — what the hold takes in grey, the hold dim; a dot per take." };
 inline constexpr InfoText filterPlot { "Filter — its response: grey is untouched; lit while the Filter is on." };
+inline constexpr InfoText filterHandle { "Cutoff and Peak — drag sideways for the cutoff, up or down for the peak." };
 inline constexpr InfoText signalPlot { "Signal — the input in grey, the crushed output in front." };
 inline constexpr InfoText refresh { "Refresh — how often the three pictures take a new look; 1/s is calm." };
 inline constexpr InfoText pause { "Pause — hold the three pictures still; the sound goes on." };

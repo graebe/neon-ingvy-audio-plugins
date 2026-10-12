@@ -6,11 +6,11 @@
  * discretizations, then the sound:
  *
  *   AmplitudePlot  THE AMPLITUDE CRUSH: input level across, output level up,
- *                  over the window around silence the engine picks so that
- *                  its steps show -- at most 16 of them, so 8 bits is seen at
- *                  1/16 of full scale rather than as 256 steps narrower than
- *                  a pixel. The untouched signal is the grey diagonal (out =
- *                  in), corner to corner at any zoom: both axes are the
+ *                  over the whole range, -1 to 1, never zoomed: at a few bits
+ *                  the steps are plain to see, at many they are finer than
+ *                  the pixels and the staircase is the diagonal -- as it is
+ *                  to the ear. The untouched signal is the grey diagonal (out
+ *                  = in), corner to corner: both axes are the
  *                  quantiser's own level, after Drive, on one scale. The
  *                  staircase the engine renders from the parameters now is
  *                  the curve in front, always along the diagonal: Bits sets
@@ -22,9 +22,7 @@
  *                  or beside it by Dither's noise. While there are dots the
  *                  staircase is drawn unlit, a map, and the dots light the
  *                  stairs the signal is on (Plot.h: uv is what is lit).
- *                  Zoomed in, the dots are the part of the signal near
- *                  silence; at few bits, all of it.
- *                  Caption: "AMPLITUDE CRUSH   8.0 BITS   ×16".
+ *                  Caption: "AMPLITUDE CRUSH   257 LEVELS".
  *
  *   TimePlot       THE TIME CRUSH: the hold's own window, the last sixteen
  *                  periods of it at any Rate (or what the ring holds at a slow
@@ -51,10 +49,9 @@
  *
  * THE RULERS (plot::ruler) sit along the bottom and the left of each
  * picture's own area, labels outside it: level in full scale, the ends and
- * silence named (a zoomed window as the fraction it is, "1/16"), time in
- * milliseconds. The two discretizations put their grid on the axes too, as
- * minor ticks: every step of the staircase, both ways, and every take of
- * the hold.
+ * silence named, time in milliseconds. The two discretizations put their
+ * grid on the axes too, as minor ticks: every step of the staircase, both
+ * ways, while the steps stand apart, and every take of the hold.
  *
  * All draw what the model hands them; none knows what a step is (Plot.h:
  * "draw what the engine renders"). update() is the editor's frame: it repaints
@@ -63,7 +60,9 @@
 #pragma once
 
 #include "Model.h"
+#include "ParamBinding.h"
 #include "Plot.h"
+#include "PlotHandle.h"
 
 #include <cstdint>
 #include <vector>
@@ -84,12 +83,9 @@ public:
      * settings: Editor::current). */
     void update (const Scope& look, bool fresh, bool live);
 
-    /* What it drew, for the tests: the curve's outputs, the input range they
-     * span either side of silence, the output range the well shows either
-     * side of it, and the live dots inside the window. */
+    /* What it drew, for the tests: the curve's outputs over -1..1, and the
+     * live dots. */
     const std::vector<float>& outputs() const noexcept { return levels; }
-    double inputSpan() const noexcept { return span; }
-    double outputSpan() const noexcept { return outSpan; }
     const std::vector<juce::Point<float>>& liveDots() const noexcept { return dotsAt; }
     /* Its rulers' marks, labelled and minor: level in, level out. */
     const std::vector<ni::ui::plot::Mark>& inputMarks() const noexcept { return xMarks; }
@@ -106,7 +102,6 @@ private:
     Model& model;
     std::vector<ni::ui::plot::Mark> xMarks, yMarks;
     std::vector<float> levels, freshLevels;
-    double span = 1.0, outSpan = 1.0;
     std::vector<float> liveIn, liveOut;
     bool shownLive = false;
     juce::Path curve, diagonal;
@@ -156,6 +151,10 @@ private:
  *                  signal; the curve is lit while the Filter is on and unlit
  *                  -- what it would do -- while it is off. Caption: "FILTER
  *                  2.00 KHZ   24 DB/OCT   +6.0 DB", or "FILTER   OFF".
+ *                  THE HANDLE (PlotHandle.h): a dot on the curve at the
+ *                  cutoff. Sideways it is Cutoff, up and down Peak -- the
+ *                  same host parameters as the knobs, one gesture a drag --
+ *                  and it shapes the curve whether the Filter is on or not.
  */
 class FilterPlot final : public ni::ui::PlotWell
 {
@@ -173,19 +172,23 @@ public:
     const std::vector<float>& responseDb() const noexcept { return db; }
     bool isOn() const noexcept { return on; }
     const std::vector<ni::ui::plot::Mark>& frequencyMarks() const noexcept { return xMarks; }
+    ni::ui::PlotHandle& cutoffHandle() noexcept { return handle; }
+    /* The plot inside the well, clear of its rulers' labels. */
+    juce::Rectangle<float> plotArea() const;
 
     void resized() override { rebuild(); }
 
 private:
     void paintPlot (juce::Graphics&) override;
     void rebuild();
-    juce::Rectangle<float> plotArea() const;
 
     Model& model;
     std::vector<float> db, freshDb;
     bool on = false;
     juce::Path curve, flat;
     std::vector<ni::ui::plot::Mark> xMarks, yMarks;
+    ni::ui::ParamBinding cutoff, peak;
+    ni::ui::PlotHandle handle;
 };
 
 class SignalPlot final : public ni::ui::PlotWell

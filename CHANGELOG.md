@@ -24,8 +24,12 @@
   in a fourth panel with its own picture: **Cutoff** (20 Hz to 20 kHz),
   **Peak** (up to +24 dB at the cutoff, never self-oscillating) and **Slope**
   (12, 24 or 48 dB per octave). Off by default, so existing sets sound as
-  they did. Every change glides, the slope included. On the Move it is the
+  they did. Every change glides, the slope included. Drag the dot on its
+  curve: sideways for Cutoff, up and down for Peak. On the Move it is the
   second knob page.
+- **The Amplitude Crush picture shows the whole range.** It no longer zooms
+  in: the staircase is drawn from −1 to 1 at every setting, plain at a few
+  bits and as fine as the diagonal at many.
 - **Refresh and Pause.** The pictures take a new look once a second by
   default, all three at the same moment; **Refresh** sets 1/s, 4/s, 10/s or
   Live and is saved with the set (it is not automatable). **Pause** holds all
