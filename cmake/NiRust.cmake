@@ -152,6 +152,32 @@ function(ni_build_rust_engines)
         endif()
     endforeach()
 
+    # THE HEADERS ARE THE CARGO RUNS' OUTPUTS. Ninja dates every file a C++
+    # object's depfile names once, before the build starts, unless an edge of
+    # the build produces it. A header the cargo runs rewrite is therefore seen
+    # as unchanged in the build that rewrote it, and the objects that include
+    # it compile against the old declarations -- a struct read with its old
+    # layout -- until the next build. So one edge claims them all as
+    # byproducts, after the cargo runs: Ninja waits for it, dates the headers
+    # again (restat), and recompiles exactly the objects whose header the
+    # cargo runs changed. The list is every cbindgen/<stem>.toml in the
+    # engines, the configuration each <stem>.h is written from
+    # (engines/shared/cbindgen/capi_header.rs).
+    file(GLOB configs CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/engines/*/crates/*/cbindgen/*.toml)
+    set(headers "")
+    foreach(config IN LISTS configs)
+        get_filename_component(stem ${config} NAME_WE)
+        list(APPEND headers ${NI_CAPI_INCLUDE_DIR}/${stem}.h)
+    endforeach()
+    add_custom_target(ni_capi_headers
+        COMMAND ${CMAKE_COMMAND} -E true
+        BYPRODUCTS ${headers}
+        VERBATIM)
+    foreach(lib IN LISTS libs)
+        add_dependencies(ni_capi_headers cargo-build_${lib})
+    endforeach()
+    add_dependencies(ni_rust_engines ni_capi_headers)
+
     if (NOT NI_RUST_EXTRA_TRIPLES)
         return()
     endif()

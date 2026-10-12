@@ -12,6 +12,7 @@
 #include "UvGround.h"
 #include "UvTokens.h"
 #include "WaveSource.h"
+#include "allocations.h"
 #include "pages.h"
 #include "snapshot.h"
 
@@ -240,6 +241,23 @@ TEST_CASE ("ground: decoration -- no pointer, nothing for assistive technology")
     CHECK_FALSE (self);
     CHECK_FALSE (g.isAccessible());
     CHECK (g.isOpaque());
+}
+
+TEST_CASE ("ground: a frame allocates nothing")
+{
+    Rig rig (720, 470);
+    rig.ground.setWalls ({ { 32.0f, 76.0f, 300.0f, 200.0f }, { 380.0f, 76.0f, 300.0f, 200.0f } });
+    rig.ground.trigger (1.0f);
+    rig.frames (2);
+    const auto before = ni::ui::test::allocations();
+    for (int k = 0; k < 90; ++k)
+    {
+        if (k % 15 == 0)
+            rig.ground.trigger (0.55f);
+        rig.frames (1);
+    }
+    CHECK (ni::ui::test::allocations() - before == 0);
+    CHECK (rig.ground.isMoving());
 }
 
 NI_SNAPSHOT_TEST ("ground: at rest, a downbeat, and a bar breaking around a panel")

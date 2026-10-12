@@ -78,17 +78,6 @@ Arrival loudestBetween (const std::vector<float>& trace, double from, double to)
     return a;
 }
 
-std::vector<float> trace (Field& f, float x, float y, double seconds)
-{
-    std::vector<float> out;
-    for (double t = 0.0; t < seconds; t += p::dt)
-    {
-        f.step();
-        out.push_back (at (f, x, y));
-    }
-    return out;
-}
-
 /* The first ring a fresh field drops is ring 0: its frequency, varied. */
 const double firstFreq = p::freq * (1.0 - p::varyF);
 } // namespace
