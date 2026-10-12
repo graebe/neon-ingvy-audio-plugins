@@ -22,7 +22,7 @@ A node that is Empty, or switched off, is an instance with no sections: it
 costs nothing, and is skipped outright once no fade is running.
 */
 
-use crate::design::{design, prototype, Channel, Globals, Settings, Shape};
+use crate::design::{channel_of, design, is_heard, prototype, settings_of, Channel, Globals, Settings, Shape};
 use crate::params::{Field, Param, FREQ_DEFAULTS};
 use ni_dsp::smooth::glide;
 use ni_filter::{Cascade, Family, Prototype, State};
@@ -45,14 +45,12 @@ impl Discrete {
 
     /// What node `slot`'s values ask for.
     pub fn of(values: &[f64], slot: u8) -> Discrete {
-        let v = |f: Field| values[Param::Node(slot, f).index()];
-        let on = v(Field::On) >= 0.5;
-        let shape = if on { Shape::from_value(v(Field::Type)) } else { Shape::Empty };
+        let s = settings_of(values, slot);
         Discrete {
-            shape,
-            family: Family::from_index(v(Field::Family).round().max(0.0) as usize),
-            order: v(Field::Order).round().max(0.0) as usize + 1,
-            channel: Channel::from_value(v(Field::Channel)),
+            shape: if is_heard(values, slot) { s.shape } else { Shape::Empty },
+            family: s.family,
+            order: s.order,
+            channel: channel_of(values, slot),
         }
     }
 }

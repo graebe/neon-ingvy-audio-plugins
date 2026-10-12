@@ -209,10 +209,7 @@ impl Engine {
     }
 
     fn global_targets(&self) -> Globals {
-        Globals {
-            scale: self.values[Param::Scale.index()] / 100.0,
-            adaptive: if self.values[Param::AdaptiveQ.index()] >= 0.5 { 1.0 } else { 0.0 },
-        }
+        design::globals_of(&self.values)
     }
 
     fn out_target(&self) -> f64 {

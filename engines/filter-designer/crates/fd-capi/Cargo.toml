@@ -1,0 +1,48 @@
+[package]
+name = "fd-capi"
+version = "2026.10.12+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The fd_* C ABI over the NI Filter Designer engine"
+publish.workspace = true
+
+[lib]
+name = "fd_capi"
+# staticlib for the plugin to link; rlib so fd-move can carry this surface
+# too without a second copy of the Rust runtime.
+crate-type = ["staticlib", "rlib"]
+
+# THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (fd_shell_*, on
+# shell-core's bridge), the picture the editor draws (curves and the
+# analyzer's FFT), and the ground's C ABI (gnd_*) that every plugin's one
+# archive carries. fd-move turns it off: the Move module has one thread, no
+# editor and no screen to draw a curve on.
+[features]
+default = ["shell"]
+shell = ["dep:shell-core", "dep:ground-capi", "dep:realfft"]
+
+[dependencies]
+fd-core = { path = "../fd-core" }
+# The animated ground's beat clock, compiled INTO this archive (one archive
+# per plugin; see ground-capi/Cargo.toml).
+ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
+# The command queue and the published snapshot between the plugin's threads.
+shell-core = { path = "../../../shell/crates/shell-core", optional = true }
+# The C-string helpers every capi crate wraps its entry points in.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The parameter table's C struct and the helpers its entry points are made of.
+ni-params = { path = "../../../shared/crates/ni-params" }
+# The curves: every node's design, evaluated where it runs.
+ni-filter = { path = "../../../shared/crates/ni-filter" }
+# The analyzer's transform, on the editor's thread, with the SIMD paths
+# spectro-core takes.
+realfft = { workspace = true, optional = true, features = ["avx", "sse", "neon"] }
+
+# fd_core.h and fd_shell.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

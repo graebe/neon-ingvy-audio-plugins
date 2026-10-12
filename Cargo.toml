@@ -65,6 +65,7 @@ members = [
     "engines/vocalize/crates/vz-move",        # the Schwung vtable -> the module
     # NI Filter Designer: one core, two wrappers, the Side-Chain's shape.
     "engines/filter-designer/crates/fd-core",  # the DSP
+    "engines/filter-designer/crates/fd-capi",  # the C ABI -> the plugin
     # The animated ground's beat clock. Like audio-bus it is not a
     # product: it ships inside EVERY editor, because the design system gives
     # every window the same ground. It depends on no product in return.

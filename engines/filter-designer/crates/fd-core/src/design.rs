@@ -24,6 +24,7 @@ Every gain is times Scale.
 */
 
 use core::f64::consts::FRAC_1_SQRT_2;
+use crate::params::{Field, Param};
 use ni_filter::{all_pass, bell, family, high_shelf, low_shelf, tilt, Band, Cascade, Family, Prototype};
 
 /// What a node is.
@@ -184,5 +185,39 @@ pub fn design(s: &Settings, proto: Option<&Prototype>, g: Globals, fs: f64) -> (
             };
             family(proto, band, s.freq, s.q, fs)
         }
+    }
+}
+
+/// Node `slot`'s settings as `values` hold them: its Type whether or not it
+/// is on (a bypassed node still has a shape to draw).
+pub fn settings_of(values: &[f64], slot: u8) -> Settings {
+    let v = |f: Field| values[Param::Node(slot, f).index()];
+    Settings {
+        shape: Shape::from_value(v(Field::Type)),
+        family: Family::from_index(v(Field::Family).round().max(0.0) as usize),
+        order: v(Field::Order).round().max(0.0) as usize + 1,
+        freq: v(Field::Freq),
+        gain_db: v(Field::Gain),
+        q: v(Field::Q),
+        ripple_db: v(Field::Ripple),
+        stopband_db: v(Field::Stopband),
+    }
+}
+
+/// Node `slot`'s channel as `values` hold it.
+pub fn channel_of(values: &[f64], slot: u8) -> Channel {
+    Channel::from_value(values[Param::Node(slot, Field::Channel).index()])
+}
+
+/// Whether node `slot` is heard: a type, and switched on.
+pub fn is_heard(values: &[f64], slot: u8) -> bool {
+    values[Param::Node(slot, Field::On).index()] >= 0.5 && settings_of(values, slot).shape != Shape::Empty
+}
+
+/// Scale and Adaptive Q as `values` hold them.
+pub fn globals_of(values: &[f64]) -> Globals {
+    Globals {
+        scale: values[Param::Scale.index()] / 100.0,
+        adaptive: if values[Param::AdaptiveQ.index()] >= 0.5 { 1.0 } else { 0.0 },
     }
 }
