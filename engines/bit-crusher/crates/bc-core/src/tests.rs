@@ -646,6 +646,74 @@ fn the_filter_is_flat_then_its_slope_and_peak_rises_by_exactly_peak() {
     }
 }
 
+/// The analog Butterworth (with its sharpest section's Q raised by Peak) the
+/// Filter stands for: its gain at `f`, in dB.
+fn analog_filter_db(slope: usize, cutoff: f64, peak: f64, f: f64) -> f64 {
+    let qs: &[f64] = match slope {
+        0 => &[core::f64::consts::FRAC_1_SQRT_2],
+        1 => &[0.541_196_100_146_197, 1.306_562_964_876_376_5],
+        _ => &[0.509_795_579_104_159, 0.601_344_886_935_045, 0.899_976_223_136_415, 2.562_915_447_741_505],
+    };
+    let r = f / cutoff;
+    let last = qs.len() - 1;
+    qs.iter()
+        .enumerate()
+        .map(|(i, q)| {
+            let q = if i == last { q * 10f64.powf(peak / 20.0) } else { *q };
+            -10.0 * ((1.0 - r * r).powi(2) + (r / q).powi(2)).log10()
+        })
+        .sum()
+}
+
+#[test]
+fn the_filter_keeps_its_slope_and_peak_up_to_twenty_kilohertz() {
+    use filters::ToneCoefficients;
+    /* Up to 20 kHz -- the top of the plot and of hearing -- every slope,
+     * peak and cutoff follows its analog filter: within 3 dB where it passes
+     * and peaks (above -6 dB; 2.6 measured over every cutoff), within 4.5 dB
+     * down to -20 dB, and within a quarter of the depth below that, to -60
+     * dB. The misses are all at the top at 44.1 kHz, and all on the shallow
+     * side: right at Nyquist a section cannot reach the analog's full depth.
+     * No slope steepening into a cliff, no peak narrowing: bilinear sections
+     * missed by up to 47 dB here, ever deeper. */
+    for sr in [44_100.0, 48_000.0, 96_000.0] {
+        for slope in 0..3 {
+            for peak in [0.0, 12.0, 24.0] {
+                for cutoff in [100.0, 1_000.0, 8_000.0, 14_000.0, 18_000.0, 20_000.0] {
+                    let c = ToneCoefficients::new(cutoff, peak, sr);
+                    for i in 0..400 {
+                        let f = 20.0 * 1000f64.powf(f64::from(i) / 399.0);
+                        let want = analog_filter_db(slope, cutoff, peak, f);
+                        if want < -60.0 {
+                            continue;
+                        }
+                        let got = c.response_db(slope, f, sr);
+                        let tolerance = if want > -6.0 {
+                            3.0
+                        } else if want > -20.0 {
+                            4.5
+                        } else {
+                            0.25 * -want
+                        };
+                        assert!((got - want).abs() < tolerance, "{sr} Hz, slope {slope}, peak {peak}, {cutoff} Hz: {got} at {f} Hz, analog {want}");
+                    }
+                    /* At the cutoff, exactly: -3 dB raised by Peak. */
+                    let at = c.response_db(slope, cutoff, sr);
+                    assert!((at - (peak - 3.0103)).abs() < 0.01, "{sr} {slope} {peak} {cutoff}: {at} at the cutoff");
+                }
+            }
+        }
+    }
+    /* Stable at the top of its range, at the most Peak: a rung impulse dies
+     * away. */
+    let mut e = engine(&[(Param::Bits, 16.0), NO_HOLD, (Param::Filter, 1.0), (Param::Cutoff, 20_000.0), (Param::Peak, 24.0), (Param::Slope, 2.0)]);
+    let mut click = vec![0.0f32; 48_000];
+    click[100] = 0.5;
+    let out = mono(&mut e, &click);
+    assert!(out.iter().all(|y| y.is_finite()));
+    assert!(out[40_000..].iter().all(|y| y.abs() < 1e-6), "it rings on");
+}
+
 #[test]
 fn the_filter_is_off_by_default_and_on_it_is_heard_at_its_response() {
     /* A transparent crusher -- 16 bits, no hold -- so the filter is all

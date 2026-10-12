@@ -251,7 +251,10 @@ classic filter rise. Type `800` or `1.2k` into its readout to set it exactly.
 **Slope** sets how fast the sound falls away above the cutoff: **12 dB**,
 **24 dB** or **48 dB** per octave. 12 dB is gentle — the steps soften but
 stay audible; 48 dB is a wall — above the cutoff, they are gone. In the
-picture the curve's right-hand side tilts steeper with each. Switching it
+picture the curve's right-hand side tilts steeper with each. The slope is
+the same wherever the cutoff sits, right up to 20 kHz: the filter is built to
+keep the shape of its analog original near the top of the range, where
+digital filters usually fall away ever faster. Switching it
 while playing crossfades rather than clicks.
 
 ### Peak: a resonant bump

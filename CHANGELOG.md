@@ -23,8 +23,8 @@
 - **New: a Filter.** A resonant low-pass on the crushed sound, before Mix,
   in a fourth panel with its own picture: **Cutoff** (20 Hz to 20 kHz),
   **Peak** (up to +24 dB at the cutoff, never self-oscillating) and **Slope**
-  (12, 24 or 48 dB per octave). Off by default, so existing sets sound as
-  they did. Every change glides, the slope included. Drag the dot on its
+  (12, 24 or 48 dB per octave), true to its analog shape up to 20 kHz. Off
+  by default, so existing sets sound as they did. Every change glides, the slope included. Drag the dot on its
   curve: sideways for Cutoff, up and down for Peak. On the Move it is the
   second knob page.
 - **The Amplitude Crush picture shows the whole range.** It no longer zooms

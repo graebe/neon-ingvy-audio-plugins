@@ -120,7 +120,49 @@ impl Lowpass {
  * ALL THREE SLOPES RUN, every sample, so moving Slope is a crossfade between
  * them (lib.rs), never a click -- seven sections a channel, a few hundred
  * nanoseconds a sample.
+ *
+ * MATCHED SECTIONS, NOT BILINEAR ONES. The bilinear transform squeezes the
+ * whole axis into 0..Nyquist and puts a zero at Nyquist, so near the top a
+ * low-pass falls ever faster to nothing: at 48 kHz a 24 dB filter at 14 kHz
+ * fell 60 dB in half an octave, and its peak narrowed -- a slope it did not
+ * say, and heard as such. Each section here is matched to its analog one
+ * instead (Vicanek, "Matched Second Order Digital Filters", 2016): poles by
+ * the impulse invariance, exact; zeros chosen so the magnitude is the analog
+ * one at DC, at the corner and at Nyquist. The cascades then follow the
+ * analog Butterworth within about 2 dB from 20 Hz to 20 kHz at 44.1 kHz and
+ * up, the corner's gain still exactly Q -- so Peak still rises by exactly
+ * Peak -- for the same cost a sample and no latency. They also take a cutoff
+ * up to 0.49·fs, so 20 kHz is 20 kHz at 44.1 kHz too.
  */
+
+/// How near Nyquist the Filter's cutoff may sit: matched sections stay
+/// stable and true there.
+pub const TONE_MAX_CUTOFF_RATIO: f64 = 0.49;
+
+/// A low-pass section matched to the analog s^2 + s/Q + 1 at `hz` (Vicanek
+/// 2016, the low-pass): poles e^(s·T), and b0, b1 (b2 = 0) giving the analog
+/// magnitude at DC and at `hz` -- where it is Q -- and close to it at
+/// Nyquist. `hz` is inside the Filter's range (the caller's clamp); an absurd
+/// rate passes the signal, as [`section`] does.
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard")]
+fn matched_low_pass(hz: f64, sample_rate: f64, q: f64) -> Coefficients<f64> {
+    if !(sample_rate > 0.0 && hz > 0.0 && q > 0.0) {
+        return PASS;
+    }
+    let w0 = core::f64::consts::TAU * hz / sample_rate;
+    let zeta = 0.5 / q;
+    let decay = (-zeta * w0).exp();
+    let ring = if zeta <= 1.0 { ((1.0 - zeta * zeta).sqrt() * w0).cos() } else { ((zeta * zeta - 1.0).sqrt() * w0).cosh() };
+    let (a1, a2) = (-2.0 * decay * ring, decay * decay);
+    let phi1 = (0.5 * w0).sin().powi(2);
+    let phi0 = 1.0 - phi1;
+    let phi2 = 4.0 * phi0 * phi1;
+    let (big_a0, big_a1, big_a2) = ((1.0 + a1 + a2).powi(2), (1.0 - a1 + a2).powi(2), -4.0 * a2);
+    let r1 = (big_a0 * phi0 + big_a1 * phi1 + big_a2 * phi2) * q * q;
+    let big_b1 = ((r1 - big_a0 * phi0) / phi1).max(0.0);
+    let b0 = 0.5 * (big_a0.sqrt() + big_b1.sqrt());
+    Coefficients { a1, a2, b0, b1: big_a0.sqrt() - b0, b2: 0.0 }
+}
 
 /// The Qs of Butterworth sections: one for 12 dB, two for 24, four for 48,
 /// the sharpest last.
@@ -137,10 +179,11 @@ pub struct ToneCoefficients {
 
 impl ToneCoefficients {
     pub fn new(hz: f64, peak_db: f64, sample_rate: f64) -> Self {
-        let hz = usable_cutoff(hz, sample_rate);
+        let top = TONE_MAX_CUTOFF_RATIO * sample_rate;
+        let hz = if hz.is_nan() { top } else { hz.clamp(MIN_CUTOFF_HZ.min(top), top) };
         let k = if peak_db.is_nan() { 1.0 } else { 10f64.powf(peak_db.max(0.0) / 20.0) };
         fn chain<const N: usize>(qs: [f64; N], hz: f64, k: f64, sample_rate: f64) -> [Coefficients<f64>; N] {
-            core::array::from_fn(|i| section(Type::LowPass, hz, sample_rate, if i == N - 1 { qs[i] * k } else { qs[i] }))
+            core::array::from_fn(|i| matched_low_pass(hz, sample_rate, if i == N - 1 { qs[i] * k } else { qs[i] }))
         }
         ToneCoefficients {
             c12: chain(BUTTERWORTH_2, hz, k, sample_rate),
