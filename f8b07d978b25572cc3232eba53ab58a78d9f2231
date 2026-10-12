@@ -1,1 +1,3 @@
 {"tier":"product","products":["bit-crusher"],"sha":"f8b07d978b25572cc3232eba53ab58a78d9f2231","date":"2026-10-12T18:23:26.498Z","host":"MacBookPro.localdomain","rustc":"rustc 1.99.0 (b940084d7 2026-09-28)","result":"pass","results":{"tests":48,"duration_s":331,"build_type":"Release","archs":"arm64;x86_64","gaps":0,"waived":"none","untested":"none"}}
+
+{"tier":"product","products":["side-chain"],"sha":"f8b07d978b25572cc3232eba53ab58a78d9f2231","date":"2026-10-12T18:31:01.799Z","host":"MacBookPro.localdomain","rustc":"rustc 1.99.0 (b940084d7 2026-09-28)","result":"pass","results":{"tests":50,"duration_s":454,"build_type":"Release","archs":"arm64;x86_64","gaps":0,"waived":"none","untested":"none"}}
