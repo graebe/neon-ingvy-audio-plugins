@@ -136,6 +136,46 @@ TEST_CASE ("editor frame: the model's rings move the Ground, broken by the conte
     CHECK_FALSE (rig.frame.ground().isMoving());
 }
 
+TEST_CASE ("editor frame: the Ground moves under the content without repainting it")
+{
+    /* The content and the bar are one buffered layer: a Ground frame blits
+     * it, and only a control that changes paints again. */
+    struct Counted final : public juce::Component
+    {
+        int paints = 0;
+        void paint (juce::Graphics& g) override
+        {
+            ++paints;
+            g.fillAll (juce::Colours::transparentBlack);
+        }
+    };
+    Rig rig;
+    Counted content;
+    rig.frame.setContent (&content);
+    juce::Image window (juce::Image::ARGB, rig.frame.getWidth(), rig.frame.getHeight(), true);
+    const auto render = [&]
+    {
+        juce::Graphics g (window);
+        rig.frame.paintEntireComponent (g, true);
+    };
+    render();
+    REQUIRE (content.paints == 1);
+
+    rig.frame.ground().trigger (1.0f);
+    for (int k = 0; k < 30; ++k)
+    {
+        rig.frames (1);
+        render();
+    }
+    CHECK (rig.frame.ground().isMoving());
+    CHECK (content.paints == 1);
+
+    /* A control that changes is painted again. */
+    content.repaint();
+    render();
+    CHECK (content.paints == 2);
+}
+
 TEST_CASE ("editor frame: the bar shows the info line, then an outcome for six seconds")
 {
     Rig rig;

@@ -151,7 +151,8 @@ public:
 
 private:
     /* Above the Ground, the window's size: the content, the bar, and their
-     * light over the Ground. */
+     * light over the Ground. Buffered to an image, so a Ground frame below it
+     * blits it instead of repainting every control and its glow. */
     class Layer final : public juce::Component
     {
     public:
