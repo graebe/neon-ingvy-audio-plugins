@@ -68,6 +68,9 @@ const JUCE_PLUGINS = {
   'NI Bit-Crusher': ['plugins/bit-crusher/BitCrusher.h', 'plugins/bit-crusher/BitCrusher.cpp', /^run\s*\(/],
   /* Its block is the engine taken, pushed, sung through and given back. */
   'NI Vocalize': ['plugins/vocalize/Vocalize.h', 'plugins/vocalize/Vocalize.cpp', /vz_shell_begin/],
+  /* Its block is the engine taken, every parameter pushed, filtered and given back. */
+  'NI Filter Designer': ['plugins/filter-designer/FilterDesigner.h', 'plugins/filter-designer/FilterDesigner.cpp',
+    /fd_shell_begin/],
 };
 
 test('the ground is fed no audio, by the shell or by any product', () => {

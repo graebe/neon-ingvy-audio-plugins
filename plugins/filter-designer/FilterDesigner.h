@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+/*
+ * NI Filter Designer: a filter design tool you play as an equaliser.
+ *
+ * THE ENGINE IS RUST (engines/filter-designer): the sixteen nodes, the
+ * isolator, the parameter table and its text, and the picture the editor
+ * draws. This file is the shell around it, and does what a shell does:
+ *
+ *   parameters    declared from the engine's table (fd_param_*): 174 of them,
+ *                 numbers printed and read in the engine's words, choices of
+ *                 its labels. The IDs are the engine's keys, the state the
+ *                 default ni::Processor one (every parameter by its ID)
+ *   the buses     mono in to mono out, or stereo to stereo; no MIDI, no
+ *                 sidechain; no latency, ever (minimum phase)
+ *   a block       the shell taken (fd_shell_begin), every parameter pushed
+ *                 (cheap when unchanged), the channels processed in place, the
+ *                 shell given back -- which publishes the analyzer's rings
+ *                 when one is due
+ *   activation    prepareToPlay posts the rate and a reset, so a host that
+ *                 stopped and started the plugin hears nothing it held before
+ *   the editor    reads the picture through the Model, on the message thread:
+ *                 fd_shell_read designs it from the values the host holds,
+ *                 so what is drawn is what plays; the analyzer's rings are
+ *                 kept only while a window is open
+ *
+ * THE PANIC. On the Move, CC 120/123 reset the engine (fd-move); a VST3 in
+ * Live is told to start afresh by being deactivated, which prepareToPlay
+ * answers with the same reset.
+ *
+ * The audio thread allocates nothing: the engine does not, and nothing here
+ * does on its way there (tests/filter-designer/fd_rt.cpp holds it to that).
+ */
+#pragma once
+
+#include "GroundClock.h"
+#include "Model.h"
+#include "Processor.h"
+#include "fd_shell.h"
+
+#include <array>
+#include <atomic>
+#include <memory>
+
+namespace ni::fd
+{
+
+class Processor final : public ni::Processor,
+                        public Model
+{
+public:
+    static constexpr int paramCount = param::count;
+
+    Processor();
+    ~Processor() override;
+
+    bool isBusesLayoutSupported (const BusesLayout&) const override;
+    void releaseResources() override {}
+
+    bool hasEditor() const override { return true; }
+    juce::AudioProcessorEditor* createEditor() override;
+    void editorOpened() override;
+    void editorClosed() override;
+
+    /* A parameter's value in its own unit, as the engine takes it. Any
+     * thread. */
+    double plain (int index) const;
+
+    /* ---- the Model, for the editor: message thread */
+    int numParameters() const override { return paramCount; }
+    juce::RangedAudioParameter& parameter (int index) override { return *params[(size_t) index]; }
+    int takeRings (float* strengths, int capacity) override;
+    bool motion() const override;
+    void setMotion (bool on) override;
+    bool bipolar (int index) const override;
+    const Picture& picture (int lane) override;
+    unsigned typeUses (int type, int order) const override;
+    int typeMaxOrder (int type) const override;
+    bool familyUsesRipple (int family) const override;
+    bool familyUsesStopband (int family) const override;
+    double qForEdge (double freq, double edgeHz) const override;
+    int typeForNew (double hz) const override;
+
+protected:
+    /* The shell's prepareToPlay calls this first (ni::Processor). */
+    void prepare (double sampleRate, int maximumBlockSize) override;
+    void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+
+private:
+    struct ShellDeleter
+    {
+        void operator() (FdShell* s) const { fd_shell_destroy (s); }
+    };
+    std::unique_ptr<FdShell, ShellDeleter> shell;
+    std::array<juce::RangedAudioParameter*, paramCount> params {};
+    ni::GroundClock beat;
+
+    /* The picture as fd_shell_read writes it, and as the editor takes it. */
+    std::unique_ptr<FdPicture> published;
+    Picture latest;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Processor)
+};
+
+} // namespace ni::fd

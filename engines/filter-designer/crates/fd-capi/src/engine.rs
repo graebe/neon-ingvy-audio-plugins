@@ -327,3 +327,20 @@ pub extern "C" fn fd_family_uses_ripple(family: i32) -> bool {
 pub extern "C" fn fd_family_uses_stopband(family: i32) -> bool {
     ni_filter::Family::from_index(family.max(0) as usize).uses_stopband()
 }
+
+/// The Q whose -3 dB edge sits at `edge_hz` for a centre at `freq` (a Bell, a
+/// band pass, a notch): what dragging an edge sets. Any thread; pure.
+#[no_mangle]
+pub extern "C" fn fd_q_for_edge(freq: f64, edge_hz: f64) -> f64 {
+    if freq > 0.0 && edge_hz > 0.0 {
+        fd_core::design::q_for_edge(freq, edge_hz)
+    } else {
+        core::f64::consts::FRAC_1_SQRT_2
+    }
+}
+
+/// The type (0 Empty .. 9 Tilt) a filter added at `hz` is. Any thread; pure.
+#[no_mangle]
+pub extern "C" fn fd_type_for_new(hz: f64) -> i32 {
+    fd_core::design::shape_for_new(hz) as i32
+}

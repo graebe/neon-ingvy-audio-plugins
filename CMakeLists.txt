@@ -64,6 +64,7 @@ ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi)
 ni_add_rust_engine(cd_engine CRATE cd-capi LIB cd_capi)
 ni_add_rust_engine(bc_engine CRATE bc-capi LIB bc_capi)
 ni_add_rust_engine(vz_engine CRATE vz-capi LIB vz_capi)
+ni_add_rust_engine(fd_engine CRATE fd-capi LIB fd_capi)
 # The ground's beat clock and the shell plumbing (command queue, snapshot,
 # handoff) belong to no product: their C ABI rides inside every product's
 # archive, so they are headers here.
@@ -105,7 +106,7 @@ include(cmake/NiJucePlugin.cmake)
 # THE PRODUCTS, the one list a new product joins: its plugin
 # (plugins/<product>), its editor library and its tests (tests/<product>,
 # when it has a directory of its own there).
-set(NI_PRODUCTS trance-gate spectrogram listen-in side-chain chord-detector bit-crusher vocalize)
+set(NI_PRODUCTS trance-gate spectrogram listen-in side-chain chord-detector bit-crusher vocalize filter-designer)
 foreach(product IN LISTS NI_PRODUCTS)
     ni_ui_add_editor(${product})
 endforeach()

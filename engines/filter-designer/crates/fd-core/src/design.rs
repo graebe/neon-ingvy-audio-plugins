@@ -221,3 +221,47 @@ pub fn globals_of(values: &[f64]) -> Globals {
         adaptive: if values[Param::AdaptiveQ.index()] >= 0.5 { 1.0 } else { 0.0 },
     }
 }
+
+/// WHERE A NODE'S HANDLE SITS on the picture, (Hz, dB): a Bell's and a
+/// shelf's at Freq and its Gain times Scale; a tilt's, a band pass's, a
+/// notch's and an all-pass's at Freq on 0 dB; a cut's on its own curve at
+/// Freq (`cascade`, the node's design at `fs`). `None` for Empty.
+pub fn handle(s: &Settings, g: Globals, cascade: &ni_filter::Cascade, fs: f64) -> Option<(f64, f64)> {
+    let db = match s.shape {
+        Shape::Empty => return None,
+        Shape::Bell | Shape::LowShelf | Shape::HighShelf => s.gain_db * g.scale,
+        Shape::LowCut | Shape::HighCut => cascade.db(s.freq.min(0.4999 * fs), fs),
+        Shape::Tilt | Shape::BandPass | Shape::Notch | Shape::AllPass => 0.0,
+    };
+    Some((s.freq, db))
+}
+
+/// A Bell's, a band pass's or a notch's -3 dB edges in Hz, below and above
+/// Freq, for its Q (`q`): Freq · 2^(∓N/2), N = 2·asinh(1/2Q)/ln 2 octaves.
+/// `None` for a shape whose Q is no width.
+pub fn edges(s: &Settings) -> Option<(f64, f64)> {
+    if !matches!(s.shape, Shape::Bell | Shape::BandPass | Shape::Notch) {
+        return None;
+    }
+    let half = (1.0 / (2.0 * s.q)).asinh() / core::f64::consts::LN_2;
+    Some((s.freq * (-half).exp2(), s.freq * half.exp2()))
+}
+
+/// The Q whose edge sits at `edge_hz` for a centre at `freq`: the inverse of
+/// [`edges`], 0.1..40.
+pub fn q_for_edge(freq: f64, edge_hz: f64) -> f64 {
+    let octaves = (2.0 * (edge_hz / freq).log2().abs()).max(0.05);
+    (1.0 / (2.0 * (octaves * core::f64::consts::LN_2 / 2.0).sinh())).clamp(0.1, 40.0)
+}
+
+/// What a filter added at `hz` is: a Low Cut below 30 Hz, a High Cut above
+/// 15 kHz, a Bell between them.
+pub fn shape_for_new(hz: f64) -> Shape {
+    if hz < 30.0 {
+        Shape::LowCut
+    } else if hz > 15_000.0 {
+        Shape::HighCut
+    } else {
+        Shape::Bell
+    }
+}

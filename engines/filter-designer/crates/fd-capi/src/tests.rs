@@ -134,6 +134,15 @@ mod picture {
         let k5 = at(&s, 5000.0);
         assert!((s.total_db[k5] - (s.node_db[0][k5] + s.node_db[1][k5] - 2.0)).abs() < 1e-4);
         assert!(s.node_db[1][k5] < -8.0);
+        /* The handles and edges are the engine's. */
+        assert_eq!((p.handle_hz[0], p.handle_db[0]), (1000.0, 6.0));
+        assert!(p.handle_hz[2].is_nan());
+        let (lo, hi) = (p.edge_hz[0][0], p.edge_hz[0][1]);
+        assert!(lo < 1000.0 && hi > 1000.0 && ((lo * hi).sqrt() - 1000.0).abs() < 1e-9);
+        assert!((fd_q_for_edge(1000.0, hi) - core::f64::consts::FRAC_1_SQRT_2).abs() < 1e-3);
+        assert_eq!(fd_type_for_new(20.0), 4);
+        assert_eq!(fd_type_for_new(500.0), 1);
+        assert_eq!(fd_type_for_new(18_000.0), 5);
         /* Bypassed: drawn alone, not in the total. */
         v[idx(0, 1) as usize] = 0.0;
         let p = read(shell, &v, FD_LANE_LEFT);

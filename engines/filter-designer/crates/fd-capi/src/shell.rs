@@ -40,7 +40,7 @@ than a flicker.
 */
 
 use crate::{FdCore, FD_NODES};
-use fd_core::design::{channel_of, design, globals_of, is_heard, settings_of, Channel, Globals, Settings, Shape};
+use fd_core::design::{channel_of, design, edges, globals_of, handle, is_heard, settings_of, Channel, Globals, Settings, Shape};
 use fd_core::{isolator, Param, PARAM_COUNT, RING};
 use ni_filter::Complex64;
 use realfft::num_complex::Complex32;
@@ -80,6 +80,12 @@ pub struct FdPicture {
     pub node_db: [[f32; FD_POINTS]; FD_NODES],
     /// Whether the rate clamps a node's edge (its band narrows).
     pub node_clamped: [bool; FD_NODES],
+    /// Where each node's handle sits, in Hz and dB (design::handle); NaN
+    /// for an Empty node.
+    pub handle_hz: [f64; FD_NODES],
+    pub handle_db: [f64; FD_NODES],
+    /// A Bell's, band pass's or notch's -3 dB edges, in Hz; NaN for others.
+    pub edge_hz: [[f64; 2]; FD_NODES],
     /// Everything heard, in the lane asked for: nodes, isolator, Output.
     pub total_db: [f32; FD_POINTS],
     /// The isolator's three bands, each at its level, and their sum.
@@ -100,6 +106,9 @@ impl FdPicture {
             hz: [0.0; FD_POINTS],
             node_db: [[0.0; FD_POINTS]; FD_NODES],
             node_clamped: [false; FD_NODES],
+            handle_hz: [f64::NAN; FD_NODES],
+            handle_db: [f64::NAN; FD_NODES],
+            edge_hz: [[f64::NAN; 2]; FD_NODES],
             total_db: [0.0; FD_POINTS],
             iso_db: [[0.0; FD_POINTS]; 3],
             iso_total_db: [0.0; FD_POINTS],
@@ -188,6 +197,8 @@ struct Curve {
     from: (Settings, Globals, f64),
     db: [f32; FD_POINTS],
     clamped: bool,
+    handle: Option<(f64, f64)>,
+    edges: Option<(f64, f64)>,
 }
 
 /// The editor thread's half: the analyzer's transform and what it keeps,
@@ -295,14 +306,16 @@ impl Reader {
         if self.curves[slot].as_ref().is_none_or(|c| c.from != from) {
             let mut db = [0.0f32; FD_POINTS];
             let mut clamped = false;
+            let mut at = None;
             if s.shape != Shape::Empty {
                 let (c, cl) = design(&s, None, g, fs);
                 clamped = cl;
                 for (d, hz) in db.iter_mut().zip(self.hz.iter()) {
                     *d = c.db(hz.min(0.4999 * fs), fs) as f32;
                 }
+                at = handle(&s, g, &c, fs);
             }
-            self.curves[slot] = Some(Curve { from, db, clamped });
+            self.curves[slot] = Some(Curve { from, db, clamped, handle: at, edges: edges(&s) });
         }
         self.curves[slot].as_ref().expect("just made")
     }
@@ -329,6 +342,8 @@ fn draw(reader: &mut Reader, values: &[f64], lane: u32, fs: f64, out: &mut FdPic
         let c = reader.curve(values, slot, fs);
         out.node_db[slot] = c.db;
         out.node_clamped[slot] = c.clamped;
+        (out.handle_hz[slot], out.handle_db[slot]) = c.handle.unwrap_or((f64::NAN, f64::NAN));
+        out.edge_hz[slot] = c.edges.map_or([f64::NAN; 2], |(lo, hi)| [lo, hi]);
         if heard {
             for (t, d) in out.total_db.iter_mut().zip(c.db.iter()) {
                 *t += *d;
