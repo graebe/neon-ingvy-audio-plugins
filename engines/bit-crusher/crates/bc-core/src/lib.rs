@@ -55,11 +55,11 @@ pub mod params;
 pub mod quantize;
 
 use core::fmt::Write;
-use filters::{DcBlock, Lowpass, LowpassCoefficients, PreCoefficients, PreFilter};
+use filters::{DcBlock, Lowpass, LowpassCoefficients, PreCoefficients, PreFilter, Tone, ToneCoefficients};
 use hold::{BandLimitedHold, Hold};
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
-pub use params::{Info, Kind, Param, Travel, Unit, PARAM_COUNT, TOGGLE_LABELS};
+pub use params::{Info, Kind, Param, Travel, Unit, PARAM_COUNT, REFRESH_LABELS, REFRESH_PERIOD_MS, SLOPE_LABELS, TOGGLE_LABELS};
 use quantize::{Grid, Shape};
 
 pub use blep::LATENCY;
@@ -105,6 +105,12 @@ struct Glides {
     output: f64,
     /// 1 while the crusher is heard, 0 while the host bypasses it.
     active: f64,
+    /// The filter: in or out, log2 of its cutoff, its peak in dB, and one
+    /// weight a slope -- 1 on the chosen one -- so Slope crossfades.
+    filter: f64,
+    log_cutoff: f64,
+    peak: f64,
+    slope: [f64; 3],
 }
 
 impl Glides {
@@ -123,6 +129,10 @@ impl Glides {
             mix: at(Param::Mix) / 100.0,
             output: db_to_amp(at(Param::Output)),
             active: active as i32 as f64,
+            filter: at(Param::Filter),
+            log_cutoff: at(Param::Cutoff).log2(),
+            peak: at(Param::Peak),
+            slope: core::array::from_fn(|i| (at(Param::Slope) as usize == i) as i32 as f64),
         }
     }
 
@@ -140,7 +150,13 @@ impl Glides {
             (&mut self.mix, t.mix),
             (&mut self.output, t.output),
             (&mut self.active, t.active),
+            (&mut self.filter, t.filter),
+            (&mut self.log_cutoff, t.log_cutoff),
+            (&mut self.peak, t.peak),
         ] {
+            *x = glide(*x, target, c);
+        }
+        for (x, target) in self.slope.iter_mut().zip(t.slope) {
             *x = glide(*x, target, c);
         }
     }
@@ -162,6 +178,8 @@ struct Now {
     mix: f64,
     output: f64,
     active: f64,
+    filter: f64,
+    slope: [f64; 3],
 }
 
 impl Now {
@@ -215,6 +233,8 @@ impl Delay {
 struct Channel {
     pre: PreFilter,
     post: Lowpass,
+    /// The resonant low-pass after the crusher (the Filter panel).
+    tone: Tone,
     dc: DcBlock,
     /// The raw hold, its output delayed to the band-limited hold's.
     hold: Hold,
@@ -228,13 +248,42 @@ struct Channel {
     exact_dither_rng: fastrand::Rng,
     /// The input, delayed as the crushed signal is.
     dry_late: Delay,
+    /// What the last sample did, for an editor's pictures.
+    probe: Probe,
+}
+
+/// WHAT ONE SAMPLE DID, for an editor's pictures of the two discretizations:
+/// the level the quantiser was given -- after Drive and the pre-filter, so
+/// Drive is in it: the axis `transfer` at 0 dB draws the staircase on, where
+/// a staircase always runs along the diagonal and Drive moves the signal up
+/// it -- the level it became (Dither in it), and whether the hold took that
+/// level. Bypassed, the input passes and nothing is taken.
+///
+/// With Anti-Alias on, the band-limited hold takes its levels at exact
+/// instants between samples, and a little later than the plain one (it reads
+/// HALF_WIDTH samples ahead): `exact_take` is the instant of the first level
+/// it took during this sample, in samples relative to this one (negative,
+/// about HALF_WIDTH back), or None.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Probe {
+    pub input: f64,
+    pub level: f64,
+    pub took: bool,
+    pub exact_take: Option<f64>,
 }
 
 impl Channel {
-    fn new(index: usize, pre: &PreCoefficients, post: &LowpassCoefficients, sample_rate: f64) -> Channel {
+    fn new(
+        index: usize,
+        pre: &PreCoefficients,
+        post: &LowpassCoefficients,
+        tone: &ToneCoefficients,
+        sample_rate: f64,
+    ) -> Channel {
         Channel {
             pre: PreFilter::new(pre),
             post: Lowpass::new(post),
+            tone: Tone::new(tone),
             dc: DcBlock::new(sample_rate),
             hold: Hold::default(),
             raw_late: Delay::default(),
@@ -244,6 +293,7 @@ impl Channel {
             exact_hold_rng: fastrand::Rng::with_seed(HOLD_SEEDS[index]),
             exact_dither_rng: fastrand::Rng::with_seed(DITHER_SEEDS[index]),
             dry_late: Delay::default(),
+            probe: Probe::default(),
         }
     }
 
@@ -253,6 +303,7 @@ impl Channel {
         self.pre.reset();
         self.post.reset();
         self.dc.reset();
+        self.tone.reset();
         self.hold.reset();
         self.raw_late = Delay::default();
         self.exact.reset();
@@ -275,6 +326,7 @@ impl Channel {
         let dry = if dry.is_finite() { dry } else { 0.0 };
         let dry_late = self.dry_late.push(dry);
         if now.active <= 0.0 {
+            self.probe = Probe { input: dry, level: dry, took: false, exact_take: None };
             return dry_late;
         }
 
@@ -286,15 +338,19 @@ impl Channel {
          * is the same as stepping only what it takes. */
         let level = now.level(x, &mut self.dither_rng);
         let raw = self.hold.step(level, now.step, now.jitter, &mut self.hold_rng);
+        self.probe = Probe { input: x, level, took: self.hold.took(), exact_take: None };
         let raw = self.raw_late.push(raw);
+        let mut exact_take = None;
         let held = if now.anti_alias > 0.0 {
             let rng = &mut self.exact_dither_rng;
             let exact = self.exact.step(x, now.step, now.jitter, &mut self.exact_hold_rng, |v| now.level(v, rng));
+            exact_take = self.exact.first_take();
             fade(raw, exact, now.anti_alias)
         } else {
             self.exact.follow(x, self.hold.held(), self.hold.phase());
             raw
         };
+        self.probe.exact_take = exact_take;
 
         let smoothed = self.post.run(held);
         let wet = fade(held, smoothed, now.post);
@@ -303,6 +359,13 @@ impl Channel {
          * phase. The blocker runs either way, ready for the switch. */
         let blocked = self.dc.run(wet);
         let wet = fade(wet, blocked, now.mid_rise);
+
+        /* THE FILTER, on the crushed signal only, so Mix still brings the dry
+         * one in clean. All three slopes run; their weights crossfade. Off,
+         * it still runs, ready for the switch. */
+        let (y12, y24, y48) = self.tone.run(wet);
+        let toned = y12 * now.slope[0] + y24 * now.slope[1] + y48 * now.slope[2];
+        let wet = fade(wet, toned, now.filter);
 
         let heard = (dry_late * (1.0 - now.mix) + wet * now.mix) * now.output;
         fade(dry_late, heard, now.active)
@@ -328,9 +391,16 @@ pub struct Engine {
     post_coefficients: LowpassCoefficients,
     pre_hz: f64,
     post_hz: f64,
+    /// The filter's coefficients, and the cutoff and peak they were made for.
+    tone_coefficients: ToneCoefficients,
+    tone_hz: f64,
+    tone_peak: f64,
     channels: [Channel; 2],
     /// Whether the host hears the crusher (set_active).
     active: bool,
+    /// Samples processed since a parameter of the sound last changed: what
+    /// says an editor's look was made with the settings it shows.
+    settled: u32,
 }
 
 impl Engine {
@@ -341,6 +411,8 @@ impl Engine {
         let values = Param::ALL.map(Param::default_value);
         let targets = Glides::targets(&values, true);
         let (pre_hz, post_hz) = cutoffs(&targets);
+        let (tone_hz, tone_peak) = (targets.log_cutoff.exp2(), targets.peak);
+        let tone_coefficients = ToneCoefficients::new(tone_hz, tone_peak, sample_rate);
         let pre_coefficients = PreCoefficients::new(pre_hz, sample_rate);
         let post_coefficients = LowpassCoefficients::new(post_hz, sample_rate);
         Engine {
@@ -356,9 +428,21 @@ impl Engine {
             post_coefficients,
             pre_hz,
             post_hz,
-            channels: [0, 1].map(|i| Channel::new(i, &pre_coefficients, &post_coefficients, sample_rate)),
+            tone_coefficients,
+            tone_hz,
+            tone_peak,
+            channels: [0, 1].map(|i| Channel::new(i, &pre_coefficients, &post_coefficients, &tone_coefficients, sample_rate)),
             active: true,
+            settled: 0,
         }
+    }
+
+    /// Samples processed since a parameter that shapes an editor's looks --
+    /// the quantiser's and the hold's (Param::shapes_the_looks) -- last
+    /// changed, saturating. A look whose window is shorter was made with
+    /// these settings throughout.
+    pub fn settled(&self) -> u32 {
+        self.settled
     }
 
     /// How late the output is, in samples: always LATENCY.
@@ -434,7 +518,11 @@ impl Engine {
         if v.is_nan() {
             return;
         }
-        self.values[p as usize] = p.clamp(v);
+        let v = p.clamp(v);
+        if v != self.values[p as usize] && p.shapes_the_looks() {
+            self.settled = 0;
+        }
+        self.values[p as usize] = v;
         self.targets = Glides::targets(&self.values, self.active);
     }
 
@@ -494,6 +582,15 @@ impl Engine {
                 ch.post.retune(&self.post_coefficients);
             }
         }
+        let (tone_hz, tone_peak) = (self.now.log_cutoff.exp2(), self.now.peak);
+        if moved(tone_hz, self.tone_hz) || force || (tone_peak - self.tone_peak).abs() > 1e-3 {
+            self.tone_hz = tone_hz;
+            self.tone_peak = tone_peak;
+            self.tone_coefficients = ToneCoefficients::new(tone_hz, tone_peak, self.sample_rate);
+            for ch in &mut self.channels {
+                ch.tone.retune(&self.tone_coefficients);
+            }
+        }
     }
 
     /// One sample of every glide, and what the channels use for it.
@@ -509,7 +606,11 @@ impl Engine {
             if self.now.shape != before.shape {
                 self.shape = Shape::new(self.now.shape);
             }
-            if self.now.log_rate != before.log_rate || self.now.post_octave != before.post_octave {
+            if self.now.log_rate != before.log_rate
+                || self.now.post_octave != before.post_octave
+                || self.now.log_cutoff != before.log_cutoff
+                || self.now.peak != before.peak
+            {
                 self.retune(false);
             }
         }
@@ -529,6 +630,8 @@ impl Engine {
             mix: n.mix,
             output: n.output,
             active: n.active,
+            filter: n.filter,
+            slope: n.slope,
         }
     }
 
@@ -549,10 +652,25 @@ impl Engine {
     /// One block of host floats, in place: `left`, and `right` for a stereo
     /// track. A right channel shorter than the left is processed as far as
     /// it goes.
-    pub fn process_f32(&mut self, left: &mut [f32], mut right: Option<&mut [f32]>) {
+    pub fn process_f32(&mut self, left: &mut [f32], right: Option<&mut [f32]>) {
+        self.process_f32_probed(left, right, |_, _| {});
+    }
+
+    /// `process_f32`, telling `probe` what each left-channel sample did (its
+    /// index in the block, and the [`Probe`]): the editor's pictures, kept by
+    /// the caller. Inlined, so `process_f32`'s empty probe costs nothing.
+    #[inline]
+    pub fn process_f32_probed(
+        &mut self,
+        left: &mut [f32],
+        mut right: Option<&mut [f32]>,
+        mut probe: impl FnMut(usize, Probe),
+    ) {
         for (i, l) in left.iter_mut().enumerate() {
             let now = self.advance();
             *l = self.channels[0].run(f64::from(*l), &now) as f32;
+            probe(i, self.channels[0].probe);
+            self.settled = self.settled.saturating_add(1);
             if let Some(r) = right.as_deref_mut().and_then(|r| r.get_mut(i)) {
                 *r = self.channels[1].run(f64::from(*r), &now) as f32;
             }
@@ -567,6 +685,7 @@ impl Engine {
         let to_i16 = |y: f64| (y * SCALE).round().clamp(-SCALE, SCALE - 1.0) as i16;
         for frame in buf.as_chunks_mut::<2>().0.iter_mut().take(frames) {
             let now = self.advance();
+            self.settled = self.settled.saturating_add(1);
             let l = self.channels[0].run(f64::from(frame[0]) / SCALE, &now);
             let r = self.channels[1].run(f64::from(frame[1]) / SCALE, &now);
             frame[0] = to_i16(l);
@@ -604,39 +723,11 @@ pub fn transfer(drive_db: f64, bits: f64, shape_pct: f64, mid_rise: bool, x: f64
     shape.expand(grid.quantize(shape.compress(x)))
 }
 
-/// How many steps a plot of the staircase shows at most: enough to read as a
-/// staircase, few enough that each is several pixels wide in an editor's well.
-pub const SPAN_STEPS: usize = 16;
-
-/// THE INPUT RANGE A PLOT OF THE STEPS SHOULD SHOW: the half-width `r` of the
-/// window -r..r, a power of two from 1 down, that holds at most [`SPAN_STEPS`]
-/// steps of the staircase [`transfer`] draws. At 8 bits the whole -1..1
-/// holds 256 steps, each narrower than a pixel, and the plot is a diagonal;
-/// zoomed to 1/16 of full scale, 16 steps fill it.
-///
-/// The steps are COUNTED on the engine's own curve rather than worked out from
-/// Bits, so Drive (which stretches them), Shape (which bunches them near zero)
-/// and Mid-Rise are all in the answer. Never below 2^-16, where even 16 bits
-/// shows its steps. A NaN setting is the parameter's default, as in `transfer`.
-pub fn transfer_span(drive_db: f64, bits: f64, shape_pct: f64, mid_rise: bool) -> f64 {
-    const PROBES: usize = 1024;
-    let steps_within = |r: f64| {
-        let mut last = transfer(drive_db, bits, shape_pct, mid_rise, -r);
-        let mut steps = 0;
-        for i in 1..PROBES {
-            let y = transfer(drive_db, bits, shape_pct, mid_rise, -r + 2.0 * r * i as f64 / (PROBES - 1) as f64);
-            if y != last {
-                steps += 1;
-                last = y;
-            }
-        }
-        steps
-    };
-    let mut r = 1.0;
-    while r > 1.0 / 65_536.0 && steps_within(r) > SPAN_STEPS {
-        r *= 0.5;
-    }
-    r
+/// How many levels the staircase has at `bits`, mid-tread or mid-rise
+/// (quantize.rs: 2^b + 1 and 2^b at whole Bits). A NaN Bits is its default.
+pub fn level_count(bits: f64, mid_rise: bool) -> u32 {
+    let bits = if bits.is_nan() { Param::Bits.default_value() } else { Param::Bits.clamp(bits) };
+    Grid::new(bits, mid_rise).levels()
 }
 
 #[cfg(test)]

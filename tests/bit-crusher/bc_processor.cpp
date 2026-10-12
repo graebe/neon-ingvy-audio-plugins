@@ -244,6 +244,21 @@ TEST_CASE ("a saved state reopens with every value exactly")
     CHECK (b.p.plain (param::rate) == 7000.0);
 }
 
+TEST_CASE ("Refresh is the window's: saved with the set, not automated, a period per choice")
+{
+    Instance a;
+    auto& r = a.p.parameter (param::refresh);
+    CHECK (r.getParameterID() == "refresh");
+    CHECK_FALSE (r.isAutomatable());
+    for (int i = 0; i < param::refresh; ++i)
+        CHECK_MESSAGE (a.p.parameter (i).isAutomatable(), a.p.parameter (i).getParameterID());
+    CHECK (r.getCurrentValueAsText() == "1/s");
+    CHECK (a.p.refreshPeriodMs() == 1000.0);
+    r.setValueNotifyingHost (0.0f);
+    CHECK (r.getCurrentValueAsText() == "Live");
+    CHECK (a.p.refreshPeriodMs() == 0.0);
+}
+
 TEST_CASE ("the model: the staircase now, the scope after audio, the bipolar knobs")
 {
     Instance a;
@@ -254,15 +269,19 @@ TEST_CASE ("the model: the staircase now, the scope after audio, the bipolar kno
     CHECK (out[2] == 0.0f);
     CHECK (out[4] == 1.0f);
     a.set (param::midRise, 1.0);
-    CHECK (a.p.steps (out, 5) == 1.0);
+    a.p.steps (out, 5);
     CHECK (out[2] == 0.5f);
-    /* 8 bits: the engine's window, a sixteenth of full scale, so the plot
-     * shows 16 steps rather than 256 narrower than a pixel. */
+    /* 8 bits: the whole range still, never zoomed. */
     a.set (param::midRise, 0.0);
     a.set (param::bits, 8.0);
-    CHECK (a.p.steps (out, 5) == 1.0 / 16.0);
-    CHECK (out[0] == -0.0625f);
-    CHECK (out[4] == 0.0625f);
+    a.p.steps (out, 5);
+    CHECK (out[0] == -1.0f);
+    CHECK (out[1] == -0.5f);
+    CHECK (out[4] == 1.0f);
+    /* The filter's gain at its cutoff: -3 dB, raised by Peak. */
+    a.set (param::cutoff, 1000.0);
+    a.set (param::peak, 12.0);
+    CHECK (a.p.filterGain (1000.0) == doctest::Approx (12.0 - 3.0103).epsilon (0.001));
 
     CHECK (a.p.scope().count() == 0);
     for (int b = 0; b < 20; ++b)
@@ -278,6 +297,20 @@ TEST_CASE ("the model: the staircase now, the scope after audio, the bipolar kno
     CHECK (s.triggered);
     CHECK (s.sampleRate == rate);
     CHECK (s.ms() > 10.0);
+    /* The same look in the quantiser, and the hold's window: Rate's default,
+     * 12 kHz at 48 kHz, sixteen periods of four samples. */
+    CHECK (s.ampIn.size() == (size_t) BC_SCOPE);
+    CHECK (s.ampOut.size() == (size_t) BC_SCOPE);
+    CHECK (s.holdTakes == 17);
+    CHECK (s.holdIn.size() == s.holdTook.size());
+    CHECK (s.holdIn.size() > 64);
+    CHECK (s.holdTook.front() == 1);
+    CHECK (s.holdAt.size() == s.holdIn.size());
+    /* The settings that made it, settled through all of it. */
+    CHECK (s.settings[param::bits] == a.p.setting (param::bits));
+    CHECK (s.settings[param::rate] == 12000.0);
+    CHECK (s.settled >= ni::bc::Scope::settledWindow);
+    CHECK (a.p.levelCount() == 257);
 
     CHECK (a.p.bipolar (param::drive));
     CHECK (a.p.bipolar (param::postOctave));

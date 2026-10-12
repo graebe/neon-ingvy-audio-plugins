@@ -11,6 +11,7 @@
 #include "ChildLights.h"
 #include "Info.h"
 #include "Luminous.h"
+#include "ParamChoiceKnob.h"
 #include "UvTokens.h"
 
 namespace ni::bc
@@ -22,6 +23,9 @@ constexpr int knobGap = (int) uv::tok::space::space2;
 constexpr int rowGap = (int) uv::tok::space::space3;
 constexpr int toggleGap = (int) uv::tok::space::space4;
 constexpr int rowH = (int) uv::tok::size::controlH;
+/* Refresh's words are short: "Live", "10/s", "4/s", "1/s". */
+constexpr int refreshLabelW = 56;
+constexpr int refreshFieldW = 72;
 
 /* What each panel holds, by parameter: three knobs, then its switches. */
 struct Group
@@ -32,12 +36,13 @@ struct Group
     std::vector<int> toggles;
 };
 
-const std::array<Group, 3>& groups()
+const std::array<Group, 4>& groups()
 {
-    static const std::array<Group, 3> g { {
-        { "Steps", info::stepsPanel, { param::bits, param::shape, param::dither }, { param::midRise, param::antiAlias } },
-        { "Hold", info::holdPanel, { param::rate, param::jitter, param::postOctave }, { param::preFilter, param::postFilter } },
+    static const std::array<Group, 4> g { {
+        { "Amplitude Crush", info::amplitudePanel, { param::bits, param::shape, param::dither }, { param::midRise, param::antiAlias } },
+        { "Time Crush", info::timePanel, { param::rate, param::jitter, param::postOctave }, { param::preFilter, param::postFilter } },
         { "Level", info::levelPanel, { param::drive, param::mix, param::output }, {} },
+        { "Filter", info::filterPanel, { param::cutoff, param::peak, param::slope }, { param::filter } },
     } };
     return g;
 }
@@ -66,6 +71,10 @@ Labels labelsOf (int index)
         case param::midRise:    return { "Mid-Rise", info::midRise, info::midRise };
         case param::antiAlias:  return { "Anti-Alias", info::antiAlias, info::antiAlias };
         case param::preFilter:  return { "Pre", info::preFilter, info::preFilter };
+        case param::cutoff:     return { "Cutoff", info::cutoff, info::cutoffValue };
+        case param::peak:       return { "Peak", info::peak, info::dbValue };
+        case param::slope:      return { "Slope", info::slope, info::slopeValue };
+        case param::filter:     return { "Filter", info::filter, info::filter };
         default:                return { "Post", info::postFilter, info::postFilter };
     }
 }
@@ -91,11 +100,15 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
     : model (m),
       window (m, std::move (clock)),
       view (std::make_unique<View>()),
-      steps (std::make_unique<StepsPlot> (m)),
-      signal (std::make_unique<SignalPlot> (m))
+      amplitude (std::make_unique<AmplitudePlot> (m)),
+      timeCrush (std::make_unique<TimePlot> (m)),
+      signal (std::make_unique<SignalPlot>()),
+      filterResponse (std::make_unique<FilterPlot> (m))
 {
-    view->addAndMakeVisible (*steps);
+    view->addAndMakeVisible (*amplitude);
+    view->addAndMakeVisible (*timeCrush);
     view->addAndMakeVisible (*signal);
+    view->addAndMakeVisible (*filterResponse);
 
     for (size_t p = 0; p < groups().size(); ++p)
     {
@@ -107,7 +120,13 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
         for (const int index : group.knobs)
         {
             const auto words = labelsOf (index);
-            auto k = std::make_unique<ni::ui::ParamKnob> (model.parameter (index), words.label);
+            /* A choice -- Slope -- turns option by option. */
+            auto& parameter = model.parameter (index);
+            std::unique_ptr<ni::ui::ParamKnob> k;
+            if (dynamic_cast<juce::AudioParameterChoice*> (&parameter) != nullptr)
+                k = std::make_unique<ni::ui::ParamChoiceKnob> (parameter, words.label);
+            else
+                k = std::make_unique<ni::ui::ParamKnob> (parameter, words.label);
             k->setBipolar (model.bipolar (index));
             ni::ui::setInfo (*k, words.line);
             k->setReadoutInfo (words.value);
@@ -123,6 +142,18 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
             toggles.push_back (std::move (t));
         }
     }
+
+    /* WHAT THE PICTURES SHOW, AND HOW OFTEN: in the Level panel's free row. */
+    refresh = std::make_unique<ni::ui::ParamSelect> (model.parameter (param::refresh));
+    refresh->setLabel ("Refresh", refreshLabelW);
+    refresh->setFieldWidth (refreshFieldW);
+    ni::ui::setInfo (*refresh, info::refresh);
+    panels[2]->addAndMakeVisible (*refresh);
+    pause.setTitle (info::pauseTitle);
+    ni::ui::setInfo (pause, info::pause);
+    pause.setOn (false);
+    pause.onClick = [this] { setPaused (! paused); };
+    panels[2]->addAndMakeVisible (pause);
 
     /* THE WINDOW. */
     window.setConventions ({ { "drag", "a knob to turn it" }, { "shift", "for fine" }, { "double-click", "to reset" } });
@@ -170,8 +201,10 @@ ni::ui::ParamToggle& Editor::toggle (int parameterIndex)
 void Editor::layout()
 {
     const int x1 = column + gutter;
-    steps->setBounds (0, 0, column, plotH);
-    signal->setBounds (x1, 0, 2 * column + gutter, plotH);
+    amplitude->setBounds (0, 0, column, plotH);
+    timeCrush->setBounds (x1, 0, column, plotH);
+    signal->setBounds (2 * x1, 0, column, plotH);
+    filterResponse->setBounds (3 * x1, 0, column, plotH);
 
     for (size_t p = 0; p < panels.size(); ++p)
     {
@@ -196,12 +229,59 @@ void Editor::layout()
             x += t.idealWidth() + toggleGap;
         }
     }
+
+    /* Refresh from the left of the Level panel's row, Pause at its right. */
+    const auto level = panels[2]->contentBounds();
+    const int y = level.getY() + ni::ui::Knob::cardHeight + rowGap;
+    refresh->setBounds (level.getX(), y, refresh->idealWidth(), rowH);
+    pause.setBounds (level.getRight() - rowH, y, rowH, rowH);
 }
 
 void Editor::tick (double nowMs)
 {
-    steps->update();
-    signal->update (nowMs);
+    /* A new look at Refresh's pace -- Live takes every one -- and none while
+     * paused; all three wells get the same one. A look made with other
+     * settings than the knobs' is replaced the moment a current one exists. */
+    bool fresh = false;
+    if (! paused)
+    {
+        const auto& latest = model.scope();
+        const bool due = nowMs - lookedAt >= model.refreshPeriodMs();
+        const bool catchUp = ! current (look) && current (latest);
+        if (latest.count() > 0 && latest.serial != look.serial && (due || catchUp))
+        {
+            look = latest;
+            lookedAt = nowMs;
+            fresh = true;
+        }
+    }
+    const bool live = current (look);
+    amplitude->update (look, fresh, live);
+    timeCrush->update (look, fresh, live, nowMs);
+    signal->update (look, fresh, nowMs);
+    filterResponse->update();
+}
+
+bool Editor::current (const Scope& candidate) const
+{
+    if (candidate.count() == 0 || candidate.settled < Scope::settledWindow)
+        return false;
+    for (const int i : { param::drive, param::bits, param::shape, param::midRise, param::dither,
+                         param::antiAlias, param::rate, param::jitter, param::preFilter })
+        if (! juce::exactlyEqual (candidate.settings[(size_t) i], model.setting (i)))
+            return false;
+    return true;
+}
+
+void Editor::setPaused (bool on)
+{
+    paused = on;
+    pause.setOn (on);
+    pause.setTitle (on ? info::resumeTitle : info::pauseTitle);
+    ni::ui::setInfo (pause, on ? info::resume : info::pause);
+    /* Let go, the next look is taken at once. */
+    if (! on)
+        lookedAt = -1.0e300;
 }
 
 void Editor::resized()

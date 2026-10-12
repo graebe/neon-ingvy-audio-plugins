@@ -23,7 +23,7 @@ channel, dry and wet, as it processes them; the shell publishes a window of
 them for the editor (shell.rs). Two stores a sample, whether or not a window
 is open: not worth a switch.
 
-THREADS. The table, `bc_transfer_span` and `bc_transfer_render` are pure:
+THREADS. The table, `bc_transfer_render` and the filter's response are pure:
 any thread. An instance belongs to one thread at a time -- on the plugin, the audio thread's between
 `bc_shell_begin` and `bc_shell_end`. Nothing an audio thread calls allocates,
 and the workspace aborts on panic, because unwinding out of `extern "C"` is

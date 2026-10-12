@@ -31,12 +31,21 @@
  *             same grey at its whole strength, as a line has none of an
  *             area's mass and at half it vanishes into the well
  *   wet()     uv with the arc glow                  the processed trace
+ *   dots()    3px uv dots, no glow                  where samples are now: a
+ *             live view on a curve, or the instants a hold takes -- a glow
+ *             on hundreds of them would be a cloud
+ *   unlit()   a 1.5px ink-dim line                  a curve as a map, while
+ *             dots light the part of it that is playing: uv is what is lit,
+ *             and the rest of the curve is what could be
  *   key()     plot-key at 30%                       the reference behind them all
  *   keyEdge() its edge, 1px plot-key at 90%,        (the kick behind a duck),
  *             over the dry, under the wet           read through the grey
  *   rule()    a line-200 rule, amber 2px when       a position mark; amber is
  *             something runs past it                the window's one amber mark
  *   Axis      a line-200 ruler with 3px ticks and hint labels about 38px apart
+ *   ruler()   the same, along the bottom or the left of a plot's own area:
+ *             3px ticks with a hint label, 2px minor ones without -- a value
+ *             axis, or the grid a plot's data falls on
  *
  * THE GEOMETRY IS THE WEB EDITORS', in the well's own pixels, 1:1: the inset
  * and the caption band are measured from the well's outer edge (plot::inset,
@@ -92,6 +101,8 @@ inline constexpr float captionH = 14.0f;
  * labelDrop below it. */
 inline constexpr float tickLength = 3.0f;
 inline constexpr float labelDrop = 12.0f;
+/* A minor tick: a mark with no label. */
+inline constexpr float minorTick = 2.0f;
 /* The ladder picks the smallest interval whose ticks stay this far apart. */
 inline constexpr float tickSpacing = 38.0f;
 
@@ -103,6 +114,8 @@ void under (juce::Graphics&, const juce::Path& area);
 void ghost (juce::Graphics&, const juce::Path& line);
 void dry (juce::Graphics&, const juce::Path& area);
 void dryLine (juce::Graphics&, const juce::Path& line);
+void dots (juce::Graphics&, const std::vector<juce::Point<float>>& at);
+void unlit (juce::Graphics&, const juce::Path& line);
 void wet (juce::Graphics&, const juce::Path& area);
 /* The reference band (the fill, first of all) and its edge (after dry(),
  * before wet()): 1.2.0's plot-key. A band, never a rule -- amber as a rule is
@@ -248,6 +261,29 @@ struct Tick
  * `markMs` 0 for none. Empty for a span or a width it cannot draw.
  */
 std::vector<Tick> axisTicks (float widthPx, double spanMs, double markMs = 0.0);
+
+/* One mark of a ruler(): where along the axis, in the well's pixels, and its
+ * label -- empty for a minor tick. */
+struct Mark
+{
+    float at = 0.0f;
+    juce::String text;
+};
+
+enum class Side
+{
+    bottom,
+    left,
+};
+
+/*
+ * A ruler along the `side` of `area`, a plot's own: the line on that edge, a
+ * tick out of the area at every mark, and its label beyond -- under it for
+ * the bottom (labelDrop down, centred, nudged in at the ends), right-aligned
+ * beside it for the left. The caller leaves room for them: a row under the
+ * area, a column left of it.
+ */
+void ruler (juce::Graphics&, const juce::Rectangle<float>& area, Side, const std::vector<Mark>&);
 
 /*
  * A millisecond ruler along a well `wellWidth` wide, its line at `y`: the

@@ -22,14 +22,19 @@ twice over:
   or fewer, so the staircase gets flat tops.
 
 Both are what made early samplers, game consoles and telephones sound the way
-they did. A VST3 for macOS (Linux and Windows follow) with a native editor,
+they did. The window is built around the two: **Amplitude Crush** and **Time
+Crush**, each a panel of controls under a picture of what it does to your
+signal right now, beside a picture of the sound. A VST3 for macOS (Linux and Windows follow) with a native editor,
 plus a Schwung module for the Ableton Move.
 
 ## What it does
 
-**Bits** sets how many levels there are: 2 to the power of Bits. It is a
-continuous control — 7.5 bits is a real setting — so sweeping it is a smooth
-ride down the staircase rather than a jump from 256 steps to 128.
+**Bits** sets how many steps there are from bottom to top: 2 to the power of
+Bits. The levels between them are one more — a level at zero and both ends,
+257 at 8 bits — or exactly 2 to the power of Bits with Mid-Rise, as a real
+converter has; the window counts them. It is a continuous control — 7.5 bits
+is a real setting — so sweeping it is a smooth ride down the staircase rather
+than a jump from 256 steps to 128.
 
 **Rate** sets how often a level is taken. It does not have to divide your
 project's sample rate: 12 kHz at 44.1 kHz holds for three samples and four in
@@ -47,7 +52,9 @@ Around those two, everything a crusher can usefully do:
 | **Jitter** | lets the hold's clock wander — noisier, and wider in stereo |
 | **Pre** | a steep low-pass *before* the hold: everything from half the Rate up, what would fold back, at least 60 dB down |
 | **Post** and **Octave** | a low-pass *after* the hold, at half the Rate moved by Octave: smooths the hold's steps |
+| **Filter** | a resonant low-pass on the crushed sound, before Mix — off by default: **Cutoff** 20 Hz to 20 kHz, **Peak** up to +24 dB at the cutoff (never self-oscillating), **Slope** 12, 24 or 48 dB per octave |
 | **Mix**, **Output** | dry against crushed, and the level after |
+| **Refresh**, **Pause** | how often the three signal pictures take a new look at the signal (once a second by default), and holding them still; the window's alone, never the sound's |
 
 Every control glides, the switches included, so automating any of them does
 not click, and a long buffer's automation is ramped across it. The latency is

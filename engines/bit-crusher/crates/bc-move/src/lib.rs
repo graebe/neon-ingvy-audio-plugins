@@ -11,18 +11,18 @@ only as CC 120 (All Sound Off) or CC 123 (All Notes Off) through on_midi. The
 engine resets on either: the held sample lets go and every filter empties, so
 the next block starts from silence.
 
-THE MOVE READS RATE BACK IN ITS OWN WORDS. Rate is an enum here that sends its
-label (params.rs), and the knob grid shows the value it reads back; so a rate
-the declaration lists is reported as that label ("12k"), and anything else --
-a rate a preset set between the options -- as its number. Every other key
-reads back as the engine reports it.
+THE MOVE READS ITS ENUMS BACK IN THEIR OWN WORDS. Rate, Cutoff and Slope send
+their labels (params.rs), and the knob grid shows the value it reads back; so
+a value the declaration lists is reported as that label ("12k", "24 dB"), and
+anything else -- a value a preset set between the options -- as its number.
+Every other key reads back as the engine reports it.
 */
 
 /* Forces the bc_core_* C ABI into this staticlib: without it nothing here
  * references bc-capi and the linker drops its #[no_mangle] symbols. */
 extern crate bc_capi as _bc_capi;
 
-use bc_core::{Engine, Param};
+use bc_core::{Engine, Param, SLOPE_LABELS};
 use core::fmt::Write;
 use ni_dsp::fmt::Buf;
 use ni_dsp::Transport;
@@ -47,11 +47,16 @@ impl Module for Crusher {
         self.0.set_param(key, val);
     }
     fn get_param(&self, key: &str, out: &mut [u8]) -> c_int {
-        if key == "rate" {
-            if let Some(label) = rate_label(self.0.num(Param::Rate)) {
-                let mut b = Buf::new(out);
-                return if b.write_str(label).is_ok() { b.finish() } else { -1 };
-            }
+        /* The enums that send their labels read back in them too. */
+        let label = match key {
+            "rate" => rate_label(self.0.num(Param::Rate)),
+            "cutoff" => cutoff_label(self.0.num(Param::Cutoff)),
+            "slope" => SLOPE_LABELS.get(self.0.num(Param::Slope) as usize).copied(),
+            _ => None,
+        };
+        if let Some(label) = label {
+            let mut b = Buf::new(out);
+            return if b.write_str(label).is_ok() { b.finish() } else { -1 };
         }
         self.0.get_param(key, out)
     }
@@ -63,6 +68,11 @@ impl Module for Crusher {
 /// The declared option a rate is, if it is one.
 fn rate_label(hz: f64) -> Option<&'static str> {
     params::RATE_LABELS.into_iter().find(|l| Param::Rate.parse_value(l) == Some(hz))
+}
+
+/// The declared option a cutoff is, if it is one.
+fn cutoff_label(hz: f64) -> Option<&'static str> {
+    params::CUTOFF_LABELS.into_iter().find(|l| Param::Cutoff.parse_value(l) == Some(hz))
 }
 
 ni_schwung::export_audio_fx!(Crusher);
@@ -131,8 +141,9 @@ mod tests {
             };
             m.set(key, &default);
             let got = m.get(key).unwrap_or_else(|| panic!("{key} not served"));
-            if key == "rate" {
-                assert_eq!(got, default);
+            /* An enum that sends its label reads back in it. */
+            if e["wire_format"].as_str() == Some("name") {
+                assert_eq!(got, default, "{key}");
             } else {
                 assert_eq!(got.parse::<f64>().unwrap(), default.parse::<f64>().unwrap(), "{key}");
             }
@@ -184,5 +195,19 @@ mod tests {
         m.process(&mut buf);
         /* Two bits, mid-tread: five levels, -1, -0.5, 0, 0.5, 1. */
         assert!(buf.iter().all(|s| [-32_768, -16_384, 0, 16_384, 32_767].contains(s)), "{buf:?}");
+    }
+
+    #[test]
+    fn the_filter_page_writes_and_reads_back_in_its_own_words() {
+        let m = Instance::new();
+        assert_eq!(m.get("filter").as_deref(), Some("0"), "off by default");
+        m.set("filter", "1");
+        m.set("cutoff", "1.2k");
+        m.set("slope", "48 dB");
+        m.set("peak", "6");
+        assert_eq!(m.get("filter").as_deref(), Some("1"));
+        assert_eq!(m.get("cutoff").as_deref(), Some("1.2k"));
+        assert_eq!(m.get("slope").as_deref(), Some("48 dB"));
+        assert_eq!(m.get("peak").as_deref(), Some("6"));
     }
 }

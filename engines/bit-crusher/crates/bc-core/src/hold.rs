@@ -32,11 +32,13 @@ pub struct Hold {
     /// This period's factor on the step: 1 without jitter.
     stretch: f64,
     held: f64,
+    /// Whether the last `step` took its input.
+    took: bool,
 }
 
 impl Default for Hold {
     fn default() -> Self {
-        Hold { phase: 1.0, stretch: 1.0, held: 0.0 }
+        Hold { phase: 1.0, stretch: 1.0, held: 0.0, took: false }
     }
 }
 
@@ -51,7 +53,8 @@ impl Hold {
     /// whatever the jitter, so the sequence does not depend on it.
     #[inline]
     pub fn step(&mut self, x: f64, step: f64, jitter: f64, rng: &mut fastrand::Rng) -> f64 {
-        if self.phase >= 1.0 {
+        self.took = self.phase >= 1.0;
+        if self.took {
             self.phase = self.phase.fract();
             self.held = x;
             let r = 2.0 * rng.f64() - 1.0;
@@ -64,6 +67,12 @@ impl Hold {
     /// What it holds now.
     pub fn held(&self) -> f64 {
         self.held
+    }
+
+    /// Whether the last sample was one it took -- the instants an editor's
+    /// picture of the hold marks.
+    pub fn took(&self) -> bool {
+        self.took
     }
 
     /// Where its clock is in the current period, 0..1 (1 or more: a level is
@@ -117,6 +126,9 @@ pub struct BandLimitedHold {
     phase: f64,
     stretch: f64,
     level: f64,
+    /// The instant of the first level the last `step` took, relative to the
+    /// input sample it was given: about HALF_WIDTH back. None for none.
+    first: Option<f64>,
 }
 
 impl Default for BandLimitedHold {
@@ -130,6 +142,7 @@ impl Default for BandLimitedHold {
             phase: 1.0,
             stretch: 1.0,
             level: 0.0,
+            first: None,
         }
     }
 }
@@ -198,6 +211,7 @@ impl BandLimitedHold {
         let start = (now - 1) as f64;
         let mut t = start;
         let mut left = 1.0;
+        self.first = None;
         loop {
             let inc = step * self.stretch;
             if !(inc > 0.0) {
@@ -209,6 +223,7 @@ impl BandLimitedHold {
                 self.phase = 0.0;
                 let level = level_of(self.read(now as f64));
                 self.jump(now as f64, level);
+                self.first.get_or_insert((now - n) as f64);
                 break;
             }
             let need = (1.0 - self.phase).max(0.0);
@@ -224,6 +239,7 @@ impl BandLimitedHold {
             let at = if t > start { t.min(now as f64) } else { start + 1e-9 };
             let level = level_of(self.read(at));
             self.jump(at, level);
+            self.first.get_or_insert(at - n as f64);
             self.phase = 0.0;
             let r = 2.0 * rng.f64() - 1.0;
             self.stretch = 1.0 + JITTER_DEPTH * jitter * r;
@@ -231,6 +247,12 @@ impl BandLimitedHold {
         self.held[slot(now)] = self.level;
         self.count += 1;
         self.emit(now)
+    }
+
+    /// The instant of the first level the last `step` took, in samples
+    /// relative to the input sample it was given (about -HALF_WIDTH), or None.
+    pub fn first_take(&self) -> Option<f64> {
+        self.first
     }
 
     /// While Anti-Alias is off: keep the input history and follow the plain

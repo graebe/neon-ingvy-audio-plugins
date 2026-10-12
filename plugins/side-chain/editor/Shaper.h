@@ -72,9 +72,9 @@
 
 #include "Model.h"
 
-#include "Focus.h"
 #include "ParamBinding.h"
 #include "Plot.h"
+#include "PlotHandle.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -93,9 +93,6 @@ public:
     /* The well's geometry, the web editor's: the ruler's band under the
      * content, the drag's dead zone and Shift's ratio (the Knob's). */
     static constexpr float axisH = 14.0f;
-    static constexpr float deadZone = 4.0f;
-    static constexpr float fineRatio = 5.0f;
-    static constexpr float handleR = 4.5f;
 
     /* The handles, in their order along the cycle. */
     enum class Which { start, bottom, holdEnd, end };
@@ -190,67 +187,32 @@ private:
 };
 
 /*
- * ONE HANDLE: a small ink dot in a generous target -- a handle you cannot grab
- * reads as one that does not work -- that drags, steps and resets the
- * parameters it stands for. Under the pointer or with visible keyboard focus
- * it lights uv; keyboard focus adds glow-focus. A slider to assistive
- * technology, named for what it moves.
+ * ONE HANDLE: the kit's (PlotHandle.h) -- a small ink dot in a generous
+ * target that drags, steps and resets its stage -- on the Shaper's scales: a
+ * pixel sideways is a share of the cycle's width, a pixel up or down a share
+ * of the HALF height, because the handle sits on the upper edge of a mirrored
+ * envelope (a pixel of travel is a pixel of gain there; down is deeper). A
+ * stage reads and is typed as its knob reads it (setStageText).
  */
-class Shaper::Handle final : public juce::Component
+class Shaper::Handle final : public ni::ui::PlotHandle
 {
 public:
-    static constexpr int size = 32;
-    static constexpr float targetR = Shaper::handleR * 3.0f;
-
     Handle (Shaper&, Which, int xParam, int yParam);
 
     Which which() const noexcept { return kind; }
     int xParameter() const noexcept { return xIndex; }
     int yParameter() const noexcept { return yIndex; }
 
-    /* What the readers' "value" is: the stage's text as its knob reads it,
-     * then Depth's on the bottom corner, joined. */
-    juce::String valueText() const;
-
-    /* Typed text, read as the stage's knob reads it: one committed edit, or
-     * nothing for text it cannot read. */
-    void typeValue (const juce::String&);
-
-    bool hitTest (int x, int y) override;
-    void paint (juce::Graphics&) override;
-
-    void mouseEnter (const juce::MouseEvent&) override;
-    void mouseExit (const juce::MouseEvent&) override;
-    void mouseDown (const juce::MouseEvent&) override;
-    void mouseDrag (const juce::MouseEvent&) override;
-    void mouseUp (const juce::MouseEvent&) override;
-    void mouseDoubleClick (const juce::MouseEvent&) override;
-    bool keyPressed (const juce::KeyPress&) override;
-    void focusGained (FocusChangeType) override;
-    void focusLost (FocusChangeType) override;
-
-    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
-
-    bool isLit() const noexcept { return hovered || focus.isVisible(); }
+    /* The stage's text as its knob reads it, then Depth's on the bottom
+     * corner, joined. */
+    juce::String valueText() const override;
+    /* Typed text, read as the stage's knob reads it. */
+    void typeValue (const juce::String&) override;
 
 private:
-    struct Drag
-    {
-        juce::Point<float> from;   // the press, in the well's pixels
-        float plainX = 0.0f;       // the x parameter's value at the press
-        float plainY = 0.0f;       // and the y's
-        bool fine = false;         // Shift at the press, never re-read
-        bool moved = false;        // out of the dead zone yet
-    };
-
-    void commitKey (int index, float delta, std::optional<float> to);
-
     Shaper& shaper;
     const Which kind;
     const int xIndex, yIndex;   // yIndex -1 for none
-    bool hovered = false;
-    std::optional<Drag> drag;
-    ni::ui::FocusVisibility focus { *this };
 };
 
 } // namespace ni::sc

@@ -61,6 +61,22 @@ void dryLine (juce::Graphics& g, const juce::Path& line)
     g.strokePath (line, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
 }
 
+void dots (juce::Graphics& g, const std::vector<juce::Point<float>>& at)
+{
+    constexpr float d = 3.0f;
+    juce::Path all;
+    for (const auto& p : at)
+        all.addEllipse (p.x - 0.5f * d, p.y - 0.5f * d, d, d);
+    g.setColour (c::uv);
+    g.fillPath (all);
+}
+
+void unlit (juce::Graphics& g, const juce::Path& line)
+{
+    g.setColour (c::inkDim);
+    g.strokePath (line, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::butt));
+}
+
 void wet (juce::Graphics& g, const juce::Path& area)
 {
     uv::light::glowArc (g, area);
@@ -301,7 +317,9 @@ juce::String LevelRange::label() const
 
 namespace
 {
-constexpr std::array<double, 14> ladder { 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000 };
+/* From a tenth of a millisecond: a hold's sixteen periods at a high rate are
+ * about one. A span long enough for whole milliseconds never picks below. */
+constexpr std::array<double, 17> ladder { 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000 };
 /* A tick this close to the landmark gives way to it rather than overprint it. */
 constexpr float giveWay = 34.0f;
 /* Half a hint glyph's advance, for keeping a centred label inside the well. */
@@ -341,9 +359,54 @@ std::vector<Tick> axisTicks (float widthPx, double spanMs, double markMs)
         const double f = ms / spanMs;
         if (taken && std::abs (f - *taken) * widthPx < giveWay)
             continue;
-        out.push_back ({ ms, juce::String (juce::roundToInt (ms)) });
+        /* Whole milliseconds as such; below one, a tenth (the ladder's). */
+        const bool whole = std::abs (ms - std::round (ms)) < 1.0e-6;
+        out.push_back ({ ms, whole ? juce::String (juce::roundToInt (ms)) : juce::String (ms, 1) });
     }
     return out;
+}
+
+void ruler (juce::Graphics& g, const juce::Rectangle<float>& area, Side side, const std::vector<Mark>& marks)
+{
+    const bool bottom = side == Side::bottom;
+    g.setColour (c::line200);
+    if (bottom)
+        g.drawLine (area.getX(), area.getBottom(), area.getRight(), area.getBottom(), uv::tok::stroke::strokeHair);
+    else
+        g.drawLine (area.getX(), area.getY(), area.getX(), area.getBottom(), uv::tok::stroke::strokeHair);
+
+    const auto font = uv::type::hint();
+    g.setFont (font);
+    for (const auto& m : marks)
+    {
+        /* A labelled mark is the full tick; an unlabelled one, a minor. */
+        const float length = m.text.isEmpty() ? minorTick : tickLength;
+        g.setColour (c::line200);
+        if (bottom)
+            g.drawLine (m.at, area.getBottom(), m.at, area.getBottom() + length, uv::tok::stroke::strokeHair);
+        else
+            g.drawLine (area.getX() - length, m.at, area.getX(), m.at, uv::tok::stroke::strokeHair);
+        if (m.text.isEmpty())
+            continue;
+        g.setColour (c::inkMuted);
+        const float half = (float) m.text.length() * halfGlyph;
+        if (bottom)
+        {
+            /* Nudged in at the ends, so a label stays under the area. */
+            const float at = juce::jmin (area.getRight() - half, juce::jmax (area.getX() + half, m.at));
+            g.drawSingleLineText (m.text, juce::roundToInt (at), juce::roundToInt (area.getBottom() + labelDrop),
+                                  juce::Justification::horizontallyCentred);
+        }
+        else
+        {
+            /* Right-aligned to the tick, centred on it, kept inside the area's
+             * height so the top and bottom labels do not hang out. */
+            const float cap = font.getAscent() * 0.5f;
+            const float y = juce::jmin (area.getBottom(), juce::jmax (area.getY() + 2.0f * cap, m.at + cap));
+            g.drawSingleLineText (m.text, juce::roundToInt (area.getX() - tickLength - 2.0f), juce::roundToInt (y),
+                                  juce::Justification::right);
+        }
+    }
 }
 
 void Axis::set (float wellWidth, double spanMs, double markMs)

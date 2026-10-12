@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 use super::*;
-use bc_core::{Param, LATENCY, PARAM_COUNT};
+use bc_core::{transfer, Param, LATENCY, PARAM_COUNT};
 use std::os::raw::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
@@ -21,8 +21,58 @@ fn info(index: i32) -> Option<BcParamInfo> {
         log_travel: false,
         bipolar: false,
         resolution: 0.0,
+        choice_count: 0,
+        automatable: false,
     };
     unsafe { bc_param_info(index, &mut out) }.then_some(out)
+}
+
+#[test]
+fn refresh_is_a_choice_of_the_window_saved_but_not_automated() {
+    let r = Param::Refresh as i32;
+    let d = info(r).unwrap();
+    assert_eq!(d.kind, BcParamKind::Choice);
+    assert_eq!((d.choice_count, d.min, d.max, d.default_value), (4, 0.0, 3.0, 3.0));
+    assert!(!d.automatable);
+    let words: Vec<String> = (0..4).map(|c| text(|b, n| unsafe { bc_param_choice(r, c, b, n) }).unwrap()).collect();
+    assert_eq!(words, ["Live", "10/s", "4/s", "1/s"]);
+    assert_eq!(text(|b, n| unsafe { bc_param_text(r, 3.0, b, n) }).unwrap(), "1/s");
+    assert_eq!(text(|b, n| unsafe { bc_param_unit(r, b, n) }).unwrap(), "");
+    /* No word past the end, and none for a parameter that is no choice. */
+    assert!(text(|b, n| unsafe { bc_param_choice(r, 4, b, n) }).is_none());
+    assert!(text(|b, n| unsafe { bc_param_choice(r, -1, b, n) }).is_none());
+    assert!(text(|b, n| unsafe { bc_param_choice(Param::Bits as i32, 0, b, n) }).is_none());
+    /* Every control of the sound is automatable. */
+    for i in (0..bc_param_count()).filter(|&i| i != r) {
+        let d = info(i).unwrap();
+        assert!(d.automatable, "{i}");
+        assert_eq!(d.choice_count, if d.kind == BcParamKind::Choice { 3 } else { 0 }, "{i}");
+    }
+    /* Slope, the other choice: the filter's three, by their words. */
+    let s = Param::Slope as i32;
+    let words: Vec<String> = (0..3).map(|c| text(|b, n| unsafe { bc_param_choice(s, c, b, n) }).unwrap()).collect();
+    assert_eq!(words, ["12 dB", "24 dB", "48 dB"]);
+    assert_eq!([0, 1, 2, 3].map(|c| bc_refresh_period_ms(c)), [0.0, 100.0, 250.0, 1000.0]);
+    /* The filter's response: flat, -3 dB at the cutoff, the slope, the peak. */
+    let mut db = [0.0f32; 3];
+    unsafe { bc_filter_response(1_000.0, 0.0, 1, 48_000.0, 100.0, 10_000.0, db.as_mut_ptr(), 3) };
+    assert!(db[0].abs() < 0.01 && (db[1] + 3.01).abs() < 0.05 && db[2] < -75.0, "{db:?}");
+    unsafe { bc_filter_response(1_000.0, 12.0, 1, 48_000.0, 100.0, 10_000.0, db.as_mut_ptr(), 3) };
+    assert!((db[1] - 8.99).abs() < 0.05, "{db:?}");
+    unsafe { bc_filter_response(1_000.0, 0.0, 1, 0.0, 100.0, 10_000.0, std::ptr::null_mut(), 3) };
+    /* One point of it, where a handle sits: the same gain, to the bit. */
+    for (cutoff, peak, slope) in [(1_000.0, 0.0, 0), (1_000.0, 24.0, 2), (20_000.0, 6.0, 1)] {
+        let mut curve = [0.0f32; 2];
+        unsafe { bc_filter_response(cutoff, peak, slope, 44_100.0, cutoff, 2.0 * cutoff, curve.as_mut_ptr(), 2) };
+        assert_eq!(bc_filter_gain(cutoff, peak, slope, 44_100.0, cutoff), curve[0], "{cutoff} {peak} {slope}");
+    }
+    assert!((bc_filter_gain(1_000.0, 24.0, 2, 48_000.0, 1_000.0) - (24.0 - 3.0103)).abs() < 0.01);
+    assert_eq!(bc_filter_gain(1_000.0, 6.0, 1, f64::NAN, 1_000.0), 0.0);
+    assert_eq!(bc_filter_gain(1_000.0, 6.0, 1, 48_000.0, 0.0), 0.0);
+    /* The levels Bits makes, both grids: one more than 2^b mid-tread. */
+    assert_eq!((bc_level_count(8.0, false), bc_level_count(8.0, true)), (257, 256));
+    assert_eq!((bc_level_count(1.0, false), bc_level_count(1.0, true)), (3, 2));
+    assert_eq!(bc_refresh_period_ms(9), 1000.0, "out of range: the default's");
 }
 
 #[test]
@@ -87,25 +137,18 @@ fn text_goes_out_and_comes_back_in() {
 }
 
 #[test]
-fn the_curve_is_the_staircase_over_the_span_it_is_given() {
+fn the_curve_is_the_staircase_over_the_whole_range() {
     let mut out = [0.0f32; 5];
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, 1.0, out.as_mut_ptr(), 5) };
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, out.as_mut_ptr(), 5) };
     assert_eq!(out, [-1.0, -1.0, 0.0, 1.0, 1.0]);
     let mut one = [9.0f32; 1];
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, 1.0, one.as_mut_ptr(), 1) };
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, one.as_mut_ptr(), 1) };
     assert_eq!(one, [0.5]);
-    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, 1.0, std::ptr::null_mut(), 5) };
-    /* 8 bits over its span: the steps of 1/128 from -1/16 to 1/16. */
-    let span = bc_transfer_span(0.0, 8.0, 0.0, false);
-    assert_eq!(span, 1.0 / 16.0);
-    let mut zoomed = [0.0f32; 3];
-    unsafe { bc_transfer_render(0.0, 8.0, 0.0, false, span, zoomed.as_mut_ptr(), 3) };
-    assert_eq!(zoomed, [-0.0625, 0.0, 0.0625]);
-    /* A span that is no number, or none, is the whole range. */
-    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        unsafe { bc_transfer_render(0.0, 1.0, 0.0, false, bad, out.as_mut_ptr(), 5) };
-        assert_eq!(out, [-1.0, -1.0, 0.0, 1.0, 1.0], "span {bad}");
-    }
+    unsafe { bc_transfer_render(0.0, 1.0, 0.0, true, std::ptr::null_mut(), 5) };
+    /* 8 bits over the whole range, never zoomed: its ends and silence. */
+    let mut eight = [9.0f32; 3];
+    unsafe { bc_transfer_render(0.0, 8.0, 0.0, false, eight.as_mut_ptr(), 3) };
+    assert_eq!(eight, [-1.0, 0.0, 1.0]);
 }
 
 #[test]
@@ -212,6 +255,88 @@ mod shell_tests {
             assert!(s.dry[1] > s.dry[0]);
             assert_ne!(s.serial, 0);
             bc_shell_destroy(shell);
+        }
+    }
+
+    /// Twenty blocks of a 200 Hz tone through a shell at 48 kHz, after `set`.
+    unsafe fn tone_through(set: impl Fn(*mut BcCore)) -> BcScope {
+        let shell = bc_shell_create(48_000.0);
+        for block in 0..20 {
+            let core = bc_shell_begin(shell);
+            set(core);
+            let mut l: Vec<f32> = (0..480)
+                .map(|i| 0.8 * (2.0 * std::f32::consts::PI * 200.0 * (block * 480 + i) as f32 / 48_000.0).sin())
+                .collect();
+            bc_core_process_f32(core, l.as_mut_ptr(), std::ptr::null_mut(), 480);
+            bc_shell_end(shell, 480);
+        }
+        let s = read(shell);
+        bc_shell_destroy(shell);
+        s
+    }
+
+    #[test]
+    fn the_window_says_what_the_quantiser_saw_and_made_of_it() {
+        let s = unsafe { tone_through(|_| {}) };
+        /* The defaults: 8 bits, no Drive, Shape, Dither or pre-filter -- the
+         * level is the staircase at the input, beside the very same sample. */
+        let mut exact = 0;
+        for i in 0..BC_SCOPE {
+            let want = transfer(0.0, 8.0, 0.0, false, f64::from(s.amp_in[i])) as f32;
+            assert!((s.amp_out[i] - want).abs() <= 1.0 / 128.0 + 1e-6, "{i}");
+            exact += usize::from(s.amp_out[i] == want);
+            assert_eq!(s.amp_in[i], s.dry[i], "the input, Drive at 0 dB, is the dry sample");
+        }
+        assert!(exact > BC_SCOPE * 99 / 100, "{exact}");
+    }
+
+    #[test]
+    fn the_holds_window_is_sixteen_periods_at_any_rate_the_ring_holds() {
+        /* 12 kHz at 48 kHz: a take every fourth sample, seventeen takes. */
+        let s = unsafe { tone_through(|_| {}) };
+        let (len, takes) = (s.hold_len as usize, s.hold_takes as usize);
+        assert_eq!(takes, BC_HOLD_PERIODS + 1);
+        assert!(s.hold_took[0], "it starts on a take");
+        let at: Vec<usize> = (0..len).filter(|&i| s.hold_took[i]).collect();
+        assert_eq!(at.len(), takes);
+        assert!(at.windows(2).all(|w| w[1] - w[0] == 4), "{at:?}");
+        assert!(len > 64 && len <= 68, "{len}");
+        /* 50 Hz: a period of 960 samples, so the ring holds three takes at most. */
+        let slow = unsafe { tone_through(|c| bc_core_set_num(c, Param::Rate as i32, 50.0)) };
+        assert!(slow.hold_takes as usize <= 3 && slow.hold_takes >= 2, "{}", slow.hold_takes);
+        assert!(slow.hold_len as usize <= BC_HOLD);
+        assert!(slow.hold_took[0]);
+    }
+
+    #[test]
+    fn the_look_says_which_settings_made_it_and_since_when() {
+        let s = unsafe { tone_through(|c| bc_core_set_num(c, Param::Bits as i32, 5.5)) };
+        assert_eq!((s.bits, s.drive_db, s.mid_rise, s.rate), (5.5, 0.0, 0.0, 12_000.0));
+        assert_eq!(s.settled, 20 * 480, "set before the first block, the same value every block after");
+    }
+
+    #[test]
+    fn with_anti_alias_the_holds_window_marks_the_exact_instants() {
+        unsafe {
+            let shell = bc_shell_create(44_100.0);
+            for block in 0..40 {
+                let core = bc_shell_begin(shell);
+                bc_core_set_num(core, Param::AntiAlias as i32, 1.0);
+                let mut l: Vec<f32> =
+                    (0..441).map(|i| (0.5 * ((block * 441 + i) as f64 * 0.01).sin()) as f32).collect();
+                bc_core_process_f32(core, l.as_mut_ptr(), std::ptr::null_mut(), 441);
+                bc_shell_end(shell, 441);
+            }
+            let s = read(shell);
+            bc_shell_destroy(shell);
+            assert_eq!(s.anti_alias, 1.0);
+            assert_eq!(s.hold_takes as usize, BC_HOLD_PERIODS + 1);
+            let at: Vec<f64> = (0..s.hold_len as usize)
+                .filter(|&i| s.hold_took[i])
+                .map(|i| i as f64 + f64::from(s.hold_at[i]))
+                .collect();
+            /* 12 kHz at 44.1 kHz: 3.675 samples apart, not 3 and 4. */
+            assert!(at.windows(2).all(|w| (w[1] - w[0] - 3.675).abs() < 1e-4), "{at:?}");
         }
     }
 
