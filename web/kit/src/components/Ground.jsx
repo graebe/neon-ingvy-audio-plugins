@@ -16,13 +16,17 @@
  * rule in components.css, and the note there about the one thing each editor's
  * app.css has to provide.
  *
- * THE SOURCES ARE MEASURED FROM THE DOM, not declared. The design says the boxes
- * that emit and reflect are the panels, grids, wells and rings the window
- * happens to contain, so asking the document is the statement that stays true
- * when a layout changes. A selector list is overridable because the editors do
- * not agree on class names -- the Spectrogram's picture is a `.spectro`, the
- * Side-Chain's is a `.plot` -- and a box the field should respect but that
- * matches nothing gets `data-wave-source`.
+ * THE BOXES ARE MEASURED FROM THE DOM, not declared. The design says the boxes
+ * that reflect the rings and carry their emitters -- one just off each open
+ * outer corner, where a ring falls -- are the panels, grids, wells and rings
+ * the window happens to contain, so asking the document is the statement that
+ * stays true when a layout changes. Which corner is the anchor, where every
+ * downbeat lands, and the clockwise walk of the other beats follow from those
+ * boxes inside the field; nothing here chooses them. A selector list is
+ * overridable because the editors do not agree on class names -- the
+ * Spectrogram's picture is a `.spectro`, the Side-Chain's is a `.plot` -- and a
+ * box the field should respect but that matches nothing gets
+ * `data-wave-source`.
  *
  * WHY A ResizeObserver AND NOT A WINDOW RESIZE LISTENER. Two of these editors
  * resize themselves from the UI (the Trance Gate grows with its rows, the
@@ -52,7 +56,7 @@ import { Field } from '../lib/field.js';
 import { viewScale, toCanvasRects, sameRects } from '../lib/ground-geometry.js';
 
 /*
- * The boxes that emit and reflect, by default.
+ * The boxes that reflect and carry the emitters, by default.
  *
  * `.panel` and `.plot` are this repository's spellings of the design system's
  * `.ph-panel` and its wells; `[data-wave-source]` is the escape hatch for a box
@@ -62,7 +66,7 @@ const DEFAULT_SOURCES = '.panel, .plot, .well, .grid, .ring, [data-wave-source]'
 
 /**
  * @param props.enabled   the Motion switch. Default true.
- * @param props.sources   a selector list for the emitting/reflecting boxes.
+ * @param props.sources   a selector list for the boxes the rings fall beside and break against.
  * @param props.ref       called with a handle: `{ trigger(strength) }`.
  */
 export function Ground(props) {
@@ -211,7 +215,9 @@ export function Ground(props) {
     props.ref?.({
       /* The only way in. A ring arrives as a message from the plugin -- one a
        * beat while the host plays -- and the editor hands its strength
-       * straight through. */
+       * straight through. Where it falls is the field's: a ring of full
+       * strength is the downbeat, at the anchor, and any other is the next
+       * beat of the bar's walk. */
       trigger: (strength) => field?.trigger(strength),
       /* The plugin's frame tick: the field's clock while it moves. */
       tick: () => field?.tick(),
