@@ -66,6 +66,8 @@ const JUCE_PLUGINS = {
   'NI Side-Chain': ['plugins/side-chain/SideChain.h', 'plugins/side-chain/SideChain.cpp', /^run\s*\(/],
   /* Its block, heard or bypassed, is one run() around bc_shell_begin. */
   'NI Bit-Crusher': ['plugins/bit-crusher/BitCrusher.h', 'plugins/bit-crusher/BitCrusher.cpp', /^run\s*\(/],
+  /* Its block is the engine taken, pushed, sung through and given back. */
+  'NI Vocalize': ['plugins/vocalize/Vocalize.h', 'plugins/vocalize/Vocalize.cpp', /vz_shell_begin/],
 };
 
 test('the ground is fed no audio, by the shell or by any product', () => {

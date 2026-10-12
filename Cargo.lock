@@ -428,6 +428,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ni-params"
+version = "2026.10.10+1"
+dependencies = [
+ "ni-dsp",
+]
+
+[[package]]
 name = "ni-schwung"
 version = "2026.10.9+1"
 dependencies = [
@@ -970,6 +977,44 @@ name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+
+[[package]]
+name = "vz-capi"
+version = "2026.10.11+1"
+dependencies = [
+ "assert_no_alloc",
+ "cbindgen",
+ "ground-capi",
+ "ni-dsp",
+ "ni-params",
+ "shell-core",
+ "vz-core",
+]
+
+[[package]]
+name = "vz-core"
+version = "2026.10.11+1"
+dependencies = [
+ "assert_no_alloc",
+ "fastrand",
+ "ni-dsp",
+ "ni-params",
+ "num-complex",
+ "proptest",
+ "realfft",
+ "wmidi",
+]
+
+[[package]]
+name = "vz-move"
+version = "2026.10.11+1"
+dependencies = [
+ "ni-dsp",
+ "ni-schwung",
+ "serde_json",
+ "vz-capi",
+ "vz-core",
+]
 
 [[package]]
 name = "wasip2"

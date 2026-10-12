@@ -34,6 +34,7 @@ on:
       - 'trance-gate-v*'
       - 'side-chain-v*'
       - 'bit-crusher-v*'
+      - 'vocalize-v*'
 
 permissions:
   contents: write

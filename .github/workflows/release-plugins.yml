@@ -34,7 +34,7 @@
 # exist, and the staging to what a built bundle holds.
 #
 # A tag for a product that also has a Schwung module (trance-gate, side-chain,
-# bit-crusher)
+# bit-crusher, vocalize)
 # ALSO triggers release-schwung.yml, which builds the Move module from the same
 # commit. One tag ships both shells, so their versions cannot drift apart.
 #
@@ -57,6 +57,7 @@ on:
       - 'side-chain-v*'
       - 'chord-detector-v*'
       - 'bit-crusher-v*'
+      - 'vocalize-v*'
 
 permissions:
   contents: write

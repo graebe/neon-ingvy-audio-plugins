@@ -93,6 +93,13 @@ const PRODUCTS = {
     crates: ['bc-core', 'bc-capi', 'bc-move'].map(
       (c) => `engines/bit-crusher/crates/${c}/Cargo.toml`),
   },
+  /* The directory is `modules/vocalize`, the module ID `ni-vocalize`. */
+  'vocalize': {
+    juce: { cmake: 'plugins/vocalize/CMakeLists.txt', bundle: 'NIVocalize' },
+    module: 'modules/vocalize/module.json',
+    crates: ['vz-core', 'vz-capi', 'vz-move'].map(
+      (c) => `engines/vocalize/crates/${c}/Cargo.toml`),
+  },
   /* Music theory, shared like ni-dsp but versioned, because neo-riemann pins
    * it by revision from another repository. */
   'music-core': {

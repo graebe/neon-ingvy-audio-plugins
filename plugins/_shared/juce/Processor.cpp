@@ -230,6 +230,7 @@ void Processor::writeState (juce::MemoryBlock& out)
              * range that grows later still reads an old set the same. */
             e->setAttribute ("value", (double) ranged->convertFrom0to1 (ranged->getValue()));
         }
+    writeExtraState (root);
     copyXmlToBinary (root, out);
 }
 
@@ -247,6 +248,7 @@ bool Processor::readState (const void* data, size_t size)
             const auto plain = (float) e->getDoubleAttribute ("value", p->convertFrom0to1 (p->getDefaultValue()));
             p->setValueNotifyingHost (p->convertTo0to1 (plain));
         }
+    readExtraState (*root);
     return true;
 }
 

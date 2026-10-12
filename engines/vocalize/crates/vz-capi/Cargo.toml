@@ -1,0 +1,48 @@
+[package]
+name = "vz-capi"
+version = "2026.10.11+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The vz_* C ABI over the NI Vocalize engine"
+publish.workspace = true
+
+[lib]
+name = "vz_capi"
+# staticlib for the plugin to link; rlib so vz-move can carry this surface
+# too without a second copy of the Rust runtime.
+crate-type = ["staticlib", "rlib"]
+
+# THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (vz_shell_*, on
+# shell-core's bridge), the ground's C ABI (gnd_*) that every plugin's one
+# archive carries, the core's Spectral engine and its capture. vz-move turns
+# them all off: the Move module has one thread, no editor, no file to capture
+# from and the Time engine only.
+[features]
+default = ["shell", "spectral", "capture"]
+shell = ["dep:shell-core", "dep:ground-capi"]
+spectral = ["vz-core/spectral"]
+capture = ["vz-core/capture"]
+
+[dependencies]
+# Without its default `spectral`: this crate's own feature asks for it, so the
+# Move's build of this crate leaves the FFT out (Cargo unites the features
+# every dependent asks for).
+vz-core = { path = "../vz-core", default-features = false }
+# The animated ground's beat clock, compiled INTO this archive (one archive
+# per plugin; see ground-capi/Cargo.toml).
+ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
+# The command queue and the published snapshot between the plugin's threads.
+shell-core = { path = "../../../shell/crates/shell-core", optional = true }
+# The C-string helpers every capi crate wraps its entry points in.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The parameter table's C struct and the helpers its entry points are made of.
+ni-params = { path = "../../../shared/crates/ni-params" }
+
+# vz_core.h and vz_shell.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

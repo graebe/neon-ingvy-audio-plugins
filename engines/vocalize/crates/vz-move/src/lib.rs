@@ -1,0 +1,163 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+/*!
+The Schwung shell for NI Vocalize: its `chain_params` and a [`Module`] impl
+over [`vz_core`], built with the Time engine only. The vtable, the transport
+and the entry points are `ni_schwung`'s; `vz_render_ab` proves this path and
+the plugin's agree.
+
+THE PANIC. The v2 vtable has no reset hook, so a host panic reaches a module
+only as CC 120 (All Sound Off) or CC 123 (All Notes Off) through on_midi. The
+engine resets on either: the history, the analysis and the resonators let
+go, so the next block starts from silence.
+*/
+
+/* Forces the vz_core_* C ABI into this staticlib: without it nothing here
+ * references vz-capi and the linker drops its #[no_mangle] symbols. */
+extern crate vz_capi as _vz_capi;
+
+use ni_dsp::Transport;
+use ni_schwung::Module;
+use std::ffi::c_int;
+use vz_core::Engine;
+
+mod params;
+
+/// The vocaliser, as a Schwung module.
+pub struct Vocalize(Engine);
+
+impl Module for Vocalize {
+    const CHAIN_PARAMS: &'static str = params::CHAIN_PARAMS;
+    fn new(sample_rate: f64) -> Self {
+        Vocalize(Engine::new(sample_rate))
+    }
+    /* No tempo is needed: a vowel keeps no time but the samples'. */
+    fn process_i16(&mut self, buf: &mut [i16], frames: usize, _t: Option<&Transport>) {
+        self.0.process_i16(buf, frames);
+    }
+    fn set_param(&mut self, key: &str, val: &str) {
+        self.0.set_param(key, val);
+    }
+    fn get_param(&self, key: &str, out: &mut [u8]) -> c_int {
+        self.0.get_param(key, out)
+    }
+    fn on_midi(&mut self, msg: &[u8]) {
+        self.0.on_midi(msg);
+    }
+}
+
+ni_schwung::export_audio_fx!(Vocalize);
+
+/*
+ * THE MOVE'S PARAMETER PATH, END TO END: the entry points the chain host
+ * calls, with the values it actually sends -- a declared default on a
+ * Delete-to-default -- and the panic through on_midi.
+ */
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ni_schwung::AudioFxApiV2;
+    use serde_json::Value;
+    use std::ffi::{c_char, c_void, CString};
+
+    fn api() -> &'static AudioFxApiV2 {
+        /* SAFETY: init returns its module type's table, a constant that lives
+         * as long as the process. */
+        unsafe { &*move_audio_fx_init_v2(std::ptr::null()) }
+    }
+
+    struct Instance(*mut c_void);
+    impl Instance {
+        fn new() -> Self {
+            Instance((api().create_instance.unwrap())(std::ptr::null(), std::ptr::null()))
+        }
+        fn set(&self, k: &str, v: &str) {
+            let (k, v) = (CString::new(k).unwrap(), CString::new(v).unwrap());
+            (api().set_param.unwrap())(self.0, k.as_ptr(), v.as_ptr());
+        }
+        fn get(&self, k: &str) -> Option<String> {
+            let k = CString::new(k).unwrap();
+            let mut buf = [0 as c_char; 4096];
+            let n = (api().get_param.unwrap())(self.0, k.as_ptr(), buf.as_mut_ptr(), buf.len() as c_int);
+            (n >= 0).then(|| String::from_utf8(buf[..n as usize].iter().map(|c| *c as u8).collect()).unwrap())
+        }
+        fn process(&self, buf: &mut [i16; 256]) {
+            (api().process_block.unwrap())(self.0, buf.as_mut_ptr(), 128);
+        }
+    }
+    impl Drop for Instance {
+        fn drop(&mut self) {
+            (api().destroy_instance.unwrap())(self.0);
+        }
+    }
+
+    #[test]
+    fn the_device_reads_the_declaration_these_tests_check() {
+        let m = Instance::new();
+        assert_eq!(m.get("chain_params").as_deref(), Some(params::CHAIN_PARAMS));
+        assert_eq!(m.get("ui_hierarchy").as_deref(), Some(""));
+        assert_eq!(m.get("no_such_key"), None);
+    }
+
+    #[test]
+    fn every_declared_default_is_what_the_engine_reads_back() {
+        let declared: Value = serde_json::from_str(params::CHAIN_PARAMS).unwrap();
+        let m = Instance::new();
+        for e in declared.as_array().unwrap() {
+            let key = e["key"].as_str().unwrap();
+            let default = e["default"].to_string();
+            m.set(key, &default);
+            let got = m.get(key).unwrap_or_else(|| panic!("{key} not served"));
+            assert_eq!(got.parse::<f64>().unwrap(), default.parse::<f64>().unwrap(), "{key}");
+        }
+    }
+
+    #[test]
+    fn a_host_panic_on_cc_120_or_123_silences_the_next_block() {
+        for cc in [120u8, 123] {
+            let m = Instance::new();
+            m.set("vocal", "100");
+            m.set("resonance", "100");
+            let mut loud = [20_000i16; 256];
+            for (i, s) in loud.iter_mut().enumerate() {
+                *s = if i % 7 < 3 { 20_000 } else { -20_000 };
+            }
+            for _ in 0..40 {
+                let mut b = loud;
+                m.process(&mut b);
+            }
+            let panic = [0xB0u8, cc, 0];
+            move_audio_fx_on_midi(m.0, panic.as_ptr(), 3, 0);
+            let mut quiet = [0i16; 256];
+            m.process(&mut quiet);
+            assert!(quiet.iter().all(|&s| s == 0), "CC {cc}: the resonators still rang");
+        }
+    }
+
+    #[test]
+    fn the_module_has_no_latency_whatever_mode_says() {
+        /* `cargo test -p vz-move` builds the module as it ships, without the
+         * Spectral engine (the vz_move_rs test). A build of the whole
+         * workspace unites the core's features, and there a Spectral engine
+         * is there to switch to: nothing to check. */
+        if vz_core::SPECTRAL {
+            return;
+        }
+        let m = Instance::new();
+        m.set("vocal", "0");
+        m.set("mode", "Spectral");
+        /* A second, so every glide has landed and a switch would have. */
+        for _ in 0..400 {
+            let mut warm = [0i16; 256];
+            m.process(&mut warm);
+        }
+        let mut buf = [0i16; 256];
+        for (i, s) in buf.iter_mut().enumerate() {
+            *s = (i as i16 - 128) * 200;
+        }
+        let want = buf;
+        m.process(&mut buf);
+        assert_eq!(buf, want, "Vocal 0 on the Move is the input, now");
+    }
+}
