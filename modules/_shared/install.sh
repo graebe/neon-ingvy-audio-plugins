@@ -45,19 +45,49 @@ if ! ssh "$HOST" "[ -d '$BASE/modules' ]"; then
     exit 1
 fi
 
-ssh "$HOST" "mkdir -p '$DEST'"
-scp -q -r "$SRC/"* "$HOST:$DEST/"
+# STAGED, THEN SWAPPED -- NEVER WRITTEN INTO THE LIVE DIRECTORY. scp into
+# $DEST rewrote each file in place: a module.json or a web page read half
+# written by the manager or the FX picker, and -- worse -- the .so of a module
+# loaded in a slot truncated and refilled under the process that has it
+# mapped, which takes MoveOriginal down (the shim lives in it). So the module
+# goes up beside the live directory, is made whole there, and replaces it with
+# two renames: a process that has the old .so mapped keeps the old inode, and
+# nothing ever sees a directory that is half one version and half another.
+# A failure anywhere leaves the live module as it was.
+TOKEN=$$
+STAGE="$BASE/modules/audio_fx/.${MODULE_ID}.install.$TOKEN"
+OLD="$BASE/modules/audio_fx/.${MODULE_ID}.old.$TOKEN"
+ssh "$HOST" "rm -rf '$STAGE' && mkdir -p '$STAGE'"
+scp -q -r "$SRC/"* "$HOST:$STAGE/"
 
 # Owner-writable, readable by everyone, never world-writable. schwung-manager
 # runs as `ableton` -- the same user this scp logs in as by default -- so the
 # owner bit is all it needs to replace the module later; the old `a+rw` let
 # any process on the device swap the .so the audio thread loads.
-ssh "$HOST" "chmod -R u+rwX,go+rX,go-w '$DEST' && chmod 755 '$DEST/${MODULE_ID}.so'"
+ssh "$HOST" sh -s -- "$DEST" "$STAGE" "$OLD" "$MODULE_ID" <<'REMOTE'
+set -eu
+dest=$1 stage=$2 old=$3 id=$4
+rollback() {
+  status=$?
+  trap - 0 1 2 15
+  if [ ! -d "$dest" ] && [ -d "$old" ]; then mv "$old" "$dest"; fi
+  rm -rf "$stage" "$old"
+  exit "$status"
+}
+trap rollback 0 1 2 15
+test -f "$stage/$id.so"
+chmod -R u+rwX,go+rX,go-w "$stage"
+chmod 755 "$stage/$id.so"
+if [ -d "$dest" ]; then mv "$dest" "$old"; fi
+mv "$stage" "$dest"
+rm -rf "$old"
+trap - 0 1 2 15
+REMOTE
 
 echo ""
 echo "Installed to: $DEST"
 ssh "$HOST" "ls -la '$DEST'"
 echo ""
 echo "No restart needed -- the FX picker scans the modules dir each time it opens."
-echo "If the module is ALREADY loaded in a slot, that slot keeps the old .so:"
-echo "set the position to None and pick it again, or reboot."
+echo "A slot that already has the module keeps the version it loaded (the old"
+echo "file stays mapped): set the position to None and pick it again, or reboot."
