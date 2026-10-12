@@ -27,6 +27,14 @@ EditorFrame::Layer::Layer()
     /* Transparent, and no target of its own: a press on the window's
      * background lands on nothing, as it does on the web page's. */
     setInterceptsMouseClicks (false, true);
+
+    /* The Ground moves under the whole window thirty times a second, and
+     * every pixel it changes would repaint whatever lies over it -- each
+     * control, the panels' child lights -- although none of them changed:
+     * 11 ms a frame in the Trance Gate, enough to starve the message thread
+     * in a host. Buffered, the layer is painted once and blitted over the
+     * moving Ground; a control that changes repaints its own area of it. */
+    setBufferedToImage (true);
 }
 
 void EditorFrame::Layer::paint (juce::Graphics& g)

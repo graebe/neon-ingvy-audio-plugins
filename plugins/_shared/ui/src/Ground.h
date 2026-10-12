@@ -131,6 +131,8 @@ private:
     juce::Image canvas;
     std::vector<std::uint8_t> drawn;
     bool fresh = true;
+    /* The areas a frame changed, kept so that its storage is reused. */
+    juce::RectangleList<int> dirty;
 
     std::array<float, 16> ringBuffer {};
 

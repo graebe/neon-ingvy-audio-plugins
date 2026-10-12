@@ -280,8 +280,8 @@ void Ground::drawChanged()
     if (! canvas.isValid())
         return;
 
-    juce::Rectangle<int> dirty;
     juce::Image::BitmapData out (canvas, juce::Image::BitmapData::readWrite);
+    bool all = false;
 
     if (fresh)
     {
@@ -295,14 +295,20 @@ void Ground::drawChanged()
                              (size_t) (juce::jmin (uv::ground::tileSize, out.width - x) * out.pixelStride));
         std::fill (drawn.begin(), drawn.end(), (std::uint8_t) ground::mid);
         fresh = false;
-        dirty = getLocalBounds();
+        all = true;
     }
 
     const juce::Image::BitmapData sprites (atlas(), juce::Image::BitmapData::readOnly);
     const auto canvasBounds = juce::Rectangle<int> (out.width, out.height);
     const int cols = field.dotsX(), rows = field.dotsY();
 
+    /* What is repainted is the cells that changed, not their bounding box --
+     * two rings far apart would otherwise repaint everything between them:
+     * each row's changed cells as runs, merged with the rows' alike. */
+    dirty.clear();
     for (int j = 0; j < rows; ++j)
+    {
+        juce::Rectangle<int> run;
         for (int i = 0; i < cols; ++i)
         {
             const int level = field.dotLevel (i, j);
@@ -321,11 +327,26 @@ void Ground::drawChanged()
                 std::memcpy (out.getPixelPointer (area.getX(), area.getY() + y),
                              sprites.getPixelPointer (from.x, from.y + y),
                              (size_t) (area.getWidth() * out.pixelStride));
-            dirty = dirty.isEmpty() ? area : dirty.getUnion (area);
-        }
 
-    if (! dirty.isEmpty())
-        repaint (dirty);
+            if (! run.isEmpty() && run.getRight() == area.getX())
+                run.setRight (area.getRight());
+            else
+            {
+                dirty.addWithoutMerging (run);
+                run = area;
+            }
+        }
+        dirty.addWithoutMerging (run);
+    }
+
+    if (all)
+        repaint();
+    else
+    {
+        dirty.consolidate();
+        for (const auto& area : dirty)
+            repaint (area);
+    }
 }
 
 void Ground::restored()
@@ -342,6 +363,9 @@ void Ground::resized()
     else
         canvas = {};
     drawn.assign ((size_t) (field.dotsX() * field.dotsY()), (std::uint8_t) ground::mid);
+    /* The most runs a frame can have: every other cell of every row. */
+    dirty.clear();
+    dirty.ensureStorageAllocated (field.dotsY() * (field.dotsX() / 2 + 1));
     refreshWalls();
     restored();
 }

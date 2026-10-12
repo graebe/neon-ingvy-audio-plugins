@@ -159,7 +159,7 @@ void Field::placeEmitters()
         const float d = a.getDistanceFrom (centre) - b.getDistanceFrom (centre);
         if (std::abs (d) > 1.0e-6f)
             return d < 0.0f;
-        return a.y != b.y ? a.y < b.y : a.x < b.x;
+        return ! juce::exactlyEqual (a.y, b.y) ? a.y < b.y : a.x < b.x;
     };
     std::iter_swap (at.begin(), std::min_element (at.begin(), at.end(), first));
     const float from = std::atan2 (at[0].y - centre.y, at[0].x - centre.x);
