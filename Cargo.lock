@@ -418,6 +418,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ni-filter"
+version = "2026.10.12+1"
+dependencies = [
+ "assert_no_alloc",
+ "num-complex",
+ "proptest",
+ "realfft",
+]
+
+[[package]]
 name = "ni-paper-subsynth"
 version = "2026.10.9+1"
 dependencies = [
