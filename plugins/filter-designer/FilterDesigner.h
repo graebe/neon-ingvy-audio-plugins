@@ -86,6 +86,8 @@ protected:
     /* The shell's prepareToPlay calls this first (ni::Processor). */
     void prepare (double sampleRate, int maximumBlockSize) override;
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    /* Bypassed: JUCE's own pass-through, and the Ground keeps time. */
+    void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
 private:
     struct ShellDeleter

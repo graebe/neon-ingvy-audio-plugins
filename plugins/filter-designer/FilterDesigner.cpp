@@ -90,7 +90,8 @@ double Processor::plain (int index) const
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const int frames = buffer.getNumSamples();
-    beat.tick (readClock (getPlayHead()), frames);
+    const auto clock = readClock (getPlayHead());
+    beat.tick (clock, frames);
     if (frames <= 0 || buffer.getNumChannels() < 1)
         return;
 
@@ -101,6 +102,14 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     float* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
     fd_core_process_f32 (core, left, right, (uint32_t) frames);
     fd_shell_end (shell.get(), (uint32_t) frames);
+}
+
+/* Bypassed, the audio passes as JUCE passes it (no latency to keep) and the
+ * Ground keeps the host's time. */
+void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
+    ni::Processor::processBypassed (buffer, midi);
 }
 
 /* ------------------------------------------------------------ the model -- */

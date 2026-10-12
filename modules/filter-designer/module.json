@@ -1,0 +1,16 @@
+{
+  "id": "ni-filter-designer",
+  "name": "NI Filter Designer",
+  "abbrev": "FD",
+  "version": "2026.10.12.1",
+  "description": "A DJ isolator with kills, and a low and a high cut to frame it",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-filter-designer.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}

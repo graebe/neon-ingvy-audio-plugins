@@ -7,6 +7,7 @@
 #   cmake --build build --target schwung-side-chain   NI Side-Chain
 #   cmake --build build --target schwung-bit-crusher  NI Bit-Crusher
 #   cmake --build build --target schwung-vocalize     NI Vocalize
+#   cmake --build build --target schwung-filter-designer  NI Filter Designer
 #
 # Each runs modules/_shared/package.sh with the module's directory name; what
 # differs between modules is in modules/<name>/module.env. Their tests are
@@ -57,6 +58,13 @@ add_custom_target(schwung-vocalize
     COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh vocalize
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building the NI Vocalize module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-filter-designer
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh filter-designer
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Filter Designer module for Schwung (aarch64 Linux, via Docker)"
     USES_TERMINAL
     VERBATIM)
 

@@ -178,6 +178,12 @@ impl Engine {
         self.values[p.index()]
     }
 
+    /// A parameter's value by its key, as set; `None` for a key it does not
+    /// own.
+    pub fn num_by_key(&self, key: &str) -> Option<f64> {
+        Param::from_key(key).map(|p| self.num(p))
+    }
+
     /// Every value as set, in table order.
     pub fn values(&self) -> &[f64; PARAM_COUNT] {
         &self.values

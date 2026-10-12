@@ -849,6 +849,21 @@ if (NOT WIN32)
     target_link_libraries(fd_core_tests PRIVATE m)
 endif()
 add_test(NAME fd_core COMMAND fd_core_tests)
+# The Move module's crate ALONE, so Cargo builds it as it ships, its
+# chain_params held to the engine's table through the vtable the device calls.
+add_test(NAME fd_move_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p fd-move)
+
+# THE TWO PATHS, RENDERED SIDE BY SIDE AND PINNED: the plugin's float path and
+# the Move's int16 path within one LSB, and the float render's hash recorded
+# (render_golden.h).
+add_executable(fd_render_ab ${FD_ENGINE}/tests/render_ab.c)
+target_link_libraries(fd_render_ab PRIVATE fd_engine)
+if (NOT WIN32)
+    target_link_libraries(fd_render_ab PRIVATE m)
+endif()
+add_test(NAME fd_render_ab COMMAND fd_render_ab)
 
 # EACH CARGO SUITE ON BUSES OF ITS OWN. The workspace's .cargo/config.toml
 # gives every `cargo test` the checkout's bus namespace, which keeps a suite
@@ -952,8 +967,9 @@ ni_test_tiers(
         QUICK vz_core_rs vz_core_time_only vz_move_rs vz_core
         FULL vz_render_ab:render
     PRODUCT filter-designer
-        PROGRAMS fd_core_tests
-        QUICK fd_core_rs fd_core
+        PROGRAMS fd_core_tests fd_render_ab
+        QUICK fd_core_rs fd_move_rs fd_core
+        FULL fd_render_ab:render
     # every bundle's host, signature and tree checks, and every Move module
     ${_ni_juce_tiers}
     ${_ni_move_tiers})

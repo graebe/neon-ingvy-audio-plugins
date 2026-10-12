@@ -1,0 +1,27 @@
+[package]
+name = "fd-move"
+version = "2026.10.12+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The Schwung audio_fx v2 shell for NI Filter Designer"
+publish.workspace = true
+
+[lib]
+name = "fd_move"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+fd-core = { path = "../fd-core" }
+# Pulled in so ONE staticlib carries both surfaces: the Schwung vtable and the
+# fd_core_* ABI the C tests link. Without its `shell` feature: the plugin
+# shell, the picture's FFT and the ground are the plugin's.
+fd-capi = { path = "../fd-capi", default-features = false }
+# The Schwung audio_fx v2 glue, shared with every module.
+ni-schwung = { path = "../../../shared/crates/ni-schwung" }
+# The transport the vtable hands over, and C-compatible text.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+
+[dev-dependencies]
+# The chain_params tests read the declaration as JSON (src/params.rs).
+serde_json = { workspace = true, features = ["alloc"] }

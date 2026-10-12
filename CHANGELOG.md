@@ -1,5 +1,24 @@
 # What's new
 
+## v2026.10.12.1 — NI Filter Designer
+
+- **New: NI Filter Designer.** Up to sixteen filters on one curve: bells,
+  shelves, cuts, band passes, notches, all-passes and tilts. Double-click
+  the picture to add one, drag it to move it, Alt-drag for its width, and
+  Delete to remove it. Every change is one step in Live's undo.
+- **Choose how a cut turns the corner.** Six families — Butterworth, Bessel,
+  Chebyshev I and II, Elliptic and Linkwitz-Riley — at 6 to 48 dB an octave,
+  with Resonance, Ripple and Stopband. Change family or order while the
+  music plays: it fades, it never clicks.
+- **An isolator, as on a DJ mixer.** Low, Mid and High, two crossovers, and a
+  Kill on each band, in front of the filters.
+- **Mid and Side.** Any filter works on both sides, one of them, or only the
+  middle or the sides of a stereo sound.
+- **What you see is what plays.** The curve is drawn from the engine's own
+  filters, and the music's spectrum runs behind it, before or after.
+- No latency. On the Ableton Move as a Schwung module: the isolator and a low
+  and a high cut.
+
 ## v2026.10.11.1 — NI Vocalize
 
 - **New: NI Vocalize.** Turns any sound, step by step, into a voice singing

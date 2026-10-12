@@ -1,7 +1,8 @@
 # 0004. Filters are TPT state-variable sections, designed here
 
-- Status: proposed, 2026-10-12
-- Decided by: Torben Gräber (pending)
+- Status: accepted, 2026-10-12 (the owner approved the design and asked for
+  its implementation)
+- Decided by: Torben Gräber
 - For: NI Filter Designer ([concept](../concepts/filter-designer.md)), and
   later every product that filters
 - Departs from: [0003](0003-established-rust-crates.md), for filter design only
@@ -49,18 +50,28 @@ exist do not fit:
    transform of its analog prototype only when every section shares one
    frequency scaling. Freq is the −3 dB point in every family; for
    Linkwitz-Riley it is −6 dB.
-3. **Matched-magnitude coefficients (Vicanek, 2016) for the second-order EQ
-   shapes:** Bell, first and second-order shelves, tilt, order-1 notch and
-   band pass. They follow the analog shape up to Nyquist with no
-   oversampling, no latency and no phase change. The family designs stay on
-   the prewarped bilinear transform, which is the correct mapping for
-   maximally flat and equiripple responses. No oversampling in v1.
+3. **Matched-magnitude coefficients (Vicanek, 2016) for the equaliser's
+   shapes:** the Bell, the shelves (each second-order section of a
+   Holters-Zölzer cascade, and the first-order one) and the tilt. The poles
+   are the analog ones, impulse-invariant; the numerator meets the analog
+   magnitude at DC, at Nyquist and at Freq. Measured (ni-filter's tests): a
+   bell below a quarter of the rate stays within 0.35 dB of its analog shape
+   everywhere; a broad bell above it is exact at the three points and within
+   2.5 dB on its skirt (2.3 dB at 19 kHz, Q 1, 44.1 kHz), where the bilinear
+   transform would squeeze it whole. Where no real numerator meets the three
+   points the design falls back to the prewarped bilinear transform. The
+   family designs -- cuts, band passes and notches of every order -- stay on
+   the prewarped bilinear transform, the correct mapping for maximally flat
+   and equiripple responses, with their -3 dB edges exact. No oversampling
+   in v1.
 4. **f64 inside** for coefficients and state; f32 only at the I/O and in the
    editor's curves.
 5. **The design code is written here**, in a new product-free crate,
    `engines/shared/crates/ni-filter`, of about 600–800 lines:
-   - prototypes in closed form: Orfanidis for the elliptic, a constant table
-     for Bessel;
+   - prototypes in closed form -- Orfanidis for the elliptic -- and Bessel's
+     as the reverse Bessel polynomial's roots, found by Durand-Kerner from a
+     fixed start when the prototype is made (deterministic, and tested
+     against the polynomial);
    - frequency transforms and section assembly;
    - response evaluation.
 

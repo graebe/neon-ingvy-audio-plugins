@@ -1,6 +1,9 @@
 # NI Filter Designer: concept
 
-Status: concept, 2026-10-12. Nothing is built yet. The window is drawn on the
+Status: built, 2026-10-12, on `feature/filter-designer` (M1-M5): ni-filter,
+fd-core, fd-capi, fd-move, the VST3 and its editor, the Move module and the
+manuals. What changed from the concept while building is noted where it
+happened. The window is drawn on the
 **NI Plugin Layouts** canvas as *NI Filter Designer — proposed* (mirrored in
 `design/designs/FilterDesigner-Proposed.dc.html`, notes FD1–FD9), and the
 decisions behind the DSP are in [ADR 0004](../adr/0004-iir-filter-design.md).
@@ -98,8 +101,9 @@ exactly EQ Eight's resonant 12 dB cut. Order 1 has no resonance.
 
 ### The EQ shapes
 
-The Bell, the first and second-order shelves, Tilt, and the order-1 Notch and
-Band Pass use matched-magnitude coefficients (Vicanek, *Matched Second Order
+The Bell, the shelves and Tilt use matched-magnitude coefficients (as built:
+band passes and notches of every order, order 1 included, stay on the family
+path, whose -3 dB edges are exact) (Vicanek, *Matched Second Order
 Digital Filters*, 2016). They are converted into the SVF's (g, k, m) from
 their poles and numerator. A matched design follows the analog shape up to
 Nyquist, so a 15 kHz shelf is not squeezed by the bilinear transform. This

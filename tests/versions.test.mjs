@@ -100,9 +100,12 @@ const PRODUCTS = {
     crates: ['vz-core', 'vz-capi', 'vz-move'].map(
       (c) => `engines/vocalize/crates/${c}/Cargo.toml`),
   },
+  /* The directory is `modules/filter-designer`, the module ID
+   * `ni-filter-designer`. */
   'filter-designer': {
     juce: { cmake: 'plugins/filter-designer/CMakeLists.txt', bundle: 'NIFilterDesigner' },
-    crates: ['fd-core', 'fd-capi'].map(
+    module: 'modules/filter-designer/module.json',
+    crates: ['fd-core', 'fd-capi', 'fd-move'].map(
       (c) => `engines/filter-designer/crates/${c}/Cargo.toml`),
   },
   /* Music theory, shared like ni-dsp but versioned, because neo-riemann pins

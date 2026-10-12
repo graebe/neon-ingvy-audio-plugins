@@ -279,6 +279,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fd-move"
+version = "2026.10.12+1"
+dependencies = [
+ "fd-capi",
+ "fd-core",
+ "ni-dsp",
+ "ni-schwung",
+ "serde_json",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

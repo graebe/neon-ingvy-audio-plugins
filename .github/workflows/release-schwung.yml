@@ -35,6 +35,7 @@ on:
       - 'side-chain-v*'
       - 'bit-crusher-v*'
       - 'vocalize-v*'
+      - 'filter-designer-v*'
 
 permissions:
   contents: write
