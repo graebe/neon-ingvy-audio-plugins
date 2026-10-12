@@ -314,7 +314,10 @@ void ResponseWell::paintPlot (juce::Graphics& g)
         g.setColour (c::line200);
         g.drawLine (a.getX() - 3.0f, y, a.getX(), y, 1.0f);
         g.setColour (c::inkMuted);
-        g.drawText ((db > 0 ? "+" : "") + juce::String (db), juce::Rectangle<float> (a.getX() - 30.0f, y - 6.0f, 25.0f, 12.0f),
+        /* Held inside the plot's height, so the top label stays out of the
+         * caption's band. */
+        const float top = juce::jlimit (a.getY(), a.getBottom() - 12.0f, y - 6.0f);
+        g.drawText ((db > 0 ? "+" : "") + juce::String (db), juce::Rectangle<float> (a.getX() - 30.0f, top, 25.0f, 12.0f),
                     juce::Justification::centredRight);
     }
 
