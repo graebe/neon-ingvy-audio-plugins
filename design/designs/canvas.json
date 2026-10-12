@@ -71,7 +71,7 @@
       "h": 532,
       "is_interactive": true,
       "title": "NI Bit-Crusher — proposed",
-      "w": 888,
+      "w": 1168,
       "x": 3824,
       "y": 1100
     },
@@ -80,7 +80,15 @@
       "is_interactive": true,
       "title": "NI Vocalize — proposed",
       "w": 888,
-      "x": 4792,
+      "x": 5072,
+      "y": 1100
+    },
+    "FilterDesigner-Proposed.dc.html": {
+      "h": 708,
+      "is_interactive": true,
+      "title": "NI Filter Designer — proposed",
+      "w": 888,
+      "x": 6040,
       "y": 1100
     }
   },
@@ -176,18 +184,26 @@
     "bc-notes": {
       "fill": "teal",
       "maxH": 640,
-      "w": 888,
+      "w": 1168,
       "x": 3824,
       "y": 1988,
-      "text": "BIT-CRUSHER — NEW WINDOW\n\nA bit crusher: a continuous signal made discrete, in amplitude and in time. Interactive: set Bits, Hold (samples per held value) and Mid-Rise in its Tweaks; the staircase and the scope follow.\n\nBC1  Two pictures over three panels, on one grid of three 264px columns: the staircase sits over the panel that shapes it.\nBC2  STEPS: input across, output up. The diagonal (line-200) is the untouched signal; the uv curve is the engine's own grid (bc_transfer_render), never a second model of it. The caption repeats Bits in the engine's words.\nBC3  SIGNAL: the last 11 ms, triggered on an upward zero crossing so a tone stands still. Input in grey, the crushed output in front; flat tops are the hold, stairs are the bits. The level range follows the material.\nBC4  Three panels of three knobs, each with the switches that change how its knobs act. STEPS: Bits, Shape, Dither; Mid-Rise, Anti-Alias. HOLD: Rate, Jitter, Octave; Pre, Post (the filters, before and after the hold). LEVEL: Drive, Mix, Output.\nBC5  Drive, Octave and Output are bipolar with symmetric ranges, so their arcs start at 12 o'clock and zero shows none.\nBC6  Rate turns in equal ratios (50 Hz to 96 kHz); every readout is the engine's text (12.0 kHz, 7.5 bits, +6.0 dB) and reads what is typed (8k).\nBC7  Switch labels read Pre and Post in the window; the host lists Pre-Filter and Post-Filter. Both names do not fit one column.\nBC8  No amber: nothing in this window is a warning.\n\nAs built: plugins/bit-crusher (JUCE 9, the native kit), v2026.10.10.1.\n\nWindow: 888 × 532."
+      "text": "BIT-CRUSHER — NEW WINDOW\n\nA bit crusher: a continuous signal made discrete, in amplitude and in time, then a low-pass of its own. Interactive: set Bits, Hold (samples per held value) and Mid-Rise, and the Filter's switch, Cutoff, Peak and Slope in its Tweaks; the pictures follow.\n\nBC1  Four pictures over four panels, on one grid of four 264px columns: each picture sits over the panel that shapes it.\nBC2  AMPLITUDE CRUSH: the staircase over the whole range, -1 to 1, never zoomed: plain at a few bits, as fine as the diagonal at many. Both axes are the level going into the quantiser after Drive, so the diagonal (grey) runs corner to corner. The staircase is the engine's own grid (bc_transfer_render); while a look is shown it is unlit and the signal lights it as uv dots. The caption counts the levels: 2^b + 1, 2^b with Mid-Rise.\nBC3  TIME CRUSH: the hold's last sixteen periods: what the hold takes in grey, the held level in front, a dot at each take (at its exact instant with Anti-Alias). Nothing held, it says NO HOLD.\nBC4  SIGNAL: the last 11 ms, triggered on an upward zero crossing. Input in grey, the crushed output in front. The level range follows the material.\nBC5  FILTER: the low-pass's response, 20 Hz to 20 kHz, +24 to -48 dB; grey is 0 dB, the curve the engine's own (bc_filter_response), lit while the Filter is on, unlit (the map of what it would do) while it is off. The caption names cutoff, slope and peak, or FILTER OFF. A dot on the curve at the cutoff (the kit's PlotHandle, as Side-Chain's) drags Cutoff sideways and Peak up and down, in one gesture; it works while the Filter is off.\nBC6  Rulers on every picture (level up, ms or Hz across); the two discretizations put their grid on the axes as minor ticks, the staircase's only while they stand 3px apart.\nBC7  Four panels of three knobs, each with the switches that change how its knobs act. AMPLITUDE CRUSH: Bits, Shape, Dither; Mid-Rise, Anti-Alias. TIME CRUSH: Rate, Jitter, Octave; Pre, Post. LEVEL: Drive, Mix, Output; Refresh and Pause (the pictures' pace, never the sound). FILTER: Cutoff, Peak, Slope; Filter (off by default).\nBC8  Slope is a three-step knob (12, 24, 48 dB/oct), not a select: it sits in the knob row with the others it shapes. Peak tops out at +24 dB and never self-oscillates.\nBC9  Drive, Octave and Output are bipolar: arcs from 12 o'clock.\nBC10 No amber: nothing in this window is a warning.\n\nAs built: plugins/bit-crusher (JUCE 9, the native kit), feature/bit-crusher-plots.\n\nWindow: 1168 × 532 (was 888)."
     },
     "vz-notes": {
       "fill": "teal",
       "maxH": 640,
       "w": 888,
-      "x": 4792,
+      "x": 5072,
       "y": 1988,
       "text": "VOCALIZE — NEW WINDOW\n\nAny sound, more and more a voice singing A, E, I, O or U, in the textbook voice or one captured from a recording. Interactive: set Captured, Forgotten, Voice, Vowel, Vocal, Size and Mode (Spectral) in its Tweaks; the vowel chart and the envelope follow.\n\nVZ1  Two pictures over three panels, on Bit-Crusher's grid of three 264px columns: the vowel chart sits over the panel that moves it.\nVZ2  VOWEL: the vowel space as phoneticians draw it, F2 across (high on the left), F1 down: the mouth seen from the side. The five letters on the path the Vowel knob walks (line-200); the uv dot is the vowel now, from the engine's own model (vz_formants). Size slides the whole path along its diagonal. The caption repeats the vowel in the engine's words (E>I 30 %) and names the recording a voice was captured from.\nVZ3  ENVELOPE: the sound's colour, 50 Hz to 10 kHz in equal steps of pitch, 0 to -48 dB. Coming in in grey, going out in front, F1 and F2 marked with rules. At Vocal 0 the two are one line. The caption names the engine drawing it, and Spectral's latency.\nVZ4  Three knob cells a panel in every panel, so the dials line up across the window. VOWEL (which vowel, whose voice): Vowel, Size, Voice; Capture… and Forget under them. VOCAL (how far, how): Vocal, Resonance, Excite; Mode under them. LEVEL: Mix, Output; Ceiling under them.\nVZ5  The Vowel knob holds on the five vowels while dragged (detents, drawn as ticks) and moves freely between them; its readout reads a letter or a letter and a percentage (E 30).\nVZ6  Mode (Time / Spectral) is a select, not a switch: two engines, not on and off. It is not automatable; switching dips the sound 20 ms and tells the host the new latency.\nVZ7  Size and Output are bipolar with symmetric ranges: arcs from 12 o'clock.\nVZ8  No amber: nothing in this window is a warning.\nVZ9  CAPTURE: a recording dropped anywhere on the window (the vowel well outlines in uv while one is dragged), or chosen with Capture…, is analysed in the background (the button reads Capturing…). The chart moves to the singer's vowels; the letters of vowels the recording held are ink, as opaque as the capture was sure of each (45 % to 100 %), those filled in from the textbook (scaled to the singer) ink-muted. Voice morphs textbook to captured. Forget lets the voice go and then reads Restore, which brings it back; with neither to do it is a disabled Forget. A failed capture names why: NO SINGING IN, NO VOWELS IN, CANNOT READ.\nVZ10 CEILING: a switch under Level's knobs, on by default: a soft limit at -0.3 dBFS, so nothing that leaves the plugin passes full scale. A switch, not a knob: there is nothing to set but whether.\n\nAs built: plugins/vocalize (JUCE 9, the native kit), v2026.10.10.1.\n\nWindow: 888 × 532."
+    },
+    "fd-notes": {
+      "fill": "teal",
+      "maxH": 640,
+      "w": 888,
+      "x": 6040,
+      "y": 1988,
+      "text": "FILTER DESIGNER — NEW WINDOW (concept, not built)\n\nA filter design tool you play as an equalizer: up to sixteen filters on one curve, every family at every order, and an EQ Three style isolator before them. Minimum phase, no latency. Interactive: double-click the picture to add a filter, drag its dot (Alt for Q, Shift for fine), Delete removes it; click a cell to inspect it, Alt-click to bypass; the knobs and selects work.\n\nFD1  RESPONSE: one picture across the window, 10 Hz to 22 kHz in equal steps of pitch, ±6, ±12, ±18 or ±30 dB (clicked in the caption). Grey is 0 dB; each filter alone is a plot-ghost line; the selected one alone is ink on a bg-000 casing (what you asked for); the total is uv (what you get). New for the system: a ResponseWell (a log-frequency ruler and a dB ruler on PlotWell).\nFD2  ANALYZER behind it in the caption's own control: Post (plot-fill), Pre (plot-dry at half), Pre + post, or off, on its own -6 to -84 dBFS scale. The engine computes it, and only while the window is open.\nFD3  HANDLES are the kit's PlotHandle (Bit-Crusher's): a gain filter's dot sits at its Freq and Gain; a cut's on its curve at Freq (dragging up raises its resonance); a Band Pass, Notch or All Pass on 0 dB (dragging up narrows it). The selected Bell, Band Pass or Notch shows its -3 dB edges as two ticks that drag its Q. Slot numbers beside the dots, with L, R, M or S off stereo.\nFD4  NODE ROW: sixteen 40px cells on the StepGrid's pitch and an ISO cell at the right. Each cell shows its type's glyph, uv while it plays, ink-dim while bypassed, nothing while empty. New for the system: nine 16px glyphs (Bell, Low and High Shelf, Low and High Cut, Band Pass, Notch, All Pass, Tilt) and the NodeCell.\nFD5  INSPECTOR (two columns wide): Type, Family, Order, Channel; then Freq, Gain, Q (Resonance on a cut), Ripple, Stopband. What a type does not use is disabled, never hidden, so nothing moves. Families: Butterworth, Bessel, Chebyshev I and II, Elliptic, Linkwitz-Riley; orders 1 to 8 (6 dB/oct each), shelves 1 to 4. Freq is the -3 dB point in every family (-6 dB for Linkwitz-Riley, so a pair sums flat).\nFD6  ISOLATOR (the ISO cell): Low, Mid, High (to -inf), the Lower and Upper crossovers, Slope (24 or 48 dB, Linkwitz-Riley), a Kill under each band. On the picture: the crossovers as rules with a tab, the bands' gains as dots L, M, H. All at 0 dB it is flat (an all-pass), so it starts off.\nFD7  OUTPUT: Output and Scale (every gain at once, as EQ Eight's) are bipolar; Adaptive narrows a Bell as it boosts or cuts.\nFD8  Selects open upward: the panel sits low in the window.\nFD9  One amber mark, kept for one warning: a filter whose edge the sample rate clamps (its band narrows). Not shown in this state.\n\nConcept: docs/concepts/filter-designer.md, ADR 0004, on feature/filter-designer. The board computes its curves from the same designs; the plugin will draw the engine's.\n\nWindow: 888 × 708."
     }
   },
   "order": [
@@ -201,7 +217,8 @@
     "ListenIn-Proposed.dc.html",
     "ChordDetector-Proposed.dc.html",
     "BitCrusher-Proposed.dc.html",
-    "Vocalize-Proposed.dc.html"
+    "Vocalize-Proposed.dc.html",
+    "FilterDesigner-Proposed.dc.html"
   ],
   "pages": [],
   "title": "NI Plugin Layouts"
