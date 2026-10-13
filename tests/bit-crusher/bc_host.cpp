@@ -12,7 +12,7 @@
  *   the class        one class, NI Bit-Crusher from Neon Ingvy, filed as
  *                    Fx|Distortion; an effect with a main bus in and out, no
  *                    MIDI either way, and its latency reported
- *   the parameters   through the VST3 controller: the engine's thirteen by
+ *   the parameters   through the VST3 controller: the engine's eighteen by
  *                    name, their default texts, typing read by the engine
  *   the sound        the golden patch, typed into the controller as a user
  *                    would, through the VST3's audio path: the engine's own
@@ -49,7 +49,8 @@ void check (bool ok, const String& what, const String& detail = {})
 
 /* The engine's parameters by name, in its table's order (bc_param_name). */
 const char* const names[BC_RENDER_PARAMS_COUNT] = { "Drive", "Bits", "Shape", "Mid-Rise", "Dither", "Anti-Alias", "Rate",
-                                                    "Jitter", "Pre-Filter", "Post-Filter", "Octave", "Mix", "Output" };
+                                                    "Jitter", "Pre-Filter", "Post-Filter", "Octave", "Mix", "Output",
+                                                    "Refresh", "Filter", "Cutoff", "Peak", "Slope" };
 
 std::unique_ptr<AudioPluginInstance> load (VST3PluginFormat& format, const PluginDescription& d, double rate, int block)
 {
@@ -76,7 +77,12 @@ bool typePatch (AudioPluginInstance& p)
         auto* param = byName (p, names[i]);
         if (param == nullptr)
             return false;
-        param->setValue (param->getValueForText (String (BC_RENDER_PARAMS[i])));
+        /* A number as its digits; a choice as its word ("1/s"), which is what
+         * a user picks. */
+        const bool choice = param->isDiscrete() && ! param->isBoolean() && param->getNumSteps() > 2;
+        const auto text = choice ? param->getText ((float) BC_RENDER_PARAMS[i] / (float) (param->getNumSteps() - 1), 64)
+                                 : String (BC_RENDER_PARAMS[i]);
+        param->setValue (param->getValueForText (text));
     }
     return true;
 }
@@ -137,7 +143,7 @@ void checkParameters (AudioPluginInstance& p)
     int found = 0;
     for (const auto* name : names)
         found += byName (p, name) != nullptr ? 1 : 0;
-    check (found == BC_RENDER_PARAMS_COUNT, "the engine's thirteen, by name", String (found));
+    check (found == BC_RENDER_PARAMS_COUNT, "the engine's eighteen, by name", String (found));
     if (found != BC_RENDER_PARAMS_COUNT)
         return;
     check (byName (p, "Rate")->getCurrentValueAsText() == "12.0 kHz", "Rate starts at 12.0 kHz",
@@ -198,7 +204,7 @@ void checkWindow (VST3PluginFormat& format, const PluginDescription& d)
     if (editor == nullptr)
         return;
     pump (50);
-    check (editor->getWidth() == 888 && editor->getHeight() == 532, "the window is the design's, 888 x 532",
+    check (editor->getWidth() == 1168 && editor->getHeight() == 532, "the window is the design's, 1168 x 532",
            String (editor->getWidth()) + " x " + String (editor->getHeight()));
     editor.reset();
     pump (10);
@@ -207,7 +213,7 @@ void checkWindow (VST3PluginFormat& format, const PluginDescription& d)
     if (editor != nullptr)
     {
         pump (20);
-        check (editor->getWidth() == 888 && editor->getHeight() == 532, "... at the same size");
+        check (editor->getWidth() == 1168 && editor->getHeight() == 532, "... at the same size");
     }
     editor.reset();
 }

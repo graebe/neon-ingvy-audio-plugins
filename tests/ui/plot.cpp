@@ -115,6 +115,21 @@ TEST_CASE ("plot: the ruler picks the smallest interval whose ticks stay 38px ap
     CHECK (long_[1].ms == 5000.0);
 }
 
+TEST_CASE ("plot: below a millisecond the ruler counts tenths")
+{
+    /* 230px over 1.35 ms -- a hold's sixteen periods at 12 kHz: 0.2 ms is
+     * 34px, 0.5 ms 85px. */
+    const auto ticks = plot::axisTicks (230.0f, 1.35);
+    REQUIRE (ticks.size() == 3);
+    CHECK (labels (ticks) == std::vector<juce::String> { "0", "0.5", "1" });
+    /* A span long enough for whole milliseconds keeps whole labels: 11 ms
+     * in 230px, a tick every 2 ms (42px). */
+    const auto l = labels (plot::axisTicks (230.0f, 11.0));
+    CHECK (std::find (l.begin(), l.end(), "4") != l.end());
+    for (const auto& s : l)
+        CHECK_FALSE (s.contains ("."));
+}
+
 TEST_CASE ("plot: the landmark leads with its unit, and the ticks near it give way")
 {
     /* 160 ms in 668px: a tick every 10 ms (41.75px); the 125 ms mark takes

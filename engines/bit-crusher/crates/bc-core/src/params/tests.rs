@@ -97,7 +97,7 @@ proptest! {
             Kind::Float { unit: Unit::Percent, .. } => 0.5,
             Kind::Float { unit: Unit::Hz, .. } => (v * 0.006).max(0.5),
             Kind::Float { .. } => 0.05,
-            Kind::Toggle { .. } => 0.0,
+            Kind::Toggle { .. } | Kind::Choice { .. } => 0.0,
         };
         prop_assert!((back - v).abs() <= tolerance + 1e-9, "{} -> {}", v, back);
     }
@@ -180,4 +180,25 @@ fn a_bipolar_range_is_symmetric_so_its_centre_is_zero() {
             assert_eq!(p.denormalise(0.5), 0.0, "{p:?}");
         }
     }
+}
+
+#[test]
+fn refresh_is_a_choice_of_the_window_that_a_host_does_not_automate() {
+    let r = Param::Refresh;
+    assert_eq!(r as usize, 13, "appended after Output: no saved index moved");
+    assert_eq!(r.info().key, "refresh");
+    assert!(!r.info().automatable);
+    assert!(Param::ALL.iter().filter(|&&p| p != r).all(|p| p.info().automatable));
+    assert_eq!(text(r, r.default_value()), "1/s");
+    assert_eq!(REFRESH_LABELS.len(), REFRESH_PERIOD_MS.len());
+    assert_eq!(REFRESH_PERIOD_MS[r.default_value() as usize], 1000.0);
+    /* By its words only: "1/s" read as a number would be index 1, "10/s". */
+    assert_eq!(r.parse_value("1/s"), Some(3.0));
+    assert_eq!(r.parse_value(" live "), Some(0.0));
+    assert_eq!(r.parse_value("3"), None);
+    /* Indices on an even travel, and back. */
+    assert_eq!(r.normalise(3.0), 1.0);
+    assert_eq!(r.denormalise(1.0 / 3.0), 1.0);
+    assert_eq!(r.clamp(7.0), 3.0);
+    assert_eq!(r.snap(1.4), 1.0);
 }

@@ -41,6 +41,9 @@ impl Instance {
         if frames == 0 {
             return None;
         }
+        /* Time passes whether or not this block gates anything: counted
+         * first, so every return below has it. */
+        self.clock_frames = self.clock_frames.saturating_add(frames as u64);
         let length = self.pattern().length.clamp(1, MAX_STEPS);
 
         let mut bpm = 120.0f32;

@@ -9,10 +9,19 @@ ONE TABLE, THREE READERS. The JUCE shell declares its host parameters from it
 (bc-move), and the engine clamps with it. A range, a default or a unit is
 written here and nowhere else.
 
-TWO KINDS. A `Float` runs from `min` to `max` in its own unit -- dB, bits, %,
-Hz, octaves -- on a linear or a logarithmic travel; a `Toggle` is off or on.
-The engine takes every value in the unit the table names, so a host's value,
-a typed one and a Move knob's are the same number.
+THE FILTER is the last four, appended: a resonant low-pass after the crusher,
+off by default, so a set saved before it existed sounds as it did.
+
+THREE KINDS. A `Float` runs from `min` to `max` in its own unit -- dB, bits,
+%, Hz, octaves -- on a linear or a logarithmic travel; a `Toggle` is off or
+on; a `Choice` is one of its words, by index. The engine takes every value in
+the unit the table names, so a host's value, a typed one and a Move knob's are
+the same number.
+
+ONE IS THE WINDOW'S. Refresh -- how often the editor's pictures take a new
+look -- changes nothing the engine does. It is in the table so that it is
+declared once, saved with a set like the rest, and marked for a host not to
+automate (`Info::automatable`), as NI Chord-Detector's window settings are.
 
 THE TRAVEL IS THE TABLE'S TOO. Rate runs over more than three decades, and a
 linear knob would spend nine tenths of its turn above 10 kHz, so the table says
@@ -61,10 +70,28 @@ pub enum Param {
     Mix,
     /// Gain after the mix.
     Output,
+    /// How often the editor's pictures take a new look. The window's alone.
+    Refresh,
+    /// The resonant low-pass after the crusher, before the mix: on or off.
+    Filter,
+    /// Its cutoff.
+    Cutoff,
+    /// How far its response rises at the cutoff over a flat (Butterworth) one.
+    Peak,
+    /// Its slope: 12, 24 or 48 dB per octave.
+    Slope,
 }
 
 /// How many parameters there are.
-pub const PARAM_COUNT: usize = 13;
+pub const PARAM_COUNT: usize = 18;
+
+/// Slope's choices, in index order: two, four and eight poles.
+pub const SLOPE_LABELS: [&str; 3] = ["12 dB", "24 dB", "48 dB"];
+
+/// Refresh's choices, in index order, and the pictures' period for each in
+/// milliseconds -- 0 is every frame the editor draws.
+pub const REFRESH_LABELS: [&str; 4] = ["Live", "10/s", "4/s", "1/s"];
+pub const REFRESH_PERIOD_MS: [f64; 4] = [0.0, 100.0, 250.0, 1000.0];
 
 /// A float's unit: what it is printed with and how typing is read.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -126,6 +153,11 @@ pub enum Kind {
     Toggle {
         default: bool,
     },
+    /// One of `choices`, by index.
+    Choice {
+        choices: &'static [&'static str],
+        default: u8,
+    },
 }
 
 /// What a shell needs to declare one parameter.
@@ -136,6 +168,9 @@ pub struct Info {
     /// The name a host shows.
     pub name: &'static str,
     pub kind: Kind,
+    /// Whether a host should offer it for automation: every control of the
+    /// sound is; a setting of the window is not.
+    pub automatable: bool,
 }
 
 /// A toggle's two words, in index order.
@@ -161,6 +196,11 @@ impl Param {
         Param::PostOctave,
         Param::Mix,
         Param::Output,
+        Param::Refresh,
+        Param::Filter,
+        Param::Cutoff,
+        Param::Peak,
+        Param::Slope,
     ];
 
     /// The parameter at a host index, if there is one.
@@ -190,8 +230,33 @@ impl Param {
             Param::PostOctave => ("post_octave", "Octave", float(-3.0, 3.0, 0.0, Unit::Octaves, Linear, true)),
             Param::Mix => ("mix", "Mix", float(0.0, 100.0, 100.0, Unit::Percent, Linear, false)),
             Param::Output => ("output", "Output", float(-24.0, 24.0, 0.0, Unit::Db, Linear, true)),
+            Param::Refresh => ("refresh", "Refresh", Kind::Choice { choices: &REFRESH_LABELS, default: 3 }),
+            Param::Filter => ("filter", "Filter", Kind::Toggle { default: false }),
+            Param::Cutoff => ("cutoff", "Cutoff", float(20.0, 20_000.0, 2_000.0, Unit::Hz, Log, false)),
+            Param::Peak => ("peak", "Peak", float(0.0, 24.0, 0.0, Unit::Db, Linear, false)),
+            Param::Slope => ("slope", "Slope", Kind::Choice { choices: &SLOPE_LABELS, default: 1 }),
         };
-        Info { key, name, kind }
+        Info { key, name, kind, automatable: !matches!(self, Param::Refresh) }
+    }
+
+    /// Whether it shapes what an editor's live pictures of the two
+    /// discretizations show -- the quantiser's input and levels, the hold's
+    /// takes -- so a look made before it moved is not shown on the new
+    /// settings. The filters after the hold, the mix and the window's own do
+    /// not.
+    pub fn shapes_the_looks(self) -> bool {
+        matches!(
+            self,
+            Param::Drive
+                | Param::Bits
+                | Param::Shape
+                | Param::MidRise
+                | Param::Dither
+                | Param::AntiAlias
+                | Param::Rate
+                | Param::Jitter
+                | Param::PreFilter
+        )
     }
 
     /// The value a new instance starts at, in the parameter's unit.
@@ -199,15 +264,18 @@ impl Param {
         match self.info().kind {
             Kind::Float { default, .. } => default,
             Kind::Toggle { default } => default as i32 as f64,
+            Kind::Choice { default, .. } => default as f64,
         }
     }
 
     /// The nearest value the parameter can hold: a float inside its range, a
-    /// toggle on from one half up. NaN is not a value; callers drop it first.
+    /// toggle on from one half up, a choice's nearest index. NaN is not a
+    /// value; callers drop it first.
     pub fn clamp(self, v: f64) -> f64 {
         match self.info().kind {
             Kind::Float { min, max, .. } => v.clamp(min, max),
             Kind::Toggle { .. } => (v >= 0.5) as i32 as f64,
+            Kind::Choice { choices, .. } => v.round().clamp(0.0, (choices.len() - 1) as f64),
         }
     }
 
@@ -220,7 +288,7 @@ impl Param {
                 let per = 1.0 / unit.resolution();
                 self.clamp((v * per).round() / per)
             }
-            Kind::Toggle { .. } => self.clamp(v),
+            Kind::Toggle { .. } | Kind::Choice { .. } => self.clamp(v),
         }
     }
 
@@ -235,6 +303,7 @@ impl Param {
                 }
             }
             Kind::Toggle { .. } => self.clamp(v),
+            Kind::Choice { choices, .. } => self.clamp(v) / (choices.len() - 1) as f64,
         }
     }
 
@@ -248,6 +317,7 @@ impl Param {
                 Travel::Log => (min * (max / min).powf(n)).clamp(min, max),
             },
             Kind::Toggle { .. } => self.clamp(n),
+            Kind::Choice { choices, .. } => self.clamp(n * (choices.len() - 1) as f64),
         }
     }
 
@@ -255,8 +325,10 @@ impl Param {
     /// "12.0 kHz", "-1.5 oct", "On".
     pub fn write_value(self, out: &mut dyn Write, v: f64) -> fmt::Result {
         let v = if v.is_nan() { self.default_value() } else { self.clamp(v) };
-        let Kind::Float { unit, .. } = self.info().kind else {
-            return out.write_str(TOGGLE_LABELS[(v >= 0.5) as usize]);
+        let unit = match self.info().kind {
+            Kind::Float { unit, .. } => unit,
+            Kind::Toggle { .. } => return out.write_str(TOGGLE_LABELS[(v >= 0.5) as usize]),
+            Kind::Choice { choices, .. } => return out.write_str(choices[v as usize]),
         };
         match unit {
             Unit::Db | Unit::Octaves => {
@@ -300,11 +372,16 @@ impl Param {
                 return Some(i as f64);
             }
         }
+        /* A choice by its word only: "1/s" has a digit in it, and read as a
+         * number it would be the index of "10/s". */
+        if let Kind::Choice { choices, .. } = self.info().kind {
+            return choices.iter().position(|l| l.eq_ignore_ascii_case(t)).map(|i| i as f64);
+        }
         if !t.bytes().any(|b| b.is_ascii_digit()) {
             return None;
         }
         let mut v = atof(t);
-        if self == Param::Rate {
+        if matches!(self.info().kind, Kind::Float { unit: Unit::Hz, .. }) {
             /* The first letter after the number, whatever spacing: "12k",
              * "12 kHz", "12.5K". */
             let unit = t.trim_start_matches(|c: char| c.is_ascii_digit() || matches!(c, '.' | '+' | '-' | ' '));

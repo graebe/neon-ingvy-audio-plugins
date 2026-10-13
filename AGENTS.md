@@ -90,6 +90,11 @@ License GPL-3.0-or-later
   Zlib, MPL-2.0, Unicode-3.0, CC0, Unlicense, GPL-3.0+, AGPL-3.0 for JUCE, and the
   libpng-2.0, IJG and MIT-Modern-Variant code JUCE compiles in);
   if something is not, tell me in the developer chat
+- content (samples, impulse responses, datasets, model weights, artwork, docs) may
+  also be CC-BY-4.0 or CC-BY-SA-4.0 (both GPLv3-compatible), credited with title,
+  author, source and licence, and "modified" if changed. Never an NC or ND variant,
+  never a CC version before 4.0, never code; they stay out of the code allowlist
+  (deny.toml, about.toml)
 - Check all licenses so that I do not accidentally have conflicting licenses
 - Make sure all open-source attributions are met (scan libraries)
 - Check if attributions can be deleted (outdated dependencies)

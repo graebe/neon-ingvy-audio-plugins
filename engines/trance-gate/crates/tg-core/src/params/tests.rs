@@ -132,3 +132,66 @@ fn the_field_names_count_the_readouts_fields() {
     assert_eq!(params.split(':').nth(at("hold")), Some("1"));
     assert_eq!(read(&p, "ui").split(':').nth(UI_FIELDS.iter().position(|n| *n == "length").unwrap()), Some("16"));
 }
+
+/*
+ * `devms`: THE ENGINE'S OWN CLOCK, appended last. Exactly the frames it has
+ * processed at its rate, never going back, carried across a rate change and
+ * into a mirror -- and the readout at its longest (128 steps, every depth and
+ * order set, the last slot) still answers whole: get_param refuses a text
+ * that does not fit rather than cut it.
+ */
+#[test]
+fn devms_is_the_time_the_engine_has_processed() {
+    use crate::params::UI_FIELDS;
+    let at = UI_FIELDS.iter().position(|n| *n == "devms").unwrap();
+    assert_eq!(at, UI_FIELDS.len() - 1, "appended, never inserted");
+    let devms = |p: &Instance| {
+        let mut buf = [0u8; 2048];
+        let n = p.get_param("ui", &mut buf);
+        let ui = core::str::from_utf8(&buf[..n as usize]).unwrap().to_owned();
+        ui.split(':').nth(at).unwrap().parse::<f64>().unwrap()
+    };
+    let mut p = Instance::new(48000.0);
+    assert_eq!(devms(&p), 0.0);
+    let mut l = [0.0f32; 480];
+    let mut r = [0.0f32; 480];
+    let mut last = 0.0;
+    for _ in 0..100 {
+        p.process_f32_split(&mut l, &mut r, 480, None);
+        let now = devms(&p);
+        assert!(now > last, "{now} after {last}");
+        last = now;
+    }
+    assert_eq!(last, 1000.0, "100 blocks of 10 ms");
+    /* A new rate counts on from where the old one left off. */
+    p.set_sample_rate(44100.0);
+    assert_eq!(devms(&p), 1000.0);
+    p.process_f32_split(&mut l, &mut r, 441, None);
+    assert_eq!(devms(&p), 1010.0);
+    /* A mirror reports the engine's clock. */
+    let mut m = Instance::new(44100.0);
+    m.mirror("", &p.playhead());
+    assert_eq!(devms(&m), 1010.0);
+}
+
+#[test]
+fn the_longest_ui_readout_still_answers_whole() {
+    let mut p = Instance::new(44100.0);
+    p.set_param("slot", "7");
+    p.set_param("length", "127");
+    for i in 0..128 {
+        p.set_param("cursor", &i.to_string());
+        p.set_param("step", if i % 3 == 0 { "Tie" } else { "On" });
+        p.set_param("step_amount", "0.5");
+        p.set_param("step_order", &(128 - i).to_string());
+    }
+    let mut l = [0.0f32; 128];
+    let mut r = [0.0f32; 128];
+    for _ in 0..10_000 {
+        p.process_f32_split(&mut l, &mut r, 128, None);
+    }
+    let mut buf = [0u8; 1024];
+    let n = p.get_param("ui", &mut buf);
+    assert!(n > 0, "the longest `ui` does not fit 1 KB");
+    assert!(n < 900, "{n} bytes: within reach of a 1 KB read");
+}

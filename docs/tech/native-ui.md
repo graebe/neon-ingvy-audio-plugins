@@ -104,6 +104,16 @@ millisecond `Axis`, and `band`, the min/max envelope of an engine's capture.
 A plot draws what its engine rendered or captured, never a second model of the
 DSP.
 
+**A point you can drag is a `PlotHandle`** (`PlotHandle.h`): an ink dot in a
+target three times its size, bound to one host parameter sideways and
+optionally another up and down. The plot places it and hands it, per axis, the
+plain value a drag of so many pixels makes (a cycle's percent, a frequency's
+octaves, a gain's decibels); the handle does the rest the same way everywhere
+-- the 4px dead zone before a gesture opens, both parameters in one gesture,
+Shift for a fifth of the travel chosen at the press, double-click to reset,
+the arrow keys, and a slider to assistive technology. NI Side-Chain's shape
+handles and NI Bit-Crusher's filter dot are both one.
+
 **An audio trace follows its material.** A well that draws one calls
 `enableLevelRange()` and feeds `followLevel(peak, nowMs)` from its frame tick,
 with the capture's peak (`plot::peak`); it builds its bands on

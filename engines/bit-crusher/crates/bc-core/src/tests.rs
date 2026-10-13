@@ -526,29 +526,227 @@ fn every_control_at_its_ends_renders_finite_audio() {
 }
 
 #[test]
-fn the_plot_is_zoomed_until_the_steps_show() {
-    let steps = |r: f64, drive: f64, bits: f64, shape: f64| {
-        (1..4096)
-            .filter(|&i| {
-                let x = |i: i32| -r + 2.0 * r * f64::from(i) / 4095.0;
-                transfer(drive, bits, shape, false, x(i)) != transfer(drive, bits, shape, false, x(i - 1))
-            })
-            .count()
-    };
-    /* Few bits fit whole: 4 bits is 16 steps across -1..1. */
-    assert_eq!(transfer_span(0.0, 1.0, 0.0, false), 1.0);
-    assert_eq!(transfer_span(0.0, 4.0, 0.0, false), 1.0);
-    /* 8 bits, 256 steps: a sixteenth of full scale holds 16 of them. */
-    assert_eq!(transfer_span(0.0, 8.0, 0.0, false), 1.0 / 16.0);
-    assert_eq!(transfer_span(0.0, 16.0, 0.0, false), 1.0 / 4096.0);
-    /* Whatever the settings, the window shows steps, and no more than 16. */
-    for &(drive, bits, shape) in &[(0.0, 5.5, 0.0), (12.0, 8.0, 0.0), (-24.0, 12.0, 50.0), (0.0, 10.0, 100.0)] {
-        let r = transfer_span(drive, bits, shape, false);
-        let n = steps(r, drive, bits, shape);
-        assert!(n >= 2 && n <= SPAN_STEPS, "drive {drive}, bits {bits}, shape {shape}: {n} steps in ±{r}");
-        assert_eq!(r.log2().fract(), 0.0, "a power of two: {r}");
+fn the_probe_tells_the_level_the_staircase_gives_and_the_hold_takes() {
+    let mut e = engine(&[(Param::Bits, 3.0), (Param::Drive, 6.0), (Param::Rate, 12_000.0)]);
+    let mut input = sine(220.0, 0.7, 4800);
+    let mut seen = Vec::new();
+    e.process_f32_probed(&mut input, None, |i, p| seen.push((i, p)));
+    assert_eq!(seen.len(), 4800);
+    assert!(seen.iter().enumerate().all(|(n, &(i, _))| i == n), "every index, in order");
+    /* No dither, no pre-filter: the level is the staircase at the input,
+     * which has Drive in it -- 6 dB up on the dry tone. */
+    for &(_, p) in &seen {
+        assert_eq!(p.level, transfer(0.0, 3.0, 0.0, false, p.input), "{p:?}");
     }
-    /* Drive stretches the steps, so it needs a narrower window. */
-    assert!(transfer_span(12.0, 8.0, 0.0, false) < transfer_span(0.0, 8.0, 0.0, false));
-    assert_eq!(transfer_span(f64::NAN, f64::NAN, f64::NAN, false), transfer_span(0.0, 8.0, 0.0, false));
+    let peak = seen.iter().map(|(_, p)| p.input.abs()).fold(0.0, f64::max);
+    assert!((peak - 0.7 * 10f64.powf(6.0 / 20.0)).abs() < 0.01, "{peak}");
+    /* 12 kHz at 48 kHz: a take every fourth sample, from the first. */
+    let takes: Vec<usize> = seen.iter().filter(|(_, p)| p.took).map(|&(i, _)| i).collect();
+    assert_eq!(takes[0], 0);
+    assert!(takes.windows(2).all(|w| w[1] - w[0] == 4), "{:?}", &takes[..8]);
+    /* The probe changes nothing it watches. */
+    let mut a = engine(&[(Param::Bits, 3.0), (Param::Drive, 6.0), (Param::Rate, 12_000.0)]);
+    assert_eq!(mono(&mut a, &sine(220.0, 0.7, 4800)), input);
+    /* Bypassed, once the fade has landed: the input passes into the probe, and
+     * nothing is taken. */
+    e.set_active(false);
+    let mut quiet = vec![0.25f32; SR as usize];
+    let mut last = Probe::default();
+    e.process_f32_probed(&mut quiet, None, |_, p| last = p);
+    assert_eq!(last, Probe { input: 0.25, level: 0.25, took: false, exact_take: None });
+}
+
+#[test]
+fn the_level_count_is_what_the_staircase_has() {
+    /* Counted by sweeping the engine's own staircase past full scale. */
+    let counted = |bits: f64, mid_rise: bool| {
+        let mut v: Vec<f64> = (0..=200_000).map(|i| transfer(0.0, bits, 0.0, mid_rise, -1.2 + 2.4 * i as f64 / 200_000.0)).collect();
+        v.sort_by(f64::total_cmp);
+        v.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
+        v.len() as u32
+    };
+    for (bits, tread, rise) in [(1.0, 3, 2), (2.0, 5, 4), (3.0, 9, 8), (4.0, 17, 16), (4.5, 23, 24), (8.0, 257, 256)] {
+        assert_eq!(level_count(bits, false), tread, "{bits} bits mid-tread");
+        assert_eq!(level_count(bits, true), rise, "{bits} bits mid-rise");
+        assert_eq!(counted(bits, false), tread, "{bits} bits mid-tread, counted");
+        assert_eq!(counted(bits, true), rise, "{bits} bits mid-rise, counted");
+    }
+    assert_eq!(level_count(f64::NAN, false), 257);
+}
+
+#[test]
+fn settled_counts_samples_since_a_setting_of_the_sound_last_changed() {
+    let mut e = Engine::new(SR);
+    let mut block = vec![0.0f32; 480];
+    e.process_f32(&mut block, None);
+    assert_eq!(e.settled(), 480);
+    /* The same value again, or the window's Refresh, changes nothing. */
+    e.set_num(Param::Bits, 8.0);
+    e.set_num(Param::Refresh, 0.0);
+    e.process_f32(&mut block, None);
+    assert_eq!(e.settled(), 960);
+    e.set_num(Param::Bits, 6.0);
+    assert_eq!(e.settled(), 0);
+    e.process_i16(&mut [0i16; 64], 32);
+    assert_eq!(e.settled(), 32);
+}
+
+#[test]
+fn with_anti_alias_the_takes_are_at_their_exact_instants() {
+    /* 12 kHz at 44.1 kHz: a period of 3.675 samples. The plain hold takes on
+     * the grid, three and four samples apart; the band-limited one at each
+     * exact instant, HALF_WIDTH behind the sample it was given. */
+    let sr = 44_100.0;
+    let mut e = Engine::new(sr);
+    e.set_num(Param::AntiAlias, 1.0);
+    let mut warm = vec![0.0f32; sr as usize];
+    e.process_f32(&mut warm, None);
+    let mut input: Vec<f32> = (0..4410).map(|i| (0.5 * (i as f64 * 0.01).sin()) as f32).collect();
+    let (mut exact, mut grid) = (Vec::new(), Vec::new());
+    e.process_f32_probed(&mut input, None, |i, p| {
+        if let Some(at) = p.exact_take {
+            assert!(at > -(blep::HALF_WIDTH as f64) - 1.0 && at <= -(blep::HALF_WIDTH as f64), "{at}");
+            exact.push(i as f64 + at);
+        }
+        if p.took {
+            grid.push(i);
+        }
+    });
+    let period = sr / 12_000.0;
+    assert!(exact.len() > 1000);
+    assert!(exact.windows(2).all(|w| (w[1] - w[0] - period).abs() < 1e-6), "{:?}", &exact[..4]);
+    assert!(grid.windows(2).all(|w| matches!(w[1] - w[0], 3 | 4)));
+    /* Off, there is no exact hold to ask. */
+    e.set_num(Param::AntiAlias, 0.0);
+    let mut warm = vec![0.0f32; sr as usize];
+    e.process_f32(&mut warm, None);
+    let mut any = false;
+    e.process_f32_probed(&mut input, None, |_, p| any |= p.exact_take.is_some());
+    assert!(!any);
+}
+
+#[test]
+fn the_filter_is_flat_then_its_slope_and_peak_rises_by_exactly_peak() {
+    use filters::ToneCoefficients;
+    let sr = 48_000.0;
+    for (i, slope_db) in [12.0, 24.0, 48.0].into_iter().enumerate() {
+        let c = ToneCoefficients::new(1_000.0, 0.0, sr);
+        /* Butterworth: flat below, -3 dB at the cutoff, the slope above. */
+        assert!(c.response_db(i, 100.0, sr).abs() < 0.01, "{slope_db}: flat");
+        assert!((c.response_db(i, 1_000.0, sr) + 3.01).abs() < 0.05, "{slope_db}: -3 dB at the cutoff");
+        let octave = c.response_db(i, 4_000.0, sr) - c.response_db(i, 8_000.0, sr);
+        assert!((octave - slope_db).abs() < 0.15 * slope_db, "{slope_db}: {octave} dB an octave up");
+        /* Peak: the response at the cutoff, exactly that many dB higher. */
+        for peak in [6.0, 12.0, 24.0] {
+            let p = ToneCoefficients::new(1_000.0, peak, sr);
+            let rise = p.response_db(i, 1_000.0, sr) - c.response_db(i, 1_000.0, sr);
+            assert!((rise - peak).abs() < 0.05, "{slope_db}, peak {peak}: rose {rise}");
+            assert!(p.response_db(i, 100.0, sr).abs() < 0.2, "{slope_db}, peak {peak}: passband");
+        }
+    }
+}
+
+/// The analog Butterworth (with its sharpest section's Q raised by Peak) the
+/// Filter stands for: its gain at `f`, in dB.
+fn analog_filter_db(slope: usize, cutoff: f64, peak: f64, f: f64) -> f64 {
+    let qs: &[f64] = match slope {
+        0 => &[core::f64::consts::FRAC_1_SQRT_2],
+        1 => &[0.541_196_100_146_197, 1.306_562_964_876_376_5],
+        _ => &[0.509_795_579_104_159, 0.601_344_886_935_045, 0.899_976_223_136_415, 2.562_915_447_741_505],
+    };
+    let r = f / cutoff;
+    let last = qs.len() - 1;
+    qs.iter()
+        .enumerate()
+        .map(|(i, q)| {
+            let q = if i == last { q * 10f64.powf(peak / 20.0) } else { *q };
+            -10.0 * ((1.0 - r * r).powi(2) + (r / q).powi(2)).log10()
+        })
+        .sum()
+}
+
+#[test]
+fn the_filter_keeps_its_slope_and_peak_up_to_twenty_kilohertz() {
+    use filters::ToneCoefficients;
+    /* Up to 20 kHz -- the top of the plot and of hearing -- every slope,
+     * peak and cutoff follows its analog filter: within 3 dB where it passes
+     * and peaks (above -6 dB; 2.6 measured over every cutoff), within 4.5 dB
+     * down to -20 dB, and within a quarter of the depth below that, to -60
+     * dB. The misses are all at the top at 44.1 kHz, and all on the shallow
+     * side: right at Nyquist a section cannot reach the analog's full depth.
+     * No slope steepening into a cliff, no peak narrowing: bilinear sections
+     * missed by up to 47 dB here, ever deeper. */
+    for sr in [44_100.0, 48_000.0, 96_000.0] {
+        for slope in 0..3 {
+            for peak in [0.0, 12.0, 24.0] {
+                for cutoff in [100.0, 1_000.0, 8_000.0, 14_000.0, 18_000.0, 20_000.0] {
+                    let c = ToneCoefficients::new(cutoff, peak, sr);
+                    for i in 0..400 {
+                        let f = 20.0 * 1000f64.powf(f64::from(i) / 399.0);
+                        let want = analog_filter_db(slope, cutoff, peak, f);
+                        if want < -60.0 {
+                            continue;
+                        }
+                        let got = c.response_db(slope, f, sr);
+                        let tolerance = if want > -6.0 {
+                            3.0
+                        } else if want > -20.0 {
+                            4.5
+                        } else {
+                            0.25 * -want
+                        };
+                        assert!((got - want).abs() < tolerance, "{sr} Hz, slope {slope}, peak {peak}, {cutoff} Hz: {got} at {f} Hz, analog {want}");
+                    }
+                    /* At the cutoff, exactly: -3 dB raised by Peak. */
+                    let at = c.response_db(slope, cutoff, sr);
+                    assert!((at - (peak - 3.0103)).abs() < 0.01, "{sr} {slope} {peak} {cutoff}: {at} at the cutoff");
+                }
+            }
+        }
+    }
+    /* Stable at the top of its range, at the most Peak: a rung impulse dies
+     * away. */
+    let mut e = engine(&[(Param::Bits, 16.0), NO_HOLD, (Param::Filter, 1.0), (Param::Cutoff, 20_000.0), (Param::Peak, 24.0), (Param::Slope, 2.0)]);
+    let mut click = vec![0.0f32; 48_000];
+    click[100] = 0.5;
+    let out = mono(&mut e, &click);
+    assert!(out.iter().all(|y| y.is_finite()));
+    assert!(out[40_000..].iter().all(|y| y.abs() < 1e-6), "it rings on");
+}
+
+#[test]
+fn the_filter_is_off_by_default_and_on_it_is_heard_at_its_response() {
+    /* A transparent crusher -- 16 bits, no hold -- so the filter is all
+     * that acts: a 4 kHz tone through a 1 kHz, 24 dB filter comes out about
+     * 48 dB down. */
+    let tone = sine(4_000.0, 0.5, 48_000);
+    let open = [(Param::Bits, 16.0), NO_HOLD];
+    let rms = |v: &[f32]| (v[24_000..].iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / 24_000.0).sqrt();
+    let off = mono(&mut engine(&open), &tone);
+    assert!((rms(&off) - 0.5 / 2f64.sqrt()).abs() < 0.01, "off by default: {}", rms(&off));
+    let mut e = engine(&[(Param::Bits, 16.0), NO_HOLD, (Param::Filter, 1.0), (Param::Cutoff, 1_000.0)]);
+    let on = mono(&mut e, &tone);
+    let want = filters::ToneCoefficients::new(1_000.0, 0.0, SR).response_db(1, 4_000.0, SR);
+    let got = 20.0 * (rms(&on) / rms(&off)).log10();
+    assert!((got - want).abs() < 1.0, "{got} dB, the response says {want}");
+}
+
+#[test]
+fn moving_slope_or_switching_the_filter_does_not_click() {
+    let mut e = engine(&[(Param::Bits, 16.0), NO_HOLD, (Param::Filter, 1.0), (Param::Cutoff, 2_000.0)]);
+    let tone = sine(220.0, 0.5, 48_000);
+    let mut out = Vec::new();
+    for (k, block) in tone.chunks(4_800).enumerate() {
+        match k {
+            2 => e.set_num(Param::Slope, 2.0),
+            4 => e.set_num(Param::Slope, 0.0),
+            6 => e.set_num(Param::Filter, 0.0),
+            8 => e.set_num(Param::Peak, 24.0),
+            _ => {}
+        }
+        out.extend(mono(&mut e, block));
+    }
+    /* A 220 Hz tone at 0.5 moves at most 0.0145 a sample; a click is a jump. */
+    let worst = out[4_800..].windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    assert!(worst < 0.03, "{worst}");
 }

@@ -36,6 +36,16 @@ would roll a second pattern. It writes the LABEL rather than an index
 deliberately -- "Roll" carries no number, so the engine walks its own generator
 and successive rolls differ, where index 1 would pin the seed to 1 and hand back
 the same pattern every time.
+
+THE EDITOR'S FEED IS THE LAST ENTRY, `web_ui` (ni_schwung::WEB_UI_KEY). Its
+`extra_keys` are what the module's page in Schwung's web manager is drawn from,
+and the manager pushes them live because none of them is a declared param:
+`ui` (the pattern and the playhead), `params` (the sound at full precision,
+and the Length detents) and `state` (the whole patch, every slot -- the page
+renders the gate and envelope curves from it with this engine, built for the
+browser). `ui` was once declared as a read-only param. Nothing on the device
+read it that way -- ui_chain.js asks for it by name and the gate page lists it
+as an extra -- and, declared, it never reached the page.
 */
 
 pub const CHAIN_PARAMS: &str = include_str!(concat!(env!("OUT_DIR"), "/chain_params.json"));

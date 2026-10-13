@@ -75,6 +75,17 @@ std::unique_ptr<juce::RangedAudioParameter> fromEngine (int index)
     const auto name = engineText ([index] (char* b, int n) { return bc_param_name (index, b, n); });
     if (info.kind == BcParamKind_Toggle)
         return std::make_unique<juce::AudioParameterBool> (juce::ParameterID { key, 1 }, name, info.default_value >= 0.5);
+    /* A choice in the engine's words; one of the window's (Refresh) is saved
+     * with the set and not offered for automation. */
+    if (info.kind == BcParamKind_Choice)
+    {
+        juce::StringArray choices;
+        for (int c = 0; c < info.choice_count; ++c)
+            choices.add (engineText ([index, c] (char* b, int n) { return bc_param_choice (index, c, b, n); }));
+        return std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { key, 1 }, name, choices, (int) info.default_value,
+            juce::AudioParameterChoiceAttributes().withAutomatable (info.automatable));
+    }
     return std::make_unique<EngineFloat> (index, key, name, info);
 }
 
@@ -98,7 +109,8 @@ Processor::Processor()
         params[(size_t) i] = p.get();
         addParameter (p.release());
         BcParamInfo info {};
-        toggles[(size_t) i] = bc_param_info (i, &info) && info.kind == BcParamKind_Toggle;
+        /* Only a number glides across a block; a switch or a choice jumps. */
+        toggles[(size_t) i] = bc_param_info (i, &info) && info.kind != BcParamKind_Float;
     }
     /* Constant: Anti-Alias on or off, at any rate (bc_latency). */
     setLatencySamples ((int) bc_latency());
@@ -201,14 +213,13 @@ bool Processor::bipolar (int index) const
     return bc_param_info (index, &info) && info.bipolar;
 }
 
-double Processor::steps (float* out, int count)
+/* On the quantiser's own input, after Drive: Drive moves the signal up the
+ * staircase, never the staircase off the diagonal. */
+void Processor::steps (float* out, int count)
 {
-    const double drive = plain (param::drive), bits = plain (param::bits), shape = plain (param::shape);
-    const bool midRise = plain (param::midRise) >= 0.5;
-    const double span = bc_transfer_span (drive, bits, shape, midRise);
     if (out != nullptr && count > 0)
-        bc_transfer_render (drive, bits, shape, midRise, span, out, (uint32_t) count);
-    return span;
+        bc_transfer_render (0.0, plain (param::bits), plain (param::shape), plain (param::midRise) >= 0.5, out,
+                            (uint32_t) count);
 }
 
 const Scope& Processor::scope()
@@ -220,7 +231,54 @@ const Scope& Processor::scope()
     latest.sampleRate = published->sample_rate;
     latest.dry.assign (published->dry, published->dry + BC_SCOPE);
     latest.wet.assign (published->wet, published->wet + BC_SCOPE);
+    latest.ampIn.assign (published->amp_in, published->amp_in + BC_SCOPE);
+    latest.ampOut.assign (published->amp_out, published->amp_out + BC_SCOPE);
+    const auto holdLen = (size_t) juce::jmin ((int) published->hold_len, (int) BC_HOLD);
+    latest.holdIn.assign (published->hold_in, published->hold_in + holdLen);
+    latest.holdTook.assign (published->hold_took, published->hold_took + holdLen);
+    latest.holdAt.assign (published->hold_at, published->hold_at + holdLen);
+    latest.holdTakes = (int) published->hold_takes;
+    latest.settled = published->settled;
+    latest.settings = {};
+    latest.settings[param::drive] = published->drive_db;
+    latest.settings[param::bits] = published->bits;
+    latest.settings[param::shape] = published->shape;
+    latest.settings[param::midRise] = published->mid_rise;
+    latest.settings[param::dither] = published->dither;
+    latest.settings[param::antiAlias] = published->anti_alias;
+    latest.settings[param::rate] = published->rate;
+    latest.settings[param::jitter] = published->jitter;
+    latest.settings[param::preFilter] = published->pre_filter;
     return latest;
+}
+
+/* At the host's rate, or 48 kHz before there is one: the curve near Nyquist
+ * is where the two differ. */
+double Processor::filterRate() const
+{
+    return getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+}
+
+void Processor::filterResponse (float* outDb, int count, double loHz, double hiHz) const
+{
+    if (outDb != nullptr && count > 0)
+        bc_filter_response (plain (param::cutoff), plain (param::peak), (int) plain (param::slope), filterRate(), loHz,
+                            hiHz, outDb, (uint32_t) count);
+}
+
+float Processor::filterGain (double hz) const
+{
+    return bc_filter_gain (plain (param::cutoff), plain (param::peak), (int) plain (param::slope), filterRate(), hz);
+}
+
+int Processor::levelCount() const
+{
+    return (int) bc_level_count (plain (param::bits), plain (param::midRise) >= 0.5);
+}
+
+double Processor::refreshPeriodMs() const
+{
+    return bc_refresh_period_ms ((int) plain (param::refresh));
 }
 
 juce::AudioProcessorEditor* Processor::createEditor()

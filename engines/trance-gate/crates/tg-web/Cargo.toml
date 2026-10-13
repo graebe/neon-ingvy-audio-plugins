@@ -1,0 +1,19 @@
+[package]
+name = "tg-web"
+version = "2026.10.9+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The tg_core_* C ABI for the browser: the Trance Gate's web editor renders its curves with this engine"
+publish.workspace = true
+
+[lib]
+name = "tg_web"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The C ABI the plugin links, as it is: the web editor calls tg_core_render_gate
+# and tg_core_render_envelope exactly as the plugin's editor does. Without the
+# `shell` feature, as on the Move: the plugin shell and the ground are the
+# plugin's.
+tg-capi = { path = "../tg-capi", default-features = false }

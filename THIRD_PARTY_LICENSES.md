@@ -19,7 +19,8 @@ ships.
 | Artefact | What is in it |
 |---|---|
 | Plugin bundles on the JUCE shell (`NITranceGate.vst3`, `NISpectrogram.vst3`, `NISideChain.vst3`, `NIListenIn.vst3`, `NIVocalize.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
-| Schwung module tarballs (`*-module.tar.gz`) | the Rust standard library, the engines and the crates from crates.io they link; the Trance Gate's also carries its own `ui_chain.js` |
+| Schwung module tarballs (`*-module.tar.gz`) | the Rust standard library, the engines and the crates from crates.io they link; the Trance Gate's also carries its own `ui_chain.js`; the Trance Gate's and the Side-Chain's carry their web editor, `web_ui.html` with `assets/` (below) |
+| The Move web editors (`web_ui.html` and `assets/` in each module tarball) | `solid-js`, `vite`'s module-preload polyfill and JetBrains Mono; the Trance Gate's also its engine as WebAssembly (`tg_web.wasm`: the engine and the crates from crates.io it links); notices in `assets/ui.js.LICENSE.txt`, `fonts/OFL.txt` |
 | The documentation site | JetBrains Mono |
 
 ## The plugin framework — compiled into every plugin bundle
@@ -97,6 +98,7 @@ JetBrains Mono declaring none.
 | `NIChordDetector.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
 | `NIBitCrusher.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | `NIVocalize.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| the Move web editors (module tarballs) | inlined into `assets/style.css` as WOFF, subset (`web/kit/src/fonts`) | `fonts/OFL.txt` beside `web_ui.html` |
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits
 beside the faces in both places, and wherever the font ships: every bundle on
@@ -104,6 +106,19 @@ the JUCE shell with an editor carries it in `Contents/Resources`
 (`cmake/NiJucePlugin.cmake`), and `site/scripts/stage-assets.mjs` copies the
 site's into its `/fonts/`, failing the build if it is not there. The OFL is
 permissive and GPL-compatible.
+
+## The Move's web editors — bundled into each module's `web_ui.html`
+
+The page Schwung's web manager shows for a module's slot
+([ADR 0004](docs/adr/0004-move-web-editors.md)) is built from `web/<module>`
+with Vite. What it bundles beside this repository's own code is below; the
+build fails on a package this table does not name (`scripts/vite-licenses.mjs`)
+and writes every bundled package's licence into `assets/ui.js.LICENSE.txt`.
+
+| Component | Version | Licence |
+|---|---|---|
+| `solid-js` | 1.9.17 | **MIT**, © 2016-2025 Ryan Carniato |
+| `vite` | 6.4.3 — its module-preload polyfill only, present in `ui.js` | **MIT**, © 2019-present VoidZero Inc. and Vite contributors |
 
 ## Bundled music font
 
@@ -128,10 +143,10 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 
 | Crates | Where | Licence |
 |---|---|---|
-| `tg-core`, `tg-capi`, `tg-move` | `engines/trance-gate` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `tg-core`, `tg-capi`, `tg-move`, `tg-web` | `engines/trance-gate` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `spectro-core`, `spectro-recv`, `spectro-capi` | `engines/spectro` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `bus-core`, `bus-capi` | `engines/audio-bus` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
-| `sc-core`, `sc-capi`, `sc-move` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber, with a ported part — see below |
+| `sc-core`, `sc-capi`, `sc-move`, `sc-web` | `engines/side-chain` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `cd-core`, `cd-capi` | `engines/chord-detector` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `bc-core`, `bc-capi`, `bc-move` | `engines/bit-crusher` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `vz-core`, `vz-capi`, `vz-move` | `engines/vocalize` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
@@ -1115,9 +1130,10 @@ will bring this row up into the shipped sections with it.
 
 `iPlug2` and the parts of `WDL` it compiled in (zlib), the VST3 SDK it built
 against (MIT), `CLAP` and `clap-helpers` (MIT), `JSON for Modern C++`
-(nlohmann/json, MIT, with its CC0-1.0 Hedley header), and the web editors'
-`solid-js` and the `vite` module-preload polyfill (MIT) went with the iPlug2
-build, when every plugin moved to the JUCE shell with a native editor.
+(nlohmann/json, MIT, with its CC0-1.0 Hedley header) went with the iPlug2
+build, when every plugin moved to the JUCE shell with a native editor; the
+plugins' web editors went with it, and `solid-js` and the `vite` polyfill
+returned only in the Move's web editors (above).
 `vst3-sys`, `vst3-com*` (GPL-3.0-or-later), `nih_plug*`/`nih_log` (ISC) and the
 crates.io dependencies they brought were removed earlier, when the nih-plug
 wrapper was replaced by iPlug2; JUCE (AGPLv3-or-commercial) went before that,

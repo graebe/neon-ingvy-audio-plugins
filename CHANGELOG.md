@@ -11,6 +11,71 @@ next release; that release's entry lists them and this section goes.
   carries the tips and the Neon Ingvy mark.
 - The Motion setting each plugin remembered on your computer is simply ignored
   now; there is nothing to reset.
+## Unreleased — NI Bit-Crusher
+
+- **Amplitude Crush and Time Crush.** The two panels are named for what they
+  do: the first makes the signal's amplitude discrete (Bits, Shape, Dither),
+  the second makes time discrete (Rate, Jitter and the filters).
+- **Three pictures, one over each panel.** A new **Time Crush** picture shows
+  the hold itself: your signal in grey, the held level as a dim line, each
+  take lit as a dot, sixteen holds wide. The **Amplitude Crush** picture now
+  shows your signal live, lighting up the stairs it is on. It is drawn on the
+  level going into the crusher, after Drive, so its diagonal always runs
+  corner to corner and Drive moves your signal up the stairs.
+- **The pictures say exactly what you hear.** The Amplitude Crush caption
+  counts the levels (257 at 8 bits, 256 with Mid-Rise: the level at zero is
+  the one more); its dots only ever sit on the staircase that made them, and
+  come back a moment after a knob moves; with Anti-Alias the Time Crush
+  picture marks each take at its exact instant; and with nothing held it
+  draws no hold.
+- **Rulers on every picture.** Level and time are marked on the axes, and the
+  two discretizations show their grid as ticks: every step of the staircase,
+  every take of the hold.
+- **New: a Filter.** A resonant low-pass on the crushed sound, before Mix,
+  in a fourth panel with its own picture: **Cutoff** (20 Hz to 20 kHz),
+  **Peak** (up to +24 dB at the cutoff, never self-oscillating) and **Slope**
+  (12, 24 or 48 dB per octave), true to its analog shape up to 20 kHz. Off
+  by default, so existing sets sound as they did. Every change glides, the
+  slope included. Drag the dot on its curve: sideways for Cutoff, up and
+  down for Peak. On the Move it is the second knob page.
+- **The Amplitude Crush picture shows the whole range.** It no longer zooms
+  in: the staircase is drawn from −1 to 1 at every setting, plain at a few
+  bits and as fine as the diagonal at many.
+- **Refresh and Pause.** The pictures take a new look once a second by
+  default, all three at the same moment; **Refresh** sets 1/s, 4/s, 10/s or
+  Live and is saved with the set (it is not automatable). **Pause** holds all
+  three still while the sound goes on.
+
+## Unreleased — NI Trance Gate
+
+- **NI Trance Gate's editor, in your browser, for the Move.** Open Schwung's
+  web manager (**move.local:7700** › **Remote UI**) and choose the tab of the
+  track the Trance Gate is on: the module now shows its own editor there, in
+  place of the generic controls — the ring, the pads, the envelope and
+  pattern plots, Slot, Randomize and the arrival order, laid out as in Live.
+  Click a pad, drag a knob or recall a slot, on the page or on the Move, and
+  the other follows. **Interface: Default** switches back to the generic
+  controls.
+- **Its playhead stays in time.** The ring and the lit pad step with the Move
+  however late the network delivers each update; they never step back.
+- Live's Signal plot, copy and paste, and export and import are not in the
+  Move's editor: the web manager sends a page no audio, and its frame has no
+  clipboard and cannot save or open files.
+
+## Unreleased — NI Side-Chain
+
+- The shape's handles are the plugin family's shared draggable handle now.
+  They look and drag exactly as before; the bottom corner, which moves both
+  ways, shows a four-way cursor while you hover it.
+- **NI Side-Chain's editor, in your browser, for the Move.** Open Schwung's
+  web manager (**move.local:7700** › **Remote UI**) and choose the tab of the
+  track the Side-Chain is on: the module now shows its own editor there —
+  the duck shape to drag, the knobs, Source, Rate, Curve and the MIDI trigger,
+  as in Live. Changes go both ways between the page and the Move.
+- **Its sweep stays in time.** The playhead runs through the shape with the
+  Move, evenly, however late the network delivers each update.
+- The Move's editor draws no audio behind the shape (the web manager sends a
+  page no audio), and offers Cycle and MIDI, as the Move module does.
 
 ## v2026.10.11.1 — NI Vocalize
 

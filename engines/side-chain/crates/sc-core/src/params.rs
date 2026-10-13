@@ -381,11 +381,18 @@ impl Instance {
              * what keeps the per-frame payload small enough not to matter.
              *
              * source:rate:ms_cycle:sweep:advancing:fires:duck:key:connected:stage:phase
+             *   :devms
              *
              * `sweep` before `phase` because `sweep` is the one the drawing
              * uses -- it is the shared axis, defined for all three sources.
              * `phase` is the transport's own and is only meaningful on Cycle;
              * it is carried so the editor can show a bar position.
+             *
+             * `devms` is APPENDED, because every reader indexes this: the
+             * engine's own clock (`clock_ms`), the time it had processed when
+             * this readout was true. The Move's web editor hears the readout
+             * up to ~400 ms later, by a different amount each time; with this
+             * it carries the sweep from when it WAS the sweep.
              */
             "ui" => {
                 let r = write!(
@@ -417,6 +424,8 @@ impl Instance {
                         )
                     })
                     .and_then(|_| fmt::f(&mut b, self.phase01(), 6))
+                    .and_then(|_| write!(b, ":"))
+                    .and_then(|_| fmt::f(&mut b, self.clock_ms(), 3))
             }
             /*
              * EVERY AUTOMATABLE VALUE, in `Param` order, colon separated.
