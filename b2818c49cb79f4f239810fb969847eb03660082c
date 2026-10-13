@@ -1,1 +1,3 @@
 {"tier":"product","products":["spectrogram"],"sha":"b2818c49cb79f4f239810fb969847eb03660082c","date":"2026-10-13T18:25:35.320Z","host":"MacBookPro.localdomain","rustc":"rustc 1.99.0 (b940084d7 2026-09-28)","result":"pass","results":{"tests":50,"duration_s":684,"build_type":"Release","archs":"arm64;x86_64","gaps":1,"waived":"none","untested":"web_kit"}}
+
+{"tier":"product","products":["listen-in"],"sha":"b2818c49cb79f4f239810fb969847eb03660082c","date":"2026-10-13T18:33:04.137Z","host":"MacBookPro.localdomain","rustc":"rustc 1.99.0 (b940084d7 2026-09-28)","result":"pass","results":{"tests":45,"duration_s":447,"build_type":"Release","archs":"arm64;x86_64","gaps":1,"waived":"none","untested":"web_kit"}}
