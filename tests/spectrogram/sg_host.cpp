@@ -17,8 +17,9 @@
  *   every fixture    loaded as Live reopens a set -- component state, then
  *                    controller state -- restores the bypass, and the
  *                    component state saved back is the fixture's chunk byte
- *                    for byte, which the iPlug2 build reads as its own; and a
- *                    set saved bypassed reopens bypassed
+ *                    for byte with the grid's string after its five, which
+ *                    the iPlug2 build skips as it reads its own; and a set
+ *                    saved bypassed reopens bypassed
  *   the audio        through the VST3's audio path bit for bit, a running
  *                    transport and the host's bypass included
  *   the window       the design's size, opened while the transport runs, a
@@ -118,6 +119,23 @@ MemoryBlock fileBytes (const File& f)
     return b;
 }
 
+/*
+ * A chunk the iPlug2 build wrote, as this build saves it back: the grid's
+ * string -- int32 1, "0" -- after the five, inside the body, which grows by
+ * its five bytes. The bypass after the body is where every reader seeks.
+ */
+MemoryBlock withGrid (const MemoryBlock& chunk)
+{
+    int32 body = 0;
+    std::memcpy (&body, static_cast<const char*> (chunk.getData()) + 12, 4);
+    const char grid[] { 1, 0, 0, 0, '0' };
+    MemoryBlock out (chunk);
+    out.insert (grid, sizeof grid, (size_t) (16 + body));
+    body += (int32) sizeof grid;
+    std::memcpy (static_cast<char*> (out.getData()) + 12, &body, 4);
+    return out;
+}
+
 /* ---------------------------------------------------------------- checks -- */
 
 void checkClass (const File& bundle, const File& fixtures)
@@ -181,7 +199,8 @@ void checkFixture (VST3PluginFormat& format, const PluginDescription& d, const F
     check (bypass != nullptr && std::abs (bypass->getValue() - (double) v["normalized"]) < 1.0e-6
                && bypass->getText (bypass->getValue(), 128) == v["display"].toString(),
            "the bypass the iPlug2 build reported");
-    check (componentChunk (*p) == component, "the state saved back is the iPlug2 chunk, byte for byte");
+    check (componentChunk (*p) == withGrid (component),
+           "the state saved back is the iPlug2 chunk, byte for byte, and the grid");
 }
 
 /* The session fixture with its bypass flag on: the int32 after the body. */
@@ -197,7 +216,7 @@ void checkBypassed (VST3PluginFormat& format, const PluginDescription& d, const 
     p->setStateInformation (reopened.getData(), (int) reopened.getSize());
     check (p->getBypassParameter() != nullptr && p->getBypassParameter()->getValue() >= 0.5f,
            "a set saved bypassed reopens bypassed");
-    check (componentChunk (*p) == component, "... and saves so again, byte for byte");
+    check (componentChunk (*p) == withGrid (component), "... and saves so again, byte for byte");
 }
 
 void checkAudio (VST3PluginFormat& format, const PluginDescription& d)
@@ -265,7 +284,7 @@ void checkWindow (VST3PluginFormat& format, const PluginDescription& d, const Fi
     if (editor == nullptr)
         return;
     run (50);
-    check (editor->getWidth() == 720 && editor->getHeight() == 502, "the window is the design's, 720 x 502",
+    check (editor->getWidth() == 868 && editor->getHeight() == 502, "the window is the design's, 868 x 502",
            String (editor->getWidth()) + " x " + String (editor->getHeight()));
 
     /* A set loaded on the host's own thread, the window open and the
@@ -276,7 +295,7 @@ void checkWindow (VST3PluginFormat& format, const PluginDescription& d, const Fi
     run (10);
     host.join();
     run (50);
-    check (componentChunk (*p) == fileBytes (dir.getChildFile ("session.component.bin")),
+    check (componentChunk (*p) == withGrid (fileBytes (dir.getChildFile ("session.component.bin"))),
            "a set loaded on another thread while it is open is the set it saves");
 
     editor.reset();
@@ -286,7 +305,7 @@ void checkWindow (VST3PluginFormat& format, const PluginDescription& d, const Fi
     if (editor != nullptr)
     {
         run (20);
-        check (editor->getWidth() == 720 && editor->getHeight() == 502, "... at the design's size");
+        check (editor->getWidth() == 868 && editor->getHeight() == 502, "... at the design's size");
     }
     editor.reset();
     p->setPlayHead (nullptr);

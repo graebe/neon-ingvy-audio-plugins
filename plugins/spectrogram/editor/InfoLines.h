@@ -27,6 +27,7 @@ using ni::ui::InfoText;
 /* The first row: how the picture is drawn. */
 inline constexpr InfoText range { "Range — zoom the picture to Full, Sub, Bass, Mid or High." };
 inline constexpr InfoText span { "Span — seconds of history, or 1 to 16 of the host's bars." };
+inline constexpr InfoText grid { "Grid — beat lines over the picture, from bars down to 1/128 notes." };
 inline constexpr InfoText pause { "Pause — hold the picture; the analysis keeps running behind it." };
 /* The same button while the picture is held: what pressing it does now. */
 inline constexpr InfoText resume { "Pause — let the picture go; the history behind it is already current." };

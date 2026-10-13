@@ -44,6 +44,9 @@ constexpr int rangeW = 96;
  * the field's 12 px padding and the chevron's 28 its longest option, "16
  * bars", needs 97 -- 100 is the 4 px grid's first width that shows it whole. */
 constexpr int spanW = 100;
+/* The Grid select: its longest option, "no grid", needs 97 past the same
+ * padding and chevron, as "16 bars" does -- so the same 100. */
+constexpr int gridW = 100;
 constexpr int viewW = 150;
 constexpr int compareW = 112;
 
@@ -51,7 +54,7 @@ bool sameSession (const Session& a, const Session& b)
 {
     return juce::exactlyEqual (a.rangeLo, b.rangeLo) && juce::exactlyEqual (a.rangeHi, b.rangeHi)
         && a.view == b.view && a.compareA == b.compareA && a.compareB == b.compareB
-        && a.clash == b.clash;
+        && a.clash == b.clash && a.grid == b.grid;
 }
 } // namespace
 
@@ -87,6 +90,14 @@ SpectrogramView::SpectrogramView (Model& m)
     ni::ui::setInfo (span, info::span);
     span.onChange = [this] (int i) { chooseSpan (i); };
     addAndMakeVisible (span);
+
+    /* Beat lines over the picture, at a rate or none, in one setting. */
+    grid.setOptions (gridOptions());
+    grid.setFieldWidth (gridW);
+    grid.setTitle ("Grid");
+    ni::ui::setInfo (grid, info::grid);
+    grid.onChange = [this] (int i) { chooseGrid (i); };
+    addAndMakeVisible (grid);
 
     /* The transport's pause glyph, latched and lit while the picture is held. */
     pause.setOn (false);
@@ -196,13 +207,20 @@ void SpectrogramView::takeColumns (double nowMs)
     if (n <= 0)
         return;
 
+    /* Each column's line rank too, grid or none: it covers the stretch of
+     * the timeline that ends at its position, and keeping the rank means a
+     * grid turned on later is drawn over the whole history at once. */
     const auto& t = shown.transport;
     for (int c = 0; c < n; ++c)
-        slots[(size_t) c] = slotForPpq (t.ppq - (n - 1 - c) * t.ppqPerColumn, bars(), t.numerator,
-                                        t.denominator, pictureWidth);
+    {
+        const double ppq = t.ppq - (n - 1 - c) * t.ppqPerColumn;
+        slots[(size_t) c] = slotForPpq (ppq, bars(), t.numerator, t.denominator, pictureWidth);
+        ranks[(size_t) c] = (std::uint8_t) gridRank (ppq - t.ppqPerColumn, ppq, t.numerator, t.denominator);
+    }
 
     /* The mask belongs to these columns only if it has their shape. */
-    picture().push ({ levels.data(), n, bands, slots.data(), clashCount == n ? clashLevels.data() : nullptr });
+    picture().push ({ levels.data(), n, bands, slots.data(), clashCount == n ? clashLevels.data() : nullptr,
+                      ranks.data() });
 
     live = true;
     lastColumnMs = nowMs;
@@ -218,6 +236,8 @@ void SpectrogramView::syncTransport (bool force)
     shown.transport = t;
     if (metre && barView)
         refreshTimeMarks();
+    if (metre)
+        refreshGrid();
     refreshFacts();
     if (rate && ! force)
         syncSources (true);
@@ -256,6 +276,7 @@ void SpectrogramView::syncSession (bool force)
     const auto& s = model.session();
     if (! force && sameSession (s, shown.session))
         return;
+    const bool gridMoved = force || s.grid != shown.session.grid;
 
     /* A new mix or a new scale makes the history an answer about something
      * else -- whether the user changed it or the host loaded a session. */
@@ -279,6 +300,12 @@ void SpectrogramView::syncSession (bool force)
     compareB.setIndex (shownIndex (compareB, s.compareB));
     clash.setOn (s.clash);
     picture().setClash (s.clash);
+    grid.setIndex (juce::jlimit (0, numGrids - 1, s.grid));
+    if (gridMoved)
+    {
+        refreshGrid();
+        refreshFacts();
+    }
 }
 
 void SpectrogramView::refreshTimeMarks()
@@ -289,12 +316,20 @@ void SpectrogramView::refreshTimeMarks()
                    barView);
 }
 
-/* The tempo and `free` only mean something in the bar view; the span and
- * the floor always do. Set only when it reads differently (Words). */
+void SpectrogramView::refreshGrid()
+{
+    const auto& t = shown.transport;
+    picture().setMarkRanks (juce::jlimit (0, numGrids - 1, shown.session.grid), beatRank (t.denominator));
+    picture().setSweepMarks (windowRanks (bars(), t.numerator, t.denominator, pictureWidth));
+}
+
+/* The tempo and `free` only mean something while something on screen is
+ * placed by them -- the bar view, or the grid; the span and the floor
+ * always do. Set only when it reads differently (Words). */
 void SpectrogramView::refreshFacts()
 {
     const auto& t = shown.transport;
-    factsLine.setText (pictureFacts (shown.hz, barView, t.bpm, t.running));
+    factsLine.setText (pictureFacts (shown.hz, barView || shown.session.grid > 0, t.bpm, t.running));
 }
 
 /* The three readouts say a dash with the pointer away, not a stale number. */
@@ -338,6 +373,7 @@ void SpectrogramView::chooseSpan (int index)
     /* Both pictures were written from every column: switching loses nothing. */
     picture().setView (barView ? ni::ui::Spectrogram::View::bars : ni::ui::Spectrogram::View::scroll);
     refreshTimeMarks();
+    refreshGrid();
     refreshFacts();
     refreshReadout (picture().hovered());
 }
@@ -352,6 +388,16 @@ void SpectrogramView::togglePause()
     /* The line under the pointer says what a press does now, as the web
      * button's tooltip did. */
     ni::ui::setInfo (pause, paused ? info::resume : info::pause);
+}
+
+/* Saved with the set, as the zoom is; the picture already holds every
+ * column's rank, so the lines are there at once. */
+void SpectrogramView::chooseGrid (int index)
+{
+    if (index < 0 || index >= numGrids)
+        return;
+    model.setGrid (index);
+    syncSession (false);
 }
 
 /* Never nothing: a spectrogram showing no channel is a broken plugin. */
@@ -403,6 +449,7 @@ void SpectrogramView::resized()
         x -= s4;
     };
     right (pause, controlH);
+    right (grid, grid.idealWidth());
     right (span, span.idealWidth());
     right (range, range.idealWidth());
     factsLine.setBounds (statusW + s4, 0, juce::jmax (0, x - statusW - s4), controlH);

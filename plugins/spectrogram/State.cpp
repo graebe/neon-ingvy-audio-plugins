@@ -59,14 +59,14 @@ bool Fields::operator== (const Fields& o) const
 {
     return sources == o.sources && same (clashFloorDb, o.clashFloorDb) && same (clashBalanceDb, o.clashBalanceDb)
         && view == o.view && cmpA == o.cmpA && cmpB == o.cmpB && clashOn == o.clashOn
-        && same (rangeLo, o.rangeLo) && same (rangeHi, o.rangeHi);
+        && same (rangeLo, o.rangeLo) && same (rangeHi, o.rangeHi) && grid == o.grid;
 }
 
 const ni::nist::Layout& layout()
 {
-    /* The selection, then the clash, the view, the comparison and the zoom,
-     * each added after the one before it. */
-    static const ni::nist::Layout l { nullptr, 0, {}, 1, 5 };
+    /* The selection, then the clash, the view, the comparison, the zoom and
+     * the grid, each added after the one before it. */
+    static const ni::nist::Layout l { nullptr, 0, {}, 1, 6 };
     return l;
 }
 
@@ -77,8 +77,10 @@ std::vector<std::string> strings (const Fields& f)
     compare += ':';
     ni::wire::append_int (compare, f.cmpB);
     compare += f.clashOn ? ":1" : ":0";
+    std::string grid;
+    ni::wire::append_int (grid, f.grid);
     return { commaList (f.sources), pair (f.clashFloorDb, f.clashBalanceDb), commaList (f.view), compare,
-             pair (f.rangeLo, f.rangeHi) };
+             pair (f.rangeLo, f.rangeHi), grid };
 }
 
 /*
@@ -125,6 +127,10 @@ bool apply (const std::vector<std::string>& s, Fields& f)
         next.rangeLo = a;
         next.rangeHi = b;
     }
+
+    int grid = 0;
+    if (s.size() > 5 && spectro::wire::parse_grid (s[5], maxGrid, grid))
+        next.grid = grid;
 
     f = std::move (next);
     return true;
@@ -198,7 +204,7 @@ bool Session::service (Sink& sink, bool all)
         loaded = false;
     }
     /* Only what moved: choosing sources waits for the analysis thread, and a
-     * view or a comparison is not the receiver's business at all. */
+     * view, a comparison or a grid is not the receiver's business at all. */
     if (all || next.sources != done.sources)
         sink.applySources (next.sources);
     if (all || ! same (next.clashFloorDb, done.clashFloorDb) || ! same (next.clashBalanceDb, done.clashBalanceDb))

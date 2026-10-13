@@ -4,8 +4,9 @@
 /*
  * NI Spectrogram's window in its main states, held to goldens: just opened
  * with nothing arriving (the amber "no signal"); live, looking at two
- * channels added, with the crosshair reading a point; and the bar view,
- * paused, with the clash marked between the two compared buses.
+ * channels added, with the crosshair reading a point; the bar view,
+ * paused, with the clash marked between the two compared buses; and the
+ * beat grid at 1/16 over the scrolling history, on the kicks.
  *
  * The music is made up here, deterministically, in the shape the layouts
  * draw it: a low rumble, a kick on every beat with its click above it, hats
@@ -127,4 +128,13 @@ NI_SNAPSHOT_TEST ("spectrogram: the bar view, paused, the clash marked between t
     rig.play (640, true);
     v.pauseButton().onClick();
     NI_CHECK_SNAPSHOT (*rig.editor, "spectrogram-bars-clash");
+}
+
+NI_SNAPSHOT_TEST ("spectrogram: the beat grid at 1/16, bars over beats over sixteenths, on the kicks")
+{
+    Rig rig;
+    rig.model.look.grid = 5;
+    rig.open();
+    rig.play (640, false);
+    NI_CHECK_SNAPSHOT (*rig.editor, "spectrogram-grid");
 }

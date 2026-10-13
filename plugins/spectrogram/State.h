@@ -9,7 +9,9 @@
  * the zoom -- is the SESSION, saved with the host's state as the iPlug2 build
  * saved it: tests/fixtures/iplug2/FORMAT.md's Spectrogram, five strings after
  * the "NIst" header (ni::nist, layout()), the first required, the rest each
- * optional because they were added one at a time.
+ * optional because they were added one at a time -- and a sixth, the grid,
+ * which only the JUCE build writes. A reader that knows five stops there and
+ * finds the bypass after the body, as every build since the header does.
  *
  * WHAT THE SESSION IS LOOKING AT, BETWEEN THREADS (Session). A host calls the
  * state on a thread of its choosing -- auval's stress test on one of its own,
@@ -45,6 +47,9 @@
 namespace spectro::state
 {
 
+/* The finest grid a session holds: 1/128. */
+inline constexpr int maxGrid = 8;
+
 /* What a session remembers. Channel 0 is the track the plugin sits on; n > 0
  * the n-th bus opened, in the order `sources` asks for them. */
 struct Fields
@@ -61,16 +66,19 @@ struct Fields
     /* The zoom, in Hz. */
     float rangeLo = 10.0f;
     float rangeHi = 20000.0f;
+    /* The beat lines: 0 for none, up to maxGrid (editor/Scales.h's ranks). */
+    int grid = 0;
 
     bool operator== (const Fields&) const;
     bool operator!= (const Fields& o) const { return ! (*this == o); }
 };
 
-/* FORMAT.md's Spectrogram: no parameters, five strings, the first required. */
+/* FORMAT.md's Spectrogram: no parameters, six strings, the first required. */
 const ni::nist::Layout& layout();
 
-/* The five strings, as the iPlug2 build wrote them: "2,5", "-60.00:12.00",
- * "0,1,2", "1:2:1", "40.00:800.00". '.' whatever the locale. */
+/* The six strings, the first five as the iPlug2 build wrote them: "2,5",
+ * "-60.00:12.00", "0,1,2", "1:2:1", "40.00:800.00", then the grid, "3".
+ * '.' whatever the locale. */
 std::vector<std::string> strings (const Fields&);
 
 /*

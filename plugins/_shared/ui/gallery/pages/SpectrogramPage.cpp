@@ -9,7 +9,7 @@
  * The music is made up here, deterministically, in the shape the layouts draw
  * it: a low rumble, a kick on every beat with its click above it, hats high
  * up between them, and a lead line moving over four notes. Half-size pictures,
- * so the four fit the page; the editor's is 606 x 256.
+ * so the four fit the page; the editor's is 754 x 256.
  */
 #include "DisplayPage.h"
 #include "Gallery.h"

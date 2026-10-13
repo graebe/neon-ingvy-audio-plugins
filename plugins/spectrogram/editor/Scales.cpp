@@ -74,6 +74,65 @@ juce::StringArray spanOptions()
     return out;
 }
 
+juce::StringArray gridOptions()
+{
+    juce::StringArray out;
+    for (const auto* name : gridNames)
+        out.add (name);
+    return out;
+}
+
+/*
+ * A LINE ON A COLUMN'S EDGE BELONGS TO ONE COLUMN: the stretch is half-open,
+ * and the tolerance -- a millionth of a quarter, far under a column's forty
+ * thousandths -- keeps a host's 4.0 that arrives as 3.9999999 on its bar.
+ * No bar line inside means the stretch lies in one bar, so the note values
+ * are counted from that bar's start.
+ */
+int gridRank (double from, double to, int numerator, int denominator)
+{
+    static constexpr double tolerance = 1e-6;
+    if (! std::isfinite (from) || ! std::isfinite (to) || ! (to > from))
+        return 0;
+
+    const double bpb = beatsPerBar (numerator, denominator);
+    const auto firstAtOrAfter = [] (double x, double step) { return std::ceil (x / step - tolerance) * step; };
+
+    if (firstAtOrAfter (from, bpb) < to - tolerance)
+        return 1;
+
+    const double barStart = std::floor (from / bpb + tolerance) * bpb;
+    const double lo = from - barStart, hi = to - barStart;
+    for (int r = 2; r <= finestRank; ++r)
+    {
+        const double at = firstAtOrAfter (lo, 4.0 / (double) (1 << (r - 1)));
+        if (at < hi - tolerance && at < bpb - tolerance)
+            return r;
+    }
+    return 0;
+}
+
+std::vector<std::uint8_t> windowRanks (int bars, int numerator, int denominator, int columns)
+{
+    std::vector<std::uint8_t> out ((size_t) juce::jmax (0, columns), 0);
+    if (bars <= 0 || columns <= 0)
+        return out;
+    const double perSlot = bars * beatsPerBar (numerator, denominator) / columns;
+    for (int s = 0; s < columns; ++s)
+        out[(size_t) s] = (std::uint8_t) gridRank (s * perSlot, (s + 1) * perSlot, numerator, denominator);
+    return out;
+}
+
+int beatRank (int denominator)
+{
+    if (denominator <= 0 || ! juce::isPowerOfTwo (denominator))
+        return 3;
+    int log2 = 0;
+    while ((1 << log2) < denominator)
+        ++log2;
+    return juce::jlimit (1, finestRank, 1 + log2);
+}
+
 juce::String readTempo (double bpm)
 {
     const double tenths = roundHalfUp (bpm * 10.0) / 10.0;
@@ -81,7 +140,7 @@ juce::String readTempo (double bpm)
     return (whole ? juce::String ((int) std::round (tenths)) : juce::String (tenths, 1)) + " BPM";
 }
 
-juce::String pictureFacts (const std::vector<float>& hz, bool barView, double bpm, bool running)
+juce::String pictureFacts (const std::vector<float>& hz, bool showTempo, double bpm, bool running)
 {
     if (hz.size() < 2)
         return "waiting for the plugin";
@@ -89,7 +148,7 @@ juce::String pictureFacts (const std::vector<float>& hz, bool barView, double bp
     const auto dot = juce::String::fromUTF8 (" \xc2\xb7 ");
     auto facts = asHz (hz.front()) + juce::String::fromUTF8 (" \xe2\x80\x93 ") + asHz (hz.back())
                + dot + "floor " + minus + juce::String ((int) std::abs (dbFloor)) + " dB";
-    if (barView)
+    if (showTempo)
         facts << dot << readTempo (bpm) << (running ? "" : " free");
     return facts;
 }
@@ -100,6 +159,8 @@ std::vector<TimeMark> secondMarks (int columns, double colsPerSecond, float widt
     if (columns <= 0 || colsPerSecond <= 0.0 || width <= 0.0f || stepS <= 0.0)
         return out;
 
+    /* Closer than this to an end, a centred label would hang outside. */
+    static constexpr double edge = 12.0;
     const double span = columns / colsPerSecond;
     for (int k = 0;; ++k)
     {
@@ -107,25 +168,26 @@ std::vector<TimeMark> secondMarks (int columns, double colsPerSecond, float widt
         if (a > span + 1e-9)
             break;
         const double x = width - (a / span) * width;
-        if (x < -1e-9)
+        /* A tick this close to the left edge would have to hang its label
+         * rightwards, onto its neighbour's: the picture's left end is not a
+         * whole second, so it goes unlabelled rather than overprinted. */
+        if (x < edge)
             break;
         TimeMark m;
         const bool whole = std::abs (a - std::round (a)) < 1e-9;
-        /* "0 s", "−12 s": the true minus and a spaced unit, as every other
+        /* "0 s", "−16 s": the true minus and a spaced unit, as every other
          * reading in the window has them. */
         m.label = k == 0 ? juce::String ("0 s")
                          : minus + (whole ? juce::String ((int) std::round (a)) : juce::String (a, 1)) + " s";
         m.x = (float) x;
-        m.anchor = x > width - 12.0 ? TimeMark::Anchor::end
-                 : x < 12.0         ? TimeMark::Anchor::start
-                                    : TimeMark::Anchor::mid;
+        m.anchor = x > width - edge ? TimeMark::Anchor::end : TimeMark::Anchor::mid;
         out.push_back (m);
     }
     return out;
 }
 
 /*
- * At 16 bars a bar is 38 px and its beats would be 9 apart: a grey haze
+ * At 16 bars a bar is 47 px and its beats would be 12 apart: a grey haze
  * rather than a grid, and the bar lines would stop reading as the strong ones.
  */
 std::vector<TimeMark> barMarks (int bars, int numerator, int denominator, float width)

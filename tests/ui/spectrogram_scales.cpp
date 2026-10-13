@@ -107,8 +107,98 @@ TEST_CASE ("spectrogram scales: a range in Hz is its named zoom, or Full")
 
 TEST_CASE ("spectrogram scales: the Span is the seconds the picture holds, then the bar views")
 {
-    CHECK (spanOptions().joinIntoString ("|") == "13 s|1 bar|2 bars|4 bars|8 bars|16 bars");
+    CHECK (spanOptions().joinIntoString ("|") == "16 s|1 bar|2 bars|4 bars|8 bars|16 bars");
     CHECK (spanOptions().size() == numBarCounts + 1);
+}
+
+TEST_CASE ("spectrogram scales: the grid is Live's grid menu, none to 1/128")
+{
+    CHECK (gridOptions().joinIntoString ("|") == "no grid|1 bar|1/2|1/4|1/8|1/16|1/32|1/64|1/128");
+    CHECK (finestRank == 8);
+}
+
+TEST_CASE ("spectrogram scales: a stretch of the timeline has the coarsest line in it")
+{
+    const auto rank = [] (double from, double to) { return gridRank (from, to, 4, 4); };
+    /* 4/4: a bar line at 0, 4, 8 ...; then half, quarter ... 1/128 notes. */
+    CHECK (rank (3.99, 4.01) == 1);
+    CHECK (rank (-0.01, 0.01) == 1);
+    CHECK (rank (1.99, 2.01) == 2);
+    CHECK (rank (0.99, 1.01) == 3);
+    CHECK (rank (2.49, 2.51) == 4);
+    CHECK (rank (0.24, 0.26) == 5);
+    CHECK (rank (0.124, 0.126) == 6);
+    CHECK (rank (0.0624, 0.0626) == 7);
+    CHECK (rank (0.0312, 0.0313) == 8);
+    /* Between two 1/128 lines, nothing. */
+    CHECK (rank (0.032, 0.06) == 0);
+
+    /* Half-open: a line on an edge belongs to the column that starts there,
+     * and a host's 3.9999999 is the bar. */
+    CHECK (rank (4.0, 4.04) == 1);
+    CHECK (rank (3.96, 4.0) != 1);
+    CHECK (rank (3.9999999, 4.04) == 1);
+
+    /* Nothing, or nonsense, has no line. */
+    CHECK (rank (1.0, 1.0) == 0);
+    CHECK (rank (2.0, 1.0) == 0);
+    CHECK (rank (std::nan (""), 1.0) == 0);
+}
+
+TEST_CASE ("spectrogram scales: in 3/4 and 6/8 the note values start again at every bar")
+{
+    /* 3/4: bars at 0, 3, 6; a half note after each bar line, at 2 and 5 --
+     * not at 4, where a whole-song grid would put it. */
+    CHECK (gridRank (2.99, 3.01, 3, 4) == 1);
+    CHECK (gridRank (4.99, 5.01, 3, 4) == 2);
+    CHECK (gridRank (3.99, 4.01, 3, 4) == 3);
+    /* 6/8: bars every three quarters, its eighths on the beat. */
+    CHECK (gridRank (5.99, 6.01, 6, 8) == 1);
+    CHECK (gridRank (3.49, 3.51, 6, 8) == 4);
+    /* A count-in counts back from bar 1. */
+    CHECK (gridRank (-4.01, -3.99, 4, 4) == 1);
+    CHECK (gridRank (-1.01, -0.99, 4, 4) == 3);
+}
+
+TEST_CASE ("spectrogram scales: the beats are 1/4 in x/4 and 1/8 in x/8")
+{
+    CHECK (beatRank (4) == 3);
+    CHECK (beatRank (8) == 4);
+    CHECK (beatRank (2) == 2);
+    CHECK (beatRank (16) == 5);
+    CHECK (beatRank (0) == 3);
+    CHECK (beatRank (3) == 3);
+}
+
+TEST_CASE ("spectrogram scales: the bar view's lines sit on its ticks")
+{
+    const auto r = windowRanks (4, 4, 4, pictureWidth);
+    REQUIRE ((int) r.size() == pictureWidth);
+    /* Every tick under the picture has its line above it, as strong as the
+     * tick says: a bar, or a beat. */
+    for (const auto& m : barMarks (4, 4, 4, (float) pictureWidth))
+    {
+        CAPTURE (m.x);
+        const int at = (int) std::floor (m.x + 1e-3);
+        if (m.beat)
+            CHECK ((r[(size_t) at] >= 2 && r[(size_t) at] <= beatRank (4)));
+        else
+            CHECK (r[(size_t) at] == 1);
+    }
+    int bars = 0;
+    for (auto v : r)
+        bars += v == 1 ? 1 : 0;
+    CHECK (bars == 4);
+    /* At 4 bars a slot is about a 38th of a quarter, finer than a 1/128
+     * note's 32nd: every 1/128 line has a slot of its own -- sixteen a
+     * quarter that are not on a coarser line. */
+    int finest = 0;
+    for (auto v : r)
+        finest += v == 8 ? 1 : 0;
+    CHECK (finest == 16 * 16);
+
+    CHECK (windowRanks (0, 4, 4, 606) == std::vector<std::uint8_t> (606, 0));
+    CHECK (windowRanks (4, 4, 4, 0).empty());
 }
 
 TEST_CASE ("spectrogram scales: the facts are the span drawn, the floor, and in bars the tempo")
@@ -140,6 +230,12 @@ TEST_CASE ("spectrogram scales: the time axis is a tick a second, right edge to 
     CHECK (marks.back().x > 0.0f);
     for (size_t i = 1; i < marks.size(); ++i)
         CHECK (marks[i - 1].x - marks[i].x == doctest::Approx (47.0));
+    /* The shipped picture: sixteen seconds and a hair, so "−16 s" would sit
+     * 2 px from the left edge and overprint "−15 s" -- it is left out. */
+    const auto shipped = secondMarks (pictureWidth, columnsPerSecond, (float) pictureWidth);
+    CHECK (shipped.back().label == u ("\xe2\x88\x92" "15 s"));
+    for (const auto& m : shipped)
+        CHECK ((m.x >= 12.0f && m.anchor != TimeMark::Anchor::start));
     CHECK (secondMarks (0, 47.0, 606.0f).empty());
     CHECK (secondMarks (606, 0.0, 606.0f).empty());
     CHECK (secondMarks (606, 47.0, 0.0f).empty());
@@ -247,7 +343,7 @@ TEST_CASE ("spectrogram scales: the readouts say what the web editor said")
 
     /* "8:4.7": bar, colon, beat. */
     CHECK (readPosition (0, 4, 4, 4) == "1:1.0");
-    CHECK (readPosition (303, 4, 4, 4) == "3:1.0");
+    CHECK (readPosition (pictureWidth / 2, 4, 4, 4) == "3:1.0");
 }
 
 /* -------------------------------------------------------------- channels */

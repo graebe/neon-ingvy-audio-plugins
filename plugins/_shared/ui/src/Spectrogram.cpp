@@ -10,6 +10,7 @@
 #include "UvLight.h"
 #include "UvTokens.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -62,6 +63,12 @@ const std::array<juce::PixelARGB, 256>& lut()
 constexpr float hatchPeriod = 5.0f;
 constexpr float hatchWidth = 1.2f;
 constexpr float hatchOpacity = 0.7f;
+
+/* The marks: ink hairlines, a rank's strength its opacity -- light enough to
+ * read through, so a line never hides the partial it crosses. */
+constexpr float markStrong = 0.35f;
+constexpr float markMedium = 0.2f;
+constexpr float markFaint = 0.1f;
 
 juce::Image makeHatch()
 {
@@ -130,6 +137,9 @@ void Spectrogram::setup (int bandCount)
     levels.assign (cells, 0);
     sweepLevels.assign (cells, 0);
     frozenLevels.assign (cells, 0);
+    marks.assign ((size_t) columns, 0);
+    sweepMarks.resize ((size_t) columns, 0);
+    frozenMarks.assign ((size_t) columns, 0);
     headColumn.assign ((size_t) bands, 0);
     clashPrevious.assign ((size_t) bands, 0);
     hasFrozen = false;
@@ -149,6 +159,8 @@ void Spectrogram::clear()
     clashSweep.clear (clashSweep.getBounds());
     std::fill (levels.begin(), levels.end(), std::uint8_t (0));
     std::fill (sweepLevels.begin(), sweepLevels.end(), std::uint8_t (0));
+    /* The sweep's marks are the window's, not the history's: they stay. */
+    std::fill (marks.begin(), marks.end(), std::uint8_t (0));
     hasClashPrevious = false;
     cursor = 0;
     head = -1;
@@ -252,6 +264,7 @@ void Spectrogram::push (const Batch& batch)
         const auto* column = batch.data + (size_t) i * (size_t) bands;
         const int at = cursor;
         writeHistory (column, at);
+        marks[(size_t) at] = batch.marks != nullptr ? batch.marks[i] : 0;
         cursor = cursor + 1 == columns ? 0 : cursor + 1;
 
         const int slot = batch.slots != nullptr ? batch.slots[i] : -1;
@@ -293,6 +306,9 @@ void Spectrogram::freeze()
     const auto perColumn = (size_t) bands;
     std::memcpy (frozenLevels.data(), srcLevels.data() + (size_t) origin * perColumn, (size_t) tail * perColumn);
     std::memcpy (frozenLevels.data() + (size_t) tail * perColumn, srcLevels.data(), (size_t) origin * perColumn);
+    const auto& srcMarks = bars ? sweepMarks : marks;
+    std::copy (srcMarks.begin() + origin, srcMarks.end(), frozenMarks.begin());
+    std::copy (srcMarks.begin(), srcMarks.begin() + origin, frozenMarks.begin() + tail);
     hasFrozen = true;
 }
 
@@ -329,6 +345,29 @@ void Spectrogram::setView (View v)
         report();
 }
 
+void Spectrogram::setSweepMarks (const std::vector<std::uint8_t>& ranks)
+{
+    const auto n = juce::jmin (ranks.size(), sweepMarks.size());
+    if (n == sweepMarks.size() && std::equal (sweepMarks.begin(), sweepMarks.end(), ranks.begin()))
+        return;
+    std::copy (ranks.begin(), ranks.begin() + (long) n, sweepMarks.begin());
+    std::fill (sweepMarks.begin() + (long) n, sweepMarks.end(), std::uint8_t (0));
+    /* Paused in the bar view, the held picture is of the window it shows. */
+    if (paused && view == View::bars)
+        freeze();
+    repaint();
+}
+
+void Spectrogram::setMarkRanks (int shownThrough, int mediumThrough)
+{
+    shownThrough = juce::jmax (0, shownThrough);
+    if (shownThrough == marksShown && mediumThrough == marksMedium)
+        return;
+    marksShown = shownThrough;
+    marksMedium = mediumThrough;
+    repaint();
+}
+
 void Spectrogram::setClash (bool shown)
 {
     if (shown == clashShown)
@@ -346,6 +385,13 @@ void Spectrogram::setClashStyle (ClashStyle s)
 }
 
 /* ------------------------------------------------------------- reading -- */
+
+std::uint8_t Spectrogram::markAt (View v, int column) const
+{
+    if (column < 0 || column >= columns)
+        return 0;
+    return (v == View::bars ? sweepMarks : marks)[(size_t) column];
+}
 
 std::uint8_t Spectrogram::levelAt (View v, int column, int band) const
 {
@@ -429,6 +475,26 @@ void Spectrogram::paint (juce::Graphics& g)
     const int origin = held || bars ? 0 : cursor;
 
     layer (picture, origin, false);
+
+    /* The marks, a hairline at each shown column's left edge, a pass per
+     * strength so the colour is set three times rather than per line. */
+    if (marksShown > 0)
+    {
+        const auto& ranks = held ? frozenMarks : (bars ? sweepMarks : marks);
+        const auto strengthOf = [this] (int rank) { return rank == 1 ? 0 : rank <= marksMedium ? 1 : 2; };
+        static constexpr float opacity[] { markStrong, markMedium, markFaint };
+        for (int strength = 0; strength < 3; ++strength)
+        {
+            g.setColour (c::ink.withAlpha (opacity[strength]));
+            for (int x = 0; x < columns; ++x)
+            {
+                const int rank = ranks[(size_t) ((origin + x) % columns)];
+                if (rank > 0 && rank <= marksShown && strengthOf (rank) == strength)
+                    g.fillRect (juce::Rectangle<float> ((float) x / (float) columns * (float) w, 0.0f,
+                                                        uv::tok::size::hairline, (float) h));
+            }
+        }
+    }
 
     if (clashShown)
     {

@@ -1,6 +1,6 @@
 ---
 title: NI Spectrogram
-tagline: A rolling STFT analyzer — 10 Hz to 20 kHz, 256 log bands, thirteen seconds.
+tagline: A rolling STFT analyzer — 10 Hz to 20 kHz, 256 log bands, sixteen seconds.
 order: 2
 hosts: [live]
 formats: [VST3]
@@ -17,7 +17,7 @@ still: media/spectrogram/live.png
 # NI Spectrogram
 
 A rolling spectrogram: log frequency from **10 Hz to 20 kHz** on the vertical,
-256 bands — about two per semitone — time scrolling right to left, **thirteen
+256 bands — about two per semitone — time scrolling right to left, **sixteen
 seconds** of history. Audio passes through **bit for bit**: it is an analyzer,
 and its whole output is the picture. A VST3 for macOS (Linux and Windows follow) with a native
 editor.
@@ -25,9 +25,9 @@ editor.
 **No parameters**, and that is a statement rather than an omission: nothing about
 it changes what comes out — Pause included, which is a property of the picture
 and not of the audio. What you set up in it — which channels you are viewing,
-what you compare, the clash marking and the zoom — is saved with your Live set
-instead, and is there again when you close and reopen the window or reload the
-project.
+what you compare, the clash marking, the zoom and the beat grid — is saved
+with your Live set instead, and is there again when you close and reopen the
+window or reload the project.
 
 ## 10 Hz is a window length, not a setting
 
@@ -36,7 +36,7 @@ its first bin — so "start at 10 Hz" fixes the window at 8192 points at 48 kHz
 (bins 5.9 Hz apart), and 16384 at 96 kHz. The engine picks it from the rate
 rather than carrying a constant; `spectro_pick_fft_size` is that rule, and the
 hop beside it is tied to a **column rate** instead of to the window, so the
-picture holds the same thirteen seconds whatever the session runs at.
+picture holds the same sixteen seconds whatever the session runs at.
 
 This was worth learning the hard way: the first version asked for 20 Hz with a
 1024-point window, and the axis was silently clamped up to **47 Hz** — a
@@ -59,7 +59,7 @@ above background work. So a Spectrogram — even one reading three Listen-In bus
 — costs the audio thread almost nothing, and the transforms never hold it up.
 
 The analysis keeps running while the window is closed, so a window you open
-mid-song already holds the last thirteen seconds. Nothing allocates once the
+mid-song already holds the last sixteen seconds. Nothing allocates once the
 analysis is configured, and a counting allocator in `engines/spectro` fails the
 build if that stops being true.
 

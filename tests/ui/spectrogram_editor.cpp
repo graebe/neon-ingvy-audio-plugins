@@ -7,7 +7,8 @@
  * it opens on the session and pushes nothing; columns arrive and stop ("no
  * signal"); the zoom clears, unpauses and asks the plugin; pause holds the
  * picture while the columns keep coming; the bar view places columns by the
- * host's position and draws bars under the picture; the view ADDS channels
+ * host's position and draws bars under the picture; the grid draws beat
+ * lines over it, by rank, saved with the set; the view ADDS channels
  * and clears the history, the comparison is a separate thing, the clash asks
  * for its criteria and opens the buses it measures; a bus at another rate is
  * shown and refused; a session the host loads, a bus inserted and a new axis
@@ -120,7 +121,7 @@ TEST_CASE ("spectrogram editor: a session the host loads while the window is ope
     CHECK (rig.view().clashSwitch().isOn());
     CHECK (rig.picture().levelAt (ni::ui::Spectrogram::View::scroll, 0, 10) == 200);
 
-    /* A new view is another mix: thirteen seconds of the old one go. */
+    /* A new view is another mix: sixteen seconds of the old one go. */
     rig.model.look.view = { 0, 1 };
     rig.model.look.rangeLo = 2000.0f;
     rig.model.look.rangeHi = 20000.0f;
@@ -266,9 +267,9 @@ TEST_CASE ("spectrogram editor: a Span in bars draws the host's bars, and places
     CHECK (v.readout().getTimeKey() == "time");
 
     /* One setting, seconds or bars: its face is the history the picture
-     * holds. By keys: Down opens it on 13 s, three rows down is 4 bars. */
+     * holds. By keys: Down opens it on 16 s, three rows down is 4 bars. */
     auto& span = v.spanSelect();
-    CHECK (span.getOptions().joinIntoString ("|") == "13 s|1 bar|2 bars|4 bars|8 bars|16 bars");
+    CHECK (span.getOptions().joinIntoString ("|") == "16 s|1 bar|2 bars|4 bars|8 bars|16 bars");
     CHECK (span.getIndex() == 0);
     key (span, juce::KeyPress::downKey);
     for (int i = 0; i < 3; ++i)
@@ -352,6 +353,80 @@ TEST_CASE ("spectrogram editor: the facts the hint gave up sit in the toolbar, a
 
     v.spanSelect().onChange (0);
     CHECK_FALSE (facts.getText().contains ("BPM"));
+}
+
+/* ------------------------------------------------------------------ grid */
+
+TEST_CASE ("spectrogram editor: the Grid draws the host's beat lines, and is the session's")
+{
+    Rig rig ([] (FakeModel& m) { m.look.grid = 4; });
+    auto& v = rig.view();
+    auto& grid = v.gridSelect();
+
+    /* It opens on the session's grid: 1/8. */
+    CHECK (grid.getOptions().joinIntoString ("|") == "no grid|1 bar|1/2|1/4|1/8|1/16|1/32|1/64|1/128");
+    CHECK (grid.getIndex() == 4);
+    CHECK (rig.picture().getMarksShown() == 4);
+    /* The lines are placed by the tempo, so the facts give it. */
+    CHECK (v.facts().getText().endsWith ("120 BPM free"));
+
+    /* Every column carries its line's rank, grid or none: three columns
+     * back-dated from 4.01 quarters, the newest across bar 2's line. */
+    rig.model.clock.ppq = 4.01;
+    rig.model.clock.ppqPerColumn = 0.02;
+    rig.model.queue (3, 100);
+    rig.frame();
+    const auto columnRank = [] (int age) { const double at = 4.01 - age * 0.02; return gridRank (at - 0.02, at, 4, 4); };
+    CHECK (rig.picture().markAt (ni::ui::Spectrogram::View::scroll, 2) == 1);
+    CHECK (rig.picture().markAt (ni::ui::Spectrogram::View::scroll, 1) == columnRank (1));
+    CHECK (rig.picture().markAt (ni::ui::Spectrogram::View::scroll, 0) == columnRank (2));
+    CHECK (columnRank (0) == 1);
+
+    /* By keys: Home is none -- the picture keeps the ranks, draws none. */
+    key (grid, juce::KeyPress::downKey);
+    key (grid, juce::KeyPress::homeKey);
+    key (grid, juce::KeyPress::returnKey);
+    CHECK (rig.model.grids == std::vector<int> { 0 });
+    CHECK (grid.getIndex() == 0);
+    CHECK (rig.picture().getMarksShown() == 0);
+    CHECK (rig.picture().markAt (ni::ui::Spectrogram::View::scroll, 2) == 1);
+    CHECK_FALSE (v.facts().getText().contains ("BPM"));
+
+    /* 1/128, the finest. */
+    grid.onChange (finestRank);
+    CHECK (rig.model.grids.back() == finestRank);
+    CHECK (rig.picture().getMarksShown() == finestRank);
+
+    /* A grid the host loads shows on the next frame. */
+    rig.model.look.grid = 3;
+    rig.frame();
+    CHECK (grid.getIndex() == 3);
+    CHECK (rig.picture().getMarksShown() == 3);
+    CHECK (rig.model.grids.size() == 2);
+    /* No mix moved: the history stays. */
+    CHECK (rig.picture().levelAt (ni::ui::Spectrogram::View::scroll, 0, 10) == 100);
+}
+
+TEST_CASE ("spectrogram editor: in the bar view the lines are the window's, on its ticks")
+{
+    Rig rig ([] (FakeModel& m) { m.look.grid = 3; });
+    auto& v = rig.view();
+    v.spanSelect().onChange (3);
+    REQUIRE (v.bars() == 4);
+    const auto want = windowRanks (4, 4, 4, pictureWidth);
+    for (int x = 0; x < pictureWidth; ++x)
+        REQUIRE (rig.picture().markAt (ni::ui::Spectrogram::View::bars, x) == want[(size_t) x]);
+
+    /* Two bars: the window halves, its lines move. */
+    v.spanSelect().onChange (2);
+    CHECK (rig.picture().markAt (ni::ui::Spectrogram::View::bars, pictureWidth / 2) == 1);
+
+    /* 3/4: three quarters a bar, and the lines follow the metre. */
+    rig.model.clock.numerator = 3;
+    rig.frame();
+    const auto threeFour = windowRanks (2, 3, 4, pictureWidth);
+    for (int x = 0; x < pictureWidth; ++x)
+        REQUIRE (rig.picture().markAt (ni::ui::Spectrogram::View::bars, x) == threeFour[(size_t) x]);
 }
 
 /* --------------------------------------------------------- view, compare */
@@ -504,15 +579,16 @@ TEST_CASE ("spectrogram editor: the crosshair reads the picture -- frequency, ti
     rig.frame();
 
     /* The newest column, at the right edge; band 0 at the bottom. */
+    const float newest = (float) pictureWidth - 0.5f;
     Pointer p;
-    p.enter (rig.picture(), { 605.5f, 255.5f });
-    p.move (rig.picture(), { 605.5f, 255.5f });
+    p.enter (rig.picture(), { newest, 255.5f });
+    p.move (rig.picture(), { newest, 255.5f });
     CHECK (r.getFrequency() == asHz (rig.model.hz[0]));
     CHECK (r.getTime() == "now");
     CHECK (r.getLevel() == juce::String::fromUTF8 ("\xe2\x88\x92" "17.7 dB"));
 
     /* One column older, at the floor. */
-    p.move (rig.picture(), { 604.5f, 255.5f });
+    p.move (rig.picture(), { newest - 1.0f, 255.5f });
     CHECK (r.getLevel() == juce::String::fromUTF8 ("< \xe2\x88\x92" "96 dB"));
     CHECK (r.getTime() == juce::String::fromUTF8 ("\xe2\x88\x92" "0.02 s"));
 
@@ -548,56 +624,61 @@ TEST_CASE ("spectrogram editor: the keys read the picture too -- Tab onto it, th
 
 /* ----------------------------------------------------------------- window */
 
-TEST_CASE ("spectrogram editor: 720 x 502, the content in the frame's padding, the rows on the 4 px grid")
+TEST_CASE ("spectrogram editor: 868 x 502, the content in the frame's padding, the rows on the 4 px grid")
 {
     Rig rig;
     auto& e = *rig.editor;
     auto& v = rig.view();
-    CHECK (SpectrogramEditor::designWidth == 720);
+    CHECK (SpectrogramEditor::designWidth == 868);
     CHECK (SpectrogramEditor::designHeight == 502);
-    CHECK (e.getWidth() == 720);
+    CHECK (e.getWidth() == 868);
     CHECK (e.getHeight() == 502);
-    CHECK (v.getBounds() == juce::Rectangle<int> (32, 32, 656, 402));
+    CHECK (v.getBounds() == juce::Rectangle<int> (32, 32, 804, 402));
 
-    /* The toolbar: Pause on the right edge, Span (100) and Range (96)
-     * space-4 apart before it, the facts ending space-4 before Range, past
-     * the amber word's room. */
-    CHECK (v.pauseButton().getBounds() == juce::Rectangle<int> (628, 0, 28, 28));
-    CHECK (v.spanSelect().getBounds() == juce::Rectangle<int> (512, 0, 100, 28));
-    CHECK (v.rangeSelect().getBounds() == juce::Rectangle<int> (400, 0, 96, 28));
-    CHECK (v.facts().getRight() == 384);
-    /* Every option shows whole, "16 bars" included. */
+    /* The toolbar: Pause on the right edge, Grid (100), Span (100) and
+     * Range (96) space-4 apart before it, the facts ending space-4 before
+     * Range, past the amber word's room. */
+    CHECK (v.pauseButton().getBounds() == juce::Rectangle<int> (776, 0, 28, 28));
+    CHECK (v.gridSelect().getBounds() == juce::Rectangle<int> (660, 0, 100, 28));
+    CHECK (v.spanSelect().getBounds() == juce::Rectangle<int> (544, 0, 100, 28));
+    CHECK (v.rangeSelect().getBounds() == juce::Rectangle<int> (432, 0, 96, 28));
+    CHECK (v.facts().getRight() == 416);
+    /* Every option shows whole, "16 bars" and "no grid" included. */
     const auto valueFont = uv::type::font (uv::tok::type::value);
-    for (const auto& option : v.spanSelect().getOptions())
-        CHECK (uv::type::width (valueFont, option) <= (float) (v.spanSelect().field().getWidth() - 2 - 12 - 28));
+    for (auto* select : { &v.spanSelect(), &v.gridSelect() })
+        for (const auto& option : select->getOptions())
+            CHECK (uv::type::width (valueFont, option) <= (float) (select->field().getWidth() - 2 - 12 - 28));
     CHECK (v.facts().getX() == v.status().getRight() + 16);
+    /* The longest facts fit whole: a range under Nyquist, the tempo, free. */
+    const auto longest = pictureFacts ({ 10.0f, 100.0f, 19700.0f }, true, 127.5, false);
+    CHECK (Words::widthOf (Words::Voice::quiet, longest) <= v.facts().getWidth());
 
     /* The strip, space-4 under it: View on the left, the clash switch on the
      * right edge, the rule between. */
     CHECK (v.viewList().getY() == 44);
     CHECK (v.viewList().getWidth() == 150);
-    CHECK (v.clashSwitch().getRight() == 656);
+    CHECK (v.clashSwitch().getRight() == 804);
     CHECK (v.compareSelect().getWidth() == 112);
     CHECK (v.againstSelect().getWidth() == 112);
 
     /* The display: the scale's 40, space-2, the well; the picture a hairline
      * in; the axis and the readout on the picture's x. */
     CHECK (v.frequencyScale().getBounds() == juce::Rectangle<int> (0, 80, 40, 274));
-    CHECK (v.well().getBounds() == juce::Rectangle<int> (48, 88, 608, 258));
-    CHECK (rig.picture().getBounds() == juce::Rectangle<int> (1, 1, 606, 256));
+    CHECK (v.well().getBounds() == juce::Rectangle<int> (48, 88, 756, 258));
+    CHECK (rig.picture().getBounds() == juce::Rectangle<int> (1, 1, 754, 256));
     CHECK (v.timeAxis().getX() == 49 - TimeAxis::overhang);
     CHECK (v.timeAxis().getY() == 354);
-    CHECK (v.readout().getBounds() == juce::Rectangle<int> (49, 382, 607, 20));
+    CHECK (v.readout().getBounds() == juce::Rectangle<int> (49, 382, 755, 20));
 }
 
 TEST_CASE ("spectrogram editor: a fixed design, scaled to whatever the host gives")
 {
     Rig rig;
-    rig.editor->setSize (1080, 753);
+    rig.editor->setSize (1302, 753);
     CHECK (rig.editor->fit().getScale() == doctest::Approx (1.5));
     /* Laid out at its design size, always. */
-    CHECK (rig.editor->frame().getWidth() == 720);
-    CHECK (rig.view().getWidth() == 656);
+    CHECK (rig.editor->frame().getWidth() == 868);
+    CHECK (rig.view().getWidth() == 804);
 }
 
 TEST_CASE ("spectrogram editor: the bar states conventions; every control says what it does in 72")
@@ -612,6 +693,7 @@ TEST_CASE ("spectrogram editor: the bar states conventions; every control says w
     auto& v = rig.view();
     CHECK (ni::ui::infoOf (v.rangeSelect()) == info::range.str());
     CHECK (ni::ui::infoOf (v.spanSelect()) == info::span.str());
+    CHECK (ni::ui::infoOf (v.gridSelect()) == info::grid.str());
     CHECK (ni::ui::infoOf (v.pauseButton()) == info::pause.str());
     CHECK (ni::ui::infoOf (v.viewList()) == info::view.str());
     CHECK (ni::ui::infoOf (v.compareSelect()) == info::compare.str());
@@ -649,6 +731,7 @@ TEST_CASE ("spectrogram editor: Tab goes through the controls in reading order, 
     };
     const int range = indexOf (v.rangeSelect());
     const int span = indexOf (v.spanSelect());
+    const int grid = indexOf (v.gridSelect());
     const int pause = indexOf (v.pauseButton());
     const int list = indexOf (v.viewList());
     const int a = indexOf (v.compareSelect());
@@ -657,7 +740,8 @@ TEST_CASE ("spectrogram editor: Tab goes through the controls in reading order, 
     const int picture = indexOf (rig.picture());
     CHECK (range >= 0);
     CHECK (range < span);
-    CHECK (span < pause);
+    CHECK (span < grid);
+    CHECK (grid < pause);
     CHECK (pause < list);
     CHECK (list < a);
     CHECK (a < b);

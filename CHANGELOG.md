@@ -44,6 +44,20 @@ next release; that release's entry lists them and this section goes.
 - The Motion setting each plugin remembered on your computer is simply ignored
   now; there is nothing to reset.
 
+## Unreleased — NI Spectrogram
+
+- **Beat lines.** A new **Grid** select between Span and Pause draws vertical
+  lines over the picture at Live's grid: every bar, or every 1/2 down to
+  every 1/128 note, counted from each bar's start. Bars are drawn clearest,
+  beats lighter and finer notes faintest. The lines scroll with the history
+  in seconds and sit on the ticks in the bar view. Changing the rate redraws
+  the whole picture at once. The grid is saved with the set. Older
+  sets open with no grid, and older builds still open sets saved with one.
+- **A wider window, sixteen seconds of history.** The window grows from 720
+  to 868 pixels so the Grid fits beside the picture's facts without either
+  being cut. The picture grows with it and now holds sixteen seconds instead
+  of thirteen.
+
 ## Unreleased — NI Bit-Crusher
 
 - **Amplitude Crush and Time Crush.** The two panels are named for what they

@@ -5,18 +5,18 @@
  * NI Spectrogram's editor: the web editor's App.jsx and its three parts
  * (Toolbar, SourceStrip, Display), natively, on Ultraviolet 1.1.0.
  *
- * THE WINDOW, 720 x 502, laid out at that size always and scaled to fit
- * (FixedDesign). Inside the EditorFrame's padding, a 656 x 402 content, top
+ * THE WINDOW, 868 x 502, laid out at that size always and scaled to fit
+ * (FixedDesign). Inside the EditorFrame's padding, an 804 x 402 content, top
  * to bottom on the system's 4 px grid:
  *
  *    28   the toolbar: the one amber word on the left when nothing arrives;
- *         the picture's facts, then Range, Span and Pause on the right
+ *         the picture's facts, then Range, Span, Grid and Pause on the right
  *    16   space-4
  *    28   the source strip: VIEW and its list, a rule, COMPARE a vs b and
  *         the clash switch
  *    16   space-4
- *   258   the frequency scale (40) and space-2 beside the well (608): a
- *         606 x 256 picture in a 1 px frame, one column and one band a pixel
+ *   258   the frequency scale (40) and space-2 beside the well (756): a
+ *         754 x 256 picture in a 1 px frame, one column and one band a pixel
  *     8   space-2
  *    16   the time axis, on the picture's x (49 in)
  *    12   space-3
@@ -38,12 +38,19 @@
  * puts its state there), is not drawn for this window either (Parts.h, Well).
  * So the window keeps the as-built geometry, readout included (values 76 px
  * wide, 32 px before each key), until the design owner places them; the
- * history S2 moved into Span is its face ("13 s", "4 bars"; the field is 100
+ * history S2 moved into Span is its face ("16 s", "4 bars"; the field is 100
  * wide, not the artboard's 88, which cuts "16 bars"), and the rest of the
  * facts sit in the toolbar, in the hint voice, ending where Range starts.
  *
+ * THE GRID is beat lines over the picture, at a rate from every bar to every
+ * 1/128 note (Scales.h). Each column carries the rank of the coarsest line in
+ * the stretch of the host's timeline it covers, so the history keeps its
+ * lines as it scrolls and a new rate redraws all of it at once; the bar
+ * view's lines are fixed by its window. The tempo joins the facts while it
+ * is on: the lines are placed by it.
+ *
  * WHAT IS WHOSE. The session -- the view, the comparison, the clash, the
- * zoom -- is the model's, saved with the set: a control shows what
+ * zoom, the grid -- is the model's, saved with the set: a control shows what
  * model.session() holds, and asks the model to change it. Pause, the bar
  * view and its width are this window's and are not saved (the manual: "a
  * reopened window always starts live, in seconds"). The picture's history is
@@ -83,7 +90,7 @@ class SpectrogramView final : public juce::Component,
                               public ni::ui::Luminous
 {
 public:
-    static constexpr int width = 656;
+    static constexpr int width = 804;
     static constexpr int height = 402;
 
     /* Half a second without a column is a stall: one arrives every ~21 ms. */
@@ -108,6 +115,7 @@ public:
     Words& facts() noexcept { return factsLine; }
     ni::ui::Select& rangeSelect() noexcept { return range; }
     ni::ui::Select& spanSelect() noexcept { return span; }
+    ni::ui::Select& gridSelect() noexcept { return grid; }
     ni::ui::Button& pauseButton() noexcept { return pause; }
     ni::ui::CheckList& viewList() noexcept { return view; }
     ni::ui::Select& compareSelect() noexcept { return compareA; }
@@ -140,6 +148,8 @@ private:
     void syncAxis (bool force);
     void syncTransport (bool force);
     void refreshTimeMarks();
+    /* Which lines show and how strongly, and the bar view's fixed row. */
+    void refreshGrid();
     void refreshFacts();
     void refreshReadout (const std::optional<ni::ui::Spectrogram::Sample>&);
 
@@ -148,6 +158,8 @@ private:
     /* 0 is the seconds; n is the bar view, barCounts[n - 1] wide. */
     void chooseSpan (int index);
     void togglePause();
+    /* 0 is no grid; g is gridNames[g]. */
+    void chooseGrid (int index);
     void chooseView (std::vector<int> channels);
     void chooseCompare (int a, int b);
     void chooseClash (bool on);
@@ -166,10 +178,11 @@ private:
     /* One take's columns, sized once for the largest the plugin hands over. */
     std::vector<std::uint8_t> levels, clashLevels;
     std::array<int, Model::maxColumns> slots {};
+    std::array<std::uint8_t, Model::maxColumns> ranks {};
 
     Words noSignal { Words::Voice::warning };
     Words factsLine { Words::Voice::quiet };
-    ni::ui::Select range, span;
+    ni::ui::Select range, span, grid;
     ni::ui::Button pause { {}, "pause" };
 
     Words viewCaption { Words::Voice::caption, "view" };
@@ -193,7 +206,7 @@ private:
 class SpectrogramEditor final : public juce::Component
 {
 public:
-    static constexpr int designWidth = 720;
+    static constexpr int designWidth = 868;
     static constexpr int designHeight = ni::ui::EditorFrame::heightFor (SpectrogramView::height);
 
     /* `model` must outlive the editor. `clock` is the frame's (a test's). */

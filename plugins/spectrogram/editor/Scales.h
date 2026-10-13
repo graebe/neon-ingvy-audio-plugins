@@ -22,6 +22,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <cstdint>
 #include <vector>
 
 namespace ni::spectrogram
@@ -29,9 +30,12 @@ namespace ni::spectrogram
 
 /* ---------------------------------------------------------------- picture */
 
-/* One column per pixel and one band per pixel: 606 columns at about 47 a
- * second is thirteen seconds, and the 256 bands fill 256 pixels. */
-inline constexpr int pictureWidth = 606;
+/* One column per pixel and one band per pixel: 754 columns at about 47 a
+ * second is sixteen seconds, and the 256 bands fill 256 pixels. (606 and
+ * thirteen until the grid's select took the toolbar's room: the window grew
+ * rather than the facts or the select giving way, and the width that keeps
+ * the window on the 4 px grid was taken.) */
+inline constexpr int pictureWidth = 754;
 inline constexpr int pictureHeight = 256;
 
 /* About 47 columns a second, held constant across sample rates by the
@@ -80,10 +84,47 @@ inline constexpr int defaultBarCount = 2;
 /*
  * THE SPAN, one setting for what the x-axis is and how much of it (proposal
  * SP2): the seconds the picture holds, then each bar view's width --
- * "13 s", "1 bar", "2 bars" ... "16 bars". Option 0 is the seconds; option
+ * "16 s", "1 bar", "2 bars" ... "16 bars". Option 0 is the seconds; option
  * n is barCounts[n - 1].
  */
 juce::StringArray spanOptions();
+
+/* ------------------------------------------------------------------- grid */
+
+/*
+ * THE GRID, the beat lines over the picture, as Live's own grid menu names
+ * it: none, one bar, then the note values down to 1/128. Option g > 0 draws
+ * every line of RANK g or coarser, where a line's rank is
+ *
+ *   1      a bar line
+ *   r > 1  a 1/2^(r-1) note, counted from the start of its bar
+ *
+ * so in 4/4 it is the plain note grid, and in 3/4 or 6/8 every bar starts
+ * the subdivision afresh, as Live's does. Whatever is not a line has rank 0.
+ */
+inline constexpr const char* gridNames[] { "no grid", "1 bar", "1/2", "1/4", "1/8",
+                                           "1/16", "1/32", "1/64", "1/128" };
+inline constexpr int numGrids = (int) (sizeof (gridNames) / sizeof (gridNames[0]));
+/* The finest rank: 1/128. */
+inline constexpr int finestRank = numGrids - 1;
+
+juce::StringArray gridOptions();
+
+/*
+ * The coarsest line in [from, to), in quarter notes, or 0 for none: what one
+ * column, covering that stretch of the host's timeline, has a line in. A
+ * negative position (a count-in) is counted back from bar 1 as slotForPpq
+ * counts it.
+ */
+int gridRank (double from, double to, int numerator, int denominator);
+
+/* The rank of each of `columns` slots across a window of `bars`, slot s
+ * covering [s, s + 1) of it: the bar view's grid, fixed for the window. */
+std::vector<std::uint8_t> windowRanks (int bars, int numerator, int denominator, int columns);
+
+/* The finest rank that still falls on one of the metre's beats: 3 (1/4) in
+ * x/4, 4 (1/8) in x/8. Finer is a subdivision, drawn faintest. */
+int beatRank (int denominator);
 
 /* -------------------------------------------------------------- the facts */
 
@@ -93,11 +134,12 @@ juce::String readTempo (double bpm);
 /*
  * The picture's facts, which the web editor's hint bar printed and 1.1.0's
  * Hint no longer holds: the span the analyzer really drew, band centre to
- * band centre (its top clamped below Nyquist), and the floor; in the bar view
- * the tempo the sweep is placed by, and `free` while no playhead drives it.
- * "waiting for the plugin" before the first axis.
+ * band centre (its top clamped below Nyquist), and the floor; while anything
+ * on screen is placed by the tempo -- the bar view, or the grid -- that
+ * tempo, and `free` while no playhead drives it. "waiting for the plugin"
+ * before the first axis.
  */
-juce::String pictureFacts (const std::vector<float>& hz, bool barView, double bpm, bool running);
+juce::String pictureFacts (const std::vector<float>& hz, bool showTempo, double bpm, bool running);
 
 /* ------------------------------------------------------------------ marks */
 
@@ -130,8 +172,9 @@ struct TimeMark
     bool beat = false;
 };
 
-/* A tick every `stepS` seconds from "0 s" at the right edge leftwards, the end
- * labels anchored inside the picture. */
+/* A tick every `stepS` seconds from "0 s" at the right edge leftwards, the
+ * right end's label anchored inside the picture, none within 12 px of the
+ * left edge. */
 std::vector<TimeMark> secondMarks (int columns, double colsPerSecond, float width, double stepS = 1.0);
 
 /* One numbered tick per bar, and the beats inside it while a beat is at
