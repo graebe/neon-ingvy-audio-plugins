@@ -2,10 +2,9 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * Ultraviolet 1.3.0 -- GENERATED, DO NOT EDIT.
+ * Ultraviolet 2.0.0 -- GENERATED, DO NOT EDIT.
  *
- * scripts/gen-tokens.mjs wrote this from design/scheme/project/tokens.json
- * and the motion constants of design/scheme/project/components/ground.js.
+ * scripts/gen-tokens.mjs wrote this from design/scheme/project/tokens.json.
  * After re-syncing the design, run
  *
  *     node scripts/gen-tokens.mjs
@@ -29,7 +28,7 @@ namespace uv::tok
 
 /* The system these values are, and its release. */
 inline constexpr const char* systemName = "Ultraviolet";
-inline constexpr const char* release = "1.3.0";
+inline constexpr const char* release = "2.0.0";
 
 /* ============================================================ colour == */
 
@@ -83,9 +82,8 @@ namespace ultraviolet
 inline const juce::Colour bg000 { argb::ultraviolet::bg000 };
 /*
  * The dot of the dot-paper pattern on the window ground: 1px dots at a 12px
- * (space-3) pitch, under a 5% uv-deep uniform noise. Grows, brightens and
- * gains grain on a Ground wave peak. Only on the window ground, never inside
- * a panel or well.
+ * (space-3) pitch, under a 5% uv-deep uniform noise. Only on the window
+ * ground, never inside a panel or well.
  */
 inline const juce::Colour bgDot { argb::ultraviolet::bgDot };
 /*
@@ -367,60 +365,6 @@ inline constexpr TextStyle hint { 10.0f, 14.0f, 400, 0.02f };
 
 /* Every weight a style uses: the faces a plugin has to bundle. */
 inline constexpr int weights[] = { 400, 500 };
-}
-
-/* ============================================================ motion == */
-
-/*
- * "Controls never animate." The one thing that moves is the Ground, and these
- * are its reference implementation's options (ground.js, UVGround.defaults and
- * UVGround.beatDefaults): durations in seconds, rates in Hz or per second,
- * lengths in px, opacities 0..1. The ground's colours are not repeated here:
- * ground.js names bg-000, bg-dot and uv-deep, and the generator checks that
- * it still does.
- */
-namespace motion
-{
-/* The field: UVGround.defaults. */
-namespace ground
-{
-inline constexpr float pitch = 12.0f;  // dot pitch, px (space-3)
-inline constexpr float cell = 6.0f;  // simulation grid, px (half a pitch)
-inline constexpr float speed = 100.0f;  // c, px/s
-inline constexpr float freq = 1.5f;  // f₀ of the source wavelet, Hz → wavelength c/f₀ ≈ 67 px; a ring on every beat (90–140 BPM) does not cancel the last
-inline constexpr float tau = 10.0f;  // amplitude e-folding time, s (γ = 2/τ); with the border and the spreading, ~10 s from the last ring to rest
-inline constexpr float visc = 22.0f;  // ν, px²/s: fades a wave by its wavenumber squared; grid-scale ripple dies within a second, the ring lives on
-inline constexpr float gain = 220.0f;  // source strength A: a downbeat lifts the dots ~300 px from its emitter, soft-clipped at the drop
-inline constexpr float spot = 16.0f;  // σ of a drop's Gaussian footprint, px: wide enough that the drop itself is a soft splash, not a clipped block
-inline constexpr float inset = 9.0f;  // an emitter sits this far off its box's corner, along both edges, px
-inline constexpr float clear = 18.0f;  // no other box within this of an emitter, px: a narrower gutter has none
-inline constexpr float borderR = 0.5f;  // share of a wave the window border reflects head on: 0 lets it leave, 1 reflects it all
-inline constexpr float varyF = 0.08f;  // ± relative frequency from ring to ring
-inline constexpr float varyS = 0.12f;  // ± relative strength from ring to ring
-inline constexpr float slope = 0.7f;  // display: weight of the slope facing the light (top left) against the height
-inline constexpr float dt = 0.016666666666666666f;  // fixed simulation step, s
-inline constexpr float maxSteps = 6.0f;  // per frame, after a stall
-inline constexpr float rest = 0.004f;  // below this everywhere (and no ring active) the field is reset and the timer stops
-inline constexpr float dotR = 1.0f;  // dot radius at rest, px
-inline constexpr float dotDR = 0.4f;  // ± radius at |v| = 1
-inline constexpr float dotDA = 0.3f;  // ± relative dot opacity at |v| = 1
-inline constexpr float grainBase = 0.5f;  // grain layer opacity at rest (tile mean 10% → 5% effective)
-inline constexpr float grainK = 0.8f;  // grain gain per unit v
-inline constexpr float grainMin = 0.2f;  // → 2% effective in the deepest valley
-inline constexpr float grainMax = 0.9f;  // → 9% effective on the highest peak
-inline constexpr float fps = 30.0f;  // the timer's rate while the field moves; 0 at rest
-}
-/*
- * The clock that turns the host's transport into rings:
- * UVGround.beatDefaults.
- */
-namespace beat
-{
-inline constexpr float downbeat = 1.0f;  // a bar's first beat: the field's full source strength
-inline constexpr float beat = 0.55f;  // every other quarter note: about half (a plugin may tune it)
-inline constexpr float fps = 30.0f;  // ticks per second: one tick's travel is how far past a beat a start may land and still ring it
-inline constexpr float slack = 0.0625f;  // quarter notes: a position this far behind the last tick is jitter, not a jump
-}
 }
 
 } // namespace uv::tok

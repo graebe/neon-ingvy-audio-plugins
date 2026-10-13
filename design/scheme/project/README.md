@@ -6,7 +6,7 @@ The publisher is **Neon Ingvy**. Every plugin window carries the publisher's `Si
 
 ## Versioning
 
-Ultraviolet follows semantic versioning, MAJOR.MINOR.PATCH. The current release is **1.3.0**; every release is listed in the Changelog. The version is recorded in `tokens.json` (`meta.release`) and in the header of `components/bundle.css`, and exposed as `UVGround.version` by `components/ground.js`. A plugin states the Ultraviolet version it was built against in its own release notes.
+Ultraviolet follows semantic versioning, MAJOR.MINOR.PATCH. The current release is **2.0.0**; every release is listed in the Changelog. The version is recorded in `tokens.json` (`meta.release`) and in the header of `components/bundle.css`. A plugin states the Ultraviolet version it was built against in its own release notes.
 
 - **MAJOR** — a change that breaks a plugin built on the previous release: a token, class, component, icon or API member renamed or removed, a token's meaning changed (e.g. `uv` used for something other than "on"), a layout rule reversed.
 - **MINOR** — an addition that breaks nothing: a new token, component, variant, icon or API option; a new rule that existing plugins already satisfy.
@@ -51,7 +51,7 @@ Labels are the parameter's name in one word where possible (`ATTACK`, `RATE`, `A
 
 Everything sits on a 4px grid. Window padding `space-8`; panel padding `space-4`; controls in a row `space-4` apart; control groups `space-6` apart; a label sits `space-2` above its control and the readout `space-2` below; steps in a grid are `space-2` apart.
 
-A standard plugin window, top to bottom: an optional big `readout` or ring on the left; the control block (knobs in rows of up to six, grouped in panels by function; a window with three or more panels may stack them as compact panels, `Panel`); the sequencer or other wide component full-width; the `Hint` bar pinned to the bottom edge, carrying the conventions, the Motion switch and the Signature. Window verbs (copy, paste, export, export all, import) live in the side column right of the panels (`Actions`): at the top, flush with the panels' top edge, either as an equal-width labelled stack or as a joined icon group; the transport and Sync LED sit at the bottom, flush with the panels' bottom edge. Never among the knobs. Nothing is centred vertically: windows are laid out from the top, spare room stays at the bottom above the hint.
+A standard plugin window, top to bottom: an optional big `readout` or ring on the left; the control block (knobs in rows of up to six, grouped in panels by function; a window with three or more panels may stack them as compact panels, `Panel`); the sequencer or other wide component full-width; the `Hint` bar pinned to the bottom edge, carrying the conventions and the Signature. Window verbs (copy, paste, export, export all, import) live in the side column right of the panels (`Actions`): at the top, flush with the panels' top edge, either as an equal-width labelled stack or as a joined icon group; the transport and Sync LED sit at the bottom, flush with the panels' bottom edge. Never among the knobs. Nothing is centred vertically: windows are laid out from the top, spare room stays at the bottom above the hint.
 
 **Windows never scroll.** A plugin window has a fixed size and no scrollbar, so nothing is laid out outside it: every control is inside the window, and every list or menu opens inside it, never past its edge. A window whose content does not fit is redesigned, not scrolled. The window clips (`overflow: clip`): `clip` is not a scroll container, so focusing a control near an edge moves nothing, where `hidden` still scrolls to whatever takes focus and slides the whole window sideways.
 
@@ -65,35 +65,9 @@ Every control has the same five states and shows them the same way: **off/rest**
 
 ## Motion
 
-Controls never animate: values change instantly, the playhead advances in hard steps, an LED switches without a fade, a meter jumps to its level, and nothing moves on preset load.
+Controls never animate: values change instantly, the playhead advances in hard steps, an LED switches without a fade, a meter jumps to its level, and nothing moves on preset load. The window ground is still: dot paper and grain, the same in every frame.
 
-The one animation is the ground (`Ground`), and it keeps the host's musical time. While the transport plays, every quarter note drops one slow ring onto the ground, and each bar's downbeat drops a stronger one; while the transport is stopped, nothing rings. A ring falls at a point just off a box's outer corner, where the box leaves open ground around it: the downbeat always at the corner nearest the window's centre (the anchor), so each bar starts from the same place, and the bar's other beats at the next corners clockwise around the window. Each ring differs a little from the last in size and strength, the same way every time, so the ground never repeats like a machine. A beat's ring is about half as strong as a downbeat's, so the bar reads in the background as one pulse and its lighter beats. The bar comes from the host's time signature: *numerator × 4 ÷ denominator* quarter notes, 4/4 when the host gives none, so in 7/8 the downbeat falls between two quarters and rings there. Starting on a beat rings it, starting between two waits for the next, and a loop or a jump never rings the beats it skipped, only the one it lands on. The ground reads no audio: it is identical in every plugin, on a drum bus or a silent return, and independent of what the plugin does to the sound.
-
-The rings travel through the background only; panels, wells and the step grid are solid to them. Each spreads as a circle and thins as it goes, bends around box corners and echoes off box edges, again and again, crossing and interfering with the others. The window border sends back only half of what reaches it, so the window never fills with its own standing waves. Fine ripple dies at once while the long wave softens, and the field comes to rest about ten seconds after the last ring. The ground is lit from the top left: where the surface rises towards the light the dots grow and brighten and the grain thickens; where it falls away the dots shrink and dim and the grain thins. The grain itself never moves (moving grain reads as TV static), only its local density changes. With the transport stopped the ground settles back to exactly the static design and its timer stops.
-
-The field is the damped, viscous 2D wave equation, u_tt = c²∇²u − γ·u_t + ν·∇²u_t + A·s·ψ(t − t₀)·G(x − e), simulated on a 6 px grid (every second node is a dot) with the isotropic 9-point ∇², so rings stay round; ψ is a Ricker wavelet, G a Gaussian around the ring's emitter e, s the ring's strength. Box edges reflect (Neumann); the window border is an impedance edge reflecting `borderR`. Display is tanh(u + slope·(λ/2π)·∂u/∂ℓ), the height plus the slope towards a light at the top left.
-
-| parameter | value | why |
-| --- | --- | --- |
-| clock | one ring per quarter note while the transport plays, a downbeat every numerator × 4 ÷ denominator quarters, nothing while stopped | the host's musical time, never the audio, so every plugin rings alike |
-| ring strength s | 1.0 on a downbeat, about 0.5 on every other beat | the bar reads as one strong pulse and its lighter beats; a plugin may tune the lesser one |
-| wave speed c | 100 px/s | slow |
-| source wavelet f₀ | 1.5 Hz (wavelength ≈ 67 px), ± 8 % from ring to ring | a ring on every beat at 90–140 BPM keeps a field of similar strength instead of cancelling itself; the variation keeps it from reading as a machine |
-| damping | amplitude e-folding τ = 10 s (γ = 2/τ), viscosity ν = 22 px²/s | ν fades a wave by its wavenumber squared: grid ripple dies within a second while the ring softens and lives on; at rest ~10 s after the last ring |
-| emitters | just off every box's outer corners (9 px along both edges), none within 18 px of another box or the border; the window centre when there is no box | a ring is a drop at one point, so it spreads as a circle and bends around its own box |
-| order | the downbeat at the anchor (the emitter nearest the window centre), the bar's other beats clockwise from it | each bar starts from the same place |
-| drop | a Gaussian, σ = 16 px | wide enough that the drop itself is a soft splash, not a clipped block |
-| boundaries | box edges reflect, no phase flip; the window border reflects 50 % head on | echoes between the boxes, never a window full of standing waves |
-| source strength A | 220, ± 12 % from ring to ring | a downbeat lifts the dots ~300 px from its emitter |
-| light | slope weight 0.7, from the top left | a crest lights on its side towards the light and shades on the other |
-| grid / step | 6 px, 1/60 s fixed, ≤ 6 steps per frame | Courant number 0.28, stable; ~0.1 ms per step |
-| dot radius | 1.0 ± 0.4 px | with opacity ± 30 %, so 1x displays do not flicker |
-| grain | 5 % base, 2–9 % range | uniform white noise in `uv-deep`, static tile |
-| frame rate | 30 fps on a timer, 0 at rest | never on animation frames, never paused by page visibility |
-
-Every window with a Ground has a Motion switch, in its `Hint` bar; `prefers-reduced-motion` disables the ground outright. A still frame of the ground, at any moment, must look like the static design.
-
-**Timing.** A plugin editor is a web page inside its host, and hosts report that page as hidden while it is on screen and all but stop its animation frames. So no editor behaviour depends on animation frames or on page visibility: the ground, a playhead and anything else that moves on its own run on a timer at their own rate, and nothing pauses because the page says it is hidden. Work still stops when there is nothing to show (the field at rest, the transport stopped), and the host stops it when the window closes.
+**Timing.** A plugin editor is a web page inside its host, and hosts report that page as hidden while it is on screen and all but stop its animation frames. So no editor behaviour depends on animation frames or on page visibility: a playhead and anything else that moves on its own run on a timer at their own rate, and nothing pauses because the page says it is hidden. Work still stops when there is nothing to show (the transport stopped), and the host stops it when the window closes.
 
 ## Interaction conventions
 
