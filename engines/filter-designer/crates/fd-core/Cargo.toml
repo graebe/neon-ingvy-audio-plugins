@@ -21,8 +21,14 @@ ni-filter = { path = "../../../shared/crates/ni-filter" }
 wmidi = { workspace = true }
 
 [dev-dependencies]
+# The worst case's cost (benches/worst.rs).
+divan = { workspace = true }
 # The no-allocation guard tests/no_alloc.rs installs.
 assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
 proptest = { workspace = true, features = ["std"] }
 # The tests' spectra.
 realfft = { workspace = true }
+
+[[bench]]
+name = "worst"
+harness = false

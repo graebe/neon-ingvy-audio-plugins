@@ -127,6 +127,7 @@ fn ripple_and_stopband_are_what_they_were_asked_to_be() {
     }
 }
 
+/// The constant table is the reverse Bessel polynomial's n distinct roots.
 #[test]
 fn bessel_poles_are_the_reverse_bessel_polynomials_roots() {
     for n in 1..=8 {
@@ -134,14 +135,33 @@ fn bessel_poles_are_the_reverse_bessel_polynomials_roots() {
         let fact = |m: usize| (1..=m).fold(1.0f64, |f, i| f * i as f64);
         let coef: Vec<f64> = (0..=n).map(|k| fact(2 * n - k) / (2f64.powi((n - k) as i32) * fact(k) * fact(n - k))).collect();
         let poly = |s: Complex64| coef.iter().rev().fold(Complex64::new(0.0, 0.0), |y, a| y * s + a);
-        let scale = coef[0];
-        for pair in p.pairs() {
-            assert!(poly(pair.pole()).norm() / scale < 1e-10, "n{n} pole {:?}", pair.pole());
+        let mut roots: Vec<Complex64> = p.pairs().iter().flat_map(|q| [q.pole(), q.pole().conj()]).collect();
+        roots.extend(p.real().map(|s| Complex64::new(-s, 0.0)));
+        assert_eq!(roots.len(), n);
+        for (i, r) in roots.iter().enumerate() {
+            /* Relative to the polynomial's largest term there. */
+            let size = coef.iter().enumerate().map(|(k, a)| a * r.norm().powi(k as i32)).fold(0.0, f64::max);
+            assert!(poly(*r).norm() / size < 1e-12, "n{n} root {r:?}: residual {}", poly(*r).norm() / size);
+            assert!(roots[..i].iter().all(|q| (q - r).norm() > 1e-3), "n{n}: {r:?} twice");
         }
-        if let Some(s) = p.real() {
-            assert!(poly(Complex64::new(-s, 0.0)).norm() / scale < 1e-10);
+    }
+}
+
+/// Every prototype, normalised, is at -3 dB at 1 rad/s (Linkwitz-Riley at
+/// -6 dB): each family's `w3` in closed form is where it crosses.
+#[test]
+fn every_prototype_crosses_minus_3_db_at_one() {
+    for f in Family::ALL {
+        for n in 1..=8 {
+            for &ripple in &[0.01, 0.5, 1.0, 3.0] {
+                for &stop in &[20.0, 60.0, 120.0] {
+                    let p = Prototype::new(f, n, ripple, stop);
+                    let want = if f == Family::LinkwitzRiley { MINUS_6 } else { MINUS_3 };
+                    let got = 20.0 * p.magnitude(1.0).log10();
+                    assert!((got - want).abs() < 1e-9, "{f:?} n{n} ripple {ripple} stop {stop}: {got} dB");
+                }
+            }
         }
-        assert_eq!(p.pairs().len() * 2 + p.real().is_some() as usize, n);
     }
 }
 
@@ -423,3 +443,5 @@ proptest! {
         }
     }
 }
+
+

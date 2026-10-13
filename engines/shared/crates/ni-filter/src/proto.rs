@@ -18,7 +18,7 @@ family's formula, never sorted by Q: a glide of Ripple must not swap two
 sections between one design and the next.
 
 NORMALISED TO ITS -3 dB POINT. `w3` is where the prototype as designed falls
-to -3 dB; a filter at Freq maps 1 rad/s of the NORMALISED prototype there,
+to -3 dB, in closed form for every family (Bessel's from its table); a filter at Freq maps 1 rad/s of the NORMALISED prototype there,
 so every family's Freq is its -3 dB point and switching family leaves the
 curve where the handle is. Linkwitz-Riley is the exception that the
 crossover asks for: -6 dB at 1, where a low and a high cut sum flat.
@@ -29,6 +29,40 @@ use num_complex::Complex64;
 
 /// The highest order a prototype has.
 pub const MAX_ORDER: usize = 8;
+
+/// Bessel's prototype at orders 1 to 8, which nothing parameterises: the
+/// reverse Bessel polynomial's roots in the upper half plane (re, im), nearest
+/// the jω axis first as Butterworth's are; its real root's distance σ, at odd
+/// orders; and where it crosses -3 dB. A constant, so a design on the audio
+/// thread never solves a polynomial; the tests hold it to the polynomial.
+#[allow(clippy::type_complexity)]
+pub(crate) const BESSEL: [(&[(f64, f64)], Option<f64>, f64); MAX_ORDER] = [
+    (&[], Some(1.0), 1.0),
+    (&[(-1.5, 0.8660254037844384)], None, 1.3616541287161306),
+    (&[(-1.8389073226869574, 1.7543809597837217)], Some(2.322185354626086), 1.755672368681211),
+    (&[(-2.1037893971796278, 2.657418041856752), (-2.8962106028203722, 0.8672341289345048)], None, 2.1139176749042154),
+    (&[(-2.3246743031816433, 3.571022920337976), (-3.351956399153533, 1.7426614161831977)], Some(3.64673859532964), 2.4274107021526277),
+    (
+        &[(-2.515932247810823, 4.492672953653944), (-3.7357083563258233, 2.6262723114471216), (-4.24835939586337, 0.8675096732313607)],
+        None,
+        2.7033950612029205,
+    ),
+    (
+        &[(-2.685676878943261, 5.42069413071675), (-4.070139163638138, 3.5171740477097417), (-4.75829052815464, 1.739286061130533)],
+        Some(4.971786858527804),
+        2.9517221470386934,
+    ),
+    (
+        &[
+            (-2.83898394889764, 6.353911298604889),
+            (-4.3682892172023156, 4.414442500471423),
+            (-5.204840790637162, 2.6161751526426387),
+            (-5.587886043262967, 0.867614445353243),
+        ],
+        None,
+        3.1796172375107274,
+    ),
+];
 
 /// The families, in the order the plugins list them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,9 +185,6 @@ impl Prototype {
             Family::Elliptic => p.butterworth(1),
             Family::LinkwitzRiley => p.linkwitz_riley(order),
         }
-        if !matches!(family, Family::Butterworth | Family::LinkwitzRiley) {
-            p.w3 = p.minus_3db();
-        }
         p
     }
 
@@ -225,46 +256,14 @@ impl Prototype {
         }
     }
 
-    /// The reverse Bessel polynomial's roots, by Durand-Kerner from a fixed
-    /// start: deterministic, and at order 8 converged far inside 200 steps.
+    /// The reverse Bessel polynomial's roots, from [`BESSEL`].
     fn bessel(&mut self, n: usize) {
-        let fact = |m: usize| (1..=m).fold(1.0f64, |f, i| f * i as f64);
-        let mut a = [0.0f64; MAX_ORDER + 1];
-        for (k, ak) in a.iter_mut().enumerate().take(n + 1) {
-            *ak = fact(2 * n - k) / (2f64.powi((n - k) as i32) * fact(k) * fact(n - k));
+        let (upper, real, w3) = BESSEL[n - 1];
+        for &(re, im) in upper {
+            self.push(Pair::of_pole(Complex64::new(re, im), None));
         }
-        let poly = |s: Complex64| (0..n).rev().fold(Complex64::new(a[n], 0.0), |y, k| y * s + a[k]);
-        let mut r = [Complex64::new(0.0, 0.0); MAX_ORDER];
-        for (i, ri) in r.iter_mut().enumerate().take(n) {
-            *ri = Complex64::from_polar(1.5, 2.0 * core::f64::consts::PI * i as f64 / n as f64 + 0.4);
-        }
-        for _ in 0..200 {
-            for i in 0..n {
-                let mut d = Complex64::new(a[n], 0.0);
-                for j in 0..n {
-                    if j != i {
-                        d *= r[i] - r[j];
-                    }
-                }
-                r[i] -= poly(r[i]) / d;
-            }
-        }
-        /* The upper half plane's poles by their angle, nearest the jω axis
-         * first, as Butterworth's are; the real one, if any, apart. */
-        let mut upper = [Complex64::new(0.0, 0.0); MAX_ORDER / 2];
-        let mut m = 0;
-        for p in r.iter().take(n) {
-            if p.im > 1e-9 {
-                upper[m] = *p;
-                m += 1;
-            } else if p.im.abs() <= 1e-9 {
-                self.real = Some(-p.re);
-            }
-        }
-        upper[..m].sort_by(|x, y| (x.im / x.norm()).total_cmp(&(y.im / y.norm())).reverse());
-        for p in upper.iter().take(m) {
-            self.push(Pair::of_pole(*p, None));
-        }
+        self.real = real;
+        self.w3 = w3;
     }
 
     fn chebyshev1(&mut self, n: usize, ripple: f64) {
@@ -278,6 +277,8 @@ impl Prototype {
             self.real = Some(a.sinh());
         }
         self.dc = if n % 2 == 1 { 1.0 } else { 1.0 / (1.0 + e * e).sqrt() };
+        /* |H|² = 1 / (1 + ε²·T_n(x)²) is 1/2 where T_n(x) = 1/ε. */
+        self.w3 = ((1.0 / e).acosh() / n as f64).cosh();
     }
 
     fn chebyshev2(&mut self, n: usize, stop: f64) {
@@ -291,6 +292,8 @@ impl Prototype {
         if n % 2 == 1 {
             self.real = Some(1.0 / a.sinh());
         }
+        /* |H|² = ε²T_n(1/x)² / (1 + ε²T_n(1/x)²) is 1/2 where T_n(1/x) = 1/ε. */
+        self.w3 = 1.0 / ((1.0 / e).acosh() / n as f64).cosh();
     }
 
     fn elliptic(&mut self, n: usize, ripple: f64, stop: f64) {
@@ -310,23 +313,10 @@ impl Prototype {
             self.real = Some(-(j * elliptic::sn(Complex64::new(0.0, v0), k)).re);
         }
         self.dc = if n % 2 == 1 { 1.0 } else { 10f64.powf(-ripple / 20.0) };
-    }
-
-    /// Where the prototype as designed crosses -3 dB, by bisection in log
-    /// frequency. Each family crosses once: Chebyshev I's and the elliptic's
-    /// passband ripple stays above it (Ripple is at most 3 dB), and every
-    /// stopband is at least 20 dB down.
-    fn minus_3db(&self) -> f64 {
-        let half = core::f64::consts::FRAC_1_SQRT_2;
-        let (mut lo, mut hi) = (1e-3f64.ln(), 1e3f64.ln());
-        for _ in 0..80 {
-            let mid = 0.5 * (lo + hi);
-            if self.raw_magnitude(mid.exp()) < half {
-                hi = mid;
-            } else {
-                lo = mid;
-            }
-        }
-        (0.5 * (lo + hi)).exp()
+        /* |H|² = 1 / (1 + εp²·R_n(x)²) is 1/2 where R_n(x) = 1/εp, R_n being
+         * cd(n·u·K1, k1) at x = cd(u·K, k): past the passband edge, where
+         * u = (asn(1/εp, k1) - 1) / n is imaginary and x real. */
+        let u = (elliptic::asn(Complex64::new(1.0 / ep, 0.0), k1) - 1.0) / n as f64;
+        self.w3 = elliptic::cd(u, k).re;
     }
 }

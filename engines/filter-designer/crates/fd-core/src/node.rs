@@ -20,6 +20,14 @@ one input must. A change that arrives during a fade waits for its end.
 
 A node that is Empty, or switched off, is an instance with no sections: it
 costs nothing, and is skipped outright once no fade is running.
+
+WHAT A TICK MAY COST. Mapping a prototype to sections is cheap; designing the
+prototype (an elliptic one, a Chebyshev's -3 dB point) is not, so the engine
+hands every control tick a budget of [`PROTOS_PER_TICK`] prototype designs.
+A fade that needs a new prototype starts on a tick with budget left. While
+Ripple or Stopband glide, the prototype follows every [`PROTO_EVERY`]th tick
+and on the tick they land, budget allowing; between them the sections follow
+Freq and Q on the prototype they have.
 */
 
 use crate::design::{channel_of, design, is_heard, prototype, settings_of, Channel, Globals, Settings, Shape};
@@ -29,6 +37,13 @@ use ni_filter::{Cascade, Family, Prototype, State};
 
 /// How long a change of what a node is takes to fade in, in ms.
 pub const FADE_MS: f64 = 20.0;
+
+/// The prototype designs one control tick may make, across all nodes.
+pub const PROTOS_PER_TICK: usize = 4;
+
+/// While Ripple or Stopband glide, the prototype is designed again every this
+/// many control ticks (64 samples), and on the tick they land.
+pub const PROTO_EVERY: u8 = 4;
 
 /// What a node is: what fades rather than glides.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -106,6 +121,8 @@ struct Instance {
     proto: Option<Prototype>,
     /// The ripple and stopband `proto` was made with.
     proto_for: (f64, f64),
+    /// Control ticks since `proto` was made.
+    proto_age: u8,
     /// What the cascade was designed from, and at which rate.
     designed: Option<(Settings, Globals, f64)>,
     cascade: Cascade,
@@ -119,6 +136,7 @@ impl Instance {
             what,
             proto: None,
             proto_for: (f64::NAN, f64::NAN),
+            proto_age: 0,
             designed: None,
             cascade: Cascade::identity(),
             lanes: [State::default(); 2],
@@ -126,23 +144,33 @@ impl Instance {
         }
     }
 
-    /// Designed again when anything it is made of moved.
-    fn update(&mut self, now: &Glided, g: Globals, fs: f64) {
+    /// Designed again when anything it is made of moved; its prototype as
+    /// the budget and the throttle allow (a first one always: a fade starts
+    /// only with budget for it).
+    fn update(&mut self, now: &Glided, target: &Glided, g: Globals, fs: f64, budget: &mut usize) {
         if self.what.shape == Shape::Empty {
             return;
         }
+        self.proto_age = self.proto_age.saturating_add(1);
         let s = now.settings(&self.what);
         if self.designed == Some((s, g, fs)) {
             return;
         }
         if s.shape.uses_family() {
-            let uses = (
-                if s.family.uses_ripple() { s.ripple_db } else { 0.0 },
-                if s.family.uses_stopband() { s.stopband_db } else { 0.0 },
-            );
-            if self.proto.is_none() || self.proto_for != uses {
+            let uses = |s: &Settings| {
+                (
+                    if s.family.uses_ripple() { s.ripple_db } else { 0.0 },
+                    if s.family.uses_stopband() { s.stopband_db } else { 0.0 },
+                )
+            };
+            let wanted = uses(&s);
+            let landed = wanted == uses(&target.settings(&self.what));
+            let due = self.proto_for != wanted && (landed || self.proto_age >= PROTO_EVERY) && *budget > 0;
+            if self.proto.is_none() || due {
                 self.proto = prototype(&s);
-                self.proto_for = uses;
+                self.proto_for = wanted;
+                self.proto_age = 0;
+                *budget = budget.saturating_sub(1);
             }
         }
         let (cascade, clamped) = design(&s, self.proto.as_ref(), g, fs);
@@ -223,11 +251,12 @@ impl Node {
     }
 
     /// One control step: the targets read, the glides moved, a fade started
-    /// when what the node is changed, and the instances designed again.
-    pub fn control(&mut self, values: &[f64], c: f64, g: Globals, fs: f64) {
+    /// when what the node is changed and `budget` allows, and the instances
+    /// designed again, each prototype taken from `budget`.
+    pub fn control(&mut self, values: &[f64], c: f64, g: Globals, fs: f64, budget: &mut usize) {
         self.target = Glided::of(values, self.slot);
         let want = Discrete::of(values, self.slot);
-        if !self.fading && want != self.a.what {
+        if !self.fading && want != self.a.what && (!want.shape.uses_family() || *budget > 0) {
             /* From nothing, nothing was heard of the glides: they start where
              * they are going. */
             if self.a.what.shape == Shape::Empty {
@@ -239,10 +268,12 @@ impl Node {
         } else {
             self.now.toward(&self.target, c);
         }
-        self.a.update(&self.now, g, fs);
+        /* The instance fading in first: its prototype is the one the
+         * budget was checked for. */
         if self.fading {
-            self.b.update(&self.now, g, fs);
+            self.b.update(&self.now, &self.target, g, fs, budget);
         }
+        self.a.update(&self.now, &self.target, g, fs, budget);
     }
 
     /// `l` and `r` through the node, in place; `step` is a fade's progress a
@@ -292,7 +323,9 @@ impl Node {
         }
         self.a.reset();
         self.a.designed = None;
-        self.a.update(&self.now, g, fs);
+        /* The panic lands everything at once, outside any tick's budget. */
+        let mut unbounded = usize::MAX;
+        self.a.update(&self.now, &self.target, g, fs, &mut unbounded);
     }
 
     pub fn flush(&mut self) {

@@ -9,11 +9,11 @@ NI Filter Designer's engine: a filter design tool you play as an equaliser.
         (optional)  each in Stereo, Left, Right, Mid or Side
 ```
 
-SIXTEEN NODES, each a Bell, a shelf, a cut, a band pass, a notch, an all-pass
-or a tilt -- the cuts, bands and notches in six families at orders 1 to 8,
-with resonance, ripple and stopband (ni-filter; design.rs says what each
-type uses). In front of them an ISOLATOR, a DJ mixer's three bands with
-their kills (isolator.rs). Minimum phase, no latency.
+SIXTEEN NODES, each a bell, a shelf, a high-pass, a low-pass, a band-pass, a
+notch, an all-pass or a tilt -- the high-pass, low-pass, band-pass and notch
+in six families at orders 1 to 8, with Q, ripple and stopband (ni-filter;
+design.rs says what each type uses). In front of them an ISOLATOR, a DJ
+mixer's three bands with their kills (isolator.rs). Minimum phase, no latency.
 
 THE CONTROL GRID. Every [`SUB`] samples, counted from the engine's first,
 the nodes' and the crossovers' glides move and their cascades are designed
@@ -44,7 +44,7 @@ use design::Globals;
 use isolator::Isolator;
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
-use node::{Node, FADE_MS};
+use node::{Node, FADE_MS, PROTOS_PER_TICK};
 pub use params::{Field, Info, Kind, Param, Unit, NODES, NODE_BASE, NODE_FIELDS, PARAM_COUNT};
 
 /// The sample rate when none is given.
@@ -84,6 +84,9 @@ pub struct Engine {
     fade_step: f64,
     /// Where in the control grid the next sample is.
     phase: usize,
+    /// The node a control tick serves first: each tick the next, so a tick's
+    /// budget of prototypes goes round.
+    first: usize,
     /// The input and output, mono, while a window shows the analyzer.
     watching: bool,
     pre: Box<[f32; RING]>,
@@ -110,6 +113,7 @@ impl Engine {
             sample_coef: 0.0,
             fade_step: 0.0,
             phase: 0,
+            first: 0,
             watching: false,
             pre: Box::new([0.0; RING]),
             post: Box::new([0.0; RING]),
@@ -236,15 +240,21 @@ impl Engine {
             && self.nodes.iter().all(|n| n.is_idle(&self.values))
     }
 
-    fn control(&mut self) {
+    /// One control tick; the prototypes it designed, at most
+    /// [`PROTOS_PER_TICK`].
+    fn control(&mut self) -> usize {
         let t = self.global_targets();
         let c = self.ctl_coef;
         self.globals.scale = glide(self.globals.scale, t.scale, c);
         self.globals.adaptive = glide(self.globals.adaptive, t.adaptive, c);
-        for n in &mut self.nodes {
-            n.control(&self.values, c, self.globals, self.sample_rate);
+        let mut budget = PROTOS_PER_TICK;
+        for k in 0..NODES {
+            let n = &mut self.nodes[(self.first + k) % NODES];
+            n.control(&self.values, c, self.globals, self.sample_rate, &mut budget);
         }
+        self.first = (self.first + 1) % NODES;
         self.iso.control(&self.values, c, self.sample_rate);
+        PROTOS_PER_TICK - budget
     }
 
     /// One block of host floats, in place: `left`, and `right` for a stereo

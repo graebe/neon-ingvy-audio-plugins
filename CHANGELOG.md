@@ -19,6 +19,10 @@
   (post) highlighted. The curve is the engine's own transfer function.
 - **Bypass**, crossfaded in 10 ms, the filters kept running so they resume
   from the signal they heard. No latency.
+- **Bounded cost on the audio thread**: a preset load or automated Ripple and
+  Stopband design at most four prototypes per 16 samples; a 64-sample block
+  after a preset turns all sixteen filters into order-8 elliptic low-passes
+  costs about 45 µs (3 % of its real time at 48 kHz).
 - On the Ableton Move as a Schwung module: the isolator, a high-pass and a
   low-pass.
 

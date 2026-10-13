@@ -365,3 +365,51 @@ proptest! {
         }
     }
 }
+
+/// Every node an order-8 elliptic low-pass at once, as a preset load does:
+/// no control tick designs more than its budget of prototypes, and the
+/// budget goes round, so every node is fading in a few ticks later.
+#[test]
+fn a_preset_load_designs_no_more_than_the_budget_a_tick() {
+    let mut e = Engine::new(FS);
+    for slot in 0..NODES as u8 {
+        node(&mut e, slot, Field::Type, 5.0);
+        node(&mut e, slot, Field::Family, 4.0);
+        node(&mut e, slot, Field::Order, 7.0);
+        node(&mut e, slot, Field::Freq, 500.0 + 500.0 * slot as f64);
+    }
+    let designed: Vec<usize> = (0..NODES / node::PROTOS_PER_TICK).map(|_| e.control()).collect();
+    assert_eq!(designed, vec![node::PROTOS_PER_TICK; NODES / node::PROTOS_PER_TICK]);
+    assert!((0..NODES).all(|n| e.node(n).is_fading()), "every node fading in");
+    for _ in 0..200 {
+        assert!(e.control() <= node::PROTOS_PER_TICK);
+    }
+}
+
+/// Ripple automated on an elliptic node: its prototype follows every
+/// PROTO_EVERY-th tick and on the tick Ripple lands, and what plays then is
+/// the design of where it landed.
+#[test]
+fn a_gliding_ripple_redesigns_the_prototype_every_fourth_tick_and_where_it_lands() {
+    let mut e = Engine::new(FS);
+    node(&mut e, 0, Field::Type, 5.0);
+    node(&mut e, 0, Field::Family, 4.0);
+    node(&mut e, 0, Field::Order, 5.0);
+    node(&mut e, 0, Field::Freq, 2000.0);
+    node(&mut e, 0, Field::Ripple, 0.1);
+    e.process_f32(&mut vec![0.0; (FS * 0.05) as usize], None);
+    assert!(!e.node(0).is_fading());
+    node(&mut e, 0, Field::Ripple, 2.5);
+    let ticks: Vec<usize> = (0..5000).filter(|_| e.control() > 0).collect();
+    let (&last, gaps) = ticks.split_last().expect("the prototype followed");
+    assert!(gaps.len() > 3, "it followed the glide, {} times", ticks.len());
+    for w in gaps.windows(2) {
+        assert!(w[1] - w[0] >= node::PROTO_EVERY as usize, "designed at ticks {} and {}", w[0], w[1]);
+    }
+    assert!(last > gaps[gaps.len() - 1], "and once more where it landed");
+    let s = crate::design::settings_of(&e.values, 0);
+    let (want, _) = design(&s, crate::design::prototype(&s).as_ref(), e.globals, FS);
+    for hz in [500.0, 2000.0, 2400.0, 9000.0] {
+        assert!((e.node(0).cascade().db(hz, FS) - want.db(hz, FS)).abs() < 1e-9, "{hz} Hz");
+    }
+}

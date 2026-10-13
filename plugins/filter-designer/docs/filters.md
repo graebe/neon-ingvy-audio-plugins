@@ -316,9 +316,9 @@ softest corner of all.
 ```
 
 `θ_N` is the **reverse Bessel polynomial** (Thomson, 1949). Its roots are the
-poles. They are found once when the prototype is designed (Durand-Kerner,
-from a fixed start, so the result is deterministic), then `w3` puts −3 dB at
-1.
+poles. Nothing parameterises a Bessel filter but its order, so the roots and
+`w3` (which puts −3 dB at 1) are a constant table for orders 1 to 8; a test
+holds every entry to the polynomial.
 
 **Discrete.** For each pole `p_i` of the normalised prototype, a section with
 `g = |p_i|·Ωc`, `k = 2·(−Re p_i)/|p_i|`, mix `(0, 0, 1)` (Low-Pass).

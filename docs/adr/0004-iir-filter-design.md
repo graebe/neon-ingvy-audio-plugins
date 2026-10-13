@@ -69,9 +69,9 @@ exist do not fit:
 5. **The design code is written here**, in a new product-free crate,
    `engines/shared/crates/ni-filter`, of about 600–800 lines:
    - prototypes in closed form -- Orfanidis for the elliptic -- and Bessel's
-     as the reverse Bessel polynomial's roots, found by Durand-Kerner from a
-     fixed start when the prototype is made (deterministic, and tested
-     against the polynomial);
+     as the reverse Bessel polynomial's roots, a constant table for orders
+     1 to 8 (amended 2026-10-13: the Durand-Kerner solve it replaced ran on
+     the audio thread; the test holds the table to the polynomial);
    - frequency transforms and section assembly;
    - response evaluation.
 
