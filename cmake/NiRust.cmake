@@ -15,9 +15,9 @@
 # cbindgen (engines/shared/cbindgen/capi_header.rs) into NI_CAPI_INCLUDE_DIR,
 # which the cargo runs below are given, so a header is the Rust it declares
 # and is rewritten only when its text changed. All of them land in one
-# directory because the ground's and the shell's crates are built inside every
-# product's cargo run: one value for all of them is what keeps their build
-# scripts from rerunning, and every bundle relinking, on every build.
+# directory because the shell's crates are built inside every product's cargo
+# run: one value for all of them is what keeps their build scripts from
+# rerunning, and every bundle relinking, on every build.
 # The directory sits beside cargo's target directory, under build/cargo, so the
 # two go together.
 #
@@ -25,7 +25,7 @@
 # absorbs the rlibs it depends on (engines/spectro/crates/spectro-capi's
 # Cargo.toml states the rule): two Rust staticlibs in one binary each carry the
 # Rust runtime and fail to link. So a plugin links exactly its own archive, and
-# a crate with no product of its own -- ground, shell -- is headers only here.
+# a crate with no product of its own -- the shell -- is headers only here.
 #
 # CARGO IS THE DEPENDENCY SCANNER. Corrosion runs it on every build, it is a
 # no-op when nothing changed, and Corrosion copies an archive out with
@@ -116,8 +116,8 @@ function(ni_build_rust_engines)
     get_property(libs GLOBAL PROPERTY NI_RUST_LIBS)
 
     # One cargo run per crate, all in one target directory, so the crates they
-    # share -- ni-dsp, ground, shell, audio-bus -- compile once rather than
-    # once per product. Release always: it is the profile whose panic strategy
+    # share -- ni-dsp, shell, audio-bus -- compile once rather than once per
+    # product. Release always: it is the profile whose panic strategy
     # is abort (the root Cargo.toml says why), and the only one that ships.
     #
     # LOCKED: the crates linked are the ones Cargo.lock names, which are the

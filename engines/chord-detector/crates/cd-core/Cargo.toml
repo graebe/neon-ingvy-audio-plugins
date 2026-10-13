@@ -16,9 +16,6 @@ crate-type = ["rlib"]
 music-core = { path = "../../../shared/crates/music-core", default-features = false }
 # MIDI bytes to messages. Core-only without its `std` feature, as sc-core takes it.
 wmidi = { workspace = true }
-# The host's clock for one block, and the length of a bar -- the ground's
-# reading of a transport, so the history's bar lines fall where its rings do.
-ground-core = { path = "../../../ground/crates/ground-core" }
 
 [dev-dependencies]
 # The no-allocation guard tests/no_alloc.rs installs.

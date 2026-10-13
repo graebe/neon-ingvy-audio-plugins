@@ -29,9 +29,6 @@ public:
 
     int numParameters() const override;
     juce::RangedAudioParameter& parameter (int index) override;
-    int takeRings (float* strengths, int capacity) override;
-    bool motion() const override;
-    void setMotion (bool on) override;
 
     Status status() const override;
     float peak() const override;

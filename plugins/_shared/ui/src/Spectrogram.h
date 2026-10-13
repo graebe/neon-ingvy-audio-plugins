@@ -65,7 +65,6 @@
  * Message thread. Draws the crosshair (a hairline each way in uv-deep at
  * 0.75), glow-focus round itself while it has visible keyboard focus, and the
  * sweep's playhead (uv at 0.9) in the bar view; none is part of the picture.
- * Solid to the Ground's rings.
  */
 #pragma once
 

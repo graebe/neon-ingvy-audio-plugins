@@ -13,13 +13,9 @@
  *
  *   tokens.json              every colour, space, radius, size, stroke, shadow
  *                            and text style, with the system's usage notes
- *   components/ground.js     the Ground's motion constants: UVGround.defaults
- *                            and UVGround.beatDefaults, the reference
- *                            implementation's published options. tokens.json
- *                            has no motion family, and these are the only
- *                            durations and rates the system states as data
  *   components/bundle.css    the window ground's grain: a 96px PNG tile the
- *                            stylesheet carries as a data URI
+ *                            stylesheet carries as a data URI; and the release
+ *                            its header states, which must be tokens.json's
  *
  * WHAT IT WRITES:
  *
@@ -46,13 +42,11 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import vm from 'node:vm';
 import { renderCss } from './gen-tokens-css.mjs';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DESIGN = join(ROOT, 'design', 'scheme', 'project');
 const TOKENS_JSON = join(DESIGN, 'tokens.json');
-const GROUND_JS = join(DESIGN, 'components', 'ground.js');
 const BUNDLE_CSS = join(DESIGN, 'components', 'bundle.css');
 
 export const TOKENS_H = join(ROOT, 'plugins', '_shared', 'ui', 'src', 'UvTokens.h');
@@ -146,38 +140,6 @@ function comment(text, indent = '', width = 78) {
   return [`${indent}/*`, ...lines.map((l) => `${indent} * ${l}`), `${indent} */`].join('\n');
 }
 
-/* ----------------------------------------------------------- motion -- */
-
-/*
- * ground.js, run in a context of its own with a stand-in `window`: it is a
- * plain script that hangs UVGround on whatever it is handed, and does nothing
- * at load but define functions and two option objects. Those objects are the
- * reference implementation's published API (the Ground README names
- * UVGround.defaults and UVGround.beatDefaults), which is what makes them data
- * rather than code this happens to be able to read.
- */
-export function readMotion(source = readFileSync(GROUND_JS, 'utf8')) {
-  const sandbox = { window: {} };
-  vm.runInNewContext(source, sandbox, { filename: 'ground.js', timeout: 1000 });
-  const g = sandbox.window.UVGround;
-  if (!g || typeof g.defaults !== 'object' || typeof g.beatDefaults !== 'object')
-    fail('ground.js no longer publishes UVGround.defaults and UVGround.beatDefaults');
-  /* The values come from running the file; the notes beside them only from
-   * its text, where each option carries a `// what it is` -- read for the
-   * header's comments and nothing else. */
-  const notes = { ground: {}, beat: {} };
-  for (const block of source.matchAll(/var\s+(DEFAULTS|BEAT)\s*=\s*\{([\s\S]*?)\n\s*\};/g)) {
-    const into = notes[block[1] === 'DEFAULTS' ? 'ground' : 'beat'];
-    for (const m of block[2].matchAll(/^\s*(\w+):\s*[^\n]*?\/\/\s*(.+)$/gm)) into[m[1]] = m[2].trim();
-  }
-  return {
-    version: String(g.version),
-    ground: { ...g.defaults },
-    beat: { ...g.beatDefaults },
-    notes,
-  };
-}
-
 /* ------------------------------------------------------------ grain -- */
 
 /*
@@ -199,16 +161,30 @@ export function readGrain(css = readFileSync(BUNDLE_CSS, 'utf8')) {
   return png;
 }
 
+/* ---------------------------------------------------------- release -- */
+
+/*
+ * The release the stylesheet's header states ("Ultraviolet 2.0.0 --
+ * component stylesheet"). The system records its version in two places,
+ * tokens.json and this header, and the two must agree, or the mirror is half
+ * of one release and half of another.
+ */
+export function readCssRelease(css = readFileSync(BUNDLE_CSS, 'utf8')) {
+  const m = /^\/\*\s*\S+\s+([0-9]+\.[0-9]+\.[0-9]+)\b/.exec(css);
+  if (!m) fail('bundle.css does not open with the release it belongs to');
+  return m[1];
+}
+
 /* ----------------------------------------------------------- header -- */
 
-export function renderHeader(system, motion) {
+export function renderHeader(system, cssRelease = readCssRelease()) {
   const out = [];
   const emit = (s = '') => out.push(s);
 
   const release = system.meta?.release;
   if (!release) fail('tokens.json has no meta.release');
-  if (motion.version !== release)
-    fail(`ground.js is ${motion.version} and tokens.json is ${release}: re-sync the design`);
+  if (cssRelease !== release)
+    fail(`bundle.css is ${cssRelease} and tokens.json is ${release}: re-sync the design`);
 
   /* ---- colour: one namespace per theme, values per theme where the system
    * gives them per theme. */
@@ -241,25 +217,13 @@ export function renderHeader(system, motion) {
     return hit ? `argb::${defaultTheme}::${hit.id}` : value;
   };
 
-  /* ---- the ground's colours must be the tokens they stand for. */
-  const rgb = (a) => `0xff${a.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-  const g = motion.ground;
-  const want = { bg: 'bg-000', dot: 'bg-dot', grain: 'uv-deep' };
-  for (const [key, token] of Object.entries(want)) {
-    const c = colours.find((x) => x.name === token);
-    if (!c) fail(`ground.js colours "${key}" as ${token}, which tokens.json does not define`);
-    if (!Array.isArray(g[key]) || rgb(g[key]) !== c.per[defaultTheme])
-      fail(`ground.js's ${key} is not ${token}: the design disagrees with itself`);
-  }
-
   emit('// SPDX-License-Identifier: GPL-3.0-or-later');
   emit('// Copyright (C) 2026 Torben Gräber');
   emit();
   emit('/*');
   emit(` * ${system.name} ${release} -- GENERATED, DO NOT EDIT.`);
   emit(' *');
-  emit(' * scripts/gen-tokens.mjs wrote this from design/scheme/project/tokens.json');
-  emit(' * and the motion constants of design/scheme/project/components/ground.js.');
+  emit(' * scripts/gen-tokens.mjs wrote this from design/scheme/project/tokens.json.');
   emit(' * After re-syncing the design, run');
   emit(' *');
   emit(' *     node scripts/gen-tokens.mjs');
@@ -421,45 +385,6 @@ export function renderHeader(system, motion) {
   emit(`inline constexpr int weights[] = { ${[...weights].sort((a, b) => a - b).join(', ')} };`);
   emit('}');
   emit();
-
-  /* ---- motion */
-  const numberOrBool = (v, key) => {
-    if (typeof v === 'boolean') return ['bool', String(v)];
-    if (typeof v === 'number') return ['float', float(v)];
-    fail(`ground.js option "${key}" is ${JSON.stringify(v)}, which is neither a number nor a switch`);
-    return null;
-  };
-  emit('/* ============================================================ motion == */');
-  emit();
-  emit('/*');
-  emit(' * "Controls never animate." The one thing that moves is the Ground, and these');
-  emit(' * are its reference implementation\'s options (ground.js, UVGround.defaults and');
-  emit(' * UVGround.beatDefaults): durations in seconds, rates in Hz or per second,');
-  emit(' * lengths in px, opacities 0..1. The ground\'s colours are not repeated here:');
-  emit(' * ground.js names bg-000, bg-dot and uv-deep, and the generator checks that');
-  emit(' * it still does.');
-  emit(' */');
-  emit('namespace motion');
-  emit('{');
-  const heads = {
-    ground: 'The field: UVGround.defaults.',
-    beat: 'The clock that turns the host\'s transport into rings: UVGround.beatDefaults.',
-  };
-  for (const [ns, obj, skip] of [['ground', motion.ground, Object.keys(want)], ['beat', motion.beat, []]]) {
-    emit(comment(heads[ns]));
-    emit(`namespace ${ns}`);
-    emit('{');
-    for (const [key, v] of Object.entries(obj)) {
-      if (skip.includes(key)) continue;
-      if (!/^[a-z][A-Za-z0-9]*$/.test(key)) fail(`ground.js option "${key}" is not an identifier`);
-      const [t, lit] = numberOrBool(v, key);
-      const note = motion.notes?.[ns]?.[key];
-      emit(`inline constexpr ${t} ${key} = ${lit};${note ? `  // ${note.replace(/\*\//g, '* /')}` : ''}`);
-    }
-    emit('}');
-  }
-  emit('}');
-  emit();
   emit('} // namespace uv::tok');
   emit();
   return out.join('\n');
@@ -470,7 +395,7 @@ export function renderHeader(system, motion) {
 /** Every file the generator owns, as { absolute path: Buffer }. */
 export function generate() {
   const system = JSON.parse(readFileSync(TOKENS_JSON, 'utf8'));
-  const header = renderHeader(system, readMotion());
+  const header = renderHeader(system);
   return new Map([
     [TOKENS_H, Buffer.from(header, 'utf8')],
     [GRAIN_PNG, readGrain()],

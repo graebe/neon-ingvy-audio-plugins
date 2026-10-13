@@ -50,7 +50,6 @@ struct Rig
 
     Rig()
     {
-        editor.frame().ground().setReducedMotionQuery ([] { return false; });
         model.params.clear();
         model.edits.clear();
     }
@@ -456,7 +455,7 @@ TEST_CASE ("trance-gate: the hint states the Step card's conventions, and Set or
     CHECK (rig.conventions().startsWith ("click a step to toggle"));
 }
 
-TEST_CASE ("trance-gate: every set of conventions fits the bar whole, before the Motion switch")
+TEST_CASE ("trance-gate: every set of conventions fits the bar whole, before the Signature")
 {
     Rig rig;
     const float room = (float) rig.editor.frame().hint().tipsBounds().getWidth();
@@ -548,12 +547,9 @@ TEST_CASE ("trance-gate: the tabs show one plot at a time, from the pointer or t
     CHECK (band.tabs().getBounds() == juce::Rectangle<int> (736, 0, 24, 92));
 }
 
-TEST_CASE ("trance-gate: the Motion switch is the model's, and Randomize is the engine's")
+TEST_CASE ("trance-gate: Randomize is the engine's")
 {
     Rig rig;
-    rig.model.common.motionOn = false;
-    rig.editor.frame().motionChanged();
-    CHECK_FALSE (rig.editor.frame().motionSwitch().isOn());
     rig.editor.verbs().button (Verbs::Verb::randomize).onClick();
     CHECK (rig.model.takeEdits() == "randomize");
 }

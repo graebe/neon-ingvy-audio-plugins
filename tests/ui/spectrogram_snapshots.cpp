@@ -74,11 +74,7 @@ struct Rig
         model.clock.ppqPerColumn = 128.0 / 60.0 / 47.0;
     }
 
-    void open()
-    {
-        editor = std::make_unique<SpectrogramEditor> (model, [this] { return ms; });
-        editor->frame().ground().setReducedMotionQuery ([] { return false; });
-    }
+    void open() { editor = std::make_unique<SpectrogramEditor> (model, [this] { return ms; }); }
 
     /* `columns` of music, 32 to a frame, the transport moving with them. */
     void play (int columns, bool withClash)

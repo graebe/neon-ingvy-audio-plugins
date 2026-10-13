@@ -8,6 +8,7 @@
 
 #include "Luminous.h"
 #include "TextField.h"
+#include "UvGround.h"
 
 namespace ni::ui
 {
@@ -27,14 +28,6 @@ EditorFrame::Layer::Layer()
     /* Transparent, and no target of its own: a press on the window's
      * background lands on nothing, as it does on the web page's. */
     setInterceptsMouseClicks (false, true);
-
-    /* The Ground moves under the whole window thirty times a second, and
-     * every pixel it changes would repaint whatever lies over it -- each
-     * control, the panels' child lights -- although none of them changed:
-     * 11 ms a frame in the Trance Gate, enough to starve the message thread
-     * in a host. Buffered, the layer is painted once and blitted over the
-     * moving Ground; a control that changes repaints its own area of it. */
-    setBufferedToImage (true);
 }
 
 void EditorFrame::Layer::paint (juce::Graphics& g)
@@ -79,44 +72,26 @@ TextField* editedIn (juce::Component& c)
 
 /* --------------------------------------------------------------- frame -- */
 
-EditorFrame::EditorFrame (EditorModel& m, Clock c)
-    : model (m),
-      clock (orNow (std::move (c))),
-      groundLayer (clock),
+EditorFrame::EditorFrame (Clock c)
+    : clock (orNow (std::move (c))),
       info (clock),
       frames (*this, clock)
 {
     /* Tab goes round the window's controls, and stays in the window. */
     setFocusContainerType (FocusContainerType::keyboardFocusContainer);
 
-    addAndMakeVisible (groundLayer);
     addAndMakeVisible (layer);
     layer.addAndMakeVisible (bar);
 
-    groundLayer.setSourceRoot (&layer);
-    groundLayer.setRingSource ([this] (float* strengths, int capacity)
-                               { return model.takeRings (strengths, capacity); });
-
-    motionToggle.setSize (motionToggle.idealWidth(), Hint::height);
-    motionToggle.onChange = [this] (bool on)
-    {
-        model.setMotion (on);
-        motionChanged();
-    };
-    setInfo (motionToggle, motionInfo);
     setInfo (bar.signature(), signatureInfo);
-    bar.setMotionSwitch (&motionToggle);
     bar.setPadding (padding);
 
     info.onChange = [this] { refreshBar(); };
-    motionChanged();
 }
 
 EditorFrame::~EditorFrame()
 {
     stopTimer();
-    /* The bar holds the switch as a child; the switch goes first. */
-    bar.setMotionSwitch (nullptr);
 }
 
 void EditorFrame::setContent (juce::Component* c)
@@ -131,7 +106,6 @@ void EditorFrame::setContent (juce::Component* c)
         layer.addAndMakeVisible (*content, 0);
         content->setBounds (contentBounds());
     }
-    groundLayer.setSourceRoot (&layer);
 }
 
 juce::Rectangle<int> EditorFrame::contentBounds() const
@@ -165,21 +139,9 @@ std::optional<Clause> EditorFrame::outcome() const
     return std::nullopt;
 }
 
-void EditorFrame::setMotionInfo (const juce::String& line)
-{
-    setInfo (motionToggle, line);
-}
-
 void EditorFrame::setSignatureInfo (const juce::String& line)
 {
     setInfo (bar.signature(), line);
-}
-
-void EditorFrame::motionChanged()
-{
-    const bool on = model.motion();
-    motionToggle.setOn (on);
-    groundLayer.setEnabled (on);
 }
 
 void EditorFrame::pressed (juce::Component& at)
@@ -212,10 +174,15 @@ void EditorFrame::refreshBar()
         stopTimer();
 }
 
+void EditorFrame::paint (juce::Graphics& g)
+{
+    g.fillAll (uv::tok::colour::bg000);
+    uv::ground::paint (g, getLocalBounds().toFloat());
+}
+
 void EditorFrame::resized()
 {
     const auto all = getLocalBounds();
-    groundLayer.setBounds (all);
     layer.setBounds (all);
     bar.setBounds (0, getHeight() - bottomPadding - Hint::height, getWidth(), Hint::height);
     if (content != nullptr)

@@ -19,8 +19,7 @@
     "./capi": "./src/lib/capi.js",
     "./fake-schwung": "./src/lib/fake-schwung.js",
     "./vite": "./vite.editor.mjs",
-    "./chain": "./src/lib/chain.js",
-    "./beats": "./src/lib/beats.js"
+    "./chain": "./src/lib/chain.js"
   },
   "peerDependencies": {
     "solid-js": "^1.9.0"

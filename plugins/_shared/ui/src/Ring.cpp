@@ -13,7 +13,6 @@
 #include "UvLight.h"
 #include "UvTokens.h"
 #include "UvType.h"
-#include "WaveSource.h"
 
 #include <cmath>
 
@@ -125,7 +124,6 @@ Ring::Ring() : centreBox (std::make_unique<Centre> (*this))
 {
     setTitle ("Length");
     setWantsKeyboardFocus (true);
-    setWaveSource (*this);
     addAndMakeVisible (*centreBox);
     setSize (defaultSize, defaultSize);
 }

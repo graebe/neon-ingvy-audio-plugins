@@ -308,8 +308,8 @@ html, body {
  * design's `.ph-window` (design/scheme/project/components/bundle.css).
  *
  * Dots: --bg-dot, 1px with a 0.2px soft edge, on a space-3 pitch, offset half a
- * pitch -- which puts them on the multiples of 12px, where the animated ground's
- * canvas draws its own.
+ * pitch -- which puts them on the multiples of 12px, where the plugins' window
+ * ground draws its own.
  *
  * Noise: UNIFORM WHITE NOISE, every pixel an independent draw at 0-10 % (mean
  * 5 %), tinted --uv-deep. The design is explicit that it is not fractal, and
@@ -325,10 +325,8 @@ html, body {
  * isolation the -1 lands in the root's context, BEHIND body's opaque
  * background, and the grain silently disappears.
  *
- * This is the FALLBACK. The animated ground's canvas paints the same design over
- * it; the two agree on dots, colours and grain density but not on individual
- * grain pixels, because the canvas draws its own tile with Math.random exactly
- * as the design's reference implementation does.
+ * This IS the ground: nothing paints over it. The design's ground is still, so
+ * the page shows it exactly, dots and grain, pixel for pixel the system's tile.
  */
 body {
   isolation: isolate;

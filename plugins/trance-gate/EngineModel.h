@@ -72,9 +72,6 @@ public:
 
     int numParameters() const override;
     juce::RangedAudioParameter& parameter (int index) override;
-    int takeRings (float* strengths, int capacity) override;
-    bool motion() const override;
-    void setMotion (bool on) override;
 
     const Pattern& pattern() override;
     Transport transport() override;

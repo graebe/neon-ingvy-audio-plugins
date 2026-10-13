@@ -41,7 +41,6 @@
  */
 #pragma once
 
-#include "GroundClock.h"
 #include "Model.h"
 #include "Parameter.h"
 #include "Processor.h"
@@ -82,9 +81,6 @@ public:
     int numParameters() const override { return paramCount; }
     juce::RangedAudioParameter& parameter (int index) override { return *params[(size_t) index]; }
     juce::RangedAudioParameter& bypassParameter() override { return *bypass; }
-    int takeRings (float* strengths, int capacity) override;
-    bool motion() const override;
-    void setMotion (bool on) override;
     bool bipolar (int index) const override;
     const Picture& picture (int lane) override;
     unsigned typeUses (int type, int order) const override;
@@ -98,7 +94,7 @@ protected:
     /* The shell's prepareToPlay calls this first (ni::Processor). */
     void prepare (double sampleRate, int maximumBlockSize) override;
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-    /* Bypassed: JUCE's own pass-through, and the Ground keeps time. */
+    /* Bypassed: JUCE's own pass-through, the engine running on a copy. */
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
 private:
@@ -121,7 +117,6 @@ private:
     /* The rate prepare was given, for the tail; 0 before. */
     std::atomic<double> rate { 0.0 };
     bool windowOpen = false, watching = false;
-    ni::GroundClock beat;
 
     /* The picture as fd_shell_read writes it, and as the editor takes it. */
     std::unique_ptr<FdPicture> published;

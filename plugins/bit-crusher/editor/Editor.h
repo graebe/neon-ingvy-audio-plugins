@@ -24,7 +24,7 @@
  * The Filter acts on the crushed signal before the Mix (bc-core), and is off
  * by default.
  *
- *    (0, 488)    the Hint bar: three conventions, Motion, the Signature
+ *    (0, 488)    the Hint bar: three conventions, the Signature
  *
  * A crusher does three things -- it makes the amplitude discrete (keeps fewer
  * levels), it makes time discrete (keeps them less often), and it is driven

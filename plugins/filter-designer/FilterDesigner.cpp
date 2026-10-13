@@ -8,7 +8,6 @@
 
 #include "Editor.h"
 #include "EngineParameter.h"
-#include "MachineSettings.h"
 #include "PluginEditor.h"
 
 #include <algorithm>
@@ -83,7 +82,6 @@ void Processor::prepare (double sampleRate, int maximumBlockSize)
     /* A host that deactivated the plugin and starts it again hears nothing
      * held from before. */
     fd_shell_post_reset (shell.get());
-    beat.prepare (r);
 }
 
 /* Snapped again in double: the float a parameter holds is the nearest to a
@@ -96,9 +94,6 @@ double Processor::plain (int index) const
 
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    const int frames = buffer.getNumSamples();
-    const auto clock = readClock (getPlayHead());
-    beat.tick (clock, frames);
     run (buffer, true);
 }
 
@@ -132,31 +127,14 @@ void Processor::run (juce::AudioBuffer<float>& buffer, bool heard)
 }
 
 /* Bypassed, by the host or by the Bypass: the audio passes as JUCE passes it
- * (no latency to keep), the engine runs on a copy, and the Ground keeps the
- * host's time. */
+ * (no latency to keep) while the engine runs on a copy. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
     run (buffer, false);
     ni::Processor::processBypassed (buffer, midi);
 }
 
 /* ------------------------------------------------------------ the model -- */
-
-int Processor::takeRings (float* strengths, int capacity)
-{
-    return beat.takeRings (strengths, capacity);
-}
-
-bool Processor::motion() const
-{
-    return ni::MachineSettings::motion ("filter-designer");
-}
-
-void Processor::setMotion (bool on)
-{
-    ni::MachineSettings::setMotion ("filter-designer", on);
-}
 
 bool Processor::bipolar (int index) const
 {
@@ -249,14 +227,12 @@ juce::AudioProcessorEditor* Processor::createEditor()
 
 void Processor::editorOpened()
 {
-    beat.setActive (true);
     windowOpen = true;
     watch();
 }
 
 void Processor::editorClosed()
 {
-    beat.setActive (false);
     windowOpen = false;
     watch();
 }

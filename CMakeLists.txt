@@ -65,10 +65,8 @@ ni_add_rust_engine(cd_engine CRATE cd-capi LIB cd_capi)
 ni_add_rust_engine(bc_engine CRATE bc-capi LIB bc_capi)
 ni_add_rust_engine(vz_engine CRATE vz-capi LIB vz_capi)
 ni_add_rust_engine(fd_engine CRATE fd-capi LIB fd_capi)
-# The ground's beat clock and the shell plumbing (command queue, snapshot,
-# handoff) belong to no product: their C ABI rides inside every product's
-# archive, so they are headers here.
-ni_add_rust_headers(ground_engine)
+# The shell plumbing (command queue, snapshot, handoff) belongs to no product:
+# its C ABI rides inside every product's archive, so it is headers here.
 ni_add_rust_headers(shell_engine)
 ni_build_rust_engines()
 

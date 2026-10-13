@@ -32,6 +32,18 @@
 - On the Ableton Move as a Schwung module: the isolator, a high-pass and a
   low-pass.
 
+## Unreleased — every plugin
+
+These are already in the shared plugin shell and reach each plugin with its
+next release; that release's entry lists them and this section goes.
+
+- **The background is still.** The animated background that pulsed with the
+  beat is gone, and the **Motion** switch in the hint bar with it. The window
+  ground is the same violet dot paper and grain, always at rest; the hint bar
+  carries the tips and the Neon Ingvy mark.
+- The Motion setting each plugin remembered on your computer is simply ignored
+  now; there is nothing to reset.
+
 ## Unreleased — NI Bit-Crusher
 
 - **Amplitude Crush and Time Crush.** The two panels are named for what they

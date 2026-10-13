@@ -95,7 +95,7 @@ const tagOf = (p) => `${p}-${VERSIONS[p]}`;
 
 for (const p of PRODUCTS) {
   const shipsSomething = PLUGINS.includes(p) || MODULES.includes(p);
-  if (!shipsSomething) continue;   /* audio-bus, ground: crates inside products */
+  if (!shipsSomething) continue;   /* audio-bus: crates inside products */
   test(`${p}: the tag for the current version resolves`, () => {
     const r = resolve(tagOf(p));
     assert.equal(r.product, p);

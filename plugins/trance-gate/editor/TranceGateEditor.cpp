@@ -59,7 +59,7 @@ int TranceGateEditor::designHeightFor (int length)
 TranceGateEditor::TranceGateEditor (Model& m, Clipboard& clipboard, FilePanels& files,
                                     ni::ui::EditorFrame::Clock clock)
     : model (m),
-      window (m, std::move (clock)),
+      window (std::move (clock)),
       view (std::make_unique<View>()),
       envelope (std::make_unique<EnvelopePlot>()),
       slotVerbs (std::make_unique<Verbs> (m, clipboard, files, [this] (const std::string& s) { report (s); })),

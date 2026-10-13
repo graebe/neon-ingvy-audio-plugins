@@ -22,8 +22,8 @@
  * full bg-dot within 1px of a dot's centre, nothing past 1.2px. At 1x that is
  * a 2 x 2 block on each grid point, which is what the web editors show.
  *
- * Only on the window ground, never inside a panel or a well. The animated
- * Ground draws over this and, at rest, looks like it.
+ * Only on the window ground, never inside a panel or a well. EditorFrame
+ * paints it behind every editor's window; nothing over it moves.
  */
 #pragma once
 

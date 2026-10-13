@@ -20,7 +20,7 @@
  * `renderer` is the engine's curve renderer, (state) -> { gate, envelope },
  * once its wasm has loaded (boot.jsx); until then the plots are empty wells.
  */
-import { createSignal, createMemo, createEffect, onCleanup } from 'solid-js';
+import { createSignal, createMemo, onCleanup } from 'solid-js';
 import { EditorFrame, useEditorBridge, createClock, createFit, scaledHeight } from '@ultraviolet/ui';
 import { createParams } from '@ultraviolet/ui/params';
 import { MSG, P, NUM_PARAMS, MAX_LENGTH, lengthNorm } from './lib/msg.js';
@@ -34,7 +34,6 @@ import { fadeWeights } from './lib/fade.js';
 import { setOrder, onStepEdit } from './lib/steps.js';
 import { decodeUi, decodeEngineParams, applyEdit } from './lib/readouts.js';
 import { withStages } from './lib/stages.js';
-import { createBeats } from '@ultraviolet/ui/beats';
 import { INFO } from './lib/info.js';
 
 /* 32 + 760 + 32: the pads decide the 760. */
@@ -79,8 +78,7 @@ export default function App(props) {
    * them, half a second while playing, it runs on. */
   const clock = createClock();
 
-  let ground = null;
-  const bridge = useEditorBridge({
+  useEditorBridge({
     onMessage: (tag, msg) => {
       if (tag === MSG.uiState) {
         const u = decodeUi(msg);
@@ -95,14 +93,6 @@ export default function App(props) {
       }
     },
   });
-  /* The frame hands the ground to the bridge; the beats below ring it. */
-  const frameBridge = {
-    setGround: (handle) => {
-      ground = handle;
-      bridge.setGround(handle);
-    },
-  };
-
   /* A step edit, drawn as it is sent (lib/steps.js). */
   onCleanup(onStepEdit((edit) => setUi((u) => applyEdit(u, edit))));
 
@@ -122,16 +112,6 @@ export default function App(props) {
   };
   const playStep = createMemo(() => Math.floor(playPhase()) % Math.max(1, ui().length));
 
-  /* THE GROUND RINGS ON THE BEAT, found in the playhead (the kit's lib/beats.js). */
-  const beats = createBeats();
-  createEffect(() => {
-    if (!ui().moving) {
-      beats.reset();
-      return;
-    }
-    const ring = beats.next(playPhase(), ui().length, params()?.rate);
-    if (ring !== null) ground?.trigger?.(ring);
-  });
 
   /* The Length detents, in steps, as the engine counted them for this slot's
    * Rate. Compared by value, so an unchanged list does not redraw the ticks
@@ -218,10 +198,8 @@ export default function App(props) {
     <div class="page" style={{ height: `${scaledHeight(designH(), scale())}px` }}>
       {/* The ring, the panels, the plots and the pads all emit and reflect the
         * ground's rings. */}
-      <EditorFrame width={DESIGN_W} height={designH()} motionKey="trance-gate"
-                   sources=".panel, .ring, .grid, .plot, [data-wave-source]"
-                   bridge={frameBridge} hint={hint()} status={null}
-                   motionInfo={INFO.motion} signatureInfo={INFO.signature}>
+      <EditorFrame width={DESIGN_W} height={designH()} hint={hint()} status={null}
+                   signatureInfo={INFO.signature}>
         <div class="top">
           {/* LEFT: the ring, and the envelope plot ALWAYS under it. */}
           <div class="left-column">

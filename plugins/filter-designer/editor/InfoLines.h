@@ -63,7 +63,6 @@ inline constexpr InfoText dbValue { "Value — click to type a level in dB, such
 inline constexpr InfoText plainValue { "Value — click to type a number; Enter sets it." };
 
 /* The window's own. */
-inline constexpr InfoText motion { "Motion — let the beat ripple the background; remembered here." };
 inline constexpr InfoText signature { "Neon Ingvy — the publisher of this plugin." };
 
 } // namespace ni::fd::info

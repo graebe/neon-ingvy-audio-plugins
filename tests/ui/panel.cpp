@@ -2,14 +2,13 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The Panel: its look, where its controls go in each form, its title as the
- * place its info line lives, and the Ground's walls it and its kind make.
+ * The Panel: its look, where its controls go in each form, and its title as
+ * the place its info line lives.
  */
 #include "Panel.h"
 
 #include "Info.h"
 #include "UvTokens.h"
-#include "WaveSource.h"
 #include "pages.h"
 #include "snapshot.h"
 
@@ -81,41 +80,6 @@ TEST_CASE ("panel: the title carries the panel's line; the panel is a named grou
 
     p.setTitleText ("Fade");
     CHECK (p.getTitle() == "Fade");
-}
-
-TEST_CASE ("wave sources: panels mark themselves, and a window collects them where they are")
-{
-    juce::Component window, content, nested;
-    window.setSize (400, 300);
-    window.addAndMakeVisible (content);
-    content.setBounds (32, 32, 336, 200);
-
-    Panel a ("Gate"), b ("Envelope"), hidden ("Fade");
-    content.addAndMakeVisible (a);
-    content.addAndMakeVisible (b);
-    content.addChildComponent (hidden);
-    a.setBounds (0, 0, 100, 140);
-    b.setBounds (124, 0, 100, 140);
-    hidden.setBounds (248, 0, 80, 140);
-
-    /* A box inside a box adds no wall of its own. */
-    a.addAndMakeVisible (nested);
-    nested.setBounds (10, 10, 20, 20);
-    ni::ui::setWaveSource (nested);
-
-    CHECK (ni::ui::isWaveSource (a));
-    const auto boxes = ni::ui::collectWaveSources (window, window);
-    REQUIRE (boxes.size() == 2);
-    CHECK (boxes[0] == juce::Rectangle<float> (32.0f, 32.0f, 100.0f, 140.0f));
-    CHECK (boxes[1] == juce::Rectangle<float> (156.0f, 32.0f, 100.0f, 140.0f));
-
-    /* A scaled design: the walls follow the transform. */
-    content.setTransform (juce::AffineTransform::scale (2.0f));
-    CHECK (ni::ui::collectWaveSources (window, window)[0] == juce::Rectangle<float> (64.0f, 64.0f, 200.0f, 280.0f));
-
-    ni::ui::setWaveSource (b, false);
-    content.setTransform ({});
-    CHECK (ni::ui::collectWaveSources (window, window).size() == 1);
 }
 
 NI_SNAPSHOT_TEST ("panel: standard and compact")

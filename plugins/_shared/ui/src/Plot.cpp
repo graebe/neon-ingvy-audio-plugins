@@ -8,7 +8,6 @@
 
 #include "UvLight.h"
 #include "UvType.h"
-#include "WaveSource.h"
 
 #include <array>
 #include <cmath>
@@ -461,7 +460,6 @@ constexpr float captionBaseline = 11.0f;
 
 PlotWell::PlotWell()
 {
-    setWaveSource (*this);
     setWantsKeyboardFocus (false);
 }
 

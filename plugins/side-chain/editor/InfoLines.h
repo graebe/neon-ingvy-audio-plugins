@@ -76,8 +76,7 @@ inline constexpr InfoText velSensValue { "Velocity value — click to type a per
 inline constexpr InfoText thresholdValue { "Threshold value — click to type a level in dB, such as -24." };
 inline constexpr InfoText lockoutValue { "Lockout value — click to type a time in ms; Enter sets it." };
 
-/* The window's own: the switch and the signature in the hint bar. */
-inline constexpr InfoText motion { "Motion — let the beat ripple the background; remembered here." };
+/* The window's own: the signature in the hint bar. */
 inline constexpr InfoText signature { "Neon Ingvy — the publisher of this plugin." };
 
 } // namespace ni::sc::info

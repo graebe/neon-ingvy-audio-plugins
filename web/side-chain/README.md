@@ -90,10 +90,6 @@ than showing a control that does nothing:
   kick it ducks to -- the sidechain key or a Listen-In bus, to the sample;
   here the shape is the whole picture. The plugin's `NO INPUT` warning, which
   was read from that audio, goes with it.
-- **The background's beat is the cycle's.** In Live the ground ripples on the
-  host's beat. The Move sends the page no beat, so on Cycle it rings on the
-  quarter notes the sweep crosses, full at the cycle's start; on MIDI it stays
-  still.
 
 ## How the page talks to the Move
 

@@ -79,7 +79,7 @@ private:
 
 Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
     : model (m),
-      window (m, std::move (clock)),
+      window (std::move (clock)),
       view (std::make_unique<View>()),
       response (std::make_unique<ResponseWell> (m)),
       nodes (std::make_unique<NodeRow> (m)),
@@ -117,7 +117,6 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
 
     /* THE WINDOW. */
     window.setConventions ({ { "double-click", "to add a filter" }, { "drag", "it, alt for Q" }, { "delete", "removes it" } });
-    window.setMotionInfo (info::motion);
     window.setSignatureInfo (info::signature);
     window.setContent (view.get());
     addAndMakeVisible (scaler);

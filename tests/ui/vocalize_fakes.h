@@ -124,16 +124,13 @@ class FakeModel final : public Model
 public:
     FakeModel() { addParameters (common.params); }
 
-    /* The shared half: parameters, rings, Motion. */
+    /* The shared half: the parameters. */
     ni::ui::test::FakeEditorModel common;
     ni::ui::test::FakeParameters& params = common.params;
     Picture shown;
 
     int numParameters() const override { return common.numParameters(); }
     juce::RangedAudioParameter& parameter (int i) override { return common.parameter (i); }
-    int takeRings (float* s, int n) override { return common.takeRings (s, n); }
-    bool motion() const override { return common.motion(); }
-    void setMotion (bool on) override { common.setMotion (on); }
 
     bool bipolar (int i) const override { return i == param::size || i == param::output; }
     const Picture& picture() override { return shown; }

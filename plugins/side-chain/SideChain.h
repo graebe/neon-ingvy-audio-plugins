@@ -57,7 +57,6 @@
  */
 #pragma once
 
-#include "GroundClock.h"
 #include "Kick.h"
 #include "Parameter.h"
 #include "Params.h"
@@ -112,7 +111,6 @@ public:
     const Kick& kick() const noexcept { return behind; }
     /* A kick chosen in the window: the set is changed, and the host told. */
     void chooseKick (int choice);
-    ni::GroundClock& ground() noexcept { return beat; }
     EngineModel& model() noexcept { return *editorModel; }
     /* Whether the host connected a key, as of the last block. Any thread. */
     bool keyConnected() const noexcept { return keyed.load (std::memory_order_relaxed); }
@@ -139,7 +137,6 @@ private:
 
     Scope capture;
     Kick behind;
-    ni::GroundClock beat;
     std::atomic<bool> capturing { false };
     std::atomic<bool> keyed { false };
     double sampleRate = 44100.0;

@@ -32,15 +32,12 @@ using ni::ui::gallery::key;
 
 namespace
 {
-/* An editor on a clock the test holds still, and a Ground that never asks the
- * system about reduced motion: the same pictures everywhere. */
+/* An editor on a clock the test holds still. */
 struct Rig
 {
     FakeModel model;
     double now = 0.0;   // the frame's clock, which a test moves
     ListenInEditor editor { model, [this] { return now; } };
-
-    Rig() { editor.frame().ground().setReducedMotionQuery ([] { return false; }); }
 
     /* A part's bounds in the window's design pixels. */
     juce::Rectangle<int> inWindow (juce::Component& c)
@@ -595,13 +592,14 @@ TEST_CASE ("listen-in: under the pointer, the bar shows the status line, and fol
     CHECK (frame.hint().content().info->rest.contains ("listening on bus 3"));
 }
 
-TEST_CASE ("listen-in: the tips take the bar to Motion, which sits space-4 before the Signature")
+TEST_CASE ("listen-in: the tips take the bar to space-4 before the Signature")
 {
     Rig rig;
     auto& bar = rig.editor.frame().hint();
     CHECK (ni::ui::clausesWidth (bar.getConventions()) <= (float) bar.tipsBounds().getWidth());
-    CHECK (bar.tipsBounds().getRight() + ni::ui::Hint::gap == bar.motionBounds().getX());
-    CHECK (bar.motionBounds().getRight() + ni::ui::Hint::gap == bar.signature().getX());
+    CHECK (bar.tipsBounds().getRight() + ni::ui::Hint::gap == bar.signature().getX());
+    /* The room InfoLines.h counts on for the status line's head. */
+    CHECK (bar.tipsBounds().getWidth() == 186);
 }
 
 TEST_CASE ("listen-in: every control has its line, within the limit")
@@ -611,7 +609,6 @@ TEST_CASE ("listen-in: every control has its line, within the limit")
     CHECK (rig.line (rig.editor.nameField()).startsWith ("Name"));
     CHECK (rig.line (rig.editor.levelMeter()).startsWith ("Level"));
     CHECK (rig.line (rig.editor.statusLed()).startsWith ("Status"));
-    CHECK (rig.line (rig.editor.frame().motionSwitch()) == ni::ui::EditorFrame::motionInfo.str());
     CHECK (rig.line (rig.editor.frame().hint().signature()).startsWith ("Neon Ingvy"));
     NI_CHECK_INFO_LIMIT (rig.editor);
 
@@ -671,19 +668,6 @@ TEST_CASE ("listen-in: the frame clock reads the model; nothing else is needed f
     CHECK (rig.editor.statusLed().getStatus() == Led::Status::on);
     CHECK (rig.editor.levelMeter().getLevel() == 1.0f);
     CHECK (rig.editor.frame().frameClock().isRunning());
-}
-
-TEST_CASE ("listen-in: Motion is the model's, and the Ground follows it")
-{
-    FakeModel model;
-    model.motionOn = false;
-    ListenInEditor editor (model, [] { return 0.0; });
-    CHECK_FALSE (editor.frame().motionSwitch().isOn());
-    CHECK_FALSE (editor.frame().ground().isEnabled());
-
-    ni::ui::gallery::Pointer().click (editor.frame().motionSwitch(), { 7.0f, 14.0f });
-    CHECK (model.motionOn);
-    CHECK (editor.frame().ground().isEnabled());
 }
 
 TEST_CASE ("listen-in: Tab goes Bus, then the name, and the meter and the LED take no focus")

@@ -20,7 +20,6 @@
 #include "Model.h"
 #include "fakes.h"
 
-#include <deque>
 #include <string>
 
 namespace ni::li::test
@@ -72,20 +71,6 @@ public:
     int numParameters() const override { return params.size(); }
     juce::RangedAudioParameter& parameter (int index) override { return params[index]; }
 
-    int takeRings (float* strengths, int capacity) override
-    {
-        int n = 0;
-        while (n < capacity && ! rings.empty())
-        {
-            strengths[n++] = rings.front();
-            rings.pop_front();
-        }
-        return n;
-    }
-
-    bool motion() const override { return motionOn; }
-    void setMotion (bool on) override { motionOn = on; }
-
     /* ---- Model */
     Status status() const override { return state; }
     float peak() const override { return level; }
@@ -110,8 +95,6 @@ public:
     }
 
     ni::ui::test::FakeParameters params;
-    std::deque<float> rings;
-    bool motionOn = true;
     Status state = Status::idle;
     float level = 0.0f;
     juce::String name;

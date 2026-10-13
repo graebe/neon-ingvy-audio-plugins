@@ -2,6 +2,24 @@
 
 All notable changes to Ultraviolet, newest first. Versions follow the rules under Versioning.
 
+## 2.0.0 — 2026-10-12
+
+The ground stands still. The animated window ground and its Motion switch are gone; the window ground is the static dot paper and grain it always was at rest, so nothing in a window moves on its own except a playhead. A major release: a component, its script and its classes are removed.
+
+**Changed**
+
+- Hint: the bar is the conventions, then the Signature at the right end, at least 16px (`space-4`) after the tips. The Signature still never moves.
+- Motion: controls never animate and the window ground is still. The Timing rule keeps its general form: no editor behaviour depends on animation frames or page visibility, and a playhead runs on a timer.
+- Brand book: Versioning, Spacing and layout and Motion updated for the above; the Hint guidelines and preview follow. The previews carry the 2.0.0 stylesheet.
+
+**Removed**
+
+- Ground: the component, its guidelines and preview, and `components/ground.js` (`UVGround.Field`, `UVGround.BeatClock`, `UVGround.defaults`, `UVGround.beatDefaults`, `UVGround.version`).
+- Classes: `.ph-window.has-ground` and `.ph-ground`, and `.ph-hint .ph-toggle`, which existed only for the Motion switch.
+- Hint: the Motion switch and its rules (its place before the Signature, its gap, its accessible description).
+- Motion: the ground rules (the beat clock, the rings, the wave equation and its parameter table, the Motion switch and `prefers-reduced-motion`).
+- `bg-dot`: the wave-peak clause. The dot is still the dot of the window ground.
+
 ## 1.3.0 — 2026-10-11
 
 The ground looks like water: every ring is a drop at a point, so it spreads as a circle, bends around the boxes, echoes between them and fades slowly, where 1.2.0's rings rose from whole edges at once and travelled as straight, mechanical bands.

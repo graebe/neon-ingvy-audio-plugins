@@ -27,11 +27,6 @@ thread calls allocates, and the workspace aborts on panic, because unwinding
 out of `extern "C"` is undefined.
 */
 
-/* The ground's C ABI (gnd_*), which every plugin archive carries: without a
- * reference from here the linker would drop its #[no_mangle] symbols. */
-#[cfg(feature = "shell")]
-use ground_capi as _;
-
 mod engine;
 pub use engine::*;
 

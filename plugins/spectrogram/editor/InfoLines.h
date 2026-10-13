@@ -40,8 +40,8 @@ inline constexpr InfoText clash { "Clash — mark where the two compared channel
 /* The picture itself. */
 inline constexpr InfoText picture { "Spectrogram — hover, or the arrow keys, to read frequency, time, level." };
 
-/* The hint bar's Motion switch and Signature say the kit's lines
- * (EditorFrame::motionInfo, signatureInfo), the same in every window. */
+/* The hint bar's Signature says the kit's line (EditorFrame::signatureInfo),
+ * the same in every window. */
 
 /* The accessible titles of the pause button, the web editor's tooltips. */
 inline constexpr InfoText pauseTitle { "Pause the picture" };

@@ -198,9 +198,8 @@ rather than being silently absent from the denominator.
 **It is enforcing**: every counted unit clears 80%, and `coverage_floor` (full
 tier) fails when one does not. What is exempt is only what cannot be built into
 anything a test runs: the Schwung module's `ui_chain.js`, which imports the
-Move's own shared modules by their device paths, the kit's non-macOS
-reduced-motion file, which a macOS build compiles to nothing, and the
-gallery's application entry point. Every processor, model and editor compiles
+Move's own shared modules by their device paths, and the gallery's
+application entry point. Every processor, model and editor compiles
 into a test program and is counted.
 
 ## The products

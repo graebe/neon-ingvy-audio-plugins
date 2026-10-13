@@ -13,7 +13,7 @@
  *                Stopband -- or the isolator -- Low, Mid, High, Low-Mid, Mid-High,
  *                Slope, a Kill under each band. On at the title's right.
  *    (560, 376)  OUTPUT: Output, Scale; Adaptive, Bypass
- *    (0, 640)    the Hint bar: three conventions, Motion, the Signature
+ *    (0, 640)    the Hint bar: three conventions, the Signature
  *
  * WHAT A TYPE DOES NOT USE IS DISABLED, NEVER HIDDEN, so nothing in the
  * window moves when the type changes; which it is, is the engine's

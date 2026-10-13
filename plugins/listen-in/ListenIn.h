@@ -29,16 +29,14 @@
  * released with the last half. Nothing is claimed before the host first
  * prepares the plugin, since a bus is announced at a sample rate.
  *
- * THE BLOCK (process): the Ground ticked from the host's clock, the input
- * interleaved into a staging buffer sized up front -- a mono input published
- * on both sides -- and pushed to the bus, the peak kept, and the audio left
- * exactly as it came, in place. Nothing there allocates, locks or makes a
- * system call. Bypassed -- the host's Bypass on, or a host bypassing it --
+ * THE BLOCK (process): the input interleaved into a staging buffer sized up
+ * front -- a mono input published on both sides -- and pushed to the bus, the
+ * peak kept, and the audio left exactly as it came, in place. Nothing there
+ * allocates, locks or makes a system call. Bypassed -- the host's Bypass on, or a host bypassing it --
  * nothing is published and the meter falls.
  */
 #pragma once
 
-#include "GroundClock.h"
 #include "Parameter.h"
 #include "Processor.h"
 #include "State.h"
@@ -76,15 +74,12 @@ public:
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
-    void editorOpened() override;
-    void editorClosed() override;
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
 
     /* ---- what the model and the tests reach */
 
     ni::Parameter& busParameter() const noexcept { return *bus; }
-    ni::GroundClock& ground() noexcept { return beat; }
     EngineModel& model() noexcept { return *editorModel; }
 
     /* The bus's state as the message thread last decided it. Message thread. */
@@ -137,7 +132,6 @@ private:
     bool reclaim = false;  /* a state load: claim afresh */
     std::string named;     /* the name the writer was given */
 
-    ni::GroundClock beat;
     std::vector<float> stage; /* interleaved, pre-sized, never resized */
 
     std::unique_ptr<EngineModel> editorModel;

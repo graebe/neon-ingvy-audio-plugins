@@ -45,7 +45,6 @@ struct Rig
 
     Rig()
     {
-        editor.frame().ground().setReducedMotionQuery ([] { return false; });
         model.edits.clear();
         model.params.clear();
     }

@@ -10,7 +10,6 @@
 #include "Luminous.h"
 #include "UvTokens.h"
 #include "UvType.h"
-#include "WaveSource.h"
 
 #include <cmath>
 
@@ -66,7 +65,6 @@ public:
 Panel::Panel (const juce::String& t, Form f)
     : titleText (t), form (f), title (std::make_unique<Title>())
 {
-    setWaveSource (*this);
     title->text = titleText;
     addChildComponent (*title);
     juce::Component::setTitle (titleText);

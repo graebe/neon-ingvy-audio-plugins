@@ -24,7 +24,6 @@
 #include "UvTokens.h"
 #include "UvType.h"
 #include "Pointer.h"
-#include "WaveSource.h"
 #include "checks.h"
 #include "hostkeys.h"
 #include "spectrogram_fake.h"
@@ -38,7 +37,7 @@ using test::FakeModel;
 
 namespace
 {
-/* An editor on a clock the test moves, its Ground at rest. */
+/* An editor on a clock the test moves. */
 struct Rig
 {
     double ms = 1000.0;
@@ -50,7 +49,6 @@ struct Rig
         if (prepare)
             prepare (model);
         editor = std::make_unique<SpectrogramEditor> (model, [this] { return ms; });
-        editor->frame().ground().setReducedMotionQuery ([] { return false; });
     }
 
     SpectrogramView& view() { return editor->view(); }
@@ -590,11 +588,6 @@ TEST_CASE ("spectrogram editor: 720 x 502, the content in the frame's padding, t
     CHECK (v.timeAxis().getX() == 49 - TimeAxis::overhang);
     CHECK (v.timeAxis().getY() == 354);
     CHECK (v.readout().getBounds() == juce::Rectangle<int> (49, 382, 607, 20));
-
-    /* The well is the wall the rings break around, the picture inside it
-     * part of it. */
-    CHECK (ni::ui::isWaveSource (v.well()));
-    CHECK_FALSE (ni::ui::isWaveSource (rig.picture()));
 }
 
 TEST_CASE ("spectrogram editor: a fixed design, scaled to whatever the host gives")
@@ -625,7 +618,6 @@ TEST_CASE ("spectrogram editor: the bar states conventions; every control says w
     CHECK (ni::ui::infoOf (v.againstSelect()) == info::against.str());
     CHECK (ni::ui::infoOf (v.clashSwitch()) == info::clash.str());
     CHECK (ni::ui::infoOf (rig.picture()) == info::picture.str());
-    CHECK (ni::ui::infoOf (frame.motionSwitch()) == ni::ui::EditorFrame::motionInfo.str());
     CHECK (ni::ui::infoOf (frame.hint().signature()) == ni::ui::EditorFrame::signatureInfo.str());
     NI_CHECK_INFO_LIMIT (frame);
 
@@ -663,7 +655,6 @@ TEST_CASE ("spectrogram editor: Tab goes through the controls in reading order, 
     const int b = indexOf (v.againstSelect());
     const int clash = indexOf (v.clashSwitch());
     const int picture = indexOf (rig.picture());
-    const int motion = indexOf (frame.motionSwitch());
     CHECK (range >= 0);
     CHECK (range < span);
     CHECK (span < pause);
@@ -672,7 +663,7 @@ TEST_CASE ("spectrogram editor: Tab goes through the controls in reading order, 
     CHECK (a < b);
     CHECK (b < clash);
     CHECK (clash < picture);
-    CHECK (picture < motion);
+    CHECK (picture == (int) order.size() - 1);
 }
 
 TEST_CASE ("spectrogram editor: no parameters -- nothing here changes what comes out")

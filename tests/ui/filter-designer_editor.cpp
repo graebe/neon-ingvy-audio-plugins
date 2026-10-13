@@ -34,11 +34,7 @@ struct Rig
     FakeModel model;
     Editor editor { model, [this] { return ms; } };
 
-    Rig()
-    {
-        editor.frame().ground().setReducedMotionQuery ([] { return false; });
-        model.params.clear();
-    }
+    Rig() { model.params.clear(); }
 
     void frames (int n = 1)
     {

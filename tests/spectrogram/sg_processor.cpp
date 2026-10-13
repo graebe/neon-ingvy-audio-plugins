@@ -20,7 +20,7 @@
  *   the model       a tone drawn at its frequency, from the engine straight
  *                   into the editor's buffers; the host's clock; the
  *                   session's commands, applied at once, each marking the set
- *                   unsaved as no load does; the Ground
+ *                   unsaved as no load does
  *   the bus         a Listen-In's bus, from a sender in another process: its
  *                   name listed, its tone drawn, and the clash measured
  *                   between it and this track
@@ -491,20 +491,6 @@ TEST_CASE ("the session's commands apply at once and mark the set unsaved; a loa
     CHECK (a.ear.dirty == 4);
     CHECK (m.session().rangeLo == 10.0f);
     CHECK (m.bandCentres().back() > 18000.0f);
-}
-
-TEST_CASE ("the Ground rings with the host's beat, only while a window is open")
-{
-    Instance a;
-    float rings[16];
-    a.play (188); /* two seconds, four beats, with no window */
-    a.p.editorOpened();
-    CHECK (a.model().takeRings (rings, 16) == 0);
-    a.play (94); /* a second: two beats */
-    const int n = a.model().takeRings (rings, 16);
-    CHECK (n >= 1);
-    CHECK (n <= 3);
-    a.p.editorClosed();
 }
 
 /* ------------------------------------------------------------------ bus -- */

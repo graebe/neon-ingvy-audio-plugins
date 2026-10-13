@@ -10,18 +10,14 @@ publish.workspace = true
 name = "bus_capi"
 # staticlib for NI Listen-In to link; rlib so a receiving plugin's own archive
 # (sc-capi) carries this surface too, without a second copy of the Rust
-# runtime -- the rule ground-capi/Cargo.toml states.
+# runtime -- the rule spectro-capi/Cargo.toml states.
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 bus-core = { path = "../bus-core" }
-# The animated ground's beat clock. NOT a second static library -- see the note in
-# ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
-# ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
-# bus-core through spectro-recv.
-ground-capi = { path = "../../../ground/crates/ground-capi" }
-# The handoff that lends the shell's main-thread objects to its audio thread,
-# carried in this archive for the ground's reason.
+# The handoff that lends the shell's main-thread objects to its audio thread.
+# NOT a second static library: an rlib compiled INTO this one, since one
+# archive per plugin is an invariant here (spectro-capi/Cargo.toml).
 shell-capi = { path = "../../../shell/crates/shell-capi" }
 
 # audio_bus.h, generated from src/ by build.rs.

@@ -6,7 +6,6 @@
  */
 #include "EngineModel.h"
 
-#include "MachineSettings.h"
 #include "Spectrogram.h"
 #include "SpectrogramProcessor.h"
 
@@ -69,21 +68,6 @@ juce::RangedAudioParameter& EngineModel::parameter (int)
 {
     jassertfalse;
     return processor.bypassParameter();
-}
-
-int EngineModel::takeRings (float* strengths, int capacity)
-{
-    return processor.ground().takeRings (strengths, capacity);
-}
-
-bool EngineModel::motion() const
-{
-    return ni::MachineSettings::motion ("spectrogram");
-}
-
-void EngineModel::setMotion (bool on)
-{
-    ni::MachineSettings::setMotion ("spectrogram", on);
 }
 
 /*

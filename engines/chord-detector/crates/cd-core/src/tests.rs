@@ -505,3 +505,42 @@ fn a_host_without_a_clock_runs_at_the_default_tempo() {
     broken.end_block(24000);
     assert_eq!(broken.timeline().now(), 2.0);
 }
+
+#[test]
+fn a_bar_is_num_quarters_over_den_and_four_four_without_a_signature() {
+    assert_eq!(timeline::bar_quarters(4, 4), 4.0);
+    assert_eq!(timeline::bar_quarters(3, 4), 3.0);
+    assert_eq!(timeline::bar_quarters(6, 8), 3.0);
+    assert_eq!(timeline::bar_quarters(7, 8), 3.5);
+    /* iPlug2's AU wrapper reports 0/0 when the host has no musical-time
+     * callback; others leave its 4/4 default. Either way: 4/4. */
+    for (num, den) in [(0, 0), (3, 0), (0, 8), (-3, 4), (4, -4)] {
+        assert_eq!(timeline::bar_quarters(num, den), 4.0, "{num}/{den}");
+        let mut d = Detector::new(48000.0);
+        d.begin_block(Some(&Transport {
+            playing: true,
+            ppq: 0.0,
+            bpm: 120.0,
+            num,
+            den,
+        }));
+        assert_eq!(d.timeline().bar(), 4.0, "{num}/{den}");
+    }
+}
+
+#[test]
+fn a_host_with_no_tempo_is_taken_at_the_default_120() {
+    assert_eq!(timeline::DEFAULT_BPM, 120.0);
+    assert_eq!(Timeline::new(48000.0).bpm(), timeline::DEFAULT_BPM);
+    for bpm in [0.0, -90.0, f64::NAN, f64::INFINITY] {
+        let mut d = Detector::new(48000.0);
+        d.begin_block(Some(&Transport {
+            playing: true,
+            ppq: 0.0,
+            bpm,
+            num: 4,
+            den: 4,
+        }));
+        assert_eq!(d.timeline().bpm(), timeline::DEFAULT_BPM, "{bpm}");
+    }
+}

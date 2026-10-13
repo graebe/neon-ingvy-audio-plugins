@@ -96,9 +96,6 @@ public:
     int numParameters() const override { return param::count; }
     juce::RangedAudioParameter& bypassParameter() override { return common.parameter (param::count); }
     juce::RangedAudioParameter& parameter (int i) override { return common.parameter (i); }
-    int takeRings (float* s, int n) override { return common.takeRings (s, n); }
-    bool motion() const override { return common.motion(); }
-    void setMotion (bool on) override { common.setMotion (on); }
 
     bool bipolar (int i) const override
     {

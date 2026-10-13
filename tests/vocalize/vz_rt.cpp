@@ -10,11 +10,11 @@
  * every malloc the calling thread makes inside processBlock is counted -- the
  * shell's C++, JUCE's, and the Rust engine's alike. The blocks cover what a
  * session does to it: playback in either engine with the window open (the
- * picture and the Ground at work), every control automated while it plays,
- * a reactivation's reset, the host's bypass and the resume after it, the
- * ceiling switched, a mono track, a block longer than the host announced, a
- * set loaded, and a captured voice arriving, morphed by Voice, restored
- * with a set and forgotten. Each must count zero.
+ * picture at work), every control automated while it plays, a reactivation's
+ * reset, the host's bypass and the resume after it, the ceiling switched, a
+ * mono track, a block longer than the host announced, a set loaded, and a
+ * captured voice arriving, morphed by Voice, restored with a set and
+ * forgotten. Each must count zero.
  *
  * MODE FROM THE AUDIO THREAD. A VST3 host's parameter changes arrive inside
  * process(), and JUCE's wrapper applies them there (setValueNotifyingHost),
@@ -158,7 +158,7 @@ int main()
     allocations = 0;
     processor.editorOpened();
     play (100);
-    check (allocations == 0, "playback with the window open: the picture and the Ground", allocations);
+    check (allocations == 0, "playback with the window open: the picture", allocations);
 
     /* Mode from the audio thread: to Spectral, back to Time, and to Spectral
      * again -- each a dip, an engine primed, and a request for the latency. */

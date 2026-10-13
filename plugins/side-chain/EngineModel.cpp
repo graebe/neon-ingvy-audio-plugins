@@ -6,7 +6,6 @@
  */
 #include "EngineModel.h"
 
-#include "MachineSettings.h"
 #include "SideChain.h"
 #include "ni/Wire.h"
 
@@ -73,21 +72,6 @@ int EngineModel::numParameters() const
 juce::RangedAudioParameter& EngineModel::parameter (int index)
 {
     return processor.parameter (index);
-}
-
-int EngineModel::takeRings (float* strengths, int capacity)
-{
-    return processor.ground().takeRings (strengths, capacity);
-}
-
-bool EngineModel::motion() const
-{
-    return ni::MachineSettings::motion ("side-chain");
-}
-
-void EngineModel::setMotion (bool on)
-{
-    ni::MachineSettings::setMotion ("side-chain", on);
 }
 
 /*

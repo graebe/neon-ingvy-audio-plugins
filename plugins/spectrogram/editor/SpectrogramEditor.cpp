@@ -455,7 +455,7 @@ void SpectrogramView::paintLight (juce::Graphics& g)
 /* ----------------------------------------------------------------- editor */
 
 SpectrogramEditor::SpectrogramEditor (Model& m, ni::ui::EditorFrame::Clock clock)
-    : window (m, std::move (clock)),
+    : window (std::move (clock)),
       content (m)
 {
     window.setSize (designWidth, designHeight);

@@ -104,7 +104,7 @@ public:
 
 SideChainEditor::SideChainEditor (Model& m, ni::ui::EditorFrame::Clock clock)
     : model (m),
-      window (m, std::move (clock)),
+      window (std::move (clock)),
       view (std::make_unique<View>()),
       header (std::make_unique<Header>()),
       plot (std::make_unique<Shaper> (m)),
@@ -198,7 +198,6 @@ SideChainEditor::SideChainEditor (Model& m, ni::ui::EditorFrame::Clock clock)
 
     /* THE WINDOW. */
     window.setConventions (conventions());
-    window.setMotionInfo (info::motion);
     window.setSignatureInfo (info::signature);
     window.setContent (view.get());
     addAndMakeVisible (scaler);

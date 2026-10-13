@@ -10,9 +10,6 @@
  * kit's own build (ui/), which runs no cargo -- needs nothing of the Rust.
  * Every text in a Reading is already the engine's, in the key's spelling; the
  * editor formats nothing.
- *
- * NO GROUND. This is a utility window, as Listen-In's is: it has no animated
- * ground, so it takes no rings and keeps no Motion switch.
  */
 #pragma once
 
@@ -109,10 +106,6 @@ public:
      * the reading catches up at the engine's next block, which with the host's
      * audio off is when it is switched back on. */
     virtual KeyInfo key() const = 0;
-
-    int takeRings (float*, int) override { return 0; }
-    bool motion() const override { return false; }
-    void setMotion (bool) override {}
 };
 
 } // namespace ni::chord_detector

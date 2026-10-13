@@ -171,9 +171,6 @@ public:
 
     int numParameters() const override { return common.numParameters(); }
     juce::RangedAudioParameter& parameter (int index) override { return common.parameter (index); }
-    int takeRings (float* s, int capacity) override { return common.takeRings (s, capacity); }
-    bool motion() const override { return common.motion(); }
-    void setMotion (bool on) override { common.setMotion (on); }
 
     /* ---- snapshots, as the test sets them */
 
