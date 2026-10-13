@@ -190,8 +190,9 @@ impl Isolator {
     }
 
     /// `l` and `r` through the isolator, in place: `c` a level glide's
-    /// coefficient a sample, `step` a fade's progress a sample.
-    pub fn run(&mut self, l: &mut [f64], r: &mut [f64], c: f64, step: f64) {
+    /// coefficient a sample, `step` a fade's progress a sample. `mono`: `r`
+    /// is `l`'s copy, and only `l` is worked out.
+    pub fn run(&mut self, l: &mut [f64], r: &mut [f64], c: f64, step: f64, mono: bool) {
         if self.mix == 0.0 && !self.on {
             return;
         }
@@ -201,9 +202,11 @@ impl Isolator {
             }
             self.mix = if self.on { (self.mix + step).min(1.0) } else { (self.mix - step).max(0.0) };
             let (dl, dr) = (*x, *y);
-            let (mut wl, mut wr) = (self.a.band(0, dl, &self.gains), self.a.band(1, dr, &self.gains));
+            let mut wl = self.a.band(0, dl, &self.gains);
+            let mut wr = if mono { wl } else { self.a.band(1, dr, &self.gains) };
             if self.fading {
-                let (bl, br) = (self.b.band(0, dl, &self.gains), self.b.band(1, dr, &self.gains));
+                let bl = self.b.band(0, dl, &self.gains);
+                let br = if mono { bl } else { self.b.band(1, dr, &self.gains) };
                 let s = (core::f64::consts::FRAC_PI_2 * self.t).sin();
                 let (wa, wb) = (1.0 - s * s, s * s);
                 wl = wa * wl + wb * bl;

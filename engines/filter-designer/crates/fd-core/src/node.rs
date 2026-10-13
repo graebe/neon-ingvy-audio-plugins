@@ -190,12 +190,21 @@ impl Instance {
         self.designed = Some((s, g, fs));
     }
 
-    /// One sample, `t` (0..1] of the way through the sub-block.
+    /// One sample, `t` (0..1] of the way through the sub-block. `mono`: `r`
+    /// is `l`, and only the left lane is worked out -- the right and the
+    /// side are what a mono track does not play.
     #[inline]
-    fn run(&mut self, l: f64, r: f64, t: f64) -> (f64, f64) {
+    fn run(&mut self, l: f64, r: f64, t: f64, mono: bool) -> (f64, f64) {
         let (c, from, moving) = (&self.cascade, &self.from, self.moving);
         let run = |st: &mut State, x: f64| if moving { from.run_toward(c, t, st, x) } else { c.run(st, x) };
         let [a, b] = &mut self.lanes;
+        if mono {
+            let y = match self.what.channel {
+                Channel::Stereo | Channel::Left | Channel::Mid => run(a, l),
+                Channel::Right | Channel::Side => l,
+            };
+            return (y, y);
+        }
         match self.what.channel {
             Channel::Stereo => (run(a, l), run(b, r)),
             Channel::Left => (run(a, l), r),
@@ -291,14 +300,15 @@ impl Node {
 
     /// `l` and `r` through the node, in place, their first sample at
     /// `phase` on the control grid (the sub-block's samples to come are
-    /// `phase..SUB`); `step` is a fade's progress a sample.
-    pub fn run(&mut self, l: &mut [f64], r: &mut [f64], phase: usize, step: f64) {
+    /// `phase..SUB`); `step` is a fade's progress a sample; `mono`, `r` is
+    /// `l`'s copy and one lane is worked out.
+    pub fn run(&mut self, l: &mut [f64], r: &mut [f64], phase: usize, step: f64, mono: bool) {
         let n = l.len().min(r.len());
         let t = |i: usize| (phase + i + 1) as f64 / crate::SUB as f64;
         let mut i = 0;
         while self.fading && i < n {
-            let (al, ar) = self.a.run(l[i], r[i], t(i));
-            let (bl, br) = self.b.run(l[i], r[i], t(i));
+            let (al, ar) = self.a.run(l[i], r[i], t(i), mono);
+            let (bl, br) = self.b.run(l[i], r[i], t(i), mono);
             let s = (core::f64::consts::FRAC_PI_2 * self.t).sin();
             let (wa, wb) = (1.0 - s * s, s * s);
             l[i] = wa * al + wb * bl;
@@ -314,7 +324,7 @@ impl Node {
             return;
         }
         for j in i..n {
-            (l[j], r[j]) = self.a.run(l[j], r[j], t(j));
+            (l[j], r[j]) = self.a.run(l[j], r[j], t(j), mono);
         }
     }
 

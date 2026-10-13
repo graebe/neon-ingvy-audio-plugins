@@ -84,6 +84,8 @@ pub struct Engine {
     fade_step: f64,
     /// Where in the control grid the next sample is.
     phase: usize,
+    /// The block is a mono track's: the right lane is the left's copy.
+    mono: bool,
     /// The node a control tick serves first: each tick the next, so a tick's
     /// budget of prototypes goes round.
     first: usize,
@@ -113,6 +115,7 @@ impl Engine {
             sample_coef: 0.0,
             fade_step: 0.0,
             phase: 0,
+            mono: false,
             first: 0,
             watching: false,
             pre: Box::new([0.0; RING]),
@@ -258,7 +261,8 @@ impl Engine {
     }
 
     /// One block of host floats, in place: `left`, and `right` for a stereo
-    /// track (a mono one is the left lane twice, the left kept).
+    /// track (a mono one is the left lane, worked out once: the right and
+    /// the side are what it does not play).
     pub fn process_f32(&mut self, left: &mut [f32], mut right: Option<&mut [f32]>) {
         let n = left.len();
         if self.is_transparent() {
@@ -274,6 +278,7 @@ impl Engine {
             self.phase = (self.phase + n) % SUB;
             return;
         }
+        self.mono = right.is_none();
         let mut i = 0;
         while i < n {
             if self.phase == 0 {
@@ -308,6 +313,7 @@ impl Engine {
             self.phase = (self.phase + frames) % SUB;
             return;
         }
+        self.mono = false;
         let mut i = 0;
         while i < frames {
             if self.phase == 0 {
@@ -338,9 +344,9 @@ impl Engine {
         }
         let target = self.out_target();
         let (l, r) = (&mut self.buf_l[..m], &mut self.buf_r[..m]);
-        self.iso.run(l, r, self.sample_coef, self.fade_step);
+        self.iso.run(l, r, self.sample_coef, self.fade_step, self.mono);
         for node in &mut self.nodes {
-            node.run(l, r, self.phase, self.fade_step);
+            node.run(l, r, self.phase, self.fade_step, self.mono);
         }
         for (x, y) in l.iter_mut().zip(r.iter_mut()) {
             self.out = glide(self.out, target, self.sample_coef);

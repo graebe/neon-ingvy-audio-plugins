@@ -513,3 +513,33 @@ fn the_order_played_is_the_order_designed() {
     v[Param::Node(0, Field::Family).index()] = 5.0;
     assert_eq!(order_played(settings_of(&v, 0).shape, Family::LinkwitzRiley, 2), 3, "LR at 18 dB/oct plays LR4");
 }
+
+/// A mono track works out one lane, and sounds bit for bit as a stereo one
+/// with both sides the same -- with mid, side and right-only nodes, the
+/// isolator, a fade and a glide in it.
+#[test]
+fn a_mono_track_is_a_stereo_one_with_both_sides_the_same() {
+    let (mut a, mut b) = (Engine::new(FS), Engine::new(FS));
+    for e in [&mut a, &mut b] {
+        busy(e);
+        node(e, 5, Field::Type, 1.0);
+        node(e, 5, Field::Gain, 6.0);
+        node(e, 5, Field::Channel, 4.0); // side
+        node(e, 6, Field::Type, 1.0);
+        node(e, 6, Field::Gain, -6.0);
+        node(e, 6, Field::Channel, 2.0); // right
+    }
+    let x = noise(8192, 11);
+    let (mut mono, mut l, mut r) = (x.clone(), x.clone(), x.clone());
+    for (k, ((m, l), r)) in mono.chunks_mut(500).zip(l.chunks_mut(500)).zip(r.chunks_mut(500)).enumerate() {
+        if k == 4 {
+            for e in [&mut a, &mut b] {
+                node(e, 1, Field::Freq, 900.0);
+                node(e, 2, Field::Order, 3.0);
+            }
+        }
+        a.process_f32(m, None);
+        b.process_f32(l, Some(r));
+    }
+    assert_eq!(mono, l);
+}
