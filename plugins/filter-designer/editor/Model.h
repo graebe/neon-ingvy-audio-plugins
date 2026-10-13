@@ -168,8 +168,10 @@ public:
 
     /* What type `type` uses at order index `order` (uses::*). */
     virtual unsigned typeUses (int type, int order) const = 0;
-    /* The highest order index `type` takes; -1 for none. */
-    virtual int typeMaxOrder (int type) const = 0;
+    /* The order index a node of `type` in `family` at order index `order`
+     * plays: at most the type's highest, and a Linkwitz-Riley high-pass or
+     * low-pass at an even order. What a choice of Order or Family snaps to. */
+    virtual int orderPlayed (int type, int family, int order) const = 0;
     /* Whether `family` takes Ripple, and Stopband. */
     virtual bool familyUsesRipple (int family) const = 0;
     virtual bool familyUsesStopband (int family) const = 0;

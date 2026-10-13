@@ -72,6 +72,11 @@ never changes.
 A high-pass or low-pass of order N attenuates by 6·N dB per octave beyond its
 cutoff: 12 dB/oct at order 2, 48 dB/oct at order 8. **Order** selects N.
 A band-pass or notch of order N has 2N poles: N on each side of the band.
+A shelf goes up to order 4 (24 dB/oct). A Linkwitz-Riley high-pass or
+low-pass is a Butterworth filter squared, so it exists only at even orders
+(LR2, LR4, LR6, LR8). Choosing an order a filter cannot have, or switching
+to Linkwitz-Riley at an odd order, selects the next order it has, so the
+field always shows the filter that plays.
 
 ### Family: the approximation
 

@@ -286,7 +286,8 @@ TEST_CASE ("the model's picture is the engine's design of the host's values")
     const float peak = *std::max_element (pic.total.begin(), pic.total.end());
     CHECK (peak == doctest::Approx (9.0).epsilon (0.01));
     CHECK (x.p.typeUses (type::bell, 1) == (ni::fd::uses::gain | ni::fd::uses::q));
-    CHECK (x.p.typeMaxOrder (type::highShelf) == 3);
+    CHECK (x.p.orderPlayed (type::highShelf, 0, 7) == 3);
+    CHECK (x.p.orderPlayed (type::lowPass, 5, 2) == 3);
     CHECK (x.p.familyUsesRipple (2));
     CHECK (x.p.qForEdge (1000.0, pic.edgeHz[0][1]) == doctest::Approx (0.7071).epsilon (0.001));
     CHECK (x.p.typeForNew (20.0) == type::highPass);

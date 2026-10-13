@@ -57,9 +57,11 @@ fn what_a_type_uses() {
     assert_eq!(fd_type_uses(7, 0), FAMILY | ORDER | Q);
     assert_eq!(fd_type_uses(9, 3), GAIN);
     assert_eq!(fd_type_uses(2, 0), GAIN | ORDER);
-    assert_eq!(fd_type_max_order(2), 3);
-    assert_eq!(fd_type_max_order(4), 7);
-    assert_eq!(fd_type_max_order(1), -1);
+    assert_eq!(fd_order_played(2, 0, 7), 3, "a shelf's highest is order 4");
+    assert_eq!(fd_order_played(4, 0, 2), 2);
+    assert_eq!(fd_order_played(4, 5, 2), 3, "Linkwitz-Riley at 18 dB/oct plays LR4");
+    assert_eq!(fd_order_played(6, 5, 2), 2, "a band-pass plays Linkwitz-Riley as Butterworth");
+    assert_eq!(fd_order_played(1, 0, 5), 0);
     assert!(fd_family_uses_ripple(4) && !fd_family_uses_ripple(3));
     assert!(fd_family_uses_stopband(3) && !fd_family_uses_stopband(0));
 }

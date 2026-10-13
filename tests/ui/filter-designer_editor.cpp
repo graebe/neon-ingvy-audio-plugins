@@ -227,6 +227,34 @@ TEST_CASE ("filter-designer: the row selects, and the inspector binds to the sel
     CHECK (rig.editor.knobFor (param::node (4, param::freq)) == nullptr);
 }
 
+TEST_CASE ("filter-designer: a choice of Order or Family lands on the order that plays")
+{
+    Rig rig;
+    Pointer pointer;
+    pointer.click (rig.editor.row().cellAt (2), { 20.0f, 20.0f });
+    rig.set (param::node (2, param::type), type::lowPass);
+    rig.set (param::node (2, param::order), 2.0);
+    rig.frames();
+    auto* family = rig.editor.selectFor (param::node (2, param::family));
+    auto* order = rig.editor.selectFor (param::node (2, param::order));
+    REQUIRE ((family != nullptr && order != nullptr));
+    /* Linkwitz-Riley at 18 dB/oct plays LR4: the field says 24 dB/oct. */
+    family->onChange (5);
+    CHECK (rig.plain (param::node (2, param::family)) == 5.0);
+    CHECK (rig.plain (param::node (2, param::order)) == 3.0);
+    order->onChange (4);
+    CHECK (rig.plain (param::node (2, param::order)) == 5.0);
+    /* Back to Butterworth, every order is there. */
+    family->onChange (0);
+    order->onChange (4);
+    CHECK (rig.plain (param::node (2, param::order)) == 4.0);
+    /* A shelf stops at 24 dB/oct. */
+    rig.set (param::node (2, param::type), type::lowShelf);
+    rig.frames();
+    rig.editor.selectFor (param::node (2, param::order))->onChange (7);
+    CHECK (rig.plain (param::node (2, param::order)) == 3.0);
+}
+
 TEST_CASE ("filter-designer: the Bypass switch is the shell's bypass")
 {
     Rig rig;

@@ -88,7 +88,7 @@ public:
     bool bipolar (int index) const override;
     const Picture& picture (int lane) override;
     unsigned typeUses (int type, int order) const override;
-    int typeMaxOrder (int type) const override;
+    int orderPlayed (int type, int family, int order) const override;
     bool familyUsesRipple (int family) const override;
     bool familyUsesStopband (int family) const override;
     double qForEdge (double freq, double edgeHz) const override;

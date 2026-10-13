@@ -310,10 +310,15 @@ pub extern "C" fn fd_type_uses(type_: i32, order: i32) -> u32 {
     (shape.uses_family() as u32) | ((shape.max_order() > 0) as u32) << 1 | (shape.uses_gain() as u32) << 2 | (shape.uses_q(order) as u32) << 3
 }
 
-/// The highest order index (0..7) type `type_` takes; -1 for none.
+/// The Order index (0..7) a node of type `type_` in family `family` (0..5)
+/// at Order index `order` plays: at most the type's highest, and a
+/// Linkwitz-Riley high-pass or low-pass at the even order at or above it.
+/// What the editor snaps a choice of Order or Family to. Any thread; pure.
 #[no_mangle]
-pub extern "C" fn fd_type_max_order(type_: i32) -> i32 {
-    fd_core::design::Shape::from_value(f64::from(type_)).max_order() as i32 - 1
+pub extern "C" fn fd_order_played(type_: i32, family: i32, order: i32) -> i32 {
+    use fd_core::design::{order_played, Shape};
+    let family = ni_filter::Family::from_index(family.max(0) as usize);
+    order_played(Shape::from_value(f64::from(type_)), family, order.max(0) as usize) as i32
 }
 
 /// Whether family `family` (0..5) takes Ripple.

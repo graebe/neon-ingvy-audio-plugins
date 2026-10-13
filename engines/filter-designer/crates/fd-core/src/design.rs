@@ -143,6 +143,20 @@ pub fn order_of(s: &Settings) -> usize {
     s.order.clamp(1, s.shape.max_order().max(1))
 }
 
+/// The Order index (0..7) a node of `shape` in `family` at Order index
+/// `order` plays: at most its type's highest, and for a Linkwitz-Riley
+/// high-pass or low-pass -- Butterworth squared, so only even orders exist --
+/// the even order at or above it. What an editor snaps a choice to.
+pub fn order_played(shape: Shape, family: Family, order: usize) -> usize {
+    let top = shape.max_order().max(1) - 1;
+    let o = order.min(top);
+    if family == Family::LinkwitzRiley && matches!(shape, Shape::HighPass | Shape::LowPass) {
+        (o | 1).min(top)
+    } else {
+        o
+    }
+}
+
 /// The prototype a settings' family design needs; `None` for a shape that
 /// has no family.
 pub fn prototype(s: &Settings) -> Option<Prototype> {

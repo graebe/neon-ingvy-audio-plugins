@@ -484,3 +484,32 @@ fn a_sweep_puts_no_lines_at_the_control_rate() {
     println!("a Q 20 bell swept 700 Hz to 1.4 kHz in 100 ms: lines at 1 kHz ± fs/16 at {dbc:.1} dBc");
     assert!(dbc < -120.0, "{dbc} dBc");
 }
+
+/// The order a node plays is the one order_played names: the same design,
+/// and a choice it leaves alone.
+#[test]
+fn the_order_played_is_the_order_designed() {
+    use crate::design::{order_played, prototype, settings_of};
+    let mut v = defaults();
+    for t in 1..=9 {
+        for f in 0..6 {
+            for o in 0..8 {
+                v[Param::Node(0, Field::Type).index()] = f64::from(t);
+                v[Param::Node(0, Field::Family).index()] = f64::from(f);
+                v[Param::Node(0, Field::Order).index()] = f64::from(o);
+                let s = settings_of(&v, 0);
+                let played = order_played(s.shape, s.family, o as usize);
+                assert_eq!(order_played(s.shape, s.family, played), played, "a fixed point");
+                let mut w = v;
+                w[Param::Node(0, Field::Order).index()] = played as f64;
+                let p = settings_of(&w, 0);
+                let a = design(&s, prototype(&s).as_ref(), Globals::NEUTRAL, FS).0;
+                let b = design(&p, prototype(&p).as_ref(), Globals::NEUTRAL, FS).0;
+                assert_eq!(a, b, "type {t} family {f} order {o} plays {played}");
+            }
+        }
+    }
+    v[Param::Node(0, Field::Type).index()] = 4.0;
+    v[Param::Node(0, Field::Family).index()] = 5.0;
+    assert_eq!(order_played(settings_of(&v, 0).shape, Family::LinkwitzRiley, 2), 3, "LR at 18 dB/oct plays LR4");
+}

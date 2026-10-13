@@ -250,6 +250,28 @@ void Editor::rebuildInspector()
         inspectorPanel->addAndMakeVisible (*cap);
         captions.push_back (std::move (cap));
     }
+    /* A choice of Order or Family lands on the order that plays
+     * (fd_order_played): a shelf's stops at 24 dB/oct, a Linkwitz-Riley
+     * high-pass's or low-pass's is even. So the field shows what is heard. */
+    auto& family = *selects[1];
+    auto& order = *selects[2];
+    const auto pick = [] (ni::ui::ParamSelect& sel, int index)
+    {
+        const int last = sel.getOptions().size() - 1;
+        sel.binding().commit (last > 0 ? (float) index / (float) last : 0.0f);
+    };
+    const auto type = [this] { return selects[0]->indexOfValue(); };
+    order.onChange = [this, &family, &order, pick, type] (int index)
+    {
+        pick (order, model.orderPlayed (type(), family.indexOfValue(), index));
+    };
+    family.onChange = [this, &family, &order, pick, type] (int index)
+    {
+        pick (family, index);
+        const int played = model.orderPlayed (type(), index, order.indexOfValue());
+        if (played != order.indexOfValue())
+            pick (order, played);
+    };
     addKnob (param::node (s, param::freq), "Freq", info::freq, info::hzValue);
     addKnob (param::node (s, param::gain), "Gain", info::gain, info::dbValue);
     addKnob (param::node (s, param::q), "Q", info::q, info::plainValue);

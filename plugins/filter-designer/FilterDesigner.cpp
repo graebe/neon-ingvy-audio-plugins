@@ -217,9 +217,9 @@ unsigned Processor::typeUses (int type, int order) const
     return fd_type_uses (type, order);
 }
 
-int Processor::typeMaxOrder (int type) const
+int Processor::orderPlayed (int type, int family, int order) const
 {
-    return fd_type_max_order (type);
+    return fd_order_played (type, family, order);
 }
 
 bool Processor::familyUsesRipple (int family) const

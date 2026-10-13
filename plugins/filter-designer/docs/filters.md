@@ -470,12 +470,14 @@ stays at −Stopband dB up to fs/2.
 ### Linkwitz-Riley
 
 **Description.** Two Butterworth filters in series. A Low-Pass and a
-High-Pass at the same Freq sum back to a flat line, which makes it the
-crossover family.
+High-Pass at the same Freq sum to a flat magnitude (in phase at LR4 and LR8;
+LR2 and LR6 need one of them inverted), which makes it the crossover
+family.
 
-**Parameters.** Order: it always plays an **even** order, rounded up.
-Orders 1–2 play LR2, 3–4 play LR4 (24 dB/oct), 5–6 play LR6, 7–8 play LR8
-(48 dB/oct). Ripple and Stopband are not used.
+**Parameters.** Order: it exists only at **even** orders, LR2, LR4
+(24 dB/oct), LR6 and LR8 (48 dB/oct). The window selects the next even
+order when an odd one is chosen; an odd order set by automation plays the
+next even one too. Ripple and Stopband are not used.
 
 **Continuous.**
 

@@ -153,9 +153,11 @@ public:
             u |= uses::q;
         return u;
     }
-    int typeMaxOrder (int t) const override
+    int orderPlayed (int t, int family, int order) const override
     {
-        return t == type::lowShelf || t == type::highShelf ? 3 : (t >= type::highPass && t <= type::allPass) ? 7 : -1;
+        const int top = t == type::lowShelf || t == type::highShelf ? 3 : (t >= type::highPass && t <= type::allPass) ? 7 : 0;
+        const int o = std::min (order, top);
+        return family == 5 && (t == type::highPass || t == type::lowPass) ? std::min (o | 1, top) : o;
     }
     bool familyUsesRipple (int family) const override { return family == 2 || family == 4; }
     bool familyUsesStopband (int family) const override { return family == 3 || family == 4; }
