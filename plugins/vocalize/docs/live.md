@@ -250,8 +250,5 @@ at the top.
 | | **Output** | −24 – +24 dB | 0 dB |
 | | **Ceiling** | off / on (a soft limit at −0.3 dBFS) | on |
 
-The **Motion** switch in the bar at the bottom stops the background rippling
-on the beat; it is remembered on this computer.
-
 When Live switches the device off and on again, Vocalize starts from silence:
 nothing it held before is heard again.

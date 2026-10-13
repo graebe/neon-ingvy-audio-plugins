@@ -46,7 +46,7 @@ depend on it; **it depends on no product in return**, which is the direction tha
 actually matters. `spectro-core` knowing about `tg-core` would still be a
 coupling nobody asked for.
 
-`engines/ground`, `engines/shell` and `engines/shared` follow the same rule.
+`engines/shell` and `engines/shared` follow the same rule.
 `engines/shared/crates` holds what two products would otherwise each keep a
 copy of: `ni-dsp` (C-compatible formatting and parsing, the rate parser, the
 envelope curves, the one-pole and the glide, the transport-following phase,

@@ -122,7 +122,7 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   `music_core_no_std`) — and `cargo_deny`, the licence gate over their
   dependency graph (below),
 - the C tests against each engine's generated ABI (`tg_core`, `sc_core`,
-  `cd_core`, `spectro_columns`, `srecv_api`, `abus_roundtrip`, `gnd_roundtrip`,
+  `cd_core`, `spectro_columns`, `srecv_api`, `abus_roundtrip`,
   `shell_handoff`), the Trance Gate's ABI held to its last hand-written
   headers (`capi_compat_tg*`), and the oracles that pin each engine's curves,
   envelopes and fades to a table it measured itself
@@ -156,8 +156,7 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   `design_paths` (every path into `design/` that a tracked file names
   exists), the token guards (`ui_tokens_native`: the generated `UvTokens.h`
   against the design system; `site_tokens`: the site's `tokens.css` against
-  it, and no colour spelled anywhere else in the site), `ground_shells` (the
-  order of the ground's calls in every processor), `timing` (the timing
+  it, and no colour spelled anywhere else in the site), `timing` (the timing
   log's helper and its summary), `toolchain` (the Move and Linux images
   build with `rust-toolchain.toml`'s Rust, and every base image is pinned by
   digest) and `test_summary` (the report below).
@@ -179,7 +178,7 @@ Everything quick runs, and:
 | `site` | every root-relative link on the built site resolves |
 | `advisories` | `cargo_deny_advisories`: `cargo deny check advisories` against RustSec's database as it is today — a vulnerable, unsound or unmaintained crate, or a yanked version, anywhere in the graph. Fetched at run time, so it is here and not in quick (**Licences**, below) |
 | `coverage` | the coverage floor, in the instrumented build |
-| `move` | every Schwung module (`move_<module>`, one per `modules/<module>/module.env`), built and tested by `modules/_shared/test.sh` in the module image on aarch64 Linux: the tarball's `.so` is aarch64 and exports nothing of the plugin's shell or ground, it carries `LICENSE` and a notice for every crate it links, the module's crates' cargo tests (the vtable, `chain_params`, the host panic on CC 120/123) pass on the Move's architecture, and the Trance Gate's golden render (`engines/trance-gate/tests/run.sh`) keeps its md5 there. Needs Docker running as arm64 (Apple Silicon); not registered without Docker |
+| `move` | every Schwung module (`move_<module>`, one per `modules/<module>/module.env`), built and tested by `modules/_shared/test.sh` in the module image on aarch64 Linux: the tarball's `.so` is aarch64 and exports nothing of the plugin's shell, it carries `LICENSE` and a notice for every crate it links, the module's crates' cargo tests (the vtable, `chain_params`, the host panic on CC 120/123) pass on the Move's architecture, and the Trance Gate's golden render (`engines/trance-gate/tests/run.sh`) keeps its md5 there. Needs Docker running as arm64 (Apple Silicon); not registered without Docker |
 
 `scripts/test.sh full` builds everything and the site, runs `ctest -L full`,
 then `scripts/coverage.sh` with the floor enforced (skipped with
@@ -269,7 +268,7 @@ over that one bundle. No coverage, no site, no other product's tests.
 | | belongs to |
 |---|---|
 | a product | its engine's cargo and C tests and oracles, its render A/B, its processor and audio-callback tests, its editor's units and snapshots, its Move module (`move_<product>`), and every test that opens its bundle: `juce_host_<Bundle>`, `codesign_<Bundle>`, its own host test (`sc_host` ...), and the tree checks run against the bundle (`versions_bundle_<Bundle>`, `release_bundle_<Bundle>`, `licenses_bundle_<Bundle>`) |
-| shared | what every product is built on: audio-bus, ground, the shell plumbing, `engines/shared` (`ni_shared`, `music_core_*`), the JUCE shell's state codec over every product's fixtures (`nist_fixtures`), the plain C++ (`ni_wire`), the kit's units and snapshots and its token guard, the bus across processes, and the checks over the tree — `cargo_deny`, `versions`, `release`, `licenses`, `spdx`, `design_paths` and the rest |
+| shared | what every product is built on: audio-bus, the shell plumbing, `engines/shared` (`ni_shared`, `music_core_*`), the JUCE shell's state codec over every product's fixtures (`nist_fixtures`), the plain C++ (`ni_wire`), the kit's units and snapshots and its token guard, the bus across processes, and the checks over the tree — `cargo_deny`, `versions`, `release`, `licenses`, `spdx`, `design_paths` and the rest |
 
 **This is what a release runs** (`release-plugins.yml`, [Build & CI](ci-live.md)):
 a failing test of another product cannot hold a product's release, and a tag
@@ -433,5 +432,4 @@ still exists:
 | exempt | why |
 |---|---|
 | `modules/trance-gate` (unit) | `ui_chain.js` runs on the Move inside Schwung's shadow UI and imports Schwung's own modules by their paths on the device, which this repository does not carry; `engines/trance-gate/tests/smoke_ui.mjs` runs every entry point against them (`tg_move_ui`). Its DSP and C shell are counted |
-| `plugins/_shared/ui/src/ReducedMotion.cpp` (file) | every line is outside macOS (`#if ! JUCE_MAC`), and coverage runs on macOS; `ReducedMotion.mm` is counted |
 | `plugins/_shared/ui/gallery/Main.cpp` (file) | the gallery application's entry point, a window for a person to look at; every page it shows is counted through the kit's tests |

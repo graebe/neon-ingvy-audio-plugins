@@ -58,7 +58,8 @@ Each one must be under a licence on the allowlist in
 | the cargo and `lipo` glue in CMake | Corrosion, with `lipo` kept only where a universal build needs it |
 
 The DSP stays domain code: the gate, the ducker and the Ground's beat clock are
-what this repository is for.
+what this repository is for. (Amended 2026-10-12: the animated Ground was
+removed, and its beat clock with it; `ground-core` and `ground-capi` are gone.)
 
 These rules do not change, and every crate has to fit them:
 
@@ -167,4 +168,5 @@ plumbing onto the crates.
   rides in a basedrop `Shared`, so the audio thread drops it without freeing.
 - **The Move modules leave the plugin's half out.** The capi crates put their
   shell and the ground's C ABI behind a default-on `shell` feature, and the
-  Move crates turn it off.
+  Move crates turn it off (amended 2026-10-12: the ground's C ABI went with the
+  animated Ground, so the feature now carries the shell alone).

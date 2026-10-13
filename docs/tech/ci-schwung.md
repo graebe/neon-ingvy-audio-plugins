@@ -63,7 +63,7 @@ rather than test the wrong architecture:
 
 - **The tarball as a device receives it.** The `.so` is aarch64, exports
   `move_audio_fx_init_v2` and the engine's C ABI and nothing of the plugin's
-  (`tg_shell_*`, `sc_shell_*`, `gnd_*`: the capi crates' `shell` feature is off
+  (`tg_shell_*`, `sc_shell_*`: the capi crates' `shell` feature is off
   for the Move); `module.json` says GPL-3.0-or-later and the `ui_chain` it
   names is in the tarball; `THIRD_PARTY_LICENSES.md` has a notice for every
   crates.io crate `cargo tree` says the `.so` links.
