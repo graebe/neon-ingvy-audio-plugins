@@ -7,6 +7,7 @@
 #include "EngineModel.h"
 
 #include "MachineSettings.h"
+#include "Scales.h"
 #include "Spectrogram.h"
 #include "SpectrogramProcessor.h"
 
@@ -53,6 +54,8 @@ std::vector<Source> parseSources (const unsigned char* text, int length)
 
 static_assert (SPECTRO_BANDS == ni::ui::Spectrogram::defaultBands,
                "the picture holds as many bands as the analyzer measures");
+static_assert (spectro::state::maxGrid == finestRank,
+               "the session holds every grid the editor draws, and no other");
 static_assert (Model::maxColumns <= SPECTRO_COLUMN_CAPACITY,
                "one take is never more than the analyzer's rings hold");
 
@@ -129,6 +132,7 @@ const Session& EngineModel::session() const
     shown.clashFloorDb = f.clashFloorDb;
     shown.clashBalanceDb = f.clashBalanceDb;
     shown.listen.assign (f.sources.begin(), f.sources.end());
+    shown.grid = f.grid;
     shownRevision = revision;
     shownAny = true;
     return shown;
@@ -170,6 +174,16 @@ void EngineModel::setClashCriteria (float floorDb, float balanceDb)
     processor.session().edit ([&] (spectro::state::Fields& f) {
         f.clashFloorDb = floorDb;
         f.clashBalanceDb = balanceDb;
+    });
+    processor.sessionEdited();
+}
+
+/* A picture's matter alone: the receiver is not told, but the set is saved
+ * with it. */
+void EngineModel::setGrid (int grid)
+{
+    processor.session().edit ([&] (spectro::state::Fields& f) {
+        f.grid = juce::jlimit (0, spectro::state::maxGrid, grid);
     });
     processor.sessionEdited();
 }

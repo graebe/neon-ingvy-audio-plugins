@@ -12,8 +12,8 @@
  * and the visible picture is two copies -- the part after the cursor (the old
  * columns) and the part before it (the new ones). Shifting the picture left a
  * pixel per column would resample what the last shift resampled and smear the
- * old end of the picture within seconds. At the shipped size (606 x 256 into
- * 606 x 256) the copies are 1:1; anything else is left to the renderer's own
+ * old end of the picture within seconds. At the shipped size (754 x 256 into
+ * 754 x 256) the copies are 1:1; anything else is left to the renderer's own
  * smoothing, vertically, rather than inventing detail the analysis lacks.
  *
  * TWO PICTURES, BOTH WRITTEN FROM EVERY COLUMN. The scrolling history, and a
@@ -34,6 +34,15 @@
  * THE LEVELS ARE KEPT AS NUMBERS beside the picture, because colour is lossy:
  * the crosshair reports what was measured (sample()), never a pixel read back
  * through the palette.
+ *
+ * THE MARKS are vertical hairlines over the picture -- the editor's beat
+ * grid -- given as a RANK per column: 0 for none, 1 the strongest, larger
+ * finer. What a rank means is the caller's; the picture keeps each column's
+ * rank beside its levels, in the history's ring as columns arrive and in the
+ * sweep as one fixed row the caller sets whole (the sweep's x is already a
+ * position, so its lines do not move). setMarkRanks says which ranks show
+ * and how strongly, so a coarser or finer grid applies to the whole history
+ * at once. The marks freeze with the picture and are drawn under the clash.
  *
  * THE CLASH is a reading of the picture, not part of it, so it is its own
  * layer composited over: a cell's intensity is its alpha (to 200 of 255, so
@@ -86,9 +95,9 @@ class Spectrogram final : public juce::Component,
                           public Luminous
 {
 public:
-    /* The shipped picture: 606 columns (about 13 s at 47 a second) of 256
+    /* The shipped picture: 754 columns (about 16 s at 47 a second) of 256
      * bands. */
-    static constexpr int defaultColumns = 606;
+    static constexpr int defaultColumns = 754;
     static constexpr int defaultBands = 256;
 
     /* What an arrow moves the crosshair, in pixels, and with Shift held. */
@@ -120,7 +129,9 @@ public:
      * `count` columns of `bands` level bytes each, band 0 the lowest. `slots`
      * (one per column, 0..columns-1, or -1 for none) places them in the
      * sweep; `clash` (the same shape as `data`) is the clash measured for the
-     * same columns. Neither is required. Nothing is kept past the call.
+     * same columns; `marks` (one per column) is each column's mark rank in
+     * the history, 0 for none. None is required. Nothing is kept past the
+     * call.
      */
     struct Batch
     {
@@ -129,6 +140,7 @@ public:
         int bands = 0;
         const int* slots = nullptr;
         const std::uint8_t* clash = nullptr;
+        const std::uint8_t* marks = nullptr;
     };
 
     /* Writes a batch into both pictures, paused or not, and repaints once
@@ -150,6 +162,16 @@ public:
     bool isClashShown() const noexcept { return clashShown; }
     void setClashStyle (ClashStyle);
     ClashStyle getClashStyle() const noexcept { return clashStyle; }
+
+    /* The sweep's marks: a rank per slot, the first `columns` of `ranks`
+     * (a shorter row leaves the rest unmarked). */
+    void setSweepMarks (const std::vector<std::uint8_t>& ranks);
+
+    /* Which marks show: every rank from 1 to `shownThrough` (0 hides them
+     * all), rank 1 strongest, ranks to `mediumThrough` medium, finer ones
+     * faint. */
+    void setMarkRanks (int shownThrough, int mediumThrough);
+    int getMarksShown() const noexcept { return marksShown; }
 
     int getColumns() const noexcept { return columns; }
     int getBands() const noexcept { return bands; }
@@ -192,6 +214,8 @@ public:
     /* The level stored for a column of the CURRENT view's buffer -- the
      * history by ring position, the sweep by slot. For tests. */
     std::uint8_t levelAt (View, int column, int band) const;
+    /* The mark rank stored for a column of a view's buffer, likewise. */
+    std::uint8_t markAt (View, int column) const;
 
     void paint (juce::Graphics&) override;
     void mouseEnter (const juce::MouseEvent&) override;
@@ -227,6 +251,8 @@ private:
     juce::Image history, sweep, clashHistory, clashSweep;
     /* The levels as measured, same geometry: [column * bands + band]. */
     std::vector<std::uint8_t> levels, sweepLevels;
+    /* The mark ranks, a column each: the history's ring and the sweep's row. */
+    std::vector<std::uint8_t> marks, sweepMarks;
     /* The last sweep column written, for the gap filler; the clash column
      * before this one, for the region's edge. */
     std::vector<std::uint8_t> headColumn, clashPrevious;
@@ -234,7 +260,7 @@ private:
 
     /* The frozen picture: x is x, oldest on the left. */
     juce::Image frozen, frozenClash;
-    std::vector<std::uint8_t> frozenLevels;
+    std::vector<std::uint8_t> frozenLevels, frozenMarks;
     bool hasFrozen = false;
 
     int cursor = 0;
@@ -245,6 +271,8 @@ private:
     View view = View::scroll;
     bool clashShown = false;
     ClashStyle clashStyle = ClashStyle::amber;
+    int marksShown = 0;
+    int marksMedium = 0;
 
     std::optional<juce::Point<float>> pointer;
     /* The crosshair is the keys', not the pointer's: it goes with the focus. */

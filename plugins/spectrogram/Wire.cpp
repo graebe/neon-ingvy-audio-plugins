@@ -70,6 +70,23 @@ bool parse_compare (const std::string& arg, int& a, int& b, bool& on)
     return true;
 }
 
+bool parse_grid (const std::string& arg, int finest, int& grid)
+{
+    if (arg.empty() || arg.size() > 3)
+        return false;
+    int v = 0;
+    for (const char c : arg)
+    {
+        if (c < '0' || c > '9')
+            return false;
+        v = v * 10 + (c - '0');
+    }
+    if (v > finest)
+        return false;
+    grid = v;
+    return true;
+}
+
 void parse_channels (const std::string& arg, std::vector<int>& out)
 {
     size_t i = 0;

@@ -64,6 +64,7 @@ public:
     void setLook (const std::vector<int>& view, int compareA, int compareB, bool clash,
                   const std::vector<int>& listen) override;
     void setClashCriteria (float floorDb, float balanceDb) override;
+    void setGrid (int grid) override;
 
     /* ---- what the processor tells it */
 

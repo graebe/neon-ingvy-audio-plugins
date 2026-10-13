@@ -72,9 +72,9 @@ TEST_CASE ("spectrogram: the ramp runs spec-0 to spec-4, silence the well itself
 TEST_CASE ("spectrogram: the shipped picture, solid to the rings, a crosshair to point with")
 {
     Spectrogram s;
-    CHECK (s.getWidth() == 606);
+    CHECK (s.getWidth() == 754);
     CHECK (s.getHeight() == 256);
-    CHECK (s.getColumns() == 606);
+    CHECK (s.getColumns() == 754);
     CHECK (s.getBands() == 256);
     CHECK (s.isOpaque());
     CHECK (ni::ui::isWaveSource (s));
@@ -301,9 +301,11 @@ TEST_CASE ("spectrogram: writing columns allocates nothing")
     const Bytes clash (32 * 3, 200);
     Bytes column (32 * 3);
     const int slots[3] { 0, 7, 9 };
+    const Bytes marks { 1, 0, 3 };
+    s.setMarkRanks (8, 3);
 
     /* One batch first, for the statics a first call makes once (the ramp). */
-    s.push ({ column.data(), 3, 32, slots, clash.data() });
+    s.push ({ column.data(), 3, 32, slots, clash.data(), marks.data() });
 
     /* Every buffer exists before the first column: 1000 batches later, not
      * one allocation has been made on their account. */
@@ -311,7 +313,7 @@ TEST_CASE ("spectrogram: writing columns allocates nothing")
     for (int i = 0; i < 1000; ++i)
     {
         std::fill (column.begin(), column.end(), (std::uint8_t) (i % 256));
-        s.push ({ column.data(), 3, 32, slots, clash.data() });
+        s.push ({ column.data(), 3, 32, slots, clash.data(), marks.data() });
     }
     const auto after = ni::ui::test::allocations();
     CHECK (after - before == 0);
@@ -414,6 +416,72 @@ TEST_CASE ("spectrogram: the keys move the crosshair as the pointer does, and it
     /* Focus by a click places nothing: the pointer is where it is. */
     s.focusGained (juce::Component::focusChangedByMouseClick);
     CHECK_FALSE (s.hovered().has_value());
+}
+
+TEST_CASE ("spectrogram: marks ride the history, sit still in the sweep, and show by rank")
+{
+    Spectrogram s (8, 2);
+    s.setSize (8, 2);
+    /* Ranks 1, 0, 3 and 6 into the ring, oldest first. */
+    const Bytes levels (2 * 4, 0);
+    const Bytes ranks { 1, 0, 3, 6 };
+    s.push ({ levels.data(), 4, 2, nullptr, nullptr, ranks.data() });
+    CHECK (s.markAt (Spectrogram::View::scroll, 0) == 1);
+    CHECK (s.markAt (Spectrogram::View::scroll, 3) == 6);
+    CHECK (s.markAt (Spectrogram::View::scroll, 4) == 0);
+    CHECK (s.markAt (Spectrogram::View::scroll, 99) == 0);
+
+    /* None shown until asked: the ranks are kept, not drawn. */
+    CHECK (s.getMarksShown() == 0);
+    auto img = ni::ui::test::render (s);
+    for (int x = 0; x < 8; ++x)
+        REQUIRE (img.getPixelAt (x, 0) == c::spec0);
+
+    /* The newest is at the right edge, so the four are x 4..7. Down to rank
+     * 3: the bar strongest, the beat lighter, the 1/32 left out. */
+    s.setMarkRanks (3, 3);
+    img = ni::ui::test::render (s);
+    const auto lineOf = [] (float opacity) { return c::spec0.interpolatedWith (c::ink, opacity); };
+    CHECK (distance (img.getPixelAt (4, 0), lineOf (0.35f)) <= 3);
+    CHECK (img.getPixelAt (5, 0) == c::spec0);
+    CHECK (distance (img.getPixelAt (6, 0), lineOf (0.2f)) <= 3);
+    CHECK (img.getPixelAt (7, 0) == c::spec0);
+    CHECK (luminance (img.getPixelAt (4, 1)) > luminance (img.getPixelAt (6, 1)));
+
+    /* A finer grid reaches back over the whole history; past the medium,
+     * the faintest. */
+    s.setMarkRanks (8, 2);
+    img = ni::ui::test::render (s);
+    CHECK (distance (img.getPixelAt (7, 0), lineOf (0.1f)) <= 3);
+    CHECK (distance (img.getPixelAt (6, 0), lineOf (0.1f)) <= 3);
+
+    /* The sweep's row is the caller's, whole, and stays where it is put. */
+    s.setSweepMarks ({ 0, 0, 1 });
+    CHECK (s.markAt (Spectrogram::View::bars, 2) == 1);
+    CHECK (s.markAt (Spectrogram::View::bars, 5) == 0);
+    s.setView (Spectrogram::View::bars);
+    img = ni::ui::test::render (s);
+    CHECK (distance (img.getPixelAt (2, 0), lineOf (0.35f)) <= 3);
+    CHECK (img.getPixelAt (4, 0) == c::spec0);
+
+    /* Held with the picture: new marks behind a pause are not drawn. */
+    s.setView (Spectrogram::View::scroll);
+    s.setPaused (true);
+    const auto held = ni::ui::test::render (s);
+    const Bytes more { 1, 1 };
+    s.push ({ levels.data(), 2, 2, nullptr, nullptr, more.data() });
+    CHECK (ni::ui::test::diff (ni::ui::test::render (s), held, 0).differing == 0);
+    s.setPaused (false);
+
+    /* Clear takes the history's marks and leaves the window's. */
+    s.clear();
+    CHECK (s.markAt (Spectrogram::View::scroll, 0) == 0);
+    CHECK (s.markAt (Spectrogram::View::scroll, 4) == 0);
+    CHECK (s.markAt (Spectrogram::View::bars, 2) == 1);
+
+    /* A batch without marks writes none. */
+    s.push ({ levels.data(), 1, 2 });
+    CHECK (s.markAt (Spectrogram::View::scroll, 0) == 0);
 }
 
 TEST_CASE ("spectrogram: the playhead is drawn in the bar view only")

@@ -11,7 +11,8 @@
  * included; numParameters() is 0 and parameter() is never called. What the
  * user sets up is the SESSION, saved with the host's state (the chunk the
  * iPlug2 build wrote, tests/fixtures/iplug2/FORMAT.md on the spike branch:
- * the buses, the clash criteria, the view, the comparison, the range).
+ * the buses, the clash criteria, the view, the comparison, the range -- and
+ * the grid after them).
  *
  * WHAT THIS REPLACES. The web editor's message tags (ui/src/lib/msg.js and
  * EMsgTags in Spectrogram.h), one call per tag, with the strings gone:
@@ -101,6 +102,8 @@ struct Session
     /* The bus slots the plugin opens, derived from the view and the
      * comparison by the editor (Channels.h). */
     std::vector<int> listen;
+    /* The beat lines: 0 for none, else the finest rank drawn (Scales.h). */
+    int grid = 0;
 };
 
 class Model : public ni::ui::EditorModel
@@ -149,6 +152,9 @@ public:
                           const std::vector<int>& listen) = 0;
 
     virtual void setClashCriteria (float floorDb, float balanceDb) = 0;
+
+    /* The beat lines over the picture: 0 for none, else the finest rank. */
+    virtual void setGrid (int grid) = 0;
 };
 
 } // namespace ni::spectrogram

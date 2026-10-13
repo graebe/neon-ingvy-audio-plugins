@@ -186,6 +186,11 @@ The Spectrogram has no parameters, only Bypass. Its strings are the session
 Strings 1 to 4 were added one at a time. A chunk may end after any of them,
 and a missing string keeps its default.
 
+The JUCE build writes a sixth string after these five: the beat grid, `<n>`
+from `0` (none) to `8` (1/128) (`plugins/spectrogram/State.h`). It sits inside
+the body, and an iPlug2 build seeks to `16 + B` for the bypass. So an iPlug2
+build still reads a state saved by the JUCE build. It only ignores the grid.
+
 ### NI Listen-In: version 1, N = 1, one string
 
 | ID | Parameter | Plain value | Default | stepCount |

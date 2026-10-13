@@ -10,7 +10,8 @@
  *   the parameter   Bypass alone, as the iPlug2 build reported it
  *                   (parameters.json), at index -- and VST3 ID -- 0
  *   the fixtures    both tests/fixtures/iplug2/NISpectrogram states load to
- *                   their session and bypass and save back byte for byte;
+ *                   their session and bypass and save back byte for byte,
+ *                   the grid's string after them (spectro_state);
  *                   what no build wrote changes nothing; a load on the host's
  *                   thread is what a save straight after it writes
  *   the audio       through bit for bit, bypassed or not
@@ -76,6 +77,14 @@ Bytes fixture (const juce::String& scenario)
     REQUIRE (fixtures.getChildFile (scenario + ".component.bin").loadFileAsData (b));
     const auto* p = static_cast<const std::uint8_t*> (b.getData());
     return Bytes (p, p + b.getSize());
+}
+
+/* A fixture as this build saves it back: its session, the grid after it. */
+Bytes savedBack (const Bytes& chunk)
+{
+    const auto got = st::read (chunk.data(), chunk.size(), st::Fields {});
+    REQUIRE (got.has_value());
+    return st::write (got->fields, got->bypass.value_or (false));
 }
 
 /* A transport playing at 120 BPM in 3/4 from bar 1, moved on by the caller. */
@@ -265,7 +274,7 @@ TEST_CASE ("stereo in and stereo out, and nothing else: the iPlug2 build's 2-2")
 
 /* ------------------------------------------------------------- fixtures -- */
 
-TEST_CASE ("both iPlug2 fixtures load to their session and bypass, and save back byte for byte")
+TEST_CASE ("both iPlug2 fixtures load to their session and bypass, and save back as the chunk says")
 {
     for (const char* scenario : { "default", "session" })
     {
@@ -290,7 +299,7 @@ TEST_CASE ("both iPlug2 fixtures load to their session and bypass, and save back
 
         a.p.service();
         CHECK (a.p.session().applied() == decoded->fields);
-        CHECK (a.save() == bytes);
+        CHECK (a.save() == savedBack (bytes));
     }
 }
 
@@ -319,7 +328,7 @@ TEST_CASE ("what no build wrote is refused, and changes nothing")
         b = (std::uint8_t) rng();
     a.load (noise);
     a.load ({});
-    CHECK (a.save() == session);
+    CHECK (a.save() == savedBack (session));
 }
 
 TEST_CASE ("a load on the host's thread is what a save straight after it writes, and marks nothing unsaved")
@@ -330,7 +339,7 @@ TEST_CASE ("a load on the host's thread is what a save straight after it writes,
     host.join();
     /* Before the message thread has applied it. */
     CHECK (a.p.session().applied() == st::Fields {});
-    CHECK (a.save() == session);
+    CHECK (a.save() == savedBack (session));
     a.p.service();
     CHECK (a.p.session().applied().sources == std::vector<unsigned int> { 2, 5 });
     CHECK (a.ear.dirty == 0);
@@ -479,16 +488,28 @@ TEST_CASE ("the session's commands apply at once and mark the set unsaved; a loa
     CHECK (a.p.session().applied().clashBalanceDb == 10.0f);
     CHECK (a.ear.dirty == 4);
 
+    /* The grid is the picture's alone: saved, never the receiver's. */
+    m.setGrid (5);
+    CHECK (m.session().grid == 5);
+    CHECK (a.p.session().applied().grid == 5);
+    CHECK (a.ear.dirty == 5);
+    m.setGrid (99);
+    CHECK (m.session().grid == st::maxGrid);
+    m.setGrid (5);
+
     /* What a set writes now is what the window shows. */
     const auto saved = a.save();
     const auto back = st::read (saved.data(), saved.size(), st::Fields {});
     REQUIRE (back.has_value());
     CHECK (back->fields.rangeLo == 40.0f);
     CHECK (back->fields.clashFloorDb == -50.0f);
+    CHECK (back->fields.grid == 5);
 
     a.load (fixture ("default"));
     a.p.service();
-    CHECK (a.ear.dirty == 4);
+    CHECK (a.ear.dirty == 7);
+    /* The fixture predates the grid: a string a chunk lacks keeps its value. */
+    CHECK (m.session().grid == 5);
     CHECK (m.session().rangeLo == 10.0f);
     CHECK (m.bandCentres().back() > 18000.0f);
 }

@@ -7,7 +7,8 @@
  *
  *   the chunk     what the iPlug2 build wrote (tests/fixtures/iplug2/FORMAT.md):
  *                 the two fixtures decode to their sessions and are written
- *                 back byte for byte; a session saved, loaded and saved again
+ *                 back byte for byte, the grid's string after them, which a
+ *                 reader of five strings skips; a session saved, loaded and saved again
  *                 is the same bytes; a chunk from before the header, or one
  *                 that ends after any of its strings, opens; what no build
  *                 wrote is refused and changes nothing
@@ -29,6 +30,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <random>
@@ -70,7 +72,28 @@ st::Fields variant (int i)
     f.clashOn = (i % 2) != 0;
     f.rangeLo = 20.0f + float (i);
     f.rangeHi = 5000.0f + float (i);
+    f.grid = i % (st::maxGrid + 1);
     return f;
+}
+
+/* A chunk as the iPlug2 build wrote it, as this build writes it back: the
+ * grid's string, "0", appended to the body, which grows by its five bytes. */
+Bytes withGrid (Bytes chunk)
+{
+    std::int32_t body = 0;
+    std::memcpy (&body, chunk.data() + 12, 4);
+    const std::uint8_t grid[] { 1, 0, 0, 0, '0' };
+    chunk.insert (chunk.begin() + 16 + body, std::begin (grid), std::end (grid));
+    body += (std::int32_t) sizeof grid;
+    std::memcpy (chunk.data() + 12, &body, 4);
+    return chunk;
+}
+
+/* What the iPlug2 build, and every JUCE build before the grid, read. */
+const ni::nist::Layout& fiveStrings()
+{
+    static const ni::nist::Layout l { nullptr, 0, {}, 1, 5 };
+    return l;
 }
 
 /* The body of a headerless chunk: the strings, int32 length and bytes. */
@@ -89,7 +112,7 @@ void putString (Bytes& out, const std::string& s)
 TEST_CASE ("a fresh session's strings are FORMAT.md's defaults")
 {
     CHECK (st::strings (st::Fields {})
-           == std::vector<std::string> { "", "-60.00:12.00", "0", "0:1:0", "10.00:20000.00" });
+           == std::vector<std::string> { "", "-60.00:12.00", "0", "0:1:0", "10.00:20000.00", "0" });
 }
 
 TEST_CASE ("both iPlug2 fixtures decode to their sessions and are written back byte for byte")
@@ -99,7 +122,7 @@ TEST_CASE ("both iPlug2 fixtures decode to their sessions and are written back b
     REQUIRE (got.has_value());
     CHECK (got->fields == st::Fields {});
     CHECK (got->bypass == std::optional<bool> (false));
-    CHECK (st::write (got->fields, false) == fresh);
+    CHECK (st::write (got->fields, false) == withGrid (fresh));
 
     /* The editor's Bass zoom with buses 2 and 5 beside this track, the clash
      * between them (session.json). */
@@ -115,7 +138,42 @@ TEST_CASE ("both iPlug2 fixtures decode to their sessions and are written back b
     want.rangeLo = 40.0f;
     want.rangeHi = 800.0f;
     CHECK (got->fields == want);
-    CHECK (st::write (got->fields, false) == session);
+    CHECK (st::write (got->fields, false) == withGrid (session));
+}
+
+TEST_CASE ("a reader of five strings reads what this build writes: the same session, the same bypass")
+{
+    for (const char* scenario : { "default", "session" })
+    {
+        CAPTURE (scenario);
+        const auto old = fixture (scenario);
+        const auto before = ni::nist::read (fiveStrings(), old.data(), old.size());
+        auto f = reread (old)->fields;
+        f.grid = 5;
+        const auto now = st::write (f, true);
+        const auto after = ni::nist::read (fiveStrings(), now.data(), now.size());
+        REQUIRE (before.has_value());
+        REQUIRE (after.has_value());
+        CHECK (after->strings == before->strings);
+        CHECK (after->bypass == std::optional<bool> (true));
+    }
+}
+
+TEST_CASE ("a chunk from before the grid opens with no grid, and the grid is kept by a save")
+{
+    st::Fields current;
+    current.grid = 4;
+    const auto old = fixture ("session");
+    const auto got = st::read (old.data(), old.size(), current);
+    REQUIRE (got.has_value());
+    /* Missing, the string keeps the value it had -- here, the caller's. */
+    CHECK (got->fields.grid == 4);
+    CHECK (reread (old)->fields.grid == 0);
+
+    st::Fields f;
+    f.grid = st::maxGrid;
+    CHECK (st::strings (f).back() == "8");
+    CHECK (reread (st::write (f, false))->fields.grid == st::maxGrid);
 }
 
 TEST_CASE ("a session: save, load, save again -- the same bytes, the bypass with them")
@@ -130,6 +188,7 @@ TEST_CASE ("a session: save, load, save again -- the same bytes, the bypass with
     f.clashOn = true;
     f.rangeLo = 40.0f;
     f.rangeHi = 800.0f;
+    f.grid = 6;
     const auto first = st::write (f, true);
     const auto got = reread (first);
     REQUIRE (got.has_value());
@@ -188,6 +247,8 @@ TEST_CASE ("a chunk may end after any string, and each missing one keeps its val
             want.rangeLo = variant (3).rangeLo;
             want.rangeHi = variant (3).rangeHi;
         }
+        if (n > 5)
+            want.grid = variant (3).grid;
         CHECK (f == want);
     }
 }
@@ -195,7 +256,7 @@ TEST_CASE ("a chunk may end after any string, and each missing one keeps its val
 TEST_CASE ("a string that does not read keeps its value; the selection does not and is refused")
 {
     st::Fields f = variant (1);
-    CHECK (st::apply ({ "2,7", "nonsense", "", "x", "800:40" }, f));
+    CHECK (st::apply ({ "2,7", "nonsense", "", "x", "800:40", "9" }, f));
     CHECK (f.sources == std::vector<unsigned int> { 2, 7 });
     CHECK (f.clashFloorDb == variant (1).clashFloorDb);
     /* A spectrogram showing nothing is a broken plugin, not a view. */
@@ -203,7 +264,10 @@ TEST_CASE ("a string that does not read keeps its value; the selection does not 
     CHECK (f.cmpA == variant (1).cmpA);
     /* A range upside down, or from 0 Hz, is not one. */
     CHECK (f.rangeLo == variant (1).rangeLo);
-    CHECK (st::apply ({ "", "", "", "", "0:800" }, f));
+    /* A grid finer than 1/128 is not one this build draws. */
+    CHECK (f.grid == variant (1).grid);
+    CHECK (st::apply ({ "", "", "", "", "0:800", "x" }, f));
+    CHECK (f.grid == variant (1).grid);
     CHECK (f.rangeLo == variant (1).rangeLo);
 
     const auto before = f;

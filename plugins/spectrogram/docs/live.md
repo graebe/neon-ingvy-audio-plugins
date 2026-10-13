@@ -9,7 +9,7 @@ nothing to set up: insert it, and it draws what is passing through.
 ## It remembers how you left it
 
 The view (which channels are ticked), the two Compare pickers, the **Clash**
-switch and the **range** zoom are saved with your Live set. Close the window
+switch, the **range** zoom and the **Grid** are saved with your Live set. Close the window
 and open it again, or save the set and reopen it tomorrow, and the Spectrogram
 is looking at what it was looking at — not back at its own input on the full
 range.
@@ -21,7 +21,7 @@ in seconds.
 
 Frequency is the vertical, logarithmic, 10 Hz at the bottom and 20 kHz at the
 top across 256 bands — about two per semitone, so a semitone is roughly two
-rows. Time scrolls right to left and the visible window holds thirteen seconds.
+rows. Time scrolls right to left and the visible window holds sixteen seconds.
 
 Brightness is level: the ground is quiet, a near-white core is loud, and the
 violet between them is the falloff.
@@ -34,14 +34,14 @@ sample rate exists to draw. Until the plugin has sent its first axis it says
 `waiting for the plugin`.
 
 Time is also ticked along the bottom, a mark a second from `0 s` at the right
-edge back to `−12 s` at the left. The ticks are arithmetic rather than a clock:
+edge back to `−16 s` at the left. The ticks are arithmetic rather than a clock:
 one column is one pixel and the engine holds the column rate constant across
 sample rates, so the width *is* the span.
 
 ## The x-axis can be bars instead of seconds
 
 The **Span** select beside Range says what the x-axis is and how much of it:
-`13 s`, the history it holds in seconds, or `1 bar` to `16 bars`. Choose a
+`16 s`, the history it holds in seconds, or `1 bar` to `16 bars`. Choose a
 number of bars and the picture stops scrolling. The x-axis becomes a window of
 the host's own timeline, 1, 2, 4, 8 or 16 bars wide, and columns fill it left
 to right. When the sweep reaches the right edge it wraps to the left and
@@ -54,7 +54,7 @@ smears, a hat that is early sits left of the line, and two takes of one bar can
 be compared by looking at one picture instead of remembering the last one.
 
 The grid under the picture follows: a numbered tick per bar, and the beats
-inside it whenever a bar is wide enough to hold them — at 16 bars a bar is 38
+inside it whenever a bar is wide enough to hold them — at 16 bars a bar is 47
 pixels, so the beats are dropped rather than drawn as a haze.
 
 **Switching views loses nothing.** Both pictures are drawn from the same columns
@@ -68,10 +68,48 @@ and says `free` after it (`120 BPM free`) when the sweep is running on that
 rather than on a playhead.
 
 One honest limit: the analyzer finishes about 47 columns a second whatever the
-window is, so a window shorter than ~13 seconds has fewer columns than it has
+window is, so a window shorter than ~16 seconds has fewer columns than it has
 pixels. The gaps are interpolated rather than held flat, which keeps the picture
 smooth, but a 1-bar window at a fast tempo genuinely has less time resolution
 than a wide one. It is smoothed, not invented back.
+
+## Beat lines show where the beat is
+
+The **Grid** select between Span and Pause draws vertical lines over the
+picture at a rate you choose. This is the grid of Live's own arrangement:
+
+| Grid | a line at |
+|---|---|
+| `no grid` | nothing (the default) |
+| `1 bar` | every bar line |
+| `1/2` … `1/128` | every half note, quarter note … 128th note |
+
+The note values count from the start of each bar, as Live's grid does. In 4/4
+that is simply the note grid. In 3/4 or 6/8 every bar starts the count again,
+so a bar line never falls between two grid lines.
+
+**The lines have three weights.** Bar lines are the clearest, lines on the
+metre's beats (the quarter notes in 4/4, the eighths in 6/8) are lighter, and
+anything finer is a faint hairline. At 1/128 and 120 BPM a line falls on nearly
+every column. The bars and beats still stand out from that haze, so you can
+still count.
+
+**They work in both views.** In seconds the lines scroll with the picture,
+because every column remembers where it was on Live's timeline. In bars they
+stand still, exactly over the bar and beat ticks under the picture.
+
+**Changing the rate redraws the whole history.** The lines are not painted
+into the picture. Each column keeps the coarsest line it holds, so switching
+from `1/4` to `1/16` (or turning the grid on at all) shows the finer lines
+across the last sixteen seconds at once.
+
+The lines are placed by Live's tempo, so the line at the top shows the tempo
+while the grid is on. With the transport stopped, the lines carry on at the
+last tempo seen, and the tempo reads `free`. The same is true of the bar view.
+
+For example, to check whether a hi-hat sits on the grid: choose `1/16`, play
+the loop, and look at where each hat's bright vertical streak starts. A hat
+that is early starts left of its line, and a swung one sits between two lines.
 
 ## Listening in on other tracks
 
@@ -100,7 +138,7 @@ not twice as bright (that would be adding decibels, which multiplies
 amplitudes). So the picture stays one picture, brightness still means level, and
 what you are looking at is what the two tracks do *together*.
 
-Changing the view clears the history, because thirteen seconds of the previous
+Changing the view clears the history, because sixteen seconds of the previous
 mix spliced onto the new one with no seam is not a picture of anything.
 
 ### Compare — what the hatching is measuring

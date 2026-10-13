@@ -84,6 +84,9 @@ void Divider::paint (juce::Graphics& g)
 
 /* ------------------------------------------------------------------- Well */
 
+static_assert (pictureWidth == ni::ui::Spectrogram::defaultColumns && pictureHeight == ni::ui::Spectrogram::defaultBands,
+               "the well holds the shipped picture, one column and one band a pixel");
+
 Well::Well()
 {
     setOpaque (true);
