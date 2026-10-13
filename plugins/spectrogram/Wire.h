@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The text of NI Spectrogram's saved session, read back: the four shapes its
+ * The text of NI Spectrogram's saved session, read back: the five shapes its
  * strings take (State.cpp writes them). On their own, in free functions over
  * plain data, so tests/cpp/spectro_wire.cpp pins each one alone.
  *
@@ -53,5 +53,12 @@ void parse_channels (const std::string& arg, std::vector<int>& out);
  * INDICES and the third a flag -- so it has its own reader.
  */
 bool parse_compare (const std::string& arg, int& a, int& b, bool& on);
+
+/*
+ * "<n>" -> the grid: 0 for none, up to `finest`. False, `grid` untouched,
+ * for anything but digits or a number past `finest` -- a grid this build
+ * does not draw is not one it should pretend to.
+ */
+bool parse_grid (const std::string& arg, int finest, int& grid);
 
 } // namespace spectro::wire

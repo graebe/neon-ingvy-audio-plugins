@@ -74,6 +74,7 @@ public:
     std::vector<Look> looks;
     struct Criteria { float floorDb, balanceDb; };
     std::vector<Criteria> criteria;
+    std::vector<int> grids;
     int takes = 0;
 
     /* ---- EditorModel */
@@ -127,6 +128,12 @@ public:
         criteria.push_back ({ floorDb, balanceDb });
         look.clashFloorDb = floorDb;
         look.clashBalanceDb = balanceDb;
+    }
+
+    void setGrid (int grid) override
+    {
+        grids.push_back (grid);
+        look.grid = grid;
     }
 };
 

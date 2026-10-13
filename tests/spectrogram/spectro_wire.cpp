@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The text of NI Spectrogram's saved session, read back (Wire.h): the four
+ * The text of NI Spectrogram's saved session, read back (Wire.h): the five
  * shapes its strings take, each pinned alone.
  *
  * What a string that does not read does is each reader's to say, because the
@@ -140,4 +140,23 @@ TEST_CASE ("a comparison names two channels and whether it is wanted")
     CHECK (a == 111);
     CHECK (b == 222);
     CHECK (on);
+}
+
+TEST_CASE ("a grid is a number from none to the finest, and anything else changes nothing")
+{
+    int grid = -1;
+    REQUIRE (parse_grid ("0", 8, grid));
+    CHECK (grid == 0);
+    REQUIRE (parse_grid ("8", 8, grid));
+    CHECK (grid == 8);
+    REQUIRE (parse_grid ("03", 8, grid));
+    CHECK (grid == 3);
+
+    /* Finer than this build draws, a sign, a point, nothing: refused whole. */
+    for (const char* bad : { "9", "-1", "+2", "2.5", "", "x", "1x", "1000" })
+    {
+        CAPTURE (bad);
+        CHECK_FALSE (parse_grid (bad, 8, grid));
+        CHECK (grid == 3);
+    }
 }

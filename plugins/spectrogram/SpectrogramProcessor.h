@@ -16,7 +16,8 @@
  *   the parameters   none but the host's Bypass: ID 0 here, 65536 there, which
  *                    Live maps by its flag
  *   the state        the iPlug2 chunk, read in every layout it ever had and
- *                    written as the last one wrote it (State.h); the bypass
+ *                    written as the last one wrote it, the grid after it
+ *                    where any older reader stops (State.h); the bypass
  *                    it carries is restored too, which iPlug2 left in its
  *                    controller
  *
