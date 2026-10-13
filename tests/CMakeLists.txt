@@ -245,6 +245,14 @@ if (TG_NODE)
         add_test(NAME ${_name}
                  COMMAND ${CMAKE_SOURCE_DIR}/scripts/test-web.sh ${_kind} ${_what})
         set_tests_properties(${_name} PROPERTIES SKIP_RETURN_CODE 77)
+        # A BROWSER SUITE RUNS ALONE. Its sync tests measure the playhead frame
+        # by frame, and Chrome starved by the full tier's other work -- four
+        # Docker module builds among it -- lost its sessions outright
+        # ("Internal server error, session closed"). On its own it is the
+        # machine the tests describe.
+        if (_kind STREQUAL "e2e")
+            set_tests_properties(${_name} PROPERTIES RUN_SERIAL TRUE)
+        endif()
     endforeach()
 else()
     ni_missing_capability(node "the checks over the tree (versions, licences, tokens, the site) are not registered")
