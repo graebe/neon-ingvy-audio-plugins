@@ -46,6 +46,7 @@ const ROUTES = new Map([
   ['plugins/filter-designer/README.md', 'plugins/filter-designer/'],
   ['plugins/filter-designer/docs/live.md', 'plugins/filter-designer/#live'],
   ['plugins/filter-designer/docs/schwung.md', 'plugins/filter-designer/#schwung'],
+  ['plugins/filter-designer/docs/filters.md', 'plugins/filter-designer/#filters'],
   ['CHANGELOG.md', 'changelog/'],
   ['README.md', ''],
   ['THIRD_PARTY_LICENSES.md', 'licences/'],

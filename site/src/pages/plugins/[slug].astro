@@ -4,7 +4,8 @@
 
 /*
  * One page per product: Description, then the Live interface, then the Schwung
- * interface. The three come from three files in the repository.
+ * interface, then, where a product has one, its filter reference. Each comes
+ * from its own file in the repository.
  */
 import { getCollection, render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
@@ -27,8 +28,10 @@ const pick = (section) => docs.find((d) => d.data.section === section);
 
 const live = pick('live');
 const schwung = pick('schwung');
+const filters = pick('filters');
 const LiveDoc = live ? (await render(live)).Content : null;
 const SchwungDoc = schwung ? (await render(schwung)).Content : null;
+const FiltersDoc = filters ? (await render(filters)).Content : null;
 ---
 <Base title={plugin.data.title} description={plugin.data.tagline}>
   <article>
@@ -58,6 +61,13 @@ const SchwungDoc = schwung ? (await render(schwung)).Content : null;
         </div>
       )}
     </section>
+
+    {FiltersDoc && (
+      <section id="filters">
+        <h2>{filters.data.title}</h2>
+        <div class="prose"><FiltersDoc /></div>
+      </section>
+    )}
   </article>
 </Base>
 

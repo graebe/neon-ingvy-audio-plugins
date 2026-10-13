@@ -58,10 +58,12 @@ const pluginDocs = defineCollection({
    * `section` is a typed field rather than a heading in the prose, because
    * splitting rendered Markdown on heading text fails SILENTLY: reword the
    * heading and the section renders empty. A missing enum value fails loudly,
-   * at build time, with the file named.
+   * at build time, with the file named. `filters` is optional: a product
+   * whose filters deserve their mathematics has a reference after the two
+   * interfaces.
    */
   schema: z.object({
-    section: z.enum(['live', 'schwung']),
+    section: z.enum(['live', 'schwung', 'filters']),
     title: z.string(),
   }),
 });
