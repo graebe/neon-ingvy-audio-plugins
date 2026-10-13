@@ -484,3 +484,57 @@ fn a_cascade_moves_between_designs_of_one_structure() {
         assert_eq!(a.run_toward(&b, 1.0, &mut s1, x), b.run(&mut s2, x));
     }
 }
+
+/// The analog shelf a design matches: order 2 or 4, as design.rs composes it.
+fn analog_shelf_db(low: bool, hz: f64, gain_db: f64, q: f64, order: usize, f: f64) -> f64 {
+    let mut m2 = 1.0;
+    for k in 0..order / 2 {
+        let mut sq = 1.0 / (2.0 * (PI * (2 * k + 1) as f64 / (2 * order) as f64).sin());
+        if k == 0 {
+            sq = (sq * q / FRAC_1_SQRT_2).min(40.0);
+        }
+        let a = 10f64.powf(gain_db * 2.0 / order as f64 / 40.0);
+        let ra = a.sqrt();
+        let w = f / hz;
+        let (num, den) = if low { (a - w * w, 1.0 - a * w * w) } else { (1.0 - a * w * w, a - w * w) };
+        let mid = (ra * w / sq).powi(2);
+        m2 *= a * a * (num * num + mid) / (den * den + mid);
+    }
+    10.0 * m2.log10()
+}
+
+/// A shelf near Nyquist stays near its analog shape: each section is the
+/// matched or the bilinear design, whichever strays less (a matched high
+/// shelf at 18 kHz, +18 dB, order 4 strayed 13.6 dB at 8.5 kHz at 44.1 kHz).
+/// Measured, 20 Hz to 0.49·fs, orders 2 and 4, ±6 to ±18 dB: within 3.2 dB
+/// for a shelf up to a quarter of the rate and 1.3 dB below half its
+/// frequency; within 7.9 dB for one up to 0.45·fs, where the analog shelf
+/// is still turning at Nyquist.
+#[test]
+fn a_shelf_near_nyquist_stays_near_its_analog_shape() {
+    for &fs in &[44_100.0, 48_000.0, 96_000.0] {
+        for &hz in &[2000.0, 8000.0, 12_000.0, 14_000.0, 16_000.0, 18_000.0, 20_000.0] {
+            for &g in &[-18.0, -12.0, -6.0, 6.0, 12.0, 18.0] {
+                for order in [2usize, 4] {
+                    for low in [false, true] {
+                        let c = if low { low_shelf(hz, g, FRAC_1_SQRT_2, order, fs) } else { high_shelf(hz, g, FRAC_1_SQRT_2, order, fs) };
+                        let (mut below, mut all) = (0.0f64, 0.0f64);
+                        for i in 0..400 {
+                            let f = 20.0 * (0.49 * fs / 20.0f64).powf(i as f64 / 399.0);
+                            let e = (c.db(f, fs) - analog_shelf_db(low, hz, g, FRAC_1_SQRT_2, order, f)).abs();
+                            all = all.max(e);
+                            if f < 0.5 * hz {
+                                below = below.max(e);
+                            }
+                        }
+                        let what = format!("{fs} Hz, {} shelf {hz} Hz {g} dB order {order}", if low { "low" } else { "high" });
+                        if hz <= 0.25 * fs {
+                            assert!(all < 3.2 && below < 1.3, "{what}: {all:.2} dB off, {below:.2} below Freq/2");
+                        }
+                        assert!(all < 7.9, "{what}: {all:.2} dB off");
+                    }
+                }
+            }
+        }
+    }
+}

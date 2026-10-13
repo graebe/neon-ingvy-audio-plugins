@@ -59,7 +59,12 @@ exist do not fit:
    everywhere; a broad bell above it is exact at the three points and within
    2.5 dB on its skirt (2.3 dB at 19 kHz, Q 1, 44.1 kHz), where the bilinear
    transform would squeeze it whole. Where no real numerator meets the three
-   points the design falls back to the prewarped bilinear transform. The
+   points the design falls back to the prewarped bilinear transform.
+   Amended 2026-10-13: a shelf section from fs/8 up is whichever of the
+   matched (either numerator sign at Nyquist) and the bilinear design strays
+   less from the analog shape on a 24-point grid. A high shelf's pole f0·√A
+   can lie past Nyquist, and the matched section then strayed up to 13.6 dB
+   between its three points. The
    family designs -- high-pass, low-pass, band-pass and notch of every order -- stay on
    the prewarped bilinear transform, the correct mapping for maximally flat
    and equiripple responses, with their -3 dB edges exact. No oversampling

@@ -228,9 +228,10 @@ fn from_biquad(b: [f64; 3], a1: f64, a2: f64) -> Option<Section> {
 
 /// A second-order section matched to `mag2`: the analog poles at `pole_hz`
 /// and `pole_q`, impulse-invariant, and the numerator that meets `mag2` at
-/// DC, at Nyquist and at `match_hz` (Vicanek, 2016). `None` when no real
-/// numerator does.
-fn matched2(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, mag2: Mag2) -> Option<Section> {
+/// DC, at Nyquist and at `match_hz` (Vicanek, 2016), its value at Nyquist of
+/// the sign `nyquist` (±1): both meet the three points, and between them
+/// one or the other follows `mag2`. `None` when no real numerator does.
+fn matched2(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, mag2: Mag2, nyquist: f64) -> Option<Section> {
     let w = (2.0 * PI * pole_hz / fs).min(0.98 * PI);
     let zeta = 0.5 / pole_q;
     let r = (-zeta * w).exp();
@@ -248,7 +249,7 @@ fn matched2(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, mag2: Mag2) -> Op
     let b0 = mag2(0.0) * big_a0;
     let b1 = mag2(0.5 * fs) * big_a1;
     let b2 = (mag2(match_hz) * (big_a0 * phi0 + big_a1 * phi1 + big_a2 * phi2) - b0 * phi0 - b1 * phi1) / phi2;
-    let (s0, s1) = (b0.sqrt(), b1.sqrt());
+    let (s0, s1) = (b0.sqrt(), nyquist * b1.sqrt());
     let wsum = 0.5 * (s0 + s1);
     let disc = wsum * wsum + b2;
     if !(disc >= 0.0 && phi2 > 1e-12) {
@@ -258,6 +259,64 @@ fn matched2(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, mag2: Mag2) -> Op
     let n2 = wsum - n0;
     let n1 = 0.5 * (s0 - s1);
     from_biquad([n0, n1, n2], a1, a2)
+}
+
+/// Where [`closest2`] weighs a design: a log grid from 20 Hz to the top,
+/// each point's place on the warped axis and the analog |H|² there.
+const GRID: usize = 24;
+
+/// How far `s` strays from the analog shape at its worst on `grid`: the
+/// larger of |H|²/mag2 and its inverse (1 where it meets it).
+fn misfit(s: &Section, grid: &[(f64, f64); GRID]) -> f64 {
+    grid.iter()
+        .map(|&(u, m2)| {
+            let r = s.transfer(Complex64::new(0.0, u)).norm_sqr() / m2;
+            if r.is_finite() && r > 0.0 { r.max(1.0 / r) } else { f64::INFINITY }
+        })
+        .fold(1.0, f64::max)
+}
+
+/// A matched design that strays at most this (0.25 dB, as a power ratio) is
+/// taken without weighing the others.
+const CLOSE_ENOUGH: f64 = 1.059_253_725_177_289;
+
+/// The second-order section closest to `mag2` at its worst, from 20 Hz to
+/// the top: matched with either sign at Nyquist, or `bilinear`. Matched
+/// follows the analog shape past the bilinear transform's warping; but with
+/// its pole near or past Nyquist it may stray far between the points it
+/// meets -- a matched high shelf at 18 kHz, +18 dB, order 4 was 13.6 dB off
+/// at 8.5 kHz at 44.1 kHz -- and then the bilinear one is closer.
+fn closest2(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, mag2: Mag2, bilinear: Section) -> Section {
+    let first = matched2(fs, pole_hz, pole_q, match_hz, mag2, 1.0);
+    /* Low in the band the matched design is the closer one: weighed only
+     * from an eighth of the rate up, which keeps a glide's design cheap. */
+    if pole_hz.max(match_hz) < 0.125 * fs {
+        return first.unwrap_or(bilinear);
+    }
+    let (lo, hi) = (20.0f64.min(top(fs)), top(fs));
+    let step = (hi / lo).powf(1.0 / (GRID - 1) as f64);
+    let mut grid = [(0.0, 0.0); GRID];
+    let mut f = lo;
+    for g in &mut grid {
+        *g = ((PI * f / fs).tan(), mag2(f));
+        f *= step;
+    }
+    let mut best: Option<(f64, Section)> = first.map(|m| (misfit(&m, &grid), m));
+    if let Some((e, m)) = best {
+        if e <= CLOSE_ENOUGH {
+            return m;
+        }
+    }
+    if let Some(m) = matched2(fs, pole_hz, pole_q, match_hz, mag2, -1.0) {
+        let e = misfit(&m, &grid);
+        if best.is_none_or(|(b, _)| e < b) {
+            best = Some((e, m));
+        }
+    }
+    match best {
+        Some((e, m)) if e <= misfit(&bilinear, &grid) => m,
+        _ => bilinear,
+    }
 }
 
 /// The prewarped bilinear transform of `(n2·s² + n1·s + n0) / (s² + d1·s +
@@ -289,7 +348,7 @@ pub fn bell(hz: f64, gain_db: f64, q: f64, fs: f64) -> Cascade {
         let re = (1.0 - w * w).powi(2);
         (re + (w * a / q).powi(2)) / (re + (w / (a * q)).powi(2))
     };
-    c.push(matched2(fs, hz, a * q, hz, &mag2).unwrap_or_else(|| bilinear2(fs, hz, [1.0, a / q, 1.0], 1.0 / (a * q), 1.0)));
+    c.push(matched2(fs, hz, a * q, hz, &mag2, 1.0).unwrap_or_else(|| bilinear2(fs, hz, [1.0, a / q, 1.0], 1.0 / (a * q), 1.0)));
     c
 }
 
@@ -325,7 +384,7 @@ fn shelf(low: bool, hz: f64, gain_db: f64, q: f64, order: usize, fs: f64) -> Cas
         } else {
             bilinear2(fs, hz, [a * a, a * ra / sq, a], ra / sq, a)
         };
-        c.push(matched2(fs, pole_hz, sq, hz, &mag2).unwrap_or(fallback));
+        c.push(closest2(fs, pole_hz, sq, hz, &mag2, fallback));
     }
     if order % 2 == 1 {
         let g = 10f64.powf(gain_db / order as f64 / 20.0);

@@ -767,6 +767,21 @@ First-order section (odd N), `g = 10^((G/N)/20)`:
 `f0/√A` (low) or `f0·√A` (high) with `Q_k`, matched at DC, fs/2 and Freq. The
 first-order pole is impulse-invariant, matched at DC and fs/2.
 
+**Near Nyquist** a high shelf's pole `f0·√A` can lie at or past fs/2. The
+matched section still meets DC, fs/2 and Freq, but between them it can stray
+far from the analog shape: a high shelf at 18 kHz, +18 dB, order 4, was
+13.6 dB off at 8.5 kHz at 44.1 kHz. So from fs/8 up, each second-order
+section is checked against the analog shape on a 24-point grid. Two
+candidates are measured: the matched section with either sign of its
+numerator at fs/2, and the bilinear section, which is exact up to the warped
+Freq. The section with the smaller worst-case error is used. Measured, at
+orders 2 and 4 and ±6 to ±18 dB:
+
+- a shelf up to fs/4 stays within 3.2 dB everywhere, and within 1.3 dB below
+  half its frequency;
+- a shelf up to 0.45·fs stays within 7.9 dB. The analog shelf is still
+  turning at Nyquist, so no second-order section can follow it there.
+
 **Explanation.** Every section reaches half its gain at Freq, so the whole
 shelf does. A higher order makes the step steeper:
 

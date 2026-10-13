@@ -67,3 +67,24 @@ fn block_while_ripple_glides_on_16_nodes(bencher: divan::Bencher) {
         e.process_f32(&mut l, Some(&mut r));
     });
 }
+
+/// A block while Freq glides on sixteen order-4 high shelves high in the
+/// band, where every design weighs the matched against the bilinear one.
+#[divan::bench]
+fn block_while_16_high_shelves_glide(bencher: divan::Bencher) {
+    let mut e = Engine::new(48_000.0);
+    for slot in 0..NODES as u8 {
+        e.set_num(Param::Node(slot, Field::Type), 3.0);
+        e.set_num(Param::Node(slot, Field::Order), 3.0);
+        e.set_num(Param::Node(slot, Field::Gain), 12.0);
+    }
+    let (mut l, mut r) = (vec![0.1f32; 64], vec![-0.1f32; 64]);
+    let mut up = false;
+    bencher.bench_local(|| {
+        up = !up;
+        for slot in 0..NODES as u8 {
+            e.set_num(Param::Node(slot, Field::Freq), if up { 16_000.0 } else { 9_000.0 });
+        }
+        e.process_f32(&mut l, Some(&mut r));
+    });
+}

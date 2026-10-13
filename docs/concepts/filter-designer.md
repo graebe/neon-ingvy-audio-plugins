@@ -110,7 +110,10 @@ Digital Filters*, 2016). They are converted into the SVF's (g, k, m) from
 their poles and numerator. A matched design follows the analog shape up to
 Nyquist, so a 15 kHz shelf is not squeezed by the bilinear transform. This
 costs no oversampling, no latency and no change of phase. Shelves of order
-3–4 are Holters–Zölzer cascades.
+3–4 are Holters–Zölzer cascades. From fs/8 up, a shelf section uses the
+matched or the bilinear design, whichever has the smaller worst-case error
+against the analog shape; near Nyquist the matched one can stray far between
+the points it meets.
 
 **Adaptive Q** (a Bell only) is our own definition: `Q_eff = Q·10^(|G|/40)`,
 ×1.41 at 6 dB and ×2 at 12 dB. EQ Eight's curve is undocumented.
