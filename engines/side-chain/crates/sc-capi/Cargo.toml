@@ -14,26 +14,21 @@ name = "sc_capi"
 crate-type = ["staticlib", "rlib"]
 
 # THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (sc_shell_*, on
-# shell-core's bridge) and the ground's C ABI (gnd_*) that every plugin's one
-# archive carries. sc-move turns it off, for tg-capi's reason: the Move module
-# has one thread and no editor, and its .so is a file on a device with a fixed
-# amount of space.
+# shell-core's bridge) and the kick behind the duck (sc_kick_*). sc-move turns
+# it off, for tg-capi's reason: the Move module has one thread and no editor,
+# and its .so is a file on a device with a fixed amount of space.
 [features]
 default = ["shell"]
-shell = ["dep:shell-core", "dep:ground-capi", "dep:bus-core", "dep:bus-capi"]
+shell = ["dep:shell-core", "dep:bus-core", "dep:bus-capi"]
 
 [dependencies]
 sc-core = { path = "../sc-core" }
-# The animated ground's beat clock. NOT a second static library -- see the note in
-# ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
-# ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
-# bus-core through spectro-recv.
-ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 # The command queue and the published snapshot between the plugin's threads.
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The kick behind the duck reads a Listen-In bus (kick.rs). bus-capi is an
 # rlib for this: its abus_* -- and the shell handoff it carries -- ride in
-# this one archive, as the ground's do, rather than a second staticlib.
+# this one archive rather than a second staticlib (one archive per plugin; see
+# spectro-capi/Cargo.toml).
 bus-core = { path = "../../../audio-bus/crates/bus-core", optional = true }
 bus-capi = { path = "../../../audio-bus/crates/bus-capi", optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.

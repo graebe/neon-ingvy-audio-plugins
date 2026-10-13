@@ -43,7 +43,7 @@
  * stepped knobs, an arrow being one division or one step (Rate has thirteen,
  * more than a Select holds); the ring and the pads are the system's Ring and
  * StepGrid cards; the plots draw in the PlotWell card's data colours
- * (Plots.h); and the hint bar is the kit's, with the Motion switch. What the
+ * (Plots.h); and the hint bar is the kit's. What the
  * canvas proposes beyond 1.1.0 -- one plot with a Signal switch (TG3) and a
  * taller envelope plot (TG4) -- is left for the owner.
  *

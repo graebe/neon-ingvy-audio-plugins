@@ -12,7 +12,6 @@
 
 #include "Pointer.h"
 #include "UvTokens.h"
-#include "WaveSource.h"
 #include "pages.h"
 #include "snapshot.h"
 
@@ -244,7 +243,6 @@ TEST_CASE ("plot: the well's frame, content and caption")
     CHECK (well.getCaption() == "SIGNAL   ONE CYCLE");
     CHECK (well.getTitle() == "SIGNAL   ONE CYCLE");
 
-    CHECK (isWaveSource (well));
     CHECK_FALSE (well.getWantsKeyboardFocus());
 
     const auto img = test::render (well);

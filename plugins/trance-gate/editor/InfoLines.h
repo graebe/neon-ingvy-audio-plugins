@@ -19,9 +19,7 @@
  * switches (Out, Time in %), the buttons are sentence case and verb first
  * (Set order, Shuffle order, Randomize), and the window verbs are icons whose
  * names are the Actions card's (Paste slot, Export slot, Export all): two
- * words at most, as the Button card asks of a button's text. The Motion switch's
- * line is the frame's, the same in every window: it rings on the beat on
- * every platform now, not only on a Mac.
+ * words at most, as the Button card asks of a button's text.
  *
  * THE CONVENTIONS sit here too: the Step card's three, and the three Set
  * order swaps in for them while it is on -- the bar holds three at most, so
@@ -95,8 +93,7 @@ inline constexpr InfoText pads { "Pads — click toggles, shift-click ties, drag
 inline constexpr InfoText padsOrder { "Pads — click the steps in the order the fade should bring them in." };
 inline constexpr InfoText arrival { "Arrival — click to type a new place; a number in use swaps." };
 
-/* The window's own: the signature in the hint bar. The Motion switch's line
- * is the frame's, the same in every editor (EditorFrame). */
+/* The window's own: the signature in the hint bar. */
 inline constexpr InfoText signature { "Neon Ingvy — the publisher of this plugin." };
 
 /* Every knob's readout: the plugin parses what is typed, in the readout's
@@ -126,8 +123,8 @@ inline std::vector<ni::ui::Clause> conventions()
 
 /* While Set order is on: what a click names now, how to type one, how to
  * finish. `holes` under Fade Out, whose arrivals are the gaps. The web bar's
- * three said more ("... they should arrive", "-- they swap") and ran past the
- * Motion switch with "Set order" for "ORDER"; what a taken number does is the
+ * three said more ("... they should arrive", "-- they swap") and ran out of
+ * room with "Set order" for "ORDER"; what a taken number does is the
  * arrival's own line now. */
 inline std::vector<ni::ui::Clause> orderConventions (bool holes)
 {

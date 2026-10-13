@@ -73,9 +73,6 @@ struct FakeModel final : public Model
 
     int numParameters() const override { return params.size(); }
     juce::RangedAudioParameter& parameter (int i) override { return params[i]; }
-    int takeRings (float*, int) override { return 0; }
-    bool motion() const override { return motionOn; }
-    void setMotion (bool on) override { motionOn = on; }
     bool bipolar (int i) const override { return i == param::drive || i == param::postOctave || i == param::output; }
 
     float plain (int i) { return params[i].convertFrom0to1 (params[i].getValue()); }
@@ -126,7 +123,6 @@ struct FakeModel final : public Model
 
     ni::ui::test::FakeParameters params;
     Scope audio;
-    bool motionOn = true;
 };
 
 struct Rig
@@ -135,11 +131,7 @@ struct Rig
     FakeModel model;
     Editor editor { model, [this] { return ms; } };
 
-    Rig()
-    {
-        editor.frame().ground().setReducedMotionQuery ([] { return false; });
-        model.params.clear();
-    }
+    Rig() { model.params.clear(); }
 
     void frames (int n)
     {

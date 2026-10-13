@@ -24,8 +24,7 @@
  *   activation    prepare() posts the rate and a reset, so a host that
  *                 stopped and started the plugin hears nothing it held before
  *   the editor    reads the engine's scope and renders the staircase through
- *                 the Model, on the message thread; the Ground's clock runs
- *                 while a window is open
+ *                 the Model, on the message thread
  *
  * THE PANIC. On the Move, CC 120/123 reset the engine (bc-move); a VST3 in
  * Live is told to start afresh by being deactivated, which prepareToPlay
@@ -36,7 +35,6 @@
  */
 #pragma once
 
-#include "GroundClock.h"
 #include "Model.h"
 #include "Processor.h"
 #include "bc_shell.h"
@@ -61,8 +59,6 @@ public:
 
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override;
-    void editorOpened() override;
-    void editorClosed() override;
 
     /* A parameter's value in its own unit, as the engine takes it. Any
      * thread. */
@@ -71,9 +67,6 @@ public:
     /* ---- the Model, for the editor: message thread */
     int numParameters() const override { return paramCount; }
     juce::RangedAudioParameter& parameter (int index) override { return *params[(size_t) index]; }
-    int takeRings (float* strengths, int capacity) override;
-    bool motion() const override;
-    void setMotion (bool on) override;
     bool bipolar (int index) const override;
     double steps (float* out, int count) override;
     const Scope& scope() override;
@@ -83,7 +76,7 @@ protected:
     void prepare (double sampleRate, int maximumBlockSize) override;
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     /* Bypassed, the engine passes the host's audio, delayed by the reported
-     * latency, and the Ground keeps the host's time. */
+     * latency. */
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
 private:
@@ -104,7 +97,6 @@ private:
      * thread's alone. */
     std::array<double, paramCount> last {}, target {};
     bool ramping = false;
-    ni::GroundClock beat;
 
     /* The scope as the engine published it, and as the editor takes it. */
     std::unique_ptr<BcScope> published;

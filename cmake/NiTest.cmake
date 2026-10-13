@@ -15,8 +15,8 @@
 #          processor, its editor, its Move module, its built bundle -- a
 #          shared check included, when what it opens is that product's bundle
 #   product:shared     a test of what every product is built on: the shared
-#          engines (audio-bus, ground, the shell, engines/shared), the native
-#          kit, the C++ helpers, and the checks over the tree
+#          engines (audio-bus, the shell, engines/shared), the native kit,
+#          the C++ helpers, and the checks over the tree
 #
 # A product's release builds and runs its own tests and the shared ones, and
 # nobody else's: `ctest -L '^product:(<product>|shared)$'`, which is

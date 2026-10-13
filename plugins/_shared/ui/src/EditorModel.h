@@ -3,7 +3,7 @@
 
 /*
  * What every editor gets from its plugin, whatever the product: the host
- * parameters, the Ground's rings and the Motion switch's memory.
+ * parameters.
  *
  * AN EDITOR TALKS TO ITS PLUGIN THROUGH A MODEL AND NOTHING ELSE. Each product
  * has plugins/<product>/editor/Model.h, a class derived from this one that
@@ -41,24 +41,6 @@ public:
      */
     virtual int numParameters() const = 0;
     virtual juce::RangedAudioParameter& parameter (int index) = 0;
-
-    /*
-     * The Ground's rings since the last call, oldest first, at most
-     * `capacity`: one strength per ring, 1 on a bar's downbeat and
-     * uv::tok::motion::beat::beat on every other quarter note. The plugin
-     * counts them from the host's transport, on the audio thread, where the
-     * position is; the editor only plays them. Returns how many it wrote.
-     */
-    virtual int takeRings (float* strengths, int capacity) = 0;
-
-    /*
-     * The Motion switch: whether the Ground moves. Remembered per machine and
-     * per editor, never in the host's state -- whether a background animates
-     * is a view, not a setting a session should carry to someone else's
-     * computer (the web kit's lib/motion.js has the argument). On by default.
-     */
-    virtual bool motion() const = 0;
-    virtual void setMotion (bool on) = 0;
 };
 
 } // namespace ni::ui

@@ -22,9 +22,9 @@
  *                   another thread reopens as it was saved
  *   the model       snapshots from the engine (the pattern, its fade levels,
  *                   the detents, the stages' text, the transport, the curves,
- *                   the capture, the Ground's rings) and commands into it
- *                   (steps, files, pastes) -- each of which marks the set
- *                   unsaved, as no load or automation does
+ *                   the capture) and commands into it (steps, files,
+ *                   pastes) -- each of which marks the set unsaved, as no
+ *                   load or automation does
  *   the shell       the Bypass fades over 10 ms either way and rests bit
  *                   for bit; a loop wrapping inside a block is gated from
  *                   its start; a gesture is one edit, applied in one block;
@@ -708,20 +708,6 @@ TEST_CASE ("the model's transport and capture move with the host's, while a wind
     const auto stopped = m.capture().serial;
     a.play (10);
     CHECK (m.capture().serial == stopped);
-}
-
-TEST_CASE ("the Ground rings with the host's beat, only while a window is open")
-{
-    Instance a;
-    float rings[16];
-    a.play (200); /* two seconds, four beats, with no window */
-    a.p.editorOpened();
-    CHECK (a.model().takeRings (rings, 16) == 0);
-    a.play (94); /* a second at 48 kHz: two beats */
-    const int n = a.model().takeRings (rings, 16);
-    CHECK (n >= 1);
-    CHECK (n <= 3);
-    a.p.editorClosed();
 }
 
 TEST_CASE ("the model's commands mark the set unsaved; a load and automation do not")

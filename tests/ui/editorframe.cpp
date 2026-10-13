@@ -3,19 +3,14 @@
 
 /*
  * The window every editor is drawn in: its layout (the padding, the content
- * from the top, the bar on the bottom edge), the Motion switch as the model's,
- * the Ground fed from the model and walled by the content, the bar's info and
- * an outcome that leaves on time, and the light of the bar over the Ground.
+ * from the top, the bar on the bottom edge), the bar's info and an outcome
+ * that leaves on time, and the light of the bar over the frame's own ground.
  */
 #include "EditorFrame.h"
 
-#include "Panel.h"
 #include "UvGround.h"
 #include "UvTokens.h"
-#include "WaveSource.h"
 #include "checks.h"
-#include "events.h"
-#include "fakes.h"
 #include "pages.h"
 #include "snapshot.h"
 
@@ -33,23 +28,9 @@ const juce::String rate = juce::String::fromUTF8 ("Rate \xe2\x80\x94 the length 
 struct Rig
 {
     double ms = 0.0;
-    ni::ui::test::FakeEditorModel model;
-    EditorFrame frame { model, [this] { return ms; } };
+    EditorFrame frame { [this] { return ms; } };
 
-    Rig()
-    {
-        frame.ground().setReducedMotionQuery ([] { return false; });
-        frame.setSize (720, 502);
-    }
-
-    void frames (int n)
-    {
-        for (int k = 0; k < n; ++k)
-        {
-            ms += 1000.0 / 30.0;
-            frame.ground().tick();
-        }
-    }
+    Rig() { frame.setSize (720, 502); }
 };
 } // namespace
 
@@ -59,7 +40,6 @@ TEST_CASE ("editor frame: padding space-8, content from the top, the bar on the 
     juce::Component content;
     rig.frame.setContent (&content);
 
-    CHECK (rig.frame.ground().getBounds() == juce::Rectangle<int> (0, 0, 720, 502));
     /* 502 = 32 + 402 + 24 + 28 + 16 */
     CHECK (content.getBounds() == juce::Rectangle<int> (32, 32, 656, 402));
     CHECK (rig.frame.contentBounds() == content.getBounds());
@@ -72,108 +52,15 @@ TEST_CASE ("editor frame: padding space-8, content from the top, the bar on the 
     CHECK (content.getHeight() == 450);
     CHECK (rig.frame.hint().getBottom() == 550 - EditorFrame::bottomPadding);
 
-    /* The Ground is behind everything, the bar in front of the content. */
-    CHECK (rig.frame.getIndexOfChildComponent (&rig.frame.ground()) == 0);
+    /* The ground is the frame's own paint, under everything (the light test
+     * below holds it to the static ground); the bar is in front of the
+     * content. */
     auto* layer = content.getParentComponent();
     REQUIRE (layer != nullptr);
     CHECK (layer->getIndexOfChildComponent (&content) < layer->getIndexOfChildComponent (&rig.frame.hint()));
 
     rig.frame.setContent (nullptr);
     CHECK (content.getParentComponent() == nullptr);
-}
-
-TEST_CASE ("editor frame: the Motion switch shows the model's state and asks the model to change it")
-{
-    Rig rig;
-    auto& motion = rig.frame.motionSwitch();
-    CHECK (motion.isOn());
-    CHECK (rig.frame.ground().isEnabled());
-    CHECK (motion.getParentComponent() == &rig.frame.hint());
-
-    ni::ui::test::click (motion, { 7.0f, ni::ui::test::centreOf (motion).y });
-    CHECK_FALSE (rig.model.motionOn);
-    CHECK_FALSE (motion.isOn());
-    CHECK_FALSE (rig.frame.ground().isEnabled());
-
-    /* Changed elsewhere: the frame shows it when told. */
-    rig.model.motionOn = true;
-    rig.frame.motionChanged();
-    CHECK (motion.isOn());
-    CHECK (rig.frame.ground().isEnabled());
-
-    /* A model that remembered Off opens with it off. */
-    ni::ui::test::FakeEditorModel off;
-    off.motionOn = false;
-    EditorFrame frame (off);
-    CHECK_FALSE (frame.motionSwitch().isOn());
-    CHECK_FALSE (frame.ground().isEnabled());
-}
-
-TEST_CASE ("editor frame: the model's rings move the Ground, broken by the content's boxes")
-{
-    Rig rig;
-    juce::Component content;
-    ni::ui::Panel panel ("Gate");
-    content.addAndMakeVisible (panel);
-    rig.frame.setContent (&content);
-    panel.setBounds (100, 40, 200, 140);
-
-    rig.model.rings.push_back (1.0f);
-    rig.frames (1);
-    CHECK (rig.model.rings.empty());
-    CHECK (rig.frame.ground().isMoving());
-
-    /* The panel is a wall, where it is in the window. */
-    const auto& walls = rig.frame.ground().getField().getWalls();
-    REQUIRE (walls.size() == 1);
-    CHECK (walls[0] == juce::Rectangle<float> (132.0f, 72.0f, 200.0f, 140.0f));
-
-    /* Motion off: rings counted meanwhile are not played. */
-    ni::ui::test::click (rig.frame.motionSwitch(), { 7.0f, 14.0f });
-    CHECK_FALSE (rig.frame.ground().isMoving());
-    rig.model.rings.push_back (1.0f);
-    rig.frames (2);
-    CHECK_FALSE (rig.frame.ground().isMoving());
-}
-
-TEST_CASE ("editor frame: the Ground moves under the content without repainting it")
-{
-    /* The content and the bar are one buffered layer: a Ground frame blits
-     * it, and only a control that changes paints again. */
-    struct Counted final : public juce::Component
-    {
-        int paints = 0;
-        void paint (juce::Graphics& g) override
-        {
-            ++paints;
-            g.fillAll (juce::Colours::transparentBlack);
-        }
-    };
-    Rig rig;
-    Counted content;
-    rig.frame.setContent (&content);
-    juce::Image window (juce::Image::ARGB, rig.frame.getWidth(), rig.frame.getHeight(), true);
-    const auto render = [&]
-    {
-        juce::Graphics g (window);
-        rig.frame.paintEntireComponent (g, true);
-    };
-    render();
-    REQUIRE (content.paints == 1);
-
-    rig.frame.ground().trigger (1.0f);
-    for (int k = 0; k < 30; ++k)
-    {
-        rig.frames (1);
-        render();
-    }
-    CHECK (rig.frame.ground().isMoving());
-    CHECK (content.paints == 1);
-
-    /* A control that changes is painted again. */
-    content.repaint();
-    render();
-    CHECK (content.paints == 2);
 }
 
 TEST_CASE ("editor frame: the bar shows the info line, then an outcome for six seconds")
@@ -219,26 +106,23 @@ TEST_CASE ("editor frame: the bar shows the info line, then an outcome for six s
     CHECK (content().clauses.front().name == "click");
 }
 
-TEST_CASE ("editor frame: the bar's two lines, within the limit, and the window takes the keyboard round")
+TEST_CASE ("editor frame: the bar's own line, within the limit, and the window takes the keyboard round")
 {
     Rig rig;
-    /* The kit's own two lines until an editor says otherwise. */
-    CHECK (ni::ui::infoOf (rig.frame.motionSwitch()) == ni::ui::EditorFrame::motionInfo.str());
+    /* The kit's own line until an editor says otherwise. */
     CHECK (ni::ui::infoOf (rig.frame.hint().signature()) == ni::ui::EditorFrame::signatureInfo.str());
     NI_CHECK_INFO_LIMIT (rig.frame);
 
-    rig.frame.setMotionInfo (juce::String::fromUTF8 ("Motion \xe2\x80\x94 let the music ripple the background."));
     rig.frame.setSignatureInfo (juce::String::fromUTF8 ("Neon Ingvy \xe2\x80\x94 the publisher of this plugin."));
-    CHECK (ni::ui::infoOf (rig.frame.motionSwitch()).startsWith ("Motion"));
     CHECK (ni::ui::infoOf (rig.frame.hint().signature()).startsWith ("Neon Ingvy"));
     NI_CHECK_INFO_LIMIT (rig.frame);
 
     CHECK (rig.frame.isKeyboardFocusContainer());
-    CHECK (ni::ui::InfoHost::find (rig.frame.motionSwitch()) == &rig.frame);
+    CHECK (ni::ui::InfoHost::find (rig.frame.hint().signature()) == &rig.frame);
     CHECK (rig.frame.frameClock().now() == doctest::Approx (rig.ms));
 }
 
-TEST_CASE ("editor frame: the signature's light falls over the Ground")
+TEST_CASE ("editor frame: the signature's light falls over the frame's own ground")
 {
     Rig rig;
     const auto img = ni::ui::test::render (rig.frame);
@@ -260,7 +144,7 @@ TEST_CASE ("editor frame: the signature's light falls over the Ground")
     CHECK (img.getPixelAt (360, 200) == ground.getPixelAt (360, 200));
 }
 
-NI_SNAPSHOT_TEST ("editor frame: at rest, and with Motion off and an outcome")
+NI_SNAPSHOT_TEST ("editor frame: at rest, and with an outcome")
 {
     NI_CHECK_PAGE ("display-editor-frame", "editor-frame");
 }

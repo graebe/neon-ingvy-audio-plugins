@@ -9,7 +9,6 @@
 #include "ChildLights.h"
 #include "UvLight.h"
 #include "UvTokens.h"
-#include "WaveSource.h"
 
 #include <array>
 #include <cmath>
@@ -100,7 +99,6 @@ void copyColumns (const juce::Image& src, int srcX, juce::Image& dst, int dstX, 
 Spectrogram::Spectrogram (int columnCount, int bandCount)
     : columns (juce::jmax (1, columnCount)), hatch (makeHatch())
 {
-    setWaveSource (*this);
     setOpaque (true);
     setWantsKeyboardFocus (true);
     setMouseCursor (juce::MouseCursor::CrosshairCursor);

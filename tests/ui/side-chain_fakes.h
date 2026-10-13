@@ -143,7 +143,7 @@ class FakeModel final : public Model
 public:
     FakeModel() { addParameters (common.params); }
 
-    /* The shared half: parameters, rings, Motion. */
+    /* The shared half: the parameters. */
     ni::ui::test::FakeEditorModel common;
     ni::ui::test::FakeParameters& params = common.params;
 
@@ -158,9 +158,6 @@ public:
 
     int numParameters() const override { return common.numParameters(); }
     juce::RangedAudioParameter& parameter (int index) override { return common.parameter (index); }
-    int takeRings (float* s, int capacity) override { return common.takeRings (s, capacity); }
-    bool motion() const override { return common.motion(); }
-    void setMotion (bool on) override { common.setMotion (on); }
 
     State state() override { return engine; }
     /* The engine's stage_ms: each stage's percentage of the cycle now. */

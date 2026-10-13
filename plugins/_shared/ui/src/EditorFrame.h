@@ -8,28 +8,25 @@
  *
  * THE WINDOW, FROM THE BACK:
  *
- *   the Ground       the animated ground, the window's size, first child: it
- *                    plays the model's rings (EditorModel::takeRings) and
- *                    breaks them around every wave source in the window
+ *   the ground       bg-000 under the dot paper (UvGround.h), the frame's own
+ *                    paint: still, the window's size, under every child
  *   the content      the editor's own component, laid out from the top --
  *                    "nothing is centred vertically" -- inside the window
  *                    padding: space-8 at the top and sides
  *   the Hint bar     pinned to the bottom edge, space-4 above it, its rule the
  *                    full width of the window and its text inside the
  *                    padding; space-6 between it and the content. It carries
- *                    the Motion switch and the Signature
+ *                    the Signature
  *
  * There is no title row: the window does not repeat the plugin's name, the
  * host shows it (as the web editors have it).
  *
- * THE WINDOW'S OWN STATE, WIRED ONCE. The Motion switch shows what the model
- * holds (EditorModel::motion) and asks it to change; the Ground follows it.
- * The switch's line and the Signature's are the kit's (motionInfo,
- * signatureInfo), so they read the same in every window. The hint's info comes from an InfoTracker on the whole window, so a
- * control anywhere in the content needs nothing but its line (setInfo). An
- * action's
- * outcome stays for outcomeMs, timed by the clock: what the bar shows is a
- * function of the time now, and the timer only refreshes it.
+ * THE WINDOW'S OWN STATE, WIRED ONCE. The Signature's line is the kit's
+ * (signatureInfo), so it reads the same in every window. The hint's info comes
+ * from an InfoTracker on the whole window, so a control anywhere in the
+ * content needs nothing but its line (setInfo). An action's outcome stays for
+ * outcomeMs, timed by the clock: what the bar shows is a function of the time
+ * now, and the timer only refreshes it.
  *
  * A PRESS ELSEWHERE ENDS A TYPED NAME, as a click anywhere on the web page
  * blurred its input. JUCE moves the keyboard only to a component that takes
@@ -40,13 +37,13 @@
  * was typed and lets the keyboard go. (A Readout's field ends its own: it is
  * modal while open.)
  *
- * LIGHT. The Ground is opaque, so the light of what stands on it cannot be
- * painted by this component (its paint() is under every child). It is painted
- * by the window layer above the Ground, which holds the content and the bar
- * and ends its paint() with paintChildLights(): the signature's halo over the
- * rule, the Motion switch's focus ring, and the light of the content if the
- * content is Luminous -- which it has to be when a control of its own can
- * glow past the content's edge into the padding (ChildLights.h).
+ * LIGHT. The frame's paint() is the ground, under every child, so the light
+ * of what stands on the ground cannot be painted there. It is
+ * painted by the window layer over the ground, which holds the content and
+ * the bar and ends its paint() with paintChildLights(): the signature's halo
+ * over the rule, and the light of the content if the content is Luminous --
+ * which it has to be when a control of its own can glow past the content's
+ * edge into the padding (ChildLights.h).
  *
  * A FIXED DESIGN SIZE. The frame is laid out at the editor's design size and
  * scaled by FixedDesign (Fit.h); heightFor() is the arithmetic for an editor
@@ -57,12 +54,9 @@
  */
 #pragma once
 
-#include "EditorModel.h"
 #include "FrameClock.h"
-#include "Ground.h"
 #include "Hint.h"
 #include "Info.h"
-#include "Toggle.h"
 #include "UvTokens.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -96,11 +90,10 @@ public:
         return padding + contentHeight + barGap + Hint::height + bottomPadding;
     }
 
-    /* `model` must outlive the frame. */
-    explicit EditorFrame (EditorModel& model, Clock clock = {});
+    explicit EditorFrame (Clock clock = {});
     ~EditorFrame() override;
 
-    /* The editor's component, placed at contentBounds(), above the Ground and
+    /* The editor's component, placed at contentBounds(), above the ground and
      * beside the bar. Not owned; nullptr for none. */
     void setContent (juce::Component*);
     juce::Rectangle<int> contentBounds() const;
@@ -114,23 +107,13 @@ public:
     /* The outcome shown at the clock's time now, if any. */
     std::optional<Clause> outcome() const;
 
-    /* The Motion switch's line and the Signature's in every window, which the
-     * frame gives them: the Hint card's one voice. The card writes "remembered
-     * on this Mac"; the plugin also runs on Windows and Linux. */
-    static constexpr InfoText motionInfo {
-        "Motion — ripple the background on the beat; remembered on this computer."
-    };
+    /* The Signature's line in every window, which the frame gives it: the
+     * Hint card's one voice. */
     static constexpr InfoText signatureInfo { "Neon Ingvy — the publisher of this plugin." };
 
-    /* The bar's own two lines, for an editor that has a reason to say them
-     * otherwise (motionInfo and signatureInfo until then). */
-    void setMotionInfo (const juce::String&);
+    /* The Signature's line, for an editor that has a reason to say it
+     * otherwise (signatureInfo until then). */
     void setSignatureInfo (const juce::String&);
-
-    /* The model's Motion changed elsewhere (another editor of the same
-     * plugin): show it, and start or stop the Ground. Called by the frame
-     * itself after it asks the model. */
-    void motionChanged();
 
     /* Ends an outcome or an info grace that has run out by the clock: what
      * the timers do, and what a test does after moving its clock. */
@@ -141,18 +124,16 @@ public:
      * what a test calls for one. */
     void pressed (juce::Component& at);
 
-    Ground& ground() noexcept { return groundLayer; }
     Hint& hint() noexcept { return bar; }
-    Toggle& motionSwitch() noexcept { return motionToggle; }
     FrameClock& frameClock() noexcept { return frames; }
     InfoState& infoState() override { return info; }
 
+    void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    /* Above the Ground, the window's size: the content, the bar, and their
-     * light over the Ground. Buffered to an image, so a Ground frame below it
-     * blits it instead of repainting every control and its glow. */
+    /* Over the ground, the window's size: the content, the bar, and their
+     * light over the ground. */
     class Layer final : public juce::Component
     {
     public:
@@ -175,13 +156,10 @@ private:
     void timerCallback() override { poll(); }
     void refreshBar();
 
-    EditorModel& model;
     Clock clock;
 
-    Ground groundLayer;
     Layer layer;
     Hint bar;
-    Toggle motionToggle { "Motion" };
     juce::Component::SafePointer<juce::Component> content;
 
     InfoState info;

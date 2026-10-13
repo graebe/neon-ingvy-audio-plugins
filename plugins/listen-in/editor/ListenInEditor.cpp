@@ -76,7 +76,7 @@ ListenInEditor::Content::Content (Model& m)
     for (auto s : { Status::idle, Status::live, Status::taken, Status::unavailable })
         statusWidth = juce::jmax (statusWidth, ni::ui::Led::idealWidthFor (info::statusText (s)));
 
-    /* Tab goes Bus, then Name, then the bar's Motion switch. */
+    /* Tab goes Bus, then Name. */
     bus.setExplicitFocusOrder (1);
     name.setExplicitFocusOrder (2);
 
@@ -114,7 +114,7 @@ void ListenInEditor::Content::resized()
 
 ListenInEditor::ListenInEditor (Model& m, ni::ui::EditorFrame::Clock clock)
     : model (m),
-      window (m, std::move (clock)),
+      window (std::move (clock)),
       content (m),
       fit (window, designWidth, designHeight)
 {

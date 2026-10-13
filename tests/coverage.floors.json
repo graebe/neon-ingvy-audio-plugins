@@ -11,7 +11,6 @@
   },
 
   "exempt_files": {
-    "plugins/_shared/ui/src/ReducedMotion.cpp": "The system's reduced-motion setting where it is not Cocoa's: every line is inside #if ! JUCE_MAC, so a macOS build -- the one coverage runs on -- compiles it to nothing and no tracefile can name it. macOS's setting is ReducedMotion.mm, which is counted.",
     "plugins/_shared/ui/gallery/Main.cpp": "The gallery application's entry point: a JUCEApplication that opens a desktop window and runs the event loop until a person closes it, so no test binary links it (tests/ui links the gallery's pages, not the app). Everything it shows is counted: every page, through the kit's tests and their snapshots (tests/ui), and the frame and registry in Gallery.cpp (tests/ui/gallery.cpp). The --shots mode it adds writes pictures for a person to look at, which the snapshot tests already hold."
   }
 }

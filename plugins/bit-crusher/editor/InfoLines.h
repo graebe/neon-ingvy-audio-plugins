@@ -56,8 +56,7 @@ inline constexpr InfoText rateValue { "Rate value — click to type a rate, such
 inline constexpr InfoText octaveValue { "Octave value — click to type octaves, such as -1 or 1.5." };
 inline constexpr InfoText dbValue { "Value — click to type a level in dB, such as -6." };
 
-/* The window's own: the switch and the signature in the hint bar. */
-inline constexpr InfoText motion { "Motion — let the beat ripple the background; remembered here." };
+/* The window's own: the signature in the hint bar. */
 inline constexpr InfoText signature { "Neon Ingvy — the publisher of this plugin." };
 
 } // namespace ni::bc::info

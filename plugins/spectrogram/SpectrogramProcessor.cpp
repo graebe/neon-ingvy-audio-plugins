@@ -85,22 +85,20 @@ void Processor::prepare (double rate, int maximumBlock)
     hop.store (spectro_pick_hop (sr, spectro_pick_fft_size (sr)), std::memory_order_relaxed);
     pubRate.store ((int) std::lround (sampleRate), std::memory_order_relaxed);
     mono.assign ((std::size_t) juce::jmax (maximumBlock, 1), 0.0f);
-    beat.prepare (sampleRate);
     recvRate.store (sr, std::memory_order_relaxed);
     stale.store (true, std::memory_order_release);
 }
 
 /*
- * ONE BLOCK: the Ground and the host's clock, then the mono sum into the
- * receiver's ring and nothing else -- the transforms run on its worker, with
- * every other source, in step. The audio is not touched: JUCE hands the
- * block in place, so what came in goes out bit for bit.
+ * ONE BLOCK: the host's clock, then the mono sum into the receiver's ring and
+ * nothing else -- the transforms run on its worker, with every other source,
+ * in step. The audio is not touched: JUCE hands the block in place, so what
+ * came in goes out bit for bit.
  */
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const int frames = buffer.getNumSamples();
     const auto clock = readClock (getPlayHead());
-    beat.tick (clock, frames);
 
     /*
      * THE HOST'S CLOCK, and the ways a host leaves it out: no tempo (0), and
@@ -142,15 +140,6 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
         });
     }
     shell_handoff_release (lend.get());
-}
-
-/* Bypassed, by the host or by the Bypass -- audio through, nothing analysed
- * -- while the Ground keeps the host's time, so the window's beat does not
- * stop. */
-void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
-{
-    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
-    ni::Processor::processBypassed (buffer, midi);
 }
 
 Transport Processor::transport() const noexcept
@@ -259,19 +248,17 @@ juce::AudioProcessorEditor* Processor::createEditor()
                                  SpectrogramEditor::designHeight);
 }
 
-/* While a window shows them: the columns, the bus list and the Ground. The
- * picker's contents now, not when the slow look comes round. */
+/* While a window shows them: the columns and the bus list. The picker's
+ * contents now, not when the slow look comes round. */
 void Processor::editorOpened()
 {
     showing = true;
-    beat.setActive (true);
     editorModel->readSources();
 }
 
 void Processor::editorClosed()
 {
     showing = false;
-    beat.setActive (false);
 }
 
 /* ---------------------------------------------------------------- state -- */

@@ -8,7 +8,7 @@
 # class is the iPlug2 one (IPLUG2_CLASS), and Bus keeps its iPlug2 index as
 # its VST3 ID (LEGACY_PARAM_IDS). Fx|Tools, as the iPlug2 build filed it: a
 # utility, not an analyzer. It has no DSP: the house transport, audio-bus, is
-# its whole engine, and carries the Ground's and the shell handoff's C ABI.
+# its whole engine, and carries the shell handoff's C ABI.
 # The editor is editor/, on the native kit. ni/Wire.cpp is the shells' own
 # transport and loop arithmetic, which stamps the bus by the host's timeline.
 ni_add_juce_plugin(listen-in

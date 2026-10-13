@@ -31,17 +31,16 @@
  */
 
 /*
- * THE GROUND'S C ABI RIDES IN THIS ARCHIVE, and this line is what puts it there.
+ * THE SHELL'S HANDOFF RIDES IN THIS ARCHIVE, and this line is what puts it there.
  *
- * `ground-capi` is an rlib holding the gnd_* entry points the editor's animated
- * background needs. It is not a static library of its own on purpose: two Rust
- * staticlibs in one binary duplicate the Rust runtime and fail to link, so this
- * repository keeps one archive per plugin (spectro-capi's Cargo.toml states the
- * rule). Naming the crate here is what makes rustc link it in, so the symbols
- * are exported from this archive rather than dropped as unreachable.
+ * `shell-capi` is an rlib holding the shell_handoff_* entry points the plugin
+ * lends its main-thread objects to its audio thread through. It is not a static
+ * library of its own on purpose: two Rust staticlibs in one binary duplicate
+ * the Rust runtime and fail to link, so this repository keeps one archive per
+ * plugin (spectro-capi's Cargo.toml states the rule). Naming the crate here is
+ * what makes rustc link it in, so the symbols are exported from this archive
+ * rather than dropped as unreachable.
  */
-use ground_capi as _;
-/* shell_handoff_*, for the same reason: see shell-capi. */
 use shell_capi as _;
 
 mod analyzer;

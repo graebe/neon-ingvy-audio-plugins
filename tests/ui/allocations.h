@@ -4,8 +4,7 @@
 /*
  * How many times this thread of the kit's test program has allocated: for the tests whose
  * claim is that something allocates NOTHING -- the Spectrogram writing a
- * column, the Ground stepping its field -- so the claim is measured rather
- * than read off the code.
+ * column -- so the claim is measured rather than read off the code.
  *
  *   const auto before = ni::ui::test::allocations();
  *   ... the work ...

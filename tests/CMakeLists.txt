@@ -181,11 +181,6 @@ if (TG_NODE)
     add_test(NAME schwung_versions
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/schwung_versions.test.mjs)
 
-    # THE GROUND'S WIRING IN EVERY PROCESSOR: the order of a few calls, which
-    # the Spectrogram once got wrong and no type checks.
-    add_test(NAME ground_shells
-             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/ground_shells.test.mjs)
-
     # THE SITE'S TOKEN GUARD: no colour spelled outside site/src/uv/tokens.css,
     # no var() it does not define, and the file held to the design system's
     # tokens.json. The native editors' guard is tests/ui's ui_tokens_native.
@@ -466,14 +461,6 @@ add_executable(abus_roundtrip abus_roundtrip.c)
 target_link_libraries(abus_roundtrip PRIVATE audio_bus_engine)
 add_test(NAME abus_roundtrip COMMAND abus_roundtrip)
 
-# THE GROUND'S OWN TESTS, which are cargo's: the beat clock through every
-# transport a host can report -- starts, stalls, loops, seeks, tempo changes,
-# meters with and without whole-quarter bars, stops -- and its no-allocation
-# check.
-add_test(NAME gnd_core
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ground-core -p ground-capi)
-
 # THE SHELL PLUMBING'S OWN TESTS: the bridge and the handoff, the property
 # that holds the bridge to its round trip, the two-thread stress runs and the
 # no-allocation check. Each product's bridge over it lives in that product's
@@ -551,21 +538,6 @@ add_executable(shell_handoff shell_handoff.c)
 target_link_libraries(shell_handoff PRIVATE audio_bus_engine shell_engine)
 add_test(NAME shell_handoff COMMAND shell_handoff)
 set_tests_properties(shell_handoff PROPERTIES SKIP_RETURN_CODE 77)
-
-# ... and the seam, for the reason abus_roundtrip states: this is the only test
-# that calls through the generated header into the real library, so it is the
-# only one that can notice a header that compiles and means something else.
-#
-# IT LINKS audio_bus_engine, WHICH LOOKS WRONG AND IS THE POINT. ground-capi is
-# an rlib rather than a staticlib of its own (cmake/NiRust.cmake says why),
-# so the gnd_* symbols live inside each product's single archive. Linking one of
-# those archives is therefore the only way to reach them -- and it makes this
-# test also check the thing most likely to break quietly: that the symbols really
-# do survive into a shipped product's library instead of being dropped as
-# unreachable.
-add_executable(gnd_roundtrip gnd_roundtrip.c)
-target_link_libraries(gnd_roundtrip PRIVATE ground_engine audio_bus_engine)
-add_test(NAME gnd_roundtrip COMMAND gnd_roundtrip)
 
 # THE ONE THAT JUSTIFIES SHARED MEMORY.
 #
@@ -834,7 +806,7 @@ add_test(NAME vz_render_ab COMMAND vz_render_ab)
 # two of them in one namespace claim and unlink each other's slots (abus_core
 # failed "slot 8 could not be claimed" so). Set here, the variable wins over
 # the config's, which never forces it.
-foreach(t tg_core_rs spectro_core abus_core gnd_core shell_core ni_shared sc_core_rs)
+foreach(t tg_core_rs spectro_core abus_core shell_core ni_shared sc_core_rs)
     set_property(TEST ${t} APPEND PROPERTY ENVIRONMENT "NIA_BUS_NS=${CMAKE_BINARY_DIR}/${t}")
 endforeach()
 
@@ -843,7 +815,7 @@ endforeach()
 # Every module under modules/ (one with a module.env), built and tested as the
 # Move runs it: modules/_shared/test.sh packages the tarball in the module
 # image, checks what it carries -- an aarch64 .so with nothing of the plugin's
-# shell or ground in it, the licence and the notices of every crate it links --
+# shell in it, the licence and the notices of every crate it links --
 # and runs the module's crates and test script on aarch64 Linux, the Trance
 # Gate's golden render among them. A new module is tested here by having a
 # module.env.
@@ -878,19 +850,19 @@ endif()
 ni_test_tiers(
     PRODUCT shared
         PROGRAMS juce_host nist_fixtures ni_alloc_guard abus_roundtrip abus_ipc abus_tap
-                 gnd_roundtrip shell_handoff ni_schwung_abi
+                 shell_handoff ni_schwung_abi
         QUICK
             # Rust: the shared crates' unit tests, and the licence gate over
             # the whole graph
-            abus_core gnd_core shell_core ni_shared music_core_rs music_core_no_std
+            abus_core shell_core ni_shared music_core_rs music_core_no_std
             cargo_deny
             # the Schwung host's tables: the vendored headers against the
             # layout the Rust mirrors are held to, and against the pinned host
             ni_schwung_abi schwung_pin schwung_versions
-            # C against the shared ABIs: the bus, the ground, the handoff
-            abus_roundtrip gnd_roundtrip shell_handoff
+            # C against the shared ABIs: the bus and the handoff
+            abus_roundtrip shell_handoff
             # lint-like checks over the tree
-            versions release licenses licenses_resolve spdx ground_shells site_tokens
+            versions release licenses licenses_resolve spdx site_tokens
             design_paths timing toolchain test_summary
             # the JUCE shell's state codec, over every product's fixtures
             nist_fixtures

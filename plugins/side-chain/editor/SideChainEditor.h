@@ -48,9 +48,9 @@
  * names the picture and its span ("SHAPE   ONE CYCLE, 500 MS", PlotWell
  * card); the input behind the output is plot-dry and the measured envelope
  * plot-ghost, the data colours; the playhead is the card's line-200 rule; and
- * the hint bar is the kit's, with the Motion switch and every control's info
- * line, stating conventions only (Hint card) -- so the stage times' reading,
- * which the web bar carried as "225 ms total", moved: into the stage knobs'
+ * the hint bar is the kit's, with every control's info line, stating
+ * conventions only (Hint card) -- so the stage times' reading, which the web
+ * bar carried as "225 ms total", moved: into the stage knobs'
  * readouts, which Time now switches between ms and % of the cycle, as the
  * canvas's proposed artboard draws them, and, as a total, into the caption
  * ("STAGES 225 MS"), where the canvas's SC1 puts it. And the labels are

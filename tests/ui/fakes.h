@@ -22,7 +22,6 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
-#include <deque>
 #include <memory>
 #include <vector>
 
@@ -133,33 +132,17 @@ private:
 };
 
 /*
- * The common half of every editor's model: parameters, rings and the Motion
- * switch, with nothing behind them. A product's fake model derives from its
- * Model.h and can hold one of these for the shared part.
+ * The common half of every editor's model: the parameters, with nothing
+ * behind them. A product's fake model derives from its Model.h and can hold
+ * one of these for the shared part.
  */
 class FakeEditorModel : public ni::ui::EditorModel
 {
 public:
     FakeParameters params;
-    std::deque<float> rings;
-    bool motionOn = true;
 
     int numParameters() const override { return params.size(); }
     juce::RangedAudioParameter& parameter (int index) override { return params[index]; }
-
-    int takeRings (float* strengths, int capacity) override
-    {
-        int n = 0;
-        while (n < capacity && ! rings.empty())
-        {
-            strengths[n++] = rings.front();
-            rings.pop_front();
-        }
-        return n;
-    }
-
-    bool motion() const override { return motionOn; }
-    void setMotion (bool on) override { motionOn = on; }
 };
 
 } // namespace ni::ui::test

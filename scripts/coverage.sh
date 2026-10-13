@@ -178,16 +178,17 @@ ni_time_stage "rust workspace" -- llvm_cov "$OUT/rust.info" --workspace
 
 # EACH C ABI CRATE AGAIN, FROM ITS OWN TEST BINARY. A capi crate's #[no_mangle]
 # functions are also compiled into every product archive that links it -- the
-# ground's and the shell's into all four -- where they are unused, and the
-# workspace export hands llvm-cov every test binary in name order. llvm-cov
-# keeps the FIRST record it sees for a function, so bus_capi's unused copy of
-# gnd_new wins over ground_capi's real one and the crate reads 43% when its own
-# tests reach every line ("functions have mismatched data"). Measured alone,
-# each crate's records are its own; the report adds the runs line by line.
+# shell's handoff into bus_capi's and spectro_capi's -- where they are unused,
+# and the workspace export hands llvm-cov every test binary in name order.
+# llvm-cov keeps the FIRST record it sees for a function, so bus_capi's unused
+# copy of shell_handoff_new wins over shell_capi's real one and the crate reads
+# low when its own tests reach every line ("functions have mismatched data").
+# Measured alone, each crate's records are its own; the report adds the runs
+# line by line.
 #
 # ALONE MEANS ITS OWN TARGET DIRECTORY. cargo llvm-cov reports on every test
 # binary it finds under its target directory, not only the ones this run
-# built, so `-p ground-capi` in the shared one still meets bus_capi's copy
+# built, so `-p shell-capi` in the shared one still meets bus_capi's copy
 # first. Each gets a directory of its own under build-coverage.
 capi_info=()
 for dir in engines/*/crates/*-capi; do

@@ -38,7 +38,6 @@
  */
 #pragma once
 
-#include "GroundClock.h"
 #include "Parameter.h"
 #include "Params.h"
 #include "Processor.h"
@@ -85,7 +84,6 @@ public:
      * a block pushes, and what a save or an export is made with. Any thread. */
     void engineValues (double (&out)[kNumParams]) const noexcept;
     const Scope& scope() const noexcept { return capture; }
-    ni::GroundClock& ground() noexcept { return beat; }
     EngineModel& model() noexcept { return *editorModel; }
     bool editorOpen() const noexcept { return capturing.load (std::memory_order_relaxed); }
 
@@ -125,7 +123,6 @@ private:
     ni::Parameter* bypass = nullptr;
 
     Scope capture;
-    ni::GroundClock beat;
     std::atomic<bool> capturing { false };
     double sampleRate = 44100.0;
     /* The dry input and the engine's sweep, for the capture, and the two

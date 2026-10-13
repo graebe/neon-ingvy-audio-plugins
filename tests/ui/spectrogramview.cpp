@@ -12,7 +12,6 @@
 #include "Spectrogram.h"
 
 #include "UvTokens.h"
-#include "WaveSource.h"
 #include "allocations.h"
 #include "events.h"
 #include "pages.h"
@@ -69,7 +68,7 @@ TEST_CASE ("spectrogram: the ramp runs spec-0 to spec-4, silence the well itself
         REQUIRE (luminance (Spectrogram::ramp ((std::uint8_t) v)) >= luminance (Spectrogram::ramp ((std::uint8_t) (v - 1))) - 0.5f);
 }
 
-TEST_CASE ("spectrogram: the shipped picture, solid to the rings, a crosshair to point with")
+TEST_CASE ("spectrogram: the shipped picture, opaque, a crosshair to point with")
 {
     Spectrogram s;
     CHECK (s.getWidth() == 606);
@@ -77,7 +76,6 @@ TEST_CASE ("spectrogram: the shipped picture, solid to the rings, a crosshair to
     CHECK (s.getColumns() == 606);
     CHECK (s.getBands() == 256);
     CHECK (s.isOpaque());
-    CHECK (ni::ui::isWaveSource (s));
     /* Reachable by Tab, as every pointer control is. */
     CHECK (s.getWantsKeyboardFocus());
     CHECK (s.getMouseCursor() == juce::MouseCursor (juce::MouseCursor::CrosshairCursor));

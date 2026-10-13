@@ -6,6 +6,18 @@ license = "GPL-3.0-or-later"
 description = "The C ABI the iPlug2 shell and any Schwung module link"
 publish.workspace = true
 
+# ONE STATIC LIBRARY PER PLUGIN, an invariant of this repository, stated here.
+#
+# A Rust staticlib carries its own copy of the Rust runtime, so linking TWO of
+# them into one binary fails on duplicate symbols -- `_rust_eh_personality` and
+# friends. That is not hypothetical: NI Listen-In once stopped linking the
+# moment it had two Rust archives.
+#
+# So libspectro_capi.a is the only archive the Spectrogram's shell links, and
+# whatever else it needs comes as an rlib compiled INTO it: bus-core by way of
+# spectro-recv, the shell's handoff by way of shell-capi. Every product's capi
+# crate does the same, and a crate with no product of its own (shell-capi,
+# ni-dsp) is an rlib for this reason.
 [lib]
 name = "spectro_capi"
 crate-type = ["staticlib"]
@@ -15,13 +27,8 @@ spectro-core = { path = "../spectro-core" }
 # The receiver half. It brings bus-core with it, which is why libspectro_capi.a
 # is still the ONE static library the shell links -- see cmake/NiRust.cmake.
 spectro-recv = { path = "../spectro-recv" }
-# The animated ground's beat clock. NOT a second static library -- see the note in
-# ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
-# ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
-# bus-core through spectro-recv.
-ground-capi = { path = "../../../ground/crates/ground-capi" }
-# The handoff that lends the shell's main-thread objects to its audio thread,
-# carried in this archive for the ground's reason.
+# The handoff that lends the shell's main-thread objects to its audio thread.
+# An rlib, compiled INTO this archive (above).
 shell-capi = { path = "../../../shell/crates/shell-capi" }
 
 # spectro_core.h and spectro_recv.h, generated from src/ by build.rs.

@@ -40,11 +40,7 @@ struct Rig
     FakeModel model;
     Editor editor { model, [this] { return ms; } };
 
-    Rig()
-    {
-        editor.frame().ground().setReducedMotionQuery ([] { return false; });
-        model.params.clear();
-    }
+    Rig() { model.params.clear(); }
 
     void frames (int n)
     {
@@ -315,8 +311,7 @@ TEST_CASE ("vocalize: every line the window writes is in it, each where it belon
     for (const auto& line : { info::vowelPanel, info::vocalPanel, info::levelPanel, info::vowelChart, info::envelopePlot,
                               info::vowel, info::size, info::voice, info::capture, info::forget, info::resonance,
                               info::vocal, info::excite, info::mode, info::mix, info::ceiling,
-                              info::output, info::vowelValue, info::percentValue, info::dbValue, info::motion,
-                              info::signature })
+                              info::output, info::vowelValue, info::percentValue, info::dbValue, info::signature })
         CHECK_MESSAGE (has (line), line.str());
 
     CHECK (ni::ui::infoOf (e.knob (param::vowel)) == info::vowel.str());

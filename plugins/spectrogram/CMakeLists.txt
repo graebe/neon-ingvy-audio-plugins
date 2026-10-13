@@ -7,9 +7,9 @@
 # replaces that one rather than standing beside it with the same class; the
 # class is the iPlug2 one (IPLUG2_CLASS), and its one parameter, the host's
 # Bypass, keeps an index for an ID (LEGACY_PARAM_IDS) as every product's do.
-# The analyzer is spectro_engine, which carries the Listen-In transport, the
-# Ground's clock and the shell's handoff in its one archive. The editor is
-# editor/, on the native kit.
+# The analyzer is spectro_engine, which carries the Listen-In transport and
+# the shell's handoff in its one archive. The editor is editor/, on the native
+# kit.
 ni_add_juce_plugin(spectrogram
     TARGET NISpectrogram
     NAME "NI Spectrogram"

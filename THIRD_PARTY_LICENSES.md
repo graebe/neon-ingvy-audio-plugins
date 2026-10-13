@@ -135,7 +135,6 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 | `cd-core`, `cd-capi` | `engines/chord-detector` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `bc-core`, `bc-capi`, `bc-move` | `engines/bit-crusher` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `vz-core`, `vz-capi`, `vz-move` | `engines/vocalize` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
-| `ground-core`, `ground-capi` | `engines/ground` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `ni-dsp`, `ni-schwung`, `ni-params` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `music-core` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — moved here from [neo-riemann](https://codeberg.org/graebe/neo-riemann), where it was MIT under the same owner |

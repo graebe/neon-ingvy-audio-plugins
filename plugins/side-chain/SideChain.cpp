@@ -103,7 +103,6 @@ void Processor::prepare (double rate, int maximumBlock)
 {
     sampleRate = rate > 0.0 ? rate : 44100.0;
     sc_shell_post_sample_rate (shell.get(), sampleRate);
-    beat.prepare (sampleRate);
     /* The engine's key buffer holds SC_MAX_BLOCK, so no chunk is longer. */
     const auto n = (std::size_t) juce::jlimit (1, SC_MAX_BLOCK, maximumBlock);
     for (auto* v : { &dry, &gain, &sweep, &copyL, &copyR })
@@ -211,22 +210,15 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& m
  * the Bypass). */
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    const int frames = buffer.getNumSamples();
-    const auto clock = readClock (getPlayHead());
-    beat.tick (clock, frames);
-    run (buffer, midi, clock, true);
+    run (buffer, midi, readClock (getPlayHead()), true);
 }
 
 /* Bypassed, by the host or by the Bypass: audio through, its own way, while
  * the engine runs on a copy, hearing the MIDI and keeping time -- a note
- * released while bypassed does not hold the duck down afterwards -- and the
- * Ground keeps the host's time, so the window's beat does not stop with the
- * sound. */
+ * released while bypassed does not hold the duck down afterwards. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    const auto clock = readClock (getPlayHead());
-    beat.tick (clock, buffer.getNumSamples());
-    run (buffer, midi, clock, false);
+    run (buffer, midi, readClock (getPlayHead()), false);
     ni::Processor::processBypassed (buffer, midi);
 }
 
@@ -236,7 +228,7 @@ juce::AudioProcessorEditor* Processor::createEditor()
                                  ni::PluginEditor::FollowDesign {});
 }
 
-/* While a window shows them: the capture and the Ground. */
+/* While a window shows it: the capture. */
 void Processor::editorOpened()
 {
     capture.Retire();
@@ -244,13 +236,11 @@ void Processor::editorOpened()
     /* The bus has run on while nobody looked: read from its live edge. */
     behind.service (true);
     capturing.store (true, std::memory_order_relaxed);
-    beat.setActive (true);
 }
 
 void Processor::editorClosed()
 {
     capturing.store (false, std::memory_order_relaxed);
-    beat.setActive (false);
 }
 
 void Processor::chooseKick (int choice)

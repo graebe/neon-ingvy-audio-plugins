@@ -19,15 +19,15 @@ using ni::ui::Toggle;
 
 constexpr InfoText joinInfo { "Join Neighbors — run each step on into the next one that is on." };
 constexpr InfoText softInfo { "Soft — the fade raises each step's amount instead of switching it." };
-constexpr InfoText motionInfo { "Motion — let the ground ring on the beat; off keeps it still." };
+constexpr InfoText holdInfo { "Hold — keep the last chord named after the keys come up." };
 
 struct TogglePage final : public ni::ui::gallery::ControlsPage
 {
     TogglePage()
     {
         heading ("Switch: off, on, hover, disabled, disabled on, focus", 0, 0);
-        const char* labels[] = { "Join Neighbors", "Soft", "bars", "clash", "48k", "Motion" };
-        const InfoText* infos[] = { &joinInfo, &softInfo, &joinInfo, &joinInfo, &joinInfo, &motionInfo };
+        const char* labels[] = { "Join Neighbors", "Soft", "bars", "clash", "48k", "Hold" };
+        const InfoText* infos[] = { &joinInfo, &softInfo, &joinInfo, &joinInfo, &joinInfo, &holdInfo };
         int x = 0;
         for (int i = 0; i < 6; ++i)
         {

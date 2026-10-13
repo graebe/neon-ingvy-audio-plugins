@@ -17,7 +17,7 @@
  *                  HOLD    Rate, Jitter, Octave       Pre, Post (the filters)
  *                  LEVEL   Drive, Mix, Output
  *
- *    (0, 488)    the Hint bar: three conventions, Motion, the Signature
+ *    (0, 488)    the Hint bar: three conventions, the Signature
  *
  * The staircase sits over the panel that shapes it. A crusher does three
  * things -- it keeps fewer levels, it keeps them less often, and it is

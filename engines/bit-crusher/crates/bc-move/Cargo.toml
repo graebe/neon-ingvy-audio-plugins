@@ -15,7 +15,7 @@ crate-type = ["cdylib", "staticlib"]
 bc-core = { path = "../bc-core" }
 # Pulled in so ONE staticlib carries both surfaces: the Schwung vtable and the
 # bc_core_* ABI the C tests link. Without its `shell` feature: the plugin shell
-# and the ground are the plugin's, and nothing on the Move calls them.
+# is the plugin's, and nothing on the Move calls it.
 bc-capi = { path = "../bc-capi", default-features = false }
 # The transport the vtable hands over, and the C-string writer.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }

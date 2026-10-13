@@ -170,7 +170,7 @@ int main (int argc, char* argv[])
     allocations = 0;
     processor.editorOpened();
     play (100);
-    check (allocations == 0, "playback with the window open: the columns and the Ground", allocations);
+    check (allocations == 0, "playback with the window open: the columns", allocations);
     for (int i = 0; i < 200 && columnsTaken < 8; ++i)
     {
         processor.service();

@@ -35,8 +35,8 @@
  * named by its title ("Steps"), and each step a cell named by describe(step)
  * ("Step 3, on, 80 %") with a press action that toggles it.
  *
- * Solid to the Ground's rings (WaveSource.h). Its steps' light falls in the
- * gaps between them and past its edges, so it is Luminous (ChildLights.h).
+ * Its steps' light falls in the gaps between them and past its edges, so it
+ * is Luminous (ChildLights.h).
  */
 #pragma once
 
