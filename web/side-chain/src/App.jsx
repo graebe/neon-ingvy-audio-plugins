@@ -28,7 +28,6 @@
  */
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { EditorFrame, useEditorBridge, createClock, createFit, scaledHeight } from '@ultraviolet/ui';
-import { createBeats } from '@ultraviolet/ui/beats';
 import { createParams, ParamKnob, ParamSelect, ParamToggle } from '@ultraviolet/ui/params';
 import { MSG, P, NUM_PARAMS } from './lib/msg.js';
 import { shapeFromNorm } from './lib/declaration.js';
@@ -70,7 +69,7 @@ export default function App(props) {
   });
   const [stageMs, setStageMs] = createSignal([0, 0, 0, 0]);
 
-  const bridge = useEditorBridge({
+  useEditorBridge({
     onMessage: (tag, text) => {
       if (tag === MSG.uiState) {
         const u = parseUi(text);
@@ -110,30 +109,6 @@ export default function App(props) {
     clock.set(u.sweep, u.msCycle > 0 ? 1 / u.msCycle : 0, moving, u.devms ?? undefined);
   });
   const playhead = () => playheadOf(clock.position(), ui().source);
-
-  /*
-   * THE GROUND RINGS ON THE BEAT, found in the playhead (the kit's
-   * lib/beats.js), as the Trance Gate's does: on Cycle the sweep is one step
-   * of the Rate, so a 1/4 cycle rings once a cycle and a 1/1 four times, full
-   * at the cycle's start. A MIDI duck has no beat to ring on.
-   */
-  let ground = null;
-  const frameBridge = {
-    setGround: (handle) => {
-      ground = handle;
-      bridge.setGround(handle);
-    },
-  };
-  const beats = createBeats();
-  createEffect(() => {
-    const u = ui();
-    if (u.source !== CYCLE || !u.advancing) {
-      beats.reset();
-      return;
-    }
-    const ring = beats.next(playhead(), 1, decl.options(P.rate)[u.rate]);
-    if (ring !== null) ground?.trigger?.(ring);
-  });
 
   /* ---------------------------------------------------------- the warning -- */
 
@@ -233,9 +208,8 @@ export default function App(props) {
 
   return (
     <div class="fit" style={{ height: `${scaledHeight(DESIGN_H, scale())}px` }}>
-      <EditorFrame width={DESIGN_W} height={DESIGN_H} motionKey="side-chain"
-                   sources=".plot" bridge={frameBridge} hint={CONVENTIONS}
-                   motionInfo={INFO.motion} signatureInfo={INFO.signature}>
+      <EditorFrame width={DESIGN_W} height={DESIGN_H} hint={CONVENTIONS}
+                   signatureInfo={INFO.signature}>
         {/* The trigger's state -- not the module's name, which the manager
           * shows -- and the window's single amber mark. */}
         <div class="state-line t-hint">

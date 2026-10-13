@@ -23,9 +23,8 @@
  *                   a held gate on any channel -- the panic -- and a note
  *                   released while bypassed does not hold the duck down
  *   the model       the `ui` and `stage_ms` readouts, the key bus, the
- *                   capture while a window is open, the Ground's rings, and
- *                   the shape and its marks -- the shape drawn is the duck the
- *                   engine plays
+ *                   capture while a window is open, and the shape and its
+ *                   marks -- the shape drawn is the duck the engine plays
  *   the editor      on the real model: the header's state and warning, the
  *                   plugin window at the design's size, and a set loaded on
  *                   another thread while it is open
@@ -732,24 +731,6 @@ TEST_CASE ("the model's capture moves with the host's, only while a window is op
     const auto before = m.scope().data;
     a.play (20);
     CHECK (m.scope().data == before);
-}
-
-TEST_CASE ("the Ground rings with the host's beat, only while a window is open")
-{
-    Instance a;
-    float rings[16];
-    a.play (190); /* two seconds, four beats, with no window */
-    a.p.editorOpened();
-    CHECK (a.model().takeRings (rings, 16) == 0);
-    a.play (94); /* a second: two beats */
-    const int n = a.model().takeRings (rings, 16);
-    CHECK (n >= 1);
-    CHECK (n <= 3);
-    /* Bypassed, it keeps the host's time. */
-    for (int i = 0; i < 94; ++i)
-        a.block ({}, true, true);
-    CHECK (a.model().takeRings (rings, 16) >= 1);
-    a.p.editorClosed();
 }
 
 /* --------------------------------------------------------------- editor -- */

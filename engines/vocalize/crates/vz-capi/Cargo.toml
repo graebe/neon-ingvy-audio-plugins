@@ -14,13 +14,12 @@ name = "vz_capi"
 crate-type = ["staticlib", "rlib"]
 
 # THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (vz_shell_*, on
-# shell-core's bridge), the ground's C ABI (gnd_*) that every plugin's one
-# archive carries, the core's Spectral engine and its capture. vz-move turns
-# them all off: the Move module has one thread, no editor, no file to capture
-# from and the Time engine only.
+# shell-core's bridge), the core's Spectral engine and its capture. vz-move
+# turns them all off: the Move module has one thread, no editor, no file to
+# capture from and the Time engine only.
 [features]
 default = ["shell", "spectral", "capture"]
-shell = ["dep:shell-core", "dep:ground-capi"]
+shell = ["dep:shell-core"]
 spectral = ["vz-core/spectral"]
 capture = ["vz-core/capture"]
 
@@ -29,9 +28,6 @@ capture = ["vz-core/capture"]
 # Move's build of this crate leaves the FFT out (Cargo unites the features
 # every dependent asks for).
 vz-core = { path = "../vz-core", default-features = false }
-# The animated ground's beat clock, compiled INTO this archive (one archive
-# per plugin; see ground-capi/Cargo.toml).
-ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 # The command queue and the published snapshot between the plugin's threads.
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The C-string helpers every capi crate wraps its entry points in.

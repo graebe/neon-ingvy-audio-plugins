@@ -18,7 +18,7 @@
  *                  VOCAL   Vocal, Resonance, Excite    Mode
  *                  LEVEL   Mix, Output                 Ceiling
  *
- *    (0, 488)    the Hint bar: three conventions, Motion, the Signature
+ *    (0, 488)    the Hint bar: three conventions, the Signature
  *
  * The vowel chart sits over the panel that moves it. The knobs share one
  * cell width in every panel, so their dials line up across the window.

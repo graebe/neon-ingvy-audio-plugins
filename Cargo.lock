@@ -54,7 +54,6 @@ dependencies = [
  "assert_no_alloc",
  "bc-core",
  "cbindgen",
- "ground-capi",
  "ni-dsp",
  "shell-core",
 ]
@@ -104,7 +103,6 @@ version = "2026.10.10+1"
 dependencies = [
  "bus-core",
  "cbindgen",
- "ground-capi",
  "shell-capi",
 ]
 
@@ -153,7 +151,6 @@ name = "cd-core"
 version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
- "ground-core",
  "music-core",
  "proptest",
  "rstest",
@@ -267,22 +264,6 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
-
-[[package]]
-name = "ground-capi"
-version = "2026.10.8+2"
-dependencies = [
- "cbindgen",
- "ground-core",
-]
-
-[[package]]
-name = "ground-core"
-version = "2026.10.8+2"
-dependencies = [
- "assert_no_alloc",
- "atomic_float",
-]
 
 [[package]]
 name = "hashbrown"
@@ -696,7 +677,6 @@ dependencies = [
  "bus-capi",
  "bus-core",
  "cbindgen",
- "ground-capi",
  "ni-dsp",
  "sc-core",
  "shell-core",
@@ -810,7 +790,6 @@ name = "spectro-capi"
 version = "2026.10.10+2"
 dependencies = [
  "cbindgen",
- "ground-capi",
  "shell-capi",
  "spectro-core",
  "spectro-recv",
@@ -885,7 +864,6 @@ name = "tg-capi"
 version = "2026.10.10+1"
 dependencies = [
  "cbindgen",
- "ground-capi",
  "ni-dsp",
  "shell-core",
  "tg-core",
@@ -999,7 +977,6 @@ version = "2026.10.11+1"
 dependencies = [
  "assert_no_alloc",
  "cbindgen",
- "ground-capi",
  "ni-dsp",
  "ni-params",
  "shell-core",

@@ -17,9 +17,8 @@ namespace uv::ground
 
 namespace
 {
-/* The dot pitch, which tokens.json states as space-3 and ground.js as its
- * pitch; the generator checks they agree on the colours, and this checks the
- * pitch divides the tile. */
+/* The dot pitch, which tokens.json states as space-3; this checks the pitch
+ * divides the tile. */
 constexpr int pitch = (int) tok::space::space3;
 static_assert (tileSize % pitch == 0, "the grain tile must repeat the dot paper exactly");
 

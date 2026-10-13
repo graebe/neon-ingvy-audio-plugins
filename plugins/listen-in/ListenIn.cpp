@@ -81,7 +81,6 @@ void Processor::prepare (double sampleRate, int)
 {
     rate.store ((std::uint32_t) std::lround (sampleRate > 0.0 ? sampleRate : 48000.0), std::memory_order_release);
     resetSeen.store (true, std::memory_order_release);
-    beat.prepare (sampleRate > 0.0 ? sampleRate : 48000.0);
 }
 
 /*
@@ -96,7 +95,6 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const int frames = buffer.getNumSamples();
     const auto clock = readClock (getPlayHead());
-    beat.tick (clock, frames);
     const int channels = buffer.getNumChannels();
     if (frames <= 0 || channels < 1)
         return;
@@ -136,10 +134,9 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 }
 
 /* Bypassed, by the host or by the Bypass -- audio through, nothing
- * published -- while the meter falls and the Ground keeps the host's time. */
+ * published -- while the meter falls. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
     fall();
     ni::Processor::processBypassed (buffer, midi);
 }
@@ -243,17 +240,6 @@ juce::AudioProcessorEditor* Processor::createEditor()
 {
     return new ni::PluginEditor (*this, std::make_unique<ListenInEditor> (*editorModel),
                                  ni::PluginEditor::FollowDesign {});
-}
-
-/* While a window shows it: the Ground. */
-void Processor::editorOpened()
-{
-    beat.setActive (true);
-}
-
-void Processor::editorClosed()
-{
-    beat.setActive (false);
 }
 
 /* THE CHUNK THE iPlug2 BUILD WROTE: the bus, its name, and the bypass after

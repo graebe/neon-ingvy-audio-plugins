@@ -57,7 +57,7 @@ golden being any test case declared with `NI_SNAPSHOT_TEST`. The token guard,
 | `UvType.h` | `uv::fonts()`, the six styles (`uv::type::value()` ...), `draw`, `drawValueWithUnit` |
 | `UvIcons.h` | `uv::icon(name, colour)`, `uv::drawIcon`, `uv::tint`, the fifteen names |
 | `UvLight.h` | `uv::light::glowLed`, `glowFocus`, `glowArc`, `shadow`, `dropShadow` |
-| `UvGround.h` | `uv::ground::paint`, the window ground at rest |
+| `UvGround.h` | `uv::ground::paint`, the window ground |
 | `UvLookAndFeel.h` | `uv::LookAndFeel`, `uv::ReadoutLabel`, `uv::SharedLookAndFeel` |
 
 `ni::ui::` is the kit's machinery, and where its components go.
@@ -134,10 +134,10 @@ rule on a clock the test turns.
 ## The design layer
 
 **Tokens are generated.** `node scripts/gen-tokens.mjs` reads `tokens.json`
-and the motion constants `ground.js` publishes, and writes `UvTokens.h`
+and the grain tile `bundle.css` carries, and writes `UvTokens.h`
 (`uv::tok::colour::ink`, `uv::tok::space::space4`, `uv::tok::size::controlH`,
-`uv::tok::type::label`, `uv::tok::shadow::glowLed`,
-`uv::tok::motion::ground::fps` ...). The names are the system's, camel-cased.
+`uv::tok::type::label`, `uv::tok::shadow::glowLed` ...) and the tile. The
+names are the system's, camel-cased.
 `tests/ui_tokens_native.test.mjs` fails while the file is stale, and while any
 kit or editor source spells a colour: a hex word, a `Colours::` name, a colour
 of literals, a `#rrggbb` in a string. Derive instead (`.withAlpha()`,
@@ -186,9 +186,6 @@ under its children.
   the message thread; a getter returns the latest snapshot already copied
   (the processor reads the engine's triple-buffered snapshots), a command
   returns at once and shows in a later snapshot.
-- **The Ground's rings** come from `takeRings()`, counted by the plugin from
-  the host's transport; **Motion** is remembered per machine, never in the
-  host's state.
 
 Tests implement the model with fakes; the processor implements it later.
 

@@ -30,7 +30,7 @@ what it costs:
 
 One Cargo workspace at the repository root. A dependency on this repository's
 own code is a `path`: to a sibling inside the same engine, or to one of the
-product-free shared crates (`engines/shared`, `ground`, `shell`, `audio-bus`).
+product-free shared crates (`engines/shared`, `shell`, `audio-bus`).
 Those are rlibs. Each product's single static library absorbs them, and the
 crates from crates.io with them, so a plugin still links exactly one archive.
 
@@ -85,7 +85,7 @@ them.
 `ni_add_rust_engine(<target> CRATE <crate> LIB <lib> [INCLUDE <dir>])` registers
 a product's C ABI, and `ni_build_rust_engines()` imports every registered crate
 with Corrosion, which runs cargo once per crate in one target directory, so the
-crates they share (`ni-dsp`, `ground`, `shell`, `audio-bus`) compile once:
+crates they share (`ni-dsp`, `shell`, `audio-bus`) compile once:
 
 1. Corrosion builds each product's static library for the build's target
    triple, which it takes from the C++ toolchain, so a Linux or Windows build
@@ -133,10 +133,10 @@ otherwise answer on its own:
   switches at the block. The input is faded undelayed, so a product that
   reports latency gets no fade until it delays that input to match.
 - **The clock.** `readClock()` reads the host's transport into a plain value,
-  allocation-free, for the engines' block clocks and the ground's beat clock
-  (`GroundClock.h`) — its loop included: `ni::wire::for_each_span` splits a
-  block where the loop wraps, so an engine fed the transport chunk by chunk
-  hears the loop's start the frame after its end.
+  allocation-free, for the engines' block clocks — its loop included:
+  `ni::wire::for_each_span` splits a block where the loop wraps, so an engine
+  fed the transport chunk by chunk hears the loop's start the frame after its
+  end.
 - **The state.** `getStateInformation` and `setStateInformation` are `final`
   and call `writeState` and `readState`. A product that took over an earlier
   bundle reads and writes that bundle's chunk through `ni::nist` (`Nist.h`),
@@ -147,8 +147,7 @@ otherwise answer on its own:
   see changed — an import, a pasted pattern — so the set is marked unsaved.
 
 `ni::PluginEditor` is the window a host opens: the product's editor at its
-design size, scaled by its Zoom, in the kit's look. `MachineSettings` keeps what
-belongs to the machine rather than the set, such as the Motion switch.
+design size, scaled by its Zoom, in the kit's look.
 `plugins/_shared/ni` holds the host-free helpers: `ni/Wire.h` (the float round
 trip, the passthrough, locale-free numbers) and `ni/Scope.h` (the capture a plot
 draws), which `tests/cpp` links without a host.
@@ -287,8 +286,8 @@ the **Native UI** page.
 `tg-capi` and `tg-move` are members of the same workspace and both reach
 `tg-core` by relative path. They cannot drift apart — not by policy, by
 construction. `tg-move` links `tg-capi` for the `tg_core_*` surface its C tests
-use, without the crate's default `shell` feature: the plugin's shell and the
-ground have no caller on the Move, so its `.so` does not carry them. The
+use, without the crate's default `shell` feature: the plugin's shell has no
+caller on the Move, so its `.so` does not carry it. The
 Side-Chain's two do the same.
 
 `tests/render_plugin.c` then proves it after the fact. It sets the identical

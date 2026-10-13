@@ -14,18 +14,14 @@ name = "bc_capi"
 crate-type = ["staticlib", "rlib"]
 
 # THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (bc_shell_*, on
-# shell-core's bridge) and the ground's C ABI (gnd_*) that every plugin's one
-# archive carries. bc-move turns it off, for sc-capi's reason: the Move module
-# has one thread and no editor.
+# shell-core's bridge). bc-move turns it off, for sc-capi's reason: the Move
+# module has one thread and no editor.
 [features]
 default = ["shell"]
-shell = ["dep:shell-core", "dep:ground-capi"]
+shell = ["dep:shell-core"]
 
 [dependencies]
 bc-core = { path = "../bc-core" }
-# The animated ground's beat clock, compiled INTO this archive (one archive
-# per plugin; see ground-capi/Cargo.toml).
-ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 # The command queue and the published snapshot between the plugin's threads.
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The C-string helpers every capi crate wraps its entry points in.

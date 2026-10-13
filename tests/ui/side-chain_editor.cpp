@@ -51,11 +51,7 @@ struct Rig
     FakeModel model;
     SideChainEditor editor { model, [this] { return ms; } };
 
-    Rig()
-    {
-        editor.frame().ground().setReducedMotionQuery ([] { return false; });
-        model.params.clear();
-    }
+    Rig() { model.params.clear(); }
 
     /* One display frame, `dt` ms after the last. */
     void frame (double dt = 1000.0 / 60.0)
@@ -795,15 +791,6 @@ TEST_CASE ("side-chain: no handle's line repeats the conventions' double-click")
     for (const auto w : { Shaper::Which::start, Shaper::Which::bottom, Shaper::Which::holdEnd, Shaper::Which::end })
         CHECK_FALSE (ni::ui::infoOf (rig.handle (w)).contains ("double-click"));
     CHECK (rig.conventions().contains ("double-click to reset"));
-}
-
-TEST_CASE ("side-chain: the Motion switch is the model's")
-{
-    Rig rig;
-    CHECK (rig.editor.frame().motionSwitch().isOn());
-    rig.model.common.motionOn = false;
-    rig.editor.frame().motionChanged();
-    CHECK_FALSE (rig.editor.frame().motionSwitch().isOn());
 }
 
 /* ---------------------------------------------------------------- kick -- */

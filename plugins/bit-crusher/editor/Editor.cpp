@@ -98,7 +98,7 @@ public:
 
 Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
     : model (m),
-      window (m, std::move (clock)),
+      window (std::move (clock)),
       view (std::make_unique<View>()),
       amplitude (std::make_unique<AmplitudePlot> (m)),
       timeCrush (std::make_unique<TimePlot> (m)),
@@ -157,7 +157,6 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
 
     /* THE WINDOW. */
     window.setConventions ({ { "drag", "a knob to turn it" }, { "shift", "for fine" }, { "double-click", "to reset" } });
-    window.setMotionInfo (info::motion);
     window.setSignatureInfo (info::signature);
     window.setContent (view.get());
     addAndMakeVisible (scaler);

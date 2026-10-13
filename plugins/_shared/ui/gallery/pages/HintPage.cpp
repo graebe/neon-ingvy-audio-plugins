@@ -4,16 +4,14 @@
 /*
  * The Hint as its card shows it, three times over the same conventions: at
  * rest; with the pointer on Length, its line laid over the conventions; and
- * after a copy, the outcome in the first clause's place. Each with the Motion
- * switch and the Signature, which stand where they stand in all three -- and
- * a narrow bar last, where the tips give way and the 16px before the
- * Signature does not.
+ * after a copy, the outcome in the first clause's place. Each closed by the
+ * Signature, which stands where it stands in all three -- and a narrow bar
+ * last, where the tips give way and the 16px before the Signature does not.
  */
 #include "DisplayPage.h"
 #include "Gallery.h"
 
 #include "Hint.h"
-#include "Toggle.h"
 
 #include <array>
 
@@ -43,16 +41,10 @@ struct HintPage final : public ni::ui::gallery::DisplayPage
         for (int i = 0; i < 4; ++i)
         {
             auto& bar = bars[(size_t) i];
-            auto& motion = switches[(size_t) i];
             caption (names[i], { 16.0f, (float) (i * step), 400.0f, 14.0f });
-
-            motion.setLabel ("Motion");
-            motion.setOn (true);
-            motion.setSize (motion.idealWidth(), (int) uv::tok::size::controlH);
 
             bar.setPadding ((int) uv::tok::space::space4);
             bar.setConventions (conventions);
-            bar.setMotionSwitch (&motion);
             addAndMakeVisible (bar);
             bar.setBounds (0, i * step + 18, i == 3 ? narrow : width, Hint::height);
         }
@@ -61,7 +53,6 @@ struct HintPage final : public ni::ui::gallery::DisplayPage
         bars[2].setOutcome (Clause { "Copied", "slot 1." });
     }
 
-    std::array<ni::ui::Toggle, 4> switches;
     std::array<Hint, 4> bars;
 };
 

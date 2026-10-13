@@ -25,12 +25,12 @@
  * bands, the dB scale, the sum of several sources and their clash.
  *
  * WHAT CROSSES A THREAD. process() copies the mono sum into the receiver's
- * ring, ticks the Ground and publishes the host's clock, and nothing else; the
- * receiver's own worker runs the transforms and leaves finished columns in
- * lock-free rings, which the editor's model drains on the message thread
- * straight into the picture's buffers (EngineModel). The host's state calls,
- * on whatever thread it makes them, only record what the session is looking
- * at (State.h's Session); the message thread applies it to the receiver.
+ * ring and publishes the host's clock, and nothing else; the receiver's own
+ * worker runs the transforms and leaves finished columns in lock-free rings,
+ * which the editor's model drains on the message thread straight into the
+ * picture's buffers (EngineModel). The host's state calls, on whatever thread
+ * it makes them, only record what the session is looking at (State.h's
+ * Session); the message thread applies it to the receiver.
  *
  * THE RECEIVER IS THE MESSAGE THREAD'S: built, configured, drained and freed
  * there, and freeing it joins its worker. The audio thread reaches it only
@@ -42,7 +42,6 @@
  */
 #pragma once
 
-#include "GroundClock.h"
 #include "Parameter.h"
 #include "Processor.h"
 #include "State.h"
@@ -108,13 +107,11 @@ public:
     Transport transport() const noexcept;
 
     ni::Parameter& bypassParameter() const noexcept { return *bypass; }
-    ni::GroundClock& ground() noexcept { return beat; }
     EngineModel& model() noexcept { return *editorModel; }
     bool editorOpen() const noexcept { return showing; }
 
 protected:
     void process (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-    void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     /* An analyser: the audio passes untouched, so the Bypass has nothing to
      * fade, and a bypassed block is analysed by nobody. */
     bool passesAudioThrough() const noexcept override { return true; }
@@ -168,7 +165,6 @@ private:
      * last tempo seen while it does not, so the picture keeps filling. */
     double position = 0.0, lastBpm = 120.0;
 
-    ni::GroundClock beat;
     bool showing = false;
 
     std::unique_ptr<EngineModel> editorModel;

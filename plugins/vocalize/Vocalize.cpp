@@ -8,7 +8,6 @@
 
 #include "Editor.h"
 #include "EngineParameter.h"
-#include "MachineSettings.h"
 #include "PluginEditor.h"
 
 #include <algorithm>
@@ -101,7 +100,6 @@ void Processor::prepare (double sampleRate, int)
     for (auto& line : bypassLine)
         std::fill (line.begin(), line.end(), 0.0f);
     bypassPos = 0;
-    beat.prepare (r);
 }
 
 /* Snapped again in double: the float a parameter holds is the nearest to a
@@ -127,8 +125,6 @@ void Processor::timerCallback()
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const int frames = buffer.getNumSamples();
-    const auto clock = readClock (getPlayHead());
-    beat.tick (clock, frames);
     if (frames <= 0 || buffer.getNumChannels() < 1)
         return;
 
@@ -149,7 +145,6 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     const int frames = buffer.getNumSamples();
-    beat.tick (readClock (getPlayHead()), frames);
     /* The engine listens on, so the block after the bypass resumes from the
      * sound it missed. */
     if (frames > 0 && buffer.getNumChannels() > 0)
@@ -187,21 +182,6 @@ void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 }
 
 /* ------------------------------------------------------------ the model -- */
-
-int Processor::takeRings (float* strengths, int capacity)
-{
-    return beat.takeRings (strengths, capacity);
-}
-
-bool Processor::motion() const
-{
-    return ni::MachineSettings::motion ("vocalize");
-}
-
-void Processor::setMotion (bool on)
-{
-    ni::MachineSettings::setMotion ("vocalize", on);
-}
 
 bool Processor::bipolar (int index) const
 {
@@ -493,13 +473,11 @@ juce::AudioProcessorEditor* Processor::createEditor()
 
 void Processor::editorOpened()
 {
-    beat.setActive (true);
     vz_shell_post_watching (shell.get(), true);
 }
 
 void Processor::editorClosed()
 {
-    beat.setActive (false);
     vz_shell_post_watching (shell.get(), false);
 }
 

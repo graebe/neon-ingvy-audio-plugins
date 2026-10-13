@@ -72,8 +72,7 @@ public:
  * is not a control well -- its ground has to be the picture's own zero, or
  * silence would draw as a colour. TWO PIXELS BIGGER THAN THE PICTURE both
  * ways, so the frame eats none of it: the web editor once lost its bottom two
- * bands to a frame exactly as tall as the canvas. The well, not the picture,
- * is the wall the Ground's rings break around.
+ * bands to a frame exactly as tall as the canvas.
  *
  * NOT THE PLOTWELL CARD, ON PURPOSE, until the design owner says otherwise.
  * The 1.1.0 card asks a plot for a line-100 hairline, its content inset 6 px
@@ -132,7 +131,7 @@ private:
  * under it, the end labels kept inside the picture. In the bar view the bar
  * tick takes its label's colour, ink-dim, and the beat tick the rail: a
  * beat's tick has no number and IS the mark, and a line-200 hairline alone
- * loses against the Ground's dots right behind it.
+ * loses against the window ground's dots right behind it.
  */
 class TimeAxis final : public juce::Component
 {

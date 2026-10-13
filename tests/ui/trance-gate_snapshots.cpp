@@ -45,12 +45,7 @@ struct Scene
     FakeFilePanels panels;
     TranceGateEditor editor { model, clipboard, panels, [this] { return ms; } };
 
-    Scene()
-    {
-        /* The Ground at rest: its motion is the Ground's goldens' to hold. */
-        editor.frame().ground().setReducedMotionQuery ([] { return true; });
-        model.engineTransport.msPerStep = 125.0;
-    }
+    Scene() { model.engineTransport.msPerStep = 125.0; }
 
     /* The engine's next block and renders, then one display frame. */
     void frame()

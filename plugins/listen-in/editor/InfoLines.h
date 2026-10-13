@@ -33,19 +33,16 @@ inline constexpr InfoText bus { "Bus — which of the 16 buses this track is pub
 inline constexpr InfoText name { "Name — what readers list this bus as; Enter keeps, Escape cancels." };
 inline constexpr InfoText level { "Level — the input's peak; grey while it goes nowhere." };
 
-/* The Signature's line; the Motion switch's is the kit's
- * (EditorFrame::motionInfo), the same in every window. */
+/* The Signature's line. */
 inline constexpr InfoText signature { "Neon Ingvy — the publisher of this plugin." };
 
 /*
  * The conventions, (verb, rest): what a person does in this window. ONE
- * CLAUSE, AND A SHORT ONE. The canvas proposes "pick a free bus – name it",
- * but it drew a bar with no Motion switch (its LI6, which 1.1.0 has not
- * decided); with the switch, this 360px window leaves the tips 87px, and
- * "pick a free bus" is 93. A bar that truncates is a bar whose hints are too
- * long, as the web editor said -- the fix is fewer words, not a smaller
- * font. That a bus must be free, the LED says the moment it is not; that the
- * field names the bus, its placeholder says.
+ * CLAUSE, AND A SHORT ONE. The canvas proposes "pick a free bus – name it"
+ * (its LI6); one clause says it. A bar that truncates is a bar whose hints
+ * are too long, as the web editor said -- the fix is fewer words, not a
+ * smaller font. That a bus must be free, the LED says the moment it is not;
+ * that the field names the bus, its placeholder says.
  */
 inline constexpr const char* pickVerb = "pick";
 inline constexpr const char* pickRest = "a bus";
@@ -68,11 +65,11 @@ inline juce::String statusText (Status s)
  * Bus parameter's text) and the name the plugin keeps, `kept`. The longest,
  * listening on bus 16 under a 31-character name, is 68 characters.
  *
- * NOT YET READABLE IN THE BAR. With the Motion switch the tips are 87px, about
- * fourteen characters, so the bar shows "Status — list…": the reason a bus is
- * not live is the screen reader's, not the eye's. Without the Ground (the
- * canvas's LI6) they would be 186px, about thirty, and these lines would be
- * cut to fit ("Status — bus 3 held elsewhere"). Which, is the owner's call.
+ * LONGER THAN THE BAR. This 360px window leaves the tips 186px, about thirty
+ * characters, so the bar shows the head of the line and an ellipsis: the
+ * whole reason a bus is not live is the screen reader's, not the eye's.
+ * Cutting these lines to fit ("Status — bus 3 held elsewhere") is the
+ * owner's call.
  */
 inline juce::String statusLine (Status s, const juce::String& busText, const juce::String& kept)
 {

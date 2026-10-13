@@ -13,8 +13,8 @@
 #
 #   1. THE TARBALL, as a device receives it: an aarch64 .so that exports the
 #      vtable and the engine's C ABI and nothing of the plugin's (no
-#      tg_shell_*, sc_shell_* or gnd_*: the capi crates' `shell` feature is
-#      off for the Move); module.json under GPL-3.0-or-later; LICENSE; and a
+#      tg_shell_* or sc_shell_*: the capi crates' `shell` feature is off for
+#      the Move); module.json under GPL-3.0-or-later; LICENSE; and a
 #      THIRD_PARTY_LICENSES.md naming every crates.io crate this .so links.
 #   2. MODULE_TEST_CRATES' cargo tests on aarch64 Linux: the vtable, the
 #      chain_params contract and the host panic (CC 120/123), on the
@@ -108,8 +108,8 @@ grep -qx move_audio_fx_init_v2 <<<"$exports" || fail "$MODULE_ID.so does not exp
 # dlsym's this symbol, and a host panic (CC 120/123) reaches the module through
 # it or not at all -- a missing export is a module that never hears one.
 grep -qx move_audio_fx_on_midi <<<"$exports" || fail "$MODULE_ID.so does not export move_audio_fx_on_midi"
-plugin_only="$(grep -E '^[a-z]+_shell_|^gnd_' <<<"$exports" || true)"
-[ -z "$plugin_only" ] || fail "$MODULE_ID.so exports the plugin's shell or ground:
+plugin_only="$(grep -E '^[a-z]+_shell_' <<<"$exports" || true)"
+[ -z "$plugin_only" ] || fail "$MODULE_ID.so exports the plugin's shell:
 $plugin_only"
 echo "  $MODULE_ID.so: aarch64, $(wc -c < "$SO") bytes, $(grep -c . <<<"$exports") exports, none of them the plugin's"
 

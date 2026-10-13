@@ -47,8 +47,7 @@
  * named by its title ("Length"), its value read by valueText ("16 steps").
  *
  * The centre carries its own info line (setCentreInfo); the rest of the ring
- * the ring's. Solid to the Ground's rings; its light reaches past its box,
- * so it is Luminous.
+ * the ring's. Its light reaches past its box, so it is Luminous.
  */
 #pragma once
 

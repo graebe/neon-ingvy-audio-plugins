@@ -71,10 +71,10 @@
  * a double-click on the well holds the trace at full scale ("0 dB fixed")
  * until the next one -- for as long as the editor is open.
  *
- * A well is solid to the Ground's rings (WaveSource.h). It takes the pointer
- * so the hint bar can say what the plot shows (setInfo on the well), and to
- * assistive technology it is an image named by its caption; one with a level
- * range also takes a press there, which is the double-click.
+ * A well takes the pointer so the hint bar can say what the plot shows
+ * (setInfo on the well), and to assistive technology it is an image named by
+ * its caption; one with a level range also takes a press there, which is the
+ * double-click.
  */
 #pragma once
 

@@ -315,8 +315,7 @@ arcs start at the top.
 
 The **Signal** and **Time Crush** pictures zoom to the level of what is
 playing, so a quiet track still fills them; their top right says by how much.
-Double-click either to hold it at full scale. The **Motion** switch in the bar at the bottom stops the
-background rippling on the beat; it is remembered on this computer.
+Double-click either to hold it at full scale.
 
 When Live switches the device off and on again, or bypasses it, the crusher
 fades out to the plain signal and back in from silence: nothing it held

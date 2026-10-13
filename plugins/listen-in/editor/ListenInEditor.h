@@ -23,13 +23,13 @@
  *   28   the status LED in a cell as wide as its longest word, space-4, the
  *        level meter (12, centred on the row) to the edge
  *   24   space-6
- *   28   the hint bar: the conventions, Motion, the Signature
+ *   28   the hint bar: the conventions, the Signature
  *   16   space-4
  *  ----
  *  172   and across, 32 + 296 + 32 = 360
  *
- * No title row: the host names the window. No panels: the Ground's rings
- * reflect off the window border only (EditorFrame).
+ * No title row: the host names the window. No panels: the controls stand on
+ * the window ground (EditorFrame).
  *
  * WHAT DIFFERS FROM THE WEB EDITOR, each because 1.1.0 says so:
  *   - the status is an LED with the status word as its label, not a word on a
@@ -49,11 +49,6 @@
  *     shows six buses at a time (a test pins it). Rejected, Bus becomes the
  *     kit's stepped long-choice knob, in a redesigned row; ratified, the
  *     model reports the taken buses and the list greys them.
- *   - PENDING, LI6: the canvas drops the Ground and the Motion switch from
- *     this utility window, which gives the hint bar the room for "pick a free
- *     bus – name it" and for the status line's why. Until it is decided the
- *     window keeps both, as the web editor and docs/live.md do, and the
- *     conventions are cut to one short clause (InfoLines.h).
  *
  * STATE LIVES IN THE MODEL. refresh() reads it -- the status, the peak, the
  * name -- and shows it; the frame clock calls it once a frame while the window

@@ -49,9 +49,6 @@ public:
     /* ---- EditorModel */
     int numParameters() const override { return 0; }
     juce::RangedAudioParameter& parameter (int index) override;
-    int takeRings (float* strengths, int capacity) override;
-    bool motion() const override;
-    void setMotion (bool on) override;
 
     /* ---- Model */
     int takeColumns (std::uint8_t* levels, std::uint8_t* clash, int capacity, int& clashCount) override;

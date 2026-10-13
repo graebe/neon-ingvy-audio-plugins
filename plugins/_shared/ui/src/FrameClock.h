@@ -3,7 +3,7 @@
 
 /*
  * One display-rate tick for everything in an editor that moves on its own --
- * a playhead, a meter, the spectrogram's next column, the Ground -- so they
+ * a playhead, a meter, the spectrogram's next column -- so they
  * redraw together, once per frame, from one source.
  *
  * NEVER NEEDED FOR CORRECTNESS. This is the rule the web editors were rebuilt
@@ -21,9 +21,9 @@
  * tick either way, at most one per vblank.
  *
  * IT RUNS ONLY WHILE SOMETHING LISTENS. A Subscription is the listening, and
- * dropping it is the stopping: the Ground holds one while its field moves and
- * lets it go at rest; a playhead holds one while the transport plays. With no
- * subscribers the timer is stopped and vblanks are ignored.
+ * dropping it is the stopping: a playhead holds one while the transport plays
+ * and lets it go when it stops. With no subscribers the timer is stopped and
+ * vblanks are ignored.
  *
  *   ni::ui::FrameClock clock { *this };                 // in the editor's root
  *   auto sub = clock.subscribe ([this] (double ms) { if (moved()) repaint(); });

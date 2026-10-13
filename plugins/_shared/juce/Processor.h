@@ -117,8 +117,8 @@ public:
     juce::VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
 
     /* An ni::PluginEditor opened, or is closing: what a product runs only
-     * while a window shows it (a scope, the Ground). JUCE's own
-     * editorBeingDeleted is not virtual. Message thread. */
+     * while a window shows it (a scope). JUCE's own editorBeingDeleted is
+     * not virtual. Message thread. */
     virtual void editorOpened() {}
     virtual void editorClosed() {}
 

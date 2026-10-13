@@ -183,27 +183,9 @@ void Hint::setPadding (int horizontal)
     repaint();
 }
 
-void Hint::setMotionSwitch (juce::Component* m)
-{
-    if (m == motion)
-        return;
-    if (motion != nullptr && motion->getParentComponent() == this)
-        removeChildComponent (motion);
-    motion = m;
-    if (motion != nullptr)
-        addAndMakeVisible (*motion);
-    resized();
-    repaint();
-}
-
 juce::Rectangle<int> Hint::tipsBounds() const
 {
     return tips;
-}
-
-juce::Rectangle<int> Hint::motionBounds() const
-{
-    return motion != nullptr ? motion->getBounds() : juce::Rectangle<int>();
 }
 
 void Hint::resized()
@@ -214,18 +196,9 @@ void Hint::resized()
     const int sigWidth = Signature::preferredWidth();
     sig.setBounds (getWidth() - padding - sigWidth, lineTop, sigWidth, Signature::height);
 
-    /* The switch space-4 before it, centred on the text's line, and fixed
-     * there by the window's width alone. */
-    int end = sig.getX() - gap;
-    if (motion != nullptr)
-    {
-        end -= motion->getWidth();
-        motion->setTopLeftPosition (end, lineTop + (line - motion->getHeight()) / 2);
-        end -= gap;
-    }
-
-    /* .tips { flex: 1; min-width: 0 }: everything else is the tips'. */
-    tips = { padding, lineTop, juce::jmax (0, end - padding), line };
+    /* .tips { flex: 1; min-width: 0 }: everything to space-4 before it is
+     * the tips'. */
+    tips = { padding, lineTop, juce::jmax (0, sig.getX() - gap - padding), line };
 }
 
 void Hint::paint (juce::Graphics& g)

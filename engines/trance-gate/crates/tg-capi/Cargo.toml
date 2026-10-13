@@ -14,21 +14,15 @@ name = "tg_capi"
 crate-type = ["staticlib", "rlib"]
 
 # THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (tg_shell_*, on
-# shell-core's bridge) and the ground's C ABI (gnd_*) that every plugin's one
-# archive carries. tg-move turns it off. The Move module has one thread and no
-# editor, so neither has a caller there, and its .so is a file on a device with
-# a fixed amount of space.
+# shell-core's bridge). tg-move turns it off. The Move module has one thread
+# and no editor, so the shell has no caller there, and its .so is a file on a
+# device with a fixed amount of space.
 [features]
 default = ["shell"]
-shell = ["dep:shell-core", "dep:ground-capi"]
+shell = ["dep:shell-core"]
 
 [dependencies]
 tg-core = { path = "../tg-core" }
-# The animated ground's beat clock. NOT a second static library -- see the note in
-# ground-capi/Cargo.toml: one archive per plugin is an invariant here, so the
-# ground's C ABI is compiled INTO this one, the same way spectro-capi reaches
-# bus-core through spectro-recv.
-ground-capi = { path = "../../../ground/crates/ground-capi", optional = true }
 # The command queue and the published snapshot between the plugin's threads.
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.

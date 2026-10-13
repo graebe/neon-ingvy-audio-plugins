@@ -28,8 +28,8 @@
  * for exactly that, and on the panel as its accessible description. To
  * assistive technology the panel is a group named by its title.
  *
- * A panel is solid to the Ground's rings (WaveSource.h), and it paints the
- * light of the controls inside it, as every kit container does (Luminous.h).
+ * A panel paints the light of the controls inside it, as every kit container
+ * does (Luminous.h).
  */
 #pragma once
 

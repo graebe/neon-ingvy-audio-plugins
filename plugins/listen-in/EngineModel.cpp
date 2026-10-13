@@ -7,7 +7,6 @@
 #include "EngineModel.h"
 
 #include "ListenIn.h"
-#include "MachineSettings.h"
 
 namespace ni::li
 {
@@ -24,21 +23,6 @@ juce::RangedAudioParameter& EngineModel::parameter (int index)
     jassert (index == param::bus);
     juce::ignoreUnused (index);
     return processor.busParameter();
-}
-
-int EngineModel::takeRings (float* strengths, int capacity)
-{
-    return processor.ground().takeRings (strengths, capacity);
-}
-
-bool EngineModel::motion() const
-{
-    return ni::MachineSettings::motion ("listen-in");
-}
-
-void EngineModel::setMotion (bool on)
-{
-    ni::MachineSettings::setMotion ("listen-in", on);
 }
 
 Status EngineModel::status() const

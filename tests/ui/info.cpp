@@ -107,8 +107,8 @@ TEST_CASE ("info: a line is a clause, split at its dash")
     const auto c = infoClause (RATE);
     CHECK (c.name == "Rate");
     CHECK (c.rest == juce::String::fromUTF8 ("\xe2\x80\x94 the length of one step, synced to the song tempo."));
-    CHECK (infoClause ("Motion").name == "Motion");
-    CHECK (infoClause ("Motion").rest.isEmpty());
+    CHECK (infoClause ("Hold").name == "Hold");
+    CHECK (infoClause ("Hold").rest.isEmpty());
 }
 
 TEST_CASE ("info: an outcome comes first, then the line, then the conventions")

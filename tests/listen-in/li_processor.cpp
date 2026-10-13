@@ -22,7 +22,7 @@
  *                  the stage included; the peak kept, clamped and decaying;
  *                  bypassed, the host's way -- through, and nothing published
  *   the model      the processor's status, peak and name; an edit marks the
- *                  set unsaved, a load does not; the Ground only with a window
+ *                  set unsaved, a load does not
  *   the editor     on the real model: the bus, the name -- or the placeholder,
  *                  never "(null)" -- and the LED, a set loaded on another
  *                  thread while it is open, and a name typed into it
@@ -714,38 +714,6 @@ TEST_CASE ("a name typed marks the set unsaved; the same name, a load and the ho
     CHECK (a.ear.dirty == 1);
     a.model().setLabel ("newer name");
     CHECK (a.ear.dirty == 2);
-}
-
-TEST_CASE ("the Ground rings with the host's beat, only while a window is open")
-{
-    Instance a;
-    Playhead head;
-    a.p.setPlayHead (&head);
-    juce::AudioBuffer<float> b (2, 512);
-    const auto play = [&] (int blocks)
-    {
-        for (int i = 0; i < blocks; ++i)
-        {
-            b.clear();
-            a.run (b);
-            head.sample += 512;
-        }
-    };
-    float rings[16];
-    play (200);
-    a.p.editorOpened();
-    CHECK (a.model().takeRings (rings, 16) == 0);
-    play (94);
-    const int n = a.model().takeRings (rings, 16);
-    CHECK (n >= 1);
-    CHECK (n <= 3);
-
-    /* And bypassed too: the Ground keeps the host's time. */
-    a.setBypass (true);
-    play (94);
-    CHECK (a.model().takeRings (rings, 16) >= 1);
-    a.p.editorClosed();
-    a.p.setPlayHead (nullptr);
 }
 
 /* ------------------------------------------------------------ the editor -- */

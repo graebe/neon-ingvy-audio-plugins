@@ -27,8 +27,7 @@
  *   activation    prepareToPlay posts the rate and a reset, so a host that
  *                 stopped and started the plugin hears nothing it held before
  *   the editor    reads the engine's picture and the vowel's formants through
- *                 the Model, on the message thread; the Ground's clock runs
- *                 while a window is open
+ *                 the Model, on the message thread
  *
  * A VOICE OF ONE'S OWN. capture() reads a recording -- WAV, AIFF, and on
  * macOS whatever the system decodes -- on a thread made for the first
@@ -59,7 +58,6 @@
  */
 #pragma once
 
-#include "GroundClock.h"
 #include "Model.h"
 #include "Processor.h"
 #include "vz_shell.h"
@@ -104,9 +102,6 @@ public:
     /* ---- the Model, for the editor: message thread */
     int numParameters() const override { return paramCount; }
     juce::RangedAudioParameter& parameter (int index) override { return *params[(size_t) index]; }
-    int takeRings (float* strengths, int capacity) override;
-    bool motion() const override;
-    void setMotion (bool on) override;
     bool bipolar (int index) const override;
     Formants formants (double vowel) override;
     Voice voice() const override;
@@ -127,8 +122,7 @@ protected:
     void writeExtraState (juce::XmlElement&) override;
     void readExtraState (const juce::XmlElement&) override;
     /* Bypassed, the host's audio passes untouched but as late as the
-     * latency the host compensates for -- JUCE's own bypass does not delay
-     * -- and the Ground keeps the host's time. */
+     * latency the host compensates for -- JUCE's own bypass does not delay. */
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
 private:
@@ -153,7 +147,6 @@ private:
     };
     std::unique_ptr<VzShell, ShellDeleter> shell;
     std::array<juce::RangedAudioParameter*, paramCount> params {};
-    ni::GroundClock beat;
     std::atomic<double> rate { 44100.0 };
 
     /* The bypassed signal, delayed: made here, emptied by prepareToPlay. */

@@ -28,13 +28,12 @@ pub mod sounding;
 pub mod text;
 pub mod timeline;
 
-pub use ground_core::Transport;
 pub use music_core::{Key, Mode, Pitch, Spelling};
 pub use params::{Param, PARAM_COUNT};
 pub use reading::{Kind, Reading};
 pub use sounding::NoteSet;
 pub use text::Names;
-pub use timeline::Timeline;
+pub use timeline::{Timeline, Transport};
 
 use sounding::{Effect, Sounding};
 

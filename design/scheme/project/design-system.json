@@ -150,9 +150,9 @@
  },
  "lastChange": {
   "by": "Torben",
-  "at": "2026-10-11T20:23:28Z",
+  "at": "2026-10-13T16:24:13Z",
   "via": "Claude Code",
-  "note": "Release 1.3.0: the Ground as water: rings drop at box corners, spread round, echo between the boxes and fade slowly",
-  "version": "1.3.0"
+  "note": "Release 2.0.0: the Ground and its Motion switch removed; the window ground is the still dot paper",
+  "version": "2.0.0"
  }
 }

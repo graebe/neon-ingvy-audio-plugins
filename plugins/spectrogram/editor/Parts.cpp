@@ -6,7 +6,6 @@
 #include "ChildLights.h"
 #include "UvTokens.h"
 #include "UvType.h"
-#include "WaveSource.h"
 
 namespace ni::spectrogram
 {
@@ -87,9 +86,6 @@ void Divider::paint (juce::Graphics& g)
 Well::Well()
 {
     setOpaque (true);
-    /* The well is the wall; the picture inside it is part of it. */
-    ni::ui::setWaveSource (*this);
-    ni::ui::setWaveSource (spectrogram, false);
     addAndMakeVisible (spectrogram);
     setSize (pictureWidth + 2, pictureHeight + 2);
 }

@@ -53,8 +53,7 @@ inline constexpr InfoText vowelValue { "Vowel value — type a vowel, such as E,
 inline constexpr InfoText percentValue { "Value — click to type a percentage; Enter sets it." };
 inline constexpr InfoText dbValue { "Value — click to type a level in dB, such as -6." };
 
-/* The window's own: the switch and the signature in the hint bar. */
-inline constexpr InfoText motion { "Motion — let the beat ripple the background; remembered here." };
+/* The window's own: the signature in the hint bar. */
 inline constexpr InfoText signature { "Neon Ingvy — the publisher of this plugin." };
 
 } // namespace ni::vz::info

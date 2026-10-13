@@ -69,18 +69,6 @@ const PRODUCTS = {
     crates: ['bus-core', 'bus-capi'].map(
       (c) => `engines/audio-bus/crates/${c}/Cargo.toml`),
   },
-  /*
-   * The ground's beat clock. Not a plugin, and unlike audio-bus not even a
-   * static library of its own: ground-capi is an rlib that each product's capi
-   * crate absorbs, because one archive per plugin is an invariant here (see
-   * cmake/NiRust.cmake). It ships inside every product that animates the
-   * ground, which is the strongest version of the reason audio-bus is listed
-   * -- a crate that disagreed with itself would disagree in each at once.
-   */
-  ground: {
-    crates: ['ground-core', 'ground-capi'].map(
-      (c) => `engines/ground/crates/${c}/Cargo.toml`),
-  },
   'chord-detector': {
     juce: { cmake: 'plugins/chord-detector/CMakeLists.txt', bundle: 'NIChordDetector' },
     crates: ['cd-core', 'cd-capi'].map(

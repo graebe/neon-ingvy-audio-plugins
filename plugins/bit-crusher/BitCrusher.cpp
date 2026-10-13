@@ -7,7 +7,6 @@
 #include "BitCrusher.h"
 
 #include "Editor.h"
-#include "MachineSettings.h"
 #include "PluginEditor.h"
 
 #include <cmath>
@@ -132,7 +131,6 @@ void Processor::prepare (double sampleRate, int)
     /* A host that deactivated the plugin and starts it again hears nothing
      * held from before: the held sample and the filters' tails let go. */
     bc_shell_post_reset (shell.get());
-    beat.prepare (rate);
     ramping = false;
 }
 
@@ -196,9 +194,6 @@ void Processor::run (juce::AudioBuffer<float>& buffer, bool heard)
 
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    const int frames = buffer.getNumSamples();
-    const auto clock = readClock (getPlayHead());
-    beat.tick (clock, frames);
     run (buffer, true);
 }
 
@@ -207,27 +202,10 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
  * would jump ahead by that much -- and back from silence on the way out. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    const auto clock = readClock (getPlayHead());
-    beat.tick (clock, buffer.getNumSamples());
     run (buffer, false);
 }
 
 /* ------------------------------------------------------------ the model -- */
-
-int Processor::takeRings (float* strengths, int capacity)
-{
-    return beat.takeRings (strengths, capacity);
-}
-
-bool Processor::motion() const
-{
-    return ni::MachineSettings::motion ("bit-crusher");
-}
-
-void Processor::setMotion (bool on)
-{
-    ni::MachineSettings::setMotion ("bit-crusher", on);
-}
 
 bool Processor::bipolar (int index) const
 {
@@ -306,16 +284,6 @@ double Processor::refreshPeriodMs() const
 juce::AudioProcessorEditor* Processor::createEditor()
 {
     return new ni::PluginEditor (*this, std::make_unique<Editor> (*this), ni::PluginEditor::FollowDesign {});
-}
-
-void Processor::editorOpened()
-{
-    beat.setActive (true);
-}
-
-void Processor::editorClosed()
-{
-    beat.setActive (false);
 }
 
 } // namespace ni::bc

@@ -26,23 +26,6 @@ counts given. Null is checked because the C checked it, and callers rely on
 that; anything else is the caller's bargain, as it was before.
 */
 
-/*
- * THE GROUND'S C ABI RIDES IN THIS ARCHIVE, and this line is what puts it there.
- *
- * `ground-capi` is an rlib holding the gnd_* entry points the editor's animated
- * background needs. It is not a static library of its own on purpose: two Rust
- * staticlibs in one binary duplicate the Rust runtime and fail to link, so this
- * repository keeps one archive per plugin (spectro-capi's Cargo.toml states the
- * rule). Naming the crate here is what makes rustc link it in, so the symbols
- * are exported from this archive rather than dropped as unreachable.
- *
- * It and the shell are the `shell` feature, the plugin's half of this crate:
- * the Move module has no editor and one thread, and builds without either
- * (see Cargo.toml).
- */
-#[cfg(feature = "shell")]
-use ground_capi as _;
-
 /* The engine's door, `tg_core_*`; see engine.rs. */
 mod engine;
 pub use engine::*;

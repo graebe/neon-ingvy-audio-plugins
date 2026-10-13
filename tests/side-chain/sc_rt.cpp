@@ -10,10 +10,9 @@
  * every malloc the calling thread makes inside processBlock is counted -- the
  * shell's C++, JUCE's, and the Rust engine's alike. The blocks cover what a
  * session does to it: a set loaded, playback under a running transport with
- * the window open (the scope and the Ground at work), a key ducking on
- * Sidechain, MIDI notes and a panic, either bypass with MIDI in it, a
- * block longer than the host announced, and a second load. Each must count
- * zero.
+ * the window open (the scope at work), a key ducking on Sidechain, MIDI notes
+ * and a panic, either bypass with MIDI in it, a block longer than the host
+ * announced, and a second load. Each must count zero.
  *
  * The guard is shown an allocation first, so a guard that was not inserted
  * -- and would count nothing ever -- fails rather than passes. macOS only:
@@ -154,7 +153,7 @@ int main (int argc, char* argv[])
     allocations = 0;
     processor.editorOpened();
     play (100, none);
-    check (allocations == 0, "playback with the window open: the scope and the Ground", allocations);
+    check (allocations == 0, "playback with the window open: the scope", allocations);
 
     allocations = 0;
     load ("custom");

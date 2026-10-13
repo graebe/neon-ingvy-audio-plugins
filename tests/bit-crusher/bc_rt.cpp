@@ -9,11 +9,10 @@
  * The processor itself, as its VST3 wrapper drives it, under alloc_guard.c:
  * every malloc the calling thread makes inside processBlock is counted -- the
  * shell's C++, JUCE's, and the Rust engine's alike. The blocks cover what a
- * session does to it: playback with the window open (the scope and the
- * Ground at work), every control automated while it plays -- each glide,
- * retune and crossfade -- a reactivation's reset, either bypass, a mono
- * track, a block longer than the host announced, and a set loaded. Each must
- * count zero.
+ * session does to it: playback with the window open (the scope at work),
+ * every control automated while it plays -- each glide, retune and crossfade
+ * -- a reactivation's reset, either bypass, a mono track, a block longer than
+ * the host announced, and a set loaded. Each must count zero.
  *
  * The guard is shown an allocation first, so a guard that was not inserted
  * -- and would count nothing ever -- fails rather than passes. macOS only:
@@ -126,7 +125,7 @@ int main()
     allocations = 0;
     processor.editorOpened();
     play (100);
-    check (allocations == 0, "playback with the window open: the scope and the Ground", allocations);
+    check (allocations == 0, "playback with the window open: the scope", allocations);
 
     /* Every control moved while it plays, from the message thread's side: a
      * new value each block, so a glide, a retune or a crossfade is always

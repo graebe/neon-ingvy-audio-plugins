@@ -13,14 +13,42 @@ playing or not, and never goes back.
 
 WHAT IT TAKES FROM THE HOST is the tempo and where the bar lines fall. While
 the transport plays, the bar line is re-anchored every block from the host's
-position (`ppq` modulo the bar, bars counted from 0, as the ground counts
-them), so the history's bars are the song's bars. When it stops, the last tempo
-and the last bar line carry on, so live playing still scrolls in time.
+position (`ppq` modulo the bar, bars counted from 0, as every host's ruler
+counts them for a song with one time signature), so the history's bars are the
+song's bars. When it stops, the last tempo and the last bar line carry on, so
+live playing still scrolls in time.
 
-A host that reports no tempo is at the ground's default, 120.
+A host that reports no tempo is at the shells' default, 120 (`DEFAULT_BPM`).
 */
 
-use ground_core::{bar_quarters, Transport, DEFAULT_BPM};
+/// The tempo a host that reports none (or nonsense) is taken to be at --
+/// the same default `ni::wire::host_transport` gives the engines.
+pub const DEFAULT_BPM: f64 = 120.0;
+
+/// The host's clock for one block.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Transport {
+    /// Whether the transport is playing.
+    pub playing: bool,
+    /// The position at the block's first sample, in quarter notes.
+    pub ppq: f64,
+    /// Quarter notes per minute.
+    pub bpm: f64,
+    /// Time signature. Either not positive is "the host gave none": 4/4.
+    pub num: i32,
+    pub den: i32,
+}
+
+/// The bar's length in quarters: `num * 4 / den`, or 4 when the host reported
+/// no time signature. A bar need not be a whole number of quarters: 7/8 is
+/// three and a half.
+pub fn bar_quarters(num: i32, den: i32) -> f64 {
+    if num <= 0 || den <= 0 {
+        4.0
+    } else {
+        f64::from(num) * 4.0 / f64::from(den)
+    }
+}
 
 /// The history's clock.
 #[derive(Clone, Copy, Debug, PartialEq)]

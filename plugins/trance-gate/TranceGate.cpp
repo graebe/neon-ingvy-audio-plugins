@@ -92,7 +92,6 @@ void Processor::prepare (double rate, int maximumBlock)
 {
     sampleRate = rate > 0.0 ? rate : 44100.0;
     tg_shell_post_sample_rate (shell.get(), sampleRate);
-    beat.prepare (sampleRate);
     const auto n = (std::size_t) juce::jmax (maximumBlock, 1);
     dry.assign (n, 0.0f);
     sweep.assign (n, 0.0f);
@@ -118,10 +117,7 @@ void Processor::engineValues (double (&out)[kNumParams]) const noexcept
  */
 void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    const int frames = buffer.getNumSamples();
-    const auto clock = readClock (getPlayHead());
-    beat.tick (clock, frames);
-    run (buffer, clock, true);
+    run (buffer, readClock (getPlayHead()), true);
 }
 
 void Processor::run (juce::AudioBuffer<float>& buffer, const ni::HostClock& clock, bool heard)
@@ -169,14 +165,11 @@ void Processor::run (juce::AudioBuffer<float>& buffer, const ni::HostClock& cloc
 }
 
 /* Bypassed, by the host or by the Bypass: audio through, its own way, while
- * the engine runs on a copy -- taking every edit and slot switch, keeping
- * time -- and the Ground keeps the host's time, so the window's beat does not
- * stop with the sound. */
+ * the engine runs on a copy, taking every edit and slot switch and keeping
+ * time. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    const auto clock = readClock (getPlayHead());
-    beat.tick (clock, buffer.getNumSamples());
-    run (buffer, clock, false);
+    run (buffer, readClock (getPlayHead()), false);
     ni::Processor::processBypassed (buffer, midi);
 }
 
@@ -206,18 +199,16 @@ juce::AudioProcessorEditor* Processor::createEditor()
     return new ni::PluginEditor (*this, std::make_unique<Window> (*editorModel), ni::PluginEditor::FollowDesign {});
 }
 
-/* While a window shows them: the Signal capture and the Ground. */
+/* While a window shows it: the Signal capture. */
 void Processor::editorOpened()
 {
     capture.Retire();
     capturing.store (true, std::memory_order_relaxed);
-    beat.setActive (true);
 }
 
 void Processor::editorClosed()
 {
     capturing.store (false, std::memory_order_relaxed);
-    beat.setActive (false);
 }
 
 /*

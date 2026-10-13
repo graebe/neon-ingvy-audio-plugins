@@ -11,7 +11,6 @@
 #include "Info.h"
 #include "Keys.h"
 #include "UvLight.h"
-#include "WaveSource.h"
 
 namespace ni::ui
 {
@@ -88,7 +87,6 @@ private:
 StepGrid::StepGrid()
 {
     setTitle ("Steps");
-    setWaveSource (*this);
     /* The gaps between steps are the grid's: they show its line too, and a
      * press there is on nothing. */
     setInterceptsMouseClicks (true, true);

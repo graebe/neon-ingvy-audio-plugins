@@ -72,8 +72,7 @@ export const INFO = {
   padsOrder: 'Pads — click the steps in the order the fade should bring them in.',
   arrival: 'Arrival — click to type a new place; a number in use swaps.',
 
-  /* The window's own: the switch and the signature in the hint bar. */
-  motion: 'Motion — let the playhead ripple the background; kept in this browser.',
+  /* The window's own: the signature in the hint bar. */
   signature: 'Neon Ingvy — the publisher of this module.',
 
   /* Every knob's readout. */

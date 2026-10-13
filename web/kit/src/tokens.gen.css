@@ -2,7 +2,7 @@
 /* Copyright (C) 2026 Torben Gräber */
 
 /*
- * Ultraviolet 1.3.0 -- GENERATED, DO NOT EDIT.
+ * Ultraviolet 2.0.0 -- GENERATED, DO NOT EDIT.
  *
  * scripts/gen-tokens.mjs wrote this from design/scheme/project/tokens.json,
  * the file the native editors' UvTokens.h is written from. After re-syncing
@@ -30,9 +30,8 @@
   --bg-000: #060410;
   /*
    * The dot of the dot-paper pattern on the window ground: 1px dots at a 12px
-   * (space-3) pitch, under a 5% uv-deep uniform noise. Grows, brightens and
-   * gains grain on a Ground wave peak. Only on the window ground, never
-   * inside a panel or well.
+   * (space-3) pitch, under a 5% uv-deep uniform noise. Only on the window
+   * ground, never inside a panel or well.
    */
   --bg-dot: #2a1e4a;
   /*

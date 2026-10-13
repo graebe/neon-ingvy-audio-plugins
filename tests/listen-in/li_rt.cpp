@@ -10,10 +10,10 @@
  * every malloc the calling thread makes inside processBlock is counted -- the
  * shell's C++, JUCE's, and the bus's Rust alike. The blocks cover what a
  * session does to it: playback before any bus is claimed, publishing on a
- * claimed bus, a block longer than the stage, the window open (the Ground at
- * work), the host moving Bus (the pusher handed over between blocks), a set
- * loaded with its name, the host's bypass, and a block on a bus another
- * instance holds. Each must count zero.
+ * claimed bus, a block longer than the stage, the window open, the host
+ * moving Bus (the pusher handed over between blocks), a set loaded with its
+ * name, the host's bypass, and a block on a bus another instance holds. Each
+ * must count zero.
  *
  * The guard is shown an allocation first, so a guard that was not inserted
  * -- and would count nothing ever -- fails rather than passes. macOS only:
@@ -136,7 +136,7 @@ int main (int argc, char* argv[])
     allocations = 0;
     processor.editorOpened();
     play (100);
-    check (allocations == 0, "playback with the window open: the Ground", allocations);
+    check (allocations == 0, "playback with the window open", allocations);
 
     allocations = 0;
     processor.busParameter().setPlainNotifyingHost (5.0);

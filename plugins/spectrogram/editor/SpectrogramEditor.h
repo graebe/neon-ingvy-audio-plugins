@@ -22,8 +22,8 @@
  *    12   space-3
  *    20   the crosshair's readout: freq, time or pos, level
  *
- * and the frame's hint bar under it: the window's conventions, Motion and
- * the Signature.
+ * and the frame's hint bar under it: the window's conventions and the
+ * Signature.
  *
  * WHICH 1.1.0 PROPOSALS, AND WHY NOT ALL. Taken: S2 (the hint states
  * conventions only), SP2 (one Span select for the bars switch and the bar

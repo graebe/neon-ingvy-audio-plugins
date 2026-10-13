@@ -34,13 +34,6 @@
  *                           curve is not two editors drawing the same curve.
  *   Slider                  the system names it; nothing uses one.
  *
- * WHAT THE RULE ABOVE BROUGHT IN IMMEDIATELY: Ground. It arrived with four
- * callers rather than one -- the design system gives EVERY window the same
- * animated ground -- so there was never a version of it that belonged to a
- * plugin. Its simulation is in lib/field.js, ported from the design system's own
- * reference implementation; the detector that drives it could not come with it
- * and lives in Rust (engines/ground), for the reason that file's header gives.
- *
  * WHAT THE RULE ABOVE HAS ALREADY MOVED: Well, Axis and band, when NI Side-Chain
  * became a second editor that needed a framed plot, a millisecond ruler and a
  * min/max waveform band. They are in components/Plot.jsx, and that file records
@@ -61,22 +54,16 @@ export { Hint } from './components/Hint.jsx';
 /* What a control does, in the hint bar while it is pointed at or focused: the
  * attributes that declare a string, and the rules EditorFrame applies them by. */
 export { infoAttrs, infoClause, hintClauses, createInfo, bindInfo, INFO_DELAY_MS } from './lib/info.js';
-/* The window's ground. One per window, first child of it, and the only thing in
- * the design system that animates. */
-export { Ground } from './components/Ground.jsx';
-/* The window itself: ground, content from the top, the Hint bar at the bottom
- * edge, the fit-to-viewport scale and the height it reports. Every editor is
- * drawn inside one. */
+/* The window itself: content from the top, the Hint bar at the bottom edge,
+ * the fit-to-viewport scale and the height it reports. Every editor is drawn
+ * inside one. */
 export { EditorFrame, useFrame } from './components/EditorFrame.jsx';
 export { createFit, fitScale, scaledHeight, reportHeight } from './lib/fit.js';
 /* The playhead's clock: the engine's position carried forward on a timer, and
  * no timer while nothing moves. */
 export { createClock, positionAt } from './lib/clock.js';
-/* The ready handshake and the ground's kicks, once for every editor. */
-export { useEditorBridge, parseGround } from './lib/bridge.js';
-/* Its switch's state, remembered per editor -- see the file for why this is not
- * a host parameter. */
-export { createMotion } from './lib/motion.js';
+/* The ready handshake, once for every editor. */
+export { useEditorBridge } from './lib/bridge.js';
 /* Rendered by Hint, and exported so a window that somehow has no hint bar can
  * still carry the signature the design system requires of every window. */
 export { Signature } from './components/Signature.jsx';
