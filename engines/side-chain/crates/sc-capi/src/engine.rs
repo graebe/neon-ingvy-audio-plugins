@@ -482,8 +482,12 @@ pub unsafe extern "C" fn sc_core_set_param(
 ///
 ///   "ui"            ONE READ FOR THE WHOLE ANIMATED PICTURE, pushed per frame:
 ///                   source:rate:ms_cycle:sweep:advancing:fires:duck:key:connected:stage:phase
-///                   ELEVEN fields, positional -- the editor parses it by
-///                   position, so this is a contract and not a debug dump.
+///                   :devms
+///                   TWELVE fields, positional -- the editors parse it by
+///                   position, so this is a contract and not a debug dump,
+///                   and fields are only ever appended. `devms` is the
+///                   engine's own clock: the ms of audio it had processed
+///                   when the readout was true.
 ///   "sweep"         the shared display axis, 0..1 -- see sc_core_sweep01
 ///   "params"        every automatable value, in sc_param_t order, colon
 ///                   separated, at full round-trip float precision

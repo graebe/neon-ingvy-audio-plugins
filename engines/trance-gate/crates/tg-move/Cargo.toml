@@ -31,3 +31,5 @@ tg-core = { path = "../tg-core" }
 # The tests' stand-in for the host's clock, a double the vtable's callback
 # reads (src/lib.rs). `atomic_f64` is the feature that brings AtomicF64.
 atomic_float = { workspace = true, features = ["atomic_f64"] }
+# Reads chain_params as JSON in the tests, as sc-move's do; tg-core links it.
+serde_json = { workspace = true, features = ["alloc"] }

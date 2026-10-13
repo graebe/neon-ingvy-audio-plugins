@@ -267,7 +267,10 @@ fn the_readouts_have_the_documented_shape() {
     unsafe {
         let c = sc_core_create(SR);
         let fields = |s: &str| s.split(':').count();
-        assert_eq!(fields(&get(c, "ui").unwrap()), 11, "App.jsx parses `ui` by position");
+        /* Read by position (EngineModel.cpp, which wants at least eleven; the
+         * Move's web editor), so fields are only ever appended: the eleventh
+         * is `phase`, and `devms` came after it. */
+        assert_eq!(fields(&get(c, "ui").unwrap()), 12, "`ui` gained a field: append only");
         assert_eq!(fields(&get(c, "params").unwrap()), PARAM_COUNT as usize);
         assert_eq!(fields(&get(c, "stage_ms").unwrap()), 4);
 

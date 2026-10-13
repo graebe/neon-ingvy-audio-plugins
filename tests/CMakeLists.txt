@@ -231,6 +231,29 @@ if (TG_NODE)
     add_test(NAME site_links
              COMMAND ${TG_NODE} ${CMAKE_SOURCE_DIR}/site/scripts/check-links.mjs)
     set_tests_properties(site_links PROPERTIES SKIP_RETURN_CODE 2)
+
+    # THE MOVE'S WEB EDITORS (web/, docs/tech/move-web-editors.md): the kit's
+    # and each editor's node tests, and each editor built and driven in Chrome
+    # against a fake Move with the real engine behind it. scripts/test-web.sh
+    # skips (77) without node_modules.
+    foreach(_web web_kit:unit:kit web_tg:unit:trance-gate web_sc:unit:side-chain
+                 web_tg_e2e:e2e:trance-gate web_sc_e2e:e2e:side-chain)
+        string(REPLACE ":" ";" _w ${_web})
+        list(GET _w 0 _name)
+        list(GET _w 1 _kind)
+        list(GET _w 2 _what)
+        add_test(NAME ${_name}
+                 COMMAND ${CMAKE_SOURCE_DIR}/scripts/test-web.sh ${_kind} ${_what})
+        set_tests_properties(${_name} PROPERTIES SKIP_RETURN_CODE 77)
+        # A BROWSER SUITE RUNS ALONE. Its sync tests measure the playhead frame
+        # by frame, and Chrome starved by the full tier's other work -- four
+        # Docker module builds among it -- lost its sessions outright
+        # ("Internal server error, session closed"). On its own it is the
+        # machine the tests describe.
+        if (_kind STREQUAL "e2e")
+            set_tests_properties(${_name} PROPERTIES RUN_SERIAL TRUE)
+        endif()
+    endforeach()
 else()
     ni_missing_capability(node "the checks over the tree (versions, licences, tokens, the site) are not registered")
 endif()
@@ -668,7 +691,7 @@ add_test(NAME cargo_deny_advisories
 # puts it, the same as not being run.
 add_test(NAME tg_core_rs
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p tg-core -p tg-capi -p tg-move)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p tg-core -p tg-capi -p tg-move -p tg-web)
 
 # ---------------------------------------------------------------- The C++
 # The plain C++ every processor shares, with no JUCE and no engine:
@@ -701,7 +724,7 @@ add_test(NAME sc_core COMMAND sc_core_tests)
 # hardware has no aux input to feed it.
 add_test(NAME sc_core_rs
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p sc-core -p sc-capi -p sc-move)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p sc-core -p sc-capi -p sc-move -p sc-web)
 
 # THE CURVE ORACLE: the engine's duck shape against a table it generated, for
 # the reason the Trance Gate's is (tg_curves). Regenerate with
@@ -892,6 +915,8 @@ ni_test_tiers(
             # lint-like checks over the tree
             versions release licenses licenses_resolve spdx ground_shells site_tokens
             design_paths timing toolchain test_summary
+            # the Move web editors' kit
+            web_kit
             # the JUCE shell's state codec, over every product's fixtures
             nist_fixtures
             # the papers' code: every listing a paper prints, compiled and tested
@@ -910,14 +935,16 @@ ni_test_tiers(
             tg_processor tg_rt
             # the Move module's editor, run against Schwung's shared modules
             tg_move_ui
-        FULL tg_render_ab:render tg_host:host
+            # its web editor on the Move
+            web_tg
+        FULL tg_render_ab:render tg_host:host web_tg_e2e:browser
     PRODUCT spectrogram
         PROGRAMS spectro_columns srecv_api
         QUICK spectro_core spectro_columns srecv_api
     PRODUCT side-chain
         PROGRAMS sc_core_tests sc_shape_table sc_envelope_table sc_render_ab
-        QUICK sc_core_rs sc_core sc_shape sc_envelope
-        FULL sc_render_ab:render
+        QUICK sc_core_rs sc_core sc_shape sc_envelope web_sc
+        FULL sc_render_ab:render web_sc_e2e:browser
     PRODUCT chord-detector
         PROGRAMS cd_core_tests
         QUICK cd_core_rs cd_core

@@ -25,6 +25,10 @@
  *
  *   plugins/_shared/ui/src/UvTokens.h          namespace uv::tok
  *   plugins/_shared/ui/assets/ground-grain.png the grain tile, byte for byte
+ *   web/kit/src/tokens.gen.css                 the same tokens as custom
+ *                                              properties, for the web
+ *                                              editors on the Move
+ *                                              (scripts/gen-tokens-css.mjs)
  *
  * GENERATED, AND CHECKED IN, AND HELD TO THE GENERATOR. The site's tokens.css
  * is a transcription that a test compares with tokens.json
@@ -43,6 +47,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import vm from 'node:vm';
+import { renderCss } from './gen-tokens-css.mjs';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DESIGN = join(ROOT, 'design', 'scheme', 'project');
@@ -52,6 +57,7 @@ const BUNDLE_CSS = join(DESIGN, 'components', 'bundle.css');
 
 export const TOKENS_H = join(ROOT, 'plugins', '_shared', 'ui', 'src', 'UvTokens.h');
 export const GRAIN_PNG = join(ROOT, 'plugins', '_shared', 'ui', 'assets', 'ground-grain.png');
+export const KIT_CSS = join(ROOT, 'web', 'kit', 'src', 'tokens.gen.css');
 
 const fail = (msg) => { throw new Error(`gen-tokens: ${msg}`); };
 
@@ -468,6 +474,7 @@ export function generate() {
   return new Map([
     [TOKENS_H, Buffer.from(header, 'utf8')],
     [GRAIN_PNG, readGrain()],
+    [KIT_CSS, Buffer.from(renderCss(system), 'utf8')],
   ]);
 }
 
@@ -480,7 +487,7 @@ export function stale(files = generate()) {
   const same = (path, bytes) => {
     if (!existsSync(path)) return false;
     const disk = readFileSync(path);
-    if (!path.endsWith('.h')) return disk.equals(bytes);
+    if (!/\.(h|css)$/.test(path)) return disk.equals(bytes);
     return disk.toString('utf8').replace(/\r\n/g, '\n') === bytes.toString('utf8');
   };
   return [...files].filter(([path, bytes]) => !same(path, bytes)).map(([path]) => path);

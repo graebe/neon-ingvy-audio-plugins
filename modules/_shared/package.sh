@@ -105,13 +105,27 @@ for optional in ui_chain.js help.json; do
         cp "$MODULE_DIR/$optional" "$OUT/$optional"
     fi
 done
+# The web editor, where a module has one: build/web/<module>, written by
+# scripts/build-web.sh -- web_ui.html, which Schwung's web manager shows in the
+# module's slot, and its assets beside it, every path relative. Built on the
+# host before packaging (this container has no node). A module packaged
+# without a build ships without the page -- the device's own controls are
+# whole without it -- and says so.
+WEB_BUILD="$REPO_ROOT/build/web/$MODULE"
+if [ -f "$WEB_BUILD/web_ui.html" ]; then
+    # Everything the build wrote: the page, assets/, and fonts/OFL.txt, the
+    # licence of the fonts inlined into the stylesheet.
+    cp -R "$WEB_BUILD/." "$OUT/"
+elif [ -d "$REPO_ROOT/web/$MODULE" ]; then
+    echo "package: no build/web/$MODULE -- packaging without the web editor (scripts/build-web.sh $MODULE)" >&2
+fi
 # THE NOTICES SHIP WITH THE BINARY. What lands on a device is a .so (and a .js)
 # with no repository anywhere near it, and the GPL asks that every copy come
 # with the licence -- so it travels in the tarball or it does not reach the
 # person it is addressed to at all. THIRD_PARTY_LICENSES.md too: the .so statically links
 # the Rust standard library and the crates from crates.io its engine uses
-# (wmidi, lexical-core, serde_json and the rest), and the Side-Chain's MIDI
-# trigger is a port of MIT-licensed code; every one's notice is recorded there.
+# (wmidi, lexical-core, serde_json and the rest); every one's notice is
+# recorded there, and so is that of anything the remote editor bundles.
 cp LICENSE                     "$OUT/LICENSE"
 cp THIRD_PARTY_LICENSES.md     "$OUT/THIRD_PARTY_LICENSES.md"
 chmod 755 "$OUT/${MODULE_ID}.so"

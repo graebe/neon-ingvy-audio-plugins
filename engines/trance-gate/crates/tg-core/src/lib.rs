@@ -123,6 +123,9 @@ pub struct Playhead {
     pub sample_rate: f64,
     pub cursor: usize,
     pub meter: rates::Meter,
+    /// The engine's own clock, in ms ([`Instance::clock_ms`]): the `ui`
+    /// readout's `devms`, which a mirror must report as the engine does.
+    pub clock_ms: f64,
 }
 
 pub struct Instance {
@@ -172,6 +175,18 @@ pub struct Instance {
     /// and is written against the concept, not against what drives it.
     advancing: bool,
     sample_rate: f64,
+    /*
+     * THE ENGINE'S OWN CLOCK: the time it has processed, from the audio
+     * itself. A reader elsewhere -- the Move's web editor -- gets the `ui`
+     * readout some unknown time after it was true, and needs to know WHEN it
+     * was true to carry the playhead from there (the `devms` field). Frames as
+     * a u64, so the count is exact for as long as anything runs; ms worked out
+     * only when read, so the readout is the same however the blocks were cut;
+     * and the ms already counted at an earlier rate kept apart, so a rate
+     * change does not rescale the past. Runtime, not saved.
+     */
+    clock_frames: u64,
+    clock_ms_before: f64,
     /// The host's time signature, as last told: what the `params` readout's
     /// detents are counted in. Runtime, not saved -- it is the host's.
     meter: rates::Meter,
@@ -220,6 +235,8 @@ impl Instance {
             ms_per_step: 0.0,
             last_bpm: 120.0,
             advancing: false,
+            clock_frames: 0,
+            clock_ms_before: 0.0,
             sample_rate: if sample_rate > 0.0 { sample_rate } else { 44100.0 },
             meter: rates::Meter::COMMON,
             fade_w: [1.0; MAX_STEPS],
@@ -245,10 +262,17 @@ impl Instance {
     /// A non-positive or non-finite rate is refused rather than stored: every
     /// length the engine measures in samples divides by it.
     #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is refused with it")]
+    /// The time this instance has processed, in ms: the engine's own clock.
+    pub fn clock_ms(&self) -> f64 {
+        self.clock_ms_before + self.clock_frames as f64 * 1000.0 / self.sample_rate
+    }
+
     pub fn set_sample_rate(&mut self, sample_rate: f64) {
         if !(sample_rate > 0.0) || !sample_rate.is_finite() {
             return;
         }
+        self.clock_ms_before = self.clock_ms();
+        self.clock_frames = 0;
         self.sample_rate = sample_rate;
         /* ms_per_step cancels the sample rate out, so this changes nothing
          * today. It is here so that "ms_per_step is current" holds at every
@@ -310,6 +334,7 @@ impl Instance {
             sample_rate: self.sample_rate,
             cursor: self.cursor,
             meter: self.meter,
+            clock_ms: self.clock_ms(),
         }
     }
 
@@ -326,6 +351,8 @@ impl Instance {
      */
     pub fn mirror(&mut self, state: &str, p: &Playhead) {
         self.set_sample_rate(p.sample_rate);
+        self.clock_ms_before = p.clock_ms;
+        self.clock_frames = 0;
         self.last_bpm = p.last_bpm;
         self.set_param("state", state);
         self.ms_per_step = p.ms_per_step;

@@ -52,6 +52,20 @@ pub const DEFAULT_SAMPLE_RATE: f64 = 44100.0;
 /// the table says nothing about the rate, and [`DEFAULT_SAMPLE_RATE`] stands.
 pub const SAMPLE_RATES: RangeInclusive<i32> = 8_000..=384_000;
 
+/// The key a module's remote editor is fed through, and what it answers: the
+/// version of the contract between a module and its `web_ui.html`.
+///
+/// Schwung's web manager pushes a component's values to its page only as they
+/// are written, and a value the DSP changes by itself -- the playhead, a slot
+/// recall -- is written by nobody. What it does push live is the `extra_keys`
+/// of a declaration: re-read when anything changes and twice a second besides,
+/// and sent when they moved. But only keys that are NOT declared params of
+/// their own (remote_ui.go, extraKeysOf). So each module declares one read-only
+/// `web_ui` entry whose `extra_keys` name its editor's feeds -- the engine's
+/// readouts, undeclared -- and the shell answers `web_ui` itself.
+pub const WEB_UI_KEY: &str = "web_ui";
+pub const WEB_UI_VERSION: &str = "1";
+
 /// What a product supplies to become a Schwung audio_fx module.
 pub trait Module: Sized + 'static {
     /// The `chain_params` JSON the knob grid draws the module from.
@@ -288,7 +302,7 @@ extern "C" fn set_param<M: Module>(inst: *mut c_void, key: *const c_char, val: *
 
 /*
  * The engine serves every parameter it owns and answers -1 for the rest; the
- * two keys here describe how SCHWUNG draws the module. `ui_hierarchy` is
+ * three keys here describe how SCHWUNG draws the module. `ui_hierarchy` is
  * SERVED EMPTY, NOT REFUSED: -1 makes the component entry gate hold for
  * HOLD_UNSERVED_READ_LIMIT attempts on every entry, and "" (falsy, like -1)
  * is the truth -- the module supplies no hierarchy.
@@ -310,16 +324,23 @@ extern "C" fn get_param<M: Module>(
         out[0] = 0;
         return 0;
     }
-    if key == "chain_params" {
-        let p = M::CHAIN_PARAMS.as_bytes();
-        if p.len() >= out.len() {
-            return -1;
-        }
-        out[..p.len()].copy_from_slice(p);
-        out[p.len()] = 0;
-        return p.len() as c_int;
+    match key {
+        "chain_params" => serve(M::CHAIN_PARAMS, out),
+        WEB_UI_KEY => serve(WEB_UI_VERSION, out),
+        _ => inst.get_param(key, out),
     }
-    inst.get_param(key, out)
+}
+
+/// `text` and its terminator into `out`, or -1 when they do not fit: a
+/// truncated declaration would be a module whose controls never appear.
+fn serve(text: &str, out: &mut [u8]) -> c_int {
+    let p = text.as_bytes();
+    if p.len() >= out.len() {
+        return -1;
+    }
+    out[..p.len()].copy_from_slice(p);
+    out[p.len()] = 0;
+    p.len() as c_int
 }
 
 /// `move_audio_fx_init_v2`'s body; see [`export_audio_fx!`].

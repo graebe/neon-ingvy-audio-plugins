@@ -125,6 +125,17 @@ pub use ni_dsp::Transport;
 
 pub struct Instance {
     sample_rate: f64,
+    /*
+     * THE ENGINE'S OWN CLOCK: the time it has processed, from the audio
+     * itself -- the `ui` readout's `devms`, which tells a reader elsewhere
+     * (the Move's web editor) WHEN the sweep it reads was true. Frames as a
+     * u64, exact for as long as anything runs; ms worked out only when read,
+     * so the readout is the same however the blocks were cut; and the ms
+     * already counted at an earlier rate kept apart, so a rate change does
+     * not rescale the past. Runtime, not saved.
+     */
+    clock_frames: u64,
+    clock_ms_before: f64,
 
     /* ---- parameters ---- */
     source: Source,
@@ -206,6 +217,8 @@ impl Instance {
         let sr = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
         Instance {
             sample_rate: sr,
+            clock_frames: 0,
+            clock_ms_before: 0.0,
             source: Source::Cycle,
             rate_idx: rates::RATE_DEFAULT,
             time_mode: TimeMode::Ms,
@@ -245,10 +258,17 @@ impl Instance {
     }
 
     #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is refused with it")]
+    /// The time this instance has processed, in ms: the engine's own clock.
+    pub fn clock_ms(&self) -> f64 {
+        self.clock_ms_before + self.clock_frames as f64 * 1000.0 / self.sample_rate
+    }
+
     pub fn set_sample_rate(&mut self, sample_rate: f64) {
         if !(sample_rate > 0.0) || sample_rate == self.sample_rate {
             return;
         }
+        self.clock_ms_before = self.clock_ms();
+        self.clock_frames = 0;
         self.sample_rate = sample_rate;
         self.follower.set_sample_rate(sample_rate);
         /* A rate change invalidates every length the envelope measured in
@@ -318,6 +338,8 @@ impl Instance {
         if frames == 0 {
             return None;
         }
+        /* Time passes whether or not this block ducks anything. */
+        self.clock_frames = self.clock_frames.saturating_add(frames as u64);
         let mut bpm = self.last_bpm;
         if let Some(t) = t {
             if t.bpm > 1.0 && t.bpm < 1000.0 {
