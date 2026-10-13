@@ -209,7 +209,8 @@ fn every_readout_says_the_same_bytes() {
             "sc1;source=1;rate=6;time_mode=1;delay=-12.5;attack=5;hold=10;release=25;depth=0.625;\
              curve=0;channel=7;trigger_note=60;midi_mode=1;vel_sens=0.5;threshold=-60;lockout=33",
         ),
-        ("ui", "1:6:250.000:0.020500:1:1:0.3649:0.00000:0:2:0.500000"),
+        /* devms last: 256 frames at 48 kHz. */
+        ("ui", "1:6:250.000:0.020500:1:1:0.3649:0.00000:0:2:0.500000:5.333"),
         ("params", "1:6:1:-12.5:5:10:25:0.625:0:7:60:1:0.5:-60:33"),
         ("stage_ms", "-31.250:12.500:25.000:62.500"),
         ("phase", "0.500000"),
@@ -462,4 +463,34 @@ fn a_loaded_value_is_clamped_like_any_other() {
     assert_eq!(p.num(Param::Depth), 1.0);
     assert_eq!(p.num(Param::Attack), 0.0);
     assert_eq!(p.num(Param::Lockout), Instance::new(48000.0).num(Param::Lockout), "NaN is dropped");
+}
+
+/*
+ * `devms`: THE ENGINE'S OWN CLOCK, appended to `ui`. Exactly the frames it
+ * has processed at its rate, never going back, carried across a rate change;
+ * and every field before it where it was.
+ */
+#[test]
+fn devms_is_the_time_the_engine_has_processed() {
+    let ui = |p: &crate::Instance| {
+        let mut buf = [0u8; 512];
+        let n = p.get_param("ui", &mut buf);
+        core::str::from_utf8(&buf[..n as usize]).unwrap().to_owned()
+    };
+    let mut p = crate::Instance::new(48000.0);
+    assert_eq!(ui(&p).split(':').count(), 12, "eleven fields, and devms appended");
+    assert_eq!(ui(&p).split(':').last(), Some("0.000"));
+    let mut l = [0.0f32; 480];
+    let mut r = [0.0f32; 480];
+    let mut last = 0.0;
+    for _ in 0..100 {
+        p.process_f32_split(&mut l, &mut r, 480, None);
+        let now: f64 = ui(&p).split(':').last().unwrap().parse().unwrap();
+        assert!(now > last, "{now} after {last}");
+        last = now;
+    }
+    assert_eq!(last, 1000.0);
+    p.set_sample_rate(44100.0);
+    p.process_f32_split(&mut l, &mut r, 441, None);
+    assert_eq!(ui(&p).split(':').last(), Some("1010.000"));
 }

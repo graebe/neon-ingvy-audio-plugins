@@ -274,10 +274,12 @@ fn the_ui_readout_has_the_shape_the_editor_parses() {
     assert!(n > 0);
     let text = std::str::from_utf8(&buf[..n as usize]).unwrap();
     let fields: Vec<&str> = text.split(':').collect();
+    /* A positional contract (the plugin's EngineModel.cpp, the Move's web
+     * editor), so append only: eleven fields, then devms. */
     assert_eq!(
         fields.len(),
-        11,
-        "the `ui` readout is a positional contract with App.jsx: {text}"
+        12,
+        "the `ui` readout is a positional contract: {text}"
     );
     for f in &fields {
         assert!(!f.is_empty(), "empty field in {text}");

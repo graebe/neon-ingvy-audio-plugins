@@ -176,9 +176,41 @@ mod tests {
         for (k, _, b) in keys {
             assert_eq!(get(k), b, "{k} in slot 5");
         }
-        /* The ui readout's last field is the slot: the editor's cue to re-read
-         * the grid. */
-        assert!(get("ui").ends_with(":4"), "{}", get("ui"));
+        /* The ui readout's `slot` field is the editor's cue to re-read the
+         * grid -- found by its name, as every reader may now. */
+        let at = tg_core::params::UI_FIELDS.iter().position(|f| *f == "slot").unwrap();
+        assert_eq!(get("ui").split(':').nth(at), Some("4"), "{}", get("ui"));
+        (api.destroy_instance.unwrap())(inst);
+    }
+
+    /*
+     * THE EDITOR'S FEED: the last declaration, read-only, answered through the
+     * vtable, and naming only keys that are NOT declared themselves -- the
+     * manager pushes a declared key once and never again, so a declared feed
+     * would freeze the page -- each of which the module answers.
+     */
+    #[test]
+    fn the_web_editor_feed_is_last_and_every_key_it_names_is_live() {
+        let declared: Vec<serde_json::Value> = serde_json::from_str(params::CHAIN_PARAMS).unwrap();
+        let keys: Vec<&str> = declared.iter().filter_map(|d| d["key"].as_str()).collect();
+        let last = declared.last().unwrap();
+        assert_eq!(last["key"], ni_schwung::WEB_UI_KEY);
+        assert_eq!(last["access"], "read");
+        let feeds: Vec<&str> = last["extra_keys"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(!feeds.is_empty() && feeds.len() <= 4, "the host takes at most four per declaration");
+
+        let api = api();
+        let inst = (api.create_instance.unwrap())(std::ptr::null(), std::ptr::null());
+        let get = |k: &str| {
+            let k = CString::new(k).unwrap();
+            let mut buf = vec![0 as std::ffi::c_char; 65536];
+            (api.get_param.unwrap())(inst, k.as_ptr(), buf.as_mut_ptr(), buf.len() as std::ffi::c_int)
+        };
+        assert!(get(ni_schwung::WEB_UI_KEY) > 0);
+        for f in feeds {
+            assert!(!keys.contains(&f), "{f} is declared, so the page would never see it move");
+            assert!(get(f) > 0, "the module does not answer {f}");
+        }
         (api.destroy_instance.unwrap())(inst);
     }
 

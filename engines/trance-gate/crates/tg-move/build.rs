@@ -125,8 +125,9 @@ fn main() {
         Entry::Raw(r#"{"key":"pattern","name":"Pat","type":"string","access":"read"}"#),
         Entry::Raw(r#"{"key":"ties","name":"Ties","type":"string","access":"read"}"#),
         Entry::Raw(r#"{"key":"phase","name":"Phase","type":"string","access":"read","live":true}"#),
-        Entry::Raw(r#"{"key":"ui","name":"UI","type":"string","access":"read"}"#),
         Entry::Raw(r#"{"key":"gate","name":"Gate","type":"canvas","as_page":true,"show_value":false,"extra_keys":["ui","rate"]}"#),
+        /* The web editor's feed, last (src/params.rs says why). */
+        Entry::Raw(r#"{"key":"web_ui","name":"Web UI","type":"string","access":"read","extra_keys":["ui","params","state"]}"#),
     ];
     let mut json = String::from("[");
     for (i, e) in entries.iter().enumerate() {

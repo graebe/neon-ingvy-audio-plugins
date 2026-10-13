@@ -1,15 +1,24 @@
 {
   "name": "neon-ingvy-audio-plugins",
   "private": true,
-  "description": "Audio plugins and Schwung modules around shared Rust engines; this workspace is the documentation site.",
+  "description": "Audio plugins and Schwung modules around shared Rust engines; this workspace is the documentation site and the Move's web editors.",
   "license": "GPL-3.0-or-later",
   "workspaces": [
-    "site"
+    "site",
+    "web/kit",
+    "web/trance-gate",
+    "web/side-chain"
   ],
   "scripts": {
     "build": "npm run build --workspace site",
     "test:quick": "scripts/test.sh quick",
     "test:full": "scripts/test.sh full",
-    "test:product": "scripts/test.sh product"
+    "test:product": "scripts/test.sh product",
+    "build:web": "scripts/build-web.sh",
+    "test:web": "scripts/test-web.sh unit kit && scripts/test-web.sh unit trance-gate && scripts/test-web.sh unit side-chain",
+    "test:e2e": "scripts/test-web.sh e2e trance-gate && scripts/test-web.sh e2e side-chain"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
   }
 }

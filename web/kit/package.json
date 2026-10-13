@@ -1,0 +1,28 @@
+{
+  "name": "@ultraviolet/ui",
+  "version": "1.0.1",
+  "private": true,
+  "description": "The Ultraviolet design system as Solid components, and the transport that connects them to a Move through Schwung's web manager.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./shell": "./src/lib/shell.js",
+    "./params": "./src/params.js",
+    "./capture": "./src/lib/capture.js",
+    "./curve": "./src/lib/curve.js",
+    "./tokens.css": "./src/tokens.css",
+    "./components.css": "./src/components.css",
+    "./schwung": "./src/lib/schwung.js",
+    "./host": "./src/lib/host.js",
+    "./capi": "./src/lib/capi.js",
+    "./fake-schwung": "./src/lib/fake-schwung.js",
+    "./vite": "./vite.editor.mjs",
+    "./chain": "./src/lib/chain.js",
+    "./beats": "./src/lib/beats.js"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.0"
+  }
+}

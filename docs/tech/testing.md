@@ -144,6 +144,11 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   step of every length reachable through the pads and the arrows, the ring,
   the pad colours and the redraw gate. It needs a Schwung checkout beside this
   one (or `SCHWUNG_SHARED`) and is reported Skipped without one,
+- the Move web editors' unit tests: the kit's (`web_kit`: the host and its
+  Schwung transport, the `chain_params` conversion, the fake Move, the tokens
+  and the components) and each editor's against its engine's wasm (`web_tg`,
+  `web_sc`), skipped without `node_modules`
+  ([Web editors on the Move](move-web-editors.md)),
 - the native kit's and the editors' unit tests (`tests/ui`:
   `ni_ui_tests_*_unit`) — every control, every editor on its fakes, and every
   info line held to 72 characters; their snapshot goldens are in the full
@@ -178,6 +183,7 @@ Everything quick runs, and:
 | `bundles` | per bundle: it carries its notices (`licenses_bundle_*`); its signature verifies as Live's scanner checks it (`codesign_*`: `codesign --verify --deep --strict`); its version spellings (`versions_bundle_*`); the release staging, dry-run against it (`release_bundle_*`) |
 | `site` | every root-relative link on the built site resolves |
 | `advisories` | `cargo_deny_advisories`: `cargo deny check advisories` against RustSec's database as it is today — a vulnerable, unsound or unmaintained crate, or a yanked version, anywhere in the graph. Fetched at run time, so it is here and not in quick (**Licences**, below) |
+| `browser` | each Move web editor built and driven in Chrome by Playwright (`web_tg_e2e`, `web_sc_e2e`): against a fake Move with the real engine behind it, at desktop and phone width, with screenshots, and the built `web_ui.html` against a fake of Schwung's bridge |
 | `coverage` | the coverage floor, in the instrumented build |
 | `move` | every Schwung module (`move_<module>`, one per `modules/<module>/module.env`), built and tested by `modules/_shared/test.sh` in the module image on aarch64 Linux: the tarball's `.so` is aarch64 and exports nothing of the plugin's shell or ground, it carries `LICENSE` and a notice for every crate it links, the module's crates' cargo tests (the vtable, `chain_params`, the host panic on CC 120/123) pass on the Move's architecture, and the Trance Gate's golden render (`engines/trance-gate/tests/run.sh`) keeps its md5 there. Needs Docker running as arm64 (Apple Silicon); not registered without Docker |
 

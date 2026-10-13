@@ -1,0 +1,188 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+
+/*
+ * The frame's pieces: the fit, the height it reports, the clock and the
+ * handshake.
+ *
+ * Run with --conditions=browser (npm test does), so Solid's effects run.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createRoot, createEffect } from 'solid-js';
+import { createFit, fitScale, reportHeight, scaledHeight } from '../src/lib/fit.js';
+import { createClock, positionAt, TICK_MS } from '../src/lib/clock.js';
+import { useEditorBridge, parseGround } from '../src/lib/bridge.js';
+import { SHELL_MSG } from '../src/lib/shell.js';
+import { recorder } from './support/transport.mjs';
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+/* A window that can be resized and says who is listening. */
+function fakeWindow(width) {
+  const listeners = new Set();
+  return {
+    innerWidth: width,
+    addEventListener: (type, fn) => type === 'resize' && listeners.add(fn),
+    removeEventListener: (type, fn) => type === 'resize' && listeners.delete(fn),
+    resize(w) { this.innerWidth = w; for (const fn of [...listeners]) fn(); },
+    listeners,
+  };
+}
+
+test('the scale fits the design width into the viewport', () => {
+  assert.equal(fitScale(412, 824), 0.5);
+  assert.equal(fitScale(0, 824), 1);          /* no viewport yet */
+  assert.equal(fitScale(10, 824), 0.1);       /* floored */
+  assert.equal(scaledHeight(604, 0.5), 302);
+  assert.equal(scaledHeight(101, 1.5), 152);
+});
+
+test('createFit follows a resize and removes its listener with its owner', () => {
+  const win = fakeWindow(824);
+  let fit;
+  const dispose = createRoot((d) => { fit = createFit(824, { win }); return d; });
+  assert.equal(fit.scale(), 1);
+  win.resize(412);
+  assert.equal(fit.scale(), 0.5);
+  assert.equal(win.listeners.size, 1);
+  dispose();
+  assert.equal(win.listeners.size, 0, 'the resize listener outlived the editor');
+});
+
+/*
+ * THE BUG: the height was computed inside an effect that read a plain fit()
+ * call, so a host resize moved the transform and never re-sent the height.
+ */
+test('the height is re-sent when the host resizes the window', async () => {
+  const win = fakeWindow(760);
+  const sent = [];
+  const dispose = createRoot((d) => {
+    const { scale } = createFit(760, { win });
+    reportHeight(() => 604, scale, (h) => sent.push(h));
+    return d;
+  });
+  await flush();
+  win.resize(380);
+  await flush();
+  win.resize(380);                             /* no change, no message */
+  await flush();
+  dispose();
+  assert.deepEqual(sent, ['604', '302']);
+});
+
+test('the clock interpolates between anchors and holds when stopped', () => {
+  assert.equal(positionAt({ pos: 2, perMs: 0.01, moving: true, at: 100 }, 150), 2.5);
+  assert.equal(positionAt({ pos: 2, perMs: 0.01, moving: false, at: 100 }, 150), 2);
+  assert.equal(positionAt({ pos: 2, perMs: 0, moving: true, at: 100 }, 150), 2);
+});
+
+test('the clock runs its timer only while the position moves', () => {
+  let t = 0;
+  const timers = new Map();
+  let next = 0;
+  const every = (f, ms) => { assert.equal(ms, TICK_MS); timers.set(++next, f); return next; };
+  const cancel = (id) => timers.delete(id);
+  createRoot((dispose) => {
+    const c = createClock({ every, cancel, now: () => t });
+    assert.equal(c.running(), false, 'a stopped clock must not arm a timer');
+    c.set(4, 1 / 125, true);
+    assert.equal(c.running(), true);
+    assert.equal(timers.size, 1);
+    c.set(4.5, 1 / 125, true);
+    assert.equal(timers.size, 1, 're-anchoring does not arm a second timer');
+    t = 250;
+    assert.equal(c.position(), 6.5);
+    const tick = [...timers.values()][0];
+    tick();                                    /* a tick re-renders, the timer stays */
+    assert.equal(c.running(), true);
+    c.set(6, 1 / 125, false);                  /* transport stops */
+    assert.equal(c.running(), false);
+    assert.equal(timers.size, 0, 'the timer is cancelled when the position stops');
+    tick();                                    /* a tick already queued does nothing */
+    assert.equal(c.position(), 6);
+    dispose();
+  });
+});
+
+test('a moving clock re-renders on its own timer, with no display frame', async () => {
+  const seen = [];
+  let dispose;
+  createRoot((d) => {
+    dispose = d;
+    const c = createClock();
+    c.set(0, 1, true);
+    createEffect(() => seen.push(c.position()));
+  });
+  await new Promise((r) => setTimeout(r, TICK_MS * 6));
+  dispose();
+  assert.ok(seen.length >= 3, `the position re-rendered ${seen.length} times`);
+  assert.ok(seen[seen.length - 1] > seen[0], 'and moved');
+});
+
+test('the handshake sends ready once, after mount, and hands kicks to the ground', async () => {
+  const t = recorder();
+  const kicks = [];
+  const other = [];
+  const dispose = createRoot((d) => {
+    const bridge = useEditorBridge({ onMessage: (tag, text) => other.push([tag, text]) });
+    bridge.setGround({ trigger: (s) => kicks.push(s) });
+    return d;
+  });
+  await flush();
+  t.in.message(SHELL_MSG.ground, '0.750');
+  t.in.message(SHELL_MSG.ground, 'nope');
+  t.in.message(64, 'x');
+  dispose();
+  t.in.message(64, 'after');
+  assert.deepEqual(t.sent, [['msg', SHELL_MSG.ready, '']]);
+  assert.deepEqual(kicks, [0.75]);
+  assert.deepEqual(other, [[64, 'x']]);
+  assert.equal(parseGround(''), null);
+});
+
+test('the plugin\'s frame ticks reach the ground, and its running state reaches the plugin', async () => {
+  const t = recorder();
+  let ticks = 0;
+  let report = null;
+  const other = [];
+  const dispose = createRoot((d) => {
+    const bridge = useEditorBridge({ onMessage: (tag, text) => other.push(tag) });
+    bridge.setGround({ trigger: () => {}, tick: () => ticks++, onRunning: (fn) => { report = fn; } });
+    return d;
+  });
+  await flush();
+  t.in.message(SHELL_MSG.groundTick, '');
+  t.in.message(SHELL_MSG.groundTick, '');
+  assert.equal(ticks, 2);
+  assert.deepEqual(other, [], 'a tick is the ground\'s, not the editor\'s');
+
+  report(true);
+  report(false);
+  const run = t.sent.filter((m) => m[1] === SHELL_MSG.groundRun).map((m) => m[2]);
+  assert.deepEqual(run, ['1', '0']);
+  dispose();
+});
+
+/*
+ * WITH THE ENGINE'S TIME: a readout that arrives late still puts the playhead
+ * where the engine is now. Engine time 10000 is page time 20 (a 20 ms delay
+ * on the first readout); the second, true at engine time 10500, arrives 300 ms
+ * late -- and the playhead is carried from 10500, not from its arrival.
+ */
+test('a stamped readout is carried from the engine\'s time, however late it came', () => {
+  let t = 0;
+  createRoot((dispose) => {
+    const c = createClock({ every: () => 1, cancel: () => {}, now: () => t });
+    t = 20;
+    c.set(0, 1 / 125, true, 10000);
+    t = 820;
+    c.set(4, 1 / 125, true, 10500);
+    assert.ok(Math.abs(c.position() - (4 + 300 / 125)) < 0.01, `at ${c.position()}`);
+    t = 1020;
+    assert.ok(Math.abs(c.position() - (4 + 500 / 125)) < 0.01, `at ${c.position()}`);
+    c.set(4.2, 0, false, 10600);
+    assert.equal(c.position(), 4.2, 'stopped is where it stopped');
+    dispose();
+  });
+});
