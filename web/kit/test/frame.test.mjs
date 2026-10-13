@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { createRoot, createEffect } from 'solid-js';
 import { createFit, fitScale, reportHeight, scaledHeight } from '../src/lib/fit.js';
 import { createClock, positionAt, TICK_MS } from '../src/lib/clock.js';
-import { useEditorBridge, parseGround } from '../src/lib/bridge.js';
+import { useEditorBridge } from '../src/lib/bridge.js';
 import { SHELL_MSG } from '../src/lib/shell.js';
 import { recorder } from './support/transport.mjs';
 
@@ -120,48 +120,19 @@ test('a moving clock re-renders on its own timer, with no display frame', async 
   assert.ok(seen[seen.length - 1] > seen[0], 'and moved');
 });
 
-test('the handshake sends ready once, after mount, and hands kicks to the ground', async () => {
+test('the handshake sends ready once, after mount, and passes every message on', async () => {
   const t = recorder();
-  const kicks = [];
   const other = [];
   const dispose = createRoot((d) => {
-    const bridge = useEditorBridge({ onMessage: (tag, text) => other.push([tag, text]) });
-    bridge.setGround({ trigger: (s) => kicks.push(s) });
+    useEditorBridge({ onMessage: (tag, text) => other.push([tag, text]) });
     return d;
   });
   await flush();
-  t.in.message(SHELL_MSG.ground, '0.750');
-  t.in.message(SHELL_MSG.ground, 'nope');
   t.in.message(64, 'x');
   dispose();
   t.in.message(64, 'after');
   assert.deepEqual(t.sent, [['msg', SHELL_MSG.ready, '']]);
-  assert.deepEqual(kicks, [0.75]);
   assert.deepEqual(other, [[64, 'x']]);
-  assert.equal(parseGround(''), null);
-});
-
-test('the plugin\'s frame ticks reach the ground, and its running state reaches the plugin', async () => {
-  const t = recorder();
-  let ticks = 0;
-  let report = null;
-  const other = [];
-  const dispose = createRoot((d) => {
-    const bridge = useEditorBridge({ onMessage: (tag, text) => other.push(tag) });
-    bridge.setGround({ trigger: () => {}, tick: () => ticks++, onRunning: (fn) => { report = fn; } });
-    return d;
-  });
-  await flush();
-  t.in.message(SHELL_MSG.groundTick, '');
-  t.in.message(SHELL_MSG.groundTick, '');
-  assert.equal(ticks, 2);
-  assert.deepEqual(other, [], 'a tick is the ground\'s, not the editor\'s');
-
-  report(true);
-  report(false);
-  const run = t.sent.filter((m) => m[1] === SHELL_MSG.groundRun).map((m) => m[2]);
-  assert.deepEqual(run, ['1', '0']);
-  dispose();
 });
 
 /*

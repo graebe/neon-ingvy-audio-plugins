@@ -61,8 +61,8 @@ export function infoClause(text) {
  * `info` a string or null, `conventions` the window's clauses.
  *
  * THE CLAUSES ARE STILL DRAWN UNDER THE INFO, hidden: they hold the bar's
- * width, so the Motion switch after them does not move while a string comes
- * and goes (see .hint-tips in components.css).
+ * width, so nothing after them moves while a string comes and goes (see
+ * .hint-tips in components.css).
  */
 export function hintClauses({ conventions = [], info = null, status = null }) {
   if (status) return { clauses: [status, ...conventions.slice(0, 2)], info: null };

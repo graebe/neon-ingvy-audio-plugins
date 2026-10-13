@@ -59,8 +59,7 @@ export const INFO = {
   channelValue: 'Channel value — click to type a channel, 1 to 16, or Omni.',
   velSensValue: 'Velocity value — click to type a percentage; Enter sets it.',
 
-  /* The window's own: the switch and the signature in the hint bar. */
-  motion: 'Motion — let the beat ripple the background; remembered here.',
+  /* The window's own: the signature in the hint bar. */
   signature: 'Neon Ingvy — the publisher of this module.',
 };
 

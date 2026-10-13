@@ -47,8 +47,7 @@ describes each control — so this is about what is different on the Move.
 - **The plots** are drawn by the engine itself: the page runs the Trance
   Gate's own DSP, compiled to WebAssembly, on the patch the Move publishes.
 - **The playhead** follows the Move's transport. The Move reports it a couple
-  of times a second, and the page carries it forward smoothly in between; the
-  background ripples on the beat when **Motion** is on.
+  of times a second, and the page carries it forward smoothly in between.
 
 ### What Live has and this page does not
 

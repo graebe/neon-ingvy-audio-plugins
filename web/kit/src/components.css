@@ -21,8 +21,8 @@
 /* ------------------------------------------------------------ window --
  * EditorFrame's <main>. The design: window padding space-8, content laid out
  * from the top, the Hint bar pinned to the bottom edge with its rule running
- * the full width of the window. `relative` and `isolate` are what the ground's
- * canvas needs (see .ground below). The scale is a transform from the top-left
+ * the full width of the window. `relative` is what the editors' absolutely
+ * placed contents measure from. The scale is a transform from the top-left
  * corner, set by the frame.
  *
  * Clipped, not scrolled: `clip` is not a scroll container, so focusing a
@@ -31,7 +31,6 @@
  */
 .window {
   position: relative;
-  isolation: isolate;
   box-sizing: border-box;
   transform-origin: top left;
   padding: var(--s8) var(--s8) var(--s4);
@@ -295,9 +294,8 @@
 /*
  * THE CLAUSES AND AN INFO STRING SHARE ONE CELL. The clauses always size it --
  * hidden, not removed, while a string is shown -- and the string's
- * `contain: inline-size` keeps it from sizing it at all, so the bar's width,
- * and with it the Motion switch's place, is the clauses' whatever is laid over
- * them. A string longer than the clauses truncates: the ellipsis says that
+ * `contain: inline-size` keeps it from sizing it at all, so the bar's width
+ * is the clauses' whatever is laid over them. A string longer than the clauses truncates: the ellipsis says that
  * string is too long for its window, as it says it of a fourth clause.
  */
 .hint-clauses, .hint-info {
@@ -450,68 +448,3 @@
 .checklist-hint { color: var(--ink-muted); }
 .checklist-empty { color: var(--ink-muted); padding: var(--s2); }
 
-/* THE ANIMATED GROUND -- the design system's Ground, as a canvas behind the
- * window's contents.
- *
- * The static ground (the dot paper and its grain) is painted on `body` in
- * tokens.css and stays there: it is the fallback, and a field at rest shows the
- * same design -- the same dots in the same place, the same colours, grain of the
- * same density, though not the same grain pixels (tokens.css says why). This
- * canvas sits on top of that and is the same picture until a kick lands.
- *
- * WHAT EACH EDITOR MUST PROVIDE, because this rule cannot: `position: relative`
- * AND `isolation: isolate` on the window element. Both, and the second is the
- * one that is easy to miss.
- *
- * `position: relative` is what `inset: 0` resolves against; without it the canvas
- * escapes to the viewport, which looks almost right at the design size and wrong
- * at every other one.
- *
- * `isolation: isolate` is what keeps a NEGATIVE z-index inside the window. A
- * negative child paints after its parent's own background but before the
- * parent's content -- exactly where a ground belongs -- but only if the parent
- * is a stacking context. A `position: relative` with `z-index: auto` is not one,
- * so without `isolate` the canvas escapes outwards and paints BEHIND the
- * window's background, which is opaque in at least one editor. It would then
- * simply vanish there and nowhere else.
- *
- * z-index -1 AND NOT 0, which is the choice that keeps this to one rule. At 0
- * the canvas is a positioned descendant and paints in step 8 of the painting
- * order -- above every statically positioned thing in the window, including all
- * of its text. Fixing that would mean giving every direct child of every window
- * a `position` and a `z-index`, and in two of these editors those children are
- * already absolutely positioned at hand-computed pixels. Going negative instead
- * changes nothing about any child. */
-.ground {
-  position: absolute;
-  inset: 0;
-  /*
-   * width AND height ARE REQUIRED, AND `inset: 0` DOES NOT REPLACE THEM.
-   *
-   * A <canvas> is a REPLACED element: it has an intrinsic size of 300x150, and
-   * for a replaced element `width: auto` means "use the intrinsic width" rather
-   * than "stretch between left and right". The offsets are then over-constrained
-   * and the browser drops `right` and `bottom` instead of honouring them.
-   *
-   * So `inset: 0` alone gets you a 300x150 canvas pinned to the top-left corner
-   * -- which is invisible, because a field at rest looks the same as the
-   * static CSS ground it is sitting on. The window looks exactly right and only
-   * a patch in the corner ever animates. That is how this shipped once.
-   */
-  width: 100%;
-  height: 100%;
-  z-index: -1;
-  /* It carries no information and must never take a click: every control in the
-   * window sits above it, and a stray drag on the background should do nothing
-   * rather than something. */
-  pointer-events: none;
-}
-
-/* The Motion switch in the hint bar. It must not shrink -- the tips are the
- * shrinkable child of that row (see Hint.jsx) -- and it sits on the baseline
- * grid the rest of the bar uses. */
-.hint-bar .switch-row {
-  flex: 0 0 auto;
-  margin-left: var(--s4);
-  align-self: center;
-}
