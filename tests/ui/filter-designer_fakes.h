@@ -43,7 +43,7 @@ inline void addParameters (ni::ui::test::FakeParameters& p)
     p.addFloat ("output", "Output", linear (-24.0f, 24.0f), 0.0f, db, number);
     p.addFloat ("scale", "Scale", linear (-200.0f, 200.0f), 100.0f, plainText, number);
     p.addChoice ("adaptive_q", "Adaptive Q", offOn, 0);
-    p.addChoice ("analyzer", "Analyzer", { "Off", "Pre", "Post", "Both" }, 2);
+    p.addChoice ("analyzer", "Analyzer", { "Off", "Pre", "Post", "Both" }, 3);
     p.addChoice ("iso_on", "Isolator", offOn, 0);
     p.addFloat ("iso_low", "Isolator Low", linear (-60.0f, 6.0f), 0.0f, db, number);
     p.addFloat ("iso_mid", "Isolator Mid", linear (-60.0f, 6.0f), 0.0f, db, number);
@@ -51,20 +51,20 @@ inline void addParameters (ni::ui::test::FakeParameters& p)
     p.addChoice ("iso_kill_low", "Kill Low", offOn, 0);
     p.addChoice ("iso_kill_mid", "Kill Mid", offOn, 0);
     p.addChoice ("iso_kill_high", "Kill High", offOn, 0);
-    p.addFloat ("iso_freq_lo", "Isolator Lower", logRange (30.0f, 2000.0f), 250.0f, hz, number);
-    p.addFloat ("iso_freq_hi", "Isolator Upper", logRange (500.0f, 16000.0f), 2500.0f, hz, number);
-    p.addChoice ("iso_slope", "Isolator Slope", { "24 dB", "48 dB" }, 0);
+    p.addFloat ("iso_freq_lo", "Crossover Low-Mid", logRange (30.0f, 2000.0f), 250.0f, hz, number);
+    p.addFloat ("iso_freq_hi", "Crossover Mid-High", logRange (500.0f, 16000.0f), 2500.0f, hz, number);
+    p.addChoice ("iso_slope", "Crossover Slope", { "LR4 24 dB/oct", "LR8 48 dB/oct" }, 0);
     const float freqs[] = { 30, 45, 70, 100, 150, 220, 330, 500, 750, 1100, 1600, 2400, 3600, 5400, 8000, 12000 };
     for (int n = 0; n < param::nodes; ++n)
     {
         const auto key = "n" + juce::String (n + 1).paddedLeft ('0', 2) + "_";
         const auto name = "Filter " + juce::String (n + 1) + " ";
         p.addChoice (key + "type", name + "Type",
-                     { "Empty", "Bell", "Low Shelf", "High Shelf", "Low Cut", "High Cut", "Band Pass", "Notch", "All Pass", "Tilt" }, 0);
+                     { "Empty", "Bell", "Low Shelf", "High Shelf", "High-Pass", "Low-Pass", "Band-Pass", "Notch", "All-Pass", "Tilt" }, 0);
         p.addChoice (key + "on", name + "On", offOn, 1);
         p.addChoice (key + "family", name + "Family",
                      { "Butterworth", "Bessel", "Chebyshev I", "Chebyshev II", "Elliptic", "Linkwitz-Riley" }, 0);
-        p.addChoice (key + "order", name + "Order", { "6 dB", "12 dB", "18 dB", "24 dB", "30 dB", "36 dB", "42 dB", "48 dB" }, 1);
+        p.addChoice (key + "order", name + "Order", { "6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct", "30 dB/oct", "36 dB/oct", "42 dB/oct", "48 dB/oct" }, 1);
         p.addFloat (key + "freq", name + "Freq", logRange (10.0f, 22000.0f), freqs[n], hz, number);
         p.addFloat (key + "gain", name + "Gain", linear (-30.0f, 30.0f), 0.0f, db, number);
         p.addFloat (key + "q", name + "Q", logRange (0.1f, 40.0f), 0.7071f, plainText, number);
@@ -72,6 +72,8 @@ inline void addParameters (ni::ui::test::FakeParameters& p)
         p.addFloat (key + "stopband", name + "Stopband", linear (20.0f, 120.0f), 60.0f, db, number);
         p.addChoice (key + "channel", name + "Channel", { "Stereo", "Left", "Right", "Mid", "Side" }, 0);
     }
+    /* The shell's Bypass, after the table (ni::bypassSpec). */
+    p.addBool ("bypass", "Bypass", false);
 }
 
 class FakeModel final : public Model
@@ -90,7 +92,8 @@ public:
     Picture shown;
     int lanesAsked = -1;
 
-    int numParameters() const override { return common.numParameters(); }
+    int numParameters() const override { return param::count; }
+    juce::RangedAudioParameter& bypassParameter() override { return common.parameter (param::count); }
     juce::RangedAudioParameter& parameter (int i) override { return common.parameter (i); }
     int takeRings (float* s, int n) override { return common.takeRings (s, n); }
     bool motion() const override { return common.motion(); }
@@ -121,7 +124,7 @@ public:
             shown.handleHz[(size_t) s] = t == type::empty ? nan : f;
             shown.handleDb[(size_t) s] = t == type::empty                                         ? nan
                                          : (t == type::bell || t == type::lowShelf || t == type::highShelf) ? g
-                                         : (t == type::lowCut || t == type::highCut)              ? -3.0103
+                                         : (t == type::highPass || t == type::lowPass)              ? -3.0103
                                                                                                   : 0.0;
             if (t == type::bell || t == type::bandPass || t == type::notch)
             {
@@ -138,21 +141,21 @@ public:
     unsigned typeUses (int t, int order) const override
     {
         unsigned u = 0;
-        if (t >= type::lowCut && t <= type::notch)
+        if (t >= type::highPass && t <= type::notch)
             u |= uses::family;
-        if (t == type::lowShelf || t == type::highShelf || (t >= type::lowCut && t <= type::allPass))
+        if (t == type::lowShelf || t == type::highShelf || (t >= type::highPass && t <= type::allPass))
             u |= uses::order;
         if (t == type::bell || t == type::lowShelf || t == type::highShelf || t == type::tilt)
             u |= uses::gain;
         if (t == type::bell || t == type::bandPass || t == type::notch
-            || ((t == type::lowCut || t == type::highCut || t == type::lowShelf || t == type::highShelf || t == type::allPass)
+            || ((t == type::highPass || t == type::lowPass || t == type::lowShelf || t == type::highShelf || t == type::allPass)
                 && order >= 1))
             u |= uses::q;
         return u;
     }
     int typeMaxOrder (int t) const override
     {
-        return t == type::lowShelf || t == type::highShelf ? 3 : (t >= type::lowCut && t <= type::allPass) ? 7 : -1;
+        return t == type::lowShelf || t == type::highShelf ? 3 : (t >= type::highPass && t <= type::allPass) ? 7 : -1;
     }
     bool familyUsesRipple (int family) const override { return family == 2 || family == 4; }
     bool familyUsesStopband (int family) const override { return family == 3 || family == 4; }
@@ -161,7 +164,7 @@ public:
         const double octaves = std::max (0.05, 2.0 * std::abs (std::log2 (edgeHz / freq)));
         return juce::jlimit (0.1, 40.0, 1.0 / (2.0 * std::sinh (octaves * std::log (2.0) / 2.0)));
     }
-    int typeForNew (double hz) const override { return hz < 30.0 ? type::lowCut : hz > 15000.0 ? type::highCut : type::bell; }
+    int typeForNew (double hz) const override { return hz < 30.0 ? type::highPass : hz > 15000.0 ? type::lowPass : type::bell; }
 };
 
 } // namespace ni::fd::test

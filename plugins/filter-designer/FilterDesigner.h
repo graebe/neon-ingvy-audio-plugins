@@ -12,6 +12,10 @@
  *                 numbers printed and read in the engine's words, choices of
  *                 its labels. The IDs are the engine's keys, the state the
  *                 default ni::Processor one (every parameter by its ID)
+ *   the bypass    the shared Bypass (ni::bypassSpec), the host's own: the
+ *                 shell crossfades it over 10 ms (ni::Processor), and while
+ *                 bypassed the engine keeps running on a copy of the input,
+ *                 so its filters' state is current when the bypass is lifted
  *   the buses     mono in to mono out, or stereo to stereo; no MIDI, no
  *                 sidechain; no latency, ever (minimum phase)
  *   a block       the shell taken (fd_shell_begin), every parameter pushed
@@ -36,6 +40,7 @@
 
 #include "GroundClock.h"
 #include "Model.h"
+#include "Parameter.h"
 #include "Processor.h"
 #include "fd_shell.h"
 
@@ -58,6 +63,8 @@ public:
     bool isBusesLayoutSupported (const BusesLayout&) const override;
     void releaseResources() override {}
 
+    juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
+
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override;
     void editorOpened() override;
@@ -70,6 +77,7 @@ public:
     /* ---- the Model, for the editor: message thread */
     int numParameters() const override { return paramCount; }
     juce::RangedAudioParameter& parameter (int index) override { return *params[(size_t) index]; }
+    juce::RangedAudioParameter& bypassParameter() override { return *bypass; }
     int takeRings (float* strengths, int capacity) override;
     bool motion() const override;
     void setMotion (bool on) override;
@@ -90,12 +98,23 @@ protected:
     void processBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
 private:
+    /* One block through the engine: in place when `heard`, on a copy of the
+     * input when bypassed, so the engine's state follows the music. */
+    void run (juce::AudioBuffer<float>&, bool heard);
+    /* The analyzer's rings are kept while a window shows them: posted to the
+     * engine when that changes. Message thread. */
+    void watch();
+
     struct ShellDeleter
     {
         void operator() (FdShell* s) const { fd_shell_destroy (s); }
     };
     std::unique_ptr<FdShell, ShellDeleter> shell;
     std::array<juce::RangedAudioParameter*, paramCount> params {};
+    ni::Parameter* bypass = nullptr;
+    /* The bypassed input's copy, sized in prepare. */
+    std::array<std::vector<float>, 2> listening;
+    bool windowOpen = false, watching = false;
     ni::GroundClock beat;
 
     /* The picture as fd_shell_read writes it, and as the editor takes it. */

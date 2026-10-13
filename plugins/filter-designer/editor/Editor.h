@@ -10,9 +10,9 @@
  *    (0, 312)    the node row: sixteen cells and ISO (NodeRow.h)
  *    (0, 376)    INSPECTOR, two columns: the selected filter -- Type, Family,
  *                Order, Channel; Freq, Gain, Q (Resonance on a cut), Ripple,
- *                Stopband -- or the isolator -- Low, Mid, High, Lower, Upper,
+ *                Stopband -- or the isolator -- Low, Mid, High, Low-Mid, Mid-High,
  *                Slope, a Kill under each band. On at the title's right.
- *    (560, 376)  OUTPUT: Output, Scale; Adaptive
+ *    (560, 376)  OUTPUT: Output, Scale; Adaptive, Bypass
  *    (0, 640)    the Hint bar: three conventions, Motion, the Signature
  *
  * WHAT A TYPE DOES NOT USE IS DISABLED, NEVER HIDDEN, so nothing in the
@@ -85,6 +85,7 @@ public:
      * inspector shows none for it. */
     ni::ui::ParamKnob* knobFor (int parameterIndex);
     ni::ui::ParamSelect* selectFor (int parameterIndex);
+    /* A switch by parameter index; -1 is the Bypass, the shell's own. */
     ni::ui::ParamToggle* toggleFor (int parameterIndex);
 
     void resized() override;
@@ -111,7 +112,7 @@ private:
     std::vector<std::unique_ptr<ni::ui::ParamToggle>> toggles;
     /* Output's, made once. */
     std::vector<std::unique_ptr<ni::ui::ParamKnob>> outKnobs;
-    std::unique_ptr<ni::ui::ParamToggle> adaptive;
+    std::unique_ptr<ni::ui::ParamToggle> adaptive, bypassSwitch;
 
     int selection = 0;
     /* What the inspector last showed for, so it is refreshed only when that

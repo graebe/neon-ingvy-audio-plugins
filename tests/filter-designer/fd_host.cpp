@@ -109,7 +109,9 @@ int main (int argc, char** argv)
         return 1;
     }
     check (p->getLatencySamples() == 0, "no latency");
-    check (p->getParameters().size() == 175, "174 parameters and the host's Bypass", String (p->getParameters().size()));
+    check (p->getParameters().size() == 175, "174 parameters and the Bypass", String (p->getParameters().size()));
+    check (p->getBypassParameter() != nullptr && p->getBypassParameter()->getName (64) == "Bypass",
+           "the plugin's Bypass is the host's bypass");
     check (byName (*p, "Filter 16 Channel") != nullptr, "the last node's Channel, by name");
     if (auto* f = byName (*p, "Filter 1 Freq"))
     {
@@ -135,6 +137,8 @@ int main (int argc, char** argv)
 
     /* A Bell typed in, heard at its gain. */
     type (*p, "Filter 1 Type", "Bell");
+    type (*p, "Filter 2 Type", "High-Pass");
+    type (*p, "Filter 2 Freq", "20");
     type (*p, "Filter 1 Freq", "1000");
     type (*p, "Filter 1 Gain", "6");
     const double g = gainAt (*p, 1000.0);

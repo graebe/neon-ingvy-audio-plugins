@@ -7,8 +7,10 @@
  *
  * BACK TO FRONT, AND EACH ANSWERS A DIFFERENT QUESTION:
  *
- *   the analyzer   the input as plot-dry at half, the output as plot-fill,
- *                  on its own scale (-6 to -84 dBFS): what the music is
+ *   the analyzer   the spectrum before the filters (pre) faded behind, as
+ *                  plot-dry at a quarter, and after them (post) in front of
+ *                  it, plot-ghost under an ink-dim edge -- on its own scale,
+ *                  -6 to -84 dBFS
  *   the rulers     frequency under, dB at the left; no grid lines
  *   0 dB           the grey line: the signal untouched
  *   the ghosts     every filter alone and the isolator's bands, plot-ghost
@@ -20,8 +22,8 @@
  *                  one hollow; its slot's number beside it
  *
  * WHERE A HANDLE SITS: a Bell's, a shelf's and a tilt's at Freq and Gain; a
- * cut's on its curve at Freq; a band pass's, a notch's and an all-pass's on
- * 0 dB. The selected Bell, Band Pass or Notch shows its -3 dB edges as two
+ * cut's on its curve at Freq; a band-pass's, a notch's and an all-pass's on
+ * 0 dB. The selected Bell, Band-Pass or Notch shows its -3 dB edges as two
  * ticks. While the isolator shows, its crossovers are rules with a tab, its
  * bands' levels dots L, M and H.
  *
@@ -30,7 +32,7 @@
  * five times finer. Drag an edge tick for Q, a crossover for its frequency,
  * a band's dot for its level. The wheel over the selected filter is its Q.
  * Double-click a handle to reset its Gain (or Q); double-click anywhere else
- * to add a filter in the first empty slot -- a Low Cut below 30 Hz, a High
+ * to add a filter in the first empty slot -- a High-Pass below 30 Hz, a High
  * Cut above 15 kHz, a Bell between them at the pointer's gain. Delete
  * empties the selected filter. Every drag is one gesture on each parameter
  * it moves, so the host's undo and automation see one edit.
@@ -126,7 +128,7 @@ private:
     std::vector<double> values;
     bool hasPicture = false;
 
-    juce::Path total, own, pre, post, widthTicks;
+    juce::Path total, own, pre, post, postEdge, widthTicks;
     std::vector<juce::Path> ghosts;
     std::unique_ptr<Drag> drag;
 

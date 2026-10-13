@@ -4,9 +4,8 @@ title: On the Ableton Move
 ---
 
 The same Rust engine as the plugin, wrapped in Schwung's `audio_fx` vtable
-instead of the VST3 shell. Not a port and not a reimplementation: one core,
-two shells, with a test that renders four seconds through both paths and
-compares them sample for sample.
+instead of the VST3 shell. One core, two shells: a test renders four seconds
+through both paths and compares them sample for sample.
 
 ## Install
 
@@ -17,35 +16,33 @@ compares them sample for sample.
 
 The module id is `ni-filter-designer`. Put it in a chain's audio effect slot.
 
-## The knobs
+## The parameters
 
-The Move has no screen to draw a curve on, so the module is what a set
-played live reaches for: the isolator and two cuts, on two pages of eight
-knobs.
+The Move has no display for a response curve, so the module offers the
+isolator, a high-pass and a low-pass on two pages of eight encoders.
 
-**Page 1, the isolator** — on from the start.
+**Page 1: the isolator** (switched on at start).
 
-| knob | what it does |
+| encoder | parameter |
 |---|---|
-| **Low**, **Mid**, **High** | each band from -60 dB (gone) to +6 dB: turn one all the way down to kill it |
-| **Lower** | the crossover between Low and Mid, 60 Hz to 1.5 kHz |
-| **Upper** | the crossover between Mid and High, 1 to 16 kHz |
-| **Slope** | how sharp the split is: 24 or 48 dB an octave |
-| **Isolator** | the isolator on or off |
-| **Output** | the level after everything |
+| **Low**, **Mid**, **High** | each band's level, -60 dB (muted: the kill) to +6 dB |
+| **Low-Mid** | the low-mid crossover frequency, 60 Hz to 1.5 kHz |
+| **Mid-High** | the mid-high crossover frequency, 1 to 16 kHz |
+| **Slope** | the Linkwitz-Riley crossover order: LR4 24 dB/oct or LR8 48 dB/oct |
+| **Isolator** | the isolator in or out of the signal path |
+| **Output** | the output gain |
 
-**Page 2, the cuts** — off until you switch them on.
+**Page 2: high-pass and low-pass** (Butterworth, bypassed at start).
 
-| knob | what it does |
+| encoder | parameter |
 |---|---|
-| **LC On**, **LC Freq**, **LC Order**, **LC Res** | a Low Cut (Butterworth): on, where, how steep (6 to 48 dB), and a peak at the corner |
-| **HC On**, **HC Freq**, **HC Order**, **HC Res** | the same for a High Cut |
+| **HP On**, **HP Freq**, **HP Slope**, **HP Q** | the high-pass: in or out, -3 dB cutoff (20 Hz to 1 kHz), roll-off (6 to 48 dB/oct), Q of the highest-Q pole pair |
+| **LP On**, **LP Freq**, **LP Slope**, **LP Q** | the low-pass, cutoff 1 to 18 kHz |
 
-The frequencies are steps, not a sweep: a Move knob turns evenly, and twelve
-steps where they matter beat a knob that spends most of its turn above
-10 kHz.
+The frequencies are discrete steps: a Move encoder is linear, and twelve
+logarithmically spaced values per encoder cover the useful range.
 
 ## The panic
 
-The Move's panic (CC 120 or 123) empties every filter at once: the next
-block starts from silence.
+CC 120 (All Sound Off) or CC 123 (All Notes Off) resets every filter's state;
+the next block starts from silence.

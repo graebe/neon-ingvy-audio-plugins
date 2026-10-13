@@ -7,8 +7,9 @@ impl over [`fd_core`]. The vtable, the transport and the entry points are
 `ni_schwung`'s.
 
 WHAT THE MODULE IS. The same engine as the plugin, set up as the isolator a
-DJ reaches for and two cuts to frame it (params.rs): node 1 a Low Cut and
-node 2 a High Cut, Butterworth, off until switched on; the isolator on.
+DJ reaches for, framed by a high-pass and a low-pass (params.rs): node 1 a
+Butterworth high-pass and node 2 a Butterworth low-pass, both bypassed until
+switched on; the isolator on.
 
 THE PANIC. The v2 vtable has no reset hook, so a host panic reaches a module
 only as CC 120 (All Sound Off) or CC 123 (All Notes Off) through on_midi. The
@@ -36,11 +37,11 @@ impl FilterDesigner {
     /// The module's own starting point: the cuts in their slots, the
     /// isolator on. Each value is one `chain_params` declares as its default.
     fn set_up(e: &mut Engine) {
-        e.set_num(Param::Node(0, Field::Type), 4.0); // Low Cut
+        e.set_num(Param::Node(0, Field::Type), 4.0); // High-Pass
         e.set_num(Param::Node(0, Field::On), 0.0);
         e.set_num(Param::Node(0, Field::Freq), 30.0);
         e.set_num(Param::Node(0, Field::Order), 3.0);
-        e.set_num(Param::Node(1, Field::Type), 5.0); // High Cut
+        e.set_num(Param::Node(1, Field::Type), 5.0); // Low-Pass
         e.set_num(Param::Node(1, Field::On), 0.0);
         e.set_num(Param::Node(1, Field::Freq), 16_000.0);
         e.set_num(Param::Node(1, Field::Order), 3.0);

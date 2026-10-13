@@ -34,8 +34,8 @@ fn butterworth_is_its_closed_form() {
     for &fs in &RATES {
         for n in 1..=8 {
             for &fc in &[30.0, 1000.0, 12_000.0] {
-                let (lp, _) = family(&proto(Family::Butterworth, n), Band::HighCut, fc, FRAC_1_SQRT_2, fs);
-                let (hp, _) = family(&proto(Family::Butterworth, n), Band::LowCut, fc, FRAC_1_SQRT_2, fs);
+                let (lp, _) = family(&proto(Family::Butterworth, n), Band::LowPass, fc, FRAC_1_SQRT_2, fs);
+                let (hp, _) = family(&proto(Family::Butterworth, n), Band::HighPass, fc, FRAC_1_SQRT_2, fs);
                 for i in 0..400 {
                     let hz = 10.0 * (0.45 * fs / 10.0f64).powf(i as f64 / 399.0);
                     let x = warped(hz, fs) / warped(fc, fs);
@@ -58,7 +58,7 @@ fn every_family_is_at_minus_3_db_on_its_frequency() {
             for n in 1..=8 {
                 let p = Prototype::new(f, n, 0.5, 60.0);
                 for &fc in &[20.0, 1000.0, 10_000.0, 0.45 * fs] {
-                    for band in [Band::LowCut, Band::HighCut] {
+                    for band in [Band::HighPass, Band::LowPass] {
                         let (c, _) = family(&p, band, fc, FRAC_1_SQRT_2, fs);
                         let want = if f == Family::LinkwitzRiley { MINUS_6 } else { MINUS_3 };
                         let got = db_at(&c, fc, fs);
@@ -77,8 +77,8 @@ fn the_digital_response_is_the_prototype_on_the_warped_axis() {
         for n in 1..=8 {
             let p = Prototype::new(f, n, 1.0, 50.0);
             let fc = 3000.0;
-            let (lp, _) = family(&p, Band::HighCut, fc, FRAC_1_SQRT_2, fs);
-            let (hp, _) = family(&p, Band::LowCut, fc, FRAC_1_SQRT_2, fs);
+            let (lp, _) = family(&p, Band::LowPass, fc, FRAC_1_SQRT_2, fs);
+            let (hp, _) = family(&p, Band::HighPass, fc, FRAC_1_SQRT_2, fs);
             for i in 0..200 {
                 let hz = 20.0 * 1000.0f64.powf(i as f64 / 199.0);
                 let x = warped(hz, fs) / warped(fc, fs);
@@ -98,7 +98,7 @@ fn ripple_and_stopband_are_what_they_were_asked_to_be() {
     let fc = 1000.0;
     for n in 2..=8 {
         let cheb = Prototype::new(Family::ChebyshevI, n, 0.5, 60.0);
-        let (c, _) = family(&cheb, Band::HighCut, fc, FRAC_1_SQRT_2, fs);
+        let (c, _) = family(&cheb, Band::LowPass, fc, FRAC_1_SQRT_2, fs);
         let (mut lo, mut hi) = (0.0f64, -100.0f64);
         for i in 0..2000 {
             let hz = 1.0 + 600.0 * i as f64 / 1999.0;
@@ -110,13 +110,13 @@ fn ripple_and_stopband_are_what_they_were_asked_to_be() {
         assert!((lo + 0.5).abs() < 0.01, "cheb I n{n} trough {lo}");
 
         let inv = Prototype::new(Family::ChebyshevII, n, 1.0, 45.0);
-        let (c, _) = family(&inv, Band::HighCut, fc, FRAC_1_SQRT_2, fs);
+        let (c, _) = family(&inv, Band::LowPass, fc, FRAC_1_SQRT_2, fs);
         let edge = (1..20_000).map(|i| 1000.0 + 2.0 * i as f64).find(|&hz| db_at(&c, hz, fs) <= -45.0 + 1e-6).unwrap();
         let worst = (0..4000).map(|i| db_at(&c, edge + 10.0 * i as f64, fs)).fold(-400.0, f64::max);
         assert!(worst <= -45.0 + 1e-6, "cheb II n{n} stopband {worst}");
 
         let e = Prototype::new(Family::Elliptic, n, 0.3, 70.0);
-        let (c, _) = family(&e, Band::HighCut, fc, FRAC_1_SQRT_2, fs);
+        let (c, _) = family(&e, Band::LowPass, fc, FRAC_1_SQRT_2, fs);
         let pass = (0..2000).map(|i| db_at(&c, 1.0 + 500.0 * i as f64 / 1999.0, fs)).fold(0.0, f64::min);
         assert!(pass >= -0.3 - 1e-6, "elliptic n{n} passband {pass}");
         /* A low order reaches 70 dB only far up -- past Nyquist at order 2. */
@@ -188,11 +188,11 @@ fn a_band_near_nyquist_keeps_its_lower_edge_and_says_so() {
 fn resonance_raises_a_second_order_cut_by_its_q() {
     let fs = 48_000.0;
     for &q in &[0.5, 1.0, 4.0, 12.0] {
-        let (c, _) = family(&proto(Family::Butterworth, 2), Band::HighCut, 1000.0, q, fs);
+        let (c, _) = family(&proto(Family::Butterworth, 2), Band::LowPass, 1000.0, q, fs);
         assert!((db_at(&c, 1000.0, fs) - 20.0 * q.log10()).abs() < 1e-9, "q {q}");
     }
     /* Order 1 has no resonance. */
-    let (a, _) = family(&proto(Family::Butterworth, 1), Band::HighCut, 1000.0, 8.0, fs);
+    let (a, _) = family(&proto(Family::Butterworth, 1), Band::LowPass, 1000.0, 8.0, fs);
     assert!((db_at(&a, 1000.0, fs) - MINUS_3).abs() < 1e-9);
 }
 
@@ -201,8 +201,8 @@ fn linkwitz_riley_cuts_sum_to_an_all_pass() {
     let fs = 48_000.0;
     for n in [4, 8] {
         let p = proto(Family::LinkwitzRiley, n);
-        let (lp, _) = family(&p, Band::HighCut, 800.0, FRAC_1_SQRT_2, fs);
-        let (hp, _) = family(&p, Band::LowCut, 800.0, FRAC_1_SQRT_2, fs);
+        let (lp, _) = family(&p, Band::LowPass, 800.0, FRAC_1_SQRT_2, fs);
+        let (hp, _) = family(&p, Band::HighPass, 800.0, FRAC_1_SQRT_2, fs);
         let ap = all_pass(800.0, FRAC_1_SQRT_2, n / 2, fs);
         for i in 0..300 {
             let w = PI * 0.98 * (i as f64 + 0.5) / 300.0;
@@ -219,8 +219,8 @@ fn linkwitz_riley_of_twice_an_odd_order_sums_flat_with_one_cut_inverted() {
     let fs = 48_000.0;
     for n in [2, 6] {
         let p = proto(Family::LinkwitzRiley, n);
-        let (lp, _) = family(&p, Band::HighCut, 800.0, FRAC_1_SQRT_2, fs);
-        let (hp, _) = family(&p, Band::LowCut, 800.0, FRAC_1_SQRT_2, fs);
+        let (lp, _) = family(&p, Band::LowPass, 800.0, FRAC_1_SQRT_2, fs);
+        let (hp, _) = family(&p, Band::HighPass, 800.0, FRAC_1_SQRT_2, fs);
         for i in 0..300 {
             let w = PI * 0.98 * (i as f64 + 0.5) / 300.0;
             assert!(((lp.response(w) - hp.response(w)).norm() - 1.0).abs() < 1e-9, "LR{n}");
@@ -310,8 +310,8 @@ fn what_a_cascade_renders_is_what_it_reports() {
     let fs = 48_000.0;
     let n = 1 << 16;
     let designs = [
-        family(&Prototype::new(Family::Elliptic, 6, 0.5, 60.0), Band::HighCut, 3000.0, FRAC_1_SQRT_2, fs).0,
-        family(&Prototype::new(Family::ChebyshevII, 5, 1.0, 40.0), Band::LowCut, 400.0, 2.0, fs).0,
+        family(&Prototype::new(Family::Elliptic, 6, 0.5, 60.0), Band::LowPass, 3000.0, FRAC_1_SQRT_2, fs).0,
+        family(&Prototype::new(Family::ChebyshevII, 5, 1.0, 40.0), Band::HighPass, 400.0, 2.0, fs).0,
         family(&Prototype::new(Family::Bessel, 4, 1.0, 60.0), Band::BandPass, 2000.0, 3.0, fs).0,
         family(&Prototype::new(Family::Butterworth, 3, 1.0, 60.0), Band::Notch, 5000.0, 2.0, fs).0,
         bell(800.0, 7.0, 2.0, fs),
@@ -348,7 +348,7 @@ fn identity_is_bit_exact() {
 
 #[test]
 fn a_state_flushes_what_has_decayed() {
-    let (c, _) = family(&proto(Family::Butterworth, 4), Band::HighCut, 1000.0, FRAC_1_SQRT_2, 48_000.0);
+    let (c, _) = family(&proto(Family::Butterworth, 4), Band::LowPass, 1000.0, FRAC_1_SQRT_2, 48_000.0);
     let mut st = State::default();
     c.run(&mut st, 1e-20);
     assert!(!st.is_empty());
@@ -369,7 +369,7 @@ fn a_cutoff_swept_every_sample_at_high_q_stays_bounded() {
     let len = 480; // 10 ms
     for i in 0..len {
         let hz = 20.0 * 1000.0f64.powf(i as f64 / (len - 1) as f64);
-        let (c, _) = family(&p, Band::HighCut, hz, 40.0, fs);
+        let (c, _) = family(&p, Band::LowPass, hz, 40.0, fs);
         rng ^= rng << 13;
         rng ^= rng >> 17;
         rng ^= rng << 5;
@@ -401,7 +401,7 @@ proptest! {
     ) {
         let fs = RATES[fs_i];
         let p = Prototype::new(f, n, ripple, stop);
-        let band = [Band::LowCut, Band::HighCut, Band::BandPass, Band::Notch][band];
+        let band = [Band::HighPass, Band::LowPass, Band::BandPass, Band::Notch][band];
         let (c, _) = family(&p, band, hz, q, fs);
         let others = [bell(hz, stop - 70.0, q, fs), low_shelf(hz, stop / 4.0 - 15.0, q, n.min(4), fs),
                       high_shelf(hz, 15.0 - stop / 4.0, q, n.min(4), fs), tilt(hz, ripple * 5.0 - 10.0, fs), all_pass(hz, q, n, fs)];

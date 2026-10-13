@@ -102,11 +102,13 @@ struct Instance
 TEST_CASE ("the parameters are the engine's table")
 {
     Processor p;
-    REQUIRE (p.getParameters().size() == param::count);
+    /* The engine's 174, then the shell's Bypass. */
+    REQUIRE (p.getParameters().size() == param::count + 1);
     std::set<juce::String> ids;
-    for (int i = 0; i < param::count; ++i)
-        ids.insert (p.parameter (i).getParameterID());
-    CHECK (ids.size() == (size_t) param::count);
+    for (auto* each : p.getParameters())
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (each))
+            ids.insert (withId->getParameterID());
+    CHECK (ids.size() == (size_t) param::count + 1);
     CHECK (p.parameter (param::node (2, param::freq)).getParameterID() == "n03_freq");
     CHECK (p.parameter (param::node (2, param::freq)).getName (64) == "Filter 3 Freq");
     CHECK (p.parameter (param::isoLow).getParameterID() == "iso_low");
@@ -114,6 +116,8 @@ TEST_CASE ("the parameters are the engine's table")
     REQUIRE (t != nullptr);
     CHECK (t->choices.size() == 10);
     CHECK (t->choices[7] == "Notch");
+    CHECK (t->choices[4] == "High-Pass");
+    CHECK (t->choices[5] == "Low-Pass");
     CHECK (! p.parameter (param::analyzer).isAutomatable());
     CHECK (p.parameter (param::node (0, param::gain)).isAutomatable());
     auto& f = p.parameter (param::node (0, param::freq));
@@ -177,6 +181,59 @@ TEST_CASE ("a bell is heard at its gain, a kill takes its band out, the bypass p
     CHECK (std::abs (iso.run (93.75, 60)) < 0.01);
 }
 
+TEST_CASE ("the Bypass fades, and the filters come back from the music they heard")
+{
+    Instance x;
+    REQUIRE (x.p.getBypassParameter() == &x.p.bypassParameter());
+    CHECK (x.p.getBypassParameter()->getName (64) == "Bypass");
+    x.set (param::node (0, param::type), type::bell);
+    x.set (param::node (0, param::freq), 100.0);
+    x.set (param::node (0, param::gain), 12.0);
+    x.set (param::node (0, param::q), 4.0);
+    /* A 100 Hz sine at -6 dBFS, the Bypass switched every 0.5 s. */
+    const auto step = [&x] (int blocks)
+    {
+        float largest = 0.0f, last = 0.0f;
+        bool first = true;
+        for (int b = 0; b < blocks; ++b)
+        {
+            x.run (100.0);
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = x.buffer.getSample (0, i);
+                if (! first)
+                    largest = std::max (largest, std::abs (v - last));
+                last = v;
+                first = false;
+            }
+        }
+        return largest;
+    };
+    step (60);
+    float worst = 0.0f;
+    for (int k = 0; k < 6; ++k)
+    {
+        x.p.bypassParameter().setValueNotifyingHost (k % 2 == 0 ? 1.0f : 0.0f);
+        worst = std::max (worst, step (47));
+    }
+    /* The sine's own largest step, at its loudest (+12 dB): 0.5 x 4 x w. */
+    const float own = (float) (0.25 * 3.981 * 2.0 * juce::MathConstants<double>::pi * 100.0 / rate);
+    CHECK (worst < own * 1.25f);
+}
+
+TEST_CASE ("the analyzer's rings are kept only while a window shows the analyzer")
+{
+    Instance x;
+    x.p.editorOpened();
+    x.run (1000.0, 20);
+    CHECK (x.p.picture (ni::fd::lane::left).analyzer);
+    x.set (param::analyzer, 0.0);
+    x.p.picture (ni::fd::lane::left);
+    x.run (1000.0, 20);
+    CHECK (! x.p.picture (ni::fd::lane::left).analyzer);
+    x.p.editorClosed();
+}
+
 TEST_CASE ("the state comes back exactly")
 {
     Instance a;
@@ -186,12 +243,14 @@ TEST_CASE ("the state comes back exactly")
     a.set (param::node (4, param::q), 6.3);
     a.set (param::isoOn, 1.0);
     a.set (param::output, -3.5);
+    a.p.bypassParameter().setValueNotifyingHost (1.0f);
     juce::MemoryBlock saved;
     a.p.getStateInformation (saved);
     Instance b;
     b.p.setStateInformation (saved.getData(), (int) saved.getSize());
     for (int i = 0; i < param::count; ++i)
         CHECK (b.p.plain (i) == a.p.plain (i));
+    CHECK (b.p.bypassParameter().getValue() == 1.0f);
 }
 
 TEST_CASE ("the model's picture is the engine's design of the host's values")
@@ -200,7 +259,7 @@ TEST_CASE ("the model's picture is the engine's design of the host's values")
     x.set (param::node (0, param::type), type::bell);
     x.set (param::node (0, param::freq), 1000.0);
     x.set (param::node (0, param::gain), 9.0);
-    x.set (param::node (1, param::type), type::lowCut);
+    x.set (param::node (1, param::type), type::highPass);
     x.set (param::node (1, param::freq), 80.0);
     const auto& pic = x.p.picture (ni::fd::lane::left);
     CHECK (pic.handleHz[0] == doctest::Approx (1000.0));
@@ -215,13 +274,13 @@ TEST_CASE ("the model's picture is the engine's design of the host's values")
     CHECK (x.p.typeMaxOrder (type::highShelf) == 3);
     CHECK (x.p.familyUsesRipple (2));
     CHECK (x.p.qForEdge (1000.0, pic.edgeHz[0][1]) == doctest::Approx (0.7071).epsilon (0.001));
-    CHECK (x.p.typeForNew (20.0) == type::lowCut);
+    CHECK (x.p.typeForNew (20.0) == type::highPass);
 }
 
 TEST_CASE ("the window: its size, and the inspector bound to the selection")
 {
     Instance x;
-    x.set (param::node (0, param::type), type::lowCut);
+    x.set (param::node (0, param::type), type::highPass);
     ni::fd::Editor e (x.p);
     CHECK (e.getWidth() == 888);
     CHECK (e.getHeight() == 708);

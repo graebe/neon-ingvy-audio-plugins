@@ -7,17 +7,17 @@ sixteen-bit step and a half, and the render's hash is pinned.
 
 ## What differs from the plugin, and why
 
-**The isolator and two cuts, on two pages of eight knobs.** The plugin's
+**The isolator, a high-pass and a low-pass, on two pages of eight encoders.** The plugin's
 sixteen filters are designed on a curve, and the Move has no curve to design
 on. So the module is what a DJ reaches for on a device played live:
 
 | page | knobs |
 |---|---|
-| 1 | Low, Mid, High, Lower, Upper, Slope, Isolator, Output |
-| 2 | LC On, LC Freq, LC Order, LC Res, HC On, HC Freq, HC Order, HC Res |
+| 1 | Low, Mid, High, Low-Mid, Mid-High, Slope, Isolator, Output |
+| 2 | HP On, HP Freq, HP Slope, HP Q, LP On, LP Freq, LP Slope, LP Q |
 
 The keys are the plugin's (`iso_low`, `n01_freq` ...), so a value means the
-same on both. Node 1 is a Low Cut and node 2 a High Cut, both Butterworth
+same on both. Node 1 is a high-pass and node 2 a low-pass, both Butterworth
 and off until switched on; the isolator starts on. A band turned to its
 bottom (-60 dB) is gone: the Move's kill.
 

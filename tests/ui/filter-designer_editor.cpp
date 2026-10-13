@@ -95,10 +95,10 @@ TEST_CASE ("filter-designer: a double-click adds a filter where it is, of the ty
     CHECK (rig.plain (param::node (0, param::freq)) == doctest::Approx (1000.0).epsilon (0.03));
     CHECK (rig.plain (param::node (0, param::gain)) == doctest::Approx (6.0).epsilon (0.05));
     CHECK (rig.editor.selected() == 0);
-    /* Below 30 Hz a Low Cut, in the next empty slot. */
+    /* Below 30 Hz a High-Pass, in the next empty slot. */
     pointer.doubleClick (well, rig.at (15.0, 0.0));
     rig.frames();
-    CHECK ((int) rig.plain (param::node (1, param::type)) == type::lowCut);
+    CHECK ((int) rig.plain (param::node (1, param::type)) == type::highPass);
     CHECK (rig.editor.selected() == 1);
     /* Each change one whole gesture. */
     CHECK (count (rig.model.params, ni::ui::test::FakeParameters::Event::Kind::begin, param::node (0, param::type)) == 1);
@@ -182,9 +182,12 @@ TEST_CASE ("filter-designer: the caption's right end cycles the analyzer and the
     CHECK (well.rangeDb() == 18);
     pointer.click (well, { (float) well.getWidth() - 12.0f, y });
     CHECK (well.rangeDb() == 30);
+    /* Pre + post by default; a click goes to Post, then Pre, then off. */
+    CHECK ((int) rig.plain (param::analyzer) == 3);
+    pointer.click (well, { (float) well.getWidth() - 100.0f, y });
     CHECK ((int) rig.plain (param::analyzer) == 2);
     pointer.click (well, { (float) well.getWidth() - 100.0f, y });
-    CHECK ((int) rig.plain (param::analyzer) == 3);
+    CHECK ((int) rig.plain (param::analyzer) == 1);
     well.cycleRange();
     CHECK (well.rangeDb() == 6);
 }
@@ -202,7 +205,7 @@ TEST_CASE ("filter-designer: the row selects, and the inspector binds to the sel
     CHECK (! rig.editor.knobFor (param::node (4, param::freq))->isEnabled());
     CHECK (rig.editor.selectFor (param::node (4, param::type))->isEnabled());
 
-    rig.set (param::node (4, param::type), type::highCut);
+    rig.set (param::node (4, param::type), type::lowPass);
     rig.set (param::node (4, param::family), 4.0);
     rig.frames();
     CHECK (rig.editor.knobFor (param::node (4, param::ripple))->isEnabled());
@@ -222,6 +225,17 @@ TEST_CASE ("filter-designer: the row selects, and the inspector binds to the sel
     CHECK (rig.editor.knobFor (param::isoLower) != nullptr);
     CHECK (rig.editor.toggleFor (param::isoOn) != nullptr);
     CHECK (rig.editor.knobFor (param::node (4, param::freq)) == nullptr);
+}
+
+TEST_CASE ("filter-designer: the Bypass switch is the shell's bypass")
+{
+    Rig rig;
+    auto* b = rig.editor.toggleFor (-1);
+    REQUIRE (b != nullptr);
+    CHECK (b->getParentComponent() == &rig.editor.outputPanel());
+    Pointer pointer;
+    pointer.click (*b, b->getLocalBounds().getCentre().toFloat());
+    CHECK (rig.model.bypassParameter().getValue() == doctest::Approx (1.0f));
 }
 
 TEST_CASE ("filter-designer: with the isolator shown, its crossovers and its bands drag")
@@ -255,7 +269,7 @@ TEST_CASE ("filter-designer: the window, empty and with filters")
     Rig rig;
     rig.frames (2);
     NI_CHECK_SNAPSHOT (rig.editor, "filter-designer-default");
-    rig.set (param::node (0, param::type), type::lowCut);
+    rig.set (param::node (0, param::type), type::highPass);
     rig.set (param::node (0, param::freq), 30.0);
     rig.set (param::node (1, param::type), type::bell);
     rig.set (param::node (1, param::freq), 250.0);
@@ -265,7 +279,7 @@ TEST_CASE ("filter-designer: the window, empty and with filters")
     rig.set (param::node (3, param::type), type::highShelf);
     rig.set (param::node (3, param::freq), 10000.0);
     rig.set (param::node (3, param::gain), 2.0);
-    rig.set (param::node (4, param::type), type::highCut);
+    rig.set (param::node (4, param::type), type::lowPass);
     rig.set (param::node (4, param::family), 4.0);
     rig.set (param::node (4, param::freq), 18000.0);
     rig.editor.select (4);

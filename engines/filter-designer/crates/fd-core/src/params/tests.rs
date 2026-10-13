@@ -50,7 +50,7 @@ fn a_new_instance_is_empty_and_its_nodes_are_spread() {
     }
     assert_eq!(Param::IsoOn.default_value(), 0.0);
     assert_eq!(Param::Output.default_value(), 0.0);
-    assert_eq!(Param::Analyzer.default_value(), 2.0);
+    assert_eq!(Param::Analyzer.default_value(), 3.0);
     assert!(matches!(Param::Analyzer.info().kind, Kind::Choice { automatable: false, .. }));
 }
 
@@ -68,7 +68,7 @@ fn values_print_in_the_engines_words() {
     assert_eq!(text(Param::Node(0, Field::Q), core::f64::consts::FRAC_1_SQRT_2), "0.71");
     assert_eq!(text(Param::Node(0, Field::Q), 12.0), "12.0");
     assert_eq!(text(Param::Node(0, Field::Type), 7.0), "Notch");
-    assert_eq!(text(Param::Node(0, Field::Order), 3.0), "24 dB");
+    assert_eq!(text(Param::Node(0, Field::Order), 3.0), "24 dB/oct");
     assert_eq!(text(Param::Scale, 100.0), "+100 %");
     assert_eq!(text(Param::Node(0, Field::Gain), f64::NAN), "0.0 dB");
 }

@@ -17,7 +17,7 @@ fn designing_and_running_allocate_nothing() {
         for f in Family::ALL {
             for n in 1..=8 {
                 let p = Prototype::new(f, n, 1.0, 60.0);
-                for band in [Band::LowCut, Band::HighCut, Band::BandPass, Band::Notch] {
+                for band in [Band::HighPass, Band::LowPass, Band::BandPass, Band::Notch] {
                     let (c, _) = family(&p, band, 1000.0, 2.0, 48_000.0);
                     let mut st = State::default();
                     out += c.run(&mut st, 1.0);

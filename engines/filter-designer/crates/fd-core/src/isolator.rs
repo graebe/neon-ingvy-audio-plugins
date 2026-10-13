@@ -20,7 +20,7 @@ than jumping.
 
 The band levels glide every sample, so a kill -- the level to nothing -- is
 5 ms long and never a click. The crossovers glide on the control grid, in
-octaves; Upper never goes below Lower. A change of Slope is two designs, the
+octaves; the mid-high crossover never goes below the low-mid one. A change of Slope is two designs, the
 old fading out as the new fades in, as a node's change of order is.
 */
 
@@ -55,11 +55,11 @@ impl Split {
         }
         let p = Prototype::new(Family::LinkwitzRiley, self.order, 1.0, 60.0);
         let q = core::f64::consts::FRAC_1_SQRT_2;
-        self.paths[LP_LO] = family(&p, Band::HighCut, lo, q, fs).0;
-        self.paths[HP_LO] = family(&p, Band::LowCut, lo, q, fs).0;
+        self.paths[LP_LO] = family(&p, Band::LowPass, lo, q, fs).0;
+        self.paths[HP_LO] = family(&p, Band::HighPass, lo, q, fs).0;
         self.paths[AP_HI] = all_pass(hi, q, self.order / 2, fs);
-        self.paths[LP_HI] = family(&p, Band::HighCut, hi, q, fs).0;
-        self.paths[HP_HI] = family(&p, Band::LowCut, hi, q, fs).0;
+        self.paths[LP_HI] = family(&p, Band::LowPass, hi, q, fs).0;
+        self.paths[HP_HI] = family(&p, Band::HighPass, hi, q, fs).0;
         self.designed = Some((lo, hi, fs));
     }
 

@@ -27,8 +27,8 @@ const char* glyphSvg (int t)
         case type::bell:      return "M1 12H4.5C6.5 12 6.5 4 8 4S9.5 12 11.5 12H15";
         case type::lowShelf:  return "M1 5H5L9 11H15";
         case type::highShelf: return "M1 11H7L11 5H15";
-        case type::lowCut:    return "M2 14C4 7 5 5 8.5 5H15";
-        case type::highCut:   return "M1 5H7.5C11 5 12 7 14 14";
+        case type::highPass:    return "M2 14C4 7 5 5 8.5 5H15";
+        case type::lowPass:   return "M1 5H7.5C11 5 12 7 14 14";
         case type::bandPass:  return "M1 13C5 13 6 4 8 4S11 13 15 13";
         case type::notch:     return "M1 5H6L8 13L10 5H15";
         case type::allPass:   return "M1 5H15M2 11C4 8 6 8 8 11S12 14 14 11";
@@ -71,8 +71,8 @@ public:
         kind = t;
         playing = on;
         chosen = isSelected;
-        static const char* const names[] = { "empty", "Bell", "Low Shelf", "High Shelf", "Low Cut",
-                                             "High Cut", "Band Pass", "Notch", "All Pass", "Tilt" };
+        static const char* const names[] = { "empty", "Bell", "Low Shelf", "High Shelf", "High-Pass",
+                                             "Low-Pass", "Band-Pass", "Notch", "All-Pass", "Tilt" };
         setTitle (index == param::nodes ? juce::String ("Isolator") + (on ? "" : ", off")
                                         : "Filter " + juce::String (index + 1) + ", " + names[kind]
                                               + (kind != type::empty && ! on ? ", bypassed" : ""));

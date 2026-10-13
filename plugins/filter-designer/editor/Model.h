@@ -50,8 +50,8 @@ enum : int
     isoKillLow,   // switches
     isoKillMid,
     isoKillHigh,
-    isoLower,     // 30..2000 Hz, the crossover between Low and Mid
-    isoUpper,     // 500..16000 Hz, between Mid and High
+    isoLower,     // 30..2000 Hz, the low-mid crossover frequency
+    isoUpper,     // 500..16000 Hz, the mid-high crossover frequency
     isoSlope,     // 24 dB, 48 dB
     nodeBase,
     count = nodeBase + 16 * 10
@@ -60,7 +60,7 @@ enum : int
 /* A node's fields, in their order. */
 enum Field : int
 {
-    type = 0,   // Empty, Bell, Low Shelf, High Shelf, Low Cut, High Cut, Band Pass, Notch, All Pass, Tilt
+    type = 0,   // Empty, Bell, Low Shelf, High Shelf, High-Pass, Low-Pass, Band-Pass, Notch, All-Pass, Tilt
     on,         // switch: the bypass
     family,     // Butterworth, Bessel, Chebyshev I, Chebyshev II, Elliptic, Linkwitz-Riley
     order,      // 0..7: 6 dB .. 48 dB
@@ -88,8 +88,8 @@ enum : int
     bell,
     lowShelf,
     highShelf,
-    lowCut,
-    highCut,
+    highPass,
+    lowPass,
     bandPass,
     notch,
     allPass,
@@ -127,7 +127,7 @@ struct Picture
     std::array<Curve, param::nodes> node {};
     std::array<bool, param::nodes> clamped {};
     /* Where each node's handle sits, Hz and dB (NaN for an Empty one), and
-     * a Bell's, band pass's or notch's -3 dB edges (NaN for others): the
+     * a Bell's, band-pass's or notch's -3 dB edges (NaN for others): the
      * engine's (fd_core::design::handle, edges). */
     std::array<double, param::nodes> handleHz {}, handleDb {};
     std::array<std::array<double, 2>, param::nodes> edgeHz {};
@@ -155,6 +155,10 @@ enum : unsigned
 class Model : public ni::ui::EditorModel
 {
 public:
+    /* The shell's Bypass (ni::bypassSpec): the host's own bypass, which the
+     * window shows as a switch. Not one of the engine's 174. */
+    virtual juce::RangedAudioParameter& bypassParameter() = 0;
+
     /* Whether parameter `index` runs both ways about zero: the table says. */
     virtual bool bipolar (int index) const = 0;
 

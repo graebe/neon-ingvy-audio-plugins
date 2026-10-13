@@ -54,15 +54,16 @@ pub const PARAM_COUNT: usize = NODE_BASE + NODES * NODE_FIELDS;
 pub const SWITCH_LABELS: [&str; 2] = ["Off", "On"];
 /// The analyzer's: what it shows behind the curve.
 pub const ANALYZER_LABELS: [&str; 4] = ["Off", "Pre", "Post", "Both"];
-/// The isolator's crossover slopes.
-pub const SLOPE_LABELS: [&str; 2] = ["24 dB", "48 dB"];
+/// The isolator's crossover slopes: Linkwitz-Riley of order 4 or 8.
+pub const SLOPE_LABELS: [&str; 2] = ["LR4 24 dB/oct", "LR8 48 dB/oct"];
 /// A node's types; Empty is no filter.
 pub const TYPE_LABELS: [&str; 10] =
-    ["Empty", "Bell", "Low Shelf", "High Shelf", "Low Cut", "High Cut", "Band Pass", "Notch", "All Pass", "Tilt"];
+    ["Empty", "Bell", "Low Shelf", "High Shelf", "High-Pass", "Low-Pass", "Band-Pass", "Notch", "All-Pass", "Tilt"];
 /// The families, as ni_filter::Family::ALL.
 pub const FAMILY_LABELS: [&str; 6] = ["Butterworth", "Bessel", "Chebyshev I", "Chebyshev II", "Elliptic", "Linkwitz-Riley"];
-/// The orders 1..8, by the slope each makes.
-pub const ORDER_LABELS: [&str; 8] = ["6 dB", "12 dB", "18 dB", "24 dB", "30 dB", "36 dB", "42 dB", "48 dB"];
+/// The orders 1..8, by the roll-off each makes.
+pub const ORDER_LABELS: [&str; 8] =
+    ["6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct", "30 dB/oct", "36 dB/oct", "42 dB/oct", "48 dB/oct"];
 /// Which of a stereo pair a node filters.
 pub const CHANNEL_LABELS: [&str; 5] = ["Stereo", "Left", "Right", "Mid", "Side"];
 
@@ -119,9 +120,9 @@ pub enum Param {
     IsoKillLow,
     IsoKillMid,
     IsoKillHigh,
-    /// The crossover between Low and Mid.
+    /// The crossover frequency between the Low and the Mid band.
     IsoFreqLo,
-    /// The crossover between Mid and High.
+    /// The crossover frequency between the Mid and the High band.
     IsoFreqHi,
     IsoSlope,
     /// Node `slot` (0..16)'s `field`.
@@ -273,7 +274,7 @@ impl Param {
             Param::Output => ("output", "Output", float(-24.0, 24.0, 0.0, 0.01, Travel::Linear, true, db)),
             Param::Scale => ("scale", "Scale", float(-200.0, 200.0, 100.0, 0.1, Travel::Linear, true, Unit::Percent)),
             Param::AdaptiveQ => ("adaptive_q", "Adaptive Q", choice(&SWITCH_LABELS, 0, true)),
-            Param::Analyzer => ("analyzer", "Analyzer", choice(&ANALYZER_LABELS, 2, false)),
+            Param::Analyzer => ("analyzer", "Analyzer", choice(&ANALYZER_LABELS, 3, false)),
             Param::IsoOn => ("iso_on", "Isolator", choice(&SWITCH_LABELS, 0, true)),
             Param::IsoLow => ("iso_low", "Isolator Low", float(-60.0, 6.0, 0.0, 0.01, Travel::Linear, false, Unit::DbToSilence)),
             Param::IsoMid => ("iso_mid", "Isolator Mid", float(-60.0, 6.0, 0.0, 0.01, Travel::Linear, false, Unit::DbToSilence)),
@@ -281,9 +282,9 @@ impl Param {
             Param::IsoKillLow => ("iso_kill_low", "Kill Low", choice(&SWITCH_LABELS, 0, true)),
             Param::IsoKillMid => ("iso_kill_mid", "Kill Mid", choice(&SWITCH_LABELS, 0, true)),
             Param::IsoKillHigh => ("iso_kill_high", "Kill High", choice(&SWITCH_LABELS, 0, true)),
-            Param::IsoFreqLo => ("iso_freq_lo", "Isolator Lower", float(30.0, 2000.0, 250.0, 0.1, Travel::Log, false, Unit::Hz)),
-            Param::IsoFreqHi => ("iso_freq_hi", "Isolator Upper", float(500.0, 16000.0, 2500.0, 0.1, Travel::Log, false, Unit::Hz)),
-            Param::IsoSlope => ("iso_slope", "Isolator Slope", choice(&SLOPE_LABELS, 0, true)),
+            Param::IsoFreqLo => ("iso_freq_lo", "Crossover Low-Mid", float(30.0, 2000.0, 250.0, 0.1, Travel::Log, false, Unit::Hz)),
+            Param::IsoFreqHi => ("iso_freq_hi", "Crossover Mid-High", float(500.0, 16000.0, 2500.0, 0.1, Travel::Log, false, Unit::Hz)),
+            Param::IsoSlope => ("iso_slope", "Crossover Slope", choice(&SLOPE_LABELS, 0, true)),
             Param::Node(slot, field) => {
                 let s = (slot as usize).min(NODES - 1);
                 let (key, name) = (NODE_KEYS[s][field as usize], NODE_NAMES[s][field as usize]);

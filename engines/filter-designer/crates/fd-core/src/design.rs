@@ -10,13 +10,13 @@ from the same code (ni-filter), never a second model of it.
 WHAT EACH TYPE USES (the editor disables what a type does not):
 
 ```text
-  Low Cut, High Cut    Family, Order 1..8, Q as resonance (order 2 and up),
+  High-Pass, Low-Pass    Family, Order 1..8, Q as resonance (order 2 and up),
                        Ripple and Stopband as the family takes them
-  Band Pass, Notch     Family (Linkwitz-Riley plays as Butterworth), Order
+  Band-Pass, Notch     Family (Linkwitz-Riley plays as Butterworth), Order
                        1..8 (2N poles), Q as the width between the -3 dB edges
   Bell                 Gain, Q (narrowed by Adaptive Q as it boosts or cuts)
   Low/High Shelf       Gain, Order 1..4, Q on the steepest section
-  All Pass             Order 1..8, Q on the steepest section
+  All-Pass             Order 1..8, Q on the steepest section
   Tilt                 Gain: -Gain/2 at DC, +Gain/2 at the top
 ```
 
@@ -34,8 +34,8 @@ pub enum Shape {
     Bell,
     LowShelf,
     HighShelf,
-    LowCut,
-    HighCut,
+    HighPass,
+    LowPass,
     BandPass,
     Notch,
     AllPass,
@@ -48,8 +48,8 @@ impl Shape {
         Shape::Bell,
         Shape::LowShelf,
         Shape::HighShelf,
-        Shape::LowCut,
-        Shape::HighCut,
+        Shape::HighPass,
+        Shape::LowPass,
         Shape::BandPass,
         Shape::Notch,
         Shape::AllPass,
@@ -63,7 +63,7 @@ impl Shape {
 
     /// Whether a family shapes it.
     pub fn uses_family(self) -> bool {
-        matches!(self, Shape::LowCut | Shape::HighCut | Shape::BandPass | Shape::Notch)
+        matches!(self, Shape::HighPass | Shape::LowPass | Shape::BandPass | Shape::Notch)
     }
 
     /// Whether Gain does anything.
@@ -75,7 +75,7 @@ impl Shape {
     pub fn max_order(self) -> usize {
         match self {
             Shape::LowShelf | Shape::HighShelf => 4,
-            Shape::LowCut | Shape::HighCut | Shape::BandPass | Shape::Notch | Shape::AllPass => 8,
+            Shape::HighPass | Shape::LowPass | Shape::BandPass | Shape::Notch | Shape::AllPass => 8,
             _ => 0,
         }
     }
@@ -84,7 +84,7 @@ impl Shape {
     pub fn uses_q(self, order: usize) -> bool {
         match self {
             Shape::Bell | Shape::BandPass | Shape::Notch => true,
-            Shape::LowCut | Shape::HighCut | Shape::LowShelf | Shape::HighShelf | Shape::AllPass => order >= 2,
+            Shape::HighPass | Shape::LowPass | Shape::LowShelf | Shape::HighShelf | Shape::AllPass => order >= 2,
             Shape::Empty | Shape::Tilt => false,
         }
     }
@@ -168,10 +168,10 @@ pub fn design(s: &Settings, proto: Option<&Prototype>, g: Globals, fs: f64) -> (
         Shape::HighShelf => (high_shelf(s.freq, gain, s.q, order, fs), s.freq > top),
         Shape::Tilt => (tilt(s.freq, gain, fs), s.freq > top),
         Shape::AllPass => (all_pass(s.freq, s.q, order, fs), s.freq > top),
-        Shape::LowCut | Shape::HighCut | Shape::BandPass | Shape::Notch => {
+        Shape::HighPass | Shape::LowPass | Shape::BandPass | Shape::Notch => {
             let band = match s.shape {
-                Shape::LowCut => Band::LowCut,
-                Shape::HighCut => Band::HighCut,
+                Shape::HighPass => Band::HighPass,
+                Shape::LowPass => Band::LowPass,
                 Shape::BandPass => Band::BandPass,
                 _ => Band::Notch,
             };
@@ -223,20 +223,20 @@ pub fn globals_of(values: &[f64]) -> Globals {
 }
 
 /// WHERE A NODE'S HANDLE SITS on the picture, (Hz, dB): a Bell's and a
-/// shelf's at Freq and its Gain times Scale; a tilt's, a band pass's, a
+/// shelf's at Freq and its Gain times Scale; a tilt's, a band-pass's, a
 /// notch's and an all-pass's at Freq on 0 dB; a cut's on its own curve at
 /// Freq (`cascade`, the node's design at `fs`). `None` for Empty.
 pub fn handle(s: &Settings, g: Globals, cascade: &ni_filter::Cascade, fs: f64) -> Option<(f64, f64)> {
     let db = match s.shape {
         Shape::Empty => return None,
         Shape::Bell | Shape::LowShelf | Shape::HighShelf => s.gain_db * g.scale,
-        Shape::LowCut | Shape::HighCut => cascade.db(s.freq.min(0.4999 * fs), fs),
+        Shape::HighPass | Shape::LowPass => cascade.db(s.freq.min(0.4999 * fs), fs),
         Shape::Tilt | Shape::BandPass | Shape::Notch | Shape::AllPass => 0.0,
     };
     Some((s.freq, db))
 }
 
-/// A Bell's, a band pass's or a notch's -3 dB edges in Hz, below and above
+/// A Bell's, a band-pass's or a notch's -3 dB edges in Hz, below and above
 /// Freq, for its Q (`q`): Freq · 2^(∓N/2), N = 2·asinh(1/2Q)/ln 2 octaves.
 /// `None` for a shape whose Q is no width.
 pub fn edges(s: &Settings) -> Option<(f64, f64)> {
@@ -254,13 +254,13 @@ pub fn q_for_edge(freq: f64, edge_hz: f64) -> f64 {
     (1.0 / (2.0 * (octaves * core::f64::consts::LN_2 / 2.0).sinh())).clamp(0.1, 40.0)
 }
 
-/// What a filter added at `hz` is: a Low Cut below 30 Hz, a High Cut above
+/// What a filter added at `hz` is: a High-Pass below 30 Hz, a Low-Pass above
 /// 15 kHz, a Bell between them.
 pub fn shape_for_new(hz: f64) -> Shape {
     if hz < 30.0 {
-        Shape::LowCut
+        Shape::HighPass
     } else if hz > 15_000.0 {
-        Shape::HighCut
+        Shape::LowPass
     } else {
         Shape::Bell
     }

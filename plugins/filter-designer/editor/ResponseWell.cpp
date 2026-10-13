@@ -269,6 +269,17 @@ void ResponseWell::rebuild()
     }
     pre = areaPath (shown.pre);
     post = areaPath (shown.post);
+    postEdge.clear();
+    const auto a = plotArea();
+    for (int i = 0; i < Picture::points; ++i)
+    {
+        const double t = (analyzerTop - shown.post[(size_t) i]) / analyzerSpan;
+        const juce::Point<float> p (xOf (shown.hz[(size_t) i]), a.getY() + (float) juce::jlimit (0.0, 1.0, t) * a.getHeight());
+        if (i == 0)
+            postEdge.startNewSubPath (p);
+        else
+            postEdge.lineTo (p);
+    }
 }
 
 /* ------------------------------------------------------------- paint -- */
@@ -277,12 +288,21 @@ void ResponseWell::paintPlot (juce::Graphics& g)
 {
     const auto a = plotArea();
     const int mode = (int) plain (param::analyzer);
+    /* Before the filters faded behind, after them highlighted in front. */
     if (shown.analyzer)
     {
         if (mode == 1 || mode == 3)
-            ni::ui::plot::dry (g, pre);
+        {
+            g.setColour (c::plotDry.withMultipliedAlpha (0.25f));
+            g.fillPath (pre);
+        }
         if (mode == 2 || mode == 3)
-            ni::ui::plot::under (g, post);
+        {
+            g.setColour (c::plotGhost);
+            g.fillPath (post);
+            g.setColour (c::inkDim);
+            g.strokePath (postEdge, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved));
+        }
     }
 
     /* THE RULERS: the frame's two edges, ticks and labels; no grid. */
@@ -476,7 +496,8 @@ void ResponseWell::mouseDown (const juce::MouseEvent& e)
     switch (hit->kind)
     {
         case Hit::Kind::analyzer:
-            edit ({ { param::analyzer, (double) (((int) plain (param::analyzer) + 1) % 4) } });
+            /* Pre + post, Post, Pre, off, round again. */
+            edit ({ { param::analyzer, (double) (((int) plain (param::analyzer) + 3) % 4) } });
             repaint();
             return;
         case Hit::Kind::range:

@@ -216,7 +216,7 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Chord-Detector](plugins/chord-detector/README.md) | names the note or chord a MIDI lane plays — [in Live](plugins/chord-detector/docs/live.md) |
 | [NI Bit-Crusher](plugins/bit-crusher/README.md) | a bit crusher: fewer levels, taken less often — [in Live](plugins/bit-crusher/docs/live.md), [on the Move](plugins/bit-crusher/docs/schwung.md) |
 | [NI Vocalize](plugins/vocalize/README.md) | any sound, more and more a voice singing A, E, I, O or U — [in Live](plugins/vocalize/docs/live.md), [on the Move](plugins/vocalize/docs/schwung.md) |
-| [NI Filter Designer](plugins/filter-designer/README.md) | a filter design tool you play as an equaliser — [in Live](plugins/filter-designer/docs/live.md), [on the Move](plugins/filter-designer/docs/schwung.md) |
+| [NI Filter Designer](plugins/filter-designer/README.md) | sixteen minimum-phase IIR filters on one response curve — [in Live](plugins/filter-designer/docs/live.md), [on the Move](plugins/filter-designer/docs/schwung.md) |
 
 What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).
 

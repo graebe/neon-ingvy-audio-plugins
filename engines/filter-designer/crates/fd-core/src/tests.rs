@@ -67,7 +67,7 @@ fn an_empty_instance_is_bit_exact() {
 }
 
 fn busy(e: &mut Engine) {
-    node(e, 0, Field::Type, 4.0); // low cut
+    node(e, 0, Field::Type, 4.0); // high-pass
     node(e, 0, Field::Freq, 40.0);
     node(e, 0, Field::Order, 3.0);
     node(e, 1, Field::Type, 1.0); // bell
@@ -81,7 +81,7 @@ fn busy(e: &mut Engine) {
     node(e, 3, Field::Gain, 3.0);
     node(e, 3, Field::Freq, 9000.0);
     node(e, 3, Field::Channel, 3.0);
-    node(e, 4, Field::Type, 5.0); // high cut, chebyshev I
+    node(e, 4, Field::Type, 5.0); // low-pass, chebyshev I
     node(e, 4, Field::Family, 2.0);
     node(e, 4, Field::Order, 5.0);
     node(e, 4, Field::Freq, 16_000.0);
@@ -140,7 +140,7 @@ fn the_sound_is_the_design() {
         ripple_db: 1.0,
         stopband_db: 60.0,
     };
-    let s1 = Settings { shape: Shape::HighCut, family: Family::ChebyshevII, order: 6, freq: 6000.0, gain_db: 0.0, q: core::f64::consts::FRAC_1_SQRT_2, ..s0 };
+    let s1 = Settings { shape: Shape::LowPass, family: Family::ChebyshevII, order: 6, freq: 6000.0, gain_db: 0.0, q: core::f64::consts::FRAC_1_SQRT_2, ..s0 };
     let (c0, _) = design(&s0, None, Globals::NEUTRAL, FS);
     let (c1, _) = design(&s1, None, Globals::NEUTRAL, FS);
     for hz in [100.0, 700.0, 1000.0, 2500.0, 5000.0] {
@@ -337,11 +337,31 @@ proptest! {
             let p = Param::from_index(i).unwrap();
             e.set_num(p, p.denormalise(*n));
         }
+        /* The largest magnitude these settings can have: each heard node's
+         * gain times Scale (a gain type), its resonance (a pass, Q up to 40),
+         * 0 dB otherwise; the isolator's +6; Output; and 20 dB for a
+         * transient's overshoot of the steady-state peak. */
+        let v = e.values();
+        let scale = (v[Param::Scale.index()] / 100.0).abs();
+        let mut db = v[Param::Output.index()] + 6.0 + 20.0;
+        for slot in 0..NODES as u8 {
+            if !crate::design::is_heard(v, slot) {
+                continue;
+            }
+            let s = crate::design::settings_of(v, slot);
+            db += if s.shape.uses_gain() {
+                s.gain_db.abs() * scale
+            } else {
+                20.0 * (s.q / core::f64::consts::FRAC_1_SQRT_2).max(1.0).log10() + 3.0
+            };
+        }
+        let bound = 0.5 * 10f64.powf(db / 20.0);
         let mut l = noise(4096, 17);
         let mut r = noise(4096, 19);
         e.process_f32(&mut l, Some(&mut r));
-        for v in l.iter().chain(r.iter()) {
-            prop_assert!(v.is_finite() && v.abs() < 1e4);
+        for x in l.iter().chain(r.iter()) {
+            prop_assert!(x.is_finite(), "not finite");
+            prop_assert!(f64::from(x.abs()) <= bound, "{} over the bound {bound}", x.abs());
         }
     }
 }

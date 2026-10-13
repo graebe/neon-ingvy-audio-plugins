@@ -22,7 +22,7 @@ body{margin:0;background:#060410}
 </helmet>
 <div class="ph" style="position: relative; width: 888px; height: 708px; overflow: hidden; font-family: var(--font-mono); color: var(--ink); background: var(--bg-000);">
 
-  <!-- RESPONSE (32, 32, 824 x 288): the whole window's one picture, 10 Hz to 22 kHz in equal steps of pitch across, the dB range up (±6, ±12, ±18 or ±30, clicked in the caption). Back to front: the analyzer (post as plot-fill #1d1533, pre as plot-dry #6b6b78 at half; its own scale, -6 to -84 dBFS), the rulers (line-200 ticks, 9px ink-muted labels, no grid lines), 0 dB as the grey line (the signal untouched), the isolator's bands and every filter alone as 1px plot-ghost #3a2a66, the selected filter alone in ink on a bg-000 casing (what you asked for), the total in uv with its glow (what you get). Handles: the kit's PlotHandle, a 4.5px ink dot on a bg-000 rim, as Bit-Crusher's and Side-Chain's; the selected one uv with its glow; a bypassed one hollow ink-dim. Each carries its slot's number (and L, R, M or S off stereo). The selected Bell, Band Pass or Notch shows its -3 dB edges as two ink-dim ticks, dragged to set Q. The plugin draws the engine's own curves (fd_picture); this board computes them from the same designs. -->
+  <!-- RESPONSE (32, 32, 824 x 288): the whole window's one picture, 10 Hz to 22 kHz in equal steps of pitch across, the dB range up (±6, ±12, ±18 or ±30, clicked in the caption). Back to front: the analyzer (pre, before the filters, faded as plot-dry #6b6b78 at a quarter; post, after them, highlighted as plot-ghost #3a2a66 under a 1.5px ink-dim edge; its own scale, -6 to -84 dBFS), the rulers (line-200 ticks, 9px ink-muted labels, no grid lines), 0 dB as the grey line (the signal untouched), the isolator's bands and every filter alone as 1px plot-ghost #3a2a66, the selected filter alone in ink on a bg-000 casing (what you asked for), the total in uv with its glow (what you get). Handles: the kit's PlotHandle, a 4.5px ink dot on a bg-000 rim, as Bit-Crusher's and Side-Chain's; the selected one uv with its glow; a bypassed one hollow ink-dim. Each carries its slot's number (and L, R, M or S off stereo). The selected Bell, Band Pass or Notch shows its -3 dB edges as two ink-dim ticks, dragged to set Q. The plugin draws the engine's own curves (fd_picture); this board computes them from the same designs. -->
   <div style="position: absolute; left: 32px; top: 32px; width: 824px; height: 288px; box-sizing: border-box; background: var(--bg-000); border: 1px solid var(--line-100);">
     <span style="position: absolute; left: 6px; top: 3px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted);">{{caption}}</span>
     <span style="position: absolute; right: 6px; top: 3px; display: flex; gap: 16px; font: 400 10px/14px var(--font-mono); letter-spacing: .02em; color: var(--ink-muted);">
@@ -31,10 +31,11 @@ body{margin:0;background:#060410}
     </span>
     <svg viewBox="0 0 812 262" width="812" height="262" style="position: absolute; left: 6px; top: 20px; overflow: visible; touch-action: none; outline: none;" tabIndex="0" role="img" aria-label="Frequency response: double-click to add a filter, drag a handle to move it" onPointerDown="{{wellDown}}" onPointerMove="{{wellMove}}" onPointerUp="{{wellUp}}" onDoubleClick="{{wellDouble}}" onKeyDown="{{wellKey}}">
       <sc-if value="{{showPre}}" hint-placeholder-val="{{false}}">
-        <path d="{{preArea}}" fill="#6b6b78" fill-opacity="0.5" stroke="none"></path>
+        <path d="{{preArea}}" fill="#6b6b78" fill-opacity="0.25" stroke="none"></path>
       </sc-if>
       <sc-if value="{{showPost}}" hint-placeholder-val="{{true}}">
-        <path d="{{postArea}}" fill="#1d1533" stroke="none"></path>
+        <path d="{{postArea}}" fill="#3a2a66" stroke="none"></path>
+        <path d="{{postEdge}}" fill="none" stroke="var(--ink-dim)" stroke-width="1.5" stroke-linejoin="round"></path>
       </sc-if>
       <path d="{{ticks}}" fill="none" stroke="var(--line-200)" stroke-width="1"></path>
       <sc-for list="{{labels}}" as="l" hint-placeholder-count="12">
@@ -69,7 +70,7 @@ body{margin:0;background:#060410}
     </button>
   </sc-for>
 
-  <!-- INSPECTOR (32, 408, 544 x 232): the selected cell. A filter: four selects (Type, Family, Order, Channel), then five knobs (Freq, Gain, Q or Resonance, Ripple, Stopband); what the type does not use is drawn disabled, never hidden, so nothing moves when the type changes. The isolator: Low, Mid, High, Lower, Upper and Slope, a Kill under each band. On, at the title's right, is the slot's or the isolator's switch. -->
+  <!-- INSPECTOR (32, 408, 544 x 232): the selected cell. A filter: four selects (Type, Family, Order, Channel), then five knobs (Freq, Gain, Q, Ripple, Stopband); what the type does not use is drawn disabled, never hidden, so nothing moves when the type changes. The isolator: Low, Mid, High, Lower, Upper and Slope, a Kill under each band. On, at the title's right, is the slot's or the isolator's switch. -->
   <section class="ph-panel" style="position: absolute; left: 32px; top: 408px; width: 544px; height: 232px; box-sizing: border-box; margin: 0;" aria-label="{{inspectorTitle}}">
     <h2 class="ph-title" style="margin: 0 0 12px;">{{inspectorTitle}}</h2>
     <button class="fd-plain {{onToggle.cls}}" style="position: absolute; right: 16px; top: 14px;" onClick="{{onToggle.click}}"><span class="sw"></span><span class="ph-label">On</span></button>
@@ -129,7 +130,7 @@ body{margin:0;background:#060410}
     </sc-if>
   </section>
 
-  <!-- OUTPUT (592, 408, 264 x 232): what applies to every filter. Output (bipolar, ±24 dB), Scale (every gain at once, ±200 %), and Adaptive (a Bell narrows as it boosts or cuts). -->
+  <!-- OUTPUT (592, 408, 264 x 232): what applies to every filter. Output (bipolar, ±24 dB), Scale (every gain at once, ±200 %), Adaptive (proportional Q for bells), and Bypass (the plugin's bypass, crossfaded in 10 ms). -->
   <section class="ph-panel" style="position: absolute; left: 592px; top: 408px; width: 264px; height: 232px; box-sizing: border-box; margin: 0;" aria-label="Output">
     <h2 class="ph-title" style="margin: 0 0 12px;">Output</h2>
     <div style="display: flex; gap: 16px;">
@@ -146,8 +147,9 @@ body{margin:0;background:#060410}
         </div>
       </sc-for>
     </div>
-    <div style="margin-top: 12px; height: 28px; display: flex; align-items: center;">
+    <div style="margin-top: 12px; height: 28px; display: flex; align-items: center; justify-content: space-between;">
       <button class="fd-plain {{adaptive.cls}}" onClick="{{adaptive.click}}"><span class="sw"></span><span class="ph-label">Adaptive</span></button>
+      <button class="fd-plain {{bypass.cls}}" onClick="{{bypass.click}}"><span class="sw"></span><span class="ph-label">Bypass</span></button>
     </div>
   </section>
 
@@ -279,7 +281,7 @@ class Component extends DCLogic {
       protoCache.set(key, proto);
       return proto;
     };
-    /* Resonance: the section with the highest Q, its Q times Q / 0.7071, at the same |p|. */
+    /* Q on a high-pass or low-pass: the section with the highest Q, its Q times Q / 0.7071, at the same |p|. */
     const resonate = (proto, q) => {
       let best = -1, bestQ = 0;
       proto.sections.forEach((sec, i) => {
@@ -334,19 +336,19 @@ class Component extends DCLogic {
         const g = Math.sqrt(Math.pow(10, G / 20));
         return db(Math.hypot(1, g * w) / Math.hypot(g, w));
       }
-      if (n.type === 'All Pass' || n.type === 'None') return 0;
-      const family = (n.type === 'Band Pass' || n.type === 'Notch') && n.family === 'Linkwitz-Riley' ? 'Butterworth' : n.family;
+      if (n.type === 'All-Pass' || n.type === 'None') return 0;
+      const family = (n.type === 'Band-Pass' || n.type === 'Notch') && n.family === 'Linkwitz-Riley' ? 'Butterworth' : n.family;
       let proto = prototype(family, n.order, n.ripple, n.stopband);
       const W = warp(f);
-      if (n.type === 'Low Cut' || n.type === 'High Cut') {
+      if (n.type === 'High-Pass' || n.type === 'Low-Pass') {
         if (n.order >= 2) proto = resonate(proto, n.q);
-        const x = n.type === 'High Cut' ? W / warp(n.freq) : warp(n.freq) / W;
+        const x = n.type === 'Low-Pass' ? W / warp(n.freq) : warp(n.freq) / W;
         return db(protoAt(proto, x * proto.w3));
       }
       /* Band Pass and Notch: Freq the centre, Q the -3 dB edges, both prewarped. */
       const h = 1 / (2 * n.q), r = Math.sqrt(1 + h * h);
       const w1 = warp(n.freq * (r - h)), w2 = warp(n.freq * (r + h)), w0 = Math.sqrt(w1 * w2), B = w2 - w1;
-      const x = n.type === 'Band Pass' ? (W * W - w0 * w0) / (B * W) : (B * W) / (w0 * w0 - W * W);
+      const x = n.type === 'Band-Pass' ? (W * W - w0 * w0) / (B * W) : (B * W) / (w0 * w0 - W * W);
       return db(protoAt(proto, Math.min(Math.abs(x), 1e9) * proto.w3));
     };
 
@@ -381,15 +383,15 @@ class Component extends DCLogic {
     const blank = (i) => ({ type: 'None', on: true, family: 'Butterworth', order: 2, freq: 30 * Math.pow(16000 / 30, i / 15), gain: 0, q: Math.SQRT1_2, ripple: 1, stopband: 60, channel: 'Stereo' });
     const nodes = [];
     for (let i = 0; i < 16; i++) nodes.push(blank(i));
-    Object.assign(nodes[0], { type: 'Low Cut', freq: 30, order: 4 });
+    Object.assign(nodes[0], { type: 'High-Pass', freq: 30, order: 4 });
     Object.assign(nodes[1], { type: 'Bell', freq: 250, gain: -3, q: 1.0 });
     Object.assign(nodes[2], { type: 'Notch', freq: 3200, order: 1, q: 4 });
     Object.assign(nodes[3], { type: 'High Shelf', freq: 10000, gain: 2, order: 2 });
-    Object.assign(nodes[4], { type: 'High Cut', freq: 18000, family: 'Elliptic', order: 6, ripple: 0.5, stopband: 60 });
+    Object.assign(nodes[4], { type: 'Low-Pass', freq: 18000, family: 'Elliptic', order: 6, ripple: 0.5, stopband: 60 });
     return {
-      nodes, sel: 4, open: null, range: 18, analyzer: 'Post',
+      nodes, sel: 4, open: null, range: 18, analyzer: 'Both',
       iso: { on: false, low: 0, mid: 0, high: 0, killLow: false, killMid: false, killHigh: false, lower: 250, upper: 2500, slope: 24 },
-      output: 0, scale: 100, adaptive: false,
+      output: 0, scale: 100, adaptive: false, bypass: false,
     };
   }
 
@@ -397,22 +399,22 @@ class Component extends DCLogic {
     const { nodeDb, isoBands } = this.fd();
     const s = this.st();
     const self = this;
-    const TYPES = ['None', 'Bell', 'Low Shelf', 'High Shelf', 'Low Cut', 'High Cut', 'Band Pass', 'Notch', 'All Pass', 'Tilt'];
+    const TYPES = ['None', 'Bell', 'Low Shelf', 'High Shelf', 'High-Pass', 'Low-Pass', 'Band-Pass', 'Notch', 'All-Pass', 'Tilt'];
     const FAMILIES = ['Butterworth', 'Bessel', 'Chebyshev I', 'Chebyshev II', 'Elliptic', 'Linkwitz-Riley'];
     const CHANNELS = ['Stereo', 'Left', 'Right', 'Mid', 'Side'];
     const GAIN_TYPES = ['Bell', 'Low Shelf', 'High Shelf', 'Tilt'];
-    const CUTS = ['Low Cut', 'High Cut'];
-    const FAMILY_TYPES = ['Low Cut', 'High Cut', 'Band Pass', 'Notch'];
-    const ORDER_TYPES = ['Low Shelf', 'High Shelf', 'Low Cut', 'High Cut', 'Band Pass', 'Notch', 'All Pass'];
+    const CUTS = ['High-Pass', 'Low-Pass'];
+    const FAMILY_TYPES = ['High-Pass', 'Low-Pass', 'Band-Pass', 'Notch'];
+    const ORDER_TYPES = ['Low Shelf', 'High Shelf', 'High-Pass', 'Low-Pass', 'Band-Pass', 'Notch', 'All-Pass'];
     const GLYPHS = {
       'Bell': 'M1 12H4.5C6.5 12 6.5 4 8 4S9.5 12 11.5 12H15',
       'Low Shelf': 'M1 5H5L9 11H15',
       'High Shelf': 'M1 11H7L11 5H15',
-      'Low Cut': 'M2 14C4 7 5 5 8.5 5H15',
-      'High Cut': 'M1 5H7.5C11 5 12 7 14 14',
-      'Band Pass': 'M1 13C5 13 6 4 8 4S11 13 15 13',
+      'High-Pass': 'M2 14C4 7 5 5 8.5 5H15',
+      'Low-Pass': 'M1 5H7.5C11 5 12 7 14 14',
+      'Band-Pass': 'M1 13C5 13 6 4 8 4S11 13 15 13',
       'Notch': 'M1 5H6L8 13L10 5H15',
-      'All Pass': 'M1 5H15M2 11C4 8 6 8 8 11S12 14 14 11',
+      'All-Pass': 'M1 5H15M2 11C4 8 6 8 8 11S12 14 14 11',
       'Tilt': 'M1 12L15 4',
     };
 
@@ -461,6 +463,7 @@ class Component extends DCLogic {
     const area = (fn) => path([[AX, AH]].concat(freqs.map((f, i) => [fx(f), ay(fn(f, i))])).concat([[AX + AW, AH]])) + 'Z';
     const preArea = area((f) => music(f));
     const postArea = area((f, i) => music(f) + total[i]);
+    const postEdge = path(freqs.map((f, i) => [fx(f), ay(music(f) + total[i])]));
 
     /* RULERS: 20, 50, 100 ... 20k named, a minor tick at every whole
      * multiple; the dB range named in steps of a third of it or so. */
@@ -511,7 +514,7 @@ class Component extends DCLogic {
     });
     /* The selected Bell, Band Pass or Notch: its -3 dB edges. */
     let widthTicks = '';
-    if (selNode && selNode.type !== 'None' && ['Bell', 'Band Pass', 'Notch'].indexOf(selNode.type) >= 0) {
+    if (selNode && selNode.type !== 'None' && ['Bell', 'Band-Pass', 'Notch'].indexOf(selNode.type) >= 0) {
       const oct = 2 * Math.asinh(1 / (2 * selNode.q)) / Math.LN2;
       const hy = Math.max(0, Math.min(AH, handleY(selNode, s.sel)));
       [-1, 1].forEach((sgn) => {
@@ -594,7 +597,7 @@ class Component extends DCLogic {
       const usesOrder = ORDER_TYPES.indexOf(n.type) >= 0;
       const maxOrder = n.type === 'Low Shelf' || n.type === 'High Shelf' ? 4 : 8;
       const order = Math.min(n.order, maxOrder);
-      const orderText = (o) => o + ' · ' + 6 * o + ' dB';
+      const orderText = (o) => 6 * o + ' dB/oct';
       const select = (key, label, w, enabled, value, options, pick) => {
         const open = s.open === key && enabled;
         selects.push({
@@ -605,15 +608,15 @@ class Component extends DCLogic {
           options: options.map((o) => ({ text: o.text, cls: o.value === o.current ? 'selected' : '', pick: () => { pick(o.value); this.setState({ open: null }); } })),
         });
       };
-      select('type', 'Type', 128, true, empty ? 'Empty' : n.type, TYPES.map((t) => ({ text: t === 'None' ? 'Empty' : t, value: t, current: n.type })), (t) => setNode(j, { type: t, on: true }));
-      const famShown = (n.type === 'Band Pass' || n.type === 'Notch') && n.family === 'Linkwitz-Riley' ? 'Butterworth' : n.family;
+      select('type', 'Type', 120, true, empty ? 'Empty' : n.type, TYPES.map((t) => ({ text: t === 'None' ? 'Empty' : t, value: t, current: n.type })), (t) => setNode(j, { type: t, on: true }));
+      const famShown = (n.type === 'Band-Pass' || n.type === 'Notch') && n.family === 'Linkwitz-Riley' ? 'Butterworth' : n.family;
       select('family', 'Family', 152, usesFamily, usesFamily ? famShown : '–', FAMILIES.map((f) => ({ text: f, value: f, current: n.family })), (f) => setNode(j, { family: f }));
       const orders = []; for (let o = 1; o <= maxOrder; o++) orders.push({ text: orderText(o), value: o, current: order });
-      select('order', 'Order', 96, usesOrder, usesOrder ? orderText(order) : '–', orders, (o) => setNode(j, { order: o }));
-      select('channel', 'Channel', 88, !empty, n.channel, CHANNELS.map((c) => ({ text: c, value: c, current: n.channel })), (c) => setNode(j, { channel: c }));
+      select('order', 'Order', 114, usesOrder, usesOrder ? orderText(order) : '–', orders, (o) => setNode(j, { order: o }));
+      select('channel', 'Channel', 100, !empty, n.channel, CHANNELS.map((c) => ({ text: c, value: c, current: n.channel })), (c) => setNode(j, { channel: c }));
 
       const usesGain = isGain(n);
-      const usesQ = !empty && n.type !== 'Tilt' && !((CUTS.indexOf(n.type) >= 0 || n.type === 'Low Shelf' || n.type === 'High Shelf' || n.type === 'All Pass') && order < 2);
+      const usesQ = !empty && n.type !== 'Tilt' && !((CUTS.indexOf(n.type) >= 0 || n.type === 'Low Shelf' || n.type === 'High Shelf' || n.type === 'All-Pass') && order < 2);
       const fam = usesFamily ? famShown : '';
       const usesRipple = fam === 'Chebyshev I' || (fam === 'Elliptic' && order >= 2);
       const usesStop = fam === 'Chebyshev II' || (fam === 'Elliptic' && order >= 2);
@@ -621,7 +624,7 @@ class Component extends DCLogic {
       nodeKnobs = [
         knob('Freq', 'freq', n.freq, fv, fu, !empty, (v) => setNode(j, { freq: v }), () => setNode(j, { freq: 30 * Math.pow(16000 / 30, j / 15) })),
         knob('Gain', 'gain', n.gain, signed(n.gain, 1), 'dB', usesGain, (v) => setNode(j, { gain: v }), () => setNode(j, { gain: 0 })),
-        knob(CUTS.indexOf(n.type) >= 0 ? 'Resonance' : 'Q', 'q', n.q, n.q.toFixed(2), '', usesQ, (v) => setNode(j, { q: v }), () => setNode(j, { q: Math.SQRT1_2 })),
+        knob('Q', 'q', n.q, n.q.toFixed(2), '', usesQ, (v) => setNode(j, { q: v }), () => setNode(j, { q: Math.SQRT1_2 })),
         knob('Ripple', 'ripple', n.ripple, n.ripple.toFixed(2), 'dB', usesRipple, (v) => setNode(j, { ripple: v }), () => setNode(j, { ripple: 1 })),
         knob('Stopband', 'stopband', n.stopband, n.stopband.toFixed(0), 'dB', usesStop, (v) => setNode(j, { stopband: v }), () => setNode(j, { stopband: 60 })),
       ];
@@ -636,9 +639,9 @@ class Component extends DCLogic {
       knob('Low', 'low', s.iso.low, lv, lu, true, (v) => setIso({ low: v }), () => setIso({ low: 0 })),
       knob('Mid', 'mid', s.iso.mid, mv, mu, true, (v) => setIso({ mid: v }), () => setIso({ mid: 0 })),
       knob('High', 'high', s.iso.high, hv, hu, true, (v) => setIso({ high: v }), () => setIso({ high: 0 })),
-      knob('Lower', 'lower', s.iso.lower, xlv, xlu, true, (v) => setIso({ lower: v }), () => setIso({ lower: 250 })),
-      knob('Upper', 'upper', s.iso.upper, xuv, xuu, true, (v) => setIso({ upper: v }), () => setIso({ upper: 2500 })),
-      knob('Slope', 'slope', s.iso.slope, String(s.iso.slope), 'dB', true, (v) => setIso({ slope: v }), () => setIso({ slope: 24 })),
+      knob('Low-Mid', 'lower', s.iso.lower, xlv, xlu, true, (v) => setIso({ lower: v }), () => setIso({ lower: 250 })),
+      knob('Mid-High', 'upper', s.iso.upper, xuv, xuu, true, (v) => setIso({ upper: v }), () => setIso({ upper: 2500 })),
+      knob('Slope', 'slope', s.iso.slope, (s.iso.slope === 48 ? 'LR8 ' : 'LR4 ') + s.iso.slope, 'dB/oct', true, (v) => setIso({ slope: v }), () => setIso({ slope: 24 })),
     ];
     const kills = ['killLow', 'killMid', 'killHigh'].map((k) => ({ cls: 'ph-toggle' + (s.iso[k] ? ' on' : ''), click: () => setIso({ [k]: !s.iso[k] }) }));
     const outKnobs = [
@@ -673,16 +676,17 @@ class Component extends DCLogic {
       caption: ['Response', count + (count === 1 ? ' filter' : ' filters'), '48 kHz'].join('   '),
       analyzerText: s.analyzer === 'Off' ? 'Analyzer off' : s.analyzer === 'Both' ? 'Pre + post' : s.analyzer,
       rangeText: '±' + R + ' dB',
-      cycleAnalyzer: () => { const m = ['Post', 'Both', 'Pre', 'Off']; this.setState({ analyzer: m[(m.indexOf(this.st().analyzer) + 1) % m.length] }); },
+      cycleAnalyzer: () => { const m = ['Both', 'Post', 'Pre', 'Off']; this.setState({ analyzer: m[(m.indexOf(this.st().analyzer) + 1) % m.length] }); },
       cycleRange: () => { const m = [6, 12, 18, 30]; this.setState({ range: m[(m.indexOf(this.st().range) + 1) % m.length] }); },
       showPre: s.analyzer === 'Pre' || s.analyzer === 'Both', showPost: s.analyzer === 'Post' || s.analyzer === 'Both',
-      preArea, postArea, ticks, labels,
+      preArea, postArea, postEdge, ticks, labels,
       zeroLine: 'M' + AX + ' ' + gy(0).toFixed(1) + 'H' + (AX + AW),
       ghosts, isoShown, xoRules, xoTabs, ownCurve,
       totalCurve: path(total.map((d, i) => [fx(freqs[i]), gy(d)])),
       widthTicks, handles, cells,
       inspectorTitle, onToggle, showNode: !isoSel, showIso: isoSel, selects, nodeKnobs, isoKnobs, kills, outKnobs,
       adaptive: { cls: 'ph-toggle' + (s.adaptive ? ' on' : ''), click: () => this.setState({ adaptive: !this.st().adaptive }) },
+      bypass: { cls: 'ph-toggle' + (s.bypass ? ' on' : ''), click: () => this.setState({ bypass: !this.st().bypass }) },
       knobMove: (e) => {
         const k = self._knob;
         if (!k) return;
@@ -774,7 +778,7 @@ class Component extends DCLogic {
     const j = s.nodes.findIndex((n) => n.type === 'None');
     if (j < 0) return;
     const f = g.fOfX(x);
-    const type = f < 30 ? 'Low Cut' : f > 15000 ? 'High Cut' : 'Bell';
+    const type = f < 30 ? 'High-Pass' : f > 15000 ? 'Low-Pass' : 'Bell';
     const gain = type === 'Bell' ? Math.max(-30, Math.min(30, Math.round(g.gOfY(y) * 10) / 10)) : 0;
     this.setState({ sel: j, open: null, nodes: s.nodes.map((m, k) => (k === j ? Object.assign({}, m, { type, on: true, freq: f, gain, q: Math.SQRT1_2, order: 2 }) : m)) });
   }

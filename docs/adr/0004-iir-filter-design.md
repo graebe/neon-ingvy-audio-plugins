@@ -13,7 +13,7 @@ NI Filter Designer needs:
 
 - Six filter families (Butterworth, Bessel, Chebyshev I and II, Elliptic,
   Linkwitz-Riley) at orders 1 to 8.
-- Every response type: cuts, band pass, notch, Bell, shelves, all-pass, tilt.
+- Every response type: high-pass, low-pass, band-pass, notch (band-stop), bell, shelves, all-pass, tilt.
 - Resonance, ripple and stopband.
 - An EQ Three style isolator.
 
@@ -60,7 +60,7 @@ exist do not fit:
    2.5 dB on its skirt (2.3 dB at 19 kHz, Q 1, 44.1 kHz), where the bilinear
    transform would squeeze it whole. Where no real numerator meets the three
    points the design falls back to the prewarped bilinear transform. The
-   family designs -- cuts, band passes and notches of every order -- stay on
+   family designs -- high-pass, low-pass, band-pass and notch of every order -- stay on
    the prewarped bilinear transform, the correct mapping for maximally flat
    and equiripple responses, with their -3 dB edges exact. No oversampling
    in v1.

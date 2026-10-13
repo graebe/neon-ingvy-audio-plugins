@@ -58,6 +58,10 @@ Processor::Processor()
         params[(size_t) i] = p.get();
         addParameter (p.release());
     }
+    /* LAST, so the engine's 174 keep their indices and IDs. */
+    auto b = std::make_unique<ni::Parameter> (ni::bypassSpec());
+    bypass = b.get();
+    addParameter (b.release());
     fd_picture_init (published.get());
 }
 
@@ -69,8 +73,10 @@ bool Processor::isBusesLayoutSupported (const BusesLayout& layout) const
     return monoOrStereo (in) && layout.getMainOutputChannelSet() == in;
 }
 
-void Processor::prepare (double sampleRate, int)
+void Processor::prepare (double sampleRate, int maximumBlockSize)
 {
+    for (auto& copy : listening)
+        copy.assign ((size_t) juce::jmax (1, maximumBlockSize), 0.0f);
     const double r = sampleRate > 0.0 ? sampleRate : 44100.0;
     fd_shell_post_sample_rate (shell.get(), r);
     /* A host that deactivated the plugin and starts it again hears nothing
@@ -92,23 +98,45 @@ void Processor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     const int frames = buffer.getNumSamples();
     const auto clock = readClock (getPlayHead());
     beat.tick (clock, frames);
+    run (buffer, true);
+}
+
+void Processor::run (juce::AudioBuffer<float>& buffer, bool heard)
+{
+    const int frames = buffer.getNumSamples();
     if (frames <= 0 || buffer.getNumChannels() < 1)
         return;
-
     FdCore* core = fd_shell_begin (shell.get());
     for (int i = 0; i < paramCount; ++i)
         fd_core_set_num (core, i, plain (i));
-    float* left = buffer.getWritePointer (0);
-    float* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
-    fd_core_process_f32 (core, left, right, (uint32_t) frames);
+    const bool stereo = buffer.getNumChannels() > 1;
+    if (heard)
+        fd_core_process_f32 (core, buffer.getWritePointer (0), stereo ? buffer.getWritePointer (1) : nullptr,
+                             (uint32_t) frames);
+    else
+    {
+        /* On a copy, in pieces the size the host announced: the output is
+         * the input, the engine hears it all. */
+        const int room = (int) listening[0].size();
+        for (int at = 0; at < frames; at += room)
+        {
+            const int n = juce::jmin (room, frames - at);
+            std::copy_n (buffer.getReadPointer (0, at), n, listening[0].data());
+            if (stereo)
+                std::copy_n (buffer.getReadPointer (1, at), n, listening[1].data());
+            fd_core_process_f32 (core, listening[0].data(), stereo ? listening[1].data() : nullptr, (uint32_t) n);
+        }
+    }
     fd_shell_end (shell.get(), (uint32_t) frames);
 }
 
-/* Bypassed, the audio passes as JUCE passes it (no latency to keep) and the
- * Ground keeps the host's time. */
+/* Bypassed, by the host or by the Bypass: the audio passes as JUCE passes it
+ * (no latency to keep), the engine runs on a copy, and the Ground keeps the
+ * host's time. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     beat.tick (readClock (getPlayHead()), buffer.getNumSamples());
+    run (buffer, false);
     ni::Processor::processBypassed (buffer, midi);
 }
 
@@ -135,8 +163,19 @@ bool Processor::bipolar (int index) const
     return fd_param_info (index, &info) && info.bipolar;
 }
 
+void Processor::watch()
+{
+    const bool want = windowOpen && (int) plain (param::analyzer) != 0;
+    if (want != watching)
+    {
+        watching = want;
+        fd_shell_post_watching (shell.get(), want);
+    }
+}
+
 const Picture& Processor::picture (int lane)
 {
+    watch();
     std::array<double, paramCount> values {};
     for (int i = 0; i < paramCount; ++i)
         values[(size_t) i] = plain (i);
@@ -202,13 +241,15 @@ juce::AudioProcessorEditor* Processor::createEditor()
 void Processor::editorOpened()
 {
     beat.setActive (true);
-    fd_shell_post_watching (shell.get(), true);
+    windowOpen = true;
+    watch();
 }
 
 void Processor::editorClosed()
 {
     beat.setActive (false);
-    fd_shell_post_watching (shell.get(), false);
+    windowOpen = false;
+    watch();
 }
 
 } // namespace ni::fd

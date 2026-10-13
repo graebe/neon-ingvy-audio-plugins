@@ -27,10 +27,11 @@ constexpr int rowGap = (int) uv::tok::space::space3;
 constexpr int rowH = (int) uv::tok::size::controlH;
 constexpr int labelH = 14;
 constexpr int labelGap = (int) uv::tok::space::space2;
-constexpr int selectGap = (int) uv::tok::space::space4;
+constexpr int selectGap = (int) uv::tok::space::space2;
 
-/* The four selects' widths across the inspector. */
-constexpr std::array<int, 4> selectWidths { 126, 150, 96, 90 };
+/* The four selects' widths across the inspector, each its longest option
+ * whole: "High Shelf", "Linkwitz-Riley", "48 dB/oct", "Stereo". */
+constexpr std::array<int, 4> selectWidths { 120, 150, 114, 100 };
 } // namespace
 
 /* --------------------------------------------------------------- view -- */
@@ -107,6 +108,9 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
     adaptive = std::make_unique<ni::ui::ParamToggle> (model.parameter (param::adaptiveQ), "Adaptive");
     ni::ui::setInfo (*adaptive, info::adaptive);
     outPanel->addAndMakeVisible (*adaptive);
+    bypassSwitch = std::make_unique<ni::ui::ParamToggle> (model.bypassParameter(), "Bypass");
+    ni::ui::setInfo (*bypassSwitch, info::bypass);
+    outPanel->addAndMakeVisible (*bypassSwitch);
 
     /* THE WINDOW. */
     window.setConventions ({ { "double-click", "to add a filter" }, { "drag", "it, alt for Q" }, { "delete", "removes it" } });
@@ -173,6 +177,8 @@ ni::ui::ParamToggle* Editor::toggleFor (int index)
             return t.get();
     if (adaptive->binding().parameter().getParameterIndex() == index)
         return adaptive.get();
+    if (index < 0)
+        return bypassSwitch.get();
     return nullptr;
 }
 
@@ -212,8 +218,8 @@ void Editor::rebuildInspector()
         addKnob (param::isoLow, "Low", info::low, info::dbValue);
         addKnob (param::isoMid, "Mid", info::mid, info::dbValue);
         addKnob (param::isoHigh, "High", info::high, info::dbValue);
-        addKnob (param::isoLower, "Lower", info::lower, info::hzValue);
-        addKnob (param::isoUpper, "Upper", info::upper, info::hzValue);
+        addKnob (param::isoLower, "Low-Mid", info::lower, info::hzValue);
+        addKnob (param::isoUpper, "Mid-High", info::upper, info::hzValue);
         addKnob (param::isoSlope, "Slope", info::slope, info::plainValue, true);
         addToggle (param::isoKillLow, "Kill", info::kill);
         addToggle (param::isoKillMid, "Kill", info::kill);
@@ -273,8 +279,8 @@ void Editor::refreshInspector()
         return;
     shownFor = { t, order, family };
 
-    static const char* const names[] = { "Empty", "Bell", "Low Shelf", "High Shelf", "Low Cut",
-                                         "High Cut", "Band Pass", "Notch", "All Pass", "Tilt" };
+    static const char* const names[] = { "Empty", "Bell", "Low Shelf", "High Shelf", "High-Pass",
+                                         "Low-Pass", "Band-Pass", "Notch", "All-Pass", "Tilt" };
     inspectorPanel->setTitleText ("Node " + juce::String (s + 1) + "   " + names[juce::jlimit (0, 9, t)]);
     const unsigned used = model.typeUses (t, order);
     const bool empty = t == type::empty;
@@ -287,11 +293,10 @@ void Editor::refreshInspector()
         selects[i]->setEnabled (lit[i]);
         captions[i]->setLit (lit[i]);
     }
-    const bool cut = t == type::lowCut || t == type::highCut;
+    const bool pass = t == type::highPass || t == type::lowPass;
     if (auto* k = knobFor (param::node (s, param::q)))
     {
-        k->setLabel (cut ? "Resonance" : "Q");
-        ni::ui::setInfo (*k, cut ? info::resonance : info::q);
+        ni::ui::setInfo (*k, pass ? info::passQ : info::q);
         k->setEnabled ((used & uses::q) != 0);
     }
     if (auto* k = knobFor (param::node (s, param::freq)))
@@ -354,7 +359,9 @@ void Editor::layout()
     const int cell = (out.getWidth() - 2 * knobGap) / 3;
     for (size_t i = 0; i < outKnobs.size(); ++i)
         outKnobs[i]->setBounds (out.getX() + (int) i * (cell + knobGap), out.getY(), cell, ni::ui::Knob::cardHeight);
-    adaptive->setBounds (out.getX(), out.getY() + ni::ui::Knob::cardHeight + rowGap, adaptive->idealWidth(), rowH);
+    const int switches = out.getY() + ni::ui::Knob::cardHeight + rowGap;
+    adaptive->setBounds (out.getX(), switches, adaptive->idealWidth(), rowH);
+    bypassSwitch->setBounds (out.getRight() - bypassSwitch->idealWidth(), switches, bypassSwitch->idealWidth(), rowH);
 }
 
 void Editor::tick (double)

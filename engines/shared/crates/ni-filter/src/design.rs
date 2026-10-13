@@ -10,13 +10,13 @@ THE FAMILIES ([`family`]), on the bilinear transform's warped axis
 ```text
   low-pass   p = u / Ωc                    Ωc = tan(π·fc/fs)
   high-pass  p = Ωc / u
-  band pass  p = (u² + Ω0²) / (B·u)        Ω0² = Ω1·Ω2, B = Ω2 - Ω1,
+  band-pass  p = (u² + Ω0²) / (B·u)        Ω0² = Ω1·Ω2, B = Ω2 - Ω1,
   band stop  p = B·u / (u² + Ω0²)          Ω1, Ω2 the -3 dB edges, each warped
 ```
 
 `p` the NORMALISED prototype's variable; the prototype as designed runs at
 `w3·p` (proto.rs). Each factor then lands as one section (low and high
-cut) or two (band pass and stop, whose quadratic per pole has two roots), and
+cut) or two (band-pass and stop, whose quadratic per pole has two roots), and
 every section's numerator follows from the factor's: all-pole, zeros on the
 jω axis, or both band edges' zeros at the centre -- a notch's, exact.
 
@@ -51,10 +51,10 @@ const MAX_Q: f64 = 40.0;
 /// What a family design is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Band {
-    /// A high-pass: the lows go.
-    LowCut,
-    /// A low-pass: the highs go.
-    HighCut,
+    /// A high-pass: attenuates below the cutoff.
+    HighPass,
+    /// A low-pass: attenuates above the cutoff.
+    LowPass,
     BandPass,
     /// A band stop.
     Notch,
@@ -92,7 +92,7 @@ fn roots(b: Complex64, c: f64) -> (Complex64, Complex64) {
 pub fn family(proto: &Prototype, band: Band, hz: f64, q: f64, fs: f64) -> (Cascade, bool) {
     let q = if q.is_finite() { q.clamp(0.1, MAX_Q) } else { FRAC_1_SQRT_2 };
     match band {
-        Band::LowCut | Band::HighCut => (cut(proto, band == Band::LowCut, hz, q, fs), hz > top(fs)),
+        Band::HighPass | Band::LowPass => (cut(proto, band == Band::HighPass, hz, q, fs), hz > top(fs)),
         Band::BandPass | Band::Notch => {
             /* Linkwitz-Riley's square is a crossover's: a band plays it as
              * Butterworth. */

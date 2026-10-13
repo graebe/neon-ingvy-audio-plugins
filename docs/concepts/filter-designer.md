@@ -11,10 +11,11 @@ decisions behind the DSP are in [ADR 0004](../adr/0004-iir-filter-design.md).
 ## What it is
 
 A filter design tool you play as an equalizer. Up to sixteen filters sit on
-one response curve. Each is a Bell, a shelf, a cut, a band pass, a notch, an
-all-pass or a tilt, and the cuts, band passes and notches come in every
+one response curve. Each is a bell, a shelf, a high-pass, a low-pass, a
+band-pass, a notch (band-stop), an all-pass or a tilt, and the high-pass,
+low-pass, band-pass and notch filters come in every
 classic family at every order: Butterworth, Bessel, Chebyshev I and II,
-Elliptic and Linkwitz-Riley, from 6 to 48 dB/oct, with resonance. In front
+Elliptic and Linkwitz-Riley, from 6 to 48 dB/oct, with Q on the highest-Q pole pair. In front
 of them sits an isolator in the manner of EQ Three: two crossovers, three
 bands, a kill on each.
 
@@ -77,27 +78,27 @@ low-pass:
 | Linkwitz-Riley | Butterworth squared (odd orders round up) | – |
 
 A frequency transform then makes the type: LP→LP, LP→HP, LP→BP or LP→BS.
-A Band Pass or Notch of order N has 2N poles. Sections take their identity
+A Band-Pass or Notch of order N has 2N poles. Sections take their identity
 from the closed-form pole index and are never re-sorted, so they cannot swap
 places mid-glide when Ripple moves.
 
 **Prewarp once per filter, not once per section.** A cascade is the bilinear
 transform of its prototype only if every section shares one frequency
-scaling. Cuts use `Ω_c = tan(π·fc/fs)`. Band Pass and Notch prewarp both
+scaling. High-pass and low-pass use `Ω_c = tan(π·fc/fs)`. Band-Pass and Notch prewarp both
 −3 dB edges, then take `Ω0 = √(Ω1·Ω2)` and `B = Ω2 − Ω1`. Prewarping each
 section on its own would bend Butterworth and equiripple shapes above about
 fs/8 and move the Chebyshev II and Elliptic zeros.
 
 **Freq is the −3 dB point in every family.** The exception is Linkwitz-Riley,
-whose Freq is the −6 dB point, so a Low Cut and a High Cut at one Freq sum
+whose Freq is the −6 dB point, so a high-pass and a low-pass at one Freq sum
 flat. Each prototype is normalised once by bisection on |H|². The
 normalisation depends only on Family, Order, Ripple and Stopband, never on
 Freq, so switching families leaves the curve under the handle. Ripple is
 capped at 3 dB, so the −3 dB crossing is unique.
 
-**Resonance** on a cut of order two or more scales only the section with the
+**Q on a high-pass or low-pass** of order two or more scales only the section with the
 highest Q: `Q_top' = Q_top·(Q/0.7071)`, clamped at 40. At order 2 that is
-exactly EQ Eight's resonant 12 dB cut. Order 1 has no resonance.
+exactly EQ Eight's resonant 12 dB/oct filter. Order 1 has no Q.
 
 ### The EQ shapes
 
@@ -123,11 +124,11 @@ nothing in the window moves when the type changes.
 
 | type | Order | Family | Q | Gain | Ripple / Stopband |
 |---|---|---|---|---|---|
-| Low Cut, High Cut | 1–8 (6N dB/oct) | all six | Resonance (order ≥ 2) | – | by family |
-| Band Pass, Notch | 1–8 (2N poles) | all but LR (plays as Butterworth) | bandwidth | – | by family |
+| High-Pass, Low-Pass | 1–8 (6N dB/oct) | all six | Q of the top pole pair (order ≥ 2) | – | by family |
+| Band-Pass, Notch | 1–8 (2N poles) | all but LR (plays as Butterworth) | bandwidth | – | by family |
 | Bell | – | – | bandwidth | ± | – |
 | Low Shelf, High Shelf | 1–4 | – | top section (order ≥ 2) | ± | – |
-| All Pass | 1–8 | – | order ≥ 2 | – | – |
+| All-Pass | 1–8 | – | order ≥ 2 | – | – |
 | Tilt | – | – | – | ± (ends at ±G/2) | – |
 
 ### The isolator
@@ -147,7 +148,7 @@ nothing in the window moves when the type changes.
 - **Smoothing** reuses `ni_dsp::smooth` at control rate (`coef(fs/16)`, the house 5 ms): Freq glides in log₂, Q in log, Gain in dB.
 - **Type, Family, Order, Channel and bypass crossfade.** Each slot holds two preallocated instances. A change designs the second one from zero state and crossfades over 20 ms, with cos² and sin² weights. A change that arrives during a fade waits for its end. A bypassed or empty node does not run, and its state is zero.
 - **Safety:**
-  - Every edge is clamped to 10 Hz … 0.49·fs. A Band Pass whose upper edge clamps keeps its lower edge and narrows, and the curve shows that.
+  - Every edge is clamped to 10 Hz … 0.49·fs. A Band-Pass whose upper edge clamps keeps its lower edge and narrows, and the curve shows that.
   - Denormals are flushed at block end inside the core, because the Move path has no `ScopedNoDenormals`.
   - `reset()` zeroes all state, completes fades and snaps every glide.
 - **Worst case:** 16 nodes × 8 sections × 2 channels is 256 f64 SVF ticks per sample, doubled briefly during fades. That is affordable as scalar code.
@@ -170,7 +171,7 @@ automation point, so every type and family goes in now.
 | `iso_freq_lo` | float, log | 30…2000 Hz | 250 |
 | `iso_freq_hi` | float, log | 500…16000 Hz | 2500 |
 | `iso_slope` | choice | 24 dB, 48 dB | 24 dB |
-| `nNN_type` ×16 | choice | Empty, Bell, Low Shelf, High Shelf, Low Cut, High Cut, Band Pass, Notch, All Pass, Tilt | Empty |
+| `nNN_type` ×16 | choice | Empty, Bell, Low Shelf, High Shelf, High-Pass, Low-Pass, Band-Pass, Notch, All-Pass, Tilt | Empty |
 | `nNN_on` ×16 | switch | Off, On | On |
 | `nNN_family` ×16 | choice | Butterworth, Bessel, Chebyshev I, Chebyshev II, Elliptic, Linkwitz-Riley | Butterworth |
 | `nNN_order` ×16 | choice | 1…8 | 2 |
@@ -210,9 +211,9 @@ One well, 824×288, on PlotWell's rules.
   - the total in uv (what you get).
 - **Handles** are the kit's `PlotHandle`, which arrives with the Bit-Crusher's filter well on `feature/bit-crusher-plots`:
   - A gain filter's dot sits at its Freq and Gain.
-  - A cut's dot sits on its curve, and dragging up raises the resonance.
-  - A Band Pass, Notch or All Pass sits on 0 dB, and dragging up narrows it.
-  - The selected Bell, Band Pass or Notch shows its −3 dB edges as two ticks that drag its Q.
+  - A high-pass's or low-pass's dot sits on its curve at Freq, and dragging up raises its Q.
+  - A Band-Pass, Notch or All-Pass sits on 0 dB, and dragging up narrows it.
+  - The selected Bell, Band-Pass or Notch shows its −3 dB edges as two ticks that drag its Q.
 - **The isolator** draws its crossovers as rules with a tab, and its band gains as dots L, M and H.
 
 ### NODE ROW
@@ -223,8 +224,8 @@ One well, 824×288, on PlotWell's rules.
 
 ### INSPECTOR (two columns wide)
 
-- **A filter:** Type, Family, Order and Channel as selects, then Freq, Gain, Q (named Resonance on a cut), Ripple and Stopband as knobs.
-- **The isolator:** Low, Mid, High, Lower, Upper and Slope as knobs, a Kill under each band, and On at the title.
+- **A filter:** Type, Family, Order and Channel as selects, then Freq, Gain, Q, Ripple and Stopband as knobs.
+- **The isolator:** Low, Mid, High, Low-Mid, Mid-High (the crossover frequencies) and Slope as knobs, a Kill under each band, and On at the title.
 
 ### OUTPUT
 
@@ -234,7 +235,7 @@ Output, Scale and Adaptive.
 
 The system's conventions, plus:
 
-- Double-click the picture to add a filter in the first free slot: a Low Cut below 30 Hz, a High Cut above 15 kHz, a Bell between them, at the pointer's gain.
+- Double-click the picture to add a filter in the first free slot: a high-pass below 30 Hz, a low-pass above 15 kHz, a Bell between them, at the pointer's gain.
 - Alt-drag or the wheel sets Q; Shift is five times finer.
 - Double-click a handle to reset it; Delete removes the filter.
 - Every drag is one grouped host gesture, so undo is one step.
@@ -275,7 +276,7 @@ shell-core's bridge, as Vocalize publishes its envelopes
 curves. It has two pages of eight knobs, under the plugin's own keys:
 
 - **Isolator:** `iso_low`, `iso_mid`, `iso_high`, `iso_freq_lo`, `iso_freq_hi`, `iso_slope`, `iso_on`, `output`. The isolator starts on here; a gain at its minimum is the kill.
-- **Cuts:** `n01_on`, `n01_freq`, `n01_order`, `n01_q`, and the same four for `n02`. Slot 1 is preset as a Low Cut and slot 2 as a High Cut, both Butterworth.
+- **High-pass and low-pass:** `n01_on`, `n01_freq`, `n01_order`, `n01_q`, and the same four for `n02`. Slot 1 is preset as a high-pass and slot 2 as a low-pass, both Butterworth.
 
 Frequencies and orders travel as name-format enums, as Bit-Crusher's Rate
 does. The panic, CC 120 or 123, calls `reset()`. Its test is Bit-Crusher's
