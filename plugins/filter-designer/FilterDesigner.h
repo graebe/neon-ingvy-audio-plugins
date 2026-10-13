@@ -8,7 +8,7 @@
  * isolator, the parameter table and its text, and the picture the editor
  * draws. This file is the shell around it, and does what a shell does:
  *
- *   parameters    declared from the engine's table (fd_param_*): 174 of them,
+ *   parameters    declared from the engine's table (fd_param_*): 175 of them,
  *                 numbers printed and read in the engine's words, choices of
  *                 its labels. The IDs are the engine's keys, the state the
  *                 default ni::Processor one (every parameter by its ID)

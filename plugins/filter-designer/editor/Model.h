@@ -4,7 +4,7 @@
 /*
  * What NI Filter Designer's editor needs from its plugin, and all it may ask.
  *
- * EVERY CONTROL IS A HOST PARAMETER, the engine's 174 in its table's order
+ * EVERY CONTROL IS A HOST PARAMETER, the engine's 175 in its table's order
  * (fd_param_*): parameter(param::node (2, param::freq)) is the third node's
  * Freq. Their text is the engine's ("1.20 kHz", "-inf dB", "Notch"), and the
  * editor holds no unit, precision or range of its own. Which node is
@@ -52,9 +52,11 @@ enum : int
     isoKillHigh,
     isoLower,     // 30..2000 Hz, the low-mid crossover frequency
     isoUpper,     // 500..16000 Hz, the mid-high crossover frequency
-    isoSlope,     // 24 dB, 48 dB
+    isoSlope,     // LR4 24 dB/oct, LR8 48 dB/oct
     nodeBase,
-    count = nodeBase + 16 * 10
+    /* Appended after the nodes. */
+    matchedCuts = nodeBase + 16 * 10, // switch: high-pass and low-pass matched to the analog magnitude
+    count
 };
 
 /* A node's fields, in their order. */
@@ -156,7 +158,7 @@ class Model : public ni::ui::EditorModel
 {
 public:
     /* The shell's Bypass (ni::bypassSpec): the host's own bypass, which the
-     * window shows as a switch. Not one of the engine's 174. */
+     * window shows as a switch. Not one of the engine's 175. */
     virtual juce::RangedAudioParameter& bypassParameter() = 0;
 
     /* Whether parameter `index` runs both ways about zero: the table says. */

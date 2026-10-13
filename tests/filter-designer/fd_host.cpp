@@ -7,7 +7,7 @@
  *
  *   the class        one class, NI Filter Designer from Neon Ingvy, filed as
  *                    an EQ effect, no latency
- *   the parameters   through the VST3 controller: the engine's 174 and the
+ *   the parameters   through the VST3 controller: the engine's 175 and the
  *                    host's Bypass; typing read by the engine
  *   the sound        a new instance is the input bit for bit; a Bell typed
  *                    into the controller is heard at its gain, through the
@@ -110,7 +110,7 @@ int main (int argc, char** argv)
         return 1;
     }
     check (p->getLatencySamples() == 0, "no latency");
-    check (p->getParameters().size() == 175, "174 parameters and the Bypass", String (p->getParameters().size()));
+    check (p->getParameters().size() == 176, "175 parameters and the Bypass", String (p->getParameters().size()));
     check (p->getBypassParameter() != nullptr && p->getBypassParameter()->getName (64) == "Bypass",
            "the plugin's Bypass is the host's bypass");
     check (byName (*p, "Filter 16 Channel") != nullptr, "the last node's Channel, by name");

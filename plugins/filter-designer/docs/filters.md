@@ -592,6 +592,43 @@ about 80 Hz, −18 dB an octave below Freq, and no colour where the bass lives.
 Switch to Bessel to keep a kick's attack intact, or to Elliptic if a 20 Hz
 rumble must go at any cost.
 
+**Matched Cuts.** The bilinear transform maps the whole analog frequency
+axis onto 0 to fs/2 and puts a zero at fs/2. A low-pass high in the band
+therefore falls faster than its analog prototype, steepening into that zero,
+and a resonant peak there narrows. Example: a 24 dB/oct Butterworth
+Low-Pass at 14 kHz, at 48 kHz, is −28.3 dB at 19 kHz; the analog filter is
+−11.0 dB there.
+
+With **Matched** (Output panel; the parameter Matched Cuts), each section of
+a High-Pass or Low-Pass is matched to its own analog section instead. The
+poles are impulse-invariant, `z = e^(s·T)`, and the numerator is chosen so
+the magnitude equals the analog one at DC and at Freq:
+
+- an all-pole low-pass section uses Vicanek's low-pass, `b2 = 0`, so there
+  is no zero at fs/2;
+- an all-pole high-pass section uses Vicanek's high-pass, `b0·(1 − z⁻¹)²`;
+  near Nyquist the three-point match or the bilinear section is used where
+  it strays less;
+- a section with stopband zeros (Chebyshev II, elliptic) is matched at DC,
+  fs/2 and Freq, or is the bilinear section where that strays less;
+- a first-order section is matched at DC and Freq;
+- where no matched section reaches Freq (a pole past fs/2), the bilinear
+  section is used.
+
+Every section meets its analog magnitude at Freq either way, so Freq stays
+exactly the family's −3 dB point (−6 dB for Linkwitz-Riley), raised by Q.
+The same Low-Pass at 14 kHz is −10.1 dB at 19 kHz. Measured for Butterworth
+Low-Pass filters of order 2, 4 and 8, with Q raising the peak by up to 24 dB,
+cutoffs up to 20 kHz, at 44.1, 48 and 96 kHz, from 20 Hz to 20 kHz:
+
+- within 2.1 dB of the analog filter wherever it is above −6 dB;
+- within 4.5 dB down to −20 dB;
+- within a quarter of the depth down to −60 dB.
+
+A Band-Pass and a Notch keep the bilinear design, whose −3 dB edges are
+exact. Switching Matched crossfades the high- and low-pass filters over
+20 ms.
+
 ### Band-Pass
 
 **Description.** Keeps a band around Freq and takes away both sides: the
@@ -940,6 +977,9 @@ Release it on the one.
   `G = Gain·Scale/100`. 50 % halves the curve, and −100 % turns it upside down.
   Cuts, bands, notches and all-passes have no gain to scale.
 - **Adaptive Q** (Bell only): `Q_eff = Q·10^(|G|/40)`, after Scale.
+- **Matched Cuts** (High-Pass and Low-Pass only): each section matched to
+  its analog section instead of the bilinear transform (Part 3, Low-Pass and
+  High-Pass).
 - **Channel** picks what a filter works on. Mid and Side are exact round
   trips:
 
@@ -953,8 +993,8 @@ Release it on the one.
   Right filters are mixed with Mid or Side ones: those do not commute.
   Everything else does.
 - **Changes are smooth.** Freq glides in octaves, Q in log and Gain in dB,
-  each over 5 ms. A change of Type, Family, Order, Channel or bypass
-  crossfades between two designs over 20 ms.
+  each over 5 ms. A change of Type, Family, Order, Channel, bypass or Matched
+  Cuts crossfades between two designs over 20 ms.
 
 ## Further reading
 

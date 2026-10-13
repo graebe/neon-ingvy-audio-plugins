@@ -34,7 +34,7 @@ int main (void)
 
     /* The table. */
     CHECK (fd_param_count() == FD_PARAM_COUNT);
-    CHECK (fd_param_count() == 174);
+    CHECK (fd_param_count() == 175);
     CHECK (fd_param_key (node (0, 4), buf, sizeof buf) > 0 && strcmp (buf, "n01_freq") == 0);
     CHECK (fd_param_name (node (15, 9), buf, sizeof buf) > 0 && strcmp (buf, "Filter 16 Channel") == 0);
     CHECK (fd_param_info (node (0, 0), &info) && info.kind == NiParamKind_Choice && info.max == 9.0);

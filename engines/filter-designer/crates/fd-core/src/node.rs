@@ -56,10 +56,13 @@ pub struct Discrete {
     pub family: Family,
     pub order: usize,
     pub channel: Channel,
+    /// A matched high-pass or low-pass (Matched Cuts): another design, so a
+    /// flip fades.
+    pub matched: bool,
 }
 
 impl Discrete {
-    const EMPTY: Discrete = Discrete { shape: Shape::Empty, family: Family::Butterworth, order: 2, channel: Channel::Stereo };
+    const EMPTY: Discrete = Discrete { shape: Shape::Empty, family: Family::Butterworth, order: 2, channel: Channel::Stereo, matched: false };
 
     /// What node `slot`'s values ask for.
     pub fn of(values: &[f64], slot: u8) -> Discrete {
@@ -69,6 +72,7 @@ impl Discrete {
             family: s.family,
             order: s.order,
             channel: channel_of(values, slot),
+            matched: s.matched,
         }
     }
 }
@@ -113,6 +117,7 @@ impl Glided {
             q: self.ln_q.exp(),
             ripple_db: self.ripple_db,
             stopband_db: self.stopband_db,
+            matched: d.matched,
         }
     }
 }

@@ -18,7 +18,7 @@ fn idx(node: usize, field: usize) -> i32 {
 
 #[test]
 fn the_table_crosses_whole() {
-    assert_eq!(fd_param_count(), 174);
+    assert_eq!(fd_param_count(), 175);
     let mut info = NiParamInfo { kind: NiParamKind::Float, min: 0.0, max: 0.0, default_value: 0.0, log_travel: false, bipolar: false, resolution: 0.0, automatable: true };
     assert!(unsafe { fd_param_info(idx(2, 4), &mut info) });
     assert!(info.log_travel);
@@ -27,7 +27,7 @@ fn the_table_crosses_whole() {
     assert_eq!((info.kind, info.max), (NiParamKind::Choice, 9.0));
     assert!(unsafe { fd_param_info(3, &mut info) });
     assert!(!info.automatable);
-    assert!(unsafe { !fd_param_info(174, &mut info) });
+    assert!(unsafe { !fd_param_info(175, &mut info) });
     assert_eq!(text(|b, n| unsafe { fd_param_key(idx(2, 4), b, n) }), "n03_freq");
     assert_eq!(text(|b, n| unsafe { fd_param_name(idx(2, 4), b, n) }), "Filter 3 Freq");
     assert_eq!(text(|b, n| unsafe { fd_param_unit(idx(2, 4), b, n) }), "Hz");

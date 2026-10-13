@@ -182,6 +182,13 @@ caption names it when it is not stereo.
   every boost and cut, -100 % inverts them.
 - **Adaptive**: proportional Q for bells: Q_eff = Q·10^(|Gain|/40), so a bell
   narrows as its gain grows.
+- **Matched**: every high-pass and low-pass matched to its analog prototype
+  instead of the bilinear transform. Near Nyquist a bilinear low-pass falls
+  faster than its analog prototype, steepening into the transform's zero at
+  fs/2, and a resonant peak there narrows. A matched one keeps the analog
+  slope and peak, with Freq still exactly at -3 dB. Example: a 24 dB/oct
+  low-pass at 14 kHz, at 48 kHz, is -28 dB at 19 kHz bilinear and -10 dB
+  matched (analog: -11 dB). Band-pass and notch filters are unchanged.
 - **Bypass**: the plugin's bypass, the same as Live's device switch. The
   output crossfades to the input over 10 ms; the filters keep processing the
   input, so they resume from the current signal without a transient.

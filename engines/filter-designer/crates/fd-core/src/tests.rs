@@ -139,6 +139,7 @@ fn the_sound_is_the_design() {
         q: 2.0,
         ripple_db: 1.0,
         stopband_db: 60.0,
+        matched: false,
     };
     let s1 = Settings { shape: Shape::LowPass, family: Family::ChebyshevII, order: 6, freq: 6000.0, gain_db: 0.0, q: core::f64::consts::FRAC_1_SQRT_2, ..s0 };
     let (c0, _) = design(&s0, None, Globals::NEUTRAL, FS);
@@ -578,4 +579,36 @@ fn the_sound_is_the_design_at_every_rate() {
             assert!((got - want).abs() < 0.01, "{fs} Hz, {hz} Hz: {got} dB, the design {want} dB");
         }
     }
+}
+
+/// MATCHED CUTS: flipped, the high-pass and low-pass nodes fade to their
+/// matched designs -- and only they -- and what plays is that design: near
+/// the top, the analog slope instead of the bilinear transform's cliff.
+#[test]
+fn matched_cuts_fade_the_cuts_to_their_matched_designs() {
+    let mut e = Engine::new(FS);
+    node(&mut e, 0, Field::Type, 5.0); // low-pass, 24 dB/oct at 14 kHz
+    node(&mut e, 0, Field::Order, 3.0);
+    node(&mut e, 0, Field::Freq, 14_000.0);
+    node(&mut e, 1, Field::Type, 1.0); // a bell, which does not change
+    node(&mut e, 1, Field::Gain, 3.0);
+    e.process_f32(&mut vec![0.0; (FS * 0.05) as usize], None);
+    let bilinear = measured_db(&mut e, 19_000.0);
+    e.set_num(Param::MatchedCuts, 1.0);
+    e.process_f32(&mut vec![0.0; 64], None);
+    assert!(e.node(0).is_fading() && !e.node(1).is_fading(), "the cut fades, the bell does not");
+    let matched = measured_db(&mut e, 19_000.0);
+    let v = e.values;
+    let want: f64 = (0..2)
+        .map(|slot| {
+            let s = design::settings_of(&v, slot);
+            design(&s, design::prototype(&s).as_ref(), Globals::NEUTRAL, FS).0.db(19_000.0, FS)
+        })
+        .sum();
+    assert!(design::settings_of(&v, 0).matched && !design::settings_of(&v, 1).matched);
+    assert!((matched - want).abs() < 0.05, "{matched} dB played, {want} dB designed");
+    /* Half an octave above the cutoff the bilinear cut has fallen far past
+     * the analog 24 dB/oct; the matched one is near it. */
+    println!("a 24 dB/oct low-pass at 14 kHz, at 19 kHz: bilinear {bilinear:.1} dB, matched {matched:.1} dB");
+    assert!(matched > bilinear + 6.0);
 }

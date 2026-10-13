@@ -112,7 +112,7 @@ private:
     std::vector<std::unique_ptr<ni::ui::ParamToggle>> toggles;
     /* Output's, made once. */
     std::vector<std::unique_ptr<ni::ui::ParamKnob>> outKnobs;
-    std::unique_ptr<ni::ui::ParamToggle> adaptive, bypassSwitch;
+    std::unique_ptr<ni::ui::ParamToggle> adaptive, matched, bypassSwitch;
 
     int selection = 0;
     /* What the inspector last showed for, so it is refreshed only when that

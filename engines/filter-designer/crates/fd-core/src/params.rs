@@ -10,7 +10,8 @@ ONE TABLE, THREE READERS. The JUCE shell declares its host parameters from it
 written here and nowhere else.
 
 THE SHAPE: four global parameters, ten for the isolator, then ten for each of
-sixteen nodes, in slot order -- `n01_type` .. `n01_channel`, `n02_type` ..:
+sixteen nodes, in slot order -- `n01_type` .. `n01_channel`, `n02_type` .. --
+and what was appended after them:
 
 ```text
    0..3     output, scale, adaptive_q, analyzer
@@ -18,6 +19,7 @@ sixteen nodes, in slot order -- `n01_type` .. `n01_channel`, `n02_type` ..:
             iso_freq_lo, iso_freq_hi, iso_slope
   14 + 10·slot + field     type, on, family, order, freq, gain, q,
                            ripple, stopband, channel
+  174       matched_cuts
 ```
 
 EMPTY IS A TYPE AND ON IS THE BYPASS. A node is added by giving it a type and
@@ -47,8 +49,11 @@ pub const NODE_FIELDS: usize = 10;
 /// The first node parameter's index.
 pub const NODE_BASE: usize = 14;
 
+/// The first parameter after the nodes: what was appended.
+pub const APPENDED: usize = NODE_BASE + NODES * NODE_FIELDS;
+
 /// How many parameters there are.
-pub const PARAM_COUNT: usize = NODE_BASE + NODES * NODE_FIELDS;
+pub const PARAM_COUNT: usize = APPENDED + 1;
 
 /// A switch's labels.
 pub const SWITCH_LABELS: [&str; 2] = ["Off", "On"];
@@ -127,6 +132,9 @@ pub enum Param {
     IsoSlope,
     /// Node `slot` (0..16)'s `field`.
     Node(u8, Field),
+    /// Every high-pass and low-pass matched to its analog magnitude
+    /// (ni_filter::family_matched) instead of the bilinear transform.
+    MatchedCuts,
 }
 
 const GLOBAL: [Param; NODE_BASE] = [
@@ -243,6 +251,7 @@ impl Param {
             Param::IsoFreqLo => 11,
             Param::IsoFreqHi => 12,
             Param::IsoSlope => 13,
+            Param::MatchedCuts => APPENDED,
         }
     }
 
@@ -250,7 +259,9 @@ impl Param {
     pub fn from_index(i: usize) -> Option<Param> {
         if i < NODE_BASE {
             Some(GLOBAL[i])
-        } else if i < PARAM_COUNT {
+        } else if i == APPENDED {
+            Some(Param::MatchedCuts)
+        } else if i < APPENDED {
             let n = i - NODE_BASE;
             Some(Param::Node((n / NODE_FIELDS) as u8, Field::ALL[n % NODE_FIELDS]))
         } else {
@@ -285,6 +296,7 @@ impl Param {
             Param::IsoFreqLo => ("iso_freq_lo", "Crossover Low-Mid", float(30.0, 2000.0, 250.0, 0.1, Travel::Log, false, Unit::Hz)),
             Param::IsoFreqHi => ("iso_freq_hi", "Crossover Mid-High", float(500.0, 16000.0, 2500.0, 0.1, Travel::Log, false, Unit::Hz)),
             Param::IsoSlope => ("iso_slope", "Crossover Slope", choice(&SLOPE_LABELS, 0, true)),
+            Param::MatchedCuts => ("matched_cuts", "Matched Cuts", choice(&SWITCH_LABELS, 0, true)),
             Param::Node(slot, field) => {
                 let s = (slot as usize).min(NODES - 1);
                 let (key, name) = (NODE_KEYS[s][field as usize], NODE_NAMES[s][field as usize]);

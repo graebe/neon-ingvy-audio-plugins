@@ -266,6 +266,20 @@ TEST_CASE ("filter-designer: the Bypass switch is the shell's bypass")
     CHECK (rig.model.bypassParameter().getValue() == doctest::Approx (1.0f));
 }
 
+TEST_CASE ("filter-designer: the Matched switch sets Matched Cuts, under Adaptive")
+{
+    Rig rig;
+    auto* m = rig.editor.toggleFor (param::matchedCuts);
+    auto* a = rig.editor.toggleFor (param::adaptiveQ);
+    REQUIRE ((m != nullptr && a != nullptr));
+    CHECK (m->getParentComponent() == &rig.editor.outputPanel());
+    CHECK ((m->getX() == a->getX() && m->getY() > a->getBottom()));
+    CHECK (m->getBottom() <= rig.editor.outputPanel().getHeight());
+    Pointer pointer;
+    pointer.click (*m, m->getLocalBounds().getCentre().toFloat());
+    CHECK (rig.plain (param::matchedCuts) == 1.0);
+}
+
 TEST_CASE ("filter-designer: with the isolator shown, its crossovers and its bands drag")
 {
     Rig rig;

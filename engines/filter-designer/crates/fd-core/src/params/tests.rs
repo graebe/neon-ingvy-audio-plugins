@@ -11,7 +11,8 @@ fn text(p: Param, v: f64) -> String {
 
 #[test]
 fn the_table_has_its_shape() {
-    assert_eq!(PARAM_COUNT, 174);
+    assert_eq!(PARAM_COUNT, 175);
+    assert_eq!(Param::from_index(174), Some(Param::MatchedCuts));
     for i in 0..PARAM_COUNT {
         let p = Param::from_index(i).unwrap();
         assert_eq!(p.index(), i);

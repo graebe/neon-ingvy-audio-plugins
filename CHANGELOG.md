@@ -19,6 +19,8 @@
   (post) highlighted. The curve is the engine's own transfer function.
 - **Bypass**, crossfaded in 10 ms, the filters kept running so they resume
   from the signal they heard. No latency.
+- **Matched cuts**: an option to match every high-pass and low-pass to its
+  analog prototype, so filters near Nyquist keep the analog slope and peak.
 - **The tail** reported to the host: how long the filters ring after the
   input stops, to -60 dB (a Q 40 notch at 20 Hz: 4.4 s).
 - **Smooth automation**: Freq, Gain and Q move the filters a sample at a

@@ -26,7 +26,7 @@ Every gain is times Scale.
 
 use core::f64::consts::FRAC_1_SQRT_2;
 use crate::params::{Field, Param, NODES};
-use ni_filter::{all_pass, bell, family, high_shelf, low_shelf, tilt, Band, Cascade, Family, Prototype};
+use ni_filter::{all_pass, bell, family, family_matched, high_shelf, low_shelf, tilt, Band, Cascade, Family, Prototype};
 
 /// What a node is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -123,6 +123,9 @@ pub struct Settings {
     pub q: f64,
     pub ripple_db: f64,
     pub stopband_db: f64,
+    /// A high-pass or low-pass matched to its analog magnitude (Matched
+    /// Cuts) rather than the bilinear transform's.
+    pub matched: bool,
 }
 
 /// What applies to every node.
@@ -198,7 +201,11 @@ pub fn design(s: &Settings, proto: Option<&Prototype>, g: Globals, fs: f64) -> (
                     &made
                 }
             };
-            family(proto, band, s.freq, s.q, fs)
+            if s.matched {
+                family_matched(proto, band, s.freq, s.q, fs)
+            } else {
+                family(proto, band, s.freq, s.q, fs)
+            }
         }
     }
 }
@@ -207,8 +214,9 @@ pub fn design(s: &Settings, proto: Option<&Prototype>, g: Globals, fs: f64) -> (
 /// is on (a bypassed node still has a shape to draw).
 pub fn settings_of(values: &[f64], slot: u8) -> Settings {
     let v = |f: Field| values[Param::Node(slot, f).index()];
+    let shape = Shape::from_value(v(Field::Type));
     Settings {
-        shape: Shape::from_value(v(Field::Type)),
+        shape,
         family: Family::from_index(v(Field::Family).round().max(0.0) as usize),
         order: v(Field::Order).round().max(0.0) as usize + 1,
         freq: v(Field::Freq),
@@ -216,6 +224,9 @@ pub fn settings_of(values: &[f64], slot: u8) -> Settings {
         q: v(Field::Q),
         ripple_db: v(Field::Ripple),
         stopband_db: v(Field::Stopband),
+        /* Only a high-pass's or a low-pass's design changes with it, so only
+         * they fade when it flips. */
+        matched: values[Param::MatchedCuts.index()] >= 0.5 && matches!(shape, Shape::HighPass | Shape::LowPass),
     }
 }
 

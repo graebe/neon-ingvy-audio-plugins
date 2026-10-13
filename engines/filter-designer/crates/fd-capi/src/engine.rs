@@ -19,7 +19,7 @@ pub const FD_NODES: usize = 16;
 pub const FD_NODE_BASE: usize = 14;
 pub const FD_NODE_FIELDS: usize = 10;
 /// How many parameters there are.
-pub const FD_PARAM_COUNT: usize = 174;
+pub const FD_PARAM_COUNT: usize = 175;
 const _: () = assert!(FD_NODES == NODES && FD_NODE_BASE == NODE_BASE && FD_NODE_FIELDS == NODE_FIELDS);
 const _: () = assert!(FD_PARAM_COUNT == PARAM_COUNT);
 

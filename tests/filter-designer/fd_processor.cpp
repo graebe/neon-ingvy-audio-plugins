@@ -102,7 +102,7 @@ struct Instance
 TEST_CASE ("the parameters are the engine's table")
 {
     Processor p;
-    /* The engine's 174, then the shell's Bypass. */
+    /* The engine's 175, then the shell's Bypass. */
     REQUIRE (p.getParameters().size() == param::count + 1);
     std::set<juce::String> ids;
     for (auto* each : p.getParameters())
@@ -112,6 +112,8 @@ TEST_CASE ("the parameters are the engine's table")
     CHECK (p.parameter (param::node (2, param::freq)).getParameterID() == "n03_freq");
     CHECK (p.parameter (param::node (2, param::freq)).getName (64) == "Filter 3 Freq");
     CHECK (p.parameter (param::isoLow).getParameterID() == "iso_low");
+    CHECK (p.parameter (param::matchedCuts).getParameterID() == "matched_cuts");
+    CHECK (p.parameter (param::matchedCuts).getName (64) == "Matched Cuts");
     auto* t = dynamic_cast<juce::AudioParameterChoice*> (&p.parameter (param::node (0, param::type)));
     REQUIRE (t != nullptr);
     CHECK (t->choices.size() == 10);

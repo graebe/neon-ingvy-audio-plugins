@@ -58,7 +58,7 @@ Processor::Processor()
         params[(size_t) i] = p.get();
         addParameter (p.release());
     }
-    /* LAST, so the engine's 174 keep their indices and IDs. */
+    /* LAST, so the engine's 175 keep their indices and IDs. */
     auto b = std::make_unique<ni::Parameter> (ni::bypassSpec());
     bypass = b.get();
     addParameter (b.release());

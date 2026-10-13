@@ -3,7 +3,7 @@
 
 /*
  * NI Filter Designer's model with nothing behind it, for the editor's tests:
- * the 174 parameters as the engine's table declares them (fd-core's
+ * the 175 parameters as the engine's table declares them (fd-core's
  * params.rs), and a picture made up of the parameters -- each handle where
  * the engine's design::handle puts it, each Bell's edges where design::edges
  * puts them, every curve flat -- so what the window does with a picture can
@@ -72,6 +72,7 @@ inline void addParameters (ni::ui::test::FakeParameters& p)
         p.addFloat (key + "stopband", name + "Stopband", linear (20.0f, 120.0f), 60.0f, db, number);
         p.addChoice (key + "channel", name + "Channel", { "Stereo", "Left", "Right", "Mid", "Side" }, 0);
     }
+    p.addChoice ("matched_cuts", "Matched Cuts", offOn, 0);
     /* The shell's Bypass, after the table (ni::bypassSpec). */
     p.addBool ("bypass", "Bypass", false);
 }

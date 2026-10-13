@@ -538,3 +538,151 @@ fn a_shelf_near_nyquist_stays_near_its_analog_shape() {
         }
     }
 }
+
+/// The analog Butterworth low-pass of `order` 2, 4 or 8 at `cutoff`, its
+/// sharpest section's Q raised by `peak` dB: its gain at `f`, in dB.
+fn analog_butterworth_db(order: usize, cutoff: f64, peak: f64, f: f64) -> f64 {
+    let qs: Vec<f64> = (0..order / 2).map(|k| 1.0 / (2.0 * (PI * (2 * k + 1) as f64 / (2 * order) as f64).sin())).collect();
+    let sharpest = qs.iter().cloned().fold(0.0, f64::max);
+    let r = f / cutoff;
+    qs.iter()
+        .map(|&q| {
+            let q = if q == sharpest { q * 10f64.powf(peak / 20.0) } else { q };
+            -10.0 * ((1.0 - r * r).powi(2) + (r / q).powi(2)).log10()
+        })
+        .sum()
+}
+
+/// THE MATCHED CUT AGAINST ITS ANALOG ONE, as NI Bit-Crusher's tone filter
+/// holds it (bc-core's the_filter_keeps_its_slope_and_peak_up_to_twenty_
+/// kilohertz and the_filter_is_flat_then_its_slope_and_peak_rises_by_exactly
+/// _peak): a Butterworth low-pass of order 2, 4 or 8, its sharpest section
+/// raised by Peak, from 20 Hz to 20 kHz -- within 3 dB above -6 dB, 4.5 dB to
+/// -20 dB and a quarter of the depth to -60 dB, at 44.1, 48 and 96 kHz, the
+/// cutoff up to 20 kHz; at the cutoff exactly -3 dB + Peak.
+#[test]
+fn a_matched_cut_keeps_its_analog_slope_and_peak_to_twenty_kilohertz() {
+    let mut worst: f64 = 0.0;
+    for fs in [44_100.0, 48_000.0, 96_000.0] {
+        for order in [2usize, 4, 8] {
+            let p = proto(Family::Butterworth, order);
+            for peak in [0.0, 6.0, 12.0, 24.0] {
+                let q = FRAC_1_SQRT_2 * 10f64.powf(peak / 20.0);
+                for cutoff in [100.0, 1_000.0, 8_000.0, 14_000.0, 18_000.0, 20_000.0] {
+                    let (c, _) = family_matched(&p, Band::LowPass, cutoff, q, fs);
+                    for i in 0..400 {
+                        let f = 20.0 * 1000f64.powf(f64::from(i) / 399.0);
+                        let want = analog_butterworth_db(order, cutoff, peak, f);
+                        if want < -60.0 {
+                            continue;
+                        }
+                        let got = c.db(f, fs);
+                        let tol = if want > -6.0 { 3.0 } else if want > -20.0 { 4.5 } else { 0.25 * -want };
+                        assert!((got - want).abs() < tol, "{fs} Hz, order {order}, peak {peak}, {cutoff} Hz: {got} dB at {f} Hz, analog {want}");
+                        if want > -6.0 {
+                            worst = worst.max((got - want).abs());
+                        }
+                    }
+                    let at = c.db(cutoff, fs);
+                    assert!((at - (peak + MINUS_3)).abs() < 0.01, "{fs} {order} {peak} {cutoff}: {at} dB at the cutoff");
+                    if cutoff <= 1_000.0 {
+                        assert!(c.db(cutoff / 10.0, fs).abs() < 0.2, "flat below");
+                    }
+                }
+            }
+        }
+    }
+    println!("matched cut: within {worst:.2} dB of the analog above -6 dB");
+}
+
+/// Every family at every order, a high-pass or a low-pass, matched: at its
+/// cutoff exactly the bilinear design's level there -- the family's -3 dB
+/// (-6 dB for Linkwitz-Riley) raised by the resonance -- the same at DC and
+/// far into the passband, and stable, high up in the band too.
+#[test]
+fn every_matched_cut_meets_its_cutoff_and_passband() {
+    for fs in [44_100.0, 48_000.0, 96_000.0] {
+        for f in Family::ALL {
+            for n in 1..=8 {
+                let p = Prototype::new(f, n, 1.0, 60.0);
+                for band in [Band::LowPass, Band::HighPass] {
+                    for &(fc, q) in &[(60.0, FRAC_1_SQRT_2), (1000.0, 3.0), (12_000.0, 1.0), (0.45 * fs, 2.0)] {
+                        let (m, _) = family_matched(&p, band, fc, q, fs);
+                        let (b, _) = family(&p, band, fc, q, fs);
+                        let what = format!("{fs} {f:?} n{n} {band:?} {fc} Hz Q {q}");
+                        assert!((m.db(fc, fs) - b.db(fc, fs)).abs() < 1e-6, "{what}: {} at the cutoff, bilinear {}", m.db(fc, fs), b.db(fc, fs));
+                        let pass = if band == Band::LowPass { 1e-6 } else { 0.4999 * fs };
+                        let far = if band == Band::LowPass { fc / 50.0 } else { (fc * 50.0).min(0.4999 * fs) };
+                        assert!((m.db(pass, fs) - b.db(pass, fs)).abs() < 0.3 || band == Band::HighPass, "{what}: DC");
+                        if band == Band::LowPass || fc * 50.0 < 0.3 * fs {
+                            assert!((m.db(far, fs) - b.db(far, fs)).abs() < 0.3, "{what}: the passband, {} vs {}", m.db(far, fs), b.db(far, fs));
+                        }
+                        assert!(m.decay_samples(60.0).is_finite(), "{what}: unstable");
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A matched Butterworth high-pass follows its analog one: within 4 dB above
+/// -6 dB and 4.5 dB to -20 dB, at 44.1, 48 and 96 kHz, cutoffs up to 20 kHz.
+/// Measured: within 2 dB but for a resonant cutoff at 20 kHz (3.5 dB above
+/// -6 dB and 4.45 dB at -20 dB at 44.1 kHz, order 2, Q for +12 dB) -- a
+/// second-order high-pass whose corner is 0.45·fs cannot hold its peak's
+/// skirt; the bilinear one there is 25 dB off.
+#[test]
+fn a_matched_high_pass_keeps_its_analog_shape() {
+    for fs in [44_100.0, 48_000.0, 96_000.0] {
+        for order in [2usize, 4, 8] {
+            let p = proto(Family::Butterworth, order);
+            for peak in [0.0, 12.0] {
+                let q = FRAC_1_SQRT_2 * 10f64.powf(peak / 20.0);
+                for cutoff in [100.0, 1_000.0, 8_000.0, 14_000.0, 20_000.0] {
+                    let (c, _) = family_matched(&p, Band::HighPass, cutoff, q, fs);
+                    for i in 0..400 {
+                        let f = 20.0 * 1000f64.powf(f64::from(i) / 399.0);
+                        /* A high-pass is its low-pass at cutoff²/f. */
+                        let want = analog_butterworth_db(order, cutoff, peak, cutoff * cutoff / f);
+                        if want < -20.0 {
+                            continue;
+                        }
+                        let got = c.db(f, fs);
+                        let tol = if want > -6.0 { 4.0 } else { 4.5 };
+                        assert!((got - want).abs() < tol, "{fs} Hz, order {order}, peak {peak}, {cutoff} Hz: {got} dB at {f} Hz, analog {want}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A matched cut retuned while it runs does not click: an order-8 low-pass
+/// with 24 dB of peak, its cutoff swept 200 Hz to 18 kHz and back, the
+/// sections redesigned every 16 samples under a 220 Hz tone at 0.5.
+#[test]
+fn a_matched_cut_retunes_without_a_click() {
+    let fs = 48_000.0;
+    let p = proto(Family::Butterworth, 8);
+    let q = FRAC_1_SQRT_2 * 10f64.powf(24.0 / 20.0);
+    let mut st = State::default();
+    let (mut last, mut worst) = (0.0f64, 0.0f64);
+    let mut c = family_matched(&p, Band::LowPass, 200.0, q, fs).0;
+    let n = 96_000;
+    for i in 0..n {
+        if i % 16 == 0 {
+            let t = i as f64 / n as f64;
+            let hz = 200.0 * 90f64.powf(1.0 - (2.0 * t - 1.0).abs());
+            c = family_matched(&p, Band::LowPass, hz, q, fs).0;
+        }
+        let x = 0.5 * (2.0 * PI * 220.0 * i as f64 / fs).sin();
+        let y = c.run(&mut st, x);
+        if i > 4_800 {
+            worst = worst.max((y - last).abs() / 10f64.powf(24.0 / 20.0));
+        }
+        last = y;
+    }
+    /* The tone moves at most 0.0145 a sample, 16 times that at the peak. */
+    println!("a matched cut swept: its largest step, over the peak's gain, {worst:.4}");
+    assert!(worst < 0.03, "{worst}");
+}

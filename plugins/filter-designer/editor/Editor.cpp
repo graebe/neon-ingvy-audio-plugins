@@ -108,6 +108,9 @@ Editor::Editor (Model& m, ni::ui::EditorFrame::Clock clock)
     adaptive = std::make_unique<ni::ui::ParamToggle> (model.parameter (param::adaptiveQ), "Adaptive");
     ni::ui::setInfo (*adaptive, info::adaptive);
     outPanel->addAndMakeVisible (*adaptive);
+    matched = std::make_unique<ni::ui::ParamToggle> (model.parameter (param::matchedCuts), "Matched");
+    ni::ui::setInfo (*matched, info::matched);
+    outPanel->addAndMakeVisible (*matched);
     bypassSwitch = std::make_unique<ni::ui::ParamToggle> (model.bypassParameter(), "Bypass");
     ni::ui::setInfo (*bypassSwitch, info::bypass);
     outPanel->addAndMakeVisible (*bypassSwitch);
@@ -177,6 +180,8 @@ ni::ui::ParamToggle* Editor::toggleFor (int index)
             return t.get();
     if (adaptive->binding().parameter().getParameterIndex() == index)
         return adaptive.get();
+    if (matched->binding().parameter().getParameterIndex() == index)
+        return matched.get();
     if (index < 0)
         return bypassSwitch.get();
     return nullptr;
@@ -384,6 +389,8 @@ void Editor::layout()
     const int switches = out.getY() + ni::ui::Knob::cardHeight + rowGap;
     adaptive->setBounds (out.getX(), switches, adaptive->idealWidth(), rowH);
     bypassSwitch->setBounds (out.getRight() - bypassSwitch->idealWidth(), switches, bypassSwitch->idealWidth(), rowH);
+    /* Under Adaptive: the other switch of how the filters are designed. */
+    matched->setBounds (out.getX(), switches + rowH + rowGap, matched->idealWidth(), rowH);
 }
 
 void Editor::tick (double)

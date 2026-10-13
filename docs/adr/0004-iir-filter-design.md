@@ -84,6 +84,57 @@ exist do not fit:
    and `realfft` for the analyzer, with `assert_no_alloc` and `proptest` in its
    tests.
 
+### Amendment 2026-10-13: matched cuts
+
+The owner approved a matched option for the high-pass and low-pass, in the
+Bit-Crusher session and in this one.
+
+- **Why.** A bilinear low-pass high in the band steepens into the
+  transform's zero at Nyquist. At 44.1 kHz, a 48 dB/oct filter at 18 kHz
+  with +24 dB of peak was 47 dB off its analog shape.
+- **What.** `ni_filter::family_matched` designs each section from its analog
+  one. The poles are impulse-invariant. The numerator follows Vicanek: a
+  low-pass with b2 = 0, a high-pass b0·(1 − z⁻¹)², and a three-point match
+  where a section has stopband zeros. A first-order section is matched at
+  DC and the cutoff. Where a matched section cannot reach the cutoff, or
+  strays more than the bilinear one, the bilinear section is used. Every
+  section meets its analog magnitude at the cutoff, so the cutoff is exactly
+  the family's −3 dB (−6 dB for Linkwitz-Riley), raised by the resonance.
+- **Measured** with Bit-Crusher's tests on a Butterworth low-pass of order
+  2, 4 and 8, up to 24 dB of peak, at 44.1, 48 and 96 kHz, cutoffs up to
+  20 kHz:
+  - within 2.1 dB of the analog filter above −6 dB;
+  - within 4.5 dB to −20 dB;
+  - within a quarter of the depth to −60 dB.
+- **In the Filter Designer** it is the global switch Matched Cuts,
+  appended at index 174 so the earlier indices hold. It is off by default,
+  which keeps the exact bilinear family designs.
+- **Bit-Crusher** moves its tone filter onto it in its own branch.
+
+The resonance now raises the sharpest section's Q by exactly Q/0.7071, with
+a guard at 10⁴ instead of the general clamp at 40. An order-8 Butterworth
+with 24 dB of peak needs 40.6.
+
+A shelf section from fs/8 up is whichever of its matched and bilinear
+designs strays less. A matched high shelf's pole can lie past Nyquist; at
+44.1 kHz, an 18 kHz shelf was 13.6 dB off its analog shape at 8.5 kHz.
+
+### Crates considered (2026-10-13)
+
+The owner asked for established audio crates where they exist. None covers
+what `ni-filter` does:
+
+- **sci-rs** implements Butterworth only; its Chebyshev, elliptic and Bessel
+  designs are `todo!()`.
+- **iir_filters** is Butterworth only.
+- **ellip** has no Jacobi elliptic functions of complex argument, which the
+  elliptic poles need.
+- **fundsp**'s TPT state-variable filter is bound to its audio graph and
+  has no first-order section.
+
+None designs without allocating on the audio thread. The owner's decision:
+stay with our own implementation for now.
+
 ## Consequences
 
 - **This is the filter mathematics ADR 0003 calls domain code** ("the DSP
@@ -92,9 +143,9 @@ exist do not fit:
   1e-9, digital response equal to the prewarped analog one, and the drawn
   curve equal to an impulse response's FFT.
 - **Bit-Crusher's private filters** (`bc-core/src/filters.rs`, direct form 1
-  through `biquad`) can move onto `ni-filter` later. That is not part of this
-  decision, and its golden renders would have to be re-recorded with a
-  reason.
+  through `biquad`) can move onto `ni-filter` now that it has matched cuts
+  (amendment above). Its golden renders will have to be re-recorded, with
+  the reason stated.
 - **Existing crates may still serve as oracles.** A SciPy-style design crate
   can be a test-only dev-dependency once `cargo deny` passes it.
 - **A linear-phase or oversampled mode can be added later** without breaking

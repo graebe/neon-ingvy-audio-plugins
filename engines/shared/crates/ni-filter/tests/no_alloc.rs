@@ -5,7 +5,7 @@
 //! audio callback.
 
 use assert_no_alloc::{assert_no_alloc, AllocDisabler};
-use ni_filter::{all_pass, bell, family, high_shelf, low_shelf, tilt, Band, Family, Prototype, State};
+use ni_filter::{all_pass, bell, family, family_matched, high_shelf, low_shelf, tilt, Band, Family, Prototype, State};
 
 #[global_allocator]
 static A: AllocDisabler = AllocDisabler;
@@ -18,10 +18,11 @@ fn designing_and_running_allocate_nothing() {
             for n in 1..=8 {
                 let p = Prototype::new(f, n, 1.0, 60.0);
                 for band in [Band::HighPass, Band::LowPass, Band::BandPass, Band::Notch] {
-                    let (c, _) = family(&p, band, 1000.0, 2.0, 48_000.0);
-                    let mut st = State::default();
-                    out += c.run(&mut st, 1.0);
-                    out += c.response(0.3).norm();
+                    for (c, _) in [family(&p, band, 1000.0, 2.0, 48_000.0), family_matched(&p, band, 18_000.0, 2.0, 44_100.0)] {
+                        let mut st = State::default();
+                        out += c.run(&mut st, 1.0);
+                        out += c.response(0.3).norm();
+                    }
                 }
             }
         }

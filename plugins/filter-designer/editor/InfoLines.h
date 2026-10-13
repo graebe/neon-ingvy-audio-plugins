@@ -54,6 +54,7 @@ inline constexpr InfoText isoOn { "On — the three-band isolator in front of th
 inline constexpr InfoText output { "Output — the output gain in dB." };
 inline constexpr InfoText scale { "Scale — multiplies every gain-type filter's gain; -100 % inverts it." };
 inline constexpr InfoText adaptive { "Adaptive — proportional Q: a bell narrows as its gain grows." };
+inline constexpr InfoText matched { "Matched — high-pass, low-pass: the analog magnitude up to Nyquist." };
 inline constexpr InfoText bypass { "Bypass — the input to the output unprocessed, crossfaded in 10 ms." };
 
 /* Every knob's readout: the engine reads what is typed, in its own units. */

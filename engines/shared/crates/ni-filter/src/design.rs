@@ -32,6 +32,15 @@ DC, at Nyquist and at Freq, so a shelf high in the spectrum keeps its shape
 where the bilinear transform would squeeze it. A design that cannot be
 matched -- no real numerator meets the three -- falls back to the
 prewarped bilinear transform, which always can.
+
+THE MATCHED CUTS ([`family_matched`]): a high-pass or low-pass whose every
+section is matched to its own analog section in the same way, at DC, at
+Nyquist and at the cutoff (a first-order one at DC and the cutoff), or is
+the bilinear section where that strays less. Every section meets its analog
+magnitude at the cutoff either way, so the cutoff is exactly the family's
+-3 dB (-6 dB for Linkwitz-Riley) raised by the resonance. Near Nyquist the
+slope keeps the analog shape instead of steepening into the bilinear
+transform's zero there, and a resonant peak keeps its width.
 */
 
 use crate::cascade::{Cascade, Section};
@@ -47,6 +56,12 @@ pub const MAX_HZ_FRACTION: f64 = 0.49;
 
 /// The highest Q a section is given.
 const MAX_Q: f64 = 40.0;
+
+/// The highest Q a cut's resonance raises its sharpest section to: a guard,
+/// not a limit anyone reaches by ear -- Q raises that section by exactly
+/// Q / 0.7071 (an order-8 Butterworth with 24 dB of peak needs 40.6), and a
+/// TPT section is stable at any Q.
+const MAX_SECTION_Q: f64 = 1e4;
 
 /// What a family design is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,20 +123,150 @@ pub fn family(proto: &Prototype, band: Band, hz: f64, q: f64, fs: f64) -> (Casca
     }
 }
 
-fn cut(proto: &Prototype, high_pass: bool, hz: f64, q: f64, fs: f64) -> Cascade {
-    let oc = warp(hz, fs);
+/// THE MATCHED CUT: `proto` as a high-pass or low-pass at `hz` with `q` the
+/// resonance, each section matched to its analog one (see the module's
+/// notes) -- what follows the analog shape up to Nyquist. A band-pass and a
+/// notch keep the bilinear design ([`family`]): their -3 dB edges are
+/// exact there.
+pub fn family_matched(proto: &Prototype, band: Band, hz: f64, q: f64, fs: f64) -> (Cascade, bool) {
+    if !matches!(band, Band::HighPass | Band::LowPass) {
+        return family(proto, band, hz, q, fs);
+    }
+    let q = if q.is_finite() { q.clamp(0.1, MAX_Q) } else { FRAC_1_SQRT_2 };
+    let high_pass = band == Band::HighPass;
+    let fc = hz.clamp(MIN_HZ, top(fs));
+    let bilinear = cut(proto, high_pass, fc, q, fs);
     let w3 = proto.w3();
-    /* Resonance: the factor with the highest Q, raised by Q / 0.7071. */
-    let peak = proto
+    /* The analog section's frequency in the prototype's units: f/fc·w3 for
+     * a low-pass, fc·w3/f for a high-pass (infinite at DC). */
+    let x = move |f: f64| if high_pass { if f > 0.0 { w3 * fc / f } else { f64::INFINITY } } else { w3 * f / fc };
+    let mut c = Cascade::identity();
+    let peak = peak_pair(proto, q);
+    for (i, (pair, lin)) in proto.pairs().iter().zip(bilinear.sections()).enumerate() {
+        let pq = if Some(i) == peak { (pair.q * q / FRAC_1_SQRT_2).min(MAX_SECTION_Q) } else { pair.q };
+        let (w0, zero) = (pair.w0, pair.zero);
+        let mag2 = move |f: f64| {
+            let x = x(f);
+            if x.is_infinite() {
+                return zero.map_or(0.0, |wz| (w0 / wz).powi(4));
+            }
+            let w2 = w0 * w0;
+            let poles = (w2 - x * x).powi(2) + (w0 * x / pq).powi(2);
+            let zeros = zero.map_or(1.0, |wz| ((wz * wz - x * x) / (wz * wz)).powi(2));
+            w2 * w2 * zeros / poles
+        };
+        let pole_hz = if high_pass { fc * w3 / w0 } else { fc * w0 / w3 };
+        let matched = match (zero, high_pass) {
+            /* All-pole: Vicanek's low-pass, exact at DC and the cutoff, with
+             * no zero forced onto Nyquist. */
+            (None, false) => matched_low_pass(fs, pole_hz, pq, fc, mag2(fc)),
+            /* Vicanek's high-pass, or -- high in the band, where its peak
+             * can sit too low -- whichever strays least of it, the
+             * three-point match and the bilinear section. */
+            (None, true) => {
+                let vicanek = matched_high_pass(fs, pole_hz, pq, fc, mag2(fc));
+                let best = closest2(fs, pole_hz, pq, fc, &mag2, *lin);
+                Some(match vicanek {
+                    Some(v) if pole_hz.max(fc) < 0.125 * fs => v,
+                    Some(v) => fewer_misfits(fs, &mag2, v, best),
+                    None => best,
+                })
+            }
+            /* Stopband zeros: met at DC, Nyquist and the cutoff, or bilinear. */
+            (Some(_), _) => Some(closest2(fs, pole_hz, pq, fc, &mag2, *lin)),
+        };
+        c.push(matched.unwrap_or(*lin));
+    }
+    if let Some(sigma) = proto.real() {
+        /* One real pole at sigma: its section matched at DC and at the cutoff. */
+        let pole_hz = if high_pass { fc * w3 / sigma } else { fc * sigma / w3 };
+        let at = |f: f64| {
+            let x = x(f);
+            if x.is_infinite() { 0.0 } else { sigma / (sigma * sigma + x * x).sqrt() }
+        };
+        let lin = bilinear.sections()[proto.pairs().len()];
+        c.push(matched1_at(fs, pole_hz, at(0.0), fc, at(fc)).unwrap_or(lin));
+    }
+    c.set_gain(proto.dc());
+    (c, hz > top(fs))
+}
+
+/// The impulse-invariant denominator of the analog poles at `pole_hz` and
+/// `pole_q`: (a1, a2), and the weights A0, A1, A2 of |A(e^jω)|² =
+/// A0·φ0 + A1·φ1 + A2·φ2 (Vicanek, 2016).
+fn matched_poles(fs: f64, pole_hz: f64, pole_q: f64) -> (f64, f64, [f64; 3]) {
+    let w = (2.0 * PI * pole_hz / fs).min(0.98 * PI);
+    let zeta = 0.5 / pole_q;
+    let r = (-zeta * w).exp();
+    let a1 = if zeta <= 1.0 { -2.0 * r * (w * (1.0 - zeta * zeta).sqrt()).cos() } else { -2.0 * r * (w * (zeta * zeta - 1.0).sqrt()).cosh() };
+    let a2 = r * r;
+    (a1, a2, [(1.0 + a1 + a2).powi(2), (1.0 - a1 + a2).powi(2), -4.0 * a2])
+}
+
+/// φ0, φ1, φ2 at `hz`.
+fn phis(fs: f64, hz: f64) -> [f64; 3] {
+    let phi1 = (PI * hz / fs).sin().powi(2);
+    [1.0 - phi1, phi1, 4.0 * (1.0 - phi1) * phi1]
+}
+
+/// Vicanek's matched low-pass, with b2 = 0: unity at DC and `hm` (the
+/// analog magnitude squared) at `match_hz`, the poles impulse-invariant.
+fn matched_low_pass(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, hm2: f64) -> Option<Section> {
+    let (a1, a2, big_a) = matched_poles(fs, pole_hz, pole_q);
+    let phi = phis(fs, match_hz);
+    let den: f64 = big_a.iter().zip(phi).map(|(a, p)| a * p).sum();
+    /* Negative where no such numerator reaches the match: a pole too near
+     * Nyquist. */
+    let big_b1 = (hm2 * den - big_a[0] * phi[0]) / phi[1];
+    if big_b1.is_nan() || big_b1 < 0.0 {
+        return None;
+    }
+    let b0 = 0.5 * (big_a[0].sqrt() + big_b1.sqrt());
+    from_biquad([b0, big_a[0].sqrt() - b0, 0.0], a1, a2)
+}
+
+/// Vicanek's matched high-pass, b0·(1 - 1/z)²: zero at DC and `hm2` (the
+/// analog magnitude squared) at `match_hz`, the poles impulse-invariant.
+fn matched_high_pass(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, hm2: f64) -> Option<Section> {
+    let (a1, a2, big_a) = matched_poles(fs, pole_hz, pole_q);
+    let phi = phis(fs, match_hz);
+    let den: f64 = big_a.iter().zip(phi).map(|(a, p)| a * p).sum();
+    let b0 = (hm2 * den).sqrt() / (4.0 * phi[1]);
+    from_biquad([b0, -2.0 * b0, b0], a1, a2)
+}
+
+/// A first-order section with the analog pole at `pole_hz`,
+/// impulse-invariant, meeting the magnitude `h0` at DC and `hm` at `match_hz`
+/// -- on the warped axis (hp·u + lp·g)/(u + g), lp = h0 and hp from the
+/// magnitude at the match point. `None` when no real hp meets it.
+fn matched1_at(fs: f64, pole_hz: f64, h0: f64, match_hz: f64, hm: f64) -> Option<Section> {
+    let p = (-2.0 * PI * pole_hz / fs).exp();
+    let g = (1.0 - p) / (1.0 + p);
+    let t = (PI * match_hz / fs).tan();
+    let hp2 = (hm * hm * (t * t + g * g) - h0 * h0 * g * g) / (t * t);
+    (hp2 >= 0.0 && g > 0.0 && hp2.is_finite()).then(|| Section::first(g, hp2.sqrt(), h0))
+}
+
+/// The pair a cut's resonance raises: the one with the highest Q, from order
+/// 2 and when `q` is not the family's own 0.7071.
+fn peak_pair(proto: &Prototype, q: f64) -> Option<usize> {
+    proto
         .pairs()
         .iter()
         .enumerate()
         .max_by(|a, b| a.1.q.total_cmp(&b.1.q))
         .map(|(i, _)| i)
-        .filter(|_| proto.order() >= 2 && (q - FRAC_1_SQRT_2).abs() > 1e-9);
+        .filter(|_| proto.order() >= 2 && (q - FRAC_1_SQRT_2).abs() > 1e-9)
+}
+
+fn cut(proto: &Prototype, high_pass: bool, hz: f64, q: f64, fs: f64) -> Cascade {
+    let oc = warp(hz, fs);
+    let w3 = proto.w3();
+    /* Resonance: the factor with the highest Q, raised by Q / 0.7071. */
+    let peak = peak_pair(proto, q);
     let mut c = Cascade::identity();
     for (i, pair) in proto.pairs().iter().enumerate() {
-        let pq = if Some(i) == peak { (pair.q * q / FRAC_1_SQRT_2).min(MAX_Q) } else { pair.q };
+        let pq = if Some(i) == peak { (pair.q * q / FRAC_1_SQRT_2).min(MAX_SECTION_Q) } else { pair.q };
         let zero = pair.zero.map_or(0.0, |wz| (pair.w0 / wz).powi(2));
         c.push(if high_pass {
             Section::second(w3 * oc / pair.w0, 1.0 / pq, 1.0, 0.0, zero)
@@ -265,15 +410,44 @@ fn matched2(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, mag2: Mag2, nyqui
 /// each point's place on the warped axis and the analog |H|² there.
 const GRID: usize = 24;
 
+/// The level below which [`misfit`] does not look: -60 dB, as a power.
+const FLOOR: f64 = 1e-6;
+
 /// How far `s` strays from the analog shape at its worst on `grid`: the
-/// larger of |H|²/mag2 and its inverse (1 where it meets it).
+/// larger of |H|²/mag2 and its inverse (1 where it meets it), each held up
+/// to -60 dB -- how deep a stopband is down there is not what tells two
+/// designs apart.
 fn misfit(s: &Section, grid: &[(f64, f64); GRID]) -> f64 {
     grid.iter()
         .map(|&(u, m2)| {
-            let r = s.transfer(Complex64::new(0.0, u)).norm_sqr() / m2;
+            let r = s.transfer(Complex64::new(0.0, u)).norm_sqr().max(FLOOR) / m2.max(FLOOR);
             if r.is_finite() && r > 0.0 { r.max(1.0 / r) } else { f64::INFINITY }
         })
         .fold(1.0, f64::max)
+}
+
+/// Of two sections for `mag2`, the one that strays less at its worst.
+fn fewer_misfits(fs: f64, mag2: Mag2, a: Section, b: Section) -> Section {
+    let grid = grid(fs, mag2);
+    if misfit(&a, &grid) <= misfit(&b, &grid) {
+        a
+    } else {
+        b
+    }
+}
+
+/// The grid [`misfit`] weighs on: from 20 Hz to the top, in equal steps of
+/// pitch.
+fn grid(fs: f64, mag2: Mag2) -> [(f64, f64); GRID] {
+    let (lo, hi) = (20.0f64.min(top(fs)), top(fs));
+    let step = (hi / lo).powf(1.0 / (GRID - 1) as f64);
+    let mut grid = [(0.0, 0.0); GRID];
+    let mut f = lo;
+    for g in &mut grid {
+        *g = ((PI * f / fs).tan(), mag2(f));
+        f *= step;
+    }
+    grid
 }
 
 /// A matched design that strays at most this (0.25 dB, as a power ratio) is
@@ -293,14 +467,7 @@ fn closest2(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, mag2: Mag2, bilin
     if pole_hz.max(match_hz) < 0.125 * fs {
         return first.unwrap_or(bilinear);
     }
-    let (lo, hi) = (20.0f64.min(top(fs)), top(fs));
-    let step = (hi / lo).powf(1.0 / (GRID - 1) as f64);
-    let mut grid = [(0.0, 0.0); GRID];
-    let mut f = lo;
-    for g in &mut grid {
-        *g = ((PI * f / fs).tan(), mag2(f));
-        f *= step;
-    }
+    let grid = grid(fs, mag2);
     let mut best: Option<(f64, Section)> = first.map(|m| (misfit(&m, &grid), m));
     if let Some((e, m)) = best {
         if e <= CLOSE_ENOUGH {
@@ -445,3 +612,4 @@ pub fn all_pass(hz: f64, q: f64, order: usize, fs: f64) -> Cascade {
     }
     c
 }
+
