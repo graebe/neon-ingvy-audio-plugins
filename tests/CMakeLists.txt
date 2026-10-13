@@ -854,6 +854,12 @@ add_test(NAME fd_core COMMAND fd_core_tests)
 add_test(NAME fd_move_rs
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p fd-move)
+# THE SOAK, in release: ten minutes of noise with NaN, ±Inf and denormals
+# through every node and the isolator, bit for bit the clean input's sound,
+# then rung down to exactly nothing (fd-core/tests/soak.rs).
+add_test(NAME fd_soak_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --release --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p fd-core --test soak -- --ignored)
 
 # THE TWO PATHS, RENDERED SIDE BY SIDE AND PINNED: the plugin's float path and
 # the Move's int16 path within one LSB, and the float render's hash recorded
@@ -969,7 +975,7 @@ ni_test_tiers(
     PRODUCT filter-designer
         PROGRAMS fd_core_tests fd_render_ab
         QUICK fd_core_rs fd_move_rs fd_core
-        FULL fd_render_ab:render
+        FULL fd_render_ab:render fd_soak_rs:soak
     # every bundle's host, signature and tree checks, and every Move module
     ${_ni_juce_tiers}
     ${_ni_move_tiers})

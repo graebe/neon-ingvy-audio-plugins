@@ -543,3 +543,39 @@ fn a_mono_track_is_a_stereo_one_with_both_sides_the_same() {
     }
     assert_eq!(mono, l);
 }
+
+/// THE WHOLE ENGINE AT EVERY RATE: a bell and a Chebyshev II low-pass sound
+/// as their designs at 44.1 to 384 kHz -- the control grid in samples, every
+/// time constant from the rate.
+#[test]
+fn the_sound_is_the_design_at_every_rate() {
+    for fs in [44_100.0, 48_000.0, 88_200.0, 96_000.0, 176_400.0, 192_000.0, 384_000.0] {
+        let mut e = Engine::new(fs);
+        node(&mut e, 0, Field::Type, 1.0);
+        node(&mut e, 0, Field::Freq, 1000.0);
+        node(&mut e, 0, Field::Gain, 6.0);
+        node(&mut e, 0, Field::Q, 2.0);
+        node(&mut e, 1, Field::Type, 5.0);
+        node(&mut e, 1, Field::Family, 3.0);
+        node(&mut e, 1, Field::Order, 5.0);
+        node(&mut e, 1, Field::Freq, 6000.0);
+        let v = e.values;
+        let designs: Vec<_> = (0..2)
+            .map(|slot| {
+                let s = design::settings_of(&v, slot);
+                design(&s, design::prototype(&s).as_ref(), Globals::NEUTRAL, fs).0
+            })
+            .collect();
+        /* Whole cycles: 100 of each frequency in the measured tenth of a second. */
+        for hz in [100.0, 1000.0, 2500.0, 5000.0] {
+            let n = (fs * 0.25) as usize;
+            let tail = (fs * 0.1) as usize;
+            let x: Vec<f32> = (0..n).map(|i| (0.25 * (2.0 * core::f64::consts::PI * hz * i as f64 / fs).sin()) as f32).collect();
+            let (mut l, mut r) = (x.clone(), x.clone());
+            e.process_f32(&mut l, Some(&mut r));
+            let got = 20.0 * (rms(&l[n - tail..]) / rms(&x[n - tail..])).log10();
+            let want: f64 = designs.iter().map(|c| c.db(hz, fs)).sum();
+            assert!((got - want).abs() < 0.01, "{fs} Hz, {hz} Hz: {got} dB, the design {want} dB");
+        }
+    }
+}
