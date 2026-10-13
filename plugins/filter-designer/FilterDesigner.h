@@ -18,6 +18,9 @@
  *                 so its filters' state is current when the bypass is lifted
  *   the buses     mono in to mono out, or stereo to stereo; no MIDI, no
  *                 sidechain; no latency, ever (minimum phase)
+ *   the tail      the engine's (fd_tail_seconds): how long the filters the
+ *                 host's values make ring on after the input stops, to
+ *                 -60 dB, at most 30 s; asked for when the host sets up
  *   a block       the shell taken (fd_shell_begin), every parameter pushed
  *                 (cheap when unchanged), the channels processed in place, the
  *                 shell given back -- which publishes the analyzer's rings
@@ -64,6 +67,7 @@ public:
     void releaseResources() override {}
 
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypass; }
+    double getTailLengthSeconds() const override;
 
     bool hasEditor() const override { return true; }
     juce::AudioProcessorEditor* createEditor() override;
@@ -114,6 +118,8 @@ private:
     ni::Parameter* bypass = nullptr;
     /* The bypassed input's copy, sized in prepare. */
     std::array<std::vector<float>, 2> listening;
+    /* The rate prepare was given, for the tail; 0 before. */
+    std::atomic<double> rate { 0.0 };
     bool windowOpen = false, watching = false;
     ni::GroundClock beat;
 

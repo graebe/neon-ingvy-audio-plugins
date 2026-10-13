@@ -20,6 +20,12 @@ from 10 Hz to 22 kHz, 0 dB in the middle. A flat line on 0 dB is unity gain.
 The **phase response** is not drawn: every filter here is **minimum phase**,
 so the phase follows from the magnitude, and the plugin adds no latency.
 
+A filter with a high Q **rings**: once the input stops, its output decays
+at its centre frequency. A Q 40 notch at 20 Hz takes about 4.4 s to fall
+60 dB. The plugin reports this as its **tail**: how long the filters ring
+after the input stops, until they are 60 dB down, at most 30 s. A host
+that renders with the tail does not cut that ringing off.
+
 ### Adding a filter
 
 Double-click in the plot. A handle appears at the pointer's frequency and

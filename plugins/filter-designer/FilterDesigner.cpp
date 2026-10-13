@@ -78,6 +78,7 @@ void Processor::prepare (double sampleRate, int maximumBlockSize)
     for (auto& copy : listening)
         copy.assign ((size_t) juce::jmax (1, maximumBlockSize), 0.0f);
     const double r = sampleRate > 0.0 ? sampleRate : 44100.0;
+    rate.store (r);
     fd_shell_post_sample_rate (shell.get(), r);
     /* A host that deactivated the plugin and starts it again hears nothing
      * held from before. */
@@ -161,6 +162,14 @@ bool Processor::bipolar (int index) const
 {
     NiParamInfo info {};
     return fd_param_info (index, &info) && info.bipolar;
+}
+
+double Processor::getTailLengthSeconds() const
+{
+    std::array<double, paramCount> values {};
+    for (int i = 0; i < paramCount; ++i)
+        values[(size_t) i] = plain (i);
+    return fd_tail_seconds (values.data(), values.size(), rate.load());
 }
 
 void Processor::watch()

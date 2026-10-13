@@ -108,6 +108,26 @@ impl Section {
         }
     }
 
+    /// Samples its free response takes to fall by `db` dB: its slower pole's.
+    /// A pole at `u` on the warped axis is the digital pole z = (1 + u)/(1 - u),
+    /// and ln|z|² = ln(1 + 4·Re u / |1 - u|²), exact however near 1 |z| is.
+    pub fn decay_samples(&self, db: f64) -> f64 {
+        let g = self.g;
+        let poles = if self.first_order {
+            [Complex64::new(-g, 0.0); 2]
+        } else {
+            let h = 0.5 * self.k;
+            let root = Complex64::new(h * h - 1.0, 0.0).sqrt();
+            [g * (root - h), g * (-root - h)]
+        };
+        let ln_r2 = poles.iter().map(|u| (4.0 * u.re / (1.0 - u).norm_sqr()).ln_1p()).fold(f64::NEG_INFINITY, f64::max);
+        if ln_r2 < 0.0 {
+            db * core::f64::consts::LN_10 / (10.0 * -ln_r2)
+        } else {
+            f64::INFINITY
+        }
+    }
+
     /// The transfer at `u` on the warped axis.
     pub fn transfer(&self, u: Complex64) -> Complex64 {
         let g = self.g;
@@ -222,6 +242,12 @@ impl Cascade {
         let t = (0.5 * w.clamp(0.0, core::f64::consts::PI * (1.0 - 1e-9))).tan();
         let u = Complex64::new(0.0, t);
         self.sections().iter().fold(Complex64::new(self.gain, 0.0), |h, s| h * s.transfer(u))
+    }
+
+    /// Samples its free response takes to fall by `db` dB, bounded above:
+    /// each section's decay in turn, as the series rings one into the next.
+    pub fn decay_samples(&self, db: f64) -> f64 {
+        self.sections().iter().map(|s| s.decay_samples(db)).sum()
     }
 
     /// The magnitude in dB at `hz` for a rate `fs`, floored at -300 dB.

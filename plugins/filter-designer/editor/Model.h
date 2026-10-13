@@ -63,7 +63,7 @@ enum Field : int
     type = 0,   // Empty, Bell, Low Shelf, High Shelf, High-Pass, Low-Pass, Band-Pass, Notch, All-Pass, Tilt
     on,         // switch: the bypass
     family,     // Butterworth, Bessel, Chebyshev I, Chebyshev II, Elliptic, Linkwitz-Riley
-    order,      // 0..7: 6 dB .. 48 dB
+    order,      // 0..7: 6 dB/oct .. 48 dB/oct
     freq,       // 10..22000 Hz
     gain,       // -30..+30 dB
     q,          // 0.1..40

@@ -90,8 +90,9 @@ section on its own would bend Butterworth and equiripple shapes above about
 fs/8 and move the Chebyshev II and Elliptic zeros.
 
 **Freq is the −3 dB point in every family.** The exception is Linkwitz-Riley,
-whose Freq is the −6 dB point, so a high-pass and a low-pass at one Freq sum
-flat. Each prototype is normalised once by bisection on |H|². The
+whose Freq is the −6 dB point, so a high-pass and a low-pass at one Freq
+(LR4, LR8) sum to an all-pass. Each prototype is normalised once at its
+−3 dB point, in closed form for every family (Bessel's from a table). The
 normalisation depends only on Family, Order, Ripple and Stopband, never on
 Freq, so switching families leaves the curve under the handle. Ripple is
 capped at 3 dB, so the −3 dB crossing is unique.

@@ -10,8 +10,9 @@ from the same code (ni-filter), never a second model of it.
 WHAT EACH TYPE USES (the editor disables what a type does not):
 
 ```text
-  High-Pass, Low-Pass    Family, Order 1..8, Q as resonance (order 2 and up),
-                       Ripple and Stopband as the family takes them
+  High-Pass, Low-Pass  Family, Order 1..8, Q on the highest-Q pole pair
+                       (order 2 and up), Ripple and Stopband as the family
+                       takes them
   Band-Pass, Notch     Family (Linkwitz-Riley plays as Butterworth), Order
                        1..8 (2N poles), Q as the width between the -3 dB edges
   Bell                 Gain, Q (narrowed by Adaptive Q as it boosts or cuts)
@@ -24,7 +25,7 @@ Every gain is times Scale.
 */
 
 use core::f64::consts::FRAC_1_SQRT_2;
-use crate::params::{Field, Param};
+use crate::params::{Field, Param, NODES};
 use ni_filter::{all_pass, bell, family, high_shelf, low_shelf, tilt, Band, Cascade, Family, Prototype};
 
 /// What a node is.
@@ -224,7 +225,8 @@ pub fn globals_of(values: &[f64]) -> Globals {
 
 /// WHERE A NODE'S HANDLE SITS on the picture, (Hz, dB): a Bell's and a
 /// shelf's at Freq and its Gain times Scale; a tilt's, a band-pass's, a
-/// notch's and an all-pass's at Freq on 0 dB; a cut's on its own curve at
+/// notch's and an all-pass's at Freq on 0 dB; a high-pass's or a low-pass's
+/// on its own curve at
 /// Freq (`cascade`, the node's design at `fs`). `None` for Empty.
 pub fn handle(s: &Settings, g: Globals, cascade: &ni_filter::Cascade, fs: f64) -> Option<(f64, f64)> {
     let db = match s.shape {
@@ -264,4 +266,34 @@ pub fn shape_for_new(hz: f64) -> Shape {
     } else {
         Shape::Bell
     }
+}
+
+/// The longest tail [`tail_seconds`] reports.
+pub const TAIL_MAX_SECONDS: f64 = 30.0;
+
+/// THE TAIL for `values` at `fs`: the seconds the output goes on once the
+/// input stops, until it is 60 dB down -- the isolator's slowest band, then
+/// every heard node, in series, each section's decay in turn. An upper bound,
+/// at most [`TAIL_MAX_SECONDS`]: a host that renders this long after the
+/// input truncates no ringing filter. Pure; not the audio thread.
+pub fn tail_seconds(values: &[f64], fs: f64) -> f64 {
+    const DB: f64 = 60.0;
+    if !fs.is_finite() || fs <= 0.0 || values.len() < crate::PARAM_COUNT {
+        return 0.0;
+    }
+    let iso = if values[Param::IsoOn.index()] >= 0.5 {
+        let (bands, _) = crate::isolator::picture(values, fs);
+        bands.iter().map(|path| path.iter().map(|c| c.decay_samples(DB)).sum::<f64>()).fold(0.0, f64::max)
+    } else {
+        0.0
+    };
+    let g = globals_of(values);
+    let nodes: f64 = (0..NODES as u8)
+        .filter(|&slot| is_heard(values, slot))
+        .map(|slot| {
+            let s = settings_of(values, slot);
+            design(&s, prototype(&s).as_ref(), g, fs).0.decay_samples(DB)
+        })
+        .sum();
+    ((iso + nodes) / fs).min(TAIL_MAX_SECONDS)
 }

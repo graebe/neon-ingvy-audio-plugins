@@ -413,3 +413,33 @@ fn a_gliding_ripple_redesigns_the_prototype_every_fourth_tick_and_where_it_lands
         assert!((e.node(0).cascade().db(hz, FS) - want.db(hz, FS)).abs() < 1e-9, "{hz} Hz");
     }
 }
+
+/// THE TAIL: a Q 40 notch at 20 Hz under a 20 Hz sine holds the sine's
+/// energy; once the sine stops, it rings out at the notch's frequency. Its
+/// fall to -60 dB comes within 20 % of the tail the host is told.
+#[test]
+fn the_tail_is_how_long_a_ringing_notch_goes_on() {
+    let mut e = Engine::new(FS);
+    node(&mut e, 0, Field::Type, 7.0);
+    node(&mut e, 0, Field::Order, 0.0);
+    node(&mut e, 0, Field::Freq, 20.0);
+    node(&mut e, 0, Field::Q, 40.0);
+    let told = design::tail_seconds(&e.values, FS);
+    assert!(told > 3.0 && told < 6.0, "told {told} s");
+    let amp = 0.5;
+    let mut x = sine((FS * 8.0) as usize, 20.0, amp);
+    e.process_f32(&mut x, None);
+    let mut after = vec![0.0f32; (FS * 2.0 * told) as usize];
+    e.process_f32(&mut after, None);
+    let last = after.iter().rposition(|v| f64::from(v.abs()) > amp * 1e-3).unwrap();
+    let measured = last as f64 / FS;
+    println!("Q 40 notch at 20 Hz: rang {measured:.3} s to -60 dB, told {told:.3} s");
+    assert!((measured - told).abs() < 0.2 * told, "rang {measured} s, told {told} s");
+    /* Nothing heard, no tail; the isolator alone, a short one. */
+    let mut quiet = defaults();
+    assert_eq!(design::tail_seconds(&quiet, FS), 0.0);
+    quiet[Param::IsoOn.index()] = 1.0;
+    let iso = design::tail_seconds(&quiet, FS);
+    assert!(iso > 0.0 && iso < 0.2, "isolator {iso} s");
+    assert_eq!(design::tail_seconds(&quiet, 0.0), 0.0);
+}

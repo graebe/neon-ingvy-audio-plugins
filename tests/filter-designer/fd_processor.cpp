@@ -221,6 +221,21 @@ TEST_CASE ("the Bypass fades, and the filters come back from the music they hear
     CHECK (worst < own * 1.25f);
 }
 
+TEST_CASE ("the tail is the engine's: how long the filters ring on")
+{
+    Instance x;
+    CHECK (x.p.getTailLengthSeconds() == 0.0);
+    x.set (param::node (0, param::type), type::notch);
+    x.set (param::node (0, param::order), 0.0);
+    x.set (param::node (0, param::freq), 20.0);
+    x.set (param::node (0, param::q), 40.0);
+    const double tail = x.p.getTailLengthSeconds();
+    /* One pole pair at Q 40: 60 dB in ln(1000)·2Q/ω0, about 4.4 s. */
+    CHECK (tail == doctest::Approx (4.4).epsilon (0.05));
+    x.set (param::node (0, param::on), 0.0);
+    CHECK (x.p.getTailLengthSeconds() == 0.0);
+}
+
 TEST_CASE ("the analyzer's rings are kept only while a window shows the analyzer")
 {
     Instance x;

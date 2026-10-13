@@ -328,8 +328,23 @@ pub extern "C" fn fd_family_uses_stopband(family: i32) -> bool {
     ni_filter::Family::from_index(family.max(0) as usize).uses_stopband()
 }
 
+/// THE TAIL for `values` -- the host's, `count` of them in table order
+/// (FD_PARAM_COUNT) -- at `sample_rate`: the seconds the output goes on
+/// once the input stops, until 60 dB down, at most 30. 0 without a whole
+/// table or a rate. Any thread but the audio one; pure.
+///
+/// # Safety
+/// `values` is null or holds `count` doubles.
+#[no_mangle]
+pub unsafe extern "C" fn fd_tail_seconds(values: *const f64, count: usize, sample_rate: f64) -> f64 {
+    if values.is_null() || count != PARAM_COUNT {
+        return 0.0;
+    }
+    fd_core::design::tail_seconds(std::slice::from_raw_parts(values, count), sample_rate)
+}
+
 /// The Q whose -3 dB edge sits at `edge_hz` for a centre at `freq` (a Bell, a
-/// band pass, a notch): what dragging an edge sets. Any thread; pure.
+/// band-pass, a notch): what dragging an edge sets. Any thread; pure.
 #[no_mangle]
 pub extern "C" fn fd_q_for_edge(freq: f64, edge_hz: f64) -> f64 {
     if freq > 0.0 && edge_hz > 0.0 {

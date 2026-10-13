@@ -143,6 +143,11 @@ mod picture {
         assert_eq!(fd_type_for_new(20.0), 4);
         assert_eq!(fd_type_for_new(500.0), 1);
         assert_eq!(fd_type_for_new(18_000.0), 5);
+        /* The tail is the core's, and nothing without a whole table. */
+        assert_eq!(unsafe { fd_tail_seconds(v.as_ptr(), v.len(), 48_000.0) }, fd_core::design::tail_seconds(&v, 48_000.0));
+        assert!(unsafe { fd_tail_seconds(v.as_ptr(), v.len(), 48_000.0) } > 0.0);
+        assert_eq!(unsafe { fd_tail_seconds(std::ptr::null(), v.len(), 48_000.0) }, 0.0);
+        assert_eq!(unsafe { fd_tail_seconds(v.as_ptr(), v.len() - 1, 48_000.0) }, 0.0);
         /* Bypassed: drawn alone, not in the total. */
         v[idx(0, 1) as usize] = 0.0;
         let p = read(shell, &v, FD_LANE_LEFT);

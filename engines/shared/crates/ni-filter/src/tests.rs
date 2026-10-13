@@ -445,3 +445,21 @@ proptest! {
 }
 
 
+
+/// A section's decay is its free response's: an impulse through a Q 40
+/// resonance at 20 Hz, and through a first-order low-pass at 5 Hz, falls
+/// 60 dB below its peak where decay_samples says.
+#[test]
+fn a_sections_decay_is_its_free_responses() {
+    let fs = 48_000.0;
+    for sec in [Section::second(warped(20.0, fs), 1.0 / 40.0, 0.0, 1.0, 0.0), Section::first(warped(5.0, fs), 0.0, 1.0)] {
+        let n = sec.decay_samples(60.0);
+        let mut s = [0.0; 2];
+        let y: Vec<f64> = (0..(1.5 * n) as usize).map(|i| sec.run(&mut s, if i == 0 { 1.0 } else { 0.0 })).collect();
+        let peak = y.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        let last = y.iter().rposition(|v| v.abs() > peak * 1e-3).unwrap() as f64;
+        assert!((last - n).abs() < 0.02 * n, "{sec:?}: {last} samples, said {n}");
+    }
+    /* A wire does not ring. */
+    assert_eq!(Cascade::identity().decay_samples(60.0), 0.0);
+}

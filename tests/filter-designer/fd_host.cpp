@@ -12,6 +12,7 @@
  *   the sound        a new instance is the input bit for bit; a Bell typed
  *                    into the controller is heard at its gain, through the
  *                    VST3's audio path
+ *   the tail         what the host asks for: a notch's ring, from the engine
  *   the state        saved and reopened in a second instance, which then
  *                    sounds the same
  *   the window       opens at the design's size, 888 x 708, and again
@@ -143,6 +144,17 @@ int main (int argc, char** argv)
     type (*p, "Filter 1 Gain", "6");
     const double g = gainAt (*p, 1000.0);
     check (std::abs (g - 6.0) < 0.1, "a Bell of +6 dB at 1 kHz is heard at +6 dB", String (g, 3));
+
+    /* The tail, as the host asks for it (getTailSamples). */
+    check (p->getTailLengthSeconds() > 0.0 && p->getTailLengthSeconds() < 0.2,
+           "a bell at 1 kHz and a high-pass at 20 Hz ring for less than 0.2 s", String (p->getTailLengthSeconds(), 4));
+    type (*p, "Filter 3 Type", "Notch");
+    type (*p, "Filter 3 Freq", "20");
+    type (*p, "Filter 3 Q", "40");
+    type (*p, "Filter 3 Order", "6 dB/oct");
+    check (std::abs (p->getTailLengthSeconds() - 4.4) < 0.25, "a Q 40 notch at 20 Hz: a tail of about 4.4 s",
+           String (p->getTailLengthSeconds(), 3));
+    type (*p, "Filter 3 Type", "Empty");
 
     /* The state, in a second instance. */
     MemoryBlock state;
