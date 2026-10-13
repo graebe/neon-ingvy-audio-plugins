@@ -35,11 +35,36 @@
   Live and is saved with the set (it is not automatable). **Pause** holds all
   three still while the sound goes on.
 
+## Unreleased — NI Trance Gate
+
+- **NI Trance Gate's editor, in your browser, for the Move.** Open Schwung's
+  web manager (**move.local:7700** › **Remote UI**) and choose the tab of the
+  track the Trance Gate is on: the module now shows its own editor there, in
+  place of the generic controls — the ring, the pads, the envelope and
+  pattern plots, Slot, Randomize and the arrival order, laid out as in Live.
+  Click a pad, drag a knob or recall a slot, on the page or on the Move, and
+  the other follows. **Interface: Default** switches back to the generic
+  controls.
+- **Its playhead stays in time.** The ring and the lit pad step with the Move
+  however late the network delivers each update; they never step back.
+- Live's Signal plot, copy and paste, and export and import are not in the
+  Move's editor: the web manager sends a page no audio, and its frame has no
+  clipboard and cannot save or open files.
+
 ## Unreleased — NI Side-Chain
 
 - The shape's handles are the plugin family's shared draggable handle now.
   They look and drag exactly as before; the bottom corner, which moves both
   ways, shows a four-way cursor while you hover it.
+- **NI Side-Chain's editor, in your browser, for the Move.** Open Schwung's
+  web manager (**move.local:7700** › **Remote UI**) and choose the tab of the
+  track the Side-Chain is on: the module now shows its own editor there —
+  the duck shape to drag, the knobs, Source, Rate, Curve and the MIDI trigger,
+  as in Live. Changes go both ways between the page and the Move.
+- **Its sweep stays in time.** The playhead runs through the shape with the
+  Move, evenly, however late the network delivers each update.
+- The Move's editor draws no audio behind the shape (the web manager sends a
+  page no audio), and offers Cycle and MIDI, as the Move module does.
 
 ## v2026.10.11.1 — NI Vocalize
 
