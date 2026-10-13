@@ -28,7 +28,9 @@ section, by its mix. A FIRST-ORDER SECTION is the TPT one-pole,
 
 Both stay stable while g and k move, for any g > 0 and k > 0: the state is
 the integrators' and nothing in the loop is recursive through a coefficient
-that changed.
+that changed. So a cascade may move from one design to the next a sample at a
+time ([`Cascade::run_toward`]): g, k, the mix and the gain each linear
+between the two, the loop solved again at every sample.
 */
 
 use num_complex::Complex64;
@@ -105,6 +107,20 @@ impl Section {
             let lp = v2 + s[1];
             s[1] = lp + v2;
             self.hp * hp + self.bp * bp + self.lp * lp
+        }
+    }
+
+    /// The section `t` (0..1) of the way from this one to `to`, of the same
+    /// order: g, k and the mix linear between them, the loop solved for them.
+    /// Exactly this one at 0 and exactly `to` at 1.
+    #[inline]
+    pub fn toward(&self, to: &Section, t: f64) -> Section {
+        let mix = |a: f64, b: f64| a * (1.0 - t) + b * t;
+        let (g, hp, lp) = (mix(self.g, to.g), mix(self.hp, to.hp), mix(self.lp, to.lp));
+        if self.first_order {
+            Section::first(g, hp, lp)
+        } else {
+            Section::second(g, mix(self.k, to.k), hp, mix(self.bp, to.bp), lp)
         }
     }
 
@@ -233,6 +249,23 @@ impl Cascade {
             y = sec.run(s, y);
         }
         y * self.gain
+    }
+
+    /// Whether `to` is this cascade's structure -- as many sections, each of
+    /// the same order -- so that [`Cascade::run_toward`] can move between them.
+    pub fn same_structure(&self, to: &Cascade) -> bool {
+        self.len == to.len && self.sections().iter().zip(to.sections()).all(|(a, b)| a.first_order == b.first_order)
+    }
+
+    /// One sample through the cascade `t` (0..1) of the way to `to`, a cascade
+    /// of the same structure: every section, and the gain, between the two.
+    #[inline]
+    pub fn run_toward(&self, to: &Cascade, t: f64, st: &mut State, x: f64) -> f64 {
+        let mut y = x;
+        for ((a, b), s) in self.sections().iter().zip(to.sections()).zip(st.s.iter_mut()) {
+            y = a.toward(b, t).run(s, y);
+        }
+        y * (self.gain * (1.0 - t) + to.gain * t)
     }
 
     /// The transfer at the digital frequency `w` (radians a sample, 0..π):

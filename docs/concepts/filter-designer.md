@@ -145,7 +145,7 @@ nothing in the window moves when the type changes.
 
 ### Cost, smoothing and discrete changes
 
-- **Two tiers of recomputation.** The prototype (Family, Order, Ripple, Stopband) is recomputed only when one of those changes, at most every 64 samples while Ripple or Stopband glide. The mapping (Freq, Q, Gain, Scale, sample rate) is recomputed on a 16-sample control grid counted from a global sample counter, so the output is identical for every block size. Coefficients are interpolated linearly inside the sub-block. The SVF needs only g > 0 and k > 0 to stay stable under that.
+- **Two tiers of recomputation.** The prototype (Family, Order, Ripple, Stopband) is recomputed only when one of those changes, at most every 64 samples while Ripple or Stopband glide, and at most four prototypes per control tick across the nodes. The mapping (Freq, Q, Gain, Scale, sample rate) is recomputed on a 16-sample control grid counted from a global sample counter, so the output is identical for every block size. Coefficients are interpolated linearly inside the sub-block, sample by sample (g, k, the mix and the gain, the loop solved again), so a sweep puts no lines at multiples of fs/16. The SVF needs only g > 0 and k > 0 to stay stable under that.
 - **Smoothing** reuses `ni_dsp::smooth` at control rate (`coef(fs/16)`, the house 5 ms): Freq glides in log₂, Q in log, Gain in dB.
 - **Type, Family, Order, Channel and bypass crossfade.** Each slot holds two preallocated instances. A change designs the second one from zero state and crossfades over 20 ms, with cos² and sin² weights. A change that arrives during a fade waits for its end. A bypassed or empty node does not run, and its state is zero.
 - **Safety:**

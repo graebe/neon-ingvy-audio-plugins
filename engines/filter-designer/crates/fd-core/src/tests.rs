@@ -443,3 +443,44 @@ fn the_tail_is_how_long_a_ringing_notch_goes_on() {
     assert!(iso > 0.0 && iso < 0.2, "isolator {iso} s");
     assert_eq!(design::tail_seconds(&quiet, 0.0), 0.0);
 }
+
+/// `x`'s magnitude spectrum under a Hann window.
+fn spectrum(x: &[f32]) -> Vec<f64> {
+    let n = x.len();
+    let fft = realfft::RealFftPlanner::<f64>::new().plan_fft_forward(n);
+    let mut input: Vec<f64> = x
+        .iter()
+        .enumerate()
+        .map(|(i, v)| f64::from(*v) * (0.5 - 0.5 * (2.0 * core::f64::consts::PI * i as f64 / n as f64).cos()))
+        .collect();
+    let mut out = fft.make_output_vec();
+    fft.process(&mut input, &mut out).unwrap();
+    out.iter().map(|c| c.norm()).collect()
+}
+
+/// A SWEEP OF A NARROW FILTER: a +12 dB bell at Q 20 swept an octave, 700
+/// Hz to 1.4 kHz, in 100 ms across a 1 kHz sine. Coefficients that stepped
+/// every control tick put lines at the sine ± fs/16 (2 and 4 kHz at 48 kHz),
+/// measured at -99 dBc; moved a sample at a time they are below -120 dBc,
+/// under the sweep's own modulation, which stays near 1 kHz.
+#[test]
+fn a_sweep_puts_no_lines_at_the_control_rate() {
+    let mut e = Engine::new(FS);
+    node(&mut e, 0, Field::Type, 1.0);
+    node(&mut e, 0, Field::Gain, 12.0);
+    node(&mut e, 0, Field::Q, 20.0);
+    let (n, len) = (32_768, (FS * 0.1) as usize);
+    let start = (n - len) / 2;
+    let mut y = sine(n, 1000.0, 0.5);
+    for (b, chunk) in y.chunks_mut(SUB).enumerate() {
+        let at = (b * SUB).saturating_sub(start).min(len) as f64 / len as f64;
+        node(&mut e, 0, Field::Freq, 700.0 * 2f64.powf(at));
+        e.process_f32(chunk, None);
+    }
+    let s = spectrum(&y);
+    let bin = |hz: f64| (hz * n as f64 / FS).round() as usize;
+    let near = |hz: f64| (bin(hz) - 20..=bin(hz) + 20).map(|k| s[k]).fold(0.0, f64::max);
+    let dbc = 20.0 * (near(2000.0).max(near(4000.0)) / near(1000.0)).log10();
+    println!("a Q 20 bell swept 700 Hz to 1.4 kHz in 100 ms: lines at 1 kHz ± fs/16 at {dbc:.1} dBc");
+    assert!(dbc < -120.0, "{dbc} dBc");
+}

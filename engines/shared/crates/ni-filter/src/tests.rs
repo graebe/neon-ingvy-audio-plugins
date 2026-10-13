@@ -463,3 +463,24 @@ fn a_sections_decay_is_its_free_responses() {
     /* A wire does not ring. */
     assert_eq!(Cascade::identity().decay_samples(60.0), 0.0);
 }
+
+/// Moving between two designs starts exactly on the one and lands exactly on
+/// the other, and only between cascades of one structure.
+#[test]
+fn a_cascade_moves_between_designs_of_one_structure() {
+    let fs = 48_000.0;
+    let a = bell(800.0, 9.0, 4.0, fs);
+    let b = bell(1200.0, -3.0, 2.0, fs);
+    for (x, y) in a.sections().iter().zip(b.sections()) {
+        assert_eq!(x.toward(y, 0.0), *x);
+        assert_eq!(x.toward(y, 1.0), *y);
+    }
+    assert!(a.same_structure(&b));
+    let cut = family(&proto(Family::Butterworth, 3), Band::LowPass, 1000.0, FRAC_1_SQRT_2, fs).0;
+    assert!(!a.same_structure(&cut) && !cut.same_structure(&Cascade::identity()));
+    let (mut s1, mut s2) = (State::default(), State::default());
+    for i in 0..64 {
+        let x = (i as f64 * 0.3).sin();
+        assert_eq!(a.run_toward(&b, 1.0, &mut s1, x), b.run(&mut s2, x));
+    }
+}

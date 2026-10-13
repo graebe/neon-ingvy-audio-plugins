@@ -340,7 +340,7 @@ impl Engine {
         let (l, r) = (&mut self.buf_l[..m], &mut self.buf_r[..m]);
         self.iso.run(l, r, self.sample_coef, self.fade_step);
         for node in &mut self.nodes {
-            node.run(l, r, self.fade_step);
+            node.run(l, r, self.phase, self.fade_step);
         }
         for (x, y) in l.iter_mut().zip(r.iter_mut()) {
             self.out = glide(self.out, target, self.sample_coef);

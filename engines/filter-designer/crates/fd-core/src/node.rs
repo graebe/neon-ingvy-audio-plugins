@@ -8,8 +8,11 @@ instances of it to fade between.
 WHAT GLIDES, AND HOW. Freq in octaves, Q in its logarithm, Gain, Ripple and
 Stopband in dB -- every [`crate::SUB`] samples, on the engine's control grid,
 with the house's 5 ms one-pole (ni_dsp::smooth at the control rate). A
-change of any of them designs the cascade again, in place; ni-filter's
-sections stay stable while their coefficients step.
+change of any of them designs the cascade again, and across the next
+sub-block the sections move from the last design to the new one a sample at
+a time (Cascade::run_toward), arriving on its last sample: no coefficient
+steps, so a fast sweep of a narrow filter puts no spurs at multiples of
+fs/16.
 
 WHAT FADES. Type, Family, Order, Channel and On change what the node IS --
 how many sections, which outputs, which lanes -- and no glide joins two such
@@ -126,6 +129,9 @@ struct Instance {
     /// What the cascade was designed from, and at which rate.
     designed: Option<(Settings, Globals, f64)>,
     cascade: Cascade,
+    /// The design the sub-block starts from, while `moving` toward `cascade`.
+    from: Cascade,
+    moving: bool,
     lanes: [State; 2],
     clamped: bool,
 }
@@ -139,6 +145,8 @@ impl Instance {
             proto_age: 0,
             designed: None,
             cascade: Cascade::identity(),
+            from: Cascade::identity(),
+            moving: false,
             lanes: [State::default(); 2],
             clamped: false,
         }
@@ -152,6 +160,8 @@ impl Instance {
             return;
         }
         self.proto_age = self.proto_age.saturating_add(1);
+        self.from = self.cascade;
+        self.moving = false;
         let s = now.settings(&self.what);
         if self.designed == Some((s, g, fs)) {
             return;
@@ -176,25 +186,28 @@ impl Instance {
         let (cascade, clamped) = design(&s, self.proto.as_ref(), g, fs);
         self.cascade = cascade;
         self.clamped = clamped;
+        self.moving = self.designed.is_some() && self.from != cascade && self.from.same_structure(&cascade);
         self.designed = Some((s, g, fs));
     }
 
+    /// One sample, `t` (0..1] of the way through the sub-block.
     #[inline]
-    fn run(&mut self, l: f64, r: f64) -> (f64, f64) {
-        let c = &self.cascade;
+    fn run(&mut self, l: f64, r: f64, t: f64) -> (f64, f64) {
+        let (c, from, moving) = (&self.cascade, &self.from, self.moving);
+        let run = |st: &mut State, x: f64| if moving { from.run_toward(c, t, st, x) } else { c.run(st, x) };
         let [a, b] = &mut self.lanes;
         match self.what.channel {
-            Channel::Stereo => (c.run(a, l), c.run(b, r)),
-            Channel::Left => (c.run(a, l), r),
-            Channel::Right => (l, c.run(b, r)),
+            Channel::Stereo => (run(a, l), run(b, r)),
+            Channel::Left => (run(a, l), r),
+            Channel::Right => (l, run(b, r)),
             Channel::Mid => {
                 let (m, s) = (0.5 * (l + r), 0.5 * (l - r));
-                let m = c.run(a, m);
+                let m = run(a, m);
                 (m + s, m - s)
             }
             Channel::Side => {
                 let (m, s) = (0.5 * (l + r), 0.5 * (l - r));
-                let s = c.run(b, s);
+                let s = run(b, s);
                 (m + s, m - s)
             }
         }
@@ -276,14 +289,16 @@ impl Node {
         self.a.update(&self.now, &self.target, g, fs, budget);
     }
 
-    /// `l` and `r` through the node, in place; `step` is a fade's progress a
-    /// sample.
-    pub fn run(&mut self, l: &mut [f64], r: &mut [f64], step: f64) {
+    /// `l` and `r` through the node, in place, their first sample at
+    /// `phase` on the control grid (the sub-block's samples to come are
+    /// `phase..SUB`); `step` is a fade's progress a sample.
+    pub fn run(&mut self, l: &mut [f64], r: &mut [f64], phase: usize, step: f64) {
         let n = l.len().min(r.len());
+        let t = |i: usize| (phase + i + 1) as f64 / crate::SUB as f64;
         let mut i = 0;
         while self.fading && i < n {
-            let (al, ar) = self.a.run(l[i], r[i]);
-            let (bl, br) = self.b.run(l[i], r[i]);
+            let (al, ar) = self.a.run(l[i], r[i], t(i));
+            let (bl, br) = self.b.run(l[i], r[i], t(i));
             let s = (core::f64::consts::FRAC_PI_2 * self.t).sin();
             let (wa, wb) = (1.0 - s * s, s * s);
             l[i] = wa * al + wb * bl;
@@ -298,8 +313,8 @@ impl Node {
         if self.a.what.shape == Shape::Empty {
             return;
         }
-        for (x, y) in l[i..n].iter_mut().zip(r[i..n].iter_mut()) {
-            (*x, *y) = self.a.run(*x, *y);
+        for j in i..n {
+            (l[j], r[j]) = self.a.run(l[j], r[j], t(j));
         }
     }
 
@@ -326,6 +341,7 @@ impl Node {
         /* The panic lands everything at once, outside any tick's budget. */
         let mut unbounded = usize::MAX;
         self.a.update(&self.now, &self.target, g, fs, &mut unbounded);
+        self.a.moving = false;
     }
 
     pub fn flush(&mut self) {

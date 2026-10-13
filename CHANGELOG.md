@@ -21,6 +21,8 @@
   from the signal they heard. No latency.
 - **The tail** reported to the host: how long the filters ring after the
   input stops, to -60 dB (a Q 40 notch at 20 Hz: 4.4 s).
+- **Smooth automation**: Freq, Gain and Q move the filters a sample at a
+  time, so sweeping a narrow filter leaves no stepping artefacts.
 - **Bounded cost on the audio thread**: a preset load or automated Ripple and
   Stopband design at most four prototypes per 16 samples; a 64-sample block
   after a preset turns all sixteen filters into order-8 elliptic low-passes
