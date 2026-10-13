@@ -130,7 +130,7 @@ body{margin:0;background:#060410}
     </sc-if>
   </section>
 
-  <!-- OUTPUT (592, 408, 264 x 232): what applies to every filter. Output (bipolar, ±24 dB), Scale (every gain at once, ±200 %), Adaptive (proportional Q for bells), and Bypass (the plugin's bypass, crossfaded in 10 ms). -->
+  <!-- OUTPUT (592, 408, 264 x 232): what applies to every filter. Output (bipolar, ±24 dB), Scale (every gain at once, ±200 %), Adaptive (proportional Q for bells), and Bypass (the plugin's bypass, crossfaded in 10 ms); under Adaptive, Matched (Matched Cuts: every high-pass and low-pass matched to its analog prototype; drawn here as the analog curve, which the plugin's matched design holds within about 2 dB). -->
   <section class="ph-panel" style="position: absolute; left: 592px; top: 408px; width: 264px; height: 232px; box-sizing: border-box; margin: 0;" aria-label="Output">
     <h2 class="ph-title" style="margin: 0 0 12px;">Output</h2>
     <div style="display: flex; gap: 16px;">
@@ -151,12 +151,14 @@ body{margin:0;background:#060410}
       <button class="fd-plain {{adaptive.cls}}" onClick="{{adaptive.click}}"><span class="sw"></span><span class="ph-label">Adaptive</span></button>
       <button class="fd-plain {{bypass.cls}}" onClick="{{bypass.click}}"><span class="sw"></span><span class="ph-label">Bypass</span></button>
     </div>
+    <div style="margin-top: 12px; height: 28px; display: flex; align-items: center;">
+      <button class="fd-plain {{matched.cls}}" onClick="{{matched.click}}"><span class="sw"></span><span class="ph-label">Matched</span></button>
+    </div>
   </section>
 
-  <!-- THE HINT (0, 664, 888 x 44): three conventions, the Motion switch, the signature. -->
+  <!-- THE HINT (0, 664, 888 x 44): three conventions, the signature. -->
   <div class="ph-hint" style="position: absolute; left: 0; top: 664px; width: 888px; height: 44px; box-sizing: border-box; padding: 0 32px 16px; align-items: center;">
     <span class="tips"><b>double-click</b> to add a filter<span class="sep">—</span><b>drag</b> it, <b>alt</b> for Q, <b>shift</b> for fine<span class="sep">—</span><b>delete</b> removes it</span>
-    <span class="ph-toggle on"><span class="sw"></span><span class="ph-label">Motion</span></span>
     <span class="ph-sig"><span class="mark"></span>Neon Ingvy</span>
   </div>
 </div>
@@ -342,7 +344,10 @@ class Component extends DCLogic {
       const W = warp(f);
       if (n.type === 'High-Pass' || n.type === 'Low-Pass') {
         if (n.order >= 2) proto = resonate(proto, n.q);
-        const x = n.type === 'Low-Pass' ? W / warp(n.freq) : warp(n.freq) / W;
+        /* Matched: the analog curve, unwarped (the plugin's matched design
+         * holds it within about 2 dB to 20 kHz). */
+        const matched = opts && opts.matched;
+        const x = matched ? (n.type === 'Low-Pass' ? f / n.freq : n.freq / f) : n.type === 'Low-Pass' ? W / warp(n.freq) : warp(n.freq) / W;
         return db(protoAt(proto, x * proto.w3));
       }
       /* Band Pass and Notch: Freq the centre, Q the -3 dB edges, both prewarped. */
@@ -391,7 +396,7 @@ class Component extends DCLogic {
     return {
       nodes, sel: 4, open: null, range: 18, analyzer: 'Both',
       iso: { on: false, low: 0, mid: 0, high: 0, killLow: false, killMid: false, killHigh: false, lower: 250, upper: 2500, slope: 24 },
-      output: 0, scale: 100, adaptive: false, bypass: false,
+      output: 0, scale: 100, adaptive: false, bypass: false, matched: false,
     };
   }
 
@@ -428,7 +433,7 @@ class Component extends DCLogic {
     const path = (pts) => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
     const freqs = [];
     for (let i = 0; i <= 390; i++) freqs.push(LO * Math.exp(SPAN * i / 390));
-    const opts = { scale: s.scale, adaptive: s.adaptive };
+    const opts = { scale: s.scale, adaptive: s.adaptive, matched: s.matched };
     const isGain = (n) => GAIN_TYPES.indexOf(n.type) >= 0;
     const active = (n) => n.type !== 'None' && n.on;
     const curveOf = (fn) => freqs.map((f) => [fx(f), gy(fn(f))]);
@@ -687,6 +692,7 @@ class Component extends DCLogic {
       inspectorTitle, onToggle, showNode: !isoSel, showIso: isoSel, selects, nodeKnobs, isoKnobs, kills, outKnobs,
       adaptive: { cls: 'ph-toggle' + (s.adaptive ? ' on' : ''), click: () => this.setState({ adaptive: !this.st().adaptive }) },
       bypass: { cls: 'ph-toggle' + (s.bypass ? ' on' : ''), click: () => this.setState({ bypass: !this.st().bypass }) },
+      matched: { cls: 'ph-toggle' + (s.matched ? ' on' : ''), click: () => this.setState({ matched: !this.st().matched }) },
       knobMove: (e) => {
         const k = self._knob;
         if (!k) return;
