@@ -1,0 +1,1 @@
+{"tier":"product","products":["filter-designer"],"sha":"9d26980791ea501cc321f73cec354896565aff20","date":"2026-10-13T19:42:02.685Z","host":"MacBookPro.localdomain","rustc":"rustc 1.99.0 (b940084d7 2026-09-28)","result":"pass","results":{"tests":46,"duration_s":108,"build_type":"RelWithDebInfo","archs":"","gaps":0,"waived":"none","untested":"none"}}
