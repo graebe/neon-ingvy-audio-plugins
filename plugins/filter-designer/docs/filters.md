@@ -68,6 +68,9 @@ is the digital cascade exactly the bilinear transform of its analog design:
 
 So the Butterworth, Chebyshev and elliptic shapes keep their defining
 properties (flatness, equal ripples, notch positions) up to fs/2.
+(With **Matched** on, a High-Pass or Low-Pass leaves this mapping for one
+matched to the analog magnitude instead; see Part 3, Low-Pass and
+High-Pass.)
 
 ### The one building block: a state-variable section
 
@@ -240,7 +243,7 @@ octave above, at 2 kHz:
 | family | at 2 kHz | group delay at 100 Hz → peak |
 |---|---|---|
 | Bessel | −13.5 dB | 0.34 → 0.34 ms |
-| Butterworth | −24.3 dB | 0.42 → 0.62 ms |
+| Butterworth | −24.2 dB | 0.42 → 0.62 ms |
 | Linkwitz-Riley | −24.7 dB | 0.45 → 0.54 ms |
 | Chebyshev II (60 dB) | −27.0 dB | 0.40 → 0.63 ms |
 | Chebyshev I (1 dB) | −36.1 dB | 0.47 → 1.37 ms |
@@ -292,7 +295,7 @@ one-pole `g = Ωc`, mix `(0, 1)`.
 That is what *maximally flat* means: no other filter of the same order stays
 closer to 0 dB below its corner. Far above the corner the level falls by
 `20·log10(Ω^N)`, which is **6·N dB per octave**. Order 4 at 1 kHz is
-−3.01 dB at 1 kHz, −24.3 dB at 2 kHz and −48.9 dB at 4 kHz. The price is a
+−3.01 dB at 1 kHz, −24.2 dB at 2 kHz and −48.9 dB at 4 kHz. The price is a
 modest group-delay peak at the corner, so a low-pass of high order rings
 slightly.
 
@@ -328,7 +331,7 @@ line as `N` poles allow. Linear phase means constant delay. Order 4 at 1 kHz
 delays 0.336 ms at 100 Hz and 0.331 ms at 1 kHz. A Butterworth delays 0.42 ms
 and then 0.59 ms. So a kick through a Bessel low-pass stays a kick. The cost is
 the corner: it starts to bend an octave early, and a Bessel of order 4 is
-only −13.5 dB an octave above Freq, where a Butterworth is −24.3 dB. Higher
+only −13.5 dB an octave above Freq, where a Butterworth is −24.2 dB. Higher
 orders barely sharpen it (order 8: −13.8 dB). They only make the delay
 flatter.
 
@@ -780,11 +783,11 @@ Second-order section, `A = 10^((2G/N)/40)`:
 
 ```text
                 A·(s² + (√A/Q_k)·ω0·s + A·ω0²)
-  low:  H(s) = ────────────────────────────────    DC: A²  Freq: A  ∞: 1
+  low:  H(s) = ────────────────────────────────   DC: A²  Freq: A  ∞: 1
                  A·s² + (√A/Q_k)·ω0·s + ω0²
 
                 A·(A·s² + (√A/Q_k)·ω0·s + ω0²)
-  high: H(s) = ────────────────────────────────    DC: 1   Freq: A  ∞: A²
+  high: H(s) = ────────────────────────────────   DC: 1   Freq: A  ∞: A²
                  s² + (√A/Q_k)·ω0·s + A·ω0²
 ```
 

@@ -87,7 +87,10 @@ transform of its prototype only if every section shares one frequency
 scaling. High-pass and low-pass use `Ω_c = tan(π·fc/fs)`. Band-Pass and Notch prewarp both
 −3 dB edges, then take `Ω0 = √(Ω1·Ω2)` and `B = Ω2 − Ω1`. Prewarping each
 section on its own would bend Butterworth and equiripple shapes above about
-fs/8 and move the Chebyshev II and Elliptic zeros.
+fs/8 and move the Chebyshev II and Elliptic zeros. With Matched Cuts on, a
+high-pass or low-pass is instead matched section by section to its analog
+prototype (`ni_filter::family_matched`, ADR 0004's amendment); band-pass and
+notch stay on this path.
 
 **Freq is the −3 dB point in every family.** The exception is Linkwitz-Riley,
 whose Freq is the −6 dB point, so a high-pass and a low-pass at one Freq
