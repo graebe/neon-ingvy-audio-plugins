@@ -38,7 +38,8 @@ Build Process
 - Build idependent modules separately to prevent one giant build process
 
 Compatible Cores between Ableton Live & Ableton Move (Schwung)
-- All DSPs should be available as ableton live plugin and ableton move schwung plugin
+- All DSPs should be available as ableton live plugin and ableton move schwung plugin,
+  except where a product's README says why it is Live-only (`hosts`, `notOnMove`)
 
 Ableton Move Schwung
 - Schwung is second priority (develop VST3 plugins first)

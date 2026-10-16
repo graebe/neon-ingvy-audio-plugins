@@ -22,7 +22,8 @@ exist in history (8ed8ac9), together with their kit.
 
 ## Decision
 
-- **Each Move module ships a web editor** as its `web_ui.html`, built from
+- **A Move module ships a web editor** (see the 2026-10-16 amendment below for
+  which do) as its `web_ui.html`, built from
   `web/<module>`. It looks and behaves like the plugin's editor, within what
   the Move and the iframe allow.
 - **The Solid kit returns as `web/kit`**, restored from 8ed8ac9. It does not
@@ -40,6 +41,13 @@ exist in history (8ed8ac9), together with their kit.
 - **No change to Schwung.** The module feeds its page through Schwung's own
   contract: a trailing `web_ui` declaration whose `extra_keys` name the
   readouts the editor draws from.
+
+Amended 2026-10-16 (owner): the Bit-Crusher, Vocalize and Filter Designer
+modules ship no web editor for now; Schwung's generic grid serves them. Web
+editors for them, and the shared component specification that would make a
+third kit-mirroring editor cheaper, are later work. Which products run on the
+Move at all is each product's README (`hosts`, `notOnMove`), held to the tree
+by `tests/product_matrix.test.mjs`.
 
 ## Consequences
 

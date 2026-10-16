@@ -9,9 +9,9 @@ crates: [cd-core, cd-capi, music-core]
 tests: [cd_core_rs, cd_core, music_core_rs, music_core_no_std, juce_host_NIChordDetector, codesign_NIChordDetector]
 still: media/chord-detector/live.png
 notOnMove: >-
-  Not yet: the engine is ready for a Move module (it allocates nothing and
-  depends on nothing a module could not carry), but a Schwung version is not
-  part of this release.
+  Live-only for now (owner, 2026-10-16): there is no UI concept for the Move
+  yet. The engine itself is ready for a module -- it allocates nothing and
+  depends on nothing a module could not carry.
 ---
 
 # NI Chord-Detector

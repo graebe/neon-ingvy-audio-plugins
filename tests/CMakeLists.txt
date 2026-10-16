@@ -215,6 +215,12 @@ if (TG_NODE)
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/tests/design_paths.test.mjs)
 
+    # The product matrix: each README's hosts and notOnMove against the
+    # modules the tree builds and the ones release.json offers.
+    add_test(NAME product_matrix
+             COMMAND ${TG_NODE} --test
+                     ${CMAKE_SOURCE_DIR}/tests/product_matrix.test.mjs)
+
     # THE SITE'S OWN RENDER A/B. It is served from /neon-ingvy-audio-plugins/, so a
     # hand-written href="/tech/" works in every local preview -- astro applies
     # the base there too -- and 404s only once deployed, only for whoever clicks
@@ -929,7 +935,7 @@ ni_test_tiers(
             abus_roundtrip shell_handoff
             # lint-like checks over the tree
             versions release licenses licenses_resolve spdx site_tokens
-            design_paths timing toolchain test_summary
+            design_paths product_matrix timing toolchain test_summary
             # the Move web editors' kit
             web_kit
             # the JUCE shell's state codec, over every product's fixtures

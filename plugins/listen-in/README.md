@@ -8,8 +8,9 @@ engine: engines/audio-bus
 crates: [bus-core, bus-capi]
 tests: [abus_core, abus_roundtrip, abus_ipc, li_processor, li_host]
 notOnMove: >-
-  NI Listen-In is not a DSP — it is a transport between two plugins in one host,
-  and the Move runs one module at a time with no second plugin to read the bus.
+  Live-only (owner, 2026-10-16): NI Listen-In is pure Live functionality, a
+  transport between two plugins in one host, and the Move runs one module at a
+  time with no second plugin to read the bus.
   So there is no `bus-move` crate and `cmake/Schwung.cmake` looks for none.
 ---
 
