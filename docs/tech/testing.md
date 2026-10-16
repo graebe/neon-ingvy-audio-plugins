@@ -135,9 +135,11 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   NI Spectrogram's (`sg_processor`, `sg_rt`, `spectro_state`,
   `spectro_wire`), NI Listen-In's (`li_processor`, `li_rt`, on a bus
   namespace of its own), NI Side-Chain's (`sc_processor`, `sc_rt`, its MIDI
-  and panic and its key bus included) and NI Chord-Detector's
-  (`cd_processor`: a chord named, silence out, and the lane still heard
-  while the host bypasses it),
+  and panic and its key bus included), NI Bit-Crusher's (`bc_processor`,
+  `bc_rt`), NI Filter Designer's (`fd_processor`, `fd_rt`), NI Vocalize's
+  (`vz_processor`, `vz_rt`) and NI Chord-Detector's (`cd_processor`: a chord
+  named, silence out, and the lane still heard while the host bypasses it;
+  `cd_rt`),
 - the Move module's editor (`tg_move_ui`): `ui_chain.js` run against
   Schwung's own shared modules and the module's real `chain_params` — every
   step of every length reachable through the pads and the arrows, the ring,
