@@ -110,6 +110,25 @@ case of a new worktree, or a build directory wiped: a checkout elsewhere on
 disk hit 97.5% of the same compiles. The cache held 0.6 GiB after all of
 this, of its default 5 GiB.
 
+**One product builds without the others** (`cmake/NiRust.cmake`): in a `dev`
+build an engine waits for its own cargo run and its own crate's headers, and
+for another crate's only where its C++ includes them (`USES`: the shell's
+handoff, the bus), so building one bundle no longer builds every engine. A
+universal (`release`) build still waits for them all, because its archives
+are merged across the slices. Measured 2026-10-16, the same machine and
+load, `cmake --build <dir> --target NIFilterDesigner_VST3`, the C++ from a
+warm ccache:
+
+| | before | after |
+|---|---|---|
+| a new `dev` build directory (cold cargo) | 116 s | 25 s |
+| after touching the Trance Gate's and the Side-Chain's engines | 8.5 s | 0.4 s |
+| nothing changed | 1.1 s | 0.3 s |
+
+Each other bundle builds alone in a new directory too (Side-Chain 40 s,
+Spectrogram 46 s, Listen-In 36 s, Trance Gate 40 s), which is what proves
+its `USES`: a header waited for by no edge would be missing there.
+
 ## Quick — the developer loop
 
 `cmake --build build-dev --target ni_tests` builds the test programs and the

@@ -3,8 +3,10 @@
 #
 # The engines: each product's Rust C ABI as a static library, built by Corrosion.
 #
-#   ni_add_rust_engine(<target> CRATE <crate> LIB <lib> [INCLUDE <dir>])
-#   ni_add_rust_headers(<target> [INCLUDE <dir>])
+#   ni_add_rust_engine(<target> CRATE <crate> LIB <lib> [INCLUDE <dir>]
+#                      [USES <header target>...])
+#   ni_add_rust_headers(<target> CRATE <crate> BUILT_BY <engine target>
+#                       [INCLUDE <dir>])
 #   ni_build_rust_engines()           once, after every ni_add_rust_engine
 #
 # <target> is an INTERFACE library: linking it brings the archive, the system
@@ -26,6 +28,14 @@
 # Cargo.toml states the rule): two Rust staticlibs in one binary each carry the
 # Rust runtime and fail to link. So a plugin links exactly its own archive, and
 # a crate with no product of its own -- the shell -- is headers only here.
+#
+# ONE PRODUCT BUILDS WITHOUT THE OTHERS. An engine waits for its own cargo
+# run and for the headers its crate writes, nothing else: building NI Filter
+# Designer does not build the Trance Gate's engine. A crate whose C++ also
+# includes another crate's header -- the shell's handoff, the bus -- names
+# that header target in USES, and waits for it too, without linking it. A
+# universal build is the exception (below): its archives are merged across
+# slices, and it waits for every engine.
 #
 # CARGO IS THE DEPENDENCY SCANNER. Corrosion runs it on every build, it is a
 # no-op when nothing changed, and Corrosion copies an archive out with
@@ -71,17 +81,21 @@ endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/NiCorrosion.cmake)
 
-# Every product's archive, built and (when universal) merged: what a target
-# that links one waits for.
+# Every product's archive, built and (when universal) merged, and every
+# header: what a universal build's engines wait for, and `cmake --build
+# --target ni_rust_engines` builds.
 add_custom_target(ni_rust_engines)
 
 function(ni_add_rust_engine name)
-    cmake_parse_arguments(ARG "" "CRATE;LIB" "INCLUDE" ${ARGN})
+    cmake_parse_arguments(ARG "" "CRATE;LIB" "INCLUDE;USES" ${ARGN})
     if (NOT ARG_CRATE OR NOT ARG_LIB)
         message(FATAL_ERROR "ni_add_rust_engine(${name}) needs CRATE and LIB")
     endif()
     set_property(GLOBAL APPEND PROPERTY NI_RUST_CRATES ${ARG_CRATE})
     set_property(GLOBAL APPEND PROPERTY NI_RUST_LIBS ${ARG_LIB})
+    # Its headers, written by its own cargo run (ni_build_rust_engines).
+    set_property(GLOBAL APPEND PROPERTY NI_RUST_HEADER_SETS "${name}|${ARG_CRATE}|${ARG_LIB}")
+    set_property(GLOBAL PROPERTY NI_RUST_USES_${name} ${ARG_USES})
     add_library(${name} INTERFACE)
     if (NI_RUST_EXTRA_TRIPLES)
         # The merged archive, and what the Rust standard library links against,
@@ -98,17 +112,27 @@ function(ni_add_rust_engine name)
         target_link_libraries(${name} INTERFACE ${ARG_LIB})
     endif()
     target_include_directories(${name} INTERFACE ${NI_CAPI_INCLUDE_DIR} ${ARG_INCLUDE})
-    add_dependencies(${name} ni_rust_engines)
+    add_dependencies(${name} ni_capi_headers_${name})
+    if (NI_RUST_EXTRA_TRIPLES)
+        add_dependencies(${name} ni_rust_engines)
+    endif()
 endfunction()
 
-# A crate whose C ABI rides inside every product's archive: its header, and no
-# archive of its own. The header is written by the products' cargo runs, so a
-# target that includes it waits for them as well.
+# A crate whose C ABI rides inside the products' archives: its header, and no
+# archive of its own. Every cargo run that builds the crate writes the same
+# header; BUILT_BY names the engine whose run this target waits for.
 function(ni_add_rust_headers name)
-    cmake_parse_arguments(ARG "" "" "INCLUDE" ${ARGN})
+    cmake_parse_arguments(ARG "" "CRATE;BUILT_BY" "INCLUDE" ${ARGN})
+    if (NOT ARG_CRATE OR NOT ARG_BUILT_BY)
+        message(FATAL_ERROR "ni_add_rust_headers(${name}) needs CRATE and BUILT_BY")
+    endif()
+    set_property(GLOBAL APPEND PROPERTY NI_RUST_HEADER_SETS "${name}|${ARG_CRATE}|@${ARG_BUILT_BY}")
     add_library(${name} INTERFACE)
     target_include_directories(${name} INTERFACE ${NI_CAPI_INCLUDE_DIR} ${ARG_INCLUDE})
-    add_dependencies(${name} ni_rust_engines)
+    add_dependencies(${name} ni_capi_headers_${name})
+    if (NI_RUST_EXTRA_TRIPLES)
+        add_dependencies(${name} ni_rust_engines)
+    endif()
 endfunction()
 
 function(ni_build_rust_engines)
@@ -157,26 +181,61 @@ function(ni_build_rust_engines)
     # the build produces it. A header the cargo runs rewrite is therefore seen
     # as unchanged in the build that rewrote it, and the objects that include
     # it compile against the old declarations -- a struct read with its old
-    # layout -- until the next build. So one edge claims them all as
-    # byproducts, after the cargo runs: Ninja waits for it, dates the headers
-    # again (restat), and recompiles exactly the objects whose header the
-    # cargo runs changed. The list is every cbindgen/<stem>.toml in the
-    # engines, the configuration each <stem>.h is written from
-    # (engines/shared/cbindgen/capi_header.rs).
-    file(GLOB configs CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/engines/*/crates/*/cbindgen/*.toml)
-    set(headers "")
-    foreach(config IN LISTS configs)
-        get_filename_component(stem ${config} NAME_WE)
-        list(APPEND headers ${NI_CAPI_INCLUDE_DIR}/${stem}.h)
+    # layout -- until the next build. So an edge per header target claims its
+    # crate's headers as byproducts, after the cargo run that writes them:
+    # Ninja waits for it, dates the headers again (restat), and recompiles
+    # exactly the objects whose header changed. A crate's headers are one per
+    # cbindgen/<stem>.toml (engines/shared/cbindgen/capi_header.rs), and every
+    # one in the engines is claimed by exactly one edge, or configure stops.
+    get_property(sets GLOBAL PROPERTY NI_RUST_HEADER_SETS)
+    set(claimed "")
+    foreach(set IN LISTS sets)
+        string(REPLACE "|" ";" set "${set}")
+        list(GET set 0 target)
+        list(GET set 1 crate)
+        list(GET set 2 lib)
+        if (lib MATCHES "^@(.*)")
+            # A headers-only crate: the run of the engine that builds it.
+            set(built_by ${CMAKE_MATCH_1})
+            set(lib "")
+            foreach(other IN LISTS sets)
+                if (other MATCHES "^${built_by}\\|[^|]*\\|([^@|][^|]*)$")
+                    set(lib ${CMAKE_MATCH_1})
+                endif()
+            endforeach()
+            if (NOT lib)
+                message(FATAL_ERROR "${target}: BUILT_BY names no ni_add_rust_engine target")
+            endif()
+        endif()
+        file(GLOB configs CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/engines/*/crates/${crate}/cbindgen/*.toml)
+        set(headers "")
+        foreach(config IN LISTS configs)
+            get_filename_component(stem ${config} NAME_WE)
+            list(APPEND headers ${NI_CAPI_INCLUDE_DIR}/${stem}.h)
+        endforeach()
+        list(APPEND claimed ${configs})
+        add_custom_target(ni_capi_headers_${target}
+            COMMAND ${CMAKE_COMMAND} -E true
+            BYPRODUCTS ${headers}
+            VERBATIM)
+        add_dependencies(ni_capi_headers_${target} cargo-build_${lib})
+        add_dependencies(ni_rust_engines ni_capi_headers_${target})
     endforeach()
-    add_custom_target(ni_capi_headers
-        COMMAND ${CMAKE_COMMAND} -E true
-        BYPRODUCTS ${headers}
-        VERBATIM)
-    foreach(lib IN LISTS libs)
-        add_dependencies(ni_capi_headers cargo-build_${lib})
+    file(GLOB every CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/engines/*/crates/*/cbindgen/*.toml)
+    list(REMOVE_ITEM every ${claimed})
+    if (every)
+        message(FATAL_ERROR "no ni_add_rust_engine or ni_add_rust_headers claims ${every}")
+    endif()
+
+    # USES: a header target an engine's C++ includes, waited for, not linked.
+    foreach(set IN LISTS sets)
+        string(REPLACE "|" ";" set "${set}")
+        list(GET set 0 target)
+        get_property(uses GLOBAL PROPERTY NI_RUST_USES_${target})
+        foreach(used IN LISTS uses)
+            add_dependencies(${target} ni_capi_headers_${used})
+        endforeach()
     endforeach()
-    add_dependencies(ni_rust_engines ni_capi_headers)
 
     if (NOT NI_RUST_EXTRA_TRIPLES)
         return()
