@@ -497,7 +497,7 @@ add_test(NAME shell_core
 # products; these pin each piece on its own.
 add_test(NAME ni_shared
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung -p ni-params)
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung -p ni-params -p ni-filter)
 
 # THE SCHWUNG HOST'S TABLES, FROM ITS OWN HEADERS. ni-schwung mirrors
 # host_api_v1_t and audio_fx_api_v2_t in Rust; abi/layout.def writes their
@@ -823,6 +823,49 @@ if (NOT WIN32)
 endif()
 add_test(NAME vz_render_ab COMMAND vz_render_ab)
 
+# ---------------------------------------------------------- NI Filter Designer
+
+# THE ENGINE'S OWN CLAIMS, which are cargo's: every node's sound against its
+# design, the same bits at any block size, an empty instance bit-exact, no
+# click when what a node is changes, the isolator flat at 0 dB and its kills
+# deep, mid and side kept apart, the panic, the parameter table and its text,
+# the picture against the design and the analyzer against a sine, no
+# allocation on any audio path. (ni-filter's own tests are ni_shared's.)
+set(FD_ENGINE ${CMAKE_SOURCE_DIR}/engines/filter-designer)
+add_test(NAME fd_core_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p fd-core -p fd-capi)
+
+# The C ABI from C: compiled against both headers cbindgen writes
+# (fd-capi/build.rs) and linked to the plugin's real archive.
+add_executable(fd_core_tests ${FD_ENGINE}/tests/test_core.c)
+target_link_libraries(fd_core_tests PRIVATE fd_engine)
+if (NOT WIN32)
+    target_link_libraries(fd_core_tests PRIVATE m)
+endif()
+add_test(NAME fd_core COMMAND fd_core_tests)
+# The Move module's crate ALONE, so Cargo builds it as it ships, its
+# chain_params held to the engine's table through the vtable the device calls.
+add_test(NAME fd_move_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p fd-move)
+# THE SOAK, in release: ten minutes of noise with NaN, ±Inf and denormals
+# through every node and the isolator, bit for bit the clean input's sound,
+# then rung down to exactly nothing (fd-core/tests/soak.rs).
+add_test(NAME fd_soak_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --release --manifest-path
+                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p fd-core --test soak -- --ignored)
+
+# THE TWO PATHS, RENDERED SIDE BY SIDE AND PINNED: the plugin's float path and
+# the Move's int16 path within one LSB, and the float render's hash recorded
+# (render_golden.h).
+add_executable(fd_render_ab ${FD_ENGINE}/tests/render_ab.c)
+target_link_libraries(fd_render_ab PRIVATE fd_engine)
+if (NOT WIN32)
+    target_link_libraries(fd_render_ab PRIVATE m)
+endif()
+add_test(NAME fd_render_ab COMMAND fd_render_ab)
+
 # EACH CARGO SUITE ON BUSES OF ITS OWN. The workspace's .cargo/config.toml
 # gives every `cargo test` the checkout's bus namespace, which keeps a suite
 # off a Live session's buses -- but ctest runs these suites side by side, and
@@ -928,6 +971,10 @@ ni_test_tiers(
         PROGRAMS vz_core_tests vz_render_ab
         QUICK vz_core_rs vz_core_time_only vz_move_rs vz_core
         FULL vz_render_ab:render
+    PRODUCT filter-designer
+        PROGRAMS fd_core_tests fd_render_ab
+        QUICK fd_core_rs fd_move_rs fd_core
+        FULL fd_render_ab:render fd_soak_rs:soak
     # every bundle's host, signature and tree checks, and every Move module
     ${_ni_juce_tiers}
     ${_ni_move_tiers})

@@ -248,6 +248,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
+name = "fd-capi"
+version = "2026.10.12+1"
+dependencies = [
+ "assert_no_alloc",
+ "cbindgen",
+ "fd-core",
+ "ni-dsp",
+ "ni-filter",
+ "ni-params",
+ "realfft",
+ "shell-core",
+]
+
+[[package]]
+name = "fd-core"
+version = "2026.10.12+1"
+dependencies = [
+ "assert_no_alloc",
+ "divan",
+ "ni-dsp",
+ "ni-filter",
+ "ni-params",
+ "proptest",
+ "realfft",
+ "wmidi",
+]
+
+[[package]]
+name = "fd-move"
+version = "2026.10.12+1"
+dependencies = [
+ "fd-capi",
+ "fd-core",
+ "ni-dsp",
+ "ni-schwung",
+ "serde_json",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -396,6 +435,16 @@ dependencies = [
  "arrayvec",
  "assert_no_alloc",
  "lexical-core",
+]
+
+[[package]]
+name = "ni-filter"
+version = "2026.10.12+1"
+dependencies = [
+ "assert_no_alloc",
+ "num-complex",
+ "proptest",
+ "realfft",
 ]
 
 [[package]]

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# fd_shell.h, from src/shell.rs (build.rs, through
+# engines/shared/cbindgen/capi_header.rs).
+language = "C"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+//
+// NI Filter Designer's engine as a plugin shell holds it, `fd_shell_*`, and
+// the picture its editor draws. GENERATED at build time by cbindgen from
+// engines/filter-designer/crates/fd-capi/src/shell.rs -- edit that, never
+// this."""
+include_guard = "FD_SHELL_H"
+cpp_compat = true
+documentation = true
+documentation_style = "c99"
+usize_is_size_t = true
+sys_includes = ["stdbool.h", "stddef.h", "stdint.h"]
+no_includes = true
+# FdCore, which fd_shell_begin lends, is the core header's.
+includes = ["fd_core.h"]
+
+[export]
+include = ["FdPicture"]
+exclude = ["FdCore"]
+
+[enum]
+prefix_with_name = true

@@ -1,0 +1,27 @@
+[package]
+name = "ni-filter"
+version = "2026.10.12+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "Filter design for every Neon Ingvy engine: analog families as TPT state-variable sections, and their exact digital response"
+publish.workspace = true
+
+# AN RLIB, for ni-dsp's reason: each product's crates absorb it into that
+# product's single archive.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# Complex numbers for the prototypes' poles and zeros and for the response a
+# cascade has at a frequency. `std` for the transcendental functions the
+# elliptic design takes.
+num-complex = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+proptest = { workspace = true, features = ["std"] }
+# What a cascade renders, measured: an impulse response's spectrum against the
+# response the cascade reports.
+realfft = { workspace = true }

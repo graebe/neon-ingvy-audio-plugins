@@ -15,6 +15,7 @@ GPL-3.0-or-later.
 | [NI Chord-Detector](plugins/chord-detector/README.md) | VST3 | `engines/chord-detector` |
 | [NI Bit-Crusher](plugins/bit-crusher/README.md) | VST3 · a Schwung module for the Move | `engines/bit-crusher` |
 | [NI Vocalize](plugins/vocalize/README.md) | VST3 · a Schwung module for the Move | `engines/vocalize` |
+| [NI Filter Designer](plugins/filter-designer/README.md) | VST3 · a Schwung module for the Move | `engines/filter-designer` |
 
 ## How it is put together
 
@@ -138,6 +139,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `spdx` | every source file this repository owns opens with its licence and its copyright |
 | `tg_host` | NI Trance Gate's built VST3 as a DAW hosts it: every set an earlier build saved reopened and saved back byte for byte, the golden render, the host's Bypass, and the window under a running transport |
 | `vz_processor`, `vz_host` | NI Vocalize on the real engine: the parameters declared from the engine's table, Mode not automatable, the latency each Mode reports and the host told of every change, a click exactly that late (bypassed too), Vocal 0 as the input bit for bit — in the processor, and in the built VST3 as a DAW hosts it, both engines' golden renders bit for bit |
+| `fd_processor`, `fd_host` | NI Filter Designer on the real engine: the parameters declared from the engine's table, a new instance the input bit for bit, a Bell heard at its gain, a kill deep, the state exact, the picture the engine's design of the host's values — in the processor, and in the built VST3 as a DAW hosts it |
 | `sc_processor`, `sc_host` | NI Side-Chain on the real engine: the sets earlier builds saved reopened and saved back byte for byte, a note ducking from its own sample, CC 120 and CC 123 opening a held duck, a key ducking the track, the shape drawn against the duck played — in the processor, and in the built VST3 as a DAW hosts it, the engine's golden render bit for bit |
 | `bc_processor`, `bc_host` | NI Bit-Crusher on the real engine: the parameters declared from the engine's table, a saved set reopened with every value exactly, a reactivation letting go of what was held, the window at its size — in the processor, and in the built VST3 as a DAW hosts it, the patch typed in and the engine's golden render bit for bit |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
@@ -213,6 +215,7 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Chord-Detector](plugins/chord-detector/README.md) | names the note or chord a MIDI lane plays — [in Live](plugins/chord-detector/docs/live.md) |
 | [NI Bit-Crusher](plugins/bit-crusher/README.md) | a bit crusher: fewer levels, taken less often — [in Live](plugins/bit-crusher/docs/live.md), [on the Move](plugins/bit-crusher/docs/schwung.md) |
 | [NI Vocalize](plugins/vocalize/README.md) | any sound, more and more a voice singing A, E, I, O or U — [in Live](plugins/vocalize/docs/live.md), [on the Move](plugins/vocalize/docs/schwung.md) |
+| [NI Filter Designer](plugins/filter-designer/README.md) | sixteen minimum-phase IIR filters on one response curve — [in Live](plugins/filter-designer/docs/live.md), [on the Move](plugins/filter-designer/docs/schwung.md) |
 
 What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).
 

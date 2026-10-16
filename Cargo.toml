@@ -65,6 +65,10 @@ members = [
     "engines/vocalize/crates/vz-core",        # the DSP
     "engines/vocalize/crates/vz-capi",        # the C ABI -> the plugin
     "engines/vocalize/crates/vz-move",        # the Schwung vtable -> the module
+    # NI Filter Designer: one core, two wrappers, the Side-Chain's shape.
+    "engines/filter-designer/crates/fd-core",  # the DSP
+    "engines/filter-designer/crates/fd-capi",  # the C ABI -> the plugin
+    "engines/filter-designer/crates/fd-move",  # the Schwung vtable -> the module
     # How a plugin shell's threads reach an engine: the command queue in, the
     # published snapshot out, and the handoff for objects the main thread
     # builds and frees. Not a product either, and for audio-bus's reason:
@@ -78,6 +82,7 @@ members = [
     "engines/shared/crates/ni-schwung",       # the audio_fx v2 glue -> every module
     "engines/shared/crates/ni-params",        # a parameter table's shape and arithmetic
     "engines/shared/crates/music-core",       # pitches, chords, keys: the theory
+    "engines/shared/crates/ni-filter",        # filter families as TPT sections, and their response
     # The code behind a paper (papers/<name>/code): every listing it prints is
     # a tested region of the crate. No product links one; like the shared
     # crates, it may use them and nothing uses it.

@@ -1,5 +1,37 @@
 # What's new
 
+## v2026.10.12.1 — NI Filter Designer
+
+- **New: NI Filter Designer.** Up to sixteen minimum-phase IIR filters on one
+  response curve: bell, low shelf, high shelf, high-pass, low-pass,
+  band-pass, notch (band-stop), all-pass and tilt. Double-click the curve to
+  add a filter, drag its handle for frequency and gain, Alt-drag for Q, Delete
+  removes it. Every edit is one undo step in Live.
+- **Six approximations** for high-pass, low-pass, band-pass and notch —
+  Butterworth, Bessel, Chebyshev I and II, elliptic and Linkwitz-Riley — at
+  orders 1 to 8 (6 to 48 dB/oct), with Q on the highest-Q pole pair, passband
+  ripple and stopband attenuation. A change of type, family or order
+  crossfades over 20 ms.
+- **A three-band isolator** in front of the filters: Linkwitz-Riley
+  crossovers (LR4 or LR8), a level and a kill per band.
+- **Per-filter channel**: stereo, left, right, mid or side.
+- **Spectrum analyzer** behind the curve: the input (pre) faded, the output
+  (post) highlighted. The curve is the engine's own transfer function.
+- **Bypass**, crossfaded in 10 ms, the filters kept running so they resume
+  from the signal they heard. No latency.
+- **Matched cuts**: an option to match every high-pass and low-pass to its
+  analog prototype, so filters near Nyquist keep the analog slope and peak.
+- **The tail** reported to the host: how long the filters ring after the
+  input stops, to -60 dB (a Q 40 notch at 20 Hz: 4.4 s).
+- **Smooth automation**: Freq, Gain and Q move the filters a sample at a
+  time, so sweeping a narrow filter leaves no stepping artefacts.
+- **Bounded cost on the audio thread**: a preset load or automated Ripple and
+  Stopband design at most four prototypes per 16 samples; a 64-sample block
+  after a preset turns all sixteen filters into order-8 elliptic low-passes
+  costs about 45 µs (3 % of its real time at 48 kHz).
+- On the Ableton Move as a Schwung module: the isolator, a high-pass and a
+  low-pass.
+
 ## Unreleased — every plugin
 
 These are already in the shared plugin shell and reach each plugin with its
