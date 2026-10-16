@@ -1,8 +1,8 @@
 /*
- * Ultraviolet 1.0.0 tokens as CSS variables, one-to-one from project/tokens.json.
+ * Ultraviolet 2.0.0 tokens as CSS variables, one-to-one from ds/ultraviolet/tokens.json.
  * The design system serves no tokens.css, and its bundle.css reads these names.
- * The block marked KIT ONLY holds values the plugins' ui-kit adds or redefines;
- * only the "as built" artboards use them, so the drift stays visible.
+ * The block marked KIT ONLY holds the two names the "as built" artboards
+ * still use from before the plugins' editors were native.
  */
 :root {
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
@@ -20,19 +20,24 @@
   --uv: #efe3ff;
   --uv-deep: #a259ff;
   --uv-glow: #a259ff80;
-  --on-uv: #060410;
+  --on-uv: #5d00d6;
   --amber: #ffb000;
   --red: #ff4d4d;
-
-  --glow-led: 0 0 10px #a259ff, 0 0 2px #efe3ff;
-  --glow-focus: 0 0 0 1px #efe3ff, 0 0 8px #a259ff80;
-
-  /* KIT ONLY: ui-kit/src/tokens.css, not in Ultraviolet 1.0.0 */
-  --kit-glow-led: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55));
-  --kit-scope-dry: #6b6b78;
   --spec-0: #060410;
   --spec-1: #2a1e4a;
   --spec-2: #6a2fd0;
   --spec-3: #a259ff;
   --spec-4: #efe3ff;
+  --plot-fill: #1d1533;
+  --plot-ghost: #3a2a66;
+  --plot-dry: #6b6b78;
+  --plot-key: #ffb000;
+
+  --glow-led: 0 0 10px #a259ff, 0 0 2px #efe3ff;
+  --glow-focus: 0 0 0 1px #efe3ff, 0 0 8px #a259ff80;
+
+  /* KIT ONLY: the arc's drop-shadow the old web kit drew, and its name for
+   * what the system now calls plot-dry. */
+  --kit-glow-led: drop-shadow(0 0 10px rgba(162, 89, 255, 0.55));
+  --kit-scope-dry: var(--plot-dry);
 }
