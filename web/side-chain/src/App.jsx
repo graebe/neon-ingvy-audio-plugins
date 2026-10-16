@@ -101,12 +101,14 @@ export default function App(props) {
    * pushes `ui` twice a second at most, each some time after it was true;
    * the clock carries the position from the ENGINE's time of each readout
    * (`devms`) at the cycle's own rate. In cycles, so a quarter of one is a
-   * jump to draw at once -- the sweep wrapping, a new trigger. */
+   * jump to draw at once -- a new trigger. The cycle source's sweep wraps at
+   * one, and a readout from after the wrap is no jump. */
   const clock = createClock({ snap: 0.25 });
   createEffect(() => {
     const u = ui();
     const moving = u.source === CYCLE ? u.advancing > 0 : u.sweep < 1;
-    clock.set(u.sweep, u.msCycle > 0 ? 1 / u.msCycle : 0, moving, u.devms ?? undefined);
+    clock.set(u.sweep, u.msCycle > 0 ? 1 / u.msCycle : 0, moving, u.devms ?? undefined,
+              u.source === CYCLE ? 1 : 0);
   });
   const playhead = () => playheadOf(clock.position(), ui().source);
 

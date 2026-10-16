@@ -83,7 +83,7 @@ export default function App(props) {
       if (tag === MSG.uiState) {
         const u = decodeUi(msg);
         if (!u) return;
-        clock.set(u.phase, u.msStep > 0 ? 1 / u.msStep : 0, u.moving, u.devms ?? undefined);
+        clock.set(u.phase, u.msStep > 0 ? 1 / u.msStep : 0, u.moving, u.devms ?? undefined, u.length);
         setUi(u);
       } else if (tag === MSG.params) {
         const p = decodeEngineParams(msg);

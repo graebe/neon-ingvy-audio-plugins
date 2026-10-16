@@ -19,7 +19,15 @@
  *   createPlayhead()     the position to draw: the readout's, carried from ITS
  *                        time at its rate; a correction eased in over ~100 ms;
  *                        a moving playhead never stepping back; a jump of
- *                        `snapBeats` or more (a restart, a wrap) drawn at once
+ *                        `snapBeats` or more (a restart) drawn at once
+ *
+ * A position that WRAPS -- the Trance Gate's step within its length, the
+ * Side-Chain's sweep within its cycle -- names its `period` in the anchor's
+ * clock. A readout from after a wrap is then compared with what was drawn
+ * modulo that period, so the wrap is not a jump and what was being eased is
+ * still eased; without it every wrap was a snap that drew the clock's
+ * remaining error as one step. Piano Practice's beats never wrap, so its copy
+ * has no `period`.
  *
  * "Beats" are whatever unit the position is in: steps for the Trance Gate,
  * cycles of the sweep for the Side-Chain. lib/clock.js puts these behind
@@ -92,18 +100,25 @@ export function createPlayhead({ sync = createClockSync(), easeMs = EASE_MS, sna
   return {
     anchor(clock, local) {
       if (!clock) return;
-      if (Number.isFinite(clock.t)) sync.observe(clock.t, local);
+      /* What is drawn now, by the clock as it was -- before this readout
+       * teaches it a new offset, which is a correction to ease in too. */
       const was = c && shown !== null ? at(local) : null;
+      if (Number.isFinite(clock.t)) sync.observe(clock.t, local);
       c = clock;
       arrivedAt = local;
       const now = target(local);
-      const diff = was === null ? Infinity : was - now;
+      let diff = was === null ? Infinity : was - now;
+      /* Whole periods between them are a wrap, not an error. */
+      const period = c.period > 0 ? c.period : 0;
+      const turns = period && Number.isFinite(diff) ? Math.round(diff / period) : 0;
+      diff -= turns * period;
       if (!moving(c) || Math.abs(diff) >= snapBeats) {
         ease = 0;
         shown = null;
       } else {
         ease = diff;
         easeFrom = local;
+        shown -= turns * period;
       }
     },
     at,
