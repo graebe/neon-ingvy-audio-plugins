@@ -43,18 +43,6 @@ const ParamSpec* table()
     return rows.data();
 }
 
-/* Whether `s` starts with a number, as parse_number would read one. */
-bool startsWithNumber (const std::string& s)
-{
-    std::size_t i = 0;
-    while (i < s.size() && (s[i] == ' ' || s[i] == '\t'))
-        ++i;
-    if (i < s.size() && (s[i] == '+' || s[i] == '-'))
-        ++i;
-    if (i < s.size() && s[i] == '.')
-        ++i;
-    return i < s.size() && s[i] >= '0' && s[i] <= '9';
-}
 } // namespace
 
 const ParamSpec& specOf (int index)
@@ -112,7 +100,7 @@ std::string percentText (double plain)
 
 bool parsePercent (const std::string& text, double& plain)
 {
-    if (! startsWithNumber (text))
+    if (! ni::wire::starts_with_number (text))
         return false;
     plain = ni::wire::parse_number (text);
     return true;
@@ -137,7 +125,7 @@ std::string formatStage (double pct, bool ms, double widthMs)
 
 bool parseStage (const std::string& text, bool ms, double widthMs, double& pct)
 {
-    if (! startsWithNumber (text))
+    if (! ni::wire::starts_with_number (text))
         return false;
     const double v = ni::wire::parse_number (text);
     /* The unit typed wins over the mode: "40 ms" means milliseconds even

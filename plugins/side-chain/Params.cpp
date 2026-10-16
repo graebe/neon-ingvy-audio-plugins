@@ -69,18 +69,6 @@ bool isPercent (int index)
         || index == kVelSens;
 }
 
-/* Whether `s` starts with a number, as parse_number would read one. */
-bool startsWithNumber (const std::string& s)
-{
-    std::size_t i = 0;
-    while (i < s.size() && (s[i] == ' ' || s[i] == '\t'))
-        ++i;
-    if (i < s.size() && (s[i] == '+' || s[i] == '-'))
-        ++i;
-    if (i < s.size() && s[i] == '.')
-        ++i;
-    return i < s.size() && s[i] >= '0' && s[i] <= '9';
-}
 } // namespace
 
 const ParamSpec& specOf (int index)
@@ -158,7 +146,7 @@ bool parseValue (int index, const std::string& text, double& plain)
         plain = text.find ('-') != std::string::npos ? specOf (kThreshold).min : specOf (kThreshold).max;
         return true;
     }
-    if (! startsWithNumber (text))
+    if (! ni::wire::starts_with_number (text))
         return false;
     plain = ni::wire::parse_number (text);
     return true;

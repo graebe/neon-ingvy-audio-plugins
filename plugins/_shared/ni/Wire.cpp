@@ -147,6 +147,18 @@ void append_int(std::string& out, long long v)
  * power is within 10^22, which covers every number an editor or a saved
  * chunk sends; beyond that, within a unit in the last place.
  */
+bool starts_with_number(std::string_view s)
+{
+  size_t i = 0;
+  while (i < s.size() && (s[i] == ' ' || (s[i] >= '\t' && s[i] <= '\r')))
+    ++i;
+  if (i < s.size() && (s[i] == '+' || s[i] == '-'))
+    ++i;
+  if (i < s.size() && s[i] == '.')
+    ++i;
+  return i < s.size() && s[i] >= '0' && s[i] <= '9';
+}
+
 double parse_number(std::string_view s)
 {
   size_t i = 0;

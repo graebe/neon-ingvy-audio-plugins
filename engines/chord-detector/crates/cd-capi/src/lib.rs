@@ -41,7 +41,8 @@ use std::sync::Mutex;
 use cd_core::text::{write_chord, write_degree, write_description, write_name, write_notes};
 use cd_core::{Detector, Names, NoteEvent, Param, Transport, PARAM_COUNT};
 use music_core::{Key, Mode, Note, Pitch, Spelling};
-use shell_core::{publish_every, Bridge, Model};
+use ni_dsp::ffi::{drop_box, usable_rate};
+use shell_core::{capi, Bridge, Model};
 
 #[cfg(test)]
 mod tests;
@@ -361,11 +362,7 @@ pub struct CdShell {
 /// parameter at its default. Construction only: it allocates.
 #[no_mangle]
 pub extern "C" fn cd_shell_create(sample_rate: f64) -> *mut CdShell {
-    let rate = if sample_rate > 0.0 {
-        sample_rate
-    } else {
-        44100.0
-    };
+    let rate = usable_rate(sample_rate).unwrap_or(44100.0);
     let (producer, consumer) = rtrb::RingBuffer::new(EVENTS);
     let detector = Detector::new(rate);
     let shown = (detector.serial(), 0, false, 0);
@@ -375,7 +372,7 @@ pub extern "C" fn cd_shell_create(sample_rate: f64) -> *mut CdShell {
         dropped: 0,
         shown,
     };
-    let bridge = Bridge::new(core, None, QUEUE, publish_every(rate));
+    let bridge = capi::create(core, rate, QUEUE);
     Box::into_raw(Box::new(CdShell {
         bridge,
         events: Mutex::new(consumer),
@@ -386,9 +383,7 @@ pub extern "C" fn cd_shell_create(sample_rate: f64) -> *mut CdShell {
 /// `shell` is null or from `cd_shell_create`, and no thread uses it after.
 #[no_mangle]
 pub unsafe extern "C" fn cd_shell_destroy(shell: *mut CdShell) {
-    if !shell.is_null() {
-        drop(Box::from_raw(shell));
-    }
+    drop_box(shell);
 }
 
 /// The host's rate, applied at the top of the next block. Not the audio
@@ -398,12 +393,9 @@ pub unsafe extern "C" fn cd_shell_destroy(shell: *mut CdShell) {
 /// `shell` is null or live.
 #[no_mangle]
 pub unsafe extern "C" fn cd_shell_post_sample_rate(shell: *const CdShell, sample_rate: f64) {
-    let Some(shell) = shell.as_ref() else { return };
-    if sample_rate.is_nan() || sample_rate <= 0.0 {
-        return;
+    if let Some(shell) = shell.as_ref() {
+        capi::post_sample_rate(&shell.bridge, sample_rate, Command::SampleRate);
     }
-    shell.bridge.post(Command::SampleRate(sample_rate));
-    shell.bridge.set_publish_every(publish_every(sample_rate));
 }
 
 /// Every note stops and a held reading clears, at the top of the next block:
@@ -426,10 +418,7 @@ pub unsafe extern "C" fn cd_shell_post_reset(shell: *const CdShell) {
 /// pointer is not used after `cd_shell_end`.
 #[no_mangle]
 pub unsafe extern "C" fn cd_shell_begin(shell: *const CdShell) -> *mut CdCore {
-    match shell.as_ref() {
-        Some(shell) => shell.bridge.begin() as *mut CdCore,
-        None => std::ptr::null_mut(),
-    }
+    capi::begin(shell.as_ref().map(|s| &s.bridge))
 }
 
 /// The audio thread, at the end of a block of `frames`: publishes a frame
@@ -456,11 +445,7 @@ pub unsafe extern "C" fn cd_shell_end(shell: *const CdShell, frames: u32) {
 /// `shell` is null or live; `out` is null or writable.
 #[no_mangle]
 pub unsafe extern "C" fn cd_shell_read(shell: *const CdShell, out: *mut CdReading) -> bool {
-    let (Some(shell), Some(out)) = (shell.as_ref(), out.as_mut()) else {
-        return false;
-    };
-    shell.bridge.read(|r| *out = *r.frame);
-    true
+    capi::read_into(shell.as_ref().map(|s| &s.bridge), out.as_mut())
 }
 
 /// Move up to `max` note events, oldest first, into `out`; returns how many.

@@ -264,7 +264,7 @@ impl Instance {
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: f64) {
-        if !(sample_rate > 0.0) || sample_rate == self.sample_rate {
+        if !sample_rate.is_finite() || sample_rate <= 0.0 || sample_rate == self.sample_rate {
             return;
         }
         self.clock_ms_before = self.clock_ms();

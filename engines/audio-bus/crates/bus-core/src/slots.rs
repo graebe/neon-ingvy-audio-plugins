@@ -235,7 +235,7 @@ fn a_shorter_segment_from_an_older_build_is_replaced() {
 
     let (w, mut p) = Writer::claim(SLOT_FOREIGN, 48_000).expect("the claim replaces it");
     let mut r = Reader::open(SLOT_FOREIGN).expect("readers find the new one");
-    p.push(&vec![0.5f32; 16 * 2]);
+    p.push(&[0.5f32; 16 * 2]);
     assert_eq!(r.read(&mut vec![0f32; 32 * 2]).frames, 16);
 
     /* A reader can tell the bus it maps from the one the name leads to: the

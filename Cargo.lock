@@ -103,6 +103,7 @@ version = "2026.10.10+1"
 dependencies = [
  "bus-core",
  "cbindgen",
+ "ni-dsp",
  "shell-capi",
 ]
 
@@ -142,6 +143,7 @@ dependencies = [
  "cbindgen",
  "cd-core",
  "music-core",
+ "ni-dsp",
  "rtrb",
  "shell-core",
 ]
@@ -819,6 +821,7 @@ version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "basedrop",
+ "ni-dsp",
  "proptest",
  "rtrb",
  "triple_buffer",

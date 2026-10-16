@@ -45,7 +45,8 @@ use fd_core::{isolator, Param, PARAM_COUNT, RING};
 use ni_filter::Complex64;
 use realfft::num_complex::Complex32;
 use realfft::{RealFftPlanner, RealToComplex};
-use shell_core::{publish_every, Bridge, Model};
+use ni_dsp::ffi::drop_box;
+use shell_core::{capi, Bridge, Model};
 use std::sync::{Arc, Mutex};
 
 /// How many frequencies the picture has.
@@ -121,8 +122,7 @@ impl FdPicture {
 
 /// The picture's frequencies: equally spaced in pitch.
 fn frequencies() -> [f64; FD_POINTS] {
-    let span = FD_HIGHEST_HZ / FD_LOWEST_HZ;
-    core::array::from_fn(|i| FD_LOWEST_HZ * span.powf(i as f64 / (FD_POINTS - 1) as f64))
+    ni_dsp::axis::log_points(FD_LOWEST_HZ, FD_HIGHEST_HZ)
 }
 
 /* ------------------------------------------------- the published frame -- */
@@ -386,7 +386,7 @@ pub struct FdShell {
 pub extern "C" fn fd_shell_create(sample_rate: f64) -> *mut FdShell {
     let core = FdCore::new(sample_rate);
     let rate = core.engine.sample_rate();
-    let bridge = Bridge::new(core, None, QUEUE, publish_every(rate));
+    let bridge = capi::create(core, rate, QUEUE);
     Box::into_raw(Box::new(FdShell { bridge, reader: Mutex::new(Reader::new()) }))
 }
 
@@ -394,9 +394,7 @@ pub extern "C" fn fd_shell_create(sample_rate: f64) -> *mut FdShell {
 /// `shell` is null or from `fd_shell_create`, and no thread uses it after.
 #[no_mangle]
 pub unsafe extern "C" fn fd_shell_destroy(shell: *mut FdShell) {
-    if !shell.is_null() {
-        drop(Box::from_raw(shell));
-    }
+    drop_box(shell);
 }
 
 /// The host's rate, applied at the top of the next block. Not the audio
@@ -406,12 +404,9 @@ pub unsafe extern "C" fn fd_shell_destroy(shell: *mut FdShell) {
 /// `shell` is null or live.
 #[no_mangle]
 pub unsafe extern "C" fn fd_shell_post_sample_rate(shell: *const FdShell, sample_rate: f64) {
-    let Some(shell) = shell.as_ref() else { return };
-    if sample_rate.is_nan() || sample_rate <= 0.0 {
-        return;
+    if let Some(shell) = shell.as_ref() {
+        capi::post_sample_rate(&shell.bridge, sample_rate, Command::SampleRate);
     }
-    shell.bridge.post(Command::SampleRate(sample_rate));
-    shell.bridge.set_publish_every(publish_every(sample_rate));
 }
 
 /// Every filter empties, at the top of the next block. Not the audio thread.
@@ -444,10 +439,7 @@ pub unsafe extern "C" fn fd_shell_post_watching(shell: *const FdShell, watching:
 /// pointer is not used after `fd_shell_end`.
 #[no_mangle]
 pub unsafe extern "C" fn fd_shell_begin(shell: *const FdShell) -> *mut FdCore {
-    match shell.as_ref() {
-        Some(shell) => shell.bridge.begin() as *mut FdCore,
-        None => std::ptr::null_mut(),
-    }
+    capi::begin(shell.as_ref().map(|s| &s.bridge))
 }
 
 /// The audio thread, at the end of a block of `frames`: publishes when a
