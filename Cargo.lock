@@ -935,6 +935,7 @@ dependencies = [
  "realfft",
  "serde",
  "serde_json",
+ "wmidi",
 ]
 
 [[package]]

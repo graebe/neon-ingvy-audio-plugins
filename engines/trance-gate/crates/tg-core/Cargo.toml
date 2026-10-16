@@ -23,6 +23,9 @@ ni-params = { path = "../../../shared/crates/ni-params" }
 # scratch buffer (json.rs says why the result is the same double).
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["alloc"] }
+# MIDI bytes to messages, for the panic (src/clock.rs). Core-only without
+# its default `std` feature, as bc-core and sc-core take it.
+wmidi = { workspace = true }
 # A file's fields, in order, on the stack (json::Object).
 arrayvec = { workspace = true }
 # The randomiser's generator (Instance::randomize), seeded and advanced by the

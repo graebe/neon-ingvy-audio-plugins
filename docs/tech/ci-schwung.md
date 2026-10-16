@@ -73,8 +73,9 @@ rather than test the wrong architecture:
   module's `build.rs` writes it from the engine's own table
   (`ni_params::chain`, Trance Gate's from its schema), so only the grid's
   order, names and steps and the Move's deliberate differences are its own — the
-  host panic, CC 120 or CC 123, which resets the Side-Chain and which the
-  Trance Gate accepts without changing a sample, and the render A/B (below).
+  host panic, CC 120 or CC 123, which resets the Side-Chain and shuts the
+  Trance Gate, whose step under the playhead then strikes again from silence,
+  and the render A/B (below).
 - **The module's test script** (`MODULE_TEST_SCRIPT`), the Trance Gate's
   `engines/trance-gate/tests/run.sh`: its C suites against the engine's ABI,
   the golden render's md5, and the state blob's time budget (below).

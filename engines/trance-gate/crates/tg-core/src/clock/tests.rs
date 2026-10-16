@@ -145,3 +145,94 @@ fn a_position_the_host_cannot_give_is_no_position() {
         assert!(out == stopped, "{beats}: did not play as a stopped transport");
     }
 }
+
+/* ---------------------------------------------------------------- panic -- */
+
+const FRAMES: usize = 512;
+const PER_BLOCK: f64 = FRAMES as f64 / 44100.0 * 2.0;
+
+/// One block of ones through `p` at `beats`: the gate's gain, sample by
+/// sample (the left channel).
+fn gains(p: &mut Instance, beats: f64, transport: bool) -> Vec<f32> {
+    let mut buf = vec![1.0f32; FRAMES * 2];
+    let t = Transport { running: transport, beats: if transport { beats } else { -1.0 }, bpm: 120.0 };
+    p.process_f32(&mut buf, FRAMES, Some(&t));
+    buf.iter().step_by(2).copied().collect()
+}
+
+fn saved(p: &Instance) -> Vec<u8> {
+    let mut b = vec![0u8; 1 << 16];
+    let n = p.get_param("state", &mut b);
+    b.truncate(n as usize);
+    b
+}
+
+/// A gate in the middle of a step, at `sustain` -- slot 1, every step on,
+/// with an attack long enough to watch -- and the beat its next block starts
+/// at.
+fn open_gate(sustain: &str) -> (Instance, f64) {
+    let mut p = Instance::new(44100.0);
+    p.set_param("slot", "1");
+    p.set_param("attack", "20");
+    p.set_param("sustain", sustain);
+    let mut beats = 0.0;
+    for _ in 0..9 {
+        gains(&mut p, beats, true);
+        beats += PER_BLOCK;
+    }
+    (p, beats)
+}
+
+#[test]
+fn a_panic_shuts_the_gate_and_the_step_strikes_again_from_silence() {
+    let (mut p, beats) = open_gate("1");
+    let (mut twin, _) = open_gate("1");
+    assert!(gains(&mut twin, beats, true).iter().all(|&g| g > 0.99), "the gate is open mid-step");
+    let state = saved(&p);
+    p.panic();
+    let after = gains(&mut p, beats, true);
+    assert!(after[0] < 1e-3, "shut at once: {}", after[0]);
+    assert!(after.windows(2).all(|w| w[1] >= w[0]), "and opening with the step's attack");
+    assert!(after[FRAMES - 1] > 0.1, "{}", after[FRAMES - 1]);
+    assert_eq!(saved(&p), state, "nothing saved moved");
+}
+
+#[test]
+fn a_stopped_gate_holds_nothing_and_a_panic_leaves_it_alone() {
+    let run = |panic: bool| {
+        /* Held at half: the stop freezes the envelope there and glides
+         * Amount out, so the gate opens from half to whole. */
+        let (mut p, mut beats) = open_gate("0.5");
+        let mut out = Vec::new();
+        for b in 0..20 {
+            if panic && b == 2 {
+                p.panic();
+            }
+            out.extend(gains(&mut p, beats, false));
+            beats += PER_BLOCK;
+        }
+        out
+    };
+    let stopped = run(false);
+    assert!(stopped[0] < stopped[stopped.len() - 1], "the stop glides the gate open");
+    assert_eq!(run(true), stopped);
+}
+
+#[test]
+fn cc_120_and_123_on_any_channel_are_the_panic_and_nothing_else_is() {
+    let (mut quiet, beats) = open_gate("1");
+    let unpanicked = gains(&mut quiet, beats, true);
+    for msg in [&[0xB0u8, 120, 0][..], &[0xBF, 123, 0]] {
+        let (mut p, beats) = open_gate("1");
+        p.on_midi(msg);
+        assert!(gains(&mut p, beats, true)[0] < 1e-3, "{msg:?} is a panic");
+    }
+    for msg in [&[0x90u8, 60, 100][..], &[0xB0, 7, 0], &[0xB0, 120], &[]] {
+        let (mut p, beats) = open_gate("1");
+        p.on_midi(msg);
+        assert_eq!(gains(&mut p, beats, true), unpanicked, "{msg:?} is no panic");
+    }
+    let (mut p, beats) = open_gate("1");
+    p.set_param("panic", "1");
+    assert!(gains(&mut p, beats, true)[0] < 1e-3, "and the text door takes it too");
+}

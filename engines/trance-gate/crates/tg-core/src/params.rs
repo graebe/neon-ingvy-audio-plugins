@@ -318,6 +318,9 @@ impl Instance {
     /// has no other. A key that is not an edit changes nothing.
     pub fn set_param(&mut self, key: &str, val: &str) {
         match key {
+            /* Not a parameter: a host panic arriving through the text door,
+             * as the Side-Chain takes it. See `Instance::panic`. */
+            "panic" => self.panic(),
             /* A whole patch has a reader of its own, so this is the one key
              * that is not an `Edit`: parse and load in one -- see the state
              * module on where parsing runs. A text that is no blob loads

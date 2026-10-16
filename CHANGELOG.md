@@ -108,6 +108,9 @@ next release; that release's entry lists them and this section goes.
 - Live's Signal plot, copy and paste, and export and import are not in the
   Move's editor: the web manager sends a page no audio, and its frame has no
   clipboard and cannot save or open files.
+- **A panic shuts the gate on the Move.** CC 120 or CC 123 closes it at once,
+  and the step under the playhead strikes again from silence. Before, the
+  module ignored a panic.
 
 ## Unreleased — NI Side-Chain
 
