@@ -69,11 +69,10 @@ configured by the crate's `cbindgen/*.toml`), into the build's
 generated header can still do is compile and mean something else to a caller,
 so the plain-C tests call through every one of them, and `tests/spectro_columns.c`
 exercises the analyzer's boundary specifically: argument order, the meaning of
-`bands`, and who owns the output buffer. The Trance Gate's headers have a caller
-outside this repository, the archived Max for Live external, so their last
-hand-written versions are fixtures (`tests/fixtures/tg-capi`) that
-`capi_compat_tg` and `capi_compat_tg_names` hold the generated ones to,
-declaration for declaration. Only C++ with no Rust behind it stays
+`bands`, and who owns the output buffer. Every C ABI is a private boundary
+between two parts of one build: nothing outside this repository compiles
+against it (the archived Max for Live external was the last such caller, and
+its promise is retired -- `compatibility.md`). Only C++ with no Rust behind it stays
 hand-written: the shell (`plugins/_shared`), and Schwung's own headers vendored
 for the Move-side tests.
 

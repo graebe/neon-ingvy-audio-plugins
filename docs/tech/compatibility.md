@@ -24,7 +24,7 @@ retired.
 | 6 | A v7 blob is written byte for byte as v7 writes it | Older builds and the Move read it | `tg-core/tests/fixtures.rs` |
 | 7 | Slot and bank files, format version 1 | Files users saved | `tg-core/src/slotfile/tests.rs` |
 | 8 | Every clipboard form ever written pastes (slot, bank, whole patch, pre-v2026.10.06.2 copy) | Text users keep in notes | `tg-core/src/paste/tests.rs` |
-| 9 | The `tg_*` C ABI is source-compatible with its last hand-written headers | The archived Max for Live external (`archive/trance-gate-m4l`) | `capi_compat_tg`, `capi_compat_tg_names` |
+| 9 | ~~The `tg_*` C ABI is source-compatible with its last hand-written headers~~ **Retired 2026-10-16** (owner) | The archived Max for Live external (`archive/trance-gate-m4l`) had no users | nothing: the C ABI is private to this build |
 | 10 | Plugin and Move render the same bytes for the same patch | One engine, two shells | `tests/tg_render_golden.h`, `engines/trance-gate/tests/run.sh`, and the in-process A/B in `tg-move` |
 | 11 | The Move module runs on released Schwung of its declared minimum | Devices in the field | `modules/trance-gate/module.json`, `modules/_shared/schwung.version` |
 | 12 | Users who had the earlier bundle named `TranceGate` are told to delete it | The same plugin ID in two bundles confuses Live | `plugins/trance-gate/docs/live.md` |
@@ -35,24 +35,22 @@ retired.
   reordering, and the schema now states them once.
 - **5–8 (saved text)** cost a reader per version. Eight readings of the blob
   live in `Patch::from_fields`, `Instance::load` and `read_pattern`.
-- **9 (the Max for Live ABI)** freezes the `tg_*` surface for a device the
-  archive itself calls unfinished ("pattern persistence and layout were
-  open"). Every addition must be appended to a fixture by hand, and nothing may
-  ever be removed.
+- **9 (the Max for Live ABI)** froze the `tg_*` surface for a device the
+  archive itself calls unfinished. It is retired, and costs nothing now.
 - **10** moves on purpose with every intended sound change, and is cheap.
 - **11** depends on a host whose API has no version contract (see
   `docs/tech/ci-schwung.md`).
 
-## Proposal (owner's decision)
+## Decisions and what is open
 
-1. **Retire promise 9.** The Max for Live device was archived unfinished on
-   2026-09-29 and has no users. Without it, the C ABI is a private boundary
-   between two parts of one build, and `capi_compat_tg` can shrink to "the
-   generated header compiles against the plugin".
-   - Keep the tag, so the device can still be built against the commit it
-     was written for.
+1. **Promise 9 is retired** (owner, 2026-10-16: "do what is cleanest"). The
+   Max for Live device was archived unfinished on 2026-09-29 and has no users,
+   so the C ABI is a private boundary between two parts of one build. The
+   fixtures and the tests that held it went; the tag stays, so the device can
+   still be built against the commit it was written for (its message still
+   promises source compatibility, which no longer holds after that commit).
 2. **Keep 1–8 and 10–12.** They protect real users' files and devices.
-3. **Set a floor for promise 5** once the oldest blob versions (v0–v2, from
+3. **Open: a floor for promise 5** once the oldest blob versions (v0–v2, from
    before the first public tag) are known not to exist in the field. Until
    then, keep them: a reader is cheap, and a project that silently loads
    wrong is not.

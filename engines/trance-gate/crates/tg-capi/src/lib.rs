@@ -12,10 +12,10 @@ Byte-for-byte the surface the C engine exported, so every existing caller --
 the Schwung shell, the plugin, and the engine's C tests (tests/test_core.c,
 tests/test_gate.c) -- links this instead without changing a line. That is the
 whole point: the tests are not rewritten for the port, they are relinked, and
-they are what says the port is correct. One caller is not in this repository:
-the archived Max for Live external links this crate too, so the two headers'
-last hand-written versions are fixtures (tests/fixtures/tg-capi) that the
-generated ones are held to, declaration for declaration (tests/capi-compat.mjs).
+they are what says the port is correct. Every caller is in this repository;
+the archived Max for Live external was the last one outside it, and the
+promise to keep its headers source-compatible is retired
+(docs/tech/compatibility.md, promise 9).
 
 # Safety
 

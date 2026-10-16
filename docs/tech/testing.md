@@ -123,8 +123,7 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   dependency graph (below),
 - the C tests against each engine's generated ABI (`tg_core`, `sc_core`,
   `cd_core`, `spectro_columns`, `srecv_api`, `abus_roundtrip`,
-  `shell_handoff`), the Trance Gate's ABI held to its last hand-written
-  headers (`capi_compat_tg*`), and the oracles that pin each engine's curves,
+  `shell_handoff`), and the oracles that pin each engine's curves,
   envelopes and fades to a table it measured itself
   (`engines/<product>/tests/fixtures`: `tg_curves`, `tg_envelope`, `tg_fade`,
   `sc_shape`, `sc_envelope`),

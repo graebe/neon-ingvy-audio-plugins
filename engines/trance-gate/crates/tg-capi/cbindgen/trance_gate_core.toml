@@ -25,9 +25,7 @@ header = """// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // GENERATED at build time by cbindgen from
 // engines/trance-gate/crates/tg-capi/src/engine.rs, whose doc comments are the
-// comments below: edit that, not this. The archived Max for Live external
-// compiles against this header, so tests/capi-compat.mjs holds it to its last
-// hand-written version (tests/fixtures/tg-capi).
+// comments below: edit that, not this.
 
 #ifndef TRANCE_GATE_CORE_H
 #define TRANCE_GATE_CORE_H"""
@@ -54,7 +52,7 @@ static inline void tg_mask_zero(tg_mask_t *m) {
 # forward declaration, `struct tg_instance *` -- where cbindgen can only write
 # `typedef struct tg_core_t tg_core_t;`. So TgCore is left out of the export
 # and declared below with its old tag, and its uses are still renamed to
-# tg_core_t. capi-compat holds every handle's tag.
+# tg_core_t, the tag the C tests and the shell name.
 after_includes = """
 
 // Opaque to C, exactly as `tg_core_t` was.
