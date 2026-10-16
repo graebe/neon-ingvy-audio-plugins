@@ -399,7 +399,9 @@ impl Param {
         if let Some(i) = info.kind.choice_of(t) {
             return Some(i);
         }
-        if info.unit == Some(Unit::DbToSilence) && t.to_ascii_lowercase().contains("inf") {
+        /* "inf" in any case, found in place: the Move sends a knob's text on
+         * its audio thread, so reading it allocates nothing. */
+        if info.unit == Some(Unit::DbToSilence) && t.as_bytes().windows(3).any(|w| w.eq_ignore_ascii_case(b"inf")) {
             return Some(self.clamp(-60.0));
         }
         if !t.bytes().any(|b| b.is_ascii_digit()) {
