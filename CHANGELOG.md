@@ -1,6 +1,18 @@
 # What's new
 
-## v2026.10.12.1 — NI Filter Designer
+## Unreleased — every plugin
+
+These are already in the shared plugin shell and reach each plugin with its
+next release; that release's entry lists them and this section goes.
+
+- **The background is still.** The animated background that pulsed with the
+  beat is gone, and the **Motion** switch in the hint bar with it. The window
+  ground is the same violet dot paper and grain, always at rest; the hint bar
+  carries the tips and the Neon Ingvy mark.
+- The Motion setting each plugin remembered on your computer is simply ignored
+  now; there is nothing to reset.
+
+## Unreleased — NI Filter Designer
 
 - **New: NI Filter Designer.** Up to sixteen minimum-phase IIR filters on one
   response curve: bell, low shelf, high shelf, high-pass, low-pass,
@@ -32,17 +44,25 @@
 - On the Ableton Move as a Schwung module: the isolator, a high-pass and a
   low-pass.
 
-## Unreleased — every plugin
+## Unreleased — NI Vocalize
 
-These are already in the shared plugin shell and reach each plugin with its
-next release; that release's entry lists them and this section goes.
-
-- **The background is still.** The animated background that pulsed with the
-  beat is gone, and the **Motion** switch in the hint bar with it. The window
-  ground is the same violet dot paper and grain, always at rest; the hint bar
-  carries the tips and the Neon Ingvy mark.
-- The Motion setting each plugin remembered on your computer is simply ignored
-  now; there is nothing to reset.
+- **New: NI Vocalize.** Turns any sound, step by step, into a voice singing
+  A, E, I, O or U. **Vocal** says how far: at 0 % the sound is untouched, at
+  100 % it sings the vowel, and everything between is the sound on its way
+  there. **Vowel** sweeps smoothly from one vowel to the next, **Size** makes
+  the voice bigger or smaller, **Resonance** broad or whistling, and
+  **Excite** gives pure sounds like a sine bass something to sing with.
+- Two engines: **Time** has no latency and sounds like a talkbox;
+  **Spectral** is smoother and more sung, and about 21 ms late, which Live
+  compensates for.
+- **Your own voice.** Drag a recording of yourself singing A, E, I, O, U onto
+  the window, or click **Capture…**: Vocalize learns your vowels and sings
+  with them. **Voice** morphs from the textbook voice to yours. The captured
+  voice is saved with the set; the recording is not needed afterwards. Sung
+  A-E-I-O-U in order, each vowel is taken by its place; the chart shows how
+  sure each one is, and **Restore** brings back a voice forgotten by mistake.
+- **Ceiling**, on by default: nothing that leaves Vocalize passes full scale.
+- On the Ableton Move as a Schwung module, with the Time engine.
 
 ## Unreleased — NI Spectrogram
 
@@ -127,25 +147,15 @@ next release; that release's entry lists them and this section goes.
 - The Move's editor draws no audio behind the shape (the web manager sends a
   page no audio), and offers Cycle and MIDI, as the Move module does.
 
-## v2026.10.11.1 — NI Vocalize
+## Unreleased — NI Chord-Detector
 
-- **New: NI Vocalize.** Turns any sound, step by step, into a voice singing
-  A, E, I, O or U. **Vocal** says how far: at 0 % the sound is untouched, at
-  100 % it sings the vowel, and everything between is the sound on its way
-  there. **Vowel** sweeps smoothly from one vowel to the next, **Size** makes
-  the voice bigger or smaller, **Resonance** broad or whistling, and
-  **Excite** gives pure sounds like a sine bass something to sing with.
-- Two engines: **Time** has no latency and sounds like a talkbox;
-  **Spectral** is smoother and more sung, and about 21 ms late, which Live
-  compensates for.
-- **Your own voice.** Drag a recording of yourself singing A, E, I, O, U onto
-  the window, or click **Capture…**: Vocalize learns your vowels and sings
-  with them. **Voice** morphs from the textbook voice to yours. The captured
-  voice is saved with the set; the recording is not needed afterwards. Sung
-  A-E-I-O-U in order, each vowel is taken by its place; the chart shows how
-  sure each one is, and **Restore** brings back a voice forgotten by mistake.
-- **Ceiling**, on by default: nothing that leaves Vocalize passes full scale.
-- On the Ableton Move as a Schwung module, with the Time engine.
+These are already in the shared plugin shell and reach NI Chord-Detector with its
+next release; that release's entry lists them and this section goes.
+
+- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
+  of jumping.
+- **Loops are exact.** When Live's loop wraps inside a buffer, it continues
+  from the loop's start on that very sample.
 
 ## v2026.10.11.1 — NI Bit-Crusher
 
@@ -200,16 +210,6 @@ next release; that release's entry lists them and this section goes.
 
 - Reads the new bus format. Its Bypass still switches at once, for Listen-In's
   reason.
-
-## Unreleased — NI Chord-Detector
-
-These are already in the shared plugin shell and reach NI Chord-Detector with its
-next release; that release's entry lists them and this section goes.
-
-- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
-  of jumping.
-- **Loops are exact.** When Live's loop wraps inside a buffer, it continues
-  from the loop's start on that very sample.
 
 ## v2026.10.10.1 — NI Trance Gate
 
