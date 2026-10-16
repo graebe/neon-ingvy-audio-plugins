@@ -146,6 +146,7 @@ dependencies = [
  "cd-core",
  "music-core",
  "ni-dsp",
+ "ni-params",
  "rtrb",
  "shell-core",
 ]
@@ -156,6 +157,7 @@ version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "music-core",
+ "ni-params",
  "proptest",
  "rstest",
  "wmidi",

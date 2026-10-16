@@ -35,13 +35,13 @@ EVERY ENTRY POINT THE AUDIO THREAD CALLS IS ALLOCATION-FREE. The workspace
 sets `panic = "abort"`, because unwinding out of `extern "C"` is undefined.
 */
 
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 use std::sync::Mutex;
 
 use cd_core::text::{write_chord, write_degree, write_description, write_name, write_notes};
 use cd_core::{Detector, Names, NoteEvent, Param, Transport, PARAM_COUNT};
 use music_core::{Key, Mode, Note, Pitch, Spelling};
-use ni_dsp::ffi::{drop_box, usable_rate};
+use ni_dsp::ffi::{cstr, drop_box, usable_rate};
 use shell_core::{capi, Bridge, Model};
 
 #[cfg(test)]
@@ -563,13 +563,11 @@ pub unsafe extern "C" fn cd_core_end_block(core: *mut CdCore, frames: u32) {
 
 /* ------------------------------------------------------ the parameter table */
 
-/// What a shell declares one parameter with.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CdParamInfo {
-    pub choice_count: i32,
-    pub default_choice: i32,
-    pub automatable: bool,
+pub use ni_params::{NiParamInfo, NiParamKind};
+
+/// Parameter `index`'s kind: always a choice.
+fn kind(index: i32) -> Option<ni_params::Kind> {
+    Param::from_i32(index).map(|p| p.info().kind)
 }
 
 /// How many parameters there are.
@@ -578,48 +576,25 @@ pub extern "C" fn cd_param_count() -> i32 {
     PARAM_COUNT as i32
 }
 
-/// Describe parameter `index`. Any thread. False for an index out of range.
+/// Describe parameter `index`: every one a choice, its range its indices.
+/// Any thread. False for an index out of range or a null `out`.
 ///
 /// # Safety
 /// `out` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn cd_param_info(index: i32, out: *mut CdParamInfo) -> bool {
-    let (Some(p), Some(out)) = (Param::from_i32(index), out.as_mut()) else {
-        return false;
-    };
-    let info = p.info();
-    *out = CdParamInfo {
-        choice_count: info.choices.len() as i32,
-        default_choice: info.default as i32,
-        automatable: info.automatable,
-    };
-    true
-}
-
-unsafe fn copy_text(text: &str, out: *mut c_char, cap: usize) -> i32 {
-    if out.is_null() || cap == 0 {
-        return -1;
-    }
-    let buf = std::slice::from_raw_parts_mut(out, cap);
-    let mut w = CText::new(buf);
-    match core::fmt::Write::write_str(&mut w, text) {
-        Ok(()) => text.len() as i32,
-        Err(_) => -1,
-    }
+pub unsafe extern "C" fn cd_param_info(index: i32, out: *mut NiParamInfo) -> bool {
+    ni_params::c_info(kind(index), out)
 }
 
 /// Parameter `index`'s stable key, as a saved state names it, into `out`.
 /// Returns its length, or -1 when the index is out of range or `cap` too
-/// small. Any thread.
+/// small (nothing written). Any thread.
 ///
 /// # Safety
 /// `out` is null or has room for `cap` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn cd_param_key(index: i32, out: *mut c_char, cap: usize) -> i32 {
-    match Param::from_i32(index) {
-        Some(p) => copy_text(p.info().key, out, cap),
-        None => -1,
-    }
+pub unsafe extern "C" fn cd_param_key(index: i32, out: *mut c_char, cap: c_int) -> c_int {
+    ni_params::c_text(Param::from_i32(index).map(|p| p.info().key), out, cap)
 }
 
 /// Parameter `index`'s display name, as `cd_param_key`.
@@ -627,33 +602,62 @@ pub unsafe extern "C" fn cd_param_key(index: i32, out: *mut c_char, cap: usize) 
 /// # Safety
 /// As `cd_param_key`.
 #[no_mangle]
-pub unsafe extern "C" fn cd_param_name(index: i32, out: *mut c_char, cap: usize) -> i32 {
-    match Param::from_i32(index) {
-        Some(p) => copy_text(p.info().name, out, cap),
-        None => -1,
-    }
+pub unsafe extern "C" fn cd_param_name(index: i32, out: *mut c_char, cap: c_int) -> c_int {
+    ni_params::c_text(Param::from_i32(index).map(|p| p.info().name), out, cap)
 }
 
-/// The label of choice `choice` of parameter `index`, as `cd_param_key`.
+/// The label of option `option` of parameter `index`, as `cd_param_key`.
 ///
 /// # Safety
 /// As `cd_param_key`.
 #[no_mangle]
-pub unsafe extern "C" fn cd_param_choice(
-    index: i32,
-    choice: i32,
-    out: *mut c_char,
-    cap: usize,
-) -> i32 {
-    let label = Param::from_i32(index).and_then(|p| {
-        usize::try_from(choice)
-            .ok()
-            .and_then(|c| p.info().choices.get(c))
-    });
-    match label {
-        Some(label) => copy_text(label, out, cap),
-        None => -1,
-    }
+pub unsafe extern "C" fn cd_param_label(index: i32, option: i32, out: *mut c_char, cap: c_int) -> c_int {
+    ni_params::c_text(kind(index).and_then(|k| k.label(option)), out, cap)
+}
+
+/// `value` of parameter `index` as every shell prints it: its label, as
+/// `cd_param_key`.
+///
+/// # Safety
+/// As `cd_param_key`.
+#[no_mangle]
+pub unsafe extern "C" fn cd_param_text(index: i32, value: f64, out: *mut c_char, cap: c_int) -> c_int {
+    ni_params::c_text(kind(index).and_then(|k| k.choice_text(value)), out, cap)
+}
+
+/// What a user typed, read as parameter `index`'s value into `out`: the
+/// index of the label it names, ignoring case. False, and nothing written,
+/// for text that names none. Any thread.
+///
+/// # Safety
+/// `text` is null or a NUL-terminated string; `out` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn cd_param_parse(index: i32, text: *const c_char, out: *mut f64) -> bool {
+    let (Some(v), Some(out)) = (kind(index).and_then(|k| k.choice_of(cstr(text))), out.as_mut()) else {
+        return false;
+    };
+    *out = v;
+    true
+}
+
+/// `value` as a fraction 0..1 of parameter `index`'s options. 0 for an
+/// index out of range. Any thread.
+#[no_mangle]
+pub extern "C" fn cd_param_normalise(index: i32, value: f64) -> f64 {
+    kind(index).map_or(0.0, |k| k.normalise(value))
+}
+
+/// The option nearest `value`. 0 for an index out of range. Any thread.
+#[no_mangle]
+pub extern "C" fn cd_param_snap(index: i32, value: f64) -> f64 {
+    kind(index).map_or(0.0, |k| k.snap(value))
+}
+
+/// The option at fraction `normalised`: the inverse of
+/// `cd_param_normalise`. 0 for an index out of range. Any thread.
+#[no_mangle]
+pub extern "C" fn cd_param_denormalise(index: i32, normalised: f64) -> f64 {
+    kind(index).map_or(0.0, |k| k.denormalise(normalised))
 }
 
 /* ------------------------------------------------------- naming a note */

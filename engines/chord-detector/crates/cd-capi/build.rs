@@ -12,6 +12,7 @@ use capi_header::Header;
 fn main() {
     capi_header::generate(&[Header {
         name: "cd_capi.h",
-        sources: &["src/lib.rs"],
+        /* NiParamInfo, which the table is declared with, is ni-params'. */
+        sources: &["src/lib.rs", "../../../shared/crates/ni-params/src/lib.rs"],
     }]);
 }
