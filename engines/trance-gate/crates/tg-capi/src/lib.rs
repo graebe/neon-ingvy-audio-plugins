@@ -31,7 +31,7 @@ mod engine;
 pub use engine::*;
 /* The plugin shell's door to the engine; see shell.rs. */
 #[cfg(feature = "shell")]
-mod shell;
+pub mod shell;
 #[cfg(feature = "shell")]
 pub use shell::TgShell;
 /* The pattern plot's curve, rendered through a scratch engine; see gate.rs. */

@@ -83,6 +83,9 @@ fn frequency_label(key: &str, hz: Option<f64>) -> Option<&'static str> {
 
 ni_schwung::export_audio_fx!(FilterDesigner);
 
+#[cfg(test)]
+mod no_alloc;
+
 /*
  * THE MOVE'S PARAMETER PATH, END TO END: the entry points the chain host
  * calls, with the values it actually sends -- a declared default on a

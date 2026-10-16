@@ -44,6 +44,8 @@ impl Module for Gate {
 ni_schwung::export_audio_fx!(Gate);
 
 #[cfg(test)]
+mod no_alloc;
+#[cfg(test)]
 mod render_ab;
 
 /*

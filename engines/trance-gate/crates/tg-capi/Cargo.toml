@@ -33,3 +33,7 @@ ni-params = { path = "../../../shared/crates/ni-params" }
 # trance_gate_core.h and tg_shell.h, generated from src/ by build.rs.
 [build-dependencies]
 cbindgen = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

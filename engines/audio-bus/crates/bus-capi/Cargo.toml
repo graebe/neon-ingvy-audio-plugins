@@ -25,3 +25,7 @@ ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 # audio_bus.h, generated from src/ by build.rs.
 [build-dependencies]
 cbindgen = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

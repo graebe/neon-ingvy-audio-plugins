@@ -33,3 +33,5 @@ ni-params = { path = "../../../shared/crates/ni-params" }
 # parser tg-core already links, with tg-core's features, so a test build adds
 # no second configuration of it.
 serde_json = { workspace = true, features = ["alloc"] }
+# The no-allocation guard src/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
