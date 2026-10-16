@@ -6,7 +6,7 @@ manuals. What changed from the concept while building is noted where it
 happened. The window is drawn on the
 **NI Plugin Layouts** canvas as *NI Filter Designer — proposed* (mirrored in
 `design/designs/FilterDesigner-Proposed.dc.html`, notes FD1–FD9), and the
-decisions behind the DSP are in [ADR 0004](../adr/0004-iir-filter-design.md).
+decisions behind the DSP are in [ADR 0005](../adr/0005-iir-filter-design.md).
 
 ## What it is
 
@@ -89,7 +89,7 @@ scaling. High-pass and low-pass use `Ω_c = tan(π·fc/fs)`. Band-Pass and Notch
 section on its own would bend Butterworth and equiripple shapes above about
 fs/8 and move the Chebyshev II and Elliptic zeros. With Matched Cuts on, a
 high-pass or low-pass is instead matched section by section to its analog
-prototype (`ni_filter::family_matched`, ADR 0004's amendment); band-pass and
+prototype (`ni_filter::family_matched`, ADR 0005's amendment); band-pass and
 notch stay on this path.
 
 **Freq is the −3 dB point in every family.** The exception is Linkwitz-Riley,
@@ -314,7 +314,7 @@ Each one starts on its own go-ahead.
 
 | | delivers |
 |---|---|
-| M0 | this concept, ADR 0004, the canvas board |
+| M0 | this concept, ADR 0005, the canvas board |
 | M1 | `ni-filter`: designs, sections, response evaluation, the analytic and stability tests |
 | M2 | `fd-core` and `fd-capi`: the chain, isolator, parameters, smoothing, crossfades, the picture |
 | M3 | `plugins/filter-designer` (`NIFilterDesigner`, "NI Filter Designer", code `FlDs`, `Fx EQ`), the kit's ResponseWell and NodeCell, Ultraviolet promotion |

@@ -14,7 +14,7 @@ C++ shell        JUCE 9 — the VST3 for macOS, Windows and Linux, and the host 
 Native editor    JUCE Components, drawing the Ultraviolet design system
 ```
 
-Four decisions shaped these layers. Each is recorded with its context and
+Five decisions shaped these layers. Each is recorded with its context and
 what it costs:
 
 - [0001](../adr/0001-gpl-3.0-or-later.md): the licence is GPL-3.0-or-later
@@ -25,6 +25,8 @@ what it costs:
   replace hand-written code.
 - [0004](../adr/0004-move-web-editors.md): the Move modules get web editors,
   from the Solid kit ([Web editors on the Move](move-web-editors.md)).
+- [0005](../adr/0005-iir-filter-design.md): filters are TPT state-variable
+  sections designed in `ni-filter`, with matched cuts and shelves.
 
 ## The Rust core
 

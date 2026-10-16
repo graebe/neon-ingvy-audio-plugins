@@ -1,4 +1,4 @@
-# 0004. Filters are TPT state-variable sections, designed here
+# 0005. Filters are TPT state-variable sections, designed here
 
 - Status: accepted, 2026-10-12 (the owner approved the design and asked for
   its implementation)

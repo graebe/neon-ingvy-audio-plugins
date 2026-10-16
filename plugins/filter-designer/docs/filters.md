@@ -1013,5 +1013,5 @@ Release it on the one.
   Characteristics*, Proc. IEE, 1949: the Bessel filter.
 - Siegfried H. Linkwitz, *Active Crossover Networks for Noncoincident
   Drivers*, JAES, 1976: the Linkwitz-Riley crossover.
-- [ADR 0004](../../../docs/adr/0004-iir-filter-design.md): why the
+- [ADR 0005](../../../docs/adr/0005-iir-filter-design.md): why the
   Designer builds its filters this way.

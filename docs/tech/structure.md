@@ -54,7 +54,7 @@ the capi C helpers), `ni-schwung` (the Schwung audio_fx v2 glue every
 `*-move` crate is built on), `ni-params` (a parameter table's shape and
 arithmetic) and `ni-filter` (filter design: the analog families as TPT
 state-variable sections, the equaliser's matched shapes, and the exact
-response of every cascade — ADR 0004). Each names no product. A piece moves
+response of every cascade — ADR 0005). Each names no product. A piece moves
 there once it is truly identical in two products; what differs stays in the
 product, as each product's rate list does.
 
