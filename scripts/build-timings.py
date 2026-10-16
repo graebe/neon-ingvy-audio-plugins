@@ -10,7 +10,8 @@
 Reads the JSON lines scripts/timing.sh appends (one per stage; the log is
 ~/Library/Logs/neon-ingvy/build-timings.jsonl on macOS,
 $XDG_STATE_HOME/neon-ingvy/build-timings.jsonl elsewhere, NI_TIMING_LOG or
---log another) and prints:
+--log another, read with every file it was rotated into, build-timings.<UTC
+time>.jsonl beside it) and prints:
 
     per stage    count, median, p90 and the last run's duration, by script
                  and stage, with how many of them failed
@@ -28,6 +29,7 @@ a record (a torn write, an edit by hand) is counted and skipped, never fatal.
 """
 
 import argparse
+import glob
 import json
 import os
 import platform
@@ -44,6 +46,14 @@ def default_log():
         return os.path.join(home, "Library", "Logs", "neon-ingvy", "build-timings.jsonl")
     state = os.environ.get("XDG_STATE_HOME") or os.path.join(home, ".local", "state")
     return os.path.join(state, "neon-ingvy", "build-timings.jsonl")
+
+
+def log_files(path):
+    """The log and every file scripts/timing.sh rotated it into, oldest first:
+    the rotated names carry their UTC time, so they sort in order."""
+    stem, ext = os.path.splitext(path)
+    rotated = sorted(glob.glob(glob.escape(stem) + ".*" + ext))
+    return rotated + ([path] if os.path.exists(path) else [])
 
 
 def read_records(path):
@@ -139,9 +149,9 @@ def table(rows, header):
     return "\n".join([line(header), line("-" * w for w in widths)] + [line(row) for row in rows])
 
 
-def print_text(summary, log, skipped):
-    print("%s: %d records%s" % (log, summary["records"],
-                                ", %d unreadable lines skipped" % skipped if skipped else ""))
+def print_text(summary, log, skipped, rotated):
+    print("%s%s: %d records%s" % (log, " and %d rotated" % rotated if rotated else "", summary["records"],
+                                  ", %d unreadable lines skipped" % skipped if skipped else ""))
     print()
     print("per stage")
     print(table([[s["script"], s["stage"], s["count"], seconds(s["median_s"]), seconds(s["p90_s"]),
@@ -172,19 +182,25 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true", help="print the summary as JSON")
     args = ap.parse_args(argv)
 
-    if not os.path.exists(args.log):
+    files = log_files(args.log)
+    if not files:
         print("no timing log at %s -- a build or test script writes it" % args.log, file=sys.stderr)
         return 1
-    records, skipped = read_records(args.log)
+    records, skipped = [], 0
+    for path in files:
+        r, s = read_records(path)
+        records += r
+        skipped += s
     records = [r for r in records if keep(r, args)]
     summary = summarise(records, args.slowest)
     if args.json:
         summary["log"] = args.log
+        summary["files"] = files
         summary["skipped"] = skipped
         json.dump(summary, sys.stdout, indent=2)
         print()
     else:
-        print_text(summary, args.log, skipped)
+        print_text(summary, args.log, skipped, len(files) - (1 if os.path.exists(args.log) else 0))
     return 0
 
 

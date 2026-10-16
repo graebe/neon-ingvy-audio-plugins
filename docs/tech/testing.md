@@ -403,6 +403,12 @@ it counts too), `cpus`, `load1` (the one-minute load average at the start) and
 the log, as `ninja/<time>-<script>-<stage>.ninja_log`, for per-target
 analysis (`ninja -t`, or ninjatracing for a Chrome trace).
 
+The log is rotated rather than left to grow: past 5 MB
+(`NI_TIMING_MAX_BYTES`) it is moved aside as `build-timings.<UTC>.jsonl`
+beside it and a new one begins, and only the newest 100 `.ninja_log` copies
+are kept (`NI_TIMING_KEEP_NINJA`). The summary reads the rotated files with
+the current one.
+
 ```sh
 scripts/build-timings.py                          # per stage, per day, the slowest, ccache
 scripts/build-timings.py --since 2026-10-08 --stage ctest

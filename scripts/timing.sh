@@ -42,6 +42,12 @@
 # nothing is logged unless the caller passed NI_TIMING_LOG in -- a container's
 # home is thrown away with it.
 #
+# IT IS ROTATED, NOT LEFT TO GROW. Before a line would go onto a log past
+# NI_TIMING_MAX_BYTES (5 MB), the log is moved aside, in the same directory,
+# as build-timings.<UTC time>.jsonl, and a new one begins; build-timings.py
+# reads the rotated files with the current one. Of the .ninja_log copies,
+# the newest NI_TIMING_KEEP_NINJA (100) are kept.
+#
 # The command runs in a subshell, with the caller's errexit setting: a stage
 # fails as it would have without the timing, and returns its status rather
 # than ending the caller (a caller under set -e that wants it to end the
@@ -62,6 +68,28 @@ ni_timing_log() {
     else
         printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/neon-ingvy/build-timings.jsonl"
     fi
+}
+
+# The log moved aside once it has grown past NI_TIMING_MAX_BYTES. Never fails:
+# a rotation that loses a race to another run's leaves the log to that one.
+_ni_timing_rotate() {
+    local log=$1 max=${NI_TIMING_MAX_BYTES:-5242880} size
+    [ -f "$log" ] || return 0
+    size=$(wc -c < "$log" | tr -d ' ')
+    if [ "$size" -gt "$max" ]; then
+        mv "$log" "${log%.jsonl}.$(date -u +%Y%m%dT%H%M%SZ).jsonl" 2>/dev/null || true
+    fi
+    return 0
+}
+
+# Every .ninja_log copy in $1 but the newest NI_TIMING_KEEP_NINJA, removed.
+# The names are timing.sh's own, so none has a space or a newline in it.
+_ni_timing_prune_ninja() {
+    local keep=${NI_TIMING_KEEP_NINJA:-100}
+    ls -1t "$1"/*.ninja_log 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r old; do
+        rm -f "$old"
+    done || true
+    return 0
 }
 
 # A JSON string, or null for an empty one.
@@ -213,12 +241,15 @@ ni_time_stage() {
     line+=",\"ccache_misses\":$(_ni_json_num "$misses"),\"cpus\":$(_ni_json_num "$(_ni_cpus)")"
     line+=",\"load1\":$(_ni_json_num "$load1"),\"host\":$(_ni_json_str "$host")}"
 
-    if mkdir -p "$(dirname "$log")" 2>/dev/null && printf '%s\n' "$line" >> "$log" 2>/dev/null; then
+    if mkdir -p "$(dirname "$log")" 2>/dev/null && _ni_timing_rotate "$log" \
+        && printf '%s\n' "$line" >> "$log" 2>/dev/null; then
         if [ -n "$build" ] && [ -f "$build/.ninja_log" ]; then
-            local name
+            local name ninja
             name="$(date -u +%Y%m%dT%H%M%SZ)-$(basename "$script" .sh)-$stage.ninja_log"
             name=$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '_')
-            mkdir -p "$(dirname "$log")/ninja" && cp "$build/.ninja_log" "$(dirname "$log")/ninja/$name" 2>/dev/null || true
+            ninja="$(dirname "$log")/ninja"
+            mkdir -p "$ninja" && cp "$build/.ninja_log" "$ninja/$name" 2>/dev/null || true
+            _ni_timing_prune_ninja "$ninja"
         fi
     elif [ -z "${_NI_TIMING_WARNED:-}" ]; then
         echo "note: the timing log $log could not be written; stages still run" >&2

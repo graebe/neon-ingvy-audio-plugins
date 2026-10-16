@@ -17,7 +17,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -117,4 +117,43 @@ test('build-timings.py summarises the log, and its filters filter', { skip: !pyt
     { encoding: 'utf8' }));
   assert.equal(none.records, 0);
   assert.ok(existsSync(LOG));
+});
+
+/* THE LOG IS ROTATED AND THE COPIES PRUNED, with limits small enough to see:
+ * a log past its size moves aside as build-timings.<UTC>.jsonl and the next
+ * line starts a new one, the summary reads both, and only the newest ninja
+ * copies stay. */
+test('a full log is rotated, the summary reads every file, and old ninja copies go', () => {
+  const at = mkdtempSync(join(tmpdir(), 'ni-timing-rotate-'));
+  const log = join(at, 'build-timings.jsonl');
+  const old = { ...records()[0], time: '2026-01-01T00:00:00Z', stage: 'old' };
+  writeFileSync(log, `${JSON.stringify(old)}\n`.repeat(4));
+  mkdirSync(join(at, 'ninja'));
+  for (let i = 0; i < 4; i++) {
+    const f = join(at, 'ninja', `2026010${i}T000000Z-x-build.ninja_log`);
+    writeFileSync(f, 'old\n');
+    utimesSync(f, new Date(2026, 0, i + 1), new Date(2026, 0, i + 1));
+  }
+  const again = spawnSync('bash', ['-c',
+    `set -euo pipefail; . "${ROOT}/scripts/timing.sh"; ni_time_stage build --build "${BUILD}" -- true`], {
+    cwd: ROOT, encoding: 'utf8',
+    env: { ...process.env, NI_TIMING_LOG: log, NI_TIMING_MAX_BYTES: '100', NI_TIMING_KEEP_NINJA: '2' },
+  });
+  assert.equal(again.status, 0, again.stderr);
+
+  const rotated = readdirSync(at).filter((f) => /^build-timings\.\d{8}T\d{6}Z\.jsonl$/.test(f));
+  assert.equal(rotated.length, 1, readdirSync(at).join(' '));
+  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1, 'a new log, one line');
+
+  const ninja = readdirSync(join(at, 'ninja')).sort();
+  assert.equal(ninja.length, 2);
+  assert.equal(ninja[0], '20260103T000000Z-x-build.ninja_log', 'the newest old one stays');
+  assert.match(ninja[1], /-build\.ninja_log$/);
+
+  if (python) {
+    const summary = JSON.parse(execFileSync('python3',
+      ['-I', join(ROOT, 'scripts', 'build-timings.py'), '--log', log, '--json'], { encoding: 'utf8' }));
+    assert.equal(summary.records, 5, 'four rotated and one new');
+    assert.equal(summary.files.length, 2);
+  }
 });
