@@ -13,6 +13,8 @@ crate-type = ["rlib"]
 [dependencies]
 # The DSP the products share: the parameter glide and C-compatible text.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# What a parameter is and its arithmetic: the table every product shares.
+ni-params = { path = "../../../shared/crates/ni-params" }
 # The pre-, post- and DC filters: second-order sections, retuned on the audio
 # thread without allocating. No std: it is a no_std crate.
 biquad = { workspace = true }

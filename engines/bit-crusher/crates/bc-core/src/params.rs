@@ -128,37 +128,7 @@ impl Unit {
     }
 }
 
-/// How a float's knob travels from `min` to `max`.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Travel {
-    Linear,
-    /// Equal ratios in equal turns. Only for a range above zero.
-    Log,
-}
-
-/// What a parameter is.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Kind {
-    Float {
-        min: f64,
-        max: f64,
-        default: f64,
-        unit: Unit,
-        travel: Travel,
-        /// Whether the value runs both ways about zero, so a knob draws its
-        /// arc from the centre -- which is why every such range is symmetric:
-        /// the centre of the travel IS zero.
-        bipolar: bool,
-    },
-    Toggle {
-        default: bool,
-    },
-    /// One of `choices`, by index.
-    Choice {
-        choices: &'static [&'static str],
-        default: u8,
-    },
-}
+pub use ni_params::{Kind, Travel};
 
 /// What a shell needs to declare one parameter.
 #[derive(Clone, Copy, Debug)]
@@ -167,17 +137,29 @@ pub struct Info {
     pub key: &'static str,
     /// The name a host shows.
     pub name: &'static str,
+    /// What it is (ni-params): a number on its travel and resolution, or a
+    /// choice of words -- a switch is a choice of two. A choice says whether a
+    /// host may automate it: every control of the sound is; Refresh, a
+    /// setting of the window, is not.
     pub kind: Kind,
-    /// Whether a host should offer it for automation: every control of the
-    /// sound is; a setting of the window is not.
-    pub automatable: bool,
+    /// A number's unit; `None` for a choice.
+    pub unit: Option<Unit>,
 }
 
-/// A toggle's two words, in index order.
+/// A switch's two words, in index order.
 pub const TOGGLE_LABELS: [&str; 2] = ["Off", "On"];
 
-const fn float(min: f64, max: f64, default: f64, unit: Unit, travel: Travel, bipolar: bool) -> Kind {
-    Kind::Float { min, max, default, unit, travel, bipolar }
+const fn float(min: f64, max: f64, default: f64, unit: Unit, travel: Travel, bipolar: bool) -> (Kind, Option<Unit>) {
+    (Kind::Float { min, max, default, resolution: unit.resolution(), travel, bipolar }, Some(unit))
+}
+
+/// A switch: off or on, by its two words.
+const fn switch() -> (Kind, Option<Unit>) {
+    (Kind::Choice { labels: &TOGGLE_LABELS, default: 0, automatable: true }, None)
+}
+
+const fn choice(labels: &'static [&'static str], default: usize, automatable: bool) -> (Kind, Option<Unit>) {
+    (Kind::Choice { labels, default, automatable }, None)
 }
 
 impl Param {
@@ -216,27 +198,27 @@ impl Param {
     /// Everything a shell declares this parameter with.
     pub const fn info(self) -> Info {
         use Travel::{Linear, Log};
-        let (key, name, kind) = match self {
+        let (key, name, (kind, unit)) = match self {
             Param::Drive => ("drive", "Drive", float(-24.0, 24.0, 0.0, Unit::Db, Linear, true)),
             Param::Bits => ("bits", "Bits", float(1.0, 16.0, 8.0, Unit::Bits, Linear, false)),
             Param::Shape => ("shape", "Shape", float(0.0, 100.0, 0.0, Unit::Percent, Linear, false)),
-            Param::MidRise => ("mid_rise", "Mid-Rise", Kind::Toggle { default: false }),
+            Param::MidRise => ("mid_rise", "Mid-Rise", switch()),
             Param::Dither => ("dither", "Dither", float(0.0, 100.0, 0.0, Unit::Percent, Linear, false)),
-            Param::AntiAlias => ("anti_alias", "Anti-Alias", Kind::Toggle { default: false }),
+            Param::AntiAlias => ("anti_alias", "Anti-Alias", switch()),
             Param::Rate => ("rate", "Rate", float(50.0, 96_000.0, 12_000.0, Unit::Hz, Log, false)),
             Param::Jitter => ("jitter", "Jitter", float(0.0, 100.0, 0.0, Unit::Percent, Linear, false)),
-            Param::PreFilter => ("pre_filter", "Pre-Filter", Kind::Toggle { default: false }),
-            Param::PostFilter => ("post_filter", "Post-Filter", Kind::Toggle { default: false }),
+            Param::PreFilter => ("pre_filter", "Pre-Filter", switch()),
+            Param::PostFilter => ("post_filter", "Post-Filter", switch()),
             Param::PostOctave => ("post_octave", "Octave", float(-3.0, 3.0, 0.0, Unit::Octaves, Linear, true)),
             Param::Mix => ("mix", "Mix", float(0.0, 100.0, 100.0, Unit::Percent, Linear, false)),
             Param::Output => ("output", "Output", float(-24.0, 24.0, 0.0, Unit::Db, Linear, true)),
-            Param::Refresh => ("refresh", "Refresh", Kind::Choice { choices: &REFRESH_LABELS, default: 3 }),
-            Param::Filter => ("filter", "Filter", Kind::Toggle { default: false }),
+            Param::Refresh => ("refresh", "Refresh", choice(&REFRESH_LABELS, 3, false)),
+            Param::Filter => ("filter", "Filter", switch()),
             Param::Cutoff => ("cutoff", "Cutoff", float(20.0, 20_000.0, 2_000.0, Unit::Hz, Log, false)),
             Param::Peak => ("peak", "Peak", float(0.0, 24.0, 0.0, Unit::Db, Linear, false)),
-            Param::Slope => ("slope", "Slope", Kind::Choice { choices: &SLOPE_LABELS, default: 1 }),
+            Param::Slope => ("slope", "Slope", choice(&SLOPE_LABELS, 1, true)),
         };
-        Info { key, name, kind, automatable: !matches!(self, Param::Refresh) }
+        Info { key, name, kind, unit }
     }
 
     /// Whether it shapes what an editor's live pictures of the two
@@ -261,75 +243,43 @@ impl Param {
 
     /// The value a new instance starts at, in the parameter's unit.
     pub const fn default_value(self) -> f64 {
-        match self.info().kind {
-            Kind::Float { default, .. } => default,
-            Kind::Toggle { default } => default as i32 as f64,
-            Kind::Choice { default, .. } => default as f64,
-        }
+        self.info().kind.default_value()
     }
 
-    /// The nearest value the parameter can hold: a float inside its range, a
-    /// toggle on from one half up, a choice's nearest index. NaN is not a
+    /// The nearest value the parameter can hold: a number inside its range, a
+    /// choice's nearest index (a switch on from one half up). NaN is not a
     /// value; callers drop it first.
     pub fn clamp(self, v: f64) -> f64 {
-        match self.info().kind {
-            Kind::Float { min, max, .. } => v.clamp(min, max),
-            Kind::Toggle { .. } => (v >= 0.5) as i32 as f64,
-            Kind::Choice { choices, .. } => v.round().clamp(0.0, (choices.len() - 1) as f64),
-        }
+        self.info().kind.clamp(v)
     }
 
     /// The nearest value on the unit's resolution, for a host that keeps a
-    /// value as a float; a toggle's 0 or 1. The engine itself takes any
-    /// value: this is the shells'.
+    /// value as a float; a choice's index. The engine itself takes any value:
+    /// this is the shells'.
     pub fn snap(self, v: f64) -> f64 {
-        match self.info().kind {
-            Kind::Float { unit, .. } => {
-                let per = 1.0 / unit.resolution();
-                self.clamp((v * per).round() / per)
-            }
-            Kind::Toggle { .. } | Kind::Choice { .. } => self.clamp(v),
-        }
+        self.info().kind.snap(v)
     }
 
     /// The value as a fraction of the knob's travel, 0..1.
     pub fn normalise(self, v: f64) -> f64 {
-        match self.info().kind {
-            Kind::Float { min, max, travel, .. } => {
-                let v = v.clamp(min, max);
-                match travel {
-                    Travel::Linear => (v - min) / (max - min),
-                    Travel::Log => (v / min).ln() / (max / min).ln(),
-                }
-            }
-            Kind::Toggle { .. } => self.clamp(v),
-            Kind::Choice { choices, .. } => self.clamp(v) / (choices.len() - 1) as f64,
-        }
+        self.info().kind.normalise(v)
     }
 
     /// The value at a fraction 0..1 of the knob's travel. The inverse of
     /// `normalise`; out-of-range fractions land on the ends.
     pub fn denormalise(self, n: f64) -> f64 {
-        let n = if n.is_nan() { 0.0 } else { n.clamp(0.0, 1.0) };
-        match self.info().kind {
-            Kind::Float { min, max, travel, .. } => match travel {
-                Travel::Linear => (min + n * (max - min)).clamp(min, max),
-                Travel::Log => (min * (max / min).powf(n)).clamp(min, max),
-            },
-            Kind::Toggle { .. } => self.clamp(n),
-            Kind::Choice { choices, .. } => self.clamp(n * (choices.len() - 1) as f64),
-        }
+        self.info().kind.denormalise(n)
     }
 
     /// The value as every shell prints it: "+3.0 dB", "7.5 bits", "40 %",
     /// "12.0 kHz", "-1.5 oct", "On".
     pub fn write_value(self, out: &mut dyn Write, v: f64) -> fmt::Result {
         let v = if v.is_nan() { self.default_value() } else { self.clamp(v) };
-        let unit = match self.info().kind {
-            Kind::Float { unit, .. } => unit,
-            Kind::Toggle { .. } => return out.write_str(TOGGLE_LABELS[(v >= 0.5) as usize]),
-            Kind::Choice { choices, .. } => return out.write_str(choices[v as usize]),
-        };
+        let info = self.info();
+        if let Some(word) = info.kind.choice_text(v) {
+            return out.write_str(word);
+        }
+        let Some(unit) = info.unit else { return Ok(()) };
         match unit {
             Unit::Db | Unit::Octaves => {
                 /* Signed, so a cut and a boost read apart at a glance; and no
@@ -363,25 +313,27 @@ impl Param {
 
     /// What a user typed, read as this parameter's value: the number at the
     /// front, as C's `atof` reads it, in the parameter's unit -- with a `k`
-    /// after a rate meaning thousands. A toggle also takes its words. `None`
+    /// after a rate meaning thousands. A choice takes its words only. `None`
     /// for text with no number in it, which then changes nothing.
     pub fn parse_value(self, text: &str) -> Option<f64> {
         let t = text.trim();
-        if let Kind::Toggle { .. } = self.info().kind {
-            if let Some(i) = TOGGLE_LABELS.iter().position(|l| l.eq_ignore_ascii_case(t)) {
-                return Some(i as f64);
+        /* A choice by its word only -- a switch's "Off" or "On": "1/s" has a
+         * digit in it, and read as a number it would be the index of
+         * "10/s". */
+        let kind = self.info().kind;
+        if let Kind::Choice { labels, .. } = kind {
+            if let Some(i) = kind.choice_of(t) {
+                return Some(i);
             }
-        }
-        /* A choice by its word only: "1/s" has a digit in it, and read as a
-         * number it would be the index of "10/s". */
-        if let Kind::Choice { choices, .. } = self.info().kind {
-            return choices.iter().position(|l| l.eq_ignore_ascii_case(t)).map(|i| i as f64);
+            /* A switch also takes a number, 1 on and 0 off, as typed. */
+            let number = labels == TOGGLE_LABELS && t.bytes().any(|b| b.is_ascii_digit());
+            return number.then(|| self.clamp(atof(t)));
         }
         if !t.bytes().any(|b| b.is_ascii_digit()) {
             return None;
         }
         let mut v = atof(t);
-        if matches!(self.info().kind, Kind::Float { unit: Unit::Hz, .. }) {
+        if self.info().unit == Some(Unit::Hz) {
             /* The first letter after the number, whatever spacing: "12k",
              * "12 kHz", "12.5K". */
             let unit = t.trim_start_matches(|c: char| c.is_ascii_digit() || matches!(c, '.' | '+' | '-' | ' '));

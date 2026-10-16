@@ -55,6 +55,7 @@ dependencies = [
  "bc-core",
  "cbindgen",
  "ni-dsp",
+ "ni-params",
  "shell-core",
 ]
 
@@ -66,6 +67,7 @@ dependencies = [
  "biquad",
  "fastrand",
  "ni-dsp",
+ "ni-params",
  "proptest",
  "realfft",
  "wmidi",

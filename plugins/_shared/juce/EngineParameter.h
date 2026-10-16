@@ -15,8 +15,10 @@
  *              as the number that was set, printed in the engine's words
  *              (text) and read back by the engine (parse) -- text with no
  *              value in it leaves the value where it is
- *   a choice   of the engine's labels; a host may automate it only when the
- *              table says so (NiParamInfo::automatable)
+ *   a choice   of the engine's labels, typing read back by the engine too (a
+ *              switch takes its word or a 0 or 1, as the engine's parse
+ *              does); a host may automate it only when the table says so
+ *              (NiParamInfo::automatable)
  *
  * The IDs are the engine's keys, version 1.
  *
@@ -80,6 +82,30 @@ private:
     const int index;
 };
 
+template <typename Table>
+class EngineChoice final : public juce::AudioParameterChoice
+{
+public:
+    EngineChoice (int i, const juce::String& key, const juce::String& title, const juce::StringArray& labels,
+                  const typename Table::Info& info)
+        : juce::AudioParameterChoice (juce::ParameterID { key, 1 }, title, labels, (int) info.default_value,
+                                      juce::AudioParameterChoiceAttributes().withAutomatable (info.automatable)),
+          index (i)
+    {
+    }
+
+    float getValueForText (const juce::String& text) const override
+    {
+        double v = 0.0;
+        if (! Table::parse (index, text.toRawUTF8(), &v))
+            return convertTo0to1 ((float) getIndex());
+        return convertTo0to1 ((float) v);
+    }
+
+private:
+    const int index;
+};
+
 /* The host parameter the table declares at `index`. */
 template <typename Table>
 std::unique_ptr<juce::RangedAudioParameter> engineParameter (int index)
@@ -96,9 +122,7 @@ std::unique_ptr<juce::RangedAudioParameter> engineParameter (int index)
         juce::StringArray labels;
         for (int option = 0; option <= (int) info.max; ++option)
             labels.add (engineText ([index, option] (char* b, int n) { return Table::label (index, option, b, n); }));
-        return std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { key, 1 }, name, labels,
-                                                             (int) info.default_value,
-                                                             juce::AudioParameterChoiceAttributes().withAutomatable (info.automatable));
+        return std::make_unique<EngineChoice<Table>> (index, key, name, labels, info);
     }
     return std::make_unique<EngineFloat<Table>> (index, key, name, info);
 }

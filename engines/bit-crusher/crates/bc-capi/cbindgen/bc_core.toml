@@ -19,7 +19,7 @@ sys_includes = ["stdbool.h", "stddef.h", "stdint.h"]
 no_includes = true
 
 [export]
-include = ["BcParamInfo", "BcParamKind"]
+include = ["NiParamInfo", "NiParamKind"]
 
 [enum]
 prefix_with_name = true

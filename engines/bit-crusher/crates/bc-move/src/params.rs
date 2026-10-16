@@ -108,7 +108,7 @@ mod tests {
     fn every_float_is_the_engines_range_and_default() {
         for e in declared().iter().filter(|e| text(e, "type") == "float") {
             let p = Param::from_key(text(e, "key")).unwrap();
-            let Kind::Float { min, max, default, unit, .. } = p.info().kind else {
+            let (Kind::Float { min, max, default, .. }, Some(unit)) = (p.info().kind, p.info().unit) else {
                 panic!("{p:?} is a float here and not in the engine");
             };
             let num = |f: &str| e[f].as_f64().unwrap_or_else(|| panic!("{p:?} has no {f}"));

@@ -7,6 +7,7 @@
 #include "BitCrusher.h"
 
 #include "Editor.h"
+#include "EngineParameter.h"
 #include "PluginEditor.h"
 
 #include <cmath>
@@ -17,77 +18,23 @@ namespace ni::bc
 
 namespace
 {
-/* One of the engine's texts for a parameter: bc_param_key, _name or _text. */
-template <typename Read>
-juce::String engineText (Read read)
+/* The engine's table, as the shared adapter reads it (EngineParameter.h):
+ * a number on the engine's travel, resolution and words; a choice -- a switch
+ * is a choice of two -- in its labels, Refresh saved but not automated. */
+struct Table
 {
-    char buf[64] {};
-    return read (buf, (int) sizeof buf) >= 0 ? juce::String::fromUTF8 (buf) : juce::String();
-}
-
-/*
- * A NUMBER ON THE ENGINE'S TRAVEL AND IN ITS WORDS. The range maps through
- * bc_param_normalise and _denormalise, so Rate turns in equal ratios as the
- * engine's table says, and lands on the table's resolution (bc_param_snap):
- * a value a host keeps as a float comes back as the number that was set --
- * 5.5 bits, not 5.50000000447. The text is bc_param_text, and typing is read
- * by bc_param_parse -- which refuses text with no number in it, and then the
- * value stays where it is rather than going to the bottom of the range.
- */
-class EngineFloat final : public juce::AudioParameterFloat
-{
-public:
-    EngineFloat (int i, const juce::String& key, const juce::String& title, const BcParamInfo& info)
-        : juce::AudioParameterFloat (
-              juce::ParameterID { key, 1 }, title,
-              juce::NormalisableRange<float> (
-                  (float) info.min, (float) info.max,
-                  [i] (float, float, float n) { return (float) bc_param_denormalise (i, (double) n); },
-                  [i] (float, float, float v) { return (float) bc_param_normalise (i, (double) v); },
-                  [i] (float, float, float v) { return (float) bc_param_snap (i, (double) v); }),
-              (float) info.default_value,
-              juce::AudioParameterFloatAttributes().withStringFromValueFunction (
-                  [i] (float v, int) { return engineText ([i, v] (char* b, int n) { return bc_param_text (i, (double) v, b, n); }); })),
-          index (i)
-    {
-    }
-
-    float getValueForText (const juce::String& text) const override
-    {
-        double v = 0.0;
-        if (! bc_param_parse (index, text.toRawUTF8(), &v))
-            return convertTo0to1 (get());
-        return convertTo0to1 ((float) v);
-    }
-
-private:
-    const int index;
+    using Info = NiParamInfo;
+    static bool info (int i, Info* out) { return bc_param_info (i, out); }
+    static bool isChoice (const Info& i) { return i.kind == NiParamKind_Choice; }
+    static int key (int i, char* b, int n) { return bc_param_key (i, b, n); }
+    static int name (int i, char* b, int n) { return bc_param_name (i, b, n); }
+    static int label (int i, int option, char* b, int n) { return bc_param_label (i, option, b, n); }
+    static int text (int i, double v, char* b, int n) { return bc_param_text (i, v, b, n); }
+    static bool parse (int i, const char* t, double* out) { return bc_param_parse (i, t, out); }
+    static double normalise (int i, double v) { return bc_param_normalise (i, v); }
+    static double denormalise (int i, double n) { return bc_param_denormalise (i, n); }
+    static double snap (int i, double v) { return bc_param_snap (i, v); }
 };
-
-std::unique_ptr<juce::RangedAudioParameter> fromEngine (int index)
-{
-    BcParamInfo info {};
-    const bool known = bc_param_info (index, &info);
-    jassert (known);
-    juce::ignoreUnused (known);
-
-    const auto key = engineText ([index] (char* b, int n) { return bc_param_key (index, b, n); });
-    const auto name = engineText ([index] (char* b, int n) { return bc_param_name (index, b, n); });
-    if (info.kind == BcParamKind_Toggle)
-        return std::make_unique<juce::AudioParameterBool> (juce::ParameterID { key, 1 }, name, info.default_value >= 0.5);
-    /* A choice in the engine's words; one of the window's (Refresh) is saved
-     * with the set and not offered for automation. */
-    if (info.kind == BcParamKind_Choice)
-    {
-        juce::StringArray choices;
-        for (int c = 0; c < info.choice_count; ++c)
-            choices.add (engineText ([index, c] (char* b, int n) { return bc_param_choice (index, c, b, n); }));
-        return std::make_unique<juce::AudioParameterChoice> (
-            juce::ParameterID { key, 1 }, name, choices, (int) info.default_value,
-            juce::AudioParameterChoiceAttributes().withAutomatable (info.automatable));
-    }
-    return std::make_unique<EngineFloat> (index, key, name, info);
-}
 
 bool monoOrStereo (const juce::AudioChannelSet& set)
 {
@@ -105,12 +52,12 @@ Processor::Processor()
     jassert (bc_param_count() == paramCount);
     for (int i = 0; i < paramCount; ++i)
     {
-        auto p = fromEngine (i);
+        auto p = ni::engineParameter<Table> (i);
         params[(size_t) i] = p.get();
         addParameter (p.release());
-        BcParamInfo info {};
+        NiParamInfo info {};
         /* Only a number glides across a block; a switch or a choice jumps. */
-        toggles[(size_t) i] = bc_param_info (i, &info) && info.kind != BcParamKind_Float;
+        toggles[(size_t) i] = bc_param_info (i, &info) && info.kind == NiParamKind_Choice;
     }
     /* Constant: Anti-Alias on or off, at any rate (bc_latency). */
     setLatencySamples ((int) bc_latency());
@@ -209,7 +156,7 @@ void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 
 bool Processor::bipolar (int index) const
 {
-    BcParamInfo info {};
+    NiParamInfo info {};
     return bc_param_info (index, &info) && info.bipolar;
 }
 

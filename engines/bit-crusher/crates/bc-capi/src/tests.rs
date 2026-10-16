@@ -12,45 +12,55 @@ fn text(f: impl Fn(*mut c_char, c_int) -> c_int) -> Option<String> {
     (n >= 0).then(|| unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap().to_string())
 }
 
-fn info(index: i32) -> Option<BcParamInfo> {
-    let mut out = BcParamInfo {
-        kind: BcParamKind::Toggle,
+fn info(index: i32) -> Option<NiParamInfo> {
+    let mut out = NiParamInfo {
+        kind: NiParamKind::Float,
         min: 0.0,
         max: 0.0,
         default_value: 0.0,
         log_travel: false,
         bipolar: false,
         resolution: 0.0,
-        choice_count: 0,
         automatable: false,
     };
     unsafe { bc_param_info(index, &mut out) }.then_some(out)
+}
+
+/// A choice's number of labels, from its range (0..count-1); 0 for a number.
+fn labels(d: &NiParamInfo) -> i32 {
+    if d.kind == NiParamKind::Choice { d.max as i32 + 1 } else { 0 }
 }
 
 #[test]
 fn refresh_is_a_choice_of_the_window_saved_but_not_automated() {
     let r = Param::Refresh as i32;
     let d = info(r).unwrap();
-    assert_eq!(d.kind, BcParamKind::Choice);
-    assert_eq!((d.choice_count, d.min, d.max, d.default_value), (4, 0.0, 3.0, 3.0));
+    assert_eq!(d.kind, NiParamKind::Choice);
+    assert_eq!((labels(&d), d.min, d.max, d.default_value), (4, 0.0, 3.0, 3.0));
     assert!(!d.automatable);
-    let words: Vec<String> = (0..4).map(|c| text(|b, n| unsafe { bc_param_choice(r, c, b, n) }).unwrap()).collect();
+    let words: Vec<String> = (0..4).map(|c| text(|b, n| unsafe { bc_param_label(r, c, b, n) }).unwrap()).collect();
     assert_eq!(words, ["Live", "10/s", "4/s", "1/s"]);
     assert_eq!(text(|b, n| unsafe { bc_param_text(r, 3.0, b, n) }).unwrap(), "1/s");
     assert_eq!(text(|b, n| unsafe { bc_param_unit(r, b, n) }).unwrap(), "");
     /* No word past the end, and none for a parameter that is no choice. */
-    assert!(text(|b, n| unsafe { bc_param_choice(r, 4, b, n) }).is_none());
-    assert!(text(|b, n| unsafe { bc_param_choice(r, -1, b, n) }).is_none());
-    assert!(text(|b, n| unsafe { bc_param_choice(Param::Bits as i32, 0, b, n) }).is_none());
-    /* Every control of the sound is automatable. */
+    assert!(text(|b, n| unsafe { bc_param_label(r, 4, b, n) }).is_none());
+    assert!(text(|b, n| unsafe { bc_param_label(r, -1, b, n) }).is_none());
+    assert!(text(|b, n| unsafe { bc_param_label(Param::Bits as i32, 0, b, n) }).is_none());
+    /* Every control of the sound is automatable; its choices are the
+     * slope's three and the switches' two. */
     for i in (0..bc_param_count()).filter(|&i| i != r) {
         let d = info(i).unwrap();
         assert!(d.automatable, "{i}");
-        assert_eq!(d.choice_count, if d.kind == BcParamKind::Choice { 3 } else { 0 }, "{i}");
+        let want = match Param::from_i32(i).unwrap() {
+            Param::Slope => 3,
+            Param::MidRise | Param::AntiAlias | Param::PreFilter | Param::PostFilter | Param::Filter => 2,
+            _ => 0,
+        };
+        assert_eq!(labels(&d), want, "{i}");
     }
     /* Slope, the other choice: the filter's three, by their words. */
     let s = Param::Slope as i32;
-    let words: Vec<String> = (0..3).map(|c| text(|b, n| unsafe { bc_param_choice(s, c, b, n) }).unwrap()).collect();
+    let words: Vec<String> = (0..3).map(|c| text(|b, n| unsafe { bc_param_label(s, c, b, n) }).unwrap()).collect();
     assert_eq!(words, ["12 dB", "24 dB", "48 dB"]);
     assert_eq!([0, 1, 2, 3].map(|c| bc_refresh_period_ms(c)), [0.0, 100.0, 250.0, 1000.0]);
     /* The filter's response: flat, -3 dB at the cutoff, the slope, the peak. */
@@ -103,14 +113,16 @@ fn the_table_describes_every_parameter_and_nothing_else() {
 #[test]
 fn kinds_travel_and_units_are_the_engines() {
     let rate = info(Param::Rate as i32).unwrap();
-    assert_eq!(rate.kind, BcParamKind::Float);
+    assert_eq!(rate.kind, NiParamKind::Float);
     assert!(rate.log_travel);
     assert_eq!(rate.resolution, 0.1);
     assert_eq!(bc_param_snap(Param::Rate as i32, 7_000.04), 7_000.0);
     assert_eq!(text(|b, n| unsafe { bc_param_unit(Param::Rate as i32, b, n) }).unwrap(), "Hz");
     let aa = info(Param::AntiAlias as i32).unwrap();
-    assert_eq!(aa.kind, BcParamKind::Toggle);
+    assert_eq!(aa.kind, NiParamKind::Choice, "a switch is a choice of two");
     assert_eq!((aa.min, aa.max, aa.default_value), (0.0, 1.0, 0.0));
+    let words: Vec<String> = (0..2).map(|c| text(|b, n| unsafe { bc_param_label(Param::AntiAlias as i32, c, b, n) }).unwrap()).collect();
+    assert_eq!(words, ["Off", "On"]);
     assert_eq!(text(|b, n| unsafe { bc_param_unit(Param::AntiAlias as i32, b, n) }).unwrap(), "");
     assert!(info(Param::Drive as i32).unwrap().bipolar);
     let r = Param::Rate as i32;
