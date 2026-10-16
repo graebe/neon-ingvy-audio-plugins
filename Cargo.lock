@@ -448,16 +448,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ni-paper-subsynth"
-version = "2026.10.9+1"
-dependencies = [
- "assert_no_alloc",
- "divan",
- "ni-dsp",
- "realfft",
-]
-
-[[package]]
 name = "ni-params"
 version = "2026.10.10+1"
 dependencies = [

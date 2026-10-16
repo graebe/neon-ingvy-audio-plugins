@@ -501,8 +501,8 @@ add_test(NAME music_core_no_std
 # differ -- so a paper whose code stopped compiling, or drifted from its text,
 # fails the quick tier like any engine would.
 add_test(NAME paper_subsynth
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-paper-subsynth)
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --locked --manifest-path
+                 ${CMAKE_SOURCE_DIR}/papers/subtractive-synthesis/code/Cargo.toml)
 
 # ------------------------------------------------------------ NI Chord-Detector
 
