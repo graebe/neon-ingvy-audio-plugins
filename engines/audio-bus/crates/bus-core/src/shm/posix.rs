@@ -58,8 +58,11 @@ impl Drop for View {
     }
 }
 
-fn path(name: &Name) -> &CStr {
-    CStr::from_bytes_until_nul(&name.0).expect("a Name always ends in NUL")
+/* A Name always ends in NUL (Name::in_namespace builds it well inside
+ * NAME_CAP); one that did not is no path, and every caller refuses it as it
+ * refuses a failed open -- a host is not aborted over a name. */
+fn path(name: &Name) -> Option<&CStr> {
+    CStr::from_bytes_until_nul(&name.0).ok()
 }
 
 fn errno() -> c_int {
@@ -91,7 +94,7 @@ fn map(fd: c_int, size: usize, prot: c_int) -> Option<View> {
 }
 
 pub fn create_or_open(name: &Name, size: usize) -> Result<(View, bool), Refused> {
-    let path = path(name);
+    let path = path(name).ok_or(Refused::Failed)?;
 
     /*
      * O_EXCL DECIDES WHO INITIALISES, and it has to be an atomic decision.
@@ -137,7 +140,7 @@ pub fn create_or_open(name: &Name, size: usize) -> Result<(View, bool), Refused>
 }
 
 pub fn open_existing(name: &Name, size: usize) -> Option<View> {
-    let fd = unsafe { libc::shm_open(path(name).as_ptr(), libc::O_RDONLY, MODE) };
+    let fd = unsafe { libc::shm_open(path(name)?.as_ptr(), libc::O_RDONLY, MODE) };
     if fd < 0 {
         return None;
     }
@@ -149,7 +152,9 @@ pub fn open_existing(name: &Name, size: usize) -> Option<View> {
 }
 
 pub fn unlink(name: &Name) {
-    unsafe { libc::shm_unlink(path(name).as_ptr()) };
+    if let Some(path) = path(name) {
+        unsafe { libc::shm_unlink(path.as_ptr()) };
+    }
 }
 
 pub fn pid_is_gone(pid: u32) -> bool {

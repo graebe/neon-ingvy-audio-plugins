@@ -303,21 +303,24 @@ impl Reader {
         let s = settings_of(values, slot as u8);
         let g = globals_of(values);
         let from = (s, g, fs);
-        if self.curves[slot].as_ref().is_none_or(|c| c.from != from) {
+        let (hz, cached) = (&self.hz, &mut self.curves[slot]);
+        if cached.as_ref().is_some_and(|c| c.from != from) {
+            *cached = None;
+        }
+        cached.get_or_insert_with(|| {
             let mut db = [0.0f32; FD_POINTS];
             let mut clamped = false;
             let mut at = None;
             if s.shape != Shape::Empty {
                 let (c, cl) = design(&s, None, g, fs);
                 clamped = cl;
-                for (d, hz) in db.iter_mut().zip(self.hz.iter()) {
+                for (d, hz) in db.iter_mut().zip(hz.iter()) {
                     *d = c.db(hz.min(0.4999 * fs), fs) as f32;
                 }
                 at = handle(&s, g, &c, fs);
             }
-            self.curves[slot] = Some(Curve { from, db, clamped, handle: at, edges: edges(&s) });
-        }
-        self.curves[slot].as_ref().expect("just made")
+            Curve { from, db, clamped, handle: at, edges: edges(&s) }
+        })
     }
 }
 
