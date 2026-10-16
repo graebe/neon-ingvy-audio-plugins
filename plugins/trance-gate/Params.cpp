@@ -6,10 +6,8 @@
  */
 #include "Params.h"
 
+#include "HostTable.h"
 #include "ni/Wire.h"
-
-#include <array>
-#include <cstring>
 
 namespace ni::tg
 {
@@ -18,60 +16,49 @@ namespace
 {
 static_assert ((int) ParamSpec::Kind::integer == 0 && (int) ParamSpec::Kind::choice == 1
                    && (int) ParamSpec::Kind::toggle == 2 && (int) ParamSpec::Kind::continuous == 3,
-               "tg_param_spec_t's kinds are ParamSpec's, in order");
+               "NiHostParam's kinds are ParamSpec's, in order");
 
 /*
- * THE ENGINE'S SCHEMA, ROW FOR ROW (tg_core_param_spec). This file used to
- * hold its own copy of the fifteen rows -- the iPlug2 build's Declare -- and
- * the engine and the Move held theirs; now all three are tg_core::schema's.
- * The rows are still the iPlug2 build's, held to its parameters.json by the
- * schema's own test and by this product's (tests/tg_processor.cpp).
+ * THE ENGINE'S SCHEMA, ROW FOR ROW (tg_core_param_spec, HostTable.h). This
+ * file used to hold its own copy of the fifteen rows -- the iPlug2 build's
+ * Declare -- and the engine and the Move held theirs; now all three are
+ * tg_core::schema's. The rows are still the iPlug2 build's, held to its
+ * parameters.json by the schema's own test and by this product's
+ * (tests/tg_processor.cpp).
  */
-const ParamSpec* table()
+const HostTable<NiHostParam, kNumParams>& table()
 {
-    static const auto rows = []
-    {
-        std::array<ParamSpec, kNumParams> t {};
-        for (int i = 0; i < kNumParams; ++i)
-        {
-            const auto& r = *tg_core_param_spec (i);
-            t[(std::size_t) i] = ParamSpec { r.id, r.name, (ParamSpec::Kind) r.kind, r.min, r.max, r.def,
-                                             r.units, r.texts, r.num_texts };
-        }
-        return t;
-    }();
-    return rows.data();
+    static const HostTable<NiHostParam, kNumParams> t (tg_core_param_spec, tg_core_param_option);
+    return t;
 }
 
 } // namespace
 
 const ParamSpec& specOf (int index)
 {
-    return table()[index];
+    return table().specs()[index];
 }
 
 const ParamSpec* specs()
 {
-    return table();
+    return table().specs();
 }
 
 const nist::Layout& layout()
 {
-    static const nist::Layout l { table(), kNumParams, { 15, 14, 12 }, 1, 1 };
+    static const nist::Layout l { specs(), kNumParams, { 15, 14, 12 }, 1, 1 };
     return l;
 }
 
 /* The schema's own conversion: host = engine * scale + offset. */
 double toEngine (int index, double plain)
 {
-    const auto& r = *tg_core_param_spec (index);
-    return (plain - r.offset) / r.scale;
+    return table().toEngine (index, plain);
 }
 
 double fromEngine (int index, double engine)
 {
-    const auto& r = *tg_core_param_spec (index);
-    return engine * r.scale + r.offset;
+    return table().fromEngine (index, engine);
 }
 
 /*

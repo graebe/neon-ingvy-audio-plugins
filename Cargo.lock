@@ -723,6 +723,7 @@ dependencies = [
  "bus-core",
  "cbindgen",
  "ni-dsp",
+ "ni-params",
  "sc-core",
  "shell-core",
 ]
@@ -733,6 +734,8 @@ version = "2026.10.10+2"
 dependencies = [
  "assert_no_alloc",
  "ni-dsp",
+ "ni-params",
+ "serde_json",
  "wmidi",
 ]
 
@@ -911,6 +914,7 @@ version = "2026.10.10+1"
 dependencies = [
  "cbindgen",
  "ni-dsp",
+ "ni-params",
  "shell-core",
  "tg-core",
 ]
@@ -923,6 +927,7 @@ dependencies = [
  "assert_no_alloc",
  "fastrand",
  "ni-dsp",
+ "ni-params",
  "proptest",
  "realfft",
  "serde",

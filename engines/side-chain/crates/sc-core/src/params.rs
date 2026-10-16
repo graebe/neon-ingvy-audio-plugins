@@ -18,9 +18,10 @@ hypothetical; it is why `trance_gate_core.h:116-132` argues the same case.
 `set_param` IS IMPLEMENTED VIA `set_num`, so every clamp exists exactly once.
 The string door's only extra job is deciding which number a word means.
 
-EACH KEY IS SPELLED ONCE, in `Param::key`. `set_param` and `get_param` find a
-parameter by its key through `Param::from_key`, which reads the spellings off
-`key` rather than keeping a second copy of them.
+EACH PARAMETER IS DECLARED ONCE, in the schema (`schema::PARAMS`): its key,
+its range and default, and the words a choice is read and written in. The
+doors here read it -- `set_num` clamps to its range, `set_param` reads its
+words, `Param::key` is its key -- rather than keeping a second copy.
 
 WHY THE STRING DOOR IS NOT SERDE. The words are C's, and saved patches and the
 Move's knob grid already speak them: `atof`'s leniency (`"4abc"` is 4, `"abc"`
@@ -40,9 +41,12 @@ block, and read here.
 */
 
 use crate::fmt::{self, Buf};
+use crate::schema::spec;
 use crate::shape::{Curve, Stage};
-use crate::{rates, Instance, Source, TimeMode, DELAY_RANGE_PCT, STAGE_MAX_PCT};
+use crate::{rates, Instance};
+use core::ffi::CStr;
 use core::fmt::Write;
+use ni_params::host::{option_of, text};
 
 /// The automatable parameters, in the order the shell declares them so a host
 /// index IS an engine index.
@@ -100,26 +104,9 @@ impl Param {
         Param::ALL.into_iter().find(|p| p.key() == key)
     }
 
-    /// The wire key, which is also the `chain_params` key. One spelling.
+    /// The wire key, which is also the `chain_params` key: the schema's.
     pub fn key(self) -> &'static str {
-        use Param::*;
-        match self {
-            Source => "source",
-            Rate => "rate",
-            TimeMode => "time_mode",
-            Delay => "delay",
-            Attack => "attack",
-            Hold => "hold",
-            Release => "release",
-            Depth => "depth",
-            Curve => "curve",
-            Channel => "channel",
-            Note => "trigger_note",
-            MidiMode => "midi_mode",
-            VelSens => "vel_sens",
-            Threshold => "threshold",
-            Lockout => "lockout",
-        }
+        spec(self).key
     }
 }
 
@@ -185,20 +172,18 @@ impl Instance {
                 }
             }
             TimeMode => self.time_mode = crate::TimeMode::from_i32(v as i32),
-            Delay => self.delay_pct = v.clamp(-DELAY_RANGE_PCT, DELAY_RANGE_PCT),
-            Attack => self.attack_pct = v.clamp(0.0, STAGE_MAX_PCT),
-            Hold => self.hold_pct = v.clamp(0.0, STAGE_MAX_PCT),
-            Release => self.release_pct = v.clamp(0.0, STAGE_MAX_PCT),
-            Depth => self.depth = v.clamp(0.0, 1.0),
+            Delay => self.delay_pct = spec(p).clamp(v),
+            Attack => self.attack_pct = spec(p).clamp(v),
+            Hold => self.hold_pct = spec(p).clamp(v),
+            Release => self.release_pct = spec(p).clamp(v),
+            Depth => self.depth = spec(p).clamp(v),
             Curve => self.set_curve(crate::shape::Curve::from_i32(v as i32)),
-            Channel => self.midi.channel = (v as i32).clamp(0, 16),
-            Note => self.midi.note = (v as i32).clamp(0, 127),
+            Channel => self.midi.channel = spec(p).clamp(v) as i32,
+            Note => self.midi.note = spec(p).clamp(v) as i32,
             MidiMode => self.midi.gate = v as i32 != 0,
-            VelSens => self.midi.vel_sens = v.clamp(0.0, 1.0),
-            Threshold => {
-                self.threshold = db_to_amp(v.clamp(THRESHOLD_MIN_DB, THRESHOLD_MAX_DB))
-            }
-            Lockout => self.lockout_ms = v.clamp(0.0, LOCKOUT_MAX_MS),
+            VelSens => self.midi.vel_sens = spec(p).clamp(v),
+            Threshold => self.threshold = db_to_amp(spec(p).clamp(v)),
+            Lockout => self.lockout_ms = spec(p).clamp(v),
         }
     }
 
@@ -305,24 +290,16 @@ impl Instance {
         let Some(p) = Param::from_key(key) else {
             return false;
         };
-        /* The enums take a WORD or an index, because both arrive: the host
-         * sends an index, a saved state or a hand-written patch sends the
-         * label. `index_from` and `label_or_index` resolve either. Every
-         * parameter is named, so a new one cannot arrive without a rule for
-         * reading its text. */
+        /* The choices take a WORD -- the schema's -- or an index, because
+         * both arrive: the host sends an index, a saved state or a
+         * hand-written patch sends the label. `index_from` and
+         * `label_or_index` resolve either. Every parameter is named, so a new
+         * one cannot arrive without a rule for reading its text. */
         let v = match p {
-            Param::Source => label_or_index(&Source::LABELS, val),
-            Param::Rate => rates::index_from(val) as f64,
-            Param::TimeMode => label_or_index(&TimeMode::LABELS, val),
-            Param::Curve => label_or_index(&Curve::LABELS, val),
-            Param::MidiMode => label_or_index(&["Trigger", "Gate"], val),
-            Param::Channel => {
-                if val == "Omni" {
-                    0.0
-                } else {
-                    fmt::atoi(val) as f64
-                }
+            Param::Source | Param::TimeMode | Param::Curve | Param::MidiMode | Param::Channel => {
+                label_or_index(spec(p).host.options, val)
             }
+            Param::Rate => rates::index_from(val) as f64,
             Param::Note => {
                 crate::midi::note_from_name(val).map_or_else(|| fmt::atof(val), f64::from)
             }
@@ -479,8 +456,8 @@ impl Instance {
 
             /* The labels, so a shell never re-spells a table the engine owns. */
             "rate_label" => write!(b, "{}", rates::RATES[self.rate_idx].label),
-            "curve_label" => write!(b, "{}", Curve::LABELS[self.curve as usize]),
-            "source_label" => write!(b, "{}", Source::LABELS[self.source as usize]),
+            "curve_label" => write!(b, "{}", word(Param::Curve, self.curve as usize)),
+            "source_label" => write!(b, "{}", word(Param::Source, self.source as usize)),
 
             _ => match Param::from_key(key) {
                 Some(p) => write!(b, "{}", self.num(p)),
@@ -513,11 +490,13 @@ fn stage_index(s: Stage) -> i32 {
 
 /// The position of `val` among `labels`, or else `val` read as an index with
 /// `atoi`'s leniency -- so a word that is neither is 0, as the C read it.
-fn label_or_index(labels: &[&str], val: &str) -> f64 {
-    labels
-        .iter()
-        .position(|l| *l == val)
-        .map_or_else(|| fmt::atoi(val) as f64, |i| i as f64)
+fn label_or_index(labels: &[&CStr], val: &str) -> f64 {
+    option_of(labels, val).map_or_else(|| fmt::atoi(val) as f64, |i| i as f64)
+}
+
+/// Word `i` of choice `p`, as the schema spells it.
+fn word(p: Param, i: usize) -> &'static str {
+    text(spec(p).host.options[i])
 }
 
 #[cfg(test)]

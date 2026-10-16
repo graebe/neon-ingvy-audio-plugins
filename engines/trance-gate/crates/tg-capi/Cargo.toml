@@ -27,6 +27,8 @@ tg-core = { path = "../tg-core" }
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The host row the schema crosses the C ABI as (NiHostParam).
+ni-params = { path = "../../../shared/crates/ni-params" }
 
 # trance_gate_core.h and tg_shell.h, generated from src/ by build.rs.
 [build-dependencies]

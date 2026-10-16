@@ -65,7 +65,9 @@ product, as each product's rate list does.
 modules: what every product's shell would otherwise repeat. `ni::Processor`
 (`juce/Processor.h`) is the JUCE processor every product derives from, and
 `ni::PluginEditor` the window a host opens; `juce/Nist.h` is the state codec
-and `juce/ParamSpec.h` the parameter table. `ni/Wire.h` holds the buffer and
+and `juce/ParamSpec.h` the parameter table, read from an engine's schema by
+`juce/HostTable.h` or from an engine's `ni-params` table by
+`juce/EngineParameter.h`. `ni/Wire.h` holds the buffer and
 number helpers (the float round trip, the passthrough, locale-free numbers) and
 `ni/Scope.h` the capture a plot draws. None of it knows a product, and
 `cmake/NiJucePlugin.cmake` compiles it into every plugin.

@@ -38,6 +38,7 @@ in a session with the timeline parked.
 use ni_dsp::ffi::{cstr as s, CTransport};
 use sc_core::params::{Param, PARAM_COUNT};
 use sc_core::rates::{RATES, RATE_DEFAULT};
+use sc_core::schema::PARAMS;
 use sc_core::{Instance, MAX_BLOCK};
 use std::os::raw::{c_char, c_int};
 
@@ -524,6 +525,35 @@ pub unsafe extern "C" fn sc_core_get_param(
     }
     let out = std::slice::from_raw_parts_mut(buf as *mut u8, buf_len as usize);
     c.0.get_param(s(key), out)
+}
+
+/* ------------------------------------------------------- the host table */
+
+pub use ni_params::host::NiHostParam;
+
+/// Host parameter `index` as the engine's schema declares it
+/// (`sc_core::schema`), into `out`: the row a plugin builds its host
+/// parameter from, in the HOST's plain values -- Depth and Vel percentages,
+/// as the iPlug2 build reported them. Rate's and Trigger's words are not
+/// here: they are `sc_core_rate_label`'s and the shell's note names. False
+/// past the end or for a null `out`. Any thread.
+///
+/// # Safety
+/// `out` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn sc_core_param_spec(index: c_int, out: *mut NiHostParam) -> bool {
+    ni_params::host::c_host_param(row(index).map(|s| (&s.host, s.min, s.max, s.default)), out)
+}
+
+/// Word `option` of host parameter `index` (a choice's), or null when it has
+/// none. The engine's, for as long as the program runs.
+#[no_mangle]
+pub extern "C" fn sc_core_param_option(index: c_int, option: c_int) -> *const c_char {
+    ni_params::host::c_host_option(row(index).map(|s| &s.host), option)
+}
+
+fn row(index: c_int) -> Option<&'static sc_core::schema::Spec> {
+    usize::try_from(index).ok().and_then(|i| PARAMS.get(i))
 }
 
 /* -------------------------------------------------- audio-thread reads */

@@ -13,7 +13,12 @@ fn main() {
     capi_header::generate(&[
         Header {
             name: "trance_gate_core.h",
-            sources: &["src/engine.rs", "../../../shared/crates/ni-dsp/src/ffi.rs"],
+            /* NiHostParam, the schema's host row, is ni-params'. */
+            sources: &[
+                "src/engine.rs",
+                "../../../shared/crates/ni-dsp/src/ffi.rs",
+                "../../../shared/crates/ni-params/src/host.rs",
+            ],
         },
         Header {
             name: "tg_shell.h",

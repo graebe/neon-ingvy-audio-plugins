@@ -41,6 +41,7 @@ pub use ni_dsp::fmt;
 pub mod midi;
 pub mod params;
 pub mod rates;
+pub mod schema;
 pub mod shape;
 pub mod single;
 
@@ -50,6 +51,8 @@ mod tests;
 use follower::Follower;
 use ni_dsp::phase::{Edge, PhaseTracker};
 use midi::{Action, Midi, Queue};
+use params::Param;
+use schema::spec;
 use shape::{Curve, Env, Stage, Stages};
 
 /// The longest block the key buffer can hold.
@@ -98,7 +101,6 @@ impl Source {
             _ => Source::Cycle,
         }
     }
-    pub const LABELS: [&'static str; 3] = ["Cycle", "MIDI", "Sidechain"];
 }
 
 /// How the envelope's times are SHOWN. The engine does not consult it; it is
@@ -118,7 +120,6 @@ impl TimeMode {
             TimeMode::Pct
         }
     }
-    pub const LABELS: [&'static str; 2] = ["ms", "% of cycle"];
 }
 
 pub use ni_dsp::Transport;
@@ -222,17 +223,18 @@ impl Instance {
             source: Source::Cycle,
             rate_idx: rates::RATE_DEFAULT,
             time_mode: TimeMode::Ms,
-            delay_pct: 0.0,
-            attack_pct: 2.0,
-            hold_pct: 8.0,
-            release_pct: 35.0,
-            depth: 1.0,
-            depth_s: 1.0,
+            /* The numbers start where the schema says; the choices' defaults
+             * are their types' (a test holds both to the schema). */
+            delay_pct: spec(Param::Delay).default,
+            attack_pct: spec(Param::Attack).default,
+            hold_pct: spec(Param::Hold).default,
+            release_pct: spec(Param::Release).default,
+            depth: spec(Param::Depth).default,
+            depth_s: spec(Param::Depth).default,
             curve: Curve::Exp,
             midi: Midi::default(),
-            /* -24 dBFS in linear amplitude. */
-            threshold: 0.063_095_734_448_019_33,
-            lockout_ms: 20.0,
+            threshold: params::db_to_amp(spec(Param::Threshold).default),
+            lockout_ms: spec(Param::Lockout).default,
             env: Env::default(),
             stages: Stages::default(),
             follower: Follower::new(sr),

@@ -142,8 +142,10 @@ otherwise answer on its own:
   and call `writeState` and `readState`. A product that took over an earlier
   bundle reads and writes that bundle's chunk through `ni::nist` (`Nist.h`),
   one codec for every product's layout; its parameters are a table
-  (`ParamSpec.h`) built into `ni::Parameter`s that hold plain values exactly, so
-  a fixture loaded and saved again is the same bytes.
+  (`ParamSpec.h`), read from the engine's schema (`HostTable.h`, the iPlug2
+  build's host column as `ni_params::host` declares it) and built into
+  `ni::Parameter`s that hold plain values exactly, so a fixture loaded and
+  saved again is the same bytes.
 - **Dirty.** `nonParameterStateChanged()` tells the host that state it cannot
   see changed — an import, a pasted pattern — so the set is marked unsaved.
 
