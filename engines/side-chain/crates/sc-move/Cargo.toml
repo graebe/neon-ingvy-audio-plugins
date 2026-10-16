@@ -22,6 +22,12 @@ sc-capi = { path = "../sc-capi", default-features = false }
 # The Schwung audio_fx v2 glue, shared with every module.
 ni-schwung = { path = "../../../shared/crates/ni-schwung" }
 
+[build-dependencies]
+# build.rs writes `chain_params` from sc-core's schema, so the knob grid's
+# ranges, defaults and options are the engine's own (src/params.rs).
+sc-core = { path = "../sc-core" }
+ni-params = { path = "../../../shared/crates/ni-params" }
+
 [dev-dependencies]
 # The chain_params tests read the declaration as JSON (src/params.rs): the
 # parser tg-core already links, with tg-core's features, so a test build adds

@@ -17,11 +17,14 @@ read and changes nothing.
 THE VOWEL IS A NUMBER HERE: 0 A, 1 E, 2 I, 3 O, 4 U, and the way between --
 a float knob, so a turn sweeps through the vowels as the plugin's does.
 
-THE TESTS BELOW hold this string to the engine: every key is one the engine
-answers to, every range and default the engine's own.
+WRITTEN BY build.rs FROM THE ENGINE'S TABLE (vz_core::Param::info, through
+ni_params::chain), so every range, default and unit is the engine's; build.rs
+says only the order and each knob's step. THE TESTS BELOW still hold the
+result to the engine: every key is one the engine answers to, every range
+and default the engine's own.
 */
 
-pub const CHAIN_PARAMS: &str = r##"[{"key":"vocal","name":"Vocal","type":"float","min":0,"max":100,"default":80,"step":1,"unit":"%"},{"key":"vowel","name":"Vowel","type":"float","min":0,"max":4,"default":0,"step":0.01,"unit":""},{"key":"size","name":"Size","type":"float","min":-100,"max":100,"default":0,"step":1,"unit":"%"},{"key":"resonance","name":"Resonance","type":"float","min":0,"max":100,"default":50,"step":1,"unit":"%"},{"key":"excite","name":"Excite","type":"float","min":0,"max":100,"default":0,"step":1,"unit":"%"},{"key":"mix","name":"Mix","type":"float","min":0,"max":100,"default":100,"step":1,"unit":"%"},{"key":"output","name":"Output","type":"float","min":-24,"max":24,"default":0,"step":0.5,"unit":"dB"}]"##;
+pub const CHAIN_PARAMS: &str = include_str!(concat!(env!("OUT_DIR"), "/chain_params.json"));
 
 #[cfg(test)]
 mod tests {

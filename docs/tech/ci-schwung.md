@@ -69,7 +69,10 @@ rather than test the wrong architecture:
   crates.io crate `cargo tree` says the `.so` links.
 - **The module's crates** (`MODULE_TEST_CRATES` in `module.env`: the core and
   the vtable crate) under `cargo test`: the `chain_params` contract — every
-  engine parameter declared, or deliberately absent and named as such — the
+  engine parameter declared, or deliberately absent and named as such; each
+  module's `build.rs` writes it from the engine's own table
+  (`ni_params::chain`, Trance Gate's from its schema), so only the grid's
+  order, names and steps and the Move's deliberate differences are its own — the
   host panic, CC 120 or CC 123, which resets the Side-Chain and which the
   Trance Gate accepts without changing a sample, and the render A/B (below).
 - **The module's test script** (`MODULE_TEST_SCRIPT`), the Trance Gate's

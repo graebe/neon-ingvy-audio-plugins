@@ -24,6 +24,7 @@ It knows no product, and allocates nothing: a table is read on any thread.
 build declared it to hosts, which their saved sets still hold.
 */
 
+pub mod chain;
 pub mod host;
 
 use core::fmt::{self, Write};

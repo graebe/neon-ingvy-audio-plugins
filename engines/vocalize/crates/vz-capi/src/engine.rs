@@ -28,13 +28,19 @@ pub struct VzCore {
     /// Samples processed, wrapping: what says a picture is new.
     pub(crate) serial: u32,
     /// Whether a window shows the picture: the envelopes are worked out only
-    /// then (shell.rs).
+    /// then (shell.rs). The shell's alone, so a build without it has none.
+    #[cfg(feature = "shell")]
     pub(crate) watching: bool,
 }
 
 impl VzCore {
     pub fn new(sample_rate: f64) -> VzCore {
-        VzCore { engine: Engine::new(sample_rate), serial: 0, watching: false }
+        VzCore {
+            engine: Engine::new(sample_rate),
+            serial: 0,
+            #[cfg(feature = "shell")]
+            watching: false,
+        }
     }
 
     pub fn engine(&self) -> &Engine {

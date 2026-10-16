@@ -22,30 +22,26 @@ block starts from silence.
 extern crate fd_capi as _fd_capi;
 
 use core::fmt::Write;
-use fd_core::{Engine, Field, Param};
+use fd_core::{Engine, Param};
 use ni_dsp::fmt::Buf;
 use ni_dsp::Transport;
 use ni_schwung::Module;
 use std::ffi::c_int;
 
 mod params;
+mod setup;
 
 /// The filter designer, as a Schwung module.
 pub struct FilterDesigner(Engine);
 
 impl FilterDesigner {
-    /// The module's own starting point: the cuts in their slots, the
-    /// isolator on. Each value is one `chain_params` declares as its default.
+    /// The module's own starting point (setup.rs): the cuts in their
+    /// slots, the isolator on -- what `chain_params` declares as those
+    /// knobs' defaults.
     fn set_up(e: &mut Engine) {
-        e.set_num(Param::Node(0, Field::Type), 4.0); // High-Pass
-        e.set_num(Param::Node(0, Field::On), 0.0);
-        e.set_num(Param::Node(0, Field::Freq), 30.0);
-        e.set_num(Param::Node(0, Field::Order), 3.0);
-        e.set_num(Param::Node(1, Field::Type), 5.0); // Low-Pass
-        e.set_num(Param::Node(1, Field::On), 0.0);
-        e.set_num(Param::Node(1, Field::Freq), 16_000.0);
-        e.set_num(Param::Node(1, Field::Order), 3.0);
-        e.set_num(Param::IsoOn, 1.0);
+        for (p, v) in setup::SET_UP {
+            e.set_num(p, v);
+        }
         e.reset();
     }
 }

@@ -25,18 +25,20 @@ as 12000 Hz (`Param::parse_value`), and the module reads the value back in the
 same words (lib.rs), so the knob grid shows what it wrote. 48k is the Move's
 own rate and above: no hold at all.
 
-THE TESTS BELOW hold this string to the engine: every key is one the engine
-answers to, every range and default inside the engine's own, and every Rate
-option is a rate the engine reads.
+WRITTEN BY build.rs FROM THE ENGINE'S TABLE (bc_core::Param::info, through
+ni_params::chain), so every range, default, label and unit is the engine's;
+build.rs says only the grid's order, each knob's step, and the two step
+lists (steps.rs). THE TESTS BELOW still hold the result to the engine: every
+key is one the engine answers to, every range and default the engine's own,
+and every Rate option a rate the engine reads.
 */
 
-pub const CHAIN_PARAMS: &str = r##"[{"key":"bits","name":"Bits","type":"float","min":1,"max":16,"default":8,"step":0.1,"unit":"bits"},{"key":"rate","name":"Rate","type":"enum","options":["250","500","1k","2k","4k","6k","8k","12k","16k","24k","32k","48k"],"wire_format":"name","default":"12k"},{"key":"drive","name":"Drive","type":"float","min":-24,"max":24,"default":0,"step":0.5,"unit":"dB"},{"key":"shape","name":"Shape","type":"float","min":0,"max":100,"default":0,"step":1,"unit":"%"},{"key":"jitter","name":"Jitter","type":"float","min":0,"max":100,"default":0,"step":1,"unit":"%"},{"key":"dither","name":"Dither","type":"float","min":0,"max":100,"default":0,"step":1,"unit":"%"},{"key":"mix","name":"Mix","type":"float","min":0,"max":100,"default":100,"step":1,"unit":"%"},{"key":"output","name":"Output","type":"float","min":-24,"max":24,"default":0,"step":0.5,"unit":"dB"},{"key":"filter","name":"Filter","type":"enum","options":["Off","On"],"wire_format":"index","default":"0"},{"key":"cutoff","name":"Cutoff","type":"enum","options":["100","200","300","500","800","1.2k","2k","3k","5k","8k","12k","20k"],"wire_format":"name","default":"2k"},{"key":"peak","name":"Peak","type":"float","min":0,"max":24,"default":0,"step":0.5,"unit":"dB"},{"key":"slope","name":"Slope","type":"enum","options":["12 dB","24 dB","48 dB"],"wire_format":"name","default":"24 dB"}]"##;
+pub const CHAIN_PARAMS: &str = include_str!(concat!(env!("OUT_DIR"), "/chain_params.json"));
 
-/// The Cutoff options' labels, in order -- what `chain_params` declares.
-pub const CUTOFF_LABELS: [&str; 12] = ["100", "200", "300", "500", "800", "1.2k", "2k", "3k", "5k", "8k", "12k", "20k"];
+pub use steps::{CUTOFF_LABELS, RATE_LABELS};
 
-/// The Rate options' labels, in order -- what `chain_params` declares.
-pub const RATE_LABELS: [&str; 12] = ["250", "500", "1k", "2k", "4k", "6k", "8k", "12k", "16k", "24k", "32k", "48k"];
+#[path = "steps.rs"]
+mod steps;
 
 #[cfg(test)]
 mod tests {
