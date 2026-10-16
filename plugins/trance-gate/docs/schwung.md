@@ -171,7 +171,8 @@ Open the Web Manager on your Move — `http://move.local:7700` — go to
 graebe/neon-ingvy-audio-plugins
 ```
 
-It installs to `modules/audio_fx/trance-gate/` and is added to a chain slot as
+It installs to `/data/UserData/schwung/modules/audio_fx/trance-gate/` on the
+Move and is added to a chain slot as
 an Audio FX. **Nothing else is required** — it runs on released Schwung,
 **1.5.0 or newer**:
 

@@ -5,7 +5,7 @@ slug: native-ui
 ---
 
 The editors are native JUCE 9 Components, built to the published
-Ultraviolet 1.1.0 system (`design/scheme/project`). Nothing an editor does
+Ultraviolet system (`design/scheme/project`; `UvTokens.h` names its release). Nothing an editor does
 depends on a display refresh: every clock in it is a timer.
 
 ## Where things are

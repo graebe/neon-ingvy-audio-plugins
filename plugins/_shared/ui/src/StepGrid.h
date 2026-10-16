@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * A row of sequencer steps that wraps: the StepGrid card of Ultraviolet 1.1.0,
+ * A row of sequencer steps that wraps: the StepGrid card of Ultraviolet,
  * and the Trance Gate web editor's StepGrid.jsx.
  *
  * SIXTEEN Steps A ROW, 40px each, space-2 (8px) apart -- 760px, which is why

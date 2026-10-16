@@ -16,8 +16,8 @@ is ever asked, so a snapshot renders the same text on every machine of an OS.
 (SHA-256 `6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf`),
 `fonts/ttf/` and `OFL.txt`, unmodified. Each font's `name` table says
 "Version 2.304; ttfautohint (v1.8.4.7-5d5b)". They are byte for byte the
-files the JUCE editor shipped until September 2026 (commit 7711ba2,
-`plugins/trance-gate/Resources/`).
+files the JUCE editor shipped until September 2026 (commit 7711ba2, then
+under plugins/trance-gate/Resources/).
 
 Not subset, unlike the documentation site's WOFF copies (`site/src/uv/fonts`,
 made from these by `site/scripts/subset-fonts.sh`): a user-typed name

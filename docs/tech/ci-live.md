@@ -20,7 +20,7 @@ only publish. The presets in `CMakePresets.json` are the builds:
 ```sh
 git submodule update --init --recursive   # JUCE 9. The engines are subtrees.
 cmake --preset release                    # universal, LTO: what ships (build/)
-cmake --build build                       # the five VST3s, into build/out
+cmake --build build                       # every VST3, into build/out
 scripts/test.sh quick                     # the developer loop (build-dev/)
 scripts/test.sh full                      # everything, the validators included
 scripts/test.sh product side-chain        # one product, as its release runs it

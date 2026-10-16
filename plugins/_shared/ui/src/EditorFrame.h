@@ -3,7 +3,7 @@
 
 /*
  * The window every editor is drawn in -- the web kit's EditorFrame.jsx, and
- * what Ultraviolet 1.1.0 gives every plugin window, so that no editor lays it
+ * what Ultraviolet gives every plugin window, so that no editor lays it
  * out itself.
  *
  * THE WINDOW, FROM THE BACK:

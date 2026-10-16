@@ -10,7 +10,7 @@ Four layers, and each one exists because the layer above it cannot do the job.
 Rust core        the DSP, on the shared ni-dsp and established crates
   ├── C ABI      extern "C", for the plugin
   └── Schwung    the audio_fx vtable (ni-schwung), for the Move
-C++ shell        JUCE 9 — the VST3 for macOS, Windows and Linux, and the host plumbing
+C++ shell        JUCE 9 — the VST3 (released for macOS; Linux and Windows later), and the host plumbing
 Native editor    JUCE Components, drawing the Ultraviolet design system
 ```
 
@@ -73,9 +73,9 @@ exercises the analyzer's boundary specifically: argument order, the meaning of
 outside this repository, the archived Max for Live external, so their last
 hand-written versions are fixtures (`tests/fixtures/tg-capi`) that
 `capi_compat_tg` and `capi_compat_tg_names` hold the generated ones to,
-declaration for declaration. Only C++ with no Rust behind it stays hand-written:
-`engines/shell/include`'s state header and denormal guard, and Schwung's own
-headers vendored for the Move-side tests.
+declaration for declaration. Only C++ with no Rust behind it stays
+hand-written: the shell (`plugins/_shared`), and Schwung's own headers vendored
+for the Move-side tests.
 
 ## The JUCE shell
 
@@ -261,13 +261,15 @@ writes the load. The receiver's
 own C ABI serialises its message side as a floor beneath this, so a caller that
 gets it wrong waits its turn instead of deadlocking (`spectro_recv.h`).
 
-Every plugin's state chunk starts with `shell_state.h`'s versioned header. A
-chunk without it is an older build's and loads as that build wrote it. A chunk
-is read whole before any of it is applied, and one no build could have written
--- empty, a parameter that is not a number of its kind, a string running off
-the end -- is refused and changes nothing. The chunk is `ni::nist`
-(`plugins/_shared/juce/Nist.h`), and the processor tests save and reload it the
-way a host does.
+A plugin's state chunk is one of two codecs. The four products that took over
+an iPlug2 bundle (Trance Gate, Side-Chain, Spectrogram, Listen-In) keep its
+`NIst` chunk (`ni::nist`, `plugins/_shared/juce/Nist.h`), so a set saved by any
+earlier build loads; the others write the shell's own XML
+(`ni::Processor::writeState`), each parameter by its ID. Either way a chunk is
+read whole before any of it is applied, and one no build could have written
+-- empty, another product's, a parameter that is not a number of its kind, a
+string running off the end -- is refused and changes nothing. The processor
+tests save and reload it the way a host does.
 
 `ni::Processor::processBlock` runs a product's block under
 `juce::ScopedNoDenormals`: flush-to-zero for the block, the engines included,
@@ -276,7 +278,8 @@ and the host's floating-point mode back on the way out.
 ## The editor
 
 Every editor is a native JUCE Component built from the Ultraviolet kit
-(`plugins/_shared/ui`), drawn to the published Ultraviolet 1.1.0 design system.
+(`plugins/_shared/ui`), drawn to the published Ultraviolet design system (`UvTokens.h` names
+the release it was generated from).
 An editor reads the processor through its model on the message thread and
 never touches the engine; its parameters are host parameters, and what is not a
 parameter — the Trance Gate's pattern, the Spectrogram's columns — travels

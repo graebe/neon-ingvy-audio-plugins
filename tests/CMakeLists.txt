@@ -215,6 +215,12 @@ if (TG_NODE)
              COMMAND ${TG_NODE} --test
                      ${CMAKE_SOURCE_DIR}/tests/design_paths.test.mjs)
 
+    # Every repository path the documentation names exists: the docs are
+    # the site and every agent's contract, and prose does not fail a build.
+    add_test(NAME doc_paths
+             COMMAND ${TG_NODE} --test
+                     ${CMAKE_SOURCE_DIR}/tests/doc_paths.test.mjs)
+
     # The product matrix: each README's hosts and notOnMove against the
     # modules the tree builds and the ones release.json offers.
     add_test(NAME product_matrix
@@ -935,7 +941,7 @@ ni_test_tiers(
             abus_roundtrip shell_handoff
             # lint-like checks over the tree
             versions release licenses licenses_resolve spdx site_tokens
-            design_paths product_matrix timing toolchain test_summary
+            design_paths doc_paths product_matrix timing toolchain test_summary
             # the Move web editors' kit
             web_kit
             # the JUCE shell's state codec, over every product's fixtures

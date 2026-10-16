@@ -20,7 +20,7 @@ retired.
 | 2 | Parameters, rates and readout fields are only ever appended | The index is the C ABI, the automation ID and a saved value | comments at `tg-core/src/params.rs` and `rates.rs`; `schema::tests::the_table_is_in_abi_order` |
 | 3 | The plugin's VST3 class ID is the iPlug2 build's | Old Live sets find the plugin | `IPLUG2_CLASS` in `plugins/trance-gate/CMakeLists.txt`; `tests/tg_host.cpp` |
 | 4 | Every layout of the `NIst` chunk loads (15, 14 and 12 parameters, headerless and versioned) | Projects saved by every released build | `tests/nist_fixtures.cpp`, `tests/tg_processor.cpp` |
-| 5 | State blobs from v0 to v7 load, and a newer one is read best-effort | Projects and Move presets from every build | `tg-core/tests/fixtures.rs` (about 50 blobs), `tests/state_round_trip.rs` |
+| 5 | State blobs from v0 to v7 load, and a newer one is read best-effort | Projects and Move presets from every build | `engines/trance-gate/crates/tg-core/tests/fixtures.rs` (about 50 blobs), `engines/trance-gate/crates/tg-core/src/state/tests.rs` |
 | 6 | A v7 blob is written byte for byte as v7 writes it | Older builds and the Move read it | `tg-core/tests/fixtures.rs` |
 | 7 | Slot and bank files, format version 1 | Files users saved | `tg-core/src/slotfile/tests.rs` |
 | 8 | Every clipboard form ever written pastes (slot, bank, whole patch, pre-v2026.10.06.2 copy) | Text users keep in notes | `tg-core/src/paste/tests.rs` |

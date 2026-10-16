@@ -4,7 +4,7 @@
 /*
  * The plot primitives: the well a plot is drawn in, a millisecond ruler, the
  * min/max band a waveform is drawn with, and the marks the PlotWell card of
- * Ultraviolet 1.1.0 allows inside a well -- the web kit's Plot.jsx, natively.
+ * Ultraviolet allows inside a well -- the web kit's Plot.jsx, natively.
  *
  * THE WELL. A bg-000 box on a line-100 hairline, its content inset 6px all
  * round, with a caption in the hint style, uppercase, ink-muted, top left in a

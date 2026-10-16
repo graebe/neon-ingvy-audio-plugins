@@ -3,7 +3,7 @@
 
 /*
  * The default control for a continuous parameter: the Knob card of
- * Ultraviolet 1.1.0, and the web kit's Knob.jsx.
+ * Ultraviolet, and the web kit's Knob.jsx.
  *
  * THE CARD, top to bottom, space-2 apart: the `label` (11px capitals, tracked,
  * ink-muted) centred over the dial; the 48px dial; the Readout under it, as

@@ -278,7 +278,7 @@ over that one bundle. No coverage, no site, no other product's tests.
 
 **This is what a release runs** (`release-plugins.yml`, [Build & CI](ci-live.md)):
 a failing test of another product cannot hold a product's release, and a tag
-builds one bundle rather than all five. A shared test still holds every release, as it
+builds one bundle rather than every one. A shared test still holds every release, as it
 should: what it checks ships in all of them.
 
 **It is not the gate.** A change to shared code is verified by the full tier,

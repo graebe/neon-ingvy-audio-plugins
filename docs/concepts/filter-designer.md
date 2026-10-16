@@ -300,7 +300,7 @@ the state is zero.
 | stability | proptest across type, family, order, Freq, Q, Ripple and Stopband extremes and sample rates: every g and k finite and positive, the output bounded; a 10 ms sweep of 20 Hz → 20 kHz at Q 40 |
 | clicks | Type, Family or Order flipped every 50 ms under a −6 dBFS sine: nothing above 10 kHz past −60 dBFS; no step from a +24 dB gain jump |
 | invariance | an empty instance bit-exact; output bit-identical at block sizes 1, 7, 64, 8192 and random ones; a 1 kHz Bell within 0.01 dB from 44.1 to 384 kHz |
-| real time | `tests/no_alloc.rs` around process, every setter, discrete switches, reset and a watched publish |
+| real time | `engines/filter-designer/crates/fd-core/tests/no_alloc.rs` around process, every setter, discrete switches, reset and a watched publish |
 | shells | C ABI test through the generated header; JUCE processor round trip, host golden render, editor snapshots; Move render A/B within one 16-bit step and the panic test |
 
 Coverage stays above the 80 % floor, which applies to new units automatically.
@@ -319,14 +319,13 @@ Each one starts on its own go-ahead.
 | M2 | `fd-core` and `fd-capi`: the chain, isolator, parameters, smoothing, crossfades, the picture |
 | M3 | `plugins/filter-designer` (`NIFilterDesigner`, "NI Filter Designer", code `FlDs`, `Fx EQ`), the kit's ResponseWell and NodeCell, Ultraviolet promotion |
 | M4 | `fd-move` and `modules/filter-designer` |
-| M5 | the tutorial docs (`docs/live.md`, `docs/schwung.md`), README, CHANGELOG, the site |
+| M5 | the tutorial docs (`plugins/filter-designer/docs/live.md`, `plugins/filter-designer/docs/schwung.md`), README, CHANGELOG, the site |
 
 M1 to M3 also touch the repository-wide lists a product joins:
 
 - `NI_PRODUCTS` and `ni_add_rust_engine` in the root `CMakeLists.txt`
 - `tests/CMakeLists.txt`
 - `versions.json` and `tests/versions.test.mjs`
-- `tests/ground_shells.test.mjs`
 - the release workflows' tag lists
 - `THIRD_PARTY_LICENSES.md`
 
