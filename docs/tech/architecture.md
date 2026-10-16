@@ -264,8 +264,16 @@ A plugin's state chunk is one of two codecs. The four products that took over
 an iPlug2 bundle (Trance Gate, Side-Chain, Spectrogram, Listen-In) keep its
 `NIst` chunk (`ni::nist`, `plugins/_shared/juce/Nist.h`), so a set saved by any
 earlier build loads; the others write the shell's own XML
-(`ni::Processor::writeState`), each parameter by its ID. Either way a chunk is
-read whole before any of it is applied, and one no build could have written
+(`ni::Processor::writeState`), each parameter by its ID. Each product's chunk
+carries the product's own state version, raised when the meaning of what it
+saves changes: the `NIst` header's (`Layout::version`), which an older build
+reads past best-effort, as these products have always promised; or the XML's
+`state` attribute (`stateVersion()`), where a newer chunk is refused and an
+older one is brought up by `migrateState()`. A parameter the chunk does not
+name loads its default. Each XML product keeps the chunk it saved at every
+released version as a fixture (`tests/fixtures/<product>/v<N>.state`, through
+`tests/state_fixture.h`). Either way a chunk is read whole before any of it is
+applied, and one no build could have written
 -- empty, another product's, a parameter that is not a number of its kind, a
 string running off the end -- is refused and changes nothing. The processor
 tests save and reload it the way a host does.

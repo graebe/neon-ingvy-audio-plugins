@@ -220,6 +220,7 @@ void Processor::writeState (juce::MemoryBlock& out)
     juce::XmlElement root (stateTag);
     root.setAttribute ("product", NI_PRODUCT);
     root.setAttribute ("format", stateFormat);
+    root.setAttribute ("state", stateVersion());
     root.setAttribute ("version", NI_VERSION_STRING);
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
@@ -242,11 +243,24 @@ bool Processor::readState (const void* data, size_t size)
         || root->getIntAttribute ("format") > stateFormat)
         return false;
 
-    for (auto* e : root->getChildWithTagNameIterator ("param"))
-        if (auto* p = parameterWithId (e->getStringAttribute ("id")))
+    const int version = root->getIntAttribute ("state", 1);
+    if (version > stateVersion() || (version < stateVersion() && ! migrateState (*root, version)))
+        return false;
+
+    /* Every parameter takes the chunk's value, or its default when the chunk
+     * has none -- a parameter appended since -- so a set loads to the same
+     * sound whatever the instance held before. */
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
         {
-            const auto plain = (float) e->getDoubleAttribute ("value", p->convertFrom0to1 (p->getDefaultValue()));
-            p->setValueNotifyingHost (p->convertTo0to1 (plain));
+            float normalised = ranged->getDefaultValue();
+            for (auto* e : root->getChildWithTagNameIterator ("param"))
+                if (e->getStringAttribute ("id") == ranged->getParameterID())
+                {
+                    normalised = ranged->convertTo0to1 ((float) e->getDoubleAttribute ("value"));
+                    break;
+                }
+            ranged->setValueNotifyingHost (normalised);
         }
     readExtraState (*root);
     return true;

@@ -158,6 +158,19 @@ protected:
     virtual void writeExtraState (juce::XmlElement&) {}
     virtual void readExtraState (const juce::XmlElement&) {}
 
+    /* THE PRODUCT'S OWN STATE VERSION, written beside the codec's `format`:
+     * raised when the meaning of what the product saves changes -- a range
+     * reinterpreted, an extra element restructured -- never for a parameter
+     * appended (that reads as its default). A state saved before versions
+     * were written reads as 1. A newer one is refused. */
+    virtual int stateVersion() const { return 1; }
+
+    /* An older state brought up to stateVersion(), in place, before any of it
+     * is applied: `from` is the version it was written at. False refuses it,
+     * which changes nothing; the default refuses, so a product that raises
+     * its version says how its older sets read. */
+    virtual bool migrateState (juce::XmlElement&, int /* from */) { return false; }
+
     /* The host's parameters by their IDs: what the default state carries. */
     juce::RangedAudioParameter* parameterWithId (const juce::String& id) const;
 

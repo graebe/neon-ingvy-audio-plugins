@@ -25,6 +25,8 @@
 #include "Editor.h"
 #include "FilterDesigner.h"
 
+#include "state_fixture.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <cmath>
@@ -335,4 +337,18 @@ int main (int argc, char** argv)
     doctest::Context context;
     context.applyCommandLine (argc, argv);
     return context.run();
+}
+
+TEST_CASE ("the state saved at version 1 loads; a newer one is refused; a missing value is its default")
+{
+    ni::test::checkStateFixture (
+        [] {
+            auto p = std::make_unique<Processor>();
+            p->prepareToPlay (48000.0, 512);
+            return std::unique_ptr<juce::AudioProcessor> (std::move (p));
+        },
+        juce::File (NI_FIXTURES).getChildFile ("filter-designer/v1.state"),
+        { { "output", -3.5 }, { "iso_on", 1.0 }, { "iso_freq_lo", 180.0 }, { "n01_type", 1.0 }, { "n01_freq", 1000.0 },
+          { "n01_gain", 6.0 }, { "n01_q", 2.0 }, { "n02_type", 5.0 }, { "n02_family", 4.0 }, { "n02_order", 3.0 },
+          { "matched_cuts", 1.0 } });
 }

@@ -17,6 +17,9 @@ target_sources(cd_processor PRIVATE cd_processor.cpp ${_ni_shell_sources} ${NI_C
 target_include_directories(cd_processor PRIVATE
     ${NI_CD} ${NI_JUCE_SHELL} ${CMAKE_SOURCE_DIR}/plugins/_shared)
 target_include_directories(cd_processor SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/external/doctest)
+# Its frozen saved states (tests/state_fixture.h).
+target_include_directories(cd_processor PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_compile_definitions(cd_processor PRIVATE "NI_FIXTURES=\"${CMAKE_SOURCE_DIR}/tests/fixtures\"")
 target_compile_definitions(cd_processor PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_USE_WEBP=0
     "JucePlugin_Name=\"NI Chord-Detector\"" JucePlugin_WantsMidiInput=1

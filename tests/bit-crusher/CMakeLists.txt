@@ -24,6 +24,9 @@ juce_add_console_app(bc_processor PRODUCT_NAME bc_processor)
 target_sources(bc_processor PRIVATE bc_processor.cpp ${_ni_shell_sources} ${NI_BC}/BitCrusher.cpp)
 target_include_directories(bc_processor PRIVATE ${NI_BC} ${NI_JUCE_SHELL} ${CMAKE_SOURCE_DIR}/plugins/_shared)
 target_include_directories(bc_processor SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/external/doctest)
+# Its frozen saved states (tests/state_fixture.h).
+target_include_directories(bc_processor PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_compile_definitions(bc_processor PRIVATE "NI_FIXTURES=\"${CMAKE_SOURCE_DIR}/tests/fixtures\"")
 target_compile_definitions(bc_processor PRIVATE ${_bc_definitions}
     JUCE_MODAL_LOOPS_PERMITTED=1 "NI_VERSION_STRING=\"bc_processor\"")
 target_link_libraries(bc_processor PRIVATE
