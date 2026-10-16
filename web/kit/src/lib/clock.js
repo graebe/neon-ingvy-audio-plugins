@@ -38,7 +38,7 @@ export function positionAt(a, now) {
 }
 
 /**
- * `set(pos, perMs, moving, devMs)` re-anchors; `position()` is reactive and
+ * `set(pos, perMs, moving, devMs, period)` re-anchors; `position()` is reactive and
  * ticks every TICK_MS while moving; `running()` says whether the tick is armed.
  * `every`, `cancel` and `now` are injectable for tests.
  *
@@ -48,6 +48,8 @@ export function positionAt(a, now) {
  * how late a readout arrived no longer moves the playhead. `snap` is the
  * difference, in the position's own unit, that is a jump to draw at once.
  * Without it the position is carried from the readout's arrival, as before.
+ * `period` is what the position wraps at, if it does: a readout from after a
+ * wrap is then no jump.
  */
 export function createClock({
   every = (f, ms) => globalThis.setInterval(f, ms),
@@ -69,13 +71,14 @@ export function createClock({
   };
 
   const playhead = createPlayhead({ snapBeats: snap });
-  const set = (pos, perMs, moving, devMs) => {
+  const set = (pos, perMs, moving, devMs, period) => {
     const live = !!moving && perMs > 0;
     const at = now();
     const stamped = Number.isFinite(devMs);
     if (stamped) {
       playhead.anchor({ beats: pos, t: devMs, perBeatMs: perMs > 0 ? 1 / perMs : 0,
-                        running: live, paused: false, blocked: false, waitAt: null }, at);
+                        running: live, paused: false, blocked: false, waitAt: null,
+                        period: period > 0 ? period : 0 }, at);
     }
     setAnchor({ pos, perMs, moving: live, at, stamped });
     if (live && !id) id = every(onTick, TICK_MS);
