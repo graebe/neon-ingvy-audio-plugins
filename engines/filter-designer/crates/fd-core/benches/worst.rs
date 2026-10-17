@@ -2,8 +2,9 @@
 // Copyright (C) 2026 Torben Gräber
 
 //! What the audio thread pays at its worst: a prototype of each family at
-//! order 8, and a 64-sample block right after a preset turns all sixteen
-//! nodes into order-8 elliptic low-pass filters at once.
+//! order 8, a 64-sample block right after a preset turns all sixteen nodes
+//! into order-8 elliptic low-pass filters at once, and the glides that
+//! design every tick (Ripple, high shelves, matched elliptic cuts).
 //!
 //! The budget is a tenth of the block's real time: 133 µs for 64 samples at
 //! 48 kHz.
@@ -84,6 +85,34 @@ fn block_while_16_high_shelves_glide(bencher: divan::Bencher) {
         up = !up;
         for slot in 0..NODES as u8 {
             e.set_num(Param::Node(slot, Field::Freq), if up { 16_000.0 } else { 9_000.0 });
+        }
+        e.process_f32(&mut l, Some(&mut r));
+    });
+}
+
+/// A block while Freq glides on sixteen matched order-8 elliptic low-pass
+/// cuts high in the band, where every section weighs its realisations (the
+/// three-point matches and the bilinear one) and a switch between them
+/// morphs: the costliest glide there is.
+#[divan::bench]
+fn block_while_16_matched_elliptic_cuts_glide(bencher: divan::Bencher) {
+    let mut e = Engine::new(48_000.0);
+    e.set_num(Param::MatchedCuts, 1.0);
+    for slot in 0..NODES as u8 {
+        e.set_num(Param::Node(slot, Field::Type), 5.0);
+        e.set_num(Param::Node(slot, Field::Family), 4.0);
+        e.set_num(Param::Node(slot, Field::Order), 7.0);
+        e.set_num(Param::Node(slot, Field::Freq), 9_000.0);
+    }
+    let (mut l, mut r) = (vec![0.1f32; 64], vec![-0.1f32; 64]);
+    for _ in 0..100 {
+        e.process_f32(&mut l, Some(&mut r));
+    }
+    let mut up = false;
+    bencher.bench_local(|| {
+        up = !up;
+        for slot in 0..NODES as u8 {
+            e.set_num(Param::Node(slot, Field::Freq), if up { 18_000.0 } else { 9_000.0 });
         }
         e.process_f32(&mut l, Some(&mut r));
     });

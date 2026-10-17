@@ -44,7 +44,7 @@ use design::Globals;
 use isolator::Isolator;
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
-use node::{Node, FADE_MS, PROTOS_PER_TICK};
+use node::{Budget, Node, FADE_MS};
 pub use params::{Field, Info, Kind, Param, Unit, NODES, NODE_BASE, NODE_FIELDS, PARAM_COUNT};
 
 /// The sample rate when none is given.
@@ -86,8 +86,8 @@ pub struct Engine {
     phase: usize,
     /// The block is a mono track's: the right lane is the left's copy.
     mono: bool,
-    /// The node a control tick serves first: each tick the next, so a tick's
-    /// budget of prototypes goes round.
+    /// The node a control tick serves first: the first the last tick could
+    /// not design, or else the next, so a tick's budget goes round.
     first: usize,
     /// The input and output, mono, while a window shows the analyzer.
     watching: bool,
@@ -244,20 +244,26 @@ impl Engine {
     }
 
     /// One control tick; the prototypes it designed, at most
-    /// [`PROTOS_PER_TICK`].
+    /// [`node::PROTOS_PER_TICK`].
     fn control(&mut self) -> usize {
         let t = self.global_targets();
         let c = self.ctl_coef;
         self.globals.scale = glide(self.globals.scale, t.scale, c);
         self.globals.adaptive = glide(self.globals.adaptive, t.adaptive, c);
-        let mut budget = PROTOS_PER_TICK;
+        let mut budget = Budget::TICK;
+        let mut next = None;
         for k in 0..NODES {
-            let n = &mut self.nodes[(self.first + k) % NODES];
-            n.control(&self.values, c, self.globals, self.sample_rate, &mut budget);
+            let at = (self.first + k) % NODES;
+            if self.nodes[at].control(&self.values, c, self.globals, self.sample_rate, &mut budget) && next.is_none() {
+                next = Some(at);
+            }
         }
-        self.first = (self.first + 1) % NODES;
+        /* The next tick serves first the first node this one could not, so
+         * the budget goes round evenly: with sixteen weighing, each is
+         * designed every fourth tick. */
+        self.first = next.unwrap_or((self.first + 1) % NODES);
         self.iso.control(&self.values, c, self.sample_rate);
-        PROTOS_PER_TICK - budget
+        Budget::TICK.protos - budget.protos
     }
 
     /// One block of host floats, in place: `left`, and `right` for a stereo
