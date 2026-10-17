@@ -266,6 +266,7 @@ dependencies = [
  "ni-dsp",
  "ni-filter",
  "ni-params",
+ "proptest",
  "realfft",
  "shell-core",
 ]

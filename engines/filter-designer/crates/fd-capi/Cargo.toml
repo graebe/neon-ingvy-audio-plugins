@@ -42,3 +42,5 @@ cbindgen = { workspace = true }
 [dev-dependencies]
 # The no-allocation guard tests/no_alloc.rs installs.
 assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+# Arbitrary bytes through the text door (fd_param_parse).
+proptest = { workspace = true, features = ["std"] }

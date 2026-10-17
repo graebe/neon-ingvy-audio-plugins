@@ -8,7 +8,7 @@ the crate may do and which thread calls what.
 
 use std::os::raw::{c_char, c_int};
 
-use fd_core::{Engine, Param, NODES, NODE_BASE, NODE_FIELDS, PARAM_COUNT};
+use fd_core::{Engine, Lane, Param, NODES, NODE_BASE, NODE_FIELDS, PARAM_COUNT};
 use ni_dsp::ffi::{byte_slice, cstr, drop_box, f32_block, i16_block, usable_rate};
 pub use ni_params::{NiParamInfo, NiParamKind};
 
@@ -33,11 +33,14 @@ pub struct FdCore {
     /// Whether a window shows the analyzer (shell.rs).
     #[cfg_attr(not(feature = "shell"), allow(dead_code, reason = "the shell's"))]
     pub(crate) watching: bool,
+    /// The lane the analyzer keeps (shell.rs).
+    #[cfg_attr(not(feature = "shell"), allow(dead_code, reason = "the shell's"))]
+    pub(crate) lane: Lane,
 }
 
 impl FdCore {
     pub fn new(sample_rate: f64) -> FdCore {
-        FdCore { engine: Engine::new(sample_rate), serial: 0, watching: false }
+        FdCore { engine: Engine::new(sample_rate), serial: 0, watching: false, lane: Lane::Mid }
     }
 
     pub fn engine(&self) -> &Engine {
@@ -51,6 +54,12 @@ impl FdCore {
     /// One block in place.
     pub fn process(&mut self, left: &mut [f32], right: Option<&mut [f32]>) {
         self.engine.process_f32(left, right);
+        self.serial = self.serial.wrapping_add(left.len() as u32);
+    }
+
+    /// One block heard and left alone (Engine::listen_f32).
+    pub fn listen(&mut self, left: &[f32], right: Option<&[f32]>) {
+        self.engine.listen_f32(left, right);
         self.serial = self.serial.wrapping_add(left.len() as u32);
     }
 }
@@ -117,6 +126,20 @@ pub unsafe extern "C" fn fd_core_num(core: *const FdCore, index: i32) -> f64 {
 pub unsafe extern "C" fn fd_core_process_f32(core: *mut FdCore, left: *mut f32, right: *mut f32, frames: u32) {
     if let (Some(core), Some((l, r))) = (core.as_mut(), f32_block(left, right, frames)) {
         core.process(l, r);
+    }
+}
+
+/// One block of `frames` host floats heard and left alone: nothing is
+/// filtered, the analyzer keeps it as its input and its output. What a
+/// bypassed shell runs once its engine idles; `fd_core_reset` before the next
+/// `fd_core_process_f32`.
+///
+/// # Safety
+/// As `fd_core_process_f32`.
+#[no_mangle]
+pub unsafe extern "C" fn fd_core_listen_f32(core: *mut FdCore, left: *mut f32, right: *mut f32, frames: u32) {
+    if let (Some(core), Some((l, r))) = (core.as_mut(), f32_block(left, right, frames)) {
+        core.listen(l, r.as_deref());
     }
 }
 
