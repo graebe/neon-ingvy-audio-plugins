@@ -39,6 +39,13 @@ isolator, a high-pass and a low-pass on two pages of eight encoders.
 | **HP On**, **HP Freq**, **HP Slope**, **HP Q** | the high-pass: in or out, -3 dB cutoff (20 Hz to 1 kHz), roll-off (6 to 48 dB/oct), Q of the highest-Q pole pair |
 | **LP On**, **LP Freq**, **LP Slope**, **LP Q** | the low-pass, cutoff 1 to 18 kHz |
 
+**The same keys, its own starting point.** Every encoder is the plugin's own
+parameter, under the plugin's key, so a value means the same on both. The
+module starts differently, though: the isolator on, node 1 a high-pass and
+node 2 a low-pass, both bypassed, where the plugin starts with the isolator
+off and every slot empty. The other fourteen filters, the families, ripple,
+stopband, channels and Scale stay at the plugin's defaults.
+
 The frequencies are discrete steps: a Move encoder is linear, and twelve
 logarithmically spaced values per encoder cover the useful range.
 
