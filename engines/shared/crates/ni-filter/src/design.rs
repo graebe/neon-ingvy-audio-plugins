@@ -48,6 +48,19 @@ use crate::proto::{Family, Prototype};
 use core::f64::consts::{FRAC_1_SQRT_2, PI};
 use num_complex::Complex64;
 
+/// The realisations a design chooses between, as [`Section::form`] reports
+/// them; 0, the bilinear transform's, is every other section's too.
+pub mod form {
+    /// Vicanek's matched low-pass or high-pass.
+    pub const VICANEK: u8 = 1;
+    /// Matched at DC, Nyquist and the match point, positive at Nyquist.
+    pub const MATCHED_PLUS: u8 = 2;
+    /// The same, negative at Nyquist.
+    pub const MATCHED_MINUS: u8 = 3;
+    /// A first-order section matched at DC and the cutoff.
+    pub const MATCHED_AT_CUTOFF: u8 = 4;
+}
+
 /// The lowest a band's edge goes, in Hz.
 pub const MIN_HZ: f64 = 1.0;
 
@@ -222,7 +235,7 @@ fn matched_low_pass(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, hm2: f64)
         return None;
     }
     let b0 = 0.5 * (big_a[0].sqrt() + big_b1.sqrt());
-    from_biquad([b0, big_a[0].sqrt() - b0, 0.0], a1, a2)
+    from_biquad([b0, big_a[0].sqrt() - b0, 0.0], a1, a2).map(|s| s.realised(form::VICANEK))
 }
 
 /// Vicanek's matched high-pass, b0·(1 - 1/z)²: zero at DC and `hm2` (the
@@ -232,7 +245,7 @@ fn matched_high_pass(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, hm2: f64
     let phi = phis(fs, match_hz);
     let den: f64 = big_a.iter().zip(phi).map(|(a, p)| a * p).sum();
     let b0 = (hm2 * den).sqrt() / (4.0 * phi[1]);
-    from_biquad([b0, -2.0 * b0, b0], a1, a2)
+    from_biquad([b0, -2.0 * b0, b0], a1, a2).map(|s| s.realised(form::VICANEK))
 }
 
 /// A first-order section with the analog pole at `pole_hz`,
@@ -244,7 +257,7 @@ fn matched1_at(fs: f64, pole_hz: f64, h0: f64, match_hz: f64, hm: f64) -> Option
     let g = (1.0 - p) / (1.0 + p);
     let t = (PI * match_hz / fs).tan();
     let hp2 = (hm * hm * (t * t + g * g) - h0 * h0 * g * g) / (t * t);
-    (hp2 >= 0.0 && g > 0.0 && hp2.is_finite()).then(|| Section::first(g, hp2.sqrt(), h0))
+    (hp2 >= 0.0 && g > 0.0 && hp2.is_finite()).then(|| Section::first(g, hp2.sqrt(), h0).realised(form::MATCHED_AT_CUTOFF))
 }
 
 /// The pair a cut's resonance raises: the one with the highest Q, from order
@@ -403,7 +416,8 @@ fn matched2(fs: f64, pole_hz: f64, pole_q: f64, match_hz: f64, mag2: Mag2, nyqui
     let n0 = 0.5 * (wsum + disc.sqrt());
     let n2 = wsum - n0;
     let n1 = 0.5 * (s0 - s1);
-    from_biquad([n0, n1, n2], a1, a2)
+    let form = if nyquist > 0.0 { form::MATCHED_PLUS } else { form::MATCHED_MINUS };
+    from_biquad([n0, n1, n2], a1, a2).map(|s| s.realised(form))
 }
 
 /// Where [`closest2`] weighs a design: a log grid from 20 Hz to the top,

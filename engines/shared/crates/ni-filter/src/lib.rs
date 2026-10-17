@@ -51,7 +51,7 @@ mod elliptic;
 mod proto;
 
 pub use cascade::{Cascade, Section, State, MAX_SECTIONS};
-pub use design::{all_pass, bell, family, family_matched, high_shelf, low_shelf, tilt, Band, MAX_HZ_FRACTION, MIN_HZ};
+pub use design::{all_pass, bell, family, family_matched, form, high_shelf, low_shelf, tilt, Band, MAX_HZ_FRACTION, MIN_HZ};
 pub use proto::{Family, Prototype, MAX_ORDER};
 
 /// Complex numbers, as the response is given.
