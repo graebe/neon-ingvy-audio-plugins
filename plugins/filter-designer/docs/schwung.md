@@ -42,6 +42,21 @@ isolator, a high-pass and a low-pass on two pages of eight encoders.
 The frequencies are discrete steps: a Move encoder is linear, and twelve
 logarithmically spaced values per encoder cover the useful range.
 
+## Headroom
+
+The Move hands every module 16-bit audio, and that has no room above full
+scale: whatever the filters push past it is cut off flat, which distorts.
+Inside, the module works in double precision, so nothing clips until the
+very end; it is the boosts that can take a loud signal over:
+
+- each isolator band goes up to **+6 dB**;
+- a resonant cut peaks at its cutoff: at **HP Q** or **LP Q** 8, about
+  +18 dB there.
+
+**Example.** A drum loop already peaking near full scale, the isolator's
+**Low** at +6 dB: the kicks clip. Turn **Output** down by the same 6 dB and
+they fit again; the balance between the bands stays as you set it.
+
 ## The panic
 
 CC 120 (All Sound Off) or CC 123 (All Notes Off) resets every filter's state;
