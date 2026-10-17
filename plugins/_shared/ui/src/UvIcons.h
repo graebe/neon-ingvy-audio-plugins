@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The system's fifteen machine glyphs, as juce::Drawables in a colour.
+ * The system's fifteen machine glyphs, and a product's own, as
+ * juce::Drawables in a colour.
  *
  * NOT COPIED, EMBEDDED. The SVGs are the design mirror's own files
  * (design/scheme/project/assets/Icons), compiled into ni_ui_assets as they
@@ -19,6 +20,15 @@
  * Use one only where it replaces a verb on a control that acts, and never
  * one outside the set (the README's Iconography): an unknown name is a
  * programming error, asserted, and draws nothing.
+ *
+ * A PRODUCT'S OWN GLYPHS. A product whose controls name things the system has
+ * no glyph for -- a note editor's tools -- draws its own to the same rules
+ * and keeps them with its own design (design/<product>/icons), never in the
+ * system's set. ni_ui_add_editor embeds that directory beside the editor, and
+ * the editor hands its files to addIcons() before it draws one. A name is
+ * looked up in the system's set first, then in each product's set in the
+ * order they were added; a product glyph named as a system one is a
+ * programming error, asserted. Product glyphs are stroke only.
  */
 #pragma once
 
@@ -34,10 +44,28 @@ namespace uv
  * reset, link, chevron, power. */
 const juce::StringArray& iconNames();
 
+/* Whether `name` is a glyph: the system's, or one a product added. */
 bool hasIcon (const juce::String& name);
 
 /* Whether the system draws `name` filled rather than stroked. */
 bool isFilledIcon (const juce::String& name);
+
+/*
+ * A product's glyphs, as the juce_add_binary_data namespace that embeds them
+ * has them: its tables, as they are. Every .svg in it is a glyph, named by its
+ * file name without the extension.
+ */
+struct IconSource
+{
+    int count = 0;
+    const char* const* resourceNames = nullptr;
+    const char* const* originalFilenames = nullptr;
+    const char* (*resource) (const char* resourceName, int& size) = nullptr;
+};
+
+/* Adds a product's glyphs to the lookup; the same source again is ignored.
+ * The tables are static data, kept by pointer. Message thread. */
+void addIcons (const IconSource&);
 
 /*
  * A new Drawable of the glyph in `colour`, on the glyph's 16 x 16 grid (its

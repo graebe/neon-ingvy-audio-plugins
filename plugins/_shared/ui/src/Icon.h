@@ -17,8 +17,9 @@
  * no mouse event of its own, so pointing at it is pointing at its control --
  * whose info line is what the hint bar shows.
  *
- * Never a glyph outside the set: an unknown name is a programming error,
- * asserted, and draws nothing (the Iconography rules).
+ * Never a glyph outside the set -- the system's, and the product's own drawn
+ * to its rules (UvIcons.h): an unknown name is a programming error, asserted,
+ * and draws nothing (the Iconography rules).
  */
 #pragma once
 
@@ -37,7 +38,8 @@ public:
 
     explicit Icon (const juce::String& glyph = {}, juce::Colour tint = uv::tok::colour::ink);
 
-    /* One of uv::iconNames(), or empty for none. */
+    /* A glyph (uv::hasIcon: the system's, or the product's), or empty for
+     * none. */
     void setGlyph (const juce::String&);
     const juce::String& getGlyph() const noexcept { return glyph; }
 

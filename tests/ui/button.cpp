@@ -3,15 +3,16 @@
 
 /*
  * The Button: pressed by a click released over it and by Enter at once, never
- * by Space, which is the host's; lit while pressed or on; the two shapes'
- * sizes; and the Actions groups, joined edge to edge or stacked. Then every
- * state, as a picture.
+ * by Space, which is the host's; lit while pressed or on, and a record button
+ * red; the two shapes' sizes; and the Actions groups, joined edge to edge or
+ * stacked. Then every state, as a picture.
  */
 #include "Button.h"
 #include "Gallery.h"
 #include "Pointer.h"
 #include "checks.h"
 #include "hostkeys.h"
+#include "UvTokens.h"
 #include "snapshot.h"
 
 #include <doctest.h>
@@ -37,6 +38,14 @@ struct Counted
 std::unique_ptr<juce::AccessibilityHandler> accessibilityOf (juce::Component& c)
 {
     return c.createAccessibilityHandler();
+}
+
+juce::Image painted (juce::Component& c)
+{
+    juce::Image img (juce::Image::ARGB, c.getWidth(), c.getHeight(), true, juce::SoftwareImageType());
+    juce::Graphics g (img);
+    c.paintEntireComponent (g, false);
+    return img;
 }
 } // namespace
 
@@ -113,6 +122,31 @@ TEST_CASE ("button: lit while pressed or on, and primary always")
     b.button.setOn (false);
     b.button.setPrimary (true);
     CHECK (b.button.isLit());
+}
+
+TEST_CASE ("button: a record button that is on is red, its glyph bg-000; off, it is any button")
+{
+    namespace c = uv::tok::colour;
+    Button rec ({}, "record");
+    rec.setBounds (0, 0, 28, 28);
+    CHECK_FALSE (rec.isRecord());
+    rec.setRecord (true);
+    CHECK (rec.isRecord());
+
+    /* The fill just inside the hairline, and the filled glyph's centre. */
+    const auto off = painted (rec);
+    CHECK (off.getPixelAt (3, 3) == c::bg200);
+    CHECK (off.getPixelAt (14, 14) == c::ink);
+
+    rec.setOn (true);
+    CHECK (rec.isLit());
+    const auto on = painted (rec);
+    CHECK (on.getPixelAt (3, 3) == c::red);
+    CHECK (on.getPixelAt (14, 14) == c::bg000);
+
+    /* Not a record button: lit uv, as any button that is on. */
+    rec.setRecord (false);
+    CHECK (painted (rec).getPixelAt (3, 3) == c::uv);
 }
 
 TEST_CASE ("button: focus shows for the keyboard, never after a click")

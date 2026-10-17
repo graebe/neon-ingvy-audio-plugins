@@ -26,6 +26,8 @@ constexpr int controlH = (int) uv::tok::size::controlH;
 constexpr int pad = (int) uv::tok::space::space3;     // padding: 0 var(--s3)
 constexpr int gap = (int) uv::tok::space::space2;     // .btn { gap: var(--s2) }
 constexpr int glyph = 16;                              // .icon { width: 16px }
+/* .ph-btn.icon.rec.on { box-shadow: 0 0 10px var(--red) }. */
+constexpr uv::tok::ShadowLayer recordGlow { 0.0f, 0.0f, 10.0f, 0.0f, uv::tok::argb::ultraviolet::red };
 
 /* The three colours a state is drawn in. */
 struct Look
@@ -95,6 +97,14 @@ int Button::idealWidth() const
     return 2 * (int) hair + 2 * pad + lead + words;
 }
 
+void Button::setRecord (bool shouldRecord)
+{
+    if (record == shouldRecord)
+        return;
+    record = shouldRecord;
+    repaint();
+}
+
 bool Button::isLit() const
 {
     return isEnabled() && (on || primary || isPressed());
@@ -123,8 +133,9 @@ void Button::paint (juce::Graphics& g)
     const auto r = getLocalBounds().toFloat();
 
     Look look { c::bg200, c::line200, c::ink };
-    if (! isEnabled())     look = { c::bg100, c::line100, c::inkDim };
-    else if (isLit())      look = { c::uv, c::uv, c::onUv };
+    if (! isEnabled())         look = { c::bg100, c::line100, c::inkDim };
+    else if (record && on)     look = { c::red, c::red, c::bg000 };
+    else if (isLit())          look = { c::uv, c::uv, c::onUv };
     else if (isHovered())  look = { c::bg300, c::inkDim, c::ink };
 
     g.setColour (look.fill);
@@ -158,7 +169,10 @@ void Button::paintLight (juce::Graphics& g)
     {
         juce::Graphics::ScopedSaveState state (g);
         excludeOwnBounds (g, *this);
-        uv::light::glowLed (g, getLocalBounds().toFloat());
+        if (record && on)
+            uv::light::shadow (g, getLocalBounds().toFloat(), recordGlow);
+        else
+            uv::light::glowLed (g, getLocalBounds().toFloat());
     }
 
     /* Focus over the glow: a focused lit button still shows its ring. */

@@ -103,6 +103,12 @@ target_link_libraries(ni_ui INTERFACE
 # headers by their bare names, and the kit. An editor with no .cpp yet is a
 # library of headers, and becomes one with sources the build after its first
 # .cpp appears.
+#
+# A PRODUCT'S OWN GLYPHS, design/<product>/icons/*.svg when there are any,
+# are embedded beside it as ni_<product>_icons (header ni_<product>_icons.h,
+# the same namespace), as ni_ui_assets embeds the system's: the editor hands
+# them to uv::addIcons (UvIcons.h). They stay with the product's design and
+# never join the system's set.
 function(ni_ui_add_editor product)
     string(REPLACE "-" "_" id ${product})
     set(dir ${NI_ROOT}/plugins/${product}/editor)
@@ -111,4 +117,13 @@ function(ni_ui_add_editor product)
     target_sources(ni_editor_${id} INTERFACE ${sources})
     target_include_directories(ni_editor_${id} INTERFACE ${dir})
     target_link_libraries(ni_editor_${id} INTERFACE ni_ui)
+
+    file(GLOB icons CONFIGURE_DEPENDS ${NI_ROOT}/design/${product}/icons/*.svg)
+    if (icons)
+        juce_add_binary_data(ni_${id}_icons
+            HEADER_NAME ni_${id}_icons.h
+            NAMESPACE ni_${id}_icons
+            SOURCES ${icons})
+        target_link_libraries(ni_editor_${id} INTERFACE ni_${id}_icons)
+    endif()
 endfunction()
