@@ -277,8 +277,12 @@ released version as a fixture (`tests/fixtures/<product>/v<N>.state`, through
 `tests/state_fixture.h`). Either way a chunk is read whole before any of it is
 applied, and one no build could have written
 -- empty, another product's, a parameter that is not a number of its kind, a
-string running off the end -- is refused and changes nothing. The processor
-tests save and reload it the way a host does.
+string running off the end -- is refused and changes nothing. A refused chunk
+is not lost either: the processor keeps its bytes and hands them back
+unchanged from `getStateInformation`, until a chunk is read or the user edits
+(a parameter gesture, or `nonParameterStateChanged()`), so a set from a newer
+build opened here and saved keeps its settings; `stateUnread()` says so for an
+editor to show. The processor tests save and reload it the way a host does.
 
 `ni::Processor::processBlock` runs a product's block under
 `juce::ScopedNoDenormals`: flush-to-zero for the block, the engines included,

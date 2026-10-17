@@ -35,6 +35,10 @@
  *                 JUCE's binary XML -- robust to a parameter added later --
  *                 and whatever the product adds beside them
  *                 (writeExtraState / readExtraState)
+ *   unread        a state readState refused -- a newer build's, a damaged
+ *                 one -- is not lost by saving: its bytes are kept and saved
+ *                 back unchanged until a state is read or the user edits
+ *                 (stateUnread)
  *   dirty         nonParameterStateChanged() tells the host that state it
  *                 cannot see changed -- an import, a pasted pattern -- so the
  *                 set is marked unsaved
@@ -84,7 +88,8 @@ struct HostClock
 HostClock readClock (juce::AudioPlayHead*);
 
 class Processor : public juce::AudioProcessor,
-                  public juce::VST3ClientExtensions
+                  public juce::VST3ClientExtensions,
+                  private juce::AudioProcessorListener
 {
 public:
     explicit Processor (const BusesProperties&);
@@ -113,6 +118,18 @@ public:
 
     void getStateInformation (juce::MemoryBlock&) final;
     void setStateInformation (const void* data, int sizeInBytes) final;
+
+    /*
+     * WHETHER THE STATE THE HOST GAVE COULD NOT BE READ: a set saved by a
+     * newer build, or one damaged. The instance then plays its defaults, but
+     * it does not throw the set away: getStateInformation hands back the
+     * bytes it was given, unchanged, so opening the set here and saving it
+     * loses nothing. That lasts until a state is read, or the user edits --
+     * a gesture on any parameter, or nonParameterStateChanged() -- and the
+     * instance's own state is what there is to save. An editor says so
+     * ("made by a newer build") while this is true. Any thread.
+     */
+    bool stateUnread() const;
 
     juce::VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
 
@@ -194,6 +211,20 @@ private:
     bool bypassParameterOn() const;
     /* One block while the fade runs: process(), then the input mixed in. */
     void processFading (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool bypassed);
+
+    /* The state readState refused, kept to be saved back (stateUnread). The
+     * state calls and the message thread's edits may come on different
+     * threads, never on the audio one, so a lock guards it. */
+    juce::MemoryBlock unread;
+    bool holdingUnread = false;
+    mutable juce::CriticalSection unreadLock;
+    void forgetUnread();
+
+    /* A gesture on any parameter is the user editing: what lets go of an
+     * unread state. */
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Processor)
 };

@@ -16,7 +16,10 @@
  *                      its default; and so does it without its `state`, as
  *                      every chunk saved before versions were written
  *   a newer version    a chunk whose `state` is above the product's is
- *                      refused, and changes nothing
+ *                      refused, and changes nothing -- and is saved back
+ *                      byte for byte, so a set from a newer build loses
+ *                      nothing here, until the user edits (a gesture), when
+ *                      the instance's own state is saved again
  *   a missing value    a parameter the chunk does not name loads its default,
  *                      whatever the instance held
  *
@@ -27,12 +30,15 @@
  */
 #pragma once
 
+#include "Processor.h"
+
 #include <doctest.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <vector>
 
 namespace ni::test
 {
@@ -129,11 +135,36 @@ inline void checkStateFixture (const std::function<std::unique_ptr<juce::AudioPr
     load (*unversioned, rewritten (chunk, [] (juce::XmlElement& x) { x.removeAttribute ("state"); }));
     CHECK (saved (*unversioned) == saved (*fresh));
 
-    /* A newer version is refused, and changes nothing. */
+    /* A newer version is refused, and changes nothing that plays; saving
+     * hands its bytes back as they came, until the user edits. */
     auto later = make();
-    const auto before = saved (*later);
-    load (*later, rewritten (chunk, [] (juce::XmlElement& x) { x.setAttribute ("state", 1000); }));
-    CHECK (saved (*later) == before);
+    std::vector<float> values;
+    for (auto* each : later->getParameters())
+        values.push_back (each->getValue());
+    const auto newer = rewritten (chunk, [] (juce::XmlElement& x) { x.setAttribute ("state", 1000); });
+    load (*later, newer);
+    std::vector<float> after;
+    for (auto* each : later->getParameters())
+        after.push_back (each->getValue());
+    CHECK (after == values);
+    auto* shell = dynamic_cast<ni::Processor*> (later.get());
+    REQUIRE (shell != nullptr);
+    CHECK (shell->stateUnread());
+    CHECK (saved (*later) == newer);
+    CHECK (saved (*later) == newer);
+    {
+        auto* p = later->getParameters()[0];
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (p->getValue());
+        p->endChangeGesture();
+    }
+    CHECK_FALSE (shell->stateUnread());
+    CHECK (saved (*later) != newer);
+    /* And a state that reads lets go of one that did not. */
+    load (*later, newer);
+    CHECK (shell->stateUnread());
+    load (*later, chunk);
+    CHECK_FALSE (shell->stateUnread());
 
     /* A missing value loads its default, whatever the instance held. */
     REQUIRE (settings.size() > 0);
