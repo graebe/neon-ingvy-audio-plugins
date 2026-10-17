@@ -151,14 +151,17 @@ nothing in the window moves when the type changes.
 
 ### Cost, smoothing and discrete changes
 
-- **Two tiers of recomputation.** The prototype (Family, Order, Ripple, Stopband) is recomputed only when one of those changes, at most every 64 samples while Ripple or Stopband glide, and at most four prototypes per control tick across the nodes. The mapping (Freq, Q, Gain, Scale, sample rate) is recomputed on a 16-sample control grid counted from a global sample counter, so the output is identical for every block size. Coefficients are interpolated linearly inside the sub-block, sample by sample (g, k, the mix and the gain, the loop solved again), so a sweep puts no lines at multiples of fs/16. The SVF needs only g > 0 and k > 0 to stay stable under that.
+- **Two tiers of recomputation.** The prototype (Family, Order, Ripple, Stopband) is recomputed only when one of those changes, at most every 64 samples while Ripple or Stopband glide, and at most four prototypes per control tick across the nodes. The mapping (Freq, Q, Gain, Scale, sample rate) is recomputed on a 16-sample control grid counted from a global sample counter, so the output is identical for every block size. Coefficients are interpolated linearly inside the sub-block, sample by sample (g, k, the mix and the gain, the loop solved again), so a sweep puts no lines at multiples of fs/16; the isolator's crossovers move the same way. The SVF needs only g > 0 and k > 0 to stay stable under that.
+- **Designs that weigh are budgeted too.** High in the band a shelf's or a matched cut's section is chosen from several realisations (matched with either sign at Nyquist, or bilinear), each held to the analog curve on a grid: at most four such designs per tick. A node that waits is served first on the next tick, and its move is spread over the sub-blocks it waited, so a throttled glide is still interpolated sample by sample.
+- **Realisation switches morph.** Where a glide carries a section from one realisation to another the curve steps (the design takes the best at each setting, and two tie there): the step is then moved over 20 ms instead of one sub-block, so it does not click.
 - **Smoothing** reuses `ni_dsp::smooth` at control rate (`coef(fs/16)`, the house 5 ms): Freq glides in log₂, Q in log, Gain in dB.
-- **Type, Family, Order, Channel and bypass crossfade.** Each slot holds two preallocated instances. A change designs the second one from zero state and crossfades over 20 ms, with cos² and sin² weights. A change that arrives during a fade waits for its end. A bypassed or empty node does not run, and its state is zero.
+- **Family and Matched Cuts morph.** The playing cascade runs in second-order form (a first-order section is a second-order one with a cancelled pole), and a change of how a node does what it does moves it over 20 ms from the old design to the new, section by section, its state carried: no two filters out of phase are summed.
+- **Type, Order, Channel and bypass crossfade.** Each slot holds two preallocated instances. A change designs the second one and runs it on the input unheard until it has settled (its 40 dB decay, at most 500 ms), then crossfades over 20 ms, with cos² and sin² weights: a narrow, low design comes in at its level, not from silence. A change that arrives during a fade waits for its end. A bypassed or empty node does not run, and its state is zero.
 - **Safety:**
   - Every edge is clamped to 10 Hz … 0.49·fs. A Band-Pass whose upper edge clamps keeps its lower edge and narrows, and the curve shows that.
   - Denormals are flushed at block end inside the core, because the Move path has no `ScopedNoDenormals`.
   - `reset()` zeroes all state, completes fades and snaps every glide.
-- **Worst case:** 16 nodes × 8 sections × 2 channels is 256 f64 SVF ticks per sample, doubled briefly during fades. That is affordable as scalar code.
+- **Worst case:** 16 nodes × 8 sections × 2 channels is 256 f64 SVF ticks per sample, doubled while a new design settles and fades in (up to half a second). That is affordable as scalar code.
 
 ## Parameters (174)
 

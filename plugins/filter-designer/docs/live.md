@@ -102,9 +102,15 @@ approximations are defined; its passband peaks at 0 dB.
 through all six and compare the curve around 2 kHz: Butterworth flat up to
 the corner, Bessel rolling off an octave earlier, Chebyshev I rippling in
 the passband, Chebyshev II with notches in the stopband, elliptic with the
-narrowest transition. A change of type, family, order, channel or On
-crossfades over 20 ms between the old and the new filter, so it can be done
-during playback.
+narrowest transition. All of this can be done during playback:
+
+- a change of **Family** moves the filter into the new one over 20 ms, the
+  way a knob moves it;
+- a change of **Type**, **Order**, **Channel** or **On** crossfades over 20 ms
+  to the new filter, which has already been running on the music unheard
+  until it settled. A narrow filter low in the spectrum rings for a while, so
+  that can take up to half a second: it then comes in at its level, instead
+  of swelling up from silence.
 
 ### Q on a high-pass or low-pass
 

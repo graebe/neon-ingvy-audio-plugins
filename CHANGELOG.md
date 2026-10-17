@@ -22,8 +22,10 @@ next release; that release's entry lists them and this section goes.
 - **Six approximations** for high-pass, low-pass, band-pass and notch —
   Butterworth, Bessel, Chebyshev I and II, elliptic and Linkwitz-Riley — at
   orders 1 to 8 (6 to 48 dB/oct), with Q on the highest-Q pole pair, passband
-  ripple and stopband attenuation. A change of type, family or order
-  crossfades over 20 ms.
+  ripple and stopband attenuation. A change of family moves the filter into
+  the new one over 20 ms; a change of type or order crossfades over 20 ms to
+  a filter that has already settled on the music, so even a narrow, low one
+  comes in at its level instead of swelling up from silence.
 - **A three-band isolator** in front of the filters: Linkwitz-Riley
   crossovers (LR4 or LR8), a level and a kill per band.
 - **Per-filter channel**: stereo, left, right, mid or side.
@@ -33,14 +35,20 @@ next release; that release's entry lists them and this section goes.
   from the signal they heard. No latency.
 - **Matched cuts**: an option to match every high-pass and low-pass to its
   analog prototype, so filters near Nyquist keep the analog slope and peak.
+  Switching it moves the cuts over 20 ms.
 - **The tail** reported to the host: how long the filters ring after the
   input stops, to -60 dB (a Q 40 notch at 20 Hz: 4.4 s).
 - **Smooth automation**: Freq, Gain and Q move the filters a sample at a
-  time, so sweeping a narrow filter leaves no stepping artefacts.
+  time, and so do the isolator's crossovers, so sweeping a narrow filter or a
+  crossover leaves no stepping artefacts. Where a sweep of a shelf or a
+  matched cut high in the band passes from one way of building it to
+  another, the change is spread over 20 ms instead of clicking.
 - **Bounded cost on the audio thread**: a preset load or automated Ripple and
-  Stopband design at most four prototypes per 16 samples; a 64-sample block
-  after a preset turns all sixteen filters into order-8 elliptic low-passes
-  costs about 45 µs (3 % of its real time at 48 kHz).
+  Stopband design at most four prototypes per 16 samples, and sweeps of
+  shelves and matched cuts high in the band at most four of their costlier
+  designs; a 64-sample block after a preset turns all sixteen filters into
+  order-8 elliptic low-passes costs about 50 µs (4 % of its real time at 48
+  kHz), sixteen matched order-8 elliptic cuts swept at once about 86 µs.
 - On the Ableton Move as a Schwung module: the isolator, a high-pass and a
   low-pass.
 
