@@ -31,6 +31,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <algorithm>
 #include <typeinfo>
 #include <vector>
 
@@ -147,6 +148,59 @@ inline juce::StringArray spaceUsersAfterClicks (juce::Component& root)
         gallery::Pointer().click (*control, control->getLocalBounds().getCentre().toFloat());
         for (const auto& user : spaceUsers (root))
             users.addIfNotAlreadyThere (user + ", after a click on " + clicked);
+    }
+    return users;
+}
+
+/*
+ * THE HOST'S SHORTCUTS ARE THE HOST'S (docs/adr/0007): every letter and digit
+ * with Cmd, with Cmd and Shift, with Ctrl and with Alt. An editor with its own
+ * document keeps its own few -- undoKey and redoKey, and any key the ADR is
+ * amended for -- and only while it has the keyboard; everything else passes.
+ *
+ * Navigation keys are not swept: the kit's controls answer Return and the
+ * arrows whatever modifiers are held (Keys.h reads the key, not the
+ * modifiers), which no host binds as a shortcut while a plugin window has the
+ * keyboard.
+ */
+inline const juce::KeyPress undoKey { 'Z', juce::ModifierKeys::commandModifier, 'z' };
+inline const juce::KeyPress redoKey { 'Z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 'Z' };
+
+/* Every letter and digit, with each of the four modifiers a host binds. */
+inline std::vector<juce::KeyPress> modifiedKeys()
+{
+    using M = juce::ModifierKeys;
+    const int mods[] { M::commandModifier, M::commandModifier | M::shiftModifier, M::ctrlModifier, M::altModifier };
+    std::vector<int> codes;
+    for (int c = 'A'; c <= 'Z'; ++c)
+        codes.push_back (c);
+    for (int c = '0'; c <= '9'; ++c)
+        codes.push_back (c);
+    std::vector<juce::KeyPress> out;
+    for (const int m : mods)
+        for (const int code : codes)
+            out.emplace_back (code, juce::ModifierKeys (m), (juce::juce_wchar) 0);
+    return out;
+}
+
+/* Every component under `root`, text editors aside, that uses a modified
+ * key other than those `kept`. Empty: the host hears them all. */
+inline juce::StringArray modifiedUsers (juce::Component& root, const std::vector<juce::KeyPress>& kept = {})
+{
+    juce::StringArray users;
+    const auto keys = modifiedKeys();
+    for (auto* c : everyComponent (root))
+    {
+        if (inTextEditor (*c))
+            continue;
+        const juce::Component::SafePointer<juce::Component> alive (c);
+        for (const auto& k : keys)
+        {
+            const bool allowed = std::any_of (kept.begin(), kept.end(), [&k] (const juce::KeyPress& x)
+                                              { return x.getKeyCode() == k.getKeyCode() && x.getModifiers() == k.getModifiers(); });
+            if (! allowed && alive != nullptr && chainUses (*alive, k))
+                users.addIfNotAlreadyThere (describe (*alive) + " (" + k.getTextDescription() + ")");
+        }
     }
     return users;
 }

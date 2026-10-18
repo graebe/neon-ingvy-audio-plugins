@@ -3,7 +3,8 @@
 
 /*
  * The fifteen glyphs: exactly the design's set, each on its 16px grid, and
- * drawn in the colour asked for -- never the file's own ink.
+ * drawn in the colour asked for -- never the file's own ink. And a product's
+ * own, added to the lookup after the system's.
  */
 #include "UvIcons.h"
 #include "UvTokens.h"
@@ -113,3 +114,45 @@ TEST_CASE ("icons: a kept glyph is recoloured in place")
             }
     CHECK (any);
 }
+
+namespace
+{
+/* A product's set as juce_add_binary_data lays one out: one glyph, a slash,
+ * and a file that is not a glyph. */
+const char slashSvg[] = R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="#f3ecff" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M2.5 12.5l11-9"></path></svg>)";
+const char* productNames[] { "slash_svg", "notes_txt" };
+const char* productFiles[] { "slash.svg", "notes.txt" };
+const char* productResource (const char* name, int& size)
+{
+    if (juce::String (name) == "slash_svg")
+    {
+        size = (int) sizeof (slashSvg) - 1;
+        return slashSvg;
+    }
+    size = 0;
+    return nullptr;
+}
+} // namespace
+
+TEST_CASE ("icons: a product's own glyphs join the lookup after the system's, drawn the same way")
+{
+    CHECK_FALSE (uv::hasIcon ("slash"));
+    const uv::IconSource product { 2, productNames, productFiles, productResource };
+    uv::addIcons (product);
+    uv::addIcons (product);   // the same set again changes nothing
+    CHECK (uv::hasIcon ("slash"));
+    CHECK_FALSE (uv::hasIcon ("notes"));
+    CHECK_FALSE (uv::isFilledIcon ("slash"));
+    /* The system's set is the system's: a product never joins it. */
+    CHECK (uv::iconNames().size() == 15);
+    CHECK_FALSE (uv::iconNames().contains ("slash"));
+
+    const auto glyph = uv::icon ("slash", c::ink);
+    REQUIRE (glyph != nullptr);
+    CHECK (glyph->getContentBounds() == juce::Rectangle<float> (0.0f, 0.0f, 16.0f, 16.0f));
+    const auto img = draw ("slash", c::onUv);
+    CHECK (img.getPixelAt (8, 8).getAlpha() > 128);
+    CHECK (img.getPixelAt (8, 8).getRed() == c::onUv.getRed());
+    CHECK (img.getPixelAt (2, 2).getAlpha() == 0);
+}
+

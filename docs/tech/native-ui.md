@@ -55,7 +55,7 @@ golden being any test case declared with `NI_SNAPSHOT_TEST`. The token guard,
 |---|---|
 | `UvTokens.h` | `uv::tok`: every token, generated, the only file that may spell a colour |
 | `UvType.h` | `uv::fonts()`, the six styles (`uv::type::value()` ...), `draw`, `drawValueWithUnit` |
-| `UvIcons.h` | `uv::icon(name, colour)`, `uv::drawIcon`, `uv::tint`, the fifteen names |
+| `UvIcons.h` | `uv::icon(name, colour)`, `uv::drawIcon`, `uv::tint`, the fifteen names; `uv::addIcons` for a product's own glyphs |
 | `UvLight.h` | `uv::light::glowLed`, `glowFocus`, `glowArc`, `shadow`, `dropShadow` |
 | `UvGround.h` | `uv::ground::paint`, the window ground |
 | `UvLookAndFeel.h` | `uv::LookAndFeel`, `uv::ReadoutLabel`, `uv::SharedLookAndFeel` |
@@ -94,6 +94,33 @@ Bravura is embedded as JetBrains Mono is (`fonts/bravura/README.md`), and a
 bundle that draws notation carries its `OFL.txt` (`NI_UI_MUSIC_FONT_LICENSE`).
 The gallery's Music section shows each in its states; `tests/ui/music.cpp`
 holds their behaviour and pictures.
+
+## The note editor's well
+
+Five components and the maths they share, for an editor whose well pans and
+zooms its content ([ADR 0006](../adr/0006-wells-pan-and-zoom.md)): time across in
+host samples, pitch up in MIDI notes. Each draws only from the tokens and
+moves nothing itself: a drag or a press asks its owner for a new view
+(`onPan`, `onView`, `onFit`), and the owner sets it back.
+
+| Header | Gives |
+|---|---|
+| `ZoomMath.h` | `zoom::Axis`: one axis of a view, its pan, its zoom about an anchor, its fit, and the limits every move ends in; `zoom::grid`, lines that thin out by whole bars. Plain C++, tested without a window |
+| `TimeView.h` | the ruler across a well's top: bar lines and numbers from the host's tempo; a drag pans |
+| `PitchView.h` | the pitch rows, one per semitone, the scale's lighter, and their names in the gutter (`nameOf`, `midiOf`: C3 is 60); a drag in the gutter pans, a double-click fits |
+| `NoteBars.h` | the notes as bars on their rows, each with its pitch contour, its level as its shade, a dashed ghost under an edited one; muted bars as outlines; a bar's handles, a marker across one, a marked run; the playhead. It answers what is where (`noteAt`, `notesIn`, `edgeAt`) and takes no pointer |
+| `Overview.h` | the whole content small, its blocks and ticks, with the view's rectangle on it; a press or a drag moves the view |
+| `ToolColumn.h` | an editor's tools as one column of icon-only buttons, exactly one on |
+
+The gallery's Music section shows the well's parts together (Note Editor),
+and Controls the ToolColumn and the Slider; `tests/ui/zoommath.cpp`,
+`noteeditor.cpp`, `toolcolumn.cpp` and `slider.cpp` hold their behaviour.
+
+**A product's own glyphs** are drawn to the Iconography rules and kept with
+the product's design, never in the system's set: `ni_ui_add_editor` embeds
+`design/<product>/icons/*.svg` as `ni_<product>_icons`, and the editor hands
+them to `uv::addIcons` before it draws one. The system's names come first, and
+a product glyph named as one is a programming error.
 
 ## The plots
 
@@ -199,7 +226,9 @@ subscribes. A missed tick leaves a picture late, never wrong.
 **A fixed design size, scaled to fit.** The editor lays out at its design
 size, always; `ni::ui::FixedDesign` scales it from the top-left corner to
 whatever the host gives, and `constrainToDesign` keeps the window in
-proportion. Nothing reflows and nothing scrolls.
+proportion. Nothing reflows and the window never scrolls; a well may pan and
+zoom its own content, inside its fixed frame
+([ADR 0006](../adr/0006-wells-pan-and-zoom.md)).
 
 **Every pointer control takes the keyboard.** Arrows step (Shift fine),
 Page Up/Down take large steps or jump between detents, Home/End go to the
@@ -225,6 +254,14 @@ keyboard only while the edit lasts. A modal component would swallow every key
 `tests/ui/hostkeys.h` walks a key through the window as the peer does; the kit
 sweeps every gallery page and each editor its window, before and after a click
 on every control.
+
+**The host's shortcuts are the host's.** Cmd, Cmd-Shift, Ctrl or Alt with a
+letter or a digit goes to the host, wherever the keyboard is. The one
+exception is an editor with a document of its own: while it has the
+keyboard, it keeps Cmd-Z and Shift-Cmd-Z for its undo, and only the keys
+[ADR 0007](../adr/0007-document-undo-keys.md) is amended for. `hostkeys.h`'s
+`modifiedUsers` sweeps every such key through a window; the kit's sweep
+holds every gallery page to keeping none.
 
 **Every control says what it does, in at most 72 characters.** One line,
 *Name — what it does*, set with `ni::ui::setInfo`; it is also the control's

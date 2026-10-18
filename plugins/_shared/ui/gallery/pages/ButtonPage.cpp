@@ -26,6 +26,7 @@ constexpr InfoText importInfo { "Import — load a slot or a bank from a file; t
 constexpr InfoText orderInfo { "Order — click the steps in the order the fade brings them in." };
 constexpr InfoText randomInfo { "Random — a new pattern for this slot." };
 constexpr InfoText pauseInfo { "Pause — hold the picture; click again to let it run." };
+constexpr InfoText recordInfo { "Record — capture what comes in; click again to stop." };
 
 struct Verb
 {
@@ -73,8 +74,9 @@ struct ButtonPage final : public ni::ui::gallery::ControlsPage
         text[5]->setEnabled (false);
         showFocus (*text[6]);
 
-        /* ---- the 28px square: rest, hover, pressed, on, disabled, focused */
-        heading ("Icon: rest, hover, pressed, on, disabled, focus", 0, 144);
+        /* ---- the 28px square: rest, hover, pressed, on, disabled, focused,
+         * and the record button, on */
+        heading ("Icon: rest, hover, pressed, on, disabled, focus, record", 0, 144);
         const char* icons[] = { "copy", "paste", "export", "pause", "import", "loop" };
         for (int i = 0; i < 6; ++i)
         {
@@ -90,6 +92,13 @@ struct ButtonPage final : public ni::ui::gallery::ControlsPage
         square[3]->setOn (true);
         square[4]->setEnabled (false);
         showFocus (*square[5]);
+        auto& record = *square.add (new Button ({}, "record"));
+        record.setTitle ("record");
+        ni::ui::setInfo (record, recordInfo);
+        record.setRecord (true);
+        record.setOn (true);
+        record.setBounds (6 * 48, 168, record.idealWidth(), (int) uv::tok::size::controlH);
+        addAndMakeVisible (record);
 
         /* ---- the window verbs, joined: copy, paste, export, export all,
          * import, sharing hairlines; the pointer over paste raises it */

@@ -8,6 +8,10 @@
  * shows or a click leaves it in; only a text field being typed into takes it,
  * as a character. hostkeys.h walks a key through the window as JUCE's peer
  * does.
+ *
+ * The host's shortcuts are the host's too (docs/adr/0007): no component of the
+ * kit uses Cmd, Cmd-Shift, Ctrl or Alt with a letter or a digit. Only an
+ * editor with its own document keeps a few, and the kit has none.
  */
 #include "EditField.h"
 #include "Gallery.h"
@@ -17,6 +21,8 @@
 #include "hostkeys.h"
 
 #include <doctest.h>
+
+#include <algorithm>
 
 using namespace ni::ui;
 using ni::ui::test::spaceKey;
@@ -42,6 +48,24 @@ TEST_CASE ("space: no component on any gallery page uses Space, at rest or after
         auto scene = page.make();
         REQUIRE (scene != nullptr);
         const auto users = test::spaceUsersAfterClicks (*scene);
+        CHECK_MESSAGE (users.isEmpty(), users.joinIntoString ("\n").toStdString());
+    }
+}
+
+TEST_CASE ("host shortcuts: no component on any gallery page uses a modified letter or digit")
+{
+    /* The sweep covers the keys only an editor with its own document keeps. */
+    const auto keys = test::modifiedKeys();
+    for (const auto& kept : { test::undoKey, test::redoKey })
+        CHECK (std::any_of (keys.begin(), keys.end(), [&kept] (const juce::KeyPress& k)
+                            { return k.getKeyCode() == kept.getKeyCode() && k.getModifiers() == kept.getModifiers(); }));
+
+    for (const auto& page : gallery::pages())
+    {
+        CAPTURE (gallery::idOf (page));
+        auto scene = page.make();
+        REQUIRE (scene != nullptr);
+        const auto users = test::modifiedUsers (*scene);
         CHECK_MESSAGE (users.isEmpty(), users.joinIntoString ("\n").toStdString());
     }
 }

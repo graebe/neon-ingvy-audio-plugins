@@ -121,6 +121,10 @@ endif()
 # number and read as older than it is. Refused here, at configure, rather
 # than shipped mis-ordered.
 function(ni_juce_version product out_string out_numbers out_build)
+    # A configure dependency: a version bumped is a build directory configured
+    # again, or an existing one goes on stamping the old number into the
+    # bundle (tests/versions.test.mjs caught it, CFBundleVersion one behind).
+    set_property(DIRECTORY ${CMAKE_SOURCE_DIR} APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/versions.json)
     file(READ ${CMAKE_SOURCE_DIR}/versions.json versions)
     string(JSON v ERROR_VARIABLE err GET "${versions}" "${product}")
     if (err)

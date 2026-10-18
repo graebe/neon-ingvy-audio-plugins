@@ -2,15 +2,17 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The fifteen glyphs. See UvIcons.h.
+ * The fifteen glyphs, and the products' own. See UvIcons.h.
  */
 #include "UvIcons.h"
 
 #include <NiUiAssets.h>
 
+#include <algorithm>
 #include <iterator>
 #include <map>
 #include <utility>
+#include <vector>
 
 namespace uv
 {
@@ -29,20 +31,42 @@ bool filled (const juce::String& name)
     return name == "play" || name == "record";
 }
 
-/* The embedded file for a glyph, found by the name it had on disk. */
-juce::String svgText (const juce::String& name)
+/* The system's files: the kit's own assets. */
+const IconSource systemIcons { ni_ui_assets::namedResourceListSize, ni_ui_assets::namedResourceList,
+                               ni_ui_assets::originalFilenames, ni_ui_assets::getNamedResource };
+
+/* The products' sets, in the order they were added. */
+std::vector<IconSource>& productIcons()
+{
+    static std::vector<IconSource> sources;
+    return sources;
+}
+
+/* Where a source keeps the file for a glyph, found by the name it had on
+ * disk; -1 if it has none. */
+int indexIn (const IconSource& source, const juce::String& name)
 {
     const auto file = name + ".svg";
-    for (int i = 0; i < ni_ui_assets::namedResourceListSize; ++i)
-    {
-        if (file == ni_ui_assets::originalFilenames[i])
-        {
-            int size = 0;
-            const auto* data = ni_ui_assets::getNamedResource (ni_ui_assets::namedResourceList[i], size);
-            return juce::String::fromUTF8 (data, size);
-        }
-    }
-    return {};
+    for (int i = 0; i < source.count; ++i)
+        if (file == source.originalFilenames[i])
+            return i;
+    return -1;
+}
+
+juce::String svgText (const IconSource& source, int index)
+{
+    int size = 0;
+    const auto* data = source.resource (source.resourceNames[index], size);
+    return juce::String::fromUTF8 (data, size);
+}
+
+/* The product set that has `name`, or nullptr. */
+const IconSource* productWith (const juce::String& name)
+{
+    for (const auto& source : productIcons())
+        if (indexIn (source, name) >= 0)
+            return &source;
+    return nullptr;
 }
 
 void tintTree (juce::Drawable& d, juce::Colour colour, bool fill)
@@ -73,8 +97,9 @@ public:
         for (const auto* n : kNames)
         {
             const juce::String name (n);
-            if (auto glyph = juce::Drawable::createFromSVGString (svgText (name)))
-                parsed.emplace (name, std::move (glyph));
+            if (const int i = indexIn (systemIcons, name); i >= 0)
+                if (auto glyph = juce::Drawable::createFromSVGString (svgText (systemIcons, i)))
+                    parsed.emplace (name, std::move (glyph));
 
             /* Every glyph the set lists is in the design mirror, and every
              * one parses: the files are part of this build. */
@@ -84,10 +109,20 @@ public:
 
     ~IconStore() override { clearSingletonInstance(); }
 
-    const juce::Drawable* find (const juce::String& name) const
+    /* The system's glyphs were parsed at the start; a product's is parsed
+     * the first time it is asked for. */
+    const juce::Drawable* find (const juce::String& name)
     {
-        const auto it = parsed.find (name);
-        return it != parsed.end() ? it->second.get() : nullptr;
+        if (const auto it = parsed.find (name); it != parsed.end())
+            return it->second.get();
+        const auto* source = iconNames().contains (name) ? nullptr : productWith (name);
+        if (source == nullptr)
+            return nullptr;
+        auto glyph = juce::Drawable::createFromSVGString (svgText (*source, indexIn (*source, name)));
+        jassert (glyph != nullptr);   // a product's file that does not parse
+        if (glyph == nullptr)
+            return nullptr;
+        return parsed.emplace (name, std::move (glyph)).first->second.get();
     }
 
     juce::Drawable* coloured (const juce::String& name, juce::Colour colour)
@@ -126,7 +161,21 @@ const juce::StringArray& iconNames()
 
 bool hasIcon (const juce::String& name)
 {
-    return iconNames().contains (name);
+    return iconNames().contains (name) || productWith (name) != nullptr;
+}
+
+void addIcons (const IconSource& source)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    auto& sources = productIcons();
+    const auto same = [&source] (const IconSource& s) { return s.resource == source.resource && s.resourceNames == source.resourceNames; };
+    if (std::any_of (sources.begin(), sources.end(), same))
+        return;
+
+    /* The system's set comes first, and a product cannot shadow it. */
+    for (int i = 0; i < source.count; ++i)
+        jassert (! iconNames().contains (juce::String (source.originalFilenames[i]).upToLastOccurrenceOf (".svg", false, true)));
+    sources.push_back (source);
 }
 
 bool isFilledIcon (const juce::String& name)
@@ -138,7 +187,7 @@ std::unique_ptr<juce::Drawable> icon (const juce::String& name, juce::Colour col
 {
     JUCE_ASSERT_MESSAGE_THREAD
     const auto* source = IconStore::getInstance()->find (name);
-    jassert (source != nullptr);   // not one of the fifteen
+    jassert (source != nullptr);   // not a glyph: neither the system's nor a product's
     if (source == nullptr)
         return {};
 
@@ -157,7 +206,7 @@ void drawIcon (juce::Graphics& g, const juce::String& name, juce::Colour colour,
 {
     JUCE_ASSERT_MESSAGE_THREAD
     auto* glyph = IconStore::getInstance()->coloured (name, colour);
-    jassert (glyph != nullptr);   // not one of the fifteen
+    jassert (glyph != nullptr);   // not a glyph: neither the system's nor a product's
     if (glyph == nullptr)
         return;
 

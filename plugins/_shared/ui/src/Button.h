@@ -15,6 +15,7 @@
  *   on         the same, latched -- and an icon-only button that is on is lit
  *              like a step, with glow-led (Button card)
  *   primary    always uv, with glow-led: at most once per window
+ *   record     on, red with a red halo and a bg-000 glyph (setRecord)
  *   disabled   bg-100 on line-100, ink-dim, no hover
  *   focus      glow-focus round it, for the keyboard only
  *
@@ -45,8 +46,9 @@ public:
     explicit Button (const juce::String& text = {}, const juce::String& icon = {});
     ~Button() override;
 
-    /* The word, and the glyph before it: one of the system's fifteen, or
-     * none. With a glyph and no word, it is the 28px square. */
+    /* The word, and the glyph before it: one of the system's fifteen, a
+     * product's own (UvIcons.h), or none. With a glyph and no word, it is the
+     * 28px square. */
     void setText (const juce::String&);
     void setIcon (const juce::String&);
     const juce::String& getText() const noexcept { return text; }
@@ -61,6 +63,12 @@ public:
     /* The window's one primary action. */
     void setPrimary (bool);
     bool isPrimary() const noexcept { return primary; }
+
+    /* A record button (.ph-btn.icon.rec): on, it is red rather than uv, its
+     * glyph bg-000 and its halo red -- what records is never mistaken for
+     * what is merely selected. */
+    void setRecord (bool);
+    bool isRecord() const noexcept { return record; }
 
     /* Where the content sits: centred, or from the left padding (the
      * labelled Actions stack). */
@@ -86,7 +94,7 @@ private:
     bool glows() const;
 
     juce::String text, icon;
-    bool on = false, latching = false, primary = false, left = false;
+    bool on = false, latching = false, primary = false, left = false, record = false;
 
     JUCE_DECLARE_NON_COPYABLE (Button)
 };
