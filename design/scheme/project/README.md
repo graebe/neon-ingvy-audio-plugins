@@ -6,7 +6,7 @@ The publisher is **Neon Ingvy**. Every plugin window carries the publisher's `Si
 
 ## Versioning
 
-Ultraviolet follows semantic versioning, MAJOR.MINOR.PATCH. The current release is **2.0.0**; every release is listed in the Changelog. The version is recorded in `tokens.json` (`meta.release`) and in the header of `components/bundle.css`. A plugin states the Ultraviolet version it was built against in its own release notes.
+Ultraviolet follows semantic versioning, MAJOR.MINOR.PATCH. The current release is **2.1.0**; every release is listed in the Changelog. The version is recorded in `tokens.json` (`meta.release`) and in the header of `components/bundle.css`. A plugin states the Ultraviolet version it was built against in its own release notes.
 
 - **MAJOR** — a change that breaks a plugin built on the previous release: a token, class, component, icon or API member renamed or removed, a token's meaning changed (e.g. `uv` used for something other than "on"), a layout rule reversed.
 - **MINOR** — an addition that breaks nothing: a new token, component, variant, icon or API option; a new rule that existing plugins already satisfy.
@@ -73,7 +73,9 @@ Controls never animate: values change instantly, the playhead advances in hard s
 
 Every control answers the pointer and the keyboard the same way, in every window.
 
-- **Drag.** Knobs and sliders drag vertically: 200 px of travel covers the range, and Shift-drag is five times finer. A drag is one edit to the host, opened on the first move, so a click that moves nothing writes no automation. A knob with detents holds on each for about 14 px of travel (`Knob`).
+- **Drag.** Knobs drag vertically: click and pull up or down, 200 px of travel covers the range, and Shift-drag is five times finer. A knob with detents holds on each for about 14 px of travel (`Knob`).
+- **Click a slider where you want it.** A press on a slider puts the value where the pointer is, and a drag follows the pointer along the rail; Shift held from the press drags five times finer, from where the value was, not from the pointer (`Slider`).
+- **One edit per gesture.** A drag is one edit to the host, opened on the first move or on a press that changed the value, so a click that moves nothing writes no automation.
 - **Double-click** resets a control to its parameter's default: the plugin's default, not the bottom of the range.
 - **Click a readout to type.** One click turns the readout into a field with the value selected; Enter (or a click elsewhere) keeps what was typed, Escape abandons it. The plugin parses the text in the readout's own units ("40 ms", "1/8T"); the interface never guesses a unit.
 - **Steps.** Click to toggle, Shift-click for a tie, drag up or down for the step's amount. A click is not a drag (4 px of dead zone first), dragging to the floor switches the step off, and a step switched on comes back at its full amount. On an editable `Ring` a sweep paints the state of the first wedge across every wedge it crosses.

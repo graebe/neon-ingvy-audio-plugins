@@ -2,6 +2,16 @@
 
 All notable changes to Ultraviolet, newest first. Versions follow the rules under Versioning.
 
+## 2.1.0 — 2026-10-18
+
+Sliders are clicked where they should be; knobs are pulled. The Drag convention named both as dragged vertically by distance, while every slider built on the system already put its value where it was pressed. The owner's rule now reads as the controls work: a new rule that existing plugins already satisfy.
+
+**Changed**
+
+- Interaction conventions: **Drag** is the knobs' rule (click and pull up or down, 200 px for the range, Shift five times finer). New: **Click a slider where you want it** — a press puts the value at the pointer, a drag follows the rail, Shift from the press is finer from the value. New: **One edit per gesture**, the host-edit rule both share (opened on the first move, or on a press that changed the value).
+- Slider: its guidelines state the pointer rule.
+- The stylesheet's rules are unchanged; only its header names 2.1.0. The previews keep their 2.0.0 copy, which draws the same.
+
 ## 2.0.0 — 2026-10-12
 
 The ground stands still. The animated window ground and its Motion switch are gone; the window ground is the static dot paper and grain it always was at rest, so nothing in a window moves on its own except a playhead. A major release: a component, its script and its classes are removed.

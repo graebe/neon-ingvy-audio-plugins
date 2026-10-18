@@ -17,9 +17,9 @@
  * setting (swing), lying down -- never both in one row. The label and the
  * value text are the owner's, beside it: the card draws neither.
  *
- * INTERACTION. The keys and the double-click are the Interaction
- * conventions'; the pointer departs from their Drag (200 px of vertical
- * travel for the range): on a rail, where the pointer is is the value.
+ * INTERACTION, the Interaction conventions' (Ultraviolet 2.1.0): a slider
+ * is clicked where it should be -- on a rail, where the pointer is is the
+ * value -- where a knob is pulled up and down.
  *
  *   press        the value jumps to the pointer, and a drag follows it along
  *                the rail; Shift held from the press drags five times finer,
