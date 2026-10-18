@@ -28,6 +28,7 @@ the result in its own C ABI.
 */
 
 mod bridge;
+pub mod capi;
 mod handoff;
 mod reclaim;
 

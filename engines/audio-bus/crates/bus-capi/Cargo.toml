@@ -19,7 +19,13 @@ bus-core = { path = "../bus-core" }
 # NOT a second static library: an rlib compiled INTO this one, since one
 # archive per plugin is an invariant here (spectro-capi/Cargo.toml).
 shell-capi = { path = "../../../shell/crates/shell-capi" }
+# The one reading of a C string every engine's entry points share.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 
 # audio_bus.h, generated from src/ by build.rs.
 [build-dependencies]
 cbindgen = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

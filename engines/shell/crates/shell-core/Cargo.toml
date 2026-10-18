@@ -19,6 +19,8 @@ triple_buffer = { workspace = true }
 # only queues it: the free is the collector's, on the main thread
 # (src/reclaim.rs). No features to choose: the crate is no_std with alloc.
 basedrop = { workspace = true }
+# The one reading of a host's sample rate every C ABI shares (src/capi.rs).
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 
 # Test-only: built for the tests, shipped in nothing.
 [dev-dependencies]

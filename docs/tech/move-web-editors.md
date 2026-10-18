@@ -130,8 +130,9 @@ runs the editor against a fake Move (`web/kit/src/lib/fake-schwung.js`):
 - **The manager's rules.** The fake applies the manager's rules from
   `remote_ui.go`.
 - **The real engine.** Behind the fake is the module's real engine, as wasm.
-- **The real declaration.** `chain_params` is read from the module's Rust
-  source (`virtual:chain-params`).
+- **The real declaration.** `chain_params` is the one the module's build
+  script writes from its engine's table, read where cargo says it wrote it
+  (`virtual:chain-params`).
 
 `window.__move` stands in for the Move's own controls.
 

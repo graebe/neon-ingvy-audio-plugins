@@ -291,14 +291,19 @@ fn the_panic_empties_every_filter() {
     assert!(e.is_silent());
 }
 
+/* A fade lands: its warm-up -- a 1 kHz bell settles in about a millisecond
+ * -- and its 20 ms. */
 #[test]
 fn a_fade_lands() {
     let mut e = Engine::new(FS);
     node(&mut e, 0, Field::Type, 1.0);
+    node(&mut e, 0, Field::Freq, 1000.0);
     node(&mut e, 0, Field::Gain, 3.0);
     e.process_f32(&mut vec![0.0; 64], None);
     assert!(e.node(0).is_fading());
-    e.process_f32(&mut vec![0.0; (FS * 0.021) as usize], None);
+    e.process_f32(&mut vec![0.0; (FS * 0.015) as usize], None);
+    assert!(e.node(0).is_fading(), "not before its 20 ms");
+    e.process_f32(&mut vec![0.0; (FS * 0.01) as usize], None);
     assert!(!e.node(0).is_fading());
 }
 
@@ -596,7 +601,8 @@ fn matched_cuts_fade_the_cuts_to_their_matched_designs() {
     let bilinear = measured_db(&mut e, 19_000.0);
     e.set_num(Param::MatchedCuts, 1.0);
     e.process_f32(&mut vec![0.0; 64], None);
-    assert!(e.node(0).is_fading() && !e.node(1).is_fading(), "the cut fades, the bell does not");
+    assert!(e.node(0).is_morphing() && !e.node(1).is_morphing(), "the cut morphs, the bell does not");
+    assert!(!e.node(0).is_fading(), "a morph, not a fade");
     let matched = measured_db(&mut e, 19_000.0);
     let v = e.values;
     let want: f64 = (0..2)
@@ -611,4 +617,243 @@ fn matched_cuts_fade_the_cuts_to_their_matched_designs() {
      * the analog 24 dB/oct; the matched one is near it. */
     println!("a 24 dB/oct low-pass at 14 kHz, at 19 kHz: bilinear {bilinear:.1} dB, matched {matched:.1} dB");
     assert!(matched > bilinear + 6.0);
+}
+
+/* ------------------------------------------------- what a change sounds like -- */
+
+/// The RMS of each `win`-sample window of `x`, in dB.
+fn envelope_db(x: &[f32], win: usize) -> Vec<f64> {
+    x.chunks(win).filter(|c| c.len() == win).map(|c| 20.0 * rms(c).log10()).collect()
+}
+
+/// The largest distance of `env` from its last value: how far a level strays
+/// from where it settles.
+fn worst_from_settled(env: &[f64]) -> f64 {
+    let settled = *env.last().unwrap();
+    env.iter().map(|d| (d - settled).abs()).fold(0.0, f64::max)
+}
+
+/// A steady sine through `e`, `change` made after a second of it, and the
+/// left channel's envelope from the change to `after` seconds on: in windows
+/// of whole periods, at least 10 ms -- a window that cut a period would
+/// ripple with the sine's phase, not with its level.
+fn envelope_across(e: &mut Engine, hz: f64, change: impl FnOnce(&mut Engine), after: f64) -> Vec<f64> {
+    let settle = sine(FS as usize, hz, 0.25);
+    let (mut l, mut r) = (settle.clone(), settle);
+    e.process_f32(&mut l, Some(&mut r));
+    change(e);
+    let n = (FS * after) as usize;
+    /* The sine goes on in phase with the second it continues. */
+    let x: Vec<f32> = (FS as usize..FS as usize + n)
+        .map(|i| (0.25 * (2.0 * core::f64::consts::PI * hz * i as f64 / FS).sin()) as f32)
+        .collect();
+    let (mut l, mut r) = (x.clone(), x);
+    e.process_f32(&mut l, Some(&mut r));
+    let period = FS / hz;
+    envelope_db(&l, (period * (FS * 0.01 / period).ceil()).round() as usize)
+}
+
+/// A narrow, low bell: +12 dB at 60 Hz, Q 10 -- τ = 2Q/ω0 ≈ 53 ms, so it
+/// rings far longer than a 20 ms fade.
+fn narrow_low_bell(e: &mut Engine) {
+    node(e, 0, Field::Type, 1.0);
+    node(e, 0, Field::Freq, 60.0);
+    node(e, 0, Field::Gain, 12.0);
+    node(e, 0, Field::Q, 10.0);
+}
+
+/*
+ * A CHANGE OF WHAT A NODE IS MUST NOT START IT FROM SILENCE. Channel Stereo
+ * to Left on a track whose two sides are the same leaves the sound as it
+ * was, so the level may not move at all; a design that came in cold would
+ * dip and swell back over its ring time, long after its fade.
+ */
+#[test]
+fn a_change_that_keeps_the_sound_keeps_the_level() {
+    let mut e = Engine::new(FS);
+    narrow_low_bell(&mut e);
+    let env = envelope_across(&mut e, 60.0, |e| node(e, 0, Field::Channel, 1.0), 1.0);
+    let worst = worst_from_settled(&env);
+    println!("a 60 Hz Q 10 bell, Channel Stereo -> Left: the level strays {worst:.3} dB");
+    assert!(worst < 0.1, "{worst} dB");
+}
+
+/// The lowest level of `env`, in dB relative to a sine of amplitude 0.25.
+fn lowest_db(env: &[f64]) -> f64 {
+    env.iter().copied().fold(f64::INFINITY, f64::min) - 20.0 * (0.25 / 2f64.sqrt()).log10()
+}
+
+/*
+ * A CHANGE OF FAMILY MOVES THE CURVE, NOT A NOTCH THROUGH IT: the playing
+ * filter morphs, its state carried, rather than summing two designs that
+ * disagree in phase. A low-pass at 2 kHz, Butterworth to Chebyshev I, order
+ * 4: both are -3 dB at the cutoff (Freq is every family's -3 dB point), and
+ * a sine there may not dip below that.
+ */
+#[test]
+fn a_change_of_family_dips_below_neither_design() {
+    let mut e = Engine::new(FS);
+    node(&mut e, 0, Field::Type, 5.0);
+    node(&mut e, 0, Field::Freq, 2000.0);
+    node(&mut e, 0, Field::Order, 3.0);
+    let env = envelope_across(&mut e, 2000.0, |e| node(e, 0, Field::Family, 2.0), 0.3);
+    let lowest = lowest_db(&env);
+    println!("a 2 kHz low-pass, Butterworth -> Chebyshev I, at its cutoff: lowest {lowest:.2} dB (both -3 dB)");
+    assert!(lowest > -3.3, "{lowest} dB");
+}
+
+/*
+ * A CHANGE OF ORDER IS A FADE -- another number of sections -- and the fade
+ * of two cuts of different order dips where they disagree in phase: a
+ * high-pass at 200 Hz, order 2 to 4, at its cutoff, where both are -3 dB, is
+ * 90 degrees from the other there. Held to what that sum costs, for the 20
+ * ms the fade lasts, and no more.
+ */
+#[test]
+fn a_change_of_order_dips_only_for_its_fade() {
+    let mut e = Engine::new(FS);
+    node(&mut e, 0, Field::Type, 4.0);
+    node(&mut e, 0, Field::Freq, 200.0);
+    node(&mut e, 0, Field::Order, 1.0);
+    let env = envelope_across(&mut e, 200.0, |e| node(e, 0, Field::Order, 3.0), 0.5);
+    let lowest = lowest_db(&env);
+    let below = env.iter().filter(|&&d| d - 20.0 * (0.25 / 2f64.sqrt()).log10() < -3.5).count();
+    println!("a 200 Hz high-pass, order 2 -> 4, at its cutoff: lowest {lowest:.2} dB, {below} window(s) below -3.5 dB");
+    assert!(lowest > -6.0, "{lowest} dB");
+    assert!(below <= 3, "{below} windows");
+}
+
+/*
+ * THE ISOLATOR'S CROSSOVERS MOVE A SAMPLE AT A TIME, as the nodes' filters
+ * do: the low-mid crossover swept 500 Hz to 2 kHz in 100 ms through a 1 kHz
+ * sine, the mid killed so the sine is the low band's skirt -- coefficients
+ * that stepped every tick would put lines at 1 kHz ± fs/16.
+ */
+#[test]
+fn a_crossover_sweep_puts_no_lines_at_the_control_rate() {
+    let mut e = Engine::new(FS);
+    e.set_num(Param::IsoOn, 1.0);
+    e.set_num(Param::IsoSlope, 1.0);
+    e.set_num(Param::IsoKillMid, 1.0);
+    e.set_num(Param::IsoFreqHi, 8000.0);
+    e.set_num(Param::IsoFreqLo, 500.0);
+    let (n, len) = (32_768, (FS * 0.1) as usize);
+    let start = (n - len) / 2;
+    let mut y = sine(n, 1000.0, 0.5);
+    for (b, chunk) in y.chunks_mut(SUB).enumerate() {
+        let at = (b * SUB).saturating_sub(start).min(len) as f64 / len as f64;
+        e.set_num(Param::IsoFreqLo, 500.0 * 4f64.powf(at));
+        e.process_f32(chunk, None);
+    }
+    let s = spectrum(&y);
+    let bin = |hz: f64| (hz * n as f64 / FS).round() as usize;
+    let near = |hz: f64| (bin(hz) - 20..=bin(hz) + 20).map(|k| s[k]).fold(0.0, f64::max);
+    let dbc = 20.0 * (near(2000.0).max(near(4000.0)) / near(1000.0)).log10();
+    println!("the low-mid crossover swept 500 Hz to 2 kHz in 100 ms: lines at 1 kHz ± fs/16 at {dbc:.1} dBc");
+    assert!(dbc < -120.0, "{dbc} dBc");
+}
+
+/*
+ * A SLOPE CHANGE DIPS ONLY FOR ITS FADE. LR4 and LR8 each sum flat, but they
+ * are 180 degrees apart at a crossover, so the 20 ms fade between them
+ * dips there -- what summing two crossovers of different order must do. A
+ * sine on the low-mid crossover, every band at 0 dB: held to that, and
+ * flat again after it.
+ */
+#[test]
+fn a_slope_change_dips_only_for_its_fade() {
+    let mut e = Engine::new(FS);
+    e.set_num(Param::IsoOn, 1.0);
+    let lo = e.num(Param::IsoFreqLo);
+    let env = envelope_across(&mut e, lo, |e| e.set_num(Param::IsoSlope, 1.0), 0.5);
+    let worst = worst_from_settled(&env);
+    let off = env.iter().skip(5).map(|d| (d - env[env.len() - 1]).abs()).fold(0.0, f64::max);
+    println!("LR4 -> LR8 at the {lo} Hz crossover: the level strays {worst:.3} dB, {off:.4} dB after 50 ms");
+    assert!(worst < 4.0, "{worst} dB");
+    assert!(off < 0.01, "{off} dB");
+}
+
+/*
+ * A GLIDE THAT CROSSES INTO ANOTHER REALISATION MORPHS THERE. A low shelf,
+ * -12 dB, order 3, Q 2, at 44.1 kHz: its design switches from one
+ * realisation of its second-order section to another as Freq passes 18.3
+ * kHz, and the curve moves 6.4 dB at 15 kHz at that point (ni-filter's
+ * a_matched_design_moves_smoothly_except_where_it_switches_and_says_so).
+ * Freq swept 17 to 19.5 kHz over a second, a sine at 15 kHz: a switch made
+ * within a sub-block (0.36 ms) scatters the sine into sidebands kilohertz
+ * wide -- a click, at -41 dBc -- where one spread over a fade's 20 ms keeps
+ * them within tens of hertz, below -90 dBc. Measured as the energy 0.5 to 3
+ * kHz either side of the sine, over the 0.75 s around the switch, against
+ * the sine's.
+ */
+#[test]
+fn a_realisation_switch_is_a_morph_not_a_click() {
+    let fs = 44_100.0;
+    let mut e = Engine::new(fs);
+    node(&mut e, 0, Field::Type, 2.0);
+    node(&mut e, 0, Field::Gain, -12.0);
+    node(&mut e, 0, Field::Order, 2.0);
+    node(&mut e, 0, Field::Q, 2.0);
+    node(&mut e, 0, Field::Freq, 17_000.0);
+    let hz = 14_961.0;
+    let n = fs as usize * 2;
+    let mut x: Vec<f32> = (0..n).map(|i| (0.25 * (2.0 * core::f64::consts::PI * hz * i as f64 / fs).sin()) as f32).collect();
+    let (start, len) = (fs as usize / 2, fs as usize);
+    let mut ticks = 0;
+    for (b, chunk) in x.chunks_mut(SUB).enumerate() {
+        let at = (b * SUB).saturating_sub(start).min(len) as f64 / len as f64;
+        node(&mut e, 0, Field::Freq, 17_000.0 * (19_500.0f64 / 17_000.0).powf(at));
+        if e.node(0).is_morphing() {
+            ticks += 1;
+        }
+        e.process_f32(chunk, None);
+    }
+    /* The switch is where Freq passes 18.3 kHz. */
+    let at = start + (len as f64 * (18_300.0f64 / 17_000.0).ln() / (19_500.0f64 / 17_000.0).ln()) as usize;
+    let m = 32_768;
+    let s = spectrum(&x[at - m / 2..at + m / 2]);
+    let bin = |f: f64| (f * m as f64 / fs).round() as usize;
+    let power = |lo: f64, hi: f64| (bin(lo)..=bin(hi)).map(|k| s[k] * s[k]).sum::<f64>();
+    let carrier = power(hz - 20.0, hz + 20.0);
+    let sidebands = power(hz - 3000.0, hz - 500.0) + power(hz + 500.0, hz + 3000.0);
+    let db = 10.0 * (sidebands / carrier).log10();
+    println!("a -12 dB low shelf swept through its switch at 18.3 kHz: sidebands of a 15 kHz sine at {db:.1} dBc, morphing {ticks} ticks");
+    assert!(ticks > 0, "the switch morphed");
+    assert!(db < -90.0, "{db} dBc");
+}
+
+/*
+ * A GLIDE THAT WAITS FOR BUDGET STILL MOVES A SAMPLE AT A TIME. Sixteen high
+ * shelves, +6 dB, swept an octave each high in the band, all weighing their
+ * realisations: four are designed a tick, so each is designed every fourth,
+ * and its move spread over the four sub-blocks it waited. A 6 kHz sine in
+ * their transition: no lines at it ± fs/64 (a move made in one sub-block of
+ * four would put them there) or ± fs/16.
+ */
+#[test]
+fn a_glide_that_waits_for_budget_puts_no_lines() {
+    let mut e = Engine::new(FS);
+    for slot in 0..NODES as u8 {
+        node(&mut e, slot, Field::Type, 3.0);
+        node(&mut e, slot, Field::Gain, 6.0 / NODES as f64);
+        node(&mut e, slot, Field::Order, 1.0);
+    }
+    let (n, len) = (32_768, (FS * 0.3) as usize);
+    let start = (n - len) / 2;
+    let mut y = sine(n, 6000.0, 0.5);
+    for (b, chunk) in y.chunks_mut(SUB).enumerate() {
+        let at = (b * SUB).saturating_sub(start).min(len) as f64 / len as f64;
+        for slot in 0..NODES as u8 {
+            node(&mut e, slot, Field::Freq, (4000.0 + 250.0 * f64::from(slot)) * 2f64.powf(at));
+        }
+        e.process_f32(chunk, None);
+    }
+    let s = spectrum(&y);
+    let bin = |hz: f64| (hz * n as f64 / FS).round() as usize;
+    let near = |hz: f64| (bin(hz) - 10..=bin(hz) + 10).map(|k| s[k]).fold(0.0, f64::max);
+    let lines = [6000.0 - FS / 64.0, 6000.0 + FS / 64.0, 6000.0 - FS / 16.0, 6000.0 + FS / 16.0];
+    let worst = lines.iter().map(|&hz| near(hz)).fold(0.0, f64::max);
+    let dbc = 20.0 * (worst / near(6000.0)).log10();
+    println!("sixteen high shelves swept high in the band, designed every fourth tick: lines at 6 kHz ± fs/64 and fs/16 at {dbc:.1} dBc");
+    assert!(dbc < -130.0, "{dbc} dBc");
 }

@@ -3,7 +3,7 @@
 
 /*
  * NI Spectrogram's editor: the web editor's App.jsx and its three parts
- * (Toolbar, SourceStrip, Display), natively, on Ultraviolet 1.1.0.
+ * (Toolbar, SourceStrip, Display), natively, on Ultraviolet.
  *
  * THE WINDOW, 868 x 502, laid out at that size always and scaled to fit
  * (FixedDesign). Inside the EditorFrame's padding, an 804 x 402 content, top

@@ -47,6 +47,9 @@ impl Module for Ducker {
 
 ni_schwung::export_audio_fx!(Ducker);
 
+#[cfg(test)]
+mod no_alloc;
+
 /*
  * THE MOVE'S PARAMETER PATH, END TO END.
  *

@@ -13,6 +13,8 @@ crate-type = ["rlib"]
 [dependencies]
 # The DSP the products share; product-free. See the workspace Cargo.toml.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The host column's shape (src/schema.rs), shared with Side-Chain.
+ni-params = { path = "../../../shared/crates/ni-params" }
 # The state blob, slot files and pasted text are flat JSON objects, and
 # serde_json reads them (src/json.rs). One hand-written visitor reads all
 # three, so serde is taken for its traits alone: no derive, and none of its
@@ -21,6 +23,9 @@ ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 # scratch buffer (json.rs says why the result is the same double).
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["alloc"] }
+# MIDI bytes to messages, for the panic (src/clock.rs). Core-only without
+# its default `std` feature, as bc-core and sc-core take it.
+wmidi = { workspace = true }
 # A file's fields, in order, on the stack (json::Object).
 arrayvec = { workspace = true }
 # The randomiser's generator (Instance::randomize), seeded and advanced by the

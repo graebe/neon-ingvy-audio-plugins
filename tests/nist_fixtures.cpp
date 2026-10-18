@@ -143,6 +143,8 @@ TEST_CASE ("every product's fixture decodes as it was captured, and writes back 
             REQUIRE (state.has_value());
             ++seen;
             CHECK_FALSE (state->legacy);
+            /* Every build so far wrote its product's state version as 1. */
+            CHECK (state->version == 1);
             CHECK (state->bypass == ((int) doc["bypass"] != 0));
             CHECK ((std::size_t) (int) doc["bodyBytes"] + 20 == saved.size());
 
@@ -205,6 +207,32 @@ TEST_CASE ("trance-gate: a headerless chunk with today's fifteen reads as the he
     CHECK (s->params == headed->params);
     CHECK (s->strings == headed->strings);
     CHECK (s->bypass == headed->bypass);
+}
+
+TEST_CASE ("a product's state version is written in the header and read back; a headerless chunk is version 0")
+{
+    auto layout = ni::tg::layout();
+    const auto saved = tgFixture ("slots");
+    auto state = ni::nist::read (layout, saved.data(), saved.size());
+    REQUIRE (state.has_value());
+
+    /* A later version, written and read: the meaning a product changed is
+     * then migrated by the version the chunk says. An older build reads it
+     * best-effort, as it always has. */
+    layout.version = 3;
+    const auto later = ni::nist::write (layout, *state);
+    std::int32_t at8 = 0;
+    std::memcpy (&at8, later.data() + 8, 4);
+    CHECK (at8 == 3);
+    const auto back = ni::nist::read (layout, later.data(), later.size());
+    REQUIRE (back.has_value());
+    CHECK (back->version == 3);
+    CHECK (ni::nist::read (ni::tg::layout(), later.data(), later.size()).has_value());
+
+    const Bytes legacy (saved.begin() + 16, saved.end());
+    const auto old = ni::nist::read (ni::tg::layout(), legacy.data(), legacy.size());
+    REQUIRE (old.has_value());
+    CHECK (old->version == 0);
 }
 
 TEST_CASE ("trance-gate: a headerless chunk from before the fade's parameters reads, with their defaults")

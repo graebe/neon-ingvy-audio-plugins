@@ -532,110 +532,31 @@ pub extern "C" fn tg_core_rate_default() -> c_int {
     RATE_DEFAULT as c_int
 }
 
-/// One host parameter, as the engine's schema declares it
-/// (`tg_core::schema`): the row a plugin builds its host parameter from. Every
-/// number is the HOST's plain value, `host = engine * scale + offset` -- Slot
-/// and Length one-based, the four levels percentages, as the iPlug2 build
-/// reported them. `kind` is 0 integer, 1 choice, 2 toggle, 3 continuous.
-/// `texts` holds `num_texts` words for a choice or a toggle, and is null for
-/// Rate, whose words are `tg_core_rate_label`'s. Every pointer is the
-/// engine's and lives as long as the program.
-#[repr(C)]
-pub struct TgParamSpec {
-    pub id: *const c_char,
-    pub name: *const c_char,
-    pub kind: c_int,
-    pub min: f64,
-    pub max: f64,
-    pub def: f64,
-    pub units: *const c_char,
-    pub texts: *const *const c_char,
-    pub num_texts: c_int,
-    pub scale: f64,
-    pub offset: f64,
-}
+pub use ni_params::host::NiHostParam;
 
-/* A table of raw pointers to static strings: shared between threads, read
- * only, so it is Sync in fact; the wrappers say so. */
-#[repr(transparent)]
-struct Texts([*const c_char; MAX_TEXTS]);
-unsafe impl Sync for Texts {}
-#[repr(transparent)]
-struct Row(TgParamSpec);
-unsafe impl Sync for Row {}
-
-/// The most words any parameter has (Curve's three).
-const MAX_TEXTS: usize = 3;
-
-const fn texts_of(i: usize) -> Texts {
-    let opts = PARAMS[i].host.options;
-    let mut t = [core::ptr::null(); MAX_TEXTS];
-    let mut k = 0;
-    while k < opts.len() {
-        t[k] = opts[k].as_ptr();
-        k += 1;
-    }
-    Texts(t)
-}
-
-static TEXTS: [Texts; NUM_PARAMS] = {
-    let mut k = 0;
-    let mut out = [const { Texts([core::ptr::null(); MAX_TEXTS]) }; NUM_PARAMS];
-    while k < NUM_PARAMS {
-        out[k] = texts_of(k);
-        k += 1;
-    }
-    out
-};
-
-const NUM_PARAMS: usize = PARAMS.len();
-
-static ROWS: [Row; NUM_PARAMS] = {
-    let mut k = 0;
-    let mut out = [const {
-        Row(TgParamSpec {
-            id: core::ptr::null(),
-            name: core::ptr::null(),
-            kind: 0,
-            min: 0.0,
-            max: 0.0,
-            def: 0.0,
-            units: core::ptr::null(),
-            texts: core::ptr::null(),
-            num_texts: 0,
-            scale: 1.0,
-            offset: 0.0,
-        })
-    }; NUM_PARAMS];
-    while k < NUM_PARAMS {
-        let p = &PARAMS[k];
-        let h = &p.host;
-        let n = h.options.len();
-        out[k] = Row(TgParamSpec {
-            id: h.id.as_ptr(),
-            name: h.name.as_ptr(),
-            kind: h.kind as c_int,
-            min: p.min * h.scale + h.offset,
-            max: p.max * h.scale + h.offset,
-            def: p.default * h.scale + h.offset,
-            units: h.units.as_ptr(),
-            texts: if n > 0 { TEXTS[k].0.as_ptr() } else { core::ptr::null() },
-            num_texts: n as c_int,
-            scale: h.scale,
-            offset: h.offset,
-        });
-        k += 1;
-    }
-    out
-};
-
-/// The host parameter at `index` (a `tg_param_t`), or null past the end.
+/// Host parameter `index` as the engine's schema declares it
+/// (`tg_core::schema`), into `out`: the row a plugin builds its host
+/// parameter from, in the HOST's plain values -- Slot and Length one-based,
+/// the four levels percentages, as the iPlug2 build reported them. Rate has
+/// no words here; its labels are `tg_core_rate_label`'s. False past the end
+/// or for a null `out`. Any thread.
+///
+/// # Safety
+/// `out` is null or writable.
 #[no_mangle]
-pub extern "C" fn tg_core_param_spec(index: c_int) -> *const TgParamSpec {
-    match usize::try_from(index).ok().and_then(|i| ROWS.get(i)) {
-        Some(row) => &row.0,
-        None => core::ptr::null(),
-    }
+pub unsafe extern "C" fn tg_core_param_spec(index: c_int, out: *mut NiHostParam) -> bool {
+    ni_params::host::c_host_param(row(index).map(|s| (&s.host, s.min, s.max, s.default)), out)
+}
+
+/// Word `option` of host parameter `index` (a choice's or a toggle's), or
+/// null when it has none. The engine's, for as long as the program runs.
+#[no_mangle]
+pub extern "C" fn tg_core_param_option(index: c_int, option: c_int) -> *const c_char {
+    ni_params::host::c_host_option(row(index).map(|s| &s.host), option)
+}
+
+fn row(index: c_int) -> Option<&'static tg_core::schema::Spec> {
+    usize::try_from(index).ok().and_then(|i| PARAMS.get(i))
 }
 
 /*

@@ -317,6 +317,9 @@ TEST_CASE ("a set saved bypassed reopens bypassed, and saves so again")
     CHECK (a.save() == bytes);
 }
 
+/* What no build wrote is refused and changes nothing that plays -- and is
+ * not lost by a save either: the bytes go back as they came, until the user
+ * edits (ni::Processor::stateUnread). */
 TEST_CASE ("what no build wrote is refused, and changes nothing")
 {
     Instance a;
@@ -328,6 +331,12 @@ TEST_CASE ("what no build wrote is refused, and changes nothing")
         b = (std::uint8_t) rng();
     a.load (noise);
     a.load ({});
+    CHECK (a.p.stateUnread());
+    CHECK (a.save() == noise);
+    auto* p = a.p.getParameters()[0];
+    p->beginChangeGesture();
+    p->setValueNotifyingHost (p->getValue());
+    p->endChangeGesture();
     CHECK (a.save() == savedBack (session));
 }
 

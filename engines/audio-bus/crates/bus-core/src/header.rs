@@ -192,7 +192,7 @@ pub struct Header {
 
 const _: () = assert!(core::mem::size_of::<Header>() <= DATA_OFFSET);
 const _: () = assert!(core::mem::align_of::<Header>() <= 8);
-const _: () = assert!(STAMP_OFFSET % core::mem::align_of::<Stamp>() == 0);
+const _: () = assert!(STAMP_OFFSET.is_multiple_of(core::mem::align_of::<Stamp>()));
 const _: () = assert!(STAMPS.is_power_of_two());
 
 impl Header {

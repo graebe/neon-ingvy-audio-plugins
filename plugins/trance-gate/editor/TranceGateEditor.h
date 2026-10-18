@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Trance Gate's editor: the web editor's App.jsx, natively, on Ultraviolet
- * 1.1.0, laid out as the layout canvas's "NI Trance Gate -- as built"
+ * NI Trance Gate's editor: the web editor's App.jsx, natively, on Ultraviolet,
+ * laid out as the layout canvas's "NI Trance Gate -- as built"
  * artboard (design/designs/Main.dc.html) and the web editor's app.css.
  *
  * THE WINDOW, inside the window padding (EditorFrame), on the 4px grid:

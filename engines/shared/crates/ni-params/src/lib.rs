@@ -19,7 +19,13 @@ declares its table (its build.rs), so `NiParamInfo` is in that header, and the
 shells' one C++ adapter (plugins/_shared/juce/EngineParameter.h) reads it.
 
 It knows no product, and allocates nothing: a table is read on any thread.
+
+[`host`] is the other column two products keep: a parameter as an iPlug2
+build declared it to hosts, which their saved sets still hold.
 */
+
+pub mod chain;
+pub mod host;
 
 use core::fmt::{self, Write};
 use std::os::raw::{c_char, c_int};

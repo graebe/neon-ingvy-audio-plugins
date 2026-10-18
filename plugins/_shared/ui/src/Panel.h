@@ -3,7 +3,7 @@
 
 /*
  * A hairlined bg-100 box that groups the controls of one function -- the Panel
- * card of Ultraviolet 1.1.0, and the web kit's .panel.
+ * card of Ultraviolet, and the web kit's .panel.
  *
  * ONE PANEL PER FUNCTION, never one per control, never nested, a title of one
  * or two words: the card's rules, which are the editor's to keep. What the

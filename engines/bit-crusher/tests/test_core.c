@@ -39,7 +39,7 @@ static void table(void) {
     CHECK(bc_param_count() == 18);
     char buf[32];
     for (int i = 0; i < bc_param_count(); i++) {
-        BcParamInfo info;
+        NiParamInfo info;
         memset(&info, 0, sizeof info);
         CHECK(bc_param_info(i, &info));
         CHECK(info.min <= info.default_value && info.default_value <= info.max);
@@ -50,10 +50,10 @@ static void table(void) {
 
     /* The filter, appended after Refresh: off by default, Slope a choice. */
     CHECK(param("filter") == 14 && param("cutoff") == 15 && param("peak") == 16 && param("slope") == 17);
-    BcParamInfo f;
-    CHECK(bc_param_info(param("filter"), &f) && f.kind == BcParamKind_Toggle && f.default_value == 0.0);
-    CHECK(bc_param_info(param("slope"), &f) && f.kind == BcParamKind_Choice && f.choice_count == 3);
-    CHECK(bc_param_choice(param("slope"), 2, buf, sizeof buf) == 5 && strcmp(buf, "48 dB") == 0);
+    NiParamInfo f;
+    CHECK(bc_param_info(param("filter"), &f) && f.kind == NiParamKind_Choice && f.max == 1.0 && f.default_value == 0.0);
+    CHECK(bc_param_info(param("slope"), &f) && f.kind == NiParamKind_Choice && f.max == 2.0);
+    CHECK(bc_param_label(param("slope"), 2, buf, sizeof buf) == 5 && strcmp(buf, "48 dB") == 0);
     CHECK(bc_param_info(param("cutoff"), &f) && f.log_travel && f.default_value == 2000.0);
     double hz = 0.0;
     CHECK(bc_param_parse(param("cutoff"), "1.5k", &hz) && hz == 1500.0);
@@ -61,19 +61,19 @@ static void table(void) {
     /* The window's Refresh: a choice, saved but not automated, appended. */
     const int refresh = param("refresh");
     CHECK(refresh == 13);
-    BcParamInfo r;
+    NiParamInfo r;
     CHECK(bc_param_info(refresh, &r));
-    CHECK(r.kind == BcParamKind_Choice && r.choice_count == 4 && !r.automatable && r.default_value == 3.0);
-    CHECK(bc_param_choice(refresh, 0, buf, sizeof buf) == 4 && strcmp(buf, "Live") == 0);
-    CHECK(bc_param_choice(refresh, 3, buf, sizeof buf) == 3 && strcmp(buf, "1/s") == 0);
-    CHECK(bc_param_choice(refresh, 4, buf, sizeof buf) == -1);
+    CHECK(r.kind == NiParamKind_Choice && r.max == 3.0 && !r.automatable && r.default_value == 3.0);
+    CHECK(bc_param_label(refresh, 0, buf, sizeof buf) == 4 && strcmp(buf, "Live") == 0);
+    CHECK(bc_param_label(refresh, 3, buf, sizeof buf) == 3 && strcmp(buf, "1/s") == 0);
+    CHECK(bc_param_label(refresh, 4, buf, sizeof buf) == -1);
     CHECK(bc_refresh_period_ms(3) == 1000.0 && bc_refresh_period_ms(0) == 0.0);
 
     const int rate = param("rate");
     CHECK(rate == 6);
-    BcParamInfo info;
+    NiParamInfo info;
     CHECK(bc_param_info(rate, &info));
-    CHECK(info.kind == BcParamKind_Float && info.log_travel && !info.bipolar);
+    CHECK(info.kind == NiParamKind_Float && info.log_travel && !info.bipolar);
     CHECK(info.default_value == 12000.0);
     CHECK(bc_param_unit(rate, buf, sizeof buf) == 2 && strcmp(buf, "Hz") == 0);
     CHECK(bc_param_text(rate, 4410.0, buf, sizeof buf) > 0 && strcmp(buf, "4.41 kHz") == 0);
@@ -84,7 +84,7 @@ static void table(void) {
     CHECK(fabs(bc_param_denormalise(rate, bc_param_normalise(rate, 3000.0)) - 3000.0) < 1e-6);
 
     const int aa = param("anti_alias");
-    CHECK(bc_param_info(aa, &info) && info.kind == BcParamKind_Toggle);
+    CHECK(bc_param_info(aa, &info) && info.kind == NiParamKind_Choice);
     CHECK(bc_param_text(aa, 1.0, buf, sizeof buf) == 2 && strcmp(buf, "On") == 0);
     CHECK(param("mid_rise") == 3);
 }

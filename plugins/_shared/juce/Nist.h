@@ -40,8 +40,12 @@
 namespace ni::nist
 {
 
-/* The header's version: 1 for every product so far. A later one may append
- * fields; the body size says where they end, so they are skipped. */
+/* The header's version, now the PRODUCT'S STATE VERSION (Layout::version): 1
+ * for every product so far, as every build has written. A later version may
+ * append fields; the body size says where they end, so an older build skips
+ * them and reads the rest best-effort -- the promise these products make to
+ * their sets. A newer build reads the version a chunk was written at
+ * (State::version) and migrates what changed meaning. */
 constexpr int32_t version = 1;
 
 struct Layout
@@ -57,6 +61,9 @@ struct Layout
      * there; up to `maxStrings` are read, each later one optional. */
     int requiredStrings = 0;
     int maxStrings = 0;
+    /* The product's state version, written in the header: raised when the
+     * meaning of what the product saves changes. */
+    std::int32_t version = nist::version;
 };
 
 struct State
@@ -69,6 +76,8 @@ struct State
     /* How many parameters the stream carried, and whether it had no header. */
     int carried = 0;
     bool legacy = false;
+    /* The state version the chunk was written at: 0 for a headerless one. */
+    std::int32_t version = 0;
 };
 
 /* What a stream holds, or nothing when no build of this layout wrote it. */

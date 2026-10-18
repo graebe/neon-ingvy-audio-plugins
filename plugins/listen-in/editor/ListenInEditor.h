@@ -15,7 +15,7 @@
  * which the plugin keeps in its own state. A name is not a number.
  *
  * THE LAYOUT, the canvas's "NI Listen-In -- proposed" artboard as far as
- * Ultraviolet 1.1.0 decides it, 360 x 172, on the 4px grid:
+ * Ultraviolet decides it, 360 x 172, on the 4px grid:
  *
  *   32   space-8, the window padding
  *   28   Bus (label 28, select 64), space-4, the name field to the edge

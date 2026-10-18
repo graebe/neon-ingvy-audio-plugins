@@ -23,6 +23,9 @@ juce_add_console_app(fd_processor PRODUCT_NAME fd_processor)
 target_sources(fd_processor PRIVATE fd_processor.cpp ${_ni_shell_sources} ${NI_FD}/FilterDesigner.cpp)
 target_include_directories(fd_processor PRIVATE ${NI_FD} ${NI_JUCE_SHELL} ${CMAKE_SOURCE_DIR}/plugins/_shared)
 target_include_directories(fd_processor SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/external/doctest)
+# Its frozen saved states (tests/state_fixture.h).
+target_include_directories(fd_processor PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_compile_definitions(fd_processor PRIVATE "NI_FIXTURES=\"${CMAKE_SOURCE_DIR}/tests/fixtures\"")
 target_compile_definitions(fd_processor PRIVATE ${_fd_definitions}
     JUCE_MODAL_LOOPS_PERMITTED=1 "NI_VERSION_STRING=\"fd_processor\"")
 target_link_libraries(fd_processor PRIVATE

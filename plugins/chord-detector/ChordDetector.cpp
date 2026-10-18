@@ -7,6 +7,7 @@
 #include "ChordDetector.h"
 
 #include "Editor.h"
+#include "EngineParameter.h"
 #include "PluginEditor.h"
 
 namespace ni::chord_detector
@@ -14,31 +15,21 @@ namespace ni::chord_detector
 
 namespace
 {
-/* One of the engine's texts for a parameter: cd_param_key, _name or _choice. */
-template <typename Read>
-juce::String engineText (Read read)
+/* The engine's table, as the shared adapter reads it (EngineParameter.h). */
+struct Table
 {
-    char buf[64] {};
-    return read (buf, sizeof buf) >= 0 ? juce::String::fromUTF8 (buf) : juce::String();
-}
-
-std::unique_ptr<juce::AudioParameterChoice> choiceFromEngine (int index)
-{
-    CdParamInfo info {};
-    const bool known = cd_param_info (index, &info);
-    jassert (known);
-    juce::ignoreUnused (known);
-
-    juce::StringArray choices;
-    for (int c = 0; c < info.choice_count; ++c)
-        choices.add (engineText ([&] (char* b, size_t n) { return cd_param_choice (index, c, b, n); }));
-
-    const auto key = engineText ([&] (char* b, size_t n) { return cd_param_key (index, b, n); });
-    const auto name = engineText ([&] (char* b, size_t n) { return cd_param_name (index, b, n); });
-    return std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { key, 1 }, name, choices, info.default_choice,
-        juce::AudioParameterChoiceAttributes().withAutomatable (info.automatable));
-}
+    using Info = NiParamInfo;
+    static bool info (int i, Info* out) { return cd_param_info (i, out); }
+    static bool isChoice (const Info& i) { return i.kind == NiParamKind_Choice; }
+    static int key (int i, char* b, int n) { return cd_param_key (i, b, n); }
+    static int name (int i, char* b, int n) { return cd_param_name (i, b, n); }
+    static int label (int i, int option, char* b, int n) { return cd_param_label (i, option, b, n); }
+    static int text (int i, double v, char* b, int n) { return cd_param_text (i, v, b, n); }
+    static bool parse (int i, const char* t, double* out) { return cd_param_parse (i, t, out); }
+    static double normalise (int i, double v) { return cd_param_normalise (i, v); }
+    static double denormalise (int i, double n) { return cd_param_denormalise (i, n); }
+    static double snap (int i, double v) { return cd_param_snap (i, v); }
+};
 } // namespace
 
 ChordDetector::ChordDetector()
@@ -48,8 +39,9 @@ ChordDetector::ChordDetector()
     jassert (cd_param_count() == paramCount);
     for (int i = 0; i < paramCount; ++i)
     {
-        auto p = choiceFromEngine (i);
-        params[(size_t) i] = p.get();
+        auto p = ni::engineParameter<Table> (i);
+        params[(size_t) i] = dynamic_cast<juce::AudioParameterChoice*> (p.get());
+        jassert (params[(size_t) i] != nullptr);
         addParameter (p.release());
     }
 }

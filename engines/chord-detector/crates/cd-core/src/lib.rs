@@ -62,7 +62,7 @@ impl Detector {
     pub fn new(sample_rate: f64) -> Detector {
         let mut values = [0u8; PARAM_COUNT];
         for p in Param::ALL {
-            values[p as usize] = p.info().default;
+            values[p as usize] = p.default();
         }
         Detector {
             sounding: Sounding::default(),

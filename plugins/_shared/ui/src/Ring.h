@@ -3,7 +3,7 @@
 
 /*
  * The pattern on the window's face, editable where it is drawn: the Ring
- * card's editable variant (Ultraviolet 1.1.0), and the Trance Gate web
+ * card's editable variant (Ultraviolet), and the Trance Gate web
  * editor's Ring.jsx.
  *
  * THE DRAWING, from the card, in fractions of its size D (240 in a window):

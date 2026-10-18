@@ -3,7 +3,7 @@
 
 /*
  * Info: what the control under the pointer or the keyboard does, in the hint
- * bar -- Ultraviolet 1.1.0's Hint, and the web kit's lib/info.js, natively.
+ * bar -- Ultraviolet's Hint, and the web kit's lib/info.js, natively.
  *
  * A CONTROL DECLARES ITS LINE ONCE, with setInfo(): "Name — what it does", at
  * most 72 characters, written in the editor that owns the control (each

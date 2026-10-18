@@ -83,10 +83,6 @@ members = [
     "engines/shared/crates/ni-params",        # a parameter table's shape and arithmetic
     "engines/shared/crates/music-core",       # pitches, chords, keys: the theory
     "engines/shared/crates/ni-filter",        # filter families as TPT sections, and their response
-    # The code behind a paper (papers/<name>/code): every listing it prints is
-    # a tested region of the crate. No product links one; like the shared
-    # crates, it may use them and nothing uses it.
-    "papers/subtractive-synthesis/code",
 ]
 
 # NEVER PUBLISHED. These crates ship inside the products and nowhere else, so

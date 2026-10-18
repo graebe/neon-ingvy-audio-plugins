@@ -33,3 +33,5 @@ tg-core = { path = "../tg-core" }
 atomic_float = { workspace = true, features = ["atomic_f64"] }
 # Reads chain_params as JSON in the tests, as sc-move's do; tg-core links it.
 serde_json = { workspace = true, features = ["alloc"] }
+# The no-allocation guard src/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

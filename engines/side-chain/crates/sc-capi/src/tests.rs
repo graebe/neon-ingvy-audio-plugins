@@ -535,3 +535,36 @@ fn inner_is_the_same_instance_the_abi_drives() {
         sc_core_destroy(c);
     }
 }
+
+/*
+ * THE HOST'S TABLE, AS C READS IT: every row the schema's, in host units, its
+ * strings and words NUL-terminated and living as long as the program, and
+ * nothing past the end of either.
+ */
+#[test]
+fn the_param_spec_rows_are_the_schemas_in_host_units() {
+    use ni_params::host::text;
+    use sc_core::schema::PARAMS;
+    use std::ffi::CStr;
+    let c = |ptr: *const c_char| unsafe { CStr::from_ptr(ptr) }.to_str().unwrap();
+    for (i, p) in PARAMS.iter().enumerate() {
+        let mut row: NiHostParam = unsafe { std::mem::zeroed() };
+        assert!(unsafe { sc_core_param_spec(i as c_int, &mut row) });
+        assert_eq!(c(row.id), text(p.host.id));
+        assert_eq!(c(row.name), text(p.host.name));
+        assert_eq!(c(row.units), text(p.host.units));
+        assert_eq!(row.kind, p.host.kind as c_int);
+        assert_eq!((row.min, row.max, row.def), (p.host_min(), p.host_max(), p.host_default()), "{}", p.key);
+        assert_eq!((row.scale, row.offset), (p.host.scale, p.host.offset));
+        assert_eq!(row.num_texts as usize, p.host.options.len());
+        for (k, word) in p.host.options.iter().enumerate() {
+            assert_eq!(c(sc_core_param_option(i as c_int, k as c_int)), text(word));
+        }
+        assert!(sc_core_param_option(i as c_int, row.num_texts).is_null());
+    }
+    let mut row: NiHostParam = unsafe { std::mem::zeroed() };
+    assert!(!unsafe { sc_core_param_spec(PARAMS.len() as c_int, &mut row) });
+    assert!(!unsafe { sc_core_param_spec(-1, &mut row) });
+    assert!(!unsafe { sc_core_param_spec(0, std::ptr::null_mut()) });
+    assert!(sc_core_param_option(-1, 0).is_null());
+}

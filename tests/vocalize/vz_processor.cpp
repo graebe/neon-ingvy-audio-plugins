@@ -52,6 +52,8 @@
 #include "Vocalize.h"
 #include "vz_voices.h"
 
+#include "state_fixture.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <algorithm>
@@ -1242,8 +1244,11 @@ TEST_CASE ("a set read while a capture runs wins: the capture's answer is droppe
     SUBCASE ("a set without a voice")
     {
         Instance a;
+        /* capture() says capturing at once, and its answer comes back only
+         * through the message loop, which does not run before the load: so
+         * the capture is still under way when the set is read, however fast
+         * the machine analyses the take. */
         a.p.capture (take);
-        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
         REQUIRE (a.p.voice().status == Status::capturing);
         Instance fresh;
         load (a.p, stateOf (fresh.p));
@@ -1266,8 +1271,11 @@ TEST_CASE ("a set read while a capture runs wins: the capture's answer is droppe
         const auto set = stateOf (other.p);
 
         Instance a;
+        /* capture() says capturing at once, and its answer comes back only
+         * through the message loop, which does not run before the load: so
+         * the capture is still under way when the set is read, however fast
+         * the machine analyses the take. */
         a.p.capture (take);
-        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
         REQUIRE (a.p.voice().status == Status::capturing);
         load (a.p, set);
         CHECK (a.p.voice().status == Status::captured);
@@ -1440,4 +1448,17 @@ int main (int argc, char** argv)
     const juce::ScopedJuceInitialiser_GUI gui;
     doctest::Context context (argc, argv);
     return context.run();
+}
+
+TEST_CASE ("the state saved at version 1 loads; a newer one is refused; a missing value is its default")
+{
+    ni::test::checkStateFixture (
+        [] {
+            auto p = std::make_unique<Processor>();
+            p->prepareToPlay (48000.0, 512);
+            return std::unique_ptr<juce::AudioProcessor> (std::move (p));
+        },
+        juce::File (NI_FIXTURES).getChildFile ("vocalize/v1.state"),
+        { { "vocal", 40.0 }, { "mode", 1.0 }, { "vowel", 2.0 }, { "size", -50.0 }, { "excite", 25.0 },
+          { "output", -3.0 }, { "ceiling", 0.0 } });
 }

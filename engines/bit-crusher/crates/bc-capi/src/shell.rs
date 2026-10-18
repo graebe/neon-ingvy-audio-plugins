@@ -35,7 +35,8 @@ the host's side.
 
 use crate::{BcCore, BC_SCOPE_RING};
 use bc_core::{Param, LATENCY};
-use shell_core::{publish_every, Bridge, Model};
+use ni_dsp::ffi::drop_box;
+use shell_core::{capi, Bridge, Model};
 
 /// The scope's window, in samples: about 11 ms at 48 kHz, so a step of the
 /// hold is a few pixels wide.
@@ -233,17 +234,14 @@ pub struct BcShell {
 pub extern "C" fn bc_shell_create(sample_rate: f64) -> *mut BcShell {
     let core = BcCore::new(sample_rate);
     let rate = core.engine.sample_rate();
-    let bridge = Bridge::new(core, None, QUEUE, publish_every(rate));
-    Box::into_raw(Box::new(BcShell { bridge }))
+    Box::into_raw(Box::new(BcShell { bridge: capi::create(core, rate, QUEUE) }))
 }
 
 /// # Safety
 /// `shell` is null or from `bc_shell_create`, and no thread uses it after.
 #[no_mangle]
 pub unsafe extern "C" fn bc_shell_destroy(shell: *mut BcShell) {
-    if !shell.is_null() {
-        drop(Box::from_raw(shell));
-    }
+    drop_box(shell);
 }
 
 /// The host's rate, applied at the top of the next block. Not the audio
@@ -253,12 +251,9 @@ pub unsafe extern "C" fn bc_shell_destroy(shell: *mut BcShell) {
 /// `shell` is null or live.
 #[no_mangle]
 pub unsafe extern "C" fn bc_shell_post_sample_rate(shell: *const BcShell, sample_rate: f64) {
-    let Some(shell) = shell.as_ref() else { return };
-    if sample_rate.is_nan() || sample_rate <= 0.0 {
-        return;
+    if let Some(shell) = shell.as_ref() {
+        capi::post_sample_rate(&shell.bridge, sample_rate, Command::SampleRate);
     }
-    shell.bridge.post(Command::SampleRate(sample_rate));
-    shell.bridge.set_publish_every(publish_every(sample_rate));
 }
 
 /// Everything held lets go, at the top of the next block. Not the audio
@@ -280,10 +275,7 @@ pub unsafe extern "C" fn bc_shell_post_reset(shell: *const BcShell) {
 /// pointer is not used after `bc_shell_end`.
 #[no_mangle]
 pub unsafe extern "C" fn bc_shell_begin(shell: *const BcShell) -> *mut BcCore {
-    match shell.as_ref() {
-        Some(shell) => shell.bridge.begin() as *mut BcCore,
-        None => std::ptr::null_mut(),
-    }
+    capi::begin(shell.as_ref().map(|s| &s.bridge))
 }
 
 /// The audio thread, at the end of a block of `frames`: publishes the scope
@@ -305,9 +297,5 @@ pub unsafe extern "C" fn bc_shell_end(shell: *const BcShell, frames: u32) {
 /// `shell` is null or live; `out` is null or writable.
 #[no_mangle]
 pub unsafe extern "C" fn bc_shell_read(shell: *const BcShell, out: *mut BcScope) -> bool {
-    let (Some(shell), Some(out)) = (shell.as_ref(), out.as_mut()) else {
-        return false;
-    };
-    shell.bridge.read(|r| *out = *r.frame);
-    true
+    capi::read_into(shell.as_ref().map(|s| &s.bridge), out.as_mut())
 }

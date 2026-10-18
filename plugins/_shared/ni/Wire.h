@@ -58,6 +58,10 @@ void append_int(std::string& out, long long v);
  */
 double parse_number(std::string_view s);
 
+/* Whether `s` starts with a number as parse_number reads one -- so a typed
+ * value that is not a number is told apart from a 0. */
+bool starts_with_number(std::string_view s);
+
 /* A whole decimal int and nothing else; false (and `out` untouched) for
  * anything that is not exactly one. */
 bool parse_int(std::string_view s, int& out);

@@ -210,6 +210,16 @@ pub fn design(s: &Settings, proto: Option<&Prototype>, g: Globals, fs: f64) -> (
     }
 }
 
+/// Whether designing `s` at `fs` may weigh realisations of its sections
+/// (ni-filter: a shelf's, a matched cut's), which costs a node's design far
+/// more than mapping a prototype does: from a sixteenth of the rate up, a
+/// margin under the eighth where ni-filter starts to weigh, for the sections
+/// of a cut that sit above its Freq. The engine budgets them (node.rs).
+pub fn weighs(s: &Settings, fs: f64) -> bool {
+    let shape = matches!(s.shape, Shape::LowShelf | Shape::HighShelf) || s.matched;
+    shape && s.freq >= fs / 16.0
+}
+
 /// Node `slot`'s settings as `values` hold them: its Type whether or not it
 /// is on (a bypassed node still has a shape to draw).
 pub fn settings_of(values: &[f64], slot: u8) -> Settings {

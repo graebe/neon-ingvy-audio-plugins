@@ -495,7 +495,7 @@ test('a passing run is recorded on the commit it tested, one line per run', () =
                          results: { tests: 120, gaps: 0 }, cwd: repo, ...FIXED });
   assert.deepEqual(first, { tier: 'product', products: ['side-chain'], sha, date: '2026-10-10T12:00:00.000Z',
     host: 'test-host', rustc: 'rustc 1.99.0 (test)', result: 'pass', results: { tests: 120, gaps: 0 } });
-  attest({ tier: 'full', results: CLEAN, cwd: repo, ...FIXED });
+  attest({ tier: 'full', results: { ...CLEAN, build_type: 'Release' }, cwd: repo, ...FIXED });
   assert.match(git(repo, 'for-each-ref', '--format=%(refname)', 'refs/notes/'), new RegExp(`^${NOTES_REF}$`));
   const records = attestations(sha, repo);
   assert.deepEqual(records.map((r) => r.tier), ['product', 'full']);
@@ -516,6 +516,31 @@ test('a run with gaps nobody waived does not release, and one with waived gaps d
   assert.equal(attestationFor([run({ gaps: '1' })], sha, 'side-chain'), null, 'as a string too');
   assert.ok(attestationFor([run({ gaps: 0, waived: 'docker', untested: 'docker' })], sha, 'side-chain'));
   assert.ok(attestationFor([run({ gaps: 2 }), run({ gaps: '0' })], sha, 'side-chain'), 'one clean run is enough');
+});
+
+test('a full run releases every product only as a Release build; a product run as any', () => {
+  const sha = 'a'.repeat(40);
+  const full = (build_type) => ({ tier: 'full', sha, result: 'pass', results: { gaps: 0, build_type } });
+  const product = (build_type) => ({ ...full(build_type), tier: 'product', products: ['side-chain'] });
+  assert.ok(attestationFor([full('Release')], sha, 'side-chain'));
+  assert.equal(attestationFor([full('Debug')], sha, 'side-chain'), null, 'a dev build');
+  assert.equal(attestationFor([full(undefined)], sha, 'side-chain'), null, 'not recorded');
+  assert.ok(attestationFor([product('Debug')], sha, 'side-chain'), 'the workflow rebuilds it for release');
+  assert.ok(attestationFor([full('Debug'), product('Debug')], sha, 'side-chain'));
+});
+
+test('a tag whose only full run was a dev build says so', () => {
+  const files = {};
+  for (const p of ['versions.json', 'release.json', 'plugins/side-chain/CMakeLists.txt',
+                   'modules/side-chain/module.env', 'modules/side-chain/module.json'])
+    files[p] = read(...p.split('/'));
+  const repo = scratchRepo(files);
+  attest({ tier: 'full', results: { ...CLEAN, build_type: 'Debug' }, cwd: repo, ...FIXED });
+  assert.throws(() => attested(tagOf('side-chain'), 'HEAD', repo),
+    /passed 1 full run\(s\), none of a Release build: on test-host, build_type=Debug/);
+  attest({ tier: 'full', results: { ...CLEAN, build_type: 'Release' }, cwd: repo, ...FIXED });
+  assert.equal(attested(tagOf('side-chain'), 'HEAD', repo).tier, 'full');
+  rmSync(repo, { recursive: true, force: true });
 });
 
 test('a run is not recorded on a dirty tree, or when HEAD moved under it', () => {

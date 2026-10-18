@@ -69,9 +69,13 @@ rather than test the wrong architecture:
   crates.io crate `cargo tree` says the `.so` links.
 - **The module's crates** (`MODULE_TEST_CRATES` in `module.env`: the core and
   the vtable crate) under `cargo test`: the `chain_params` contract — every
-  engine parameter declared, or deliberately absent and named as such — the
-  host panic, CC 120 or CC 123, which resets the Side-Chain and which the
-  Trance Gate accepts without changing a sample, and the render A/B (below).
+  engine parameter declared, or deliberately absent and named as such; each
+  module's `build.rs` writes it from the engine's own table
+  (`ni_params::chain`, Trance Gate's from its schema), so only the grid's
+  order, names and steps and the Move's deliberate differences are its own — the
+  host panic, CC 120 or CC 123, which resets the Side-Chain and shuts the
+  Trance Gate, whose step under the playhead then strikes again from silence,
+  and the render A/B (below).
 - **The module's test script** (`MODULE_TEST_SCRIPT`), the Trance Gate's
   `engines/trance-gate/tests/run.sh`: its C suites against the engine's ABI,
   the golden render's md5, and the state blob's time budget (below).
@@ -83,6 +87,19 @@ both build into `target/aarch64-unknown-linux-gnu/`.
 It refuses to create the base directory if it is not already there — a wrong
 path silently creating a tree is worse than an error — and leaves the module
 owner-writable but never world-writable.
+
+It never writes into the live module directory. The module goes up beside it
+(`.<id>.install.<pid>`), is made whole there, and replaces the live one with
+two renames: the live directory aside (`.<id>.old.<pid>`), the staged one in
+its place. Between the two there is a moment with no module directory at all:
+an FX picker opened in that instant does not list the module, and lists it
+again the next time it opens. A failed step, or the session cut, puts the old
+directory back (the remote script's trap). Only a device that loses power
+between the two renames is left without the module: running the install again
+puts it back, and the old one, still there under its hidden name, can be
+deleted (`rm -rf /data/UserData/schwung/modules/audio_fx/.<id>.old.*`). A slot
+that already has the module keeps the version it loaded until it is picked
+again or the Move restarts: the old `.so` stays mapped.
 
 ## Host compatibility
 
@@ -324,6 +341,20 @@ there; the release on GitHub can stay, or be withdrawn as the plugin's is
   previous beta. Beta users then resolve to stable.
 - Commit (`Schwung catalog: revert <id> <version>`), push to `main`, and run
   **Pages** by hand so the site's link follows.
+
+**One device, back to the previous version.** Neither the manager nor the
+on-device store ever offers an older version, so a device goes back by hand:
+download the previous release's `<id>-module.tar.gz` from GitHub, unpack it
+where `install.sh` looks, and install it.
+
+```sh
+tar -C dist -xzf ~/Downloads/<id>-module.tar.gz      # dist/<id>/
+./modules/_shared/install.sh <module>
+```
+
+Then set the slot to None and pick the module again (or restart the Move), so
+the slot loads the older `.so`. The manager offers the newer version again
+until the catalog is rolled back too.
 
 `ctest -R versions` checks every entry is one the manager can use and is not
 ahead of `versions.json`; a rollback only ever moves an entry backwards, so it

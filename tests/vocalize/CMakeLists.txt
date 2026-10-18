@@ -25,6 +25,9 @@ juce_add_console_app(vz_processor PRODUCT_NAME vz_processor)
 target_sources(vz_processor PRIVATE vz_processor.cpp ${_ni_shell_sources} ${NI_VZ}/Vocalize.cpp)
 target_include_directories(vz_processor PRIVATE ${NI_VZ} ${NI_JUCE_SHELL} ${CMAKE_SOURCE_DIR}/plugins/_shared)
 target_include_directories(vz_processor SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/external/doctest)
+# Its frozen saved states (tests/state_fixture.h).
+target_include_directories(vz_processor PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+target_compile_definitions(vz_processor PRIVATE "NI_FIXTURES=\"${CMAKE_SOURCE_DIR}/tests/fixtures\"")
 target_compile_definitions(vz_processor PRIVATE ${_vz_definitions}
     # A test lets the message loop run for a moment: the latency follows Mode
     # there (a timer), and a capture's answer comes back there.

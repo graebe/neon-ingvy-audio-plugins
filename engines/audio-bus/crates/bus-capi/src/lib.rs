@@ -55,6 +55,7 @@ near the audio thread.
 use shell_capi as _;
 
 use bus_core::{ClaimError, Pusher, Reader, Writer};
+use ni_dsp::ffi::cstr;
 use std::ffi::{c_char, c_int};
 
 /*
@@ -223,14 +224,15 @@ pub unsafe extern "C" fn abus_writer_set_sample_rate(w: *mut AbusWriter, sample_
 }
 
 /// Set the display name. `text` is NUL-terminated UTF-8; anything past 31
-/// bytes is dropped, at a character boundary.
+/// bytes is dropped, at a character boundary. Text that is not UTF-8 is no
+/// name, as every engine's C ABI reads a string (`ni_dsp::ffi::cstr`).
 ///
 /// # Safety
 /// `text` must be a valid NUL-terminated string or NULL.
 #[no_mangle]
 pub unsafe extern "C" fn abus_writer_set_label(w: *mut AbusWriter, text: *const c_char) {
     let Some(w) = w.as_mut() else { return };
-    w.0.set_label(&cstr(text));
+    w.0.set_label(cstr(text));
 }
 
 /// # Safety
@@ -394,20 +396,6 @@ pub extern "C" fn abus_incarnation(slot: u32) -> u64 {
 #[no_mangle]
 pub unsafe extern "C" fn abus_reader_incarnation(r: *const AbusReader) -> u64 {
     r.as_ref().map_or(0, |r| r.0.incarnation())
-}
-
-/// # Safety
-/// `p` must be NUL-terminated or NULL.
-unsafe fn cstr(p: *const c_char) -> String {
-    let p = p.cast::<u8>();
-    if p.is_null() {
-        return String::new();
-    }
-    let mut n = 0usize;
-    while *p.add(n) != 0 && n < 4096 {
-        n += 1;
-    }
-    String::from_utf8_lossy(core::slice::from_raw_parts(p, n)).into_owned()
 }
 
 #[cfg(test)]

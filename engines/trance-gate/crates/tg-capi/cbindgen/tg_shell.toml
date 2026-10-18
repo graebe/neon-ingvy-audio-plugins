@@ -19,8 +19,7 @@ header = """// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // GENERATED at build time by cbindgen from
 // engines/trance-gate/crates/tg-capi/src/shell.rs, whose doc comments are the
-// comments below: edit that, not this. tests/capi-compat.mjs holds it to its
-// last hand-written version (tests/fixtures/tg-capi)."""
+// comments below: edit that, not this."""
 
 # The opaque handle keeps its old struct tag, declared here rather than by
 # cbindgen: trance_gate_core.toml says why.

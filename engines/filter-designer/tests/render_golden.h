@@ -73,7 +73,13 @@ static uint64_t fd_render_fnv1a (uint64_t h, const void* data, size_t n)
 
 /* FNV-1a over the left channel's float bytes, recorded 2026-10-12 at the
  * first render. A change is re-recorded with --dump, with its date and its
- * reason, never accepted silently. */
-#define FD_RENDER_GOLDEN 0x2789938177B46ACAull
+ * reason, never accepted silently.
+ *
+ *   2026-10-17  every section plays in second-order form (a first-order one
+ *               as its pole-cancelled equivalent: the same transfer, other
+ *               rounding), and the patch's nodes, switched in from Empty,
+ *               fade in once settled on the input rather than from silence
+ *               (the DSP review's F1). Was 0x2789938177B46ACA. */
+#define FD_RENDER_GOLDEN 0xB2B0D798F0E0A70Dull
 
 #endif

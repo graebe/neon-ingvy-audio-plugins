@@ -22,6 +22,14 @@ ni-schwung = { path = "../../../shared/crates/ni-schwung" }
 # The transport the vtable hands over, and C-compatible text.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 
+[build-dependencies]
+# build.rs writes `chain_params` from fd-core's table, so the knob grid's
+# ranges, defaults, labels and units are the engine's own (src/params.rs).
+fd-core = { path = "../fd-core" }
+ni-params = { path = "../../../shared/crates/ni-params" }
+
 [dev-dependencies]
 # The chain_params tests read the declaration as JSON (src/params.rs).
 serde_json = { workspace = true, features = ["alloc"] }
+# The no-allocation guard src/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

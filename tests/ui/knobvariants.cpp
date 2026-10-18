@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The Knob's two variants that Ultraviolet 1.1.0 names and the Side-Chain
+ * The Knob's two variants that Ultraviolet names and the Side-Chain
  * needs first: the bipolar arc (Knob card), drawn from 12 o'clock, and the
  * stepped knob for a choice too long for a Select (Select card), whose keys
  * move whole options.

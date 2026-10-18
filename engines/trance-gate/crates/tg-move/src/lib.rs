@@ -34,20 +34,27 @@ impl Module for Gate {
     fn get_param(&self, key: &str, out: &mut [u8]) -> c_int {
         self.0.get_param(key, out)
     }
-    /* No MIDI: the arrows are claimed as CCs and handled in ui_chain.js,
-     * which sees them first. */
+    /* The panic, CC 120 or 123 (Instance::on_midi). Nothing else: the arrows
+     * are claimed as CCs and handled in ui_chain.js, which sees them first. */
+    fn on_midi(&mut self, msg: &[u8]) {
+        self.0.on_midi(msg);
+    }
 }
 
 ni_schwung::export_audio_fx!(Gate);
 
 #[cfg(test)]
+mod no_alloc;
+#[cfg(test)]
 mod render_ab;
 
 /*
  * THE PANIC, ON THE GATE. A host panic arrives as CC 120/123 through
- * `move_audio_fx_on_midi`. The gate holds no note -- its gain is a function of
- * the transport and the pattern -- so it must accept the panic and change
- * nothing; this pins that rather than assuming an empty handler is harmless.
+ * `move_audio_fx_on_midi`, or as the `panic` key. The gate holds no note, but
+ * it does hold a gesture -- an envelope part-way through a stage -- and the
+ * panic lets go of it: the gate shuts at once and the step under the playhead
+ * strikes again from silence (tg_core's Instance::panic). The test below pins
+ * that through the vtable the device calls.
  */
 #[cfg(test)]
 mod tests {
@@ -93,6 +100,11 @@ mod tests {
         unsafe { &*move_audio_fx_init_v2(&host) }
     }
 
+    /* The block the panic arrives before: the middle of step 2, an ON step
+     * of slot 2's "5555" (a step is 43 blocks at 120 bpm), past its attack,
+     * so the gate is open and has something to let go of. */
+    const PANIC_AT: usize = 110;
+
     fn render(api: &AudioFxApiV2, panic: bool) -> Vec<i16> {
         BPM.store(120.0, Ordering::SeqCst);
         BEATS.store(0.0, Ordering::SeqCst);
@@ -102,8 +114,8 @@ mod tests {
             (api.set_param.unwrap())(inst, k.as_ptr(), v.as_ptr());
         };
         set("amount", "0.8");
-        /* A second slot with a sound of its own, switched to mid-render: the
-         * panic must change nothing about a gate that is recalling. */
+        /* A second slot with a sound of its own, switched to mid-render, so
+         * the panic lands on a gate that is recalling. */
         set("slot", "2");
         set("pattern", "5555");
         set("amount", "0.9");
@@ -114,7 +126,7 @@ mod tests {
             if b == 40 {
                 set("slot", "2");
             }
-            if panic && b == 60 {
+            if panic && b == PANIC_AT {
                 for cc in [120u8, 123] {
                     let msg = [0xB0u8, cc, 0];
                     move_audio_fx_on_midi(inst, msg.as_ptr(), 3, 0);
@@ -215,11 +227,18 @@ mod tests {
     }
 
     #[test]
-    fn a_host_panic_is_accepted_and_changes_nothing() {
+    fn a_host_panic_shuts_the_gate_and_the_step_strikes_again() {
         let _clock = hold_the_clock();
         let api = api();
-        let with = render(api, true);
-        assert!(with.iter().any(|&v| v < 5000), "the gate never gated -- no transport?");
-        assert_eq!(with, render(api, false));
+        let (with, without) = (render(api, true), render(api, false));
+        assert!(without.iter().any(|&v| v < 5000), "the gate never gated -- no transport?");
+        /* Up to the panic, the same; at it, shut to what Amount 0.9 leaves of
+         * the input -- a tenth -- and opening again from there. */
+        let at = PANIC_AT * 256;
+        assert_eq!(with[..at], without[..at]);
+        assert!(without[at] > 9000, "the gate is open there: {}", without[at]);
+        assert!((with[at] - 1000).abs() <= 1, "shut at once: {}", with[at]);
+        assert!(with[at..at + 256].windows(2).all(|w| w[1] >= w[0]), "and opening again");
+        assert_ne!(with, without);
     }
 }

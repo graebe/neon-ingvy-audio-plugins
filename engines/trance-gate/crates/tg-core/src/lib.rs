@@ -259,14 +259,14 @@ impl Instance {
         self.sample_rate
     }
 
-    /// A non-positive or non-finite rate is refused rather than stored: every
-    /// length the engine measures in samples divides by it.
-    #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is refused with it")]
     /// The time this instance has processed, in ms: the engine's own clock.
     pub fn clock_ms(&self) -> f64 {
         self.clock_ms_before + self.clock_frames as f64 * 1000.0 / self.sample_rate
     }
 
+    /// A non-positive or non-finite rate is refused rather than stored: every
+    /// length the engine measures in samples divides by it.
+    #[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is refused with it")]
     pub fn set_sample_rate(&mut self, sample_rate: f64) {
         if !(sample_rate > 0.0) || !sample_rate.is_finite() {
             return;

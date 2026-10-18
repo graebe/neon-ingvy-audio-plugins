@@ -3,7 +3,7 @@
 
 /*
  * A knob over a choice too long for a Select: a MIDI note of 128, a channel
- * of 17. The Select card of Ultraviolet 1.1.0 caps a list at twelve options;
+ * of 17. The Select card of Ultraviolet caps a list at twelve options;
  * "more than 12 want a knob with a stepped readout". This is that knob.
  *
  * IT IS A ParamKnob, with one difference: A KEY MOVES AT LEAST ONE OPTION.

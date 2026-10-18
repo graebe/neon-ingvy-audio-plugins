@@ -2,13 +2,13 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * The shell's message tags: the part of the editor protocol every plugin
- * speaks the same way.
+ * The shell's message tags: the part of the editor protocol every web editor
+ * speaks the same way, through its host (host.js; on the Move, schwung.js).
  *
- * Mirrors ni::editor::Tag in plugins/_shared/ni/Editor.h, which
- * tests/editor_tags.test.mjs holds this to. Tags 0..nParams-1 are parameter
- * display strings and 64..111 each plugin's own (its lib/msg.js). 112, 114
- * and 123 were the animated ground's, and stay unused.
+ * The tags were the iPlug2 bridge's, whose C++ side went with ADR 0002; the
+ * web kit keeps them as its own vocabulary (ADR 0004). Tags 0..nParams-1 are
+ * parameter display strings and 64..111 each editor's own (its lib/msg.js).
+ * 112, 114 and 123 were the animated ground's, and stay unused.
  */
 export const SHELL_MSG = {
   /* <- plugin: every parameter's default, normalised, "<d0>:<d1>:...", in

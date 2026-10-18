@@ -13,11 +13,15 @@ crate-type = ["rlib"]
 [dependencies]
 # The DSP the products share; product-free. See the workspace Cargo.toml.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The host column's shape (src/schema.rs), shared with Trance Gate.
+ni-params = { path = "../../../shared/crates/ni-params" }
 # MIDI bytes to messages, for the MIDI trigger (src/midi.rs). Without its
 # default `std` feature it is core-only: that feature adds an owned SysEx and
 # io::Read, and a ducker has a use for neither.
 wmidi = { workspace = true }
 
 [dev-dependencies]
+# The iPlug2 build's parameters.json, which the schema's test reads.
+serde_json = { workspace = true, features = ["std"] }
 # The no-allocation guard tests/no_alloc.rs installs.
 assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

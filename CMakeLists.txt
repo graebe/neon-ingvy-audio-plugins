@@ -56,18 +56,21 @@ include(cmake/NiRust.cmake)
 
 # Each product's C ABI, one static library apiece, with the headers its
 # build.rs generates. audio-bus is the house transport rather than a product,
-# and Listen-In's whole engine.
+# and Listen-In's whole engine. USES: the headers of another crate a
+# product's C++ includes as well (the handoff, the bus), which its own cargo
+# run writes too.
 ni_add_rust_engine(tg_engine CRATE tg-capi LIB tg_capi)
-ni_add_rust_engine(spectro_engine CRATE spectro-capi LIB spectro_capi)
-ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi)
-ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi)
+ni_add_rust_engine(spectro_engine CRATE spectro-capi LIB spectro_capi USES shell_engine)
+ni_add_rust_engine(audio_bus_engine CRATE bus-capi LIB bus_capi USES shell_engine)
+ni_add_rust_engine(sc_engine CRATE sc-capi LIB sc_capi USES audio_bus_engine shell_engine)
 ni_add_rust_engine(cd_engine CRATE cd-capi LIB cd_capi)
 ni_add_rust_engine(bc_engine CRATE bc-capi LIB bc_capi)
 ni_add_rust_engine(vz_engine CRATE vz-capi LIB vz_capi)
 ni_add_rust_engine(fd_engine CRATE fd-capi LIB fd_capi)
 # The shell plumbing (command queue, snapshot, handoff) belongs to no product:
-# its C ABI rides inside every product's archive, so it is headers here.
-ni_add_rust_headers(shell_engine)
+# its C ABI rides inside every product's archive, so it is headers here,
+# written by the bus engine's cargo run (bus-capi carries the handoff).
+ni_add_rust_headers(shell_engine CRATE shell-capi BUILT_BY audio_bus_engine)
 ni_build_rust_engines()
 
 # The Trance Gate's and the Side-Chain's OTHER shell: the Schwung module for the

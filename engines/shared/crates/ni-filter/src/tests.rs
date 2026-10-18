@@ -686,3 +686,101 @@ fn a_matched_cut_retunes_without_a_click() {
     println!("a matched cut swept: its largest step, over the peak's gain, {worst:.4}");
     assert!(worst < 0.03, "{worst}");
 }
+
+/* --------------------------------------------- continuity along a sweep -- */
+
+/// |H| on a log grid from 20 Hz to the top, in dB, held up to -40 dB:
+/// beside a stopband zero any move of the zero is a large change in dB, and
+/// not what a jump sounds like.
+fn curve_db(c: &Cascade, fs: f64) -> Vec<f64> {
+    (0..48).map(|i| c.db(20.0 * ((0.49 * fs) / 20.0).powf(i as f64 / 47.0), fs).max(-40.0)).collect()
+}
+
+fn largest_change(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b).map(|(x, y)| (x - y).abs()).fold(0.0, f64::max)
+}
+
+/// A step of the curve from `f0` to `f1`, halved sixteen times toward the
+/// half that changes most: what is left of it at 1/15 000 of an octave, and
+/// whether the design switched realisation there. A curve that only moves
+/// fast -- the bilinear transform's near Nyquist -- leaves nothing; a jump
+/// is all still there.
+fn jump_within(make: &dyn Fn(f64) -> Cascade, mut f0: f64, mut f1: f64, fs: f64) -> (f64, bool) {
+    let (mut c0, mut c1) = (make(f0), make(f1));
+    for _ in 0..16 {
+        let mid = (f0 * f1).sqrt();
+        let cm = make(mid);
+        let (lo, hi) = (curve_db(&c0, fs), curve_db(&c1, fs));
+        let m = curve_db(&cm, fs);
+        if largest_change(&lo, &m) >= largest_change(&m, &hi) {
+            (f1, c1) = (mid, cm);
+        } else {
+            (f0, c0) = (mid, cm);
+        }
+    }
+    (largest_change(&curve_db(&c0, fs), &curve_db(&c1, fs)), !c0.same_realisation(&c1))
+}
+
+/// Along a sweep of `make` from `from` to `to` in steps of 1/240 octave --
+/// what a glide hears tick to tick -- the largest jump of the curve (a step
+/// that halving does not shrink, jump_within) where every section stays as
+/// it was realised, and the largest where one switches.
+fn largest_jumps(make: &dyn Fn(f64) -> Cascade, from: f64, to: f64, fs: f64) -> (f64, f64) {
+    let (mut unreported, mut switching) = (0.0f64, 0.0f64);
+    let mut f = from;
+    let mut last = curve_db(&make(f), fs);
+    while f < to {
+        let next = f * 2f64.powf(1.0 / 240.0);
+        let now = curve_db(&make(next), fs);
+        if largest_change(&last, &now) > 0.25 {
+            let (jump, switched) = jump_within(make, f, next, fs);
+            if switched {
+                switching = switching.max(jump);
+            } else {
+                unreported = unreported.max(jump);
+            }
+        }
+        (f, last) = (next, now);
+    }
+    (unreported, switching)
+}
+
+/*
+ * A CURVE JUMPS ONLY WHERE ITS REALISATION SWITCHES. The matched designs
+ * choose, from an eighth of the rate up, between candidates for each analog
+ * section (matched with either sign at Nyquist, or bilinear): the best at
+ * each setting, so where two tie the curve steps from one to the other --
+ * 16 dB in a matched elliptic low-pass's transition at 44.1 kHz. Every
+ * such step is a switch the design reports (Section::form), which the
+ * engine then moves over a fade rather than a sub-block. Anywhere else the
+ * curve is continuous: a step that is large (the bilinear transform moves
+ * fast near Nyquist) shrinks to nothing when it is halved.
+ */
+#[test]
+fn a_matched_design_moves_smoothly_except_where_it_switches_and_says_so() {
+    let fs = 44_100.0;
+    let top = 0.49 * fs;
+    let ell = Prototype::new(Family::Elliptic, 8, 0.5, 60.0);
+    let cheb2 = Prototype::new(Family::ChebyshevII, 6, 1.0, 50.0);
+    let bw = proto(Family::Butterworth, 4);
+    type Design = Box<dyn Fn(f64) -> Cascade>;
+    let cases: [(&str, Design); 7] = [
+        ("high shelf +12 dB order 4", Box::new(move |hz| high_shelf(hz, 12.0, FRAC_1_SQRT_2, 4, fs))),
+        ("low shelf -12 dB order 3", Box::new(move |hz| low_shelf(hz, -12.0, 2.0, 3, fs))),
+        ("bell +12 dB Q 4", Box::new(move |hz| bell(hz, 12.0, 4.0, fs))),
+        ("matched low-pass Butterworth 4, Q 2", Box::new(move |hz| family_matched(&bw, Band::LowPass, hz, 2.0, fs).0)),
+        ("matched high-pass Butterworth 4, Q 2", Box::new(move |hz| family_matched(&bw, Band::HighPass, hz, 2.0, fs).0)),
+        ("matched low-pass elliptic 8", Box::new(move |hz| family_matched(&ell, Band::LowPass, hz, FRAC_1_SQRT_2, fs).0)),
+        ("matched high-pass Chebyshev II 6", Box::new(move |hz| family_matched(&cheb2, Band::HighPass, hz, FRAC_1_SQRT_2, fs).0)),
+    ];
+    let mut fails = Vec::new();
+    for (name, make) in &cases {
+        let (unreported, switching) = largest_jumps(make.as_ref(), 4000.0, top, fs);
+        println!("{name}: largest jump {unreported:.4} dB with no switch, {switching:.3} dB where it switches");
+        if unreported > 0.05 {
+            fails.push(format!("{name}: a {unreported:.2} dB jump with no switch"));
+        }
+    }
+    assert!(fails.is_empty(), "{fails:?}");
+}
+

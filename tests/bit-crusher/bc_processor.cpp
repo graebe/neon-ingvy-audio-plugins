@@ -23,6 +23,8 @@
 #include "BitCrusher.h"
 #include "Editor.h"
 
+#include "state_fixture.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <cmath>
@@ -335,4 +337,18 @@ int main (int argc, char** argv)
     const juce::ScopedJuceInitialiser_GUI gui;
     doctest::Context context (argc, argv);
     return context.run();
+}
+
+TEST_CASE ("the state saved at version 1 loads; a newer one is refused; a missing value is its default")
+{
+    ni::test::checkStateFixture (
+        [] {
+            auto p = std::make_unique<Processor>();
+            p->prepareToPlay (48000.0, 512);
+            return std::unique_ptr<juce::AudioProcessor> (std::move (p));
+        },
+        juce::File (NI_FIXTURES).getChildFile ("bit-crusher/v1.state"),
+        { { "drive", -6.0 }, { "bits", 5.5 }, { "mid_rise", 1.0 }, { "rate", 7000.0 }, { "pre_filter", 1.0 },
+          { "post_octave", 0.5 }, { "refresh", 0.0 }, { "filter", 1.0 }, { "cutoff", 1000.0 }, { "peak", 6.0 },
+          { "slope", 2.0 } });
 }

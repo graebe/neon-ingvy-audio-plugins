@@ -60,8 +60,8 @@ static_assert ((int) kNumParams == (int) SC_P_COUNT, "the host's parameters are 
 constexpr int numRates = 12;
 constexpr int defaultRate = 4;
 
-/* The table, by index. Rate's and Trigger's words are given at run time
- * (rateLabel, noteName). */
+/* The table, by index: the engine's schema (sc-core/src/schema.rs). Rate's
+ * and Trigger's words are given at run time (rateLabel, noteName). */
 const ParamSpec& specOf (int index);
 const ParamSpec* specs();
 
@@ -72,8 +72,8 @@ const nist::Layout& layout();
  * so it stays the bytes it always was (FORMAT.md). */
 const nist::Layout& layoutWithoutKick();
 
-/* A host value to the engine's numeric wire (sc_core_set_num), as the iPlug2
- * build converted: Depth and Vel are percentages at the host, 0..1 in the
+/* A host value to the engine's numeric wire (sc_core_set_num), by the
+ * schema's conversion: Depth and Vel are percentages at the host, 0..1 in the
  * engine; everything else is the same number. */
 double toEngine (int index, double plain);
 

@@ -3,7 +3,7 @@
 
 /*
  * The number under a control, and the field it becomes when typed into -- the
- * Readout card of Ultraviolet 1.1.0, and the web kit's .readout with its
+ * Readout card of Ultraviolet, and the web kit's .readout with its
  * EditField.
  *
  * AT REST: a 28px bg-000 box on a line-200 hairline, the value in `value`
