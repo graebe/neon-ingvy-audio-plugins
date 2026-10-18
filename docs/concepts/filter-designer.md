@@ -174,7 +174,7 @@ automation point, so every type and family goes in now.
 | `output` | float, bipolar | −24…+24 dB | 0 |
 | `scale` | float, bipolar | −200…+200 % | 100 |
 | `adaptive_q` | switch | Off, On | Off |
-| `analyzer` | choice, not automatable | Off, Pre, Post, Both | Post |
+| `analyzer` | choice, not automatable | Off, Pre, Post, Both | Both |
 | `iso_on` | switch | Off, On | Off |
 | `iso_low`, `iso_mid`, `iso_high` | float | −60…+6 dB, −60 is −inf | 0 |
 | `iso_kill_low`, `_mid`, `_high` | switch | Off, On | Off |
@@ -270,10 +270,10 @@ shell-core's bridge, as Vocalize publishes its envelopes
 
 - **Curves:** 512 log-spaced points from 10 Hz to min(22 kHz, Nyquist).
   - Each node's own curve, `node_db[16][512]`.
-  - The total, `total_db[2][512]`, in the L/R or M/S basis the editor asks for.
+  - The total, `total_db[512]`, in the lane the editor asks for (as built: exact, from the chain's 2×2 transfer on the stereo pair in slot order -- what the lane's own input becomes, the other half silent; a Stereo selection's lane is the mid).
   - The three isolator bands.
   - Each curve is evaluated from the exact digital sections.
-- **Analyzer bands:** `pre_db[256]` and `post_db[256]`, through realfft. The band mapping moves from spectro-core into ni-dsp, because products may not depend on each other.
+- **Analyzer bands:** `pre_db[256]` and `post_db[256]`, through realfft, of the lane drawn (as built: 512 bands each; the engine's rings keep that lane's signal). The band mapping moves from spectro-core into ni-dsp, because products may not depend on each other.
 - **Serials:** one per node, so the editor rebuilds a path only when its node changed.
 - **Size and cadence:** about 45 KB per frame, at shell-core's 100 Hz.
 - **Budget:**

@@ -123,7 +123,7 @@ private:
     Model& model;
     int selection = 0;
     int range = 18;
-    int shownLane = lane::left;
+    int shownLane = lane::stereo;
     Picture shown;
     std::vector<double> values;
     bool hasPicture = false;

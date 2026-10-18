@@ -28,11 +28,16 @@ next release; that release's entry lists them and this section goes.
   comes in at its level instead of swelling up from silence.
 - **A three-band isolator** in front of the filters: Linkwitz-Riley
   crossovers (LR4 or LR8), a level and a kill per band.
-- **Per-filter channel**: stereo, left, right, mid or side.
+- **Per-filter channel**: stereo, left, right, mid or side. The total curve
+  is exact in the selected filter's lane, filters on other lanes included,
+  in the order they play: a mid bell shows in the LEFT lane as a source
+  panned hard left hears it.
 - **Spectrum analyzer** behind the curve: the input (pre) faded, the output
-  (post) highlighted. The curve is the engine's own transfer function.
-- **Bypass**, crossfaded in 10 ms, the filters kept running so they resume
-  from the signal they heard. No latency.
+  (post) highlighted, in the selected filter's lane (the side of a side
+  filter). The curve is the engine's own transfer function.
+- **Bypass**, crossfaded in 10 ms, the filters kept running for two seconds
+  so they resume from the signal they heard; after that the plugin idles and
+  costs nothing. No latency.
 - **Matched cuts**: an option to match every high-pass and low-pass to its
   analog prototype, so filters near Nyquist keep the analog slope and peak.
   Switching it moves the cuts over 20 ms.

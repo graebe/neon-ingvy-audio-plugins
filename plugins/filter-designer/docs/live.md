@@ -157,8 +157,9 @@ The isolator precedes the sixteen filters.
 - handles: one per filter, hollow when the filter is bypassed.
 
 **The analyzer.** Behind the curves, the spectrum of the signal **before**
-the filters (pre, faded) and **after** them (post, highlighted), mono,
-measured with an 8192-point FFT, Hann window, banded onto the plot's
+the filters (pre, faded) and **after** them (post, highlighted), in the
+selected filter's lane (below: the mono sum for a stereo filter, the side
+for a side filter), measured with an 8192-point FFT, Hann window, banded onto the plot's
 frequency axis (the maximum bin per band), falling back at 300 ms. The
 caption's right end selects **PRE + POST**, **POST**, **PRE** or off, and
 the magnitude range: ±6, ±12, ±18 or ±30 dB. The analyzer runs only while
@@ -178,8 +179,26 @@ violet while the filter is in the signal path.
 **Channel** selects the signal a filter processes: **Stereo** (left and
 right, the same filter), **Left**, **Right**, **Mid** ((L+R)/2) or **Side**
 ((L−R)/2). Mid/side is encoded and decoded around each mid or side filter
-exactly. The plot's total is drawn for the selected filter's lane; the
-caption names it when it is not stereo.
+exactly.
+
+The plot's total, and the analyzer, follow the selected filter's lane; the
+caption names it when it is not stereo. The total is exact: it is what the
+lane's own signal becomes through the whole chain, in slot order, with the
+other half silent.
+
+| selected filter | lane | the total is what happens to |
+|---|---|---|
+| Stereo (or the isolator) | — | a centred source (L = R) |
+| Left, Right | LEFT, RIGHT | a source on that side alone |
+| Mid | MID | a centred source |
+| Side | SIDE | the side alone (L = −R) |
+
+So a filter on another lane still shows where it reaches this one.
+Example: a +12 dB Mid bell at 2 kHz and a Left high-pass. Select the
+high-pass: the LEFT total rises about 8 dB at 2 kHz, because a source on the
+left alone is half mid, (1 + H)/2. Select the bell: the MID total rises the
+full 12 dB, and below the high-pass's cutoff the MID total falls only to
+−6 dB, since a centred source keeps the half on its right.
 
 ### Output
 
@@ -196,8 +215,13 @@ caption names it when it is not stereo.
   low-pass at 14 kHz, at 48 kHz, is -28 dB at 19 kHz bilinear and -10 dB
   matched (analog: -11 dB). Band-pass and notch filters are unchanged.
 - **Bypass**: the plugin's bypass, the same as Live's device switch. The
-  output crossfades to the input over 10 ms; the filters keep processing the
-  input, so they resume from the current signal without a transient.
+  output crossfades to the input over 10 ms. For two seconds the filters keep
+  processing the input, so a bypass switched off again resumes from the
+  current signal without a transient. After that the plugin idles and costs
+  no processing; switched back on, the filters start from silence under the
+  same 10 ms fade (a narrow, low filter then takes its ring time to build
+  up). The analyzer keeps running while bypassed, showing the input as the
+  output.
 
 ## Examples
 

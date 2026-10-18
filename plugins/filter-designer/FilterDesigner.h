@@ -13,24 +13,31 @@
  *                 its labels. The IDs are the engine's keys, the state the
  *                 default ni::Processor one (every parameter by its ID)
  *   the bypass    the shared Bypass (ni::bypassSpec), the host's own: the
- *                 shell crossfades it over 10 ms (ni::Processor), and while
- *                 bypassed the engine keeps running on a copy of the input,
- *                 so its filters' state is current when the bypass is lifted
+ *                 shell crossfades it over 10 ms (ni::Processor). For the
+ *                 first two seconds bypassed the engine keeps filtering a
+ *                 copy of the input, so a bypass flicked off and on again
+ *                 comes back with its filters' state current; after that it
+ *                 idles -- it only listens, for the analyzer, and costs
+ *                 nothing -- and the block that lifts the bypass starts it
+ *                 from a reset, under the same fade
  *   the buses     mono in to mono out, or stereo to stereo; no MIDI, no
  *                 sidechain; no latency, ever (minimum phase)
  *   the tail      the engine's (fd_tail_seconds): how long the filters the
  *                 host's values make ring on after the input stops, to
  *                 -60 dB, at most 30 s; asked for when the host sets up
- *   a block       the shell taken (fd_shell_begin), every parameter pushed
- *                 (cheap when unchanged), the channels processed in place, the
- *                 shell given back -- which publishes the analyzer's rings
- *                 when one is due
+ *   a block       the shell taken (fd_shell_begin), the parameters that
+ *                 moved since the last block pushed, the channels processed
+ *                 in place, the shell given back -- which publishes the
+ *                 analyzer's rings when one is due. Automation lands once a
+ *                 block: JUCE's VST3 wrapper hands a plugin the last point of
+ *                 each parameter's queue, never the points inside a block
  *   activation    prepareToPlay posts the rate and a reset, so a host that
  *                 stopped and started the plugin hears nothing it held before
  *   the editor    reads the picture through the Model, on the message thread:
  *                 fd_shell_read designs it from the values the host holds,
- *                 so what is drawn is what plays; the analyzer's rings are
- *                 kept only while a window is open
+ *                 so what is drawn is what plays, in the lane the window
+ *                 asks for, whose signal the analyzer then reads; the
+ *                 analyzer's rings are kept only while a window is open
  *
  * THE PANIC. On the Move, CC 120/123 reset the engine (fd-move); a VST3 in
  * Live is told to start afresh by being deactivated, which prepareToPlay
@@ -48,6 +55,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <memory>
 
 namespace ni::fd
@@ -99,8 +107,11 @@ protected:
 
 private:
     /* One block through the engine: in place when `heard`, on a copy of the
-     * input when bypassed, so the engine's state follows the music. */
+     * input when bypassed, so the engine's state follows the music -- until
+     * it idles (FilterDesigner.h). */
     void run (juce::AudioBuffer<float>&, bool heard);
+    /* The parameters that moved since the last block, to the engine. */
+    void push (FdCore*);
     /* The analyzer's rings are kept while a window shows them: posted to the
      * engine when that changes. Message thread. */
     void watch();
@@ -116,6 +127,15 @@ private:
     std::array<std::vector<float>, 2> listening;
     /* The rate prepare was given, for the tail; 0 before. */
     std::atomic<double> rate { 0.0 };
+    /* Each parameter's value (0..1) as last pushed; NaN, so pushed, after
+     * prepare. Audio thread. */
+    std::array<float, paramCount> pushed {};
+    /* How long the engine filters a bypassed copy before it idles. */
+    static constexpr double idleAfterSeconds = 2.0;
+    /* Samples bypassed in a row, the samples after which the engine idles
+     * (set in prepare), and whether it does. Audio thread. */
+    std::int64_t bypassedFor = 0, idleAfter = 0;
+    bool idle = false;
     bool windowOpen = false, watching = false;
 
     /* The picture as fd_shell_read writes it, and as the editor takes it. */

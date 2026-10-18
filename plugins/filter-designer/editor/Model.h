@@ -100,24 +100,28 @@ enum : int
 };
 } // namespace type
 
-/* The channels a node can filter, and the lane a total is drawn in. */
+/* The lane a total is drawn in, and the analyzer reads: what that lane's own
+ * input becomes at its output, the other half silent (fd_shell.h, FD_LANE_*). */
 namespace lane
 {
 enum : int
 {
-    left = 0,   // a stereo signal's left (and right)
-    right,
-    mid,
-    side
+    left = 0,   // a source on the left alone
+    right,      // on the right alone
+    mid,        // a centred source
+    side,       // the side alone
+    stereo      // a Stereo filter's (or the isolator's) view: the mid, unlabelled
 };
 } // namespace lane
 
 /*
  * THE PICTURE: at each of `hz` (lowest first, equally spaced in pitch), in
  * dB. `node` is each node alone, a bypassed one as it would sound and an
- * Empty one flat; `total` everything heard in the lane asked for; `iso` the
+ * Empty one flat; `total` everything heard in the lane asked for, exactly,
+ * Mid and Side filters in a Left lane too, in slot order; `iso` the
  * isolator's three bands at their levels and `isoTotal` their sum. The
- * analyzer is `pre` and `post` in dBFS, live while `analyzer`. `clamped`
+ * analyzer is `pre` and `post` in dBFS, of the lane asked for, live while
+ * `analyzer`. `clamped`
  * says the sample rate narrows a node's band.
  */
 struct Picture

@@ -7,12 +7,14 @@
  *
  *   the parameters  declared from the engine's table: its keys as IDs, its
  *                   names, ranges, defaults and words; typing read by the
- *                   engine; the analyzer's mode a choice no host automates
+ *                   engine; the analyzer's mode a choice no host automates;
+ *                   every index the editor names (Model.h) the engine's
  *   the buses       mono or stereo, the output as the input
  *   the sound       a new instance is the input bit for bit, stereo and
  *                   mono; a Bell is heard at its gain; a kill takes its band
- *                   out; the host's bypass passes the audio
- *   the state       saved and reopened, every value exactly
+ *                   out; the host's bypass passes the audio; bypassed past
+ *                   two seconds the engine idles, and comes back heard
+ *   the state       saved and reopened, every value exactly, and heard
  *   the model       the picture designed from the host's values, the
  *                   handles and the edges the engine's; what a type uses
  *   the window      opens at the design's size; the inspector binds to the
@@ -29,8 +31,11 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <set>
+#include <utility>
 
 using ni::fd::Processor;
 namespace param = ni::fd::param;
@@ -134,6 +139,30 @@ TEST_CASE ("the parameters are the engine's table")
     CHECK (p.parameter (param::isoMid).getText (p.parameter (param::isoMid).convertTo0to1 (-60.0f), 64) == "-inf dB");
     CHECK (p.bipolar (param::output));
     CHECK (! p.bipolar (param::node (0, param::freq)));
+}
+
+TEST_CASE ("every index the editor names is the engine's")
+{
+    Processor p;
+    const auto id = [&p] (int index) { return p.parameter (index).getParameterID(); };
+    const std::pair<int, const char*> globals[] = {
+        { param::output, "output" },          { param::scale, "scale" },
+        { param::adaptiveQ, "adaptive_q" },   { param::analyzer, "analyzer" },
+        { param::isoOn, "iso_on" },           { param::isoLow, "iso_low" },
+        { param::isoMid, "iso_mid" },         { param::isoHigh, "iso_high" },
+        { param::isoKillLow, "iso_kill_low" }, { param::isoKillMid, "iso_kill_mid" },
+        { param::isoKillHigh, "iso_kill_high" }, { param::isoLower, "iso_freq_lo" },
+        { param::isoUpper, "iso_freq_hi" },   { param::isoSlope, "iso_slope" },
+        { param::matchedCuts, "matched_cuts" },
+    };
+    for (const auto& [index, key] : globals)
+        CHECK (id (index) == key);
+    const char* const fields[] = { "type", "on", "family", "order", "freq", "gain", "q", "ripple", "stopband", "channel" };
+    static_assert (std::size (fields) == param::fields);
+    for (int slot = 0; slot < param::nodes; ++slot)
+        for (int f = 0; f < param::fields; ++f)
+            CHECK (id (param::node (slot, f)) == juce::String::formatted ("n%02d_", slot + 1) + fields[f]);
+    CHECK (param::count == FD_PARAM_COUNT);
 }
 
 TEST_CASE ("mono or stereo, the output as the input")
@@ -270,6 +299,51 @@ TEST_CASE ("the state comes back exactly")
     for (int i = 0; i < param::count; ++i)
         CHECK (b.p.plain (i) == a.p.plain (i));
     CHECK (b.p.bypassParameter().getValue() == 1.0f);
+
+    /* And what is restored is what plays: the engine is pushed only what
+     * moved, and a state moves it. */
+    Instance c;
+    c.run (1000.0, 4);
+    juce::MemoryBlock bell;
+    {
+        Instance d;
+        d.set (param::node (0, param::type), type::bell);
+        d.set (param::node (0, param::freq), 1000.0);
+        d.set (param::node (0, param::gain), 6.0);
+        d.p.getStateInformation (bell);
+    }
+    c.p.setStateInformation (bell.getData(), (int) bell.getSize());
+    CHECK (c.run (1000.0, 60) == doctest::Approx (6.0).epsilon (0.01));
+}
+
+TEST_CASE ("bypassed past two seconds, the engine idles, and comes back heard")
+{
+    Instance x;
+    x.p.editorOpened();
+    x.set (param::node (0, param::type), type::bell);
+    x.set (param::node (0, param::freq), 1000.0);
+    x.set (param::node (0, param::gain), 12.0);
+    /* The analyzer's output over its input at 1 kHz: what the engine did. */
+    const auto done = [&x]
+    {
+        const auto& pic = x.p.picture (ni::fd::lane::stereo);
+        const auto k = (size_t) std::distance (pic.hz.begin(),
+                                               std::min_element (pic.hz.begin(), pic.hz.end(),
+                                                                 [] (float a, float b) { return std::abs (a - 1000.0f) < std::abs (b - 1000.0f); }));
+        return pic.post[k] - pic.pre[k];
+    };
+    x.p.picture (ni::fd::lane::stereo);
+    x.run (1000.0, 20);
+    CHECK (done() == doctest::Approx (12.0).epsilon (0.03));
+    /* A second bypassed: the engine still filters a copy. */
+    CHECK (std::abs (x.run (1000.0, 94, true)) < 0.001);
+    CHECK (done() == doctest::Approx (12.0).epsilon (0.03));
+    /* Three: idle -- it only listens, so what it saw go out is what came in. */
+    CHECK (std::abs (x.run (1000.0, 188, true)) < 0.001);
+    CHECK (std::abs (done()) < 0.5);
+    /* Lifted: heard again at its gain, from a reset. */
+    CHECK (x.run (1000.0, 60) == doctest::Approx (12.0).epsilon (0.01));
+    x.p.editorClosed();
 }
 
 TEST_CASE ("the model's picture is the engine's design of the host's values")
