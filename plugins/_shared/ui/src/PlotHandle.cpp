@@ -61,6 +61,13 @@ void PlotHandle::paint (juce::Graphics& g)
     g.strokePath (disc, juce::PathStrokeType (1.5f));
 }
 
+void PlotHandle::setAltY (ParamBinding* altY, Travel alongAltY)
+{
+    jassert (altY == nullptr || alongAltY != nullptr);
+    yAlt = altY;
+    alongYAlt = std::move (alongAltY);
+}
+
 void PlotHandle::mouseEnter (const juce::MouseEvent&)
 {
     hovered = true;
@@ -82,8 +89,11 @@ void PlotHandle::mouseDown (const juce::MouseEvent& e)
     Drag d;
     d.from = e.getEventRelativeTo (&well).position;
     d.plainX = x.parameter().convertFrom0to1 (x.value());
-    if (y != nullptr)
-        d.plainY = y->parameter().convertFrom0to1 (y->value());
+    const bool alt = e.mods.isAltDown() && yAlt != nullptr;
+    d.vertical = alt ? yAlt : y;
+    d.alongV = alt ? &alongYAlt : &alongY;
+    if (d.vertical != nullptr)
+        d.plainY = d.vertical->parameter().convertFrom0to1 (d.vertical->value());
     d.fine = e.mods.isShiftDown();
     drag = d;
     repaint();
@@ -101,25 +111,26 @@ void PlotHandle::mouseDrag (const juce::MouseEvent& e)
             return;
         drag->moved = true;
         x.begin();
-        if (y != nullptr)
-            y->begin();
+        if (drag->vertical != nullptr)
+            drag->vertical->begin();
     }
 
     const float fine = drag->fine ? fineRatio : 1.0f;
     x.input (x.parameter().convertTo0to1 (alongX (drag->plainX, moved.x / fine)));
-    if (y != nullptr)
-        y->input (y->parameter().convertTo0to1 (alongY (drag->plainY, moved.y / fine)));
+    if (auto* v = drag->vertical)
+        v->input (v->parameter().convertTo0to1 ((*drag->alongV) (drag->plainY, moved.y / fine)));
 }
 
 void PlotHandle::mouseUp (const juce::MouseEvent&)
 {
     const bool moved = drag.has_value() && drag->moved;
+    auto* vertical = drag.has_value() ? drag->vertical : nullptr;
     drag.reset();
     if (! moved)
         return;
     x.end();
-    if (y != nullptr)
-        y->end();
+    if (vertical != nullptr)
+        vertical->end();
 }
 
 void PlotHandle::mouseDoubleClick (const juce::MouseEvent&)

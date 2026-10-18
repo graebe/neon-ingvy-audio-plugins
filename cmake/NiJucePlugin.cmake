@@ -15,6 +15,10 @@
 #                                   tests/fixtures/iplug2/ids.json
 #       [LEGACY_PARAM_IDS]          a parameter's index is its VST3 ID
 #       [EDITOR]                    plugins/<product>/editor, built on the kit
+#       [SHARED_SHELL <target>]     or: a processor and editor several products
+#                                   share (plugins/_shared/single-filter), as an
+#                                   interface library; SOURCES then holds only
+#                                   the product's entry point
 #       [NOTICES <files>]           more licence texts the bundle carries
 #       SOURCES <files>)            the processor and what it needs
 #
@@ -35,7 +39,8 @@
 #   THE NOTICES TRAVEL INSIDE THE BUNDLE: LICENSE and THIRD_PARTY_LICENSES.md
 #   (NI_BUNDLE_NOTICES), the AGPLv3 and Apache 2.0 texts of JUCE and what it
 #   compiles in (licenses/), the kit's font licence
-#   (OFL.txt) for a product with an EDITOR -- the kit embeds the font -- and
+#   (OFL.txt) for a product with an EDITOR or a SHARED_SHELL -- the kit embeds
+#   the font -- and
 #   the NOTICES given.
 #
 #   SIGNED LAST. JUCE signs its bundle and then writes
@@ -201,7 +206,7 @@ endfunction()
 
 function(ni_add_juce_plugin product)
     cmake_parse_arguments(ARG "SYNTH;MIDI_IN;LEGACY_PARAM_IDS;EDITOR;IPLUG2_CLASS"
-        "TARGET;NAME;CODE;ENGINE;VST3_CLASS" "CATEGORIES;NOTICES;SOURCES" ${ARGN})
+        "TARGET;NAME;CODE;ENGINE;VST3_CLASS;SHARED_SHELL" "CATEGORIES;NOTICES;SOURCES" ${ARGN})
     foreach(required TARGET NAME CODE ENGINE SOURCES)
         if (NOT ARG_${required})
             message(FATAL_ERROR "ni_add_juce_plugin(${product}) needs ${required}")
@@ -298,12 +303,17 @@ function(ni_add_juce_plugin product)
     # module would compile juce_audio_formats' codecs (FLAC, Ogg Vorbis, Opus,
     # an MP3 decoder) into every bundle. A product that needs it links it.
     set(link ${ARG_ENGINE} juce::juce_audio_processors)
+    if (ARG_EDITOR AND ARG_SHARED_SHELL)
+        message(FATAL_ERROR "ni_add_juce_plugin(${product}): EDITOR or SHARED_SHELL, not both")
+    endif()
     if (ARG_EDITOR)
         string(REPLACE "-" "_" id ${product})
         if (NOT TARGET ni_editor_${id})
             ni_ui_add_editor(${product})
         endif()
         list(APPEND link ni_editor_${id})
+    elseif (ARG_SHARED_SHELL)
+        list(APPEND link ${ARG_SHARED_SHELL})
     endif()
     target_link_libraries(${ARG_TARGET}
         PRIVATE ${link}
@@ -321,7 +331,7 @@ function(ni_add_juce_plugin product)
         ${CMAKE_SOURCE_DIR}/licenses/AGPL-3.0.txt
         ${CMAKE_SOURCE_DIR}/licenses/Apache-2.0.txt
         ${ARG_NOTICES})
-    if (ARG_EDITOR)
+    if (ARG_EDITOR OR ARG_SHARED_SHELL)
         list(APPEND notices ${NI_UI_FONT_LICENSE})
     endif()
     # The steps below run when the bundle is linked, and only then: a notice

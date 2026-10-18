@@ -32,6 +32,10 @@
  *  - The handle does not animate: a curve editor whose handles glide is one
  *    you cannot aim at.
  *
+ * ALT AT THE PRESS can take the vertical travel to another parameter
+ * (setAltY): a gain handle whose Alt-drag is its Q. Chosen at the press and
+ * never re-read, as the sensitivity is.
+ *
  * THE KEYBOARD: Left and Right move the sideways parameter, Page by a tenth,
  * Home and End to the ends of its range; Up and Down move the other the way
  * dragging up and down does. Each key is one committed edit. A double-click
@@ -73,6 +77,11 @@ public:
     ParamBinding& xBinding() const noexcept { return x; }
     ParamBinding* yBinding() const noexcept { return y; }
 
+    /* What a drag up and down moves while Alt is held at the press; null for
+     * nothing else. */
+    void setAltY (ParamBinding* altY, Travel alongAltY);
+    ParamBinding* altYBinding() const noexcept { return yAlt; }
+
     /* What a screen reader hears: the sideways parameter's text, then the
      * other's, joined. An owner whose parameters read differently on the
      * handle overrides both. */
@@ -104,6 +113,8 @@ private:
         float plainY = 0.0f;       // and the other's
         bool fine = false;         // Shift at the press, never re-read
         bool moved = false;        // out of the dead zone yet
+        ParamBinding* vertical = nullptr;  // y, or Alt's at the press
+        const Travel* alongV = nullptr;
     };
 
     static void commitKey (ParamBinding&, float delta, std::optional<float> to);
@@ -112,6 +123,8 @@ private:
     ParamBinding& x;
     ParamBinding* const y;
     const Travel alongX, alongY;
+    ParamBinding* yAlt = nullptr;
+    Travel alongYAlt;
     bool hovered = false;
     std::optional<Drag> drag;
     FocusVisibility focus { *this };

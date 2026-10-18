@@ -76,6 +76,9 @@ pub struct SfPicture {
     pub curve_db: [f32; SF_POINTS],
     /// The filter and Output: what its lane hears.
     pub total_db: [f32; SF_POINTS],
+    /// The filter's phase, in degrees, wrapped to -180..180: what an All
+    /// Pass, whose magnitude is flat, is drawn by.
+    pub phase_deg: [f32; SF_POINTS],
     /// Whether the rate clamps the filter's edge (its band narrows).
     pub clamped: bool,
     /// Where the handle sits, in Hz and dB (on the filter alone).
@@ -99,6 +102,7 @@ impl SfPicture {
             hz: [0.0; SF_POINTS],
             curve_db: [0.0; SF_POINTS],
             total_db: [0.0; SF_POINTS],
+            phase_deg: [0.0; SF_POINTS],
             clamped: false,
             handle_hz: f64::NAN,
             handle_db: f64::NAN,
@@ -200,6 +204,7 @@ impl Model for SfCore {
 struct Curve {
     from: (Settings, Globals, f64),
     db: [f32; SF_POINTS],
+    phase: [f32; SF_POINTS],
     clamped: bool,
     handle: Option<(f64, f64)>,
     edges: Option<(f64, f64)>,
@@ -227,11 +232,13 @@ impl Reader {
         let hz = &self.hz;
         self.curve.get_or_insert_with(|| {
             let (c, clamped) = design(&s, None, g, fs);
-            let mut db = [0.0f32; SF_POINTS];
-            for (d, hz) in db.iter_mut().zip(hz.iter()) {
-                *d = decibels(c.response(angle(*hz, fs)));
+            let (mut db, mut phase) = ([0.0f32; SF_POINTS], [0.0f32; SF_POINTS]);
+            for ((d, ph), hz) in db.iter_mut().zip(phase.iter_mut()).zip(hz.iter()) {
+                let h = c.response(angle(*hz, fs));
+                *d = decibels(h);
+                *ph = h.arg().to_degrees() as f32;
             }
-            Box::new(Curve { from, db, clamped, handle: handle(&s, g, &c, fs), edges: edges(&s) })
+            Box::new(Curve { from, db, phase, clamped, handle: handle(&s, g, &c, fs), edges: edges(&s) })
         })
     }
 }
@@ -369,6 +376,7 @@ pub unsafe extern "C" fn sf_shell_read(shell: *const SfShell, values: *const f64
     let output = values[Field::Output.slot()] as f32;
     let c = reader.curve(target.settings, g, fs);
     out.curve_db = c.db;
+    out.phase_deg = c.phase;
     for (t, d) in out.total_db.iter_mut().zip(c.db.iter()) {
         *t = d + output;
     }

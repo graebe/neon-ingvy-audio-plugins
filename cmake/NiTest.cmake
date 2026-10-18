@@ -51,11 +51,30 @@
 # is fine -- several are conditional (no node, no Rosetta, not the coverage
 # build, not macOS).
 #
+# A PRODUCT FAMILY is products built on one engine and one shell -- the
+# single filters, nine products on engines/single-filter -- whose shared tests
+# are each member's: declared once (ni_product_family), a section headed by
+# the family's name labels its tests product:<member> for every member and
+# puts its programs in every member's ni_tests_<member>, so `scripts/test.sh
+# product high-pass` runs the engine and the shell the nine share.
+#
 # Per directory rather than from one place because set_tests_properties only
 # reaches another directory's tests from CMake 3.28, and this project asks for
 # 3.22.
 
-# One test into its tiers and its product, once: in ni_test_tiers' scope.
+# ni_product_family(<family> <product>...): the products one family's tests
+# belong to. Each is one of NI_PRODUCTS; the family's name is no product.
+function(ni_product_family family)
+    foreach(p IN LISTS ARGN)
+        if (NOT p IN_LIST NI_PRODUCTS)
+            message(FATAL_ERROR "ni_product_family(${family}): '${p}' is not one of NI_PRODUCTS")
+        endif()
+    endforeach()
+    set_property(GLOBAL APPEND PROPERTY NI_PRODUCT_FAMILIES ${family})
+    set_property(GLOBAL PROPERTY NI_PRODUCT_FAMILY_${family} ${ARGN})
+endfunction()
+
+# One test into its tiers and its products, once: in ni_test_tiers' scope.
 macro(_ni_test_place t tiers)
     if ("${t}" IN_LIST placed)
         message(FATAL_ERROR "test '${t}' (${CMAKE_CURRENT_SOURCE_DIR}) is placed twice: "
@@ -63,22 +82,27 @@ macro(_ni_test_place t tiers)
     endif()
     list(APPEND placed ${t})
     if ("${t}" IN_LIST registered)
-        set_tests_properties(${t} PROPERTIES LABELS "${tiers};product:${product}")
+        set(_labels ${tiers})
+        foreach(_member IN LISTS members)
+            list(APPEND _labels product:${_member})
+        endforeach()
+        set_tests_properties(${t} PROPERTIES LABELS "${_labels}")
     endif()
 endmacro()
 
 function(ni_test_tiers)
     get_property(registered DIRECTORY PROPERTY TESTS)
     get_property(built DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    get_property(families GLOBAL PROPERTY NI_PRODUCT_FAMILIES)
 
     # The sections, in order: each PRODUCT <name> and what follows it.
     set(n 0)
     set(expect_name FALSE)
     foreach(arg IN LISTS ARGN)
         if (expect_name)
-            if (NOT (arg STREQUAL "shared" OR arg IN_LIST NI_PRODUCTS))
-                message(FATAL_ERROR "ni_test_tiers: PRODUCT '${arg}' is neither 'shared' "
-                                    "nor one of NI_PRODUCTS (${NI_PRODUCTS})")
+            if (NOT (arg STREQUAL "shared" OR arg IN_LIST NI_PRODUCTS OR arg IN_LIST families))
+                message(FATAL_ERROR "ni_test_tiers: PRODUCT '${arg}' is neither 'shared', "
+                                    "one of NI_PRODUCTS (${NI_PRODUCTS}) nor a family (${families})")
             endif()
             set(product_${n} ${arg})
             set(args_${n})
@@ -102,6 +126,11 @@ function(ni_test_tiers)
     if (n GREATER 0)
         foreach(i RANGE 1 ${n})
             set(product ${product_${i}})
+            if (product IN_LIST families)
+                get_property(members GLOBAL PROPERTY NI_PRODUCT_FAMILY_${product})
+            else()
+                set(members ${product})
+            endif()
             cmake_parse_arguments(T "" "" "PROGRAMS;QUICK;FULL" ${args_${i}})
             if (T_UNPARSED_ARGUMENTS)
                 message(FATAL_ERROR "ni_test_tiers: PRODUCT ${product} has '${T_UNPARSED_ARGUMENTS}' "
@@ -129,7 +158,9 @@ function(ni_test_tiers)
                 endif()
                 list(APPEND programs ${p})
                 if (p IN_LIST built)
-                    set_property(GLOBAL APPEND PROPERTY NI_TEST_PROGRAMS_${product} ${p})
+                    foreach(m IN LISTS members)
+                        set_property(GLOBAL APPEND PROPERTY NI_TEST_PROGRAMS_${m} ${p})
+                    endforeach()
                 endif()
             endforeach()
         endforeach()

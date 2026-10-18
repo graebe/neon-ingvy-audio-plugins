@@ -247,6 +247,19 @@ mod shell {
         assert!(sf_shell_create(0, FS).is_null());
     }
 
+    /// An All Pass is drawn by its phase: a second-order one turns through
+    /// -180 degrees at Freq, and its magnitude stays flat.
+    #[test]
+    fn an_all_pass_is_drawn_by_its_phase() {
+        let shell = sf_shell_create(SF_SHAPE_ALL_PASS, FS);
+        let p = read(shell, &defaults(SF_SHAPE_ALL_PASS));
+        unsafe { sf_shell_destroy(shell) };
+        assert!(p.curve_db.iter().all(|d| d.abs() < 1e-3), "flat");
+        let k = at(&p, 1000.0);
+        assert!((p.phase_deg[k].abs() - 180.0).abs() < 2.0, "{} degrees at Freq", p.phase_deg[k]);
+        assert!(p.phase_deg[at(&p, 20.0)].abs() < 10.0 && p.phase_deg.iter().all(|d| d.abs() <= 180.0));
+    }
+
     fn feed(shell: *mut SfShell, blocks: usize, l: f32, r: f32) {
         for block in 0..blocks {
             let core = unsafe { sf_shell_begin(shell) };

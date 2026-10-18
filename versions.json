@@ -9,9 +9,21 @@
   "bit-crusher": "v2026.10.11.1",
   "vocalize": "v2026.10.11.1",
   "filter-designer": "v2026.10.12.1",
+  "high-pass": "v2026.10.18.1",
+  "low-pass": "v2026.10.18.1",
+  "band-pass": "v2026.10.18.1",
+  "notch": "v2026.10.18.1",
+  "bell": "v2026.10.18.1",
+  "low-shelf": "v2026.10.18.1",
+  "high-shelf": "v2026.10.18.1",
+  "tilt": "v2026.10.18.1",
+  "all-pass": "v2026.10.18.1",
 
   "__audio-bus": "The house transport, not a plugin -- it has crates and no bundle. It is versioned here anyway because it is a thing that SHIPS INSIDE two products, and a crate whose version nothing checks is a crate that will disagree with itself.",
   "audio-bus": "v2026.10.10.1",
+
+  "__single-filter": "The single filters' engine, not a plugin: it ships INSIDE nine of them (high-pass ... all-pass, above), which share its version -- one engine, one release of it, and tests/versions.test.mjs holds the nine to this key.",
+  "single-filter": "v2026.10.18.1",
 
   "__music-core": "Music theory: pitches, chords, keys and modes. Not a plugin either -- a shared crate that NI Chord-Detector names chords with and that neo-riemann (codeberg.org/graebe/neo-riemann) builds on through a git dependency on this repository. Versioned here because a crate another repository pins by revision should say which release it is.",
   "music-core": "v2026.10.08.2"

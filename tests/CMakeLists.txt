@@ -385,6 +385,9 @@ foreach(product IN LISTS NI_PRODUCTS)
         add_subdirectory(${product})
     endif()
 endforeach()
+# THE SINGLE FILTERS, a family: their engine's, shell's and bundles' tests in
+# one directory (tests/single-filter), each test every member's.
+add_subdirectory(single-filter)
 
 # ---------------------------------------------------------------- Spectrogram
 
