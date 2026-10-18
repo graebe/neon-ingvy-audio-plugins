@@ -10,6 +10,9 @@
 #                 its sound its design at any block size, no clicks, its
 #                 lanes, the panic, the picture against the played response,
 #                 no allocation                                       (quick)
+#   sf_move_rs    the Move's module, all nine: their knob grids the
+#                 engine's tables, the defaults, the panic, no allocation
+#                                                                     (quick)
 #   sf_core       the C ABI from C, linked to the plugins' archive    (quick)
 #   sf_processor  the processor on the real engine, all nine         (quick)
 #   sf_rt         its audio callback allocates nothing               (quick)
@@ -23,6 +26,11 @@ set(NI_SF ${CMAKE_SOURCE_DIR}/plugins/_shared/single-filter)
 add_test(NAME sf_core_rs
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p sf-core -p sf-capi)
+# The Move's module crate and the nine that export it, as they ship.
+add_test(NAME sf_move_rs
+         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path ${CMAKE_SOURCE_DIR}/Cargo.toml -p sf-move
+                 -p sf-move-high-pass -p sf-move-low-pass -p sf-move-band-pass -p sf-move-notch -p sf-move-bell
+                 -p sf-move-low-shelf -p sf-move-high-shelf -p sf-move-tilt -p sf-move-all-pass)
 add_test(NAME sf_soak_rs
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --release --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p sf-core --test soak -- --ignored)
@@ -95,6 +103,6 @@ endforeach()
 ni_test_tiers(
     PRODUCT single-filter
         PROGRAMS sf_core_tests sf_render_ab sf_processor sf_rt sf_host
-        QUICK sf_core_rs sf_core sf_processor sf_rt
+        QUICK sf_core_rs sf_move_rs sf_core sf_processor sf_rt
         FULL sf_render_ab:render sf_soak_rs:soak
     ${_sf_hosts})

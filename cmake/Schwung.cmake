@@ -8,6 +8,7 @@
 #   cmake --build build --target schwung-bit-crusher  NI Bit-Crusher
 #   cmake --build build --target schwung-vocalize     NI Vocalize
 #   cmake --build build --target schwung-filter-designer  NI Filter Designer
+#   cmake --build build --target schwung-<single filter>  NI High Pass ... NI All Pass
 #
 # Each runs modules/_shared/package.sh with the module's directory name; what
 # differs between modules is in modules/<name>/module.env. Their tests are
@@ -65,6 +66,71 @@ add_custom_target(schwung-filter-designer
     COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh filter-designer
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building the NI Filter Designer module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+# THE SINGLE FILTERS: nine modules, one module crate (sf-move), a one-line
+# crate each (sf-move-<product>).
+add_custom_target(schwung-high-pass
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh high-pass
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI High Pass module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-low-pass
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh low-pass
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Low Pass module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-band-pass
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh band-pass
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Band Pass module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-notch
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh notch
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Notch module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-bell
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh bell
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Bell module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-low-shelf
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh low-shelf
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Low Shelf module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-high-shelf
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh high-shelf
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI High Shelf module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-tilt
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh tilt
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI Tilt module for Schwung (aarch64 Linux, via Docker)"
+    USES_TERMINAL
+    VERBATIM)
+
+add_custom_target(schwung-all-pass
+    COMMAND ${CMAKE_SOURCE_DIR}/modules/_shared/package.sh all-pass
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building the NI All Pass module for Schwung (aarch64 Linux, via Docker)"
     USES_TERMINAL
     VERBATIM)
 

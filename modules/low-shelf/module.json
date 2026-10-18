@@ -1,0 +1,16 @@
+{
+  "id": "ni-low-shelf",
+  "name": "NI Low Shelf",
+  "abbrev": "LS",
+  "version": "2026.10.18.1",
+  "description": "A low shelf: a boost or cut below Freq",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-low-shelf.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}

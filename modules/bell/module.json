@@ -1,0 +1,16 @@
+{
+  "id": "ni-bell",
+  "name": "NI Bell",
+  "abbrev": "BL",
+  "version": "2026.10.18.1",
+  "description": "A bell: a boost or cut around Freq",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-bell.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}

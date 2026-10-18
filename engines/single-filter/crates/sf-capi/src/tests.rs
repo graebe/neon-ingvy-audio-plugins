@@ -89,7 +89,7 @@ fn what_a_product_uses_now() {
 
 #[test]
 fn the_tail_reads_the_hosts_values() {
-    let mut v = [100.0, 0.7071, 1.0, 0.0, 1.0, 60.0, 0.0, 0.0, 0.0, 3.0];
+    let mut v = [100.0, core::f64::consts::FRAC_1_SQRT_2, 1.0, 0.0, 1.0, 60.0, 0.0, 0.0, 0.0, 3.0];
     let gentle = unsafe { sf_tail_seconds(SF_SHAPE_HIGH_PASS, v.as_ptr(), v.len(), 48_000.0) };
     (v[0], v[1], v[2], v[3]) = (20.0, 12.0, 7.0, 4.0);
     let ringing = unsafe { sf_tail_seconds(SF_SHAPE_HIGH_PASS, v.as_ptr(), v.len(), 48_000.0) };

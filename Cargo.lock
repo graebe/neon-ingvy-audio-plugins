@@ -874,6 +874,91 @@ dependencies = [
 ]
 
 [[package]]
+name = "sf-move"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "ni-dsp",
+ "ni-filter-node",
+ "ni-params",
+ "ni-schwung",
+ "serde_json",
+ "sf-core",
+]
+
+[[package]]
+name = "sf-move-all-pass"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-band-pass"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-bell"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-high-pass"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-high-shelf"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-low-pass"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-low-shelf"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-notch"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-tilt"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
 name = "shell-capi"
 version = "2026.10.9+1"
 dependencies = [

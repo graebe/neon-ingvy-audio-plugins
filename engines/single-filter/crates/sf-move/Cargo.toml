@@ -1,0 +1,35 @@
+[package]
+name = "sf-move"
+version = "2026.10.18+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The Schwung audio_fx v2 module the nine single filters share: one generic Module, a chain_params a product"
+publish.workspace = true
+
+# AN RLIB: each product's module is a cdylib of one line beside it
+# (crates/move/sf-move-<product>), so every .so exports exactly one
+# move_audio_fx_init_v2 -- Cargo's own model of one cdylib per package, and
+# the one modules/_shared/package.sh builds by MODULE_CRATE.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+sf-core = { path = "../sf-core" }
+# The Schwung audio_fx v2 glue, shared with every module.
+ni-schwung = { path = "../../../shared/crates/ni-schwung" }
+# The transport the vtable hands over, and C-compatible text.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+
+[build-dependencies]
+# build.rs writes each product's `chain_params` from its table, so the knob
+# grid's ranges, defaults, labels and units are the engine's own.
+sf-core = { path = "../sf-core" }
+ni-params = { path = "../../../shared/crates/ni-params" }
+ni-filter-node = { path = "../../../shared/crates/ni-filter-node" }
+
+[dev-dependencies]
+# The chain_params tests read the declaration as JSON.
+serde_json = { workspace = true, features = ["alloc"] }
+# The no-allocation guard src/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

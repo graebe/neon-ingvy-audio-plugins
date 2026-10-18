@@ -11,10 +11,12 @@ whole checkout.
 
 ```
 engines/<product>/crates     the core, and its wrappers
+engines/single-filter/crates the nine single filters' one engine (ADR 0008)
 engines/shared/crates        ni-dsp, ni-schwung, ni-params, ni-filter, ni-filter-node, ni-analyzer,
                              music-core — shared, product-free
 plugins/<product>/           the VST3 on the JUCE shell
 plugins/<product>/editor/    the product's native editor, on the kit
+plugins/_shared/single-filter/  the nine single filters' processor and editor
 plugins/_shared/juce/        ni::Processor, ni::PluginEditor, the state codec
 plugins/_shared/ni/          host-free helpers: ni::wire, the scope capture
 plugins/_shared/ui/          the native Ultraviolet kit (JUCE), and its gallery

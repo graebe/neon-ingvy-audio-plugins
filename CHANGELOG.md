@@ -12,6 +12,25 @@ next release; that release's entry lists them and this section goes.
 - The Motion setting each plugin remembered on your computer is simply ignored
   now; there is nothing to reset.
 
+## Unreleased — NI High Pass, NI Low Pass, NI Band Pass, NI Notch, NI Bell, NI Low Shelf, NI High Shelf, NI Tilt, NI All Pass
+
+- **New: nine single filters.** One NI Filter Designer filter each, as a
+  plugin of its own, for dragging just that filter into a chain: **NI High
+  Pass**, **NI Low Pass**, **NI Band Pass**, **NI Notch**, **NI Bell**, **NI
+  Low Shelf**, **NI High Shelf**, **NI Tilt** and **NI All Pass**. Each sounds,
+  sample for sample, as that filter does in NI Filter Designer.
+- **Only the controls a filter has.** A cut has Freq, Q, Slope (6 to 48
+  dB/oct), the six approximations with Ripple and Stopband, and Matched; a
+  bell Freq, Gain, Q and Adaptive; a shelf Freq, Gain, Q and Slope; a tilt
+  Freq and Gain; an all-pass Freq, Q and Order. Every one has Channel
+  (Stereo, Left, Right, Mid, Side) and Output, always in the same place.
+- **One picture**: the filter's curve over a pre/post analyzer of the lane it
+  works on; drag the dot for frequency and gain (or Q), Alt-drag a gain
+  filter's dot for Q, drag a bell's or band's edge for its width. NI All Pass
+  draws its phase.
+- **On the Move** too: each a Schwung module with the plugin's parameters on
+  one page of knobs, frequency and Q in musical steps, and the panic.
+
 ## Unreleased — NI Filter Designer
 
 - **New: NI Filter Designer.** Up to sixteen minimum-phase IIR filters on one

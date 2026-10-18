@@ -77,7 +77,7 @@ fn the_words_are_filter_designers() {
     };
     assert_eq!(text(Shape::HighPass, Field::Freq, 1200.0), "1.20 kHz");
     assert_eq!(text(Shape::Bell, Field::Gain, 3.0), "+3.0 dB");
-    assert_eq!(text(Shape::Bell, Field::Q, 0.7071), "0.71");
+    assert_eq!(text(Shape::Bell, Field::Q, core::f64::consts::FRAC_1_SQRT_2), "0.71");
     assert_eq!(text(Shape::HighPass, Field::Family, 4.0), "Elliptic");
     assert_eq!(text(Shape::HighPass, Field::Output, f64::NAN), "0.0 dB");
     assert_eq!(params::parse_value(Shape::LowPass, Field::Freq, "1.2k"), Some(1200.0));
@@ -244,7 +244,7 @@ fn the_analyzer_keeps_the_lane_it_is_asked_for_and_listening_filters_nothing() {
     e.process_f32(&mut l, Some(&mut r));
     e.rings(&mut pre, &mut post);
     assert!(post[RING - 1].abs() < pre[RING - 1].abs() + 1e-6);
-    assert!(e.node().cascade().len() > 0);
+    assert!(!e.node().cascade().is_empty());
 }
 
 #[test]

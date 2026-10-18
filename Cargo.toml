@@ -76,6 +76,16 @@ members = [
     # product, and none of the nine names another.
     "engines/single-filter/crates/sf-core",   # the DSP
     "engines/single-filter/crates/sf-capi",   # the C ABI -> the nine plugins
+    "engines/single-filter/crates/sf-move",   # the Schwung module, generic -> the nine modules
+    "engines/single-filter/crates/move/sf-move-high-pass",
+    "engines/single-filter/crates/move/sf-move-low-pass",
+    "engines/single-filter/crates/move/sf-move-band-pass",
+    "engines/single-filter/crates/move/sf-move-notch",
+    "engines/single-filter/crates/move/sf-move-bell",
+    "engines/single-filter/crates/move/sf-move-low-shelf",
+    "engines/single-filter/crates/move/sf-move-high-shelf",
+    "engines/single-filter/crates/move/sf-move-tilt",
+    "engines/single-filter/crates/move/sf-move-all-pass",
     # How a plugin shell's threads reach an engine: the command queue in, the
     # published snapshot out, and the handoff for objects the main thread
     # builds and frees. Not a product either, and for audio-bus's reason:

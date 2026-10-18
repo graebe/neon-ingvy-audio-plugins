@@ -1,0 +1,16 @@
+[package]
+name = "sf-move-low-pass"
+version = "2026.10.18+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "NI Low Pass on the Move: the single filters' Schwung module (sf-move) as one .so"
+publish.workspace = true
+
+[lib]
+name = "sf_move_low_pass"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sf-move = { path = "../../sf-move" }
+ni-schwung = { path = "../../../../shared/crates/ni-schwung" }

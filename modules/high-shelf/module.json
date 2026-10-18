@@ -1,0 +1,16 @@
+{
+  "id": "ni-high-shelf",
+  "name": "NI High Shelf",
+  "abbrev": "HS",
+  "version": "2026.10.18.1",
+  "description": "A high shelf: a boost or cut above Freq",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-high-shelf.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}
