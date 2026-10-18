@@ -150,9 +150,9 @@
  },
  "lastChange": {
   "by": "Torben",
-  "at": "2026-10-13T16:24:13Z",
+  "at": "2026-10-18T15:00:00Z",
   "via": "Claude Code",
-  "note": "Release 2.0.0: the Ground and its Motion switch removed; the window ground is the still dot paper",
-  "version": "2.0.0"
+  "note": "Release 2.1.0: knobs are pulled up and down; sliders are clicked where they should be",
+  "version": "2.1.0"
  }
 }
