@@ -71,12 +71,12 @@ int main(void) {
 
     /* The parameter table, as a shell declares from it. */
     CHECK(cd_param_count() == 7);
-    CdParamInfo info;
+    NiParamInfo info;
     CHECK(cd_param_info(0, &info));
-    CHECK(info.choice_count == 12 && info.default_choice == 0 && info.automatable);
+    CHECK(info.kind == NiParamKind_Choice && info.max == 11 && info.default_value == 0 && info.automatable);
     char text[32];
     CHECK(cd_param_name(0, text, sizeof text) == 3 && strcmp(text, "Key") == 0);
-    CHECK(cd_param_choice(0, 6, text, sizeof text) > 0 && strcmp(text, "F#/Gb") == 0);
+    CHECK(cd_param_label(0, 6, text, sizeof text) > 0 && strcmp(text, "F#/Gb") == 0);
     CHECK(cd_param_key(3, text, sizeof text) == 4 && strcmp(text, "hold") == 0);
 
     /* A note as a staff places it: B flat in C major, by value through C. */

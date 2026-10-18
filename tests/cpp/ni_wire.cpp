@@ -358,6 +358,21 @@ TEST_CASE("a decimal drops its trailing zeros")
   CHECK(s == "-42");
 }
 
+TEST_CASE("text starts with a number exactly when parse_number reads one")
+{
+  for (const char* yes : { "20", "  -60", "\t+1.5", "\n.5", "7.", "0x" })
+  {
+    CAPTURE(yes);
+    CHECK(starts_with_number(yes));
+  }
+  for (const char* no : { "", "abc", "-", "+.", ". 5", "loud" })
+  {
+    CAPTURE(no);
+    CHECK_FALSE(starts_with_number(no));
+    CHECK(parse_number(no) == 0.0);
+  }
+}
+
 TEST_CASE("a number reads as atof reads it")
 {
   CHECK(parse_number("20") == 20.0);

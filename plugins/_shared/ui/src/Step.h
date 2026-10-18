@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * One cell of a sequencer: the Step card of Ultraviolet 1.1.0, and the
+ * One cell of a sequencer: the Step card of Ultraviolet, and the
  * Trance Gate web editor's .pad.
  *
  * A 40px SQUARE WELL, bg-200 on a line-100 hairline. What it shows comes in

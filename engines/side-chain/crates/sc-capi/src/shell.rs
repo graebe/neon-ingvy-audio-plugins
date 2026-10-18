@@ -37,7 +37,8 @@ The Move module does not use this: Schwung calls its module on one thread.
 */
 
 use crate::ScCore;
-use shell_core::{publish_every, Bridge, Model, Text};
+use ni_dsp::ffi::{drop_box, usable_rate};
+use shell_core::{capi, Bridge, Model, Text};
 use std::ffi::{c_char, c_int, CStr};
 use sc_core::Instance;
 
@@ -86,18 +87,15 @@ pub struct ScShell(Bridge<ScCore>);
 /// Allocates; the main thread only.
 #[no_mangle]
 pub extern "C" fn sc_shell_create(sample_rate: f64) -> *mut ScShell {
-    let sr = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
-    let bridge = Bridge::new(ScCore(Instance::new(sr)), None, QUEUE, publish_every(sr));
-    Box::into_raw(Box::new(ScShell(bridge)))
+    let sr = usable_rate(sample_rate).unwrap_or(44100.0);
+    Box::into_raw(Box::new(ScShell(capi::create(ScCore(Instance::new(sr)), sr, QUEUE))))
 }
 
 /// # Safety
 /// `sh` is null or from `sc_shell_create`, and no thread uses it afterwards.
 #[no_mangle]
 pub unsafe extern "C" fn sc_shell_destroy(sh: *mut ScShell) {
-    if !sh.is_null() {
-        drop(Box::from_raw(sh));
-    }
+    drop_box(sh);
 }
 
 /// The host's rate, applied at the top of the next block. Any non-audio
@@ -106,14 +104,10 @@ pub unsafe extern "C" fn sc_shell_destroy(sh: *mut ScShell) {
 /// # Safety
 /// `sh` is null or live.
 #[no_mangle]
-#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate must take the guard, and is dropped with it")]
 pub unsafe extern "C" fn sc_shell_post_sample_rate(sh: *mut ScShell, sample_rate: f64) {
-    let Some(sh) = sh.as_ref() else { return };
-    if !(sample_rate > 0.0) {
-        return;
+    if let Some(sh) = sh.as_ref() {
+        capi::post_sample_rate(&sh.0, sample_rate, Command::SampleRate);
     }
-    sh.0.post(Command::SampleRate(sample_rate));
-    sh.0.set_publish_every(publish_every(sample_rate));
 }
 
 /// `ui`, `params` or `stage_ms`, exactly as `sc_core_get_param` formats them,
@@ -146,10 +140,7 @@ pub unsafe extern "C" fn sc_shell_read(
 /// `sc_shell_end`.
 #[no_mangle]
 pub unsafe extern "C" fn sc_shell_begin(sh: *mut ScShell) -> *mut ScCore {
-    match sh.as_ref() {
-        Some(sh) => sh.0.begin() as *mut ScCore,
-        None => std::ptr::null_mut(),
-    }
+    capi::begin(sh.as_ref().map(|s| &s.0))
 }
 
 /// The audio thread, at the end of a block of `frames`.

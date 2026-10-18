@@ -8,8 +8,9 @@ instance. lib.rs says what the crate may do and which thread calls what.
 
 use std::os::raw::{c_char, c_int};
 
-use bc_core::{transfer, Engine, Kind, Param, Travel, LATENCY, PARAM_COUNT, REFRESH_PERIOD_MS};
-use ni_dsp::ffi::{copy_cstr, cstr};
+use bc_core::{transfer, Engine, Param, LATENCY, PARAM_COUNT, REFRESH_PERIOD_MS};
+use ni_dsp::ffi::{byte_slice, cstr, drop_box, f32_block, i16_block, usable_rate};
+pub use ni_params::{NiParamInfo, NiParamKind};
 
 /// How many samples an instance keeps for the scope.
 pub const BC_SCOPE_RING: usize = 2048;
@@ -132,9 +133,7 @@ pub extern "C" fn bc_core_new(sample_rate: f64) -> *mut BcCore {
 /// `core` is null or from `bc_core_new`, and not used after.
 #[no_mangle]
 pub unsafe extern "C" fn bc_core_free(core: *mut BcCore) {
-    if !core.is_null() {
-        drop(Box::from_raw(core));
-    }
+    drop_box(core);
 }
 
 /// The host's rate. One that is not positive is ignored.
@@ -143,10 +142,8 @@ pub unsafe extern "C" fn bc_core_free(core: *mut BcCore) {
 /// `core` is null or live, and this thread's.
 #[no_mangle]
 pub unsafe extern "C" fn bc_core_set_sample_rate(core: *mut BcCore, sample_rate: f64) {
-    if let Some(core) = core.as_mut() {
-        if sample_rate > 0.0 {
-            core.engine.set_sample_rate(sample_rate);
-        }
+    if let (Some(core), Some(rate)) = (core.as_mut(), usable_rate(sample_rate)) {
+        core.engine.set_sample_rate(rate);
     }
 }
 
@@ -206,13 +203,9 @@ pub unsafe extern "C" fn bc_core_num(core: *const BcCore, index: i32) -> f64 {
 /// overlap.
 #[no_mangle]
 pub unsafe extern "C" fn bc_core_process_f32(core: *mut BcCore, left: *mut f32, right: *mut f32, frames: u32) {
-    let Some(core) = core.as_mut() else { return };
-    if left.is_null() || frames == 0 {
-        return;
+    if let (Some(core), Some((l, r))) = (core.as_mut(), f32_block(left, right, frames)) {
+        core.process(l, r);
     }
-    let l = std::slice::from_raw_parts_mut(left, frames as usize);
-    let r = (!right.is_null()).then(|| std::slice::from_raw_parts_mut(right, frames as usize));
-    core.process(l, r);
 }
 
 /// One block of the Move's interleaved 16-bit stereo, `frames` frames, in
@@ -223,12 +216,9 @@ pub unsafe extern "C" fn bc_core_process_f32(core: *mut BcCore, left: *mut f32, 
 /// `2 * frames` values.
 #[no_mangle]
 pub unsafe extern "C" fn bc_core_process_i16(core: *mut BcCore, buf: *mut i16, frames: u32) {
-    let Some(core) = core.as_mut() else { return };
-    if buf.is_null() {
-        return;
+    if let (Some(core), Some(b)) = (core.as_mut(), i16_block(buf, frames)) {
+        core.engine.process_i16(b, frames as usize);
     }
-    let b = std::slice::from_raw_parts_mut(buf, 2 * frames as usize);
-    core.engine.process_i16(b, frames as usize);
 }
 
 /// One MIDI message of `len` bytes. CC 120 and CC 123, on any channel, are
@@ -239,11 +229,9 @@ pub unsafe extern "C" fn bc_core_process_i16(core: *mut BcCore, buf: *mut i16, f
 /// bytes.
 #[no_mangle]
 pub unsafe extern "C" fn bc_core_on_midi(core: *mut BcCore, bytes: *const u8, len: usize) {
-    let Some(core) = core.as_mut() else { return };
-    if bytes.is_null() || len == 0 {
-        return;
+    if let (Some(core), Some(msg)) = (core.as_mut(), byte_slice(bytes, len)) {
+        core.engine.on_midi(msg);
     }
-    core.engine.on_midi(std::slice::from_raw_parts(bytes, len));
 }
 
 /// The panic: everything held lets go and every filter empties; the
@@ -260,107 +248,31 @@ pub unsafe extern "C" fn bc_core_reset(core: *mut BcCore) {
 
 /* ------------------------------------------------------ the parameter table */
 
-/// What a parameter is.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BcParamKind {
-    /// A number from `min` to `max` in its unit.
-    Float = 0,
-    /// Off (0) or on (1).
-    Toggle = 1,
-    /// One of `choice_count` words (bc_param_choice), by index 0..count-1.
-    Choice = 2,
-}
-
-/// What a shell declares one parameter with. Values are in the parameter's
-/// own unit (bc_param_unit); a toggle's range is 0..1.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BcParamInfo {
-    pub kind: BcParamKind,
-    pub min: f64,
-    pub max: f64,
-    pub default_value: f64,
-    /// True when the knob travels in equal ratios (bc_param_normalise).
-    pub log_travel: bool,
-    /// True when the value runs both ways about zero.
-    pub bipolar: bool,
-    /// The finest step a host should keep (bc_param_snap); 0 for a toggle
-    /// or a choice.
-    pub resolution: f64,
-    /// A choice's number of words; 0 otherwise.
-    pub choice_count: i32,
-    /// Whether a host should offer it for automation: false for a setting
-    /// of the window (Refresh), which is saved but not automated.
-    pub automatable: bool,
-}
-
 /// How many parameters there are.
 #[no_mangle]
 pub extern "C" fn bc_param_count() -> i32 {
     PARAM_COUNT as i32
 }
 
-/// Describe parameter `index`. Any thread. False for an index out of range.
+/// Describe parameter `index`: its kind (a number, or a choice -- a switch is
+/// a choice of two), range, default, resolution, and whether a host may
+/// automate it. Any thread. False for an index out of range.
 ///
 /// # Safety
 /// `out` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn bc_param_info(index: i32, out: *mut BcParamInfo) -> bool {
-    let (Some(p), Some(out)) = (Param::from_i32(index), out.as_mut()) else {
-        return false;
-    };
-    let automatable = p.info().automatable;
-    *out = match p.info().kind {
-        Kind::Float { min, max, default, travel, bipolar, unit } => BcParamInfo {
-            kind: BcParamKind::Float,
-            min,
-            max,
-            default_value: default,
-            log_travel: travel == Travel::Log,
-            bipolar,
-            resolution: unit.resolution(),
-            choice_count: 0,
-            automatable,
-        },
-        Kind::Toggle { default } => BcParamInfo {
-            kind: BcParamKind::Toggle,
-            min: 0.0,
-            max: 1.0,
-            default_value: default as i32 as f64,
-            log_travel: false,
-            bipolar: false,
-            resolution: 0.0,
-            choice_count: 0,
-            automatable,
-        },
-        Kind::Choice { choices, default } => BcParamInfo {
-            kind: BcParamKind::Choice,
-            min: 0.0,
-            max: (choices.len() - 1) as f64,
-            default_value: f64::from(default),
-            log_travel: false,
-            bipolar: false,
-            resolution: 0.0,
-            choice_count: choices.len() as i32,
-            automatable,
-        },
-    };
-    true
+pub unsafe extern "C" fn bc_param_info(index: i32, out: *mut NiParamInfo) -> bool {
+    ni_params::c_info(Param::from_i32(index).map(|p| p.info().kind), out)
 }
 
-/// Choice `choice` of parameter `index` ("1/s"), as `bc_param_key`: -1 for
-/// a parameter that is no choice, or a choice it does not have.
+/// Choice parameter `index`'s label number `option` ("1/s", "On"), as
+/// `bc_param_key`; -1 for a number or an option out of range.
 ///
 /// # Safety
 /// As `bc_param_key`.
 #[no_mangle]
-pub unsafe extern "C" fn bc_param_choice(index: i32, choice: i32, out: *mut c_char, cap: c_int) -> c_int {
-    let Some(Kind::Choice { choices, .. }) = Param::from_i32(index).map(|p| p.info().kind) else { return -1 };
-    match usize::try_from(choice).ok().and_then(|c| choices.get(c)) {
-        Some(word) => copy_cstr(word, out, cap),
-        None => -1,
-    }
+pub unsafe extern "C" fn bc_param_label(index: i32, option: i32, out: *mut c_char, cap: c_int) -> c_int {
+    ni_params::c_text(Param::from_i32(index).and_then(|p| p.info().kind.label(option)), out, cap)
 }
 
 /// THE FILTER'S RESPONSE, for an editor's plot: `count` gains in dB at
@@ -372,6 +284,7 @@ pub unsafe extern "C" fn bc_param_choice(index: i32, choice: i32, out: *mut c_ch
 /// # Safety
 /// `out` is null or has room for `count` floats.
 #[no_mangle]
+#[allow(clippy::neg_cmp_op_on_partial_ord, reason = "a NaN rate or frequency must draw nothing")]
 pub unsafe extern "C" fn bc_filter_response(
     cutoff_hz: f64,
     peak_db: f64,
@@ -434,10 +347,7 @@ pub extern "C" fn bc_refresh_period_ms(choice: i32) -> f64 {
 /// `out` is null or has room for `cap` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn bc_param_key(index: i32, out: *mut c_char, cap: c_int) -> c_int {
-    match Param::from_i32(index) {
-        Some(p) => copy_cstr(p.info().key, out, cap),
-        None => -1,
-    }
+    ni_params::c_text(Param::from_i32(index).map(|p| p.info().key), out, cap)
 }
 
 /// Parameter `index`'s display name, as `bc_param_key`.
@@ -446,26 +356,17 @@ pub unsafe extern "C" fn bc_param_key(index: i32, out: *mut c_char, cap: c_int) 
 /// As `bc_param_key`.
 #[no_mangle]
 pub unsafe extern "C" fn bc_param_name(index: i32, out: *mut c_char, cap: c_int) -> c_int {
-    match Param::from_i32(index) {
-        Some(p) => copy_cstr(p.info().name, out, cap),
-        None => -1,
-    }
+    ni_params::c_text(Param::from_i32(index).map(|p| p.info().name), out, cap)
 }
 
 /// Parameter `index`'s unit ("dB", "bits", "%", "Hz", "oct"; "" for a
-/// toggle or a choice), as `bc_param_key`.
+/// choice), as `bc_param_key`.
 ///
 /// # Safety
 /// As `bc_param_key`.
 #[no_mangle]
 pub unsafe extern "C" fn bc_param_unit(index: i32, out: *mut c_char, cap: c_int) -> c_int {
-    match Param::from_i32(index) {
-        Some(p) => match p.info().kind {
-            Kind::Float { unit, .. } => copy_cstr(unit.label(), out, cap),
-            Kind::Toggle { .. } | Kind::Choice { .. } => copy_cstr("", out, cap),
-        },
-        None => -1,
-    }
+    ni_params::c_text(Param::from_i32(index).map(|p| p.info().unit.map_or("", |u| u.label())), out, cap)
 }
 
 /// `value` of parameter `index` as every shell prints it ("+3.0 dB",
@@ -475,12 +376,7 @@ pub unsafe extern "C" fn bc_param_unit(index: i32, out: *mut c_char, cap: c_int)
 /// As `bc_param_key`.
 #[no_mangle]
 pub unsafe extern "C" fn bc_param_text(index: i32, value: f64, out: *mut c_char, cap: c_int) -> c_int {
-    let Some(p) = Param::from_i32(index) else { return -1 };
-    let mut text = TextBuf::default();
-    if p.write_value(&mut text, value).is_err() {
-        return -1;
-    }
-    copy_cstr(text.as_str(), out, cap)
+    ni_params::c_written(Param::from_i32(index).map(|p| move |w: &mut dyn core::fmt::Write| p.write_value(w, value)), out, cap)
 }
 
 /// What a user typed, read as parameter `index`'s value into `out`, clamped
@@ -523,29 +419,6 @@ pub extern "C" fn bc_param_snap(index: i32, value: f64) -> f64 {
 #[no_mangle]
 pub extern "C" fn bc_param_denormalise(index: i32, normalised: f64) -> f64 {
     Param::from_i32(index).map_or(0.0, |p| p.denormalise(normalised))
-}
-
-/// A short text on the stack, for a value before it is copied out.
-#[derive(Default)]
-struct TextBuf {
-    buf: [u8; 32],
-    len: usize,
-}
-
-impl TextBuf {
-    fn as_str(&self) -> &str {
-        core::str::from_utf8(&self.buf[..self.len]).unwrap_or("")
-    }
-}
-
-impl core::fmt::Write for TextBuf {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let end = self.len + s.len();
-        let dst = self.buf.get_mut(self.len..end).ok_or(core::fmt::Error)?;
-        dst.copy_from_slice(s.as_bytes());
-        self.len = end;
-        Ok(())
-    }
 }
 
 /* ------------------------------------------------------- the steps, drawn */

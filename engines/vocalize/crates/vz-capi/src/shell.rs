@@ -33,7 +33,8 @@ the host's side.
 */
 
 use crate::{VzCore, VzVoice};
-use shell_core::{publish_every, Bridge, Model};
+use ni_dsp::ffi::drop_box;
+use shell_core::{capi, Bridge, Model};
 use vz_core::model::VowelTable;
 use vz_core::Mode;
 
@@ -65,8 +66,7 @@ pub struct VzPicture {
 
 /// The picture's frequencies: equally spaced in pitch.
 fn frequencies() -> [f64; VZ_POINTS] {
-    let span = VZ_HIGHEST_HZ / VZ_LOWEST_HZ;
-    core::array::from_fn(|i| VZ_LOWEST_HZ * span.powf(i as f64 / (VZ_POINTS - 1) as f64))
+    ni_dsp::axis::log_points(VZ_LOWEST_HZ, VZ_HIGHEST_HZ)
 }
 
 impl VzPicture {
@@ -148,7 +148,7 @@ pub struct VzShell {
 pub extern "C" fn vz_shell_create(sample_rate: f64) -> *mut VzShell {
     let core = VzCore::new(sample_rate);
     let rate = core.engine.sample_rate();
-    let bridge = Bridge::new(core, None, QUEUE, publish_every(rate));
+    let bridge = capi::create(core, rate, QUEUE);
     Box::into_raw(Box::new(VzShell { bridge }))
 }
 
@@ -156,9 +156,7 @@ pub extern "C" fn vz_shell_create(sample_rate: f64) -> *mut VzShell {
 /// `shell` is null or from `vz_shell_create`, and no thread uses it after.
 #[no_mangle]
 pub unsafe extern "C" fn vz_shell_destroy(shell: *mut VzShell) {
-    if !shell.is_null() {
-        drop(Box::from_raw(shell));
-    }
+    drop_box(shell);
 }
 
 /// The host's rate, applied at the top of the next block. Not the audio
@@ -168,12 +166,9 @@ pub unsafe extern "C" fn vz_shell_destroy(shell: *mut VzShell) {
 /// `shell` is null or live.
 #[no_mangle]
 pub unsafe extern "C" fn vz_shell_post_sample_rate(shell: *const VzShell, sample_rate: f64) {
-    let Some(shell) = shell.as_ref() else { return };
-    if sample_rate.is_nan() || sample_rate <= 0.0 {
-        return;
+    if let Some(shell) = shell.as_ref() {
+        capi::post_sample_rate(&shell.bridge, sample_rate, Command::SampleRate);
     }
-    shell.bridge.post(Command::SampleRate(sample_rate));
-    shell.bridge.set_publish_every(publish_every(sample_rate));
 }
 
 /// Everything held lets go, at the top of the next block. Not the audio
@@ -229,10 +224,7 @@ pub unsafe extern "C" fn vz_shell_post_watching(shell: *const VzShell, watching:
 /// pointer is not used after `vz_shell_end`.
 #[no_mangle]
 pub unsafe extern "C" fn vz_shell_begin(shell: *const VzShell) -> *mut VzCore {
-    match shell.as_ref() {
-        Some(shell) => shell.bridge.begin() as *mut VzCore,
-        None => std::ptr::null_mut(),
-    }
+    capi::begin(shell.as_ref().map(|s| &s.bridge))
 }
 
 /// The audio thread, at the end of a block of `frames`: publishes the
@@ -254,9 +246,5 @@ pub unsafe extern "C" fn vz_shell_end(shell: *const VzShell, frames: u32) {
 /// `shell` is null or live; `out` is null or writable.
 #[no_mangle]
 pub unsafe extern "C" fn vz_shell_read(shell: *const VzShell, out: *mut VzPicture) -> bool {
-    let (Some(shell), Some(out)) = (shell.as_ref(), out.as_mut()) else {
-        return false;
-    };
-    shell.bridge.read(|r| *out = *r.frame);
-    true
+    capi::read_into(shell.as_ref().map(|s| &s.bridge), out.as_mut())
 }

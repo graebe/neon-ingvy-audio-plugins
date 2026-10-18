@@ -14,6 +14,8 @@ crate-type = ["rlib"]
 # The theory: naming a voicing, keys, modes and roman numerals. No std needed:
 # the frequency methods are the only thing `std` adds, and nothing here asks.
 music-core = { path = "../../../shared/crates/music-core", default-features = false }
+# The shape of a parameter table, shared with every product's shell.
+ni-params = { path = "../../../shared/crates/ni-params" }
 # MIDI bytes to messages. Core-only without its `std` feature, as sc-core takes it.
 wmidi = { workspace = true }
 

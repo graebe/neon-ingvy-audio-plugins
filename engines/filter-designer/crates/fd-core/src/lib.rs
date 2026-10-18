@@ -44,7 +44,7 @@ use design::Globals;
 use isolator::Isolator;
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
-use node::{Node, FADE_MS, PROTOS_PER_TICK};
+use node::{Budget, Node, FADE_MS};
 pub use params::{Field, Info, Kind, Param, Unit, NODES, NODE_BASE, NODE_FIELDS, PARAM_COUNT};
 
 /// The sample rate when none is given.
@@ -55,6 +55,30 @@ pub const SUB: usize = 16;
 
 /// Samples each analyzer ring keeps: a power of two.
 pub const RING: usize = 8192;
+
+/// Which signal the analyzer's rings keep: a stereo pair's left or right, or
+/// its mid ((L + R) / 2, what a mono sum hears) or side ((L - R) / 2) -- the
+/// lane the editor draws, so a Side filter is seen working on the side.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Lane {
+    Left,
+    Right,
+    Mid,
+    Side,
+}
+
+impl Lane {
+    /// The lane's sample of the pair `l`, `r`.
+    #[inline]
+    pub fn of(self, l: f64, r: f64) -> f64 {
+        match self {
+            Lane::Left => l,
+            Lane::Right => r,
+            Lane::Mid => 0.5 * (l + r),
+            Lane::Side => 0.5 * (l - r),
+        }
+    }
+}
 
 fn usable_rate(sample_rate: f64) -> f64 {
     if sample_rate.is_finite() && sample_rate > 0.0 {
@@ -86,11 +110,12 @@ pub struct Engine {
     phase: usize,
     /// The block is a mono track's: the right lane is the left's copy.
     mono: bool,
-    /// The node a control tick serves first: each tick the next, so a tick's
-    /// budget of prototypes goes round.
+    /// The node a control tick serves first: the first the last tick could
+    /// not design, or else the next, so a tick's budget goes round.
     first: usize,
-    /// The input and output, mono, while a window shows the analyzer.
+    /// The input and output, in `lane`, while a window shows the analyzer.
     watching: bool,
+    lane: Lane,
     pre: Box<[f32; RING]>,
     post: Box<[f32; RING]>,
     ring_pos: usize,
@@ -118,6 +143,7 @@ impl Engine {
             mono: false,
             first: 0,
             watching: false,
+            lane: Lane::Mid,
             pre: Box::new([0.0; RING]),
             post: Box::new([0.0; RING]),
             ring_pos: 0,
@@ -234,6 +260,16 @@ impl Engine {
         self.watching = on;
     }
 
+    /// Which lane the analyzer's rings keep. A new lane starts from empty
+    /// rings, so the picture never shows one lane's spectrum as another's.
+    pub fn set_lane(&mut self, lane: Lane) {
+        if lane != self.lane {
+            self.lane = lane;
+            self.pre.fill(0.0);
+            self.post.fill(0.0);
+        }
+    }
+
     /// Nothing to do: every node idle, the isolator off and faded out, and
     /// Output at unity and staying there.
     pub fn is_transparent(&self) -> bool {
@@ -244,20 +280,26 @@ impl Engine {
     }
 
     /// One control tick; the prototypes it designed, at most
-    /// [`PROTOS_PER_TICK`].
+    /// [`node::PROTOS_PER_TICK`].
     fn control(&mut self) -> usize {
         let t = self.global_targets();
         let c = self.ctl_coef;
         self.globals.scale = glide(self.globals.scale, t.scale, c);
         self.globals.adaptive = glide(self.globals.adaptive, t.adaptive, c);
-        let mut budget = PROTOS_PER_TICK;
+        let mut budget = Budget::TICK;
+        let mut next = None;
         for k in 0..NODES {
-            let n = &mut self.nodes[(self.first + k) % NODES];
-            n.control(&self.values, c, self.globals, self.sample_rate, &mut budget);
+            let at = (self.first + k) % NODES;
+            if self.nodes[at].control(&self.values, c, self.globals, self.sample_rate, &mut budget) && next.is_none() {
+                next = Some(at);
+            }
         }
-        self.first = (self.first + 1) % NODES;
+        /* The next tick serves first the first node this one could not, so
+         * the budget goes round evenly: with sixteen weighing, each is
+         * designed every fourth tick. */
+        self.first = next.unwrap_or((self.first + 1) % NODES);
         self.iso.control(&self.values, c, self.sample_rate);
-        PROTOS_PER_TICK - budget
+        Budget::TICK.protos - budget.protos
     }
 
     /// One block of host floats, in place: `left`, and `right` for a stereo
@@ -266,16 +308,7 @@ impl Engine {
     pub fn process_f32(&mut self, left: &mut [f32], mut right: Option<&mut [f32]>) {
         let n = left.len();
         if self.is_transparent() {
-            if self.watching {
-                for i in 0..n {
-                    let x = match right.as_deref() {
-                        Some(r) if i < r.len() => 0.5 * (left[i] + r[i]),
-                        _ => left[i],
-                    };
-                    self.keep(x, x);
-                }
-            }
-            self.phase = (self.phase + n) % SUB;
+            self.listen_f32(left, right.as_deref());
             return;
         }
         self.mono = right.is_none();
@@ -302,6 +335,22 @@ impl Engine {
             self.phase = (self.phase + m) % SUB;
         }
         self.flush();
+    }
+
+    /// One block heard and left alone: what plays is the input, so the rings
+    /// keep it as both what came in and what went out, and the control grid
+    /// keeps its time. What a bypassed plugin runs once its engine idles, and
+    /// a transparent engine's block. Nothing is filtered or glided; a caller
+    /// that filters again afterwards resets first.
+    pub fn listen_f32(&mut self, left: &[f32], right: Option<&[f32]>) {
+        if self.watching {
+            for (i, &l) in left.iter().enumerate() {
+                let r = right.and_then(|r| r.get(i)).copied().unwrap_or(l);
+                let x = self.lane.of(f64::from(l), f64::from(r)) as f32;
+                self.keep(x, x);
+            }
+        }
+        self.phase = (self.phase + left.len()) % SUB;
     }
 
     /// One block of the Move's interleaved 16-bit stereo, in place.
@@ -339,7 +388,7 @@ impl Engine {
     fn block(&mut self, m: usize) {
         if self.watching {
             for k in 0..m {
-                self.pre[(self.ring_pos + k) & (RING - 1)] = (0.5 * (self.buf_l[k] + self.buf_r[k])) as f32;
+                self.pre[(self.ring_pos + k) & (RING - 1)] = self.lane.of(self.buf_l[k], self.buf_r[k]) as f32;
             }
         }
         let target = self.out_target();
@@ -355,7 +404,7 @@ impl Engine {
         }
         if self.watching {
             for k in 0..m {
-                self.post[(self.ring_pos + k) & (RING - 1)] = (0.5 * (self.buf_l[k] + self.buf_r[k])) as f32;
+                self.post[(self.ring_pos + k) & (RING - 1)] = self.lane.of(self.buf_l[k], self.buf_r[k]) as f32;
             }
             self.ring_pos = (self.ring_pos + m) & (RING - 1);
         }

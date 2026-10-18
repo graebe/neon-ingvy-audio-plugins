@@ -130,13 +130,14 @@ void ResponseWell::edit (const std::vector<std::pair<int, double>>& changes)
 int ResponseWell::laneFor (int sel) const
 {
     if (sel >= isolator)
-        return lane::left;
+        return lane::stereo;
     switch ((int) plain (param::node (sel, param::channel)))
     {
+        case 1:  return lane::left;
         case 2:  return lane::right;
         case 3:  return lane::mid;
         case 4:  return lane::side;
-        default: return lane::left;
+        default: return lane::stereo;
     }
 }
 
@@ -160,11 +161,9 @@ juce::String ResponseWell::captionText() const
     auto text = juce::String ("RESPONSE   ") + juce::String (heard) + (heard == 1 ? " FILTER" : " FILTERS");
     if (shown.sampleRate > 0.0)
         text << "   " << juce::String (shown.sampleRate / 1000.0, shown.sampleRate == std::floor (shown.sampleRate / 1000.0) * 1000.0 ? 0 : 1) << " KHZ";
-    static const char* const lanes[] = { "", "RIGHT", "MID", "SIDE" };
-    if (shownLane != lane::left)
+    static const char* const lanes[] = { "LEFT", "RIGHT", "MID", "SIDE" };
+    if (shownLane != lane::stereo)
         text << "   " << lanes[shownLane];
-    else if (selection < isolator && (int) plain (param::node (selection, param::channel)) == 1)
-        text << "   LEFT";
     return text;
 }
 

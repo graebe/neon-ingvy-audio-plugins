@@ -25,8 +25,8 @@
  * precision or label of its own.
  *
  * THE SHAPE IS THE ENGINE'S. The web editor drew the duck from a JavaScript
- * port of shape.rs, pinned to a table the engine generated. Ultraviolet
- * 1.1.0's PlotWell says it outright: draw what the engine renders, never a
+ * port of shape.rs, pinned to a table the engine generated. Ultraviolet's
+ * PlotWell says it outright: draw what the engine renders, never a
  * second model of the DSP rebuilt from the parameters. So the curve and the
  * positions of its four handles come from here, computed by the engine from
  * the host parameters as they are NOW -- which also puts a dragged handle

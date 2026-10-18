@@ -77,6 +77,9 @@ fn cutoff_label(hz: f64) -> Option<&'static str> {
 
 ni_schwung::export_audio_fx!(Crusher);
 
+#[cfg(test)]
+mod no_alloc;
+
 /*
  * THE MOVE'S PARAMETER PATH, END TO END: the two entry points the chain host
  * calls, with the values it actually sends -- a declared default on a

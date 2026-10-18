@@ -33,6 +33,8 @@ bus-core = { path = "../../../audio-bus/crates/bus-core", optional = true }
 bus-capi = { path = "../../../audio-bus/crates/bus-capi", optional = true }
 # The C-string and transport helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The host row the schema crosses the C ABI as (NiHostParam).
+ni-params = { path = "../../../shared/crates/ni-params" }
 
 # The no-allocation guard the kick tap's tests install (src/lib.rs).
 [dev-dependencies]

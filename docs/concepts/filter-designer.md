@@ -6,7 +6,7 @@ manuals. What changed from the concept while building is noted where it
 happened. The window is drawn on the
 **NI Plugin Layouts** canvas as *NI Filter Designer — proposed* (mirrored in
 `design/designs/FilterDesigner-Proposed.dc.html`, notes FD1–FD9), and the
-decisions behind the DSP are in [ADR 0004](../adr/0004-iir-filter-design.md).
+decisions behind the DSP are in [ADR 0005](../adr/0005-iir-filter-design.md).
 
 ## What it is
 
@@ -89,7 +89,7 @@ scaling. High-pass and low-pass use `Ω_c = tan(π·fc/fs)`. Band-Pass and Notch
 section on its own would bend Butterworth and equiripple shapes above about
 fs/8 and move the Chebyshev II and Elliptic zeros. With Matched Cuts on, a
 high-pass or low-pass is instead matched section by section to its analog
-prototype (`ni_filter::family_matched`, ADR 0004's amendment); band-pass and
+prototype (`ni_filter::family_matched`, ADR 0005's amendment); band-pass and
 notch stay on this path.
 
 **Freq is the −3 dB point in every family.** The exception is Linkwitz-Riley,
@@ -151,14 +151,17 @@ nothing in the window moves when the type changes.
 
 ### Cost, smoothing and discrete changes
 
-- **Two tiers of recomputation.** The prototype (Family, Order, Ripple, Stopband) is recomputed only when one of those changes, at most every 64 samples while Ripple or Stopband glide, and at most four prototypes per control tick across the nodes. The mapping (Freq, Q, Gain, Scale, sample rate) is recomputed on a 16-sample control grid counted from a global sample counter, so the output is identical for every block size. Coefficients are interpolated linearly inside the sub-block, sample by sample (g, k, the mix and the gain, the loop solved again), so a sweep puts no lines at multiples of fs/16. The SVF needs only g > 0 and k > 0 to stay stable under that.
+- **Two tiers of recomputation.** The prototype (Family, Order, Ripple, Stopband) is recomputed only when one of those changes, at most every 64 samples while Ripple or Stopband glide, and at most four prototypes per control tick across the nodes. The mapping (Freq, Q, Gain, Scale, sample rate) is recomputed on a 16-sample control grid counted from a global sample counter, so the output is identical for every block size. Coefficients are interpolated linearly inside the sub-block, sample by sample (g, k, the mix and the gain, the loop solved again), so a sweep puts no lines at multiples of fs/16; the isolator's crossovers move the same way. The SVF needs only g > 0 and k > 0 to stay stable under that.
+- **Designs that weigh are budgeted too.** High in the band a shelf's or a matched cut's section is chosen from several realisations (matched with either sign at Nyquist, or bilinear), each held to the analog curve on a grid: at most four such designs per tick. A node that waits is served first on the next tick, and its move is spread over the sub-blocks it waited, so a throttled glide is still interpolated sample by sample.
+- **Realisation switches morph.** Where a glide carries a section from one realisation to another the curve steps (the design takes the best at each setting, and two tie there): the step is then moved over 20 ms instead of one sub-block, so it does not click.
 - **Smoothing** reuses `ni_dsp::smooth` at control rate (`coef(fs/16)`, the house 5 ms): Freq glides in log₂, Q in log, Gain in dB.
-- **Type, Family, Order, Channel and bypass crossfade.** Each slot holds two preallocated instances. A change designs the second one from zero state and crossfades over 20 ms, with cos² and sin² weights. A change that arrives during a fade waits for its end. A bypassed or empty node does not run, and its state is zero.
+- **Family and Matched Cuts morph.** The playing cascade runs in second-order form (a first-order section is a second-order one with a cancelled pole), and a change of how a node does what it does moves it over 20 ms from the old design to the new, section by section, its state carried: no two filters out of phase are summed.
+- **Type, Order, Channel and bypass crossfade.** Each slot holds two preallocated instances. A change designs the second one and runs it on the input unheard until it has settled (its 40 dB decay, at most 500 ms), then crossfades over 20 ms, with cos² and sin² weights: a narrow, low design comes in at its level, not from silence. A change that arrives during a fade waits for its end. A bypassed or empty node does not run, and its state is zero.
 - **Safety:**
   - Every edge is clamped to 10 Hz … 0.49·fs. A Band-Pass whose upper edge clamps keeps its lower edge and narrows, and the curve shows that.
   - Denormals are flushed at block end inside the core, because the Move path has no `ScopedNoDenormals`.
   - `reset()` zeroes all state, completes fades and snaps every glide.
-- **Worst case:** 16 nodes × 8 sections × 2 channels is 256 f64 SVF ticks per sample, doubled briefly during fades. That is affordable as scalar code.
+- **Worst case:** 16 nodes × 8 sections × 2 channels is 256 f64 SVF ticks per sample, doubled while a new design settles and fades in (up to half a second). That is affordable as scalar code.
 
 ## Parameters (174)
 
@@ -171,7 +174,7 @@ automation point, so every type and family goes in now.
 | `output` | float, bipolar | −24…+24 dB | 0 |
 | `scale` | float, bipolar | −200…+200 % | 100 |
 | `adaptive_q` | switch | Off, On | Off |
-| `analyzer` | choice, not automatable | Off, Pre, Post, Both | Post |
+| `analyzer` | choice, not automatable | Off, Pre, Post, Both | Both |
 | `iso_on` | switch | Off, On | Off |
 | `iso_low`, `iso_mid`, `iso_high` | float | −60…+6 dB, −60 is −inf | 0 |
 | `iso_kill_low`, `_mid`, `_high` | switch | Off, On | Off |
@@ -267,10 +270,10 @@ shell-core's bridge, as Vocalize publishes its envelopes
 
 - **Curves:** 512 log-spaced points from 10 Hz to min(22 kHz, Nyquist).
   - Each node's own curve, `node_db[16][512]`.
-  - The total, `total_db[2][512]`, in the L/R or M/S basis the editor asks for.
+  - The total, `total_db[512]`, in the lane the editor asks for (as built: exact, from the chain's 2×2 transfer on the stereo pair in slot order -- what the lane's own input becomes, the other half silent; a Stereo selection's lane is the mid).
   - The three isolator bands.
   - Each curve is evaluated from the exact digital sections.
-- **Analyzer bands:** `pre_db[256]` and `post_db[256]`, through realfft. The band mapping moves from spectro-core into ni-dsp, because products may not depend on each other.
+- **Analyzer bands:** `pre_db[256]` and `post_db[256]`, through realfft, of the lane drawn (as built: 512 bands each; the engine's rings keep that lane's signal). The band mapping moves from spectro-core into ni-dsp, because products may not depend on each other.
 - **Serials:** one per node, so the editor rebuilds a path only when its node changed.
 - **Size and cadence:** about 45 KB per frame, at shell-core's 100 Hz.
 - **Budget:**
@@ -300,7 +303,7 @@ the state is zero.
 | stability | proptest across type, family, order, Freq, Q, Ripple and Stopband extremes and sample rates: every g and k finite and positive, the output bounded; a 10 ms sweep of 20 Hz → 20 kHz at Q 40 |
 | clicks | Type, Family or Order flipped every 50 ms under a −6 dBFS sine: nothing above 10 kHz past −60 dBFS; no step from a +24 dB gain jump |
 | invariance | an empty instance bit-exact; output bit-identical at block sizes 1, 7, 64, 8192 and random ones; a 1 kHz Bell within 0.01 dB from 44.1 to 384 kHz |
-| real time | `tests/no_alloc.rs` around process, every setter, discrete switches, reset and a watched publish |
+| real time | `engines/filter-designer/crates/fd-core/tests/no_alloc.rs` around process, every setter, discrete switches, reset and a watched publish |
 | shells | C ABI test through the generated header; JUCE processor round trip, host golden render, editor snapshots; Move render A/B within one 16-bit step and the panic test |
 
 Coverage stays above the 80 % floor, which applies to new units automatically.
@@ -314,19 +317,18 @@ Each one starts on its own go-ahead.
 
 | | delivers |
 |---|---|
-| M0 | this concept, ADR 0004, the canvas board |
+| M0 | this concept, ADR 0005, the canvas board |
 | M1 | `ni-filter`: designs, sections, response evaluation, the analytic and stability tests |
 | M2 | `fd-core` and `fd-capi`: the chain, isolator, parameters, smoothing, crossfades, the picture |
 | M3 | `plugins/filter-designer` (`NIFilterDesigner`, "NI Filter Designer", code `FlDs`, `Fx EQ`), the kit's ResponseWell and NodeCell, Ultraviolet promotion |
 | M4 | `fd-move` and `modules/filter-designer` |
-| M5 | the tutorial docs (`docs/live.md`, `docs/schwung.md`), README, CHANGELOG, the site |
+| M5 | the tutorial docs (`plugins/filter-designer/docs/live.md`, `plugins/filter-designer/docs/schwung.md`), README, CHANGELOG, the site |
 
 M1 to M3 also touch the repository-wide lists a product joins:
 
 - `NI_PRODUCTS` and `ni_add_rust_engine` in the root `CMakeLists.txt`
 - `tests/CMakeLists.txt`
 - `versions.json` and `tests/versions.test.mjs`
-- `tests/ground_shells.test.mjs`
 - the release workflows' tag lists
 - `THIRD_PARTY_LICENSES.md`
 

@@ -13,8 +13,8 @@ are macOS only, and so are the releases (`release-plugins.yml`). This kit stays
 in the repository so they can rejoin later, and then only as part of the full
 build. One command builds a JUCE plugin project for
 each platform, runs its tests, validates every VST3 it produced with
-pluginval, and sums up. For the five products, which the repository's own
-CMake project builds:
+pluginval, and sums up. For the products the repository's own CMake project
+builds (`NI_PRODUCTS`):
 
 ```sh
 scripts/build-all.sh . -- -L full -LE 'move|site' -E '^cargo_deny$'
@@ -86,8 +86,8 @@ run has its own `pluginval-<name>.log` beside them.
 
 ### Which tests, for the products
 
-`-L full` is the full tier: every quick test, the render goldens, the five
-bundles hosted as a DAW hosts them (`juce_host_*`, and each product's
+`-L full` is the full tier: every quick test, the render goldens, every
+bundle hosted as a DAW hosts them (`juce_host_*`, and each product's
 `*_host` against the sets earlier builds saved), the snapshot goldens, the bus across
 processes, and on macOS each bundle's signature. Three things are left out,
 because they are the tree's rather than the platform's, and `scripts/test.sh

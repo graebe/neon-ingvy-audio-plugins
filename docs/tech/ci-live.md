@@ -20,7 +20,7 @@ only publish. The presets in `CMakePresets.json` are the builds:
 ```sh
 git submodule update --init --recursive   # JUCE 9. The engines are subtrees.
 cmake --preset release                    # universal, LTO: what ships (build/)
-cmake --build build                       # the five VST3s, into build/out
+cmake --build build                       # every VST3, into build/out
 scripts/test.sh quick                     # the developer loop (build-dev/)
 scripts/test.sh full                      # everything, the validators included
 scripts/test.sh product side-chain        # one product, as its release runs it
@@ -137,7 +137,11 @@ run), a `HEAD` that moved during it, `full --no-coverage`, or a run on a
 GitHub runner; the run says so in its last lines and stays green. Both release
 workflows fetch the notes first and stop, **before they build anything**,
 unless the tagged commit carries a passing `product` run of the tag's product
-or a `full` run (`scripts/release.mjs attested`), **with no gap left unwaived**.
+or a `full` run of a Release build (`scripts/release.mjs attested`), **with no
+gap left unwaived**. A `full` note releases every product, so a full run of a
+dev build (`--build build-dev`) does not count; a `product` note may come from
+any build, because the workflow builds that product again with the release
+preset before it ships it.
 `gaps` counts the tests that could not run on that machine, Docker's or
 Rosetta's say, less the ones waived by name with `--waive` (see
 [Testing](testing.md)). A product run passes with gaps, but it does not release

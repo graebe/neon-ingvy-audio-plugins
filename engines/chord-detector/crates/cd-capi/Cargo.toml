@@ -19,6 +19,11 @@ cd-core = { path = "../cd-core" }
 # The engine's way in and out: commands through rtrb, frames through
 # triple_buffer, both wrapped once for every product.
 shell-core = { path = "../../../shell/crates/shell-core" }
+# The C side of every engine's entry points: strings, handles, the host's
+# rate (src/lib.rs).
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The parameter table's shape and its C side (NiParamInfo).
+ni-params = { path = "../../../shared/crates/ni-params" }
 # The history's note events, audio thread to editor: a wait-free SPSC ring.
 rtrb = { workspace = true }
 music-core = { path = "../../../shared/crates/music-core", default-features = false }

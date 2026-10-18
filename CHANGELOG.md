@@ -1,37 +1,5 @@
 # What's new
 
-## v2026.10.12.1 — NI Filter Designer
-
-- **New: NI Filter Designer.** Up to sixteen minimum-phase IIR filters on one
-  response curve: bell, low shelf, high shelf, high-pass, low-pass,
-  band-pass, notch (band-stop), all-pass and tilt. Double-click the curve to
-  add a filter, drag its handle for frequency and gain, Alt-drag for Q, Delete
-  removes it. Every edit is one undo step in Live.
-- **Six approximations** for high-pass, low-pass, band-pass and notch —
-  Butterworth, Bessel, Chebyshev I and II, elliptic and Linkwitz-Riley — at
-  orders 1 to 8 (6 to 48 dB/oct), with Q on the highest-Q pole pair, passband
-  ripple and stopband attenuation. A change of type, family or order
-  crossfades over 20 ms.
-- **A three-band isolator** in front of the filters: Linkwitz-Riley
-  crossovers (LR4 or LR8), a level and a kill per band.
-- **Per-filter channel**: stereo, left, right, mid or side.
-- **Spectrum analyzer** behind the curve: the input (pre) faded, the output
-  (post) highlighted. The curve is the engine's own transfer function.
-- **Bypass**, crossfaded in 10 ms, the filters kept running so they resume
-  from the signal they heard. No latency.
-- **Matched cuts**: an option to match every high-pass and low-pass to its
-  analog prototype, so filters near Nyquist keep the analog slope and peak.
-- **The tail** reported to the host: how long the filters ring after the
-  input stops, to -60 dB (a Q 40 notch at 20 Hz: 4.4 s).
-- **Smooth automation**: Freq, Gain and Q move the filters a sample at a
-  time, so sweeping a narrow filter leaves no stepping artefacts.
-- **Bounded cost on the audio thread**: a preset load or automated Ripple and
-  Stopband design at most four prototypes per 16 samples; a 64-sample block
-  after a preset turns all sixteen filters into order-8 elliptic low-passes
-  costs about 45 µs (3 % of its real time at 48 kHz).
-- On the Ableton Move as a Schwung module: the isolator, a high-pass and a
-  low-pass.
-
 ## Unreleased — every plugin
 
 These are already in the shared plugin shell and reach each plugin with its
@@ -43,6 +11,71 @@ next release; that release's entry lists them and this section goes.
   carries the tips and the Neon Ingvy mark.
 - The Motion setting each plugin remembered on your computer is simply ignored
   now; there is nothing to reset.
+
+## Unreleased — NI Filter Designer
+
+- **New: NI Filter Designer.** Up to sixteen minimum-phase IIR filters on one
+  response curve: bell, low shelf, high shelf, high-pass, low-pass,
+  band-pass, notch (band-stop), all-pass and tilt. Double-click the curve to
+  add a filter, drag its handle for frequency and gain, Alt-drag for Q, Delete
+  removes it. Every edit is one undo step in Live.
+- **Six approximations** for high-pass, low-pass, band-pass and notch —
+  Butterworth, Bessel, Chebyshev I and II, elliptic and Linkwitz-Riley — at
+  orders 1 to 8 (6 to 48 dB/oct), with Q on the highest-Q pole pair, passband
+  ripple and stopband attenuation. A change of family moves the filter into
+  the new one over 20 ms; a change of type or order crossfades over 20 ms to
+  a filter that has already settled on the music, so even a narrow, low one
+  comes in at its level instead of swelling up from silence.
+- **A three-band isolator** in front of the filters: Linkwitz-Riley
+  crossovers (LR4 or LR8), a level and a kill per band.
+- **Per-filter channel**: stereo, left, right, mid or side. The total curve
+  is exact in the selected filter's lane, filters on other lanes included,
+  in the order they play: a mid bell shows in the LEFT lane as a source
+  panned hard left hears it.
+- **Spectrum analyzer** behind the curve: the input (pre) faded, the output
+  (post) highlighted, in the selected filter's lane (the side of a side
+  filter). The curve is the engine's own transfer function.
+- **Bypass**, crossfaded in 10 ms, the filters kept running for two seconds
+  so they resume from the signal they heard; after that the plugin idles and
+  costs nothing. No latency.
+- **Matched cuts**: an option to match every high-pass and low-pass to its
+  analog prototype, so filters near Nyquist keep the analog slope and peak.
+  Switching it moves the cuts over 20 ms.
+- **The tail** reported to the host: how long the filters ring after the
+  input stops, to -60 dB (a Q 40 notch at 20 Hz: 4.4 s).
+- **Smooth automation**: Freq, Gain and Q move the filters a sample at a
+  time, and so do the isolator's crossovers, so sweeping a narrow filter or a
+  crossover leaves no stepping artefacts. Where a sweep of a shelf or a
+  matched cut high in the band passes from one way of building it to
+  another, the change is spread over 20 ms instead of clicking.
+- **Bounded cost on the audio thread**: a preset load or automated Ripple and
+  Stopband design at most four prototypes per 16 samples, and sweeps of
+  shelves and matched cuts high in the band at most four of their costlier
+  designs; a 64-sample block after a preset turns all sixteen filters into
+  order-8 elliptic low-passes costs about 50 µs (4 % of its real time at 48
+  kHz), sixteen matched order-8 elliptic cuts swept at once about 86 µs.
+- On the Ableton Move as a Schwung module: the isolator, a high-pass and a
+  low-pass.
+
+## Unreleased — NI Vocalize
+
+- **New: NI Vocalize.** Turns any sound, step by step, into a voice singing
+  A, E, I, O or U. **Vocal** says how far: at 0 % the sound is untouched, at
+  100 % it sings the vowel, and everything between is the sound on its way
+  there. **Vowel** sweeps smoothly from one vowel to the next, **Size** makes
+  the voice bigger or smaller, **Resonance** broad or whistling, and
+  **Excite** gives pure sounds like a sine bass something to sing with.
+- Two engines: **Time** has no latency and sounds like a talkbox;
+  **Spectral** is smoother and more sung, and about 21 ms late, which Live
+  compensates for.
+- **Your own voice.** Drag a recording of yourself singing A, E, I, O, U onto
+  the window, or click **Capture…**: Vocalize learns your vowels and sings
+  with them. **Voice** morphs from the textbook voice to yours. The captured
+  voice is saved with the set; the recording is not needed afterwards. Sung
+  A-E-I-O-U in order, each vowel is taken by its place; the chart shows how
+  sure each one is, and **Restore** brings back a voice forgotten by mistake.
+- **Ceiling**, on by default: nothing that leaves Vocalize passes full scale.
+- On the Ableton Move as a Schwung module, with the Time engine.
 
 ## Unreleased — NI Spectrogram
 
@@ -109,6 +142,9 @@ next release; that release's entry lists them and this section goes.
 - Live's Signal plot, copy and paste, and export and import are not in the
   Move's editor: the web manager sends a page no audio, and its frame has no
   clipboard and cannot save or open files.
+- **A panic shuts the gate on the Move.** CC 120 or CC 123 closes it at once,
+  and the step under the playhead strikes again from silence. Before, the
+  module ignored a panic.
 
 ## Unreleased — NI Side-Chain
 
@@ -126,25 +162,15 @@ next release; that release's entry lists them and this section goes.
 - The Move's editor draws no audio behind the shape (the web manager sends a
   page no audio), and offers Cycle and MIDI, as the Move module does.
 
-## v2026.10.11.1 — NI Vocalize
+## Unreleased — NI Chord-Detector
 
-- **New: NI Vocalize.** Turns any sound, step by step, into a voice singing
-  A, E, I, O or U. **Vocal** says how far: at 0 % the sound is untouched, at
-  100 % it sings the vowel, and everything between is the sound on its way
-  there. **Vowel** sweeps smoothly from one vowel to the next, **Size** makes
-  the voice bigger or smaller, **Resonance** broad or whistling, and
-  **Excite** gives pure sounds like a sine bass something to sing with.
-- Two engines: **Time** has no latency and sounds like a talkbox;
-  **Spectral** is smoother and more sung, and about 21 ms late, which Live
-  compensates for.
-- **Your own voice.** Drag a recording of yourself singing A, E, I, O, U onto
-  the window, or click **Capture…**: Vocalize learns your vowels and sings
-  with them. **Voice** morphs from the textbook voice to yours. The captured
-  voice is saved with the set; the recording is not needed afterwards. Sung
-  A-E-I-O-U in order, each vowel is taken by its place; the chart shows how
-  sure each one is, and **Restore** brings back a voice forgotten by mistake.
-- **Ceiling**, on by default: nothing that leaves Vocalize passes full scale.
-- On the Ableton Move as a Schwung module, with the Time engine.
+These are already in the shared plugin shell and reach NI Chord-Detector with its
+next release; that release's entry lists them and this section goes.
+
+- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
+  of jumping.
+- **Loops are exact.** When Live's loop wraps inside a buffer, it continues
+  from the loop's start on that very sample.
 
 ## v2026.10.11.1 — NI Bit-Crusher
 
@@ -199,16 +225,6 @@ next release; that release's entry lists them and this section goes.
 
 - Reads the new bus format. Its Bypass still switches at once, for Listen-In's
   reason.
-
-## Unreleased — NI Chord-Detector
-
-These are already in the shared plugin shell and reach NI Chord-Detector with its
-next release; that release's entry lists them and this section goes.
-
-- **Bypass fades.** Switching Bypass on or off crossfades over 10 ms instead
-  of jumping.
-- **Loops are exact.** When Live's loop wraps inside a buffer, it continues
-  from the loop's start on that very sample.
 
 ## v2026.10.10.1 — NI Trance Gate
 

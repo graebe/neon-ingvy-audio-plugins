@@ -12,7 +12,8 @@ THREE THREADS AND WHAT EACH MAY CALL:
   the message    fd_shell_post_sample_rate,   applied at the top of the
   thread         fd_shell_post_reset,         next block
                  fd_shell_post_watching
-                 fd_shell_read                the picture, worked out here
+                 fd_shell_read                the picture, worked out here;
+                                              a new lane is posted too
   the audio      fd_shell_begin, fd_core_*,   one block, in that order
   thread         fd_shell_end
 ```
@@ -27,25 +28,42 @@ node from the values the HOST holds, with the function the engine runs
 drawn is the filter that plays, and a handle dragged moves its curve in the
 same frame. A node's curve is worked out again only when its settings moved.
 
-THE TOTAL is drawn for one lane, the one the editor asks for: the left (and
-right) of a stereo signal, or its mid or side. Every Stereo node is in every
-lane; a Left, Right, Mid or Side node in its own. The isolator and Output
-are in all of them.
+THE TOTAL is exact in every lane. The chain is linear, so at each frequency it
+is a 2×2 transfer on the (left, right) pair: a Stereo node is H on both
+halves, a Left or Right node H on its half, a Mid or Side node H on the mid
+or the side, each in slot order after the isolator, then Output. The total
+the editor asks for is what that lane's own input becomes at its output, the
+other half silent:
 
-THE ANALYZER: the input's and the output's spectrum, mono, through a Hann
-window, as dB per band of the picture's frequencies -- the loudest bin inside
-a band, or the spectrum between two bins where a band holds none. A band
-rises at once and falls over 300 ms, so the picture reads as a level rather
-than a flicker.
+```text
+  LEFT, RIGHT   a source on that side alone        T_LL, T_RR
+  MID           a centred source (L = R)           (T_LL + T_LR + T_RL + T_RR) / 2
+  SIDE          the side alone (L = -R)            (T_LL - T_LR - T_RL + T_RR) / 2
+  STEREO        a stereo node's view: the mid's
+```
+
+So a Mid filter shows in the Left lane as (1 + H)/2, as a source panned hard
+left hears it, and a chain that mixes L/R with M/S nodes is drawn in the order
+it plays (they do not commute).
+
+THE ANALYZER: the input's and the output's spectrum in the lane drawn -- the
+left, the right, the mid or the side; a stereo view's is the mid, the mono
+sum -- through a Hann window, as dB per band of the picture's frequencies --
+the loudest bin inside a band, or the spectrum between two bins where a band
+holds none. A band rises at once and falls over 300 ms, so the picture reads
+as a level rather than a flicker. A read in another lane than the last tells
+the engine (`Command::Lane`), whose rings start again from empty, and the
+bands kept here start again from the floor.
 */
 
 use crate::{FdCore, FD_NODES};
 use fd_core::design::{channel_of, design, edges, globals_of, handle, is_heard, settings_of, Channel, Globals, Settings, Shape};
-use fd_core::{isolator, Param, PARAM_COUNT, RING};
+use fd_core::{isolator, Lane, Param, PARAM_COUNT, RING};
 use ni_filter::Complex64;
 use realfft::num_complex::Complex32;
 use realfft::{RealFftPlanner, RealToComplex};
-use shell_core::{publish_every, Bridge, Model};
+use ni_dsp::ffi::drop_box;
+use shell_core::{capi, Bridge, Model};
 use std::sync::{Arc, Mutex};
 
 /// How many frequencies the picture has.
@@ -54,11 +72,23 @@ pub const FD_POINTS: usize = 512;
 pub const FD_LOWEST_HZ: f64 = 10.0;
 pub const FD_HIGHEST_HZ: f64 = 22_000.0;
 
-/// The lanes a total can be drawn for.
+/// The lanes a total can be drawn for (the module's notes say what each is).
 pub const FD_LANE_LEFT: u32 = 0;
 pub const FD_LANE_RIGHT: u32 = 1;
 pub const FD_LANE_MID: u32 = 2;
 pub const FD_LANE_SIDE: u32 = 3;
+/// A Stereo node's view: the mid, what a centred source hears.
+pub const FD_LANE_STEREO: u32 = 4;
+
+/// The signal a lane's analyzer shows.
+fn analyzed(lane: u32) -> Lane {
+    match lane {
+        FD_LANE_LEFT => Lane::Left,
+        FD_LANE_RIGHT => Lane::Right,
+        FD_LANE_SIDE => Lane::Side,
+        _ => Lane::Mid,
+    }
+}
 
 /// How a band of the analyzer falls, in seconds.
 const RELEASE_S: f64 = 0.3;
@@ -121,8 +151,7 @@ impl FdPicture {
 
 /// The picture's frequencies: equally spaced in pitch.
 fn frequencies() -> [f64; FD_POINTS] {
-    let span = FD_HIGHEST_HZ / FD_LOWEST_HZ;
-    core::array::from_fn(|i| FD_LOWEST_HZ * span.powf(i as f64 / (FD_POINTS - 1) as f64))
+    ni_dsp::axis::log_points(FD_LOWEST_HZ, FD_HIGHEST_HZ)
 }
 
 /* ------------------------------------------------- the published frame -- */
@@ -133,6 +162,8 @@ pub struct FdFrame {
     serial: u32,
     sample_rate: f64,
     watching: bool,
+    /// The lane the rings below keep.
+    lane: Lane,
     pre: Box<[f32]>,
     post: Box<[f32]>,
 }
@@ -145,6 +176,8 @@ pub enum Command {
     Reset,
     /// Whether a window shows the analyzer.
     Watching(bool),
+    /// The lane the window draws, which the analyzer's rings keep.
+    Lane(Lane),
 }
 
 /// Commands between two blocks.
@@ -159,6 +192,7 @@ impl Model for FdCore {
             serial: 0,
             sample_rate: self.engine.sample_rate(),
             watching: false,
+            lane: self.lane,
             pre: vec![0.0; RING].into_boxed_slice(),
             post: vec![0.0; RING].into_boxed_slice(),
         }
@@ -172,6 +206,10 @@ impl Model for FdCore {
                 self.watching = on;
                 self.engine.set_watching(on);
             }
+            Command::Lane(lane) => {
+                self.lane = lane;
+                self.engine.set_lane(lane);
+            }
         }
     }
 
@@ -179,6 +217,7 @@ impl Model for FdCore {
         f.serial = self.serial;
         f.sample_rate = self.engine.sample_rate();
         f.watching = self.watching;
+        f.lane = self.lane;
         if self.watching {
             self.engine.rings(&mut f.pre, &mut f.post);
         }
@@ -195,6 +234,8 @@ impl Model for FdCore {
 #[derive(Clone, Copy)]
 struct Curve {
     from: (Settings, Globals, f64),
+    /// The node's transfer at each of the picture's frequencies, and its dB.
+    h: [Complex64; FD_POINTS],
     db: [f32; FD_POINTS],
     clamped: bool,
     handle: Option<(f64, f64)>,
@@ -217,7 +258,10 @@ struct Reader {
     pre: [f32; FD_POINTS],
     post: [f32; FD_POINTS],
     last_serial: Option<u32>,
-    curves: [Option<Curve>; FD_NODES],
+    /// The lane last asked of the engine: the one the bands above are of.
+    asked_lane: Option<Lane>,
+    /// FD_NODES of them, on the heap: each holds a complex curve.
+    curves: Vec<Option<Curve>>,
 }
 
 impl Reader {
@@ -242,7 +286,8 @@ impl Reader {
             pre: [FLOOR_DB; FD_POINTS],
             post: [FLOOR_DB; FD_POINTS],
             last_serial: None,
-            curves: [None; FD_NODES],
+            asked_lane: None,
+            curves: vec![None; FD_NODES],
         }
     }
 
@@ -303,29 +348,71 @@ impl Reader {
         let s = settings_of(values, slot as u8);
         let g = globals_of(values);
         let from = (s, g, fs);
-        if self.curves[slot].as_ref().is_none_or(|c| c.from != from) {
+        let (hz, cached) = (&self.hz, &mut self.curves[slot]);
+        if cached.as_ref().is_some_and(|c| c.from != from) {
+            *cached = None;
+        }
+        cached.get_or_insert_with(|| {
+            let mut h = [Complex64::new(1.0, 0.0); FD_POINTS];
             let mut db = [0.0f32; FD_POINTS];
             let mut clamped = false;
             let mut at = None;
             if s.shape != Shape::Empty {
                 let (c, cl) = design(&s, None, g, fs);
                 clamped = cl;
-                for (d, hz) in db.iter_mut().zip(self.hz.iter()) {
-                    *d = c.db(hz.min(0.4999 * fs), fs) as f32;
+                for ((x, d), hz) in h.iter_mut().zip(db.iter_mut()).zip(hz.iter()) {
+                    *x = c.response(angle(*hz, fs));
+                    *d = decibels(*x);
                 }
                 at = handle(&s, g, &c, fs);
             }
-            self.curves[slot] = Some(Curve { from, db, clamped, handle: at, edges: edges(&s) });
-        }
-        self.curves[slot].as_ref().expect("just made")
+            Curve { from, h, db, clamped, handle: at, edges: edges(&s) }
+        })
     }
 }
 
-fn in_lane(channel: Channel, lane: u32) -> bool {
-    matches!(
-        (channel, lane),
-        (Channel::Stereo, _) | (Channel::Left, FD_LANE_LEFT) | (Channel::Right, FD_LANE_RIGHT) | (Channel::Mid, FD_LANE_MID) | (Channel::Side, FD_LANE_SIDE)
-    )
+/// `hz` as radians a sample at `fs`, held a hair under Nyquist.
+fn angle(hz: f64, fs: f64) -> f64 {
+    2.0 * core::f64::consts::PI * hz.min(0.4999 * fs) / fs
+}
+
+/// A transfer's magnitude in dB, floored at -300 dB.
+fn decibels(h: Complex64) -> f32 {
+    (20.0 * h.norm().max(1e-15).log10()) as f32
+}
+
+/// A 2×2 transfer on the (left, right) pair.
+type Pair = [[Complex64; 2]; 2];
+
+/// What a node of `channel` with the transfer `h` does to the pair: `h` on
+/// the half it filters and 1 on the rest. A Mid node is L' = H·M + S,
+/// R' = H·M - S; a Side node L' = M + H·S, R' = M - H·S; with M = (L + R)/2
+/// and S = (L - R)/2.
+fn on_pair(channel: Channel, h: Complex64) -> Pair {
+    let (one, zero) = (Complex64::new(1.0, 0.0), Complex64::new(0.0, 0.0));
+    let (a, b) = ((h + one) * 0.5, (h - one) * 0.5);
+    match channel {
+        Channel::Stereo => [[h, zero], [zero, h]],
+        Channel::Left => [[h, zero], [zero, one]],
+        Channel::Right => [[one, zero], [zero, h]],
+        Channel::Mid => [[a, b], [b, a]],
+        Channel::Side => [[a, -b], [-b, a]],
+    }
+}
+
+/// `x` after `t`: the product x·t.
+fn then(x: &Pair, t: &Pair) -> Pair {
+    core::array::from_fn(|i| core::array::from_fn(|j| x[i][0] * t[0][j] + x[i][1] * t[1][j]))
+}
+
+/// What `lane`'s own input becomes through `t`, the other half silent.
+fn through(t: &Pair, lane: u32) -> Complex64 {
+    match lane {
+        FD_LANE_LEFT => t[0][0],
+        FD_LANE_RIGHT => t[1][1],
+        FD_LANE_SIDE => (t[0][0] - t[0][1] - t[1][0] + t[1][1]) * 0.5,
+        _ => (t[0][0] + t[0][1] + t[1][0] + t[1][1]) * 0.5,
+    }
 }
 
 /// The picture for `values` (the host's, in table order) at the frame's
@@ -335,38 +422,37 @@ fn draw(reader: &mut Reader, values: &[f64], lane: u32, fs: f64, out: &mut FdPic
         *h = *hz as f32;
     }
     out.sample_rate = fs;
-    let output = values[Param::Output.index()] as f32;
-    out.total_db = [output; FD_POINTS];
-    for slot in 0..FD_NODES {
-        let heard = is_heard(values, slot as u8) && in_lane(channel_of(values, slot as u8), lane);
+    let mut heard = [None; FD_NODES];
+    for (slot, heard) in heard.iter_mut().enumerate() {
         let c = reader.curve(values, slot, fs);
         out.node_db[slot] = c.db;
         out.node_clamped[slot] = c.clamped;
         (out.handle_hz[slot], out.handle_db[slot]) = c.handle.unwrap_or((f64::NAN, f64::NAN));
         out.edge_hz[slot] = c.edges.map_or([f64::NAN; 2], |(lo, hi)| [lo, hi]);
-        if heard {
-            for (t, d) in out.total_db.iter_mut().zip(c.db.iter()) {
-                *t += *d;
-            }
-        }
+        *heard = is_heard(values, slot as u8).then(|| channel_of(values, slot as u8));
     }
     /* The isolator: each band's path, at its level, summed as the signal
-     * sums them -- complex, so the crossovers' phase is in the total. */
+     * sums them -- complex, so the crossovers' phase is in the total. Then
+     * the nodes in slot order, then Output. */
     let (paths, levels) = isolator::picture(values, fs);
     let iso_on = values[Param::IsoOn.index()] >= 0.5;
-    let db = |h: Complex64| (20.0 * h.norm().max(1e-15).log10()) as f32;
+    let output = values[Param::Output.index()] as f32;
     for (i, hz) in reader.hz.iter().enumerate() {
-        let w = 2.0 * core::f64::consts::PI * hz.min(0.4999 * fs) / fs;
+        let w = angle(*hz, fs);
         let mut sum = Complex64::new(0.0, 0.0);
         for b in 0..3 {
             let h = paths[b][0].response(w) * paths[b][1].response(w) * levels[b];
-            out.iso_db[b][i] = db(h);
+            out.iso_db[b][i] = decibels(h);
             sum += h;
         }
-        out.iso_total_db[i] = db(sum);
-        if iso_on {
-            out.total_db[i] += out.iso_total_db[i];
+        out.iso_total_db[i] = decibels(sum);
+        let mut t = on_pair(Channel::Stereo, if iso_on { sum } else { Complex64::new(1.0, 0.0) });
+        for (slot, channel) in heard.iter().enumerate() {
+            if let (Some(channel), Some(c)) = (channel, &reader.curves[slot]) {
+                t = then(&on_pair(*channel, c.h[i]), &t);
+            }
         }
+        out.total_db[i] = output + decibels(through(&t, lane));
     }
     out.pre_db = reader.pre;
     out.post_db = reader.post;
@@ -386,7 +472,7 @@ pub struct FdShell {
 pub extern "C" fn fd_shell_create(sample_rate: f64) -> *mut FdShell {
     let core = FdCore::new(sample_rate);
     let rate = core.engine.sample_rate();
-    let bridge = Bridge::new(core, None, QUEUE, publish_every(rate));
+    let bridge = capi::create(core, rate, QUEUE);
     Box::into_raw(Box::new(FdShell { bridge, reader: Mutex::new(Reader::new()) }))
 }
 
@@ -394,9 +480,7 @@ pub extern "C" fn fd_shell_create(sample_rate: f64) -> *mut FdShell {
 /// `shell` is null or from `fd_shell_create`, and no thread uses it after.
 #[no_mangle]
 pub unsafe extern "C" fn fd_shell_destroy(shell: *mut FdShell) {
-    if !shell.is_null() {
-        drop(Box::from_raw(shell));
-    }
+    drop_box(shell);
 }
 
 /// The host's rate, applied at the top of the next block. Not the audio
@@ -406,12 +490,9 @@ pub unsafe extern "C" fn fd_shell_destroy(shell: *mut FdShell) {
 /// `shell` is null or live.
 #[no_mangle]
 pub unsafe extern "C" fn fd_shell_post_sample_rate(shell: *const FdShell, sample_rate: f64) {
-    let Some(shell) = shell.as_ref() else { return };
-    if sample_rate.is_nan() || sample_rate <= 0.0 {
-        return;
+    if let Some(shell) = shell.as_ref() {
+        capi::post_sample_rate(&shell.bridge, sample_rate, Command::SampleRate);
     }
-    shell.bridge.post(Command::SampleRate(sample_rate));
-    shell.bridge.set_publish_every(publish_every(sample_rate));
 }
 
 /// Every filter empties, at the top of the next block. Not the audio thread.
@@ -444,10 +525,7 @@ pub unsafe extern "C" fn fd_shell_post_watching(shell: *const FdShell, watching:
 /// pointer is not used after `fd_shell_end`.
 #[no_mangle]
 pub unsafe extern "C" fn fd_shell_begin(shell: *const FdShell) -> *mut FdCore {
-    match shell.as_ref() {
-        Some(shell) => shell.bridge.begin() as *mut FdCore,
-        None => std::ptr::null_mut(),
-    }
+    capi::begin(shell.as_ref().map(|s| &s.bridge))
 }
 
 /// The audio thread, at the end of a block of `frames`: publishes when a
@@ -481,9 +559,19 @@ pub unsafe extern "C" fn fd_shell_read(shell: *const FdShell, values: *const f64
     let values = std::slice::from_raw_parts(values, count);
     let Ok(mut reader) = shell.reader.lock() else { return false };
     let reader = &mut *reader;
+    /* The analyzer follows the lane drawn: a new one is asked of the engine,
+     * the bands start again from the floor, and only frames of that lane are
+     * read into them. */
+    let wanted = analyzed(lane);
+    if reader.asked_lane != Some(wanted) {
+        shell.bridge.post(Command::Lane(wanted));
+        reader.asked_lane = Some(wanted);
+        reader.pre = [FLOOR_DB; FD_POINTS];
+        reader.post = [FLOOR_DB; FD_POINTS];
+    }
     let (serial, fs, watching, fresh) = shell.bridge.read(|r| {
         let f = r.frame;
-        let fresh = f.watching && reader.last_serial != Some(f.serial);
+        let fresh = f.watching && f.lane == wanted && reader.last_serial != Some(f.serial);
         if fresh {
             reader.pre_ring.copy_from_slice(&f.pre);
             reader.post_ring.copy_from_slice(&f.post);

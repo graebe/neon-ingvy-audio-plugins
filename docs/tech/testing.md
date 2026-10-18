@@ -110,6 +110,25 @@ case of a new worktree, or a build directory wiped: a checkout elsewhere on
 disk hit 97.5% of the same compiles. The cache held 0.6 GiB after all of
 this, of its default 5 GiB.
 
+**One product builds without the others** (`cmake/NiRust.cmake`): in a `dev`
+build an engine waits for its own cargo run and its own crate's headers, and
+for another crate's only where its C++ includes them (`USES`: the shell's
+handoff, the bus), so building one bundle no longer builds every engine. A
+universal (`release`) build still waits for them all, because its archives
+are merged across the slices. Measured 2026-10-16, the same machine and
+load, `cmake --build <dir> --target NIFilterDesigner_VST3`, the C++ from a
+warm ccache:
+
+| | before | after |
+|---|---|---|
+| a new `dev` build directory (cold cargo) | 116 s | 25 s |
+| after touching the Trance Gate's and the Side-Chain's engines | 8.5 s | 0.4 s |
+| nothing changed | 1.1 s | 0.3 s |
+
+Each other bundle builds alone in a new directory too (Side-Chain 40 s,
+Spectrogram 46 s, Listen-In 36 s, Trance Gate 40 s), which is what proves
+its `USES`: a header waited for by no edge would be missing there.
+
 ## Quick — the developer loop
 
 `cmake --build build-dev --target ni_tests` builds the test programs and the
@@ -123,8 +142,7 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   dependency graph (below),
 - the C tests against each engine's generated ABI (`tg_core`, `sc_core`,
   `cd_core`, `spectro_columns`, `srecv_api`, `abus_roundtrip`,
-  `shell_handoff`), the Trance Gate's ABI held to its last hand-written
-  headers (`capi_compat_tg*`), and the oracles that pin each engine's curves,
+  `shell_handoff`), and the oracles that pin each engine's curves,
   envelopes and fades to a table it measured itself
   (`engines/<product>/tests/fixtures`: `tg_curves`, `tg_envelope`, `tg_fade`,
   `sc_shape`, `sc_envelope`),
@@ -136,9 +154,11 @@ engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
   NI Spectrogram's (`sg_processor`, `sg_rt`, `spectro_state`,
   `spectro_wire`), NI Listen-In's (`li_processor`, `li_rt`, on a bus
   namespace of its own), NI Side-Chain's (`sc_processor`, `sc_rt`, its MIDI
-  and panic and its key bus included) and NI Chord-Detector's
-  (`cd_processor`: a chord named, silence out, and the lane still heard
-  while the host bypasses it),
+  and panic and its key bus included), NI Bit-Crusher's (`bc_processor`,
+  `bc_rt`), NI Filter Designer's (`fd_processor`, `fd_rt`), NI Vocalize's
+  (`vz_processor`, `vz_rt`) and NI Chord-Detector's (`cd_processor`: a chord
+  named, silence out, and the lane still heard while the host bypasses it;
+  `cd_rt`),
 - the Move module's editor (`tg_move_ui`): `ui_chain.js` run against
   Schwung's own shared modules and the module's real `chain_params` — every
   step of every length reachable through the pads and the arrows, the ring,
@@ -278,7 +298,7 @@ over that one bundle. No coverage, no site, no other product's tests.
 
 **This is what a release runs** (`release-plugins.yml`, [Build & CI](ci-live.md)):
 a failing test of another product cannot hold a product's release, and a tag
-builds one bundle rather than all five. A shared test still holds every release, as it
+builds one bundle rather than every one. A shared test still holds every release, as it
 should: what it checks ships in all of them.
 
 **It is not the gate.** A change to shared code is verified by the full tier,
@@ -401,6 +421,12 @@ it counts too), `cpus`, `load1` (the one-minute load average at the start) and
 `host`. A build stage also leaves its build directory's `.ninja_log` beside
 the log, as `ninja/<time>-<script>-<stage>.ninja_log`, for per-target
 analysis (`ninja -t`, or ninjatracing for a Chrome trace).
+
+The log is rotated rather than left to grow: past 5 MB
+(`NI_TIMING_MAX_BYTES`) it is moved aside as `build-timings.<UTC>.jsonl`
+beside it and a new one begins, and only the newest 100 `.ninja_log` copies
+are kept (`NI_TIMING_KEEP_NINJA`). The summary reads the rotated files with
+the current one.
 
 ```sh
 scripts/build-timings.py                          # per stage, per day, the slowest, ccache

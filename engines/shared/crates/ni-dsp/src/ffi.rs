@@ -2,7 +2,9 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*!
-The C side of a capi crate's entry points: strings and the transport.
+The C side of a capi crate's entry points: strings, the transport, and the
+blocks and handles every engine's C ABI takes -- one reading of a pointer and
+a length, so each product's `extern "C"` function is its own name and a line.
 */
 
 use crate::Transport;
@@ -36,6 +38,54 @@ pub unsafe fn copy_cstr(s: &str, buf: *mut c_char, buf_len: c_int) -> c_int {
     core::ptr::copy_nonoverlapping(s.as_ptr(), buf as *mut u8, s.len());
     *buf.add(s.len()) = 0;
     s.len() as c_int
+}
+
+/// A host's float block, `frames` long: `left`, and `right` unless it is null
+/// (a mono track). Nothing when `left` is null or the block is empty.
+///
+/// # Safety
+/// `left` is null or holds `frames` floats, and so does `right` unless it is
+/// null; the two do not overlap, and both outlive `'a`.
+pub unsafe fn f32_block<'a>(left: *mut f32, right: *mut f32, frames: u32) -> Option<(&'a mut [f32], Option<&'a mut [f32]>)> {
+    if left.is_null() || frames == 0 {
+        return None;
+    }
+    let l = std::slice::from_raw_parts_mut(left, frames as usize);
+    let r = (!right.is_null()).then(|| std::slice::from_raw_parts_mut(right, frames as usize));
+    Some((l, r))
+}
+
+/// The Move's interleaved 16-bit stereo, `frames` frames. Nothing when `buf`
+/// is null.
+///
+/// # Safety
+/// `buf` is null or holds `2 * frames` values that outlive `'a`.
+pub unsafe fn i16_block<'a>(buf: *mut i16, frames: u32) -> Option<&'a mut [i16]> {
+    (!buf.is_null()).then(|| std::slice::from_raw_parts_mut(buf, 2 * frames as usize))
+}
+
+/// `len` bytes -- a MIDI message. Nothing when `bytes` is null or `len` is 0.
+///
+/// # Safety
+/// `bytes` is null or holds `len` bytes that outlive `'a`.
+pub unsafe fn byte_slice<'a>(bytes: *const u8, len: usize) -> Option<&'a [u8]> {
+    (!bytes.is_null() && len > 0).then(|| std::slice::from_raw_parts(bytes, len))
+}
+
+/// A handle made with `Box::into_raw`, dropped; null is nothing.
+///
+/// # Safety
+/// `p` is null or from `Box::into_raw`, and nothing uses it after.
+pub unsafe fn drop_box<T>(p: *mut T) {
+    if !p.is_null() {
+        drop(Box::from_raw(p));
+    }
+}
+
+/// A host's sample rate, or nothing when it is not a positive number --
+/// NaN included -- which every engine ignores rather than adopts.
+pub fn usable_rate(sample_rate: f64) -> Option<f64> {
+    (sample_rate > 0.0 && sample_rate.is_finite()).then_some(sample_rate)
 }
 
 /// The transport as every engine's C header declares it.
@@ -78,6 +128,32 @@ mod tests {
             let t = CTransport { running: 2, beats: 1.5, bpm: 90.0 };
             let r = CTransport::read(&t).unwrap();
             assert!(r.running && r.beats == 1.5 && r.bpm == 90.0);
+        }
+    }
+
+    #[test]
+    fn blocks_and_handles_read_as_c_gives_them() {
+        let mut l = [1.0f32, 2.0];
+        let mut r = [3.0f32, 4.0];
+        let mut buf = [0i16; 4];
+        let midi = [0xB0u8, 120, 0];
+        unsafe {
+            let (a, b) = f32_block(l.as_mut_ptr(), r.as_mut_ptr(), 2).unwrap();
+            assert_eq!((a.len(), b.map(|b| b.len())), (2, Some(2)));
+            assert!(f32_block(l.as_mut_ptr(), std::ptr::null_mut(), 2).unwrap().1.is_none());
+            assert!(f32_block(std::ptr::null_mut(), r.as_mut_ptr(), 2).is_none());
+            assert!(f32_block(l.as_mut_ptr(), r.as_mut_ptr(), 0).is_none());
+            assert_eq!(i16_block(buf.as_mut_ptr(), 2).unwrap().len(), 4);
+            assert!(i16_block(std::ptr::null_mut(), 2).is_none());
+            assert_eq!(byte_slice(midi.as_ptr(), 3), Some(&midi[..]));
+            assert!(byte_slice(midi.as_ptr(), 0).is_none());
+            assert!(byte_slice(std::ptr::null(), 3).is_none());
+            drop_box(Box::into_raw(Box::new(7u32)));
+            drop_box::<u32>(std::ptr::null_mut());
+        }
+        assert_eq!(usable_rate(48_000.0), Some(48_000.0));
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(usable_rate(bad), None, "{bad}");
         }
     }
 

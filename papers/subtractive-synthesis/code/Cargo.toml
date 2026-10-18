@@ -5,12 +5,18 @@ edition = "2021"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
 description = "The tested code behind the paper 'Subtractive Synthesis in Practice'"
-publish.workspace = true
+publish = false
 
 # THE PAPER'S CODE, NOT A PRODUCT'S. Every Rust listing in ../paper.md is a
 # marked region of this crate (tests/snippets.rs holds the two to each other),
 # so a listing in the paper is a listing that compiles and is tested. No
 # product links it; a future synth engine may lift from it.
+#
+# ITS OWN WORKSPACE, OUTSIDE THE PRODUCTS'. A paper ships in no artefact, so it
+# stays out of the products' lockfile, cargo test and licence graph; it reaches
+# the shared crates by path, as any reader of the paper could.
+[workspace]
+
 [lib]
 crate-type = ["rlib"]
 
@@ -20,14 +26,24 @@ ni-dsp = { path = "../../../engines/shared/crates/ni-dsp" }
 # Band-limiting a wavetable frame (src/osc/wavetable.rs) and measuring a
 # spectrum (src/measure.rs). Both plan and allocate at construction, never
 # while rendering.
-realfft = { workspace = true }
+realfft = { version = "3.5.0", default-features = false }
 
 [dev-dependencies]
 # The no-allocation guard tests/no_alloc.rs installs.
-assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+assert_no_alloc = { version = "1.1.2", default-features = false, features = ["warn_debug", "warn_release"] }
 # The cost-per-sample table in section 4 of the paper.
-divan = { workspace = true }
+divan = { version = "0.1.21", default-features = false }
 
 [[bench]]
 name = "cost"
 harness = false
+
+# The products' profiles, so the paper's figures are measured as they run:
+# unwinding never crosses an extern "C" boundary anywhere in this code base.
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"

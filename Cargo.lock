@@ -55,6 +55,7 @@ dependencies = [
  "bc-core",
  "cbindgen",
  "ni-dsp",
+ "ni-params",
  "shell-core",
 ]
 
@@ -66,6 +67,7 @@ dependencies = [
  "biquad",
  "fastrand",
  "ni-dsp",
+ "ni-params",
  "proptest",
  "realfft",
  "wmidi",
@@ -75,9 +77,11 @@ dependencies = [
 name = "bc-move"
 version = "2026.10.11+1"
 dependencies = [
+ "assert_no_alloc",
  "bc-capi",
  "bc-core",
  "ni-dsp",
+ "ni-params",
  "ni-schwung",
  "serde_json",
 ]
@@ -101,8 +105,10 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 name = "bus-capi"
 version = "2026.10.10+1"
 dependencies = [
+ "assert_no_alloc",
  "bus-core",
  "cbindgen",
+ "ni-dsp",
  "shell-capi",
 ]
 
@@ -142,6 +148,8 @@ dependencies = [
  "cbindgen",
  "cd-core",
  "music-core",
+ "ni-dsp",
+ "ni-params",
  "rtrb",
  "shell-core",
 ]
@@ -152,6 +160,7 @@ version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "music-core",
+ "ni-params",
  "proptest",
  "rstest",
  "wmidi",
@@ -257,6 +266,7 @@ dependencies = [
  "ni-dsp",
  "ni-filter",
  "ni-params",
+ "proptest",
  "realfft",
  "shell-core",
 ]
@@ -279,9 +289,11 @@ dependencies = [
 name = "fd-move"
 version = "2026.10.12+1"
 dependencies = [
+ "assert_no_alloc",
  "fd-capi",
  "fd-core",
  "ni-dsp",
+ "ni-params",
  "ni-schwung",
  "serde_json",
 ]
@@ -444,16 +456,6 @@ dependencies = [
  "assert_no_alloc",
  "num-complex",
  "proptest",
- "realfft",
-]
-
-[[package]]
-name = "ni-paper-subsynth"
-version = "2026.10.9+1"
-dependencies = [
- "assert_no_alloc",
- "divan",
- "ni-dsp",
  "realfft",
 ]
 
@@ -727,6 +729,7 @@ dependencies = [
  "bus-core",
  "cbindgen",
  "ni-dsp",
+ "ni-params",
  "sc-core",
  "shell-core",
 ]
@@ -737,6 +740,8 @@ version = "2026.10.10+2"
 dependencies = [
  "assert_no_alloc",
  "ni-dsp",
+ "ni-params",
+ "serde_json",
  "wmidi",
 ]
 
@@ -744,6 +749,8 @@ dependencies = [
 name = "sc-move"
 version = "2026.10.10+2"
 dependencies = [
+ "assert_no_alloc",
+ "ni-params",
  "ni-schwung",
  "sc-capi",
  "sc-core",
@@ -829,6 +836,7 @@ version = "2026.10.9+1"
 dependencies = [
  "assert_no_alloc",
  "basedrop",
+ "ni-dsp",
  "proptest",
  "rtrb",
  "triple_buffer",
@@ -838,6 +846,7 @@ dependencies = [
 name = "spectro-capi"
 version = "2026.10.10+2"
 dependencies = [
+ "assert_no_alloc",
  "cbindgen",
  "shell-capi",
  "spectro-core",
@@ -912,8 +921,10 @@ dependencies = [
 name = "tg-capi"
 version = "2026.10.10+1"
 dependencies = [
+ "assert_no_alloc",
  "cbindgen",
  "ni-dsp",
+ "ni-params",
  "shell-core",
  "tg-core",
 ]
@@ -926,16 +937,19 @@ dependencies = [
  "assert_no_alloc",
  "fastrand",
  "ni-dsp",
+ "ni-params",
  "proptest",
  "realfft",
  "serde",
  "serde_json",
+ "wmidi",
 ]
 
 [[package]]
 name = "tg-move"
 version = "2026.10.10+1"
 dependencies = [
+ "assert_no_alloc",
  "atomic_float",
  "ni-schwung",
  "serde_json",
@@ -1050,7 +1064,9 @@ dependencies = [
 name = "vz-move"
 version = "2026.10.11+1"
 dependencies = [
+ "assert_no_alloc",
  "ni-dsp",
+ "ni-params",
  "ni-schwung",
  "serde_json",
  "vz-capi",

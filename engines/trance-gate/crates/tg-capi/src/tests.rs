@@ -410,15 +410,16 @@ fn the_largest_patch_fits_tg_state_max_with_a_quarter_to_spare() {
 /*
  * THE HOST'S TABLE, AS C READS IT: every row the schema's, in host units, its
  * strings and words NUL-terminated and living as long as the program, and
- * nothing past the end.
+ * nothing past the end of either.
  */
 #[test]
 fn the_param_spec_rows_are_the_schemas_in_host_units() {
     use std::ffi::CStr;
     use tg_core::schema::{text, PARAMS};
+    let c = |ptr: *const c_char| unsafe { CStr::from_ptr(ptr) }.to_str().unwrap();
     for (i, p) in PARAMS.iter().enumerate() {
-        let row = unsafe { &*tg_core_param_spec(i as c_int) };
-        let c = |ptr: *const c_char| unsafe { CStr::from_ptr(ptr) }.to_str().unwrap();
+        let mut row: NiHostParam = unsafe { std::mem::zeroed() };
+        assert!(unsafe { tg_core_param_spec(i as c_int, &mut row) });
         assert_eq!(c(row.id), text(p.host.id));
         assert_eq!(c(row.name), text(p.host.name));
         assert_eq!(c(row.units), text(p.host.units));
@@ -427,12 +428,13 @@ fn the_param_spec_rows_are_the_schemas_in_host_units() {
         assert_eq!((row.scale, row.offset), (p.host.scale, p.host.offset));
         assert_eq!(row.num_texts as usize, p.host.options.len());
         for (k, word) in p.host.options.iter().enumerate() {
-            assert_eq!(c(unsafe { *row.texts.add(k) }), text(word));
+            assert_eq!(c(tg_core_param_option(i as c_int, k as c_int)), text(word));
         }
-        if p.host.options.is_empty() {
-            assert!(row.texts.is_null());
-        }
+        assert!(tg_core_param_option(i as c_int, row.num_texts).is_null());
     }
-    assert!(tg_core_param_spec(PARAMS.len() as c_int).is_null());
-    assert!(tg_core_param_spec(-1).is_null());
+    let mut row: NiHostParam = unsafe { std::mem::zeroed() };
+    assert!(!unsafe { tg_core_param_spec(PARAMS.len() as c_int, &mut row) });
+    assert!(!unsafe { tg_core_param_spec(-1, &mut row) });
+    assert!(!unsafe { tg_core_param_spec(0, std::ptr::null_mut()) });
+    assert!(tg_core_param_option(-1, 0).is_null());
 }

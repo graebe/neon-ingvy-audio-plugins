@@ -8,9 +8,8 @@ engine: engines/spectro
 crates: [spectro-core, spectro-capi]
 tests: [spectro_core, spectro_columns, spectro_ramp, spectro_state, sg_processor, sg_host]
 notOnMove: >-
-  The Spectrogram draws a picture and the Move has no screen to draw it on.
-  That is also why `engines/spectro` has no `tg-move` counterpart — a crate
-  belongs to exactly one product, and this product has one shell.
+  Live-only (owner, 2026-10-16): the Spectrogram draws a picture, and the Move
+  has no display to draw it on. So `engines/spectro` has no `-move` crate.
 still: media/spectrogram/live.png
 ---
 

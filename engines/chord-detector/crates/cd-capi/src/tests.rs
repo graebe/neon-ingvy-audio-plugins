@@ -3,6 +3,7 @@
 
 use super::*;
 use std::ffi::CStr;
+use std::os::raw::c_int;
 use std::ptr::{null, null_mut};
 
 fn text(buf: &[c_char]) -> String {
@@ -170,47 +171,73 @@ fn a_full_ring_counts_what_it_drops() {
 fn the_parameter_table_is_readable_through_c() {
     unsafe {
         assert_eq!(cd_param_count(), PARAM_COUNT as i32);
-        let mut info = CdParamInfo {
-            choice_count: 0,
-            default_choice: 0,
-            automatable: false,
-        };
+        let mut info: NiParamInfo = std::mem::zeroed();
         assert!(cd_param_info(1, &mut info));
-        assert_eq!(
-            info,
-            CdParamInfo {
-                choice_count: 7,
-                default_choice: 0,
-                automatable: true
-            }
-        );
+        assert_eq!(info.kind, NiParamKind::Choice);
+        assert_eq!((info.min, info.max, info.default_value, info.resolution), (0.0, 6.0, 0.0, 1.0));
+        assert!(info.automatable);
         assert!(cd_param_info(6, &mut info));
         assert!(!info.automatable);
+        assert_eq!(info.default_value, 1.0);
         assert!(!cd_param_info(7, &mut info));
         assert!(!cd_param_info(0, null_mut()));
 
         let mut buf = [0 as c_char; 16];
-        assert_eq!(cd_param_key(0, buf.as_mut_ptr(), buf.len()), 5);
+        let cap = buf.len() as c_int;
+        assert_eq!(cd_param_key(0, buf.as_mut_ptr(), cap), 5);
         assert_eq!(text(&buf), "tonic");
-        assert_eq!(cd_param_name(5, buf.as_mut_ptr(), buf.len()), 4);
+        assert_eq!(cd_param_name(5, buf.as_mut_ptr(), cap), 4);
         assert_eq!(text(&buf), "Span");
-        assert_eq!(cd_param_choice(1, 6, buf.as_mut_ptr(), buf.len()), 7);
+        assert_eq!(cd_param_label(1, 6, buf.as_mut_ptr(), cap), 7);
         assert_eq!(text(&buf), "Locrian");
-        assert_eq!(cd_param_choice(1, 7, buf.as_mut_ptr(), buf.len()), -1);
-        assert_eq!(cd_param_choice(1, -1, buf.as_mut_ptr(), buf.len()), -1);
-        assert_eq!(cd_param_key(99, buf.as_mut_ptr(), buf.len()), -1);
-        assert_eq!(cd_param_name(-1, buf.as_mut_ptr(), buf.len()), -1);
+        assert_eq!(cd_param_label(1, 7, buf.as_mut_ptr(), cap), -1);
+        assert_eq!(cd_param_label(1, -1, buf.as_mut_ptr(), cap), -1);
+        assert_eq!(cd_param_key(99, buf.as_mut_ptr(), cap), -1);
+        assert_eq!(cd_param_name(-1, buf.as_mut_ptr(), cap), -1);
 
         let mut tiny = [0x7f as c_char; 4];
-        assert_eq!(
-            cd_param_choice(1, 4, tiny.as_mut_ptr(), tiny.len()),
-            -1,
-            "Mixolydian does not fit"
-        );
-        assert_eq!(tiny[0], 0, "and the buffer is left an empty string");
+        assert_eq!(cd_param_label(1, 4, tiny.as_mut_ptr(), 4), -1, "Mixolydian does not fit");
+        assert_eq!(tiny[0], 0x7f, "and nothing is written");
         assert_eq!(cd_param_key(0, null_mut(), 8), -1);
         assert_eq!(cd_param_key(0, buf.as_mut_ptr(), 0), -1);
     }
+}
+
+#[test]
+fn a_value_prints_as_its_label_and_a_label_reads_back() {
+    unsafe {
+        let mut buf = [0 as c_char; 16];
+        let cap = buf.len() as c_int;
+        assert_eq!(cd_param_text(6, 2.0, buf.as_mut_ptr(), cap), 4);
+        assert_eq!(text(&buf), "125%");
+        assert_eq!(cd_param_text(6, 9.0, buf.as_mut_ptr(), cap), 4, "clamped to the last");
+        assert_eq!(text(&buf), "150%");
+        assert_eq!(cd_param_text(9, 0.0, buf.as_mut_ptr(), cap), -1);
+
+        let mut v = -1.0;
+        assert!(cd_param_parse(1, c"locrian".as_ptr(), &mut v));
+        assert_eq!(v, 6.0);
+        assert!(cd_param_parse(3, c" On ".as_ptr(), &mut v));
+        assert_eq!(v, 1.0);
+        v = -1.0;
+        assert!(!cd_param_parse(1, c"Lydian#".as_ptr(), &mut v));
+        assert!(!cd_param_parse(1, null(), &mut v));
+        assert!(!cd_param_parse(1, c"Dorian".as_ptr(), null_mut()));
+        assert!(!cd_param_parse(9, c"Dorian".as_ptr(), &mut v));
+        assert_eq!(v, -1.0, "nothing written");
+    }
+}
+
+#[test]
+fn the_travel_is_the_options_in_equal_steps() {
+    assert_eq!(cd_param_normalise(5, 2.0), 2.0 / 3.0);
+    assert_eq!(cd_param_denormalise(5, 2.0 / 3.0), 2.0);
+    assert_eq!(cd_param_denormalise(5, 0.4), 1.0);
+    assert_eq!(cd_param_snap(5, 2.6), 3.0);
+    assert_eq!(cd_param_snap(5, 9.0), 3.0);
+    assert_eq!(cd_param_normalise(9, 1.0), 0.0);
+    assert_eq!(cd_param_denormalise(-1, 1.0), 0.0);
+    assert_eq!(cd_param_snap(7, 1.0), 0.0);
 }
 
 #[test]

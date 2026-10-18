@@ -32,8 +32,9 @@ versions.json                one version per product
 ## A crate belongs to exactly one product
 
 The *product* engines never depend on each other. `engines/trance-gate/crates`
-holds `tg-core` and its two wrappers; `engines/spectro/crates` holds
-`spectro-core` and its one. They are all members of a single Cargo workspace
+holds `tg-core` and its three wrappers (`tg-capi`, `tg-move`, `tg-web`);
+`engines/spectro/crates` holds `spectro-core`, its receiver `spectro-recv`
+and its one wrapper. They are all members of a single Cargo workspace
 rooted at the repository, which is what lets `.cargo/config.toml` apply one set
 of target flags to all of them.
 
@@ -54,7 +55,7 @@ the capi C helpers), `ni-schwung` (the Schwung audio_fx v2 glue every
 `*-move` crate is built on), `ni-params` (a parameter table's shape and
 arithmetic) and `ni-filter` (filter design: the analog families as TPT
 state-variable sections, the equaliser's matched shapes, and the exact
-response of every cascade — ADR 0004). Each names no product. A piece moves
+response of every cascade — ADR 0005). Each names no product. A piece moves
 there once it is truly identical in two products; what differs stays in the
 product, as each product's rate list does.
 
@@ -62,9 +63,11 @@ product, as each product's rate list does.
 
 `plugins/_shared/` is to the plugins what `modules/_shared/` is to the Schwung
 modules: what every product's shell would otherwise repeat. `ni::Processor`
-(`juce/Processor.h`) is the JUCE processor all five derive from, and
+(`juce/Processor.h`) is the JUCE processor every product derives from, and
 `ni::PluginEditor` the window a host opens; `juce/Nist.h` is the state codec
-and `juce/ParamSpec.h` the parameter table. `ni/Wire.h` holds the buffer and
+and `juce/ParamSpec.h` the parameter table, read from an engine's schema by
+`juce/HostTable.h` or from an engine's `ni-params` table by
+`juce/EngineParameter.h`. `ni/Wire.h` holds the buffer and
 number helpers (the float round trip, the passthrough, locale-free numbers) and
 `ni/Scope.h` the capture a plot draws. None of it knows a product, and
 `cmake/NiJucePlugin.cmake` compiles it into every plugin.

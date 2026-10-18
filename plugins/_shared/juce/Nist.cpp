@@ -109,6 +109,7 @@ std::optional<State> readHeaded (const Layout& layout, const std::uint8_t* b, st
         return std::nullopt;
     const std::size_t end = headerBytes + (std::size_t) body;
     State s;
+    s.version = getI32 (b + 8);
     auto pos = getParams (layout, b, headerBytes, end, layout.numParams, s);
     if (! pos)
         return std::nullopt;
@@ -189,7 +190,7 @@ std::optional<State> read (const Layout& layout, const void* data, std::size_t s
 std::vector<std::uint8_t> write (const Layout& layout, const State& state)
 {
     std::vector<std::uint8_t> out (magic, magic + sizeof magic);
-    putI32 (out, version);
+    putI32 (out, layout.version);
     const std::size_t sizeAt = out.size();
     putI32 (out, 0);
     for (int i = 0; i < layout.numParams; ++i)

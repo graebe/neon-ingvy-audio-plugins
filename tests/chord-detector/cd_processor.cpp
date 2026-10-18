@@ -18,6 +18,8 @@
 
 #include "ChordDetector.h"
 
+#include "state_fixture.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <bitset>
@@ -118,4 +120,17 @@ int main (int argc, char** argv)
     const juce::ScopedJuceInitialiser_GUI gui;
     doctest::Context context (argc, argv);
     return context.run();
+}
+
+TEST_CASE ("the state saved at version 1 loads; a newer one is refused; a missing value is its default")
+{
+    ni::test::checkStateFixture (
+        [] {
+            auto p = std::make_unique<ChordDetector>();
+            p->prepareToPlay (48000.0, 512);
+            return std::unique_ptr<juce::AudioProcessor> (std::move (p));
+        },
+        juce::File (NI_FIXTURES).getChildFile ("chord-detector/v1.state"),
+        { { "tonic", 5.0 }, { "mode", 1.0 }, { "spelling", 2.0 }, { "hold", 1.0 }, { "history_view", 1.0 },
+          { "history_span", 3.0 }, { "zoom", 0.0 } });
 }

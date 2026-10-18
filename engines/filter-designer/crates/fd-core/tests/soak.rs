@@ -3,7 +3,8 @@
 
 /*
  * THE SOAK: ten minutes of noise at 48 kHz through all sixteen nodes and the
- * isolator, every family and channel, their frequencies swept, with NaN,
+ * isolator, every family and channel, their frequencies swept and Matched
+ * Cuts flipped every 32 s, with NaN,
  * ±Inf and denormals injected into the input. Asserted: the output stays
  * finite, and it is bit for bit what an engine fed zeros in place of the
  * non-finite samples plays -- so nothing the bad samples reached survives
@@ -49,6 +50,12 @@ fn ten_minutes_of_noise_with_nan_inf_and_denormals() {
     };
     let bad = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -f32::NAN];
     for b in 0..blocks {
+        if b % 3000 == 1500 {
+            /* Matched Cuts, flipped now and then: every cut morphs. */
+            let on = if dirty.num(Param::MatchedCuts) >= 0.5 { 0.0 } else { 1.0 };
+            dirty.set_num(Param::MatchedCuts, on);
+            clean.set_num(Param::MatchedCuts, on);
+        }
         if b % 200 == 0 {
             /* A sweep, as automation would move them. */
             for slot in 0..NODES as u8 {

@@ -4,7 +4,7 @@
 /*
  * The Trance Gate's window verbs: Copy slot, Paste slot, Export slot,
  * Export all, Import and Randomize, as one joined group of icons -- the
- * Actions card of Ultraviolet 1.1.0 -- and what each one does.
+ * Actions card of Ultraviolet -- and what each one does.
  *
  * ONE GROUP WHERE THE WEB EDITOR HAD TWO. The web window put Copy and Paste
  * at the end of the settings row, where they ran past the window's edge

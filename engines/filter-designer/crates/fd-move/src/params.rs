@@ -26,20 +26,21 @@ parse_value`), and the module reads the value back in the same words
 (lib.rs). Orders, Slope and the switches are index enums with the engine's
 own labels.
 
-THE TESTS BELOW hold this string to the engine: every key one the engine
-answers to, every float's range inside the engine's own, every option one
-the engine reads.
+WRITTEN BY build.rs FROM THE ENGINE'S TABLE (fd_core::Param::info, through
+ni_params::chain), so every range, default, label and unit is the engine's
+unless build.rs says otherwise, where it shows: the grid's names, the two Q
+ranges narrowed, the frequency steps (steps.rs), and the defaults the module
+sets the engine to (setup.rs). THE TESTS BELOW still hold the result to the
+engine: every key one the engine answers to, every float's range inside the
+engine's own, every option one the engine reads.
 */
 
-pub const CHAIN_PARAMS: &str = r##"[{"key":"iso_low","name":"Low","type":"float","min":-60,"max":6,"default":0,"step":0.5,"unit":"dB"},{"key":"iso_mid","name":"Mid","type":"float","min":-60,"max":6,"default":0,"step":0.5,"unit":"dB"},{"key":"iso_high","name":"High","type":"float","min":-60,"max":6,"default":0,"step":0.5,"unit":"dB"},{"key":"iso_freq_lo","name":"Low-Mid","type":"enum","options":["60","80","100","150","200","250","300","400","500","700","1k","1.5k"],"wire_format":"name","default":"250"},{"key":"iso_freq_hi","name":"Mid-High","type":"enum","options":["1k","1.5k","2k","2.5k","3k","4k","5k","6k","8k","10k","12k","16k"],"wire_format":"name","default":"2.5k"},{"key":"iso_slope","name":"Slope","type":"enum","options":["LR4 24 dB/oct","LR8 48 dB/oct"],"wire_format":"index","default":"0"},{"key":"iso_on","name":"Isolator","type":"enum","options":["Off","On"],"wire_format":"index","default":"1"},{"key":"output","name":"Output","type":"float","min":-24,"max":24,"default":0,"step":0.5,"unit":"dB"},{"key":"n01_on","name":"HP On","type":"enum","options":["Off","On"],"wire_format":"index","default":"0"},{"key":"n01_freq","name":"HP Freq","type":"enum","options":["20","30","40","50","60","80","100","150","200","300","500","1k"],"wire_format":"name","default":"30"},{"key":"n01_order","name":"HP Slope","type":"enum","options":["6 dB/oct","12 dB/oct","18 dB/oct","24 dB/oct","30 dB/oct","36 dB/oct","42 dB/oct","48 dB/oct"],"wire_format":"index","default":"3"},{"key":"n01_q","name":"HP Q","type":"float","min":0.5,"max":8,"default":0.7071,"step":0.05,"unit":""},{"key":"n02_on","name":"LP On","type":"enum","options":["Off","On"],"wire_format":"index","default":"0"},{"key":"n02_freq","name":"LP Freq","type":"enum","options":["1k","2k","3k","4k","5k","6k","8k","10k","12k","14k","16k","18k"],"wire_format":"name","default":"16k"},{"key":"n02_order","name":"LP Slope","type":"enum","options":["6 dB/oct","12 dB/oct","18 dB/oct","24 dB/oct","30 dB/oct","36 dB/oct","42 dB/oct","48 dB/oct"],"wire_format":"index","default":"3"},{"key":"n02_q","name":"LP Q","type":"float","min":0.5,"max":8,"default":0.7071,"step":0.05,"unit":""}]"##;
+pub const CHAIN_PARAMS: &str = include_str!(concat!(env!("OUT_DIR"), "/chain_params.json"));
 
-/// The frequency knobs, and their options' labels in order.
-pub const FREQUENCY_OPTIONS: [(&str, [&str; 12]); 4] = [
-    ("iso_freq_lo", ["60", "80", "100", "150", "200", "250", "300", "400", "500", "700", "1k", "1.5k"]),
-    ("iso_freq_hi", ["1k", "1.5k", "2k", "2.5k", "3k", "4k", "5k", "6k", "8k", "10k", "12k", "16k"]),
-    ("n01_freq", ["20", "30", "40", "50", "60", "80", "100", "150", "200", "300", "500", "1k"]),
-    ("n02_freq", ["1k", "2k", "3k", "4k", "5k", "6k", "8k", "10k", "12k", "14k", "16k", "18k"]),
-];
+pub use steps::FREQUENCY_OPTIONS;
+
+#[path = "steps.rs"]
+mod steps;
 
 #[cfg(test)]
 mod tests {

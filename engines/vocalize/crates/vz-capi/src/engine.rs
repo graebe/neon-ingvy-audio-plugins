@@ -10,7 +10,7 @@ calls what.
 use std::os::raw::{c_char, c_int};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use ni_dsp::ffi::cstr;
+use ni_dsp::ffi::{byte_slice, cstr, drop_box, f32_block, i16_block, usable_rate};
 pub use ni_params::{NiParamInfo, NiParamKind};
 use vz_core::model::{Formants, VowelTable, FORMANTS};
 use vz_core::{latency, Engine, Mode, Param, PARAM_COUNT};
@@ -28,13 +28,19 @@ pub struct VzCore {
     /// Samples processed, wrapping: what says a picture is new.
     pub(crate) serial: u32,
     /// Whether a window shows the picture: the envelopes are worked out only
-    /// then (shell.rs).
+    /// then (shell.rs). The shell's alone, so a build without it has none.
+    #[cfg(feature = "shell")]
     pub(crate) watching: bool,
 }
 
 impl VzCore {
     pub fn new(sample_rate: f64) -> VzCore {
-        VzCore { engine: Engine::new(sample_rate), serial: 0, watching: false }
+        VzCore {
+            engine: Engine::new(sample_rate),
+            serial: 0,
+            #[cfg(feature = "shell")]
+            watching: false,
+        }
     }
 
     pub fn engine(&self) -> &Engine {
@@ -63,9 +69,7 @@ pub extern "C" fn vz_core_new(sample_rate: f64) -> *mut VzCore {
 /// `core` is null or from `vz_core_new`, and not used after.
 #[no_mangle]
 pub unsafe extern "C" fn vz_core_free(core: *mut VzCore) {
-    if !core.is_null() {
-        drop(Box::from_raw(core));
-    }
+    drop_box(core);
 }
 
 /// The host's rate. One that is not positive is ignored.
@@ -74,10 +78,8 @@ pub unsafe extern "C" fn vz_core_free(core: *mut VzCore) {
 /// `core` is null or live, and this thread's.
 #[no_mangle]
 pub unsafe extern "C" fn vz_core_set_sample_rate(core: *mut VzCore, sample_rate: f64) {
-    if let Some(core) = core.as_mut() {
-        if sample_rate > 0.0 {
-            core.engine.set_sample_rate(sample_rate);
-        }
+    if let (Some(core), Some(rate)) = (core.as_mut(), usable_rate(sample_rate)) {
+        core.engine.set_sample_rate(rate);
     }
 }
 
@@ -126,13 +128,9 @@ pub unsafe extern "C" fn vz_core_latency(core: *const VzCore) -> u32 {
 /// overlap.
 #[no_mangle]
 pub unsafe extern "C" fn vz_core_process_f32(core: *mut VzCore, left: *mut f32, right: *mut f32, frames: u32) {
-    let Some(core) = core.as_mut() else { return };
-    if left.is_null() || frames == 0 {
-        return;
+    if let (Some(core), Some((l, r))) = (core.as_mut(), f32_block(left, right, frames)) {
+        core.process(l, r);
     }
-    let l = std::slice::from_raw_parts_mut(left, frames as usize);
-    let r = (!right.is_null()).then(|| std::slice::from_raw_parts_mut(right, frames as usize));
-    core.process(l, r);
 }
 
 /// One block of the Move's interleaved 16-bit stereo, `frames` frames, in
@@ -143,12 +141,9 @@ pub unsafe extern "C" fn vz_core_process_f32(core: *mut VzCore, left: *mut f32, 
 /// `2 * frames` values.
 #[no_mangle]
 pub unsafe extern "C" fn vz_core_process_i16(core: *mut VzCore, buf: *mut i16, frames: u32) {
-    let Some(core) = core.as_mut() else { return };
-    if buf.is_null() {
-        return;
+    if let (Some(core), Some(b)) = (core.as_mut(), i16_block(buf, frames)) {
+        core.engine.process_i16(b, frames as usize);
     }
-    let b = std::slice::from_raw_parts_mut(buf, 2 * frames as usize);
-    core.engine.process_i16(b, frames as usize);
 }
 
 /// One MIDI message of `len` bytes. CC 120 and CC 123, on any channel, are
@@ -159,11 +154,9 @@ pub unsafe extern "C" fn vz_core_process_i16(core: *mut VzCore, buf: *mut i16, f
 /// bytes.
 #[no_mangle]
 pub unsafe extern "C" fn vz_core_on_midi(core: *mut VzCore, bytes: *const u8, len: usize) {
-    let Some(core) = core.as_mut() else { return };
-    if bytes.is_null() || len == 0 {
-        return;
+    if let (Some(core), Some(msg)) = (core.as_mut(), byte_slice(bytes, len)) {
+        core.engine.on_midi(msg);
     }
-    core.engine.on_midi(std::slice::from_raw_parts(bytes, len));
 }
 
 /// WHILE BYPASSED, one block of `frames` host floats heard and not changed:

@@ -629,8 +629,8 @@ cutoffs up to 20 kHz, at 44.1, 48 and 96 kHz, from 20 Hz to 20 kHz:
 - within a quarter of the depth down to −60 dB.
 
 A Band-Pass and a Notch keep the bilinear design, whose −3 dB edges are
-exact. Switching Matched crossfades the high- and low-pass filters over
-20 ms.
+exact. Switching Matched moves the high- and low-pass filters into their
+matched designs over 20 ms.
 
 ### Band-Pass
 
@@ -966,9 +966,12 @@ Flat is not the same as untouched, though. The sum is an all-pass, so the
 phase still turns around both crossovers. That is why the isolator starts
 **off**.
 
-Kills and levels glide every sample over 5 ms, so a kill never clicks.
+Kills and levels glide every sample over 5 ms, so a kill never clicks, and
+the crossovers move a sample at a time, so sweeping one does not step.
 Switching the isolator on or off fades over 20 ms. A change of slope
-crossfades between the old and the new design.
+crossfades between the old and the new design; LR4 and LR8 are half a turn
+apart at each crossover, so for those 20 ms the level there dips by a few
+dB.
 
 **Example.** *A DJ drop.* Isolator on, Crossover Low-Mid at 200 Hz. Kill Low on
 the last bar of the build: the kick and the bass go in 5 ms, with no click.
@@ -996,8 +999,9 @@ Release it on the one.
   Right filters are mixed with Mid or Side ones: those do not commute.
   Everything else does.
 - **Changes are smooth.** Freq glides in octaves, Q in log and Gain in dB,
-  each over 5 ms. A change of Type, Family, Order, Channel, bypass or Matched
-  Cuts crossfades between two designs over 20 ms.
+  each over 5 ms. A change of Family or Matched Cuts moves the filter into
+  the new design over 20 ms; a change of Type, Order, Channel or bypass
+  crossfades over 20 ms to a filter already settled on the music.
 
 ## Further reading
 
@@ -1013,5 +1017,5 @@ Release it on the one.
   Characteristics*, Proc. IEE, 1949: the Bessel filter.
 - Siegfried H. Linkwitz, *Active Crossover Networks for Noncoincident
   Drivers*, JAES, 1976: the Linkwitz-Riley crossover.
-- [ADR 0004](../../../docs/adr/0004-iir-filter-design.md): why the
+- [ADR 0005](../../../docs/adr/0005-iir-filter-design.md): why the
   Designer builds its filters this way.

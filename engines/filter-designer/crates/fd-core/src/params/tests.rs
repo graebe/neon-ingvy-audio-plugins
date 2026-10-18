@@ -97,3 +97,26 @@ fn ranges_travel_as_declared() {
     assert_eq!(Param::Node(0, Field::Freq).snap(1000.004), 1000.0);
     assert_eq!(Param::IsoSlope.clamp(7.0), 1.0);
 }
+
+/* WHATEVER IS TYPED -- by a user into a host's field, or sent by the Move as
+ * a knob's text -- is refused or read as a value inside the parameter's
+ * range: never NaN, never a panic. */
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(2000))]
+
+    #[test]
+    fn any_text_reads_as_nothing_or_a_value_in_range(i in 0..PARAM_COUNT, t in proptest::prelude::any::<String>()) {
+        let p = Param::from_index(i).unwrap();
+        if let Some(v) = p.parse_value(&t) {
+            proptest::prop_assert!(v.is_finite() && p.clamp(v) == v, "{:?} read {:?} as {}", p, t, v);
+        }
+    }
+
+    #[test]
+    fn number_like_text_reads_in_range(i in 0..PARAM_COUNT, t in "[ +\\-]{0,2}[0-9.]{0,12}([eE][+\\-]?[0-9]{1,4})?( ?[kK]| ?Hz| ?dB| ?%|inf|nan|NaN)?") {
+        let p = Param::from_index(i).unwrap();
+        if let Some(v) = p.parse_value(&t) {
+            proptest::prop_assert!(v.is_finite() && p.clamp(v) == v, "{:?} read {:?} as {}", p, t, v);
+        }
+    }
+}

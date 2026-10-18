@@ -93,6 +93,27 @@ fn an_instance_runs_and_panics() {
     }
 }
 
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(2000))]
+
+    /// Any bytes a C caller hands the text door -- not UTF-8, not a number --
+    /// are refused or read as a value inside the range.
+    #[test]
+    fn any_bytes_parse_as_nothing_or_a_value_in_range(
+        index in -2i32..(FD_PARAM_COUNT as i32 + 2),
+        bytes in proptest::collection::vec(1u8..=255, 0..40),
+    ) {
+        let text = CString::new(bytes).unwrap();
+        let mut v = f64::NAN;
+        let read = unsafe { fd_param_parse(index, text.as_ptr(), &mut v) };
+        match fd_core::Param::from_i32(index) {
+            Some(p) if read => proptest::prop_assert!(v.is_finite() && p.clamp(v) == v, "{} read as {}", index, v),
+            Some(_) => proptest::prop_assert!(v.is_nan(), "a refusal wrote {}", v),
+            None => proptest::prop_assert!(!read),
+        }
+    }
+}
+
 #[cfg(feature = "shell")]
 mod picture {
     use super::*;
@@ -131,7 +152,11 @@ mod picture {
         let k = at(&p, 1000.0);
         let (c, _) = fd_core::design::design(&fd_core::design::settings_of(&v, 0), None, fd_core::design::Globals::NEUTRAL, 48_000.0);
         assert!((p.node_db[0][k] - c.db(f64::from(p.hz[k]), 48_000.0) as f32).abs() < 1e-4);
-        assert!((p.total_db[k] - (p.node_db[0][k] - 2.0)).abs() < 1e-4, "the side bell is not in the left lane");
+        /* A source on the left alone hears the side bell half: (1 + H)/2. */
+        let (side, _) = fd_core::design::design(&fd_core::design::settings_of(&v, 1), None, fd_core::design::Globals::NEUTRAL, 48_000.0);
+        let half = (side.response(2.0 * std::f64::consts::PI * f64::from(p.hz[k]) / 48_000.0) + 1.0) * 0.5;
+        let want = p.node_db[0][k] + (20.0 * half.norm().log10()) as f32 - 2.0;
+        assert!((p.total_db[k] - want).abs() < 1e-4, "the side bell in the left lane: {} dB, want {want}", p.total_db[k]);
         let s = read(shell, &v, FD_LANE_SIDE);
         let k5 = at(&s, 5000.0);
         assert!((s.total_db[k5] - (s.node_db[0][k5] + s.node_db[1][k5] - 2.0)).abs() < 1e-4);
@@ -154,7 +179,7 @@ mod picture {
         v[idx(0, 1) as usize] = 0.0;
         let p = read(shell, &v, FD_LANE_LEFT);
         assert!(p.node_db[0][k] > 5.0);
-        assert!((p.total_db[k] + 2.0).abs() < 1e-4);
+        assert!((p.total_db[k] - (want - p.node_db[0][k])).abs() < 1e-4, "only the side bell and Output are left");
         unsafe { fd_shell_destroy(shell) };
     }
 
@@ -188,7 +213,9 @@ mod picture {
                 fd_shell_end(shell, 512);
             }
         }
-        let p = read(shell, &v, FD_LANE_LEFT);
+        /* The stereo view's analyzer is the mid, the mono sum: what the engine
+         * keeps from the start. */
+        let p = read(shell, &v, FD_LANE_STEREO);
         assert!(p.analyzer);
         let k = at(&p, 1000.0);
         /* A sine between two bins reads up to 1.42 dB low through a Hann
@@ -200,6 +227,123 @@ mod picture {
             fd_shell_post_sample_rate(shell, 44_100.0);
             fd_shell_destroy(shell);
         }
+    }
+
+    /// A chain that mixes Stereo, Left, Mid and Side nodes, behind the
+    /// isolator: each lane's total is what the engine renders in that lane.
+    #[test]
+    fn the_total_is_what_each_lane_plays() {
+        const FS: f64 = 48_000.0;
+        let mut v = values();
+        let mut node = |slot: usize, fields: &[(usize, f64)]| {
+            for &(f, x) in fields {
+                v[idx(slot, f) as usize] = x;
+            }
+        };
+        node(0, &[(0, 1.0), (4, 1000.0), (5, 6.0)]); // a Stereo bell
+        node(1, &[(0, 1.0), (4, 5000.0), (5, -9.0), (9, 4.0)]); // a Side bell
+        node(2, &[(0, 5.0), (4, 8000.0), (9, 1.0)]); // a Left low-pass
+        node(3, &[(0, 3.0), (4, 3000.0), (5, 4.0), (9, 3.0)]); // a Mid high shelf
+        node(4, &[(0, 1.0), (4, 300.0), (5, -5.0), (6, 2.0), (9, 2.0)]); // a Right bell
+        v[0] = -2.0;
+        v[4] = 1.0; // the isolator, its mid down
+        v[6] = -6.0;
+
+        let mut core = FdCore::new(FS);
+        for (i, x) in v.iter().enumerate() {
+            core.engine_mut().set_num(fd_core::Param::from_index(i).unwrap(), *x);
+        }
+        let shell = fd_shell_create(FS);
+        let n = 1 << 16;
+        /* Each lane's input alone, as (left, right), and how its output is read. */
+        let lanes: [(u32, (f32, f32), fn(f64, f64) -> f64); 5] = [
+            (FD_LANE_LEFT, (1.0, 0.0), |l, _| l),
+            (FD_LANE_RIGHT, (0.0, 1.0), |_, r| r),
+            (FD_LANE_MID, (1.0, 1.0), |l, r| 0.5 * (l + r)),
+            (FD_LANE_SIDE, (1.0, -1.0), |l, r| 0.5 * (l - r)),
+            (FD_LANE_STEREO, (1.0, 1.0), |l, r| 0.5 * (l + r)),
+        ];
+        for (lane, (a, b), read_out) in lanes {
+            core.engine_mut().reset();
+            let (mut l, mut r) = (vec![0.0f32; n], vec![0.0f32; n]);
+            (l[0], r[0]) = (a, b);
+            core.process(&mut l, Some(&mut r));
+            let y: Vec<f64> = l.iter().zip(&r).map(|(l, r)| read_out(f64::from(*l), f64::from(*r))).collect();
+            let p = read(shell, &v, lane);
+            for k in (0..FD_POINTS).step_by(17).filter(|&k| p.hz[k] > 20.0 && p.hz[k] < 20_000.0) {
+                let w = 2.0 * std::f64::consts::PI * f64::from(p.hz[k]) / FS;
+                let h = y.iter().enumerate().fold(ni_filter::Complex64::new(0.0, 0.0), |s, (t, x)| s + ni_filter::Complex64::from_polar(*x, -w * t as f64));
+                let played = 20.0 * h.norm().log10();
+                if played > -40.0 {
+                    let drawn = f64::from(p.total_db[k]);
+                    assert!((played - drawn).abs() < 0.01, "lane {lane} at {} Hz: plays {played:.3} dB, drawn {drawn:.3} dB", p.hz[k]);
+                }
+            }
+        }
+        unsafe { fd_shell_destroy(shell) };
+    }
+
+    /// The analyzer reads the lane drawn: a centred sine is all mid and no
+    /// side.
+    #[test]
+    fn the_analyzer_follows_the_lane() {
+        let shell = fd_shell_create(48_000.0);
+        unsafe { fd_shell_post_watching(shell, true) };
+        let v = values();
+        let run = |blocks: usize| {
+            for block in 0..blocks {
+                let core = unsafe { fd_shell_begin(shell) };
+                let mut l: Vec<f32> =
+                    (0..512).map(|i| (0.5 * (2.0 * std::f64::consts::PI * 1000.0 * (block * 512 + i) as f64 / 48_000.0).sin()) as f32).collect();
+                let mut r = l.clone();
+                unsafe {
+                    fd_core_process_f32(core, l.as_mut_ptr(), r.as_mut_ptr(), 512);
+                    fd_shell_end(shell, 512);
+                }
+            }
+        };
+        for (lane, loud) in [(FD_LANE_MID, true), (FD_LANE_SIDE, false), (FD_LANE_LEFT, true), (FD_LANE_STEREO, true)] {
+            read(shell, &v, lane); // asks the engine for the lane
+            run(40);
+            let p = read(shell, &v, lane);
+            let k = at(&p, 1000.0);
+            if loud {
+                assert!(p.post_db[k] > -6.02 - 1.43, "lane {lane}: {} dBFS", p.post_db[k]);
+            } else {
+                assert!(p.post_db[k] < -100.0, "lane {lane}: the side of a centred sine reads {} dBFS", p.post_db[k]);
+            }
+        }
+        unsafe { fd_shell_destroy(shell) };
+    }
+
+    /// Listening leaves the audio as it came and feeds the analyzer with it.
+    #[test]
+    fn listening_filters_nothing() {
+        let shell = fd_shell_create(48_000.0);
+        unsafe { fd_shell_post_watching(shell, true) };
+        let mut v = values();
+        v[idx(0, 0) as usize] = 5.0; // a low-pass at 30 Hz, which would take the sine out
+        let core = unsafe { fd_shell_begin(shell) };
+        for i in 0..fd_core::PARAM_COUNT {
+            unsafe { fd_core_set_num(core, i as i32, v[i]) };
+        }
+        unsafe { fd_shell_end(shell, 0) };
+        read(shell, &v, FD_LANE_STEREO);
+        for block in 0..40 {
+            let core = unsafe { fd_shell_begin(shell) };
+            let x: Vec<f32> = (0..512).map(|i| (0.5 * (2.0 * std::f64::consts::PI * 1000.0 * (block * 512 + i) as f64 / 48_000.0).sin()) as f32).collect();
+            let (mut l, mut r) = (x.clone(), x.clone());
+            unsafe {
+                fd_core_listen_f32(core, l.as_mut_ptr(), r.as_mut_ptr(), 512);
+                fd_shell_end(shell, 512);
+            }
+            assert_eq!(l, x);
+            assert_eq!(r, x);
+        }
+        let p = read(shell, &v, FD_LANE_STEREO);
+        let k = at(&p, 1000.0);
+        assert!(p.post_db[k] > -6.02 - 1.43 && (p.post_db[k] - p.pre_db[k]).abs() < 1e-3, "post {} pre {}", p.post_db[k], p.pre_db[k]);
+        unsafe { fd_shell_destroy(shell) };
     }
 
     #[test]

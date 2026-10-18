@@ -11,6 +11,8 @@
 #include "PluginEditor.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace ni::fd
 {
@@ -41,6 +43,8 @@ bool monoOrStereo (const juce::AudioChannelSet& set)
 static_assert (param::count == FD_PARAM_COUNT);
 static_assert (Picture::points == FD_POINTS);
 static_assert (param::nodes == FD_NODES);
+static_assert (lane::left == FD_LANE_LEFT && lane::right == FD_LANE_RIGHT && lane::mid == FD_LANE_MID
+               && lane::side == FD_LANE_SIDE && lane::stereo == FD_LANE_STEREO);
 } // namespace
 
 Processor::Processor()
@@ -78,6 +82,12 @@ void Processor::prepare (double sampleRate, int maximumBlockSize)
         copy.assign ((size_t) juce::jmax (1, maximumBlockSize), 0.0f);
     const double r = sampleRate > 0.0 ? sampleRate : 44100.0;
     rate.store (r);
+    /* Every parameter again at the first block, and the bypass counted from
+     * there. */
+    pushed.fill (std::numeric_limits<float>::quiet_NaN());
+    idleAfter = (std::int64_t) std::ceil (r * idleAfterSeconds);
+    bypassedFor = 0;
+    idle = false;
     fd_shell_post_sample_rate (shell.get(), r);
     /* A host that deactivated the plugin and starts it again hears nothing
      * held from before. */
@@ -103,35 +113,68 @@ void Processor::run (juce::AudioBuffer<float>& buffer, bool heard)
     if (frames <= 0 || buffer.getNumChannels() < 1)
         return;
     FdCore* core = fd_shell_begin (shell.get());
-    for (int i = 0; i < paramCount; ++i)
-        fd_core_set_num (core, i, plain (i));
+    push (core);
     const bool stereo = buffer.getNumChannels() > 1;
     if (heard)
+    {
+        /* Back from idling: from silence, under the Bypass's fade. */
+        if (idle)
+            fd_core_reset (core);
+        idle = false;
+        bypassedFor = 0;
         fd_core_process_f32 (core, buffer.getWritePointer (0), stereo ? buffer.getWritePointer (1) : nullptr,
                              (uint32_t) frames);
+    }
     else
     {
-        /* On a copy, in pieces the size the host announced: the output is
-         * the input, the engine hears it all. */
-        const int room = (int) listening[0].size();
-        for (int at = 0; at < frames; at += room)
+        idle = idle || bypassedFor >= idleAfter;
+        if (idle)
         {
-            const int n = juce::jmin (room, frames - at);
-            std::copy_n (buffer.getReadPointer (0, at), n, listening[0].data());
-            if (stereo)
-                std::copy_n (buffer.getReadPointer (1, at), n, listening[1].data());
-            fd_core_process_f32 (core, listening[0].data(), stereo ? listening[1].data() : nullptr, (uint32_t) n);
+            /* Idle: the engine hears the input, for the analyzer, and
+             * filters nothing; the audio passes untouched. */
+            fd_core_listen_f32 (core, buffer.getWritePointer (0), stereo ? buffer.getWritePointer (1) : nullptr,
+                                (uint32_t) frames);
+        }
+        else
+        {
+            bypassedFor += frames;
+            /* On a copy, in pieces the size the host announced: the output
+             * is the input, the engine hears it all. */
+            const int room = (int) listening[0].size();
+            for (int at = 0; at < frames; at += room)
+            {
+                const int n = juce::jmin (room, frames - at);
+                std::copy_n (buffer.getReadPointer (0, at), n, listening[0].data());
+                if (stereo)
+                    std::copy_n (buffer.getReadPointer (1, at), n, listening[1].data());
+                fd_core_process_f32 (core, listening[0].data(), stereo ? listening[1].data() : nullptr, (uint32_t) n);
+            }
         }
     }
     fd_shell_end (shell.get(), (uint32_t) frames);
 }
 
 /* Bypassed, by the host or by the Bypass: the audio passes as JUCE passes it
- * (no latency to keep) while the engine runs on a copy. */
+ * (no latency to keep) while the engine runs on a copy, then idles. */
 void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     run (buffer, false);
     ni::Processor::processBypassed (buffer, midi);
+}
+
+/* Only what moved: a parameter's 0..1 value is one atomic read, the engine's
+ * setter a call across the C ABI with the table's arithmetic behind it. */
+void Processor::push (FdCore* core)
+{
+    for (int i = 0; i < paramCount; ++i)
+    {
+        const float v = params[(size_t) i]->getValue();
+        if (! juce::exactlyEqual (v, pushed[(size_t) i]))
+        {
+            pushed[(size_t) i] = v;
+            fd_core_set_num (core, i, plain (i));
+        }
+    }
 }
 
 /* ------------------------------------------------------------ the model -- */

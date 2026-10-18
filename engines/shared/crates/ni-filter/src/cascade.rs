@@ -31,6 +31,21 @@ the integrators' and nothing in the loop is recursive through a coefficient
 that changed. So a cascade may move from one design to the next a sample at a
 time ([`Cascade::run_toward`]): g, k, the mix and the gain each linear
 between the two, the loop solved again at every sample.
+
+ONE FORM FOR EVERY SECTION, WHEN DESIGNS MUST MEET. A first-order section is
+exactly a second-order one with a double pole at -g and one of the two
+cancelled -- `(u + g)·(m_hp·u + m_lp·g) / (u + g)²`, the mix (m_hp, m_hp +
+m_lp, m_lp) at k = 2 -- and a second-order section mixed (1, k, 1) is a
+WIRE: `hp + k·bp + lp = x` whatever its state. So any two designs can meet in
+one structure ([`Cascade::morph`]): both in second-order form, the shorter
+padded with wires on the other's g and k, and every section between them --
+which is how a change of order or family moves the curve, the filter's
+state carried, instead of summing two filters that disagree in phase.
+
+A design that chose between realisations of one analog section (matched or
+bilinear) says which it took ([`Section::form`]), so a glide that crosses
+from one to the other can be told from one that only moves
+([`Cascade::same_realisation`]).
 */
 
 use num_complex::Complex64;
@@ -50,6 +65,9 @@ pub struct Section {
     /// 1 / (1 + g·(g + k)) for a second-order section, g / (1 + g) for a
     /// first-order one: the loop's solution, once.
     d: f64,
+    /// Which realisation a design chose for it, 0 for the only one there
+    /// is: what tells a switch from a move.
+    form: u8,
 }
 
 impl Default for Section {
@@ -63,13 +81,39 @@ impl Section {
     /// A second-order section: `g` > 0 its frequency on the warped axis, `k`
     /// > 0 its damping (1/Q), and the mix of its outputs.
     pub fn second(g: f64, k: f64, hp: f64, bp: f64, lp: f64) -> Section {
-        Section { g, k, hp, bp, lp, first_order: false, d: 1.0 / (1.0 + g * (g + k)) }
+        Section { g, k, hp, bp, lp, first_order: false, d: 1.0 / (1.0 + g * (g + k)), form: 0 }
     }
 
     /// A first-order section: `g` > 0 its frequency on the warped axis, and
     /// the mix of its high- and low-pass outputs.
     pub fn first(g: f64, hp: f64, lp: f64) -> Section {
-        Section { g, k: 0.0, hp, bp: 0.0, lp, first_order: true, d: g / (1.0 + g) }
+        Section { g, k: 0.0, hp, bp: 0.0, lp, first_order: true, d: g / (1.0 + g), form: 0 }
+    }
+
+    /// A wire on `g` and `k`: y = x exactly, its integrators running as a
+    /// section of that frequency and damping would.
+    pub fn wire(g: f64, k: f64) -> Section {
+        Section::second(g, k, 1.0, k, 1.0)
+    }
+
+    /// This section, its realisation marked `form` (see [`Section::form`]).
+    pub fn realised(self, form: u8) -> Section {
+        Section { form, ..self }
+    }
+
+    /// Which of a design's realisations this is: 0 where there is only one.
+    pub fn form(&self) -> u8 {
+        self.form
+    }
+
+    /// The same transfer as a second-order section: itself if it is one, a
+    /// first-order one at k = 2 with the extra pole cancelled.
+    pub fn second_order(&self) -> Section {
+        if self.first_order {
+            Section::second(self.g, 2.0, self.hp, self.hp + self.lp, self.lp).realised(self.form)
+        } else {
+            *self
+        }
     }
 
     pub fn g(&self) -> f64 {
@@ -117,10 +161,11 @@ impl Section {
     pub fn toward(&self, to: &Section, t: f64) -> Section {
         let mix = |a: f64, b: f64| a * (1.0 - t) + b * t;
         let (g, hp, lp) = (mix(self.g, to.g), mix(self.hp, to.hp), mix(self.lp, to.lp));
+        let form = if t < 1.0 { self.form } else { to.form };
         if self.first_order {
-            Section::first(g, hp, lp)
+            Section::first(g, hp, lp).realised(form)
         } else {
-            Section::second(g, mix(self.k, to.k), hp, mix(self.bp, to.bp), lp)
+            Section::second(g, mix(self.k, to.k), hp, mix(self.bp, to.bp), lp).realised(form)
         }
     }
 
@@ -177,6 +222,15 @@ impl State {
         }
     }
 
+    /// The integrators of every section from `from` on emptied: what a
+    /// cascade that shortened leaves unused, so that a section added there
+    /// later starts from nothing rather than from a design long gone.
+    pub fn clear_from(&mut self, from: usize) {
+        for s in self.s.iter_mut().skip(from) {
+            *s = [0.0; 2];
+        }
+    }
+
     /// Whether every integrator is 0.
     pub fn is_empty(&self) -> bool {
         self.s.iter().flatten().all(|s| *s == 0.0)
@@ -201,7 +255,7 @@ impl Cascade {
     /// No sections and unity gain: y = x, exactly.
     pub const fn identity() -> Cascade {
         Cascade {
-            sections: [Section { g: 1.0, k: 0.0, hp: 1.0, bp: 0.0, lp: 1.0, first_order: true, d: 0.5 }; MAX_SECTIONS],
+            sections: [Section { g: 1.0, k: 0.0, hp: 1.0, bp: 0.0, lp: 1.0, first_order: true, d: 0.5, form: 0 }; MAX_SECTIONS],
             len: 0,
             gain: 1.0,
         }
@@ -255,6 +309,40 @@ impl Cascade {
     /// the same order -- so that [`Cascade::run_toward`] can move between them.
     pub fn same_structure(&self, to: &Cascade) -> bool {
         self.len == to.len && self.sections().iter().zip(to.sections()).all(|(a, b)| a.first_order == b.first_order)
+    }
+
+    /// Whether `to` is this cascade's structure with every section realised
+    /// the same way: what a glide may move between a sample at a time.
+    pub fn same_realisation(&self, to: &Cascade) -> bool {
+        self.same_structure(to) && self.sections().iter().zip(to.sections()).all(|(a, b)| a.form == b.form)
+    }
+
+    /// The same transfer, every section second-order (Section::second_order):
+    /// the form in which any two designs meet.
+    pub fn second_order_form(&self) -> Cascade {
+        let mut c = *self;
+        for s in &mut c.sections[..c.len] {
+            *s = s.second_order();
+        }
+        c
+    }
+
+    /// The cascade `t` (0..1) of the way from this one to `to`, both in
+    /// second-order form and the shorter padded with wires on the longer's g
+    /// and k: as many sections as the longer, this one exactly at 0 and `to`
+    /// at 1 with wires after it -- which pass the signal exactly, so they may
+    /// then be dropped.
+    pub fn morph(&self, to: &Cascade, t: f64) -> Cascade {
+        let (a, b) = (self.second_order_form(), to.second_order_form());
+        let len = a.len.max(b.len);
+        let pad = |c: &Cascade, other: &Cascade, i: usize| {
+            if i < c.len { c.sections[i] } else { Section::wire(other.sections[i].g, other.sections[i].k) }
+        };
+        let mut m = Cascade { len, gain: a.gain * (1.0 - t) + b.gain * t, ..Cascade::identity() };
+        for i in 0..len {
+            m.sections[i] = pad(&a, &b, i).toward(&pad(&b, &a, i), t);
+        }
+        m
     }
 
     /// One sample through the cascade `t` (0..1) of the way to `to`, a cascade

@@ -15,8 +15,10 @@ Every file here is the artifact's `project/` tree, byte for byte:
   system, so these duplicate files in `design/scheme/project`; they stay,
   because the mirror has to match the artifact, not the repo.
 
-Nothing in the build reads this folder. It is a reference for the editors in
-`plugins/*/ui`; the values they use come from `design/scheme/project`.
+Nothing in the build reads this folder. It is a reference for the native
+editors (`plugins/<product>/editor`, on the kit in `plugins/_shared/ui`); the
+values they use come from `design/scheme/project`, through
+`plugins/_shared/ui/src/UvTokens.h`.
 
 ## Re-syncing
 

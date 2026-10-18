@@ -115,6 +115,13 @@ With the transport stopped the gate holds open and the audio passes. Starting
 and stopping the transport no longer clicks: the gate picks up from the level
 it is at, and opens smoothly on a stop.
 
+**Panic shuts the gate.** A panic — CC 120 (All Sound Off) or CC 123 (All Notes
+Off), on any channel — closes the gate at once, and the step under the playhead
+strikes again from silence with its own attack, as if the transport had just
+landed there. The pattern, the sound and the playhead stay where they were. With
+the transport stopped the gate is open and holds nothing, so a panic leaves it
+alone.
+
 The module renders the same samples as the plugin, rounded to the Move's 16-bit
 audio rather than cut off — quiet, gated passages keep their last bit of detail
 instead of losing it towards silence.
@@ -171,7 +178,8 @@ Open the Web Manager on your Move — `http://move.local:7700` — go to
 graebe/neon-ingvy-audio-plugins
 ```
 
-It installs to `modules/audio_fx/trance-gate/` and is added to a chain slot as
+It installs to `/data/UserData/schwung/modules/audio_fx/trance-gate/` on the
+Move and is added to a chain slot as
 an Audio FX. **Nothing else is required** — it runs on released Schwung,
 **1.5.0 or newer**:
 

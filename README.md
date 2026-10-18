@@ -24,7 +24,7 @@ Rust core        the DSP, on the shared ni-dsp and established crates
   ├── C ABI      extern "C" with cbindgen headers, for the plugin
   └── Schwung    the audio_fx vtable (ni-schwung), for the Move
 C++ shell        JUCE 9: the VST3 and the host plumbing (ni::Processor)
-Native editor    JUCE Components on the Ultraviolet 1.1.0 kit
+Native editor    JUCE Components on the Ultraviolet kit
 ```
 
 **One core per product, and the wrappers around it are the only thing that
@@ -32,12 +32,14 @@ differs.** The Trance Gate's DSP is a single Rust crate; `tg-capi` wraps it in
 a C ABI for the plugin and `tg-move` wraps it in Schwung's audio_fx vtable for
 the Move. Both are members of one Cargo workspace and both reach `tg-core` by
 relative path, so they cannot drift apart — not by policy, by construction.
-That claim is also *tested*: `tests/render_plugin.c` renders four seconds
-through the plugin's own audio path and the result is byte-for-byte identical
-to the Move module's reference render.
+That claim is also *tested*: `tests/render_plugin.c` renders four seconds of
+one patch through the plugin's own audio path and pins it to a golden hash,
+and the Move module's reference render of the same patch is pinned to its own;
+the two goldens are recorded together, so a sound that moves on one side and
+not the other fails.
 
-The two engines never depend on each other. A crate belongs to exactly one
-product.
+The product engines never depend on each other. A crate belongs to exactly
+one product.
 
 ```
 engines/<product>/crates     the core, and its wrappers
@@ -74,7 +76,7 @@ targets):
 ```sh
 git submodule update --init --recursive   # JUCE 9. The engines are subtrees.
 cmake --preset release                    # universal, LTO: what ships (build/)
-cmake --build build                       # the five VST3s, into build/out
+cmake --build build                       # every VST3, into build/out
 scripts/test.sh quick                     # the developer loop (build-dev/): seconds, no bundles
 scripts/test.sh full                      # everything: bundles, hosts, coverage, validators
 ```

@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * NI Side-Chain's editor: the web editor's App.jsx, natively, on Ultraviolet
- * 1.1.0, laid out as the layout canvas's "NI Side-Chain -- as built" artboard
+ * NI Side-Chain's editor: the web editor's App.jsx, natively, on Ultraviolet,
+ * laid out as the layout canvas's "NI Side-Chain -- as built" artboard
  * (design/designs/SideChain.dc.html), 760 x 604.
  *
  * ONE ALIGNMENT IS LOAD-BEARING: the shape you drag sits directly above the

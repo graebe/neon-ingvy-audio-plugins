@@ -15,7 +15,7 @@ behaviour is written:
 - the ENGINE clamps to `min..=max` and starts at `default`
   (`Instance::set_num`, `Sound::DEFAULT`);
 - the PLUGIN builds its host table from [`Spec::host`] through the C ABI
-  (`tg_core_param_spec`), with Slot and Length one-based and the four levels
+  (`tg_core_param_spec`, `tg_core_param_option`), with Slot and Length one-based and the four levels
   percentages, as the iPlug2 build reported them -- a project stores plain host
   values, so those numbers are frozen, and tests/fixtures/iplug2 holds them;
 - the MOVE generates its `chain_params` from it at build time (tg-move's
@@ -27,42 +27,12 @@ surface's, and stays beside its row here or in that surface's generator.
 
 use core::ffi::CStr;
 
+use ni_params::host::{host, percent, words};
+/* The host column's shape is ni-params', shared with Side-Chain. */
+pub use ni_params::host::{text, Host, HostKind};
+
 use crate::params::Param;
 use crate::{rates, MAX_STEPS, SLOTS, STAGE_MAX_PCT};
-
-/// How a host stores and steps a value: iPlug2's four kinds, which the
-/// plugin's `ni::ParamSpec` mirrors. The discriminants are the C ABI's.
-#[repr(i32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum HostKind {
-    /// A whole number from min to max.
-    Integer = 0,
-    /// An index into the options.
-    Choice = 1,
-    /// 0 or 1, the options its two words.
-    Toggle = 2,
-    /// Any value from min to max, kept as it comes.
-    Continuous = 3,
-}
-
-/// One parameter as a host sees it. Every number is the HOST's plain value:
-/// `host = engine * scale + offset`.
-#[derive(Clone, Copy, Debug)]
-pub struct Host {
-    /// The JUCE parameter ID. With legacy IDs the index is the VST3 ID, so
-    /// this only names it.
-    pub id: &'static CStr,
-    /// What a host lists.
-    pub name: &'static CStr,
-    pub kind: HostKind,
-    /// The VST3 units string.
-    pub units: &'static CStr,
-    pub scale: f64,
-    pub offset: f64,
-    /// A choice's or a toggle's words; empty where the engine supplies them at
-    /// run time (Rate: `tg_core_rate_label`).
-    pub options: &'static [&'static CStr],
-}
 
 /// One automatable parameter.
 #[derive(Clone, Copy, Debug)]
@@ -91,11 +61,11 @@ impl Spec {
     /// The host's plain value for an engine value, and back.
     #[inline]
     pub fn to_host(&self, engine: f64) -> f64 {
-        engine * self.host.scale + self.host.offset
+        self.host.to_host(engine)
     }
     #[inline]
     pub fn from_host(&self, host: f64) -> f64 {
-        (host - self.host.offset) / self.host.scale
+        self.host.from_host(host)
     }
 
     /// The host's range and default, in its plain values.
@@ -120,19 +90,6 @@ const HARD_SOFT: &[&CStr] = &[c"Hard", c"Soft"];
 /* Which end the pattern is built up from; In is what the gate did before the
  * direction existed. */
 const IN_OUT: &[&CStr] = &[c"In", c"Out"];
-
-const fn host(id: &'static CStr, name: &'static CStr, kind: HostKind) -> Host {
-    Host { id, name, kind, units: c"", scale: 1.0, offset: 0.0, options: &[] }
-}
-
-/// The same thing as a percentage at the host.
-const fn percent(id: &'static CStr, name: &'static CStr) -> Host {
-    Host { scale: 100.0, ..host(id, name, HostKind::Continuous) }
-}
-
-const fn words(h: Host, options: &'static [&'static CStr]) -> Host {
-    Host { options, ..h }
-}
 
 /*
  * IN `Param` ORDER, WHICH IS THE ABI AND THE HOST'S INDEX -- `spec` relies on
@@ -277,11 +234,6 @@ pub fn held(p: Param, x: f32) -> f32 {
     } else {
         x
     }
-}
-
-/// A C string the table holds, as Rust text. Every one is ASCII.
-pub fn text(c: &CStr) -> &str {
-    c.to_str().unwrap_or("")
 }
 
 #[cfg(test)]

@@ -4,23 +4,25 @@
 /*
  * The licence notices of whatever an editor build bundles, written beside it.
  *
- * WHY THIS EXISTS. An editor's ui.js is minified, and minifying removes every
- * comment -- including the notices MIT asks to accompany each copy. Solid's
- * dist files carry no `/*! @license *\/` comment for `legalComments` to keep
- * in the first place, so preserving comments would have preserved nothing.
- * The notices therefore come from the packages themselves: every npm package
- * with code in the bundle is found through rollup's module graph, and its
- * LICENSE file is copied into assets/ui.js.LICENSE.txt, which ships in the
- * plugin bundle beside ui.js. ui.js gets a one-line comment pointing there.
+ * WHY THIS EXISTS. A Move web editor's ui.js is minified, and minifying
+ * removes every comment -- including the notices MIT asks to accompany each
+ * copy. Solid's dist files carry no `/*! @license *\/` comment for
+ * `legalComments` to keep in the first place, so preserving comments would
+ * have preserved nothing. The notices therefore come from the packages
+ * themselves: every npm package with code in the bundle is found through
+ * rollup's module graph, and its LICENSE file is copied into
+ * assets/ui.js.LICENSE.txt, which modules/_shared/package.sh ships beside
+ * ui.js in the module's tarball. ui.js gets a one-line comment pointing
+ * there. (The plugins' editors are native JUCE and bundle no npm code.)
  *
  * AND THE BUILD FAILS on a bundled package that THIRD_PARTY_LICENSES.md does
  * not list, or that has no licence file to copy. A dependency added to an
  * editor has to be written down before it can ship.
  *
- * Used by every plugins/<name>/ui/vite.config.js:
+ * Used by the one build every Move web editor shares, web/kit/vite.editor.mjs:
  *
- *   import licenses from '../../../scripts/vite-licenses.mjs';
- *   plugins: [solid(), licenses()],
+ *   import licenses from '../../scripts/vite-licenses.mjs';
+ *   plugins: [solid(), licenses(), ...],
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';

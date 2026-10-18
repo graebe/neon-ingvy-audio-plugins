@@ -13,6 +13,7 @@ in return, only on the two crates `fmt` reads and writes numbers with.
 Everything here runs on an audio callback, so nothing here allocates.
 */
 
+pub mod axis;
 pub mod curve;
 pub mod ffi;
 pub mod fmt;

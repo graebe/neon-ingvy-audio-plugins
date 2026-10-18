@@ -6,7 +6,7 @@ The playhead: where in the pattern the host's transport says we are, tracked
 per block by a phase-locked loop and advanced per sample by the gain loop.
 */
 
-use crate::envelope::{Stage, StageLens};
+use crate::envelope::{Env, Stage, StageLens};
 use crate::{rates, Instance, Transport, MAX_STEPS};
 use ni_dsp::phase::Edge;
 
@@ -131,6 +131,43 @@ impl Instance {
             frac,
             step: step as usize,
         })
+    }
+}
+
+impl Instance {
+    /*
+     * THE PANIC: THE GATE SHUTS, AND THE STEP STRIKES AGAIN FROM SILENCE.
+     *
+     * A gate holds no note, but it does hold a gesture: an envelope part-way
+     * through a stage, a step's level latched for its gate. A panic lets go of
+     * both at once -- the envelope to Idle at no level -- and forgets which
+     * step was struck, as a jump does (`Edge::Jumped`), so the step under the
+     * playhead is struck again from silence with its own attack. The
+     * transport, the pattern, the sound, the glides and everything saved stay:
+     * a panic is not a reset of the patch, and a stopped gate, which is open
+     * and holds nothing, does not change at all.
+     */
+    pub fn panic(&mut self) {
+        if !self.advancing {
+            return;
+        }
+        self.env = Env::default();
+        self.step_level = 0.0;
+        self.last_step = None;
+    }
+
+    /// One MIDI message. The gate plays no notes, so the only messages it
+    /// acts on are the panic -- CC 120 (All Sound Off) and CC 123 (All Notes
+    /// Off), on any channel: the Move has no other way to say it. The bytes
+    /// are `wmidi`'s to decode, so a cut-short or running-status message is
+    /// no panic.
+    pub fn on_midi(&mut self, msg: &[u8]) {
+        use wmidi::{ControlFunction, MidiMessage};
+        if let Ok(MidiMessage::ControlChange(_, ControlFunction::ALL_SOUND_OFF | ControlFunction::ALL_NOTES_OFF, _)) =
+            MidiMessage::try_from(msg)
+        {
+            self.panic();
+        }
     }
 }
 

@@ -10,11 +10,11 @@ Four layers, and each one exists because the layer above it cannot do the job.
 Rust core        the DSP, on the shared ni-dsp and established crates
   ├── C ABI      extern "C", for the plugin
   └── Schwung    the audio_fx vtable (ni-schwung), for the Move
-C++ shell        JUCE 9 — the VST3 for macOS, Windows and Linux, and the host plumbing
+C++ shell        JUCE 9 — the VST3 (released for macOS; Linux and Windows later), and the host plumbing
 Native editor    JUCE Components, drawing the Ultraviolet design system
 ```
 
-Four decisions shaped these layers. Each is recorded with its context and
+Five decisions shaped these layers. Each is recorded with its context and
 what it costs:
 
 - [0001](../adr/0001-gpl-3.0-or-later.md): the licence is GPL-3.0-or-later
@@ -25,6 +25,8 @@ what it costs:
   replace hand-written code.
 - [0004](../adr/0004-move-web-editors.md): the Move modules get web editors,
   from the Solid kit ([Web editors on the Move](move-web-editors.md)).
+- [0005](../adr/0005-iir-filter-design.md): filters are TPT state-variable
+  sections designed in `ni-filter`, with matched cuts and shelves.
 
 ## The Rust core
 
@@ -67,13 +69,12 @@ configured by the crate's `cbindgen/*.toml`), into the build's
 generated header can still do is compile and mean something else to a caller,
 so the plain-C tests call through every one of them, and `tests/spectro_columns.c`
 exercises the analyzer's boundary specifically: argument order, the meaning of
-`bands`, and who owns the output buffer. The Trance Gate's headers have a caller
-outside this repository, the archived Max for Live external, so their last
-hand-written versions are fixtures (`tests/fixtures/tg-capi`) that
-`capi_compat_tg` and `capi_compat_tg_names` hold the generated ones to,
-declaration for declaration. Only C++ with no Rust behind it stays hand-written:
-`engines/shell/include`'s state header and denormal guard, and Schwung's own
-headers vendored for the Move-side tests.
+`bands`, and who owns the output buffer. Every C ABI is a private boundary
+between two parts of one build: nothing outside this repository compiles
+against it (the archived Max for Live external was the last such caller, and
+its promise is retired -- `compatibility.md`). Only C++ with no Rust behind it stays
+hand-written: the shell (`plugins/_shared`), and Schwung's own headers vendored
+for the Move-side tests.
 
 ## The JUCE shell
 
@@ -141,8 +142,10 @@ otherwise answer on its own:
   and call `writeState` and `readState`. A product that took over an earlier
   bundle reads and writes that bundle's chunk through `ni::nist` (`Nist.h`),
   one codec for every product's layout; its parameters are a table
-  (`ParamSpec.h`) built into `ni::Parameter`s that hold plain values exactly, so
-  a fixture loaded and saved again is the same bytes.
+  (`ParamSpec.h`), read from the engine's schema (`HostTable.h`, the iPlug2
+  build's host column as `ni_params::host` declares it) and built into
+  `ni::Parameter`s that hold plain values exactly, so a fixture loaded and
+  saved again is the same bytes.
 - **Dirty.** `nonParameterStateChanged()` tells the host that state it cannot
   see changed — an import, a pasted pattern — so the set is marked unsaved.
 
@@ -259,13 +262,27 @@ writes the load. The receiver's
 own C ABI serialises its message side as a floor beneath this, so a caller that
 gets it wrong waits its turn instead of deadlocking (`spectro_recv.h`).
 
-Every plugin's state chunk starts with `shell_state.h`'s versioned header. A
-chunk without it is an older build's and loads as that build wrote it. A chunk
-is read whole before any of it is applied, and one no build could have written
--- empty, a parameter that is not a number of its kind, a string running off
-the end -- is refused and changes nothing. The chunk is `ni::nist`
-(`plugins/_shared/juce/Nist.h`), and the processor tests save and reload it the
-way a host does.
+A plugin's state chunk is one of two codecs. The four products that took over
+an iPlug2 bundle (Trance Gate, Side-Chain, Spectrogram, Listen-In) keep its
+`NIst` chunk (`ni::nist`, `plugins/_shared/juce/Nist.h`), so a set saved by any
+earlier build loads; the others write the shell's own XML
+(`ni::Processor::writeState`), each parameter by its ID. Each product's chunk
+carries the product's own state version, raised when the meaning of what it
+saves changes: the `NIst` header's (`Layout::version`), which an older build
+reads past best-effort, as these products have always promised; or the XML's
+`state` attribute (`stateVersion()`), where a newer chunk is refused and an
+older one is brought up by `migrateState()`. A parameter the chunk does not
+name loads its default. Each XML product keeps the chunk it saved at every
+released version as a fixture (`tests/fixtures/<product>/v<N>.state`, through
+`tests/state_fixture.h`). Either way a chunk is read whole before any of it is
+applied, and one no build could have written
+-- empty, another product's, a parameter that is not a number of its kind, a
+string running off the end -- is refused and changes nothing. A refused chunk
+is not lost either: the processor keeps its bytes and hands them back
+unchanged from `getStateInformation`, until a chunk is read or the user edits
+(a parameter gesture, or `nonParameterStateChanged()`), so a set from a newer
+build opened here and saved keeps its settings; `stateUnread()` says so for an
+editor to show. The processor tests save and reload it the way a host does.
 
 `ni::Processor::processBlock` runs a product's block under
 `juce::ScopedNoDenormals`: flush-to-zero for the block, the engines included,
@@ -274,7 +291,8 @@ and the host's floating-point mode back on the way out.
 ## The editor
 
 Every editor is a native JUCE Component built from the Ultraviolet kit
-(`plugins/_shared/ui`), drawn to the published Ultraviolet 1.1.0 design system.
+(`plugins/_shared/ui`), drawn to the published Ultraviolet design system (`UvTokens.h` names
+the release it was generated from).
 An editor reads the processor through its model on the message thread and
 never touches the engine; its parameters are host parameters, and what is not a
 parameter — the Trance Gate's pattern, the Spectrogram's columns — travels

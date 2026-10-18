@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*!
-Filter design for every Neon Ingvy engine (docs/adr/0004-iir-filter-design.md):
+Filter design for every Neon Ingvy engine (docs/adr/0005-iir-filter-design.md):
 the classic analog families at any order up to eight, the equaliser's shapes,
 and one structure to run them all in.
 
@@ -51,7 +51,7 @@ mod elliptic;
 mod proto;
 
 pub use cascade::{Cascade, Section, State, MAX_SECTIONS};
-pub use design::{all_pass, bell, family, family_matched, high_shelf, low_shelf, tilt, Band, MAX_HZ_FRACTION, MIN_HZ};
+pub use design::{all_pass, bell, family, family_matched, form, high_shelf, low_shelf, tilt, Band, MAX_HZ_FRACTION, MIN_HZ};
 pub use proto::{Family, Prototype, MAX_ORDER};
 
 /// Complex numbers, as the response is given.

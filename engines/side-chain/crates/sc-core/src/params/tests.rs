@@ -479,18 +479,18 @@ fn devms_is_the_time_the_engine_has_processed() {
     };
     let mut p = crate::Instance::new(48000.0);
     assert_eq!(ui(&p).split(':').count(), 12, "eleven fields, and devms appended");
-    assert_eq!(ui(&p).split(':').last(), Some("0.000"));
+    assert_eq!(ui(&p).split(':').next_back(), Some("0.000"));
     let mut l = [0.0f32; 480];
     let mut r = [0.0f32; 480];
     let mut last = 0.0;
     for _ in 0..100 {
         p.process_f32_split(&mut l, &mut r, 480, None);
-        let now: f64 = ui(&p).split(':').last().unwrap().parse().unwrap();
+        let now: f64 = ui(&p).split(':').next_back().unwrap().parse().unwrap();
         assert!(now > last, "{now} after {last}");
         last = now;
     }
     assert_eq!(last, 1000.0);
     p.set_sample_rate(44100.0);
     p.process_f32_split(&mut l, &mut r, 441, None);
-    assert_eq!(ui(&p).split(':').last(), Some("1010.000"));
+    assert_eq!(ui(&p).split(':').next_back(), Some("1010.000"));
 }

@@ -26,6 +26,8 @@ bc-core = { path = "../bc-core" }
 shell-core = { path = "../../../shell/crates/shell-core", optional = true }
 # The C-string helpers every capi crate wraps its entry points in.
 ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# NiParamInfo and the table's C helpers, shared with every product.
+ni-params = { path = "../../../shared/crates/ni-params" }
 
 # bc_core.h and bc_shell.h, generated from src/ by build.rs.
 [build-dependencies]

@@ -48,9 +48,15 @@ HostClock readClock (juce::AudioPlayHead* head)
     return clock;
 }
 
-Processor::Processor (const BusesProperties& buses) : juce::AudioProcessor (buses) {}
+Processor::Processor (const BusesProperties& buses) : juce::AudioProcessor (buses)
+{
+    addListener (this);
+}
 
-Processor::~Processor() = default;
+Processor::~Processor()
+{
+    removeListener (this);
+}
 
 const juce::String Processor::getName() const
 {
@@ -195,15 +201,57 @@ void Processor::processBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     juce::AudioProcessor::processBlockBypassed (buffer, midi);
 }
 
+/*
+ * A STATE THAT COULD NOT BE READ IS SAVED BACK AS IT CAME. A host saves what
+ * getStateInformation returns over what the set held, so a chunk refused --
+ * a newer build's (readState refuses a newer state version), a damaged one
+ * -- would otherwise be replaced by this instance's defaults the first time
+ * the set is saved, and the user's settings gone. So the refused bytes are
+ * kept and handed back unchanged until a state is read or the user edits
+ * (stateUnread).
+ */
 void Processor::getStateInformation (juce::MemoryBlock& out)
 {
+    {
+        const juce::ScopedLock lock (unreadLock);
+        if (holdingUnread)
+        {
+            out = unread;
+            return;
+        }
+    }
     writeState (out);
 }
 
 void Processor::setStateInformation (const void* data, int size)
 {
-    if (data != nullptr && size > 0)
-        readState (data, (size_t) size);
+    if (data == nullptr || size <= 0)
+        return;
+    const bool read = readState (data, (size_t) size);
+    const juce::ScopedLock lock (unreadLock);
+    holdingUnread = ! read;
+    if (read)
+        unread.reset();
+    else
+        unread.replaceAll (data, (size_t) size);
+}
+
+bool Processor::stateUnread() const
+{
+    const juce::ScopedLock lock (unreadLock);
+    return holdingUnread;
+}
+
+void Processor::forgetUnread()
+{
+    const juce::ScopedLock lock (unreadLock);
+    holdingUnread = false;
+    unread.reset();
+}
+
+void Processor::audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int)
+{
+    forgetUnread();
 }
 
 juce::RangedAudioParameter* Processor::parameterWithId (const juce::String& id) const
@@ -220,6 +268,7 @@ void Processor::writeState (juce::MemoryBlock& out)
     juce::XmlElement root (stateTag);
     root.setAttribute ("product", NI_PRODUCT);
     root.setAttribute ("format", stateFormat);
+    root.setAttribute ("state", stateVersion());
     root.setAttribute ("version", NI_VERSION_STRING);
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
@@ -242,11 +291,24 @@ bool Processor::readState (const void* data, size_t size)
         || root->getIntAttribute ("format") > stateFormat)
         return false;
 
-    for (auto* e : root->getChildWithTagNameIterator ("param"))
-        if (auto* p = parameterWithId (e->getStringAttribute ("id")))
+    const int version = root->getIntAttribute ("state", 1);
+    if (version > stateVersion() || (version < stateVersion() && ! migrateState (*root, version)))
+        return false;
+
+    /* Every parameter takes the chunk's value, or its default when the chunk
+     * has none -- a parameter appended since -- so a set loads to the same
+     * sound whatever the instance held before. */
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
         {
-            const auto plain = (float) e->getDoubleAttribute ("value", p->convertFrom0to1 (p->getDefaultValue()));
-            p->setValueNotifyingHost (p->convertTo0to1 (plain));
+            float normalised = ranged->getDefaultValue();
+            for (auto* e : root->getChildWithTagNameIterator ("param"))
+                if (e->getStringAttribute ("id") == ranged->getParameterID())
+                {
+                    normalised = ranged->convertTo0to1 ((float) e->getDoubleAttribute ("value"));
+                    break;
+                }
+            ranged->setValueNotifyingHost (normalised);
         }
     readExtraState (*root);
     return true;
@@ -255,6 +317,9 @@ bool Processor::readState (const void* data, size_t size)
 void Processor::nonParameterStateChanged()
 {
     JUCE_ASSERT_MESSAGE_THREAD
+    /* The user changed what the instance holds: its own state is now the
+     * one to save. */
+    forgetUnread();
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 

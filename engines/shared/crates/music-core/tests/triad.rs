@@ -128,7 +128,7 @@ fn a_triad_and_a_chord_convert_both_ways() {
     let chord = Chord::from(c);
     assert_eq!(chord, Chord::major(Pitch::C));
     assert_eq!(Triad::try_from(chord), Ok(c));
-    assert_eq!(Triad::try_from(Chord::min7(Pitch::A)).is_err(), true);
+    assert!(Triad::try_from(Chord::min7(Pitch::A)).is_err());
     assert_eq!(
         Chord::from(Triad::minor(Pitch::D)).quality(),
         Some(ChordQuality::Minor)

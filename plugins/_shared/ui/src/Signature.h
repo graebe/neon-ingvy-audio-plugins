@@ -3,7 +3,7 @@
 
 /*
  * The publisher's signature: a 6px square lit in uv, then NEON INGVY -- the
- * Signature card of Ultraviolet 1.1.0, and the web kit's Signature.jsx.
+ * Signature card of Ultraviolet, and the web kit's Signature.jsx.
  *
  * THE CARD IS EXACT: "a 6px square lit in `uv` with `glow-led`, then NEON
  * INGVY in 10px mono, weight 500, tracked 0.2em, uppercase, `ink-muted`, 8px

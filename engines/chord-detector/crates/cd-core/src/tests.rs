@@ -352,7 +352,7 @@ fn the_table_is_in_index_order_with_unique_keys() {
         assert_eq!(*p as usize, i);
         assert_eq!(Param::from_i32(i as i32), Some(*p));
         assert_eq!(Param::from_key(p.info().key), Some(*p));
-        assert!((p.info().default) < p.choices());
+        assert!(p.default() < p.choices());
         for q in &Param::ALL[i + 1..] {
             assert_ne!(p.info().key, q.info().key);
         }
@@ -366,7 +366,7 @@ fn the_table_is_in_index_order_with_unique_keys() {
 fn choices_are_clamped_and_defaults_apply() {
     let mut d = Detector::new(48000.0);
     for p in Param::ALL {
-        assert_eq!(d.param(p), p.info().default);
+        assert_eq!(d.param(p), p.default());
     }
     d.set_param(Param::Mode, 99);
     assert_eq!(d.param(Param::Mode), 6);

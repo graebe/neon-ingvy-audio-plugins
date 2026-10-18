@@ -375,9 +375,20 @@ const runOf = (r, sha, product) => r.result === 'pass' && r.sha === sha &&
  */
 const clean = (r) => String(r.results?.gaps) === '0';
 
+/*
+ * A FULL RUN STANDS FOR EVERY PRODUCT ONLY AS A RELEASE BUILD. A product
+ * run's note may come from any build: the release workflow builds that one
+ * product again with the release preset before it ships it
+ * (release-plugins.yml). A full run's note releases every product at once,
+ * and the full tier is where the universal, optimised build is tested at
+ * all, so a full run of a dev build (`--build build-dev`) claims more than
+ * it proved. The build type is the run's CMake cache's (scripts/test.sh).
+ */
+const releaseBuild = (r) => r.tier !== 'full' || r.results?.build_type === 'Release';
+
 /* The note that lets <product> be released from <sha>, or null. */
 export const attestationFor = (records, sha, product) =>
-  records.find((r) => runOf(r, sha, product) && clean(r)) ?? null;
+  records.find((r) => runOf(r, sha, product) && clean(r) && releaseBuild(r)) ?? null;
 
 export function attest({ tier, products = [], expectSha, results = {}, cwd = ROOT,
                          rustc, host = hostname(), date = new Date() }) {
@@ -413,6 +424,13 @@ export function attested(tag, rev = 'HEAD', cwd = ROOT) {
       'capabilities exist, or waive each by name (`scripts/test.sh product ' + product + ' --waive <name>`) ' +
       `so the gap is on the record, then \`git push origin ${NOTES_REF}\` and re-run the workflow's ` +
       'failed jobs (docs/tech/ci-live.md).');
+  const dev = records.filter((r) => runOf(r, sha, product) && clean(r) && !releaseBuild(r));
+  if (!ok && dev.length)
+    throw new Error(`${sha.slice(0, 12)} passed ${dev.length} full run(s), none of a Release build: ` +
+      `${dev.map((r) => `on ${r.host}, build_type=${r.results?.build_type ?? 'not recorded'}`).join('; ')}. ` +
+      'Run `scripts/test.sh full` in its own build directory (build/, the release preset), or ' +
+      `\`scripts/test.sh product ${product}\`, then \`git push origin ${NOTES_REF}\` and re-run the ` +
+      "workflow's failed jobs (docs/tech/ci-live.md).");
   if (!ok)
     throw new Error(`${sha.slice(0, 12)} carries no passing test run for ${product} under ${NOTES_REF} ` +
       `(${records.length} note line(s) on it). Run \`scripts/test.sh product ${product}\` or ` +

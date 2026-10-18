@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * A level, read-only -- the Meter card of Ultraviolet 1.1.0, which Listen-In's
+ * A level, read-only -- the Meter card of Ultraviolet, which Listen-In's
  * local Meter.jsx became.
  *
  * A 12px (space-3) bg-200 bed on a line-100 hairline, square, filled from the

@@ -42,5 +42,5 @@ prototype with a single bilinear prewarp per filter; the bell, the shelves
 and the tilt are magnitude-matched to their analog prototypes up to Nyquist.
 The editor draws the engine's designs of the values the host holds, so the
 curve is the transfer function that plays. The decisions are in
-[ADR 0004](../../docs/adr/0004-iir-filter-design.md), the design in
+[ADR 0005](../../docs/adr/0005-iir-filter-design.md), the design in
 [the concept](../../docs/concepts/filter-designer.md).

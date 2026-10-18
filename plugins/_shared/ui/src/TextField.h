@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * A field for a name typed in: the TextField card of Ultraviolet 1.1.0, and the
+ * A field for a name typed in: the TextField card of Ultraviolet, and the
  * Listen-In's name field that it was drawn from.
  *
  * A 28px (control-h) bg-200 well on a line-200 hairline, `value` text in ink

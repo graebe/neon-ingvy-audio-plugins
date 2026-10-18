@@ -379,6 +379,9 @@ TEST_CASE ("a headerless chunk from the builds before the header opens")
     CHECK (std::memcmp (saved.data(), "NIst", 4) == 0);
 }
 
+/* What no build wrote is refused and changes nothing that plays -- and is
+ * not lost by a save either: the bytes go back as they came, until the user
+ * edits (ni::Processor::stateUnread). */
 TEST_CASE ("what no build wrote is refused, and changes nothing")
 {
     Instance a;
@@ -392,16 +395,25 @@ TEST_CASE ("what no build wrote is refused, and changes nothing")
         for (auto& x : noise)
             x = (std::uint8_t) rng();
         a.load (noise);
-        CHECK (a.save() == before);
+        CHECK (a.p.stateUnread());
+        CHECK (a.save() == noise);
     }
     auto cut = fixture ("labelled");
     cut.resize (cut.size() - 9);
     a.load (cut);
-    CHECK (a.save() == before);
+    CHECK (a.save() == cut);
+    /* An empty state is no state at all: it changes nothing, not even that. */
     a.load ({});
-    CHECK (a.save() == before);
+    CHECK (a.save() == cut);
     CHECK (a.bus() == 6);
     CHECK (a.p.label() == "kept");
+    /* The user edits: the instance's own state is the one saved. */
+    auto* p = a.p.getParameters()[0];
+    p->beginChangeGesture();
+    p->setValueNotifyingHost (p->getValue());
+    p->endChangeGesture();
+    CHECK_FALSE (a.p.stateUnread());
+    CHECK (a.save() == before);
 }
 
 TEST_CASE ("a name is kept as the plugin keeps it: no colon, no control character, cut on a character")

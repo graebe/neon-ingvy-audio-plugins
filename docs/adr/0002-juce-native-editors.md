@@ -44,10 +44,13 @@ each item above.
 
 - **JUCE 9 is the plugin shell**, under AGPLv3, and VST3 is the only format.
   AU and CLAP are dropped. The plugins build, test and release on macOS,
-  Windows and Linux.
+  Windows and Linux. (Amended 2026-10-16: releases are macOS only for now;
+  Linux and Windows build later, as `docs/tech/cross-build.md` says.)
 - **The editors are native JUCE Components.** They look and behave as the Solid
   editors do, and they are built to Ultraviolet 1.1.0. Their design tokens are
-  generated from `design/scheme/project/tokens.json`.
+  generated from `design/scheme/project/tokens.json`. (Amended 2026-10-16:
+  the editors follow the design system's current release, which the
+  generated `UvTokens.h` names -- 2.0.0 since 2026-10-13.)
 - **iPlug2, the WebView, Solid and the ui-kit go.** Solid and Vite stay the
   choice for browser apps, such as the documentation site.
 - **The Rust engines are reached through their C ABI**, as they are today. The

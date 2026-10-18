@@ -20,7 +20,9 @@ publish.workspace = true
 # ni-dsp) is an rlib for this reason.
 [lib]
 name = "spectro_capi"
-crate-type = ["staticlib"]
+# staticlib for the plugin to link; rlib so its own tests reach this surface
+# without a second copy of the Rust runtime.
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 spectro-core = { path = "../spectro-core" }
@@ -34,3 +36,7 @@ shell-capi = { path = "../../../shell/crates/shell-capi" }
 # spectro_core.h and spectro_recv.h, generated from src/ by build.rs.
 [build-dependencies]
 cbindgen = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

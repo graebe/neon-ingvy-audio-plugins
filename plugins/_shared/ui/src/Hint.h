@@ -3,7 +3,7 @@
 
 /*
  * The hint bar at the bottom edge of every window -- the Hint card of
- * Ultraviolet 1.1.0, and the web kit's Hint.jsx.
+ * Ultraviolet, and the web kit's Hint.jsx.
  *
  * ONE LINE OF `hint` TEXT UNDER A line-100 RULE. At rest it states the
  * window's conventions: each clause's verb in ink and the rest in ink-muted,
