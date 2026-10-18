@@ -132,7 +132,8 @@ next release; that release's entry lists them and this section goes.
   the other follows. **Interface: Default** switches back to the generic
   controls.
 - **Its playhead stays in time.** The ring and the lit pad step with the Move
-  however late the network delivers each update; they never step back.
+  however late the network delivers each update; they never step back, and
+  never skip ahead as the pattern starts over.
 - Live's Signal plot, copy and paste, and export and import are not in the
   Move's editor: the web manager sends a page no audio, and its frame has no
   clipboard and cannot save or open files.
@@ -151,7 +152,8 @@ next release; that release's entry lists them and this section goes.
   the duck shape to drag, the knobs, Source, Rate, Curve and the MIDI trigger,
   as in Live. Changes go both ways between the page and the Move.
 - **Its sweep stays in time.** The playhead runs through the shape with the
-  Move, evenly, however late the network delivers each update.
+  Move, evenly, however late the network delivers each update, and runs on
+  smoothly where each cycle starts over.
 - The Move's editor draws no audio behind the shape (the web manager sends a
   page no audio), and offers Cycle and MIDI, as the Move module does.
 

@@ -73,14 +73,23 @@ offset between the engine's clock and its own from the smallest delay it has
 seen; a readout can be late but never early. It then draws:
 
 - where the engine is *now*;
-- corrections eased over about 100 ms;
+- corrections eased over about 100 ms, including the clock's own: a readout
+  that teaches it a smaller delay;
 - a moving playhead that never steps back;
-- a real jump, such as a wrap or a restart, at once.
+- a real jump, such as a restart or a new trigger, at once.
+
+A position that wraps (the Trance Gate's step in its length, the Side-Chain's
+sweep in its cycle) passes its `period` to the clock. A readout from after
+the wrap is compared with what is drawn modulo that period, so the wrap is no
+jump; without it, every wrap snapped, and drew whatever correction was still
+being eased as one step.
 
 What remains is a steady lag the size of the smallest delay, which does not
 move. Each harness's `?jitter` delays every push by 20–400 ms. Each editor's
 `e2e/sync.spec.mjs` holds the drawn playhead to the engine through that, and
-fails without `devms`.
+fails without `devms`. The Side-Chain's spec times each step from when the
+line was drawn where it left from, because the clock re-renders on a timer
+and a machine starving that timer holds the line for a few frames.
 
 ## The engine in the browser
 

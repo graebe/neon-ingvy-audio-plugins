@@ -170,3 +170,31 @@ test('a jump of a beat or more is drawn at once; a pause holds; no picture, no b
   old.anchor({ ...base, t: null, beats: 2 }, 1000);
   assert.equal(old.at(1500), 3);
 });
+
+test('a position that wraps keeps easing across the wrap, not stepping', () => {
+  /* The sweep of a 500 ms cycle, a quarter of one a jump. The first readout
+   * was 100 ms late; the next, 20 ms late and just past the wrap, teaches the
+   * page it was drawing 80 ms behind -- an error to ease out, not to draw at
+   * once because the readout says 0.04 where the page drew 0.88. */
+  const run = (period) => {
+    const ph = createPlayhead({ snapBeats: 0.25 });
+    const base = { perBeatMs: 500, running: true, paused: false, blocked: false, waitAt: null, period };
+    ph.anchor({ ...base, t: 0, beats: 0 }, 100);
+    let last = ph.at(100);
+    let worst = 0;
+    for (let page = 100; page <= 1100; page += 1000 / 60) {
+      if (page >= 540 && page - 1000 / 60 < 540) ph.anchor({ ...base, t: 520, beats: 0.04 }, 540);
+      const b = ph.at(page);
+      worst = Math.max(worst, (((b - last) % 1) + 1) % 1);
+      last = b;
+    }
+    return { worst, end: ((last % 1) + 1) % 1 };
+  };
+  const frame = (1000 / 60) / 500;
+  const wrapped = run(1);
+  assert.ok(wrapped.worst < frame + 0.03, `the worst frame moved ${wrapped.worst.toFixed(3)} of a cycle`);
+  /* The truth at page 1100 (dev 1080): 0.04 + 560 / 500 = 1.16. */
+  assert.ok(Math.abs(wrapped.end - 0.16) < 0.005, `and is in time by then: ${wrapped.end}`);
+  const unaware = run(0);
+  assert.ok(unaware.worst > frame + 0.15, `without the period the wrap drew the error at once: ${unaware.worst.toFixed(3)}`);
+});
