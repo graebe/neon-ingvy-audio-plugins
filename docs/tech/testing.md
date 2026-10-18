@@ -67,7 +67,10 @@ names `__DATE__` in a comment, which made ccache fold the day into the key of
 every JUCE compile, so from the second day on each hit had to run the
 preprocessor over the whole module first (73% of hits were such). Nothing of
 ours reads the compile time, and the quick tier's `time_macros` test keeps it
-so.
+so. Measured on a third new build directory after the change (its own
+`CCACHE_STATSLOG`, 3093 compiles of `ni_tests`): 59% of the hits direct,
+against 27% before; the rest still met manifest entries written before the
+change, which go as the cache turns over.
 
 **The Rust side needs nothing more.** Within a checkout, ctest's cargo suites
 and a `cargo test` typed at the root already share the workspace's own
