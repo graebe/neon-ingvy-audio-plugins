@@ -6,7 +6,7 @@
 # tier before you call it done, and one product's run for its release.
 # docs/tech/testing.md has the whole picture.
 #
-#   scripts/test.sh quick [--build <dir>]
+#   scripts/test.sh quick [--product <product>] [--build <dir>]
 #       Builds the test programs (cmake --target ni_tests: no plugin bundle)
 #       and runs `ctest -L quick` -- every Rust crate's tests, the C tests
 #       against the engines' ABIs and their oracles, the C++ unit tests of the
@@ -15,7 +15,10 @@
 #       the design paths, the token guards, the hint lengths, the timing log).
 #       A new <dir> is configured with the dev preset: this machine's
 #       architecture, RelWithDebInfo, no link-time optimisation. build-dev/ by
-#       default.
+#       default. With --product, the loop while working on one product: only
+#       its test programs and the shared ones (ni_tests_<product>,
+#       ni_tests_shared), and only its and the shared quick tests -- the
+#       quick tier's share of `product <product>`.
 #
 #   scripts/test.sh full [--build <dir>] [--bundles <dir>] [--no-coverage]
 #       Everything: the full build and the documentation site, `ctest -L
@@ -110,6 +113,7 @@ while [ $# -gt 0 ]; do
         --build) [ $# -ge 2 ] || usage; mkdir -p "$2"; BUILD="$(cd "$2" && pwd)"; shift 2 ;;
         --bundles) [ $# -ge 2 ] && [ "$tier" != product ] || usage; bundles="$(cd "$2" && pwd)"; shift 2 ;;
         --no-coverage) [ "$tier" = full ] || usage; coverage=0; shift ;;
+        --product) [ $# -ge 2 ] && [ "$tier" = quick ] || usage; name=$2; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -170,6 +174,17 @@ summary() {
 }
 
 quick() {
+    if [ -n "$name" ]; then
+        # Repeated -L must all match (CMake 3.29 on): quick, and this product's
+        # or shared.
+        timed "build the $name and shared test programs" --build "$BUILD" -- \
+            quietly "build-tests-$name" cmake --build "$BUILD" \
+                --target "ni_tests_$name" ni_tests_shared -j"$jobs"
+        timed "ctest quick $name and shared" -- ctest_report -L quick \
+            -L "^product:($name|shared)\$" -j"$jobs" --output-on-failure
+        summary "quick tier, $name and shared"
+        return
+    fi
     timed "build test programs" --build "$BUILD" -- \
         quietly build-tests cmake --build "$BUILD" --target ni_tests -j"$jobs"
     timed "ctest quick" -- ctest_report -L quick -j"$jobs" --output-on-failure
