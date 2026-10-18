@@ -23,8 +23,12 @@ so the phase follows from the magnitude, and the plugin adds no latency.
 A filter with a high Q **rings**: once the input stops, its output decays
 at its centre frequency. A Q 40 notch at 20 Hz takes about 4.4 s to fall
 60 dB. The plugin reports this as its **tail**: how long the filters ring
-after the input stops, until they are 60 dB down, at most 30 s. A host
-that renders with the tail does not cut that ringing off.
+after the input stops, until they are 60 dB down, at most 30 s, so a host
+that renders with the tail does not cut that ringing off. The host asks for
+the tail when it chooses; the plugin cannot tell it that the tail changed
+(the plugin framework, JUCE, only announces a change of latency, and this
+plugin has none). If you make a filter ring longer just before freezing or
+exporting, listen to the end of the render.
 
 ### Adding a filter
 
@@ -111,6 +115,13 @@ narrowest transition. All of this can be done during playback:
   until it settled. A narrow filter low in the spectrum rings for a while, so
   that can take up to half a second: it then comes in at its level, instead
   of swelling up from silence.
+
+Automation reaches the filters once per audio buffer: the plugin framework
+(JUCE) hands the plugin the last automation value of each buffer, not the
+points inside it. The filters then glide to it, so a sweep is smooth, but
+its timing is as fine as Live's buffer size (Settings → Audio): about
+11 ms at 512 samples and 48 kHz. Automation renders at different buffer
+sizes can differ slightly; without automation they are identical.
 
 ### Q on a high-pass or low-pass
 
