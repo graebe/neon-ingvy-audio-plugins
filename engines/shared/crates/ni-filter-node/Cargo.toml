@@ -15,8 +15,10 @@ crate-type = ["rlib"]
 [dependencies]
 # The filters: the families, the equaliser's shapes, the sections they run in.
 ni-filter = { path = "../ni-filter" }
-# The house's 5 ms glide, at the control rate.
+# The house's 5 ms glide, at the control rate, and C-compatible text.
 ni-dsp = { path = "../ni-dsp" }
+# What a parameter is: the words module prints and reads a Kind.
+ni-params = { path = "../ni-params" }
 
 [dev-dependencies]
 # The no-allocation guard tests/no_alloc.rs installs.

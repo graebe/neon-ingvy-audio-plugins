@@ -1,0 +1,46 @@
+[package]
+name = "sf-capi"
+version = "2026.10.18+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The sf_* C ABI over the single-filter engine"
+publish.workspace = true
+
+[lib]
+name = "sf_capi"
+# staticlib for the plugins to link; rlib so sf-move can carry this surface
+# too without a second copy of the Rust runtime.
+crate-type = ["staticlib", "rlib"]
+
+# THE PLUGIN'S HALF OF THIS CRATE, ON BY DEFAULT: the shell (sf_shell_*, on
+# shell-core's bridge) and the picture the editor draws (the curve and the
+# analyzer's spectrum). sf-move turns it off: the Move module has one thread,
+# no editor and no screen to draw a curve on.
+[features]
+default = ["shell"]
+shell = ["dep:shell-core", "dep:ni-analyzer", "ni-analyzer/spectrum"]
+
+[dependencies]
+sf-core = { path = "../sf-core" }
+# The command queue and the published snapshot between the plugin's threads.
+shell-core = { path = "../../../shell/crates/shell-core", optional = true }
+# The C-string helpers every capi crate wraps its entry points in.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# The parameter table's C struct and the helpers its entry points are made of.
+ni-params = { path = "../../../shared/crates/ni-params" }
+# The curve: the filter's design, evaluated where it is drawn.
+ni-filter = { path = "../../../shared/crates/ni-filter" }
+ni-filter-node = { path = "../../../shared/crates/ni-filter-node" }
+# The analyzer's spectrum, on the editor's thread (the shell's).
+ni-analyzer = { path = "../../../shared/crates/ni-analyzer", optional = true }
+
+# sf_core.h and sf_shell.h, generated from src/ by build.rs.
+[build-dependencies]
+cbindgen = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+# Arbitrary bytes through the text door (sf_param_parse).
+proptest = { workspace = true, features = ["std"] }

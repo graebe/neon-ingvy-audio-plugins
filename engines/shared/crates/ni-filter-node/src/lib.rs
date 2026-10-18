@@ -22,7 +22,8 @@ two instances, and a tick's design work is budgeted. A node reads a
 [`Target`], never an engine's parameter table: each engine spells its own
 parameters and hands every node what they ask for.
 
-[`picture`] holds the two conversions every editor's curve is made of.
+[`picture`] holds the two conversions every editor's curve is made of, and
+[`words`] the words a filter's values are printed and read in.
 
 PRODUCT-FREE: this crate names no product, and products depend on it, never
 the other way round (the workspace's rule).
@@ -34,6 +35,7 @@ THE AUDIO THREAD ALLOCATES NOTHING here: a node is plain data
 pub mod design;
 pub mod node;
 pub mod picture;
+pub mod words;
 
 pub use design::{Channel, Globals, Settings, Shape, Target};
 pub use node::{control_in_turn, Budget, Node, SUB};

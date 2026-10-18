@@ -477,6 +477,7 @@ dependencies = [
  "assert_no_alloc",
  "ni-dsp",
  "ni-filter",
+ "ni-params",
 ]
 
 [[package]]
@@ -840,6 +841,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "sf-capi"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "cbindgen",
+ "ni-analyzer",
+ "ni-dsp",
+ "ni-filter",
+ "ni-filter-node",
+ "ni-params",
+ "proptest",
+ "sf-core",
+ "shell-core",
+]
+
+[[package]]
+name = "sf-core"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "ni-analyzer",
+ "ni-dsp",
+ "ni-filter",
+ "ni-filter-node",
+ "ni-params",
+ "proptest",
+ "wmidi",
 ]
 
 [[package]]

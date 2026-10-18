@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# sf_core.h, from src/engine.rs (build.rs, through
+# engines/shared/cbindgen/capi_header.rs).
+language = "C"
+header = """// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Torben Gräber
+//
+// The single-filter engine, as C: each product's parameter table and one
+// engine instance, `sf_*`. GENERATED at build time by cbindgen from
+// engines/single-filter/crates/sf-capi/src/engine.rs -- edit that, never
+// this."""
+include_guard = "SF_CORE_H"
+cpp_compat = true
+documentation = true
+documentation_style = "c99"
+usize_is_size_t = true
+sys_includes = ["stdbool.h", "stddef.h", "stdint.h"]
+no_includes = true
+
+[export]
+include = ["NiParamInfo", "NiParamKind"]
+exclude = ["ShortText"]
+
+[enum]
+prefix_with_name = true
