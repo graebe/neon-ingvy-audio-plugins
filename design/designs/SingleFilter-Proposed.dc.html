@@ -92,7 +92,7 @@ body{margin:0;background:#060410}
 
   <!-- THE HINT (0, 528, 664 x 44): the well's conventions, the signature. -->
   <div class="ph-hint" style="position: absolute; left: 0; top: 528px; width: 664px; height: 44px; box-sizing: border-box; padding: 0 32px 16px; align-items: center;">
-    <span class="tips"><b>drag</b> the dot: {{hintAxes}}<span class="sep">—</span><b>shift</b> for fine<span class="sep">—</span><b>double-click</b> resets</span>
+    <span class="tips"><b>drag</b> {{hintAxes}}<span class="sep">—</span><b>shift</b> for fine<span class="sep">—</span><b>double-click</b> resets</span>
     <span class="ph-sig"><span class="mark"></span>Neon Ingvy</span>
   </div>
 </div>
@@ -539,7 +539,7 @@ class Component extends DCLogic {
       hasSwitch: !!p.sw,
       switch: { label: p.sw || '', cls: 'ph-toggle' + (s[swKey] ? ' on' : ''), click: () => this.set({ [swKey]: !s[swKey] }) },
       bypass: { cls: 'ph-toggle' + (s.bypass ? ' on' : ''), click: () => this.set({ bypass: !s.bypass }) },
-      hintAxes: isGain ? 'freq across, gain up and down, alt for Q' : 'freq across, Q up and down',
+      hintAxes: isGain ? 'the dot, alt for Q' : 'the dot: freq and Q',
       knobMove: (e) => {
         const k = self._knob;
         if (!k) return;
