@@ -63,6 +63,24 @@ if (NOT NI_CCACHE)
 endif()
 
 set(_ni_ccache ${NI_CCACHE})
+# ROOM FOR EVERY WORKTREE'S OBJECTS. ccache's default 5 GiB held about one
+# universal Release tree and one dev tree; with several worktrees building it
+# was full and evicting (2026-10-18: 3846 cleanups, 1 lookup in 10 a miss),
+# so a rebuild after a branch switch compiled again what it had just thrown
+# out. 25 GiB keeps them all; ccache trims to it on its own.
+list(APPEND _ni_ccache max_size=25G)
+# DIRECT HITS ON EVERY DAY, NOT ONLY THE DAY OF THE BUILD. ccache treats a
+# header that names __DATE__ or __TIME__ as changing with the clock, and so
+# hashes today's date into the key of every compile that includes it. JUCE's
+# juce_Time.h names __DATE__ -- in a comment -- and every JUCE compile
+# includes it: from the second day on, each lookup missed the direct cache
+# and ran the preprocessor over the whole module to find its preprocessed
+# hit (2026-10-18: 73% of hits were preprocessed ones; the log says "Found
+# __DATE__ in juce_Time.h"). time_macros tells ccache not to. The one file
+# that really uses them, juce_core_CompilationTime.cpp, stamps a date that
+# only Time::getCompilationDate() reads, which nothing here calls -- so a
+# cached stamp is never seen.
+list(APPEND _ni_ccache sloppiness=time_macros)
 if (NOT VST_COVERAGE)
     list(APPEND _ni_ccache base_dir=${CMAKE_SOURCE_DIR})
     if (NOT MSVC)

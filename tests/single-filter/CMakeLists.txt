@@ -23,10 +23,9 @@
 set(SF_ENGINE ${CMAKE_SOURCE_DIR}/engines/single-filter)
 set(NI_SF ${CMAKE_SOURCE_DIR}/plugins/_shared/single-filter)
 
-add_test(NAME sf_core_rs
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p sf-core -p sf-capi)
-# The Move's module crate and the nine that export it, as they ship.
+ni_cargo_test(sf_core_rs sf-core sf-capi)
+# The Move's module crate and the nine that export it ALONE, as they ship
+# (cmake/NiCargoTest.cmake: a Move crate keeps its own `cargo test`).
 add_test(NAME sf_move_rs
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path ${CMAKE_SOURCE_DIR}/Cargo.toml -p sf-move
                  -p sf-move-high-pass -p sf-move-low-pass -p sf-move-band-pass -p sf-move-notch -p sf-move-bell

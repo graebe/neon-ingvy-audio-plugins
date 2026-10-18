@@ -7,10 +7,12 @@ slug: testing
 Two tiers, one entry point. The **quick** tier is the loop you run while
 working; the **full** tier is the verification before you call something done.
 A **product run** is one product's share of the full tier: what its release
-builds and tests.
+builds and tests. `quick --product PRODUCT` is one product's share of the
+quick tier: its own test programs and the shared ones, its own quick tests
+and the shared ones -- the loop while working on that product alone.
 
 ```sh
-scripts/test.sh quick [--build DIR]                                  # npm run test:quick
+scripts/test.sh quick [--product PRODUCT] [--build DIR]              # npm run test:quick
 scripts/test.sh full [--build DIR] [--bundles DIR] [--no-coverage]   # npm run test:full
 scripts/test.sh product PRODUCT [--build DIR]                        # npm run test:product -- PRODUCT
 ```
@@ -56,8 +58,19 @@ directory a `-g` build records is the same in every one. A debugger then finds
 the sources with `settings set target.source-map . <build dir>` (lldb). The
 coverage build keeps its absolute paths, because llvm-cov reads its sources
 back through them, and hits only in its own directory. `ccache -s` shows what
-the cache did; its default size, 5 GiB, holds the dev and release builds of a
-checkout several times over (both together take about 0.6 GiB).
+the cache did. Its size is 25 GiB, set on ccache's command line: the default
+5 GiB held one checkout's builds several times over (both together take about
+0.6 GiB), but with half a dozen worktrees building it was full and evicting
+(2026-10-18: 3846 cleanups, one lookup in ten a miss). And ccache ignores
+`__DATE__` and `__TIME__` (`sloppiness=time_macros`): JUCE's `juce_Time.h`
+names `__DATE__` in a comment, which made ccache fold the day into the key of
+every JUCE compile, so from the second day on each hit had to run the
+preprocessor over the whole module first (73% of hits were such). Nothing of
+ours reads the compile time, and the quick tier's `time_macros` test keeps it
+so. Measured on a third new build directory after the change (its own
+`CCACHE_STATSLOG`, 3093 compiles of `ni_tests`): 59% of the hits direct,
+against 27% before; the rest still met manifest entries written before the
+change, which go as the cache turns over.
 
 **The Rust side needs nothing more.** Within a checkout, ctest's cargo suites
 and a `cargo test` typed at the root already share the workspace's own
@@ -67,7 +80,10 @@ engines. Measured, a shared cache would buy little: sccache 0.18 took a fresh
 build from 17 s to 10 s, because the workspace's own crates compile
 incrementally and staticlibs, proc-macros and build scripts are not cached —
 not worth a resident server whose path settings are per user rather than per
-checkout. A shared `CARGO_TARGET_DIR` across checkouts would rebuild each
+checkout. Measured again 2026-10-18 with sccache 0.18 on four fresh target
+directories of `cargo test --workspace --no-run`: 0.5% of its lookups hit
+(the key holds each target directory's absolute paths), 68 s and 108 s with
+it against 85 s and 81 s without -- so it stays out. A shared `CARGO_TARGET_DIR` across checkouts would rebuild each
 checkout's own crates anyway and make every checkout's cargo runs wait on one
 lock.
 
@@ -110,6 +126,24 @@ case of a new worktree, or a build directory wiped: a checkout elsewhere on
 disk hit 97.5% of the same compiles. The cache held 0.6 GiB after all of
 this, of its default 5 GiB.
 
+**The Rust suites are built once** (`cmake/NiCargoTest.cmake`). Each
+`cargo test -p ...` used to be a build of its own, because cargo unifies
+features over the packages it is given: after a full workspace build, the
+Bit-Crusher's selection still compiled 24 crates, the Filter Designer's 20.
+Now `rust_tests_build` builds the workspace's tests once and each suite runs
+its packages' tests from it with cargo-nextest, four at a time
+(`NI_NEXTEST_THREADS`, which ctest counts as the suite's processors). The
+audio bus's tests run one at a time (`.config/nextest.toml`): their slots are
+distinct within a test binary only. Measured 2026-10-18, the same machine with
+other agents building beside it (load 34-90), the quick tier's 17 Rust tests:
+
+| | before | after |
+|---|---|---|
+| warm, nothing changed (two runs each) | 64 s, 50 s | 44 s, 33 s |
+| after touching `ni-dsp` (every product depends on it)¹ | 113 s | 76 s |
+
+¹ measured before the four-at-a-time budget, with nextest at a test per core.
+
 **One product builds without the others** (`cmake/NiRust.cmake`): in a `dev`
 build an engine waits for its own cargo run and its own crate's headers, and
 for another crate's only where its C++ includes them (`USES`: the shell's
@@ -134,7 +168,11 @@ its `USES`: a header waited for by no edge would be missing there.
 `cmake --build build-dev --target ni_tests` builds the test programs and the
 engine archives they link, and no plugin bundle; then `ctest -L quick` runs:
 
-- every Rust crate's tests (`cargo test`, crate by crate) — among them the
+- every Rust crate's tests, built once for the whole workspace
+  (`rust_tests_build`) and run product by product with
+  [cargo-nextest](https://nexte.st) (`brew install cargo-nextest`;
+  `cmake/NiCargoTest.cmake` says why), the doctests once (`rust_doctests`) —
+  among them the
   no-allocation checks, the two-thread stress runs and the property tests,
   whose seed is fixed so the tier's verdict never changes without a commit;
   music-core's twice, with `std` and without (`music_core_rs`,
