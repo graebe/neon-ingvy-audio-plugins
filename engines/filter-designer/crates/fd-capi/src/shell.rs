@@ -48,23 +48,21 @@ it plays (they do not commute).
 
 THE ANALYZER: the input's and the output's spectrum in the lane drawn -- the
 left, the right, the mid or the side; a stereo view's is the mid, the mono
-sum -- through a Hann window, as dB per band of the picture's frequencies --
-the loudest bin inside a band, or the spectrum between two bins where a band
-holds none. A band rises at once and falls over 300 ms, so the picture reads
-as a level rather than a flicker. A read in another lane than the last tells
-the engine (`Command::Lane`), whose rings start again from empty, and the
-bands kept here start again from the floor.
+sum -- as ni_analyzer::Analyzer works it out: dB per band of the picture's
+frequencies, rising at once and falling over 300 ms. A read in another lane
+than the last tells the engine (`Command::Lane`), whose rings start again
+from empty, and the bands start again from the floor.
 */
 
 use crate::{FdCore, FD_NODES};
 use fd_core::design::{channel_of, design, edges, globals_of, handle, is_heard, settings_of, Channel, Globals, Settings, Shape};
 use fd_core::{isolator, Lane, Param, PARAM_COUNT, RING};
+use ni_analyzer::{Analyzer, FLOOR_DB};
 use ni_filter::Complex64;
-use realfft::num_complex::Complex32;
-use realfft::{RealFftPlanner, RealToComplex};
+use ni_filter_node::picture::{angle, decibels};
 use ni_dsp::ffi::drop_box;
 use shell_core::{capi, Bridge, Model};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 /// How many frequencies the picture has.
 pub const FD_POINTS: usize = 512;
@@ -89,11 +87,6 @@ fn analyzed(lane: u32) -> Lane {
         _ => Lane::Mid,
     }
 }
-
-/// How a band of the analyzer falls, in seconds.
-const RELEASE_S: f64 = 0.3;
-/// The analyzer's floor, in dBFS.
-const FLOOR_DB: f32 = -150.0;
 
 /// What the editor draws, in dB at each of `hz`.
 #[repr(C)]
@@ -242,105 +235,17 @@ struct Curve {
     edges: Option<(f64, f64)>,
 }
 
-/// The editor thread's half: the analyzer's transform and what it keeps,
-/// and every node's last curve.
+/// The editor thread's half: the analyzer, and every node's last curve.
 struct Reader {
     hz: [f64; FD_POINTS],
-    fft: Arc<dyn RealToComplex<f32>>,
-    window: Vec<f32>,
-    norm: f32,
-    input: Vec<f32>,
-    spectrum: Vec<Complex32>,
-    scratch: Vec<Complex32>,
-    bins: Vec<f32>,
-    pre_ring: Vec<f32>,
-    post_ring: Vec<f32>,
-    pre: [f32; FD_POINTS],
-    post: [f32; FD_POINTS],
-    last_serial: Option<u32>,
-    /// The lane last asked of the engine: the one the bands above are of.
-    asked_lane: Option<Lane>,
+    analyzer: Analyzer<FD_POINTS>,
     /// FD_NODES of them, on the heap: each holds a complex curve.
     curves: Vec<Option<Curve>>,
 }
 
 impl Reader {
     fn new() -> Reader {
-        let fft = RealFftPlanner::<f32>::new().plan_fft_forward(RING);
-        /* Periodic Hann: a window's sum, the level a full-scale sine reads. */
-        let window: Vec<f32> = (0..RING)
-            .map(|i| (0.5 - 0.5 * (2.0 * core::f64::consts::PI * i as f64 / RING as f64).cos()) as f32)
-            .collect();
-        let sum: f32 = window.iter().sum();
-        Reader {
-            hz: frequencies(),
-            input: fft.make_input_vec(),
-            spectrum: fft.make_output_vec(),
-            scratch: fft.make_scratch_vec(),
-            fft,
-            window,
-            norm: 2.0 / sum,
-            bins: vec![FLOOR_DB; RING / 2 + 1],
-            pre_ring: vec![0.0; RING],
-            post_ring: vec![0.0; RING],
-            pre: [FLOOR_DB; FD_POINTS],
-            post: [FLOOR_DB; FD_POINTS],
-            last_serial: None,
-            asked_lane: None,
-            curves: vec![None; FD_NODES],
-        }
-    }
-
-    /// `ring`'s spectrum, as dBFS per bin, into `bins`.
-    fn spectrum_of(&mut self, post: bool) {
-        let ring = if post { &self.post_ring } else { &self.pre_ring };
-        for ((x, s), w) in self.input.iter_mut().zip(ring.iter()).zip(self.window.iter()) {
-            *x = s * w;
-        }
-        if self.fft.process_with_scratch(&mut self.input, &mut self.spectrum, &mut self.scratch).is_err() {
-            return;
-        }
-        for (b, c) in self.bins.iter_mut().zip(self.spectrum.iter()) {
-            *b = 20.0 * (c.norm() * self.norm).max(1e-9).log10();
-        }
-    }
-
-    /// The bins, banded at the picture's frequencies, at the rate `fs`.
-    fn banded(&self, fs: f64, out: &mut [f32; FD_POINTS]) {
-        let df = fs / RING as f64;
-        let last = self.bins.len() - 1;
-        for (i, o) in out.iter_mut().enumerate() {
-            let hz = self.hz[i];
-            if hz >= 0.5 * fs {
-                *o = FLOOR_DB;
-                continue;
-            }
-            let lo = if i == 0 { hz } else { (self.hz[i - 1] * hz).sqrt() };
-            let hi = if i + 1 == FD_POINTS { hz } else { (self.hz[i + 1] * hz).sqrt() };
-            let (k0, k1) = ((lo / df).ceil() as usize, ((hi / df).floor() as usize).min(last));
-            *o = if k1 >= k0 && k0 <= last {
-                self.bins[k0..=k1].iter().copied().fold(FLOOR_DB, f32::max)
-            } else {
-                let k = hz / df;
-                let (a, t) = ((k.floor() as usize).min(last), (k - k.floor()) as f32);
-                let b = (a + 1).min(last);
-                self.bins[a] + t * (self.bins[b] - self.bins[a])
-            };
-        }
-    }
-
-    /// A new frame's analyzer: each band up at once, down over RELEASE_S.
-    fn analyse(&mut self, fs: f64, elapsed_s: f64) {
-        let fall = (1.0 - (-elapsed_s / RELEASE_S).exp()) as f32;
-        let mut fresh = [FLOOR_DB; FD_POINTS];
-        for post in [false, true] {
-            self.spectrum_of(post);
-            self.banded(fs, &mut fresh);
-            let kept = if post { &mut self.post } else { &mut self.pre };
-            for (k, f) in kept.iter_mut().zip(fresh.iter()) {
-                *k = if *f > *k { *f } else { *k + (*f - *k) * fall };
-            }
-        }
+        Reader { hz: frequencies(), analyzer: Analyzer::new(frequencies()), curves: vec![None; FD_NODES] }
     }
 
     /// Node `slot`'s curve, worked out again only when its settings moved.
@@ -369,16 +274,6 @@ impl Reader {
             Curve { from, h, db, clamped, handle: at, edges: edges(&s) }
         })
     }
-}
-
-/// `hz` as radians a sample at `fs`, held a hair under Nyquist.
-fn angle(hz: f64, fs: f64) -> f64 {
-    2.0 * core::f64::consts::PI * hz.min(0.4999 * fs) / fs
-}
-
-/// A transfer's magnitude in dB, floored at -300 dB.
-fn decibels(h: Complex64) -> f32 {
-    (20.0 * h.norm().max(1e-15).log10()) as f32
 }
 
 /// A 2×2 transfer on the (left, right) pair.
@@ -454,8 +349,8 @@ fn draw(reader: &mut Reader, values: &[f64], lane: u32, fs: f64, out: &mut FdPic
         }
         out.total_db[i] = output + decibels(through(&t, lane));
     }
-    out.pre_db = reader.pre;
-    out.post_db = reader.post;
+    out.pre_db = *reader.analyzer.pre();
+    out.post_db = *reader.analyzer.post();
 }
 
 /* -------------------------------------------------------- the handle -- */
@@ -562,27 +457,17 @@ pub unsafe extern "C" fn fd_shell_read(shell: *const FdShell, values: *const f64
     /* The analyzer follows the lane drawn: a new one is asked of the engine,
      * the bands start again from the floor, and only frames of that lane are
      * read into them. */
-    let wanted = analyzed(lane);
-    if reader.asked_lane != Some(wanted) {
-        shell.bridge.post(Command::Lane(wanted));
-        reader.asked_lane = Some(wanted);
-        reader.pre = [FLOOR_DB; FD_POINTS];
-        reader.post = [FLOOR_DB; FD_POINTS];
+    if reader.analyzer.ask(analyzed(lane)) {
+        shell.bridge.post(Command::Lane(analyzed(lane)));
     }
     let (serial, fs, watching, fresh) = shell.bridge.read(|r| {
         let f = r.frame;
-        let fresh = f.watching && f.lane == wanted && reader.last_serial != Some(f.serial);
-        if fresh {
-            reader.pre_ring.copy_from_slice(&f.pre);
-            reader.post_ring.copy_from_slice(&f.post);
-        }
+        let fresh = reader.analyzer.offer(f.serial, f.watching, f.lane, &f.pre, &f.post);
         (f.serial, f.sample_rate, f.watching, fresh)
     });
     let fs = if fs > 0.0 { fs } else { fd_core::DEFAULT_SAMPLE_RATE };
     if fresh {
-        let elapsed = reader.last_serial.map_or(1.0, |s| f64::from(serial.wrapping_sub(s)) / fs);
-        reader.analyse(fs, elapsed);
-        reader.last_serial = Some(serial);
+        reader.analyzer.analyse(serial, fs);
     }
     out.serial = serial;
     out.analyzer = watching;

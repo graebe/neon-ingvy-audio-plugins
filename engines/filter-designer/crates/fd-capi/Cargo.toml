@@ -19,7 +19,7 @@ crate-type = ["staticlib", "rlib"]
 # editor and no screen to draw a curve on.
 [features]
 default = ["shell"]
-shell = ["dep:shell-core", "dep:realfft"]
+shell = ["dep:shell-core", "dep:ni-analyzer", "ni-analyzer/spectrum"]
 
 [dependencies]
 fd-core = { path = "../fd-core" }
@@ -31,9 +31,10 @@ ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 ni-params = { path = "../../../shared/crates/ni-params" }
 # The curves: every node's design, evaluated where it runs.
 ni-filter = { path = "../../../shared/crates/ni-filter" }
-# The analyzer's transform, on the editor's thread, with the SIMD paths
-# spectro-core takes.
-realfft = { workspace = true, optional = true, features = ["avx", "sse", "neon"] }
+# The analyzer's spectrum, on the editor's thread (the shell's).
+ni-analyzer = { path = "../../../shared/crates/ni-analyzer", optional = true }
+# The picture's conversions, shared with every equaliser's curve.
+ni-filter-node = { path = "../../../shared/crates/ni-filter-node" }
 
 # fd_core.h and fd_shell.h, generated from src/ by build.rs.
 [build-dependencies]

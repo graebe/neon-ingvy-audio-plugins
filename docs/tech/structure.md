@@ -11,7 +11,8 @@ whole checkout.
 
 ```
 engines/<product>/crates     the core, and its wrappers
-engines/shared/crates        ni-dsp, ni-schwung, ni-params, ni-filter, music-core — shared, product-free
+engines/shared/crates        ni-dsp, ni-schwung, ni-params, ni-filter, ni-filter-node, ni-analyzer,
+                             music-core — shared, product-free
 plugins/<product>/           the VST3 on the JUCE shell
 plugins/<product>/editor/    the product's native editor, on the kit
 plugins/_shared/juce/        ni::Processor, ni::PluginEditor, the state codec
@@ -55,7 +56,11 @@ the capi C helpers), `ni-schwung` (the Schwung audio_fx v2 glue every
 `*-move` crate is built on), `ni-params` (a parameter table's shape and
 arithmetic) and `ni-filter` (filter design: the analog families as TPT
 state-variable sections, the equaliser's matched shapes, and the exact
-response of every cascade — ADR 0005). Each names no product. A piece moves
+response of every cascade — ADR 0005), `ni-filter-node` (one filter as an
+equaliser plays it: its types and design, and the node that glides, morphs
+and fades between designs — NI Filter Designer's sixteen and each single
+filter's one) and `ni-analyzer` (an equaliser's analyzer: the rings an engine
+keeps in one lane, and their spectrum on the editor's thread). Each names no product. A piece moves
 there once it is truly identical in two products; what differs stays in the
 product, as each product's rate list does.
 

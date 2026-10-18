@@ -17,6 +17,11 @@ ni-dsp = { path = "../../../shared/crates/ni-dsp" }
 ni-params = { path = "../../../shared/crates/ni-params" }
 # The filters: the families, the equaliser's shapes, the sections they run in.
 ni-filter = { path = "../../../shared/crates/ni-filter" }
+# One filter as it plays: the types, the design, the node that glides, morphs
+# and fades -- shared with the single-filter products.
+ni-filter-node = { path = "../../../shared/crates/ni-filter-node" }
+# The analyzer's rings, in the lane the editor draws.
+ni-analyzer = { path = "../../../shared/crates/ni-analyzer" }
 # MIDI bytes to messages, for the panic (CC 120/123): core-only.
 wmidi = { workspace = true }
 

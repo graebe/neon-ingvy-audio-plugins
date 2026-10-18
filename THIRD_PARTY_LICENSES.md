@@ -153,7 +153,7 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 | `vz-core`, `vz-capi`, `vz-move` | `engines/vocalize` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `fd-core`, `fd-capi`, `fd-move` | `engines/filter-designer` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
-| `ni-dsp`, `ni-schwung`, `ni-params`, `ni-filter` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `ni-dsp`, `ni-schwung`, `ni-params`, `ni-filter`, `ni-filter-node`, `ni-analyzer` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `music-core` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — moved here from [neo-riemann](https://codeberg.org/graebe/neo-riemann), where it was MIT under the same owner |
 
 These are the workspace's members, each `publish = false`, and

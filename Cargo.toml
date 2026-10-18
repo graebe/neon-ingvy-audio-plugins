@@ -83,6 +83,8 @@ members = [
     "engines/shared/crates/ni-params",        # a parameter table's shape and arithmetic
     "engines/shared/crates/music-core",       # pitches, chords, keys: the theory
     "engines/shared/crates/ni-filter",        # filter families as TPT sections, and their response
+    "engines/shared/crates/ni-filter-node",   # one filter as an equaliser plays it: design, glides, fades
+    "engines/shared/crates/ni-analyzer",      # an equaliser's analyzer: rings in one lane, their spectrum
 ]
 
 # NEVER PUBLISHED. These crates ship inside the products and nowhere else, so

@@ -263,11 +263,12 @@ dependencies = [
  "assert_no_alloc",
  "cbindgen",
  "fd-core",
+ "ni-analyzer",
  "ni-dsp",
  "ni-filter",
+ "ni-filter-node",
  "ni-params",
  "proptest",
- "realfft",
  "shell-core",
 ]
 
@@ -277,8 +278,10 @@ version = "2026.10.12+1"
 dependencies = [
  "assert_no_alloc",
  "divan",
+ "ni-analyzer",
  "ni-dsp",
  "ni-filter",
+ "ni-filter-node",
  "ni-params",
  "proptest",
  "realfft",
@@ -441,6 +444,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ni-analyzer"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "realfft",
+]
+
+[[package]]
 name = "ni-dsp"
 version = "2026.10.9+1"
 dependencies = [
@@ -457,6 +468,15 @@ dependencies = [
  "num-complex",
  "proptest",
  "realfft",
+]
+
+[[package]]
+name = "ni-filter-node"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "ni-dsp",
+ "ni-filter",
 ]
 
 [[package]]

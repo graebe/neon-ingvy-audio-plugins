@@ -20,6 +20,11 @@ the nodes' and the crossovers' glides move and their cascades are designed
 again where anything moved (node.rs). Counted from the first sample, not
 from the block, so a render is the same bits at any block size.
 
+A NODE IS SHARED: its design and the way it plays (ni-filter-node, `design`
+and `node` here) run in the single-filter products too, and the analyzer's
+rings (ni-analyzer) with them. What is Filter Designer's own is the table,
+the isolator, sixteen nodes in a chain, and the picture's total.
+
 NOTHING CLICKS. Numbers glide; what a node or the isolator IS fades over 20
 ms between two designs; the isolator's levels and Output glide every sample.
 
@@ -36,49 +41,22 @@ THE AUDIO THREAD ALLOCATES NOTHING: every buffer is made in `new`
 
 pub mod design;
 pub mod isolator;
-pub mod node;
 pub mod params;
+pub use ni_filter_node::node;
 
 use core::fmt::Write;
-use design::Globals;
+use design::{target_of, Globals};
 use isolator::Isolator;
+use ni_analyzer::Rings;
 use ni_dsp::fmt::Buf;
 use ni_dsp::smooth::{coef, glide};
-use node::{Budget, Node, FADE_MS};
+use node::{control_in_turn, Budget, Node, FADE_MS};
+pub use ni_analyzer::{Lane, RING};
+pub use ni_filter_node::SUB;
 pub use params::{Field, Info, Kind, Param, Unit, NODES, NODE_BASE, NODE_FIELDS, PARAM_COUNT};
 
 /// The sample rate when none is given.
 pub const DEFAULT_SAMPLE_RATE: f64 = 44_100.0;
-
-/// Samples between control steps.
-pub const SUB: usize = 16;
-
-/// Samples each analyzer ring keeps: a power of two.
-pub const RING: usize = 8192;
-
-/// Which signal the analyzer's rings keep: a stereo pair's left or right, or
-/// its mid ((L + R) / 2, what a mono sum hears) or side ((L - R) / 2) -- the
-/// lane the editor draws, so a Side filter is seen working on the side.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Lane {
-    Left,
-    Right,
-    Mid,
-    Side,
-}
-
-impl Lane {
-    /// The lane's sample of the pair `l`, `r`.
-    #[inline]
-    pub fn of(self, l: f64, r: f64) -> f64 {
-        match self {
-            Lane::Left => l,
-            Lane::Right => r,
-            Lane::Mid => 0.5 * (l + r),
-            Lane::Side => 0.5 * (l - r),
-        }
-    }
-}
 
 fn usable_rate(sample_rate: f64) -> f64 {
     if sample_rate.is_finite() && sample_rate > 0.0 {
@@ -113,12 +91,8 @@ pub struct Engine {
     /// The node a control tick serves first: the first the last tick could
     /// not design, or else the next, so a tick's budget goes round.
     first: usize,
-    /// The input and output, in `lane`, while a window shows the analyzer.
-    watching: bool,
-    lane: Lane,
-    pre: Box<[f32; RING]>,
-    post: Box<[f32; RING]>,
-    ring_pos: usize,
+    /// The input and output, in its lane, while a window shows the analyzer.
+    rings: Rings,
     buf_l: [f64; SUB],
     buf_r: [f64; SUB],
 }
@@ -132,7 +106,7 @@ impl Engine {
         let mut e = Engine {
             sample_rate: fs,
             values,
-            nodes: core::array::from_fn(|i| Node::new(i as u8)),
+            nodes: core::array::from_fn(|i| Node::new(&target_of(&values, i as u8))),
             iso: Isolator::new(&values),
             globals: Globals::NEUTRAL,
             out: 1.0,
@@ -142,11 +116,7 @@ impl Engine {
             phase: 0,
             mono: false,
             first: 0,
-            watching: false,
-            lane: Lane::Mid,
-            pre: Box::new([0.0; RING]),
-            post: Box::new([0.0; RING]),
-            ring_pos: 0,
+            rings: Rings::new(),
             buf_l: [0.0; SUB],
             buf_r: [0.0; SUB],
         };
@@ -181,8 +151,8 @@ impl Engine {
     /// arrives. The settings stay.
     pub fn reset(&mut self) {
         self.globals = self.global_targets();
-        for n in &mut self.nodes {
-            n.reset(&self.values, self.globals, self.sample_rate);
+        for (slot, n) in self.nodes.iter_mut().enumerate() {
+            n.reset(&target_of(&self.values, slot as u8), self.globals, self.sample_rate);
         }
         self.iso.reset(&self.values, self.sample_rate);
         self.out = self.out_target();
@@ -257,17 +227,13 @@ impl Engine {
 
     /// Whether a window shows the analyzer: the rings are kept only then.
     pub fn set_watching(&mut self, on: bool) {
-        self.watching = on;
+        self.rings.set_watching(on);
     }
 
     /// Which lane the analyzer's rings keep. A new lane starts from empty
     /// rings, so the picture never shows one lane's spectrum as another's.
     pub fn set_lane(&mut self, lane: Lane) {
-        if lane != self.lane {
-            self.lane = lane;
-            self.pre.fill(0.0);
-            self.post.fill(0.0);
-        }
+        self.rings.set_lane(lane);
     }
 
     /// Nothing to do: every node idle, the isolator off and faded out, and
@@ -276,7 +242,7 @@ impl Engine {
         self.out == 1.0
             && self.values[Param::Output.index()] == 0.0
             && self.iso.is_idle(&self.values)
-            && self.nodes.iter().all(|n| n.is_idle(&self.values))
+            && self.nodes.iter().enumerate().all(|(slot, n)| n.is_idle(&target_of(&self.values, slot as u8)))
     }
 
     /// One control tick; the prototypes it designed, at most
@@ -286,18 +252,9 @@ impl Engine {
         let c = self.ctl_coef;
         self.globals.scale = glide(self.globals.scale, t.scale, c);
         self.globals.adaptive = glide(self.globals.adaptive, t.adaptive, c);
-        let mut budget = Budget::TICK;
-        let mut next = None;
-        for k in 0..NODES {
-            let at = (self.first + k) % NODES;
-            if self.nodes[at].control(&self.values, c, self.globals, self.sample_rate, &mut budget) && next.is_none() {
-                next = Some(at);
-            }
-        }
-        /* The next tick serves first the first node this one could not, so
-         * the budget goes round evenly: with sixteen weighing, each is
-         * designed every fourth tick. */
-        self.first = next.unwrap_or((self.first + 1) % NODES);
+        /* In turn, so the budget goes round evenly (node::control_in_turn). */
+        let values = &self.values;
+        let budget = control_in_turn(&mut self.nodes, &mut self.first, |slot| target_of(values, slot as u8), c, self.globals, self.sample_rate);
         self.iso.control(&self.values, c, self.sample_rate);
         Budget::TICK.protos - budget.protos
     }
@@ -343,13 +300,7 @@ impl Engine {
     /// a transparent engine's block. Nothing is filtered or glided; a caller
     /// that filters again afterwards resets first.
     pub fn listen_f32(&mut self, left: &[f32], right: Option<&[f32]>) {
-        if self.watching {
-            for (i, &l) in left.iter().enumerate() {
-                let r = right.and_then(|r| r.get(i)).copied().unwrap_or(l);
-                let x = self.lane.of(f64::from(l), f64::from(r)) as f32;
-                self.keep(x, x);
-            }
-        }
+        self.rings.listen(left, right);
         self.phase = (self.phase + left.len()) % SUB;
     }
 
@@ -386,11 +337,7 @@ impl Engine {
 
     /// `m` samples of the buffers through everything.
     fn block(&mut self, m: usize) {
-        if self.watching {
-            for k in 0..m {
-                self.pre[(self.ring_pos + k) & (RING - 1)] = self.lane.of(self.buf_l[k], self.buf_r[k]) as f32;
-            }
-        }
+        self.rings.input(&self.buf_l[..m], &self.buf_r[..m]);
         let target = self.out_target();
         let (l, r) = (&mut self.buf_l[..m], &mut self.buf_r[..m]);
         self.iso.run(l, r, self.sample_coef, self.fade_step, self.mono);
@@ -402,18 +349,7 @@ impl Engine {
             *x *= self.out;
             *y *= self.out;
         }
-        if self.watching {
-            for k in 0..m {
-                self.post[(self.ring_pos + k) & (RING - 1)] = self.lane.of(self.buf_l[k], self.buf_r[k]) as f32;
-            }
-            self.ring_pos = (self.ring_pos + m) & (RING - 1);
-        }
-    }
-
-    fn keep(&mut self, pre: f32, post: f32) {
-        self.pre[self.ring_pos] = pre;
-        self.post[self.ring_pos] = post;
-        self.ring_pos = (self.ring_pos + 1) & (RING - 1);
+        self.rings.output(&self.buf_l[..m], &self.buf_r[..m]);
     }
 
     fn flush(&mut self) {
@@ -426,11 +362,7 @@ impl Engine {
     /// The analyzer's rings, oldest first, into `pre` and `post` (as many as
     /// they hold, up to [`RING`]).
     pub fn rings(&self, pre: &mut [f32], post: &mut [f32]) {
-        for (k, (a, b)) in pre.iter_mut().zip(post.iter_mut()).take(RING).enumerate() {
-            let at = (self.ring_pos + k) & (RING - 1);
-            *a = self.pre[at];
-            *b = self.post[at];
-        }
+        self.rings.copy_out(pre, post);
     }
 
     /// Node `slot`.
