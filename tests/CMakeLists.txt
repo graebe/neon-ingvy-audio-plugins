@@ -9,6 +9,9 @@
 # directory and tests/cpp -- the tests, never the plugins. cmake/Sanitize.cmake.
 ni_sanitize_here()
 
+# The Rust suites: ni_cargo_test, rust_tests_build and rust_doctests.
+include(${CMAKE_SOURCE_DIR}/cmake/NiCargoTest.cmake)
+
 set(TG_ENGINE ${CMAKE_SOURCE_DIR}/engines/trance-gate)
 
 add_executable(tg_core_tests ${TG_ENGINE}/tests/test_core.c)
@@ -155,6 +158,11 @@ if (TG_NODE)
     # pinned by digest.
     add_test(NAME toolchain
              COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/toolchain.test.mjs)
+
+    # NO BUILD READS THE CLOCK, so ccache may ignore __DATE__ and __TIME__
+    # (cmake/NiCcache.cmake): no owned source names one.
+    add_test(NAME time_macros
+             COMMAND ${TG_NODE} --test ${CMAKE_SOURCE_DIR}/tests/time_macros.test.mjs)
 
     # WHAT A RUN DID NOT TEST: scripts/test-summary.mjs reads ctest's report
     # and the build's missing capabilities, and the full tier's gate fails on
@@ -397,10 +405,7 @@ endforeach()
 # -p, not --manifest-path: there is ONE workspace and it is at the repository
 # root, so the crates are selected by name rather than by pointing cargo at a
 # per-engine Cargo.toml that no longer exists.
-add_test(NAME spectro_core
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p spectro-core -p spectro-recv
-                 -p spectro-capi)
+ni_cargo_test(spectro_core spectro-core spectro-recv spectro-capi)
 
 # The same claims through the C ABI the plugin links, because a hand-written
 # header can drift from its implementation without either side failing to
@@ -441,9 +446,7 @@ add_test(NAME srecv_api COMMAND srecv_api)
 # label seqlock, and a counting global allocator proving the audio path
 # allocates nothing.
 #
-add_test(NAME abus_core
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p bus-core -p bus-capi)
+ni_cargo_test(abus_core bus-core bus-capi)
 
 # The same claims through the C ABI the plugins link, because a hand-written
 # header can drift from its implementation without either side failing to
@@ -457,15 +460,11 @@ add_test(NAME abus_roundtrip COMMAND abus_roundtrip)
 # no-allocation check. Each product's bridge over it lives in that product's
 # capi crate, and is tested with it (tg_core_rs, sc_core_rs: a capi crate's
 # default features include its `shell`).
-add_test(NAME shell_core
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p shell-core -p shell-capi)
+ni_cargo_test(shell_core shell-core shell-capi)
 
 # THE SHARED CRATES' OWN TESTS. Every product's goldens cover them through the
 # products; these pin each piece on its own.
-add_test(NAME ni_shared
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p ni-dsp -p ni-schwung -p ni-params -p ni-filter)
+ni_cargo_test(ni_shared ni-dsp ni-schwung ni-params ni-filter)
 
 # THE SCHWUNG HOST'S TABLES, FROM ITS OWN HEADERS. ni-schwung mirrors
 # host_api_v1_t and audio_fx_api_v2_t in Rust; abi/layout.def writes their
@@ -489,9 +488,7 @@ set_tests_properties(schwung_pin PROPERTIES SKIP_RETURN_CODE 77)
 # method set that only ever loses the two frequency methods without `std`, and
 # a build that is never made without it is a promise nobody checks. The README
 # runs as doctests in both, so the front page cannot drift either.
-add_test(NAME music_core_rs
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p music-core)
+ni_cargo_test(music_core_rs music-core)
 add_test(NAME music_core_no_std
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p music-core --no-default-features)
@@ -519,9 +516,7 @@ if (NOT WIN32)
 endif()
 add_test(NAME cd_core COMMAND cd_core_tests)
 
-add_test(NAME cd_core_rs
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p cd-core -p cd-capi)
+ni_cargo_test(cd_core_rs cd-core cd-capi)
 
 # The handoff's seam, holding a real bus writer the way NI Listen-In does.
 # The shell_handoff_* symbols ride in libbus_capi.a, so that is what it links.
@@ -629,9 +624,7 @@ add_test(NAME cargo_deny_advisories
 # two variables were already in scope; nothing was using them. A suite that only
 # runs when somebody types `cargo test` in the right directory is, as run.sh
 # puts it, the same as not being run.
-add_test(NAME tg_core_rs
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p tg-core -p tg-capi -p tg-move -p tg-web)
+ni_cargo_test(tg_core_rs tg-core tg-capi tg-move tg-web)
 
 # ---------------------------------------------------------------- The C++
 # The plain C++ every processor shares, with no JUCE and no engine:
@@ -662,9 +655,7 @@ add_test(NAME sc_core COMMAND sc_core_tests)
 # not, that the viz group stays contiguous (the host DROPS a graphic whose
 # members are not adjacent), and that the Sidechain source is absent where the
 # hardware has no aux input to feed it.
-add_test(NAME sc_core_rs
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p sc-core -p sc-capi -p sc-move -p sc-web)
+ni_cargo_test(sc_core_rs sc-core sc-capi sc-move sc-web)
 
 # THE CURVE ORACLE: the engine's duck shape against a table it generated, for
 # the reason the Trance Gate's is (tg_curves). Regenerate with
@@ -721,9 +712,7 @@ add_test(NAME sc_render_ab COMMAND sc_render_ab)
 # no allocation on any audio path -- and bc-move's `chain_params` held to the
 # engine's table, through the vtable the device calls.
 set(BC_ENGINE ${CMAKE_SOURCE_DIR}/engines/bit-crusher)
-add_test(NAME bc_core_rs
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p bc-core -p bc-capi -p bc-move)
+ni_cargo_test(bc_core_rs bc-core bc-capi bc-move)
 
 # The C ABI from C: compiled against both headers cbindgen writes
 # (bc-capi/build.rs) and linked to the plugin's real archive.
@@ -761,9 +750,7 @@ add_test(NAME bc_render_ab COMMAND bc_render_ab)
 #                     their features -- its `chain_params` held to the
 #                     engine's table through the vtable the device calls
 set(VZ_ENGINE ${CMAKE_SOURCE_DIR}/engines/vocalize)
-add_test(NAME vz_core_rs
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p vz-core -p vz-capi)
+ni_cargo_test(vz_core_rs vz-core vz-capi)
 add_test(NAME vz_core_time_only
          COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
                  ${CMAKE_SOURCE_DIR}/Cargo.toml -p vz-core --no-default-features)
@@ -800,9 +787,7 @@ add_test(NAME vz_render_ab COMMAND vz_render_ab)
 # the picture against the design and the analyzer against a sine, no
 # allocation on any audio path. (ni-filter's own tests are ni_shared's.)
 set(FD_ENGINE ${CMAKE_SOURCE_DIR}/engines/filter-designer)
-add_test(NAME fd_core_rs
-         COMMAND ${RUST_ENV} ${RUST_CARGO} test --manifest-path
-                 ${CMAKE_SOURCE_DIR}/Cargo.toml -p fd-core -p fd-capi)
+ni_cargo_test(fd_core_rs fd-core fd-capi)
 
 # The C ABI from C: compiled against both headers cbindgen writes
 # (fd-capi/build.rs) and linked to the plugin's real archive.
@@ -889,6 +874,8 @@ ni_test_tiers(
             # Rust: the shared crates' unit tests, and the licence gate over
             # the whole graph
             abus_core shell_core ni_shared music_core_rs music_core_no_std
+            # every suite's build (cmake/NiCargoTest.cmake), and the doctests
+            rust_tests_build rust_doctests
             cargo_deny
             # the Schwung host's tables: the vendored headers against the
             # layout the Rust mirrors are held to, and against the pinned host
@@ -897,7 +884,7 @@ ni_test_tiers(
             abus_roundtrip shell_handoff
             # lint-like checks over the tree
             versions release licenses licenses_resolve spdx site_tokens
-            design_paths doc_paths product_matrix timing toolchain test_summary
+            design_paths doc_paths product_matrix timing toolchain time_macros test_summary
             # the Move web editors' kit
             web_kit
             # the JUCE shell's state codec, over every product's fixtures

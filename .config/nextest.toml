@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Torben Gräber
+#
+# cargo-nextest's settings for this workspace (cmake/NiCargoTest.cmake runs
+# the Rust suites through it).
+#
+# THE AUDIO BUS'S TESTS, ONE AT A TIME. The bus has sixteen slots per
+# namespace, and every suite gets a namespace of its own (NIA_BUS_NS, set per
+# ctest suite in tests/CMakeLists.txt). Within one test binary each test
+# claims slots no other test of that binary claims, so they run side by side;
+# across binaries they cannot all be distinct -- the bus's own suites claim
+# some twenty-two between them -- because `cargo test` ran one binary after
+# another. nextest runs tests of different binaries at once, and two of them
+# claimed slot 3 together ("slot 3 was taken", spectro-recv's worker and
+# receiver tests, 2026-10-18). So every test of a crate that links the bus is
+# in one group that runs a single test at a time: each binary's claims are
+# released before the next test makes its own, as under `cargo test`.
+[test-groups]
+audio-bus = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'rdeps(bus-core)'
+test-group = 'audio-bus'
