@@ -3,10 +3,11 @@
 
 /*!
 One node as it runs: its settings gliding, the cascade they design, and two
-instances of it to fade between.
+instances of it to fade between. A node reads what it is asked to play as a
+[`Target`]; how an engine's parameters spell that is the engine's business.
 
 WHAT GLIDES, AND HOW. Freq in octaves, Q in its logarithm, Gain, Ripple and
-Stopband in dB -- every [`crate::SUB`] samples, on the engine's control grid,
+Stopband in dB -- every [`SUB`] samples, on the engine's control grid,
 with the house's 5 ms one-pole (ni_dsp::smooth at the control rate). A
 change of any of them designs the cascade again, and across the next
 sub-block the sections move from the last design to the new one a sample at
@@ -51,13 +52,18 @@ them the sections follow Freq and Q on the prototype they have. A design
 that would weigh waits for a tick with budget for it, and when it comes, the
 move to it is spread over as many sub-blocks as it waited: a glide that is
 designed every fourth tick moves a sample at a time all the same, and puts no
-lines at a quarter of the control rate.
+lines at a quarter of the control rate. An engine with several nodes serves
+them in turn ([`control_in_turn`]), so a tick's budget goes round.
 */
 
-use crate::design::{channel_of, design, is_heard, prototype, settings_of, weighs, Channel, Globals, Settings, Shape};
-use crate::params::{Field, Param, FREQ_DEFAULTS};
+use crate::design::{design, prototype, weighs, Channel, Globals, Settings, Shape, Target};
 use ni_dsp::smooth::glide;
 use ni_filter::{Cascade, Family, Prototype, State};
+
+/// Samples between control steps: the grid every engine counts from its
+/// first sample, not from the block, so a render is the same bits at any
+/// block size.
+pub const SUB: usize = 16;
 
 /// How long a change of what a node is takes to fade in, in ms.
 pub const FADE_MS: f64 = 20.0;
@@ -80,11 +86,12 @@ fn ease(x: f64) -> f64 {
     x * x * (3.0 - 2.0 * x)
 }
 
-/// The prototype designs one control tick may make, across all nodes.
+/// The prototype designs one control tick may make, across all of an
+/// engine's nodes.
 pub const PROTOS_PER_TICK: usize = 4;
 
 /// The designs that weigh their realisations one control tick may make,
-/// across all nodes (design::weighs).
+/// across all of an engine's nodes (design::weighs).
 pub const WEIGHS_PER_TICK: usize = 4;
 
 /// What one control tick may still spend (see the module notes).
@@ -121,14 +128,14 @@ pub struct Discrete {
 impl Discrete {
     const EMPTY: Discrete = Discrete { shape: Shape::Empty, family: Family::Butterworth, order: 2, channel: Channel::Stereo, matched: false };
 
-    /// What node `slot`'s values ask for.
-    pub fn of(values: &[f64], slot: u8) -> Discrete {
-        let s = settings_of(values, slot);
+    /// What `t` asks for.
+    pub fn of(t: &Target) -> Discrete {
+        let s = &t.settings;
         Discrete {
-            shape: if is_heard(values, slot) { s.shape } else { Shape::Empty },
+            shape: if t.is_heard() { s.shape } else { Shape::Empty },
             family: s.family,
             order: s.order,
-            channel: channel_of(values, slot),
+            channel: t.channel,
             matched: s.matched,
         }
     }
@@ -145,14 +152,14 @@ struct Glided {
 }
 
 impl Glided {
-    fn of(values: &[f64], slot: u8) -> Glided {
-        let v = |f: Field| values[Param::Node(slot, f).index()];
+    fn of(t: &Target) -> Glided {
+        let s = &t.settings;
         Glided {
-            octaves: v(Field::Freq).log2(),
-            gain_db: v(Field::Gain),
-            ln_q: v(Field::Q).ln(),
-            ripple_db: v(Field::Ripple),
-            stopband_db: v(Field::Stopband),
+            octaves: s.freq.log2(),
+            gain_db: s.gain_db,
+            ln_q: s.q.ln(),
+            ripple_db: s.ripple_db,
+            stopband_db: s.stopband_db,
         }
     }
 
@@ -376,7 +383,6 @@ impl Instance {
 /// One node.
 #[derive(Clone, Copy, Debug)]
 pub struct Node {
-    slot: u8,
     target: Glided,
     now: Glided,
     a: Instance,
@@ -389,15 +395,11 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(slot: u8) -> Node {
-        let mut values = [0.0; crate::PARAM_COUNT];
-        for (i, v) in values.iter_mut().enumerate() {
-            *v = Param::from_index(i).map_or(0.0, Param::default_value);
-        }
-        values[Param::Node(slot, Field::Freq).index()] = FREQ_DEFAULTS[slot as usize];
-        let g = Glided::of(&values, slot);
+    /// A node that plays nothing yet, its glides at `t`'s values: the first
+    /// control step fades in what `t` asks for.
+    pub fn new(t: &Target) -> Node {
+        let g = Glided::of(t);
         Node {
-            slot,
             target: g,
             now: g,
             a: Instance::new(Discrete::EMPTY),
@@ -409,8 +411,8 @@ impl Node {
     }
 
     /// Nothing to do: Empty or off, no fade running, and none asked for.
-    pub fn is_idle(&self, values: &[f64]) -> bool {
-        !self.fading && self.a.what.shape == Shape::Empty && Discrete::of(values, self.slot).shape == Shape::Empty
+    pub fn is_idle(&self, t: &Target) -> bool {
+        !self.fading && self.a.what.shape == Shape::Empty && Discrete::of(t).shape == Shape::Empty
     }
 
     /// One control step: the targets read, the glides moved, a fade started
@@ -418,10 +420,10 @@ impl Node {
     /// designed again, each prototype and weighed design taken from `budget`.
     /// True when a design waited for budget, so the next tick serves this
     /// node first.
-    pub fn control(&mut self, values: &[f64], c: f64, g: Globals, fs: f64, budget: &mut Budget) -> bool {
-        self.target = Glided::of(values, self.slot);
-        let want = Discrete::of(values, self.slot);
-        let step = crate::SUB as f64 * 1000.0 / (FADE_MS * fs);
+    pub fn control(&mut self, t: &Target, c: f64, g: Globals, fs: f64, budget: &mut Budget) -> bool {
+        self.target = Glided::of(t);
+        let want = Discrete::of(t);
+        let step = SUB as f64 * 1000.0 / (FADE_MS * fs);
         let changed = !self.fading && want != self.a.what && (!want.shape.uses_family() || budget.protos > 0);
         let a = self.a.what;
         if changed && want.shape == a.shape && want.channel == a.channel && want.order == a.order && a.shape != Shape::Empty {
@@ -459,7 +461,7 @@ impl Node {
     /// `l`'s copy and one lane is worked out.
     pub fn run(&mut self, l: &mut [f64], r: &mut [f64], phase: usize, step: f64, mono: bool) {
         let n = l.len().min(r.len());
-        let t = |i: usize| (phase + i + 1) as f64 / crate::SUB as f64;
+        let t = |i: usize| (phase + i + 1) as f64 / SUB as f64;
         let mut i = 0;
         while self.fading && i < n {
             let (al, ar) = self.a.run(l[i], r[i], t(i), mono);
@@ -498,13 +500,13 @@ impl Node {
     }
 
     /// The panic: a fade lands, every lane empties, every glide arrives.
-    pub fn reset(&mut self, values: &[f64], g: Globals, fs: f64) {
+    pub fn reset(&mut self, t: &Target, g: Globals, fs: f64) {
         if self.fading {
             self.land();
         }
-        self.target = Glided::of(values, self.slot);
+        self.target = Glided::of(t);
         self.now = self.target;
-        let want = Discrete::of(values, self.slot);
+        let want = Discrete::of(t);
         if want != self.a.what {
             self.a = Instance::new(want);
         }
@@ -556,4 +558,25 @@ impl Node {
             &self.a.cascade
         }
     }
+}
+
+/// ONE CONTROL TICK OF A CHAIN: every node of `nodes` stepped toward its
+/// target (`target(i)` is node `i`'s), from node `first` on and round, under
+/// one tick's [`Budget`]; what the tick left of it. The next tick serves
+/// first the first node this one could not design, or else the one after
+/// `first`, so the budget goes round evenly: with sixteen weighing, each is
+/// designed every fourth tick, and a glide that waits puts no lines at a
+/// fraction of the control rate.
+pub fn control_in_turn(nodes: &mut [Node], first: &mut usize, target: impl Fn(usize) -> Target, c: f64, g: Globals, fs: f64) -> Budget {
+    let n = nodes.len();
+    let mut budget = Budget::TICK;
+    let mut next = None;
+    for k in 0..n {
+        let at = (*first + k) % n;
+        if nodes[at].control(&target(at), c, g, fs, &mut budget) && next.is_none() {
+            next = Some(at);
+        }
+    }
+    *first = next.unwrap_or((*first + 1) % n.max(1));
+    budget
 }

@@ -1,0 +1,16 @@
+{
+  "id": "ni-band-pass",
+  "name": "NI Band Pass",
+  "abbrev": "BP",
+  "version": "2026.10.18.1",
+  "description": "A band-pass filter: a band around Freq kept",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-band-pass.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}

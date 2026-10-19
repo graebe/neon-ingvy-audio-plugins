@@ -263,11 +263,12 @@ dependencies = [
  "assert_no_alloc",
  "cbindgen",
  "fd-core",
+ "ni-analyzer",
  "ni-dsp",
  "ni-filter",
+ "ni-filter-node",
  "ni-params",
  "proptest",
- "realfft",
  "shell-core",
 ]
 
@@ -277,8 +278,10 @@ version = "2026.10.12+1"
 dependencies = [
  "assert_no_alloc",
  "divan",
+ "ni-analyzer",
  "ni-dsp",
  "ni-filter",
+ "ni-filter-node",
  "ni-params",
  "proptest",
  "realfft",
@@ -441,6 +444,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ni-analyzer"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "realfft",
+]
+
+[[package]]
 name = "ni-dsp"
 version = "2026.10.9+1"
 dependencies = [
@@ -457,6 +468,16 @@ dependencies = [
  "num-complex",
  "proptest",
  "realfft",
+]
+
+[[package]]
+name = "ni-filter-node"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "ni-dsp",
+ "ni-filter",
+ "ni-params",
 ]
 
 [[package]]
@@ -820,6 +841,121 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "sf-capi"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "cbindgen",
+ "ni-analyzer",
+ "ni-dsp",
+ "ni-filter",
+ "ni-filter-node",
+ "ni-params",
+ "proptest",
+ "sf-core",
+ "shell-core",
+]
+
+[[package]]
+name = "sf-core"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "ni-analyzer",
+ "ni-dsp",
+ "ni-filter",
+ "ni-filter-node",
+ "ni-params",
+ "proptest",
+ "wmidi",
+]
+
+[[package]]
+name = "sf-move"
+version = "2026.10.18+1"
+dependencies = [
+ "assert_no_alloc",
+ "ni-dsp",
+ "ni-filter-node",
+ "ni-params",
+ "ni-schwung",
+ "serde_json",
+ "sf-core",
+]
+
+[[package]]
+name = "sf-move-all-pass"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-band-pass"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-bell"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-high-pass"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-high-shelf"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-low-pass"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-low-shelf"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-notch"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
+]
+
+[[package]]
+name = "sf-move-tilt"
+version = "2026.10.18+1"
+dependencies = [
+ "ni-schwung",
+ "sf-move",
 ]
 
 [[package]]

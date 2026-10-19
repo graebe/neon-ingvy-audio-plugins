@@ -44,6 +44,20 @@ const VERSIONS = JSON.parse(read('versions.json'));
  * that will eventually disagree with itself, which is the exact failure this
  * whole file exists to prevent.
  */
+/*
+ * THE NINE SINGLE FILTERS: one engine (engines/single-filter, versioned as
+ * 'single-filter' below) and one shell, a bundle each. Product key ->
+ * bundle; each is a JUCE build of its own, its Move module added beside it.
+ */
+const SINGLE_FILTER_BUNDLES = {
+  'high-pass': 'NIHighPass', 'low-pass': 'NILowPass', 'band-pass': 'NIBandPass', notch: 'NINotch',
+  bell: 'NIBell', 'low-shelf': 'NILowShelf', 'high-shelf': 'NIHighShelf', tilt: 'NITilt', 'all-pass': 'NIAllPass',
+};
+const SINGLE_FILTERS = Object.fromEntries(Object.entries(SINGLE_FILTER_BUNDLES).map(([product, bundle]) => [product, {
+  juce: { cmake: `plugins/${product}/CMakeLists.txt`, bundle },
+  ...(existsSync(join(ROOT, 'modules', product, 'module.json')) ? { module: `modules/${product}/module.json` } : {}),
+}]));
+
 const PRODUCTS = {
   /* On the JUCE shell: its build takes the version from versions.json itself
    * (cmake/NiJucePlugin.cmake), so what is checked is that it asks for its
@@ -96,6 +110,14 @@ const PRODUCTS = {
     crates: ['fd-core', 'fd-capi', 'fd-move'].map(
       (c) => `engines/filter-designer/crates/${c}/Cargo.toml`),
   },
+  /* The single filters' engine: crates and no bundle, like audio-bus -- it
+   * ships inside the nine below, whose versions are its own (checked after
+   * this map). */
+  'single-filter': {
+    crates: ['sf-core', 'sf-capi'].map(
+      (c) => `engines/single-filter/crates/${c}/Cargo.toml`),
+  },
+  ...SINGLE_FILTERS,
   /* Music theory, shared like ni-dsp but versioned, because neo-riemann pins
    * it by revision from another repository. */
   'music-core': {
@@ -201,6 +223,13 @@ test('versions.json names every product and nothing else', () => {
     assert.ok(DATE_RE.test(v) || SEMVER_RE.test(v),
       `${name}: "${v}" is neither v<YYYY.MM.DD>.<sub> nor a semver`);
   }
+});
+
+test('the nine single filters are one release of their engine', () => {
+  for (const product of Object.keys(SINGLE_FILTER_BUNDLES))
+    assert.equal(VERSIONS[product], VERSIONS['single-filter'],
+      `${product} is ${VERSIONS[product]}, its engine single-filter ${VERSIONS['single-filter']}: ` +
+      'the nine ship one engine, so they move together');
 });
 
 test('a beta is spelled as a prerelease of the release it precedes', () => {

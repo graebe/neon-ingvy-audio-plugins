@@ -59,6 +59,15 @@ on:
       - 'bit-crusher-v*'
       - 'vocalize-v*'
       - 'filter-designer-v*'
+      - 'high-pass-v*'
+      - 'low-pass-v*'
+      - 'band-pass-v*'
+      - 'notch-v*'
+      - 'bell-v*'
+      - 'low-shelf-v*'
+      - 'high-shelf-v*'
+      - 'tilt-v*'
+      - 'all-pass-v*'
 
 permissions:
   contents: write

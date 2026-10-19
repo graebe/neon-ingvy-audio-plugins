@@ -393,6 +393,9 @@ foreach(product IN LISTS NI_PRODUCTS)
         add_subdirectory(${product})
     endif()
 endforeach()
+# THE SINGLE FILTERS, a family: their engine's, shell's and bundles' tests in
+# one directory (tests/single-filter), each test every member's.
+add_subdirectory(single-filter)
 
 # ---------------------------------------------------------------- Spectrogram
 
@@ -463,8 +466,10 @@ add_test(NAME abus_roundtrip COMMAND abus_roundtrip)
 ni_cargo_test(shell_core shell-core shell-capi)
 
 # THE SHARED CRATES' OWN TESTS. Every product's goldens cover them through the
-# products; these pin each piece on its own.
-ni_cargo_test(ni_shared ni-dsp ni-schwung ni-params ni-filter)
+# products; these pin each piece on its own -- the analyzer with its editor's
+# half (the spectrum), which the workspace's features switch on (the shells'
+# capi crates ask for it).
+ni_cargo_test(ni_shared ni-dsp ni-schwung ni-params ni-filter ni-filter-node ni-analyzer)
 
 # THE SCHWUNG HOST'S TABLES, FROM ITS OWN HEADERS. ni-schwung mirrors
 # host_api_v1_t and audio_fx_api_v2_t in Rust; abi/layout.def writes their
@@ -785,7 +790,8 @@ add_test(NAME vz_render_ab COMMAND vz_render_ab)
 # click when what a node is changes, the isolator flat at 0 dB and its kills
 # deep, mid and side kept apart, the panic, the parameter table and its text,
 # the picture against the design and the analyzer against a sine, no
-# allocation on any audio path. (ni-filter's own tests are ni_shared's.)
+# allocation on any audio path. (ni-filter's, ni-filter-node's and
+# ni-analyzer's own tests are ni_shared's.)
 set(FD_ENGINE ${CMAKE_SOURCE_DIR}/engines/filter-designer)
 ni_cargo_test(fd_core_rs fd-core fd-capi)
 

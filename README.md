@@ -16,6 +16,15 @@ GPL-3.0-or-later.
 | [NI Bit-Crusher](plugins/bit-crusher/README.md) | VST3 · a Schwung module for the Move | `engines/bit-crusher` |
 | [NI Vocalize](plugins/vocalize/README.md) | VST3 · a Schwung module for the Move | `engines/vocalize` |
 | [NI Filter Designer](plugins/filter-designer/README.md) | VST3 · a Schwung module for the Move | `engines/filter-designer` |
+| [NI High Pass](plugins/high-pass/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
+| [NI Low Pass](plugins/low-pass/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
+| [NI Band Pass](plugins/band-pass/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
+| [NI Notch](plugins/notch/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
+| [NI Bell](plugins/bell/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
+| [NI Low Shelf](plugins/low-shelf/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
+| [NI High Shelf](plugins/high-shelf/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
+| [NI Tilt](plugins/tilt/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
+| [NI All Pass](plugins/all-pass/README.md) | VST3 · a Schwung module for the Move | `engines/single-filter` |
 
 ## How it is put together
 
@@ -142,6 +151,7 @@ Most of them are not smoke tests, and the repository leans on them hard:
 | `tg_host` | NI Trance Gate's built VST3 as a DAW hosts it: every set an earlier build saved reopened and saved back byte for byte, the golden render, the host's Bypass, and the window under a running transport |
 | `vz_processor`, `vz_host` | NI Vocalize on the real engine: the parameters declared from the engine's table, Mode not automatable, the latency each Mode reports and the host told of every change, a click exactly that late (bypassed too), Vocal 0 as the input bit for bit — in the processor, and in the built VST3 as a DAW hosts it, both engines' golden renders bit for bit |
 | `fd_processor`, `fd_host` | NI Filter Designer on the real engine: the parameters declared from the engine's table, a new instance the input bit for bit, a Bell heard at its gain, a kill deep, the state exact, the picture the engine's design of the host's values — in the processor, and in the built VST3 as a DAW hosts it |
+| `sf_processor`, `sf_rt`, `sf_host_<product>` | the nine single filters on the real engine: each product's parameters its table, each heard doing what it is named for, the bypass, the state and the v1 fixtures exact, the window with only the product's controls; no allocation on the audio path; each built VST3 as a DAW hosts it |
 | `sc_processor`, `sc_host` | NI Side-Chain on the real engine: the sets earlier builds saved reopened and saved back byte for byte, a note ducking from its own sample, CC 120 and CC 123 opening a held duck, a key ducking the track, the shape drawn against the duck played — in the processor, and in the built VST3 as a DAW hosts it, the engine's golden render bit for bit |
 | `bc_processor`, `bc_host` | NI Bit-Crusher on the real engine: the parameters declared from the engine's table, a saved set reopened with every value exactly, a reactivation letting go of what was held, the window at its size — in the processor, and in the built VST3 as a DAW hosts it, the patch typed in and the engine's golden render bit for bit |
 | `spectro_core` | the FFT against a naive DFT, the band mapping, and `assert_no_alloc`'s guard proving the audio path allocates nothing |
@@ -218,6 +228,15 @@ Each product's manual lives with it, and this site renders those same files:
 | [NI Bit-Crusher](plugins/bit-crusher/README.md) | a bit crusher: fewer levels, taken less often — [in Live](plugins/bit-crusher/docs/live.md), [on the Move](plugins/bit-crusher/docs/schwung.md) |
 | [NI Vocalize](plugins/vocalize/README.md) | any sound, more and more a voice singing A, E, I, O or U — [in Live](plugins/vocalize/docs/live.md), [on the Move](plugins/vocalize/docs/schwung.md) |
 | [NI Filter Designer](plugins/filter-designer/README.md) | sixteen minimum-phase IIR filters on one response curve — [in Live](plugins/filter-designer/docs/live.md), [on the Move](plugins/filter-designer/docs/schwung.md) |
+| [NI High Pass](plugins/high-pass/README.md) | one high-pass filter, NI Filter Designer's own — [in Live](plugins/high-pass/docs/live.md), [on the Move](plugins/high-pass/docs/schwung.md) |
+| [NI Low Pass](plugins/low-pass/README.md) | one low-pass filter, NI Filter Designer's own — [in Live](plugins/low-pass/docs/live.md), [on the Move](plugins/low-pass/docs/schwung.md) |
+| [NI Band Pass](plugins/band-pass/README.md) | one band-pass filter, NI Filter Designer's own — [in Live](plugins/band-pass/docs/live.md), [on the Move](plugins/band-pass/docs/schwung.md) |
+| [NI Notch](plugins/notch/README.md) | one notch filter, NI Filter Designer's own — [in Live](plugins/notch/docs/live.md), [on the Move](plugins/notch/docs/schwung.md) |
+| [NI Bell](plugins/bell/README.md) | one bell filter, NI Filter Designer's own — [in Live](plugins/bell/docs/live.md), [on the Move](plugins/bell/docs/schwung.md) |
+| [NI Low Shelf](plugins/low-shelf/README.md) | one low shelf, NI Filter Designer's own — [in Live](plugins/low-shelf/docs/live.md), [on the Move](plugins/low-shelf/docs/schwung.md) |
+| [NI High Shelf](plugins/high-shelf/README.md) | one high shelf, NI Filter Designer's own — [in Live](plugins/high-shelf/docs/live.md), [on the Move](plugins/high-shelf/docs/schwung.md) |
+| [NI Tilt](plugins/tilt/README.md) | one tilt filter, NI Filter Designer's own — [in Live](plugins/tilt/docs/live.md), [on the Move](plugins/tilt/docs/schwung.md) |
+| [NI All Pass](plugins/all-pass/README.md) | one all-pass filter, NI Filter Designer's own — [in Live](plugins/all-pass/docs/live.md), [on the Move](plugins/all-pass/docs/schwung.md) |
 
 What changed in each release, per product, is in [CHANGELOG.md](CHANGELOG.md).
 

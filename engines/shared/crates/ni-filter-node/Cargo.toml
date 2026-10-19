@@ -1,0 +1,25 @@
+[package]
+name = "ni-filter-node"
+version = "2026.10.18+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "One filter as an equaliser plays it: its types, its design, and the node that glides, morphs and fades between designs"
+publish.workspace = true
+
+# AN RLIB, for ni-dsp's reason: each product's crates absorb it into that
+# product's single archive.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# The filters: the families, the equaliser's shapes, the sections they run in.
+ni-filter = { path = "../ni-filter" }
+# The house's 5 ms glide, at the control rate, and C-compatible text.
+ni-dsp = { path = "../ni-dsp" }
+# What a parameter is: the words module prints and reads a Kind.
+ni-params = { path = "../ni-params" }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }

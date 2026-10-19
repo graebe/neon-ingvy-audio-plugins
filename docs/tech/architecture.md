@@ -27,6 +27,9 @@ what it costs:
   from the Solid kit ([Web editors on the Move](move-web-editors.md)).
 - [0005](../adr/0005-iir-filter-design.md): filters are TPT state-variable
   sections designed in `ni-filter`, with matched cuts and shelves.
+- [0008](../adr/0008-single-filter-products.md): one Filter Designer node,
+  shared (`ni-filter-node`), makes nine single-filter products on one engine
+  and one shell.
 
 ## The Rust core
 

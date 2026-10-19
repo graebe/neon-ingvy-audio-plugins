@@ -90,6 +90,19 @@ foreach(product IN LISTS NI_PRODUCTS)
         FULL ni_ui_tests_${id}_snapshots:snapshot)
 endforeach()
 
+# THE SINGLE FILTERS' EDITOR is the family's (cmake/NiTest.cmake), one for
+# the nine: single-filter_*.cpp, on its editor library, with the engine its
+# fakes read each product's table and picture from (single-filter_fakes.h).
+file(GLOB _mine CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/single-filter_*.cpp)
+if (_mine)
+    list(REMOVE_ITEM _kit ${_mine})
+    ni_ui_add_tests(ni_ui_tests_single_filter ${_mine} LINK ni_editor_single_filter sf_engine)
+endif()
+list(APPEND _editors PRODUCT single-filter
+    PROGRAMS ni_ui_tests_single_filter
+    QUICK ni_ui_tests_single_filter_unit
+    FULL ni_ui_tests_single_filter_snapshots:snapshot)
+
 ni_ui_add_tests(ni_ui_tests ${_kit})
 
 # THE TOKEN GUARD, which needs node and no build: the generated tokens are

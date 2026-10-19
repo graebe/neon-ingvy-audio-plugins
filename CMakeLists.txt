@@ -67,6 +67,7 @@ ni_add_rust_engine(cd_engine CRATE cd-capi LIB cd_capi)
 ni_add_rust_engine(bc_engine CRATE bc-capi LIB bc_capi)
 ni_add_rust_engine(vz_engine CRATE vz-capi LIB vz_capi)
 ni_add_rust_engine(fd_engine CRATE fd-capi LIB fd_capi)
+ni_add_rust_engine(sf_engine CRATE sf-capi LIB sf_capi)
 # The shell plumbing (command queue, snapshot, handoff) belongs to no product:
 # its C ABI rides inside every product's archive, so it is headers here,
 # written by the bus engine's cargo run (bus-capi carries the handoff).
@@ -108,15 +109,24 @@ include(cmake/NiJucePlugin.cmake)
 # (plugins/<product>), its editor library and its tests (tests/<product>,
 # when it has a directory of its own there).
 set(NI_PRODUCTS trance-gate spectrogram listen-in side-chain chord-detector bit-crusher vocalize filter-designer)
+# THE SINGLE FILTERS: nine products, one engine (engines/single-filter) and
+# one shell (plugins/_shared/single-filter), each one NI Filter Designer
+# node. A family: their shared tests are each one's (cmake/NiTest.cmake).
+set(NI_SINGLE_FILTERS high-pass low-pass band-pass notch bell low-shelf high-shelf tilt all-pass)
+list(APPEND NI_PRODUCTS ${NI_SINGLE_FILTERS})
+# ni_test_tiers: every test is quick or full, and of one product or shared.
+include(cmake/NiTest.cmake)
+ni_product_family(single-filter ${NI_SINGLE_FILTERS})
 foreach(product IN LISTS NI_PRODUCTS)
-    ni_ui_add_editor(${product})
+    if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/plugins/${product}/editor)
+        ni_ui_add_editor(${product})
+    endif()
 endforeach()
+add_subdirectory(plugins/_shared/single-filter ${CMAKE_BINARY_DIR}/single-filter)
 add_subdirectory(plugins/_shared/ui/gallery ${CMAKE_BINARY_DIR}/gallery)
 foreach(product IN LISTS NI_PRODUCTS)
     add_subdirectory(plugins/${product})
 endforeach()
 
 enable_testing()
-# ni_test_tiers: every test is quick or full, and of one product or shared.
-include(cmake/NiTest.cmake)
 add_subdirectory(tests)

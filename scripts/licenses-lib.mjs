@@ -95,8 +95,9 @@ export function section(sections, prefix) {
  * plugins/<p>/CMakeLists.txt that calls ni_add_juce_plugin
  * (cmake/NiJucePlugin.cmake), and what follows from the call. The bundle is
  * TARGET.vst3; every one carries LICENSE, THIRD_PARTY_LICENSES.md and the
- * AGPLv3 and Apache 2.0 texts (JUCE and what it compiles in); an EDITOR embeds
- * the kit's JetBrains Mono, so it carries OFL.txt; NI_UI_MUSIC_FONT_LICENSE
+ * AGPLv3 and Apache 2.0 texts (JUCE and what it compiles in); an EDITOR -- or a
+ * SHARED_SHELL, a family's processor and editor -- embeds the kit's
+ * JetBrains Mono, so it carries OFL.txt; NI_UI_MUSIC_FONT_LICENSE
  * among its NOTICES says it embeds Bravura too, and carries Bravura-OFL.txt.
  * JUCE writes moduleinfo.json beside them. scripts/check-licenses.mjs and
  * scripts/stage-release.mjs both read this, so the licence check and the
@@ -112,7 +113,7 @@ export function juceProducts(root = ROOT) {
     .map((p) => ({
       dir: p.dir,
       bundle: /\bTARGET\s+(\S+)/.exec(p.cmake)?.[1],
-      editor: /^\s*EDITOR\s*$/m.test(p.cmake),
+      editor: /^\s*EDITOR\s*$/m.test(p.cmake) || /^\s*SHARED_SHELL\s+\S+\s*$/m.test(p.cmake),
       music: p.cmake.includes('NI_UI_MUSIC_FONT_LICENSE'),
     }));
 }

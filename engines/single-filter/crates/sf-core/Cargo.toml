@@ -1,0 +1,31 @@
+[package]
+name = "sf-core"
+version = "2026.10.18+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "The single-filter engine: one NI Filter Designer filter -- a high-pass, a low-pass, a band-pass, a notch, a bell, a shelf, a tilt or an all-pass -- as a product of its own"
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# The DSP the products share: the glides and C-compatible text.
+ni-dsp = { path = "../../../shared/crates/ni-dsp" }
+# What a parameter is, and the arithmetic every shell reads one with.
+ni-params = { path = "../../../shared/crates/ni-params" }
+# The families the node designs from.
+ni-filter = { path = "../../../shared/crates/ni-filter" }
+# The filter itself: its design, the node that plays it, the words its values
+# are printed in -- Filter Designer's, shared.
+ni-filter-node = { path = "../../../shared/crates/ni-filter-node" }
+# The analyzer's rings, in the filter's lane.
+ni-analyzer = { path = "../../../shared/crates/ni-analyzer" }
+# MIDI bytes to messages, for the panic (CC 120/123).
+wmidi = { workspace = true }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
+proptest = { workspace = true, features = ["std"] }

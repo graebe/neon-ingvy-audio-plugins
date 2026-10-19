@@ -18,7 +18,7 @@ ships.
 
 | Artefact | What is in it |
 |---|---|
-| Plugin bundles on the JUCE shell (`NITranceGate.vst3`, `NISpectrogram.vst3`, `NISideChain.vst3`, `NIListenIn.vst3`, `NIVocalize.vst3`, `NIFilterDesigner.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
+| Plugin bundles on the JUCE shell (`NITranceGate.vst3`, `NISpectrogram.vst3`, `NISideChain.vst3`, `NIListenIn.vst3`, `NIVocalize.vst3`, `NIFilterDesigner.vst3`, and the nine single filters' `NIHighPass.vst3` ... `NIAllPass.vst3`) | JUCE, the libraries JUCE compiles in, JUCE's copy of the VST3 SDK, the Rust standard library, the engine and the crates from crates.io it links, and the native kit's font; the AGPLv3 and Apache 2.0 texts travel beside this file (`AGPL-3.0.txt`, `Apache-2.0.txt`) |
 | Schwung module tarballs (`*-module.tar.gz`) | the Rust standard library, the engines and the crates from crates.io they link; the Trance Gate's also carries its own `ui_chain.js`; the Trance Gate's and the Side-Chain's carry their web editor, `web_ui.html` with `assets/` (below) |
 | The Move web editors (`web_ui.html` and `assets/` in each module tarball) | `solid-js`, `vite`'s module-preload polyfill and JetBrains Mono; the Trance Gate's also its engine as WebAssembly (`tg_web.wasm`: the engine and the crates from crates.io it links); notices in `assets/ui.js.LICENSE.txt`, `fonts/OFL.txt` |
 | The documentation site | JetBrains Mono |
@@ -99,6 +99,15 @@ JetBrains Mono declaring none.
 | `NIBitCrusher.vst3` | embedded in the plugin binary by the native kit (`plugins/_shared/ui/fonts`, the TTF faces whole) | `Contents/Resources/OFL.txt` |
 | `NIVocalize.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
 | `NIFilterDesigner.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NIHighPass.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NILowPass.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NIBandPass.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NINotch.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NIBell.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NILowShelf.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NIHighShelf.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NITilt.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
+| `NIAllPass.vst3` | embedded whole, as TrueType, in the plugin binary (the native kit's `plugins/_shared/ui/fonts`) | `Contents/Resources/OFL.txt` |
 | the Move web editors (module tarballs) | inlined into `assets/style.css` as WOFF, subset (`web/kit/src/fonts`) | `fonts/OFL.txt` beside `web_ui.html` |
 
 **The OFL requires its text to travel with the font**, so `OFL.txt` sits
@@ -152,8 +161,9 @@ first is NI Chord-Detector. The OFL is permissive and GPL-compatible.
 | `bc-core`, `bc-capi`, `bc-move` | `engines/bit-crusher` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `vz-core`, `vz-capi`, `vz-move` | `engines/vocalize` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `fd-core`, `fd-capi`, `fd-move` | `engines/filter-designer` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `sf-core`, `sf-capi`, `sf-move`, `sf-move-high-pass`, `sf-move-low-pass`, `sf-move-band-pass`, `sf-move-notch`, `sf-move-bell`, `sf-move-low-shelf`, `sf-move-high-shelf`, `sf-move-tilt`, `sf-move-all-pass` | `engines/single-filter` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `shell-core`, `shell-capi` | `engines/shell` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
-| `ni-dsp`, `ni-schwung`, `ni-params`, `ni-filter` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
+| `ni-dsp`, `ni-schwung`, `ni-params`, `ni-filter`, `ni-filter-node`, `ni-analyzer` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber |
 | `music-core` | `engines/shared` | **GPL-3.0-or-later**, © 2026 Torben Gräber — moved here from [neo-riemann](https://codeberg.org/graebe/neo-riemann), where it was MIT under the same owner |
 
 These are the workspace's members, each `publish = false`, and

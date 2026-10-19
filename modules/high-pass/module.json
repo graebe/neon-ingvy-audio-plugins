@@ -1,0 +1,16 @@
+{
+  "id": "ni-high-pass",
+  "name": "NI High Pass",
+  "abbrev": "HP",
+  "version": "2026.10.18.1",
+  "description": "A high-pass filter: everything below Freq taken away",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-high-pass.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}

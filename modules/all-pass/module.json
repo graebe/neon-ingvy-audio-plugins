@@ -1,0 +1,16 @@
+{
+  "id": "ni-all-pass",
+  "name": "NI All Pass",
+  "abbrev": "AP",
+  "version": "2026.10.18.1",
+  "description": "An all-pass: the phase turned about Freq, the level kept",
+  "author": "Neon Ingvy",
+  "license": "GPL-3.0-or-later",
+  "dsp": "ni-all-pass.so",
+  "api_version": 2,
+  "capabilities": {
+    "chainable": true,
+    "component_type": "audio_fx",
+    "midi_in": true
+  }
+}

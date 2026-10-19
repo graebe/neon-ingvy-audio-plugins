@@ -69,6 +69,23 @@ members = [
     "engines/filter-designer/crates/fd-core",  # the DSP
     "engines/filter-designer/crates/fd-capi",  # the C ABI -> the plugin
     "engines/filter-designer/crates/fd-move",  # the Schwung vtable -> the module
+    # The single filters: nine products -- NI High Pass, NI Low Pass, NI Band
+    # Pass, NI Notch, NI Bell, NI Low Shelf, NI High Shelf, NI Tilt, NI All
+    # Pass -- one engine, each one NI Filter Designer node (ni-filter-node).
+    # One engine serves the nine, as audio-bus serves two: it names no other
+    # product, and none of the nine names another.
+    "engines/single-filter/crates/sf-core",   # the DSP
+    "engines/single-filter/crates/sf-capi",   # the C ABI -> the nine plugins
+    "engines/single-filter/crates/sf-move",   # the Schwung module, generic -> the nine modules
+    "engines/single-filter/crates/move/sf-move-high-pass",
+    "engines/single-filter/crates/move/sf-move-low-pass",
+    "engines/single-filter/crates/move/sf-move-band-pass",
+    "engines/single-filter/crates/move/sf-move-notch",
+    "engines/single-filter/crates/move/sf-move-bell",
+    "engines/single-filter/crates/move/sf-move-low-shelf",
+    "engines/single-filter/crates/move/sf-move-high-shelf",
+    "engines/single-filter/crates/move/sf-move-tilt",
+    "engines/single-filter/crates/move/sf-move-all-pass",
     # How a plugin shell's threads reach an engine: the command queue in, the
     # published snapshot out, and the handoff for objects the main thread
     # builds and frees. Not a product either, and for audio-bus's reason:
@@ -83,6 +100,8 @@ members = [
     "engines/shared/crates/ni-params",        # a parameter table's shape and arithmetic
     "engines/shared/crates/music-core",       # pitches, chords, keys: the theory
     "engines/shared/crates/ni-filter",        # filter families as TPT sections, and their response
+    "engines/shared/crates/ni-filter-node",   # one filter as an equaliser plays it: design, glides, fades
+    "engines/shared/crates/ni-analyzer",      # an equaliser's analyzer: rings in one lane, their spectrum
 ]
 
 # NEVER PUBLISHED. These crates ship inside the products and nowhere else, so

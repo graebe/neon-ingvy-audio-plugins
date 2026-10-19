@@ -90,6 +90,14 @@
       "w": 888,
       "x": 6040,
       "y": 1100
+    },
+    "SingleFilter-Proposed.dc.html": {
+      "h": 572,
+      "is_interactive": true,
+      "title": "NI Single Filter — proposed",
+      "w": 664,
+      "x": 7008,
+      "y": 1100
     }
   },
   "createdOnFiles": {
@@ -204,6 +212,14 @@
       "x": 6040,
       "y": 1988,
       "text": "FILTER DESIGNER — NEW WINDOW\n\nA filter design tool you play as an equalizer: up to sixteen filters on one curve, every family at every order, and an EQ Three style isolator before them. Minimum phase, no latency. Interactive: double-click the picture to add a filter, drag its dot (Alt for Q, Shift for fine), Delete removes it; click a cell to inspect it, Alt-click to bypass; the knobs and selects work.\n\nFD1  RESPONSE: one picture across the window, 10 Hz to 22 kHz in equal steps of pitch, ±6, ±12, ±18 or ±30 dB (clicked in the caption). Grey is 0 dB; each filter alone is a plot-ghost line; the selected one alone is ink on a bg-000 casing (what you asked for); the total is uv (what you get). New for the system: a ResponseWell (a log-frequency ruler and a dB ruler on PlotWell).\nFD2  ANALYZER behind it, set in the caption: Pre + post (the default), Post, Pre or off, on its own -6 to -84 dBFS scale. Pre, the input, is faded into the background (plot-dry at a quarter); post, the output, is highlighted in front of it (plot-ghost under a 1.5px ink-dim edge), still behind the curves. The engine computes it, and only while the window is open.\nFD3  HANDLES are dots drawn as the kit's PlotHandle (Bit-Crusher's), placed by the engine (fd_shell_read): a gain filter's dot sits at its Freq and Gain; a high-pass's or low-pass's on its curve at the cutoff (dragging up raises its Q); a band-pass's, notch's or all-pass's on 0 dB (dragging up raises Q, narrowing it). The selected bell, band-pass or notch shows its -3 dB edges as two ticks that drag its Q. Slot numbers beside the dots, with L, R, M or S off stereo.\nFD4  NODE ROW: sixteen 40px cells on the StepGrid's pitch and an ISO cell at the right. Each cell shows its type's glyph, uv while it plays, ink-dim while bypassed, nothing while empty. New for the system: nine 16px glyphs (Bell, Low and High Shelf, High-Pass, Low-Pass, Band-Pass, Notch, All-Pass, Tilt) and the NodeCell.\nFD5  INSPECTOR (two columns wide; selects with their labels over them): Type, Family, Order, Channel; then Freq, Gain, Q, Ripple, Stopband. What a type does not use is disabled, never hidden, so nothing moves. Families: Butterworth, Bessel, Chebyshev I and II, Elliptic, Linkwitz-Riley; orders 1 to 8, read as roll-off (6 to 48 dB/oct), shelves 1 to 4. Freq is the -3 dB cutoff in every family (-6 dB for Linkwitz-Riley: at LR4 and LR8 a high-pass and low-pass pair sums to an all-pass).\nFD6  ISOLATOR (the ISO cell): Low, Mid, High (to -inf), the Low-Mid and Mid-High crossover frequencies, Slope (LR4 24 dB/oct or LR8 48 dB/oct), a Kill under each band. On the picture: the crossovers as rules with a tab, the bands' gains as dots L, M, H. All at 0 dB it is flat (an all-pass), so it starts off.\nFD7  OUTPUT: Output and Scale (every gain at once, as EQ Eight's) are bipolar; switches under them: Adaptive (proportional Q: a bell narrows as its gain grows) and Bypass (the host's bypass, a 10 ms crossfade; the filters keep running); under Adaptive, Matched (Matched Cuts: every high-pass and low-pass matched to its analog prototype, so near Nyquist it keeps the analog slope and peak instead of steepening into the bilinear transform's zero; the board draws the analog curve, which the plugin holds within about 2 dB).\nFD8  Selects open upward: the panel sits low in the window.\nFD9  One amber mark, kept for one warning: a filter whose edge the sample rate clamps (its band narrows). Not shown in this state.\n\nAs built: plugins/filter-designer (JUCE 9, the native kit), feature/filter-designer, v2026.10.12.1 (the audio review's fixes: Bypass, the tail, matched cuts); concept docs/concepts/filter-designer.md, ADR 0005 (accepted). The board computes its curves from the same designs; the plugin draws the engine's. The window is 888 × 708 as drawn here.\n\nWindow: 888 × 708."
+    },
+    "sf-notes": {
+      "fill": "teal",
+      "maxH": 720,
+      "w": 664,
+      "x": 7008,
+      "y": 1852,
+      "text": "SINGLE FILTERS — NINE NEW WINDOWS, ONE BOARD\n\nOne Filter Designer filter as a plugin of its own, for dragging a single filter into a chain: NI High Pass, NI Low Pass, NI Band Pass, NI Notch, NI Bell, NI Low Shelf, NI High Shelf, NI Tilt, NI All Pass. Each is FD's node of that type, sample for sample. One window for all nine (664 x 572): pick the product in the board's Tweaks. Interactive: drag the dot (alt for Q on a gain type, shift for fine), drag a Bell's, Band Pass's or Notch's edge ticks for Q, double-click the dot to reset; the knobs and selects work.\n\nSF1  RESPONSE: FD's ResponseWell with one filter in it, as a kit component (FrequencyResponse): the same rulers, range cycle (±6/12/18/30 dB) and analyzer (pre faded, post highlighted). The curve is uv with its glow and includes Output: what the lane hears. The caption names the lane, which is the filter's Channel (Stereo draws the mid).\nSF2  ALL PASS draws its phase as the curve, on a ±180° scale at the right; its magnitude is flat, so the 0 dB line stays as the reference.\nSF3  THE HANDLE is the kit's PlotHandle: Freq across; Gain up and down for Bell, shelves and Tilt; Q up and down for the cuts, Band Pass, Notch and All Pass.\nSF4  THE PANEL holds only what the type has. Title = the type; Bypass at its right, and the type's switch before it: Matched (High/Low Pass), Adaptive (Bell). Selects: Family, Slope (All Pass: Order), Channel. Knobs in FD's order -- Freq, Gain, Q, Ripple, Stopband -- and Output always in the last column, so the level sits in the same place in all nine. What the type has but does not use right now is disabled, never hidden (Q at 6 dB/oct; Ripple and Stopband per family).\nSF5  PER PRODUCT: High/Low Pass Family (6) Slope (6-48) Channel, Freq Q Ripple Stopband, Matched. Band Pass/Notch the same but five families (Linkwitz-Riley plays as Butterworth there) and no Matched. Bell Channel, Freq Gain Q, Adaptive. Low/High Shelf Slope (6-24) Channel, Freq Gain Q. Tilt Channel, Freq Gain. All Pass Order (1st-8th) Channel, Freq Q.\nSF6  DEFAULTS: Freq 100 Hz (High Pass), 10 kHz (Low Pass), 200 Hz (Low Shelf), 5 kHz (High Shelf), 1 kHz (the rest); Butterworth, 12 dB/oct, Q 0.71, Gain 0 dB, Stereo, analyzer Pre + post. The board opens each with a demo setting."
     }
   },
   "order": [
@@ -218,7 +234,8 @@
     "ChordDetector-Proposed.dc.html",
     "BitCrusher-Proposed.dc.html",
     "Vocalize-Proposed.dc.html",
-    "FilterDesigner-Proposed.dc.html"
+    "FilterDesigner-Proposed.dc.html",
+    "SingleFilter-Proposed.dc.html"
   ],
   "pages": [],
   "title": "NI Plugin Layouts"

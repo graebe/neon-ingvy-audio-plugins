@@ -1,0 +1,28 @@
+[package]
+name = "ni-analyzer"
+version = "2026.10.18+1"
+edition = "2021"
+authors = ["Torben Gräber"]
+license = "GPL-3.0-or-later"
+description = "An equaliser's analyzer: the input and output an engine keeps in one lane, and their spectrum as an editor draws it"
+publish.workspace = true
+
+# AN RLIB, for ni-dsp's reason: each product's crates absorb it into that
+# product's single archive.
+[lib]
+crate-type = ["rlib"]
+
+# THE EDITOR'S HALF, OFF BY DEFAULT: the spectrum (the transform, its window,
+# the banding and the release). An engine needs only the rings; a Move module,
+# which has no screen, never links the transform.
+[features]
+spectrum = ["dep:realfft"]
+
+[dependencies]
+# The analyzer's transform, on the editor's thread, with the SIMD paths
+# spectro-core takes.
+realfft = { workspace = true, optional = true, features = ["avx", "sse", "neon"] }
+
+[dev-dependencies]
+# The no-allocation guard tests/no_alloc.rs installs.
+assert_no_alloc = { workspace = true, features = ["warn_debug", "warn_release"] }
