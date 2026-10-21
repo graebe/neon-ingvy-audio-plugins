@@ -2,6 +2,19 @@
 
 All notable changes to Ultraviolet, newest first. Versions follow the rules under Versioning.
 
+## 2.3.0 — 2026-10-21
+
+The object under a radial menu stays movable, and the menu is one keyboard stop.
+
+**Added**
+
+- RadialMenu: the middle may pass presses through (inside the items' inner edge, 36px): a press, a drag or a double-click there goes to the object under the menu, so it can be moved with its controls open.
+
+**Changed**
+
+- RadialMenu: one Tab stop. Tab into it takes its first item, or the one last used; Shift+Tab leaves the menu instead of going round backwards.
+- Interaction conventions: the Radial menu rule names the pass-through middle.
+
 ## 2.2.0 — 2026-10-21
 
 A well full of small objects edits them where they are: a click opens a circle of the object's controls around it, and a pitch view gets a piano down its left edge. Additions only; no token, class or rule changes.

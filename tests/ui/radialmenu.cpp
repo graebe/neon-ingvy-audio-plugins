@@ -3,7 +3,8 @@
 
 /*
  * The RadialMenu: its ring round the point and kept inside the window, what
- * is its to hit and what is left to the owner, a value item's drag as a
+ * is its to hit and what is left to the owner (the middle too, when it
+ * passes presses through), one Tab stop, a value item's drag as a
  * Knob's (the dead zone, the travel, Shift finer or the alternate, the
  * detents), a click on an action, a double-click's reset, every key, the
  * hint it names, a gesture kept across setItems, and what a screen reader
@@ -178,6 +179,103 @@ TEST_CASE ("radial menu: the plate, the discs and the labels are its; everything
     CHECK (r.menu.itemAt (r.menu.itemCentre (0) + juce::Point<float> (0.0f, RadialMenu::railRadius + 1.0f)) == -1);
 }
 
+TEST_CASE ("radial menu: the middle passes presses through when asked -- the ring, items and labels stay the menu's")
+{
+    Recorded r;
+    r.window.setVisible (true);   // getComponentAt finds nothing in a hidden one
+    /* What is under the menu: the owner's object. */
+    juce::Component under;
+    r.window.addAndMakeVisible (under, 0);
+    under.setBounds (r.window.getLocalBounds());
+    const auto centre = r.menu.getCentrePoint();
+    const auto inMenu = [&r] (juce::Point<int> p) { return p - r.menu.getPosition(); };
+    const auto at = [&centre] (float radius, float degrees)
+    {
+        const float a = juce::degreesToRadians (degrees);
+        return (centre.toFloat() + juce::Point<float> (std::sin (a), -std::cos (a)) * radius).roundToInt();
+    };
+
+    CHECK (RadialMenu::holeRadius == doctest::Approx (36.0f));
+    CHECK_FALSE (r.menu.passesCentreThrough());
+    CHECK (r.window.getComponentAt (centre) == &r.menu);
+
+    r.menu.setCentrePassesThrough (true);
+    CHECK (r.menu.passesCentreThrough());
+    /* The hole: the object under it gets the press, and so its drag and
+     * its double-click. */
+    for (const auto p : { centre, at (20.0f, 45.0f), at (RadialMenu::holeRadius - 1.0f, 200.0f) })
+    {
+        CAPTURE (p.toString());
+        CHECK_FALSE (r.menu.hitTest (inMenu (p).x, inMenu (p).y));
+        CHECK (r.window.getComponentAt (p) == &under);
+    }
+    /* The ring between the items, the plate past it: the menu's, doing nothing. */
+    for (const auto p : { at (RadialMenu::holeRadius + 2.0f, 45.0f), at (70.0f, 45.0f), at (80.0f, 135.0f) })
+    {
+        CAPTURE (p.toString());
+        CHECK (r.menu.hitTest (inMenu (p).x, inMenu (p).y));
+        CHECK (r.window.getComponentAt (p) == &r.menu);
+    }
+    /* Every item and its label: the item's. */
+    for (int i = 0; i < 4; ++i)
+    {
+        CAPTURE (i);
+        const auto c = (r.menu.itemCentre (i) + r.menu.getPosition().toFloat()).roundToInt();
+        CHECK (r.window.getComponentAt (c) == &r.menu.item (i));
+        const auto chip = (r.menu.labelBounds (i).getCentre() + r.menu.getPosition().toFloat()).roundToInt();
+        CHECK (r.window.getComponentAt (chip) == &r.menu.item (i));
+    }
+    /* Outside the plate, as ever: the owner's. */
+    CHECK (r.window.getComponentAt (at (RadialMenu::plateRadius + 12.0f, 45.0f)) == &under);
+
+    r.menu.setCentrePassesThrough (false);
+    CHECK (r.window.getComponentAt (centre) == &r.menu);
+}
+
+TEST_CASE ("radial menu: one Tab stop -- Tab into it takes the first live item, or the last one used; Shift+Tab leaves it")
+{
+    juce::Component window;
+    window.setBounds (0, 0, 800, 600);
+    window.setFocusContainerType (juce::Component::FocusContainerType::keyboardFocusContainer);
+    juce::TextButton before ("before"), after ("after");
+    RadialMenu menu;
+    before.setExplicitFocusOrder (1);
+    menu.setExplicitFocusOrder (2);
+    after.setExplicitFocusOrder (3);
+    auto items = std::vector<Item> { value ("depth", 0.5), value ("glide", 0.4), action ("copy") };
+    items[0].enabled = false;
+    menu.setItems (items);
+    for (auto* c : std::initializer_list<juce::Component*> { &before, &menu, &after })
+        window.addAndMakeVisible (*c);
+    before.setBounds (10, 10, 80, 28);
+    after.setBounds (700, 10, 80, 28);
+    menu.placeAround ({ 400, 300 }, window.getLocalBounds());
+
+    CHECK (menu.getWantsKeyboardFocus());
+    CHECK (menu.isKeyboardFocusContainer());
+    CHECK_FALSE (menu.getMouseClickGrabsKeyboardFocus());
+    juce::KeyboardFocusTraverser traverser;
+    CHECK (traverser.getAllComponents (&window) == std::vector<juce::Component*> { &before, &menu, &after });
+    CHECK (traverser.getNextComponent (&before) == &menu);
+    CHECK (traverser.getPreviousComponent (&menu) == &before);
+    CHECK (traverser.getNextComponent (&menu) == &after);
+
+    /* In: the first live item, past the one that is off. */
+    menu.focusGained (juce::Component::focusChangedByTabKey);
+    CHECK (menu.getKeyboardItem() == 1);
+    /* The keyboard on the last item; in again later, it goes back there. */
+    menu.item (2).focusGained (juce::Component::focusChangedByTabKey);
+    CHECK (menu.getKeyboardItem() == 2);
+    menu.focusGained (juce::Component::focusChangedByTabKey);
+    CHECK (menu.getKeyboardItem() == 2);
+    /* Tab goes round, past the one that is off. */
+    CHECK (menu.item (2).keyPressed (juce::KeyPress (juce::KeyPress::tabKey)));
+    CHECK (menu.getKeyboardItem() == 1);
+    /* Shift+Tab is used, and moves no item: it leaves the menu. */
+    CHECK (menu.item (1).keyPressed (juce::KeyPress (juce::KeyPress::tabKey, juce::ModifierKeys::shiftModifier, 0)));
+    CHECK (menu.getKeyboardItem() == 1);
+}
+
 /* ------------------------------------------------------------ the pointer */
 
 TEST_CASE ("radial menu: a drag does nothing inside 4px, then opens its gesture and runs 200px for the range")
@@ -348,7 +446,10 @@ TEST_CASE ("radial menu: Tab and the arrows go round, Enter acts, Escape asks to
     Recorded r;
     CHECK (r.key (0, juce::KeyPress::tabKey));
     CHECK (r.menu.getKeyboardItem() == 1);
-    CHECK (r.key (1, juce::KeyPress::tabKey, shift));
+    CHECK (r.key (3, juce::KeyPress::tabKey));
+    CHECK (r.menu.getKeyboardItem() == 0);
+    /* Shift+Tab leaves the menu (the Tab stop's test): no item moves. */
+    CHECK (r.key (0, juce::KeyPress::tabKey, shift));
     CHECK (r.menu.getKeyboardItem() == 0);
     CHECK (r.key (0, juce::KeyPress::leftKey));
     CHECK (r.menu.getKeyboardItem() == 3);

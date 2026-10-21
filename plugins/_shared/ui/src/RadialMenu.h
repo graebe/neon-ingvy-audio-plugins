@@ -56,8 +56,21 @@
  * what the press does there -- in one click. (Inside a Popup the press
  * would be swallowed; host it there only if that is what you want.)
  *
- * THE KEYBOARD, on the item that has it (each item is a Tab stop, Tab and
- * Shift+Tab cycle inside the menu):
+ * THE MIDDLE MAY PASS THROUGH (setCentrePassesThrough): the menu opens
+ * round the object that was clicked, and its plate covers it. An owner that
+ * wants that object still in reach turns this on: a press inside the hole
+ * -- nearer the centre than the items' inner edge, holeRadius -- is then
+ * not the menu's either, and goes to whatever is under it, its drags and
+ * double-clicks with it. The ring between the items, the items and their
+ * labels stay the menu's. The middle is still drawn, words and all; off by
+ * default.
+ *
+ * THE KEYBOARD. The menu is one Tab stop: Tab from the control before it
+ * gives it the keyboard, and its first enabled item -- or the one the
+ * keyboard was last on -- takes it. On the item that has it:
+ *
+ *   Tab           the next item, clockwise, round and round
+ *   Shift+Tab     out of the menu, to the stop before it
  *
  *   Left / Right  the item before or after, counter-clockwise or clockwise
  *   Up / Down     a value item: 1 % (Shift 0.2 %, or the alternate at 1 %);
@@ -66,9 +79,9 @@
  *   Enter         an action item: onAction
  *   Escape        onClose
  *
- * The owner gives the menu the keyboard with grabKeyboardFocus(); the first
- * enabled item takes it. A press on an item does not take the keyboard, so
- * the owner's own keys -- undo, its Escape -- keep working while it is open.
+ * The owner may also give it the keyboard with grabKeyboardFocus(). A press
+ * on the menu -- an item or the plate -- does not take the keyboard, so the
+ * owner's own keys -- undo, its Escape -- keep working while it is open.
  *
  * IT CHANGES NOTHING ITSELF, and never closes itself. Every value it shows is
  * the owner's (setItems, which keeps a gesture under way when the ids are
@@ -83,7 +96,16 @@
  *
  * THE RULE is Ultraviolet 2.2.0's Interaction conventions, "Radial menu"
  * (design/scheme/project/README.md; the component's guidelines are
- * design/scheme/project/components/RadialMenu/README.md).
+ * design/scheme/project/components/RadialMenu/README.md). The guidelines'
+ * words for the two additions above, until the design system carries them:
+ *
+ *   "An owner whose object sits under the click may let the middle pass
+ *   presses through: inside the items' inner edge a press, a drag or a
+ *   double-click goes to the object under the menu, so it can still be
+ *   moved while its controls are open; the ring, the items and their
+ *   labels stay the menu's. To the keyboard the menu is one stop: Tab into
+ *   it takes its first item, Tab, Left and Right go round, Shift+Tab leaves
+ *   it, Escape closes it."
  */
 #pragma once
 
@@ -121,6 +143,9 @@ public:
 
     /* What the ring holds comfortably: more crowd it. */
     static constexpr int maxItems = 8;
+    /* The middle that may pass presses through: inside the items' inner
+     * edge, 4px clear of it. */
+    static constexpr float holeRadius = ringRadius - discSize * 0.5f - 4.0f;
 
     struct Item
     {
@@ -163,6 +188,11 @@ public:
      * further, for its light. Kept, and done again by setItems.
      */
     void placeAround (juce::Point<int> centre, juce::Rectangle<int> bounds);
+    /* Presses inside holeRadius go to what is under the menu (false: the
+     * menu's, as the rest of the plate). */
+    void setCentrePassesThrough (bool);
+    bool passesCentreThrough() const noexcept { return centrePasses; }
+
     /* Where the ring's centre ended up, in the parent's coordinates. */
     juce::Point<int> getCentrePoint() const noexcept { return placedAt; }
     /* The plate and the labels, in the parent's coordinates. */
@@ -193,6 +223,7 @@ public:
     std::function<void()> onClose;
 
     bool hitTest (int x, int y) override;
+    void focusGained (FocusChangeType) override;
     void paint (juce::Graphics&) override;
     void enablementChanged() override;
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
@@ -217,6 +248,7 @@ private:
     juce::Point<int> requestedAt, placedAt;
     juce::Rectangle<int> within;
     bool placed = false;
+    bool centrePasses = false;
 
     int hovered = -1, dragged = -1, keyboardItem = -1;
     int lastHot = -1;

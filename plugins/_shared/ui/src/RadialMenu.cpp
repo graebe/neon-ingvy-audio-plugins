@@ -219,7 +219,11 @@ public:
     {
         if (k.isKeyCode (juce::KeyPress::tabKey))
         {
-            menu.move (index, k.getModifiers().isShiftDown() ? -1 : 1);
+            /* Tab goes round; Shift+Tab leaves, to the stop before the menu. */
+            if (k.getModifiers().isShiftDown())
+                menu.moveKeyboardFocusToSibling (false);
+            else
+                menu.move (index, 1);
             return true;
         }
 
@@ -392,7 +396,10 @@ std::unique_ptr<juce::AccessibilityHandler> RadialMenu::Control::createAccessibi
 
 RadialMenu::RadialMenu()
 {
-    setWantsKeyboardFocus (false);
+    /* One Tab stop, which hands the keyboard to an item (focusGained); a
+     * press on the plate does not take it. */
+    setWantsKeyboardFocus (true);
+    setMouseClickGrabsKeyboardFocus (false);
     setFocusContainerType (FocusContainerType::keyboardFocusContainer);
     setTitle ("Menu");
 }
@@ -598,10 +605,31 @@ void RadialMenu::move (int from, int by)
     }
 }
 
+void RadialMenu::setCentrePassesThrough (bool on)
+{
+    centrePasses = on;
+}
+
 bool RadialMenu::hitTest (int x, int y)
 {
     const juce::Point<float> p ((float) x, (float) y);
-    return p.getDistanceFrom (ringCentre()) <= plateRadius || itemAt (p) >= 0;
+    const float r = p.getDistanceFrom (ringCentre());
+    if (centrePasses && r < holeRadius)
+        return false;
+    return r <= plateRadius || itemAt (p) >= 0;
+}
+
+/* The menu's own focus is only on the way to an item's: the one the
+ * keyboard was last on, else the first enabled one. */
+void RadialMenu::focusGained (FocusChangeType)
+{
+    if (keyboardItem >= 0 && isLive (keyboardItem))
+    {
+        if (controls[(size_t) keyboardItem]->isShowing())
+            controls[(size_t) keyboardItem]->grabKeyboardFocus();
+        return;
+    }
+    move (-1, 1);
 }
 
 void RadialMenu::enablementChanged()

@@ -150,9 +150,9 @@
  },
  "lastChange": {
   "by": "Torben",
-  "at": "2026-10-21T12:00:00Z",
+  "at": "2026-10-21T15:00:00Z",
   "via": "Claude Code",
-  "note": "Release 2.2.0: RadialMenu and PianoAxis; the radial menu convention",
-  "version": "2.2.0"
+  "note": "Release 2.3.0: a radial menu's middle may pass presses through; one Tab stop",
+  "version": "2.3.0"
  }
 }
