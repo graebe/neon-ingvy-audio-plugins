@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Torben Gräber
 
 /*
- * Ultraviolet 2.1.0 -- GENERATED, DO NOT EDIT.
+ * Ultraviolet 2.2.0 -- GENERATED, DO NOT EDIT.
  *
  * scripts/gen-tokens.mjs wrote this from design/scheme/project/tokens.json.
  * After re-syncing the design, run
@@ -28,7 +28,7 @@ namespace uv::tok
 
 /* The system these values are, and its release. */
 inline constexpr const char* systemName = "Ultraviolet";
-inline constexpr const char* release = "2.1.0";
+inline constexpr const char* release = "2.2.0";
 
 /* ============================================================ colour == */
 

@@ -81,18 +81,9 @@
  * value item a slider (its label the name, its value text the value), an
  * action a menu item that can be pressed.
  *
- * PROPOSED RULE for the design system's Interaction conventions (README),
- * to be published with the Design Scheme artifact:
- *
- *   Radial menu. A click on an object in a well may open a circle of its
- *   controls around the click: value items drag up and down as a knob does
- *   (200 px, Shift five times finer, detents held for 14 px, 4 px of dead
- *   zone, one edit per drag, double-click resets), action items act on a
- *   click, and each item's label sits outside the ring. Tab or Left and
- *   Right move between items, Up and Down change a value, Enter acts,
- *   Escape closes. A press anywhere outside closes it and still does what it
- *   does there. An item may give Shift to a second parameter instead of fine
- *   control, and its hint says so (`RadialMenu`).
+ * THE RULE is Ultraviolet 2.2.0's Interaction conventions, "Radial menu"
+ * (design/scheme/project/README.md; the component's guidelines are
+ * design/scheme/project/components/RadialMenu/README.md).
  */
 #pragma once
 

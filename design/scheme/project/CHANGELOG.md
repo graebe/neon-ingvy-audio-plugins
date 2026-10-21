@@ -2,6 +2,16 @@
 
 All notable changes to Ultraviolet, newest first. Versions follow the rules under Versioning.
 
+## 2.2.0 — 2026-10-21
+
+A well full of small objects edits them where they are: a click opens a circle of the object's controls around it, and a pitch view gets a piano down its left edge. Additions only; no token, class or rule changes.
+
+**Added**
+
+- RadialMenu: a circle of up to eight value and action items on a `bg-100` plate around the click, value items as knob dials (bipolar, detents), labels on chips outside the plate, the centre naming what it acts on. Guidelines and preview.
+- PianoAxis: a vertical, display-only keyboard 32px wide that follows a pitch view's axis, lit keys in `uv`, the scale's keys marked in the gutter, each C named. Guidelines and preview.
+- Interaction conventions: **Radial menu** — value items drag as knobs, actions act on a click, a press outside closes it and still acts, Shift may be a second parameter when the hint says so, and the keyboard map.
+
 ## 2.1.0 — 2026-10-18
 
 Sliders are clicked where they should be; knobs are pulled. The Drag convention named both as dragged vertically by distance, while every slider built on the system already put its value where it was pressed. The owner's rule now reads as the controls work: a new rule that existing plugins already satisfy.
