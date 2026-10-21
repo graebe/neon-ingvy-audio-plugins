@@ -65,6 +65,47 @@
  * labels stay the menu's. The middle is still drawn, words and all; off by
  * default.
  *
+ * SEE-THROUGH (setSeeThrough): for an owner whose object must stay in sight
+ * while its controls are open -- a note under the click, its whole row. The
+ * menu then draws nothing between its items and claims nothing there:
+ *
+ *   no plate   no fill, no hairline, no centre text; whatever is under the
+ *              menu shows between the items, untouched
+ *   the band   a clear horizontal band through the centre, clearBand (10px)
+ *              above and below it (setClearBand), which no item's dial and
+ *              no label enters
+ *   the arcs   the items on two arcs, one above the band round 12 o'clock
+ *              and one below it round 6: the first half (one more if odd)
+ *              above, the rest below, each arc evenly spread over the angles
+ *              whose items clear the band by 2px -- a dial's 24px reach,
+ *              its ticks, measured from the band's edge. Clockwise from the
+ *              top left: the upper arc left to right, then the lower right
+ *              to left, so Tab and the arrows go round as they read
+ *   wider      where an arc cannot hold its items at 56px with their rails
+ *              2px apart -- seven or eight items, or a band over 10px --
+ *              the ring widens just enough that it can (getRingRadius)
+ *   labels     outside each dial along its direction, as ever, but always
+ *              on the side away from the band: above the upper arc's items,
+ *              below the lower's
+ *   a value    with no centre to print it, the hot value item's chip says
+ *              "LABEL · value": the label in ink, the value as a readout
+ *              prints one (number in ink, unit in ink-muted); painted over
+ *              its neighbours
+ *
+ * What is the menu's is only its items: their dials (railRadius, as ever)
+ * and their chips. Every other point -- the centre, the band, the space
+ * between the items -- is NOT the menu's, so the object under it is
+ * pressed, dragged and double-clicked as if the menu were not there.
+ * setCentrePassesThrough then changes nothing (see-through takes
+ * precedence; it is kept for when see-through is turned off again). The
+ * centre text is not drawn, but still titles the menu for a screen reader:
+ * an owner shows it elsewhere -- its hint bar, say.
+ *
+ * placeAround keeps the items and their labels inside the bounds; the band
+ * is the menu's centre line, so it lies on the point asked for unless the
+ * menu had to move to fit, and then it moves with the menu (an owner that
+ * minds places it again, or keeps its objects off the edge).
+ *
  * THE KEYBOARD. The menu is one Tab stop: Tab from the control before it
  * gives it the keyboard, and its first enabled item -- or the one the
  * keyboard was last on -- takes it. On the item that has it:
@@ -94,18 +135,33 @@
  * value item a slider (its label the name, its value text the value), an
  * action a menu item that can be pressed.
  *
- * THE RULE is Ultraviolet 2.2.0's Interaction conventions, "Radial menu"
+ * THE RULE is Ultraviolet 2.3.0's Interaction conventions, "Radial menu"
  * (design/scheme/project/README.md; the component's guidelines are
  * design/scheme/project/components/RadialMenu/README.md). The guidelines'
- * words for the two additions above, until the design system carries them:
+ * words for see-through, for Ultraviolet 2.4.0, until the design system
+ * carries them -- the component's README, after the middle that passes
+ * presses through:
  *
- *   "An owner whose object sits under the click may let the middle pass
- *   presses through: inside the items' inner edge a press, a drag or a
- *   double-click goes to the object under the menu, so it can still be
- *   moved while its controls are open; the ring, the items and their
- *   labels stay the menu's. To the keyboard the menu is one stop: Tab into
- *   it takes its first item, Tab, Left and Right go round, Shift+Tab leaves
- *   it, Escape closes it."
+ *   "Where the object under the click must stay in sight, the menu may be
+ *   see-through: no plate and no centre text, and a clear band through the
+ *   centre (10px above and below it, more for a taller object) that no
+ *   item and no label enters. The items sit on two arcs, above the band
+ *   round 12 o'clock and below it round 6, clockwise from the top left; with
+ *   seven or eight items, or a taller band, the ring widens just enough to
+ *   hold them. Labels sit outside each item, away from the band. With no
+ *   centre, the item under the pointer or being dragged shows its value in
+ *   its label ("LEVEL · -3.0 dB"), and the owner names what the menu acts
+ *   on elsewhere (its hint bar). Only the items and their labels are the
+ *   menu's: a press anywhere else -- the centre, the band, between the
+ *   items -- goes to the object under it, which can be pressed, dragged
+ *   and double-clicked as if the menu were not there."
+ *
+ * and the Interaction conventions' "Radial menu", after "the menu's middle
+ * lets presses through to it":
+ *
+ *   "Where it must stay in sight too, the menu is see-through: nothing
+ *   between its items, a clear band through the click, and the hot item's
+ *   value in its label."
  */
 #pragma once
 
@@ -143,6 +199,13 @@ public:
 
     /* What the ring holds comfortably: more crowd it. */
     static constexpr int maxItems = 8;
+    /* See-through: the band's half-height by default; how far a dial
+     * reaches from its centre (its detent ticks), and how clear of the band
+     * it stays; and its rails' distance from a neighbour's, at least. */
+    static constexpr float defaultClearBand = 10.0f;
+    static constexpr float itemReach = itemBox * 0.5f;
+    static constexpr float bandGap = 2.0f;
+    static constexpr float railGap = 2.0f;
     /* The middle that may pass presses through: inside the items' inner
      * edge, 4px clear of it. */
     static constexpr float holeRadius = ringRadius - discSize * 0.5f - 4.0f;
@@ -193,9 +256,21 @@ public:
     void setCentrePassesThrough (bool);
     bool passesCentreThrough() const noexcept { return centrePasses; }
 
+    /* See-through (above): no plate, no centre, a clear band through the
+     * centre, and only the items and labels the menu's. Off by default. */
+    void setSeeThrough (bool);
+    bool isSeeThrough() const noexcept { return seeThrough; }
+    /* The band's half-height, from the centre line to its edge (>= 0). */
+    void setClearBand (float halfHeight);
+    float getClearBand() const noexcept { return clearBand; }
+    /* The ring's radius now: ringRadius, or wider where see-through's arcs
+     * need it. */
+    float getRingRadius() const noexcept { return ring; }
+
     /* Where the ring's centre ended up, in the parent's coordinates. */
     juce::Point<int> getCentrePoint() const noexcept { return placedAt; }
-    /* The plate and the labels, in the parent's coordinates. */
+    /* The plate and the labels -- see-through, the items' dials and their
+     * labels -- in the parent's coordinates. */
     juce::Rectangle<int> footprint() const;
 
     /* An item's centre and its label's chip, in the menu's coordinates; the
@@ -203,6 +278,9 @@ public:
     juce::Point<float> itemCentre (int index) const;
     juce::Rectangle<float> labelBounds (int index) const;
     int itemAt (juce::Point<float>) const;
+    /* What an item's chip says now: its label as the label style sets it,
+     * or, see-through while it is a hot value item, "LABEL · value". */
+    juce::String labelText (int index) const;
 
     /* The component an item is: the Tab stop, the screen reader's element,
      * and where the pointer's events for it go. */
@@ -231,11 +309,15 @@ public:
 private:
     class Control;
 
+    void arrange();
     void layout();
     juce::Rectangle<int> footprintAboutCentre() const;
     juce::Point<float> ringCentre() const;
+    float itemAngle (int index) const;
     juce::Point<float> direction (int index) const;
-    juce::Rectangle<float> chipAt (int index, juce::Point<float> centre) const;
+    bool showsValue (int index, bool hot) const;
+    juce::Rectangle<float> chipAt (int index, juce::Point<float> centre, bool hot) const;
+    void paintChip (juce::Graphics&, int index, bool hot) const;
     bool isLive (int index) const;
     void hotChanged();
     void move (int from, int by);
@@ -249,6 +331,12 @@ private:
     juce::Rectangle<int> within;
     bool placed = false;
     bool centrePasses = false;
+    bool seeThrough = false;
+    float clearBand = defaultClearBand;
+    /* The ring's radius, and see-through's arcs' half-width, in radians
+     * either side of 12 and of 6 o'clock (arrange). */
+    float ring = ringRadius;
+    float arcHalf = 0.0f;
 
     int hovered = -1, dragged = -1, keyboardItem = -1;
     int lastHot = -1;

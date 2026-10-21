@@ -8,7 +8,10 @@
  * Knob's (the dead zone, the travel, Shift finer or the alternate, the
  * detents), a click on an action, a double-click's reset, every key, the
  * hint it names, a gesture kept across setItems, and what a screen reader
- * hears. Then its gallery page, as a picture.
+ * hears. See-through: the band no item and no label enters, the arcs and
+ * the ring widened to hold them, only its items its own, the hot value in
+ * its label, the keyboard as ever, and the plain ring untouched by it. Then
+ * its gallery pages, as pictures.
  */
 #include "Detents.h"
 #include "Gallery.h"
@@ -583,6 +586,367 @@ TEST_CASE ("radial menu: a popup menu of sliders and pressable items, each named
     CHECK (r.said() == "action copy");
 }
 
+/* ---------------------------------------------------------- see-through */
+
+namespace
+{
+/* n items, values and actions mixed, each with a label. */
+std::vector<Item> mixed (int n)
+{
+    const char* ids[] = { "depth", "rate", "copy", "level", "tone", "link", "mix", "pan" };
+    std::vector<Item> out;
+    for (int i = 0; i < n; ++i)
+        out.push_back (i % 3 == 2 ? action (ids[i]) : value (ids[i], 0.1 * (i + 1)));
+    return out;
+}
+
+/* A see-through menu of n items over an object that fills the window. */
+struct SeeThrough
+{
+    SeeThrough (int n, float band = RadialMenu::defaultClearBand)
+    {
+        window.setBounds (0, 0, 800, 600);
+        window.addAndMakeVisible (under);
+        under.setBounds (window.getLocalBounds());
+        window.addAndMakeVisible (menu);
+        menu.setSeeThrough (true);
+        menu.setClearBand (band);
+        menu.setItems (mixed (n));
+        menu.placeAround ({ 400, 300 }, window.getLocalBounds());
+    }
+
+    /* The band, as wide as the window, in the menu's coordinates. */
+    juce::Rectangle<float> band() const
+    {
+        const auto c = (menu.getCentrePoint() - menu.getPosition()).toFloat();
+        return { -1000.0f, c.y - menu.getClearBand(), 3000.0f, 2.0f * menu.getClearBand() };
+    }
+
+    juce::Point<int> inWindow (juce::Point<float> inMenu) const { return (inMenu + menu.getPosition().toFloat()).roundToInt(); }
+    juce::Point<float> at (int i) { return menu.itemCentre (i) - menu.item (i).getPosition().toFloat(); }
+
+    juce::Component window, under;
+    RadialMenu menu;
+};
+} // namespace
+
+TEST_CASE ("radial menu, see-through: no dial and no label enters the band -- 3 to 8 items, 10 and 16px")
+{
+    for (const float half : { RadialMenu::defaultClearBand, 16.0f })
+        for (int n = 3; n <= 8; ++n)
+        {
+            CAPTURE (half);
+            CAPTURE (n);
+            SeeThrough s (n, half);
+            const auto& m = s.menu;
+            REQUIRE (m.isSeeThrough());
+            CHECK (m.getClearBand() == half);
+            CHECK (m.getCentrePoint() == juce::Point<int> (400, 300));
+            const auto centre = (m.getCentrePoint() - m.getPosition()).toFloat();
+            const auto band = s.band();
+            const int upper = (n + 1) / 2;
+
+            /* The ring: 56px while its arcs hold the items -- three a side
+             * round a 10px band, two round 16px -- and wider past that. */
+            if (n <= (half <= RadialMenu::defaultClearBand ? 6 : 4))
+                CHECK (m.getRingRadius() == RadialMenu::ringRadius);
+            else
+                CHECK (m.getRingRadius() > RadialMenu::ringRadius);
+            CHECK (m.getRingRadius() < 80.0f);
+
+            Pointer p;
+            for (int i = 0; i < n; ++i)
+            {
+                CAPTURE (i);
+                const auto c = m.itemCentre (i);
+                CHECK (c.getDistanceFrom (centre) == doctest::Approx (m.getRingRadius()));
+                /* The whole dial, ticks and all, 2px clear of the band. */
+                CHECK (std::abs (c.y - centre.y) >= half + RadialMenu::itemReach + RadialMenu::bandGap - 1.0e-3f);
+                CHECK_FALSE (juce::Rectangle<float> (RadialMenu::itemBox, RadialMenu::itemBox).withCentre (c).intersects (band));
+                /* Its label, and the label with its value while hot. */
+                CHECK_FALSE (m.labelBounds (i).intersects (band));
+                p.enter (s.menu.item (i), s.at (i));
+                CHECK (m.getHot() == i);
+                CHECK_FALSE (m.labelBounds (i).intersects (band));
+                CHECK (m.getLocalBounds().toFloat().contains (m.labelBounds (i)));
+                p.exit (s.menu.item (i));
+
+                /* The first half above, the rest below; outward labels. */
+                CHECK ((i < upper) == (c.y < centre.y));
+                CHECK ((i < upper) == (m.labelBounds (i).getBottom() < c.y));
+                CHECK ((i < upper) != (m.labelBounds (i).getY() > c.y));
+
+                for (int j = i + 1; j < n; ++j)
+                {
+                    CAPTURE (j);
+                    /* Rails 2px apart, and no label on another's label or dial. */
+                    CHECK (c.getDistanceFrom (m.itemCentre (j)) >= 2.0f * RadialMenu::railRadius + RadialMenu::railGap - 1.0e-3f);
+                    CHECK_FALSE (m.labelBounds (i).intersects (m.labelBounds (j)));
+                    CHECK_FALSE (m.labelBounds (i).intersects (juce::Rectangle<float> (RadialMenu::discSize, RadialMenu::discSize).withCentre (m.itemCentre (j))));
+                }
+            }
+
+            /* Clockwise from the top left: the upper arc left to right, the
+             * lower right to left, so the keyboard goes round as it reads. */
+            for (int i = 1; i < n; ++i)
+            {
+                CAPTURE (i);
+                if (i < upper)
+                    CHECK (m.itemCentre (i).x > m.itemCentre (i - 1).x);
+                else if (i > upper)
+                    CHECK (m.itemCentre (i).x < m.itemCentre (i - 1).x);
+            }
+            if (n - upper == 1)
+                CHECK (m.itemCentre (upper).x == doctest::Approx (centre.x));
+            CHECK (m.itemCentre (0).x < centre.x);
+        }
+}
+
+TEST_CASE ("radial menu, see-through: the widened ring is the smallest that holds the arcs")
+{
+    /* Seven at 10px: four above, rails 2px apart, each 26px clear of the
+     * centre line. */
+    SeeThrough s (7);
+    const float r = s.menu.getRingRadius();
+    const float rise = RadialMenu::defaultClearBand + RadialMenu::itemReach + RadialMenu::bandGap;
+    const float apart = RadialMenu::railRadius + RadialMenu::railGap * 0.5f;
+    const auto holds = [&] (float radius) { return 2.0f * std::acos (rise / radius) >= 3.0f * 2.0f * std::asin (apart / radius); };
+    CHECK (holds (r));
+    CHECK_FALSE (holds (r - 1.0f));
+    CHECK (r == std::ceil (r));
+
+    /* A band too high for the plain ring even for one item a side. */
+    SeeThrough tall (2, 40.0f);
+    CHECK (tall.menu.getRingRadius() >= 40.0f + rise - RadialMenu::defaultClearBand);
+    CHECK_FALSE (tall.menu.labelBounds (0).intersects (tall.band()));
+    CHECK (std::abs (tall.menu.itemCentre (1).y - tall.menu.itemCentre (0).y) >= 2.0f * (40.0f + RadialMenu::itemReach));
+
+    /* A smaller band never makes it smaller than the plain ring. */
+    SeeThrough flat (4, 0.0f);
+    CHECK (flat.menu.getRingRadius() == RadialMenu::ringRadius);
+    flat.menu.setClearBand (-5.0f);
+    CHECK (flat.menu.getClearBand() == 0.0f);
+}
+
+TEST_CASE ("radial menu, see-through: only its dials and labels are its own -- the centre, the band and between pass through")
+{
+    for (const int n : { 4, 7 })
+    {
+        CAPTURE (n);
+        SeeThrough s (n);
+        s.window.setVisible (true);   // getComponentAt finds nothing in a hidden one
+        auto& m = s.menu;
+        const auto centre = m.getCentrePoint();
+        const auto local = [&m] (juce::Point<int> p) { return p - m.getPosition(); };
+
+        /* The centre and the band, either way along it: the object's. */
+        for (const int dx : { 0, -30, 30, -60, 60, -90, 90 })
+            for (const int dy : { 0, -9, 9 })
+            {
+                const auto p = centre + juce::Point<int> (dx, dy);
+                CAPTURE (p.toString());
+                CHECK_FALSE (m.hitTest (local (p).x, local (p).y));
+                CHECK (s.window.getComponentAt (p) == &s.under);
+            }
+        /* Between neighbours, where the plate was: the object's. */
+        for (int i = 0; i + 1 < n; ++i)
+        {
+            const auto mid = s.inWindow ((m.itemCentre (i) + m.itemCentre (i + 1)) * 0.5f);
+            CAPTURE (mid.toString());
+            CHECK (s.window.getComponentAt (mid) == &s.under);
+        }
+        /* Passing the centre through or not changes nothing here. */
+        m.setCentrePassesThrough (false);
+        CHECK (s.window.getComponentAt (centre) == &s.under);
+        m.setCentrePassesThrough (true);
+        CHECK (s.window.getComponentAt (centre) == &s.under);
+
+        /* Every dial, to its reach, and every label: the item's. */
+        for (int i = 0; i < n; ++i)
+        {
+            CAPTURE (i);
+            const auto c = m.itemCentre (i);
+            CHECK (s.window.getComponentAt (s.inWindow (c)) == &m.item (i));
+            CHECK (s.window.getComponentAt (s.inWindow (c + juce::Point<float> (RadialMenu::railRadius - 1.0f, 0.0f))) == &m.item (i));
+            CHECK (s.window.getComponentAt (s.inWindow (m.labelBounds (i).getCentre())) == &m.item (i));
+        }
+    }
+}
+
+TEST_CASE ("radial menu, see-through: the hot value's label carries its value; an action's only its label")
+{
+    SeeThrough s (4);
+    auto items = mixed (4);
+    items[0].valueText = juce::String::fromUTF8 ("\xe2\x88\x92" "3.0 dB");
+    s.menu.setItems (items);
+    auto& m = s.menu;
+    const auto dot = juce::String::fromUTF8 (" \xc2\xb7 ");
+
+    CHECK (m.labelText (0) == "DEPTH");
+    const auto resting = m.labelBounds (0);
+    Pointer p;
+    p.enter (m.item (0), s.at (0));
+    CHECK (m.labelText (0) == "DEPTH" + dot + juce::String::fromUTF8 ("\xe2\x88\x92" "3.0 dB"));
+    const auto hot = m.labelBounds (0);
+    CHECK (hot.getWidth() > resting.getWidth() + 30.0f);
+    /* Upper left: it grows away from the centre, its inner corner kept. */
+    CHECK (hot.getRight() == doctest::Approx (resting.getRight()));
+    CHECK (hot.getBottom() == doctest::Approx (resting.getBottom()));
+    /* Its wider part is its own, before any neighbour's. */
+    CHECK (m.itemAt (hot.getTopLeft() + juce::Point<float> (2.0f, 2.0f)) == 0);
+    p.exit (m.item (0));
+    CHECK (m.labelText (0) == "DEPTH");
+    CHECK (m.labelBounds (0) == resting);
+
+    /* An action pointed at: its label alone. */
+    p.enter (m.item (2), s.at (2));
+    CHECK (m.labelText (2) == "COPY");
+    p.exit (m.item (2));
+
+    /* Dragged, the value it is set to; focused by the keyboard, too. */
+    p.down (m.item (1), s.at (1));
+    p.drag (s.at (1) - juce::Point<float> (0.0f, 20.0f));
+    items[1].valueText = "30 %";
+    m.setItems (items);
+    CHECK (m.labelText (1) == "RATE" + dot + "30 %");
+    p.up();
+    CHECK (m.labelText (1) == "RATE");
+    m.item (3).focusGained (juce::Component::focusChangedByTabKey);
+    CHECK (m.labelText (3) == "LEVEL" + dot + "40 %");
+
+    /* The plain ring keeps its values in the middle. */
+    m.setSeeThrough (false);
+    CHECK (m.labelText (3) == "LEVEL");
+}
+
+TEST_CASE ("radial menu, see-through: the keys go round as before, clockwise as it reads")
+{
+    SeeThrough s (5);
+    auto& m = s.menu;
+    juce::StringArray log;
+    m.onBegin = [&] (const juce::String& id, bool) { log.add ("begin " + id); };
+    m.onInput = [&] (const juce::String& id, double v, bool) { log.add ("input " + id + " " + juce::String (v, 3)); };
+    m.onEnd = [&] (const juce::String& id) { log.add ("end " + id); };
+    m.onClose = [&] { log.add ("close"); };
+    const auto key = [&m] (int i, int code) { return m.item (i).keyPressed (juce::KeyPress (code, {}, 0)); };
+
+    /* The items' order is the clock's: each one further round from 12. */
+    const auto centre = (m.getCentrePoint() - m.getPosition()).toFloat();
+    float last = -juce::MathConstants<float>::pi;
+    for (int i = 0; i < 5; ++i)
+    {
+        CAPTURE (i);
+        const auto d = m.itemCentre (i) - centre;
+        float a = std::atan2 (d.x, -d.y);   // clockwise from 12 o'clock
+        if (i > 0 && a < 0.0f)
+            a += juce::MathConstants<float>::twoPi;
+        CHECK (a > last);
+        last = a;
+    }
+
+    CHECK (key (0, juce::KeyPress::rightKey));
+    CHECK (m.getKeyboardItem() == 1);
+    CHECK (key (1, juce::KeyPress::tabKey));
+    CHECK (m.getKeyboardItem() == 2);
+    CHECK (key (0, juce::KeyPress::leftKey));
+    CHECK (m.getKeyboardItem() == 4);
+    CHECK (key (4, juce::KeyPress::rightKey));
+    CHECK (m.getKeyboardItem() == 0);
+    CHECK (key (0, juce::KeyPress::upKey));
+    CHECK (key (0, juce::KeyPress::escapeKey));
+    CHECK (log.joinIntoString (", ") == "begin depth, input depth 0.110, end depth, close");
+}
+
+TEST_CASE ("radial menu, see-through: placed as the plain one is, its footprint the items and labels only")
+{
+    SeeThrough s (4);
+    auto& m = s.menu;
+    const auto window = s.window.getLocalBounds();
+    /* No plate: every dial and every label. */
+    juce::Rectangle<float> all;
+    for (int i = 0; i < 4; ++i)
+        all = all.getUnion (juce::Rectangle<float> (RadialMenu::itemBox, RadialMenu::itemBox).withCentre (m.itemCentre (i)))
+                  .getUnion (m.labelBounds (i));
+    CHECK ((m.footprint() - m.getPosition()) == all.getSmallestIntegerContainer());
+    /* The menu reaches past it for its light, and for a chip with its value. */
+    CHECK (m.getBounds().contains (m.footprint().expanded (RadialMenu::lightMargin)));
+
+    Pointer p;
+    for (const auto at : { juce::Point<int> (0, 0), juce::Point<int> (800, 600), juce::Point<int> (400, 2),
+                           juce::Point<int> (3, 300), juce::Point<int> (797, 300) })
+    {
+        CAPTURE (at.toString());
+        m.placeAround (at, window);
+        CHECK (window.contains (m.footprint()));
+        /* The band moved with the menu: still its centre line. */
+        const auto c = (m.getCentrePoint() - m.getPosition()).toFloat();
+        CHECK (s.band().getCentreY() == doctest::Approx (c.y));
+        const auto placed = m.getCentrePoint();
+        for (int i = 0; i < 4; ++i)
+        {
+            CAPTURE (i);
+            CHECK_FALSE (m.labelBounds (i).intersects (s.band()));
+            /* Pointed at, its value's chip stays inside too, and nothing moves. */
+            p.enter (m.item (i), s.at (i));
+            const auto chip = m.labelBounds (i) + m.getPosition().toFloat();
+            CHECK (window.toFloat().contains (chip));
+            CHECK (m.getBounds().toFloat().contains (chip));
+            CHECK (m.itemAt (m.labelBounds (i).getCentre()) == i);
+            CHECK (m.getCentrePoint() == placed);
+            p.exit (m.item (i));
+        }
+    }
+}
+
+TEST_CASE ("radial menu, see-through: a value's chip by 12 o'clock grows away from it, over no item across")
+{
+    SeeThrough s (8);
+    auto& m = s.menu;
+    Pointer p;
+    /* Above: 0 and 1 left of 12, 2 and 3 right of it. */
+    for (const int i : { 1, 2 })
+    {
+        CAPTURE (i);
+        const auto resting = m.labelBounds (i);
+        p.enter (m.item (i), s.at (i));
+        const auto hot = m.labelBounds (i);
+        if (i == 1)
+            CHECK (hot.getRight() == doctest::Approx (resting.getRight()));
+        else
+            CHECK (hot.getX() == doctest::Approx (resting.getX()));
+        CHECK_FALSE (hot.intersects (m.labelBounds (i == 1 ? 2 : 1)));
+        p.exit (m.item (i));
+    }
+}
+
+TEST_CASE ("radial menu, see-through: off again, the plain ring is exactly as it was")
+{
+    Recorded r;
+    std::vector<juce::Point<float>> centres;
+    std::vector<juce::Rectangle<float>> labels;
+    for (int i = 0; i < 4; ++i)
+    {
+        centres.push_back (r.menu.itemCentre (i));
+        labels.push_back (r.menu.labelBounds (i));
+    }
+    const auto bounds = r.menu.getBounds();
+
+    r.menu.setSeeThrough (true);
+    CHECK (r.menu.getBounds() != bounds);
+    CHECK (r.menu.itemCentre (1) != centres[1]);
+    r.menu.setSeeThrough (false);
+    CHECK (r.menu.getBounds() == bounds);
+    CHECK (r.menu.getRingRadius() == RadialMenu::ringRadius);
+    for (int i = 0; i < 4; ++i)
+    {
+        CAPTURE (i);
+        CHECK (r.menu.itemCentre (i) == centres[(size_t) i]);
+        CHECK (r.menu.labelBounds (i) == labels[(size_t) i]);
+    }
+    const auto c = r.menu.getCentrePoint() - r.menu.getPosition();
+    CHECK (r.menu.hitTest (c.x, c.y));
+}
+
 /* -------------------------------------------------------------- picture */
 
 NI_SNAPSHOT_TEST ("radial menu: at rest, pointed at, focused with one off, at a corner")
@@ -592,6 +956,15 @@ NI_SNAPSHOT_TEST ("radial menu: at rest, pointed at, focused with one off, at a 
     REQUIRE (frame.page() != nullptr);
     NI_CHECK_INFO_LIMIT (*frame.page());
     NI_CHECK_SNAPSHOT (*frame.page(), "controls-radial-menu");
+}
+
+NI_SNAPSHOT_TEST ("radial menu, see-through: over an object, a value pointed at, seven round a 16px band, at a corner")
+{
+    ni::ui::gallery::Frame frame (ni::ui::gallery::pages());
+    REQUIRE (frame.show (juce::String ("controls-radial-menu-see-through")));
+    REQUIRE (frame.page() != nullptr);
+    NI_CHECK_INFO_LIMIT (*frame.page());
+    NI_CHECK_SNAPSHOT (*frame.page(), "controls-radial-menu-see-through");
 }
 
 NI_SNAPSHOT_TEST ("radial menu: a value being dragged, lit in the middle")

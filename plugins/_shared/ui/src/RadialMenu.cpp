@@ -10,6 +10,11 @@
  * Control paints nothing. A Control is what JUCE needs an item to be: a
  * component the pointer's events go to (its hit area the rail's circle and
  * the label), a Tab stop, and an element a screen reader can name.
+ *
+ * See-through, the items' angles come from arrange(): two arcs either side
+ * of the band, and the ring widened where they cannot hold the items; every
+ * other measure -- the labels' distance, the footprint, the hit areas --
+ * follows from the ring's radius as it does for the plain ring.
  */
 #include "RadialMenu.h"
 
@@ -49,6 +54,13 @@ constexpr float chipPadY = 2.0f;
 
 /* The centre's line: as wide as the space between the rails at 3 and 9. */
 constexpr float centreWidth = 2.0f * (RadialMenu::ringRadius - RadialMenu::railRadius);
+
+/* See-through, between a hot value item's label and its value. */
+const juce::String& separator()
+{
+    static const auto text = juce::String::fromUTF8 (" \xc2\xb7 ");
+    return text;
+}
 
 /* How far a direction must lean to put the chip to that side of its anchor
  * rather than centred on it: sin 22.5 degrees, so the eight places of an
@@ -444,6 +456,7 @@ void RadialMenu::setItems (std::vector<Item> next)
             handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
     }
 
+    arrange();
     layout();
     hotChanged();
     repaint();
@@ -466,13 +479,20 @@ void RadialMenu::placeAround (juce::Point<int> centre, juce::Rectangle<int> boun
     layout();
 }
 
-/* The plate and the chips round a ring centred at the origin. */
+/* The plate and the chips round a ring centred at the origin; see-through,
+ * the dials and the chips. A hot chip with its value is not in it: being
+ * pointed at never moves the menu (chipAt keeps that chip inside instead). */
 juce::Rectangle<int> RadialMenu::footprintAboutCentre() const
 {
     const juce::Point<float> origin;
-    auto area = juce::Rectangle<float> (2.0f * plateRadius, 2.0f * plateRadius).withCentre (origin);
+    auto area = seeThrough ? juce::Rectangle<float>()
+                           : juce::Rectangle<float> (2.0f * plateRadius, 2.0f * plateRadius).withCentre (origin);
     for (int i = 0; i < (int) items.size(); ++i)
-        area = area.getUnion (chipAt (i, origin));
+    {
+        if (seeThrough)
+            area = area.getUnion (juce::Rectangle<float> (itemBox, itemBox).withCentre (origin + direction (i) * ring));
+        area = area.getUnion (chipAt (i, origin, false));
+    }
     return area.getSmallestIntegerContainer();
 }
 
@@ -499,13 +519,19 @@ void RadialMenu::layout()
     }
     placedAt = at;
 
-    setBounds ((rel + at).expanded (lightMargin));
+    /* See-through, the menu reaches its items' chips with their values
+     * too, wherever chipAt put them. */
+    auto area = (rel + at).expanded (lightMargin);
+    for (int i = 0; seeThrough && i < (int) items.size(); ++i)
+        area = area.getUnion (chipAt (i, placedAt.toFloat(), true).getSmallestIntegerContainer());
+    setBounds (area);
 
     const auto centre = ringCentre();
     for (int i = 0; i < (int) controls.size(); ++i)
     {
         const auto box = juce::Rectangle<float> (2.0f * railRadius, 2.0f * railRadius).withCentre (itemCentre (i));
-        controls[(size_t) i]->setBounds (box.getUnion (chipAt (i, centre)).getSmallestIntegerContainer());
+        const auto chips = chipAt (i, centre, false).getUnion (chipAt (i, centre, true));
+        controls[(size_t) i]->setBounds (box.getUnion (chips).getSmallestIntegerContainer());
     }
 }
 
@@ -514,30 +540,131 @@ juce::Point<float> RadialMenu::ringCentre() const
     return (placedAt - getPosition()).toFloat();
 }
 
+/*
+ * See-through's arcs. An item clears the band while its centre is at least
+ * `rise` from the centre line, so an arc spans the angles within acos (rise
+ * / ring) of 12 or 6 o'clock; its items must stand far enough apart that
+ * their rails are railGap clear of each other. The upper arc holds the
+ * larger half; where it cannot at ringRadius, the smallest ring that can,
+ * found by halving (both sides move one way with the radius), and rounded
+ * up to a whole pixel.
+ */
+void RadialMenu::arrange()
+{
+    ring = ringRadius;
+    arcHalf = 0.0f;
+    if (! seeThrough)
+        return;
+
+    const int most = ((int) items.size() + 1) / 2;
+    const float rise = clearBand + itemReach + bandGap;
+    const float apart = railRadius + railGap * 0.5f;
+    const auto holds = [&] (float r)
+    {
+        if (rise > r || apart > r)
+            return false;
+        return most <= 1 || 2.0f * std::acos (rise / r) >= (float) (most - 1) * 2.0f * std::asin (apart / r);
+    };
+
+    if (! holds (ring))
+    {
+        float lo = ring, hi = ring * 2.0f;
+        while (! holds (hi))
+            hi *= 2.0f;
+        for (int i = 0; i < 32; ++i)
+        {
+            const float mid = 0.5f * (lo + hi);
+            (holds (mid) ? hi : lo) = mid;
+        }
+        ring = std::ceil (hi);
+    }
+    arcHalf = std::acos (std::min (1.0f, rise / ring));
+}
+
+/* Clockwise from 12 o'clock: evenly round the ring, or see-through, the
+ * upper arc from its left end, then the lower from its right. */
+float RadialMenu::itemAngle (int index) const
+{
+    const int n = (int) items.size();
+    if (! seeThrough)
+        return juce::MathConstants<float>::twoPi * (float) index / (float) std::max (1, n);
+
+    const int upper = (n + 1) / 2;
+    const bool top = index < upper;
+    const int count = top ? upper : n - upper;
+    const int at = top ? index : index - upper;
+    const float middle = top ? 0.0f : juce::MathConstants<float>::pi;
+    if (count <= 1)
+        return middle;
+    return middle - arcHalf + 2.0f * arcHalf * (float) at / (float) (count - 1);
+}
+
 juce::Point<float> RadialMenu::direction (int index) const
 {
-    const float angle = juce::MathConstants<float>::twoPi * (float) index / (float) std::max<size_t> (1, items.size());
+    const float angle = itemAngle (index);
     return { std::sin (angle), -std::cos (angle) };
 }
 
 juce::Point<float> RadialMenu::itemCentre (int index) const
 {
-    return ringCentre() + direction (index) * ringRadius;
+    return ringCentre() + direction (index) * ring;
 }
 
-juce::Rectangle<float> RadialMenu::chipAt (int index, juce::Point<float> centre) const
+/* See-through, a hot value item with a value text: its chip carries it. */
+bool RadialMenu::showsValue (int index, bool hot) const
+{
+    const auto& it = items[(size_t) index];
+    return seeThrough && hot && it.kind == Item::Kind::value && it.valueText.isNotEmpty();
+}
+
+juce::Rectangle<float> RadialMenu::chipAt (int index, juce::Point<float> centre, bool hot) const
 {
     const auto& style = uv::tok::type::label;
     const auto text = uv::type::cased (style, items[(size_t) index].label);
-    if (text.isEmpty())
+    const bool withValue = showsValue (index, hot);
+    if (text.isEmpty() && ! withValue)
         return {};
-    const float w = std::ceil (uv::type::width (labelFont(), text)) + 2.0f * chipPadX;
-    const float h = style.lineHeight + 2.0f * chipPadY;
-    const auto dir = direction (index);
-    const auto anchor = centre + dir * (plateRadius + labelGap);
 
-    const float x = dir.x > lean ? anchor.x : dir.x < -lean ? anchor.x - w : anchor.x - w * 0.5f;
-    const float y = dir.y > lean ? anchor.y : dir.y < -lean ? anchor.y - h : anchor.y - h * 0.5f;
+    float w = std::ceil (uv::type::width (labelFont(), text)) + 2.0f * chipPadX;
+    /* See-through, every chip is as tall as one with a value, so being
+     * pointed at only ever widens it. */
+    const float h = (seeThrough ? std::max (style.lineHeight, uv::tok::type::value.lineHeight) : style.lineHeight)
+                    + 2.0f * chipPadY;
+    if (withValue)
+    {
+        const auto [number, unit] = uv::type::splitUnit (items[(size_t) index].valueText);
+        const auto valueFont = uv::type::font (uv::tok::type::value);
+        const float value = uv::type::width (valueFont, number) + (unit.isEmpty() ? 0.0f : 2.0f + uv::type::width (valueFont, unit));
+        w += std::ceil ((text.isEmpty() ? 0.0f : uv::type::width (labelFont(), separator())) + value);
+    }
+
+    /* Outside the dial: the plate's edge and the gap, as far out on a
+     * widened ring. */
+    const auto dir = direction (index);
+    const auto anchor = centre + dir * (ring + itemBox * 0.5f + 4.0f + labelGap);
+
+    float x = dir.x > lean ? anchor.x : dir.x < -lean ? anchor.x - w : anchor.x - w * 0.5f;
+    float y = dir.y > lean ? anchor.y : dir.y < -lean ? anchor.y - h : anchor.y - h * 0.5f;
+    if (! seeThrough)
+        return { x, y, w, h };
+
+    /* See-through: always away from the band. With its value, the chip
+     * grows from the label's inner end -- the end nearer 12 or 6 o'clock --
+     * so it never covers the item across that line from it, and stays
+     * inside the bounds it was placed in, moved back along its line if it
+     * would leave them. */
+    y = dir.y < 0.0f ? anchor.y - h : anchor.y;
+    if (withValue)
+    {
+        const float label = std::ceil (uv::type::width (labelFont(), text)) + 2.0f * chipPadX;
+        if (std::abs (dir.x) <= lean && std::abs (dir.x) > 1.0e-3f)
+            x = dir.x < 0.0f ? anchor.x + label * 0.5f - w : anchor.x - label * 0.5f;
+        if (placed)
+        {
+            const auto room = within.toFloat() + (centre - placedAt.toFloat());
+            x = std::max (room.getX(), std::min (x, room.getRight() - w));
+        }
+    }
     return { x, y, w, h };
 }
 
@@ -545,13 +672,29 @@ juce::Rectangle<float> RadialMenu::labelBounds (int index) const
 {
     if (index < 0 || index >= (int) items.size())
         return {};
-    return chipAt (index, ringCentre());
+    return chipAt (index, ringCentre(), index == getHot());
+}
+
+juce::String RadialMenu::labelText (int index) const
+{
+    if (index < 0 || index >= (int) items.size())
+        return {};
+    const auto& it = items[(size_t) index];
+    const auto label = uv::type::cased (uv::tok::type::label, it.label);
+    if (! showsValue (index, index == getHot()))
+        return label;
+    return label.isEmpty() ? it.valueText : label + separator() + it.valueText;
 }
 
 int RadialMenu::itemAt (juce::Point<float> p) const
 {
+    const auto under = [&] (int i) { return p.getDistanceFrom (itemCentre (i)) <= railRadius || labelBounds (i).contains (p); };
+    /* See-through, the hot item's chip is the wider one, over its
+     * neighbours: it answers first. */
+    if (const int hot = getHot(); seeThrough && hot >= 0 && under (hot))
+        return hot;
     for (int i = 0; i < (int) items.size(); ++i)
-        if (p.getDistanceFrom (itemCentre (i)) <= railRadius || labelBounds (i).contains (p))
+        if (under (i))
             return i;
     return -1;
 }
@@ -610,9 +753,34 @@ void RadialMenu::setCentrePassesThrough (bool on)
     centrePasses = on;
 }
 
+void RadialMenu::setSeeThrough (bool on)
+{
+    if (on == seeThrough)
+        return;
+    seeThrough = on;
+    arrange();
+    layout();
+    repaint();
+}
+
+void RadialMenu::setClearBand (float halfHeight)
+{
+    halfHeight = std::max (0.0f, halfHeight);
+    if (juce::exactlyEqual (halfHeight, clearBand))
+        return;
+    clearBand = halfHeight;
+    arrange();
+    layout();
+    repaint();
+}
+
 bool RadialMenu::hitTest (int x, int y)
 {
     const juce::Point<float> p ((float) x, (float) y);
+    /* See-through, only the items and their labels: the rest is the
+     * owner's, the middle whatever setCentrePassesThrough says. */
+    if (seeThrough)
+        return itemAt (p) >= 0;
     const float r = p.getDistanceFrom (ringCentre());
     if (centrePasses && r < holeRadius)
         return false;
@@ -685,37 +853,78 @@ void RadialMenu::paintItem (juce::Graphics& g, int index, bool hot) const
     if (it.icon.isNotEmpty())
         uv::drawIcon (g, it.icon, live ? c::ink : c::inkDim, disc);
 
-    if (const auto chip = labelBounds (index); ! chip.isEmpty())
+    paintChip (g, index, hot);
+}
+
+void RadialMenu::paintChip (juce::Graphics& g, int index, bool hot) const
+{
+    const auto chip = chipAt (index, ringCentre(), hot);
+    if (chip.isEmpty())
+        return;
+    const auto& it = items[(size_t) index];
+    const bool live = isLive (index);
+    const auto& style = uv::tok::type::label;
+    const auto text = uv::type::cased (style, it.label);
+    const auto ink = ! live ? c::inkDim : hot ? c::ink : c::inkMuted;
+
+    g.setColour (c::bg100);
+    g.fillRoundedRectangle (chip, uv::tok::radius::radius1);
+    if (! showsValue (index, hot))
     {
-        g.setColour (c::bg100);
-        g.fillRoundedRectangle (chip, uv::tok::radius::radius1);
-        const auto& style = uv::tok::type::label;
-        uv::type::draw (g, uv::type::cased (style, it.label), chip, labelFont(),
-                        ! live ? c::inkDim : hot ? c::ink : c::inkMuted, juce::Justification::centred);
+        uv::type::draw (g, text, chip, labelFont(), ink, juce::Justification::centred);
+        return;
     }
+
+    /* "LABEL · value": the label and the dot in the label style, the value
+     * as a readout prints it, all on the chip's centre line. */
+    auto line = chip.reduced (chipPadX, 0.0f);
+    if (text.isNotEmpty())
+    {
+        const auto words = text + separator();
+        const float w = uv::type::width (labelFont(), words);
+        uv::type::draw (g, text, line.withWidth (w + 1.0f), labelFont(), ink);
+        uv::type::draw (g, separator(), line.withTrimmedLeft (uv::type::width (labelFont(), text)).withWidth (w),
+                        labelFont(), c::inkMuted);
+        line.removeFromLeft (w);
+    }
+    uv::type::drawValueWithUnit (g, it.valueText, line, live);
 }
 
 void RadialMenu::paint (juce::Graphics& g)
 {
     const auto centre = ringCentre();
-    const auto plate = juce::Rectangle<float> (2.0f * plateRadius, 2.0f * plateRadius).withCentre (centre);
-    g.setColour (c::bg100);
-    g.fillEllipse (plate);
-    g.setColour (c::line200);
-    g.drawEllipse (plate.reduced (hair * 0.5f), hair);
-
     const int hot = getHot();
-    for (int i = 0; i < (int) items.size(); ++i)
-        paintItem (g, i, i == hot);
 
-    /* The middle: the hot value's text, else the owner's words. */
-    const auto& valueStyle = uv::tok::type::value;
-    const auto line = juce::Rectangle<float> (centreWidth, valueStyle.lineHeight).withCentre (centre);
-    if (hot >= 0 && items[(size_t) hot].kind == Item::Kind::value && items[(size_t) hot].valueText.isNotEmpty())
-        uv::type::drawValueWithUnit (g, items[(size_t) hot].valueText, line, isLive (hot));
-    else if (centreText.isNotEmpty())
-        uv::type::draw (g, centreText, line, uv::type::font (valueStyle), isEnabled() ? c::inkMuted : c::inkDim,
-                        juce::Justification::centred);
+    if (seeThrough)
+    {
+        /* The items alone, the hot one last, over its neighbours; no plate
+         * and no middle -- what is under the menu shows. */
+        for (int i = 0; i < (int) items.size(); ++i)
+            if (i != hot)
+                paintItem (g, i, false);
+        if (hot >= 0)
+            paintItem (g, hot, true);
+    }
+    else
+    {
+        const auto plate = juce::Rectangle<float> (2.0f * plateRadius, 2.0f * plateRadius).withCentre (centre);
+        g.setColour (c::bg100);
+        g.fillEllipse (plate);
+        g.setColour (c::line200);
+        g.drawEllipse (plate.reduced (hair * 0.5f), hair);
+
+        for (int i = 0; i < (int) items.size(); ++i)
+            paintItem (g, i, i == hot);
+
+        /* The middle: the hot value's text, else the owner's words. */
+        const auto& valueStyle = uv::tok::type::value;
+        const auto line = juce::Rectangle<float> (centreWidth, valueStyle.lineHeight).withCentre (centre);
+        if (hot >= 0 && items[(size_t) hot].kind == Item::Kind::value && items[(size_t) hot].valueText.isNotEmpty())
+            uv::type::drawValueWithUnit (g, items[(size_t) hot].valueText, line, isLive (hot));
+        else if (centreText.isNotEmpty())
+            uv::type::draw (g, centreText, line, uv::type::font (valueStyle), isEnabled() ? c::inkMuted : c::inkDim,
+                            juce::Justification::centred);
+    }
 
     /* Keyboard focus last, over the neighbours: it is light. */
     for (int i = 0; i < (int) controls.size(); ++i)
