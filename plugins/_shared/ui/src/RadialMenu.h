@@ -135,33 +135,9 @@
  * value item a slider (its label the name, its value text the value), an
  * action a menu item that can be pressed.
  *
- * THE RULE is Ultraviolet 2.3.0's Interaction conventions, "Radial menu"
+ * THE RULE is Ultraviolet 2.4.0's Interaction conventions, "Radial menu"
  * (design/scheme/project/README.md; the component's guidelines are
- * design/scheme/project/components/RadialMenu/README.md). The guidelines'
- * words for see-through, for Ultraviolet 2.4.0, until the design system
- * carries them -- the component's README, after the middle that passes
- * presses through:
- *
- *   "Where the object under the click must stay in sight, the menu may be
- *   see-through: no plate and no centre text, and a clear band through the
- *   centre (10px above and below it, more for a taller object) that no
- *   item and no label enters. The items sit on two arcs, above the band
- *   round 12 o'clock and below it round 6, clockwise from the top left; with
- *   seven or eight items, or a taller band, the ring widens just enough to
- *   hold them. Labels sit outside each item, away from the band. With no
- *   centre, the item under the pointer or being dragged shows its value in
- *   its label ("LEVEL · -3.0 dB"), and the owner names what the menu acts
- *   on elsewhere (its hint bar). Only the items and their labels are the
- *   menu's: a press anywhere else -- the centre, the band, between the
- *   items -- goes to the object under it, which can be pressed, dragged
- *   and double-clicked as if the menu were not there."
- *
- * and the Interaction conventions' "Radial menu", after "the menu's middle
- * lets presses through to it":
- *
- *   "Where it must stay in sight too, the menu is see-through: nothing
- *   between its items, a clear band through the click, and the hot item's
- *   value in its label."
+ * design/scheme/project/components/RadialMenu/README.md).
  */
 #pragma once
 
