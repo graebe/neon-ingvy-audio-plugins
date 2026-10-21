@@ -83,6 +83,7 @@ tokens; the words and the spelling are always the owner's, from the engine.
 |---|---|
 | `Music.h` | `music::NoteSet` (128 bits), `isBlack`, Bravura and its SMuFL glyphs (`drawGlyph` at a glyph's own origin, the em four staff spaces) |
 | `Keyboard.h` | whole octaves from a C, held keys lit uv (uv-deep dimmed), the bass marked under; `lowestToShow` follows the notes. Display only |
+| `KeyPaint.h` | how a piano key is painted (white, black, lit, dimmed, a C's name), shared by `Keyboard` and `PianoAxis` so both draw keys from the same tokens |
 | `CircleOfFifths.h` | twelve keys clockwise in fifths: the key's seven tinted, sounding ones lit, the root filled, the tonic's amber ring; `onTonicSelected` from a click or the arrows (a fifth a step), one Tab stop; `centre()` for the owner's mode select. `Luminous` |
 | `ChordReadout.h` | the readout (28/32), the roman numeral chip, the HELD LED, the words in capitals, NOTES and ALSO. Display only |
 | `NoteHistory.h` | the model: notes with start and end on a clock that only goes forward, chord names at each change, the clock's tempo and bar lines; bounded |
@@ -97,7 +98,7 @@ holds their behaviour and pictures.
 
 ## The note editor's well
 
-Five components and the maths they share, for an editor whose well pans and
+Seven components and the maths they share, for an editor whose well pans and
 zooms its content ([ADR 0006](../adr/0006-wells-pan-and-zoom.md)): time across in
 host samples, pitch up in MIDI notes. Each draws only from the tokens and
 moves nothing itself: a drag or a press asks its owner for a new view
@@ -111,10 +112,14 @@ moves nothing itself: a drag or a press asks its owner for a new view
 | `NoteBars.h` | the notes as bars on their rows, each with its pitch contour, its level as its shade, a dashed ghost under an edited one; muted bars as outlines; a bar's handles, a marker across one, a marked run; the playhead. It answers what is where (`noteAt`, `notesIn`, `edgeAt`) and takes no pointer |
 | `Overview.h` | the whole content small, its blocks and ticks, with the view's rectangle on it; a press or a drag moves the view |
 | `ToolColumn.h` | an editor's tools as one column of icon-only buttons, exactly one on |
+| `PianoAxis.h` | a vertical piano up the side of a pitch view, one key per semitone row on the view's own `zoom::Axis` (PitchView's mapping), lit keys, a scale's keys and tonic dotted, each C named. Display only |
+| `RadialMenu.h` | a circle of controls round a point, for the owner's overlay: value items that drag as a knob does (dead zone, Shift fine or an alternate parameter, detents, double-click resets), action items, every key; a press outside the plate and labels goes to the owner, which closes it |
 
-The gallery's Music section shows the well's parts together (Note Editor),
-and Controls the ToolColumn and the Slider; `tests/ui/zoommath.cpp`,
-`noteeditor.cpp`, `toolcolumn.cpp` and `slider.cpp` hold their behaviour.
+The gallery's Music section shows the well's parts together (Note Editor)
+and the Piano Axis beside the pitch rows, and Controls the ToolColumn, the
+Radial Menu and the Slider; `tests/ui/zoommath.cpp`, `noteeditor.cpp`,
+`pianoaxis.cpp`, `toolcolumn.cpp`, `radialmenu.cpp` and `slider.cpp` hold
+their behaviour.
 
 **A product's own glyphs** are drawn to the Iconography rules and kept with
 the product's design, never in the system's set: `ni_ui_add_editor` embeds
