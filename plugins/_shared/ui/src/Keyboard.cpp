@@ -6,8 +6,8 @@
  */
 #include "Keyboard.h"
 
+#include "KeyPaint.h"
 #include "UvTokens.h"
-#include "UvType.h"
 
 #include <algorithm>
 
@@ -16,8 +16,6 @@ namespace ni::ui
 
 namespace
 {
-namespace c = uv::tok::colour;
-
 /* The white keys of an octave, as semitones above its C. */
 constexpr int whites[] = { 0, 2, 4, 5, 7, 9, 11 };
 
@@ -32,8 +30,8 @@ int whiteIndex (int midi)
     return octave * 7 + i;
 }
 
-constexpr float blackShare = 0.6f;
-constexpr float gap = 1.0f;
+using keypaint::blackShare;
+using keypaint::gap;
 constexpr float markHeight = 3.0f;
 } // namespace
 
@@ -102,9 +100,8 @@ int Keyboard::lowestToShow (const music::NoteSet& notes, int octaves, int curren
 
 void Keyboard::paint (juce::Graphics& g)
 {
-    const auto lit = state.dimmed ? c::uvDeep : c::uv;
-    const auto& hint = uv::tok::type::hint;
-    const auto font = uv::type::font (hint);
+    const auto lit = keypaint::litColour (state.dimmed);
+    const float nameHeight = uv::tok::type::hint.lineHeight;
 
     /* The white keys first, then the black ones over them. */
     for (int pass = 0; pass < 2; ++pass)
@@ -118,21 +115,14 @@ void Keyboard::paint (juce::Graphics& g)
 
             if (pass == 0)
             {
-                g.setColour (on ? lit : c::bg300);
-                g.fillRect (key);
+                keypaint::whiteKey (g, key, on, lit);
                 if (midi % 12 == 0)
-                {
-                    const auto label = "C" + juce::String (midi / 12 - 1);
-                    uv::type::draw (g, label, key.withTrimmedTop (key.getHeight() - hint.lineHeight - 2.0f).withTrimmedBottom (2.0f),
-                                    font, on ? c::onUv : c::inkDim, juce::Justification::centred);
-                }
+                    keypaint::keyName (g, "C" + juce::String (midi / 12 - 1),
+                                       key.withTrimmedTop (key.getHeight() - nameHeight - 2.0f).withTrimmedBottom (2.0f), on);
             }
             else
             {
-                g.setColour (on ? lit : c::bg000);
-                g.fillRect (key);
-                g.setColour (on ? lit : c::line200);
-                g.drawRect (key, uv::tok::stroke::strokeHair);
+                keypaint::blackKey (g, key, on, lit);
             }
         }
     }

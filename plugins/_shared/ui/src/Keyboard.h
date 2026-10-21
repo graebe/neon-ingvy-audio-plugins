@@ -13,6 +13,8 @@
  *   dimmed      uv-deep: what was held and is being kept, not what sounds
  *   bass        a 3px bar under the lowest lit key, in the lit colour
  *
+ * The keys' colours are KeyPaint's, which the PianoAxis paints with too.
+ *
  * DISPLAY ONLY. It takes no pointer and no keyboard focus: it reports what is
  * held, and a key that looked pressable would invite a press that does
  * nothing. Its accessible description is its owner's to set, in the owner's
