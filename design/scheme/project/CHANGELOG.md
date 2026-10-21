@@ -2,6 +2,15 @@
 
 All notable changes to Ultraviolet, newest first. Versions follow the rules under Versioning.
 
+## 2.4.0 — 2026-10-21
+
+A radial menu can leave the object it opened on in sight.
+
+**Added**
+
+- RadialMenu: see-through — no plate and no centre text, a clear band through the centre that no item or label enters, items on two arcs above and below it, the hot item's value in its label, and only the items and labels taking presses.
+- Interaction conventions: the Radial menu rule names the see-through menu.
+
 ## 2.3.0 — 2026-10-21
 
 The object under a radial menu stays movable, and the menu is one keyboard stop.

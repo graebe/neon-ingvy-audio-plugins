@@ -113,11 +113,11 @@ moves nothing itself: a drag or a press asks its owner for a new view
 | `Overview.h` | the whole content small, its blocks and ticks, with the view's rectangle on it; a press or a drag moves the view |
 | `ToolColumn.h` | an editor's tools as one column of icon-only buttons, exactly one on |
 | `PianoAxis.h` | a vertical piano up the side of a pitch view, one key per semitone row on the view's own `zoom::Axis` (PitchView's mapping), lit keys, a scale's keys and tonic dotted, each C named. Display only |
-| `RadialMenu.h` | a circle of controls round a point, for the owner's overlay: value items that drag as a knob does (dead zone, Shift fine or an alternate parameter, detents, double-click resets), action items, every key; a press outside the plate and labels goes to the owner, which closes it |
+| `RadialMenu.h` | a circle of controls round a point, for the owner's overlay: value items that drag as a knob does (dead zone, Shift fine or an alternate parameter, detents, double-click resets), action items, every key; a press outside the plate and labels goes to the owner, which closes it; see-through, no plate and a clear band through the centre, and only its items and labels its own |
 
 The gallery's Music section shows the well's parts together (Note Editor)
 and the Piano Axis beside the pitch rows, and Controls the ToolColumn, the
-Radial Menu and the Slider; `tests/ui/zoommath.cpp`, `noteeditor.cpp`,
+Radial Menu (plain and see-through) and the Slider; `tests/ui/zoommath.cpp`, `noteeditor.cpp`,
 `pianoaxis.cpp`, `toolcolumn.cpp`, `radialmenu.cpp` and `slider.cpp` hold
 their behaviour.
 
