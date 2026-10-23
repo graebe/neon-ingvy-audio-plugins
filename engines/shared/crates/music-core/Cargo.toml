@@ -1,11 +1,11 @@
 [package]
 name = "music-core"
-version = "2026.10.8+2"
+version = "2026.10.23+1"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Torben Gräber"]
 license = "GPL-3.0-or-later"
-description = "General music theory primitives: pitch classes, intervals, notes, chords, keys and pitch-class sets"
+description = "General music theory primitives: pitch classes, intervals, notes, chords, keys, scales and pitch-class sets"
 keywords = ["music", "music-theory", "pitch", "harmony", "midi"]
 categories = ["mathematics", "multimedia::audio", "no-std"]
 repository = "https://github.com/graebe/neon-ingvy-audio-plugins"

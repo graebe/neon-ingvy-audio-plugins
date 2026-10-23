@@ -23,7 +23,8 @@ it moves its `rev`: keep the public API additive.
 
 In: pitch primitives, pitch sets, chords of any size with identification,
 consonant triads, voicings, frequency, keys in the seven church modes and
-roman-numeral degrees. Not yet: analysis passes, file or MIDI I/O, key
+roman-numeral degrees, scales of any shape with their modes and families,
+the catalog of scale names, and chord-scale roles (guide tones, avoid notes). Not yet: analysis passes, file or MIDI I/O, key
 detection.
 
 ### The chord vocabulary
@@ -73,6 +74,32 @@ is the pitch set and the bass, and a test says exactly that.
 `PitchSet::identify` picks one reading using `ChordQuality::rank`. It is a
 heuristic, so its answer is pinned by a test: change the ranking and the test
 should change deliberately, not incidentally.
+
+### Scales, families and the catalog
+
+- A `Scale` is a shape above a root: a `PitchSet` with pitch class 0 always
+  in it. `on(tonic)` puts it somewhere. N, M, s and T (`len`, `mode_count`,
+  `symmetry`, `transpositions`) satisfy N = M·s and 12 = T·s for every one of
+  the 2,048 rooted sets; a test sweeps them all.
+- A `ScaleFamily` is held as its canonical mode, the smallest mask, which is
+  Rahn's normal order. `reference()` is the mode the family is *known* by
+  (Ionian, not Locrian) and comes from the catalog.
+- `degrees()` spells by a small dynamic program with integer costs (flat 100,
+  sharp 101, shared number 150, a name that is really a white key +150).
+  Change a cost and the spelling tests should change deliberately.
+- `brightness()` is the signed circle-of-fifths sum with the tritone at 0,
+  divided by the most a scale of that size can reach. The tritone at 0 is what
+  makes it antisymmetric under inversion; without it Locrian is brighter
+  than Phrygian.
+- The catalog (`catalog.rs`) is names only. Every symmetric family must have
+  one; a mode name is unique across all 2,048 sets; each entry's modes belong
+  to its own family. Tests hold all three.
+- Chord-scale roles take the chord on the scale's root only. A chord on
+  another degree is the chord on the root of `mode(degree)`; a test proves
+  the equivalence for every scale, degree and quality, so no API takes a
+  degree.
+- Perception models (moods, roughness weights, match scores) do **not**
+  belong here: they are tunable opinions, and this crate is pinned by `rev`.
 
 ### Keys and degrees
 
