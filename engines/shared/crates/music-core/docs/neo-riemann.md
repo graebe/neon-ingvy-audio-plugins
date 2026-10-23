@@ -1,6 +1,6 @@
 ---
 title: Where to go next
-order: 7
+order: 8
 slug: neo-riemann
 ---
 

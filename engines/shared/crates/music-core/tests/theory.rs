@@ -181,4 +181,12 @@ fn the_core_types_stay_small() {
     assert_eq!(size_of::<music_core::ChordQuality>(), 1);
     assert_eq!(size_of::<music_core::Voicing>(), 1);
     assert_eq!(size_of::<music_core::Completions>(), 4);
+
+    // A scale and a family are a pitch set each; a spelled degree is a number
+    // and an accidental; a chord against a scale adds one quality byte.
+    assert_eq!(size_of::<music_core::Scale>(), 2);
+    assert_eq!(size_of::<music_core::ScaleFamily>(), 2);
+    assert_eq!(size_of::<music_core::ScaleDegree>(), 2);
+    assert_eq!(size_of::<music_core::ToneRole>(), 1);
+    assert_eq!(size_of::<music_core::ChordScale>(), 4);
 }

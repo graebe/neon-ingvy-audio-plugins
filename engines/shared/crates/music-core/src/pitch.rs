@@ -497,6 +497,25 @@ impl fmt::Debug for Interval {
 pub struct IntervalClass(pub(crate) u8);
 
 impl IntervalClass {
+    /// The six non-zero classes from the most stable to the least: the fifth,
+    /// the minor third, the major third, the whole step, the tritone, the
+    /// semitone.
+    ///
+    /// This is an order of *structural* dissonance, for laying out an
+    /// interval-class vector so that its left end reads open and its right
+    /// end tense. It is a display convention, the one scale portraits use,
+    /// not an acoustic measurement.
+    ///
+    /// ```
+    /// use music_core::{IntervalClass, PitchSet, Scale};
+    ///
+    /// let vector = Scale::MAJOR.pitch_set().interval_vector();
+    /// let ordered = IntervalClass::BY_DISSONANCE.map(|ic| vector[(ic.value() - 1) as usize]);
+    /// assert_eq!(ordered, [6, 4, 3, 5, 1, 2]);
+    /// ```
+    pub const BY_DISSONANCE: [IntervalClass; 6] =
+        [Self(5), Self(3), Self(4), Self(2), Self(6), Self(1)];
+
     /// Folds any semitone count into an interval class, 0 to 6.
     ///
     /// Cannot fail. Direction and octaves are both discarded, so a fifth up and

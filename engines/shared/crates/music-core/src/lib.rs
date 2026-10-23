@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Torben Gräber
 
-//! General music theory primitives: pitch classes, intervals, notes, chords
-//! and pitch-class sets.
+//! General music theory primitives: pitch classes, intervals, notes, chords,
+//! keys, scales and pitch-class sets.
 //!
 //! No dependencies, `no_std` by default, and nothing here allocates. Every
 //! type is `Copy` and small enough to pass by value without thinking about it.
@@ -43,21 +43,27 @@
 
 pub mod abletonmove;
 
+mod catalog;
 mod chord;
+mod chordscale;
 mod key;
 mod name;
 mod notes;
 mod pitch;
 mod pitchset;
+mod scale;
 mod triad;
 mod voiced;
 
+pub use catalog::NamedFamilies;
 pub use chord::{Chord, ChordQuality, Voicing};
+pub use chordscale::{ChordScale, ToneRole};
 pub use key::{Degree, Key, Mode};
 pub use name::{Letter, NoteName};
 pub use notes::Notes;
 pub use pitch::{EDO, Interval, IntervalClass, Pitch, Spelling, parse_pitch_prefix};
 pub use pitchset::{Completions, Interpretations, PitchSet, PitchSetIter};
+pub use scale::{Chords, Degrees, Families, Modes, Scale, ScaleDegree, ScaleFamily, Steps};
 pub use triad::{Triad, TriadQuality, VoiceMap, VoicedTriad};
 pub use voiced::{Note, Transposable, Voiceable, Voiced};
 
