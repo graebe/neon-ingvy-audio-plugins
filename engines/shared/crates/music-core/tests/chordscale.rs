@@ -92,7 +92,7 @@ fn a_chord_must_fit() {
     );
     let p = pair(Scale::MAJOR, ChordQuality::Major);
     assert_eq!(p.scale(), Scale::MAJOR);
-    assert_eq!(p.quality(), ChordQuality::Major);
+    assert_eq!(p.quality(), Some(ChordQuality::Major));
 }
 
 #[test]

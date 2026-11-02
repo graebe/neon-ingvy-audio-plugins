@@ -10,6 +10,7 @@
 //! there is no degree argument anywhere here.
 
 use crate::chord::ChordQuality;
+use crate::chordtype::{ChordType, guide_tones_of};
 use crate::pitch::Pitch;
 use crate::pitchset::PitchSet;
 use crate::scale::Scale;
@@ -33,42 +34,7 @@ impl ChordQuality {
     /// ```
     #[must_use]
     pub const fn guide_tones(self) -> PitchSet {
-        let set = self.interval_set();
-        let mut guide = PitchSet::EMPTY.insert(Pitch::C);
-
-        let third = if set.contains(Pitch::new(4)) {
-            4
-        } else if set.contains(Pitch::new(3)) {
-            3
-        } else if set.contains(Pitch::new(5)) {
-            5
-        } else if set.contains(Pitch::new(2)) {
-            2
-        } else {
-            0
-        };
-        guide = guide.insert(Pitch::new(third));
-
-        let seventh = set.contains(Pitch::new(10)) || set.contains(Pitch::new(11));
-        if set.contains(Pitch::new(10)) {
-            guide = guide.insert(Pitch::new(10));
-        }
-        if set.contains(Pitch::new(11)) {
-            guide = guide.insert(Pitch::new(11));
-        }
-        if !seventh && set.contains(Pitch::new(9)) {
-            guide = guide.insert(Pitch::new(9));
-        }
-
-        if !set.contains(Pitch::new(7)) {
-            if set.contains(Pitch::new(6)) {
-                guide = guide.insert(Pitch::new(6));
-            }
-            if set.contains(Pitch::new(8)) {
-                guide = guide.insert(Pitch::new(8));
-            }
-        }
-        guide
+        guide_tones_of(self.interval_set())
     }
 }
 
@@ -144,7 +110,7 @@ impl ToneRole {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ChordScale {
     scale: Scale,
-    quality: ChordQuality,
+    chord: ChordType,
 }
 
 impl ChordScale {
@@ -153,8 +119,16 @@ impl ChordScale {
     #[inline]
     #[must_use]
     pub const fn from_parts(scale: Scale, quality: ChordQuality) -> Option<Self> {
-        if quality.interval_set().is_subset(scale.pitch_set()) {
-            Some(Self { scale, quality })
+        Self::from_chord(scale, quality.chord_type())
+    }
+
+    /// The chord type `chord` on the root of `scale`, or `None` when one of
+    /// its notes is not in the scale.
+    #[inline]
+    #[must_use]
+    pub const fn from_chord(scale: Scale, chord: ChordType) -> Option<Self> {
+        if chord.interval_set().is_subset(scale.pitch_set()) {
+            Some(Self { scale, chord })
         } else {
             None
         }
@@ -167,33 +141,39 @@ impl ChordScale {
         self.scale
     }
 
-    /// The chord's quality.
+    /// The chord type.
     #[inline]
     #[must_use]
-    pub const fn quality(self) -> ChordQuality {
-        self.quality
+    pub const fn chord(self) -> ChordType {
+        self.chord
+    }
+
+    /// The chord's named quality, when it has one.
+    #[must_use]
+    pub fn quality(self) -> Option<ChordQuality> {
+        self.chord.quality()
     }
 
     /// The chord's guide tones, as intervals above the root.
     #[inline]
     #[must_use]
     pub const fn guide_tones(self) -> PitchSet {
-        self.quality.guide_tones()
+        self.chord.guide_tones()
     }
 
     /// The chord's other tones.
     #[inline]
     #[must_use]
     pub const fn colour_tones(self) -> PitchSet {
-        self.quality
+        self.chord
             .interval_set()
-            .difference(self.quality.guide_tones())
+            .difference(self.chord.guide_tones())
     }
 
     /// The scale tones outside the chord a semitone above a chord tone.
     #[must_use]
     pub const fn avoid_notes(self) -> PitchSet {
-        let chord = self.quality.interval_set();
+        let chord = self.chord.interval_set();
         let outside = self.outside();
         // Every chord tone moved up a semitone, kept where the scale has a
         // note the chord does not.
@@ -211,9 +191,7 @@ impl ChordScale {
     #[inline]
     #[must_use]
     pub const fn outside(self) -> PitchSet {
-        self.scale
-            .pitch_set()
-            .difference(self.quality.interval_set())
+        self.scale.pitch_set().difference(self.chord.interval_set())
     }
 
     /// What the note `interval` semitones above the root does here. Only the
@@ -222,7 +200,7 @@ impl ChordScale {
     pub const fn role(self, interval: Pitch) -> ToneRole {
         if self.guide_tones().contains(interval) {
             ToneRole::Guide
-        } else if self.quality.interval_set().contains(interval) {
+        } else if self.chord.interval_set().contains(interval) {
             ToneRole::Colour
         } else if self.avoid_notes().contains(interval) {
             ToneRole::Avoid
