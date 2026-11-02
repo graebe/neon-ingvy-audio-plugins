@@ -279,3 +279,25 @@ fn every_type_has_a_name_in_words() {
     );
     assert!(grammar().iter().all(|c| !c.name().as_str().is_empty()));
 }
+
+#[test]
+fn degrees_and_stacking_name_every_note() {
+    let altered = ChordType::new(
+        ChordBase::Dominant7Flat5,
+        Tensions::NONE
+            .with(Tension::FlatNine)
+            .with(Tension::SharpNine),
+    )
+    .unwrap();
+    assert_eq!(altered.degrees().as_str(), "1 3 b5 b7 b9 #9");
+    assert_eq!(
+        altered.stacking().collect::<Vec<_>>(),
+        [0, 4, 6, 10, 13, 15]
+    );
+    for chord in grammar() {
+        let count = chord.degrees().as_str().split(' ').count() as u32;
+        assert_eq!(count, chord.len(), "{}", chord.symbol().as_str());
+        let set = chord.stacking().fold(0u16, |bits, s| bits | 1 << (s % 12));
+        assert_eq!(set, chord.interval_set().bits());
+    }
+}

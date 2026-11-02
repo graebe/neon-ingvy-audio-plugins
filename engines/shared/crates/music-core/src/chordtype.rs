@@ -170,6 +170,32 @@ impl ChordBase {
         set.contains(Pitch::new(3)) && !set.contains(Pitch::new(4))
     }
 
+    /// The base's notes as degrees: `1 b3 5 b7`. ASCII.
+    #[must_use]
+    pub const fn degrees(self) -> &'static str {
+        match self {
+            ChordBase::Major => "1 3 5",
+            ChordBase::Minor => "1 b3 5",
+            ChordBase::Diminished => "1 b3 b5",
+            ChordBase::Augmented => "1 3 #5",
+            ChordBase::Sus2 => "1 2 5",
+            ChordBase::Sus4 => "1 4 5",
+            ChordBase::Major6 => "1 3 5 6",
+            ChordBase::Minor6 => "1 b3 5 6",
+            ChordBase::Major7 => "1 3 5 7",
+            ChordBase::Dominant7 => "1 3 5 b7",
+            ChordBase::Minor7 => "1 b3 5 b7",
+            ChordBase::MinorMajor7 => "1 b3 5 7",
+            ChordBase::HalfDiminished7 => "1 b3 b5 b7",
+            ChordBase::Diminished7 => "1 b3 b5 bb7",
+            ChordBase::Augmented7 => "1 3 #5 b7",
+            ChordBase::AugmentedMajor7 => "1 3 #5 7",
+            ChordBase::Dominant7Flat5 => "1 3 b5 b7",
+            ChordBase::Dominant7Sus4 => "1 4 5 b7",
+            ChordBase::Power => "1 5",
+        }
+    }
+
     /// The base written out in words, lowercase.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -627,6 +653,26 @@ impl ChordType {
         });
         let _ = self.write_suffix(&mut out, true);
         out
+    }
+
+    /// The chord's notes as degrees above the root, chord tones then
+    /// tensions: `1 b3 5 b7 9`, `1 3 b5 b7 b9 #9`, `1 b3 b5 bb7`. ASCII.
+    #[must_use]
+    pub fn degrees(self) -> DisplayBuffer<40> {
+        let mut out = DisplayBuffer::<40>::new();
+        let _ = out.write_str(self.base.degrees());
+        for tension in self.tensions.iter() {
+            let _ = out.write_str(" ");
+            let _ = write_tension(&mut out, tension);
+        }
+        out
+    }
+
+    /// The notes stacked in register: the base within the octave, each
+    /// tension an octave up (a 9 is 14 semitones above the root).
+    pub fn stacking(self) -> impl Iterator<Item = u8> {
+        let base = self.base.intervals().iter().copied();
+        base.chain(self.tensions.iter().map(|t| t.semitones() + 12))
     }
 
     /// The chord written out in words: `"dominant 7 with flat 9, sharp 11"`.
