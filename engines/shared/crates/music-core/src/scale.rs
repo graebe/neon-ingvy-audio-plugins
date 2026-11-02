@@ -314,12 +314,28 @@ impl Scale {
     /// ```
     #[must_use]
     pub fn brightness(self) -> f32 {
-        let most = MOST_FIFTHS[self.len() as usize];
+        let most = self.most_fifths();
         if most == 0 {
             0.0
         } else {
             f32::from(self.fifths_sum()) / f32::from(most)
         }
+    }
+
+    /// The largest [`Scale::fifths_sum`] any scale with this many notes can
+    /// reach: what [`Scale::brightness`] divides by. Fifteen for seven notes
+    /// (Lydian), zero for one note and for all twelve.
+    ///
+    /// ```
+    /// use music_core::Scale;
+    ///
+    /// let lydian = Scale::MAJOR.mode(3);
+    /// assert_eq!(lydian.most_fifths(), 15);
+    /// assert_eq!(i16::from(lydian.fifths_sum()), 15);
+    /// ```
+    #[must_use]
+    pub const fn most_fifths(self) -> u8 {
+        MOST_FIFTHS[self.len() as usize]
     }
 
     /// The two triads the scale splits into, when it has six notes and
