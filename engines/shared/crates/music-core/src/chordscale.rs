@@ -170,14 +170,23 @@ impl ChordScale {
             .difference(self.chord.guide_tones())
     }
 
-    /// The scale tones outside the chord a semitone above a chord tone.
+    /// The scale tones outside the chord a semitone above one of its base
+    /// tones: its root, third, fifth, or seventh or sixth (Berklee:
+    /// Mulholland & Hojnacki). Over a dominant seventh the b9 and the b13
+    /// are tensions instead, the rule's exception chord–scale theory
+    /// teaches for dominants. docs/chords.md gives the sources.
     #[must_use]
     pub const fn avoid_notes(self) -> PitchSet {
-        let chord = self.chord.interval_set();
+        let base = self.chord.base().interval_set();
         let outside = self.outside();
-        // Every chord tone moved up a semitone, kept where the scale has a
+        // Every base tone moved up a semitone, kept where the scale has a
         // note the chord does not.
-        outside.intersection(chord.transpose(crate::pitch::Interval::new(1)))
+        let avoid = outside.intersection(base.transpose(crate::pitch::Interval::new(1)));
+        if self.chord.base().is_dominant() {
+            avoid.difference(PitchSet::EMPTY.insert(Pitch::new(1)).insert(Pitch::new(8)))
+        } else {
+            avoid
+        }
     }
 
     /// The scale tones outside the chord that are not avoid notes.

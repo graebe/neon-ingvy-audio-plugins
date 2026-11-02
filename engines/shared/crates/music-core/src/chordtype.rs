@@ -11,9 +11,14 @@
 //! ([`ChordQuality::chord_type`]); far more chord types exist than qualities.
 //! docs/chords.md gives the rules and their sources.
 
+use core::fmt::{self, Write};
+
+use crate::DisplayBuffer;
 use crate::chord::ChordQuality;
+use crate::chordscale::ChordScale;
 use crate::pitch::Pitch;
 use crate::pitchset::PitchSet;
+use crate::scale::{ScaleDegree, ScaleFamily};
 
 /// The chord a type is built on: its third (or suspension), its fifth, and
 /// its seventh or sixth.
@@ -128,56 +133,103 @@ impl ChordBase {
     #[must_use]
     pub const fn family(self) -> ChordFamily {
         match self {
-            ChordBase::Major | ChordBase::Major6 | ChordBase::Major7 => ChordFamily::Major,
+            ChordBase::Major
+            | ChordBase::Major6
+            | ChordBase::Major7
+            | ChordBase::AugmentedMajor7 => ChordFamily::Major,
             ChordBase::Dominant7 | ChordBase::Augmented7 | ChordBase::Dominant7Flat5 => {
                 ChordFamily::Dominant
             }
             ChordBase::Minor | ChordBase::Minor6 | ChordBase::Minor7 => ChordFamily::Minor,
-            ChordBase::MinorMajor7 => ChordFamily::MinorMajor,
             ChordBase::HalfDiminished7 => ChordFamily::HalfDiminished,
             ChordBase::Diminished | ChordBase::Diminished7 => ChordFamily::Diminished,
-            ChordBase::Augmented | ChordBase::AugmentedMajor7 => ChordFamily::Augmented,
-            ChordBase::Sus2 | ChordBase::Sus4 | ChordBase::Dominant7Sus4 | ChordBase::Power => {
-                ChordFamily::Suspended
-            }
+            ChordBase::Sus2 | ChordBase::Sus4 | ChordBase::Dominant7Sus4 => ChordFamily::Suspended,
+            ChordBase::MinorMajor7 | ChordBase::Augmented | ChordBase::Power => ChordFamily::Other,
+        }
+    }
+
+    /// Whether the base is a dominant seventh: a minor seventh over a major
+    /// third or a fourth (7, 7b5, 7#5, 7sus4). Over these, b9 and b13 are
+    /// tensions, not avoid notes ([`crate::ChordScale::avoid_notes`]).
+    #[must_use]
+    pub const fn is_dominant(self) -> bool {
+        matches!(
+            self,
+            ChordBase::Dominant7
+                | ChordBase::Dominant7Flat5
+                | ChordBase::Augmented7
+                | ChordBase::Dominant7Sus4
+        )
+    }
+
+    /// Whether the third is minor (and no major third): the numeral is
+    /// written in lower case.
+    #[must_use]
+    pub const fn is_minor(self) -> bool {
+        let set = self.interval_set();
+        set.contains(Pitch::new(3)) && !set.contains(Pitch::new(4))
+    }
+
+    /// The base written out in words, lowercase.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            ChordBase::Major => "major",
+            ChordBase::Minor => "minor",
+            ChordBase::Diminished => "diminished",
+            ChordBase::Augmented => "augmented",
+            ChordBase::Sus2 => "suspended 2",
+            ChordBase::Sus4 => "suspended 4",
+            ChordBase::Major6 => "major 6",
+            ChordBase::Minor6 => "minor 6",
+            ChordBase::Major7 => "major 7",
+            ChordBase::Dominant7 => "dominant 7",
+            ChordBase::Minor7 => "minor 7",
+            ChordBase::MinorMajor7 => "minor-major 7",
+            ChordBase::HalfDiminished7 => "half-diminished 7",
+            ChordBase::Diminished7 => "diminished 7",
+            ChordBase::Augmented7 => "augmented 7",
+            ChordBase::AugmentedMajor7 => "augmented major 7",
+            ChordBase::Dominant7Flat5 => "dominant 7 flat 5",
+            ChordBase::Dominant7Sus4 => "7 suspended 4",
+            ChordBase::Power => "power chord",
         }
     }
 }
 
-/// The chord families: the columns of the chord table, by the quality of the
-/// third, fifth and seventh.
+/// The chord families: the columns of the chord table. They are the headings
+/// of The New Real Book's chord list (as Hutchinson reproduces it): major,
+/// dominant (the altered dominants with it), minor, half-diminished,
+/// diminished, suspended, and other.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(u8)]
 pub enum ChordFamily {
-    /// Major third, perfect fifth, major seventh or sixth.
+    /// Major third and a major seventh or sixth (maj7#5 too).
     Major,
-    /// Major third, minor seventh.
+    /// Major third and a minor seventh, the altered ones included.
     Dominant,
     /// Minor third, perfect fifth, minor seventh or sixth.
     Minor,
-    /// Minor third, perfect fifth, major seventh.
-    MinorMajor,
     /// Minor third, diminished fifth, minor seventh.
     HalfDiminished,
     /// Minor third, diminished fifth, diminished seventh.
     Diminished,
-    /// Major third, augmented fifth.
-    Augmented,
     /// No third: a second or a fourth instead.
     Suspended,
+    /// The rest: the minor-major chords and the augmented triad.
+    Other,
 }
 
 impl ChordFamily {
     /// Every family, in table order.
-    pub const ALL: [ChordFamily; 8] = [
+    pub const ALL: [ChordFamily; 7] = [
         ChordFamily::Major,
         ChordFamily::Dominant,
         ChordFamily::Minor,
-        ChordFamily::MinorMajor,
         ChordFamily::HalfDiminished,
         ChordFamily::Diminished,
-        ChordFamily::Augmented,
         ChordFamily::Suspended,
+        ChordFamily::Other,
     ];
 
     /// The family's name.
@@ -187,11 +239,10 @@ impl ChordFamily {
             ChordFamily::Major => "Major",
             ChordFamily::Dominant => "Dominant",
             ChordFamily::Minor => "Minor",
-            ChordFamily::MinorMajor => "Minor-major",
             ChordFamily::HalfDiminished => "Half-diminished",
             ChordFamily::Diminished => "Diminished",
-            ChordFamily::Augmented => "Augmented",
             ChordFamily::Suspended => "Suspended",
+            ChordFamily::Other => "Other",
         }
     }
 }
@@ -457,6 +508,279 @@ impl ChordType {
             .into_iter()
             .find(|q| q.chord_type() == self)
     }
+}
+
+impl ChordType {
+    /// Every chord type of the grammar, in base order then by tensions.
+    ///
+    /// A chord type is in the grammar when its tensions follow the
+    /// chord-symbol rules (see [`ChordType::follows_symbol_rules`]) and at
+    /// least one named scale of five or more notes holds its base on its
+    /// root with every one of its tensions as a tension there, not an avoid
+    /// note ([`ChordScale::tensions`]). docs/chords.md gives the rules and
+    /// their sources.
+    pub fn all() -> impl Iterator<Item = ChordType> {
+        ChordBase::ALL
+            .into_iter()
+            .filter(|&b| b != ChordBase::Power)
+            .flat_map(|base| {
+                let available = Available::over(base);
+                (0u8..128).filter_map(move |bits| {
+                    let chord = ChordType::new(base, Tensions(bits))?;
+                    (chord.follows_symbol_rules() && available.allows(chord.tensions))
+                        .then_some(chord)
+                })
+            })
+    }
+
+    /// Whether the tensions are a combination chord symbols write:
+    ///
+    /// - a triad takes only a ninth (`add9`), and only a major or minor one;
+    ///   a sixth chord only a ninth (`6/9`);
+    /// - one ninth at most, except b9 with #9; never 13 with b13;
+    /// - altered ninths (b9, #9) only on a dominant seventh, and #9 only
+    ///   over a major third;
+    /// - no natural 11 over a major third;
+    /// - 11 implies the 9, and 13 implies a ninth (and, on a minor chord,
+    ///   the 11 too); the power chord takes nothing.
+    #[must_use]
+    pub fn follows_symbol_rules(self) -> bool {
+        use Tension as T;
+        let t = self.tensions;
+        let base = self.base;
+        if base == ChordBase::Power {
+            return t.is_empty();
+        }
+        if !base.has_seventh_or_sixth() {
+            let triad_ninth = matches!(base, ChordBase::Major | ChordBase::Minor);
+            return t.is_empty() || (triad_ninth && t == Tensions::NONE.with(T::Nine));
+        }
+        if matches!(base, ChordBase::Major6 | ChordBase::Minor6) {
+            return t.is_empty() || t == Tensions::NONE.with(T::Nine);
+        }
+        let ninths = [T::FlatNine, T::Nine, T::SharpNine]
+            .iter()
+            .filter(|&&n| t.contains(n))
+            .count();
+        let any_ninth = ninths > 0;
+        if ninths > 2 || (ninths == 2 && t.contains(T::Nine)) {
+            return false;
+        }
+        if t.contains(T::Thirteen) && t.contains(T::FlatThirteen) {
+            return false;
+        }
+        let major_third = base.interval_set().contains(Pitch::new(4));
+        if (t.contains(T::FlatNine) || t.contains(T::SharpNine)) && !base.is_dominant() {
+            return false;
+        }
+        if t.contains(T::SharpNine) && !major_third {
+            return false;
+        }
+        if t.contains(T::Eleven) && (major_third || !t.contains(T::Nine)) {
+            return false;
+        }
+        if t.contains(T::Thirteen) {
+            if !any_ninth {
+                return false;
+            }
+            if base.is_minor() && !t.contains(T::Eleven) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Whether one named scale of five or more notes holds the base on its
+    /// root with all the tensions as tensions (not avoid notes).
+    #[must_use]
+    pub fn is_available(self) -> bool {
+        Available::over(self.base).allows(self.tensions)
+    }
+
+    /// The suffix written after the root: `m9`, `13b9#11`, `maj7#5`,
+    /// `m(maj9)`, `7sus4b9`, `dim7(9)`. ASCII: `b` for flat, `#` for sharp.
+    #[must_use]
+    pub fn symbol(self) -> DisplayBuffer<32> {
+        let mut out = DisplayBuffer::<32>::new();
+        let _ = self.write_suffix(&mut out, false);
+        out
+    }
+
+    /// The chord as a Roman numeral on scale degree `degree`: `ii7`, `bVII9`,
+    /// `viiø7`, `V7b9`, `Isus4`. Case follows the third (lower for a minor
+    /// third); the degree's accidental is relative to the major scale on the
+    /// tonic, as the scale's degrees are spelled.
+    #[must_use]
+    pub fn numeral(self, degree: ScaleDegree) -> DisplayBuffer<40> {
+        let mut out = DisplayBuffer::<40>::new();
+        let mark = if degree.accidental() < 0 { "b" } else { "#" };
+        for _ in 0..degree.accidental().unsigned_abs().min(2) {
+            let _ = out.write_str(mark);
+        }
+        let upper = ["I", "II", "III", "IV", "V", "VI", "VII"];
+        let lower = ["i", "ii", "iii", "iv", "v", "vi", "vii"];
+        let index = (degree.number().clamp(1, 7) - 1) as usize;
+        let _ = out.write_str(if self.base.is_minor() {
+            lower[index]
+        } else {
+            upper[index]
+        });
+        let _ = self.write_suffix(&mut out, true);
+        out
+    }
+
+    /// The chord written out in words: `"dominant 7 with flat 9, sharp 11"`.
+    #[must_use]
+    pub fn name(self) -> DisplayBuffer<96> {
+        let mut out = DisplayBuffer::<96>::new();
+        let _ = out.write_str(self.base.name());
+        let mut first = true;
+        for tension in self.tensions.iter() {
+            let _ = out.write_str(if first { " with " } else { ", " });
+            first = false;
+            let _ = out.write_str(match tension.alteration() {
+                -1 => "flat ",
+                1 => "sharp ",
+                _ => "",
+            });
+            let _ = write!(out, "{}", tension.number());
+        }
+        out
+    }
+
+    /// Writes the symbol's suffix, or with `numeral` the numeral's (the
+    /// quality the numeral's case already shows left out).
+    fn write_suffix(self, out: &mut impl Write, numeral: bool) -> fmt::Result {
+        use ChordBase as B;
+        use Tension as T;
+        let t = self.tensions;
+        // The highest natural extension takes the seventh's place: 9, 11, 13.
+        let top = if t.contains(T::Thirteen) {
+            13
+        } else if t.contains(T::Eleven) {
+            11
+        } else if t.contains(T::Nine) {
+            9
+        } else {
+            7
+        };
+        let absorbed = |tension: Tension| tension.alteration() == 0 && tension.number() <= top;
+        let (before, after) = match (self.base, numeral) {
+            (B::Major, false) => (if t.is_empty() { "" } else { "add" }, ""),
+            (B::Minor, false) => (if t.is_empty() { "m" } else { "madd" }, ""),
+            (B::Major | B::Minor, true) => (if t.is_empty() { "" } else { "add" }, ""),
+            (B::Diminished, false) => ("dim", ""),
+            (B::Diminished, true) => ("°", ""),
+            (B::Augmented, false) => ("aug", ""),
+            (B::Augmented, true) => ("+", ""),
+            (B::Sus2, _) => ("sus2", ""),
+            (B::Sus4, _) => ("sus4", ""),
+            (B::Major6, _) => ("6", ""),
+            (B::Minor6, false) => ("m6", ""),
+            (B::Minor6, true) => ("6", ""),
+            (B::Power, _) => ("5", ""),
+            (B::Major7, _) => ("maj", ""),
+            (B::Dominant7, _) => ("", ""),
+            (B::Minor7, false) => ("m", ""),
+            (B::Minor7, true) => ("", ""),
+            (B::MinorMajor7, false) => ("m(maj", ")"),
+            (B::MinorMajor7, true) => ("maj", ""),
+            (B::HalfDiminished7, false) => ("m", "b5"),
+            (B::HalfDiminished7, true) => ("ø", ""),
+            (B::Diminished7, false) => ("dim", ""),
+            (B::Diminished7, true) => ("°", ""),
+            (B::Augmented7, false) => ("", "#5"),
+            (B::Augmented7, true) => ("+", ""),
+            (B::AugmentedMajor7, false) => ("maj", "#5"),
+            (B::AugmentedMajor7, true) => ("+maj", ""),
+            (B::Dominant7Flat5, _) => ("", "b5"),
+            (B::Dominant7Sus4, _) => ("", "sus4"),
+        };
+        out.write_str(before)?;
+        match self.base {
+            // A triad's added ninth, a sixth's 6/9: no seventh to replace.
+            B::Major | B::Minor => {
+                if !t.is_empty() {
+                    out.write_str("9")?;
+                }
+                return Ok(());
+            }
+            B::Major6 | B::Minor6 => {
+                if !t.is_empty() {
+                    out.write_str("/9")?;
+                }
+                return Ok(());
+            }
+            B::Diminished | B::Augmented | B::Sus2 | B::Sus4 | B::Power => return Ok(()),
+            // A diminished seventh keeps its 7; tensions go in parentheses.
+            B::Diminished7 => {
+                out.write_str("7")?;
+                if !t.is_empty() {
+                    out.write_str("(")?;
+                    for (i, tension) in t.iter().enumerate() {
+                        if i > 0 {
+                            out.write_str(",")?;
+                        }
+                        write_tension(out, tension)?;
+                    }
+                    out.write_str(")")?;
+                }
+                return Ok(());
+            }
+            _ => {}
+        }
+        write!(out, "{top}")?;
+        out.write_str(after)?;
+        for tension in t.iter().filter(|&tension| !absorbed(tension)) {
+            write_tension(out, tension)?;
+        }
+        Ok(())
+    }
+}
+
+/// The tension sets the named scales of five or more notes offer over one
+/// base: one per scale that holds it, without repeats.
+struct Available {
+    sets: [PitchSet; 128],
+    len: usize,
+}
+
+impl Available {
+    fn over(base: ChordBase) -> Self {
+        let mut found = Self {
+            sets: [PitchSet::EMPTY; 128],
+            len: 0,
+        };
+        let chord = ChordType::plain(base);
+        let pairs = ScaleFamily::all(5)
+            .flat_map(ScaleFamily::modes)
+            .filter(|scale| scale.name().is_some())
+            .filter_map(|scale| ChordScale::from_chord(scale, chord));
+        for pair in pairs {
+            let set = pair.tensions();
+            if !found.sets[..found.len].contains(&set) && found.len < found.sets.len() {
+                found.sets[found.len] = set;
+                found.len += 1;
+            }
+        }
+        found
+    }
+
+    fn allows(&self, tensions: Tensions) -> bool {
+        let wanted = tensions.pitch_set();
+        self.sets[..self.len]
+            .iter()
+            .any(|&set| wanted.is_subset(set))
+    }
+}
+
+fn write_tension(out: &mut impl Write, tension: Tension) -> fmt::Result {
+    out.write_str(match tension.alteration() {
+        -1 => "b",
+        1 => "#",
+        _ => "",
+    })?;
+    write!(out, "{}", tension.number())
 }
 
 impl ChordQuality {
