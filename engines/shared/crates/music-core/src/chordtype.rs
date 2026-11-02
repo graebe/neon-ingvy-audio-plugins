@@ -566,6 +566,8 @@ impl ChordType {
     /// - one ninth at most, except b9 with #9; never 13 with b13;
     /// - altered ninths (b9, #9) only on a dominant seventh, and #9 only
     ///   over a major third;
+    /// - on a dominant seventh, b13 only with a perfect fifth: without one
+    ///   the note is a #5 (7#5#11 rather than 7b5b13);
     /// - no natural 11 over a major third;
     /// - 11 implies the 9, and 13 implies a ninth (and, on a minor chord,
     ///   the 11 too); the power chord takes nothing.
@@ -600,6 +602,10 @@ impl ChordType {
             return false;
         }
         if t.contains(T::SharpNine) && !major_third {
+            return false;
+        }
+        let perfect_fifth = base.interval_set().contains(Pitch::new(7));
+        if t.contains(T::FlatThirteen) && base.is_dominant() && !perfect_fifth {
             return false;
         }
         if t.contains(T::Eleven) && (major_third || !t.contains(T::Nine)) {

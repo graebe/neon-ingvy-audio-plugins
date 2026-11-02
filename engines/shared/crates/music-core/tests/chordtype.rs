@@ -98,7 +98,12 @@ fn union_of_tensions(base: ChordBase) -> Vec<Tension> {
 #[test]
 fn the_grammar_holds_every_named_quality_but_two() {
     let all = grammar();
-    assert_eq!(all.len(), 111, "the grammar changed: update docs/chords.md");
+    assert_eq!(all.len(), 106, "the grammar changed: update docs/chords.md");
+    // One spelling per set of notes on a root.
+    let mut sets: Vec<u16> = all.iter().map(|c| c.interval_set().bits()).collect();
+    sets.sort_unstable();
+    sets.dedup();
+    assert_eq!(sets.len(), all.len(), "two chord types share their notes");
     for quality in ChordQuality::ALL {
         let chord = quality.chord_type();
         let expected = !matches!(quality, ChordQuality::Fifth | ChordQuality::Dominant11);
@@ -183,7 +188,7 @@ fn symbols_follow_the_conventions() {
             "{expected:?} missing"
         );
     }
-    for refused in ["11", "maj7#9", "9b9", "13b13", "7sus4#9", "maj11"] {
+    for refused in ["11", "maj7#9", "9b9", "13b13", "7sus4#9", "maj11", "7b5b13"] {
         assert!(
             !symbols.iter().any(|s| s == refused),
             "{refused:?} should not be in the grammar"

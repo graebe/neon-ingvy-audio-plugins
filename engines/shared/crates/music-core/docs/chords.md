@@ -253,7 +253,7 @@ working out the chord when all you have is the notes.
 
 `ChordType` is the system behind chord names: a **base** (a triad, a sixth
 or a seventh) plus **tensions** (♭9 9 ♯9, 11 ♯11, ♭13 13). `ChordType::all()`
-lists every chord type the grammar allows: 111 of them. Every rule below has
+lists every chord type the grammar allows: 106 of them, each with its own set of notes. Every rule below has
 a source; where sources disagree, the choice is stated.
 
 ```rust
@@ -315,6 +315,10 @@ Notation CG, *MusicXML 4.0 Reference*,
   <https://music.arts.uci.edu/dobrian/f14/music16D/dobrianchordsymbols.htm>).
 - No natural 11 over a major third: arrangers "omit the unaltered 11th
   because it clashes" (Hutchinson §31.1).
+- On a dominant seventh, ♭13 only with a perfect fifth: "♭13 implies that
+  the unaltered 5th occurs in the chord, while ♯5 does not" (Hutchinson
+  §31.3), and redundant spellings are avoided (Dobrian). So 7♯5♯11, never
+  7♭5♭13, for the same notes.
 - Altered ninths only on dominant sevenths (Naus), ♯9 only over a major
   third; ♭9 may join ♯9 (both in the half-whole and altered scales,
   Hutchinson §31.10). No source shows 9 with ♭9 or 13 with ♭13, so neither is
