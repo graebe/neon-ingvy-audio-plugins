@@ -1,6 +1,6 @@
 [package]
 name = "music-core"
-version = "2026.11.2+1"
+version = "2026.11.6+1"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Torben Gräber"]
@@ -16,8 +16,9 @@ publish.workspace = true
 # group on it through a git dependency on this repository. It came here from
 # neo-riemann with its history (git subtree); its rules are in README.md.
 #
-# NO DEPENDENCIES, and `no_std` unless `std` is asked for. `std` gates only the
-# two methods that need floating-point maths `core` does not have.
+# NO DEPENDENCIES, and `no_std` unless `std` is asked for. `std` gates only what
+# needs floating-point maths `core` does not have: two frequency methods and
+# the dissonance module.
 [features]
 default = ["std"]
 std = []
