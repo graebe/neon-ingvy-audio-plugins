@@ -63,9 +63,10 @@ the register. Each note's own roughness counts once, even in a chord.
 - `curve(f0, from, step, out)` holds one note at `f0` and moves a second from
   `from` cents up, `step` cents at a time, filling `out`.
 - `landscape(f0, step, n, out)` does the same for three notes on an n × n
-  grid. `x` is the middle note's distance above `f0` and `y` the top note's
-  distance above the middle. So every chord appears once, and a triad in root
-  position reads as its two stacked intervals: the major triad is (400, 300).
+  grid. `x` and `y` are the two upper notes' distances above `f0`, as in
+  Sethares' dissonance surfaces ([3] figs. 6.20–6.21): the major triad is
+  (400, 700) and again (700, 400). Swapping the upper two changes nothing, so
+  the grid is symmetric about its diagonal, where they coincide.
 - `valleys(curve, prominence, out)` finds a curve's local minima, at least
   `prominence` of its range deep. A curve's ends are never a valley, so sample
   a little below the unison and beyond the last interval you want.

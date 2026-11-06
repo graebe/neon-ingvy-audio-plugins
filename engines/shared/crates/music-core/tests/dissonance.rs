@@ -147,10 +147,11 @@ fn a_curve_and_a_landscape_agree_with_the_notes_they_stand_for() {
     let n = 13;
     let mut land = vec![0.0; n * n];
     assert!(t.landscape(C4, 100.0, n, &mut land));
-    for (x, y) in [(4, 3), (3, 4), (0, 0), (12, 12), (5, 2)] {
-        let mid = C4 * (x as f64 / 12.0).exp2();
-        let top = mid * (y as f64 / 12.0).exp2();
-        assert!((land[y * n + x] - t.dissonance(&[C4, mid, top])).abs() < 1e-9);
+    for (x, y) in [(4, 7), (7, 4), (0, 0), (12, 12), (5, 2)] {
+        let second = C4 * (x as f64 / 12.0).exp2();
+        let third = C4 * (y as f64 / 12.0).exp2();
+        assert!((land[y * n + x] - t.dissonance(&[C4, second, third])).abs() < 1e-9);
+        assert_eq!(land[y * n + x], land[x * n + y]);
     }
 }
 
@@ -172,14 +173,14 @@ fn is_well(land: &[f64], n: usize, x: usize, y: usize) -> bool {
 
 #[test]
 fn the_major_and_minor_triads_lie_in_wells() {
-    // 10-cent steps; the just triads' intervals rounded to them.
+    // 10-cent steps; the just triads' notes over the root rounded to them.
     let t = Timbre::harmonic(6);
     let n = 121;
     let mut land = vec![0.0; n * n];
     assert!(t.landscape(C4, 10.0, n, &mut land));
     let step = |ratio: f64| (cents(ratio) / 10.0).round() as usize;
-    let major = (step(5.0 / 4.0), step(6.0 / 5.0));
-    let minor = (step(6.0 / 5.0), step(5.0 / 4.0));
+    let major = (step(5.0 / 4.0), step(3.0 / 2.0));
+    let minor = (step(6.0 / 5.0), step(3.0 / 2.0));
     // A cell either side, for the rounding to 10 cents.
     let near_well = |(x, y): (usize, usize)| {
         (x - 1..=x + 1).any(|i| (y - 1..=y + 1).any(|j| is_well(&land, n, i, j)))

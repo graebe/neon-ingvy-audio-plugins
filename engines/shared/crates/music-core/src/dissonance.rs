@@ -276,8 +276,10 @@ impl Timbre {
     }
 
     /// The dissonance of three notes over an `n` × `n` grid, into
-    /// `out[y·n + x]`: the middle note `x·step_cents` above `f0`, the top
-    /// note `y·step_cents` above the middle one.
+    /// `out[y·n + x]`: one note on `f0`, one `x·step_cents` above it and one
+    /// `y·step_cents` above it, as Sethares draws his dissonance surfaces.
+    /// Swapping the upper two changes nothing, so the grid is symmetric about
+    /// its diagonal, where they coincide.
     ///
     /// Returns `false`, writing nothing, when `n` is 0 or above [`MAX_SIDE`]
     /// or `out` holds fewer than n² points.
@@ -285,19 +287,21 @@ impl Timbre {
         if n == 0 || n > MAX_SIDE || out.len() < n * n {
             return false;
         }
-        // Everything but the middle note against the top one depends on one
-        // note's height alone: work it out once per height.
-        let mut alone = [0.0; 2 * MAX_SIDE - 1];
-        for (k, a) in alone[..2 * n - 1].iter_mut().enumerate() {
+        // Everything but the upper two notes against each other depends on
+        // one note's height alone: work it out once per height.
+        let mut alone = [0.0; MAX_SIDE];
+        for (k, a) in alone[..n].iter_mut().enumerate() {
             let g = above(f0, k as f64 * step_cents);
             *a = self.within(g) + self.across(f0, g);
         }
         let base = self.within(f0);
         for x in 0..n {
             let mid = above(f0, x as f64 * step_cents);
-            for y in 0..n {
-                let top = above(mid, y as f64 * step_cents);
-                out[y * n + x] = base + alone[x] + alone[x + y] + self.across(mid, top);
+            for y in x..n {
+                let top = above(f0, y as f64 * step_cents);
+                let d = base + alone[x] + alone[y] + self.across(mid, top);
+                out[y * n + x] = d;
+                out[x * n + y] = d;
             }
         }
         true
