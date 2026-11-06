@@ -357,8 +357,9 @@ assert_eq!((major & minor).len(), 2);
 
 ## Frequency
 
-Only a note has a frequency, because only a note has a register. This is the
-one part behind the `std` feature, since the maths needs floating point.
+Only a note has a frequency, because only a note has a register. This and
+dissonance (below) are the parts behind the `std` feature, since their maths
+needs floating point.
 
 ```rust
 # #[cfg(not(feature = "std"))]
@@ -369,6 +370,26 @@ use music_core::Pitch;
 
 assert!((Pitch::A.at(4).frequency_hz() - 440.0).abs() < 1e-9);
 assert!((Pitch::A.at(4).frequency_hz_at(432.0) - 432.0).abs() < 1e-9);
+# }
+```
+
+## Dissonance
+
+How rough notes sound together, from their partials: Plomp and Levelt's curve
+for two sines, in Sethares' formula, summed over every pair of partials.
+`docs/dissonance.md` has the formula and its sources.
+
+```rust
+# #[cfg(not(feature = "std"))]
+# fn main() {}
+# #[cfg(feature = "std")]
+# fn main() {
+use music_core::Timbre;
+
+let strings = Timbre::harmonic(6);
+let fifth = strings.dissonance(&[261.63, 261.63 * 1.5]);
+let tritone = strings.dissonance(&[261.63, 261.63 * 2f64.sqrt()]);
+assert!(fifth < tritone);
 # }
 ```
 

@@ -42,6 +42,8 @@
 #![warn(missing_docs)]
 
 pub mod abletonmove;
+#[cfg(feature = "std")]
+pub mod dissonance;
 
 mod catalog;
 mod chord;
@@ -60,6 +62,8 @@ pub use catalog::NamedFamilies;
 pub use chord::{Chord, ChordQuality, Voicing};
 pub use chordscale::{ChordScale, ToneRole};
 pub use chordtype::{ChordBase, ChordFamily, ChordRow, ChordType, Tension, Tensions};
+#[cfg(feature = "std")]
+pub use dissonance::{Partial, Timbre};
 pub use key::{Degree, Key, Mode};
 pub use name::{Letter, NoteName};
 pub use notes::Notes;

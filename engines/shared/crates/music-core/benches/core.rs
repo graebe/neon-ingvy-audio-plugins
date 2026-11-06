@@ -114,3 +114,25 @@ mod parse {
         black_box("F#m7b5").parse::<Chord>().unwrap()
     }
 }
+
+#[divan::bench_group]
+mod dissonance {
+    use music_core::Timbre;
+
+    /// The page's three-note landscape: 0–1200 cents in 10-cent steps, a
+    /// timbre of 12 partials. The page redraws it on every change of timbre.
+    #[divan::bench(name = "landscape 121 x 121, 12 partials")]
+    fn landscape(bencher: divan::Bencher) {
+        let timbre = Timbre::harmonic(12);
+        let mut out = vec![0.0; 121 * 121];
+        bencher.bench_local(|| timbre.landscape(super::black_box(261.63), 10.0, 121, &mut out));
+    }
+
+    /// The page's two-note curve: one octave and a margin at 1-cent steps.
+    #[divan::bench(name = "curve 1241 points, 12 partials")]
+    fn curve(bencher: divan::Bencher) {
+        let timbre = Timbre::harmonic(12);
+        let mut out = vec![0.0; 1241];
+        bencher.bench_local(|| timbre.curve(super::black_box(261.63), -20.0, 1.0, &mut out));
+    }
+}

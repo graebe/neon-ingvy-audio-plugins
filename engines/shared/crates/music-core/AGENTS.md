@@ -24,8 +24,9 @@ it moves its `rev`: keep the public API additive.
 In: pitch primitives, pitch sets, chords of any size with identification,
 consonant triads, voicings, frequency, keys in the seven church modes and
 roman-numeral degrees, scales of any shape with their modes and families,
-the catalog of scale names, and chord-scale roles (guide tones, avoid notes). Not yet: analysis passes, file or MIDI I/O, key
-detection.
+the catalog of scale names, chord-scale roles (guide tones, avoid notes), and
+sensory dissonance from partials (`std` only; docs/dissonance.md cites every
+constant). Not yet: analysis passes, file or MIDI I/O, key detection.
 
 ### The chord vocabulary
 
